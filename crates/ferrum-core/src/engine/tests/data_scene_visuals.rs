@@ -319,3 +319,40 @@ fn data_scene_sort_order_is_secondary_to_render_layer() {
     ));
     assert_eq!(order(&mut engine), vec![72, 71, 73]);
 }
+
+#[test]
+fn flat_preview_filter_hides_sprite_and_shadow_without_mutating_physics() {
+    let mut engine = Engine::new();
+    engine.use_data_scene();
+    engine.set_viewport_size(1600.0, 960.0);
+    let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
+    sprite(&mut engine, 72, 300.0, 300.0, 1);
+    assert!(engine.configure_data_scene_sun(1.0, 1.0, 0.5, 1.0, 100));
+    assert!(engine.configure_data_scene_ground_shadow(
+        actor.id,
+        actor.generation,
+        1,
+        20.0,
+        8.0,
+        0.5,
+        false,
+        0
+    ));
+    let transform = engine.world.transform(actor);
+    let collider = engine.world.collider(actor);
+    let initial = order(&mut engine);
+    assert_eq!(initial.len(), 3);
+    assert!(engine.set_spatial_preview_filter(&[actor.id, actor.generation], &[]));
+    assert_eq!(order(&mut engine), vec![72]);
+    assert_eq!(engine.world.transform(actor), transform);
+    assert_eq!(engine.world.collider(actor), collider);
+    assert!(!engine.set_spatial_preview_filter(&[actor.id, actor.generation + 1], &[]));
+    assert!(!engine.set_spatial_preview_filter(&[actor.id], &[]));
+    assert_eq!(order(&mut engine), vec![72]);
+    assert!(engine.set_spatial_preview_filter(&[], &[]));
+    assert_eq!(order(&mut engine), initial);
+    assert!(engine.set_spatial_preview_filter(&[actor.id, actor.generation], &[]));
+    engine.use_data_scene();
+    sprite(&mut engine, 73, 300.0, 300.0, 0);
+    assert_eq!(order(&mut engine), vec![73]);
+}

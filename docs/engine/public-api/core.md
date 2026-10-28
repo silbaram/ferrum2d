@@ -44,6 +44,15 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 미지원 요청·GPU 준비 오류는 WebGL2로 fallback하며, 이미 canvas가 연결된 뒤의 오류는 전파한다.
 공간 point/sun 그림자·normal·DOF를 포함한 지원 범위와 모델 preload는 [WebGPU 공간 경로](../data-scene-spatial.md#webgpu-공간-경로)를 따른다.
 
+`FerrumRuntimeRenderer`는 특정 renderer 클래스의 상속을 요구하지 않는 구조적 계약이다.
+기본 동작에는 `render`, `renderCommands`, `resize`, `viewportSize`, `stats`, `destroy`,
+ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀 마스크·조명·후처리·GPU 진단은 선택 capability다.
+프레임 소비자는 그리기 method만 사용하며 asset 로딩·canvas resize·renderer 수명을 관리하지 않는다.
+요청한 디버그 라인 또는 공간 geometry를 지원하지 않으면 frame clear 전에 명시적 오류를 반환한다.
+외부에서 주입한 renderer의 수명은 호출자가 소유하며 `runtime.destroy()`로 해제하지 않는다.
+기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
+직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
+
 ## 입력 액션과 context
 
 `InputManager`는 기존 `snapshot()` 외에 `keyBindings`, `actionProfile`,
@@ -912,3 +921,6 @@ frame이다. 두 값을 구분해 `RuntimeProfilerOptions.frameTrace`가 느린 
 
 `createSpatialModelThumbnailSvg(asset, size?)`와 `engine.setDataSceneSpatialPreviewFilter(...)`의
 preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
+이 filter는 flat Data Scene에서도 `hiddenEntities`를 받는다. 카메라가 없는 2D에서도 sprite와 소유 그림자만
+제외하며 collider/simulation은 유지한다. `null` 또는 빈 목록은 필터를 해제한다.
+호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.

@@ -1,0 +1,5939 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "garden",
+    "prefabs": {
+      "object": {
+        "props": {}
+      },
+      "garden-grass-0": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.0,
+                "v0": 0.0,
+                "u1": 0.0625,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-grass-1": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.1875,
+                "v0": 0.0,
+                "u1": 0.25,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-grass-2": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.375,
+                "v0": 0.0,
+                "u1": 0.4375,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-grass-3": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.5625,
+                "v0": 0.0,
+                "u1": 0.625,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-stone-0": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.0625,
+                "v0": 0.0,
+                "u1": 0.125,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-stone-1": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.25,
+                "v0": 0.0,
+                "u1": 0.3125,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-stone-2": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.4375,
+                "v0": 0.0,
+                "u1": 0.5,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-stone-3": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.625,
+                "v0": 0.0,
+                "u1": 0.6875,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer"
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-water": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.125,
+                "v0": 0.0,
+                "u1": 0.1875,
+                "v1": 0.0625
+              },
+              "width": 32,
+              "height": 32,
+              "originX": 0.5,
+              "originY": 0.5,
+              "depthSort": "layer",
+              "animationSet": {
+                "clips": [
+                  {
+                    "id": 0,
+                    "fps": 3,
+                    "loop": true,
+                    "frames": [
+                      {
+                        "u0": 0.125,
+                        "v0": 0.0,
+                        "u1": 0.1875,
+                        "v1": 0.0625
+                      },
+                      {
+                        "u0": 0.3125,
+                        "v0": 0.0,
+                        "u1": 0.375,
+                        "v1": 0.0625
+                      },
+                      {
+                        "u0": 0.5,
+                        "v0": 0.0,
+                        "u1": 0.5625,
+                        "v1": 0.0625
+                      },
+                      {
+                        "u0": 0.6875,
+                        "v0": 0.0,
+                        "u1": 0.75,
+                        "v1": 0.0625
+                      }
+                    ]
+                  }
+                ],
+                "initialClip": 0
+              }
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "garden-hero": {
+        "props": {
+          "components": {
+            "visual": {
+              "kind": "sprite",
+              "asset": "garden_atlas",
+              "frame": {
+                "u0": 0.40625,
+                "v0": 0.5,
+                "u1": 0.4375,
+                "v1": 0.546875
+              },
+              "width": 24,
+              "height": 36,
+              "originX": 0.5,
+              "originY": 1,
+              "depthSort": "hd2d",
+              "shadow": {
+                "shape": "ellipse",
+                "width": 18,
+                "height": 10,
+                "opacity": 0.8
+              },
+              "animationSet": {
+                "initialClip": 1,
+                "clips": [
+                  {
+                    "id": 0,
+                    "frames": [
+                      {
+                        "u0": 0.28125,
+                        "v0": 0.5,
+                        "u1": 0.3125,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 1,
+                    "loop": true
+                  },
+                  {
+                    "id": 4,
+                    "frames": [
+                      {
+                        "u0": 0.28125,
+                        "v0": 0.5,
+                        "u1": 0.3125,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.3125,
+                        "v0": 0.5,
+                        "u1": 0.34375,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.34375,
+                        "v0": 0.5,
+                        "u1": 0.375,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.375,
+                        "v0": 0.5,
+                        "u1": 0.40625,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 8,
+                    "loop": true
+                  },
+                  {
+                    "id": 1,
+                    "frames": [
+                      {
+                        "u0": 0.40625,
+                        "v0": 0.5,
+                        "u1": 0.4375,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 1,
+                    "loop": true
+                  },
+                  {
+                    "id": 5,
+                    "frames": [
+                      {
+                        "u0": 0.40625,
+                        "v0": 0.5,
+                        "u1": 0.4375,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.4375,
+                        "v0": 0.5,
+                        "u1": 0.46875,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.46875,
+                        "v0": 0.5,
+                        "u1": 0.5,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.5,
+                        "v0": 0.5,
+                        "u1": 0.53125,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 8,
+                    "loop": true
+                  },
+                  {
+                    "id": 2,
+                    "frames": [
+                      {
+                        "u0": 0.53125,
+                        "v0": 0.5,
+                        "u1": 0.5625,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 1,
+                    "loop": true
+                  },
+                  {
+                    "id": 6,
+                    "frames": [
+                      {
+                        "u0": 0.53125,
+                        "v0": 0.5,
+                        "u1": 0.5625,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.5625,
+                        "v0": 0.5,
+                        "u1": 0.59375,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.59375,
+                        "v0": 0.5,
+                        "u1": 0.625,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.625,
+                        "v0": 0.5,
+                        "u1": 0.65625,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 8,
+                    "loop": true
+                  },
+                  {
+                    "id": 3,
+                    "frames": [
+                      {
+                        "u0": 0.65625,
+                        "v0": 0.5,
+                        "u1": 0.6875,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 1,
+                    "loop": true
+                  },
+                  {
+                    "id": 7,
+                    "frames": [
+                      {
+                        "u0": 0.65625,
+                        "v0": 0.5,
+                        "u1": 0.6875,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.6875,
+                        "v0": 0.5,
+                        "u1": 0.71875,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.71875,
+                        "v0": 0.5,
+                        "u1": 0.75,
+                        "v1": 0.546875
+                      },
+                      {
+                        "u0": 0.75,
+                        "v0": 0.5,
+                        "u1": 0.78125,
+                        "v1": 0.546875
+                      }
+                    ],
+                    "fps": 8,
+                    "loop": true
+                  }
+                ]
+              }
+            },
+            "collider": {
+              "type": "aabb",
+              "halfWidth": 6,
+              "halfHeight": 5,
+              "isTrigger": false
+            },
+            "layer": "player",
+            "body": {
+              "type": "kinematic",
+              "heightSpan": {
+                "elevation": 0,
+                "height": 1,
+                "floorId": 0
+              }
+            }
+          },
+          "behaviorRecipes": "garden.hero"
+        }
+      }
+    },
+    "fragments": {
+      "ground": {
+        "instances": [
+          {
+            "id": "tile_0_0",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_0",
+            "prefab": "garden-stone-3",
+            "x": 464,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_0",
+            "prefab": "garden-stone-1",
+            "x": 496,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_0",
+            "prefab": "garden-stone-2",
+            "x": 528,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_0",
+            "prefab": "garden-stone-0",
+            "x": 560,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_0",
+            "prefab": "garden-stone-2",
+            "x": 592,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_0",
+            "prefab": "garden-stone-2",
+            "x": 624,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_0",
+            "prefab": "garden-stone-2",
+            "x": 656,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_0",
+            "prefab": "garden-stone-2",
+            "x": 688,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_0",
+            "prefab": "garden-stone-1",
+            "x": 720,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_0",
+            "prefab": "garden-stone-1",
+            "x": 752,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_0",
+            "prefab": "garden-stone-1",
+            "x": 784,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_0",
+            "prefab": "garden-stone-2",
+            "x": 816,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_0",
+            "prefab": "garden-stone-3",
+            "x": 848,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_0",
+            "prefab": "garden-stone-0",
+            "x": 880,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_0",
+            "prefab": "garden-stone-0",
+            "x": 912,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_0",
+            "prefab": "garden-stone-2",
+            "x": 944,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_0",
+            "prefab": "garden-stone-1",
+            "x": 976,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_0",
+            "prefab": "garden-stone-2",
+            "x": 1008,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_0",
+            "prefab": "garden-stone-0",
+            "x": 1040,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_0",
+            "prefab": "garden-stone-0",
+            "x": 1072,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_0",
+            "prefab": "garden-stone-1",
+            "x": 1104,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_0",
+            "prefab": "garden-stone-2",
+            "x": 1136,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_0",
+            "prefab": "garden-stone-3",
+            "x": 1168,
+            "y": 178,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_1",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_1",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_1",
+            "prefab": "garden-grass-2",
+            "x": 496,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_1",
+            "prefab": "garden-grass-3",
+            "x": 528,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_1",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_1",
+            "prefab": "garden-grass-1",
+            "x": 592,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_1",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_1",
+            "prefab": "garden-grass-0",
+            "x": 656,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_1",
+            "prefab": "garden-grass-0",
+            "x": 688,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_1",
+            "prefab": "garden-grass-1",
+            "x": 720,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_1",
+            "prefab": "garden-grass-1",
+            "x": 752,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_1",
+            "prefab": "garden-stone-1",
+            "x": 784,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_1",
+            "prefab": "garden-stone-2",
+            "x": 816,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_1",
+            "prefab": "garden-grass-0",
+            "x": 848,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_1",
+            "prefab": "garden-grass-1",
+            "x": 880,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_1",
+            "prefab": "garden-grass-1",
+            "x": 912,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_1",
+            "prefab": "garden-grass-3",
+            "x": 944,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_1",
+            "prefab": "garden-grass-3",
+            "x": 976,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_1",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_1",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_1",
+            "prefab": "garden-grass-0",
+            "x": 1072,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_1",
+            "prefab": "garden-grass-1",
+            "x": 1104,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_1",
+            "prefab": "garden-grass-1",
+            "x": 1136,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_1",
+            "prefab": "garden-stone-1",
+            "x": 1168,
+            "y": 210,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_2",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_2",
+            "prefab": "garden-grass-1",
+            "x": 464,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_2",
+            "prefab": "garden-grass-3",
+            "x": 496,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_2",
+            "prefab": "garden-grass-0",
+            "x": 528,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_2",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_2",
+            "prefab": "garden-grass-2",
+            "x": 592,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_2",
+            "prefab": "garden-grass-1",
+            "x": 624,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_2",
+            "prefab": "garden-grass-2",
+            "x": 656,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_2",
+            "prefab": "garden-grass-2",
+            "x": 688,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_2",
+            "prefab": "garden-grass-0",
+            "x": 720,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_2",
+            "prefab": "garden-grass-3",
+            "x": 752,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_2",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_2",
+            "prefab": "garden-stone-2",
+            "x": 816,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_2",
+            "prefab": "garden-grass-2",
+            "x": 848,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_2",
+            "prefab": "garden-grass-3",
+            "x": 880,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_2",
+            "prefab": "garden-grass-2",
+            "x": 912,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_2",
+            "prefab": "garden-grass-2",
+            "x": 944,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_2",
+            "prefab": "garden-grass-0",
+            "x": 976,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_2",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_2",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_2",
+            "prefab": "garden-grass-0",
+            "x": 1072,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_2",
+            "prefab": "garden-grass-1",
+            "x": 1104,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_2",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_2",
+            "prefab": "garden-stone-1",
+            "x": 1168,
+            "y": 242,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_3",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_3",
+            "prefab": "garden-grass-0",
+            "x": 464,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_3",
+            "prefab": "garden-grass-2",
+            "x": 496,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_3",
+            "prefab": "garden-grass-0",
+            "x": 528,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_3",
+            "prefab": "garden-grass-1",
+            "x": 560,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_3",
+            "prefab": "garden-grass-0",
+            "x": 592,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_3",
+            "prefab": "garden-grass-1",
+            "x": 624,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_3",
+            "prefab": "garden-grass-0",
+            "x": 656,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_3",
+            "prefab": "garden-grass-1",
+            "x": 688,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_3",
+            "prefab": "garden-grass-3",
+            "x": 720,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_3",
+            "prefab": "garden-grass-0",
+            "x": 752,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_3",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_3",
+            "prefab": "garden-stone-0",
+            "x": 816,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_3",
+            "prefab": "garden-grass-1",
+            "x": 848,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_3",
+            "prefab": "garden-grass-0",
+            "x": 880,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_3",
+            "prefab": "garden-grass-0",
+            "x": 912,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_3",
+            "prefab": "garden-grass-1",
+            "x": 944,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_3",
+            "prefab": "garden-grass-1",
+            "x": 976,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_3",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_3",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_3",
+            "prefab": "garden-grass-3",
+            "x": 1072,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_3",
+            "prefab": "garden-grass-1",
+            "x": 1104,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_3",
+            "prefab": "garden-grass-1",
+            "x": 1136,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_3",
+            "prefab": "garden-stone-3",
+            "x": 1168,
+            "y": 274,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_4",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_4",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_4",
+            "prefab": "garden-grass-3",
+            "x": 496,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_4",
+            "prefab": "garden-grass-3",
+            "x": 528,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_4",
+            "prefab": "garden-grass-2",
+            "x": 560,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_4",
+            "prefab": "garden-grass-2",
+            "x": 592,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_4",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_4",
+            "prefab": "garden-grass-3",
+            "x": 656,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_4",
+            "prefab": "garden-grass-0",
+            "x": 688,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_4",
+            "prefab": "garden-grass-0",
+            "x": 720,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_4",
+            "prefab": "garden-grass-3",
+            "x": 752,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_4",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_4",
+            "prefab": "garden-stone-0",
+            "x": 816,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_4",
+            "prefab": "garden-grass-2",
+            "x": 848,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_4",
+            "prefab": "garden-grass-0",
+            "x": 880,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_4",
+            "prefab": "garden-grass-2",
+            "x": 912,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_4",
+            "prefab": "garden-grass-3",
+            "x": 944,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_4",
+            "prefab": "garden-grass-0",
+            "x": 976,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_4",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_4",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_4",
+            "prefab": "garden-grass-2",
+            "x": 1072,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_4",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_4",
+            "prefab": "garden-grass-3",
+            "x": 1136,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_4",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 306,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_5",
+            "prefab": "garden-stone-3",
+            "x": 432,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_5",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_5",
+            "prefab": "garden-grass-3",
+            "x": 496,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_5",
+            "prefab": "garden-grass-1",
+            "x": 528,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_5",
+            "prefab": "garden-grass-1",
+            "x": 560,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_5",
+            "prefab": "garden-grass-0",
+            "x": 592,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_5",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_5",
+            "prefab": "garden-grass-0",
+            "x": 656,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_5",
+            "prefab": "garden-grass-0",
+            "x": 688,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_5",
+            "prefab": "garden-grass-0",
+            "x": 720,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_5",
+            "prefab": "garden-grass-0",
+            "x": 752,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_5",
+            "prefab": "garden-stone-0",
+            "x": 784,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_5",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_5",
+            "prefab": "garden-grass-3",
+            "x": 848,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_5",
+            "prefab": "garden-grass-1",
+            "x": 880,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_5",
+            "prefab": "garden-grass-0",
+            "x": 912,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_5",
+            "prefab": "garden-grass-1",
+            "x": 944,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_5",
+            "prefab": "garden-grass-3",
+            "x": 976,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_5",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_5",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_5",
+            "prefab": "garden-grass-1",
+            "x": 1072,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_5",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_5",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_5",
+            "prefab": "garden-stone-2",
+            "x": 1168,
+            "y": 338,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_6",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_6",
+            "prefab": "garden-grass-3",
+            "x": 464,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_6",
+            "prefab": "garden-grass-0",
+            "x": 496,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_6",
+            "prefab": "garden-grass-1",
+            "x": 528,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_6",
+            "prefab": "garden-grass-2",
+            "x": 560,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_6",
+            "prefab": "garden-grass-3",
+            "x": 592,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_6",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_6",
+            "prefab": "garden-grass-2",
+            "x": 656,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_6",
+            "prefab": "garden-grass-1",
+            "x": 688,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_6",
+            "prefab": "garden-grass-0",
+            "x": 720,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_6",
+            "prefab": "garden-grass-3",
+            "x": 752,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_6",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_6",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_6",
+            "prefab": "garden-grass-3",
+            "x": 848,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_6",
+            "prefab": "garden-grass-1",
+            "x": 880,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_6",
+            "prefab": "garden-grass-2",
+            "x": 912,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_6",
+            "prefab": "garden-grass-2",
+            "x": 944,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_6",
+            "prefab": "garden-grass-3",
+            "x": 976,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_6",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_6",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_6",
+            "prefab": "garden-grass-0",
+            "x": 1072,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_6",
+            "prefab": "garden-grass-0",
+            "x": 1104,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_6",
+            "prefab": "garden-grass-3",
+            "x": 1136,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_6",
+            "prefab": "garden-stone-3",
+            "x": 1168,
+            "y": 370,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_7",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_7",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_7",
+            "prefab": "garden-grass-1",
+            "x": 496,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_7",
+            "prefab": "garden-grass-3",
+            "x": 528,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_7",
+            "prefab": "garden-grass-0",
+            "x": 560,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_7",
+            "prefab": "garden-grass-2",
+            "x": 592,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_7",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_7",
+            "prefab": "garden-grass-3",
+            "x": 656,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_7",
+            "prefab": "garden-stone-0",
+            "x": 688,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_7",
+            "prefab": "garden-stone-0",
+            "x": 720,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_7",
+            "prefab": "garden-stone-2",
+            "x": 752,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_7",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_7",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_7",
+            "prefab": "garden-stone-3",
+            "x": 848,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_7",
+            "prefab": "garden-stone-0",
+            "x": 880,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_7",
+            "prefab": "garden-stone-3",
+            "x": 912,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_7",
+            "prefab": "garden-stone-1",
+            "x": 944,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_7",
+            "prefab": "garden-grass-1",
+            "x": 976,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_7",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_7",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_7",
+            "prefab": "garden-grass-1",
+            "x": 1072,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_7",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_7",
+            "prefab": "garden-grass-3",
+            "x": 1136,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_7",
+            "prefab": "garden-stone-1",
+            "x": 1168,
+            "y": 402,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_8",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_8",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_8",
+            "prefab": "garden-grass-0",
+            "x": 496,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_8",
+            "prefab": "garden-grass-1",
+            "x": 528,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_8",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_8",
+            "prefab": "garden-grass-0",
+            "x": 592,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_8",
+            "prefab": "garden-grass-3",
+            "x": 624,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_8",
+            "prefab": "garden-grass-1",
+            "x": 656,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_8",
+            "prefab": "garden-stone-0",
+            "x": 688,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_8",
+            "prefab": "garden-stone-3",
+            "x": 720,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_8",
+            "prefab": "garden-stone-3",
+            "x": 752,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_8",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_8",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_8",
+            "prefab": "garden-stone-1",
+            "x": 848,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_8",
+            "prefab": "garden-stone-3",
+            "x": 880,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_8",
+            "prefab": "garden-stone-0",
+            "x": 912,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_8",
+            "prefab": "garden-stone-2",
+            "x": 944,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_8",
+            "prefab": "garden-grass-2",
+            "x": 976,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_8",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_8",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_8",
+            "prefab": "garden-grass-2",
+            "x": 1072,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_8",
+            "prefab": "garden-grass-1",
+            "x": 1104,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_8",
+            "prefab": "garden-grass-1",
+            "x": 1136,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_8",
+            "prefab": "garden-stone-2",
+            "x": 1168,
+            "y": 434,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_9",
+            "prefab": "garden-stone-3",
+            "x": 432,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_9",
+            "prefab": "garden-stone-1",
+            "x": 464,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_9",
+            "prefab": "garden-stone-3",
+            "x": 496,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_9",
+            "prefab": "garden-stone-3",
+            "x": 528,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_9",
+            "prefab": "garden-stone-2",
+            "x": 560,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_9",
+            "prefab": "garden-stone-0",
+            "x": 592,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_9",
+            "prefab": "garden-stone-0",
+            "x": 624,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_9",
+            "prefab": "garden-stone-2",
+            "x": 656,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_9",
+            "prefab": "garden-stone-2",
+            "x": 688,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_9",
+            "prefab": "garden-stone-3",
+            "x": 720,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_9",
+            "prefab": "garden-stone-2",
+            "x": 752,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_9",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_9",
+            "prefab": "garden-stone-2",
+            "x": 816,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_9",
+            "prefab": "garden-stone-2",
+            "x": 848,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_9",
+            "prefab": "garden-stone-3",
+            "x": 880,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_9",
+            "prefab": "garden-stone-0",
+            "x": 912,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_9",
+            "prefab": "garden-stone-0",
+            "x": 944,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_9",
+            "prefab": "garden-stone-0",
+            "x": 976,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_9",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_9",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_9",
+            "prefab": "garden-stone-1",
+            "x": 1072,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_9",
+            "prefab": "garden-stone-1",
+            "x": 1104,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_9",
+            "prefab": "garden-stone-1",
+            "x": 1136,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_9",
+            "prefab": "garden-stone-2",
+            "x": 1168,
+            "y": 466,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_10",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_10",
+            "prefab": "garden-stone-2",
+            "x": 464,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_10",
+            "prefab": "garden-stone-3",
+            "x": 496,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_10",
+            "prefab": "garden-stone-1",
+            "x": 528,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_10",
+            "prefab": "garden-stone-1",
+            "x": 560,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_10",
+            "prefab": "garden-stone-3",
+            "x": 592,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_10",
+            "prefab": "garden-stone-1",
+            "x": 624,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_10",
+            "prefab": "garden-stone-0",
+            "x": 656,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_10",
+            "prefab": "garden-stone-3",
+            "x": 688,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_10",
+            "prefab": "garden-stone-0",
+            "x": 720,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_10",
+            "prefab": "garden-stone-1",
+            "x": 752,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_10",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_10",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_10",
+            "prefab": "garden-stone-1",
+            "x": 848,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_10",
+            "prefab": "garden-stone-0",
+            "x": 880,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_10",
+            "prefab": "garden-stone-0",
+            "x": 912,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_10",
+            "prefab": "garden-stone-1",
+            "x": 944,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_10",
+            "prefab": "garden-stone-2",
+            "x": 976,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_10",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_10",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_10",
+            "prefab": "garden-stone-3",
+            "x": 1072,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_10",
+            "prefab": "garden-stone-0",
+            "x": 1104,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_10",
+            "prefab": "garden-stone-1",
+            "x": 1136,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_10",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 498,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_11",
+            "prefab": "garden-stone-3",
+            "x": 432,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_11",
+            "prefab": "garden-grass-1",
+            "x": 464,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_11",
+            "prefab": "garden-grass-0",
+            "x": 496,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_11",
+            "prefab": "garden-grass-2",
+            "x": 528,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_11",
+            "prefab": "garden-grass-1",
+            "x": 560,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_11",
+            "prefab": "garden-grass-2",
+            "x": 592,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_11",
+            "prefab": "garden-grass-1",
+            "x": 624,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_11",
+            "prefab": "garden-grass-1",
+            "x": 656,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_11",
+            "prefab": "garden-stone-2",
+            "x": 688,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_11",
+            "prefab": "garden-stone-0",
+            "x": 720,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_11",
+            "prefab": "garden-stone-3",
+            "x": 752,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_11",
+            "prefab": "garden-stone-0",
+            "x": 784,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_11",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_11",
+            "prefab": "garden-stone-0",
+            "x": 848,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_11",
+            "prefab": "garden-stone-3",
+            "x": 880,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_11",
+            "prefab": "garden-stone-2",
+            "x": 912,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_11",
+            "prefab": "garden-stone-1",
+            "x": 944,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_11",
+            "prefab": "garden-grass-0",
+            "x": 976,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_11",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_11",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_11",
+            "prefab": "garden-grass-2",
+            "x": 1072,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_11",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_11",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_11",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 530,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_12",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_12",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_12",
+            "prefab": "garden-grass-0",
+            "x": 496,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_12",
+            "prefab": "garden-grass-0",
+            "x": 528,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_12",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_12",
+            "prefab": "garden-grass-1",
+            "x": 592,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_12",
+            "prefab": "garden-grass-2",
+            "x": 624,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_12",
+            "prefab": "garden-grass-3",
+            "x": 656,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_12",
+            "prefab": "garden-stone-0",
+            "x": 688,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_12",
+            "prefab": "garden-stone-0",
+            "x": 720,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_12",
+            "prefab": "garden-stone-1",
+            "x": 752,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_12",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_12",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_12",
+            "prefab": "garden-stone-2",
+            "x": 848,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_12",
+            "prefab": "garden-stone-0",
+            "x": 880,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_12",
+            "prefab": "garden-stone-1",
+            "x": 912,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_12",
+            "prefab": "garden-stone-0",
+            "x": 944,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_12",
+            "prefab": "garden-grass-3",
+            "x": 976,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_12",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_12",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_12",
+            "prefab": "garden-grass-2",
+            "x": 1072,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_12",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_12",
+            "prefab": "garden-grass-0",
+            "x": 1136,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_12",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 562,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_13",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_13",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_13",
+            "prefab": "garden-grass-3",
+            "x": 496,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_13",
+            "prefab": "garden-grass-2",
+            "x": 528,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_13",
+            "prefab": "garden-grass-1",
+            "x": 560,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_13",
+            "prefab": "garden-grass-2",
+            "x": 592,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_13",
+            "prefab": "garden-grass-3",
+            "x": 624,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_13",
+            "prefab": "garden-grass-3",
+            "x": 656,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_13",
+            "prefab": "garden-grass-2",
+            "x": 688,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_13",
+            "prefab": "garden-grass-3",
+            "x": 720,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_13",
+            "prefab": "garden-grass-2",
+            "x": 752,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_13",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_13",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_13",
+            "prefab": "garden-grass-0",
+            "x": 848,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_13",
+            "prefab": "garden-grass-3",
+            "x": 880,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_13",
+            "prefab": "garden-grass-2",
+            "x": 912,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_13",
+            "prefab": "garden-grass-2",
+            "x": 944,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_13",
+            "prefab": "garden-grass-2",
+            "x": 976,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_13",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_13",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_13",
+            "prefab": "garden-grass-3",
+            "x": 1072,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_13",
+            "prefab": "garden-grass-1",
+            "x": 1104,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_13",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_13",
+            "prefab": "garden-stone-3",
+            "x": 1168,
+            "y": 594,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_14",
+            "prefab": "garden-stone-0",
+            "x": 432,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_14",
+            "prefab": "garden-grass-0",
+            "x": 464,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_14",
+            "prefab": "garden-grass-1",
+            "x": 496,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_14",
+            "prefab": "garden-grass-1",
+            "x": 528,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_14",
+            "prefab": "garden-grass-1",
+            "x": 560,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_14",
+            "prefab": "garden-grass-1",
+            "x": 592,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_14",
+            "prefab": "garden-grass-3",
+            "x": 624,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_14",
+            "prefab": "garden-grass-0",
+            "x": 656,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_14",
+            "prefab": "garden-grass-0",
+            "x": 688,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_14",
+            "prefab": "garden-grass-2",
+            "x": 720,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_14",
+            "prefab": "garden-grass-3",
+            "x": 752,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_14",
+            "prefab": "garden-stone-0",
+            "x": 784,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_14",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_14",
+            "prefab": "garden-grass-2",
+            "x": 848,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_14",
+            "prefab": "garden-grass-3",
+            "x": 880,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_14",
+            "prefab": "garden-grass-0",
+            "x": 912,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_14",
+            "prefab": "garden-grass-3",
+            "x": 944,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_14",
+            "prefab": "garden-grass-2",
+            "x": 976,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_14",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_14",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_14",
+            "prefab": "garden-grass-2",
+            "x": 1072,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_14",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_14",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_14",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 626,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_15",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_15",
+            "prefab": "garden-grass-0",
+            "x": 464,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_15",
+            "prefab": "garden-grass-2",
+            "x": 496,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_15",
+            "prefab": "garden-grass-0",
+            "x": 528,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_15",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_15",
+            "prefab": "garden-grass-3",
+            "x": 592,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_15",
+            "prefab": "garden-grass-0",
+            "x": 624,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_15",
+            "prefab": "garden-grass-3",
+            "x": 656,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_15",
+            "prefab": "garden-grass-3",
+            "x": 688,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_15",
+            "prefab": "garden-grass-3",
+            "x": 720,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_15",
+            "prefab": "garden-grass-1",
+            "x": 752,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_15",
+            "prefab": "garden-stone-3",
+            "x": 784,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_15",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_15",
+            "prefab": "garden-grass-1",
+            "x": 848,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_15",
+            "prefab": "garden-grass-1",
+            "x": 880,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_15",
+            "prefab": "garden-grass-3",
+            "x": 912,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_15",
+            "prefab": "garden-grass-3",
+            "x": 944,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_15",
+            "prefab": "garden-grass-3",
+            "x": 976,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_15",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_15",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_15",
+            "prefab": "garden-grass-3",
+            "x": 1072,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_15",
+            "prefab": "garden-grass-2",
+            "x": 1104,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_15",
+            "prefab": "garden-grass-2",
+            "x": 1136,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_15",
+            "prefab": "garden-stone-3",
+            "x": 1168,
+            "y": 658,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_16",
+            "prefab": "garden-stone-1",
+            "x": 432,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_16",
+            "prefab": "garden-grass-2",
+            "x": 464,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_16",
+            "prefab": "garden-grass-1",
+            "x": 496,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_16",
+            "prefab": "garden-grass-1",
+            "x": 528,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_16",
+            "prefab": "garden-grass-3",
+            "x": 560,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_16",
+            "prefab": "garden-grass-1",
+            "x": 592,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_16",
+            "prefab": "garden-grass-0",
+            "x": 624,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_16",
+            "prefab": "garden-grass-2",
+            "x": 656,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_16",
+            "prefab": "garden-grass-1",
+            "x": 688,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_16",
+            "prefab": "garden-grass-0",
+            "x": 720,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_16",
+            "prefab": "garden-grass-3",
+            "x": 752,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_16",
+            "prefab": "garden-stone-1",
+            "x": 784,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_16",
+            "prefab": "garden-stone-1",
+            "x": 816,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_16",
+            "prefab": "garden-grass-2",
+            "x": 848,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_16",
+            "prefab": "garden-grass-3",
+            "x": 880,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_16",
+            "prefab": "garden-grass-1",
+            "x": 912,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_16",
+            "prefab": "garden-grass-0",
+            "x": 944,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_16",
+            "prefab": "garden-grass-0",
+            "x": 976,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_16",
+            "prefab": "garden-water",
+            "x": 1008,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_16",
+            "prefab": "garden-water",
+            "x": 1040,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_16",
+            "prefab": "garden-grass-1",
+            "x": 1072,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_16",
+            "prefab": "garden-grass-3",
+            "x": 1104,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_16",
+            "prefab": "garden-grass-1",
+            "x": 1136,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_16",
+            "prefab": "garden-stone-1",
+            "x": 1168,
+            "y": 690,
+            "layer": -100
+          },
+          {
+            "id": "tile_0_17",
+            "prefab": "garden-stone-3",
+            "x": 432,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_1_17",
+            "prefab": "garden-stone-2",
+            "x": 464,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_2_17",
+            "prefab": "garden-stone-0",
+            "x": 496,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_3_17",
+            "prefab": "garden-stone-1",
+            "x": 528,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_4_17",
+            "prefab": "garden-stone-1",
+            "x": 560,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_5_17",
+            "prefab": "garden-stone-3",
+            "x": 592,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_6_17",
+            "prefab": "garden-stone-0",
+            "x": 624,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_7_17",
+            "prefab": "garden-stone-0",
+            "x": 656,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_8_17",
+            "prefab": "garden-stone-3",
+            "x": 688,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_9_17",
+            "prefab": "garden-stone-1",
+            "x": 720,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_10_17",
+            "prefab": "garden-stone-2",
+            "x": 752,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_11_17",
+            "prefab": "garden-stone-2",
+            "x": 784,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_12_17",
+            "prefab": "garden-stone-3",
+            "x": 816,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_13_17",
+            "prefab": "garden-stone-3",
+            "x": 848,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_14_17",
+            "prefab": "garden-stone-1",
+            "x": 880,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_15_17",
+            "prefab": "garden-stone-2",
+            "x": 912,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_16_17",
+            "prefab": "garden-stone-1",
+            "x": 944,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_17_17",
+            "prefab": "garden-stone-2",
+            "x": 976,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_18_17",
+            "prefab": "garden-stone-1",
+            "x": 1008,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_19_17",
+            "prefab": "garden-stone-1",
+            "x": 1040,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_20_17",
+            "prefab": "garden-stone-2",
+            "x": 1072,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_21_17",
+            "prefab": "garden-stone-3",
+            "x": 1104,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_22_17",
+            "prefab": "garden-stone-1",
+            "x": 1136,
+            "y": 722,
+            "layer": -100
+          },
+          {
+            "id": "tile_23_17",
+            "prefab": "garden-stone-0",
+            "x": 1168,
+            "y": 722,
+            "layer": -100
+          }
+        ]
+      },
+      "garden": {
+        "include": [
+          {
+            "fragment": "ground",
+            "idPrefix": "ground."
+          }
+        ],
+        "instances": [
+          {
+            "id": "garden_cottage",
+            "prefab": "object",
+            "x": 560,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.75,
+                    "v0": 0.0,
+                    "u1": 1.0,
+                    "v1": 0.25
+                  },
+                  "width": 128,
+                  "height": 128,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 43,
+                  "halfHeight": 15,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_workshop",
+            "prefab": "object",
+            "x": 720,
+            "y": 354,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0,
+                    "v0": 0.25,
+                    "u1": 0.25,
+                    "v1": 0.5
+                  },
+                  "width": 128,
+                  "height": 128,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 43,
+                  "halfHeight": 15,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_east_cottage",
+            "prefab": "object",
+            "x": 1104,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.75,
+                    "v0": 0.0,
+                    "u1": 1.0,
+                    "v1": 0.25
+                  },
+                  "width": 128,
+                  "height": 128,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 43,
+                  "halfHeight": 15,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_storage",
+            "prefab": "object",
+            "x": 912,
+            "y": 650,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0,
+                    "v0": 0.25,
+                    "u1": 0.25,
+                    "v1": 0.5
+                  },
+                  "width": 128,
+                  "height": 128,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 43,
+                  "halfHeight": 15,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_well",
+            "prefab": "object",
+            "x": 848,
+            "y": 450,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.375,
+                    "v0": 0.25,
+                    "u1": 0.5,
+                    "v1": 0.390625
+                  },
+                  "width": 64,
+                  "height": 72,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "animationSet": {
+                    "clips": [
+                      {
+                        "id": 0,
+                        "fps": 4,
+                        "loop": true,
+                        "frames": [
+                          {
+                            "u0": 0.375,
+                            "v0": 0.25,
+                            "u1": 0.5,
+                            "v1": 0.390625
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0.25,
+                            "u1": 0.625,
+                            "v1": 0.390625
+                          },
+                          {
+                            "u0": 0.625,
+                            "v0": 0.25,
+                            "u1": 0.75,
+                            "v1": 0.390625
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0.25,
+                            "u1": 0.875,
+                            "v1": 0.390625
+                          }
+                        ]
+                      }
+                    ],
+                    "initialClip": 0
+                  },
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 18,
+                  "halfHeight": 10,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_bridge",
+            "prefab": "object",
+            "x": 1024,
+            "y": 482,
+            "layer": -90,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.875,
+                    "v0": 0.25,
+                    "u1": 1.0,
+                    "v1": 0.375
+                  },
+                  "width": 64,
+                  "height": 64,
+                  "originX": 0.5,
+                  "originY": 0.5,
+                  "depthSort": "layer"
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_oak_0",
+            "prefab": "object",
+            "x": 464,
+            "y": 268,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_1",
+            "prefab": "object",
+            "x": 632,
+            "y": 292,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_2",
+            "prefab": "object",
+            "x": 896,
+            "y": 262,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_3",
+            "prefab": "object",
+            "x": 1136,
+            "y": 264,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_4",
+            "prefab": "object",
+            "x": 464,
+            "y": 614,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_5",
+            "prefab": "object",
+            "x": 560,
+            "y": 674,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_6",
+            "prefab": "object",
+            "x": 688,
+            "y": 674,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_7",
+            "prefab": "object",
+            "x": 1120,
+            "y": 620,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_oak_8",
+            "prefab": "object",
+            "x": 1056,
+            "y": 674,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.25,
+                    "v0": 0.25,
+                    "u1": 0.375,
+                    "v1": 0.4375
+                  },
+                  "width": 64,
+                  "height": 96,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 44,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 9,
+                  "halfHeight": 7,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_flowers_0",
+            "prefab": "object",
+            "x": 620,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.09375,
+                    "v0": 0.5,
+                    "u1": 0.15625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_flowers_1",
+            "prefab": "object",
+            "x": 656,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.09375,
+                    "v0": 0.5,
+                    "u1": 0.15625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_flowers_2",
+            "prefab": "object",
+            "x": 1048,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.09375,
+                    "v0": 0.5,
+                    "u1": 0.15625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_flowers_3",
+            "prefab": "object",
+            "x": 1080,
+            "y": 650,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.09375,
+                    "v0": 0.5,
+                    "u1": 0.15625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_flowers_4",
+            "prefab": "object",
+            "x": 592,
+            "y": 578,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.09375,
+                    "v0": 0.5,
+                    "u1": 0.15625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_crate_0",
+            "prefab": "object",
+            "x": 656,
+            "y": 418,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0,
+                    "v0": 0.5,
+                    "u1": 0.0625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 10,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_crate_1",
+            "prefab": "object",
+            "x": 688,
+            "y": 418,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0,
+                    "v0": 0.5,
+                    "u1": 0.0625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 10,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_crate_2",
+            "prefab": "object",
+            "x": 944,
+            "y": 610,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0,
+                    "v0": 0.5,
+                    "u1": 0.0625,
+                    "v1": 0.5625
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 32,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 10,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_lantern_0",
+            "prefab": "object",
+            "x": 592,
+            "y": 450,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0625,
+                    "v0": 0.5,
+                    "u1": 0.09375,
+                    "v1": 0.59375
+                  },
+                  "width": 16,
+                  "height": 48,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 16,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 3,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_lantern_1",
+            "prefab": "object",
+            "x": 784,
+            "y": 386,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0625,
+                    "v0": 0.5,
+                    "u1": 0.09375,
+                    "v1": 0.59375
+                  },
+                  "width": 16,
+                  "height": 48,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 16,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 3,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_lantern_2",
+            "prefab": "object",
+            "x": 944,
+            "y": 482,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0625,
+                    "v0": 0.5,
+                    "u1": 0.09375,
+                    "v1": 0.59375
+                  },
+                  "width": 16,
+                  "height": 48,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 16,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 3,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_lantern_3",
+            "prefab": "object",
+            "x": 1104,
+            "y": 514,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.0625,
+                    "v0": 0.5,
+                    "u1": 0.09375,
+                    "v1": 0.59375
+                  },
+                  "width": 16,
+                  "height": 48,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 16,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 3,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_hero",
+            "prefab": "garden-hero",
+            "x": 800,
+            "y": 546
+          },
+          {
+            "id": "garden_keeper",
+            "prefab": "object",
+            "x": 752,
+            "y": 418,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.40625,
+                    "v0": 0.5,
+                    "u1": 0.4375,
+                    "v1": 0.546875
+                  },
+                  "width": 24,
+                  "height": 36,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "tint": "#cda7a1",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 24,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 6,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_traveler",
+            "prefab": "object",
+            "x": 592,
+            "y": 514,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.53125,
+                    "v0": 0.5,
+                    "u1": 0.5625,
+                    "v1": 0.546875
+                  },
+                  "width": 24,
+                  "height": 36,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "tint": "#b6c5a0",
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 24,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 6,
+                  "halfHeight": 5,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "elevation": 0,
+                    "height": 1,
+                    "floorId": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "garden_token_0",
+            "prefab": "object",
+            "x": 752,
+            "y": 546,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.15625,
+                    "v0": 0.5,
+                    "u1": 0.1875,
+                    "v1": 0.5390625
+                  },
+                  "width": 14,
+                  "height": 18,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "animationSet": {
+                    "clips": [
+                      {
+                        "id": 0,
+                        "fps": 4,
+                        "loop": true,
+                        "frames": [
+                          {
+                            "u0": 0.15625,
+                            "v0": 0.5,
+                            "u1": 0.1875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.1875,
+                            "v0": 0.5,
+                            "u1": 0.21875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.21875,
+                            "v0": 0.5,
+                            "u1": 0.25,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.5,
+                            "u1": 0.28125,
+                            "v1": 0.5390625
+                          }
+                        ]
+                      }
+                    ],
+                    "initialClip": 0
+                  },
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 14,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 8,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": "garden.token"
+            }
+          },
+          {
+            "id": "garden_token_1",
+            "prefab": "object",
+            "x": 976,
+            "y": 482,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.15625,
+                    "v0": 0.5,
+                    "u1": 0.1875,
+                    "v1": 0.5390625
+                  },
+                  "width": 14,
+                  "height": 18,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "animationSet": {
+                    "clips": [
+                      {
+                        "id": 0,
+                        "fps": 4,
+                        "loop": true,
+                        "frames": [
+                          {
+                            "u0": 0.15625,
+                            "v0": 0.5,
+                            "u1": 0.1875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.1875,
+                            "v0": 0.5,
+                            "u1": 0.21875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.21875,
+                            "v0": 0.5,
+                            "u1": 0.25,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.5,
+                            "u1": 0.28125,
+                            "v1": 0.5390625
+                          }
+                        ]
+                      }
+                    ],
+                    "initialClip": 0
+                  },
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 14,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 8,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": "garden.token"
+            }
+          },
+          {
+            "id": "garden_token_2",
+            "prefab": "object",
+            "x": 1104,
+            "y": 546,
+            "layer": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "garden_atlas",
+                  "frame": {
+                    "u0": 0.15625,
+                    "v0": 0.5,
+                    "u1": 0.1875,
+                    "v1": 0.5390625
+                  },
+                  "width": 14,
+                  "height": 18,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "depthSort": "hd2d",
+                  "animationSet": {
+                    "clips": [
+                      {
+                        "id": 0,
+                        "fps": 4,
+                        "loop": true,
+                        "frames": [
+                          {
+                            "u0": 0.15625,
+                            "v0": 0.5,
+                            "u1": 0.1875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.1875,
+                            "v0": 0.5,
+                            "u1": 0.21875,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.21875,
+                            "v0": 0.5,
+                            "u1": 0.25,
+                            "v1": 0.5390625
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.5,
+                            "u1": 0.28125,
+                            "v1": 0.5390625
+                          }
+                        ]
+                      }
+                    ],
+                    "initialClip": 0
+                  },
+                  "shadow": {
+                    "shape": "ellipse",
+                    "width": 14,
+                    "height": 12,
+                    "opacity": 0.7
+                  }
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 8,
+                  "isTrigger": true
+                },
+                "layer": "pickup"
+              },
+              "behaviorRecipes": "garden.token"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "garden.hero": {
+        "recipes": [
+          {
+            "kind": "collisionPickup",
+            "target": "other"
+          }
+        ]
+      },
+      "garden.token": {
+        "recipes": [
+          {
+            "kind": "pickup",
+            "item": "garden_token",
+            "count": 1,
+            "despawn": true
+          }
+        ]
+      }
+    }
+  },
+  "ids": {
+    "items": {
+      "garden_token": 1
+    }
+  },
+  "gameplay": {
+    "primaryActor": "garden_hero"
+  },
+  "navigation": {
+    "columns": 24,
+    "rows": 18,
+    "cellWidth": 32,
+    "cellHeight": 32,
+    "originX": 416,
+    "originY": 162,
+    "costs": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      2,
+      2,
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "obstacles": [
+      {
+        "instanceId": "garden_cottage",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_workshop",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_east_cottage",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_storage",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_well",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_0",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_1",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_2",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_3",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_4",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_5",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_6",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_7",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_oak_8",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_flowers_0",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_flowers_1",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_flowers_2",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_flowers_3",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_flowers_4",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_crate_0",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_crate_1",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_crate_2",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_lantern_0",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_lantern_1",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_lantern_2",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_lantern_3",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_keeper",
+        "collider": true
+      },
+      {
+        "instanceId": "garden_traveler",
+        "collider": true
+      }
+    ]
+  },
+  "lighting": {
+    "enabled": true,
+    "ambient": [
+      0.08,
+      0.12,
+      0.22,
+      0.46
+    ],
+    "directionalLight": {
+      "directionX": 0.7,
+      "directionY": 0.7,
+      "intensity": 0.035,
+      "color": [
+        0.45,
+        0.6,
+        0.85
+      ],
+      "shadowOpacity": 0.3,
+      "shadowLengthScale": 0.7,
+      "maxCasters": 96
+    },
+    "pointLights": [
+      {
+        "x": 592,
+        "y": 430,
+        "radius": 142,
+        "color": [
+          1,
+          0.8,
+          0.45,
+          1
+        ],
+        "intensity": 0.55,
+        "falloff": 2
+      },
+      {
+        "x": 784,
+        "y": 366,
+        "radius": 142,
+        "color": [
+          1,
+          0.8,
+          0.45,
+          1
+        ],
+        "intensity": 0.55,
+        "falloff": 2
+      },
+      {
+        "x": 944,
+        "y": 462,
+        "radius": 142,
+        "color": [
+          1,
+          0.8,
+          0.45,
+          1
+        ],
+        "intensity": 0.55,
+        "falloff": 2
+      },
+      {
+        "x": 1104,
+        "y": 494,
+        "radius": 142,
+        "color": [
+          1,
+          0.8,
+          0.45,
+          1
+        ],
+        "intensity": 0.55,
+        "falloff": 2
+      }
+    ],
+    "tileOccluders": [
+      {
+        "x": 517,
+        "y": 371,
+        "width": 86,
+        "height": 30
+      },
+      {
+        "x": 677,
+        "y": 339,
+        "width": 86,
+        "height": 30
+      },
+      {
+        "x": 1061,
+        "y": 371,
+        "width": 86,
+        "height": 30
+      },
+      {
+        "x": 869,
+        "y": 635,
+        "width": 86,
+        "height": 30
+      },
+      {
+        "x": 830,
+        "y": 440,
+        "width": 36,
+        "height": 20
+      },
+      {
+        "x": 455,
+        "y": 261,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 623,
+        "y": 285,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 887,
+        "y": 255,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 1127,
+        "y": 257,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 455,
+        "y": 607,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 551,
+        "y": 667,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 679,
+        "y": 667,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 1111,
+        "y": 613,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 1047,
+        "y": 667,
+        "width": 18,
+        "height": 14
+      },
+      {
+        "x": 608,
+        "y": 381,
+        "width": 24,
+        "height": 10
+      },
+      {
+        "x": 644,
+        "y": 381,
+        "width": 24,
+        "height": 10
+      },
+      {
+        "x": 1036,
+        "y": 381,
+        "width": 24,
+        "height": 10
+      },
+      {
+        "x": 1068,
+        "y": 645,
+        "width": 24,
+        "height": 10
+      },
+      {
+        "x": 580,
+        "y": 573,
+        "width": 24,
+        "height": 10
+      },
+      {
+        "x": 644,
+        "y": 408,
+        "width": 24,
+        "height": 20
+      },
+      {
+        "x": 676,
+        "y": 408,
+        "width": 24,
+        "height": 20
+      },
+      {
+        "x": 932,
+        "y": 600,
+        "width": 24,
+        "height": 20
+      }
+    ],
+    "shadows": {
+      "enabled": true,
+      "color": [
+        0.02,
+        0.035,
+        0.06,
+        0.18
+      ],
+      "projectionLength": 160,
+      "maxDistance": 170
+    }
+  }
+}

@@ -14,6 +14,7 @@ import type {
   SceneSpriteNormalBindingEvidence,
 } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { canUsePlacementAsset } from "./placementAssetScope";
 import { createPlacementAsepriteNormals } from "./placementAsepriteNormals";
 import {
   asepriteAnimationCatalog,
@@ -42,6 +43,7 @@ import {
 
 interface Context {
   key: string;
+  project?: string;
   document: SceneAuthoringDocumentSpec;
   mode: string;
   canEdit: boolean;
@@ -167,6 +169,7 @@ export function createPlacementAsepriteTool(options: {
     drafts = new Map<string, Draft>(),
     current = new Map<string, string>();
   const normals = createPlacementAsepriteNormals({
+    project: () => options.context().project,
     engine: options.engine,
     host: options.normalHost,
     settings: options.normalSettings,
@@ -184,7 +187,7 @@ export function createPlacementAsepriteTool(options: {
     previewSerial = 0;
   const draft = () => drafts.get(key)!;
   const documentAssets = () =>
-    assets.entries().filter((a) => a.document === key);
+    assets.entries().filter((a) => canUsePlacementAsset(a, key, options.context().project));
   const registered = () => documentAssets().filter((a) => a.uploaded);
   const prior = (asset: PlacementAsepriteAsset) =>
     assets
@@ -1095,14 +1098,14 @@ export function createPlacementAsepriteTool(options: {
     providerAssets() {
       return assets
         .entries()
-        .filter((a) => a.document === options.context().key && a.uploaded)
+        .filter((a) => canUsePlacementAsset(a, options.context().key, options.context().project) && a.uploaded)
         .reverse()
         .map(asepriteProviderAsset);
     },
     evidence(document: SceneAuthoringDocumentSpec) {
       const revisions = assets
         .entries()
-        .filter((a) => a.document === options.context().key && a.uploaded);
+        .filter((a) => canUsePlacementAsset(a, options.context().key, options.context().project) && a.uploaded);
       const animations = asepriteAnimationEvidence(
         document,
         options.viewer.state(),
@@ -1123,18 +1126,19 @@ export function createPlacementAsepriteTool(options: {
     blocksSave(document: SceneAuthoringDocumentSpec) {
       return (
         normals.blocksSave(document, key) ||
-        documentAssets().some((a) => !a.persisted && references(document, a))
+        assets.entries().some((a) => (!canUsePlacementAsset(a, key, options.context().project) || !a.persisted) && references(document, a))
       );
     },
     assertDocumentAssets(
       document: SceneAuthoringDocumentSpec,
       documentKey: string,
+      project?: string,
     ) {
-      normals.assertDocumentAssets(document, documentKey);
+      normals.assertDocumentAssets(document, documentKey, project);
       if (
         assets
           .entries()
-          .some((a) => a.document !== documentKey && references(document, a))
+          .some((a) => !canUsePlacementAsset(a, documentKey, project) && references(document, a))
       )
         throw new Error(
           "Install imported assets in the project catalog before opening their references in another document",

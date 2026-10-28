@@ -9,6 +9,11 @@
 
 ## 제품 Runtime Budget Readiness
 
+런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.
+class private 상태를 포함한 타입 단언 없이 custom renderer와 최소 command sink를 전달하고,
+미지원 디버그 요청이 frame target 변경 전에 실패하는지, GPU timer의 종료와 외부 자원 소유권이 유지되는지 확인한다.
+공통 spatial 통계·camera 타입 이동은 기존 WebGL2/WebGPU 테스트와 public API/실제 tarball import 검사로 함께 검증한다.
+
 제품 runtime budget 기준은 "빠른 CI gate", "tag/manual opt-in gate", "수동 브라우저 확인"을 분리한다. 성능 회귀는 감각적인 설명보다 아래 matrix의 report, hash, budget artifact로 논의한다.
 
 | 제품 기준 | 명령 | gate 위치 | evidence |
@@ -22,7 +27,11 @@
 | Rust-side 대량 오브젝트 budget | `pnpm smoke:mass-objects` | CI 기본 gate, `smoke:check` | `ferrum2d.mass-object-stress.smoke-report` JSON과 scenario replay hash |
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
-| Scene Placement Viewer browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | browser 항목은 `smoke:check`, Linux deb/GUI launch는 로컬 수동 후보이며 CI 미편입 | 공식 placement viewer production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
+| Scene Placement Viewer browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | viewer/save는 CI validate와 `smoke:check`, 나머지 browser 항목은 `smoke:check`. Linux debug deb/GUI launch는 로컬 수동 후보 | 공식 placement viewer production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux debug deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
+| 프로젝트 씬 탐색 | `pnpm test:placement-scenes`, `pnpm smoke:placement-viewer` | Node 계약과 viewer browser 검증은 CI validate, native 계약은 desktop Rust tests | bounded 탐색·symlink/경로 거절·문서 오류, 중복 탭/초안 보존, 선택 씬 열기·실행 실패 격리, 한영/compact/키보드/폴더 Export Only, fake native의 최신 자산 문맥과 활성 씬 저장 |
+| 엔진·에디터 업데이트 | `pnpm test:updates`, `pnpm smoke:placement-viewer`, `pnpm test:github-release` | CI Node/공식 viewer gate, native authority는 desktop Rust tests | beta 숫자 비교·draft/불완전 release 제외·페이지 탐색·오프라인·변조 차단, 실제 npm/pnpm 임시 consumer 설치와 hook 미실행, metadata/lock 복원 및 실패 보고. 화면은 fake native로 진행·재시작·미저장/실행 중 차단·늦은 응답·한영/compact를 검사. 서명 자료 staging/assembly는 모의 tool output이며 실제 OS 설치·서명 검증 evidence는 native release gate에서 확인 |
+| 엔진·전체 뷰어 분리 배포 | `pnpm test:github-release`, `pnpm release:distribution:prepare`, `pnpm release:distribution:verify` | release 계약 테스트는 CI validate, native release build는 수동 release workflow의 `include_viewer` | SDK v1 네 tarball 계약 보존, native OS installer/내장 Wasm 검사, 새 출력 보존, 버전·커밋·플랫폼 일치와 통합 SHA-256. 모의 산출물 테스트와 실제 OS build/GUI 증거를 구분. [배포 절차](../operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비) 참고 |
+| 2D 레이어 authoring | `pnpm test:placement-layers`, `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, SDK `scenePlacementLayers`/`sceneSpatialPatch` tests, Rust `flat_preview_filter` test | CI layer contracts·viewer/save browser smoke와 SDK/Rust gate | canvas/command 감소, 숨김 피킹·공간 API 편집 차단, 단독 보기·Undo·모드/필터 복원, 저장 후 단독 보기·활성 레이어·개별 잠금 보존, preview 오류 후 선택 복원, 이동·순서 Undo·animation·별칭·한글을 확인. SDK는 f32/signed-zero 정렬과 batch bounds 1회 갱신, layer contracts는 512개 그룹의 1회 분류를 검증. 캡처·checks: `artifacts/placement-layers/` |
 | Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
 | Top-down Shooter browser budget | `pnpm smoke:topdown-mass-objects`, `pnpm smoke:topdown-tilemap-budget`, `pnpm smoke:topdown-budget` | mass/tilemap은 CI 기본 gate, full topdown budget은 tag/manual opt-in | Playing state, entity/render command 규모, draw/texture/collision budget |
 | Breakout/Platformer browser budget | `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget` | tag/manual opt-in | 장르별 production build render/runtime budget artifact |
@@ -36,6 +45,27 @@ browser budget smoke에서 `FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR=artifacts/b
 WebGL2 기본 경로는 제품 renderer 기준이다. WebGPU optional smoke(`smoke:lighting-webgpu`, `smoke:material-webgpu`)는 capability-aware로 동작하며 WebGPU 미지원 또는 fallback 환경을 제품 실패로 보지 않는다. 단, WebGPU 기능이 사용 가능하다고 보고된 환경에서 해당 renderer stats가 누락되거나 WebGL2 기본 경로까지 깨지면 회귀로 본다.
 
 `pnpm validate:runtime-budget-product`는 package script, runtime budget profile mapping, CI 기본 gate, tag/manual opt-in gate, Pages readiness 문서와 artifact report 경로가 빠지지 않았는지 확인한다.
+
+씬 탐색기 browser evidence는 `artifacts/placement-scene-explorer/report.json`과 한글·compact screenshot에 남긴다.
+
+공식 production viewer의 기본 화면은 465개 instance의 2D 정원이며 공개 씬 catalog는 정원·HD-2D 마을 2개다.
+`placement-production-default-smoke.mjs`는 실제 production bundle에서 기본/별칭 진입·예제 2종·중복 탭·Play/Stop과
+구 기본 2D·HD-2D JSON의 404와 `?scene=hd2d`의 마을 진입을 검사한다. 465개 오브젝트에서도 왼쪽 탭이 줄거나 잘리지 않는지,
+프로젝트 씬 클릭과 키보드의 오브젝트 탭 복귀가 가능한지도 확인한다. 기초 편집/공간 회귀는 `tests/fixtures/`의
+`placement.scene-authoring.json`·`placement.hd2d.scene-authoring.json`을 `placement-test-build.mjs`가
+`mode=test` 임시 build에만 추가해 실행한다. production dist/public을 덮어쓰지 않는다.
+공식 viewer/save/mass/spatial smoke report는 `productionDefault`와 `regressionBuild`로 두 증거를 구분한다.
+desktop asset/CSP smoke는 실제 production JS와 mock native 문서를 그대로 사용하며 새 test bundle로 대체하지 않는다.
+공간 회귀는 짧은 창에서 아이콘의 숨겨진 접근성 문구가 페이지 스크롤 영역을 늘리지 않는지,
+live 카메라 값을 Enter로 확정한 뒤에도 같은 입력칸에서 키보드 편집을 계속할 수 있는지 검사한다.
+업데이트 browser evidence는 `artifacts/placement-updates/report.json`과 한글 compact screenshot에 남긴다.
+실제 native updater 설치와 OS별 서명 검증은 모의 RPC/산출물 테스트로 증명하지 않는다.
+릴리스 HTTP 설치 smoke는 기존 URL 생성기 bin 추론과 `ferrum-update-game --help`도 실행해 multi-bin 패키지 호환성을 검사한다.
+리뷰 회귀는 저장 후 2 MiB 초과 거절/원본·임시 파일 보존, 접근 불가 하위 경로의 부분 목록·진단,
+공유 프로젝트 에셋의 두 번째 씬 열기·저장·원본 탭 닫기 후 실제 픽셀과 URL 수명, 임의 문서 참조 거절을 검사한다.
+`project-assets.json`이 해당 브라우저 결과이며 Node 계약에는 scope/lifetime 및 기존 native normal/tile 계약도 함께 확인한다.
+native 항목의 `fakeBridge`는 실제 Tauri GUI 검증을 대체하지 않는다. headless native 계약은
+`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features`로도 실행할 수 있다.
 
 ## 로컬 자동 sanity check
 
@@ -296,6 +326,30 @@ headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. 
 
 2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:placement-viewer`와
 `pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
+두 gate의 `placement-lighting-smoke.mjs`는 실제 Wasm/WebGL2 조명 ON/OFF와 framebuffer 차이·복원을 확인한다.
+2D 점광원과 HD-2D 환경 buffer의 조명/태양/그림자 flag, bounded draw cost, 설정 보존·카메라 불변,
+잘못된 수치와 native 거부의 rollback, Undo/Redo·Play/Stop·탭 격리, 한영·390×500 패널 경계를 검사한다.
+2D gate에서 함께 실행하는 저장 검증은 공개 Tauri bridge를 모의하고 실제 native 렌더러를 사용한다.
+포커스 중인 입력의 저장/재열기와 잘못된 입력의 저장 차단을 검사하며 실제 OS 파일 선택기/파일 쓰기 검증은 아니다.
+근거는 `artifacts/viewer-lighting/`에 남긴다.
+
+2D gate의 `placement-garden-smoke.mjs`는 **파일 → 예제 → 2D 등불 정원**과 `?scene=garden` 경로를 검사한다.
+atlas SHA-256/43개 crop, navigation의 운하/다리, 타일 432개를 포함한 native entity 465개,
+4개 점광원·그림자와 draw call 1–64·texture switch 4 이하를 요구한다.
+실제 클릭 이동·걷기/정지 clip·일시정지/재개·토큰 3개 수집·다리 건너기·막힌 목적지와
+native solid 충돌·정지 후 원본 복원·문서 Undo·다른 탭의 초안 보존·한영/작은 창을 확인한다.
+근거는 `artifacts/2d-showcase/report.json`과 화면이다. 에셋/JSON 재현성은
+`python3 scripts/assets/build-lantern-garden.py --check`로 별도 확인한다.
+
+같은 gate의 `placement-selection-controls-smoke.mjs`는 실제 작은 가로등의 이름·회전/크기 버튼·값,
+visual 테두리와 도구의 비겹침, 기본 충돌 표시 OFF와 명시적 보기 토글·문서/이력 불변을 확인한다.
+DPR 1/2, 한영, 회전/크기 방향키·Undo, 화면 이동/Space·잠금, canvas 가장자리와 화면 밖 숨김,
+실제 좌우 회전 드래그 한 건 Undo, 화면 밖 드래그의 도구 유지·Escape 복원과 번역하지 않는 객체 ID,
+390×500·Play/Stop·빈 공간 선택 해제, native entity 465개·점광원 4개·draw 1–64도 함께 검사한다.
+근거는 `artifacts/2d-selection-controls/`다. `placement-transform-smoke.mjs`는 새 문맥 도구의 실제 좌우 드래그가
+기존 숫자/방향키와 같은 그룹 pivot·rotation/scale patch를 만들고 Escape로 취소되는지도 검사한다.
+충돌 offset 회귀는 보기에서 충돌 영역을 켠 뒤 실제 핸들을 조작한다.
+
 `pnpm smoke:placement-village`는 Blender 중세 마을 예제를 production build에서 검사한다.
 CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mjs`를 실행하며 `smoke:check`에도 포함한다.
 14개 GLB/3개 sprite의 SHA-256, native entity 46개·모델 42개·billboard vertex 24개,
@@ -321,14 +375,17 @@ Play의 384×256 복귀, Stop의 전체 해상도 복원과 JSON/history 보존�
 한국어/영어 전환, resize 후 grid/render와 문서·선택·native entity·history 보존을 확인한다.
 같은 gate의 `placement-toolbar-ux-smoke.mjs`는 한영 아이콘/접근성 이름과 단축키, 방향키 focus 이동의 비실행,
 Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Escape focus 복원·바깥 클릭 닫기,
-격자 표시·공유 간격/잘못된 값 거부, 390px 메뉴 경계와 카메라·선택·문서·history 보존을 검사한다.
-카메라 기능의 접힌 기본 상태·보이는 기능명, 한영 카메라/사용 안내 이름, Enter/Space·Escape focus 복원,
+격자 표시·공유 간격/잘못된 값 거부, 320~1125px 메뉴/주 도구 경계·최소 canvas 높이와 카메라·선택·문서·history 보존을 검사한다.
+데스크톱의 36px 두 줄, 파일 메뉴의 메타데이터/Open 접근, 편집 시점 기능의 접힌 기본 상태·보이는 기능명,
+부모 보기 패널을 열어도 닫힌 하위 메뉴 화살표의 방향 유지,
+한영 편집 시점/사용 안내 이름과 Enter/Space·Escape focus 복원,
 다른 메뉴를 열면 기존 메뉴 닫기, 화면 구성의 초기화 접근, 카메라/화면 구성/안내의 390×500 경계도 검사한다.
 메뉴를 닫은 주 도구 행은 표시 버튼 6개 이하로 제한한다. `placement-panel-navigation.mjs`는 실제 summary를 열고
 카메라·패널 동작 후 Escape로 닫는다. 숨긴 control을 DOM 변경으로 노출하지 않는다.
 같은 gate에 연결된 `placement-menu-regressions-smoke.mjs`는 2D·HD-2D 에셋 배치 대기 중
-Camera/Layout/Controls/View의 첫 Escape가 메뉴만 닫고 다음 Escape가 배치를 취소하는지 검사한다.
-390×500에서 실제 가로 wheel로 카메라 도구 행을 이동해 팝업이 닫히는지, 안내문 내부 wheel은 메뉴를 유지하는지도 확인한다.
+중첩 메뉴의 Escape가 안쪽부터 메뉴를 닫고 마지막 Escape가 배치를 취소하는지 검사한다.
+390×320에서 실제 세로 wheel로 상위 보기 패널을 이동해 기준 버튼이 움직인 팝업을 닫는지,
+안내문 내부 wheel은 해당 메뉴를 유지하는지도 확인한다.
 문서·이력·선택·편집 카메라 보존과 focus 복원을 함께 확인하며 근거는 `artifacts/viewer-menu-regressions/`에 남긴다.
 HD-2D gate의 `placement-six-panels-smoke.mjs`는 한영 × 2D/HD-2D/Game 왕복 시 편집 섹션 5개의 가시성과
 문서·history 보존도 확인한다. 같은 gate의 `placement-spatial-asset-refresh-smoke.mjs`는 공개 Tauri invoke를 모의하고
@@ -357,6 +414,22 @@ Shift 15° 정렬·방향키 조절, 높이 아이콘의 키보드·드래그, �
 투영 전환, export/reopen, 한영 UI를 검사하며
 native entity 3개·billboard vertex 18개와 draw 1~32회 조건도 함께 확인한다.
 근거는 `artifacts/game-camera-authoring/browser-verification.json`과 화면이다.
+같은 gate의 `placement-game-camera-live-smoke.mjs`는 직교/원근 × DPR 1/2에서 상시 노출된 게임 카메라 버튼과
+고정 패널, 포커스를 유지한 숫자·슬라이더 입력 중 native 투영 변화, 입력 확정 전 JSON/이력 유지와 한 건 확정,
+Escape·잘못된 값·native 거절 복구를 확인한다. 패널과 실제 pixelArt 게임 프레임이 겹치지 않는지,
+재개 시 잠금과 재진입 일시정지, resize·Stop의 편집 시점 복원, Undo/Redo·재열기·한영 UI도 검사한다.
+native entity 3개·billboard vertex 18개·draw 1~32회와 근거는 `artifacts/game-camera-live-preview/verification.json`이다.
+live smoke가 호출하는 `placement-game-camera-gestures-smoke.mjs`는 실제 마우스 회전·Space/중간 버튼 이동,
+연속 휠의 한 건 확정과 숫자 라벨의 Shift 미세·Ctrl 빠른 조절을 같은 네 조합에서 검사한다.
+실제 native 행렬과 pixelArt 프레임에 투영한 점이 이동한 CSS 픽셀 거리도 확인한다.
+입력 중 JSON/이력 유지, Escape·포인터 캡처 상실·포커스 상실·모드 전환 취소,
+native 미리보기 거절과 연속 복원 실패의 제스처 소유권 유지·Escape 재시도를 검사한다.
+드래그 도중 modifier 변경의 연속성, 접기 메뉴와 실행 버튼의 Space 활성화, 미리보기 진입 시 뷰포트 포커스도 검사한다.
+`placement-game-camera-save-smoke.mjs`는 제스처 중 실제 저장 요청이 발생하지 않는지도 검사한다.
+마을 gate의 `placement-working-grid-smoke.mjs`는 DPR 1/2에서 맵 밖의 배치 불가 안내와
+실제 마우스가 만든 `isTrusted` dragover의 금지/복사 `dropEffect`, 거절된 drop의 문서/이력 유지,
+Escape·drop 후 안내 해제를 검사한다.
+대형 모델의 미리보기가 화면에 잘리더라도 실제 지지 위치가 유효하면 복사 커서를 유지하는지도 확인한다.
 같은 카메라 smoke에서 호출하는 `placement-game-camera-regressions-smoke.mjs`는 DPR 2에서 resize 없이 JSON 문서를
 연 뒤 카메라 입력/적용/미리보기 버튼이 다시 활성화되는지, 탭별 문서·이력·탐색 시점이 보존되는지 확인한다.
 직교→원근 전환이 near/far 경계를 넘는 두 사례와 기존 클립이 유효한 사례에서 실제 native 중심 가시성,
@@ -369,6 +442,7 @@ native entity 3개·billboard vertex 18개와 draw 1~32회 조건도 함께 확�
 잘못된 값·빈 값·불완전 숫자(`badInput`)의 저장 차단과 입력/포커스 보존을 검사한다.
 native 거절·연속 복원 실패의 초안/이력·transaction 소유권, backend 저장 거절 후 재시도, signed pitch 저장 후
 지연된 blur의 중복 편집 방지, 재열기와 실제 일시정지 미리보기도 확인한다. export-only 저장 명령은 입력을 확정하지 않는다.
+고정된 일시정지 카메라 패널에서도 입력 포커스를 유지한 저장과 지연된 blur의 중복 편집 방지를 검사한다.
 저장 bridge는 테스트 메모리/sessionStorage만 사용하고 실제 native 파일 저장을 실행하지 않는다.
 native entity 3개·billboard vertex 18개·draw 1~32회 조건과 근거는 `artifacts/game-camera-pending-save-fix/save-regressions.json`이다.
 화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.

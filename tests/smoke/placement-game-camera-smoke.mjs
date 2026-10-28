@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { showPlacementMenu, clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { smokePlacementGameCameraRegressions } from "./placement-game-camera-regressions-smoke.mjs";
 import { smokePlacementGameCameraSave } from "./placement-game-camera-save-smoke.mjs";
+import { smokePlacementGameCameraLive } from "./placement-game-camera-live-smoke.mjs";
 
 /** Camera authoring uses the actual app, native projection and existing export/reopen path. */
 export async function smokePlacementGameCamera(parent, timeoutMs = 30000) {
@@ -188,5 +189,6 @@ export async function smokePlacementGameCamera(parent, timeoutMs = 30000) {
   await writeFile(`${artifact}/browser-verification.json`, JSON.stringify(results, null, 2) + "\n");
   await smokePlacementGameCameraRegressions(parent, timeoutMs);
   await smokePlacementGameCameraSave(parent, timeoutMs);
+  await smokePlacementGameCameraLive(parent, timeoutMs);
   return results;
 }

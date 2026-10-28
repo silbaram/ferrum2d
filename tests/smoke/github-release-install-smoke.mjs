@@ -70,6 +70,9 @@ try {
   const game = path.join(temp, "my game");
   // Exercise the documented URL command, including npx's binary inference.
   await command(npx, ["--yes", "--allow-remote=root", mirror(release.generator), game], temp);
+  const updateHelp = await command(npx, ["--yes", "--allow-remote=root", `--package=${mirror(release.generator)}`, "ferrum-update-game", "--help"], temp);
+  assert.match(updateHelp.stdout, /--apply/);
+  report.checks.updateCliBin = true;
   const packagePath = path.join(game, "package.json");
   const gamePackage = JSON.parse(await readFile(packagePath, "utf8"));
   assert.equal(gamePackage.dependencies["@ferrum2d/ferrum-web"], release.runtime);

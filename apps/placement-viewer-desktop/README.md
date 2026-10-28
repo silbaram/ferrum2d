@@ -11,6 +11,39 @@ Tauri 기반 placement viewer desktop wrapper다. 이 app은 `apps/placement-vie
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 여전히 agent/spec 소유다.
 
+**파일 → 프로젝트 씬**에서 명시적으로 연 프로젝트의 `public/` 아래 Scene Authoring 문서를 검색·열기·실행한다.
+`list_placement_project_scenes`는 Open Project 권한만 허용하며, 단독 Open JSON이 추론한 프로젝트 경로로는 호출할 수 없다.
+목록 조회로 다른 씬의 쓰기 권한을 추가하지 않는다. 사용자가 실제 연 개별 문서만 기존 scene allowlist에 등록한다.
+프로젝트/문서 열기 응답은 canonical 경로를 반환해 `.`·symlink 별칭으로 같은 문서가 중복되는 것을 방지한다.
+씬을 전환해도 최신 프로젝트 자산 폴더 문맥을 보존하고 저장은 활성 문서 경로와 expectedDocument를 사용한다.
+검증된 동일 프로젝트의 저장 에셋은 씬 간 공유하고 초기 문서가 닫혀도 유지한다. 미저장·다른 프로젝트 참조는 계속 차단한다.
+native 저장은 줄바꿈을 포함한 실제 UTF-8 직렬화 크기가 2 MiB를 넘으면 원본을 교체하지 않는다.
+탐색 도중 읽지 못한 하위 경로는 최대 32개 `diagnostics`로 반환하며 정상 씬 목록을 유지한다. 루트 접근 실패는 오류로 반환한다.
+목록·문서 읽기 한도와 웹/폴더 입력 차이는 [씬 탐색기 사용법](../placement-viewer/README.md#프로젝트-씬-탐색기)을 따른다.
+
+## 버전 확인과 업데이트
+
+공통 UI의 **파일 → 버전 및 업데이트**에서 앱/내장 엔진과 열린 게임 프로젝트의 엔진을 따로 갱신한다.
+`updates.rs`는 Open Project 권한만 프로젝트 CLI에 전달하고, 앱 설치에는 공식 Tauri updater의 서명 검증을 사용한다.
+프로젝트 CLI는 앱에 내장된 source를 임시 디렉터리에서 Node로 실행하며 게임 프로젝트의 스크립트/코드를 불러오지 않는다.
+Node/npm/pnpm이 없는 환경은 프로젝트 갱신 오류를 표시하며 앱 업데이트에는 필요 없다.
+기본 개발 config는 빈 공개키/endpoint와 `createUpdaterArtifacts: false`여서 앱 설치를 제공하지 않는다.
+Linux는 AppImage 실행에 한해 자동 교체를 허용한다. `.deb` 설치는 릴리스 파일로 수동 갱신한다.
+host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데이트에만 재시작을 허용한다.
+릴리스 안내는 URL을 검증한 host command와 공식 opener plugin으로 시스템 브라우저에서 연다.
+
+`--with-updater`는 공개키를 임시 빌드 config에 주입하고 서명 파일/OS별 metadata를 준비한다.
+`--no-sign`과 함께 쓸 수 없다. 키 설정, 최초 설치와 공개 전 실제 OS 검증은
+[업데이트 배포 절차](../../docs/development/operations/github-release.md#버전-확인과-업데이트)를 따른다.
+
+## 설치 파일 준비
+
+저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS 뷰어를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
+
+Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node/pnpm/Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. 뷰어에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
+
+준비 성공과 실제 설치/GUI/서명 확인은 별개다. OS별 조건, checksum·통합 manifest와 수동 CI의 `include_viewer` 사용법은 [엔진·뷰어 분리 배포 절차](../../docs/development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비)를 따른다.
+
 ## 실행
 
 프로젝트 문서의 Assets → Import Aseprite → **Save Project**는 원본 PNG/JSON과
@@ -34,10 +67,10 @@ pnpm smoke:aseprite-project
 
 이 명령은 Wasm을 빌드한 뒤 Tauri dev shell을 실행하고, Tauri `beforeDevCommand`가 `@ferrum2d/placement-viewer` Vite dev server를 띄운다.
 
-기본값은 `apps/placement-viewer/public/placement.scene-authoring.json` 샘플 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
+기본값은 `apps/placement-viewer/public/placement.garden.scene-authoring.json` 정원 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
 
 ```bash
-FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/placement.scene-authoring.json pnpm dev:placement-viewer-desktop
+FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/scene-authoring.json pnpm dev:placement-viewer-desktop
 ```
 
 앱 내부 `Inspector`의 `source` 행은 현재 로드한 문서 경로를 보여준다. `save` 행은 desktop file/dev endpoint/save disabled 상태를 표시한다.

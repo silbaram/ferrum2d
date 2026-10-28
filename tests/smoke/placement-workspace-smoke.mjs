@@ -2,9 +2,15 @@ import { clickPlacementControl, showPlacementDock } from "./placement-panel-navi
 import { mkdir } from "node:fs/promises";
 import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.mjs";
 import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smoke.mjs";
+import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
+import { smokePlacementGarden } from "./placement-garden-smoke.mjs";
+import { smokePlacementSelectionControls } from "./placement-selection-controls-smoke.mjs";
 
 /** Real UI checks for dock preferences and isolated document drafts on one runtime. */
 export async function smokePlacementWorkspace(page, timeoutMs) {
+  await smokePlacementLighting(page, timeoutMs, "2d");
+  await smokePlacementGarden(page, timeoutMs);
+  await smokePlacementSelectionControls(page, timeoutMs);
   await smokePlacementPanelNavigation(page);
   const wait = (predicate, arg) =>
     page.waitForFunction(predicate, arg, { timeout: timeoutMs });
@@ -246,6 +252,7 @@ export async function smokePlacementWorkspace(page, timeoutMs) {
       window.scrollTo(0, 0);
       return [...document.querySelectorAll(".demo-toolbar button")]
         .filter((button) => {
+          if (!button.checkVisibility()) return false;
           const rect = button.getBoundingClientRect();
           if (!rect.width || !rect.height) return false;
           const hit = document.elementFromPoint(
@@ -654,6 +661,24 @@ export async function preparePlacementWorkspaceSave(page, timeoutMs) {
 }
 
 export async function assertPlacementWorkspaceSave(page, timeoutMs) {
+  const layerLocksPreserved = await page.evaluate(() => {
+    const state = globalThis.ferrumPlacementViewerState;
+    return state.layerEditing.lockedLayers.includes(0) && state.individuallyLockedInstanceIds.includes("floor_north") && !state.individuallyLockedInstanceIds.includes("crate_left");
+  });
+  if (!layerLocksPreserved) throw new Error("Save rebase merged layer locks into individual locks");
+  await showPlacementDock(page, "scene");
+  const layers = page.locator('.placement-panel:not([hidden]) .placement-layers');
+  const solo = layers.locator('[data-render-layer="2"] [data-layer-control=solo]');
+  if (await solo.getAttribute('aria-pressed') !== 'true' || await layers.locator('[data-render-layer="2"] [data-layer-control=filter]').getAttribute('aria-pressed') !== 'true')
+    throw new Error("Save rebase lost solo or the active layer filter");
+  await solo.click();
+  if (!await page.evaluate(() => JSON.stringify(globalThis.ferrumPlacementViewerState.layerEditing.hiddenLayers) === '[2]'))
+    throw new Error("Solo after save must restore the pre-solo hidden layers");
+  await layers.getByRole('button', { name: 'Show All', exact: true }).click();
+  await layers.getByRole('button', { name: 'All Layers', exact: true }).click();
+  await page.locator('.placement-panel:not([hidden]) [data-render-layer="0"] [data-layer-control="lock"]').click();
+  if (!await page.evaluate(() => globalThis.ferrumPlacementViewerState.lockedInstanceIds.includes("floor_north") && !globalThis.ferrumPlacementViewerState.lockedInstanceIds.includes("crate_left")))
+    throw new Error("Layer unlock after save must preserve individual locks only");
   if (
     (await page
       .getByRole("tablist", { name: "Scene documents" })

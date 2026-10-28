@@ -296,7 +296,9 @@ export async function readPlacementNormalProject(
 export function createPlacementNormalProjectAssets(
   engine: FerrumRuntime["engine"],
   documentKey: string,
+  projectPath?: string,
 ) {
+  const available = (key: string, project?: string) => projectPath ? projectPath === project : key === documentKey;
   let restored:
       | Awaited<ReturnType<typeof readPlacementNormalProject>>
       | undefined,
@@ -384,16 +386,16 @@ export function createPlacementNormalProjectAssets(
         throw error;
       }
     },
-    browserEntries(key: string) {
-      if (key !== documentKey || !restored) return [];
+    browserEntries(key: string, project?: string) {
+      if (!available(key, project) || !restored) return [];
       return [
         ...new Set(
           restored.pairs.map((p) => p.bundle.binding.textures.color.asset),
         ),
       ].map((id) => ({ id, ...restored!.textures.get(id)! }));
     },
-    bundles(key: string, current: SceneAuthoringDocumentSpec) {
-      if (key !== documentKey) return [];
+    bundles(key: string, current: SceneAuthoringDocumentSpec, project?: string) {
+      if (!available(key, project)) return [];
       const references = new Set(
         Object.values(current.spatial?.billboards ?? {}).map(
           (b) => b.normalTexture,
@@ -423,9 +425,10 @@ export function createPlacementNormalProjectAssets(
       key: string,
       current: SceneAuthoringDocumentSpec,
       state: ScenePlacementViewerState,
+      project?: string,
     ) {
       const result: SceneSpriteNormalBindingEvidence[] = [];
-      if (key !== documentKey || !restored) return result;
+      if (!available(key, project) || !restored) return result;
       const signature = JSON.stringify(current);
       if (
         bindingCache?.signature === signature &&
@@ -499,9 +502,9 @@ export function createPlacementNormalProjectAssets(
       bindingCache = { signature, fragment: state.fragment, result };
       return result;
     },
-    assertDocumentAssets(current: SceneAuthoringDocumentSpec, key: string) {
+    assertDocumentAssets(current: SceneAuthoringDocumentSpec, key: string, project?: string) {
       if (
-        key !== documentKey &&
+        !available(key, project) &&
         restored &&
         [...restored.textures.keys()].some((id) =>
           JSON.stringify(current).includes(JSON.stringify(id)),
@@ -512,7 +515,7 @@ export function createPlacementNormalProjectAssets(
         );
     },
     close(key: string) {
-      if (key === documentKey) destroy();
+      if (!projectPath && key === documentKey) destroy();
     },
     destroy,
   };

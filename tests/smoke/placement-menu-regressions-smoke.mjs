@@ -14,7 +14,7 @@ export async function smokePlacementMenuRegressions(page, mode) {
   const viewport = page.viewportSize();
   const language = page.locator("[data-placement-language]");
   const originalLocale = await language.inputValue();
-  const originalInspector = await page.locator('.placement-panel:not([hidden]) [role="tablist"]').first()
+  const originalInspector = await page.locator('.placement-panel:not([hidden]) .placement-inspector [role="tablist"]').first()
     .locator('[aria-selected="true"]').getAttribute("data-placement-panel-tab");
   const originalBottom = await page.locator('.placement-runtime-dock [role="tablist"]').first()
     .locator('[aria-selected="true"]').getAttribute("data-placement-panel-tab");
@@ -56,20 +56,24 @@ export async function smokePlacementMenuRegressions(page, mode) {
       assert(await toggle.evaluate((element) => element === document.activeElement));
       await pending(true);
       assert.equal(await snapshot(), before, "Closing a menu changed authored state or edit history");
+      if (id !== "view" && await page.locator(".placement-view-options").evaluate(element => element.open)) {
+        await page.keyboard.press("Escape");
+        await pending(true);
+      }
       await page.keyboard.press("Escape");
       await pending(false);
     }
 
-    await page.setViewportSize({ width: 390, height: 500 });
+    await page.setViewportSize({ width: 390, height: 320 });
     await showPlacementMenu(page, camera);
-    const mount = page.locator(mode === "spatial" ? ".placement-camera-mount" : ".placement-navigation-mount");
-    const start = await mount.evaluate((element) => element.scrollLeft);
-    const dimensions = await mount.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
-    assert(dimensions.scroll > dimensions.client + 20, "Fixture must actually overflow horizontally");
-    const delta = start < (dimensions.scroll - dimensions.client) / 2 ? 500 : -500;
-    await mount.hover();
-    await page.mouse.wheel(delta, 0);
-    await page.waitForFunction(({ mode, start }) => document.querySelector(mode === "spatial" ? ".placement-camera-mount" : ".placement-navigation-mount").scrollLeft !== start, { mode, start });
+    const mount = page.locator(".placement-view-panel");
+    const start = await mount.evaluate(element => element.scrollTop);
+    const dimensions = await mount.evaluate(element => ({ scroll: element.scrollHeight, client: element.clientHeight }));
+    assert(dimensions.scroll > dimensions.client, "View settings must scroll in a short viewport");
+    const bounds = await mount.boundingBox();
+    await page.mouse.move(bounds.x + 4, bounds.y + 8);
+    await page.mouse.wheel(0, 400);
+    await page.waitForFunction(start => document.querySelector(".placement-view-panel").scrollTop !== start, start);
     await page.waitForFunction((id) => !document.querySelector(`[data-placement-menu="${id}"]`).open, camera);
     assert.equal(await menu(camera).locator(":scope > summary").getAttribute("aria-expanded"), "false");
 
@@ -88,7 +92,7 @@ export async function smokePlacementMenuRegressions(page, mode) {
     await paint();
     assert.equal(await snapshot(), before, "Menu scrolling changed camera, selection, document or history");
     await writeFile(`${artifact}/${mode}.json`, JSON.stringify({ ok: true, mode, dimensions,
-      checks: ["Escape closes Camera/Layout/Controls/View before placement cancellation", "next Escape cancels placement", "focus returns to summary", "real horizontal wheel dismisses orphan popup", "panel scrolling remains open", "document/history/selection/camera preserved"],
+      checks: ["Escape closes nested menus before placement cancellation", "focus returns to summary", "real ancestor scroll dismisses orphan popup", "panel scrolling remains open", "document/history/selection/camera preserved"],
     }, null, 2) + "\n");
   } catch (error) {
     await page.screenshot({ path: `${artifact}/${mode}-failure.png`, fullPage: true });

@@ -26,16 +26,23 @@
         "default-src": "'self'",
         "base-uri": "'none'",
         "object-src": "'none'",
-        "connect-src": "'self' data: ipc: http://ipc.localhost ferrum-asset: http://ferrum-asset.localhost https://ferrum-asset.localhost",
+        "connect-src": "'self' data: ipc: http://ipc.localhost ferrum-asset: http://ferrum-asset.localhost https://ferrum-asset.localhost https://api.github.com",
         "img-src": "'self' data: blob: ferrum-asset: http://ferrum-asset.localhost https://ferrum-asset.localhost",
         "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'"
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": []
+    "icon": [],
+    "createUpdaterArtifacts": false
   }
 }

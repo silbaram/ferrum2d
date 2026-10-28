@@ -1,4 +1,4 @@
-import { clickPlacementControl, showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementBottom, showPlacementMenu } from "./placement-panel-navigation.mjs";
 import { smokePlacementSixPanels } from "./placement-six-panels-smoke.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -10,8 +10,10 @@ import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.
 import { smokePlacementSpatialAssetRefresh } from "./placement-spatial-asset-refresh-smoke.mjs";
 import { smokePlacementSpatialTransforms } from "./placement-spatial-transforms-smoke.mjs";
 import { smokePlacementGameCamera } from "./placement-game-camera-smoke.mjs";
+import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
 
 export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
+  const lighting = await smokePlacementLighting(page, timeoutMs, "spatial");
   const wait = async (fn, arg) => {
     try {
       return await page.waitForFunction(fn, arg, { timeout: timeoutMs });
@@ -284,6 +286,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
       patch?.operations.length === 0 && patch.spatial?.operations.length === 1
     );
   });
+  await showPlacementMenu(page, "file");
   if (
     (await page
       .locator(".placement-state-badge[data-status=dirty]")
@@ -298,6 +301,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
       .isDisabled())
   )
     throw new Error("Spatial-only draft must update dirty/count/copy controls");
+  await page.keyboard.press("Escape");
   await page.evaluate(() => globalThis.ferrumPlacementViewerUndo());
   await wait(() => !globalThis.ferrumPlacementViewerExportPatch());
   await page.selectOption(
@@ -1352,6 +1356,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
     timeoutMs,
   );
   return {
+    lighting,
     gameCamera: await smokePlacementGameCamera(page, timeoutMs),
     transforms: await smokePlacementSpatialTransforms(page, timeoutMs),
     assetRefresh: await smokePlacementSpatialAssetRefresh(page, source, timeoutMs),

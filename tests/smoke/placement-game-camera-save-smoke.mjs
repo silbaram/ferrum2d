@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { placementSpatialRegressionFixture } from "./placement-test-build.mjs";
 
 /** Actual frontend save/locking and native renderer; the desktop bridge stores fixture JSON in memory only. */
 export async function smokePlacementGameCameraSave(parent, timeoutMs = 30000) {
   const artifact = "artifacts/game-camera-pending-save-fix";
   await mkdir(artifact, { recursive: true });
-  const fixture = JSON.parse(await readFile("apps/placement-viewer/public/placement.hd2d.scene-authoring.json", "utf8"));
+  const fixture = JSON.parse(await readFile(placementSpatialRegressionFixture, "utf8"));
   const results = [];
   for (const projection of ["orthographic", "perspective"]) {
     console.log(`Game camera pending save: ${projection}`);
@@ -155,11 +156,38 @@ export async function smokePlacementGameCameraSave(parent, timeoutMs = 30000) {
       assert.equal(native.state, "paused"); assert.deepEqual(native.camera, savedCamera);
       assert.equal(native.runtime.entityCount, 3); assert.equal(native.runtime.spatial.billboardVertices, 18);
       assert(native.draws > 0 && native.draws <= 32);
+      // The persistent paused panel uses the same focused-input save boundary.
+      assert(await page.locator("[data-placement-game-camera-dock]").isVisible());
+      const previewRequests = await count();
+      const frameBox = await page.locator("[data-placement-game-camera-frame]").boundingBox();
+      const anchor = { x: frameBox.x + frameBox.width / 2, y: frameBox.y + frameBox.height / 2 };
+      await page.mouse.move(anchor.x, anchor.y); await page.mouse.down();
+      await page.mouse.move(anchor.x + 30, anchor.y - 15, { steps: 4 }); await paint();
+      assert(await field(lens).isDisabled());
+      await save(); assert.equal(await count(), previewRequests);
+      assert.deepEqual((await source()).spatial.camera, savedCamera);
+      await page.keyboard.press("Escape"); await page.mouse.up(); await paint(); await clean();
+      await field("targetX").fill(String(savedCamera.target.x + 1)); await paint();
+      assert.deepEqual((await source()).spatial.camera, savedCamera);
+      assert.equal((await save()).saved, true); await clean();
+      assert.equal(await count(), previewRequests + 1);
+      assert.equal((await source()).spatial.camera.target.x, savedCamera.target.x + 1);
+      assert.equal(await page.evaluate(() => window.ferrumEngine.dataSceneState()), "paused");
+      await page.locator("canvas.demo-canvas").focus(); await clean();
+      const range = page.locator('[data-placement-game-camera-range="pitch"]'), rangeBox = await range.boundingBox();
+      const beforeRange = await source();
+      await page.mouse.move(rangeBox.x + rangeBox.width * 0.7, rangeBox.y + rangeBox.height / 2); await page.mouse.down();
+      await page.mouse.move(rangeBox.x + rangeBox.width * 0.75, rangeBox.y + rangeBox.height / 2, { steps: 3 }); await paint();
+      assert.deepEqual(await source(), beforeRange);
+      assert.equal((await save()).saved, true); await clean();
+      const savedRange = await source(); assert.notDeepEqual(savedRange.spatial.camera, beforeRange.spatial.camera);
+      await page.mouse.up(); await paint(); await clean();
+      assert.deepEqual(await source(), savedRange, "Deferred range change after save must not create a second edit");
       assert.deepEqual(errors, []);
       results.push({ projection, focusedDirtyAndCleanSaved: true, oneCameraUndoBeforeSave: true, duplicateSaveBlocked: true,
         invalidEmptyAndBadInputPreserved: true, nativeRejectionAndRetry: true, backendRejectionAndRetry: true,
         ...(projection === "orthographic" ? { persistentFailureOwnership: true } : {}), noopAndDeferredBlurClean: true,
-        reloadAndNativePreview: true, requestCount, entities: 3, billboardVertices: 18, draws: native.draws });
+        reloadAndNativePreview: true, liveGestureSaveBlocked: true, liveFocusedSave: true, liveSliderSave: true, requestCount: requestCount + 2, entities: 3, billboardVertices: 18, draws: native.draws });
     } catch (error) {
       await page.screenshot({ path: `${artifact}/failure-${projection}.png`, fullPage: true });
       const state = await page.evaluate(() => ({

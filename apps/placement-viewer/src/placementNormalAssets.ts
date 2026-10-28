@@ -1,3 +1,4 @@
+import { isPlacementProjectAsset } from "./placementAssetScope";
 import type { FerrumRuntime } from "@ferrum2d/ferrum-web/core";
 import {
   createSpriteNormalAssetBinding,
@@ -48,6 +49,7 @@ export interface PlacementNormalAsset {
   urls?: Record<string, string>;
   uploaded: boolean;
   persisted: boolean;
+  project?: string;
   bytes: number;
   pixels: number;
 }
@@ -304,7 +306,7 @@ export function createPlacementNormalAssets(
     discard,
     close(document: string) {
       for (const asset of entries.values())
-        if (asset.document === document) discard(asset);
+        if (asset.document === document && !isPlacementProjectAsset(asset)) discard(asset);
     },
     destroy() {
       for (const asset of entries.values()) discard(asset, true);

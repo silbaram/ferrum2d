@@ -2,6 +2,7 @@ import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import { applySceneSpatialPatch } from "./sceneSpatialPatch.js";
 import { resolveDataSceneComponentsSpec } from "./dataSceneComponents.js";
 import { GAMEPLAY_BEHAVIOR_BINDING_PROP } from "./gameplayAuthoring.js";
+import { resolveSceneLighting } from "./sceneLighting.js";
 import {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -445,10 +446,15 @@ export function mergeScenePlacementPatch(
       patch.spatial,
     );
     for (const operation of patch.spatial.operations)
-      if (operation.kind !== "updateTerrainSurface" && operation.kind !== "setCamera")
+      if (operation.kind !== "updateTerrainSurface" && operation.kind !== "setCamera" && operation.kind !== "setEnvironment")
         pushUnique(changedInstanceIds, operation.id);
   }
-  if (nextDocument.spatial)
+  if (patch.lighting !== undefined) {
+    if (options.allowedFragments) throw new Error("Scene lighting edits require document-wide write scope");
+    if (patch.lighting === null) delete nextDocument.lighting;
+    else nextDocument.lighting = resolveSceneLighting(patch.lighting, `${path}.lighting`);
+  }
+  if (nextDocument.spatial || patch.lighting !== undefined)
     resolveSceneAuthoringDocument(nextDocument, {
       validateBindings: true,
       validateComponents: true,
@@ -458,7 +464,7 @@ export function mergeScenePlacementPatch(
   return {
     document: nextDocument,
     operationCount:
-      patch.operations.length + (patch.spatial?.operations.length ?? 0),
+      patch.operations.length + (patch.spatial?.operations.length ?? 0) + (patch.lighting !== undefined ? 1 : 0),
     changedInstanceIds,
   };
 }
@@ -600,13 +606,20 @@ function validateScenePlacementPatchEnvelope(
   if (
     patch.version !== SCENE_PLACEMENT_PATCH_LEGACY_VERSION &&
     patch.version !== SCENE_PLACEMENT_PATCH_VERSION &&
-    patch.version !== 3
+    patch.version !== 3 &&
+    patch.version !== 4
   ) {
-    throw gameplayAuthoringDiagnosticError(path, "version must be 1, 2 or 3");
+    throw gameplayAuthoringDiagnosticError(path, "version must be 1, 2, 3 or 4");
   }
   if (!Array.isArray(patch.operations))
     throw new Error("placement patch operations must be an array");
-  if ((patch.version === 3) !== (patch.spatial !== undefined))
+  if (patch.version === 4) {
+    if (patch.lighting === undefined || patch.spatial !== undefined)
+      throw new Error("Lighting placement requires patch version 4, a lighting envelope and no spatial envelope");
+  } else if (patch.lighting !== undefined) {
+    throw new Error("Lighting placement requires patch version 4");
+  }
+  if (patch.version !== 4 && (patch.version === 3) !== (patch.spatial !== undefined))
     throw new Error(
       "Spatial placement requires patch version 3 and a spatial envelope",
     );

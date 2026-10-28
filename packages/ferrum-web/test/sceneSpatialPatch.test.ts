@@ -11,6 +11,40 @@ import {
 } from "../src/authoring.js";
 import { applySceneSpatialPatch } from "../src/sceneSpatialPatch.js";
 import { resolveSpatialCameraSpec } from "../src/dataSceneSpatial.js";
+import { resolveSpatialEnvironmentSpec } from "../src/spatialEnvironment.js";
+
+test("spatial v6 environment edits preserve authored settings, merge without instance scope, and undo atomically", () => {
+  const source = document();
+  source.spatial!.environment = { pixelArt: { width: 384, height: 256 }, colorGrading: { exposure: 1 },
+    lighting: { ambient: [0.25, 0.25, 0.3], lights: [{ position: { x: 5, y: 6, elevation: 64 }, radius: 128 }] } };
+  const viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 } });
+  viewer.setInstancesLocked(["sprite", "model", "proxy"], true);
+  const environment = resolveSpatialEnvironmentSpec({ ...source.spatial!.environment,
+    lighting: { ...source.spatial!.environment.lighting!, enabled: false } });
+  viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment } }]);
+  const patch = viewer.exportPatch()!;
+  equal(patch.spatial!.version, 6);
+  equal(viewer.historyState().undoCount, 1);
+  const merged = mergeScenePlacementPatch(source, JSON.parse(JSON.stringify(patch)));
+  deepEqual(merged.document.spatial!.environment, environment);
+  deepEqual(merged.changedInstanceIds, []);
+  equal(merged.operationCount, 1);
+  deepEqual(merged.document.spatial!.camera, source.spatial!.camera);
+  throws(() => mergeScenePlacementPatch(source, patch, { allowedFragments: ["main"] }), /document-wide/);
+  viewer.undo(); equal(viewer.exportPatch(), undefined);
+  viewer.redo(); deepEqual(viewer.state().spatial!.environment, environment);
+  const before = viewer.exportPatch(), history = viewer.historyState();
+  throws(() => viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment: { lighting: { lights: [], shadows: { lightIndex: 0 } } } } }]), /authored light/);
+  deepEqual(viewer.exportPatch(), before); deepEqual(viewer.historyState(), history);
+  viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment: null } }]);
+  equal(mergeScenePlacementPatch(source, viewer.exportPatch()!).document.spatial!.environment, undefined);
+  viewer.undo(); deepEqual(viewer.state().spatial!.environment, environment);
+  const operation = { kind: "setEnvironment" as const, changes: { environment } };
+  for (const version of [1, 2, 3, 4, 5] as const)
+    throws(() => applySceneSpatialPatch(source.spatial, { format: "ferrum2d.scene-spatial.patch", version, operations: [operation] }), /version 6/);
+  throws(() => applySceneSpatialPatch(source.spatial, { format: "ferrum2d.scene-spatial.patch", version: 6,
+    operations: [{ ...operation, id: "sprite" } as never] }), /Invalid/);
+});
 
 function document(): SceneAuthoringDocumentSpec {
   return {
@@ -79,6 +113,26 @@ function subject() {
     selectedInstanceId: "sprite",
   });
 }
+
+test("hidden layer policy rejects spatial instance edits atomically, without blocking scene settings", () => {
+  const viewer = subject();
+  viewer.setLayerEditing({ hiddenLayers: [0], lockedLayers: [] });
+  const before = viewer.state(), history = viewer.historyState();
+  throws(() => viewer.updateSpatial([
+    { kind: "updateTerrainSurface", id: "ground", changes: { x: -98 } },
+    { kind: "updateBillboard", id: "sprite", changes: { elevation: 17 } },
+  ]), /hidden|locked/);
+  deepEqual(viewer.state().spatial, before.spatial);
+  deepEqual(viewer.historyState(), history);
+  equal(viewer.exportPatch(), undefined);
+  throws(() => viewer.updateSpatial([{ kind: "updateModel", id: "model", changes: { elevation: 3 } }]), /hidden|locked/);
+  viewer.updateSpatial([{ kind: "updateTerrainSurface", id: "ground", changes: { x: -98 } }]);
+  equal(viewer.state().spatial!.terrain[0].x, -98);
+  viewer.undo();
+  viewer.setLayerEditing({ hiddenLayers: [], lockedLayers: [] });
+  viewer.updateSpatial([{ kind: "updateBillboard", id: "sprite", changes: { elevation: 17 } }]);
+  equal(viewer.state().spatial!.billboards.sprite.elevation, 17);
+});
 
 test("spatial v5 camera edits round-trip without instance IDs, preserve locks and undo to a clean baseline", async () => {
   const source = document();

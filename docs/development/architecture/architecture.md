@@ -25,6 +25,14 @@ Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame
 게임 카메라 확인은 실제 pixelArt/viewport를 사용하는 일시정지 미리보기이며 runtime 진행 상태는 Rust가 소유한다.
 Rust/Wasm camera ABI·렌더 명령 형식은 변경하지 않는다.
 
+공간 환경 작성은 spatial patch v6의 씬 수준 `setEnvironment`로 기존 이력/병합/저장을 사용한다.
+`lighting.enabled: false`는 작성 설정을 보존하며 TS 환경 컴파일러가 기존 native buffer의 조명 플래그를 끈다.
+native buffer에는 비활성 광원 값이 전달되지 않으므로 runtime 환경 readback은 비활성 설정 원본의 저장소가 아니다.
+작성 JSON을 광원 설정의 기준으로 유지하며 Rust 환경 ABI와 렌더러 pass 계약은 변경하지 않는다.
+flat 2D는 선택 `SceneAuthoringDocumentSpec.lighting`과 placement patch v4의 전체 lighting envelope를 사용한다.
+작성 resolver는 world 광원과 OFF 상태의 설정을 검증·보존한다. 뷰어 host가 기존 `DataSceneView.lighting`
+투영과 native `setDataSceneSun`을 연결하며, 시뮬레이션 상태와 renderer 소유권은 변경하지 않는다.
+
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 
 공식 Assets의 Aseprite import/reimport는 `placementAsepriteAssets.ts`가 검증·원본/hash·immutable revision·component patch를,
@@ -104,6 +112,46 @@ Apply의 component/normal 참조 교체는 native 중간 적용을 보류하고 
 정적 host는 JSON bundle export를 사용하며 파일 저장 adapter는 기존 권한 경계 밖으로 자동 확장하지 않는다.
 저장 완료는 host의 catalog 등록과 반환 URL의 실제 bytes 검증 뒤 인정하고, 미저장 참조의 scene-only Save는 거절한다.
 
+## 프로젝트 씬 탐색과 실행
+
+공식 앱과 native fallback의 기본 문서는 2D 정원 `placement.garden.scene-authoring.json`이다.
+단순 기본 2D와 HD-2D 지형/발판 데이터는 `tests/fixtures/`의 회귀 입력으로만 유지하며 public 자산/예제 메뉴에는 포함하지 않는다.
+공개 씬은 정원과 마을 2개이며 기존 `?scene=hd2d` 주소는 마을을 연다.
+기존 consumer 프로젝트의 `public/placement.scene-authoring.json` 파일명 지원은 유지한다.
+
+공식 authoring app의 프로젝트 씬 탐색기는 `placementSceneCatalog.ts`의 발견 metadata와
+`placementSceneExplorer.ts`의 UI를 분리한다. 기존 문서 workspace가 실제 JSON 검증·문서별 초안/이력·플레이 모드를 소유한다.
+`server/sceneCatalog.mjs`는 고정 `public/` 루트에서 개발 서버 목록을 제공하고 정적 빌드의 `placement-scenes.json`을 생성한다.
+브라우저 폴더 입력은 사용자가 선택한 읽기 전용 File 사본만 다루며 임의 host 경로·쓰기 권한을 추론하지 않는다.
+desktop `scene_catalog.rs`의 읽기 전용 command는 명시적 Open Project 권한을 요구하고 bounded traversal에서 symlink를 건너뛴다.
+목록 조회와 개별 문서 저장 allowlist는 분리한다. host open 응답의 canonical 경로가 탭 identity이며,
+새 프로젝트 씬은 같은 프로젝트의 최신 자산 문맥을 사용한다. 실행은 기존 Scene Authoring runtime 경로를 재사용하고
+사용자 게임 코드 로더나 Rust/Wasm ABI를 추가하지 않는다.
+
+`placementAssetScope.ts`는 문서별 세션 에셋과 host 검증 후 프로젝트에 저장된 에셋의 가용 범위를 구분한다.
+같은 프로젝트로 열린 문서만 영속 에셋을 공유하며, 원본 문서 닫기는 세션 에셋만 해제한다.
+공유 sprite/normal 자원은 기존 bounded store에서 보관하다 workspace 종료 시 해제한다.
+노멀 catalog의 복원·export·handoff도 같은 프로젝트 문맥을 요구한다. 추가 씬에 원본 catalog 쓰기 권한을 자동 부여하지 않는다.
+native 저장은 직렬화된 최종 UTF-8 크기를 read limit와 대조한 뒤 임시 파일 교체를 시작한다.
+웹/native 씬 탐색의 개별 경로 I/O 실패는 최대 32개 진단으로 반환하며, 명시적 root 접근 실패와 구분한다.
+
+## 버전 확인과 업데이트 경계
+
+`placementReleaseVersions.ts`는 공개 beta 조회·숫자형 semver 비교를, `placementUpdates.ts`는 수동 확인 dialog와
+미저장/실행/편집 중 설치 차단을 맡는다. 프레임 루프나 Wasm ABI에 네트워크/업데이트 호출을 추가하지 않는다.
+native `placement_document::updates`는 명시적 Open Project registry 권한으로만 프로젝트 갱신을 허용한다.
+앱에 내장한 `create-game/bin/update-game.mjs`와 `update-integrity.mjs`가 Node에서 npm/pnpm을 실행하며
+원본/실패 상태 백업, 다운로드 SHA-256·설치 파일 대조, 실패 복원을 관리한다. scene·사용자 게임 코드는 실행하지 않는다.
+기존 Ferrum dependency만 동일한 exact release URL로 갱신하며 workspace/file과 엔진 저장소는 source control에 남긴다.
+잠금은 updater 간 동시 실행만 직렬화한다. 외부 writer와 완전한 filesystem transaction을 보장하지 않는다.
+
+앱 갱신은 `tauri-plugin-updater` 2.14.1의 다운로드·공개키 서명 검증·OS 설치 경로를 재사용한다.
+릴리스 안내는 `tauri-plugin-opener` 2.7.0을 host command로 호출하며 정확한 GitHub beta 안내 URL만 허용한다.
+고정 공식 저장소/정확한 beta/OS metadata로 조회하며, 확인된 Update와 일회용 token을 host가 보관한다.
+설치는 host busy guard로 직렬화하고 완료 후에만 재시작한다. 프로젝트 패키지 버전과 앱 내장 엔진 버전은 별개다.
+공개키 없는 앱, Linux non-AppImage, 웹에서는 앱 자동 교체를 제공하지 않는다.
+서명 artifact 준비는 기존 SDK 네 tgz 계약에 OS별 updater metadata와 signature를 추가하며 배포 공개 자체는 수행하지 않는다.
+
 ## 게임 프로젝트 설치 경계
 
 consumer의 기능 탐색은 `@ferrum2d/agents`가 설치하는 `.agents/harness/ferrum-feature-guide.md`에서
@@ -168,10 +216,29 @@ events/debug   -> opt-in collision/physics buffer ptr + len
 
 Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 빈도의 설정은 TypeScript에서 검증한 뒤 숫자형 값이나 bulk buffer 형태로 Rust에 전달한다. Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`는 runtime adapter가 읽을 수 있는 authoring data로 정규화하고, `createShooterContentRuntimeOptions(...)`가 단일/명시 content id만 `createFerrumRuntime(...)` option fragment로 변환한다. `SceneComposition`/`BehaviorRecipe` 묶음은 `ShooterGameSpec` top-level로 승격하지 않고 `ferrum2d.consumer.scene-authoring` 별도 artifact로 유지하며, `resolveSceneAuthoringDocument(...)`가 format/version, scene composition, behavior recipe, optional binding plan을 검증한다. `classifySceneInstance(...)`는 이 resolved instance에서 `worldObject`/`actor` authoring role만 파생하며, Rust runtime class나 Wasm ABI를 추가하지 않는다. 이 경로는 Rust simulation이나 Wasm ABI를 자동 변경하지 않는다. Behavior recipe의 entity-level tags도 TypeScript가 `ids.tags`로 `0..31` numeric bitmask로 컴파일해 Rust `GameplayTags` component로 설치하며, frame loop에서는 문자열 tag를 해석하지 않는다.
 
+### Runtime 렌더러 확장 경계
+
+`runtimeRenderer.ts`의 `FerrumRuntimeRenderer`는 GPU 클래스의 private 멤버를 포함하지 않는 구조적 포트다.
+`createRenderer.ts`는 WebGL2/WebGPU 선택·fallback을 담당하는 조합 지점이고 구체 반환형을 유지한다.
+프레임 소비자 `RuntimeFrameRenderer`는 `RuntimeFrameRenderTarget`의 그리기·선택 진단 capability만 받으며,
+텍스처 로딩·canvas 크기·자원 소유권과 결합하지 않는다. flat command sink만으로 프레임을 검증할 수 있다.
+미지원 공간 geometry/디버그 라인은 frame target이나 GPU timer를 건드리기 전에 거부한다.
+
+공통 `SpatialRendererStats`와 `PhysicsDebugLineCamera`의 canonical 정의는 `renderer.ts`다.
+WebGL2/WebGPU 구현이 이 계약에 의존하고 기존 내부 타입 경로는 재export로 호환한다.
+공식 authoring host는 자신이 생성한 grid renderer의 `SpatialModelPreparer`를 명시적으로 전달한다.
+범용 runtime 포트에 모델 준비나 특정 GPU texture 반환을 암묵적으로 요구하지 않는다.
+Rust simulation 및 bulk render command ABI는 유지하고 frame별 entity 왕복 호출을 추가하지 않는다.
+
 ### Authoring 문서 세션과 저장
 
 `ScenePlacementViewer`의 draft와 bounded Undo/Redo는 TypeScript의 저빈도 문서 편집 상태다.
 `scenePlacementHistory.ts`가 snapshot과 transaction을 관리하며 선택·hover·camera 탐색은 새 이력을 만들지 않는다.
+2D 레이어 패널은 기존 numeric render layer와 components patch를 사용한다. 별칭은 source 경로별 로컬 UI 설정이고 레이어 숨김/잠금은 viewer의 history 밖 정책이다. 개별 잠금과 레이어 잠금은 독립적으로 보존하며 저장 rebase에서 합집합을 개별 잠금으로 복사하지 않는다. 실제 게임 순서 변경은 `updateInstanceRenderLayers`의 원자적 transform/components 변경으로 기록한다. 숨김 handle은 변경 시에만 기존 bounded bulk `setDataSceneSpatialPreviewFilter`로 전달하며 이 hook은 flat Data Scene에도 적용한다. Rust가 sprite와 소유 그림자 command를 제외하고 collider/simulation은 유지한다. render command struct/ABI는 바꾸지 않으며 매 entity의 frame별 JS/Wasm 호출도 추가하지 않는다. HD-2D/게임 모드에서는 2D 정책을 중단하고 복귀 시 복원한다.
+
+단독 보기와 활성 목록 레이어는 문서별 presentation 상태이며 저장으로 inspector를 재생성할 때도 보존한다. 새 숫자 레이어·Undo·2D 복귀 시 단독 보기 정책을 다시 계산하고, 단독 표시한 레이어가 사라지면 이전 숨김 집합으로 복원한다. HD-2D 목록 필터는 2D 패널의 활성 레이어를 덮어쓰지 않는다. 일괄 components 변경은 검증된 ref를 재사용해 pick bounds를 한 번 갱신하며, 같은 layer의 depth 피킹은 Rust의 floor/elevation/발 위치 정렬을 따른다.
+
+`placementLayerState.ts`는 DOM 없이 layer별 ID·선택·잠금을 한 번 분류하고 단독 보기 정책을 계산한다. 행별 전체 instance 재검색을 하지 않는다. UI 적용 실패는 정책뿐 아니라 선택·hover도 복원한다. 공개 공간 instance 편집에도 숨김 정책을 적용하고, 평면 피킹 비교는 spawn 값과 native 연산의 f32 반올림 및 signed-zero 순서를 따른다.
 선택 host `validateDraft`는 최종 draft 검증과 history 복원 안에서 실행한다. 거절 시 이력 위치를 이동하지 않으며,
 실패한 edit의 복구 대상으로 거절된 candidate를 쓰지 않는다. 열린 gesture의 취소도 거절되면 직전 정상 초안과
 transaction을 유지한다. callback 중 draft/history 재진입은 차단한다.

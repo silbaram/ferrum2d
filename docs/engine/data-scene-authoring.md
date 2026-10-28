@@ -21,6 +21,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
 | `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
 | `spatial` | 아니오 | 개발 소스의 opt-in 입체 지형·camera·billboard·native actor와 선택 shared-edge `connections` 설정. [공간 계약](data-scene-spatial.md)을 따른다. |
+| `lighting` | 아니오 | world 좌표의 flat `LightingScene2D`. 공간 문서와 동시 지정 불가. [조명 작성·patch 계약](public-api/authoring.md#2d-scene-lighting-placement-patch)을 따른다. |
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
 
@@ -130,6 +131,22 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 
 `SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. render layer는 `visual.layer ?? instance.layer`를 사용하고 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
+### 2D 레이어 관리
+
+공식 뷰어의 씬 도크 **그리기 레이어**는 실제 `visual.layer ?? instance.layer`를 기준으로 객체 수와 선택 상태를 표시한다. 위쪽 행이 앞 레이어이며 숫자가 클수록 앞에 그린다. 행을 선택하면 씬 목록을 필터링하고, **레이어 선택**은 그 레이어 객체들을 선택한다. **선택 객체 이동**은 선택 객체를 해당 레이어로 옮긴다. 앞/뒤 버튼과 행 드래그는 두 레이어의 객체들을 서로의 숫자 레이어로 교환하며 한 번의 Undo로 되돌린다. 개별 잠금 객체가 섞였거나 숨김·잠금 레이어를 대상으로 하면 전체 변경을 거부한다.
+
+레이어 값은 정수 `[-2147483648, 2147482647]`이다. 이동은 기존 transform/components patch를 사용하며 명시적 `visual.layer` override가 있으면 함께 바꾼다. Collider·충돌 그룹·body·animation·shadow 설정은 유지한다. **속성 → 변형**의 **그리기 레이어**도 같은 기준으로 동작한다. 스프라이트의 **레이어 내 순서**는 `sortOrder`, **발 위치 정렬**은 `depthSort`를 편집한다. 발 위치 정렬이 켜지면 같은 레이어 안에서 floor/elevation/발 위치가 먼저 적용되고 같은 깊이에서 `sortOrder`로 순서를 정한다.
+
+눈 아이콘은 2D 편집 화면에서 스프라이트와 소유 그림자를 숨기며 피킹·범위 선택에서도 제외한다. **이 레이어만 표시**를 다시 누르면 그전 숨김 상태로 복원한다. 편집 잠금은 레이어의 새 객체에도 적용하고 개별 객체 잠금과 독립적이다. **레이어 잠금 해제**는 개별 잠금을 풀지 않는다. **전체 표시**는 숨김만 해제한다. 숨김·레이어 잠금은 탭과 저장 rebase 동안 유지하는 UI 상태이며 초안·Undo·게임 JSON·collider·simulation을 바꾸지 않는다. HD-2D/게임 미리보기에서는 2D 정책을 일시 중단하고 2D 편집 복귀 시 복원한다.
+
+단독 보기 중 새 숫자 레이어를 추가해도 선택한 레이어만 표시하며 Undo 후에도 일관되게 유지한다. 단독 표시한 레이어 자체가 사라지면 그전 숨김 상태로 복원한다. 단독 보기의 복원 상태와 목록에서 선택한 레이어는 저장 rebase에서도 유지한다. HD-2D의 지형/레이어 목록 필터는 2D로 돌아올 때 2D 패널의 레이어 선택으로 복원한다.
+
+숨김·잠금 적용 도중 preview 오류가 발생하면 이전 레이어 정책과 객체 선택·hover를 함께 복원한다. 피킹 정렬은 Rust 렌더러와 같은 f32 정밀도를 사용하므로, native에서 같은 값이 되는 미세한 소수 차이로 뒤 객체를 잘못 고르지 않는다.
+
+별칭은 **레이어 번호의 로컬 이름표**다. 같은 source 문서 경로를 기준으로 이 브라우저/앱의 local storage에만 보관하며 게임 JSON에는 포함하지 않는다. 새 영구 layer ID나 이름 기반 런타임 레이어를 만드는 기능은 아니다. 파일을 공유할 때는 기존 숫자 레이어가 기준이다.
+
+UI 구성은 [Godot의 z-index/Y-sort](https://docs.godotengine.org/en/stable/classes/class_canvasitem.html), [Unity의 Sorting Layer/Order in Layer](https://docs.unity3d.com/Manual/2d-renderer-sorting.html), [Tiled의 눈·잠금 레이어 목록](https://docs.mapeditor.org/en/stable/manual/layers/)을 참고했다. Ferrum2D는 기존 numeric layer/patch 계약을 유지하며 이 authoring 보조 범위에 적용한다.
+
 ## Tiled/LDtk 타일 프레임 Assets
 
 공식 app의 **Import Tile Frames**는 기존 public `starter-scenes`의 `importTiledTilemap`/`importLDtkTilemap`을 사용한다.
@@ -174,7 +191,8 @@ manifest의 texture URL은 bundle 기준 상대 경로이며 color=`srgb`를 명
 현재 씬의 참조와 일치하는 source evidence는 app handoff의 `tileImports[]`로 전달한다. engine handoff/schema/public API는 바꾸지 않는다.
 
 원본 세션 예산은 staged/등록 revision 총 8건·64 MiB다. Undo/다른 fragment에 필요한 이전 revision은 유지한다.
-문서/모드 전환은 진행 작업을 취소하고 문서 닫기/종료는 그 문서의 소유 URL/texture를 해제한다.
+문서/모드 전환은 진행 작업을 취소하고 문서 닫기는 그 문서의 미저장 URL/texture를 해제한다.
+검증·저장된 같은 프로젝트 에셋은 다른 씬에서 계속 참조하도록 작업공간 종료까지 유지한다.
 브라우저의 미설치 참조는 scene Save를 막는다. native Open Project의 기본 문서는 아래 Save Project 경로를 사용하고,
 그 밖의 host/문서는 agent가 export의 hash·manifest와 동반 scene/patch를 확인해 프로젝트에 설치한다.
 
@@ -222,7 +240,8 @@ revision별 내용 기반 texture 이름으로 새 이미지를 별도 업로드
 잠금/문서/선택 변경은 적용 직전에 다시 확인한다. 문서 전환·Game Preview 진입은 진행 작업을 취소한다.
 
 JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, session revision 합계 8건/64 MiB 상한이다.
-문서 닫기/종료에서 Blob URL·GPU texture를 해제한다. 2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
+문서 닫기는 미저장 Blob URL·GPU texture를 해제한다. 검증·저장된 프로젝트 에셋은 같은 프로젝트의 다른 씬을 위해 유지하고 작업공간 종료 때 해제한다.
+2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
 
 app 전용 `asepriteImports[]` handoff 확장은 현재 씬이 참조하는 논리 asset 이름·revision ID·원본명·hash·frame을 제공한다.
 engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 필드를 추가하지 않는다.
@@ -320,7 +339,8 @@ Normal tool에서 만든 pair는 Save Assets를 실행한 뒤 씬을 저장한�
   Cancel/문서 전환은 늦은 UI 성공과 후속 씬 저장을 막지만 이미 확정한 파일 transaction은 완료될 수 있다.
 - 프로젝트 한도는 8 pair revision, 전체 pair의 color+normal PNG 합계 64 MiB, decoded color+normal 합계 8,388,608 pixel이다.
   PNG 한 파일은 16 MiB/4 MP 이하, metadata 한 파일은 4 MiB다. catalog 자동 삭제/정리는 제공하지 않는다.
-  문서 닫기는 메모리/GPU 자원만 해제하고 디스크 catalog를 줄이지 않는다.
+  문서 닫기는 미저장 메모리/GPU 자원만 해제한다. 저장·복원된 프로젝트 pair는 같은 프로젝트의 다른 씬에 제공하며
+  작업공간 종료 때 해제한다. 디스크 catalog는 문서 닫기로 줄이지 않는다.
 
 새 실행은 catalog/metadata/PNG를 다시 검증하고 **씬 적용 전에** 로드한다. Aseprite 원본 catalog와 color ID를 공유하면
 hash·색 공간이 일치할 때 GPU texture를 공유하며 새 normal texture만 별도로 소유한다.
@@ -343,7 +363,9 @@ Cancel은 후속 씬 저장과 오래된 UI 적용을 차단하지만 이미 시
 `manifest.textureOptions`는 `srgb`를 명시한다. 원본 Aseprite JSON의 `meta.image`는 바꾸지 않는다.
 기존 export v1에 identityDocument가 없으면 native import는 bundle.document에서 이를 복원한다.
 프로젝트 재개방 시 원본을 검증·로드하고 frame browser/재import를 복원한다. handoff의 `persisted`는 실제 파일 확인 뒤 true가 된다.
-첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다. 문서 간 참조 정책과 session 예산은 유지한다.
+첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다.
+검증·저장된 에셋은 명시적으로 같은 프로젝트로 연 씬 간에 공유하고, 미저장 세션 에셋과 다른 프로젝트/임의 문서의 참조는 차단한다.
+기본 문서를 닫아도 프로젝트 에셋의 GPU 자원을 유지하며, 새 catalog 쓰기 권한은 기존 기본 문서 경계를 유지한다.
 
 게임은 저장 catalog의 manifest를 로드한 뒤 씬을 적용한다. 생성 프로젝트의 기존 runtime bootstrap을 자동 수정하지 않는다.
 

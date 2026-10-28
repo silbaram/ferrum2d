@@ -8,7 +8,7 @@ import {
   type SpatialModelResource,
 } from "./spatialModel.js";
 import { validateSpatialModelFrame, type SpatialModelFrame } from "./spatialModelPacket.js";
-import type { SpatialRendererStats } from "./webgl2SpatialPass.js";
+import type { SpatialRendererStats } from "./renderer.js";
 const CAPACITY = 1024;
 const mipShader = `
 @group(0) @binding(0) var s: sampler;

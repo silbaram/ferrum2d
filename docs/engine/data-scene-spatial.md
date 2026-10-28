@@ -703,6 +703,7 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 | 설정 | 계약과 기본값 |
 | --- | --- |
 | `lighting.ambient` | linear RGB 0..4, 기본 `[0.15,0.15,0.15]` |
+| `lighting.enabled` | 선택 boolean, 생략/true는 조명 활성화. false는 작성된 광원·그림자 설정을 보존하고 조명/그림자 렌더만 끔 |
 | `lighting.lights` | 필수 배열, 최대 4개 점광원. 빈 배열은 ambient만 사용 |
 | `lights[].position` | world `x/y/elevation`, 각 ±1,000,000의 유한 f32 |
 | `lights[].radius` | 필수 0.1..1,000,000 world 단위, 범위 밖 기여 0 |

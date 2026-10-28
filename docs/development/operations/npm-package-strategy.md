@@ -54,6 +54,12 @@ npm run preview
 
 Consumer smoke 계열 report의 `version: 1`은 internal QA artifact 계약이다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 v1 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
 
+기존 npm/pnpm 게임 프로젝트의 SDK 갱신은 create-game tarball의 `ferrum-update-game` bin과
+데스크톱의 **파일 → 버전 및 업데이트**를 사용한다. Ferrum dependency를 동일 exact GitHub release로
+맞추고 package/lock 백업·checksum/설치 파일 검증·실패 복원을 수행한다. 배포용 agents 파일은 자동 덮어쓰지 않는다.
+`create-game` bin alias는 multi-bin 패키지에서도 기존 `npx <생성기 URL>` 추론을 유지한다.
+[업데이트 배포와 복구 계약](github-release.md#버전-확인과-업데이트)을 따른다.
+
 ## 적용 범위
 
 `@ferrum2d/agents`가 설치하는 범위:

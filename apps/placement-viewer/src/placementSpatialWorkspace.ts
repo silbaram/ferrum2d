@@ -97,6 +97,8 @@ export function installPlacementSpatialWorkspace(options: {
   canvas: HTMLCanvasElement;
   stage: HTMLElement;
   cameraToolbar: HTMLElement;
+  flushSceneSettings?(): boolean;
+  navigationSettings: HTMLElement;
   viewSettings: HTMLElement;
   gridChanged?(state: ScenePlacementViewerState): void;
   toolChange(): void;
@@ -133,6 +135,7 @@ export function installPlacementSpatialWorkspace(options: {
   let navigationTool: "select" | "pan" = "select";
   let spaceHeld = false;
   let cameraTransaction = false;
+  let previewCamera: SpatialCameraSpec | undefined;
   let drag:
     | {
         id: number;
@@ -150,9 +153,14 @@ export function installPlacementSpatialWorkspace(options: {
       }
     | undefined;
   const controls = document.createElement("div");
+  const modes = document.createElement("div");
+  modes.className = "placement-workspace-modes";
+  modes.setAttribute("role", "toolbar");
+  setUiAttribute(modes, "aria-label", "Workspace mode");
+  controls.append(modes);
   controls.className = "placement-mode-controls";
   controls.setAttribute("role", "toolbar");
-  setUiAttribute(controls, "aria-label", "Workspace mode");
+  setUiAttribute(controls, "aria-label", "Playback");
   const buttons = new Map<Mode, HTMLButtonElement>();
   for (const [mode, label] of [
     ["2d", "2D"],
@@ -166,7 +174,7 @@ export function installPlacementSpatialWorkspace(options: {
     button.dataset.placementMode = mode;
     button.addEventListener("click", () => changeMode(mode));
     buttons.set(mode, button);
-    controls.append(button);
+    modes.append(button);
   }
   const play = document.createElement("button"),
     pause = document.createElement("button"),
@@ -177,7 +185,7 @@ export function installPlacementSpatialWorkspace(options: {
     [stop, "Stop"],
   ] as const) {
     button.type = "button";
-    setUiText(button, label);
+    decorateViewportAction(button, label === "Play" ? "play" : label === "Pause" ? "pause" : "stop", label, undefined, true);
     button.dataset.placementPlayback = label.toLowerCase();
     setUiAttribute(button, "title", label === "Play" ? "Run the current scene" : label === "Pause" ? "Pause or resume the running scene" : "Stop and return to editing");
     controls.append(button);
@@ -185,6 +193,7 @@ export function installPlacementSpatialWorkspace(options: {
   play.addEventListener("click", () => changeMode("game"));
   pause.addEventListener("click", () => {
     if (active.mode !== "game") return;
+    if (!gameCamera.cancelGesture() || !gameCamera.flushInput()) return;
     try {
       const changed = active.paused
         ? runtime.engine.resumeDataScene()
@@ -308,11 +317,12 @@ export function installPlacementSpatialWorkspace(options: {
     cameraGroup = viewportGroup("View navigation"),
     frameGroup = viewportGroup("Frame view"),
     floorGroup = viewportGroup("Floor view");
-  const cameraMenu = createPlacementControlMenu("camera-spatial", "Camera", "camera");
+  const cameraMenu = createPlacementControlMenu("camera-spatial", "Editor View", "camera");
   const cameraHint = document.createElement("p");
   setUiText(cameraHint, "Editor view only. Game Preview uses the scene camera.");
   cameraMenu.panel.append(cameraHint, cameraGroup);
-  cameraControls.append(toolsGroup, cameraMenu.element, frameGroup, floorGroup);
+  cameraControls.append(toolsGroup);
+  options.navigationSettings.append(frameGroup, cameraMenu.element, floorGroup);
   const navigationButtons = new Map<string, HTMLButtonElement>();
   for (const [tool, label, title] of [
     ["select", "Select", "Select objects (V)"],
@@ -321,7 +331,7 @@ export function installPlacementSpatialWorkspace(options: {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.placementSpatialNavigation = tool;
-    decorateViewportAction(button, tool, label, tool === "select" ? "V" : "H");
+    decorateViewportAction(button, tool, label, undefined, true);
     setUiAttribute(button, "title", title);
     button.addEventListener("click", () => setNavigationTool(tool));
     navigationButtons.set(tool, button);
@@ -429,25 +439,24 @@ export function installPlacementSpatialWorkspace(options: {
     cameraGroup.append(button);
   }
   options.cameraToolbar.append(cameraControls);
+  const gameCameraLaunch = document.createElement("button");
+  gameCameraLaunch.type = "button";
+  gameCameraLaunch.dataset.placementGameCameraEdit = "true";
+  decorateViewportAction(gameCameraLaunch, "camera", "Game Camera");
+  setUiAttribute(gameCameraLaunch, "title", "Adjust the game camera live");
+  gameCameraLaunch.addEventListener("click", previewGameCamera);
+  cameraControls.append(gameCameraLaunch);
   const gameCamera = createPlacementGameCamera({
     canvas, stage,
     camera: () => state.spatial?.camera,
     editorCamera: () => active.camera,
-    canEdit: () => active.mode === "spatial" && !suspended && !drag && !cameraTransaction && !canvas.closest<HTMLElement>(".demo-shell")?.inert,
+    canEdit: () => (active.mode === "spatial" || liveGameCamera()) && !suspended && !drag && !cameraTransaction && !canvas.closest<HTMLElement>(".demo-shell")?.inert,
+    live: liveGameCamera,
+    previewInput: previewGameCameraInput,
+    closePreview: () => changeMode(active.returnMode ?? "spatial"),
     commit: commitGameCamera,
     report,
-    preview: () => {
-      changeMode("game");
-      if (active.mode !== "game") return;
-      try {
-        if (!runtime.engine.pauseDataScene()) throw new Error("Preview playback change rejected");
-        active.paused = true; active.gameFrame = true;
-        options.onChange(viewer.state());
-      } catch (error) {
-        changeMode(active.returnMode ?? "spatial");
-        report(error);
-      }
-    },
+    preview: previewGameCamera,
   });
   cameraMenu.panel.append(gameCamera.element);
   const assets = document.createElement("div");
@@ -995,7 +1004,8 @@ export function installPlacementSpatialWorkspace(options: {
     return patch ? mergeScenePlacementPatch(base, patch).document : base;
   }
   function commitGameCamera(camera: SpatialCameraSpec) {
-    if (active.mode !== "spatial" || suspended || !cancel()) return false;
+    if ((active.mode !== "spatial" && !liveGameCamera()) || suspended || !cancel()) return false;
+    previewCamera = undefined;
     options.finishEdit();
     try {
       viewer.beginEdit("Game Camera");
@@ -1012,10 +1022,38 @@ export function installPlacementSpatialWorkspace(options: {
       return false;
     }
   }
+  function liveGameCamera() {
+    return active.mode === "game" && !!active.paused && !!active.gameFrame && !!state.spatial;
+  }
+  function previewGameCameraInput(camera?: SpatialCameraSpec) {
+    if (!liveGameCamera()) { previewCamera = undefined; return; }
+    const next = camera ?? state.spatial!.camera;
+    const size = runtime.renderer.viewportSize();
+    if (!(size.width > 0 && size.height > 0)) return;
+    if (!runtime.engine.setDataSceneSpatialCamera(next, size)) throw new Error("Game camera preview rejected");
+    previewCamera = camera;
+  }
+  function previewGameCamera() {
+    if (suspended || canvas.closest<HTMLElement>(".demo-shell")?.inert || !state.spatial || !gameCamera.flushInput()) return;
+    changeMode("game");
+    if (active.mode !== "game") return;
+    try {
+      if (!runtime.engine.pauseDataScene()) throw new Error("Preview playback change rejected");
+      active.paused = true; active.gameFrame = true;
+      options.onChange(viewer.state());
+      canvas.focus({ preventScroll: true });
+    } catch (error) {
+      changeMode(active.returnMode ?? "spatial");
+      report(error);
+    }
+  }
   function changeMode(mode: Mode) {
     if (mode === active.mode) return;
     if (mode === "spatial" && !state.spatial) return;
+    if (!gameCamera.cancelGesture() || !gameCamera.flushInput()) return;
+    if (options.flushSceneSettings?.() === false) return;
     if (!cancel()) return;
+    previewCamera = undefined;
     options.finishEdit();
     const previous = active.mode;
     const previousPaused = active.paused,
@@ -1298,7 +1336,12 @@ export function installPlacementSpatialWorkspace(options: {
     play.hidden = active.mode === "game";
     pause.hidden = stop.hidden = active.mode !== "game";
     if (active.mode !== "spatial") cameraMenu.close();
-    setUiText(pause, active.paused ? "Resume" : "Pause");
+    const pauseLabel = active.paused ? "Resume" : "Pause";
+    if (pause.dataset.caption !== pauseLabel) {
+      decorateViewportAction(pause, active.paused ? "play" : "pause", pauseLabel, undefined, true);
+      setUiAttribute(pause, "title", "Pause or resume the running scene");
+      pause.dataset.caption = pauseLabel;
+    }
     controls.dataset.playbackState =
       active.mode === "game"
         ? active.paused
@@ -1309,7 +1352,10 @@ export function installPlacementSpatialWorkspace(options: {
       ".placement-add-controls",
     );
     if (addForm) addForm.hidden = active.mode !== "2d";
-    cameraControls.hidden = panel.hidden;
+    cameraControls.hidden = !state.spatial || active.mode === "2d";
+    for (const group of [toolsGroup, cameraMenu.element, frameGroup, floorGroup]) group.hidden = active.mode !== "spatial";
+    gameCameraLaunch.setAttribute("aria-pressed", String(liveGameCamera()));
+    gameCameraLaunch.disabled = suspended || !!drag || cameraTransaction;
     syncPitchControls();
     gameCamera.sync(resetInputs);
     const importDisabled = active.mode === "game" || suspended;
@@ -1733,6 +1779,7 @@ export function installPlacementSpatialWorkspace(options: {
     return pickCandidates(x, y)[0];
   }
   function cancel() {
+    if (!gameCamera.cancelGesture()) return false;
     candidates.hidden = true;
     palette.cancel();
     const previous = drag;
@@ -2194,7 +2241,8 @@ export function installPlacementSpatialWorkspace(options: {
   );
   const resize = new ResizeObserver(() => {
     try {
-      setCamera();
+      if (liveGameCamera()) previewGameCameraInput(previewCamera);
+      else setCamera();
     } catch (error) {
       report(error);
     }
@@ -2202,6 +2250,20 @@ export function installPlacementSpatialWorkspace(options: {
   resize.observe(canvas);
   return {
     assetPalette: palette,
+    runScene() {
+      if (suspended || canvas.closest<HTMLElement>(".demo-shell")?.inert) return false;
+      if (!gameCamera.cancelGesture() || !gameCamera.flushInput()) return false;
+      if (options.flushSceneSettings?.() === false) return false;
+      changeMode("game");
+      if (active.mode !== "game") return false;
+      if (active.paused) {
+        if (!runtime.engine.resumeDataScene()) return false;
+        active.paused = false;
+      }
+      active.gameFrame = false;
+      options.onChange(viewer.state());
+      return true;
+    },
     registerModel(id: string, asset: SpatialModelAsset) {
       if (!models.has(asset.contentId)) {
         if (
@@ -2239,7 +2301,7 @@ export function installPlacementSpatialWorkspace(options: {
       };
     },
     mode: () => active.mode,
-    ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag(),
+    ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag() || gameCamera.ownsGesture(),
     flushCameraInput: () => gameCamera.flushInput(),
     target: () => (active.target ? { ...active.target } : undefined),
     selectSurface(id: string) {
@@ -2255,6 +2317,7 @@ export function installPlacementSpatialWorkspace(options: {
     activate(documentKey: string, root: HTMLElement) {
       if (!cancel()) return false;
       suspended = false;
+      previewCamera = undefined;
       importRevision++;
       key = documentKey;
       inspector = root;

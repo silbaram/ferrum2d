@@ -1,4 +1,4 @@
-import { setUiAttribute, uiMessage } from "./placementLocale";
+import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import type {
   ScenePlacementViewer,
   ScenePlacementViewerState,
@@ -47,12 +47,19 @@ export function installPlacementTransformGizmo(options: {
   isAdding(): boolean;
   snapEnabled(): boolean;
   finishEdit(): void;
+  selectionBounds(): DOMRect | undefined;
 }) {
   const { viewer, canvas } = options;
   const root = document.createElement("div");
   root.className = "placement-transform-gizmo";
+  root.hidden = true;
   root.setAttribute("role", "toolbar");
   setUiAttribute(root, "aria-label", "Transform selection");
+  const caption = document.createElement("div"), actions = document.createElement("div"), hint = document.createElement("div");
+  caption.className = "placement-transform-caption";
+  actions.className = "placement-transform-actions";
+  hint.className = "placement-transform-hint";
+  root.append(caption, actions, hint);
   const rotate = handle(
     "rotate",
     "Rotate selection",
@@ -64,16 +71,15 @@ export function installPlacementTransformGizmo(options: {
     '<path d="M2 10v4h4M10 2h4v4M2 14l12-12"/>',
   );
   options.stage.append(root);
+  let current = viewer.state();
+  let hovered: string | undefined;
   let drag:
     | {
         id: number;
         target: HTMLButtonElement;
         kind: string;
         origin: ScenePlacementViewerState;
-        x: number;
-        y: number;
-        angle: number;
-        distance: number;
+        startX: number;
       }
     | undefined;
   function handle(kind: string, label: string, path: string) {
@@ -81,40 +87,34 @@ export function installPlacementTransformGizmo(options: {
     button.type = "button";
     button.dataset.placementTransformGizmo = kind;
     setUiAttribute(button, "aria-label", label);
-    setUiAttribute(
-      button,
-      "title",
-      uiMessage("{0} (arrow keys)", uiMessage(label)),
-    );
     button.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">${path}</svg>`;
-    root.append(button);
+    const text = document.createElement("span"), value = document.createElement("span");
+    setUiText(text, kind === "rotate" ? "Rotate" : "Scale");
+    value.className = "placement-transform-value";
+    button.append(text, value);
+    setUiAttribute(button, "title", kind === "rotate" ? "Drag sideways · Arrow keys rotate" : "Drag sideways · Arrow keys scale");
+    actions.append(button);
+    button.addEventListener("pointerenter", () => { hovered = kind; sync(current); });
+    button.addEventListener("pointerleave", () => { hovered = undefined; sync(current); });
+    button.addEventListener("focus", () => sync(current));
+    button.addEventListener("blur", () => queueMicrotask(() => sync(current)));
     button.addEventListener("pointerdown", (event) => {
       const state = viewer.state();
       if (
         event.button !== 0 ||
         !state.selected ||
         hasLockedSelection(state) ||
-        options.isAdding()
+        options.isAdding() || root.hidden
       )
         return;
-      const rect = canvas.getBoundingClientRect(),
-        viewport = state.viewport;
-      const x =
-        rect.left +
-        (state.selected.transform.x - viewport.worldMinX) * viewport.zoom;
-      const y =
-        rect.top +
-        (state.selected.transform.y - viewport.worldMinY) * viewport.zoom;
       drag = {
         id: event.pointerId,
         target: button,
         kind,
         origin: state,
-        x,
-        y,
-        angle: Math.atan2(event.clientY - y, event.clientX - x),
-        distance: Math.max(1, Math.hypot(event.clientX - x, event.clientY - y)),
+        startX: event.clientX,
       };
+      root.dataset.dragging = kind;
       button.setPointerCapture(event.pointerId);
       event.preventDefault();
       event.stopPropagation();
@@ -136,7 +136,7 @@ export function installPlacementTransformGizmo(options: {
         !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
           event.code,
         ) ||
-        drag
+        drag || root.hidden || hasLockedSelection(viewer.state())
       )
         return;
       event.preventDefault();
@@ -161,17 +161,9 @@ export function installPlacementTransformGizmo(options: {
   }
   function apply(event: PointerEvent) {
     if (!drag) return;
-    let angle =
-      Math.atan2(event.clientY - drag.y, event.clientX - drag.x) - drag.angle;
-    angle = Math.atan2(Math.sin(angle), Math.cos(angle));
-    let ratio = Math.max(
-      0.01,
-      Math.min(
-        100,
-        Math.hypot(event.clientX - drag.x, event.clientY - drag.y) /
-          drag.distance,
-      ),
-    );
+    const dx = event.clientX - drag.startX;
+    let angle = dx * Math.PI / 180;
+    let ratio = Math.max(0.01, Math.min(100, 2 ** (dx / 120)));
     if (event.shiftKey || options.snapEnabled()) {
       angle = (Math.round(angle / (Math.PI / 12)) * Math.PI) / 12;
       ratio = Math.max(0.1, Math.round(ratio * 10) / 10);
@@ -188,28 +180,55 @@ export function installPlacementTransformGizmo(options: {
     const previous = drag;
     if (!previous) return;
     drag = undefined;
+    delete root.dataset.dragging;
     if (previous.target.hasPointerCapture(previous.id))
       previous.target.releasePointerCapture(previous.id);
     if (cancel) {
       options.onChange(viewer.cancelEdit());
       options.finishEdit();
     }
+    sync(viewer.state());
   }
   window.addEventListener("blur", () => end(true));
+  options.stage.addEventListener("placement-navigation-change", () => sync(viewer.state()));
+  function sync(state: ScenePlacementViewerState) {
+    current = state;
+    const primary = state.selected;
+    const panning = ["pan", "panning"].includes(options.stage.dataset.navigationTool ?? "");
+    const canvasRect = canvas.getBoundingClientRect(), bounds = options.selectionBounds();
+    const offscreen = !!bounds && (
+      bounds.right <= canvasRect.left || bounds.left >= canvasRect.right ||
+      bounds.bottom <= canvasRect.top || bounds.top >= canvasRect.bottom);
+    root.hidden = !primary || options.isAdding() || panning || !bounds || (!drag && offscreen);
+    if (root.hidden || !primary || !bounds) return;
+    const locked = hasLockedSelection(state);
+    const name = state.selectedInstanceIds.length > 1 ? uiMessage("{0} · {1} selected", primary.instanceId, state.selectedInstanceIds.length) : uiMessage("{0}", primary.instanceId);
+    setUiText(caption, name);
+    setUiAttribute(caption, "title", name);
+    actions.hidden = locked;
+    const angle = Number((primary.transform.rotationRadians * 180 / Math.PI).toFixed(1));
+    rotate.querySelector(".placement-transform-value")!.textContent = `${angle}°`;
+    scale.querySelector(".placement-transform-value")!.textContent = `${Number((primary.transform.scale * 100).toFixed(1))}%`;
+    const focused = document.activeElement === rotate ? "rotate" : document.activeElement === scale ? "scale" : undefined;
+    const active = drag?.kind ?? hovered ?? focused;
+    const keyboard = !drag && !hovered && !!focused;
+    const instructions = locked ? "Selection locked" : active === "rotate"
+      ? keyboard ? "Arrow keys: 15° · Shift: 1°" : "Drag sideways · Shift: 15° snap"
+      : active === "scale" ? keyboard ? "Arrow keys: 10% · Shift: 1%" : "Drag sideways · Shift: 10% snap" : "Drag the object to move";
+    setUiText(hint, instructions);
+    setUiAttribute(hint, "title", instructions);
+    if (drag) return; // Keep the grabbed control still until release.
+    root.style.maxWidth = `${Math.max(0, canvasRect.width - 16)}px`;
+    const width = root.offsetWidth, height = root.offsetHeight;
+    const x = (bounds.left + bounds.right) / 2 - canvasRect.left - width / 2;
+    const above = bounds.top - canvasRect.top - height - 8;
+    const below = bounds.bottom - canvasRect.top + 8;
+    const y = above >= 8 ? above : below + height <= canvasRect.height - 8 ? below : above;
+    root.style.left = `${Math.max(8, Math.min(canvasRect.width - width - 8, x))}px`;
+    root.style.top = `${Math.max(8, Math.min(canvasRect.height - height - 8, y))}px`;
+  }
   return {
     cancel: () => end(true),
-    sync(state: ScenePlacementViewerState) {
-      const primary = state.selected;
-      root.hidden = !primary || hasLockedSelection(state) || options.isAdding();
-      if (!primary) return;
-      const x =
-        (primary.transform.x - state.viewport.worldMinX) * state.viewport.zoom;
-      const y =
-        (primary.transform.y - state.viewport.worldMinY) * state.viewport.zoom;
-      root.style.left = `${x}px`;
-      root.style.top = `${y}px`;
-      rotate.style.transform = "translate(-12px, -72px)";
-      scale.style.transform = "translate(48px, 36px)";
-    },
+    sync,
   };
 }

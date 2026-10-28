@@ -4,11 +4,95 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
 
+기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
+파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
+
+## 엔진·에디터 버전 업데이트
+
+**파일 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
+공개된 GitHub beta 릴리스를 조회하며, Git push나 draft를 새 버전으로 취급하지 않는다.
+
+- **프로젝트 엔진**: 데스크톱에서 **프로젝트 열기**로 연 npm/pnpm 게임의 Ferrum2D 패키지를 동일 릴리스로 갱신한다. Node와 해당 패키지 관리자가 필요하다. 단독 JSON/폴더 사본·엔진 monorepo·workspace/file/link 의존성은 자동 변경하지 않는다.
+- **에디터 앱**: 공개키가 포함된 설치 앱에서 해당 OS의 서명 업데이트 파일을 확인·설치하고 재시작한다. 내장 미리보기 엔진도 함께 바뀐다. Linux 자동 교체는 AppImage에서 지원하며 `.deb`는 수동 재설치한다.
+- **웹 뷰어**: 릴리스 정보와 데스크톱 사용 안내를 보여준다. 웹 앱 자체는 사이트 재배포로 바뀐다.
+
+미저장 씬이 어느 탭에든 있거나 씬 실행/저장/편집 중이면 설치를 막는다. 설치 중에는 패널/앱을 닫지 않는다.
+프로젝트 갱신은 `.ferrum-updates/<시각-id>/`에 원본 `package.json`·잠금 파일과 결과를 남긴다.
+다운로드 SHA-256과 설치된 파일을 대조하며 lifecycle hook을 실행하지 않는다. 실패하면 복원을 시도하고,
+외부 `package.json` 변경이나 복구 실패는 백업 경로와 함께 알린다. 다른 패키지 관리자 작업은 동시에 실행하지 않는다.
+게임 코드·씬 migration·사용자 agent 파일을 바꾸거나 게임 검증을 자동 실행하지 않으므로 갱신 후 `npm run ferrum:check`를 수행한다.
+
+첫 사용에는 이 기능이 포함된 앱과 서명 업데이트 자료의 공개가 필요하다.
+키 없는 개발 빌드나 아직 installer/metadata가 없는 릴리스는 설치를 제공하지 않는다.
+[서명 자료 준비와 CLI 사용법](../../docs/development/operations/github-release.md#버전-확인과-업데이트)을 따른다.
+
+## 프로젝트 씬 탐색기
+
+**파일 → 프로젝트 씬**을 누르거나 왼쪽 도크의 **프로젝트 씬** 탭을 선택한다.
+기존 오브젝트 트리는 같은 도크의 **오브젝트** 탭에 있다. 검색은 파일·폴더 경로를 대상으로 하며,
+한 번 클릭해 선택하고 더블클릭·Enter·**열기**로 문서를 연다. 방향키와 Home/End로 목록을 이동한다.
+**씬 실행**은 선택한 문서를 열고 플레이하며, 이미 열린 씬은 기존 탭·초안·Undo를 유지한다.
+잘못된 문서는 원인을 표시하고 열기·실행을 막는다. 열기 실패 후 이전 씬을 실행하지 않는다.
+동시에 열 수 있는 문서는 기존과 같이 최대 8개다.
+
+- 데스크톱: **폴더 선택**으로 프로젝트를 연 뒤 `public/` 아래의 Scene Authoring JSON을 탐색한다.
+  프로젝트 기본 문서는 `public/scene-authoring.json` 또는 `public/placement.scene-authoring.json`이어야 한다.
+  목록 조회는 읽기 전용이며, 실제 열린 개별 씬만 기존 저장 권한을 얻는다. 단독 JSON 열기는 프로젝트 탐색 권한을 주지 않는다.
+  같은 프로젝트에서 검증·저장된 Aseprite/타일/노멀 에셋은 여러 씬에서 참조할 수 있다.
+  처음 연 씬을 닫아도 프로젝트 에셋은 현재 작업공간이 끝날 때까지 유지하며, 미저장 에셋은 문서별로 유지·해제한다.
+  추가 씬의 배치 저장은 지원하지만, 새 원본 에셋의 **Save Project**는 기존 기본 문서 권한을 유지한다.
+  임의 JSON이나 다른 프로젝트가 같은 에셋 ID만으로 접근 권한을 얻지는 않는다.
+- 공식 웹/개발 서버: 앱 `public/`에서 생성한 `placement-scenes.json` 목록을 사용한다.
+  개발 서버의 새로고침은 다시 탐색하고, 정적 배포 목록은 빌드 시 확정한다. 공개할 씬·에셋만 `public/`에 둔다.
+  개발 중 `public/**/*.json` 변경은 HMR reload를 일으키지 않는다. 목록은 새로고침하고, 이미 열린 문서는 초안을 유지한다.
+- 브라우저 **폴더 선택**: 사용자가 선택한 파일 사본에서 문서를 찾고 Export Only로 연다.
+  새로고침은 폴더를 다시 선택한다. 에셋 폴더 전체를 자동 업로드하거나 게임 코드를 실행하지 않으므로,
+  문서가 참조하는 에셋은 이미 뷰어에서 사용할 수 있어야 한다. 같은 폴더를 다시 선택하면 새 사본으로 취급한다.
+
+탐색은 일반 `.json`도 format/version으로 식별한다. 알려진 `*.scene-authoring.json`의 오류는 목록에 표시하며,
+실제 열기에서 기존 전체 문서 검증을 수행한다. `assets`, `node_modules`, `dist`, `target`, 숨김 디렉터리는 탐색하지 않는다.
+native/개발 서버는 symlink도 건너뛴다.
+native/개발 서버는 깊이 8, 디렉터리 항목 4,096개, JSON 후보 512개, 씬 256개, 문서당 2 MiB·총 읽기 32 MiB로 제한한다.
+브라우저 폴더 입력도 같은 파일·씬·읽기 예산을 적용하며 경로는 10개 segment 이하다.
+지원하지 않는 경로 문자나 예산 초과로 일부 항목을 생략하면 한도 안내를 표시한다.
+읽을 수 없거나 탐색 도중 삭제된 하위 경로는 정상 씬 목록을 유지한 채 최대 32개 읽기 실패 진단으로 알린다.
+상태 안내와 툴팁에서 경로·오류 코드를 확인한다. 명시적 탐색 루트의 접근 오류는 목록 조회 실패로 구분한다.
+이 기능은 Scene Authoring runtime 미리보기다. 프로젝트의 임의 TypeScript 게임 진입점·HUD 실행이나 게임 중 씬 전환은 게임 프로젝트에서 구현한다.
+
+## 예제 실행
+
+**파일 → 예제 → 2D 등불 정원**은 타일·레이어·픽셀 캐릭터·물 애니메이션·충돌·길 찾기·수집·조명과 그림자를 보여준다.
+`http://localhost:5173/?scene=garden` 또는 `?scene=2d`로 바로 열 수도 있다.
+실행을 누른 뒤 바닥을 클릭하면 캐릭터가 이동하고 정원 토큰 3개를 수집한다. 벽·건물·운하는 통과할 수 없으며
+운하는 다리로 건넌다. 이동·충돌·걷기/정지 애니메이션·수집은 Rust 런타임이 처리한다.
+일시정지 버튼은 재개로 전환되며 정지는 원래 위치와 토큰을 복원한다. 편집 중에는 게임 진행을 멈춘다.
+
+바닥 타일 432개는 실수로 옮기지 않도록 처음에 잠그며, 잠금 해제 후 기존 배치 도구로 편집할 수 있다.
+집·나무·소품과 캐릭터도 기존 선택·변형·Undo 경로를 사용한다. **보기 → 조명**에서 등불과 환경광을 바꿀 수 있다.
+예제는 별도 문서 탭으로 열고 기존 탭의 초안을 보존한다. 내장 예제는 Export Only이며 원본 JSON을 자동으로 덮어쓰지 않는다.
+같은 메뉴의 **HD-2D 마을**과 **기본 2D**로 다른 예제도 연다. 기본 2D의 작은 검증용 씬은 유지한다.
+
+원본 에셋과 JSON은 Python 표준 라이브러리만 사용하는 `scripts/assets/build-lantern-garden.py`로 재생성한다.
+재생성은 예제 JSON 수정을 덮어쓰므로 에셋/구성의 원본을 바꿀 때 generator를 함께 수정한다.
+
+```bash
+python3 scripts/assets/build-lantern-garden.py --check  # 파일을 쓰지 않고 재현성 확인
+python3 scripts/assets/build-lantern-garden.py          # atlas/manifest/예제 JSON 재생성
+```
+
 ## 확인 기술
 
 현재 작업공간은 2D·HD-2D·Game Preview 모드를 공유한다. 2D에서는 대표 객체의 pivot을 기준으로
 그룹 회전·균일 scale을 gizmo/숫자/handle의 방향키로 적용한다. 회전 방향키는 15도(Shift 1도),
 scale 방향키는 10%(Shift 1%)다. 드래그 snap은 15도/0.1배이며 한 gesture가 한 Undo가 된다.
+선택 객체의 실제 visual 테두리 옆에 이름·**회전/크기** 버튼과 현재 각도/백분율을 한곳에 표시한다.
+버튼을 좌우로 드래그하면 회전(1px당 1°) 또는 균일 크기(오른쪽 120px당 2배)가 바뀐다.
+선택 테두리 밖에 도구를 놓고 canvas 안에 유지한다. 이름은 객체와 함께 회전하지 않으며,
+화면 밖 객체·화면 이동·에셋 배치·게임 실행 중에는 도구를 숨긴다. 잠긴 선택은 이름/잠금 안내만 표시한다.
+진행 중인 변형으로 객체가 화면 밖에 나가도 잡은 도구는 유지하며, Escape는 변형 전체를 취소한다.
+기본 선택에는 시각 요소의 얇은 테두리만 표시한다. **보기 → 충돌 영역**을 켜면 별도 점선과
+`충돌 영역` 이름표·위치 이동 핸들이 나타난다. 이 표시는 문서·이력과 별개인 현재 보기 설정이다.
+충돌 위치 핸들을 드래그하면 기존 collider offset을 수정하고, primitive의 모서리 핸들은 visual/collider 크기를 함께 수정한다.
 Asset preview를 viewport로 드래그하면 선택한 sprite/frame과 기본 collider를 기존 Add Sprite 경로로 배치한다.
 
 HD-2D에서는 다층·경사 surface, authored model bounds·billboard를 선택하고 XY·body 높이/층·시각 offset,
@@ -31,13 +115,32 @@ Height handle은 surface top/end/base 또는 body 높이를 함께 이동한다.
 HD-2D의 지형도 선택 해제 대상이며, 화면 이동·에셋 배치 도구의 클릭은 해당 도구 동작을 유지한다.
 선택 해제는 배치 문서·편집 카메라·Undo/Redo 이력을 변경하지 않는다.
 중간 버튼/Alt drag와 Orbit/Zoom/Reset은 문서와 분리한 탭별 편집 camera를 조작한다.
-**카메라 → 위에서 보기 / 낮게 보기**는 내려다보는 각도를 10°씩 조절한다.
+**보기 → 편집 시점 → 위에서 보기 / 낮게 보기**는 내려다보는 각도를 10°씩 조절한다.
 같은 메뉴의 **내려다보는 각도** 슬라이더는 1~89°를 1° 단위로 조절하며 현재 각도를 표시한다.
 작은 각도는 수평에 가까운 시점, 큰 각도는 위에서 내려다보는 시점이다. 씬 중심·탐색 카메라 거리·화각과
 작업 평면 높이를 유지하고 직교/원근 모두 지원한다. 카메라 초기화는 문서의 원래 각도로 돌아간다.
 각도는 탭별 편집 상태이며 JSON·patch·Undo에 기록하지 않는다. Game Preview는 작성된 씬 camera를 사용하고 정지하면 편집 각도를 복원한다.
 
-**카메라 → 게임 카메라**에서 실제 게임에 저장할 구도를 작성한다. 내려다보는 각도·수평 방향·중심 X/Y/높이를
+뷰포트 상단의 **게임 카메라** 버튼을 누르면 게임을 일시정지하고 화면 옆에 실시간 조절 패널을 연다.
+HD-2D 편집과 실행 중인 게임 미리보기 모두에서 진입할 수 있다. 패널은 외부 클릭으로 닫히지 않으며,
+게임 화면을 가리지 않도록 별도 공간을 사용한다. 각도 슬라이더와 위치·확대 수치 입력 중 실제 native 게임
+카메라가 즉시 갱신된다. 숫자 입력은 Enter/포커스 이동, 슬라이더는 드래그 종료 시 한 건의 변경으로 확정한다.
+입력 중 Escape는 미확정 구도를 취소한다. 잘못된 값은 기존 구도로 복원하고 패널 안에 오류를 표시한다.
+입력 확정 시 작성 문서를 native 런타임에 다시 적용한다. 게임 진행 상태를 이어서 확인할 때는 구도를 먼저 확정한 뒤 실행한다.
+
+게임 카메라 미리보기에서는 화면을 **왼쪽 드래그**하여 회전하고, **중간 버튼 또는 Space+왼쪽 드래그**로
+화면을 이동하며, **휠**로 확대/축소한다. 이동은 실제 게임 프레임의 CSS 픽셀을 기준으로 하므로 pixelArt
+여백·직교/원근·화면 배율에 관계없이 마우스를 움직인 거리와 일치한다.
+패널의 **숫자 이름**을 좌우로 드래그하면 값을 조절한다. `Shift`는 0.1배 미세 조절,
+`Ctrl/Cmd`는 10배 빠른 조절이다. 직접 숫자를 입력하는 방식도 유지한다.
+미리보기 진입 시 뷰포트로 포커스를 옮긴다. Space 이동은 뷰포트에 포커스가 있을 때 적용해 버튼과 접기 메뉴의 기본 키보드 조작을 유지한다.
+드래그 종료마다 한 건의 카메라 변경을 기록하고, 연속 휠 입력은 180ms 동안 추가 입력이 없을 때 한 건으로 확정한다.
+드래그 중에는 저장을 차단한다. Escape·포인터 취소·포커스 상실은 미확정 구도를 복원하며,
+native 복원이 거절되면 제스처 소유권을 유지하고 Escape로 다시 시도한다. 재개와 편집 전환도 미확정 드래그를 취소한다.
+이 조작은 [Unity Scene 탐색](https://docs.unity3d.com/Manual/SceneViewNavigation.html)과
+[Godot Inspector 숫자 조절](https://docs.godotengine.org/en/stable/tutorials/editor/inspector_dock.html)의 직접 조작 방식을 참고했다.
+
+기존 **보기 → 편집 시점 → 게임 카메라**에서도 실제 게임에 저장할 구도를 작성한다. 내려다보는 각도·수평 방향·중심 X/Y/높이를
 조절하며, 직교는 `화면 범위`가 작을수록 확대된다. 원근은 `카메라 거리`와 `화각`을 사용한다.
 확대/축소 버튼도 게임 카메라의 값으로 기록된다. `카메라 고급 설정`에서 위치와 near/far를 조절할 수 있다.
 게임 카메라 각도는 -90° 초과 90° 미만이며, 0° 수평 시점과 음수 각도도 지원한다. 편집 탐색의 1~89° 제한과 구별한다.
@@ -48,9 +151,11 @@ HD-2D의 지형도 선택 해제 대상이며, 화면 이동·에셋 배치 도�
 
 `현재 시점 적용`은 편집 시점을 게임 카메라에 복사하고 한 건 Undo로 기록한다. 작업 격자 표시를 위한
 임시 eye/far 보정값은 저장하지 않는다. 게임 카메라 수치 변경은 편집용 탐색 시점을 유지한다.
-`게임 카메라 보기`는 실제 게임 카메라와 pixelArt 설정을 적용한 **일시정지 미리보기**를 연다.
+`게임 카메라 보기`도 같은 실시간 조절 패널과 실제 게임 카메라·pixelArt 설정을 적용한 **일시정지 미리보기**를 연다.
 점선 `게임 화면 범위`는 native가 전달한 실제 viewport 영역을 CSS 좌표로 표시한다.
-`재개`는 실행을 시작하고, `정지`는 이전 편집 시점으로 돌아온다. 게임 실행 중에는 게임 카메라를 작성하지 않는다.
+`재개`는 실행을 시작하며 카메라 패널을 닫고 편집을 잠근다. **게임 카메라**를 다시 누르면 현재 실행을 일시정지하고
+조절을 계속한다. `정지` 또는 `편집으로 돌아가기`는 이전 편집 시점으로 돌아온다. 카메라 Undo/Redo는 편집으로
+돌아온 뒤 기존 문서 이력에서 수행하며, 확정한 구도는 기존 저장/내보내기로 유지한다.
 
 카메라 변경은 spatial patch v5의 씬 수준 `setCamera` operation이며, 기존 export/handoff·desktop 저장과
 다시 열기에 포함된다. browser-only 모드에서는 저장 상태 표시와 같이 명시적으로 export해야 한다.
@@ -85,7 +190,7 @@ GLB는 asset ID/contentId가 맞는 resource를 공개 loader로 import한다. D
 직접 import와 catalog load 모두 model cache 16개/128 MiB 예산을 지킨다.
 Standalone/browser 문서의 외부 모델은 먼저 Import Model로 불러온다.
 Game Preview를 종료하면 작성 초안·history·편집 camera를 복원한다.
-Viewport 상단의 `Grid`는 2D/HD-2D 배치 기준선을 기본 표시한다. 옆 숫자는 월드 단위 기본 간격이며
+`보기 → 격자`는 2D/HD-2D 배치 기준선을 기본 표시한다. 옆 숫자는 월드 단위 기본 간격이며
 Snap과 공유하지만 표시 여부와 좌표 정렬은 독립적이다. 줌 아웃에서는 선분 512개 이하와 최소 표시 간격을 유지하도록
 기본 간격의 배수로 줄이고 실제 표시 간격을 `units`로 표시한다. 원근 화면의 먼 격자는 투명도를 낮춘다. 5칸마다 큰 구획과 원점 축을 구분한다.
 HD-2D 작업 격자는 지형 유무와 독립해 화면 밖까지 이어지는 X/Y 평면을 표시한다. 기본 높이·층은 0이며
@@ -112,7 +217,7 @@ Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
 
 | 기술 | 설명 |
 | --- | --- |
-| Data Scene preview | `public/placement.scene-authoring.json`을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
+| Data Scene preview | 기본 `public/placement.garden.scene-authoring.json`을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
 | Engine-style authoring shell | `@ferrum2d/authoring-viewer` app chrome helper로 top toolbar, left object list, center viewport, right inspector, bottom runtime/status bar 구조를 만든다. |
 | Workspace docks | Scene/Inspector/Panels 접기, Focus, pointer·keyboard 크기 조절과 프로젝트별 localStorage 설정을 제공한다. 문서 patch는 바꾸지 않는다. |
 | Scene document tabs | 최대 8개 문서의 초안·선택·Undo 이력을 분리하며 단일 canvas/runtime을 재사용한다. |
@@ -145,9 +250,10 @@ JSON·patch·handoff·입력값과 원본 엔진 진단은 번역하지 않는�
 pnpm dev:placement-viewer
 ```
 
-개발 서버에서 `/`는 기존 2D 문서를, `/?scene=hd2d`는 지형·경사로·다층 발판과 sprite 3개가 있는 HD-2D 샘플을 연다.
+개발 서버에서 `/`는 2D 정원을, `/?scene=hd2d`와 `/?scene=village`는 HD-2D 마을을 연다.
 공간 데이터가 있는 문서는 HD-2D로 시작하며 상단 **2D / HD-2D**로 모드를 전환한다.
-HD-2D 샘플 원본은 `public/placement.hd2d.scene-authoring.json`이다. 브라우저 샘플 편집은 export를 사용하며 기본 2D 문서 저장 endpoint에 쓰지 않는다.
+HD-2D 마을 원본은 `public/placement.village.scene-authoring.json`이다. 이전의 지형·발판·사각 sprite 기초 씬은 테스트 입력으로만 유지한다.
+브라우저 마을 편집은 export를 사용하며 정원 문서 저장 endpoint에 쓰지 않는다.
 
 ### Blender 중세 마을 예제
 
@@ -403,7 +509,8 @@ host 파일 쓰기는 전용 artifact 디렉터리에서만 수행한다. 공식
 
 ## 문서 이력과 저장 충돌
 
-상단에 Undo/Redo와 Clean 또는 Saved/Modified·이력 수를 표시한다. 파일 저장이 불가능한 문서는
+상단에 Undo/Redo 아이콘을 제공하고 툴팁에 단축키를 표시한다. 문서 탭의 수정 표시와 하단 상태 바로 변경 여부를 확인한다.
+저장 상태와 전체 문서 경로는 `파일` 메뉴에서 확인한다. 파일 저장이 불가능한 문서는
 `Export Only`와 초안 변경 수를 독립 표시하며 Copy Patch/Handoff로 변경을 보관한다.
 텍스트 입력 중 Ctrl/Cmd+Z는 입력칸의 기본 동작을
 유지하며 focus를 벗어나면 transform input을 한 건으로 확정한다. 이력은 문서당 최대 100건/8 MiB의
@@ -420,9 +527,9 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 
 ## 작업공간 조작
 
-- `화면 구성 / Layout`에서 `Scene`, `Inspector`, `Panels`를 접거나 복원한다. 같은 메뉴의 `Focus`는 기존 설정을 보존하고 viewport에 집중한다.
+- 데스크톱의 `보기 → 화면 구성 / Layout`에서 `Scene`, `Inspector`, `Panels`를 접거나 복원한다. 같은 메뉴의 `Focus`는 기존 설정을 보존하고 viewport에 집중한다.
 - 뷰포트 도구 행의 `화면 확장 / Expand View`는 좌우·하단 패널을 함께 접고 `화면 복원 / Restore View`로 원래 구성을 돌린다.
-  옆에는 실제 canvas 크기를 CSS 픽셀로 표시한다. 좌우·하단 경계의 손잡이를 드래그해 보는 공간을 조절하며 방향키로 미세 조절할 수 있다.
+  `보기` 안에는 실제 canvas 크기를 CSS 픽셀로 표시한다. 좌우·하단 경계의 손잡이를 드래그해 보는 공간을 조절하며 방향키로 미세 조절할 수 있다.
   좁은 화면에서는 기존 패널 서랍과 닫기 버튼을 사용한다.
 - panel 경계를 drag하거나 focus 후 방향키로 8px, Shift+방향키로 32px 조절한다. Home/End는 최소/최대,
   Escape는 진행 중인 크기 조절을 취소한다. `화면 구성 → Reset Layout`은 기본 배치로 복원한다.
@@ -430,11 +537,11 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
   Close 또는 Escape로 닫으면 연 버튼으로 focus가 돌아간다. 패널 탭은 방향키/Home/End로 전환한다.
   입력칸과 진행 중 gesture의 Escape 처리를 우선한다. desktop은 viewport 360px을 우선 확보하고 panel 폭을 조정한다.
 - 서랍 전환은 desktop 크기·접힘 설정을 덮어쓰지 않는다. 좁은 창에서도 상단 동작 버튼은 줄바꿈해 표시한다.
-  높이가 낮은 창에서는 동작·문서·카메라 도구를 한 줄 가로 스크롤로 표시하고, 남은 높이에 맞춰 서랍을 줄여 canvas 공간을 확보한다.
+  주 도구는 한 줄로 유지하고 패널 탭을 필요한 행에 배치한다. 남은 높이에 맞춰 서랍을 줄여 canvas 공간을 확보한다.
 - 크기·접힘 상태만 프로젝트별 localStorage에 저장한다. storage가 막히거나 설정 JSON이 손상돼도 기본값으로 동작한다.
 - 고정 상태 행의 변경/문제 수 옆 `Review`는 Agent Changes를, `Export`는 Inspector의 Handoff를 연다.
   Copy Patch/Handoff와 Save는 기존 참조 보호와 host 권한을 따른다. Export Only host에서는 파일 저장이 비활성화된다.
-- `Open JSON`은 2 MiB 이하의 2D·HD-2D Scene Authoring JSON을 새 탭으로 연다. 가져온 파일은 Copy Patch/Handoff를 사용하며
+- `파일 → Open JSON`은 2 MiB 이하의 2D·HD-2D Scene Authoring JSON을 새 탭으로 연다. 가져온 파일은 Copy Patch/Handoff를 사용하며
   개발 endpoint나 desktop 파일에 자동 저장하지 않는다. HD-2D 모델은 일치하는 GLB를 먼저 import한다.
 - desktop의 Browse/Open Path는 열린 canonical 문서 탭으로 이동하거나 새 탭을 만든다. `Open Project`는 전체 프로젝트 전환이다.
 - 문서는 최대 8개, 최소 1개 탭을 유지한다. 탭에서 좌우 방향키/Home/End를 사용할 수 있고 미저장 탭을 닫을 때 확인한다.
@@ -444,20 +551,38 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 탭 초안은 페이지 세션에만 존재한다. 페이지 이탈 경고는 비활성 탭까지 포함한다.
 이탈을 취소한 화면의 runtime은 유지하고 실제 `pagehide`에서 자원을 정리한다.
 
+## 씬 조명
+
+**보기 → 조명**에서 씬 조명을 켜고 끄고 환경광, 태양의 밝기·색·방향, 점광원의 위치·반경·밝기·색과 그림자를 조절한다.
+HD-2D는 점광원 최대 4개와 한 점광원의 그림자를 지원한다. 태양 그림자는 별도다. 2D는 점광원 최대 32개이며
+차폐 그림자는 문서의 `lighting.tileOccluders`를 사용한다. 태양의 지면 그림자는 visual에 작성된 `shadow`를 사용한다.
+그림자 checkbox만으로 없는 caster/차폐 데이터를 생성하지 않는다.
+
+OFF는 광원 설정을 지우지 않는다. HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
+숫자는 Enter/blur로 반영하며 방향키로 증감한다. Shift는 정밀, Ctrl/Cmd는 빠른 증감이다. 입력 중 Escape는 수정 전 값으로 되돌린다.
+게임 실행 중에는 편집을 잠근다. 정지하면 편집할 수 있고, 공간 조명은 HD-2D에서 작성한다.
+설정은 문서 초안과 Undo/Redo, JSON patch, Save Draft/내보내기에 포함된다. 저장 명령은 초점을 둔 숫자 입력도 검증해 반영하며
+잘못된 값은 저장을 막고 수정할 수 있게 남긴다. browser-only의 Export Only 저장 정책은 같다.
+
+2D는 `lighting`, HD-2D는 `spatial.environment.lighting`이 원본이다. 관련 버전/수치 범위는
+[authoring API](../../docs/engine/public-api/authoring.md#2d-scene-lighting-placement-patch)를 따른다.
+
 ## 2D 화면 탐색
 
-공식 뷰포트 툴바는 **선택/화면 이동 → 카메라 탐색 → 화면 맞춤 → HD-2D 층 선택**으로 묶는다.
-선택·화면 이동·맞춤·층 도구에는 아이콘과 기능명을 표시한다. 회전·확대·초기화는 `카메라 / Camera` 메뉴에서
-이름을 보고 선택한다. 2D의 현재 배율/100% 복귀와 HD-2D의 상하 각도도 카메라 메뉴에 있다.
+데스크톱 상단은 36px 두 줄로 구성한다. 첫 줄은 파일 메뉴·가운데 작업 모드·오른쪽 Undo/Redo와 언어·실행 제어다.
+둘째 줄은 문서 탭과 **선택/화면 이동 아이콘 → 게임 카메라 → 보기 → 화면 확장 아이콘**이다.
+문서 이름은 탭에 표시하고 전체 경로·저장 상태는 `파일` 메뉴에서 확인한다. 버튼에는 접근성 이름과 툴팁을 유지한다.
+**보기**에는 선택/전체 씬 맞춤, **편집 시점**의 회전·확대·초기화, 층, 격자·정렬,
+화면 구성과 사용 안내를 모은다. 2D의 현재 배율/100% 복귀와 HD-2D의 상하 각도도 편집 시점 메뉴에 있다.
 방향키/Home/End는 주 도구 행의 focus를 이동하며 실행하지 않는다. 메뉴 내부 입력칸의 기본 키는 유지한다.
-도구 아래에는 현재 조작과 Space 임시 이동·복귀 안내를 표시한다. 에셋 배치 대기 중에는 배치 안내가 우선한다.
+현재 조작과 Space 안내는 하단 상태 바로 옮긴다. 배치 대기 중에는 상단에 취소 아이콘을 제공한다.
 
 `사용 안내 / Controls`는 배치·속성 편집·화면 이동·맞춤 단축키·실행·변경 보관 방법을 설명한다.
 편집 카메라와 씬에 설정된 게임 카메라의 차이도 확인할 수 있다. 실행 전에는 `Play`, 실행 중에는 `Pause/Resume`와 `Stop`을 표시한다.
-카메라·화면 구성·사용 안내는 Enter/Space로 열고 Escape로 닫아 원래 버튼에 focus를 돌린다.
+편집 시점·화면 구성·사용 안내는 Enter/Space로 열고 Escape로 닫아 원래 버튼에 focus를 돌린다.
 바깥 클릭·focus 이동으로 닫히며 창 크기가 바뀌면 닫아 잘못된 위치의 메뉴가 남지 않게 한다.
-배치 대기 중 메뉴 안에서 Escape를 누르면 메뉴만 닫고 배치 대기는 유지한다. 이어서 Escape를 누르면 배치를 취소한다.
-카메라 버튼이 있는 도구 행을 가로로 스크롤하면 열린 메뉴를 닫는다. 메뉴 안의 안내문 스크롤은 메뉴를 닫지 않는다.
+배치 대기 중 Escape는 안쪽 메뉴부터 닫고 배치 대기는 유지한다. 메뉴를 모두 닫은 뒤 Escape로 배치를 취소한다.
+보기 패널을 스크롤해 안쪽 메뉴의 기준 버튼이 움직이면 해당 팝업을 닫는다. 메뉴 안의 안내문 스크롤은 메뉴를 닫지 않는다.
 좁은 화면에서는 패널 탭을 유지하고 메뉴는 창 안에 맞춰 표시한다.
 
 이 구성은 [Godot의 작업 화면·문맥 도구 분리](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html),
@@ -521,6 +646,10 @@ GLB 미로드 항목은 클릭하면 공개 loader로 불러오며 로드 후 dr
 HD-2D Inspector는 대상에 유효한 공간 필드를 표시한다. viewport 상단은 현재 표시 층, 선택 객체의 물리 높이/높이 범위와 visual offset, 배치 지지면 층/높이를 구별한다.
 HD-2D도 `화면 이동 / Pan` 버튼 또는 H를 선택한 뒤 왼쪽 드래그로 이동한다. `선택 / Select` 또는 V로 객체 편집에 돌아간다.
 Space를 누른 동안에는 임시 화면 이동이며 중간 버튼·Alt 드래그도 유지한다. Escape·포커스 상실로 이동을 취소한다.
+에셋을 드래그할 때 지형이 없거나 현재 각도에서 작업 평면을 가리킬 수 없으면 커서 옆에 배치 불가 이유를 표시하고
+드롭 커서를 금지 상태로 바꾼다. 맵 밖에는 배치 기준을 `작업 평면`으로 바꾼 뒤 배치한다.
+유효한 위치로 돌아오면 기존 미리보기와 복사 커서로 복원하며, Escape·드래그 종료·문서/모드 전환 시 안내를 지운다.
+오브젝트가 화면 밖으로 일부 나가 미리보기를 그리지 못하더라도 배치 위치가 유효하면 드롭할 수 있다.
 휠과 확대/축소 버튼은 편집 카메라의 화면 중심을 기준으로 확대·축소한다. 객체 드래그 중에는 휠로 카메라를 바꾸지 않는다.
 화면 이동·확대·패널 크기 조절은 객체 크기·배치 JSON·Undo/Redo 이력을 변경하지 않는다.
 지지면 정보는 기존 native picking 결과를 재사용한다. 툴바에서 활성 층을 선택하거나 층 표시 Inspector를 열고,
@@ -553,6 +682,8 @@ missing/잘못된 GLB·오래된 문서 응답·업로드 실패는 초안 변�
 ## 저장 host 계약
 
 저장 요청은 `{ document, expectedDocument }`이며 개발 endpoint의 UTF-8 body 상한은 2 MiB다.
+native도 실제 저장할 UTF-8 JSON(들여쓰기·마지막 줄바꿈 포함)이 2 MiB를 넘으면 파일 교체 전에 거절한다.
+작게 압축된 입력을 열었더라도 저장 시 한도를 넘으면 원본과 초안을 보존하므로, 내용을 줄이거나 패치를 내보내 조정한다.
 현재 파일이 마지막으로 읽은 JSON과 다르면 HTTP 409로 거부하고 초안과 이력을 보존한다.
 충돌 시 Copy Patch/Copy Handoff로 작업을 보관한 뒤 최신 문서를 열어 agent와 변경을 조정한다.
 개발 서버의 문서/임시 저장 파일 변경은 HMR에서 제외해 자동 reload가 미저장 초안을 버리지 않게 한다.
@@ -566,7 +697,7 @@ missing/잘못된 GLB·오래된 문서 응답·업로드 실패는 초안 변�
 
 ## Desktop host
 
-`apps/placement-viewer-desktop`는 이 app의 production/dev frontend를 Tauri window에서 열고, Tauri command가 있을 때 샘플 `placement.scene-authoring.json`을 로컬 파일로 읽고 저장한다. Tauri가 없는 일반 브라우저와 Pages에서는 기존 fetch/Vite dev endpoint 흐름을 유지한다. 문서 전환 전에 draft patch가 남아 있으면 기존 변경을 버릴지 확인한다.
+`apps/placement-viewer-desktop`는 이 app의 production/dev frontend를 Tauri window에서 열고, Tauri command가 있을 때 정원 샘플 `placement.garden.scene-authoring.json`을 로컬 파일로 읽고 저장한다. Tauri가 없는 일반 브라우저와 Pages에서는 기존 fetch/Vite dev endpoint 흐름을 유지한다. 문서 전환 전에 draft patch가 남아 있으면 기존 변경을 버릴지 확인한다.
 
 ## 참고 문서
 

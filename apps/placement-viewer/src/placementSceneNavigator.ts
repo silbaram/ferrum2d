@@ -4,6 +4,7 @@ import {
   uiMessage,
   uiOption,
 } from "./placementLocale";
+import { placementRenderLayer } from "./placementLayerState";
 
 import type {
   ResolvedSceneAuthoringDocument,
@@ -25,6 +26,7 @@ export function createPlacementSceneNavigator(
   setUiAttribute(search, "aria-label", "Search scene");
   setUiAttribute(type, "aria-label", "Scene type");
   setUiAttribute(layer, "aria-label", "Scene layer");
+  layer.dataset.placementSceneLayerFilter = "true";
   for (const value of ["All Types", "Sprite", "Model", "Terrain", "Object"])
     type.add(uiOption(value, value));
   const frame = document.createElement("button"),
@@ -37,7 +39,12 @@ export function createPlacementSceneNavigator(
       new CustomEvent("placement-scene-frame", { bubbles: true }),
     ),
   );
-  element.append(search, type, layer, frame, count);
+  const filters = document.createElement("div"), actions = document.createElement("div");
+  filters.className = "placement-scene-filters";
+  actions.className = "placement-scene-actions";
+  filters.append(type, layer);
+  actions.append(count, frame);
+  element.append(search, filters, actions);
   let signature = "";
   const fragments = new Map<string, string[]>();
   for (const [id, fragment] of Object.entries(
@@ -61,7 +68,7 @@ export function createPlacementSceneNavigator(
       next.instances.map((i) => [
         i.instanceId,
         i.sourceId,
-        i.transform.layer,
+        placementRenderLayer(i),
         i.visual?.kind,
       ]),
       Object.keys(next.spatial?.models ?? {}),
@@ -107,7 +114,7 @@ export function createPlacementSceneNavigator(
           : instance.visual?.kind === "sprite" || next.spatial?.billboards[id]
             ? "Sprite"
             : "Object";
-        row.dataset.sceneLayer = String(instance.transform.layer);
+        row.dataset.sceneLayer = String(placementRenderLayer(instance));
         row.dataset.sceneSearch = `${id} ${instance.prefab}`.toLowerCase();
         group(
           fragments.get(instance.sourceId)?.join(" / ") ?? next.fragment,
@@ -138,7 +145,7 @@ export function createPlacementSceneNavigator(
       const previous = layer.value;
       layer.replaceChildren(
         uiOption("All Layers", "all"),
-        ...[...new Set(next.instances.map((i) => String(i.transform.layer)))]
+        ...[...new Set(next.instances.map((i) => String(placementRenderLayer(i))))]
           .sort((a, b) => Number(a) - Number(b))
           .map((v) => uiOption(uiMessage("Layer {0}", v), v)),
       );
@@ -183,5 +190,5 @@ export function createPlacementSceneNavigator(
   search.addEventListener("input", filter);
   type.addEventListener("change", filter);
   layer.addEventListener("change", filter);
-  return { element, sync };
+  return { element, sync, filterLayer(value?: number) { layer.value = value === undefined ? "all" : String(value); filter(); } };
 }

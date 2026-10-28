@@ -107,6 +107,15 @@ impl Engine {
     fn append_entity_render_items(&mut self, _visible_bounds: AabbBounds) {
         for position in 0..self.world.alive_indices().len() {
             let i = self.world.alive_indices()[position];
+            if !self.spatial_scene.preview_hidden_entities.is_empty()
+                && self.world.entity_at_index(i).is_some_and(|e| {
+                    self.spatial_scene
+                        .preview_hidden_entities
+                        .contains(&(e.id, e.generation))
+                })
+            {
+                continue;
+            }
             if self.spatial_scene.camera.is_some()
                 && self.world.entity_at_index(i).is_some_and(|e| {
                     self.spatial_scene

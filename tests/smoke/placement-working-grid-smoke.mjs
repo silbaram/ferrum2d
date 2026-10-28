@@ -28,6 +28,37 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     await showPlacementInspector(page, "placement");
     await page.locator("[data-placement-spatial-place]").click();
   };
+  // Only trusted HTML drag events can change Chromium's dropEffect. A constructed
+  // DataTransfer always reports "none", even after a synthetic handler sets copy.
+  const cursorDrag = async (world, expected) => {
+    const thumbnail = page.locator("[data-placement-spatial-asset-preview]");
+    await thumbnail.scrollIntoViewIfNeeded(); await paint();
+    await page.evaluate(() => {
+      const canvas = document.querySelector("canvas.demo-canvas");
+      window.__workingGridDrag = [];
+      const observe = event => window.__workingGridDrag.push({ trusted: event.isTrusted, effect: event.dataTransfer.dropEffect,
+        prevented: event.defaultPrevented, rejection: !document.querySelector("[data-placement-drop-rejection]").hidden });
+      const blockDrop = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+      canvas.addEventListener("dragover", observe);
+      canvas.addEventListener("drop", blockDrop, true);
+      window.__workingGridDragCleanup = () => { canvas.removeEventListener("dragover", observe); canvas.removeEventListener("drop", blockDrop, true); };
+    });
+    try {
+      const box = await thumbnail.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.mouse.move(x + 12, y + 4, { steps: 3 }); await paint();
+      const at = await project(world);
+      await page.mouse.move(at.x, at.y, { steps: 5 });
+      await page.mouse.move(at.x + 1, at.y + 1); await paint();
+      await wait(() => window.__workingGridDrag.some(event => event.trusted));
+      const event = await page.evaluate(() => window.__workingGridDrag.at(-1));
+      assert(event.trusted && event.prevented); assert.equal(event.effect, expected);
+      assert.equal(event.rejection, expected === "none");
+    } finally {
+      await page.mouse.up(); await paint();
+      await page.evaluate(() => window.__workingGridDragCleanup());
+    }
+  };
   try {
     await page.goto(parent.url(), { waitUntil: "networkidle" });
     await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42);
@@ -78,9 +109,14 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     await page.mouse.move(at.x,at.y);
     await paint();
     assert(await ghost().isHidden(),"Default terrain mode allowed placement over empty space");
+    const rejection = page.locator('[data-placement-drop-rejection]');
+    assert(await rejection.isVisible()); assert.match(await rejection.textContent(), /Working Plane/);
     await page.mouse.click(at.x,at.y);
     assert.deepEqual(await snapshot(),baseline,"Rejected terrain placement changed the document");
     await page.keyboard.press("Escape");
+    assert(await rejection.isHidden());
+    await cursorDrag(point,"none");
+    assert(await rejection.isHidden()); assert.deepEqual(await snapshot(),baseline);
     await showPlacementInspector(page,"placement");
     await page.locator("[data-placement-spatial-basis]").selectOption("plane");
     await page.locator("[data-placement-spatial-new-id]").fill("working_grid_sprite");
@@ -130,6 +166,15 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     const cart=await page.locator("[data-placement-spatial-add-asset] option").evaluateAll(options => options.find(o=>o.textContent.includes("village_cart")).value);
     await page.locator("[data-placement-spatial-add-asset]").selectOption(cart);
     await page.locator("[data-placement-spatial-new-id]").fill("working_grid_model");
+    const beforeClippedGuide=await snapshot();
+    await page.locator("[data-placement-spatial-add-scale]").fill("100");
+    await page.locator("[data-placement-spatial-add-scale]").press("Tab");
+    await paint();
+    await cursorDrag(point,"copy");
+    assert(await rejection.isHidden());
+    await page.locator("[data-placement-spatial-add-scale]").fill("1");
+    await page.locator("[data-placement-spatial-add-scale]").press("Tab");
+    assert.deepEqual(await snapshot(),beforeClippedGuide);
     await paint();
     at=await project(point);
     const transfer=await page.evaluateHandle(()=>new DataTransfer());
@@ -182,6 +227,7 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     console.log(`Working grid DPR ${dpr}: passed`);
     await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,outside,spriteGhost,modelGhost,grid,spritePatch:sprite.patch,checks:["outside-map framebuffer pixels","terrain mode rejects empty space","explicit plane height/floor","negative snap","preview and commit agree","native sprite height/floor","model drop creates no terrain/collider","Undo/Redo","display and camera preserve JSON/history","Game Preview hides grid","empty terrain perspective horizon"]},null,2)+"\n");
   } catch(error) {
+    console.error({pageErrors:errors});
     await page.screenshot({path:`${artifact}/failure-dpr${dpr}.png`,fullPage:true});
     console.error(await page.evaluate(()=>({message:document.querySelector(".placement-spatial-message")?.textContent,documentError:document.querySelector(".placement-workspace-message")?.textContent,grid:window.ferrumPlacementGrid,ghost:document.querySelector("[data-placement-spatial-add-preview]")?.outerHTML})));
     throw error;

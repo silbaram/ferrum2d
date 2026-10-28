@@ -190,6 +190,7 @@ export interface SpatialSurfaceHit extends SpatialPoint {
 }
 export interface FerrumSpatialApi {
   /** Authoring presentation only. Hidden terrain is excluded from visual picking, never physics. Null restores all. */
+  /** Cold editor-only 2D/spatial filter. Does not alter simulation or saved scene data. */
   setDataSceneSpatialPreviewFilter(options: {hiddenEntities: readonly GameplayEntityHandle[];hiddenSurfaces:readonly string[]} | null): boolean;
   registerDataSceneSpatialModel(id: string, asset: SpatialModelAsset): boolean;
   releaseDataSceneSpatialModel(id: string): boolean;

@@ -1,5 +1,5 @@
 import type { PhysicsDebugLineBufferView } from "./physicsDebugLineDecoder.js";
-import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
+import type { PhysicsDebugLineCamera } from "./renderer.js";
 
 const FLOATS_PER_DEBUG_VERTEX = 6;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;

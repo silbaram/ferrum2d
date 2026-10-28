@@ -1,4 +1,5 @@
 import type { FerrumRuntime } from "@ferrum2d/ferrum-web/core";
+import { isPlacementProjectAsset } from "./placementAssetScope";
 
 export interface PlacementSpriteRevision {
   id: string;
@@ -8,6 +9,8 @@ export interface PlacementSpriteRevision {
   bytes: number;
   uploaded: boolean;
   url?: string;
+  persisted?: boolean;
+  project?: string;
 }
 const error = (message: string): never => {
   throw Error(message);
@@ -110,7 +113,7 @@ export function createPlacementSpriteRevisions<
     },
     close(document: string) {
       for (const [id, a] of entries)
-        if (a.document === document) {
+        if (a.document === document && !isPlacementProjectAsset(a)) {
           release(a);
           entries.delete(id);
         }

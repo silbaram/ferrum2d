@@ -297,6 +297,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
           assert(
             bounds.scrollWidth <= viewport.width + 1 &&
               bounds.scrollHeight <= viewport.height + 1,
+            JSON.stringify({ mode, dock, viewport, ...bounds }),
           );
           assert(!bounds.message, "Native camera error: " + bounds.message);
           if (mode === "spatial") {

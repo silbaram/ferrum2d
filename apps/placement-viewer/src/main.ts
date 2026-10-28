@@ -22,6 +22,7 @@ import {
   villageTextureMetadata,
 } from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
+import { ensureGardenAssets, isGardenScene, gardenTextures, gardenAtlasFrames, gardenTextureMetadata, configureGardenActor, createGardenPreview } from "./placementGarden";
 import {
   createDesktopTileProjectHost,
   createPlacementTileAssets,
@@ -33,9 +34,17 @@ import type { tileEvidence } from "./placementTileAssets";
 import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
+import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
+import { createPlacementUpdates } from "./placementUpdates";
+import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
+import { createPlacementSceneExplorer } from "./placementSceneExplorer";
+import { canUsePlacementAsset } from "./placementAssetScope";
+import { folderSceneCatalog, hostedSceneCatalog, safeSceneRelativePath, fetchSceneJson, readSceneScanDiagnostics, type PlacementSceneCatalog, type PlacementSceneEntry } from "./placementSceneCatalog";
+import { createPlacementLayers, type PlacementLayerAction } from "./placementLayers";
+import { placementRenderLayer, placementSoloPolicy, type PlacementLayerViewState } from "./placementLayerState";
 import { installPlacementDocumentSession } from "./placementDocumentSession";
 import {
   installPlacementViewportNavigation,
@@ -160,8 +169,13 @@ import {
 import "./runtimeDemoShell.css";
 import "./styles.css";
 
-const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
-const HD2D_SCENE_DOCUMENT_URL = "./placement.hd2d.scene-authoring.json";
+// Minimal documents exist only in isolated regression builds, never in public assets.
+const SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
+  ? "./placement.scene-authoring.json"
+  : "./placement.garden.scene-authoring.json";
+const HD2D_SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
+  ? "./placement.hd2d.scene-authoring.json"
+  : "./placement.village.scene-authoring.json";
 let documentSession:
   | ReturnType<typeof installPlacementDocumentSession>
   | undefined;
@@ -458,6 +472,7 @@ type PlacementViewerAgentHandoff = ScenePlacementAgentHandoff & {
 interface PlacementInspector {
   element: HTMLElement;
   assetMount: HTMLElement;
+  layerView(): PlacementLayerViewState;
   review(): void;
   properties(): void;
   setState(
@@ -486,6 +501,7 @@ interface PlacementHandoffControls {
 
 interface PlacementOverlay {
   element: HTMLElement;
+  selectionBounds(): DOMRect | undefined;
   setState(
     state: ScenePlacementViewerState,
     interaction: PlacementInteractionState,
@@ -501,6 +517,7 @@ interface PlacementInspectorOptions {
   saveEnabled: boolean;
   assetProvider: PlacementAssetProviderGetter;
   sourceDocument: string;
+  layerView?: PlacementLayerViewState;
 }
 
 type PlacementAssetProviderGetter = () => ScenePlacementAssetProvider;
@@ -569,6 +586,9 @@ async function bootstrap(): Promise<void> {
   let spatialWorkspace:
     | ReturnType<typeof installPlacementSpatialWorkspace>
     | undefined;
+  let lightingControls: ReturnType<typeof createPlacementLighting> | undefined;
+  let gardenPreview: ReturnType<typeof createGardenPreview> | undefined;
+  let showColliderBounds = false;
   let workspaceDiagnostics:
     | ReturnType<typeof installPlacementDiagnostics>
     | undefined;
@@ -587,6 +607,7 @@ async function bootstrap(): Promise<void> {
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
     await ensureVillageAssets(document);
+    await ensureGardenAssets(document);
     const desktopSceneDocumentPath = (window as PlacementViewerWindow)
       .ferrumPlacementViewerDesktop?.sceneDocumentPath;
     const initialKey = desktopSceneDocumentPath ?? "sample";
@@ -607,6 +628,10 @@ async function bootstrap(): Promise<void> {
         : undefined;
     let tileAssets: ReturnType<typeof createPlacementTileAssets> | undefined;
     let assetDocumentKey = initialKey;
+    function currentAssetProject(): string | undefined {
+      const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+      return desktop?.enabled ? desktop.projectPath : undefined;
+    }
     let normalProjectAssets:
       | ReturnType<typeof createPlacementNormalProjectAssets>
       | undefined;
@@ -639,20 +664,20 @@ async function bootstrap(): Promise<void> {
         ...(asepriteTool?.providerAssets() ??
           asepriteAssets
             ?.entries()
-            .filter((a) => a.document === initialKey && a.uploaded)
+            .filter((a) => canUsePlacementAsset(a, assetDocumentKey, currentAssetProject()) && a.uploaded)
             .map(asepriteProviderAsset) ??
           []),
         ...(tileTool?.providerAssets() ??
           tileAssets
             ?.entries()
-            .filter((a) => a.document === initialKey && a.uploaded)
+            .filter((a) => canUsePlacementAsset(a, assetDocumentKey, currentAssetProject()) && a.uploaded)
             .map(tileProviderAsset) ??
           []),
       ];
       const used = new Set(imported.map((a) => a.id));
       const entries = [
         ...(normalTool?.browserEntries() ?? []),
-        ...(normalProjectAssets?.browserEntries(assetDocumentKey) ?? []),
+        ...(normalProjectAssets?.browserEntries(assetDocumentKey, currentAssetProject()) ?? []),
       ].filter((entry) => {
         if (used.has(entry.id)) return false;
         used.add(entry.id);
@@ -684,6 +709,7 @@ async function bootstrap(): Promise<void> {
       shell.stage,
       boundsById,
       currentAssetProvider,
+      () => showColliderBounds,
     );
     const initialInspectorLifetime = new AbortController();
     let inspector = createPlacementInspector(resolved, {
@@ -713,6 +739,9 @@ async function bootstrap(): Promise<void> {
 
     shell.debugRoot.before(inspector.element);
     gridRenderer = new PlacementGridRenderer(shell.canvas);
+    // The host supplies this model-preparation capability; the generic runtime
+    // renderer contract also permits renderers that only draw flat commands.
+    const spatialModelPreparer = gridRenderer;
     runtime = await createFerrumRuntime({
       renderer: gridRenderer,
       canvas: shell.canvas,
@@ -720,6 +749,7 @@ async function bootstrap(): Promise<void> {
       debug:
         new URLSearchParams(window.location.search).get("debug") === "true",
       environment: "development",
+      lighting: frame => frame.renderCommandBuffer.spatial ? false : viewportNavigation?.lighting(lightingControls?.flatLighting(), frame),
       inputTransform: (snapshot) => {
         const input = shell.inputTransform(snapshot);
         const mode = spatialWorkspace?.mode() ?? "2d";
@@ -798,6 +828,7 @@ async function bootstrap(): Promise<void> {
           normalProjectAssets = createPlacementNormalProjectAssets(
             runtimeEngine,
             initialKey,
+            asepriteProjectPath,
           );
           await normalProjectAssets.load(
             await nativeNormalHost.load(signal),
@@ -838,10 +869,11 @@ async function bootstrap(): Promise<void> {
         {
           instanceHandleRegistry,
           missingBehavior: "ignore",
-          spatialModelPreparer: runtime.renderer,
+          spatialModelPreparer,
         },
       ).variables;
       configureVillageActor(runtimeEngine, document);
+      configureGardenActor(runtimeEngine, document);
     } else
       applySceneBehaviorRecipes(
         runtime.engine,
@@ -867,9 +899,13 @@ async function bootstrap(): Promise<void> {
       selectedInstanceId,
       instanceHandleRegistry,
       validateDraft: (state) => {
-        if (!assetBatchEditing) spatialWorkspace?.sync(state);
+        if (!assetBatchEditing) {
+          spatialWorkspace?.sync(state);
+          lightingControls?.sync(state);
+        }
       },
     });
+    if (isGardenScene(document)) currentViewer.setInstancesLocked(currentViewer.state().instances.filter(instance => instance.instanceId.startsWith("ground.")).map(instance => instance.instanceId), true);
     // Stable input bindings delegate cold authoring calls to the active document.
     const viewer: ScenePlacementViewer = {
       historyState: () => currentViewer.historyState(),
@@ -883,6 +919,8 @@ async function bootstrap(): Promise<void> {
       selectInstances: (ids) => currentViewer.selectInstances(ids),
       setInstancesLocked: (ids, locked) =>
         currentViewer.setInstancesLocked(ids, locked),
+      setLayerEditing: options => currentViewer.setLayerEditing(options),
+      updateInstanceRenderLayers: updates => currentViewer.updateInstanceRenderLayers(updates),
       selectInstanceAtScreen: (point) =>
         currentViewer.selectInstanceAtScreen(point),
       hoverInstance: (id) => currentViewer.hoverInstance(id),
@@ -896,6 +934,7 @@ async function bootstrap(): Promise<void> {
       updateInstanceTransforms: (updates) =>
         currentViewer.updateInstanceTransforms(updates),
       updateSpatial: (operations) => currentViewer.updateSpatial(operations),
+      updateLighting: (lighting) => currentViewer.updateLighting(lighting),
       updateInstanceComponents: (id, components) =>
         currentViewer.updateInstanceComponents(id, components),
       updateBehaviorBinding: (target, recipes) =>
@@ -927,6 +966,7 @@ async function bootstrap(): Promise<void> {
       desktop?: PlacementViewerDesktopState;
       snap: { enabled: boolean; gridSize: number };
       camera?: PlacementEditCamera;
+      suspendedLayerEditing?: ScenePlacementViewerState["layerEditing"];
     }
     const documents = new Map<string, WorkspaceDocument>();
     let activeDocument: WorkspaceDocument = {
@@ -959,17 +999,20 @@ async function bootstrap(): Promise<void> {
         >
       | undefined;
     let switching = false;
+    let sceneExplorer: ReturnType<typeof createPlacementSceneExplorer> | undefined;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
-    const syncTabs = () =>
-      tabs?.setState(
-        [...documents.values()].map((entry) => ({
+    let layerVisibilitySignature = "";
+    const syncTabs = () => {
+      const entries = [...documents.values()].map((entry) => ({
           key: entry.key,
           label: entry.source.split(/[\\/]/u).pop() ?? entry.source,
           source: entry.source,
           dirty: entry.dirty,
-        })),
-        activeDocument.key,
-      );
+        }));
+      tabs?.setState(entries, activeDocument.key);
+      const dock = inspector.element.querySelector<HTMLElement>(".placement-scene-dock");
+      if (dock) sceneExplorer?.sync(entries, activeDocument.key, dock);
+    };
     const publishCurrentAgentHandoff = (
       state: ScenePlacementViewerState,
       migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
@@ -990,17 +1033,46 @@ async function bootstrap(): Promise<void> {
             activeDocument.key,
             currentDocument,
             state,
+            currentAssetProject(),
           ) ?? []),
         ],
         asepriteTool?.evidence(currentDocument),
         tileTool?.evidence(currentDocument),
       );
     };
+    // Manual visibility actions replace Solo; the panel updates its view state
+    // after the synchronous action succeeds, so do not reapply old isolation here.
+    let applyingLayerPolicy = false;
     const setState = (
       state: ScenePlacementViewerState,
     ): ScenePlacementViewerState => {
       state = spatialWorkspace?.sync(state) ?? state;
+      lightingControls?.sync(state);
+      gardenPreview?.sync();
       const mode = spatialWorkspace?.mode();
+      if (mode !== "2d" && mode !== undefined) {
+        if (state.layerEditing && (state.layerEditing.hiddenLayers.length || state.layerEditing.lockedLayers.length)) {
+          activeDocument.suspendedLayerEditing = state.layerEditing;
+          state = viewer.setLayerEditing({ hiddenLayers: [], lockedLayers: [] });
+        }
+      } else if (activeDocument.suspendedLayerEditing) {
+        state = viewer.setLayerEditing(activeDocument.suspendedLayerEditing);
+        activeDocument.suspendedLayerEditing = undefined;
+      }
+      if (mode === "2d" || mode === undefined) {
+        if (!applyingLayerPolicy && !viewer.historyState().transactionLabel) {
+          const policy = placementSoloPolicy(state, inspector.layerView());
+          if (policy) state = viewer.setLayerEditing(policy);
+        }
+        const hidden = new Set(state.layerEditing?.hiddenLayers ?? []);
+        const hiddenEntities = state.instances.filter(instance => hidden.has(placementRenderLayer(instance))).flatMap(instance => instance.entity ? [instance.entity] : []);
+        const signature = JSON.stringify([activeDocument.key, runtimeApplyRevision, hiddenEntities]);
+        if (signature !== layerVisibilitySignature) {
+          if (!runtimeEngine.setDataSceneSpatialPreviewFilter({ hiddenEntities, hiddenSurfaces: [] }))
+            throw new Error("Layer preview visibility rejected");
+          layerVisibilitySignature = signature;
+        }
+      } else layerVisibilitySignature = "";
       // Native apply can reject a mode change. Clear the shared 2D tool only
       // after spatial sync accepts it, so a failed transition retains its tool.
       if (mode !== lastWorkspaceMode) {
@@ -1186,6 +1258,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         documentSession?.finishEdit();
         if (spatialWorkspace?.flushCameraInput() === false) return undefined;
+        if (lightingControls?.flushInput() === false) return undefined;
         const patch = viewer.exportPatch();
         if (patch === undefined) {
           return undefined;
@@ -1245,21 +1318,26 @@ async function bootstrap(): Promise<void> {
               selectedInstanceId: viewer.state().selectedInstanceId,
               instanceHandleRegistry: entry.registry,
               validateDraft: (state) => {
-                if (!assetBatchEditing) spatialWorkspace?.sync(state);
+                if (!assetBatchEditing) {
+                  spatialWorkspace?.sync(state);
+                  lightingControls?.sync(state);
+                }
               },
             });
             entry.viewer.selectInstances(editState.selectedInstanceIds);
-            entry.viewer.setInstancesLocked(editState.lockedInstanceIds, true);
-            entry.inspector = createDocumentInspector(entry);
+            entry.viewer.setInstancesLocked(editState.individuallyLockedInstanceIds ?? editState.lockedInstanceIds, true);
+            if (editState.layerEditing) entry.viewer.setLayerEditing(editState.layerEditing);
+            entry.inspector = createDocumentInspector(entry, entry.inspector.layerView());
             activateDocument(entry.key, true);
           }
-          documentSession?.setSaving(false);
           return result;
         } catch (error) {
-          documentSession?.setSaving(false);
           publishPlacementSaveError(error);
           appChrome.setSaveError(error);
           return undefined;
+        } finally {
+          documentSession?.setSaving(false);
+          lightingControls?.sync(viewer.state());
         }
       },
     });
@@ -1296,6 +1374,7 @@ async function bootstrap(): Promise<void> {
     viewportToolbar = createPlacementViewportToolbar(
       shell.stage,
       cancelPlacementTool,
+      enabled => { showColliderBounds = enabled; setState(viewer.state()); },
     );
     window.addEventListener("keydown", (event) => {
       if (
@@ -1320,6 +1399,7 @@ async function bootstrap(): Promise<void> {
       canvas: shell.canvas,
       stage: shell.stage,
       toolbar: viewportToolbar.navigation,
+      navigationSettings: viewportToolbar.flatNavigation,
       viewer,
       onChange: setState,
       isEditing: () =>
@@ -1382,6 +1462,7 @@ async function bootstrap(): Promise<void> {
         (spatialWorkspace?.mode() ?? "2d") !== "2d",
       snapEnabled: () => interaction.enabled,
       finishEdit: () => documentSession?.finishEdit(),
+      selectionBounds: () => overlay.selectionBounds(),
     });
     documentSession = installPlacementDocumentSession({
       canvas: shell.canvas,
@@ -1404,6 +1485,7 @@ async function bootstrap(): Promise<void> {
       canvas: shell.canvas,
       stage: shell.stage,
       cameraToolbar: viewportToolbar.camera,
+      navigationSettings: viewportToolbar.spatialNavigation,
       viewSettings: viewportToolbar.spatialSettings,
       gridChanged: (state) =>
         gridRenderer?.grid?.sync({
@@ -1433,6 +1515,7 @@ async function bootstrap(): Promise<void> {
         publishPlacementInteraction(interaction);
         setState(viewer.state());
       },
+      flushSceneSettings: () => lightingControls?.flushInput() ?? true,
       components: (id) => {
         const selected = viewer
           .state()
@@ -1442,6 +1525,24 @@ async function bootstrap(): Promise<void> {
           .components;
       },
     });
+    lightingControls = createPlacementLighting({
+      viewer, engine: runtimeEngine,
+      key: () => activeDocument.key,
+      mode: () => spatialWorkspace?.mode() ?? "2d",
+      runtimeRevision: () => runtimeApplyRevision,
+      busy: () => switching || documentSession?.isSaving() === true || interaction.dragging || viewer.historyState().transactionLabel !== undefined,
+      finishEdit: () => documentSession?.finishEdit(),
+      onChange: setState,
+    });
+    viewportToolbar.lightingSettings.append(lightingControls.element);
+    gardenPreview = createGardenPreview({
+      canvas: shell.canvas, stage: shell.stage, engine: runtimeEngine,
+      document: () => savedDocument,
+      mode: () => spatialWorkspace?.mode() ?? "2d",
+      revision: () => runtimeApplyRevision,
+      pointerToWorld: point => viewportNavigation!.pointerToWorld(point),
+    });
+    gardenPreview.sync();
     gridRenderer.grid = createPlacementGrid(
       viewportToolbar.gridSettings,
       (gridSize) => {
@@ -1677,6 +1778,7 @@ async function bootstrap(): Promise<void> {
       viewer,
       context: () => ({
         key: activeDocument.key,
+        project: currentAssetProject(),
         source: sourceDocument,
         document: viewer.exportPatch()
           ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
@@ -1714,6 +1816,7 @@ async function bootstrap(): Promise<void> {
           );
         }
         if (patch.spatial) viewer.updateSpatial(patch.spatial.operations);
+        if (patch.lighting !== undefined) viewer.updateLighting(patch.lighting);
         assetBatchEditing = false;
         spatialWorkspace?.sync(viewer.state());
         viewer.commitEdit();
@@ -1727,6 +1830,7 @@ async function bootstrap(): Promise<void> {
     }
     const importedAssetContext = () => ({
       key: activeDocument.key,
+      project: currentAssetProject(),
       document: viewer.exportPatch()
         ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
             .document
@@ -1789,6 +1893,7 @@ async function bootstrap(): Promise<void> {
             ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
                 .document
             : savedDocument,
+          currentAssetProject(),
         ) ?? [],
       normalEvidence: () =>
         normalProjectAssets?.bindings(
@@ -1798,6 +1903,7 @@ async function bootstrap(): Promise<void> {
                 .document
             : savedDocument,
           viewer.state(),
+          currentAssetProject(),
         ) ?? [],
       normalSettings: () => normalTool!.generationSettings(),
       assets: asepriteAssets,
@@ -2097,6 +2203,85 @@ async function bootstrap(): Promise<void> {
         desktopSceneDocumentPath ??
         "browser",
     );
+    // This context belongs to the explicitly opened project, independent of the active tab.
+    let sceneProject = structuredClone(activeDocument.desktop);
+    const sceneProjectPath = sceneProject?.projectPath;
+    const nativeScenePaths = new Set<string>();
+    window.addEventListener("ferrum-placement-desktop-statechange", () => {
+      const current = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+      if (sceneProjectPath && current?.projectPath === sceneProjectPath) sceneProject = structuredClone(current);
+    });
+    let selectedFolder = false;
+    async function chooseSceneFolder(): Promise<PlacementSceneCatalog | undefined> {
+      if (placementDesktopInvoke()) {
+        if (!placementDesktopOpenDialog()) throw new Error("Open Project using File before browsing project scenes");
+        await browsePlacementProjectFolder();
+        return undefined;
+      }
+      const input = window.document.createElement("input");
+      input.type = "file"; input.multiple = true; input.setAttribute("webkitdirectory", "");
+      input.hidden = true; shell.canvas.ownerDocument.body.append(input);
+      try {
+        const files = await new Promise<File[] | undefined>(resolve => {
+          input.addEventListener("change", () => resolve(input.files?.length ? [...input.files] : undefined), { once: true });
+          input.addEventListener("cancel", () => resolve(undefined), { once: true });
+          input.click();
+        });
+        if (!files) return undefined;
+        const catalog = await folderSceneCatalog(files, crypto.randomUUID());
+        selectedFolder = true;
+        return catalog;
+      } finally { input.remove(); }
+    }
+    function sceneMatches(entry: PlacementSceneEntry, doc: { key: string; source: string }) {
+      if (entry.id.startsWith("folder:")) return doc.key === entry.id;
+      if (nativeScenePaths.has(entry.id)) return doc.key === entry.id;
+      if (doc.key.startsWith("file:") || doc.key.startsWith("folder:") || documents.get(doc.key)?.desktop?.enabled) return false;
+      try { return new URL(doc.source, window.document.baseURI).href === entry.source; }
+      catch { return false; }
+    }
+    sceneExplorer = createPlacementSceneExplorer({
+      async load() {
+        if (selectedFolder) return chooseSceneFolder();
+        const invoke = placementDesktopInvoke();
+        if (!invoke) return hostedSceneCatalog(new URL("./", window.document.baseURI));
+        if (!sceneProject?.projectPath) throw new Error("Open Project using File before browsing project scenes");
+        const response = await invoke<{ scenes: { path: string; relativePath: string; mode: PlacementSceneEntry["mode"]; diagnostic?: string }[]; truncated: boolean; diagnostics?: unknown }>("list_placement_project_scenes", { projectPath: sceneProject.projectPath });
+        if (!response || !Array.isArray(response.scenes) || response.scenes.length > 256) throw new Error("Invalid scene catalog");
+        nativeScenePaths.clear();
+        const scenes = response.scenes.map(item => {
+          if (!item || typeof item.path !== "string" || !safeSceneRelativePath(item.relativePath) || !["2d", "hd2d", "invalid"].includes(item.mode)) throw new Error("Invalid scene catalog entry");
+          nativeScenePaths.add(item.path);
+          return { id: item.path, source: item.path, relativePath: item.relativePath, mode: item.mode, diagnostic: item.diagnostic,
+            read: async () => {
+              const result = await invoke<PlacementDesktopSceneDocumentResponse>(DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND, { sceneDocumentPath: item.path });
+              if (!isPlacementDesktopSceneDocumentResponse(result) || result.path !== item.path) throw new Error("Invalid scene document response");
+              return result.document;
+            },
+          };
+        });
+        return { label: sceneProject.projectPath, scenes, truncated: response.truncated === true, diagnostics: readSceneScanDiagnostics(response.diagnostics) };
+      },
+      chooseFolder: chooseSceneFolder,
+      match: sceneMatches,
+      async open(entry, run) {
+        if (switching || documentSession?.isSaving() || documentSession?.isFinishingPointerEdit())
+          throw new Error("Finish the current edit or save before opening a scene");
+        const existing = [...documents.values()].find(doc => sceneMatches(entry, doc));
+        switching = true; root.inert = true;
+        try {
+          const native = nativeScenePaths.has(entry.id) ? sceneProject : undefined;
+          const key = existing?.key ?? entry.id;
+          await openDocument(key, entry.source, existing?.document ?? await entry.read(), !!native,
+            native ? { ...native, requestedSceneDocumentPath: entry.id, sceneDocumentPath: entry.id,
+              lastSavePath: undefined, lastHandoffPath: undefined, lastHandoffError: undefined, handoffSyncStatus: "idle" } : undefined);
+          if (activeDocument.key !== key) throw new Error("Scene activation was not completed");
+          switching = false; root.inert = false;
+          if (run && !spatialWorkspace?.runScene()) throw new Error("Scene playback could not start; finish the current edit first");
+          shell.canvas.focus({ preventScroll: true });
+        } finally { switching = false; root.inert = false; }
+      },
+    });
     const review = shell.canvas.ownerDocument.createElement("button"),
       exportButton = shell.canvas.ownerDocument.createElement("button");
     review.type = exportButton.type = "button";
@@ -2124,6 +2309,36 @@ async function bootstrap(): Promise<void> {
         )
         ?.click();
     });
+    root.addEventListener("placement-layer-action", event => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as { action: PlacementLayerAction; report(error?: string): void };
+      const before = viewer.state();
+      try {
+        if (switching || documentSession?.isSaving() || (spatialWorkspace?.mode() ?? "2d") !== "2d" || viewer.historyState().transactionLabel)
+          throw new Error("Finish the current edit before changing layers.");
+        const action = detail.action;
+        if (action.kind === "policy") { applyingLayerPolicy = true; viewer.setLayerEditing(action); }
+        else if (action.kind === "select") viewer.selectInstances(action.ids);
+        else {
+          const ids = new Set(before.selectedInstanceIds);
+          const updates = before.instances.flatMap(instance => {
+            const layer = placementRenderLayer(instance);
+            if (action.kind === "move") return ids.has(instance.instanceId) ? [{ instanceId: instance.instanceId, layer: action.layer }] : [];
+            return layer === action.from || layer === action.to ? [{ instanceId: instance.instanceId, layer: layer === action.from ? action.to : action.from }] : [];
+          });
+          viewer.updateInstanceRenderLayers(updates);
+        }
+        setState(viewer.state()); detail.report();
+      } catch (error) {
+        if (detail.action.kind === "policy" && before.layerEditing && !viewer.historyState().transactionLabel) {
+          viewer.setLayerEditing(before.layerEditing);
+          viewer.selectInstances(before.selectedInstanceIds);
+          viewer.hoverInstance(before.hoveredInstanceId);
+          setState(viewer.state());
+        }
+        detail.report(error instanceof Error ? error.message : String(error));
+      } finally { applyingLayerPolicy = false; }
+    });
     root.addEventListener("placement-scene-surface", (event) => {
       if (event instanceof CustomEvent)
         spatialWorkspace?.selectSurface(String(event.detail));
@@ -2134,6 +2349,32 @@ async function bootstrap(): Promise<void> {
     });
     tabs.element.append(layout.controls);
     root.append(tabs.element);
+    const updates = createPlacementUpdates({
+      root,
+      invoke: placementDesktopInvoke,
+      projectPath: () => (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.projectPath,
+      guard() {
+        if (switching || documentSession?.isSaving() || documentSession?.isFinishingPointerEdit() || runtimeAssetReloadInFlight || spatialWorkspace?.ownsGesture() || viewer.historyState().transactionLabel !== undefined)
+          throw new Error("Finish the current edit or save before updating");
+        if (spatialWorkspace?.mode() === "game") throw new Error("Stop the running scene before updating");
+        if ([...documents.values()].some(entry => entry.viewer.exportPatch())) throw new Error("Save or export unsaved scene changes before updating");
+      },
+    });
+    installPlacementWorkspaceChrome(root, viewportToolbar, name => {
+      void (async () => {
+        if (switching || documentSession?.isSaving()) return;
+        switching = true;
+        root.inert = true;
+        try {
+          const paths = { garden: "./placement.garden.scene-authoring.json", village: "./placement.village.scene-authoring.json" };
+          const url = new URL(paths[name], window.document.baseURI);
+          const existing = [...documents.values()].find(doc => !doc.desktop?.enabled && !doc.key.startsWith("folder:") && !doc.key.startsWith("file:") && new URL(doc.source, window.document.baseURI).href === url.href);
+          await openDocument(existing?.key ?? url.href, url.href, existing?.document ?? await fetchSceneJson(url), false);
+        } catch (error) { tabs?.report(error); }
+        finally { switching = false; root.inert = false; }
+      })();
+    }, () => { layout.reveal("scene"); sceneExplorer?.show(); }, () => updates.show());
+    if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
     });
@@ -2169,12 +2410,14 @@ async function bootstrap(): Promise<void> {
 
     function createDocumentInspector(
       entry: WorkspaceDocument,
+      layerView?: PlacementLayerViewState,
     ): PlacementInspector {
       const next = createPlacementInspector(entry.resolved, {
         saveEnabled: entry.saveEnabled,
         assetProvider: currentAssetProvider,
         sourceDocument: entry.source,
         signal: entry.lifetime.signal,
+        layerView,
       });
       next.element.hidden = true;
       shell.debugRoot.before(next.element);
@@ -2231,10 +2474,11 @@ async function bootstrap(): Promise<void> {
           {
             instanceHandleRegistry: registry,
             missingBehavior: "ignore",
-            spatialModelPreparer: runtime!.renderer,
+            spatialModelPreparer,
           },
         ).variables;
         configureVillageActor(runtimeEngine, next);
+        configureGardenActor(runtimeEngine, next);
         return;
       }
       const nextResolved = resolvePlacementWorkspaceDocument(next);
@@ -2275,6 +2519,7 @@ async function bootstrap(): Promise<void> {
         throw new Error(
           "Finish or cancel the current edit before switching documents",
         );
+      if (lightingControls?.flushInput() === false) return false;
       selectionTools?.cancel();
       transformGizmo?.cancel();
       if (spatialWorkspace?.suspend() === false)
@@ -2331,6 +2576,7 @@ async function bootstrap(): Promise<void> {
       publishPlacementSavedDocument(savedDocument);
       viewportNavigation?.restore(next.camera);
       spatialWorkspace?.activate(next.key, inspector.element);
+      if (isGardenScene(next.document) && !next.camera) viewportNavigation?.fitScene();
       return true;
     }
     async function openDocument(
@@ -2353,25 +2599,29 @@ async function bootstrap(): Promise<void> {
       normalTool?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
       asepriteTool?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
-      tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key);
+      tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
       normalProjectAssets?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
       const nextResolved = resolvePlacementWorkspaceDocument(value);
       await ensureVillageAssets(value as SceneAuthoringDocumentSpec);
-      if (isVillageScene(value as SceneAuthoringDocumentSpec)) {
+      await ensureGardenAssets(value as SceneAuthoringDocumentSpec);
+      if (isVillageScene(value as SceneAuthoringDocumentSpec) || isGardenScene(value as SceneAuthoringDocumentSpec)) {
         await reloadPlacementRuntimeAssets();
         if (
           runtimeAssetReadySignature !==
           placementRuntimeAssetSignature(placementRuntimeTextureManifest())
         )
-          throw new Error("Village textures are not ready; retry opening the document");
+          throw new Error("Example textures are not ready; retry opening the document");
         previewAssetProvider = createPlacementPreviewAssetProvider();
         previewAssetSignature = placementPreviewAssetSignature();
       }
@@ -2394,7 +2644,10 @@ async function bootstrap(): Promise<void> {
           nextResolved.bindingPlan?.instances[0]?.id,
         instanceHandleRegistry: nextRegistry,
         validateDraft: (state) => {
-          if (!assetBatchEditing) spatialWorkspace?.sync(state);
+          if (!assetBatchEditing) {
+            spatialWorkspace?.sync(state);
+            lightingControls?.sync(state);
+          }
         },
       });
       // Validation above guarantees this is the original scene-authoring envelope.
@@ -2412,6 +2665,7 @@ async function bootstrap(): Promise<void> {
         desktop,
         snap: { enabled: false, gridSize: DEFAULT_SNAP_GRID_SIZE },
       };
+      if (isGardenScene(value as SceneAuthoringDocumentSpec)) nextViewer.setInstancesLocked(nextViewer.state().instances.filter(instance => instance.instanceId.startsWith("ground.")).map(instance => instance.instanceId), true);
       next.inspector = createDocumentInspector(next);
       documents.set(key, next);
       try {
@@ -2459,6 +2713,7 @@ function placementSceneDocumentUrl(): string {
   }
   if (scene === "hd2d") return HD2D_SCENE_DOCUMENT_URL;
   if (scene === "village") return "./placement.village.scene-authoring.json";
+  if (scene === "garden" || scene === "2d") return "./placement.garden.scene-authoring.json";
   throw new Error(`Unsupported placement scene fixture '${scene}'.`);
 }
 
@@ -2531,34 +2786,40 @@ function createPlacementOverlay(
   stage: HTMLElement,
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
   assetProvider: PlacementAssetProviderGetter,
+  showColliderBounds: () => boolean,
 ): PlacementOverlay {
   const element = document.createElement("div");
   const draftLayer = document.createElement("div");
   const selection = document.createElement("div");
   const colliderOverlay = document.createElement("div");
-  const label = document.createElement("div");
+  const colliderLabel = document.createElement("div");
   const resizeHandle = document.createElement("button");
   const colliderOffsetHandle = document.createElement("button");
   element.className = "placement-overlay";
   draftLayer.className = "placement-draft-layer";
   selection.className = "placement-selection";
   colliderOverlay.className = "placement-collider-overlay";
-  label.className = "placement-label";
+  colliderLabel.className = "placement-collider-caption";
+  setUiText(colliderLabel, "Collision Bounds");
   resizeHandle.type = "button";
   resizeHandle.className = "placement-resize-handle";
   resizeHandle.dataset.placementResizeHandle = "se";
   setUiAttribute(resizeHandle, "aria-label", "Resize selected object");
+  setUiAttribute(resizeHandle, "title", "Drag corner to resize visual and collider");
   colliderOffsetHandle.type = "button";
   colliderOffsetHandle.className = "placement-collider-offset-handle";
   colliderOffsetHandle.dataset.placementColliderOffsetHandle = "true";
   setUiAttribute(colliderOffsetHandle, "aria-label", "Move collider offset");
-  colliderOverlay.append(colliderOffsetHandle);
-  selection.append(label, resizeHandle);
+  setUiAttribute(colliderOffsetHandle, "title", "Drag to move collision bounds");
+  colliderOffsetHandle.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12M5 5l3-3 3 3M5 11l3 3 3-3M5 5 2 8l3 3M11 5l3 3-3 3"/></svg>';
+  colliderOverlay.append(colliderLabel, colliderOffsetHandle);
+  selection.append(resizeHandle);
   element.append(draftLayer, colliderOverlay, selection);
   stage.append(element);
 
   return {
     element,
+    selectionBounds: () => selection.dataset.visible === "true" ? selection.getBoundingClientRect() : undefined,
     setState(state, interaction) {
       renderPlacementDraftMarkers(
         draftLayer,
@@ -2586,7 +2847,6 @@ function createPlacementOverlay(
         state.lockedInstanceIds.includes(selected.instanceId),
       );
       positionPlacementVisual(selection, selected, state, bounds);
-      label.textContent = selected.instanceId;
       const resizeKind = placementResizeKindForInstance(selected);
       selection.dataset.resizable = String(
         resizeKind !== undefined &&
@@ -2598,7 +2858,8 @@ function createPlacementOverlay(
       } else {
         selection.dataset.resizeKind = resizeKind;
       }
-      updatePlacementColliderOverlay(colliderOverlay, state, selected);
+      if (showColliderBounds()) updatePlacementColliderOverlay(colliderOverlay, state, selected);
+      else { colliderOverlay.dataset.visible = "false"; colliderOverlay.dataset.offsetDraggable = "false"; }
       if (state.selectedInstanceIds.length !== 1 || hasLockedSelection(state))
         colliderOverlay.dataset.offsetDraggable = "false";
     },
@@ -3033,12 +3294,14 @@ function createPlacementInspector(
   const assetMount = document.createElement("div");
   assetMount.dataset.placementAssetMount = "true";
   const navigator = createPlacementSceneNavigator(list, resolved);
-  sceneDock.append(navigator.element, list, assetMount);
+  const layers = createPlacementLayers(options.sourceDocument, layer => navigator.filterLayer(layer), options.layerView);
+  sceneDock.append(navigator.element, layers.element, list, assetMount);
   element.append(sceneDock, detailPanel);
 
   return {
     element,
     assetMount,
+    layerView: () => layers.view,
     properties() {
       inspectorTabs.select("properties");
     },
@@ -3061,6 +3324,9 @@ function createPlacementInspector(
         state,
         context?.mode === "spatial" ? context.target : undefined,
       );
+      layers.sync(state, context?.mode);
+      const layerFilter = navigator.element.querySelector<HTMLSelectElement>("[data-placement-scene-layer-filter]");
+      if (layerFilter) layerFilter.hidden = (context?.mode ?? "2d") === "2d";
       for (const button of list.querySelectorAll<HTMLButtonElement>(
         "button[data-instance-id]",
       )) {
@@ -3582,10 +3848,19 @@ function syncPlacementInstanceList(
       }),
     );
   const locked = new Set(state.lockedInstanceIds);
+  const instances = new Map(state.instances.map(instance => [instance.instanceId, instance]));
+  for (const button of list.querySelectorAll<HTMLButtonElement>("[data-instance-id]")) {
+    const instance = instances.get(button.dataset.instanceId!);
+    if (!instance) continue;
+    const hidden = state.layerEditing?.hiddenLayers.includes(placementRenderLayer(instance)) ?? false;
+    button.disabled = hidden; button.closest<HTMLElement>(".placement-instance-row")?.setAttribute("data-layer-hidden", String(hidden));
+  }
   for (const control of list.querySelectorAll<HTMLButtonElement>(
     "[data-placement-lock-instance]",
   )) {
     const isLocked = locked.has(control.dataset.placementLockInstance ?? "");
+    const instance = instances.get(control.dataset.placementLockInstance!);
+    control.disabled = !!instance && !!state.layerEditing?.lockedLayers.includes(placementRenderLayer(instance));
     setUiText(control, isLocked ? "Unlock" : "Lock");
     setUiAttribute(
       control,
@@ -3765,8 +4040,13 @@ function createPlacementTransformControls(
     y: appendNumberControl(row, "y", "y", "1"),
     scale: appendNumberControl(row, "scale", "scale", "0.05", "0.01"),
     rotationRadians: appendNumberControl(row, "rot", "rotationRadians", "0.01"),
-    layer: appendNumberControl(row, "layer", "layer", "1"),
+    layer: appendNumberControl(row, "Render Layer", "layer", "1"),
+    sortOrder: appendNumberControl(row, "Order in Layer", "sortOrder", "1"),
+    depthSort: appendCheckboxControl(row, "Foot Position Sort", "depthSort"),
   };
+  fields.depthSort.dataset.placementTransformField = "depthSort";
+  setUiAttribute(fields.depthSort, "title", "Sort sprite feet inside this layer");
+  setUiAttribute(fields.sortOrder, "title", "Break ties after foot sorting");
   appendCheckboxControl(snapRow, "snap", "snap");
   const grid = appendNumberControl(snapRow, "grid", "snapGrid", "1", "1");
   const save = document.createElement("button");
@@ -3793,10 +4073,9 @@ function createPlacementTransformControls(
       const selected = state.selected;
       const disabled = selected === undefined || hasLockedSelection(state);
       for (const input of Object.values(fields)) {
-        input.disabled =
-          disabled ||
-          (state.selectedInstanceIds.length > 1 && input === fields.layer);
+        input.disabled = disabled;
       }
+      fields.sortOrder.disabled = fields.depthSort.disabled = disabled || state.selectedInstanceIds.length > 1 || state.selected?.visual?.kind !== "sprite";
       const clean = state.draftPatch === undefined;
       const blockedByReferences =
         (migrationPreview?.references.length ?? 0) > 0;
@@ -3804,6 +4083,7 @@ function createPlacementTransformControls(
       save.dataset.blockedByReferences = String(blockedByReferences);
       clear.disabled = clean;
       if (selected === undefined) {
+        fields.depthSort.checked = false;
         for (const input of Object.values(fields)) {
           input.value = "";
         }
@@ -3816,7 +4096,9 @@ function createPlacementTransformControls(
         fields.rotationRadians,
         selected.transform.rotationRadians,
       );
-      setNumberInputValue(fields.layer, selected.transform.layer);
+      setNumberInputValue(fields.layer, placementRenderLayer(selected));
+      setNumberInputValue(fields.sortOrder, selected.visual?.kind === "sprite" ? selected.visual.sortOrder ?? 0 : 0);
+      fields.depthSort.checked = selected.visual?.kind === "sprite" && selected.visual.depthSort === "hd2d";
     },
   };
 }
@@ -4296,7 +4578,7 @@ function createPlacementComponentControls(summaries: {
     ),
     layer: appendComponentSelectControl(
       colliderRow,
-      "layer",
+      "Collision Group",
       "layer",
       PLACEMENT_COLLISION_LAYERS,
     ),
@@ -5724,10 +6006,10 @@ function installPlacementColliderOffsetHandle(
   let drag: PlacementColliderOffsetDrag | undefined;
 
   root.addEventListener("pointerdown", (event) => {
-    const target = event.target;
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>("[data-placement-collider-offset-handle]") : null;
     if (
-      !(target instanceof HTMLElement) ||
-      target.dataset.placementColliderOffsetHandle !== "true" ||
+      !(target instanceof HTMLButtonElement) ||
       event.button !== 0
     ) {
       return;
@@ -6166,6 +6448,13 @@ function applyTransformInput(
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
   const selected = viewer.state().selected;
+  if (selected && (field === "sortOrder" || field === "depthSort")) {
+    const value = numberInputValue(input);
+    if (hasLockedSelection(viewer.state()) || (field === "sortOrder" && value === undefined)) return;
+    setState(viewer.updateInstanceRenderLayers([{ instanceId: selected.instanceId,
+      ...(field === "sortOrder" ? { sortOrder: value! } : { depthSort: input.checked ? "hd2d" : "layer" }) }]));
+    return;
+  }
   const value = numberInputValue(input);
   if (selected === undefined || value === undefined) {
     return;
@@ -6199,9 +6488,9 @@ function applyTransformInput(
     );
     return;
   }
-  if (field === "layer" && viewer.state().selectedInstanceIds.length === 1) {
+  if (field === "layer") {
     setState(
-      viewer.updateInstanceTransform(selected.instanceId, { layer: value }),
+      viewer.updateInstanceRenderLayers(viewer.state().selectedInstanceIds.map(instanceId => ({ instanceId, layer: value }))),
     );
   }
 }
@@ -7164,7 +7453,7 @@ function placementPatchOperationCount(
   patch: ScenePlacementPatch | undefined,
 ): number {
   return (
-    (patch?.operations.length ?? 0) + (patch?.spatial?.operations.length ?? 0)
+    (patch?.operations.length ?? 0) + (patch?.spatial?.operations.length ?? 0) + (patch?.lighting !== undefined ? 1 : 0)
   );
 }
 
@@ -7454,7 +7743,7 @@ function placementPreviewAssetSignature(): string {
 function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
   const desktopTextures = placementDesktopPreviewTextures();
   if (
-    desktopTextures === undefined && Object.keys(villageTextures()).length === 0
+    desktopTextures === undefined && Object.keys(villageTextures()).length === 0 && Object.keys(gardenTextures()).length === 0
   ) {
     return PLACEMENT_ASSET_PROVIDER;
   }
@@ -7462,12 +7751,14 @@ function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
     textures: {
       ...PLACEMENT_TEXTURES,
       ...villageTextures(),
+      ...gardenTextures(),
       ...desktopTextures?.textures,
     },
-    atlas: { frames: { ...PLACEMENT_ATLAS.frames, ...villageAtlasFrames() } },
+    atlas: { frames: { ...PLACEMENT_ATLAS.frames, ...villageAtlasFrames(), ...gardenAtlasFrames() } },
     textureMetadata: {
       ...PLACEMENT_TEXTURE_METADATA,
       ...villageTextureMetadata(),
+      ...gardenTextureMetadata(),
       ...desktopTextures?.metadata,
     },
     frameLabel: ({ frameName }) =>
@@ -7513,10 +7804,11 @@ function placementDesktopPreviewTextures():
 function placementRuntimeTextureManifest(): Record<string, string> {
   const desktopTextures = placementDesktopPreviewTextures();
   return desktopTextures === undefined
-    ? { ...VIEWER_TEXTURES, ...villageTextures() }
+    ? { ...VIEWER_TEXTURES, ...villageTextures(), ...gardenTextures() }
     : {
         ...VIEWER_TEXTURES,
         ...villageTextures(),
+        ...gardenTextures(),
         ...desktopTextures.textures,
       };
 }

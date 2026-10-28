@@ -76,6 +76,8 @@ const requiredPackageFiles = [
   "README.md",
   "bin/create-game.mjs",
   "bin/github-release.mjs",
+  "bin/update-game.mjs",
+  "bin/update-integrity.mjs",
   "templates/manifest.json",
   ...sharedTemplateFiles.map((file) => `templates/${file}`),
   ...templateEntries.flatMap((template) => (
@@ -88,6 +90,8 @@ const requiredPackedFiles = [
   "package/README.md",
   "package/bin/create-game.mjs",
   "package/bin/github-release.mjs",
+  "package/bin/update-game.mjs",
+  "package/bin/update-integrity.mjs",
   "package/templates/manifest.json",
   ...sharedTemplateFiles.map((file) => `package/templates/${file}`),
   ...templateEntries.flatMap((template) => (
@@ -109,6 +113,8 @@ assertSemverPackage(packageJson, { expectPublishable, packageLabel });
 assert(packageJson.type === "module", "create-game package type must be module");
 assert(packageJson.license === "MIT OR Apache-2.0", "create-game package license must stay MIT OR Apache-2.0");
 assert(packageJson.bin?.["create-ferrum2d-game"] === "./bin/create-game.mjs", "create-game bin must point to ./bin/create-game.mjs");
+assert(packageJson.bin?.["create-game"] === "./bin/create-game.mjs", "multi-bin package must retain npm exec package-name inference");
+assert(packageJson.bin?.["ferrum-update-game"] === "./bin/update-game.mjs", "update CLI must be packaged");
 assert(packageJson.engines?.node === ">=18.17", "create-game Node engine must stay >=18.17");
 assert(packageJson.publishConfig?.access === "public", "create-game publishConfig.access must be public");
 assert(packageJson.publishConfig?.tag === "beta", "create-game publishConfig.tag must be beta");

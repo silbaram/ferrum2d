@@ -8,6 +8,72 @@ import { GAME_STATE_CODE } from "../src/gameState.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import type { RendererStats } from "../src/renderer.js";
 
+test("frame rendering accepts a backend-neutral command sink without asset or lifecycle methods", () => {
+  const order: string[] = [];
+  const runtime = new RuntimeFrameRenderer({
+    renderer: {
+      render: () => { order.push("clear"); },
+      renderCommands: () => { order.push("commands"); return emptyRendererStats(); },
+    },
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+  runtime.renderFrame(renderFrameState());
+  deepEqual(order, ["clear", "commands"]);
+});
+
+test("unsupported debug rendering fails before touching the frame target", () => {
+  const order: string[] = [];
+  const runtime = new RuntimeFrameRenderer({
+    renderer: {
+      render: () => { order.push("clear"); },
+      renderCommands: () => emptyRendererStats(),
+    },
+    shouldRenderPhysicsDebugLines: true,
+    needsRuntimeFrame: false,
+  });
+  throws(() => runtime.renderFrame(renderFrameState({ includePhysicsDebugLines: true })), /Renderer does not support physics debug lines/);
+  deepEqual(order, []);
+});
+
+test("unsupported spatial packets fail before providers, clear or GPU timing", () => {
+  const order: string[] = [];
+  const runtime = new RuntimeFrameRenderer({
+    renderer: {
+      render: () => { order.push("clear"); },
+      renderCommands: () => emptyRendererStats(),
+      beginGpuTiming: () => { order.push("gpu_begin"); },
+    },
+    lighting: () => { order.push("lighting"); return false; },
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+  const frame = renderFrameState({ frameState: frameState() });
+  frame.renderCommandBuffer = { ...frame.renderCommandBuffer, spatial: {
+    version: 1, vertexStride: 11, camera: new Float32Array(28),
+    terrain: new Float32Array(0), terrainVertexCount: 0, terrainRevision: 0,
+    billboards: new Float32Array(0), billboardVertexCount: 0,
+  } };
+  throws(() => runtime.renderFrame(frame), /Renderer does not support spatial scene geometry/);
+  deepEqual(order, []);
+});
+
+test("optional debug capability retains the injected renderer receiver", () => {
+  let debugCalls = 0;
+  const renderer = {
+    render() {},
+    renderCommands: () => emptyRendererStats(),
+    renderPhysicsDebugLines() {
+      equal(this, renderer);
+      debugCalls++;
+      return emptyRendererStats();
+    },
+  };
+  const runtime = new RuntimeFrameRenderer({ renderer, shouldRenderPhysicsDebugLines: true, needsRuntimeFrame: false });
+  runtime.renderFrame(renderFrameState({ includePhysicsDebugLines: true }));
+  equal(debugCalls, 1);
+});
+
 test("runtime brackets all GPU passes and publishes delayed query plus Wasm capacity", () => {
   const order: string[] = [];
   const renderer = fakeRuntimeRenderer(order);
@@ -172,7 +238,7 @@ test("RuntimeFrameRenderer composes physics debug lines before renderer stats ar
       order.push("post_process");
       return composedStats;
     },
-  } as unknown as FerrumRuntimeRenderer;
+  } satisfies FerrumRuntimeRenderer;
   let publishedLineCount = 0;
   const runtimeFrameRenderer = new RuntimeFrameRenderer({
     renderer,
@@ -424,7 +490,7 @@ function fakeRuntimeRenderer(
       order.push("post_process");
       return postProcessStats;
     },
-  } as unknown as FerrumRuntimeRenderer;
+  };
 }
 
 function rendererStats(overrides: Partial<RendererStats> = {}): RendererStats {

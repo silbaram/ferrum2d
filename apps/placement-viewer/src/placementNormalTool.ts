@@ -1,3 +1,4 @@
+import { canUsePlacementAsset } from "./placementAssetScope";
 import {
   setUiAttribute,
   setUiText,
@@ -30,6 +31,7 @@ import { createPlacementNormalPreview } from "./placementNormalPreview";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 
 interface Context {
+  project?: string;
   key: string;
   source: string;
   document: SceneAuthoringDocumentSpec;
@@ -650,6 +652,7 @@ export function createPlacementNormalTool(options: {
           )
             return;
           asset.persisted = true;
+          asset.project = context.project;
           draft().status = uiMessage("Assets saved and registered");
           options.changed();
         } catch (error) {
@@ -799,7 +802,7 @@ export function createPlacementNormalTool(options: {
     browserEntries() {
       return assets
         .entries()
-        .filter((a) => a.document === key && a.uploaded)
+        .filter((a) => canUsePlacementAsset(a, key, options.context().project) && a.uploaded)
         .map((a) => ({
           id: a.binding.textures.color.asset,
           url: a.urls![a.binding.textures.color.asset],
@@ -816,8 +819,7 @@ export function createPlacementNormalTool(options: {
         .entries()
         .some(
           (a) =>
-            a.document === key &&
-            !a.persisted &&
+            (!canUsePlacementAsset(a, key, options.context().project) || !a.persisted) &&
             [
               a.binding.textures.color.asset,
               a.binding.textures.normal.asset,
@@ -827,6 +829,7 @@ export function createPlacementNormalTool(options: {
     assertDocumentAssets(
       document: SceneAuthoringDocumentSpec,
       documentKey: string,
+      project?: string,
     ) {
       const text = JSON.stringify(document);
       if (
@@ -834,7 +837,7 @@ export function createPlacementNormalTool(options: {
           .entries()
           .some(
             (asset) =>
-              asset.document !== documentKey &&
+              !canUsePlacementAsset(asset, documentKey, project) &&
               [
                 asset.binding.textures.color.asset,
                 asset.binding.textures.normal.asset,

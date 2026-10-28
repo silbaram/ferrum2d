@@ -19,6 +19,7 @@ import type {
   ScenePlacementPatch,
 } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { canUsePlacementAsset } from "./placementAssetScope";
 import {
   createPlacementTileAssets,
   readPlacementTileProject,
@@ -53,6 +54,7 @@ export function createPlacementTileTool(options: {
   viewer: ScenePlacementViewer;
   context(): {
     key: string;
+    project?: string;
     document: SceneAuthoringDocumentSpec;
     mode: string;
     canEdit: boolean;
@@ -166,7 +168,7 @@ export function createPlacementTileTool(options: {
     commitInFlight: Promise<void> | undefined;
   const draft = () => drafts.get(key)!;
   const registered = () =>
-    assets.entries().filter((a) => a.document === key && a.uploaded);
+    assets.entries().filter((a) => canUsePlacementAsset(a, key, options.context().project) && a.uploaded);
   const plan = (next: PlacementTileAsset, selected: boolean) =>
     tileComponentPatch(
       options.context().document,
@@ -767,7 +769,7 @@ export function createPlacementTileTool(options: {
     providerAssets: () =>
       assets
         .entries()
-        .filter((a) => a.document === options.context().key && a.uploaded)
+        .filter((a) => canUsePlacementAsset(a, options.context().key, options.context().project) && a.uploaded)
         .reverse()
         .map(tileProviderAsset),
     evidence: (document: SceneAuthoringDocumentSpec) =>
@@ -775,7 +777,7 @@ export function createPlacementTileTool(options: {
         .entries()
         .filter(
           (a) =>
-            a.document === options.context().key &&
+            canUsePlacementAsset(a, options.context().key, options.context().project) &&
             a.uploaded &&
             tileAssetReferenced(document, a),
         )
@@ -785,20 +787,20 @@ export function createPlacementTileTool(options: {
         .entries()
         .some(
           (a) =>
-            a.document === options.context().key &&
-            (!a.persisted || a.project !== options.projectHost?.()?.project) &&
+            (!canUsePlacementAsset(a, options.context().key, options.context().project) || !a.persisted) &&
             tileAssetReferenced(document, a),
         ),
     assertDocumentAssets(
       document: SceneAuthoringDocumentSpec,
       documentKey: string,
+      project?: string,
     ) {
       if (
         assets
           .entries()
           .some(
             (a) =>
-              a.document !== documentKey && tileAssetReferenced(document, a),
+              !canUsePlacementAsset(a, documentKey, project) && tileAssetReferenced(document, a),
           )
       )
         throw Error(

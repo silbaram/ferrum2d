@@ -40,7 +40,8 @@ async function source(file, replacements = []) {
   for (const [from, to] of replacements) code = code.replaceAll(from, to);
   return "data:text/javascript;base64," + Buffer.from(code).toString("base64");
 }
-const normal = await source("placementNormalAssets.ts"),
+const scope = await source("placementAssetScope.ts"),
+  normal = await source("placementNormalAssets.ts", [["./placementAssetScope", scope]]),
   dependenciesSource = await source("placementTileDependencies.ts"),
   { resolveTileDependencies, tileJson } = await import(dependenciesSource),
   selectionSource = await source("placementTileSelection.ts", [
@@ -59,7 +60,7 @@ const normal = await source("placementNormalAssets.ts"),
     tileEvidence: evidence,
   } = await import(tile),
   { createPlacementSpriteRevisions: store } = await import(
-    await source("placementSpriteRevisions.ts")
+    await source("placementSpriteRevisions.ts", [["./placementAssetScope", scope]])
   );
 globalThis.createImageBitmap = async (blob) => {
   const result = decodePng(Buffer.from(await blob.arrayBuffer()));
@@ -373,7 +374,7 @@ test("fractional normalized UV arithmetic retains integer pixel dimensions", asy
   assert(a.frames.every((f) => f.width === 1 && f.height === 16));
 });
 
-const revisionsSource = await source("placementSpriteRevisions.ts"),
+const revisionsSource = await source("placementSpriteRevisions.ts", [["./placementAssetScope", scope]]),
   projectSource = await source("placementTileProject.ts", [
     ["./placementTileAssets", tile],
     ["./placementNormalAssets", normal],

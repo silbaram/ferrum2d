@@ -25,7 +25,7 @@ import type {
   PixelMaskTerrainTextureUploadOptions,
 } from "./pixelMaskTerrain.js";
 import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
-import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
+import type { PhysicsDebugLineCamera } from "./renderer.js";
 import { WebGpuDebugLinePass } from "./webgpuDebugLinePass.js";
 import { WebGpuLightingPass } from "./webgpuLightingPass.js";
 import { WebGpuPostProcessPass, resolveWebGpuPostProcessPasses } from "./webgpuPostProcessPass.js";

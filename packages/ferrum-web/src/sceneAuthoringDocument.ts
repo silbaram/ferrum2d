@@ -32,6 +32,8 @@ import {
 } from "./dataSceneVariables.js";
 import { resolveDataSceneGameplaySpec, type DataSceneGameplaySpec } from "./dataSceneGameplay.js";
 import { resolveDataSceneNavigationSpec, type DataSceneNavigationSpec } from "./dataSceneNavigation.js";
+import { resolveSceneLighting } from "./sceneLighting.js";
+import type { LightingScene2D } from "./lightingTypes.js";
 
 export const SCENE_AUTHORING_DOCUMENT_FORMAT = "ferrum2d.consumer.scene-authoring" as const;
 export const SCENE_AUTHORING_DOCUMENT_VERSION = 1 as const;
@@ -46,6 +48,8 @@ export interface SceneAuthoringDocumentSpec {
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
   spatial?: DataSceneSpatialSpec;
+  /** World-space flat lighting. Spatial scenes use spatial.environment.lighting. */
+  lighting?: LightingScene2D;
 }
 
 export interface ResolvedSceneAuthoringDocument {
@@ -58,6 +62,7 @@ export interface ResolvedSceneAuthoringDocument {
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
   spatial?: DataSceneSpatialSpec;
+  lighting?: LightingScene2D;
   bindingPlan?: SceneBehaviorBindingPlan;
 }
 
@@ -129,6 +134,8 @@ export function resolveSceneAuthoringDocument(
     : undefined;
   const navigation = document.navigation === undefined ? undefined : resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`);
   const spatial = document.spatial === undefined ? undefined : resolveDataSceneSpatialSpec(document.spatial, `${path}.spatial`);
+  const lighting = document.lighting === undefined ? undefined : resolveSceneLighting(document.lighting, `${path}.lighting`);
+  if (spatial && lighting) throw sceneCompositionDiagnosticError(`${path}.lighting`, "flat lighting cannot be combined with spatial; use spatial.environment.lighting");
   const instances = validateComponents || spatial !== undefined || navigation?.obstacles !== undefined
     ? bindingPlan?.instances ?? instantiateSceneFragment(sceneComposition, { ...bindingOptions, path: `${path}.composition` })
     : [];
@@ -211,6 +218,7 @@ export function resolveSceneAuthoringDocument(
     ...(gameplay === undefined ? {} : { gameplay }),
     ...(navigation === undefined ? {} : { navigation }),
     ...(spatial === undefined ? {} : { spatial }),
+    ...(lighting === undefined ? {} : { lighting }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }

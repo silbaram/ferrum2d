@@ -29,9 +29,8 @@ import type {
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
 import { createRenderer, resolveRendererColorManagement } from "./createRenderer.js";
-import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
-import type { TextureAssetManager } from "./assetLoader.js";
+import type { FerrumRuntimeRenderer } from "./runtimeRenderer.js";
 import { AnimationTimelinePlayer } from "./animationTimeline.js";
 import type {
   AnimationTimelinePlayerSnapshot,
@@ -80,11 +79,9 @@ import type { CreateHudOverlayStateOptions, HudComponentSpec } from "./hudToolki
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
-import type { Renderer } from "./renderer.js";
 import type { ColorManagementMode } from "./colorManagement.js";
 import type { WebGPURendererOptions } from "./webgpuRenderer.js";
-import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
-import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
+import type { PhysicsDebugLineBufferView } from "./wasmBridge.js";
 import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 import { playRuntimeCutsceneAudio } from "./runtimeCutsceneAudio.js";
 import {
@@ -99,15 +96,7 @@ import type {
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 import type { DataSceneGameState, GameStateCode } from "./gameState.js";
 
-export type FerrumRuntimeRenderer = CreatedRenderer & Renderer & TextureAssetManager & {
-  renderCommands(commands: RenderCommandBufferView): RendererStats;
-  renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats;
-  viewportSize(): { width: number; height: number };
-  setLighting?(scene: LightingScene2D | false | undefined): void;
-  setPostProcess?(postProcess: PostProcessStackInput): void;
-  renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
-  setSpriteMaterial?(material: SpriteMaterialPresetInput): void;
-};
+export type { FerrumRuntimeRenderer } from "./runtimeRenderer.js";
 
 export type {
   FerrumRuntimeLevelStreaming,

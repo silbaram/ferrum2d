@@ -81,7 +81,7 @@ export async function smokePlacementSelection(page, timeoutMs) {
     throw new Error(
       "Multi-selection must not edit only the primary object's individual properties",
     );
-  await page.click("[data-placement-view-action=frame-selection]");
+  await clickPlacementControl(page, "[data-placement-view-action=frame-selection]");
   await wait(
     () =>
       Math.abs(globalThis.ferrumPlacementEditCamera.x - 791.5) < 0.02 &&
@@ -324,7 +324,7 @@ export async function smokePlacementSelection(page, timeoutMs) {
     await openFixture(highDpr, source, timeoutMs);
     await highDpr.locator("canvas.demo-canvas").focus();
     await highDpr.keyboard.press("Control+a");
-    await highDpr.click("[data-placement-view-action=frame-selection]");
+    await clickPlacementControl(highDpr, "[data-placement-view-action=frame-selection]");
     const from = await point(highDpr, 700, 480);
     const dprZoom = await highDpr.evaluate(
       () => globalThis.ferrumPlacementViewerState.viewport.zoom,

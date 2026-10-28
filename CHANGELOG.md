@@ -8,7 +8,12 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Changed
 
-- 아직 기록할 변경 사항이 없다.
+- `FerrumRuntimeRenderer`를 WebGL2/WebGPU 구체 클래스 교차 타입에서 구조적 렌더러 계약으로 분리했다.
+  평면 custom renderer는 private GPU 상태나 모델·픽셀 마스크 기능 없이 주입할 수 있다.
+  기존 `runtime.renderer`에서 백엔드 기능을 직접 호출하던 TypeScript 코드는 capability 확인이 필요하다.
+  raw GPU texture 반환형과 URL-only texture load는 구체 renderer 참조를 사용한다.
+  기본 renderer 선택과 public import 이름, Rust/Wasm ABI는 유지한다.
+  [이전 방법](docs/engine/public-api/migration-guide.md#custom-renderer-계약-이전)을 참고한다.
 
 ## 0.1.0-beta.8 - 2026-10-12
 

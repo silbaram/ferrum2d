@@ -46,6 +46,9 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 ## 구현된 기능
 
+custom renderer는 구체 GPU 클래스 상속 없이 구조적 `FerrumRuntimeRenderer` 계약으로 주입할 수 있다.
+백엔드 전용 기능과 texture 반환형을 쓰는 경우 [renderer 계약 이전 방법](docs/engine/public-api/migration-guide.md#custom-renderer-계약-이전)을 따른다.
+
 처음 Ferrum2D를 보는 개발자는 [Showcase Hub](docs/engine/showcase-hub.md)에서 demo, 기능군, agent workflow, 검증 명령의 전체 지도를 본 뒤 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 기존 import 이전 절차는 [Public API Migration Guide](docs/engine/public-api/migration-guide.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
 
 ### Runtime / Wasm
@@ -213,6 +216,8 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 ## 게임 개발용 패키지
 
+공식 Placement Viewer의 2D 씬 도크는 **그리기 레이어** 목록에서 편집용 숨김·잠금·단독 보기, 선택 객체의 레이어 이동과 순서 교환을 제공한다. 그리기 순서는 기존 scene patch로 저장하고 Undo/Redo하며, 충돌 그룹과 구분한다. [레이어 사용법](docs/engine/data-scene-authoring.md#2d-레이어-관리)을 참고한다.
+
 초기 설정만 필요하면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 엔진 tarball 직접 설치를 사용한다. 아래 `create-game` 경로는 예제 코드·데이터와 뷰어가 포함된 실행 가능한 템플릿을 선택하는 경우에 사용한다. `minimal`도 빈 프로젝트는 아니다.
 
 Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경로로 준비한다. npm 레지스트리 공개 없이도 `npx`와 `npm install`로 사용할 수 있다. 패키지 역할은 다음과 같다.
@@ -223,6 +228,8 @@ Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경�
 | `@ferrum2d/authoring-viewer` | 생성 프로젝트의 배치 보조 도구 공통 기능 |
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI |
 | `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI. Agent Template Showcase 기준은 [packages/agents/README.md](packages/agents/README.md#agent-template-showcase)다. |
+
+전체 Placement Viewer 앱은 위 `authoring-viewer` helper 패키지와 별도로 Windows `.exe`, Linux `.deb`, macOS `.dmg` 설치 파일로 준비한다. 앱에는 미리보기 엔진이 포함된다. 배포자는 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component engine`으로 SDK 묶음, `--component viewer`로 현재 OS의 설치 파일, `--component all`로 둘을 함께 만든다. `--plan`은 빌드 없이 준비 내용을 보여준다. OS별 필수 도구와 수동 CI의 `include_viewer` 옵션은 [엔진·뷰어 분리 배포](docs/development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비)를 따른다. 준비 스크립트는 원격 공개를 수행하지 않는다.
 
 공개된 GitHub Release의 `ferrum2d-create-game-<버전>.tgz` 링크를 복사한 뒤 실행한다. **릴리스 패키지가 아직 공개되지 않았다면 이 원격 설치는 사용할 수 없다.** 배포 준비와 로컬 검증은 [GitHub Release 배포 절차](docs/development/operations/github-release.md)를 따른다. 게임 개발자는 Node.js 22만 준비하면 되며 Rust 빌드는 필요 없다.
 
@@ -324,7 +331,13 @@ Data Scene 기반 오브젝트 배치 확인용 authoring viewer는 다음으로
 pnpm dev:placement-viewer
 ```
 
-뷰어의 `/`는 2D 문서, `/?scene=hd2d`는 지형·경사로·다층 발판이 있는 HD-2D 샘플을 연다.
+**파일 → 프로젝트 씬** 또는 왼쪽 **프로젝트 씬** 탭에서 씬을 검색·열기·실행한다.
+웹의 제공된 씬 목록, 브라우저에서 선택한 읽기 전용 폴더, 데스크톱에서 명시적으로 연 프로젝트를 지원한다.
+에셋 로딩·저장 권한·탐색 한도는 [씬 탐색기 안내](apps/placement-viewer/README.md#프로젝트-씬-탐색기)를 따른다.
+
+**파일 → 버전 및 업데이트**에서 프로젝트 엔진과 데스크톱 앱의 버전을 각각 확인한다. 프로젝트 갱신에는 Node/npm 또는 pnpm이, 앱 자동 설치에는 공개키가 포함된 앱과 서명된 OS별 릴리스 파일이 필요하다. 웹은 확인/안내를 제공한다. [업데이트 사용법](apps/placement-viewer/README.md#엔진에디터-버전-업데이트)을 참고한다.
+
+뷰어의 `/`는 2D 정원 문서, `/?scene=hd2d`와 `/?scene=village`는 HD-2D 마을을 연다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했으며 파일 → 예제와 프로젝트 씬에는 정원과 마을을 제공한다.
 `/?scene=village`는 Blender로 제작한 중세 마을이다. 여관·상점·광장·하천과 픽셀 인물이 있으며,
 **실행 → WASD**로 걸어보고 정지하면 편집 초안으로 돌아온다.
 [Blender 원본·재생성·예제 범위](apps/placement-viewer/README.md#blender-중세-마을-예제)를 참고한다.

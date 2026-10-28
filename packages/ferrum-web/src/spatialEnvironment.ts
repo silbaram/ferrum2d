@@ -16,6 +16,8 @@ export interface SpatialDirectionalLightSpec {
   shadows?: { resolution?: 128 | 256 | 512 | 1024; distance?: number; extent?: number; bias?: number };
 }
 export interface SpatialLightingSpec {
+  /** Defaults to true. Disabled lighting retains authored light settings. */
+  enabled?: boolean;
   directional?: SpatialDirectionalLightSpec;
   shadowFilter?: "hard" | "pcf3";
   ambient?: SpatialRgb;
@@ -210,12 +212,15 @@ export function resolveSpatialEnvironmentSpec(
   }
   if (o.lighting !== undefined) {
     const l = object(o.lighting, `${path}.lighting`, [
+      "enabled",
       "ambient",
       "directional",
       "shadowFilter",
       "lights",
       "shadows",
     ]);
+    if (l.enabled !== undefined && typeof l.enabled !== "boolean")
+      throw sceneCompositionDiagnosticError(`${path}.lighting.enabled`, "must be a boolean");
     if (!Array.isArray(l.lights) || l.lights.length > 4)
       throw sceneCompositionDiagnosticError(
         `${path}.lighting.lights`,
@@ -304,6 +309,7 @@ export function resolveSpatialEnvironmentSpec(
       };
     }
     result.lighting = {
+      ...(l.enabled === false ? { enabled: false } : {}),
       ...(directional ? { directional } : {}),
       ...(l.shadowFilter === undefined ? {} : { shadowFilter: l.shadowFilter as "hard" | "pcf3" }),
       ambient: rgb(
@@ -420,7 +426,7 @@ export function compileSpatialEnvironment(
   v.set([0.15, 0.15, 0.15], 5);
   v.set([100, 10, 8, 8, 0, 1, 1, 0, 1, 1, 1, 0, 1000, 0, 0, 0], 60);
   if (spec.pixelArt) { v[0] |= 16; v.set([spec.pixelArt.width, spec.pixelArt.height, spec.pixelArt.snapCamera ? 1 : 0], 80); }
-  if (spec.lighting) {
+  if (spec.lighting && spec.lighting.enabled !== false) {
     v[0] |= 1;
     if (spec.lighting.directional) {
       const d = spec.lighting.directional;

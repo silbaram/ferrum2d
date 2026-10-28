@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
@@ -7,7 +8,7 @@ import { showPlacementInspector, showPlacementViewOptions } from "./placement-pa
 const artifact = resolve("artifacts/viewer-localization");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url"),
-  base = resolve("apps/placement-viewer/dist");
+  base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/placement-viewer/dist")) : resolve("apps/placement-viewer/dist");
 let server;
 if (arg < 0) {
   server = createServer(async (req, res) => {

@@ -2,6 +2,7 @@ import { resolveSpatialCameraSpec, type SpatialCameraSpec } from "@ferrum2d/ferr
 import { setUiAttribute, setUiText } from "./placementLocale";
 import { decorateViewportAction } from "./placementViewportChrome";
 import { spatialCameraPitch, orbitSpatialCameraPitch } from "./placementSpatialCamera";
+import { installGameCameraGestures } from "./placementGameCameraGestures";
 
 /** Cold authored camera controls. The workspace owns transactions and native apply. */
 export function createPlacementGameCamera(options: {
@@ -10,15 +11,33 @@ export function createPlacementGameCamera(options: {
   camera(): SpatialCameraSpec | undefined;
   editorCamera(): SpatialCameraSpec | undefined;
   canEdit(): boolean;
+  live(): boolean;
+  previewInput(camera?: SpatialCameraSpec): void;
+  closePreview(): void;
   commit(camera: SpatialCameraSpec): boolean;
   preview(): void;
   report(error?: unknown): void;
 }) {
   const element = document.createElement("section");
   element.className = "placement-game-camera";
-  const heading = document.createElement("h4"), hint = document.createElement("p");
+  const heading = document.createElement("h4"), hint = document.createElement("p"), errorMessage = document.createElement("p");
+  errorMessage.className = "placement-game-camera-error";
+  errorMessage.setAttribute("role", "alert"); errorMessage.hidden = true;
   setUiText(heading, "Game Camera");
   setUiText(hint, "Changes affect Game Preview. Save or export to keep them.");
+  const dock = document.createElement("aside"), dockHeader = document.createElement("div"), liveLabel = document.createElement("strong"), close = document.createElement("button");
+  dock.className = "placement-game-camera-dock";
+  dock.dataset.placementGameCameraDock = "true";
+  setUiAttribute(dock, "aria-label", "Game Camera");
+  dockHeader.className = "placement-game-camera-dock-header";
+  setUiText(liveLabel, "Live Preview");
+  close.type = "button";
+  close.dataset.placementGameCameraClose = "true";
+  setUiText(close, "Back to Editing");
+  close.addEventListener("click", () => { if (flushInput()) options.closePreview(); });
+  dockHeader.append(liveLabel, close); dock.append(dockHeader); dock.hidden = true;
+  options.stage.append(dock);
+  let home: HTMLElement | undefined;
   const actions = document.createElement("div");
   actions.className = "placement-game-camera-actions";
   const apply = document.createElement("button"), preview = document.createElement("button");
@@ -51,6 +70,8 @@ export function createPlacementGameCamera(options: {
     if (!event.repeat) advanced.open = !advanced.open;
   });
   const fields = new Map<string, HTMLInputElement>();
+  const ranges = new Map<string, HTMLInputElement>();
+  const scrubFields: Array<{ label: HTMLElement; input: HTMLInputElement; build(): SpatialCameraSpec }> = [];
   const inputEdits = new Map<HTMLInputElement, { apply(resetOnFailure?: boolean): boolean; displayed: string }>();
   for (const [name, caption, parent, min, max] of [
     ["pitch", "Game Viewing Angle (°)", form, -90, 90],
@@ -69,7 +90,7 @@ export function createPlacementGameCamera(options: {
     if (max !== undefined) input.max = String(max);
     input.dataset.placementGameCameraField = name;
     row.append(text, input); parent.append(row); fields.set(name, input);
-    const apply = (resetOnFailure = true) => edit(() => {
+    const build = () => {
       if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) throw new Error("Enter a valid camera value");
       const value = input.valueAsNumber, current = read();
       if (name === "pitch") return orbitSpatialCameraPitch(current, value);
@@ -88,14 +109,56 @@ export function createPlacementGameCamera(options: {
         } else current.position[axis] = value;
       }
       return current;
-    }, resetOnFailure);
+    };
+    const apply = (resetOnFailure = true) => edit(build, resetOnFailure);
+    scrubFields.push({ label: text, input, build });
     const pending = { apply, displayed: "" };
     inputEdits.set(input, pending);
+    const previewInput = () => {
+      if (!options.live() || !options.canEdit()) return;
+      try { options.previewInput(resolveSpatialCameraSpec(build())); report(); }
+      catch (error) {
+        // Incomplete/invalid text remains editable, but must not leave a stale view.
+        try { options.previewInput(); } catch (restoreError) { report(restoreError); return; }
+        report(error);
+      }
+    };
+    input.addEventListener("input", previewInput);
+    const escapeInput = (event: KeyboardEvent) => {
+      if (event.code !== "Escape" || !options.live()) return;
+      event.preventDefault(); event.stopPropagation();
+      try { options.previewInput(); sync(true); report(); }
+      catch (error) { report(error); }
+    };
+    input.addEventListener("keydown", escapeInput);
+    input.addEventListener("keydown", event => {
+      if (event.code !== "Enter") return;
+      event.preventDefault(); event.stopPropagation();
+      if (input.value !== pending.displayed || input.validity.badInput) {
+        const focused = document.activeElement === input;
+        apply();
+        // The commit briefly disables controls. Keep keyboard editing in this field.
+        if (focused && input.isConnected && !input.disabled) input.focus({ preventScroll: true });
+      }
+    });
+    if (name === "pitch" || name === "yaw") {
+      const range = document.createElement("input");
+      range.type = "range"; range.min = name === "pitch" ? "-89" : "-180";
+      range.max = name === "pitch" ? "89" : "180"; range.step = "1";
+      range.dataset.placementGameCameraRange = name;
+      setUiAttribute(range, "aria-label", caption);
+      range.addEventListener("input", () => { input.value = range.value; previewInput(); });
+      range.addEventListener("change", () => {
+        if (input.value !== pending.displayed || input.validity.badInput) apply();
+      });
+      range.addEventListener("keydown", escapeInput);
+      row.append(range); ranges.set(name, range);
+    }
     input.addEventListener("change", () => {
       // A save can commit before the browser delivers blur/change. Do not
       // recompute an already-accepted angle and create a second floating-point edit.
       if (input.value !== pending.displayed || input.validity.badInput) apply();
-      else if (options.canEdit()) options.report();
+      else if (options.canEdit()) report();
     });
   }
   const zoom = document.createElement("div"); zoom.className = "placement-game-camera-actions";
@@ -113,7 +176,9 @@ export function createPlacementGameCamera(options: {
   }
   const lensHint = document.createElement("p");
   setUiText(lensHint, "Smaller view size zooms in. Perspective uses distance and field of view.");
-  element.append(heading, hint, actions, form, zoom, lensHint, advanced);
+  const gestureHint = document.createElement("p");
+  setUiText(gestureHint, "Drag: orbit · Space/middle drag: pan · Wheel: zoom");
+  element.append(heading, hint, gestureHint, errorMessage, actions, form, zoom, lensHint, advanced);
   projection.addEventListener("change", () => edit(() => {
     const current = read(), next = projection.value;
     if (next !== "orthographic" && next !== "perspective") throw new Error("Unknown camera projection");
@@ -145,6 +210,18 @@ export function createPlacementGameCamera(options: {
   frame.className = "placement-game-camera-frame"; frame.dataset.placementGameCameraFrame = "true";
   frame.setAttribute("role", "img"); setUiAttribute(frame, "aria-label", "Game Camera Frame");
   setUiText(frameLabel, "Game Frame"); frame.append(frameLabel); frame.hidden = true; options.stage.append(frame);
+  const gestures = installGameCameraGestures({
+    canvas: options.canvas,
+    canStart: () => options.live() && options.canEdit(),
+    beforeStart: flushInput,
+    camera: read,
+    viewHeight: () => frame.getBoundingClientRect().height || options.canvas.clientHeight,
+    preview: camera => options.previewInput(camera),
+    commit: camera => edit(() => camera),
+    changed: () => sync(true),
+    report,
+  });
+  for (const field of scrubFields) gestures.scrub(field.label, field.input, field.build);
   function read() { return resolveSpatialCameraSpec(options.camera()); }
   function distance(camera: SpatialCameraSpec) {
     return Math.hypot(camera.position.x - camera.target.x, camera.position.y - camera.target.y, camera.position.elevation - camera.target.elevation);
@@ -160,19 +237,46 @@ export function createPlacementGameCamera(options: {
     let accepted = false;
     try {
       accepted = options.commit(resolveSpatialCameraSpec(build()));
+      if (accepted) report();
+      else report(new Error("Game camera change rejected"));
       return accepted;
     }
-    catch (error) { options.report(error); return false; }
-    finally { sync(accepted || resetOnFailure); }
+    catch (error) { report(error); return false; }
+    finally {
+      if (options.live()) {
+        try { options.previewInput(); } catch (error) { report(error); }
+      }
+      sync(accepted || resetOnFailure);
+    }
+  }
+  function report(error?: unknown) {
+    errorMessage.hidden = !error;
+    setUiText(errorMessage, error ? error instanceof Error ? error.message : String(error) : "");
+    options.report(error);
   }
   function sync(reset = false) {
-    const camera = options.camera(), enabled = !!camera && options.canEdit();
+    const live = options.live();
+    if (!home && element.parentElement && element.parentElement !== dock) home = element.parentElement;
+    const parent = live ? dock : home;
+    if (parent && element.parentElement !== parent) parent.append(element);
+    dock.hidden = !live;
+    options.stage.dataset.gameCameraEditing = String(live);
+    preview.hidden = live;
+    setUiText(hint, live ? "Paused. Changes appear immediately. Save or export to keep them." : "Changes affect Game Preview. Save or export to keep them.");
+    gestureHint.hidden = !live;
+    for (const field of scrubFields) {
+      field.label.classList.toggle("placement-number-scrub", live);
+      setUiAttribute(field.label, "title", live ? "Drag to adjust · Shift: fine · Ctrl/Cmd: fast" : "Open Game Camera preview to drag values");
+    }
+    const camera = options.camera(), enabled = !!camera && options.canEdit() && !gestures.ownsGesture();
+    close.disabled = !enabled;
     projection.disabled = apply.disabled = preview.disabled = !enabled;
     if (!options.editorCamera()) apply.disabled = true;
     for (const button of zoomButtons) button.disabled = !enabled;
     for (const input of fields.values()) input.disabled = !enabled;
+    for (const range of ranges.values()) range.disabled = !enabled;
     if (!camera) return;
-    const current = read(), target = current.target, eye = current.position;
+    const current = gestures.current() ?? read(), target = current.target, eye = current.position;
     projection.value = current.projection;
     const values: Record<string, number | undefined> = {
       pitch: spatialCameraPitch(current), yaw: Math.atan2(eye.y - target.y, eye.x - target.x) * 180 / Math.PI,
@@ -182,15 +286,19 @@ export function createPlacementGameCamera(options: {
     };
     for (const [name, input] of fields) {
       const value = values[name]; input.parentElement!.hidden = value === undefined;
-      if (reset || document.activeElement !== input) {
+      const range = ranges.get(name);
+      if (reset || (document.activeElement !== input && document.activeElement !== range)) {
         input.value = value === undefined ? "" : String(value);
         inputEdits.get(input)!.displayed = input.value;
+        if (range) range.value = String(value);
       }
     }
   }
   function flushInput(): boolean {
-    const input = document.activeElement;
-    if (!(input instanceof HTMLInputElement)) return true;
+    if (gestures.ownsGesture()) return false;
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLInputElement)) return true;
+    const input = fields.get(focused.dataset.placementGameCameraRange ?? "") ?? focused;
     const pending = inputEdits.get(input);
     if (!pending || (input.value === pending.displayed && !input.validity.badInput)) return true;
     const text = input.value, badInput = input.validity.badInput;
@@ -199,7 +307,7 @@ export function createPlacementGameCamera(options: {
       // Native rejection may have refreshed the accepted draft. Keep the user's
       // rejected value available for correction; incomplete numbers have no DOM value.
       if (!badInput) input.value = text;
-      if (!input.disabled) input.focus({ preventScroll: true });
+      if (!focused.disabled) focused.focus({ preventScroll: true });
     }
     return accepted;
   }
@@ -215,6 +323,8 @@ export function createPlacementGameCamera(options: {
   }
   return {
     element, sync, flushInput,
+    ownsGesture: gestures.ownsGesture,
+    cancelGesture: gestures.cancel,
     frame(presentation: Float32Array | undefined, show: boolean) {
       frame.hidden = !show;
       if (!show) return;
