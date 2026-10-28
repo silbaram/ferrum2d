@@ -128,6 +128,9 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
     const panel = await page.locator(".placement-view-panel").boundingBox();
     assert(panel.x >= 0 && panel.x + panel.width <= 391 && panel.y + panel.height <= 501);
     await page.screenshot({ path: `${artifact}/${mode}-compact-ko.png`, fullPage: true });
+    // Full-page capture may resize the viewport, which intentionally dismisses menus.
+    // Reopen through the actual control before testing the explicit close action.
+    await showPlacementViewOptions(page);
     await page.getByRole("button", { name: "보기 설정 닫기", exact: true }).click();
     for (const id of [mode === "spatial" ? "camera-spatial" : "camera-2d", "layout", "help"]) {
       await showPlacementMenu(page, id);

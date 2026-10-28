@@ -114,6 +114,26 @@ function subject() {
   });
 }
 
+test("hidden layer policy rejects spatial instance edits atomically, without blocking scene settings", () => {
+  const viewer = subject();
+  viewer.setLayerEditing({ hiddenLayers: [0], lockedLayers: [] });
+  const before = viewer.state(), history = viewer.historyState();
+  throws(() => viewer.updateSpatial([
+    { kind: "updateTerrainSurface", id: "ground", changes: { x: -98 } },
+    { kind: "updateBillboard", id: "sprite", changes: { elevation: 17 } },
+  ]), /hidden|locked/);
+  deepEqual(viewer.state().spatial, before.spatial);
+  deepEqual(viewer.historyState(), history);
+  equal(viewer.exportPatch(), undefined);
+  throws(() => viewer.updateSpatial([{ kind: "updateModel", id: "model", changes: { elevation: 3 } }]), /hidden|locked/);
+  viewer.updateSpatial([{ kind: "updateTerrainSurface", id: "ground", changes: { x: -98 } }]);
+  equal(viewer.state().spatial!.terrain[0].x, -98);
+  viewer.undo();
+  viewer.setLayerEditing({ hiddenLayers: [], lockedLayers: [] });
+  viewer.updateSpatial([{ kind: "updateBillboard", id: "sprite", changes: { elevation: 17 } }]);
+  equal(viewer.state().spatial!.billboards.sprite.elevation, 17);
+});
+
 test("spatial v5 camera edits round-trip without instance IDs, preserve locks and undo to a clean baseline", async () => {
   const source = document();
   source.sceneComposition.fragments!.main.instances = [

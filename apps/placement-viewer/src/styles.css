@@ -220,6 +220,21 @@ textarea {
   padding: 8px;
   border-bottom: 1px solid var(--border);
 }
+.placement-layers { border-bottom: 1px solid var(--border); padding: 4px; flex: 0 0 auto; }
+.placement-layers > summary { padding: 4px; font-weight: 600; cursor: pointer; }
+.placement-layers > div:nth-of-type(2) { max-height: 192px; overflow: auto; }
+.placement-layer-row { display: flex; align-items: center; gap: 0; border-left: 2px solid transparent; padding: 4px 0; }
+.placement-layer-row[data-active="true"], .placement-layer-row[data-selected="true"] { border-left-color: var(--accent); background: var(--accent-soft); }
+.placement-layer-row[data-hidden-layer="true"] .placement-layer-name, .placement-instance-row[data-layer-hidden="true"] { opacity: .5; }
+.placement-layer-row .placement-viewport-action { width: 24px; min-width: 24px; height: 24px; padding: 4px; }
+.placement-layer-row .placement-viewport-action svg { width: 16px; height: 16px; }
+.placement-layer-row button[aria-pressed="true"] { color: var(--accent); }
+.placement-layer-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.placement-layer-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0; }
+.placement-layer-tools > input { width: 100%; min-width: 0; }
+.placement-layers :is(button, input) { font-size: 11px; }
+.placement-layers > p { color: var(--fg-3); font-size: 11px; margin: 4px; }
+.placement-layers > output { display: block; color: var(--error, var(--fg-2)); font-size: 11px; overflow-wrap: anywhere; }
 .placement-scene-navigation :is(input, select) {
   min-width: 0;
   width: 100%;

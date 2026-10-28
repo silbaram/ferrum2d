@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { showPlacementInspector, showPlacementBottom, clickPlacementControl } from "./placement-panel-navigation.mjs";
+import { showPlacementInspector, showPlacementBottom, showPlacementDock, clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -10,6 +10,7 @@ import { smokePlacementWorkspace, preparePlacementWorkspaceSave, assertPlacement
 import { smokePlacementNavigation, smokePlacementNavigationMass } from "./placement-navigation-smoke.mjs";
 import { smokePlacementSelection, smokePlacementSelectionMass } from "./placement-selection-smoke.mjs";
 import { smokePlacementTransforms } from "./placement-transform-smoke.mjs";
+import { smokePlacementLayers } from "./placement-layers-smoke.mjs";
 import { smokePlacementSpatialWorkspace } from "./placement-spatial-workspace-smoke.mjs";
 import {
   runtimeBudgetForSmokeMode,
@@ -996,6 +997,7 @@ async function smokePlacementViewer(page, timeoutMs) {
   }
 
   await smokePlacementWorkspace(page, timeoutMs);
+  await smokePlacementLayers(page, timeoutMs);
   const navigation = await smokePlacementNavigation(page, timeoutMs);
   const selection = await smokePlacementSelection(page, timeoutMs);
   const transforms = await smokePlacementTransforms(page, timeoutMs);
@@ -2127,6 +2129,7 @@ async function smokePlacementViewerSave(page, timeoutMs) {
       prefab: "object",
       x: 736,
       y: 496,
+      layer: 2,
       props: {
         components: {
           visual: {
@@ -2201,8 +2204,9 @@ async function smokePlacementViewerSave(page, timeoutMs) {
       x: 880,
       y: 560,
     });
+    globalThis.__ferrumPlacementViewer.setLayerEditing({ hiddenLayers: [2], lockedLayers: [0] });
+    globalThis.ferrumPlacementViewerSelect(objectDefinitionInstanceId);
     const beforeSavePatch = globalThis.ferrumPlacementViewerExportPatch?.();
-    const saved = await globalThis.ferrumPlacementViewerSaveDraft?.();
     return {
       addSelectedInstanceId: addState?.selectedInstanceId,
       addSpriteSelectedInstanceId: addSpriteState?.selectedInstanceId,
@@ -2211,7 +2215,6 @@ async function smokePlacementViewerSave(page, timeoutMs) {
         addDefinitionState?.objectDefinitions?.some((definition) => definition.id === objectDefinitionId),
       addDefinitionInstanceSelectedInstanceId: addDefinitionInstanceState?.selectedInstanceId,
       beforeSavePatch,
-      saved,
     };
   }, {
     id: instanceId,
@@ -2220,6 +2223,11 @@ async function smokePlacementViewerSave(page, timeoutMs) {
     objectDefinitionId: definitionId,
     objectDefinitionInstanceId: definitionInstanceId,
   });
+  await showPlacementDock(page, "scene");
+  const saveLayer = page.locator('.placement-panel:not([hidden]) [data-render-layer="2"]');
+  await saveLayer.locator('[data-layer-control=filter]').click();
+  await saveLayer.locator('[data-layer-control=solo]').click();
+  saveResult.saved = await page.evaluate(() => globalThis.ferrumPlacementViewerSaveDraft?.());
   const addOperation = saveResult.beforeSavePatch?.operations?.find((operation) =>
     operation.kind === "addInstance" && operation.instance?.id === instanceId
   );

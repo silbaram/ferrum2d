@@ -661,6 +661,24 @@ export async function preparePlacementWorkspaceSave(page, timeoutMs) {
 }
 
 export async function assertPlacementWorkspaceSave(page, timeoutMs) {
+  const layerLocksPreserved = await page.evaluate(() => {
+    const state = globalThis.ferrumPlacementViewerState;
+    return state.layerEditing.lockedLayers.includes(0) && state.individuallyLockedInstanceIds.includes("floor_north") && !state.individuallyLockedInstanceIds.includes("crate_left");
+  });
+  if (!layerLocksPreserved) throw new Error("Save rebase merged layer locks into individual locks");
+  await showPlacementDock(page, "scene");
+  const layers = page.locator('.placement-panel:not([hidden]) .placement-layers');
+  const solo = layers.locator('[data-render-layer="2"] [data-layer-control=solo]');
+  if (await solo.getAttribute('aria-pressed') !== 'true' || await layers.locator('[data-render-layer="2"] [data-layer-control=filter]').getAttribute('aria-pressed') !== 'true')
+    throw new Error("Save rebase lost solo or the active layer filter");
+  await solo.click();
+  if (!await page.evaluate(() => JSON.stringify(globalThis.ferrumPlacementViewerState.layerEditing.hiddenLayers) === '[2]'))
+    throw new Error("Solo after save must restore the pre-solo hidden layers");
+  await layers.getByRole('button', { name: 'Show All', exact: true }).click();
+  await layers.getByRole('button', { name: 'All Layers', exact: true }).click();
+  await page.locator('.placement-panel:not([hidden]) [data-render-layer="0"] [data-layer-control="lock"]').click();
+  if (!await page.evaluate(() => globalThis.ferrumPlacementViewerState.lockedInstanceIds.includes("floor_north") && !globalThis.ferrumPlacementViewerState.lockedInstanceIds.includes("crate_left")))
+    throw new Error("Layer unlock after save must preserve individual locks only");
   if (
     (await page
       .getByRole("tablist", { name: "Scene documents" })

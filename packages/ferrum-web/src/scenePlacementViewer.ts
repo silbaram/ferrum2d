@@ -145,6 +145,10 @@ export interface ScenePlacementViewerState {
   selectedInstanceIds: readonly string[];
   /** Transient edit locks; never serialized into the document or patch. */
   lockedInstanceIds: readonly string[];
+  /** Individual locks, separate from transient render-layer locks. */
+  individuallyLockedInstanceIds?: readonly string[];
+  /** Editor-only policy; never serialized into a scene or patch. */
+  layerEditing?: { hiddenLayers: readonly number[]; lockedLayers: readonly number[] };
   selectedInstanceId?: string;
   hoveredInstanceId?: string;
   pointerWorld?: ScenePlacementPoint;
@@ -285,6 +289,8 @@ export interface ScenePlacementViewer {
     instanceIds: readonly string[],
     locked: boolean,
   ): ScenePlacementViewerState;
+  setLayerEditing(options: { hiddenLayers: readonly number[]; lockedLayers: readonly number[] }): ScenePlacementViewerState;
+  updateInstanceRenderLayers(updates: readonly { instanceId: string; layer?: number; sortOrder?: number; depthSort?: "layer" | "hd2d" }[]): ScenePlacementViewerState;
   selectInstanceAtScreen(point: ScenePlacementPoint): ScenePlacementViewerState;
   hoverInstance(instanceId?: string): ScenePlacementViewerState;
   hoverInstanceAtScreen(point?: ScenePlacementPoint): ScenePlacementViewerState;
@@ -479,7 +485,11 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     this.editingDraft = true;
     try {
       return this.history.edit(label, () => {
-        const state = run();
+        let state = run();
+        if (this.hiddenLayers.size) {
+          this.pruneSelectionAndLocks();
+          state = this.state();
+        }
         const patch = this.exportPatch();
         if (this.sourceDocument?.spatial && patch)
           mergeScenePlacementPatch(this.sourceDocument, patch);
@@ -496,17 +506,21 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     operations: readonly SceneSpatialPatchOperation[],
   ): ScenePlacementViewerState {
     return this.edit("Spatial Placement", () => {
-      const locked = new Set(this.state().lockedInstanceIds);
+      const state = this.state(), blocked = new Set(state.lockedInstanceIds);
+      for (const instance of state.instances) {
+        const layer = instance.visual?.kind === "sprite" ? instance.visual.layer ?? instance.transform.layer : instance.transform.layer;
+        if (this.hiddenLayers.has(layer)) blocked.add(instance.instanceId);
+      }
       if (
         operations.some(
           (operation) =>
             operation.kind !== "updateTerrainSurface" &&
             operation.kind !== "setCamera" &&
             operation.kind !== "setEnvironment" &&
-            locked.has(operation.id),
+            blocked.has(operation.id),
         )
       )
-        throw new Error("Cannot edit a locked spatial instance");
+        throw new Error("Cannot edit a hidden or locked spatial instance");
       for (const op of operations)
         if (op.kind === "copyReference") {
           const source =
@@ -613,6 +627,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   private viewport: ScenePlacementViewport;
   private selectedInstanceIds: string[] = [];
   private readonly lockedKeys = new Set<string>();
+  private hiddenLayers = new Set<number>();
+  private lockedLayers = new Set<number>();
   private nextDraftKey = 0;
   private get selectedInstanceId(): string | undefined {
     return this.selectedInstanceIds[this.selectedInstanceIds.length - 1];
@@ -700,8 +716,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       instances,
       selectedInstanceIds: [...this.selectedInstanceIds],
       lockedInstanceIds: refs
-        .filter((ref) => this.lockedKeys.has(this.refKey(ref)))
+        .filter((ref) => this.isRefLocked(ref))
         .map((ref) => this.refId(ref)),
+      individuallyLockedInstanceIds: refs.filter(ref => this.lockedKeys.has(this.refKey(ref))).map(ref => this.refId(ref)),
+      layerEditing: { hiddenLayers: [...this.hiddenLayers], lockedLayers: [...this.lockedLayers] },
       ...(this.selectedInstanceId === undefined
         ? {}
         : { selectedInstanceId: this.selectedInstanceId }),
@@ -722,8 +740,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   selectInstances(instanceIds: readonly string[]): ScenePlacementViewerState {
     const unique = [...new Set(instanceIds)];
-    this.checkedRefs(unique, "scenePlacementViewer.selectInstances", false);
-    this.selectedInstanceIds = unique;
+    const refs = this.checkedRefs(unique, "scenePlacementViewer.selectInstances", false);
+    this.selectedInstanceIds = refs.filter(ref => !this.hiddenLayers.has(this.renderLayer(ref))).map(ref => this.refId(ref));
     return this.state();
   }
 
@@ -748,6 +766,52 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     )
       this.hoveredInstanceId = undefined;
     return this.state();
+  }
+
+  setLayerEditing(options: { hiddenLayers: readonly number[]; lockedLayers: readonly number[] }): ScenePlacementViewerState {
+    this.assertNotValidating();
+    if (this.historyState().transactionLabel !== undefined) throw new Error("Finish the current edit before changing layers.");
+    const checked = (values: readonly number[]) => {
+      if (values.length > 1024 || values.some(v => !Number.isInteger(v) || v < -2147483648 || v > 2147482647))
+        throw new Error("Render layers must be bounded integers (maximum 1024).");
+      return new Set(values);
+    };
+    const hidden = checked(options.hiddenLayers), locked = checked(options.lockedLayers);
+    this.hiddenLayers = hidden; this.lockedLayers = locked;
+    this.pruneSelectionAndLocks();
+    this.hoveredInstanceId = undefined;
+    return this.state();
+  }
+
+  updateInstanceRenderLayers(updates: readonly { instanceId: string; layer?: number; sortOrder?: number; depthSort?: "layer" | "hd2d" }[]): ScenePlacementViewerState {
+    return this.edit("Render Layers", () => {
+      const refs = this.checkedRefs(updates.map(update => update.instanceId), "scenePlacementViewer.updateInstanceRenderLayers");
+      if (updates.some(update => update.layer !== undefined && (!Number.isInteger(update.layer) || update.layer < -2147483648 || update.layer > 2147482647)))
+        throw new Error("Render layer must be an integer in [-2147483648, 2147482647].");
+      if (updates.some(update => update.layer !== undefined && (this.hiddenLayers.has(update.layer) || this.lockedLayers.has(update.layer))))
+        throw new Error("The target layer is hidden or locked.");
+      if (updates.some(update => (update.sortOrder !== undefined && !Number.isFinite(Math.fround(update.sortOrder))) || (update.depthSort !== undefined && !["layer", "hd2d"].includes(update.depthSort))))
+        throw new Error("Invalid sprite sorting settings.");
+      refs.forEach((ref, index) => {
+        const update = updates[index];
+        if ((update.sortOrder !== undefined || update.depthSort !== undefined) && this.viewerInstance(ref).visual?.kind !== "sprite")
+          throw new Error("Sorting settings require a sprite.");
+        const raw = this.resolvedInstanceForRef(ref).props[DATA_SCENE_COMPONENTS_PROP];
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          const components = structuredClone(raw) as Record<string, SceneCompositionJsonValue>, key = components.visual ? "visual" : "sprite";
+          const visual = components[key] as Record<string, SceneCompositionJsonValue> | undefined;
+          if (visual && typeof visual === "object" && !Array.isArray(visual) && (visual.layer !== undefined || update.sortOrder !== undefined || update.depthSort !== undefined)) {
+            if (visual.layer !== undefined && update.layer !== undefined) visual.layer = update.layer;
+            if (update.sortOrder !== undefined) visual.sortOrder = update.sortOrder;
+            if (update.depthSort !== undefined) visual.depthSort = update.depthSort;
+            this.applyComponentsDraft(ref, components);
+          }
+        }
+        if (update.layer !== undefined) this.applyTransformDraft(ref, { layer: update.layer });
+      });
+      this.pickBounds = this.createPickBounds(this.path);
+      return this.state();
+    });
   }
 
   selectInstanceAtScreen(
@@ -856,20 +920,23 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     instanceId: string,
     components: SceneCompositionJsonValue,
   ): ScenePlacementViewerState {
-    return this.edit("Components", () =>
-      this.updateInstanceComponentsDraft(instanceId, components),
-    );
+    return this.edit("Components", () => {
+      const ref = this.knownInstanceRef(
+        instanceId,
+        "scenePlacementViewer.updateInstanceComponents.instanceId",
+      );
+      this.assertUnlocked(ref);
+      this.applyComponentsDraft(ref, components);
+      this.pickBounds = this.createPickBounds(this.path);
+      return this.state();
+    });
   }
 
-  private updateInstanceComponentsDraft(
-    instanceId: string,
+  /** The caller validates the target and rebuilds derived bounds once per edit. */
+  private applyComponentsDraft(
+    ref: ScenePlacementInstanceRef,
     components: SceneCompositionJsonValue,
-  ): ScenePlacementViewerState {
-    const ref = this.knownInstanceRef(
-      instanceId,
-      "scenePlacementViewer.updateInstanceComponents.instanceId",
-    );
-    this.assertUnlocked(ref);
+  ): void {
     const patch = validatedComponentsPatch(
       components,
       "scenePlacementViewer.updateInstanceComponents.components",
@@ -900,8 +967,6 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       );
       this.draftComponents.set(ref.instance.id, patch);
     }
-    this.pickBounds = this.createPickBounds(this.path);
-    return this.state();
   }
 
   updateBehaviorBinding(
@@ -1632,15 +1697,22 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         components.visual,
         transform,
       );
+      const depthSorted = components.visual.kind === "sprite" && components.visual.depthSort === "hd2d";
       bounds.push({
         lockKey: this.refKey(ref),
         instanceId: instance.id,
+        renderLayer: components.visual.kind === "sprite" ? components.visual.layer ?? transform.layer : transform.layer,
+        floorId: depthSorted ? components.body?.heightSpan?.floorId ?? 0 : 0,
+        elevation: depthSorted ? Math.fround(components.body?.heightSpan?.elevation ?? 0) : 0,
+        // Match the f32 values sent at spawn and each native arithmetic step.
+        footY: depthSorted && components.visual.kind === "sprite" ? Math.fround(Math.fround(transform.y) + Math.fround(Math.fround(components.visual.height * transform.scale) * Math.fround(1 - Math.fround(components.visual.originY ?? 0.5)))) : 0,
+        sortOrder: components.visual.kind === "sprite" ? Math.fround(components.visual.sortOrder ?? 0) : 0,
         ...geometry,
         cos: Math.cos(geometry.rotationRadians),
         sin: Math.sin(geometry.rotationRadians),
       });
     }
-    return bounds;
+    return bounds.sort((a, b) => a.renderLayer - b.renderLayer || a.floorId - b.floorId || compareDrawFloat(a.elevation, b.elevation) || compareDrawFloat(a.footY, b.footY) || compareDrawFloat(a.sortOrder, b.sortOrder));
   }
 
   private inlineComponentsForInstance(
@@ -1698,7 +1770,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   ): string | undefined {
     for (let index = this.pickBounds.length - 1; index >= 0; index -= 1) {
       const bounds = this.pickBounds[index];
-      if (bounds === undefined || this.lockedKeys.has(bounds.lockKey)) {
+      if (bounds === undefined || this.lockedKeys.has(bounds.lockKey) || this.lockedLayers.has(bounds.renderLayer) || this.hiddenLayers.has(bounds.renderLayer)) {
         continue;
       }
       const dx = point.x - bounds.x;
@@ -1827,10 +1899,19 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   }
 
   private assertUnlocked(ref: ScenePlacementInstanceRef): void {
-    if (this.lockedKeys.has(this.refKey(ref)))
+    if (this.isRefLocked(ref) || this.hiddenLayers.has(this.renderLayer(ref)))
       throw new Error(
         `Scene instance '${this.refId(ref)}' is locked. Unlock it before editing.`,
       );
+  }
+
+  private renderLayer(ref: ScenePlacementInstanceRef): number {
+    const instance = this.viewerInstance(ref);
+    return instance.visual?.kind === "sprite" ? instance.visual.layer ?? instance.transform.layer : instance.transform.layer;
+  }
+
+  private isRefLocked(ref: ScenePlacementInstanceRef): boolean {
+    return this.lockedKeys.has(this.refKey(ref)) || (this.lockedLayers.size > 0 && this.lockedLayers.has(this.renderLayer(ref)));
   }
 
   private checkedRefs(
@@ -1862,7 +1943,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   private pruneSelectionAndLocks(): void {
     const refs = this.visibleInstanceRefs();
-    const ids = new Set(refs.map((ref) => this.refId(ref)));
+    const ids = new Set(refs.filter(ref => !this.hiddenLayers.size || !this.hiddenLayers.has(this.renderLayer(ref))).map((ref) => this.refId(ref)));
     const keys = new Set(refs.map((ref) => this.refKey(ref)));
     this.selectedInstanceIds = this.selectedInstanceIds.filter((id) =>
       ids.has(id),
@@ -2099,10 +2180,20 @@ class ScenePlacementPatchStoreController implements ScenePlacementPatchStore {
 }
 
 interface ScenePlacementPickBounds extends ScenePlacementVisualGeometry {
+  renderLayer: number;
+  floorId: number;
+  elevation: number;
+  footY: number;
+  sortOrder: number;
   lockKey: string;
   instanceId: string;
   cos: number;
   sin: number;
+}
+
+/** Finite native total_cmp order also places -0 before +0. */
+function compareDrawFloat(left: number, right: number): number {
+  return left - right || Number(Object.is(right, -0)) - Number(Object.is(left, -0));
 }
 
 function viewerComposition(

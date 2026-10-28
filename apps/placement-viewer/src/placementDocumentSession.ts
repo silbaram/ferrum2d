@@ -174,6 +174,8 @@ export function installPlacementDocumentSession(options: {
   root.addEventListener("focusin", (event) => {
     if (
       event.target instanceof HTMLInputElement &&
+      // A checkbox toggle is already one atomic edit; focus alone is not a gesture.
+      event.target.type !== "checkbox" &&
       event.target.dataset.placementTransformField
     ) {
       finish(false);

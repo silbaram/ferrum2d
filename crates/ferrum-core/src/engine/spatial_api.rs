@@ -633,10 +633,9 @@ impl Engine {
         }
         accepted
     }
-    /// Cold bounded authoring visibility. Physics/support geometry and save state stay intact.
+    /// Cold bounded 2D/spatial authoring visibility. Physics and save state stay intact.
     pub fn set_spatial_preview_filter(&mut self, entity_keys: &[u32], surface_ids: &[u32]) -> bool {
         if self.scene_mode != SceneMode::Data
-            || self.spatial_scene.camera.is_none()
             || !entity_keys.len().is_multiple_of(2)
             || entity_keys.len() > 32768
             || surface_ids.len() > 256

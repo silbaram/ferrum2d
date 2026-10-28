@@ -135,6 +135,13 @@ jobs:
       - name: Placement workspace browser smoke
         run: node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist
 
+      - name: Placement save and layer state browser smoke
+        env:
+          VITE_FERRUM_PLACEMENT_VIEWER_SAVE: "true"
+        run: |
+          pnpm --filter @ferrum2d/placement-viewer exec vite build --base=./ --outDir "$RUNNER_TEMP/placement-viewer-save"
+          node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-save "$RUNNER_TEMP/placement-viewer-save"
+
       - name: HD-2D authoring workspace browser smoke
         run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/placement-viewer/dist
 
@@ -142,8 +149,8 @@ jobs:
         # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
         run: node tests/smoke/placement-village-smoke.mjs
 
-      - name: Placement camera, grid geometry and locale contracts
-        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale
+      - name: Placement camera, grid, locale and layer contracts
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers
 
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context

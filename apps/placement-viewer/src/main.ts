@@ -39,6 +39,8 @@ import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
+import { createPlacementLayers, type PlacementLayerAction } from "./placementLayers";
+import { placementRenderLayer, placementSoloPolicy, type PlacementLayerViewState } from "./placementLayerState";
 import { installPlacementDocumentSession } from "./placementDocumentSession";
 import {
   installPlacementViewportNavigation,
@@ -461,6 +463,7 @@ type PlacementViewerAgentHandoff = ScenePlacementAgentHandoff & {
 interface PlacementInspector {
   element: HTMLElement;
   assetMount: HTMLElement;
+  layerView(): PlacementLayerViewState;
   review(): void;
   properties(): void;
   setState(
@@ -505,6 +508,7 @@ interface PlacementInspectorOptions {
   saveEnabled: boolean;
   assetProvider: PlacementAssetProviderGetter;
   sourceDocument: string;
+  layerView?: PlacementLayerViewState;
 }
 
 type PlacementAssetProviderGetter = () => ScenePlacementAssetProvider;
@@ -898,6 +902,8 @@ async function bootstrap(): Promise<void> {
       selectInstances: (ids) => currentViewer.selectInstances(ids),
       setInstancesLocked: (ids, locked) =>
         currentViewer.setInstancesLocked(ids, locked),
+      setLayerEditing: options => currentViewer.setLayerEditing(options),
+      updateInstanceRenderLayers: updates => currentViewer.updateInstanceRenderLayers(updates),
       selectInstanceAtScreen: (point) =>
         currentViewer.selectInstanceAtScreen(point),
       hoverInstance: (id) => currentViewer.hoverInstance(id),
@@ -943,6 +949,7 @@ async function bootstrap(): Promise<void> {
       desktop?: PlacementViewerDesktopState;
       snap: { enabled: boolean; gridSize: number };
       camera?: PlacementEditCamera;
+      suspendedLayerEditing?: ScenePlacementViewerState["layerEditing"];
     }
     const documents = new Map<string, WorkspaceDocument>();
     let activeDocument: WorkspaceDocument = {
@@ -976,6 +983,7 @@ async function bootstrap(): Promise<void> {
       | undefined;
     let switching = false;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
+    let layerVisibilitySignature = "";
     const syncTabs = () =>
       tabs?.setState(
         [...documents.values()].map((entry) => ({
@@ -1012,6 +1020,9 @@ async function bootstrap(): Promise<void> {
         tileTool?.evidence(currentDocument),
       );
     };
+    // Manual visibility actions replace Solo; the panel updates its view state
+    // after the synchronous action succeeds, so do not reapply old isolation here.
+    let applyingLayerPolicy = false;
     const setState = (
       state: ScenePlacementViewerState,
     ): ScenePlacementViewerState => {
@@ -1019,6 +1030,29 @@ async function bootstrap(): Promise<void> {
       lightingControls?.sync(state);
       gardenPreview?.sync();
       const mode = spatialWorkspace?.mode();
+      if (mode !== "2d" && mode !== undefined) {
+        if (state.layerEditing && (state.layerEditing.hiddenLayers.length || state.layerEditing.lockedLayers.length)) {
+          activeDocument.suspendedLayerEditing = state.layerEditing;
+          state = viewer.setLayerEditing({ hiddenLayers: [], lockedLayers: [] });
+        }
+      } else if (activeDocument.suspendedLayerEditing) {
+        state = viewer.setLayerEditing(activeDocument.suspendedLayerEditing);
+        activeDocument.suspendedLayerEditing = undefined;
+      }
+      if (mode === "2d" || mode === undefined) {
+        if (!applyingLayerPolicy && !viewer.historyState().transactionLabel) {
+          const policy = placementSoloPolicy(state, inspector.layerView());
+          if (policy) state = viewer.setLayerEditing(policy);
+        }
+        const hidden = new Set(state.layerEditing?.hiddenLayers ?? []);
+        const hiddenEntities = state.instances.filter(instance => hidden.has(placementRenderLayer(instance))).flatMap(instance => instance.entity ? [instance.entity] : []);
+        const signature = JSON.stringify([activeDocument.key, runtimeApplyRevision, hiddenEntities]);
+        if (signature !== layerVisibilitySignature) {
+          if (!runtimeEngine.setDataSceneSpatialPreviewFilter({ hiddenEntities, hiddenSurfaces: [] }))
+            throw new Error("Layer preview visibility rejected");
+          layerVisibilitySignature = signature;
+        }
+      } else layerVisibilitySignature = "";
       // Native apply can reject a mode change. Clear the shared 2D tool only
       // after spatial sync accepts it, so a failed transition retains its tool.
       if (mode !== lastWorkspaceMode) {
@@ -1271,8 +1305,9 @@ async function bootstrap(): Promise<void> {
               },
             });
             entry.viewer.selectInstances(editState.selectedInstanceIds);
-            entry.viewer.setInstancesLocked(editState.lockedInstanceIds, true);
-            entry.inspector = createDocumentInspector(entry);
+            entry.viewer.setInstancesLocked(editState.individuallyLockedInstanceIds ?? editState.lockedInstanceIds, true);
+            if (editState.layerEditing) entry.viewer.setLayerEditing(editState.layerEditing);
+            entry.inspector = createDocumentInspector(entry, entry.inspector.layerView());
             activateDocument(entry.key, true);
           }
           return result;
@@ -2171,6 +2206,36 @@ async function bootstrap(): Promise<void> {
         )
         ?.click();
     });
+    root.addEventListener("placement-layer-action", event => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as { action: PlacementLayerAction; report(error?: string): void };
+      const before = viewer.state();
+      try {
+        if (switching || documentSession?.isSaving() || (spatialWorkspace?.mode() ?? "2d") !== "2d" || viewer.historyState().transactionLabel)
+          throw new Error("Finish the current edit before changing layers.");
+        const action = detail.action;
+        if (action.kind === "policy") { applyingLayerPolicy = true; viewer.setLayerEditing(action); }
+        else if (action.kind === "select") viewer.selectInstances(action.ids);
+        else {
+          const ids = new Set(before.selectedInstanceIds);
+          const updates = before.instances.flatMap(instance => {
+            const layer = placementRenderLayer(instance);
+            if (action.kind === "move") return ids.has(instance.instanceId) ? [{ instanceId: instance.instanceId, layer: action.layer }] : [];
+            return layer === action.from || layer === action.to ? [{ instanceId: instance.instanceId, layer: layer === action.from ? action.to : action.from }] : [];
+          });
+          viewer.updateInstanceRenderLayers(updates);
+        }
+        setState(viewer.state()); detail.report();
+      } catch (error) {
+        if (detail.action.kind === "policy" && before.layerEditing && !viewer.historyState().transactionLabel) {
+          viewer.setLayerEditing(before.layerEditing);
+          viewer.selectInstances(before.selectedInstanceIds);
+          viewer.hoverInstance(before.hoveredInstanceId);
+          setState(viewer.state());
+        }
+        detail.report(error instanceof Error ? error.message : String(error));
+      } finally { applyingLayerPolicy = false; }
+    });
     root.addEventListener("placement-scene-surface", (event) => {
       if (event instanceof CustomEvent)
         spatialWorkspace?.selectSurface(String(event.detail));
@@ -2232,12 +2297,14 @@ async function bootstrap(): Promise<void> {
 
     function createDocumentInspector(
       entry: WorkspaceDocument,
+      layerView?: PlacementLayerViewState,
     ): PlacementInspector {
       const next = createPlacementInspector(entry.resolved, {
         saveEnabled: entry.saveEnabled,
         assetProvider: currentAssetProvider,
         sourceDocument: entry.source,
         signal: entry.lifetime.signal,
+        layerView,
       });
       next.element.hidden = true;
       shell.debugRoot.before(next.element);
@@ -3111,12 +3178,14 @@ function createPlacementInspector(
   const assetMount = document.createElement("div");
   assetMount.dataset.placementAssetMount = "true";
   const navigator = createPlacementSceneNavigator(list, resolved);
-  sceneDock.append(navigator.element, list, assetMount);
+  const layers = createPlacementLayers(options.sourceDocument, layer => navigator.filterLayer(layer), options.layerView);
+  sceneDock.append(navigator.element, layers.element, list, assetMount);
   element.append(sceneDock, detailPanel);
 
   return {
     element,
     assetMount,
+    layerView: () => layers.view,
     properties() {
       inspectorTabs.select("properties");
     },
@@ -3139,6 +3208,9 @@ function createPlacementInspector(
         state,
         context?.mode === "spatial" ? context.target : undefined,
       );
+      layers.sync(state, context?.mode);
+      const layerFilter = navigator.element.querySelector<HTMLSelectElement>("[data-placement-scene-layer-filter]");
+      if (layerFilter) layerFilter.hidden = (context?.mode ?? "2d") === "2d";
       for (const button of list.querySelectorAll<HTMLButtonElement>(
         "button[data-instance-id]",
       )) {
@@ -3660,10 +3732,19 @@ function syncPlacementInstanceList(
       }),
     );
   const locked = new Set(state.lockedInstanceIds);
+  const instances = new Map(state.instances.map(instance => [instance.instanceId, instance]));
+  for (const button of list.querySelectorAll<HTMLButtonElement>("[data-instance-id]")) {
+    const instance = instances.get(button.dataset.instanceId!);
+    if (!instance) continue;
+    const hidden = state.layerEditing?.hiddenLayers.includes(placementRenderLayer(instance)) ?? false;
+    button.disabled = hidden; button.closest<HTMLElement>(".placement-instance-row")?.setAttribute("data-layer-hidden", String(hidden));
+  }
   for (const control of list.querySelectorAll<HTMLButtonElement>(
     "[data-placement-lock-instance]",
   )) {
     const isLocked = locked.has(control.dataset.placementLockInstance ?? "");
+    const instance = instances.get(control.dataset.placementLockInstance!);
+    control.disabled = !!instance && !!state.layerEditing?.lockedLayers.includes(placementRenderLayer(instance));
     setUiText(control, isLocked ? "Unlock" : "Lock");
     setUiAttribute(
       control,
@@ -3843,8 +3924,13 @@ function createPlacementTransformControls(
     y: appendNumberControl(row, "y", "y", "1"),
     scale: appendNumberControl(row, "scale", "scale", "0.05", "0.01"),
     rotationRadians: appendNumberControl(row, "rot", "rotationRadians", "0.01"),
-    layer: appendNumberControl(row, "layer", "layer", "1"),
+    layer: appendNumberControl(row, "Render Layer", "layer", "1"),
+    sortOrder: appendNumberControl(row, "Order in Layer", "sortOrder", "1"),
+    depthSort: appendCheckboxControl(row, "Foot Position Sort", "depthSort"),
   };
+  fields.depthSort.dataset.placementTransformField = "depthSort";
+  setUiAttribute(fields.depthSort, "title", "Sort sprite feet inside this layer");
+  setUiAttribute(fields.sortOrder, "title", "Break ties after foot sorting");
   appendCheckboxControl(snapRow, "snap", "snap");
   const grid = appendNumberControl(snapRow, "grid", "snapGrid", "1", "1");
   const save = document.createElement("button");
@@ -3871,10 +3957,9 @@ function createPlacementTransformControls(
       const selected = state.selected;
       const disabled = selected === undefined || hasLockedSelection(state);
       for (const input of Object.values(fields)) {
-        input.disabled =
-          disabled ||
-          (state.selectedInstanceIds.length > 1 && input === fields.layer);
+        input.disabled = disabled;
       }
+      fields.sortOrder.disabled = fields.depthSort.disabled = disabled || state.selectedInstanceIds.length > 1 || state.selected?.visual?.kind !== "sprite";
       const clean = state.draftPatch === undefined;
       const blockedByReferences =
         (migrationPreview?.references.length ?? 0) > 0;
@@ -3882,6 +3967,7 @@ function createPlacementTransformControls(
       save.dataset.blockedByReferences = String(blockedByReferences);
       clear.disabled = clean;
       if (selected === undefined) {
+        fields.depthSort.checked = false;
         for (const input of Object.values(fields)) {
           input.value = "";
         }
@@ -3894,7 +3980,9 @@ function createPlacementTransformControls(
         fields.rotationRadians,
         selected.transform.rotationRadians,
       );
-      setNumberInputValue(fields.layer, selected.transform.layer);
+      setNumberInputValue(fields.layer, placementRenderLayer(selected));
+      setNumberInputValue(fields.sortOrder, selected.visual?.kind === "sprite" ? selected.visual.sortOrder ?? 0 : 0);
+      fields.depthSort.checked = selected.visual?.kind === "sprite" && selected.visual.depthSort === "hd2d";
     },
   };
 }
@@ -4374,7 +4462,7 @@ function createPlacementComponentControls(summaries: {
     ),
     layer: appendComponentSelectControl(
       colliderRow,
-      "layer",
+      "Collision Group",
       "layer",
       PLACEMENT_COLLISION_LAYERS,
     ),
@@ -6244,6 +6332,13 @@ function applyTransformInput(
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
   const selected = viewer.state().selected;
+  if (selected && (field === "sortOrder" || field === "depthSort")) {
+    const value = numberInputValue(input);
+    if (hasLockedSelection(viewer.state()) || (field === "sortOrder" && value === undefined)) return;
+    setState(viewer.updateInstanceRenderLayers([{ instanceId: selected.instanceId,
+      ...(field === "sortOrder" ? { sortOrder: value! } : { depthSort: input.checked ? "hd2d" : "layer" }) }]));
+    return;
+  }
   const value = numberInputValue(input);
   if (selected === undefined || value === undefined) {
     return;
@@ -6277,9 +6372,9 @@ function applyTransformInput(
     );
     return;
   }
-  if (field === "layer" && viewer.state().selectedInstanceIds.length === 1) {
+  if (field === "layer") {
     setState(
-      viewer.updateInstanceTransform(selected.instanceId, { layer: value }),
+      viewer.updateInstanceRenderLayers(viewer.state().selectedInstanceIds.map(instanceId => ({ instanceId, layer: value }))),
     );
   }
 }

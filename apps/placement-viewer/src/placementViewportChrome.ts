@@ -2,6 +2,13 @@ import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 
 // App-owned stroke icons; keep their labels in the locale catalog, never in SVG.
 const paths = {
+  eye: '<path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5Z"/><circle cx="8" cy="8" r="2"/>',
+  eyeOff: '<path d="m2 2 12 12M6 3c5-1 9 5 9 5l-2 2M3 5 1 8s3 5 7 5l3-1"/>',
+  lock: '<rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5 7V4a3 3 0 0 1 6 0v3"/>',
+  unlock: '<rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5 7V4a3 3 0 0 1 6 0"/>',
+  solo: '<circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1"/>',
+  layerUp: '<path d="m4 8 4-4 4 4M8 4v9"/>',
+  layerDown: '<path d="m4 8 4 4 4-4M8 3v9"/>',
   select: '<path d="m3 2 10 7-5 1-2 4Z"/>',
   pan: '<path d="M5 8V4a1 1 0 0 1 2 0v3-4a1 1 0 0 1 2 0v4-3a1 1 0 0 1 2 0v4-2a1 1 0 0 1 2 0v5c0 3-2 4-5 4-2 0-3-1-4-3L2 9a1 1 0 0 1 2-1l1 1Z"/>',
   left: '<path d="M3 6a5 5 0 1 1 0 5M3 2v4h4"/>',
