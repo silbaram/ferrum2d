@@ -180,6 +180,11 @@ Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 �
 
 `ScenePlacementViewer`의 draft와 bounded Undo/Redo는 TypeScript의 저빈도 문서 편집 상태다.
 `scenePlacementHistory.ts`가 snapshot과 transaction을 관리하며 선택·hover·camera 탐색은 새 이력을 만들지 않는다.
+2D 레이어 패널은 기존 numeric render layer와 components patch를 사용한다. 별칭은 source 경로별 로컬 UI 설정이고 레이어 숨김/잠금은 viewer의 history 밖 정책이다. 개별 잠금과 레이어 잠금은 독립적으로 보존하며 저장 rebase에서 합집합을 개별 잠금으로 복사하지 않는다. 실제 게임 순서 변경은 `updateInstanceRenderLayers`의 원자적 transform/components 변경으로 기록한다. 숨김 handle은 변경 시에만 기존 bounded bulk `setDataSceneSpatialPreviewFilter`로 전달하며 이 hook은 flat Data Scene에도 적용한다. Rust가 sprite와 소유 그림자 command를 제외하고 collider/simulation은 유지한다. render command struct/ABI는 바꾸지 않으며 매 entity의 frame별 JS/Wasm 호출도 추가하지 않는다. HD-2D/게임 모드에서는 2D 정책을 중단하고 복귀 시 복원한다.
+
+단독 보기와 활성 목록 레이어는 문서별 presentation 상태이며 저장으로 inspector를 재생성할 때도 보존한다. 새 숫자 레이어·Undo·2D 복귀 시 단독 보기 정책을 다시 계산하고, 단독 표시한 레이어가 사라지면 이전 숨김 집합으로 복원한다. HD-2D 목록 필터는 2D 패널의 활성 레이어를 덮어쓰지 않는다. 일괄 components 변경은 검증된 ref를 재사용해 pick bounds를 한 번 갱신하며, 같은 layer의 depth 피킹은 Rust의 floor/elevation/발 위치 정렬을 따른다.
+
+`placementLayerState.ts`는 DOM 없이 layer별 ID·선택·잠금을 한 번 분류하고 단독 보기 정책을 계산한다. 행별 전체 instance 재검색을 하지 않는다. UI 적용 실패는 정책뿐 아니라 선택·hover도 복원한다. 공개 공간 instance 편집에도 숨김 정책을 적용하고, 평면 피킹 비교는 spawn 값과 native 연산의 f32 반올림 및 signed-zero 순서를 따른다.
 선택 host `validateDraft`는 최종 draft 검증과 history 복원 안에서 실행한다. 거절 시 이력 위치를 이동하지 않으며,
 실패한 edit의 복구 대상으로 거절된 candidate를 쓰지 않는다. 열린 gesture의 취소도 거절되면 직전 정상 초안과
 transaction을 유지한다. callback 중 draft/history 재진입은 차단한다.

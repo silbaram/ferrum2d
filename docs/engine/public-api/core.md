@@ -912,3 +912,6 @@ frame이다. 두 값을 구분해 `RuntimeProfilerOptions.frameTrace`가 느린 
 
 `createSpatialModelThumbnailSvg(asset, size?)`와 `engine.setDataSceneSpatialPreviewFilter(...)`의
 preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
+이 filter는 flat Data Scene에서도 `hiddenEntities`를 받는다. 카메라가 없는 2D에서도 sprite와 소유 그림자만
+제외하며 collider/simulation은 유지한다. `null` 또는 빈 목록은 필터를 해제한다.
+호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.

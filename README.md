@@ -213,6 +213,8 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 ## 게임 개발용 패키지
 
+공식 Placement Viewer의 2D 씬 도크는 **그리기 레이어** 목록에서 편집용 숨김·잠금·단독 보기, 선택 객체의 레이어 이동과 순서 교환을 제공한다. 그리기 순서는 기존 scene patch로 저장하고 Undo/Redo하며, 충돌 그룹과 구분한다. [레이어 사용법](docs/engine/data-scene-authoring.md#2d-레이어-관리)을 참고한다.
+
 초기 설정만 필요하면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 엔진 tarball 직접 설치를 사용한다. 아래 `create-game` 경로는 예제 코드·데이터와 뷰어가 포함된 실행 가능한 템플릿을 선택하는 경우에 사용한다. `minimal`도 빈 프로젝트는 아니다.
 
 Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경로로 준비한다. npm 레지스트리 공개 없이도 `npx`와 `npm install`로 사용할 수 있다. 패키지 역할은 다음과 같다.

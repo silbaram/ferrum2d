@@ -244,6 +244,23 @@ transaction 밖에서는 집합 전체를 한 건의 Undo로 기록한다. 중�
 기존 factory 호출과 단일 선택 사용법은 유지한다. `ScenePlacementViewer` wrapper를 직접 구현하거나 state fixture를
 구성하는 consumer는 새 메서드 위임과 두 배열 필드를 추가해야 한다. module export 이름은 바뀌지 않는다.
 
+`setLayerEditing({ hiddenLayers, lockedLayers })`는 별도의 2D 편집 레이어 정책을 설정한다.
+배열은 각각 최대 1,024개의 유효 정수 render layer를 받는다. `state().layerEditing`은 정책을,
+`individuallyLockedInstanceIds`는 개별 잠금만, `lockedInstanceIds`는 개별/레이어 잠금의 합집합을 노출한다.
+숨긴 레이어는 피킹·명시적 선택·편집에서 제외하고 선택 집합을 정리한다.
+`updateSpatial`의 instance 대상 변경에도 같은 정책을 적용한다. 지형·카메라·환경 같은 씬 전체 설정은 제외한다.
+정책은 history/patch/scene JSON에 직렬화하지 않는다. 호스트는 저장 rebase 시 개별 잠금과 레이어 정책을 따로 복원해야 한다.
+
+`updateInstanceRenderLayers([{ instanceId, layer?, sortOrder?, depthSort? }])`는 전체 ID·잠금·대상 레이어·값을 검증하고
+transform의 layer와 명시적 visual/sprite layer override를 함께 갱신한다. `sortOrder`/`depthSort`는 스프라이트에만
+적용하며 원래 component set의 collider/body/animation/shadow 등은 보존한다. 변경 전체가 단일 Undo 단위이며
+실패 시 부분 변경을 남기지 않는다. `layer`를 생략한 정렬 설정 변경은 기존 instance/visual layer 값을 유지한다.
+nested component 변경은 기존 flat-target 제한을 그대로 적용한다.
+일괄 변경은 객체마다 전체 pick bounds를 재생성하지 않고 편집 완료 시 한 번 갱신한다.
+2D 피킹은 render layer 우선이며 같은 레이어의 `hd2d` 스프라이트는 floor/elevation/발 위치/`sortOrder` 순서를 따른다.
+비교 키는 native f32 정밀도와 부호 있는 0의 순서를 따른다. 키가 모두 같으면 삽입 순서를 유지해 마지막으로 그린 객체를 먼저 선택한다.
+정책 변경은 열린 transaction 중 거부한다. [공식 뷰어 사용법](../data-scene-authoring.md#2d-레이어-관리)을 참고한다.
+
 `scenePlacementVisualGeometry(visual, transform)`는 같은 visual 사각형의 world 중심 `x/y`,
 scale 적용 `width/height`, `rotationRadians`를 반환한다. 공식 viewer와 생성 프로젝트의
 selection/draft 표시는 이 helper를 사용한다. picking은 회전 사각형 내부를 검사하며

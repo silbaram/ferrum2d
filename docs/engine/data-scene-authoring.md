@@ -131,6 +131,22 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 
 `SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. render layer는 `visual.layer ?? instance.layer`를 사용하고 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
+### 2D 레이어 관리
+
+공식 뷰어의 씬 도크 **그리기 레이어**는 실제 `visual.layer ?? instance.layer`를 기준으로 객체 수와 선택 상태를 표시한다. 위쪽 행이 앞 레이어이며 숫자가 클수록 앞에 그린다. 행을 선택하면 씬 목록을 필터링하고, **레이어 선택**은 그 레이어 객체들을 선택한다. **선택 객체 이동**은 선택 객체를 해당 레이어로 옮긴다. 앞/뒤 버튼과 행 드래그는 두 레이어의 객체들을 서로의 숫자 레이어로 교환하며 한 번의 Undo로 되돌린다. 개별 잠금 객체가 섞였거나 숨김·잠금 레이어를 대상으로 하면 전체 변경을 거부한다.
+
+레이어 값은 정수 `[-2147483648, 2147482647]`이다. 이동은 기존 transform/components patch를 사용하며 명시적 `visual.layer` override가 있으면 함께 바꾼다. Collider·충돌 그룹·body·animation·shadow 설정은 유지한다. **속성 → 변형**의 **그리기 레이어**도 같은 기준으로 동작한다. 스프라이트의 **레이어 내 순서**는 `sortOrder`, **발 위치 정렬**은 `depthSort`를 편집한다. 발 위치 정렬이 켜지면 같은 레이어 안에서 floor/elevation/발 위치가 먼저 적용되고 같은 깊이에서 `sortOrder`로 순서를 정한다.
+
+눈 아이콘은 2D 편집 화면에서 스프라이트와 소유 그림자를 숨기며 피킹·범위 선택에서도 제외한다. **이 레이어만 표시**를 다시 누르면 그전 숨김 상태로 복원한다. 편집 잠금은 레이어의 새 객체에도 적용하고 개별 객체 잠금과 독립적이다. **레이어 잠금 해제**는 개별 잠금을 풀지 않는다. **전체 표시**는 숨김만 해제한다. 숨김·레이어 잠금은 탭과 저장 rebase 동안 유지하는 UI 상태이며 초안·Undo·게임 JSON·collider·simulation을 바꾸지 않는다. HD-2D/게임 미리보기에서는 2D 정책을 일시 중단하고 2D 편집 복귀 시 복원한다.
+
+단독 보기 중 새 숫자 레이어를 추가해도 선택한 레이어만 표시하며 Undo 후에도 일관되게 유지한다. 단독 표시한 레이어 자체가 사라지면 그전 숨김 상태로 복원한다. 단독 보기의 복원 상태와 목록에서 선택한 레이어는 저장 rebase에서도 유지한다. HD-2D의 지형/레이어 목록 필터는 2D로 돌아올 때 2D 패널의 레이어 선택으로 복원한다.
+
+숨김·잠금 적용 도중 preview 오류가 발생하면 이전 레이어 정책과 객체 선택·hover를 함께 복원한다. 피킹 정렬은 Rust 렌더러와 같은 f32 정밀도를 사용하므로, native에서 같은 값이 되는 미세한 소수 차이로 뒤 객체를 잘못 고르지 않는다.
+
+별칭은 **레이어 번호의 로컬 이름표**다. 같은 source 문서 경로를 기준으로 이 브라우저/앱의 local storage에만 보관하며 게임 JSON에는 포함하지 않는다. 새 영구 layer ID나 이름 기반 런타임 레이어를 만드는 기능은 아니다. 파일을 공유할 때는 기존 숫자 레이어가 기준이다.
+
+UI 구성은 [Godot의 z-index/Y-sort](https://docs.godotengine.org/en/stable/classes/class_canvasitem.html), [Unity의 Sorting Layer/Order in Layer](https://docs.unity3d.com/Manual/2d-renderer-sorting.html), [Tiled의 눈·잠금 레이어 목록](https://docs.mapeditor.org/en/stable/manual/layers/)을 참고했다. Ferrum2D는 기존 numeric layer/patch 계약을 유지하며 이 authoring 보조 범위에 적용한다.
+
 ## Tiled/LDtk 타일 프레임 Assets
 
 공식 app의 **Import Tile Frames**는 기존 public `starter-scenes`의 `importTiledTilemap`/`importLDtkTilemap`을 사용한다.
