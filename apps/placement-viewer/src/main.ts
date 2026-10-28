@@ -35,6 +35,7 @@ import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
 import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
+import { createPlacementUpdates } from "./placementUpdates";
 import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
@@ -2343,6 +2344,17 @@ async function bootstrap(): Promise<void> {
     });
     tabs.element.append(layout.controls);
     root.append(tabs.element);
+    const updates = createPlacementUpdates({
+      root,
+      invoke: placementDesktopInvoke,
+      projectPath: () => (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.projectPath,
+      guard() {
+        if (switching || documentSession?.isSaving() || documentSession?.isFinishingPointerEdit() || runtimeAssetReloadInFlight || spatialWorkspace?.ownsGesture() || viewer.historyState().transactionLabel !== undefined)
+          throw new Error("Finish the current edit or save before updating");
+        if (spatialWorkspace?.mode() === "game") throw new Error("Stop the running scene before updating");
+        if ([...documents.values()].some(entry => entry.viewer.exportPatch())) throw new Error("Save or export unsaved scene changes before updating");
+      },
+    });
     installPlacementWorkspaceChrome(root, viewportToolbar, name => {
       void (async () => {
         if (switching || documentSession?.isSaving()) return;
@@ -2356,7 +2368,7 @@ async function bootstrap(): Promise<void> {
         } catch (error) { tabs?.report(error); }
         finally { switching = false; root.inert = false; }
       })();
-    }, () => { layout.reveal("scene"); sceneExplorer?.show(); });
+    }, () => { layout.reveal("scene"); sceneExplorer?.show(); }, () => updates.show());
     if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);

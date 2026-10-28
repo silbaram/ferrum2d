@@ -6,7 +6,9 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "bin": {
-    "create-ferrum2d-game": "./bin/create-game.mjs"
+    "create-game": "./bin/create-game.mjs",
+    "create-ferrum2d-game": "./bin/create-game.mjs",
+    "ferrum-update-game": "./bin/update-game.mjs"
   },
   "publishConfig": {
     "access": "public",
@@ -19,9 +21,9 @@
     "templates"
   ],
   "scripts": {
-    "build": "node --check bin/create-game.mjs",
-    "lint": "node --check bin/create-game.mjs",
-    "test": "node --check bin/create-game.mjs"
+    "build": "node --check bin/create-game.mjs && node --check bin/update-game.mjs && node --check bin/update-integrity.mjs",
+    "lint": "node --check bin/create-game.mjs && node --check bin/update-game.mjs && node --check bin/update-integrity.mjs",
+    "test": "node --check bin/create-game.mjs && node --check bin/update-game.mjs && node --check bin/update-integrity.mjs"
   },
   "engines": {
     "node": ">=18.17"

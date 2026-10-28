@@ -5,6 +5,7 @@ mod normal_assets;
 mod scene_catalog;
 mod sprite_assets;
 mod tile_assets;
+pub mod updates;
 
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, HashSet},

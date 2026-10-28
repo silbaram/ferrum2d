@@ -13,6 +13,16 @@
   --ff-mono: "JetBrains Mono", "Ferrum Korean UI", ui-monospace,
     "SFMono-Regular", Menlo, monospace;
 }
+.placement-updates { background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: 4px; padding: 16px; width: 560px; max-width: calc(100vw - 24px); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; font: 13px var(--ff-ui); }
+.placement-updates::backdrop { background: rgb(0 0 0 / 50%); }
+.placement-updates h2 { margin: 0 0 12px; font-size: 16px; }
+.placement-updates h3 { margin: 0; font-size: 13px; }
+.placement-update-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.placement-update-actions button { min-height: 28px; }
+.placement-update-actions a { color: var(--accent); }
+.placement-update-section { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; display: grid; gap: 8px; }
+.placement-update-section p { margin: 0; overflow-wrap: anywhere; }
+.placement-update-section [role=status], .placement-update-note { font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
 input,
 select {
   font-family: var(--ff-ui);

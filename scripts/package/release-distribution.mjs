@@ -3,6 +3,7 @@ import { createReadStream, constants } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
+import { validateViewerUpdater } from "./viewer-updater.mjs";
 
 export const viewerPlatforms = {
   linux: { name: "linux", bundle: "deb", extension: "deb" },
@@ -102,7 +103,8 @@ export async function validateViewerBundle(root, manifestFile) {
   const sums = `VIEWER_SHA256SUMS-${platform.name}-${manifest.platform.arch}`;
   if (await readFile(path.join(root, sums), "utf8") !== `${asset.sha256}  ${asset.file}\n`) throw new Error("Viewer checksum file mismatch");
   await fileRecord(path.join(root, install));
-  return { manifest, files: [asset.file, manifestFile, install, sums] };
+  const updates = await validateViewerUpdater(root, manifest, verifyAsset);
+  return { manifest, files: [...new Set([asset.file, manifestFile, install, sums, ...updates])] };
 }
 
 export async function assembleDistribution({ engine, viewers, output }) {

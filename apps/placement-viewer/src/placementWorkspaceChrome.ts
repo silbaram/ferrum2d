@@ -5,7 +5,8 @@ import type { createPlacementViewportToolbar } from "./placementViewportToolbar"
 /** Arrange existing controls; their owners retain document, camera and playback state. */
 export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: ReturnType<typeof createPlacementViewportToolbar>,
   openExample?: (name: "garden" | "village" | "default") => void,
-  showScenes?: () => void) {
+  showScenes?: () => void,
+  showUpdates?: () => void) {
   const header = root.querySelector<HTMLElement>(".demo-toolbar"),
     title = header?.querySelector<HTMLElement>("h1"),
     actions = header?.querySelector<HTMLElement>(".demo-actions"),
@@ -20,6 +21,11 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   const file = createPlacementControlMenu("file", "File", "file");
   if (fileStrip) file.panel.append(fileStrip);
   if (open) file.panel.append(open);
+  if (showUpdates) {
+    const updates = document.createElement("button"); updates.type = "button"; updates.dataset.placementAction = "updates";
+    setUiText(updates, "Versions and updates");
+    updates.addEventListener("click", () => { file.close(true); showUpdates(); }); file.panel.append(updates);
+  }
   if (showScenes) {
     const scenes = document.createElement("button"); scenes.type = "button";
     scenes.dataset.placementAction = "scene-explorer";

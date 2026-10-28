@@ -92,6 +92,9 @@ jobs:
       - name: Placement project scene discovery contracts
         run: pnpm test:placement-scenes
 
+      - name: Engine and editor update contracts
+        run: pnpm test:updates
+
       - name: Sprite normal tooling and animation contracts
         run: pnpm test:sprite-normals-tool
 

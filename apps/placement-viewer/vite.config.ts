@@ -1,7 +1,7 @@
 import { savePlacementDocument } from "./server/sceneDocumentStore.mjs";
 import { placementNormalGeneratorPlugin } from "./server/normalGenerator.mjs";
 import { placementSceneCatalogPlugin } from "./server/sceneCatalog.mjs";
-import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { defineConfig, type Plugin } from "vite";
@@ -14,6 +14,9 @@ const MAX_HANDOFF_BYTES = 256 * 1024;
 const MAX_SAVE_BYTES = 2 * 1024 * 1024;
 
 export default defineConfig({
+  define: {
+    __FERRUM_VIEWER_SOURCE_VERSION__: JSON.stringify(JSON.parse(await readFile(new URL("../../packages/ferrum-web/package.json", import.meta.url), "utf8")).version),
+  },
   plugins: [placementAgentHandoffPlugin(), placementNormalGeneratorPlugin(), placementSceneCatalogPlugin(fileURLToPath(new URL("public/", import.meta.url)))],
   server: {
     watch: {

@@ -7,16 +7,17 @@ import { githubRelease } from "../../packages/create-game/bin/github-release.mjs
 import { prepareGithubRelease } from "./prepare-github-release.mjs";
 import { checkViewerPrerequisites, prepareViewerRelease, repositoryRoot, viewerReleasePlan } from "./prepare-viewer-release.mjs";
 import { assembleDistribution, releaseIdentity, requireNewOutput, verifyDistribution } from "./release-distribution.mjs";
+import { updaterSettings } from "./viewer-updater.mjs";
 
 export function parseDistributionArgs(argv) {
   const args = argv.filter(arg => arg !== "--"), command = args.shift() ?? "prepare";
   if (["--help", "-h"].includes(command)) return { help: true };
   if (!["prepare", "assemble", "verify"].includes(command)) throw new Error(`Unknown command: ${command}`);
   const options = { command }, allowed = {
-    prepare: ["version", "repository", "output", "component", "plan", "no-sign", "skip-engine-build", "skip-engine-package-check"],
+    prepare: ["version", "repository", "output", "component", "plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"],
     assemble: ["engine", "viewer", "output"], verify: ["bundle"],
   }[command];
-  const flags = new Set(["plan", "no-sign", "skip-engine-build", "skip-engine-package-check"]), seen = new Set();
+  const flags = new Set(["plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"]), seen = new Set();
   while (args.length) {
     const arg = args.shift();
     if (["--help", "-h"].includes(arg)) return { help: true };
@@ -35,6 +36,8 @@ export function parseDistributionArgs(argv) {
     if (!["engine", "viewer", "all"].includes(options.component)) throw new Error("--component must be engine, viewer or all");
     if (options.component === "viewer" && (options.skipEngineBuild || options.skipEnginePackageCheck)) throw new Error("Engine skip options require component engine or all");
     if (options.component === "engine" && options.noSign) throw new Error("--no-sign requires component viewer or all");
+    if (options.component === "engine" && options.withUpdater) throw new Error("--with-updater requires component viewer or all");
+    if (options.withUpdater && options.noSign) throw new Error("--with-updater cannot be combined with --no-sign");
   } else if (command === "assemble" && (!options.engine || !options.viewers?.length || !options.output)) {
     throw new Error("assemble requires --engine, one or more --viewer, and --output");
   } else if (command === "verify" && !options.bundle) throw new Error("verify requires --bundle");
@@ -51,6 +54,7 @@ export async function prepareDistribution(options, context = {}) {
   if (options.plan) return { release: releaseIdentity(release), component, output, published: false,
     engine: component !== "viewer" ? { build: !options.skipEngineBuild, packageCheck: !options.skipEnginePackageCheck, packages: 4 } : undefined,
     viewer };
+  if (viewer?.updater) updaterSettings(true);
   await requireNewOutput(output);
   if (component === "viewer") return prepareViewerRelease({ ...options, output }, context);
   if (component === "all") await checkViewerPrerequisites(context);
@@ -69,12 +73,14 @@ export async function prepareDistribution(options, context = {}) {
 export const distributionHelp = `Ferrum2D engine SDK / desktop viewer release preparation (no publishing)
 
 prepare --version x.y.z-beta.N [--component engine|viewer|all] [--repository owner/repo]
-        [--output NEW_DIR] [--plan] [--no-sign]
+        [--output NEW_DIR] [--plan] [--no-sign] [--with-updater]
         [--skip-engine-build] [--skip-engine-package-check]
 assemble --engine ENGINE_DIR --viewer VIEWER_DIR [--viewer OTHER_OS_DIR] --output NEW_DIR
 verify --bundle DISTRIBUTION_DIR
 
 Viewer installers are built on the native OS: Windows .exe, Linux .deb, macOS .dmg.
+--with-updater also builds signed updater artifacts (Linux AppImage) and per-platform metadata.
+Requires FERRUM_UPDATER_PUBLIC_KEY and TAURI_SIGNING_PRIVATE_KEY; OS code-signing is separate.
 --plan only prints the plan. Existing outputs are never overwritten.
 Engine skip flags record omitted checks. Native GUI/signing require separate review.
 No tag, GitHub Release, upload, or npm publication is performed.

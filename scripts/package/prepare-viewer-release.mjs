@@ -2,8 +2,9 @@ import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } fro
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
+import { githubRelease, DEFAULT_GITHUB_REPOSITORY } from "../../packages/create-game/bin/github-release.mjs";
 import { runReleaseCommand } from "./release-command.mjs";
+import { stageViewerUpdater, updaterSettings } from "./viewer-updater.mjs";
 import { fileRecord, nativeChecks, readJson, releaseIdentity, requireNewOutput, requireSource, viewerManifestName, viewerPlatforms, writeNewBundle } from "./release-distribution.mjs";
 
 export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -20,7 +21,9 @@ export async function sourceIdentity(root = repositoryRoot, run = runReleaseComm
 }
 
 export async function viewerReleasePlan(options, { root = repositoryRoot, platform = process.platform, arch = process.arch } = {}) {
+  if (options.withUpdater && options.noSign) throw Error("--with-updater cannot be combined with --no-sign (Tauri skips updater signing too)");
   const release = githubRelease(options.version, options.repository), native = viewerPlatforms[platform];
+  if (options.withUpdater && release.repository !== DEFAULT_GITHUB_REPOSITORY) throw Error("The desktop updater uses the official Ferrum2D repository; fork builds require their own updater configuration");
   if (!native || !["x64", "arm64"].includes(arch)) throw new Error("Viewer release preparation requires a native Windows/Linux/macOS x64 or arm64 host");
   const base = release.version.split("-beta.")[0], desktop = path.join(root, "apps/placement-viewer-desktop");
   for (const [file, expected] of [["packages/ferrum-web/package.json", "@ferrum2d/ferrum-web"], ["apps/placement-viewer-desktop/package.json", "@ferrum2d/placement-viewer-desktop"]]) {
@@ -36,6 +39,7 @@ export async function viewerReleasePlan(options, { root = repositoryRoot, platfo
     output: path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag, `viewer-${native.name}-${arch}`)),
     prerequisites: platform === "linux" ? ["Rust native toolchain", "pkg-config", "GTK 3", "WebKitGTK 4.1", "Tauri Linux build libraries"] : ["Rust native toolchain", "Tauri platform build prerequisites"],
     signing: options.noSign ? "disabled" : "platform configuration; not verified by this script",
+    updater: Boolean(options.withUpdater),
     published: false, manualReleaseGate: { required: true, checks: nativeChecks } };
 }
 
@@ -54,6 +58,7 @@ export async function checkViewerPrerequisites({ root = repositoryRoot, platform
 export async function prepareViewerRelease(options, { root = repositoryRoot, platform = process.platform, arch = process.arch, run = runReleaseCommand } = {}) {
   const plan = await viewerReleasePlan(options, { root, platform, arch });
   if (options.plan) return plan;
+  const updater = updaterSettings(options.withUpdater);
   await requireNewOutput(plan.output);
   const desktop = path.join(root, "apps/placement-viewer-desktop"), native = viewerPlatforms[platform];
   const invoke = (command, args, extra = {}) => run(command, args, { cwd: root, timeoutMs: 1_800_000, onOutput: options.quiet ? undefined : text => process.stdout.write(text), ...extra });
@@ -75,11 +80,21 @@ export async function prepareViewerRelease(options, { root = repositoryRoot, pla
     await invoke("pnpm", ["--filter", "@ferrum2d/placement-viewer-desktop", "exec", "tauri", "icon", path.join(desktop, "app-icon.svg"), "--output", icons]);
     const iconFiles = ["32x32.png", "128x128.png", "128x128@2x.png", "icon.ico", "icon.icns"].map(file => path.join(icons, file));
     for (const file of iconFiles) await fileRecord(file);
-    const config = { version: plan.release.version, bundle: { icon: iconFiles } };
+    const config = { version: plan.release.version, bundle: { icon: iconFiles, createUpdaterArtifacts: Boolean(updater) },
+      ...(updater ? { plugins: { updater: { pubkey: updater.publicKey, endpoints: [] } } } : {}) };
     await writeFile(path.join(temp, "release-config.json"), JSON.stringify(config));
     const started = Date.now();
+    // Cached signatures must never be mistaken for output from this invocation.
+    if (updater) {
+      const directory = path.join(cargo.target_directory, target, "release/bundle", platform === "linux" ? "appimage" : platform === "darwin" ? "macos" : "nsis");
+      for (const entry of await readdir(directory).catch(error => { if (error.code === "ENOENT") return []; throw error; })) {
+        if (entry.endsWith(".sig")) await rm(path.join(directory, entry));
+      }
+    }
     await invoke("pnpm", ["--filter", "@ferrum2d/placement-viewer-desktop", "exec", "tauri", "build", "--target", target,
-      "--bundles", native.bundle, "--ci", "--config", JSON.stringify(config), ...(options.noSign ? ["--no-sign"] : []), "--", "--locked"]);
+      "--bundles", updater && platform === "linux" ? "deb,appimage" : updater && platform === "darwin" ? "dmg,app" : native.bundle,
+      "--ci", "--config", JSON.stringify(config), ...(options.noSign ? ["--no-sign"] : []), "--", "--locked"],
+      { env: { ...process.env, VITE_FERRUM_RELEASE_VERSION: plan.release.version } });
     const installers = await installerFiles(bundleRoot, native.extension, plan.release.version);
     if (installers.length !== 1) throw new Error(`Expected exactly one ${plan.release.version} ${native.bundle} installer, found ${installers.length}`);
     const stamp = await lstat(installers[0]);
@@ -96,12 +111,15 @@ export async function prepareViewerRelease(options, { root = repositoryRoot, pla
     await copyFile(installers[0], path.join(stage, file));
     const asset = await fileRecord(path.join(stage, file));
     if (asset.sha256 !== original.sha256) throw new Error("Installer changed during staging");
+    const updateAssets = updater ? await stageViewerUpdater({ bundleRoot: path.join(cargo.target_directory, target, "release/bundle"),
+      stage, release: plan.release, platform: identity, started, fileRecord }) : undefined;
     const manifest = { format: "ferrum2d.viewer-release.bundle", version: 1, release: plan.release, source, published: false,
       platform: { ...identity, target, bundle: native.bundle },
       runtime: { package: "@ferrum2d/ferrum-web", releaseVersion: plan.release.version, wasmSha256: runtime.sha256 },
       checks: { nativeBuild: true, frontendWasm: true, iconGeneration: true, nativeGui: "not-run", signing: "not-verified" },
       signingRequested: options.noSign ? false : "platform-default", manualReleaseGate: plan.manualReleaseGate,
-      assets: [{ ...asset, url: `${githubRelease(plan.release.version, plan.release.repository).baseUrl}/${file}` }] };
+      assets: [{ ...asset, url: `${githubRelease(plan.release.version, plan.release.repository).baseUrl}/${file}` }],
+      ...(updateAssets ? { updater: updateAssets } : {}) };
     const manifestName = viewerManifestName(identity.os, identity.arch);
     await writeFile(path.join(stage, manifestName), `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(path.join(stage, `VIEWER_SHA256SUMS-${identity.os}-${identity.arch}`), `${asset.sha256}  ${file}\n`);

@@ -8,8 +8,9 @@ import { parseDistributionArgs, prepareDistribution } from "../../scripts/packag
 import { prepareViewerRelease } from "../../scripts/package/prepare-viewer-release.mjs";
 import { assembleDistribution, fileRecord, nativeChecks, readJson, releaseIdentity, validateEngineBundle, verifyDistribution } from "../../scripts/package/release-distribution.mjs";
 import { resolvePackageCommand } from "../../scripts/package/release-command.mjs";
+import { updaterSettings } from "../../scripts/package/viewer-updater.mjs";
 
-const version = "0.1.0-beta.1", release = githubRelease(version, "example/ferrum"), commit = "a".repeat(40);
+const version = "0.1.0-beta.1", release = githubRelease(version), commit = "a".repeat(40);
 async function temporary(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ferrum distribution & "));
   t.after(() => rm(root, { recursive: true, force: true })); return root;
@@ -109,6 +110,8 @@ test("plan mode writes nothing and runs no tools", async t => {
   const plan = await prepareDistribution({ ...fixture.options, component: "all", plan: true }, fixture.context);
   assert.equal(plan.component, "all"); assert.equal(plan.published, false); assert.equal(fixture.calls.length, 0);
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
+  await assert.rejects(prepareDistribution({ ...fixture.options, component: "all", withUpdater: true }, fixture.context), /combined/);
+  assert.equal(fixture.calls.length, 0);
 });
 
 for (const [options, pattern] of [[{ stale: true }, /stale output/], [{ wrongWasm: true }, /current engine Wasm/], [{ missingPrerequisite: true }, /prerequisites.*missing/]]) {
@@ -202,4 +205,43 @@ test("dirty source remains visible in the combined manifest", async t => {
   await assembleDistribution({ engine, viewers: [fixture.output], output });
   assert.equal((await readJson(path.join(output, "distribution-manifest.json"))).source.dirty, true);
   assert.equal((await verifyDistribution(output)).source.dirty, true);
+});
+
+test("updater signing is explicit, requires keys, and cannot silently use --no-sign", () => {
+  assert.throws(() => updaterSettings(true, {}), /requires/);
+  assert.throws(() => updaterSettings(true, { FERRUM_UPDATER_PUBLIC_KEY: "invalid", TAURI_SIGNING_PRIVATE_KEY: "fixture" }), /public key/);
+  assert.equal(updaterSettings(false, {}), undefined);
+  assert.throws(() => parseDistributionArgs(["prepare", "--version", version, "--no-sign", "--with-updater"]), /combined/);
+});
+
+for (const platform of ["linux", "win32", "darwin"]) test(`signed updater metadata survives ${platform} staging/assembly and rejects mismatches`, async t => {
+  const fixture = await nativeFixture(t, { platform }), run = fixture.context.run;
+  const previous = { public: process.env.FERRUM_UPDATER_PUBLIC_KEY, private: process.env.TAURI_SIGNING_PRIVATE_KEY };
+  // Tool-output contract fixture only; these are not real signing keys or native signature evidence.
+  process.env.FERRUM_UPDATER_PUBLIC_KEY = Buffer.from("untrusted comment: fixture public key\nRWRmaXh0dXJl\n").toString("base64");
+  process.env.TAURI_SIGNING_PRIVATE_KEY = "fixture-never-published";
+  t.after(() => {
+    for (const [name, value] of [["FERRUM_UPDATER_PUBLIC_KEY", previous.public], ["TAURI_SIGNING_PRIVATE_KEY", previous.private]]) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  });
+  fixture.context.run = async (command, args) => {
+    const result = await run(command, args);
+    if (args.includes("tauri") && args.includes("build")) {
+      const target = args[args.indexOf("--target") + 1], os = { linux: "linux", win32: "windows", darwin: "macos" }[platform];
+      const subdir = { linux: "appimage", win32: "nsis", darwin: "macos" }[platform], extension = { linux: "AppImage", win32: "exe", darwin: "app.tar.gz" }[platform];
+      const name = `Ferrum2D Placement Viewer_${version}_x64.${extension}`;
+      const root = path.join(fixture.root, "target", target, "release/bundle", subdir);
+      // Windows updater and installer are the same emitted file.
+      await put(root, name, `fixture installer ${os}`); await put(root, name + ".sig", Buffer.from("fixture-signature").toString("base64"));
+    }
+    return result;
+  };
+  const { manifest } = await prepareViewerRelease({ ...fixture.options, noSign: false, withUpdater: true }, fixture.context);
+  assert(manifest.updater); assert(manifest.updater.metadata.file.endsWith("-x64.json"));
+  const engine = path.join(fixture.root, "engine"), output = path.join(fixture.root, "assembled"); await engineFixture(engine);
+  await assembleDistribution({ engine, viewers: [fixture.output], output }); await verifyDistribution(output);
+  assert.equal((await validateEngineBundle(output)).assets.length, 4);
+  await put(output, manifest.updater.metadata.file, { version: "0.1.0-beta.99", platforms: {} });
+  await assert.rejects(verifyDistribution(output), /Corrupt/);
 });

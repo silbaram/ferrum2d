@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      signed_updates:
+        description: 'Include signed app updater artifacts (requires updater key secrets and include_viewer)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,6 +27,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Validate updater request
+        if: ${{ inputs.signed_updates && !inputs.include_viewer }}
+        run: exit 1
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -96,12 +104,21 @@ jobs:
       - run: cargo install wasm-pack --locked
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:github-release
-      - name: Build unsigned native viewer candidate
+      - name: Build native viewer candidate
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: pnpm release:distribution:prepare -- --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --no-sign --output artifacts/viewer-release
+          SIGNED_UPDATES: ${{ inputs.signed_updates }}
+          FERRUM_UPDATER_PUBLIC_KEY: ${{ secrets.FERRUM_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          updater_args=(--no-sign)
+          if [ "$SIGNED_UPDATES" = "true" ]; then
+            updater_args=(--with-updater)
+          fi
+          pnpm release:distribution:prepare -- --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/viewer-release
       - uses: actions/upload-artifact@v4
         with:
           name: viewer-release-${{ matrix.platform }}
