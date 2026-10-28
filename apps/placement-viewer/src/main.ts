@@ -39,6 +39,9 @@ import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
+import { createPlacementSceneExplorer } from "./placementSceneExplorer";
+import { canUsePlacementAsset } from "./placementAssetScope";
+import { folderSceneCatalog, hostedSceneCatalog, safeSceneRelativePath, fetchSceneJson, readSceneScanDiagnostics, type PlacementSceneCatalog, type PlacementSceneEntry } from "./placementSceneCatalog";
 import { createPlacementLayers, type PlacementLayerAction } from "./placementLayers";
 import { placementRenderLayer, placementSoloPolicy, type PlacementLayerViewState } from "./placementLayerState";
 import { installPlacementDocumentSession } from "./placementDocumentSession";
@@ -619,6 +622,10 @@ async function bootstrap(): Promise<void> {
         : undefined;
     let tileAssets: ReturnType<typeof createPlacementTileAssets> | undefined;
     let assetDocumentKey = initialKey;
+    function currentAssetProject(): string | undefined {
+      const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+      return desktop?.enabled ? desktop.projectPath : undefined;
+    }
     let normalProjectAssets:
       | ReturnType<typeof createPlacementNormalProjectAssets>
       | undefined;
@@ -651,20 +658,20 @@ async function bootstrap(): Promise<void> {
         ...(asepriteTool?.providerAssets() ??
           asepriteAssets
             ?.entries()
-            .filter((a) => a.document === initialKey && a.uploaded)
+            .filter((a) => canUsePlacementAsset(a, assetDocumentKey, currentAssetProject()) && a.uploaded)
             .map(asepriteProviderAsset) ??
           []),
         ...(tileTool?.providerAssets() ??
           tileAssets
             ?.entries()
-            .filter((a) => a.document === initialKey && a.uploaded)
+            .filter((a) => canUsePlacementAsset(a, assetDocumentKey, currentAssetProject()) && a.uploaded)
             .map(tileProviderAsset) ??
           []),
       ];
       const used = new Set(imported.map((a) => a.id));
       const entries = [
         ...(normalTool?.browserEntries() ?? []),
-        ...(normalProjectAssets?.browserEntries(assetDocumentKey) ?? []),
+        ...(normalProjectAssets?.browserEntries(assetDocumentKey, currentAssetProject()) ?? []),
       ].filter((entry) => {
         if (used.has(entry.id)) return false;
         used.add(entry.id);
@@ -815,6 +822,7 @@ async function bootstrap(): Promise<void> {
           normalProjectAssets = createPlacementNormalProjectAssets(
             runtimeEngine,
             initialKey,
+            asepriteProjectPath,
           );
           await normalProjectAssets.load(
             await nativeNormalHost.load(signal),
@@ -985,18 +993,20 @@ async function bootstrap(): Promise<void> {
         >
       | undefined;
     let switching = false;
+    let sceneExplorer: ReturnType<typeof createPlacementSceneExplorer> | undefined;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
     let layerVisibilitySignature = "";
-    const syncTabs = () =>
-      tabs?.setState(
-        [...documents.values()].map((entry) => ({
+    const syncTabs = () => {
+      const entries = [...documents.values()].map((entry) => ({
           key: entry.key,
           label: entry.source.split(/[\\/]/u).pop() ?? entry.source,
           source: entry.source,
           dirty: entry.dirty,
-        })),
-        activeDocument.key,
-      );
+        }));
+      tabs?.setState(entries, activeDocument.key);
+      const dock = inspector.element.querySelector<HTMLElement>(".placement-scene-dock");
+      if (dock) sceneExplorer?.sync(entries, activeDocument.key, dock);
+    };
     const publishCurrentAgentHandoff = (
       state: ScenePlacementViewerState,
       migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
@@ -1017,6 +1027,7 @@ async function bootstrap(): Promise<void> {
             activeDocument.key,
             currentDocument,
             state,
+            currentAssetProject(),
           ) ?? []),
         ],
         asepriteTool?.evidence(currentDocument),
@@ -1761,6 +1772,7 @@ async function bootstrap(): Promise<void> {
       viewer,
       context: () => ({
         key: activeDocument.key,
+        project: currentAssetProject(),
         source: sourceDocument,
         document: viewer.exportPatch()
           ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
@@ -1812,6 +1824,7 @@ async function bootstrap(): Promise<void> {
     }
     const importedAssetContext = () => ({
       key: activeDocument.key,
+      project: currentAssetProject(),
       document: viewer.exportPatch()
         ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
             .document
@@ -1874,6 +1887,7 @@ async function bootstrap(): Promise<void> {
             ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
                 .document
             : savedDocument,
+          currentAssetProject(),
         ) ?? [],
       normalEvidence: () =>
         normalProjectAssets?.bindings(
@@ -1883,6 +1897,7 @@ async function bootstrap(): Promise<void> {
                 .document
             : savedDocument,
           viewer.state(),
+          currentAssetProject(),
         ) ?? [],
       normalSettings: () => normalTool!.generationSettings(),
       assets: asepriteAssets,
@@ -2182,6 +2197,85 @@ async function bootstrap(): Promise<void> {
         desktopSceneDocumentPath ??
         "browser",
     );
+    // This context belongs to the explicitly opened project, independent of the active tab.
+    let sceneProject = structuredClone(activeDocument.desktop);
+    const sceneProjectPath = sceneProject?.projectPath;
+    const nativeScenePaths = new Set<string>();
+    window.addEventListener("ferrum-placement-desktop-statechange", () => {
+      const current = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+      if (sceneProjectPath && current?.projectPath === sceneProjectPath) sceneProject = structuredClone(current);
+    });
+    let selectedFolder = false;
+    async function chooseSceneFolder(): Promise<PlacementSceneCatalog | undefined> {
+      if (placementDesktopInvoke()) {
+        if (!placementDesktopOpenDialog()) throw new Error("Open Project using File before browsing project scenes");
+        await browsePlacementProjectFolder();
+        return undefined;
+      }
+      const input = window.document.createElement("input");
+      input.type = "file"; input.multiple = true; input.setAttribute("webkitdirectory", "");
+      input.hidden = true; shell.canvas.ownerDocument.body.append(input);
+      try {
+        const files = await new Promise<File[] | undefined>(resolve => {
+          input.addEventListener("change", () => resolve(input.files?.length ? [...input.files] : undefined), { once: true });
+          input.addEventListener("cancel", () => resolve(undefined), { once: true });
+          input.click();
+        });
+        if (!files) return undefined;
+        const catalog = await folderSceneCatalog(files, crypto.randomUUID());
+        selectedFolder = true;
+        return catalog;
+      } finally { input.remove(); }
+    }
+    function sceneMatches(entry: PlacementSceneEntry, doc: { key: string; source: string }) {
+      if (entry.id.startsWith("folder:")) return doc.key === entry.id;
+      if (nativeScenePaths.has(entry.id)) return doc.key === entry.id;
+      if (doc.key.startsWith("file:") || doc.key.startsWith("folder:") || documents.get(doc.key)?.desktop?.enabled) return false;
+      try { return new URL(doc.source, window.document.baseURI).href === entry.source; }
+      catch { return false; }
+    }
+    sceneExplorer = createPlacementSceneExplorer({
+      async load() {
+        if (selectedFolder) return chooseSceneFolder();
+        const invoke = placementDesktopInvoke();
+        if (!invoke) return hostedSceneCatalog(new URL("./", window.document.baseURI));
+        if (!sceneProject?.projectPath) throw new Error("Open Project using File before browsing project scenes");
+        const response = await invoke<{ scenes: { path: string; relativePath: string; mode: PlacementSceneEntry["mode"]; diagnostic?: string }[]; truncated: boolean; diagnostics?: unknown }>("list_placement_project_scenes", { projectPath: sceneProject.projectPath });
+        if (!response || !Array.isArray(response.scenes) || response.scenes.length > 256) throw new Error("Invalid scene catalog");
+        nativeScenePaths.clear();
+        const scenes = response.scenes.map(item => {
+          if (!item || typeof item.path !== "string" || !safeSceneRelativePath(item.relativePath) || !["2d", "hd2d", "invalid"].includes(item.mode)) throw new Error("Invalid scene catalog entry");
+          nativeScenePaths.add(item.path);
+          return { id: item.path, source: item.path, relativePath: item.relativePath, mode: item.mode, diagnostic: item.diagnostic,
+            read: async () => {
+              const result = await invoke<PlacementDesktopSceneDocumentResponse>(DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND, { sceneDocumentPath: item.path });
+              if (!isPlacementDesktopSceneDocumentResponse(result) || result.path !== item.path) throw new Error("Invalid scene document response");
+              return result.document;
+            },
+          };
+        });
+        return { label: sceneProject.projectPath, scenes, truncated: response.truncated === true, diagnostics: readSceneScanDiagnostics(response.diagnostics) };
+      },
+      chooseFolder: chooseSceneFolder,
+      match: sceneMatches,
+      async open(entry, run) {
+        if (switching || documentSession?.isSaving() || documentSession?.isFinishingPointerEdit())
+          throw new Error("Finish the current edit or save before opening a scene");
+        const existing = [...documents.values()].find(doc => sceneMatches(entry, doc));
+        switching = true; root.inert = true;
+        try {
+          const native = nativeScenePaths.has(entry.id) ? sceneProject : undefined;
+          const key = existing?.key ?? entry.id;
+          await openDocument(key, entry.source, existing?.document ?? await entry.read(), !!native,
+            native ? { ...native, requestedSceneDocumentPath: entry.id, sceneDocumentPath: entry.id,
+              lastSavePath: undefined, lastHandoffPath: undefined, lastHandoffError: undefined, handoffSyncStatus: "idle" } : undefined);
+          if (activeDocument.key !== key) throw new Error("Scene activation was not completed");
+          switching = false; root.inert = false;
+          if (run && !spatialWorkspace?.runScene()) throw new Error("Scene playback could not start; finish the current edit first");
+          shell.canvas.focus({ preventScroll: true });
+        } finally { switching = false; root.inert = false; }
+      },
+    });
     const review = shell.canvas.ownerDocument.createElement("button"),
       exportButton = shell.canvas.ownerDocument.createElement("button");
     review.type = exportButton.type = "button";
@@ -2257,13 +2351,12 @@ async function bootstrap(): Promise<void> {
         try {
           const paths = { garden: "./placement.garden.scene-authoring.json", village: "./placement.village.scene-authoring.json", default: SCENE_DOCUMENT_URL };
           const url = new URL(paths[name], window.document.baseURI);
-          const response = await fetch(url);
-          if (!response.ok) throw new Error(`Example: HTTP ${response.status}`);
-          await openDocument("example:" + url.href, url.pathname, await response.json(), false);
+          const existing = [...documents.values()].find(doc => !doc.desktop?.enabled && !doc.key.startsWith("folder:") && !doc.key.startsWith("file:") && new URL(doc.source, window.document.baseURI).href === url.href);
+          await openDocument(existing?.key ?? url.href, url.href, existing?.document ?? await fetchSceneJson(url), false);
         } catch (error) { tabs?.report(error); }
         finally { switching = false; root.inert = false; }
       })();
-    });
+    }, () => { layout.reveal("scene"); sceneExplorer?.show(); });
     if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
@@ -2489,15 +2582,18 @@ async function bootstrap(): Promise<void> {
       normalTool?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
       asepriteTool?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
-      tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key);
+      tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
       normalProjectAssets?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,
+        desktop?.enabled ? desktop.projectPath : undefined,
       );
       const nextResolved = resolvePlacementWorkspaceDocument(value);
       await ensureVillageAssets(value as SceneAuthoringDocumentSpec);

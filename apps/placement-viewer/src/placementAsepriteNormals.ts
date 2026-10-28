@@ -1,4 +1,5 @@
 import { uiMessage, type UiContent } from "./placementLocale";
+import { canUsePlacementAsset, isPlacementProjectAsset } from "./placementAssetScope";
 import {
   createSpriteNormalWorkerClient,
   createSceneSpriteNormalPatch,
@@ -39,6 +40,7 @@ interface Entry {
   uploaded: boolean;
   committed: boolean;
   persisted: boolean;
+  project?: string;
   url?: string;
 }
 function record(value: unknown): Record<string, unknown> {
@@ -72,6 +74,7 @@ function canvas(width: number, height: number) {
 export function createPlacementAsepriteNormals(options: {
   engine: FerrumRuntime["engine"];
   host(): PlacementNormalAssetHost | undefined;
+  project?(): string | undefined;
   settings(): SpriteNormalGenerationSettings;
   taken(id: string): boolean;
 }) {
@@ -493,7 +496,7 @@ export function createPlacementAsepriteNormals(options: {
       return [...entries.values()]
         .filter(
           (e) =>
-            e.document === document &&
+            canUsePlacementAsset(e, document, options.project?.()) &&
             e.committed &&
             (!current || referenced(e, current)),
         )
@@ -501,13 +504,13 @@ export function createPlacementAsepriteNormals(options: {
     },
     blocksSave(document: SceneAuthoringDocumentSpec, key: string) {
       return [...entries.values()].some(
-        (e) => e.document === key && !e.persisted && referenced(e, document),
+        (e) => (!canUsePlacementAsset(e, key, options.project?.()) || !e.persisted) && referenced(e, document),
       );
     },
-    assertDocumentAssets(document: SceneAuthoringDocumentSpec, key: string) {
+    assertDocumentAssets(document: SceneAuthoringDocumentSpec, key: string, project?: string) {
       if (
         [...entries.values()].some(
-          (e) => e.document !== key && referenced(e, document),
+          (e) => !canUsePlacementAsset(e, key, project) && referenced(e, document),
         )
       )
         throw Error("Generated Aseprite normals belong to another document");
@@ -568,11 +571,12 @@ export function createPlacementAsepriteNormals(options: {
         )
           throw Error("Normal save context changed");
         entry.persisted = true;
+        entry.project = options.project?.();
       }
     },
     close(document: string) {
       for (const entry of entries.values())
-        if (entry.document === document) discard(entry);
+        if (entry.document === document && !isPlacementProjectAsset(entry)) discard(entry);
       for (const key of evidence.keys())
         if (JSON.parse(key)[0] === document) evidence.delete(key);
     },

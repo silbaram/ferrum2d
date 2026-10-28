@@ -14,7 +14,7 @@ export async function smokePlacementMenuRegressions(page, mode) {
   const viewport = page.viewportSize();
   const language = page.locator("[data-placement-language]");
   const originalLocale = await language.inputValue();
-  const originalInspector = await page.locator('.placement-panel:not([hidden]) [role="tablist"]').first()
+  const originalInspector = await page.locator('.placement-panel:not([hidden]) .placement-inspector [role="tablist"]').first()
     .locator('[aria-selected="true"]').getAttribute("data-placement-panel-tab");
   const originalBottom = await page.locator('.placement-runtime-dock [role="tablist"]').first()
     .locator('[aria-selected="true"]').getAttribute("data-placement-panel-tab");

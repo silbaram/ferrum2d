@@ -89,6 +89,9 @@ jobs:
       - name: Placement document save contracts
         run: pnpm smoke:placement-document-store
 
+      - name: Placement project scene discovery contracts
+        run: pnpm test:placement-scenes
+
       - name: Sprite normal tooling and animation contracts
         run: pnpm test:sprite-normals-tool
 

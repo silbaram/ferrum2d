@@ -2250,6 +2250,20 @@ export function installPlacementSpatialWorkspace(options: {
   resize.observe(canvas);
   return {
     assetPalette: palette,
+    runScene() {
+      if (suspended || canvas.closest<HTMLElement>(".demo-shell")?.inert) return false;
+      if (!gameCamera.cancelGesture() || !gameCamera.flushInput()) return false;
+      if (options.flushSceneSettings?.() === false) return false;
+      changeMode("game");
+      if (active.mode !== "game") return false;
+      if (active.paused) {
+        if (!runtime.engine.resumeDataScene()) return false;
+        active.paused = false;
+      }
+      active.gameFrame = false;
+      options.onChange(viewer.state());
+      return true;
+    },
     registerModel(id: string, asset: SpatialModelAsset) {
       if (!models.has(asset.contentId)) {
         if (

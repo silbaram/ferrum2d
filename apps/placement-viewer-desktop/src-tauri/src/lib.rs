@@ -16,6 +16,7 @@ pub fn run() {
             placement_document::inspect_placement_asset_folder,
             placement_document::load_placement_project_folder,
             placement_document::load_placement_scene_document,
+            placement_document::list_placement_project_scenes,
             placement_document::load_placement_aseprite_assets,
             placement_document::load_placement_tile_assets,
             placement_document::save_placement_tile_assets,

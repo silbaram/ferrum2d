@@ -36,7 +36,8 @@ async function moduleSource(file, replacements = []) {
     "data:text/javascript;base64," + Buffer.from(output).toString("base64")
   );
 }
-const assets = await moduleSource("placementNormalAssets.ts"),
+const scope = await moduleSource("placementAssetScope.ts"),
+  assets = await moduleSource("placementNormalAssets.ts", [["./placementAssetScope", scope]]),
   source = await moduleSource("placementNormalProject.ts", [
     ["./placementNormalAssets", assets],
     [
@@ -57,6 +58,28 @@ globalThis.createImageBitmap = async (blob) => {
   return { width: decoded.width, height: decoded.height, close() {} };
 };
 const signal = () => new AbortController().signal;
+test("project normal assets remain available to sibling scenes after the first document closes", async () => {
+  const f = fixture(true), released = [];
+  const manager = store({ loadAssets: async () => {}, releaseAssets: value => released.push(value) }, "first", "project-a");
+  await manager.load(f.catalog, new Map(), () => false, signal());
+  const document = {
+    format: "ferrum2d.consumer.scene-authoring", version: 1, behaviorRecipes: { entities: {} },
+    sceneComposition: { initialFragment: "main", prefabs: { object: {} }, fragments: { main: { instances: [{ id: "sprite", prefab: "object", x: 0, y: 0, props: { components: { collider: "none", layer: "wall", visual: { kind: "sprite", texture: "pair.color", width: 32, height: 32, frame: { u0: 0, v0: 0, u1: 1, v1: 1 } } } } }] } } },
+    spatial: { camera: { projection: "orthographic", position: { x: 0, y: -200, elevation: 80 }, target: { x: 0, y: 0, elevation: 32 }, height: 110, near: 0.1, far: 1200 }, terrain: [], billboards: { sprite: { normalTexture: "pair.normal" } } },
+  };
+  assert.equal(manager.browserEntries("second", "project-a").length, 1);
+  assert.equal(manager.browserEntries("second", "project-b").length, 0);
+  assert.doesNotThrow(() => manager.assertDocumentAssets(document, "second", "project-a"));
+  assert.throws(() => manager.assertDocumentAssets(document, "second", "project-b"), /another document/);
+  assert.throws(() => manager.assertDocumentAssets(document, "first"), /another document/);
+  manager.close("first");
+  assert.equal(released.length, 0);
+  assert.equal(manager.bundles("second", document, "project-a")[0].files.length, 2);
+  const state = createScenePlacementViewer({ document, viewport: { cssWidth: 320, cssHeight: 240 } }).state();
+  assert.equal(manager.bindings("second", document, state, "project-a").length, 1);
+  manager.destroy();
+  assert.equal(released.length, 1);
+});
 function fixture(aseprite = false) {
   const color = encodePngRgba(1, 1, new Uint8Array([220, 30, 20, 255])),
     normal = encodePngRgba(1, 1, new Uint8Array([128, 128, 255, 255]));

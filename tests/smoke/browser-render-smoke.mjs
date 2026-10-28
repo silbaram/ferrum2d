@@ -11,6 +11,7 @@ import { smokePlacementNavigation, smokePlacementNavigationMass } from "./placem
 import { smokePlacementSelection, smokePlacementSelectionMass } from "./placement-selection-smoke.mjs";
 import { smokePlacementTransforms } from "./placement-transform-smoke.mjs";
 import { smokePlacementLayers } from "./placement-layers-smoke.mjs";
+import { smokePlacementSceneExplorer } from "./placement-scene-explorer-smoke.mjs";
 import { smokePlacementSpatialWorkspace } from "./placement-spatial-workspace-smoke.mjs";
 import {
   runtimeBudgetForSmokeMode,
@@ -998,6 +999,7 @@ async function smokePlacementViewer(page, timeoutMs) {
 
   await smokePlacementWorkspace(page, timeoutMs);
   await smokePlacementLayers(page, timeoutMs);
+  await smokePlacementSceneExplorer(page, timeoutMs);
   const navigation = await smokePlacementNavigation(page, timeoutMs);
   const selection = await smokePlacementSelection(page, timeoutMs);
   const transforms = await smokePlacementTransforms(page, timeoutMs);

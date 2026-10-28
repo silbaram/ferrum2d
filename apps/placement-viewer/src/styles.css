@@ -1827,6 +1827,45 @@ textarea {
   min-height: 80px;
   border: 0;
 }
+.placement-scene-dock > .placement-panel-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.placement-scene-dock > .placement-panel-tabs > .placement-panel-tabbody {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0;
+}
+.placement-scene-explorer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px;
+  flex: 1 1 auto;
+}
+.placement-scene-explorer-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.placement-scene-explorer-actions button { flex: 1; min-height: 28px; white-space: nowrap; }
+.placement-scene-explorer-root { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-3); font-size: 11px; }
+.placement-scene-explorer input { width: 100%; min-width: 0; box-sizing: border-box; }
+.placement-scene-explorer-list { overflow: auto; min-height: 80px; flex: 1 1 auto; }
+.placement-scene-explorer > :not(.placement-scene-explorer-list) { flex-shrink: 0; }
+@media (max-width: 860px) {
+  .placement-scene-explorer-list { min-height: 40px; }
+  .placement-scene-explorer-hint { display: none; }
+}
+.placement-scene-folder { padding: 6px 2px 3px; overflow-wrap: anywhere; font-size: 11px; color: var(--fg-3); }
+.placement-project-scene { width: 100%; display: flex; gap: 4px; text-align: left; min-height: 30px; align-items: center; }
+.placement-project-scene > span:first-child { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.placement-project-scene > span:not(:first-child) { flex-shrink: 0; font-size: 10px; color: var(--fg-3); }
+.placement-project-scene[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.placement-project-scene[data-active="true"] > span:first-child { color: var(--accent); }
+.placement-project-scene[data-invalid="true"] > span:not(:first-child) { color: var(--error); }
+.placement-scene-explorer-status, .placement-scene-explorer-hint { margin: 0; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
 .placement-asset-browser {
   padding: 8px;
   border-top: 1px solid var(--border);

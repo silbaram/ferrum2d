@@ -7,7 +7,10 @@ use std::{
 
 use serde_json::Value;
 
-use super::{read_scene_document, validate_scene_document, CommandResult, PlacementDesktopError};
+use super::{
+    read_scene_document, validate_scene_document, CommandResult, PlacementDesktopError,
+    MAX_SCENE_DOCUMENT_BYTES,
+};
 
 static SAVE_SERIAL: AtomicU64 = AtomicU64::new(0);
 
@@ -15,6 +18,19 @@ static SAVE_SERIAL: AtomicU64 = AtomicU64::new(0);
 pub(super) fn save_checked(path: &Path, document: Value, expected: &Value) -> CommandResult<Value> {
     validate_scene_document(&document)?;
     validate_scene_document(expected)?;
+    // Check the bytes we actually persist, including indentation and the trailing newline.
+    // A compact document can fit the read limit while its pretty representation does not.
+    let mut json =
+        serde_json::to_string_pretty(&document).map_err(|source| PlacementDesktopError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    json.push('\n');
+    if json.len() as u64 > MAX_SCENE_DOCUMENT_BYTES {
+        return Err(PlacementDesktopError::InvalidDocument(
+            "Serialized scene document exceeds 2 MiB; original file preserved".into(),
+        ));
+    }
     let conflict = || {
         PlacementDesktopError::InvalidDocument(
             "scene document changed on disk; reload before saving".to_owned(),
@@ -48,13 +64,7 @@ pub(super) fn save_checked(path: &Path, document: Value, expected: &Value) -> Co
                 path: temporary.clone(),
                 source,
             })?;
-        let json = serde_json::to_string_pretty(&document).map_err(|source| {
-            PlacementDesktopError::Json {
-                path: path.to_path_buf(),
-                source,
-            }
-        })?;
-        file.write_all(format!("{json}\n").as_bytes())
+        file.write_all(json.as_bytes())
             .and_then(|()| file.sync_all())
             .map_err(|source| PlacementDesktopError::Io {
                 path: temporary.clone(),

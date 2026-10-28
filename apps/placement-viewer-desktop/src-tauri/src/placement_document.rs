@@ -2,6 +2,7 @@ mod aseprite_assets;
 mod asset_files;
 mod checked_save;
 mod normal_assets;
+mod scene_catalog;
 mod sprite_assets;
 mod tile_assets;
 
@@ -31,6 +32,7 @@ const PROJECT_SCENE_DOCUMENT_CANDIDATES: &[&str] = &[
 const ACCESS_CONTROL_ALLOW_ORIGIN_VALUE: &str = "*";
 const RUNTIME_ASSET_PROTOCOL: &str = "ferrum-asset";
 const SCENE_AUTHORING_FORMAT: &str = "ferrum2d.consumer.scene-authoring";
+const MAX_SCENE_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024;
 const SCENE_DOCUMENT_ENV_VAR: &str = "FERRUM_PLACEMENT_SCENE_DOCUMENT";
 const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["gif", "jpeg", "jpg", "png", "webp"];
 const TEXTURE_ATLAS_INPUT_FILE: &str = "texture-atlas.input.json";
@@ -200,8 +202,8 @@ fn load_placement_project_folder_inner(
     asset_registry: Option<&PlacementAssetRegistry>,
     write_registry: Option<&PlacementWriteRegistry>,
 ) -> CommandResult<PlacementProjectDocumentResponse> {
-    let project_path = parse_project_path(&project_path)?;
-    let scene_document_path = project_scene_document_path(&project_path)?;
+    let project_path = canonical_write_path(&parse_project_path(&project_path)?)?;
+    let scene_document_path = canonical_write_path(&project_scene_document_path(&project_path)?)?;
     let document = read_scene_document(&scene_document_path)?;
     let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
     let asset_folder =
@@ -238,11 +240,22 @@ pub fn load_placement_scene_document(
     load_placement_scene_document_inner(scene_document_path, Some(&write_registry))
 }
 
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn list_placement_project_scenes(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<scene_catalog::SceneCatalog> {
+    scene_catalog::list_project_scenes(Path::new(&project_path), &write_registry)
+}
+
 fn load_placement_scene_document_inner(
     scene_document_path: Option<String>,
     write_registry: Option<&PlacementWriteRegistry>,
 ) -> CommandResult<PlacementSceneDocumentResponse> {
-    let path = resolve_scene_document_path(scene_document_path.as_deref())?;
+    let path = canonical_write_path(&resolve_scene_document_path(
+        scene_document_path.as_deref(),
+    )?)?;
     let document = read_scene_document(&path)?;
     if let Some(write_registry) = write_registry {
         write_registry.authorize_scene_document(&path)?;
@@ -452,10 +465,22 @@ fn write_agent_handoff(
 }
 
 fn read_scene_document(path: &Path) -> CommandResult<Value> {
-    let source = fs::read_to_string(path).map_err(|source| PlacementDesktopError::Io {
+    let file = fs::File::open(path).map_err(|source| PlacementDesktopError::Io {
         path: path.to_path_buf(),
         source,
     })?;
+    let mut source = String::new();
+    file.take(MAX_SCENE_DOCUMENT_BYTES + 1)
+        .read_to_string(&mut source)
+        .map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if source.len() as u64 > MAX_SCENE_DOCUMENT_BYTES {
+        return Err(PlacementDesktopError::InvalidDocument(
+            "Document exceeds 2 MiB".into(),
+        ));
+    }
     let document =
         serde_json::from_str::<Value>(&source).map_err(|source| PlacementDesktopError::Json {
             path: path.to_path_buf(),
@@ -871,7 +896,7 @@ impl PlacementWriteRegistry {
             .contains(&canonical)
         {
             return Err(PlacementDesktopError::InvalidProjectPath(
-                "Open Project before saving Aseprite assets".to_owned(),
+                "Open Project before accessing project assets or scenes".to_owned(),
             ));
         }
         Ok(canonical)
@@ -1122,6 +1147,40 @@ mod tests {
         write_scene_document(&public_path.join("scene-authoring.json"), document.clone())
             .expect("project scene document should be written");
         (project_path, document)
+    }
+
+    #[test]
+    fn project_alias_returns_canonical_document_identity() {
+        let (root, _) = create_project_fixture("canonical-project-identity");
+        let registry = PlacementWriteRegistry::default();
+        let response = load_placement_project_folder_inner(
+            root.join(".").to_string_lossy().into_owned(),
+            None,
+            Some(&registry),
+        )
+        .unwrap();
+        let canonical = root.canonicalize().unwrap();
+        assert_eq!(response.project_path, canonical.to_string_lossy());
+        assert_eq!(
+            response.scene_document_path,
+            canonical
+                .join("public/scene-authoring.json")
+                .to_string_lossy()
+        );
+        #[cfg(unix)]
+        {
+            let alias = root.with_extension("alias");
+            std::os::unix::fs::symlink(&root, &alias).unwrap();
+            let linked = load_placement_project_folder_inner(
+                alias.to_string_lossy().into_owned(),
+                None,
+                Some(&registry),
+            )
+            .unwrap();
+            assert_eq!(linked.scene_document_path, response.scene_document_path);
+            fs::remove_file(alias).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn create_project_asset_fixture(name: &str) -> PathBuf {
@@ -1399,6 +1458,39 @@ mod tests {
             .expect_err("missing baseline rejected");
         assert_eq!(fs::read(&path).expect("file reads"), bytes);
         fs::remove_dir_all(project).expect("fixture cleans up");
+    }
+
+    #[test]
+    fn checked_save_rejects_pretty_json_above_read_limit_and_preserves_original() {
+        let (project, mut source) = create_project_fixture("save-size");
+        let path = project.join("public/scene-authoring.json");
+        source["behaviorRecipes"] = json!({"entities":{}});
+        source["sceneComposition"]["fragments"]["main"]["instances"] = Value::Array((0..6000).map(|i| json!({
+            "id":format!("crate_{i}"), "prefab":"crate", "x":i % 100, "y":i / 100,
+            "props":{"components":{"visual":{"kind":"primitive","shape":"rect","width":32,"height":32,"color":"#aa8833"},"collider":"none","layer":"wall"}}
+        })).collect());
+        let compact = serde_json::to_vec(&source).unwrap();
+        assert!(compact.len() < MAX_SCENE_DOCUMENT_BYTES as usize);
+        assert!(
+            serde_json::to_vec_pretty(&source).unwrap().len() > MAX_SCENE_DOCUMENT_BYTES as usize
+        );
+        fs::write(&path, &compact).unwrap();
+        let mut edited = source.clone();
+        edited["sceneComposition"]["fragments"]["main"]["instances"][0]["x"] = json!(1);
+        let error = checked_save::save_checked(&path, edited, &source).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Serialized scene document exceeds 2 MiB"));
+        assert_eq!(fs::read(&path).unwrap(), compact);
+        assert_eq!(read_scene_document(&path).unwrap(), source);
+        assert!(fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".ferrum-scene-save-")));
+        fs::remove_dir_all(project).unwrap();
     }
 
     #[test]
