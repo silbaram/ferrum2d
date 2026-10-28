@@ -14,7 +14,7 @@ import {
   writeRendererStatsForCommandsInto,
 } from "./renderer";
 import { PhysicsDebugLineBatch } from "./physicsDebugLineBatch";
-import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch";
+import type { PhysicsDebugLineCamera } from "./renderer.js";
 import type { Renderer } from "./renderer";
 import type { RendererStats } from "./renderer";
 import { cameraPostProcessingDiagnosticError } from "./diagnostics";

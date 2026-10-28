@@ -11,45 +11,8 @@ import {
   type SpatialGeometryUniforms,
 } from "./webgl2SpatialShaders.js";
 import { SpatialShadowCache } from "./spatialShadowCache.js";
-export interface SpatialRendererStats {
-  triangleCount: number;
-  modelCount: number;
-  visibleModelCount: number;
-  modelDrawCalls: number;
-  modelInstancedDrawCalls: number;
-  /** Dynamic instance matrices, including shadow passes; immutable assets use modelUploadBytes. */
-  modelInstanceUploadBytes: number;
-  modelTriangleCount: number;
-  modelUploadBytes: number;
-  /** Full static terrain and the chunks actually submitted this frame (v2 packets only). */
-  terrainChunkCount: number;
-  visibleTerrainChunkCount: number;
-  culledTerrainChunkCount: number;
-  terrainTriangleCount: number;
-  billboardCount: number;
-  drawCalls: number;
-  billboardDrawCalls: number;
-  textureBindCount: number;
-  textureSwitchCount: number;
-  uploadBytes: number;
-  terrainUploadBytes: number;
-  depthBufferBytes: number;
-  debugLineCount: number;
-  debugDrawCalls: number;
-  debugUploadBytes: number;
-  debugTruncated: boolean;
-  lightCount: number;
-  directionalLightCount: number;
-  shadowPassCount: number;
-  shadowDrawCalls: number;
-  shadowTriangleCount: number;
-  shadowUploadBytes: number;
-  shadowCacheHit: boolean;
-  shadowCulledTriangleCount: number;
-  effectDrawCalls: number;
-  effectTextureBytes: number;
-  dofSampleBudget: number;
-}
+import type { SpatialRendererStats } from "./renderer.js";
+export type { SpatialRendererStats } from "./renderer.js";
 export class WebGL2SpatialPass {
   private readonly program: WebGLProgram;
   private readonly terrainBuffer: WebGLBuffer;

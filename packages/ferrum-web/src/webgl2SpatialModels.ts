@@ -2,7 +2,7 @@ import { validateSpatialModelFrame } from "./spatialModelPacket.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { spatialModelResource, type SpatialModelResource as SpatialModelAsset, type SpatialModelPrimitive, type SpatialModelPreparation } from "./spatialModel.js";
 import type { SpatialGeometryUniforms } from "./webgl2SpatialShaders.js";
-import type { SpatialRendererStats } from "./webgl2SpatialPass.js";
+import type { SpatialRendererStats } from "./renderer.js";
 type Frame = NonNullable<SpatialRenderBufferView["models"]>;
 const MODEL_CAPACITY = 1024;
 const MODEL_PASS_COUNT = 8;

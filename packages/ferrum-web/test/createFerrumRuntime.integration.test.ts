@@ -482,7 +482,7 @@ function fakeRuntimeRenderer(): FerrumRuntimeRenderer {
       batchCount: 1,
       renderCommandCount: 3,
     }),
-  } as unknown as FerrumRuntimeRenderer;
+  };
 }
 
 function fakeAssetHost(

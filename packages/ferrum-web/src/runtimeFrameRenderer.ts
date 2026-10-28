@@ -10,7 +10,6 @@ import type { UiOverlay } from "./uiOverlay.js";
 import type {
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
-  FerrumRuntimeRenderer,
   FerrumRuntimeAnimationTimeline,
   FerrumRuntimeCutscene,
   FerrumRuntimeLevelStreaming,
@@ -19,9 +18,10 @@ import type {
   UiOverlayStateProvider,
 } from "./createFerrumRuntime.js";
 import type { RendererStats } from "./renderer.js";
+import type { RuntimeFrameRenderTarget } from "./runtimeRenderer.js";
 
 export interface RuntimeFrameRendererOptions {
-  renderer: FerrumRuntimeRenderer;
+  renderer: RuntimeFrameRenderTarget;
   lighting?: FerrumRuntimeOptions["lighting"];
   postProcess?: FerrumRuntimeOptions["postProcess"];
   spriteMaterial?: FerrumRuntimeOptions["spriteMaterial"];
@@ -58,6 +58,13 @@ export class RuntimeFrameRenderer {
   }
 
   renderFrame(renderFrame: RenderFrameState): void {
+    const renderer = this.options.renderer;
+    if (renderFrame.renderCommandBuffer.spatial && !renderer.supportsSpatialScene)
+      throw new Error("Renderer does not support spatial scene geometry");
+    const debugLines = this.options.shouldRenderPhysicsDebugLines ? renderFrame.physicsDebugLineBuffer : undefined;
+    const renderDebugLines = renderer.renderPhysicsDebugLines;
+    if (debugLines !== undefined && renderDebugLines === undefined)
+      throw new Error("Renderer does not support physics debug lines");
     const renderStartMs = this.options.needsRuntimeFrame ? this.now() : 0;
     this.rendererFrameId++;
     let frame = this.applyDynamicFrameProviders(renderFrame);
@@ -66,12 +73,10 @@ export class RuntimeFrameRenderer {
     this.options.renderer.beginGpuTiming?.();
     try {
       this.options.renderer.render();
-      if (renderFrame.renderCommandBuffer.spatial && !this.options.renderer.supportsSpatialScene) throw new Error("Renderer does not support spatial scene geometry");
       rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
-      if (this.options.shouldRenderPhysicsDebugLines && renderFrame.physicsDebugLineBuffer !== undefined) {
-        const physicsDebugLines = this.options.physicsDebugLineComposer?.(renderFrame.physicsDebugLineBuffer)
-          ?? renderFrame.physicsDebugLineBuffer;
-        rendererStats = this.options.renderer.renderPhysicsDebugLines(physicsDebugLines, {
+      if (debugLines !== undefined && renderDebugLines !== undefined) {
+        const physicsDebugLines = this.options.physicsDebugLineComposer?.(debugLines) ?? debugLines;
+        rendererStats = renderDebugLines.call(renderer, physicsDebugLines, {
           x: renderFrame.cameraX,
           y: renderFrame.cameraY,
         });

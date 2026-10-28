@@ -726,6 +726,9 @@ async function bootstrap(): Promise<void> {
 
     shell.debugRoot.before(inspector.element);
     gridRenderer = new PlacementGridRenderer(shell.canvas);
+    // The host supplies this model-preparation capability; the generic runtime
+    // renderer contract also permits renderers that only draw flat commands.
+    const spatialModelPreparer = gridRenderer;
     runtime = await createFerrumRuntime({
       renderer: gridRenderer,
       canvas: shell.canvas,
@@ -852,7 +855,7 @@ async function bootstrap(): Promise<void> {
         {
           instanceHandleRegistry,
           missingBehavior: "ignore",
-          spatialModelPreparer: runtime.renderer,
+          spatialModelPreparer,
         },
       ).variables;
       configureVillageActor(runtimeEngine, document);
@@ -2361,7 +2364,7 @@ async function bootstrap(): Promise<void> {
           {
             instanceHandleRegistry: registry,
             missingBehavior: "ignore",
-            spatialModelPreparer: runtime!.renderer,
+            spatialModelPreparer,
           },
         ).variables;
         configureVillageActor(runtimeEngine, next);

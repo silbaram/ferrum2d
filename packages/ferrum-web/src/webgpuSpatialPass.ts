@@ -3,7 +3,7 @@ import { SpatialShadowCache } from "./spatialShadowCache.js";
 import { spatialGeometryWGSL } from "./webgpuSpatialShaders.js";
 import { WebGpuSpatialEnvironment } from "./webgpuSpatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
-import type { SpatialRendererStats } from "./webgl2SpatialPass.js";
+import type { SpatialRendererStats } from "./renderer.js";
 import type { WebGpuTextureStore } from "./webgpuTextureStore.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
 import { WebGpuSpatialModels } from "./webgpuSpatialModels.js";

@@ -2,11 +2,8 @@ import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { PhysicsDebugLineBufferView } from "./physicsDebugLineDecoder";
 import { setSpriteBlend } from "./webgl2Blend";
 
-export interface PhysicsDebugLineCamera {
-  x: number;
-  y: number;
-  groundYScale?: number;
-}
+import type { PhysicsDebugLineCamera } from "./renderer.js";
+export type { PhysicsDebugLineCamera } from "./renderer.js";
 
 const FLOATS_PER_VERTEX = 6;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;

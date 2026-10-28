@@ -1,8 +1,53 @@
-import type { SpatialRendererStats } from "./webgl2SpatialPass.js";
 import type { RendererResourceStats } from "./rendererResources";
 import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { PostProcessStackInput } from "./cameraPostProcessing";
+
+/** Backend-neutral spatial pass metrics shared by WebGL2 and WebGPU. */
+export interface SpatialRendererStats {
+  triangleCount: number;
+  modelCount: number;
+  visibleModelCount: number;
+  modelDrawCalls: number;
+  modelInstancedDrawCalls: number;
+  /** Dynamic instance matrices, including shadow passes; immutable assets use modelUploadBytes. */
+  modelInstanceUploadBytes: number;
+  modelTriangleCount: number;
+  modelUploadBytes: number;
+  /** Full static terrain and the chunks actually submitted this frame (v2 packets only). */
+  terrainChunkCount: number;
+  visibleTerrainChunkCount: number;
+  culledTerrainChunkCount: number;
+  terrainTriangleCount: number;
+  billboardCount: number;
+  drawCalls: number;
+  billboardDrawCalls: number;
+  textureBindCount: number;
+  textureSwitchCount: number;
+  uploadBytes: number;
+  terrainUploadBytes: number;
+  depthBufferBytes: number;
+  debugLineCount: number;
+  debugDrawCalls: number;
+  debugUploadBytes: number;
+  debugTruncated: boolean;
+  lightCount: number;
+  directionalLightCount: number;
+  shadowPassCount: number;
+  shadowDrawCalls: number;
+  shadowTriangleCount: number;
+  shadowUploadBytes: number;
+  shadowCacheHit: boolean;
+  shadowCulledTriangleCount: number;
+  effectDrawCalls: number;
+  effectTextureBytes: number;
+  dofSampleBudget: number;
+}
+export interface PhysicsDebugLineCamera {
+  x: number;
+  y: number;
+  groundYScale?: number;
+}
 
 export interface RendererStats {
   spatial?: SpatialRendererStats;
