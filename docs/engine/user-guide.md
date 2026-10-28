@@ -48,7 +48,7 @@ pnpm dev:placement-viewer
 엔진 레포의 공식 placement viewer는 dev 실행 중 현재 선택 상태와 draft patch를
 `apps/placement-viewer/.ferrum-placement-handoff.json`에도 내보낸다. 이 파일은
 agent가 "방금 이동한 instance 위치를 반영해" 같은 요청을 처리할 때 읽는 임시 handoff
-파일이며, 원본 `placement.scene-authoring.json`을 직접 저장하지 않는다.
+파일이며, 기본 정원 문서 `placement.garden.scene-authoring.json`을 직접 저장하지 않는다.
 
 Tauri desktop wrapper는 `project` 입력칸의 consumer project root를 `Open Project`로 열거나
 `Choose` directory dialog로 선택한 project의 `public/scene-authoring.json`을 자동 로드하고,
@@ -68,7 +68,7 @@ image metadata를 확인할 수 없으면 기존 default object size를 사용�
 선택/draft/asset folder 상태를 읽기 위한 evidence로만 사용한다.
 
 오브젝트를 이동하거나 좌표를 입력하면 먼저 draft 상태가 된다. `Save` 버튼을 누르면
-dev server가 draft patch를 `apps/placement-viewer/public/placement.scene-authoring.json`에
+dev server가 draft patch를 `apps/placement-viewer/public/placement.garden.scene-authoring.json`에
 반영하고 페이지를 다시 로드한다. `Revert`는 저장 전 draft만 버린다.
 
 처음 실행하거나 Rust core를 수정한 뒤에는 Wasm package를 먼저 빌드한다.

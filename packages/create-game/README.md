@@ -27,6 +27,24 @@ node packages/create-game/bin/create-game.mjs ../my-game --github-release 0.1.0-
 
 생성 후 출력되는 폴더 이동 명령은 공백·따옴표 등 경로 문자를 보존한다. Windows에서는 PowerShell용 `Set-Location -LiteralPath`를 안내한다.
 
+## 기존 게임의 엔진 업데이트
+
+이 기능이 포함된 생성기 패키지는 `ferrum-update-game` bin도 제공한다. 패키지 이름과 같은 `create-game` alias는
+기존 `npx <생성기 tgz URL>`의 프로젝트 생성 동작을 유지한다.
+저장소에서는 아래 명령으로 확인 후 명시적으로 적용한다.
+
+```bash
+node packages/create-game/bin/update-game.mjs --project ../my-game
+node packages/create-game/bin/update-game.mjs --project ../my-game --apply
+# 특정 공개 beta로 고정하려면 --to x.y.z-beta.N
+```
+
+갱신 CLI가 포함된 릴리스에서는 `npx --yes --allow-remote=root --package="$ferrum_cli_url" ferrum-update-game --project ./my-game --apply`를 사용할 수 있다.
+이 기능 이전의 tgz에는 bin이 없다. npm/pnpm만 지원하고 기존 Ferrum 패키지·출처 metadata를 같은 버전으로 맞춘다.
+변경 전 package/lock과 실패 상태를 `.ferrum-updates/`에 보관하며 checksum·설치 파일 검증 실패 시 복원을 시도한다.
+복구 결과가 false이거나 `active.lock`이 남으면 백업의 `result.json`을 확인하고 수동 복구한다.
+설치 hook은 생략하며 agent 파일·씬·게임 코드를 자동 변경/실행하지 않는다. 완료 후 게임의 검증 명령을 실행한다.
+
 템플릿은 `--template`으로 고른다. 현재 기본 템플릿은 `minimal`이다.
 
 ```bash

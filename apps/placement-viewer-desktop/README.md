@@ -21,6 +21,21 @@ native 저장은 줄바꿈을 포함한 실제 UTF-8 직렬화 크기가 2 MiB�
 탐색 도중 읽지 못한 하위 경로는 최대 32개 `diagnostics`로 반환하며 정상 씬 목록을 유지한다. 루트 접근 실패는 오류로 반환한다.
 목록·문서 읽기 한도와 웹/폴더 입력 차이는 [씬 탐색기 사용법](../placement-viewer/README.md#프로젝트-씬-탐색기)을 따른다.
 
+## 버전 확인과 업데이트
+
+공통 UI의 **파일 → 버전 및 업데이트**에서 앱/내장 엔진과 열린 게임 프로젝트의 엔진을 따로 갱신한다.
+`updates.rs`는 Open Project 권한만 프로젝트 CLI에 전달하고, 앱 설치에는 공식 Tauri updater의 서명 검증을 사용한다.
+프로젝트 CLI는 앱에 내장된 source를 임시 디렉터리에서 Node로 실행하며 게임 프로젝트의 스크립트/코드를 불러오지 않는다.
+Node/npm/pnpm이 없는 환경은 프로젝트 갱신 오류를 표시하며 앱 업데이트에는 필요 없다.
+기본 개발 config는 빈 공개키/endpoint와 `createUpdaterArtifacts: false`여서 앱 설치를 제공하지 않는다.
+Linux는 AppImage 실행에 한해 자동 교체를 허용한다. `.deb` 설치는 릴리스 파일로 수동 갱신한다.
+host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데이트에만 재시작을 허용한다.
+릴리스 안내는 URL을 검증한 host command와 공식 opener plugin으로 시스템 브라우저에서 연다.
+
+`--with-updater`는 공개키를 임시 빌드 config에 주입하고 서명 파일/OS별 metadata를 준비한다.
+`--no-sign`과 함께 쓸 수 없다. 키 설정, 최초 설치와 공개 전 실제 OS 검증은
+[업데이트 배포 절차](../../docs/development/operations/github-release.md#버전-확인과-업데이트)를 따른다.
+
 ## 설치 파일 준비
 
 저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS 뷰어를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
@@ -52,10 +67,10 @@ pnpm smoke:aseprite-project
 
 이 명령은 Wasm을 빌드한 뒤 Tauri dev shell을 실행하고, Tauri `beforeDevCommand`가 `@ferrum2d/placement-viewer` Vite dev server를 띄운다.
 
-기본값은 `apps/placement-viewer/public/placement.scene-authoring.json` 샘플 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
+기본값은 `apps/placement-viewer/public/placement.garden.scene-authoring.json` 정원 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
 
 ```bash
-FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/placement.scene-authoring.json pnpm dev:placement-viewer-desktop
+FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/scene-authoring.json pnpm dev:placement-viewer-desktop
 ```
 
 앱 내부 `Inspector`의 `source` 행은 현재 로드한 문서 경로를 보여준다. `save` 행은 desktop file/dev endpoint/save disabled 상태를 표시한다.

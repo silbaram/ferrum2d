@@ -132,6 +132,53 @@ sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev liba
 
 설치한 뷰어에서 **속성 → 문서 → 프로젝트 열기**로 게임 폴더를 선택하면 `public/scene-authoring.json`과 `public/assets`를 사용한다. SDK/Node/Rust는 뷰어 실행을 위해 따로 설치하지 않아도 된다. 게임의 임의 `main.ts`/HUD를 자동 실행하는 기능은 아니며, 실제 게임 실행은 해당 게임 프로젝트의 실행 명령을 사용한다.
 
+## 버전 확인과 업데이트
+
+전체 뷰어의 **파일 → 버전 및 업데이트**는 앱/내장 엔진과 게임 프로젝트 SDK를 따로 표시한다.
+GitHub `/releases/latest`는 beta를 제외하므로 공개 release 목록을 최대 5페이지 조회하고 exact beta를 숫자로 비교한다.
+draft·source archive·단순 Git push는 새 버전으로 선택하지 않는다. API 제한/오프라인은 오류를 표시하며 설치를 시작하지 않는다.
+
+프로젝트 갱신은 [create-game의 CLI](../../../packages/create-game/README.md)로도 실행할 수 있다.
+기존 Ferrum runtime/viewer/generator/agents dependency만 같은 릴리스 URL로 고정하고,
+생성기 metadata 없이 공식 SDK tgz URL을 직접 설치한 게임도 정확한 URL에서 출처를 복원한다.
+`release-manifest.json`과 tgz의 크기/SHA-256 및 설치된 package 파일을 대조한다.
+기존 표준 `ferrum:agents` 명령은 URL만 맞추며 사용자 agent 템플릿은 덮어쓰지 않는다.
+custom command·혼합 lock·workspace/file/git 의존성은 수동 처리를 요구한다.
+`package.json`과 lock은 `.ferrum-updates/<시각-id>/`에 보관하고 `result.json`에 복원 성공 여부를 남긴다.
+실패 중의 metadata도 `failed-*`에 남기며 외부 package 변경은 덮어쓰지 않는다.
+package manager 설치 hook을 생략하므로 실제 게임 검증과 migration은 갱신 후 별도로 수행한다.
+같은 프로젝트에서 npm/pnpm을 동시에 실행하지 않는다. 비정상 종료로 `active.lock`이 남으면 백업과 설치 상태를 먼저 확인한다.
+
+앱 자동 업데이트를 준비할 때는 **운영자가 별도로 관리하는** Tauri updater 키를 사용한다.
+키 생성·원격 secret 등록·릴리스 공개는 준비 스크립트가 수행하지 않는다.
+
+```bash
+# FERRUM_UPDATER_PUBLIC_KEY: base64 minisign public-key document
+# TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD: Tauri signing environment
+pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --with-updater
+```
+
+위 버전은 예시이며 실제 새 버전을 사용한다. `--with-updater`는 필수 키가 없으면 빌드 전에 실패한다.
+앱 updater는 공식 `silbaram/ferrum2d` 저장소를 사용한다. fork의 signed updater 준비는 거절하며 별도의 앱 배포 설정이 필요하다.
+Tauri의 `--no-sign`은 updater 서명도 생략하므로 두 옵션의 조합은 거부한다.
+현재 OS의 installer에 더해 Linux `.AppImage`, macOS `.app.tar.gz`, Windows installer `.exe`와 `.sig`,
+`viewer-updater-<linux|macos|windows>-<x64|arm64>.json`을 같은 release에 첨부할 수 있게 준비한다.
+metadata는 정확한 version·Tauri platform key·고정 GitHub release artifact URL·signature를 포함한다.
+통합 assembler는 updater 파일/체크섬/metadata 일치를 검증한다. SDK manifest의 네 tgz 계약은 유지한다.
+앱 버전·공개키와 frontend release version은 임시 config/env로 주입하며 source 버전/키를 바꾸지 않는다.
+키와 맞지 않거나 변조된 파일은 설치 시 공식 updater에서 거절한다.
+업데이트 서명은 Windows/macOS code-signing/notarization을 대신하지 않으며 기존 native release gate도 유지한다.
+
+수동 workflow의 `include_viewer`와 `signed_updates`를 함께 켜면 위 환경변수와 같은 이름의
+repository secrets를 읽어 OS별 자료를 준비한다. unsigned 후보는 기존처럼 `signed_updates=false`를 사용한다.
+워크플로는 준비 artifact만 만들며 Release에 자동 첨부/공개하지 않는다.
+
+최초에는 이 기능과 올바른 공개키가 들어간 앱을 직접 설치해야 한다. 그 이후 더 높은 버전의 signed artifact로
+갱신할 수 있다. Linux `.deb`는 AppImage 자동 교체 경로를 사용하지 않으므로 수동 재설치한다.
+키 없는 개발 앱/브라우저/미지원 OS에는 설치 버튼을 활성화하지 않는다.
+2026-10-28 조회한 공개 beta.8은 SDK 묶음만 제공하므로 앱 자동 업데이트 자료가 없는 상태다.
+[Tauri updater](https://v2.tauri.app/plugin/updater/)와 [GitHub release API](https://docs.github.com/en/rest/releases/releases)의 계약을 따른다.
+
 ## 검증과 CI
 
 ```bash

@@ -114,6 +114,11 @@ Apply의 component/normal 참조 교체는 native 중간 적용을 보류하고 
 
 ## 프로젝트 씬 탐색과 실행
 
+공식 앱과 native fallback의 기본 문서는 2D 정원 `placement.garden.scene-authoring.json`이다.
+단순 기본 2D와 HD-2D 지형/발판 데이터는 `tests/fixtures/`의 회귀 입력으로만 유지하며 public 자산/예제 메뉴에는 포함하지 않는다.
+공개 씬은 정원과 마을 2개이며 기존 `?scene=hd2d` 주소는 마을을 연다.
+기존 consumer 프로젝트의 `public/placement.scene-authoring.json` 파일명 지원은 유지한다.
+
 공식 authoring app의 프로젝트 씬 탐색기는 `placementSceneCatalog.ts`의 발견 metadata와
 `placementSceneExplorer.ts`의 UI를 분리한다. 기존 문서 workspace가 실제 JSON 검증·문서별 초안/이력·플레이 모드를 소유한다.
 `server/sceneCatalog.mjs`는 고정 `public/` 루트에서 개발 서버 목록을 제공하고 정적 빌드의 `placement-scenes.json`을 생성한다.
@@ -129,6 +134,23 @@ desktop `scene_catalog.rs`의 읽기 전용 command는 명시적 Open Project �
 노멀 catalog의 복원·export·handoff도 같은 프로젝트 문맥을 요구한다. 추가 씬에 원본 catalog 쓰기 권한을 자동 부여하지 않는다.
 native 저장은 직렬화된 최종 UTF-8 크기를 read limit와 대조한 뒤 임시 파일 교체를 시작한다.
 웹/native 씬 탐색의 개별 경로 I/O 실패는 최대 32개 진단으로 반환하며, 명시적 root 접근 실패와 구분한다.
+
+## 버전 확인과 업데이트 경계
+
+`placementReleaseVersions.ts`는 공개 beta 조회·숫자형 semver 비교를, `placementUpdates.ts`는 수동 확인 dialog와
+미저장/실행/편집 중 설치 차단을 맡는다. 프레임 루프나 Wasm ABI에 네트워크/업데이트 호출을 추가하지 않는다.
+native `placement_document::updates`는 명시적 Open Project registry 권한으로만 프로젝트 갱신을 허용한다.
+앱에 내장한 `create-game/bin/update-game.mjs`와 `update-integrity.mjs`가 Node에서 npm/pnpm을 실행하며
+원본/실패 상태 백업, 다운로드 SHA-256·설치 파일 대조, 실패 복원을 관리한다. scene·사용자 게임 코드는 실행하지 않는다.
+기존 Ferrum dependency만 동일한 exact release URL로 갱신하며 workspace/file과 엔진 저장소는 source control에 남긴다.
+잠금은 updater 간 동시 실행만 직렬화한다. 외부 writer와 완전한 filesystem transaction을 보장하지 않는다.
+
+앱 갱신은 `tauri-plugin-updater` 2.14.1의 다운로드·공개키 서명 검증·OS 설치 경로를 재사용한다.
+릴리스 안내는 `tauri-plugin-opener` 2.7.0을 host command로 호출하며 정확한 GitHub beta 안내 URL만 허용한다.
+고정 공식 저장소/정확한 beta/OS metadata로 조회하며, 확인된 Update와 일회용 token을 host가 보관한다.
+설치는 host busy guard로 직렬화하고 완료 후에만 재시작한다. 프로젝트 패키지 버전과 앱 내장 엔진 버전은 별개다.
+공개키 없는 앱, Linux non-AppImage, 웹에서는 앱 자동 교체를 제공하지 않는다.
+서명 artifact 준비는 기존 SDK 네 tgz 계약에 OS별 updater metadata와 signature를 추가하며 배포 공개 자체는 수행하지 않는다.
 
 ## 게임 프로젝트 설치 경계
 

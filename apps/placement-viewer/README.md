@@ -4,6 +4,28 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
 
+기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
+파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
+
+## 엔진·에디터 버전 업데이트
+
+**파일 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
+공개된 GitHub beta 릴리스를 조회하며, Git push나 draft를 새 버전으로 취급하지 않는다.
+
+- **프로젝트 엔진**: 데스크톱에서 **프로젝트 열기**로 연 npm/pnpm 게임의 Ferrum2D 패키지를 동일 릴리스로 갱신한다. Node와 해당 패키지 관리자가 필요하다. 단독 JSON/폴더 사본·엔진 monorepo·workspace/file/link 의존성은 자동 변경하지 않는다.
+- **에디터 앱**: 공개키가 포함된 설치 앱에서 해당 OS의 서명 업데이트 파일을 확인·설치하고 재시작한다. 내장 미리보기 엔진도 함께 바뀐다. Linux 자동 교체는 AppImage에서 지원하며 `.deb`는 수동 재설치한다.
+- **웹 뷰어**: 릴리스 정보와 데스크톱 사용 안내를 보여준다. 웹 앱 자체는 사이트 재배포로 바뀐다.
+
+미저장 씬이 어느 탭에든 있거나 씬 실행/저장/편집 중이면 설치를 막는다. 설치 중에는 패널/앱을 닫지 않는다.
+프로젝트 갱신은 `.ferrum-updates/<시각-id>/`에 원본 `package.json`·잠금 파일과 결과를 남긴다.
+다운로드 SHA-256과 설치된 파일을 대조하며 lifecycle hook을 실행하지 않는다. 실패하면 복원을 시도하고,
+외부 `package.json` 변경이나 복구 실패는 백업 경로와 함께 알린다. 다른 패키지 관리자 작업은 동시에 실행하지 않는다.
+게임 코드·씬 migration·사용자 agent 파일을 바꾸거나 게임 검증을 자동 실행하지 않으므로 갱신 후 `npm run ferrum:check`를 수행한다.
+
+첫 사용에는 이 기능이 포함된 앱과 서명 업데이트 자료의 공개가 필요하다.
+키 없는 개발 빌드나 아직 installer/metadata가 없는 릴리스는 설치를 제공하지 않는다.
+[서명 자료 준비와 CLI 사용법](../../docs/development/operations/github-release.md#버전-확인과-업데이트)을 따른다.
+
 ## 프로젝트 씬 탐색기
 
 **파일 → 프로젝트 씬**을 누르거나 왼쪽 도크의 **프로젝트 씬** 탭을 선택한다.
@@ -195,7 +217,7 @@ Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
 
 | 기술 | 설명 |
 | --- | --- |
-| Data Scene preview | `public/placement.scene-authoring.json`을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
+| Data Scene preview | 기본 `public/placement.garden.scene-authoring.json`을 로드해 `createDataSceneRuntimeTarget(...)`로 Rust `World`에 배치 instance를 spawn한다. |
 | Engine-style authoring shell | `@ferrum2d/authoring-viewer` app chrome helper로 top toolbar, left object list, center viewport, right inspector, bottom runtime/status bar 구조를 만든다. |
 | Workspace docks | Scene/Inspector/Panels 접기, Focus, pointer·keyboard 크기 조절과 프로젝트별 localStorage 설정을 제공한다. 문서 patch는 바꾸지 않는다. |
 | Scene document tabs | 최대 8개 문서의 초안·선택·Undo 이력을 분리하며 단일 canvas/runtime을 재사용한다. |
@@ -228,9 +250,10 @@ JSON·patch·handoff·입력값과 원본 엔진 진단은 번역하지 않는�
 pnpm dev:placement-viewer
 ```
 
-개발 서버에서 `/`는 기존 2D 문서를, `/?scene=hd2d`는 지형·경사로·다층 발판과 sprite 3개가 있는 HD-2D 샘플을 연다.
+개발 서버에서 `/`는 2D 정원을, `/?scene=hd2d`와 `/?scene=village`는 HD-2D 마을을 연다.
 공간 데이터가 있는 문서는 HD-2D로 시작하며 상단 **2D / HD-2D**로 모드를 전환한다.
-HD-2D 샘플 원본은 `public/placement.hd2d.scene-authoring.json`이다. 브라우저 샘플 편집은 export를 사용하며 기본 2D 문서 저장 endpoint에 쓰지 않는다.
+HD-2D 마을 원본은 `public/placement.village.scene-authoring.json`이다. 이전의 지형·발판·사각 sprite 기초 씬은 테스트 입력으로만 유지한다.
+브라우저 마을 편집은 export를 사용하며 정원 문서 저장 endpoint에 쓰지 않는다.
 
 ### Blender 중세 마을 예제
 
@@ -674,7 +697,7 @@ native도 실제 저장할 UTF-8 JSON(들여쓰기·마지막 줄바꿈 포함)�
 
 ## Desktop host
 
-`apps/placement-viewer-desktop`는 이 app의 production/dev frontend를 Tauri window에서 열고, Tauri command가 있을 때 샘플 `placement.scene-authoring.json`을 로컬 파일로 읽고 저장한다. Tauri가 없는 일반 브라우저와 Pages에서는 기존 fetch/Vite dev endpoint 흐름을 유지한다. 문서 전환 전에 draft patch가 남아 있으면 기존 변경을 버릴지 확인한다.
+`apps/placement-viewer-desktop`는 이 app의 production/dev frontend를 Tauri window에서 열고, Tauri command가 있을 때 정원 샘플 `placement.garden.scene-authoring.json`을 로컬 파일로 읽고 저장한다. Tauri가 없는 일반 브라우저와 Pages에서는 기존 fetch/Vite dev endpoint 흐름을 유지한다. 문서 전환 전에 draft patch가 남아 있으면 기존 변경을 버릴지 확인한다.
 
 ## 참고 문서
 

@@ -29,6 +29,7 @@ class private 상태를 포함한 타입 단언 없이 custom renderer와 최소
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
 | Scene Placement Viewer browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | viewer/save는 CI validate와 `smoke:check`, 나머지 browser 항목은 `smoke:check`. Linux debug deb/GUI launch는 로컬 수동 후보 | 공식 placement viewer production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux debug deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
 | 프로젝트 씬 탐색 | `pnpm test:placement-scenes`, `pnpm smoke:placement-viewer` | Node 계약과 viewer browser 검증은 CI validate, native 계약은 desktop Rust tests | bounded 탐색·symlink/경로 거절·문서 오류, 중복 탭/초안 보존, 선택 씬 열기·실행 실패 격리, 한영/compact/키보드/폴더 Export Only, fake native의 최신 자산 문맥과 활성 씬 저장 |
+| 엔진·에디터 업데이트 | `pnpm test:updates`, `pnpm smoke:placement-viewer`, `pnpm test:github-release` | CI Node/공식 viewer gate, native authority는 desktop Rust tests | beta 숫자 비교·draft/불완전 release 제외·페이지 탐색·오프라인·변조 차단, 실제 npm/pnpm 임시 consumer 설치와 hook 미실행, metadata/lock 복원 및 실패 보고. 화면은 fake native로 진행·재시작·미저장/실행 중 차단·늦은 응답·한영/compact를 검사. 서명 자료 staging/assembly는 모의 tool output이며 실제 OS 설치·서명 검증 evidence는 native release gate에서 확인 |
 | 엔진·전체 뷰어 분리 배포 | `pnpm test:github-release`, `pnpm release:distribution:prepare`, `pnpm release:distribution:verify` | release 계약 테스트는 CI validate, native release build는 수동 release workflow의 `include_viewer` | SDK v1 네 tarball 계약 보존, native OS installer/내장 Wasm 검사, 새 출력 보존, 버전·커밋·플랫폼 일치와 통합 SHA-256. 모의 산출물 테스트와 실제 OS build/GUI 증거를 구분. [배포 절차](../operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비) 참고 |
 | 2D 레이어 authoring | `pnpm test:placement-layers`, `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, SDK `scenePlacementLayers`/`sceneSpatialPatch` tests, Rust `flat_preview_filter` test | CI layer contracts·viewer/save browser smoke와 SDK/Rust gate | canvas/command 감소, 숨김 피킹·공간 API 편집 차단, 단독 보기·Undo·모드/필터 복원, 저장 후 단독 보기·활성 레이어·개별 잠금 보존, preview 오류 후 선택 복원, 이동·순서 Undo·animation·별칭·한글을 확인. SDK는 f32/signed-zero 정렬과 batch bounds 1회 갱신, layer contracts는 512개 그룹의 1회 분류를 검증. 캡처·checks: `artifacts/placement-layers/` |
 | Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
@@ -46,6 +47,20 @@ WebGL2 기본 경로는 제품 renderer 기준이다. WebGPU optional smoke(`smo
 `pnpm validate:runtime-budget-product`는 package script, runtime budget profile mapping, CI 기본 gate, tag/manual opt-in gate, Pages readiness 문서와 artifact report 경로가 빠지지 않았는지 확인한다.
 
 씬 탐색기 browser evidence는 `artifacts/placement-scene-explorer/report.json`과 한글·compact screenshot에 남긴다.
+
+공식 production viewer의 기본 화면은 465개 instance의 2D 정원이며 공개 씬 catalog는 정원·HD-2D 마을 2개다.
+`placement-production-default-smoke.mjs`는 실제 production bundle에서 기본/별칭 진입·예제 2종·중복 탭·Play/Stop과
+구 기본 2D·HD-2D JSON의 404와 `?scene=hd2d`의 마을 진입을 검사한다. 465개 오브젝트에서도 왼쪽 탭이 줄거나 잘리지 않는지,
+프로젝트 씬 클릭과 키보드의 오브젝트 탭 복귀가 가능한지도 확인한다. 기초 편집/공간 회귀는 `tests/fixtures/`의
+`placement.scene-authoring.json`·`placement.hd2d.scene-authoring.json`을 `placement-test-build.mjs`가
+`mode=test` 임시 build에만 추가해 실행한다. production dist/public을 덮어쓰지 않는다.
+공식 viewer/save/mass/spatial smoke report는 `productionDefault`와 `regressionBuild`로 두 증거를 구분한다.
+desktop asset/CSP smoke는 실제 production JS와 mock native 문서를 그대로 사용하며 새 test bundle로 대체하지 않는다.
+공간 회귀는 짧은 창에서 아이콘의 숨겨진 접근성 문구가 페이지 스크롤 영역을 늘리지 않는지,
+live 카메라 값을 Enter로 확정한 뒤에도 같은 입력칸에서 키보드 편집을 계속할 수 있는지 검사한다.
+업데이트 browser evidence는 `artifacts/placement-updates/report.json`과 한글 compact screenshot에 남긴다.
+실제 native updater 설치와 OS별 서명 검증은 모의 RPC/산출물 테스트로 증명하지 않는다.
+릴리스 HTTP 설치 smoke는 기존 URL 생성기 bin 추론과 `ferrum-update-game --help`도 실행해 multi-bin 패키지 호환성을 검사한다.
 리뷰 회귀는 저장 후 2 MiB 초과 거절/원본·임시 파일 보존, 접근 불가 하위 경로의 부분 목록·진단,
 공유 프로젝트 에셋의 두 번째 씬 열기·저장·원본 탭 닫기 후 실제 픽셀과 URL 수명, 임의 문서 참조 거절을 검사한다.
 `project-assets.json`이 해당 브라우저 결과이며 Node 계약에는 scope/lifetime 및 기존 native normal/tile 계약도 함께 확인한다.
