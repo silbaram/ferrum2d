@@ -134,7 +134,12 @@ export function createPlacementGameCamera(options: {
     input.addEventListener("keydown", event => {
       if (event.code !== "Enter") return;
       event.preventDefault(); event.stopPropagation();
-      if (input.value !== pending.displayed || input.validity.badInput) apply();
+      if (input.value !== pending.displayed || input.validity.badInput) {
+        const focused = document.activeElement === input;
+        apply();
+        // The commit briefly disables controls. Keep keyboard editing in this field.
+        if (focused && input.isConnected && !input.disabled) input.focus({ preventScroll: true });
+      }
     });
     if (name === "pitch" || name === "yaw") {
       const range = document.createElement("input");

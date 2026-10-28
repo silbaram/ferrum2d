@@ -224,11 +224,25 @@ textarea {
   z-index: 2;
 }
 .placement-scene-navigation {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
+}
+.placement-scene-filters,
+.placement-scene-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.placement-scene-filters > select {
+  flex: 1 1 0;
+}
+.placement-scene-actions {
+  flex-wrap: wrap;
 }
 .placement-layers { border-bottom: 1px solid var(--border); padding: 4px; flex: 0 0 auto; }
 .placement-layers > summary { padding: 4px; font-weight: 600; cursor: pointer; }
@@ -248,16 +262,32 @@ textarea {
 .placement-scene-navigation :is(input, select) {
   min-width: 0;
   width: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: 12px;
 }
-.placement-scene-navigation > input {
-  grid-column: 1 / -1;
+.placement-scene-navigation input::placeholder {
+  color: var(--fg-3);
+}
+.placement-scene-navigation :is(input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .placement-scene-navigation output {
-  align-self: center;
+  flex: 1 1 96px;
+  min-width: 0;
   font-size: 11px;
   color: var(--fg-3);
 }
 .placement-scene-navigation button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  margin-left: auto;
   white-space: nowrap;
   font-size: 11px;
   padding: 0 4px;
@@ -1825,7 +1855,7 @@ textarea {
   grid-area: left;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -1843,12 +1873,17 @@ textarea {
   flex-direction: column;
   min-height: 0;
 }
+.placement-scene-dock > .placement-panel-tabs > .placement-panel-tablist {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
 .placement-scene-dock > .placement-panel-tabs > .placement-panel-tabbody {
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
   padding: 0;
+  overflow: auto;
 }
 .placement-scene-explorer {
   display: flex;
@@ -2502,6 +2537,7 @@ textarea {
   padding-right: 0;
 }
 .placement-viewport-action {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2794,6 +2830,19 @@ textarea {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin-bottom: 8px;
+}
+.placement-file-examples {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.placement-file-examples > summary {
+  width: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+.placement-file-examples > summary .placement-disclosure-caret {
+  margin-left: auto;
 }
 .placement-workspace-modes {
   display: flex;

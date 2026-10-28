@@ -39,7 +39,12 @@ export function createPlacementSceneNavigator(
       new CustomEvent("placement-scene-frame", { bubbles: true }),
     ),
   );
-  element.append(search, type, layer, frame, count);
+  const filters = document.createElement("div"), actions = document.createElement("div");
+  filters.className = "placement-scene-filters";
+  actions.className = "placement-scene-actions";
+  filters.append(type, layer);
+  actions.append(count, frame);
+  element.append(search, filters, actions);
   let signature = "";
   const fragments = new Map<string, string[]>();
   for (const [id, fragment] of Object.entries(

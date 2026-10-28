@@ -35,6 +35,7 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   }
   if (openExample) {
     const examples = createPlacementControlMenu("examples", "Examples", "file");
+    examples.element.classList.add("placement-file-examples");
     for (const [name, label] of [["garden", "2D Lantern Garden"], ["village", "HD-2D Village"]] as const) {
       const button = document.createElement("button"); button.type = "button";
       button.dataset.placementExample = name;
