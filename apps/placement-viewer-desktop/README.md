@@ -11,6 +11,16 @@ Tauri 기반 placement viewer desktop wrapper다. 이 app은 `apps/placement-vie
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 여전히 agent/spec 소유다.
 
+**파일 → 프로젝트 씬**에서 명시적으로 연 프로젝트의 `public/` 아래 Scene Authoring 문서를 검색·열기·실행한다.
+`list_placement_project_scenes`는 Open Project 권한만 허용하며, 단독 Open JSON이 추론한 프로젝트 경로로는 호출할 수 없다.
+목록 조회로 다른 씬의 쓰기 권한을 추가하지 않는다. 사용자가 실제 연 개별 문서만 기존 scene allowlist에 등록한다.
+프로젝트/문서 열기 응답은 canonical 경로를 반환해 `.`·symlink 별칭으로 같은 문서가 중복되는 것을 방지한다.
+씬을 전환해도 최신 프로젝트 자산 폴더 문맥을 보존하고 저장은 활성 문서 경로와 expectedDocument를 사용한다.
+검증된 동일 프로젝트의 저장 에셋은 씬 간 공유하고 초기 문서가 닫혀도 유지한다. 미저장·다른 프로젝트 참조는 계속 차단한다.
+native 저장은 줄바꿈을 포함한 실제 UTF-8 직렬화 크기가 2 MiB를 넘으면 원본을 교체하지 않는다.
+탐색 도중 읽지 못한 하위 경로는 최대 32개 `diagnostics`로 반환하며 정상 씬 목록을 유지한다. 루트 접근 실패는 오류로 반환한다.
+목록·문서 읽기 한도와 웹/폴더 입력 차이는 [씬 탐색기 사용법](../placement-viewer/README.md#프로젝트-씬-탐색기)을 따른다.
+
 ## 설치 파일 준비
 
 저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS 뷰어를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.

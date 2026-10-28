@@ -191,7 +191,8 @@ manifest의 texture URL은 bundle 기준 상대 경로이며 color=`srgb`를 명
 현재 씬의 참조와 일치하는 source evidence는 app handoff의 `tileImports[]`로 전달한다. engine handoff/schema/public API는 바꾸지 않는다.
 
 원본 세션 예산은 staged/등록 revision 총 8건·64 MiB다. Undo/다른 fragment에 필요한 이전 revision은 유지한다.
-문서/모드 전환은 진행 작업을 취소하고 문서 닫기/종료는 그 문서의 소유 URL/texture를 해제한다.
+문서/모드 전환은 진행 작업을 취소하고 문서 닫기는 그 문서의 미저장 URL/texture를 해제한다.
+검증·저장된 같은 프로젝트 에셋은 다른 씬에서 계속 참조하도록 작업공간 종료까지 유지한다.
 브라우저의 미설치 참조는 scene Save를 막는다. native Open Project의 기본 문서는 아래 Save Project 경로를 사용하고,
 그 밖의 host/문서는 agent가 export의 hash·manifest와 동반 scene/patch를 확인해 프로젝트에 설치한다.
 
@@ -239,7 +240,8 @@ revision별 내용 기반 texture 이름으로 새 이미지를 별도 업로드
 잠금/문서/선택 변경은 적용 직전에 다시 확인한다. 문서 전환·Game Preview 진입은 진행 작업을 취소한다.
 
 JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, session revision 합계 8건/64 MiB 상한이다.
-문서 닫기/종료에서 Blob URL·GPU texture를 해제한다. 2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
+문서 닫기는 미저장 Blob URL·GPU texture를 해제한다. 검증·저장된 프로젝트 에셋은 같은 프로젝트의 다른 씬을 위해 유지하고 작업공간 종료 때 해제한다.
+2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
 
 app 전용 `asepriteImports[]` handoff 확장은 현재 씬이 참조하는 논리 asset 이름·revision ID·원본명·hash·frame을 제공한다.
 engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 필드를 추가하지 않는다.
@@ -337,7 +339,8 @@ Normal tool에서 만든 pair는 Save Assets를 실행한 뒤 씬을 저장한�
   Cancel/문서 전환은 늦은 UI 성공과 후속 씬 저장을 막지만 이미 확정한 파일 transaction은 완료될 수 있다.
 - 프로젝트 한도는 8 pair revision, 전체 pair의 color+normal PNG 합계 64 MiB, decoded color+normal 합계 8,388,608 pixel이다.
   PNG 한 파일은 16 MiB/4 MP 이하, metadata 한 파일은 4 MiB다. catalog 자동 삭제/정리는 제공하지 않는다.
-  문서 닫기는 메모리/GPU 자원만 해제하고 디스크 catalog를 줄이지 않는다.
+  문서 닫기는 미저장 메모리/GPU 자원만 해제한다. 저장·복원된 프로젝트 pair는 같은 프로젝트의 다른 씬에 제공하며
+  작업공간 종료 때 해제한다. 디스크 catalog는 문서 닫기로 줄이지 않는다.
 
 새 실행은 catalog/metadata/PNG를 다시 검증하고 **씬 적용 전에** 로드한다. Aseprite 원본 catalog와 color ID를 공유하면
 hash·색 공간이 일치할 때 GPU texture를 공유하며 새 normal texture만 별도로 소유한다.
@@ -360,7 +363,9 @@ Cancel은 후속 씬 저장과 오래된 UI 적용을 차단하지만 이미 시
 `manifest.textureOptions`는 `srgb`를 명시한다. 원본 Aseprite JSON의 `meta.image`는 바꾸지 않는다.
 기존 export v1에 identityDocument가 없으면 native import는 bundle.document에서 이를 복원한다.
 프로젝트 재개방 시 원본을 검증·로드하고 frame browser/재import를 복원한다. handoff의 `persisted`는 실제 파일 확인 뒤 true가 된다.
-첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다. 문서 간 참조 정책과 session 예산은 유지한다.
+첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다.
+검증·저장된 에셋은 명시적으로 같은 프로젝트로 연 씬 간에 공유하고, 미저장 세션 에셋과 다른 프로젝트/임의 문서의 참조는 차단한다.
+기본 문서를 닫아도 프로젝트 에셋의 GPU 자원을 유지하며, 새 catalog 쓰기 권한은 기존 기본 문서 경계를 유지한다.
 
 게임은 저장 catalog의 manifest를 로드한 뒤 씬을 적용한다. 생성 프로젝트의 기존 runtime bootstrap을 자동 수정하지 않는다.
 

@@ -112,6 +112,24 @@ Apply의 component/normal 참조 교체는 native 중간 적용을 보류하고 
 정적 host는 JSON bundle export를 사용하며 파일 저장 adapter는 기존 권한 경계 밖으로 자동 확장하지 않는다.
 저장 완료는 host의 catalog 등록과 반환 URL의 실제 bytes 검증 뒤 인정하고, 미저장 참조의 scene-only Save는 거절한다.
 
+## 프로젝트 씬 탐색과 실행
+
+공식 authoring app의 프로젝트 씬 탐색기는 `placementSceneCatalog.ts`의 발견 metadata와
+`placementSceneExplorer.ts`의 UI를 분리한다. 기존 문서 workspace가 실제 JSON 검증·문서별 초안/이력·플레이 모드를 소유한다.
+`server/sceneCatalog.mjs`는 고정 `public/` 루트에서 개발 서버 목록을 제공하고 정적 빌드의 `placement-scenes.json`을 생성한다.
+브라우저 폴더 입력은 사용자가 선택한 읽기 전용 File 사본만 다루며 임의 host 경로·쓰기 권한을 추론하지 않는다.
+desktop `scene_catalog.rs`의 읽기 전용 command는 명시적 Open Project 권한을 요구하고 bounded traversal에서 symlink를 건너뛴다.
+목록 조회와 개별 문서 저장 allowlist는 분리한다. host open 응답의 canonical 경로가 탭 identity이며,
+새 프로젝트 씬은 같은 프로젝트의 최신 자산 문맥을 사용한다. 실행은 기존 Scene Authoring runtime 경로를 재사용하고
+사용자 게임 코드 로더나 Rust/Wasm ABI를 추가하지 않는다.
+
+`placementAssetScope.ts`는 문서별 세션 에셋과 host 검증 후 프로젝트에 저장된 에셋의 가용 범위를 구분한다.
+같은 프로젝트로 열린 문서만 영속 에셋을 공유하며, 원본 문서 닫기는 세션 에셋만 해제한다.
+공유 sprite/normal 자원은 기존 bounded store에서 보관하다 workspace 종료 시 해제한다.
+노멀 catalog의 복원·export·handoff도 같은 프로젝트 문맥을 요구한다. 추가 씬에 원본 catalog 쓰기 권한을 자동 부여하지 않는다.
+native 저장은 직렬화된 최종 UTF-8 크기를 read limit와 대조한 뒤 임시 파일 교체를 시작한다.
+웹/native 씬 탐색의 개별 경로 I/O 실패는 최대 32개 진단으로 반환하며, 명시적 root 접근 실패와 구분한다.
+
 ## 게임 프로젝트 설치 경계
 
 consumer의 기능 탐색은 `@ferrum2d/agents`가 설치하는 `.agents/harness/ferrum-feature-guide.md`에서

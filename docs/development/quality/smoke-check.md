@@ -28,6 +28,7 @@ class private 상태를 포함한 타입 단언 없이 custom renderer와 최소
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
 | Scene Placement Viewer browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | viewer/save는 CI validate와 `smoke:check`, 나머지 browser 항목은 `smoke:check`. Linux debug deb/GUI launch는 로컬 수동 후보 | 공식 placement viewer production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux debug deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
+| 프로젝트 씬 탐색 | `pnpm test:placement-scenes`, `pnpm smoke:placement-viewer` | Node 계약과 viewer browser 검증은 CI validate, native 계약은 desktop Rust tests | bounded 탐색·symlink/경로 거절·문서 오류, 중복 탭/초안 보존, 선택 씬 열기·실행 실패 격리, 한영/compact/키보드/폴더 Export Only, fake native의 최신 자산 문맥과 활성 씬 저장 |
 | 엔진·전체 뷰어 분리 배포 | `pnpm test:github-release`, `pnpm release:distribution:prepare`, `pnpm release:distribution:verify` | release 계약 테스트는 CI validate, native release build는 수동 release workflow의 `include_viewer` | SDK v1 네 tarball 계약 보존, native OS installer/내장 Wasm 검사, 새 출력 보존, 버전·커밋·플랫폼 일치와 통합 SHA-256. 모의 산출물 테스트와 실제 OS build/GUI 증거를 구분. [배포 절차](../operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비) 참고 |
 | 2D 레이어 authoring | `pnpm test:placement-layers`, `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, SDK `scenePlacementLayers`/`sceneSpatialPatch` tests, Rust `flat_preview_filter` test | CI layer contracts·viewer/save browser smoke와 SDK/Rust gate | canvas/command 감소, 숨김 피킹·공간 API 편집 차단, 단독 보기·Undo·모드/필터 복원, 저장 후 단독 보기·활성 레이어·개별 잠금 보존, preview 오류 후 선택 복원, 이동·순서 Undo·animation·별칭·한글을 확인. SDK는 f32/signed-zero 정렬과 batch bounds 1회 갱신, layer contracts는 512개 그룹의 1회 분류를 검증. 캡처·checks: `artifacts/placement-layers/` |
 | Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
@@ -43,6 +44,13 @@ browser budget smoke에서 `FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR=artifacts/b
 WebGL2 기본 경로는 제품 renderer 기준이다. WebGPU optional smoke(`smoke:lighting-webgpu`, `smoke:material-webgpu`)는 capability-aware로 동작하며 WebGPU 미지원 또는 fallback 환경을 제품 실패로 보지 않는다. 단, WebGPU 기능이 사용 가능하다고 보고된 환경에서 해당 renderer stats가 누락되거나 WebGL2 기본 경로까지 깨지면 회귀로 본다.
 
 `pnpm validate:runtime-budget-product`는 package script, runtime budget profile mapping, CI 기본 gate, tag/manual opt-in gate, Pages readiness 문서와 artifact report 경로가 빠지지 않았는지 확인한다.
+
+씬 탐색기 browser evidence는 `artifacts/placement-scene-explorer/report.json`과 한글·compact screenshot에 남긴다.
+리뷰 회귀는 저장 후 2 MiB 초과 거절/원본·임시 파일 보존, 접근 불가 하위 경로의 부분 목록·진단,
+공유 프로젝트 에셋의 두 번째 씬 열기·저장·원본 탭 닫기 후 실제 픽셀과 URL 수명, 임의 문서 참조 거절을 검사한다.
+`project-assets.json`이 해당 브라우저 결과이며 Node 계약에는 scope/lifetime 및 기존 native normal/tile 계약도 함께 확인한다.
+native 항목의 `fakeBridge`는 실제 Tauri GUI 검증을 대체하지 않는다. headless native 계약은
+`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features`로도 실행할 수 있다.
 
 ## 로컬 자동 sanity check
 
