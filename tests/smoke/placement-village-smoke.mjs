@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -11,7 +12,8 @@ import { smokeGridViewport } from "./placement-grid-viewport-smoke.mjs";
 import { smokeVillageHeightGrid } from "./placement-village-height-grid-smoke.mjs";
 const artifact = resolve("artifacts/rpg-village");
 await mkdir(artifact, { recursive: true });
-const base = resolve("apps/placement-viewer/dist"), arg = process.argv.indexOf("--url");
+const arg = process.argv.indexOf("--url");
+const base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/placement-viewer/dist")) : resolve("apps/placement-viewer/dist");
 let server;
 if (arg < 0) {
   server = createServer(async (req, res) => {

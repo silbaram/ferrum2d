@@ -9,7 +9,7 @@ import { defineConfig, type Plugin } from "vite";
 const HANDOFF_ENDPOINT = "/__ferrum-placement-handoff";
 const SAVE_ENDPOINT = "/__ferrum-placement-save";
 const HANDOFF_FILE = fileURLToPath(new URL(".ferrum-placement-handoff.json", import.meta.url));
-const SCENE_DOCUMENT_FILE = fileURLToPath(new URL("public/placement.scene-authoring.json", import.meta.url));
+const SCENE_DOCUMENT_FILE = fileURLToPath(new URL("public/placement.garden.scene-authoring.json", import.meta.url));
 const MAX_HANDOFF_BYTES = 256 * 1024;
 const MAX_SAVE_BYTES = 2 * 1024 * 1024;
 

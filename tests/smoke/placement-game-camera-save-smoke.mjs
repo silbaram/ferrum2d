@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { placementSpatialRegressionFixture } from "./placement-test-build.mjs";
 
 /** Actual frontend save/locking and native renderer; the desktop bridge stores fixture JSON in memory only. */
 export async function smokePlacementGameCameraSave(parent, timeoutMs = 30000) {
   const artifact = "artifacts/game-camera-pending-save-fix";
   await mkdir(artifact, { recursive: true });
-  const fixture = JSON.parse(await readFile("apps/placement-viewer/public/placement.hd2d.scene-authoring.json", "utf8"));
+  const fixture = JSON.parse(await readFile(placementSpatialRegressionFixture, "utf8"));
   const results = [];
   for (const projection of ["orthographic", "perspective"]) {
     console.log(`Game camera pending save: ${projection}`);

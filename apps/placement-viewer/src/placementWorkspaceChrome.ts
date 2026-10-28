@@ -4,7 +4,7 @@ import type { createPlacementViewportToolbar } from "./placementViewportToolbar"
 
 /** Arrange existing controls; their owners retain document, camera and playback state. */
 export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: ReturnType<typeof createPlacementViewportToolbar>,
-  openExample?: (name: "garden" | "village" | "default") => void,
+  openExample?: (name: "garden" | "village") => void,
   showScenes?: () => void,
   showUpdates?: () => void) {
   const header = root.querySelector<HTMLElement>(".demo-toolbar"),
@@ -35,7 +35,7 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   }
   if (openExample) {
     const examples = createPlacementControlMenu("examples", "Examples", "file");
-    for (const [name, label] of [["garden", "2D Lantern Garden"], ["village", "HD-2D Village"], ["default", "Basic 2D"]] as const) {
+    for (const [name, label] of [["garden", "2D Lantern Garden"], ["village", "HD-2D Village"]] as const) {
       const button = document.createElement("button"); button.type = "button";
       button.dataset.placementExample = name;
       setUiAttribute(button, "aria-label", label);

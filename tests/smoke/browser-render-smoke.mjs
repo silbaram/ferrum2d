@@ -13,6 +13,8 @@ import { smokePlacementTransforms } from "./placement-transform-smoke.mjs";
 import { smokePlacementLayers } from "./placement-layers-smoke.mjs";
 import { smokePlacementSceneExplorer } from "./placement-scene-explorer-smoke.mjs";
 import { smokePlacementUpdates } from "./placement-updates-smoke.mjs";
+import { placementRegressionFixture, preparePlacementTestBuild } from "./placement-test-build.mjs";
+import { smokePlacementProductionDefault } from "./placement-production-default-smoke.mjs";
 import { smokePlacementSpatialWorkspace } from "./placement-spatial-workspace-smoke.mjs";
 import {
   runtimeBudgetForSmokeMode,
@@ -320,7 +322,9 @@ class HttpError extends Error {
 }
 
 const options = parseArgs(process.argv.slice(2));
-const distDir = resolve(options.distDir);
+const productionDistDir = resolve(options.distDir);
+const regressionBuild = [PLACEMENT_VIEWER_MODE, PLACEMENT_VIEWER_SAVE_MODE, PLACEMENT_VIEWER_MASS_AUTHORING_MODE, PLACEMENT_SPATIAL_WORKSPACE_MODE].includes(options.mode);
+const distDir = regressionBuild ? await preparePlacementTestBuild(productionDistDir, { save: options.mode === PLACEMENT_VIEWER_SAVE_MODE }) : productionDistDir;
 const timeoutMs = positiveInteger(process.env.FERRUM_BROWSER_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
 
 let server;
@@ -336,6 +340,7 @@ try {
   server = await serveStatic(distDir, {
     placementSave: options.mode === PLACEMENT_VIEWER_SAVE_MODE,
     contentSecurityPolicy: desktopCsp,
+    regressionFixture: options.mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE,
   });
   const address = server.address();
   if (!address || typeof address === "string") {
@@ -344,6 +349,12 @@ try {
 
   const url = browserSmokeUrl(address.port, options);
   browser = await launchBrowser();
+  let productionDefault;
+  if (regressionBuild || options.mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE) {
+    const productionServer = await serveStatic(productionDistDir, { contentSecurityPolicy: desktopCsp });
+    try { productionDefault = await smokePlacementProductionDefault(browser, `http://${DEFAULT_HOST}:${productionServer.address().port}`, timeoutMs); }
+    finally { await new Promise(resolve => productionServer.close(resolve)); }
+  }
   const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
   page.on("pageerror", (error) => {
     browserErrors.push(error.message);
@@ -384,6 +395,7 @@ try {
     ? await captureScreenshotArtifact(page, { mode: options.mode, ...options.screenshot })
     : {};
   const report = {
+    ...(productionDefault ? { productionDefault, regressionBuild } : {}),
     ...(await page.evaluate(canvasReport)),
     ...modeReport,
     ...budgetReport,
@@ -728,6 +740,10 @@ async function serveStatic(root, options = {}) {
         response.writeHead(204, { "Cache-Control": "no-cache" });
         response.end();
         return;
+      }
+      if (options.regressionFixture && pathname === "/placement.scene-authoring.json") {
+        response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(await readFile(placementRegressionFixture)); return;
       }
       const filePath = await resolveRequestPath(root, request.url ?? "/");
       response.writeHead(200, {

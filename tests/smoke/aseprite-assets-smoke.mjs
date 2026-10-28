@@ -1,5 +1,6 @@
 import { smokeTileAssets } from "./tile-assets-smoke.mjs";
 import { strict as assert } from "node:assert";
+import { preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir, mkdtemp } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
@@ -46,7 +47,7 @@ if (normalMode)
   });
 await mkdir(artifact, { recursive: true });
 const run = await mkdtemp(resolve(artifact, "run-")),
-  app = resolve("apps/placement-viewer/dist");
+  app = await preparePlacementTestBuild(resolve("apps/placement-viewer/dist"), { save: true });
 const source = {
   format: "ferrum2d.consumer.scene-authoring",
   version: 1,

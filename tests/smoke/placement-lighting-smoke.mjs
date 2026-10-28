@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { placementRegressionFixture, placementSpatialRegressionFixture } from "./placement-test-build.mjs";
 
 /** Real renderer/Wasm output, authored history and reachable View controls. */
 export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "2d") {
@@ -132,7 +133,7 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
   const results=[];
   for(const mode of ["2d","spatial"]){
     const page=await parent.context().browser().newPage({viewport:{width:1125,height:800}});
-    const fixture=JSON.parse(await readFile(`apps/placement-viewer/public/placement${mode==="spatial"?".hd2d":""}.scene-authoring.json`,"utf8"));
+    const fixture=JSON.parse(await readFile(mode==="spatial"?placementSpatialRegressionFixture:placementRegressionFixture,"utf8"));
     if(mode==="spatial")fixture.spatial.environment={...(fixture.spatial.environment??{}),lighting:{ambient:[0.3,0.3,0.3],lights:[]}};
     else fixture.lighting={ambient:[0.05,0.08,0.12,0.5],pointLights:[]};
     await page.addInitScript(document=>{

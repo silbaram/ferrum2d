@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { placementSpatialRegressionFixture, preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
@@ -7,7 +8,7 @@ import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions
 const artifact = resolve("artifacts/viewport-grid");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url"),
-  base = resolve("apps/placement-viewer/dist");
+  base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/placement-viewer/dist")) : resolve("apps/placement-viewer/dist");
 let server;
 if (arg < 0) {
   server = createServer(async (req, res) => {
@@ -401,7 +402,7 @@ try {
   await page.waitForFunction(() => window.ferrumPlacementGrid?.lineCount > 0);
   const source = JSON.parse(
     await readFile(
-      "apps/placement-viewer/public/placement.hd2d.scene-authoring.json",
+      placementSpatialRegressionFixture,
       "utf8",
     ),
   );

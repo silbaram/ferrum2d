@@ -873,7 +873,6 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   "2D Lantern Garden": "2D 등불 정원",
   "Example textures are not ready; retry opening the document": "예제 텍스처가 준비되지 않았습니다. 문서를 다시 열어주세요",
   "HD-2D Village": "HD-2D 마을",
-  "Basic 2D": "기본 2D",
   "Lantern Garden": "등불 정원",
   "Lantern Garden · Click ground to move · Collect the garden tokens": "등불 정원 · 바닥을 클릭해 이동 · 정원의 조각을 모아보세요",
   "Choose walkable ground. Walls and the canal block the path.": "이동 가능한 바닥을 선택하세요. 벽과 물길은 건널 수 없습니다.",

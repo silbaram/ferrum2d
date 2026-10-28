@@ -1119,7 +1119,7 @@ fn infer_project_path_from_scene_document(path: &Path) -> PathBuf {
 
 fn sample_scene_document_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../placement-viewer/public/placement.scene-authoring.json")
+        .join("../../placement-viewer/public/placement.garden.scene-authoring.json")
 }
 
 #[cfg(test)]
@@ -1127,6 +1127,11 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn regression_scene_document_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/placement.scene-authoring.json")
+    }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -1143,7 +1148,7 @@ mod tests {
         let project_path = unique_temp_dir(name);
         let public_path = project_path.join("public");
         fs::create_dir_all(&public_path).expect("project public directory should be created");
-        let document = read_scene_document(&sample_scene_document_path())
+        let document = read_scene_document(&regression_scene_document_path())
             .expect("sample scene document should load");
         write_scene_document(&public_path.join("scene-authoring.json"), document.clone())
             .expect("project scene document should be written");
@@ -1246,7 +1251,9 @@ mod tests {
     fn loads_sample_scene_document() {
         let response = load_placement_scene_document_inner(None, None)
             .expect("sample scene document should load");
-        assert!(response.path.ends_with("placement.scene-authoring.json"));
+        assert!(response
+            .path
+            .ends_with("placement.garden.scene-authoring.json"));
         assert_eq!(
             response.document.get("format").and_then(Value::as_str),
             Some(SCENE_AUTHORING_FORMAT)
@@ -1255,7 +1262,7 @@ mod tests {
 
     #[test]
     fn loads_scene_document_from_explicit_path() {
-        let source = read_scene_document(&sample_scene_document_path())
+        let source = read_scene_document(&regression_scene_document_path())
             .expect("sample scene document should load");
         let path = std::env::temp_dir().join(format!(
             "ferrum-placement-viewer-desktop-load-test-{}.json",
@@ -1328,7 +1335,7 @@ mod tests {
 
     #[test]
     fn save_command_writes_explicit_scene_document_path() {
-        let source = read_scene_document(&sample_scene_document_path())
+        let source = read_scene_document(&regression_scene_document_path())
             .expect("sample scene document should load");
         let path = std::env::temp_dir().join(format!(
             "ferrum-placement-viewer-desktop-command-save-test-{}.json",

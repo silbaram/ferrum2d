@@ -169,8 +169,13 @@ import {
 import "./runtimeDemoShell.css";
 import "./styles.css";
 
-const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
-const HD2D_SCENE_DOCUMENT_URL = "./placement.hd2d.scene-authoring.json";
+// Minimal documents exist only in isolated regression builds, never in public assets.
+const SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
+  ? "./placement.scene-authoring.json"
+  : "./placement.garden.scene-authoring.json";
+const HD2D_SCENE_DOCUMENT_URL = import.meta.env.MODE === "test"
+  ? "./placement.hd2d.scene-authoring.json"
+  : "./placement.village.scene-authoring.json";
 let documentSession:
   | ReturnType<typeof installPlacementDocumentSession>
   | undefined;
@@ -2361,7 +2366,7 @@ async function bootstrap(): Promise<void> {
         switching = true;
         root.inert = true;
         try {
-          const paths = { garden: "./placement.garden.scene-authoring.json", village: "./placement.village.scene-authoring.json", default: SCENE_DOCUMENT_URL };
+          const paths = { garden: "./placement.garden.scene-authoring.json", village: "./placement.village.scene-authoring.json" };
           const url = new URL(paths[name], window.document.baseURI);
           const existing = [...documents.values()].find(doc => !doc.desktop?.enabled && !doc.key.startsWith("folder:") && !doc.key.startsWith("file:") && new URL(doc.source, window.document.baseURI).href === url.href);
           await openDocument(existing?.key ?? url.href, url.href, existing?.document ?? await fetchSceneJson(url), false);
