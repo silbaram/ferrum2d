@@ -22,6 +22,32 @@ template, generated consumer project는 목적별 subpath를 사용한다. 공�
 `examples/**`와 `packages/create-game/templates/**`는
 `pnpm validate:public-api-surface`에서 root aggregate import가 차단된다.
 
+## Custom Renderer 계약 이전
+
+`FerrumRuntimeRenderer`는 WebGL2/WebGPU 클래스의 private 상태를 포함하지 않는 구조적 계약으로 바뀌었다.
+기본 `createFerrumRuntime({ canvas })` 호출과 생성 renderer의 동작은 동일하다.
+custom renderer/test double은 필요한 공개 method를 구현하고 `as unknown as FerrumRuntimeRenderer` 단언을 제거할 수 있다.
+
+`runtime.renderer`는 범용 포트이므로 `prepareSpatialModels`, 픽셀 마스크 texture 생성/갱신,
+`renderPhysicsDebugLines`, zoom/ground projection 같은 선택 기능을 호출하기 전에 지원 여부를 확인한다.
+ID 기반 `loadTexture(id, url, options)`의 결과는 opaque `unknown`이다.
+URL-only overload나 raw GPU texture 타입, backend 전용 기능이 필요하면 구체 renderer 참조를 유지한다.
+
+```ts
+import { createFerrumRuntime, WebGL2Renderer } from "@ferrum2d/ferrum-web/core";
+
+const renderer = new WebGL2Renderer(canvas);
+const runtime = await createFerrumRuntime({ canvas, renderer });
+const texture = await renderer.loadTexture("/assets/atlas.png");
+// ... game use ...
+runtime.destroy();
+renderer.destroy(); // Injected resources remain caller-owned.
+```
+
+모델 준비는 `SpatialModelPreparer`, 픽셀 마스크 갱신은 `PixelMaskTerrainTextureTarget` 계약에 맞는
+renderer/adapter를 해당 authoring/runtime helper에 명시적으로 전달한다.
+Rust simulation, render command ABI, 기본 WebGL2/WebGPU 선택 경로는 바뀌지 않는다.
+
 ## Entry Point 선택
 
 | 새 import path | 주 용도 | Reference |

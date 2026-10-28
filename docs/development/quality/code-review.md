@@ -33,6 +33,16 @@
 - destroy/cleanup에서 event listener, WebGL resource, AudioContext 등 platform resource를 해제하는가?
 - package entrypoint export, `exports`, `files` allowlist가 public API 문서와 일치하는가?
 
+### 확장성·SOLID 경계
+
+- 구현 선택을 맡는 조합 지점은 구체 class를 생성해도 된다. 외부 주입 포트에는 그 class의 private 상태를 요구하지 않는다.
+- 소비자가 사용하지 않는 asset·수명 관리 method를 구현하도록 강제하지 않는다. frame renderer는 그리기 capability만 받는다.
+- backend 공통 통계·카메라 계약은 중립 모듈에 둔다. WebGPU 또는 공통 API가 WebGL2 구현 파일을 계약의 소유자로 삼지 않는다.
+- 미지원 capability는 일부 출력이나 GPU 상태를 바꾸기 전에 명시적으로 거부한다. 외부 소유 자원을 임의로 해제하지 않는다.
+- custom 구현·테스트 대역을 구조적 객체로 연결하고 불필요한 `as unknown as` 없이 타입 검사되는지 확인한다.
+- 파일 길이만 보고 분리하지 않는다. 공유 closure/소유권을 깨는 기계적 이동이나 한 구현체를 위한 registry/framework는 피한다.
+- stable 공개 타입의 보장 범위를 바꾸면 Unreleased 변경 기록·migration 방법·public reference를 함께 갱신한다.
+
 ### 5) 테스트와 검증
 - collision, game state, render command generation/parsing 테스트가 있는가?
 - TypeScript platform 기능은 Node test runner 또는 적절한 smoke test로 검증되는가?

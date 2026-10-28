@@ -9,6 +9,11 @@
 
 ## 제품 Runtime Budget Readiness
 
+런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.
+class private 상태를 포함한 타입 단언 없이 custom renderer와 최소 command sink를 전달하고,
+미지원 디버그 요청이 frame target 변경 전에 실패하는지, GPU timer의 종료와 외부 자원 소유권이 유지되는지 확인한다.
+공통 spatial 통계·camera 타입 이동은 기존 WebGL2/WebGPU 테스트와 public API/실제 tarball import 검사로 함께 검증한다.
+
 제품 runtime budget 기준은 "빠른 CI gate", "tag/manual opt-in gate", "수동 브라우저 확인"을 분리한다. 성능 회귀는 감각적인 설명보다 아래 matrix의 report, hash, budget artifact로 논의한다.
 
 | 제품 기준 | 명령 | gate 위치 | evidence |

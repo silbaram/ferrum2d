@@ -176,6 +176,20 @@ events/debug   -> opt-in collision/physics buffer ptr + len
 
 Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 빈도의 설정은 TypeScript에서 검증한 뒤 숫자형 값이나 bulk buffer 형태로 Rust에 전달한다. Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`는 runtime adapter가 읽을 수 있는 authoring data로 정규화하고, `createShooterContentRuntimeOptions(...)`가 단일/명시 content id만 `createFerrumRuntime(...)` option fragment로 변환한다. `SceneComposition`/`BehaviorRecipe` 묶음은 `ShooterGameSpec` top-level로 승격하지 않고 `ferrum2d.consumer.scene-authoring` 별도 artifact로 유지하며, `resolveSceneAuthoringDocument(...)`가 format/version, scene composition, behavior recipe, optional binding plan을 검증한다. `classifySceneInstance(...)`는 이 resolved instance에서 `worldObject`/`actor` authoring role만 파생하며, Rust runtime class나 Wasm ABI를 추가하지 않는다. 이 경로는 Rust simulation이나 Wasm ABI를 자동 변경하지 않는다. Behavior recipe의 entity-level tags도 TypeScript가 `ids.tags`로 `0..31` numeric bitmask로 컴파일해 Rust `GameplayTags` component로 설치하며, frame loop에서는 문자열 tag를 해석하지 않는다.
 
+### Runtime 렌더러 확장 경계
+
+`runtimeRenderer.ts`의 `FerrumRuntimeRenderer`는 GPU 클래스의 private 멤버를 포함하지 않는 구조적 포트다.
+`createRenderer.ts`는 WebGL2/WebGPU 선택·fallback을 담당하는 조합 지점이고 구체 반환형을 유지한다.
+프레임 소비자 `RuntimeFrameRenderer`는 `RuntimeFrameRenderTarget`의 그리기·선택 진단 capability만 받으며,
+텍스처 로딩·canvas 크기·자원 소유권과 결합하지 않는다. flat command sink만으로 프레임을 검증할 수 있다.
+미지원 공간 geometry/디버그 라인은 frame target이나 GPU timer를 건드리기 전에 거부한다.
+
+공통 `SpatialRendererStats`와 `PhysicsDebugLineCamera`의 canonical 정의는 `renderer.ts`다.
+WebGL2/WebGPU 구현이 이 계약에 의존하고 기존 내부 타입 경로는 재export로 호환한다.
+공식 authoring host는 자신이 생성한 grid renderer의 `SpatialModelPreparer`를 명시적으로 전달한다.
+범용 runtime 포트에 모델 준비나 특정 GPU texture 반환을 암묵적으로 요구하지 않는다.
+Rust simulation 및 bulk render command ABI는 유지하고 frame별 entity 왕복 호출을 추가하지 않는다.
+
 ### Authoring 문서 세션과 저장
 
 `ScenePlacementViewer`의 draft와 bounded Undo/Redo는 TypeScript의 저빈도 문서 편집 상태다.
