@@ -1252,6 +1252,22 @@ CI의 수동 `validate` job과 `smoke:check`에 연결한다. 보고서는 `arti
   abort listener의 동일 ID 재진입, 실패 HTTP body 취소·정리 오류 시 원래 진단 보존,
   ID 순서·병렬 상한·늦은 진행률 차단을 검사한다. shader/물리 알고리즘과 Wasm ABI 변경은 없다.
 
+### 공간 오디오 출력·native binding 회귀
+
+`pnpm smoke:spatial-audio`는 packed public SDK와 실제 OfflineAudioContext/PannerNode로 12개 출력 상태를 DPR 1/2에서 검사한다.
+좌/우 채널 RMS 비율, inverse 거리 1→10의 진폭 0.1배, elevation 포함 거리, cone 반전 0.1배,
+listener 180도 회전·source 이동, SFX mute/stop의 무음, Panner 미지원의 동일 채널 fallback을 요구한다.
+가짜 audio 계산이나 자체 감쇠 공식을 출력 대신 사용하지 않는다.
+동일 페이지의 native 공간 예제는 실제 PNG/Rust 렌더와 물/횃불 WAV 2개를 실행하고 user click으로 context를 unlock한다.
+native 이동/높이·층 변경·source despawn/stale generation·rebind·일반/삭제된 source 포함 저장 복원·physics 비활성 상태와
+카메라 listener·mute/destroy를 검증한다. destroy 후 실제 AudioContext가 closed 상태가 될 때까지 확인한다.
+warm 20 update의 query는 20회 bulk 호출/개체별 호출 0이며 source/gain/panner 생성은 0이다.
+보고서와 예제 캡처는 `artifacts/spatial-audio/run-*/`에 보존하며 CI validate와 smoke:check에 연결한다.
+단위 회귀는 유효 범위/잘못된 입력의 side effect 차단, 노드 할당 실패 정리, voice 상한 64,
+end/evict/destroy, 큰 방향 벡터의 yaw 회전, listener 검증 전 장치 연결 차단,
+누락 개체의 음소거/명시적 지연 연결, rebind 실패 보존과 borrowed pose 형식을 보강한다. Rust 회귀는 row ABI와 순서·높이·yaw·stale handle·
+physics 비활성 transform·65개 조회의 저장 공간 재사용 및 초과 입력 거절을 검사한다.
+
 ### GPU 자원 수명주기 회귀
 
 같은 `pnpm smoke:gpu-resources`는 opt-in GPU timer와 Wasm 용량 sample 연결도 검증한다.

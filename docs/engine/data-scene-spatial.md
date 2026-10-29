@@ -1661,3 +1661,12 @@ attachment 자식에 연결한 광원도 상위 몸체 위치·높이·회전을
 객체나 지형을 다시 선택하면 광원 조작 도구를 숨긴다. 키보드 조절은 좌표·반경의 허용 한계에서 멈춘다.
 scene-wide spatial patch v6의 `setEnvironment.changes.lightBindings`로 환경과 연결을 함께 저장/복원한다.
 마을 예제는 가로등 5개에 광원이 연결돼 있으며 밤 프리셋으로 비교할 수 있다.
+
+
+## 공간 오디오
+
+`/core`의 `AudioManager`와 `createSpatialAudioScene`은 거리·방향에 따른 SFX와 반복 환경음을 지원한다.
+게임 `(x,y,elevation)`을 Web Audio `(x,elevation,-y)`로 변환하며, 개체 listener/source는 native pose를
+최대 65개씩 묶어 읽는다. game camera listener는 표시 frame의 eye/target 방향을 따른다.
+층 번호는 추가 거리나 차폐로 사용하지 않고 실제 elevation 차이로 감쇠한다. 설정·해제·복원 후 rebind와
+Panner 미지원 fallback은 [공간 오디오 사용 계약](public-api/core.md#공간-오디오)을 따른다.

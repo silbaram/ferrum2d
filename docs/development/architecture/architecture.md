@@ -630,6 +630,17 @@ Engine과 BrowserPlatformHost는 자신의 lifetime signal을 묶음에 결합�
 Rust simulation, render command ABI와 hot-path 호출에는 변화가 없다.
 
 
+공간 오디오는 `spatialAudio.ts`의 browser PannerNode/gain/source와 `spatialAudioScene.ts`의 cold binding 설정으로 나눈다.
+Rust `engine/audio_poses.rs`는 transform/height/yaw/generational identity만 read-only bulk query로 제공한다.
+`#[repr(C)]` AudioPose는 32 bytes(4 u32 + 4 f32), 최대 65개이며 Engine 생성 때 저장 공간을 예약한다.
+TS는 query 후 새 Wasm view를 동기 소비하며 개체별 JS/Wasm 호출을 하지 않는다. simulation/거리 계산 상태를 TS에 복제하지 않는다.
+source distance/cone와 listener rendering은 Web Audio가 수행하고, 게임 XY/elevation → audio X/Y-up/-Z 변환은 플랫폼 표현 변환이다.
+voice는 최대 64개, warm update는 기존 노드의 AudioParam만 갱신한다. gain은 SFX/master mixer를 따르며 stop/end/evict/destroy가
+source/panner/gain을 정리한다. createPanner 미지원은 명시적인 일반 SFX fallback, 할당 오류는 rollback 후 거절이다.
+scene의 rebind는 복원된 instance handle을 cold 단계에서 교체한다. sound graph/playhead는 native 저장 포맷에 넣지 않는다.
+기존 audio event의 4-float ABI·Rust simulation·기본 renderer 경계는 유지한다.
+
+
 `geometry2D.ts`는 engine state를 보관하거나 Wasm을 호출하지 않는다. generic point/body
 transform과 resolved collider의 world center/reference point 계산만 제공하며, 단일 점은
 optional output 객체, collider vertices는 caller-owned numeric buffer를 사용한다. Collider별

@@ -28,7 +28,7 @@ import {
 | `createEngine(...)` | Wasm `Engine`과 platform provider를 직접 연결할 때 사용한다. |
 | `createRenderer(...)` | WebGL2 renderer를 생성하고 fallback 정보를 반환한다. |
 | `WebGL2Renderer` | 기본 renderer 구현체다. Rust render command buffer만 소비한다. |
-| `AudioManager` | browser audio channel, BGM, SFX playback을 담당한다. |
+| `AudioManager` | browser audio channel, BGM/SFX/UI와 위치 음향 voice를 담당한다. |
 
 `FerrumRuntime`은 browser app에서 권장되는 상위 wrapper다. 더 세밀한 제어가 필요하면
 `createEngine(...)`으로 `FerrumEngine`을 직접 만들 수 있다.
@@ -99,6 +99,95 @@ try {
 
 서로 다른 묶음의 전역 동시성 제한·네트워크 중복 제거·자동 재시도·scene 전체 transaction은 제공하지 않는다.
 검증은 `pnpm smoke:asset-loading`과 SDK 테스트를 사용한다.
+
+## 공간 오디오
+
+`AudioManager.playSpatial(soundId, options, volume?, pitch?)`는 일반 SFX fallback에서 실제 위치 음향으로
+확장됐다. [Web Audio PannerNode](https://www.w3.org/TR/webaudio/#PannerNode)의 거리 감쇠·좌우 방향과
+source cone을 사용하며 SFX → master bus를 거친다. three.js의 소유권/pose 갱신 패턴을 참고하되 의존성은 추가하지 않는다.
+
+```ts
+const audio = new AudioManager();
+await audio.loadSound(1, "/assets/water.wav");
+// Web Audio 좌표: X 오른쪽, Y 위쪽, 기본 전방 -Z.
+const water = audio.playSpatial(1, {
+  x: 80, y: 0, z: -108, refDistance: 32, maxDistance: 500, loop: true,
+});
+audio.setListenerPose(0, 12, 0, 0, 0, -1);
+water?.setPose(100, 0, -108); // 같은 노드를 재사용한다.
+water?.stop();
+```
+
+- `SpatialAudioOptions`: 필수 x/y, z 기본 0. 위치는 finite ±1e9, `refDistance` 기본 1/최소 1e-6,
+  `maxDistance` 기본 10000/기준 거리 초과/최대 1e9다. 거리와 위치는 동일한 world 단위다.
+- `distanceModel` 기본 `inverse`, 선택 `linear`/`exponential`. `rolloffFactor` 기본 1, inverse/exponential은
+  0..64, linear는 0..1이다. `maxDistance`는 Web Audio 모델의 매개변수이며 inverse/exponential의 강제 무음 반경이 아니다.
+- `panningModel`은 기본 `equalpower`, 선택 `HRTF`. `direction` 기본 `(0,0,-1)`이며 nonzero 방향은 정규화한다.
+  `coneInnerAngle`/`coneOuterAngle` 기본 360도, 0≤inner≤outer≤360이고 `coneOuterGain` 기본 0/범위 0..1이다.
+- volume 기본 1/범위 0..16, pitch 기본 1/범위 0.01..16, loop 기본 false다. null·NaN·Infinity 등 잘못된 입력은 거절한다.
+  `SpatialAudioVoice`는 active/spatialized 조회, `setPose`, `setVolume`, `stop`을 제공한다. setPose의 생략 방향은 -Z다.
+- 동시에 최대 64 spatial voices를 유지한다. 상한 초과는 새 노드를 만들기 전에 오류다.
+  자연 종료·stop·해당 sound evict·AudioManager.destroy에서 source/panner/gain을 해제한다.
+  state의 선택 `spatialVoiceCount`는 현재 구현에서 활성 voice 수를 반환하며 기존 상태 객체 타입과 호환된다.
+- `setListenerPosition(x,y,z?)`는 방향을 유지하며 위치만 바꾼다. `setListenerPose(x,y,z,fx?,fy?,fz?,ux?,uy?,uz?)`는
+  전방 기본 -Z/위쪽 기본 +Y를 함께 설정한다. 전방/위쪽은 nonzero·서로 평행하지 않아야 한다.
+  listener 입력은 AudioContext 생성 전에 검증하므로 잘못된 입력으로 장치 연결을 시작하지 않는다.
+- `createPanner`가 없는 브라우저는 같은 voice 수명/버스의 일반 SFX로 재생하며 `voice.spatialized`가 false다.
+  PannerNode가 있는 환경의 실제 할당 오류는 숨기지 않고 오류로 보고한다. user gesture에서 `audio.unlock()`을 호출한다.
+
+### native 개체·카메라에 연결
+
+`createSpatialAudioScene(engine, audio, spec, { handles, soundId })`는 별도의 JSON-compatible binding spec을 받는다.
+`handles`는 현재 Scene Authoring 적용 결과의 instanceId → generational handle, `soundId`는 로드된 sound 이름 조회다.
+씬 문서/물리/저장 포맷을 변경하지 않으며 audio spec은 게임 프로젝트가 별도로 보관한다.
+
+```ts
+const ambience = createSpatialAudioScene(engine, audio, {
+  listener: { instanceId: "hero", offset: { x: 0, y: 0, elevation: 12 } },
+  sources: [{ id: "water", sound: "water", position: { x: 80, y: 108, elevation: 0 },
+    options: { refDistance: 32, maxDistance: 500 }, volume: 0.5 }],
+}, { handles: applied.entityHandles, soundId: name => name === "water" ? 1 : 0 });
+// onFrame에서 renderer가 borrowed render buffers를 소비한 다음:
+ambience.update(state.renderCommandBuffer.spatial);
+// 개체를 다시 만든 씬 전환/복원 뒤에는 새 handles로 연결한다.
+ambience.rebind(restored.entityHandles);
+// 씬 종료 시:
+ambience.destroy();
+```
+
+- listener는 `{instanceId, offset?}` 또는 `"camera"`다. 카메라는 마지막 native spatial frame의 eye/target과
+  같은 Y-up 방향을 사용한다. 2D 게임은 entity listener를 사용한다. camera frame이 없거나 잘못되면 음소거한다.
+- source는 고유 id/sound와 **instanceId 또는 position 중 하나**를 가진다. position/offset은 게임 좌표
+  `(x,y,elevation)`이며 audio 좌표 `(x,elevation,-y)`로 변환한다. source는 최대 64개다.
+  instance offset의 XY는 body yaw로 회전하며 높이는 native elevation에 더한다. visual offset/collider offset은 자동 적용하지 않는다.
+  source options는 위 SpatialAudioOptions 중 위치를 제외한 값이다. direction은 audio 축이며 정규화한 뒤 개체 source에서 native yaw로 회전한다.
+  입력 벡터의 크기는 방향/감쇠에 영향을 주지 않으며 원본 spec을 변경하지 않는다.
+  scene source의 loop 기본값은 true다. entity listener의 yaw 0 전방은 게임 +Y(audio -Z)다.
+- `update(frame?)`는 최대 65개 native pose를 묶어 조회한 뒤 AudioParam을 갱신한다. 개체별 Wasm 왕복을 하지 않는다.
+  rendering 뒤에 동기 호출한다. query 중 Wasm memory가 grow할 수 있어 이전 borrowed frame/pose view를 이후 재사용하지 않는다.
+  새 AudioNode는 만들지 않는다. source와 listener의 simulation pose/높이/generation은 Rust가 소유한다.
+- stale/deleted source나 audio 범위를 벗어난 native 위치는 음소거하고 listener가 사라지면 전체를 음소거한다. native floor 번호를 별도 거리로 더하지 않으며
+  실제 elevation으로만 감쇠한다. physics body 활성화 여부와 소리는 별개다. 벽 차폐·층별 강제 차단·Doppler는 제공하지 않는다.
+- `setEnabled(false)`는 즉시 음소거하고 update의 query도 생략한다. true 전환은 다음 update에서 현재 위치·음량을 반영한다.
+  반복 source의 재생 시간은 Web Audio clock을 따른다. `setListener`와 `rebind`는 검증된 연결만 교체하며 실패하면 이전 연결을 유지한다.
+- 생성 시 instanceId 누락은 기본적으로 오류다. 이미 삭제된 개체를 제외한 저장 상태에서 바로 생성하려면 factory options에
+  `allowMissingEntities: true`를 명시한다. 누락된 source는 음소거하고 listener가 누락되면 전체를 음소거한다.
+  `rebind`는 live-only handle map을 허용하며 이후 rebind로 개체가 연결될 때까지 같은 음소거 정책을 적용한다.
+  `setListener`는 기존 source 누락을 허용하지만 새 listener 누락은 기본적으로 거절한다(`allowMissingEntities: true`이면 허용).
+  key가 존재하는데 handle 값이 잘못된 경우는 항상 거절한다.
+- 같은 sound를 여러 source가 사용할 수 있다. AudioManager와 scene의 합산 voice 상한은 그대로 64다.
+  씬 생성 중 오류는 새로 만든 voice만 정리한다. 애플리케이션이 씬 종료/엔진 종료 전에 scene.destroy를 호출한다.
+  snapshot에 AudioNode/음성 재생 위치를 저장하지 않는다. restore 후 rebind하거나 scene을 다시 생성한다.
+
+`engine.queryAudioPoseBuffer(Uint32Array([id,generation,...]))`와 `AudioPoseBufferView`는 저수준 동기 query다.
+최대 65 handle pairs, stride 8 words의 borrowed `.words`/`.floats`를 반환한다.
+행은 `[valid,id,generation,floor,x,y,elevation,yawRadians]`이며 앞 4 words는 u32, 뒤 4 words는 f32다.
+몸체가 없는 transform도 읽으며 stale handle은 valid 0이다. 다음 query/메모리 증가 전에만 소비한다.
+이 capability가 없는 이전 Wasm에서는 명확한 오류로 거절한다. 기존 4-float audio event ABI는 유지한다.
+
+저장소의 `examples/data-scene-native/spatial.mjs`에서 `startSpatialScene(canvas, {audio:true})`를 선택하면
+`spatial-audio.json`의 물·횃불 ambient를 재생한다. canvas 클릭으로 오디오를 잠금 해제한다.
+합성 WAV와 재생성 스크립트는 예제 자산이며 실제 녹음 자료가 아니다.
 
 ## 입력 액션과 context
 

@@ -9,7 +9,7 @@
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
 | [Three.js 소스 대조 기반 물리 고도화](physics-threejs-upgrade-plan.md) | 복합 collider/chain CCD와 HD-2D 보행 충돌·마을 적용·카메라 회귀 검증 완료 | 탐색 비용 최적화·표시 보간, 회전 CCD 별도 설계 검토 |
-| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 완료 계획에서 미착수 후보만 분리 | three.js 비교 기반 공간 오디오·네트워크 자원 관리, 실제 게임 성능·LOD 외형·WebGPU 복구·추가 모델 확장 |
+| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 완료 계획에서 미착수 후보만 분리 | 실제 게임 성능·LOD 외형·WebGPU 복구, 네트워크 자원 관리·추가 모델 확장 |
 | [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
 | [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | built-in Scene Authoring, Aseprite import/reimport·animation+normal 동시 생성·native 저장/복원, Tiled/LDtk tileset 선택·외부 TSJ frame·native 원본 저장/재열기, 폴더 감지·GLB/texture·runtime 진단, 게임 카메라 구도·확대 작성/patch 저장 반영 | Tiled/LDtk 추가 형식·map 연결, catalog 예산/정리·추가 문서 저장, collision/effect timeline·실행 근거 |
 | [배포 후속 계획](deployment-roadmap.md) | 정적 Pages, Tauri authoring host, 로컬 Linux package smoke·native GUI 검증 기반 | release artifact GUI·CI 편입, generated game wrapper와 macOS/Windows release matrix 필요성 판단 |

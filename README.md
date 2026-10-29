@@ -116,7 +116,7 @@ custom renderer는 구체 GPU 클래스 상속 없이 구조적 `FerrumRuntimeRe
 | LDtk importer | LDtk project/level/tile/entity metadata를 Game Spec으로 바꾼다. |
 | Tile rules/animated tiles | neighbor rule과 animated tile frame을 baked layer data로 만든다. |
 | Level streaming helper | 큰 tilemap chunk의 active/preload/retain/load/unload plan을 계산한다. |
-| AudioManager | Web Audio 기반으로 BGM, SFX, UI sound를 재생한다. |
+| AudioManager | Web Audio 기반으로 BGM/SFX/UI, 거리·방향에 따른 위치 음향과 native 개체·카메라 listener를 지원한다. |
 | Audio bus volume | master/bgm/sfx/ui gain을 따로 조절한다. |
 | BGM fade | BGM loop, fade-in, fade-out을 지원한다. |
 | Rust audio event channel | Rust audio event를 BGM/SFX/UI bus로 라우팅한다. |
