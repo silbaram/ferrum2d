@@ -1,6 +1,8 @@
+import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { AssetLoader } from "./assetLoader.js";
 import type {
   AssetLoadProgressCallback,
+  AssetLoadOptions,
   AssetManifest,
   AssetReleasePayload,
   LoadedAssets,
@@ -20,17 +22,24 @@ export class BrowserPlatformHost implements AssetHost {
   private readonly audioManager: AudioManager;
   private readonly assetLoader: AssetLoader;
   private destroyed = false;
+  private readonly loadLifetime = new AbortController();
 
   constructor(private readonly textureAssetManager: TextureAssetManager & PostProcessTarget, audioManager = new AudioManager()) {
     this.audioManager = audioManager;
     this.assetLoader = new AssetLoader(this.textureAssetManager, audioManager);
   }
 
-  async loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets> {
+  async loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback, options: AssetLoadOptions = {}): Promise<LoadedAssets> {
     this.assertAlive();
-    const assets = await this.assetLoader.loadAssets(manifest, onProgress);
-    this.assertAlive();
-    return assets;
+    const scope = createAssetLoadScope(this.loadLifetime.signal, options.signal);
+    try {
+      const assets = await this.assetLoader.loadAssets(manifest, onProgress, { ...options, signal: scope.controller.signal });
+      throwIfAssetLoadAborted(scope.controller.signal);
+      this.assertAlive();
+      return assets;
+    } finally {
+      scope.dispose();
+    }
   }
 
   releaseAssets(assets: AssetReleasePayload): void {
@@ -93,6 +102,7 @@ export class BrowserPlatformHost implements AssetHost {
       return;
     }
     this.destroyed = true;
+    this.loadLifetime.abort();
     this.audioManager.destroy();
   }
 

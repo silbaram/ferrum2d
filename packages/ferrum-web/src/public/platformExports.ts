@@ -266,6 +266,7 @@ export type {
   ResolvedDebugGizmoColor,
 } from "../debugGizmos";
 export type {
+  AssetLoadOptions,
   AssetLoadProgress,
   AssetLoadProgressCallback,
   AssetManifest,

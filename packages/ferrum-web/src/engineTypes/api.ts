@@ -9,7 +9,7 @@ import type { DirectionalLight2D } from "../lightingTypes.js";
 import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "../dataSceneSpriteAnimation.js";
 import type { DataSceneCameraOptions } from "../dataSceneCamera.js";
-import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
+import type { AssetLoadOptions, AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
 import type {
   BuiltInShooterStateAccessor,
@@ -293,7 +293,7 @@ export interface ShooterRuntimeAtlasFrame {
 }
 
 export interface FerrumAssetApi {
-  loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
+  loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback, options?: AssetLoadOptions): Promise<LoadedAssets>;
   releaseAssets(assets: AssetReleasePayload): void;
   textureId(name: string): number;
   soundId(name: string): number;

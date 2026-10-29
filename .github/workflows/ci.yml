@@ -213,6 +213,9 @@ jobs:
       - name: GPU resource lifecycle browser smoke
         run: pnpm smoke:gpu-resources
 
+      - name: Asset loading concurrency and cancellation smoke
+        run: pnpm smoke:asset-loading
+
       - name: KTX2 compressed texture smoke
         run: pnpm smoke:ktx2
 

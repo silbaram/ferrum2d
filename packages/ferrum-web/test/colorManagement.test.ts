@@ -50,12 +50,19 @@ test("runtime and renderer share nested color mode resolution and reject conflic
 
 test("asset metadata is validated before loading and forwarded without changing string manifests", async () => {
   const calls: unknown[][] = [];
-  const loader = new AssetLoader({ loadTexture: async (...args) => { calls.push(args); } });
+  const signals: AbortSignal[] = [];
+  const loader = new AssetLoader({ loadTexture: async (id, url, options) => {
+    if (!options?.signal) throw new Error("manifest load must forward its cancellation signal");
+    signals.push(options.signal);
+    const { signal: _signal, ...metadata } = options;
+    calls.push([id, url, metadata]);
+  } });
   await rejects(loader.loadAssets({ textures: { gray: "gray.png" }, textureOptions: { missing: { colorSpace: "none" } } }), /matching texture/);
   await rejects(loader.loadAssets({ textures: { gray: "gray.png" }, textureOptions: { gray: { colorSpace: "bad" as "srgb" } } }), /colorSpace/);
   equal(calls.length, 0);
   await loader.loadAssets({ textures: { gray: "gray.png", mask: "mask.png" }, textureOptions: { mask: { colorSpace: "none" } } });
-  deepEqual(calls, [[1, "gray.png"], [2, "mask.png", { colorSpace: "none" }]]);
+  deepEqual(calls, [[1, "gray.png", {}], [2, "mask.png", { colorSpace: "none" }]]);
+  equal(signals.every(signal => !signal.aborted), true);
   const base = { textures: { gray: "gray.png" } };
   equal(assetManifestFingerprint(base), assetManifestFingerprint({ ...base, textureOptions: { gray: { colorSpace: "srgb" } } }));
   ok(assetManifestFingerprint(base) !== assetManifestFingerprint({ ...base, textureOptions: { gray: { colorSpace: "linear" } } }));

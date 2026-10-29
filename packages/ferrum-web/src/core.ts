@@ -215,6 +215,7 @@ export type {
   WorldTextSpec,
 } from "./public/engineExports.js";
 export type {
+  AssetLoadOptions,
   AssetLoadProgress,
   AssetLoadProgressCallback,
   AssetManifest,

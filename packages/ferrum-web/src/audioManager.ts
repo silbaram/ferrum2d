@@ -1,3 +1,4 @@
+import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { AudioAssetLoader } from "./audioAssetLoader.js";
 import {
   AUDIO_CHANNEL_BGM,
@@ -102,13 +103,30 @@ export class AudioManager {
     ui: 1,
   };
   private destroyed = false;
+  private readonly pendingLoads = new Map<number, AbortController>();
 
-  async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
+  async loadSound(soundId: number, url: string, options: { signal?: AbortSignal } = {}): Promise<AudioBuffer> {
     this.assertAlive();
-    const buffer = await this.assetLoader.load(soundId, url);
-    this.assertAlive();
-    this.buffersById.set(soundId, buffer);
-    return buffer;
+    const scope = createAssetLoadScope(options.signal);
+    const signal = scope.controller.signal;
+    try {
+      throwIfAssetLoadAborted(signal);
+      const previous = this.pendingLoads.get(soundId);
+      // Abort listeners run synchronously and may start a newer load or destroy us.
+      // Publish this request first so reentrant work can cancel it, too.
+      this.pendingLoads.set(soundId, scope.controller);
+      previous?.abort();
+      throwIfAssetLoadAborted(signal);
+      this.assertAlive();
+      const buffer = await this.assetLoader.load(soundId, url, { signal });
+      throwIfAssetLoadAborted(signal);
+      this.assertAlive();
+      this.buffersById.set(soundId, buffer);
+      return buffer;
+    } finally {
+      if (this.pendingLoads.get(soundId) === scope.controller) this.pendingLoads.delete(soundId);
+      scope.dispose();
+    }
   }
 
   hasSound(soundId: number): boolean {
@@ -119,6 +137,7 @@ export class AudioManager {
   evictSound(soundId: number): boolean {
     this.assertAlive();
     const normalizedSoundId = Math.trunc(soundId);
+    this.pendingLoads.get(normalizedSoundId)?.abort();
     if (normalizedSoundId <= 0 || !this.buffersById.has(normalizedSoundId)) {
       return false;
     }
@@ -324,6 +343,8 @@ export class AudioManager {
       return;
     }
     this.destroyed = true;
+    for (const controller of this.pendingLoads.values()) controller.abort();
+    this.pendingLoads.clear();
     const context = this.context;
     this.context = undefined;
     this.masterGain = undefined;

@@ -1,3 +1,4 @@
+import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
 import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
 import { spatialModelRegistry } from "./spatialModel.js";
@@ -285,6 +286,7 @@ export async function createEngineWithFramePipeline(
     return assetHost;
   };
 
+  const assetLoadLifetime = new AbortController();
   let destroyed = false;
   let running = false;
   let paused = false;
@@ -309,6 +311,7 @@ export async function createEngineWithFramePipeline(
     }
     const snapshot = lifecycleSnapshot();
     destroyed = true;
+    assetLoadLifetime.abort();
     running = false;
     paused = false;
     loop.stop();
@@ -703,9 +706,17 @@ export async function createEngineWithFramePipeline(
   };
 
   const assetApi: FerrumAssetApi = {
-    loadAssets: async (manifest, onProgress) => {
+    loadAssets: async (manifest, onProgress, loadOptions) => {
       requireAlive();
-      return await requireAssetHost().loadAssets(manifest, onProgress);
+      const scope = createAssetLoadScope(assetLoadLifetime.signal, loadOptions?.signal);
+      try {
+        const assets = await requireAssetHost().loadAssets(manifest, onProgress, { ...loadOptions, signal: scope.controller.signal });
+        throwIfAssetLoadAborted(scope.controller.signal);
+        requireAlive();
+        return assets;
+      } finally {
+        scope.dispose();
+      }
     },
     releaseAssets: (assets) => {
       requireAlive();

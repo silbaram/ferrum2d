@@ -1,3 +1,5 @@
+import { runAssetLoadTasks, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
+import type { AssetLoadOptions } from "./assetLoadTasks.js";
 import type { AssetLoadProgress, AssetLoadProgressCallback, AssetManifest } from "./assetLoader.js";
 import { validateAssetTextureOptions } from "./assetLoader.js";
 import { resolveTextureColorSpace } from "./colorManagement.js";
@@ -54,7 +56,7 @@ export interface AssetPreloadInvalidationResult {
   invalidatedTotal: number;
 }
 
-export interface PreloadAssetManifestOptions {
+export interface PreloadAssetManifestOptions extends AssetLoadOptions {
   onProgress?: AssetLoadProgressCallback;
   cache?: AssetPreloadCache;
   cachePolicy?: AssetPreloadCachePolicy;
@@ -181,11 +183,11 @@ export async function preloadAssetManifest(
     });
   };
 
-  emitProgress();
-
-  for (const entry of plan.entries) {
+  await runAssetLoadTasks(plan.entries, options, async (entry, signal) => {
+    const taskOptions = { ...options, signal };
     if (entry.kind === "json") {
-      const result = await preloadJson(entry, fetcher, options);
+      const result = await preloadJson(entry, fetcher, taskOptions);
+      throwIfAssetLoadAborted(signal);
       json[entry.name] = result.value;
       if (result.cached) {
         cached += 1;
@@ -195,7 +197,8 @@ export async function preloadAssetManifest(
       loaded += 1;
       emitProgress(entry, result.cached);
     } else {
-      const result = await preloadBinary(entry, fetcher, options);
+      const result = await preloadBinary(entry, fetcher, taskOptions);
+      throwIfAssetLoadAborted(signal);
       if (result.cached) {
         cached += 1;
       } else {
@@ -204,7 +207,7 @@ export async function preloadAssetManifest(
       loaded += 1;
       emitProgress(entry, result.cached);
     }
-  }
+  }, emitProgress);
 
   return {
     plan,
@@ -245,14 +248,16 @@ async function preloadJson(
   const version = policy?.version ?? DEFAULT_CACHE_VERSION;
   if (shouldUseCache) {
     const cached = await options.cache?.getJson(entry.url, { version });
+    throwIfAssetLoadAborted(options.signal);
     if (cached !== undefined && cached !== null) {
       return { value: cached, cached: true };
     }
   }
 
-  const response = await fetchAsset(entry, fetcher);
+  const response = await fetchAsset(entry, fetcher, options.signal);
   try {
     const value = await response.json();
+    throwIfAssetLoadAborted(options.signal);
     if (shouldUseCache) {
       await options.cache?.setJson(entry.url, value, {
         version,
@@ -263,6 +268,7 @@ async function preloadJson(
     }
     return { value, cached: false };
   } catch (error) {
+    throwIfAssetLoadAborted(options.signal);
     throw assetLoadError({
       kind: "json",
       name: entry.name,
@@ -282,14 +288,16 @@ async function preloadBinary(
   const version = policy?.version ?? DEFAULT_CACHE_VERSION;
   if (shouldUseCache) {
     const cached = await options.cache?.getBinary?.(entry.url, { version });
+    throwIfAssetLoadAborted(options.signal);
     if (cached !== undefined && cached !== null) {
       return { cached: true };
     }
   }
 
-  const response = await fetchAsset(entry, fetcher);
+  const response = await fetchAsset(entry, fetcher, options.signal);
   try {
     const value = await response.arrayBuffer();
+    throwIfAssetLoadAborted(options.signal);
     if (shouldUseCache) {
       await options.cache?.setBinary?.(entry.url, value, {
         version,
@@ -300,6 +308,7 @@ async function preloadBinary(
     }
     return { cached: false };
   } catch (error) {
+    throwIfAssetLoadAborted(options.signal);
     throw assetLoadError({
       kind: entry.kind,
       name: entry.name,
@@ -320,11 +329,14 @@ function shouldCacheBinary(kind: AssetPreloadKind, policy: AssetPreloadCachePoli
   return false;
 }
 
-async function fetchAsset(entry: AssetPreloadEntry, fetcher: typeof fetch): Promise<Response> {
+async function fetchAsset(entry: AssetPreloadEntry, fetcher: typeof fetch, signal?: AbortSignal): Promise<Response> {
   let response: Response;
   try {
-    response = await fetcher(entry.url);
+    throwIfAssetLoadAborted(signal);
+    response = await fetcher(entry.url, { signal });
+    throwIfAssetLoadAborted(signal);
   } catch (error) {
+    throwIfAssetLoadAborted(signal);
     throw assetLoadError({
       kind: entry.kind,
       name: entry.name,
