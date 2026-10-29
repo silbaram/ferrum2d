@@ -7,17 +7,25 @@ import type { PlacementGrid } from "./placementGrid";
 /** App-only preview adapter. Existing bulk line formats and GPU ownership remain unchanged. */
 export class PlacementGridRenderer extends WebGL2Renderer {
   grid?: PlacementGrid;
+  measureGpuTiming = false;
   private flatGridCalls = 0;
   private merged = new Float32Array(0);
   constructor(private readonly gridCanvas: HTMLCanvasElement) {
     super(gridCanvas, {
       clearColor: [0.06, 0.08, 0.075, 1],
       preserveDrawingBuffer: true,
+      gpuTiming: true,
     });
   }
   override render() {
     this.flatGridCalls = 0;
     super.render();
+  }
+  override beginGpuTiming() { if (this.measureGpuTiming) super.beginGpuTiming(); }
+  override endGpuTiming() { super.endGpuTiming(); }
+  override gpuTimingStats() {
+    const stats = super.gpuTimingStats();
+    return this.measureGpuTiming ? stats : { status: "disabled" as const, pendingQueryCount: stats.pendingQueryCount };
   }
   override stats(): RendererStats {
     const stats = super.stats();

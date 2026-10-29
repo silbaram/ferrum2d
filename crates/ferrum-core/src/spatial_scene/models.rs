@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub(crate) struct ModelBinding {
+    draw_index: Option<usize>,
     pub asset: u32,
     pub flags: u32,
     pub elevation: f32,
@@ -69,6 +70,7 @@ impl SpatialModels {
                 return false;
             }
             let binding = ModelBinding {
+                draw_index: None,
                 asset: m[2],
                 flags: m[3],
                 elevation: v[0],
@@ -99,7 +101,8 @@ impl SpatialModels {
     ) {
         self.draws.clear();
         self.streaming.update_chunks(camera);
-        for (&(id, generation), binding) in &self.bindings {
+        for (&(id, generation), binding) in &mut self.bindings {
+            binding.draw_index = None;
             if hidden.contains(&(id, generation)) {
                 continue;
             }
@@ -134,6 +137,7 @@ impl SpatialModels {
                 continue;
             }
             // Resident references retain resources even when camera-culled.
+            binding.draw_index = Some(self.draws.len());
             self.draws.push(ModelDraw {
                 asset,
                 flags: binding.flags,
@@ -142,6 +146,21 @@ impl SpatialModels {
                 matrix,
             });
         }
+    }
+    /// Cold owned snapshot of the last rendered LOD/pose, including the camera visibility bit.
+    pub fn draw_snapshot(&self, key: (u32, u32)) -> Vec<u32> {
+        let Some(draw) = self
+            .bindings
+            .get(&key)
+            .and_then(|binding| binding.draw_index)
+            .and_then(|index| self.draws.get(index))
+        else {
+            return Vec::new();
+        };
+        let mut words = Vec::with_capacity(20);
+        words.extend([draw.asset, draw.flags, draw.mask, draw.reserved]);
+        words.extend(draw.matrix.iter().map(|value| value.to_bits()));
+        words
     }
 }
 impl ModelBinding {
@@ -251,6 +270,7 @@ pub(crate) fn preflight_model_poses(styles: &[f32], origins: &[f32]) -> bool {
                 return false;
             }
             ModelBinding {
+                draw_index: None,
                 asset: 1,
                 flags: 3,
                 elevation: v[0],
@@ -270,6 +290,7 @@ mod tests {
     #[test]
     fn cardinal_model_matrices_match_aabb_proxy_axes_without_snapping_nearby_yaw() {
         let mut binding = ModelBinding {
+            draw_index: None,
             asset: 1,
             flags: 3,
             elevation: 16.,

@@ -10,6 +10,7 @@ import { createPlacementGameCamera } from "./placementGameCamera";
 import {
   createDataSceneSpatialView,
   loadSpatialGlb,
+  raycastSpatialModel,
   type FerrumRuntime,
   type FerrumRuntimeFrame,
   type SpatialCameraSpec,
@@ -28,10 +29,11 @@ import {
 } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementSpatialPalette } from "./placementSpatialPalette";
 import { createPlacementSpatialProxy } from "./placementSpatialProxy";
+import { createPlacementCameraGuide } from "./placementCameraGuide";
 import { pointOnElevationPlane, type PlaneProjection } from "./placementGridGeometry";
 import {
   MIN_VIEW_PITCH, MAX_VIEW_PITCH, VIEW_PITCH_STEP,
-  spatialCameraPitch, tiltSpatialCamera, spatialEditorRenderCamera,
+  spatialCameraPitch, tiltSpatialCamera, spatialEditorRenderCamera, fitSpatialCamera, spatialFrameRay,
 } from "./placementSpatialCamera";
 
 type Mode = "2d" | "spatial" | "game";
@@ -57,6 +59,7 @@ function triangleDepth(a: Point, b: Point, c: Point, x: number, y: number) {
   return u * a.depth + v * b.depth + w * c.depth;
 }
 interface CameraState {
+  autoFrame?: boolean;
   returnMode?: "2d" | "spatial";
   paused?: boolean;
   gameFrame?: boolean;
@@ -145,6 +148,7 @@ export function installPlacementSpatialWorkspace(options: {
         origin: ScenePlacementViewerState;
         hit?: SpatialPoint;
         camera?: SpatialCameraSpec;
+        autoFrame?: boolean;
         projection?: PlaneProjection;
         heightAnchor?: { point: SpatialPoint; screenY: number };
         cancelRequested?: boolean;
@@ -271,7 +275,7 @@ export function installPlacementSpatialWorkspace(options: {
   const info = document.createElement("p");
   setUiText(
     info,
-    "Model bounds and billboard geometry select authored objects. Model pose does not move collision proxies.",
+    "Model surfaces and billboard geometry select authored objects. Model pose does not move collision proxies.",
   );
   const editHint = document.createElement("p");
   editHint.className = "placement-spatial-edit-hint";
@@ -299,15 +303,27 @@ export function installPlacementSpatialWorkspace(options: {
   transformTools.hidden = true;
   const heightHandle = document.createElement("button"),
     rotateHandle = document.createElement("button");
+  const moveAxis = document.createElement("select"), transformHint = document.createElement("output"),
+    heightValue = document.createElement("span"), rotationValue = document.createElement("span");
+  moveAxis.dataset.placementSpatialMoveAxis = "true";
+  setUiAttribute(moveAxis, "aria-label", "Move Axis");
+  setUiAttribute(moveAxis, "title", "Drag object along world axes");
+  for (const [value, caption] of [["xy", "World XY"], ["x", "World X"], ["y", "World Y"]]) {
+    const option = document.createElement("option"); option.value = value; setUiText(option, caption); moveAxis.append(option);
+  }
+  transformHint.className = "placement-spatial-transform-hint";
+  transformHint.dataset.placementSpatialTransformHint = "true";
   heightHandle.type = "button";
   heightHandle.dataset.placementSpatialHeight = "true";
   heightHandle.className = "placement-spatial-height";
   decorateViewportAction(heightHandle, "height", "Height", undefined, true);
+  heightHandle.append(heightValue);
   rotateHandle.type = "button";
   rotateHandle.dataset.placementSpatialRotate = "true";
   rotateHandle.className = "placement-spatial-rotate";
   decorateViewportAction(rotateHandle, "right", "Rotate Object", undefined, true);
-  transformTools.append(heightHandle, rotateHandle);
+  rotateHandle.append(rotationValue);
+  transformTools.append(moveAxis, heightHandle, rotateHandle, transformHint);
   stage.append(transformTools);
   const cameraControls = document.createElement("div");
   cameraControls.className = "placement-spatial-camera";
@@ -430,6 +446,7 @@ export function installPlacementSpatialWorkspace(options: {
           camera = tiltSpatialCamera(camera, spatialCameraPitch(camera) + (action === "up" ? VIEW_PITCH_STEP : -VIEW_PITCH_STEP));
         } else camera = zoomedCamera(camera, action === "in" ? 0.8 : 1.25);
         setCamera(camera);
+        if (action === "reset") frameTargets(false);
         report();
       } catch (error) {
         report(error);
@@ -582,17 +599,14 @@ export function installPlacementSpatialWorkspace(options: {
   const proxy = createPlacementSpatialProxy({
     viewer,
     components: options.components,
-    debug: (enabled) => {
-      runtime.engine.setDataSceneSpatialDebug(
-        enabled ? { colliders: true, heightSpans: true } : null,
-      );
-    },
+    debug: () => { if (active.mode !== "2d") runtime.engine.setDataSceneSpatialDebug(proxy.debugOptions()); },
     finish: options.finishEdit,
     change: options.onChange,
     report,
   });
   palette.element.after(proxy.element);
   options.viewSettings.append(proxy.overlayControl);
+  const cameraGuide = createPlacementCameraGuide(stage, options.viewSettings);
   const planeSettings = document.createElement("div"),
     planeHeight = document.createElement("input"),
     planeFloor = document.createElement("input");
@@ -878,68 +892,21 @@ export function installPlacementSpatialWorkspace(options: {
       ghostRevision++;
     }
   }
-  function frameTargets(selectedOnly: boolean) {
-    if (!cancel() || !active.camera) return;
+  function fittedCamera(selectedOnly: boolean) {
+    if (!active.camera) return;
     const targets = allTargets().filter(
       (target) =>
         visible(target) && (!selectedOnly || target.id === active.target?.id),
     );
-    const minimum = [Infinity, Infinity, Infinity],
-      maximum = [-Infinity, -Infinity, -Infinity];
-    let pointCount = 0;
-    for (const target of targets)
-      for (const point of worldGeometry(target)) {
-        pointCount++;
-        const values = [point.x, point.y, point.elevation];
-        for (let axis = 0; axis < 3; axis++) {
-          minimum[axis] = Math.min(minimum[axis], values[axis]);
-          maximum[axis] = Math.max(maximum[axis], values[axis]);
-        }
-      }
-    if (!pointCount) return;
-    const center = {
-      x: (minimum[0] + maximum[0]) / 2,
-      y: (minimum[1] + maximum[1]) / 2,
-      elevation: (minimum[2] + maximum[2]) / 2,
-    };
-    const camera = structuredClone(active.camera),
-      dx = camera.position.x - camera.target.x,
-      dy = camera.position.y - camera.target.y,
-      dz = camera.position.elevation - camera.target.elevation;
-    const radius = Math.max(
-      1,
-      Math.hypot(
-        maximum[0] - minimum[0],
-        maximum[1] - minimum[1],
-        maximum[2] - minimum[2],
-      ) / 2,
-    );
-    const aspect = Math.max(
-      0.01,
-      canvas.clientWidth / Math.max(1, canvas.clientHeight),
-    );
-    const limitingFov = Math.min(
-      ((camera.fovDegrees ?? 60) * Math.PI) / 180,
-      2 *
-        Math.atan(
-          Math.tan(((camera.fovDegrees ?? 60) * Math.PI) / 360) * aspect,
-        ),
-    );
-    const distance =
-      camera.projection === "perspective"
-        ? (radius / Math.sin(limitingFov / 2)) * 1.3
-        : Math.hypot(dx, dy, dz);
-    const ratio = distance / Math.max(0.01, Math.hypot(dx, dy, dz));
-    camera.target = center;
-    camera.position = {
-      x: center.x + dx * ratio,
-      y: center.y + dy * ratio,
-      elevation: center.elevation + dz * ratio,
-    };
-    if (camera.projection === "orthographic")
-      camera.height = Math.max(1, (radius * 2.6) / Math.min(1, aspect));
+    return fitSpatialCamera(active.camera, targets.flatMap(worldGeometry), canvas.clientWidth / Math.max(1, canvas.clientHeight));
+  }
+  function frameTargets(selectedOnly: boolean) {
+    if (!cancel()) return;
+    const camera = fittedCamera(selectedOnly);
+    if (!camera) return;
     try {
-      setCamera(camera);
+      setCamera(camera, !selectedOnly);
+      active.autoFrame = !selectedOnly;
     } catch (error) {
       report(error);
     }
@@ -1076,7 +1043,7 @@ export function installPlacementSpatialWorkspace(options: {
       report(error);
     }
   }
-  function setCamera(camera = active.camera) {
+  function setCamera(camera = active.camera, preserveFit = false) {
     if (active.mode !== "spatial" || !camera) return;
     const size = runtime.renderer.viewportSize();
     // A hidden/minimized host can briefly have no drawable surface. Resize
@@ -1088,6 +1055,7 @@ export function installPlacementSpatialWorkspace(options: {
       throw new Error("Spatial edit camera rejected");
     // Commit the UI camera only after native validation accepts it.
     active.camera = camera;
+    if (!preserveFit) active.autoFrame = false;
     gameCamera.sync();
     syncPitchControls();
     Object.assign(window, {
@@ -1117,10 +1085,11 @@ export function installPlacementSpatialWorkspace(options: {
     }
     return camera;
   }
-  canvas.addEventListener(
+  stage.addEventListener(
     "wheel",
     (event) => {
       if (active.mode !== "spatial") return;
+      if (event.target !== canvas && !(event.target instanceof Node && transformTools.contains(event.target))) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (
@@ -1406,7 +1375,7 @@ export function installPlacementSpatialWorkspace(options: {
         } else if (active.mode === "spatial") {
           runtime.engine.pauseDataScene();
           active.camera ??= structuredClone(state.spatial!.camera);
-          setCamera();
+          setCamera(active.autoFrame && !frame ? fittedCamera(false) : active.camera, true);
         } else if (active.mode === "game") {
           if (active.paused) runtime.engine.pauseDataScene();
           else runtime.engine.resumeDataScene();
@@ -1421,10 +1390,8 @@ export function installPlacementSpatialWorkspace(options: {
     }
     applyVisibility();
     options.gridChanged?.(state);
-    if (active.mode === "spatial")
-      runtime.engine.setDataSceneSpatialDebug(
-        proxy.overlay() ? { colliders: true, heightSpans: true } : null,
-      );
+    if (active.mode !== "2d")
+      runtime.engine.setDataSceneSpatialDebug(proxy.debugOptions());
     const selected = active.target,
       spatial = state.spatial;
     objectActions.hidden = !selected || selected.kind === "surface";
@@ -1723,6 +1690,20 @@ export function installPlacementSpatialWorkspace(options: {
     return valid;
   }
   function pickDepth(target: Target, x: number, y: number) {
+    if (target.kind === "model" && frame) {
+      const handle=state.instances.find(instance=>instance.instanceId===target.id)?.entity,
+        draw=handle && runtime.engine.dataSceneSpatialModelDrawSnapshot(handle), projection=projectionSnapshot();
+      if (!draw?.cameraVisible || !projection) return;
+      const rect=projection.rect,ray=spatialFrameRay(projection.camera,x-rect.left,y-rect.top,rect.width,rect.height);
+      if (!ray) return;
+      const m=draw.transform,scaleSquared=m[0]*m[0]+m[1]*m[1]+m[2]*m[2],scale=Math.sqrt(scaleSquared),
+        local=(v: readonly number[]): [number,number,number]=>[0,4,8].map(i=>(m[i]*v[0]+m[i+1]*v[1]+m[i+2]*v[2])/scaleSquared) as [number,number,number],
+        origin=local(ray.origin.map((n,i)=>n-m[12+i])),
+        hit=raycastSpatialModel(draw.asset,{origin,direction:local(ray.direction),far:ray.far/scale});
+      if (!hit) return;
+      const [hx,hy,hz]=hit.point,p=view.project({x:m[0]*hx+m[4]*hy+m[8]*hz+m[12],elevation:m[1]*hx+m[5]*hy+m[9]*hz+m[13],y:-(m[2]*hx+m[6]*hy+m[10]*hz+m[14])},frame);
+      return p && p.depth >= -1 && p.depth <= 1 ? p.depth : undefined;
+    }
     const points = projectedGeometry(target);
     if (!points.length) return;
     let nearest: number | undefined;
@@ -1798,7 +1779,8 @@ export function installPlacementSpatialWorkspace(options: {
     }
     if (previous.kind === "camera") {
       try {
-        setCamera(previous.camera);
+        setCamera(previous.camera, true);
+        active.autoFrame = previous.autoFrame;
       } catch (error) {
         report(error);
       }
@@ -1895,6 +1877,7 @@ export function installPlacementSpatialWorkspace(options: {
         origin: viewer.state(),
         kind: camera ? "camera" : "move",
         camera: structuredClone(active.camera),
+        autoFrame: active.autoFrame,
         projection,
         selected: active.target,
         hit,
@@ -2061,7 +2044,7 @@ export function installPlacementSpatialWorkspace(options: {
         } else if (drag.kind === "rotate") {
           // Screen-space horizontal travel is independent of camera projection and DPR.
           const angle = rotationDegrees(origin) + event.clientX - drag.startX;
-          editField("yaw", event.shiftKey ? Math.round(angle / 15) * 15 : angle, origin);
+          editField("yaw", event.shiftKey || snap.enabled ? Math.round(angle / 15) * 15 : angle, origin);
         } else if (drag.hit && drag.projection) {
           if (
             target.kind !== "surface" &&
@@ -2085,8 +2068,8 @@ export function installPlacementSpatialWorkspace(options: {
               : origin.instances.find((i) => i.instanceId === target.id)
                   ?.transform;
           if (!p) return;
-          const x = quantize(p.x + hit.x - drag.hit.x),
-            y = quantize(p.y + hit.y - drag.hit.y);
+          const x = moveAxis.value === "y" ? p.x : quantize(p.x + hit.x - drag.hit.x),
+            y = moveAxis.value === "x" ? p.y : quantize(p.y + hit.y - drag.hit.y);
           if (target.kind === "surface")
             options.onChange(
               viewer.updateSpatial([
@@ -2242,7 +2225,7 @@ export function installPlacementSpatialWorkspace(options: {
   const resize = new ResizeObserver(() => {
     try {
       if (liveGameCamera()) previewGameCameraInput(previewCamera);
-      else setCamera();
+      else setCamera(active.autoFrame ? fittedCamera(false) : active.camera, true);
     } catch (error) {
       report(error);
     }
@@ -2330,6 +2313,7 @@ export function installPlacementSpatialWorkspace(options: {
       active = sessions.get(key) ?? {
         mode: spatial ? "spatial" : "2d",
         camera: spatial ? structuredClone(spatial.camera) : undefined,
+        autoFrame: true,
       };
       sessions.set(key, active);
       frame = undefined;
@@ -2371,6 +2355,10 @@ export function installPlacementSpatialWorkspace(options: {
     frame(update: FerrumRuntimeFrame) {
       if (active.mode === "spatial") updateSpatialInfo();
       const spatial = update.frame.renderCommandBuffer.spatial;
+      // The authored projection's aspect is the drawable game area (including pixel-art letterboxing).
+      const environment = state.spatial?.environment?.pixelArt;
+      const gameAspect = environment ? environment.width / environment.height : canvas.clientWidth / Math.max(1, canvas.clientHeight);
+      cameraGuide.frame(active.mode === "spatial" ? state.spatial?.camera : undefined, spatial?.camera, canvas.clientWidth, canvas.clientHeight, gameAspect);
       gameCamera.frame(spatial?.presentation, !!spatial && active.mode === "game" && !!active.paused && !!active.gameFrame);
       if (active.mode !== "spatial" || !spatial) {
         selection.style.display = "none";
@@ -2427,6 +2415,19 @@ export function installPlacementSpatialWorkspace(options: {
         bottom = Math.max(...points.map((p) => p.y)),
         intersectsViewport = rect && right > rect.left && left < rect.right &&
           bottom > rect.top && top < rect.bottom;
+      transformTools.dataset.dragging = drag?.kind ?? "";
+      for (const [handle, kind] of [[heightHandle,"height"],[rotateHandle,"rotate"]] as const)
+        handle.setAttribute("aria-pressed", String(drag?.kind === kind));
+      // Text remains in the locale system; numeric data is never translated.
+      if (target) {
+        const elevation = target.kind === "surface" ? state.spatial?.terrain.find(s=>s.id===target.id)?.elevation ?? 0
+          : pose(target.id).elevation + (target.kind === "model" ? state.spatial?.models?.[target.id]?.elevation ?? 0 : state.spatial?.billboards[target.id]?.elevation ?? 0);
+        setUiText(heightValue, uiMessage("Height {0}", Number(elevation.toFixed(1))));
+        setUiText(rotationValue, uiMessage("Yaw {0}°", Number(rotationDegrees(state).toFixed(1))));
+      }
+      const snap = options.snap();
+      setUiText(transformHint, drag ? "Escape: cancel · Release: apply" : snap.enabled ? uiMessage("Drag: move · Grid {0} · Rotation 15°", snap.gridSize) : "Drag: move · Shift: rotation snap");
+      moveAxis.disabled = !!drag;
       selection.style.display = points.length ? "" : "none";
       transformTools.hidden =
         !intersectsViewport ||
@@ -2452,10 +2453,16 @@ export function installPlacementSpatialWorkspace(options: {
         "points",
         points.map((p) => p.x - rect.left + "," + (p.y - rect.top)).join(" "),
       );
-      transformTools.style.left = Math.max(8, Math.min(rect.width - 68,
-        right - rect.left + 8)) + "px";
-      transformTools.style.top = Math.max(32, Math.min(rect.height - 36,
-        top - rect.top)) + "px";
+      if (!drag) {
+        const width = transformTools.offsetWidth, height = transformTools.offsetHeight,
+          rightSide = right - rect.left + 8, leftSide = left - rect.left - width - 8,
+          sideFits = rightSide + width <= rect.width - 8 || leftSide >= 8,
+          x = rightSide + width <= rect.width - 8 ? rightSide : leftSide >= 8 ? leftSide : rightSide,
+          y = sideFits ? top - rect.top : top - rect.top - height - 8 >= 32
+            ? top - rect.top - height - 8 : bottom - rect.top + 8;
+        transformTools.style.left = Math.max(8, Math.min(rect.width - width - 8, x)) + "px";
+        transformTools.style.top = Math.max(32, Math.min(rect.height - height - 8, y)) + "px";
+      }
       Object.assign(window, {
         ferrumPlacementSpatialSelection: {
           target,

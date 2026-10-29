@@ -501,7 +501,7 @@ export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
 
 export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
-export type { DataSceneSpatialSpec, SpatialModelInstanceSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialRenderBufferView, SpatialSurfaceHit, FerrumSpatialApi } from "./dataSceneSpatial.js";
+export type { DataSceneSpatialSpec, SpatialModelInstanceSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialRenderBufferView, SpatialSurfaceHit, SpatialModelDrawSnapshot, FerrumSpatialApi } from "./dataSceneSpatial.js";
 export type { DataSceneSpatialPoseSnapshot, DataSceneSpatialProgressSnapshot } from "./dataSceneSpatialProgress.js";
 
 export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";

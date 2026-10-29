@@ -35,7 +35,7 @@
     "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs",
     "test:placement-locale": "node --test tests/smoke/placement-locale.test.mjs",
     "test:placement-layers": "node --test tests/smoke/placement-layers.test.mjs",
-    "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs",
+    "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs tests/smoke/placement-asset-loading.test.mjs",
     "test:updates": "node --test tests/smoke/engine-updates.test.mjs tests/smoke/placement-updates.test.mjs",
     "smoke:placement-locale": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-locale-smoke.mjs",
     "smoke:placement-grid": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-grid-smoke.mjs",

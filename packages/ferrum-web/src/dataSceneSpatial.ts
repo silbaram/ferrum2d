@@ -188,12 +188,21 @@ export interface SpatialSurfaceHit extends SpatialPoint {
   distance: number;
   walkable: boolean;
 }
+/** Owned last-rendered LOD/pose for a cold authoring query, never a physics shape. */
+export interface SpatialModelDrawSnapshot {
+  readonly asset: SpatialModelAsset;
+  /** Column-major asset-local glTF XYZ to world XYZ transform. */
+  readonly transform: Float32Array;
+  readonly cameraVisible: boolean;
+}
 export interface FerrumSpatialApi {
   /** Authoring presentation only. Hidden terrain is excluded from visual picking, never physics. Null restores all. */
   /** Cold editor-only 2D/spatial filter. Does not alter simulation or saved scene data. */
   setDataSceneSpatialPreviewFilter(options: {hiddenEntities: readonly GameplayEntityHandle[];hiddenSurfaces:readonly string[]} | null): boolean;
   registerDataSceneSpatialModel(id: string, asset: SpatialModelAsset): boolean;
   releaseDataSceneSpatialModel(id: string): boolean;
+  /** Undefined before rendering, after unbinding, or on older cores without this capability. */
+  dataSceneSpatialModelDrawSnapshot(handle: GameplayEntityHandle): SpatialModelDrawSnapshot | undefined;
   /** Cold asset/content/renderer-independent validation before replacing a scene. */
   preflightDataSceneSpatialModels(spec: DataSceneSpatialSpec, origins?: Readonly<Record<string, SpatialPoint>>): boolean;
   /** Presentation settings only; movement is preserved. Null disables all spatial effects. */
@@ -783,6 +792,19 @@ export function createSpatialApi(
       requireAlive();
       const registry=spatialModelRegistry(rust), entry=registry.get(id);
       return !!entry && !rust.spatial_model_asset_in_use(entry.id) && registry.delete(id);
+    },
+    dataSceneSpatialModelDrawSnapshot(handle) {
+      requireAlive();
+      const id=uint32Number(handle.entityId,"model.entityId"),generation=uint32Number(handle.entityGeneration,"model.entityGeneration");
+      if (typeof rust.spatial_model_draw_snapshot !== "function") return;
+      const words=rust.spatial_model_draw_snapshot(id,generation);
+      if (!words.length) return;
+      if (words.length!==20 || words[3]!==0 || words[2]>255) throw new Error("Invalid spatial model draw snapshot");
+      const asset=[...spatialModelRegistry(rust).values()].find(entry=>entry.id===words[0])?.handle;
+      if (!asset) throw new Error("Unregistered spatial model draw snapshot");
+      const transform=new Float32Array(words.buffer,words.byteOffset+16,16);
+      if (!transform.every(Number.isFinite)) throw new Error("Invalid spatial model draw snapshot");
+      return {asset,transform,cameraVisible:!!(words[2]&1)};
     },
     preflightDataSceneSpatialModels(input, origins = {}) {
       requireAlive();

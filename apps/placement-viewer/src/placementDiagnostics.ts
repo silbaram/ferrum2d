@@ -309,7 +309,12 @@ export function installPlacementDiagnostics(options: {
         handle && options.runtime.engine.gameplayEntityExists(handle)
           ? options.runtime.engine.getPhysicsEntity(handle)
           : undefined;
+      const colliderCount = entity && handle ? options.runtime.engine.getPhysicsBodyColliderCount(handle) : 0;
+      const colliders = entity && handle ? Array.from({length: Math.min(32, colliderCount)}, (_,i) => options.runtime.engine.getPhysicsBodyCollider(handle,i)).filter((c): c is NonNullable<typeof c> => !!c) : [];
       const snapshot = {
+        physics: entity,
+        colliderCount,
+        colliders,
         mode: options.mode?.() ?? "2d",
         observation: "Read-only · 4 Hz · events recorded while panel open",
         instanceId: id,

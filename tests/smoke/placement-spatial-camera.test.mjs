@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
 const ts = require("typescript");
-const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, panSpatialCamera, orbitSpatialCamera, zoomSpatialCamera, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
+const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, panSpatialCamera, orbitSpatialCamera, zoomSpatialCamera, fitSpatialCamera, spatialCameraBasis, spatialCameraRay, spatialFrameRay, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
   "data:text/javascript;base64," + Buffer.from(ts.transpileModule(
     await readFile("apps/placement-viewer/src/placementSpatialCamera.ts", "utf8"),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
@@ -13,6 +13,56 @@ const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialE
 const distance = c => Math.hypot(c.position.x-c.target.x,c.position.y-c.target.y,c.position.elevation-c.target.elevation);
 const yaw = c => Math.atan2(c.position.y-c.target.y,c.position.x-c.target.x);
 const near = (a,b) => assert(Math.abs(a-b)<1e-8,`${a} != ${b}`);
+test("displayed frame rays unproject both clip planes at every screen corner",()=>{
+  for(const projection of ["orthographic","perspective"]) {
+    const camera={projection,position:{x:40,y:-60,elevation:70},target:{x:3,y:2,elevation:5},height:100,fovDegrees:55,near:1,far:1000},basis=spatialCameraBasis(camera),xyz=v=>[v[0],v[2],-v[1]],
+      r=xyz(basis.right),u=xyz(basis.up),f=xyz(basis.forward),eye=xyz([camera.position.x,camera.position.y,camera.position.elevation]),dot=v=>v.reduce((n,c,i)=>n+c*eye[i],0),
+      view=[r[0],u[0],-f[0],0,r[1],u[1],-f[1],0,r[2],u[2],-f[2],0,-dot(r),-dot(u),dot(f),1],n=camera.near,a=camera.far,t=Math.tan(camera.fovDegrees*Math.PI/360),
+      lens=projection==="perspective"?[1/(t*1.5),0,0,0,0,1/t,0,0,0,0,-(a+n)/(a-n),-1,0,0,-2*a*n/(a-n),0]:[1/75,0,0,0,0,1/50,0,0,0,0,-2/(a-n),0,0,0,-(a+n)/(a-n),1],
+      matrix=Float32Array.from({length:16},(_,i)=>[0,1,2,3].reduce((v,k)=>v+lens[k*4+i%4]*view[Math.floor(i/4)*4+k],0));
+    for(const [x,y] of [[0,0],[450,300],[900,600],[250,420]]) {
+      const nativeCamera=new Float32Array(28);nativeCamera.set(matrix);nativeCamera.fill(1,16);
+      const ray=spatialFrameRay(nativeCamera,x,y,900,600);assert(ray);
+      assert.deepEqual(ray,spatialFrameRay(matrix,x,y,900,600));
+      for(const [p,z] of [[ray.origin,-1],[ray.origin.map((v,i)=>v+ray.direction[i]*ray.far),1]]) {
+        const q=[0,1,2,3].map(row=>matrix[row]*p[0]+matrix[4+row]*p[1]+matrix[8+row]*p[2]+matrix[12+row]);
+        near(q[0]/q[3],x/450-1);near(q[1]/q[3],1-y/300);near(q[2]/q[3],z);
+      }
+      const analytic=xyz(spatialCameraRay(camera,x,y,900,600).direction),len=Math.hypot(...analytic);
+      ray.direction.forEach((v,i)=>assert(Math.abs(v-analytic[i]/len)<1e-5));
+    }
+    assert.equal(spatialFrameRay(matrix,-1,0,900,600),undefined);
+    assert.equal(spatialFrameRay(matrix,0,0,0,600),undefined);
+    assert.equal(spatialFrameRay(new Float32Array(16),0,0,900,600),undefined);
+  }
+});
+test("framing contains all corners in portrait and landscape without changing the authored camera",()=>{
+  const points=[];
+  for(const x of [-340,340])for(const y of [-260,260])for(const elevation of [-24,180])points.push({x,y,elevation});
+  for(const projection of ["orthographic","perspective"])for(const aspect of [0.45,1,2.5])for(const angle of [2,45,89]) {
+    const camera=tiltSpatialCamera({projection,position:{x:410,y:-610,elevation:580},target:{x:0,y:10,elevation:15},height:660,fovDegrees:55,near:.1,far:2000},angle),copy=structuredClone(camera),fit=fitSpatialCamera(camera,points,aspect),basis=spatialCameraBasis(fit);
+    for(const p of points) {
+      const v=[p.x-fit.position.x,p.y-fit.position.y,p.elevation-fit.position.elevation],dot=a=>a.reduce((n,c,i)=>n+c*v[i],0),depth=dot(basis.forward),half=projection==="orthographic"?fit.height/2:depth*Math.tan(fit.fovDegrees*Math.PI/360);
+      assert(Math.abs(dot(basis.right)) < half*aspect);assert(Math.abs(dot(basis.up))<half);assert(depth>fit.near && depth<fit.far);
+    }
+    near(yaw(fit),yaw(camera));near(spatialCameraPitch(fit),angle);assert.deepEqual(camera,copy);
+    const ray=spatialCameraRay(fit,400,300,800,600), offset=ray.origin.map((n,i)=>n-[fit.position.x,fit.position.y,fit.position.elevation][i]);
+    near(Math.hypot(...offset),0);
+    const direction=ray.direction.map(n=>n/Math.hypot(...ray.direction));direction.forEach((n,i)=>near(n,basis.forward[i]));
+  }
+});
+test("orthographic fit moves the eye far enough to include tall geometry in the depth range",()=>{
+  const camera={projection:"orthographic",position:{x:0,y:-1,elevation:10},target:{x:0,y:0,elevation:0},height:10,near:.1,far:20},points=[{x:0,y:0,elevation:0},{x:0,y:0,elevation:1000}],fit=fitSpatialCamera(camera,points,1),basis=spatialCameraBasis(fit);
+  for(const p of points){const depth=basis.forward[0]*(p.x-fit.position.x)+basis.forward[1]*(p.y-fit.position.y)+basis.forward[2]*(p.elevation-fit.position.elevation);assert(depth>fit.near&&depth<fit.far);}
+});
+test("perspective fit recovers its original scale after portrait resize or a distant camera",()=>{
+  const camera={projection:"perspective",position:{x:410,y:-610,elevation:580},target:{x:0,y:10,elevation:15},fovDegrees:55,near:.1,far:2000},points=[];
+  for(const x of [-340,340])for(const y of [-260,260])for(const elevation of [0,180])points.push({x,y,elevation});
+  const wide=fitSpatialCamera(camera,points,2.5),portrait=fitSpatialCamera(wide,points,.4),restored=fitSpatialCamera(portrait,points,2.5);
+  assert(distance(portrait)>distance(wide));near(distance(restored),distance(wide));
+  const distant=zoomSpatialCamera(wide,10),refit=fitSpatialCamera(distant,points,2.5);
+  near(distance(refit),distance(wide));
+});
 test("direct orbit/pan/zoom preserve camera framing invariants without mutating authored values", () => {
   for (const projection of ["orthographic", "perspective"]) for (const angle of [-45,0,45,89]) {
     const c=orbitSpatialCameraPitch({projection, position:{x:120,y:-200,elevation:180}, target:{x:10,y:15,elevation:20}, height:300,fovDegrees:55,near:.1,far:2000},angle);

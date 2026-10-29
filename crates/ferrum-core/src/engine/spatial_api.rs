@@ -126,6 +126,13 @@ impl Engine {
     pub fn spatial_model_len(&self) -> usize {
         self.spatial_scene.models.draws.len()
     }
+    /// Cold authoring query, never called per entity in the frame loop.
+    pub fn spatial_model_draw_snapshot(&self, id: u32, generation: u32) -> Vec<u32> {
+        if self.scene_mode != SceneMode::Data {
+            return Vec::new();
+        }
+        self.spatial_scene.models.draw_snapshot((id, generation))
+    }
     /// Cold chunk/LOD policy. Does not change the render ABI or simulation world.
     pub fn configure_spatial_model_streaming(
         &mut self,

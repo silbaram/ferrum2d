@@ -190,6 +190,7 @@ mod tests {
             1,
         ];
         assert!(models.configure_streaming(&chunks, &rows, &[0., 100.]));
+        assert!(models.draw_snapshot((e.id, e.generation)).is_empty());
         let asset = |m: &SpatialModels| unsafe {
             std::slice::from_raw_parts(m.draws.as_ptr().cast::<u32>(), 20)[0]
         };
@@ -197,14 +198,21 @@ mod tests {
         assert_eq!(asset(&models), 1);
         models.build(&world, &camera(112.), &[], false, &Default::default());
         assert_eq!(asset(&models), 2);
+        let snapshot = models.draw_snapshot((e.id, e.generation));
+        assert_eq!(snapshot.len(), 20);
+        assert_eq!(snapshot[0], 2);
+        assert!(models.draw_snapshot((e.id, e.generation + 1)).is_empty());
         models.build(&world, &camera(95.), &[], false, &Default::default());
         assert_eq!(asset(&models), 2);
+        assert_eq!(models.draw_snapshot((e.id, e.generation))[0], 2);
         models.build(&world, &camera(88.), &[], false, &Default::default());
         assert_eq!(asset(&models), 1);
+        assert_eq!(models.draw_snapshot((e.id, e.generation))[0], 1);
         models.build(&world, &camera(260.), &[], false, &Default::default());
         assert_eq!(models.draws.len(), 1);
         models.build(&world, &camera(320.), &[], false, &Default::default());
         assert!(models.draws.is_empty());
+        assert!(models.draw_snapshot((e.id, e.generation)).is_empty());
         models.build(&world, &camera(260.), &[], false, &Default::default());
         assert!(models.draws.is_empty());
         // A light can still require the same far model. Identity frustum includes the origin bounds.
@@ -215,6 +223,7 @@ mod tests {
         assert_eq!(asset(&models), 2);
         let words = unsafe { std::slice::from_raw_parts(models.draws.as_ptr().cast::<u32>(), 20) };
         assert_eq!(words[2], 128);
+        assert_eq!(models.draw_snapshot((e.id, e.generation))[2], 128);
         assert!(models.streaming_asset_in_use(2));
         assert!(!models.configure_streaming(&chunks, &rows, &[0., 0.]));
         models.build(&world, &camera(180.), &[], false, &Default::default());
