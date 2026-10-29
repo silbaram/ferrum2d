@@ -1105,3 +1105,21 @@ test("duplication never silently drops agent-owned instance props", () => {
   inherited.undo();
   equal(inherited.exportPatch(), undefined);
 });
+
+test("light bindings and effects save, merge and undo as one scene-wide edit",()=>{
+  const source=document(),viewer=createScenePlacementViewer({document:source,viewport:{cssWidth:640,cssHeight:480}});
+  const environment=resolveSpatialEnvironmentSpec({lighting:{maxActiveLights:2,lights:[{position:{x:0,y:0,elevation:30},radius:100,spot:{direction:{x:0,y:0,elevation:-1}}}]},bloom:{},ambientOcclusion:{}});
+  viewer.updateSpatial([{kind:"setEnvironment",changes:{environment,lightBindings:{sprite:[0]}}}]);
+  const patch=viewer.exportPatch()!;
+  const merged=mergeScenePlacementPatch(source,JSON.parse(JSON.stringify(patch))).document;
+  deepEqual(merged.spatial!.lightBindings,{sprite:[0]});deepEqual(merged.spatial!.environment,environment);
+  resolveSceneAuthoringDocument(merged);
+  viewer.undo();equal(viewer.exportPatch(),undefined);viewer.redo();deepEqual(viewer.state().spatial!.lightBindings,{sprite:[0]});
+  const before=viewer.exportPatch();
+  const invalidBindings:Record<string,number[]>[]=[{sprite:[1]},{sprite:[0],model:[0]},{missing:[0]}];
+  for(const lightBindings of invalidBindings){
+    throws(()=>viewer.updateSpatial([{kind:"setEnvironment",changes:{environment,lightBindings}}]));deepEqual(viewer.exportPatch(),before);
+  }
+  viewer.updateSpatial([{kind:"setEnvironment",changes:{environment,lightBindings:{}}}]);
+  deepEqual(mergeScenePlacementPatch(source,viewer.exportPatch()!).document.spatial!.lightBindings??{},{});
+});

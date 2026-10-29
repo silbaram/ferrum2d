@@ -3126,3 +3126,23 @@ textarea {
 .placement-garden-hint[hidden] {
   display: none;
 }
+
+.placement-light-gizmos { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:6; }
+.placement-light-gizmos[hidden], .placement-light-gizmos [hidden] { display:none !important; }
+.placement-light-gizmos > svg { position:absolute; inset:0; width:100%; height:100%; fill:none; stroke:var(--accent, #f5a742); stroke-width:1; stroke-dasharray:4 3; opacity:.65; }
+.placement-light-gizmos > button { position:absolute; pointer-events:auto; width:24px; height:24px; padding:3px; color:var(--accent, #f5a742); background:#101820; border:1px solid #71562d; border-radius:2px; touch-action:none; }
+.placement-light-gizmos > button[aria-pressed="true"] { background:#49361c; border-color:#f5a742; }
+.placement-light-tools { position:absolute; z-index:1; display:flex; align-items:center; gap:4px; padding:5px; background:#0b1016; border:1px solid #2a313b; border-radius:3px; pointer-events:auto; }
+.placement-light-tools button { display:flex; align-items:center; gap:4px; touch-action:none; }
+.placement-light-gizmos svg:not(:first-child), .placement-light-gizmos button svg { width:16px; height:16px; stroke:currentColor; fill:none; }
+.placement-lighting-panel select { max-width:100%; }
+.placement-lighting-panel [data-placement-lighting-preset] {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+}
+.placement-lighting-panel [data-placement-lighting-budget] {
+  display: block;
+  margin: 4px 0 8px;
+  color: var(--fg-1);
+}

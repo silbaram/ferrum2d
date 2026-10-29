@@ -32,7 +32,7 @@
     "smoke:tile-multi": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/aseprite-project-smoke.mjs --tiles --multi-tilesets",
     "smoke:tile-project": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/aseprite-project-smoke.mjs --tiles",
     "test:placement-grid": "node --test tests/smoke/placement-grid.test.mjs",
-    "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs",
+    "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs tests/smoke/placement-spatial-pose.test.mjs",
     "test:placement-locale": "node --test tests/smoke/placement-locale.test.mjs",
     "test:placement-layers": "node --test tests/smoke/placement-layers.test.mjs",
     "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs tests/smoke/placement-asset-loading.test.mjs",

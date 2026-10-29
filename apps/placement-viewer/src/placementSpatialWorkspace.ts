@@ -1,3 +1,4 @@
+import { placementSpatialPose } from "./placementSpatialPose";
 import {
   setUiAttribute,
   setUiText,
@@ -1549,39 +1550,8 @@ export function installPlacementSpatialWorkspace(options: {
       frame ? view.project(point, frame) : undefined,
     ferrumPlacementSpatialExportDocument: authoredDocument,
   });
-  function pose(
-    id: string,
-    origin = state,
-    seen = new Set<string>(),
-  ): SpatialPoint & { yaw: number } {
-    if (seen.has(id)) throw new Error("Attachment cycle");
-    seen.add(id);
-    const instance = origin.instances.find((i) => i.instanceId === id);
-    if (!instance) throw new Error("Unknown spatial instance");
-    const attachment = origin.spatial?.attachments?.[id];
-    if (!attachment)
-      return {
-        x: instance.transform.x,
-        y: instance.transform.y,
-        elevation: instance.body?.heightSpan?.elevation ?? 0,
-        // Instance rotation is the sprite's local angle. Native body yaw starts
-        // at zero for authored roots and is accumulated separately by attachments.
-        yaw: 0,
-      };
-    const parent = pose(attachment.parent, origin, seen),
-      angle = parent.yaw;
-    return {
-      x:
-        parent.x +
-        (attachment.x ?? 0) * Math.cos(angle) -
-        (attachment.y ?? 0) * Math.sin(angle),
-      y:
-        parent.y +
-        (attachment.x ?? 0) * Math.sin(angle) +
-        (attachment.y ?? 0) * Math.cos(angle),
-      elevation: parent.elevation + (attachment.elevation ?? 0),
-      yaw: angle + ((attachment.yawDegrees ?? 0) * Math.PI) / 180,
-    };
+  function pose(id: string, origin = state): SpatialPoint & { yaw: number } {
+    return placementSpatialPose(origin, id);
   }
   function worldGeometry(target: Target): SpatialPoint[] {
     if (!state.spatial) return [];
@@ -2287,6 +2257,7 @@ export function installPlacementSpatialWorkspace(options: {
     ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag() || gameCamera.ownsGesture(),
     flushCameraInput: () => gameCamera.flushInput(),
     target: () => (active.target ? { ...active.target } : undefined),
+    clearSelection() { choose(); },
     selectSurface(id: string) {
       if (!state.spatial?.terrain.some((surface) => surface.id === id)) return;
       if (active.mode !== "spatial") changeMode("spatial");

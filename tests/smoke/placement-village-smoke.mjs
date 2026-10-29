@@ -14,6 +14,7 @@ import { smokeVillagePhysics } from "./placement-village-physics-smoke.mjs";
 import { smokeThreejsViewerUpgrades } from "./placement-threejs-upgrades-smoke.mjs";
 import { smokePlacementGameCameraLive } from "./placement-game-camera-live-smoke.mjs";
 import { smokePlacementModelPicking } from "./placement-model-picking-smoke.mjs";
+import { smokePlacementLighting, smokePlacementLightingSave } from "./placement-lighting-smoke.mjs";
 const artifact = resolve("artifacts/rpg-village");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url");
@@ -59,11 +60,16 @@ try {
     assert.equal(createHash("sha256").update(b).digest("hex"), a.sha256, id);
   }
   assert.equal(Object.keys(manifest.models).length, 14);
-  await page.goto(origin + "/?scene=" + (process.argv.includes("--model-picking-only") ? "hd2d" : "village"));
-  if (process.argv.includes("--model-picking-only")) await wait(() => window.ferrumPlacementViewerState?.instances.length === 3);
+  const smallFixture=process.argv.includes("--model-picking-only") || process.argv.includes("--lighting-only");
+  await page.goto(origin + "/?scene=" + (smallFixture ? "hd2d" : "village"));
+  if (smallFixture) await wait(() => window.ferrumPlacementViewerState?.instances.length === 3);
   else await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42);
   await page.locator("[data-placement-language]").selectOption("en");
-  if (process.argv.includes("--model-picking-only")) {
+  if (process.argv.includes("--lighting-only")) {
+    await page.evaluate(()=>window.ferrumRuntime.stop());
+    console.log("Spatial lighting UI",await smokePlacementLighting(page,30000,"spatial"));
+    console.log("Lighting save/reopen",await smokePlacementLightingSave(page));
+  } else if (process.argv.includes("--model-picking-only")) {
     await page.evaluate(()=>window.ferrumRuntime.stop());
     console.log("Model LOD and displayed-camera picking",await smokePlacementModelPicking(page));
   } else if (process.argv.includes("--game-camera-live-only")) {

@@ -32,6 +32,88 @@ fn setup() -> (Engine, Entity) {
     (e, a)
 }
 #[test]
+fn spatial_environment_v3_hemisphere_and_receiver_offsets_are_owned_and_atomic() {
+    let (mut e, actor) = setup();
+    let mut v = values(true);
+    v.resize(128, 0.);
+    v[112..123].copy_from_slice(&[1., 0., 1., 0., 0.6, 0.75, 1., 0.35, 0.3, 0.22, 0.14]);
+    v[123] = 0.5;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_environment_abi_version(), 3);
+    assert_eq!(e.spatial_environment_len(), 128);
+    assert_eq!(e.capture_spatial_environment(), v);
+    let pose = e.world.transform(actor);
+    let revision = e.spatial_terrain_revision();
+    let matrices = e.spatial_scene.environment.shadow_matrices.clone();
+    for (index, value) in [
+        (112, 2.),
+        (113, 2.),
+        (119, -1.),
+        (120, 2.),
+        (123, 11.),
+        (124, 0.5),
+        (125, 1.),
+    ] {
+        let mut bad = v.clone();
+        bad[index] = value;
+        assert!(!e.configure_spatial_environment(&bad));
+        assert_eq!(e.capture_spatial_environment(), v);
+        assert_eq!(e.world.transform(actor), pose);
+    }
+    v[119] = 0.6;
+    v[123] = 1.;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_scene.environment.shadow_matrices, matrices);
+    assert_eq!(e.spatial_terrain_revision(), revision);
+    assert!(e.configure_spatial_environment(&values(false)));
+    e.build_render_commands();
+    assert_eq!(e.spatial_environment_abi_version(), 1);
+    assert_eq!(e.spatial_environment_len(), 80);
+}
+#[test]
+fn spatial_environment_v3_progress_restores_both_shadow_offsets_atomically() {
+    let (mut e, actor) = setup();
+    let mut saved = values(true);
+    saved.resize(128, 0.);
+    saved[83..95].copy_from_slice(&[1., 0., 1., 0., 0.8, 1., 1., 1., 500., 128., 0.05, 256.]);
+    saved[112..123].copy_from_slice(&[1., 0., 1., 0., 0.6, 0.75, 1., 0.35, 0.3, 0.22, 0.14]);
+    saved[123] = 1.;
+    saved[124] = 2.;
+    assert!(e.configure_spatial_environment(&saved));
+    let epoch = e.data_scene_epoch();
+    let handles = [actor.id, actor.generation];
+    let states = e.capture_data_scene_progress(epoch, &handles);
+    let spatial = e.capture_data_scene_spatial_progress(epoch, &handles);
+    assert!(e.configure_spatial_environment(&values(false)));
+    e.world.set_transform(actor, Transform2D { x: 4., y: 0. });
+    let mut invalid = saved.clone();
+    invalid[125] = 1.;
+    assert!(!e.restore_data_scene_progress_with_spatial_environment(
+        epoch,
+        &handles,
+        &states,
+        &[],
+        &spatial,
+        &invalid
+    ));
+    assert_eq!(e.capture_spatial_environment(), values(false));
+    assert_eq!(e.world.transform(actor).unwrap().x, 4.);
+    assert!(e.restore_data_scene_progress_with_spatial_environment(
+        epoch,
+        &handles,
+        &states,
+        &[],
+        &spatial,
+        &saved
+    ));
+    e.build_render_commands();
+    assert_eq!(e.spatial_environment_abi_version(), 3);
+    assert_eq!(e.capture_spatial_environment(), saved);
+    assert_eq!(e.world.transform(actor).unwrap().x, 0.);
+}
+#[test]
 fn spatial_environment_is_optional_and_shadow_casters_survive_camera_culling() {
     let (mut e, a) = setup();
     e.build_render_commands();
@@ -396,4 +478,49 @@ fn spatial_environment_preflight_checks_prospective_camera_without_mutation() {
     assert_eq!(e.spatial_terrain_revision(), revision);
     assert_eq!(e.world.transform(actor), pose);
     assert!(e.configure_spatial_environment(&settings));
+}
+
+#[test]
+fn lighting_v4_selects_by_influence_and_tracks_bound_entity_without_mutating_authoring() {
+    let (mut e, actor) = setup();
+    let mut v = values(false);
+    v.resize(512, 0.);
+    v[136] = 1.;
+    v[137] = 6.;
+    v[138] = -1.;
+    for i in 0..6 {
+        let p = 192 + i * 20;
+        v[p..p + 8].copy_from_slice(&[i as f32 * 10., 32., 0., 100., 1., 0.5, 0.2, (i + 1) as f32]);
+    }
+    v[12..20].copy_from_slice(&[0., 32., 0., 100., 1., 0.5, 0.2, 1.]);
+    assert!(e.configure_spatial_environment(&v));
+    assert!(e.configure_spatial_light_bindings(&[5, actor.id, actor.generation], &[4.]));
+    e.build_render_commands();
+    assert_eq!(e.spatial_environment_abi_version(), 4);
+    assert_eq!(e.spatial_scene.environment.frame_values[1], 1.);
+    let before = e.spatial_scene.environment.frame_values[12];
+    e.world.set_transform(actor, Transform2D { x: 20., y: 10. });
+    e.build_render_commands();
+    assert_ne!(e.spatial_scene.environment.frame_values[12], before);
+    assert_eq!(e.capture_spatial_environment(), v);
+    assert!(!e.configure_spatial_light_bindings(&[16, actor.id, actor.generation], &[0.]));
+    assert!(e.spatial_scene.light_bindings[5].is_some());
+    let mut inconsistent_shadow = v.clone();
+    inconsistent_shadow[138] = 0.;
+    inconsistent_shadow[139] = 128.;
+    assert!(!e.configure_spatial_environment(&inconsistent_shadow));
+    assert_eq!(e.capture_spatial_environment(), v);
+    for (index, value) in [
+        (136, 0.),
+        (137, 17.),
+        (138, 6.),
+        (142, 1.),
+        (176, 1.),
+        (207, 1.),
+    ] {
+        let mut invalid = v.clone();
+        invalid[index] = value;
+        assert!(!e.configure_spatial_environment(&invalid), "field {index}");
+        assert_eq!(e.capture_spatial_environment(), v);
+    }
 }

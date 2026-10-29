@@ -32,6 +32,7 @@ export class WebGL2SpatialEnvironmentPass {
   private readonly emptyMatrix = new Float32Array(16);
   private readonly positionValues = new Float32Array(16);
   private readonly colorValues = new Float32Array(16);
+  private readonly coneValues = new Float32Array(32);
   private compositeUniforms: Record<string, WebGLUniformLocation> = {};
   private shadowUniforms?: SpatialGeometryUniforms & {
     light: WebGLUniformLocation;
@@ -66,7 +67,7 @@ export class WebGL2SpatialEnvironmentPass {
         "encode",
         "focus",
         "gradeValues",
-        "tint",
+        "tint", "bloom", "ao", "projectionSize",
       ])
         this.compositeUniforms[name] = spatialUniform(
           gl,
@@ -353,6 +354,11 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform1i(u.lighting, flags & 1 ? 1 : 0);
     gl.uniform1i(u.fog, flags & 2 ? 1 : 0);
     gl.uniform3fv(u.ambient, v.subarray(5, 8));
+    const hemisphere=v.length>=128 && v[112]===1;
+    gl.uniform4f(u.hemisphereDirection,hemisphere?v[113]:0,hemisphere?v[114]:1,hemisphere?v[115]:0,hemisphere?v[119]:0);
+    gl.uniform3fv(u.hemisphereSky,hemisphere?v.subarray(116,119):this.emptyMatrix.subarray(0,3));
+    gl.uniform3fv(u.hemisphereGround,hemisphere?v.subarray(120,123):this.emptyMatrix.subarray(0,3));
+    gl.uniform2f(u.shadowNormalBias,v[123] ?? 0,v[124] ?? 0);
     gl.uniform1i(u.lightCount, v[1]);
     for (let i = 0; i < 4; i++)
       for (let j = 0; j < 4; j++) {
@@ -361,6 +367,9 @@ export class WebGL2SpatialEnvironmentPass {
       }
     gl.uniform4fv(u.lightPosition, this.positionValues);
     gl.uniform4fv(u.lightColor, this.colorValues);
+    this.coneValues.fill(0);
+    if(v.length===512)this.coneValues.set(v.subarray(144,176));
+    gl.uniform4fv(u.lightCone, this.coneValues);
     gl.uniform1i(u.shadowIndex, v[2]);
     gl.uniform1f(u.shadowBias, v[4]);
     gl.uniform1i(u.shadowFilter, v.length > 80 ? v[95] : 0);
@@ -424,6 +433,9 @@ export class WebGL2SpatialEnvironmentPass {
     );
     gl.uniform4fv(u.gradeValues, v.subarray(64, 68));
     gl.uniform3fv(u.tint, v.subarray(68, 71));
+    gl.uniform1f(u.projectionSize,frame.camera[23]);
+    gl.uniform4f(u.bloom,v[128]??0,v[129]??0,(v[130]??0)*this.height/frame.camera[27],v[131]??0);
+    gl.uniform4f(u.ao,v[132]??0,v[133]??0,v[134]??0,v[135]??0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
   resourceStats(): SpatialEnvironmentGpuStats {

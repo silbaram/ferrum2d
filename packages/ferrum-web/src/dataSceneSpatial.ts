@@ -109,6 +109,8 @@ export interface DataSceneSpatialSpec {
   modelChunks?: Readonly<Record<string,{min:SpatialPoint;max:SpatialPoint;loadDistance:number;unloadDistance:number}>>;
   /** Native parent-body coordinates. Attached children require static heightSpan bodies. */
   attachments?: Readonly<Record<string,{parent:string;x?:number;y?:number;elevation?:number;yawDegrees?:number;inheritFloor?:boolean}>>;
+  /** Instance IDs mapped to authored light indices. Positions become local offsets. */
+  lightBindings?: Readonly<Record<string, readonly number[]>>;
   environment?: SpatialEnvironmentSpec;
   camera: SpatialCameraSpec;
   terrain: readonly SpatialTerrainSurface[];
@@ -487,7 +489,7 @@ export function resolveDataSceneSpatialSpec(
   const o = record(v, path);
   keys(
     o,
-    ["camera", "terrain", "billboards", "actor", "connections", "environment", "models", "attachments", "modelChunks"],
+    ["camera", "terrain", "billboards", "actor", "connections", "environment", "models", "attachments", "modelChunks", "lightBindings"],
     path,
   );
   const camera = resolveSpatialCameraSpec(o.camera, `${path}.camera`);
@@ -542,6 +544,18 @@ export function resolveDataSceneSpatialSpec(
     o.environment === undefined
       ? undefined
       : resolveSpatialEnvironmentSpec(o.environment, `${path}.environment`);
+  const lightBindings: Record<string,number[]> = Object.create(null);
+  if(o.lightBindings !== undefined) {
+    const seen=new Set<number>();
+    for(const [id,indices] of Object.entries(record(o.lightBindings,`${path}.lightBindings`))) {
+      if(!id || !Array.isArray(indices) || indices.length===0)throw sceneCompositionDiagnosticError(`${path}.lightBindings.${id}`,"requires a nonempty light index array");
+      lightBindings[id]=Array.from(indices,index=>{
+        if(!Number.isInteger(index) || index<0 || index>=(environment?.lighting?.lights.length??0) || seen.has(index) || environment?.lighting?.lights[index].followActor)throw sceneCompositionDiagnosticError(`${path}.lightBindings.${id}`,"requires unique authored light indices without followActor");
+        seen.add(index);return index;
+      });
+    }
+    if(seen.size && environment?.lighting) environment.lighting.maxActiveLights ??=4;
+  }
   const models: Record<string, SpatialModelInstanceSpec> = Object.create(null);
   if (o.models !== undefined) {
     const entries = Object.entries(record(o.models, `${path}.models`));
@@ -597,6 +611,7 @@ export function resolveDataSceneSpatialSpec(
     ...(o.modelChunks===undefined?{}:{modelChunks}),
     ...(o.attachments===undefined?{}:{attachments}),
     ...(environment === undefined ? {} : { environment }),
+    ...(Object.keys(lightBindings).length ? {lightBindings}:{}),
     ...(connections.length ? { connections } : {}),
     billboards,
     ...(actor
@@ -809,6 +824,7 @@ export function createSpatialApi(
     preflightDataSceneSpatialModels(input, origins = {}) {
       requireAlive();
       const spec=resolveDataSceneSpatialSpec(input), registry=spatialModelRegistry(rust);
+      if(Object.keys(spec.lightBindings??{}).length&&typeof rust.configure_spatial_light_bindings!=="function")return false;
       if(Object.keys(spec.attachments??{}).length&&typeof rust.configure_spatial_attachments!=='function')return false;
       if((spec.modelChunks!==undefined||Object.values(spec.models??{}).some(m=>m.lods!==undefined))&&typeof rust.configure_spatial_model_streaming!=='function')return false;
       let primitives=0,triangles=0;
@@ -944,6 +960,16 @@ export function createSpatialApi(
     configureDataSceneSpatial(input, handles) {
       requireAlive();
       const spec = resolveSpatialNormalTextures(resolveDataSceneSpatialSpec(input), textureId);
+      const lightMetadata:number[]=[], lightOffsets:number[]=[];
+      for(const [id,indices] of Object.entries(spec.lightBindings??{})) {
+        const h=handles[id];if(!h)throw sceneCompositionDiagnosticError(`spatial.lightBindings.${id}`,"must reference an applied instance");
+        const entityId=uint32Number(h.entityId,`spatial.lightBindings.${id}.entityId`), generation=uint32Number(h.entityGeneration,`spatial.lightBindings.${id}.entityGeneration`);
+        // Cold validation must precede scene replacement. A stale nonvisual target
+        // is not covered by billboard/model preflight and would otherwise fail after commit.
+        if(typeof rust.gameplay_entity_exists!=="function" || !rust.gameplay_entity_exists(entityId,generation))return false;
+        for(const index of indices) {lightMetadata.push(index,entityId,generation);lightOffsets.push(spec.models?.[id]?.elevation??spec.billboards[id]?.elevation??0);}
+      }
+      if(lightMetadata.length && typeof rust.configure_spatial_light_bindings!=="function")return false;
       if(Object.keys(spec.attachments??{}).length && typeof rust.configure_spatial_attachments!=='function')return false;
       if (spec.terrain.some(s => s.rampAxis === "x") &&
           (typeof rust.spatial_ramp_axis_abi_version !== "function" || rust.spatial_ramp_axis_abi_version() !== 1)) return false;
@@ -1042,6 +1068,7 @@ export function createSpatialApi(
               )
             : rust.configure_spatial_scene(...args);
       if (!accepted) return false;
+      if(lightMetadata.length && !rust.configure_spatial_light_bindings(Uint32Array.from(lightMetadata),Float32Array.from(lightOffsets)))return false;
       if(Object.keys(spec.attachments??{}).length){
         if(!rust.configure_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues)))return false;
       }

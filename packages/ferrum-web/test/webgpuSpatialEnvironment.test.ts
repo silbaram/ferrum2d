@@ -90,7 +90,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 112 ? 2 : 1,
+            version: values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -163,17 +163,28 @@ test("native environment/camera packing preserves actor focus and resets v2 fiel
   deepEqual(pass.validate(f, 320, 240), [160, 90]);
   pass.prepare(f, 160, 90);
   const u = device.uniforms[device.uniforms.length - 1];
-  equal(u.length, 512);
-  equal(u[383], 0);
-  deepEqual(u.subarray(0, 127), u.subarray(256, 383));
-  deepEqual(Array.from(u.subarray(112, 115)), [120, 240, 160]);
-  deepEqual(Array.from(u.subarray(120, 128)), [Math.fround(0.1), 2000, 1, 333, 160, 90, 240, 1]);
+  equal(u.length, 1280);
+  equal(u[1167], 0);
+  deepEqual(u.subarray(0, 527), u.subarray(640, 1167));
+  deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
+  deepEqual(Array.from(u.subarray(520, 528)), [Math.fround(0.1), 2000, 1, 333, 160, 90, 240, 1]);
   equal(u[96], 1);
   const legacy = frame({ fog: { color: [0, 0, 1], start: 10, end: 100 } });
   pass.prepare(legacy, 320, 240);
   equal(device.uniforms[device.uniforms.length - 1][96], 0);
   equal(device.uniforms[device.uniforms.length - 1][99], 0);
   pass.destroy();
+});
+test("v3 lighting fits the existing uniform allocation and clears when switching to legacy",()=>{
+  const {device,pass}=setup(),advanced=frame({lighting:{lights:[],hemisphere:{skyColor:[0,0,1],groundColor:[1,0,0]}}});
+  pass.prepare(advanced,320,240);const a=device.uniforms[device.uniforms.length-1];
+  equal(a[112],1);equal(a[114],1);equal(a[118],1);equal(a[120],1);
+  deepEqual(Array.from(a.subarray(512,515)),[120,240,160]);
+  equal(a[1167],0);deepEqual(a.subarray(0,527),a.subarray(640,1167));
+  const allocated=device.buffers.length;
+  pass.prepare(frame({lighting:{lights:[]}}),320,240);const b=device.uniforms[device.uniforms.length-1];
+  equal(device.buffers.length,allocated);deepEqual(Array.from(b.subarray(112,128)),Array(16).fill(0));
+  pass.destroy();equal(device.buffers.every(buffer=>buffer.destroyed===1),true);
 });
 test("asynchronous HDR allocation errors invalidate the target and surface instead of caching an invalid warm hit", async () => {
   const { device, pass } = setup(),

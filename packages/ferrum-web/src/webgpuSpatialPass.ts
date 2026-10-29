@@ -298,6 +298,9 @@ export class WebGpuSpatialPass {
       this.environment.textureBytes() + this.environment.shadows.textureBytes();
     stats.lightCount = frame.environment?.values[0]! & 1 ? frame.environment!.values[1] : 0;
     stats.directionalLightCount = frame.environment?.values[83] === 1 ? 1 : 0;
+    stats.authoredLightCount=frame.environment?.values[137]??frame.environment?.values[1]??0;
+    stats.bloomSampleBudget=frame.environment?.values[128]===1 && frame.environment.values[129]>0 ?32:0;
+    stats.ambientOcclusionSampleBudget=frame.environment?.values[132]===1 && frame.environment.values[133]>0 ?16:0;
     stats.dofSampleBudget =
       frame.environment?.values[0]! & 4 ? (frame.environment!.values[96] === 1 ? 25 : 13) : 0;
     this.cameraValues.fill(0);

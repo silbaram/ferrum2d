@@ -21,6 +21,54 @@ const spec: SpatialEnvironmentSpec = {
   colorGrading: { toneMapping: "aces" },
   fog: { start: 100, end: 300, color: [0.2, 0.3, 0.4] },
 };
+test("hemisphere and normal receiver bias use v3 without changing legacy payloads",()=>{
+  equal(compileSpatialEnvironment(spec).length,80);
+  const input: SpatialEnvironmentSpec={...spec,lighting:{...spec.lighting!,hemisphere:{direction:{x:1,y:2,elevation:3}},shadows:{lightIndex:0,normalBias:.5},directional:{direction:{x:0,y:0,elevation:1},shadows:{normalBias:.75}}}};
+  const v=compileSpatialEnvironment(input);equal(v.length,128);ok(validSpatialEnvironmentValues(v));equal(v[112],1);equal(v[123],.5);equal(v[124],.75);
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(v)),v);
+  const disabled=resolveSpatialEnvironmentSpec({...input,lighting:{...input.lighting!,enabled:false}});
+  equal(disabled.lighting!.hemisphere!.intensity,.35);
+  const off=compileSpatialEnvironment(disabled);ok(validSpatialEnvironmentValues(off));equal(off[112],0);equal(off[123],0);equal(off[124],0);
+  const hemiOff=resolveSpatialEnvironmentSpec({...input,lighting:{...input.lighting!,hemisphere:{...input.lighting!.hemisphere!,enabled:false}}});
+  equal(hemiOff.lighting!.hemisphere!.enabled,false);deepEqual(hemiOff.lighting!.hemisphere!.direction,input.lighting!.hemisphere!.direction);
+  equal(compileSpatialEnvironment(hemiOff)[112],0);
+  deepEqual(compileSpatialEnvironment({...hemiOff,lighting:{...hemiOff.lighting!,hemisphere:{...hemiOff.lighting!.hemisphere!,enabled:true}}}),v);
+  deepEqual(compileSpatialEnvironment({...spec,lighting:{...spec.lighting!,shadows:{lightIndex:0,normalBias:0}}}),compileSpatialEnvironment(spec));
+});
+test("v3 rejects invalid hemisphere and detached shadow offsets atomically",()=>{
+  const input={lighting:{lights:[],hemisphere:{}}};
+  for(const hemisphere of [{enabled:"false"},{direction:{x:0,y:0,elevation:0}},{direction:{x:0,y:0,elevation:NaN}},{skyColor:[1,0,2]},{groundColor:[-1,0,0]},{intensity:65},{unknown:true}])throws(()=>resolveSpatialEnvironmentSpec({lighting:{lights:[],hemisphere}}));
+  for(const normalBias of [-1,11,NaN,Infinity])throws(()=>resolveSpatialEnvironmentSpec({...spec,lighting:{...spec.lighting!,shadows:{lightIndex:0,normalBias}}}));
+  const good=compileSpatialEnvironment(input);
+  for(const [index,value] of [[112,2],[113,2],[119,-1],[120,2],[123,.5],[124,.5],[125,1]]){const bad=good.slice();bad[index]=value;equal(validSpatialEnvironmentValues(bad),false);}
+  const native={configure_spatial_environment:(v:Float32Array)=>v.length<=112},api=createSpatialApi(native as unknown as Engine,()=>{},()=>({width:100,height:100}));
+  equal(api.setDataSceneSpatialEnvironment(input),false);
+});
+test("explicit null lighting extensions are rejected before native mutation, even while disabled", () => {
+  let nativeCalls = 0;
+  const api = createSpatialApi({ configure_spatial_environment: () => { nativeCalls++; return true; } } as unknown as Engine,
+    () => {}, () => ({ width: 100, height: 100 }));
+  const invalids: Array<{ lighting: unknown; path: RegExp }> = [
+    ...["enabled", "direction", "skyColor", "groundColor", "intensity"].map(field => ({
+      lighting: { lights: [], hemisphere: { [field]: null } },
+      path: new RegExp(`lighting\\.hemisphere\\.${field}`),
+    })),
+    { lighting: { ...spec.lighting!, shadows: { lightIndex: 0, normalBias: null } }, path: /lighting\.shadows\.normalBias/ },
+    { lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: { normalBias: null } } }, path: /lighting\.directional\.shadows\.normalBias/ },
+  ];
+  for (const { lighting, path } of invalids) {
+    for (const enabled of [true, false]) {
+      const input = { lighting: { ...lighting as object, enabled } };
+      throws(() => resolveSpatialEnvironmentSpec(input), path);
+      throws(() => api.setDataSceneSpatialEnvironment(input as SpatialEnvironmentSpec), path);
+    }
+  }
+  equal(nativeCalls, 0);
+  const defaults = resolveSpatialEnvironmentSpec({ lighting: { lights: [], hemisphere: {} } });
+  deepEqual(defaults.lighting!.hemisphere, {
+    direction: { x: 0, y: 0, elevation: 1 }, skyColor: [0.6, 0.75, 1], groundColor: [0.3, 0.22, 0.14], intensity: 0.35,
+  });
+});
 test("disabled authored lighting retains settings but compiles no lights or shadows and preserves other effects", () => {
   const disabled = resolveSpatialEnvironmentSpec({ ...spec, lighting: { ...spec.lighting!, enabled: false } });
   equal(disabled.lighting!.enabled, false);
@@ -65,7 +113,7 @@ test("spatial environment rejects malformed fields and renderer numeric buffers 
         lights: [{ position: { x: 0, y: 0, elevation: 1 }, radius: 0 }],
       },
     },
-    { lighting: { lights: Array(5).fill(spec.lighting!.lights[0]) } },
+    { lighting: { lights: Array(17).fill(spec.lighting!.lights[0]) } },
     { lighting: { lights: [], shadows: { lightIndex: 0 } } },
     {
       lighting: {
@@ -169,5 +217,34 @@ test("directional f32 vectors stay byte-identical across repeated environment sa
       current = compileSpatialEnvironment(decodeSpatialEnvironment(current));
       deepEqual(current, original, `direction ${i}, save ${save}`);
     }
+  }
+});
+
+test("v4 preserves sixteen authored lights, selected cone budget and scene-only post effects", () => {
+  const original=compileSpatialEnvironment({
+    lighting:{maxActiveLights:2,lights:Array.from({length:16},(_,i)=>({position:{x:i*10,y:0,elevation:30},radius:100,intensity:i+1,
+      ...(i===15?{followActor:true,spot:{direction:{x:0,y:1,elevation:-1},angle:45,penumbra:.25}}:{})})),shadows:{lightIndex:15,normalBias:.2}},
+    bloom:{strength:.8,radius:10,threshold:1.2},ambientOcclusion:{strength:.5,radius:16,bias:.3},
+  });
+  equal(original.length,512);ok(validSpatialEnvironmentValues(original));equal(original[1],2);equal(original[2],0);
+  equal(original[12],150);equal(original[149],1);equal(original[137],16);
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(original)),original);
+  const detachedShadow=original.slice();detachedShadow[2]=-1;detachedShadow[3]=0;detachedShadow[123]=0;equal(validSpatialEnvironmentValues(detachedShadow),false);
+  for(const [index,value] of [[136,0],[137,17],[138,16],[139,300],[129,5],[130,25],[133,2],[135,-1],[142,1],[176,1],[207,1],[149,2]]) {
+    const bad=original.slice();bad[index]=value;equal(validSpatialEnvironmentValues(bad),false,`v4 field ${index}`);
+  }
+  for(const bad of [{bloom:null},{ambientOcclusion:{radius:0}},{lighting:{lights:[],maxActiveLights:5}},{lighting:{lights:Array(17).fill({position:{x:0,y:0,elevation:0},radius:1})}},{lighting:{lights:[{position:{x:0,y:0,elevation:0},radius:1,spot:{direction:{x:0,y:0,elevation:0}}}]}}])throws(()=>resolveSpatialEnvironmentSpec(bad));
+});
+
+test("v4 effects without lighting and disabled lighting keep valid native settings",()=>{
+  for(const input of [{bloom:{}},{ambientOcclusion:{}},{lighting:{enabled:false,maxActiveLights:2 as const,lights:[]},bloom:{strength:0}}]) {
+    const v=compileSpatialEnvironment(input);ok(validSpatialEnvironmentValues(v));deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(v)),v);
+  }
+});
+
+test("spot cone boundaries and f32 directions survive repeated progress round trips",()=>{
+  for(let i=0;i<600;i++) {
+    const v=compileSpatialEnvironment({lighting:{lights:[{position:{x:0,y:0,elevation:30},radius:100,spot:{direction:{x:Math.sin(i),y:Math.cos(i),elevation:-1},angle:i%3===0?1:i%3===1?89:1+(i%88),penumbra:(i%11)/10}}]}});
+    deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(v)),v,`cone ${i}`);
   }
 });

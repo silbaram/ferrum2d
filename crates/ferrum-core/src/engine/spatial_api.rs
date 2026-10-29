@@ -431,6 +431,36 @@ impl Engine {
         crate::spatial_scene::SpatialEnvironment::new(environment_values)
             .is_some_and(|environment| environment.camera_valid(&camera))
     }
+    /// Cold bulk binding. Entity generations are checked here and again when following.
+    pub fn configure_spatial_light_bindings(&mut self, metadata: &[u32], offsets: &[f32]) -> bool {
+        if self.spatial_scene.camera.is_none()
+            || !metadata.len().is_multiple_of(3)
+            || metadata.len() / 3 != offsets.len()
+            || offsets.len() > 16
+        {
+            return false;
+        }
+        let mut bindings = [None; 16];
+        for (entry, offset) in metadata.chunks_exact(3).zip(offsets) {
+            let index = entry[0] as usize;
+            let entity = crate::entity::Entity {
+                id: entry[1],
+                generation: entry[2],
+            };
+            if index >= 16
+                || bindings[index].is_some()
+                || !self.world.is_current_entity(entity)
+                || !offset.is_finite()
+                || offset.abs() > 1e6
+            {
+                return false;
+            }
+            bindings[index] = Some((entity, *offset));
+        }
+        self.spatial_scene.light_bindings = bindings;
+        self.spatial_scene.frame_active = false;
+        true
+    }
     pub fn configure_spatial_environment(&mut self, values: &[f32]) -> bool {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
             return false;
@@ -463,7 +493,11 @@ impl Engine {
             })
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 80 {
+        if self.spatial_scene.environment.value_len > 128 {
+            4
+        } else if self.spatial_scene.environment.value_len > 112 {
+            3
+        } else if self.spatial_scene.environment.value_len > 80 {
             2
         } else {
             1
@@ -523,14 +557,16 @@ impl Engine {
             if !proposed.configure_surfaces(values, metadata) {
                 return false;
             }
-            proposed.environment = crate::spatial_scene::SpatialEnvironment::new(
+            let Some(environment) = crate::spatial_scene::SpatialEnvironment::new(
                 self.spatial_scene
                     .environment
                     .values
                     .as_ref()
-                    .map_or(&[], |v| v.as_slice()),
-            )
-            .unwrap_or_default();
+                    .map_or(&[], |v| &v[..self.spatial_scene.environment.value_len]),
+            ) else {
+                return false;
+            };
+            proposed.environment = environment;
             proposed.bindings = self.spatial_scene.bindings.clone();
             if !proposed.shadow_budget_valid(&self.world) {
                 return false;

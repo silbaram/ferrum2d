@@ -189,6 +189,7 @@ export function resolveSceneAuthoringDocument(
       if(!Object.values(pose).every(Number.isFinite)||Math.abs(pose.x)>1e6||Math.abs(pose.y)>1e6||Math.abs(pose.elevation)>1e6||!Number.isFinite(Math.fround(pose.elevation+height)))throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'initial derived pose exceeds native limits');
       initialPoses.set(id,pose);return pose;
     };
+    for(const id of Object.keys(spatial.lightBindings??{}))if(!byId.has(id))throw sceneCompositionDiagnosticError(`${path}.spatial.lightBindings.${id}`,"unknown instance");
     for(const [id,a]of Object.entries(spatial.attachments??{})){
       const child=byId.get(id),parent=byId.get(a.parent);
       if(!child||!parent)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'must reference applied instances');

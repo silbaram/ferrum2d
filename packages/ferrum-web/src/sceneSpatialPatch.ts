@@ -13,7 +13,7 @@ export type SceneSpatialPatchOperation =
   | {
       /** Scene-level environment replacement; null removes all environment settings. */
       kind: "setEnvironment";
-      changes: { environment: SpatialEnvironmentSpec | null };
+      changes: { environment: SpatialEnvironmentSpec | null; lightBindings?: DataSceneSpatialSpec["lightBindings"] };
     }
   | {
       /** Scene-level camera replacement; no instance identity is involved. */
@@ -115,7 +115,7 @@ export interface SceneSpatialPatch {
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
 const fields = {
-  setEnvironment: ["environment"],
+  setEnvironment: ["environment", "lightBindings"],
   setCamera: ["camera"],
   setBillboardNormalTexture: ["normalTexture"],
   replaceModelAsset: ["asset", "contentId"],
@@ -203,11 +203,12 @@ export function applySceneSpatialPatch(
     )
       throw new Error("Invalid spatial patch operation");
     if (operation.kind === "setEnvironment") {
-      if (patch.version < 6 || Object.keys(operation.changes).length !== 1 ||
+      if (patch.version < 6 || Object.keys(operation.changes).some(key=>!["environment","lightBindings"].includes(key)) ||
           !hasOwn(operation.changes, "environment"))
         throw new Error("Environment replacement requires spatial patch version 6 and environment");
       if (operation.changes.environment === null) delete next.environment;
       else next.environment = resolveSpatialEnvironmentSpec(operation.changes.environment, "spatialPatch.environment");
+      if (hasOwn(operation.changes, "lightBindings")) next.lightBindings = structuredClone(operation.changes.lightBindings);
       continue;
     }
     if (operation.kind === "setCamera") {
@@ -403,7 +404,8 @@ export function diffSceneSpatialPatch(
       value && typeof value === "object" && "billboards" in value
         ? { ...value, camera: resolveSpatialCameraSpec(Reflect.get(value, "camera")),
             environment: Reflect.get(value, "environment") === undefined ? undefined : resolveSpatialEnvironmentSpec(Reflect.get(value, "environment")),
-            ...(!Object.keys(Reflect.get(value, "models") ?? {}).length ? { models: undefined } : {}) }
+            ...(!Object.keys(Reflect.get(value, "models") ?? {}).length ? { models: undefined } : {}),
+            ...(!Object.keys(Reflect.get(value, "lightBindings") ?? {}).length ? { lightBindings: undefined } : {}) }
         : value,
       function (_key, item: unknown) {
         if (item && typeof item === "object" && !Array.isArray(item))
@@ -416,8 +418,8 @@ export function diffSceneSpatialPatch(
   const operations: SceneSpatialPatchOperation[] = [];
   const environment = next.environment === undefined ? null : resolveSpatialEnvironmentSpec(next.environment);
   const sourceEnvironment = source.environment === undefined ? null : resolveSpatialEnvironmentSpec(source.environment);
-  if (stable(sourceEnvironment) !== stable(environment))
-    operations.push({ kind: "setEnvironment", changes: { environment } });
+  if (stable(sourceEnvironment) !== stable(environment) || stable(source.lightBindings??{})!==stable(next.lightBindings??{}))
+    operations.push({ kind: "setEnvironment", changes: { environment, ...(stable(source.lightBindings??{})!==stable(next.lightBindings??{})?{lightBindings:next.lightBindings??{}}:{}) } });
   const camera = resolveSpatialCameraSpec(next.camera);
   if (stable(resolveSpatialCameraSpec(source.camera)) !== stable(camera))
     operations.push({ kind: "setCamera", changes: { camera } });
@@ -623,6 +625,7 @@ export function sceneSpatialReferencesInstance(
     hasOwn(spatial.models ?? {}, id) ||
     spatial.actor?.instanceId === id ||
     hasOwn(spatial.attachments ?? {}, id) ||
+    hasOwn(spatial.lightBindings ?? {}, id) ||
     Object.values(spatial.attachments ?? {}).some(
       (attachment) => attachment.parent === id,
     )

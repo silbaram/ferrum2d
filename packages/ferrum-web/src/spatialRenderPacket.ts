@@ -92,9 +92,9 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
   if (
     environment !== undefined &&
     (!environment ||
-      (environment.version !== 1 && environment.version !== 2) ||
+      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4) ||
       !(environment.values instanceof Float32Array) ||
-      environment.values.length !== (environment.version === 1 ? 80 : 112) ||
+      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : 512) ||
       !validSpatialEnvironmentValues(environment.values) ||
       !(environment.shadowMatrices instanceof Float32Array) ||
       !(environment.shadowCasters instanceof Float32Array) ||

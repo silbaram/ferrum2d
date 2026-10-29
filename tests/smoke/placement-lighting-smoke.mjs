@@ -1,3 +1,4 @@
+import { smokeLightingUpgrade } from "./placement-lighting-upgrade-smoke.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu } from "./placement-panel-navigation.mjs";
@@ -26,7 +27,8 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     return {hash:hash>>>0,colored,width:canvas.width,height:canvas.height};
   });
   try {
-    await page.goto(new URL(parent.url()).origin+(mode==="spatial"?"/?scene=hd2d":"/"),{waitUntil:"networkidle"});
+    const url=new URL(parent.url());url.search=mode==="spatial"?"?scene=hd2d":"";
+    await page.goto(url.href,{waitUntil:"networkidle"});
     await wait(mode=>window.ferrumPlacementWorkspaceMode===mode && !!window.ferrumPlacementViewerRuntimeFrame,mode);
     await page.locator('[data-placement-language]').selectOption("en");
     await page.evaluate(()=>{
@@ -34,7 +36,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
       renderer.renderCommands=function(...args){
         const commands=args[1]??args[0], environment=commands.spatial?.environment?.values;
         const result=draw.apply(this,args);
-        window.__lightingProbe={flags:environment?.[0]??0,pointLights:environment?.[1]??0,sun:environment?.[83]??0,shadowLight:environment?.[2]??-1,sunShadowResolution:environment?.[92]??0,stats:structuredClone(result)};
+        window.__lightingProbe={flags:environment?.[0]??0,pointLights:environment?.[1]??0,sun:environment?.[83]??0,shadowLight:environment?.[2]??-1,sunShadowResolution:environment?.[92]??0,hemisphere:environment?.[112]??0,pointNormalBias:environment?.[123]??0,sunNormalBias:environment?.[124]??0,stats:structuredClone(result)};
         return result;
       };
     });
@@ -49,6 +51,16 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     if(mode==="spatial"){
       await page.locator('[data-placement-lighting-toggle="point-shadows"]').check();
       await page.locator('[data-placement-lighting-toggle="sun-shadows"]').check();
+      await page.locator('[data-placement-lighting-toggle="hemisphere"]').check();
+      await edit("hemisphere-intensity",.4);
+      await field("hemisphere-sky").evaluate(input=>{input.value="#99bbff";input.dispatchEvent(new Event("change"));});
+      const savedHemisphere=(await source()).spatial.environment.lighting.hemisphere;
+      await page.locator('[data-placement-lighting-toggle="hemisphere"]').uncheck();await paint();
+      assert.deepEqual((await source()).spatial.environment.lighting.hemisphere,{...savedHemisphere,enabled:false});
+      assert.equal((await page.evaluate(()=>window.__lightingProbe)).hemisphere,0);
+      await page.locator('[data-placement-lighting-toggle="hemisphere"]').check();await paint();
+      assert.deepEqual((await source()).spatial.environment.lighting.hemisphere,savedHemisphere);
+      await edit("sun-normal-bias",.35);await edit("point-normal-bias",.6);
       const strength=Math.max(...(await source()).spatial.environment.lighting.ambient);
       await field("ambient-color").evaluate(input=>{input.value="#ff8080";input.dispatchEvent(new Event("change"));});
       await paint();
@@ -67,6 +79,8 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     if(mode==="spatial"){
       assert(onProbe.flags&1);assert.equal(onProbe.pointLights,1);assert.equal(onProbe.sun,1);
       assert.equal(onProbe.shadowLight,0);assert.equal(onProbe.sunShadowResolution,512);
+      assert.equal(onProbe.hemisphere,1);assert(Math.abs(onProbe.pointNormalBias-.6)<1e-6);assert(Math.abs(onProbe.sunNormalBias-.35)<1e-6);
+      assert.equal(on.spatial.environment.lighting.hemisphere.intensity,.4);
       assert.equal(on.spatial.environment.lighting.lights[0].intensity,1.25);
       assert.deepEqual(on.spatial.camera,baseline.spatial.camera);
     }else{
@@ -110,8 +124,10 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     assert.deepEqual(lightOf(await source()),lightOf(baseline),"New tab must use its own light settings");
     await page.locator(`[data-placement-document-key=${JSON.stringify(originalKey)}]`).click();await paint();
     assert.deepEqual(await source(),good,"Returning to the tab must restore its light draft");
+    const advanced=mode==="spatial"?await smokeLightingUpgrade(page):undefined;
     for(const locale of ["ko","en"]){
       await page.locator('[data-placement-language]').selectOption(locale);await open();
+      if(mode==="spatial")await page.locator('[data-placement-lighting-toggle="hemisphere"]').scrollIntoViewIfNeeded();
       assert.equal(await page.locator('[data-placement-menu="lighting"] > summary').getAttribute("aria-label"),locale==="ko"?"조명":"Lighting");
       await page.screenshot({path:`${output}/${mode}-${locale}.png`,fullPage:true});
     }
@@ -120,7 +136,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     assert(panel.x>=0 && panel.y>=0 && panel.x+panel.width<=391 && panel.y+panel.height<=501);
     await page.screenshot({path:`${output}/${mode}-compact.png`,fullPage:true});
     assert.deepEqual(errors,[]);
-    const result={ok:true,mode,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
+    const result={ok:true,mode,advanced,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
     if(mode==="2d")result.saving=await smokePlacementLightingSave(parent,timeoutMs);
     await writeFile(`${output}/${mode}.json`,JSON.stringify(result,null,2)+"\n");
     return result;
@@ -134,8 +150,19 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
   for(const mode of ["2d","spatial"]){
     const page=await parent.context().browser().newPage({viewport:{width:1125,height:800}});
     const fixture=JSON.parse(await readFile(mode==="spatial"?placementSpatialRegressionFixture:placementRegressionFixture,"utf8"));
-    if(mode==="spatial")fixture.spatial.environment={...(fixture.spatial.environment??{}),lighting:{ambient:[0.3,0.3,0.3],lights:[]}};
+    if(mode==="spatial")fixture.spatial.environment={...(fixture.spatial.environment??{}),lighting:{
+      ambient:[0.3,0.3,0.3],
+      lights:[{position:{x:0,y:0,elevation:80},radius:180}],shadows:{lightIndex:0,normalBias:.6},
+      directional:{direction:{x:-1,y:-1,elevation:2},shadows:{normalBias:.35}},
+      hemisphere:{direction:{x:1,y:2,elevation:3},skyColor:[.2,.4,1],groundColor:[.4,.2,.1],intensity:.4},
+    }};
     else fixture.lighting={ambient:[0.05,0.08,0.12,0.5],pointLights:[]};
+    if(mode==="spatial"){
+      fixture.spatial.environment.bloom={strength:.7,radius:10,threshold:.8};fixture.spatial.environment.ambientOcclusion={strength:.6,radius:16,bias:.3};
+      fixture.spatial.environment.lighting.lights[0].spot={direction:{x:0,y:0,elevation:-1},angle:55,penumbra:.4};
+      fixture.spatial.environment.lighting.maxActiveLights=2;
+      const id=Object.values(fixture.sceneComposition.fragments)[0].instances[0].id;fixture.spatial.lightBindings={[id]:[0]};
+    }
     await page.addInitScript(document=>{
       let saved=JSON.parse(sessionStorage.getItem("lighting-save-fixture")??"null")??document;
       window.__lightingSaveRequests=[];
@@ -150,14 +177,20 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
     },fixture);
     try{
       const ready=()=>page.waitForFunction(mode=>window.ferrumPlacementWorkspaceMode===mode && window.ferrumPlacementViewerSaveEnabled===true,mode,{timeout:timeoutMs});
-      await page.goto(new URL(parent.url()).origin+(mode==="spatial"?"/?scene=hd2d":"/"),{waitUntil:"networkidle"});await ready();
+      const url=new URL(parent.url());url.search=mode==="spatial"?"?scene=hd2d":"";
+      await page.goto(url.href,{waitUntil:"networkidle"});await ready();
       await page.locator('[data-placement-language]').selectOption("en");await showPlacementMenu(page,"lighting");
-      const field=page.locator('[data-placement-lighting-field="ambient"]');
+      const field=page.locator(`[data-placement-lighting-field="${mode==="spatial"?"hemisphere-intensity":"ambient"}"]`);
       await field.fill(mode==="spatial"?"0.7":"0.8");
       assert.equal(await field.evaluate(e=>e===document.activeElement),true);
       const result=await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft());assert.equal(result.saved,true);
-      const saved=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
-      if(mode==="spatial")assert.equal(Math.max(...saved.spatial.environment.lighting.ambient),0.7);
+      let saved=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
+      if(mode==="spatial"){
+        assert.equal(saved.spatial.environment.lighting.hemisphere.intensity,0.7);
+        assert.deepEqual(saved.spatial.environment.lighting.hemisphere.skyColor,[.2,.4,1]);
+        assert.equal(saved.spatial.environment.lighting.shadows.normalBias,.6);
+        assert.equal(saved.spatial.environment.lighting.directional.shadows.normalBias,.35);
+      }
       else assert(Math.abs(saved.lighting.ambient[3]-0.2)<1e-8);
       assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerExportPatch()),undefined);
       await showPlacementMenu(page,"lighting");
@@ -168,10 +201,18 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
         assert(await field.evaluate(e=>e===document.activeElement && !e.disabled));
         assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerExportPatch()),undefined);
       }
-      await field.press("Escape");await page.reload({waitUntil:"networkidle"});await ready();
+      await field.press("Escape");
+      if(mode==="spatial"){
+        await page.locator('[data-placement-lighting-toggle="hemisphere"]').uncheck();
+        assert.equal((await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft())).saved,true);
+        const disabled=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
+        assert.deepEqual(disabled.spatial.environment.lighting.hemisphere,{...saved.spatial.environment.lighting.hemisphere,enabled:false});
+        saved=disabled;
+      }
+      await page.reload({waitUntil:"networkidle"});await ready();
       const reopened=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument());
       assert.deepEqual(reopened,saved);
-      results.push({mode,focusedSave:true,invalidInputBlocksSave:true,reopen:true,desktopHost:"simulated public bridge"});
+      results.push({mode,focusedSave:true,invalidInputBlocksSave:true,reopen:true,...(mode==="spatial"?{v4LightingPreserved:true,bindingsAndEffectsPreserved:true,disabledHemisphereRetained:true}:{}),desktopHost:"simulated public bridge"});
     }catch(error){await page.screenshot({path:`artifacts/viewer-lighting/${mode}-save-failure.png`,fullPage:true});throw error;}
     finally{await page.close();}
   }

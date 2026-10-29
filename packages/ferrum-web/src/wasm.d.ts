@@ -37,6 +37,7 @@ declare module "../pkg/ferrum_core.js" {
     clear_spatial_scene(): void;
     configure_spatial_model_streaming(chunks: Float32Array, metadata: Uint32Array, distances: Float32Array): boolean;
     preflight_spatial_attachments(metadata:Uint32Array,values:Float32Array,models:Uint32Array,styles:Float32Array):boolean;
+    configure_spatial_light_bindings(metadata:Uint32Array, offsets:Float32Array):boolean;
     configure_spatial_attachments(metadata:Uint32Array,values:Float32Array):boolean;
     capture_data_scene_spatial_rotations(epoch:number,handles:Uint32Array):Float64Array;
     restore_data_scene_progress_with_spatial_motion(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array,rotations:Float64Array,applyEnvironment:boolean):boolean;

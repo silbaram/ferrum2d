@@ -16,7 +16,7 @@ fn pointDepth(direction:vec3f)->f32{
  return textureLoad(pointMap,vec2i(clamp(uv*vec2f(size),vec2f(0.),vec2f(size)-1.)),i32(face),0);
 }
 fn pointVisibility(delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
- if(d<=e(4u)){return 1.;}
+ if(d<=max(e(4u),.000001)){return 1.;}
  let size=f32(textureDimensions(pointMap).x);let filtered=e(95u)==1.;
  let bias=e(4u)+2.*d/size*slopeBias(geometric,delta/d)*select(1.,3.,filtered);
  let axis= -delta/d;
@@ -29,7 +29,7 @@ fn pointVisibility(delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
  }}return visibility/9.;
 }
 fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
- let clip=env.shadow[6]*vec4f(world,1.);let q=clip.xyz/clip.w*.5+.5;
+ let clip=env.shadow[6]*vec4f(world+geometric*e(124u),1.);let q=clip.xyz/clip.w*.5+.5;
  if(any(q<vec3f(0.))||any(q>vec3f(1.))){return 1.;}
  let size=textureDimensions(sunMap);let filtered=e(95u)==1.;
  let bias=(e(93u)+2.*e(94u)/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered))/(e(91u)*2.);

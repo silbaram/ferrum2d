@@ -42,6 +42,10 @@ export interface SpatialRendererStats {
   effectDrawCalls: number;
   effectTextureBytes: number;
   dofSampleBudget: number;
+  /** Bounded scene-effect taps per shaded pixel; 0 when disabled. */
+  bloomSampleBudget?: number;
+  ambientOcclusionSampleBudget?: number;
+  authoredLightCount?: number;
 }
 export interface PhysicsDebugLineCamera {
   x: number;

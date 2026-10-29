@@ -102,6 +102,7 @@ export class WebGL2SpatialPass {
         "fogRange",
         "lightPosition",
         "lightColor",
+        "lightCone",
         "lightCount",
         "shadowIndex",
         "shadowBias",
@@ -110,6 +111,7 @@ export class WebGL2SpatialPass {
         "hasNormal", "modelNormalScale", "emissiveMap", "hasEmissive", "emissiveFactor", "modelUnlit",
         "receiveShadow",
         "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
+        "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
       ])
         this.uniforms[name] = uniform(`u_${name}`);
       for (const name of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER])
@@ -259,6 +261,9 @@ export class WebGL2SpatialPass {
       debugUploadBytes: 0,
       debugTruncated: debug?.truncated ?? false,
       lightCount: environment?.values[0]! & 1 ? environment!.values[1] : 0,
+      authoredLightCount: environment?.values[137] ?? environment?.values[1] ?? 0,
+      bloomSampleBudget: environment?.values[128] === 1 && environment.values[129]>0 ? 32 : 0,
+      ambientOcclusionSampleBudget: environment?.values[132] === 1 && environment.values[133]>0 ? 16 : 0,
       directionalLightCount: environment?.values[83] === 1 ? 1 : 0,
       shadowPassCount: 0,
       shadowDrawCalls: 0,

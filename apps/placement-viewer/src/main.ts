@@ -775,6 +775,7 @@ async function bootstrap(): Promise<void> {
         shell.updateFrame(frame);
         publishFrameStats(frame);
         spatialWorkspace?.frame(frame);
+        lightingControls?.frame(frame);
         workspaceDiagnostics?.frame(frame);
         performancePanel?.frame(frame);
       },
@@ -1264,7 +1265,7 @@ async function bootstrap(): Promise<void> {
         if (!saveEnabled || switching || documentSession?.isSaving()) return undefined;
         if (
           documentSession?.hasPointerGesture() ||
-          spatialWorkspace?.ownsGesture()
+          spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()
         )
           return undefined;
         documentSession?.finishEdit();
@@ -1485,7 +1486,7 @@ async function bootstrap(): Promise<void> {
         ),
       canEdit: () => spatialWorkspace?.mode() !== "game",
       canSave: () => activeDocument.saveEnabled,
-      hasExternalGesture: () => spatialWorkspace?.ownsGesture() ?? false,
+      hasExternalGesture: () => (spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()) ?? false,
       isNavigationGesture: (event) =>
         (spatialWorkspace?.mode() !== undefined &&
           spatialWorkspace.mode() !== "2d") ||
@@ -1537,7 +1538,9 @@ async function bootstrap(): Promise<void> {
       },
     });
     lightingControls = createPlacementLighting({
-      viewer, engine: runtimeEngine,
+      viewer, engine: runtimeEngine, canvas:shell.canvas,stage:shell.stage,
+      clearSelection:()=>{if(spatialWorkspace?.target())spatialWorkspace.clearSelection();},
+      hasObjectSelection:()=>spatialWorkspace?.target()!==undefined,
       key: () => activeDocument.key,
       mode: () => spatialWorkspace?.mode() ?? "2d",
       runtimeRevision: () => runtimeApplyRevision,

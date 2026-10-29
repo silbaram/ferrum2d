@@ -191,10 +191,12 @@ try {
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of environment) {
-            assert.equal(entry.comparisons.length, 16);
+            assert.equal(entry.comparisons.length, 38);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 16);
+              assert.equal(backend.rows.length, 38);
+              for(const name of ["advanced-point","spot-down","spot-up","bloom-zero","bloom","ao-baseline","ao","budget-many","hemisphere-sky","hemisphere-ground","hemisphere-facing","hemisphere-normal","hemisphere-disabled","unlit-hemisphere","point-offset-zero","point-offset","sun-offset-zero","sun-offset","point-pcf-offset-zero","point-pcf-offset","sun-pcf-offset-zero","sun-pcf-offset"])
+                assert(backend.rows.some(row=>row.name===name),`Missing lighting regression ${name}`);
               for (const row of backend.rows) {
                 const file = `environment-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(

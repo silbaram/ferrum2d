@@ -195,14 +195,14 @@ export class WasmBridge {
       const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
       const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
       const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
-      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112))
+      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112) || (e.spatial_environment_abi_version() === 3 && environmentLength === 128) || (e.spatial_environment_abi_version() === 4 && environmentLength === 512))
           || casterCount % 6 !== 0 || casterCount > 1024 * 6 || ![0, 16, 96, 112].includes(matrixCount))) {
         throw new Error("Unsupported spatial environment ABI");
       }
       const shadowRangeCount = environmentLength && typeof e.spatial_shadow_range_len === "function" ? e.spatial_shadow_range_len() : undefined;
       if (shadowRangeCount !== undefined && (e.spatial_shadow_submission_version() !== 1 || shadowRangeCount > 8960)) throw new Error("Unsupported shadow submission ABI");
       const environment = environmentLength ? {
-        version: e.spatial_environment_abi_version() as 1 | 2,
+        version: e.spatial_environment_abi_version() as 1 | 2 | 3 | 4,
         values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
         shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
         shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),
