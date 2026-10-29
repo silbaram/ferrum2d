@@ -880,13 +880,16 @@ route는 저장하지 않으며 v6 pose 복원 뒤 idle이다. 세부 제한과 
 연결은 authoring JSON에 저장하며 기존 v6 progress/공간 render ABI는 유지한다.
 
 선택 `DataSceneSpatialSpec.environment`와 `resolveSpatialEnvironmentSpec`은 `SpatialEnvironmentSpec`을
-검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`,
+검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialHemisphereLightSpec`, `SpatialLightingSpec`,
 `SpatialDepthOfFieldSpec`, `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
 점광원 4개·point shadow cube 1개·태양 방향광/그림자 1개·caster 1,024개·면당 64 batch로 제한한다.
 기본/고급 DOF는 최대 13/25 sample 위치이며 선택 actor 초점은 native view-axis depth를 사용한다.
 HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surface normal·world view depth를
 사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
-`spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2를 지원한다.
+`spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2, 반구광/normalBias용 numeric128 v3를 지원한다.
+선택형 `lighting.hemisphere`는 하늘·지면의 linear RGB와 최종 표면 법선으로 fill을 더한다. 기본 intensity는 0.35다.
+point/sun `shadows.normalBias`는 world 0..10(기본 0)의 그림자 조회 위치 보정이며 caster/물리 pose는 그대로다.
+기존 입력은 v1/v2 그대로 컴파일한다. 새 필드를 사용하는 문서는 함께 제공되는 v3 대응 JS/Wasm이 필요하다.
 pixelArt 고정 해상도·직교 표시 스냅·normal atlas·cast/receive·방향광·PCF를 선택할 수 있다.
 `SpatialBillboardSpec.normalTexture`는 저장 가능한 project texture 이름이며 기존 `normalTextureId`와 상호 배타적이다.
 `configureDataSceneSpatial`은 AssetHost registry로 해석하고, authoring apply의 `textureId` override도 지원한다.
@@ -935,3 +938,10 @@ preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
 이 filter는 flat Data Scene에서도 `hiddenEntities`를 받는다. 카메라가 없는 2D에서도 sprite와 소유 그림자만
 제외하며 collider/simulation은 유지한다. `null` 또는 빈 목록은 필터를 해제한다.
 호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.
+
+
+HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
+씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
+scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
+기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
+[Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.

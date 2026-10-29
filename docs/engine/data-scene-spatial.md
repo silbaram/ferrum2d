@@ -709,7 +709,7 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 | --- | --- |
 | `lighting.ambient` | linear RGB 0..4, 기본 `[0.15,0.15,0.15]` |
 | `lighting.enabled` | 선택 boolean, 생략/true는 조명 활성화. false는 작성된 광원·그림자 설정을 보존하고 조명/그림자 렌더만 끔 |
-| `lighting.lights` | 필수 배열, 최대 4개 점광원. 빈 배열은 ambient만 사용 |
+| `lighting.lights` | 필수 배열, 최대 16개 작성 광원. 프레임당 최대 4개를 선택하며 빈 배열은 ambient만 사용 |
 | `lights[].position` | world `x/y/elevation`, 각 ±1,000,000의 유한 f32 |
 | `lights[].radius` | 필수 0.1..1,000,000 world 단위, 범위 밖 기여 0 |
 | `lights[].color/intensity` | linear RGB 0..1 기본 white, 강도 0..64 기본 1 |
@@ -1143,7 +1143,7 @@ engine.setDataSceneSpatialEnvironment({ lighting: {
 ```
 
 `SpatialDirectionalLightSpec.direction`은 표면에서 태양을 향하는 nonzero world 벡터다.
-compiler가 정규화하며 color/intensity의 범위와 기본값은 point light와 같다. 점광원 최대 4개에
+compiler가 정규화하며 color/intensity의 범위와 기본값은 point light와 같다. 프레임당 점광원/스포트라이트 최대 4개에
 방향광 1개를 추가할 수 있다. shadows 생략 시 방향광 그림자는 꺼진다.
 이미 정규화된 f32 방향은 저장·복원 때 다시 정규화하지 않아 numeric buffer를 그대로 보존한다.
 `resolution`은 128/256/512/1024(기본 512), `extent`는 직교 맵 반폭 1..10,000(기본 256),
@@ -1154,6 +1154,40 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
+
+### 하늘·지면 반구광과 그림자 표면 보정
+
+```ts
+engine.setDataSceneSpatialEnvironment({ lighting: {
+  ambient: [0.15, 0.15, 0.15], lights: [],
+  hemisphere: {
+    skyColor: [0.68, 0.8, 1], groundColor: [0.4, 0.28, 0.16], intensity: 0.38,
+  },
+  directional: {
+    direction: { x: -1, y: -1, elevation: 2.4 },
+    shadows: { normalBias: 0.35 },
+  },
+} });
+```
+
+`SpatialHemisphereLightSpec`는 선택형 간접 fill이다. 기본 방향은 `+elevation`이며 `direction`에
+nonzero X/Y/elevation 벡터를 줄 수 있다. 최종 shading normal과 하늘 방향의 내적을 0..1로
+옮겨 `groundColor`와 `skyColor`를 혼합한다. 두 색은 linear RGB 0..1이며 기본값은 각각
+`[0.3,0.22,0.14]`, `[0.6,0.75,1]`이다. `intensity`는 0..64, 기본 0.35다.
+노멀맵·모델·billboard·지형에 동일하게 적용하지만 unlit에는 적용하지 않는다. 반구광 자체는
+그림자·광원 위치 감쇠·실시간 GI를 만들지 않으며 기존 ambient에 더해진다.
+`enabled`는 기본 `true`다. `false`이면 색·방향·세기는 작성 데이터에 보존하고 조명 계산만 끈다.
+반구광의 선택 필드와 아래 `normalBias`는 생략한 경우에만 기본값을 적용한다. 명시적인 `null`은 조명을 껐더라도 오류로 거절한다.
+
+점광원의 `lighting.shadows.normalBias`와 태양의 `lighting.directional.shadows.normalBias`는
+world 0..10, 기본 0이다. 기하 법선을 따라 shadow 조회 위치만 이동하며 실제 geometry·collider·
+Lambert 조명 위치·그림자 caster는 바꾸지 않는다. 노멀맵으로 bias 방향을 흔들지 않는다.
+기존 깊이 비교 `bias`와 함께 사용할 수 있으며 값이 과도하면 그림자가 표면에서 떨어진다.
+두 값과 반구광의 색·세기만 바꾸어도 shadow depth map은 재생성하지 않는다.
+
+참고한 [Three.js 반구광](https://threejs.org/docs/pages/HemisphereLight.html)과
+[normalBias](https://threejs.org/docs/pages/LightShadow.html)의 계산 원리를 현재 diffuse/HDR 경로에
+맞게 적용했다. 분석한 소스 revision은 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`이며 Three.js를 의존성으로 추가하지 않는다.
 
 ### 고급 DOF와 native actor 초점
 
@@ -1180,10 +1214,15 @@ fresh restore는 authored actor의 새 handle을 사용한다.
 ### 버퍼와 통계 호환
 
 기존 spatial render ABI v2/vertex 44 bytes/flat ABI는 유지한다. environment v1 numeric80도 읽고 쓴다.
-새 설정을 사용하는 경우에만 v2 numeric112를 사용한다. 80..82는 pixel 크기/snap, 83..94는 방향광,
+방향광·pixelArt·고급 DOF 설정만 사용하는 경우에는 v2 numeric112를 사용한다. 80..82는 pixel 크기/snap, 83..94는 방향광,
 95는 shadow filter, 96..98은 DOF 품질/actor focus/offset, 99는 frame 파생 focus, 100..111은 reserved 0이다.
 설정 입력의 99는 0이며 capture는 설정 원본을 반환한다. matrix는 point 96/sun 16 floats를 순서대로
 전달하므로 총 0/16/96/112다. 환경 없는 v5/v6 및 기존 v7 설정은 이전 capture 형태를 유지한다.
+다른 v4 기능 없이 반구광 또는 양수 normalBias를 작성한 경우 environment v3 numeric128을 사용한다.
+112는 반구광 flag, 113..115는 native XYZ 하늘 방향, 116..118은 sky RGB, 119는 intensity,
+120..122는 ground RGB, 123/124는 point/sun normalBias, 125..127은 reserved 0이다.
+v1/v2 문서는 기존 buffer와 화면을 유지하며 새 reader도 계속 읽는다. 새 필드는 기존 진행 v7/v8의
+environment JSON에 선택적으로 저장한다. v3를 지원하지 않는 과거 core는 설정을 거절한다.
 새 optional field를 쓰는 문서는 지원하는 JS/Wasm을 함께 설치해야 하며 과거 reader는 거절할 수 있다.
 authoring 적용과 진행 복원은 실제 적용할 camera/environment 조합을 native에서 먼저 검사한다.
 개별 필드가 유효해도 태양 shadow matrix를 유한하게 만들 수 없는 조합은 장면 교체 전에 거절하며
@@ -1532,3 +1571,75 @@ camera visibility/receiveShadow만의 변경, shadow mask가 없는 model의 변
 shadow map을 무효화하지 않는다. pose·선택 LOD·실제 cast/face 변경과 기존 terrain/caster/light/texture
 revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm view를 frame 사이에 보관하지 않는다.
 측정 가능한 구조적 비용을 줄이는 변경이며 특정 GPU의 지연 제거를 보장하는 계약은 아니다.
+
+
+## 광원 작성과 씬 효과
+
+`spatial.environment.lighting.lights`는 최대 16개 점광원/스포트라이트를 작성한다.
+`maxActiveLights`는 1/2/3/4(기본 4)이며 Rust가 카메라 target까지의 거리, 반경과 intensity로
+영향도를 정렬한다. 동점은 작성 순서로 결정한다. 그림자를 담당하는 광원은 첫 슬롯에 고정한다.
+`shadows.lightIndex`는 활성 슬롯이 아닌 작성 배열의 index(0..15)다. shader loop는 최대 4회이며
+광원을 추가해도 프레임별 entity 단위 JS/Wasm 호출을 하지 않는다.
+
+```json
+{
+  "lightBindings": { "lantern_0": [0] },
+  "environment": {
+    "lighting": {
+      "ambient": [0.04, 0.05, 0.09],
+      "maxActiveLights": 2,
+      "lights": [{
+        "position": { "x": 0, "y": 0, "elevation": 36 },
+        "radius": 160,
+        "color": [1, 0.62, 0.24],
+        "intensity": 3,
+        "spot": {
+          "direction": { "x": 0, "y": 1, "elevation": -1 },
+          "angle": 45,
+          "penumbra": 0.25
+        }
+      }]
+    },
+    "bloom": { "strength": 0.5, "radius": 8, "threshold": 1 },
+    "ambientOcclusion": { "strength": 0.6, "radius": 16, "bias": 0.3 }
+  }
+}
+```
+
+- `spot.direction`은 광원에서 바깥으로 향하는 nonzero X/Y/elevation 벡터다. compiler가 정규화한다.
+  `angle`은 조사 **반각** 1..89도(기본 45), `penumbra`는 0..1(기본 0.25)이며 0은 단단한 경계다.
+  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트 그림자도 기존 단일 cube budget을 사용한다.
+- `lightBindings`는 씬의 instance ID → 광원 index 배열이다. 하나의 광원에는 하나의 target만 허용한다.
+  position은 객체 위치·물리 elevation·시각 offset에 더하는 **월드 축 기준 offset**이다. 회전/scale은 상속하지 않는다.
+  대상은 cold apply에서 generation handle로 연결하고 native가 추적한다. 씬을 새로 열 때 ID를 새 handle에 연결한다.
+  대상이 삭제되거나 유효 범위를 벗어나면 해당 광원은 비춘 빛을 내지 않는다. 다른 객체의 재사용 handle을 추적하지 않는다.
+- `followActor: true`는 `spatial.actor`에 같은 offset 규칙으로 연결한다. 같은 광원에 lightBindings와 함께 쓸 수 없다.
+  runtime environment capture는 원본 light 배열을 저장하고 파생 위치·활성 순서는 저장하지 않는다.
+  객체 연결은 원본 scene의 `lightBindings`로 복구하므로 snapshot은 같은 씬 정의에 복원해야 한다.
+- `bloom`: strength 0..4(기본 0.5), radius 0.1..24 CSS px(기본 8), threshold 0..64(기본 1).
+  HDR 밝기 임계값 추출 → 최대 32개 위치의 Gaussian 가중 disk gather → 색상 조정/톤 매핑 → HUD 순서다.
+  scene target을 재사용하고 추가 render target을 만들지 않는다. 기존 전체 화면 Bloom과 별도이며 WebGPU fallback을 요구하지 않는다.
+- `ambientOcclusion`: strength 0..1(기본 0.6), radius 0.1..1000 world units(기본 12), bias 0..100(기본 0.2).
+  깊이로 view-space 위치/법선을 복원하고 인접 접촉을 어둡게 한다. 법선 4곳+접촉 12곳, 총 16개 위치로 제한하며
+  화면 반경은 최대 64 target px다. 배경/HUD는 제외한다. 화면에 없는 occluder와 숨은 다층 표면은 복원하지 않으며
+  조명이 합성된 scene 색에 적용하는 근사 효과다. Bloom을 더하기 전에 적용한다.
+- 두 효과는 속성을 생략하면 꺼진다. strength 0일 때 sample loop를 생략한다. pixelArt 해상도와 resize/DPR을 따른다.
+  `SpatialRendererStats`의 `authoredLightCount`, `lightCount`, `bloomSampleBudget`, `ambientOcclusionSampleBudget`으로 실제 비용을 확인한다.
+
+새 기능은 environment **v4 numeric512**를 사용한다. 128..135는 Bloom/AO, 136은 광원 budget,
+137은 작성 광원 수, 138..141은 원본 shadow index/resolution/bias/normalBias, 144..175는 활성 cone,
+192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
+기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
+기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
+WebGPU는 512 floats로 padding한 환경 + 카메라/7 shadow matrix를 2,560-byte uniform 슬롯 두 개에 담는다.
+render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
+
+뷰어는 **보기 → 조명**에서 분위기(낮/노을/밤/실내), 품질(낮음/균형/높음), 활성 광원 수와
+효과를 조절한다. 품질은 활성 1/2/4개, 그림자 128/512/1024, hard/PCF3를 적용하며 낮음은 추가 효과를 끈다.
+분위기는 기존 광원 배치·연결을 보존한다. `광원 조작 표시`를 켜면 아이콘 드래그로 이동하고 선택 후 높이/반경을 조절한다.
+화살표는 1 단위, Shift+화살표는 10 단위이며 Esc는 드래그 전체를 취소한다. 한 드래그는 한 Undo로 복원한다.
+`광원 연결`은 연결 전 위치를 보존하도록 offset을 바꾼다. 연결 해제·광원 삭제 시 남은 index도 정리한다.
+attachment 자식에 연결한 광원도 상위 몸체 위치·높이·회전을 반영한 anchor를 사용한다. 광원 자체의 offset은 계속 world-axis 기준이다.
+객체나 지형을 다시 선택하면 광원 조작 도구를 숨긴다. 키보드 조절은 좌표·반경의 허용 한계에서 멈춘다.
+scene-wide spatial patch v6의 `setEnvironment.changes.lightBindings`로 환경과 연결을 함께 저장/복원한다.
+마을 예제는 가로등 5개에 광원이 연결돼 있으며 밤 프리셋으로 비교할 수 있다.

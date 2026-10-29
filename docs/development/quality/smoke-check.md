@@ -2,6 +2,16 @@
 
 이 문서는 릴리스 후보나 큰 변경 후 실행할 smoke check 기준을 고정한다. 자동 검증은 빠른 회귀 확인을 담당하고, WebGL2 실제 렌더링/입력/오디오는 browser smoke와 수동 확인으로 보완한다.
 
+광원 v3 회귀는 기존 `smoke:spatial-webgpu-offscreen`의 environment fixture에 연결한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --environment-only`로 단독 실행할 수 있다.
+각 WebGL2/WebGPU·직교/원근 조합에서 30개 환경 상태를 1280×720/390×844와 DPR 1/2로 검사한다.
+반구광 sky/ground/방향·최종 노멀맵·unlit 불변, point/sun normalBias의 hard/PCF 실제 픽셀 이동과 변경 시 shadow cache 유지,
+추가 shadow pass 없음, v3+actor focus·HDR·DOF 동시 저장/복원과 renderer 픽셀 parity를 assert한다.
+단위 테스트는 legacy 80/112 buffer 보존, invalid v3 원자성, 명시적인 null 입력 거절, native 진행 복원, WebGPU 기존 uniform 할당 재사용·legacy 전환 초기화를 검사한다.
+공식 viewer 조명 smoke는 기존 팝오버의 반구광과 두 표면 보정 입력도 native 값·문서·Undo/Redo·언어·compact 경계로 검증한다.
+`node tests/smoke/placement-village-smoke.mjs --lighting-only`로 HD-2D 조명 조작만 실행하며 반구광 OFF/ON의 색·세기 보존도 확인한다.
+같은 명령의 저장 회귀는 2D/HD-2D 모두에서 초점을 둔 값의 저장·잘못된 입력 차단·재열기를 확인한다. HD-2D는 반구광과 두 normalBias, 꺼진 반구광의 색·방향·밝기 보존도 검사한다. 파일 호스트만 public bridge로 모사하며 작성·렌더·페이지 재로딩은 실제 경로를 실행한다.
+
 로컬 `artifacts/`는 현재 작업의 검토·검증과 설치 복구에 필요한 동안만 보관한다. 종료된 작업의
 결과는 확정 문서에 요약하고 중간 로그·반복 실행·임시 설치 사본은 삭제한다. 문서에 출력 경로가
 있다는 이유로 해당 디렉터리를 영구 보존하지 않는다. 과거 보고서가 필요하면 생성 명령부터 다시
@@ -1650,7 +1660,7 @@ Linux CI validate와 smoke:check에 연결한다. test-only target adapter는 sh
 지원 point/sun 그림자 요구사항과 runtime 초기 문서는 WebGPU를 유지하는지도 별도 검사한다.
 잘못된 packet·typed-view 이동·resource budget과 GPU async upload 실패/rollback/pin/destroy는 웹 단위 회귀로 보강한다.
 환경 fixture는 ambient/4 point/sun·billboard/model normal·unlit·fog·grade·표준/고품질 DOF·actor focus·pixelArt·debug·복합 효과의
-16개 상태를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
+기존 16개 상태와 반구광·normalBias 14개, 조명 v4 8개 상태를 합한 38개를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
 DOF 13/25 sample 예산과 변화 픽셀, 160×90 HDR 저장량, warm terrain/model upload0, fresh restore 전체 byte 차이0을 assert한다.
 WebGPU warm draw 구간의 실제 createTexture/createBuffer/createBindGroup 호출을 별도로 관측해 모두0인지 검사한다. readback용 buffer 생성은 draw 구간 밖이다.
 비교에는 채널3/상이 pixel1% 미만, 전용 DOF 상태에는 0.1% 미만을 적용한다. DOF 기준은 sample Y 방향 역전을 검출한다.
@@ -1690,3 +1700,19 @@ physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 �
 
 공간 debug renderer의 RGBA 선은 alpha 0/0.25/1의 실제 framebuffer 혼합과 비기본 blend factor/equation 복원을 검사한다.
 이 회귀는 기존 packed `smoke:spatial-scene`의 `spatial-debug-browser-fixture.mjs`에 포함한다.
+
+
+### 조명 작성·렌더링 v4 회귀
+
+Bloom 강도 0은 효과를 생략한 장면과 배경 픽셀이 같아야 한다. 객체/지형을 다시 선택하면 광원 도구를 해제하고, 광원 키보드 조작은 좌표·반경 한계에서 멈춰야 한다. 연결된 자식 객체는 상위 attachment의 위치·높이·yaw를 반영한 anchor로 광원을 표시하고 연결 변경 시 월드 위치를 보존한다.
+
+- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 38개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
+  스포트라이트 방향 반전, HDR Bloom, 접촉 음영의 실제 pixel 변화와 HUD 불변, 16개 중 활성 2개 선택,
+  warm GPU 할당/업로드 0, 새 engine 저장 복원, destroy를 검사한다. pixel parity 허용치를 효과 추가 때문에 늘리지 않는다.
+- `pnpm smoke:placement-spatial-workspace`의 lighting 회귀는 분위기 4개, 품질, cone 작성,
+  객체 연결/해제, 광원 드래그와 Undo/Redo, 높이/반경 Esc 취소 및 키보드 조절을 검사한다.
+  focused save와 재열기에서는 v4 효과/연결/반구광/normalBias를 함께 보존한다.
+- 빠른 조명 UI 재현은 `node tests/smoke/placement-village-smoke.mjs --lighting-only`를 사용한다.
+  저장 bridge는 테스트용 public host stub이며 renderer, authoring, native validation과 재열기는 실제 경로다.
+- native/SDK 계약 테스트는 v1..v4 수용, malformed 입력의 원자적 거절, 광원 budget/추적, 원본 capture,
+  scene-wide patch merge/Undo, 기존 shadow work limit을 검사한다.

@@ -440,6 +440,8 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 
 Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`다. 기존 문서는 조명 없이 유지된다.
 공간 문서와 함께 사용하면 거절하며 HD-2D는 `spatial.environment.lighting`을 사용한다.
+HD-2D의 반구광과 point/sun `shadows.normalBias`도 기존 environment 교체 patch와 문서 이력에 포함한다.
+공식 viewer의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
 점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
 점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 기존 renderer 계약을 따른다.
 꺼진 조명과 그림자 설정도 검증하고 보존한다. 문서를 적용하는 host는 `DataSceneView.lighting`으로
@@ -697,11 +699,11 @@ route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 �
 일반 capture v5와 기존 v2~v5 해시/읽기를 유지한다.
 
 선택 `spatial.environment`는 `SpatialEnvironmentSpec`이며 `resolveSpatialEnvironmentSpec`으로 검증한다.
-관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
+관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialHemisphereLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
 `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
-최대 4개 점광원과 1개 태양 방향광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
+최대 4개 점광원과 1개 태양 방향광·하늘/지면 반구광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
 개체별 cast/receive, 실제 view depth DOF·actor 초점·HDR 색 보정·안개를 작성한다.
-새 품질 설정은 환경 v2 numeric112이며 기존 v1 numeric80과 저장 v7 계약을 유지한다.
+품질 설정은 환경 v2 numeric112이며 반구광·normalBias를 함께 사용하면 v3 numeric128이다. 기존 v1 numeric80과 저장 v7 계약을 유지한다.
 field/default/range와 WebGL2 capability·caster/draw/메모리 상한은 [공간 계약](../data-scene-spatial.md)을 따른다.
 runtime setter로 바꾼 효과도 native progress에 저장하며 environment 진행이 있는 capture만 v7이다.
 null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기존 flat v5·공간 pose/camera v6 해시는 유지한다.
@@ -778,3 +780,10 @@ v3 공개 타입 `DataSceneCombatActorReference`, `DataSceneCombatSpawnedActorSn
 `DataSceneProjectileAnimationProgress`·`DataSceneCombatVisualProjectileSnapshot`·`DataSceneCombatVisualProgressSnapshot`은
 같은 공개 경로의 v4 저장 타입이다. 정적 shot의 animation은 null이며 회전은 복원된 속도/카메라에서 파생한다.
 [탄환 animation·회전 계약](../data-scene-authoring.md#탄환-atlas-animation이동-방향-회전-개발-소스)을 따른다.
+
+
+HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
+씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
+scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
+기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
+[Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.

@@ -18,6 +18,12 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
+Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512) numeric buffer를
+GLSL/WGSL이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
+command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
+그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
+WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+
 공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
 `raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
 포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.
@@ -910,7 +916,7 @@ assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명�
 모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
 OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
-선택 environment는 기존 v1 numeric80을 보존하고 새 품질 설정에만 v2 numeric112를 사용한다.
+선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512를 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
 소유한다. source camera/physics pose는 보존하고 직교 표시 camera만 opt-in pixel snap을 적용한다.
 `spatial_scene/shadows.rs`의 repr(C) 16-byte 범위는 point cube face 0..5와 sun face 6을 구분한다.
@@ -1390,3 +1396,18 @@ animation 또는 align 정의가 있으면 codec4의 header7/shot32를 사용한
 catalog 없는 장면과 생성 source serial이 있는 장면을 구분한다. codec1/2/3 byte layout은 유지한다.
 정의·clock·동적 UV·source를 전체 검증한 후 commit하며 각도는 저장하지 않고 다음 render에서 파생한다.
 TS snapshot union은 v4 semantic animation을 제공하고 구형 Wasm은 active scene 교체 전에 거절한다.
+
+
+### 광원 작성·선택 및 씬 효과 확장
+
+환경 v4는 작성 광원 최대 16개와 활성 광원 최대 4개를 분리한다. Rust는 immutable 원본,
+객체 generation binding과 camera 기반 영향도 선택을 소유하고 frame buffer에 위치/cone/활성 순서를 기록한다.
+그림자 소유 광원은 고정 슬롯을 사용한다. TS는 cold instance ID 연결, 검증, UI draft/history 및 GPU 제출만 담당한다.
+연결 대상이 없어져도 다른 generation을 추적하거나 원점에 빛을 비추지 않는다.
+WebGL2/WebGPU의 scene HDR composite에 접촉 음영(깊이 법선 4+접촉 12), Bloom(32)을 넣어
+톤 매핑과 HUD 전에 적용한다. sampler loop와 반경은 제한되며 warm frame에 target을 추가하지 않는다.
+WebGPU uniform은 환경 512+카메라 16+행렬 112 floats, 두 개의 2,560-byte 슬롯을 재사용한다.
+Authoring 뷰어의 광원 gizmo는 위치 작성 전용 DOM overlay이며 native buffer view는 frame 이후 보존하지 않는다.
+객체와 광원은 같은 authored attachment pose 계산을 사용하고 광원의 world 위치는 draft 동기화 때 계산해 카메라 프레임마다 객체 계층을 탐색하지 않는다.
+광원 연결의 정수 handle/generation은 cold configure에서 씬 교체 전에 확인하여 stale handle 실패가 기존 씬을 바꾸지 않게 한다.
+`lightBindings`와 환경은 scene-wide patch/Undo/저장 경로를 공유하고 기존 v1/v2/v3 환경 입력을 유지한다.
