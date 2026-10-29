@@ -11,6 +11,7 @@ import {
   createSceneInstanceHandleRegistry,
 } from "@ferrum2d/ferrum-web/authoring";
 import { check, pixels, difference, png } from "/fixture.mjs";
+import { loadTextureTransformFixtures, probeTextureTransforms } from "/texture-transform.mjs";
 
 function variant(bytes, edit) {
   const size = new DataView(bytes).getUint32(12, true),
@@ -143,6 +144,7 @@ async function probe(canvas, backend, projection) {
       ],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
+    const uvPicking = await loadTextureTransformFixtures(assets);
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -361,8 +363,8 @@ async function probe(canvas, backend, projection) {
       check(
         warm.stats.modelCount === 1 &&
           warm.stats.visibleModelCount === 1 &&
-          warm.stats.modelDrawCalls === 2 &&
-          warm.stats.modelTriangleCount === 14,
+          warm.stats.modelDrawCalls === (asset.startsWith("uv-") ? 1 : 2) &&
+          warm.stats.modelTriangleCount === (asset.startsWith("uv-") ? 2 : 14),
         "environment model pass missing",
         warm.stats,
       );
@@ -559,6 +561,7 @@ async function probe(canvas, backend, projection) {
     check(difference(noAo,lastPixels,3)>20,"contact occlusion did not change contact pixels");
     const many=await configure("budget-many",{lighting:{ambient:[.05,.05,.05],maxActiveLights:2,lights:Array.from({length:16},(_,i)=>({...brightPoint,position:{x:i*10-80,y:0,elevation:80},intensity:i/4}))}});
     check(many.spatial.environment.values[1]===2 && many.spatial.environment.values[137]===16,"native light budget ignored");
+    const uvChecks = await probeTextureTransforms(configure, () => lastPixels, sunEnvironment, read);
     const combined = await configure(
       "combined",
       {
@@ -603,7 +606,7 @@ async function probe(canvas, backend, projection) {
       "environment fresh restore changed frame",
     );
     check(!errors.length, "GPU environment errors", errors);
-    return { backend, projection, restored: true, frames, errors, rows };
+    return { backend, projection, restored: true, frames, errors, rows, uvPicking, uvComparisons: uvChecks.comparisons, uvFailurePreserved: uvChecks.failedLoadPreserved };
   } finally {
     const device = backend === "webgpu" ? renderer.gpuDevice() : undefined;
     engine?.destroy();

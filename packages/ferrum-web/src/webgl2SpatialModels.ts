@@ -1,3 +1,4 @@
+import { IDENTITY_SPATIAL_UV } from "./spatialTextureTransform.js";
 import { validateSpatialModelFrame } from "./spatialModelPacket.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { spatialModelResource, type SpatialModelResource as SpatialModelAsset, type SpatialModelPrimitive, type SpatialModelPreparation } from "./spatialModel.js";
@@ -10,6 +11,8 @@ const MODEL_PASS_COUNT = 8;
 export const MODEL_INSTANCE_BUFFER_BYTES = MODEL_CAPACITY * MODEL_PASS_COUNT * 64;
 export interface ModelMaterialUniforms {
     modelUnlit: WebGLUniformLocation;
+    modelNormalUvTransform: WebGLUniformLocation;
+    modelEmissiveUvTransform: WebGLUniformLocation;
     normalMap: WebGLUniformLocation;
     hasNormal: WebGLUniformLocation;
     modelNormalScale: WebGLUniformLocation;
@@ -331,7 +334,10 @@ export class WebGL2SpatialModels {
                 // The enclosing pass no longer needs synchronous getVertexAttrib save/restore.
                 gl.uniform4fv(u.modelColor, p.source.color);
                 gl.uniform1f(u.modelCutoff, p.source.alphaCutoff);
+                gl.uniformMatrix3fv(u.modelUvTransform, false, p.source.uvTransform ?? IDENTITY_SPATIAL_UV);
                 if (material) {
+                    gl.uniformMatrix3fv(material.modelNormalUvTransform, false, p.source.normal?.uvTransform ?? IDENTITY_SPATIAL_UV);
+                    gl.uniformMatrix3fv(material.modelEmissiveUvTransform, false, p.source.emissive?.uvTransform ?? IDENTITY_SPATIAL_UV);
                     gl.uniform1i(material.modelUnlit,p.source.unlit?1:0);
                     let samplerIndex = 1;
                     gl.uniform1i(material.hasNormal, p.source.normal ? 1 : 0);

@@ -1,3 +1,4 @@
+import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 export const spatialShadowSamplingWGSL = `
 @group(2) @binding(1) var pointMap:texture_depth_2d_array;
@@ -64,7 +65,7 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) world:vec3f,@loca
 export const spatialShadowModelWGSL =
   spatialShadowCameraWGSL +
   `
-struct Material{color:vec4f,emission:vec4f,params:vec4f};
+${spatialModelMaterialWGSL}
 @group(1) @binding(0) var<uniform> material:Material;
 @group(1) @binding(1) var colorSampler:sampler;
 @group(1) @binding(2) var colorTexture:texture_2d<f32>;
@@ -75,7 +76,7 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) world:vec3f,@loca
  var f:Fragment;f.position=clip;f.world=world.xyz;f.uv=v.uv;return f;
 }
 @fragment fn fs_main(f:Fragment)->@builtin(frag_depth) f32{
- if(textureSample(colorTexture,colorSampler,f.uv).a*material.color.a<material.params.x){discard;}
+ if(textureSample(colorTexture,colorSampler,modelUv(f.uv,material.baseUv)).a*material.color.a<material.params.x){discard;}
  if(camera.params.x>0.){return f.position.z;}
  return clamp(length(f.world-camera.light.xyz)/camera.light.w,0.,1.);
 }`;

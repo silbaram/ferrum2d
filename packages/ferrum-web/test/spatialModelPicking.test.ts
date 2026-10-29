@@ -76,3 +76,14 @@ test("cold model snapshots use native selected LOD, visibility, generation and o
   throws(()=>api.dataSceneSpatialModelDrawSnapshot({...handle,entityId:NaN}));
   const old=createSpatialApi({} as Engine,()=>{},()=>({width:800,height:600}));equal(old.dataSceneSpatialModelDrawSnapshot(handle),undefined);
 });
+
+test("masked picking transforms UV before repeat/mirror/clamp while retaining triangle geometry", () => {
+  const pixels = new Uint8ClampedArray([255,255,255,0, 255,255,255,255]);
+  const ray = { origin: [-.5,-.5,2] as const, direction: [0,0,-1] as const };
+  equal(raycastSpatialModel(asset([primitive({ image: 0, alphaCutoff: .5 })], pixels), ray), undefined);
+  for (const [mode, offset] of [[33071, 2], [10497, 1.5], [33648, 1]] as const) {
+    const transformed = asset([primitive({ image: 0, alphaCutoff: .5, sampler: [9728,9728,mode,mode],
+      uvTransform: new Float32Array([1,0,0,0,1,0,offset,0,1]) })], pixels);
+    equal(raycastSpatialModel(transformed, ray)?.distance, 2);
+  }
+});

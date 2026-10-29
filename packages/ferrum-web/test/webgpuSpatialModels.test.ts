@@ -300,7 +300,10 @@ test("WebGPU model material keeps color/data texture identities, mipmaps, MASK a
     device.samplers.some((s) => s.minFilter === "nearest" && s.lodMaxClamp === 0),
     true,
   );
-  const material = device.writes.find((w) => (w.buffer as Resource).descriptor.size === 48)!.values;
+  const material = device.writes.find((w) => {
+    const descriptor = (w.buffer as Resource).descriptor as GPUBufferDescriptor;
+    return descriptor.size === 144 && (descriptor.usage & GPUBufferUsage.UNIFORM) !== 0;
+  })!.values;
   equal(material[8], 0.5);
   equal(material[11], 1);
   equal(device.pipelines[3].vertex.buffers![0].arrayStride, 48);

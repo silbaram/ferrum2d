@@ -1,3 +1,4 @@
+import { SPATIAL_MODEL_MATERIAL_BYTES, spatialModelMaterialValues } from "./webgpuSpatialMaterial.js";
 import { spatialShadowModelWGSL } from "./webgpuSpatialShadows.js";
 import { spatialModelWGSL } from "./webgpuSpatialShaders.js";
 import {
@@ -546,7 +547,7 @@ export class WebGpuSpatialModels {
           });
           owned.push(index);
           const uniform = this.device.createBuffer({
-            size: 48,
+            size: SPATIAL_MODEL_MATERIAL_BYTES,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
           });
           owned.push(uniform);
@@ -555,15 +556,7 @@ export class WebGpuSpatialModels {
           this.device.queue.writeBuffer(
             uniform,
             0,
-            new Float32Array([
-              ...p.color,
-              ...p.emissiveFactor,
-              0,
-              p.alphaCutoff,
-              Number(!!p.unlit),
-              p.normal?.scale ?? 1,
-              Number(!!p.normal),
-            ]),
+            spatialModelMaterialValues(p),
           );
           const refs = [
             p.image === undefined ? undefined : { image: p.image, sampler: p.sampler },
@@ -588,8 +581,8 @@ export class WebGpuSpatialModels {
           });
           const group = this.device.createBindGroup({ layout: this.materialLayout, entries });
           a.primitives.push({ source: p, vertex, index, uniform, group });
-          a.bytes += p.vertices.byteLength + p.indices.byteLength + 48;
-          a.uploadBytes += p.vertices.byteLength + p.indices.byteLength + 48;
+          a.bytes += p.vertices.byteLength + p.indices.byteLength + SPATIAL_MODEL_MATERIAL_BYTES;
+          a.uploadBytes += p.vertices.byteLength + p.indices.byteLength + SPATIAL_MODEL_MATERIAL_BYTES;
         } catch (error) {
           for (const b of owned) b.destroy();
           throw error;

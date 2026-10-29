@@ -164,3 +164,13 @@ test("profile, unsupported root input and required features fail before dependen
     const f=fixture();f.json.extensionsRequired=["KHR_draco_mesh_compression"];
     await server({"/scene.gltf":encode(f.json)},async calls=>{await rejects(loadSpatialGltf("https://a.test/scene.gltf",options),/unsupported/);equal(calls.length,1);});
 });
+
+
+test("null required extensions reject before any dependency fetch", async () => {
+    const f = fixture();
+    Object.assign(f.json, { extensionsRequired: null });
+    await server({ "/scene.gltf": encode(f.json), "/scene.bin": f.bin }, async calls => {
+        await rejects(loadSpatialGltf("https://a.test/scene.gltf", options), /required extensions/);
+        equal(calls.length, 1);
+    });
+});

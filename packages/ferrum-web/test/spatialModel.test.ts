@@ -154,7 +154,7 @@ test("GLB rejects malformed accessors, hierarchy, extensions, materials and tran
         j => j.accessors[3].count = 23, j => j.nodes[1].translation = [1e39, 0, 0],
     ];
     for (const edit of edits)
-        await rejects(loadSpatialGlb(await fixture(edit), { materialProfile: "diffuse" }), /Spatial GLB/);
+        await rejects(loadSpatialGlb(await fixture(edit), { materialProfile: "diffuse" }), /Spatial (GLB|glTF)/);
     const aborted = new AbortController();
     aborted.abort();
     await rejects(loadSpatialGlb(await fixture(), { materialProfile: "diffuse", signal: aborted.signal }), /abort/i);

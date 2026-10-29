@@ -197,6 +197,7 @@ export class WebGL2SpatialEnvironmentPass {
         instanced: spatialUniform(gl, this.shadow, "u_instanced"),
         modelColor: spatialUniform(gl, this.shadow, "u_modelColor"),
         modelCutoff: spatialUniform(gl, this.shadow, "u_modelCutoff"),
+        modelUvTransform: spatialUniform(gl, this.shadow, "u_modelUvTransform"),
         texture: spatialUniform(gl, this.shadow, "u_texture"),
         textured: spatialUniform(gl, this.shadow, "u_textured"),
         flip: spatialUniform(gl, this.shadow, "u_flip_y"),

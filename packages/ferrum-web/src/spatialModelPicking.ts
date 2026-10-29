@@ -1,3 +1,4 @@
+import { spatialTransformedUv } from "./spatialTextureTransform.js";
 import { spatialModelResource, type SpatialModelAsset } from "./spatialModel.js";
 
 export interface SpatialModelRay {
@@ -55,7 +56,8 @@ export function raycastSpatialModel(asset: SpatialModelAsset, ray: SpatialModelR
         let alpha = p.color[3] ?? 1;
         const image = p.image === undefined ? undefined : resource.images[p.image];
         if (image) {
-          const uv = [3,4].map(k => v[a+k]*(1-u-w)+v[b+k]*u+v[c+k]*w),
+          const sourceUv = [3,4].map(k => v[a+k]*(1-u-w)+v[b+k]*u+v[c+k]*w),
+            uv = spatialTransformedUv(sourceUv[0], sourceUv[1], p.uvTransform),
             wrap = (value: number, mode: number) => mode === 33071 ? Math.max(0,Math.min(1,value))
               : mode === 33648 ? 1-Math.abs(((value%2)+2)%2-1) : value-Math.floor(value),
             x = Math.min(image.width-1,Math.floor(wrap(uv[0],p.sampler[2])*image.width)),

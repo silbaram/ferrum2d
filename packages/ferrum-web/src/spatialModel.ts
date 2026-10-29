@@ -1,3 +1,4 @@
+import { resolveSpatialTextureTransform, validateSpatialRequiredExtensions, validateSpatialTransformedUvs } from "./spatialTextureTransform.js";
 import { SpatialModelImageReader } from "./spatialModelImage.js";
 /** Bounded static GLB input. This is a diffuse conversion profile, not a glTF PBR renderer. */
 export interface SpatialModelPrimitive {
@@ -6,8 +7,10 @@ export interface SpatialModelPrimitive {
     readonly indices: Uint32Array;
     readonly color: readonly number[];
     readonly image?: number;
-    readonly normal?: { readonly image: number; readonly sampler: readonly [number, number, number, number]; readonly scale: number };
-    readonly emissive?: { readonly image: number; readonly sampler: readonly [number, number, number, number] };
+    /** Optional KHR_texture_transform matrix for the base-color texture. */
+    readonly uvTransform?: Float32Array;
+    readonly normal?: { readonly image: number; readonly sampler: readonly [number, number, number, number]; readonly uvTransform?: Float32Array; readonly scale: number };
+    readonly emissive?: { readonly image: number; readonly sampler: readonly [number, number, number, number]; readonly uvTransform?: Float32Array };
     /** Linear emission multiplier; independent of diffuse illumination, not a scene light. */
     readonly emissiveFactor: readonly number[];
     /** glTF unlit: base color/alpha only; scene fog and depth still apply. */
@@ -61,7 +64,8 @@ export function createSpatialModelAsset(resource: SpatialModelResource): Spatial
         bounds: Object.freeze([...resource.bounds]),
         primitiveCount: resource.primitives.length,
         triangleCount: resource.primitives.reduce((n, p) => n + p.indices.length / 3, 0),
-        byteLength: resource.primitives.reduce((n, p) => n + p.vertices.byteLength + p.indices.byteLength, 0)
+        byteLength: resource.primitives.reduce((n, p) => n + p.vertices.byteLength + p.indices.byteLength
+            + (p.uvTransform?.byteLength ?? 0) + (p.normal?.uvTransform?.byteLength ?? 0) + (p.emissive?.uvTransform?.byteLength ?? 0), 0)
             + resource.images.reduce((n, i) => n + i.pixels.byteLength, 0),
         diagnostics: Object.freeze([...resource.diagnostics]),
     });
@@ -193,8 +197,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
     const gltf = obj(json), asset = obj(gltf.asset);
     if (asset.version !== "2.0" || (asset.minVersion !== undefined && asset.minVersion !== "2.0"))
         return fail("requires glTF 2.0");
-    if (list(gltf.extensionsRequired ?? []).some(x=>!['KHR_materials_unlit','KHR_materials_emissive_strength'].includes(String(x))))
-        return fail("required extensions are unsupported");
+    validateSpatialRequiredExtensions(gltf.extensionsRequired);
     if (list(gltf.animations ?? []).length || list(gltf.skins ?? []).length)
         return fail("animation/skin is unsupported");
     const buffers = list(gltf.buffers, 1);
@@ -313,8 +316,8 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                     if (attrs.TEXCOORD_0 === undefined)
                         return fail("textured primitive requires TEXCOORD_0");
                     const ref = obj(value);
-                    if ((ref.texCoord ?? 0) !== 0 || ref.extensions !== undefined)
-                        return fail("unsupported texture coordinates/transform");
+                    const uvTransform = resolveSpatialTextureTransform(ref);
+                    validateSpatialTransformedUvs(uv, uvTransform);
                     const tex = obj(textures[integer(ref.index, textures.length - 1)]);
                     if (tex.extensions !== undefined) return fail("texture extension is unsupported");
                     const image = integer(tex.source, rawImages.length - 1);
@@ -322,7 +325,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                     const sampler: [number, number, number, number] = [integer(s.minFilter ?? 9729), integer(s.magFilter ?? 9729), integer(s.wrapS ?? 10497), integer(s.wrapT ?? 10497)];
                     if (![9728, 9729, 9984, 9985, 9986, 9987].includes(sampler[0]) || ![9728, 9729].includes(sampler[1]) || sampler.slice(2).some(x => ![33071, 33648, 10497].includes(x)))
                         return fail("invalid sampler");
-                    return { image, sampler };
+                    return { image, sampler, ...(uvTransform ? { uvTransform } : {}) };
                 };
                 const base = pbr.baseColorTexture === undefined ? undefined : textureRef(pbr.baseColorTexture);
                 if (base && alphaMode === "OPAQUE") opaqueImages.add(base.image);
@@ -365,7 +368,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                     }
                     at.forEach((x, k) => { bounds[k] = Math.min(bounds[k], Math.fround(x)); bounds[k + 3] = Math.max(bounds[k + 3], Math.fround(x)); });
                 }
-                primitives.push({ vertices, indices: Uint32Array.from(idx), color, sampler: base?.sampler ?? [9729,9729,10497,10497], alphaCutoff, doubleSided, emissiveFactor, unlit, ...(base ? { image: base.image } : {}), ...(normal ? { normal } : {}), ...(emissive ? { emissive } : {}) });
+                primitives.push({ vertices, indices: Uint32Array.from(idx), color, sampler: base?.sampler ?? [9729,9729,10497,10497], alphaCutoff, doubleSided, emissiveFactor, unlit, ...(base ? { image: base.image, ...(base.uvTransform ? { uvTransform: base.uvTransform } : {}) } : {}), ...(normal ? { normal } : {}), ...(emissive ? { emissive } : {}) });
             }
         for (const child of list(n.children ?? [], 128))
             visit(child, m, depth + 1);
@@ -381,7 +384,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
         // assets are baked into material batches before the unchanged submission gate.
         const groups = new Map<string, SpatialModelPrimitive[]>();
         for (const p of primitives) {
-            const key = JSON.stringify([p.color,p.image,p.normal,p.emissive,p.emissiveFactor,p.unlit,p.alphaCutoff,p.doubleSided,p.sampler]);
+            const key = JSON.stringify([p.color,p.image,p.uvTransform,p.normal,p.emissive,p.emissiveFactor,p.unlit,p.alphaCutoff,p.doubleSided,p.sampler]);
             const group = groups.get(key);
             if (group) group.push(p); else groups.set(key,[p]);
         }

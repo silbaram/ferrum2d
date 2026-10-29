@@ -44,7 +44,12 @@ const server = createServer((req, res) => {
       res.end(html);
       return;
     }
-    const fixture =
+    const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
+    const fixture = path === "/texture-transform.mjs"
+      ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
+      : uvFiles.some(name => path === `/uv/${name}`)
+        ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
+        :
       path === "/fixture.mjs"
         ? "tests/smoke/spatial-webgpu-browser-fixture.mjs"
         : path === "/shadows.mjs"
@@ -70,6 +75,9 @@ const server = createServer((req, res) => {
         ? "application/wasm"
         : file.endsWith(".glb")
           ? "model/gltf-binary"
+          : file.endsWith(".gltf") ? "model/gltf+json"
+          : file.endsWith(".png") ? "image/png"
+          : file.endsWith(".bin") ? "application/octet-stream"
           : "application/javascript",
     );
     res.end(await readFile(file));
@@ -191,10 +199,13 @@ try {
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of environment) {
-            assert.equal(entry.comparisons.length, 38);
+            assert.equal(entry.comparisons.length, 56);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 38);
+              assert.equal(backend.rows.length, 56);
+              assert.equal(backend.uvComparisons.length, 5);
+              assert.equal(backend.uvFailurePreserved, true);
+              assert(backend.uvPicking.hits > 0 && backend.uvPicking.misses > 0);
               for(const name of ["advanced-point","spot-down","spot-up","bloom-zero","bloom","ao-baseline","ao","budget-many","hemisphere-sky","hemisphere-ground","hemisphere-facing","hemisphere-normal","hemisphere-disabled","unlit-hemisphere","point-offset-zero","point-offset","sun-offset-zero","sun-offset","point-pcf-offset-zero","point-pcf-offset","sun-pcf-offset-zero","sun-pcf-offset"])
                 assert(backend.rows.some(row=>row.name===name),`Missing lighting regression ${name}`);
               for (const row of backend.rows) {

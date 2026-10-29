@@ -1,3 +1,4 @@
+import { validateSpatialRequiredExtensions } from "./spatialTextureTransform.js";
 import { loadSpatialGlb, type SpatialGlbOptions, type SpatialModelAsset } from "./spatialModel.js";
 
 /** Same explicit diffuse profile and cancellation contract as the self-contained GLB loader. */
@@ -93,8 +94,9 @@ export async function loadSpatialGltf(source: string, options: SpatialGltfOption
     const gltf = record(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(json)));
     const asset = record(gltf.asset);
     if (asset.version !== "2.0" || (asset.minVersion !== undefined && asset.minVersion !== "2.0")) return fail("requires glTF 2.0");
-    if (array(gltf.extensionsRequired ?? [], 4096).length || array(gltf.animations ?? [], 4096).length || array(gltf.skins ?? [], 4096).length)
-        return fail("required extensions/animation/skin are unsupported");
+    validateSpatialRequiredExtensions(gltf.extensionsRequired);
+    if (array(gltf.animations ?? [], 4096).length || array(gltf.skins ?? [], 4096).length)
+        return fail("animation/skin are unsupported");
     const buffers = array(gltf.buffers, 16).map(record);
     if (!buffers.length) return fail("external buffers required");
     const views = array(gltf.bufferViews, 4096).map(record), images = array(gltf.images ?? [], 16).map(record);
