@@ -1,3 +1,4 @@
+use super::audio_poses::{AudioPose, MAX_AUDIO_POSES};
 use crate::audio_event::AudioEvent;
 use crate::collision::PhysicsDebugLine;
 use crate::collision_event::CollisionEvent;
@@ -23,6 +24,7 @@ pub(in crate::engine) struct EngineFrameBuffers {
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
     pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
     pub(in crate::engine) ground_y_scale: f32,
+    pub(in crate::engine) audio_poses: Vec<AudioPose>,
     pub(in crate::engine) audio_events: Vec<AudioEvent>,
     pub(in crate::engine) effect_events: Vec<EffectEvent>,
     pub(in crate::engine) collision_events: Vec<CollisionEvent>,
@@ -40,6 +42,7 @@ impl EngineFrameBuffers {
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
             ground_shadow_projection: GroundShadowProjection::default(),
             ground_y_scale: 1.0,
+            audio_poses: Vec::with_capacity(MAX_AUDIO_POSES),
             audio_events: Vec::with_capacity(AUDIO_EVENT_CAPACITY),
             effect_events: Vec::with_capacity(EFFECT_EVENT_CAPACITY),
             collision_events: Vec::with_capacity(COLLISION_EVENT_CAPACITY),

@@ -1,3 +1,4 @@
+import type { AudioPoseBufferView } from "../audioPoseBuffer.js";
 import type { DataSceneCombatCrowdStats } from "../dataSceneCombatCrowd.js";
 import type { DataSceneCombatNavigationStats, DataSceneCombatNavigationSchedulerStats } from "../dataSceneCombatNavigation.js";
 import type { FerrumSpatialApi } from "../dataSceneSpatial.js";
@@ -479,7 +480,10 @@ export interface FerrumEngine
     FerrumParticleApi,
     FerrumPhysicsApi,
     FerrumGameplayAuthoringApi,
-    FerrumInputActionApi {}
+    FerrumInputActionApi {
+  /** Borrowed native views; consume synchronously before any other Wasm call or memory growth. Max 65 handles. */
+  queryAudioPoseBuffer(handles: Uint32Array): AudioPoseBufferView;
+}
 
 export interface ViewportSnapshot {
   width: number;

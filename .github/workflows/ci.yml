@@ -216,6 +216,9 @@ jobs:
       - name: Asset loading concurrency and cancellation smoke
         run: pnpm smoke:asset-loading
 
+      - name: Spatial audio output and native binding smoke
+        run: pnpm smoke:spatial-audio
+
       - name: KTX2 compressed texture smoke
         run: pnpm smoke:ktx2
 

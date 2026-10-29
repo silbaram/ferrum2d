@@ -1,6 +1,8 @@
 // Opt-in public consumer recipe: native height surfaces + depth-tested cutout sprites.
 import {
   createEngine,
+  AudioManager,
+  createSpatialAudioScene,
   WebGL2Renderer,
   createDataSceneSpatialView,
   BITMAP_FONT_ATLAS_FORMAT,
@@ -12,7 +14,10 @@ import {
   applyDataSceneAuthoringDocument,
   createSceneInstanceHandleRegistry,
 } from "@ferrum2d/ferrum-web/authoring";
-export async function startSpatialScene(canvas) {
+export async function startSpatialScene(canvas, { audio: enableAudio = false } = {}) {
+  const ambienceAudio = enableAudio ? new AudioManager() : undefined;
+  let ambience, audioSpec;
+  const unlockAudio = () => { void ambienceAudio?.unlock(); };
   const renderer = new WebGL2Renderer(canvas, {
     preserveDrawingBuffer: true,
     clearColor: [0.04, 0.07, 0.12, 1],
@@ -196,6 +201,7 @@ export async function startSpatialScene(canvas) {
           renderer.render();
           const stats = renderer.renderCommands(state.renderCommandBuffer);
           renderer.renderPostProcess();
+          ambience?.update(state.renderCommandBuffer.spatial);
           frame = {
             state,
             spatial: state.renderCommandBuffer.spatial,
@@ -225,6 +231,16 @@ export async function startSpatialScene(canvas) {
     handles = applyDataSceneAuthoringDocument(engine, document, {
       instanceHandleRegistry: registry,
     }).entityHandles;
+    if (ambienceAudio) {
+      await ambienceAudio.loadSound(1, new URL("./assets/audio/water.wav", import.meta.url).href);
+      await ambienceAudio.loadSound(2, new URL("./assets/audio/fire.wav", import.meta.url).href);
+      const response = await fetch(new URL("./spatial-audio.json", import.meta.url));
+      if (!response.ok) throw new Error("Spatial audio example spec failed to load");
+      audioSpec = await response.json();
+      ambience = createSpatialAudioScene(engine, ambienceAudio, audioSpec, { handles,
+        soundId: name => ({ water: 1, fire: 2 })[name] ?? 0 });
+      canvas.addEventListener("pointerdown", unlockAudio);
+    }
     engine.registerBitmapFont(1, 4, {
       format: BITMAP_FONT_ATLAS_FORMAT,
       version: BITMAP_FONT_ATLAS_VERSION,
@@ -267,6 +283,8 @@ export async function startSpatialScene(canvas) {
     return {
       engine,
       renderer,
+      audio: ambienceAudio,
+      audioScene: ambience,
       view,
       document,
       get handles() {
@@ -296,6 +314,7 @@ export async function startSpatialScene(canvas) {
         });
         handles = Object.fromEntries(registry.entries({validateLive:true}).map(entry=>[entry.instanceId,entry.handle]));
         if (registry.get("actor", { validateLive: true })) attachLabel();
+        ambience?.rebind(handles);
         keys.clear();
         return result;
       },
@@ -304,11 +323,17 @@ export async function startSpatialScene(canvas) {
         window.removeEventListener("keyup", up);
         window.removeEventListener("resize", resize);
         hud.remove();
+        canvas.removeEventListener("pointerdown", unlockAudio);
+        ambience?.destroy();
+        ambienceAudio?.destroy();
         engine.destroy();
         renderer.destroy();
       },
     };
   } catch (e) {
+    canvas.removeEventListener("pointerdown", unlockAudio);
+    ambience?.destroy();
+    ambienceAudio?.destroy();
     engine?.destroy();
     renderer.destroy();
     throw e;

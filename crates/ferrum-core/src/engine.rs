@@ -25,6 +25,7 @@ use crate::tilemap::{
 use crate::tweens::TweenSystem;
 use crate::world::World;
 
+mod audio_poses;
 mod bitmap_text_controls;
 mod data_scene_animation;
 mod data_scene_combat;

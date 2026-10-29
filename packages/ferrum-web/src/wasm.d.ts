@@ -58,6 +58,10 @@ declare module "../pkg/ferrum_core.js" {
     preflight_spatial_model_poses(styles:Float32Array,origins:Float32Array):boolean;
     spatial_model_ptr(): number;
     spatial_model_len(): number;
+    query_audio_poses(handles: Uint32Array): boolean;
+    audio_pose_buffer_ptr(): number;
+    audio_pose_buffer_count(): number;
+    audio_pose_stride_words(): number;
     spatial_model_draw_snapshot(id:number,generation:number):Uint32Array;
     spatial_model_asset_in_use(asset:number):boolean;
     spatial_material_abi_version(): number;

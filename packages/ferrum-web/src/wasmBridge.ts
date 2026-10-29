@@ -1,3 +1,4 @@
+import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import {
@@ -119,6 +120,18 @@ export class WasmBridge {
 
   version(): string {
     return version();
+  }
+
+  queryAudioPoseBuffer(handles: Uint32Array): AudioPoseBufferView {
+    const e = this.engineInstance;
+    if (typeof e.query_audio_poses !== "function" || typeof e.audio_pose_stride_words !== "function"
+      || typeof e.audio_pose_buffer_count !== "function" || typeof e.audio_pose_buffer_ptr !== "function") throw new Error("This Wasm core does not support spatial audio poses.");
+    if (!e.query_audio_poses(handles) || e.audio_pose_stride_words() !== 8) throw new Error("Invalid spatial audio pose ABI/input.");
+    const count = e.audio_pose_buffer_count(), pointer = e.audio_pose_buffer_ptr();
+    if (count !== handles.length / 2 || pointer % 4 !== 0) throw new Error("Invalid spatial audio pose buffer.");
+    // Query may grow Wasm memory; always acquire both views after the native call.
+    return { count, stride: 8, floats: new Float32Array(this.memory.buffer, pointer, count * 8),
+      words: new Uint32Array(this.memory.buffer, pointer, count * 8) };
   }
 
   memoryByteLength(): number {

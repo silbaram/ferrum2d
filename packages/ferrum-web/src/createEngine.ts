@@ -903,6 +903,11 @@ export async function createEngineWithFramePipeline(
   };
 
   const engine: FerrumEngine = {
+    queryAudioPoseBuffer(handles) {
+      requireAlive();
+      if (!(handles instanceof Uint32Array) || handles.length % 2 || handles.length > 130) throw new Error("Audio poses require at most 65 u32 handle pairs.");
+      return bridge.queryAudioPoseBuffer(handles);
+    },
     ...createSpatialApi(rustEngine, requireAlive, () => ({ width: rustEngine.spatial_viewport_width(), height: rustEngine.spatial_viewport_height() }), name => requireAssetHost().textureId(name)),
     ...lifecycleApi,
     ...bufferAccessorApi,

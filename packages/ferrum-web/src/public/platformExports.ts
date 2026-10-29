@@ -523,3 +523,8 @@ export type {
 export type { ShaderPreparationOptions, ShaderPreparationProgress } from "../shaderPreparation";
 
 export type { RuntimeFrameTraceOptions, RuntimeFrameTraceSample, RuntimeFrameTraceCapture, RuntimeFrameTraceSnapshot } from "../runtimeFrameTrace.js";
+
+export type { SpatialAudioVoice } from "../spatialAudio.js";
+export type { AudioPoseBufferView } from "../audioPoseBuffer.js";
+export { createSpatialAudioScene } from "../spatialAudioScene.js";
+export type { SpatialAudioScene, SpatialAudioSceneSpec, SpatialAudioSourceSpec, SpatialAudioListener } from "../spatialAudioScene.js";
