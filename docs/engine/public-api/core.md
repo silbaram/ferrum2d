@@ -802,9 +802,20 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `dataSceneSpatialMoveStatus()` | idle/moving/arrived/blocked/cancelled, Data Scene 밖·구 Wasm은 undefined |
 | `dataSceneSpatialMoveStats()` | 마지막 요청 node/probe/work·경로 waypoint/잔여·누적 searchCount, 구 Wasm은 undefined |
 | `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
+| `dataSceneSpatialModelDrawSnapshot(handle)` | 마지막 native 렌더의 실제 LOD asset·world XYZ 변환·cameraVisible을 복사한 cold 조회. 미렌더/미등록 handle·구 Wasm은 undefined |
 
 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
 `SpatialGlbOptions`, `SpatialModelAsset`, `SpatialModelPrimitive`, `SpatialModelInstanceSpec` 타입을 제공한다.
+`raycastSpatialModel(asset, ray: SpatialModelRay): SpatialModelRayHit | undefined`는 작성 도구의 시각 선택용
+CPU 삼각형 검사다. ray는 asset-local glTF XYZ의 `origin`/`direction` 3개 좌표이며 방향은 내부에서 정규화한다.
+선택적 `near`/`far`는 정규화 ray를 따라 잰 local 거리이며, 앞쪽 잘린 면을 건너뛰고 뒤의 유효한 면을 검사할 수 있다.
+가장 가까운 전방 교차의 `distance`, `point`, `primitiveIndex`, `triangleIndex`를 반환한다. 빈 bounds 영역,
+단면 재질의 뒷면, MASK 재질의 투명 픽셀을 제외한다. MASK 검사는 원본 이미지 base-level 최근접 샘플을 사용하므로
+GPU 보간/mipmap 경계와 완전히 같은 픽셀 판정은 아니다. 전달한 asset의 정적 geometry를 검사하며 물리 collider를 생성하거나 수정하지 않는다.
+렌더/시뮬레이션 frame loop가 아닌 포인터 선택처럼 드문 플랫폼 작업에서 사용한다. 불변 asset의 내부 geometry는 노출하지 않는다.
+`SpatialModelDrawSnapshot`의 `asset`은 마지막 렌더에서 native가 선택한 LOD이며 `transform`은 소유한 16개 f32의
+column-major glTF local XYZ → world XYZ 행렬이다. `cameraVisible`이 false인 shadow-only/culled draw는 클릭 대상에서 제외한다.
+snapshot은 카메라/문서 변경을 예측하지 않고 다음 렌더 전까지 표시된 pose를 유지한다. frame loop에서 entity별로 호출하지 않는다.
 `loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
 같은 document origin의 최대 16 binary/16 image, document 2 MiB·전체 입력/정규화 bundle 32 MiB와 취소를 검사한다.
 기존 GLB decoder를 재사용하며 contentId는 종속 bytes를 포함한 정규화 bundle hash다. redirect/data URI는 지원하지 않는다.

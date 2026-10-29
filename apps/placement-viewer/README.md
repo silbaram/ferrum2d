@@ -7,6 +7,11 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
 파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
 
+HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geometry를 다시 맞춘다. 카메라를 직접 조작한 뒤에는 해당 구도를 유지한다.
+**보기 → 게임 카메라 범위**에서 실제 게임 카메라의 앞뒤 경계·방향을 확인한다. 객체 옆 **평면 XY/X축/Y축**은 드래그 이동 축이며, 높이·회전 값도 함께 표시한다.
+**보기 → 충돌·높이 표시** 아래에는 접촉·층 번호·가려진 선 옵션이 있다. **실행 정보** 패널은 선택 바디/충돌체와 렌더링·자원 통계를 읽기 전용으로 보여준다.
+모델/텍스처 로딩 중에는 진행 파일과 재시도·취소를 표시한다. 자세한 한계는 [Authoring API](../../docs/engine/public-api/authoring.md#공간-지형카메라빌보드-개발-소스)를 따른다.
+
 ## 엔진·에디터 버전 업데이트
 
 **파일 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
@@ -167,9 +172,11 @@ native 복원이 거절되면 제스처 소유권을 유지하고 Escape로 다�
 XY와 camera pan은 시작 높이 평면을 기준으로 움직여 경사면에서도 이벤트 수에 따라 이동량이 달라지지 않는다.
 원근 Height는 화면 handle 이동을 역투영한다. 객체를 이동하는 동안 camera 조작은 멈춘다.
 Attachment 소유 위치는 agent가 원본에서 수정하며 model pose로 collider를 추정 이동하지 않는다.
-Attachment 소유 Height handle도 숨긴다. Model 선택은 전체 LOD의 보수적 bounds 기준이다.
-클릭 위치에서 실제로 교차하는 bounds 면의 깊이를 비교하므로 넓은 바닥 배경이 앞의 집·캐릭터 선택을 가로채지 않는다.
-움직이는 게임 geometry의 정밀 identity picker로 사용하지 않는다.
+Attachment 소유 Height handle도 숨긴다. 선택 테두리는 전체 LOD의 보수적 bounds를 표시하지만,
+클릭은 마지막 렌더에서 native가 선택한 LOD의 삼각형·변환·camera 가시성을 검사한다.
+표시 frame의 카메라 행렬을 사용하므로 wheel 직후에도 다음 frame의 구도와 섞이지 않는다.
+빈 bounds 영역과 MASK의 투명 픽셀을 제외하고 실제 교차 깊이를 비교한다. MASK는 CPU 최근접 base-level
+샘플이므로 GPU 보간/mipmap 경계와 같은 픽셀 판정을 보장하지 않는다. 물리 collider에는 영향을 주지 않는다.
 
 HD-2D의 `Spatial Placement → Add Object`에서 Sprite 또는 등록된 Model을 선택한다.
 `Place`를 누른 뒤 지형을 클릭하거나 asset 미리보기를 지형으로 드래그하면 새 오브젝트를 만든다.
@@ -275,6 +282,8 @@ HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 
 편집 각도·확대율·표시 거리 보정은 원본 게임 카메라에 저장하지 않는다.
 
 - **실행 → WASD**: 파란 옷 주인공 이동·방향별 걷기, 건물·나무 줄기 충돌, 다리에서 강 건너기.
+- 광장의 우물은 원형 돌기둥에 맞춘 radius 20의 collider를 사용한다. 원형·캡슐·convex·compound 장애물도
+  실제 HD-2D 보행에서 층/높이와 mask를 따라 차단하며, 모델 삼각형이 자동 collider가 되지는 않는다.
 - **일시정지 / 재개 / 정지**: 정지하면 작성 위치·초안·편집 카메라로 돌아온다. 플레이 위치는 JSON에 저장하지 않는다.
 - **HD-2D**: 기존 배치/카메라 도구로 모델·인물의 위치를 수정한다. 편집 격자는 기본 표시하며 `보기 → 격자`에서 전환한다.
 - **내보내기**: 마을은 export 전용 예제다. 퀘스트·NPC 대화·전투·건물 내부 전환은 구현하지 않았다.
@@ -303,6 +312,8 @@ WSL에서 Windows Blender를 사용하는 경우:
 시뮬레이션·충돌·sprite clip 선택은 기존 Rust runtime에서 처리한다.
 마을 asset catalog는 공식 app 내부에서만 로드하며 engine public API나 consumer template은 변경하지 않는다.
 `pnpm smoke:placement-village`는 production build의 실제 픽셀·hash·보행/충돌·복원·렌더 예산을 검사한다.
+빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`는 원형 우물의 WASD 차단과
+12개 native 장애물/필터 사례, Stop 뒤 작성 문서 보존을 빠르게 검사한다.
 
 직접 package만 실행하려면 다음 명령을 사용한다.
 

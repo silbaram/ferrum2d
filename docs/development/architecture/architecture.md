@@ -18,6 +18,16 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
+공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
+`raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
+포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.
+native binding은 마지막 draw의 index만 보관하며 render command ABI와 frame별 entity 왕복 호출은 추가하지 않는다.
+선택 광선은 표시 frame의 projection을 역투영하므로 다음 frame을 기다리는 UI camera와 혼합하지 않는다.
+모델/텍스처 로딩 controller는 취소 신호와 실행 identity로 오래된 결과를 차단하고 재시도는 원래 열기 caller를 유지한다.
+중단할 수 없는 decode가 남아도 취소/교체 시 caller는 즉시 reject하고 늦은 성공·실패는 결과를 덮어쓰지 않는다.
+선택 physics 진단은 최대 32 collider를 4 Hz로 읽고, 렌더/자원 통계는 보이는 패널에서만 2 Hz로 읽는다.
+게임 상태를 TS로 복제하거나 frame마다 entity별 Wasm 호출을 추가하지 않는다. GPU 시간의 발행 frame과 할당 추정/미측정을 구분한다.
+
 공식 Placement Viewer의 편집용 탐색 카메라는 문서/이력과 분리한 탭별 UI 상태다. 저장되는 게임 카메라는
 `spatial.camera`이며 spatial patch v5의 씬 수준 `setCamera`로 기존 diff/merge/Undo/저장 경로를 따른다.
 `placementGameCamera.ts`는 설정 UI·씬 구도 작성용 수학·native presentation의 화면 범위 표시를 담당하고,
@@ -971,8 +981,14 @@ entity AABB의 공간 pose/접촉 분리는 `kinematic_sweep.rs`에서 sweep과 
 판정한다. center 거리와 half extent 합의 반올림 차이로 표면 접촉이 penetration으로 바뀌지 않게 하며,
 접선/이탈 경로와 실제 모서리 겹침을 구분한다. epsilon 확대나 actor 위치 보정은 하지 않는다.
 격자 node 4,096(+2)·probe/heap 32,768 외에 보수적 work를 요청 8M/frame 1M으로 제한한다.
-`KinematicSweepScratch`는 동기 탐색 요청/추종 frame 안에서만 actor 이외 target AABB bounds를 준비·정렬해
-재사용한다. narrow phase는 기존 world/filter/height/sweep 판정을 유지한다. actor만 바뀌는 범위에서
+`KinematicSweepScratch`는 동기 탐색 요청/추종 frame 안에서만 actor 이외 target collider/chain segment의
+bounds를 준비·정렬해 재사용한다. AABB actor의 장애물은 AABB/OBB뿐 아니라 circle/capsule/convex/edge/chain과
+compound child를 포함한다. 후보는 entity index로 축약하지 않고 collider·segment key를 유지하여 실제
+장애물의 enable/trigger/filter와 body heightSpan을 판정한다. gateway pose overlap도 같은 후보를 사용한다.
+준비/반복 work의 target 수는 collider/segment proxy 수로 청구하므로 compound 하나로 비용을 숨기지 않는다.
+준비 단계는 proxy를 만들지 않은 disabled/invalid collider와 segment의 방문도 센다. Combat navigation과
+action의 admission bound도 같은 방문 비용을 포함하여 실제 준비 후 frame 예산을 초과하지 않게 한다.
+actor만 바뀌는 범위에서
 사용하며 모든 정상 종료·거절에서 snapshot을 해제하고, 다음 요청/frame은 다른 body의 변경을 다시 읽는다.
 준비 work는 alive 순회·target 정렬, 반복 work는 실제 target 수·surface·substep·candidate 정렬에 근거한다.
 장식 entity의 순회를 edge마다 중복 청구하지 않으며 frame admission과 follower 비용에 준비도 포함한다.

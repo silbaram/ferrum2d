@@ -656,6 +656,28 @@ ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부�
 
 ## 공간 지형·카메라·빌보드 (개발 소스)
 
+공식 뷰어의 기본 HD-2D 편집 구도와 `Fit Scene`은 창/패널 크기가 바뀌면 보이는 geometry를 다시 맞춘다.
+직접 카메라를 이동·회전·확대하거나 선택 객체만 맞추면 그 구도를 유지한다. `Reset Camera`/`Fit Scene`은 자동 맞춤을 재개한다.
+이 편집 카메라는 작성된 게임 카메라와 Undo 이력을 바꾸지 않는다. `View → Game Camera Guide`는 작성 카메라의
+near/far 경계와 방향을 편집 화면에 표시한다. pixel-art 출력은 해당 가로세로 비율을 사용하며 게임 실행 중에는 가이드를 숨긴다.
+
+선택 객체 옆 조작부는 평면 이동 축 `World XY`/`World X`/`World Y`, 높이와 yaw 값을 표시한다.
+객체 드래그는 선택한 월드 축에 제한되며 높이/회전은 기존 명시적 authoring patch로 작성한다.
+격자 정렬 또는 Shift 드래그는 yaw를 15° 단위로 정렬한다. 드래그당 한 Undo이며 Escape·pointer cancel은 초안을 복원한다.
+모델 클릭은 원본 GLB 삼각형과 MASK 투명 영역을 검사하고, 기존 층·잠금·깊이·겹침 선택 정책을 유지한다.
+
+`View`의 충돌 표시 아래에서 접촉·층 번호·가려진 선을 켤 수 있다. 초록은 고체, 주황은 센서, 빨강은 native 접촉,
+자홍은 높이 범위다. `Runtime → Selected Runtime`에는 선택 바디의 실제 층/높이/속도와 최대 32개 충돌체의 활성·센서·범주/마스크를
+4 Hz로 표시한다. 접촉선은 마지막 native sweep/solver 근거이며 화면에서 충돌 원인을 새로 계산하지 않는다.
+가려진 선 표시는 깊이를 무시하므로 기존 뷰어의 참조 격자를 함께 그리지 않는다. 옵션을 끄면 격자가 복원된다.
+
+모델/텍스처 로딩에는 진행 수와 파일 이름, 실패/재시도·취소를 표시한다. HTTP/network 모델 오류의 재시도는 대기 중인 열기 작업을 이어간다.
+contentId/용량/지원 형식 오류는 기존 오류 경로로 즉시 전달하며 원본 수정 후 다시 열어야 한다. 취소·교체·종료된 작업은 늦게 완료돼도 씬을 활성화하지 않는다.
+로딩 안내에 포커스가 있을 때 Escape는 취소/닫기이며 Enter·Space는 버튼의 기본 동작을 사용한다.
+`Runtime → Rendering and Resources`는 열린 패널에서만 2 Hz로 그리기 호출·공간 삼각형/업로드·렌더 자원·CPU 모델 캐시를 표시한다.
+미계측은 0으로 표시하지 않는다. GPU 시간 계측은 이 패널을 펼쳐 보는 동안만 활성화한다.
+메모리는 할당 추정치이며 GPU 시간은 발행 프레임과 함께 지연 결과로 표시한다.
+
 `SceneAuthoringDocumentSpec.spatial`은 `DataSceneSpatialSpec`이다. `/authoring`은
 `resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`, `createDataSceneSpatialView`와
 `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`, `SpatialBillboardSpec`,

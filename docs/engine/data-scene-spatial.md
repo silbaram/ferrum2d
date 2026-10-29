@@ -103,7 +103,8 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   Blender의 정상 Y-up glTF 출력에 Z-up 보정을 다시 적용하지 않는다. imported hierarchy는 정적 bake이며
   선택 native attachment는 아래 움직이는 묶음 계약을 따른다. native body yaw는 authored yaw에 더하며
   runtime scale 변경은 제공하지 않는다. inline components와 static/kinematic/생략 body를 허용한다.
-- 충돌은 같은 instance의 기존 `components.collider` AABB와 `body.heightSpan`으로 명시한다. 이 proxy의
+- 충돌은 같은 instance의 기존 `components.collider`와 `body.heightSpan`으로 명시한다. AABB·원·캡슐·
+  회전 박스·convex polygon 등 Data Scene이 지원하는 모양을 사용한다. 이 proxy의
   크기·offset·높이는 **최종 world 단위**다. 모델 yaw/scale/시각 offset이 proxy를 자동 변형하지 않으므로
   일치하는 값을 작성한다. 삼각형 충돌·자동 보행층·모델 ray picking은 제공하지 않으며 지형 picking은 유지한다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
@@ -442,7 +443,10 @@ spatial actor 설정 시 기존 route를 취소한다. 이 controller가 설정�
 연결되지 않은 다리 위·아래는 작성한 floor를 유지한다. 공간 목적지 이동은 아래 별도 API를 사용한다.
 
 낮은 빈도 직접 이동은 `engine.moveDataSceneSpatialBody(handle, dx, dy, { maxStepHeight, maxDropHeight })`다.
-enabled kinematic body, heightSpan, 단일 enabled non-trigger AABB가 필요하다.
+이동하는 actor에는 enabled kinematic body, heightSpan, 단일 enabled non-trigger AABB가 필요하다.
+장애물은 AABB·원·캡슐·회전 박스·convex polygon·edge·chain과 compound child를 검사한다.
+각 장애물 collider의 enable·trigger·양방향 mask와 body 층/높이를 사용하며, chain은 segment별로 sweep한다.
+장애물의 모양 지원이 actor의 모양 제한을 확장하거나 3D mesh 충돌을 생성하지는 않는다.
 true는 유효한 요청을 처리했다는 뜻이며 장애물로 일부만 이동할 수 있다. 높이 query와 이동 계산은 Rust가 소유한다.
 기존 rigid-body solver의 자동 stepping/별도 velocity로 같은 actor를 중복 구동하지 않는다.
 
@@ -527,10 +531,11 @@ route/waypoint/탐색 통계는 저장하지 않는다. 기존 공간 v6 pose를
 격자 node 최대 4,096개(+정확한 시작/목적지 2개), edge probe와 대기 heap 최대 32,768개다.
 추가로 native sweep/substep·proxy 정렬 비용을 보수적으로 추산해 요청 8,000,000 work units,
 frame 1,000,000 work units와 follower 최대 64회 iteration으로 제한한다. work units는 CPU/GPU ms가 아니다.
-탐색 요청/추종 frame 안에서 target AABB bounds를 한 번 준비·정렬하고 native sweep/overlap에 재사용한다.
+탐색 요청/추종 frame 안에서 target collider/chain segment bounds를 한 번 준비·정렬하고 native sweep/overlap에 재사용한다.
 다음 요청/frame에는 다시 준비하므로 동적 장애물 변경을 반영하며, ordinary 수동 이동에 snapshot을 남기지 않는다.
-준비 비용은 alive 순회·target 정렬, 반복 probe 비용은 enabled target AABB 수·surface 수·substep과
+준비 비용은 alive 순회·target 정렬, 반복 probe 비용은 enabled collider/segment proxy 수·surface 수·substep과
 candidate 정렬에 근거한다. collider 없는 장식 entity는 최초 순회 비용에만 포함한다.
+준비 중 방문한 disabled/invalid collider·segment도 `preparationWorkUnits`에 포함한다.
 한 frame의 준비와 최소 이동조차 실행할 수 없는 요청은 미리 거절하고, 수락 뒤 비용이 증가하면 follower는 blocked로 멈춘다.
 미세 속도는 f64 잔여 이동량을 다음 frame으로 이어가고 실제 변위만 차감한다.
 경사면에서는 현재/목적지 surface의 기울기와 step/drop 허용량으로 추종 조각 길이를 추가 제한한다.
@@ -548,7 +553,7 @@ candidate 정렬에 근거한다. collider 없는 장식 entity는 최초 순회
 | --- | --- |
 | `status` | `notRequested`, `accepted`, `invalidRequest`, `unsupportedActor`, `noPath`, `nodeBudgetExceeded`, `probeBudgetExceeded`, `workBudgetExceeded`, `frameBudgetExceeded` |
 | `count` | native 요청 횟수. 탐색 전 거절도 포함하며 JS 옵션 검증에서 throw한 요청은 제외 |
-| `collisionProxyCount` | 준비한 enabled target AABB 수. actor·terrain은 제외하고 narrow phase의 기존 trigger/filter/height 판정은 유지 |
+| `collisionProxyCount` | 준비한 enabled target collider/chain segment의 proxy 수. compound는 child별, chain은 segment별로 센다. actor·terrain은 제외하고 narrow phase의 trigger/filter/height 판정은 유지 |
 | `preparationWorkUnits` | 최초 순회·정렬 비용. 탐색 시작 시 probeWorkUnits에 이미 포함되므로 합산하지 않음 |
 
 `noPath`는 선택한 격자에서 경로를 찾지 못했다는 뜻이며 연속 공간에서 불가능하다는 증명은 아니다.
@@ -1441,6 +1446,12 @@ cold/resize debug-only feedback 방지, 불완전 cube 생성 후 재시도, 같
 소프트웨어 Chromium 정합성/CPU submission 측정은 실제 모바일 GPU 성능 보장을 대체하지 않는다.
 
 ## 모델 고도화: 재질 batch·움직이는 묶음·청크/LOD
+
+작성 도구는 클릭 같은 cold 작업에서 `engine.dataSceneSpatialModelDrawSnapshot(handle)`로 마지막
+native 렌더의 실제 LOD asset·소유한 world XYZ 행렬·cameraVisible을 조회한다. 미렌더/미등록 handle과
+이 capability가 없는 이전 Wasm은 undefined다. shadow-only draw는 cameraVisible이 false다.
+표시 frame의 camera 행렬과 함께 `raycastSpatialModel`에 사용하며 거리/hysteresis 정책을 TS에서 복제하지 않는다.
+문서/진행 저장 계약과 기존 model render command ABI는 바뀌지 않는다.
 
 소스 primitive가 32개 이하면 기존 순서와 draw 구성을 유지한다. 그보다 크면 동일한 정규화 재질
 (base/normal/emissive texture·sampler·색·unlit·alpha cutoff·양면)을 공유하는 정적 geometry를 병합한다.

@@ -7,6 +7,22 @@
 있다는 이유로 해당 디렉터리를 영구 보존하지 않는다. 과거 보고서가 필요하면 생성 명령부터 다시
 실행한다. 현재 미커밋 작업의 최종 검증 자료와 실제 복구에 필요한 백업은 작업 정리 전까지 유지한다.
 
+Placement Viewer의 Three.js 참고 고도화 회귀는 `placement-threejs-upgrades-smoke.mjs`에서 검사한다.
+`placement-spatial-workspace` browser mode에 연결되며, 단독 확인은 viewer 빌드 후
+`node tests/smoke/placement-village-smoke.mjs --threejs-only`로 실행한다. 모델 HTTP 실패→원래 bootstrap 재시도,
+촬영 범위 가이드의 authoring 보존, mesh bounds 빈 공간 선택 제외, X축 이동·단일 Undo·회전 취소,
+native 원형 충돌체 진단, EN/KO, 조작부 위 wheel, 2D/HD-2D 전환·반복 Play/Stop의 GPU 할당 plateau와 종료 후 자원 0을 확인한다.
+실시간 게임 카메라만 확인하려면 같은 script의 `--game-camera-live-only`를 사용한다. 수동 편집 구도 보존과 자동 맞춤의 resize 계약을 구분한다.
+`pnpm test:placement-scenes`는 로딩 retry/cancel/교체/영구오류 Close/dispose·Escape 취소를 추가 검증한다.
+취소를 무시하는 decode가 완료되기 전 caller가 해제되고 늦은 실패도 처리되는지 검사한다.
+`pnpm test:placement-camera`는 종횡비/높이/원근·직교 geometry fit과 깊이 범위, 좁힘→넓힘 시 배율 복구,
+표시 행렬의 화면 모서리 near/far 역투영을 검사한다.
+SDK `spatialModelPicking.test.ts`는 삼각형/앞뒤 면/MASK/normal-map stride와 입력 거절,
+native LOD snapshot·camera visibility·generation 전달·owned matrix·구 Wasm fallback을 검증한다.
+`placement-model-picking-smoke.mjs`는 spatial gate에서 DPR 1/2와 직교/원근의 실제 LOD 외형·MASK 구멍,
+런타임 정지 후 새 camera 입력과 기존 표시 화면의 선택 일치를 검사한다. 단독 실행은
+`node tests/smoke/placement-village-smoke.mjs --model-picking-only`다.
+
 ## 제품 Runtime Budget Readiness
 
 런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.
@@ -790,6 +806,19 @@ pnpm smoke:mobile-input
 ```
 
 ## Physics smoke check
+
+`physics:fast-projectile-ccd`에는 compound secondary의 moving/target 접촉, collider별 filter·재질,
+chain의 두 번째 이후 segment를 검증하는 실제 Rust 회귀가 포함된다. Core 전체 테스트는 primary
+sensor/disabled와 solid secondary의 공존, 높이 filter, dynamic target wake와 동일 시각 hit 선택도 검사한다.
+빠른 회전 궤적의 연속 충돌과 대형 씬의 broadphase 성능 개선은 이 통과 결과에 포함하지 않는다.
+
+`physics:hd2d-navigation-combat`는 실제 `move_spatial_body`의 원·캡슐·convex·edge·chain 및 compound
+장애물과 층 gateway 거절, cached query의 collider/segment별 비용 청구도 검사한다.
+`pnpm smoke:placement-village`에는 실제 우물의 원형 collider에 대한 WASD 차단과 12개 native
+장애물/필터 사례가 포함된다. 빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`로
+같은 물리 검증만 실행할 수 있다. Stop 뒤 원본 authoring 문서 보존을 함께 assert한다.
+전용 물리 검사에는 다리의 높이 2→0 전환, 다리 밖 강 차단과 경사로→정원→지면 왕복도 포함한다.
+이는 전체 마을 viewport/camera 픽셀 검사를 대체하지 않는다.
 
 Rust 물리엔진의 대표 solver/CCD/query 회귀를 빠르게 확인하려면 다음을 실행한다.
 
