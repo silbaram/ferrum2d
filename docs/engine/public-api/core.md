@@ -53,6 +53,53 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
 
+## 에셋 묶음 로딩과 취소
+
+`AssetLoadOptions`는 core/root에서 제공한다. `FerrumEngine.loadAssets`, `AssetLoader.loadAssets`,
+`BrowserPlatformHost.loadAssets`의 세 번째 인자로 전달한다.
+
+```ts
+const controller = new AbortController();
+const loading = runtime.engine.loadAssets({
+  textures: { hero: "/assets/hero.png", village: "/assets/village.png" },
+  sounds: { hit: "/assets/hit.wav" },
+  json: { level: "/assets/level.json" },
+}, progress => loadingOverlay.update(progress), {
+  concurrency: 4,
+  signal: controller.signal,
+});
+
+// 화면을 떠나거나 로딩을 취소할 때 controller.abort()를 호출한다.
+try {
+  await loading;
+} catch (error) {
+  if (!(error instanceof Error) || error.name !== "AbortError") throw error;
+}
+```
+
+- `concurrency`는 묶음당 정수 1~16이며 기본값은 1이다. texture/sound/JSON이 같은 상한을 공유한다.
+  기존 두 인자 호출의 순차 처리는 유지한다. 병렬 작업의 ID 예약은 manifest 시작 순서이며,
+  `onProgress`는 성공한 항목의 완료 순서로 증가한다. 수치는 byte 전송률이 아닌 완료 항목 비율이다.
+- `signal` 취소 또는 첫 실패 시 대기 항목은 시작하지 않고 진행 중 작업에 취소를 전파한다.
+  첫 오류를 보존하며 시작된 작업이 정리된 뒤 reject한다. 취소 이후 진행률/성공 결과는 발행하지 않는다.
+  이미 취소된 signal은 빈 manifest에서도 `AbortError`로 거절하며 초기 progress도 발행하지 않는다.
+- `textureOptions[name].signal`과 묶음 signal은 함께 적용한다. 해당 texture의 취소도 묶음 실패로 처리한다.
+  `preloadAssetManifest(manifest, { concurrency, signal, ... })`는 묶음 signal로 실제 fetch를 취소하며,
+  preload 자체는 GPU 업로드나 audio decode를 하지 않는다.
+- **부분 성공 계약**이다. 이미 로딩된 자원, 예약 ID, 저장된 cache는 자동 rollback하지 않는다.
+  중단 전에 시작한 cache 쓰기는 완료될 수 있다. ID만 존재하는 상태를 로딩 성공으로 해석하지 않는다.
+  필요한 자원 해제는 `releaseAssets`/owner의 해제 API로 수행하고 같은 manifest로 재시도할 수 있다.
+- `AudioManager.loadSound`와 `AudioAssetLoader.load`도 세 번째 인자 `{ signal }`을 받는다.
+  AudioManager의 같은 ID 재요청, `evictSound`, `destroy`는 진행 중 요청을 취소한다.
+  Web Audio decode 자체는 중단할 수 없어 완료를 기다리지만, 늦은 결과를 registry에 등록하지 않는다.
+  `evictSound`의 boolean은 실제 저장된 buffer 삭제 여부이며 pending 작업만 취소한 경우 `false`다.
+- `engine.destroy()`는 해당 engine의 로딩을, `BrowserPlatformHost.destroy()`는 해당 host의 로딩을 취소한다.
+  engine이 외부 host 자원을 임의로 해제하지는 않는다. 사용자 주입 `AssetHost`/manager/fetch는 전달받은
+  signal을 준수해야 한다. 무시하는 작업은 종료까지 기다리며 자체 side effect는 엔진이 되돌릴 수 없다.
+
+서로 다른 묶음의 전역 동시성 제한·네트워크 중복 제거·자동 재시도·scene 전체 transaction은 제공하지 않는다.
+검증은 `pnpm smoke:asset-loading`과 SDK 테스트를 사용한다.
+
 ## 입력 액션과 context
 
 `InputManager`는 기존 `snapshot()` 외에 `keyBindings`, `actionProfile`,
@@ -835,6 +882,11 @@ OPAQUE/MASK·단면/양면 base color·normal map·emissive·PNG/JPEG·sampler·
 `SpatialModelPrimitive.alphaCutoff`는 OPAQUE에서 0, MASK에서 GLB의 cutoff(기본 0.5)이며
 `doubleSided`는 GLB material의 양면 설정이다. alpha 비교는 color/depth와 그림자 pass에 동일하게 적용한다.
 `SpatialModelPrimitive.normal`은 image/sampler/scale, `emissive`는 image/sampler 참조이며 선택 값이다.
+`uvTransform`과 `normal.uvTransform`/`emissive.uvTransform`은 선택 column-major 3×3 Float32Array이며
+생략은 identity다. loader가 `KHR_texture_transform`을 각 textureInfo에서 해석하며 UV0만 지원한다.
+변환은 각 텍스처 샘플과 base alpha 그림자/CPU picking에 적용하고 원본 geometry·tangent를 유지한다.
+음수/0 scale을 허용하며 잘못된 값·유효 UV set 1 이상·GPU 중간 계산의 overflow는 준비 오류다.
+[정적 모델 지원 범위](../data-scene-spatial.md#정적-glb-배경-모델)를 따른다.
 `emissiveFactor`는 linear RGB 0..1(기본 0)이다. CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
 없으면 기존 8 floats다. 정상적인 GLB normal map은 UV0와 exported TANGENT VEC4를 요구한다.
 normal scale은 -64..64(기본 1), emissive texture는 sRGB·alpha 무시다. 발광도 기존 HDR/fog를 따른다.

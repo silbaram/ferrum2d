@@ -1,6 +1,6 @@
 # HD-2D 후속 기능·검증 후보
 
-기준일: 2026-10-20
+기준일: 2026-10-29
 상태: 미착수 후보. 별도 task에서 범위·완료 조건을 확정한 뒤 개발한다.
 
 이 문서는 미착수 후보만 관리한다.
@@ -42,3 +42,24 @@ PCSS·다중 point shadow light는 과거 prototype 후보이며 현재 API 지�
 이 후보 문서는 제공 중인 작성 도구를 미완료로 되살리거나 다음 기능을 자동 승인하지 않는다.
 Rust/TypeScript 책임, WebGL2 기본·WebGPU fallback, agent-first JSON/patch 흐름과
 visual editor·복잡한 물리·범용 3D의 별도 설계 경계를 유지한다.
+
+
+## three.js 소스 비교에서 이어갈 후보
+
+공식 three.js 소스 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`와 Ferrum2D 구현을 대조한 순서다.
+분석 clone은 `/tmp/ferrum2d-threejs-source-review`이며 없어져도 아래 고정 링크로 재현할 수 있다.
+three.js는 렌더링 라이브러리이며 게임 상태·물리·저장 전체를 대체하는 엔진으로 취급하지 않는다.
+에셋 묶음 로딩의 동시성·취소·audio 수명은 [확정된 API 계약](../engine/public-api/core.md#에셋-묶음-로딩과-취소)을 따른다.
+정적 GLB/glTF의 UV0 텍스처 변환은 [확정된 모델 계약](../engine/data-scene-spatial.md#정적-glb-배경-모델)을 따른다.
+이미 제공하는 UV 변환·instancing/LOD·KTX2·shader preparation·HDR bloom·spotlight를 신규 미구현 항목으로 세지 않는다.
+
+| 우선순위 | 비교 소스와 실제 차이 | 착수 시 완료 조건 |
+| --- | --- | --- |
+| 1 | [PositionalAudio](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/audio/PositionalAudio.js)의 거리·방향 음향. 현재 `playSpatial`은 일반 SFX fallback | 마을 물소리/횃불 등으로 listener/source의 좌표·거리 단위와 bulk 전달 설계. 이동/층 전환·카메라·음소거·해제·브라우저 fallback 검증 |
+| 2 | [InstancedMesh](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/objects/InstancedMesh.js), [LOD](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/objects/LOD.js)의 반복 모델 제출·단순화. 엔진 기능은 이미 제공 | 위 실게임 성능·LOD 외형 후보와 합쳐 실제 마을의 silhouette/cutout/그림자 및 CPU/GPU 비용 측정 |
+| 3 | [WebGPURenderer](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/renderers/webgpu/WebGPURenderer.js)의 backend/자원 책임 분리 | 기존 WebGPU 통계·device-loss/scene transaction 후보와 통합. 소유자별 복구·실패·해제 증거 확보 |
+| 4 | [LoadingManager](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/loaders/LoadingManager.js)의 URL 해석, [FileLoader](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/loaders/FileLoader.js)의 진행 중 요청 공유 | CDN/로컬 blob resolver·cache key·인증·독립 취소·참조 수명을 먼저 정의. 이미 있는 모델별 요청 공유·CPU/GPU cache·IndexedDB preload를 중복 구현하지 않고 texture/sound/JSON의 공통 요청 계약으로 검증 |
+| 5 | [GLTFLoader](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/examples/jsm/loaders/GLTFLoader.js)의 추가 표준 확장·geometry 압축 | 실제 게임 자산에서 UV1/추가 재질/Draco·Meshopt 중 필요한 범위를 먼저 측정. decoder 의존성과 CPU·메모리 예산, 실패·fallback을 설계한 뒤 선택. skin/morph/범용 PBR은 별도 설계 |
+
+분석 패턴만 참고하며 three.js production 의존성을 추가하지 않는다. 동시성 상한은 Ferrum2D 자체 정책이다.
+다음 작업은 공간 오디오를 실제 마을의 listener/source 계약으로 좁혀 시작한다. 전체 목록의 구현 완료를 의미하지 않는다.

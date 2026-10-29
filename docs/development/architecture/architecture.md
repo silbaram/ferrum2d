@@ -619,6 +619,17 @@ TypeScript는 브라우저와 package-facing API를 담당한다.
 
 TypeScript는 게임 규칙의 source of truth를 소유하지 않는다.
 
+`assetLoadTasks.ts`는 load/preload의 cold-path 작업 순서, 묶음별 동시성 상한, signal 결합과 listener 정리를 공유한다.
+`AssetLoader`는 registry와 texture/audio/JSON adapter를 연결하고, GPU upload·audio decode는 각 owner가 처리한다.
+기본 순차 처리와 manifest ID 시작 순서를 유지하면서 opt-in 병렬 처리를 지원한다. 첫 실패 시 sibling에 취소를
+전파하고 시작된 작업이 끝난 뒤 reject한다. 성공 자원/cache의 rollback은 하지 않는다.
+Engine과 BrowserPlatformHost는 자신의 lifetime signal을 묶음에 결합한다. AudioManager는 ID별 pending controller로
+재요청/evict/destroy 뒤의 늦은 decode 등록을 차단한다. 새 pending 요청을 게시한 뒤 이전 요청을 취소하므로
+동기 abort listener가 다시 load/destroy를 호출해도 최신 요청과 종료 상태를 유지한다. AudioAssetLoader는 HTTP 오류
+응답의 남은 body를 취소하며, 정리 실패가 원래 HTTP 진단을 덮어쓰지 않게 한다.
+Rust simulation, render command ABI와 hot-path 호출에는 변화가 없다.
+
+
 `geometry2D.ts`는 engine state를 보관하거나 Wasm을 호출하지 않는다. generic point/body
 transform과 resolved collider의 world center/reference point 계산만 제공하며, 단일 점은
 optional output 객체, collider vertices는 caller-owned numeric buffer를 사용한다. Collider별
@@ -903,6 +914,13 @@ shader는 glTF handedness·양면 최종 normal 반전과 linear emission을 처
 fog/HDR composite 앞에 합성하며 shadow는 기존 base alpha만 사용한다. GPU 오류/부분 sampler 할당도 회수한다.
 null을 반환한 allocation의 OOM flag도 cold 실패 정리에서 비워 즉시 재시도에 남기지 않는다.
 material은 불변 asset/contentId에 속하므로 native pose ABI·instance별 Wasm 호출·기존 저장 버전을 추가하지 않는다.
+`spatialTextureTransform.ts`는 GLB/분리형 glTF의 required-extension 허용 목록과 UV0의
+`KHR_texture_transform`을 검사한다. 이미지 decode 전 f32 행렬/UV 중간 overflow를 검증하고 identity는 생략한다.
+base/normal/emissive별 행렬은 CPU primitive에 보관하며 asset.byteLength와 재질 batch identity에 포함한다.
+WebGL2는 main/shadow draw에 공통 base 행렬과 main 전용 normal/emissive 행렬을 전달한다.
+WebGPU는 `webgpuSpatialMaterial.ts`의 144-byte material uniform(기존 48-byte 색/옵션 + 3×32-byte UV affine rows)을
+color/shadow WGSL에서 공유한다. upload는 cold resource 준비에만 발생하고 warm frame 할당은 추가하지 않는다.
+CPU alpha picking도 UV 보간 후 base 행렬을 적용한다. 정점의 UV0·exported tangent와 native ABI는 그대로다.
 GLB의 image 준비는 `spatialModelImage.ts`의 격리된 임시 WebGL2 readback을 사용한다. Canvas 2D의
 premultiply 왕복을 제거해 alpha 0 RGB와 부분 alpha 색을 보존하고, 이미지마다 다음 await 전에
 texture/FBO·bitmap과 지원되는 임시 context를 해제한다. persistent model GPU upload와 구분되는 cold 준비다.

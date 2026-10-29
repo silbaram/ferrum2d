@@ -70,7 +70,7 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   f32 VEC3, UV는 선택 f32 TEXCOORD_0이며 texture 사용 시 필수다. Blender에서는 UV/Normals를 내보내고
   normal map 사용 시 Tangents도 내보낸다. vertex color·animation·skin/morph는 제외한다. index는 unsigned 8/16/32-bit 또는 생략이다.
   node TRS/affine matrix를 합성하고 정점·inverse-transpose normal에 bake한다. pivot을 자동 중앙 정렬하지 않는다.
-  mirrored/singular 변환, sparse/normalized accessor, skin/morph/animation·필수 확장·외부 URI는 거절한다.
+  mirrored/singular 변환, sparse/normalized accessor, skin/morph/animation·지원하지 않는 필수 확장·외부 URI는 거절한다.
 - `OPAQUE`/`MASK` baseColorFactor/baseColorTexture, embedded PNG/JPEG와 glTF filter/wrap/mipmap sampler를 지원한다.
   `OPAQUE`는 factor alpha를 무시한다. 현재 diffuse subset에서 OPAQUE에 사용한 이미지의 alpha는 모두 255여야 한다.
   `MASK`는 image alpha × factor alpha가 `alphaCutoff` 이상인 fragment만 color/depth·point/sun shadow에 기록한다.
@@ -97,7 +97,25 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   두 renderer 색상 모드 모두 color는 sRGB8, normal은 RGBA8로 준비한다. 따라서 LINEAR 보간과
   mipmap 생성 전에 color가 linear RGB로 해석된다. normal과 color가 같은 이미지이면 별도 GPU texture를 사용한다.
   실제 복제 texture와 mipmap bytes도 resource stats에 포함하고 재질에서 참조하지 않는 image는 GPU에 올리지 않는다.
-  BLEND·occlusion·metallic/roughness texture·texture transform은 후속이다.
+  BLEND·occlusion·metallic/roughness texture는 후속이다.
+- `KHR_texture_transform`은 base/normal/emissive textureInfo마다 독립적으로 지원한다.
+  [Khronos 확장 규격](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)의
+  `scale` → 원점 기준 `rotation`(라디안) → `offset` 순서이며 기본값은 `[1,1]`, `0`, `[0,0]`이다.
+  UV의 +V는 아래쪽이므로 양의 회전은 `u′=ox+cos(r)·sx·u+sin(r)·sy·v`,
+  `v′=oy−sin(r)·sx·u+cos(r)·sy·v`다. Blender/three.js와 같은 방향이며,
+  규격 예제의 부호 문제는 [Khronos #1563](https://github.com/KhronosGroup/glTF/issues/1563)을 참고한다.
+  음수/0 배율도 허용하며 sampler의 repeat/mirror/clamp는 변환 후 적용한다.
+  유효 UV set은 `TEXCOORD_0`만 지원한다. 확장의 `texCoord`는 textureInfo의 값을 덮어쓰므로
+  `texCoord: 0` override는 허용하고 다른 UV set은 준비 오류로 거절한다.
+  offset/scale은 두 수, rotation은 수여야 하며 null·비정수 texCoord·f32 범위 밖 수치와 변환 중 UV overflow를 거절한다.
+  GLB와 분리형 glTF는 `KHR_texture_transform`, `KHR_materials_unlit`, `KHR_materials_emissive_strength`를
+  같은 required-extension 허용 목록으로 검사한다. 이 목록은 생략하거나 배열로 작성해야 하며 null은 거절한다.
+  지원하지 않는 required/textureInfo 확장은 계속 거절한다.
+  텍스처 변환은 정점·geometry bounds·exported tangent basis를 바꾸지 않는다. normal map은 해당 UV로 샘플링하고
+  기존 TANGENT 기준으로 조명을 계산한다. base alpha는 main/depth·point/sun shadow·CPU triangle picking에 같은 변환을 쓴다.
+  WebGL2/WebGPU 모두 지원하며 UV만 다른 재질을 한 batch로 합치지 않는다. Rust ABI·씬 저장 버전은 유지한다.
+  Blender Mapping 노드의 UV/Point 매핑을 exporter가 이 확장으로 저장한 모델을 사용할 수 있다.
+  임의의 procedural shader/Generated 좌표를 지원한다는 뜻은 아니다.
 - root 배치는 native entity XY와 heightSpan.elevation을 사용한다. 선택 `elevation`은 시각 offset(기본 0),
   `yawDegrees`는 Y-up 회전(-360..360, 기본 0), `scale`은 world units/meter인 양수 균일 배율(0.0001..10000, 기본 1)이다.
   Blender의 정상 Y-up glTF 출력에 Z-up 보정을 다시 적용하지 않는다. imported hierarchy는 정적 bake이며
@@ -106,7 +124,7 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
 - 충돌은 같은 instance의 기존 `components.collider`와 `body.heightSpan`으로 명시한다. AABB·원·캡슐·
   회전 박스·convex polygon 등 Data Scene이 지원하는 모양을 사용한다. 이 proxy의
   크기·offset·높이는 **최종 world 단위**다. 모델 yaw/scale/시각 offset이 proxy를 자동 변형하지 않으므로
-  일치하는 값을 작성한다. 삼각형 충돌·자동 보행층·모델 ray picking은 제공하지 않으며 지형 picking은 유지한다.
+  일치하는 값을 작성한다. 삼각형 충돌·자동 보행층은 제공하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
   `castShadow`/`receiveShadow`는 기본 true다. native가 world bounds와 camera/light culling을 계산한다.
   TS는 공유 indexed GPU buffers와 decoded RGBA 자원을 관리하며 정적 정점을 매 frame 전송하지 않는다.
@@ -1493,10 +1511,10 @@ native 렌더의 실제 LOD asset·소유한 world XYZ 행렬·cameraVisible을 
 문서/진행 저장 계약과 기존 model render command ABI는 바뀌지 않는다.
 
 소스 primitive가 32개 이하면 기존 순서와 draw 구성을 유지한다. 그보다 크면 동일한 정규화 재질
-(base/normal/emissive texture·sampler·색·unlit·alpha cutoff·양면)을 공유하는 정적 geometry를 병합한다.
+(base/normal/emissive texture·UV 변환·sampler·색·unlit·alpha cutoff·양면)을 공유하는 정적 geometry를 병합한다.
 정점을 이어 붙이고 index를 다시 지정하며 최종 batch가 32개를 넘으면 거절한다. geometry·image·등록
-상한은 유지한다. GLB/glTF의 알 수 없는 required extension과 지원하지 않는 material extension은
-재질 이름/인덱스가 포함된 진단으로 거절한다. emissive strength는 광원/GI를 생성하지 않는다.
+상한은 유지한다. GLB/glTF의 알 수 없는 required extension은 준비 오류로 거절한다.
+지원하지 않는 material extension은 재질 이름/인덱스가 포함된 진단으로 거절한다. emissive strength는 광원/GI를 생성하지 않는다.
 
 `addSpatialModelAssembly`의 `motion:"kinematic"`은 native root body와 `spatial.attachments`를 생성한다.
 자식 model/collider는 static body와 heightSpan을 가지며 Rust가 root의 XY·elevation·yaw로부터 계산한다.

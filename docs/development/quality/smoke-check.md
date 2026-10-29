@@ -1238,6 +1238,20 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 - 사용자 영향
 - 후속 조치 또는 보류 사유
 
+### 에셋 묶음 로딩 수명 회귀
+
+`pnpm smoke:asset-loading`은 실제 public `runtime.engine.loadAssets`와 preload를 로컬 HTTP 서버에서 실행한다.
+CI의 수동 `validate` job과 `smoke:check`에 연결한다. 보고서는 `artifacts/asset-loading/report.json`이다.
+
+- DPR 1/2에서 texture/sound/JSON 네 항목의 공유 동시 요청 상한 2와 완료 진행률을 검사한다.
+- 실제 PNG upload·WAV decode·JSON 해석, Rust Data Scene Playing/2 render commands와 비어 있지 않은 pixel을 검사한다.
+- 네트워크 중 묶음 취소는 대기 작업을 시작하지 않고 audio/texture를 늦게 등록하지 않아야 한다. 같은 ID 재시도도 검증한다.
+- HTTP 500 시 원래 오류 보존·sibling 취소·진행률 중단, preload 취소, engine 단독 종료 시 host 자원 보존을 검사한다.
+- runtime 종료 후 GPU texture 잔여는 0이어야 한다. 지연은 취소 경합 fixture이며 성능 향상 수치로 해석하지 않는다.
+- SDK `assetLoadLifecycle`/`audioManager` 회귀는 cache/body/decode 중단, 같은 사운드 ID 교체, evict/destroy,
+  abort listener의 동일 ID 재진입, 실패 HTTP body 취소·정리 오류 시 원래 진단 보존,
+  ID 순서·병렬 상한·늦은 진행률 차단을 검사한다. shader/물리 알고리즘과 Wasm ABI 변경은 없다.
+
 ### GPU 자원 수명주기 회귀
 
 같은 `pnpm smoke:gpu-resources`는 opt-in GPU timer와 Wasm 용량 sample 연결도 검증한다.
@@ -1660,11 +1674,20 @@ Linux CI validate와 smoke:check에 연결한다. test-only target adapter는 sh
 지원 point/sun 그림자 요구사항과 runtime 초기 문서는 WebGPU를 유지하는지도 별도 검사한다.
 잘못된 packet·typed-view 이동·resource budget과 GPU async upload 실패/rollback/pin/destroy는 웹 단위 회귀로 보강한다.
 환경 fixture는 ambient/4 point/sun·billboard/model normal·unlit·fog·grade·표준/고품질 DOF·actor focus·pixelArt·debug·복합 효과의
-기존 16개 상태와 반구광·normalBias 14개, 조명 v4 8개 상태를 합한 38개를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
+기존 환경/조명 38개와 텍스처 변환 18개를 합한 56개를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
 DOF 13/25 sample 예산과 변화 픽셀, 160×90 HDR 저장량, warm terrain/model upload0, fresh restore 전체 byte 차이0을 assert한다.
 WebGPU warm draw 구간의 실제 createTexture/createBuffer/createBindGroup 호출을 별도로 관측해 모두0인지 검사한다. readback용 buffer 생성은 draw 구간 밖이다.
 비교에는 채널3/상이 pixel1% 미만, 전용 DOF 상태에는 0.1% 미만을 적용한다. DOF 기준은 sample Y 방향 역전을 검출한다.
 캡처는 PNG로 보존하고 raw framebuffer의 수명은 제한한다.
+텍스처 변환 fixture는 실제 Blender 출력(`tests/fixtures/spatial-texture-transform`)의 base/normal/emissive별
+이동·회전·음수 배율을 사용한다. 원본 Blender Mapping 값(Y-up)으로 UV를 정점에 bake하고 glTF UV(Y-down)로 바꾼 reference와 비교한다.
+확장 JSON/엔진 행렬을 기대값에 재사용하지 않아 회전 부호가 양 backend에서 함께 틀린 경우도 검출한다.
+각 map의 identity 대비 변화도 요구하므로 변환을 무시하거나 normal/emissive sampling을 생략하면 실패한다.
+point/sun MASK 그림자도 같은 reference와 채널3/상이 pixel0.1% 미만으로 대조하고, 그림자 해제 대비 차이를 요구한다.
+GLB와 외부 glTF는 frame byte 차이0, CPU raycast는 64개 위치에서 opaque/cutout 모두와 reference 일치를 요구한다.
+지원하지 않는 UV set의 import 실패 후에도 활성 씬의 frame byte 차이0·model upload0을 검사한다.
+SDK 단위 테스트는 malformed/overflow 입력과 null required-extension 목록의 decode 전 거절, UV set override, identity/0 배율,
+서로 다른 UV 재질 batch 보존, clamp/repeat/mirror alpha picking을 검사한다.
 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --environment-only`로 환경 상태만 실행할 수 있다.
 HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의 resize/disable/destroy 경쟁은 단위 회귀로 검사한다.
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
@@ -1706,7 +1729,7 @@ physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 �
 
 Bloom 강도 0은 효과를 생략한 장면과 배경 픽셀이 같아야 한다. 객체/지형을 다시 선택하면 광원 도구를 해제하고, 광원 키보드 조작은 좌표·반경 한계에서 멈춰야 한다. 연결된 자식 객체는 상위 attachment의 위치·높이·yaw를 반영한 anchor로 광원을 표시하고 연결 변경 시 월드 위치를 보존한다.
 
-- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 38개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
+- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 56개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
   스포트라이트 방향 반전, HDR Bloom, 접촉 음영의 실제 pixel 변화와 HUD 불변, 16개 중 활성 2개 선택,
   warm GPU 할당/업로드 0, 새 engine 저장 복원, destroy를 검사한다. pixel parity 허용치를 효과 추가 때문에 늘리지 않는다.
 - `pnpm smoke:placement-spatial-workspace`의 lighting 회귀는 분위기 4개, 품질, cone 작성,
