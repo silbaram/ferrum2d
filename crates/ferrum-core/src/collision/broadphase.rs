@@ -20,6 +20,7 @@ pub(crate) struct CollisionScratch {
     pub(super) target_proxies: Vec<CollisionProxy>,
     pub(super) collider_pairs: Vec<ColliderPair>,
     pair_dedupe: Vec<CollisionPairDedupeEntry>,
+    kinematic_target_visits: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -48,7 +49,7 @@ struct CollisionPairDedupeEntry {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RigidBodyCcdCandidateQuery {
-    pub(crate) moving_index: usize,
+    pub(crate) moving_key: ColliderKey,
     pub(crate) moving_start: Transform2D,
     pub(crate) moving_shape: ColliderShapeRef,
     pub(crate) moving_velocity: Velocity,
@@ -77,16 +78,15 @@ impl CollisionScratch {
 }
 
 impl CollisionSystem {
-    pub(crate) fn kinematic_target_bounds(world: &World, index: usize) -> Option<AabbBounds> {
-        let at = world.transform_at_index(index)?;
-        if let Some(c) = world.colliders[index] {
-            return c.enabled.then(|| AabbBounds::from_transform(at, c));
-        }
-        let shape = collider_shape(world, index)?;
-        match shape {
-            ColliderShapeRef::OrientedBox(c, _) if c.enabled => Some(collider_bounds(at, shape)),
-            _ => None,
-        }
+    pub(crate) fn kinematic_collider_bounds(world: &World, key: ColliderKey) -> Option<AabbBounds> {
+        let at = world.transform_at_index(key.entity_index)?;
+        let shape = collider_shape_at_segment(
+            world,
+            key.entity_index,
+            key.collider_index,
+            key.segment_index,
+        )?;
+        Some(collider_bounds(at, shape))
     }
     pub fn build_pairs(world: &World) -> Vec<CollisionPair> {
         let mut pairs = Vec::new();
@@ -389,11 +389,11 @@ impl CollisionSystem {
         }
     }
 
-    pub(crate) fn build_rigid_body_ccd_candidate_indices_into(
+    pub(crate) fn build_rigid_body_ccd_candidate_keys_into(
         scratch: &mut CollisionScratch,
         world: &World,
         query: RigidBodyCcdCandidateQuery,
-        candidates: &mut Vec<usize>,
+        candidates: &mut Vec<ColliderKey>,
     ) {
         let moving_bounds = swept_collider_bounds(
             query.moving_start,
@@ -403,7 +403,7 @@ impl CollisionSystem {
         );
         fill_rigid_body_ccd_target_proxies(
             world,
-            query.moving_index,
+            query.moving_key,
             query.delta_seconds,
             &mut scratch.target_proxies,
         );
@@ -417,27 +417,32 @@ impl CollisionSystem {
                 break;
             }
             if target_proxy.bounds.overlaps(moving_bounds) {
-                candidates.push(target_proxy.key.entity_index);
+                candidates.push(target_proxy.key);
             }
         }
 
-        candidates.sort_unstable();
+        candidates
+            .sort_unstable_by_key(|key| (key.entity_index, key.collider_index, key.segment_index));
         candidates.dedup();
     }
 
-    pub(crate) fn build_kinematic_sweep_candidate_indices_into(
+    pub(crate) fn build_kinematic_sweep_candidate_keys_into(
         scratch: &mut CollisionScratch,
         world: &World,
         query: KinematicSweepCandidateQuery,
-        candidates: &mut Vec<usize>,
+        candidates: &mut Vec<ColliderKey>,
     ) {
         Self::prepare_kinematic_sweep_targets(scratch, world, query);
-        Self::query_kinematic_sweep_candidate_indices_into(scratch, query, candidates);
+        Self::query_kinematic_sweep_candidate_keys_into(scratch, query, candidates);
     }
 
     /// A synchronous spatial query may reuse these bounds while only its actor moves.
     pub(crate) fn kinematic_sweep_target_count(scratch: &CollisionScratch) -> usize {
         scratch.target_proxies.len()
+    }
+
+    pub(crate) fn kinematic_sweep_preparation_visits(scratch: &CollisionScratch) -> usize {
+        scratch.kinematic_target_visits
     }
 
     /// A synchronous spatial query may reuse these bounds while only its actor moves.
@@ -446,14 +451,15 @@ impl CollisionSystem {
         world: &World,
         query: KinematicSweepCandidateQuery,
     ) -> usize {
-        fill_kinematic_sweep_target_proxies(world, query, &mut scratch.target_proxies);
+        scratch.kinematic_target_visits =
+            fill_kinematic_sweep_target_proxies(world, query, &mut scratch.target_proxies);
         scratch.target_proxies.len()
     }
 
-    pub(crate) fn query_kinematic_sweep_candidate_indices_into(
+    pub(crate) fn query_kinematic_sweep_candidate_keys_into(
         scratch: &CollisionScratch,
         query: KinematicSweepCandidateQuery,
-        candidates: &mut Vec<usize>,
+        candidates: &mut Vec<ColliderKey>,
     ) {
         let moving_end = Transform2D {
             x: query.moving_start.x + query.remaining.vx,
@@ -474,11 +480,12 @@ impl CollisionSystem {
                 break;
             }
             if target_proxy.bounds.overlaps(moving_bounds) {
-                candidates.push(target_proxy.key.entity_index);
+                candidates.push(target_proxy.key);
             }
         }
 
-        candidates.sort_unstable();
+        candidates
+            .sort_unstable_by_key(|key| (key.entity_index, key.collider_index, key.segment_index));
         candidates.dedup();
     }
 }
@@ -665,13 +672,13 @@ fn fill_swept_mask_proxies(
 
 fn fill_rigid_body_ccd_target_proxies(
     world: &World,
-    moving_index: usize,
+    moving_key: ColliderKey,
     delta_seconds: f32,
     proxies: &mut Vec<CollisionProxy>,
 ) {
     proxies.clear();
     for &index in world.alive_indices() {
-        if index == moving_index || !filters_allow(world, moving_index, index) {
+        if index == moving_key.entity_index {
             continue;
         }
         let Some(transform) = world.transform_at_index(index) else {
@@ -680,6 +687,20 @@ fn fill_rigid_body_ccd_target_proxies(
         let velocity = finite_broadphase_velocity(world.velocity_at_index_or_default(index));
         for collider_index in 0..world.compound_collider_count_at(index) {
             for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                let key = ColliderKey {
+                    entity_index: index,
+                    collider_index,
+                    segment_index,
+                };
+                if !filters_allow_collider_pair(
+                    world,
+                    ColliderPair {
+                        a: moving_key,
+                        b: key,
+                    },
+                ) {
+                    continue;
+                }
                 let Some(shape) =
                     collider_shape_at_segment(world, index, collider_index, segment_index)
                 else {
@@ -689,11 +710,7 @@ fn fill_rigid_body_ccd_target_proxies(
                     continue;
                 }
                 proxies.push(CollisionProxy {
-                    key: ColliderKey {
-                        entity_index: index,
-                        collider_index,
-                        segment_index,
-                    },
+                    key,
                     bounds: swept_collider_bounds(transform, shape, velocity, delta_seconds),
                 });
             }
@@ -706,25 +723,30 @@ fn fill_kinematic_sweep_target_proxies(
     world: &World,
     query: KinematicSweepCandidateQuery,
     proxies: &mut Vec<CollisionProxy>,
-) {
+) -> usize {
     proxies.clear();
+    let mut visits: usize = 0;
     for &index in world.alive_indices() {
         if index == query.moving_index || query.ignored_index == Some(index) {
             continue;
         }
-        let Some(bounds) = CollisionSystem::kinematic_target_bounds(world, index) else {
-            continue;
-        };
-        proxies.push(CollisionProxy {
-            key: ColliderKey {
-                entity_index: index,
-                collider_index: 0,
-                segment_index: 0,
-            },
-            bounds,
-        });
+        for collider_index in 0..world.compound_collider_count_at(index) {
+            visits = visits.saturating_add(1);
+            for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                visits = visits.saturating_add(1);
+                let key = ColliderKey {
+                    entity_index: index,
+                    collider_index,
+                    segment_index,
+                };
+                if let Some(bounds) = CollisionSystem::kinematic_collider_bounds(world, key) {
+                    proxies.push(CollisionProxy { key, bounds });
+                }
+            }
+        }
     }
     proxies.sort_by(proxy_order);
+    visits
 }
 
 fn swept_collider_bounds(

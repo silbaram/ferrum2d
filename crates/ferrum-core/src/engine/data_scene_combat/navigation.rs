@@ -301,6 +301,7 @@ impl CombatNavigation {
         self.used += scan * 3;
         // Conservative query-preparation bound. Chains contribute every segment, even disabled ones.
         let mut proxies = 0u64;
+        let mut collider_visits = 0u64;
         for &index in world.alive_indices() {
             for collider in 0..world.compound_collider_count_at(index) {
                 if self.used == FRAME_WORK {
@@ -308,12 +309,16 @@ impl CombatNavigation {
                     return;
                 }
                 self.used += 1;
+                collider_visits = collider_visits.saturating_add(1);
                 proxies = proxies
                     .saturating_add(collider_segment_count_at(world, index, collider) as u64);
             }
         }
+        let preparation_visits = collider_visits.saturating_add(proxies);
         let proxies = proxies.max(1);
-        let preparation = scan + proxies.saturating_mul(u64::from(proxies.ilog2()) + 1);
+        let preparation = scan
+            .saturating_add(preparation_visits)
+            .saturating_add(proxies.saturating_mul(u64::from(proxies.ilog2()) + 1));
         let count = self.agents.len();
         if count == 0 {
             if self.pending_search.take().is_some() {

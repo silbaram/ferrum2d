@@ -1,6 +1,6 @@
 use crate::collision::{
-    collider_shape, AabbBounds, ColliderShapeRef, CollisionScratch, CollisionSystem,
-    KinematicSweepCandidateQuery, SweptAabbContactHit,
+    collider_shape_at_segment, AabbBounds, ColliderKey, ColliderShapeRef, CollisionScratch,
+    CollisionSystem, KinematicSweepCandidateQuery, SweptAabbContactHit,
 };
 use crate::components::{AabbCollider, CollisionMask, HeightSpan, Transform2D, Velocity};
 use crate::entity::Entity;
@@ -8,7 +8,7 @@ use crate::tilemap::{Tilemap, TilemapSweepStats};
 use crate::world::World;
 
 use super::solid_filter::{
-    is_one_way_platform_candidate, one_way_platform_contact_blocks, solid_filter_allows,
+    is_one_way_collider_candidate, one_way_platform_contact_blocks, solid_collider_filter_allows,
 };
 use crate::physics::{OneWayPlatformConfig, PhysicsCounters, KINEMATIC_EPSILON};
 
@@ -35,13 +35,13 @@ pub(super) struct KinematicSweep<'a> {
 #[derive(Default)]
 pub(crate) struct KinematicSweepScratch {
     collision: CollisionScratch,
-    candidates: Vec<usize>,
+    candidates: Vec<ColliderKey>,
     spatial_tile_contacts: Vec<crate::tilemap::TilemapContactHit>,
     pub(crate) debug_hits: Vec<KinematicDebugHit>,
     pub(crate) debug_truncated: bool,
     capture_debug_hits: bool,
     spatial_query_actor: Option<Entity>,
-    spatial_segment_targets: Vec<usize>,
+    spatial_segment_targets: Vec<ColliderKey>,
     spatial_segment_active: bool,
 }
 
@@ -78,6 +78,10 @@ impl KinematicSweepScratch {
         self.spatial_query_actor = None;
         self.spatial_segment_active = false;
     }
+    /// Include visited disabled/invalid children even when no proxy was emitted.
+    pub(crate) fn preparation_visits(&self) -> usize {
+        CollisionSystem::kinematic_sweep_preparation_visits(&self.collision)
+    }
     /// Restrict nested sweeps to a conservative reach region for one synchronous segment.
     /// The caller charges the full prepared-target scan before using the smaller nested set.
     pub(crate) fn begin_spatial_segment(
@@ -99,7 +103,7 @@ impl KinematicSweepScratch {
         if !collider.half_width.is_finite() || !collider.half_height.is_finite() {
             return CollisionSystem::kinematic_sweep_target_count(&self.collision);
         }
-        CollisionSystem::query_kinematic_sweep_candidate_indices_into(
+        CollisionSystem::query_kinematic_sweep_candidate_keys_into(
             &self.collision,
             KinematicSweepCandidateQuery {
                 moving_index: actor.id as usize,
@@ -127,25 +131,25 @@ impl KinematicSweepScratch {
                 };
                 let bounds = AabbBounds::swept(query.moving_start, end, query.moving_collider);
                 self.candidates.clear();
-                for &index in &self.spatial_segment_targets {
-                    if query.ignored_index == Some(index) {
+                for &key in &self.spatial_segment_targets {
+                    if query.ignored_index == Some(key.entity_index) {
                         continue;
                     }
-                    if let Some(target) = CollisionSystem::kinematic_target_bounds(world, index) {
+                    if let Some(target) = CollisionSystem::kinematic_collider_bounds(world, key) {
                         if target.overlaps(bounds) {
-                            self.candidates.push(index);
+                            self.candidates.push(key);
                         }
                     }
                 }
                 return;
             }
-            CollisionSystem::query_kinematic_sweep_candidate_indices_into(
+            CollisionSystem::query_kinematic_sweep_candidate_keys_into(
                 &self.collision,
                 query,
                 &mut self.candidates,
             );
         } else {
-            CollisionSystem::build_kinematic_sweep_candidate_indices_into(
+            CollisionSystem::build_kinematic_sweep_candidate_keys_into(
                 &mut self.collision,
                 world,
                 query,
@@ -234,44 +238,39 @@ pub(super) fn spatial_pose_overlaps_solid(
             remaining: Velocity::default(),
         },
     );
-    for &index in &scratch.candidates {
-        if world.colliders[index].is_none() {
-            if let (Some(target), Some(target_at)) = (
-                collider_shape(world, index),
-                world.transform_at_index(index),
-            ) {
-                if let Some(c) = counters.as_deref_mut() {
-                    c.solid_candidate_checks = c.solid_candidate_checks.saturating_add(1);
-                }
-                if !target.is_trigger()
-                    && solid_filter_allows(world, moving_index, index, solid_mask)
-                    && height_span_allows_kinematic_target(world, index, height_span)
-                    && CollisionSystem::shapes_penetrate(
-                        at,
-                        ColliderShapeRef::Aabb(collider),
-                        target_at,
-                        target,
-                    )
-                {
-                    return true;
-                }
-            }
-            continue;
-        }
-        let Some(target) = world.colliders[index] else {
+    for &key in &scratch.candidates {
+        let Some(target) = collider_shape_at_segment(
+            world,
+            key.entity_index,
+            key.collider_index,
+            key.segment_index,
+        ) else {
             continue;
         };
         if let Some(counters) = counters.as_deref_mut() {
             counters.solid_candidate_checks = counters.solid_candidate_checks.saturating_add(1);
         }
-        if target.enabled
-            && !target.is_trigger
-            && solid_filter_allows(world, moving_index, index, solid_mask)
-            && height_span_allows_kinematic_target(world, index, height_span)
-            && world
-                .transform_at_index(index)
-                .is_some_and(|p| aabb_edges_penetrate(at, collider, p, target))
+        if target.is_trigger()
+            || !solid_collider_filter_allows(world, moving_index, key, solid_mask)
+            || !height_span_allows_kinematic_target(world, key.entity_index, height_span)
         {
+            continue;
+        }
+        let Some(target_at) = world.transform_at_index(key.entity_index) else {
+            continue;
+        };
+        let penetrates = match target {
+            ColliderShapeRef::Aabb(target_collider) => {
+                aabb_edges_penetrate(at, collider, target_at, target_collider)
+            }
+            _ => CollisionSystem::shapes_penetrate(
+                at,
+                ColliderShapeRef::Aabb(collider),
+                target_at,
+                target,
+            ),
+        };
+        if penetrates {
             return true;
         }
     }
@@ -319,29 +318,35 @@ pub(super) fn earliest_solid_hit(
         },
     );
 
-    for target_index in scratch.candidates.iter().copied() {
-        if world.colliders[target_index].is_none() {
+    for target_key in scratch.candidates.iter().copied() {
+        let target_index = target_key.entity_index;
+        let Some(target) = collider_shape_at_segment(
+            world,
+            target_index,
+            target_key.collider_index,
+            target_key.segment_index,
+        ) else {
+            continue;
+        };
+        if let Some(c) = counters.as_deref_mut() {
+            c.solid_candidate_checks = c.solid_candidate_checks.saturating_add(1);
+        }
+        if target.is_trigger()
+            || !solid_collider_filter_allows(world, moving_index, target_key, solid_mask)
+        {
+            continue;
+        }
+        if !height_span_allows_kinematic_target(world, target_index, height_span) {
             if let Some(c) = counters.as_deref_mut() {
-                c.solid_candidate_checks = c.solid_candidate_checks.saturating_add(1);
+                c.hd2d_filtered_entity_candidates =
+                    c.hd2d_filtered_entity_candidates.saturating_add(1);
             }
-            let Some(target) = collider_shape(world, target_index) else {
-                continue;
-            };
-            if target.is_trigger()
-                || !solid_filter_allows(world, moving_index, target_index, solid_mask)
-            {
-                continue;
-            }
-            if !height_span_allows_kinematic_target(world, target_index, height_span) {
-                if let Some(c) = counters.as_deref_mut() {
-                    c.hd2d_filtered_entity_candidates =
-                        c.hd2d_filtered_entity_candidates.saturating_add(1);
-                }
-                continue;
-            }
-            let Some(target_at) = world.transform_at_index(target_index) else {
-                continue;
-            };
+            continue;
+        }
+        let Some(target_at) = world.transform_at_index(target_index) else {
+            continue;
+        };
+        let ColliderShapeRef::Aabb(target_collider) = target else {
             let Some(hit) = CollisionSystem::swept_shape_contact(
                 position,
                 remaining,
@@ -370,31 +375,8 @@ pub(super) fn earliest_solid_hit(
                 });
             }
             continue;
-        }
-        let Some(target_collider) = world.colliders[target_index] else {
-            continue;
         };
-        if !target_collider.enabled {
-            continue;
-        }
-        if let Some(counters) = counters.as_deref_mut() {
-            counters.solid_candidate_checks = counters.solid_candidate_checks.saturating_add(1);
-        }
-        if target_collider.is_trigger
-            || !solid_filter_allows(world, moving_index, target_index, solid_mask)
-        {
-            continue;
-        }
-        if !height_span_allows_kinematic_target(world, target_index, height_span) {
-            if let Some(counters) = counters.as_deref_mut() {
-                counters.hd2d_filtered_entity_candidates =
-                    counters.hd2d_filtered_entity_candidates.saturating_add(1);
-            }
-            continue;
-        }
-        let Some(target_transform) = world.transform_at_index(target_index) else {
-            continue;
-        };
+        let target_transform = target_at;
         let Some(contact) = CollisionSystem::swept_aabb_contact(
             position,
             remaining,
@@ -407,7 +389,7 @@ pub(super) fn earliest_solid_hit(
             continue;
         };
         let is_one_way_platform =
-            is_one_way_platform_candidate(world, target_index, one_way_platforms);
+            is_one_way_collider_candidate(world, target_key, one_way_platforms);
         if is_one_way_platform
             && !one_way_platform_contact_blocks(
                 position,

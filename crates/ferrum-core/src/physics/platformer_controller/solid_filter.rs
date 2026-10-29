@@ -1,4 +1,4 @@
-use crate::collision::SweptAabbContactHit;
+use crate::collision::{ColliderKey, SweptAabbContactHit};
 use crate::components::{AabbCollider, CollisionMask, Transform2D, Velocity};
 use crate::world::World;
 
@@ -10,10 +10,30 @@ pub(super) fn solid_filter_allows(
     target_index: usize,
     solid_mask: CollisionMask,
 ) -> bool {
-    if crate::physics::rigid_body_properties::has_disabled_rigid_body(world, target_index) {
+    solid_collider_filter_allows(
+        world,
+        moving_index,
+        ColliderKey {
+            entity_index: target_index,
+            collider_index: 0,
+            segment_index: 0,
+        },
+        solid_mask,
+    )
+}
+
+pub(super) fn solid_collider_filter_allows(
+    world: &World,
+    moving_index: usize,
+    target: ColliderKey,
+    solid_mask: CollisionMask,
+) -> bool {
+    if crate::physics::rigid_body_properties::has_disabled_rigid_body(world, target.entity_index) {
         return false;
     }
-    let Some(target_filter) = world.collision_filter_at(target_index) else {
+    let Some(target_filter) =
+        world.compound_collision_filter_at(target.entity_index, target.collider_index)
+    else {
         return false;
     };
     if !target_filter.category.intersects(solid_mask) {
@@ -25,14 +45,14 @@ pub(super) fn solid_filter_allows(
     moving_filter.can_collide_with(target_filter)
 }
 
-pub(super) fn is_one_way_platform_candidate(
+pub(super) fn is_one_way_collider_candidate(
     world: &World,
-    target_index: usize,
+    target: ColliderKey,
     one_way_platforms: OneWayPlatformConfig,
 ) -> bool {
     one_way_platforms.is_enabled()
         && world
-            .collision_filter_at(target_index)
+            .compound_collision_filter_at(target.entity_index, target.collider_index)
             .is_some_and(|filter| filter.category.intersects(one_way_platforms.platform_mask))
 }
 

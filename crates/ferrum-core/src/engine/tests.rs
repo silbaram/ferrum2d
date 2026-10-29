@@ -179,6 +179,7 @@ mod spatial_connections;
 mod spatial_debug;
 mod spatial_environment;
 mod spatial_navigation;
+mod spatial_physics_obstacles;
 mod spatial_progress;
 mod spatial_scene;
 mod spatial_terrain_chunks;

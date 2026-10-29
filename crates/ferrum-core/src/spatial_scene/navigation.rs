@@ -289,9 +289,10 @@ fn projected_axis(center: f32, offset: f32, low: f32, high: f32) -> Option<f32> 
     None
 }
 // The alive scan and target sort happen once per request/frame, never once per edge/substep.
-fn preparation_work(world: &World, targets: usize) -> u64 {
+fn preparation_work(scene: &SpatialScene, world: &World, targets: usize) -> u64 {
     let targets = targets.max(1) as u64;
     (world.alive_indices().len() as u64)
+        .saturating_add(scene.movement_scratch.preparation_visits() as u64)
         .saturating_add(targets.saturating_mul(u64::from(targets.ilog2()) + 1))
 }
 // Conservative nested sweeps/overlap/surface scans, including per-query candidate sorting.
@@ -480,7 +481,9 @@ impl SpatialNavigation {
         );
         scene.movement_scratch.end_spatial_query();
         let mut result = std::mem::take(&mut self.crowd_step);
-        result.work = self.update_work.max(preparation_work(world, targets));
+        result.work = self
+            .update_work
+            .max(preparation_work(scene, world, targets));
         result
     }
     fn begin_request(&mut self) {
@@ -1098,7 +1101,7 @@ impl SpatialNavigation {
         }
         let original = world.transform(actor).unwrap_or_default();
         self.target_count = scene.movement_scratch.begin_spatial_query(world, actor);
-        self.preparation_work = preparation_work(world, self.target_count);
+        self.preparation_work = preparation_work(scene, world, self.target_count);
         self.search.work = self.preparation_work;
         // Admission includes preparation and at least one bounded follower step.
         if self
@@ -1200,7 +1203,7 @@ impl SpatialNavigation {
         };
         let mut budget = self.pending + f64::from(self.speed) * f64::from(delta);
         let mut heading: Option<Velocity> = None;
-        let prepared_work = preparation_work(world, target_count);
+        let prepared_work = preparation_work(scene, world, target_count);
         let mut used = prepared_work;
         self.update_work = used;
         world.set_velocity(actor, Velocity::default());

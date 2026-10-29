@@ -481,6 +481,8 @@ def make_document():
     model('east_cottage','cottage',105,-120)
     model('clock_tower','tower',-35,165)
     model('village_well','well',-20,25,solid=True)
+    # The stone well base is circular; its canopy remains visual geometry.
+    instances[-1]['props']['components']['collider']={'type':'circle','radius':20.0,'isTrigger':False}
     model('river_bridge','bridge',190,-12,solid=False)
     model('raised_garden','garden',GARDEN['x']+GARDEN['width']/2,GARDEN['y']+GARDEN['depth']/2,solid=False)
     for i,(x,y,s) in enumerate([(-286,172,1),(-267,70,.9),(-300,-25,1),(-290,-180,1.15),(-130,-176,.85),

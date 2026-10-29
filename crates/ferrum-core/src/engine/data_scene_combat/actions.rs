@@ -81,19 +81,23 @@ impl CombatActions {
             return None;
         }
         let mut segments = 0u64;
+        let mut collider_visits = 0u64;
         for &index in world.alive_indices() {
             for collider in 0..world.compound_collider_count_at(index) {
                 if !self.reserve(1) {
                     return None;
                 }
+                collider_visits = collider_visits.saturating_add(1);
                 segments = segments
                     .saturating_add(collider_segment_count_at(world, index, collider) as u64);
             }
         }
+        let preparation_visits = collider_visits.saturating_add(segments);
         let segments = segments.max(1);
         Some((
             segments,
-            scan + segments.saturating_mul(u64::from(segments.ilog2()) + 1),
+            scan.saturating_add(preparation_visits)
+                .saturating_add(segments.saturating_mul(u64::from(segments.ilog2()) + 1)),
         ))
     }
 }

@@ -1,4 +1,5 @@
 use super::{data_scene_visuals::sprite, *};
+use crate::components::{CircleCollider, CompoundCollider, CompoundColliderShape};
 use crate::components::{HeightSpan, PhysicsFloorId};
 
 fn surface(x: f32, y: f32, w: f32, d: f32, a: f32, b: f32) -> [f32; 11] {
@@ -141,6 +142,60 @@ fn spatial_connections_reject_invalid_or_ambiguous_topology_atomically() {
         &[1, 0, 16777215, 1, 2, 1, 16777215, 1, 3, 2, 16777215, 1]
     ));
     assert!(!e.spatial_scene.configure_connections(&[1, 2, 1, 3]));
+}
+
+#[test]
+fn spatial_gateways_reject_circular_and_compound_destination_obstacles() {
+    for secondary in [false, true] {
+        for floor in [0, 1, 2] {
+            let (mut e, actor) = setup();
+            assert!(e.spatial_scene.configure_connections(&[1, 2]));
+            let wall = e.world.spawn_entity();
+            e.world
+                .set_transform(wall, Transform2D { x: 34.0, y: 16.0 });
+            if secondary {
+                e.world.set_aabb_collider(
+                    wall,
+                    AabbCollider::new(2.0, 2.0, false, CollisionLayer::Wall).with_offset(0.0, 40.0),
+                );
+            }
+            assert!(e
+                .world
+                .add_compound_collider(
+                    wall,
+                    CompoundCollider::new(CompoundColliderShape::Circle(CircleCollider::new(
+                        3.0,
+                        false,
+                        CollisionLayer::Wall
+                    )))
+                    .with_filter(CollisionFilter::new(
+                        CollisionMask::WALL,
+                        CollisionMask::ALL
+                    ))
+                )
+                .is_some());
+            assert!(e.world.set_height_span(
+                wall,
+                HeightSpan::new(
+                    PhysicsFloorId(floor),
+                    if floor == 1 { 16.0 } else { 0.0 },
+                    8.0
+                )
+                .unwrap()
+            ));
+            assert!(e.move_spatial_body(actor.id, actor.generation, 32.0, 0.0, 16.0, 16.0));
+            if floor == 2 {
+                assert_eq!(pose(&e, actor), (48.0, 16.0, 1, 16.0));
+            } else {
+                assert!(
+                    pose(&e, actor).0 < 32.0,
+                    "secondary={secondary}, obstacle floor={floor}"
+                );
+                assert_eq!(pose(&e, actor).2, 0);
+                assert_eq!(pose(&e, actor).3, 0.0);
+            }
+        }
+    }
 }
 
 #[test]

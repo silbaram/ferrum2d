@@ -213,9 +213,8 @@
                   "color": "#9b8b6b"
                 },
                 "collider": {
-                  "type": "aabb",
-                  "halfWidth": 20.0,
-                  "halfHeight": 20.0,
+                  "type": "circle",
+                  "radius": 20.0,
                   "isTrigger": false
                 },
                 "layer": "wall",
