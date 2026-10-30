@@ -1451,6 +1451,24 @@ Authoring 뷰어의 광원 gizmo는 위치 작성 전용 DOM overlay이며 nativ
 현재 모델 묶음을 먼저 preload·pin하고 다음 준비 묶음을 preload하여 각각의 16개 상한과 합계 GPU byte 예산을 유지한다.
 이전 프레임의 Wasm views나 과거 모든 모델 preload를 영구 보관하지 않는다. 사용 계약은 [Labs](../../engine/public-api/labs.md#webgpu-장치-수명과-복구)를 따른다.
 
+`webgpuResources.ts`는 native device별 renderer 소유 allocation ledger다. 모든 내부 buffer/texture/pipeline 생성과
+교체·해제가 동일 ledger를 사용하며 native GPU 객체를 Proxy로 감싸거나 prototype을 수정하지 않는다.
+생성 중 실패한 pass의 allocation도 backend 생성 실패 시 일괄 해제한다. canvas/external device allocation은 소유하지 않는다.
+형식별 저장량을 모르면 추정 합계를 생략하고 buffer 용량과 객체 수를 유지한다.
+`webgpuGpuTimer.ts`는 opt-in timestamp pass 계측과 bounded 비동기 readback을 맡는다.
+renderer pass가 공통 begin helper를 거쳐야 계측되며 runtime의 기존 begin/end 경계가 shadow/debug/post-process까지 포함한다.
+WebGPU pass 시간 합계와 WebGL2 전체 query 구간은 다른 측정 범위다. profiler의 기존 GPU sample/자원 필드를 재사용한다.
+손실 이전 자원·readback은 버리고 facade의 frame ID offset만 보존한다. Rust simulation/render command ABI는 변경하지 않는다.
+계측 전용 동기 할당/제출 실패는 측정만 생략하며, runtime은 실패한 render frame을 `endGpuTiming(true)`로 폐기한다.
+texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 기존 texture ID가 일치한다.
+
+`ScenePlacementHistory.someSnapshot`과 viewer의 `retainsAssetReference`는 cold 자원 정리를 위한 보수적 참조 query다.
+Import 패널은 모든 열린 문서·Undo/Redo·transaction·후보를 확인한 뒤 미저장 session revision만 정리한다.
+프로젝트에 저장된 원본은 별도 project-wide 참조 검증 없이는 삭제하지 않는다. Import 진단은 원본 항목과 authored JSON pointer를
+읽기 전용으로 연결하며 Behavior Recipe 본문이나 실행 상태를 편집하지 않는다.
+Import 진단은 채널별 최신 불변 snapshot을 보존하고 이벤트는 변경 알림으로만 사용한다.
+Problems의 늦은 초기화와 무관하게 동일 상태를 읽으며, 순회·pointer·결과 수를 제한해 오류 보고가 UI를 중단하지 않게 한다.
+
 정적 모델 loader는 32개 이하 source primitive에서 인접한 동일 material 범위만 합쳐 제출한다.
 동일 재질의 triangle 순서와 다른 재질 사이의 draw 순서를 유지하므로 coplanar depth tie를 바꾸지 않는다.
 기존 32개 초과 모델의 material batching과 geometry/메모리 상한은 유지한다. cold load에서만 병합하며 frame마다 geometry를 재작성하지 않는다.

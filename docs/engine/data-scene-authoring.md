@@ -191,6 +191,17 @@ manifest의 texture URL은 bundle 기준 상대 경로이며 color=`srgb`를 명
 현재 씬의 참조와 일치하는 source evidence는 app handoff의 `tileImports[]`로 전달한다. engine handoff/schema/public API는 바꾸지 않는다.
 
 원본 세션 예산은 staged/등록 revision 총 8건·64 MiB다. Undo/다른 fragment에 필요한 이전 revision은 유지한다.
+Tiled/LDtk와 Aseprite Import 패널의 **Catalog → Clean Unused**(자산 목록 → 미사용 정리)는
+열린 문서의 원본·현재 draft·Undo/Redo·transaction, 모든 Import 후보와 업로드 중 revision을 보존하고
+나머지 **미저장 세션 revision**의 source bytes·Blob URL·GPU texture를 명시적으로 정리한다.
+문자열 자산명과 현재 runtime의 숫자 texture alias를 모두 확인한다. 숫자 reference는 세션 내 보존 근거이며 원본 ID의 저장·이식 보장을 추가하지 않는다.
+정리로 기존 8건/64 MiB 예산을 회수하며 예산을 자동 확대하지 않는다. GPU 해제 실패 시 원본/등록 항목을 유지하고 texture 복원을 시도한다.
+프로젝트에 저장·검증한 revision은 닫힌 씬의 참조를 확인할 수 없어 보호한다. 디스크 catalog/원본 파일 GC 기능은 아니다.
+실제 참조 frame 누락은 **Import Diagnostics**와 **Problems**에 원본 JSON 파일·collection pointer·frame ID와
+현재 씬의 정확한 JSON pointer를 표시한다. prefab 상속은 해당 prefab의 원본 경로를 표시하며 경로는 최대 64개다.
+진단 수집은 순회 65,536단계·pointer 4,096자 상한을 사용하고 제한/순환 참조로 일부를 생략하면 `scenePathsTruncated:true`를 표시한다.
+최신 진단은 이벤트 수신 시점과 무관하게 읽을 수 있어 Problems 패널이 나중에 열려도 오류가 누락되지 않는다.
+Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기존 씬을 변경하지 않는다. 진단 payload의 ID/경로는 번역하지 않는다.
 문서/모드 전환은 진행 작업을 취소하고 문서 닫기는 그 문서의 미저장 URL/texture를 해제한다.
 검증·저장된 같은 프로젝트 에셋은 다른 씬에서 계속 참조하도록 작업공간 종료까지 유지한다.
 브라우저의 미설치 참조는 scene Save를 막는다. native Open Project의 기본 문서는 아래 Save Project 경로를 사용하고,

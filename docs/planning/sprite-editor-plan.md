@@ -2,15 +2,15 @@
 
 기준일: 2026-10-30
 상태: 계획 작성 완료, 구현 미착수
-현재 재개 지점: 1차 데이터 모델·저장 계약 설계
+첫 착수 지점: 1차 데이터 모델·저장 계약 설계
 
 ## 목적과 범위
 
 캐릭터·아이콘·타일을 직접 그리거나 수정하고, 저장한 결과를 Ferrum2D 씬에서 확인하는 에셋 제작 흐름을 추가한다.
 Aseprite의 픽셀 드로잉·팔레트·레이어·프레임·어니언 스킨을 참고하되, Ferrum2D의 기존 asset catalog·revision·배치 흐름과 연결한다.
 
-이번 요청은 개발계획 문서화다. 아래 기능은 제안이며 현재 지원 기능으로 표시하지 않는다.
-구현은 후속 개발 요청에서 단계별로 진행한다. 첫 구현 범위는 **기본 도트 그리기 → 편집 문서/PNG 저장 → 씬 적용**이다.
+아래 기능은 개발 계획이며 현재 지원 기능으로 표시하지 않는다.
+첫 구현 범위는 **기본 도트 그리기 → 편집 문서/PNG 저장 → 씬 적용**이며 이후 단계를 순서대로 진행한다.
 
 - 에셋 전용 편집 도구로 구성하고 기존 Assets에서 연다. 씬 편집과 에셋 편집의 문서·이력을 구분한다.
 - AI agent가 생성·검사·수정할 수 있는 versioned 편집 문서와 검증 가능한 편집 연산을 설계한다.
@@ -29,6 +29,8 @@ PNG+atlas JSON만으로 원본 Aseprite의 모든 layer/cel 데이터를 복원�
 | `apps/placement-viewer/src/placementAsepriteTool.ts` | Assets 진입, preview와 import 상태, 취소·문서 수명 |
 | `placementAsepriteAssets.ts`, `placementAsepriteAnimation.ts` | immutable revision, frame/clip 대응과 애니메이션 변환 |
 | `placementAsepriteProject.ts` | 프로젝트 원본/catalog 저장·검증과 기존 씬 저장 연결 |
+| `placementSpriteRevisions.ts`, `placementCatalogTools.ts` | 세션 revision 예산·정리와 참조 보존 경계 |
+| `placementImportDiagnostics.ts` | 원본 항목·씬 경로 진단, 최신 보고 상태와 순회 상한 |
 | `placementAsepriteNormals.ts`, `placementAsepriteNormalPng.ts` | frame 경계에 따른 노멀 생성과 source hash 확인 |
 | `packages/ferrum-web/src/assetPipelineAseprite.ts` | 기존 atlas importer 및 호환 검증 |
 | `tests/smoke/aseprite-assets-smoke.mjs`, `aseprite-project-smoke.mjs` | 실제 UI와 Rust 파일 저장·fresh runtime 회귀 패턴 |
@@ -116,6 +118,8 @@ Assets의 **스프라이트 편집** 명시적 동작으로 에셋 문서 탭을
 - AI 편집은 검증 가능한 stroke/fill/palette/frame 연산과 동일한 검증 경계를 사용하도록 설계한다.
   UI 전용 상태와 게임 simulation state를 편집 문서에 넣지 않는다.
 - 편집 원본과 게임용 PNG/atlas/manifest의 관계·revision/hash를 기록한다. PNG만 저장해 편집 정보를 잃지 않도록 한다.
+- 열려 있는 픽셀 문서·해당 Undo/Redo가 사용하는 원본 revision도 Catalog 정리의 보존 대상에 연결한다.
+  현재 씬·Import 후보의 보존만으로 픽셀 문서의 참조까지 보호된다고 가정하지 않는다.
 - 기존 Aseprite 원본을 덮어쓰지 않는다. 편집 결과는 도구가 소유하는 새 원본과 출력물로 저장한다.
 - native 저장은 프로젝트 allowlist·파일 검증·동시 수정 충돌 감지를 사용한다. 실패 시 이전 catalog/씬을 유효하게 유지한다.
 - browser-only 환경은 다운로드/export와 재열기를 제공한다. native 프로젝트 저장 성공과 구분해 표시한다.

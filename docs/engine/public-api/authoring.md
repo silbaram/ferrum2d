@@ -290,6 +290,14 @@ transaction 안의 draft 변경이 실패하면 전체 transaction을 취소한�
 현재 작업만 취소하며 이전 이력을 추가로 되돌리지 않는다. `redo()`는 열린 transaction 중에는 변경하지 않는다.
 `commitEdit()`, `cancelEdit()`, `undo()`, `redo()`는 복원된 `ScenePlacementViewerState`를 반환한다.
 
+`retainsAssetReference(assetId, textureId?): boolean`은 원본 문서/구성, 현재 초안, Undo/Redo와 진행 중 transaction이
+해당 문자열 ID를 보존하는지 검사하는 저빈도 자원 수명 query다. 비어 있는 ID는 거절한다.
+선택 `textureId`는 현재 runtime의 u32 texture alias이며 숫자로 작성한 texture/normal reference도 보존한다.
+숫자는 해당 reference 필드의 전체 값만 비교하므로 크기·좌표나 다른 ID의 숫자 접두사와 혼동하지 않는다.
+ID와 같은 다른 문자열도 보수적으로 참조로 취급하므로 `true`는 실제 사용 중이라는 판정이 아니라 정리 금지 근거다.
+이력이 반환하는 snapshot을 외부로 노출하거나 이력을 변경하지 않는다. 자산 정리 host는 다른 열린 viewer와
+저장 문서·Import 후보도 함께 확인해야 하며 이 method만으로 프로젝트 파일 삭제 여부를 결정하면 안 된다.
+
 선택 `CreateScenePlacementViewerOptions.validateDraft(state)`는 저빈도 host 검증 callback이다.
 최종 문서 계약 검사 뒤 편집을 기록하기 전과 Undo/Redo/취소 snapshot 복원 시 호출한다.
 예외를 던지면 변경을 거절하고, 이력 위치와 정상 초안을 복구한다. 복구도 실패하면 그 오류를 전달하며

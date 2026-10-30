@@ -1784,6 +1784,27 @@ CI의 offscreen target 검증이며 native canvas presentation·실물 GPU loss�
 SDK 회귀는 생성 시 이미 손실된 device의 context 선택 차단, 재생성 검증 실패·재시도와 중간 destroy를 보강한다.
 기존 pre-context WebGL2 fallback과 공간 renderer parity도 유지한다. 보고서는 기존 spatial-webgpu `run-*/report.json`의 recoveryCases다.
 
+모델 복구 회귀는 `webgpu.gpuTiming`을 켜고 실제 timestamp 지원 장치에서 RuntimeProfiler의 GPU 표본이 생기는지 검사한다.
+미지원이면 `unsupported`·표본 0이고 시간을 만들어내지 않아야 한다. 손실 시 resource count 0·timer `context-lost`,
+복구 뒤 소유 buffer/texture 재생성과 이전 픽셀 보존도 확인한다. 단위 검사는 최대 4 readback·128 pass,
+out-of-order 완료·결과 한 번 발행·disabled/unsupported/rejected mapping과 mip/layer·미측정 형식·destroy를 검사한다.
+software adapter의 시간은 계측 연결 증거이며 실물 GPU 성능 합격 기준이 아니다.
+추가 negative 회귀는 image-copy 실패를 실제 WebGPU queue에 주입해 이전 texture의 픽셀과 자원 수가 유지되는지 확인한다.
+단위 검사는 image/RGBA·bind-group 실패 allocation rollback, 계측 할당/encoder 예외의 슬롯 반환과
+runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
+
+### Import revision 정리와 진단
+
+`pnpm test:placement-scenes`는 미참조 session revision 정리·예산 회수·persisted/pending 보존과
+해제 실패 시 source/URL 보존·재업로드를 검사한다. SDK 회귀는 source/Undo/Redo/transaction 참조 query를 검사한다.
+`pnpm smoke:aseprite-assets`는 실제 Register 뒤 불필요한 revision의 URL/GPU 회수와 참조 중 두 revision의
+Undo/Redo 픽셀 보존, 누락 frame의 source 파일·frame ID·정확한 씬 pointer를 검증한다.
+등록된 자산을 숫자 texture ID로만 작성한 경우에도 정리 후 자원 수와 실제 표시 픽셀이 유지되는지 검사한다.
+`pnpm smoke:tile-map`도 Tiled/LDtk의 실제 missing frame 진단과 기존 save/reopen 회귀를 함께 검사한다.
+프로젝트 디스크 원본 삭제/GC나 닫힌 모든 프로젝트 씬의 참조 분석을 검증한 것으로 해석하지 않는다.
+Import 진단 단위 검사는 늦은 Problems 초기화를 위한 상태 재조회·snapshot 분리와
+공유 객체/순환·깊이·대량 속성에서 순회 상한 및 `scenePathsTruncated` 표시를 검사한다.
+
 ### 전체 타일 맵과 native 저장
 
 `pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에

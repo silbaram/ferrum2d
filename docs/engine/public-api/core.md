@@ -216,7 +216,8 @@ const timing = runtime.renderer.gpuTimingStats?.();
 const report = runtime.profiler?.snapshot();
 ```
 
-GPU timer는 기본 비활성이며 WebGL2 `EXT_disjoint_timer_query_webgl2`를 지원할 때만 동작한다.
+GPU timer는 기본 비활성이다. WebGL2는 `EXT_disjoint_timer_query_webgl2`, WebGPU는
+runtime의 `rendererPreference: "webgpu"`, `webgpu: { gpuTiming: true }`와 adapter의 `timestamp-query` 지원이 필요하다.
 `RendererGpuTimingStats`의 `status`는 `disabled`, `unsupported`, `pending`, `ready`,
 `disjoint`, `context-lost` 중 하나다. `elapsedMs`와 `frameId`는 유효한 이전 frame 결과가
 완료되었을 때만 제공한다. 결과는 후속 frame에서 비동기로 읽으며 같은 결과를 다음 frame에
@@ -228,7 +229,16 @@ disjoint/context loss 결과를 폐기하고 renderer destroy에서 query를 해
 공식 runtime은 clear, sprite, 조명, physics debug, post-process 전체를 자동으로 감싼다.
 renderer를 직접 호출할 때는 `beginGpuTiming()`과 `endGpuTiming()`을 `try/finally`로
 호출하고 필요한 offscreen pass도 사이에 배치한다. 구간 밖의 asset upload와 render 작업은 제외된다.
-native WebGPU/custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 결과는 0ms로 보정하지 않는다.
+WebGPU는 [render pass timestamp](https://gpuweb.github.io/gpuweb/#dictdef-gpurenderpasstimestampwrites)의
+시작/끝 차이를 합산한다. renderer 내부 clear·geometry·shadow·environment·debug·post-process pass를 포함하고,
+pass 사이 CPU 제출 간격·외부 device 작업·presentation은 제외한다. WebGL2의 전체 query 구간과 직접 동등한 값은 아니다.
+최대 4개 readback 슬롯, 슬롯당 128 pass를 재사용한다. 슬롯이 가득 차거나 pass 상한을 넘으면 그 frame 측정을 생략한다.
+query resolve/copy 뒤 `mapAsync`로 완료 결과를 읽고 frame에서는 기다리지 않는다.
+늦게 도착한 과거 결과는 재발행하지 않는다. 장치 손실은 `context-lost`, 복구 뒤 새 계측 자원과 연속된 frame ID를 사용한다.
+계측 전용 자원 할당·readback 제출에서 동기 예외가 발생하면 해당 측정을 생략하고 query 슬롯을 반환하며 렌더링은 계속한다.
+runtime은 렌더 pass가 실패한 frame의 부분 측정을 폐기한다. 수동 begin/end 호출도 실패한 작업은
+`endGpuTiming(true)`로 닫을 수 있다. 인자를 생략하면 정상 완료 측정으로 처리하며 기존 custom renderer와 호환된다.
+custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 결과는 0ms로 보정하지 않는다.
 
 ## GPU 자원 통계
 
@@ -266,7 +276,13 @@ const resources = runtime.renderer.resourceStats?.();
 ```
 
 지원 여부는 실제 renderer 기준이다. WebGL2는 두 색 공간 모드에서 지원하고,
-native WebGPU의 `resourceStats()`는 아직 `undefined`다. WebGL2로 fallback하면 통계를 제공한다.
+native WebGPU도 소유 buffer·texture·pipeline·attachment texture 통계를 제공한다.
+WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 render attachment texture 수다.
+texture 저장량은 알려진 형식의 mip·array layer를 포함한다. `depth24plus`처럼 저장 형식이 기기별로 달라지는 texture가 있으면
+`unmeasuredTextureCount`를 올리고 `textureBytes`/`estimatedBytes`는 생략한다. `bufferBytes`와 객체 수는 계속 제공한다.
+WebGPU canvas의 presentation texture와 외부에서 직접 만든 GPU 객체·pipeline code/driver 저장량은 집계하지 않는다.
+image/RGBA 업로드나 bind-group 생성 실패 시 새 texture만 해제하고 기존 ID의 texture·revision을 유지한다.
+손실 장치의 소유 자원은 해제해 0으로 표시하고 복구한 장치의 자원만 다시 집계한다.
 `Renderer` 인터페이스의 method는 optional이므로 기존 custom renderer는 구현 없이 호환된다.
 미지원 값을 0으로 대체하지 않는다. GPU 예산을 설정한 경우 누락된 측정은 `missingMetric` 위반이다.
 

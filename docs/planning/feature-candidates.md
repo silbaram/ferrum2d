@@ -1,7 +1,8 @@
 # HD-2D 후속 기능·검증 후보
 
 기준일: 2026-10-30
-상태: 미착수 후보. 실제 개발은 대상 장면과 완료 조건을 정한 뒤 시작한다.
+상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기다.
+기능 개발은 대상 장면과 완료 조건을, 환경 검증은 기기·실행 조건을 정한 뒤 시작한다.
 
 현재 지원 범위는 [공간 계약](../engine/data-scene-spatial.md), [물리 기능 맵](../development/architecture/physics-engine.md),
 [Core API](../engine/public-api/core.md)가 기준이다. 완료된 개발 단계는 이 문서에서 관리하지 않는다.
@@ -11,7 +12,7 @@
 실제 마을·전투·조명·경사·오디오와 원본/LOD 비교는 [품질 회귀](../development/quality/smoke-check.md#실게임-품질과-복구맵-작성-회귀)를 기준으로 한다.
 Blender tree/pine 후보는 삼각형 수를 줄였지만 FPS 개선이 확인되지 않아 기본 예제에는 활성화하지 않는다.
 
-| 남은 후보 | 착수 시 완료 조건 |
+| 남은 검증·분석 | 실행 시 완료 조건 |
 | --- | --- |
 | 실물 GPU·장시간 실행 | 기기/브라우저·해상도/DPR별 동일 시나리오, 프레임 분포·Wasm/GPU·오디오 수명과 장시간 증가 여부 기록 |
 | LOD 전환 외형 | 거리 경계 왕복·다양한 카메라에서 pivot/외곽선·cutout·그림자·전환 튐 캡처. 외형과 실제 성능이 모두 수용될 때 콘텐츠 기본 적용 판단 |
@@ -21,7 +22,6 @@ Blender tree/pine 후보는 삼각형 수를 줄였지만 FPS 개선이 확인�
 
 | 후보 | 현재 경계와 착수 조건 |
 | --- | --- |
-| WebGPU GPU 시간·자원 통계 | 명시적 [장치 복구](../engine/public-api/labs.md#webgpu-장치-수명과-복구)는 제공한다. 남은 것은 GPU timing·자원 통계를 기존 profiler와 연결하고 미지원 값/소유 수명·실물 GPU에서 검증하는 범위다. |
 | 전체 scene GPU transaction | 기존 모델 GPU 준비 rollback과 지형/billboard/environment/target까지의 일괄 활성화·복구를 구분한다. |
 | 공통 URL 해석·요청 공유 | texture/sound/JSON의 cache key·인증·독립 취소·참조 수명을 정의한다. 기존 bounded manifest 로딩·모델 요청 공유·CPU/GPU cache·IndexedDB preload를 중복 구현하지 않는다. |
 | 네트워크 geometry 스트리밍 | 사전 등록 CPU LOD·native visual chunk와 구분한다. 요청 취소·재진입·자원 상한·오래된 결과 차단부터 설계한다. |
@@ -33,8 +33,8 @@ Blender tree/pine 후보는 삼각형 수를 줄였지만 FPS 개선이 확인�
 
 ## 물리·탐색 후속 후보
 
-완료된 compound/chain 선형 CCD와 HD-2D 보행 충돌은 [물리 기능 맵](../development/architecture/physics-engine.md)을 따른다.
-남은 범위만 아래에서 관리한다.
+지원하는 물리·보행 충돌의 범위는 [물리 기능 맵](../development/architecture/physics-engine.md)을 따른다.
+아래 항목은 그 이후의 별도 후보이며 기존 기능의 재구현 목록이 아니다.
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
