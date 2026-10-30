@@ -272,6 +272,40 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 이 경로는 전체 project transaction이나 OS 외부 writer를 잠그는 기능은 아니다. 일반 scene-only 열기와 추가 탭에는 project 자산 쓰기 권한을 추가하지 않는다.
 기존 standalone importer가 지원하는 더 넓은 입력 옵션은 이 app의 초기 UI 지원 범위와 구분한다.
 
+## 에디터 내장 도트 제작
+
+공식 Placement Viewer의 Assets에서 **새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
+기본 32×32이며 1~256의 정수 크기를 선택할 수 있다. 원본 문서나 PNG로 시작하려면 **도트 원본 / PNG 열기**,
+기존 sprite 자산은 **도트 편집**을 사용한다. 첫 버전은 이미지 레이어 1개·프레임 1개다.
+
+- 연필(B), 지우개(E), 연결 영역 채우기(G), 스포이트(I), 팔레트·색상·알파를 제공한다.
+- 휠과 확대/축소 버튼, H 또는 Space+드래그로 화면을 탐색한다. 좌표는 CSS 크기·DPR·배율·이동을 반영한다.
+- 한 번의 stroke/fill은 한 Undo다. Ctrl/Cmd+Z·Shift+Z와 Ctrl+Y는 도트 문서 이력에 적용되며 Esc/포인터 취소는 진행 중 stroke를 복원한다.
+  마지막 pointerup 좌표도 선에 포함하며 창 포커스를 잃으면 진행 stroke·임시 Space 이동 상태를 취소한다. 빈 값·범위 밖 알파 입력은 마지막 유효한 색을 유지한다.
+- **내보내기 → 편집 원본 내보내기**는 편집 가능한 `.pixel.json`, **PNG 내보내기**는 게임용 RGBA 이미지를 다운로드한다.
+  닫기/새 원본으로 교체할 때 변경이 있으면 원본 내보내기·폐기·취소를 선택한다. 씬 탭 전환은 원본을 유지한다.
+- **자산 등록**은 세션 Assets에 새 불변 revision을 추가한다. **선택 객체에 적용**은 정적 sprite의 이미지/UV만 바꾸는 placement v2 patch를 한 번의 씬 Undo로 적용한다.
+  크기·pivot·transform·collider/body·layer·behavior를 보존하고 잠금·애니메이션·기존 normal binding이 있는 교체는 진단한다.
+- **미사용 정리**는 열린 씬·Undo/Redo·현재 배치 도구에서 참조하지 않는 도트 세션 revision의 URL/GPU 자원만 해제한다.
+  원본 씬을 닫을 때도 다른 열린 씬·이력이 참조하는 revision은 보존한다.
+
+PNG 생성·업로드는 검증된 원본 snapshot으로 시작한다. 적용 확정 전에 실패하거나 선택/씬이 바뀌면 미확정 revision만 해제하고,
+기존 확정 자산과 실제 참조 중인 자산은 유지한다. 닫기/새 원본 선택은 이전 파일 읽기·확인창의 권한을 취소해 늦은 결과가 다른 문서를 닫거나 교체하지 못하게 한다.
+미저장 도트 또는 진행 중인 픽셀 편집/업로드가 있으면 에디터·엔진 업데이트와 재시작을 차단한다.
+
+도트 원본은 app 전용 `ferrum2d.pixel-document` v1이다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
+UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, JSON 400,000 bytes, Undo/Redo 합계 64단계/16 MiB로 제한한다.
+PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮어쓰지 않는다.
+
+**자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
+각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
+세션 store는 최대 8 revision/64 MiB이며 프로젝트 디스크 원본/catalog 직접 저장은 아직 제공하지 않는다.
+내보내기를 native 저장 완료로 표시하지 않고, 미설치 도트 세션 자산을 참조하는 씬의 Save는 차단한다.
+문자열 이름과 runtime 숫자 ID를 모두 검사해 저장·다른 씬 열기의 경계를 유지한다.
+bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard normal ID를 안정적인 자산 이름으로 변환한 scene 사본을 내보낸다.
+다른 metadata는 바꾸지 않으며 지원하지 않는 위치의 숫자 texture 참조는 조용히 이식하지 않고 진단한다.
+기존 가져오기 기능과 별개의 자체 제작 도구이며 Aseprite 설치·파일·CLI가 필요하지 않다.
+
 ## Aseprite Assets 가져오기·재import
 
 공식 Placement Viewer는 기존 `importAsepriteAtlas`를 사용해 Aseprite JSON+PNG를 Assets catalog에 연결한다.

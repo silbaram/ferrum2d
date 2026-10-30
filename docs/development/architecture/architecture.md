@@ -1462,6 +1462,17 @@ WebGPU pass 시간 합계와 WebGL2 전체 query 구간은 다른 측정 범위�
 계측 전용 동기 할당/제출 실패는 측정만 생략하며, runtime은 실패한 render frame을 `endGpuTiming(true)`로 폐기한다.
 texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 기존 texture ID가 일치한다.
 
+도트 제작은 app의 `placementPixelDocument`(원본 검증·픽셀 연산·transaction·bounded Undo),
+`placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelPng`(straight-alpha RGBA PNG 출력),
+`placementPixelAssets`(불변 session revision·기존 component patch), `placementPixelTool`(에셋 탭·수명·내보내기)로 분리한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1이며 runtime은 기존 PNG와 scene-authoring document만 소비한다.
+Aseprite import와 독립된 에셋 제작 경로로 Rust simulation·Wasm ABI·공개 SDK export를 변경하지 않는다.
+도트/씬 Undo와 입력을 분리하고, source 변경·문서 전환·종료 시 stale 결과의 씬 적용을 차단한다.
+원본 검증·snapshot은 비동기 PNG 생성 전에 수행하며 revision을 provisional/committed로 나눠 실패한 적용만 rollback한다.
+숫자 texture alias도 source 참조로 검사하고, export는 실제 authoring component/normal 경로만 이름으로 정규화한 사본을 만든다.
+도구가 확인창의 수명과 operation epoch를 함께 소유하고, 앱 업데이트 guard는 도트 dirty/busy/gesture 상태도 확인한다.
+현재 browser export와 native 프로젝트 저장을 구분하며 프로젝트 디스크 저장 host는 후속 범위다.
+
 `ScenePlacementHistory.someSnapshot`과 viewer의 `retainsAssetReference`는 cold 자원 정리를 위한 보수적 참조 query다.
 Import 패널은 모든 열린 문서·Undo/Redo·transaction·후보를 확인한 뒤 미저장 session revision만 정리한다.
 프로젝트에 저장된 원본은 별도 project-wide 참조 검증 없이는 삭제하지 않는다. Import 진단은 원본 항목과 authored JSON pointer를

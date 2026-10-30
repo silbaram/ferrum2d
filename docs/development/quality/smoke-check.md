@@ -1793,6 +1793,29 @@ software adapter의 시간은 계측 연결 증거이며 실물 GPU 성능 합�
 단위 검사는 image/RGBA·bind-group 실패 allocation rollback, 계측 할당/encoder 예외의 슬롯 반환과
 runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
 
+### 에디터 내장 도트 제작
+
+`pnpm test:pixel-authoring`은 자체 편집 원본의 검증·roundtrip, 정수 선 보간·clipping, 연결 영역 채우기,
+transaction 취소·Undo/Redo 분기·64단계/16 MiB 상한, PNG의 반투명/투명 RGBA 수치 보존을 검사한다.
+static sprite component patch의 설정 보존·잠금/애니메이션/normal 거절과
+실제 session store의 immutable revision·history 보존·미사용 정리·취소된 upload 해제를 함께 확인한다.
+비동기 PNG 중 caller 원본 변경, numeric-only texture alias의 save/문서 경계 우회,
+prefab/variant/include/legacy/normal export 정규화, 큰 metadata 보존·미지원 참조 진단,
+미확정/확정 revision rollback과 원본 씬을 닫은 뒤 다른 씬의 참조 보존도 검사한다.
+
+`pnpm smoke:pixel-authoring`은 save-enabled app에서 Aseprite 입력 없이 새 도트를 만든다.
+2D DPR 1·HD-2D DPR 2에서 실제 마우스 stroke·Esc 취소·채우기·도트/씬 Undo 분리·적용,
+source 다운로드/재열기·폐기/취소·한국어/영어, history 참조를 보존하는 정리를 검증한다.
+release 최종 좌표·창 blur 취소/Space 복원·잘못된 알파, 늦은 File.text와 닫기 확인의 경합,
+GPU upload 뒤 선택 변경 시 임시 자원 회수, numeric-only save/다른 문서 열기 거절과 이름으로 된 export를 확인한다.
+native update bridge와 release 응답은 fixture로 대체해 미저장 도트의 설치/재시작 요청이 전달되지 않는지 검사한다.
+내보낸 PNG/manifest/scene을 별도 runtime에서 로드해 hash와 실제 파란 픽셀 100개 초과를 요구한다.
+runtime은 paused 상태(3)·entity 1개·sprite 1개 이상·draw call 1~16회·texture switch 16회 이하를 실제 frame/renderer stats로 확인한다.
+manifest path를 변조한 negative fixture는 runtime 시작 전에 실패해야 한다.
+미설치 session texture의 scene Save는 요청을 전송하지 않아야 하며, 종료 후 URL/GL texture 잔여는 0이어야 한다.
+근거는 `artifacts/pixel-authoring/verification.json`과 run별 원본/PNG/bundle/화면이다.
+native 프로젝트 파일 저장·다중 이미지 layer/frame·노멀 재생성은 이 gate의 통과 의미에 포함하지 않는다.
+
 ### Import revision 정리와 진단
 
 `pnpm test:placement-scenes`는 미참조 session revision 정리·예산 회수·persisted/pending 보존과
