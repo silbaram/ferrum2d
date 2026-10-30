@@ -53,6 +53,18 @@
 | Debug | category별 broadphase/contact/collider/joint/CCD debug line buffer, sleeping color, DebugOverlay physics metrics, WebGL2 debug line rendering |
 | HD-2D foundation | `PhysicsFloorId`/`HeightSpan` storage, Physics Spec `physics.hd2d`, body/tile `floor`/`elevation`/`height`, tile `kind`/`ramp`/bridge/blocking metadata, runtime body/tile height span API, runtime tile HD-2D metadata API, body/tile query height filter, bridge portal multi-floor navigation, projectile arc height span, built-in combat/projectile tile height filter, render sort key, lighting occluder height helper, filter/player telemetry, snapshot sidecar restore |
 
+선형 rigid-body CCD는 moving/target의 유효한 non-trigger compound collider와 chain segment를
+각각 sweep하고 가장 이른 접촉을 선택한다. 내부 후보와 hit가 entity·collider·segment identity를
+유지하므로 실제 접촉한 collider의 filter와 material override가 적용된다. Primary collider가
+sensor이거나 비활성화되어도 별도 solid collider의 접촉을 막지 않는다. 같은 시각의 hit는
+target entity, moving collider/segment, target collider/segment 순으로 안정적으로 선택한다.
+현재 sweep은 선형 이동 기준이며 빠른 회전 궤적 전체의 연속 충돌을 보장하지 않는다.
+
+HD-2D 보행의 AABB actor도 같은 native shape sweep으로 원·캡슐·회전 박스·convex polygon·edge·chain과
+compound 장애물을 판정한다. 일반 이동, cached navigation probe, 층 연결의 source/destination pose가
+각 collider/segment key와 filter를 유지한다. Spatial actor는 기존의 단일 AABB 제한을 유지하며
+지지면·계단/경사로·다리의 층/높이 결정은 기존 Rust 지형 controller가 담당한다.
+
 ## Runtime별 사용 경계
 
 ### Built-in scenes

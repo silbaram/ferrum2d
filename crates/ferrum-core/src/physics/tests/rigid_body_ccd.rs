@@ -1,6 +1,7 @@
 use super::*;
 
 mod rigid_body_ccd_aabb;
+mod rigid_body_ccd_compound;
 mod rigid_body_ccd_convex;
 mod rigid_body_ccd_shape_pairs;
 mod rigid_body_ccd_wake_repeat;

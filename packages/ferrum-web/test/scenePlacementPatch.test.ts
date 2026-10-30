@@ -800,3 +800,22 @@ async function expectRejects(promise: Promise<unknown>, pattern: RegExp): Promis
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+test("tile map provenance stays bounded and never permits writing behavior props",()=>{
+  const document=scenePlacementDocumentWithObjectPrefab();
+  const make=(metadata:unknown)=>({format:SCENE_PLACEMENT_PATCH_FORMAT,version:SCENE_PLACEMENT_PATCH_VERSION,operations:[{kind:'addInstance',fragment:'main',instance:{id:'imported_tile',prefab:'object',props:{tileMapImport:metadata}}}]} as unknown as ScenePlacementPatch);
+  const valid={name:'terrain',lineage:'source-id',key:'tile:ground:0',assetId:'tile-revision',options:{originX:0}};
+  const result=mergeScenePlacementPatch(document,make(valid));
+  deepEqual(result.document.sceneComposition.fragments?.main?.instances?.find(i=>i.id==='imported_tile')?.props?.tileMapImport,valid);
+  for(const metadata of [null,[],{...valid,assetId:''},{...valid,assetId:42},{...valid,recipes:[]},{...valid,options:[]},{...valid,object:{data:'한'.repeat(6000)}}])expectThrows(()=>mergeScenePlacementPatch(document,make(metadata)),/tile map/);
+});
+
+
+test('tile map cell metadata is optional, bounded and compatible with legacy identity keys',()=>{
+  const document=scenePlacementDocumentWithObjectPrefab();
+  const make=(cell:unknown)=>({format:SCENE_PLACEMENT_PATCH_FORMAT,version:SCENE_PLACEMENT_PATCH_VERSION,operations:[{kind:'addInstance',fragment:'main',instance:{id:'grid_tile',prefab:'object',props:{tileMapImport:{name:'terrain',lineage:'source',key:'tile:ground:2',cell}}}}]} as unknown as ScenePlacementPatch);
+  const cell={layer:'ground',column:0,row:1};
+  const merged=mergeScenePlacementPatch(document,make(cell)).document;
+  deepEqual(merged.sceneComposition.fragments?.main.instances?.find(i=>i.id==='grid_tile')?.props?.tileMapImport,{name:'terrain',lineage:'source',key:'tile:ground:2',cell});
+  for(const invalid of [null,[],{}, {...cell,column:-1},{...cell,row:256},{...cell,row:1.5},{...cell,layer:''},{...cell,layer:'x'.repeat(513)},{...cell,extra:1}])expectThrows(()=>mergeScenePlacementPatch(document,make(invalid)),/tile map cell/);
+});

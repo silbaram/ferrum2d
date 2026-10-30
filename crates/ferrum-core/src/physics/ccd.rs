@@ -1,6 +1,7 @@
 use crate::collision::{
-    collider_shape, AabbBounds, ColliderKey, ColliderPair as CollisionColliderPair,
-    ColliderShapeRef, CollisionPair, CollisionScratch, CollisionSystem, RigidBodyCcdCandidateQuery,
+    collider_segment_count_at, collider_shape_at_segment, AabbBounds, ColliderKey,
+    ColliderPair as CollisionColliderPair, ColliderShapeRef, CollisionPair, CollisionScratch,
+    CollisionSystem, RigidBodyCcdCandidateQuery,
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, ConvexPolygonCollider, EdgeCollider, RigidBodyCcdDebugHit,
@@ -20,6 +21,7 @@ const MAX_RIGID_BODY_CCD_ITERATIONS: u32 = 4;
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct RigidBodyCcdHit {
     target_index: usize,
+    collider_pair: CollisionColliderPair,
     target_dynamic: bool,
     time: f32,
     normal: Velocity,
@@ -36,7 +38,6 @@ struct RigidBodyCcdDynamicTarget {
 struct RigidBodyCcdQuery<'a> {
     moving_index: usize,
     start: Transform2D,
-    shape: ColliderShapeRef,
     velocity: Velocity,
     delta_seconds: f32,
     integrated: &'a [bool],
@@ -44,7 +45,7 @@ struct RigidBodyCcdQuery<'a> {
 
 pub(super) struct RigidBodyCcdScratch<'a> {
     pub(super) collision: &'a mut CollisionScratch,
-    pub(super) candidate_indices: &'a mut Vec<usize>,
+    pub(super) candidate_keys: &'a mut Vec<ColliderKey>,
 }
 
 pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
@@ -59,12 +60,6 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     let Some(mut current_start) = world.transform_at_index(index) else {
         return false;
     };
-    let Some(shape) = collider_shape(world, index) else {
-        return false;
-    };
-    if shape.is_trigger() {
-        return false;
-    }
     let mut remaining_seconds = delta_seconds;
     let mut handled_ccd_hit = false;
 
@@ -81,7 +76,6 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
             RigidBodyCcdQuery {
                 moving_index: index,
                 start: current_start,
-                shape,
                 velocity,
                 delta_seconds: remaining_seconds,
                 integrated,
@@ -218,24 +212,65 @@ fn earliest_rigid_body_ccd_hit(
     scratch: &mut RigidBodyCcdScratch<'_>,
 ) -> Option<RigidBodyCcdHit> {
     let mut best = None;
-    CollisionSystem::build_rigid_body_ccd_candidate_indices_into(
+    for collider_index in 0..world.compound_collider_count_at(query.moving_index) {
+        for segment_index in 0..collider_segment_count_at(world, query.moving_index, collider_index)
+        {
+            let moving_key = ColliderKey {
+                entity_index: query.moving_index,
+                collider_index,
+                segment_index,
+            };
+            let Some(shape) =
+                collider_shape_at_segment(world, query.moving_index, collider_index, segment_index)
+            else {
+                continue;
+            };
+            if shape.is_trigger() {
+                continue;
+            }
+            if let Some(hit) =
+                earliest_collider_ccd_hit(world, query, moving_key, shape, stats, scratch)
+            {
+                update_rigid_body_ccd_hit(&mut best, hit);
+            }
+        }
+    }
+    best
+}
+
+fn earliest_collider_ccd_hit(
+    world: &World,
+    query: RigidBodyCcdQuery<'_>,
+    moving_key: ColliderKey,
+    moving_shape: ColliderShapeRef,
+    stats: &mut RigidBodyStepStats,
+    scratch: &mut RigidBodyCcdScratch<'_>,
+) -> Option<RigidBodyCcdHit> {
+    let mut best = None;
+    CollisionSystem::build_rigid_body_ccd_candidate_keys_into(
         scratch.collision,
         world,
         RigidBodyCcdCandidateQuery {
-            moving_index: query.moving_index,
+            moving_key,
             moving_start: query.start,
-            moving_shape: query.shape,
+            moving_shape,
             moving_velocity: query.velocity,
             delta_seconds: query.delta_seconds,
         },
-        scratch.candidate_indices,
+        scratch.candidate_keys,
     );
-    for &target_index in scratch.candidate_indices.iter() {
+    for &target_key in scratch.candidate_keys.iter() {
+        let target_index = target_key.entity_index;
         if !rigid_body_ccd_target_allows(world, query.moving_index, target_index, query.integrated)
         {
             continue;
         }
-        let Some(target_shape) = collider_shape(world, target_index) else {
+        let Some(target_shape) = collider_shape_at_segment(
+            world,
+            target_index,
+            target_key.collider_index,
+            target_key.segment_index,
+        ) else {
             continue;
         };
         if target_shape.is_trigger() {
@@ -244,8 +279,12 @@ fn earliest_rigid_body_ccd_hit(
         let Some(target_transform) = world.transform_at_index(target_index) else {
             continue;
         };
-        if CollisionSystem::shapes_overlap(query.start, query.shape, target_transform, target_shape)
-        {
+        if CollisionSystem::shapes_overlap(
+            query.start,
+            moving_shape,
+            target_transform,
+            target_shape,
+        ) {
             continue;
         }
         let target_velocity = finite_velocity(world.velocity_at_index_or_default(target_index));
@@ -253,7 +292,7 @@ fn earliest_rigid_body_ccd_hit(
         let Some(contact) = CollisionSystem::swept_shape_contact(
             query.start,
             query.velocity,
-            query.shape,
+            moving_shape,
             target_transform,
             target_velocity,
             target_shape,
@@ -283,6 +322,10 @@ fn earliest_rigid_body_ccd_hit(
         };
         let hit = RigidBodyCcdHit {
             target_index,
+            collider_pair: CollisionColliderPair {
+                a: moving_key,
+                b: target_key,
+            },
             target_dynamic: world
                 .rigid_bodies
                 .get(target_index)
@@ -293,7 +336,7 @@ fn earliest_rigid_body_ccd_hit(
             normal,
             point: rigid_body_ccd_contact_point(
                 moving_at_impact,
-                query.shape,
+                moving_shape,
                 target_at_impact,
                 target_shape,
                 normal,
@@ -317,25 +360,12 @@ fn rigid_body_ccd_target_allows(
     {
         return false;
     }
-    if !rigid_contact_filter_allows(world, moving_index, target_index) {
-        return false;
-    }
     if let Some(body) = world.rigid_bodies.get(target_index).copied().flatten() {
         body.body_type != RigidBodyType::Dynamic
             || !integrated.get(target_index).copied().unwrap_or(false)
     } else {
         true
     }
-}
-
-fn rigid_contact_filter_allows(world: &World, a_index: usize, b_index: usize) -> bool {
-    let Some(a_filter) = world.collision_filter_at(a_index) else {
-        return false;
-    };
-    let Some(b_filter) = world.collision_filter_at(b_index) else {
-        return false;
-    };
-    a_filter.can_collide_with(b_filter) && world.height_spans_allow_at(a_index, b_index)
 }
 
 fn rigid_body_ccd_contact_point(
@@ -571,6 +601,20 @@ fn update_rigid_body_ccd_hit(best: &mut Option<RigidBodyCcdHit>, next: RigidBody
         next.time
             .total_cmp(&current.time)
             .then_with(|| next.target_index.cmp(&current.target_index))
+            .then_with(|| {
+                (
+                    next.collider_pair.a.collider_index,
+                    next.collider_pair.a.segment_index,
+                    next.collider_pair.b.collider_index,
+                    next.collider_pair.b.segment_index,
+                )
+                    .cmp(&(
+                        current.collider_pair.a.collider_index,
+                        current.collider_pair.a.segment_index,
+                        current.collider_pair.b.collider_index,
+                        current.collider_pair.b.segment_index,
+                    ))
+            })
             .is_lt()
     }) {
         *best = Some(next);
@@ -589,18 +633,7 @@ fn apply_rigid_body_ccd_impact(
             a: entity_at_index(world, moving_index),
             b: entity_at_index(world, hit.target_index),
         },
-        CollisionColliderPair {
-            a: ColliderKey {
-                entity_index: moving_index,
-                collider_index: 0,
-                segment_index: 0,
-            },
-            b: ColliderKey {
-                entity_index: hit.target_index,
-                collider_index: 0,
-                segment_index: 0,
-            },
-        },
+        hit.collider_pair,
         hit.point,
         hit.normal,
         config,

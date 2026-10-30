@@ -477,9 +477,9 @@ export class WebGL2Renderer implements Renderer {
     this.gpuTimer?.beginFrame();
   }
 
-  endGpuTiming(): void {
+  endGpuTiming(discard = false): void {
     this.assertAlive();
-    this.gpuTimer?.endFrame();
+    this.gpuTimer?.endFrame(discard);
   }
 
   gpuTimingStats(): RendererGpuTimingStats {

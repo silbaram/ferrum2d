@@ -37,6 +37,7 @@ declare module "../pkg/ferrum_core.js" {
     clear_spatial_scene(): void;
     configure_spatial_model_streaming(chunks: Float32Array, metadata: Uint32Array, distances: Float32Array): boolean;
     preflight_spatial_attachments(metadata:Uint32Array,values:Float32Array,models:Uint32Array,styles:Float32Array):boolean;
+    configure_spatial_light_bindings(metadata:Uint32Array, offsets:Float32Array):boolean;
     configure_spatial_attachments(metadata:Uint32Array,values:Float32Array):boolean;
     capture_data_scene_spatial_rotations(epoch:number,handles:Uint32Array):Float64Array;
     restore_data_scene_progress_with_spatial_motion(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array,rotations:Float64Array,applyEnvironment:boolean):boolean;
@@ -57,6 +58,11 @@ declare module "../pkg/ferrum_core.js" {
     preflight_spatial_model_poses(styles:Float32Array,origins:Float32Array):boolean;
     spatial_model_ptr(): number;
     spatial_model_len(): number;
+    query_audio_poses(handles: Uint32Array): boolean;
+    audio_pose_buffer_ptr(): number;
+    audio_pose_buffer_count(): number;
+    audio_pose_stride_words(): number;
+    spatial_model_draw_snapshot(id:number,generation:number):Uint32Array;
     spatial_model_asset_in_use(asset:number):boolean;
     spatial_material_abi_version(): number;
     spatial_surface_proxy_abi_version(): number;

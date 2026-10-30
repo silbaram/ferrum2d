@@ -1,5 +1,6 @@
 use crate::collision::{
-    ColliderCollisionContact, ColliderCollisionManifold, CollisionScratch, CollisionSystem,
+    ColliderCollisionContact, ColliderCollisionManifold, ColliderKey, CollisionScratch,
+    CollisionSystem,
 };
 use crate::world::World;
 
@@ -49,7 +50,7 @@ struct RigidBodyConstraintBatch {
 pub(crate) struct RigidBodyStepScratch {
     integrated_bodies: Vec<bool>,
     ccd_collision: CollisionScratch,
-    ccd_candidates: Vec<usize>,
+    ccd_candidates: Vec<ColliderKey>,
     position_collision: CollisionScratch,
     position_contacts: Vec<ColliderCollisionContact>,
     contact_constraint_scratch: RigidContactConstraintScratch,

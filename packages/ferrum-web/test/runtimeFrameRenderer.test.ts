@@ -97,7 +97,7 @@ test("runtime closes its GPU query when a render pass throws", () => {
   const order: string[] = [];
   const renderer = fakeRuntimeRenderer(order);
   renderer.beginGpuTiming = () => { order.push("gpu_begin"); };
-  renderer.endGpuTiming = () => { order.push("gpu_end"); };
+  renderer.endGpuTiming = (discard) => { order.push("gpu_end"); equal(discard, true); };
   renderer.renderCommands = () => { throw new Error("render failed"); };
   const runtime = new RuntimeFrameRenderer({ renderer, shouldRenderPhysicsDebugLines: false, needsRuntimeFrame: false });
   throws(() => runtime.renderFrame(renderFrameState()), /render failed/);

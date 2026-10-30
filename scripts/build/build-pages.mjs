@@ -114,7 +114,7 @@ const documentationGroups = [
   { title: "공식 예제", matches: (file) => file.startsWith("examples/") },
   { title: "엔진 개발·검증", matches: (file) => file.startsWith("development/architecture/") || file.startsWith("development/quality/") },
   { title: "배포·운영", matches: (file) => file.startsWith("development/operations/") },
-  { title: "계획·개발 기록", matches: (file) => file.startsWith("planning/") },
+  { title: "개발 계획·후보", matches: (file) => file.startsWith("planning/") },
   { title: "기타 문서", matches: () => true },
 ];
 
@@ -208,13 +208,14 @@ function compareDocs(a, b) {
     "development/quality/smoke-check.md",
     "development/quality/code-review.md",
     "development/operations/demo-deploy.md",
+    "development/operations/github-release.md",
+    "development/operations/local-engine-install.md",
     "development/operations/npm-package-strategy.md",
     "development/operations/npm-release.md",
     "development/operations/release-notes-template.md",
     "planning/README.md",
-    "planning/2d-hd2d-workspace-implementation-plan.md",
-    "planning/2d-hd2d-authoring-workspace-review.md",
     "planning/feature-candidates.md",
+    "planning/game-development-convenience-review.md",
     "planning/demo-game-showcase-plan.md",
     "planning/deployment-roadmap.md",
   ];

@@ -1,3 +1,4 @@
+import { RuntimeProfiler } from "@ferrum2d/ferrum-web/quality";
 import {
   createEngine,
   createRenderer,
@@ -12,7 +13,20 @@ import {
 } from "@ferrum2d/ferrum-web/authoring";
 import { check, pixels, difference, png } from "/fixture.mjs";
 
-async function probe(canvas, backend, projection) {
+// Distinct valid GLBs for a full next-scene batch; geometry is identical and tiny.
+function recoveryVariant(raw,index){
+  const original=new DataView(raw),length=original.getUint32(12,true);
+  const json=JSON.parse(new TextDecoder().decode(new Uint8Array(raw,20,length)));
+  json.asset.extras={recoveryFixture:index};
+  const encoded=new TextEncoder().encode(JSON.stringify(json)),padded=(encoded.length+3)&~3;
+  const result=new Uint8Array(raw.byteLength-length+padded),view=new DataView(result.buffer);
+  result.set(new Uint8Array(raw,0,12));view.setUint32(8,result.byteLength,true);
+  view.setUint32(12,padded,true);view.setUint32(16,0x4e4f534a,true);
+  result.fill(32,20,20+padded);result.set(encoded,20);result.set(new Uint8Array(raw,20+length),20+padded);
+  return result.buffer;
+}
+
+async function probe(canvas, backend, projection, recover=false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
@@ -20,12 +34,14 @@ async function probe(canvas, backend, projection) {
       fallbackBehavior: "silent",
       onFallback: (info) => fallback.push(String(info.reason)),
       webgl2: { preserveDrawingBuffer: true },
+      webgpu: { gpuTiming: true },
     });
   check(
     (typeof renderer.gpuDevice === "function") === (backend === "webgpu"),
     "model renderer fell back",
     fallback,
   );
+  const profiler = new RuntimeProfiler();
   const errors = [],
     registry = createSceneInstanceHandleRegistry(),
     options = { instanceHandleRegistry: registry, spatialModelPreparer: renderer };
@@ -130,9 +146,19 @@ async function probe(canvas, backend, projection) {
         request = undefined;
         try {
           const packet = pending?.packet ?? state.renderCommandBuffer;
+          const renderStart = performance.now();
+          renderer.beginGpuTiming?.();
           renderer.render();
           const stats = renderer.renderCommands(packet);
           renderer.renderPostProcess();
+          renderer.endGpuTiming?.();
+          const allocation = renderer.resourceStats?.(), timing = renderer.gpuTimingStats?.();
+          profiler.recordFrame({ fps: state.frameTimeMs > 0 ? 1000 / state.frameTimeMs : 0, entityCount: state.entityCount, spriteCount: stats.spriteCount, batchCount: stats.batchCount, frameTimeMs: state.frameTimeMs, rustUpdateTimeMs: state.rustUpdateTimeMs,
+            renderTimeMs: performance.now() - renderStart, drawCalls: stats.drawCalls,
+            ...(allocation ? { gpuTextureCount: allocation.textureCount, gpuBufferCount: allocation.bufferCount,
+              gpuProgramCount: allocation.programCount, gpuRenderTargetCount: allocation.renderTargetCount,
+              ...(allocation.estimatedBytes === undefined ? {} : { gpuEstimatedBytes: allocation.estimatedBytes }) } : {}),
+            ...(timing?.status === "ready" ? { gpuFrameTimeMs: timing.elapsedMs, gpuFrameId: timing.frameId } : {}) });
           check(
             ++frames < 300 && state.rustUpdateTimeMs < 250 && !errors.length,
             "model frame/error budget",
@@ -181,13 +207,31 @@ async function probe(canvas, backend, projection) {
     check(
       warm.stats.modelCount === 4 &&
         warm.stats.visibleModelCount === 4 &&
-        warm.stats.modelDrawCalls === 11 &&
+        warm.stats.modelDrawCalls === 6 &&
         warm.stats.modelInstancedDrawCalls === 2 &&
         warm.stats.modelTriangleCount === 132 &&
         warm.stats.modelUploadBytes === 0,
       "model sharing/culling/draw path wrong",
       warm.stats,
     );
+    let failedTextureReplacementPreserved;
+    if (backend === "webgpu") {
+      const queue = renderer.gpuDevice().queue;
+      const descriptor = Object.getOwnPropertyDescriptor(queue, "copyExternalImageToTexture");
+      const before = renderer.resourceStats();
+      Object.defineProperty(queue, "copyExternalImageToTexture", { configurable: true, value() { throw Error("injected image-copy failure"); } });
+      let rejected = false;
+      try { await renderer.loadTexture(1, image.toDataURL()); }
+      catch (error) { rejected = String(error).includes("injected image-copy failure"); }
+      finally {
+        if (descriptor) Object.defineProperty(queue, "copyExternalImageToTexture", descriptor);
+        else delete queue.copyExternalImageToTexture;
+      }
+      check(rejected, "texture replacement did not hit the injected copy failure");
+      check(JSON.stringify(renderer.resourceStats()) === JSON.stringify(before), "failed texture replacement leaked an allocation", { before, after: renderer.resourceStats() });
+      check(difference((await read()).data, warm.data, 1) === 0, "failed texture replacement changed current scene pixels");
+      failedTextureReplacementPreserved = true;
+    }
     const view = createDataSceneSpatialView(engine, canvas),
       sample = (data, point) => {
         const p = view.project(point, lastPacket.spatial);
@@ -252,12 +296,41 @@ async function probe(canvas, backend, projection) {
       difference(restored.data, (await read(reversed)).data) === 0,
       "model depth depends on row order",
     );
+    let recovery;
+    if(recover){
+      const raw=await (await fetch('/rock.glb')).arrayBuffer(),nextAssets=[];
+      for(let i=0;i<16;i++)nextAssets.push(await loadSpatialGlb(recoveryVariant(raw,i===1?0:i),{materialProfile:'diffuse'}));
+      check(new Set(nextAssets.map(a=>a.contentId)).size===15&&nextAssets[0]!==nextAssets[1],'next-scene fixture did not preserve separate same-content handles');
+      await renderer.preloadSpatialModels(nextAssets);
+      const beforeResources = renderer.resourceStats(), beforeGpuSamples = profiler.snapshot().gpuFrameSampleCount, beforeTimingFrame = renderer.gpuTimingStats().currentFrameId;
+      check(beforeResources.textureCount > 0 && beforeResources.bufferCount > 0, "WebGPU resource counters missing", beforeResources);
+      const old=renderer.gpuDevice();old.destroy();await old.lost;await Promise.resolve();
+      check(renderer.deviceState().status==='lost','model device loss not observed');
+      check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "lost device retains allocation counters");
+      check(renderer.gpuTimingStats().status === "context-lost", "lost timer published stale results");
+      await renderer.recoverDevice();
+      renderer.gpuDevice().addEventListener('uncapturederror',e=>errors.push(e.error.message));
+      const recovered=await read(),diff=difference(recovered.data,restored.data,1);
+      check(diff===0,'model/material/texture recovery changed pixels',diff);
+      const lease=renderer.prepareSpatialModels(nextAssets);lease.dispose();
+      check(difference((await read()).data,restored.data,1)===0,'next-scene preparation evicted the current recovered scene');
+      const afterResources = renderer.resourceStats();
+      check(afterResources.textureCount > 0 && afterResources.bufferCount > 0, "recovered resource counters missing");
+      for (let i = 0; i < 4; i++) await read();
+      const timing = renderer.gpuTimingStats(), measurement = profiler.snapshot();
+      if (renderer.gpuDevice().features.has("timestamp-query"))
+        check(measurement.gpuFrameSampleCount > beforeGpuSamples && timing.frameId > beforeTimingFrame, "recovered timestamp-capable device produced no new profiler samples", { timing, beforeGpuSamples, beforeTimingFrame, measurement });
+      else check(timing.status === "unsupported" && measurement.gpuFrameSampleCount === 0, "unsupported timestamp fabricated samples");
+      recovery={resources: afterResources, gpuTiming: {status: timing.status, sampleCount: measurement.gpuFrameSampleCount, maxMs: measurement.maxGpuFrameTimeMs}, generation:renderer.deviceState().generation,differentPixels:diff,models:recovered.stats.modelCount,preparedModels:nextAssets.length,preparedContentIds:15,sameHashHandlesRetained:true,currentAndPreparedRetained:true};
+    }
     return {
       backend,
       projection,
+      recovery,
       restored: true,
       reversed: true,
       preloadBytes,
+      failedTextureReplacementPreserved,
       hole,
       solid,
       emissionPixel,
@@ -300,4 +373,9 @@ export async function probeSpatialWebGpuModels() {
     });
   }
   return result;
+}
+
+export async function probeModelRecovery(){
+ const canvas=document.createElement('canvas');document.body.replaceChildren(canvas);
+ const {data,...result}=await probe(canvas,'webgpu','orthographic',true);return result;
 }

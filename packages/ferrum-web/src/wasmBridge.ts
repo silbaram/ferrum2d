@@ -1,3 +1,4 @@
+import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import {
@@ -121,6 +122,18 @@ export class WasmBridge {
     return version();
   }
 
+  queryAudioPoseBuffer(handles: Uint32Array): AudioPoseBufferView {
+    const e = this.engineInstance;
+    if (typeof e.query_audio_poses !== "function" || typeof e.audio_pose_stride_words !== "function"
+      || typeof e.audio_pose_buffer_count !== "function" || typeof e.audio_pose_buffer_ptr !== "function") throw new Error("This Wasm core does not support spatial audio poses.");
+    if (!e.query_audio_poses(handles) || e.audio_pose_stride_words() !== 8) throw new Error("Invalid spatial audio pose ABI/input.");
+    const count = e.audio_pose_buffer_count(), pointer = e.audio_pose_buffer_ptr();
+    if (count !== handles.length / 2 || pointer % 4 !== 0) throw new Error("Invalid spatial audio pose buffer.");
+    // Query may grow Wasm memory; always acquire both views after the native call.
+    return { count, stride: 8, floats: new Float32Array(this.memory.buffer, pointer, count * 8),
+      words: new Uint32Array(this.memory.buffer, pointer, count * 8) };
+  }
+
   memoryByteLength(): number {
     // Always read the current buffer: memory.grow replaces/detaches previous views.
     return this.memory.buffer.byteLength;
@@ -195,14 +208,14 @@ export class WasmBridge {
       const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
       const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
       const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
-      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112))
+      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112) || (e.spatial_environment_abi_version() === 3 && environmentLength === 128) || (e.spatial_environment_abi_version() === 4 && environmentLength === 512))
           || casterCount % 6 !== 0 || casterCount > 1024 * 6 || ![0, 16, 96, 112].includes(matrixCount))) {
         throw new Error("Unsupported spatial environment ABI");
       }
       const shadowRangeCount = environmentLength && typeof e.spatial_shadow_range_len === "function" ? e.spatial_shadow_range_len() : undefined;
       if (shadowRangeCount !== undefined && (e.spatial_shadow_submission_version() !== 1 || shadowRangeCount > 8960)) throw new Error("Unsupported shadow submission ABI");
       const environment = environmentLength ? {
-        version: e.spatial_environment_abi_version() as 1 | 2,
+        version: e.spatial_environment_abi_version() as 1 | 2 | 3 | 4,
         values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
         shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
         shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),

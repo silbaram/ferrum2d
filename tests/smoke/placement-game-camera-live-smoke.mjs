@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokePlacementGameCameraGestures } from "./placement-game-camera-gestures-smoke.mjs";
+import { clickPlacementControl } from "./placement-panel-navigation.mjs";
 
 /** Exercise visible live controls against native projection, without replacing simulation. */
 export async function smokePlacementGameCameraLive(parent, timeoutMs = 30000) {
@@ -31,6 +32,8 @@ export async function smokePlacementGameCameraLive(parent, timeoutMs = 30000) {
       }
       await page.locator("[data-placement-document-file]").setInputFiles({ name: `live-${projection}-${dpr}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
       await page.waitForFunction(() => !window.document.querySelector(".demo-shell").inert && window.ferrumPlacementViewerHistory.undoCount === 0);
+      // A manually composed editor view must survive live-dock and window resizes.
+      await clickPlacementControl(page,"[data-placement-spatial-camera=out]");
       const baseline = await source(), editor = await page.evaluate(() => window.ferrumPlacementSpatialCamera);
       await page.evaluate(() => {
         const engine = window.ferrumEngine, set = engine.setDataSceneSpatialCamera, configure = engine.configureDataSceneSpatial;

@@ -385,7 +385,8 @@ export async function probeSpatialNavigation(scene) {
   const coveStart = pose();
   check(move(1030, 410, 3, { cellSize: 32, speed: 640 }), "cove 32 grid rejected", engine.dataSceneSpatialMoveStats());
   const coveBaseline = engine.dataSceneSpatialMoveStats();
-  check(coveBaseline.lastRequest?.collisionProxyCount === 2, "cove collider count", coveBaseline);
+  // Broadphase records two pillars and three triggers; narrow-phase excludes triggers.
+  check(coveBaseline.lastRequest?.collisionProxyCount === 5, "cove collider count", coveBaseline);
   for (let i = 9; i < 1509; i++) instances.push({ id: `decoration-${i}`, prefab: "decoration", x: -5000, y: -5000 });
   handles = applyDataSceneAuthoringDocument(engine, cove).entityHandles;
   engine.pauseDataScene();
@@ -393,7 +394,7 @@ export async function probeSpatialNavigation(scene) {
   const coveDecorated = engine.dataSceneSpatialMoveStats();
   check(
     coveDecorated.lastRequest?.status === "accepted" &&
-      coveDecorated.lastRequest.collisionProxyCount === 2 &&
+      coveDecorated.lastRequest.collisionProxyCount === 5 &&
       coveDecorated.searchNodeCount === coveBaseline.searchNodeCount &&
       coveDecorated.edgeProbeCount === coveBaseline.edgeProbeCount &&
       coveDecorated.lastRequest.preparationWorkUnits - coveBaseline.lastRequest.preparationWorkUnits === 1500 &&

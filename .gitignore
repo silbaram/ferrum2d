@@ -20,3 +20,5 @@ docs/planning/*
 !docs/planning/deployment-roadmap.md
 !docs/planning/game-development-convenience-review.md
 !docs/planning/feature-candidates.md
+!docs/planning/sprite-editor-plan.md
+!docs/planning/physics-threejs-upgrade-plan.md

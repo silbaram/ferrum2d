@@ -28,7 +28,7 @@ import {
 | `createEngine(...)` | Wasm `Engine`과 platform provider를 직접 연결할 때 사용한다. |
 | `createRenderer(...)` | WebGL2 renderer를 생성하고 fallback 정보를 반환한다. |
 | `WebGL2Renderer` | 기본 renderer 구현체다. Rust render command buffer만 소비한다. |
-| `AudioManager` | browser audio channel, BGM, SFX playback을 담당한다. |
+| `AudioManager` | browser audio channel, BGM/SFX/UI와 위치 음향 voice를 담당한다. |
 
 `FerrumRuntime`은 browser app에서 권장되는 상위 wrapper다. 더 세밀한 제어가 필요하면
 `createEngine(...)`으로 `FerrumEngine`을 직접 만들 수 있다.
@@ -52,6 +52,142 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 외부에서 주입한 renderer의 수명은 호출자가 소유하며 `runtime.destroy()`로 해제하지 않는다.
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
+
+## 에셋 묶음 로딩과 취소
+
+`AssetLoadOptions`는 core/root에서 제공한다. `FerrumEngine.loadAssets`, `AssetLoader.loadAssets`,
+`BrowserPlatformHost.loadAssets`의 세 번째 인자로 전달한다.
+
+```ts
+const controller = new AbortController();
+const loading = runtime.engine.loadAssets({
+  textures: { hero: "/assets/hero.png", village: "/assets/village.png" },
+  sounds: { hit: "/assets/hit.wav" },
+  json: { level: "/assets/level.json" },
+}, progress => loadingOverlay.update(progress), {
+  concurrency: 4,
+  signal: controller.signal,
+});
+
+// 화면을 떠나거나 로딩을 취소할 때 controller.abort()를 호출한다.
+try {
+  await loading;
+} catch (error) {
+  if (!(error instanceof Error) || error.name !== "AbortError") throw error;
+}
+```
+
+- `concurrency`는 묶음당 정수 1~16이며 기본값은 1이다. texture/sound/JSON이 같은 상한을 공유한다.
+  기존 두 인자 호출의 순차 처리는 유지한다. 병렬 작업의 ID 예약은 manifest 시작 순서이며,
+  `onProgress`는 성공한 항목의 완료 순서로 증가한다. 수치는 byte 전송률이 아닌 완료 항목 비율이다.
+- `signal` 취소 또는 첫 실패 시 대기 항목은 시작하지 않고 진행 중 작업에 취소를 전파한다.
+  첫 오류를 보존하며 시작된 작업이 정리된 뒤 reject한다. 취소 이후 진행률/성공 결과는 발행하지 않는다.
+  이미 취소된 signal은 빈 manifest에서도 `AbortError`로 거절하며 초기 progress도 발행하지 않는다.
+- `textureOptions[name].signal`과 묶음 signal은 함께 적용한다. 해당 texture의 취소도 묶음 실패로 처리한다.
+  `preloadAssetManifest(manifest, { concurrency, signal, ... })`는 묶음 signal로 실제 fetch를 취소하며,
+  preload 자체는 GPU 업로드나 audio decode를 하지 않는다.
+- **부분 성공 계약**이다. 이미 로딩된 자원, 예약 ID, 저장된 cache는 자동 rollback하지 않는다.
+  중단 전에 시작한 cache 쓰기는 완료될 수 있다. ID만 존재하는 상태를 로딩 성공으로 해석하지 않는다.
+  필요한 자원 해제는 `releaseAssets`/owner의 해제 API로 수행하고 같은 manifest로 재시도할 수 있다.
+- `AudioManager.loadSound`와 `AudioAssetLoader.load`도 세 번째 인자 `{ signal }`을 받는다.
+  AudioManager의 같은 ID 재요청, `evictSound`, `destroy`는 진행 중 요청을 취소한다.
+  Web Audio decode 자체는 중단할 수 없어 완료를 기다리지만, 늦은 결과를 registry에 등록하지 않는다.
+  `evictSound`의 boolean은 실제 저장된 buffer 삭제 여부이며 pending 작업만 취소한 경우 `false`다.
+- `engine.destroy()`는 해당 engine의 로딩을, `BrowserPlatformHost.destroy()`는 해당 host의 로딩을 취소한다.
+  engine이 외부 host 자원을 임의로 해제하지는 않는다. 사용자 주입 `AssetHost`/manager/fetch는 전달받은
+  signal을 준수해야 한다. 무시하는 작업은 종료까지 기다리며 자체 side effect는 엔진이 되돌릴 수 없다.
+
+서로 다른 묶음의 전역 동시성 제한·네트워크 중복 제거·자동 재시도·scene 전체 transaction은 제공하지 않는다.
+검증은 `pnpm smoke:asset-loading`과 SDK 테스트를 사용한다.
+
+## 공간 오디오
+
+`AudioManager.playSpatial(soundId, options, volume?, pitch?)`는 일반 SFX fallback에서 실제 위치 음향으로
+확장됐다. [Web Audio PannerNode](https://www.w3.org/TR/webaudio/#PannerNode)의 거리 감쇠·좌우 방향과
+source cone을 사용하며 SFX → master bus를 거친다. three.js의 소유권/pose 갱신 패턴을 참고하되 의존성은 추가하지 않는다.
+
+```ts
+const audio = new AudioManager();
+await audio.loadSound(1, "/assets/water.wav");
+// Web Audio 좌표: X 오른쪽, Y 위쪽, 기본 전방 -Z.
+const water = audio.playSpatial(1, {
+  x: 80, y: 0, z: -108, refDistance: 32, maxDistance: 500, loop: true,
+});
+audio.setListenerPose(0, 12, 0, 0, 0, -1);
+water?.setPose(100, 0, -108); // 같은 노드를 재사용한다.
+water?.stop();
+```
+
+- `SpatialAudioOptions`: 필수 x/y, z 기본 0. 위치는 finite ±1e9, `refDistance` 기본 1/최소 1e-6,
+  `maxDistance` 기본 10000/기준 거리 초과/최대 1e9다. 거리와 위치는 동일한 world 단위다.
+- `distanceModel` 기본 `inverse`, 선택 `linear`/`exponential`. `rolloffFactor` 기본 1, inverse/exponential은
+  0..64, linear는 0..1이다. `maxDistance`는 Web Audio 모델의 매개변수이며 inverse/exponential의 강제 무음 반경이 아니다.
+- `panningModel`은 기본 `equalpower`, 선택 `HRTF`. `direction` 기본 `(0,0,-1)`이며 nonzero 방향은 정규화한다.
+  `coneInnerAngle`/`coneOuterAngle` 기본 360도, 0≤inner≤outer≤360이고 `coneOuterGain` 기본 0/범위 0..1이다.
+- volume 기본 1/범위 0..16, pitch 기본 1/범위 0.01..16, loop 기본 false다. null·NaN·Infinity 등 잘못된 입력은 거절한다.
+  `SpatialAudioVoice`는 active/spatialized 조회, `setPose`, `setVolume`, `stop`을 제공한다. setPose의 생략 방향은 -Z다.
+- 동시에 최대 64 spatial voices를 유지한다. 상한 초과는 새 노드를 만들기 전에 오류다.
+  자연 종료·stop·해당 sound evict·AudioManager.destroy에서 source/panner/gain을 해제한다.
+  state의 선택 `spatialVoiceCount`는 현재 구현에서 활성 voice 수를 반환하며 기존 상태 객체 타입과 호환된다.
+- `setListenerPosition(x,y,z?)`는 방향을 유지하며 위치만 바꾼다. `setListenerPose(x,y,z,fx?,fy?,fz?,ux?,uy?,uz?)`는
+  전방 기본 -Z/위쪽 기본 +Y를 함께 설정한다. 전방/위쪽은 nonzero·서로 평행하지 않아야 한다.
+  listener 입력은 AudioContext 생성 전에 검증하므로 잘못된 입력으로 장치 연결을 시작하지 않는다.
+- `createPanner`가 없는 브라우저는 같은 voice 수명/버스의 일반 SFX로 재생하며 `voice.spatialized`가 false다.
+  PannerNode가 있는 환경의 실제 할당 오류는 숨기지 않고 오류로 보고한다. user gesture에서 `audio.unlock()`을 호출한다.
+
+### native 개체·카메라에 연결
+
+`createSpatialAudioScene(engine, audio, spec, { handles, soundId })`는 별도의 JSON-compatible binding spec을 받는다.
+`handles`는 현재 Scene Authoring 적용 결과의 instanceId → generational handle, `soundId`는 로드된 sound 이름 조회다.
+씬 문서/물리/저장 포맷을 변경하지 않으며 audio spec은 게임 프로젝트가 별도로 보관한다.
+
+```ts
+const ambience = createSpatialAudioScene(engine, audio, {
+  listener: { instanceId: "hero", offset: { x: 0, y: 0, elevation: 12 } },
+  sources: [{ id: "water", sound: "water", position: { x: 80, y: 108, elevation: 0 },
+    options: { refDistance: 32, maxDistance: 500 }, volume: 0.5 }],
+}, { handles: applied.entityHandles, soundId: name => name === "water" ? 1 : 0 });
+// onFrame에서 renderer가 borrowed render buffers를 소비한 다음:
+ambience.update(state.renderCommandBuffer.spatial);
+// 개체를 다시 만든 씬 전환/복원 뒤에는 새 handles로 연결한다.
+ambience.rebind(restored.entityHandles);
+// 씬 종료 시:
+ambience.destroy();
+```
+
+- listener는 `{instanceId, offset?}` 또는 `"camera"`다. 카메라는 마지막 native spatial frame의 eye/target과
+  같은 Y-up 방향을 사용한다. 2D 게임은 entity listener를 사용한다. camera frame이 없거나 잘못되면 음소거한다.
+- source는 고유 id/sound와 **instanceId 또는 position 중 하나**를 가진다. position/offset은 게임 좌표
+  `(x,y,elevation)`이며 audio 좌표 `(x,elevation,-y)`로 변환한다. source는 최대 64개다.
+  instance offset의 XY는 body yaw로 회전하며 높이는 native elevation에 더한다. visual offset/collider offset은 자동 적용하지 않는다.
+  source options는 위 SpatialAudioOptions 중 위치를 제외한 값이다. direction은 audio 축이며 정규화한 뒤 개체 source에서 native yaw로 회전한다.
+  입력 벡터의 크기는 방향/감쇠에 영향을 주지 않으며 원본 spec을 변경하지 않는다.
+  scene source의 loop 기본값은 true다. entity listener의 yaw 0 전방은 게임 +Y(audio -Z)다.
+- `update(frame?)`는 최대 65개 native pose를 묶어 조회한 뒤 AudioParam을 갱신한다. 개체별 Wasm 왕복을 하지 않는다.
+  rendering 뒤에 동기 호출한다. query 중 Wasm memory가 grow할 수 있어 이전 borrowed frame/pose view를 이후 재사용하지 않는다.
+  새 AudioNode는 만들지 않는다. source와 listener의 simulation pose/높이/generation은 Rust가 소유한다.
+- stale/deleted source나 audio 범위를 벗어난 native 위치는 음소거하고 listener가 사라지면 전체를 음소거한다. native floor 번호를 별도 거리로 더하지 않으며
+  실제 elevation으로만 감쇠한다. physics body 활성화 여부와 소리는 별개다. 벽 차폐·층별 강제 차단·Doppler는 제공하지 않는다.
+- `setEnabled(false)`는 즉시 음소거하고 update의 query도 생략한다. true 전환은 다음 update에서 현재 위치·음량을 반영한다.
+  반복 source의 재생 시간은 Web Audio clock을 따른다. `setListener`와 `rebind`는 검증된 연결만 교체하며 실패하면 이전 연결을 유지한다.
+- 생성 시 instanceId 누락은 기본적으로 오류다. 이미 삭제된 개체를 제외한 저장 상태에서 바로 생성하려면 factory options에
+  `allowMissingEntities: true`를 명시한다. 누락된 source는 음소거하고 listener가 누락되면 전체를 음소거한다.
+  `rebind`는 live-only handle map을 허용하며 이후 rebind로 개체가 연결될 때까지 같은 음소거 정책을 적용한다.
+  `setListener`는 기존 source 누락을 허용하지만 새 listener 누락은 기본적으로 거절한다(`allowMissingEntities: true`이면 허용).
+  key가 존재하는데 handle 값이 잘못된 경우는 항상 거절한다.
+- 같은 sound를 여러 source가 사용할 수 있다. AudioManager와 scene의 합산 voice 상한은 그대로 64다.
+  씬 생성 중 오류는 새로 만든 voice만 정리한다. 애플리케이션이 씬 종료/엔진 종료 전에 scene.destroy를 호출한다.
+  snapshot에 AudioNode/음성 재생 위치를 저장하지 않는다. restore 후 rebind하거나 scene을 다시 생성한다.
+
+`engine.queryAudioPoseBuffer(Uint32Array([id,generation,...]))`와 `AudioPoseBufferView`는 저수준 동기 query다.
+최대 65 handle pairs, stride 8 words의 borrowed `.words`/`.floats`를 반환한다.
+행은 `[valid,id,generation,floor,x,y,elevation,yawRadians]`이며 앞 4 words는 u32, 뒤 4 words는 f32다.
+몸체가 없는 transform도 읽으며 stale handle은 valid 0이다. 다음 query/메모리 증가 전에만 소비한다.
+이 capability가 없는 이전 Wasm에서는 명확한 오류로 거절한다. 기존 4-float audio event ABI는 유지한다.
+
+저장소의 `examples/data-scene-native/spatial.mjs`에서 `startSpatialScene(canvas, {audio:true})`를 선택하면
+`spatial-audio.json`의 물·횃불 ambient를 재생한다. canvas 클릭으로 오디오를 잠금 해제한다.
+합성 WAV와 재생성 스크립트는 예제 자산이며 실제 녹음 자료가 아니다.
 
 ## 입력 액션과 context
 
@@ -80,7 +216,8 @@ const timing = runtime.renderer.gpuTimingStats?.();
 const report = runtime.profiler?.snapshot();
 ```
 
-GPU timer는 기본 비활성이며 WebGL2 `EXT_disjoint_timer_query_webgl2`를 지원할 때만 동작한다.
+GPU timer는 기본 비활성이다. WebGL2는 `EXT_disjoint_timer_query_webgl2`, WebGPU는
+runtime의 `rendererPreference: "webgpu"`, `webgpu: { gpuTiming: true }`와 adapter의 `timestamp-query` 지원이 필요하다.
 `RendererGpuTimingStats`의 `status`는 `disabled`, `unsupported`, `pending`, `ready`,
 `disjoint`, `context-lost` 중 하나다. `elapsedMs`와 `frameId`는 유효한 이전 frame 결과가
 완료되었을 때만 제공한다. 결과는 후속 frame에서 비동기로 읽으며 같은 결과를 다음 frame에
@@ -92,7 +229,16 @@ disjoint/context loss 결과를 폐기하고 renderer destroy에서 query를 해
 공식 runtime은 clear, sprite, 조명, physics debug, post-process 전체를 자동으로 감싼다.
 renderer를 직접 호출할 때는 `beginGpuTiming()`과 `endGpuTiming()`을 `try/finally`로
 호출하고 필요한 offscreen pass도 사이에 배치한다. 구간 밖의 asset upload와 render 작업은 제외된다.
-native WebGPU/custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 결과는 0ms로 보정하지 않는다.
+WebGPU는 [render pass timestamp](https://gpuweb.github.io/gpuweb/#dictdef-gpurenderpasstimestampwrites)의
+시작/끝 차이를 합산한다. renderer 내부 clear·geometry·shadow·environment·debug·post-process pass를 포함하고,
+pass 사이 CPU 제출 간격·외부 device 작업·presentation은 제외한다. WebGL2의 전체 query 구간과 직접 동등한 값은 아니다.
+최대 4개 readback 슬롯, 슬롯당 128 pass를 재사용한다. 슬롯이 가득 차거나 pass 상한을 넘으면 그 frame 측정을 생략한다.
+query resolve/copy 뒤 `mapAsync`로 완료 결과를 읽고 frame에서는 기다리지 않는다.
+늦게 도착한 과거 결과는 재발행하지 않는다. 장치 손실은 `context-lost`, 복구 뒤 새 계측 자원과 연속된 frame ID를 사용한다.
+계측 전용 자원 할당·readback 제출에서 동기 예외가 발생하면 해당 측정을 생략하고 query 슬롯을 반환하며 렌더링은 계속한다.
+runtime은 렌더 pass가 실패한 frame의 부분 측정을 폐기한다. 수동 begin/end 호출도 실패한 작업은
+`endGpuTiming(true)`로 닫을 수 있다. 인자를 생략하면 정상 완료 측정으로 처리하며 기존 custom renderer와 호환된다.
+custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 결과는 0ms로 보정하지 않는다.
 
 ## GPU 자원 통계
 
@@ -130,7 +276,13 @@ const resources = runtime.renderer.resourceStats?.();
 ```
 
 지원 여부는 실제 renderer 기준이다. WebGL2는 두 색 공간 모드에서 지원하고,
-native WebGPU의 `resourceStats()`는 아직 `undefined`다. WebGL2로 fallback하면 통계를 제공한다.
+native WebGPU도 소유 buffer·texture·pipeline·attachment texture 통계를 제공한다.
+WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 render attachment texture 수다.
+texture 저장량은 알려진 형식의 mip·array layer를 포함한다. `depth24plus`처럼 저장 형식이 기기별로 달라지는 texture가 있으면
+`unmeasuredTextureCount`를 올리고 `textureBytes`/`estimatedBytes`는 생략한다. `bufferBytes`와 객체 수는 계속 제공한다.
+WebGPU canvas의 presentation texture와 외부에서 직접 만든 GPU 객체·pipeline code/driver 저장량은 집계하지 않는다.
+image/RGBA 업로드나 bind-group 생성 실패 시 새 texture만 해제하고 기존 ID의 texture·revision을 유지한다.
+손실 장치의 소유 자원은 해제해 0으로 표시하고 복구한 장치의 자원만 다시 집계한다.
 `Renderer` 인터페이스의 method는 optional이므로 기존 custom renderer는 구현 없이 호환된다.
 미지원 값을 0으로 대체하지 않는다. GPU 예산을 설정한 경우 누락된 측정은 `missingMetric` 위반이다.
 
@@ -802,9 +954,20 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `dataSceneSpatialMoveStatus()` | idle/moving/arrived/blocked/cancelled, Data Scene 밖·구 Wasm은 undefined |
 | `dataSceneSpatialMoveStats()` | 마지막 요청 node/probe/work·경로 waypoint/잔여·누적 searchCount, 구 Wasm은 undefined |
 | `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
+| `dataSceneSpatialModelDrawSnapshot(handle)` | 마지막 native 렌더의 실제 LOD asset·world XYZ 변환·cameraVisible을 복사한 cold 조회. 미렌더/미등록 handle·구 Wasm은 undefined |
 
 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
 `SpatialGlbOptions`, `SpatialModelAsset`, `SpatialModelPrimitive`, `SpatialModelInstanceSpec` 타입을 제공한다.
+`raycastSpatialModel(asset, ray: SpatialModelRay): SpatialModelRayHit | undefined`는 작성 도구의 시각 선택용
+CPU 삼각형 검사다. ray는 asset-local glTF XYZ의 `origin`/`direction` 3개 좌표이며 방향은 내부에서 정규화한다.
+선택적 `near`/`far`는 정규화 ray를 따라 잰 local 거리이며, 앞쪽 잘린 면을 건너뛰고 뒤의 유효한 면을 검사할 수 있다.
+가장 가까운 전방 교차의 `distance`, `point`, `primitiveIndex`, `triangleIndex`를 반환한다. 빈 bounds 영역,
+단면 재질의 뒷면, MASK 재질의 투명 픽셀을 제외한다. MASK 검사는 원본 이미지 base-level 최근접 샘플을 사용하므로
+GPU 보간/mipmap 경계와 완전히 같은 픽셀 판정은 아니다. 전달한 asset의 정적 geometry를 검사하며 물리 collider를 생성하거나 수정하지 않는다.
+렌더/시뮬레이션 frame loop가 아닌 포인터 선택처럼 드문 플랫폼 작업에서 사용한다. 불변 asset의 내부 geometry는 노출하지 않는다.
+`SpatialModelDrawSnapshot`의 `asset`은 마지막 렌더에서 native가 선택한 LOD이며 `transform`은 소유한 16개 f32의
+column-major glTF local XYZ → world XYZ 행렬이다. `cameraVisible`이 false인 shadow-only/culled draw는 클릭 대상에서 제외한다.
+snapshot은 카메라/문서 변경을 예측하지 않고 다음 렌더 전까지 표시된 pose를 유지한다. frame loop에서 entity별로 호출하지 않는다.
 `loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
 같은 document origin의 최대 16 binary/16 image, document 2 MiB·전체 입력/정규화 bundle 32 MiB와 취소를 검사한다.
 기존 GLB decoder를 재사용하며 contentId는 종속 bytes를 포함한 정규화 bundle hash다. redirect/data URI는 지원하지 않는다.
@@ -824,6 +987,11 @@ OPAQUE/MASK·단면/양면 base color·normal map·emissive·PNG/JPEG·sampler·
 `SpatialModelPrimitive.alphaCutoff`는 OPAQUE에서 0, MASK에서 GLB의 cutoff(기본 0.5)이며
 `doubleSided`는 GLB material의 양면 설정이다. alpha 비교는 color/depth와 그림자 pass에 동일하게 적용한다.
 `SpatialModelPrimitive.normal`은 image/sampler/scale, `emissive`는 image/sampler 참조이며 선택 값이다.
+`uvTransform`과 `normal.uvTransform`/`emissive.uvTransform`은 선택 column-major 3×3 Float32Array이며
+생략은 identity다. loader가 `KHR_texture_transform`을 각 textureInfo에서 해석하며 UV0만 지원한다.
+변환은 각 텍스처 샘플과 base alpha 그림자/CPU picking에 적용하고 원본 geometry·tangent를 유지한다.
+음수/0 scale을 허용하며 잘못된 값·유효 UV set 1 이상·GPU 중간 계산의 overflow는 준비 오류다.
+[정적 모델 지원 범위](../data-scene-spatial.md#정적-glb-배경-모델)를 따른다.
 `emissiveFactor`는 linear RGB 0..1(기본 0)이다. CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
 없으면 기존 8 floats다. 정상적인 GLB normal map은 UV0와 exported TANGENT VEC4를 요구한다.
 normal scale은 -64..64(기본 1), emissive texture는 sRGB·alpha 무시다. 발광도 기존 HDR/fog를 따른다.
@@ -869,13 +1037,16 @@ route는 저장하지 않으며 v6 pose 복원 뒤 idle이다. 세부 제한과 
 연결은 authoring JSON에 저장하며 기존 v6 progress/공간 render ABI는 유지한다.
 
 선택 `DataSceneSpatialSpec.environment`와 `resolveSpatialEnvironmentSpec`은 `SpatialEnvironmentSpec`을
-검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`,
+검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialHemisphereLightSpec`, `SpatialLightingSpec`,
 `SpatialDepthOfFieldSpec`, `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
 점광원 4개·point shadow cube 1개·태양 방향광/그림자 1개·caster 1,024개·면당 64 batch로 제한한다.
 기본/고급 DOF는 최대 13/25 sample 위치이며 선택 actor 초점은 native view-axis depth를 사용한다.
 HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surface normal·world view depth를
 사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
-`spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2를 지원한다.
+`spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2, 반구광/normalBias용 numeric128 v3를 지원한다.
+선택형 `lighting.hemisphere`는 하늘·지면의 linear RGB와 최종 표면 법선으로 fill을 더한다. 기본 intensity는 0.35다.
+point/sun `shadows.normalBias`는 world 0..10(기본 0)의 그림자 조회 위치 보정이며 caster/물리 pose는 그대로다.
+기존 입력은 v1/v2 그대로 컴파일한다. 새 필드를 사용하는 문서는 함께 제공되는 v3 대응 JS/Wasm이 필요하다.
 pixelArt 고정 해상도·직교 표시 스냅·normal atlas·cast/receive·방향광·PCF를 선택할 수 있다.
 `SpatialBillboardSpec.normalTexture`는 저장 가능한 project texture 이름이며 기존 `normalTextureId`와 상호 배타적이다.
 `configureDataSceneSpatial`은 AssetHost registry로 해석하고, authoring apply의 `textureId` override도 지원한다.
@@ -924,3 +1095,10 @@ preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
 이 filter는 flat Data Scene에서도 `hiddenEntities`를 받는다. 카메라가 없는 2D에서도 sprite와 소유 그림자만
 제외하며 collider/simulation은 유지한다. `null` 또는 빈 목록은 필터를 해제한다.
 호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.
+
+
+HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
+씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
+scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
+기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
+[Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.

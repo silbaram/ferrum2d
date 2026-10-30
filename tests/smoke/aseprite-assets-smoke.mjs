@@ -51,10 +51,10 @@ const run = await mkdtemp(resolve(artifact, "run-")),
 const source = {
   format: "ferrum2d.consumer.scene-authoring",
   version: 1,
-  behaviorRecipes: { entities: {} },
+  behaviorRecipes: { entities: tileMode?{map_guard:{recipes:[{kind:'health',max:10}]}}:{} },
   sceneComposition: {
     initialFragment: "main",
-    prefabs: { object: {} },
+    prefabs: { object: {}, ...(tileMode?{map_spawn:{props:{components:{visual:{kind:'primitive',shape:'rect',width:8,height:8,color:'#ffffff'},collider:'none',layer:'wall'}}}}:{}) },
     fragments: {
       main: {
         instances: [
@@ -486,7 +486,7 @@ try {
         continue;
       }
       await showPlacementBottom(page, "assets");
-      await tool.locator("summary").click();
+      await tool.locator(":scope > summary").click();
       const original = await snapshot(),
         first = fixture();
       await stage(first);
@@ -754,6 +754,21 @@ try {
         bId,
       );
       assert((await native()).blue > 100);
+      // Unreferenced registration is reclaimable; the two revisions in Undo/Redo stay live.
+      const beforeCleanup = await snapshot();
+      await stage(fixture(2), "unused"); await action("register").click();
+      await wait(() => document.querySelector("[data-aseprite-status]").textContent.startsWith("Registered"));
+      await stage(fixture(1));
+      const allocated = await resources(), catalog = tool.locator("[data-placement-catalog]");
+      await catalog.locator(":scope > summary").click();
+      await catalog.locator("[data-placement-catalog-clean]").click();
+      await wait(() => document.querySelector("[data-placement-aseprite-tool] [data-placement-catalog]").textContent.includes("Removed 1 revisions"));
+      assert.equal((await resources()).textures, allocated.textures - 1);
+      assert.deepEqual(await snapshot(), beforeCleanup);
+      await undo(); await wait(id => window.ferrumPlacementViewerAgentHandoff.asepriteImports?.[0]?.assetId === id, aId);
+      assert((await native()).red > 100);
+      await redo(); await wait(id => window.ferrumPlacementViewerAgentHandoff.asepriteImports?.[0]?.assetId === id, bId);
+      assert((await native()).blue > 100);
       const stable = await snapshot(),
         image = (await native()).image,
         missing = fixture(1);
@@ -764,6 +779,12 @@ try {
         await tool.locator("[data-aseprite-diagnostics]").textContent(),
         /Missing frame hero-idle/,
       );
+      const importReport = JSON.parse(await tool.locator('[data-placement-import-diagnostics="aseprite"] pre').textContent())[0];
+      assert.equal(importReport.source.file, "hero.json"); assert.equal(importReport.source.pointer, "/frames");
+      assert.equal(importReport.source.item, "hero-idle.png"); assert(importReport.scenePaths.some(path => path.endsWith("/visual/texture")));
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent("ferrum-placement-import-diagnostics", { detail: null })));
+      assert.match(await page.locator('[data-placement-import-problem="hero.json"]').textContent(), /hero-idle/);
+
       assert.deepEqual(await snapshot(), stable);
       assert.equal((await native()).image, image);
       const bad = [];
@@ -1088,7 +1109,7 @@ try {
       assert(afterClose.urls < beforeClose.urls);
       await showPlacementBottom(page, "assets");
       if ((await tool.getAttribute("open")) === null)
-        await tool.locator("summary").click();
+        await tool.locator(":scope > summary").click();
       await stage(first);
       assert.equal(await tool.getAttribute("data-aseprite-ready"), "true");
       await action("register").click();
@@ -1097,6 +1118,41 @@ try {
           .querySelector("[data-aseprite-status]")
           .textContent.startsWith("Registered"),
       );
+      // The imported name is absent from the source/history: only its numeric ID is authored.
+      const numericDownloadPromise = page.waitForEvent("download");
+      await action("export").click();
+      const numericDownload = await numericDownloadPromise;
+      const numericBundle = JSON.parse(await readFile(await numericDownload.path()));
+      const numericAsset = numericBundle.revisions.find(revision => revision.logicalId === "hero");
+      assert(numericAsset);
+      const numericId = await page.evaluate(id => window.ferrumEngine.textureId(id), numericAsset.assetId);
+      await stage(first, "spare");
+      const numericComponents = structuredClone(other.sceneComposition.fragments.main.instances[0].props.components);
+      numericComponents.visual.texture = numericId;
+      await page.evaluate(components => window.ferrumPlacementViewerUpdateComponents("other", components), numericComponents);
+      assert(!JSON.stringify((await snapshot()).state.draftPatch).includes(numericAsset.assetId));
+      const numericFrame = async () => {
+        await page.locator('[data-placement-mode="game"]').click();
+        await wait(() => window.ferrumPlacementWorkspaceMode === "game");
+        const frame = await native();
+        if (await page.evaluate(() => window.ferrumPlacementWorkspaceMode !== "2d")) {
+          await page.locator('[data-placement-mode="2d"]').click();
+          await wait(() => window.ferrumPlacementWorkspaceMode === "2d");
+        }
+        return frame;
+      };
+      let numericBefore = await numericFrame();
+      await page.evaluate(camera => window.ferrumPlacementViewerUpdateTransform("other", { x: camera[0], y: camera[1] }), numericBefore.camera);
+      numericBefore = await numericFrame();
+      const numericResources = await resources();
+      assert(numericBefore.red > 100, JSON.stringify({ message: "numeric texture fixture must actually render the imported image", id: numericId, camera: numericBefore.camera, red: numericBefore.red, stats: numericBefore.stats }));
+      await showPlacementBottom(page, "assets");
+      const numericCatalog = tool.locator("[data-placement-catalog]");
+      if (await numericCatalog.getAttribute("open") === null) await numericCatalog.locator(":scope > summary").click();
+      await numericCatalog.locator("[data-placement-catalog-clean]").click();
+      await wait(() => document.querySelector("[data-placement-aseprite-tool] [data-placement-catalog]").textContent.includes("Removed 0 revisions"));
+      assert.deepEqual(await resources(), numericResources);
+      assert.equal((await numericFrame()).image, numericBefore.image);
       await page.evaluate(() =>
         window.dispatchEvent(
           new PageTransitionEvent("pagehide", { persisted: true }),
@@ -1139,6 +1195,7 @@ try {
         exportHashes: true,
         freshSession: fresh.report,
         keyboardCompact: true,
+        numericTextureCleanupPreserved: true,
         budget: {
           entries: 8,
           attempts: attempts.length,

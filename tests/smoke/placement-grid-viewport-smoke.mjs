@@ -97,7 +97,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
       };
     });
     await paint();
-    const baseline=await snapshot(),base=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument()),gameBefore=await gameCamera();
+    const baseline=await snapshot(),base=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument()),initialFit=await camera(),gameBefore=await gameCamera();
     await angle(1);await check("low-angle",true);
     await angle(7);
     for(let i=0;i<4;i++)await clickPlacementControl(page, "[data-placement-spatial-camera=out]");
@@ -118,7 +118,8 @@ export async function smokeGridViewport(parent, dpr = 1) {
     assert.deepEqual(await camera(),saved,"Stop lost the navigation camera");
     assert.equal(await snapshot(),baseline,"Camera fitting changed JSON/patch/history");
     await clickPlacementControl(page, "[data-placement-spatial-camera=reset]");
-    assert.deepEqual(await camera(),base.spatial.camera);
+    assert.deepEqual(await camera(),initialFit,"Reset must restore the initial fitted editor view");
+    assert.deepEqual((await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument())).spatial.camera,base.spatial.camera,"Reset must preserve the authored game camera");
     // Truly empty documents have no terrain, props or actor to hide a missing grid.
     const empty=structuredClone(base);empty.spatial.terrain=[];empty.spatial.models={};empty.spatial.billboards={};
     delete empty.spatial.actor;delete empty.gameplay;

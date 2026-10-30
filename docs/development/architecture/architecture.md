@@ -18,6 +18,22 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
+Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512) numeric buffer를
+GLSL/WGSL이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
+command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
+그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
+WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+
+공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
+`raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
+포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.
+native binding은 마지막 draw의 index만 보관하며 render command ABI와 frame별 entity 왕복 호출은 추가하지 않는다.
+선택 광선은 표시 frame의 projection을 역투영하므로 다음 frame을 기다리는 UI camera와 혼합하지 않는다.
+모델/텍스처 로딩 controller는 취소 신호와 실행 identity로 오래된 결과를 차단하고 재시도는 원래 열기 caller를 유지한다.
+중단할 수 없는 decode가 남아도 취소/교체 시 caller는 즉시 reject하고 늦은 성공·실패는 결과를 덮어쓰지 않는다.
+선택 physics 진단은 최대 32 collider를 4 Hz로 읽고, 렌더/자원 통계는 보이는 패널에서만 2 Hz로 읽는다.
+게임 상태를 TS로 복제하거나 frame마다 entity별 Wasm 호출을 추가하지 않는다. GPU 시간의 발행 frame과 할당 추정/미측정을 구분한다.
+
 공식 Placement Viewer의 편집용 탐색 카메라는 문서/이력과 분리한 탭별 UI 상태다. 저장되는 게임 카메라는
 `spatial.camera`이며 spatial patch v5의 씬 수준 `setCamera`로 기존 diff/merge/Undo/저장 경로를 따른다.
 `placementGameCamera.ts`는 설정 UI·씬 구도 작성용 수학·native presentation의 화면 범위 표시를 담당하고,
@@ -603,6 +619,28 @@ TypeScript는 브라우저와 package-facing API를 담당한다.
 
 TypeScript는 게임 규칙의 source of truth를 소유하지 않는다.
 
+`assetLoadTasks.ts`는 load/preload의 cold-path 작업 순서, 묶음별 동시성 상한, signal 결합과 listener 정리를 공유한다.
+`AssetLoader`는 registry와 texture/audio/JSON adapter를 연결하고, GPU upload·audio decode는 각 owner가 처리한다.
+기본 순차 처리와 manifest ID 시작 순서를 유지하면서 opt-in 병렬 처리를 지원한다. 첫 실패 시 sibling에 취소를
+전파하고 시작된 작업이 끝난 뒤 reject한다. 성공 자원/cache의 rollback은 하지 않는다.
+Engine과 BrowserPlatformHost는 자신의 lifetime signal을 묶음에 결합한다. AudioManager는 ID별 pending controller로
+재요청/evict/destroy 뒤의 늦은 decode 등록을 차단한다. 새 pending 요청을 게시한 뒤 이전 요청을 취소하므로
+동기 abort listener가 다시 load/destroy를 호출해도 최신 요청과 종료 상태를 유지한다. AudioAssetLoader는 HTTP 오류
+응답의 남은 body를 취소하며, 정리 실패가 원래 HTTP 진단을 덮어쓰지 않게 한다.
+Rust simulation, render command ABI와 hot-path 호출에는 변화가 없다.
+
+
+공간 오디오는 `spatialAudio.ts`의 browser PannerNode/gain/source와 `spatialAudioScene.ts`의 cold binding 설정으로 나눈다.
+Rust `engine/audio_poses.rs`는 transform/height/yaw/generational identity만 read-only bulk query로 제공한다.
+`#[repr(C)]` AudioPose는 32 bytes(4 u32 + 4 f32), 최대 65개이며 Engine 생성 때 저장 공간을 예약한다.
+TS는 query 후 새 Wasm view를 동기 소비하며 개체별 JS/Wasm 호출을 하지 않는다. simulation/거리 계산 상태를 TS에 복제하지 않는다.
+source distance/cone와 listener rendering은 Web Audio가 수행하고, 게임 XY/elevation → audio X/Y-up/-Z 변환은 플랫폼 표현 변환이다.
+voice는 최대 64개, warm update는 기존 노드의 AudioParam만 갱신한다. gain은 SFX/master mixer를 따르며 stop/end/evict/destroy가
+source/panner/gain을 정리한다. createPanner 미지원은 명시적인 일반 SFX fallback, 할당 오류는 rollback 후 거절이다.
+scene의 rebind는 복원된 instance handle을 cold 단계에서 교체한다. sound graph/playhead는 native 저장 포맷에 넣지 않는다.
+기존 audio event의 4-float ABI·Rust simulation·기본 renderer 경계는 유지한다.
+
+
 `geometry2D.ts`는 engine state를 보관하거나 Wasm을 호출하지 않는다. generic point/body
 transform과 resolved collider의 world center/reference point 계산만 제공하며, 단일 점은
 optional output 객체, collider vertices는 caller-owned numeric buffer를 사용한다. Collider별
@@ -887,6 +925,13 @@ shader는 glTF handedness·양면 최종 normal 반전과 linear emission을 처
 fog/HDR composite 앞에 합성하며 shadow는 기존 base alpha만 사용한다. GPU 오류/부분 sampler 할당도 회수한다.
 null을 반환한 allocation의 OOM flag도 cold 실패 정리에서 비워 즉시 재시도에 남기지 않는다.
 material은 불변 asset/contentId에 속하므로 native pose ABI·instance별 Wasm 호출·기존 저장 버전을 추가하지 않는다.
+`spatialTextureTransform.ts`는 GLB/분리형 glTF의 required-extension 허용 목록과 UV0의
+`KHR_texture_transform`을 검사한다. 이미지 decode 전 f32 행렬/UV 중간 overflow를 검증하고 identity는 생략한다.
+base/normal/emissive별 행렬은 CPU primitive에 보관하며 asset.byteLength와 재질 batch identity에 포함한다.
+WebGL2는 main/shadow draw에 공통 base 행렬과 main 전용 normal/emissive 행렬을 전달한다.
+WebGPU는 `webgpuSpatialMaterial.ts`의 144-byte material uniform(기존 48-byte 색/옵션 + 3×32-byte UV affine rows)을
+color/shadow WGSL에서 공유한다. upload는 cold resource 준비에만 발생하고 warm frame 할당은 추가하지 않는다.
+CPU alpha picking도 UV 보간 후 base 행렬을 적용한다. 정점의 UV0·exported tangent와 native ABI는 그대로다.
 GLB의 image 준비는 `spatialModelImage.ts`의 격리된 임시 WebGL2 readback을 사용한다. Canvas 2D의
 premultiply 왕복을 제거해 alpha 0 RGB와 부분 alpha 색을 보존하고, 이미지마다 다음 await 전에
 texture/FBO·bitmap과 지원되는 임시 context를 해제한다. persistent model GPU upload와 구분되는 cold 준비다.
@@ -900,7 +945,7 @@ assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명�
 모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
 OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
-선택 environment는 기존 v1 numeric80을 보존하고 새 품질 설정에만 v2 numeric112를 사용한다.
+선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512를 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
 소유한다. source camera/physics pose는 보존하고 직교 표시 camera만 opt-in pixel snap을 적용한다.
 `spatial_scene/shadows.rs`의 repr(C) 16-byte 범위는 point cube face 0..5와 sun face 6을 구분한다.
@@ -971,8 +1016,14 @@ entity AABB의 공간 pose/접촉 분리는 `kinematic_sweep.rs`에서 sweep과 
 판정한다. center 거리와 half extent 합의 반올림 차이로 표면 접촉이 penetration으로 바뀌지 않게 하며,
 접선/이탈 경로와 실제 모서리 겹침을 구분한다. epsilon 확대나 actor 위치 보정은 하지 않는다.
 격자 node 4,096(+2)·probe/heap 32,768 외에 보수적 work를 요청 8M/frame 1M으로 제한한다.
-`KinematicSweepScratch`는 동기 탐색 요청/추종 frame 안에서만 actor 이외 target AABB bounds를 준비·정렬해
-재사용한다. narrow phase는 기존 world/filter/height/sweep 판정을 유지한다. actor만 바뀌는 범위에서
+`KinematicSweepScratch`는 동기 탐색 요청/추종 frame 안에서만 actor 이외 target collider/chain segment의
+bounds를 준비·정렬해 재사용한다. AABB actor의 장애물은 AABB/OBB뿐 아니라 circle/capsule/convex/edge/chain과
+compound child를 포함한다. 후보는 entity index로 축약하지 않고 collider·segment key를 유지하여 실제
+장애물의 enable/trigger/filter와 body heightSpan을 판정한다. gateway pose overlap도 같은 후보를 사용한다.
+준비/반복 work의 target 수는 collider/segment proxy 수로 청구하므로 compound 하나로 비용을 숨기지 않는다.
+준비 단계는 proxy를 만들지 않은 disabled/invalid collider와 segment의 방문도 센다. Combat navigation과
+action의 admission bound도 같은 방문 비용을 포함하여 실제 준비 후 frame 예산을 초과하지 않게 한다.
+actor만 바뀌는 범위에서
 사용하며 모든 정상 종료·거절에서 snapshot을 해제하고, 다음 요청/frame은 다른 body의 변경을 다시 읽는다.
 준비 work는 alive 순회·target 정렬, 반복 work는 실제 target 수·surface·substep·candidate 정렬에 근거한다.
 장식 entity의 순회를 edge마다 중복 청구하지 않으며 frame admission과 follower 비용에 준비도 포함한다.
@@ -1374,3 +1425,57 @@ animation 또는 align 정의가 있으면 codec4의 header7/shot32를 사용한
 catalog 없는 장면과 생성 source serial이 있는 장면을 구분한다. codec1/2/3 byte layout은 유지한다.
 정의·clock·동적 UV·source를 전체 검증한 후 commit하며 각도는 저장하지 않고 다음 render에서 파생한다.
 TS snapshot union은 v4 semantic animation을 제공하고 구형 Wasm은 active scene 교체 전에 거절한다.
+
+
+### 광원 작성·선택 및 씬 효과 확장
+
+환경 v4는 작성 광원 최대 16개와 활성 광원 최대 4개를 분리한다. Rust는 immutable 원본,
+객체 generation binding과 camera 기반 영향도 선택을 소유하고 frame buffer에 위치/cone/활성 순서를 기록한다.
+그림자 소유 광원은 고정 슬롯을 사용한다. TS는 cold instance ID 연결, 검증, UI draft/history 및 GPU 제출만 담당한다.
+연결 대상이 없어져도 다른 generation을 추적하거나 원점에 빛을 비추지 않는다.
+WebGL2/WebGPU의 scene HDR composite에 접촉 음영(깊이 법선 4+접촉 12), Bloom(32)을 넣어
+톤 매핑과 HUD 전에 적용한다. sampler loop와 반경은 제한되며 warm frame에 target을 추가하지 않는다.
+WebGPU uniform은 환경 512+카메라 16+행렬 112 floats, 두 개의 2,560-byte 슬롯을 재사용한다.
+Authoring 뷰어의 광원 gizmo는 위치 작성 전용 DOM overlay이며 native buffer view는 frame 이후 보존하지 않는다.
+객체와 광원은 같은 authored attachment pose 계산을 사용하고 광원의 world 위치는 draft 동기화 때 계산해 카메라 프레임마다 객체 계층을 탐색하지 않는다.
+광원 연결의 정수 handle/generation은 cold configure에서 씬 교체 전에 확인하여 stale handle 실패가 기존 씬을 바꾸지 않게 한다.
+`lightBindings`와 환경은 scene-wide patch/Undo/저장 경로를 공유하고 기존 v1/v2/v3 환경 입력을 유지한다.
+
+## WebGPU 복구와 전체 맵 작성 경계
+
+`webgpuRenderer.ts`는 stable renderer facade와 장치 수명·cold 복구를 소유하고,
+`webgpuRendererBackend.ts`는 한 GPUDevice의 pipeline·pass·texture store·target을 소유한다.
+손실 시 제출을 건너뛰며 `recoverDevice`가 private 대체 backend를 준비·검증한 뒤 교체한다.
+동시 복구는 공유하고 실패·중간 destroy·복구 중 eviction을 검증한다. render command ABI와 Rust simulation은 변경하지 않는다.
+관리 텍스처의 원본 Blob/RGBA와 현재/준비 모델의 opaque CPU handle만 보존한다.
+현재 모델 묶음을 먼저 preload·pin하고 다음 준비 묶음을 preload하여 각각의 16개 상한과 합계 GPU byte 예산을 유지한다.
+이전 프레임의 Wasm views나 과거 모든 모델 preload를 영구 보관하지 않는다. 사용 계약은 [Labs](../../engine/public-api/labs.md#webgpu-장치-수명과-복구)를 따른다.
+
+`webgpuResources.ts`는 native device별 renderer 소유 allocation ledger다. 모든 내부 buffer/texture/pipeline 생성과
+교체·해제가 동일 ledger를 사용하며 native GPU 객체를 Proxy로 감싸거나 prototype을 수정하지 않는다.
+생성 중 실패한 pass의 allocation도 backend 생성 실패 시 일괄 해제한다. canvas/external device allocation은 소유하지 않는다.
+형식별 저장량을 모르면 추정 합계를 생략하고 buffer 용량과 객체 수를 유지한다.
+`webgpuGpuTimer.ts`는 opt-in timestamp pass 계측과 bounded 비동기 readback을 맡는다.
+renderer pass가 공통 begin helper를 거쳐야 계측되며 runtime의 기존 begin/end 경계가 shadow/debug/post-process까지 포함한다.
+WebGPU pass 시간 합계와 WebGL2 전체 query 구간은 다른 측정 범위다. profiler의 기존 GPU sample/자원 필드를 재사용한다.
+손실 이전 자원·readback은 버리고 facade의 frame ID offset만 보존한다. Rust simulation/render command ABI는 변경하지 않는다.
+계측 전용 동기 할당/제출 실패는 측정만 생략하며, runtime은 실패한 render frame을 `endGpuTiming(true)`로 폐기한다.
+texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 기존 texture ID가 일치한다.
+
+`ScenePlacementHistory.someSnapshot`과 viewer의 `retainsAssetReference`는 cold 자원 정리를 위한 보수적 참조 query다.
+Import 패널은 모든 열린 문서·Undo/Redo·transaction·후보를 확인한 뒤 미저장 session revision만 정리한다.
+프로젝트에 저장된 원본은 별도 project-wide 참조 검증 없이는 삭제하지 않는다. Import 진단은 원본 항목과 authored JSON pointer를
+읽기 전용으로 연결하며 Behavior Recipe 본문이나 실행 상태를 편집하지 않는다.
+Import 진단은 채널별 최신 불변 snapshot을 보존하고 이벤트는 변경 알림으로만 사용한다.
+Problems의 늦은 초기화와 무관하게 동일 상태를 읽으며, 순회·pointer·결과 수를 제한해 오류 보고가 UI를 중단하지 않게 한다.
+
+정적 모델 loader는 32개 이하 source primitive에서 인접한 동일 material 범위만 합쳐 제출한다.
+동일 재질의 triangle 순서와 다른 재질 사이의 draw 순서를 유지하므로 coplanar depth tie를 바꾸지 않는다.
+기존 32개 초과 모델의 material batching과 geometry/메모리 상한은 유지한다. cold load에서만 병합하며 frame마다 geometry를 재작성하지 않는다.
+
+`placementTileMap.ts`는 검증된 tile import 결과와 원본에서 flat scene patch를 만드는 순수 authoring 변환이다.
+실행·물리는 기존 Rust runtime이 담당한다. UI 소유 `props.tileMapImport`는 제한된 provenance만 저장하고
+behavior binding/body나 게임 시뮬레이션 상태로 사용하지 않는다. merge와 viewer의 두 작성 경계가 같은 validator를 사용한다.
+asset transaction은 components 수정뿐 아니라 definition/instance 추가·삭제와 기존 behavior binding 참조 복원도 preflight 뒤 한 Undo로 처리한다.
+셀 identity는 grid 좌표이며 legacy index는 정확한 원본 revision으로 복원해 기존 ID/key를 유지한다. 미지원 authored prop은 변경 전에 거절한다.
+저장 응답의 기준 문서는 깨끗한 새 viewer와 함께 공개하여 add-definition이 남은 초안과 중복 병합되지 않게 한다.

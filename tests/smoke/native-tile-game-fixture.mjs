@@ -3,7 +3,7 @@ import {
   AssetLoader,
   WebGL2Renderer,
 } from "@ferrum2d/ferrum-web/core";
-import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
+import { applyDataSceneAuthoringDocument, DATA_SCENE_PRIMITIVE_TEXTURES } from "@ferrum2d/ferrum-web/authoring";
 import {
   importTiledTilemap,
   importLDtkTilemap,
@@ -101,6 +101,8 @@ export async function probeSavedProjectGame() {
       "Tile color space differs",
     );
   }
+  // Fixture project asset for its explicitly mapped primitive prefab; independent of imported atlases.
+  textures[DATA_SCENE_PRIMITIVE_TEXTURES.rect] = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==';
   const canvas = document.querySelector("canvas"),
     renderer = new WebGL2Renderer(canvas, { preserveDrawingBuffer: true }),
     loader = new AssetLoader(renderer),

@@ -1,7 +1,9 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 112;
+pub(crate) const ENVIRONMENT_VALUES: usize = 512;
+#[path = "lighting_upgrade.rs"]
+mod lighting_upgrade;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
 #[derive(Default)]
 pub(crate) struct SpatialEnvironment {
@@ -15,14 +17,14 @@ impl SpatialEnvironment {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![80, ENVIRONMENT_VALUES].contains(&v.len()) {
+        if ![80, 112, 128, ENVIRONMENT_VALUES].contains(&v.len()) {
             return None;
         }
         let mut a = [0.; ENVIRONMENT_VALUES];
         a[..v.len()].copy_from_slice(v);
         if a.iter().any(|x| !x.is_finite())
             || a[0].fract() != 0.
-            || !(0. ..=31.).contains(&a[0])
+            || !(0. ..=if v.len() == 512 { 127. } else { 31. }).contains(&a[0])
             || a[1].fract() != 0.
             || !(0. ..=4.).contains(&a[1])
             || a[2].fract() != 0.
@@ -32,7 +34,7 @@ impl SpatialEnvironment {
         }
         let flags = a[0] as u32;
         if flags & 16 != 0 {
-            if v.len() != ENVIRONMENT_VALUES
+            if v.len() < 112
                 || a[80..82]
                     .iter()
                     .any(|x| x.fract() != 0. || !(1. ..=2048.).contains(x))
@@ -49,7 +51,7 @@ impl SpatialEnvironment {
             || ![0., 1.].contains(&a[96])
             || ![0., 1.].contains(&a[97])
             || a[98].abs() > 1e6
-            || a[99..].iter().any(|x| *x != 0.)
+            || a[99..112].iter().any(|x| *x != 0.)
         {
             return None;
         }
@@ -83,6 +85,34 @@ impl SpatialEnvironment {
             return None;
         }
         if flags & 1 == 0 && a[95] != 0. {
+            return None;
+        }
+        if ![0., 1.].contains(&a[112])
+            || a[125..128].iter().any(|x| *x != 0.)
+            || !(0. ..=10.).contains(&a[123])
+            || !(0. ..=10.).contains(&a[124])
+        {
+            return None;
+        }
+        if a[112] == 1. {
+            if flags & 1 == 0
+                || unit([a[113], a[114], a[115]]).is_none()
+                || a[113..116].iter().any(|x| x.abs() > 1.)
+                || a[116..119]
+                    .iter()
+                    .chain(&a[120..123])
+                    .any(|x| !(0. ..=1.).contains(x))
+                || !(0. ..=64.).contains(&a[119])
+            {
+                return None;
+            }
+        } else if a[113..123].iter().any(|x| *x != 0.) {
+            return None;
+        }
+        if (a[2] < 0. && a[123] != 0.) || (a[92] == 0. && a[124] != 0.) {
+            return None;
+        }
+        if v.len() == 512 && !lighting_upgrade::valid(&a) {
             return None;
         }
         let count = a[1] as usize;
@@ -175,10 +205,38 @@ impl SpatialEnvironment {
                 .all(|x| x.is_finite())
         })
     }
-    pub fn build(&mut self, camera: &SpatialCamera, world: &World, actor: Option<(Entity, f32)>) {
-        let Some(v) = self.values else {
+    pub fn build(
+        &mut self,
+        camera: &SpatialCamera,
+        world: &World,
+        bindings: &[Option<(Entity, f32)>; 16],
+        actor: Option<(Entity, f32)>,
+    ) {
+        let Some(mut v) = self.values else {
             return;
         };
+        if self.value_len == 512 {
+            lighting_upgrade::select(&mut v, camera, world, bindings, actor);
+            self.shadow_matrices.clear();
+            if v[2] >= 0. {
+                let p = 12 + v[2] as usize * 12;
+                let eye = [v[p], v[p + 1], v[p + 2]];
+                let far = v[p + 3];
+                let near = (far * 0.0001).clamp(0.001, 0.1);
+                for (forward, up) in [
+                    ([1., 0., 0.], [0., -1., 0.]),
+                    ([-1., 0., 0.], [0., -1., 0.]),
+                    ([0., 1., 0.], [0., 0., 1.]),
+                    ([0., -1., 0.], [0., 0., -1.]),
+                    ([0., 0., 1.], [0., -1., 0.]),
+                    ([0., 0., -1.], [0., -1., 0.]),
+                ] {
+                    if let Some(matrix) = cube_matrix(eye, forward, up, near, far) {
+                        self.shadow_matrices.extend(matrix);
+                    }
+                }
+            }
+        }
         self.frame_values.copy_from_slice(&v[..self.value_len]);
         if v[97] == 1. {
             let focus = actor

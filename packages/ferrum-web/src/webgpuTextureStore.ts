@@ -1,3 +1,4 @@
+import { webGpuResources } from "./webgpuResources.js";
 import { textureLoadAbortError } from "./ktx2Texture.js";
 import { resolveTextureColorSpace } from "./colorManagement.js";
 import type { TextureLoadOptions, TextureColorSpace } from "./colorManagement.js";
@@ -15,6 +16,7 @@ export interface WebGpuTextureResource {
   height: number;
   colorSpace: TextureColorSpace;
   revision: number;
+  source?: Blob;
 }
 
 export interface WebGpuTextureWriteBytes {
@@ -62,10 +64,10 @@ export class WebGpuTextureStore {
     }
     try {
       // Native WebGPU currently uses the ordinary image fallback even when ktx2Url is present.
-      const bitmap = await this.loadImageBitmap(url, options, controller.signal);
+      const {bitmap,blob} = await this.loadImageBitmap(url, options, controller.signal);
       try {
         if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
-        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options));
+        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options), blob);
       } finally { bitmap.close(); }
     } catch (error) {
       if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
@@ -123,6 +125,8 @@ export class WebGpuTextureStore {
     resource.revision = ++this.revision;
   }
 
+  restoreRgbaTexture(id: number, width: number, height: number, data: Uint8Array): GPUTexture { this.assertAlive(); return this.createTextureFromRgbaData(id,width,height,data); }
+
   createPlaceholderTextureForId(textureId: number): void {
     this.createTextureFromRgbaData(textureId, 1, 1, new Uint8Array([255, 255, 255, 255]));
   }
@@ -138,7 +142,7 @@ export class WebGpuTextureStore {
     if (resource === undefined) {
       return false;
     }
-    resource.texture.destroy();
+    webGpuResources(this.device).destroy(resource.texture);
     this.textures.delete(resource.texture);
     this.texturesById.delete(textureId);
     return true;
@@ -164,40 +168,47 @@ export class WebGpuTextureStore {
     this.pendingLoads.clear();
     this.pendingIds.clear();
     for (const texture of this.textures) {
-      texture.destroy();
+      webGpuResources(this.device).destroy(texture);
     }
     this.textures.clear();
     this.texturesById.clear();
   }
 
-  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<ImageBitmap> {
+  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<{bitmap:ImageBitmap;blob:Blob}> {
     const colorSpace = resolveTextureColorSpace(options);
     const response = await fetch(url, { signal });
     if (!response.ok) {
       throw new Error(`Texture load failed: HTTP ${response.status} ${response.statusText}`.trim());
     }
     const blob = await response.blob();
-    return colorSpace === "srgb" ? await createImageBitmap(blob)
+    const bitmap = colorSpace === "srgb" ? await createImageBitmap(blob)
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
+    return {bitmap,blob};
   }
 
-  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace): GPUTexture {
-    const texture = this.device.createTexture({
+  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace, blob: Blob): GPUTexture {
+    const texture = webGpuResources(this.device).createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    this.device.queue.copyExternalImageToTexture(
-      { source },
-      { texture },
-      { width: source.width, height: source.height, depthOrArrayLayers: 1 },
-    );
-    if (textureId === undefined) {
-      this.textures.add(texture);
+    try {
+      this.device.queue.copyExternalImageToTexture(
+        { source },
+        { texture },
+        { width: source.width, height: source.height, depthOrArrayLayers: 1 },
+      );
+      if (textureId === undefined) {
+        this.textures.add(texture);
+        return texture;
+      }
+      const resource = this.createTextureResource(texture, source.width, source.height, colorSpace);resource.source=blob;
+      this.setTexture(textureId,resource);
       return texture;
+    } catch (error) {
+      webGpuResources(this.device).destroy(texture);
+      throw error;
     }
-    this.setTexture(textureId, this.createTextureResource(texture, source.width, source.height, colorSpace));
-    return texture;
   }
 
   private createTextureFromRgbaData(
@@ -207,20 +218,25 @@ export class WebGpuTextureStore {
     data: Uint8Array,
   ): GPUTexture {
     validateTextureId(textureId);
-    const texture = this.device.createTexture({
+    const upload = textureWriteBytes(width, height, data);
+    const texture = webGpuResources(this.device).createTexture({
       size: { width, height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    const upload = textureWriteBytes(width, height, data);
-    this.device.queue.writeTexture(
-      { texture },
-      upload.data,
-      { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
-      { width, height, depthOrArrayLayers: 1 },
-    );
-    this.setTexture(textureId, this.createTextureResource(texture, width, height));
-    return texture;
+    try {
+      this.device.queue.writeTexture(
+        { texture },
+        upload.data,
+        { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+      this.setTexture(textureId, this.createTextureResource(texture, width, height));
+      return texture;
+    } catch (error) {
+      webGpuResources(this.device).destroy(texture);
+      throw error;
+    }
   }
 
   private createTextureResource(texture: GPUTexture, width: number, height: number, colorSpace: TextureColorSpace = "none"): WebGpuTextureResource {
@@ -240,7 +256,7 @@ export class WebGpuTextureStore {
     this.pendingIds.get(textureId)?.abort();
     const previous = this.texturesById.get(textureId);
     if (previous && previous.texture !== resource.texture) {
-      previous.texture.destroy();
+      webGpuResources(this.device).destroy(previous.texture);
       this.textures.delete(previous.texture);
     }
     this.textures.add(resource.texture);

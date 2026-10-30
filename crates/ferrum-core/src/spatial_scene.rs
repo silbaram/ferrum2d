@@ -304,6 +304,7 @@ pub(crate) struct SpatialScene {
     pub attachments: attachments::SpatialAttachments,
     pub models: models::SpatialModels,
     pub environment: SpatialEnvironment,
+    pub light_bindings: [Option<(Entity, f32)>; 16],
     pub shadow_casters: Vec<[SpatialVertex; 6]>,
     previous_shadow_casters: Vec<[SpatialVertex; 6]>,
     pub shadow_revision: u32,
@@ -349,6 +350,7 @@ impl SpatialScene {
         self.attachments = Default::default();
         self.models = Default::default();
         self.environment = SpatialEnvironment::default();
+        self.light_bindings.fill(None);
         self.shadow_casters.clear();
         self.previous_shadow_casters.clear();
         self.shadow_draw_ranges.clear();
@@ -595,6 +597,7 @@ impl SpatialScene {
         self.environment.build(
             &camera,
             world,
+            &self.light_bindings,
             self.actor.map(|a| {
                 (
                     a.0,

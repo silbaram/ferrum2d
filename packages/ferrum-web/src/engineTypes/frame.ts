@@ -1,4 +1,4 @@
-import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
+import type { AssetLoadOptions, AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { PlayBgmOptions, StopBgmOptions } from "../audioManager";
 import type { PostProcessStackInput } from "../cameraPostProcessing";
 import type { GameStateCode } from "../gameState.js";
@@ -19,7 +19,7 @@ import type {
 } from "../wasmBridge";
 
 export interface AssetHost {
-  loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
+  loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback, options?: AssetLoadOptions): Promise<LoadedAssets>;
   releaseAssets?(assets: AssetReleasePayload): void;
   textureId(name: string): number;
   soundId?(name: string): number;

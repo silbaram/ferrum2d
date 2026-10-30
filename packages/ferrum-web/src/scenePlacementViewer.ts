@@ -1,3 +1,4 @@
+import { validateTileMapImportMetadata, sameTileMapImportIdentity } from "./scenePlacementTileMapMetadata.js";
 import {
   mergeScenePlacementPatch,
   assertSceneSpatialMigrationAllowed,
@@ -277,6 +278,8 @@ type ScenePlacementSpatialAddition =
 
 export interface ScenePlacementViewer {
   historyState(): ScenePlacementHistoryState;
+  /** Cold source/draft/history query, optionally including a runtime numeric texture alias. */
+  retainsAssetReference(assetId: string, textureId?: number): boolean;
   beginEdit(label: string): void;
   commitEdit(): ScenePlacementViewerState;
   cancelEdit(): ScenePlacementViewerState;
@@ -367,6 +370,21 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   historyState(): ScenePlacementHistoryState {
     return this.history.state();
+  }
+
+  retainsAssetReference(assetId: string, textureId?: number): boolean {
+    if (!assetId.trim()) throw new Error("Asset id must not be empty.");
+    if (textureId !== undefined && (!Number.isInteger(textureId) || textureId < 0 || textureId > 0xffffffff))
+      throw new Error("Texture id must be a u32 integer.");
+    const needle = JSON.stringify(assetId);
+    // Match complete numeric property values, never unrelated dimensions or an ID prefix.
+    const numeric = textureId === undefined ? undefined :
+      new RegExp(`"(?:texture|textureId|normalTexture|normalTextureId|asset)":${textureId}(?=[,}])`);
+    const contains = (value: unknown) => {
+      const serialized = JSON.stringify(value);
+      return serialized !== undefined && (serialized.includes(needle) || numeric?.test(serialized) === true);
+    };
+    return contains(this.sourceDocument ?? this.composition) || this.history.someSnapshot(contains);
   }
 
   beginEdit(label: string): void {
@@ -1184,7 +1202,13 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     );
     if (
       this.instanceRefForId(instanceId) !== undefined ||
-      this.instancesById.has(instanceId)
+      (this.instancesById.has(instanceId) && !(
+        !this.spatial && this.draftRemovedInstanceIds.has(instanceId) &&
+        sameTileMapImportIdentity(
+          this.instancesById.get(instanceId)?.props.tileMapImport,
+          checkedInstance.props?.tileMapImport,
+        )
+      ))
     ) {
       throw gameplayAuthoringDiagnosticError(
         "scenePlacementViewer.addInstance.instance.id",
@@ -2111,6 +2135,7 @@ function validatePlacementInstanceProps(
     return;
   }
   for (const key of Object.keys(props)) {
+    if (key === "tileMapImport") { validateTileMapImportMetadata(props[key], `${path}.${key}`); continue; }
     if (key !== DATA_SCENE_COMPONENTS_PROP) {
       throw gameplayAuthoringDiagnosticError(
         `${path}.${key}`,

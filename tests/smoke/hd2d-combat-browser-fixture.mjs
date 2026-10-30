@@ -1,5 +1,8 @@
+import { RuntimeProfiler } from "@ferrum2d/ferrum-web/quality";
 import {
   createEngine,
+  AudioManager,
+  createSpatialAudioScene,
   WebGL2Renderer,
   loadSpatialGlb,
   captureGameStateSnapshot,
@@ -7,7 +10,7 @@ import {
   stringifyGameStateSnapshot,
   parseGameStateSnapshot,
 } from "@ferrum2d/ferrum-web/core";
-import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
+import { createSceneInstanceHandleRegistry, applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 
 const check = (ok, message) => {
   if (!ok) throw new Error(message);
@@ -27,7 +30,7 @@ const frame = () => new Promise(requestAnimationFrame);
 
 // All simulation (including AI, repeat fire, damage, expiry and particles) runs in Rust.
 // JS only authors the scene, submits rendering, and copies bounded numeric telemetry.
-export async function startCombatProbe(canvas, enemyCount = 32) {
+export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {}) {
   check(
     Number.isInteger(enemyCount) && enemyCount >= 0 && enemyCount <= 128,
     "invalid enemy count",
@@ -44,6 +47,11 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
     gpuSamples = [],
     gpuIds = new Set(),
     errors = [];
+  const inputState = emptyInput();
+  const profiler=new RuntimeProfiler({maxFrameSamples:2048,frameTrace:{frameBudgetMs:1000/60,beforeFrames:8,afterFrames:8,maxCaptures:8}});
+  let measureSimulationStart=0,lastActorPose;
+  let audio, ambience, liveHandles;
+  const ownedVoices=[];
   let collecting = false,
     resetting = false,
     lastFrameTime,
@@ -68,8 +76,11 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
           const stats = renderer.renderCommands(state.renderCommandBuffer);
           renderer.renderPostProcess();
           renderer.endGpuTiming();
-          const renderMs = performance.now() - begin,
-            gpu = renderer.gpuTimingStats();
+          const renderMs = performance.now() - begin;
+          const audioBegin = performance.now();
+          ambience?.update(state.renderCommandBuffer.spatial);
+          const audioMs = performance.now() - audioBegin;
+          const gpu = renderer.gpuTimingStats();
           const spatial = stats.spatial;
           if (resetting) {
             check(
@@ -82,11 +93,17 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
             spatial && state.renderCommandBuffer.spatial,
             "combat lost native spatial rendering",
           );
+          if(collecting&&sceneOptions.document){
+            const left=state.timeSeconds-measureSimulationStart<1.4;
+            inputState.a=left;inputState.d=!left;
+          }
           frames++;
           maxBillboards = Math.max(maxBillboards, spatial.billboardCount ?? 0);
           // Scalar diagnostic, constant calls per frame; never entity-by-entity Wasm queries.
           maxParticles = Math.max(maxParticles, engine.particleCount());
           latest = {
+            actorElevation:lastActorPose?.elevation,actorFloor:lastActorPose?.floor,
+            audioMs,
             rustMs: state.rustUpdateTimeMs,
             intervalMs,
             simulationDeltaMs: state.frameTimeMs,
@@ -107,6 +124,13 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
           if (collecting) {
             check(rows.length < 18000, "combat sample capacity exceeded");
             rows.push({ ...latest });
+            if(sceneOptions.document)profiler.recordFrame({fps:1000/Math.max(1,intervalMs),frameTimeMs:state.frameTimeMs,frameIntervalMs:intervalMs,
+              rustUpdateTimeMs:state.rustUpdateTimeMs,renderTimeMs:renderMs,entityCount:state.entityCount,spriteCount:stats.spriteCount,drawCalls:stats.drawCalls,batchCount:stats.batchCount,
+              rendererFrameId:gpu.currentFrameId,...(gpu.status==='ready'?{gpuFrameId:gpu.frameId,gpuFrameTimeMs:gpu.elapsedMs}:{}),
+              modelCount:spatial.modelCount,modelDrawCalls:spatial.modelDrawCalls,modelTriangleCount:spatial.modelTriangleCount,
+              modelUploadBytes:spatial.modelUploadBytes,modelInstanceUploadBytes:spatial.modelInstanceUploadBytes,
+              spatialShadowDrawCalls:spatial.shadowDrawCalls,spatialShadowPassCount:spatial.shadowPassCount,spatialShadowCacheHit:spatial.shadowCacheHit,
+            });
             for (const event of state.gameplayEvents) {
               if (
                 event.kind === "collisionDamage" &&
@@ -126,11 +150,11 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
           throw error;
         }
       },
-      emptyInput,
+      () => inputState,
       undefined,
       () => renderer.viewportSize(),
     );
-    check(engine.registerDataSceneSpatialModel("combat-rock", rock), "model registration rejected");
+    if (!sceneOptions.document) check(engine.registerDataSceneSpatialModel("combat-rock", rock), "model registration rejected");
     engine.setParticlePreset(3, {
       texture: 1,
       burstCount: 6,
@@ -282,9 +306,51 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
         },
       },
     };
+    if (sceneOptions.document) {
+      const village = structuredClone(sceneOptions.document);
+      const fragment = village.sceneComposition.fragments[village.sceneComposition.initialFragment];
+      const hero = fragment.instances.find(i => i.id === village.gameplay.primaryActor);
+      check(hero, "village hero missing");
+      const actors = document.sceneComposition.fragments.combat.instances.filter(i => !i.id.startsWith("model-"));
+      actors[0].x = hero.x; actors[0].y = hero.y;
+      document.sceneComposition.prefabs.actor.props.components = structuredClone(hero.props.components);
+      document.sceneComposition.prefabs.actor.props.components.visual.texture = sceneOptions.textureIds.village_hero;
+      delete document.sceneComposition.prefabs.actor.props.components.visual.asset;
+      for (const [name, model] of Object.entries(sceneOptions.models)) check(engine.registerDataSceneSpatialModel(name, model), "village model registration");
+      for (const [name, url] of Object.entries(sceneOptions.textureUrls)) await renderer.loadTexture(sceneOptions.textureIds[name], url);
+      for (const i of fragment.instances) {
+        const visual = i.props?.components?.visual;
+        if (visual?.asset) { visual.texture=sceneOptions.textureIds[visual.asset]; delete visual.asset; }
+      }
+      village.sceneComposition.prefabs = {...village.sceneComposition.prefabs,...document.sceneComposition.prefabs};
+      fragment.instances = fragment.instances.filter(i=>i.id!==hero.id).concat(actors);
+      village.behaviorRecipes = document.behaviorRecipes; village.ids = document.ids;
+      village.gameplay = document.gameplay;
+      village.spatial.actor.instanceId = "actor";
+      village.spatial.billboards.actor = village.spatial.billboards[hero.id] ?? {};
+      delete village.spatial.billboards[hero.id];
+      for (const i of actors) village.spatial.billboards[i.id] ??= {};
+      if (sceneOptions.effects === false) { delete village.spatial.environment; delete village.spatial.lightBindings; }
+      document = village;
+    }
+    const registry = createSceneInstanceHandleRegistry({entityExists:h=>engine.gameplayEntityExists(h)});
     const applied = applyDataSceneAuthoringDocument(engine, document, {
+      instanceHandleRegistry: registry,
       spatialModelPreparer: renderer,
+      textureId: name => sceneOptions.textureIds?.[name] ?? 1,
     });
+    liveHandles = applied.entityHandles;
+    if (sceneOptions.audio) {
+      audio = new AudioManager();
+      const play=audio.playSpatial.bind(audio);audio.playSpatial=(...args)=>{const voice=play(...args);if(voice)ownedVoices.push(voice);return voice;};
+      await audio.loadSound(1,"/audio/water.wav"); await audio.loadSound(2,"/audio/fire.wav");
+      const query=engine.queryAudioPoseBuffer.bind(engine);
+      engine.queryAudioPoseBuffer=handles=>{const v=query(handles);if(v.words[0])lastActorPose={floor:v.words[3],elevation:v.floats[6]};return v;};
+      ambience = createSpatialAudioScene(engine,audio,{listener:{instanceId:"actor"},sources:[
+        {id:"water",sound:"water",position:{x:190,y:0,elevation:0},options:{refDistance:80,maxDistance:2000}},
+        {id:"fire",sound:"fire",position:{x:-125,y:80,elevation:25},options:{refDistance:80,maxDistance:2000}},
+      ]},{handles:liveHandles,soundId:name=>name==="water"?1:2});
+    }
     actorHandle = applied.entityHandles.actor;
     check(engine.dataSceneCombatEnabled(), "combat configuration not enabled");
     renderer.resize();
@@ -297,8 +363,10 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
       engine,
       renderer,
       errors,
+      audio,
+      inputState,
       document,
-      handles: applied.entityHandles,
+      get handles() { return liveHandles; },
       get latest() {
         return latest;
       },
@@ -328,11 +396,16 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
         const resourceBaseline = renderer.resourceStats();
         const watched = applied.entityHandles["enemy-4"];
         const aiBefore = watched === undefined ? undefined : engine.getPhysicsEntity(watched);
+        if(sceneOptions.document){
+          check(engine.setPhysicsBodyPosition(actorHandle,8,-192),'ramp setup position');
+          check(engine.setPhysicsBodyHeightSpan(actorHandle,{floorId:0,elevation:0,height:21}),'ramp setup height');
+          measureSimulationStart=latest.simulationSeconds;profiler.reset();
+        }
         const before = engine.dataSceneCombatStats(),
           start = performance.now();
         collecting = true;
         await wait(durationMs);
-        collecting = false;
+        collecting = false;inputState.a=inputState.d=false;
         const elapsedMs = performance.now() - start,
           after = engine.dataSceneCombatStats();
         const aiAfter = watched === undefined ? undefined : engine.getPhysicsEntity(watched);
@@ -341,7 +414,10 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
         const samples = gpuSamples.filter((sample) => measuredIds.has(sample.rendererFrameId));
         return {
           enemyCount,
-          modelCount: 216,
+          modelCount: Object.keys(document.spatial.models).length,
+          frameTrace:sceneOptions.document?profiler.snapshot().frameTrace:undefined,
+          elevationRange:sceneOptions.document?{min:Math.min(...rows.map(r=>r.actorElevation)),max:Math.max(...rows.map(r=>r.actorElevation))}:undefined,
+          wasmMemoryBytes: engine.memoryStats().wasmLinearMemoryBytes,
           frames: rows.length,
           elapsedMs,
           fps: (rows.length / elapsedMs) * 1000,
@@ -387,8 +463,10 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
           "combat checkpoint format missing",
         );
         const restored = restoreGameStateSnapshot(engine, snapshot, {
-          dataSceneAuthoringApplyOptions: { spatialModelPreparer: renderer },
+          dataSceneAuthoringApplyOptions: { instanceHandleRegistry:registry, spatialModelPreparer: renderer, textureId:name=>sceneOptions.textureIds?.[name] ?? 1 },
         });
+        liveHandles = Object.fromEntries(registry.entries({validateLive:true}).map(e=>[e.instanceId,e.handle]));
+        ambience?.rebind(liveHandles);
         check(
           restored.dataSceneStateApplied && engine.dataSceneCombatEnabled(),
           "combat checkpoint did not activate",
@@ -422,12 +500,15 @@ export async function startCombatProbe(canvas, enemyCount = 32) {
         return true;
       },
       destroy() {
+        ambience?.destroy(); audio?.destroy();
         stopped = true;
         engine.destroy();
         renderer.destroy();
+        return {gpu:renderer.resourceStats(),voices:ownedVoices.filter(v=>v.active).length};
       },
     };
   } catch (error) {
+    ambience?.destroy(); audio?.destroy();
     engine?.destroy();
     renderer.destroy();
     throw error;

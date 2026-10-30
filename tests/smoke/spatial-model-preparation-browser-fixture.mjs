@@ -79,7 +79,7 @@ export async function probeSpatialModelPreparation(scene, canvas) {
     handles=applyDataSceneAuthoringDocument(engine,target,{spatialModelPreparer:{prepareSpatialModels:handles=>{const ready=renderer.prepareSpatialModels(handles);uploads.push(ready.uploadBytes);return ready;}}}).entityHandles;
     engine.pauseDataScene();await wait();
   }finally{renderer.renderCommands=render;}
-  check(uploads[0]>0&&firstFrames[0]?.modelCount===2&&firstFrames[0].modelDrawCalls===10&&firstFrames[0].modelTriangleCount===110&&firstFrames[0].modelUploadBytes===0,"prepared scene uploaded models on first render",{uploads,first:firstFrames[0]});
+  check(uploads[0]>0&&firstFrames[0]?.modelCount===2&&firstFrames[0].modelDrawCalls===5&&firstFrames[0].modelTriangleCount===110&&firstFrames[0].modelUploadBytes===0,"prepared scene uploaded models on first render",{uploads,first:firstFrames[0]});
   check(differences(before,image())>100,"new prepared models did not change the screen");
   const saved=snapshot(target),preparedImage=image();
   check(saved.dataScene.version===7&&!JSON.stringify(saved).includes("spatialModelPreparer"),"preparer leaked into serialized state");
@@ -128,7 +128,7 @@ export async function probeSpatialModelPreparation(scene, canvas) {
   }
   const allocated=renderer.resourceStats(),empty=structuredClone(target);empty.spatial.models={};empty.sceneComposition.fragments.lab.instances.splice(1);
   applyDataSceneAuthoringDocument(engine,empty);engine.pauseDataScene();await wait();const released=renderer.resourceStats();
-  check(released.bufferCount===allocated.bufferCount-20&&released.textureCount===allocated.textureCount-3,"prepared model GPU resources leaked",{allocated,released});
+  check(released.bufferCount===allocated.bufferCount-10&&released.textureCount===allocated.textureCount-3,"prepared model GPU resources leaked",{allocated,released});
   for(const name of ["rock","tree-material","building"])check(engine.releaseDataSceneSpatialModel(`prepare-${name}`),"prepared CPU resource release failed",name);
   check(gl.getError()===gl.NO_ERROR,"preparation probe left WebGL errors");
   return {faults,coldFailures,firstFrame:firstFrames[0],preparedUploadBytes:uploads[0],freshUploadBytes:freshUpload,restoreRejected,freshRestore:true,pixelDifferences:0,overlapRejected:overlap,staleRejected:stale,resourceRelease:true};

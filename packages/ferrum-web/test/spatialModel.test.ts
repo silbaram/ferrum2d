@@ -154,7 +154,7 @@ test("GLB rejects malformed accessors, hierarchy, extensions, materials and tran
         j => j.accessors[3].count = 23, j => j.nodes[1].translation = [1e39, 0, 0],
     ];
     for (const edit of edits)
-        await rejects(loadSpatialGlb(await fixture(edit), { materialProfile: "diffuse" }), /Spatial GLB/);
+        await rejects(loadSpatialGlb(await fixture(edit), { materialProfile: "diffuse" }), /Spatial (GLB|glTF)/);
     const aborted = new AbortController();
     aborted.abort();
     await rejects(loadSpatialGlb(await fixture(), { materialProfile: "diffuse", signal: aborted.signal }), /abort/i);
@@ -200,7 +200,13 @@ test("GLB normal/emissive references preserve tangent handedness and bake nonuni
 test("GLB preserves supported draw order and merges larger static material groups within geometry budgets",async()=>{
     const withCount=(count:number)=>fixture(j=>{const p=j.meshes[0].primitives[0];j.meshes[0].primitives=Array.from({length:count},()=>p);});
     const model=await loadSpatialGlb(await withCount(32),{materialProfile:"diffuse"});
-    equal(model.primitiveCount,32);equal(model.triangleCount,8*32);
+    equal(model.primitiveCount,1);equal(model.triangleCount,8*32);
+    const ordered=await loadSpatialGlb(await fixture(j=>{
+      j.materials=[{pbrMetallicRoughness:{baseColorFactor:[1,0,0,1]}},{pbrMetallicRoughness:{baseColorFactor:[0,1,0,1]}}];
+      const p=j.meshes[0].primitives[0];j.meshes[0].primitives=[0,0,1,0,0].map(material=>({...p,material}));
+    }),{materialProfile:"diffuse"});
+    deepEqual(spatialModelResource(ordered)!.primitives.map(p=>p.color),[[1,0,0,1],[0,1,0,1],[1,0,0,1]]);
+    deepEqual(spatialModelResource(ordered)!.primitives.map(p=>p.indices.length),[48,24,48]);
     const merged=await loadSpatialGlb(await withCount(64),{materialProfile:"diffuse"});
     equal(merged.primitiveCount,1);equal(merged.triangleCount,8*64);
     const resource=spatialModelResource(merged)!;

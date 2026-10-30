@@ -45,7 +45,7 @@ impl SpatialNavigation {
         }
         self.finish(SpatialMoveStatus::Blocked);
         let targets = scene.movement_scratch.begin_spatial_query(world, r.actor);
-        let mut used = preparation_work(world, targets) + setup;
+        let mut used = preparation_work(scene, world, targets) + setup;
         let scan = targets as u64;
         if used.saturating_add(scan) > r.available {
             scene.movement_scratch.end_spatial_query();

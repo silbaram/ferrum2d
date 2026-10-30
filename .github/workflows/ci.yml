@@ -173,6 +173,43 @@ jobs:
       - name: Spatial WebGPU geometry/models offscreen and pre-context fallback
         run: pnpm smoke:spatial-webgpu-offscreen
 
+      - name: WebGPU recovery with GPU timing and resource diagnostics
+        run: pnpm smoke:webgpu-recovery
+
+      - name: Imported Tiled and LDtk whole map authoring
+        run: pnpm smoke:tile-map
+
+      - name: Asset revision cleanup and import diagnostics
+        run: pnpm smoke:aseprite-assets
+
+      - name: Native tile map source storage and fresh game roundtrip
+        run: |
+          cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
+          pnpm smoke:tile-project
+
+      - name: Upload native tile map evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-tile-map
+          path: |
+            artifacts/native-tile-assets/verification.json
+            artifacts/native-tile-assets/run-*/*.png
+          if-no-files-found: ignore
+
+      - name: Real village combat, audio, ramp and LOD quality evidence
+        run: pnpm smoke:village-game-quality
+
+      - name: Upload village game quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: village-game-quality
+          path: |
+            artifacts/village-game-quality/run-*/report.json
+            artifacts/village-game-quality/run-*/*.png
+          if-no-files-found: ignore
+
       - name: Upload spatial WebGPU evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -212,6 +249,12 @@ jobs:
 
       - name: GPU resource lifecycle browser smoke
         run: pnpm smoke:gpu-resources
+
+      - name: Asset loading concurrency and cancellation smoke
+        run: pnpm smoke:asset-loading
+
+      - name: Spatial audio output and native binding smoke
+        run: pnpm smoke:spatial-audio
 
       - name: KTX2 compressed texture smoke
         run: pnpm smoke:ktx2

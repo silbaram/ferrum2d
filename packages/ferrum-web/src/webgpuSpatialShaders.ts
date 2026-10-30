@@ -1,3 +1,4 @@
+import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
 import { spatialEnvironmentWGSL } from "./webgpuSpatialEnvironment.js";
 export const spatialGeometryWGSL =
   spatialEnvironmentWGSL +
@@ -38,7 +39,7 @@ export function spatialModelWGSL(mapped: boolean): string {
     spatialEnvironmentWGSL +
     `
 struct Camera{matrix:mat4x4f};
-struct Material{color:vec4f,emission:vec4f,params:vec4f};
+${spatialModelMaterialWGSL}
 @group(0) @binding(0) var<uniform> camera:Camera;
 @group(1) @binding(0) var<uniform> material:Material;
 @group(1) @binding(1) var baseSampler:sampler;
@@ -60,9 +61,9 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) uv:vec2f,@locatio
  let tangent=${mapped ? "v.tangent" : "vec4f(0.)"};f.tangent=vec4f(basis*tangent.xyz,tangent.w);return f;
 }
 @fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0) vec4f{
- let c=textureSample(baseTexture,baseSampler,f.uv)*material.color;
- let sampled=textureSample(normalTexture,normalSampler,f.uv).rgb*2.-1.;
- let emitted=textureSample(emissionTexture,emissionSampler,f.uv).rgb*material.emission.xyz;
+ let c=textureSample(baseTexture,baseSampler,modelUv(f.uv,material.baseUv))*material.color;
+ let sampled=textureSample(normalTexture,normalSampler,modelUv(f.uv,material.normalUv)).rgb*2.-1.;
+ let emitted=textureSample(emissionTexture,emissionSampler,modelUv(f.uv,material.emissionUv)).rgb*material.emission.xyz;
  let geometric=cross(dpdx(f.world),-dpdy(f.world));var n=vec3f(0.,1.,0.);
  if(length(geometric)>.000001){n=normalize(geometric);}
  let geometricNormal=n;

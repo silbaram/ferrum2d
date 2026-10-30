@@ -39,6 +39,8 @@ import { createPlacementUpdates } from "./placementUpdates";
 import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
+import { createPlacementAssetLoading } from "./placementAssetLoading";
+import { createPlacementPerformance } from "./placementPerformance";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
 import { createPlacementSceneExplorer } from "./placementSceneExplorer";
 import { canUsePlacementAsset } from "./placementAssetScope";
@@ -572,6 +574,9 @@ async function bootstrap(): Promise<void> {
     ?.querySelector<HTMLElement>(".demo-metrics");
   if (!metrics) throw new Error("Missing runtime metrics");
   const bottomDock = createPlacementBottomDock(metrics);
+  const assetLoading = createPlacementAssetLoading();
+  let performancePanel: ReturnType<typeof createPlacementPerformance> | undefined;
+  window.addEventListener("pagehide",event=>{if(!event.persisted) {assetLoading.destroy(); spatialModels.clear();}});
   let runtime: FerrumRuntime | undefined;
   let gridRenderer: PlacementGridRenderer | undefined;
   let viewportNavigation:
@@ -722,6 +727,7 @@ async function bootstrap(): Promise<void> {
     const appChrome = createPlacementAppChrome(shell, chromeOptions);
     const interaction = createPlacementInteractionState();
     let savedDocument = document;
+    let acknowledgedDocument: SceneAuthoringDocumentSpec | undefined;
     const saveAdapter: ScenePlacementSaveAdapter = {
       id: "placement-viewer-memory",
       async saveScenePlacementPatch(request) {
@@ -730,8 +736,9 @@ async function bootstrap(): Promise<void> {
           request.sourceDocument,
         );
         if (result.document !== undefined) {
-          savedDocument = result.document;
-          publishPlacementSavedDocument(savedDocument);
+          // Publish the new baseline together with its clean viewer in activateDocument.
+          // Add-definition/add-instance patches cannot be reapplied to an acknowledged baseline.
+          acknowledgedDocument = result.document;
         }
         return result;
       },
@@ -770,10 +777,14 @@ async function bootstrap(): Promise<void> {
         shell.updateFrame(frame);
         publishFrameStats(frame);
         spatialWorkspace?.frame(frame);
+        lightingControls?.frame(frame);
         workspaceDiagnostics?.frame(frame);
+        performancePanel?.frame(frame);
       },
     });
     shell.attachRuntime(runtime);
+    performancePanel = createPlacementPerformance({ runtime, canvas: shell.canvas, models: spatialModels, visible: () => bottomDock.tabs.active() === "runtime" && metrics.getClientRects().length > 0, measureGpu: enabled => { if (gridRenderer) gridRenderer.measureGpuTiming = enabled; } });
+    metrics.after(performancePanel.element);
     window.addEventListener("pagehide", (event) => {
       if (!event.persisted) gridRenderer?.destroy();
     });
@@ -785,7 +796,7 @@ async function bootstrap(): Promise<void> {
     let runtimeAssetReloadInFlight = false;
     let runtimeAssetReloadAbort: AbortController | undefined;
     const runtimeLoadedTextures = new Map(Object.entries(runtimeTextures));
-    await runtime.engine.loadAssets({ textures: runtimeTextures });
+    await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({ textures: runtimeTextures, textureOptions: Object.fromEntries(Object.keys(runtimeTextures).map(id=>[id,{signal}])) },progress));
     asepriteAssets = createPlacementAsepriteAssets(
       runtimeEngine,
       (id) =>
@@ -853,7 +864,10 @@ async function bootstrap(): Promise<void> {
     }
     publishPlacementRuntimeAssets(runtimeTextures, runtime.engine);
     publishPlacementRuntimeAssetStatus("ready");
-    await loadPlacementSpatialModels(runtimeEngine, document, spatialModels);
+    const loadModels = (scene: SceneAuthoringDocumentSpec, files = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.assetFolderModels) =>
+      assetLoading.run("Loading Models",(signal,progress)=>loadPlacementSpatialModels(runtimeEngine,scene,spatialModels,files,{signal,progress}),undefined,
+        error=> error instanceof TypeError || /HTTP \d+|network|fetch/i.test(error instanceof Error ? error.message : String(error)));
+    await loadModels(document);
 
     const instanceHandleRegistry = createSceneInstanceHandleRegistry({
       entityExists: (handle) =>
@@ -909,6 +923,7 @@ async function bootstrap(): Promise<void> {
     // Stable input bindings delegate cold authoring calls to the active document.
     const viewer: ScenePlacementViewer = {
       historyState: () => currentViewer.historyState(),
+      retainsAssetReference: (id, textureId) => currentViewer.retainsAssetReference(id, textureId),
       beginEdit: (label) => currentViewer.beginEdit(label),
       commitEdit: () => currentViewer.commitEdit(),
       cancelEdit: () => currentViewer.cancelEdit(),
@@ -1191,15 +1206,15 @@ async function bootstrap(): Promise<void> {
           publishPlacementRuntimeAssetStatus("loading");
           try {
             if (Object.keys(changedTextures).length)
-              await runtimeEngine.loadAssets({
+              await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({
                 textures: changedTextures,
                 textureOptions: Object.fromEntries(
                   Object.keys(changedTextures).map((id) => [
                     id,
-                    { signal: controller.signal },
+                    { signal },
                   ]),
                 ),
-              });
+              },progress),controller.signal);
             if (
               !controller.signal.aborted &&
               nextRuntimeAssetSignature ===
@@ -1253,7 +1268,7 @@ async function bootstrap(): Promise<void> {
         if (!saveEnabled || switching || documentSession?.isSaving()) return undefined;
         if (
           documentSession?.hasPointerGesture() ||
-          spatialWorkspace?.ownsGesture()
+          spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()
         )
           return undefined;
         documentSession?.finishEdit();
@@ -1295,6 +1310,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         }
         documentSession?.setSaving(true);
+        acknowledgedDocument = undefined;
         try {
           const result = await saveScenePlacementPatch(savedDocument, patch, {
             allowSave: saveEnabled,
@@ -1306,14 +1322,15 @@ async function bootstrap(): Promise<void> {
           appChrome.setSaveResult(result);
           if (result.saved) {
             const entry = activeDocument;
-            entry.document = savedDocument;
-            entry.resolved = resolvePlacementWorkspaceDocument(savedDocument);
+            const committedDocument = acknowledgedDocument ?? result.document;
+            entry.document = committedDocument;
+            entry.resolved = resolvePlacementWorkspaceDocument(committedDocument);
             entry.lifetime.abort();
             entry.inspector.element.remove();
             entry.lifetime = new AbortController();
             const editState = viewer.state();
             entry.viewer = createScenePlacementViewer({
-              document: savedDocument,
+              document: committedDocument,
               viewport: viewer.state().viewport,
               selectedInstanceId: viewer.state().selectedInstanceId,
               instanceHandleRegistry: entry.registry,
@@ -1474,7 +1491,7 @@ async function bootstrap(): Promise<void> {
         ),
       canEdit: () => spatialWorkspace?.mode() !== "game",
       canSave: () => activeDocument.saveEnabled,
-      hasExternalGesture: () => spatialWorkspace?.ownsGesture() ?? false,
+      hasExternalGesture: () => (spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()) ?? false,
       isNavigationGesture: (event) =>
         (spatialWorkspace?.mode() !== undefined &&
           spatialWorkspace.mode() !== "2d") ||
@@ -1526,7 +1543,9 @@ async function bootstrap(): Promise<void> {
       },
     });
     lightingControls = createPlacementLighting({
-      viewer, engine: runtimeEngine,
+      viewer, engine: runtimeEngine, canvas:shell.canvas,stage:shell.stage,
+      clearSelection:()=>{if(spatialWorkspace?.target())spatialWorkspace.clearSelection();},
+      hasObjectSelection:()=>spatialWorkspace?.target()!==undefined,
       key: () => activeDocument.key,
       mode: () => spatialWorkspace?.mode() ?? "2d",
       runtimeRevision: () => runtimeApplyRevision,
@@ -1804,16 +1823,23 @@ async function bootstrap(): Promise<void> {
     function applyAssetPatch(patch: ScenePlacementPatch, label: string) {
       if (viewer.historyState().transactionLabel !== undefined)
         throw new Error("Finish the current edit before applying assets");
+      mergeScenePlacementPatch(
+        viewer.exportPatch() ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!).document : savedDocument,
+        patch,
+        { allowedFragments: [viewer.state().fragment] },
+      );
       viewer.beginEdit(label);
       try {
         assetBatchEditing = true;
         for (const operation of patch.operations) {
-          if (operation.kind !== "updateComponents")
-            throw new Error("Unsupported asset component operation");
-          viewer.updateInstanceComponents(
-            operation.instanceId,
-            operation.components,
-          );
+          switch (operation.kind) {
+            case "updateComponents": viewer.updateInstanceComponents(operation.instanceId, operation.components); break;
+            case "addObjectDefinition": viewer.addObjectDefinition(operation.id, operation.definition); break;
+            case "addInstance": viewer.addInstance(operation.fragment, operation.instance); break;
+            case "removeInstance": viewer.removeInstance(operation.instanceId); break;
+            case "updateBehaviorBinding": viewer.updateBehaviorBinding(operation.target, operation.behaviorRecipes); break;
+            default: throw new Error("Unsupported asset component operation");
+          }
         }
         if (patch.spatial) viewer.updateSpatial(patch.spatial.operations);
         if (patch.lighting !== undefined) viewer.updateLighting(patch.lighting);
@@ -1844,6 +1870,13 @@ async function bootstrap(): Promise<void> {
         !spatialWorkspace?.ownsGesture() &&
         viewer.historyState().transactionLabel === undefined,
     });
+    const retainsImportedAsset = (id: string) => {
+      let textureId: number | undefined;
+      try { textureId = runtimeEngine.textureId(id); }
+      catch { /* Staged revisions may not yet have a runtime texture alias. */ }
+      return [...documents.values()].some(entry =>
+        entry.viewer.retainsAssetReference(id, textureId) || JSON.stringify(entry.document).includes(JSON.stringify(id)));
+    };
     tileTool = createPlacementTileTool({
       engine: runtimeEngine,
       assets: tileAssets,
@@ -1867,6 +1900,7 @@ async function bootstrap(): Promise<void> {
       },
       viewer,
       context: importedAssetContext,
+      retainsAsset: retainsImportedAsset,
       taken: (id) =>
         previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (asepriteAssets?.entries().some((a) => a.id === id) ?? false) ||
@@ -1879,6 +1913,7 @@ async function bootstrap(): Promise<void> {
       engine: runtimeEngine,
       viewer,
       context: importedAssetContext,
+      retainsAsset: retainsImportedAsset,
       taken: (id) =>
         previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (normalTool?.browserEntries().some((a) => a.id === id) ?? false) ||
@@ -2625,10 +2660,8 @@ async function bootstrap(): Promise<void> {
         previewAssetProvider = createPlacementPreviewAssetProvider();
         previewAssetSignature = placementPreviewAssetSignature();
       }
-      await loadPlacementSpatialModels(
-        runtimeEngine,
+      await loadModels(
         value as SceneAuthoringDocumentSpec,
-        spatialModels,
         desktop ? (desktop.assetFolderModels ?? []) : undefined,
       );
       await spatialWorkspace?.ensureModels(value as SceneAuthoringDocumentSpec);
@@ -2686,6 +2719,7 @@ async function bootstrap(): Promise<void> {
 
     runtime.start();
   } catch (error) {
+    assetLoading.destroy();
     shell.destroy();
     gridRenderer?.destroy();
     renderRuntimeDemoError(error, {
@@ -7681,11 +7715,21 @@ async function loadPlacementSpatialModels(
   cache: Map<string, SpatialModelAsset>,
   files = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
     ?.assetFolderModels,
+  load?: { signal: AbortSignal; progress(value: {loaded: number; total: number; name?: string}): void },
 ): Promise<void> {
   const pending = new Map<string, SpatialModelAsset>();
-  for (const ref of Object.values(document.spatial?.models ?? {}).flatMap(
+  const seen = new Set<string>();
+  const references = Object.values(document.spatial?.models ?? {}).flatMap(
     (model) => [model, ...(model.lods ?? [])],
-  )) {
+  ).filter(ref => {
+    if (seen.has(ref.contentId)) return false;
+    seen.add(ref.contentId);
+    return true;
+  });
+  let loaded = 0;
+  for (const ref of references) {
+    load?.signal.throwIfAborted();
+    load?.progress({loaded,total:references.length,name:ref.asset});
     let asset = cache.get(ref.contentId) ?? pending.get(ref.contentId);
     if (!asset) {
       const source = files?.find((file) => file.id === ref.asset),
@@ -7695,7 +7739,8 @@ async function loadPlacementSpatialModels(
         throw new Error(
           "Import GLB asset '" + ref.asset + "' before opening this document",
         );
-      asset = await loadSpatialGlb(url, { materialProfile: "diffuse" });
+      asset = await loadSpatialGlb(url, { materialProfile: "diffuse", signal: load?.signal });
+      load?.signal.throwIfAborted();
       if (asset.contentId !== ref.contentId)
         throw new Error(
           "spatial.models." +
@@ -7713,7 +7758,10 @@ async function loadPlacementSpatialModels(
       )
         throw new Error("Spatial model cache exceeds 16 assets or 128 MiB");
     }
+    loaded++;
+    load?.progress({loaded,total:references.length,name:ref.asset});
   }
+  load?.signal.throwIfAborted();
   for (const [id, asset] of pending) {
     if (!engine.registerDataSceneSpatialModel("placement:" + id, asset))
       throw new Error("Spatial model registration rejected");

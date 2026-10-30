@@ -213,9 +213,8 @@
                   "color": "#9b8b6b"
                 },
                 "collider": {
-                  "type": "aabb",
-                  "halfWidth": 20.0,
-                  "halfHeight": 20.0,
+                  "type": "circle",
+                  "radius": 20.0,
                   "isTrigger": false
                 },
                 "layer": "wall",
@@ -1882,11 +1881,82 @@
       },
       "lighting": {
         "ambient": [
-          0.62,
-          0.64,
-          0.64
+          0.3,
+          0.32,
+          0.34
         ],
-        "lights": [],
+        "lights": [
+          {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "elevation": 36
+            },
+            "radius": 95,
+            "color": [
+              1,
+              0.62,
+              0.24
+            ],
+            "intensity": 2.8
+          },
+          {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "elevation": 36
+            },
+            "radius": 95,
+            "color": [
+              1,
+              0.62,
+              0.24
+            ],
+            "intensity": 2.8
+          },
+          {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "elevation": 36
+            },
+            "radius": 95,
+            "color": [
+              1,
+              0.62,
+              0.24
+            ],
+            "intensity": 2.8
+          },
+          {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "elevation": 36
+            },
+            "radius": 95,
+            "color": [
+              1,
+              0.62,
+              0.24
+            ],
+            "intensity": 2.8
+          },
+          {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "elevation": 36
+            },
+            "radius": 95,
+            "color": [
+              1,
+              0.62,
+              0.24
+            ],
+            "intensity": 2.8
+          }
+        ],
         "directional": {
           "direction": {
             "x": -1,
@@ -1903,10 +1973,25 @@
             "resolution": 512,
             "extent": 430,
             "distance": 1400,
-            "bias": 0.07
+            "bias": 0.07,
+            "normalBias": 0.35
           }
         },
-        "shadowFilter": "pcf3"
+        "shadowFilter": "pcf3",
+        "hemisphere": {
+          "skyColor": [
+            0.68,
+            0.8,
+            1
+          ],
+          "groundColor": [
+            0.4,
+            0.28,
+            0.16
+          ],
+          "intensity": 0.38
+        },
+        "maxActiveLights": 4
       },
       "colorGrading": {
         "exposure": 0.1,
@@ -1918,7 +2003,34 @@
           0.93
         ],
         "toneMapping": "none"
+      },
+      "bloom": {
+        "strength": 0.35,
+        "radius": 8,
+        "threshold": 1
+      },
+      "ambientOcclusion": {
+        "strength": 0.5,
+        "radius": 16,
+        "bias": 0.3
       }
+    },
+    "lightBindings": {
+      "lantern_0": [
+        0
+      ],
+      "lantern_1": [
+        1
+      ],
+      "lantern_2": [
+        2
+      ],
+      "lantern_3": [
+        3
+      ],
+      "lantern_4": [
+        4
+      ]
     }
   }
 }

@@ -1,3 +1,5 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import { spatialShadowGeometryWGSL } from "./webgpuSpatialShadows.js";
 import { SpatialShadowCache } from "./spatialShadowCache.js";
 import { spatialGeometryWGSL } from "./webgpuSpatialShaders.js";
@@ -87,7 +89,7 @@ export class WebGpuSpatialPass {
     };
     for (const outputFormat of [format, "rgba16float"]) {
       this.pipelines.push(
-        device.createRenderPipeline({
+        webGpuResources(device).createRenderPipeline({
           label: "Ferrum spatial depth/cutout",
           layout,
           vertex,
@@ -102,7 +104,7 @@ export class WebGpuSpatialPass {
       );
       for (const depthTest of [true, false])
         this.debugPipelines.push(
-          device.createRenderPipeline({
+          webGpuResources(device).createRenderPipeline({
             label: "Spatial debug lines",
             layout,
             vertex,
@@ -120,7 +122,7 @@ export class WebGpuSpatialPass {
       label: "Spatial terrain/billboard shadow",
       code: spatialShadowGeometryWGSL,
     });
-    this.shadowPipeline = device.createRenderPipeline({
+    this.shadowPipeline = webGpuResources(device).createRenderPipeline({
       label: "Spatial shadow geometry",
       layout: device.createPipelineLayout({ bindGroupLayouts: [cameraLayout, textureLayout] }),
       vertex: { ...vertex, module: shadowModule },
@@ -128,7 +130,7 @@ export class WebGpuSpatialPass {
       primitive: { topology: "triangle-list" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     });
-    this.uniform = device.createBuffer({
+    this.uniform = webGpuResources(device).createBuffer({
       label: "Spatial camera",
       size: 8 * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -141,7 +143,7 @@ export class WebGpuSpatialPass {
     );
     this.cameraGroup = this.cameraGroups[0];
     // Never alias the public texture0: it can be replaced by the consumer.
-    this.white = device.createTexture({
+    this.white = webGpuResources(device).createTexture({
       label: "Spatial untextured white",
       size: [1, 1, 1],
       format: "rgba8unorm",
@@ -163,7 +165,7 @@ export class WebGpuSpatialPass {
         { binding: 1, resource: this.white.createView() },
       ],
     });
-    this.flatNormal = device.createTexture({
+    this.flatNormal = webGpuResources(device).createTexture({
       label: "Spatial neutral normal",
       size: [1, 1, 1],
       format: "rgba16float",
@@ -274,20 +276,20 @@ export class WebGpuSpatialPass {
     this.environment.prepare(frame, sceneWidth, sceneHeight);
     const hdr = this.environment.scene();
     if (!hdr && (width !== this.width || height !== this.height || !this.depth)) {
-      const replacement = this.device.createTexture({
+      const replacement = webGpuResources(this.device).createTexture({
         label: "Spatial depth",
         size: [width, height, 1],
         format: "depth24plus",
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
       });
       const view = replacement.createView();
-      this.depth?.destroy();
+      webGpuResources(this.device).destroy(this.depth);
       this.depth = replacement;
       this.depthView = view;
       this.width = width;
       this.height = height;
     } else if (hdr) {
-      this.depth?.destroy();
+      webGpuResources(this.device).destroy(this.depth);
       this.depth = undefined;
       this.depthView = undefined;
       this.width = 0;
@@ -298,6 +300,9 @@ export class WebGpuSpatialPass {
       this.environment.textureBytes() + this.environment.shadows.textureBytes();
     stats.lightCount = frame.environment?.values[0]! & 1 ? frame.environment!.values[1] : 0;
     stats.directionalLightCount = frame.environment?.values[83] === 1 ? 1 : 0;
+    stats.authoredLightCount=frame.environment?.values[137]??frame.environment?.values[1]??0;
+    stats.bloomSampleBudget=frame.environment?.values[128]===1 && frame.environment.values[129]>0 ?32:0;
+    stats.ambientOcclusionSampleBudget=frame.environment?.values[132]===1 && frame.environment.values[133]>0 ?16:0;
     stats.dofSampleBudget =
       frame.environment?.values[0]! & 4 ? (frame.environment!.values[96] === 1 ? 25 : 13) : 0;
     this.cameraValues.fill(0);
@@ -329,12 +334,12 @@ export class WebGpuSpatialPass {
       if (stale) {
         if (frame.terrain.byteLength > this.terrainCapacity || !this.terrain) {
           const capacity = grow(this.terrainCapacity, frame.terrain.byteLength);
-          const buffer = this.device.createBuffer({
+          const buffer = webGpuResources(this.device).createBuffer({
             label: "Spatial terrain",
             size: capacity,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
           });
-          this.terrain?.destroy();
+          webGpuResources(this.device).destroy(this.terrain);
           this.terrain = buffer;
           this.terrainCapacity = capacity;
         }
@@ -350,12 +355,12 @@ export class WebGpuSpatialPass {
     if (frame.billboards.byteLength) {
       if (frame.billboards.byteLength > this.billboardCapacity || !this.billboards) {
         const capacity = grow(this.billboardCapacity, frame.billboards.byteLength);
-        const buffer = this.device.createBuffer({
+        const buffer = webGpuResources(this.device).createBuffer({
           label: "Spatial billboards",
           size: capacity,
           usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
-        this.billboards?.destroy();
+        webGpuResources(this.device).destroy(this.billboards);
         this.billboards = buffer;
         this.billboardCapacity = capacity;
       }
@@ -364,11 +369,11 @@ export class WebGpuSpatialPass {
     }
     if (hasShadows && !cacheHit) this.submitShadows(frame, encoder, stats);
     else if (!hasShadows) {
-      this.shadowCasters?.destroy();
+      webGpuResources(this.device).destroy(this.shadowCasters);
       this.shadowCasters = undefined;
       this.shadowCapacity = 0;
     }
-    const pass = encoder.beginRenderPass({
+    const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial geometry",
       colorAttachments: [
         {
@@ -474,12 +479,12 @@ export class WebGpuSpatialPass {
       const debug = frame.debug;
       if (!this.debug || debug.vertices.byteLength > this.debugCapacity) {
         const capacity = grow(this.debugCapacity, debug.vertices.byteLength);
-        const buffer = this.device.createBuffer({
+        const buffer = webGpuResources(this.device).createBuffer({
           label: "Spatial debug vertices",
           size: capacity,
           usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
-        this.debug?.destroy();
+        webGpuResources(this.device).destroy(this.debug);
         this.debug = buffer;
         this.debugCapacity = capacity;
       }
@@ -518,12 +523,12 @@ export class WebGpuSpatialPass {
     if (casters.byteLength) {
       if (!this.shadowCasters || casters.byteLength > this.shadowCapacity) {
         const capacity = grow(this.shadowCapacity, casters.byteLength);
-        const buffer = this.device.createBuffer({
+        const buffer = webGpuResources(this.device).createBuffer({
           label: "Spatial shadow casters",
           size: capacity,
           usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
-        this.shadowCasters?.destroy();
+        webGpuResources(this.device).destroy(this.shadowCasters);
         this.shadowCasters = buffer;
         this.shadowCapacity = capacity;
       }
@@ -610,16 +615,16 @@ export class WebGpuSpatialPass {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.uniform.destroy();
-    this.white.destroy();
-    this.terrain?.destroy();
-    this.billboards?.destroy();
-    this.depth?.destroy();
+    webGpuResources(this.device).destroy(this.uniform);
+    webGpuResources(this.device).destroy(this.white);
+    webGpuResources(this.device).destroy(this.terrain);
+    webGpuResources(this.device).destroy(this.billboards);
+    webGpuResources(this.device).destroy(this.depth);
     this.models.destroy();
     this.environment.destroy();
-    this.flatNormal.destroy();
-    this.debug?.destroy();
-    this.shadowCasters?.destroy();
+    webGpuResources(this.device).destroy(this.flatNormal);
+    webGpuResources(this.device).destroy(this.debug);
+    webGpuResources(this.device).destroy(this.shadowCasters);
     this.terrainMemory = undefined;
   }
 }

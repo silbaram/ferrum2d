@@ -11,6 +11,7 @@ import {
   createSceneInstanceHandleRegistry,
 } from "@ferrum2d/ferrum-web/authoring";
 import { check, pixels, difference, png } from "/fixture.mjs";
+import { loadTextureTransformFixtures, probeTextureTransforms } from "/texture-transform.mjs";
 
 function variant(bytes, edit) {
   const size = new DataView(bytes).getUint32(12, true),
@@ -143,6 +144,7 @@ async function probe(canvas, backend, projection) {
       ],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
+    const uvPicking = await loadTextureTransformFixtures(assets);
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -361,8 +363,8 @@ async function probe(canvas, backend, projection) {
       check(
         warm.stats.modelCount === 1 &&
           warm.stats.visibleModelCount === 1 &&
-          warm.stats.modelDrawCalls === 2 &&
-          warm.stats.modelTriangleCount === 14,
+          warm.stats.modelDrawCalls === (asset.startsWith("uv-") ? 1 : 2) &&
+          warm.stats.modelTriangleCount === (asset.startsWith("uv-") ? 2 : 14),
         "environment model pass missing",
         warm.stats,
       );
@@ -392,6 +394,18 @@ async function probe(canvas, backend, projection) {
     };
     const neutral = await configure("neutral"),
       ambient = await configure("ambient", { lighting: { ambient: [0.1, 0.1, 0.1], lights: [] } });
+    const hemisphere={skyColor:[0,0,1],groundColor:[1,0,0],intensity:.8},
+      hemiUp=await configure("hemisphere-sky",{lighting:{ambient:[0,0,0],lights:[],hemisphere}}),
+      hemiDown=await configure("hemisphere-ground",{lighting:{ambient:[0,0,0],lights:[],hemisphere:{...hemisphere,direction:{x:0,y:0,elevation:-1}}}});
+    check(hemiUp.spatial.environment.version===3 && hemiUp.spatial.environment.values.length===128,"hemisphere did not use native v3");
+    check(hemiUp.ground[2]>hemiUp.ground[0]+25 && hemiDown.ground[0]>hemiDown.ground[2]+25,"sky/ground hemisphere direction ignored",{up:hemiUp.ground,down:hemiDown.ground});
+    check(hemiUp.stats.shadowPassCount===0 && hemiUp.stats.shadowDrawCalls===0,"hemisphere allocated shadow work",hemiUp.stats);
+    const hemiDisabled=await configure("hemisphere-disabled",{lighting:{ambient:[0,0,0],lights:[],hemisphere:{...hemisphere,enabled:false}}});
+    check(hemiDisabled.spatial.environment.values[112]===0 && hemiDisabled.ground.every(value=>value<3),"disabled hemisphere still lights surfaces",hemiDisabled.ground);
+    const facingHemisphere={...hemisphere,direction:{x:120,y:-200,elevation:0}},
+      hemiFacing=await configure("hemisphere-facing",{lighting:{ambient:[0,0,0],lights:[],hemisphere:facingHemisphere}}),
+      hemiNormal=await configure("hemisphere-normal",{lighting:{ambient:[0,0,0],lights:[],hemisphere:facingHemisphere}},"mapped",true);
+    check(Math.max(...hemiNormal.actor.map((value,i)=>Math.abs(value-hemiFacing.actor[i])))>10,"hemisphere ignored billboard shading normals",{flat:hemiFacing.actor,mapped:hemiNormal.actor});
     check(neutral.ground[0] > ambient.ground[0] + 40, "ambient lighting did not darken terrain", {
       neutral: neutral.ground,
       ambient: ambient.ground,
@@ -443,6 +457,22 @@ async function probe(canvas, backend, projection) {
         "unlit",
       ),
       unlitSun = await configure("unlit-sun", sunEnvironment, "unlit");
+    const unlitHemi=await configure("unlit-hemisphere",{lighting:{ambient:[0,0,0],lights:[],hemisphere}},"unlit");
+    check(unlitHemi.leaf.every((value,i)=>value===unlitDark.leaf[i]),"unlit model changed under hemisphere",{unlit:unlitDark.leaf,hemi:unlitHemi.leaf});
+    for(const kind of ["point","sun"]) for(const shadowFilter of ["hard","pcf3"]) {
+      const lighting=kind==="point"?{ambient:[.05,.05,.05],lights:[{position:{x:-80,y:20,elevation:120},radius:400,intensity:2}],shadows:{lightIndex:0,resolution:128,bias:.02}}:
+        {...sunEnvironment.lighting,directional:{...sunEnvironment.lighting.directional,shadows:{resolution:128,distance:1000,extent:300,bias:.02}}};
+      lighting.shadowFilter=shadowFilter;
+      const name=kind+(shadowFilter==="pcf3"?"-pcf":"");
+      await configure(name+"-offset-zero",{lighting});const before=lastPixels.slice();
+      const biased=structuredClone(lighting);
+      (kind==="point"?biased.shadows:biased.directional.shadows).normalBias=2;
+      check(engine.setDataSceneSpatialEnvironment({lighting:biased}),"normal offset rejected");
+      const shifted=await read();
+      check(shifted.stats.shadowCacheHit && shifted.stats.shadowPassCount===0 && shifted.stats.shadowUploadBytes===0,"receiver bias regenerated shadow depth",shifted.stats);
+      check(difference(before,shifted.data,3)>5,"normal offset did not move shadow lookup",{kind,shadowFilter,diff:difference(before,shifted.data,3)});
+      await configure(name+"-offset",{lighting:biased});
+    }
     check(
       unlitDark.leaf.every((v, i) => v === unlitSun.leaf[i]),
       "KHR_materials_unlit depends on illumination",
@@ -514,10 +544,30 @@ async function probe(canvas, backend, projection) {
       "spatial debug not rendered",
       debug.stats,
     );
+    const brightPoint={position:{x:0,y:0,elevation:120},radius:400,intensity:8,color:[1,.7,.3]};
+    const advanced=await configure("advanced-point",{lighting:{ambient:[.02,.02,.02],lights:[brightPoint],maxActiveLights:4}});
+    const brightPixels=lastPixels.slice();
+    check(advanced.spatial.environment.version===4 && advanced.spatial.environment.values.length===512,"missing v4 environment");
+    await configure("bloom-zero",{lighting:{ambient:[.02,.02,.02],lights:[brightPoint],maxActiveLights:4},bloom:{strength:0,radius:12,threshold:.5}});
+    check(difference(brightPixels,lastPixels)===0,"zero-strength Bloom must preserve scene and background pixels");
+    const spotDown=await configure("spot-down",{lighting:{ambient:[0,0,0],lights:[{...brightPoint,spot:{direction:{x:0,y:0,elevation:-1},angle:60,penumbra:.2}}]}});
+    const downPixels=lastPixels.slice();
+    const spotUp=await configure("spot-up",{lighting:{ambient:[0,0,0],lights:[{...brightPoint,spot:{direction:{x:0,y:0,elevation:1},angle:60,penumbra:.2}}]}});
+    check(spotDown.ground[0]>spotUp.ground[0]+20 && difference(downPixels,lastPixels,3)>30,"spot cone direction ignored");
+    await configure("bloom",{lighting:{ambient:[.02,.02,.02],lights:[brightPoint],maxActiveLights:4},bloom:{strength:1,radius:12,threshold:.5}});
+    check(difference(brightPixels,lastPixels,3)>30,"scene bloom did not change HDR pixels");
+    await configure("ao-baseline",{lighting:{ambient:[.5,.5,.5],lights:[]}});const noAo=lastPixels.slice();
+    await configure("ao",{lighting:{ambient:[.5,.5,.5],lights:[]},ambientOcclusion:{strength:1,radius:40,bias:.1}});
+    check(difference(noAo,lastPixels,3)>20,"contact occlusion did not change contact pixels");
+    const many=await configure("budget-many",{lighting:{ambient:[.05,.05,.05],maxActiveLights:2,lights:Array.from({length:16},(_,i)=>({...brightPoint,position:{x:i*10-80,y:0,elevation:80},intensity:i/4}))}});
+    check(many.spatial.environment.values[1]===2 && many.spatial.environment.values[137]===16,"native light budget ignored");
+    const uvChecks = await probeTextureTransforms(configure, () => lastPixels, sunEnvironment, read);
     const combined = await configure(
       "combined",
       {
         ...sunEnvironment,
+        lighting:{...sunEnvironment.lighting,lights:[{...brightPoint,position:{x:0,y:0,elevation:80},followActor:true,spot:{direction:{x:0,y:0,elevation:-1},angle:70,penumbra:.3}}],maxActiveLights:2,hemisphere:{skyColor:[.5,.65,1],groundColor:[.2,.15,.1],intensity:.2}},
+        bloom:{strength:.4,radius:8,threshold:1},ambientOcclusion:{strength:.4,radius:16,bias:.3},
         depthOfField: {
           focusDistance: 1,
           focusRange: 8,
@@ -556,7 +606,7 @@ async function probe(canvas, backend, projection) {
       "environment fresh restore changed frame",
     );
     check(!errors.length, "GPU environment errors", errors);
-    return { backend, projection, restored: true, frames, errors, rows };
+    return { backend, projection, restored: true, frames, errors, rows, uvPicking, uvComparisons: uvChecks.comparisons, uvFailurePreserved: uvChecks.failedLoadPreserved };
   } finally {
     const device = backend === "webgpu" ? renderer.gpuDevice() : undefined;
     engine?.destroy();

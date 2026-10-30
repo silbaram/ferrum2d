@@ -1,3 +1,7 @@
+import { startSpatialAudioVoice, setAudioListenerPose, setAudioListenerPosition, validateSpatialAudioOptions, audioNumber, validateAudioListenerPose } from "./spatialAudio.js";
+import type { SpatialAudioOptions, SpatialAudioVoice } from "./spatialAudio.js";
+export type { SpatialAudioOptions, SpatialAudioVoice } from "./spatialAudio.js";
+import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { AudioAssetLoader } from "./audioAssetLoader.js";
 import {
   AUDIO_CHANNEL_BGM,
@@ -41,20 +45,12 @@ export interface AudioManagerState {
   bgmVolume: number;
   sfxVolume: number;
   uiVolume: number;
+  spatialVoiceCount?: number;
   bgmPlaying: boolean;
   bgmSoundId?: number;
   bgmLoop: boolean;
 }
 
-/** @deprecated spatial audio는 현재 MVP 범위 밖이며 playSpatial은 SFX 재생으로 fallback합니다. */
-export interface SpatialAudioOptions {
-  x: number;
-  y: number;
-  z?: number;
-  refDistance?: number;
-  maxDistance?: number;
-  rolloffFactor?: number;
-}
 
 function nonNegativeFinite(value: number | undefined): number | undefined {
   return value === undefined || !Number.isFinite(value) ? undefined : Math.max(0, value);
@@ -101,14 +97,32 @@ export class AudioManager {
     sfx: 1,
     ui: 1,
   };
+  private readonly spatialVoices = new Map<SpatialAudioVoice, number>();
   private destroyed = false;
+  private readonly pendingLoads = new Map<number, AbortController>();
 
-  async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
+  async loadSound(soundId: number, url: string, options: { signal?: AbortSignal } = {}): Promise<AudioBuffer> {
     this.assertAlive();
-    const buffer = await this.assetLoader.load(soundId, url);
-    this.assertAlive();
-    this.buffersById.set(soundId, buffer);
-    return buffer;
+    const scope = createAssetLoadScope(options.signal);
+    const signal = scope.controller.signal;
+    try {
+      throwIfAssetLoadAborted(signal);
+      const previous = this.pendingLoads.get(soundId);
+      // Abort listeners run synchronously and may start a newer load or destroy us.
+      // Publish this request first so reentrant work can cancel it, too.
+      this.pendingLoads.set(soundId, scope.controller);
+      previous?.abort();
+      throwIfAssetLoadAborted(signal);
+      this.assertAlive();
+      const buffer = await this.assetLoader.load(soundId, url, { signal });
+      throwIfAssetLoadAborted(signal);
+      this.assertAlive();
+      this.buffersById.set(soundId, buffer);
+      return buffer;
+    } finally {
+      if (this.pendingLoads.get(soundId) === scope.controller) this.pendingLoads.delete(soundId);
+      scope.dispose();
+    }
   }
 
   hasSound(soundId: number): boolean {
@@ -119,9 +133,11 @@ export class AudioManager {
   evictSound(soundId: number): boolean {
     this.assertAlive();
     const normalizedSoundId = Math.trunc(soundId);
+    this.pendingLoads.get(normalizedSoundId)?.abort();
     if (normalizedSoundId <= 0 || !this.buffersById.has(normalizedSoundId)) {
       return false;
     }
+    for (const [voice, id] of this.spatialVoices) if (id === normalizedSoundId) voice.stop();
     if (this.currentBgm?.soundId === normalizedSoundId) {
       this.stopBgm();
     }
@@ -197,9 +213,17 @@ export class AudioManager {
     source.start();
   }
 
-  /** @deprecated spatial audio는 현재 MVP 범위 밖이며 일반 SFX로 재생합니다. */
-  playSpatial(soundId: number, _spatial: SpatialAudioOptions, volume = 1.0, pitch = 1.0): void {
-    this.playSfx(soundId, volume, pitch);
+  /** A bounded, explicitly stoppable spatial SFX voice; unavailable PannerNode falls back to SFX. */
+  playSpatial(soundId: number, spatial: SpatialAudioOptions, volume = 1, pitch = 1): SpatialAudioVoice | undefined {
+    this.assertAlive();
+    if (soundId <= 0) return undefined;
+    if (this.spatialVoices.size >= 64) throw new Error("Spatial audio voice limit 64 exceeded.");
+    validateSpatialAudioOptions(spatial); audioNumber(volume, "volume", 0, 16); audioNumber(pitch, "pitch", .01, 16);
+    const buffer = this.requireBuffer(soundId), context = this.audioContext(), mixer = this.ensureMixer(context);
+    const voice = startSpatialAudioVoice(context, buffer, mixer.sfx, spatial, volume, pitch, v => this.spatialVoices.delete(v));
+    if (voice.active) this.spatialVoices.set(voice, soundId);
+    this.resumeIfSuspended(context);
+    return voice;
   }
 
   playBgm(soundId: number, options: PlayBgmOptions = {}): void {
@@ -266,9 +290,17 @@ export class AudioManager {
     }
   }
 
-  /** @deprecated spatial audio는 현재 MVP 범위 밖이며 호환 no-op입니다. */
-  setListenerPosition(_x: number, _y: number, _z = 0): void {
+  setListenerPosition(x: number, y: number, z = 0): void {
     this.assertAlive();
+    audioNumber(x, "listener.x"); audioNumber(y, "listener.y"); audioNumber(z, "listener.z");
+    setAudioListenerPosition(this.audioContext(), x, y, z);
+  }
+
+  /** Forward defaults -Z, up defaults +Y, matching Web Audio's default listener. */
+  setListenerPose(x: number, y: number, z: number, fx = 0, fy = 0, fz = -1, ux = 0, uy = 1, uz = 0): void {
+    this.assertAlive();
+    validateAudioListenerPose(x, y, z, fx, fy, fz, ux, uy, uz);
+    setAudioListenerPose(this.audioContext(), x, y, z, fx, fy, fz, ux, uy, uz);
   }
 
   playEvents(events: readonly AudioEventView[]): void {
@@ -311,6 +343,7 @@ export class AudioManager {
       bgmVolume: this.volumes.bgm,
       sfxVolume: this.volumes.sfx,
       uiVolume: this.volumes.ui,
+      spatialVoiceCount: this.spatialVoices.size,
       bgmPlaying: this.currentBgm !== undefined,
       ...(this.currentBgm === undefined ? {} : {
         bgmSoundId: this.currentBgm.soundId,
@@ -324,6 +357,10 @@ export class AudioManager {
       return;
     }
     this.destroyed = true;
+    for (const controller of this.pendingLoads.values()) controller.abort();
+    this.pendingLoads.clear();
+    for (const voice of this.spatialVoices.keys()) voice.stop();
+    this.spatialVoices.clear();
     const context = this.context;
     this.context = undefined;
     this.masterGain = undefined;

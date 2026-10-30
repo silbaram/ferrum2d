@@ -290,6 +290,14 @@ transaction 안의 draft 변경이 실패하면 전체 transaction을 취소한�
 현재 작업만 취소하며 이전 이력을 추가로 되돌리지 않는다. `redo()`는 열린 transaction 중에는 변경하지 않는다.
 `commitEdit()`, `cancelEdit()`, `undo()`, `redo()`는 복원된 `ScenePlacementViewerState`를 반환한다.
 
+`retainsAssetReference(assetId, textureId?): boolean`은 원본 문서/구성, 현재 초안, Undo/Redo와 진행 중 transaction이
+해당 문자열 ID를 보존하는지 검사하는 저빈도 자원 수명 query다. 비어 있는 ID는 거절한다.
+선택 `textureId`는 현재 runtime의 u32 texture alias이며 숫자로 작성한 texture/normal reference도 보존한다.
+숫자는 해당 reference 필드의 전체 값만 비교하므로 크기·좌표나 다른 ID의 숫자 접두사와 혼동하지 않는다.
+ID와 같은 다른 문자열도 보수적으로 참조로 취급하므로 `true`는 실제 사용 중이라는 판정이 아니라 정리 금지 근거다.
+이력이 반환하는 snapshot을 외부로 노출하거나 이력을 변경하지 않는다. 자산 정리 host는 다른 열린 viewer와
+저장 문서·Import 후보도 함께 확인해야 하며 이 method만으로 프로젝트 파일 삭제 여부를 결정하면 안 된다.
+
 선택 `CreateScenePlacementViewerOptions.validateDraft(state)`는 저빈도 host 검증 callback이다.
 최종 문서 계약 검사 뒤 편집을 기록하기 전과 Undo/Redo/취소 snapshot 복원 시 호출한다.
 예외를 던지면 변경을 거절하고, 이력 위치와 정상 초안을 복구한다. 복구도 실패하면 그 오류를 전달하며
@@ -440,6 +448,8 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 
 Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`다. 기존 문서는 조명 없이 유지된다.
 공간 문서와 함께 사용하면 거절하며 HD-2D는 `spatial.environment.lighting`을 사용한다.
+HD-2D의 반구광과 point/sun `shadows.normalBias`도 기존 environment 교체 patch와 문서 이력에 포함한다.
+공식 viewer의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
 점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
 점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 기존 renderer 계약을 따른다.
 꺼진 조명과 그림자 설정도 검증하고 보존한다. 문서를 적용하는 host는 `DataSceneView.lighting`으로
@@ -656,6 +666,28 @@ ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부�
 
 ## 공간 지형·카메라·빌보드 (개발 소스)
 
+공식 뷰어의 기본 HD-2D 편집 구도와 `Fit Scene`은 창/패널 크기가 바뀌면 보이는 geometry를 다시 맞춘다.
+직접 카메라를 이동·회전·확대하거나 선택 객체만 맞추면 그 구도를 유지한다. `Reset Camera`/`Fit Scene`은 자동 맞춤을 재개한다.
+이 편집 카메라는 작성된 게임 카메라와 Undo 이력을 바꾸지 않는다. `View → Game Camera Guide`는 작성 카메라의
+near/far 경계와 방향을 편집 화면에 표시한다. pixel-art 출력은 해당 가로세로 비율을 사용하며 게임 실행 중에는 가이드를 숨긴다.
+
+선택 객체 옆 조작부는 평면 이동 축 `World XY`/`World X`/`World Y`, 높이와 yaw 값을 표시한다.
+객체 드래그는 선택한 월드 축에 제한되며 높이/회전은 기존 명시적 authoring patch로 작성한다.
+격자 정렬 또는 Shift 드래그는 yaw를 15° 단위로 정렬한다. 드래그당 한 Undo이며 Escape·pointer cancel은 초안을 복원한다.
+모델 클릭은 원본 GLB 삼각형과 MASK 투명 영역을 검사하고, 기존 층·잠금·깊이·겹침 선택 정책을 유지한다.
+
+`View`의 충돌 표시 아래에서 접촉·층 번호·가려진 선을 켤 수 있다. 초록은 고체, 주황은 센서, 빨강은 native 접촉,
+자홍은 높이 범위다. `Runtime → Selected Runtime`에는 선택 바디의 실제 층/높이/속도와 최대 32개 충돌체의 활성·센서·범주/마스크를
+4 Hz로 표시한다. 접촉선은 마지막 native sweep/solver 근거이며 화면에서 충돌 원인을 새로 계산하지 않는다.
+가려진 선 표시는 깊이를 무시하므로 기존 뷰어의 참조 격자를 함께 그리지 않는다. 옵션을 끄면 격자가 복원된다.
+
+모델/텍스처 로딩에는 진행 수와 파일 이름, 실패/재시도·취소를 표시한다. HTTP/network 모델 오류의 재시도는 대기 중인 열기 작업을 이어간다.
+contentId/용량/지원 형식 오류는 기존 오류 경로로 즉시 전달하며 원본 수정 후 다시 열어야 한다. 취소·교체·종료된 작업은 늦게 완료돼도 씬을 활성화하지 않는다.
+로딩 안내에 포커스가 있을 때 Escape는 취소/닫기이며 Enter·Space는 버튼의 기본 동작을 사용한다.
+`Runtime → Rendering and Resources`는 열린 패널에서만 2 Hz로 그리기 호출·공간 삼각형/업로드·렌더 자원·CPU 모델 캐시를 표시한다.
+미계측은 0으로 표시하지 않는다. GPU 시간 계측은 이 패널을 펼쳐 보는 동안만 활성화한다.
+메모리는 할당 추정치이며 GPU 시간은 발행 프레임과 함께 지연 결과로 표시한다.
+
 `SceneAuthoringDocumentSpec.spatial`은 `DataSceneSpatialSpec`이다. `/authoring`은
 `resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`, `createDataSceneSpatialView`와
 `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`, `SpatialBillboardSpec`,
@@ -675,11 +707,11 @@ route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 �
 일반 capture v5와 기존 v2~v5 해시/읽기를 유지한다.
 
 선택 `spatial.environment`는 `SpatialEnvironmentSpec`이며 `resolveSpatialEnvironmentSpec`으로 검증한다.
-관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
+관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialHemisphereLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
 `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
-최대 4개 점광원과 1개 태양 방향광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
+최대 4개 점광원과 1개 태양 방향광·하늘/지면 반구광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
 개체별 cast/receive, 실제 view depth DOF·actor 초점·HDR 색 보정·안개를 작성한다.
-새 품질 설정은 환경 v2 numeric112이며 기존 v1 numeric80과 저장 v7 계약을 유지한다.
+품질 설정은 환경 v2 numeric112이며 반구광·normalBias를 함께 사용하면 v3 numeric128이다. 기존 v1 numeric80과 저장 v7 계약을 유지한다.
 field/default/range와 WebGL2 capability·caster/draw/메모리 상한은 [공간 계약](../data-scene-spatial.md)을 따른다.
 runtime setter로 바꾼 효과도 native progress에 저장하며 environment 진행이 있는 capture만 v7이다.
 null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기존 flat v5·공간 pose/camera v6 해시는 유지한다.
@@ -756,3 +788,36 @@ v3 공개 타입 `DataSceneCombatActorReference`, `DataSceneCombatSpawnedActorSn
 `DataSceneProjectileAnimationProgress`·`DataSceneCombatVisualProjectileSnapshot`·`DataSceneCombatVisualProgressSnapshot`은
 같은 공개 경로의 v4 저장 타입이다. 정적 shot의 animation은 null이며 회전은 복원된 속도/카메라에서 파생한다.
 [탄환 animation·회전 계약](../data-scene-authoring.md#탄환-atlas-animation이동-방향-회전-개발-소스)을 따른다.
+
+
+HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
+씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
+scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
+기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
+[Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.
+
+## 타일 맵 provenance
+
+개발 소스의 placement `addInstance`/`addObjectDefinition`은 기존 `props.components` 외에
+선택 `props.tileMapImport`만 추가로 허용한다. envelope/operation version은 유지하며 runtime ABI는 바꾸지 않는다.
+필수 문자열 `name`(1..48), `lineage`(1..2048), `key`(1..512)와 선택 `assetId`(1..256자), JSON object `options`/`object`, 아래 `cell`만 허용하고,
+전체 JSON UTF-8을 16 KiB로 제한한다. 다른 필드·배열은 거절한다.
+원본 binding/배치 설정을 다시 찾기 위한 UI 소유 metadata이며 behavior/FSM/게임 상태가 아니다.
+
+기존 문서에는 필요 없고 기존 components-only patch도 그대로 동작한다.
+이 metadata를 모르는 과거 patch writer/validator는 새 import patch를 거절하므로 개발 소스의 viewer/SDK를 함께 사용한다.
+`props.behaviorRecipes` 등 agent 소유 필드의 add-instance 작성 금지는 유지한다.
+[전체 맵 사용 범위](../data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
+
+`tileMapImport.assetId`는 선택 1–256자 revision id다. 전체 맵으로 생성한 인스턴스는 이 값을 저장해 타일을 모두 지우고 매핑 객체만 남겨도 해당 원본 JSON·PNG revision을 보존한다. 정의의 marker에는 revision id를 넣지 않는다.
+
+2D map 재적용은 제거한 source 인스턴스의 `name`·`lineage`·`key`가 모두 같을 때만 같은 ID를 다시 추가할 수 있다. 다른 삭제/rename ID의 저장 전 예약 규칙은 유지한다. 동일 map ID의 remove/add 쌍은 참조가 유지되므로 삭제 migration 대상에서 제외한다.
+
+`tileMapImport.cell`은 선택 `{ layer, column, row }`다. `layer`는 1..512자 문자열, `column`/`row`는 0..255 정수이며 추가 필드는 거절한다. 전체 provenance의 16 KiB 상한에 포함한다.
+새 타일은 layer·column·row로 key를 만들므로 grid 너비 변경에도 같은 셀의 ID가 유지된다.
+이전 선형 index key는 정확한 `assetId` 원본 revision에서 좌표를 복원한 뒤 기존 ID/key를 alias로 유지하고 `cell`을 추가한다.
+원본 revision이 없으면 추측해서 다른 셀에 ID를 재사용하지 않고 적용을 거절한다. 기존 marker의 새 필드는 선택이며 runtime ABI는 그대로다.
+
+맵 재적용은 raw instance의 명시적 `behaviorRecipes` 참조를 기존 `updateBehaviorBinding` 연산으로 보존한다.
+명시적 detach도 유지하고, instance override가 없으면 새로 선택한 prefab의 binding을 상속한다. recipe 본문은 수정하지 않는다.
+지원하지 않는 추가 authored prop이 있는 인스턴스는 데이터를 버리는 대신 적용 전에 진단한다.

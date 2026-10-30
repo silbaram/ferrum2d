@@ -1,3 +1,7 @@
+import { createAssetLoadScope, runAssetLoadTasks, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
+import type { AssetLoadOptions } from "./assetLoadTasks.js";
+export type { AssetLoadOptions } from "./assetLoadTasks.js";
+
 import { assetLoadError, describeError } from "./diagnostics.js";
 import type { JsonAssetCache } from "./indexedDbAssetCache.js";
 import { SoundRegistry } from "./soundRegistry.js";
@@ -11,7 +15,7 @@ export interface TextureAssetManager {
 }
 
 export interface SoundAssetManager {
-  loadSound(soundId: number, url: string): Promise<AudioBuffer>;
+  loadSound(soundId: number, url: string, options?: { signal?: AbortSignal }): Promise<AudioBuffer>;
   evictSound?(soundId: number): boolean;
 }
 
@@ -73,6 +77,7 @@ export class AssetLoader {
   async loadAssets(
     manifest: AssetManifest,
     onProgress?: AssetLoadProgressCallback,
+    options: AssetLoadOptions = {},
   ): Promise<LoadedAssets> {
     validateAssetTextureOptions(manifest);
     const startedAtMs = nowMs();
@@ -93,39 +98,41 @@ export class AssetLoader {
       });
     };
 
-    emitProgress();
-
-    for (const [name, url] of textureEntries) {
-      const textureId = this.textureRegistry.reserve(name, url);
-      try {
-        const options = manifest.textureOptions?.[name];
-        if (options === undefined) await this.textureManager.loadTexture(textureId, url);
-        else await this.textureManager.loadTexture(textureId, url, options);
-      } catch (error) {
-        throw assetLoadError({
-          kind: "texture",
-          name,
-          url,
-          detail: describeError(error),
-        });
+    const entries: (AssetReleaseEntry & { textureOptions?: TextureLoadOptions })[] = [
+      ...textureEntries.map(([name, url]) => ({ kind: "texture" as const, name, url,
+        textureOptions: manifest.textureOptions?.[name] === undefined ? undefined : { ...manifest.textureOptions[name] } })),
+      ...soundEntries.map(([name, url]) => ({ kind: "sound" as const, name, url })),
+      ...jsonEntries.map(([name, url]) => ({ kind: "json" as const, name, url })),
+    ];
+    await runAssetLoadTasks(entries, options, async (entry, signal) => {
+      const { kind, name, url } = entry;
+      let cached: boolean | undefined;
+      if (kind === "texture") {
+        const scope = createAssetLoadScope(signal, entry.textureOptions?.signal);
+        try {
+          throwIfAssetLoadAborted(scope.controller.signal);
+          const textureId = this.textureRegistry.reserve(name, url);
+          await this.textureManager.loadTexture(textureId, url, { ...entry.textureOptions, signal: scope.controller.signal });
+          throwIfAssetLoadAborted(scope.controller.signal);
+        } catch (error) {
+          throwIfAssetLoadAborted(scope.controller.signal);
+          throw assetLoadError({ kind, name, url, detail: describeError(error) });
+        } finally {
+          scope.dispose();
+        }
+      } else if (kind === "sound") {
+        const soundId = this.soundRegistry.reserve(name, url);
+        await this.loadSound(name, soundId, url, signal);
+      } else {
+        const loadedJson = await this.loadJson(name, url, signal);
+        throwIfAssetLoadAborted(signal);
+        json[name] = loadedJson.value;
+        cached = loadedJson.cached;
       }
+      throwIfAssetLoadAborted(signal);
       loaded += 1;
-      emitProgress({ kind: "texture", name, url });
-    }
-
-    for (const [name, url] of soundEntries) {
-      const soundId = this.soundRegistry.reserve(name, url);
-      await this.loadSound(name, soundId, url);
-      loaded += 1;
-      emitProgress({ kind: "sound", name, url });
-    }
-
-    for (const [name, url] of jsonEntries) {
-      const loadedJson = await this.loadJson(name, url);
-      json[name] = loadedJson.value;
-      loaded += 1;
-      emitProgress({ kind: "json", name, url, cached: loadedJson.cached });
-    }
+      emitProgress({ kind, name, url, ...(cached === undefined ? {} : { cached }) });
+    }, emitProgress);
 
     return {
       textures: this.textureRegistry,
@@ -171,7 +178,7 @@ export class AssetLoader {
     await this.cache?.invalidateJson(url, { version: this.cacheVersion });
   }
 
-  private async loadSound(name: string, soundId: number, url: string): Promise<void> {
+  private async loadSound(name: string, soundId: number, url: string, signal: AbortSignal): Promise<void> {
     if (!this.audioManager) {
       throw assetLoadError({
         kind: "sound",
@@ -182,8 +189,9 @@ export class AssetLoader {
     }
 
     try {
-      await this.audioManager.loadSound(soundId, url);
+      await this.audioManager.loadSound(soundId, url, { signal });
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw assetLoadError({
         kind: "sound",
         name,
@@ -193,16 +201,19 @@ export class AssetLoader {
     }
   }
 
-  private async loadJson(name: string, url: string): Promise<{ value: unknown; cached: boolean }> {
+  private async loadJson(name: string, url: string, signal: AbortSignal): Promise<{ value: unknown; cached: boolean }> {
     const cached = await this.cache?.getJson(url, { version: this.cacheVersion });
+    throwIfAssetLoadAborted(signal);
     if (cached !== undefined && cached !== null) {
       return { value: cached, cached: true };
     }
 
     let response: Response;
     try {
-      response = await fetch(url);
+      response = await fetch(url, { signal });
+      throwIfAssetLoadAborted(signal);
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw assetLoadError({
         kind: "json",
         name,
@@ -221,6 +232,7 @@ export class AssetLoader {
 
     try {
       const parsed = await response.json();
+      throwIfAssetLoadAborted(signal);
       await this.cache?.setJson(url, parsed, {
         version: this.cacheVersion,
         ttlMs: this.cacheTtlMs,
@@ -229,6 +241,7 @@ export class AssetLoader {
       });
       return { value: parsed, cached: false };
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw assetLoadError({
         kind: "json",
         name,

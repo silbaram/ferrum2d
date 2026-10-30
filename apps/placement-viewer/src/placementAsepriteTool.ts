@@ -1,3 +1,5 @@
+import { installPlacementCatalogTools } from "./placementCatalogTools";
+import { createPlacementImportDiagnostic, installPlacementImportDiagnostics } from "./placementImportDiagnostics";
 import {
   setUiAttribute,
   setUiText,
@@ -55,6 +57,7 @@ interface Draft {
   candidate?: PlacementAsepriteAsset;
   dirty: boolean;
   status: UiContent;
+  importFailure?: ReturnType<typeof createPlacementImportDiagnostic>;
 }
 
 export function createPlacementAsepriteTool(options: {
@@ -62,6 +65,7 @@ export function createPlacementAsepriteTool(options: {
   viewer: ScenePlacementViewer;
   context(): Context;
   taken(id: string): boolean;
+  retainsAsset?(id: string): boolean;
   changed(): void;
   apply(patch: ScenePlacementPatch, label: string): void;
   assets?: ReturnType<typeof createPlacementAsepriteAssets>;
@@ -186,6 +190,14 @@ export function createPlacementAsepriteTool(options: {
     disposed = false,
     previewSerial = 0;
   const draft = () => drafts.get(key)!;
+  const catalog = installPlacementCatalogTools({
+    root: body, store: assets,
+    canEdit: () => !disposed && !busy && options.context().canEdit,
+    retains: id => (options.retainsAsset?.(id) ?? true) || [...drafts.values()].some(d => d.candidate?.id === id),
+    changed: options.changed,
+  });
+  const importDiagnostics = installPlacementImportDiagnostics(body, "aseprite");
+
   const documentAssets = () =>
     assets.entries().filter((a) => canUsePlacementAsset(a, key, options.context().project));
   const registered = () => documentAssets().filter((a) => a.uploaded);
@@ -273,6 +285,8 @@ export function createPlacementAsepriteTool(options: {
         d.png?.name ?? uiMessage("Choose PNG"),
       ),
     );
+    catalog.sync();
+    let reimportCause: unknown;
     let applyError = "",
       reimportError = "",
       count = 0;
@@ -286,8 +300,13 @@ export function createPlacementAsepriteTool(options: {
         count = plan(d.candidate!).operations.length;
       } catch (error) {
         reimportError = String(error instanceof Error ? error.message : error);
+        reimportCause = error;
       }
     }
+    importDiagnostics.update(reimportCause && d.candidate ? [createPlacementImportDiagnostic(reimportCause, {
+      document: key, scene: context.document, sourceFile: d.candidate.jsonName,
+      assetId: registered().find(a => a.name === d.candidate!.name && a.id !== d.candidate!.id)?.id,
+    })] : d.importFailure ? [d.importFailure] : []);
     apply.disabled = busy || !valid || !context.canEdit || !!applyError;
     reimport.disabled =
       busy ||
@@ -584,6 +603,7 @@ export function createPlacementAsepriteTool(options: {
         const signal = controller.signal;
         busy = true;
         d.dirty = true;
+        d.importFailure = undefined;
         d.status = uiMessage("Inspecting…");
         render();
         try {
@@ -605,11 +625,13 @@ export function createPlacementAsepriteTool(options: {
           fields();
           tabs.select("preview");
         } catch (error) {
-          if (alive(token))
+          if (alive(token)) {
+            d.importFailure = createPlacementImportDiagnostic(error, { document: key, sourceFile: d.json?.name ?? "", scene: options.context().document, assetId: d.candidate?.id });
             d.status = uiMessage(
               "Inspect failed. {0}",
               error instanceof Error ? error.message : String(error),
             );
+          }
         } finally {
           if (alive(token)) {
             busy = false;
@@ -1062,6 +1084,7 @@ export function createPlacementAsepriteTool(options: {
     if (disposed) return;
     stop();
     disposed = true;
+    importDiagnostics.clear();
     previewSerial++;
     assets.destroy();
     normals.destroy();

@@ -1,0 +1,9 @@
+{
+  "listener": { "instanceId": "actor", "offset": { "x": 0, "y": 0, "elevation": 12 } },
+  "sources": [
+    { "id": "water", "sound": "water", "position": { "x": 80, "y": 108, "elevation": 0 },
+      "options": { "refDistance": 32, "maxDistance": 500, "rolloffFactor": 1, "loop": true }, "volume": 0.5 },
+    { "id": "torch", "sound": "fire", "instanceId": "above", "offset": { "x": 0, "y": 0, "elevation": 20 },
+      "options": { "refDistance": 24, "maxDistance": 350, "rolloffFactor": 1, "loop": true }, "volume": 0.7 }
+  ]
+}

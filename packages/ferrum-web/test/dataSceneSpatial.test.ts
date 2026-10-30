@@ -21,6 +21,26 @@ import type { FrameState } from "../src/engineTypes.js";
 import { createSpatialApi } from "../src/dataSceneSpatial.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 
+test("light bindings reject stale or malformed handles before replacing the spatial scene", () => {
+  const input = { ...resolveDataSceneSpatialSpec(document().spatial), actor: undefined, billboards: {},
+    environment: { lighting: { lights: [{position:{x:0,y:0,elevation:20},radius:50}] } },
+    lightBindings: { nonvisual: [0] },
+  };
+  let live=false, configured=0, bound=0;
+  const native={
+    gameplay_entity_exists:(id:number,generation:number)=>live && id===7 && generation===3,
+    configure_spatial_scene_environment:()=>{configured++;return true;},
+    configure_spatial_light_bindings:()=>{bound++;return live;},
+  };
+  const api=createSpatialApi(native as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  const handles={nonvisual:{entityId:7,entityGeneration:3}};
+  throws(()=>resolveDataSceneSpatialSpec({...input,lightBindings:{nonvisual:new Array(1)}}),/lightBindings/);
+  equal(api.configureDataSceneSpatial(input,handles),false);equal(configured,0);equal(bound,0);
+  for(const entityId of [-1,.5,4294967296,NaN])throws(()=>api.configureDataSceneSpatial(input,{nonvisual:{entityId,entityGeneration:3}}),/entityId/);
+  equal(configured,0);
+  live=true;ok(api.configureDataSceneSpatial(input,handles));equal(configured,1);equal(bound,1);
+});
+
 test("spatial physics debug options validate flags and preserve old Wasm rejection", () => {
   const flags: number[] = [];
   const native = {

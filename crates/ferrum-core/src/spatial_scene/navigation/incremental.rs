@@ -532,7 +532,8 @@ impl SpatialNavigation {
             .movement_scratch
             .begin_spatial_query(world, request.actor);
         let velocity = world.velocity(request.actor).unwrap_or_default();
-        let prep = preparation_work(world, s.target_count) + (scene.surfaces.len() as u64 + 1) * 16;
+        let prep =
+            preparation_work(scene, world, s.target_count) + (scene.surfaces.len() as u64 + 1) * 16;
         let mut job = s.job.take().expect("job was initialized above");
         let outcome = s
             .charge_slice(prep)
@@ -657,7 +658,7 @@ impl SpatialNavigation {
         self.search.work = 0;
         self.search.probes = 0;
         self.target_count = scene.movement_scratch.begin_spatial_query(world, r.actor);
-        self.search.work = preparation_work(world, self.target_count) + scan;
+        self.search.work = preparation_work(scene, world, self.target_count) + scan;
         let velocity = world.velocity(r.actor).unwrap_or_default();
         let accepted = self.search.work <= self.work_limit
             && self

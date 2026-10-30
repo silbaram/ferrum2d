@@ -1,3 +1,5 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import type { PhysicsDebugLineBufferView } from "./physicsDebugLineDecoder.js";
 import type { PhysicsDebugLineCamera } from "./renderer.js";
 
@@ -22,7 +24,7 @@ export class WebGpuDebugLinePass {
     private readonly resolutionBindGroup: GPUBindGroup,
   ) {
     this.pipelineLayout = pipelineLayout;
-    this.vertexBuffer = this.device.createBuffer({
+    this.vertexBuffer = webGpuResources(this.device).createBuffer({
       size: MIN_DEBUG_LINE_BUFFER_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
@@ -55,7 +57,7 @@ export class WebGpuDebugLinePass {
     );
 
     const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
+    const pass = beginWebGpuRenderPass(this.device, encoder, {
       colorAttachments: [{
         view: this.currentTexture().createView(),
         loadOp: "load",
@@ -76,7 +78,7 @@ export class WebGpuDebugLinePass {
       return;
     }
     this.destroyed = true;
-    this.vertexBuffer.destroy();
+    webGpuResources(this.device).destroy(this.vertexBuffer);
     this.vertexCapacityBytes = 0;
     this.staging = new Float32Array(0);
   }
@@ -116,7 +118,7 @@ export class WebGpuDebugLinePass {
       `,
     });
 
-    return this.device.createRenderPipeline({
+    return webGpuResources(this.device).createRenderPipeline({
       layout: this.pipelineLayout,
       vertex: {
         module,
@@ -182,8 +184,8 @@ export class WebGpuDebugLinePass {
       return;
     }
     const nextSize = nextPowerOfTwo(byteCount);
-    this.vertexBuffer.destroy();
-    this.vertexBuffer = this.device.createBuffer({
+    webGpuResources(this.device).destroy(this.vertexBuffer);
+    this.vertexBuffer = webGpuResources(this.device).createBuffer({
       size: nextSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });

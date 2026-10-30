@@ -152,7 +152,7 @@ UI 구성은 [Godot의 z-index/Y-sort](https://docs.godotengine.org/en/stable/cl
 공식 app의 **Import Tile Frames**는 기존 public `starter-scenes`의 `importTiledTilemap`/`importLDtkTilemap`을 사용한다.
 map/project JSON에서 tileset을 이름으로 고르고 해당 PNG 1개를 명시적으로 선택하며 metadata의 경로를 자동 fetch하지 않는다.
 등록된 used tile frames는 일반 sprite asset provider의 이름/UV/크기/thumbnail이 되어 기존 2D/HD-2D 배치에서 사용할 수 있다.
-tile painting이나 전체 map/level/collision/LDtk entity의 Data Scene 자동 적용 기능은 아니다.
+이 절의 Frame/Reimport는 프레임 참조를 다룬다. 타일/객체 일괄 배치는 아래 Apply Map의 명시적 옵션과 지원 범위를 따른다.
 
 지원 입력은 finite orthogonal Tiled JSON의 embedded 또는 명시적으로 선택한 외부 TSJ tileset과 비압축 `data` 배열, LDtk embedded level의
 Tiles/AutoLayer 및 entity metadata다. 원본에 tileset 1..8개를 허용하고 한 import는 선택 tileset 1개/PNG 1개를 소유한다. LDtk Level Index는 0부터 시작한다.
@@ -191,10 +191,63 @@ manifest의 texture URL은 bundle 기준 상대 경로이며 color=`srgb`를 명
 현재 씬의 참조와 일치하는 source evidence는 app handoff의 `tileImports[]`로 전달한다. engine handoff/schema/public API는 바꾸지 않는다.
 
 원본 세션 예산은 staged/등록 revision 총 8건·64 MiB다. Undo/다른 fragment에 필요한 이전 revision은 유지한다.
+Tiled/LDtk와 Aseprite Import 패널의 **Catalog → Clean Unused**(자산 목록 → 미사용 정리)는
+열린 문서의 원본·현재 draft·Undo/Redo·transaction, 모든 Import 후보와 업로드 중 revision을 보존하고
+나머지 **미저장 세션 revision**의 source bytes·Blob URL·GPU texture를 명시적으로 정리한다.
+문자열 자산명과 현재 runtime의 숫자 texture alias를 모두 확인한다. 숫자 reference는 세션 내 보존 근거이며 원본 ID의 저장·이식 보장을 추가하지 않는다.
+정리로 기존 8건/64 MiB 예산을 회수하며 예산을 자동 확대하지 않는다. GPU 해제 실패 시 원본/등록 항목을 유지하고 texture 복원을 시도한다.
+프로젝트에 저장·검증한 revision은 닫힌 씬의 참조를 확인할 수 없어 보호한다. 디스크 catalog/원본 파일 GC 기능은 아니다.
+실제 참조 frame 누락은 **Import Diagnostics**와 **Problems**에 원본 JSON 파일·collection pointer·frame ID와
+현재 씬의 정확한 JSON pointer를 표시한다. prefab 상속은 해당 prefab의 원본 경로를 표시하며 경로는 최대 64개다.
+진단 수집은 순회 65,536단계·pointer 4,096자 상한을 사용하고 제한/순환 참조로 일부를 생략하면 `scenePathsTruncated:true`를 표시한다.
+최신 진단은 이벤트 수신 시점과 무관하게 읽을 수 있어 Problems 패널이 나중에 열려도 오류가 누락되지 않는다.
+Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기존 씬을 변경하지 않는다. 진단 payload의 ID/경로는 번역하지 않는다.
 문서/모드 전환은 진행 작업을 취소하고 문서 닫기는 그 문서의 미저장 URL/texture를 해제한다.
 검증·저장된 같은 프로젝트 에셋은 다른 씬에서 계속 참조하도록 작업공간 종료까지 유지한다.
 브라우저의 미설치 참조는 scene Save를 막는다. native Open Project의 기본 문서는 아래 Save Project 경로를 사용하고,
 그 밖의 host/문서는 agent가 export의 hash·manifest와 동반 scene/patch를 확인해 프로젝트에 설치한다.
+
+### Tiled/LDtk 전체 맵 적용 (개발 소스)
+
+2D 문서의 **Import Tile Frames → Apply Map / 전체 맵 적용**은 검증한 원본의 타일/객체를 활성 fragment에 배치한다.
+같은 논리 에셋 이름으로 다시 적용하면 그 맵이 소유하는 그룹만 교체하며 한 번의 Undo/Redo로 되돌린다.
+기존 **Reimport**는 프레임 참조만 교체한다. 원본의 셀 배치·객체를 다시 반영할 때는 **Apply Map**을 사용한다.
+
+**Map Options / 맵 배치 설정**의 JSON은 아래 선택 필드만 받는다. 숫자 위치는 활성 fragment 좌표이며 기본 원점/레이어는 0이다.
+
+```json
+{
+  "originX": 0,
+  "originY": 0,
+  "layerBase": -100,
+  "collisionLayers": ["walls"],
+  "objectPrefabs": { "Spawn": "hero" }
+}
+```
+
+- 한 맵/LDtk embedded level과 PNG 한 장에서 시작하며, 최대 2,048 instance다.
+  선택 때문에 제외된 타일이 있으면 전체 맵인 것처럼 적용하지 않고 거절한다.
+  다른 tileset·TSX·외부 level·IntGrid·flip/회전의 기존 제한을 확대하지 않는다.
+- Tiled의 직교 셀·레이어 offset과 원래 앞뒤 순서를 반영한다. Group은 먼저 평탄화해야 한다.
+  LDtk는 원래 layer 순서와 offset을 반영하며 Entities의 x/y와 필드를 보존한다.
+  타일 이미지 크기는 셀 크기와 같아야 하고, Tiled tileset offset·animation·반투명/tint/parallax layer,
+  slope/one-way/공간 높이 metadata는 전용 adapter가 필요한 항목으로 거절한다.
+- `collisionLayers`는 정확한 layer 이름이다. 명시적 collision/blocksMovement 셀과 함께 static AABB를 생성한다. 셀의 `blocksMovement:false`는 collision layer에서도 비충돌로 보존한다.
+  다른 셀은 collider가 없다. 게임의 충돌 그룹은 `wall`이고 그리기 레이어 번호와 구분한다.
+- Tiled rectangle/point object의 class/type, LDtk entity identifier는 `objectPrefabs`의 기존 prefab에 명시적으로 연결한다.
+  회전·tile object·polygon/ellipse·template는 지원하지 않으며, 미지정 mapping도 거절한다.
+  Prefab의 게임 동작은 기존 프로젝트 정의를 사용하고 import UI가 behavior 본문을 만들지 않는다.
+- 생성 instance/정의의 `props.tileMapImport`는 이름·source lineage·셀/객체 key와 선택 배치 설정·읽기 전용 원본 필드를 보관한다.
+  source가 그 그룹의 pose/components를 소유하므로 재적용은 수동 변경을 교체한다. 잠긴 그룹과 다른 source identity는 거절한다.
+  명시적으로 연결/해제한 instance behavior binding은 기존 binding patch로 보존한다. override가 없으면 대상 prefab의 binding을 상속하고, 같은 prefab의 variant는 유지한다.
+  이 범위 밖의 추가 authored prop은 조용히 버리지 않고 적용을 거절한다. include된 맵은 소유 fragment에서 연다.
+- 새 타일의 ID는 layer·grid column/row를 기준으로 대응하므로 맵 너비가 바뀌어도 같은 셀은 같은 ID를 유지한다.
+  구형 index key는 저장된 `assetId`의 원본 revision이 catalog에 있어야 재적용할 수 있다. 기존 ID/key는 유지하고 `cell` 좌표를 추가한다.
+  원본이 없으면 원본 catalog를 다시 열거나 agent가 명시적으로 migration하도록 진단하며 편집된 pose로 추측하지 않는다.
+  게임 로직은 이 provenance를 해석하지 않는다. [패치 경계](public-api/authoring.md#타일-맵-provenance)를 따른다.
+- GPU 업로드·문서/선택/잠금 재검증과 기존 asset transaction을 재사용한다. 실패하면 전체 초안을 취소한다.
+  원본 PNG/JSON/TSJ와 이 metadata는 기존 Save Project·Export Assets·새 세션 재열기 경로를 따른다.
+  저장 완료 시 새 기준 문서와 깨끗한 viewer를 함께 교체해 add-definition 패치가 중복 적용되지 않는다.
 
 ### 타일 자산의 native 저장·재열기
 
@@ -1245,3 +1298,5 @@ frameSearchWorkUnits/peakSearchWorkUnits의 복사본이며 구형 Wasm에서는
 저수준 `DataSceneGameplayOptions.chaseBindings`는 generation-safe source/stopDistance를 받는
 cold 설정이다. 전체 문서는 이를 자동 생성한다. 중복 source·잘못된 거리·stale/primary/탄환 source는
 원자적 native batch 적용 전에 거절한다. render ABI와 프레임별 JS/Wasm 호출 수는 바뀌지 않는다.
+
+전체 맵의 `objectPrefabs` 대상은 유효한 inline `props.components`가 있는 기존 정의여야 한다. 빈 정의나 template-only 정의는 배치 전에 거절한다.

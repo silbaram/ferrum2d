@@ -1,3 +1,6 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
+import { SPATIAL_MODEL_MATERIAL_BYTES, spatialModelMaterialValues } from "./webgpuSpatialMaterial.js";
 import { spatialShadowModelWGSL } from "./webgpuSpatialShadows.js";
 import { spatialModelWGSL } from "./webgpuSpatialShaders.js";
 import {
@@ -86,7 +89,7 @@ export class WebGpuSpatialModels {
       for (const mapped of [false, true])
         for (const doubleSided of [false, true])
           this.pipelines.push(
-            device.createRenderPipeline({
+            webGpuResources(device).createRenderPipeline({
               label: "Spatial indexed/instanced model",
               layout,
               vertex: {
@@ -142,7 +145,7 @@ export class WebGpuSpatialModels {
     for (const mapped of [false, true])
       for (const doubleSided of [false, true])
         this.shadowPipelines.push(
-          device.createRenderPipeline({
+          webGpuResources(device).createRenderPipeline({
             label: "Spatial model shadow cutout",
             layout: shadowLayout,
             vertex: {
@@ -176,12 +179,12 @@ export class WebGpuSpatialModels {
             depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
           }),
         );
-    this.instances = device.createBuffer({
+    this.instances = webGpuResources(device).createBuffer({
       label: "Spatial model matrices",
       size: CAPACITY * 64 * 8,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
-    this.white = device.createTexture({
+    this.white = webGpuResources(device).createTexture({
       label: "Model fallback white",
       size: [1, 1, 1],
       format: "rgba8unorm",
@@ -205,7 +208,7 @@ export class WebGpuSpatialModels {
     });
     const mipLayout = device.createPipelineLayout({ bindGroupLayouts: [this.mipLayout] });
     this.mipPipelines = ["rgba8unorm", "rgba8unorm-srgb"].map((format) =>
-      device.createRenderPipeline({
+      webGpuResources(device).createRenderPipeline({
         layout: mipLayout,
         vertex: { module: mipModule, entryPoint: "vs_main" },
         fragment: { module: mipModule, entryPoint: "fs_main", targets: [{ format }] },
@@ -477,7 +480,7 @@ export class WebGpuSpatialModels {
         const image = source.images[Math.floor(key / 2)],
           color = key % 2 === 1,
           levels = 1 + Math.floor(Math.log2(Math.max(image.width, image.height)));
-        const t = this.device.createTexture({
+        const t = webGpuResources(this.device).createTexture({
           label: "Spatial model image",
           size: [image.width, image.height, 1],
           format: color ? "rgba8unorm-srgb" : "rgba8unorm",
@@ -515,7 +518,7 @@ export class WebGpuSpatialModels {
                 },
               ],
             });
-            const pass = encoder.beginRenderPass({
+            const pass = beginWebGpuRenderPass(this.device, encoder, {
               colorAttachments: [
                 {
                   view: t.createView({ baseMipLevel: level, mipLevelCount: 1 }),
@@ -535,18 +538,18 @@ export class WebGpuSpatialModels {
       for (const p of source.primitives) {
         const owned: GPUBuffer[] = [];
         try {
-          const vertex = this.device.createBuffer({
+          const vertex = webGpuResources(this.device).createBuffer({
             size: p.vertices.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
           });
           owned.push(vertex);
-          const index = this.device.createBuffer({
+          const index = webGpuResources(this.device).createBuffer({
             size: p.indices.byteLength,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
           });
           owned.push(index);
-          const uniform = this.device.createBuffer({
-            size: 48,
+          const uniform = webGpuResources(this.device).createBuffer({
+            size: SPATIAL_MODEL_MATERIAL_BYTES,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
           });
           owned.push(uniform);
@@ -555,15 +558,7 @@ export class WebGpuSpatialModels {
           this.device.queue.writeBuffer(
             uniform,
             0,
-            new Float32Array([
-              ...p.color,
-              ...p.emissiveFactor,
-              0,
-              p.alphaCutoff,
-              Number(!!p.unlit),
-              p.normal?.scale ?? 1,
-              Number(!!p.normal),
-            ]),
+            spatialModelMaterialValues(p),
           );
           const refs = [
             p.image === undefined ? undefined : { image: p.image, sampler: p.sampler },
@@ -588,10 +583,10 @@ export class WebGpuSpatialModels {
           });
           const group = this.device.createBindGroup({ layout: this.materialLayout, entries });
           a.primitives.push({ source: p, vertex, index, uniform, group });
-          a.bytes += p.vertices.byteLength + p.indices.byteLength + 48;
-          a.uploadBytes += p.vertices.byteLength + p.indices.byteLength + 48;
+          a.bytes += p.vertices.byteLength + p.indices.byteLength + SPATIAL_MODEL_MATERIAL_BYTES;
+          a.uploadBytes += p.vertices.byteLength + p.indices.byteLength + SPATIAL_MODEL_MATERIAL_BYTES;
         } catch (error) {
-          for (const b of owned) b.destroy();
+          for (const b of owned) webGpuResources(this.device).destroy(b);
           throw error;
         }
       }
@@ -615,11 +610,11 @@ export class WebGpuSpatialModels {
   }
   private release(a: Asset): void {
     for (const p of a.primitives) {
-      p.vertex.destroy();
-      p.index.destroy();
-      p.uniform.destroy();
+      webGpuResources(this.device).destroy(p.vertex);
+      webGpuResources(this.device).destroy(p.index);
+      webGpuResources(this.device).destroy(p.uniform);
     }
-    for (const t of a.textures.values()) t.destroy();
+    for (const t of a.textures.values()) webGpuResources(this.device).destroy(t);
   }
   private assertAlive(): void {
     if (this.destroyed) throw Error("Spatial model cache destroyed");
@@ -635,8 +630,8 @@ export class WebGpuSpatialModels {
     this.loadingSources = undefined;
     this.pending?.clear();
     this.pending = undefined;
-    this.white.destroy();
-    this.instances.destroy();
+    webGpuResources(this.device).destroy(this.white);
+    webGpuResources(this.device).destroy(this.instances);
   }
 }
 function imageUses(s: SpatialModelResource): Set<number> {

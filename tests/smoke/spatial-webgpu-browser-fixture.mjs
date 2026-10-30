@@ -78,7 +78,7 @@ export const png = (bytes, width, height) => {
   return canvas.toDataURL();
 };
 
-async function probe(canvas, backend, projection) {
+async function probe(canvas, backend, projection, recover=false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallbacks = [];
   const renderer = await createRenderer(canvas, {
@@ -101,7 +101,7 @@ async function probe(canvas, backend, projection) {
     handles,
     request,
     lastPacket,
-    disposing = false;
+    disposing = false, testingLoss = false;
   const components = (texture, floorId, elevation, width = 20, height = 32) => ({
     visual: { kind: "sprite", texture, width, height, originY: 1 },
     collider: { type: "aabb", halfWidth: 2, halfHeight: 2 },
@@ -211,7 +211,7 @@ async function probe(canvas, backend, projection) {
       .gpuDevice()
       .addEventListener("uncapturederror", (event) => errors.push(event.error.message));
     renderer.gpuDevice().lost.then((info) => {
-      if (!disposing) errors.push(`device lost (${info.reason}): ${info.message}`);
+      if (!disposing && !testingLoss) errors.push(`device lost (${info.reason}): ${info.message}`);
     });
   }
   try {
@@ -227,7 +227,10 @@ async function probe(canvas, backend, projection) {
       ctx.fillStyle = color;
       ctx.fillRect(0, 0, 32, 32);
       if (id === 3) ctx.clearRect(8, 8, 16, 16);
-      await renderer.loadTexture(id, image.toDataURL());
+      if(recover&&id===3){
+        const url=URL.createObjectURL(await(await fetch(image.toDataURL())).blob());
+        try{await renderer.loadTexture(id,url);}finally{URL.revokeObjectURL(url);}
+      }else await renderer.loadTexture(id, image.toDataURL());
     }
     engine = await createEngine(
       (state) => {
@@ -366,6 +369,19 @@ async function probe(canvas, backend, projection) {
       { holePixel, abovePixel },
     );
 
+    let recovery;
+    if(recover){
+      const old=renderer.gpuDevice(),generation=renderer.deviceState().generation;
+      testingLoss=true;old.destroy();await old.lost;await Promise.resolve();
+      check(renderer.deviceState().status==='lost','device loss was not observed');
+      renderer.render();renderer.renderPostProcess();
+      const first=renderer.recoverDevice();check(first===renderer.recoverDevice(),'concurrent recovery did not coalesce');await first;
+      check(renderer.gpuDevice()!==old&&renderer.deviceState().generation===generation+1,'device not replaced');
+      const after=await read(lastPacket),diff=difference(after.data,restored.data,1);
+      check(diff===0,'recovered textures/depth/cutout changed pixels',diff);
+      recovery={status:renderer.deviceState().status,generation:renderer.deviceState().generation,differentPixels:diff,coalesced:true};
+    }
+
     check(
       rows.every((row) => row.rustMs < 250) && !errors.length,
       "spatial work/errors exceeded gate",
@@ -374,6 +390,7 @@ async function probe(canvas, backend, projection) {
     return {
       backend,
       projection,
+      recovery,
       adapter:
         backend === "webgpu"
           ? {
@@ -537,4 +554,9 @@ export async function probeSpatialFallbacks() {
     }
   }
   return results;
+}
+
+export async function probeSpatialRecovery(){
+  const canvas=document.createElement('canvas');document.body.replaceChildren(canvas);
+  const {data,...result}=await probe(canvas,'webgpu','orthographic',true);return result;
 }

@@ -125,7 +125,7 @@ mod tests {
         };
         let targets = scene.movement_scratch.begin_spatial_query(&world, actor);
         scene.movement_scratch.end_spatial_query();
-        let preparation = preparation_work(&world, targets);
+        let preparation = preparation_work(&scene, &world, targets);
         let mut counters = PhysicsCounters::default();
         let crowd = Some(CombatCrowd {
             peers: &[],

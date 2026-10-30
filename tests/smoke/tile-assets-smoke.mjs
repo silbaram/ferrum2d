@@ -7,7 +7,7 @@ import {
   showPlacementBottom,
   showPlacementInspector,
 } from "./placement-panel-navigation.mjs";
-import { tileFixture } from "./tile-import-fixtures.mjs";
+import { tileFixture, tileMapFixture } from "./tile-import-fixtures.mjs";
 
 export async function smokeTileAssets({
   page,
@@ -49,7 +49,7 @@ export async function smokeTileAssets({
   const reveal = async () => {
     await showPlacementBottom(page, "assets");
     if ((await tool.getAttribute("open")) === null)
-      await tool.locator("summary").click();
+      await tool.locator(":scope > summary").click();
   };
   const select = async (id) => {
     await page.evaluate((id) => window.ferrumPlacementViewerSelect(id), id);
@@ -313,6 +313,10 @@ export async function smokeTileAssets({
       await action("reimport").getAttribute("title"),
       /missing frame/,
     );
+    const importReport = JSON.parse(await tool.locator('[data-placement-import-diagnostics="tile"] pre').textContent())[0];
+    assert.equal(importReport.source.file, kind + ".json");
+    assert(importReport.scenePaths.some(path => path.endsWith("/visual/texture")));
+    assert(importReport.source.item);
     assert.deepEqual(
       (await snapshot()).state.draftPatch,
       changed.state.draftPatch,
@@ -360,6 +364,35 @@ export async function smokeTileAssets({
       join(run, mode + "-" + kind + "-export.json"),
       JSON.stringify(exported, null, 2) + "\n",
     );
+    if(mode==="2d"){
+      const mapOriginal=await snapshot();
+      await stage(kind,false,tileMapFixture(kind));
+      const prefab='map_spawn',data=tileFixture(kind);
+      const mappings={};
+      if(kind==='ldtk')for(const layer of data.json.levels[0].layerInstances)for(const e of layer.entityInstances??[])mappings[e.__identifier]=prefab;
+      const mapDetails=tool.locator('details').first();
+      await mapDetails.evaluate(el=>{el.open=true;});
+      await tool.getByLabel('Map placement options (JSON)',{exact:true}).fill(JSON.stringify({originX:-80,originY:-16,objectPrefabs:mappings}));
+      await click('map');assert.match(await status(),/^Applied/);
+      const placed=await snapshot(),mapDoc=await document();
+      const cells=Object.values(mapDoc.sceneComposition.fragments).flatMap(f=>f.instances??[]).filter(i=>i.props?.tileMapImport?.cell);
+      assert.equal(cells.length,4);assert.equal(placed.history.undoCount,mapOriginal.history.undoCount+1);
+      const target=cells.find(i=>i.props.tileMapImport.cell.column===0&&i.props.tileMapImport.cell.row===1);
+      await page.evaluate(id=>window.ferrumPlacementViewerUpdateBehaviorBinding({kind:'instance',instanceId:id},'map_guard'),target.id);
+      const firstMap=await snapshot();
+      await stage(kind,true,tileMapFixture(kind,true));await click('map');assert.match(await status(),/^Applied/);
+      const nextDoc=await document(),nextCells=Object.values(nextDoc.sceneComposition.fragments).flatMap(f=>f.instances??[]).filter(i=>i.props?.tileMapImport?.cell);
+      assert.equal(nextCells.length,5);
+      for(const old of cells){const cell=nextCells.find(i=>i.id===old.id);assert.deepEqual([cell.x,cell.y],[old.x,old.y]);}
+      assert.equal(nextCells.find(i=>i.id===target.id).props.behaviorRecipes,'map_guard');
+      assert.notEqual(nextCells[0].props.components.visual.asset,cells[0].props.components.visual.asset);
+      assert.equal((await snapshot()).history.undoCount,firstMap.history.undoCount+1);
+      await undo();await idle();assert.deepEqual((await snapshot()).state.draftPatch,firstMap.state.draftPatch);
+      await redo();await idle();await undo();await idle();await undo();await idle();await undo();await idle();
+      assert.deepEqual((await snapshot()).state.draftPatch,mapOriginal.state.draftPatch);
+      await stage(kind,false);await tool.getByRole('tab',{name:'Source',exact:true}).click();
+      results.push({kind,wholeMap:true,reimport:true,atomicUndo:true,resizedCellIdentity:true,instanceBehaviorPreserved:true});
+    }
     results.push({
       kind,
       registered: true,

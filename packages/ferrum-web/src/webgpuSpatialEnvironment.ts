@@ -1,11 +1,13 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
-// Native environment v1/v2 padded to 112 floats, followed by eye/forward/view/size.
-const UNIFORM_BYTES = 960,
-  UNIFORM_STRIDE = 1024;
+// Native environment v1..v4 padded to 512 floats, followed by eye/forward/view/size.
+const UNIFORM_BYTES = 2560,
+  UNIFORM_STRIDE = 2560;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,28>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 fn e(i:u32)->f32{return env.values[i/4u][i%4u];}
@@ -17,14 +19,21 @@ fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:b
  var color=albedo;
  if((u32(e(0u))&1u)!=0u && !unlit){
   var illumination=vec3f(e(5u),e(6u),e(7u));
+  if(e(112u)>0. && e(119u)>0.){
+   let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
+   illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
+  }
   for(var i=0u;i<4u;i++){
    if(i>=u32(e(1u))){break;}
    let p=12u+i*12u;let delta=vec3f(e(p),e(p+1u),e(p+2u))-world;
    let d=length(delta);let radius=e(p+3u);var lambert=1.;
    if(d>.000001){lambert=max(dot(n,delta/d),0.);}
-   let falloff=max(1.-d*d/(radius*radius),0.);
-   var visibility=1.;if(env.size.w>0. && f32(i)==e(2u)){visibility=pointVisibility(delta,d,radius,geometric);}
-   illumination+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*lambert*visibility;
+   var falloff=max(1.-d*d/(radius*radius),0.);
+   let cone=144u+i*8u;
+   var coneWeight=1.;
+   if(e(cone+5u)>0. && d>.000001){let angle=dot(-delta/d,vec3f(e(cone),e(cone+1u),e(cone+2u)));coneWeight=step(e(cone+3u),angle);if(e(cone+4u)>e(cone+3u)+.000001){coneWeight=smoothstep(e(cone+3u),e(cone+4u),angle);}}
+   var visibility=1.;if(env.size.w>0. && f32(i)==e(2u)){let receiverDelta=delta-geometric*e(123u);visibility=pointVisibility(receiverDelta,length(receiverDelta),radius,geometric);}
+   illumination+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*lambert*visibility*coneWeight;
   }
   if(e(83u)>0.){let direction=normalize(vec3f(e(84u),e(85u),e(86u)));var visibility=1.;if(env.size.w>0. && e(92u)>0.){visibility=sunVisibility(world,geometric,direction);}
    illumination+=vec3f(e(88u),e(89u),e(90u))*e(87u)*max(dot(n,direction),0.)*visibility;}
@@ -55,8 +64,9 @@ fn viewDepth(d:f32)->f32{
  if(env.view.z>0.){return 2.*n*f/(f+n-(d*2.-1.)*(f-n));}return mix(n,f,d);
 }
 fn aces(c:vec3f)->vec3f{return clamp(c*(2.51*c+.03)/(c*(2.43*c+.59)+.14),vec3f(0.),vec3f(1.));}
+fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=tan(env.eye.w*.5)*z;}return vec3f(vec2f(uv.x*2.-1.,1.-uv.y*2.)*vec2f(env.size.x/env.size.y,1.)*h,-z);}
 @fragment fn fs_main(f:F)->@location(0) vec4f{
- let center=colorAt(f.uv);if(center.a<=0.){discard;}
+ let center=colorAt(f.uv);if(center.a<=0. && (e(128u)<=0. || e(129u)<=0.)){discard;}
  let z=viewDepth(depthAt(f.uv));var color=center.rgb;let flags=u32(e(0u));
  let focus=env.view.w;let focusRange=e(61u);let aperture=e(62u);let maxRadius=e(63u)*env.size.y/env.size.z;
  if((flags&4u)!=0u && e(96u)==1.){
@@ -83,6 +93,38 @@ fn aces(c:vec3f)->vec3f{return clamp(c*(2.51*c+.03)/(c*(2.43*c+.59)+.14),vec3f(0
     sum+=colorAt(uv).rgb;weight+=1.;
    }color=sum/weight;
   }
+ }
+ let position=viewPosition(f.uv,z);
+ if(e(132u)>0. && e(133u)>0. && depthAt(f.uv)<1.){
+  let dx=vec2f(2./env.size.x,0.);let dy=vec2f(0.,-2./env.size.y);
+  let zl=viewDepth(depthAt(f.uv-dx));let zr=viewDepth(depthAt(f.uv+dx));let zd=viewDepth(depthAt(f.uv-dy));let zu=viewDepth(depthAt(f.uv+dy));
+  let tangent=select(viewPosition(f.uv+dx,zr)-position,position-viewPosition(f.uv-dx,zl),abs(zl-z)<abs(zr-z));
+  let bitangent=select(viewPosition(f.uv+dy,zu)-position,position-viewPosition(f.uv-dy,zd),abs(zd-z)<abs(zu-z));
+  var normal=cross(tangent,bitangent);if(length(normal)>.00001){normal=normalize(normal);}else{normal=vec3f(0.,0.,1.);}
+  var h=env.eye.w*.5;if(env.view.z>0.){h=tan(env.eye.w*.5)*z;}
+  let radius=min(64.,e(134u)*env.size.y/(2.*max(h,.001)));var occlusion=0.;
+  for(var i=0u;i<12u;i++){
+   let angle=f32(i)*2.39996323;let r=sqrt((f32(i)+.5)/12.)*radius;
+   let uv=f.uv+vec2f(cos(angle),-sin(angle))*r/env.size.xy;
+   if(any(uv<vec2f(0.)) || any(uv>vec2f(1.))){continue;}
+   let d=depthAt(uv);if(d>=1.){continue;}
+   let delta=viewPosition(uv,viewDepth(d))-position;let distance=length(delta);
+   if(distance>.0001){occlusion+=max((dot(normal,delta)-e(135u))/distance,0.)*max(1.-distance/e(134u),0.);}
+  }
+  color*=1.-clamp(occlusion/12.*e(133u)*3.,0.,.9);
+ }
+ if(e(128u)>0. && e(129u)>0.){
+  var glow=vec3f(0.);var weight=0.;
+  for(var i=0u;i<32u;i++){
+   let angle=f32(i)*2.39996323;let r=sqrt((f32(i)+.5)/32.);let w=exp(-r*r*4.);
+   let uv=f.uv+vec2f(cos(angle),-sin(angle))*r*e(130u)*env.size.y/env.size.z/env.size.xy;
+   weight+=w;if(any(uv<vec2f(0.)) || any(uv>vec2f(1.))){continue;}
+   let sampleColor=colorAt(uv).rgb;let peak=max(sampleColor.r,max(sampleColor.g,sampleColor.b));
+   glow+=sampleColor*(max(peak-e(131u),0.)/max(peak,.00001))*w;
+  }
+  glow*=e(129u)/max(weight,.00001);
+  if(center.a<=0. && max(glow.r,max(glow.g,glow.b))<.00001){discard;}
+  color+=glow;
  }
  if((flags&8u)!=0u){
   color*=exp2(e(64u));if(e(67u)>1.5){color=aces(color);}else if(e(67u)>.5){color=color/(vec3f(1.)+color);}
@@ -133,7 +175,7 @@ export class WebGpuSpatialEnvironment {
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
       ],
     });
-    this.uniform = device.createBuffer({
+    this.uniform = webGpuResources(device).createBuffer({
       label: "Spatial environment",
       size: UNIFORM_STRIDE * 2,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -153,7 +195,7 @@ export class WebGpuSpatialEnvironment {
       label: "Spatial HDR/depth composite",
       code: composite,
     });
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = webGpuResources(device).createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.imagesLayout] }),
       vertex: { module, entryPoint: "vs_main" },
       fragment: { module, entryPoint: "fs_main", targets: [{ format }] },
@@ -215,7 +257,8 @@ export class WebGpuSpatialEnvironment {
     if (frame.environment) this.values.set(frame.environment.values);
     else this.values[2] = -1;
     const c = frame.camera;
-    this.values.set(c.subarray(17, 20), 112);
+    this.values.set(c.subarray(17, 20), 512);
+    this.values[515]=c[23];
     const x = c[20] - c[17],
       y = c[21] - c[18],
       z = c[22] - c[19],
@@ -235,14 +278,14 @@ export class WebGpuSpatialEnvironment {
         c[27],
         1,
       ],
-      116,
+      516,
     );
     const env = frame.environment;
-    if (env?.values[2]! >= 0) this.values.set(env!.shadowMatrices.subarray(0, 96), 128);
+    if (env?.values[2]! >= 0) this.values.set(env!.shadowMatrices.subarray(0, 96), 528);
     if (env?.values[92]! > 0)
-      this.values.set(env!.shadowMatrices.subarray(env!.shadowMatrices.length - 16), 224);
-    this.values.copyWithin(256, 0, 256);
-    this.values[383] = 0;
+      this.values.set(env!.shadowMatrices.subarray(env!.shadowMatrices.length - 16), 624);
+    this.values.copyWithin(640, 0, 640);
+    this.values[1167] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
     if (!this.values[0]) {
       this.releaseTarget();
@@ -253,13 +296,13 @@ export class WebGpuSpatialEnvironment {
     this.device.pushErrorScope("validation");
     this.device.pushErrorScope("out-of-memory");
     try {
-      color = this.device.createTexture({
+      color = webGpuResources(this.device).createTexture({
         label: "Spatial HDR color",
         size: [width, height, 1],
         format: "rgba16float",
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
-      depth = this.device.createTexture({
+      depth = webGpuResources(this.device).createTexture({
         label: "Spatial HDR depth",
         size: [width, height, 1],
         format: "depth24plus",
@@ -283,8 +326,8 @@ export class WebGpuSpatialEnvironment {
       this.width = width;
       this.height = height;
     } catch (error) {
-      color?.destroy();
-      depth?.destroy();
+      webGpuResources(this.device).destroy(color);
+      webGpuResources(this.device).destroy(depth);
       throw error;
     } finally {
       // Frame rendering is synchronous. Never retain an asynchronously invalid target as a warm hit.
@@ -326,7 +369,7 @@ export class WebGpuSpatialEnvironment {
   ): void {
     if (this.destroyed) throw Error("Spatial environment destroyed");
     if (!this.images) throw Error("Spatial HDR target is not prepared");
-    const pass = encoder.beginRenderPass({
+    const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial HDR composite",
       colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
     });
@@ -402,8 +445,8 @@ export class WebGpuSpatialEnvironment {
     return this.width * this.height * 12;
   }
   private releaseTarget(): void {
-    this.color?.destroy();
-    this.depth?.destroy();
+    webGpuResources(this.device).destroy(this.color);
+    webGpuResources(this.device).destroy(this.depth);
     this.color = undefined;
     this.depth = undefined;
     this.images = undefined;
@@ -416,7 +459,7 @@ export class WebGpuSpatialEnvironment {
     if (this.destroyed) return;
     this.destroyed = true;
     this.releaseTarget();
-    this.uniform.destroy();
+    webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
   }
 }

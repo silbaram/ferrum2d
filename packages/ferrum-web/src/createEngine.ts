@@ -1,3 +1,4 @@
+import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
 import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
 import { spatialModelRegistry } from "./spatialModel.js";
@@ -285,6 +286,7 @@ export async function createEngineWithFramePipeline(
     return assetHost;
   };
 
+  const assetLoadLifetime = new AbortController();
   let destroyed = false;
   let running = false;
   let paused = false;
@@ -309,6 +311,7 @@ export async function createEngineWithFramePipeline(
     }
     const snapshot = lifecycleSnapshot();
     destroyed = true;
+    assetLoadLifetime.abort();
     running = false;
     paused = false;
     loop.stop();
@@ -703,9 +706,17 @@ export async function createEngineWithFramePipeline(
   };
 
   const assetApi: FerrumAssetApi = {
-    loadAssets: async (manifest, onProgress) => {
+    loadAssets: async (manifest, onProgress, loadOptions) => {
       requireAlive();
-      return await requireAssetHost().loadAssets(manifest, onProgress);
+      const scope = createAssetLoadScope(assetLoadLifetime.signal, loadOptions?.signal);
+      try {
+        const assets = await requireAssetHost().loadAssets(manifest, onProgress, { ...loadOptions, signal: scope.controller.signal });
+        throwIfAssetLoadAborted(scope.controller.signal);
+        requireAlive();
+        return assets;
+      } finally {
+        scope.dispose();
+      }
     },
     releaseAssets: (assets) => {
       requireAlive();
@@ -892,6 +903,11 @@ export async function createEngineWithFramePipeline(
   };
 
   const engine: FerrumEngine = {
+    queryAudioPoseBuffer(handles) {
+      requireAlive();
+      if (!(handles instanceof Uint32Array) || handles.length % 2 || handles.length > 130) throw new Error("Audio poses require at most 65 u32 handle pairs.");
+      return bridge.queryAudioPoseBuffer(handles);
+    },
     ...createSpatialApi(rustEngine, requireAlive, () => ({ width: rustEngine.spatial_viewport_width(), height: rustEngine.spatial_viewport_height() }), name => requireAssetHost().textureId(name)),
     ...lifecycleApi,
     ...bufferAccessorApi,

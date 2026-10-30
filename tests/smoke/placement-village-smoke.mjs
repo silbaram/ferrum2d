@@ -10,6 +10,11 @@ import { smokeWorkingGrid } from "./placement-working-grid-smoke.mjs";
 import { smokeSpatialCameraAngles } from "./placement-spatial-camera-smoke.mjs";
 import { smokeGridViewport } from "./placement-grid-viewport-smoke.mjs";
 import { smokeVillageHeightGrid } from "./placement-village-height-grid-smoke.mjs";
+import { smokeVillagePhysics } from "./placement-village-physics-smoke.mjs";
+import { smokeThreejsViewerUpgrades } from "./placement-threejs-upgrades-smoke.mjs";
+import { smokePlacementGameCameraLive } from "./placement-game-camera-live-smoke.mjs";
+import { smokePlacementModelPicking } from "./placement-model-picking-smoke.mjs";
+import { smokePlacementLighting, smokePlacementLightingSave } from "./placement-lighting-smoke.mjs";
 const artifact = resolve("artifacts/rpg-village");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url");
@@ -55,10 +60,31 @@ try {
     assert.equal(createHash("sha256").update(b).digest("hex"), a.sha256, id);
   }
   assert.equal(Object.keys(manifest.models).length, 14);
-  await page.goto(origin + "/?scene=village");
-  await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42);
+  const smallFixture=process.argv.includes("--model-picking-only") || process.argv.includes("--lighting-only");
+  await page.goto(origin + "/?scene=" + (smallFixture ? "hd2d" : "village"));
+  if (smallFixture) await wait(() => window.ferrumPlacementViewerState?.instances.length === 3);
+  else await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42);
   await page.locator("[data-placement-language]").selectOption("en");
-  if (process.argv.includes("--height-grid-only")) {
+  if (process.argv.includes("--lighting-only")) {
+    await page.evaluate(()=>window.ferrumRuntime.stop());
+    console.log("Spatial lighting UI",await smokePlacementLighting(page,30000,"spatial"));
+    console.log("Lighting save/reopen",await smokePlacementLightingSave(page));
+  } else if (process.argv.includes("--model-picking-only")) {
+    await page.evaluate(()=>window.ferrumRuntime.stop());
+    console.log("Model LOD and displayed-camera picking",await smokePlacementModelPicking(page));
+  } else if (process.argv.includes("--game-camera-live-only")) {
+    await page.evaluate(()=>window.ferrumRuntime.stop());
+    await smokePlacementGameCameraLive(page);
+    console.log("Live game camera smoke passed");
+  } else if (process.argv.includes("--threejs-only")) {
+    await page.evaluate(()=>window.ferrumRuntime.stop());
+    console.log("Three.js viewer upgrades",await smokeThreejsViewerUpgrades(page));
+  } else if (process.argv.includes("--physics-only")) {
+    const physics = await smokeVillagePhysics(page);
+    assert.deepEqual(errors, []);
+    await writeFile(`${artifact}/physics-checks.json`, JSON.stringify({ ok: true, physics }, null, 2) + "\n");
+    console.log("Village HD-2D physics smoke passed", JSON.stringify(physics));
+  } else if (process.argv.includes("--height-grid-only")) {
     await smokeVillageHeightGrid(page);
     await smokeVillageHeightGrid(page, 2);
     assert.deepEqual(errors, []);
@@ -167,6 +193,7 @@ try {
   assert(stats.spatial.modelTriangleCount > 5000 && stats.spatial.modelTriangleCount <= 60000);
   assert.equal(stats.spatial.modelUploadBytes, 0, "Warmed models re-uploaded");
   assert.equal(stats.spatial.modelCount, 42);
+  await smokeVillagePhysics(page);
   // A fresh 2D workspace must load the same bundled assets when opening exported JSON.
   const cold = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const villageRequests = [];

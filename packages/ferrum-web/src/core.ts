@@ -215,6 +215,7 @@ export type {
   WorldTextSpec,
 } from "./public/engineExports.js";
 export type {
+  AssetLoadOptions,
   AssetLoadProgress,
   AssetLoadProgressCallback,
   AssetManifest,
@@ -418,15 +419,17 @@ export type { DataSceneMoveOptions, DataSceneMoveStatus } from "./dataSceneMovem
 export type { DataSceneMovementAnimationSpec, DataSceneMovementAnimationPose, DataSceneMovementDirection } from "./dataSceneMovementAnimation.js";
 
 export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
-export type { DataSceneSpatialSpec, SpatialModelInstanceSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialDebugOptions, SpatialDebugBufferView, SpatialRenderBufferView, SpatialSurfaceHit, FerrumSpatialApi } from "./dataSceneSpatial.js";
+export type { DataSceneSpatialSpec, SpatialModelInstanceSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialDebugOptions, SpatialDebugBufferView, SpatialRenderBufferView, SpatialSurfaceHit, SpatialModelDrawSnapshot, FerrumSpatialApi } from "./dataSceneSpatial.js";
 
 export type { SpatialRendererStats } from "./webgl2SpatialPass.js";
 export type { DataSceneSpatialPoseSnapshot, DataSceneSpatialProgressSnapshot } from "./dataSceneSpatialProgress.js";
 
 export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";
-export type { SpatialRgb, SpatialDirectionalLightSpec, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
+export type { SpatialRgb, SpatialDirectionalLightSpec, SpatialHemisphereLightSpec, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 
 export { loadSpatialGlb } from "./spatialModel.js";
+export { raycastSpatialModel } from "./spatialModelPicking.js";
+export type { SpatialModelRay, SpatialModelRayHit } from "./spatialModelPicking.js";
 export { createSpatialModelThumbnailSvg } from "./spatialModelThumbnail.js";
 export { loadSpatialGltf } from "./spatialGltf.js";
 export { SpatialModelAssetCache } from "./spatialModelAssetCache.js";
@@ -448,3 +451,8 @@ export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, D
 
 export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
+
+export type { SpatialAudioVoice } from "./spatialAudio.js";
+export type { AudioPoseBufferView } from "./audioPoseBuffer.js";
+export { createSpatialAudioScene } from "./spatialAudioScene.js";
+export type { SpatialAudioScene, SpatialAudioSceneSpec, SpatialAudioSourceSpec, SpatialAudioListener } from "./spatialAudioScene.js";

@@ -1,4 +1,4 @@
-use crate::collision::CollisionScratch;
+use crate::collision::{ColliderKey, CollisionScratch};
 use crate::components::{RigidBodyType, Rotation2D, Velocity};
 use crate::damping::damping_factor;
 use crate::world::World;
@@ -117,7 +117,7 @@ pub(super) fn integrate_rigid_body_positions(
     stats: &mut RigidBodyStepStats,
     integrated: &mut Vec<bool>,
     ccd_collision: &mut CollisionScratch,
-    ccd_candidates: &mut Vec<usize>,
+    ccd_candidates: &mut Vec<ColliderKey>,
 ) {
     integrated.clear();
     integrated.resize(world.rigid_bodies.len(), false);
@@ -142,7 +142,7 @@ pub(super) fn integrate_rigid_body_positions(
         if config.continuous && body.body_type == RigidBodyType::Dynamic && {
             let mut ccd_scratch = RigidBodyCcdScratch {
                 collision: &mut *ccd_collision,
-                candidate_indices: &mut *ccd_candidates,
+                candidate_keys: &mut *ccd_candidates,
             };
             integrate_dynamic_rigid_body_position_with_ccd(
                 world,

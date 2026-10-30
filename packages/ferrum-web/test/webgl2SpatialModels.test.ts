@@ -168,6 +168,7 @@ function drawingBackend() {
   const uploads:{offset:number;bytes:number}[]=[],pointers:number[]=[],modelColors:number[][]=[],modelCutoffs:number[]=[];
   Object.assign(b.gl,{
     uniform1i:(u:unknown,value:number)=>{if(u==="instanced")instanced=!!value;if(u==="receive")receive=value;},
+    uniformMatrix3fv:()=>{},
     uniformMatrix4fv:(_u:unknown,_transpose:boolean,value:Float32Array)=>{matrix=Array.from(value);},
     bufferSubData:(_target:number,offset:number,value:Float32Array)=>{uploaded=Array.from(value);uploads.push({offset,bytes:value.byteLength});},
     enableVertexAttribArray:(at:number)=>enabled.add(at),disableVertexAttribArray:(at:number)=>enabled.delete(at),

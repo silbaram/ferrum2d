@@ -71,7 +71,7 @@ custom renderer는 구체 GPU 클래스 상속 없이 구조적 `FerrumRuntimeRe
 | 기능 | 짧은 설명 |
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
-| HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 고정 해상도·픽셀 스냅·normal atlas, 점광원/태양광·PCF·그림자 캐시/컬링, actor 초점·전경 DOF·HDR 색 보정·안개와 v7 복원을 지원한다. 정적 GLB의 OPAQUE/MASK·양면 diffuse·normal map·발광 모델·깊이/그림자·명시적 AABB·보이지 않는 보행면·건물 다층 이동·모델 GPU 준비 후 활성화·진행 복원을 연결한다. 연속 공유 모델의 WebGL2 GPU 인스턴싱과 최대 1,024개 모델 입력을 지원한다. 분리형 glTF의 외부 binary·PNG/JPEG도 기존 모델 경로로 가져온다. 공유 CPU 모델 캐시는 중복 로드·독립 취소·lease·LRU/동시 로드 예산을 관리한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
+| HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 고정 해상도·픽셀 스냅·normal atlas, 점광원/태양광·PCF·그림자 캐시/컬링, actor 초점·전경 DOF·HDR 색 보정·안개와 v7 복원을 지원한다. 정적 GLB의 OPAQUE/MASK·양면 diffuse·normal map·발광 모델·깊이/그림자·명시적 AABB·보이지 않는 보행면·건물 다층 이동·모델 GPU 준비 후 활성화·진행 복원을 연결한다. 연속 공유 모델의 WebGL2 GPU 인스턴싱과 최대 1,024개 모델 입력을 지원한다. 분리형 glTF의 외부 binary·PNG/JPEG도 기존 모델 경로로 가져온다. `KHR_texture_transform`의 기본색·normal·emissive별 UV0 이동/회전/배율을 양 renderer·cutout 그림자·picking에 적용한다. 공유 CPU 모델 캐시는 중복 로드·독립 취소·lease·LRU/동시 로드 예산을 관리한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
 | HD-2D 전투 검증 (개발 소스) | `gameplay.combat` opt-in으로 native AI·timer 반복 발사·플레이어 입력 발사·높이 필터·피해·파티클을 연결한다. 지원 Wasm은 전투 checkpoint를 v9로 저장·복원하며, named 탄환 prefab의 texture·UV·색상·크기·충돌·billboard와 codec v2를 제공한다. `combatNavigation`을 켜면 추적 AI가 계단·층간 연결을 따라 이동하며 검색·이동 작업 예산을 공유한다. 공유 경로와 프레임 분할 A*로 검색 비용을 나눈다. 선택적 `crowdAvoidance`와 적별 `chase.stopDistance`도 지원한다. `movementPatterns: "all"`은 SeekTarget의 회전과 Accelerate의 속도를 공간 높이·층 연결·저장 복원에 연결한다. native melee/dash는 입력·타이머·높이/벽 검사와 checkpoint를 지원하며 별도 `supportsDataSceneCombatActions()`로 검사한다. 별도 `supportsDataSceneSpawnPrefabs()`로 검사하는 actor catalog는 입력·타이머 생성과 생성 개체의 codec v3 저장·복원을 지원한다. `supportsDataSceneProjectileVisuals()`는 탄환별 atlas animation·화면 속도 방향 회전·codec v4 저장/복원을 검사한다. `pnpm smoke:hd2d-combat`로 GLB 배경 216개 + 적 0/32/128개와 입력 조준·비행 중 탄환 복원을 검증한다. [전투 계약](docs/engine/data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스)을 따른다. |
 | RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
 | 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
@@ -116,7 +116,7 @@ custom renderer는 구체 GPU 클래스 상속 없이 구조적 `FerrumRuntimeRe
 | LDtk importer | LDtk project/level/tile/entity metadata를 Game Spec으로 바꾼다. |
 | Tile rules/animated tiles | neighbor rule과 animated tile frame을 baked layer data로 만든다. |
 | Level streaming helper | 큰 tilemap chunk의 active/preload/retain/load/unload plan을 계산한다. |
-| AudioManager | Web Audio 기반으로 BGM, SFX, UI sound를 재생한다. |
+| AudioManager | Web Audio 기반으로 BGM/SFX/UI, 거리·방향에 따른 위치 음향과 native 개체·카메라 listener를 지원한다. |
 | Audio bus volume | master/bgm/sfx/ui gain을 따로 조절한다. |
 | BGM fade | BGM loop, fade-in, fade-out을 지원한다. |
 | Rust audio event channel | Rust audio event를 BGM/SFX/UI bus로 라우팅한다. |
@@ -504,6 +504,13 @@ docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```
 
+개발 소스의 WebGPU renderer는 `deviceState()`/`recoverDevice()`로 장치 손실 후 소유 자원을 재생성한다.
+[수명·복구 계약](docs/engine/public-api/labs.md#webgpu-장치-수명과-복구)을 따르며 초기 WebGL2 fallback과 구분한다.
+공식 2D viewer의 **Import Tile Frames → Apply Map**은 Tiled/LDtk의 타일·명시적 object mapping을
+전체 배치·재import하고 한 번의 Undo와 기존 프로젝트 저장으로 관리한다.
+[지원 범위](docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 확인한다.
+`pnpm smoke:village-game-quality`, `pnpm smoke:webgpu-recovery`, `pnpm smoke:tile-map`으로 해당 경로를 검증한다.
+
 ## 상세 문서
 
 - [문서 지도](docs/README.md)
@@ -550,6 +557,10 @@ Ferrum2D는 `MIT OR Apache-2.0` 듀얼 라이선스로 배포한다. 자세한 �
 WebGL2 GPU block 압축과 이미지 fallback을 지원하며 작은 pixel sprite는 PNG 유지가 유리할 수 있습니다.
 [측정 결과와 배포 정책](docs/development/quality/compressed-textures.md)을 참고하세요.
 
+
+게임 에셋의 병렬 로딩과 취소는 `runtime.engine.loadAssets(manifest, onProgress, { concurrency: 4, signal })`로
+사용한다. 기본값은 기존 순차 로딩을 유지하며, 엔진 종료와 사운드 재요청 시 늦은 결과 등록을 차단한다.
+[부분 성공·취소 계약](docs/engine/public-api/core.md#에셋-묶음-로딩과-취소)을 참고한다.
 
 초기 로딩 UI와 셰이더 준비를 연결하려면 `createFerrumRuntime({ shaderPreparation: { onProgress } })`를
 사용할 수 있습니다. 기존 동기 renderer 생성도 유지합니다.

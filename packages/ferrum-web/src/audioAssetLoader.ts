@@ -1,3 +1,4 @@
+import { throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { audioDecodeError, audioLoadError, describeError } from "./diagnostics.js";
 
 export type AudioContextProvider = () => AudioContext;
@@ -5,11 +6,17 @@ export type AudioContextProvider = () => AudioContext;
 export class AudioAssetLoader {
   constructor(private readonly audioContextProvider: AudioContextProvider) {}
 
-  async load(soundId: number, url: string): Promise<AudioBuffer> {
-    const bytes = await this.loadBytes(soundId, url);
+  async load(soundId: number, url: string, options: { signal?: AbortSignal } = {}): Promise<AudioBuffer> {
+    const signal = options.signal;
+    throwIfAssetLoadAborted(signal);
+    const bytes = await this.loadBytes(soundId, url, signal);
     try {
-      return await this.audioContextProvider().decodeAudioData(bytes);
+      throwIfAssetLoadAborted(signal);
+      const buffer = await this.audioContextProvider().decodeAudioData(bytes);
+      throwIfAssetLoadAborted(signal);
+      return buffer;
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw audioDecodeError({
         kind: "sound",
         id: soundId,
@@ -19,11 +26,13 @@ export class AudioAssetLoader {
     }
   }
 
-  private async loadBytes(soundId: number, url: string): Promise<ArrayBuffer> {
+  private async loadBytes(soundId: number, url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
     let response: Response;
     try {
-      response = await fetch(url);
+      response = await fetch(url, { signal });
+      throwIfAssetLoadAborted(signal);
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw audioLoadError({
         kind: "sound",
         id: soundId,
@@ -32,6 +41,10 @@ export class AudioAssetLoader {
       });
     }
     if (!response.ok) {
+      // A failed response may still be streaming. Release it before settling the load.
+      try { await response.body?.cancel(); }
+      catch { /* Preserve the HTTP failure when cleanup itself fails. */ }
+      throwIfAssetLoadAborted(signal);
       throw audioLoadError({
         kind: "sound",
         id: soundId,
@@ -41,8 +54,11 @@ export class AudioAssetLoader {
     }
 
     try {
-      return await response.arrayBuffer();
+      const bytes = await response.arrayBuffer();
+      throwIfAssetLoadAborted(signal);
+      return bytes;
     } catch (error) {
+      throwIfAssetLoadAborted(signal);
       throw audioLoadError({
         kind: "sound",
         id: soundId,

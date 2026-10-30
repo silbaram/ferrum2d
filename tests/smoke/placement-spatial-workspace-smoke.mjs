@@ -11,6 +11,8 @@ import { smokePlacementSpatialAssetRefresh } from "./placement-spatial-asset-ref
 import { smokePlacementSpatialTransforms } from "./placement-spatial-transforms-smoke.mjs";
 import { smokePlacementGameCamera } from "./placement-game-camera-smoke.mjs";
 import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
+import { smokeThreejsViewerUpgrades } from "./placement-threejs-upgrades-smoke.mjs";
+import { smokePlacementModelPicking } from "./placement-model-picking-smoke.mjs";
 
 export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
   const lighting = await smokePlacementLighting(page, timeoutMs, "spatial");
@@ -1357,6 +1359,8 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
   );
   return {
     lighting,
+    threejsUpgrades: await smokeThreejsViewerUpgrades(page,timeoutMs),
+    modelPicking: await smokePlacementModelPicking(page,timeoutMs),
     gameCamera: await smokePlacementGameCamera(page, timeoutMs),
     transforms: await smokePlacementSpatialTransforms(page, timeoutMs),
     assetRefresh: await smokePlacementSpatialAssetRefresh(page, source, timeoutMs),

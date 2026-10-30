@@ -17,6 +17,22 @@ Data Scene 캐릭터별 clip, 2.5D view, 방향광·caster API는 [애니메이�
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
 | `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
 
+## 목적별 빠른 찾기
+
+| 하려는 작업 | 기준 문서 |
+| --- | --- |
+| AI에게 게임 기능을 맡기기 | [AI 기능 안내](engine/ai-feature-guide.md), [개발자 퀵스타트](engine/developer-quickstart.md) |
+| 씬·오브젝트·레이어·외부 타일/애니메이션 작성 | [Scene Authoring](engine/data-scene-authoring.md), [Authoring API](engine/public-api/authoring.md) |
+| HD-2D 지형·모델·카메라·조명 설정 | [공간 계약](engine/data-scene-spatial.md) |
+| 위치에 따른 소리 연결 | [공간 오디오](engine/public-api/core.md#공간-오디오) |
+| 입력·모달 충돌 해결 | [입력 액션](engine/input-actions.md) |
+| 느린 프레임·자원 비용 확인 | [Profiler와 프레임 기록](engine/public-api/quality.md), [Smoke Check](development/quality/smoke-check.md) |
+| 엔진·뷰어 설치 파일과 업데이트 준비 | [GitHub Release 운영](development/operations/github-release.md), [로컬 엔진 설치](development/operations/local-engine-install.md) |
+| 다음 개발 범위 선택 | [추천 우선순위](planning/README.md#다음-개선-추천), [HD-2D 후보](planning/feature-candidates.md) |
+
+개발 소스의 기능과 설치된 릴리스의 기능은 구분한다. 게임 프로젝트에서는 설치 버전의 타입과 해당 tag의 문서를 확인한다.
+완료된 작업의 단계별 리뷰 기록은 사용 계약 대신 유지하지 않으며, 현재 계약·운영 정책·재현 명령을 해당 기준 문서에서 관리한다.
+
 ## Pages 홈 노출 기준
 
 GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내로 찾는 것을 기준으로 한다. `scripts/build/build-pages.mjs`는 다음 문서를 홈 카드와 docs navigation 상단에 노출한다.
@@ -34,9 +50,9 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | Smoke/Budget | [Smoke Check](development/quality/smoke-check.md) | 자동, browser, runtime budget 검증 기준 확인 |
 | Release | [GitHub Release 패키지 배포](development/operations/github-release.md), [npm 베타 패키징](development/operations/npm-release.md) | 설치용 tarball, beta package, changelog, tag, publish gate 확인 |
 
-문서 메뉴는 시작하기, 공개 API, 게임 제작, 공식 예제, 엔진 개발·검증, 배포·운영, 계획·개발 기록으로 묶는다.
+문서 메뉴는 시작하기, 공개 API, 게임 제작, 공식 예제, 엔진 개발·검증, 배포·운영, 개발 계획·후보로 묶는다.
 시작하기와 현재 문서가 속한 그룹을 기본으로 펼치며, 다른 그룹도 클릭하거나 키보드로 펼칠 수 있다.
-계획과 단계별 개발 기록은 사용 계약과 구분하고, 최신 기능의 사용 조건은 `engine/` 기준 문서에서 확인한다.
+계획·후보는 사용 계약과 구분하고, 최신 기능의 사용 조건은 `engine/` 기준 문서에서 확인한다.
 
 ## development 하위 구조
 
@@ -65,6 +81,7 @@ AI가 게임 기능을 구현하기 전에는 [AI 게임 개발 기능 안내](e
 | --- | --- |
 | package entrypoint export와 API tier | `packages/ferrum-web/src/index.ts`, `docs/engine/public-api-surface.json`, `scripts/validate/check-public-api-surface.mjs` |
 | world 좌표와 public 2D 기하 변환 | `packages/ferrum-web/src/geometry2D.ts`, `docs/engine/coordinate-system.md` |
+| 공간 오디오와 native pose 연결 | `packages/ferrum-web/src/spatialAudio.ts`, `packages/ferrum-web/src/spatialAudioScene.ts`, `crates/ferrum-core/src/engine/audio_poses.rs`, `docs/engine/public-api/core.md` |
 | renderer/debug stats 필드 | `packages/ferrum-web/src/renderer.ts`, `packages/ferrum-web/src/debugOverlay.ts` |
 | Asset pipeline helper | `packages/ferrum-web/src/assetPipeline.ts`, `packages/ferrum-web/src/assetPipeline*.ts` |
 | Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts`, `packages/ferrum-web/src/gameSpec*.ts` |

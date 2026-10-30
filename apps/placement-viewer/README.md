@@ -7,6 +7,11 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
 파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
 
+HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geometry를 다시 맞춘다. 카메라를 직접 조작한 뒤에는 해당 구도를 유지한다.
+**보기 → 게임 카메라 범위**에서 실제 게임 카메라의 앞뒤 경계·방향을 확인한다. 객체 옆 **평면 XY/X축/Y축**은 드래그 이동 축이며, 높이·회전 값도 함께 표시한다.
+**보기 → 충돌·높이 표시** 아래에는 접촉·층 번호·가려진 선 옵션이 있다. **실행 정보** 패널은 선택 바디/충돌체와 렌더링·자원 통계를 읽기 전용으로 보여준다.
+모델/텍스처 로딩 중에는 진행 파일과 재시도·취소를 표시한다. 자세한 한계는 [Authoring API](../../docs/engine/public-api/authoring.md#공간-지형카메라빌보드-개발-소스)를 따른다.
+
 ## 엔진·에디터 버전 업데이트
 
 **파일 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
@@ -167,9 +172,11 @@ native 복원이 거절되면 제스처 소유권을 유지하고 Escape로 다�
 XY와 camera pan은 시작 높이 평면을 기준으로 움직여 경사면에서도 이벤트 수에 따라 이동량이 달라지지 않는다.
 원근 Height는 화면 handle 이동을 역투영한다. 객체를 이동하는 동안 camera 조작은 멈춘다.
 Attachment 소유 위치는 agent가 원본에서 수정하며 model pose로 collider를 추정 이동하지 않는다.
-Attachment 소유 Height handle도 숨긴다. Model 선택은 전체 LOD의 보수적 bounds 기준이다.
-클릭 위치에서 실제로 교차하는 bounds 면의 깊이를 비교하므로 넓은 바닥 배경이 앞의 집·캐릭터 선택을 가로채지 않는다.
-움직이는 게임 geometry의 정밀 identity picker로 사용하지 않는다.
+Attachment 소유 Height handle도 숨긴다. 선택 테두리는 전체 LOD의 보수적 bounds를 표시하지만,
+클릭은 마지막 렌더에서 native가 선택한 LOD의 삼각형·변환·camera 가시성을 검사한다.
+표시 frame의 카메라 행렬을 사용하므로 wheel 직후에도 다음 frame의 구도와 섞이지 않는다.
+빈 bounds 영역과 MASK의 투명 픽셀을 제외하고 실제 교차 깊이를 비교한다. MASK는 CPU 최근접 base-level
+샘플이므로 GPU 보간/mipmap 경계와 같은 픽셀 판정을 보장하지 않는다. 물리 collider에는 영향을 주지 않는다.
 
 HD-2D의 `Spatial Placement → Add Object`에서 Sprite 또는 등록된 Model을 선택한다.
 `Place`를 누른 뒤 지형을 클릭하거나 asset 미리보기를 지형으로 드래그하면 새 오브젝트를 만든다.
@@ -275,6 +282,8 @@ HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 
 편집 각도·확대율·표시 거리 보정은 원본 게임 카메라에 저장하지 않는다.
 
 - **실행 → WASD**: 파란 옷 주인공 이동·방향별 걷기, 건물·나무 줄기 충돌, 다리에서 강 건너기.
+- 광장의 우물은 원형 돌기둥에 맞춘 radius 20의 collider를 사용한다. 원형·캡슐·convex·compound 장애물도
+  실제 HD-2D 보행에서 층/높이와 mask를 따라 차단하며, 모델 삼각형이 자동 collider가 되지는 않는다.
 - **일시정지 / 재개 / 정지**: 정지하면 작성 위치·초안·편집 카메라로 돌아온다. 플레이 위치는 JSON에 저장하지 않는다.
 - **HD-2D**: 기존 배치/카메라 도구로 모델·인물의 위치를 수정한다. 편집 격자는 기본 표시하며 `보기 → 격자`에서 전환한다.
 - **내보내기**: 마을은 export 전용 예제다. 퀘스트·NPC 대화·전투·건물 내부 전환은 구현하지 않았다.
@@ -303,6 +312,8 @@ WSL에서 Windows Blender를 사용하는 경우:
 시뮬레이션·충돌·sprite clip 선택은 기존 Rust runtime에서 처리한다.
 마을 asset catalog는 공식 app 내부에서만 로드하며 engine public API나 consumer template은 변경하지 않는다.
 `pnpm smoke:placement-village`는 production build의 실제 픽셀·hash·보행/충돌·복원·렌더 예산을 검사한다.
+빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`는 원형 우물의 WASD 차단과
+12개 native 장애물/필터 사례, Stop 뒤 작성 문서 보존을 빠르게 검사한다.
 
 직접 package만 실행하려면 다음 명령을 사용한다.
 
@@ -356,13 +367,14 @@ agent는 실제 PNG hash/크기를 확인해 stable 이름과 color=`srgb`/norma
 Settings/Preview는 방향키·Home/End, Cancel은 Enter/Space로 조작한다. 생성 pair 한도에 도달하면
 문서를 닫아 자원을 해제한다. 이전 pair로 Undo/Redo할 때 해당 생성 근거도 handoff에 복원한다.
 
-## Tiled/LDtk 타일 프레임
+## Tiled/LDtk 타일 프레임·전체 맵
 
 Assets → **Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 고른 뒤 **Tileset** 목록에서 이름/파일명을 확인하고 해당 PNG를 선택한다.
 외부 Tiled tileset은 **External TSJ Files**에서 참조된 `.tsj`를 모두 선택한다. 상대 source의 basename과 파일명이 일치해야 하며 중복 basename/누락/추가 파일은 거절한다. 경로 자동 읽기는 하지 않는다.
 LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. Inspect 후 Preview에서 사용 중인 frame을 확인한다.
 
 - **Register**: 문서 세션 catalog/GPU와 Assets 목록에 등록한다. 씬은 바꾸지 않는다.
+- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
 - **Apply Frame**: 선택한 unlocked sprite의 texture/UV를 한 Undo로 교체한다.
 - **Reimport**: 같은 포맷·논리 이름의 이전 revision을 참조하는 활성 fragment를 frame 이름으로 대응시켜 한 Undo로 갱신한다.
 - **Save Project**: desktop Open Project 기본 문서의 원본·catalog를 저장하고 실제 파일 재검증 후 씬을 저장한다. 재열기 시 프레임을 원본에서 복원한다.
@@ -371,7 +383,9 @@ LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. 
 Assets의 frame 선택·클릭 배치/드래그는 기존 2D/HD-2D Add Sprite 경로를 사용한다.
 Apply/Reimport는 작성한 size/pivot/pose/collider/body/behavior와 billboard 설정을 유지한다.
 normal binding, animated/legacy sprite, 잠긴 대상, 누락/모호한 frame은 거절한다. tileset 또는 LDtk level identity가 바뀌면 frame을 명시적으로 적용한다.
-전체 level·collision·entity를 Data Scene에 자동 적용하지 않는다. 변환된 맵은 agent가 Game Spec에 연결한다.
+Apply Map은 타일과 매핑 객체의 합계 2,048개 이하 범위에서 선택 tileset 한 장을 지원한다. 제외 tileset 타일이 있으면 적용을 거절한다. 충돌은 명시한 layer/blocksMovement만, entity/object는 objectPrefabs로 매핑한 기존 prefab만 사용한다. 프레임 Reimport는 배치 구조를 바꾸지 않으므로 셀/객체 변경은 Apply Map을 다시 누른다.
+같은 grid 셀의 ID와 명시적 instance 동작 연결은 유지한다. 구형 map은 원본 revision catalog가 필요하며, 보존할 수 없는 추가 사용자 속성이 있으면 적용 전에 진단한다.
+[전체 맵 옵션과 미지원 범위](../../docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
 
 지원 범위는 **원본 tileset 1..8개, import당 선택 tileset 1개/PNG 1개**, finite orthogonal Tiled의 embedded/외부 TSJ tileset·비압축 data 배열,
 LDtk embedded level의 Tiles/AutoLayer·entity metadata다. 외부 TSX·LDtk external level, IntGrid, flip/회전은 지원하지 않는다. 다중 tileset 선택에서 Tiled group layer는 먼저 평탄화한다.
@@ -554,11 +568,15 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 ## 씬 조명
 
 **보기 → 조명**에서 씬 조명을 켜고 끄고 환경광, 태양의 밝기·색·방향, 점광원의 위치·반경·밝기·색과 그림자를 조절한다.
+HD-2D에서는 **하늘·지면 광원 → 반구광**으로 하늘색·지면색과 세기를 조절한다. 표면 방향과 노멀맵에 따라
+채움빛이 달라지며 별도 그림자는 만들지 않는다. 태양·점광원의 그림자를 켜면 **그림자 표면 보정**으로
+얼룩을 조절할 수 있다. 값이 너무 크면 그림자가 들뜰 수 있다. 마을 예제는 두 설정을 명시적으로 사용한다.
 HD-2D는 점광원 최대 4개와 한 점광원의 그림자를 지원한다. 태양 그림자는 별도다. 2D는 점광원 최대 32개이며
 차폐 그림자는 문서의 `lighting.tileOccluders`를 사용한다. 태양의 지면 그림자는 visual에 작성된 `shadow`를 사용한다.
 그림자 checkbox만으로 없는 caster/차폐 데이터를 생성하지 않는다.
 
-OFF는 광원 설정을 지우지 않는다. HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
+OFF는 광원 설정을 지우지 않는다. 반구광만 껐다 켜도 작성한 색·세기를 유지한다.
+HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
 숫자는 Enter/blur로 반영하며 방향키로 증감한다. Shift는 정밀, Ctrl/Cmd는 빠른 증감이다. 입력 중 Escape는 수정 전 값으로 되돌린다.
 게임 실행 중에는 편집을 잠근다. 정지하면 편집할 수 있고, 공간 조명은 HD-2D에서 작성한다.
 설정은 문서 초안과 Undo/Redo, JSON patch, Save Draft/내보내기에 포함된다. 저장 명령은 초점을 둔 숫자 입력도 검증해 반영하며
@@ -712,3 +730,15 @@ native도 실제 저장할 UTF-8 JSON(들여쓰기·마지막 줄바꿈 포함)�
 - generated consumer project viewer 동작은 `pnpm package:consumer-smoke`와 `pnpm smoke:create-game-template-reports`로 검증한다.
 - recipe 본문 편집, FSM/action graph, timeline UI가 필요하면 visual-editor급 별도 승인 범위로 다룬다.
 - 완료 planning 문서에서 이관한 후속 후보는 [GitHub 이슈 #47](https://github.com/silbaram/ferrum2d/issues/47)에서 추적한다.
+
+
+### HD-2D 조명 조작
+
+`보기 → 조명`에서 낮·노을·밤·실내 프리셋, 조명 품질, 활성 광원 수를 고른다.
+마을 예제에는 가로등 5개가 연결되어 있어 `밤`으로 바꾸면 효과를 비교할 수 있다.
+`광원 조작 표시`를 켠 뒤 해 모양 아이콘을 드래그하면 이동하고, 선택 도구의 높이·반경도 드래그할 수 있다.
+화살표로 1 단위(Shift는 10 단위), Esc로 드래그 취소, Undo/Redo로 되돌린다.
+`광원 연결`에서 씬 객체를 고르면 현재 위치를 유지하며 해당 객체를 따라 움직인다.
+스포트라이트 방향·반각·경계와 씬 빛 번짐·접촉 음영은 같은 메뉴에서 작성하고 JSON/저장에 반영된다.
+최대 16개를 작성하되 동시에 1~4개를 계산한다. 현재 활성/작성 개수는 조명 메뉴에서 확인한다.
+게임 미리보기와 실행은 저장한 설정을 공유하며 조작 아이콘은 편집 모드에만 표시된다.

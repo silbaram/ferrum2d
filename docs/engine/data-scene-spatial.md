@@ -43,7 +43,7 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 공식 Placement Viewer의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
 `spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
-설정 방법은 [뷰어 사용법](../../apps/placement-viewer/README.md)을 참고한다.
+설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)을 참고한다.
 
 공식 뷰어의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
 명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
@@ -70,7 +70,7 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   f32 VEC3, UV는 선택 f32 TEXCOORD_0이며 texture 사용 시 필수다. Blender에서는 UV/Normals를 내보내고
   normal map 사용 시 Tangents도 내보낸다. vertex color·animation·skin/morph는 제외한다. index는 unsigned 8/16/32-bit 또는 생략이다.
   node TRS/affine matrix를 합성하고 정점·inverse-transpose normal에 bake한다. pivot을 자동 중앙 정렬하지 않는다.
-  mirrored/singular 변환, sparse/normalized accessor, skin/morph/animation·필수 확장·외부 URI는 거절한다.
+  mirrored/singular 변환, sparse/normalized accessor, skin/morph/animation·지원하지 않는 필수 확장·외부 URI는 거절한다.
 - `OPAQUE`/`MASK` baseColorFactor/baseColorTexture, embedded PNG/JPEG와 glTF filter/wrap/mipmap sampler를 지원한다.
   `OPAQUE`는 factor alpha를 무시한다. 현재 diffuse subset에서 OPAQUE에 사용한 이미지의 alpha는 모두 255여야 한다.
   `MASK`는 image alpha × factor alpha가 `alphaCutoff` 이상인 fragment만 color/depth·point/sun shadow에 기록한다.
@@ -97,15 +97,34 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   두 renderer 색상 모드 모두 color는 sRGB8, normal은 RGBA8로 준비한다. 따라서 LINEAR 보간과
   mipmap 생성 전에 color가 linear RGB로 해석된다. normal과 color가 같은 이미지이면 별도 GPU texture를 사용한다.
   실제 복제 texture와 mipmap bytes도 resource stats에 포함하고 재질에서 참조하지 않는 image는 GPU에 올리지 않는다.
-  BLEND·occlusion·metallic/roughness texture·texture transform은 후속이다.
+  BLEND·occlusion·metallic/roughness texture는 후속이다.
+- `KHR_texture_transform`은 base/normal/emissive textureInfo마다 독립적으로 지원한다.
+  [Khronos 확장 규격](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)의
+  `scale` → 원점 기준 `rotation`(라디안) → `offset` 순서이며 기본값은 `[1,1]`, `0`, `[0,0]`이다.
+  UV의 +V는 아래쪽이므로 양의 회전은 `u′=ox+cos(r)·sx·u+sin(r)·sy·v`,
+  `v′=oy−sin(r)·sx·u+cos(r)·sy·v`다. Blender/three.js와 같은 방향이며,
+  규격 예제의 부호 문제는 [Khronos #1563](https://github.com/KhronosGroup/glTF/issues/1563)을 참고한다.
+  음수/0 배율도 허용하며 sampler의 repeat/mirror/clamp는 변환 후 적용한다.
+  유효 UV set은 `TEXCOORD_0`만 지원한다. 확장의 `texCoord`는 textureInfo의 값을 덮어쓰므로
+  `texCoord: 0` override는 허용하고 다른 UV set은 준비 오류로 거절한다.
+  offset/scale은 두 수, rotation은 수여야 하며 null·비정수 texCoord·f32 범위 밖 수치와 변환 중 UV overflow를 거절한다.
+  GLB와 분리형 glTF는 `KHR_texture_transform`, `KHR_materials_unlit`, `KHR_materials_emissive_strength`를
+  같은 required-extension 허용 목록으로 검사한다. 이 목록은 생략하거나 배열로 작성해야 하며 null은 거절한다.
+  지원하지 않는 required/textureInfo 확장은 계속 거절한다.
+  텍스처 변환은 정점·geometry bounds·exported tangent basis를 바꾸지 않는다. normal map은 해당 UV로 샘플링하고
+  기존 TANGENT 기준으로 조명을 계산한다. base alpha는 main/depth·point/sun shadow·CPU triangle picking에 같은 변환을 쓴다.
+  WebGL2/WebGPU 모두 지원하며 UV만 다른 재질을 한 batch로 합치지 않는다. Rust ABI·씬 저장 버전은 유지한다.
+  Blender Mapping 노드의 UV/Point 매핑을 exporter가 이 확장으로 저장한 모델을 사용할 수 있다.
+  임의의 procedural shader/Generated 좌표를 지원한다는 뜻은 아니다.
 - root 배치는 native entity XY와 heightSpan.elevation을 사용한다. 선택 `elevation`은 시각 offset(기본 0),
   `yawDegrees`는 Y-up 회전(-360..360, 기본 0), `scale`은 world units/meter인 양수 균일 배율(0.0001..10000, 기본 1)이다.
   Blender의 정상 Y-up glTF 출력에 Z-up 보정을 다시 적용하지 않는다. imported hierarchy는 정적 bake이며
   선택 native attachment는 아래 움직이는 묶음 계약을 따른다. native body yaw는 authored yaw에 더하며
   runtime scale 변경은 제공하지 않는다. inline components와 static/kinematic/생략 body를 허용한다.
-- 충돌은 같은 instance의 기존 `components.collider` AABB와 `body.heightSpan`으로 명시한다. 이 proxy의
+- 충돌은 같은 instance의 기존 `components.collider`와 `body.heightSpan`으로 명시한다. AABB·원·캡슐·
+  회전 박스·convex polygon 등 Data Scene이 지원하는 모양을 사용한다. 이 proxy의
   크기·offset·높이는 **최종 world 단위**다. 모델 yaw/scale/시각 offset이 proxy를 자동 변형하지 않으므로
-  일치하는 값을 작성한다. 삼각형 충돌·자동 보행층·모델 ray picking은 제공하지 않으며 지형 picking은 유지한다.
+  일치하는 값을 작성한다. 삼각형 충돌·자동 보행층은 제공하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
   `castShadow`/`receiveShadow`는 기본 true다. native가 world bounds와 camera/light culling을 계산한다.
   TS는 공유 indexed GPU buffers와 decoded RGBA 자원을 관리하며 정적 정점을 매 frame 전송하지 않는다.
@@ -442,7 +461,10 @@ spatial actor 설정 시 기존 route를 취소한다. 이 controller가 설정�
 연결되지 않은 다리 위·아래는 작성한 floor를 유지한다. 공간 목적지 이동은 아래 별도 API를 사용한다.
 
 낮은 빈도 직접 이동은 `engine.moveDataSceneSpatialBody(handle, dx, dy, { maxStepHeight, maxDropHeight })`다.
-enabled kinematic body, heightSpan, 단일 enabled non-trigger AABB가 필요하다.
+이동하는 actor에는 enabled kinematic body, heightSpan, 단일 enabled non-trigger AABB가 필요하다.
+장애물은 AABB·원·캡슐·회전 박스·convex polygon·edge·chain과 compound child를 검사한다.
+각 장애물 collider의 enable·trigger·양방향 mask와 body 층/높이를 사용하며, chain은 segment별로 sweep한다.
+장애물의 모양 지원이 actor의 모양 제한을 확장하거나 3D mesh 충돌을 생성하지는 않는다.
 true는 유효한 요청을 처리했다는 뜻이며 장애물로 일부만 이동할 수 있다. 높이 query와 이동 계산은 Rust가 소유한다.
 기존 rigid-body solver의 자동 stepping/별도 velocity로 같은 actor를 중복 구동하지 않는다.
 
@@ -527,10 +549,11 @@ route/waypoint/탐색 통계는 저장하지 않는다. 기존 공간 v6 pose를
 격자 node 최대 4,096개(+정확한 시작/목적지 2개), edge probe와 대기 heap 최대 32,768개다.
 추가로 native sweep/substep·proxy 정렬 비용을 보수적으로 추산해 요청 8,000,000 work units,
 frame 1,000,000 work units와 follower 최대 64회 iteration으로 제한한다. work units는 CPU/GPU ms가 아니다.
-탐색 요청/추종 frame 안에서 target AABB bounds를 한 번 준비·정렬하고 native sweep/overlap에 재사용한다.
+탐색 요청/추종 frame 안에서 target collider/chain segment bounds를 한 번 준비·정렬하고 native sweep/overlap에 재사용한다.
 다음 요청/frame에는 다시 준비하므로 동적 장애물 변경을 반영하며, ordinary 수동 이동에 snapshot을 남기지 않는다.
-준비 비용은 alive 순회·target 정렬, 반복 probe 비용은 enabled target AABB 수·surface 수·substep과
+준비 비용은 alive 순회·target 정렬, 반복 probe 비용은 enabled collider/segment proxy 수·surface 수·substep과
 candidate 정렬에 근거한다. collider 없는 장식 entity는 최초 순회 비용에만 포함한다.
+준비 중 방문한 disabled/invalid collider·segment도 `preparationWorkUnits`에 포함한다.
 한 frame의 준비와 최소 이동조차 실행할 수 없는 요청은 미리 거절하고, 수락 뒤 비용이 증가하면 follower는 blocked로 멈춘다.
 미세 속도는 f64 잔여 이동량을 다음 frame으로 이어가고 실제 변위만 차감한다.
 경사면에서는 현재/목적지 surface의 기울기와 step/drop 허용량으로 추종 조각 길이를 추가 제한한다.
@@ -548,7 +571,7 @@ candidate 정렬에 근거한다. collider 없는 장식 entity는 최초 순회
 | --- | --- |
 | `status` | `notRequested`, `accepted`, `invalidRequest`, `unsupportedActor`, `noPath`, `nodeBudgetExceeded`, `probeBudgetExceeded`, `workBudgetExceeded`, `frameBudgetExceeded` |
 | `count` | native 요청 횟수. 탐색 전 거절도 포함하며 JS 옵션 검증에서 throw한 요청은 제외 |
-| `collisionProxyCount` | 준비한 enabled target AABB 수. actor·terrain은 제외하고 narrow phase의 기존 trigger/filter/height 판정은 유지 |
+| `collisionProxyCount` | 준비한 enabled target collider/chain segment의 proxy 수. compound는 child별, chain은 segment별로 센다. actor·terrain은 제외하고 narrow phase의 trigger/filter/height 판정은 유지 |
 | `preparationWorkUnits` | 최초 순회·정렬 비용. 탐색 시작 시 probeWorkUnits에 이미 포함되므로 합산하지 않음 |
 
 `noPath`는 선택한 격자에서 경로를 찾지 못했다는 뜻이며 연속 공간에서 불가능하다는 증명은 아니다.
@@ -704,7 +727,7 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 | --- | --- |
 | `lighting.ambient` | linear RGB 0..4, 기본 `[0.15,0.15,0.15]` |
 | `lighting.enabled` | 선택 boolean, 생략/true는 조명 활성화. false는 작성된 광원·그림자 설정을 보존하고 조명/그림자 렌더만 끔 |
-| `lighting.lights` | 필수 배열, 최대 4개 점광원. 빈 배열은 ambient만 사용 |
+| `lighting.lights` | 필수 배열, 최대 16개 작성 광원. 프레임당 최대 4개를 선택하며 빈 배열은 ambient만 사용 |
 | `lights[].position` | world `x/y/elevation`, 각 ±1,000,000의 유한 f32 |
 | `lights[].radius` | 필수 0.1..1,000,000 world 단위, 범위 밖 기여 0 |
 | `lights[].color/intensity` | linear RGB 0..1 기본 white, 강도 0..64 기본 1 |
@@ -1138,7 +1161,7 @@ engine.setDataSceneSpatialEnvironment({ lighting: {
 ```
 
 `SpatialDirectionalLightSpec.direction`은 표면에서 태양을 향하는 nonzero world 벡터다.
-compiler가 정규화하며 color/intensity의 범위와 기본값은 point light와 같다. 점광원 최대 4개에
+compiler가 정규화하며 color/intensity의 범위와 기본값은 point light와 같다. 프레임당 점광원/스포트라이트 최대 4개에
 방향광 1개를 추가할 수 있다. shadows 생략 시 방향광 그림자는 꺼진다.
 이미 정규화된 f32 방향은 저장·복원 때 다시 정규화하지 않아 numeric buffer를 그대로 보존한다.
 `resolution`은 128/256/512/1024(기본 512), `extent`는 직교 맵 반폭 1..10,000(기본 256),
@@ -1149,6 +1172,40 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
+
+### 하늘·지면 반구광과 그림자 표면 보정
+
+```ts
+engine.setDataSceneSpatialEnvironment({ lighting: {
+  ambient: [0.15, 0.15, 0.15], lights: [],
+  hemisphere: {
+    skyColor: [0.68, 0.8, 1], groundColor: [0.4, 0.28, 0.16], intensity: 0.38,
+  },
+  directional: {
+    direction: { x: -1, y: -1, elevation: 2.4 },
+    shadows: { normalBias: 0.35 },
+  },
+} });
+```
+
+`SpatialHemisphereLightSpec`는 선택형 간접 fill이다. 기본 방향은 `+elevation`이며 `direction`에
+nonzero X/Y/elevation 벡터를 줄 수 있다. 최종 shading normal과 하늘 방향의 내적을 0..1로
+옮겨 `groundColor`와 `skyColor`를 혼합한다. 두 색은 linear RGB 0..1이며 기본값은 각각
+`[0.3,0.22,0.14]`, `[0.6,0.75,1]`이다. `intensity`는 0..64, 기본 0.35다.
+노멀맵·모델·billboard·지형에 동일하게 적용하지만 unlit에는 적용하지 않는다. 반구광 자체는
+그림자·광원 위치 감쇠·실시간 GI를 만들지 않으며 기존 ambient에 더해진다.
+`enabled`는 기본 `true`다. `false`이면 색·방향·세기는 작성 데이터에 보존하고 조명 계산만 끈다.
+반구광의 선택 필드와 아래 `normalBias`는 생략한 경우에만 기본값을 적용한다. 명시적인 `null`은 조명을 껐더라도 오류로 거절한다.
+
+점광원의 `lighting.shadows.normalBias`와 태양의 `lighting.directional.shadows.normalBias`는
+world 0..10, 기본 0이다. 기하 법선을 따라 shadow 조회 위치만 이동하며 실제 geometry·collider·
+Lambert 조명 위치·그림자 caster는 바꾸지 않는다. 노멀맵으로 bias 방향을 흔들지 않는다.
+기존 깊이 비교 `bias`와 함께 사용할 수 있으며 값이 과도하면 그림자가 표면에서 떨어진다.
+두 값과 반구광의 색·세기만 바꾸어도 shadow depth map은 재생성하지 않는다.
+
+참고한 [Three.js 반구광](https://threejs.org/docs/pages/HemisphereLight.html)과
+[normalBias](https://threejs.org/docs/pages/LightShadow.html)의 계산 원리를 현재 diffuse/HDR 경로에
+맞게 적용했다. 분석한 소스 revision은 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`이며 Three.js를 의존성으로 추가하지 않는다.
 
 ### 고급 DOF와 native actor 초점
 
@@ -1175,10 +1232,15 @@ fresh restore는 authored actor의 새 handle을 사용한다.
 ### 버퍼와 통계 호환
 
 기존 spatial render ABI v2/vertex 44 bytes/flat ABI는 유지한다. environment v1 numeric80도 읽고 쓴다.
-새 설정을 사용하는 경우에만 v2 numeric112를 사용한다. 80..82는 pixel 크기/snap, 83..94는 방향광,
+방향광·pixelArt·고급 DOF 설정만 사용하는 경우에는 v2 numeric112를 사용한다. 80..82는 pixel 크기/snap, 83..94는 방향광,
 95는 shadow filter, 96..98은 DOF 품질/actor focus/offset, 99는 frame 파생 focus, 100..111은 reserved 0이다.
 설정 입력의 99는 0이며 capture는 설정 원본을 반환한다. matrix는 point 96/sun 16 floats를 순서대로
 전달하므로 총 0/16/96/112다. 환경 없는 v5/v6 및 기존 v7 설정은 이전 capture 형태를 유지한다.
+다른 v4 기능 없이 반구광 또는 양수 normalBias를 작성한 경우 environment v3 numeric128을 사용한다.
+112는 반구광 flag, 113..115는 native XYZ 하늘 방향, 116..118은 sky RGB, 119는 intensity,
+120..122는 ground RGB, 123/124는 point/sun normalBias, 125..127은 reserved 0이다.
+v1/v2 문서는 기존 buffer와 화면을 유지하며 새 reader도 계속 읽는다. 새 필드는 기존 진행 v7/v8의
+environment JSON에 선택적으로 저장한다. v3를 지원하지 않는 과거 core는 설정을 거절한다.
 새 optional field를 쓰는 문서는 지원하는 JS/Wasm을 함께 설치해야 하며 과거 reader는 거절할 수 있다.
 authoring 적용과 진행 복원은 실제 적용할 camera/environment 조합을 native에서 먼저 검사한다.
 개별 필드가 유효해도 태양 shadow matrix를 유한하게 만들 수 없는 조합은 장면 교체 전에 거절하며
@@ -1442,11 +1504,17 @@ cold/resize debug-only feedback 방지, 불완전 cube 생성 후 재시도, 같
 
 ## 모델 고도화: 재질 batch·움직이는 묶음·청크/LOD
 
+작성 도구는 클릭 같은 cold 작업에서 `engine.dataSceneSpatialModelDrawSnapshot(handle)`로 마지막
+native 렌더의 실제 LOD asset·소유한 world XYZ 행렬·cameraVisible을 조회한다. 미렌더/미등록 handle과
+이 capability가 없는 이전 Wasm은 undefined다. shadow-only draw는 cameraVisible이 false다.
+표시 frame의 camera 행렬과 함께 `raycastSpatialModel`에 사용하며 거리/hysteresis 정책을 TS에서 복제하지 않는다.
+문서/진행 저장 계약과 기존 model render command ABI는 바뀌지 않는다.
+
 소스 primitive가 32개 이하면 기존 순서와 draw 구성을 유지한다. 그보다 크면 동일한 정규화 재질
-(base/normal/emissive texture·sampler·색·unlit·alpha cutoff·양면)을 공유하는 정적 geometry를 병합한다.
+(base/normal/emissive texture·UV 변환·sampler·색·unlit·alpha cutoff·양면)을 공유하는 정적 geometry를 병합한다.
 정점을 이어 붙이고 index를 다시 지정하며 최종 batch가 32개를 넘으면 거절한다. geometry·image·등록
-상한은 유지한다. GLB/glTF의 알 수 없는 required extension과 지원하지 않는 material extension은
-재질 이름/인덱스가 포함된 진단으로 거절한다. emissive strength는 광원/GI를 생성하지 않는다.
+상한은 유지한다. GLB/glTF의 알 수 없는 required extension은 준비 오류로 거절한다.
+지원하지 않는 material extension은 재질 이름/인덱스가 포함된 진단으로 거절한다. emissive strength는 광원/GI를 생성하지 않는다.
 
 `addSpatialModelAssembly`의 `motion:"kinematic"`은 native root body와 `spatial.attachments`를 생성한다.
 자식 model/collider는 static body와 heightSpan을 가지며 Rust가 root의 XY·elevation·yaw로부터 계산한다.
@@ -1521,3 +1589,97 @@ camera visibility/receiveShadow만의 변경, shadow mask가 없는 model의 변
 shadow map을 무효화하지 않는다. pose·선택 LOD·실제 cast/face 변경과 기존 terrain/caster/light/texture
 revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm view를 frame 사이에 보관하지 않는다.
 측정 가능한 구조적 비용을 줄이는 변경이며 특정 GPU의 지연 제거를 보장하는 계약은 아니다.
+
+
+## 광원 작성과 씬 효과
+
+`spatial.environment.lighting.lights`는 최대 16개 점광원/스포트라이트를 작성한다.
+`maxActiveLights`는 1/2/3/4(기본 4)이며 Rust가 카메라 target까지의 거리, 반경과 intensity로
+영향도를 정렬한다. 동점은 작성 순서로 결정한다. 그림자를 담당하는 광원은 첫 슬롯에 고정한다.
+`shadows.lightIndex`는 활성 슬롯이 아닌 작성 배열의 index(0..15)다. shader loop는 최대 4회이며
+광원을 추가해도 프레임별 entity 단위 JS/Wasm 호출을 하지 않는다.
+
+```json
+{
+  "lightBindings": { "lantern_0": [0] },
+  "environment": {
+    "lighting": {
+      "ambient": [0.04, 0.05, 0.09],
+      "maxActiveLights": 2,
+      "lights": [{
+        "position": { "x": 0, "y": 0, "elevation": 36 },
+        "radius": 160,
+        "color": [1, 0.62, 0.24],
+        "intensity": 3,
+        "spot": {
+          "direction": { "x": 0, "y": 1, "elevation": -1 },
+          "angle": 45,
+          "penumbra": 0.25
+        }
+      }]
+    },
+    "bloom": { "strength": 0.5, "radius": 8, "threshold": 1 },
+    "ambientOcclusion": { "strength": 0.6, "radius": 16, "bias": 0.3 }
+  }
+}
+```
+
+- `spot.direction`은 광원에서 바깥으로 향하는 nonzero X/Y/elevation 벡터다. compiler가 정규화한다.
+  `angle`은 조사 **반각** 1..89도(기본 45), `penumbra`는 0..1(기본 0.25)이며 0은 단단한 경계다.
+  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트 그림자도 기존 단일 cube budget을 사용한다.
+- `lightBindings`는 씬의 instance ID → 광원 index 배열이다. 하나의 광원에는 하나의 target만 허용한다.
+  position은 객체 위치·물리 elevation·시각 offset에 더하는 **월드 축 기준 offset**이다. 회전/scale은 상속하지 않는다.
+  대상은 cold apply에서 generation handle로 연결하고 native가 추적한다. 씬을 새로 열 때 ID를 새 handle에 연결한다.
+  대상이 삭제되거나 유효 범위를 벗어나면 해당 광원은 비춘 빛을 내지 않는다. 다른 객체의 재사용 handle을 추적하지 않는다.
+- `followActor: true`는 `spatial.actor`에 같은 offset 규칙으로 연결한다. 같은 광원에 lightBindings와 함께 쓸 수 없다.
+  runtime environment capture는 원본 light 배열을 저장하고 파생 위치·활성 순서는 저장하지 않는다.
+  객체 연결은 원본 scene의 `lightBindings`로 복구하므로 snapshot은 같은 씬 정의에 복원해야 한다.
+- `bloom`: strength 0..4(기본 0.5), radius 0.1..24 CSS px(기본 8), threshold 0..64(기본 1).
+  HDR 밝기 임계값 추출 → 최대 32개 위치의 Gaussian 가중 disk gather → 색상 조정/톤 매핑 → HUD 순서다.
+  scene target을 재사용하고 추가 render target을 만들지 않는다. 기존 전체 화면 Bloom과 별도이며 WebGPU fallback을 요구하지 않는다.
+- `ambientOcclusion`: strength 0..1(기본 0.6), radius 0.1..1000 world units(기본 12), bias 0..100(기본 0.2).
+  깊이로 view-space 위치/법선을 복원하고 인접 접촉을 어둡게 한다. 법선 4곳+접촉 12곳, 총 16개 위치로 제한하며
+  화면 반경은 최대 64 target px다. 배경/HUD는 제외한다. 화면에 없는 occluder와 숨은 다층 표면은 복원하지 않으며
+  조명이 합성된 scene 색에 적용하는 근사 효과다. Bloom을 더하기 전에 적용한다.
+- 두 효과는 속성을 생략하면 꺼진다. strength 0일 때 sample loop를 생략한다. pixelArt 해상도와 resize/DPR을 따른다.
+  `SpatialRendererStats`의 `authoredLightCount`, `lightCount`, `bloomSampleBudget`, `ambientOcclusionSampleBudget`으로 실제 비용을 확인한다.
+
+새 기능은 environment **v4 numeric512**를 사용한다. 128..135는 Bloom/AO, 136은 광원 budget,
+137은 작성 광원 수, 138..141은 원본 shadow index/resolution/bias/normalBias, 144..175는 활성 cone,
+192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
+기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
+기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
+WebGPU는 512 floats로 padding한 환경 + 카메라/7 shadow matrix를 2,560-byte uniform 슬롯 두 개에 담는다.
+render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
+
+뷰어는 **보기 → 조명**에서 분위기(낮/노을/밤/실내), 품질(낮음/균형/높음), 활성 광원 수와
+효과를 조절한다. 품질은 활성 1/2/4개, 그림자 128/512/1024, hard/PCF3를 적용하며 낮음은 추가 효과를 끈다.
+분위기는 기존 광원 배치·연결을 보존한다. `광원 조작 표시`를 켜면 아이콘 드래그로 이동하고 선택 후 높이/반경을 조절한다.
+화살표는 1 단위, Shift+화살표는 10 단위이며 Esc는 드래그 전체를 취소한다. 한 드래그는 한 Undo로 복원한다.
+`광원 연결`은 연결 전 위치를 보존하도록 offset을 바꾼다. 연결 해제·광원 삭제 시 남은 index도 정리한다.
+attachment 자식에 연결한 광원도 상위 몸체 위치·높이·회전을 반영한 anchor를 사용한다. 광원 자체의 offset은 계속 world-axis 기준이다.
+객체나 지형을 다시 선택하면 광원 조작 도구를 숨긴다. 키보드 조절은 좌표·반경의 허용 한계에서 멈춘다.
+scene-wide spatial patch v6의 `setEnvironment.changes.lightBindings`로 환경과 연결을 함께 저장/복원한다.
+마을 예제는 가로등 5개에 광원이 연결돼 있으며 밤 프리셋으로 비교할 수 있다.
+
+
+## 공간 오디오
+
+`/core`의 `AudioManager`와 `createSpatialAudioScene`은 거리·방향에 따른 SFX와 반복 환경음을 지원한다.
+게임 `(x,y,elevation)`을 Web Audio `(x,elevation,-y)`로 변환하며, 개체 listener/source는 native pose를
+최대 65개씩 묶어 읽는다. game camera listener는 표시 frame의 eye/target 방향을 따른다.
+층 번호는 추가 거리나 차폐로 사용하지 않고 실제 elevation 차이로 감쇠한다. 설정·해제·복원 후 rebind와
+Panner 미지원 fallback은 [공간 오디오 사용 계약](public-api/core.md#공간-오디오)을 따른다.
+
+
+## 정적 모델 제출 최적화와 실게임 품질
+
+개발 소스 loader는 인접한 동일 재질 primitive를 합쳐 triangle/material 순서를 유지하면서 draw를 줄인다.
+원래 primitive가 32개를 초과할 때의 material batching 계약과 resource/geometry 상한은 유지한다.
+`contentId`는 원본 bytes의 식별자이며 파생 primitiveCount가 과거 빌드와 항상 같다는 뜻은 아니다.
+원본 bounds·삼각형·alpha/normal/emissive·picking 계약은 유지한다.
+
+공식 마을의 원본 기반 LOD 후보·효과·전투·오디오·경사 이동·checkpoint 비교는
+[실게임 품질 검증](../development/quality/smoke-check.md#실제-마을-성능과-lod-외형)을 따른다.
+후보의 삼각형 감소만으로 FPS 개선을 주장하거나 기본 마을 모델을 교체하지 않는다.
+장치 손실의 명시적 복구는 [WebGPU 수명 계약](public-api/labs.md#webgpu-장치-수명과-복구)을 따른다.

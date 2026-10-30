@@ -2,10 +2,36 @@
 
 이 문서는 릴리스 후보나 큰 변경 후 실행할 smoke check 기준을 고정한다. 자동 검증은 빠른 회귀 확인을 담당하고, WebGL2 실제 렌더링/입력/오디오는 browser smoke와 수동 확인으로 보완한다.
 
+광원 v3 회귀는 기존 `smoke:spatial-webgpu-offscreen`의 environment fixture에 연결한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --environment-only`로 단독 실행할 수 있다.
+각 WebGL2/WebGPU·직교/원근 조합에서 30개 환경 상태를 1280×720/390×844와 DPR 1/2로 검사한다.
+반구광 sky/ground/방향·최종 노멀맵·unlit 불변, point/sun normalBias의 hard/PCF 실제 픽셀 이동과 변경 시 shadow cache 유지,
+추가 shadow pass 없음, v3+actor focus·HDR·DOF 동시 저장/복원과 renderer 픽셀 parity를 assert한다.
+단위 테스트는 legacy 80/112 buffer 보존, invalid v3 원자성, 명시적인 null 입력 거절, native 진행 복원, WebGPU 기존 uniform 할당 재사용·legacy 전환 초기화를 검사한다.
+공식 viewer 조명 smoke는 기존 팝오버의 반구광과 두 표면 보정 입력도 native 값·문서·Undo/Redo·언어·compact 경계로 검증한다.
+`node tests/smoke/placement-village-smoke.mjs --lighting-only`로 HD-2D 조명 조작만 실행하며 반구광 OFF/ON의 색·세기 보존도 확인한다.
+같은 명령의 저장 회귀는 2D/HD-2D 모두에서 초점을 둔 값의 저장·잘못된 입력 차단·재열기를 확인한다. HD-2D는 반구광과 두 normalBias, 꺼진 반구광의 색·방향·밝기 보존도 검사한다. 파일 호스트만 public bridge로 모사하며 작성·렌더·페이지 재로딩은 실제 경로를 실행한다.
+
 로컬 `artifacts/`는 현재 작업의 검토·검증과 설치 복구에 필요한 동안만 보관한다. 종료된 작업의
 결과는 확정 문서에 요약하고 중간 로그·반복 실행·임시 설치 사본은 삭제한다. 문서에 출력 경로가
 있다는 이유로 해당 디렉터리를 영구 보존하지 않는다. 과거 보고서가 필요하면 생성 명령부터 다시
 실행한다. 현재 미커밋 작업의 최종 검증 자료와 실제 복구에 필요한 백업은 작업 정리 전까지 유지한다.
+
+Placement Viewer의 Three.js 참고 고도화 회귀는 `placement-threejs-upgrades-smoke.mjs`에서 검사한다.
+`placement-spatial-workspace` browser mode에 연결되며, 단독 확인은 viewer 빌드 후
+`node tests/smoke/placement-village-smoke.mjs --threejs-only`로 실행한다. 모델 HTTP 실패→원래 bootstrap 재시도,
+촬영 범위 가이드의 authoring 보존, mesh bounds 빈 공간 선택 제외, X축 이동·단일 Undo·회전 취소,
+native 원형 충돌체 진단, EN/KO, 조작부 위 wheel, 2D/HD-2D 전환·반복 Play/Stop의 GPU 할당 plateau와 종료 후 자원 0을 확인한다.
+실시간 게임 카메라만 확인하려면 같은 script의 `--game-camera-live-only`를 사용한다. 수동 편집 구도 보존과 자동 맞춤의 resize 계약을 구분한다.
+`pnpm test:placement-scenes`는 로딩 retry/cancel/교체/영구오류 Close/dispose·Escape 취소를 추가 검증한다.
+취소를 무시하는 decode가 완료되기 전 caller가 해제되고 늦은 실패도 처리되는지 검사한다.
+`pnpm test:placement-camera`는 종횡비/높이/원근·직교 geometry fit과 깊이 범위, 좁힘→넓힘 시 배율 복구,
+표시 행렬의 화면 모서리 near/far 역투영을 검사한다.
+SDK `spatialModelPicking.test.ts`는 삼각형/앞뒤 면/MASK/normal-map stride와 입력 거절,
+native LOD snapshot·camera visibility·generation 전달·owned matrix·구 Wasm fallback을 검증한다.
+`placement-model-picking-smoke.mjs`는 spatial gate에서 DPR 1/2와 직교/원근의 실제 LOD 외형·MASK 구멍,
+런타임 정지 후 새 camera 입력과 기존 표시 화면의 선택 일치를 검사한다. 단독 실행은
+`node tests/smoke/placement-village-smoke.mjs --model-picking-only`다.
 
 ## 제품 Runtime Budget Readiness
 
@@ -791,6 +817,19 @@ pnpm smoke:mobile-input
 
 ## Physics smoke check
 
+`physics:fast-projectile-ccd`에는 compound secondary의 moving/target 접촉, collider별 filter·재질,
+chain의 두 번째 이후 segment를 검증하는 실제 Rust 회귀가 포함된다. Core 전체 테스트는 primary
+sensor/disabled와 solid secondary의 공존, 높이 filter, dynamic target wake와 동일 시각 hit 선택도 검사한다.
+빠른 회전 궤적의 연속 충돌과 대형 씬의 broadphase 성능 개선은 이 통과 결과에 포함하지 않는다.
+
+`physics:hd2d-navigation-combat`는 실제 `move_spatial_body`의 원·캡슐·convex·edge·chain 및 compound
+장애물과 층 gateway 거절, cached query의 collider/segment별 비용 청구도 검사한다.
+`pnpm smoke:placement-village`에는 실제 우물의 원형 collider에 대한 WASD 차단과 12개 native
+장애물/필터 사례가 포함된다. 빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`로
+같은 물리 검증만 실행할 수 있다. Stop 뒤 원본 authoring 문서 보존을 함께 assert한다.
+전용 물리 검사에는 다리의 높이 2→0 전환, 다리 밖 강 차단과 경사로→정원→지면 왕복도 포함한다.
+이는 전체 마을 viewport/camera 픽셀 검사를 대체하지 않는다.
+
 Rust 물리엔진의 대표 solver/CCD/query 회귀를 빠르게 확인하려면 다음을 실행한다.
 
 ```bash
@@ -1098,7 +1137,7 @@ create-game template catalog 계약만 빠르게 확인하려면 `pnpm smoke:cre
 
 의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 `renderPostProcess` 직후 같은 호출 스택에서 픽셀을 읽는다. 별도 RAF 등록 순서에 의존하지 않고 실제 완료된 12프레임만 집계하며, 빈 readback은 이후 완료된 프레임에서 최대 8회까지만 읽은 뒤 계속 비어 있으면 실패한다. 재시도 중 draw call도 최대 예산값에 포함한다. context loss/readback 오류는 별도 원인을 남기고, 빈 화면 실패 메시지에도 runtime/canvas 측정값을 보존한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/placement-viewer.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 렌더 완료 시점/연속 프레임/bounded retry/draw budget/WebGL 오류 진단 회귀 테스트와 report validator를 함께 실행한다. validator는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
 
-Consumer agents 지침 변경은 `pnpm package:check:agents`에서 공통 `.agents/harness/ferrum-game-presentation.md`와 기능 탐색용 `.agents/harness/ferrum-feature-guide.md`의 참조·tarball 포함 여부, 설치 결과의 원본 일치, 설치 전용 파일/루트 디렉터리 allowlist를 확인한다. 기능 안내서는 root 지침과 development/presentation harness에서 연결하며 tarball consumer 설치에서도 내용과 참조를 검사한다. 재설치와 기존 프로젝트 dry-run에서는 사용자 지침·게임 소스·데이터·package 설정을 보존하고, 구형 지침을 건너뛸 때 비교·병합 안내가 나오는지도 검사한다. `package:consumer-smoke`는 tarball로 설치된 공유 기준과 도구별 참조도 검사한다. 게임의 화면 품질은 이 자동 검증과 별도로 공통 기준에 따라 실제 브라우저에서 첫 화면·가독성·이동/카메라·조사/수집·HUD 입력·resize를 검수하고 스크린샷/조작 순서와 미검수 항목을 기록한다. 설치-only 검증 과정에 게임 생성이나 서버 실행을 추가하지 않는다. [#59 지침 변경 및 작은 섬 게임 검수 기록](consumer-game-presentation-review.md)을 참고한다.
+Consumer agents 지침 변경은 `pnpm package:check:agents`에서 공통 `.agents/harness/ferrum-game-presentation.md`와 기능 탐색용 `.agents/harness/ferrum-feature-guide.md`의 참조·tarball 포함 여부, 설치 결과의 원본 일치, 설치 전용 파일/루트 디렉터리 allowlist를 확인한다. 기능 안내서는 root 지침과 development/presentation harness에서 연결하며 tarball consumer 설치에서도 내용과 참조를 검사한다. 재설치와 기존 프로젝트 dry-run에서는 사용자 지침·게임 소스·데이터·package 설정을 보존하고, 구형 지침을 건너뛸 때 비교·병합 안내가 나오는지도 검사한다. `package:consumer-smoke`는 tarball로 설치된 공유 기준과 도구별 참조도 검사한다. 게임의 화면 품질은 이 자동 검증과 별도로 공통 기준에 따라 실제 브라우저에서 첫 화면·가독성·이동/카메라·조사/수집·HUD 입력·resize를 검수하고 스크린샷/조작 순서와 미검수 항목을 기록한다. 설치-only 검증 과정에 게임 생성이나 서버 실행을 추가하지 않는다. [consumer 화면 제작 기준](https://github.com/silbaram/ferrum2d/blob/main/packages/agents/templates/shared/.agents/harness/ferrum-game-presentation.md)을 따른다.
 
 Consumer browser smoke는 설치된 Chrome을 우선 사용하고, 없으면 전체 Chromium의 `channel: "chromium"` headless 모드를 사용한다. 별도 headless shell로 자동 전환하지 않는다. 로컬 브라우저가 없으면 `pnpm exec playwright-core install chromium`으로 전체 Chromium을 설치한다(`--only-shell` 제외). `FERRUM_BROWSER_CHANNEL` 또는 `FERRUM_BROWSER_EXECUTABLE`로 지정할 수도 있다. 두 headless 구현의 차이는 [Playwright 브라우저 문서](https://playwright.dev/docs/browsers#chromium-new-headless-mode)에 설명되어 있다.
 
@@ -1198,6 +1237,36 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 - 실패 원인
 - 사용자 영향
 - 후속 조치 또는 보류 사유
+
+### 에셋 묶음 로딩 수명 회귀
+
+`pnpm smoke:asset-loading`은 실제 public `runtime.engine.loadAssets`와 preload를 로컬 HTTP 서버에서 실행한다.
+CI의 수동 `validate` job과 `smoke:check`에 연결한다. 보고서는 `artifacts/asset-loading/report.json`이다.
+
+- DPR 1/2에서 texture/sound/JSON 네 항목의 공유 동시 요청 상한 2와 완료 진행률을 검사한다.
+- 실제 PNG upload·WAV decode·JSON 해석, Rust Data Scene Playing/2 render commands와 비어 있지 않은 pixel을 검사한다.
+- 네트워크 중 묶음 취소는 대기 작업을 시작하지 않고 audio/texture를 늦게 등록하지 않아야 한다. 같은 ID 재시도도 검증한다.
+- HTTP 500 시 원래 오류 보존·sibling 취소·진행률 중단, preload 취소, engine 단독 종료 시 host 자원 보존을 검사한다.
+- runtime 종료 후 GPU texture 잔여는 0이어야 한다. 지연은 취소 경합 fixture이며 성능 향상 수치로 해석하지 않는다.
+- SDK `assetLoadLifecycle`/`audioManager` 회귀는 cache/body/decode 중단, 같은 사운드 ID 교체, evict/destroy,
+  abort listener의 동일 ID 재진입, 실패 HTTP body 취소·정리 오류 시 원래 진단 보존,
+  ID 순서·병렬 상한·늦은 진행률 차단을 검사한다. shader/물리 알고리즘과 Wasm ABI 변경은 없다.
+
+### 공간 오디오 출력·native binding 회귀
+
+`pnpm smoke:spatial-audio`는 packed public SDK와 실제 OfflineAudioContext/PannerNode로 12개 출력 상태를 DPR 1/2에서 검사한다.
+좌/우 채널 RMS 비율, inverse 거리 1→10의 진폭 0.1배, elevation 포함 거리, cone 반전 0.1배,
+listener 180도 회전·source 이동, SFX mute/stop의 무음, Panner 미지원의 동일 채널 fallback을 요구한다.
+가짜 audio 계산이나 자체 감쇠 공식을 출력 대신 사용하지 않는다.
+동일 페이지의 native 공간 예제는 실제 PNG/Rust 렌더와 물/횃불 WAV 2개를 실행하고 user click으로 context를 unlock한다.
+native 이동/높이·층 변경·source despawn/stale generation·rebind·일반/삭제된 source 포함 저장 복원·physics 비활성 상태와
+카메라 listener·mute/destroy를 검증한다. destroy 후 실제 AudioContext가 closed 상태가 될 때까지 확인한다.
+warm 20 update의 query는 20회 bulk 호출/개체별 호출 0이며 source/gain/panner 생성은 0이다.
+보고서와 예제 캡처는 `artifacts/spatial-audio/run-*/`에 보존하며 CI validate와 smoke:check에 연결한다.
+단위 회귀는 유효 범위/잘못된 입력의 side effect 차단, 노드 할당 실패 정리, voice 상한 64,
+end/evict/destroy, 큰 방향 벡터의 yaw 회전, listener 검증 전 장치 연결 차단,
+누락 개체의 음소거/명시적 지연 연결, rebind 실패 보존과 borrowed pose 형식을 보강한다. Rust 회귀는 row ABI와 순서·높이·yaw·stale handle·
+physics 비활성 transform·65개 조회의 저장 공간 재사용 및 초과 입력 거절을 검사한다.
 
 ### GPU 자원 수명주기 회귀
 
@@ -1621,11 +1690,20 @@ Linux CI validate와 smoke:check에 연결한다. test-only target adapter는 sh
 지원 point/sun 그림자 요구사항과 runtime 초기 문서는 WebGPU를 유지하는지도 별도 검사한다.
 잘못된 packet·typed-view 이동·resource budget과 GPU async upload 실패/rollback/pin/destroy는 웹 단위 회귀로 보강한다.
 환경 fixture는 ambient/4 point/sun·billboard/model normal·unlit·fog·grade·표준/고품질 DOF·actor focus·pixelArt·debug·복합 효과의
-16개 상태를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
+기존 환경/조명 38개와 텍스처 변환 18개를 합한 56개를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
 DOF 13/25 sample 예산과 변화 픽셀, 160×90 HDR 저장량, warm terrain/model upload0, fresh restore 전체 byte 차이0을 assert한다.
 WebGPU warm draw 구간의 실제 createTexture/createBuffer/createBindGroup 호출을 별도로 관측해 모두0인지 검사한다. readback용 buffer 생성은 draw 구간 밖이다.
 비교에는 채널3/상이 pixel1% 미만, 전용 DOF 상태에는 0.1% 미만을 적용한다. DOF 기준은 sample Y 방향 역전을 검출한다.
 캡처는 PNG로 보존하고 raw framebuffer의 수명은 제한한다.
+텍스처 변환 fixture는 실제 Blender 출력(`tests/fixtures/spatial-texture-transform`)의 base/normal/emissive별
+이동·회전·음수 배율을 사용한다. 원본 Blender Mapping 값(Y-up)으로 UV를 정점에 bake하고 glTF UV(Y-down)로 바꾼 reference와 비교한다.
+확장 JSON/엔진 행렬을 기대값에 재사용하지 않아 회전 부호가 양 backend에서 함께 틀린 경우도 검출한다.
+각 map의 identity 대비 변화도 요구하므로 변환을 무시하거나 normal/emissive sampling을 생략하면 실패한다.
+point/sun MASK 그림자도 같은 reference와 채널3/상이 pixel0.1% 미만으로 대조하고, 그림자 해제 대비 차이를 요구한다.
+GLB와 외부 glTF는 frame byte 차이0, CPU raycast는 64개 위치에서 opaque/cutout 모두와 reference 일치를 요구한다.
+지원하지 않는 UV set의 import 실패 후에도 활성 씬의 frame byte 차이0·model upload0을 검사한다.
+SDK 단위 테스트는 malformed/overflow 입력과 null required-extension 목록의 decode 전 거절, UV set override, identity/0 배율,
+서로 다른 UV 재질 batch 보존, clamp/repeat/mirror alpha picking을 검사한다.
 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --environment-only`로 환경 상태만 실행할 수 있다.
 HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의 resize/disable/destroy 경쟁은 단위 회귀로 검사한다.
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
@@ -1661,3 +1739,79 @@ physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 �
 
 공간 debug renderer의 RGBA 선은 alpha 0/0.25/1의 실제 framebuffer 혼합과 비기본 blend factor/equation 복원을 검사한다.
 이 회귀는 기존 packed `smoke:spatial-scene`의 `spatial-debug-browser-fixture.mjs`에 포함한다.
+
+
+### 조명 작성·렌더링 v4 회귀
+
+Bloom 강도 0은 효과를 생략한 장면과 배경 픽셀이 같아야 한다. 객체/지형을 다시 선택하면 광원 도구를 해제하고, 광원 키보드 조작은 좌표·반경 한계에서 멈춰야 한다. 연결된 자식 객체는 상위 attachment의 위치·높이·yaw를 반영한 anchor로 광원을 표시하고 연결 변경 시 월드 위치를 보존한다.
+
+- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 56개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
+  스포트라이트 방향 반전, HDR Bloom, 접촉 음영의 실제 pixel 변화와 HUD 불변, 16개 중 활성 2개 선택,
+  warm GPU 할당/업로드 0, 새 engine 저장 복원, destroy를 검사한다. pixel parity 허용치를 효과 추가 때문에 늘리지 않는다.
+- `pnpm smoke:placement-spatial-workspace`의 lighting 회귀는 분위기 4개, 품질, cone 작성,
+  객체 연결/해제, 광원 드래그와 Undo/Redo, 높이/반경 Esc 취소 및 키보드 조절을 검사한다.
+  focused save와 재열기에서는 v4 효과/연결/반구광/normalBias를 함께 보존한다.
+- 빠른 조명 UI 재현은 `node tests/smoke/placement-village-smoke.mjs --lighting-only`를 사용한다.
+  저장 bridge는 테스트용 public host stub이며 renderer, authoring, native validation과 재열기는 실제 경로다.
+- native/SDK 계약 테스트는 v1..v4 수용, malformed 입력의 원자적 거절, 광원 budget/추적, 원본 capture,
+  scene-wide patch merge/Undo, 기존 shadow work limit을 검사한다.
+
+## 실게임 품질과 복구·맵 작성 회귀
+
+### 실제 마을 성능과 LOD 외형
+
+`pnpm smoke:village-game-quality`는 packed SDK와 공식 마을의 14 GLB/42 model instance, 적 32개,
+실제 PNG·WAV, native AI/발사/VFX와 WASD 경사 이동·checkpoint를 실행한다.
+조명·그림자·후처리 켬/끔 × 원본/Blender LOD 후보 × 2회로 원본/설정·SDK/Wasm hash, GPU adapter, 해상도/DPR,
+CPU/Rust/render/audio/frame interval·지원 GPU timer, draw/triangle/upload와 Wasm/GPU 저장량을 기록한다.
+전투 VFX와 공간 오디오 2개 loop는 두 조건에서 유지하고 실제 입자/음성을 검사한다. 마을 자체는 0층 경사이며 다른 층 전환은 기존 공간 탐색 회귀가 검사한다.
+기존 profiler의 느린 frame window도 함께 보존한다. 정적 모델 warm upload 0, draw≤256,
+Rust<250ms/render<1000ms의 작업 상한, warm 자원 증가 없음과 destroy 뒤 소유 GPU/음성 0을 검사한다.
+Wasm≤128 MiB, GPU buffer≤16 MiB·추정 전체≤64 MiB도 검사한다. 상한은 FPS 보장이 아니다. GPU 표본이 없으면 count 0/값 누락으로 기록하며 0ms로 해석하지 않는다.
+
+보고서/캡처는 `artifacts/village-game-quality/run-*/`다. `scripts/assets/build-village-lod.py`는 Blender에서
+공식 tree/pine의 후보를 생성하며 `tests/fixtures/village-lod/manifest.json`에 원본/출력 hash를 남긴다.
+원본 모델의 외형·피벗·팔레트·그림자를 실제 표시 크기에서 확인하고, FPS 개선이 확인되지 않은 후보를 기본 예제에 넣지 않는다.
+인접 재질 병합은 source geometry를 유지하며 대표 모델의 draw 감소와 양 renderer의 픽셀 동등성을 별도로 검증한다.
+단일 software GPU의 결과를 실제 PC/mobile 성능으로 일반화하지 않는다. 장기 benchmark와 타 기기 검증은 별도 실행이다.
+
+### WebGPU 장치 손실 복구
+
+`pnpm smoke:webgpu-recovery`는 실제 WebGPU device.destroy로 손실을 주입하고 DPR 1/2·두 viewport에서
+새 장치 generation, 같은 renderer 참조, 중복 recovery Promise 공유, sprite·폐기한 URL의 texture·깊이/cutout과
+정적 모델/재질을 복구한다. 다음 씬용 asset handle 16개(같은 hash의 별도 로드 포함)를 preload한 상태에서도 복구하고, 현재 픽셀과 다음 준비 자원이 모두 남아야 한다. 복구 전후 픽셀은 동일해야 한다. shader/buffer/texture는 실제 GPU를 사용한다.
+CI의 offscreen target 검증이며 native canvas presentation·실물 GPU loss를 대체하지 않는다.
+SDK 회귀는 생성 시 이미 손실된 device의 context 선택 차단, 재생성 검증 실패·재시도와 중간 destroy를 보강한다.
+기존 pre-context WebGL2 fallback과 공간 renderer parity도 유지한다. 보고서는 기존 spatial-webgpu `run-*/report.json`의 recoveryCases다.
+
+모델 복구 회귀는 `webgpu.gpuTiming`을 켜고 실제 timestamp 지원 장치에서 RuntimeProfiler의 GPU 표본이 생기는지 검사한다.
+미지원이면 `unsupported`·표본 0이고 시간을 만들어내지 않아야 한다. 손실 시 resource count 0·timer `context-lost`,
+복구 뒤 소유 buffer/texture 재생성과 이전 픽셀 보존도 확인한다. 단위 검사는 최대 4 readback·128 pass,
+out-of-order 완료·결과 한 번 발행·disabled/unsupported/rejected mapping과 mip/layer·미측정 형식·destroy를 검사한다.
+software adapter의 시간은 계측 연결 증거이며 실물 GPU 성능 합격 기준이 아니다.
+추가 negative 회귀는 image-copy 실패를 실제 WebGPU queue에 주입해 이전 texture의 픽셀과 자원 수가 유지되는지 확인한다.
+단위 검사는 image/RGBA·bind-group 실패 allocation rollback, 계측 할당/encoder 예외의 슬롯 반환과
+runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
+
+### Import revision 정리와 진단
+
+`pnpm test:placement-scenes`는 미참조 session revision 정리·예산 회수·persisted/pending 보존과
+해제 실패 시 source/URL 보존·재업로드를 검사한다. SDK 회귀는 source/Undo/Redo/transaction 참조 query를 검사한다.
+`pnpm smoke:aseprite-assets`는 실제 Register 뒤 불필요한 revision의 URL/GPU 회수와 참조 중 두 revision의
+Undo/Redo 픽셀 보존, 누락 frame의 source 파일·frame ID·정확한 씬 pointer를 검증한다.
+등록된 자산을 숫자 texture ID로만 작성한 경우에도 정리 후 자원 수와 실제 표시 픽셀이 유지되는지 검사한다.
+`pnpm smoke:tile-map`도 Tiled/LDtk의 실제 missing frame 진단과 기존 save/reopen 회귀를 함께 검사한다.
+프로젝트 디스크 원본 삭제/GC나 닫힌 모든 프로젝트 씬의 참조 분석을 검증한 것으로 해석하지 않는다.
+Import 진단 단위 검사는 늦은 Problems 초기화를 위한 상태 재조회·snapshot 분리와
+공유 객체/순환·깊이·대량 속성에서 순회 상한 및 `scenePathsTruncated` 표시를 검사한다.
+
+### 전체 타일 맵과 native 저장
+
+`pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에
+Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. 기존 negative upload 검사를 먼저 실행해 캐시로 실패 주입을 건너뛰지 않는다.
+좌표/offset·layer 방향·object mapping·명시적 nonblocking 셀·제외 tileset·lock·provenance 경계를 검사한다.
+2×2→3×2 변경에서 같은 좌표의 ID와 instance binding이 유지되고 단일 Undo/Redo로 돌아오는지 확인한다. SDK 단위 검사는 explicit detach/prefab 상속·미지원 prop 거절·legacy 원본 누락 거절·cell metadata 한계도 검사한다.
+
+`pnpm smoke:tile-project`는 기존 Rust headless transport의 실제 파일 저장·원본/catalog/CAS·protocol·새 세션과 fresh game에
+2D whole-map provenance·재import도 연결한다. 구형 선형 key의 실제 저장 파일과 원본 catalog를 다시 열어 좌표 identity로 이관하고, 너비 변경 뒤 ID·동작 참조·fresh game을 확인한다. 저장 실패/취소 시 원문 보존과 저장 직후 baseline/viewer의 일관성도 검사한다.
+이 결과는 GTK/WebView native GUI나 설치 파일 검증이 아니다. 미지원 형식은 [현재 사용 범위](../../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.

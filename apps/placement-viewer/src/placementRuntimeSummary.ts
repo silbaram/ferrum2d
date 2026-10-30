@@ -8,8 +8,13 @@ import type {
   FerrumRuntime,
   GameplayEventView,
 } from "@ferrum2d/ferrum-web/core";
+import { createPlacementPhysicsSummary } from "./placementPhysicsSummary";
+import type { PhysicsEntitySnapshot, PhysicsBodyColliderSnapshot } from "@ferrum2d/ferrum-web/core";
 
 interface RuntimeSummarySnapshot {
+  physics?: PhysicsEntitySnapshot;
+  colliders?: readonly PhysicsBodyColliderSnapshot[];
+  colliderCount?: number;
   mode: string;
   instanceId: string;
   gameplay: ReturnType<FerrumRuntime["engine"]["gameplayEntityDiagnostics"]>;
@@ -32,7 +37,8 @@ export function createPlacementRuntimeSummary() {
     eventValues = document.createElement("ol");
   variables.append(variableTitle, variableValues);
   events.append(eventTitle, eventValues);
-  element.append(context, values, variables, events);
+  const physics = createPlacementPhysicsSummary();
+  element.append(context, physics.element, values, variables, events);
   function row(list: HTMLElement, label: UiContent, value: unknown) {
     const key = document.createElement("dt"),
       text = document.createElement("dd");
@@ -47,12 +53,15 @@ export function createPlacementRuntimeSummary() {
     variableValues.replaceChildren();
     eventValues.replaceChildren();
     variables.hidden = events.hidden = true;
+    physics.element.hidden = true;
   }
   clear("No runtime entity selected");
   return {
     element,
     clear,
     update(snapshot: RuntimeSummarySnapshot) {
+      physics.element.hidden = false;
+      physics.update(snapshot.physics, snapshot.colliders, snapshot.colliderCount);
       setUiText(
         context,
         uiMessage(

@@ -481,6 +481,8 @@ def make_document():
     model('east_cottage','cottage',105,-120)
     model('clock_tower','tower',-35,165)
     model('village_well','well',-20,25,solid=True)
+    # The stone well base is circular; its canopy remains visual geometry.
+    instances[-1]['props']['components']['collider']={'type':'circle','radius':20.0,'isTrigger':False}
     model('river_bridge','bridge',190,-12,solid=False)
     model('raised_garden','garden',GARDEN['x']+GARDEN['width']/2,GARDEN['y']+GARDEN['depth']/2,solid=False)
     for i,(x,y,s) in enumerate([(-286,172,1),(-267,70,.9),(-300,-25,1),(-290,-180,1.15),(-130,-176,.85),
@@ -537,10 +539,12 @@ def make_document():
           {'id':'garden_ramp',**GARDEN_RAMP,'kind':'ramp','baseElevation':0,'render':False}],
         'models':models,'billboards':billboards,
         'actor':{'instanceId':'village_hero','speed':72,'maxStepHeight':4,'maxDropHeight':4},
-        'environment':{'pixelArt':{'width':384,'height':256,'snapCamera':True},
-          'lighting':{'ambient':[.62,.64,.64],'lights':[],
+        'lightBindings':{'lantern_'+str(i):[i] for i in range(5)},
+        'environment':{'bloom':{'strength':.35,'radius':8,'threshold':1},'ambientOcclusion':{'strength':.5,'radius':16,'bias':.3},'pixelArt':{'width':384,'height':256,'snapCamera':True},
+          'lighting':{'ambient':[.30,.32,.34],'maxActiveLights':4,'lights':[{'position':{'x':0,'y':0,'elevation':36},'radius':95,'color':[1,.62,.24],'intensity':2.8} for _ in range(5)],
+            'hemisphere':{'skyColor':[.68,.8,1],'groundColor':[.4,.28,.16],'intensity':.38},
             'directional':{'direction':{'x':-1,'y':-1,'elevation':2.4},'color':[1,.91,.77],'intensity':.72,
-              'shadows':{'resolution':512,'extent':430,'distance':1400,'bias':.07}},'shadowFilter':'pcf3'},
+              'shadows':{'resolution':512,'extent':430,'distance':1400,'bias':.07,'normalBias':.35}},'shadowFilter':'pcf3'},
           'colorGrading':{'exposure':.1,'contrast':1.04,'saturation':.94,'tint':[1,.98,.93],'toneMapping':'none'}}}}
     (OUT.parents[1]/'placement.village.scene-authoring.json').write_text(json.dumps(doc,indent=2)+'\n',encoding='utf8',newline='\n')
     return doc

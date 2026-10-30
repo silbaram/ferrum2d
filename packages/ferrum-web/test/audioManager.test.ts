@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { equal, ok, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import {
   AUDIO_CHANNEL_BGM,
@@ -364,4 +364,139 @@ test("AudioManager playEventBuffer reads raw audio event buffers", () => {
   });
   manager.destroy();
   equal(true, true);
+});
+
+
+test("AudioManager rejects stale decode results on replace, eviction, abort and destroy", async () => {
+  const previousFetch = globalThis.fetch;
+  const globalWindow = globalThis as unknown as { window?: TestWindow };
+  if (!globalWindow.window) globalWindow.window = {};
+  const previousContext = globalWindow.window.AudioContext;
+  const pending: { finish: (buffer: AudioBuffer) => void }[] = [];
+  let calls = 0;
+  class DelayedAudioContext extends FakeAudioContext {
+    override decodeAudioData = (): Promise<AudioBuffer> => new Promise(resolve => pending.push({ finish: resolve }));
+  }
+  globalWindow.window.AudioContext = DelayedAudioContext as unknown as typeof AudioContext;
+  globalThis.fetch = async () => { calls++; return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response; };
+  const untilDecoding = async (count: number) => {
+    for (let i = 0; i < 100 && pending.length < count; i++) await Promise.resolve();
+    equal(pending.length, count);
+  };
+  try {
+    for (const action of ["replace", "evict", "abort", "destroy"]) {
+      const manager = new AudioManager();
+      const controller = new AbortController();
+      const index = pending.length;
+      const old = manager.loadSound(7, "/old.wav", { signal: controller.signal });
+      const checked = rejects(old, /AbortError/);
+      await untilDecoding(index + 1);
+      if (action === "replace") {
+        const fresh = manager.loadSound(7, "/new.wav");
+        await untilDecoding(index + 2);
+        const freshBuffer = {} as AudioBuffer;
+        pending[index + 1].finish(freshBuffer);
+        equal(await fresh, freshBuffer);
+        pending[index].finish({} as AudioBuffer);
+        await checked;
+        equal(manager.hasSound(7), true);
+        manager.play(7);
+        // Playback must retain the replacement, not the late old buffer.
+        const context = (manager as unknown as { context: FakeAudioContext }).context;
+        equal(context.sources[context.sources.length - 1]?.buffer, freshBuffer);
+      } else {
+        if (action === "evict") equal(manager.evictSound(7), false);
+        if (action === "abort") controller.abort();
+        if (action === "destroy") manager.destroy();
+        pending[index].finish({} as AudioBuffer);
+        await checked;
+        if (action !== "destroy") equal(manager.hasSound(7), false);
+      }
+      manager.destroy();
+    }
+    const manager = new AudioManager();
+    const controller = new AbortController(); controller.abort();
+    const before = calls;
+    await rejects(manager.loadSound(1, "/never.wav", { signal: controller.signal }), /AbortError/);
+    equal(calls, before);
+    manager.destroy();
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalWindow.window.AudioContext = previousContext;
+  }
+});
+
+test("AudioManager eviction aborts an in-flight network request", async () => {
+  const previousFetch = globalThis.fetch;
+  let signal: AbortSignal | null | undefined;
+  globalThis.fetch = async (_url, options) => {
+    signal = options?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+  };
+  const manager = new AudioManager();
+  try {
+    const checked = rejects(manager.loadSound(1, "/slow.wav"), /AbortError/);
+    equal(signal?.aborted, false);
+    manager.evictSound(1);
+    equal(signal?.aborted, true);
+    await checked;
+    equal(manager.hasSound(1), false);
+  } finally { manager.destroy(); globalThis.fetch = previousFetch; }
+});
+
+test("AudioManager keeps a newer same-ID request started by an abort listener", async () => {
+  const previousFetch = globalThis.fetch;
+  const globalWindow = globalThis as unknown as { window?: TestWindow };
+  if (!globalWindow.window) globalWindow.window = {};
+  const previousContext = globalWindow.window.AudioContext;
+  globalWindow.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext;
+  const manager = new AudioManager(), calls: string[] = [];
+  let latest: Promise<AudioBuffer> | undefined;
+  globalThis.fetch = async (url, options) => {
+    calls.push(String(url));
+    if (url === "/first.wav") return new Promise<Response>((_resolve, reject) => {
+      options?.signal?.addEventListener("abort", () => {
+        latest = manager.loadSound(7, "/latest.wav");
+        reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+    });
+    return new Response(new ArrayBuffer(8));
+  };
+  try {
+    const first = rejects(manager.loadSound(7, "/first.wav"), /AbortError/);
+    const middle = rejects(manager.loadSound(7, "/middle.wav"), /AbortError/);
+    await first;
+    await middle;
+    ok(latest);
+    const latestBuffer = await latest;
+    equal(calls.join(), "/first.wav,/latest.wav");
+    manager.play(7);
+    const context = (manager as unknown as { context: FakeAudioContext }).context;
+    equal(context.sources[context.sources.length - 1]?.buffer, latestBuffer);
+  } finally {
+    manager.destroy(); globalThis.fetch = previousFetch; globalWindow.window.AudioContext = previousContext;
+  }
+});
+
+test("AudioManager cancels failed HTTP bodies and preserves the HTTP diagnostic if cleanup fails", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    for (const cleanupFails of [false, true]) {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new Uint8Array([1])); },
+        cancel() { cancelled = true; if (cleanupFails) throw new Error("cleanup failure"); },
+      });
+      globalThis.fetch = async () => new Response(body, { status: 503, statusText: "Unavailable" });
+      const manager = new AudioManager();
+      try {
+        await rejects(manager.loadSound(7, "/unavailable.wav"), /HTTP 503 Unavailable/);
+        equal(cancelled, true);
+        equal(body.locked, false);
+        equal(manager.hasSound(7), false);
+      } finally { manager.destroy(); }
+    }
+  } finally { globalThis.fetch = previousFetch; }
 });

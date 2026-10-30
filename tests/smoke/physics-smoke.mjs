@@ -50,6 +50,11 @@ const scenarios = [
       "physics::tests::rigid_body_ccd::rigid_body_ccd_shape_pairs::rigid_body_step_uses_ccd_for_fast_dynamic_capsule_against_aabb",
       "physics::tests::rigid_body_ccd::rigid_body_ccd_shape_pairs::rigid_body_step_uses_ccd_for_fast_dynamic_oriented_box_against_aabb",
       "physics::tests::rigid_body_ccd::rigid_body_ccd_convex::rigid_body_step_uses_ccd_for_fast_dynamic_convex_polygon_against_aabb",
+      "physics::tests::rigid_body_ccd::rigid_body_ccd_compound::ccd_sweeps_secondary_moving_collider",
+      "physics::tests::rigid_body_ccd::rigid_body_ccd_compound::ccd_sweeps_secondary_target_collider",
+      "physics::tests::rigid_body_ccd::rigid_body_ccd_compound::ccd_respects_secondary_filters_when_primary_filters_reject",
+      "physics::tests::rigid_body_ccd::rigid_body_ccd_compound::ccd_uses_secondary_collider_restitution",
+      "physics::tests::rigid_body_ccd::rigid_body_ccd_compound::ccd_selects_later_chain_segment",
     ],
   },
   {
@@ -82,6 +87,10 @@ const scenarios = [
       "shooter_scene::tests::combat::projectile_arc_updates_bullet_height_span_before_combat",
       "shooter_scene::tests::combat::bullet_tile_collision_requires_overlapping_height_span_when_authored",
       "engine::tests::rendering::render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y",
+      "engine::tests::spatial_physics_obstacles::spatial_actor_sweeps_all_supported_obstacle_shapes",
+      "engine::tests::spatial_physics_obstacles::spatial_actor_sweeps_secondary_shapes_with_their_own_filters",
+      "engine::tests::spatial_physics_obstacles::spatial_cached_queries_charge_each_compound_chain_segment",
+      "engine::tests::spatial_connections::spatial_gateways_reject_circular_and_compound_destination_obstacles",
     ],
   },
   {

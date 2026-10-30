@@ -19,7 +19,7 @@ export function createPlacementSpatialProxy(options: {
   finish(): void;
   change(state: ScenePlacementViewerState): unknown;
   report(error?: unknown): void;
-  debug(enabled: boolean): void;
+  debug(): void;
 }) {
   const element = document.createElement("details");
   element.className = "placement-proxy-panel";
@@ -76,8 +76,25 @@ export function createPlacementSpatialProxy(options: {
   show.type = "checkbox";
   show.dataset.placementProxyOverlay = "true";
   showLabel.append(show, uiText(" Show Proxy Overlay"));
-  show.addEventListener("change", () => options.debug(show.checked));
-  element.append(summary, showLabel, shape, form, apply, remove, hint);
+  const contactToggle = document.createElement("input"), contactLabel = document.createElement("label"),
+    floorToggle = document.createElement("input"), floorLabel = document.createElement("label"),
+    xrayToggle = document.createElement("input"), xrayLabel = document.createElement("label"), legend = document.createElement("p"),
+    overlays = document.createElement("div");
+  overlays.className = "placement-physics-overlays";
+  for (const [input, label, name, caption] of [[contactToggle,contactLabel,"contacts","Contacts"],[floorToggle,floorLabel,"floors","Floor IDs"],[xrayToggle,xrayLabel,"xray","Show Occluded"]] as const) {
+    input.type = "checkbox"; input.dataset.placementPhysicsOverlay = name; label.append(input,uiText(caption));
+    input.addEventListener("change",()=>{ if (input.checked) show.checked = true; refreshDebug(); });
+  }
+  setUiText(legend, "Green: solid · Orange: sensor · Red: contact · Magenta: height");
+  setUiAttribute(xrayLabel, "title", "Occluded collision lines; reference grid is hidden");
+  legend.className = "placement-physics-legend";
+  overlays.append(showLabel,contactLabel,floorLabel,xrayLabel,legend);
+  function refreshDebug() {
+    for (const input of [contactToggle,floorToggle,xrayToggle]) input.disabled = !show.checked;
+    legend.hidden = !show.checked; options.debug();
+  }
+  show.addEventListener("change", refreshDebug);
+  element.append(summary, shape, form, apply, remove, hint);
   let fieldSignature: string | undefined;
   function commit(clear: boolean) {
     try {
@@ -172,9 +189,12 @@ export function createPlacementSpatialProxy(options: {
   remove.addEventListener("click", () => commit(true));
   return {
     element,
-    overlayControl: showLabel,
+    overlayControl: overlays,
     overlay: () => show.checked,
+    debugOptions: () => show.checked ? { colliders: true, heightSpans: true, contacts: contactToggle.checked, floorIds: floorToggle.checked, depthTest: !xrayToggle.checked } : null,
     sync(state: ScenePlacementViewerState) {
+      for (const input of [contactToggle,floorToggle,xrayToggle]) input.disabled = !show.checked;
+      legend.hidden = !show.checked;
       const instance = state.selected,
         model = instance && state.spatial?.models?.[instance.instanceId];
       element.hidden = !model;
@@ -192,6 +212,7 @@ export function createPlacementSpatialProxy(options: {
       }
       const collider = instance.collider;
       const box = collider?.type === "aabb" || collider?.type === "orientedBox" ? collider : undefined;
+      setUiText(hint, collider && !box ? uiMessage("Current collider: {0}. Apply replaces it with a box.", collider.type) : "Explicit dimensions. Visual position stays fixed.");
       const shapeValue = box?.type ?? "aabb";
       const values = {
         width: box ? box.halfWidth * 2 : 16,
