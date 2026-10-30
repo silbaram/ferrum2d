@@ -12,7 +12,20 @@ import {
 } from "@ferrum2d/ferrum-web/authoring";
 import { check, pixels, difference, png } from "/fixture.mjs";
 
-async function probe(canvas, backend, projection) {
+// Distinct valid GLBs for a full next-scene batch; geometry is identical and tiny.
+function recoveryVariant(raw,index){
+  const original=new DataView(raw),length=original.getUint32(12,true);
+  const json=JSON.parse(new TextDecoder().decode(new Uint8Array(raw,20,length)));
+  json.asset.extras={recoveryFixture:index};
+  const encoded=new TextEncoder().encode(JSON.stringify(json)),padded=(encoded.length+3)&~3;
+  const result=new Uint8Array(raw.byteLength-length+padded),view=new DataView(result.buffer);
+  result.set(new Uint8Array(raw,0,12));view.setUint32(8,result.byteLength,true);
+  view.setUint32(12,padded,true);view.setUint32(16,0x4e4f534a,true);
+  result.fill(32,20,20+padded);result.set(encoded,20);result.set(new Uint8Array(raw,20+length),20+padded);
+  return result.buffer;
+}
+
+async function probe(canvas, backend, projection, recover=false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
@@ -252,9 +265,26 @@ async function probe(canvas, backend, projection) {
       difference(restored.data, (await read(reversed)).data) === 0,
       "model depth depends on row order",
     );
+    let recovery;
+    if(recover){
+      const raw=await (await fetch('/rock.glb')).arrayBuffer(),nextAssets=[];
+      for(let i=0;i<16;i++)nextAssets.push(await loadSpatialGlb(recoveryVariant(raw,i===1?0:i),{materialProfile:'diffuse'}));
+      check(new Set(nextAssets.map(a=>a.contentId)).size===15&&nextAssets[0]!==nextAssets[1],'next-scene fixture did not preserve separate same-content handles');
+      await renderer.preloadSpatialModels(nextAssets);
+      const old=renderer.gpuDevice();old.destroy();await old.lost;await Promise.resolve();
+      check(renderer.deviceState().status==='lost','model device loss not observed');
+      await renderer.recoverDevice();
+      renderer.gpuDevice().addEventListener('uncapturederror',e=>errors.push(e.error.message));
+      const recovered=await read(),diff=difference(recovered.data,restored.data,1);
+      check(diff===0,'model/material/texture recovery changed pixels',diff);
+      const lease=renderer.prepareSpatialModels(nextAssets);lease.dispose();
+      check(difference((await read()).data,restored.data,1)===0,'next-scene preparation evicted the current recovered scene');
+      recovery={generation:renderer.deviceState().generation,differentPixels:diff,models:recovered.stats.modelCount,preparedModels:nextAssets.length,preparedContentIds:15,sameHashHandlesRetained:true,currentAndPreparedRetained:true};
+    }
     return {
       backend,
       projection,
+      recovery,
       restored: true,
       reversed: true,
       preloadBytes,
@@ -300,4 +330,9 @@ export async function probeSpatialWebGpuModels() {
     });
   }
   return result;
+}
+
+export async function probeModelRecovery(){
+ const canvas=document.createElement('canvas');document.body.replaceChildren(canvas);
+ const {data,...result}=await probe(canvas,'webgpu','orthographic',true);return result;
 }

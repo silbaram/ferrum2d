@@ -15,6 +15,7 @@ export interface WebGpuTextureResource {
   height: number;
   colorSpace: TextureColorSpace;
   revision: number;
+  source?: Blob;
 }
 
 export interface WebGpuTextureWriteBytes {
@@ -62,10 +63,10 @@ export class WebGpuTextureStore {
     }
     try {
       // Native WebGPU currently uses the ordinary image fallback even when ktx2Url is present.
-      const bitmap = await this.loadImageBitmap(url, options, controller.signal);
+      const {bitmap,blob} = await this.loadImageBitmap(url, options, controller.signal);
       try {
         if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
-        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options));
+        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options), blob);
       } finally { bitmap.close(); }
     } catch (error) {
       if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
@@ -123,6 +124,8 @@ export class WebGpuTextureStore {
     resource.revision = ++this.revision;
   }
 
+  restoreRgbaTexture(id: number, width: number, height: number, data: Uint8Array): GPUTexture { this.assertAlive(); return this.createTextureFromRgbaData(id,width,height,data); }
+
   createPlaceholderTextureForId(textureId: number): void {
     this.createTextureFromRgbaData(textureId, 1, 1, new Uint8Array([255, 255, 255, 255]));
   }
@@ -170,18 +173,19 @@ export class WebGpuTextureStore {
     this.texturesById.clear();
   }
 
-  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<ImageBitmap> {
+  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<{bitmap:ImageBitmap;blob:Blob}> {
     const colorSpace = resolveTextureColorSpace(options);
     const response = await fetch(url, { signal });
     if (!response.ok) {
       throw new Error(`Texture load failed: HTTP ${response.status} ${response.statusText}`.trim());
     }
     const blob = await response.blob();
-    return colorSpace === "srgb" ? await createImageBitmap(blob)
+    const bitmap = colorSpace === "srgb" ? await createImageBitmap(blob)
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
+    return {bitmap,blob};
   }
 
-  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace): GPUTexture {
+  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace, blob: Blob): GPUTexture {
     const texture = this.device.createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
@@ -196,7 +200,8 @@ export class WebGpuTextureStore {
       this.textures.add(texture);
       return texture;
     }
-    this.setTexture(textureId, this.createTextureResource(texture, source.width, source.height, colorSpace));
+    const resource = this.createTextureResource(texture, source.width, source.height, colorSpace);resource.source=blob;
+    this.setTexture(textureId,resource);
     return texture;
   }
 

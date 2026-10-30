@@ -65,6 +65,7 @@ declare global {
   }
 
   interface GPUDevice {
+    readonly lost: Promise<{ readonly reason: string; readonly message: string }>;
     readonly limits: { readonly maxTextureDimension2D: number; readonly maxBufferSize: number };
     readonly queue: GPUQueue;
     pushErrorScope(filter: "validation" | "out-of-memory" | "internal"): void;

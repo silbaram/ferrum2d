@@ -1,480 +1,267 @@
-import { WebGpuSpatialPass } from "./webgpuSpatialPass.js";
 import "./webgpuTypes.js";
-import {
-  addLightingStatsInto,
-  addPhysicsDebugLineStatsInto,
-  addPostProcessStatsInto,
-  emptyRendererStats,
-  resetRendererStatsInto,
-  writeRendererStatsForCommandsInto,
-} from "./renderer.js";
-import type { Renderer, RendererStats } from "./renderer.js";
-import type { PostProcessStackInput } from "./cameraPostProcessing.js";
-import type { LightingScene2D, ResolvedLightingScene2D } from "./lighting.js";
-import {
-  createLightingSceneResolveCache,
-  createResolvedLightingScene,
-  resolveLightingSceneInto,
-} from "./lightingNormalize.js";
-import { resolveSpriteMaterialPreset, spriteMaterialPasses } from "./spriteMaterial.js";
-import { groundShadowProjection } from "./groundShadowProjection.js";
-import type { SpriteMaterialPass, SpriteMaterialPresetInput } from "./spriteMaterial.js";
-import type {
-  PixelMaskTerrain,
-  PixelMaskTerrainAlphaPatch,
-  PixelMaskTerrainTextureUploadOptions,
-} from "./pixelMaskTerrain.js";
-import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
-import type { PhysicsDebugLineCamera } from "./renderer.js";
-import { WebGpuDebugLinePass } from "./webgpuDebugLinePass.js";
-import { WebGpuLightingPass } from "./webgpuLightingPass.js";
-import { WebGpuPostProcessPass, resolveWebGpuPostProcessPasses } from "./webgpuPostProcessPass.js";
-import { WebGpuSpritePass } from "./webgpuSpritePass.js";
-import { WebGpuTextureStore } from "./webgpuTextureStore.js";
-import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement.js";
-import type { ColorManagementMode, TextureLoadOptions } from "./colorManagement.js";
+import { WebGpuRendererBackend, type WebGPURendererOptions } from "./webgpuRendererBackend.js";
+export { WebGpuCanvasCommitError } from "./webgpuRendererBackend.js";
+export type { WebGPURendererOptions } from "./webgpuRendererBackend.js";
+import { emptyRendererStats, type Renderer, type RendererStats, type PhysicsDebugLineCamera } from "./renderer.js";
 import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
-
-export interface WebGPURendererOptions {
-  /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
-  colorManagement?: ColorManagementMode;
-  clearColor?: [number, number, number, number];
-  powerPreference?: GPUPowerPreference;
-  fallbackAdapter?: boolean;
-  lighting?: LightingScene2D | false;
-  spriteMaterial?: SpriteMaterialPresetInput;
-  postProcess?: PostProcessStackInput;
-}
-
-const UNIFORM_BUFFER_BYTES = 32;
-const PLACEHOLDER_TEXTURE_ID = 0;
-
+import type { TextureLoadOptions } from "./colorManagement.js";
+import type { LightingScene2D } from "./lighting.js";
+import type { SpriteMaterialPresetInput } from "./spriteMaterial.js";
+import type { PostProcessStackInput } from "./cameraPostProcessing.js";
+import type { RenderCommandBufferView, PhysicsDebugLineBufferView } from "./wasmBridge.js";
+import type { PixelMaskTerrain, PixelMaskTerrainAlphaPatch, PixelMaskTerrainTextureUploadOptions } from "./pixelMaskTerrain.js";
+import { rgbaFromAlpha } from "./webgpuTextureStore.js";
+/** Stable renderer facade. GPU objects belong to a replaceable backend; simulation stays in Rust. */
 export class WebGPURenderer implements Renderer {
-  readonly supportsSpatialScene = true;
-  private readonly spatialPass: WebGpuSpatialPass;
-  private context?: GPUCanvasContext;
-  private readonly uniformBindGroupLayout: GPUBindGroupLayout;
-  private readonly textureBindGroupLayout: GPUBindGroupLayout;
-  private readonly uniformPipelineLayout: GPUPipelineLayout;
-  private readonly resolutionBuffer: GPUBuffer;
-  private readonly resolutionBindGroup: GPUBindGroup;
-  private readonly spritePass: WebGpuSpritePass;
-  private readonly debugLinePass: WebGpuDebugLinePass;
-  private readonly lightingPass: WebGpuLightingPass;
-  private readonly postProcessPass: WebGpuPostProcessPass;
-  private readonly textureStore: WebGpuTextureStore;
-  private currentStats: RendererStats = emptyRendererStats();
-  private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
-  private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
-  private readonly lightingResolveCache = createLightingSceneResolveCache();
-  private spriteMaterialPasses: readonly SpriteMaterialPass[];
-  private viewportZoom = 1;
-  private groundYScale = 1;
-  private logicalWidth = 0;
-  private logicalHeight = 0;
-  private readonly resolutionStaging = new Float32Array([0, 0, 1, 0, 1, 0, 1, 0]);
-  private destroyed = false;
-
-  private constructor(
-    private readonly canvas: HTMLCanvasElement,
-    private readonly adapter: GPUAdapter,
-    private readonly device: GPUDevice,
-    private readonly format: GPUTextureFormat,
-    private readonly options: WebGPURendererOptions = {},
-  ) {
-    const sampler = this.device.createSampler({
-      magFilter: "nearest",
-      minFilter: "nearest",
-      addressModeU: "clamp-to-edge",
-      addressModeV: "clamp-to-edge",
-    });
-    this.uniformBindGroupLayout = this.createUniformBindGroupLayout();
-    this.textureBindGroupLayout = this.createTextureBindGroupLayout();
-    this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout);
-    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.requireContext().getCurrentTexture(), this.format, options.postProcess);
-    this.uniformPipelineLayout = this.device.createPipelineLayout({
-      bindGroupLayouts: [this.uniformBindGroupLayout],
-    });
-    this.resolutionBuffer = this.device.createBuffer({
-      size: UNIFORM_BUFFER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    this.resolutionBindGroup = this.device.createBindGroup({
-      layout: this.uniformBindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.resolutionBuffer } }],
-    });
-    this.spritePass = new WebGpuSpritePass(
-      this.device,
-      this.format,
-      this.uniformBindGroupLayout,
-      this.textureBindGroupLayout,
-      this.textureStore,
-      this.resolutionBindGroup,
-    );
-    this.debugLinePass = new WebGpuDebugLinePass(
-      this.device,
-      () => this.requireContext().getCurrentTexture(),
-      this.format,
-      this.uniformPipelineLayout,
-      this.resolutionBindGroup,
-    );
-    this.lightingPass = new WebGpuLightingPass(
-      this.device,
-      this.format,
-      this.uniformPipelineLayout,
-      this.resolutionBindGroup,
-    );
-    resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
-    this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
-    this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
-    this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
-  }
-
-  static isSupported(): boolean {
-    return typeof navigator !== "undefined" && navigator.gpu !== undefined;
-  }
-
-  static async create(
-    canvas?: HTMLCanvasElement,
-    options: WebGPURendererOptions = {},
-  ): Promise<WebGPURenderer> {
-    if (resolveColorManagementMode(options.colorManagement) !== "legacy") {
-      throw new Error("WebGPU linear-srgb color management is not supported; use the WebGL2 fallback.");
-    }
-    resolveWebGpuPostProcessPasses(options.postProcess);
-    if (canvas === undefined) {
-      throw new Error("WebGPURenderer.create(...) requires an HTMLCanvasElement.");
-    }
-    if (!WebGPURenderer.isSupported()) {
-      throw new Error("WebGPU is not available in this browser.");
-    }
-
-    const gpu = navigator.gpu;
-    if (gpu === undefined) {
-      throw new Error("WebGPU is not available in this browser.");
-    }
-    const adapter = await gpu.requestAdapter({
-      powerPreference: options.powerPreference,
-      forceFallbackAdapter: options.fallbackAdapter,
-    });
-    if (adapter === null) {
-      throw new Error("WebGPU adapter is not available.");
-    }
-    const device = await adapter.requestDevice();
-    let renderer: WebGPURenderer | undefined, bound = false;
-    try {
-      // Validate/allocate all pipelines before the irreversible canvas context selection.
-      device.pushErrorScope("validation"); device.pushErrorScope("out-of-memory");
-      try {
-        renderer = new WebGPURenderer(canvas, adapter, device, gpu.getPreferredCanvasFormat(), options);
-      } finally {
-        const allocation = await device.popErrorScope(), validation = await device.popErrorScope();
-        if (allocation || validation) throw Error((allocation ?? validation)!.message);
-      }
-      const context = canvas.getContext("webgpu");
-      if (!context) throw Error("WebGPU canvas context is not available.");
-      bound = true; renderer.context = context; renderer.configureContext(); renderer.resize();
-      return renderer;
-    } catch (reason) {
-      renderer?.destroy(); device.destroy();
-      if (bound) throw new WebGpuCanvasCommitError(reason);
-      throw reason;
-    }
-  }
-
-  gpuAdapter(): GPUAdapter {
-    this.assertAlive();
-    return this.adapter;
-  }
-
-  gpuDevice(): GPUDevice {
-    this.assertAlive();
-    return this.device;
-  }
-
-  /** Cold GPU preparation for protected Data Scene authoring activation. */
-  prepareSpatialModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
-    this.assertAlive();
-    return this.spatialPass.prepareModels(assets);
-  }
-
-  /** Await GPU upload/validation before applying a scene with these models. Returns uploaded bytes. */
-  preloadSpatialModels(assets: readonly SpatialModelAsset[]): Promise<number> {
-    this.assertAlive();
-    return this.spatialPass.preloadModels(assets);
-  }
-
-  async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
-  async loadTexture(url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
-  async loadTexture(first: number | string, second?: string | TextureLoadOptions, options?: TextureLoadOptions): Promise<GPUTexture> {
-    this.assertAlive();
-    if (typeof first === "number") {
-      if (typeof second !== "string") {
-        throw new Error("loadTexture(textureId, url) requires a texture URL.");
-      }
-      resolveTextureColorSpace(options);
-      return await this.textureStore.loadTexture(first, second, options);
-    }
-
-    const loadOptions = typeof second === "object" ? second : undefined;
-    resolveTextureColorSpace(loadOptions);
-    return await this.textureStore.load(first, loadOptions);
-  }
-
-  createPixelMaskTerrainTexture(
-    textureId: number,
-    terrain: PixelMaskTerrain,
-    options: PixelMaskTerrainTextureUploadOptions = {},
-  ): GPUTexture {
-    this.assertAlive();
-    return this.textureStore.createPixelMaskTerrainTexture(textureId, terrain, options);
-  }
-
-  updatePixelMaskTerrainTexture(
-    textureId: number,
-    patch: PixelMaskTerrainAlphaPatch,
-    options: PixelMaskTerrainTextureUploadOptions = {},
-  ): void {
-    this.assertAlive();
-    this.textureStore.updatePixelMaskTerrainTexture(textureId, patch, options);
-  }
-
-  evictTexture(textureId: number): boolean {
-    this.assertAlive();
-    return this.textureStore.evictTexture(textureId);
-  }
-
-  viewportSize(): { width: number; height: number } {
-    return {
-      width: this.logicalWidth,
-      height: this.logicalHeight,
+    readonly supportsSpatialScene = true;
+    private status: "ready" | "lost" | "recovering" | "destroyed" = "ready";
+    private loss?: {
+        reason: string;
+        message: string;
     };
-  }
-
-  /** Native WebGPU allocation statistics are not available yet. */
-  resourceStats(): undefined { return undefined; }
-
-  stats(): RendererStats {
-    return { ...this.currentStats };
-  }
-
-  setLighting(scene: LightingScene2D | false | undefined): void {
-    this.assertAlive();
-    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
-    this.lightingSceneStaging = this.lightingScene;
-    this.lightingScene = nextLightingScene;
-  }
-
-  setSpriteMaterial(material: SpriteMaterialPresetInput): void {
-    this.assertAlive();
-    this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(material));
-  }
-
-  setPostProcess(postProcess: PostProcessStackInput): void {
-    this.assertAlive();
-    this.postProcessPass.setPostProcess(postProcess);
-  }
-
-  setGroundYScale(scale: number): void {
-    this.assertAlive();
-    // Rust sends f32 metadata; the encoded lower bound is slightly less than JS 0.01.
-    if (!Number.isFinite(scale) || scale < Math.fround(0.01) || scale > 1) throw new Error("groundYScale must be in [0.01, 1]");
-    this.groundYScale = scale;
-    this.writeResolution();
-  }
-
-  setViewportZoom(zoom: number): void {
-    this.assertAlive();
-    if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
-    this.viewportZoom = zoom;
-    this.resize();
-  }
-
-  resize(): void {
-    this.assertAlive();
-    const dpr = window.devicePixelRatio || 1;
-    this.logicalWidth = this.canvas.clientWidth / this.viewportZoom;
-    this.logicalHeight = this.canvas.clientHeight / this.viewportZoom;
-    const drawingBufferWidth = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
-    const drawingBufferHeight = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
-    if (this.canvas.width !== drawingBufferWidth || this.canvas.height !== drawingBufferHeight) {
-      this.canvas.width = drawingBufferWidth;
-      this.canvas.height = drawingBufferHeight;
-      this.configureContext();
+    private generation = 1;
+    private recovering?: Promise<boolean>;
+    private recoveryAbort?: AbortController;
+    private readonly textures = new Map<number, {
+        source: Blob;
+        options: TextureLoadOptions;
+    } | {
+        width: number;
+        height: number;
+        rgba: Uint8Array;
+    }>();
+    private readonly textureRequests = new Map<number, number>();
+    private requestSerial = 0;
+    private readonly preparedModels = new Set<SpatialModelAsset>();
+    private visibleModels?: ReadonlyMap<number, SpatialModelAsset>;
+    private zoom = 1;
+    private groundScale = 1;
+    private constructor(private readonly canvas: HTMLCanvasElement, private backend: WebGpuRendererBackend, private options: WebGPURendererOptions) { this.watch(backend); }
+    static isSupported(): boolean { return WebGpuRendererBackend.isSupported(); }
+    static async create(canvas?: HTMLCanvasElement, options: WebGPURendererOptions = {}): Promise<WebGPURenderer> {
+        const settings = structuredClone(options);
+        return new WebGPURenderer(canvas!, await WebGpuRendererBackend.create(canvas, settings), settings);
     }
-    this.writeResolution();
-  }
-
-  render(): void {
-    this.assertAlive();
-    resetRendererStatsInto(this.currentStats);
-    const encoder = this.device.createCommandEncoder();
-    const pass = this.beginRenderPass(encoder, "clear");
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-  }
-
-  renderCommands(commands: RenderCommandBufferView): RendererStats {
-    this.assertAlive();
-    if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
-    const projection = groundShadowProjection(commands);
-    const x = projection[0], y = projection[1], length = projection[2];
-    if (this.resolutionStaging[4] !== x || this.resolutionStaging[5] !== y || this.resolutionStaging[6] !== length) {
-      this.resolutionStaging[4] = x; this.resolutionStaging[5] = y; this.resolutionStaging[6] = length;
-      this.writeResolution();
+    deviceState(): {
+        status: "ready" | "lost" | "recovering" | "destroyed";
+        generation: number;
+        reason?: string;
+        message?: string;
+    } {
+        return { status: this.status, generation: this.generation, ...this.loss };
     }
-    if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
-    const encoder = this.device.createCommandEncoder();
-    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
-    const pass = this.beginRenderPass(encoder, "load");
-
-    const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight);
-
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-    if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
-    writeRendererStatsForCommandsInto(
-      this.currentStats,
-      commands,
-      spriteStats.drawCalls,
-      spriteStats.textureSwitchCount,
-    );
-    addLightingStatsInto(
-      this.currentStats,
-      lightingStats.drawCalls,
-      lightingStats.pointLightCount,
-      lightingStats.tileOccluderCount,
-      lightingStats.shadowDrawCalls,
-      lightingStats.shadowCasterCount,
-    );
-    if (spatial) {
-      this.currentStats.spatial = spatial; this.currentStats.drawCalls += spatial.drawCalls; this.currentStats.batchCount += spatial.drawCalls;
-      this.currentStats.spriteCount += spatial.billboardCount; this.currentStats.textureBindCount += spatial.textureBindCount; this.currentStats.textureSwitchCount += spatial.textureSwitchCount;
+    private watch(backend: WebGpuRendererBackend): void {
+        const device = backend.gpuDevice();
+        void device.lost?.then(info => {
+            if (this.status === "destroyed" || backend !== this.backend)
+                return;
+            this.loss = { reason: info.reason, message: info.message };
+            if (this.status === "ready")
+                this.status = "lost";
+            backend.destroy();
+            device.destroy();
+        });
     }
-    return this.stats();
-  }
-
-  renderPhysicsDebugLines(
-    lines: PhysicsDebugLineBufferView,
-    camera: PhysicsDebugLineCamera,
-  ): RendererStats {
-    this.assertAlive();
-    if (lines.lineCount === 0) {
-      return this.stats();
+    /** Explicit, coalesced cold recovery. Failed recovery stays lost and may be retried. */
+    recoverDevice(): Promise<boolean> {
+        this.alive();
+        if (this.recovering)
+            return this.recovering;
+        if (this.status === "ready")
+            return Promise.resolve(true);
+        this.status = "recovering";
+        const abort = this.recoveryAbort = new AbortController();
+        this.recovering = this.restore(abort.signal).finally(() => { this.recovering = undefined; this.recoveryAbort = undefined; });
+        return this.recovering;
     }
-
-    const drawCalls = this.debugLinePass.draw(lines, { ...camera, groundYScale: this.groundYScale }, this.logicalWidth, this.logicalHeight);
-    addPhysicsDebugLineStatsInto(this.currentStats, lines.lineCount, drawCalls);
-    return this.stats();
-  }
-
-  renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
-    this.assertAlive();
-    if (postProcess !== undefined) {
-      this.postProcessPass.setPostProcess(postProcess);
+    private async restore(signal: AbortSignal): Promise<boolean> {
+        let next: WebGpuRendererBackend | undefined;
+        try {
+            next = await WebGpuRendererBackend.create(this.canvas, this.options);
+            signal.throwIfAborted();
+            let lost = false;
+            void next.gpuDevice().lost?.then(() => { lost = true; });
+            next.setViewportZoom(this.zoom);
+            next.setGroundYScale(this.groundScale);
+            const restoredIds: number[] = [];
+            const resourceDevice=next.gpuDevice();
+            resourceDevice.pushErrorScope("validation");resourceDevice.pushErrorScope("out-of-memory");
+            try {
+            for (const [id, entry] of this.textures) {
+                restoredIds.push(id);
+                if ("source" in entry) {
+                    const url = URL.createObjectURL(entry.source);
+                    try {
+                        await next.loadTexture(id, url, { ...entry.options, signal });
+                    }
+                    finally {
+                        URL.revokeObjectURL(url);
+                    }
+                }
+                else
+                    next.restoreRgbaTexture(id, entry.width, entry.height, entry.rgba);
+            }
+            // A live scene and its next prepared scene are separate, legal <=16-asset
+            // batches. Pin the current scene before warming the next one so neither
+            // is pruned, without relaxing the cache's aggregate GPU byte limit.
+            const visible = [...new Set(this.visibleModels?.values() ?? [])];
+            if (visible.length) {
+                await next.preloadSpatialModels(visible);
+                const lease = next.prepareSpatialModels(visible);
+                try { lease.commit(); } finally { lease.dispose(); }
+            }
+            if (this.preparedModels.size)
+                await next.preloadSpatialModels([...this.preparedModels.values()]);
+            await next.gpuDevice().queue.onSubmittedWorkDone();
+            } finally {
+                const allocation=await resourceDevice.popErrorScope(),validation=await resourceDevice.popErrorScope();
+                if(allocation||validation)throw new Error((allocation??validation)!.message);
+            }
+            signal.throwIfAborted();
+            if (lost)
+                throw new Error("Replacement WebGPU device was lost during recovery.");
+            for (const id of restoredIds)
+                if (!this.textures.has(id))
+                    next.evictTexture(id);
+            this.backend = next;
+            this.generation++;
+            this.loss = undefined;
+            this.status = "ready";
+            this.watch(next);
+            return true;
+        }
+        catch (error) {
+            if (next) {
+                const device = next.gpuDevice();
+                next.destroy();
+                device.destroy();
+            }
+            if (this.status !== "destroyed")
+                this.status = "lost";
+            throw error;
+        }
     }
-    const postProcessStats = this.postProcessPass.drawPasses();
-    addPostProcessStatsInto(
-      this.currentStats,
-      postProcessStats.drawCalls,
-      postProcessStats.passCount,
-    );
-    return this.stats();
-  }
-
-  destroy(): void {
-    if (this.destroyed) {
-      return;
+    gpuAdapter(): GPUAdapter { this.ready(); return this.backend.gpuAdapter(); }
+    gpuDevice(): GPUDevice { this.ready(); return this.backend.gpuDevice(); }
+    prepareSpatialModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
+        this.ready();
+        const batch = [...assets];
+        const backend = this.backend, lease = backend.prepareSpatialModels(batch);
+        let done = false;
+        return { uploadBytes: lease.uploadBytes, commit: () => { if (done)
+                return; this.ready(); if (backend !== this.backend)
+                throw new Error("Stale WebGPU preparation."); lease.commit(); this.preparedModels.clear(); for (const a of batch)
+                this.preparedModels.add(a); done = true; }, dispose: () => { if (done)
+                return; done = true; lease.dispose(); } };
     }
-    this.destroyed = true;
-    this.spatialPass.destroy();
-    this.postProcessPass.destroy();
-    this.textureStore.destroy();
-    this.debugLinePass.destroy();
-    this.lightingPass.destroy();
-    this.spritePass.destroy();
-    this.resolutionBuffer.destroy();
-  }
-
-  private requireContext(): GPUCanvasContext {
-    if (!this.context) throw Error("WebGPU canvas has not been committed");
-    return this.context;
-  }
-
-  private configureContext(): void {
-    this.requireContext().configure({
-      device: this.device,
-      format: this.format,
-      alphaMode: "premultiplied",
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-    });
-  }
-
-  private beginRenderPass(
-    encoder: GPUCommandEncoder,
-    loadOp: GPULoadOp,
-  ): GPURenderPassEncoder {
-    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
-    return encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.requireContext().getCurrentTexture().createView(),
-        loadOp,
-        storeOp: "store",
-        clearValue: { r: clear[0], g: clear[1], b: clear[2], a: clear[3] },
-      }],
-    });
-  }
-
-  private createUniformBindGroupLayout(): GPUBindGroupLayout {
-    return this.device.createBindGroupLayout({
-      entries: [{
-        binding: 0,
-        visibility: GPUShaderStage.VERTEX,
-        buffer: { type: "uniform" },
-      }],
-    });
-  }
-
-  private createTextureBindGroupLayout(): GPUBindGroupLayout {
-    return this.device.createBindGroupLayout({
-      entries: [
-        {
-          binding: 0,
-          visibility: GPUShaderStage.FRAGMENT,
-          sampler: { type: "filtering" },
-        },
-        {
-          binding: 1,
-          visibility: GPUShaderStage.FRAGMENT,
-          texture: { sampleType: "float", viewDimension: "2d", multisampled: false },
-        },
-      ],
-    });
-  }
-
-  private writeResolution(): void {
-    this.resolutionStaging[0] = Math.max(this.logicalWidth, 1);
-    this.resolutionStaging[1] = Math.max(this.logicalHeight, 1);
-    this.resolutionStaging[2] = this.groundYScale;
-    this.device.queue.writeBuffer(
-      this.resolutionBuffer,
-      0,
-      this.resolutionStaging,
-    );
-  }
-
-  private assertAlive(): void {
-    if (this.destroyed) {
-      throw new Error("WebGPURenderer has been destroyed.");
+    async preloadSpatialModels(assets: readonly SpatialModelAsset[]): Promise<number> {
+        this.ready();
+        const batch = [...assets];
+        const backend = this.backend, bytes = await backend.preloadSpatialModels(batch);
+        this.ready();
+        if (backend !== this.backend)
+            throw new Error("Stale WebGPU preload.");
+        this.preparedModels.clear();
+        for (const a of batch)
+            this.preparedModels.add(a);
+        return bytes;
     }
-  }
-}
-
-/** Canvas contexts cannot switch API after selection; automatic same-canvas fallback is impossible. */
-export class WebGpuCanvasCommitError extends Error {
-  constructor(readonly cause: unknown) {
-    super("WebGPU canvas initialization failed after binding; another renderer requires a fresh canvas.");
-    this.name = "WebGpuCanvasCommitError";
-  }
+    async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
+    async loadTexture(url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
+    async loadTexture(first: number | string, second?: string | TextureLoadOptions, options: TextureLoadOptions = {}): Promise<GPUTexture> {
+        this.ready();
+        const backend = this.backend, token = ++this.requestSerial;
+        if (typeof first !== "number")
+            return backend.loadTexture(first, typeof second === "object" ? second : undefined);
+        if (typeof second !== "string")
+            throw new Error("loadTexture(textureId, url) requires a texture URL.");
+        this.textureRequests.set(first, token);
+        try {
+            const texture = await backend.loadTexture(first, second, options);
+            this.ready();
+            if (backend !== this.backend || this.textureRequests.get(first) !== token)
+                throw new Error("Stale WebGPU texture load.");
+            const { signal: _, ...settings } = options;
+            this.textures.set(first, { source: backend.textureSource(first), options: structuredClone(settings) });
+            return texture;
+        }
+        finally {
+            if (this.textureRequests.get(first) === token)
+                this.textureRequests.delete(first);
+        }
+    }
+    createPixelMaskTerrainTexture(id: number, terrain: PixelMaskTerrain, options: PixelMaskTerrainTextureUploadOptions = {}): GPUTexture {
+        this.ready();
+        const rgba = rgbaFromAlpha(terrain.width, terrain.height, terrain.data, options), texture = this.backend.createPixelMaskTerrainTexture(id, terrain, options);
+        this.textures.set(id, { width: terrain.width, height: terrain.height, rgba });
+        return texture;
+    }
+    updatePixelMaskTerrainTexture(id: number, patch: PixelMaskTerrainAlphaPatch, options: PixelMaskTerrainTextureUploadOptions = {}): void {
+        this.ready();
+        const entry = this.textures.get(id);
+        if (!entry || "source" in entry)
+            throw new Error("Pixel mask recovery requires a renderer-owned pixel mask texture.");
+        const r = patch.rect;
+        if (![r.x, r.y, r.width, r.height].every(Number.isInteger) || r.x < 0 || r.y < 0 || r.width < 1 || r.height < 1 || r.x + r.width > entry.width || r.y + r.height > entry.height)
+            throw new Error("Invalid pixel mask recovery patch.");
+        const rgba = rgbaFromAlpha(r.width, r.height, patch.alpha, options);
+        this.backend.updatePixelMaskTerrainTexture(id, patch, options);
+        for (let y = 0; y < patch.rect.height; y++)
+            entry.rgba.set(rgba.subarray(y * patch.rect.width * 4, (y + 1) * patch.rect.width * 4), ((patch.rect.y + y) * entry.width + patch.rect.x) * 4);
+    }
+    evictTexture(id: number): boolean {
+        this.alive();
+        if (!Number.isInteger(id) || id < 0)
+            throw new Error("texture_id must be a non-negative integer.");
+        if (id === 0)
+            return false;
+        const existed = this.textures.delete(id);
+        this.textureRequests.delete(id);
+        return this.status === "ready" ? this.backend.evictTexture(id) : existed;
+    }
+    viewportSize(): {
+        width: number;
+        height: number;
+    } { return this.backend.viewportSize(); }
+    resourceStats(): undefined { return undefined; }
+    stats(): RendererStats { return this.status === "ready" ? this.backend.stats() : emptyRendererStats(); }
+    setLighting(scene: LightingScene2D | false | undefined): void { this.ready(); this.backend.setLighting(scene); this.options.lighting = structuredClone(scene); }
+    setSpriteMaterial(material: SpriteMaterialPresetInput): void { this.ready(); this.backend.setSpriteMaterial(material); this.options.spriteMaterial = structuredClone(material); }
+    setPostProcess(post: PostProcessStackInput): void { this.ready(); this.backend.setPostProcess(post); this.options.postProcess = structuredClone(post); }
+    setGroundYScale(scale: number): void { this.ready(); this.backend.setGroundYScale(scale); this.groundScale = scale; }
+    setViewportZoom(zoom: number): void { this.ready(); this.backend.setViewportZoom(zoom); this.zoom = zoom; }
+    resize(): void { this.alive(); if (this.status === "ready")
+        this.backend.resize(); }
+    render(): void { this.alive(); if (this.status === "ready")
+        this.backend.render(); }
+    renderCommands(commands: RenderCommandBufferView): RendererStats {
+        this.alive();
+        if (this.status !== "ready")
+            return emptyRendererStats();
+        const stats = this.backend.renderCommands(commands);
+        this.visibleModels = commands.spatial?.models?.assets;
+        this.preparedModels.clear();
+        return stats;
+    }
+    renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats { this.alive(); return this.status === "ready" ? this.backend.renderPhysicsDebugLines(lines, camera) : emptyRendererStats(); }
+    renderPostProcess(post?: PostProcessStackInput): RendererStats { this.alive(); if (this.status !== "ready")
+        return emptyRendererStats(); const stats = this.backend.renderPostProcess(post); if (post !== undefined)
+        this.options.postProcess = structuredClone(post); return stats; }
+    destroy(): void {
+        if (this.status === "destroyed")
+            return;
+        const device = this.status === "ready" ? this.backend.gpuDevice() : undefined;
+        this.status = "destroyed";
+        this.recoveryAbort?.abort();
+        this.backend.destroy();
+        device?.destroy();
+        this.textures.clear();
+        this.textureRequests.clear();
+        this.preparedModels.clear();
+        this.visibleModels = undefined;
+    }
+    private alive(): void { if (this.status === "destroyed")
+        throw new Error("WebGPURenderer has been destroyed."); }
+    private ready(): void { this.alive(); if (this.status !== "ready")
+        throw new Error(`WebGPU device is ${this.status}; call recoverDevice().`); }
 }

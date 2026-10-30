@@ -26,12 +26,13 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
+const recoveryOnly = process.argv.includes("--recovery-only");
 const shadowsOnly = process.argv.includes("--shadows-only");
 const environmentOnly = process.argv.includes("--environment-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks}from'/fixture.mjs';import{probeSpatialWebGpuModels}from'/models.mjs';window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;</script>`;
+const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
     const path = new URL(req.url, "http://localhost").pathname;
@@ -88,7 +89,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: shadowsOnly
+  mode: recoveryOnly ? "recovery-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -101,6 +102,7 @@ const report = {
   modelCases: [],
   environmentCases: [],
   shadowCases: [],
+  recoveryCases: [],
   fallbackCases: [],
   wasmSha256: createHash("sha256")
     .update(await readFile(resolve(output, "package/pkg/ferrum_core_bg.wasm")))
@@ -147,6 +149,15 @@ try {
         report.activeCase = { viewport, deviceScaleFactor };
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
+        if(recoveryOnly){
+          const recovered=await page.evaluate(()=>window.probeSpatialRecovery());
+          assert.equal(recovered.recovery.status,"ready");assert.equal(recovered.recovery.differentPixels,0);assert.deepEqual(errors,[]);
+          const image=`recovery-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+          await writeFile(resolve(output,image),Buffer.from(recovered.image.split(',')[1],'base64'));recovered.image=image;
+          const models=await page.evaluate(()=>window.probeModelRecovery());assert.equal(models.recovery.differentPixels,0);assert.equal(models.recovery.generation,2);assert.equal(models.recovery.preparedModels,16);assert.equal(models.recovery.preparedContentIds,15);assert.equal(models.recovery.sameHashHandlesRetained,true);assert.equal(models.recovery.currentAndPreparedRetained,true);assert.deepEqual(errors,[]);
+          report.recoveryCases.push({viewport,deviceScaleFactor,...recovered,models});
+          continue;
+        }
         const result =
           fallbackOnly || modelsOnly || environmentOnly || shadowsOnly
             ? []
