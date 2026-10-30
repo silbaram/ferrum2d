@@ -1060,3 +1060,34 @@ function throwsMatching(action: () => void, pattern: RegExp): void {
   }
   throw new Error(`expected function to throw ${pattern}`);
 }
+
+test("asset lifetime queries preserve source, undo, redo and unfinished component edits", () => {
+  const viewer = createScenePlacementViewer({ sceneComposition: scenePlacementComposition(), viewport: { cssWidth: 320, cssHeight: 180 } });
+  const components = (texture: string) => ({ visual: { kind: "sprite" as const, texture, width: 16, height: 16 }, collider: "none" as const, layer: "wall" as const });
+  viewer.updateInstanceComponents("crate_a", components("revision.first"));
+  viewer.updateInstanceComponents("crate_a", components("revision.second"));
+  viewer.undo();
+  equal(viewer.retainsAssetReference("revision.first"), true);
+  equal(viewer.retainsAssetReference("revision.second"), true);
+  viewer.beginEdit("Pending"); viewer.updateInstanceComponents("crate_a", components("revision.pending"));
+  equal(viewer.retainsAssetReference("revision.pending"), true);
+  viewer.cancelEdit(); equal(viewer.retainsAssetReference("revision.pending"), false);
+  equal(viewer.retainsAssetReference("revision.missing"), false);
+});
+
+test("asset retention protects numeric texture aliases in source, undo, redo and active edits", () => {
+  const components = (texture: number) => ({ visual: { kind: "sprite" as const, texture, width: 16, height: 16 }, collider: "none" as const, layer: "wall" as const });
+  const composition = scenePlacementComposition();
+  composition.prefabs.crate.props = { components: components(7) };
+  const viewer = createScenePlacementViewer({ sceneComposition: composition, viewport: { cssWidth: 320, cssHeight: 180 } });
+  equal(viewer.retainsAssetReference("atlas.source", 7), true);
+  equal(viewer.retainsAssetReference("atlas.source", 16), false, "size values are not texture references");
+  equal(viewer.retainsAssetReference("atlas.source", 1), false, "numeric matching must respect complete values");
+  viewer.updateInstanceComponents("crate_a", components(70));
+  viewer.updateInstanceComponents("crate_a", components(71));
+  viewer.undo(); equal(viewer.retainsAssetReference("atlas.redo", 71), true);
+  equal(viewer.retainsAssetReference("atlas.undo", 70), true);
+  viewer.beginEdit("Numeric alias"); viewer.updateInstanceComponents("crate_a", components(72));
+  equal(viewer.retainsAssetReference("atlas.pending", 72), true);
+  viewer.cancelEdit(); equal(viewer.retainsAssetReference("atlas.pending", 72), false);
+});

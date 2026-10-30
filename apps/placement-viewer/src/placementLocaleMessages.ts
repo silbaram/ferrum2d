@@ -1,5 +1,12 @@
 /** App UI only. Scene IDs, paths, input values and diagnostic payloads stay verbatim. */
 export const koreanMessages: Readonly<Record<string, string>> = {
+  "Catalog": "자산 목록",
+  "Clean Unused": "미사용 정리",
+  "Import Diagnostics": "가져오기 진단",
+  "Scene, Undo/Redo, import drafts and saved project assets are preserved.": "씬·실행 취소/다시 실행·가져오기 초안·프로젝트에 저장한 자산은 보존합니다.",
+  "{0} revisions · {1} bytes": "리비전 {0}개 · {1}바이트",
+  "Removed {0} revisions · Freed {1} bytes": "리비전 {0}개 정리 · {1}바이트 확보",
+  "Cleanup failed. {0}": "정리 실패. {0}",
   "Active {0} / Authored {1}": "활성 {0}개 / 작성 {1}개",
   "Atmosphere": "분위기",
   "Atmosphere Preset": "분위기 프리셋",

@@ -1,4 +1,5 @@
 import { setUiText, uiMessage } from "./placementLocale";
+import { readPlacementImportDiagnostics } from "./placementImportDiagnostics";
 import { createPlacementRuntimeSummary } from "./placementRuntimeSummary";
 import {
   mergeScenePlacementPatch,
@@ -101,12 +102,26 @@ export function installPlacementDiagnostics(options: {
   window.addEventListener("ferrum-placement-document-error", (event) => {
     if (event instanceof CustomEvent) report(event.detail);
   });
+  window.addEventListener("ferrum-placement-import-diagnostics", event => {
+    if (!(event instanceof CustomEvent)) return;
+    renderProblems();
+  });
   function renderProblems() {
+    const imported = readPlacementImportDiagnostics();
     setUiText(
       problems.summary,
-      uiMessage("Problems ({0})", diagnostics.length + errors.length),
+      uiMessage("Problems ({0})", diagnostics.length + errors.length + imported.length),
     );
     problems.body.replaceChildren();
+    for (const diagnostic of imported) {
+      const row = document.createElement("pre");
+      row.dataset.placementImportProblem = diagnostic.source.file;
+      row.textContent = diagnostic.source.file + "#" + diagnostic.source.pointer +
+        (diagnostic.source.item ? " · " + diagnostic.source.item : "") + "\n" + diagnostic.message +
+        "\n" + diagnostic.scenePaths.join("\n") +
+        (diagnostic.scenePathsTruncated ? "\n…" : "") + "\n" + diagnostic.hint;
+      problems.body.append(row);
+    }
     for (const diagnostic of diagnostics) {
       const button = document.createElement("button");
       button.type = "button";
@@ -125,9 +140,9 @@ export function installPlacementDiagnostics(options: {
       row.textContent = source + " · " + error;
       problems.body.append(row);
     }
-    if (!diagnostics.length && !errors.length)
+    if (!diagnostics.length && !errors.length && !imported.length)
       setUiText(problems.body, "No problems");
-    options.counts?.(changes.length, diagnostics.length + errors.length);
+    options.counts?.(changes.length, diagnostics.length + errors.length + imported.length);
   }
   function indexSource(document: SceneAuthoringDocumentSpec) {
     paths = new Map();

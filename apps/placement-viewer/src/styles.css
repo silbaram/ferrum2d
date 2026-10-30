@@ -44,6 +44,14 @@ textarea {
 .placement-aseprite-tool output {
   display: block;
 }
+.placement-normal-tool [data-placement-import-diagnostics] pre {
+  max-height: 192px;
+  margin: 4px 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px var(--ff-mono);
+}
 .placement-aseprite-preview {
   width: 160px;
   height: 160px;

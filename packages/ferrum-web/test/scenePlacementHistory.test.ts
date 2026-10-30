@@ -32,3 +32,17 @@ test("placement history rejects ambiguous transactions and rolls back failed edi
   equal(value, 10);
   equal(history.state().undoCount, 1);
 });
+
+test("retained snapshot queries include undo, redo and the active transaction without changing history", () => {
+  let value = "original";
+  const history = new ScenePlacementHistory(() => value, next => { value = next; }, String);
+  history.edit("First", () => { value = "first"; });
+  history.edit("Second", () => { value = "second"; });
+  history.undo();
+  equal(history.someSnapshot(s => s === "original"), true);
+  equal(history.someSnapshot(s => s === "second"), true);
+  history.begin("Pending"); value = "pending";
+  equal(history.someSnapshot(s => s === "pending"), true);
+  equal(history.someSnapshot(s => s === "absent"), false);
+  equal(history.state().redoCount, 1); history.cancel(); equal(value, "first");
+});

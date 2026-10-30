@@ -1,3 +1,5 @@
+import { installPlacementCatalogTools } from "./placementCatalogTools";
+import { createPlacementImportDiagnostic, installPlacementImportDiagnostics } from "./placementImportDiagnostics";
 import { tileMapPlacementPatch } from "./placementTileMap";
 import {
   setUiAttribute,
@@ -50,6 +52,7 @@ interface Draft {
   mapOptions?: string;
   dirty: boolean;
   status: UiContent;
+  importFailure?: ReturnType<typeof createPlacementImportDiagnostic>;
 }
 export function createPlacementTileTool(options: {
   engine: FerrumRuntime["engine"];
@@ -62,6 +65,7 @@ export function createPlacementTileTool(options: {
     canEdit: boolean;
   };
   taken(id: string): boolean;
+  retainsAsset?(id: string): boolean;
   assets?: ReturnType<typeof createPlacementTileAssets>;
   projectHost?(): PlacementTileProjectHost | undefined;
   saveScene?(): Promise<void>;
@@ -175,6 +179,14 @@ export function createPlacementTileTool(options: {
     previewSerial = 0,
     commitInFlight: Promise<void> | undefined;
   const draft = () => drafts.get(key)!;
+  const catalog = installPlacementCatalogTools({
+    root: body, store: assets,
+    canEdit: () => !disposed && !busy && options.context().canEdit,
+    retains: id => (options.retainsAsset?.(id) ?? true) || [...drafts.values()].some(d => d.candidate?.id === id),
+    changed: options.changed,
+  });
+  const importDiagnostics = installPlacementImportDiagnostics(body, "tile");
+
   const registered = () =>
     assets.entries().filter((a) => canUsePlacementAsset(a, key, options.context().project) && a.uploaded);
   const plan = (next: PlacementTileAsset, selected: boolean) =>
@@ -241,6 +253,8 @@ export function createPlacementTileTool(options: {
         ? "Save original tile sources and scene"
         : "Open the project in the desktop host to save tile sources",
     );
+    catalog.sync();
+    let reimportCause: unknown;
     let applyError = "Inspect an atlas",
       reimportError = applyError;
     if (valid) {
@@ -255,8 +269,13 @@ export function createPlacementTileTool(options: {
         reimportError = "";
       } catch (error) {
         reimportError = error instanceof Error ? error.message : String(error);
+        reimportCause = error;
       }
     }
+    importDiagnostics.update(reimportCause && d.candidate ? [createPlacementImportDiagnostic(reimportCause, {
+      document: key, scene: context.document, sourceFile: d.candidate.jsonName,
+      assetId: registered().find(a => a.name === d.candidate!.name && a.id !== d.candidate!.id)?.id,
+    })] : d.importFailure ? [d.importFailure] : []);
     apply.disabled = busy || !valid || !context.canEdit || !!applyError;
     reimport.disabled = busy || !valid || !context.canEdit || !!reimportError;
     setUiAttribute(
@@ -504,7 +523,8 @@ export function createPlacementTileTool(options: {
     controller = new AbortController();
     const signal = controller.signal;
     busy = true;
-    d.status = uiMessage("Inspecting tile source…");
+    d.importFailure = undefined;
+        d.status = uiMessage("Inspecting tile source…");
     render();
     try {
       await commitInFlight?.catch(() => {});
@@ -530,11 +550,13 @@ export function createPlacementTileTool(options: {
       if (old && old !== candidate && !old.uploaded) assets.discard(old);
       options.changed();
     } catch (error) {
-      if (alive(token))
+      if (alive(token)) {
+        d.importFailure = createPlacementImportDiagnostic(error, { document: key, sourceFile: d.json?.name ?? "", scene: options.context().document, assetId: d.candidate?.id });
         d.status = uiMessage(
           "Inspect failed. {0}",
           error instanceof Error ? error.message : String(error),
         );
+      }
     } finally {
       if (alive(token)) {
         busy = false;
@@ -763,6 +785,7 @@ export function createPlacementTileTool(options: {
     if (disposed) return;
     stop();
     disposed = true;
+    importDiagnostics.clear();
     previewSerial++;
     assets.destroy();
     drafts.clear();

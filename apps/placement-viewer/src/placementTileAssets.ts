@@ -386,7 +386,9 @@ export function tileComponentPatch(
           `ambiguous or unknown frame on ${instance.id}; apply a frame explicitly`,
         );
       frame = next.frames.find((f) => f.id === matches[0].id);
-      if (!frame) fail(`missing frame ${matches[0].id} used by ${instance.id}`);
+      if (!frame) throw Object.assign(new Error("Tile import: missing frame " + matches[0].id + " used by " + instance.id), {
+          importSource: { file: next.jsonName, pointer: next.kind === "tiled" ? "/tilesets" : `/levels/${next.levelIndex}/layerInstances`, item: matches[0].id }, assetId: old!.id,
+        });
     }
     if (!frame) fail("choose an imported frame");
     operations.push({

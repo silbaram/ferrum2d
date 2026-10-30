@@ -28,6 +28,7 @@ export function createPlacementSpriteRevisions<
   const entries = new Map<string, T>();
   const pending = new Map<string, Promise<void>>();
   let disposed = false;
+  let collecting = false;
   function release(asset: T, expectedUrl?: string, finishAttempt = false) {
     // close() can revoke the URL before an async loader allocates its texture.
     // An upload attempt still owns this name until its pending promise settles.
@@ -54,6 +55,7 @@ export function createPlacementSpriteRevisions<
     entries: () => [...entries.values()],
     adopt(asset: T) {
       if (disposed) error("Import store closed");
+      if (collecting) error("Import cleanup is in progress");
       const old =
         entries.get(asset.id) ??
         [...entries.values()].find((entry) => equivalent(entry, asset));
@@ -65,7 +67,7 @@ export function createPlacementSpriteRevisions<
         [...entries.values()].reduce((sum, a) => sum + a.bytes, asset.bytes) >
           limits.bytes
       )
-        error("Import budget reached. Close a document to release assets.");
+        error("Import budget reached. Clean unused revisions or close a document.");
       entries.set(asset.id, asset);
       return asset;
     },
@@ -73,7 +75,7 @@ export function createPlacementSpriteRevisions<
       while (pending.has(asset.id))
         await pending.get(asset.id)!.catch(() => {});
       signal.throwIfAborted();
-      if (disposed || entries.get(asset.id) !== asset)
+      if (disposed || collecting || entries.get(asset.id) !== asset)
         error("Import revision closed");
       if (asset.uploaded) return asset.url!;
       if (taken(asset.id))
@@ -106,6 +108,46 @@ export function createPlacementSpriteRevisions<
       return uploadUrl;
     },
     release,
+    /** Explicit session cleanup. Durable revisions require project-wide reference evidence. */
+    async collectUnused(retained: ReadonlySet<string>) {
+      if (disposed) error("Import store closed");
+      if (collecting) error("Import cleanup is in progress");
+      const candidates = [...entries.values()].filter(a => !a.persisted && !retained.has(a.id) && !pending.has(a.id));
+      const uploaded = candidates.filter(a => a.uploaded && a.url);
+      collecting = true;
+      try {
+        if (uploaded.length) {
+          const textures = uploaded.map(a => ({ kind: "texture" as const, name: a.id, url: a.url! }));
+          try {
+            engine.releaseAssets({ entries: textures, textures, sounds: [], json: [], total: textures.length });
+          } catch (cause) {
+            // A platform release can fail after releasing an earlier texture. Keep
+            // source bytes/URLs and reconstruct all affected renderer resources.
+            for (const a of uploaded) {
+              if (disposed || entries.get(a.id) !== a || !a.url) continue;
+              const url = a.url;
+              try {
+                await engine.loadAssets({ textures: { [a.id]: url }, textureOptions: { [a.id]: { colorSpace: "srgb" } } });
+                if (disposed || entries.get(a.id) !== a) {
+                  const textures = [{ kind: "texture" as const, name: a.id, url }];
+                  engine.releaseAssets({ entries: textures, textures, sounds: [], json: [], total: 1 });
+                }
+              } catch {
+                // Preserve source bytes for a retry without retaining a dead URL.
+                URL.revokeObjectURL(url);
+                if (a.url === url) { a.url = undefined; a.uploaded = false; }
+              }
+            }
+            throw cause;
+          }
+        }
+        for (const a of candidates) {
+          if (a.url) URL.revokeObjectURL(a.url);
+          a.url = undefined; a.uploaded = false; entries.delete(a.id);
+        }
+        return { removed: candidates.length, bytes: candidates.reduce((sum, a) => sum + a.bytes, 0) };
+      } finally { collecting = false; }
+    },
     discard(asset: T) {
       if (entries.get(asset.id) !== asset) return;
       release(asset);

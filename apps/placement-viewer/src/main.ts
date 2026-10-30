@@ -923,6 +923,7 @@ async function bootstrap(): Promise<void> {
     // Stable input bindings delegate cold authoring calls to the active document.
     const viewer: ScenePlacementViewer = {
       historyState: () => currentViewer.historyState(),
+      retainsAssetReference: (id, textureId) => currentViewer.retainsAssetReference(id, textureId),
       beginEdit: (label) => currentViewer.beginEdit(label),
       commitEdit: () => currentViewer.commitEdit(),
       cancelEdit: () => currentViewer.cancelEdit(),
@@ -1869,6 +1870,13 @@ async function bootstrap(): Promise<void> {
         !spatialWorkspace?.ownsGesture() &&
         viewer.historyState().transactionLabel === undefined,
     });
+    const retainsImportedAsset = (id: string) => {
+      let textureId: number | undefined;
+      try { textureId = runtimeEngine.textureId(id); }
+      catch { /* Staged revisions may not yet have a runtime texture alias. */ }
+      return [...documents.values()].some(entry =>
+        entry.viewer.retainsAssetReference(id, textureId) || JSON.stringify(entry.document).includes(JSON.stringify(id)));
+    };
     tileTool = createPlacementTileTool({
       engine: runtimeEngine,
       assets: tileAssets,
@@ -1892,6 +1900,7 @@ async function bootstrap(): Promise<void> {
       },
       viewer,
       context: importedAssetContext,
+      retainsAsset: retainsImportedAsset,
       taken: (id) =>
         previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (asepriteAssets?.entries().some((a) => a.id === id) ?? false) ||
@@ -1904,6 +1913,7 @@ async function bootstrap(): Promise<void> {
       engine: runtimeEngine,
       viewer,
       context: importedAssetContext,
+      retainsAsset: retainsImportedAsset,
       taken: (id) =>
         previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (normalTool?.browserEntries().some((a) => a.id === id) ?? false) ||

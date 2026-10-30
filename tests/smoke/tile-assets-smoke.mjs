@@ -313,6 +313,10 @@ export async function smokeTileAssets({
       await action("reimport").getAttribute("title"),
       /missing frame/,
     );
+    const importReport = JSON.parse(await tool.locator('[data-placement-import-diagnostics="tile"] pre').textContent())[0];
+    assert.equal(importReport.source.file, kind + ".json");
+    assert(importReport.scenePaths.some(path => path.endsWith("/visual/texture")));
+    assert(importReport.source.item);
     assert.deepEqual(
       (await snapshot()).state.draftPatch,
       changed.state.draftPatch,

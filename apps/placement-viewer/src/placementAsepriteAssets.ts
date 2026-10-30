@@ -337,7 +337,9 @@ export function asepriteComponentPatch(
         );
       frame = next.frames.find((f) => f.id === matches[0].id);
       if (!frame)
-        error("Missing frame " + matches[0].id + " used by " + instance.id);
+        throw Object.assign(new Error("Missing frame " + matches[0].id + " used by " + instance.id), {
+          importSource: { file: next.jsonName, pointer: "/frames", item: matches[0].id }, assetId: old!.id,
+        });
     }
     if (target && !frame) error("Choose an imported frame");
     const changed = {

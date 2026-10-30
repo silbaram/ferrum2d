@@ -38,6 +38,13 @@ export class ScenePlacementHistory<T> {
     };
   }
 
+  /** Cold resource lifetime query, including redo and an unfinished transaction. */
+  someSnapshot(predicate: (snapshot: T) => boolean): boolean {
+    return predicate(this.capture()) ||
+      (this.transaction !== undefined && predicate(this.transaction.before)) ||
+      this.entries.some(entry => predicate(entry.before) || predicate(entry.after));
+  }
+
   edit<R>(label: string, action: () => R): R {
     const before = this.capture();
     if (this.transaction) {
