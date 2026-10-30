@@ -13,6 +13,48 @@
   --ff-mono: "JetBrains Mono", "Ferrum Korean UI", ui-monospace,
     "SFMono-Regular", Menlo, monospace;
 }
+.placement-pixel-launcher { display: grid; gap: 8px; padding: 8px; border: 1px solid var(--border); background: var(--bg-1); }
+.placement-pixel-launcher h3, .placement-pixel-launcher p { margin: 0; }
+.placement-pixel-launcher p, .placement-pixel-launcher output { font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+.placement-pixel-workspace {
+  position: absolute; inset: 0; z-index: 30; min-width: 0; min-height: 0;
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--bg-0); color: var(--fg-1); overflow: hidden;
+}
+.placement-pixel-workspace[hidden] { display: none; }
+.demo-stage[data-pixel-editor=true] > :not(.placement-pixel-workspace) { visibility: hidden; pointer-events: none; }
+.placement-pixel-header, .placement-pixel-actions, .placement-pixel-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 4px; }
+.placement-pixel-header { justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--border); }
+.placement-pixel-header output { color: var(--fg-3); font: 11px var(--ff-mono); }
+.placement-pixel-body { display: grid; grid-template-columns: 128px minmax(0, 1fr); min-height: 0; }
+.placement-pixel-tools { display: flex; flex-direction: column; gap: 4px; padding: 8px; overflow: auto; border-right: 1px solid var(--border); }
+.placement-pixel-tools button { text-align: left; }
+.placement-pixel-tools button[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.placement-pixel-tools label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.placement-pixel-tools input[type=number] { width: 100%; box-sizing: border-box; min-width: 0; }
+.placement-pixel-tools input[type=color] { width: 100%; min-height: 28px; box-sizing: border-box; }
+.placement-pixel-palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px; }
+.placement-pixel-palette button { min-width: 0; width: 20px; height: 20px; padding: 0; border: 1px solid var(--border-strong); }
+.placement-pixel-area { min-height: 0; min-width: 0; overflow: hidden; background: var(--viewport-bg); }
+.placement-pixel-canvas { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; touch-action: none; cursor: crosshair; }
+.placement-pixel-footer { border-top: 1px solid var(--border); background: var(--bg-1); }
+.placement-pixel-footer output { flex: 1; min-width: 120px; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+.placement-pixel-dialog { width: 320px; max-width: calc(100vw - 32px); padding: 16px; background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: var(--radius-2); }
+.placement-pixel-dialog::backdrop { background: rgb(0 0 0 / 50%); }
+.placement-pixel-dialog form { display: grid; gap: 8px; }
+.placement-pixel-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.placement-pixel-dialog input { width: 160px; min-width: 0; }
+.placement-pixel-dialog output { color: var(--fg-3); overflow-wrap: anywhere; }
+.placement-pixel-dialog > button { margin: 4px; }
+.placement-pixel-export-menu { position: relative; }
+.placement-pixel-export-menu summary { padding: 4px 8px; border: 1px solid var(--border-strong); cursor: pointer; }
+.placement-pixel-export-menu[open] { z-index: 1; }
+.placement-pixel-export-menu > div { position: absolute; top: 100%; left: 0; min-width: 160px; padding: 4px; border: 1px solid var(--border-strong); background: var(--bg-1); }
+.placement-pixel-export-menu > div > button { display: block; width: 100%; text-align: left; }
+@media (max-width: 720px) {
+  .placement-pixel-body { grid-template-columns: 104px minmax(0, 1fr); }
+  .placement-pixel-tools { padding: 4px; }
+}
 .placement-updates { background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: 4px; padding: 16px; width: 560px; max-width: calc(100vw - 24px); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; font: 13px var(--ff-ui); }
 .placement-updates::backdrop { background: rgb(0 0 0 / 50%); }
 .placement-updates h2 { margin: 0 0 12px; font-size: 16px; }

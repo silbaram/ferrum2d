@@ -40,6 +40,7 @@ import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementAssetLoading } from "./placementAssetLoading";
+import { createPlacementPixelTool, PIXEL_TAB } from "./placementPixelTool";
 import { createPlacementPerformance } from "./placementPerformance";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
 import { createPlacementSceneExplorer } from "./placementSceneExplorer";
@@ -659,6 +660,7 @@ async function bootstrap(): Promise<void> {
       | ReturnType<typeof createPlacementAsepriteAssets>
       | undefined;
     let tileTool: ReturnType<typeof createPlacementTileTool> | undefined;
+    let pixelTool: ReturnType<typeof createPlacementPixelTool> | undefined;
     let assetBatchEditing = false;
     let previewAssetProvider = createPlacementPreviewAssetProvider();
     let previewAssetSignature = placementPreviewAssetSignature();
@@ -666,6 +668,7 @@ async function bootstrap(): Promise<void> {
       generatedSignature = "";
     const currentAssetProvider = (): ScenePlacementAssetProvider => {
       const imported = [
+        ...(pixelTool?.providerAssets() ?? []),
         ...(asepriteTool?.providerAssets() ??
           asepriteAssets
             ?.entries()
@@ -760,7 +763,7 @@ async function bootstrap(): Promise<void> {
       inputTransform: (snapshot) => {
         const input = shell.inputTransform(snapshot);
         const mode = spatialWorkspace?.mode() ?? "2d";
-        return (mode === "2d" && viewportNavigation?.isNavigating()) ||
+        return pixelTool?.isOpen() || (mode === "2d" && viewportNavigation?.isNavigating()) ||
           mode === "spatial"
           ? {
               ...input,
@@ -769,6 +772,7 @@ async function bootstrap(): Promise<void> {
               s: false,
               d: false,
               space: false,
+              enter: false,
               mouseLeft: false,
             }
           : input;
@@ -1023,8 +1027,11 @@ async function bootstrap(): Promise<void> {
           label: entry.source.split(/[\\/]/u).pop() ?? entry.source,
           source: entry.source,
           dirty: entry.dirty,
+          closable: documents.size > 1,
         }));
-      tabs?.setState(entries, activeDocument.key);
+      const pixelTab = pixelTool?.tab();
+      tabs?.setState(pixelTab ? [...entries, pixelTab] : entries,
+        pixelTool?.isOpen() ? PIXEL_TAB : activeDocument.key);
       const dock = inspector.element.querySelector<HTMLElement>(".placement-scene-dock");
       if (dock) sceneExplorer?.sync(entries, activeDocument.key, dock);
     };
@@ -1115,6 +1122,9 @@ async function bootstrap(): Promise<void> {
       transformGizmo?.sync(state);
       const assetMount = inspector.assetMount;
       bottomDock.mountAssets(assetMount);
+      if (pixelTool && assetMount && pixelTool.element.parentElement !== assetMount)
+        assetMount.prepend(pixelTool.element);
+      pixelTool?.sync();
       if (
         assetBrowser &&
         assetMount &&
@@ -1279,6 +1289,9 @@ async function bootstrap(): Promise<void> {
           return undefined;
         }
         if (
+          pixelTool?.blocksSave(
+            mergeScenePlacementPatch(savedDocument, patch).document,
+          ) ||
           normalTool?.blocksSave(
             mergeScenePlacementPatch(savedDocument, patch).document,
           ) ||
@@ -1290,7 +1303,9 @@ async function bootstrap(): Promise<void> {
           )
         ) {
           const error = new Error(
-            tileTool?.blocksSave(
+            pixelTool?.blocksSave(mergeScenePlacementPatch(savedDocument, patch).document)
+              ? "Export pixel assets and install their PNGs and manifest before saving the scene."
+              : tileTool?.blocksSave(
               mergeScenePlacementPatch(savedDocument, patch).document,
             )
               ? "Save tile sources with Import Tile Frames → Save Project first, or Export Assets for project installation."
@@ -1486,12 +1501,12 @@ async function bootstrap(): Promise<void> {
       viewer,
       onChange: setState,
       hasUnsavedChanges: () =>
-        [...documents.values()].some(
+        pixelTool?.dirty() || [...documents.values()].some(
           (entry) => entry.viewer.exportPatch() !== undefined,
         ),
-      canEdit: () => spatialWorkspace?.mode() !== "game",
+      canEdit: () => !pixelTool?.isOpen() && spatialWorkspace?.mode() !== "game",
       canSave: () => activeDocument.saveEnabled,
-      hasExternalGesture: () => (spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()) ?? false,
+      hasExternalGesture: () => !!pixelTool?.isOpen() || (spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture()) === true,
       isNavigationGesture: (event) =>
         (spatialWorkspace?.mode() !== undefined &&
           spatialWorkspace.mode() !== "2d") ||
@@ -1782,6 +1797,9 @@ async function bootstrap(): Promise<void> {
         if (asset.thumbnail)
           void normalTool?.openAsset(asset.id, asset.thumbnail);
       },
+      editPixels: asset => {
+        if (asset.thumbnail) pixelTool?.openAsset(asset.label, asset.thumbnail);
+      },
     });
     function currentNormalHost(): PlacementNormalAssetHost | undefined {
       return (
@@ -1960,6 +1978,18 @@ async function bootstrap(): Promise<void> {
               "Assets saved, but scene save was not completed. Resolve the scene diagnostics and save again.",
           );
       },
+    });
+    pixelTool = createPlacementPixelTool({
+      engine: runtimeEngine, viewer, stage: shell.stage, context: importedAssetContext,
+      taken: id => previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (asepriteAssets?.entries().some(asset => asset.id === id) ?? false) ||
+        (tileTool?.has(id) ?? false) ||
+        (normalTool?.browserEntries().some(asset => asset.id === id) ?? false),
+      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id,
+      apply: applyAssetPatch,
+      changed: () => setState(viewer.state()),
+      tabsChanged: () => { syncTabs(); documentSession?.sync(); },
+      beforeOpen: () => { documentSession?.finishEdit(); cancelPlacementTool(); },
     });
     const assetRevisions = (
       images: readonly ScenePlacementAgentHandoffAssetFile[],
@@ -2169,12 +2199,15 @@ async function bootstrap(): Promise<void> {
     tabs = createPlacementDocumentTabs({
       activate: (key) => {
         try {
+          if (key === PIXEL_TAB) { pixelTool?.activate(); return; }
+          pixelTool?.suspend();
           activateDocument(key);
         } catch (error) {
           tabs?.report(error);
         }
       },
       close: (key) => {
+        if (key === PIXEL_TAB) { void pixelTool?.close(); return; }
         if (switching || documentSession?.isSaving() || documents.size === 1)
           return;
         const entry = documents.get(key);
@@ -2206,6 +2239,7 @@ async function bootstrap(): Promise<void> {
         normalTool?.close(key);
         asepriteTool?.close(key);
         tileTool?.close(key);
+        pixelTool?.closeScene(key);
         normalProjectAssets?.close(key);
         entry.lifetime.abort();
         entry.inspector.element.remove();
@@ -2389,6 +2423,9 @@ async function bootstrap(): Promise<void> {
       invoke: placementDesktopInvoke,
       projectPath: () => (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.projectPath,
       guard() {
+        if (pixelTool?.isBusy() || pixelTool?.ownsGesture())
+          throw new Error("Finish the pixel edit before updating");
+        if (pixelTool?.dirty()) throw new Error("Export pixel changes before updating");
         if (switching || documentSession?.isSaving() || documentSession?.isFinishingPointerEdit() || runtimeAssetReloadInFlight || spatialWorkspace?.ownsGesture() || viewer.historyState().transactionLabel !== undefined)
           throw new Error("Finish the current edit or save before updating");
         if (spatialWorkspace?.mode() === "game") throw new Error("Stop the running scene before updating");
@@ -2642,6 +2679,7 @@ async function bootstrap(): Promise<void> {
         desktop?.enabled ? desktop.projectPath : undefined,
       );
       tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
+      pixelTool?.assertDocumentAssets(value, key);
       normalProjectAssets?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,

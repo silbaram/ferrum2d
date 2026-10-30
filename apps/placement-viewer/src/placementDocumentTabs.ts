@@ -4,6 +4,8 @@ export interface PlacementDocumentTab {
   label: string;
   source: string;
   dirty: boolean;
+  controls?: string;
+  closable?: boolean;
 }
 
 /** Tab chrome only; document ownership and runtime activation live in the host. */
@@ -92,7 +94,7 @@ export function createPlacementDocumentTabs(options: {
           button.type = "button";
           button.setAttribute("role", "tab");
           button.setAttribute("aria-selected", String(document.key === active));
-          button.setAttribute("aria-controls", "placement-viewport");
+          button.setAttribute("aria-controls", document.controls ?? "placement-viewport");
           button.tabIndex = document.key === active ? 0 : -1;
           button.dataset.placementDocumentKey = document.key;
           button.textContent = `${document.label}${document.dirty ? " •" : ""}`;
@@ -111,7 +113,8 @@ export function createPlacementDocumentTabs(options: {
           );
           close.dataset.placementCloseDocument = document.key;
           close.tabIndex = -1;
-          close.disabled = documents.length === 1;
+          close.disabled = document.closable === false ||
+            (document.closable === undefined && documents.length === 1);
           close.addEventListener("click", () => options.close(document.key));
           item.append(button, close);
           return item;
