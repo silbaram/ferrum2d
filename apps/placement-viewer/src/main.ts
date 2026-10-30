@@ -727,6 +727,7 @@ async function bootstrap(): Promise<void> {
     const appChrome = createPlacementAppChrome(shell, chromeOptions);
     const interaction = createPlacementInteractionState();
     let savedDocument = document;
+    let acknowledgedDocument: SceneAuthoringDocumentSpec | undefined;
     const saveAdapter: ScenePlacementSaveAdapter = {
       id: "placement-viewer-memory",
       async saveScenePlacementPatch(request) {
@@ -735,8 +736,9 @@ async function bootstrap(): Promise<void> {
           request.sourceDocument,
         );
         if (result.document !== undefined) {
-          savedDocument = result.document;
-          publishPlacementSavedDocument(savedDocument);
+          // Publish the new baseline together with its clean viewer in activateDocument.
+          // Add-definition/add-instance patches cannot be reapplied to an acknowledged baseline.
+          acknowledgedDocument = result.document;
         }
         return result;
       },
@@ -1307,6 +1309,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         }
         documentSession?.setSaving(true);
+        acknowledgedDocument = undefined;
         try {
           const result = await saveScenePlacementPatch(savedDocument, patch, {
             allowSave: saveEnabled,
@@ -1318,14 +1321,15 @@ async function bootstrap(): Promise<void> {
           appChrome.setSaveResult(result);
           if (result.saved) {
             const entry = activeDocument;
-            entry.document = savedDocument;
-            entry.resolved = resolvePlacementWorkspaceDocument(savedDocument);
+            const committedDocument = acknowledgedDocument ?? result.document;
+            entry.document = committedDocument;
+            entry.resolved = resolvePlacementWorkspaceDocument(committedDocument);
             entry.lifetime.abort();
             entry.inspector.element.remove();
             entry.lifetime = new AbortController();
             const editState = viewer.state();
             entry.viewer = createScenePlacementViewer({
-              document: savedDocument,
+              document: committedDocument,
               viewport: viewer.state().viewport,
               selectedInstanceId: viewer.state().selectedInstanceId,
               instanceHandleRegistry: entry.registry,
@@ -1818,16 +1822,23 @@ async function bootstrap(): Promise<void> {
     function applyAssetPatch(patch: ScenePlacementPatch, label: string) {
       if (viewer.historyState().transactionLabel !== undefined)
         throw new Error("Finish the current edit before applying assets");
+      mergeScenePlacementPatch(
+        viewer.exportPatch() ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!).document : savedDocument,
+        patch,
+        { allowedFragments: [viewer.state().fragment] },
+      );
       viewer.beginEdit(label);
       try {
         assetBatchEditing = true;
         for (const operation of patch.operations) {
-          if (operation.kind !== "updateComponents")
-            throw new Error("Unsupported asset component operation");
-          viewer.updateInstanceComponents(
-            operation.instanceId,
-            operation.components,
-          );
+          switch (operation.kind) {
+            case "updateComponents": viewer.updateInstanceComponents(operation.instanceId, operation.components); break;
+            case "addObjectDefinition": viewer.addObjectDefinition(operation.id, operation.definition); break;
+            case "addInstance": viewer.addInstance(operation.fragment, operation.instance); break;
+            case "removeInstance": viewer.removeInstance(operation.instanceId); break;
+            case "updateBehaviorBinding": viewer.updateBehaviorBinding(operation.target, operation.behaviorRecipes); break;
+            default: throw new Error("Unsupported asset component operation");
+          }
         }
         if (patch.spatial) viewer.updateSpatial(patch.spatial.operations);
         if (patch.lighting !== undefined) viewer.updateLighting(patch.lighting);

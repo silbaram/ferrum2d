@@ -51,10 +51,10 @@ const run = await mkdtemp(resolve(artifact, "run-")),
 const source = {
   format: "ferrum2d.consumer.scene-authoring",
   version: 1,
-  behaviorRecipes: { entities: {} },
+  behaviorRecipes: { entities: tileMode?{map_guard:{recipes:[{kind:'health',max:10}]}}:{} },
   sceneComposition: {
     initialFragment: "main",
-    prefabs: { object: {} },
+    prefabs: { object: {}, ...(tileMode?{map_spawn:{props:{components:{visual:{kind:'primitive',shape:'rect',width:8,height:8,color:'#ffffff'},collider:'none',layer:'wall'}}}}:{}) },
     fragments: {
       main: {
         instances: [
@@ -486,7 +486,7 @@ try {
         continue;
       }
       await showPlacementBottom(page, "assets");
-      await tool.locator("summary").click();
+      await tool.locator(":scope > summary").click();
       const original = await snapshot(),
         first = fixture();
       await stage(first);
@@ -1088,7 +1088,7 @@ try {
       assert(afterClose.urls < beforeClose.urls);
       await showPlacementBottom(page, "assets");
       if ((await tool.getAttribute("open")) === null)
-        await tool.locator("summary").click();
+        await tool.locator(":scope > summary").click();
       await stage(first);
       assert.equal(await tool.getAttribute("data-aseprite-ready"), "true");
       await action("register").click();

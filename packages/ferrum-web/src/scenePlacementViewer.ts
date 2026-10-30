@@ -1,3 +1,4 @@
+import { validateTileMapImportMetadata, sameTileMapImportIdentity } from "./scenePlacementTileMapMetadata.js";
 import {
   mergeScenePlacementPatch,
   assertSceneSpatialMigrationAllowed,
@@ -1184,7 +1185,13 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     );
     if (
       this.instanceRefForId(instanceId) !== undefined ||
-      this.instancesById.has(instanceId)
+      (this.instancesById.has(instanceId) && !(
+        !this.spatial && this.draftRemovedInstanceIds.has(instanceId) &&
+        sameTileMapImportIdentity(
+          this.instancesById.get(instanceId)?.props.tileMapImport,
+          checkedInstance.props?.tileMapImport,
+        )
+      ))
     ) {
       throw gameplayAuthoringDiagnosticError(
         "scenePlacementViewer.addInstance.instance.id",
@@ -2111,6 +2118,7 @@ function validatePlacementInstanceProps(
     return;
   }
   for (const key of Object.keys(props)) {
+    if (key === "tileMapImport") { validateTileMapImportMetadata(props[key], `${path}.${key}`); continue; }
     if (key !== DATA_SCENE_COMPONENTS_PROP) {
       throw gameplayAuthoringDiagnosticError(
         `${path}.${key}`,

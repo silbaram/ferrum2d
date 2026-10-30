@@ -310,6 +310,8 @@ function source(mode) {
       },
     },
   };
+  if (tileMode) document.sceneComposition.prefabs.map_spawn={props:{components:{visual:{kind:'primitive',shape:'rect',width:8,height:8,color:'#ffffff'},collider:'none',layer:'wall'}}};
+  if (tileMode) document.behaviorRecipes.entities.map_guard={recipes:[{kind:'health',max:10}]};
   if (mode === "hd2d")
     document.spatial = {
       camera: {
@@ -518,7 +520,7 @@ try {
     async function reveal() {
       await showPlacementBottom(page, "assets");
       if ((await tool().getAttribute("open")) === null)
-        await tool().locator("summary").click();
+        await tool().locator(":scope > summary").click();
     }
     async function stage(data) {
       await tool().getByRole("tab", { name: "Source", exact: true }).click();

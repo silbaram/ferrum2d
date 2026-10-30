@@ -1,3 +1,4 @@
+import { tileMapPlacementPatch } from "./placementTileMap";
 import {
   setUiAttribute,
   setUiText,
@@ -46,6 +47,7 @@ interface Draft {
   dependencies?: File[];
   png?: File;
   candidate?: PlacementTileAsset;
+  mapOptions?: string;
   dirty: boolean;
   status: UiContent;
 }
@@ -90,6 +92,7 @@ export function createPlacementTileTool(options: {
     register = button("Register", "register"),
     apply = button("Apply Frame", "apply"),
     reimport = button("Reimport", "reimport"),
+    map = button("Apply Map", "map"),
     save = button("Save Project", "save"),
     cancel = button("Cancel", "cancel"),
     exportButton = button("Export Assets", "export");
@@ -111,6 +114,8 @@ export function createPlacementTileTool(options: {
     ] as const),
     source = tabs.panels.get("source")!,
     preview = tabs.panels.get("preview")!;
+  const mapOptions = document.createElement("textarea");
+  mapOptions.rows=3;mapOptions.value="{}";
   const format = document.createElement("select"),
     name = document.createElement("input"),
     level = document.createElement("input"),
@@ -146,6 +151,9 @@ export function createPlacementTileTool(options: {
   field("Tile asset name", name, source);
   field("LDtk level index", level, source);
   field("Tile JSON", json, source);
+  const mapSettings=document.createElement("details"),mapSummary=document.createElement("summary");
+  setUiText(mapSummary,"Map Options");mapSettings.append(mapSummary);
+  field("Map placement options (JSON)",mapOptions,mapSettings);source.append(mapSettings);
   field("External TSJ Files", dependencies, source);
   field("Tileset", tileset, source);
   field("Tileset PNG", png, source);
@@ -182,6 +190,11 @@ export function createPlacementTileTool(options: {
           }
         : undefined,
     );
+  const planMap = (next: PlacementTileAsset) => {
+    if(options.context().mode!=="2d")throw Error("Whole map placement requires 2D mode");
+    return tileMapPlacementPatch(options.context().document, options.viewer.state(),next,JSON.parse(draft().mapOptions??"{}"),registered());
+  };
+  mapOptions.addEventListener("input",()=>{draft().mapOptions=mapOptions.value;render();});
   function stop(message = "Cancelled") {
     serial++;
     controller?.abort();
@@ -209,6 +222,10 @@ export function createPlacementTileTool(options: {
     dependencies.disabled = busy || d.kind !== "tiled";
     tileset.disabled = busy || d.choices.length < 2;
     frame.disabled = busy || !valid;
+    mapOptions.disabled=busy||!context.canEdit;
+    let mapError="Inspect a map";
+    if(valid)try{planMap(d.candidate!);mapError="";}catch(error){mapError=String(error);}
+    map.disabled=busy||!valid||!context.canEdit||!!mapError;setUiAttribute(map,"title",mapError||"Replace the imported map as one Undo transaction");
     cancel.disabled = !busy;
     exportButton.disabled = busy || !registered().length;
     save.disabled =
@@ -324,6 +341,13 @@ export function createPlacementTileTool(options: {
   function fields() {
     const d = draft(),
       selected = frame.value;
+    if(d.mapOptions===undefined&&d.candidate){
+      const saved=options.context().document.sceneComposition.fragments?.[options.viewer.state().fragment]?.instances?.find(i=>{
+        const m=i.props?.tileMapImport as {name?:string;options?:unknown}|undefined;return m?.name===d.name&&m.options!==undefined;
+      })?.props?.tileMapImport as {options?:unknown}|undefined;
+      if(saved?.options)d.mapOptions=JSON.stringify(saved.options);
+    }
+    mapOptions.value=d.mapOptions??"{}";
     name.value = d.name;
     format.value = d.kind;
     level.value = String(d.levelIndex);
@@ -518,8 +542,8 @@ export function createPlacementTileTool(options: {
       }
     }
   });
-  function commit(kind: "register" | "apply" | "reimport") {
-    if ({ register, apply, reimport }[kind].disabled) return;
+  function commit(kind: "register" | "apply" | "reimport" | "map") {
+    if ({ register, apply, reimport, map }[kind].disabled) return;
     const previous = commitInFlight;
     const task = (async () => {
       const d = draft(),
@@ -540,7 +564,8 @@ export function createPlacementTileTool(options: {
       try {
         await previous?.catch(() => {});
         signal.throwIfAborted();
-        if (kind !== "register") plan(candidate, kind === "apply");
+        if (kind === "map")planMap(candidate);
+        else if (kind !== "register") plan(candidate, kind === "apply");
         url = await assets.upload(candidate, signal);
         if (!alive(token)) return;
         if (
@@ -552,8 +577,8 @@ export function createPlacementTileTool(options: {
           throw Error("Document or selection changed. Apply again.");
         if (kind !== "register")
           options.apply(
-            plan(candidate, kind === "apply"),
-            kind === "apply" ? "Apply Tile Frame" : "Reimport Tile Frames",
+            kind === "map"?planMap(candidate):plan(candidate, kind === "apply"),
+            kind === "map"?"Apply Tile Map":kind === "apply" ? "Apply Tile Frame" : "Reimport Tile Frames",
           );
         committed = true;
         d.status =
@@ -583,8 +608,8 @@ export function createPlacementTileTool(options: {
       if (commitInFlight === task) commitInFlight = undefined;
     });
   }
-  for (const kind of ["register", "apply", "reimport"] as const)
-    ({ register, apply, reimport })[kind].addEventListener("click", () =>
+  for (const kind of ["register", "apply", "reimport", "map"] as const)
+    ({ register, apply, reimport, map })[kind].addEventListener("click", () =>
       commit(kind),
     );
   cancel.addEventListener("click", () => {

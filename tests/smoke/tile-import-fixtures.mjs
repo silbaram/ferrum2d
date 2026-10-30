@@ -169,3 +169,19 @@ export function externalTileFixture(updated = false) {
   });
   return f;
 }
+
+
+/** Whole-map regression: resize 2x2 -> 3x2 without moving existing grid cells. */
+export function tileMapFixture(kind, updated=false) {
+  const f=tileFixture(kind,updated),columns=updated?3:2;
+  const tiles=updated?[1,0,0,1,0,-1]:[0,1,0,1];
+  if(kind==='tiled') {
+    const gid=f.json.tilesets[0].firstgid;
+    Object.assign(f.json,{width:columns,height:2});
+    Object.assign(f.json.layers[0],{width:columns,height:2,data:tiles.map(t=>t<0?0:gid+t)});
+  } else {
+    Object.assign(f.json.levels[0],{pxWid:columns*16,pxHei:32});
+    Object.assign(f.json.levels[0].layerInstances[0],{__cWid:columns,__cHei:2,gridTiles:tiles.flatMap((t,i)=>t<0?[]:[{px:[(i%columns)*16,Math.floor(i/columns)*16],src:[t*16,0],t,f:0}])});
+  }
+  return f;
+}

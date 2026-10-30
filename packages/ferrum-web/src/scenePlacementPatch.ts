@@ -1,3 +1,4 @@
+import { validateTileMapImportMetadata, sameTileMapImportIdentity } from "./scenePlacementTileMapMetadata.js";
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import { applySceneSpatialPatch } from "./sceneSpatialPatch.js";
 import { resolveDataSceneComponentsSpec } from "./dataSceneComponents.js";
@@ -480,6 +481,12 @@ export function previewScenePlacementBindingMigration(
   const renamedInstanceIds: ScenePlacementBindingMigrationRename[] = [];
   const removedInstanceIds: string[] = [];
   const references: ScenePlacementBindingMigrationReference[] = [];
+  const sourceInstances = new Map(Object.values(document.sceneComposition.fragments ?? {}).flatMap(fragment =>
+    (fragment.instances ?? []).map(instance => [instance.id, instance] as const)));
+  const replacedMapIds = new Set(patch.operations.flatMap(operation =>
+    operation.kind === 'addInstance' && sameTileMapImportIdentity(
+      sourceInstances.get(operation.instance.id)?.props?.tileMapImport, operation.instance.props?.tileMapImport,
+    ) ? [operation.instance.id] : []));
 
   patch.operations.forEach((operation, operationIndex) => {
     if (operation.kind === "renameInstance") {
@@ -508,6 +515,7 @@ export function previewScenePlacementBindingMigration(
         operation.instanceId,
         `${path}.patch.operations.${operationIndex}.instanceId`,
       );
+      if (replacedMapIds.has(instanceId)) return;
       removedInstanceIds.push(instanceId);
       references.push(
         ...findAgentOwnedReferences(document.behaviorRecipes, {
@@ -905,6 +913,7 @@ function validatePlacementInstanceProps(
     return;
   }
   for (const key of Object.keys(props)) {
+    if (key === "tileMapImport") { validateTileMapImportMetadata(props[key], `${path}.${key}`); continue; }
     if (key !== "components") {
       throw gameplayAuthoringDiagnosticError(
         `${path}.${key}`,

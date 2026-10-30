@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   tileFixture,
+  tileMapFixture,
   multiTileFixture,
   externalTileFixture,
 } from "./tile-import-fixtures.mjs";
@@ -50,6 +51,8 @@ export async function smokeNativeTiles({
           window.ferrumPlacementViewerAgentHandoff.tileImports ?? [],
         ),
       );
+  const wholeMap=mode==='2d'&&!multi&&!externalTsj;
+  let mapTarget;
   const stage = async (updated) => {
     const previousKey = multi
       ? await tool().getByLabel("Tileset", { exact: true }).inputValue()
@@ -72,7 +75,7 @@ export async function smokeNativeTiles({
       ? externalTileFixture(updated)
       : multi
         ? multiTileFixture(kind, updated)
-        : tileFixture(kind, updated);
+        : wholeMap ? tileMapFixture(kind,updated) : tileFixture(kind, updated);
     await reveal();
     await tool().getByRole("tab", { name: "Source", exact: true }).click();
     await tool()
@@ -143,6 +146,16 @@ export async function smokeNativeTiles({
     await click("apply");
     assert.match(await status(), /^Applied/);
   }
+  if(wholeMap){
+    await tool().getByRole('tab',{name:'Source',exact:true}).click();
+    await tool().locator('details').first().evaluate(el=>{el.open=true;});
+    const mapping={};const data=tileFixture(kind);
+    if(kind==='ldtk')for(const layer of data.json.levels[0].layerInstances)for(const e of layer.entityInstances??[])mapping[e.__identifier]='map_spawn';
+    await tool().getByLabel('Map placement options (JSON)',{exact:true}).fill(JSON.stringify({originX:-60,originY:48,objectPrefabs:mapping}));
+    await click('map');assert.match(await status(),/^Applied/);
+    mapTarget=await getPage().evaluate(()=>window.ferrumPlacementViewerState.draftPatch.operations.find(op=>op.kind==='addInstance'&&op.instance.props?.tileMapImport?.cell?.column===0&&op.instance.props?.tileMapImport?.cell?.row===1).instance);
+    await getPage().evaluate(id=>window.ferrumPlacementViewerUpdateBehaviorBinding({kind:'instance',instanceId:id},'map_guard'),mapTarget.id);
+  }
   const first = (await imports())[0],
     id = first.assetId;
   assert.equal(first.persisted, false);
@@ -192,6 +205,7 @@ export async function smokeNativeTiles({
   assert.equal((await imports())[0].persisted, true);
   const saved = JSON.parse(await readFile(scene)),
     catalog = JSON.parse(await readFile(join(root, "catalog.json")));
+  if(wholeMap)assert(Object.values(saved.sceneComposition.fragments).flatMap(f=>f.instances??[]).filter(i=>i.props?.tileMapImport).length>=2);
   assert.equal(catalog.revisions.length, 1);
   assert.equal(catalog.revisions[0].frames, undefined);
   if (multi) assert.equal(catalog.revisions[0].tilesetKey, first.tilesetKey);
@@ -211,6 +225,11 @@ export async function smokeNativeTiles({
     );
   }
   assert(!(await readdir(root)).some((n) => n.endsWith(".tmp")));
+  if(wholeMap&&kind==='tiled'){
+    // Simulate a saved pre-coordinate release while keeping its public IDs and exact source catalog.
+    for(const i of saved.sceneComposition.fragments.main.instances){const m=i.props?.tileMapImport;if(!m?.cell)continue;m.key='tile:'+m.cell.layer+':'+(m.cell.row*2+m.cell.column);delete m.cell;}
+    await writeFile(scene,JSON.stringify(saved));
+  }
   await restart();
   assert.equal((await imports())[0].assetId, id);
   assert.equal((await imports())[0].persisted, true);
@@ -231,6 +250,7 @@ export async function smokeNativeTiles({
   await stage(true);
   await click("reimport");
   assert.match(await status(), /^Applied/);
+  if(wholeMap){await click('map');assert.match(await status(),/^Applied/);}
   const next = (await imports())[0];
   assert.notEqual(next.assetId, id);
   if (externalTsj) assert.equal(next.jsonSha256, first.jsonSha256);
@@ -267,8 +287,17 @@ export async function smokeNativeTiles({
     finalDoc = JSON.parse(finalBytes),
     instances = finalDoc.sceneComposition.fragments.main.instances;
   assert(
-    instances.every((i) => i.props.components.visual.texture === next.assetId),
+    instances.filter(i=>i.id==='first'||i.id==='second').every((i) => i.props.components.visual.texture === next.assetId),
   );
+  if(wholeMap){
+    const imported=instances.filter(i=>i.props?.tileMapImport);
+    assert(imported.length>=2);
+    assert(imported.every(i=>i.props.tileMapImport.assetId===next.assetId));
+    assert(imported.filter(i=>i.props.tileMapImport.key.startsWith('tile:')).every(i=>i.props.components.visual.asset===next.assetId));
+    assert.equal(imported.filter(i=>i.props.tileMapImport.cell).length,5);
+    const target=imported.find(i=>i.id===mapTarget.id);assert.deepEqual([target.x,target.y,target.props.behaviorRecipes],[mapTarget.x,mapTarget.y,'map_guard']);
+    assert.deepEqual(target.props.tileMapImport.cell,{layer:'ground',column:0,row:1});
+  }
   assert.notDeepEqual(
     instances[0].props.components.visual.frame,
     instances[1].props.components.visual.frame,
@@ -358,6 +387,7 @@ export async function smokeNativeTiles({
     restartedTwice: true,
     canonicalIdentity: true,
     reimportUndoRedo: true,
+    ...(wholeMap?{wholeMapSavedAndReopened:true,stableMapIds:true,resizedCellIdentity:true,instanceBehaviorPreserved:true,legacySourceMigration:kind==='tiled'}:{}),
     sceneCasPreserved: true,
     rawExport: true,
     tamperRejected: true,
