@@ -299,8 +299,37 @@ PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮�
 
 **자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
 각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
-세션 store는 최대 8 revision/64 MiB이며 프로젝트 디스크 원본/catalog 직접 저장은 아직 제공하지 않는다.
-내보내기를 native 저장 완료로 표시하지 않고, 미설치 도트 세션 자산을 참조하는 씬의 Save는 차단한다.
+세션 store는 최대 8 revision/64 MiB다. 브라우저 내보내기를 프로젝트 저장 완료로 표시하지 않는다.
+미설치 도트 자산·다른 프로젝트의 자산이나 runtime 숫자 texture 참조가 남은 씬 Save는 차단한다.
+
+### 도트 프로젝트 저장과 재열기
+
+데스크톱의 Open Project에서 연 프로젝트는 **프로젝트 저장** 또는 도트 탭의 Ctrl/Cmd+S를 지원한다.
+현재 도트를 자산으로 등록하고 원본·PNG를 저장한 뒤 기존 씬 초안을 저장한다. 그림 등록/저장이 객체의 이미지를 자동 교체하지는 않으며 **선택 객체에 적용**은 별도 동작이다.
+위치·크기·collider/body·behavior와 씬/픽셀 Undo의 경계를 유지한다.
+
+- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1 원본.
+- 같은 위치의 `<assetId>.png`: 원본의 straight-alpha RGBA8 픽셀과 일치하는 PNG.
+- `catalog.json`: `ferrum2d.pixel.catalog` v1의 revisions와 게임용 texture manifest.
+
+desktop 전용 `load_placement_pixel_assets`/`save_placement_pixel_assets`는 허가된 프로젝트에만 접근한다.
+저장 요청은 `ferrum2d.pixel-project.assets` v1로 원본/PNG의 base64·SHA-256·identityDocument·치수와 `expectedCatalogRevision`을 전달한다.
+이 값은 마지막 load/save에서 확인한 catalog 원본 bytes의 SHA-256이며 최초 catalog 부재는 빈 문자열이다.
+외부 catalog 변경, 링크/경로 이탈, 원본/PNG 불일치와 기존 불변 파일의 다른 bytes는 저장을 거절한다.
+상한은 catalog 8 revision/64 MiB, 원본 400,000 bytes, PNG 4 MiB/한 변 256이다.
+
+호스트는 모든 입력을 검증하고 immutable 파일 생성·catalog 교체·protocol 등록을 수행한다.
+프런트엔드는 `ferrum2d.pixel.project` v1 응답과 revision URL을 다시 읽어 원본/hash/identity·PNG checksum·투명 RGB까지 확인한 뒤 persisted로 표시한다.
+공백·키 순서가 다른 유효한 JSON도 원본 bytes를 별도로 보존해 재저장 시 기존 ID/hash가 바뀌지 않는다.
+PNG는 RGBA8의 기본 필터·분할 IDAT·Adam7을 지원하며 전체 끝 청크/CRC를 검사한다.
+sRGB 원본과 충돌하는 감마·색도 정보와 ICC/HDR 프로필은 거절해 브라우저 색 변환으로 다른 그림이 표시되지 않게 한다.
+저장 bundle은 모든 revision 필드·원본·PNG를 첫 비동기 hash 전에 snapshot으로 고정한다.
+다시 연 프로젝트의 자산 카드는 편집 원본을 복원하며 같은 프로젝트의 다른 씬에서도 사용할 수 있다.
+게임 로더는 catalog의 manifest 상대 경로를 catalog 디렉터리 기준으로 해석하고 기존 AssetLoader·scene-authoring 경로로 읽는다.
+
+자산과 씬은 별도 저장 경계다. 자산 저장 성공 후 씬 충돌이 발생하면 저장된 원본과 기존 디스크 씬을 보존하고 씬 초안을 유지한다.
+처리 중 탭 전환·종료로 결과 확인이 중단되면 이미 저장된 파일을 취소됐다고 표시하지 않고 프로젝트 재열기를 안내한다.
+미사용 정리는 persisted 프로젝트 자산을 삭제하지 않는다. 프로젝트 전체 디스크 정리는 별도 설계 범위다.
 문자열 이름과 runtime 숫자 ID를 모두 검사해 저장·다른 씬 열기의 경계를 유지한다.
 bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard normal ID를 안정적인 자산 이름으로 변환한 scene 사본을 내보낸다.
 다른 metadata는 바꾸지 않으며 지원하지 않는 위치의 숫자 texture 참조는 조용히 이식하지 않고 진단한다.

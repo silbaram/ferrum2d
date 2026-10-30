@@ -1814,7 +1814,19 @@ runtime은 paused 상태(3)·entity 1개·sprite 1개 이상·draw call 1~16회�
 manifest path를 변조한 negative fixture는 runtime 시작 전에 실패해야 한다.
 미설치 session texture의 scene Save는 요청을 전송하지 않아야 하며, 종료 후 URL/GL texture 잔여는 0이어야 한다.
 근거는 `artifacts/pixel-authoring/verification.json`과 run별 원본/PNG/bundle/화면이다.
-native 프로젝트 파일 저장·다중 이미지 layer/frame·노멀 재생성은 이 gate의 통과 의미에 포함하지 않는다.
+native 프로젝트 파일 저장은 아래 별도 gate로 검증하며 다중 이미지 layer/frame·노멀 재생성은 후속 범위다.
+
+`pnpm smoke:pixel-project`는 실제 Rust 저장/protocol 함수를 test-only stdio transport로 호출한다.
+2D DPR 1·HD-2D DPR 2에서 도트 생성/적용→원본/PNG/catalog 저장→Rust/브라우저 새 세션 재열기와 원본 동일성을 검사한다.
+잘못된 저장 응답은 씬 저장을 막아야 하며 외부 catalog 변경·씬 변경의 bytes를 보존해야 한다.
+파일 저장 뒤 늦은 응답을 중단해도 씬이 뒤늦게 저장되지 않고 재열기 안내가 나와야 한다.
+별도 새 게임 runtime은 실제 저장된 catalog manifest·원본/PNG hash를 읽어 paused 상태 3·entity 1개·sprite 1개 이상,
+draw call 1~16회·texture switch 16회 이하와 파란 픽셀 100개 초과를 요구한다. 종료 후 URL/GL texture는 0이다.
+Rust host unit은 원본/PNG의 투명 RGBA 일치, identity·hash·경로 검증, stale catalog 거절, 부분 생성 실패 rollback·기존 파일 보존,
+변조/링크 catalog 거절을 검사한다. UI 전용 테스트가 실제 native GUI/picker/IPC 또는 실물 GPU 검증을 대신하지 않는다.
+서식 있는 원본과 독립 인코더의 필터·분할 IDAT·Adam7 PNG를 실제 Rust에 저장하고 UI에서 재열기/재저장해 원본 bytes를 대조한다.
+bundle 생성/PNG 검증 중 caller 데이터 변경, sRGB와 충돌하는 프로필, PNG IEND 누락·CRC 오류·끝 쓰레기 bytes의 저장 거절도 검사한다.
+근거는 `artifacts/pixel-project/verification.json`과 run별 화면/원본/`rust-build.log`다.
 
 ### Import revision 정리와 진단
 

@@ -1,9 +1,15 @@
 # 엔진 내장 도트 제작 기능 개발 계획
 
 기준일: 2026-10-30
-상태: 1차 일부 완료 · 기본 제작·브라우저 내보내기·씬 적용 검증 완료, native 프로젝트 저장 미착수
+상태: 1차 완료 · 2차 이미지 레이어·프레임 애니메이션 미착수
 작업 브랜치: `feat/pixel-authoring`
-다음 구현 범위: native 프로젝트 원본·catalog 저장/재열기와 실패·충돌 검증
+다음 구현 범위: 이미지 레이어·프레임·시간·어니언 스킨과 저장/재생 검증
+
+현재 작업의 저장 계약은 `public/assets/.ferrum-pixels/`의 불변 원본 JSON·PNG와 `catalog.json`이다.
+기존 desktop allowlist·asset protocol·sprite 저장 transaction을 재사용한다.
+열었을 때의 catalog SHA-256을 저장 요청에 포함해 외부 변경을 감지하고, 원본/PNG bytes를 다시 검증한 뒤 자산을 persisted로 표시한다.
+씬 저장은 자산 저장 뒤 별도로 수행하며 씬 저장 실패가 이미 저장된 자산의 삭제나 기존 씬 덮어쓰기로 이어지지 않아야 한다.
+완료 검증은 실제 Rust 파일 저장·실패 복원·재열기와 새 2D/HD-2D runtime의 상태·픽셀·렌더 비용을 포함한다.
 
 ## 목적과 범위
 
@@ -27,8 +33,8 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 
 ## 현재 구현과 재사용 지점
 
-기본 도트 편집 모델·캔버스·에셋 문서 탭·브라우저 원본/PNG 내보내기·세션 자산 등록/씬 적용을 구현했다.
-native 프로젝트 직접 저장과 다중 이미지 레이어·프레임은 아직 제공하지 않는다.
+기본 도트 편집 모델·캔버스·에셋 문서 탭·브라우저 원본/PNG 내보내기·native 프로젝트 저장/재열기·자산 등록/씬 적용을 구현했다.
+다중 이미지 레이어·프레임은 아직 제공하지 않는다.
 기존 JSON+PNG import·reimport, 노멀 생성, 원본 저장·재열기는 별도의 가져오기 기능이다.
 그 과정에서 검증한 자산 등록·revision·저장·수명 관리 구현은 재사용하되, 새 도트 문서를 Aseprite metadata로 가장하거나 기존 import UI를 제작의 필수 단계로 삼지 않는다.
 
@@ -174,7 +180,8 @@ runtime 숫자 ID는 scene 저장·문서 경계에서도 확인하고, export s
 
 브라우저의 내보내기는 프로젝트 디스크 저장 완료가 아니다. 미설치 세션 자산을 참조하는 scene Save는 차단한다.
 현재는 내보낸 원본을 재열거나, bundle의 PNG/manifest/scene을 프로젝트에 설치해 사용한다.
-native 프로젝트 allowlist·원본/catalog 등록·충돌 감지·실제 파일 저장 검증은 다음 작업으로 남는다.
+native 프로젝트 allowlist·원본/catalog 등록·충돌 감지·실제 파일 저장/재열기는 구현했다.
+저장 계약과 현재 검증은 Scene Authoring과 Smoke Check를 기준으로 하며 native GUI·실물 GPU 검증은 별도다.
 
 ## 검증과 문서 반영
 
@@ -199,6 +206,7 @@ pnpm smoke:aseprite-assets
 pnpm smoke:aseprite-project
 pnpm test:pixel-authoring
 pnpm smoke:pixel-authoring
+pnpm smoke:pixel-project
 pnpm validate:public-api-surface
 ```
 
@@ -214,8 +222,8 @@ Rust/ABI 변경이 없는 에셋 제작 작업에 simulation 기능을 함께 �
 - [x] 1차: 자체 편집 원본·입력·브라우저 내보내기·session revision·예산 계약
 - [x] 1차: 캔버스·기본 도구·팔레트·Undo/Redo·취소
 - [x] 1차: 브라우저 원본 재열기·PNG export·Assets 등록·씬 적용 통합 검증
-- [ ] 1차: native 프로젝트 원본/catalog 저장 위치·충돌 감지·실패 복원·실제 저장/재열기
-- [ ] 1차: Aseprite 설치·파일 없이 새 도트 제작→저장→씬 적용→fresh game 검증과 사용법 동기화
+- [x] 1차: native 프로젝트 원본/catalog 저장 위치·충돌 감지·실패 복원·실제 저장/재열기
+- [x] 1차: Aseprite 설치·파일 없이 새 도트 제작→저장→씬 적용→fresh game 검증과 사용법 동기화
 - [ ] 2차: 이미지 레이어·프레임·시간·어니언 스킨·atlas frame 편집
 - [ ] 2차: 출력/재생 호환·원본 보존·예산 회귀
 - [ ] 3차: tag/clip migration·노멀 재생성·2D/HD-2D 미리보기

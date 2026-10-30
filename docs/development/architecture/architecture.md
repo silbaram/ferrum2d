@@ -1471,7 +1471,13 @@ Aseprite import와 독립된 에셋 제작 경로로 Rust simulation·Wasm ABI·
 원본 검증·snapshot은 비동기 PNG 생성 전에 수행하며 revision을 provisional/committed로 나눠 실패한 적용만 rollback한다.
 숫자 texture alias도 source 참조로 검사하고, export는 실제 authoring component/normal 경로만 이름으로 정규화한 사본을 만든다.
 도구가 확인창의 수명과 operation epoch를 함께 소유하고, 앱 업데이트 guard는 도트 dirty/busy/gesture 상태도 확인한다.
-현재 browser export와 native 프로젝트 저장을 구분하며 프로젝트 디스크 저장 host는 후속 범위다.
+`placementPixelProject`는 native pixel catalog의 원본/hash/PNG를 재검증하고 `placementPixelAssets`의 검증된 revision에만 프로젝트 범위를 부여한다.
+desktop `pixel_assets`는 공통 `sprite_assets`/`asset_files`의 allowlist·bounded read·immutable 파일·catalog publication을 재사용한다.
+도트 catalog만 optimistic SHA-256을 요구하며 기존 Aseprite/타일 저장 요청은 호환된다. 응답의 추가 `catalogRevision`은 기존 클라이언트에서 무시할 수 있다.
+원본/PNG 저장 후 씬을 별도 저장하고 실패·취소는 이미 완료된 파일 저장을 되돌렸다고 주장하지 않는다.
+검증된 원본의 의미 모델과 identity에 쓰이는 실제 JSON bytes를 구분해 불변 revision의 재저장을 보장한다.
+저장 bundle과 PNG verifier는 비동기 작업 전에 입력을 복제하며 RGBA8 filter/Adam7 복원·끝 청크/CRC·sRGB 해석을 native/frontend 양쪽에서 검증한다.
+재열기 시 catalog 자산은 씬 runtime 생성 전에 로드한다. 브라우저는 기존 export를 유지하며 프로젝트 디스크 삭제는 범위에 포함하지 않는다.
 
 `ScenePlacementHistory.someSnapshot`과 viewer의 `retainsAssetReference`는 cold 자원 정리를 위한 보수적 참조 query다.
 Import 패널은 모든 열린 문서·Undo/Redo·transaction·후보를 확인한 뒤 미저장 session revision만 정리한다.
