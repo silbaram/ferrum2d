@@ -16,7 +16,7 @@ export async function probeSpatialBuilding(scene, canvas) {
   const pose=(e,h)=>{const p=e.getPhysicsEntity(h);return {x:p.x,y:p.y,floorId:p.heightSpan.floorId,elevation:p.heightSpan.elevation};};
   const red=p=>p[0]>p[1]+60;
   const asset=await loadSpatialGlb("/building.glb",{materialProfile:"diffuse"});
-  check(asset.primitiveCount===8&&asset.triangleCount===96,"building hierarchy baking mismatch",asset);
+  check(asset.primitiveCount===3&&asset.triangleCount===96,"building hierarchy baking mismatch",asset);
   check(JSON.stringify(asset.bounds)===JSON.stringify([-64,-4,-144,64,80,48]),"building axis/pivot/bounds mismatch",asset.bounds);
   check(engine.registerDataSceneSpatialModel("building",asset),"building registration failed");
   const camera={projection:"orthographic",position:{x:0,y:-180,elevation:360},target:{x:0,y:64,elevation:16},height:Math.max(260,180*canvas.clientHeight/canvas.clientWidth),near:.1,far:1500};
@@ -48,7 +48,7 @@ export async function probeSpatialBuilding(scene, canvas) {
   let handles=applyDataSceneAuthoringDocument(engine,document).entityHandles;
   engine.pauseDataScene();await wait();
   const warm={...scene.frame.stats.spatial},revision=scene.frame.spatial.terrainRevision;
-  check(warm.visibleTerrainChunkCount===0&&warm.terrainTriangleCount===0&&warm.modelDrawCalls===8&&warm.modelTriangleCount===96&&warm.modelUploadBytes===0,"building proxy/model submission mismatch",warm);
+  check(warm.visibleTerrainChunkCount===0&&warm.terrainTriangleCount===0&&warm.modelDrawCalls===3&&warm.modelTriangleCount===96&&warm.modelUploadBytes===0,"building proxy/model submission mismatch",warm);
   check(scene.frame.spatial.terrainVertexCount===216,"hidden proxies changed static terrain indexing");
   engine.setDataSceneSpatialDebug({terrain:true,depthTest:false});await wait();
   const debugLines=scene.frame.stats.spatial.debugLineCount;
@@ -133,8 +133,8 @@ export async function probeSpatialBuilding(scene, canvas) {
   await wait();const allocated=renderer.resourceStats();
   const empty=structuredClone(document);empty.spatial.models={};empty.sceneComposition.fragments.building.instances.shift();
   applyDataSceneAuthoringDocument(engine,empty);engine.pauseDataScene();await wait();const released=renderer.resourceStats();
-  check(released.bufferCount===allocated.bufferCount-16,"building GPU buffers leaked",{allocated,released});
+  check(released.bufferCount===allocated.bufferCount-6,"building GPU buffers leaked",{allocated,released});
   check(engine.releaseDataSceneSpatialModel("building"),"building CPU resource still in use");
   check(gl.getError()===gl.NO_ERROR,"building WebGL error");
-  return {contentId:asset.contentId,primitiveCount:8,triangleCount:96,warm,debugLines,trace,blocked,under,upperPixel,underPixel,referenceUnder,cameraChecks,shadowChecks,navigation,savedVersion:saved.dataScene.version,restoreDifferences,restoredBlocked,invalidRejected,freshRestore:true,resourceRelease:true};
+  return {contentId:asset.contentId,primitiveCount:3,triangleCount:96,warm,debugLines,trace,blocked,under,upperPixel,underPixel,referenceUnder,cameraChecks,shadowChecks,navigation,savedVersion:saved.dataScene.version,restoreDifferences,restoredBlocked,invalidRejected,freshRestore:true,resourceRelease:true};
 }

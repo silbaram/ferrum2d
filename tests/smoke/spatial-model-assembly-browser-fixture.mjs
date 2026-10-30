@@ -58,7 +58,7 @@ export async function probeSpatialModelAssembly(scene, canvas) {
   renderer.render();renderer.renderCommands(scene.frame.state.renderCommandBuffer);
   const flatPreparation=renderer.prepareSpatialModels([asset]);
   flatPreparation.commit();flatPreparation.dispose();renderer.renderPostProcess();
-  check(renderer.resourceStats().bufferCount===flatResources.bufferCount+16,"flat frame end evicted a newer preparation");
+  check(renderer.resourceStats().bufferCount===flatResources.bufferCount+6,"flat frame end evicted a newer preparation");
   // An unused committed preparation is still retired by the next genuinely flat frame.
   renderer.render();renderer.renderCommands(scene.frame.state.renderCommandBuffer);renderer.renderPostProcess();
   check(renderer.resourceStats().bufferCount===flatResources.bufferCount,"unused flat preparation leaked");
@@ -91,12 +91,12 @@ export async function probeSpatialModelAssembly(scene, canvas) {
       handles=applyDataSceneAuthoringDocument(engine,document,{spatialModelPreparer:renderer}).entityHandles;
       engine.pauseDataScene();await wait();
     }finally{renderer.renderCommands=render;}
-    check(firstFrames[0]?.modelDrawCalls===8&&firstFrames[0].modelUploadBytes===0,"prepared assembly uploaded on first frame",{yawDegrees,first:firstFrames[0]});
+    check(firstFrames[0]?.modelDrawCalls===3&&firstFrames[0].modelUploadBytes===0,"prepared assembly uploaded on first frame",{yawDegrees,first:firstFrames[0]});
     check(gl.getError()===gl.NO_ERROR,"prepared assembly transition left WebGL error",{yawDegrees});
     const exposed=[...scene.frame.spatial.models.assets.values()];
     check(exposed.length===1&&exposed[0]===asset&&Object.isFrozen(exposed[0])&&!("primitives" in exposed[0])&&!("images" in exposed[0]),"frame exposed private model geometry/pixels");
     const warm={...scene.frame.stats.spatial};
-    check(warm.modelCount===(nested?3:1)&&warm.visibleModelCount===1&&warm.modelDrawCalls===8&&warm.modelTriangleCount===96&&warm.modelUploadBytes===0&&warm.terrainTriangleCount===0,"assembly submission changed",{nested,yawDegrees,warm});
+    check(warm.modelCount===(nested?3:1)&&warm.visibleModelCount===1&&warm.modelDrawCalls===3&&warm.modelTriangleCount===96&&warm.modelUploadBytes===0&&warm.terrainTriangleCount===0,"assembly submission changed",{nested,yawDegrees,warm});
     if(nested){
       const poses=scene.frame.spatial.models.values;
       check(poses.length===60,"hierarchy did not submit all native model instances",{length:poses.length});
@@ -164,7 +164,7 @@ export async function probeSpatialModelAssembly(scene, canvas) {
   const allocated=renderer.resourceStats();
   const empty={format:"ferrum2d.consumer.scene-authoring",version:1,sceneComposition:{prefabs:{}},behaviorRecipes:{entities:{}}};
   applyDataSceneAuthoringDocument(engine,empty);engine.pauseDataScene();await wait();const released=renderer.resourceStats();
-  check(released.bufferCount===allocated.bufferCount-16,"assembly model buffers leaked",{allocated,released});
+  check(released.bufferCount===allocated.bufferCount-6,"assembly model buffers leaked",{allocated,released});
   check(engine.releaseDataSceneSpatialModel("building"),"assembly CPU model still referenced");
   check(gl.getError()===gl.NO_ERROR,"assembly WebGL error");
   return {cases:results,hierarchies,uncancelledParentTransform:true,proxyRejections,flatCommitPreserved:true,unusedFlatCommitReleased:true,opaqueFrameAssets:true,prototypeIdApplied:"__proto__",decimalPlacementApplied:true,decimalRejections,resourceRelease:true};

@@ -37,7 +37,7 @@ export async function probeSpatialGltf(scene,canvas){
   renderer.renderCommands=function(...args){const stats=render.apply(this,args);if(stats.spatial)first.push({...stats.spatial});return stats;};
   try{handles=applyDataSceneAuthoringDocument(engine,document,{spatialModelPreparer:renderer}).entityHandles;engine.pauseDataScene();await wait();}finally{renderer.renderCommands=render;}
   const parity=diff(expected,image()),warm={...scene.frame.stats.spatial};
-  check(parity===0&&warm.modelCount===3&&warm.visibleModelCount===3&&warm.modelDrawCalls===11&&warm.modelTriangleCount===118&&warm.modelUploadBytes===0&&first[0].modelUploadBytes===0,"separate glTF bypassed normal model rendering",{parity,warm,first:first[0]});
+  check(parity===0&&warm.modelCount===3&&warm.visibleModelCount===3&&warm.modelDrawCalls===6&&warm.modelTriangleCount===118&&warm.modelUploadBytes===0&&first[0].modelUploadBytes===0,"separate glTF bypassed normal model rendering",{parity,warm,first:first[0]});
   check(first[0].shadowPassCount===7&&warm.shadowCacheHit&&warm.dofSampleBudget===13&&gl.getError()===gl.NO_ERROR,"glTF environment/cache mismatch",{first:first[0],warm});
   await window.spatialDebugScreenshot("model-gltf",canvas.toDataURL());
   const hash=()=>captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document}).snapshotHash;
@@ -90,7 +90,7 @@ export async function probeSpatialGltf(scene,canvas){
   }finally{fresh.destroy();}
   await wait();const allocated=renderer.resourceStats();
   applyDataSceneAuthoringDocument(engine,{format:"ferrum2d.consumer.scene-authoring",version:1,sceneComposition:{prefabs:{}},behaviorRecipes:{entities:{}}});engine.pauseDataScene();await wait();
-  const released=renderer.resourceStats();check(released.bufferCount===allocated.bufferCount-22&&released.textureCount<allocated.textureCount,"glTF GPU resources retained after clear",{allocated,released});
+  const released=renderer.resourceStats();check(released.bufferCount===allocated.bufferCount-12&&released.textureCount<allocated.textureCount,"glTF GPU resources retained after clear",{allocated,released});
   for(const name of names)for(const prefix of ["gltf","glb"])check(engine.releaseDataSceneSpatialModel(`${prefix}-${name}`),"glTF CPU resource release failed");
   leases.forEach(lease=>lease.release());check(cache.evictUnused()===3,"model cache did not evict idle assets");const cleared=cache.stats();cache.destroy();
   check(cleared.entryCount===0&&cleared.byteLength===0&&cleared.activeLeaseCount===0&&cleared.waitingRequestCount===0,"model cache retained ownership",cleared);

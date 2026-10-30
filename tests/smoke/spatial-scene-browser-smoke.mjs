@@ -754,7 +754,7 @@ try {
       assert.equal(result.spatialGltf.cached.activeLeaseCount,6);
       assert.equal(result.spatialGltf.cached.entryCount,3);
       assert.equal(result.spatialGltf.first.modelUploadBytes,0);
-      assert.equal(result.spatialGltf.warm.modelDrawCalls,11);
+      assert.equal(result.spatialGltf.warm.modelDrawCalls,6);
       assert.equal(result.spatialGltf.warm.modelTriangleCount,118);
       assert.equal(result.spatialGltf.upperFloor,1);
       assert.equal(result.spatialGltf.blockedX,42);
@@ -772,7 +772,7 @@ try {
       assert.equal(result.spatialModelPreparation.freshRestore,true);
       assert.equal(result.spatialModelPreparation.resourceRelease,true);
       assert.equal(result.spatialModelPreparation.firstFrame.modelUploadBytes,0);
-      assert.equal(result.spatialModelPreparation.firstFrame.modelDrawCalls,10);
+      assert.equal(result.spatialModelPreparation.firstFrame.modelDrawCalls,5);
       assert.equal(result.spatialModelPreparation.firstFrame.modelTriangleCount,110);
       assert.equal(result.spatialModelPreparation.freshUploadBytes,0);
       assert.equal(result.spatialModelPreparation.restoreRejected,true);
@@ -792,7 +792,7 @@ try {
         assert.equal(placement.navigation.status,"arrived");
         assert.equal(placement.navigation.pose.floorId,1);
         assert.equal(placement.firstFrame.modelUploadBytes,0);
-        assert.equal(placement.firstFrame.modelDrawCalls,8);
+        assert.equal(placement.firstFrame.modelDrawCalls,3);
         assert.equal(placement.warm.modelUploadBytes,0);
         assert.equal(placement.warm.terrainTriangleCount,0);
         assert.equal(placement.warm.visibleModelCount,1);
@@ -813,7 +813,7 @@ try {
       assert.equal(result.spatialBuilding.blocked.x,42);
       assert.equal(result.spatialBuilding.under.floorId,0);
       assert.equal(result.spatialBuilding.warm.visibleTerrainChunkCount,0);
-      assert.equal(result.spatialBuilding.warm.modelDrawCalls,8);
+      assert.equal(result.spatialBuilding.warm.modelDrawCalls,3);
       assert.equal(result.spatialBuilding.warm.modelTriangleCount,96);
       assert.equal(result.spatialBuilding.warm.modelUploadBytes,0);
       assert.equal(result.spatialBuilding.shadowChecks.length,2);

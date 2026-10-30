@@ -181,7 +181,7 @@ async function probe(canvas, backend, projection) {
     check(
       warm.stats.modelCount === 4 &&
         warm.stats.visibleModelCount === 4 &&
-        warm.stats.modelDrawCalls === 11 &&
+        warm.stats.modelDrawCalls === 6 &&
         warm.stats.modelInstancedDrawCalls === 2 &&
         warm.stats.modelTriangleCount === 132 &&
         warm.stats.modelUploadBytes === 0,

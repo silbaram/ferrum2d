@@ -379,18 +379,23 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
     if (!primitives.length)
         return fail("selected scene has no mesh");
     const sourcePrimitiveCount = primitives.length;
-    if (primitives.length > 32) {
-        // Existing <=32-primitive assets retain their exact draw order. Larger static
-        // assets are baked into material batches before the unchanged submission gate.
+    if (primitives.length > 1) {
+        // Small assets merge only adjacent equal-material ranges: triangle/depth-tie
+        // order remains exact. Large assets retain the existing material-batch contract.
         const groups = new Map<string, SpatialModelPrimitive[]>();
+        let lastKey = "", adjacentGroup = 0;
         for (const p of primitives) {
             const key = JSON.stringify([p.color,p.image,p.uvTransform,p.normal,p.emissive,p.emissiveFactor,p.unlit,p.alphaCutoff,p.doubleSided,p.sampler]);
-            const group = groups.get(key);
-            if (group) group.push(p); else groups.set(key,[p]);
+            if (sourcePrimitiveCount <= 32 && key !== lastKey) adjacentGroup++;
+            lastKey = key;
+            const groupKey = sourcePrimitiveCount <= 32 ? String(adjacentGroup) : key;
+            const group = groups.get(groupKey);
+            if (group) group.push(p); else groups.set(groupKey,[p]);
         }
         if (groups.size > 32) return fail(`material batch limit 32 after merging ${sourcePrimitiveCount} source primitives`);
         const merged: SpatialModelPrimitive[] = [];
         for (const group of groups.values()) {
+            if (group.length === 1) { merged.push(group[0]); continue; }
             const stride = group[0].normal ? 12 : 8;
             const vertices = new Float32Array(group.reduce((n,p)=>n+p.vertices.length,0));
             const indices = new Uint32Array(group.reduce((n,p)=>n+p.indices.length,0));

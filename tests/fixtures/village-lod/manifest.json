@@ -1,0 +1,14 @@
+{
+  "tree": {
+    "sourceSha256": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+    "sha256": "880edcafe4f3ff7c801031c19bd3512d50b7e5229ca6334940cda847efe0cc51",
+    "sourcePolygons": 204,
+    "lodPolygons": 112
+  },
+  "pine": {
+    "sourceSha256": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+    "sha256": "bba735c287f447237a933ae5765544a93885f9c89899a18a1ea58812ef9a43ce",
+    "sourcePolygons": 112,
+    "lodPolygons": 61
+  }
+}

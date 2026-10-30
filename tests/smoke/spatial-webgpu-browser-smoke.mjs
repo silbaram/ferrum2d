@@ -181,7 +181,7 @@ try {
               assert(
                 backend.restored &&
                   backend.reversed &&
-                  backend.stats.modelDrawCalls === 11 &&
+                  backend.stats.modelDrawCalls === 6 &&
                   backend.stats.modelInstancedDrawCalls === 2 &&
                   backend.errors.length === 0,
               );
