@@ -173,11 +173,14 @@ jobs:
       - name: Spatial WebGPU geometry/models offscreen and pre-context fallback
         run: pnpm smoke:spatial-webgpu-offscreen
 
-      - name: WebGPU device loss recovery with owned textures and static models
+      - name: WebGPU recovery with GPU timing and resource diagnostics
         run: pnpm smoke:webgpu-recovery
 
       - name: Imported Tiled and LDtk whole map authoring
         run: pnpm smoke:tile-map
+
+      - name: Asset revision cleanup and import diagnostics
+        run: pnpm smoke:aseprite-assets
 
       - name: Native tile map source storage and fresh game roundtrip
         run: |
