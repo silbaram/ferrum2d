@@ -43,7 +43,7 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 공식 Placement Viewer의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
 `spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
-설정 방법은 [뷰어 사용법](../../apps/placement-viewer/README.md)을 참고한다.
+설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)을 참고한다.
 
 공식 뷰어의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
 명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
@@ -1670,3 +1670,16 @@ scene-wide spatial patch v6의 `setEnvironment.changes.lightBindings`로 환경�
 최대 65개씩 묶어 읽는다. game camera listener는 표시 frame의 eye/target 방향을 따른다.
 층 번호는 추가 거리나 차폐로 사용하지 않고 실제 elevation 차이로 감쇠한다. 설정·해제·복원 후 rebind와
 Panner 미지원 fallback은 [공간 오디오 사용 계약](public-api/core.md#공간-오디오)을 따른다.
+
+
+## 정적 모델 제출 최적화와 실게임 품질
+
+개발 소스 loader는 인접한 동일 재질 primitive를 합쳐 triangle/material 순서를 유지하면서 draw를 줄인다.
+원래 primitive가 32개를 초과할 때의 material batching 계약과 resource/geometry 상한은 유지한다.
+`contentId`는 원본 bytes의 식별자이며 파생 primitiveCount가 과거 빌드와 항상 같다는 뜻은 아니다.
+원본 bounds·삼각형·alpha/normal/emissive·picking 계약은 유지한다.
+
+공식 마을의 원본 기반 LOD 후보·효과·전투·오디오·경사 이동·checkpoint 비교는
+[실게임 품질 검증](../development/quality/smoke-check.md#실제-마을-성능과-lod-외형)을 따른다.
+후보의 삼각형 감소만으로 FPS 개선을 주장하거나 기본 마을 모델을 교체하지 않는다.
+장치 손실의 명시적 복구는 [WebGPU 수명 계약](public-api/labs.md#webgpu-장치-수명과-복구)을 따른다.

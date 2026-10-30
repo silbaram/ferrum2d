@@ -1137,7 +1137,7 @@ create-game template catalog 계약만 빠르게 확인하려면 `pnpm smoke:cre
 
 의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 `renderPostProcess` 직후 같은 호출 스택에서 픽셀을 읽는다. 별도 RAF 등록 순서에 의존하지 않고 실제 완료된 12프레임만 집계하며, 빈 readback은 이후 완료된 프레임에서 최대 8회까지만 읽은 뒤 계속 비어 있으면 실패한다. 재시도 중 draw call도 최대 예산값에 포함한다. context loss/readback 오류는 별도 원인을 남기고, 빈 화면 실패 메시지에도 runtime/canvas 측정값을 보존한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/placement-viewer.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 렌더 완료 시점/연속 프레임/bounded retry/draw budget/WebGL 오류 진단 회귀 테스트와 report validator를 함께 실행한다. validator는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
 
-Consumer agents 지침 변경은 `pnpm package:check:agents`에서 공통 `.agents/harness/ferrum-game-presentation.md`와 기능 탐색용 `.agents/harness/ferrum-feature-guide.md`의 참조·tarball 포함 여부, 설치 결과의 원본 일치, 설치 전용 파일/루트 디렉터리 allowlist를 확인한다. 기능 안내서는 root 지침과 development/presentation harness에서 연결하며 tarball consumer 설치에서도 내용과 참조를 검사한다. 재설치와 기존 프로젝트 dry-run에서는 사용자 지침·게임 소스·데이터·package 설정을 보존하고, 구형 지침을 건너뛸 때 비교·병합 안내가 나오는지도 검사한다. `package:consumer-smoke`는 tarball로 설치된 공유 기준과 도구별 참조도 검사한다. 게임의 화면 품질은 이 자동 검증과 별도로 공통 기준에 따라 실제 브라우저에서 첫 화면·가독성·이동/카메라·조사/수집·HUD 입력·resize를 검수하고 스크린샷/조작 순서와 미검수 항목을 기록한다. 설치-only 검증 과정에 게임 생성이나 서버 실행을 추가하지 않는다. [#59 지침 변경 및 작은 섬 게임 검수 기록](consumer-game-presentation-review.md)을 참고한다.
+Consumer agents 지침 변경은 `pnpm package:check:agents`에서 공통 `.agents/harness/ferrum-game-presentation.md`와 기능 탐색용 `.agents/harness/ferrum-feature-guide.md`의 참조·tarball 포함 여부, 설치 결과의 원본 일치, 설치 전용 파일/루트 디렉터리 allowlist를 확인한다. 기능 안내서는 root 지침과 development/presentation harness에서 연결하며 tarball consumer 설치에서도 내용과 참조를 검사한다. 재설치와 기존 프로젝트 dry-run에서는 사용자 지침·게임 소스·데이터·package 설정을 보존하고, 구형 지침을 건너뛸 때 비교·병합 안내가 나오는지도 검사한다. `package:consumer-smoke`는 tarball로 설치된 공유 기준과 도구별 참조도 검사한다. 게임의 화면 품질은 이 자동 검증과 별도로 공통 기준에 따라 실제 브라우저에서 첫 화면·가독성·이동/카메라·조사/수집·HUD 입력·resize를 검수하고 스크린샷/조작 순서와 미검수 항목을 기록한다. 설치-only 검증 과정에 게임 생성이나 서버 실행을 추가하지 않는다. [consumer 화면 제작 기준](https://github.com/silbaram/ferrum2d/blob/main/packages/agents/templates/shared/.agents/harness/ferrum-game-presentation.md)을 따른다.
 
 Consumer browser smoke는 설치된 Chrome을 우선 사용하고, 없으면 전체 Chromium의 `channel: "chromium"` headless 모드를 사용한다. 별도 headless shell로 자동 전환하지 않는다. 로컬 브라우저가 없으면 `pnpm exec playwright-core install chromium`으로 전체 Chromium을 설치한다(`--only-shell` 제외). `FERRUM_BROWSER_CHANNEL` 또는 `FERRUM_BROWSER_EXECUTABLE`로 지정할 수도 있다. 두 headless 구현의 차이는 [Playwright 브라우저 문서](https://playwright.dev/docs/browsers#chromium-new-headless-mode)에 설명되어 있다.
 
@@ -1755,3 +1755,42 @@ Bloom 강도 0은 효과를 생략한 장면과 배경 픽셀이 같아야 한�
   저장 bridge는 테스트용 public host stub이며 renderer, authoring, native validation과 재열기는 실제 경로다.
 - native/SDK 계약 테스트는 v1..v4 수용, malformed 입력의 원자적 거절, 광원 budget/추적, 원본 capture,
   scene-wide patch merge/Undo, 기존 shadow work limit을 검사한다.
+
+## 실게임 품질과 복구·맵 작성 회귀
+
+### 실제 마을 성능과 LOD 외형
+
+`pnpm smoke:village-game-quality`는 packed SDK와 공식 마을의 14 GLB/42 model instance, 적 32개,
+실제 PNG·WAV, native AI/발사/VFX와 WASD 경사 이동·checkpoint를 실행한다.
+조명·그림자·후처리 켬/끔 × 원본/Blender LOD 후보 × 2회로 원본/설정·SDK/Wasm hash, GPU adapter, 해상도/DPR,
+CPU/Rust/render/audio/frame interval·지원 GPU timer, draw/triangle/upload와 Wasm/GPU 저장량을 기록한다.
+전투 VFX와 공간 오디오 2개 loop는 두 조건에서 유지하고 실제 입자/음성을 검사한다. 마을 자체는 0층 경사이며 다른 층 전환은 기존 공간 탐색 회귀가 검사한다.
+기존 profiler의 느린 frame window도 함께 보존한다. 정적 모델 warm upload 0, draw≤256,
+Rust<250ms/render<1000ms의 작업 상한, warm 자원 증가 없음과 destroy 뒤 소유 GPU/음성 0을 검사한다.
+Wasm≤128 MiB, GPU buffer≤16 MiB·추정 전체≤64 MiB도 검사한다. 상한은 FPS 보장이 아니다. GPU 표본이 없으면 count 0/값 누락으로 기록하며 0ms로 해석하지 않는다.
+
+보고서/캡처는 `artifacts/village-game-quality/run-*/`다. `scripts/assets/build-village-lod.py`는 Blender에서
+공식 tree/pine의 후보를 생성하며 `tests/fixtures/village-lod/manifest.json`에 원본/출력 hash를 남긴다.
+원본 모델의 외형·피벗·팔레트·그림자를 실제 표시 크기에서 확인하고, FPS 개선이 확인되지 않은 후보를 기본 예제에 넣지 않는다.
+인접 재질 병합은 source geometry를 유지하며 대표 모델의 draw 감소와 양 renderer의 픽셀 동등성을 별도로 검증한다.
+단일 software GPU의 결과를 실제 PC/mobile 성능으로 일반화하지 않는다. 장기 benchmark와 타 기기 검증은 별도 실행이다.
+
+### WebGPU 장치 손실 복구
+
+`pnpm smoke:webgpu-recovery`는 실제 WebGPU device.destroy로 손실을 주입하고 DPR 1/2·두 viewport에서
+새 장치 generation, 같은 renderer 참조, 중복 recovery Promise 공유, sprite·폐기한 URL의 texture·깊이/cutout과
+정적 모델/재질을 복구한다. 다음 씬용 asset handle 16개(같은 hash의 별도 로드 포함)를 preload한 상태에서도 복구하고, 현재 픽셀과 다음 준비 자원이 모두 남아야 한다. 복구 전후 픽셀은 동일해야 한다. shader/buffer/texture는 실제 GPU를 사용한다.
+CI의 offscreen target 검증이며 native canvas presentation·실물 GPU loss를 대체하지 않는다.
+SDK 회귀는 생성 시 이미 손실된 device의 context 선택 차단, 재생성 검증 실패·재시도와 중간 destroy를 보강한다.
+기존 pre-context WebGL2 fallback과 공간 renderer parity도 유지한다. 보고서는 기존 spatial-webgpu `run-*/report.json`의 recoveryCases다.
+
+### 전체 타일 맵과 native 저장
+
+`pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에
+Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. 기존 negative upload 검사를 먼저 실행해 캐시로 실패 주입을 건너뛰지 않는다.
+좌표/offset·layer 방향·object mapping·명시적 nonblocking 셀·제외 tileset·lock·provenance 경계를 검사한다.
+2×2→3×2 변경에서 같은 좌표의 ID와 instance binding이 유지되고 단일 Undo/Redo로 돌아오는지 확인한다. SDK 단위 검사는 explicit detach/prefab 상속·미지원 prop 거절·legacy 원본 누락 거절·cell metadata 한계도 검사한다.
+
+`pnpm smoke:tile-project`는 기존 Rust headless transport의 실제 파일 저장·원본/catalog/CAS·protocol·새 세션과 fresh game에
+2D whole-map provenance·재import도 연결한다. 구형 선형 key의 실제 저장 파일과 원본 catalog를 다시 열어 좌표 identity로 이관하고, 너비 변경 뒤 ID·동작 참조·fresh game을 확인한다. 저장 실패/취소 시 원문 보존과 저장 직후 baseline/viewer의 일관성도 검사한다.
+이 결과는 GTK/WebView native GUI나 설치 파일 검증이 아니다. 미지원 형식은 [현재 사용 범위](../../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.

@@ -1,27 +1,12 @@
 # 데모 게임 포트폴리오 후속 계획
 
-상태: P0/P1 기반 완료, 신규 public 노출 후보 결정 대기
-기준일: 2026-08-21
+상태: 신규 public 노출 후보 결정 대기
+기준일: 2026-10-29
 
-이 문서는 이미 구현된 데모의 사용법을 반복하지 않고, smoke/report로만 확인되는 기능을 public
-showcase로 승격할지 결정하기 위한 planning 기록이다. 현재 route와 운영 계약은
+이 문서는 이미 구현된 데모의 사용법을 반복하지 않고, smoke/report 중심의 기능을 public
+showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route와 운영 계약은
 [Showcase Hub](../engine/showcase-hub.md)와
-[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다.
-
-## 확정된 기반
-
-Pages artifact에는 다음 여섯 public route가 있다.
-
-| Route | 역할 | 대표 검증 |
-| --- | --- | --- |
-| Starter Runtime | 가장 작은 runtime 통합 예제 | `pnpm smoke:starter-runtime` |
-| Top-down Shooter | Game Spec, gameplay, replay 대표 데모 | `pnpm smoke:topdown` |
-| Placement Viewer | Scene Placement/Object Authoring workflow | `pnpm smoke:placement-viewer` |
-| Physics Sandbox | Physics Spec, solver, query, debug 대표 데모 | `pnpm smoke:physics-sandbox` |
-| Breakout | 작은 arcade starter와 effect 흐름 | `pnpm smoke:breakout` |
-| Platformer | platform movement와 terrain starter | `pnpm smoke:platformer` |
-
-이 route를 다시 만들거나 Top-down Shooter에 모든 기능을 추가하는 작업은 후보가 아니다.
+[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다. 기존 여섯 demo route는 해당 문서에서 관리하며 다시 만드는 후보로 등록하지 않는다.
 
 ## 남은 public 노출 후보
 

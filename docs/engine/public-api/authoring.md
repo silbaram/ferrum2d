@@ -787,3 +787,29 @@ HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `sp
 scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
 기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
 [Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.
+
+## 타일 맵 provenance
+
+개발 소스의 placement `addInstance`/`addObjectDefinition`은 기존 `props.components` 외에
+선택 `props.tileMapImport`만 추가로 허용한다. envelope/operation version은 유지하며 runtime ABI는 바꾸지 않는다.
+필수 문자열 `name`(1..48), `lineage`(1..2048), `key`(1..512)와 선택 `assetId`(1..256자), JSON object `options`/`object`, 아래 `cell`만 허용하고,
+전체 JSON UTF-8을 16 KiB로 제한한다. 다른 필드·배열은 거절한다.
+원본 binding/배치 설정을 다시 찾기 위한 UI 소유 metadata이며 behavior/FSM/게임 상태가 아니다.
+
+기존 문서에는 필요 없고 기존 components-only patch도 그대로 동작한다.
+이 metadata를 모르는 과거 patch writer/validator는 새 import patch를 거절하므로 개발 소스의 viewer/SDK를 함께 사용한다.
+`props.behaviorRecipes` 등 agent 소유 필드의 add-instance 작성 금지는 유지한다.
+[전체 맵 사용 범위](../data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
+
+`tileMapImport.assetId`는 선택 1–256자 revision id다. 전체 맵으로 생성한 인스턴스는 이 값을 저장해 타일을 모두 지우고 매핑 객체만 남겨도 해당 원본 JSON·PNG revision을 보존한다. 정의의 marker에는 revision id를 넣지 않는다.
+
+2D map 재적용은 제거한 source 인스턴스의 `name`·`lineage`·`key`가 모두 같을 때만 같은 ID를 다시 추가할 수 있다. 다른 삭제/rename ID의 저장 전 예약 규칙은 유지한다. 동일 map ID의 remove/add 쌍은 참조가 유지되므로 삭제 migration 대상에서 제외한다.
+
+`tileMapImport.cell`은 선택 `{ layer, column, row }`다. `layer`는 1..512자 문자열, `column`/`row`는 0..255 정수이며 추가 필드는 거절한다. 전체 provenance의 16 KiB 상한에 포함한다.
+새 타일은 layer·column·row로 key를 만들므로 grid 너비 변경에도 같은 셀의 ID가 유지된다.
+이전 선형 index key는 정확한 `assetId` 원본 revision에서 좌표를 복원한 뒤 기존 ID/key를 alias로 유지하고 `cell`을 추가한다.
+원본 revision이 없으면 추측해서 다른 셀에 ID를 재사용하지 않고 적용을 거절한다. 기존 marker의 새 필드는 선택이며 runtime ABI는 그대로다.
+
+맵 재적용은 raw instance의 명시적 `behaviorRecipes` 참조를 기존 `updateBehaviorBinding` 연산으로 보존한다.
+명시적 detach도 유지하고, instance override가 없으면 새로 선택한 prefab의 binding을 상속한다. recipe 본문은 수정하지 않는다.
+지원하지 않는 추가 authored prop이 있는 인스턴스는 데이터를 버리는 대신 적용 전에 진단한다.

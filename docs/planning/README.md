@@ -1,31 +1,38 @@
-# Planning 문서
+# 개발 계획과 개선 후보
 
-`docs/planning`은 진행 중인 개발 계획, 미구현 기능 후보, 승인 필요 기능을 관리한다. 개발이 완료된 계획과 결과 기록은 삭제하고 별도 완료 요약·아카이브 문서를 만들지 않는다. 사용법, public contract, 검증 기준은 기존 `docs/engine`과 `docs/development`의 확정 문서에서 관리한다.
+기준일: 2026-10-30
 
-## 현재 문서
+`docs/planning/`은 진행 중인 작업, 미착수 후보, 제품 결정이 필요한 항목만 관리한다.
+완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
+현재 사용법과 검증 계약은 `docs/engine/`, `docs/development/`를 기준으로 한다.
 
-아래 상태는 각 문서의 기준일과 해당 코드·검증 기록을 함께 반영한 planning 요약이다. `활성 후보`는 착수된 task가 아니라 다음 범위를 고를 때 사용할 후보이며, 실제 개발을 시작할 때 별도 task 또는 이슈로 검증 기준을 확정한다.
+## 다음 개선 추천
 
-| 문서 | 현재 상태 | 활성 후보 |
-| --- | --- | --- |
-| [Three.js 소스 대조 기반 물리 고도화](physics-threejs-upgrade-plan.md) | 복합 collider/chain CCD와 HD-2D 보행 충돌·마을 적용·카메라 회귀 검증 완료 | 탐색 비용 최적화·표시 보간, 회전 CCD 별도 설계 검토 |
-| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 완료 계획에서 미착수 후보만 분리 | 실제 게임 성능·LOD 외형·WebGPU 복구, 네트워크 자원 관리·추가 모델 확장 |
-| [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
-| [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | built-in Scene Authoring, Aseprite import/reimport·animation+normal 동시 생성·native 저장/복원, Tiled/LDtk tileset 선택·외부 TSJ frame·native 원본 저장/재열기, 폴더 감지·GLB/texture·runtime 진단, 게임 카메라 구도·확대 작성/patch 저장 반영 | Tiled/LDtk 추가 형식·map 연결, catalog 예산/정리·추가 문서 저장, collision/effect timeline·실행 근거 |
-| [배포 후속 계획](deployment-roadmap.md) | 정적 Pages, Tauri authoring host, 로컬 Linux package smoke·native GUI 검증 기반 | release artifact GUI·CI 편입, generated game wrapper와 macOS/Windows release matrix 필요성 판단 |
+아래 순서는 개발 착수나 완료를 뜻하지 않는다. 작업을 시작할 때 대상과 검증 조건을 확정한다.
 
-활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 사용법과 운영 계약은 확정 문서에만 남긴다.
+| 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
+| --- | --- | --- | --- |
+| 1 | 실제 마을 렌더 비용·실물 GPU 검증 | 현재 원본/LOD 비교를 토대로 실제 기기에서 효과/제출 병목을 확인한다. | [실게임 품질 후속](feature-candidates.md#실게임-품질-후속-검증): 해상도/DPR·장시간 실행, 원본 대비 측정과 외형 확인 후 최적화 선택 |
+| 2 | WebGPU GPU 시간·자원 통계 | 장치 손실 복구 다음으로 실제 병목을 profiler에서 읽을 수 있게 한다. | [엔진 확장 후보](feature-candidates.md#엔진-확장-후보): timestamp 미지원 처리와 자원 소유/정리·복구 전후 검증 |
+| 3 | Catalog 정리와 import 진단 | 전체 맵 반복 작성 시 원본 revision 예산과 오류 원인을 다루기 쉽게 한다. | [제작 편의성 후보](game-development-convenience-review.md#asset-반복-작업): 참조/Undo 보존·명시적 정리·실패 rollback·원본 위치 진단 |
 
-## Pages 노출 원칙
+## 문서별 관리 범위
 
-`docs/planning` 문서는 GitHub Pages docs navigation에 포함되지만 제품 사용 계약처럼 보이면 안 된다. Pages 홈과 docs navigation의 상단 진입점은 [문서 지도](../README.md)의 Pages 홈 노출 기준을 따른다. planning 문서는 진행 중인 개발 계획, 신규 기능 후보, 승인 필요 항목의 보조 경로로 유지한다.
+| 문서 | 남은 범위 |
+| --- | --- |
+| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 실물 GPU·LOD 전환, WebGPU 통계, 자원 요청, 추가 모델, 물리 탐색·표시 보간 |
+| [게임 개발 편의성 후보](game-development-convenience-review.md) | 외부 맵 지원 범위 확대, catalog 정리·저장, 개발 reload, 읽기 전용 실행 진단 |
+| [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 기존 기능을 public demo/report로 노출할 필요성 판단 |
+| [배포 후속 검증 후보](deployment-roadmap.md) | 실제 설치·GUI·플랫폼 서명 증거와 추가 host 필요성 판단 |
+
+완료한 공간 오디오·에셋 로딩·glTF 변환 등의 사용법은 [Core API](../engine/public-api/core.md)와
+[공간 계약](../engine/data-scene-spatial.md)을 따른다. 이미 제공하는 기능을 미완료 후보로 다시 등록하지 않는다.
 
 ## 관리 규칙
 
-- 기능 후보는 사용자-facing 가치, Ferrum2D 제품 방향, 검증 가능성을 함께 기록한다.
-- 개발을 시작하려면 후보 항목을 별도 task 또는 이슈로 분리하고 범위/검증 기준을 확정한다.
-- 개발 계획 전체가 완료되면 해당 문서를 삭제한다. 완료 기록을 다른 경로의 요약·아카이브로 다시 만들지 않는다. 사용법/public contract/검증 기준은 기존 확정 문서에서 관리한다.
-- 일부 단계만 완료됐거나 검증이 남은 계획은 유지한다. 데모·배포·편의성 문서의 미착수 후보는 완료 문서로 삭제하지 않는다.
-- `docs/README.md`, `docs/engine/**`, `docs/development/**`가 운영 계약의 기준 소스다. 진행 중인 계획의 단계별 기록은 작업 재개에 필요한 범위로 유지하며, 운영 계약과 충돌하면 확정 문서를 우선한다.
-- 문서 구조나 Pages 진입점이 바뀌면 `pnpm validate:docs-links`, `pnpm build:pages`, `pnpm validate:pages-artifact`로 Markdown 링크와 generated HTML route를 함께 확인한다.
-- Wasm threads, full visual editor, multiplayer, scripting/plugin runtime, skeletal animation, complex physics, 3D rendering은 별도 설계/승인 전 production 코드로 구현하지 않는다.
+- 후보마다 사용자 가치, 현재 한계, 착수 시 검증 조건을 기록한다.
+- 완료한 단계의 로그·테스트 개수·임시 경로를 계획에 누적하지 않는다. 현재 검증 명령은 [Smoke Check](../development/quality/smoke-check.md)에 둔다.
+- 일부 후보가 남은 문서는 남은 범위만 유지한다. 전체가 끝나면 삭제하고 문서 지도와 Pages 메뉴의 참조도 정리한다.
+- 실제 구현·저장/API 계약과 제안은 구분한다. 원격 이슈·배포 상태는 확인 없이 완료로 바꾸지 않는다.
+- 문서 삭제·경로·Pages 메뉴 변경은 `pnpm validate:docs-links`, `pnpm build:pages`, `pnpm validate:pages-artifact`로 확인한다.
+- Wasm threads, full visual editor, multiplayer, scripting/plugin runtime, skeletal animation, complex physics, 범용 3D는 별도 설계/승인 범위다.

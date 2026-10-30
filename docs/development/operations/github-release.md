@@ -126,7 +126,7 @@ sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev liba
 
 스크립트는 Linux GTK/WebKitGTK와 native Rust host를 먼저 확인한다. 누락 시 Wasm 빌드나 출력 생성 전에 실패하며 OS 패키지를 자동 설치하지 않는다. Wasm/SDK 빌드 → 기존 Pixelforge 로고의 native icon 생성 → 임시 config의 beta 버전으로 Tauri release build → 새 installer와 frontend Wasm 확인 순서로 진행한다. source package/Cargo/Tauri 버전은 바꾸지 않는다. 기존 installer를 이번 빌드의 결과로 재사용하지 않는다.
 
-`--no-sign`은 검토용 unsigned 빌드다. 생략하면 기존 플랫폼 signing 설정을 사용하지만 스크립트가 서명·notarization을 검증하지는 않는다. 빌드 성공은 native GUI 성공을 의미하지 않으므로 manifest에 `nativeGui: "not-run"`, `signing: "not-verified"`와 [desktop 수동 release gate](../../../apps/placement-viewer-desktop/README.md)를 남긴다. 실제 설치·project/file picker·저장/재열기·asset protocol·handoff·interactive canvas와 OS별 서명 상태를 공개 전에 별도로 확인한다.
+`--no-sign`은 검토용 unsigned 빌드다. 생략하면 기존 플랫폼 signing 설정을 사용하지만 스크립트가 서명·notarization을 검증하지는 않는다. 빌드 성공은 native GUI 성공을 의미하지 않으므로 manifest에 `nativeGui: "not-run"`, `signing: "not-verified"`와 [desktop 수동 release gate](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer-desktop/README.md)를 남긴다. 실제 설치·project/file picker·저장/재열기·asset protocol·handoff·interactive canvas와 OS별 서명 상태를 공개 전에 별도로 확인한다.
 
 `--skip-engine-build`, `--skip-engine-package-check`는 이미 같은 소스에서 수행한 엔진 검사를 재사용할 때만 사용한다. 생략 사실은 기존 엔진 manifest에 기록되며 viewer native build는 생략하지 않는다. dirty source도 준비는 가능하지만 통합 manifest에 보존한다. 공개 후보는 커밋한 깨끗한 소스에서 다시 준비한다.
 
@@ -138,7 +138,7 @@ sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev liba
 GitHub `/releases/latest`는 beta를 제외하므로 공개 release 목록을 최대 5페이지 조회하고 exact beta를 숫자로 비교한다.
 draft·source archive·단순 Git push는 새 버전으로 선택하지 않는다. API 제한/오프라인은 오류를 표시하며 설치를 시작하지 않는다.
 
-프로젝트 갱신은 [create-game의 CLI](../../../packages/create-game/README.md)로도 실행할 수 있다.
+프로젝트 갱신은 [create-game의 CLI](https://github.com/silbaram/ferrum2d/blob/main/packages/create-game/README.md)로도 실행할 수 있다.
 기존 Ferrum runtime/viewer/generator/agents dependency만 같은 릴리스 URL로 고정하고,
 생성기 metadata 없이 공식 SDK tgz URL을 직접 설치한 게임도 정확한 URL에서 출처를 복원한다.
 `release-manifest.json`과 tgz의 크기/SHA-256 및 설치된 package 파일을 대조한다.

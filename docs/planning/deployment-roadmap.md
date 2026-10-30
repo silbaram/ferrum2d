@@ -1,106 +1,41 @@
-# 배포 후속 계획
+# 배포 후속 검증 후보
 
-상태: 정적 웹 배포 계약 완료, authoring desktop 로컬 package smoke 구현, generated game wrapper 보류
-기준일: 2026-08-25
+기준일: 2026-10-29
+상태: 실제 native 설치·GUI·서명 증거와 추가 host 필요성 검토. 원격 공개 상태를 뜻하지 않는다.
 
-이 문서는 완료된 정적 웹 배포 절차를 반복하지 않고, desktop packaging과 추가 hosting 지원 여부를
-결정하기 위한 planning 기록이다. 현재 운영 계약은
-[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md),
-[npm 패키지 구성 전략](../development/operations/npm-package-strategy.md), 생성 프로젝트 README가
-기준이다.
+현재 운영 계약은 [정적 웹 배포](../development/operations/demo-deploy.md),
+[엔진·뷰어 분리 준비](../development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비),
+[버전 확인과 업데이트](../development/operations/github-release.md#버전-확인과-업데이트)가 기준이다.
+OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer-desktop/README.md)를 따른다.
 
-## 확정된 배포 기준
+## 기존 준비 경로와 남은 검증 구분
 
-Ferrum2D 게임의 기본 배포 모델은 Rust/Wasm + TypeScript production build를 HTTP(S) 정적 호스팅에
-올리는 방식이다.
+- Production build·preview·deploy report와 Pages artifact 생성은 기존 경로를 사용한다.
+- `github-release-prepare.yml`의 `include_viewer`는 Windows/Linux/macOS 준비 matrix를 제공한다.
+  CI 경로를 새로 만드는 작업으로 등록하지 않는다. unsigned 빌드 성공과 실제 GUI/서명 검증은 구분한다.
+- 프로젝트 SDK와 앱/내장 엔진의 버전 확인·업데이트, signed updater 준비도 제공한다.
+  업데이트를 신규 미구현 기능으로 등록하지 않는다. 배포 키·실제 자료 공개·설치 검증은 별개다.
 
-| 항목 | 상태 | 확정된 기준 |
-| --- | --- | --- |
-| Production build | 완료 | create-game template의 `vite build --base=./` |
-| Local preview | 완료 | `npm run preview`; `file://` 직접 실행은 지원하지 않음 |
-| Deploy readiness | 완료 | `npm run ferrum:deploy-report`로 상대 asset path, referenced file, preview HTTP와 Wasm MIME 검증 |
-| Consumer browser smoke | 완료 | 가상 하위 경로, Playing 상태, WebGL2 pixel, runtime budget, Wasm MIME 검증 |
-| GitHub Pages artifact | 완료 | `pnpm build:pages`, `pnpm validate:pages-artifact` |
-| Placement Viewer desktop host | 구현 완료 | Tauri project/scene save, native dialog, local asset protocol/reload, handoff sync |
-| Linux desktop package gate | 로컬 구현 완료 | debug deb artifact/embedded frontend/Wasm 검증, optional Xvfb launch, 수동 GUI evidence 병행; CI 미편입 |
-| Generated game wrapper | 보류 | 실제 사용자 요구가 확인되면 별도 task와 acceptance로 검토 |
+## 남은 검증 후보
 
-정적 웹 계약이 이미 있으므로 다른 hosting provider나 desktop wrapper를 기본 제품 범위로 자동 확장하지
-않는다.
+| 후보 | 완료 조건 |
+| --- | --- |
+| Release artifact의 실제 GUI | 대상 OS에 실제 설치한 앱에서 project/file picker, save·재열기, asset protocol·reload, handoff, interactive canvas를 확인하고 artifact hash·환경·조작·캡처 보존 |
+| 실제 앱 업데이트 | 이전 설치 앱과 새 signed 자료를 준비한 환경에서 확인·설치·재시작, 변조/서명 불일치 거절과 실패 상태를 검증. 프로젝트 SDK 업데이트와 구분 |
+| 플랫폼 서명·notarization | Windows/macOS 대상과 키 관리·서명 검증·배포 정책을 별도 결정. updater 서명으로 대체하지 않음 |
+| Native GUI 검증의 CI 편입 | 로컬 package smoke/headless transport와 GUI 상호작용을 구분하고 runner·권한·실패 artifact·실행 비용을 정한 뒤 선택 |
 
-## 결정 및 구현 결과
+`pnpm smoke:placement-viewer-desktop-package`의 artifact/startup 확인과 Rust headless transport는
+실제 packaged GUI/IPC 검증을 대신하지 않는다. 자동 검증의 범위를 늘리더라도 기존 native release gate를 유지한다.
+원격 배포·Release 공개·키 설정은 해당 작업을 요청받았을 때 운영 절차에 따라 수행한다.
 
-### 1. Desktop 범위 결정
+## 요구가 확인되면 검토할 범위
 
-desktop 범위는 authoring tool을 우선 제품 후보로 정했다. consumer game wrapper는 현재 생성하지 않고,
-실제 사용자 요구가 확인될 때 별도 task로 분리한다.
+| 후보 | 결정할 내용 |
+| --- | --- |
+| Generated game desktop wrapper | 실제 게임의 필요가 있는지, web runtime을 감싼 host의 파일/입력/asset 권한과 package acceptance를 별도 정의 |
+| 추가 정적 hosting 지원 | base path·Wasm MIME·cache/header·SPA fallback 차이가 기존 상대 경로/preview 검증으로 해결되지 않을 때 전용 문서/adapter 검토 |
+| Store 제출·Linux 저장소·PWA | 사용자 요구와 운영 비용을 확인한 뒤 각각 분리. 현재 배포 준비에 자동 포함하지 않음 |
 
-| 선택지 | 의미 | 현재 판단 |
-| --- | --- | --- |
-| Authoring tool 전용 | Placement Viewer가 local project와 asset을 다루는 desktop host | 구현 및 로컬 package smoke 추가 |
-| Generated game optional wrapper | consumer game을 desktop 앱으로 packaging | 요구 확인 전 보류; create-game surface에 미포함 |
-| Ferrum2D 전체 desktop 제품 | editor, game packaging, updater까지 포함 | 현재 범위 밖 |
-
-Electron 비교와 전체 desktop 제품/updater는 계속 범위 밖이다.
-
-### 2. Tauri packaged app 검증
-
-자동 검증 후보는 로컬 `pnpm smoke:placement-viewer-desktop-package`로 고정했다. 일반 CI나 수동
-GitHub Actions gate에는 편입하지 않았으며, CI/release gate 변경은 별도 승인 뒤 결정한다.
-
-최소 acceptance:
-
-1. production frontend와 Wasm/JS/assets가 packaged app에서 로드된다.
-2. project directory picker가 `public/scene-authoring.json`을 연다.
-3. 명시적 save가 허용된 project path 안에서만 동작한다.
-4. `ferrum-asset://` image가 올바른 MIME/CORS로 표시된다.
-5. asset folder 변경 후 runtime texture와 handoff evidence가 갱신된다.
-6. canvas가 nonblank이고 입력 가능한 실제 GUI window를 확인한다.
-7. 실패 log 또는 screenshot artifact 기준을 정한다.
-
-1의 artifact/startup 일부는 로컬 package smoke로, 2, 3, 4, 5의 계약은 production frontend/fake
-bridge/Rust command 테스트로 자동화했다. 2~6의 실제 packaged GUI 상호작용은 release 전 수동 GUI
-evidence로 남긴다. macOS notarization, Windows code signing, store 제출은 이 acceptance에 포함하지 않는다.
-
-Aseprite Save Project의 파일/catalog·scene CAS·protocol은 `smoke:aseprite-project`의 실제 Rust headless transport로 검증한다.
-GTK/WebView가 없는 환경의 이 결과는 native GUI/IPC/package 검증을 대신하지 않는다. release GUI 확인에는 프로젝트 저장 후
-재개방·frame/reimport 복원도 포함한다. 기본 Cargo desktop feature와 해당 release gate는 유지한다.
-
-### 3. 추가 정적 hosting 지원
-
-GitHub Pages 외 provider는 실제 사용자 요구가 확인될 때만 운영 문서를 추가한다. provider별로 검토할
-차이는 다음으로 제한한다.
-
-- base path 설정
-- `.wasm` `application/wasm` MIME
-- cache/header 정책
-- SPA fallback과 정적 JSON/image/audio asset 경로
-
-현재 상대 경로와 preview HTTP 검증으로 충분한 provider에는 전용 adapter를 만들지 않는다.
-
-## Desktop 설계 경계
-
-Desktop wrapper는 Ferrum2D core를 네이티브 렌더러로 바꾸는 기능이 아니다. production web runtime을
-Tauri WebView 같은 host가 로드하고, 필요한 local file/asset capability만 최소 bridge로 제공한다.
-
-- Rust core는 simulation과 render command 생성을 계속 소유한다.
-- TypeScript frontend는 platform/authoring UI만 소유한다.
-- file save는 선택된 project root 내부 allowlist를 벗어나지 않는다.
-- browser-only production build에는 workspace write capability를 노출하지 않는다.
-- local asset protocol은 path traversal, MIME, CORS를 검증한다.
-
-## 제외 범위
-
-- Electron과 Tauri를 동시에 제품화
-- multiplayer/계정/랭킹/클라우드 저장 backend
-- app store 제출 자동화
-- notarization, code signing, Linux package repository
-- offline cache/PWA를 desktop packaging과 함께 자동 도입
-- visual editor 제품화
-
-이 항목은 요구가 확인되면 별도 planning과 승인 절차로 분리한다.
-
-## 다음 결정
-
-다음 결정은 Linux debug deb를 넘어 release용 플랫폼 matrix를 열지 여부다. macOS/Windows artifact,
-code signing, notarization, updater는 사용자 요구와 명시적 release 승인 전에는 추가하지 않는다.
+Desktop host는 Rust core를 native renderer로 바꾸지 않는다. simulation과 render command는 계속 Rust가,
+WebView·local file/asset capability는 platform host가 맡는다. project-root allowlist와 browser-only 저장 경계를 유지한다.

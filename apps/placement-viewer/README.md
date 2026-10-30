@@ -367,13 +367,14 @@ agent는 실제 PNG hash/크기를 확인해 stable 이름과 color=`srgb`/norma
 Settings/Preview는 방향키·Home/End, Cancel은 Enter/Space로 조작한다. 생성 pair 한도에 도달하면
 문서를 닫아 자원을 해제한다. 이전 pair로 Undo/Redo할 때 해당 생성 근거도 handoff에 복원한다.
 
-## Tiled/LDtk 타일 프레임
+## Tiled/LDtk 타일 프레임·전체 맵
 
 Assets → **Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 고른 뒤 **Tileset** 목록에서 이름/파일명을 확인하고 해당 PNG를 선택한다.
 외부 Tiled tileset은 **External TSJ Files**에서 참조된 `.tsj`를 모두 선택한다. 상대 source의 basename과 파일명이 일치해야 하며 중복 basename/누락/추가 파일은 거절한다. 경로 자동 읽기는 하지 않는다.
 LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. Inspect 후 Preview에서 사용 중인 frame을 확인한다.
 
 - **Register**: 문서 세션 catalog/GPU와 Assets 목록에 등록한다. 씬은 바꾸지 않는다.
+- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
 - **Apply Frame**: 선택한 unlocked sprite의 texture/UV를 한 Undo로 교체한다.
 - **Reimport**: 같은 포맷·논리 이름의 이전 revision을 참조하는 활성 fragment를 frame 이름으로 대응시켜 한 Undo로 갱신한다.
 - **Save Project**: desktop Open Project 기본 문서의 원본·catalog를 저장하고 실제 파일 재검증 후 씬을 저장한다. 재열기 시 프레임을 원본에서 복원한다.
@@ -382,7 +383,9 @@ LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. 
 Assets의 frame 선택·클릭 배치/드래그는 기존 2D/HD-2D Add Sprite 경로를 사용한다.
 Apply/Reimport는 작성한 size/pivot/pose/collider/body/behavior와 billboard 설정을 유지한다.
 normal binding, animated/legacy sprite, 잠긴 대상, 누락/모호한 frame은 거절한다. tileset 또는 LDtk level identity가 바뀌면 frame을 명시적으로 적용한다.
-전체 level·collision·entity를 Data Scene에 자동 적용하지 않는다. 변환된 맵은 agent가 Game Spec에 연결한다.
+Apply Map은 타일과 매핑 객체의 합계 2,048개 이하 범위에서 선택 tileset 한 장을 지원한다. 제외 tileset 타일이 있으면 적용을 거절한다. 충돌은 명시한 layer/blocksMovement만, entity/object는 objectPrefabs로 매핑한 기존 prefab만 사용한다. 프레임 Reimport는 배치 구조를 바꾸지 않으므로 셀/객체 변경은 Apply Map을 다시 누른다.
+같은 grid 셀의 ID와 명시적 instance 동작 연결은 유지한다. 구형 map은 원본 revision catalog가 필요하며, 보존할 수 없는 추가 사용자 속성이 있으면 적용 전에 진단한다.
+[전체 맵 옵션과 미지원 범위](../../docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
 
 지원 범위는 **원본 tileset 1..8개, import당 선택 tileset 1개/PNG 1개**, finite orthogonal Tiled의 embedded/외부 TSJ tileset·비압축 data 배열,
 LDtk embedded level의 Tiles/AutoLayer·entity metadata다. 외부 TSX·LDtk external level, IntGrid, flip/회전은 지원하지 않는다. 다중 tileset 선택에서 Tiled group layer는 먼저 평탄화한다.

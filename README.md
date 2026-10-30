@@ -504,6 +504,13 @@ docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```
 
+개발 소스의 WebGPU renderer는 `deviceState()`/`recoverDevice()`로 장치 손실 후 소유 자원을 재생성한다.
+[수명·복구 계약](docs/engine/public-api/labs.md#webgpu-장치-수명과-복구)을 따르며 초기 WebGL2 fallback과 구분한다.
+공식 2D viewer의 **Import Tile Frames → Apply Map**은 Tiled/LDtk의 타일·명시적 object mapping을
+전체 배치·재import하고 한 번의 Undo와 기존 프로젝트 저장으로 관리한다.
+[지원 범위](docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 확인한다.
+`pnpm smoke:village-game-quality`, `pnpm smoke:webgpu-recovery`, `pnpm smoke:tile-map`으로 해당 경로를 검증한다.
+
 ## 상세 문서
 
 - [문서 지도](docs/README.md)
