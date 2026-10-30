@@ -1797,6 +1797,10 @@ runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
 
 `pnpm test:pixel-authoring`은 자체 편집 원본의 검증·roundtrip, 정수 선 보간·clipping, 연결 영역 채우기,
 transaction 취소·Undo/Redo 분기·64단계/16 MiB 상한, PNG의 반투명/투명 RGBA 수치 보존을 검사한다.
+v1→v2 전환·독립 레이어 픽셀·정수 alpha 합성, 순서/표시/잠금/삭제와 픽셀의 통합 Undo,
+선택 레이어 fill·합성 스포이트·선택만 바꿀 때 dirty 불변, 삭제/재열기 후 ID 재사용 방지도 검사한다.
+8개·256×256의 1 MiB 초과 원본과 3 MiB/16 MiB 예산, v1 400,000 bytes 유지·중복 ID/잘못된 flag 거절을 확인한다.
+JSON 정수의 소수/지수 표기·JS 공백 판정·UTF-16 길이와 짝 없는 surrogate 거절도 검사한다.
 static sprite component patch의 설정 보존·잠금/애니메이션/normal 거절과
 실제 session store의 immutable revision·history 보존·미사용 정리·취소된 upload 해제를 함께 확인한다.
 비동기 PNG 중 caller 원본 변경, numeric-only texture alias의 save/문서 경계 우회,
@@ -1809,12 +1813,19 @@ source 다운로드/재열기·폐기/취소·한국어/영어, history 참조�
 release 최종 좌표·창 blur 취소/Space 복원·잘못된 알파, 늦은 File.text와 닫기 확인의 경합,
 GPU upload 뒤 선택 변경 시 임시 자원 회수, numeric-only save/다른 문서 열기 거절과 이름으로 된 export를 확인한다.
 native update bridge와 release 응답은 fixture로 대체해 미저장 도트의 설치/재시작 요청이 전달되지 않는지 검사한다.
-내보낸 PNG/manifest/scene을 별도 runtime에서 로드해 hash와 실제 파란 픽셀 100개 초과를 요구한다.
+레이어 추가·이름 Undo/Redo·숨김·잠금 그리기 차단·앞뒤 이동·삭제 복원을 실제 UI로 조작한다.
+레이어 선택/체크박스의 키보드 포커스·이름 blur 직후 다른 레이어 클릭·조합 중 Enter·잘못된 이름 복원,
+2D/HD-2D 도트 캔버스의 Space+드래그 이동과 dirty 불변도 확인한다.
+이모지가 길이 경계에 있는 PNG 파일명을 잘못된 surrogate로 자르지 않아야 하며 긴 제목도 390px 작업 공간을 넘지 않아야 한다.
+도트 탭을 닫으면 레이어 행/편집기 cache를 비우고 같은 다중 레이어 원본을 다시 열어 이름·선택·합성을 복원해야 한다.
+2개 레이어의 원본과 합성 PNG(`[64,0,191,255]`)를 확인하고 한국어 720px·390px의 패널 내용/버튼 경계와 스크린샷을 남긴다.
+390px 작업 공간에서는 이미지 레이어가 캔버스 아래로 이동해야 한다.
+다중 레이어에서 내보낸 PNG/manifest/scene을 별도 runtime에서 로드해 hash와 실제 파란 픽셀 100개 초과를 요구한다.
 runtime은 paused 상태(3)·entity 1개·sprite 1개 이상·draw call 1~16회·texture switch 16회 이하를 실제 frame/renderer stats로 확인한다.
 manifest path를 변조한 negative fixture는 runtime 시작 전에 실패해야 한다.
 미설치 session texture의 scene Save는 요청을 전송하지 않아야 하며, 종료 후 URL/GL texture 잔여는 0이어야 한다.
 근거는 `artifacts/pixel-authoring/verification.json`과 run별 원본/PNG/bundle/화면이다.
-native 프로젝트 파일 저장은 아래 별도 gate로 검증하며 다중 이미지 layer/frame·노멀 재생성은 후속 범위다.
+native 프로젝트 파일 저장은 아래 별도 gate로 검증하며 프레임 애니메이션·노멀 재생성은 후속 범위다.
 
 `pnpm smoke:pixel-project`는 실제 Rust 저장/protocol 함수를 test-only stdio transport로 호출한다.
 2D DPR 1·HD-2D DPR 2에서 도트 생성/적용→원본/PNG/catalog 저장→Rust/브라우저 새 세션 재열기와 원본 동일성을 검사한다.
@@ -1824,6 +1835,9 @@ native 프로젝트 파일 저장은 아래 별도 gate로 검증하며 다중 �
 draw call 1~16회·texture switch 16회 이하와 파란 픽셀 100개 초과를 요구한다. 종료 후 URL/GL texture는 0이다.
 Rust host unit은 원본/PNG의 투명 RGBA 일치, identity·hash·경로 검증, stale catalog 거절, 부분 생성 실패 rollback·기존 파일 보존,
 변조/링크 catalog 거절을 검사한다. UI 전용 테스트가 실제 native GUI/picker/IPC 또는 실물 GPU 검증을 대신하지 않는다.
+다중 레이어 편집 원본을 저장한 뒤 Rust/브라우저를 다시 시작해 레이어 수·이름과 원본 bytes를 복원하고 합성 PNG로 새 게임을 실행한다.
+Rust unit은 1 MiB 초과 8개 레이어 원본의 실제 저장/재열기, 합성과 다른 PNG·잘못된 flag·중복 ID의 저장 거절도 확인한다.
+원본/metadata의 `1.0` 정수 표기를 저장·재열기·재저장해 원본 bytes 보존과 metadata 정규화를 대조한다.
 서식 있는 원본과 독립 인코더의 필터·분할 IDAT·Adam7 PNG를 실제 Rust에 저장하고 UI에서 재열기/재저장해 원본 bytes를 대조한다.
 bundle 생성/PNG 검증 중 caller 데이터 변경, sRGB와 충돌하는 프로필, PNG IEND 누락·CRC 오류·끝 쓰레기 bytes의 저장 거절도 검사한다.
 근거는 `artifacts/pixel-project/verification.json`과 run별 화면/원본/`rust-build.log`다.

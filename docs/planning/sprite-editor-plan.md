@@ -1,9 +1,16 @@
 # 엔진 내장 도트 제작 기능 개발 계획
 
 기준일: 2026-10-30
-상태: 1차 완료 · 2차 이미지 레이어·프레임 애니메이션 미착수
+상태: 1차 완료 · 2차 부분 완료(이미지 레이어 완료, 프레임 애니메이션 미착수)
 작업 브랜치: `feat/pixel-authoring`
-다음 구현 범위: 이미지 레이어·프레임·시간·어니언 스킨과 저장/재생 검증
+다음 구현 범위: 프레임 추가·복제·시간·미리보기와 저장/재생 검증, 이후 어니언 스킨·atlas frame 편집
+
+2차 중 이미지 레이어를 구현하고 검증했다. 기존 v1 원본은 그대로 읽고 저장하며, 레이어 구조·표시·잠금을 편집하면 v2로 전환한다.
+v2는 아래→위 순서의 `layers`(id/name/visible/locked/rgba), 기존 단일 frame·팔레트를 보관한다.
+한 문서 최대 8개 이미지 레이어·256×256·원본 3 MiB(v1은 400,000 bytes)를 사용하며, PNG는 보이는 레이어를 straight-alpha source-over로 합성한다.
+레이어 선택은 UI 상태이고 원본/dirty에 포함하지 않는다. 픽셀·레이어 구조/속성 편집은 같은 Undo/Redo와 16 MiB history 예산을 사용한다.
+레이어 추가·이름·순서·표시·잠금·삭제, 합성 PNG/씬 적용, native 저장·재열기/실패·충돌과 기존 v1 회귀를 확인했다.
+프레임·어니언 스킨·atlas frame 편집은 이 작업 이후의 2차 항목으로 남긴다.
 
 현재 작업의 저장 계약은 `public/assets/.ferrum-pixels/`의 불변 원본 JSON·PNG와 `catalog.json`이다.
 기존 desktop allowlist·asset protocol·sprite 저장 transaction을 재사용한다.
@@ -34,7 +41,7 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 ## 현재 구현과 재사용 지점
 
 기본 도트 편집 모델·캔버스·에셋 문서 탭·브라우저 원본/PNG 내보내기·native 프로젝트 저장/재열기·자산 등록/씬 적용을 구현했다.
-다중 이미지 레이어·프레임은 아직 제공하지 않는다.
+다중 이미지 레이어를 추가했으며 프레임 애니메이션은 후속 범위다.
 기존 JSON+PNG import·reimport, 노멀 생성, 원본 저장·재열기는 별도의 가져오기 기능이다.
 그 과정에서 검증한 자산 등록·revision·저장·수명 관리 구현은 재사용하되, 새 도트 문서를 Aseprite metadata로 가장하거나 기존 import UI를 제작의 필수 단계로 삼지 않는다.
 
@@ -106,7 +113,7 @@ C++ 데스크톱 UI나 문서 구조 전체를 옮기지 않고, 필요한 알�
 
 1차 저장·수명 계약 위에 에셋 내부의 layer/frame을 추가한다. 이미지 레이어와 씬의 그리기 레이어는 별도 개념으로 표시한다.
 
-- 이미지 레이어 추가·이름 변경·순서·표시·잠금과 기본 합성.
+- 이미지 레이어 추가·삭제·이름 변경·순서·표시·잠금과 기본 합성: 완료.
 - 프레임 추가·복제·삭제·순서 변경, 프레임별 시간과 재생/정지.
 - 이전·다음 프레임을 겹쳐 보는 어니언 스킨.
 - 기존 atlas의 선택 frame 편집: rect/UV와 다른 frame의 픽셀을 보존한다. 겹치거나 모호한 frame은 진단한다.
@@ -169,9 +176,11 @@ Assets의 **새 도트 만들기** 또는 기존 자산의 **도트 편집**으�
 
 1차 편집기 예산은 문서 한 변 최대 256픽셀, 원본 JSON 400,000 bytes, Undo/Redo 합계 최대 64단계와 pixel history 16 MiB다.
 단계 수와 실제 snapshot byte 상한을 함께 적용한다. 256×256에서는 before/after RGBA snapshot 32단계가 byte 상한이다.
-2차의 frame/layer 상한과 전체 pixel·history 예산도 합계 기준으로 제한한다. 기존 catalog 예산은 자동으로 확대하지 않는다.
+현재 이미지 레이어는 최대 8개, v2 원본은 3 MiB이며 전체 layer snapshot이 같은 16 MiB history 예산을 사용한다.
+이후 frame 상한과 전체 pixel 예산도 합계 기준으로 제한한다. 기존 catalog 예산은 자동으로 확대하지 않는다.
 
-현재 원본은 `ferrum2d.pixel-document` v1로 width/height·sRGB·layer/frame ID·팔레트·straight-alpha RGBA8 base64를 담는다.
+현재 원본은 `ferrum2d.pixel-document` v1/v2로 width/height·sRGB·layer/frame ID·팔레트·straight-alpha RGBA8 base64를 담는다.
+v1은 기존 단일 layer/rgba, v2는 아래→위 순서 layers 배열과 각 표시·잠금·독립 RGBA를 저장한다.
 UI 상태·Undo 이력은 저장하지 않으며 PNG는 RGBA를 직접 인코딩해 canvas premultiplication으로 인한 원본 수치 손실을 피한다.
 게임용 `ferrum2d.pixel-assets` v1 bundle은 불변 PNG revision·SHA-256·원본·manifest·현재 scene document를 담는다.
 PNG 생성 전 원본 snapshot을 확정하며 적용 실패의 미확정 revision만 rollback한다.
@@ -224,7 +233,8 @@ Rust/ABI 변경이 없는 에셋 제작 작업에 simulation 기능을 함께 �
 - [x] 1차: 브라우저 원본 재열기·PNG export·Assets 등록·씬 적용 통합 검증
 - [x] 1차: native 프로젝트 원본/catalog 저장 위치·충돌 감지·실패 복원·실제 저장/재열기
 - [x] 1차: Aseprite 설치·파일 없이 새 도트 제작→저장→씬 적용→fresh game 검증과 사용법 동기화
-- [ ] 2차: 이미지 레이어·프레임·시간·어니언 스킨·atlas frame 편집
+- [x] 2차: 이미지 레이어·합성·잠금·Undo/Redo·원본 보존·저장/재열기·fresh game 검증
+- [ ] 2차: 프레임·시간·미리보기·어니언 스킨·atlas frame 편집
 - [ ] 2차: 출력/재생 호환·원본 보존·예산 회귀
 - [ ] 3차: tag/clip migration·노멀 재생성·2D/HD-2D 미리보기
 - [ ] 3차: 통합 roundtrip·자원 정리·문서 동기화

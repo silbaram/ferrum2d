@@ -1463,9 +1463,16 @@ WebGPU pass 시간 합계와 WebGL2 전체 query 구간은 다른 측정 범위�
 texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 기존 texture ID가 일치한다.
 
 도트 제작은 app의 `placementPixelDocument`(원본 검증·픽셀 연산·transaction·bounded Undo),
-`placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelPng`(straight-alpha RGBA PNG 출력),
+`placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelLayers`(이미지 레이어 패널), `placementPixelPng`(straight-alpha RGBA PNG 출력),
 `placementPixelAssets`(불변 session revision·기존 component patch), `placementPixelTool`(에셋 탭·수명·내보내기)로 분리한다.
-편집 원본은 app 전용 `ferrum2d.pixel-document` v1이며 runtime은 기존 PNG와 scene-authoring document만 소비한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2이며 runtime은 보이는 레이어를 합성한 기존 PNG와 scene-authoring document만 소비한다.
+v1의 단일 레이어를 유지하고 구조·표시·잠금을 편집할 때만 v2의 아래→위 `layers` 배열로 전환한다.
+v2는 최대 8개·256×256·원본 3 MiB이며 고유 ID·이름·표시·잠금·독립 RGBA를 보존한다. 선택은 UI 상태이고 픽셀/레이어 편집은 64단계·실제 snapshot 16 MiB 이력을 공유한다.
+레이어 패널은 ID별 행을 재사용해 이름 blur 직후 클릭과 키보드 포커스를 보존하며 IME 조합 키를 편집 명령으로 처리하지 않는다.
+문서를 닫거나 도구를 해제할 때 행과 편집기 identity cache를 비워 닫힌 문서의 픽셀 이력을 붙잡지 않는다. 씬 탭으로 잠시 전환할 때는 이력을 보존한다.
+기존 배치 뷰포트는 도트 작업 공간이 열려 있으면 키 입력을 가로채지 않고 도트 캔버스/폼에 위임한다.
+TypeScript와 native 저장 호스트는 같은 정수 straight-alpha source-over 합성을 사용한다. v1 원본 400,000 bytes와 기존 bundle/catalog 버전은 유지한다.
+공통 `sprite_assets::Contract`의 원본/PNG byte 상한을 형식별로 지정해 Pixel의 다중 레이어 허용이 Aseprite/타일 검증을 느슨하게 만들지 않는다.
 Aseprite import와 독립된 에셋 제작 경로로 Rust simulation·Wasm ABI·공개 SDK export를 변경하지 않는다.
 도트/씬 Undo와 입력을 분리하고, source 변경·문서 전환·종료 시 stale 결과의 씬 적용을 차단한다.
 원본 검증·snapshot은 비동기 PNG 생성 전에 수행하며 revision을 provisional/committed로 나눠 실패한 적용만 rollback한다.
@@ -1476,6 +1483,7 @@ desktop `pixel_assets`는 공통 `sprite_assets`/`asset_files`의 allowlist·bou
 도트 catalog만 optimistic SHA-256을 요구하며 기존 Aseprite/타일 저장 요청은 호환된다. 응답의 추가 `catalogRevision`은 기존 클라이언트에서 무시할 수 있다.
 원본/PNG 저장 후 씬을 별도 저장하고 실패·취소는 이미 완료된 파일 저장을 되돌렸다고 주장하지 않는다.
 검증된 원본의 의미 모델과 identity에 쓰이는 실제 JSON bytes를 구분해 불변 revision의 재저장을 보장한다.
+원본 이름/ID의 Unicode·UTF-16 길이·빈 값과 JSON 정수의 값 판정을 양쪽에서 맞추고, metadata 치수만 정수로 정규화해 JS 왕복 시 불변 revision 충돌을 막는다.
 저장 bundle과 PNG verifier는 비동기 작업 전에 입력을 복제하며 RGBA8 filter/Adam7 복원·끝 청크/CRC·sRGB 해석을 native/frontend 양쪽에서 검증한다.
 재열기 시 catalog 자산은 씬 runtime 생성 전에 로드한다. 브라우저는 기존 export를 유지하며 프로젝트 디스크 삭제는 범위에 포함하지 않는다.
 

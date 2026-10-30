@@ -276,9 +276,13 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 
 공식 Placement Viewer의 Assets에서 **새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
 기본 32×32이며 1~256의 정수 크기를 선택할 수 있다. 원본 문서나 PNG로 시작하려면 **도트 원본 / PNG 열기**,
-기존 sprite 자산은 **도트 편집**을 사용한다. 첫 버전은 이미지 레이어 1개·프레임 1개다.
+기존 sprite 자산은 **도트 편집**을 사용한다. 이미지 레이어 1~8개·프레임 1개를 지원한다.
 
 - 연필(B), 지우개(E), 연결 영역 채우기(G), 스포이트(I), 팔레트·색상·알파를 제공한다.
+- **이미지 레이어** 패널에서 추가·삭제·이름·앞뒤 순서·표시·잠금을 편집한다. 목록 위쪽이 앞이며 마지막 레이어는 삭제할 수 없다.
+  선택 레이어에만 그리고 숨김·잠금이면 그리기를 차단한다. 잠금은 픽셀 편집에 적용하며 이름·순서·삭제 등의 레이어 관리에는 적용하지 않는다.
+  채우기는 선택 레이어의 원본 픽셀, 스포이트는 화면의 합성 색을 사용한다. 이미지 레이어와 씬 객체의 그리기 레이어는 별개다.
+  Tab·Enter의 레이어 선택과 Space의 체크박스 전환에서 포커스를 유지하고, 한글 조합 중 Enter/Escape는 이름 확정/취소로 처리하지 않는다.
 - 휠과 확대/축소 버튼, H 또는 Space+드래그로 화면을 탐색한다. 좌표는 CSS 크기·DPR·배율·이동을 반영한다.
 - 한 번의 stroke/fill은 한 Undo다. Ctrl/Cmd+Z·Shift+Z와 Ctrl+Y는 도트 문서 이력에 적용되며 Esc/포인터 취소는 진행 중 stroke를 복원한다.
   마지막 pointerup 좌표도 선에 포함하며 창 포커스를 잃으면 진행 stroke·임시 Space 이동 상태를 취소한다. 빈 값·범위 밖 알파 입력은 마지막 유효한 색을 유지한다.
@@ -293,9 +297,19 @@ PNG 생성·업로드는 검증된 원본 snapshot으로 시작한다. 적용 �
 기존 확정 자산과 실제 참조 중인 자산은 유지한다. 닫기/새 원본 선택은 이전 파일 읽기·확인창의 권한을 취소해 늦은 결과가 다른 문서를 닫거나 교체하지 못하게 한다.
 미저장 도트 또는 진행 중인 픽셀 편집/업로드가 있으면 에디터·엔진 업데이트와 재시작을 차단한다.
 
-도트 원본은 app 전용 `ferrum2d.pixel-document` v1이다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
-UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, JSON 400,000 bytes, Undo/Redo 합계 64단계/16 MiB로 제한한다.
+도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
+UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB로 제한한다.
+이름과 layer/frame ID는 올바른 Unicode 문자열·UTF-16 최대 64단위이며 JavaScript `trim` 기준으로 빈 값이면 거절한다.
+짝이 없는 surrogate는 자산 등록 전에 진단한다. 편집 원본의 정수 필드는 표기가 아닌 값으로 검사하므로 `1.0`·`1e0`도 정수 1로 읽는다.
+v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다.
+v2는 아래→위 순서의 `layers` 배열(1~8개)에 고유 `id`·`name`·`visible`·`locked`·`rgba`를 보관한다.
+각 레이어는 문서와 같은 치수이며 `frame`·`palette`는 문서 전체가 공유한다. 선택 레이어는 UI 상태여서 선택만 바꿔도 원본이나 dirty 상태는 바뀌지 않는다.
+PNG는 표시 중인 레이어를 encoded sRGB RGBA8에서 정수 반올림하는 straight-alpha source-over로 합성한다.
+맨 아래 표시 레이어의 투명 RGB도 보존하고 모두 숨기면 RGBA 0을 출력한다. 숨긴 레이어의 원본 픽셀은 JSON에 남는다.
+픽셀·레이어 편집은 같은 Undo/Redo를 사용하며 합계 최대 64단계/실제 RGBA snapshot 16 MiB다.
+레이어 수와 크기가 커질수록 byte 상한에 의해 보존 단계가 줄어든다. 선택만 바꾸거나 값이 같은 편집은 이력을 추가하지 않는다.
 PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮어쓰지 않는다.
+파일명에서 도트 이름을 만들 때는 Unicode 문자 경계를 보존해 64단위로 줄이며, 긴 제목은 작업 공간 안에서 생략 표시한다.
 
 **자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
 각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
@@ -308,19 +322,21 @@ PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮�
 현재 도트를 자산으로 등록하고 원본·PNG를 저장한 뒤 기존 씬 초안을 저장한다. 그림 등록/저장이 객체의 이미지를 자동 교체하지는 않으며 **선택 객체에 적용**은 별도 동작이다.
 위치·크기·collider/body·behavior와 씬/픽셀 Undo의 경계를 유지한다.
 
-- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1 원본.
-- 같은 위치의 `<assetId>.png`: 원본의 straight-alpha RGBA8 픽셀과 일치하는 PNG.
+- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2 원본.
+- 같은 위치의 `<assetId>.png`: 원본에서 보이는 레이어의 합성 RGBA8 픽셀과 일치하는 PNG.
 - `catalog.json`: `ferrum2d.pixel.catalog` v1의 revisions와 게임용 texture manifest.
 
 desktop 전용 `load_placement_pixel_assets`/`save_placement_pixel_assets`는 허가된 프로젝트에만 접근한다.
 저장 요청은 `ferrum2d.pixel-project.assets` v1로 원본/PNG의 base64·SHA-256·identityDocument·치수와 `expectedCatalogRevision`을 전달한다.
 이 값은 마지막 load/save에서 확인한 catalog 원본 bytes의 SHA-256이며 최초 catalog 부재는 빈 문자열이다.
 외부 catalog 변경, 링크/경로 이탈, 원본/PNG 불일치와 기존 불변 파일의 다른 bytes는 저장을 거절한다.
-상한은 catalog 8 revision/64 MiB, 원본 400,000 bytes, PNG 4 MiB/한 변 256이다.
+상한은 catalog 8 revision/64 MiB, 원본 v1 400,000 bytes/v2 3 MiB, PNG 4 MiB/한 변 256이다.
+native 호스트는 숨긴 레이어까지 검증하고 TypeScript와 같은 합성 규칙으로 PNG를 대조한다. Pixel 전용 원본 상한이며 Aseprite/타일 원본 상한은 확대하지 않는다.
 
 호스트는 모든 입력을 검증하고 immutable 파일 생성·catalog 교체·protocol 등록을 수행한다.
 프런트엔드는 `ferrum2d.pixel.project` v1 응답과 revision URL을 다시 읽어 원본/hash/identity·PNG checksum·투명 RGB까지 확인한 뒤 persisted로 표시한다.
 공백·키 순서가 다른 유효한 JSON도 원본 bytes를 별도로 보존해 재저장 시 기존 ID/hash가 바뀌지 않는다.
+native는 검증된 치수 metadata를 정수로 정규화해 `2.0`을 읽은 브라우저가 `2`로 재전송해도 같은 revision을 재저장할 수 있다. 편집 원본 bytes는 정규화하지 않는다.
 PNG는 RGBA8의 기본 필터·분할 IDAT·Adam7을 지원하며 전체 끝 청크/CRC를 검사한다.
 sRGB 원본과 충돌하는 감마·색도 정보와 ICC/HDR 프로필은 거절해 브라우저 색 변환으로 다른 그림이 표시되지 않게 한다.
 저장 bundle은 모든 revision 필드·원본·PNG를 첫 비동기 hash 전에 snapshot으로 고정한다.
