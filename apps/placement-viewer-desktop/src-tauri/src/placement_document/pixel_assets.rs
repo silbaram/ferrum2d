@@ -1,5 +1,5 @@
 //! Native pixel sources use the shared immutable sprite transaction, independently of importers.
-use super::sprite_assets::{array, hash, header, invalid, text, Contract, Dependency, Source};
+use super::sprite_assets::{array, hash, invalid, text, Contract, Dependency, Source};
 use super::{CommandResult, PlacementAssetRegistry, PlacementWriteRegistry};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
@@ -12,6 +12,8 @@ const CONTRACT: Contract = Contract {
     catalog_format: "ferrum2d.pixel.catalog",
     project_format: "ferrum2d.pixel.project",
     max_dependencies: 0,
+    max_source_json: 3 * 1024 * 1024,
+    max_source_png: 4 * 1024 * 1024,
     check_catalog_revision: true,
     validate: validate_source,
 };
@@ -26,7 +28,12 @@ fn bounded_integer(value: &Value, key: &str, min: u64, max: u64) -> CommandResul
 }
 fn source_text<'a>(value: &'a Value, key: &str) -> CommandResult<&'a str> {
     let result = text(value, key)?;
-    if result.trim().is_empty() || result.encode_utf16().count() > 64 {
+    // Match String.prototype.trim, including BOM and excluding Unicode NEL.
+    let whitespace = |c| {
+        matches!(c, '\u{0009}'..='\u{000d}' | ' ' | '\u{00a0}' | '\u{1680}' |
+        '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    };
+    if result.trim_matches(whitespace).is_empty() || result.encode_utf16().count() > 64 {
         return Err(invalid("invalid pixel source text"));
     }
     Ok(result)
@@ -67,6 +74,39 @@ fn complete_png(bytes: &[u8]) -> bool {
     }
     false
 }
+fn rgba_bytes(value: &Value, count: usize) -> CommandResult<Vec<u8>> {
+    let encoded = value
+        .as_str()
+        .ok_or_else(|| invalid("missing pixel RGBA"))?;
+    if encoded.len() != count.div_ceil(3) * 4 {
+        return Err(invalid("invalid pixel byte length"));
+    }
+    let pixels = STANDARD
+        .decode(encoded)
+        .map_err(|_| invalid("invalid pixel base64"))?;
+    if pixels.len() != count || STANDARD.encode(&pixels) != encoded {
+        return Err(invalid("invalid pixel RGBA encoding"));
+    }
+    Ok(pixels)
+}
+/// Integer straight-alpha source-over. Matches the TypeScript authoring composite.
+fn composite_over(output: &mut [u8], input: &[u8]) {
+    for (dst, src) in output.chunks_exact_mut(4).zip(input.chunks_exact(4)) {
+        let alpha = u32::from(src[3]);
+        if alpha == 0 {
+            continue;
+        }
+        let previous = u32::from(dst[3]);
+        let denominator = alpha * 255 + previous * (255 - alpha);
+        for channel in 0..3 {
+            let value = u32::from(src[channel]) * alpha * 255
+                + u32::from(dst[channel]) * previous * (255 - alpha);
+            dst[channel] = ((value + denominator / 2) / denominator) as u8;
+        }
+        dst[3] = ((denominator + 127) / 255) as u8;
+    }
+}
+
 fn validate_source(
     metadata: &Value,
     png: Vec<u8>,
@@ -74,7 +114,7 @@ fn validate_source(
     dependencies: Vec<Dependency>,
 ) -> CommandResult<Source> {
     if !dependencies.is_empty()
-        || bytes.len() > 400_000
+        || bytes.len() > 3 * 1024 * 1024
         || png.len() > 4 * 1024 * 1024
         || text(metadata, "jsonSha256")? != hash(&bytes)
         || text(metadata, "pngSha256")? != hash(&png)
@@ -87,17 +127,22 @@ fn validate_source(
     let raw = std::str::from_utf8(&bytes).map_err(|_| invalid("pixel source must be UTF-8"))?;
     let source: Value =
         serde_json::from_str(raw).map_err(|_| invalid("invalid pixel source JSON"))?;
-    header(&source, "ferrum2d.pixel-document")?;
+    let version = bounded_integer(&source, "version", 1, 2)
+        .map_err(|_| invalid("unsupported pixel document format or version"))?;
+    if source["format"] != "ferrum2d.pixel-document" {
+        return Err(invalid("unsupported pixel document format or version"));
+    }
+    if version == 1 && bytes.len() > 400_000 {
+        return Err(invalid("pixel v1 source exceeds byte limit"));
+    }
     let width = bounded_integer(&source, "width", 1, 256)?;
     let height = bounded_integer(&source, "height", 1, 256)?;
     source_text(&source, "name")?;
-    source_text(&source["layer"], "id")?;
-    source_text(&source["layer"], "name")?;
     source_text(&source["frame"], "id")?;
     bounded_integer(&source["frame"], "durationMs", 1, 60_000)?;
     if source["colorSpace"] != "srgb"
-        || metadata["width"].as_u64() != Some(width)
-        || metadata["height"].as_u64() != Some(height)
+        || bounded_integer(metadata, "width", 1, 256)? != width
+        || bounded_integer(metadata, "height", 1, 256)? != height
     {
         return Err(invalid("pixel dimensions or color space differ"));
     }
@@ -111,19 +156,47 @@ fn validate_source(
     {
         return Err(invalid("invalid pixel palette"));
     }
-    let encoded = source["rgba"]
-        .as_str()
-        .ok_or_else(|| invalid("missing pixel RGBA"))?;
     let count = (width * height * 4) as usize;
-    if encoded.len() != count.div_ceil(3) * 4 {
-        return Err(invalid("invalid pixel byte length"));
-    }
-    let pixels = STANDARD
-        .decode(encoded)
-        .map_err(|_| invalid("invalid pixel base64"))?;
-    if pixels.len() != count || STANDARD.encode(&pixels) != encoded {
-        return Err(invalid("invalid pixel RGBA encoding"));
-    }
+    let pixels = if version == 1 {
+        if source.get("layers").is_some() {
+            return Err(invalid("invalid image layer version"));
+        }
+        source_text(&source["layer"], "id")?;
+        source_text(&source["layer"], "name")?;
+        rgba_bytes(&source["rgba"], count)?
+    } else {
+        if source.get("layer").is_some() || source.get("rgba").is_some() {
+            return Err(invalid("invalid image layer version"));
+        }
+        let layers = array(&source, "layers")?;
+        if layers.is_empty() || layers.len() > 8 {
+            return Err(invalid("image layers require 1..8 entries"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut composite: Option<Vec<u8>> = None;
+        for layer in layers {
+            let id = source_text(layer, "id")?;
+            source_text(layer, "name")?;
+            if !seen.insert(id) {
+                return Err(invalid("duplicate image layer ID"));
+            }
+            let visible = layer["visible"]
+                .as_bool()
+                .ok_or_else(|| invalid("invalid image layer flags"))?;
+            layer["locked"]
+                .as_bool()
+                .ok_or_else(|| invalid("invalid image layer flags"))?;
+            let pixels = rgba_bytes(&layer["rgba"], count)?;
+            if visible {
+                if let Some(output) = composite.as_mut() {
+                    composite_over(output, &pixels);
+                } else {
+                    composite = Some(pixels);
+                }
+            }
+        }
+        composite.unwrap_or_else(|| vec![0; count])
+    };
     let identity = text(metadata, "identityDocument")?;
     let identity_bytes = serde_json::to_vec(&json!([identity, raw]))
         .map_err(|_| invalid("invalid pixel identity"))?;
@@ -156,8 +229,13 @@ fn validate_source(
     reader
         .finish()
         .map_err(|_| invalid("invalid pixel PNG end or checksum"))?;
+    // Metadata is semantic; canonicalize integer spelling for JS roundtrips.
+    // The editable JSON bytes remain untouched because they define revision identity.
+    let mut metadata = metadata.clone();
+    metadata["width"] = json!(width);
+    metadata["height"] = json!(height);
     Ok(Source {
-        metadata: metadata.clone(),
+        metadata,
         png,
         json: bytes,
         dependencies,
@@ -338,6 +416,198 @@ mod tests {
         assert!(!project.root().join(format!("{id}.png")).exists());
         assert_eq!(load_inner(&project.0, &registry, &writes).unwrap(), saved);
     }
+    #[test]
+    fn layered_source_saves_and_requires_its_visible_composite() {
+        let mut source: Value = serde_json::from_slice(
+            &STANDARD
+                .decode(fixture(100)["files"][1]["base64"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        source["version"] = json!(2);
+        source.as_object_mut().unwrap().remove("layer");
+        source.as_object_mut().unwrap().remove("rgba");
+        let base = [255, 0, 0, 255, 12, 34, 56, 0];
+        source["layers"] = json!([
+            {"id":"base","name":"Body","visible":true,"locked":false,"rgba":STANDARD.encode(base)},
+            {"id":"top","name":"Armor","visible":true,"locked":true,"rgba":STANDARD.encode([0,0,255,128,0,0,0,0])}
+        ]);
+        let expected = [127, 0, 128, 255, 12, 34, 56, 0];
+        let bundle = layered_bundle(&source, &expected);
+        let project = Project::new();
+        let writes = project.writes();
+        let registry = PlacementAssetRegistry::default();
+        let saved = save_inner(&project.0, &bundle, &registry, &writes).unwrap();
+        let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &fs::read(project.root().join(format!("{id}.json"))).unwrap()
+            )
+            .unwrap(),
+            source
+        );
+        assert_eq!(load_inner(&project.0, &registry, &writes).unwrap(), saved);
+        source["layers"][1]["visible"] = json!(false);
+        let invalid = layered_bundle(&source, &expected);
+        let mismatch = Project::new();
+        assert!(
+            save_inner(&mismatch.0, &invalid, &registry, &mismatch.writes())
+                .unwrap_err()
+                .to_string()
+                .contains("editable source")
+        );
+        let other = Project::new();
+        save_inner(
+            &other.0,
+            &layered_bundle(&source, &base),
+            &registry,
+            &other.writes(),
+        )
+        .unwrap();
+        for duplicate in [false, true] {
+            let mut invalid_source = source.clone();
+            if duplicate {
+                invalid_source["layers"][1]["id"] = invalid_source["layers"][0]["id"].clone();
+            } else {
+                invalid_source["layers"][1]["locked"] = json!("false");
+            }
+            let invalid = layered_bundle(&invalid_source, &base);
+            let target = Project::new();
+            assert!(save_inner(&target.0, &invalid, &registry, &target.writes())
+                .unwrap_err()
+                .to_string()
+                .contains("layer"));
+        }
+    }
+
+    #[test]
+    fn layered_source_above_one_mib_restores_with_the_pixel_specific_bound() {
+        let rgba = [0, 0, 255, 255].repeat(256 * 256);
+        let mut source = json!({"format":"ferrum2d.pixel-document","version":2,"name":"Large","width":256,"height":256,"colorSpace":"srgb",
+            "frame":{"id":"frame-1","durationMs":100},"palette":[],"layers":[]});
+        source["layers"] = Value::Array((0..8).map(|i|json!({"id":format!("layer-{i}"),"name":format!("Layer {i}"),"visible":true,"locked":false,
+            "rgba":STANDARD.encode(if i==0 {rgba.clone()} else {vec![0;rgba.len()]})})).collect());
+        let bytes = serde_json::to_vec(&source).unwrap();
+        assert!(bytes.len() > 1024 * 1024 && bytes.len() < 3 * 1024 * 1024);
+        let project = Project::new();
+        let writes = project.writes();
+        let registry = PlacementAssetRegistry::default();
+        let saved = save_inner(
+            &project.0,
+            &layered_bundle(&source, &rgba),
+            &registry,
+            &writes,
+        )
+        .unwrap();
+        assert_eq!(
+            load_inner(
+                &project.0,
+                &PlacementAssetRegistry::default(),
+                &project.writes()
+            )
+            .unwrap(),
+            saved
+        );
+    }
+
+    #[test]
+    fn editable_source_integer_spellings_survive_native_save_and_reopen() {
+        let pixels = [100, 40, 160, 255, 12, 34, 56, 0];
+        for version in [1.0, 2.0] {
+            let mut source = json!({"format":"ferrum2d.pixel-document","version":version,"name":"Numbers","width":2.0,"height":1.0,
+                "colorSpace":"srgb","frame":{"id":"frame-1","durationMs":100.0},"palette":[]});
+            if version == 1.0 {
+                source["layer"] = json!({"id":"layer-1","name":"Layer 1"});
+                source["rgba"] = json!(STANDARD.encode(pixels));
+            } else {
+                source["layers"] = json!([{"id":"layer-1","name":"Layer 1","visible":true,"locked":false,"rgba":STANDARD.encode(pixels)}]);
+            }
+            let project = Project::new();
+            let registry = PlacementAssetRegistry::default();
+            let saved = save_inner(
+                &project.0,
+                &layered_bundle(&source, &pixels),
+                &registry,
+                &project.writes(),
+            )
+            .expect("JSON integer spellings accepted by Number.isInteger must save");
+            let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+            assert_eq!(
+                fs::read(project.root().join(format!("{id}.json"))).unwrap(),
+                serde_json::to_vec(&source).unwrap()
+            );
+            assert_eq!(
+                load_inner(
+                    &project.0,
+                    &PlacementAssetRegistry::default(),
+                    &project.writes()
+                )
+                .unwrap(),
+                saved
+            );
+            // JavaScript parses 2.0 as 2 and sends canonical metadata on resave.
+            let mut canonical = layered_bundle(&source, &pixels);
+            canonical["revisions"][0]["width"] = json!(2);
+            canonical["revisions"][0]["height"] = json!(1);
+            canonical["expectedCatalogRevision"] = saved["catalogRevision"].clone();
+            let resaved = save_inner(&project.0, &canonical, &registry, &project.writes())
+                .expect("equivalent integer metadata must not conflict on resave");
+            assert_eq!(resaved["assets"].as_array().unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn editable_source_text_uses_the_frontend_whitespace_set() {
+        for (name, accepted) in [
+            ("\u{feff}", false),
+            (" \u{feff}\t", false),
+            ("\u{85}", true),
+            ("\u{feff}Body", true),
+        ] {
+            assert_eq!(
+                source_text(&json!({"name":name}), "name").is_ok(),
+                accepted,
+                "{name:?}"
+            );
+        }
+    }
+
+    fn layered_bundle(source: &Value, pixels: &[u8]) -> Value {
+        let raw = serde_json::to_vec(source).unwrap();
+        let identity = "/project/public/scene-authoring.json";
+        let id = format!(
+            "pixel.{}",
+            &hash(
+                &serde_json::to_vec(&json!([identity, std::str::from_utf8(&raw).unwrap()]))
+                    .unwrap()
+            )[..24]
+        );
+        let mut png = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(
+                &mut png,
+                source["width"].as_f64().unwrap() as u32,
+                source["height"].as_f64().unwrap() as u32,
+            );
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(pixels)
+                .unwrap();
+        }
+        let mut textures = serde_json::Map::new();
+        textures.insert(id.clone(), json!(format!("{id}.png")));
+        let mut options = serde_json::Map::new();
+        options.insert(id.clone(), json!({"colorSpace":"srgb"}));
+        json!({"format":"ferrum2d.pixel-project.assets","version":1,"overwrite":false,"expectedCatalogRevision":"",
+            "revisions":[{"assetId":id,"identityDocument":identity,"width":source["width"],"height":source["height"],"jsonSha256":hash(&raw),"pngSha256":hash(&png)}],
+            "manifest":{"textures":textures,"textureOptions":options},
+            "files":[{"path":format!("{id}.png"),"mediaType":"image/png","sha256":hash(&png),"base64":STANDARD.encode(&png)},
+                {"path":format!("{id}.json"),"mediaType":"application/json","sha256":hash(&raw),"base64":STANDARD.encode(&raw)}]})
+    }
+
     #[test]
     fn png_gamma_must_agree_with_the_srgb_editable_source() {
         for (gamma, expected) in [(1.0, false), (0.45455, true)] {

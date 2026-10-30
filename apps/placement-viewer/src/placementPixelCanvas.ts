@@ -36,6 +36,7 @@ export function createPixelCanvas(options: {
     frame = 0;
     if (disposed || !element.isConnected || !element.getBoundingClientRect().width) return;
     const { rect, left, top } = dimensions(), editor = options.editor();
+    element.dataset.pixelPaintable = String(editor.canPaint());
     const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
     const width = Math.max(1, Math.round(rect.width * dpr)), height = Math.max(1, Math.round(rect.height * dpr));
     if (element.width !== width || element.height !== height) {
@@ -112,6 +113,7 @@ export function createPixelCanvas(options: {
       if (tool === "eyedropper" || event.altKey) {
         options.pick(editor.sample(p.x, p.y)!); return;
       }
+      if (!editor.canPaint()) return;
       const color: PixelColor = tool === "eraser" ? [0, 0, 0, 0] : options.color();
       editor.begin();
       if (tool === "fill") { editor.fill(p.x, p.y, color); editor.commit(); options.changed(); refresh(); return; }

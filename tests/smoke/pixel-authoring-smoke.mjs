@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { decodePng } from "../../scripts/tools/pack-textures.mjs";
 import { showPlacementBottom, showPlacementMenu } from "./placement-panel-navigation.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
+import { smokePixelLayers } from "./pixel-layers-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
   await showPlacementBottom(page, "assets");
@@ -236,7 +238,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.waitForFunction(() => document.querySelector(".placement-workspace-message").textContent.includes("another scene"));
   assert.equal(await page.evaluate(() => window.ferrumPlacementWorkspaceDocuments.length), tabsBefore);
   await page.locator('[data-placement-document-key="ferrum:pixel-document"]').click();
-  const exported = JSON.parse((await exportFile("export-assets", "-assets.json")).bytes);
+  let exported = JSON.parse((await exportFile("export-assets", "-assets.json")).bytes);
   assert.equal(exported.format, "ferrum2d.pixel-assets");
   assert.equal(exported.assets.length, 2);
   assert.equal(exported.sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual.texture, blueTexture);
@@ -258,14 +260,28 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pngSource = JSON.parse((await exportFile("export-source", "-edited-png.pixel.json")).bytes);
   const pngPixels = Buffer.from(pngSource.rgba, "base64");
   for (let i = 0; i < pngPixels.length; i += 4) assert.deepEqual([...pngPixels.subarray(i, i + 4)], [0, 0, 255, 255]);
+  const longName="x".repeat(63);
+  await page.locator('[data-pixel-file]').setInputFiles({name:longName+'😀.png',mimeType:'image/png',buffer:png.bytes});
+  await page.waitForFunction(name=>document.querySelector('.placement-pixel-header strong').textContent.startsWith(name),longName);
+  const namedPng=JSON.parse((await exportFile('export-source','-unicode-png-name.pixel.json')).bytes);
+  assert.equal(namedPng.name,longName,'PNG name truncation cannot split a surrogate pair');
+  assert.equal(namedPng.rgba,Buffer.from(decodePng(png.bytes).pixels).toString('base64'));
   await page.locator("[data-placement-language]").selectOption("ko");
   assert.equal(await action("tool-pencil").textContent(), "연필 (B)");
   await page.setViewportSize({ width: 720, height: 840 });
   await page.waitForFunction(() => document.querySelector(".demo-shell").dataset.compact === "true");
   assert(await workspace.evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Pixel editor must fit compact widths");
   await page.screenshot({ path: resolve(run, mode + "-pixel-editor-ko-compact.png"), fullPage: true });
+  await page.setViewportSize({width:390,height:840});
+  assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1),'long pixel names cannot overflow a narrow workspace');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator("[data-placement-language]").selectOption("en");
+  const imageLayers=await smokePixelLayers(page,mode,run);
+  await action('apply').click();
+  await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
+  exported=JSON.parse((await exportFile('export-assets','-layered-assets.json')).bytes);
+  assert.equal(exported.assets.length,3);
+  assert(exported.assets.some(a=>a.source.version===2&&a.source.layers.length===2));
   setResume(exported);
   const fresh = await page.context().newPage();
   const failures = [];
@@ -300,6 +316,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     numericSaveGuard: true, numericCrossSceneGuard: true, numericPortableExport: true, manifestNegative: true,
     pixelDirtyUpdateGuard: true,
     alphaInputGuard: true,
-    revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
+    unicodePngFilename:true,longTitleFits:true,
+    imageLayers, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
   };
 }

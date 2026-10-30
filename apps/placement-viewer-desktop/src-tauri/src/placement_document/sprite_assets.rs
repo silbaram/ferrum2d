@@ -14,7 +14,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 const MAX_JSON: usize = 1024 * 1024;
-const MAX_PNG: usize = 16 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_REVISIONS: usize = 8;
 static SERIAL: AtomicU64 = AtomicU64::new(0);
@@ -27,6 +26,8 @@ pub(super) struct Contract {
     pub(super) catalog_format: &'static str,
     pub(super) project_format: &'static str,
     pub(super) max_dependencies: usize,
+    pub(super) max_source_json: usize,
+    pub(super) max_source_png: usize,
     pub(super) check_catalog_revision: bool,
     pub(super) validate: ValidateSource,
 }
@@ -114,9 +115,9 @@ fn read_dependencies(
     let mut total = json_bytes;
     let mut result = Vec::new();
     for (i, entry) in dependency_metadata(contract, meta)?.iter().enumerate() {
-        let bytes = read(i, MAX_JSON.saturating_sub(total))?;
+        let bytes = read(i, contract.max_source_json.saturating_sub(total))?;
         total += bytes.len();
-        if total > MAX_JSON || text(entry, "sha256")? != hash(&bytes) {
+        if total > contract.max_source_json || text(entry, "sha256")? != hash(&bytes) {
             return Err(invalid("TSJ byte limit or SHA-256 differs"));
         }
         result.push(Dependency {
@@ -198,13 +199,13 @@ fn bundle_sources(contract: &Contract, bundle: &Value) -> CommandResult<Vec<Sour
         if normalized.get("identityDocument").is_none() {
             normalized["identityDocument"] = bundle["document"].clone();
         }
-        let json = read("json", MAX_JSON, "application/json")?;
+        let json = read("json", contract.max_source_json, "application/json")?;
         let dependencies = read_dependencies(contract, &normalized, json.len(), |i, limit| {
             read(&format!("dep.{i}.tsj"), limit, "application/json")
         })?;
         let source = (contract.validate)(
             &normalized,
-            read("png", MAX_PNG, "image/png")?,
+            read("png", contract.max_source_png, "image/png")?,
             json,
             dependencies,
         )?;
@@ -275,13 +276,13 @@ fn catalog_sources(
         {
             return Err(invalid("project catalog manifest differs"));
         }
-        let json = bounded_read(&root.join(format!("{id}.json")), MAX_JSON)?;
+        let json = bounded_read(&root.join(format!("{id}.json")), contract.max_source_json)?;
         let dependencies = read_dependencies(contract, entry, json.len(), |i, limit| {
             bounded_read(&root.join(format!("{id}.dep.{i}.tsj")), limit)
         })?;
         let source = (contract.validate)(
             entry,
-            bounded_read(&root.join(format!("{id}.png")), MAX_PNG)?,
+            bounded_read(&root.join(format!("{id}.png")), contract.max_source_png)?,
             json,
             dependencies,
         )?;

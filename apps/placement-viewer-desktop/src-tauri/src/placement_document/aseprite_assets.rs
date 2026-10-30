@@ -217,6 +217,8 @@ const CONTRACT: super::sprite_assets::Contract = super::sprite_assets::Contract 
     catalog_format: "ferrum2d.aseprite.catalog",
     project_format: "ferrum2d.aseprite.project",
     max_dependencies: 0,
+    max_source_json: MAX_JSON,
+    max_source_png: MAX_PNG,
     validate: validate_source,
 };
 pub(super) fn save_inner(

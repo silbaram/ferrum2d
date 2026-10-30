@@ -322,6 +322,7 @@ export function installPlacementViewportNavigation(options: {
     "keydown",
     (event) => {
       if (
+        stage.dataset.pixelEditor === "true" ||
         (stage.dataset.workspaceMode !== undefined && stage.dataset.workspaceMode !== "2d") ||
         event.ctrlKey ||
         event.metaKey ||

@@ -9,9 +9,18 @@ import { pixelPng } from "./placementPixelPng";
 import { placementNormalRead } from "./placementNormalAssets";
 import { readPixelProject, type PixelProjectHost } from "./placementPixelProject";
 import { canUsePlacementAsset } from "./placementAssetScope";
+import { createPixelLayers } from "./placementPixelLayers";
 
 export const PIXEL_TAB = "ferrum:pixel-document";
 type Editor = ReturnType<typeof createPixelEditor>;
+function shortPixelName(value: string, max = 64) {
+  let result = "";
+  for (const character of value) {
+    if (result.length + character.length > max) break;
+    result += character;
+  }
+  return result || "sprite";
+}
 export function createPlacementPixelTool(options: {
   engine: FerrumRuntime["engine"];
   viewer: ScenePlacementViewer;
@@ -110,6 +119,11 @@ export function createPlacementPixelTool(options: {
     changed() { if (editor) { render(); options.tabsChanged(); } },
   });
   area.append(surface.element);
+  const imageLayers = createPixelLayers({
+    editor:()=>editor!,busy:()=>busy,cancelStroke:()=>surface.cancel(),report,
+    changed:()=>{render();surface.refresh();options.tabsChanged();},
+  });
+  body.append(imageLayers.element);
   function syncColor() { colorInput.value = pixelHex(color).slice(0, 7); alpha.value = String(color[3]); }
   syncColor();
   function download(blob: Blob, filename: string) {
@@ -205,6 +219,7 @@ export function createPlacementPixelTool(options: {
     }
     colorInput.disabled = alpha.disabled = busy;
     surface.element.inert = busy;
+    imageLayers.sync();
     for (const node of [source, png, save, register, apply, bundle, clean, undo, redo]) node.disabled = busy || editor.active();
     save.disabled ||= !options.projectHost?.() || !options.context().canEdit || owner !== options.context().key;
     setUiAttribute(save, "title", options.projectHost?.() ? "Save pixel sources and scene" : "Open a desktop project folder to save");
@@ -325,10 +340,10 @@ export function createPlacementPixelTool(options: {
           const context = canvas.getContext("2d"); if (!context) throw Error("Canvas image processing unavailable");
           context.drawImage(bitmap, 0, 0);
           const pixels = context.getImageData(0, 0, width, height).data;
-          value = pixelDocumentFromRgba(width, height, chosen.name.replace(/\.png$/i, "").slice(0, 64), new Uint8Array(pixels));
+          value = pixelDocumentFromRgba(width, height, shortPixelName(chosen.name.replace(/\.png$/i, "")), new Uint8Array(pixels));
         } finally { bitmap.close(); canvas.width = canvas.height = 0; }
       } else {
-        if (chosen.size > PIXEL_LIMITS.documentBytes) throw Error("Pixel document exceeds the byte limit");
+        if (chosen.size > PIXEL_LIMITS.sourceBytes) throw Error("Pixel document exceeds the byte limit");
         value = readPixelDocument(await chosen.text());
       }
       if (token !== serial || disposed || key !== options.context().key || !options.context().canEdit) return;
@@ -425,7 +440,7 @@ export function createPlacementPixelTool(options: {
     disposed = true; invalidate(); surface.destroy(); assets.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);
     downloads.clear(); workspace.remove(); delete options.stage.dataset.pixelEditor;
-    editor = undefined;
+    editor = undefined; imageLayers.clear();
   }
   return {
     element, workspace, activate, suspend, isOpen: () => active,
@@ -446,7 +461,7 @@ export function createPlacementPixelTool(options: {
         const bytes = await placementNormalRead(await fetch(url, { signal }), 4 * 1024 * 1024);
         signal.throwIfAborted();
         if (token !== serial || disposed || key !== options.context().key) return;
-        openFile(new File([bytes], name.slice(0, 60) + ".png", { type: "image/png" }));
+        openFile(new File([bytes], shortPixelName(name, 60) + ".png", { type: "image/png" }));
       })().catch(error => { if (token === serial && !signal.aborted) report(error); });
     },
     dirty,
@@ -457,7 +472,7 @@ export function createPlacementPixelTool(options: {
       invalidate();
       const token = serial, previous = editor;
       if (!await confirmDiscard() || disposed || token !== serial || editor !== previous) return;
-      suspend(); editor = undefined; palette.replaceChildren(); options.tabsChanged();
+      suspend(); editor = undefined; imageLayers.clear(); palette.replaceChildren(); options.tabsChanged();
     },
     sync() {
       if (active && (options.context().mode === "game" || owner !== options.context().key)) suspend();

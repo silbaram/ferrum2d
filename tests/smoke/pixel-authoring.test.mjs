@@ -257,7 +257,7 @@ test("PNG validation and dimensions use a private source snapshot before yieldin
   const png = decodePng(Buffer.from(await pending));
   assert.equal(png.width, 4); assert.equal(png.height, 4);
   assert.deepEqual(new Uint8Array(png.pixels), pixelBytes(expected));
-  await assert.rejects(pixelPng({ ...blank(), version: 2 }), /Unsupported/);
+  await assert.rejects(pixelPng({ ...blank(), version: 3 }), /Unsupported/);
 });
 test("rollback releases only provisional revisions and preserves previously committed assets", async () => {
   const released = [], retained = new Set();
@@ -468,4 +468,112 @@ test('embedded PNG profiles cannot reinterpret the sRGB source pixels during run
   const gamma=Buffer.alloc(4);gamma.writeUInt32BE(45455);
   const srgb=Buffer.concat([png.subarray(0,33),pixelPngChunk('gAMA',gamma),png.subarray(33)]);
   await verifyPixelPng(Uint8Array.from(srgb).buffer,source);
+});
+
+test('image layer edits upgrade v1 explicitly and preserve independent pixels and source-over output',()=>{
+  const source=pixelDocumentFromRgba(2,1,'layers',new Uint8Array([255,0,0,255,12,34,56,0]));
+  const editor=create(source);assert.equal(editor.document().version,1);
+  editor.selectLayer('layer-1');assert.equal(editor.dirty(),false);assert.equal(editor.history().undo,0);
+  const top=editor.addLayer('Equipment');stroke(editor,0,0,0,0,[0,0,255,128]);
+  const document=editor.document();assert.equal(document.version,2);assert.equal(document.layers.length,2);
+  assert.deepEqual([...editor.bytes()],[127,0,128,255,12,34,56,0]);
+  assert.deepEqual([...editor.layerBytes('layer-1')],[255,0,0,255,12,34,56,0]);
+  assert.deepEqual([...editor.layerBytes(top)],[0,0,255,128,0,0,0,0]);
+  assert.deepEqual(pixelBytes(read(JSON.stringify(document))),editor.bytes());
+  editor.markExported();editor.selectLayer('layer-1');assert.equal(editor.dirty(),false);
+  const leaked=editor.layers();leaked[0].name='mutated';editor.layerBytes(top).fill(0);
+  assert.equal(editor.layers()[0].name,source.layer.name);assert.deepEqual(editor.bytes(),pixelBytes(document));
+});
+test('layer metadata, order, removal and paint share Undo/Redo without serializing selection',()=>{
+  const editor=create(blank(2,2)),original=editor.document();
+  const top=editor.addLayer('Top');editor.renameLayer(top,'Armor');editor.setLayerLocked(top,true);editor.setLayerVisible(top,false);editor.moveLayer(top,-1);
+  const after=editor.document();assert.equal(after.layers[0].id,top);
+  editor.removeLayer(top);assert.equal(editor.layers().length,1);editor.undo();assert.deepEqual(editor.document(),after);
+  for(let i=0;i<5;i++)editor.undo();assert.deepEqual(editor.document(),original);assert.equal(editor.dirty(),false);
+  for(let i=0;i<5;i++)editor.redo();assert.deepEqual(editor.document(),after);
+  editor.undo();const count=editor.history().redo;editor.renameLayer(top,'Armor');assert.equal(editor.history().redo,count,'no-op metadata retains Redo');
+  const fresh=editor.addLayer('New');assert.notEqual(fresh,top);assert.equal(editor.history().redo,0);
+  assert.throws(()=>editor.renameLayer(fresh,''));assert.equal(editor.layers().at(-1).name,'New');
+});
+test('hidden and locked image layers cannot be painted, while selection, visibility and merged picking remain usable',()=>{
+  const editor=create(blank(2,2));stroke(editor,0,0,1,1,blue);
+  const top=editor.addLayer('Top');editor.setLayerLocked(top,true);
+  assert.equal(editor.canPaint(),false);assert.throws(()=>editor.begin(),/unlock/);assert.equal(editor.active(),false);
+  assert.deepEqual(editor.sample(0,0),blue);
+  editor.setLayerLocked(top,false);editor.setLayerVisible(top,false);assert.throws(()=>editor.begin(),/unlock/);
+  editor.selectLayer('layer-1');assert.equal(editor.canPaint(),true);assert.deepEqual(editor.sample(0,0),blue);
+  editor.setLayerVisible('layer-1',false);assert.deepEqual([...editor.bytes()],Array(16).fill(0));
+  editor.setLayerVisible(top,true);editor.selectLayer(top);stroke(editor,1,1,1,1,red);assert.deepEqual(editor.sample(1,1),red);
+});
+test('fill boundaries belong to the selected layer and a cancelled stroke preserves the layer Redo branch',()=>{
+  const editor=create(blank(3,3));editor.begin();editor.fill(0,0,blue);editor.commit();
+  const base=editor.layerBytes('layer-1'),top=editor.addLayer('Top');stroke(editor,1,1,1,1,red);
+  editor.begin();editor.fill(0,0,[0,255,0,255]);editor.commit();
+  assert.deepEqual(editor.layerBytes('layer-1'),base);assert.deepEqual(editor.sample(1,1),red);assert.deepEqual(editor.sample(0,0),[0,255,0,255]);
+  editor.undo();const branch=editor.history().redo;editor.begin();editor.line(0,0,2,2,blue);editor.cancel();
+  assert.equal(editor.history().redo,branch);editor.redo();assert.deepEqual(editor.sample(0,0),[0,255,0,255]);
+  editor.selectLayer('layer-1');editor.undo();assert.equal(editor.selectedLayer(),top);
+});
+test('v2 validates unique IDs, flags, layer count and a bounded maximum-size source without changing v1 byte limits',()=>{
+  const editor=create(blank(256,256));for(let i=1;i<8;i++)editor.addLayer('Layer '+i);
+  const source=editor.document(),raw=JSON.stringify(source);
+  assert(raw.length>1024*1024);assert(raw.length<PIXEL_LIMITS.sourceBytes);assert.deepEqual(read(raw),source);
+  assert.throws(()=>editor.addLayer());
+  for(const modify of [d=>d.layers=[],d=>d.layers.push(d.layers[0]),d=>d.layers[1].id=d.layers[0].id,
+    d=>d.layers[0].locked='false',d=>d.layers[0].visible=null,d=>d.layers[0].rgba='AAAA',d=>d.rgba='AAAA']) {
+    const invalid=structuredClone(source);modify(invalid);assert.throws(()=>read(JSON.stringify(invalid)));
+  }
+  assert.throws(()=>read(JSON.stringify(blank())+' '.repeat(PIXEL_LIMITS.documentBytes)));
+  assert.throws(()=>read(raw+' '.repeat(PIXEL_LIMITS.sourceBytes)));
+  const single=create(blank());assert.throws(()=>single.removeLayer('layer-1'));assert.equal(single.document().version,1);
+});
+test('layered PNG export uses only visible composite and keeps raw layer bytes in source',async()=>{
+  const editor=create(blank(2,2));editor.begin();editor.fill(0,0,blue);editor.commit();
+  const top=editor.addLayer('Red');editor.begin();editor.fill(0,0,[255,0,0,64]);editor.commit();
+  let png=decodePng(Buffer.from(await pixelPng(editor.document())));assert.deepEqual([...png.pixels.subarray(0,4)],[64,0,191,255]);
+  editor.moveLayer(top,-1);png=decodePng(Buffer.from(await pixelPng(editor.document())));assert.deepEqual([...png.pixels.subarray(0,4)],[0,0,255,255]);
+  editor.setLayerVisible('layer-1',false);png=decodePng(Buffer.from(await pixelPng(editor.document())));assert.deepEqual([...png.pixels.subarray(0,4)],[255,0,0,64]);
+  assert.deepEqual([...editor.layerBytes('layer-1').subarray(0,4)],blue);
+});
+test('mixed layer and stroke history counts actual snapshot bytes and stays within 16 MiB',()=>{
+  const editor=create(blank(256,256));for(let i=1;i<8;i++)editor.addLayer('Layer '+i);
+  for(let i=0;i<20;i++){stroke(editor,i,0,i,1,[i,40,200,255]);assert(editor.history().bytes<=PIXEL_LIMITS.historyBytes);}
+  const saved=editor.document();let count=0;while(editor.history().undo){editor.undo();count++;assert(editor.history().bytes<=PIXEL_LIMITS.historyBytes);}
+  assert(count<=64);while(editor.history().redo)editor.redo();assert.deepEqual(editor.document(),saved);
+});
+
+test('removed image layer IDs are not recycled after closing and reopening the source',()=>{
+  const editor=create(blank(2,2)),removed=editor.addLayer('Removed');editor.removeLayer(removed);
+  const restored=create(read(JSON.stringify(editor.document()))),fresh=restored.addLayer('Fresh');
+  assert.notEqual(fresh,removed);
+  const document=restored.document();restored.undo();restored.redo();assert.deepEqual(restored.document(),document);
+});
+
+test('pixel source text and numeric spelling have one frontend/native contract',()=>{
+  for(const version of [1,2]) {
+    const editor=create(blank(2,1));if(version===2)editor.addLayer();
+    const source=editor.document();
+    const raw=JSON.stringify(source).replace('"version":'+version,'"version":'+version+'.0')
+      .replace('"width":2','"width":2e0').replace('"height":1','"height":1.0').replace('"durationMs":100','"durationMs":100.0');
+    assert.deepEqual(read(raw),source);
+    for(const [name,accepted] of [['\ufeff',false],[' \ufeff\t',false],['\u0085',true],['\ufeffBody',true]]) {
+      const named=JSON.stringify({...source,name});
+      if(accepted)assert.equal(read(named).name,name);else assert.throws(()=>read(named),/names/);
+    }
+  }
+});
+
+test('pixel names and layer/frame IDs reject unpaired UTF-16 surrogates before publishing',()=>{
+  for(const version of [1,2]) {
+    const editor=create(blank(2,1));if(version===2)editor.addLayer();
+    const source=editor.document();
+    for(const bad of ['\ud800','\udfff','Body\ud800','\udfffArmor']) {
+      for(const path of [['name'],['frame','id'],version===1?['layer','name']:['layers',0,'name'],version===1?['layer','id']:['layers',0,'id']]) {
+        const invalid=structuredClone(source);let target=invalid;
+        for(const key of path.slice(0,-1))target=target[key];target[path.at(-1)]=bad;
+        assert.throws(()=>read(JSON.stringify(invalid)),/Unicode/);
+      }
+    }
+    const valid='😀'.repeat(32);assert.equal(read(JSON.stringify({...source,name:valid})).name,valid);
+  }
 });

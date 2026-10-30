@@ -88,7 +88,7 @@ export async function readPixelProject(value: PixelProjectCatalog, document: str
       !/^[a-f0-9]{64}$/.test(meta.jsonSha256) || !/^[a-f0-9]{64}$/.test(meta.pngSha256))
       throw Error("Invalid project pixel metadata");
     seen.add(meta.assetId);
-    const json = await placementNormalRead(await fetch(durableUrl(entry.jsonUrl),{signal,cache:"no-store"}),PIXEL_LIMITS.documentBytes);
+    const json = await placementNormalRead(await fetch(durableUrl(entry.jsonUrl),{signal,cache:"no-store"}),PIXEL_LIMITS.sourceBytes);
     const png = await placementNormalRead(await fetch(durableUrl(entry.pngUrl),{signal,cache:"no-store"}),4*1024*1024);
     total += json.byteLength + png.byteLength;
     if (total > 64*1024*1024) throw Error("Pixel project exceeds 64 MiB");

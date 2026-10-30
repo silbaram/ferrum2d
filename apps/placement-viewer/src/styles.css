@@ -18,15 +18,29 @@
 .placement-pixel-launcher p, .placement-pixel-launcher output { font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
 .placement-pixel-workspace {
   position: absolute; inset: 0; z-index: 30; min-width: 0; min-height: 0;
-  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
-  background: var(--bg-0); color: var(--fg-1); overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--bg-0); color: var(--fg-1); overflow: hidden; container-type: inline-size;
 }
 .placement-pixel-workspace[hidden] { display: none; }
 .demo-stage[data-pixel-editor=true] > :not(.placement-pixel-workspace) { visibility: hidden; pointer-events: none; }
 .placement-pixel-header, .placement-pixel-actions, .placement-pixel-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 4px; }
 .placement-pixel-header { justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--border); }
+.placement-pixel-header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .placement-pixel-header output { color: var(--fg-3); font: 11px var(--ff-mono); }
-.placement-pixel-body { display: grid; grid-template-columns: 128px minmax(0, 1fr); min-height: 0; }
+.placement-pixel-body { display: grid; grid-template-columns: 128px minmax(0, 1fr) 208px; min-height: 0; }
+.placement-pixel-layers { min-width: 0; overflow: auto; padding: 8px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.placement-pixel-layers h3, .placement-pixel-layers p { margin: 0; }
+.placement-pixel-layers h3 { font-size: 12px; }
+.placement-pixel-layers p, .placement-pixel-layers output { font-size: 11px; color: var(--fg-3); }
+.placement-pixel-layer-actions { display: flex; gap: 4px; }
+.placement-pixel-layer-actions button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; min-width: 0; width: 28px; height: 28px; padding: 4px; box-sizing: border-box; }
+.placement-pixel-layer-list { display: flex; flex-direction: column; gap: 4px; }
+.placement-pixel-layer-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px; align-items: center; padding: 4px; border: 1px solid var(--border); }
+.placement-pixel-layer-row[data-selected=true] { border-left: 2px solid var(--accent); background: var(--accent-soft); }
+.placement-pixel-layer-row > button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.placement-pixel-layer-row label { display: flex; flex-direction: column; align-items: center; font-size: 9px; color: var(--fg-3); }
+.placement-pixel-layers > label { display: grid; gap: 4px; font-size: 11px; }
+.placement-pixel-layers input[type=text], .placement-pixel-layers input:not([type]) { min-width: 0; width: 100%; box-sizing: border-box; }
 .placement-pixel-tools { display: flex; flex-direction: column; gap: 4px; padding: 8px; overflow: auto; border-right: 1px solid var(--border); }
 .placement-pixel-tools button { text-align: left; }
 .placement-pixel-tools button[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
@@ -52,8 +66,12 @@
 .placement-pixel-export-menu > div { position: absolute; top: 100%; left: 0; min-width: 160px; padding: 4px; border: 1px solid var(--border-strong); background: var(--bg-1); }
 .placement-pixel-export-menu > div > button { display: block; width: 100%; text-align: left; }
 @media (max-width: 720px) {
-  .placement-pixel-body { grid-template-columns: 104px minmax(0, 1fr); }
+  .placement-pixel-body { grid-template-columns: 104px minmax(0, 1fr) 176px; }
   .placement-pixel-tools { padding: 4px; }
+}
+@container (max-width: 560px) {
+  .placement-pixel-body { grid-template-columns: 104px minmax(0,1fr); grid-template-rows: minmax(0,1fr) minmax(112px,35%); }
+  .placement-pixel-layers { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); padding: 4px; }
 }
 .placement-updates { background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: 4px; padding: 16px; width: 560px; max-width: calc(100vw - 24px); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; font: 13px var(--ff-ui); }
 .placement-updates::backdrop { background: rgb(0 0 0 / 50%); }

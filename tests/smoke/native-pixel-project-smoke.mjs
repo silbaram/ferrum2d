@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { showPlacementBottom } from './placement-panel-navigation.mjs';
 import { createHash } from 'node:crypto';
 import { filteredPixelPng } from './pixel-png-fixture.mjs';
+import { smokePixelLayers } from './pixel-layers-smoke.mjs';
 
 /** The browser calls actual Rust storage/protocol functions over the shared test transport. */
 export async function smokeNativePixels({getPage,mode,project,scene,initial,run,invoke,setCorrupt,holdSave,waitHeld,releaseSave,restart,close,freshGame}) {
@@ -76,7 +77,8 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   // Independently encoded PNG and formatted source are valid native inputs too.
   const prior=JSON.parse(await readFile(catalogPath,'utf8')).revisions.at(-1);
   const original=JSON.parse(await readFile(join(root,prior.assetId+'.json'),'utf8'));
-  const raw=JSON.stringify(original,null,2)+'\n',hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const raw=JSON.stringify(original,null,2).replace(/"(version|width|height|durationMs)": (\d+)/g,(_,key,value)=>'"'+key+'": '+value+'.0')+'\n';
+  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   const assetId='pixel.'+hash(JSON.stringify([prior.identityDocument,raw])).slice(0,24);
   const png=filteredPixelPng(original.width,original.height,Buffer.from(original.rgba,'base64'),true);
   const metadata={...prior,assetId,jsonSha256:hash(raw),pngSha256:hash(png)};
@@ -102,10 +104,20 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   await save();assert.match(await status(),/^Project saved/);
   assert.equal((await readFile(join(root,assetId+'.json'))).toString(),raw,'resaving preserves the formatted immutable source bytes');
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,4);
+  const imageLayers=await smokePixelLayers(page,mode,run);
+  await action('apply').click();await idle();await save();assert.match(await status(),/^Project saved/);
+  const layeredCatalog=JSON.parse(await readFile(catalogPath,'utf8'));
+  assert.equal(layeredCatalog.revisions.length,5);
+  const layeredId=layeredCatalog.revisions.at(-1).assetId;
+  assert.deepEqual(JSON.parse(await readFile(join(root,layeredId+'.json'),'utf8')),imageLayers.source);
+  await restart();page=getPage();await showPlacementBottom(page,'assets');
+  await page.locator('[data-placement-edit-pixels="'+layeredId+'"]').click();await workspace().waitFor({state:'visible'});
+  assert.equal(await workspace().locator('[data-pixel-layer-select]').count(),2);
+  assert.equal(await workspace().locator('[data-pixel-layer-name]').inputValue(),'Armor');
   const game=await freshGame();
   await close();
   return {mode,realRustStorageAndProtocol:true,sourceAndPngVerified:true,malformedReplyBlocksScene:true,
-    catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:4,lateSaveDoesNotSaveScene:true,
+    imageLayers,catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:5,lateSaveDoesNotSaveScene:true,
     nativePngAndFormattedSourceCompatible:true,immutableSourceBytesPreserved:true,
     freshRustAndBrowserSessions:true,restoredSourceExact:true,preservedPoseSizeColliderBody:true,
     savedManifestGame:game,released:{urls:0,textures:0}};

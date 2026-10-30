@@ -12,6 +12,8 @@ const CONTRACT: Contract = Contract {
     catalog_format: "ferrum2d.tile-import.catalog",
     project_format: "ferrum2d.tile-import.project",
     max_dependencies: 8,
+    max_source_json: 1024 * 1024,
+    max_source_png: 16 * 1024 * 1024,
     validate: validate_source,
 };
 fn integer(v: &Value, key: &str, min: u64, max: u64) -> CommandResult<u64> {
