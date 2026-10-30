@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::{io::Cursor, path::Path};
 
 const CONTRACT: Contract = Contract {
+    check_catalog_revision: false,
     directory: ".ferrum-tiles",
     prefix: "tile.",
     bundle_format: "ferrum2d.tile-import.assets",

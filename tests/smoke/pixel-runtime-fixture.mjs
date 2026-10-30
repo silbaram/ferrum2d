@@ -2,9 +2,9 @@ import { createEngine, AssetLoader, WebGL2Renderer } from "@ferrum2d/ferrum-web/
 import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 
 /** A fresh runtime consumes only exported PNGs, manifest and ordinary scene data. */
-export async function probePixelResume() {
+export async function probePixelResume(providedBundle) {
   window.pixelResumeStage = "source";
-  const bundle = await (await fetch("/resume.json")).json();
+  const bundle = providedBundle ?? await (await fetch("/resume.json")).json();
   const canvas = document.querySelector("canvas");
   const textures = {};
   for (const asset of bundle.assets) {

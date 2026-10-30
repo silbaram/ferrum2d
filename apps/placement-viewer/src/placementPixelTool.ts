@@ -7,6 +7,8 @@ import { createPixelCanvas, type PixelTool } from "./placementPixelCanvas";
 import { createPixelAssets, pixelComponentPatch } from "./placementPixelAssets";
 import { pixelPng } from "./placementPixelPng";
 import { placementNormalRead } from "./placementNormalAssets";
+import { readPixelProject, type PixelProjectHost } from "./placementPixelProject";
+import { canUsePlacementAsset } from "./placementAssetScope";
 
 export const PIXEL_TAB = "ferrum:pixel-document";
 type Editor = ReturnType<typeof createPixelEditor>;
@@ -14,7 +16,10 @@ export function createPlacementPixelTool(options: {
   engine: FerrumRuntime["engine"];
   viewer: ScenePlacementViewer;
   stage: HTMLElement;
-  context(): { key: string; document: SceneAuthoringDocumentSpec; canEdit: boolean; mode: string };
+  context(): { key: string; project?: string; document: SceneAuthoringDocumentSpec; canEdit: boolean; mode: string };
+  assets?: ReturnType<typeof createPixelAssets>;
+  projectHost?(): PixelProjectHost | undefined;
+  saveScene?(): Promise<void>;
   taken(id: string): boolean;
   retains(id: string): boolean;
   apply(patch: ScenePlacementPatch, label: string): void;
@@ -52,6 +57,7 @@ export function createPlacementPixelTool(options: {
   const undo = button("Undo", "undo", actions), redo = button("Redo", "redo", actions);
   const source = button("Export Source", "export-source", actions);
   const png = button("Export PNG", "export-png", actions);
+  const save = button("Save Project", "save-project", actions);
   const register = button("Register Asset", "register", actions);
   const apply = button("Apply To Selection", "apply", actions);
   const bundle = button("Export Assets", "export-assets", actions);
@@ -91,12 +97,13 @@ export function createPlacementPixelTool(options: {
   workspace.append(header, actions, body, footer); body.append(tools, area);
   let editor: Editor | undefined, owner = "", active = false, disposed = false, busy = false;
   let sourceExported = false;
+  let projectSaving = false;
   const dirty = () => !!editor && (!sourceExported || editor.dirty());
   let serial = 0, controller: AbortController | undefined, message: UiContent = "";
   let dismissConfirmation: (() => void) | undefined;
   let createDialog: HTMLDialogElement | undefined;
   const downloads = new Set<string>();
-  const assets = createPixelAssets(options);
+  const assets = options.assets ?? createPixelAssets(options);
   const surface = createPixelCanvas({
     editor: () => editor!, tool: () => tool, color: () => color,
     pick(value) { color = value; syncColor(); render(); },
@@ -113,6 +120,7 @@ export function createPlacementPixelTool(options: {
   }
   const filename = () => (editor?.name.replace(/[^a-zA-Z0-9_.-]/g, "_") || "sprite").slice(0, 64);
   function invalidate() {
+    if (projectSaving) message = "Project save interrupted. Files may be saved; reopen the project before retrying.";
     controller?.abort(); serial++;
     dismissConfirmation?.();
     if (createDialog) { createDialog.close(); createDialog.remove(); createDialog = undefined; }
@@ -197,12 +205,14 @@ export function createPlacementPixelTool(options: {
     }
     colorInput.disabled = alpha.disabled = busy;
     surface.element.inert = busy;
-    for (const node of [source, png, register, apply, bundle, clean, undo, redo]) node.disabled = busy || editor.active();
+    for (const node of [source, png, save, register, apply, bundle, clean, undo, redo]) node.disabled = busy || editor.active();
+    save.disabled ||= !options.projectHost?.() || !options.context().canEdit || owner !== options.context().key;
+    setUiAttribute(save, "title", options.projectHost?.() ? "Save pixel sources and scene" : "Open a desktop project folder to save");
     undo.disabled ||= history.undo === 0; redo.disabled ||= history.redo === 0;
     apply.disabled ||= !options.context().canEdit || owner !== options.context().key;
     register.disabled ||= !options.context().canEdit || owner !== options.context().key;
-    bundle.disabled ||= assets.providerAssets(owner).length === 0;
-    clean.disabled ||= assets.providerAssets(owner).length === 0;
+    bundle.disabled ||= assets.providerAssets(owner, options.context().project).length === 0;
+    clean.disabled ||= assets.providerAssets(owner, options.context().project).length === 0;
     if (!apply.disabled) {
       try { pixelComponentPatch(options.context().document, options.viewer.state(), "pixel.pending"); }
       catch (error) { apply.disabled = true; setUiAttribute(apply, "title", error instanceof Error ? error.message : String(error)); }
@@ -340,10 +350,41 @@ export function createPlacementPixelTool(options: {
     message = "PNG exported. Export Source to keep editing data.";
   });
   register.onclick = () => publish(false); apply.onclick = () => publish(true);
+  save.onclick = () => {
+    const host = options.projectHost?.();
+    if (save.disabled || !host || !editor) return;
+    const context = options.context(), signature = JSON.stringify(context.document), previous = editor;
+    void task(async (signal,token) => {
+      projectSaving = true;
+      try {
+      // Saving the current source registers it; applying its image remains explicit.
+      const asset = await assets.prepare(owner, previous.document(), signal);
+      try { current(signal,token); assets.commit(asset); }
+      catch (error) { assets.discardUncommitted(asset); throw error; }
+      if (host !== options.projectHost?.()) throw Error("Pixel editing context changed");
+      options.changed();
+      const candidates = assets.entries().filter(a => a.committed && canUsePlacementAsset(a,context.key,context.project));
+      message = "Saving project assets…"; render();
+      const catalog = await host.save(candidates,signal);
+      const verified = await readPixelProject(catalog,context.key,host.project,signal);
+      current(signal,token);
+      if (host !== options.projectHost?.()) throw Error("Pixel editing context changed");
+      for (const candidate of candidates)
+        if (!verified.some(a => a.id === candidate.id && a.sha256 === candidate.sha256 && JSON.stringify(a.source) === JSON.stringify(candidate.source)))
+          throw Error("Project host did not register all pixel sources");
+      for (const candidate of candidates) { candidate.persisted = true; candidate.project = host.project; }
+      previous.markExported(); sourceExported = true; options.changed(); options.tabsChanged();
+      if (signature !== JSON.stringify(options.context().document)) throw Error("Assets saved. Scene changed; save the project again.");
+      message = "Assets saved · Saving scene…"; render();
+      await options.saveScene?.(); current(signal,token);
+      message = "Project saved · Pixel sources preserved";
+      } finally { projectSaving = false; }
+    });
+  };
   bundle.onclick = () => {
     if (busy) return;
     try {
-      download(new Blob([JSON.stringify(assets.bundle(owner, options.context().document), null, 2) + "\n"], { type: "application/json" }), filename() + ".pixel-assets.json");
+      download(new Blob([JSON.stringify(assets.bundle(owner, options.context().document, options.context().project), null, 2) + "\n"], { type: "application/json" }), filename() + ".pixel-assets.json");
       message = "Assets exported. Install the PNGs and manifest before saving the scene."; render();
     } catch (error) { report(error); }
   };
@@ -370,7 +411,7 @@ export function createPlacementPixelTool(options: {
         event.preventDefault();
         if (editor.active()) surface.cancel();
         else if (event.shiftKey || event.code === "KeyY") redo.click(); else undo.click();
-      } else if (event.code === "KeyS") { event.preventDefault(); exportSource(); }
+      } else if (event.code === "KeyS") { event.preventDefault(); if (options.projectHost?.()) save.click(); else exportSource(); }
       return;
     }
     if (event.code === "Escape") { event.preventDefault(); surface.cancel(); }
@@ -390,11 +431,18 @@ export function createPlacementPixelTool(options: {
     element, workspace, activate, suspend, isOpen: () => active,
     isBusy: () => busy,
     ownsGesture: () => editor?.active() ?? false,
-    openAsset(name: string, url: string) {
+    openAsset(name: string, url: string, id?: string) {
       if (busy || disposed || !options.context().canEdit) return;
       invalidate(); controller = new AbortController();
       const signal = controller.signal, key = options.context().key, token = ++serial;
       void (async () => {
+        const asset = assets.entries().find(a => a.id === id && canUsePlacementAsset(a,key,options.context().project));
+        if (asset) {
+          const previous = editor;
+          if (await confirmDiscard() && token === serial && !disposed && previous === editor && key === options.context().key)
+            replace(asset.source, asset.persisted === true);
+          return;
+        }
         const bytes = await placementNormalRead(await fetch(url, { signal }), 4 * 1024 * 1024);
         signal.throwIfAborted();
         if (token !== serial || disposed || key !== options.context().key) return;
@@ -415,8 +463,10 @@ export function createPlacementPixelTool(options: {
       if (active && (options.context().mode === "game" || owner !== options.context().key)) suspend();
       render();
     },
-    providerAssets: () => assets.providerAssets(options.context().key),
-    has: assets.has, blocksSave: assets.blocksSave, assertDocumentAssets: assets.assertDocumentAssets,
+    providerAssets: () => assets.providerAssets(options.context().key, options.context().project),
+    has: assets.has,
+    blocksSave: (document: unknown) => assets.blocksSave(document,options.context().key,options.context().project),
+    assertDocumentAssets: assets.assertDocumentAssets,
     closeScene(key: string) {
       if (owner === key) suspend();
       assets.close(key);

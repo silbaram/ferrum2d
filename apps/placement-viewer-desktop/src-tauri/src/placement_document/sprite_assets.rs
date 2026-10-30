@@ -27,6 +27,7 @@ pub(super) struct Contract {
     pub(super) catalog_format: &'static str,
     pub(super) project_format: &'static str,
     pub(super) max_dependencies: usize,
+    pub(super) check_catalog_revision: bool,
     pub(super) validate: ValidateSource,
 }
 pub(super) fn invalid(detail: impl Into<String>) -> PlacementDesktopError {
@@ -367,6 +368,16 @@ pub(super) fn save_inner(
     let root =
         directory(contract, &project, true)?.ok_or_else(|| invalid("missing asset directory"))?;
     let previous = read_catalog(&root)?;
+    if contract.check_catalog_revision
+        && bundle
+            .get("expectedCatalogRevision")
+            .and_then(Value::as_str)
+            != Some(previous.as_deref().map(hash).unwrap_or_default().as_str())
+    {
+        return Err(invalid(
+            "project catalog changed on disk; reopen before saving",
+        ));
+    }
     let mut sources = catalog_sources(contract, &root, previous.as_deref())?;
     for source in incoming {
         if let Some(old) = sources
@@ -420,9 +431,11 @@ pub(super) fn save_inner(
         }
         create_file(&temporary, &bytes, &mut created)?;
         // Hold the registry lock across publication so failures cannot leave stale protocol entries.
-        register(contract, &root, &sources, registry, || {
+        let mut response = register(contract, &root, &sources, registry, || {
             publish_catalog(contract, &project, &root, &temporary, previous.as_deref())
-        })
+        })?;
+        response["catalogRevision"] = json!(hash(&bytes));
+        Ok(response)
     })();
     if result.is_err() {
         rollback(created);
@@ -442,8 +455,13 @@ pub(super) fn load_inner(
         .lock()
         .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
     let Some(root) = directory(contract, &project, false)? else {
-        return Ok(json!({"format":contract.project_format, "version":1, "assets":[]}));
+        return Ok(
+            json!({"format":contract.project_format, "version":1, "assets":[], "catalogRevision":""}),
+        );
     };
-    let sources = catalog_sources(contract, &root, read_catalog(&root)?.as_deref())?;
-    register(contract, &root, &sources, registry, || Ok(()))
+    let catalog = read_catalog(&root)?;
+    let sources = catalog_sources(contract, &root, catalog.as_deref())?;
+    let mut response = register(contract, &root, &sources, registry, || Ok(()))?;
+    response["catalogRevision"] = json!(catalog.as_deref().map(hash).unwrap_or_default());
+    Ok(response)
 }

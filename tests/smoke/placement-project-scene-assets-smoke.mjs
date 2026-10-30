@@ -31,6 +31,7 @@ export async function smokeProjectSceneAssets(parent, timeoutMs, source) {
       URL.revokeObjectURL = url => { window.__sharedSceneRevokedUrls.push(url); revoke(url); };
       window.__TAURI__ = { core: { async invoke(command, args) {
         if (command === "load_placement_project_folder") return { projectPath: project, sceneDocumentPath: first, handoffPath: project + "/.ferrum-placement-handoff.json", assetFolder: folder, document };
+        if (command === "load_placement_pixel_assets") return { format: "ferrum2d.pixel.project", version: 1, catalogRevision: "", assets: [] };
         if (command === "load_placement_aseprite_assets") return { format: "ferrum2d.aseprite.project", version: 1, assets: [{ metadata, pngUrl: location.origin + "/__project-scene-hero.png", jsonUrl: location.origin + "/__project-scene-hero.json" }] };
         if (command === "load_placement_tile_assets") return { format: "ferrum2d.tile-import.project", version: 1, assets: [] };
         if (command === "load_placement_normal_assets") return { format: "ferrum2d.sprite-normal.project", version: 1, registered: true, entries: [], textures: {} };

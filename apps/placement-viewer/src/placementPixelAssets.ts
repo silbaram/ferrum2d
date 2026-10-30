@@ -9,10 +9,14 @@ import { placementNormalHash } from "./placementNormalAssets";
 import { createPlacementSpriteRevisions, type PlacementSpriteRevision } from "./placementSpriteRevisions";
 import { readPixelDocument, type PixelDocument } from "./placementPixelDocument";
 import { pixelPng } from "./placementPixelPng";
+import { canUsePlacementAsset, isPlacementProjectAsset } from "./placementAssetScope";
 
-interface PixelAsset extends PlacementSpriteRevision {
+export interface PixelAsset extends PlacementSpriteRevision {
+  identityDocument: string;
   committed: boolean;
   source: PixelDocument;
+  /** Exact immutable source bytes used by the native revision identity. */
+  sourceJson: string;
   sha256: string;
   width: number;
   height: number;
@@ -80,8 +84,8 @@ export function createPixelAssets(options: {
     return serialized.includes(JSON.stringify(asset.id)) ||
       (alias !== undefined && numericReference(serialized, alias));
   }
-  function assertScope(serialized: string | undefined, key: string) {
-    if (store.entries().some(asset => asset.document !== key && referenced(serialized, asset)))
+  function assertScope(serialized: string | undefined, key: string, project?: string) {
+    if (store.entries().some(asset => !canUsePlacementAsset(asset, key, project) && referenced(serialized, asset)))
       throw Error("Export and install pixel assets before opening them in another scene");
   }
   function portableScene(scene: SceneAuthoringDocumentSpec, assets: readonly PixelAsset[]): SceneAuthoringDocumentSpec {
@@ -129,6 +133,22 @@ export function createPixelAssets(options: {
     return copy;
   }
   return {
+    entries: store.entries,
+    async restore(restored: PixelAsset[], signal: AbortSignal) {
+      const added: PixelAsset[] = [];
+      try {
+        for (const asset of restored) {
+          signal.throwIfAborted();
+          const existing = store.entries().find(a => a.id === asset.id);
+          const adopted = store.adopt(asset);
+          if (!existing) added.push(adopted);
+          await store.upload(adopted, signal);
+        }
+      } catch (error) {
+        for (const asset of added) store.discard(asset);
+        throw error;
+      }
+    },
     async prepare(document: string, source: PixelDocument, signal: AbortSignal) {
       signal.throwIfAborted();
       const snapshot = readPixelDocument(JSON.stringify(source));
@@ -141,7 +161,7 @@ export function createPixelAssets(options: {
       const id = "pixel." + identity.slice(0, 24);
       const existing = store.entries().find(entry => entry.id === id);
       const asset = store.adopt({
-        id, document, name: snapshot.name, png, source: snapshot,
+        id, document, identityDocument: document, name: snapshot.name, png, source: snapshot, sourceJson: serialized,
         width: snapshot.width, height: snapshot.height, sha256, committed: false,
         bytes: png.byteLength + new TextEncoder().encode(serialized).length, uploaded: false,
       });
@@ -158,23 +178,25 @@ export function createPixelAssets(options: {
       store.discard(asset);
       return true;
     },
-    providerAssets: (key: string) => store.entries()
-      .filter(asset => asset.document === key && asset.uploaded)
+    providerAssets: (key: string, project?: string) => store.entries()
+      .filter(asset => canUsePlacementAsset(asset, key, project) && asset.uploaded)
       .map(asset => ({
         id: asset.id, label: asset.name + " @" + asset.id.slice(-6),
         width: asset.width, height: asset.height, thumbnailUrl: asset.url,
       })),
     has: (id: string) => store.entries().some(asset => asset.id === id),
-    blocksSave(document: unknown) {
+    blocksSave(document: unknown, key = "", project?: string) {
       const serialized = JSON.stringify(document);
-      return store.entries().some(asset => referenced(serialized, asset));
+      return store.entries().some(asset => referenced(serialized, asset) &&
+        (!isPlacementProjectAsset(asset) || !canUsePlacementAsset(asset, key, project) ||
+          (serialized !== undefined && textureAlias(asset.id) !== undefined && numericReference(serialized, textureAlias(asset.id)!))));
     },
-    assertDocumentAssets(document: unknown, key: string) {
-      assertScope(JSON.stringify(document), key);
+    assertDocumentAssets(document: unknown, key: string, project?: string) {
+      assertScope(JSON.stringify(document), key, project);
     },
-    bundle(key: string, scene: SceneAuthoringDocumentSpec) {
-      const assets = store.entries().filter(asset => asset.document === key && asset.uploaded && asset.committed);
-      assertScope(JSON.stringify(scene), key);
+    bundle(key: string, scene: SceneAuthoringDocumentSpec, project?: string) {
+      const assets = store.entries().filter(asset => canUsePlacementAsset(asset, key, project) && asset.uploaded && asset.committed);
+      assertScope(JSON.stringify(scene), key, project);
       return {
         format: "ferrum2d.pixel-assets", version: 1, overwrite: false,
         sceneDocument: portableScene(scene, assets),
@@ -198,7 +220,7 @@ export function createPixelAssets(options: {
     close(key: string) {
       // The host removes the closing scene before querying remaining references.
       for (const asset of store.entries())
-        if (asset.document === key && !options.retains(asset.id)) store.discard(asset);
+        if (asset.document === key && !isPlacementProjectAsset(asset) && !options.retains(asset.id)) store.discard(asset);
     },
     destroy: store.destroy,
   };

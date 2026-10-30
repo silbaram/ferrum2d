@@ -2,6 +2,7 @@ mod aseprite_assets;
 mod asset_files;
 mod checked_save;
 mod normal_assets;
+mod pixel_assets;
 mod scene_catalog;
 mod sprite_assets;
 mod tile_assets;
@@ -325,6 +326,34 @@ fn save_placement_scene_document_inner(
         path: path.display().to_string(),
         document,
     })
+}
+
+/// Restore editable pixel sources from a project opened by this host.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_pixel_assets(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    pixel_assets::load_inner(Path::new(&project_path), &asset_registry, &write_registry)
+}
+
+/// Save editable pixel sources before persisting scene references.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_pixel_assets(
+    project_path: String,
+    bundle: Value,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    pixel_assets::save_inner(
+        Path::new(&project_path),
+        &bundle,
+        &asset_registry,
+        &write_registry,
+    )
 }
 
 /// Restore immutable Aseprite sources from a project opened by this host.

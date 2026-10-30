@@ -82,6 +82,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
                 assets: [],
               };
             }
+            if (command === "load_placement_pixel_assets") return { format: "ferrum2d.pixel.project", version: 1, catalogRevision: "", assets: [] };
             if (command === "load_placement_aseprite_assets")
               return {
                 format: "ferrum2d.aseprite.project",

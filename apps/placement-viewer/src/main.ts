@@ -41,6 +41,8 @@ import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementAssetLoading } from "./placementAssetLoading";
 import { createPlacementPixelTool, PIXEL_TAB } from "./placementPixelTool";
+import { createPixelAssets } from "./placementPixelAssets";
+import { createDesktopPixelProjectHost, readPixelProject } from "./placementPixelProject";
 import { createPlacementPerformance } from "./placementPerformance";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
 import { createPlacementSceneExplorer } from "./placementSceneExplorer";
@@ -632,6 +634,9 @@ async function bootstrap(): Promise<void> {
       asepriteProjectPath && asepriteInvoke
         ? createDesktopTileProjectHost(asepriteInvoke, asepriteProjectPath)
         : undefined;
+    const pixelProjectHost = asepriteProjectPath && asepriteInvoke
+      ? createDesktopPixelProjectHost(asepriteInvoke, asepriteProjectPath) : undefined;
+    let pixelAssets: ReturnType<typeof createPixelAssets> | undefined;
     let tileAssets: ReturnType<typeof createPlacementTileAssets> | undefined;
     let assetDocumentKey = initialKey;
     function currentAssetProject(): string | undefined {
@@ -668,7 +673,7 @@ async function bootstrap(): Promise<void> {
       generatedSignature = "";
     const currentAssetProvider = (): ScenePlacementAssetProvider => {
       const imported = [
-        ...(pixelTool?.providerAssets() ?? []),
+        ...(pixelTool?.providerAssets() ?? pixelAssets?.providerAssets(assetDocumentKey, currentAssetProject()) ?? []),
         ...(asepriteTool?.providerAssets() ??
           asepriteAssets
             ?.entries()
@@ -817,6 +822,13 @@ async function bootstrap(): Promise<void> {
         (normalProjectAssets?.has(id) ?? false) ||
         (normalTool?.browserEntries().some((a) => a.id === id) ?? false),
     );
+    pixelAssets = createPixelAssets({
+      engine: runtimeEngine,
+      taken: id => id in runtimeTextures || previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (asepriteAssets?.entries().some(a => a.id === id) ?? false) || (tileAssets?.entries().some(a => a.id === id) ?? false) ||
+        (normalProjectAssets?.has(id) ?? false) || (normalTool?.browserEntries().some(a => a.id === id) ?? false),
+      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id,
+    });
     if (asepriteProjectHost) {
       const signal = new AbortController().signal;
       try {
@@ -839,6 +851,9 @@ async function bootstrap(): Promise<void> {
           : [];
         for (const asset of tiles)
           await tileAssets.upload(tileAssets.adopt(asset), signal);
+        const pixels = pixelProjectHost
+          ? await readPixelProject(await pixelProjectHost.load(signal), initialKey, pixelProjectHost.project, signal) : [];
+        await pixelAssets.restore(pixels, signal);
         if (nativeNormalHost) {
           normalProjectAssets = createPlacementNormalProjectAssets(
             runtimeEngine,
@@ -848,7 +863,7 @@ async function bootstrap(): Promise<void> {
           await normalProjectAssets.load(
             await nativeNormalHost.load(signal),
             new Map(
-              [...restored, ...tiles].map((asset) => [
+              [...restored, ...tiles, ...pixels.map(asset => ({ id: asset.id, pngSha256: asset.sha256 }))].map((asset) => [
                 asset.id,
                 { sha256: asset.pngSha256, colorSpace: "srgb" as const },
               ]),
@@ -861,6 +876,7 @@ async function bootstrap(): Promise<void> {
         }
       } catch (error) {
         normalProjectAssets?.destroy();
+        pixelAssets.destroy();
         asepriteAssets.destroy();
         tileAssets.destroy();
         throw error;
@@ -1798,7 +1814,7 @@ async function bootstrap(): Promise<void> {
           void normalTool?.openAsset(asset.id, asset.thumbnail);
       },
       editPixels: asset => {
-        if (asset.thumbnail) pixelTool?.openAsset(asset.label, asset.thumbnail);
+        if (asset.thumbnail) pixelTool?.openAsset(asset.label, asset.thumbnail, asset.id);
       },
     });
     function currentNormalHost(): PlacementNormalAssetHost | undefined {
@@ -1981,6 +1997,13 @@ async function bootstrap(): Promise<void> {
     });
     pixelTool = createPlacementPixelTool({
       engine: runtimeEngine, viewer, stage: shell.stage, context: importedAssetContext,
+      assets: pixelAssets,
+      projectHost: () => currentAssetProject() === pixelProjectHost?.project ? pixelProjectHost : undefined,
+      saveScene: async () => {
+        if (!viewer.exportPatch()) return;
+        const result = await (window as PlacementViewerWindow).ferrumPlacementViewerSaveDraft?.();
+        if (!result?.saved) throw Error((window as PlacementViewerWindow).ferrumPlacementViewerLastSaveError ?? "Assets saved, but scene save was not completed. Resolve the scene diagnostics and save again.");
+      },
       taken: id => previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (asepriteAssets?.entries().some(asset => asset.id === id) ?? false) ||
         (tileTool?.has(id) ?? false) ||
@@ -2679,7 +2702,7 @@ async function bootstrap(): Promise<void> {
         desktop?.enabled ? desktop.projectPath : undefined,
       );
       tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
-      pixelTool?.assertDocumentAssets(value, key);
+      pixelTool?.assertDocumentAssets(value, key, desktop?.enabled ? desktop.projectPath : undefined);
       normalProjectAssets?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,

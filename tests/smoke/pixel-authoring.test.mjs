@@ -126,6 +126,7 @@ const hashUrl = "data:text/javascript;base64," + Buffer.from(
 ).toString("base64");
 const { pixelComponentPatch: patch, createPixelAssets } = await checkedImport(await moduleUrl("placementPixelAssets", {
   "./placementPixelDocument": documentUrl,
+  "./placementAssetScope": scopeUrl,
   "@ferrum2d/ferrum-web/authoring": new URL("../../packages/ferrum-web/dist/authoring.js", import.meta.url).href,
   "./placementNormalAssets": hashUrl,
   "./placementSpriteRevisions": storeUrl,
@@ -325,4 +326,146 @@ test("closing a source scene cannot release pixels retained by another open scen
     retained.clear(); await assets.collectUnused();
     assert(!assets.has(a.id)); assert.deepEqual(released, [b.id, a.id]);
   } finally { assets.destroy(); }
+});
+
+const projectHashUrl = 'data:text/javascript;base64,' + Buffer.from(`
+export async function placementNormalHash(value) { const bytes=typeof value==='string'?new TextEncoder().encode(value):value; return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join(''); }
+export async function placementNormalRead(response,limit) { if(!response.ok)throw Error('HTTP '+response.status); const bytes=await response.arrayBuffer();if(bytes.byteLength>limit)throw Error('Byte limit');return bytes; }
+`).toString('base64');
+const pngUrl = await moduleUrl('placementPixelPng', { './placementPixelDocument':documentUrl });
+const { verifyPixelPng } = await checkedImport(pngUrl);
+const { pixelProjectBundle, readPixelProject, createDesktopPixelProjectHost } = await checkedImport(await moduleUrl('placementPixelProject', {
+  './placementPixelDocument':documentUrl, './placementPixelPng':pngUrl, './placementNormalAssets':projectHashUrl,
+}));
+async function projectFixture() {
+  const store=createPixelAssets({engine:{textureId:()=>7,loadAssets:async()=>{},releaseAssets:()=>{}},taken:()=>false,retains:()=>false});
+  const source=pixelDocumentFromRgba(2,1,'캐릭터',new Uint8Array([10,20,30,0,0,0,255,128]));
+  const asset=await store.prepare('scene',source,new AbortController().signal);store.commit(asset);
+  const bundle=await pixelProjectBundle([asset]);
+  const catalog={format:'ferrum2d.pixel.project',version:1,catalogRevision:'1'.repeat(64),assets:[{
+    metadata:bundle.revisions[0],jsonUrl:'http://project/source.json',pngUrl:'http://project/sprite.png',
+  }]};
+  return {store,asset,bundle,catalog,source};
+}
+test('project source restores exact transparent RGBA, layer/frame IDs, palette and immutable identity', async()=>{
+  const f=await projectFixture(), originalFetch=globalThis.fetch, originalLocation=globalThis.location;
+  const files=new Map(f.bundle.files.map(file=>['http://project/'+(file.mediaType==='image/png'?'sprite.png':'source.json'),Buffer.from(file.base64,'base64')]));
+  globalThis.location={href:'http://project/'};globalThis.fetch=async url=>new Response(files.get(url));
+  try {
+    const restored=await readPixelProject(f.catalog,'other-scene','/project',new AbortController().signal);
+    assert.equal(restored[0].id,f.asset.id);assert.equal(restored[0].identityDocument,'scene');
+    assert.deepEqual(restored[0].source,f.source);assert(restored[0].persisted);
+    const durable=createPixelAssets({engine:{textureId:()=>7,loadAssets:async()=>{},releaseAssets:()=>{}},taken:()=>false,retains:()=>false});
+    await durable.restore(restored,new AbortController().signal);
+    const document={visual:{texture:f.asset.id}};
+    assert.equal(durable.blocksSave(document,'third-scene','/project'),false);
+    assert.equal(durable.blocksSave(document,'third-scene','/foreign'),true);
+    assert.throws(()=>durable.assertDocumentAssets(document,'third-scene','/foreign'));
+    assert.doesNotThrow(()=>durable.assertDocumentAssets(document,'third-scene','/project'));
+    assert.equal(durable.blocksSave({visual:{texture:7}},'third-scene','/project'),true,'runtime numeric aliases cannot become durable scene references');
+    assert.equal(durable.providerAssets('third-scene','/project').length,1);
+    durable.close('other-scene'); assert.equal(durable.entries().length,1);
+    assert.deepEqual(await durable.collectUnused(),{removed:0,bytes:0});durable.destroy();
+  } finally {globalThis.fetch=originalFetch;globalThis.location=originalLocation;f.store.destroy();}
+});
+test('project reader rejects forged identity, hashes, unsafe URLs, duplicate entries and mismatched PNG pixels',async()=>{
+  const f=await projectFixture(),originalFetch=globalThis.fetch,originalLocation=globalThis.location;
+  globalThis.location={href:'http://project/'};
+  const json=Buffer.from(f.bundle.files[0].base64,'base64'),png=Buffer.from(f.bundle.files[1].base64,'base64');
+  globalThis.fetch=async url=>new Response(url.endsWith('.png')?png:json);
+  try {
+    for(const modify of [c=>c.assets.push(c.assets[0]),c=>c.assets[0].metadata.jsonSha256='0'.repeat(64),c=>c.assets[0].metadata.identityDocument='wrong',c=>c.assets[0].pngUrl='blob:http://project/foo',c=>c.catalogRevision='invalid']) {
+      const candidate=structuredClone(f.catalog);modify(candidate);
+      await assert.rejects(readPixelProject(candidate,'scene','/project',new AbortController().signal));
+    }
+    const different=await pixelPng(blank(2,1));
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',different))].map(n=>n.toString(16).padStart(2,'0')).join('');
+    const candidate=structuredClone(f.catalog);candidate.assets[0].metadata.pngSha256=hash;
+    globalThis.fetch=async url=>new Response(url.endsWith('.png')?different:json);
+    await assert.rejects(readPixelProject(candidate,'scene','/project',new AbortController().signal),/editable source differ/);
+  } finally {globalThis.fetch=originalFetch;globalThis.location=originalLocation;f.store.destroy();}
+});
+test('desktop pixel host requires a loaded catalog and advances its optimistic token only after an accepted response',async()=>{
+  const f=await projectFixture(),calls=[];
+  let result={...f.catalog,assets:[],catalogRevision:''};
+  const host=createDesktopPixelProjectHost(async(command,args)=>{calls.push({command,args});return result;},'/project');
+  const signal=new AbortController().signal;
+  try {
+    await assert.rejects(host.save([f.asset],signal),/Reopen/);assert.equal(calls.length,0);
+    await host.load(signal);result=f.catalog;await host.save([f.asset],signal);
+    assert.equal(calls.at(-1).args.bundle.expectedCatalogRevision,'');
+    result={...f.catalog,catalogRevision:'2'.repeat(64)};await host.save([f.asset],signal);
+    assert.equal(calls.at(-1).args.bundle.expectedCatalogRevision,'1'.repeat(64));
+    result={...f.catalog,catalogRevision:'bad'};await assert.rejects(host.save([f.asset],signal));
+    assert.equal(calls.at(-1).args.bundle.expectedCatalogRevision,'2'.repeat(64));
+  } finally {f.store.destroy();}
+});
+test('lossless saved PNG verification rejects damaged checksums, truncation and different source pixels',async()=>{
+  const source=blank(2,2),png=await pixelPng(source);
+  await verifyPixelPng(png,source);
+  for(const candidate of [png.slice(0,-1),new Uint8Array([...new Uint8Array(png),0]).buffer])await assert.rejects(verifyPixelPng(candidate,source));
+  const damaged=png.slice(0);new Uint8Array(damaged)[30]^=1;await assert.rejects(verifyPixelPng(damaged,source));
+  const editor=create(source);stroke(editor,0,0,1,1);
+  await assert.rejects(verifyPixelPng(png,editor.document()),/editable source differ/);
+});
+
+test('native-valid formatted JSON and ordinary RGBA PNG reopen and resave with identical source bytes', async()=>{
+  const f=await projectFixture(),originalFetch=globalThis.fetch,originalLocation=globalThis.location;
+  const raw=JSON.stringify(f.source,null,2)+'\n';
+  const { encodePngRgba }=await import('../../scripts/tools/pack-textures.mjs');
+  const png=encodePngRgba(f.source.width,f.source.height,pixelBytes(f.source));
+  const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',typeof value==='string'?new TextEncoder().encode(value):value))].map(n=>n.toString(16).padStart(2,'0')).join('');
+  const candidate=structuredClone(f.catalog),meta=candidate.assets[0].metadata;
+  meta.assetId='pixel.'+(await hash(JSON.stringify([meta.identityDocument,raw]))).slice(0,24);
+  meta.jsonSha256=await hash(raw);meta.pngSha256=await hash(png);
+  globalThis.location={href:'http://project/'};globalThis.fetch=async url=>new Response(url.endsWith('.png')?new Uint8Array(png).slice().buffer:raw);
+  try {
+    const restored=await readPixelProject(candidate,'scene','/project',new AbortController().signal);
+    assert.deepEqual(restored[0].source,f.source);
+    const bundle=await pixelProjectBundle(restored);
+    assert.equal(bundle.revisions[0].assetId,meta.assetId);
+    assert.equal(Buffer.from(bundle.files[0].base64,'base64').toString(),raw);
+    assert.equal(bundle.revisions[0].jsonSha256,meta.jsonSha256);
+  } finally {globalThis.fetch=originalFetch;globalThis.location=originalLocation;f.store.destroy();}
+});
+test('project bundle snapshots all revision fields and PNG bytes before yielding',async()=>{
+  const f=await projectFixture();
+  try {
+    const expected=await pixelProjectBundle([f.asset]);
+    const pending=pixelProjectBundle([f.asset]);
+    f.asset.id='pixel.'+'a'.repeat(24);f.asset.width=1;f.asset.identityDocument='changed';
+    new Uint8Array(f.asset.png).fill(0);f.asset.source.name='changed';
+    assert.deepEqual(await pending,expected);
+  } finally {f.store.destroy();}
+});
+
+test('standard RGBA PNG row filters, ancillary metadata, split IDAT and Adam7 preserve exact pixels',async()=>{
+  const {filteredPixelPng}=await import('./pixel-png-fixture.mjs');
+  for(const [width,height] of [[1,1],[1,9],[9,1],[9,9],[32,32]]) {
+    const pixels=Uint8Array.from({length:width*height*4},(_,i)=>(i*29+3)%256);
+    const source=pixelDocumentFromRgba(width,height,'filtered',pixels);
+    for(const interlaced of [false,true]) {
+      const png=filteredPixelPng(width,height,pixels,interlaced);
+      if(!interlaced)assert.deepEqual(new Uint8Array(decodePng(png).pixels),pixels,'independent existing decoder checks fixture');
+      await verifyPixelPng(Uint8Array.from(png).buffer,source);
+    }
+  }
+});
+test('PNG verification snapshots caller source and input bytes before inflate yields',async()=>{
+  const source=blank(8,8),png=await pixelPng(source);
+  const result=verifyPixelPng(png,source);
+  source.width=1;source.rgba='AAAAAA==';new Uint8Array(png).fill(0);
+  await result;
+});
+
+test('embedded PNG profiles cannot reinterpret the sRGB source pixels during runtime decode',async()=>{
+  const {filteredPixelPng,pixelPngChunk}=await import('./pixel-png-fixture.mjs');
+  const source=blank(2,2),png=filteredPixelPng(2,2,pixelBytes(source));
+  for(const [name,body] of [['gAMA',Buffer.from([0,1,0x86,0xa0])],['iCCP',Buffer.from('profile\0fake')],['cICP',Buffer.from([9,16,0,1])]]) {
+    const invalid=Buffer.concat([png.subarray(0,33),pixelPngChunk(name,body),png.subarray(33)]);
+    await assert.rejects(verifyPixelPng(Uint8Array.from(invalid).buffer,source),/color space/);
+  }
+  const gamma=Buffer.alloc(4);gamma.writeUInt32BE(45455);
+  const srgb=Buffer.concat([png.subarray(0,33),pixelPngChunk('gAMA',gamma),png.subarray(33)]);
+  await verifyPixelPng(Uint8Array.from(srgb).buffer,source);
 });

@@ -210,6 +210,7 @@ fn validate_source(
 }
 
 const CONTRACT: super::sprite_assets::Contract = super::sprite_assets::Contract {
+    check_catalog_revision: false,
     directory: DIRECTORY,
     prefix: "aseprite.",
     bundle_format: "ferrum2d.aseprite.assets",
@@ -283,6 +284,17 @@ mod tests {
                 "load_placement_aseprite_assets" => {
                     load_inner(Path::new(text(args, "projectPath")?), &assets, &writes)
                 }
+                "load_placement_pixel_assets" => super::super::pixel_assets::load_inner(
+                    Path::new(text(args, "projectPath")?),
+                    &assets,
+                    &writes,
+                ),
+                "save_placement_pixel_assets" => super::super::pixel_assets::save_inner(
+                    Path::new(text(args, "projectPath")?),
+                    &args["bundle"],
+                    &assets,
+                    &writes,
+                ),
                 "load_placement_tile_assets" => super::super::tile_assets::load_inner(
                     Path::new(text(args, "projectPath")?),
                     &assets,

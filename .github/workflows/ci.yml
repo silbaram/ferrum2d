@@ -185,6 +185,21 @@ jobs:
       - name: Built-in pixel creation, source export and fresh game rendering
         run: pnpm smoke:pixel-authoring
 
+      - name: Native pixel source storage and fresh game roundtrip
+        run: pnpm smoke:pixel-project
+
+      - name: Upload native pixel evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-pixel-project
+          path: |
+            artifacts/pixel-project/verification.json
+            artifacts/pixel-project/run-*/*.png
+            artifacts/pixel-project/run-*/*.pixel.json
+            artifacts/pixel-project/run-*/rust-build.log
+          if-no-files-found: ignore
+
       - name: Native tile map source storage and fresh game roundtrip
         run: |
           cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked

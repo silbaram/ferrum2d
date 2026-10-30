@@ -2613,6 +2613,7 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
             if (command === "load_placement_tile_assets") {
               return { format: "ferrum2d.tile-import.project", version: 1, assets: [] };
             }
+            if (command === "load_placement_pixel_assets") return { format: "ferrum2d.pixel.project", version: 1, catalogRevision: "", assets: [] };
             if (command === "load_placement_aseprite_assets") {
               return { format: "ferrum2d.aseprite.project", version: 1, assets: [] };
             }

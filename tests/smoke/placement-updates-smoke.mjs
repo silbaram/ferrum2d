@@ -24,6 +24,7 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
         if (command === "list_placement_project_scenes") return { scenes: [], truncated: false };
         if (command === "inspect_placement_asset_folder") return folder(args.assetFolderPath);
         if (command === "load_placement_tile_assets") return { format: "ferrum2d.tile-import.project", version: 1, assets: [] };
+        if (command === "load_placement_pixel_assets") return { format: "ferrum2d.pixel.project", version: 1, catalogRevision: "", assets: [] };
         if (command === "load_placement_aseprite_assets") return { format: "ferrum2d.aseprite.project", version: 1, assets: [] };
         if (command === "load_placement_normal_assets") return { format: "ferrum2d.sprite-normal.project", version: 1, registered: true, entries: [], textures: {} };
         if (command === "placement_update_info") return { viewerVersion: "0.1.0-beta.9", bundledEngineVersion: "0.1.0-beta.9", repository: "silbaram/ferrum2d", os: "linux", arch: "x64", configured: window.__updateConfigured, canInstall: window.__updateConfigured, reason: "This build has no update signing key" };
