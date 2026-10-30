@@ -20,6 +20,7 @@ export class WebGPURenderer implements Renderer {
         message: string;
     };
     private generation = 1;
+    private timingFrameOffset = 0;
     private recovering?: Promise<boolean>;
     private recoveryAbort?: AbortController;
     private readonly textures = new Map<number, {
@@ -56,6 +57,7 @@ export class WebGPURenderer implements Renderer {
             if (this.status === "destroyed" || backend !== this.backend)
                 return;
             this.loss = { reason: info.reason, message: info.message };
+            this.timingFrameOffset += backend.gpuTimingStats().currentFrameId ?? 0;
             if (this.status === "ready")
                 this.status = "lost";
             backend.destroy();
@@ -223,7 +225,16 @@ export class WebGPURenderer implements Renderer {
         width: number;
         height: number;
     } { return this.backend.viewportSize(); }
-    resourceStats(): undefined { return undefined; }
+    resourceStats() { return this.backend.resourceStats(); }
+    beginGpuTiming(): void { this.alive(); if (this.status === "ready") this.backend.beginGpuTiming(); }
+    endGpuTiming(discard = false): void { if (this.status === "ready") this.backend.endGpuTiming(discard); }
+    gpuTimingStats(): import("./gpuTiming.js").RendererGpuTimingStats {
+        if (this.status !== "ready") return { status: this.status === "destroyed" ? "disabled" : "context-lost", pendingQueryCount: 0 };
+        const stats = this.backend.gpuTimingStats();
+        return { ...stats,
+            ...(stats.currentFrameId === undefined ? {} : { currentFrameId: stats.currentFrameId + this.timingFrameOffset }),
+            ...(stats.frameId === undefined ? {} : { frameId: stats.frameId + this.timingFrameOffset }) };
+    }
     stats(): RendererStats { return this.status === "ready" ? this.backend.stats() : emptyRendererStats(); }
     setLighting(scene: LightingScene2D | false | undefined): void { this.ready(); this.backend.setLighting(scene); this.options.lighting = structuredClone(scene); }
     setSpriteMaterial(material: SpriteMaterialPresetInput): void { this.ready(); this.backend.setSpriteMaterial(material); this.options.spriteMaterial = structuredClone(material); }

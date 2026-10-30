@@ -1,3 +1,5 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import { resolvePostProcessPasses } from "./cameraPostProcessing.js";
 import type {
   PostProcessStackInput,
@@ -33,7 +35,7 @@ export class WebGpuPostProcessPass {
     this.pipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.bindGroupLayout],
     });
-    this.uniformBuffer = this.device.createBuffer({
+    this.uniformBuffer = webGpuResources(this.device).createBuffer({
       size: POST_PROCESS_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
@@ -70,7 +72,7 @@ export class WebGpuPostProcessPass {
       this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformStaging);
 
       const encoder = this.device.createCommandEncoder();
-      const renderPass = encoder.beginRenderPass({
+      const renderPass = beginWebGpuRenderPass(this.device, encoder, {
         colorAttachments: [{
           view: this.currentTexture().createView(),
           loadOp: "load",
@@ -94,7 +96,7 @@ export class WebGpuPostProcessPass {
       return;
     }
     this.destroyed = true;
-    this.uniformBuffer.destroy();
+    webGpuResources(this.device).destroy(this.uniformBuffer);
   }
 
   private createBindGroupLayout(): GPUBindGroupLayout {
@@ -138,7 +140,7 @@ export class WebGpuPostProcessPass {
       `,
     });
 
-    return this.device.createRenderPipeline({
+    return webGpuResources(this.device).createRenderPipeline({
       layout: this.pipelineLayout,
       vertex: {
         module,

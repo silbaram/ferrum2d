@@ -1,3 +1,4 @@
+import { webGpuResources } from "./webgpuResources.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
 import type {
   ResolvedLightingScene2D,
@@ -41,11 +42,11 @@ export class WebGpuLightingPass {
     private readonly pipelineLayout: GPUPipelineLayout,
     private readonly resolutionBindGroup: GPUBindGroup,
   ) {
-    this.lightingInstanceBuffer = this.device.createBuffer({
+    this.lightingInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: LIGHTING_INSTANCE_STRIDE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
-    this.shadowVertexBuffer = this.device.createBuffer({
+    this.shadowVertexBuffer = webGpuResources(this.device).createBuffer({
       size: SHADOW_VERTEX_STRIDE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
@@ -216,8 +217,8 @@ export class WebGpuLightingPass {
       return;
     }
     this.destroyed = true;
-    this.lightingInstanceBuffer.destroy();
-    this.shadowVertexBuffer.destroy();
+    webGpuResources(this.device).destroy(this.lightingInstanceBuffer);
+    webGpuResources(this.device).destroy(this.shadowVertexBuffer);
     this.lightingInstanceCapacityBytes = 0;
     this.shadowVertexCapacityBytes = 0;
     this.lightingStaging = new Float32Array(0);
@@ -288,7 +289,7 @@ export class WebGpuLightingPass {
       `,
     });
 
-    return this.device.createRenderPipeline({
+    return webGpuResources(this.device).createRenderPipeline({
       layout: this.pipelineLayout,
       vertex: {
         module,
@@ -369,7 +370,7 @@ export class WebGpuLightingPass {
       `,
     });
 
-    return this.device.createRenderPipeline({
+    return webGpuResources(this.device).createRenderPipeline({
       layout: this.pipelineLayout,
       vertex: {
         module,
@@ -490,8 +491,8 @@ export class WebGpuLightingPass {
       return;
     }
     const nextSize = nextPowerOfTwo(byteCount);
-    this.lightingInstanceBuffer.destroy();
-    this.lightingInstanceBuffer = this.device.createBuffer({
+    webGpuResources(this.device).destroy(this.lightingInstanceBuffer);
+    this.lightingInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: nextSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
@@ -503,8 +504,8 @@ export class WebGpuLightingPass {
       return;
     }
     const nextSize = nextPowerOfTwo(byteCount);
-    this.shadowVertexBuffer.destroy();
-    this.shadowVertexBuffer = this.device.createBuffer({
+    webGpuResources(this.device).destroy(this.shadowVertexBuffer);
+    this.shadowVertexBuffer = webGpuResources(this.device).createBuffer({
       size: nextSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });

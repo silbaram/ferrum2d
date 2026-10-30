@@ -1,3 +1,4 @@
+import { webGpuResources } from "./webgpuResources.js";
 import { textureLoadAbortError } from "./ktx2Texture.js";
 import { resolveTextureColorSpace } from "./colorManagement.js";
 import type { TextureLoadOptions, TextureColorSpace } from "./colorManagement.js";
@@ -141,7 +142,7 @@ export class WebGpuTextureStore {
     if (resource === undefined) {
       return false;
     }
-    resource.texture.destroy();
+    webGpuResources(this.device).destroy(resource.texture);
     this.textures.delete(resource.texture);
     this.texturesById.delete(textureId);
     return true;
@@ -167,7 +168,7 @@ export class WebGpuTextureStore {
     this.pendingLoads.clear();
     this.pendingIds.clear();
     for (const texture of this.textures) {
-      texture.destroy();
+      webGpuResources(this.device).destroy(texture);
     }
     this.textures.clear();
     this.texturesById.clear();
@@ -186,23 +187,28 @@ export class WebGpuTextureStore {
   }
 
   private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace, blob: Blob): GPUTexture {
-    const texture = this.device.createTexture({
+    const texture = webGpuResources(this.device).createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    this.device.queue.copyExternalImageToTexture(
-      { source },
-      { texture },
-      { width: source.width, height: source.height, depthOrArrayLayers: 1 },
-    );
-    if (textureId === undefined) {
-      this.textures.add(texture);
+    try {
+      this.device.queue.copyExternalImageToTexture(
+        { source },
+        { texture },
+        { width: source.width, height: source.height, depthOrArrayLayers: 1 },
+      );
+      if (textureId === undefined) {
+        this.textures.add(texture);
+        return texture;
+      }
+      const resource = this.createTextureResource(texture, source.width, source.height, colorSpace);resource.source=blob;
+      this.setTexture(textureId,resource);
       return texture;
+    } catch (error) {
+      webGpuResources(this.device).destroy(texture);
+      throw error;
     }
-    const resource = this.createTextureResource(texture, source.width, source.height, colorSpace);resource.source=blob;
-    this.setTexture(textureId,resource);
-    return texture;
   }
 
   private createTextureFromRgbaData(
@@ -212,20 +218,25 @@ export class WebGpuTextureStore {
     data: Uint8Array,
   ): GPUTexture {
     validateTextureId(textureId);
-    const texture = this.device.createTexture({
+    const upload = textureWriteBytes(width, height, data);
+    const texture = webGpuResources(this.device).createTexture({
       size: { width, height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    const upload = textureWriteBytes(width, height, data);
-    this.device.queue.writeTexture(
-      { texture },
-      upload.data,
-      { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
-      { width, height, depthOrArrayLayers: 1 },
-    );
-    this.setTexture(textureId, this.createTextureResource(texture, width, height));
-    return texture;
+    try {
+      this.device.queue.writeTexture(
+        { texture },
+        upload.data,
+        { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+      this.setTexture(textureId, this.createTextureResource(texture, width, height));
+      return texture;
+    } catch (error) {
+      webGpuResources(this.device).destroy(texture);
+      throw error;
+    }
   }
 
   private createTextureResource(texture: GPUTexture, width: number, height: number, colorSpace: TextureColorSpace = "none"): WebGpuTextureResource {
@@ -245,7 +256,7 @@ export class WebGpuTextureStore {
     this.pendingIds.get(textureId)?.abort();
     const previous = this.texturesById.get(textureId);
     if (previous && previous.texture !== resource.texture) {
-      previous.texture.destroy();
+      webGpuResources(this.device).destroy(previous.texture);
       this.textures.delete(previous.texture);
     }
     this.textures.add(resource.texture);

@@ -65,7 +65,7 @@ export class WebGL2GpuTimer {
     this.gl.beginQuery(ext.TIME_ELAPSED_EXT, query);
   }
 
-  endFrame(): void {
+  endFrame(discard = false): void {
     if (this.destroyed || !this.active || !this.extension) return;
     if (this.gl.isContextLost()) {
       this.lost = true;
@@ -74,7 +74,8 @@ export class WebGL2GpuTimer {
       return;
     }
     this.gl.endQuery(this.extension.TIME_ELAPSED_EXT);
-    this.pending.push(this.active);
+    if (discard) this.idle.push(this.active.query);
+    else this.pending.push(this.active);
     this.active = undefined;
     this.current.pendingQueryCount = this.pending.length;
     // A disjoint event also invalidates a result polled earlier in this frame.

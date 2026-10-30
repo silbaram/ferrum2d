@@ -193,7 +193,8 @@ export interface Renderer {
   resourceStats?(): RendererResourceStats | undefined;
   /** Optional asynchronous GPU timer; bracket all render passes with begin/end. */
   beginGpuTiming?(): void;
-  endGpuTiming?(): void;
+  /** Discard the current measurement when rendering failed; defaults to false. */
+  endGpuTiming?(discard?: boolean): void;
   gpuTimingStats?(): RendererGpuTimingStats;
   setPostProcess?(postProcess: PostProcessStackInput): void;
   renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;

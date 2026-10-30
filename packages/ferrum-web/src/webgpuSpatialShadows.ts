@@ -1,3 +1,5 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 export const spatialShadowSamplingWGSL = `
@@ -98,13 +100,13 @@ export class WebGpuSpatialShadows {
   private failure?: Error;
   private destroyed = false;
   constructor(private readonly device: GPUDevice) {
-    this.dummyPoint = device.createTexture({
+    this.dummyPoint = webGpuResources(device).createTexture({
       label: "Spatial inactive point shadow",
       size: [1, 1, 6],
       format: "depth32float",
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    this.dummySun = device.createTexture({
+    this.dummySun = webGpuResources(device).createTexture({
       label: "Spatial inactive sun shadow",
       size: [1, 1, 1],
       format: "depth32float",
@@ -142,7 +144,7 @@ export class WebGpuSpatialShadows {
   private replace(key: "point" | "sun", resolution: number, layers: number): void {
     const old = this[key];
     if (!resolution) {
-      old?.texture.destroy();
+      webGpuResources(this.device).destroy(old?.texture);
       this[key] = undefined;
       return;
     }
@@ -151,7 +153,7 @@ export class WebGpuSpatialShadows {
     this.device.pushErrorScope("validation");
     this.device.pushErrorScope("out-of-memory");
     try {
-      texture = this.device.createTexture({
+      texture = webGpuResources(this.device).createTexture({
         label: `Spatial ${key} shadow`,
         size: [resolution, resolution, layers],
         format: "depth32float",
@@ -166,10 +168,10 @@ export class WebGpuSpatialShadows {
           texture!.createView({ dimension: "2d", baseArrayLayer: i, arrayLayerCount: 1 }),
         ),
       };
-      old?.texture.destroy();
+      webGpuResources(this.device).destroy(old?.texture);
       this[key] = replacement;
     } catch (error) {
-      texture?.destroy();
+      webGpuResources(this.device).destroy(texture);
       throw error;
     } finally {
       const allocation = this.device.popErrorScope(),
@@ -178,14 +180,14 @@ export class WebGpuSpatialShadows {
         (errors) => {
           const error = errors.find(Boolean);
           if (error && replacement && this[key] === replacement && !this.destroyed) {
-            replacement.texture.destroy();
+            webGpuResources(this.device).destroy(replacement.texture);
             this[key] = undefined;
             this.failure = Error(`Spatial shadow GPU allocation failed: ${error.message}`);
           }
         },
         (error) => {
           if (replacement && this[key] === replacement && !this.destroyed) {
-            replacement.texture.destroy();
+            webGpuResources(this.device).destroy(replacement.texture);
             this[key] = undefined;
             this.failure = Error(`Spatial shadow GPU validation failed: ${String(error)}`);
           }
@@ -207,7 +209,7 @@ export class WebGpuSpatialShadows {
     ] as const)
       if (target)
         for (let i = 0; i < target.faces.length; i++) {
-          const pass = encoder.beginRenderPass({
+          const pass = beginWebGpuRenderPass(this.device, encoder, {
             label: `Spatial shadow face ${base + i}`,
             colorAttachments: [],
             depthStencilAttachment: {
@@ -236,12 +238,12 @@ export class WebGpuSpatialShadows {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.point?.texture.destroy();
-    this.sun?.texture.destroy();
+    webGpuResources(this.device).destroy(this.point?.texture);
+    webGpuResources(this.device).destroy(this.sun?.texture);
     this.point = undefined;
     this.sun = undefined;
-    this.dummyPoint.destroy();
-    this.dummySun.destroy();
+    webGpuResources(this.device).destroy(this.dummyPoint);
+    webGpuResources(this.device).destroy(this.dummySun);
   }
   private assertAlive(): void {
     if (this.destroyed) throw Error("Spatial shadows destroyed");

@@ -139,3 +139,12 @@ test("nonfinite or negative driver results never become GPU time samples", () =>
     timer.destroy();
   }
 });
+
+test("failed-frame discard closes its GL query without publishing partial time", () => {
+  const gl = new FakeGl(), timer = gl.timer();
+  timer.beginFrame(); timer.endFrame(true);
+  equal(gl.active, null); equal(timer.stats().pendingQueryCount, 0);
+  gl.queries[0].available = true;
+  timer.beginFrame(); equal(timer.stats().elapsedMs, undefined); timer.endFrame();
+  equal(gl.queries.length, 1); equal(timer.stats().pendingQueryCount, 1); timer.destroy();
+});

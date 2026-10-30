@@ -70,6 +70,7 @@ export class RuntimeFrameRenderer {
     let frame = this.applyDynamicFrameProviders(renderFrame);
 
     let rendererStats: RendererStats;
+    let frameSucceeded = false;
     this.options.renderer.beginGpuTiming?.();
     try {
       this.options.renderer.render();
@@ -82,8 +83,9 @@ export class RuntimeFrameRenderer {
         });
       }
       rendererStats = this.options.renderer.renderPostProcess?.() ?? rendererStats;
+      frameSucceeded = true;
     } finally {
-      this.options.renderer.endGpuTiming?.();
+      this.options.renderer.endGpuTiming?.(!frameSucceeded);
     }
     if (!this.options.needsRuntimeFrame) {
       return;

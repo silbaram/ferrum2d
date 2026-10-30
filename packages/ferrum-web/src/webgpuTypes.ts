@@ -57,14 +57,18 @@ declare global {
   }
 
   interface GPUAdapter {
+    readonly features?: ReadonlySet<string>;
     requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
   }
 
   interface GPUDeviceDescriptor {
+    requiredFeatures?: string[];
     label?: string;
   }
 
   interface GPUDevice {
+    readonly features?: ReadonlySet<string>;
+    createQuerySet(descriptor: { type: "timestamp"; count: number }): GPUQuerySet;
     readonly lost: Promise<{ readonly reason: string; readonly message: string }>;
     readonly limits: { readonly maxTextureDimension2D: number; readonly maxBufferSize: number };
     readonly queue: GPUQueue;
@@ -197,7 +201,13 @@ declare global {
     format: GPUVertexFormat;
   }
 
+  const GPUMapMode: { readonly READ: number };
+  interface GPUQuerySet { destroy(): void; }
+
   interface GPUBuffer {
+    mapAsync(mode: number, offset?: number, size?: number): Promise<void>;
+    getMappedRange(offset?: number, size?: number): ArrayBuffer;
+    unmap(): void;
     destroy(): void;
   }
 
@@ -296,6 +306,8 @@ declare global {
   }
 
   interface GPUCommandEncoder {
+    resolveQuerySet(querySet: GPUQuerySet, firstQuery: number, queryCount: number, destination: GPUBuffer, destinationOffset: number): void;
+    copyBufferToBuffer(source: GPUBuffer, sourceOffset: number, destination: GPUBuffer, destinationOffset: number, size: number): void;
     beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
     finish(): GPUCommandBuffer;
   }
@@ -318,7 +330,14 @@ declare global {
     end(): void;
   }
 
+  interface GPURenderPassTimestampWrites {
+    querySet: GPUQuerySet;
+    beginningOfPassWriteIndex?: number;
+    endOfPassWriteIndex?: number;
+  }
+
   interface GPURenderPassDescriptor {
+    timestampWrites?: GPURenderPassTimestampWrites;
     label?: string;
     colorAttachments: GPURenderPassColorAttachment[];
     depthStencilAttachment?: GPURenderPassDepthStencilAttachment;

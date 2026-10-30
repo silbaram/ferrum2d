@@ -1,3 +1,5 @@
+import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
 // Native environment v1..v4 padded to 512 floats, followed by eye/forward/view/size.
@@ -173,7 +175,7 @@ export class WebGpuSpatialEnvironment {
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
       ],
     });
-    this.uniform = device.createBuffer({
+    this.uniform = webGpuResources(device).createBuffer({
       label: "Spatial environment",
       size: UNIFORM_STRIDE * 2,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -193,7 +195,7 @@ export class WebGpuSpatialEnvironment {
       label: "Spatial HDR/depth composite",
       code: composite,
     });
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = webGpuResources(device).createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.imagesLayout] }),
       vertex: { module, entryPoint: "vs_main" },
       fragment: { module, entryPoint: "fs_main", targets: [{ format }] },
@@ -294,13 +296,13 @@ export class WebGpuSpatialEnvironment {
     this.device.pushErrorScope("validation");
     this.device.pushErrorScope("out-of-memory");
     try {
-      color = this.device.createTexture({
+      color = webGpuResources(this.device).createTexture({
         label: "Spatial HDR color",
         size: [width, height, 1],
         format: "rgba16float",
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
-      depth = this.device.createTexture({
+      depth = webGpuResources(this.device).createTexture({
         label: "Spatial HDR depth",
         size: [width, height, 1],
         format: "depth24plus",
@@ -324,8 +326,8 @@ export class WebGpuSpatialEnvironment {
       this.width = width;
       this.height = height;
     } catch (error) {
-      color?.destroy();
-      depth?.destroy();
+      webGpuResources(this.device).destroy(color);
+      webGpuResources(this.device).destroy(depth);
       throw error;
     } finally {
       // Frame rendering is synchronous. Never retain an asynchronously invalid target as a warm hit.
@@ -367,7 +369,7 @@ export class WebGpuSpatialEnvironment {
   ): void {
     if (this.destroyed) throw Error("Spatial environment destroyed");
     if (!this.images) throw Error("Spatial HDR target is not prepared");
-    const pass = encoder.beginRenderPass({
+    const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial HDR composite",
       colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
     });
@@ -443,8 +445,8 @@ export class WebGpuSpatialEnvironment {
     return this.width * this.height * 12;
   }
   private releaseTarget(): void {
-    this.color?.destroy();
-    this.depth?.destroy();
+    webGpuResources(this.device).destroy(this.color);
+    webGpuResources(this.device).destroy(this.depth);
     this.color = undefined;
     this.depth = undefined;
     this.images = undefined;
@@ -457,7 +459,7 @@ export class WebGpuSpatialEnvironment {
     if (this.destroyed) return;
     this.destroyed = true;
     this.releaseTarget();
-    this.uniform.destroy();
+    webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
   }
 }

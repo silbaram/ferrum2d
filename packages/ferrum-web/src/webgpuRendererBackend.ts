@@ -1,3 +1,5 @@
+import { WebGpuTimer, beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
+import { webGpuResources } from "./webgpuResources.js";
 import { WebGpuSpatialPass } from "./webgpuSpatialPass.js";
 import "./webgpuTypes.js";
 import {
@@ -38,6 +40,8 @@ import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.
 export interface WebGPURendererOptions {
   /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
   colorManagement?: ColorManagementMode;
+  /** Opt-in asynchronous render-pass timing; unavailable adapters still render. */
+  gpuTiming?: boolean;
   clearColor?: [number, number, number, number];
   powerPreference?: GPUPowerPreference;
   fallbackAdapter?: boolean;
@@ -74,6 +78,7 @@ export class WebGpuRendererBackend implements Renderer {
   private logicalHeight = 0;
   private readonly resolutionStaging = new Float32Array([0, 0, 1, 0, 1, 0, 1, 0]);
   private destroyed = false;
+  private readonly timer: WebGpuTimer;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -82,6 +87,7 @@ export class WebGpuRendererBackend implements Renderer {
     private readonly format: GPUTextureFormat,
     private readonly options: WebGPURendererOptions = {},
   ) {
+    this.timer = new WebGpuTimer(device, options.gpuTiming === true);
     const sampler = this.device.createSampler({
       magFilter: "nearest",
       minFilter: "nearest",
@@ -95,7 +101,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.uniformPipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.uniformBindGroupLayout],
     });
-    this.resolutionBuffer = this.device.createBuffer({
+    this.resolutionBuffer = webGpuResources(this.device).createBuffer({
       size: UNIFORM_BUFFER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
@@ -160,7 +166,7 @@ export class WebGpuRendererBackend implements Renderer {
     if (adapter === null) {
       throw new Error("WebGPU adapter is not available.");
     }
-    const device = await adapter.requestDevice();
+    const device = await adapter.requestDevice(options.gpuTiming && adapter.features?.has("timestamp-query") ? { requiredFeatures: ["timestamp-query"] } : undefined);
     let initialLoss: {message:string} | undefined;
     void device.lost?.then(info=>{initialLoss=info;});
     let renderer: WebGpuRendererBackend | undefined, bound = false;
@@ -179,7 +185,7 @@ export class WebGpuRendererBackend implements Renderer {
       bound = true; renderer.context = context; renderer.configureContext(); renderer.resize();
       return renderer;
     } catch (reason) {
-      renderer?.destroy(); device.destroy();
+      renderer?.destroy(); webGpuResources(device).destroyAll(); device.destroy();
       if (bound) throw new WebGpuCanvasCommitError(reason);
       throw reason;
     }
@@ -258,8 +264,10 @@ export class WebGpuRendererBackend implements Renderer {
 
   restoreRgbaTexture(id: number, width: number, height: number, data: Uint8Array): GPUTexture { return this.textureStore.restoreRgbaTexture(id,width,height,data); }
 
-  /** Native WebGPU allocation statistics are not available yet. */
-  resourceStats(): undefined { return undefined; }
+  resourceStats() { return webGpuResources(this.device).stats(); }
+  beginGpuTiming(): void { this.assertAlive(); this.timer.beginFrame(); }
+  endGpuTiming(discard = false): void { if (!this.destroyed) this.timer.endFrame(discard); }
+  gpuTimingStats() { return this.timer.stats(); }
 
   stats(): RendererStats {
     return { ...this.currentStats };
@@ -395,13 +403,15 @@ export class WebGpuRendererBackend implements Renderer {
       return;
     }
     this.destroyed = true;
+    this.timer.destroy();
     this.spatialPass.destroy();
     this.postProcessPass.destroy();
     this.textureStore.destroy();
     this.debugLinePass.destroy();
     this.lightingPass.destroy();
     this.spritePass.destroy();
-    this.resolutionBuffer.destroy();
+    webGpuResources(this.device).destroy(this.resolutionBuffer);
+    webGpuResources(this.device).destroyAll();
   }
 
   private requireContext(): GPUCanvasContext {
@@ -423,7 +433,7 @@ export class WebGpuRendererBackend implements Renderer {
     loadOp: GPULoadOp,
   ): GPURenderPassEncoder {
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
-    return encoder.beginRenderPass({
+    return beginWebGpuRenderPass(this.device, encoder, {
       colorAttachments: [{
         view: this.requireContext().getCurrentTexture().createView(),
         loadOp,

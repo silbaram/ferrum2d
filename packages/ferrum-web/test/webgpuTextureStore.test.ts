@@ -1,7 +1,8 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { PixelMaskTerrain } from "../src/pixelMaskTerrain.js";
 import { WebGpuTextureStore, rgbaFromAlpha, textureWriteBytes } from "../src/webgpuTextureStore.js";
+import { webGpuResources } from "../src/webgpuResources.js";
 
 interface CapturedWriteTextureCall {
   destination: unknown;
@@ -211,6 +212,37 @@ function installWebGpuGlobals(): void {
     RENDER_ATTACHMENT: 16,
   };
 }
+
+test("failed RGBA upload or bind-group creation preserves the old texture and releases the replacement", () => {
+  for (const phase of ["upload", "bindGroup"]) {
+    const { device, store } = createTextureStore();
+    const terrain = new PixelMaskTerrain({ width: 1, height: 1, data: [255] });
+    store.createPixelMaskTerrainTexture(3, terrain);
+    const previous = store.resource(3);
+    if (phase === "upload") device.queue.writeTexture = () => { throw Error("upload failed"); };
+    else device.createBindGroup = () => { throw Error("bindGroup failed"); };
+    throws(() => store.createPixelMaskTerrainTexture(3, terrain), /failed/);
+    equal(store.resource(3), previous);
+    equal(device.textures[0].destroyed, false);
+    equal(device.textures[1].destroyed, true);
+    equal(webGpuResources(device as unknown as GPUDevice).stats().textureCount, 1);
+    store.destroy();
+  }
+});
+
+test("failed external-image copy releases the allocated texture and closes the decoded bitmap", async () => {
+  const { device, store } = createTextureStore();
+  const original = globalThis.createImageBitmap;
+  let closed = false;
+  globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() { closed = true; } }) as ImageBitmap;
+  try {
+    device.queue.copyExternalImageToTexture = () => { throw Error("copy failed"); };
+    await rejects(store.loadTexture(3, "data:image/png;base64,AA=="), /copy failed/);
+    equal(closed, true);
+    equal(device.textures[0].destroyed, true);
+    equal(webGpuResources(device as unknown as GPUDevice).stats().textureCount, 0);
+  } finally { globalThis.createImageBitmap = original; store.destroy(); }
+});
 
 test("WebGPU shadow texture revisions change on replace and alpha patch but failed patches and eviction cannot reuse an old revision",()=>{
  const {store}=createTextureStore(),terrain=new PixelMaskTerrain({width:2,height:2,data:[255,255,255,255]});

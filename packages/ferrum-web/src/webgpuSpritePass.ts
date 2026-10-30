@@ -1,3 +1,4 @@
+import { webGpuResources } from "./webgpuResources.js";
 import {
   SPRITE_RENDER_COMMAND_FLOATS,
   spriteMaterialPassRequiresCommandCopy,
@@ -41,7 +42,7 @@ export class WebGpuSpritePass {
     this.spritePipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [uniformBindGroupLayout, textureBindGroupLayout],
     });
-    this.spriteInstanceBuffer = this.device.createBuffer({
+    this.spriteInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: COMMAND_STRIDE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
@@ -83,7 +84,7 @@ export class WebGpuSpritePass {
   }
 
   destroy(): void {
-    this.spriteInstanceBuffer.destroy();
+    webGpuResources(this.device).destroy(this.spriteInstanceBuffer);
     this.materialStaging = new Float32Array(0);
     this.spriteRangeScratch.length = 0;
     this.spriteInstanceCapacityBytes = 0;
@@ -171,7 +172,7 @@ export class WebGpuSpritePass {
       `,
     });
 
-    return this.device.createRenderPipeline({
+    return webGpuResources(this.device).createRenderPipeline({
       layout: this.spritePipelineLayout,
       vertex: {
         module,
@@ -264,8 +265,8 @@ export class WebGpuSpritePass {
       return;
     }
     const nextSize = nextPowerOfTwo(byteCount);
-    this.spriteInstanceBuffer.destroy();
-    this.spriteInstanceBuffer = this.device.createBuffer({
+    webGpuResources(this.device).destroy(this.spriteInstanceBuffer);
+    this.spriteInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: nextSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
