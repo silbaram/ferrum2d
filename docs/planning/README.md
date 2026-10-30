@@ -6,6 +6,8 @@
 완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
 현재 사용법과 검증 계약은 `docs/engine/`, `docs/development/`를 기준으로 한다.
 
+문서화된 신규 계획: [스프라이트 픽셀 편집기](sprite-editor-plan.md). 계획 작성 완료·구현 미착수이며, 1차 기본 드로잉·저장·씬 적용부터 진행한다.
+
 ## 다음 개선 추천
 
 아래 순서는 개발 착수나 완료를 뜻하지 않는다. 작업을 시작할 때 대상과 검증 조건을 확정한다.
@@ -22,6 +24,7 @@
 | --- | --- |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 실물 GPU·LOD 전환, WebGPU 통계, 자원 요청, 추가 모델, 물리 탐색·표시 보간 |
 | [게임 개발 편의성 후보](game-development-convenience-review.md) | 외부 맵 지원 범위 확대, catalog 정리·저장, 개발 reload, 읽기 전용 실행 진단 |
+| [스프라이트 픽셀 편집기 개발 계획](sprite-editor-plan.md) | 기본 드로잉·저장·씬 적용, 이미지 레이어/프레임, 노멀·게임 미리보기의 단계별 범위와 완료 조건 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 기존 기능을 public demo/report로 노출할 필요성 판단 |
 | [배포 후속 검증 후보](deployment-roadmap.md) | 실제 설치·GUI·플랫폼 서명 증거와 추가 host 필요성 판단 |
 

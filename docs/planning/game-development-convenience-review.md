@@ -16,6 +16,7 @@ Tiled embedded/외부 TSJ·LDtk embedded tileset의 used frame 선택과 2D 단�
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
+| 스프라이트 픽셀 제작 | [개발 계획](sprite-editor-plan.md)의 1차 기본 드로잉·저장·씬 적용부터 진행. 이미지 레이어/프레임·노멀 미리보기는 후속 단계이며 구현 미착수 |
 | 외부 맵 지원 범위 확대 | [현재 전체 맵](../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스) 이후 실제 필요를 확인해 다중 PNG·2,048개 초과·flip/animation·TSX·외부 level·IntGrid 어댑터를 각각 설계. 좌표/게임 상태·실패 원자성·원본 저장을 검증 |
 | Catalog 예산과 정리 | 현재 8 revision/64 MiB 예산에서 실제 부족 사례를 확인. 참조 중 revision은 보존하고 명시적 정리·실패 rollback·저장 후 복원을 검증한 뒤 예산 확대 판단 |
 | 추가 문서의 host 저장 | 기본 문서 밖 저장 대상과 project-root allowlist·동시 수정·원본/catalog 관계를 정함. browser-only export 경계 유지 |
