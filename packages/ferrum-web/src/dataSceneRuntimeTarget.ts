@@ -1,4 +1,5 @@
 import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd.js";
+import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
 import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
 import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
@@ -95,6 +96,7 @@ export interface DataSceneRuntimeSpawnRequest {
   groundShadow?: ResolvedDataSceneGroundShadow;
   color: readonly [number, number, number, number];
   textureId: number;
+  normalTextureId?: number;
   spriteWidth: number;
   spriteHeight: number;
   frameU0: number;
@@ -122,6 +124,7 @@ export interface DataSceneRuntimeSpawnRequest {
 }
 
 export interface DataSceneRuntimeEngineAdapter {
+  supportsSpriteNormalMaterials?(): boolean;
   useDataScene(): void;
   /** Optional cold capability; absence rejects render:false before scene activation. */
   supportsSpatialSurfaceProxies?(): boolean;
@@ -155,6 +158,9 @@ export function createDataSceneRuntimeTarget(
   engine: FerrumEngine,
   options: CreateDataSceneRuntimeTargetOptions = {},
 ): SceneBehaviorRuntimeTarget {
+  return createRuntimeTarget(engine, options, false);
+}
+function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntimeTargetOptions, deferNormals:boolean):SceneBehaviorRuntimeTarget {
   const path = options.path ?? "dataSceneRuntimeTarget";
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
@@ -178,8 +184,10 @@ export function createDataSceneRuntimeTarget(
         `${path}.instances.${instance.id}`,
         colorManagement,
       );
+      if(request.normalTextureId!==undefined&&!adapter.supportsSpriteNormalMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite normal materials require native v1 support");
       activateDataScene();
-      const handle = adapter.spawnDataSceneEntity(request);
+      const {normalTextureId:_normal,...unmapped}=request;
+      const handle = adapter.spawnDataSceneEntity(deferNormals?unmapped:request);
       if (handle === undefined) {
         throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "failed to spawn data-scene entity");
       }
@@ -246,6 +254,20 @@ export function applyDataSceneAuthoringDocument(
   if (resolved.spatial?.terrain.some(s => s.rampAxis === "x") && !runtimeAdapter.supportsSpatialRampAxis?.())
     throw sceneCompositionDiagnosticError(`${path}.spatial.terrain`, "X ramps require native spatial ramp axis v1 support");
   const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
+  // Resolve all optional normal refs/capabilities before replacing the current scene.
+  const normalMaterials=bindingPlan.instances.flatMap(instance=>{
+    const raw=instance.props.components;
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))return [];
+    const component=raw as Record<string,unknown>;
+    const hasNormal=[component.visual,component.sprite].some(value=>value&&typeof value==="object"&&!Array.isArray(value)&&"normalTexture" in value);
+    if(!hasNormal&&!(component.template!==undefined&&componentTemplates!==undefined))return [];
+    const components=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),componentTemplates,path);
+    return components.sprite.normalTexture===undefined?[]:[{id:instance.id,normalTextureId:normalTextureId(components.sprite.normalTexture,textureId??(name=>runtimeAdapter.textureId(name)))}];
+  });
+  if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
+    throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`, `supports at most ${MAX_SPRITE_NORMAL_UPDATES} sprite normal materials`);
+  if(normalMaterials.length&&(!runtimeAdapter.supportsSpriteNormalMaterials?.()||typeof engine.configureSpriteNormalMaterials!=="function"))
+    throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"sprite normal materials require native v1 support");
   preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
   const crowd = combatCrowdRequired(resolved.gameplay?.combatNavigation, bindingPlan.commands);
   const chaseCommands = combatChaseCommands(bindingPlan);
@@ -294,13 +316,13 @@ export function applyDataSceneAuthoringDocument(
       `${path}.variables`,
       runtimeVariableIds,
     );
-    const target = createDataSceneRuntimeTarget(engine, {
+    const target = createRuntimeTarget(engine, {
       path: `${path}.runtimeTarget`,
       activateDataScene: false,
       colorManagement,
       textureId,
       componentTemplates,
-    });
+    }, true);
     // Full authoring consumes prefab references in one configuration batch after action storage.
     // Standalone gameplay command application rejects these references instead of silently ignoring them.
     const recipeEngine: Pick<FerrumEngine, "applyGameplayBehaviorCommands"> = {
@@ -323,6 +345,8 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    if(normalMaterials.length&&!engine.configureSpriteNormalMaterials(normalMaterials.map(({id,normalTextureId})=>({entity:result.entityHandles[id],normalTextureId}))))
+      throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"runtime rejected sprite normal material batch");
     // Spawn definitions capture authored billboard styles; configure space before native v7.
     const spawnCatalog = resolved.gameplay?.spawnPrefabs;
     if (spawnCatalog !== undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
@@ -462,6 +486,7 @@ function inlineDataSceneRuntimeSpawnRequest(
     ...(groundShadow === undefined ? {} : { groundShadow }),
     color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
+    ...(sprite.normalTexture===undefined?{}:{normalTextureId:normalTextureId(sprite.normalTexture,textureId)}),
     spriteWidth: sprite.width * scale,
     spriteHeight: sprite.height * scale,
     frameU0: sprite.frame.u0,
@@ -538,6 +563,12 @@ export function preflightDataSceneSpatialEnvironment(
   if (batches + textures.size > 64) {
     throw sceneCompositionDiagnosticError(path, "shadow texture batch budget exceeds 64 per shadow face");
   }
+}
+
+function normalTextureId(ref:ResolvedDataSceneSpriteComponent["texture"],resolve:DataSceneRuntimeTextureIdResolver):number {
+  const id=ref.kind==="id"?(ref.id??Number(ref.value)):resolve(ref.name??String(ref.value));
+  if(!Number.isInteger(id)||id<0||id>=16777215)throw sceneCompositionDiagnosticError("components.normalTexture","must resolve to a registered texture ID below 16777215");
+  return id;
 }
 
 function dataSceneTextureId(

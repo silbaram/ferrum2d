@@ -106,7 +106,7 @@ test("runtime closes its GPU query when a render pass throws", () => {
 
 test("RuntimeFrameRenderer preserves dynamic provider, render, overlay, profiler, and onFrame order", () => {
   const order: string[] = [];
-  const postProcessStats = rendererStats({ drawCalls: 7, postProcessDrawCalls: 1, postProcessPassCount: 1 });
+  const postProcessStats = rendererStats({ drawCalls: 7, postProcessDrawCalls: 1, postProcessPassCount: 1, normalDrawCalls: 2 });
   const renderer = fakeRuntimeRenderer(order, { postProcess: postProcessStats });
   let onFrameRuntimeFrame: FerrumRuntimeFrame | undefined;
   const runtimeFrameRenderer = new RuntimeFrameRenderer({
@@ -129,6 +129,7 @@ test("RuntimeFrameRenderer preserves dynamic provider, render, overlay, profiler
       update: (metrics: unknown) => {
         order.push("debug_update");
         equal((metrics as { drawCalls: number }).drawCalls, postProcessStats.drawCalls);
+        equal((metrics as { normalDrawCalls: number }).normalDrawCalls, 2);
       },
     } as never,
     uiOverlay: {

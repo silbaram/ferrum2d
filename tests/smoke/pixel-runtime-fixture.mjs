@@ -1,4 +1,5 @@
-import { createEngine, AssetLoader, WebGL2Renderer, decodeRenderCommands } from "@ferrum2d/ferrum-web/core";
+import { verifyPairedPlayback } from "./aseprite-paired-runtime-fixture.mjs";
+import { createEngine, AssetLoader, WebGL2Renderer, decodeRenderCommands, createDataSceneView } from "@ferrum2d/ferrum-web/core";
 import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 
 /** A fresh runtime consumes only exported PNGs, manifest and ordinary scene data. */
@@ -20,7 +21,7 @@ export async function probePixelResume(providedBundle) {
   const renderer = new WebGL2Renderer(canvas, { preserveDrawingBuffer: true });
   const loader = new AssetLoader(renderer);
   const raf = requestAnimationFrame, cancel = cancelAnimationFrame, pending = new Map();
-  let id = 0, engine, sample, spriteUvs=[],spatialUvs=[];
+  let id = 0, engine, sample, view, worldLighting, spriteUvs=[],spatialUvs=[];
   globalThis.requestAnimationFrame = callback => { pending.set(++id, callback); return id; };
   globalThis.cancelAnimationFrame = key => pending.delete(key);
   try {
@@ -28,6 +29,7 @@ export async function probePixelResume(providedBundle) {
     await loader.loadAssets({ textures, textureOptions: bundle.manifest.textureOptions });
     window.pixelResumeStage = "engine";
     engine = await createEngine(frame => {
+      renderer.setLighting(worldLighting&&view?view.lighting(worldLighting,view.snapshot(frame)):false);
       renderer.render(); renderer.renderCommands(frame.renderCommandBuffer); renderer.renderPostProcess();
       if(engine) {
         const visual=bundle.sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual;
@@ -42,7 +44,7 @@ export async function probePixelResume(providedBundle) {
         }
       }
       sample = { state: frame.gameState, entities: frame.entityCount,
-        sprites: frame.spriteCount, drawCalls: renderer.stats().drawCalls,
+        sprites: frame.spriteCount, drawCalls: renderer.stats().drawCalls, normalDrawCalls: renderer.stats().normalDrawCalls??0,
         textureSwitches: renderer.stats().textureSwitchCount };
     }, () => ({}), loader, () => renderer.viewportSize(), { fixedTimestep: false });
     const size = renderer.viewportSize(); engine.setViewportSize(size.width, size.height);
@@ -147,28 +149,43 @@ export async function probePixelResume(providedBundle) {
       fixedAtlas={uv:expected,playingState:sample.state,drawCalls:sample.drawCalls,textureSwitches:sample.textureSwitches};
     }
     let normalMapping;
-    const normalName=bundle.sceneDocument.spatial?.billboards?.[pose.id]?.normalTexture;
+    const normalName=bundle.sceneDocument.spatial?.billboards?.[pose.id]?.normalTexture ?? visual.normalTexture;
     if(normalName) {
       window.pixelResumeStage="normalLighting";
       const asset=bundle.assets.find(asset=>asset.id===normalName);
       if(!asset||bundle.manifest.textureOptions[normalName]?.colorSpace!=="none")throw Error('Normal pixels or color space missing');
       const mapped=structuredClone(bundle.sceneDocument);
-      mapped.spatial.environment={...mapped.spatial.environment,lighting:{ambient:[0.05,0.05,0.05],lights:[{position:{x:65,y:-80,elevation:70},radius:300,intensity:2}]}};
-      const flat=structuredClone(mapped);delete flat.spatial.billboards[pose.id].normalTexture;
+      if(mapped.spatial) mapped.spatial.environment={...mapped.spatial.environment,lighting:{ambient:[0.05,0.05,0.05],lights:[{position:{x:65,y:-80,elevation:70},radius:300,intensity:2}]}};
+      else mapped.lighting={ambient:[0.05,0.05,0.05,1],pointLights:[{x:pose.x+65,y:pose.y-80,radius:300,height:70,intensity:0.8}]};
+      const flat=structuredClone(mapped);if(flat.spatial)delete flat.spatial.billboards[pose.id].normalTexture;else delete flat.sceneComposition.fragments.main.instances[0].props.components.visual.normalTexture;
       let now=10000;
       const render=document=>{
         applyDataSceneAuthoringDocument(engine,document);engine.pauseDataScene();
+        if(!document.spatial){worldLighting=document.lighting;view=createDataSceneView(engine,renderer,canvas,{x:pose.x,y:pose.y-32});}
         for(let i=0;i<3;i++){now+=16;const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(now);}
         const output=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,output);
         if(gl.getError()||sample.entities!==1||sample.drawCalls<1||sample.drawCalls>16||sample.textureSwitches>16)throw Error('Normal lighting state or budget differs');
         return output;
       };
-      const shaded=render(mapped),unmapped=render(flat);let difference=0;
+      const shaded=render(mapped),mappedStats={...sample},unmapped=render(flat);let difference=0;
+      if(!mapped.spatial&&(mappedStats.normalDrawCalls!==1||sample.normalDrawCalls!==0))throw Error("2D normal draw accounting differs");
       for(let i=0;i<shaded.length;i+=4)if(Math.abs(shaded[i]-unmapped[i])+Math.abs(shaded[i+1]-unmapped[i+1])+Math.abs(shaded[i+2]-unmapped[i+2])>8)difference++;
-      if(difference<20)throw Error('Actual HD-2D normal map did not affect lighting: '+difference);
+      if(difference<20)throw Error('Actual normal map did not affect lighting: '+difference);
+      let pairedPlayback;
+      const mappedVisual=mapped.sceneComposition.fragments.main.instances[0].props.components.visual;
+      const finite=mappedVisual.animationSet?.clips.find(clip=>!clip.loop&&new Set(clip.frames.map(frame=>JSON.stringify(frame))).size>=2);
+      if(finite){
+        const animated=structuredClone(mapped);animated.sceneComposition.fragments.main.instances[0].props.components.visual.animationSet.initialClip=finite.id;
+        let anchor=now,lastElapsed=Infinity;
+        pairedPlayback=verifyPairedPlayback(engine,animated,elapsed=>{
+          if(elapsed<=lastElapsed)anchor=now+16;lastElapsed=elapsed;now=anchor+elapsed;
+          const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(now);
+          if(sample.entities!==1||sample.drawCalls>16||sample.textureSwitches>16)throw Error('Paired frame budget differs');
+        },()=>{const output=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,output);if(gl.getError())throw Error('Paired frame readback failed');return output;});
+      }
       render(mapped);engine.resumeDataScene();now+=16;const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(now);
       if(sample.state!==1)throw Error('Normal mapped game did not resume Playing');
-      normalMapping={lightingChanged:true,differentPixels:difference,colorSpace:'none',playingState:sample.state,drawCalls:sample.drawCalls,textureSwitches:sample.textureSwitches,controlledLighting:true};
+      normalMapping={lightingChanged:true,differentPixels:difference,colorSpace:'none',playingState:sample.state,drawCalls:sample.drawCalls,textureSwitches:sample.textureSwitches,controlledLighting:true,...(pairedPlayback?{pairedPlayback}:{}),...(!mapped.spatial?{normalDrawCalls:mappedStats.normalDrawCalls,flatNormalDrawCalls:0}:{})};
     }
     return { freshSession: true, assets: bundle.assets.length, hashes: true, bluePixels: blue, ...pausedSample,...(playback?{playback}:{}),...(fixedAtlas?{fixedAtlas}:{}),...(taggedPlayback?{taggedPlayback}:{}),...(normalMapping?{normalMapping}:{}) };
   } finally {

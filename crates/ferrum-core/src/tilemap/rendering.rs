@@ -109,6 +109,7 @@ impl Tilemap {
                 let screen = camera.world_to_screen(center);
                 let (u0, v0, u1, v1) = definition.frame.uv();
                 render_items.push(SpriteRenderItem {
+                    normal_material: Default::default(),
                     command: SpriteRenderCommand {
                         x: screen.x - layer.tile_width * 0.5,
                         y: screen.y - layer.tile_height * 0.5,

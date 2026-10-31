@@ -1,3 +1,4 @@
+import { normalReferences, referencesNormal } from "./placementNormalReferences";
 import {
   asepriteNormalLayout,
   asepriteUvKey,
@@ -412,13 +413,9 @@ export function createPlacementNormalProjectAssets(
     },
     bundles(key: string, current?: SceneAuthoringDocumentSpec, project?: string) {
       if (!available(key, project)) return [];
-      const references = new Set(
-        Object.values(current?.spatial?.billboards ?? {}).map(
-          (b) => b.normalTexture,
-        ),
-      );
+      const references = current && normalReferences(current);
       return (restored?.pairs ?? [])
-        .filter((p) => !current || references.has(p.bundle.binding.textures.normal.asset))
+        .filter((p) => !references || referencesNormal(references,p.bundle.binding.textures.normal.asset,name=>engine.textureId(name)))
         .map((pair) => ({
           ...pair.bundle,
           files: Object.values(pair.bundle.binding.textures).map(
@@ -466,7 +463,7 @@ export function createPlacementNormalProjectAssets(
             pair.bundle.binding.textures.color.asset !==
               (visual.texture ?? visual.asset) ||
             pair.bundle.binding.textures.normal.asset !==
-              current.spatial?.billboards[instance.id]?.normalTexture
+              (current.spatial?.billboards[instance.id] ? current.spatial.billboards[instance.id].normalTexture : visual.normalTexture)
           )
             continue;
           let binding = pair.bundle.binding;
@@ -519,12 +516,14 @@ export function createPlacementNormalProjectAssets(
       return result;
     },
     assertDocumentAssets(current: SceneAuthoringDocumentSpec, key: string, project?: string) {
+      if (available(key, project) || !restored) return;
+      const serialized = JSON.stringify(current), references = normalReferences(current);
       if (
-        !available(key, project) &&
-        restored &&
         [...restored.textures.keys()].some((id) =>
-          JSON.stringify(current).includes(JSON.stringify(id)),
-        )
+          serialized.includes(JSON.stringify(id)),
+        ) || restored.pairs.some(pair => referencesNormal(
+          references, pair.bundle.binding.textures.normal.asset, name => engine.textureId(name),
+        ))
       )
         fail(
           "install generated assets before copying them to another document",

@@ -54,7 +54,8 @@ export function verifyPairedPlayback(engine, scene, pump, read) {
       actual.every((v, i) => v === pixels[i]),
       "Animated color/normal UV differs from static frame rendering",
     );
-    delete expected.spatial.billboards[instance.id].normalTexture;
+    if(expected.spatial) delete expected.spatial.billboards[instance.id].normalTexture;
+    else delete visual.normalTexture;
     applyDataSceneAuthoringDocument(engine, expected);
     engine.pauseDataScene();
     pump(0);

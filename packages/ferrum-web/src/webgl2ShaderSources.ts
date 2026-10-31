@@ -1,11 +1,32 @@
+const SPRITE_VERTEX_SOURCE = `#version 300 es
+      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
+      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`;
 // Internal shader sources shared by synchronous construction and async preparation.
 export const WEBGL2_SHADER_SOURCES = {
-  sprite: { vertex: `#version 300 es
-      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
-      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`, fragment: `#version 300 es
+  sprite: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
       void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=texture(u_texture,v_uv)*v_color;}}` },
+  spriteNormal: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
+    precision highp float;
+    in vec2 v_uv;in vec2 v_normal_uv;in vec4 v_color;in vec2 v_corner;
+    flat in float v_flags;flat in vec2 v_rotation_cs;flat in vec2 v_uv_sign;
+    uniform sampler2D u_texture;uniform sampler2D u_normal_texture;uniform bool u_has_normal;uniform bool u_normal_flip_y;
+    layout(location=0) out vec4 outColor;layout(location=1) out vec4 outCoverage;
+    void main(){
+      int flags=int(v_flags);float alpha=v_color.a;
+      if((flags&24)!=0){vec2 q=(v_corner-.5)*2.;if((flags&8)!=0&&dot(q,q)>1.)discard;}
+      else alpha*=texture(u_texture,v_uv).a;
+      bool mapped=u_has_normal&&(flags&56)==0;
+      vec3 n=vec3(0.);
+      if(mapped){vec2 uv=v_normal_uv;if(u_normal_flip_y)uv.y=1.-uv.y;
+        vec3 local=texture(u_normal_texture,uv).rgb*2.-1.;
+        local=length(local)<0.01?vec3(0.,0.,1.):normalize(local);local.xy*=v_uv_sign;
+        float c=v_rotation_cs.x,s=v_rotation_cs.y;
+        n=vec3(c*local.x+s*local.y,s*local.x-c*local.y,local.z);
+      }
+      outColor=vec4(n*.5+.5,alpha);outCoverage=vec4(mapped?1.:0.,0.,0.,alpha);
+    }` },
   debug: { vertex: `#version 300 es
       layout(location=0) in vec2 a_position;
       layout(location=1) in vec4 a_color;
@@ -24,7 +45,7 @@ export const WEBGL2_SHADER_SOURCES = {
         outColor = v_color;
       }` },
   lighting: { vertex: `#version 300 es
-      precision mediump float;
+      precision highp float;
       uniform vec2 u_resolution;
       uniform vec4 u_rect;
       out vec2 v_position;
@@ -43,7 +64,7 @@ export const WEBGL2_SHADER_SOURCES = {
         gl_Position = vec4(clip * vec2(1.0, -1.0), 0.0, 1.0);
         v_position = position;
       }`, fragment: `#version 300 es
-      precision mediump float;
+      precision highp float;
       in vec2 v_position;
       uniform int u_mode;
       uniform vec4 u_color;
@@ -51,15 +72,27 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform float u_light_radius;
       uniform float u_light_y_scale;
       uniform float u_light_falloff;
+      uniform bool u_has_normals;uniform sampler2D u_normal_buffer,u_normal_coverage;
+      uniform float u_light_height;uniform vec3 u_light_direction;
+      float normalResponse(vec3 direction){
+        if(!u_has_normals)return 1.;
+        vec2 uv=gl_FragCoord.xy/vec2(textureSize(u_normal_buffer,0));
+        float coverage=clamp(texture(u_normal_coverage,uv).r,0.,1.);
+        vec3 raw=texture(u_normal_buffer,uv).rgb*2.-1.;
+        vec3 n=length(raw)<0.02?vec3(0.,0.,1.):normalize(raw);
+        return mix(1.,max(dot(n,direction),0.),coverage);
+      }
       out vec4 outColor;
       void main() {
         if (u_mode == 1) {
           float distanceToLight = length((v_position-u_light_center)/vec2(1.0,u_light_y_scale));
           float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
           float alpha = pow(attenuation, u_light_falloff) * u_color.a;
+          vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
+          alpha*=normalResponse(length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta));
           outColor = vec4(u_color.rgb, alpha);
         } else {
-          outColor = u_color;
+          outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.));
         }
       }` },
   shadow: { vertex: `#version 300 es

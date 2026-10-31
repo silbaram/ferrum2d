@@ -1,3 +1,4 @@
+import { normalReferences, referencesNormal } from "./placementNormalReferences";
 import { uiMessage, type UiContent } from "./placementLocale";
 import { canUsePlacementAsset, isPlacementProjectAsset } from "./placementAssetScope";
 import {
@@ -113,10 +114,8 @@ export function createPlacementFrameNormals(options: {
       entries.delete(entry.key);
     }
   }
-  function referenced(entry: Entry, document: SceneAuthoringDocumentSpec) {
-    return Object.values(document.spatial?.billboards ?? {}).some(
-      (b) => b.normalTexture === id(entry),
-    );
+  function referenced(entry: Entry, document: SceneAuthoringDocumentSpec, references = normalReferences(document)) {
+    return referencesNormal(references, id(entry), name=>options.engine.textureId(name));
   }
   function bundle(entry: Entry): PlacementNormalAssetBundle {
     function base64(bytes: ArrayBuffer) {
@@ -539,9 +538,11 @@ export function createPlacementFrameNormals(options: {
         .map(bundle);
     },
     blocksSave(document: SceneAuthoringDocumentSpec, key: string) {
-      return [...entries.values()].some(
-        (e) => (!canUsePlacementAsset(e, key, options.project?.()) || !e.persisted) && referenced(e, document),
-      );
+      const references = normalReferences(document), numeric = new Set([...references].filter(value=>typeof value==="number"));
+      return [...entries.values()].some(e => {
+        return referencesNormal(numeric,id(e),name=>options.engine.textureId(name)) ||
+          ((!canUsePlacementAsset(e,key,options.project?.()) || !e.persisted) && referenced(e,document,references));
+      });
     },
     assertDocumentAssets(document: SceneAuthoringDocumentSpec, key: string, project?: string) {
       if (

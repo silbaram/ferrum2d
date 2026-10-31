@@ -43,6 +43,8 @@ import type { TextureManagerOptions } from "./textureManager";
 import { WebGL2FullscreenPass } from "./webgl2FullscreenPass";
 import type { WebGL2FullscreenPassStats, WebGL2FullscreenRenderTarget } from "./webgl2FullscreenPass";
 import { WebGL2LightingPass } from "./webgl2LightingPass";
+import { WebGL2SpriteNormals } from "./webgl2SpriteNormals.js";
+import { spriteNormalsActive } from "./spriteNormals.js";
 import type {
   PixelMaskTerrain,
   PixelMaskTerrainAlphaPatch,
@@ -85,6 +87,7 @@ export class WebGL2Renderer implements Renderer {
   private readonly offscreenStats = emptyRendererStats();
   private readonly physicsDebugLineBatch: PhysicsDebugLineBatch;
   private readonly lightingPass: WebGL2LightingPass;
+  private spriteNormals?:WebGL2SpriteNormals;
   private readonly fullscreenPass: WebGL2FullscreenPass;
   private currentStats: RendererStats = emptyRendererStats();
   private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
@@ -344,6 +347,7 @@ export class WebGL2Renderer implements Renderer {
     const spatialEffects=this.spatialPass?.environmentResourceStats()??{textureCount:0,renderTargetCount:0,textureBytes:0};
     renderTargetCount+=spatialEffects.renderTargetCount;
     targetBytes+=spatialEffects.textureBytes;
+    const normals=this.spriteNormals?.resourceStats();renderTargetCount+=normals?.renderTargetCount??0;targetBytes+=normals?.textureBytes??0;
     for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB]) {
       const bytes = target?.allocatedTextureBytes ?? 0;
       if (bytes > 0) renderTargetCount += 1;
@@ -352,7 +356,7 @@ export class WebGL2Renderer implements Renderer {
     let bufferCount = 0;
     let programCount = 0;
     let bufferBytes = 0;
-    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass]) {
+    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass,this.spriteNormals]) {
       if (!owner) continue;
       const stats = owner.resourceStats();
       bufferCount += stats.bufferCount;
@@ -495,8 +499,12 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    const mapped=spriteNormalsActive(commands);
+    if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");
     if (commands.spatial && this.lightingScene.enabled) throw new Error("Flat LightingScene2D cannot be combined with a spatial scene; use spatial.environment.lighting");
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,Math.max(1,this.canvas.width),Math.max(1,this.canvas.height),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget()):undefined;
+    if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;
     const resolution = this.logicalResolution;
@@ -521,6 +529,8 @@ export class WebGL2Renderer implements Renderer {
       batchStats.drawCalls,
       batchStats.textureSwitchCount,
     );
+    this.currentStats.normalDrawCalls=normalStats?.drawCalls??0;
+    if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     if (spatialStats) {
       this.currentStats.drawCalls += spatialStats.drawCalls;
       this.currentStats.spriteCount += spatialStats.billboardCount;
@@ -529,7 +539,7 @@ export class WebGL2Renderer implements Renderer {
       this.currentStats.textureSwitchCount += spatialStats.textureSwitchCount;
       this.currentStats.spatial = spatialStats;
     }
-    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution);
+    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined);
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,
@@ -627,12 +637,17 @@ export class WebGL2Renderer implements Renderer {
     this.spriteBatch.destroy();
     this.physicsDebugLineBatch.destroy();
     this.lightingPass.destroy();
+    this.spriteNormals?.destroy();
     this.fullscreenPass.destroy();
     this.sceneRenderTarget?.destroy();
     this.postProcessScratchA?.destroy();
     this.postProcessScratchB?.destroy();
     this.renderTextures.destroy();
     this.textureManager.destroy();
+    // deleteProgram defers deletion while a program is current. Clear only a
+    // deleted binding so a new renderer cannot later restore this stale object.
+    const current = this.gl.getParameter(this.gl.CURRENT_PROGRAM) as WebGLProgram | null;
+    if (current && this.gl.getProgramParameter(current, this.gl.DELETE_STATUS)) this.gl.useProgram(null);
   }
 
   private bindFrameStartTarget(): void {

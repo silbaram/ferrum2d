@@ -320,7 +320,7 @@ export function asepriteComponentPatch(
       error("Normal generation requires HD-2D billboard targets");
     if (
       normalTexture === undefined &&
-      (billboard?.normalTexture !== undefined ||
+      (visual.normalTexture !== undefined || billboard?.normalTexture !== undefined ||
         (billboard?.normalTextureId ?? 0) !== 0)
     )
       error("Detach the normal binding before replacing its color atlas");

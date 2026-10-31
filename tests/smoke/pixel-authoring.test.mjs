@@ -920,6 +920,7 @@ const pixelNormalUrl=await moduleUrl('placementPixelNormals',{
 });
 const {pixelNormalFrames,pixelNormalSource,pixelNormalPatch}=await checkedImport(pixelNormalUrl);
 const {createPlacementFrameNormals}=await checkedImport(await moduleUrl('placementFrameNormals',{
+  './placementNormalReferences':await moduleUrl('placementNormalReferences'),
   './placementLocale':'data:text/javascript,export function uiMessage(text,...args){return {text,args}}',
   './placementAssetScope':scopeUrl,
   './placementAsepriteAnimation':await moduleUrl('placementAsepriteAnimation',{'@ferrum2d/ferrum-web/authoring':new URL('../../packages/ferrum-web/dist/authoring.js',import.meta.url).href}),
@@ -948,6 +949,11 @@ test('normal cache scope follows live entries and target-scene evidence, includi
   target.spatial={camera:{projection:'orthographic',position:{x:0,y:-200,elevation:80},target:{x:0,y:0,elevation:32},height:110,near:0.1,far:1200},terrain:[],billboards:{hero:{}}};
   const patch=pixelNormalPatch(target,state,asset,saved,[],[],'');
   durable.activate(saved,target,patch,()=>{},'sibling');
+  const flat=scene();flat.sceneComposition.fragments.main.instances[0].props.components.visual.normalTexture=normalId;
+  assert(!durable.blocksSave(flat,'sibling'));
+  flat.sceneComposition.fragments.main.instances[0].props.components.visual.normalTexture=42;
+  const numeric=createPlacementFrameNormals({kind:'pixel',engine:{textureId:()=>42},host:()=>({generator}),project:()=> 'project',settings:()=>settings,restored:()=>[bundle],taken:()=>false});
+  await numeric.prepare(input,new AbortController().signal,()=>{});assert(numeric.blocksSave(flat,'scene'));numeric.destroy();
   assert.equal(durable.bindings('sibling').length,1);assert.equal(durable.bindings('scene').length,0);
   durable.close('scene');assert(durable.available(saved,'sibling'));durable.destroy();assert(!durable.available(saved,'sibling'));
   const closing=make('project'),pending=closing.prepare(input,new AbortController().signal,()=>{});closing.destroy();
@@ -1002,4 +1008,33 @@ test('asset scope permits only a normal binding paired with a local component up
   assert.throws(()=>validatePlacementAssetPatch(document,{...patch,spatial:{...patch.spatial,operations:[{kind:'setCamera',changes:{}}]}},'main'),/matching sprite/);
   document.sceneComposition.fragments.other={instances:[{id:'other',prefab:'object',x:0,y:0,props:{components:patch.operations[0].components}}]};
   assert.throws(()=>validatePlacementAssetPatch(document,{...patch,operations:[{...patch.operations[0],instanceId:'other'}]},'main'),/allowed|scope|fragment/i);
+});
+
+
+test('ordinary 2D paired pixel application preserves the target and protects stale normals',async()=>{
+  const source=blank(2,1),asset={id:'pixel.'+'a'.repeat(24),document:'scene',source,sourceJson:JSON.stringify(source),width:2,height:1,png:new ArrayBuffer(0),sha256:'b'.repeat(64)};
+  const input=await pixelNormalSource(asset),binding={format:'ferrum2d.sprite-normal.binding',version:1,width:2,height:1,
+    textures:{color:{asset:asset.id,path:asset.id+'.png',sha256:asset.sha256,colorSpace:'srgb'},normal:{asset:'pixel-normal.test',path:'normal.png',sha256:'c'.repeat(64),colorSpace:'none'}},
+    frames:[{u0:0,v0:0,u1:1,v1:1}],generation:{repository:'test',revision:'d'.repeat(40),binarySha256:'e'.repeat(64),configSha256:'f'.repeat(64),settings:{},input:{path:'color.png',sha256:asset.sha256}}};
+  const document=scene();document.sceneComposition.fragments.main.instances[0].props.components.layer='wall';
+  const before=structuredClone(document),entry={source:input,binding};
+  const paired=pixelNormalPatch(document,state,asset,entry,[],[],'');assert.equal(paired.version,2);assert.equal(paired.spatial,undefined);
+  assert.equal(paired.operations[0].components.visual.normalTexture,'pixel-normal.test');assert.deepEqual(document,before);
+  assert.doesNotThrow(()=>validatePlacementAssetPatch(document,paired,'main'));
+  document.sceneComposition.fragments.main.instances[0].props.components=paired.operations[0].components;
+  assert.throws(()=>patch(document,state,'color'),/paired normals/);
+  assert.throws(()=>pixelNormalPatch(document,state,asset,entry,[],[],''),/not owned/);
+  const known=[{report:{format:'ferrum2d.pixel-normal.report'},binding}];
+  assert.doesNotThrow(()=>pixelNormalPatch(document,state,asset,entry,[],known,''));
+});
+test('normal references include inherited prefab, variant, include and legacy/numeric sprite paths',async()=>{
+  const {normalReferences,referencesNormal,visitNormalReferences}=await checkedImport(await moduleUrl('placementNormalReferences'));
+  const document=scene();document.sceneComposition.prefabs.object.props={components:{visual:{normalTexture:'prefab'}}};
+  document.sceneComposition.prefabs.object.variants={alt:{props:{components:{sprite:{normalTexture:12}}}}};
+  document.sceneComposition.fragments.main.include=[{fragment:'empty',props:{components:{visual:{normalTexture:'include'}}}}];
+  document.sceneComposition.fragments.main.instances[0].props.components.visual.normalTexture='instance';
+  document.spatial={billboards:{hero:{normalTextureId:13}}};
+  const refs=normalReferences(document);assert.deepEqual([...refs],['prefab',12,'instance','include',13]);
+  assert(referencesNormal(refs,'known',()=>12));assert(!referencesNormal(refs,'other',()=>14));
+  const copy=structuredClone(document);visitNormalReferences(copy,(owner,key)=>{if(owner[key]===12)owner[key]='stable';});assert(normalReferences(copy).has('stable'));assert(normalReferences(document).has(12));
 });

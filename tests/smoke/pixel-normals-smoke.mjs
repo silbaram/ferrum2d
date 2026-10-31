@@ -69,13 +69,12 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     await strength.fill('1.5');await strength.dispatchEvent('change');assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
     assert.deepEqual(await scene(),before,'cancel preserves the previous pair and scene');
     assert.equal(await page.evaluate(()=>window.pixelNormalWorkers.size),0);
-    if(mode==='2d'){assert(await action('normal-apply').isDisabled());await action('apply').click();await idle();}
-    else{await action('normal-apply').click();await idle();assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);assert(await action('apply').isDisabled(),'paired pixels cannot silently replace imagery without regenerating normals');}
+    await action('normal-apply').click();await idle();assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);assert(await action('apply').isDisabled(),'paired pixels cannot silently replace imagery without regenerating normals');
     await menu.locator('summary').click();const waiting=page.waitForEvent('download');await action('export-assets').click();const file=await waiting,path=join(run,mode+'-pixel-normal-assets.json');await file.saveAs(path);await menu.locator('summary').click();
     const bundle=JSON.parse(await readFile(path,'utf8'));assert.equal(bundle.normalBindings.length,1);
     const pair=bundle.normalBindings[0];assert.equal(pair.report.format,'ferrum2d.pixel-normal.report');assert.deepEqual(pair.report.frames.map(frame=>({id:frame.id,rect:frame.rect})),[{id:'blue',rect:[0,0,8,8]},{id:'red',rect:[8,0,8,8]}]);
     assert.equal(bundle.manifest.textureOptions[pair.binding.textures.normal.asset].colorSpace,'none');
-    const game=await verify(bundle);if(mode==='hd2d')assert.equal(game.normalMapping?.lightingChanged,true);
+    const game=await verify(bundle);assert.equal(game.normalMapping?.lightingChanged,true);
     const documentScope=await smokePixelNormalDocumentScope(page,mode,persisted);
     await page.locator('[data-placement-language]').selectOption('ko');await page.setViewportSize({width:390,height:840});
     assert.equal(await action('normal-generate').textContent(),'노멀 생성');assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1));
@@ -120,7 +119,7 @@ async function smokePixelNormalDocumentScope(page,mode,persisted) {
   const workspace=page.locator('#placement-pixel-workspace'),action=name=>workspace.locator('[data-pixel-action="'+name+'"]');
   assert.equal(await action('normal-preview').isEnabled(),persisted,'only verified project pairs can be reused in another scene');
   assert.equal(await workspace.locator('[data-pixel-normal-status]').getAttribute('data-stale'),String(!persisted));
-  if(persisted&&mode==='hd2d'){
+  if(persisted){
     assert(await action('normal-apply').isEnabled());await action('normal-apply').click();
     await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);

@@ -1,3 +1,4 @@
+import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
 import { webGpuResources } from "./webgpuResources.js";
 import {
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -30,6 +31,7 @@ export class WebGpuSpritePass {
   private spriteInstanceCapacityBytes = COMMAND_STRIDE_BYTES;
   private materialStaging = new Float32Array(0);
   private readonly spriteRangeScratch: WebGpuSpriteRange[] = [];
+  private readonly normalRangeScratch: (WebGpuSpriteRange & {normalTextureId:number})[] = [];
 
   constructor(
     private readonly device: GPUDevice,
@@ -38,16 +40,17 @@ export class WebGpuSpritePass {
     textureBindGroupLayout: GPUBindGroupLayout,
     private readonly textureStore: WebGpuTextureStore,
     private readonly resolutionBindGroup: GPUBindGroup,
+    private readonly normalMode=false,
   ) {
     this.spritePipelineLayout = this.device.createPipelineLayout({
-      bindGroupLayouts: [uniformBindGroupLayout, textureBindGroupLayout],
+      bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout]:[uniformBindGroupLayout, textureBindGroupLayout],
     });
     this.spriteInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: COMMAND_STRIDE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     this.spritePipeline = this.createSpritePipeline("alpha");
-    this.additiveSpritePipeline = this.createSpritePipeline("additive");
+    this.additiveSpritePipeline = normalMode?this.spritePipeline:this.createSpritePipeline("additive");
   }
 
   draw(
@@ -60,6 +63,7 @@ export class WebGpuSpritePass {
     }
 
     const ranges = spriteRanges(commands, this.spriteRangeScratch);
+    const normalRanges=this.normalMode?this.normalRanges(commands):undefined;
     const commandBytes = commands.commandCount * COMMAND_STRIDE_BYTES;
     this.ensureSpriteInstanceCapacity(commandBytes * spriteMaterialPasses.length);
     for (let passIndex = 0; passIndex < spriteMaterialPasses.length; passIndex += 1) {
@@ -76,11 +80,11 @@ export class WebGpuSpritePass {
       pass.setPipeline(this.spritePipelineForBlendMode(materialPass.blendMode));
       pass.setBindGroup(0, this.resolutionBindGroup);
       const passByteOffset = passIndex * commandBytes;
-      for (const range of ranges) {
-        drawCalls += this.drawRange(pass, range, passByteOffset);
+      for (const range of (normalRanges&&materialPass.kind==="base"?normalRanges:ranges)) {
+        drawCalls += this.drawRange(pass, range, passByteOffset,"normalTextureId" in range?range.normalTextureId as number:SPRITE_NORMAL_NONE);
       }
     }
-    return { drawCalls, textureSwitchCount: ranges.length - 1 };
+    return { drawCalls, textureSwitchCount: (normalRanges??ranges).length - 1 };
   }
 
   destroy(): void {
@@ -101,6 +105,7 @@ export class WebGpuSpritePass {
         @group(0) @binding(0) var<uniform> resolution: Resolution;
         @group(1) @binding(0) var spriteSampler: sampler;
         @group(1) @binding(1) var spriteTexture: texture_2d<f32>;
+        ${this.normalMode?"@group(2) @binding(0) var normalSampler:sampler; @group(2) @binding(1) var normalTexture:texture_2d<f32>;":""}
 
         struct VertexInput {
           @location(0) rect: vec4f,
@@ -117,6 +122,7 @@ export class WebGpuSpritePass {
           @location(1) color: vec4f,
           @location(2) corner: vec2f,
           @location(3) @interpolate(flat) flags: f32,
+          ${this.normalMode?"@location(4) @interpolate(flat) rotationCS:vec2f, @location(5) @interpolate(flat) uvSign:vec2f,":""}
         };
 
         fn cornerForVertex(vertexIndex: u32) -> vec2f {
@@ -153,10 +159,11 @@ export class WebGpuSpritePass {
           output.color = input.color;
           output.corner = corner;
           output.flags = input.flags;
+          ${this.normalMode?"output.rotationCS=vec2f(rotationCos,rotationSin);output.uvSign=select(vec2f(1.),vec2f(-1.),input.uvRect.zw<input.uvRect.xy);":""}
           return output;
         }
 
-        @fragment
+        ${this.normalMode?NORMAL_FRAGMENT:`        @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
           if ((u32(input.flags) & 32u) != 0u) {
@@ -168,7 +175,8 @@ export class WebGpuSpritePass {
             return input.color;
           }
           return sampled * input.color;
-        }
+        }`}
+
       `,
     });
 
@@ -192,7 +200,7 @@ export class WebGpuSpritePass {
       fragment: {
         module,
         entryPoint: "fs_main",
-        targets: [{
+        targets: this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
           format: this.format,
           blend: spriteBlendState(blendMode),
         }],
@@ -205,12 +213,17 @@ export class WebGpuSpritePass {
     pass: GPURenderPassEncoder,
     range: WebGpuSpriteRange,
     passByteOffset: number,
+    normalTextureId=SPRITE_NORMAL_NONE,
   ): number {
     const commandCount = range.end - range.start;
     if (commandCount <= 0) {
       return 0;
     }
-    pass.setBindGroup(1, this.textureStore.resource(range.textureId).bindGroup);
+    const color=this.textureStore.resource(range.textureId);pass.setBindGroup(1,color.bindGroup);
+    if(this.normalMode){const mapped=normalTextureId!==SPRITE_NORMAL_NONE,normal=mapped?this.textureStore.resource(normalTextureId):color;
+      if(mapped&&(normal.colorSpace==="srgb"||normal.width!==color.width||normal.height!==color.height))throw Error("Sprite normals require a same-size linear/data texture");
+      pass.setBindGroup(2,normal.bindGroup);
+    }
     pass.setVertexBuffer(
       0,
       this.spriteInstanceBuffer,
@@ -228,7 +241,7 @@ export class WebGpuSpritePass {
   ): void {
     const uploadFloatCount = commands.commandCount * FLOATS_PER_COMMAND;
     const byteCount = uploadFloatCount * BYTES_PER_F32;
-    if (commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
+    if (this.normalMode || commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
       this.ensureMaterialStaging(uploadFloatCount);
       const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
@@ -237,6 +250,10 @@ export class WebGpuSpritePass {
         materialPass,
         this.materialStaging,
       );
+      if(this.normalMode)for(let i=0;i<commands.commandCount;i++){
+        const mapped=materialPass.kind==="base"&&(commands.spriteNormalMaterials?.buffer[i*2]??SPRITE_NORMAL_NONE)!==SPRITE_NORMAL_NONE;
+        this.materialStaging[i*FLOATS_PER_COMMAND+13]=(this.materialStaging[i*FLOATS_PER_COMMAND+13]&~64)|(mapped?64:0);
+      }
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
         byteOffset,
@@ -254,6 +271,15 @@ export class WebGpuSpritePass {
       commands.buffer.byteOffset,
       byteCount,
     );
+  }
+
+  private normalRanges(commands:RenderCommandBufferView){
+    const ranges=this.normalRangeScratch;let count=0;
+    for(let start=0;start<commands.commandCount;){
+      const textureId=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]),normalTextureId=commands.spriteNormalMaterials!.buffer[start*2];let end=start+1;
+      while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===textureId&&commands.spriteNormalMaterials!.buffer[end*2]===normalTextureId)end++;
+      const range=ranges[count]??(ranges[count]={textureId,normalTextureId,start,end});range.textureId=textureId;range.normalTextureId=normalTextureId;range.start=start;range.end=end;count++;start=end;
+    }ranges.length=count;return ranges;
   }
 
   private spritePipelineForBlendMode(blendMode: SpriteMaterialBlendMode): GPURenderPipeline {
@@ -301,3 +327,17 @@ function spriteBlendState(blendMode: SpriteMaterialBlendMode): GPUBlendState {
 function nextPowerOfTwo(value: number): number {
   return 2 ** Math.ceil(Math.log2(Math.max(value, 1)));
 }
+
+const NORMAL_FRAGMENT = `
+struct NormalOutput { @location(0) normal:vec4f, @location(1) coverage:vec4f, };
+@fragment fn fs_main(input:VertexOutput)->NormalOutput {
+  let flags=u32(input.flags);var alpha=input.color.a;
+  if((flags&24u)!=0u){let q=(input.corner-.5)*2.;if((flags&8u)!=0u&&dot(q,q)>1.){discard;}}
+  else {alpha*=textureSampleLevel(spriteTexture,spriteSampler,input.uv,0.).a;}
+  let mapped=(flags&64u)!=0u&&(flags&56u)==0u;var n=vec3f(0.);
+  if(mapped){let raw=textureSampleLevel(normalTexture,normalSampler,input.uv,0.).rgb*2.-1.;var local=vec3f(0.,0.,1.);
+    if(length(raw)>=0.01){local=normalize(raw);}local=vec3f(local.xy*input.uvSign,local.z);
+    let c=input.rotationCS.x;let s=input.rotationCS.y;n=vec3f(c*local.x+s*local.y,s*local.x-c*local.y,local.z);
+  }
+  var output:NormalOutput;output.normal=vec4f(n*.5+.5,alpha);output.coverage=vec4f(select(0.,1.,mapped),0.,0.,alpha);return output;
+}`;

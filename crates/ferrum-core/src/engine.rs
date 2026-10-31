@@ -57,6 +57,7 @@ mod scenes;
 mod shooter_authoring;
 mod snapshots;
 mod spatial_api;
+mod sprite_normal_materials;
 mod telemetry;
 mod tilemap_api;
 mod viewport_controls;

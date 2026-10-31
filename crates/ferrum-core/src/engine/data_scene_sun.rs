@@ -166,6 +166,7 @@ impl Engine {
         command.y = center.y - command.height * 0.5;
         self.frame_buffers.render_items.push(SpriteRenderItem {
             command,
+            normal_material: Default::default(),
             sort_key: SpriteRenderSortKey {
                 floor_id: 0,
                 elevation: 0.0,

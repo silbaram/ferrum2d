@@ -1,3 +1,4 @@
+import { visitNormalReferences } from "./placementNormalReferences";
 import type { FerrumRuntime } from "@ferrum2d/ferrum-web/core";
 import type { SceneAuthoringDocumentSpec, ScenePlacementPatch, ScenePlacementViewer } from "@ferrum2d/ferrum-web/authoring";
 import { setUiAttribute, setUiText, registerUiRoot, uiMessage, type UiContent } from "./placementLocale";
@@ -517,6 +518,9 @@ export function createPlacementPixelTool(options: {
     const bundle=assets.bundle(owner,options.context().document,options.context().project);
     const pairs=normalBundles();
     if(generated&&freshNormal()&&!pairs.some(pair=>pair.binding.textures.normal.asset===generated!.entry.binding.textures.normal.asset))pairs.push(normals!.bundle(generated.entry));
+    const aliases=new Map<number,string>();
+    for(const pair of pairs){const name=pair.binding.textures.normal.asset;try{aliases.set(options.engine.textureId(name),name);}catch{/* Not uploaded. */}}
+    visitNormalReferences(bundle.sceneDocument,(owner,key)=>{if(typeof owner[key]!=="number"||!aliases.has(owner[key] as number))return;const name=aliases.get(owner[key] as number)!;if(key==="normalTextureId"){if(owner.normalTexture!==undefined&&owner.normalTexture!==name)throw Error("Conflicting normal texture references");owner.normalTexture=name;delete owner[key];}else owner[key]=name;});
     const textureOptions:Record<string,{colorSpace:"srgb"|"none"}>=Object.fromEntries(Object.keys(bundle.manifest.textures).map(id=>[id,{colorSpace:"srgb" as const}]));
     const extra:{id:string;sha256:string;path:string;pngBase64:string}[]=[];
     for(const pair of pairs)for(const file of pair.files){

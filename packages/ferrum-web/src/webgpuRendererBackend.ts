@@ -1,3 +1,5 @@
+import { WebGpuSpriteNormals } from "./webgpuSpriteNormals.js";
+import { spriteNormalsActive } from "./spriteNormals.js";
 import { WebGpuTimer, beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { WebGpuSpatialPass } from "./webgpuSpatialPass.js";
@@ -63,6 +65,7 @@ export class WebGpuRendererBackend implements Renderer {
   private readonly resolutionBuffer: GPUBuffer;
   private readonly resolutionBindGroup: GPUBindGroup;
   private readonly spritePass: WebGpuSpritePass;
+  private spriteNormals?:WebGpuSpriteNormals;
   private readonly debugLinePass: WebGpuDebugLinePass;
   private readonly lightingPass: WebGpuLightingPass;
   private readonly postProcessPass: WebGpuPostProcessPass;
@@ -340,11 +343,14 @@ export class WebGpuRendererBackend implements Renderer {
     }
     if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
     const encoder = this.device.createCommandEncoder();
+    const mapped=spriteNormalsActive(commands);
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.canvas.width,this.canvas.height,this.spriteMaterialPasses):undefined;
+    if(!normalStats)this.spriteNormals?.clearTargets();
     const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
     const pass = this.beginRenderPass(encoder, "load");
 
     const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight);
+    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined);
 
     pass.end();
     this.device.queue.submit([encoder.finish()]);
@@ -355,6 +361,8 @@ export class WebGpuRendererBackend implements Renderer {
       spriteStats.drawCalls,
       spriteStats.textureSwitchCount,
     );
+    this.currentStats.normalDrawCalls=normalStats?.drawCalls??0;
+    if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,
@@ -410,6 +418,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.debugLinePass.destroy();
     this.lightingPass.destroy();
     this.spritePass.destroy();
+    this.spriteNormals?.destroy();
     webGpuResources(this.device).destroy(this.resolutionBuffer);
     webGpuResources(this.device).destroyAll();
   }

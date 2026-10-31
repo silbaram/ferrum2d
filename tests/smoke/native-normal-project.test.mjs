@@ -36,9 +36,12 @@ async function moduleSource(file, replacements = []) {
     "data:text/javascript;base64," + Buffer.from(output).toString("base64")
   );
 }
+const referencesSource = await moduleSource("placementNormalReferences.ts");
+const { normalReferences } = await import(referencesSource);
 const scope = await moduleSource("placementAssetScope.ts"),
   assets = await moduleSource("placementNormalAssets.ts", [["./placementAssetScope", scope]]),
   source = await moduleSource("placementNormalProject.ts", [
+    ["./placementNormalReferences", referencesSource],
     ["./placementNormalAssets", assets],
     [
       "./placementAsepriteAnimation",
@@ -58,6 +61,34 @@ globalThis.createImageBitmap = async (blob) => {
   return { width: decoded.width, height: decoded.height, close() {} };
 };
 const signal = () => new AbortController().signal;
+test("normal reference collection leaves malformed document diagnostics to the schema validator", () => {
+  for (const value of [null, {}, { sceneComposition: null }, {
+    sceneComposition: {
+      prefabs: { absent: null, malformed: { variants: { absent: null } } },
+      fragments: { absent: null, malformed: { instances: [null], include: [null] } },
+    }, spatial: { billboards: { absent: null } },
+  }]) assert.deepEqual([...normalReferences(value)], []);
+});
+test("numeric normal aliases cannot copy restored project assets to a foreign document", async () => {
+  const f = fixture();
+  const manager = store({
+    loadAssets: async () => {}, releaseAssets: () => {},
+    textureId: name => { if (name === "pair.normal") return 7; throw Error("unknown texture"); },
+  }, "first", "project-a");
+  await manager.load(f.catalog, new Map(), () => false, signal());
+  for (const numeric of [7, "pair.normal"]) {
+    const document = {
+      sceneComposition: { prefabs: { object: { props: { components: {
+        visual: { kind: "sprite", asset: 0, normalTexture: numeric },
+      } } } } },
+    };
+    assert.doesNotThrow(() => manager.assertDocumentAssets(document, "second", "project-a"));
+    assert.throws(() => manager.assertDocumentAssets(document, "second", "project-b"), /another document/);
+    assert.throws(() => manager.assertDocumentAssets(document, "first"), /another document/);
+    assert.equal(manager.bundles("second", document, "project-a").length, 1);
+  }
+  manager.destroy();
+});
 test("project normal assets remain available to sibling scenes after the first document closes", async () => {
   const f = fixture(true), released = [];
   const manager = store({ loadAssets: async () => {}, releaseAssets: value => released.push(value) }, "first", "project-a");

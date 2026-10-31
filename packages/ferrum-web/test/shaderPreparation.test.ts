@@ -34,8 +34,10 @@ function fixture(parallel = true) {
   return { gl, programs, shaders, submitted, queried, setLost: () => { lost = true; }, failLink: () => { linked = false; } };
 }
 
+const baseShaderNames = Object.keys(WEBGL2_SHADER_SOURCES).filter(name=>name!=="spriteNormal");
+
 function construct(gl: WebGL2RenderingContext) {
-  const programs = Object.keys(WEBGL2_SHADER_SOURCES).map((name) => createWebGL2Program(gl, name as keyof typeof WEBGL2_SHADER_SOURCES));
+  const programs = baseShaderNames.map((name) => createWebGL2Program(gl, name as keyof typeof WEBGL2_SHADER_SOURCES));
   return { destroy: () => { for (const program of programs) gl.deleteProgram(program); } };
 }
 
@@ -46,12 +48,12 @@ test("parallel preparation submits all programs before polling, yields, and tran
   setTimeout(() => { yielded = true; }, 0);
   const renderer = await prepareWebGL2Renderer(f.gl, { onProgress: (value) => progress.push(value) }, () => construct(f.gl));
   equal(yielded, true);
-  equal(f.submitted.length, 5);
-  equal(f.programs.size, 5);
+  equal(f.submitted.length, baseShaderNames.length);
+  equal(f.programs.size, baseShaderNames.length);
   equal(f.shaders.size, 0);
-  equal(f.queried.filter((v) => v === "link").length, 5);
+  equal(f.queried.filter((v) => v === "link").length, baseShaderNames.length);
   equal(progress[0].completedPrograms, 0);
-  deepEqual(progress[progress.length - 1], { phase: "ready", completedPrograms: 5, totalPrograms: 5, parallelCompile: true, elapsedMs: progress[progress.length - 1].elapsedMs });
+  deepEqual(progress[progress.length - 1], { phase: "ready", completedPrograms: baseShaderNames.length, totalPrograms: baseShaderNames.length, parallelCompile: true, elapsedMs: progress[progress.length - 1].elapsedMs });
   renderer.destroy();
   equal(f.programs.size, 0);
 });
@@ -60,11 +62,11 @@ test("unsupported extension yields between status checks and remains compatible 
   const f = fixture(false);
   const counts: number[] = [];
   const renderer = await prepareWebGL2Renderer(f.gl, { onProgress: (value) => counts.push(value.completedPrograms) }, () => construct(f.gl));
-  deepEqual(counts, [0, 1, 2, 3, 4, 5, 5]);
+  deepEqual(counts, [...Array.from({length: baseShaderNames.length + 1}, (_,i)=>i), baseShaderNames.length]);
   equal(f.queried.includes("completion"), false);
   renderer.destroy();
   const sync = createWebGL2Program(f.gl, "sprite");
-  equal(f.submitted.length, 6);
+  equal(f.submitted.length, baseShaderNames.length + 1);
   f.gl.deleteProgram(sync);
   equal(f.programs.size + f.shaders.size, 0);
 });
@@ -103,4 +105,12 @@ test("synchronous shader failure and partial allocation failure release intermed
   f.gl.createShader = (type) => ++allocated === 2 ? null : create(type);
   throws(() => createWebGL2Program(f.gl, "sprite"), /allocation/);
   equal(f.programs.size + f.shaders.size, 0);
+});
+
+
+test("color-only readiness leaves optional normal shaders lazy until requested", async () => {
+  const f=fixture(false),renderer=await prepareWebGL2Renderer(f.gl,{},()=>construct(f.gl));
+  equal(f.submitted.length,5);equal(f.programs.size,5);
+  const normal=createWebGL2Program(f.gl,"spriteNormal");equal(f.submitted.length,6);equal(f.programs.size,6);
+  f.gl.deleteProgram(normal);renderer.destroy();equal(f.programs.size+f.shaders.size,0);
 });

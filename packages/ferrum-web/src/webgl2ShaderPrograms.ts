@@ -44,7 +44,9 @@ export async function prepareWebGL2Renderer<T extends { destroy(): void }>(
   };
   assertActive();
   const extension = gl.getExtension("KHR_parallel_shader_compile");
-  const names = Object.keys(WEBGL2_SHADER_SOURCES) as WebGL2ShaderName[];
+  // Optional normal rendering is lazy, like spatial passes. Do not compile and
+  // immediately discard its unused program during a color-only warmup.
+  const names = (Object.keys(WEBGL2_SHADER_SOURCES) as WebGL2ShaderName[]).filter(name => name !== "spriteNormal");
   const pending: PendingProgram[] = [];
   const ready = new Map<WebGL2ShaderName, WebGLProgram>();
   let renderer: T | undefined;

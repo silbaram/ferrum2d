@@ -279,7 +279,7 @@ export function asepriteAnimationPatch(
       fail("paired normals require HD-2D billboard targets");
     if (
       normalTexture === undefined &&
-      (billboard?.normalTexture !== undefined ||
+      (visual.normalTexture !== undefined || billboard?.normalTexture !== undefined ||
         (billboard?.normalTextureId ?? 0) !== 0)
     )
       fail("detach the normal binding or use Apply Paired/Reimport Paired");

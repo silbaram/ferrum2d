@@ -326,7 +326,8 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const frameCard=await smokePixelFrameCard(page,mode,run,exported.sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual.texture,imageFrames.source);
   const tags=await smokePixelTags(page,mode,run,async bundle=>{
     setResume(bundle);const game=await page.context().newPage();
-    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50});
+    const errors=[];game.on('pageerror',error=>errors.push(error.message));game.on('requestfailed',request=>errors.push(request.url()+': '+request.failure()?.errorText));
+    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50}).catch(async error=>{throw Error(String(error)+' '+JSON.stringify(errors)+' stage '+await game.evaluate(()=>window.pixelResumeStage));});
       return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
     }finally{await game.close();setResume(exported);}
   });

@@ -31,20 +31,19 @@ type NormalEntry = Awaited<ReturnType<ReturnType<typeof createPixelNormals>["pre
 /** Generate a single color+normal patch while preserving unrelated components and clip checks. */
 export function pixelNormalPatch(document:SceneAuthoringDocumentSpec,state:ScenePlacementViewerState,asset:PixelAsset,
   entry:NormalEntry,revisions:readonly PixelAsset[],known:readonly Pick<PlacementNormalAssetBundle,"binding"|"report">[],frameId:string,migrationApproval?:string):ScenePlacementPatch {
-  const id=state.selectedInstanceId,billboard=id&&document.spatial?.billboards[id];
-  if(!id||!billboard)throw Error("Normal application requires an HD-2D billboard");
+  const id=state.selectedInstanceId,billboard=id?document.spatial?.billboards[id]:undefined;
+  if(!id)throw Error("Select a sprite to apply pixels");
   if(entry.source.id!==asset.id||entry.source.pngSha256!==asset.sha256||entry.source.sourceJson!==asset.sourceJson||JSON.stringify(entry.source.frames)!==JSON.stringify(pixelNormalFrames(asset.source)))throw Error("Pixel normal source differs");
   const instance=instantiateSceneFragment(document.sceneComposition,{fragment:state.fragment}).find(value=>value.id===id);
   const visual=object(object(instance?.props.components)?.visual);
   const color=visual?.texture??visual?.asset;
-  if(billboard.normalTextureId!==undefined||billboard.normalTexture!==undefined&&!known.some(bundle=>
-    bundle.report.format==="ferrum2d.pixel-normal.report"&&bundle.binding.textures.normal.asset===billboard.normalTexture&&bundle.binding.textures.color.asset===color))
+  const previous = [billboard?.normalTexture, visual?.normalTexture].filter(value=>value!==undefined);
+  if(billboard?.normalTextureId!==undefined||previous.some(reference=>typeof reference!=="string"||!known.some(bundle=>
+    bundle.report.format==="ferrum2d.pixel-normal.report"&&bundle.binding.textures.normal.asset===reference&&bundle.binding.textures.color.asset===color)))
     throw Error("Existing normals are not owned by this pixel source");
-  const copy=structuredClone(document),clean=copy.spatial!.billboards[id];
-  delete clean.normalTexture;delete clean.normalTextureId;
-  const patch=asset.source.version===4?pixelAtlasComponentPatch(copy,state,asset.id,asset.source,frameId,revisions):
-    pixelComponentPatch(copy,state,asset.id,pixelAnimationInput(asset.source),revisions,migrationApproval);
-  const next=mergeScenePlacementPatch(copy,patch).document;
+  const patch=asset.source.version===4?pixelAtlasComponentPatch(document,state,asset.id,asset.source,frameId,revisions,true):
+    pixelComponentPatch(document,state,asset.id,pixelAnimationInput(asset.source),revisions,migrationApproval,true);
+  const next=mergeScenePlacementPatch(document,patch).document;
   const updated=instantiateSceneFragment(next.sceneComposition,{fragment:state.fragment}).find(value=>value.id===id)!;
   const components=object(updated.props.components);
   const nextVisual=object(components?.visual);

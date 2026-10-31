@@ -160,7 +160,7 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   await restart();page=getPage();await showPlacementBottom(page,'assets');
   await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
   await reuseSavedPixelNormal(page);
-  const restoredNormalGame=await freshGame();if(mode==='hd2d')assert(restoredNormalGame.normalMapping?.lightingChanged);
+  const restoredNormalGame=await freshGame();assert(restoredNormalGame.normalMapping?.lightingChanged);
   await close();
   return {mode,realRustStorageAndProtocol:true,sourceAndPngVerified:true,malformedReplyBlocksScene:true,
     frameCard,tags,atlas,pixelNormals,restoredNormalGame,imageLayers,imageFrames,catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:8,lateSaveDoesNotSaveScene:true,

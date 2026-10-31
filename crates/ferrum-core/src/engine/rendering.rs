@@ -37,6 +37,9 @@ impl Engine {
         } else {
             self.build_layered_render_commands(visible_bounds);
         }
+        self.frame_buffers
+            .sprite_normal_materials
+            .resize(self.frame_buffers.render_commands.len(), Default::default());
     }
 
     fn build_layered_render_commands(&mut self, visible_bounds: AabbBounds) {
@@ -59,12 +62,15 @@ impl Engine {
         self.frame_buffers
             .render_items
             .sort_unstable_by(|left, right| left.sort_key.cmp_draw_order(right.sort_key));
-        self.frame_buffers.render_commands.extend(
+        self.frame_buffers
+            .sprite_normal_materials
+            .resize(self.frame_buffers.render_commands.len(), Default::default());
+        for item in &self.frame_buffers.render_items {
+            self.frame_buffers.render_commands.push(item.command);
             self.frame_buffers
-                .render_items
-                .iter()
-                .map(|item| item.command),
-        );
+                .sprite_normal_materials
+                .push(item.normal_material);
+        }
     }
 
     fn append_layered_world_render_commands(&mut self, visible_bounds: AabbBounds) {
@@ -95,12 +101,15 @@ impl Engine {
                         .then_with(|| left.sort_key.stable_id.cmp(&right.sort_key.stable_id))
                 });
         }
-        self.frame_buffers.render_commands.extend(
+        self.frame_buffers
+            .sprite_normal_materials
+            .resize(self.frame_buffers.render_commands.len(), Default::default());
+        for item in &self.frame_buffers.render_items {
+            self.frame_buffers.render_commands.push(item.command);
             self.frame_buffers
-                .render_items
-                .iter()
-                .map(|item| item.command),
-        );
+                .sprite_normal_materials
+                .push(item.normal_material);
+        }
         self.frame_buffers.render_items.clear();
     }
 
@@ -172,6 +181,7 @@ impl Engine {
                 continue;
             }
             self.frame_buffers.render_items.push(SpriteRenderItem {
+                normal_material: self.world.sprite_normal_materials[i].unwrap_or_default(),
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
                     if self.scene_mode != SceneMode::Data || s.depth_sort {

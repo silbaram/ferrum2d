@@ -61,6 +61,7 @@ test("RendererStats field contract fixes labels and units", () => {
     { field: "textureBindCount", label: "texture binds", unit: "count" },
     { field: "textureSwitchCount", label: "texture switches", unit: "count" },
     { field: "physicsDebugLineCount", label: "physics debug lines", unit: "count" },
+    { field: "normalDrawCalls", label: "normal draw calls", unit: "count" },
     { field: "lightingDrawCalls", label: "lighting draw calls", unit: "count" },
     { field: "pointLightCount", label: "point lights", unit: "count" },
     { field: "tileOccluderCount", label: "tile occluders", unit: "count" },

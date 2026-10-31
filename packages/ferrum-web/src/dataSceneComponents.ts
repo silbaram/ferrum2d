@@ -51,6 +51,7 @@ export interface DataSceneSpriteAnimationSpec {
 
 export interface DataSceneSpriteComponentSpec {
   texture: DataSceneTextureRefSpec;
+  normalTexture?: DataSceneTextureRefSpec;
   width: number;
   height: number;
   frame?: DataSceneSpriteFrameSpec;
@@ -74,6 +75,7 @@ export interface DataSceneSpriteVisualSpec {
   projection?: "ground" | "upright";
   shadow?: DataSceneGroundShadowSpec;
   texture?: DataSceneTextureRefSpec;
+  normalTexture?: DataSceneTextureRefSpec;
   asset?: DataSceneTextureRefSpec;
   width: number;
   height: number;
@@ -197,6 +199,7 @@ export interface ResolvedDataSceneSpriteAnimation {
 
 export interface ResolvedDataSceneSpriteComponent {
   texture: ResolvedDataSceneTextureRef;
+  normalTexture?: ResolvedDataSceneTextureRef;
   width: number;
   height: number;
   frame: ResolvedDataSceneSpriteFrame;
@@ -226,6 +229,7 @@ export type ResolvedDataSceneObjectVisual =
       projection?: "ground" | "upright";
       shadow?: ResolvedDataSceneGroundShadow;
       texture: ResolvedDataSceneTextureRef;
+      normalTexture?: ResolvedDataSceneTextureRef;
       width: number;
       height: number;
       frame: ResolvedDataSceneSpriteFrame;
@@ -470,6 +474,7 @@ function resolveSpriteVisual(
   const textureValue = visual.texture ?? visual.asset;
   const sprite = resolveSpriteComponent({
     texture: textureValue,
+    ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
     width: visual.width,
     height: visual.height,
     ...(visual.frame === undefined ? {} : { frame: visual.frame }),
@@ -500,6 +505,7 @@ function resolveSpriteVisual(
   return {
     kind: "sprite",
     texture: sprite.texture,
+    ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
     width: sprite.width,
     height: sprite.height,
     frame: sprite.frame,
@@ -520,6 +526,7 @@ function runtimeSpriteForVisual(visual: ResolvedDataSceneObjectVisual): Resolved
   if (visual.kind === "sprite") {
     return {
       texture: visual.texture,
+      ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
       width: visual.width,
       height: visual.height,
       frame: visual.frame,
@@ -545,6 +552,7 @@ function spriteVisualFromResolvedSprite(
   return {
     kind: "sprite",
     texture: sprite.texture,
+    ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
     width: sprite.width,
     height: sprite.height,
     frame: sprite.frame,
@@ -564,6 +572,7 @@ function resolveSpriteComponent(value: unknown, path: string): ResolvedDataScene
   }
   return {
     texture: resolveTextureRef(requiredProperty(sprite, "texture", path), `${path}.texture`),
+    ...(sprite.normalTexture === undefined ? {} : {normalTexture:resolveTextureRef(sprite.normalTexture,`${path}.normalTexture`)}),
     width: positiveNumber(requiredProperty(sprite, "width", path), `${path}.width`),
     height: positiveNumber(requiredProperty(sprite, "height", path), `${path}.height`),
     frame: resolveSpriteFrame(sprite.frame, `${path}.frame`),

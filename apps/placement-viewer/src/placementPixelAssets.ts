@@ -17,7 +17,7 @@ import type { PixelDocumentV4 } from "./placementPixelDocument";
 /** Fixed atlas replacement changes only the selected static sprite's texture. */
 export function pixelAtlasComponentPatch(
   document: SceneAuthoringDocumentSpec, state: ScenePlacementViewerState, texture: string,
-  source: Pick<PixelDocumentV4, "atlas">, frameId: string, revisions: readonly PixelAsset[],
+  source: Pick<PixelDocumentV4, "atlas">, frameId: string, revisions: readonly PixelAsset[], paired = false,
 ): ScenePlacementPatch {
   const frame = source.atlas.frames.find(frame => frame.id === frameId);
   const instance = instantiateSceneFragment(document.sceneComposition, { fragment: state.fragment })
@@ -38,7 +38,7 @@ export function pixelAtlasComponentPatch(
   if ((reference !== source.atlas.texture && !sameAtlas) ||
     !uv || ["u0", "v0", "u1", "v1"].some(key => uv[key as keyof typeof uv] !== frame.frame[key as keyof typeof frame.frame]))
     throw Error("Select a static sprite using this atlas frame");
-  const patch = pixelComponentPatch(document, state, texture);
+  const patch = pixelComponentPatch(document, state, texture, undefined, [], undefined, paired);
   const operation = patch.operations[0] as Extract<ScenePlacementPatch["operations"][number], { kind: "updateComponents" }>;
   const payload = object(operation.components), next = object(payload?.visual);
   if (!payload || !next || next.kind !== "sprite") throw Error("Select a static sprite using this atlas frame");
@@ -71,6 +71,7 @@ export function pixelComponentPatch(
   input?: PixelAnimationInput,
   revisions: readonly PixelAsset[] = [],
   migrationApproval?: string,
+  paired = false,
 ): ScenePlacementPatch {
   const instance = instantiateSceneFragment(document.sceneComposition, { fragment: state.fragment })
     .find(value => value.id === state.selectedInstanceId);
@@ -91,7 +92,7 @@ export function pixelComponentPatch(
   if (visual.animation || (visual.animationSet && !input))
     throw Error("Animated sprites require frame editing");
   const billboard = document.spatial?.billboards?.[instance.id];
-  if (billboard?.normalTexture !== undefined || billboard?.normalTextureId !== undefined)
+  if (!paired && (visual.normalTexture !== undefined || billboard?.normalTexture !== undefined || billboard?.normalTextureId !== undefined))
     throw Error("Regenerate paired normals before replacing this sprite");
   const animation=input&&(input.frames.length>1||input.tags)?pixelAnimation(input):undefined;
   let nextSet=animation?.set;

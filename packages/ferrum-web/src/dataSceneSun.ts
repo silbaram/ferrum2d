@@ -39,7 +39,7 @@ export function resolveDirectionalLight2D(light: DirectionalLight2D): ResolvedDi
   if (!Number.isInteger(maxCasters)) throw new Error("directionalLight.maxCasters must be an integer");
   const color = light.color ?? [1, 0.98, 0.9];
   if (color.length !== 3) throw new Error("directionalLight.color must have three channels");
-  return { directionX: x / length, directionY: y / length, intensity, shadowOpacity, shadowLengthScale, maxCasters,
+  return { ...(light.elevationRadians === undefined ? {} : {elevationRadians:range(light.elevationRadians,0,Math.PI/2,"directionalLight.elevationRadians")}), directionX: x / length, directionY: y / length, intensity, shadowOpacity, shadowLengthScale, maxCasters,
     color: [range(color[0], 0, 1, "directionalLight.color[0]"), range(color[1], 0, 1, "directionalLight.color[1]"), range(color[2], 0, 1, "directionalLight.color[2]")] };
 }
 

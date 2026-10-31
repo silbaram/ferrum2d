@@ -75,3 +75,12 @@ test("invalid light edits and rejected native validation restore draft and histo
   throws(() => mergeScenePlacementPatch({ ...source, lighting: undefined, spatial }, patch), /cannot be combined/);
   ok(viewer.state().lockedInstanceIds.length === 0);
 });
+
+
+test("normal-light height and sun elevation preserve explicit zero and reject invalid values", () => {
+  const scene=resolveSceneLighting({pointLights:[{x:0,y:0,radius:20,height:0}],directionalLight:{directionX:1,directionY:0,elevationRadians:0}});
+  equal(scene.pointLights[0].height,0);equal(scene.directionalLight!.elevationRadians,0);
+  equal(resolveSceneLighting({pointLights:[{x:0,y:0,radius:20}]}).pointLights[0].height,undefined);
+  for(const height of [-1,NaN,Infinity,1e7,Number.MAX_VALUE]) throws(()=>resolveSceneLighting({pointLights:[{x:0,y:0,radius:20,height}]}),/height/);
+  for(const elevationRadians of [-.1,Math.PI,NaN,Infinity])throws(()=>resolveSceneLighting({directionalLight:{directionX:1,directionY:0,elevationRadians}}),/elevationRadians/);
+});

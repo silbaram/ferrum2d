@@ -80,6 +80,7 @@ export interface RuntimeDiagnosticsFrameSample {
   batchCount: number;
   renderCommandCount?: number;
   textureBindCount?: number;
+  normalDrawCalls?: number;
   textureSwitchCount?: number;
   audioEventsPerSecond?: number;
   physicsFixedSteps?: number;
@@ -247,6 +248,7 @@ export function runtimeDiagnosticsFrameSample(
   if (metrics.renderCommandCount !== undefined) {
     sample.renderCommandCount = nonNegativeInteger(metrics.renderCommandCount, "renderCommandCount");
   }
+  if(metrics.normalDrawCalls!==undefined) sample.normalDrawCalls=nonNegativeInteger(metrics.normalDrawCalls,"normalDrawCalls");
   if (metrics.textureBindCount !== undefined) {
     sample.textureBindCount = nonNegativeInteger(metrics.textureBindCount, "textureBindCount");
   }
