@@ -99,7 +99,7 @@ test("RuntimeProfiler keeps bounded sample windows", () => {
   const profiler = new RuntimeProfiler({ maxFrameSamples: 2, maxAssetSamples: 1 });
   profiler.recordFrame(metrics({ frameTimeMs: 10 }));
   profiler.recordFrame(metrics({ frameTimeMs: 11 }));
-  profiler.recordFrame(metrics({ frameTimeMs: 12 }));
+  profiler.recordFrame(metrics({ frameTimeMs: 12, normalDrawCalls: 3 }));
   profiler.recordAssetProgress({ loaded: 0, total: 1, elapsedMs: 1 });
   profiler.recordAssetProgress({ loaded: 1, total: 1, elapsedMs: 2 });
 
@@ -108,6 +108,7 @@ test("RuntimeProfiler keeps bounded sample windows", () => {
   equal(snapshot.assetSampleCount, 1);
   equal(snapshot.averageFrameTimeMs, 11.5);
   equal(snapshot.latestFrame?.frameTimeMs, 12);
+  equal(snapshot.latestFrame?.normalDrawCalls, 3);
   equal(snapshot.latestAsset?.elapsedMs, 2);
   deepEqual(Object.keys(snapshot).slice(0, 4), [
     "frameSampleCount",

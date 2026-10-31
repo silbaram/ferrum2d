@@ -16,6 +16,7 @@ import type {
 } from "./physicsQueryDecoder";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { WasmBridgeAbiLayout } from "./wasmBridgeAbi.js";
+import { readSpriteNormals } from "./spriteNormals.js";
 
 export interface PhysicsBodyStateBufferView {
   floats: Float32Array;
@@ -62,7 +63,9 @@ export function renderCommandBufferView(
 ): RenderCommandBufferView {
   const ptr = context.engine.render_command_ptr();
   const commandCount = context.engine.render_command_len();
+  const normals=readSpriteNormals(context.engine,context.memory,commandCount);
   return {
+    ...(normals?{spriteNormalMaterials:normals}:{}),
     buffer: new Float32Array(
       context.memory.buffer,
       ptr,

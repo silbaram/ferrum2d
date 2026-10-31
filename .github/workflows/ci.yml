@@ -182,6 +182,29 @@ jobs:
       - name: Asset revision cleanup and import diagnostics
         run: pnpm smoke:aseprite-assets
 
+      - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
+        run: pnpm smoke:sprite-normal-2d
+
+      - name: Built-in pixel creation, source export and fresh game rendering
+        run: pnpm smoke:pixel-authoring
+
+      - name: Native pixel source storage and fresh game roundtrip
+        run: pnpm smoke:pixel-project
+
+      - name: Upload pixel and 2D material evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-pixel-project
+          path: |
+            artifacts/pixel-normal-2d/runtime/verification.json
+            artifacts/pixel-normal-2d/runtime/run-*/verification.json
+            artifacts/pixel-project/verification.json
+            artifacts/pixel-project/run-*/*.png
+            artifacts/pixel-project/run-*/*.pixel.json
+            artifacts/pixel-project/run-*/rust-build.log
+          if-no-files-found: ignore
+
       - name: Native tile map source storage and fresh game roundtrip
         run: |
           cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked

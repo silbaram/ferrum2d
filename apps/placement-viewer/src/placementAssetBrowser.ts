@@ -19,6 +19,7 @@ export function createPlacementAssetBrowser(options: {
   projectKey(): string;
   selected(asset: PlacementBrowserAsset): boolean;
   normal?(asset: PlacementBrowserAsset): void;
+  editPixels?(asset: PlacementBrowserAsset): void;
 }) {
   const element = document.createElement("section");
   element.className = "placement-asset-browser";
@@ -171,6 +172,17 @@ export function createPlacementAssetBrowser(options: {
         render();
       });
       cell.append(button, favorite);
+      if (asset.kind === "sprite" && asset.thumbnail && options.editPixels) {
+        const edit = document.createElement("button");
+        edit.type = "button"; edit.className = "placement-asset-normal";
+        edit.dataset.placementEditPixels = asset.id;
+        if (asset.frameId) edit.dataset.placementEditPixelFrame = asset.frameId;
+        setUiText(edit, "Edit Pixels");
+        setUiAttribute(edit, "aria-label", uiMessage("Edit Pixels {0}", asset.label));
+        edit.disabled = !options.canUse(asset);
+        edit.addEventListener("click", () => options.editPixels?.(asset));
+        cell.append(edit);
+      }
       if (
         asset.kind === "sprite" &&
         !asset.frameId &&

@@ -1,4 +1,5 @@
 import { smokeTileAssets } from "./tile-assets-smoke.mjs";
+import { smokePixelAuthoring } from "./pixel-authoring-smoke.mjs";
 import { strict as assert } from "node:assert";
 import { preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
@@ -21,11 +22,12 @@ import { smokeAsepriteAnimation } from "./aseprite-animation-smoke.mjs";
 import { smokeAsepritePaired } from "./aseprite-paired-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
+const pixelMode = process.argv.includes("--pixels");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  tileMode
+  pixelMode ? "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"
@@ -37,7 +39,7 @@ const artifact = resolve(
 );
 let generatorRoute,
   generatorAvailable = true;
-if (normalMode)
+if (normalMode || pixelMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -126,7 +128,7 @@ let active,
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   try {
-    if (normalMode && path.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode) && path.startsWith(generatorRoute.prefix + "/")) {
       if (!generatorAvailable) {
         response.writeHead(503).end("Normal generator unavailable");
         return;
@@ -149,7 +151,9 @@ const server = createServer(async (request, response) => {
     if (path === "/resume.html") {
       response.setHeader("content-type", "text/html");
       response.end(
-        tileMode
+        pixelMode
+          ? '<!doctype html><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/authoring":"/engine/dist/authoring.js","@ferrum2d/ferrum-web/core":"/engine/dist/core.js"}}</script><canvas style="width:480px;height:360px"></canvas><script type="module">import {probePixelResume} from "/resume.mjs";try{window.report=await probePixelResume()}catch(error){window.failure=error.stack}</script>'
+          : tileMode
           ? '<!doctype html><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/authoring":"/engine/dist/authoring.js","@ferrum2d/ferrum-web/starter-scenes":"/engine/dist/starter-scenes.js","@ferrum2d/ferrum-web/core":"/engine/dist/core.js"}}</script><canvas style="width:480px;height:360px"></canvas><script type="module">import {probeTileResume} from "/resume.mjs";try{window.report=await probeTileResume()}catch(error){window.failure=error.stack}</script>'
           : normalMode
             ? '<!doctype html><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/authoring":"/engine/dist/authoring.js","@ferrum2d/ferrum-web/core":"/engine/dist/core.js"}}</script><script type="module">import {probeNormalResume} from "/resume.mjs";try{window.report=await probeNormalResume()}catch(error){window.failure=error.stack}</script>'
@@ -176,7 +180,7 @@ const server = createServer(async (request, response) => {
       file = resolve("tests/smoke/aseprite-paired-runtime-fixture.mjs");
     else if (path === "/resume.mjs")
       file = resolve(
-        tileMode
+        pixelMode ? "tests/smoke/pixel-runtime-fixture.mjs" : tileMode
           ? "tests/smoke/tile-resume-browser-fixture.mjs"
           : normalMode
             ? "tests/smoke/sprite-normal-resume-browser-fixture.mjs"
@@ -456,6 +460,26 @@ try {
         true,
         "Use the save-enabled app build",
       );
+      if (pixelMode) {
+        const result = await smokePixelAuthoring({
+          page, mode, active, native, snapshot, undo, redo, run, origin,
+          getSaves: () => sceneSaves, setResume: value => { resume = value; },
+        });
+        const frames = await page.locator('.placement-pixel-frames').elementHandle();
+        await page.locator('[data-pixel-frame-action="play"]').click();
+        assert.equal(await frames.getAttribute('data-pixel-playing'), 'true');
+        await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-frame-select]').length), 0,
+          'destroy must not repopulate the cleared frame panel during canvas teardown');
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,
+          'destroy must release tag frame rows too');
+        await frames.dispose();
+        const released = await resources();
+        assert.deepEqual(released, { urls: 0, textures: 0 });
+        assert.deepEqual(errors, []);
+        results.push({ mode, ...result, frameDestroyReleasesRows: true, released });
+        continue;
+      }
       if (tileMode) {
         const result = await smokeTileAssets({
           page,

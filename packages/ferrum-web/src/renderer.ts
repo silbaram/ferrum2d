@@ -54,6 +54,8 @@ export interface PhysicsDebugLineCamera {
 }
 
 export interface RendererStats {
+  /** Extra command-ordered normal MRT draw calls; 0 when inactive. */
+  normalDrawCalls?: number;
   spatial?: SpatialRendererStats;
   /** WebGL draw calls submitted by the renderer for the current frame. */
   drawCalls: number;
@@ -137,6 +139,7 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
     unit: "count",
     description: "Physics debug line primitives rendered by the debug line pass for the current frame.",
   },
+  { field: "normalDrawCalls", label: "normal draw calls", unit: "count", description: "Extra command-ordered normal MRT draw calls; absent or zero when inactive." },
   {
     field: "lightingDrawCalls",
     label: "lighting draw calls",
@@ -222,6 +225,7 @@ export function emptyRendererStats(): RendererStats {
 
 export function resetRendererStatsInto(stats: RendererStats): RendererStats {
   delete stats.spatial;
+  delete stats.normalDrawCalls;
   stats.drawCalls = 0;
   stats.batchCount = 0;
   stats.spriteCount = 0;

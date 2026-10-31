@@ -21,6 +21,7 @@ const TILEMAP_NAVIGATION_DEBUG_LINE_CAPACITY: usize = 16;
 
 pub(in crate::engine) struct EngineFrameBuffers {
     pub(in crate::engine) render_commands: Vec<SpriteRenderCommand>,
+    pub(in crate::engine) sprite_normal_materials: Vec<crate::render_command::SpriteNormalMaterial>,
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
     pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
     pub(in crate::engine) ground_y_scale: f32,
@@ -39,6 +40,7 @@ impl EngineFrameBuffers {
     pub(in crate::engine) fn new() -> Self {
         Self {
             render_commands: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
+            sprite_normal_materials: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
             ground_shadow_projection: GroundShadowProjection::default(),
             ground_y_scale: 1.0,
@@ -60,10 +62,12 @@ impl EngineFrameBuffers {
 
     pub(in crate::engine) fn clear_render_commands(&mut self) {
         self.render_commands.clear();
+        self.sprite_normal_materials.clear();
     }
 
     pub(in crate::engine) fn clear_render_work_buffers(&mut self) {
         self.render_commands.clear();
+        self.sprite_normal_materials.clear();
         self.render_items.clear();
     }
 
@@ -254,6 +258,7 @@ mod tests {
 
     fn test_render_item() -> SpriteRenderItem {
         SpriteRenderItem {
+            normal_material: Default::default(),
             command: test_render_command(),
             sort_key: crate::render_command::SpriteRenderSortKey {
                 floor_id: 0,

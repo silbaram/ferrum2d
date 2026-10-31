@@ -251,6 +251,7 @@ function buildDebugMetrics(
     textureBindCount: rendererStats.textureBindCount,
     textureSwitchCount: rendererStats.textureSwitchCount,
     lightingDrawCalls: rendererStats.lightingDrawCalls,
+    normalDrawCalls: rendererStats.normalDrawCalls,
     pointLightCount: rendererStats.pointLightCount,
     tileOccluderCount: rendererStats.tileOccluderCount,
     shadowDrawCalls: rendererStats.shadowDrawCalls,

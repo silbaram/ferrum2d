@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
+import {resolve,sep} from 'node:path';
+import {chromium} from 'playwright-core';
+import {installSpatialGpuTarget} from './spatial-webgpu-capture.mjs';
+const root=resolve('.'),parent=resolve('artifacts/pixel-normal-2d/runtime');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
+const html='<!doctype html><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/packages/ferrum-web/dist/core.js","@ferrum2d/ferrum-web/authoring":"/packages/ferrum-web/dist/authoring.js"}}</script><script type="module">import{probeSpriteNormals2D,probeSpriteNormalRuntime2D}from"/tests/smoke/sprite-normal-2d-browser-fixture.mjs";window.probeSpriteNormals2D=probeSpriteNormals2D;window.probeSpriteNormalRuntime2D=probeSpriteNormalRuntime2D;</script>';
+const server=createServer((req,res)=>void(async()=>{const url=new URL(req.url,'http://localhost');if(url.pathname==='/favicon.ico'){res.writeHead(204).end();return;}if(url.pathname==='/'){res.setHeader('Content-Type','text/html');res.end(html);return;}const path=resolve(root,'.'+decodeURIComponent(url.pathname));if(!path.startsWith(root+sep)||! /\.(?:m?js|wasm)$/.test(path)){res.writeHead(403).end();return;}res.setHeader('Content-Type',path.endsWith('.wasm')?'application/wasm':'application/javascript');res.end(await readFile(path));})().catch(()=>res.writeHead(404).end()));
+let browser;const results=[];
+try{await new Promise(done=>server.listen(0,'127.0.0.1',done));const options={headless:true,args:['--no-sandbox','--enable-unsafe-webgpu','--use-vulkan=swiftshader']};browser=await chromium.launch(process.env.FERRUM_BROWSER_EXECUTABLE?{...options,executablePath:process.env.FERRUM_BROWSER_EXECUTABLE}:options);
+  for(const dpr of [1,2]){const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:dpr});await page.addInitScript(installSpatialGpuTarget);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.probeSpriteNormals2D).catch(error=>{throw Error(String(error)+" "+errors.join("\n"));});
+    for(const backend of ['webgl2','webgpu']){const result=await page.evaluate(async backend=>({...await window.probeSpriteNormals2D(backend),runtime:await window.probeSpriteNormalRuntime2D(backend)}),backend);assert.deepEqual(errors,[]);results.push({dpr,...result});}if(dpr===1)results.push({dpr,...await page.evaluate(()=>window.probeSpriteNormals2D('webgl2',true))});await page.close();
+  }
+  const report={ok:true,run,adapter:'Chromium software adapter; native WebGPU offscreen target, no presentation claim',browser:browser.version(),results};await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
+}catch(error){const report={ok:false,run,browser:browser?.version(),results,error:String(error?.stack??error)};await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n');throw error;
+}finally{await browser?.close();await new Promise(done=>server.close(done));}

@@ -371,6 +371,7 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
 
     fn test_render_item() -> crate::render_command::SpriteRenderItem {
         crate::render_command::SpriteRenderItem {
+            normal_material: Default::default(),
             command: test_render_command(),
             sort_key: crate::render_command::SpriteRenderSortKey {
                 floor_id: 0,

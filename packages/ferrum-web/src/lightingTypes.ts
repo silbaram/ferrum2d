@@ -3,6 +3,8 @@ export type LightingColor4 = readonly [number, number, number, number];
 
 /** Flat 2D sunlight: additive full-view illumination plus optional native ground casters. */
 export interface DirectionalLight2D {
+  /** Normal-map incidence angle; shadows keep their existing projection. Default pi/4. */
+  elevationRadians?: number;
   directionX: number;
   directionY: number;
   intensity?: number;
@@ -11,9 +13,11 @@ export interface DirectionalLight2D {
   shadowLengthScale?: number;
   maxCasters?: number;
 }
-export interface ResolvedDirectionalLight2D extends Required<DirectionalLight2D> {}
+export interface ResolvedDirectionalLight2D extends Required<Omit<DirectionalLight2D,"elevationRadians">> { elevationRadians?: number; }
 
 export interface PointLight2D {
+  /** Logical normal-light Z distance; defaults to radius*0.5. */
+  height?: number;
   x: number;
   y: number;
   radius: number;
@@ -86,6 +90,7 @@ export interface LightingScene2D {
 }
 
 export interface ResolvedPointLight2D {
+  height?: number;
   x: number;
   y: number;
   radius: number;

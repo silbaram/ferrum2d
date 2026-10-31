@@ -1,3 +1,4 @@
+import type { WebGpuSpriteNormalBindings } from "./webgpuSpriteNormals.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
 import type {
@@ -24,6 +25,7 @@ export class WebGpuLightingPass {
   private readonly solidPipeline: GPURenderPipeline;
   private readonly additivePipeline: GPURenderPipeline;
   private readonly shadowPipeline: GPURenderPipeline;
+  private normalAdditivePipeline?:GPURenderPipeline;
   private lightingInstanceBuffer: GPUBuffer;
   private shadowVertexBuffer: GPUBuffer;
   private lightingInstanceCapacityBytes = LIGHTING_INSTANCE_STRIDE_BYTES;
@@ -60,6 +62,7 @@ export class WebGpuLightingPass {
     scene: ResolvedLightingScene2D,
     viewportWidth: number,
     viewportHeight: number,
+    normals?:WebGpuSpriteNormalBindings,
   ): WebGpuLightingPassStats {
     this.assertAlive();
     if (!scene.enabled || viewportWidth <= 0 || viewportHeight <= 0) {
@@ -107,8 +110,9 @@ export class WebGpuLightingPass {
       if (sun !== undefined && sunCount > 0) {
         this.lightColorScratch[0] = sun.color[0]; this.lightColorScratch[1] = sun.color[1];
         this.lightColorScratch[2] = sun.color[2]; this.lightColorScratch[3] = sun.intensity;
+        const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
         lightingOffset = writeLightingInstance(this.lightingStaging, lightingOffset, 0, 0, viewportWidth, viewportHeight,
-          this.lightColorScratch, 0, 0, 1, 1, 0);
+          this.lightColorScratch,normals?-sun.directionX*c:0,normals?-sun.directionY*c:0,normals?Math.sin(elevation):1,normals?0:1,normals?-1:0);
       }
       for (const light of activePointLights) {
         const radius = light.radius;
@@ -128,7 +132,7 @@ export class WebGpuLightingPass {
           light.y,
           radius,
           light.falloff,
-          1,
+          normals?2+(light.height??light.radius*0.5):1,
         );
       }
 
@@ -166,9 +170,10 @@ export class WebGpuLightingPass {
     if (activePointLights.length + sunCount > 0) {
       drawCalls += this.drawLightingInstances(
         pass,
-        this.additivePipeline,
+        normals?(this.normalAdditivePipeline??=this.createLightingPipeline("additive",normals.layout)):this.additivePipeline,
         activePointLights.length + sunCount,
         pointLightFirstInstance,
+        normals?.bindGroup,
       );
     }
 
@@ -226,13 +231,14 @@ export class WebGpuLightingPass {
     this.activePointLightScratch.length = 0;
   }
 
-  private createLightingPipeline(blendMode: "normal" | "additive"): GPURenderPipeline {
+  private createLightingPipeline(blendMode: "normal" | "additive",normalLayout?:GPUBindGroupLayout): GPURenderPipeline {
     const module = this.device.createShaderModule({
       code: `
         struct Resolution {
           size: vec2f,
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
+        ${normalLayout?"@group(1) @binding(0) var normalBuffer:texture_2d<f32>;@group(1) @binding(1) var normalCoverage:texture_2d<f32>;":""}
 
         struct VertexInput {
           @location(0) rect: vec4f,
@@ -251,6 +257,12 @@ export class WebGpuLightingPass {
           @location(4) scaleY: f32,
         };
 
+        ${normalLayout?`
+        fn normalResponse(input:VertexOutput,direction:vec3f)->f32 {
+          let pixel=vec2i(input.position.xy);let coverage=clamp(textureLoad(normalCoverage,pixel,0).r,0.,1.);
+          let raw=textureLoad(normalBuffer,pixel,0).rgb*2.-1.;var n=vec3f(0.,0.,1.);if(length(raw)>=0.02){n=normalize(raw);}
+          return mix(1.,max(dot(n,direction),0.),coverage);
+        }`:""}
         fn cornerForVertex(vertexIndex: u32) -> vec2f {
           if (vertexIndex == 0u) { return vec2f(0.0, 0.0); }
           if (vertexIndex == 1u) { return vec2f(1.0, 0.0); }
@@ -282,15 +294,18 @@ export class WebGpuLightingPass {
             let distanceToLight = length((input.pixelPosition-input.light.xy)/vec2f(1.0,input.scaleY));
             let attenuation = max(1.0 - (distanceToLight / input.light.z), 0.0);
             let alpha = pow(attenuation, input.light.w) * input.color.a;
-            return vec4f(input.color.rgb, alpha);
+            ${normalLayout?`let delta=vec3f(input.light.x-input.pixelPosition.x,(input.light.y-input.pixelPosition.y)/input.scaleY,max(input.mode-2.,0.));
+            var direction=vec3f(0.,0.,1.);if(length(delta)>0.0001){direction=normalize(delta);}
+            return vec4f(input.color.rgb,alpha*normalResponse(input,direction));`:"return vec4f(input.color.rgb, alpha);"}
           }
+          ${normalLayout?"if(input.mode < -0.5){return vec4f(input.color.rgb,input.color.a*normalResponse(input,input.light.xyz));}":""}
           return input.color;
         }
       `,
     });
 
     return webGpuResources(this.device).createRenderPipeline({
-      layout: this.pipelineLayout,
+      layout: normalLayout?this.device.createPipelineLayout({bindGroupLayouts:[this.solidPipeline.getBindGroupLayout(0),normalLayout]}):this.pipelineLayout,
       vertex: {
         module,
         entryPoint: "vs_main",
@@ -404,6 +419,7 @@ export class WebGpuLightingPass {
     pipeline: GPURenderPipeline,
     instanceCount: number,
     firstInstance: number,
+    normals?:GPUBindGroup,
   ): number {
     if (instanceCount <= 0) {
       return 0;
@@ -411,6 +427,7 @@ export class WebGpuLightingPass {
 
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, this.resolutionBindGroup);
+    if(normals)pass.setBindGroup(1,normals);
     pass.setVertexBuffer(0, this.lightingInstanceBuffer);
     pass.draw(6, instanceCount, 0, firstInstance);
     return 1;

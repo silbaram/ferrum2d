@@ -19,7 +19,7 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
   const scene = record(value, path, ["enabled", "ambient", "directionalLight", "pointLights", "tileOccluders", "shadows", "debug"]);
   boolean(scene.enabled, `${path}.enabled`);
   for (const [name, maximum, keys] of [
-    ["pointLights", 32, ["x", "y", "radius", "radiusY", "color", "intensity", "falloff"]],
+    ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff"]],
     ["tileOccluders", 1024, ["x", "y", "width", "height"]],
   ] as const) {
     const items = scene[name];
@@ -28,13 +28,14 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
     items.forEach((value, index) => {
       const at = `${path}.${name}[${index}]`, item = record(value, at, keys);
       for (const axis of ["x", "y"]) bounded(item[axis], `${at}.${axis}`, -1e6, 1e6);
-      for (const size of ["radius", "radiusY", "width", "height"]) bounded(item[size], `${at}.${size}`, 0.001, 1e6);
+      for (const size of ["radius", "radiusY", "width"]) bounded(item[size], `${at}.${size}`, 0.001, 1e6);
+      bounded(item.height, `${at}.height`, name === "pointLights" ? 0 : 0.001, 1e6);
       bounded(item.intensity, `${at}.intensity`, 0, 64);
       bounded(item.falloff, `${at}.falloff`, 0.001, 64);
     });
   }
   if (scene.directionalLight !== undefined)
-    record(scene.directionalLight, `${path}.directionalLight`, ["directionX", "directionY", "intensity", "color", "shadowOpacity", "shadowLengthScale", "maxCasters"]);
+    record(scene.directionalLight, `${path}.directionalLight`, ["directionX", "directionY", "intensity", "color", "shadowOpacity", "shadowLengthScale", "maxCasters", "elevationRadians"]);
   let shadows = scene.shadows;
   if (shadows !== undefined && typeof shadows !== "boolean") {
     const shadow = record(shadows, `${path}.shadows`, ["enabled", "color", "projectionLength", "maxDistance"]);

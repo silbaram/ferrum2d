@@ -1,3 +1,4 @@
+import { normalReferences, referencesNormal } from "./placementNormalReferences";
 import {
   asepriteNormalLayout,
   asepriteUvKey,
@@ -127,7 +128,7 @@ async function validateBundle(value: unknown, signal: AbortSignal) {
   const binding = resolveSpriteNormalAssetBinding(bundle.binding),
     report = record(bundle.report);
   JSON.parse(bundle.metadataJson as string);
-  if (report.format === "ferrum2d.aseprite-normal.report") {
+  if (report.format === "ferrum2d.aseprite-normal.report" || report.format === "ferrum2d.pixel-normal.report") {
     const { config, ...content } = report,
       source = record(report.source),
       output = record(report.output),
@@ -135,7 +136,7 @@ async function validateBundle(value: unknown, signal: AbortSignal) {
     const frames = report.frames;
     if (
       report.version !== 1 ||
-      report.pipeline !== "aseprite-rects-v1" ||
+      report.pipeline !== (report.format === "ferrum2d.pixel-normal.report" ? "pixel-rects-v1" : "aseprite-rects-v1") ||
       canonical(JSON.parse(bundle.metadataJson as string)) !==
         canonical(report) ||
       record(config).sha256 !== generation.configSha256 ||
@@ -153,11 +154,18 @@ async function validateBundle(value: unknown, signal: AbortSignal) {
       frames.length > 256
     )
       fail("Aseprite normal provenance differs");
+    if (report.format === "ferrum2d.pixel-normal.report" && (!/^pixel\.[a-f0-9]{24}$/.test(String(source.assetId)) || !/^[a-f0-9]{64}$/.test(String(source.jsonSha256))))
+      fail("invalid pixel source provenance");
+    const frameIds = new Set<string>();
     for (const frame of frames as unknown[]) {
       const entry = record(frame),
         generated = record(entry.report),
         generator = record(generated.generator),
         rect = entry.rect;
+      if (report.format === "ferrum2d.pixel-normal.report") {
+        if (typeof entry.id !== "string" || !entry.id || entry.id.length > 64 || frameIds.has(entry.id)) return fail("invalid pixel normal frame ID");
+        frameIds.add(entry.id);
+      }
       if (
         generated.ok !== true ||
         generated.format !== "ferrum2d.sprite-normals.report" ||
@@ -347,13 +355,19 @@ export function createPlacementNormalProjectAssets(
     },
     async load(
       value: Catalog,
-      shared: Map<string, { sha256: string; colorSpace: "srgb" | "none" }>,
+      shared: Map<string, { sha256: string; colorSpace: "srgb" | "none"; sourceJsonSha256?: string; frameRects?: {id:string;x:number;y:number;width:number;height:number}[] }>,
       taken: (id: string) => boolean,
       externalSignal: AbortSignal,
     ) {
       const signal = AbortSignal.any([externalSignal, lifetime.signal]);
       const next = await readPlacementNormalProject(value, signal);
       if (disposed) fail("assets closed");
+      for (const pair of next.pairs) if (pair.bundle.report.format === "ferrum2d.pixel-normal.report") {
+        const source = record(pair.bundle.report.source), actual = shared.get(pair.bundle.binding.textures.color.asset);
+        const rects = (pair.bundle.report.frames as {id:string;rect:number[]}[]).map(frame=>({id:frame.id,x:frame.rect[0],y:frame.rect[1],width:frame.rect[2],height:frame.rect[3]}));
+        if (!actual?.sourceJsonSha256 || actual.sourceJsonSha256 !== source.jsonSha256 || canonical(actual.frameRects) !== canonical(rects))
+          fail("pixel source or frame layout differs from normal provenance");
+      }
       for (const [id, texture] of next.textures) {
         const existing = shared.get(id);
         if (existing) {
@@ -394,15 +408,14 @@ export function createPlacementNormalProjectAssets(
         ),
       ].map((id) => ({ id, ...restored!.textures.get(id)! }));
     },
-    bundles(key: string, current: SceneAuthoringDocumentSpec, project?: string) {
+    claims(key:string,project?:string) {
+      return available(key,project)?(restored?.pairs??[]).map(pair=>({binding:pair.bundle.binding,report:pair.bundle.report})):[];
+    },
+    bundles(key: string, current?: SceneAuthoringDocumentSpec, project?: string) {
       if (!available(key, project)) return [];
-      const references = new Set(
-        Object.values(current.spatial?.billboards ?? {}).map(
-          (b) => b.normalTexture,
-        ),
-      );
+      const references = current && normalReferences(current);
       return (restored?.pairs ?? [])
-        .filter((p) => references.has(p.bundle.binding.textures.normal.asset))
+        .filter((p) => !references || referencesNormal(references,p.bundle.binding.textures.normal.asset,name=>engine.textureId(name)))
         .map((pair) => ({
           ...pair.bundle,
           files: Object.values(pair.bundle.binding.textures).map(
@@ -450,13 +463,13 @@ export function createPlacementNormalProjectAssets(
             pair.bundle.binding.textures.color.asset !==
               (visual.texture ?? visual.asset) ||
             pair.bundle.binding.textures.normal.asset !==
-              current.spatial?.billboards[instance.id]?.normalTexture
+              (current.spatial?.billboards[instance.id] ? current.spatial.billboards[instance.id].normalTexture : visual.normalTexture)
           )
             continue;
           let binding = pair.bundle.binding;
           try {
             if (
-              pair.bundle.report.format === "ferrum2d.aseprite-normal.report"
+              pair.bundle.report.format === "ferrum2d.aseprite-normal.report" || pair.bundle.report.format === "ferrum2d.pixel-normal.report"
             ) {
               const layout = asepriteNormalLayout(visual),
                 known = new Set(
@@ -503,12 +516,14 @@ export function createPlacementNormalProjectAssets(
       return result;
     },
     assertDocumentAssets(current: SceneAuthoringDocumentSpec, key: string, project?: string) {
+      if (available(key, project) || !restored) return;
+      const serialized = JSON.stringify(current), references = normalReferences(current);
       if (
-        !available(key, project) &&
-        restored &&
         [...restored.textures.keys()].some((id) =>
-          JSON.stringify(current).includes(JSON.stringify(id)),
-        )
+          serialized.includes(JSON.stringify(id)),
+        ) || restored.pairs.some(pair => referencesNormal(
+          references, pair.bundle.binding.textures.normal.asset, name => engine.textureId(name),
+        ))
       )
         fail(
           "install generated assets before copying them to another document",

@@ -66,6 +66,10 @@ const imported = importAsepriteAtlas(json, options);
 | `diagnoseSpriteNormalAssetBinding(binding, assets)` | host가 측정한 실제 texture metadata의 누락·중복·색 공간·크기·hash·선택형 UV layout을 진단한다. |
 | `createSceneSpriteNormalPatch(document, binding, options)` | instanceId와 검증한 assets에서 deterministic combined patch와 evidence를 만든다. source·파일·GPU는 수정하지 않는다. |
 
+일반 2D sprite에는 component-only v2 patch로 `visual.normalTexture`를 설정한다.
+HD-2D billboard에는 기존 v3 combined patch와 spatial v4 normal operation을 사용한다.
+두 경로 모두 직접 편집 가능한 sprite 대상·asset provenance를 검증하며 한 번의 Undo로 적용한다.
+
 공개 타입은 `SpriteNormalAssetBinding`, `SpriteNormalTextureReference`, `SpriteNormalTextureAsset`,
 `SpriteNormalBindingDiagnostic`, `CreateSpriteNormalAssetBindingOptions`, `CreateSceneSpriteNormalPatchOptions`,
 `SceneSpriteNormalBindingEvidence`다. binding 자체에는 runtime numeric ID가 없다.

@@ -646,6 +646,7 @@ impl BitmapTextSystem {
                 command.y = screen_top_left.y;
                 items.push(SpriteRenderItem {
                     command,
+                    normal_material: Default::default(),
                     sort_key: SpriteRenderSortKey {
                         floor_id: text.spec.floor_id,
                         elevation: text.spec.elevation,

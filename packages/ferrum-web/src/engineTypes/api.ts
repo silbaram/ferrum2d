@@ -217,6 +217,8 @@ export interface FerrumSceneApi {
   setDataSceneSun(light: DirectionalLight2D | false): boolean;
   dataSceneGroundShadowStats(): DataSceneGroundShadowStats;
   configureDataSceneSpriteAnimation(entity: GameplayEntityHandle, clips: DataSceneSpriteAnimationSetSpec): boolean;
+  /** Cold atomic batch. Omitted normalTextureId detaches; no per-frame entity calls. */
+  configureSpriteNormalMaterials(updates: readonly { entity: GameplayEntityHandle; normalTextureId?: number }[]): boolean;
   /** Opt-in idle/walk and facing policy for the primary actor. false preserves playback and detaches. */
   configureDataSceneMovementAnimation(spec: DataSceneMovementAnimationSpec | false): boolean;
   /** Atomic batch. Duplicate/stale handles or unknown clip/frame reject the entire batch. */

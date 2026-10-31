@@ -245,17 +245,27 @@ fn pair(metadata: Vec<u8>, pngs: Vec<Vec<u8>>) -> CommandResult<Pair> {
     let parsed: Value = serde_json::from_str(raw_metadata)
         .map_err(|_| invalid("invalid generator metadata JSON"))?;
     // Worker metadataJson is the raw upstream report input, whereas Aseprite uses its aggregate report.
-    if report["format"] == "ferrum2d.aseprite-normal.report" {
+    if report["format"] == "ferrum2d.aseprite-normal.report"
+        || report["format"] == "ferrum2d.pixel-normal.report"
+    {
         if parsed != *report
             || report["version"] != 1
-            || report["pipeline"] != "aseprite-rects-v1"
+            || report["pipeline"]
+                != if report["format"] == "ferrum2d.pixel-normal.report" {
+                    "pixel-rects-v1"
+                } else {
+                    "aseprite-rects-v1"
+                }
             || report["source"]["pngSha256"] != binding["textures"]["color"]["sha256"]
             || report["output"]["sha256"] != binding["textures"]["normal"]["sha256"]
             || report["output"]["width"] != width
             || report["output"]["height"] != height
             || !report["frames"].is_array()
         {
-            return Err(invalid("Aseprite normal provenance differs"));
+            return Err(invalid("Frame normal provenance differs"));
+        }
+        if report["format"] == "ferrum2d.pixel-normal.report" {
+            validate_pixel_report(report, binding, width, height)?;
         }
     } else {
         header(report, "ferrum2d.sprite-normals.report")?;
@@ -328,6 +338,146 @@ fn pair(metadata: Vec<u8>, pngs: Vec<Vec<u8>>) -> CommandResult<Pair> {
         height,
     })
 }
+fn validate_pixel_report(
+    report: &Value,
+    binding: &Value,
+    width: u64,
+    height: u64,
+) -> CommandResult<()> {
+    let source = &report["source"];
+    let id = text(source, "assetId")?;
+    if !id.starts_with("pixel.")
+        || id.len() != 30
+        || !id[6..]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || !digest(text(source, "jsonSha256")?)
+        || source["assetId"] != binding["textures"]["color"]["asset"]
+        || source["pngSha256"] != binding["generation"]["input"]["sha256"]
+        || source["jsonSha256"] != binding["generation"]["settings"]["jsonSha256"]
+        || binding["generation"]["settings"]["pipeline"] != "pixel-rects-v1"
+    {
+        return Err(invalid("pixel normal source differs"));
+    }
+    let frames = array(report, "frames")?;
+    if frames.is_empty() || frames.len() > 256 {
+        return Err(invalid("invalid pixel normal frame count"));
+    }
+    let mut ids = HashSet::new();
+    let mut rectangles: Vec<[u64; 4]> = Vec::new();
+    for frame in frames {
+        let id = text(frame, "id")?;
+        if id.trim().is_empty() || id.encode_utf16().count() > 64 || !ids.insert(id) {
+            return Err(invalid("invalid pixel normal frame ID"));
+        }
+        let rect = array(frame, "rect")?;
+        if rect.len() != 4 {
+            return Err(invalid("invalid pixel normal rect"));
+        }
+        let mut values = [0; 4];
+        for (index, value) in rect.iter().enumerate() {
+            values[index] = value
+                .as_f64()
+                .filter(|n| n.is_finite() && n.fract() == 0.0 && *n >= 0.0 && *n <= 4096.0)
+                .map(|n| n as u64)
+                .ok_or_else(|| invalid("invalid pixel normal rect"))?;
+        }
+        let [x, y, w, h] = values;
+        if w == 0
+            || h == 0
+            || x > width
+            || y > height
+            || w > width - x
+            || h > height - y
+            || rectangles
+                .iter()
+                .any(|r| x < r[0] + r[2] && r[0] < x + w && y < r[1] + r[3] && r[1] < y + h)
+        {
+            return Err(invalid("pixel normal rect out of bounds or overlapping"));
+        }
+        rectangles.push(values);
+        let generated = &frame["report"];
+        if generated["ok"] != true
+            || generated["format"] != "ferrum2d.sprite-normals.report"
+            || generated["normalFormat"] != "opengl"
+            || generated["colorSpace"] != "none"
+        {
+            return Err(invalid("invalid pixel frame generator report"));
+        }
+        for key in ["repository", "revision", "binarySha256"] {
+            if generated["generator"][key] != binding["generation"][key] {
+                return Err(invalid("pixel frame generator differs"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
+    let report = &pair.value["report"];
+    if report["format"] != "ferrum2d.pixel-normal.report" {
+        return Ok(());
+    }
+    let id = text(&report["source"], "assetId")?;
+    let root = asset_files::directory(project, ".ferrum-pixels", false)?
+        .ok_or_else(|| invalid("save pixel sources before normals"))?;
+    let bytes = asset_files::bounded_read(&root.join(format!("{id}.json")), 12 * 1024 * 1024)?;
+    if hash(&bytes) != text(&report["source"], "jsonSha256")? {
+        return Err(invalid("pixel source hash differs from normals"));
+    }
+    let color = asset_files::bounded_read(&root.join(format!("{id}.png")), 8 * 1024 * 1024)?;
+    if hash(&color) != text(&report["source"], "pngSha256")? {
+        return Err(invalid("pixel source PNG differs from normals"));
+    }
+    let source: Value =
+        serde_json::from_slice(&bytes).map_err(|_| invalid("invalid pixel source JSON"))?;
+    let width = integer(&source, "width", 1, 256)?;
+    let height = integer(&source, "height", 1, 256)?;
+    let mut expected = Vec::new();
+    match integer(&source, "version", 1, 5)? {
+        3 | 5 => {
+            let frames = array(&source, "frames")?;
+            if frames.is_empty() || frames.len() > 16 {
+                return Err(invalid("invalid pixel source frame count"));
+            }
+            let columns = (1_u64..=4)
+                .find(|n| n * n >= frames.len() as u64)
+                .ok_or_else(|| invalid("invalid pixel columns"))?;
+            for (index, frame) in frames.iter().enumerate() {
+                expected.push(json!({"id":frame["id"],"rect":[index as u64%columns*width,index as u64/columns*height,width,height]}));
+            }
+        }
+        4 => {
+            for frame in array(&source["atlas"], "frames")? {
+                let uv = &frame["frame"];
+                let edge = |key: &str, size: u64| {
+                    uv[key]
+                        .as_f64()
+                        .map(|v| (v * size as f64).round() as u64)
+                        .ok_or_else(|| invalid("invalid pixel atlas UV"))
+                };
+                let x = edge("u0", width)?;
+                let y = edge("v0", height)?;
+                let x1 = edge("u1", width)?;
+                let y1 = edge("v1", height)?;
+                if x1 <= x || y1 <= y {
+                    return Err(invalid("invalid pixel atlas rect"));
+                }
+                expected.push(json!({"id":frame["id"],"rect":[x,y,x1-x,y1-y]}));
+            }
+        }
+        _ => expected.push(json!({"id":source["frame"]["id"],"rect":[0,0,width,height]})),
+    }
+    let actual: Vec<_> = array(report, "frames")?
+        .iter()
+        .map(|frame| json!({"id":frame["id"],"rect":frame["rect"]}))
+        .collect();
+    if expected != actual {
+        return Err(invalid("pixel frame layout differs from normals"));
+    }
+    Ok(())
+}
+
 fn incoming(metadata: &str, files: &[Value]) -> CommandResult<Pair> {
     if metadata.len() > MAX_METADATA || files.len() != 2 {
         return Err(invalid("invalid normal file/metadata count"));
@@ -523,10 +673,14 @@ pub(super) fn save_inner(
         .scene_save_lock
         .lock()
         .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+    validate_pixel_source(&project, &next)?;
     let root = asset_files::directory(&project, DIRECTORY, true)?
         .ok_or_else(|| invalid("missing normal directory"))?;
     let previous = asset_files::read_catalog(&root)?;
     let mut pairs = load_pairs(&root, previous.as_deref())?;
+    for pair in &pairs {
+        validate_pixel_source(&project, pair)?;
+    }
     if !pairs.iter().any(|p| p.id() == next.id()) {
         pairs.push(next);
     }
@@ -583,6 +737,9 @@ pub(super) fn load_inner(
         );
     };
     let pairs = load_pairs(&root, asset_files::read_catalog(&root)?.as_deref())?;
+    for pair in &pairs {
+        validate_pixel_source(&project, pair)?;
+    }
     register(&root, &pairs, registry, || Ok(()))
 }
 
@@ -647,6 +804,81 @@ mod tests {
             ],
         )
     }
+    #[test]
+    fn pixel_normal_pairs_verify_source_json_png_and_frame_layout_before_publish() {
+        let project = Project::new();
+        let registry = PlacementAssetRegistry::default();
+        let writes = project.writes();
+        let (metadata, mut files) = fixture(1);
+        let mut value: Value = serde_json::from_str(&metadata).unwrap();
+        let id = format!("pixel.{}", "a".repeat(24));
+        let source = json!({"format":"ferrum2d.pixel-document","version":1,"name":"Sprite","width":1,"height":1,"colorSpace":"srgb","palette":[],"layer":{"id":"body","name":"Body"},"frame":{"id":"frame-1","durationMs":100},"rgba":STANDARD.encode([1,40,70,255])});
+        let source_bytes = serde_json::to_vec(&source).unwrap();
+        let root = asset_files::directory(&project.0, ".ferrum-pixels", true)
+            .unwrap()
+            .unwrap();
+        fs::write(root.join(format!("{id}.json")), &source_bytes).unwrap();
+        fs::write(
+            root.join(format!("{id}.png")),
+            STANDARD
+                .decode(files[0]["base64"].as_str().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let color = value["binding"]["textures"]["color"]["sha256"].clone();
+        let normal = value["binding"]["textures"]["normal"]["sha256"].clone();
+        let generated = value["report"].clone();
+        value["binding"]["textures"]["color"]["asset"] = json!(id);
+        value["binding"]["textures"]["color"]["path"] = json!(format!("{id}.png"));
+        value["binding"]["generation"]["settings"] =
+            json!({"pipeline":"pixel-rects-v1","jsonSha256":hash(&source_bytes)});
+        value["manifest"]["textures"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pair1.color");
+        value["manifest"]["textures"][&id] = json!(format!("{id}.png"));
+        value["manifest"]["textureOptions"]
+            .as_object_mut()
+            .unwrap()
+            .remove("pair1.color");
+        value["manifest"]["textureOptions"][&id] = json!({"colorSpace":"srgb"});
+        files[0]["path"] = json!(format!("{id}.png"));
+        value["report"] = json!({"format":"ferrum2d.pixel-normal.report","version":1,"pipeline":"pixel-rects-v1","source":{"assetId":id,"jsonSha256":hash(&source_bytes),"pngSha256":color},"settings":{},"frames":[{"id":"frame-1","rect":[0,0,1,1],"report":generated}],"output":{"sha256":normal,"width":1,"height":1},"config":{"sha256":"a".repeat(64)}});
+        value["metadataJson"] = json!(value["report"].to_string());
+        let saved = save_inner(&project.0, &value.to_string(), &files, &registry, &writes).unwrap();
+        assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+        for change in 0..5 {
+            let mut bad = value.clone();
+            match change {
+                0 => bad["report"]["source"]["jsonSha256"] = json!("f".repeat(64)),
+                1 => bad["report"]["frames"][0]["id"] = json!("other"),
+                2 => bad["report"]["frames"][0]["rect"] = json!([0, 0, 2, 1]),
+                3 => {
+                    bad["report"]["frames"][0]["report"]["generator"]["revision"] =
+                        json!("f".repeat(40))
+                }
+                _ => bad["report"]["frames"] = json!([]),
+            }
+            bad["metadataJson"] = json!(bad["report"].to_string());
+            assert!(save_inner(&project.0, &bad.to_string(), &files, &registry, &writes).is_err());
+            assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+        }
+        let png_path = root.join(format!("{id}.png"));
+        let source_png = fs::read(&png_path).unwrap();
+        let normal_catalog = fs::read(project.root().join("catalog.json")).unwrap();
+        fs::write(&png_path, b"changed").unwrap();
+        assert!(load_inner(&project.0, &registry, &writes).is_err());
+        assert!(save_inner(&project.0, &value.to_string(), &files, &registry, &writes).is_err());
+        assert_eq!(
+            fs::read(project.root().join("catalog.json")).unwrap(),
+            normal_catalog
+        );
+        fs::write(&png_path, source_png).unwrap();
+        assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+        fs::write(root.join(format!("{id}.json")), b"changed").unwrap();
+        assert!(load_inner(&project.0, &registry, &writes).is_err());
+    }
+
     #[test]
     fn normal_pair_roundtrip_preserves_ordered_metadata_and_color_spaces() {
         let project = Project::new();

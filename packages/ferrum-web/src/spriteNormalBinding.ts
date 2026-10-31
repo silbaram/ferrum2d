@@ -545,8 +545,9 @@ export function createSceneSpriteNormalPatch(
     instance = resolved.bindingPlan?.instances.find(
       (entry) => entry.id === options.instanceId,
     );
-  if (!instance || !document.spatial?.billboards[options.instanceId])
-    fail("instanceId", "requires an existing applied billboard instance");
+  if (!instance)
+    fail("instanceId", "requires an existing applied sprite instance");
+  const billboard = document.spatial?.billboards[options.instanceId];
   const components = structuredClone(
     record(instance.props.components, "components"),
   );
@@ -564,13 +565,15 @@ export function createSceneSpriteNormalPatch(
   };
   const nextVisual = components.visual as Record<string, unknown>;
   delete nextVisual.asset;
+  if (billboard) delete nextVisual.normalTexture;
+  else nextVisual.normalTexture = binding.textures.normal.asset;
   delete nextVisual.animation;
   delete nextVisual.animationSet;
   if (binding.animationSet)
     nextVisual.animationSet = structuredClone(binding.animationSet);
   const patch: ScenePlacementPatch = {
     format: "ferrum2d.scene-placement.patch",
-    version: 3,
+    version: billboard ? 3 : 2,
     operations: [
       {
         kind: "updateComponents",
@@ -578,7 +581,7 @@ export function createSceneSpriteNormalPatch(
         components: components as SceneCompositionJsonValue,
       },
     ],
-    spatial: {
+    ...(billboard ? { spatial: {
       format: "ferrum2d.scene-spatial.patch",
       version: 4,
       operations: [
@@ -588,7 +591,7 @@ export function createSceneSpriteNormalPatch(
           changes: { normalTexture: binding.textures.normal.asset },
         },
       ],
-    },
+    } } : {}),
   };
   // Existing merge guards reject ambiguous/includes-only component targets before returning an applicable patch.
   mergeScenePlacementPatch(document, patch);
@@ -612,7 +615,8 @@ export function resolveSceneSpriteNormalBindingEvidence(
   if (
     visual.kind !== "sprite" ||
     (visual.texture ?? visual.asset) !== binding.textures.color.asset ||
-    document.spatial?.billboards[instanceId]?.normalTexture !==
+    (document.spatial?.billboards[instanceId]
+      ? document.spatial.billboards[instanceId].normalTexture : visual.normalTexture) !==
       binding.textures.normal.asset
   )
     fail("handoff", "asset references differ from the emitted document");

@@ -990,8 +990,10 @@ path는 provenance locator이며 URL로 자동 해석하거나 읽지 않는다.
 만족하고 animation clip의 UV는 shared frame 중 하나여야 한다. 원본 bytes가 바뀌면 이전 binding을 재사용하지 않고
 명시적으로 재생성·재검증한다. binding API는 파일/GPU를 수정하지 않으므로 실패한 후보는 기존 결과를 보존한다.
 
-patch는 기존 `updateComponents`와 spatial v4의 `setBillboardNormalTexture`를 함께 반환한다.
-초기 fragment에서 적용된 기존 sprite billboard와 직접 편집 가능한 component 대상이 필요하다.
+HD-2D patch는 기존 `updateComponents`와 spatial v4의 `setBillboardNormalTexture`를 함께 반환한다.
+일반 2D는 component-only v2 patch의 `visual.normalTexture`를 사용하며 공간 billboard를 추가하지 않는다.
+초기 fragment에서 적용된 기존 sprite와 직접 편집 가능한 component 대상이 필요하다.
+[일반 2D 재질·조명 계약](data-scene-authoring.md#일반-2d-노멀-재질과-조명)을 따른다.
 포함 fragment의 모호한 대상·primitive·template는 거절한다. 기존 collider/body·pose·pivot·visual 크기·behavior는 유지하며
 texture/frame/animation을 생성 결과로 교체한다. 기존 legacy animation과 asset 별칭은 정리한다.
 normal 참조 교체는 기존 numeric ID를 제거한다. 이 operation의 `normalTexture: null`은 두 참조를 모두 해제한다.

@@ -78,6 +78,27 @@ pub(crate) const SPRITE_RENDER_COMMAND_ROTATION_RADIANS_FLOAT_OFFSET: usize =
 
 const _: () = assert!(core::mem::size_of::<SpriteRenderCommand>() == 60);
 
+/// Opt-in 2D normal material; the legacy sprite command ABI stays unchanged.
+pub const SPRITE_NORMAL_NONE: u32 = 16_777_215;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpriteNormalMaterial {
+    pub normal_texture: u32,
+    /// Reserved for future versions; version 1 requires zero.
+    pub flags: u32,
+}
+
+impl Default for SpriteNormalMaterial {
+    fn default() -> Self {
+        Self {
+            normal_texture: SPRITE_NORMAL_NONE,
+            flags: 0,
+        }
+    }
+}
+const _: () = assert!(core::mem::size_of::<SpriteNormalMaterial>() == 8);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpriteRenderSortKey {
     pub floor_id: u32,
@@ -103,5 +124,6 @@ impl SpriteRenderSortKey {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpriteRenderItem {
     pub command: SpriteRenderCommand,
+    pub normal_material: SpriteNormalMaterial,
     pub sort_key: SpriteRenderSortKey,
 }

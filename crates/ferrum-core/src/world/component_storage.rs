@@ -6,6 +6,7 @@ impl WorldComponentStorage {
     pub(super) fn push_empty_entity(world: &mut World) {
         world.transforms.push(None);
         world.sprites.push(None);
+        world.sprite_normal_materials.push(None);
         world.sprite_animations.push(None);
         world.sprite_playbacks.push(None);
         world.ground_shadows.push(None);
@@ -49,6 +50,7 @@ impl WorldComponentStorage {
     pub(super) fn clear_entity(world: &mut World, index: usize) {
         world.transforms[index] = None;
         world.sprites[index] = None;
+        world.sprite_normal_materials[index] = None;
         world.sprite_animations[index] = None;
         world.sprite_playbacks[index] = None;
         world.ground_shadows[index] = None;
@@ -129,6 +131,7 @@ mod tests {
     fn assert_component_slot_len(world: &World, len: usize) {
         assert_eq!(world.transforms.len(), len);
         assert_eq!(world.sprites.len(), len);
+        assert_eq!(world.sprite_normal_materials.len(), len);
         assert_eq!(world.sprite_animations.len(), len);
         assert_eq!(world.sprite_playbacks.len(), len);
         assert_eq!(world.ground_shadows.len(), len);
@@ -172,6 +175,7 @@ mod tests {
     fn assert_component_slot_empty(world: &World, index: usize) {
         assert_eq!(world.transforms[index], None);
         assert_eq!(world.sprites[index], None);
+        assert_eq!(world.sprite_normal_materials[index], None);
         assert_eq!(world.sprite_animations[index], None);
         assert_eq!(world.sprite_playbacks[index], None);
         assert_eq!(world.ground_shadows[index], None);

@@ -21,6 +21,10 @@ import {
 | `runtimeDiagnosticsFrameSample(...)` | debug overlay와 report에 쓰는 frame sample을 만든다. |
 | `evaluateRuntimeDiagnosticsSample(...)` | frame sample을 diagnostic budget과 비교한다. |
 
+`normalDrawCalls`는 일반 2D normal MRT의 추가 draw 수를 기록하는 선택형 frame sample이다.
+DebugOverlay → RuntimeFrameRenderer → RuntimeProfiler로 실제 renderer 값을 전달한다.
+전체 비용은 기존 `drawCalls`/`maxDrawCalls`와 GPU 자원 예산에도 포함한다.
+
 budget field를 추가하면 smoke runner가 실제 sample에 값을 기록하는지 같이 확인한다.
 
 ### GPU 시간과 Wasm 용량 예산

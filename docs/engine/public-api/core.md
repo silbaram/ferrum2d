@@ -1102,3 +1102,23 @@ HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `sp
 scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.
 기존 v1/v2/v3 입력과 렌더 command ABI는 유지한다. 범위·기본값·저장/추적/효과 순서는
 [Data Scene Spatial](../data-scene-spatial.md#광원-작성과-씬-효과)을 참조한다.
+
+
+## 일반 2D sprite normal
+
+`FerrumEngine.configureSpriteNormalMaterials(updates)`는 generation이 있는 entity handle과 선택형 `normalTextureId`를
+받는 cold bulk API다. ID를 생략하면 해제한다. 최대65,536개이며 중복 ID·stale handle·sprite 없음·범위 오류가 있으면
+전체 batch를 거절한다. normal ID는0..16,777,214이고 내부 NONE 값은16,777,215다.
+Data Scene은 `components.visual.normalTexture` 또는 legacy `components.sprite.normalTexture`로 같은 기능을 설정한다.
+normal은 color와 같은 크기의 데이터 texture(`none`/`linear`)이고 현재 animation UV·flip·rotation을 공유한다.
+
+기존 sprite command는15-f32/60-byte다. 선택형 `RenderCommandBufferView.spriteNormalMaterials`는 v1/stride2의
+`Uint32Array`로 명령마다 `[normalTextureId,flags=0]`를 제공한다. 전부 NONE이면 생략한다.
+command와 sidecar는 borrowed view이며 다음 Wasm 호출/frame/memory growth 후 다시 얻는다. 저장할 때 두 buffer를 함께 복사한다.
+구 Wasm의 미지원 normal 요청은 거절하고 normal 없는 기존 씬은 유지한다.
+
+WebGL2/WebGPU는 기존 2D additive point/sun 조명에 Lambert 응답을 적용한다.
+`PointLight2D.height`는 normal 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`), `DirectionalLight2D.elevationRadians`는 태양 고도(기본π/4)다.
+`RendererStats.normalDrawCalls`는 추가 normal MRT draw 수이며 비활성일 때0 또는 생략된다.
+전체 draw/texture 통계와 GPU resource 통계에도 비용을 포함한다. 활성 target 비용은 physical pixel당8 bytes다.
+가림/색 공간/반투명 한계는 [2D 재질 계약](../data-scene-authoring.md#일반-2d-노멀-재질과-조명)을 따른다.

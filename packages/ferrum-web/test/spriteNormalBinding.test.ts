@@ -522,3 +522,23 @@ test("native authoring resolves names using the provided registry and missing no
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("ordinary 2D paired patch and handoff preserve sprite components and reject stale evidence", () => {
+  const source=document();delete source.spatial;
+  const before=JSON.stringify(source),binding=createSpriteNormalAssetBinding(animatedOptions());
+  const generated=createSceneSpriteNormalPatch(source,binding,{instanceId:"hero",assets:assets(binding)});
+  equal(generated.patch.version,2);equal(generated.patch.spatial,undefined);
+  const merged=mergeScenePlacementPatch(source,generated.patch).document;
+  const instance=resolveSceneAuthoringDocument(merged,{validateBindings:true,validateComponents:true}).bindingPlan!.instances[0];
+  const components=instance.props.components as {visual:{texture:string;normalTexture:string;width:number;height:number;animationSet:unknown};collider:string};
+  equal(components.visual.normalTexture,"hero.normal");equal(components.visual.texture,"hero.color");
+  equal(components.visual.width,32);equal(components.visual.height,48);equal(components.collider,"none");
+  deepEqual(components.visual.animationSet,binding.animationSet);equal(instance.x,5);equal(instance.y,7);
+  const viewer=createScenePlacementViewer({document:merged,viewport:{cssWidth:320,cssHeight:240}});
+  const handoff=createScenePlacementAgentHandoff({document:merged,state:viewer.state(),normalBindings:[generated.evidence]});
+  equal(handoff.normalBindings!.length,1);
+  const changed=structuredClone(merged);changed.sceneComposition.fragments!.main.instances![0].props=JSON.parse(JSON.stringify({components:{...components,visual:{...components.visual,normalTexture:"stale"}}}));
+  throws(()=>createScenePlacementAgentHandoff({document:changed,state:viewer.state(),normalBindings:[generated.evidence]}),/asset references/);
+  equal(JSON.stringify(source),before);
+});

@@ -828,6 +828,7 @@ export function createPlacementAsepriteTool(options: {
                   ? "Apply Aseprite Normals"
                   : "Reimport Aseprite Normals",
             ),
+            key,
           );
         } catch (error) {
           if (old) current.set(mapKey, old);

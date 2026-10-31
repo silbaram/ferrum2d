@@ -77,6 +77,7 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
     { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
     { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+    { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
     { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
     { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
     { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },

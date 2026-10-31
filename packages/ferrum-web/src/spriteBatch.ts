@@ -2,6 +2,7 @@ import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
 import { groundShadowProjection } from "./groundShadowProjection.js";
+import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
 import {
   DEFAULT_SPRITE_MATERIAL_PRESET,
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -67,6 +68,7 @@ export class SpriteBatch {
   private readonly groundYScaleLocation: WebGLUniformLocation;
   private readonly groundShadowProjectionLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
+  private normalUniforms?: {texture:WebGLUniformLocation;has:WebGLUniformLocation;flip:WebGLUniformLocation};
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
   private cachedMaterial: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET;
@@ -74,12 +76,12 @@ export class SpriteBatch {
   private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, "sprite");
+      this.program = createWebGL2Program(this.gl, normalMode?"spriteNormal":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -140,6 +142,7 @@ export class SpriteBatch {
       this.screenOffsetLocation = screenOffsetLocation;
       this.textureLocation = textureLocation;
       this.textureFlipYLocation = textureFlipYLocation;
+      if(normalMode){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
     } catch (error) {
       for (const buffer of buffers) gl.deleteBuffer(buffer);
       for (const vao of vaos) gl.deleteVertexArray(vao);
@@ -212,6 +215,28 @@ export class SpriteBatch {
       this.applyBlendMode("alpha");
     }
     return { drawCalls, textureSwitchCount: 0 };
+  }
+
+  /** Same order/alpha as color, with an independent normal/coverage target. */
+  drawNormalBatches(source:SpriteTextureSource,commands:RenderCommandBufferView,resolution:[number,number],material:ResolvedSpriteMaterialPreset,screenOffset:readonly[number,number]):SpriteBatchStats {
+    const uniforms=this.normalUniforms;if(!uniforms)throw Error("Not a normal sprite batch");
+    this.bindForDraw(resolution,screenOffset,commands);this.gl.uniform1i(uniforms.texture,1);
+    let draws=0;
+    try{for(const pass of this.materialPassesFor(material)){
+      this.applyBlendMode("alpha");
+      for(let start=0;start<commands.commandCount;){
+        const color=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]);
+        const normal=pass.kind==="base"?(commands.spriteNormalMaterials?.buffer[start*2]??SPRITE_NORMAL_NONE):SPRITE_NORMAL_NONE;
+        let end=start+1;
+        while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===color&&(pass.kind!=="base"||(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normal))end++;
+        const mapped=normal!==SPRITE_NORMAL_NONE;
+        if(mapped){const n=source.textureInfo?.(normal),c=source.textureInfo?.(color);if(!n||!c||n.colorSpace==="srgb"||n.width!==c.width||n.height!==c.height)throw Error("Sprite normals require a same-size linear/data texture");}
+        this.gl.uniform1i(uniforms.has,mapped?1:0);this.gl.uniform1i(uniforms.flip,source.textureFlipY?.(normal)?1:0);
+        this.gl.activeTexture(this.gl.TEXTURE1);this.gl.bindTexture(this.gl.TEXTURE_2D,mapped?source.texture(normal):source.texture(color));this.gl.activeTexture(this.gl.TEXTURE0);
+        draws+=this.drawRange(source.texture(color),commands,start,end,pass,source.textureFlipY?.(color)??false);start=end;
+      }
+    }}finally{this.gl.bindVertexArray(null);this.gl.activeTexture(this.gl.TEXTURE0);this.applyBlendMode("alpha");}
+    return {drawCalls:draws,textureSwitchCount:Math.max(0,draws-1)};
   }
 
   private drawRange(

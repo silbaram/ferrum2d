@@ -122,6 +122,7 @@ async function smokeNativeSceneExplorer(parent, timeoutMs, document) {
         if (command === "load_placement_scene_document") return { path: args.sceneDocumentPath, document: structuredClone(scenes.get(args.sceneDocumentPath)) };
         if (command === "inspect_placement_asset_folder") return folder(args.assetFolderPath);
         if (command === "load_placement_tile_assets") return { format: "ferrum2d.tile-import.project", version: 1, assets: [] };
+        if (command === "load_placement_pixel_assets") return { format: "ferrum2d.pixel.project", version: 1, catalogRevision: "", assets: [] };
         if (command === "load_placement_aseprite_assets") return { format: "ferrum2d.aseprite.project", version: 1, assets: [] };
         if (command === "load_placement_normal_assets") return { format: "ferrum2d.sprite-normal.project", version: 1, registered: true, entries: [], textures: {} };
         if (command === "save_placement_agent_handoff") return { path: project + "/.ferrum-placement-handoff.json", handoff: args.handoff };

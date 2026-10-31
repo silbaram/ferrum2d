@@ -12,6 +12,7 @@ import { configureDataSceneGameplay, dataSceneCombatStats, dataSceneCombatEnable
 import { configureDataSceneSun } from "./dataSceneSun.js";
 import { configureDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
+import { configureSpriteNormals, supportsSpriteNormals } from "./spriteNormals.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
@@ -677,6 +678,7 @@ export async function createEngineWithFramePipeline(
     setDataSceneGroundYScale: (scale) => { requireAlive(); return rustEngine.configure_data_scene_projection(scale); },
     setDataSceneCamera: (options) => { requireAlive(); return configureDataSceneCamera(rustEngine, options); },
     configureDataSceneSpriteAnimation: (entity, clips) => { requireAlive(); return configureDataSceneSpriteAnimation(rustEngine, entity, clips); },
+    configureSpriteNormalMaterials: updates => { requireAlive(); return configureSpriteNormals(rustEngine,updates); },
     updateDataSceneSpriteAnimations: (updates) => { requireAlive(); return updateDataSceneSpriteAnimations(rustEngine, updates); },
     dataSceneSpriteAnimationState: (entity) => { requireAlive(); return dataSceneSpriteAnimationState(rustEngine, entity); },
     setViewportSize: (width, height) => {
@@ -987,6 +989,7 @@ export async function createEngineWithFramePipeline(
     },
   });
   return attachDataSceneRuntimeEngineAdapter(engine, {
+    supportsSpriteNormalMaterials: () => { requireAlive(); return supportsSpriteNormals(rustEngine); },
     useDataScene,
     spatialModelAssets: spec => {
       requireAlive();
@@ -1097,6 +1100,9 @@ export async function createEngineWithFramePipeline(
       if (request.animationSet !== undefined && !configureDataSceneSpriteAnimation(rustEngine, { entityId, entityGeneration }, request.animationSet)) {
         rustEngine.despawn_physics_entity(entityId, entityGeneration);
         return undefined;
+      }
+      if (request.normalTextureId !== undefined && !configureSpriteNormals(rustEngine,[{entity:{entityId,entityGeneration},normalTextureId:request.normalTextureId}])) {
+        rustEngine.despawn_physics_entity(entityId,entityGeneration);return undefined;
       }
       return { entityId, entityGeneration };
     },

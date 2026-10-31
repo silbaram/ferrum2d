@@ -18,15 +18,17 @@ import { showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
+import { smokeNativePixels } from "./native-pixel-project-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
+const pixelMode = process.argv.includes("--pixels");
 const externalTileMode = tileMode && process.argv.includes("--external-tsj");
 const multiTileMode = tileMode && process.argv.includes("--multi-tilesets");
 const animationMode = process.argv.includes("--animations");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  externalTileMode
+  pixelMode ? "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -149,7 +151,7 @@ let bridge = rustBridge(),
   gameProject;
 const commands = [];
 let generatorRoute;
-if (normalMode)
+if (normalMode || pixelMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -160,7 +162,7 @@ if (normalMode)
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   try {
-    if (normalMode && url.pathname.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode) && url.pathname.startsWith(generatorRoute.prefix + "/")) {
       request.url = request.url.slice(generatorRoute.prefix.length);
       generatorRoute.handler(request, response);
       return;
@@ -180,6 +182,7 @@ const server = createServer(async (request, response) => {
       const result = await bridge.invoke(command, args);
       if (
         command === "save_placement_tile_assets" ||
+        command === "save_placement_pixel_assets" ||
         command === "save_placement_aseprite_assets" ||
         command === "save_placement_normal_assets"
       ) {
@@ -191,6 +194,7 @@ const server = createServer(async (request, response) => {
           if (
             [
               "save_placement_aseprite_assets",
+              "save_placement_pixel_assets",
               "save_placement_tile_assets",
             ].includes(command)
           )
@@ -216,9 +220,10 @@ const server = createServer(async (request, response) => {
     let file;
     if (url.pathname === "/aseprite-paired-runtime-fixture.mjs")
       file = resolve("tests/smoke/aseprite-paired-runtime-fixture.mjs");
+    else if (url.pathname === "/pixel-runtime-fixture.mjs") file = resolve("tests/smoke/pixel-runtime-fixture.mjs");
     else if (url.pathname === "/game-fixture.mjs")
       file = resolve(
-        tileMode
+        pixelMode ? "tests/smoke/native-pixel-game-fixture.mjs" : tileMode
           ? "tests/smoke/native-tile-game-fixture.mjs"
           : "tests/smoke/aseprite-project-game-fixture.mjs",
       );
@@ -255,6 +260,7 @@ const server = createServer(async (request, response) => {
     );
     response.end(await readFile(file));
   } catch (error) {
+    if(url.pathname.startsWith("/game/"))response.statusCode=error.code==="ENOENT"?404:500;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ error: error.message }));
   }
@@ -622,6 +628,31 @@ try {
     try {
       await open();
       await ready();
+      if (pixelMode) {
+        reports.push(await smokeNativePixels({
+          getPage: () => page,mode,project,scene,initial,run,
+          invoke: (command,args) => bridge.invoke(command,args),
+          setCorrupt: value => { corruptReply = value; },
+          holdSave: () => { hold = true; held = false; },
+          waitHeld: async () => {
+            for (let i = 0; i < 200 && !held; i++) await new Promise(done=>setTimeout(done,10));
+            assert(held);
+          },
+          releaseSave: () => { hold = false; release(); },
+          restart: async () => { await closePage(); await bridge.close(); bridge = rustBridge(); await open(); await ready(); },
+          close: closePage,
+          freshGame: async () => {
+            const game = await browser.newPage({viewport:{width:480,height:360},deviceScaleFactor:mode === "hd2d" ? 2 : 1});
+            try {
+              await game.goto(origin+"/game.html");
+              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50});
+              const result = await game.evaluate(()=>({report:window.savedGameReport,error:window.savedGameFailure}));
+              assert.equal(result.error,undefined);return result.report;
+            } finally {await game.close();}
+          },
+        }));
+        continue;
+      }
       await reveal();
       if (tileMode) {
         reports.push(

@@ -7,6 +7,7 @@ import type {
 } from "./lightingTypes.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
 import { setSpriteBlend } from "./webgl2Blend.js";
+import type { WebGL2SpriteNormalTargets } from "./webgl2SpriteNormals.js";
 
 export interface WebGL2LightingPassStats {
   drawCalls: number;
@@ -43,6 +44,7 @@ export class WebGL2LightingPass {
   private readonly shadowGeometryCache = new LightingShadowGeometryCache();
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
   private destroyed = false;
+  private readonly normalUniforms:{has:WebGLUniformLocation;normal:WebGLUniformLocation;coverage:WebGLUniformLocation;height:WebGLUniformLocation;direction:WebGLUniformLocation};
 
   constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
     const programs: WebGLProgram[] = [];
@@ -112,6 +114,8 @@ export class WebGL2LightingPass {
       this.shadowColorLocation = shadowColorLocation;
       this.shadowLightCenterLocation = shadowLightCenterLocation;
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
+      const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing normal lighting uniform "+name);return location;};
+      this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
 
       this.gl.bindVertexArray(this.shadowVao);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.shadowBuffer);
@@ -128,7 +132,7 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number]): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets): WebGL2LightingPassStats {
     this.assertAlive();
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
       return { drawCalls: 0, pointLightCount: 0, tileOccluderCount: 0, shadowDrawCalls: 0, shadowCasterCount: 0 };
@@ -138,6 +142,8 @@ export class WebGL2LightingPass {
     this.gl.disable(this.gl.CULL_FACE);
     this.gl.enable(this.gl.BLEND);
     this.bindRectProgram(resolution);
+    this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
+    if(normals){this.gl.activeTexture(this.gl.TEXTURE1);this.gl.bindTexture(this.gl.TEXTURE_2D,normals.normal);this.gl.activeTexture(this.gl.TEXTURE2);this.gl.bindTexture(this.gl.TEXTURE_2D,normals.coverage);this.gl.activeTexture(this.gl.TEXTURE0);}
 
     let drawCalls = 0;
     if (scene.ambient[3] > 0) {
@@ -158,7 +164,9 @@ export class WebGL2LightingPass {
     setSpriteBlend(this.gl, this.linearTarget, true);
     const sun = scene.directionalLight;
     if (sun !== undefined && sun.intensity > 0) {
-      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity]);
+      const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
+      this.gl.uniform3f(this.normalUniforms.direction,-sun.directionX*c,-sun.directionY*c,Math.sin(elevation));
+      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity],2);
     }
     for (const light of activePointLights) {
       drawCalls += this.drawPointLight(light);
@@ -236,6 +244,7 @@ export class WebGL2LightingPass {
     this.gl.uniform1f(this.lightRadiusLocation, radius);
     this.gl.uniform1f(this.lightYScaleLocation, (light.radiusY ?? radius) / radius);
     this.gl.uniform1f(this.lightFalloffLocation, light.falloff);
+    this.gl.uniform1f(this.normalUniforms.height,light.height??light.radius*0.5);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     return 1;
   }
@@ -306,8 +315,9 @@ export class WebGL2LightingPass {
     width: number,
     height: number,
     color: readonly [number, number, number, number],
+    mode = MODE_SOLID,
   ): number {
-    this.gl.uniform1i(this.modeLocation, MODE_SOLID);
+    this.gl.uniform1i(this.modeLocation, mode);
     this.gl.uniform4f(this.rectLocation, x, y, x + width, y + height);
     this.gl.uniform4f(this.colorLocation, color[0], color[1], color[2], color[3]);
     this.gl.uniform2f(this.lightCenterLocation, 0, 0);

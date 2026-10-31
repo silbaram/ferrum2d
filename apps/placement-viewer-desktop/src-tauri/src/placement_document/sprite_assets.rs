@@ -14,7 +14,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 const MAX_JSON: usize = 1024 * 1024;
-const MAX_PNG: usize = 16 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_REVISIONS: usize = 8;
 static SERIAL: AtomicU64 = AtomicU64::new(0);
@@ -27,6 +26,9 @@ pub(super) struct Contract {
     pub(super) catalog_format: &'static str,
     pub(super) project_format: &'static str,
     pub(super) max_dependencies: usize,
+    pub(super) max_source_json: usize,
+    pub(super) max_source_png: usize,
+    pub(super) check_catalog_revision: bool,
     pub(super) validate: ValidateSource,
 }
 pub(super) fn invalid(detail: impl Into<String>) -> PlacementDesktopError {
@@ -113,9 +115,9 @@ fn read_dependencies(
     let mut total = json_bytes;
     let mut result = Vec::new();
     for (i, entry) in dependency_metadata(contract, meta)?.iter().enumerate() {
-        let bytes = read(i, MAX_JSON.saturating_sub(total))?;
+        let bytes = read(i, contract.max_source_json.saturating_sub(total))?;
         total += bytes.len();
-        if total > MAX_JSON || text(entry, "sha256")? != hash(&bytes) {
+        if total > contract.max_source_json || text(entry, "sha256")? != hash(&bytes) {
             return Err(invalid("TSJ byte limit or SHA-256 differs"));
         }
         result.push(Dependency {
@@ -197,13 +199,13 @@ fn bundle_sources(contract: &Contract, bundle: &Value) -> CommandResult<Vec<Sour
         if normalized.get("identityDocument").is_none() {
             normalized["identityDocument"] = bundle["document"].clone();
         }
-        let json = read("json", MAX_JSON, "application/json")?;
+        let json = read("json", contract.max_source_json, "application/json")?;
         let dependencies = read_dependencies(contract, &normalized, json.len(), |i, limit| {
             read(&format!("dep.{i}.tsj"), limit, "application/json")
         })?;
         let source = (contract.validate)(
             &normalized,
-            read("png", MAX_PNG, "image/png")?,
+            read("png", contract.max_source_png, "image/png")?,
             json,
             dependencies,
         )?;
@@ -274,13 +276,13 @@ fn catalog_sources(
         {
             return Err(invalid("project catalog manifest differs"));
         }
-        let json = bounded_read(&root.join(format!("{id}.json")), MAX_JSON)?;
+        let json = bounded_read(&root.join(format!("{id}.json")), contract.max_source_json)?;
         let dependencies = read_dependencies(contract, entry, json.len(), |i, limit| {
             bounded_read(&root.join(format!("{id}.dep.{i}.tsj")), limit)
         })?;
         let source = (contract.validate)(
             entry,
-            bounded_read(&root.join(format!("{id}.png")), MAX_PNG)?,
+            bounded_read(&root.join(format!("{id}.png")), contract.max_source_png)?,
             json,
             dependencies,
         )?;
@@ -367,6 +369,16 @@ pub(super) fn save_inner(
     let root =
         directory(contract, &project, true)?.ok_or_else(|| invalid("missing asset directory"))?;
     let previous = read_catalog(&root)?;
+    if contract.check_catalog_revision
+        && bundle
+            .get("expectedCatalogRevision")
+            .and_then(Value::as_str)
+            != Some(previous.as_deref().map(hash).unwrap_or_default().as_str())
+    {
+        return Err(invalid(
+            "project catalog changed on disk; reopen before saving",
+        ));
+    }
     let mut sources = catalog_sources(contract, &root, previous.as_deref())?;
     for source in incoming {
         if let Some(old) = sources
@@ -420,9 +432,11 @@ pub(super) fn save_inner(
         }
         create_file(&temporary, &bytes, &mut created)?;
         // Hold the registry lock across publication so failures cannot leave stale protocol entries.
-        register(contract, &root, &sources, registry, || {
+        let mut response = register(contract, &root, &sources, registry, || {
             publish_catalog(contract, &project, &root, &temporary, previous.as_deref())
-        })
+        })?;
+        response["catalogRevision"] = json!(hash(&bytes));
+        Ok(response)
     })();
     if result.is_err() {
         rollback(created);
@@ -442,8 +456,13 @@ pub(super) fn load_inner(
         .lock()
         .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
     let Some(root) = directory(contract, &project, false)? else {
-        return Ok(json!({"format":contract.project_format, "version":1, "assets":[]}));
+        return Ok(
+            json!({"format":contract.project_format, "version":1, "assets":[], "catalogRevision":""}),
+        );
     };
-    let sources = catalog_sources(contract, &root, read_catalog(&root)?.as_deref())?;
-    register(contract, &root, &sources, registry, || Ok(()))
+    let catalog = read_catalog(&root)?;
+    let sources = catalog_sources(contract, &root, catalog.as_deref())?;
+    let mut response = register(contract, &root, &sources, registry, || Ok(()))?;
+    response["catalogRevision"] = json!(catalog.as_deref().map(hash).unwrap_or_default());
+    Ok(response)
 }

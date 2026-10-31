@@ -35,6 +35,7 @@ export interface DebugOverlayMetrics {
   textureBindCount?: number;
   textureSwitchCount?: number;
   lightingDrawCalls?: number;
+  normalDrawCalls?: number;
   pointLightCount?: number;
   tileOccluderCount?: number;
   shadowDrawCalls?: number;
@@ -97,6 +98,7 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
   { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
   { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
   { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },
@@ -224,6 +226,7 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.textureSwitchCount !== undefined) {
     lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
   }
+  if (metrics.normalDrawCalls !== undefined) lines.push(row("normalDrawCalls", metrics.normalDrawCalls));
   if (metrics.lightingDrawCalls !== undefined) {
     lines.push(row("lightingDrawCalls", metrics.lightingDrawCalls));
   }

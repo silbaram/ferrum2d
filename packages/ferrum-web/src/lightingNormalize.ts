@@ -200,6 +200,11 @@ function tileOccludersMatch(source: readonly TileOccluder2D[], cached: readonly 
 }
 
 function resolvePointLightInto(target: MutableResolvedPointLight2D, light: PointLight2D, index: number): void {
+  if (light.height === undefined) delete target.height;
+  else {
+    target.height = nonNegativeIndexedNumber(light.height, "pointLights", index, "height");
+    if(!Number.isFinite(Math.fround(target.height))||target.height>1e6)throw Error(`pointLights[${index}].height must be a finite number in 0..1000000`);
+  }
   target.x = finiteIndexedNumber(light.x, "pointLights", index, "x");
   target.y = finiteIndexedNumber(light.y, "pointLights", index, "y");
   target.radius = positiveIndexedNumber(light.radius, "pointLights", index, "radius");

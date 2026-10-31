@@ -272,6 +272,186 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 이 경로는 전체 project transaction이나 OS 외부 writer를 잠그는 기능은 아니다. 일반 scene-only 열기와 추가 탭에는 project 자산 쓰기 권한을 추가하지 않는다.
 기존 standalone importer가 지원하는 더 넓은 입력 옵션은 이 app의 초기 UI 지원 범위와 구분한다.
 
+## 에디터 내장 도트 제작
+
+공식 Placement Viewer의 Assets에서 **새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
+기본 32×32이며 1~256의 정수 크기를 선택할 수 있다. 원본 문서나 PNG로 시작하려면 **도트 원본 / PNG 열기**,
+기존 sprite 자산은 **도트 편집**을 사용한다. 이미지 레이어 1~8개·프레임 1~16개를 지원한다.
+
+- 연필(B), 지우개(E), 연결 영역 채우기(G), 스포이트(I), 팔레트·색상·알파를 제공한다.
+- **이미지 레이어** 패널에서 추가·삭제·이름·앞뒤 순서·표시·잠금을 편집한다. 목록 위쪽이 앞이며 마지막 레이어는 삭제할 수 없다.
+  선택 레이어에만 그리고 숨김·잠금이면 그리기를 차단한다. 잠금은 픽셀 편집에 적용하며 이름·순서·삭제 등의 레이어 관리에는 적용하지 않는다.
+  채우기는 선택 레이어의 원본 픽셀, 스포이트는 화면의 합성 색을 사용한다. 이미지 레이어와 씬 객체의 그리기 레이어는 별개다.
+  Tab·Enter의 레이어 선택과 Space의 체크박스 전환에서 포커스를 유지하고, 한글 조합 중 Enter/Escape는 이름 확정/취소로 처리하지 않는다.
+- 휠과 확대/축소 버튼, H 또는 Space+드래그로 화면을 탐색한다. 좌표는 CSS 크기·DPR·배율·이동을 반영한다.
+- **도트 프레임** 막대에서 추가·복제·삭제·순서·시간(ms)을 편집한다. 레이어 metadata는 공통이며 픽셀은 프레임/레이어별로 독립적이다.
+  프레임 선택과 재생 위치는 UI 상태다. 재생 중 편집을 막고 정지하면 편집 프레임으로 돌아간다. 창 blur·탭 전환·문서 종료에서 RAF를 정리한다.
+  프레임 버튼의 좌우 방향키와 Undo/Redo에서도 도트 편집기 포커스를 보존한다.
+  순서·삭제 등의 프레임/레이어 도구가 경계에서 비활성화되면 선택 항목으로 포커스를 복원해 다음 Undo가 씬 이력에 전달되지 않게 한다.
+- 프레임 막대의 **어니언 스킨**에서 표시·이전/다음과 불투명도(0~100%, 기본30%)를 설정한다. 기본 표시는 꺼짐이다.
+  바로 이전/다음 한 프레임을 코랄/청록으로 현재 프레임 뒤에 표시하고 경계에서 순환하지 않는다. 현재의 불투명 픽셀은 ghost를 덮는다.
+  보이는 이미지 레이어를 합성하며 잠금은 ghost 표시를 막지 않는다. 그리기·fill·스포이트는 현재 프레임만 사용한다.
+  재생 중에는 ghost를 숨기고 정지 시 복원한다. 동일 문서의 탭 전환은 설정을 유지하고 원본 교체·닫기·도구 해제는 기본값으로 초기화한다.
+  설정은 UI 전용으로 source·PNG/atlas·자산·프로젝트 저장·Undo·dirty에 포함하지 않는다. 설정 메뉴는 Escape 또는 바깥 클릭으로 닫는다.
+- 한 번의 stroke/fill은 한 Undo다. Ctrl/Cmd+Z·Shift+Z와 Ctrl+Y는 도트 문서 이력에 적용되며 Esc/포인터 취소는 진행 중 stroke를 복원한다.
+  마지막 pointerup 좌표도 선에 포함하며 창 포커스를 잃으면 진행 stroke·임시 Space 이동 상태를 취소한다. 빈 값·범위 밖 알파 입력은 마지막 유효한 색을 유지한다.
+- **내보내기 → 편집 원본 내보내기**는 편집 가능한 `.pixel.json`, **PNG 내보내기**는 게임용 RGBA 이미지를 다운로드한다.
+  닫기/새 원본으로 교체할 때 변경이 있으면 원본 내보내기·폐기·취소를 선택한다. 씬 탭 전환은 원본을 유지한다.
+- **자산 등록**은 세션 Assets에 새 불변 revision을 추가한다. **선택 객체에 적용**은 이미지/UV와 다중 프레임의 `animationSet`을 바꾸는 placement v2 patch를 한 번의 씬 Undo로 적용한다.
+  크기·pivot·transform·collider/body·layer·behavior를 보존한다. 기존 단일 clip은 같은 도트 revision에서 생성한 설정과 일치할 때 교체하고 loop 정책은 유지한다.
+  한 프레임으로 적용하면 검증된 기존 도트 animationSet을 제거한다. 다른 자산의 애니메이션·legacy animation·normal binding은 보호한다. 소유한 도트의 수동 clip 변경은 아래 확인 절차를 거친다.
+- **미사용 정리**는 열린 씬·Undo/Redo·현재 배치 도구에서 참조하지 않는 도트 세션 revision의 URL/GPU 자원만 해제한다.
+  원본 씬을 닫을 때도 다른 열린 씬·이력이 참조하는 revision은 보존한다.
+
+PNG 생성·업로드는 검증된 원본 snapshot으로 시작한다. 적용 확정 전에 실패하거나 선택/씬이 바뀌면 미확정 revision만 해제하고,
+기존 확정 자산과 실제 참조 중인 자산은 유지한다. 닫기/새 원본 선택은 이전 파일 읽기·확인창의 권한을 취소해 늦은 결과가 다른 문서를 닫거나 교체하지 못하게 한다.
+미저장 도트 또는 진행 중인 픽셀 편집/업로드가 있으면 에디터·엔진 업데이트와 재시작을 차단한다.
+
+도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
+UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB, v3/v5 JSON 12 MiB로 제한한다.
+이름과 layer/frame ID는 올바른 Unicode 문자열·UTF-16 최대 64단위이며 JavaScript `trim` 기준으로 빈 값이면 거절한다.
+짝이 없는 surrogate는 자산 등록 전에 진단한다. 편집 원본의 정수 필드는 표기가 아닌 값으로 검사하므로 `1.0`·`1e0`도 정수 1로 읽는다.
+v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. v1에서 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다. v3/v5 레이어 편집은 해당 버전을 유지한다.
+v2는 아래→위 순서의 `layers` 배열(1~8개)에 고유 `id`·`name`·`visible`·`locked`·`rgba`를 보관한다.
+각 레이어는 문서와 같은 치수이며 `frame`·`palette`는 문서 전체가 공유한다. 선택 레이어는 UI 상태여서 선택만 바꿔도 원본이나 dirty 상태는 바뀌지 않는다.
+프레임 추가/복제/삭제/순서/시간 편집은 v3로 전환하고 Undo로 이전 형식까지 복원한다.
+v3는 공통 `layers[{id,name,visible,locked}]`와 `frames[{id,durationMs,cels:[{layerId,rgba}]}]`를 담는다.
+frame ID는 고유하며 cel 순서/ID는 공통 layers와 정확히 일치해야 한다. 시간은 1~60000ms 정수다.
+최대 16프레임·8레이어이며 모든 cel의 합계가 2,097,152픽셀(8 MiB RGBA)을 넘으면 편집·읽기를 거절한다.
+PNG는 프레임 개수의 제곱근을 올림한 열 수로 배치한 최대4×4 atlas다. 남은 마지막 칸은 RGBA0이며 프레임별 원본 치수/UV와 시간을 자산에서 확인할 수 있다.
+PNG는 표시 중인 레이어를 encoded sRGB RGBA8에서 정수 반올림하는 straight-alpha source-over로 합성한다.
+맨 아래 표시 레이어의 투명 RGB도 보존하고 모두 숨기면 RGBA 0을 출력한다. 숨긴 레이어의 원본 픽셀은 JSON에 남는다.
+픽셀·레이어·프레임 편집은 같은 Undo/Redo를 사용하며 합계 최대 64단계/실제 RGBA snapshot 16 MiB다.
+전체 cel 크기가 커질수록 보존 단계가 줄어들며 최대8 MiB 문서는 before/after 한 작업을 유지한다. 선택만 바꾸거나 값이 같은 편집은 이력을 추가하지 않는다.
+PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮어쓰지 않는다.
+파일명에서 도트 이름을 만들 때는 Unicode 문자 경계를 보존해 64단위로 줄이며, 긴 제목은 작업 공간 안에서 생략 표시한다.
+
+**프레임 태그**는 프레임 막대의 접이식 메뉴에서 편집한다. 태그 추가 후 이름·프레임·반복을 설정하고 **초기 클립**으로 게임 진입 시 재생할 태그를 선택한다.
+미리보기 태그는 UI 상태다. 프레임 체크 순서가 재생 순서이며 각 행의 `#` 번호로 확인한다. 체크 해제 후 다시 선택하면 마지막에 추가한다.
+**모든 프레임**은 원본 순서로 반복 재생하며 선택 태그는 해당 순서·loop 정책으로 재생한다. 비반복 태그는 마지막 프레임을 유지한다.
+
+태그 추가는 **v5**로 전환하며 Undo로 기존 형식까지 돌아간다. v5는 v3의 layers/frames에 다음 필수 필드를 추가한다.
+
+- `tags`: 1~16개의 `{id,name,clipId,frameIds,loop}`. ID·이름·clip ID는 각각 고유하며 이름/ID는 기존64단위 문자열 규칙을 따른다.
+- `frameIds`: 1~16개의 중복 없는 stable frame ID. 목록 순서가 재생 순서이며 원본 프레임 순서 이동과 독립적이다. 여러 태그가 같은 프레임을 사용할 수 있다.
+- `clipId`: 0~65535의 정수. `nextClipId`는 다음 할당 번호(1~65536)로 모든 현재 clip ID보다 커야 한다. 삭제한 번호를 재사용하지 않는다.
+- `initialTag`: 존재하는 태그 ID. 이름·프레임 편집으로 clip ID는 바뀌지 않으며 태그가 사용하는 프레임 삭제와 마지막 태그 삭제는 차단한다.
+
+각 태그는 기존 runtime `animationSet`의 한 clip으로 출력하며 시간 GCD·32 native frame/FPS 한도를 태그마다 검사한다.
+기존 도트 애니메이션에 태그를 적용하거나 소유 clip을 수동 변경한 경우 **클립 변경 검토 → 클립 변경 적용**으로 전후 ID/초기 clip을 확인한다.
+취소는 revision 등록·씬 변경을 하지 않으며 승인은 해당 자산과 정확한 전후 animationSet에만 유효하다. 기존 clip ID가 새 출력에서 사라지면 적용을 차단한다.
+기존 ID를 유지하며 프레임·초기 clip·반복을 변경하고 한 씬 Undo로 복원한다. 닫힌 씬·외부 게임 코드의 참조는 자동 수정하지 않는다.
+v1–v4는 계속 읽고 해당 형식으로 저장한다. 이전 앱/호스트는 v5를 거절하므로 최신 앱/호스트를 함께 사용한다. v1–v4에 태그 필드를 붙이는 입력도 거절한다.
+
+고정된 외부 atlas는 **Assets → 프레임 카드 → 도트 편집**으로 연다. 전체 시트 원본을 보관하고 선택한 rect만 표시·수정한다.
+상단 **시트 프레임** 선택은 UI 상태여서 source·dirty·Undo를 바꾸지 않는다. 픽셀 Undo는 다른 frame을 선택해도 같은 문서 이력을 복원한다.
+v4는 v1의 단일 `layer`·`frame`·전체 `rgba`에 필수 `atlas:{texture,frames:[{id,frame:{u0,v0,u1,v1}}]}`를 추가한다.
+`atlas.texture`는 원래 texture 이름(UTF-16 최대256단위), frame ID는 고유한64단위 문자열이고 최대256개다.
+UV×시트 치수는 정수 픽셀 경계(허용 오차1e-7px)여야 하며 시트 밖·빈 영역·중복/중첩을 거절한다. 회전/trimmed atlas 변환은 제공하지 않는다.
+원본 상한400,000 bytes·한 변256px·PNG4 MiB를 유지한다. RGBA8와 sRGB/표준 gamma를 검증하며 색 공간 변환이나 canvas premultiplication을 거치지 않아 투명 RGB도 보존한다.
+그리기·지우기·fill·스포이트는 선택 rect로 제한하며 layer/frame 구조 변경·재배치를 제공하지 않는다.
+게임 적용은 같은 atlas metadata와 선택 UV를 사용하는 정적 sprite만 허용한다. texture/asset만 새 revision으로 교체하며 UV·다른 객체·원본 파일은 보존한다.
+현재 normal pair와 animation은 거절한다. 새 revision은 전체 시트와 모든 프레임을 Assets에 제공한다. v1/v2/v3만 지원하는 이전 앱/호스트는 v4를 거절하므로 최신 앱/호스트를 함께 사용한다.
+
+**자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
+각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
+세션 store는 최대 8 revision/64 MiB다. 브라우저 내보내기를 프로젝트 저장 완료로 표시하지 않는다.
+태그가 없는 다중 프레임의 bundle은 기존 `animationSet` 단일 clip0을, v5 bundle은 태그별 clip과 초기 clip을 포함한다. 프레임 시간의 GCD로 반복 UV를 생성해 고정 FPS의 원본 시간/순서를 유지한다.
+최대32 native UV/FPS 범위를 넘으면 프레임 패널에서 진단하고 게임 적용을 막는다. 편집 원본/PNG 저장은 가능하며 해당 bundle 자산에는 `animationDiagnostic`을 담는다.
+편집 미리보기는 원본 ms 기준, 게임은 기존 Rust sprite playback과 f32 FPS 기준이다. 타이밍 검증은 이 정밀도 차이를 구분한다.
+미설치 도트 자산·다른 프로젝트의 자산이나 runtime 숫자 texture 참조가 남은 씬 Save는 차단한다.
+
+### 도트 노멀 생성과 조명 미리보기
+
+도트 탭 왼쪽의 **노멀맵** 메뉴에서 강도(0~8, 기본1.5)를 설정하고 **노멀 생성**을 실행한다.
+현재 보이는 레이어 합성을 source frame별 독립 rect로 잘라 기존 Sprite Normal Worker로 처리한다.
+v1/v2는 한 rect, v3/v5는 source frame 순서의 atlas rect, v4는 고정 atlas의 rect를 사용한다. 태그의 반복 UV는 중복 생성하지 않으며 빈 atlas 칸은 flat normal `(128,128,255,0)`로 남긴다.
+결과는 `ferrum2d.pixel-normal.report` v1·`pixel-rects-v1` provenance로 color/source/normal SHA-256·stable frame ID/rect·생성 설정을 연결한다. 외부 Aseprite 파일이 필요하지 않다.
+
+- **생성**은 자산 준비이며 씬·게임 카메라를 바꾸지 않는다. 실패·취소 시 기존 pair와 씬을 유지한다.
+- **조명 미리보기**는 별도 dialog에서 Color/Normal/Flat 비교와 움직이는 조명을 표시한다. 2D에서도 사용할 수 있고 닫기·탭 전환·원본 교체 시 GL/RAF/bitmap을 해제한다.
+- 픽셀·레이어·frame/tag 편집 또는 Undo 뒤에는 결과를 재검증하기 전까지 **재생성 필요**로 표시하고 미리보기/적용을 막는다. 원본이 이전과 같으면 다시 생성할 때 불변 cache를 재사용한다.
+- 씬 전환만으로 임시 color/normal의 소유 문서가 바뀌지 않는다. 다른 씬에서는 재생성이 필요하며, 검증해 저장한 프로젝트 pair만 같은 프로젝트의 다른 씬에서 재사용한다. 원본 씬으로 돌아오면 살아 있는 결과를 다시 사용할 수 있다. 닫힌 씬에서 폐기한 결과는 최신으로 표시하지 않는다.
+- **노멀과 함께 적용**은 선택한 일반 2D sprite 또는 HD-2D billboard에 color와 normal을 한 번의 씬 Undo로 적용한다. 태그/clip 변경은 기존 명시적 migration 확인을 따른다.
+- 외부 normal 또는 숫자 normal 참조는 자동 교체하지 않는다. 소유하고 검증한 이전 도트 pair만 교체하며 collider/body/layer/크기/카메라는 보존한다.
+- normal은 `colorSpace: "none"`, color는 `srgb`로 등록한다. 일반 color 적용은 normal이 연결된 sprite를 덮어쓰지 않는다.
+- 일반 2D는 `components.visual.normalTexture`에 이름을 저장하며 기존 `components.sprite.normalTexture`도 지원한다. HD-2D는 기존 `spatial.billboards[id].normalTexture`를 사용한다.
+- 2D 게임은 기존 `lighting`의 point/sun 조명이 켜져 있어야 normal 방향에 따른 차이가 보인다. 조명이 없거나 꺼져 있으면 기존 색상 렌더링을 유지한다.
+- 두 renderer에서 같은 color/frame UV·반전·회전을 사용한다. normal PNG의 alpha 대신 color alpha가 형상/가림 기준이며 앞쪽의 normal 없는 sprite도 뒤 normal을 가린다.
+
+**자산 내보내기**에는 현재 유효한 생성 결과의 normal PNG·manifest와 provenance도 담긴다. source `.pixel.json`은 color/frame의 편집 원본이며 normal PNG는 재생성 가능한 파생 자산이다.
+optional generator가 설치되지 않은 host는 기존 생성기 unavailable 진단을 표시한다. 생성기 설치/검증은 [Sprite Normals Worker](data-scene-spatial.md#선택형-브라우저-노멀맵-worker)를 따른다.
+최신 app/desktop host가 새 pixel normal provenance를 함께 지원해야 하며 이전 normal host는 새 format을 거절한다. 기존 Aseprite/Worker normal report와 도트 v1–v5는 유지한다.
+
+도트 편집기의 참고 기준은 Aseprite commit `3669f4774d181d77deb3e6db95fe6df8ca347410`이다.
+`src/app/tools`·`transaction.cpp`의 stroke/확정·취소, `src/doc`의 layer/cel/frame 책임,
+`src/doc/algorithm/floodfill.cpp`의 연결 영역과 `src/render`의 어니언 합성 원리를 참고했다.
+자체 TS 문서·정수 선 보간/clip·bounded queue·편집 이력과 view-only 어니언으로 구현하며 C++ 코드를 복사하거나 외부 앱 실행을 요구하지 않는다.
+
+### 일반 2D 노멀 재질과 조명
+
+```json
+{
+  "visual": {
+    "kind": "sprite", "texture": "hero.color", "normalTexture": "hero.normal",
+    "width": 32, "height": 48
+  },
+  "collider": "none", "layer": "player"
+}
+```
+
+`normalTexture`는 color와 동일한 크기/atlas layout의 OpenGL 방향 normal이다. manifest의 normal `colorSpace`는
+`none` 또는 `linear`이며 `srgb`와 크기 불일치는 렌더 시 거절한다. 기존 animation/animationSet의 현재 UV를 공유한다.
+Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 적용·내보내기·저장은 안정적인 자산 이름을 사용한다.
+새 material ABI를 제공하지 않는 구 Wasm은 normal이 없는 씬을 실행하며, normal을 요청한 씬은 활성화 전에 거절한다.
+한 번의 씬 적용에서 normal이 연결된 instance는 최대 65,536개다. 초과하면 기존 씬을 변경하기 전에 거절한다.
+
+2D `lighting.pointLights[].height`는 선택형 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`)이고 물리 높이와 무관하다.
+`directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
+기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
+반투명 겹침은 방향/coverage를 합성하는 deferred 근사이며 각 투명 layer의 물리 광학 합성을 제공하지 않는다.
+
+WebGL2/WebGPU는 활성 normal 프레임에서 명령 순서대로 두 RGBA8 target(physical pixel당8 bytes)을 추가로 그린다.
+`RendererStats.normalDrawCalls`와 전체 draw/bind/switch/resource 통계에 비용을 포함한다.
+normal이 없거나 lighting이 꺼지면 추가 target/pass가 없고 이전 target을 해제한다. `renderToTexture`의 sprite-only 경로에는 조명을 적용하지 않는다.
+
+### 도트 프로젝트 저장과 재열기
+
+데스크톱의 Open Project에서 연 프로젝트는 **프로젝트 저장** 또는 도트 탭의 Ctrl/Cmd+S를 지원한다.
+현재 도트를 자산으로 등록하고 원본·PNG를 저장한 뒤 기존 씬 초안을 저장한다. 그림 등록/저장이 객체의 이미지를 자동 교체하지는 않으며 **선택 객체에 적용**은 별도 동작이다.
+위치·크기·collider/body·behavior와 씬/픽셀 Undo의 경계를 유지한다.
+
+- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2/v3/v4/v5 원본.
+- 같은 위치의 `<assetId>.png`: 원본의 모든 프레임에서 보이는 레이어를 합성한 RGBA8 PNG.
+- `catalog.json`: `ferrum2d.pixel.catalog` v1의 revisions와 게임용 texture manifest.
+
+desktop 전용 `load_placement_pixel_assets`/`save_placement_pixel_assets`는 허가된 프로젝트에만 접근한다.
+저장 요청은 `ferrum2d.pixel-project.assets` v1로 원본/PNG의 base64·SHA-256·identityDocument·치수와 `expectedCatalogRevision`을 전달한다.
+이 값은 마지막 load/save에서 확인한 catalog 원본 bytes의 SHA-256이며 최초 catalog 부재는 빈 문자열이다.
+외부 catalog 변경, 링크/경로 이탈, 원본/PNG 불일치와 기존 불변 파일의 다른 bytes는 저장을 거절한다.
+상한은 catalog 8 revision/64 MiB, 원본 v1/v4 400,000 bytes/v2 3 MiB/v3 12 MiB다. PNG는 기존4 MiB/한 변256, v3만8 MiB/한 변1024다.
+v3 metadata의 width/height는 atlas 치수이며 편집 프레임 치수는 원본 width/height를 사용한다.
+native 호스트는 숨긴 레이어까지 검증하고 TypeScript와 같은 합성 규칙으로 PNG를 대조한다. Pixel 전용 원본 상한이며 Aseprite/타일 원본 상한은 확대하지 않는다.
+
+호스트는 모든 입력을 검증하고 immutable 파일 생성·catalog 교체·protocol 등록을 수행한다.
+프런트엔드는 `ferrum2d.pixel.project` v1 응답과 revision URL을 다시 읽어 원본/hash/identity·PNG checksum·투명 RGB까지 확인한 뒤 persisted로 표시한다.
+공백·키 순서가 다른 유효한 JSON도 원본 bytes를 별도로 보존해 재저장 시 기존 ID/hash가 바뀌지 않는다.
+같은 문서의 의미가 같은 저장 원본은 기존 revision을 재사용해 서식만 다른 canonical JSON 복제본을 추가하지 않는다.
+native는 검증된 치수 metadata를 정수로 정규화해 `2.0`을 읽은 브라우저가 `2`로 재전송해도 같은 revision을 재저장할 수 있다. 편집 원본 bytes는 정규화하지 않는다.
+PNG는 RGBA8의 기본 필터·분할 IDAT·Adam7을 지원하며 전체 끝 청크/CRC를 검사한다.
+sRGB 원본과 충돌하는 감마·색도 정보와 ICC/HDR 프로필은 거절해 브라우저 색 변환으로 다른 그림이 표시되지 않게 한다.
+저장 bundle은 모든 revision 필드·원본·PNG를 첫 비동기 hash 전에 snapshot으로 고정한다.
+다시 연 프로젝트의 자산 카드는 편집 원본을 복원하며 같은 프로젝트의 다른 씬에서도 사용할 수 있다.
+게임 로더는 catalog의 manifest 상대 경로를 catalog 디렉터리 기준으로 해석하고 기존 AssetLoader·scene-authoring 경로로 읽는다.
+
+자산과 씬은 별도 저장 경계다. 자산 저장 성공 후 씬 충돌이 발생하면 저장된 원본과 기존 디스크 씬을 보존하고 씬 초안을 유지한다.
+처리 중 탭 전환·종료로 결과 확인이 중단되면 이미 저장된 파일을 취소됐다고 표시하지 않고 프로젝트 재열기를 안내한다.
+미사용 정리는 persisted 프로젝트 자산을 삭제하지 않는다. 프로젝트 전체 디스크 정리는 별도 설계 범위다.
+문자열 이름과 runtime 숫자 ID를 모두 검사해 저장·다른 씬 열기의 경계를 유지한다.
+bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard normal ID를 안정적인 자산 이름으로 변환한 scene 사본을 내보낸다.
+다른 metadata는 바꾸지 않으며 지원하지 않는 위치의 숫자 texture 참조는 조용히 이식하지 않고 진단한다.
+기존 가져오기 기능과 별개의 자체 제작 도구이며 Aseprite 설치·파일·CLI가 필요하지 않다.
+
 ## Aseprite Assets 가져오기·재import
 
 공식 Placement Viewer는 기존 `importAsepriteAtlas`를 사용해 Aseprite JSON+PNG를 Assets catalog에 연결한다.
@@ -303,6 +483,11 @@ engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 �
 동반 Copy Patch/handoff를 씬에 반영하고 새 세션에서 catalog를 먼저 로드해 다시 연다. bundle 자체에는 씬 JSON이 없다.
 설치 전 imported reference의 scene-only Save와 문서 간 복사를 막으며, export를 실제 저장 완료로 간주하지 않는다.
 세부 UI 절차는 저장소의 `apps/placement-viewer/README.md`를 따른다. browser-only 파일 쓰기와 백그라운드 normal 자동 재생성은 제공하지 않는다.
+
+노멀 pair는 기존 `public/assets/.ferrum-normals/`에 불변 저장한다. **프로젝트 저장**은 color/source 저장·재읽기 검증 → 현재 미리보기/씬 참조 normal pair 저장·검증 → 씬 저장 순서다.
+앞 단계가 실패하면 씬을 저장하지 않고 기존 파일/씬을 보존한다. 취소가 디스크 commit 뒤 도착한 경우에는 파일 저장 가능성을 안내하고 재열기를 요구한다.
+새 세션은 도트 JSON/PNG와 normal metadata/PNG를 각각 읽고 source SHA-256·frame ID/rect가 모두 일치해야 pair를 활성화한다.
+color texture는 pixel store와 공유하고 normal texture만 normal store가 소유한다. 저장된 pair와 같은 설정의 재생성은 업로드된 normal을 빌려 중복 등록/해제하지 않는다.
 
 ### Aseprite 애니메이션 import와 migration
 
