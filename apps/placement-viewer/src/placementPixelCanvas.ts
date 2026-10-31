@@ -1,8 +1,10 @@
 import { setUiAttribute } from "./placementLocale";
 import { type createPixelEditor, type PixelColor } from "./placementPixelDocument";
 import { pixelOnionFrames, PIXEL_ONION_DEFAULTS, type PixelOnionSettings } from "./placementPixelOnion";
+import type { createPixelSelection } from "./placementPixelSelection";
+import type { PixelRegion } from "./placementPixelDocument";
 
-export type PixelTool = "pencil" | "eraser" | "fill" | "eyedropper" | "pan";
+export type PixelTool = "pencil" | "eraser" | "fill" | "eyedropper" | "pan" | "select";
 /** View state only. Pixel mutations and Undo belong to the document model. */
 export function createPixelCanvas(options: {
   editor(): ReturnType<typeof createPixelEditor>;
@@ -11,6 +13,7 @@ export function createPixelCanvas(options: {
   frame?(): string;
   readOnly?(): boolean;
   onion?(): PixelOnionSettings;
+  selection?: ReturnType<typeof createPixelSelection>;
   pick(color: PixelColor): void;
   changed(): void;
 }) {
@@ -23,8 +26,9 @@ export function createPixelCanvas(options: {
   if (!context || !imageContext) throw Error("Canvas image processing unavailable");
   let zoom = 16, panX = 0, panY = 0, space = false, frame = 0, disposed = false;
   let gesture: {
-    id: number; x: number; y: number; pan: boolean;
+    id: number; x: number; y: number; mode: "paint" | "pan" | "select" | "move";
     panX: number; panY: number; color: PixelColor;
+    previous?: PixelRegion;
   } | undefined;
   function dimensions() {
     const rect = element.getBoundingClientRect(), region = options.editor().region();
@@ -75,7 +79,7 @@ export function createPixelCanvas(options: {
       context!.drawImage(image,left,top,editor.width*zoom,editor.height*zoom);
     }
     context!.globalAlpha=1;
-    imageContext!.putImageData(new ImageData(new Uint8ClampedArray(editor.bytes(options.frame?.())), editor.width, editor.height), 0, 0);
+    imageContext!.putImageData(new ImageData(new Uint8ClampedArray(options.selection?.preview() ?? editor.bytes(options.frame?.())), editor.width, editor.height), 0, 0);
     context!.drawImage(image, region.x, region.y, region.width, region.height, left, top, region.width * zoom, region.height * zoom);
     context!.restore();
     if (zoom >= 6) {
@@ -97,23 +101,48 @@ export function createPixelCanvas(options: {
     element.dataset.pixelZoom = String(zoom);
     element.dataset.pixelOriginX = String(left);
     element.dataset.pixelOriginY = String(top);
+    const selection = options.selection?.bounds();
+    element.dataset.pixelSelection = JSON.stringify(selection ?? null);
+    element.dataset.pixelSelectionPending = String(options.selection?.pending() ?? false);
+    if (selection) {
+      context!.save(); context!.beginPath(); context!.rect(left, top, region.width * zoom, region.height * zoom); context!.clip();
+      const x = left + (selection.x - region.x) * zoom, y = top + (selection.y - region.y) * zoom;
+      context!.lineWidth = 1; context!.strokeStyle = style.getPropertyValue("--bg-1").trim() || background;
+      context!.strokeRect(x, y, selection.width * zoom, selection.height * zoom);
+      context!.setLineDash([4, 4]); context!.strokeStyle = style.getPropertyValue("--accent").trim() || foreground;
+      context!.strokeRect(x, y, selection.width * zoom, selection.height * zoom); context!.restore();
+    }
   }
   function refresh() { if (!frame && !disposed) frame = requestAnimationFrame(render); }
-  function cancel() {
-    if (gesture) options.editor().cancel();
+  function cancel(cancelFloating = true) {
+    if (gesture?.mode === "paint") options.editor().cancel();
+    if (gesture?.mode === "select") options.selection?.select(gesture.previous);
+    if (cancelFloating || gesture?.mode === "move") options.selection?.cancel();
     const id = gesture?.id;
     gesture = undefined;
     if (id !== undefined && element.hasPointerCapture(id)) element.releasePointerCapture(id);
     options.changed(); refresh();
   }
+  function marquee(x: number, y: number) {
+    const r = options.editor().region(), g = gesture!;
+    const left = Math.max(r.x, Math.min(g.x, x)), top = Math.max(r.y, Math.min(g.y, y));
+    const right = Math.min(r.x + r.width, Math.max(g.x, x) + 1), bottom = Math.min(r.y + r.height, Math.max(g.y, y) + 1);
+    options.selection?.select(right > left && bottom > top ? { x: left, y: top, width: right - left, height: bottom - top } : undefined);
+  }
   function finish(event: PointerEvent, commit: boolean) {
     if (gesture?.id !== event.pointerId) return;
-    if (!gesture.pan) {
+    if (gesture.mode === "paint") {
       if (commit) {
         const p = point(event);
         options.editor().line(gesture.x, gesture.y, p.x, p.y, gesture.color);
         options.editor().commit();
       } else options.editor().cancel();
+    } else if (gesture.mode === "select") {
+      if (commit) { const p = point(event); marquee(p.x, p.y); }
+      else options.selection?.select(gesture.previous);
+    } else if (gesture.mode === "move") {
+      if (commit) { const p = point(event); options.selection?.moveBy(p.x - gesture.x, p.y - gesture.y); }
+      else options.selection?.cancel();
     }
     gesture = undefined;
     if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
@@ -125,26 +154,38 @@ export function createPixelCanvas(options: {
     const editor = options.editor(), tool = options.tool(), p = point(event);
     if (tool === "pan" || space || event.button === 1) {
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY,
-        pan: true, panX, panY, color: options.color() };
+        mode: "pan", panX, panY, color: options.color() };
     } else {
       if (!editor.sample(p.x, p.y, options.frame?.())) return;
       if (tool === "eyedropper" || event.altKey) {
         options.pick(editor.sample(p.x, p.y, options.frame?.())!); return;
+      }
+      if (tool === "select" && options.selection && !options.readOnly?.()) {
+        const selection = options.selection, bounds = selection.bounds();
+        const inside = bounds && p.x >= bounds.x && p.y >= bounds.y && p.x < bounds.x + bounds.width && p.y < bounds.y + bounds.height;
+        if (inside && !selection.beginMove()) return;
+        gesture = { id: event.pointerId, ...p, mode: inside ? "move" : "select", panX, panY, color: options.color(), previous: bounds };
+        if (!inside) marquee(p.x, p.y);
+        element.setPointerCapture(event.pointerId); options.changed(); refresh(); return;
       }
       if (!editor.canPaint() || options.readOnly?.()) return;
       const color: PixelColor = tool === "eraser" ? [0, 0, 0, 0] : options.color();
       editor.begin();
       if (tool === "fill") { editor.fill(p.x, p.y, color); editor.commit(); options.changed(); refresh(); return; }
       editor.line(p.x, p.y, p.x, p.y, color);
-      gesture = { id: event.pointerId, ...p, pan: false, panX, panY, color };
+      gesture = { id: event.pointerId, ...p, mode: "paint", panX, panY, color };
     }
     element.setPointerCapture(event.pointerId); refresh();
   });
   element.addEventListener("pointermove", event => {
     if (!gesture || gesture.id !== event.pointerId) return;
-    if (gesture.pan) {
+    if (gesture.mode === "pan") {
       panX = gesture.panX + event.clientX - gesture.x;
       panY = gesture.panY + event.clientY - gesture.y;
+    } else if (gesture.mode === "select") {
+      const p = point(event); marquee(p.x, p.y);
+    } else if (gesture.mode === "move") {
+      const p = point(event); options.selection?.moveBy(p.x - gesture.x, p.y - gesture.y); gesture.x = p.x; gesture.y = p.y;
     } else {
       const p = point(event);
       options.editor().line(gesture.x, gesture.y, p.x, p.y, gesture.color);
@@ -159,7 +200,7 @@ export function createPixelCanvas(options: {
     if (event.code === "Space") { event.preventDefault(); space = true; }
   });
   element.addEventListener("keyup", event => { if (event.code === "Space") { event.preventDefault(); space = false; } });
-  element.addEventListener("blur", () => { space = false; cancel(); });
+  element.addEventListener("blur", () => { space = false; cancel(false); });
   const loseFocus = () => { space = false; cancel(); };
   window.addEventListener("blur", loseFocus);
   element.addEventListener("contextmenu", event => event.preventDefault());
@@ -178,7 +219,7 @@ export function createPixelCanvas(options: {
   const observer = new ResizeObserver(refresh);
   observer.observe(element);
   return {
-    element, refresh, cancel, zoomBy,
+    element, refresh, cancel, zoomBy, ownsGesture: () => gesture !== undefined,
     fit() {
       const rect = element.getBoundingClientRect(), region = options.editor().region();
       zoom = Math.max(1, Math.min(32, Math.floor(Math.min((rect.width - 48) / region.width, (rect.height - 48) / region.height))));

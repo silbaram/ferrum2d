@@ -11,6 +11,8 @@ export const PIXEL_LIMITS = {
   historyBytes: 16 * 1024 * 1024,
 } as const;
 export type PixelColor = readonly [number, number, number, number];
+export interface PixelRegion { x: number; y: number; width: number; height: number; }
+export interface PixelBlock { width: number; height: number; pixels: Uint8Array; }
 interface PixelDocumentBase {
   format: "ferrum2d.pixel-document";
   name: string; width: number; height: number; colorSpace: "srgb";
@@ -339,6 +341,30 @@ export function createPixelEditor(source: PixelDocument) {
     const current=currentFrame(),id=newId("frame",state.frames.map(f=>f.id)),pixels=current.pixels.map(bytes=>duplicate?bytes.slice():new Uint8Array(bytes.length));
     mutate(()=>{frameVersion();state.frames.splice(state.frames.indexOf(current)+1,0,{id,durationMs:current.durationMs,pixels});state.selectedFrame=id;});return id;
   }
+  function checkRegion(rect: PixelRegion, inside = false) {
+    const r = region();
+    if (![rect.x, rect.y, rect.width, rect.height].every(Number.isSafeInteger) ||
+        Math.abs(rect.x) > 1_048_576 || Math.abs(rect.y) > 1_048_576 ||
+        rect.width < 1 || rect.height < 1 || rect.width > PIXEL_LIMITS.side || rect.height > PIXEL_LIMITS.side ||
+        (inside && (rect.x < r.x || rect.y < r.y || rect.x + rect.width > r.x + r.width || rect.y + rect.height > r.y + r.height)))
+      fail("Invalid pixel selection region");
+  }
+  function regionPixels(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
+    checkRegion(rect);
+    if (!(pixels instanceof Uint8Array) || pixels.length !== rect.width * rect.height * 4)
+      fail("Invalid pixel selection bytes");
+    if (clear) checkRegion(clear, true);
+    const output = paintPixels().slice(), r = region();
+    if (clear) for (let y = clear.y; y < clear.y + clear.height; y++)
+      output.fill(0, (y * document.width + clear.x) * 4, (y * document.width + clear.x + clear.width) * 4);
+    for (let y = Math.max(rect.y, r.y); y < Math.min(rect.y + rect.height, r.y + r.height); y++) {
+      const left = Math.max(rect.x, r.x), right = Math.min(rect.x + rect.width, r.x + r.width);
+      if (right <= left) continue;
+      const offset = ((y - rect.y) * rect.width + left - rect.x) * 4;
+      output.set(pixels.subarray(offset, offset + (right - left) * 4), (y * document.width + left) * 4);
+    }
+    return output;
+  }
   return {
     revision:()=>revision,
     width:document.width,height:document.height,name:document.name,palette:[...document.palette],begin,commit,cancel,region,
@@ -347,6 +373,27 @@ export function createPixelEditor(source: PixelDocument) {
     selectAtlasFrame(id:string){if(document.version!==4||!document.atlas.frames.some(frame=>frame.id===id))fail("Pixel frame not found");cancel();atlasFrame=id;activeRegion=atlasRegion();},
     active:()=>pending!==undefined,canPaint:()=>selectedLayer().visible&&!selectedLayer().locked,
     sample:(x:number,y:number,id?:string)=>samplePixels(bytes(id),x,y),bytes:(id?:string)=>bytes(id).slice(),
+    readRegion(rect: PixelRegion): PixelBlock {
+      checkRegion(rect, true);
+      const source = currentFrame().pixels[layerIndex(state.selected)], pixels = new Uint8Array(rect.width * rect.height * 4);
+      for (let y = 0; y < rect.height; y++) {
+        const offset = ((rect.y + y) * document.width + rect.x) * 4;
+        pixels.set(source.subarray(offset, offset + rect.width * 4), y * rect.width * 4);
+      }
+      return { width: rect.width, height: rect.height, pixels };
+    },
+    previewRegion(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
+      const next = regionPixels(rect, pixels, clear), current = currentFrame();
+      return composite(state.layers.map((layer, index) => ({ ...layer, pixels: layer.id === state.selected ? next : current.pixels[index] })));
+    },
+    editRegion(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
+      const next = regionPixels(rect, pixels, clear);
+      if (pending) fail("Finish the pixel stroke first");
+      if (equal(next, paintPixels())) return false;
+      begin();
+      try { currentFrame().pixels[layerIndex(state.selected)] = next; changed(); return commit(); }
+      catch (error) { cancel(); throw error; }
+    },
     dirty:()=>dirtyCache??=!same(state,checkpoint),markExported(){checkpoint=clone(state);dirtyCache=false;},
     layers:()=>state.layers.map(layer=>({...layer})),selectedLayer:()=>state.selected,
     selectLayer(id:string){layerIndex(id);cancel();state.selected=id;},layerBytes(id:string){return currentFrame().pixels[layerIndex(id)].slice();},

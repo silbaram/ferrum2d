@@ -1,5 +1,6 @@
 import { smokePixelNormals, smokePixelNormalFocus } from "./pixel-normals-smoke.mjs";
 import { smokePixelTags } from "./pixel-tags-smoke.mjs";
+import { smokePixelSelection } from "./pixel-selection-smoke.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -67,6 +68,9 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const bytes = Buffer.from(first.rgba, "base64");
   for (let i = 0; i < 8; i++) assert.deepEqual([...bytes.subarray((i * 8 + i) * 4, (i * 8 + i) * 4 + 4)], [255, 0, 0, 255]);
   assert.deepEqual(await snapshot(), original, "Pixel drawing must not mutate the scene or scene Undo");
+  const pixelSelection = await smokePixelSelection(page, mode, run, { action, canvas, point, exportFile, baseline: first });
+  assert.deepEqual(await snapshot(), original, "Pixel selection cannot mutate scene state/history");
+  if (process.argv.includes("--pixel-selection-only")) return { pixelSelection, focus: "pixel-selection" };
   const cancelStart = await point(0, 5), cancelEnd = await point(7, 5);
   await page.mouse.move(cancelStart.x, cancelStart.y); await page.mouse.down();
   await page.mouse.move(cancelEnd.x, cancelEnd.y); await page.keyboard.press("Escape"); await page.mouse.up();
@@ -340,13 +344,21 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     }finally{await game.close();setResume(exported);}
   });
   const pixelNormals=await smokePixelNormals(page,mode,run,async bundle=>{
-    setResume(bundle);const game=await page.context().newPage();
-    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50});
+    setResume(bundle);const game=await page.context().newPage(),errors=[];
+    game.on("pageerror",error=>errors.push(String(error)));game.on("requestfailed",request=>errors.push(request.url()+" "+request.failure()?.errorText));
+    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50}).catch(async error=>{
+      let timer;
+      const state=await Promise.race([
+        game.evaluate(()=>({stage:window.pixelResumeStage,visibility:document.visibilityState,focus:document.hasFocus(),ready:document.readyState})).catch(error=>({snapshotError:String(error)})),
+        new Promise(resolve=>{timer=setTimeout(()=>resolve({snapshotTimeout:true}),3000);}),
+      ]);
+      clearTimeout(timer);throw Error(String(error)+" "+JSON.stringify({state,errors}));
+    });
       return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
     }finally{await game.close();setResume(exported);}
   });
   return {
-    frameCard, tags, atlas, pixelNormals, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
+    frameCard, tags, atlas, pixelNormals, pixelSelection, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
     eyedropper: true, eraserUndo: true, panZoom: true, invalidSourcePreserved: true, editAssetPng: true, compact: true,
     releaseEndpoint: true, blurCancelsStroke: true, blurResetsPan: true,

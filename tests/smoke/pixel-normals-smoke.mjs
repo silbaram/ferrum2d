@@ -59,7 +59,11 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     const point=await canvas.evaluate(e=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {x:r.x+Number(e.dataset.pixelOriginX)+3.5*z,y:r.y+Number(e.dataset.pixelOriginY)+3.5*z};});
     await page.mouse.click(point.x,point.y);
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());assert(await action('normal-preview').isDisabled());
-    await action('undo').click();await action('normal-generate').click();await idle();
+    await action('undo').click();
+    await action('tool-select').click();await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('ArrowRight');
+    assert(await action('normal-apply').isDisabled(),'floating pixels cannot be applied with the old pair');
+    await page.keyboard.press('Enter');assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');
+    await action('undo').click();await action('tool-pencil').click();await action('normal-generate').click();await idle();
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
     assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'restored source reuses its immutable normal cache');
     const strength=controls.locator('[data-pixel-normal-strength]');await strength.fill('2');await strength.dispatchEvent('change');

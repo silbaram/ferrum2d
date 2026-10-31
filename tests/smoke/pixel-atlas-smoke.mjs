@@ -79,9 +79,24 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   await workspace.locator('[data-pixel-color]').fill('#0000ff');await action('tool-pencil').click();
   await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-pixel-canvas]').dataset.pixelRegion).x===4);
   async function point(x,y) {
+    // Tool context bars can resize the canvas; use origin metadata from its next draw.
+    await page.evaluate(()=>new Promise(requestAnimationFrame));
     return canvas.evaluate((e,p)=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {
       x:r.x+Number(e.dataset.pixelOriginX)+(p.x+0.5)*z,y:r.y+Number(e.dataset.pixelOriginY)+(p.y+0.5)*z};},{x,y});
   }
+  await action('tool-select').click();await canvas.focus();await page.keyboard.press('Control+a');
+  await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-pixel-canvas]').dataset.pixelSelection)?.x===4);
+  await page.keyboard.press('ArrowRight');
+  assert.match(await workspace.locator('[data-pixel-selection-status]').textContent(),/clipped/);
+  await page.keyboard.press('Enter');
+  const selectionMoved=JSON.parse((await exported('export-source','selection-moved.pixel.json')).bytes),selectionBytes=Buffer.from(selectionMoved.rgba,'base64');
+  assert.deepEqual(selectionMoved.atlas,source.atlas);
+  for(let y=0;y<4;y++)for(let x=0;x<8;x++){
+    const offset=(y*8+x)*4,previous=(y*8+x-1)*4;
+    assert.deepEqual(selectionBytes.subarray(offset,offset+4),x<4?pixels.subarray(offset,offset+4):x===4?Buffer.alloc(4):pixels.subarray(previous,previous+4));
+  }
+  await action('undo').click();assert.deepEqual(JSON.parse((await exported('export-source','selection-undo.pixel.json')).bytes),initial);
+  await action('tool-pencil').click();
   const start=await point(0,1),end=await point(8,1);
   await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y);await page.mouse.up();
   const edited=JSON.parse((await exported('export-source','edited.pixel.json')).bytes),output=Buffer.from(edited.rgba,'base64');
@@ -125,6 +140,6 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   await page.locator('[data-pixel-file]').setInputFiles(restore.path);await workspace.waitFor({state:'visible'});
   assert.equal(await workspace.getAttribute('data-pixel-atlas'),'false');assert(await workspace.locator('.placement-pixel-frames').isVisible());
   return {id:asset.id,source:edited,...(game?{game}:{}),uvPreserved:true,otherPixelsPreserved:true,transparentRgbPreserved:true,
-    externalPngFrameOpened:true,staleAtlasDecodeDiscardGuard:true,strokeClipped:true,undoRedo:true,viewOnlySelection:true,uvMismatchBlocked:true,sourcePngRoundtrip:true,
+    externalPngFrameOpened:true,staleAtlasDecodeDiscardGuard:true,selectionFrameOffsetAndClip:true,strokeClipped:true,undoRedo:true,viewOnlySelection:true,uvMismatchBlocked:true,sourcePngRoundtrip:true,
     registeredRevisionReopened:true,overlapRejected:true,localeAndNarrowLayout:true};
 }
