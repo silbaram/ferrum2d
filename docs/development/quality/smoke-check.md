@@ -70,9 +70,16 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 
 도트 후속 도구의 `pixelNext`는 같은 전체 UI gate에서 픽셀 퍼펙트의 원래 RGBA 복원·마스크 선택과 조합·자유형/다각형·외곽선 미리보기/확정,
 이미지 브러시 등록/간격/중심점/hover/취소/한 Undo, 반복9타일의 실제 canvas 픽셀과 경계 그리기/채우기·단일 PNG·고정 atlas 차단을 검사한다.
+캔버스 밖 이탈·재진입이 픽셀 퍼펙트의 가짜L을 만들지 않는지 실제 드래그와4방향/offset atlas/반복 바깥 경계 단위 회귀로 확인한다. 선택 soft mask는 보정 후 최종 적용하는 계약을 별도 검사한다.
 2D DPR1/HD-2D DPR2·한글390px·씬 무변경·종료 시 URL/texture0도 확인한다. 집중 진단은 위 Node 진입점의 `--pixel-next-only`다.
 순수 연산 회귀는 `pixel-perfect`, `pixel-mask`, `pixel-outline`, `pixel-image-brush`, `pixel-repeat`, `pixel-batch` 단위 검사를 `test:pixel-authoring`에 연결한다.
-`pixel-batch`는 프레임 범위 모델의 대상/제외·metadata/raw RGBA 보존·잘못된 입력의 원자성·잘림·한 Undo/Redo를 검사하며, 범위 편집 UI·native 저장 통합의 완료 증거는 아니다.
+`pixel-batch`는 프레임 범위 모델의 대상/제외·metadata/raw RGBA 보존·잘못된 입력의 원자성·잘림·한 Undo/Redo를 검사한다.
+전체 gate의 `pixelNext.frameBatch`는 실제 sparse 이동/좌우·상하 반전·읽기 전용 프레임별 미리보기·잠금/숨김 제외·재생/대상 전환 폐기·잘림·no-op의 Redo 보존을 확인한다.
+인라인 패널 크기로 실제 렌더된 캔버스의 픽셀을 클릭해, 패널 접기에 따른 좌표 이동이나 잘못된 원본 쓰기가 없는지도 확인한다.
+확정 원본을 IndexedDB에서 다른 탭으로 복원하고 정확한 raw RGBA/metadata를 내보내 비교한다. 탭 종료·destroy의 범위 목록/브러시 해제와64자 ID/한글390px도 검사한다.
+집중 진단은 `--pixel-batch-only`다. 다각형의 Backspace/더블클릭과 반복 보기의 pan/zoom 좌표는 `pixelNext`의 실제 입력으로 검사한다.
+공통 노멀 검사는 범위 반전·외곽선 결과를 원본에 유지한 뒤 Worker 입력·원본 내보내기·게임 실행을 검증한다. native 프로젝트 gate는 이 원본과 pair를 저장하고 재시작 후 정확히 재열어 실행한다.
+추가 외곽선/범위 편집의 stale 차단·Undo 후 원본 cache 재사용도 같은 공통 함수에서 검사한다.
 
 같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
 용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.

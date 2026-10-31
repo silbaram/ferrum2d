@@ -12,13 +12,14 @@
 
 가져오기·세션 revision 정리·Import 진단의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
 도트 제작과2D/HD-2D 노멀 적용의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)을 따른다. 여기에서는 후속 후보만 관리한다.
-픽셀 퍼펙트·선택 마스크·외곽선·이미지 브러시·타일 반복·여러 프레임 편집과 차분 이력의 검토는
-[도트 후속 개발 계획](pixel-authoring-next-plan.md)에서 관리한다. 이 표에 중복 등록하지 않는다.
+픽셀 퍼펙트·선택 마스크·외곽선·이미지 브러시·타일 반복·여러 프레임 편집은 현재 계약을 따른다.
+별도 기반 개선인 차분 이력은 아래 측정 조건을 충족할 때 독립 작업으로 검토한다.
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
 | AI 도트 생성 | 텍스트/스케치 입력·결과 선택·크기/팔레트 정규화·비용/인증/출처와 원본 등록·취소/실패 경계부터 설계. 실제 생성 서비스·요금 정책은 별도 결정하며 현재 기능으로 표기하지 않음 |
 | 추가 도트 변형·OS 클립보드 | 임의 각도/보간 확대·OS 클립보드·indexed source·레이어 blend/opacity는 실제 요구와 메모리/호환·권한 범위를 먼저 설계. 기존 정수 변형·RGBA 원본·복구를 보호 |
+| 측정 기반 차분 Undo | 같은 작은/최대 문서에서 한 픽셀·stroke·fill·크기 변경의 할당 byte/이력 수/편집·Undo 비용을 먼저 측정. 개선이 확인되면 픽셀 영역 차분과 metadata/크기 전체 snapshot fallback을 설계하고 혼합 trace의 원본·revision/dirty·Undo/Redo/no-op을 대조. 기존64단계/16MiB와 전체 원본 복구를 유지. 도트6개 기능의 필수 후속 작업은 아님 |
 | 외부 맵 지원 범위 확대 | [현재 전체 맵](../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스) 이후 실제 필요를 확인해 다중 PNG·2,048개 초과·flip/animation·TSX·외부 level·IntGrid 어댑터를 각각 설계. 좌표/게임 상태·실패 원자성·원본 저장을 검증 |
 | 프로젝트 디스크 Catalog 정리 | 저장된 revision·원본 파일의 제거 후보만 다룬다. 닫힌 모든 프로젝트 씬의 참조·동시 수정 충돌 감지·실패 복원을 설계한 뒤 삭제 범위를 정함. 기존 8 revision/64 MiB 예산은 실제 부족 사례를 측정한 뒤 확대 판단 |
 | 추가 문서의 host 저장 | 기본 문서 밖 저장 대상과 project-root allowlist·동시 수정·원본/catalog 관계를 정함. browser-only export 경계 유지 |
