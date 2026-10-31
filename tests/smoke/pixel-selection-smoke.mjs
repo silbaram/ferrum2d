@@ -94,6 +94,7 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   assert(await workspace.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
   await page.screenshot({ path: resolve(run, mode + "-pixel-selection-ko-narrow.png"), fullPage: true });
   await controls.locator("summary").click(); await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.locator("[data-placement-language]").selectOption("en"); await action("tool-pencil").click(); await action("fit").click(); await unchanged();
+  await page.locator("[data-placement-language]").selectOption("en"); await canvas.focus(); await page.keyboard.press("Escape");
+  await action("tool-pencil").click(); await action("fit").click(); await unchanged();
   return { marquee: true, deferredMove: true, cancelAndBlur: true, focusedControlEnter: true, pointerKeyboardIsolation: true, flipAndRotate: true, clipboard: true, oneUndo: true, clippedWarning: true, panZoomCoordinates: true, localeAndNarrow: true };
 }

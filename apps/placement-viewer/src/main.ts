@@ -1894,6 +1894,7 @@ async function bootstrap(): Promise<void> {
     const importedAssetContext = () => ({
       key: activeDocument.key,
       project: currentAssetProject(),
+      recoveryKey: activeDocument.desktop?.enabled ? activeDocument.key : activeDocument.source,
       document: viewer.exportPatch()
         ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
             .document

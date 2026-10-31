@@ -53,7 +53,15 @@
 .placement-pixel-tools input[type=color] { width: 100%; min-height: 28px; box-sizing: border-box; }
 .placement-pixel-palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px; }
 .placement-pixel-palette button { min-width: 0; width: 20px; height: 20px; padding: 0; border: 1px solid var(--border-strong); }
-.placement-pixel-area { min-height: 0; min-width: 0; overflow: hidden; background: var(--viewport-bg); }
+.placement-pixel-area { position: relative; min-height: 0; min-width: 0; overflow: hidden; background: var(--viewport-bg); }
+.placement-pixel-size-preview { position: absolute; top: 8px; right: 8px; z-index: 2; max-width: calc(100% - 16px); max-height: calc(100% - 16px); overflow: auto; border: 1px solid var(--border-strong); background: var(--bg-1); }
+.placement-pixel-size-preview[open] { width: 272px; }
+.placement-pixel-size-preview summary { padding: 4px 8px; cursor: pointer; font-size: 11px; }
+.placement-pixel-size-preview > div { display: grid; gap: 4px; padding: 4px; }
+.placement-pixel-size-preview p { margin: 0; font-size: 11px; color: var(--fg-3); }
+.placement-pixel-size-preview select { width: 64px; }
+.placement-pixel-size-scroll { max-height: 192px; overflow: auto; min-width: 0; }
+.placement-pixel-size-scroll canvas { display: block; image-rendering: pixelated; background: var(--bg-2); }
 .placement-pixel-canvas { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; touch-action: none; cursor: crosshair; }
 .placement-pixel-footer { border-top: 1px solid var(--border); background: var(--bg-1); }
 .placement-pixel-footer output { flex: 1; min-width: 120px; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
@@ -105,6 +113,35 @@
 .placement-pixel-selection details > div { position: absolute; top: calc(100% + 4px); left: 0; z-index: 4; width: 224px; max-width: calc(100vw - 48px); max-height: 320px; overflow-y: auto; padding: 4px; background: var(--bg-1); border: 1px solid var(--border-strong); }
 .placement-pixel-selection details button { display: block; width: 100%; text-align: left; }
 .placement-pixel-selection > output { min-width: 0; flex: 1; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+.placement-pixel-drawing-options { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+.placement-pixel-drawing-options[hidden], .placement-pixel-drawing-options [hidden] { display: none; }
+.placement-pixel-drawing-options label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.placement-pixel-drawing-options input[type=number] { width: 48px; min-width: 0; }
+.placement-pixel-drawing-options > span { font-size: 11px; color: var(--fg-3); }
+.placement-pixel-tools > select { width: 100%; min-width: 0; }
+.placement-pixel-palette-menu { border-top: 1px solid var(--border); padding-top: 4px; }
+.placement-pixel-palette-menu > summary { cursor: pointer; font-size: 11px; }
+.placement-pixel-palette-menu > div { display: grid; gap: 4px; padding-top: 4px; }
+.placement-pixel-palette-menu select { min-width: 0; max-width: 100%; }
+.placement-pixel-palette-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+.placement-pixel-palette-menu p { margin: 0; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+.placement-pixel-palette-menu button { white-space: normal; font-size: 11px; }
+.placement-pixel-resize-dialog { width: 336px; }
+.placement-pixel-resize-dialog > canvas { display: block; max-width: 100%; height: auto; margin: 8px auto; image-rendering: pixelated; border: 1px solid var(--border-strong); background: var(--bg-2); }
+.placement-pixel-resize-dialog > canvas[hidden] { display: none; }
+.placement-pixel-resize-dialog > label > select { width: 160px; min-width: 0; }
+.placement-pixel-recovery { position: relative; min-width: 0; }
+.placement-pixel-recovery summary { padding: 4px 8px; cursor: pointer; border: 1px solid var(--border-strong); }
+.placement-pixel-recovery[open] { z-index: 5; }
+.placement-pixel-recovery > div { position: absolute; top: 100%; right: 0; width: min(288px,calc(100vw - 24px)); max-height: 320px; overflow: auto; box-sizing: border-box; padding: 8px; background: var(--bg-1); border: 1px solid var(--border-strong); display: grid; gap: 8px; }
+.placement-pixel-launcher .placement-pixel-recovery[open] { flex-basis: 100%; }
+.placement-pixel-launcher .placement-pixel-recovery > div { position: static; width: 100%; max-width: 288px; }
+.placement-pixel-recovery p { margin: 0; font-size: 11px; color: var(--fg-3); }
+.placement-pixel-recovery output { font-size: 11px; overflow-wrap: anywhere; }
+.placement-pixel-recovery-row { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--border); }
+.placement-pixel-recovery-row strong, .placement-pixel-recovery-row time { overflow-wrap: anywhere; }
+.placement-pixel-recovery-row time { font-size: 11px; color: var(--fg-3); }
+.placement-pixel-recovery-row > div { display: flex; gap: 4px; }
 @media (max-width: 720px) {
   .placement-pixel-body { grid-template-columns: 104px minmax(0, 1fr) 176px; }
   .placement-pixel-tools { padding: 4px; }

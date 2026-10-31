@@ -1,4 +1,5 @@
 import { readPixelAtlas, pixelAtlasRect, type PixelAtlasMetadata } from "./placementPixelAtlas";
+import type { PixelDrawMask } from "./placementPixelDrawing";
 
 /** Ferrum-owned editing source. Runtime assets contain flattened PNGs only. */
 export const PIXEL_LIMITS = {
@@ -11,6 +12,9 @@ export const PIXEL_LIMITS = {
   historyBytes: 16 * 1024 * 1024,
 } as const;
 export type PixelColor = readonly [number, number, number, number];
+export type PixelColorScope = "cel" | "selection" | "document";
+export const PIXEL_CANVAS_ANCHORS = ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"] as const;
+export type PixelCanvasAnchor = typeof PIXEL_CANVAS_ANCHORS[number];
 export interface PixelRegion { x: number; y: number; width: number; height: number; }
 export interface PixelBlock { width: number; height: number; pixels: Uint8Array; }
 interface PixelDocumentBase {
@@ -131,6 +135,10 @@ export function readPixelTags(input: unknown, frames: readonly PixelFrameInfo[])
     return { id, name, clipId, frameIds: value.frameIds.map((id: unknown) => text(id)), loop: boolean(value.loop) };
   });
 }
+export function pixelPaletteColors(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 256) return fail("Invalid pixel palette");
+  return Array.from(value, (color: unknown) => typeof color === "string" && /^#[\da-f]{8}$/i.test(color) ? color : fail("Invalid pixel palette"));
+}
 export function readPixelDocument(input: string): PixelDocument {
   const size = new TextEncoder().encode(input).length;
   if (size > PIXEL_LIMITS.sourceBytes) fail("Pixel document exceeds the byte limit");
@@ -143,10 +151,7 @@ export function readPixelDocument(input: string): PixelDocument {
   if (value.version !== 3 && value.version !== 5 && value.frames !== undefined) fail("Invalid pixel frame version");
   if (value.version !== 5 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
   const width = integer(value.width, 1, PIXEL_LIMITS.side), height = integer(value.height, 1, PIXEL_LIMITS.side);
-  const paletteValue = value.palette;
-  if (!Array.isArray(paletteValue) || paletteValue.length > 256) return fail("Invalid pixel palette");
-  const palette = paletteValue.map((color: unknown) =>
-    typeof color === "string" && /^#[\da-f]{8}$/i.test(color) ? color : fail("Invalid pixel palette"));
+  const palette = pixelPaletteColors(value.palette);
   const common: PixelDocumentBase = {
     format: "ferrum2d.pixel-document", name: text(value.name), width, height, colorSpace: "srgb",
     palette,
@@ -269,12 +274,12 @@ export function pixelAtlas(document: PixelDocument) {
 }
 const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((n,i) => n === b[i]);
 interface FramePixels extends PixelFrameInfo { pixels: Uint8Array[]; }
-interface ImageState { version: 1 | 2 | 3 | 4 | 5; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
+interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
 function clone(state: ImageState): ImageState {
-  return {...state,tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>bytes.slice())}))};
+  return {...state,palette:[...state.palette],tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>bytes.slice())}))};
 }
 function same(a: ImageState, b: ImageState): boolean {
-  return a.version===b.version && JSON.stringify([a.tags,a.initialTag,a.nextClipId])===JSON.stringify([b.tags,b.initialTag,b.nextClipId]) && JSON.stringify(a.layers)===JSON.stringify(b.layers) && a.frames.length===b.frames.length && a.frames.every((frame,i)=>{
+  return a.width===b.width && a.height===b.height && a.version===b.version && JSON.stringify(a.palette)===JSON.stringify(b.palette) && JSON.stringify([a.tags,a.initialTag,a.nextClipId])===JSON.stringify([b.tags,b.initialTag,b.nextClipId]) && JSON.stringify(a.layers)===JSON.stringify(b.layers) && a.frames.length===b.frames.length && a.frames.every((frame,i)=>{
     const other=b.frames[i];return frame.id===other.id && frame.durationMs===other.durationMs && frame.pixels.every((bytes,j)=>equal(bytes,other.pixels[j]));
   });
 }
@@ -287,7 +292,7 @@ function newId(prefix:string,ids:readonly string[]) {
 export function createPixelEditor(source: PixelDocument) {
   const document=readPixelDocument(JSON.stringify(source)),first=sourceLayers(document);
   const layers=first.map(({pixels,...layer})=>layer),frames=pixelFrames(document).map((frame,index)=>({...frame,pixels:sourceLayers(document,index).map(layer=>layer.pixels)}));
-  let state:ImageState={version:document.version,tags:document.version===5?structuredClone(document.tags):[],
+  let state:ImageState={width:document.width,height:document.height,version:document.version,palette:[...document.palette],tags:document.version===5?structuredClone(document.tags):[],
     initialTag:document.version===5?document.initialTag:"",nextClipId:document.version===5?document.nextClipId:0,layers,frames,selected:[...layers].reverse().find(l=>l.visible&&!l.locked)?.id??layers.at(-1)!.id,selectedFrame:frames[0].id};
   let revision=0;
   let checkpoint=clone(state),pending:ImageState|undefined,dirtyCache:boolean|undefined=false;
@@ -301,14 +306,14 @@ export function createPixelEditor(source: PixelDocument) {
   const layerIndex=(id:string)=>{const i=state.layers.findIndex(l=>l.id===id);if(i<0)fail("Image layer not found");return i;};
   let atlasFrame = document.version === 4 ? document.atlas.frames[0].id : "";
   const atlasRegion = () => document.version === 4
-    ? pixelAtlasRect(document.width, document.height, document.atlas.frames.find(frame => frame.id === atlasFrame)!.frame)
-    : { x: 0, y: 0, width: document.width, height: document.height };
+    ? pixelAtlasRect(state.width, state.height, document.atlas.frames.find(frame => frame.id === atlasFrame)!.frame)
+    : { x: 0, y: 0, width: state.width, height: state.height };
   let activeRegion = atlasRegion();
   const region = () => ({ ...activeRegion });
   const validPoint=(x:number,y:number)=>{const r=activeRegion;return Number.isInteger(x)&&Number.isInteger(y)&&x>=r.x&&y>=r.y&&x<r.x+r.width&&y<r.y+r.height;};
-  const changed=()=>{revision++;dirtyCache=undefined;flattened.clear();};
+  const changed=()=>{if(document.version!==4&&(activeRegion.width!==state.width||activeRegion.height!==state.height))activeRegion={x:0,y:0,width:state.width,height:state.height};revision++;dirtyCache=undefined;flattened.clear();};
   function budget(layers=state.layers.length,frames=state.frames.length) {
-    if(document.width*document.height*layers*frames>PIXEL_LIMITS.pixels)fail("Pixel cel budget exceeded");
+    if(state.width*state.height*layers*frames>PIXEL_LIMITS.pixels)fail("Pixel cel budget exceeded");
   }
   function paintPixels() {
     const layer=selectedLayer();if(!layer.visible||layer.locked)fail("Show and unlock the image layer before painting");
@@ -331,11 +336,11 @@ export function createPixelEditor(source: PixelDocument) {
     redo.length=0;const after=clone(state);undo.push({before,after,bytes:stateBytes(before)+stateBytes(after)});
     while(undo.length>PIXEL_LIMITS.historySteps||undo.reduce((n,s)=>n+s.bytes,0)>PIXEL_LIMITS.historyBytes)undo.shift();return true;
   }
-  function mutate(run:()=>void){if(document.version===4)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");pending=clone(state);try{run();changed();return commit();}catch(error){cancel();throw error;}}
+  function mutate(run:()=>void, atlasAllowed=false){if(document.version===4&&!atlasAllowed)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");pending=clone(state);try{run();changed();return commit();}catch(error){cancel();throw error;}}
   const layerVersion=()=>{if(state.version===1)state.version=2;};
   const frameVersion=()=>{if(state.version!==5)state.version=3;};
-  function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels().set(color,(y*document.width+x)*4);changed();}}
-  function samplePixels(pixels:Uint8Array,x:number,y:number):PixelColor|undefined {if(!validPoint(x,y))return;const i=(y*document.width+x)*4;return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];}
+  function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels().set(color,(y*state.width+x)*4);changed();}}
+  function samplePixels(pixels:Uint8Array,x:number,y:number):PixelColor|undefined {if(!validPoint(x,y))return;const i=(y*state.width+x)*4;return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];}
   function createFrame(duplicate:boolean) {
     if(state.frames.length>=PIXEL_LIMITS.frames)fail("Pixel frame limit reached");budget(state.layers.length,state.frames.length+1);
     const current=currentFrame(),id=newId("frame",state.frames.map(f=>f.id)),pixels=current.pixels.map(bytes=>duplicate?bytes.slice():new Uint8Array(bytes.length));
@@ -356,18 +361,100 @@ export function createPixelEditor(source: PixelDocument) {
     if (clear) checkRegion(clear, true);
     const output = paintPixels().slice(), r = region();
     if (clear) for (let y = clear.y; y < clear.y + clear.height; y++)
-      output.fill(0, (y * document.width + clear.x) * 4, (y * document.width + clear.x + clear.width) * 4);
+      output.fill(0, (y * state.width + clear.x) * 4, (y * state.width + clear.x + clear.width) * 4);
     for (let y = Math.max(rect.y, r.y); y < Math.min(rect.y + rect.height, r.y + r.height); y++) {
       const left = Math.max(rect.x, r.x), right = Math.min(rect.x + rect.width, r.x + r.width);
       if (right <= left) continue;
       const offset = ((y - rect.y) * rect.width + left - rect.x) * 4;
-      output.set(pixels.subarray(offset, offset + (right - left) * 4), (y * document.width + left) * 4);
+      output.set(pixels.subarray(offset, offset + (right - left) * 4), (y * state.width + left) * 4);
+    }
+    return output;
+  }
+  function checkMask(mask: PixelDrawMask, color: PixelColor) {
+    checkRegion(mask.region, true); pixelHex(color);
+    if (!(mask.pixels instanceof Uint8Array) || mask.pixels.length !== mask.region.width * mask.region.height) fail("Invalid pixel drawing mask");
+  }
+  function drawMask(target: Uint8Array, mask: PixelDrawMask, color: PixelColor) {
+    const r = mask.region; let edited = false;
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      if (!mask.pixels[y * r.width + x]) continue;
+      const offset = ((r.y + y) * state.width + r.x + x) * 4;
+      if (target[offset] === color[0] && target[offset + 1] === color[1] && target[offset + 2] === color[2] && target[offset + 3] === color[3]) continue;
+      target.set(color, offset); edited = true;
+    }
+    return edited;
+  }
+  function colorTargets(scope: PixelColorScope, clip?: PixelRegion) {
+    if (!["cel", "selection", "document"].includes(scope)) fail("Invalid color replacement scope");
+    if (scope === "document") {
+      if (document.version === 4) fail("Atlas colors are limited to the selected frame");
+      return state.frames.flatMap(frame => state.layers.flatMap((layer, index) => layer.visible && !layer.locked ? [{ pixels: frame.pixels[index], rect: region() }] : []));
+    }
+    if (scope === "selection") { if (!clip) fail("Select pixels before replacing colors"); checkRegion(clip!, true); }
+    return [{ pixels: paintPixels(), rect: scope === "selection" ? clip! : region() }];
+  }
+  function visitColor(from: PixelColor, targets: ReturnType<typeof colorTargets>, to?: PixelColor) {
+    let count = 0;
+    for (const target of targets) for (let y = target.rect.y; y < target.rect.y + target.rect.height; y++) for (let x = target.rect.x; x < target.rect.x + target.rect.width; x++) {
+      const i = (y * state.width + x) * 4, pixels = target.pixels;
+      if (pixels[i] !== from[0] || pixels[i + 1] !== from[1] || pixels[i + 2] !== from[2] || pixels[i + 3] !== from[3]) continue;
+      count++; if (to) pixels.set(to, i);
+    }
+    return count;
+  }
+  function resizePlan(width: number, height: number, anchor: PixelCanvasAnchor) {
+    integer(width, 1, PIXEL_LIMITS.side); integer(height, 1, PIXEL_LIMITS.side);
+    if (document.version === 4) fail("Atlas layout is fixed. Edit pixels within a frame.");
+    if (width * height * state.layers.length * state.frames.length > PIXEL_LIMITS.pixels) fail("Pixel cel budget exceeded");
+    const index = PIXEL_CANVAS_ANCHORS.indexOf(anchor); if (index < 0) fail("Invalid canvas anchor");
+    return { width, height, offsetX: Math.floor((width - state.width) * (index % 3) / 2), offsetY: Math.floor((height - state.height) * Math.floor(index / 3) / 2), cropped: width < state.width || height < state.height };
+  }
+  function resizedPixels(pixels: Uint8Array, plan: ReturnType<typeof resizePlan>) {
+    const output = new Uint8Array(plan.width * plan.height * 4);
+    const x = Math.max(0, -plan.offsetX), right = Math.min(state.width, plan.width - plan.offsetX);
+    if (right <= x) return output;
+    for (let y = Math.max(0, -plan.offsetY); y < Math.min(state.height, plan.height - plan.offsetY); y++) {
+      output.set(pixels.subarray((y * state.width + x) * 4, (y * state.width + right) * 4), ((y + plan.offsetY) * plan.width + x + plan.offsetX) * 4);
     }
     return output;
   }
   return {
     revision:()=>revision,
-    width:document.width,height:document.height,name:document.name,palette:[...document.palette],begin,commit,cancel,region,
+    paintMask(mask: PixelDrawMask, color: PixelColor) {
+      checkMask(mask, color); if (!pending) fail("Start a pixel transaction first");
+      if (drawMask(paintPixels(), mask, color)) changed();
+    },
+    previewPaint(mask: PixelDrawMask, color: PixelColor) {
+      checkMask(mask, color); const next = paintPixels().slice(); drawMask(next, mask, color);
+      return composite(state.layers.map((layer, index) => ({ ...layer, pixels: layer.id === state.selected ? next : currentFrame().pixels[index] })));
+    },
+    editPaint(mask: PixelDrawMask, color: PixelColor) {
+      checkMask(mask, color); if (pending) fail("Finish the pixel stroke first");
+      const target = paintPixels(), next = target.slice(); if (!drawMask(next, mask, color)) return false;
+      begin(); try { currentFrame().pixels[layerIndex(state.selected)] = next; changed(); return commit(); }
+      catch (error) { cancel(); throw error; }
+    },
+    get width(){return state.width;},get height(){return state.height;},name:document.name,get palette(){return [...state.palette];},begin,commit,cancel,region,
+    setPalette(value: readonly string[]) {
+      const next = pixelPaletteColors(value); if (JSON.stringify(next) === JSON.stringify(state.palette)) return false;
+      return mutate(() => { state.palette = next; }, true);
+    },
+    countColor(from: PixelColor, scope: PixelColorScope, clip?: PixelRegion) { pixelHex(from); return visitColor(from, colorTargets(scope, clip)); },
+    replaceColor(from: PixelColor, to: PixelColor, scope: PixelColorScope, clip?: PixelRegion) {
+      pixelHex(from); pixelHex(to); const targets = colorTargets(scope, clip);
+      if (from.every((value, i) => value === to[i]) || !visitColor(from, targets)) return false;
+      return mutate(() => { visitColor(from, targets, to); }, true);
+    },
+    previewResize(width: number, height: number, anchor: PixelCanvasAnchor = "center") {
+      const plan = resizePlan(width, height, anchor); return { ...plan, pixels: resizedPixels(bytes(), plan) };
+    },
+    resizeCanvas(width: number, height: number, anchor: PixelCanvasAnchor = "center") {
+      const plan = resizePlan(width, height, anchor);
+      if (width === state.width && height === state.height) return false;
+      if (pending) fail("Finish the pixel stroke first");
+      const frames = state.frames.map(frame => ({ ...frame, pixels: frame.pixels.map(pixels => resizedPixels(pixels, plan)) }));
+      return mutate(() => { state.frames = frames; state.width = width; state.height = height; });
+    },
     atlas:()=>document.version===4?structuredClone(document.atlas):undefined,
     selectedAtlasFrame:()=>atlasFrame,
     selectAtlasFrame(id:string){if(document.version!==4||!document.atlas.frames.some(frame=>frame.id===id))fail("Pixel frame not found");cancel();atlasFrame=id;activeRegion=atlasRegion();},
@@ -377,7 +464,7 @@ export function createPixelEditor(source: PixelDocument) {
       checkRegion(rect, true);
       const source = currentFrame().pixels[layerIndex(state.selected)], pixels = new Uint8Array(rect.width * rect.height * 4);
       for (let y = 0; y < rect.height; y++) {
-        const offset = ((rect.y + y) * document.width + rect.x) * 4;
+        const offset = ((rect.y + y) * state.width + rect.x) * 4;
         pixels.set(source.subarray(offset, offset + rect.width * 4), y * rect.width * 4);
       }
       return { width: rect.width, height: rect.height, pixels };
@@ -435,7 +522,7 @@ export function createPixelEditor(source: PixelDocument) {
     addLayer(name="Layer") {
       text(name);if(state.layers.length>=PIXEL_LIMITS.layers)fail("Image layer limit reached");budget(state.layers.length+1);
       const id=newId("layer",state.layers.map(l=>l.id));
-      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false});for(const frame of state.frames)frame.pixels.push(new Uint8Array(document.width*document.height*4));state.selected=id;});return id;
+      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
     },
     renameLayer(id:string,name:string){text(name);const layer=state.layers[layerIndex(id)];if(layer.name===name)return false;return mutate(()=>{layer.name=name;});},
     setLayerVisible(id:string,visible:boolean){boolean(visible);const layer=state.layers[layerIndex(id)];if(layer.visible===visible)return false;return mutate(()=>{layerVersion();layer.visible=visible;});},
@@ -446,9 +533,9 @@ export function createPixelEditor(source: PixelDocument) {
     },
     removeLayer(id:string){const index=layerIndex(id);if(state.layers.length===1)fail("Keep at least one image layer");return mutate(()=>{state.layers.splice(index,1);for(const frame of state.frames)frame.pixels.splice(index,1);layerVersion();if(state.selected===id)state.selected=state.layers[Math.min(index,state.layers.length-1)].id;});},
     document():PixelDocument {
-      const common={format:document.format,name:document.name,width:document.width,height:document.height,colorSpace:document.colorSpace,palette:[...document.palette]},frame=state.frames[0];
-      if(state.version===1||state.version===4){const layer=state.layers[0];return {...structuredClone(document) as PixelDocumentV1|PixelDocumentV4,layer:{id:layer.id,name:layer.name},frame:{id:frame.id,durationMs:frame.durationMs},rgba:base64(frame.pixels[0])};}
-      if(state.version===2)return {format:document.format,version:2,name:document.name,width:document.width,height:document.height,colorSpace:"srgb",frame:{id:frame.id,durationMs:frame.durationMs},palette:[...document.palette],layers:state.layers.map((layer,i)=>({...layer,rgba:base64(frame.pixels[i])}))};
+      const common={format:document.format,name:document.name,width:state.width,height:state.height,colorSpace:document.colorSpace,palette:[...state.palette]},frame=state.frames[0];
+      if(state.version===1||state.version===4){const layer=state.layers[0];return {...structuredClone(document) as PixelDocumentV1|PixelDocumentV4,width:state.width,height:state.height,palette:[...state.palette],layer:{id:layer.id,name:layer.name},frame:{id:frame.id,durationMs:frame.durationMs},rgba:base64(frame.pixels[0])};}
+      if(state.version===2)return {format:document.format,version:2,name:document.name,width:state.width,height:state.height,colorSpace:"srgb",frame:{id:frame.id,durationMs:frame.durationMs},palette:[...state.palette],layers:state.layers.map((layer,i)=>({...layer,rgba:base64(frame.pixels[i])}))};
       const result:PixelDocumentV3={...common,version:3,layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({id:frame.id,durationMs:frame.durationMs,cels:state.layers.map((layer,i)=>({layerId:layer.id,rgba:base64(frame.pixels[i])}))}))};
       return state.version===5?{...result,version:5,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:result;
     },
@@ -481,19 +568,21 @@ export function createPixelEditor(source: PixelDocument) {
         if (twice <= ax) { error += ax; y += sy; }
       }
     },
-    fill(x: number, y: number, color: PixelColor) {
+    fill(x: number, y: number, color: PixelColor, clip?: PixelRegion) {
       pixelHex(color);
+      if (clip) checkRegion(clip, true);
       if (!pending) fail("Start a pixel transaction first");
       const pixels = paintPixels();
       const target = samplePixels(pixels, x, y);
-      if (!target || target.every((n, i) => n === color[i])) return;
+      const inClip = (px: number, py: number) => !clip || (px >= clip.x && py >= clip.y && px < clip.x + clip.width && py < clip.y + clip.height);
+      if (!target || !inClip(x, y) || target.every((n, i) => n === color[i])) return;
       // Enqueue each pixel at most once; neither recursion nor an unbounded work list.
-      const queue = new Uint32Array(document.width * document.height);
+      const queue = new Uint32Array(state.width * state.height);
       const visited = new Uint8Array(queue.length);
       let head = 0, tail = 0;
       const enqueue = (px: number, py: number) => {
-        if (!validPoint(px, py)) return;
-        const index = py * document.width + px;
+        if (!validPoint(px, py) || !inClip(px, py)) return;
+        const index = py * state.width + px;
         if (visited[index]) return;
         visited[index] = 1;
         const offset = index * 4;
@@ -504,7 +593,7 @@ export function createPixelEditor(source: PixelDocument) {
       };
       enqueue(x, y);
       while (head < tail) {
-        const index = queue[head++], px = index % document.width, py = Math.floor(index / document.width);
+        const index = queue[head++], px = index % state.width, py = Math.floor(index / state.width);
         put(px, py, color);
         enqueue(px - 1, py); enqueue(px + 1, py); enqueue(px, py - 1); enqueue(px, py + 1);
       }
