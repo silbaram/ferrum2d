@@ -372,14 +372,48 @@ v1/v2는 한 rect, v3/v5는 source frame 순서의 atlas rect, v4는 고정 atla
 - **조명 미리보기**는 별도 dialog에서 Color/Normal/Flat 비교와 움직이는 조명을 표시한다. 2D에서도 사용할 수 있고 닫기·탭 전환·원본 교체 시 GL/RAF/bitmap을 해제한다.
 - 픽셀·레이어·frame/tag 편집 또는 Undo 뒤에는 결과를 재검증하기 전까지 **재생성 필요**로 표시하고 미리보기/적용을 막는다. 원본이 이전과 같으면 다시 생성할 때 불변 cache를 재사용한다.
 - 씬 전환만으로 임시 color/normal의 소유 문서가 바뀌지 않는다. 다른 씬에서는 재생성이 필요하며, 검증해 저장한 프로젝트 pair만 같은 프로젝트의 다른 씬에서 재사용한다. 원본 씬으로 돌아오면 살아 있는 결과를 다시 사용할 수 있다. 닫힌 씬에서 폐기한 결과는 최신으로 표시하지 않는다.
-- **노멀과 함께 적용**은 기존 HD-2D billboard가 있는 선택 객체에 color와 normal을 한 번의 씬 Undo로 적용한다. 태그/clip 변경은 기존 명시적 migration 확인을 따른다.
+- **노멀과 함께 적용**은 선택한 일반 2D sprite 또는 HD-2D billboard에 color와 normal을 한 번의 씬 Undo로 적용한다. 태그/clip 변경은 기존 명시적 migration 확인을 따른다.
 - 외부 normal 또는 숫자 normal 참조는 자동 교체하지 않는다. 소유하고 검증한 이전 도트 pair만 교체하며 collider/body/layer/크기/카메라는 보존한다.
 - normal은 `colorSpace: "none"`, color는 `srgb`로 등록한다. 일반 color 적용은 normal이 연결된 sprite를 덮어쓰지 않는다.
-- 현재 일반 2D 게임 sprite에는 normal material을 연결하지 않는다. 2D에서는 생성·조명 미리보기·PNG/bundle 내보내기를, 실제 normal material 적용은 HD-2D billboard에서 제공한다.
+- 일반 2D는 `components.visual.normalTexture`에 이름을 저장하며 기존 `components.sprite.normalTexture`도 지원한다. HD-2D는 기존 `spatial.billboards[id].normalTexture`를 사용한다.
+- 2D 게임은 기존 `lighting`의 point/sun 조명이 켜져 있어야 normal 방향에 따른 차이가 보인다. 조명이 없거나 꺼져 있으면 기존 색상 렌더링을 유지한다.
+- 두 renderer에서 같은 color/frame UV·반전·회전을 사용한다. normal PNG의 alpha 대신 color alpha가 형상/가림 기준이며 앞쪽의 normal 없는 sprite도 뒤 normal을 가린다.
 
 **자산 내보내기**에는 현재 유효한 생성 결과의 normal PNG·manifest와 provenance도 담긴다. source `.pixel.json`은 color/frame의 편집 원본이며 normal PNG는 재생성 가능한 파생 자산이다.
 optional generator가 설치되지 않은 host는 기존 생성기 unavailable 진단을 표시한다. 생성기 설치/검증은 [Sprite Normals Worker](data-scene-spatial.md#선택형-브라우저-노멀맵-worker)를 따른다.
 최신 app/desktop host가 새 pixel normal provenance를 함께 지원해야 하며 이전 normal host는 새 format을 거절한다. 기존 Aseprite/Worker normal report와 도트 v1–v5는 유지한다.
+
+도트 편집기의 참고 기준은 Aseprite commit `3669f4774d181d77deb3e6db95fe6df8ca347410`이다.
+`src/app/tools`·`transaction.cpp`의 stroke/확정·취소, `src/doc`의 layer/cel/frame 책임,
+`src/doc/algorithm/floodfill.cpp`의 연결 영역과 `src/render`의 어니언 합성 원리를 참고했다.
+자체 TS 문서·정수 선 보간/clip·bounded queue·편집 이력과 view-only 어니언으로 구현하며 C++ 코드를 복사하거나 외부 앱 실행을 요구하지 않는다.
+
+### 일반 2D 노멀 재질과 조명
+
+```json
+{
+  "visual": {
+    "kind": "sprite", "texture": "hero.color", "normalTexture": "hero.normal",
+    "width": 32, "height": 48
+  },
+  "collider": "none", "layer": "player"
+}
+```
+
+`normalTexture`는 color와 동일한 크기/atlas layout의 OpenGL 방향 normal이다. manifest의 normal `colorSpace`는
+`none` 또는 `linear`이며 `srgb`와 크기 불일치는 렌더 시 거절한다. 기존 animation/animationSet의 현재 UV를 공유한다.
+Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 적용·내보내기·저장은 안정적인 자산 이름을 사용한다.
+새 material ABI를 제공하지 않는 구 Wasm은 normal이 없는 씬을 실행하며, normal을 요청한 씬은 활성화 전에 거절한다.
+한 번의 씬 적용에서 normal이 연결된 instance는 최대 65,536개다. 초과하면 기존 씬을 변경하기 전에 거절한다.
+
+2D `lighting.pointLights[].height`는 선택형 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`)이고 물리 높이와 무관하다.
+`directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
+기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
+반투명 겹침은 방향/coverage를 합성하는 deferred 근사이며 각 투명 layer의 물리 광학 합성을 제공하지 않는다.
+
+WebGL2/WebGPU는 활성 normal 프레임에서 명령 순서대로 두 RGBA8 target(physical pixel당8 bytes)을 추가로 그린다.
+`RendererStats.normalDrawCalls`와 전체 draw/bind/switch/resource 통계에 비용을 포함한다.
+normal이 없거나 lighting이 꺼지면 추가 target/pass가 없고 이전 target을 해제한다. `renderToTexture`의 sprite-only 경로에는 조명을 적용하지 않는다.
 
 ### 도트 프로젝트 저장과 재열기
 

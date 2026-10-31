@@ -33,6 +33,23 @@ native LOD snapshot·camera visibility·generation 전달·owned matrix·구 Was
 런타임 정지 후 새 camera 입력과 기존 표시 화면의 선택 일치를 검사한다. 단독 실행은
 `node tests/smoke/placement-village-smoke.mjs --model-picking-only`다.
 
+## 일반 2D sprite normal 검증
+
+`pnpm smoke:sprite-normal-2d`는 빌드된 SDK/Wasm으로 WebGL2와 native WebGPU offscreen 경로를 DPR1/2에서 검사한다.
+실제 Wasm finite animation의2개 UV·Playing/완료·sidecar ID와 독립 정적 UV 픽셀 일치를 확인한다.
+좌우/상하 반전·회전·opaque/반투명 전경·조명 OFF·camera pan/zoom/groundYScale의 실제 픽셀과 draw 비용을 assert한다.
+GL scissor/color mask 복원, point 높이·sun 고도, invalid data texture/flags 거절, target 해제·destroy 자원0도 검사한다.
+종료 시 삭제 예정인 current program 바인딩도 해제해 동일 canvas의 다음 renderer가 삭제된 프로그램을 복원하지 않도록 검사한다.
+WebGPU 장치를2회 재생성해 pixels/할당 plateau를 확인하고, linear-sRGB 요청의 WebGL2 fallback에서도 normal 조명을 검사한다.
+검증은 Chromium software adapter이며 native GUI나 실물 GPU 성능을 주장하지 않는다.
+CI validate job에서 직접 실행하며 결과는 `artifacts/pixel-normal-2d/runtime/verification.json`에 저장한다.
+
+`smoke:pixel-authoring`과 `smoke:pixel-project`는2D/HD-2D 모두에서 실제 Worker 생성·paired 적용·source stale/cancel·export를 검사한다.
+후자는 Rust 파일 host에 source/color→normal→scene을 저장한 뒤 재시작·원본 재열기·Worker 없는 검증된 pair 복원과 fresh game 조명까지 확인한다.
+SDK/Rust 단위 검사는 optional ABI·bulk 원자성·정렬/수명·prototype·기존unlit 호환·patch/handoff를 담당한다.
+SDK는 normal instance 65,537개를 활성화·spawn 전에 거절하는지도 검사한다.
+`test:native-normal-project`는 숫자 normal alias의 프로젝트 범위 보호와 잘못된 JSON의 참조 수집 경계를 검사한다.
+
 ## 제품 Runtime Budget Readiness
 
 런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.

@@ -232,6 +232,22 @@ events/debug   -> opt-in collision/physics buffer ptr + len
 
 Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 빈도의 설정은 TypeScript에서 검증한 뒤 숫자형 값이나 bulk buffer 형태로 Rust에 전달한다. Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`는 runtime adapter가 읽을 수 있는 authoring data로 정규화하고, `createShooterContentRuntimeOptions(...)`가 단일/명시 content id만 `createFerrumRuntime(...)` option fragment로 변환한다. `SceneComposition`/`BehaviorRecipe` 묶음은 `ShooterGameSpec` top-level로 승격하지 않고 `ferrum2d.consumer.scene-authoring` 별도 artifact로 유지하며, `resolveSceneAuthoringDocument(...)`가 format/version, scene composition, behavior recipe, optional binding plan을 검증한다. `classifySceneInstance(...)`는 이 resolved instance에서 `worldObject`/`actor` authoring role만 파생하며, Rust runtime class나 Wasm ABI를 추가하지 않는다. 이 경로는 Rust simulation이나 Wasm ABI를 자동 변경하지 않는다. Behavior recipe의 entity-level tags도 TypeScript가 `ids.tags`로 `0..31` numeric bitmask로 컴파일해 Rust `GameplayTags` component로 설치하며, frame loop에서는 문자열 tag를 해석하지 않는다.
 
+### 일반 2D normal material
+
+Rust World는 sprite별 선택 normal texture를 소유하며 despawn/reuse·snapshot·actor prototype에 함께 반영한다.
+기존15-f32 command ABI는 유지한다. 독립 v1 sidecar는 명령당 `#[repr(C)]` 2-u32/8-byte이고
+정렬된 color 명령과 같은 순서로 작성한다. tile/text/particle/그림자는 NONE이다.
+cold bulk 설정만 generation을 확인하며 frame loop에서 entity별 JS/Wasm 호출은 하지 않는다.
+TS는 optional export/version/size/count/pointer/bounds/flags를 검사해 매 frame borrowed sidecar를 만든다.
+Data Scene은 material을 한 batch로 적용한 뒤 native gameplay prototype을 캡처한다.
+
+WebGL2/WebGPU normal pass는 color와 같은 순서/alpha로 signed normal과 mapped coverage를 별도 RGBA8 MRT에 합성한다.
+normal 없는 전경도 뒤 normal을 가린다. 기존2D point/sun pass가 방향과 coverage를 읽어 Lambert contribution을 적용한다.
+normal 없는 프레임/조명 OFF는 추가 target/pass0이며, 활성 프레임의 target 비용은8 bytes/physical pixel이다.
+GL scissor/depth/cull/color mask를 복원하고 resize/비활성/destroy에서 target을 해제한다.
+현재 반투명 합성은 deferred 방향 혼합이며 per-layer 물리 광학/PBR 범위는 포함하지 않는다.
+도트2D 적용은 component patch v2와 기존 source/color→normal→scene 저장·검증 경로를 사용한다.
+
 ### Runtime 렌더러 확장 경계
 
 `runtimeRenderer.ts`의 `FerrumRuntimeRenderer`는 GPU 클래스의 private 멤버를 포함하지 않는 구조적 포트다.

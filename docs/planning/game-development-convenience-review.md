@@ -11,7 +11,7 @@
 ## Asset 반복 작업
 
 가져오기·세션 revision 정리·Import 진단의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
-픽셀 제작은 별도 [스프라이트 편집기 계획](sprite-editor-plan.md)이 담당하며 여기에서는 그 밖의 후보만 관리한다.
+도트 제작과2D/HD-2D 노멀 적용의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)을 따른다. 여기에서는 후속 후보만 관리한다.
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |

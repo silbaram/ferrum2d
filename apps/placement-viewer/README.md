@@ -362,8 +362,9 @@ v5 원본에 안정적인 tag/frame ID·단조 증가 clip ID를 저장한다. �
 
 왼쪽 **노멀맵** 메뉴에서 현재 source frame을 기준으로 노멀을 생성하고 별도의 **조명 미리보기**로 확인한다.
 강도는0~8이며 원본/프레임 수정 뒤에는 **재생성 필요**로 전환되어 이전 결과를 적용하지 않는다. 같은 원본으로 돌아오면 생성 cache를 재사용한다.
-**노멀과 함께 적용**은 HD-2D billboard의 color/normal을 함께 바꾸고 씬 Undo로 복원한다. 외부 normal은 보호하며 기존 clip migration 확인을 유지한다.
-2D에서는 생성·미리보기·내보내기를 지원하고 일반 2D sprite material에 normal을 연결하지 않는다.
+**노멀과 함께 적용**은 일반 2D sprite와 HD-2D billboard의 color/normal을 함께 바꾸고 씬 Undo로 복원한다. 외부 normal은 보호하며 기존 clip migration 확인을 유지한다.
+2D는 `visual.normalTexture`, HD-2D는 기존 billboard normal 참조를 사용한다. 2D 게임 미리보기에서 점광원 또는 태양광을 켜면 normal 방향에 따라 조명이 달라진다.
+2D의 조명을 끄면 기존 색상을 그대로 그리며 추가 normal target/pass를 해제한다. normal과 color는 크기·frame UV를 공유하고 반전·회전에도 대응한다.
 **프로젝트 저장**은 도트 source/color와 normal pair를 검증한 뒤 씬을 저장한다. normal pair는 `.ferrum-normals`에 저장되며 재시작 후 source hash·frame 경계를 확인해 복원한다.
 미리보기는 게임 상태/카메라를 바꾸지 않으며 닫기·탭 전환 시 GPU/RAF 자원을 해제한다.
 

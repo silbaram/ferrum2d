@@ -381,6 +381,9 @@ http://localhost:5173?debug=true
 원본 timing을 native 고정 FPS·32 frame 안에서 표현할 수 없으면 오류를 반환한다.
 생성 report는 authoring binding API로 stable color/normal 이름·검증 가능한 patch/handoff에 연결한다.
 공간 문서의 normalTexture 이름은 적용 전 현재 registry ID로 해석하므로 재로딩 후에도 이름을 유지한다.
+에디터 내장 도트는 일반 2D sprite와 HD-2D billboard에 color/normal을 함께 적용하고 저장·재열기할 수 있다.
+2D 게임의 점광원·태양광에 normal 방향을 반영하며 [2D 재질 계약](docs/engine/data-scene-authoring.md#일반-2d-노멀-재질과-조명)을 따른다.
+
 설정·출력 보호·보고서 계약은 [노멀맵 생성 CLI](docs/engine/data-scene-spatial.md#선택형-노멀맵-생성-cli)를 따른다.
 브라우저 생성은 `pnpm normals:wasm:build`로 준비한 선택형 bundle과 authoring Worker API를 사용한다.
 원본 복사·취소/timeout·cache/메모리 한도·binding 연결은
