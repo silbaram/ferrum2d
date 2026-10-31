@@ -172,10 +172,11 @@ export function createPlacementAssetBrowser(options: {
         render();
       });
       cell.append(button, favorite);
-      if (asset.kind === "sprite" && !asset.frameId && asset.thumbnail && options.editPixels) {
+      if (asset.kind === "sprite" && asset.thumbnail && options.editPixels) {
         const edit = document.createElement("button");
         edit.type = "button"; edit.className = "placement-asset-normal";
         edit.dataset.placementEditPixels = asset.id;
+        if (asset.frameId) edit.dataset.placementEditPixelFrame = asset.frameId;
         setUiText(edit, "Edit Pixels");
         setUiAttribute(edit, "aria-label", uiMessage("Edit Pixels {0}", asset.label));
         edit.disabled = !options.canUse(asset);

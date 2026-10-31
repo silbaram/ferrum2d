@@ -81,6 +81,7 @@ test("project normal assets remain available to sibling scenes after the first d
   assert.equal(released.length, 1);
 });
 function fixture(aseprite = false) {
+  const pixel=aseprite==="pixel", family=pixel?"pixel":"aseprite", colorId=pixel?"pixel."+"a".repeat(24):"pair.color";
   const color = encodePngRgba(1, 1, new Uint8Array([220, 30, 20, 255])),
     normal = encodePngRgba(1, 1, new Uint8Array([128, 128, 255, 255]));
   const generator = {
@@ -113,16 +114,16 @@ function fixture(aseprite = false) {
     configSha256 = report.config.sha256;
   if (aseprite) {
     const content = {
-      format: "ferrum2d.aseprite-normal.report",
+      format: "ferrum2d."+family+"-normal.report",
       version: 1,
-      pipeline: "aseprite-rects-v1",
+      pipeline: family+"-rects-v1",
       source: {
-        assetId: "pair.color",
+        assetId: colorId,
         jsonSha256: "b".repeat(64),
         pngSha256: sha(color),
       },
       settings: {},
-      frames: [{ rect: [0, 0, 1, 1], report }],
+      frames: [{ ...(pixel?{id:"frame-1"}:{}),rect: [0, 0, 1, 1], report }],
       output: { sha256: sha(normal), width: 1, height: 1 },
     };
     configSha256 = sha(JSON.stringify(content));
@@ -131,7 +132,7 @@ function fixture(aseprite = false) {
       config: { path: "config.json", sha256: configSha256 },
     };
     metadataJson = JSON.stringify(report);
-    settings = { pipeline: "aseprite-rects-v1", jsonSha256: "b".repeat(64) };
+    settings = { pipeline: family+"-rects-v1", jsonSha256: "b".repeat(64) };
   }
   const binding = {
     format: "ferrum2d.sprite-normal.binding",
@@ -140,7 +141,7 @@ function fixture(aseprite = false) {
     height: 1,
     textures: {
       color: {
-        asset: "pair.color",
+        asset: colorId,
         path: "source.png",
         sha256: sha(color),
         colorSpace: "srgb",
@@ -170,11 +171,11 @@ function fixture(aseprite = false) {
     metadataJson,
     manifest: {
       textures: {
-        "pair.color": "pair.color.png",
+        [colorId]: colorId+".png",
         "pair.normal": "pair.normal.png",
       },
       textureOptions: {
-        "pair.color": { colorSpace: "srgb" },
+        [colorId]: { colorSpace: "srgb" },
         "pair.normal": { colorSpace: "none" },
       },
     },
@@ -190,7 +191,7 @@ function fixture(aseprite = false) {
       version: 1,
       registered: true,
       entries: [{ sha256: id, metadataUrl: "/metadata" }],
-      textures: { "pair.color": "/color", "pair.normal": "/normal" },
+      textures: { [colorId]: "/color", "pair.normal": "/normal" },
     };
   }
   data.set("http://normal.test/color", color);
@@ -381,4 +382,17 @@ test("restoration shares source colors, owns only new textures, restores evidenc
     ["pair.normal"],
   );
   assert(!manager.has("pair.normal"));
+});
+
+test("pixel normal catalog validates source hash/frame evidence and borrows the pixel color texture",async()=>{
+  const f=fixture("pixel"),id=f.bundle.binding.textures.color.asset,source={sha256:f.bundle.binding.textures.color.sha256,colorSpace:"srgb",sourceJsonSha256:"b".repeat(64),frameRects:[{id:"frame-1",x:0,y:0,width:1,height:1}]};
+  for(const change of [{sourceJsonSha256:"c".repeat(64)},{frameRects:[{id:"changed",x:0,y:0,width:1,height:1}]}]){
+    const manager=store({loadAssets:async()=>{throw Error("must validate before upload");},releaseAssets(){}},"scene","project");
+    await assert.rejects(manager.load(f.catalog,new Map([[id,{...source,...change}]]),()=>false,signal()),/source or frame layout/);manager.destroy();
+  }
+  let uploaded;const released=[];
+  const manager=store({async loadAssets(value){uploaded=value;},releaseAssets(value){released.push(value);}},"scene","project");
+  await manager.load(f.catalog,new Map([[id,source]]),()=>false,signal());
+  assert.deepEqual(Object.keys(uploaded.textures),["pair.normal"]);assert.equal(manager.bundles("scene",undefined,"project")[0].report.format,"ferrum2d.pixel-normal.report");
+  manager.destroy();assert.deepEqual(released[0].textures.map(t=>t.name),["pair.normal"]);
 });

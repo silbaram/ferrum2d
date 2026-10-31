@@ -1,4 +1,4 @@
-import { pixelBytes, readPixelDocument, type PixelDocument } from "./placementPixelDocument";
+import { pixelAtlas, readPixelDocument, PIXEL_LIMITS, type PixelDocument } from "./placementPixelDocument";
 
 function chunk(name: string, data: Uint8Array): Uint8Array {
   const bytes = new Uint8Array(data.length + 12), view = new DataView(bytes.buffer);
@@ -16,14 +16,14 @@ function chunk(name: string, data: Uint8Array): Uint8Array {
 /** Lossless RGBA export, including transparent RGB. Avoid canvas premultiplication. */
 export async function pixelPng(source: PixelDocument): Promise<ArrayBuffer> {
   const document = readPixelDocument(JSON.stringify(source));
-  const pixels = pixelBytes(document), stride = document.width * 4;
-  const rows = new Uint8Array((stride + 1) * document.height);
-  for (let row = 0; row < document.height; row++)
+  const {pixels,width,height}=pixelAtlas(document),stride=width*4;
+  const rows = new Uint8Array((stride + 1) * height);
+  for (let row = 0; row < height; row++)
     rows.set(pixels.subarray(row * stride, (row + 1) * stride), row * (stride + 1) + 1);
   const stream = new Blob([rows]).stream().pipeThrough(new CompressionStream("deflate"));
   const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
   const header = new Uint8Array(13), view = new DataView(header.buffer);
-  view.setUint32(0, document.width); view.setUint32(4, document.height);
+  view.setUint32(0, width); view.setUint32(4, height);
   header[8] = 8; header[9] = 6;
   const parts = [
     new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
@@ -36,10 +36,13 @@ export async function pixelPng(source: PixelDocument): Promise<ArrayBuffer> {
   return output.buffer;
 }
 
-/** Lossless RGBA8 PNG verification, including ordinary filters, split IDAT and Adam7. */
-export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) {
-  const document = readPixelDocument(JSON.stringify(source));
-  if (bytes.byteLength > 4 * 1024 * 1024) throw Error("Pixel PNG exceeds the byte limit");
+/** Read straight-alpha RGBA8 without canvas premultiplication or implicit color conversion. */
+export async function readPixelPng(bytes: ArrayBuffer, maxSide: number = PIXEL_LIMITS.side, maxBytes = 4 * 1024 * 1024) {
+  if (bytes.byteLength > maxBytes) throw Error("Pixel PNG exceeds the byte limit");
+  if (bytes.byteLength < 33) throw Error("Invalid pixel PNG");
+  const headerView = new DataView(bytes);
+  const width = headerView.getUint32(16), height = headerView.getUint32(20);
+  if (!width || !height || width > maxSide || height > maxSide) throw Error("PNG exceeds the pixel editor limit");
   const data = new Uint8Array(bytes.slice(0)), view = new DataView(data.buffer);
   if ([137,80,78,71,13,10,26,10].some((v,i) => data[i] !== v)) throw Error("Invalid pixel PNG");
   const compressed: Uint8Array<ArrayBuffer>[] = [];
@@ -54,8 +57,8 @@ export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) 
     if (encoded.some((v,i) => v !== data[offset+i])) throw Error("Pixel PNG checksum differs");
     offset += size + 12;
     if (name === "IHDR") {
-      if (header || size !== 13 || view.getUint32(offset - size - 4) !== document.width ||
-        view.getUint32(offset - size) !== document.height || body[8] !== 8 || body[9] !== 6 ||
+      if (header || size !== 13 || view.getUint32(offset - size - 4) !== width ||
+        view.getUint32(offset - size) !== height || body[8] !== 8 || body[9] !== 6 ||
         body[10] !== 0 || body[11] !== 0 || body[12] > 1) throw Error("Pixel PNG dimensions or format differ");
       header = true; interlaced = body[12] === 1;
     } else if (name === "IDAT") {
@@ -86,7 +89,7 @@ export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) 
     ? [[0,0,8,8],[4,0,8,8],[0,4,4,8],[2,0,4,4],[0,2,2,4],[1,0,2,2],[0,1,1,2]]
     : [[0,0,1,1]];
   const passes = layout.map(([x,y,dx,dy]) => ({x,y,dx,dy,
-    width: Math.max(0,Math.ceil((document.width-x)/dx)),height: Math.max(0,Math.ceil((document.height-y)/dy))}));
+    width: Math.max(0,Math.ceil((width-x)/dx)),height: Math.max(0,Math.ceil((height-y)/dy))}));
   const limit = passes.reduce((sum,p) => sum + (p.width ? (p.width*4+1)*p.height : 0),0);
   const reader = new Blob(compressed).stream().pipeThrough(new DecompressionStream("deflate")).getReader();
   const rows = new Uint8Array(limit);
@@ -99,7 +102,7 @@ export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) 
     }
   } finally { await reader.cancel().catch(() => {}); }
   if (length !== limit) throw Error("Pixel PNG byte length differs");
-  const actual = new Uint8Array(document.width*document.height*4);
+  const actual = new Uint8Array(width*height*4);
   let position = 0;
   for (const pass of passes) {
     if (!pass.width || !pass.height) continue;
@@ -113,12 +116,20 @@ export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) 
         row[x] = (rows[position++] + prediction) & 255;
       }
       for (let x = 0; x < pass.width; x++)
-        actual.set(row.subarray(x*4,x*4+4),((pass.y+y*pass.dy)*document.width+pass.x+x*pass.dx)*4);
+        actual.set(row.subarray(x*4,x*4+4),((pass.y+y*pass.dy)*width+pass.x+x*pass.dx)*4);
       [previous,row] = [row,previous];
     }
   }
-  const expected = pixelBytes(document);
-  if (actual.some((v,i) => v !== expected[i])) throw Error("Pixel PNG and editable source differ");
+  return { width, height, pixels: actual };
+}
+/** Lossless RGBA8 PNG verification, including ordinary filters, split IDAT and Adam7. */
+export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) {
+  const document = readPixelDocument(JSON.stringify(source));
+  const expected = pixelAtlas(document);
+  const actual = await readPixelPng(bytes, (document.version === 3 || document.version === 5) ? PIXEL_LIMITS.side * 4 : PIXEL_LIMITS.side,
+    (document.version === 3 || document.version === 5) ? PIXEL_LIMITS.pngBytes : 4 * 1024 * 1024);
+  if (actual.width !== expected.width || actual.height !== expected.height) throw Error("Pixel PNG dimensions or format differ");
+  if (actual.pixels.some((v,i) => v !== expected.pixels[i])) throw Error("Pixel PNG and editable source differ");
 }
 function paeth(left: number, up: number, corner: number): number {
   const p = left+up-corner, a = Math.abs(p-left), b = Math.abs(p-up), c = Math.abs(p-corner);

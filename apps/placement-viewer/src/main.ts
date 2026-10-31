@@ -1,3 +1,5 @@
+import { validatePlacementAssetPatch } from "./placementAssetPatch";
+import { pixelNormalFrames } from "./placementPixelNormals";
 import type { UiContent } from "./placementLocale";
 import {
   installPlacementLanguage,
@@ -81,7 +83,7 @@ import {
   createDesktopAsepriteProjectHost,
   readPlacementAsepriteProject,
 } from "./placementAsepriteProject";
-import type { PlacementNormalAssetHost } from "./placementNormalAssets";
+import { placementNormalHash, type PlacementNormalAssetHost } from "./placementNormalAssets";
 import {
   createDesktopNormalProjectHost,
   createPlacementNormalProjectAssets,
@@ -827,7 +829,7 @@ async function bootstrap(): Promise<void> {
       taken: id => id in runtimeTextures || previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
         (asepriteAssets?.entries().some(a => a.id === id) ?? false) || (tileAssets?.entries().some(a => a.id === id) ?? false) ||
         (normalProjectAssets?.has(id) ?? false) || (normalTool?.browserEntries().some(a => a.id === id) ?? false),
-      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id,
+      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id || (pixelTool?.retainsColor(id)??false),
     });
     if (asepriteProjectHost) {
       const signal = new AbortController().signal;
@@ -860,14 +862,12 @@ async function bootstrap(): Promise<void> {
             initialKey,
             asepriteProjectPath,
           );
+          const shared=new Map<string,{sha256:string;colorSpace:"srgb"|"none";sourceJsonSha256?:string;frameRects?:ReturnType<typeof pixelNormalFrames>}>(
+            [...restored,...tiles].map(asset=>[asset.id,{sha256:asset.pngSha256,colorSpace:"srgb"}]));
+          for(const asset of pixels)shared.set(asset.id,{sha256:asset.sha256,colorSpace:"srgb",sourceJsonSha256:await placementNormalHash(asset.sourceJson),frameRects:pixelNormalFrames(asset.source)});
           await normalProjectAssets.load(
             await nativeNormalHost.load(signal),
-            new Map(
-              [...restored, ...tiles, ...pixels.map(asset => ({ id: asset.id, pngSha256: asset.sha256 }))].map((asset) => [
-                asset.id,
-                { sha256: asset.pngSha256, colorSpace: "srgb" as const },
-              ]),
-            ),
+            shared,
             (id) =>
               id in runtimeTextures ||
               previewAssetProvider.resolveSpriteAsset(id) !== undefined,
@@ -1067,6 +1067,7 @@ async function bootstrap(): Promise<void> {
         [
           ...(normalTool?.bindings() ?? []),
           ...(asepriteTool?.normalBindings() ?? []),
+          ...(pixelTool?.normalBindings() ?? []),
           ...(normalProjectAssets?.bindings(
             activeDocument.key,
             currentDocument,
@@ -1814,7 +1815,10 @@ async function bootstrap(): Promise<void> {
           void normalTool?.openAsset(asset.id, asset.thumbnail);
       },
       editPixels: asset => {
-        if (asset.thumbnail) pixelTool?.openAsset(asset.label, asset.thumbnail, asset.id);
+        const image = currentAssetProvider().resolveSpriteAsset(asset.id)?.thumbnailUrl ?? asset.thumbnail;
+        if (image) pixelTool?.openAsset(asset.label, image, asset.id, asset.frameId, {
+          texture: asset.id, frames: currentAssetProvider().listSpriteFrames(asset.id).map(frame => ({ id: frame.id, frame: frame.frame! })),
+        });
       },
     });
     function currentNormalHost(): PlacementNormalAssetHost | undefined {
@@ -1857,10 +1861,9 @@ async function bootstrap(): Promise<void> {
     function applyAssetPatch(patch: ScenePlacementPatch, label: string) {
       if (viewer.historyState().transactionLabel !== undefined)
         throw new Error("Finish the current edit before applying assets");
-      mergeScenePlacementPatch(
+      validatePlacementAssetPatch(
         viewer.exportPatch() ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!).document : savedDocument,
-        patch,
-        { allowedFragments: [viewer.state().fragment] },
+        patch,viewer.state().fragment,
       );
       viewer.beginEdit(label);
       try {
@@ -1998,6 +2001,10 @@ async function bootstrap(): Promise<void> {
     pixelTool = createPlacementPixelTool({
       engine: runtimeEngine, viewer, stage: shell.stage, context: importedAssetContext,
       assets: pixelAssets,
+      normalHost:currentNormalHost,
+      normalSettings:()=>normalTool!.generationSettings(),
+      normalBundles:()=>normalProjectAssets?.bundles(activeDocument.key,undefined,currentAssetProject())??[],
+      normalClaims:()=>normalProjectAssets?.claims(activeDocument.key,currentAssetProject())??[],
       projectHost: () => currentAssetProject() === pixelProjectHost?.project ? pixelProjectHost : undefined,
       saveScene: async () => {
         if (!viewer.exportPatch()) return;
@@ -2008,7 +2015,7 @@ async function bootstrap(): Promise<void> {
         (asepriteAssets?.entries().some(asset => asset.id === id) ?? false) ||
         (tileTool?.has(id) ?? false) ||
         (normalTool?.browserEntries().some(asset => asset.id === id) ?? false),
-      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id,
+      retains: id => retainsImportedAsset(id) || currentPlacementTool()?.id === id || (pixelTool?.retainsColor(id)??false),
       apply: applyAssetPatch,
       changed: () => setState(viewer.state()),
       tabsChanged: () => { syncTabs(); documentSession?.sync(); },
@@ -2702,7 +2709,7 @@ async function bootstrap(): Promise<void> {
         desktop?.enabled ? desktop.projectPath : undefined,
       );
       tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
-      pixelTool?.assertDocumentAssets(value, key, desktop?.enabled ? desktop.projectPath : undefined);
+      pixelTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key, desktop?.enabled ? desktop.projectPath : undefined);
       normalProjectAssets?.assertDocumentAssets(
         value as SceneAuthoringDocumentSpec,
         key,

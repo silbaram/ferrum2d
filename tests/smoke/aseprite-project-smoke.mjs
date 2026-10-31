@@ -151,7 +151,7 @@ let bridge = rustBridge(),
   gameProject;
 const commands = [];
 let generatorRoute;
-if (normalMode)
+if (normalMode || pixelMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -162,7 +162,7 @@ if (normalMode)
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   try {
-    if (normalMode && url.pathname.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode) && url.pathname.startsWith(generatorRoute.prefix + "/")) {
       request.url = request.url.slice(generatorRoute.prefix.length);
       generatorRoute.handler(request, response);
       return;
@@ -260,6 +260,7 @@ const server = createServer(async (request, response) => {
     );
     response.end(await readFile(file));
   } catch (error) {
+    if(url.pathname.startsWith("/game/"))response.statusCode=error.code==="ENOENT"?404:500;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ error: error.message }));
   }

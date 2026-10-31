@@ -286,6 +286,29 @@ mod tests {
                 "load_placement_aseprite_assets" => {
                     load_inner(Path::new(text(args, "projectPath")?), &assets, &writes)
                 }
+                "load_placement_scene_document" => {
+                    serde_json::to_value(super::super::load_placement_scene_document_inner(
+                        Some(text(args, "sceneDocumentPath")?.to_owned()),
+                        Some(&writes),
+                    )?)
+                    .map_err(|_| invalid("bridge scene serialization"))
+                }
+                "list_placement_project_scenes" => {
+                    serde_json::to_value(super::super::scene_catalog::list_project_scenes(
+                        Path::new(text(args, "projectPath")?),
+                        &writes,
+                    )?)
+                    .map_err(|_| invalid("bridge scene catalog serialization"))
+                }
+                "inspect_placement_asset_folder" => {
+                    let path =
+                        super::super::parse_asset_folder_path(text(args, "assetFolderPath")?)?;
+                    serde_json::to_value(super::super::inspect_asset_folder_path(
+                        &path,
+                        Some(&assets),
+                    )?)
+                    .map_err(|_| invalid("bridge asset folder serialization"))
+                }
                 "load_placement_pixel_assets" => super::super::pixel_assets::load_inner(
                     Path::new(text(args, "projectPath")?),
                     &assets,

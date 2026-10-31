@@ -79,10 +79,16 @@ export async function smokePixelLayers(page,mode,run) {
   await workspace.locator('[data-pixel-color]').fill('#00ff00');await workspace.locator('[data-pixel-alpha]').fill('255');await click(2,2);
   assert.deepEqual((await source('locked-unchanged')).layers,locked.layers);
   await workspace.locator('[data-pixel-layer-locked="'+top+'"]').uncheck();
-  await layerAction('down').click();await checkPng([0,0,255,255],'behind');
+  await layerAction('down').click();
+  assert(await workspace.evaluate(e=>e.contains(document.activeElement)),'disabling a layer order action must keep focus in the pixel editor');
+  await page.keyboard.press('Control+z');
+  assert.deepEqual(await workspace.locator('[data-pixel-layer-select]').evaluateAll(nodes=>nodes.map(e=>e.dataset.pixelLayerSelect)),[top,renamed.layers[0].id],'keyboard Undo after a layer move targets pixel history');
+  await page.keyboard.press('Control+Shift+z');
+  await checkPng([0,0,255,255],'behind');
   await layerAction('up').click();await checkPng([64,0,191,255],'front');
-  await layerAction('remove').click();assert.equal((await source('removed')).layers.length,1);
-  await action('undo').click();assert.equal((await source('remove-undo')).layers.length,2);
+  await layerAction('remove').click();
+  assert(await workspace.evaluate(e=>e.contains(document.activeElement)),'disabling deletion at one remaining layer must keep pixel focus');
+  await page.keyboard.press('Control+z');assert.equal((await source('remove-undo')).layers.length,2);
   const final=await source('source');assert.equal(final.version,2);assert.equal(final.layers[1].id,top);
   await workspace.locator('[data-pixel-layer-select="'+final.layers[0].id+'"]').click();
   assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false','selection is not source data');
@@ -126,5 +132,5 @@ export async function smokePixelLayers(page,mode,run) {
   await page.setViewportSize({width:1440,height:1000});
   await page.locator('[data-placement-language]').selectOption('en');
   return {source:final,composite:[64,0,191,255],metadataUndoRedo:true,paintLock:true,visibleOrder:true,selectionNotDirty:true,
-    keyboardFocus:true,renameThenSelect:true,compositionSafe:true,invalidRenameRestored:true,pixelSpacePan:true,closeReleasesRows:true};
+    keyboardFocus:true,boundaryActionFocus:true,renameThenSelect:true,compositionSafe:true,invalidRenameRestored:true,pixelSpacePan:true,closeReleasesRows:true};
 }

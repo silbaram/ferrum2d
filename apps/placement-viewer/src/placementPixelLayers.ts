@@ -67,7 +67,7 @@ export function createPixelLayers(options: {
   let signature="", previousEditor: ReturnType<typeof createPixelEditor> | undefined;
   function sync() {
     const editor=options.editor(),layers=editor.layers(),selected=editor.selectedLayer(),disabled=options.busy()||editor.active();
-    const next=JSON.stringify([layers,selected,disabled]);
+    const next=JSON.stringify([layers,selected,disabled,editor.frames().length]);
     if(signature===next&&previousEditor===editor)return;
     const focused=document.activeElement;
     const focusKey=(["select","visible","locked"] as const).find(key=>focused?.hasAttribute("data-pixel-layer-"+key));
@@ -76,7 +76,7 @@ export function createPixelLayers(options: {
     if(previousEditor!==editor){list.replaceChildren();rows.clear();}
     signature=next;previousEditor=editor;
     const index=layers.findIndex(l=>l.id===selected),active=layers[index];
-    buttons.get("add")!.disabled=disabled||layers.length>=PIXEL_LIMITS.layers;
+    buttons.get("add")!.disabled=disabled||layers.length>=PIXEL_LIMITS.layers||editor.width*editor.height*(layers.length+1)*editor.frames().length>PIXEL_LIMITS.pixels;
     buttons.get("remove")!.disabled=disabled||layers.length===1;
     buttons.get("up")!.disabled=disabled||index===layers.length-1;
     buttons.get("down")!.disabled=disabled||index===0;
@@ -97,8 +97,9 @@ export function createPixelLayers(options: {
       // Keep row nodes stable so a name change on blur cannot swallow the next click.
       if(list.children[position]!==row.element)list.insertBefore(row.element,list.children[position]??null);
     }
-    if(restoreFocus&&focusKey&&focusId) {
-      const target=rows.get(focusId)?.[focusKey]??rows.get(selected)?.select;
+    const disabledAction=toolbar.contains(focused)&&focused instanceof HTMLButtonElement&&focused.disabled;
+    if((restoreFocus&&focusKey&&focusId)||disabledAction) {
+      const target=(focusKey&&focusId?rows.get(focusId)?.[focusKey]:undefined)??rows.get(selected)?.select;
       if(target&&!target.disabled&&document.activeElement!==target)target.focus({preventScroll:true});
     }
   }

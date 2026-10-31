@@ -1,5 +1,6 @@
 import { setUiAttribute } from "./placementLocale";
 import { type createPixelEditor, type PixelColor } from "./placementPixelDocument";
+import { pixelOnionFrames, PIXEL_ONION_DEFAULTS, type PixelOnionSettings } from "./placementPixelOnion";
 
 export type PixelTool = "pencil" | "eraser" | "fill" | "eyedropper" | "pan";
 /** View state only. Pixel mutations and Undo belong to the document model. */
@@ -7,6 +8,9 @@ export function createPixelCanvas(options: {
   editor(): ReturnType<typeof createPixelEditor>;
   tool(): PixelTool;
   color(): PixelColor;
+  frame?(): string;
+  readOnly?(): boolean;
+  onion?(): PixelOnionSettings;
   pick(color: PixelColor): void;
   changed(): void;
 }) {
@@ -23,20 +27,20 @@ export function createPixelCanvas(options: {
     panX: number; panY: number; color: PixelColor;
   } | undefined;
   function dimensions() {
-    const rect = element.getBoundingClientRect(), editor = options.editor();
-    return { rect, left: rect.width / 2 - editor.width * zoom / 2 + panX,
-      top: rect.height / 2 - editor.height * zoom / 2 + panY };
+    const rect = element.getBoundingClientRect(), region = options.editor().region();
+    return { rect, region, left: rect.width / 2 - region.width * zoom / 2 + panX,
+      top: rect.height / 2 - region.height * zoom / 2 + panY };
   }
   function point(event: PointerEvent) {
-    const { rect, left, top } = dimensions();
-    return { x: Math.floor((event.clientX - rect.left - left) / zoom),
-      y: Math.floor((event.clientY - rect.top - top) / zoom) };
+    const { rect, left, top, region } = dimensions();
+    return { x: region.x + Math.floor((event.clientX - rect.left - left) / zoom),
+      y: region.y + Math.floor((event.clientY - rect.top - top) / zoom) };
   }
   function render() {
     frame = 0;
     if (disposed || !element.isConnected || !element.getBoundingClientRect().width) return;
-    const { rect, left, top } = dimensions(), editor = options.editor();
-    element.dataset.pixelPaintable = String(editor.canPaint());
+    const { rect, left, top, region } = dimensions(), editor = options.editor();
+    element.dataset.pixelPaintable = String(editor.canPaint() && !options.readOnly?.());
     const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
     const width = Math.max(1, Math.round(rect.width * dpr)), height = Math.max(1, Math.round(rect.height * dpr));
     if (element.width !== width || element.height !== height) {
@@ -50,32 +54,46 @@ export function createPixelCanvas(options: {
     const foreground = style.getPropertyValue("--border-strong").trim() || "#2a313b";
     // Checkers belong to the image bounds; the work area stays visually quiet.
     context!.save();
-    context!.beginPath(); context!.rect(left, top, editor.width * zoom, editor.height * zoom); context!.clip();
+    context!.beginPath(); context!.rect(left, top, region.width * zoom, region.height * zoom); context!.clip();
     const tile = Math.max(4, zoom);
-    for (let y = Math.max(0, Math.floor(-top / tile)); y < Math.min(Math.ceil(editor.height * zoom / tile), Math.ceil((rect.height - top) / tile)); y++)
-      for (let x = Math.max(0, Math.floor(-left / tile)); x < Math.min(Math.ceil(editor.width * zoom / tile), Math.ceil((rect.width - left) / tile)); x++) {
+    for (let y = Math.max(0, Math.floor(-top / tile)); y < Math.min(Math.ceil(region.height * zoom / tile), Math.ceil((rect.height - top) / tile)); y++)
+      for (let x = Math.max(0, Math.floor(-left / tile)); x < Math.min(Math.ceil(region.width * zoom / tile), Math.ceil((rect.width - left) / tile)); x++) {
         context!.fillStyle = (x + y) % 2 ? background : foreground;
         context!.fillRect(left + x * tile, top + y * tile, tile, tile);
       }
     image.width = editor.width; image.height = editor.height;
-    imageContext!.putImageData(new ImageData(new Uint8ClampedArray(editor.bytes()), editor.width, editor.height), 0, 0);
-    context!.drawImage(image, left, top, editor.width * zoom, editor.height * zoom);
+    const onion=options.onion?.()??PIXEL_ONION_DEFAULTS;
+    const ghosts=pixelOnionFrames(editor.frames(),editor.selectedFrame(),onion,options.readOnly?.());
+    element.dataset.pixelOnionFrames=JSON.stringify(ghosts);
+    for(const ghost of ghosts) {
+      imageContext!.putImageData(new ImageData(new Uint8ClampedArray(editor.bytes(ghost.id)),editor.width,editor.height),0,0);
+      imageContext!.save();
+      imageContext!.globalCompositeOperation="source-in";
+      imageContext!.fillStyle=style.getPropertyValue(ghost.side==="previous"?"--red":"--cyan").trim()||(ghost.side==="previous"?"#FF6B6B":"#38D5E8");
+      imageContext!.fillRect(0,0,editor.width,editor.height);imageContext!.restore();
+      context!.globalAlpha=onion.opacity/100;
+      context!.drawImage(image,left,top,editor.width*zoom,editor.height*zoom);
+    }
+    context!.globalAlpha=1;
+    imageContext!.putImageData(new ImageData(new Uint8ClampedArray(editor.bytes(options.frame?.())), editor.width, editor.height), 0, 0);
+    context!.drawImage(image, region.x, region.y, region.width, region.height, left, top, region.width * zoom, region.height * zoom);
     context!.restore();
     if (zoom >= 6) {
       context!.strokeStyle = style.getPropertyValue("--border").trim() || foreground;
       context!.globalAlpha = 0.55;
       context!.lineWidth = 1 / dpr;
       context!.beginPath();
-      for (let x = 0; x <= editor.width; x++) {
+      for (let x = 0; x <= region.width; x++) {
         const px = left + x * zoom;
-        if (px >= 0 && px <= rect.width) { context!.moveTo(px, top); context!.lineTo(px, top + editor.height * zoom); }
+        if (px >= 0 && px <= rect.width) { context!.moveTo(px, top); context!.lineTo(px, top + region.height * zoom); }
       }
-      for (let y = 0; y <= editor.height; y++) {
+      for (let y = 0; y <= region.height; y++) {
         const py = top + y * zoom;
-        if (py >= 0 && py <= rect.height) { context!.moveTo(left, py); context!.lineTo(left + editor.width * zoom, py); }
+        if (py >= 0 && py <= rect.height) { context!.moveTo(left, py); context!.lineTo(left + region.width * zoom, py); }
       }
       context!.stroke(); context!.globalAlpha = 1;
     }
+    element.dataset.pixelRegion = JSON.stringify(region);
     element.dataset.pixelZoom = String(zoom);
     element.dataset.pixelOriginX = String(left);
     element.dataset.pixelOriginY = String(top);
@@ -109,11 +127,11 @@ export function createPixelCanvas(options: {
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY,
         pan: true, panX, panY, color: options.color() };
     } else {
-      if (!editor.sample(p.x, p.y)) return;
+      if (!editor.sample(p.x, p.y, options.frame?.())) return;
       if (tool === "eyedropper" || event.altKey) {
-        options.pick(editor.sample(p.x, p.y)!); return;
+        options.pick(editor.sample(p.x, p.y, options.frame?.())!); return;
       }
-      if (!editor.canPaint()) return;
+      if (!editor.canPaint() || options.readOnly?.()) return;
       const color: PixelColor = tool === "eraser" ? [0, 0, 0, 0] : options.color();
       editor.begin();
       if (tool === "fill") { editor.fill(p.x, p.y, color); editor.commit(); options.changed(); refresh(); return; }
@@ -149,12 +167,12 @@ export function createPixelCanvas(options: {
   element.addEventListener("wheel", event => {
     event.preventDefault();
     if (gesture) return;
-    const { rect, left, top } = dimensions();
+    const { rect, left, top, region } = dimensions();
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
     const px = (x - left) / zoom, py = (y - top) / zoom;
     zoom = Math.max(1, Math.min(64, zoom + (event.deltaY < 0 ? 1 : -1)));
-    panX = x - rect.width / 2 + options.editor().width * zoom / 2 - px * zoom;
-    panY = y - rect.height / 2 + options.editor().height * zoom / 2 - py * zoom;
+    panX = x - rect.width / 2 + region.width * zoom / 2 - px * zoom;
+    panY = y - rect.height / 2 + region.height * zoom / 2 - py * zoom;
     refresh();
   }, { passive: false });
   const observer = new ResizeObserver(refresh);
@@ -162,8 +180,8 @@ export function createPixelCanvas(options: {
   return {
     element, refresh, cancel, zoomBy,
     fit() {
-      const rect = element.getBoundingClientRect(), editor = options.editor();
-      zoom = Math.max(1, Math.min(32, Math.floor(Math.min((rect.width - 48) / editor.width, (rect.height - 48) / editor.height))));
+      const rect = element.getBoundingClientRect(), region = options.editor().region();
+      zoom = Math.max(1, Math.min(32, Math.floor(Math.min((rect.width - 48) / region.width, (rect.height - 48) / region.height))));
       panX = panY = 0; refresh();
     },
     destroy() {

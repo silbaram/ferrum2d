@@ -1,5 +1,5 @@
 import { placementNormalHash, placementNormalRead } from "./placementNormalAssets";
-import { readPixelDocument, PIXEL_LIMITS } from "./placementPixelDocument";
+import { readPixelDocument, pixelAtlasLayout, pixelFrames, PIXEL_LIMITS } from "./placementPixelDocument";
 import { verifyPixelPng } from "./placementPixelPng";
 import type { PixelAsset } from "./placementPixelAssets";
 
@@ -89,18 +89,19 @@ export async function readPixelProject(value: PixelProjectCatalog, document: str
       throw Error("Invalid project pixel metadata");
     seen.add(meta.assetId);
     const json = await placementNormalRead(await fetch(durableUrl(entry.jsonUrl),{signal,cache:"no-store"}),PIXEL_LIMITS.sourceBytes);
-    const png = await placementNormalRead(await fetch(durableUrl(entry.pngUrl),{signal,cache:"no-store"}),4*1024*1024);
+    const png = await placementNormalRead(await fetch(durableUrl(entry.pngUrl),{signal,cache:"no-store"}),PIXEL_LIMITS.pngBytes);
     total += json.byteLength + png.byteLength;
     if (total > 64*1024*1024) throw Error("Pixel project exceeds 64 MiB");
     const raw = new TextDecoder("utf-8",{fatal:true}).decode(json);
     const source = readPixelDocument(raw);
+    const layout=pixelAtlasLayout(source,pixelFrames(source).length);
     const [jsonHash,pngHash,identity] = await Promise.all([placementNormalHash(json),placementNormalHash(png),placementNormalHash(JSON.stringify([meta.identityDocument,raw]))]);
     if (meta.jsonSha256 !== jsonHash || meta.pngSha256 !== pngHash || meta.assetId !== "pixel."+identity.slice(0,24) ||
-      meta.width !== source.width || meta.height !== source.height)
+      meta.width !== layout.width || meta.height !== layout.height)
       throw Error("Saved pixel source or revision metadata differs");
     await verifyPixelPng(png,source); signal.throwIfAborted();
     restored.push({id:meta.assetId,identityDocument:meta.identityDocument,document,project,persisted:true,committed:true,
-      source,sourceJson:raw,png,sha256:pngHash,name:source.name,width:source.width,height:source.height,bytes:json.byteLength+png.byteLength,uploaded:false});
+      source,sourceJson:raw,png,sha256:pngHash,name:source.name,width:layout.width,height:layout.height,bytes:json.byteLength+png.byteLength,uploaded:false});
   }
   return restored;
 }

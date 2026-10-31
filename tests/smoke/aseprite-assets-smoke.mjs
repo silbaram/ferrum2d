@@ -39,7 +39,7 @@ const artifact = resolve(
 );
 let generatorRoute,
   generatorAvailable = true;
-if (normalMode)
+if (normalMode || pixelMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -128,7 +128,7 @@ let active,
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   try {
-    if (normalMode && path.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode) && path.startsWith(generatorRoute.prefix + "/")) {
       if (!generatorAvailable) {
         response.writeHead(503).end("Normal generator unavailable");
         return;
@@ -465,11 +465,19 @@ try {
           page, mode, active, native, snapshot, undo, redo, run, origin,
           getSaves: () => sceneSaves, setResume: value => { resume = value; },
         });
+        const frames = await page.locator('.placement-pixel-frames').elementHandle();
+        await page.locator('[data-pixel-frame-action="play"]').click();
+        assert.equal(await frames.getAttribute('data-pixel-playing'), 'true');
         await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-frame-select]').length), 0,
+          'destroy must not repopulate the cleared frame panel during canvas teardown');
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,
+          'destroy must release tag frame rows too');
+        await frames.dispose();
         const released = await resources();
         assert.deepEqual(released, { urls: 0, textures: 0 });
         assert.deepEqual(errors, []);
-        results.push({ mode, ...result, released });
+        results.push({ mode, ...result, frameDestroyReleasesRows: true, released });
         continue;
       }
       if (tileMode) {

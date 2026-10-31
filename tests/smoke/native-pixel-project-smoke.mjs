@@ -1,3 +1,5 @@
+import { smokePixelNormals, smokePixelNormalFocus, reuseSavedPixelNormal } from "./pixel-normals-smoke.mjs";
+import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import assert from 'node:assert/strict';
 import { readFile,writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -5,6 +7,8 @@ import { showPlacementBottom } from './placement-panel-navigation.mjs';
 import { createHash } from 'node:crypto';
 import { filteredPixelPng } from './pixel-png-fixture.mjs';
 import { smokePixelLayers } from './pixel-layers-smoke.mjs';
+import { smokePixelAtlas } from './pixel-atlas-smoke.mjs';
+import { smokePixelFrames, smokePixelFrameCard } from './pixel-frames-smoke.mjs';
 
 /** The browser calls actual Rust storage/protocol functions over the shared test transport. */
 export async function smokeNativePixels({getPage,mode,project,scene,initial,run,invoke,setCorrupt,holdSave,waitHeld,releaseSave,restart,close,freshGame}) {
@@ -15,6 +19,14 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   const status=()=>workspace().locator('[data-pixel-status]').textContent();
   const save=async()=>{await action('save-project').click();await idle();};
   const root=join(project,'public/assets/.ferrum-pixels'),catalogPath=join(root,'catalog.json');
+  if(process.argv.includes('--pixel-normals-only')) {
+    const pixelNormals=await smokePixelNormalFocus(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();},true);
+    await restart();page=getPage();await showPlacementBottom(page,'assets');
+    await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+    await reuseSavedPixelNormal(page);
+    const restoredNormalGame=await freshGame();await close();
+    return {mode,focus:'pixel-normals',pixelNormals,restoredNormalGame,realRustStorageAndProtocol:true,released:{urls:0,textures:0}};
+  }
   await showPlacementBottom(page,'assets');
   await page.locator('[data-pixel-action="new"]').click();
   const dialog=page.locator('dialog[open]');
@@ -105,19 +117,53 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   assert.equal((await readFile(join(root,assetId+'.json'))).toString(),raw,'resaving preserves the formatted immutable source bytes');
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,4);
   const imageLayers=await smokePixelLayers(page,mode,run);
+  const imageFrames=await smokePixelFrames(page,mode,run);
   await action('apply').click();await idle();await save();assert.match(await status(),/^Project saved/);
   const layeredCatalog=JSON.parse(await readFile(catalogPath,'utf8'));
   assert.equal(layeredCatalog.revisions.length,5);
   const layeredId=layeredCatalog.revisions.at(-1).assetId;
-  assert.deepEqual(JSON.parse(await readFile(join(root,layeredId+'.json'),'utf8')),imageLayers.source);
+  assert.deepEqual(JSON.parse(await readFile(join(root,layeredId+'.json'),'utf8')),imageFrames.source);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
-  await page.locator('[data-placement-edit-pixels="'+layeredId+'"]').click();await workspace().waitFor({state:'visible'});
+  await page.locator('[data-placement-edit-pixels="'+layeredId+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
   assert.equal(await workspace().locator('[data-pixel-layer-select]').count(),2);
   assert.equal(await workspace().locator('[data-pixel-layer-name]').inputValue(),'Armor');
+  assert.equal(await workspace().locator('[data-pixel-frame-select]').count(),2);
+  const downloadFrames=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  const frameFile=await downloadFrames,framePath=join(run,mode+'-restored-frames.pixel.json');await frameFile.saveAs(framePath);
+  assert.deepEqual(JSON.parse(await readFile(framePath,'utf8')),imageFrames.source);
   const game=await freshGame();
+  const frameCard=await smokePixelFrameCard(page,mode,run,layeredId,imageFrames.source);
+  const tags=await smokePixelTags(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
+  assert.deepEqual(JSON.parse(await readFile(join(root,tags.id+'.json'),'utf8')),tags.source);
+  await restart();page=getPage();await showPlacementBottom(page,'assets');
+  await page.locator('[data-placement-edit-pixels="'+tags.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+  const tagReopen=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  const tagFile=await tagReopen,tagPath=join(run,mode+'-restored-tags.pixel.json');await tagFile.saveAs(tagPath);
+  assert.deepEqual(JSON.parse(await readFile(tagPath,'utf8')),tags.source);
+  await workspace().locator('.placement-pixel-export-menu > summary').click();
+  const atlas=await smokePixelAtlas(page,mode,run,JSON.parse(await readFile(scene,'utf8')),async()=>{
+    await save();assert.match(await status(),/^Project saved/);return freshGame();
+  });
+  await save();assert.match(await status(),/^Project saved/);
+  assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,7);
+  assert.deepEqual(JSON.parse(await readFile(join(root,atlas.id+'.json'),'utf8')),atlas.source);
+  await restart();page=getPage();await showPlacementBottom(page,'assets');
+  await page.locator('[data-placement-edit-pixels="'+atlas.id+'"][data-placement-edit-pixel-frame="right"]').click();
+  await workspace().waitFor({state:'visible'});assert.equal(await workspace().locator('[data-pixel-atlas-frame]').inputValue(),'right');
+  const atlasDownload=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  const atlasFile=await atlasDownload,atlasPath=join(run,mode+'-restored-atlas.pixel.json');await atlasFile.saveAs(atlasPath);
+  assert.deepEqual(JSON.parse(await readFile(atlasPath,'utf8')),atlas.source);
+  await workspace().locator('.placement-pixel-export-menu > summary').click();
+  const pixelNormals=await smokePixelNormals(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();},true);
+  assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,8);
+  const normalCatalog=JSON.parse(await readFile(join(project,'public/assets/.ferrum-normals/catalog.json'),'utf8'));assert.equal(normalCatalog.entries.length,1);
+  await restart();page=getPage();await showPlacementBottom(page,'assets');
+  await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+  await reuseSavedPixelNormal(page);
+  const restoredNormalGame=await freshGame();if(mode==='hd2d')assert(restoredNormalGame.normalMapping?.lightingChanged);
   await close();
   return {mode,realRustStorageAndProtocol:true,sourceAndPngVerified:true,malformedReplyBlocksScene:true,
-    imageLayers,catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:5,lateSaveDoesNotSaveScene:true,
+    frameCard,tags,atlas,pixelNormals,restoredNormalGame,imageLayers,imageFrames,catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:8,lateSaveDoesNotSaveScene:true,
     nativePngAndFormattedSourceCompatible:true,immutableSourceBytesPreserved:true,
     freshRustAndBrowserSessions:true,restoredSourceExact:true,preservedPoseSizeColliderBody:true,
     savedManifestGame:game,released:{urls:0,textures:0}};

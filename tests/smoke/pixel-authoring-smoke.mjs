@@ -1,3 +1,5 @@
+import { smokePixelNormals, smokePixelNormalFocus } from "./pixel-normals-smoke.mjs";
+import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -5,8 +7,20 @@ import { decodePng } from "../../scripts/tools/pack-textures.mjs";
 import { showPlacementBottom, showPlacementMenu } from "./placement-panel-navigation.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
 import { smokePixelLayers } from "./pixel-layers-smoke.mjs";
+import { smokePixelAtlas } from "./pixel-atlas-smoke.mjs";
+import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if(process.argv.includes("--pixel-normals-only")) {
+    const pixelNormals=await smokePixelNormalFocus(page,mode,run,async bundle=>{
+      setResume(bundle);const game=await page.context().newPage(),errors=[];
+      game.on("pageerror",error=>errors.push(String(error)));game.on("requestfailed",request=>errors.push(request.url()+" "+request.failure()?.errorText));
+      try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50}).catch(async error=>{throw Error(String(error)+" stage "+await game.evaluate(()=>window.pixelResumeStage)+" "+JSON.stringify(errors));});
+        return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
+      }finally{await game.close();}
+    });
+    return {pixelNormals,focus:"pixel-normals"};
+  }
   await showPlacementBottom(page, "assets");
   await page.locator('[data-pixel-action="new"]').click();
   const dialog = page.locator("dialog[open]");
@@ -277,11 +291,12 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator("[data-placement-language]").selectOption("en");
   const imageLayers=await smokePixelLayers(page,mode,run);
+  const imageFrames=await smokePixelFrames(page,mode,run);
   await action('apply').click();
   await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
   exported=JSON.parse((await exportFile('export-assets','-layered-assets.json')).bytes);
   assert.equal(exported.assets.length,3);
-  assert(exported.assets.some(a=>a.source.version===2&&a.source.layers.length===2));
+  assert(exported.assets.some(a=>a.source.version===3&&a.source.layers.length===2&&a.source.frames.length===2));
   setResume(exported);
   const fresh = await page.context().newPage();
   const failures = [];
@@ -296,6 +311,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     });
     report = await fresh.evaluate(() => { if (window.failure) throw Error(window.failure); return window.report; });
     assert(report.bluePixels > 100, "Fresh runtime must show the exported blue sprite");
+    assert.equal(report.playback?.sourceFrames,2);assert.equal(report.playback.nativeFrames,3);assert.equal(report.playback.playingState,1);
     assert.equal(report.state, 3); assert.equal(report.entities, 1);
     assert(report.drawCalls > 0 && report.drawCalls <= 16);
     const bad = structuredClone(exported);
@@ -307,8 +323,29 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
       assert.match(await invalid.evaluate(() => window.failure), /Pixel manifest differs/);
     } finally { await invalid.close(); setResume(exported); }
   } finally { await fresh.close(); }
+  const frameCard=await smokePixelFrameCard(page,mode,run,exported.sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual.texture,imageFrames.source);
+  const tags=await smokePixelTags(page,mode,run,async bundle=>{
+    setResume(bundle);const game=await page.context().newPage();
+    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50});
+      return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
+    }finally{await game.close();setResume(exported);}
+  });
+  const atlas=await smokePixelAtlas(page,mode,run,active,async bundle=>{
+    setResume(bundle);const game=await page.context().newPage(),errors=[];
+    game.on('pageerror',error=>errors.push(String(error)));game.on('requestfailed',request=>errors.push(request.url()+' '+request.failure()?.errorText));
+    try{await game.goto(origin+'/resume.html');await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50}).catch(async error=>{throw Error(String(error)+' '+JSON.stringify(errors)+' stage '+await game.evaluate(()=>window.pixelResumeStage));});
+      const result=await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
+      assert(result.bluePixels>100);return result;
+    }finally{await game.close();setResume(exported);}
+  });
+  const pixelNormals=await smokePixelNormals(page,mode,run,async bundle=>{
+    setResume(bundle);const game=await page.context().newPage();
+    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50});
+      return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
+    }finally{await game.close();setResume(exported);}
+  });
   return {
-    createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
+    frameCard, tags, atlas, pixelNormals, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
     eyedropper: true, eraserUndo: true, panZoom: true, invalidSourcePreserved: true, editAssetPng: true, compact: true,
     releaseEndpoint: true, blurCancelsStroke: true, blurResetsPan: true,
@@ -317,6 +354,6 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     pixelDirtyUpdateGuard: true,
     alphaInputGuard: true,
     unicodePngFilename:true,longTitleFits:true,
-    imageLayers, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
+    imageLayers, imageFrames, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
   };
 }
