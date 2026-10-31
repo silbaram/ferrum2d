@@ -29,6 +29,6 @@ export function createPixelImageBrushControls(options: { editor(): ReturnType<ty
     for (const [key, input] of fields) { input.value = String(key === "x" ? anchorX : key === "y" ? anchorY : spacing); input.disabled = disabled || !id; const brush = entries.find(b => b.id === id); input.max = String(key === "spacing" ? 32 : brush ? (key === "x" ? brush.width : brush.height) - 1 : 0); }
   }
   return { element, sync, active: () => !!id, snapshot: () => id ? library.snapshot(id, anchorX, anchorY, spacing) : undefined,
-    reset() { library.clear(); id = ""; anchorX = anchorY = 0; spacing = 1; signature = ""; element.open = false; },
+    reset() { library.clear(); id = ""; anchorX = anchorY = 0; spacing = 1; signature = ""; element.open = false; select.replaceChildren(); const plain = document.createElement("option"); plain.value = ""; setUiText(plain, "Square Brush"); select.append(plain); select.disabled = capture.disabled = remove.disabled = true; for (const input of fields.values()) input.disabled = true; },
     destroy() { library.clear(); id = ""; } };
 }

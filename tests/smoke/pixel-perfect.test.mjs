@@ -44,3 +44,15 @@ test('invalid inputs fail and gesture captures mutable settings independently',(
   assert.throws(()=>stroke(region,{x:0,y:0},{...defaults,size:2}));const settings={...defaults},r={...region},clip={...region};const s=stroke(r,{x:1,y:1},settings,clip);
   settings.mirrorX=true;r.width=2;clip.width=1;assert.deepEqual(points(s.add(2,2)),[[1,1],[2,2]]);assert.throws(()=>s.add(NaN,0));
 });
+test('leaving and reentering a clipped frame must not form an artificial L across the gap',()=>{
+  for(let rotation=0;rotation<4;rotation++) {
+    const r={x:4,y:4,width:4,height:4},source={...blank(8,8),version:4,atlas:{texture:'sheet',frames:[{id:'bottom-right',frame:{u0:.5,v0:.5,u1:1,v1:1}}]},rgba:Buffer.from(Array(64).fill([7,8,9,128]).flat()).toString('base64')},e=create(source);
+    const turn=(x,y)=>{for(let k=0;k<rotation;k++)[x,y]=[3-y,x];return{x:x+4,y:y+4};},s=stroke(r,turn(2,0),defaults);
+    e.begin();for(const[x,y]of [[3,0],[4,0],[4,1],[3,1]]){const p=turn(x,y);e.paintStrokeMask(s.add(p.x,p.y),color);}e.commit();
+    for(const[x,y]of [[2,0],[3,0],[3,1]]){const p=turn(x,y);assert.deepEqual(e.sample(p.x,p.y),color,'painted boundary endpoints survive clipped-out detours');}assert.equal(e.history().undo,1);e.undo();assert.deepEqual(e.document(),source);
+  }
+});
+test('soft selection masks filter the corrected geometry after pixel-perfect L removal',()=>{
+  const clip={x:0,y:0,width:2,height:1},s=stroke(region,{x:0,y:0},defaults,clip);s.add(1,0);
+  assert.deepEqual(points(s.add(1,1)),[[0,0]],'the point outside selection completes the geometric L before the final write mask');
+});

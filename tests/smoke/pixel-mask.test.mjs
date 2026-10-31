@@ -31,6 +31,7 @@ test('sparse selection overlap moves selected pixels while preserving holes and 
 });
 test('sparse clipboard rotates and mirrors its mask together with exact raw pixels',()=>{
   const e=d.createPixelEditor(d.newPixelDocument(5,5));const area={x:1,y:1,width:3,height:2,mask:new Uint8Array([1,0,1,0,1,0])};e.editRegion(area,Uint8Array.from(Array(6).fill(rgba).flat()));e.markExported();const source=e.document(),selection=select(e);selection.select(area);
+  selection.transform('rotate');assert.deepEqual(selection.area().mask,new Uint8Array([0,1,1,0,0,1]));assert.deepEqual({width:selection.area().width,height:selection.area().height},{width:2,height:3});assert.deepEqual(e.document(),source);selection.cancel();selection.select(area);
   for(let i=0;i<4;i++)selection.transform('rotate');assert.equal(selection.confirm(),false);assert.deepEqual(e.document(),source);
   selection.select(area);selection.transform('flip-x');selection.transform('flip-x');assert.equal(selection.confirm(),false);assert.deepEqual(e.document(),source);
 });

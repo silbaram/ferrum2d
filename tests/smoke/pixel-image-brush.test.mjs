@@ -19,7 +19,7 @@ test('raw alpha and sparse/transparent brush pixels preserve destination backgro
   const id=lib.capture({width:2,height:2,pixels:Uint8Array.from([...red,10,20,30,0,...blue,...blue]),mask:new Uint8Array([1,1,0,1])});
   const s=stroke(box,{x:2,y:2},lib.snapshot(id,0,0)),result=s.add(2,2,true);assert.equal(count(result),2);const before=e.document();e.previewRegion(result.region,result.pixels);assert.deepEqual(e.document(),before);
   e.begin();e.paintRegion(result.region,result.pixels);e.paintRegion(result.region,result.pixels);e.commit();assert.equal(e.history().undo,1);assert.deepEqual(e.sample(2,2),red);assert.deepEqual(e.sample(3,3),blue);assert.deepEqual(e.sample(3,2),[7,8,9,0]);assert.deepEqual(e.sample(2,3),[7,8,9,0]);
-  const saved=e.document();e.undo();assert.deepEqual(e.document(),source);e.redo();assert.deepEqual(e.document(),saved);e.begin();e.paintRegion(stroke(box,{x:0,y:0},lib.snapshot(id,0,0)).add(0,0).region,result.pixels);e.cancel();assert.deepEqual(e.document(),saved);
+  const saved=e.document();e.undo();assert.deepEqual(e.document(),source);e.redo();assert.deepEqual(e.document(),saved);const cancelled=stroke(box,{x:0,y:0},lib.snapshot(id,0,0)).add(0,0);e.begin();e.paintRegion(cancelled.region,cancelled.pixels);e.cancel();assert.deepEqual(e.document(),saved);
 });
 test('spacing is independent of pointer event segmentation and explicitly includes the final endpoint',()=>{
   const lib=library(),id=lib.capture(one()),brush=lib.snapshot(id,0,0,3),a=stroke(box,{x:0,y:0},brush),b=stroke(box,{x:0,y:0},brush);

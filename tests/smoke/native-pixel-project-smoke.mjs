@@ -40,14 +40,19 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
     await waitRecovery(rows=>rows.filter(row=>ids.includes(row.id)).length<ids.length);
     return freshGame();
   }
+  async function assertReopenedSource(expected) {
+    const exports=workspace().locator('.placement-pixel-export-menu');if(!await exports.evaluate(e=>e.open))await exports.locator('summary').click();
+    const waiting=page.waitForEvent('download');await action('export-source').click();const file=await waiting,path=join(run,mode+'-restored-new-tools.pixel.json');await file.saveAs(path);await exports.locator('summary').click();
+    assert.deepEqual(JSON.parse(await readFile(path,'utf8')),expected,'native reopen must preserve the retained outline and multi-frame transform bytes');
+  }
   const root=join(project,'public/assets/.ferrum-pixels'),catalogPath=join(root,'catalog.json');
   if(process.argv.includes('--pixel-normals-only')) {
     const pixelNormals=await smokePixelNormalFocus(page,mode,run,saveNormalWithRecovery,true);
     await restart();page=getPage();await showPlacementBottom(page,'assets');
     await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
-    await reuseSavedPixelNormal(page);
+    await assertReopenedSource(pixelNormals.source);await reuseSavedPixelNormal(page);
     const restoredNormalGame=await freshGame();await close();
-    return {mode,focus:'pixel-normals',pixelNormals,restoredNormalGame,realRustStorageAndProtocol:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,released:{urls:0,textures:0}};
+    return {mode,focus:'pixel-normals',pixelNormals,restoredNormalGame,realRustStorageAndProtocol:true,newToolsSourceExact:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,released:{urls:0,textures:0}};
   }
   await showPlacementBottom(page,'assets');
   await page.locator('[data-pixel-action="new"]').click();
@@ -190,10 +195,10 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   const normalCatalog=JSON.parse(await readFile(join(project,'public/assets/.ferrum-normals/catalog.json'),'utf8'));assert.equal(normalCatalog.entries.length,1);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
   await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
-  await reuseSavedPixelNormal(page);
+  await assertReopenedSource(pixelNormals.source);await reuseSavedPixelNormal(page);
   const restoredNormalGame=await freshGame();assert(restoredNormalGame.normalMapping?.lightingChanged);
   await close();
-  return {mode,realRustStorageAndProtocol:true,sourceAndPngVerified:true,malformedReplyBlocksScene:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,
+  return {mode,realRustStorageAndProtocol:true,newToolsSourceExact:true,sourceAndPngVerified:true,malformedReplyBlocksScene:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,
     frameCard,tags,atlas,pixelNormals,restoredNormalGame,imageLayers,imageFrames,catalogConflictPreserved:true,sceneConflictPreserved:true,immutableRevisions:8,lateSaveDoesNotSaveScene:true,
     nativePngAndFormattedSourceCompatible:true,immutableSourceBytesPreserved:true,resizedCanvasAndPaletteSaved:true,resizedGame,
     freshRustAndBrowserSessions:true,restoredSourceExact:true,preservedPoseSizeColliderBody:true,

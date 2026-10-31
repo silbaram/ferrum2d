@@ -1,3 +1,4 @@
+import {smokePixelBatch} from './pixel-batch-smoke.mjs';
 import { smokePixelNormals, smokePixelNormalFocus } from "./pixel-normals-smoke.mjs";
 import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import { smokePixelSelection } from "./pixel-selection-smoke.mjs";
@@ -17,6 +18,8 @@ import { smokePixelAtlas } from "./pixel-atlas-smoke.mjs";
 import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-batch-layout-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch-layout"};
+  if (process.argv.includes("--pixel-batch-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch"};
   if (process.argv.includes("--pixel-next-only")) return {pixelNext:await smokePixelNextTools(page,mode,run),focus:"pixel-next"};
   if (process.argv.includes("--pixel-canvas-preview-only")) return {pixelCanvasPreview:await smokePixelCanvasPreview(page,mode,run),focus:"pixel-canvas-preview"};
   if (process.argv.includes("--pixel-drawing-only")) return {pixelDrawing:await smokePixelDrawing(page,mode,run),focus:"pixel-drawing"};

@@ -14,6 +14,7 @@ import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
 import { createPixelImageBrushControls } from "./placementPixelImageBrushControls";
 import { createPixelRepeatControls } from "./placementPixelRepeatControls";
+import { createPixelBatchControls } from "./placementPixelBatchControls";
 import { pixelRecoveryScope } from "./placementPixelRecovery";
 import { createPixelRecoverySession } from "./placementPixelRecoverySession";
 import { createPixelRecoveryControls } from "./placementPixelRecoveryControls";
@@ -176,6 +177,10 @@ export function createPlacementPixelTool(options: {
   const repeatControls = createPixelRepeatControls({ atlas: () => !!editor?.atlas(), disabled: () => busy || !!editor?.active() || surface.ownsGesture() || selection.pending(),
     cancelStroke: () => surface.cancel(), changed: () => { render(); surface.refresh(); } });
   footer.insertBefore(repeatControls.element, status);
+  const batchControls = createPixelBatchControls({ editor: () => editor!, area: () => selection.area(), selectionKey: () => selection.version(),
+    key: () => JSON.stringify([options.context().key, options.context().project]), retain: area => selection.select(area),
+    disabled: () => busy || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture() || selection.pending() || !options.context().canEdit,
+    cancelStroke: () => surface.cancel(), changed: () => { render(); surface.refresh(); options.tabsChanged(); }, report });
   let paletteSignature = "";
   function syncPalette() {
     const colors = editor!.palette, signature = JSON.stringify(colors);
@@ -259,6 +264,7 @@ export function createPlacementPixelTool(options: {
   framePanel=createPixelFrames({editor:()=>editor!,busy:()=>busy||selection.pending()||surface.ownsGesture(),cancelStroke:()=>surface.cancel(),report,
     changed:()=>{render();surface.refresh();options.tabsChanged();},viewChanged:()=>surface.refresh()});
   workspace.insertBefore(framePanel.element,footer);
+  framePanel.element.querySelector(".placement-pixel-frame-actions")!.append(batchControls.element);
   sizePreview = createPixelSizePreview({ editor: () => editor!, pixels: () => surface.previewBytes(), active: () => active && !disposed && !workspace.hidden });
   area.append(sizePreview.element);
   function componentPatch(texture:string,migrationApproval?:string) {
@@ -283,6 +289,7 @@ export function createPlacementPixelTool(options: {
     paletteControls.cancel();
     canvasControls.cancel();
     effectsControls.cancel();
+    batchControls.cancel();
     sizePreview?.suspend();
     closeNormalPreview();
     dismissConfirmation?.();
@@ -389,7 +396,7 @@ export function createPlacementPixelTool(options: {
     drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds(), imageBrushControls.active());
     imageBrushControls.sync();
     repeatControls.sync();
-    paletteControls.sync(); canvasControls.sync(); effectsControls.sync(); syncPalette(); sizePreview?.sync();
+    paletteControls.sync(); canvasControls.sync(); effectsControls.sync(); batchControls.sync(); syncPalette(); sizePreview?.sync();
     for (const [key, node] of toolButtons) {
       node.setAttribute("aria-pressed", String(key === tool)); node.disabled = editing;
     }
@@ -761,7 +768,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);
@@ -811,7 +818,7 @@ export function createPlacementPixelTool(options: {
       invalidate();
       const token = serial, previous = editor;
       if (!await confirmDiscard() || disposed || token !== serial || editor !== previous) return;
-      suspend();if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined; void recovery.forget(); recoveryHold = false; selection.reset(); editor = undefined; imageLayers.clear(); framePanel?.clear(); palette.replaceChildren(); options.tabsChanged();
+      suspend();if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined; void recovery.forget(); recoveryHold = false; selection.reset(); imageBrushControls.reset(); batchControls.clear(); repeatControls.reset(); editor = undefined; imageLayers.clear(); framePanel?.clear(); palette.replaceChildren(); options.tabsChanged();
     },
     sync() {
       if (active && (options.context().mode === "game" || owner !== options.context().key)) suspend();

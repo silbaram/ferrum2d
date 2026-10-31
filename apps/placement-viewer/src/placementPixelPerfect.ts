@@ -11,6 +11,11 @@ export function createPixelPerfectStroke(region: PixelRegion, from: Point, setti
   const settled = new Uint8Array(region.width * region.height), tail: Point[] = [];
   let last = { ...from };
   const index = (p: Point) => (p.y - region.y) * region.width + p.x - region.x;
+  const inside = (p: Point) => p.x >= domain.x && p.y >= domain.y && p.x < domain.x + domain.width && p.y < domain.y + domain.height;
+  function settleTail() {
+    for (const raw of tail) { const point = repeatPixelPoint(region, raw.x, raw.y, repeat); if (point) settled[index(point)] = 1; }
+    tail.length = 0;
+  }
   function append(p: Point) {
     const b = tail.at(-1); if (b && b.x === p.x && b.y === p.y) return;
     const a = tail.at(-2);
@@ -18,11 +23,14 @@ export function createPixelPerfectStroke(region: PixelRegion, from: Point, setti
     else if (tail.length === 2) { const raw = tail.shift()!, point = repeatPixelPoint(region, raw.x, raw.y, repeat); if (point) settled[index(point)] = 1; }
     tail.push(p);
   }
-  append(from);
+  if (inside(from)) append(from);
   return {
     add(x: number, y: number): PixelDrawMask {
       if (![x, y].every(n => Number.isSafeInteger(n) && Math.abs(n) <= 1_048_576)) throw Error("Invalid stroke coordinates");
+      // Clipped-out points are a path break, not a shortcut that can create an artificial corner on reentry.
+      if (!inside(last)) settleTail();
       walkPixelLine(last.x, last.y, x, y, domain, (x, y) => append({ x, y })); last = { x, y };
+      if (!inside(last)) settleTail();
       const source = settled.slice(), pixels = new Uint8Array(source.length);
       for (const raw of tail) { const point = repeatPixelPoint(region, raw.x, raw.y, repeat); if (point) source[index(point)] = 1; }
       const put = (x: number, y: number) => {

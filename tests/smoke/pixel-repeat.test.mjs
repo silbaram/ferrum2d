@@ -25,6 +25,7 @@ test('filled shapes and outlines wrap across seams with clipping in source coord
 test('pixel-perfect corner restoration crosses seams without erasing the original transparent RGB',()=>{
   const source={...d.newPixelDocument(4,4),rgba:Buffer.from(Array(16).fill([10,20,30,0]).flat()).toString('base64')},e=d.createPixelEditor(source),s=perfect(region,{x:3,y:0},draw.PIXEL_DRAW_DEFAULTS,undefined,repeat);
   e.begin();e.paintStrokeMask(s.add(4,0),red);e.paintStrokeMask(s.add(4,1),red);e.commit();assert.deepEqual(e.sample(0,0),[10,20,30,0]);assert.deepEqual(e.sample(0,1),red);e.undo();assert.deepEqual(e.document(),source);
+  const outside=perfect(region,{x:6,y:0},draw.PIXEL_DRAW_DEFAULTS,undefined,repeat);e.begin();for(const[x,y]of [[7,0],[8,0],[8,1],[7,1]])e.paintStrokeMask(outside.add(x,y),red);e.commit();assert.deepEqual(e.sample(3,0),red,'outer repeat-preview gaps do not connect provisional corners');e.undo();assert.deepEqual(e.document(),source);
 });
 test('colored image brushes larger than a frame wrap every source pixel in deterministic last-write order',()=>{
   const lib=library(),id=lib.capture({width:3,height:1,pixels:Uint8Array.from([...red,0,0,255,255,0,255,0,128])}),small={x:0,y:0,width:2,height:1};

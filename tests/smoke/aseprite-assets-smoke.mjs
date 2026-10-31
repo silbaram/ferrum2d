@@ -473,6 +473,7 @@ try {
           'destroy must not repopulate the cleared frame panel during canvas teardown');
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,
           'destroy must release tag frame rows too');
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-batch-frame]').length), 0, "destroy must release batch frame rows");
         await frames.dispose();
         const released = await resources();
         assert.deepEqual(released, { urls: 0, textures: 0 });

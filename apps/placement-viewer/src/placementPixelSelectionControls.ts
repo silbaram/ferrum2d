@@ -77,8 +77,10 @@ export function createPixelSelectionControls(options: {
         if (key === "paste") node.disabled ||= !selection.hasClipboard();
       }
       confirm.hidden = cancel.hidden = !pending;
-      setUiText(status, pending ? selection.clipped() ? "Outside frame pixels will be clipped" : "Preview · Enter to confirm · Escape to cancel"
-        : bounds ? uiMessage("Selection {0} × {1} · Drag or arrow keys to move", bounds.width, bounds.height) : "Drag to select pixels");
+      const moveHint = settings.shape === "rectangle" && settings.operation === "replace" ? "Selection {0} × {1} · Drag or arrow keys to move" : "Selection {0} × {1} · Arrow keys to move";
+      const selectHint = settings.shape === "color" || settings.shape === "wand" ? "Click to select pixels" : settings.shape === "polygon" ? "Click polygon vertices" : "Drag to select pixels";
+      setUiText(status, pending ? selection.clipped() ? "Outside frame pixels will be clipped" : disabled ? "Release to preview · Escape to cancel" : "Preview · Enter to confirm · Escape to cancel"
+        : bounds ? uiMessage(disabled || !editable ? "Selection {0} × {1}" : moveHint, bounds.width, bounds.height) : disabled ? "" : selectHint);
     },
     destroy() { window.removeEventListener("pointerdown", outside, true); },
   };
