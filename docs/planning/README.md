@@ -10,7 +10,7 @@
 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)과
 앱 안내(`apps/placement-viewer/README.md`)를 따른다.
 아래 문서는 개발 계획, 설계 후보, 후속 검증 또는 제품 결정 대기를 관리한다.
-현재 다음 개발은 [도트 제작 후속 고도화](pixel-authoring-next-plan.md)이며 1단계 픽셀 퍼펙트 연필부터 진행한다. 기능 구현은 미착수다.
+현재 다음 개발은 [도트 제작 후속 고도화](pixel-authoring-next-plan.md)의6단계 여러 프레임 편집이다. 연산 모델과 단위 검사는 추가됐으며 UI 연결과 저장 통합 검증이 남아 있다.
 
 ## 다음 개선 추천
 
@@ -18,7 +18,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 도트 제작 후속 고도화 | 선 품질·부분 선택과 반복 제작을 개선한다. | [개발 계획](pixel-authoring-next-plan.md): 픽셀 퍼펙트 → 마스크 → 외곽선 → 이미지 브러시 → 타일 반복 → 여러 프레임. 구현 미착수 |
+| 1 | 도트 제작 후속 고도화 | 여러 프레임의 같은 부분을 한 번에 수정한다. | [개발 계획](pixel-authoring-next-plan.md): 범위 편집 모델 추가, UI 연결·전체 통합 검증 진행 예정 |
 | 2 | 프로젝트 디스크 Catalog 정리 설계 | 닫힌 씬이 참조하는 프로젝트 원본을 보호한다. | [제작 편의성 후보](game-development-convenience-review.md#asset-반복-작업): 프로젝트 전체 참조·동시 수정·실패 복원을 설계한 뒤 삭제 범위 결정. 구현 착수 전 설계 후보 |
 | 3 | AI 도트 생성 설계 | 직접 그리기 전에 초안 이미지를 준비하는 시간을 줄인다. | [제작 편의성 후보](game-development-convenience-review.md#asset-반복-작업): 입력·결과 선택·인증/비용·출처·기존 원본 등록 경계 결정. 구현 착수 전 설계 후보 |
 
@@ -29,7 +29,7 @@
 
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
-| [도트 제작 후속 고도화](pixel-authoring-next-plan.md) | 개발 계획 · 구현 미착수 | 1단계 픽셀 퍼펙트 연필, 단계별 검증 후 다음 단계 |
+| [도트 제작 후속 고도화](pixel-authoring-next-plan.md) | 개발 계획 · 6단계 진행 중 | 프레임 범위 UI·저장 통합 검증과 전체 리뷰 |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
 | [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 프로젝트 디스크 정리·외부 맵·reload 등의 실제 필요와 저장 경계 확정 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |

@@ -68,6 +68,12 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 집중 진단은 save 허용 앱 build 후 위 Node 진입점에 `--pixel-drawing-only`, `--pixel-palette-only`, `--pixel-canvas-preview-only`를 지정한다.
 집중 실행은 전체 검증을 대체하지 않는다. 결과는 같은 `artifacts/pixel-authoring/verification.json`을 사용한다.
 
+도트 후속 도구의 `pixelNext`는 같은 전체 UI gate에서 픽셀 퍼펙트의 원래 RGBA 복원·마스크 선택과 조합·자유형/다각형·외곽선 미리보기/확정,
+이미지 브러시 등록/간격/중심점/hover/취소/한 Undo, 반복9타일의 실제 canvas 픽셀과 경계 그리기/채우기·단일 PNG·고정 atlas 차단을 검사한다.
+2D DPR1/HD-2D DPR2·한글390px·씬 무변경·종료 시 URL/texture0도 확인한다. 집중 진단은 위 Node 진입점의 `--pixel-next-only`다.
+순수 연산 회귀는 `pixel-perfect`, `pixel-mask`, `pixel-outline`, `pixel-image-brush`, `pixel-repeat`, `pixel-batch` 단위 검사를 `test:pixel-authoring`에 연결한다.
+`pixel-batch`는 프레임 범위 모델의 대상/제외·metadata/raw RGBA 보존·잘못된 입력의 원자성·잘림·한 Undo/Redo를 검사하며, 범위 편집 UI·native 저장 통합의 완료 증거는 아니다.
+
 같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
 용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.
 전체 `smoke:pixel-authoring`의 `pixelRecovery`는 실제 IndexedDB에서 확정 전 저장 차단과 reload 복원,
