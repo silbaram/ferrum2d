@@ -50,6 +50,16 @@ SDK/Rust 단위 검사는 optional ABI·bulk 원자성·정렬/수명·prototype
 SDK는 normal instance 65,537개를 활성화·spawn 전에 거절하는지도 검사한다.
 `test:native-normal-project`는 숫자 normal alias의 프로젝트 범위 보호와 잘못된 JSON의 참조 수집 경계를 검사한다.
 
+`test:pixel-authoring`는 선택 영역의 raw RGBA·겹치는 이동·비정사각형90도 회전·frame/layer 클립보드와
+preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성을 검사한다.
+`smoke:pixel-authoring`의 `pixelSelection`은 DPR1의2D와 DPR2의HD-2D에서 실제 marquee/drag/keyboard/menu,
+저장·적용 차단, Enter 확정·Escape/blur 취소·한 번의 Undo, pan/zoom 좌표와 한글390px 캡처를 검사한다.
+취소 버튼·메뉴 summary/회전 항목의 Enter, 드래그 중 Enter/Ctrl-X 차단, pointercancel/lost capture의 원본 보존도 검사한다.
+단위는 v1~v5의 편집·Undo 원본/metadata 보존과 revision을 바꾸지 않는 frame/layer/atlas 전환의 오래된 target 폐기를 확인한다.
+전체 atlas UI 검사는 x offset이 있는 활성 frame의 선택 이동·잘림·인접 frame RGBA 보존과 Undo를 확인한다.
+선택만 단독 진단하려면 save 허용 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-selection-only`를 사용한다.
+노멀 smoke는 floating 선택의 적용 차단과 확정 후 stale/Undo/cache 복원도 검사한다. 전체 UI gate가 CI validate에서 실행되므로 별도 중복 gate를 추가하지 않는다.
+
 ## 제품 Runtime Budget Readiness
 
 런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.

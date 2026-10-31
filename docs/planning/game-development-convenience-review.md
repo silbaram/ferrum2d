@@ -1,6 +1,6 @@
 # 게임 개발 편의성 후보
 
-기준일: 2026-10-30
+기준일: 2026-10-31
 상태: 설계 후보·미착수. 개별 항목의 필요성과 완료 조건을 정한 뒤 개발 계획으로 구체화한다.
 
 현재 제작 흐름은 [개발자 퀵스타트](../engine/developer-quickstart.md),
@@ -12,6 +12,7 @@
 
 가져오기·세션 revision 정리·Import 진단의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
 도트 제작과2D/HD-2D 노멀 적용의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)을 따른다. 여기에서는 후속 후보만 관리한다.
+도트 선택 영역·복구·그리기 편의성의 구현 순서와 완료 조건은 [별도 개발 계획](pixel-authoring-ergonomics-plan.md)에서 관리하며 이 후보 표에 중복 등록하지 않는다.
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |

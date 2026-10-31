@@ -1481,6 +1481,13 @@ texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 �
 도트 제작은 app의 `placementPixelDocument`(원본 검증·픽셀 연산·transaction·bounded Undo),
 `placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelLayers`(이미지 레이어 패널), `placementPixelPng`(straight-alpha RGBA PNG 출력),
 `placementPixelAssets`(불변 session revision·기존 component patch), `placementPixelTool`(에셋 탭·수명·내보내기)로 분리한다.
+`placementPixelSelection`은 UI 선택·정수 변형 미리보기·현재 원본에 한정된 내부 클립보드를 소유하고,
+`placementPixelSelectionControls`는 조건부 메뉴와 확정/취소를 제공한다. preview는 선택 cel 사본을 합성하며
+원본/revision/dirty/Undo를 변경하지 않는다. 확정은 문서 모델의 bounded `editRegion` 한 transaction으로 적용한다.
+editor identity·revision·frame/layer/atlas ID가 바뀌면 이전 preview를 폐기한다. 고정 atlas는 활성 rect로 제한하며
+원본 교체/종료 시 clipboard를 해제한다. 선택 state·clipboard·preview는 저장 원본이나 runtime으로 전달하지 않는다.
+포인터 gesture 중에는 키보드 확정/잘라내기로 다른 transaction을 시작하지 않으며 Escape/Undo 취소를 처리한다.
+workspace의 Enter 확정은 canvas target으로 제한해 버튼·summary의 기본 키보드 활성화를 보존한다.
 `placementPixelFrames`는 프레임 조작과 미리보기 RAF, `placementPixelAnimation`은 atlas UV/정수 시간의 기존 runtime clip 변환을 담당한다.
 `placementFrameNormals`는 Aseprite와 자체 도트가 공유하는 rect별 Worker 생성·normal texture 수명·불변 pair 저장 구현이다.
 `placementAsepriteNormals`는 기존 provenance를 유지하는 얇은 adapter이며 `placementPixelNormals`는 자체 source JSON hash·frame ID/rect·paired patch 검증을 담당한다.
