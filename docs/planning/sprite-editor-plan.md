@@ -1,16 +1,18 @@
 # 엔진 내장 도트 제작 기능 개발 계획
 
-기준일: 2026-10-30
-상태: 1차 완료 · 2차 부분 완료(이미지 레이어 완료, 프레임 애니메이션 미착수)
+기준일: 2026-10-31
+상태: 기본 제작·2차·태그·노멀 생성/HD-2D 연결 완료 · 일반 2D 재질 설계 대기
 작업 브랜치: `feat/pixel-authoring`
-다음 구현 범위: 프레임 추가·복제·시간·미리보기와 저장/재생 검증, 이후 어니언 스킨·atlas frame 편집
+남은 범위: 일반 2D 게임 sprite의 노멀 재질·조명 계약 설계
 
-2차 중 이미지 레이어를 구현하고 검증했다. 기존 v1 원본은 그대로 읽고 저장하며, 레이어 구조·표시·잠금을 편집하면 v2로 전환한다.
-v2는 아래→위 순서의 `layers`(id/name/visible/locked/rgba), 기존 단일 frame·팔레트를 보관한다.
-한 문서 최대 8개 이미지 레이어·256×256·원본 3 MiB(v1은 400,000 bytes)를 사용하며, PNG는 보이는 레이어를 straight-alpha source-over로 합성한다.
-레이어 선택은 UI 상태이고 원본/dirty에 포함하지 않는다. 픽셀·레이어 구조/속성 편집은 같은 Undo/Redo와 16 MiB history 예산을 사용한다.
-레이어 추가·이름·순서·표시·잠금·삭제, 합성 PNG/씬 적용, native 저장·재열기/실패·충돌과 기존 v1 회귀를 확인했다.
-프레임·어니언 스킨·atlas frame 편집은 이 작업 이후의 2차 항목으로 남긴다.
+기본 드로잉·저장/재열기·씬 적용, 이미지 레이어, 프레임 추가/복제/삭제/순서·시간·재생/정지를 구현하고 검증했다.
+v3 편집 원본과 atlas 출력, 지원하는 시간 설정의 실제 2D/HD-2D 게임 재생과 어니언 스킨을 제공한다.
+v4 고정 atlas는 프레임 rect/UV와 다른 픽셀을 보존하며 정적 선택 객체에 적용하고 저장·재열기한다.
+v5 태그·안정적인 clip ID·명시적 변경 적용과 실제 저장/재열기·2D/HD-2D 복수 clip 재생도 제공한다.
+자체 도트의 프레임별 노멀 생성·변경 감지·격리된 조명 미리보기·HD-2D color/normal 동시 적용과 저장/재시작 복원을 제공한다.
+일반 2D에서는 노멀 생성·별도 조명 미리보기·내보내기까지 제공하며 게임 sprite의 노멀 재질 적용은 남은 범위다.
+현재 schema·예산·호환 정책은 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)을,
+검증 명령과 범위는 [Smoke Check](../development/quality/smoke-check.md)를 따른다. 이 문서는 남은 개발 범위를 관리한다.
 
 현재 작업의 저장 계약은 `public/assets/.ferrum-pixels/`의 불변 원본 JSON·PNG와 `catalog.json`이다.
 기존 desktop allowlist·asset protocol·sprite 저장 transaction을 재사용한다.
@@ -28,8 +30,7 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 드로잉·편집 이력·팔레트·레이어·프레임·어니언 스킨에서 필요한 원리를 가져와 Ferrum2D의 제작 흐름과 기술 구조에 맞게 구현한다.
 이 계획의 목표는 Aseprite 파일 호환성 확대가 아니며, 기존 import 지원 실적을 도트 제작 기능의 완료로 계산하지 않는다.
 
-아래 단계는 전체 개발 범위다. 현재 제공하는 기능은 Scene Authoring과 앱 README를 기준으로 하며, 미완료 항목은 아래 체크리스트에 남긴다.
-첫 구현 범위는 **기본 도트 그리기 → 편집 문서/PNG 저장 → 씬 적용**이며 이후 단계를 순서대로 진행한다.
+아래 단계는 남은 개발 범위다. 현재 제공하는 기능은 Scene Authoring과 앱 README를 기준으로 하며, 후속 단계를 순서대로 진행한다.
 
 - 에셋 전용 편집 도구로 구성하고 기존 Assets에서 연다. 씬 편집과 에셋 편집의 문서·이력을 구분한다.
 - AI agent가 생성·검사·수정할 수 있는 versioned 편집 문서와 검증 가능한 편집 연산을 설계한다.
@@ -41,7 +42,7 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 ## 현재 구현과 재사용 지점
 
 기본 도트 편집 모델·캔버스·에셋 문서 탭·브라우저 원본/PNG 내보내기·native 프로젝트 저장/재열기·자산 등록/씬 적용을 구현했다.
-다중 이미지 레이어를 추가했으며 프레임 애니메이션은 후속 범위다.
+다중 이미지 레이어·프레임 애니메이션·어니언 스킨, 기존 고정 atlas frame 편집과 실제 게임 재생을 제공한다.
 기존 JSON+PNG import·reimport, 노멀 생성, 원본 저장·재열기는 별도의 가져오기 기능이다.
 그 과정에서 검증한 자산 등록·revision·저장·수명 관리 구현은 재사용하되, 새 도트 문서를 Aseprite metadata로 가장하거나 기존 import UI를 제작의 필수 단계로 삼지 않는다.
 
@@ -51,6 +52,8 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 | `placementAsepriteAssets.ts`, `placementAsepriteAnimation.ts` | immutable revision과 runtime frame/clip 변환의 재사용 가능 부분 |
 | `placementAsepriteProject.ts` | 프로젝트 원본/catalog 저장·검증과 씬 저장 연결 패턴. 새 도트 문서 저장 계약은 별도로 정의 |
 | `placementSpriteRevisions.ts`, `placementCatalogTools.ts` | 세션 revision 예산·정리와 참조 보존 경계 |
+| `placementPixelDocument.ts`, `placementPixelFrames.ts`, `placementPixelCanvas.ts` | 공통 레이어·프레임별 cel/Undo, UI 전용 미리보기 시계·선택, 캔버스 표시/입력 |
+| `placementPixelAnimation.ts`, `placementPixelAssets.ts`, `placementPixelProject.ts` | 프레임 시간의 runtime 변환·진단, 소유한 animation 보호, 불변 revision·저장/재열기 |
 | `placementImportDiagnostics.ts` | 원본 항목·씬 경로 진단, 최신 보고 상태와 순회 상한 |
 | `placementAsepriteNormals.ts`, `placementAsepriteNormalPng.ts` | frame 경계에 따른 노멀 생성과 source hash 확인 |
 | `packages/ferrum-web/src/assetPipelineAseprite.ts` | 기존 가져오기 회귀 경계. 새 도트 제작의 필수 경로로 사용하지 않음 |
@@ -64,7 +67,7 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 
 참고 소스는 공식 저장소의 `3669f4774d181d77deb3e6db95fe6df8ca347410` commit을 기준으로 고정했다.
 분석용 사본은 `/tmp/ferrum2d-references/aseprite`에 있으며 프로젝트 의존성에 포함하지 않는다.
-임시 사본이 삭제되면 위 commit을 다시 받아 재개한다. 아래 책임을 분석해 1차 구현에 적용했다.
+임시 사본이 삭제되면 위 commit을 다시 받아 재개한다. 아래 책임을 필요한 기능의 구현에 참고한다.
 
 | 참고 소스 | 분석할 내용 | Ferrum2D 적용 기준 |
 | --- | --- | --- |
@@ -72,73 +75,36 @@ Aseprite는 검증된 도구의 코드·알고리즘·UX를 분석하는 참고 
 | [영역 채우기](https://github.com/aseprite/aseprite/blob/3669f4774d181d77deb3e6db95fe6df8ca347410/src/doc/algorithm/floodfill.cpp) | 연결 영역 탐색과 픽셀 경계 처리 | 문서 크기에 따른 작업·메모리 상한과 Undo/취소 검증 |
 | [문서·이미지 구조](https://github.com/aseprite/aseprite/tree/3669f4774d181d77deb3e6db95fe6df8ca347410/src/doc) | `image`, `palette`, `sprite`, `layer`, `cel`의 책임과 관계 | 자체 versioned 편집 문서와 게임용 출력물을 분리 |
 | [편집 transaction](https://github.com/aseprite/aseprite/blob/3669f4774d181d77deb3e6db95fe6df8ca347410/src/app/transaction.cpp) | `transaction.cpp`, `cmd_transaction.cpp`와 도구 입력에서 이어지는 Undo/Redo 경계 | 한 stroke당 한 Undo, 문서별 이력과 취소·수명 보장 |
+| [어니언 설정](https://github.com/aseprite/aseprite/blob/3669f4774d181d77deb3e6db95fe6df8ca347410/src/render/onionskin_options.h), [합성](https://github.com/aseprite/aseprite/blob/3669f4774d181d77deb3e6db95fe6df8ca347410/src/render/render.cpp) | `OnionskinOptions`, `Render::renderOnionskin`의 인접 범위·자기 제외·tint·opacity·뒤쪽 표시 | 자체 UI 보기 상태와 최대2개 인접 합성으로 구현. 원본/게임 출력에 섞지 않음 |
 
 분석 산출물에는 참고 commit/파일·선택한 원리·Ferrum2D 적용 위치·회귀 검증을 남긴다.
 직접 코드를 재사용할 경우 해당 소스의 사용 조건을 확인하고 출처를 기록한다.
 C++ 데스크톱 UI나 문서 구조 전체를 옮기지 않고, 필요한 알고리즘과 설계 원리를 TS 편집 모델·canvas·기존 asset 경계에 맞춘다.
 
-1차 적용 근거:
+적용 근거:
 
 - `ToolLoopManager::end`와 `Transaction`의 확정/rollback 경계를 참고해 픽셀 transaction을 분리했다.
   `placementPixelDocument.ts`가 stroke/fill과 Undo를 소유하고 `placementPixelCanvas.ts`는 입력·보기 상태만 소유한다.
 - stroke의 점 연결 원리를 정수 선 보간과 선분 clipping에 적용했다. flood fill의 연결 영역·투명 픽셀 동등성은 문서 크기로 제한한 자체 queue 연산으로 구현했다.
 - `Image`와 `Cel`의 이미지/레이어/프레임 책임 분리를 참고해 자체 원본에 stable layer/frame ID를 둔다.
-  이미지 1개·레이어 1개·프레임 1개의 원본을 저장하며 다중 레이어/프레임 UI는 후속 단계다.
+  기존 v1을 유지하고 현재 v3의 공통 layer metadata·프레임별 cel과 연결한다.
 - 외부 C++ 코드를 복사하거나 Aseprite 앱에 실행 의존성을 추가하지 않았다.
 
 ## 단계별 개발
 
-### 1차: 기본 드로잉·저장·씬 적용
+### 남은 3차: 일반 2D 게임용 노멀 재질 설계
 
-사용자가 작은 정적 스프라이트를 새로 만들거나 단일 PNG를 수정할 수 있는 범위다. 첫 단계는 이미지 layer 1개·frame 1개로 제한한다.
-기존 atlas의 선택 frame을 수정하며 다른 frame을 보존하는 기능은 2차에서 다룬다.
+현재 제공하는 생성·미리보기·HD-2D 적용·저장 계약은 [도트 노멀 생성](../engine/data-scene-authoring.md#도트-노멀-생성과-조명-미리보기)을 따른다.
+일반 2D sprite에는 노멀 재질 연결 API가 없어 별도 dialog에서 보는 조명을 실제 2D 게임 조명으로 간주하지 않는다.
 
-- Assets의 **새 도트 만들기**에서 크기(기본 32×32)를 선택하고 투명 배경으로 시작한다. PNG에서 시작하기는 선택 기능이다.
-- 연필, 지우개, 영역 채우기, 스포이트, 색상/알파 선택, 팔레트.
-- 픽셀 격자, 정수 배율 확대/축소, 화면 이동, 최근접 표시.
-- 한 번의 stroke를 한 Undo로 기록하고 Redo, Esc 취소, 포인터가 캔버스 밖으로 나가는 경우를 처리한다.
-- 편집 문서 저장/재열기, 게임용 PNG와 필요한 metadata/manifest 내보내기.
-- Assets에 새 revision을 등록하고 선택 객체에 명시적으로 적용한다. 기존 배치·collider·body·behavior는 보존한다.
-- 저장 전 변경 표시와 닫기/다른 도트 원본으로 교체할 때 내보내기·변경 폐기·취소를 제공한다. 씬 탭 전환은 도트 원본과 이력을 유지한다.
+착수 전 결정할 사항:
 
-완료 조건:
+- 2D sprite 재질과 광원 좌표·감쇠·alpha·색 공간 계약, 기존 unlit 출력과의 호환 정책.
+- render command/Wasm ABI 및 WebGL2/WebGPU 경계의 영향과 draw/texture/memory 예산.
+- 기존 도트 frame/태그 UV·source hash·normal binding 재사용 범위와 저장 migration.
+- 기존 2D 조명·그림자 기능과 통합할 범위, 미리보기와 실제 게임 출력의 대응 기준.
 
-1. Aseprite 설치·파일 없이 새 32×32 이미지를 그려 저장하고 새 세션에서 동일한 픽셀로 다시 연다.
-2. 기존 PNG의 원본 bytes를 보존하면서 새 revision으로 수정본을 저장한다.
-3. 씬에 적용한 스프라이트가 에셋/씬 재열기와 fresh game에서도 같은 모습으로 표시된다.
-4. 씬 적용은 한 편집으로 Undo/Redo하며 객체의 위치·충돌·동작 설정을 바꾸지 않는다.
-5. 잘못된 입력, 업로드·저장 실패, 취소·늦게 도착한 결과가 기존 문서와 씬을 바꾸지 않는다.
-
-### 2차: 이미지 레이어·프레임 애니메이션
-
-1차 저장·수명 계약 위에 에셋 내부의 layer/frame을 추가한다. 이미지 레이어와 씬의 그리기 레이어는 별도 개념으로 표시한다.
-
-- 이미지 레이어 추가·삭제·이름 변경·순서·표시·잠금과 기본 합성: 완료.
-- 프레임 추가·복제·삭제·순서 변경, 프레임별 시간과 재생/정지.
-- 이전·다음 프레임을 겹쳐 보는 어니언 스킨.
-- 기존 atlas의 선택 frame 편집: rect/UV와 다른 frame의 픽셀을 보존한다. 겹치거나 모호한 frame은 진단한다.
-- 편집 원본에는 layer/frame 데이터를 저장하고 게임용 PNG+JSON에는 합성한 결과를 내보낸다.
-
-완료 조건:
-
-1. layer/frame 수정과 Undo/Redo, 저장·재열기에서 픽셀·순서·시간이 유지된다.
-2. 선택 frame 수정이 다른 frame의 픽셀이나 기존 UV를 바꾸지 않는다.
-3. 편집기 미리보기와 지원하는 runtime 애니메이션의 재생 순서·시간을 대조한다.
-4. 엔진 runtime의 duration/FPS·repeat 표현 범위를 검증한다. 표현할 수 없는 재생 설정은 명시적으로 진단한다.
-
-### 3차: 태그·노멀맵·게임 미리보기
-
-- idle/walk/attack 등의 frame tag, 기존 clip ID/참조를 보존하는 명시적 migration.
-- 자체 편집 문서에서 게임용 스프라이트시트·frame/clip metadata를 생성하고 자산 등록·runtime 로딩으로 연결한다.
-- 수정된 color/frame을 기준으로 노멀맵 재생성, 원본 hash와 frame 경계 검증.
-- 2D와 HD-2D의 실제 조명·그림자 아래에서 결과 확인. 미리보기 카메라 설정은 게임 카메라 저장과 구분한다.
-
-완료 조건:
-
-1. tag/frame 변경이 기존 animation 참조를 조용히 깨뜨리지 않고 migration 근거를 제공한다.
-2. color 수정 후 이전 노멀을 최신 결과로 표시하지 않는다. 재생성 실패·취소 시 기존 pair를 보존한다.
-3. 자체 제작한 게임용 출력물을 새 프로젝트/runtime에서 불러와 frame·재생·색 공간·노멀 binding을 검증한다.
-4. 미리보기가 실제 게임 상태·카메라를 변경하지 않고 종료 시 소유 자원을 해제한다.
+구현 범위는 설계를 확인한 뒤 확정한다. 완료 시 새 2D runtime에서 frame별 normal/flat 조명 차이·재생·저장/재열기·자원 해제를 검증하고 기존 unlit 출력 회귀를 통과해야 한다.
 
 ## 화면과 입력
 
@@ -149,8 +115,8 @@ Assets의 **새 도트 만들기** 또는 기존 자산의 **도트 편집**으�
 | --- | --- |
 | 왼쪽 | 그리기 도구, 전경색/투명도, 팔레트 |
 | 가운데 | 픽셀 캔버스, 격자, 확대/이동 |
-| 오른쪽 | 문서 크기·속성·미리보기. 2차부터 이미지 레이어 |
-| 아래 | 2차부터 프레임 목록·시간·재생 |
+| 오른쪽 | 문서 크기·속성·이미지 레이어 |
+| 아래 | 프레임 목록·시간·재생과 접이식 어니언 스킨 설정 |
 
 - Ctrl/Cmd+Z, Space 이동 등 단축키는 활성 편집 문서에만 전달한다. 텍스트 입력과 게임 입력을 가로채지 않는다.
 - 씬의 Undo/Redo와 스프라이트 픽셀 이력을 분리한다. 탭 전환 시 활성 문서와 변경 상태를 명확히 표시한다.
@@ -177,10 +143,14 @@ Assets의 **새 도트 만들기** 또는 기존 자산의 **도트 편집**으�
 1차 편집기 예산은 문서 한 변 최대 256픽셀, 원본 JSON 400,000 bytes, Undo/Redo 합계 최대 64단계와 pixel history 16 MiB다.
 단계 수와 실제 snapshot byte 상한을 함께 적용한다. 256×256에서는 before/after RGBA snapshot 32단계가 byte 상한이다.
 현재 이미지 레이어는 최대 8개, v2 원본은 3 MiB이며 전체 layer snapshot이 같은 16 MiB history 예산을 사용한다.
-이후 frame 상한과 전체 pixel 예산도 합계 기준으로 제한한다. 기존 catalog 예산은 자동으로 확대하지 않는다.
+v3는 최대 16프레임·8레이어이며 전체 cel 합계 2,097,152픽셀(8 MiB RGBA), 원본 12 MiB다.
+전체 cel snapshot이 같은 16 MiB history 예산을 공유한다. 기존 catalog 예산은 자동으로 확대하지 않는다.
 
-현재 원본은 `ferrum2d.pixel-document` v1/v2로 width/height·sRGB·layer/frame ID·팔레트·straight-alpha RGBA8 base64를 담는다.
+현재 원본은 `ferrum2d.pixel-document` v1/v2/v3/v4/v5로 width/height·sRGB·layer/frame ID·팔레트·straight-alpha RGBA8 base64를 담는다.
 v1은 기존 단일 layer/rgba, v2는 아래→위 순서 layers 배열과 각 표시·잠금·독립 RGBA를 저장한다.
+v3는 공통 layer metadata와 프레임별 시간·cel을 저장하며, 모든 프레임 합성을 최대4×4 atlas PNG로 출력한다.
+runtime은 GCD 시간 단위의 반복 UV로 태그가 없으면 단일 clip, v5 태그가 있으면 태그별 clip을 생성한다. 각 clip의32 native frame/FPS 한도를 넘으면 게임 적용을 막고 진단한다.
+v4 고정 atlas와 v5 태그의 계약·한도·참조 보존 정책은 Scene Authoring을 따른다.
 UI 상태·Undo 이력은 저장하지 않으며 PNG는 RGBA를 직접 인코딩해 canvas premultiplication으로 인한 원본 수치 손실을 피한다.
 게임용 `ferrum2d.pixel-assets` v1 bundle은 불변 PNG revision·SHA-256·원본·manifest·현재 scene document를 담는다.
 PNG 생성 전 원본 snapshot을 확정하며 적용 실패의 미확정 revision만 rollback한다.
@@ -234,10 +204,13 @@ Rust/ABI 변경이 없는 에셋 제작 작업에 simulation 기능을 함께 �
 - [x] 1차: native 프로젝트 원본/catalog 저장 위치·충돌 감지·실패 복원·실제 저장/재열기
 - [x] 1차: Aseprite 설치·파일 없이 새 도트 제작→저장→씬 적용→fresh game 검증과 사용법 동기화
 - [x] 2차: 이미지 레이어·합성·잠금·Undo/Redo·원본 보존·저장/재열기·fresh game 검증
-- [ ] 2차: 프레임·시간·미리보기·어니언 스킨·atlas frame 편집
-- [ ] 2차: 출력/재생 호환·원본 보존·예산 회귀
-- [ ] 3차: tag/clip migration·노멀 재생성·2D/HD-2D 미리보기
-- [ ] 3차: 통합 roundtrip·자원 정리·문서 동기화
+- [x] 2차: 프레임·시간·미리보기·어니언 스킨·고정 atlas frame 편집
+- [x] 2차: 출력/재생 호환·원본 보존·예산 회귀
+- [x] 3차: frame tag·안정적인 clip ID·명시적 migration·저장/재열기·실제 복수 clip 재생
+- [x] 3차: 노멀 재생성·원본 hash/frame 경계·normal binding 검증
+- [x] 3차: 2D 격리 조명 미리보기·HD-2D 게임 적용·저장/재시작·자원 정리·문서 동기화
+- [ ] 3차 후속: 일반 2D 게임 sprite의 노멀 재질 계약·예산 설계와 범위 확정
+- [ ] 3차 후속: 확정된 2D 재질 구현·실제 게임 조명·저장/재열기·회귀 검증
 
 세션 재개 시 이 문서와 planning 목록, 현재 branch/diff를 먼저 확인한다.
 첫 미완료 항목부터 진행하고 기존 미커밋 변경을 보존한다. 실제 검증이 통과한 항목만 완료로 표시한다.

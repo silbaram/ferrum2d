@@ -156,6 +156,7 @@ macOS/Windows signing, notarization, store 제출은 명시적 release 승인 �
 프로젝트를 연 뒤 Assets의 새 도트 만들기/도트 편집 탭에서 **프로젝트 저장**을 사용하면
 `public/assets/.ferrum-pixels/`에 편집 원본·PNG·catalog를 저장한다. 외부 catalog 변경은 SHA-256 token으로 거절하고
 재열기 시 hash/원본/PNG 픽셀을 검증한 자산만 복원한다. 씬 저장은 자산 저장 뒤 별도로 수행한다.
-단일 레이어 v1과 최대 8개 이미지 레이어 v2 원본을 지원하며 v2 원본 상한은 3 MiB다. PNG는 보이는 레이어의 합성과 일치해야 한다.
+v1/v2와 최대16프레임·8레이어 v3 원본, 고정 atlas v4 원본을 지원한다. v4는 전체 시트·정수/비중첩 UV를 보존하며 v1과 같은400,000 bytes/한 변256 상한을 사용한다. v2 원본3 MiB, v3 원본12 MiB/전체 cel8 MiB다.
+v3 PNG만8 MiB/한 변1024 atlas를 허용하며 모든 프레임의 합성과 padding을 대조한다. 기존 PNG/원본과 프로젝트 총예산은 유지한다.
 `pnpm smoke:pixel-project`는 실제 Rust 파일 저장과 protocol을 stdio test transport로 호출해 검증한다.
 이 검사는 실제 native GUI의 picker/IPC 수동 확인과 구분한다.

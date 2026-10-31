@@ -1801,7 +1801,16 @@ v1→v2 전환·독립 레이어 픽셀·정수 alpha 합성, 순서/표시/잠�
 선택 레이어 fill·합성 스포이트·선택만 바꿀 때 dirty 불변, 삭제/재열기 후 ID 재사용 방지도 검사한다.
 8개·256×256의 1 MiB 초과 원본과 3 MiB/16 MiB 예산, v1 400,000 bytes 유지·중복 ID/잘못된 flag 거절을 확인한다.
 JSON 정수의 소수/지수 표기·JS 공백 판정·UTF-16 길이와 짝 없는 surrogate 거절도 검사한다.
-static sprite component patch의 설정 보존·잠금/애니메이션/normal 거절과
+v3 프레임 추가/복제/삭제/순서/시간과 모든 frame의 layer/cel 연결·독립 픽셀·Undo를 검사한다.
+최대16프레임/전체8 MiB cel/12 MiB 원본과 최대 문서의16 MiB history, atlas 순서/투명 RGB/마지막 padding, snapshot·PNG 대조를 확인한다.
+원본 시간의 GCD→고정FPS UV tick·32개 한도 진단, frame 선택/preview cursor의 dirty 불변과 서식 있는 v3 revision의 그대로 재사용도 검사한다.
+v5 태그의 고유 ID/이름/clip ID·frame 참조·단조 증가 할당·초기 태그, Undo/Redo·저장/재열기·이전 버전 거절을 확인한다.
+태그 순서의 독립성과 기존 clip 보존, 정확한 전후 set에만 유효한 migration 승인·승인 취소·수동 변경 보호도 검사한다.
+v4 고정 atlas의 정수 UV·비중첩·한도·버전 경계, 선택 rect 밖으로 나가지 않는 선/fill, 프레임 선택의 비변경성, 구조 변경 거절도 검사한다.
+전체 시트 PNG/source roundtrip의 투명 RGB와 적용 시 UV/다른 components 보존·잘못된 대상/normal/animation 거절을 확인한다. frame 생략·빈 frame의 기본 전체 UV와 일부 UV 필드 생략을 엔진의 frame 해석과 일치시킨다. null frame과 실제 UV 불일치는 거절한다.
+어니언 인접 프레임의 이전/다음·경계 비순환·자기 자신 제외·0~100% 불투명도·재생 중 숨김과 UI 설정의 비변경성을 검사한다.
+현재/인접 합성 읽기가 source/history/dirty를 바꾸지 않고 읽은 bytes 수정으로 원본을 바꿀 수 없어야 한다. 다중 합성 cache도 픽셀·레이어 표시·Undo의 최신 내용을 반영해야 한다.
+sprite component patch의 설정 보존·잠금/다른 애니메이션/normal 거절·검증된 도트 animation 교체와
 실제 session store의 immutable revision·history 보존·미사용 정리·취소된 upload 해제를 함께 확인한다.
 비동기 PNG 중 caller 원본 변경, numeric-only texture alias의 save/문서 경계 우회,
 prefab/variant/include/legacy/normal export 정규화, 큰 metadata 보존·미지원 참조 진단,
@@ -1825,7 +1834,23 @@ runtime은 paused 상태(3)·entity 1개·sprite 1개 이상·draw call 1~16회�
 manifest path를 변조한 negative fixture는 runtime 시작 전에 실패해야 한다.
 미설치 session texture의 scene Save는 요청을 전송하지 않아야 하며, 종료 후 URL/GL texture 잔여는 0이어야 한다.
 근거는 `artifacts/pixel-authoring/verification.json`과 run별 원본/PNG/bundle/화면이다.
-native 프로젝트 파일 저장은 아래 별도 gate로 검증하며 프레임 애니메이션·노멀 재생성은 후속 범위다.
+프레임 UI는 v2 레이어 원본을 복제/그리기/시간/삭제/순서/Undo하며, 키보드 Undo 후 같은 도트 편집기로 focus가 유지되어야 한다.
+프레임·레이어 순서 버튼이 경계에서 비활성화되거나 마지막 하나를 남기고 삭제해도 포커스는 도트 편집기에 남아야 한다.
+바로 이어진 키보드 Undo/Redo가 실제 픽셀 순서·삭제를 복원하는지 확인한다.
+83/124ms는32개 tick 초과를 진단하고 apply를 막는다. preview 재생/정지·blur·탭 전환·재생 중 편집 차단·dirty/원본 불변을 확인한다.
+재생 중 최종 pagehide의 canvas 정리 콜백이 비운 프레임 행을 다시 만들지 않아야 한다.
+어니언 검사는 움직이는 픽셀의 자체 v3 3-frame 원본을 열어 실제 canvas 픽셀로 이전 coral·다음 cyan·원본 alpha·현재 opaque 덮기를 대조한다.
+이전/다음 개별 표시, 0/30/50/100% 불투명도·키보드 조작·Escape 포커스, source/PNG export bytes·dirty·Undo/Redo 불변을 확인한다.
+ghost 위치에서 스포이트가 현재 투명 픽셀을 읽고 그리기는 현재 cel만 수정하는지, hidden/locked 레이어·순서/삭제/Undo와 경계 비순환을 검사한다.
+DPR1/2의 zoom/pan 정렬, 재생 중 ghost 숨김·정지 복원·동일 탭 설정 유지·닫기/재열기 초기화와 한국어390px 설정 메뉴 경계를 확인한다.
+재생 중에는 실제 중앙 픽셀로 대상 프레임을 식별한 같은 브라우저 콜백에서 비교 픽셀을 함께 읽는다. 별도 protocol 조회 사이에 프레임이 진행해도 검사 대상이 섞이지 않아야 한다.
+검사 뒤 기존2-frame 원본을 그대로 복원해 자산 등록·native 저장/재열기·게임 재생 회귀를 계속한다. fixture가 프로젝트 자산으로 등록되지 않아야 한다.
+태그 UI는 2개 프레임에서 idle/walk를 만들고 한국어390px·이름 Undo·명시적 migration 취소/승인·v5 export/reopen을 검사한다.
+태그 bundle은 새 2D/HD-2D runtime에서 모든 clip으로 전환하며 Playing·native frame 수·반복/비반복 완료와 실제 UV/blue/red 픽셀·draw 비용을 검증한다.
+실제 Rust 저장·프로세스/브라우저 재시작 후 v5 원본을 바이트 내용으로 대조하고 다시 게임에서 재생한다. 이 helper는 기존 pixel browser/native gate에 연결한다.
+최종100/200ms 두 프레임의16×8 atlas를 내보내 새 runtime의 Playing(1)에서300ms 주기·native3 tick/실제2 source frame·화면 blue/red 전환을 대조한다.
+상태/비용 검사는 초기 paused(3)와 재생 Playing(1)을 별도로 요구하며 draw call1~16·texture switch≤16·실제각색100px 초과를 유지한다.
+native 프로젝트 파일 저장은 아래 별도 gate로 검증한다. 고정 atlas와 태그 회귀를 포함하며 노멀 재생성은 후속 범위다.
 
 `pnpm smoke:pixel-project`는 실제 Rust 저장/protocol 함수를 test-only stdio transport로 호출한다.
 2D DPR 1·HD-2D DPR 2에서 도트 생성/적용→원본/PNG/catalog 저장→Rust/브라우저 새 세션 재열기와 원본 동일성을 검사한다.
@@ -1836,11 +1861,36 @@ draw call 1~16회·texture switch 16회 이하와 파란 픽셀 100개 초과를
 Rust host unit은 원본/PNG의 투명 RGBA 일치, identity·hash·경로 검증, stale catalog 거절, 부분 생성 실패 rollback·기존 파일 보존,
 변조/링크 catalog 거절을 검사한다. UI 전용 테스트가 실제 native GUI/picker/IPC 또는 실물 GPU 검증을 대신하지 않는다.
 다중 레이어 편집 원본을 저장한 뒤 Rust/브라우저를 다시 시작해 레이어 수·이름과 원본 bytes를 복원하고 합성 PNG로 새 게임을 실행한다.
+v3 두 frame과100/200ms를 실제 저장·새 브라우저/호스트에서 복원하고 저장된 catalog/scene만으로 같은 Playing 시간·색상/UV와 비용을 검사한다.
 Rust unit은 1 MiB 초과 8개 레이어 원본의 실제 저장/재열기, 합성과 다른 PNG·잘못된 flag·중복 ID의 저장 거절도 확인한다.
+v3는3 MiB 초과 원본/전체 cel 예산·프레임 ID/시간/cel 연결·잘못된 atlas padding의 저장 거절을 추가로 확인한다.
 원본/metadata의 `1.0` 정수 표기를 저장·재열기·재저장해 원본 bytes 보존과 metadata 정규화를 대조한다.
 서식 있는 원본과 독립 인코더의 필터·분할 IDAT·Adam7 PNG를 실제 Rust에 저장하고 UI에서 재열기/재저장해 원본 bytes를 대조한다.
 bundle 생성/PNG 검증 중 caller 데이터 변경, sRGB와 충돌하는 프로필, PNG IEND 누락·CRC 오류·끝 쓰레기 bytes의 저장 거절도 검사한다.
+공통 `smokePixelFrameCard`는 자체 제작한 두 번째 애니메이션 프레임 카드로 열어 선택 ID와 실제 빨간 cel 픽셀·원본 보존·빈 Undo를 확인한다. browser와 native 재시작 뒤의 카드 진입을 모두 검사한다. 도구 버튼 전환 중 base64 인코딩 호출이0인지 확인해 적용 미리보기가 전체 cel을 직렬화하지 않는지도 검사한다.
+공통 `pixel-atlas-smoke.mjs`는 외부 PNG+프레임 정보를 기존 importer로 등록하고 프레임 카드에서 v4 편집 원본을 열어 프레임 선택·캡처된 바깥 endpoint·Undo/Redo·잘못된 UV 적용 차단,
+다른 프레임/투명 RGB·전체 PNG·등록된 revision 재열기·중첩 원본 거절·한국어390px 화면을 실제 UI에서 대조한다.
+해독을 지연한 뒤 이전 탭을 다시 열어 그려도 stale atlas 읽기가 새 문서의 폐기 확인창을 열거나 원본을 바꾸지 않아야 한다.
+별도 fresh runtime은 2D command와 HD-2D billboard 정점의 실제 UV, Playing 상태1·entity1개·sprite와 draw/texture 비용을 확인한다.
+프로젝트 smoke는 v4 source/PNG를 실제 Rust에 저장하고 호스트/브라우저를 재시작한 뒤 프레임 카드로 재열어 원본·선택 영역을 검사한다.
+Rust unit은 같은 정수/중첩/버전 계약의 저장 거절과 기존 catalog 보존을 확인한다.
 근거는 `artifacts/pixel-project/verification.json`과 run별 화면/원본/`rust-build.log`다.
+
+### 자체 도트 노멀 회귀
+
+`pnpm smoke:pixel-normals`와 `pnpm smoke:pixel-normals-project`는 도트 노멀의 집중 진입점이다.
+동일한 `pixel-normals-smoke.mjs` 검사는 기존 `smoke:pixel-authoring`/`smoke:pixel-project` 전체 gate에서도 레이어·프레임·태그·atlas 검사 뒤 실행한다.
+2D DPR1/HD-2D DPR2에서 자체 v5 원본의 서로 다른 색·투명 영역을 frame별 실제 Worker 입력으로 확인한다.
+생성기 부재·보류한 job 취소·Worker 종료·원본 수정/Undo의 stale 차단·불변 cache 재사용·한국어390px을 검사한다.
+조명 dialog의 실제 GL readback으로 Flat/Normal 차이를 요구하며 생성/미리보기/취소가 기존 scene patch를 바꾸지 않아야 한다.
+HD-2D 적용은 color+normal 한 씬 patch와 정상 UV·clip 재생을 확인하고 별도 fresh runtime의 controlled light에서 normal 유무의 픽셀 차이를 대조한다.
+Playing1·entity1·draw1~16·texture switch≤16·normal none/color srgb를 실제 renderer/engine sample로 확인한다. 기본2D의 미리보기와 HD-2D runtime 조명 검증을 구분한다.
+실제 Rust 저장 gate는 source/color → normal pair → scene 순서, 재시작 뒤 source JSON hash/PNG/frame rect 검증과 durable pair 재사용을 확인한다.
+같은 gate는 문서 탭 전환으로 임시 pair가 넘어가지 않는지, 저장한 프로젝트 pair는 같은 프로젝트의 다른 씬에 적용하고 해당 씬의 evidence로 기록할 수 있는지 확인한다.
+Rust unit은 잘못된 source hash/PNG/frame/generator metadata와 디스크의 원본 PNG 변조가 저장/복원에서 거절되고 기존 catalog를 바꾸지 않는지 검사한다.
+`smoke:pixel-project`는 `test:native-normal-project`도 먼저 실행해 복원 metadata·source/frame 증거·공유 texture 소유권의 Node 회귀를 CI 수동 gate에 연결한다.
+원본/normal을 해제할 때 공유 color를 중복 해제하지 않고 종료 URL/texture/Worker가0이어야 한다.
+집중 결과는 기존 pixel artifact run의 `focus: pixel-normals`로 표시하며 전체 pixel gate 완료와 구분한다.
 
 ### Import revision 정리와 진단
 
