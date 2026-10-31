@@ -1,5 +1,5 @@
 import { readPixelAtlas, pixelAtlasRect, type PixelAtlasMetadata } from "./placementPixelAtlas";
-import type { PixelDrawMask } from "./placementPixelDrawing";
+import type { PixelDrawMask, PixelRepeat } from "./placementPixelDrawing";
 
 /** Ferrum-owned editing source. Runtime assets contain flattened PNGs only. */
 export const PIXEL_LIMITS = {
@@ -13,10 +13,15 @@ export const PIXEL_LIMITS = {
 } as const;
 export type PixelColor = readonly [number, number, number, number];
 export type PixelColorScope = "cel" | "selection" | "document";
+export type PixelBatchTransform = { kind: "move"; dx: number; dy: number } | { kind: "flip-x" | "flip-y" };
 export const PIXEL_CANVAS_ANCHORS = ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"] as const;
 export type PixelCanvasAnchor = typeof PIXEL_CANVAS_ANCHORS[number];
-export interface PixelRegion { x: number; y: number; width: number; height: number; }
-export interface PixelBlock { width: number; height: number; pixels: Uint8Array; }
+export interface PixelRegion { x: number; y: number; width: number; height: number; mask?: Uint8Array; }
+export interface PixelBlock { width: number; height: number; pixels: Uint8Array; mask?: Uint8Array; }
+/** UI-only selection membership; omitted mask means a full rectangle. */
+export function pixelRegionContains(r: PixelRegion, x: number, y: number): boolean {
+  return x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height && (!r.mask || r.mask[(y - r.y) * r.width + x - r.x] === 1);
+}
 interface PixelDocumentBase {
   format: "ferrum2d.pixel-document";
   name: string; width: number; height: number; colorSpace: "srgb";
@@ -351,22 +356,25 @@ export function createPixelEditor(source: PixelDocument) {
     if (![rect.x, rect.y, rect.width, rect.height].every(Number.isSafeInteger) ||
         Math.abs(rect.x) > 1_048_576 || Math.abs(rect.y) > 1_048_576 ||
         rect.width < 1 || rect.height < 1 || rect.width > PIXEL_LIMITS.side || rect.height > PIXEL_LIMITS.side ||
+        (rect.mask !== undefined && (!(rect.mask instanceof Uint8Array) || rect.mask.length !== rect.width * rect.height || rect.mask.some(v => v > 1))) ||
         (inside && (rect.x < r.x || rect.y < r.y || rect.x + rect.width > r.x + r.width || rect.y + rect.height > r.y + r.height)))
       fail("Invalid pixel selection region");
   }
-  function regionPixels(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
+  function regionPixels(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion, target?: Uint8Array) {
     checkRegion(rect);
     if (!(pixels instanceof Uint8Array) || pixels.length !== rect.width * rect.height * 4)
       fail("Invalid pixel selection bytes");
     if (clear) checkRegion(clear, true);
-    const output = paintPixels().slice(), r = region();
-    if (clear) for (let y = clear.y; y < clear.y + clear.height; y++)
-      output.fill(0, (y * state.width + clear.x) * 4, (y * state.width + clear.x + clear.width) * 4);
+    const output = (target ?? paintPixels()).slice(), r = region();
+    if (clear) for (let y = clear.y; y < clear.y + clear.height; y++) for (let x = clear.x; x < clear.x + clear.width; x++)
+      if (pixelRegionContains(clear, x, y)) output.fill(0, (y * state.width + x) * 4, (y * state.width + x + 1) * 4);
     for (let y = Math.max(rect.y, r.y); y < Math.min(rect.y + rect.height, r.y + r.height); y++) {
       const left = Math.max(rect.x, r.x), right = Math.min(rect.x + rect.width, r.x + r.width);
       if (right <= left) continue;
-      const offset = ((y - rect.y) * rect.width + left - rect.x) * 4;
-      output.set(pixels.subarray(offset, offset + (right - left) * 4), (y * state.width + left) * 4);
+      for (let x = left; x < right; x++) if (pixelRegionContains(rect, x, y)) {
+        const offset = ((y - rect.y) * rect.width + x - rect.x) * 4;
+        output.set(pixels.subarray(offset, offset + 4), (y * state.width + x) * 4);
+      }
     }
     return output;
   }
@@ -396,6 +404,7 @@ export function createPixelEditor(source: PixelDocument) {
   function visitColor(from: PixelColor, targets: ReturnType<typeof colorTargets>, to?: PixelColor) {
     let count = 0;
     for (const target of targets) for (let y = target.rect.y; y < target.rect.y + target.rect.height; y++) for (let x = target.rect.x; x < target.rect.x + target.rect.width; x++) {
+      if (!pixelRegionContains(target.rect, x, y)) continue;
       const i = (y * state.width + x) * 4, pixels = target.pixels;
       if (pixels[i] !== from[0] || pixels[i + 1] !== from[1] || pixels[i + 2] !== from[2] || pixels[i + 3] !== from[3]) continue;
       count++; if (to) pixels.set(to, i);
@@ -418,11 +427,46 @@ export function createPixelEditor(source: PixelDocument) {
     }
     return output;
   }
+  function batchPlan(frameIds: readonly string[], layerId: string, clip: PixelRegion | undefined, operation: PixelBatchTransform) {
+    if (!Array.isArray(frameIds) || frameIds.length < 1 || frameIds.length > PIXEL_LIMITS.frames || new Set(frameIds).size !== frameIds.length ||
+        Array.from(frameIds).some(id => typeof id !== "string" || !state.frames.some(frame => frame.id === id))) fail("Invalid frame range");
+    const layer = layerIndex(layerId), area: PixelRegion = clip ?? region(); checkRegion(area, true);
+    if (!operation || !["move", "flip-x", "flip-y"].includes(operation.kind) || (operation.kind === "move" && ![operation.dx, operation.dy].every(v => Number.isSafeInteger(v) && Math.abs(v) <= 1_048_576))) fail("Invalid batch transform");
+    const x = (px: number) => operation.kind === "flip-x" ? area.width - px - 1 : px;
+    const y = (py: number) => operation.kind === "flip-y" ? area.height - py - 1 : py;
+    const mask = area.mask && new Uint8Array(area.mask.length);
+    if (mask) for (let py = 0; py < area.height; py++) for (let px = 0; px < area.width; px++) mask[y(py) * area.width + x(px)] = area.mask![py * area.width + px];
+    const destination: PixelRegion = { x: area.x + (operation.kind === "move" ? operation.dx : 0), y: area.y + (operation.kind === "move" ? operation.dy : 0), width: area.width, height: area.height, ...(mask ? { mask } : {}) }; checkRegion(destination);
+    let clipped = false;
+    for (let py = 0; py < destination.height; py++) for (let px = 0; px < destination.width; px++)
+      if ((!mask || mask[py * destination.width + px]) && !pixelRegionContains(region(), destination.x + px, destination.y + py)) clipped = true;
+    const frames = state.frames.filter(frame => frameIds.includes(frame.id)), editable = state.layers[layer].visible && !state.layers[layer].locked;
+    const changes = editable ? frames.map(frame => {
+      const source = frame.pixels[layer], pixels = new Uint8Array(area.width * area.height * 4);
+      for (let py = 0; py < area.height; py++) for (let px = 0; px < area.width; px++) {
+        const offset = ((area.y + py) * state.width + area.x + px) * 4;
+        pixels.set(source.subarray(offset, offset + 4), (y(py) * area.width + x(px)) * 4);
+      }
+      const next = regionPixels(destination, pixels, area, source); return { id: frame.id, next, changed: !equal(next, source) };
+    }) : [];
+    return { changes, layer, destination, clipped, skipped: editable ? [] : frames.map(frame => frame.id) };
+  }
   return {
     revision:()=>revision,
     paintMask(mask: PixelDrawMask, color: PixelColor) {
       checkMask(mask, color); if (!pending) fail("Start a pixel transaction first");
       if (drawMask(paintPixels(), mask, color)) changed();
+    },
+    paintStrokeMask(mask: PixelDrawMask, color: PixelColor) {
+      checkMask(mask, color);
+      if (!pending || pending.selected !== state.selected || pending.selectedFrame !== state.selectedFrame) fail("Start a pixel transaction first");
+      const target = paintPixels(), original = pending!.frames.find(frame => frame.id === state.selectedFrame)!.pixels[layerIndex(state.selected)];
+      let edited = false;
+      for (let y = 0; y < mask.region.height; y++) for (let x = 0; x < mask.region.width; x++) {
+        const i = ((y + mask.region.y) * state.width + x + mask.region.x) * 4, selected = mask.pixels[y * mask.region.width + x];
+        for (let c = 0; c < 4; c++) { const value = selected ? color[c] : original[i + c]; if (target[i + c] !== value) { target[i + c] = value; edited = true; } }
+      }
+      if (edited) changed();
     },
     previewPaint(mask: PixelDrawMask, color: PixelColor) {
       checkMask(mask, color); const next = paintPixels().slice(); drawMask(next, mask, color);
@@ -455,6 +499,21 @@ export function createPixelEditor(source: PixelDocument) {
       const frames = state.frames.map(frame => ({ ...frame, pixels: frame.pixels.map(pixels => resizedPixels(pixels, plan)) }));
       return mutate(() => { state.frames = frames; state.width = width; state.height = height; });
     },
+    previewBatchTransform(frameIds: readonly string[], layerId: string, clip: PixelRegion | undefined, operation: PixelBatchTransform, previewFrameId?: string) {
+      if (pending) fail("Finish the pixel stroke first");
+      const plan = batchPlan(frameIds, layerId, clip, operation), id = previewFrameId ?? (frameIds.includes(state.selectedFrame) ? state.selectedFrame : frameIds[0]);
+      if (!frameIds.includes(id)) fail("Invalid batch preview frame");
+      const frame = frameById(id), replacement = plan.changes.find(change => change.id === id)?.next;
+      const pixels = composite(state.layers.map((layer, i) => ({ ...layer, pixels: i === plan.layer && replacement ? replacement : frame.pixels[i] })));
+      return { pixels, frameId: id, targetIds: plan.changes.map(change => change.id), skippedIds: [...plan.skipped], changedFrames: plan.changes.filter(change => change.changed).length, clipped: plan.clipped,
+        area: { ...plan.destination, ...(plan.destination.mask ? { mask: plan.destination.mask.slice() } : {}) } };
+    },
+    batchTransform(frameIds: readonly string[], layerId: string, clip: PixelRegion | undefined, operation: PixelBatchTransform) {
+      if (pending) fail("Finish the pixel stroke first");
+      const plan = batchPlan(frameIds, layerId, clip, operation);
+      if (!plan.changes.some(change => change.changed)) return false;
+      return mutate(() => { for (const change of plan.changes) frameById(change.id).pixels[plan.layer] = change.next; }, true);
+    },
     atlas:()=>document.version===4?structuredClone(document.atlas):undefined,
     selectedAtlasFrame:()=>atlasFrame,
     selectAtlasFrame(id:string){if(document.version!==4||!document.atlas.frames.some(frame=>frame.id===id))fail("Pixel frame not found");cancel();atlasFrame=id;activeRegion=atlasRegion();},
@@ -467,11 +526,16 @@ export function createPixelEditor(source: PixelDocument) {
         const offset = ((rect.y + y) * state.width + rect.x) * 4;
         pixels.set(source.subarray(offset, offset + rect.width * 4), y * rect.width * 4);
       }
-      return { width: rect.width, height: rect.height, pixels };
+      return { width: rect.width, height: rect.height, pixels, ...(rect.mask ? { mask: rect.mask.slice() } : {}) };
     },
     previewRegion(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
       const next = regionPixels(rect, pixels, clear), current = currentFrame();
       return composite(state.layers.map((layer, index) => ({ ...layer, pixels: layer.id === state.selected ? next : current.pixels[index] })));
+    },
+    paintRegion(rect: PixelRegion, pixels: Uint8Array) {
+      if (!pending) fail("Start a pixel transaction first");
+      const next = regionPixels(rect, pixels); if (equal(next, paintPixels())) return;
+      currentFrame().pixels[layerIndex(state.selected)] = next; changed();
     },
     editRegion(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
       const next = regionPixels(rect, pixels, clear);
@@ -568,19 +632,22 @@ export function createPixelEditor(source: PixelDocument) {
         if (twice <= ax) { error += ax; y += sy; }
       }
     },
-    fill(x: number, y: number, color: PixelColor, clip?: PixelRegion) {
+    fill(x: number, y: number, color: PixelColor, clip?: PixelRegion, repeat?: PixelRepeat) {
       pixelHex(color);
+      if (repeat && (typeof repeat.x !== "boolean" || typeof repeat.y !== "boolean" || (document.version === 4 && (repeat.x || repeat.y)))) fail("Invalid repeat settings");
       if (clip) checkRegion(clip, true);
       if (!pending) fail("Start a pixel transaction first");
       const pixels = paintPixels();
       const target = samplePixels(pixels, x, y);
-      const inClip = (px: number, py: number) => !clip || (px >= clip.x && py >= clip.y && px < clip.x + clip.width && py < clip.y + clip.height);
+      const inClip = (px: number, py: number) => !clip || pixelRegionContains(clip, px, py);
       if (!target || !inClip(x, y) || target.every((n, i) => n === color[i])) return;
       // Enqueue each pixel at most once; neither recursion nor an unbounded work list.
       const queue = new Uint32Array(state.width * state.height);
       const visited = new Uint8Array(queue.length);
       let head = 0, tail = 0;
       const enqueue = (px: number, py: number) => {
+        if (repeat?.x) px = activeRegion.x + ((px - activeRegion.x) % activeRegion.width + activeRegion.width) % activeRegion.width;
+        if (repeat?.y) py = activeRegion.y + ((py - activeRegion.y) % activeRegion.height + activeRegion.height) % activeRegion.height;
         if (!validPoint(px, py) || !inClip(px, py)) return;
         const index = py * state.width + px;
         if (visited[index]) return;

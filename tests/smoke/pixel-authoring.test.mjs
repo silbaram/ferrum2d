@@ -34,7 +34,9 @@ const {pixelOnionFrames,PIXEL_ONION_DEFAULTS}=await checkedImport(await moduleUr
 const { createPixelEditor: create, newPixelDocument: blank, readPixelDocument: read, pixelBytes, pixelDocumentFromRgba, pixelAtlas, pixelFrames, PIXEL_LIMITS } = await checkedImport(documentUrl);
 const { pixelPng, readPixelPng } = await checkedImport(await moduleUrl("placementPixelPng", { "./placementPixelDocument": documentUrl }));
 const red = [255, 0, 0, 255], blue = [0, 0, 255, 255], transparent = [0, 0, 0, 0];
-const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection"));
+const drawingUrl = await moduleUrl("placementPixelDrawing", {"./placementPixelDocument": documentUrl});
+const maskUrl = await moduleUrl("placementPixelMask", {"./placementPixelDocument": documentUrl, "./placementPixelDrawing": drawingUrl});
+const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection", {"./placementPixelDocument": documentUrl, "./placementPixelMask": maskUrl}));
 function selectedEditor(source = blank(4, 3)) {
   const editor = create(source); let canEdit = true;
   const selection = createPixelSelection({ editor: () => editor, canEdit: () => canEdit });

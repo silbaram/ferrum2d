@@ -5,6 +5,7 @@ import { exportPixelPalette, readPixelPalette, PIXEL_PALETTE_BYTES } from "./pla
 export function createPixelPaletteControls(options: {
   editor(): ReturnType<typeof createPixelEditor>; color(): PixelColor; pick(hex: string): void;
   selection(): PixelRegion | undefined; retainSelection(rect: PixelRegion): void; key(): string; disabled(): boolean; cancelStroke(): void;
+  selectionKey?(): number;
   changed(): void; report(error: unknown): void; download(json: string): void;
 }) {
   const element = document.createElement("details"), summary = document.createElement("summary"), panel = document.createElement("div");
@@ -22,7 +23,7 @@ export function createPixelPaletteControls(options: {
     node.onclick = run; parent.append(node); buttons.push(node); return node;
   }
   function cancel() { request++; dialog?.close(); dialog?.remove(); dialog = undefined; }
-  function stamp() { const editor = options.editor(); return JSON.stringify([options.key(), editor.revision(), editor.selectedFrame(), editor.selectedLayer(), editor.selectedAtlasFrame(), options.selection()]); }
+  function stamp() { const editor = options.editor(); return JSON.stringify([options.key(), editor.revision(), editor.selectedFrame(), editor.selectedLayer(), editor.selectedAtlasFrame(), options.selectionKey?.() ?? options.selection()]); }
   function edit(run: () => void) {
     if (disposed || options.disabled()) return;
     const clip = options.selection(); options.cancelStroke(); cancel();

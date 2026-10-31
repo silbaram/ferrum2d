@@ -11,6 +11,9 @@ import { createPixelDrawingControls } from "./placementPixelDrawingControls";
 import { createPixelPaletteControls } from "./placementPixelPaletteControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
+import { createPixelEffectsControls } from "./placementPixelEffectsControls";
+import { createPixelImageBrushControls } from "./placementPixelImageBrushControls";
+import { createPixelRepeatControls } from "./placementPixelRepeatControls";
 import { pixelRecoveryScope } from "./placementPixelRecovery";
 import { createPixelRecoverySession } from "./placementPixelRecoverySession";
 import { createPixelRecoveryControls } from "./placementPixelRecoveryControls";
@@ -139,7 +142,8 @@ export function createPlacementPixelTool(options: {
   workspace.append(header, actions, body, footer); body.append(tools, area);
   let editor: Editor | undefined, owner = "", active = false, disposed = false, busy = false;
   const selection = createPixelSelection({ editor: () => editor!, canEdit: () => !busy && !(framePanel?.isPlaying() ?? false) && options.context().canEdit });
-  const selectionControls = createPixelSelectionControls({ selection, perform: editSelection });
+  const selectionControls = createPixelSelectionControls({ selection, perform: editSelection, report,
+    configure() { surface.cancel(); tool = "select"; render(); surface.refresh(); surface.element.focus(); } });
   actions.append(selectionControls.element);
   const drawingControls = createPixelDrawingControls({
     choose(shape) { surface.cancel(); tool = shape; render(); surface.refresh(); surface.element.focus(); },
@@ -147,7 +151,7 @@ export function createPlacementPixelTool(options: {
   });
   tools.prepend(drawingControls.picker); actions.append(drawingControls.element);
   const paletteControls = createPixelPaletteControls({
-    editor: () => editor!, color: () => color, selection: () => selection.bounds(), retainSelection: rect => selection.select(rect),
+    editor: () => editor!, color: () => color, selection: () => selection.area(), selectionKey: () => selection.version(), retainSelection: rect => selection.select(rect),
     key: () => JSON.stringify([options.context().key, options.context().project]),
     disabled: () => busy || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture() || selection.pending() || !options.context().canEdit,
     cancelStroke: () => surface.cancel(), changed: () => { render(); surface.refresh(); options.tabsChanged(); }, report,
@@ -159,6 +163,19 @@ export function createPlacementPixelTool(options: {
     disabled: () => busy || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture() || selection.pending() || !options.context().canEdit,
     cancelStroke: () => surface.cancel(), changed: () => { render(); surface.fit(); options.tabsChanged(); }, report });
   tools.append(canvasControls.element);
+  const effectsControls = createPixelEffectsControls({ editor: () => editor!, color: () => color, area: () => selection.area(), selectionKey: () => selection.version(),
+    key: () => JSON.stringify([options.context().key, options.context().project]), retain: area => selection.select(area),
+    disabled: () => busy || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture() || selection.pending() || !options.context().canEdit || !editor?.canPaint(),
+    cancelStroke: () => surface.cancel(), changed: () => { render(); surface.refresh(); options.tabsChanged(); }, report });
+  tools.append(effectsControls.element);
+  const imageBrushControls = createPixelImageBrushControls({ editor: () => editor!, area: () => selection.area(),
+    clearSelection: () => selection.clear(),
+    disabled: () => busy || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture() || selection.pending() || !options.context().canEdit,
+    choose() { surface.cancel(); tool = "pencil"; render(); surface.refresh(); }, report });
+  tools.append(imageBrushControls.element);
+  const repeatControls = createPixelRepeatControls({ atlas: () => !!editor?.atlas(), disabled: () => busy || !!editor?.active() || surface.ownsGesture() || selection.pending(),
+    cancelStroke: () => surface.cancel(), changed: () => { render(); surface.refresh(); } });
+  footer.insertBefore(repeatControls.element, status);
   let paletteSignature = "";
   function syncPalette() {
     const colors = editor!.palette, signature = JSON.stringify(colors);
@@ -223,8 +240,12 @@ export function createPlacementPixelTool(options: {
     editor: () => editor!, tool: () => tool, color: () => color,
     frame:()=>framePanel?.frameId()??editor!.selectedFrame(),readOnly:()=>!!framePanel?.isPlaying()||!options.context().canEdit,
     drawing: () => drawingControls.settings(),
+    pixelPerfect: () => drawingControls.pixelPerfect(),
+    imageBrush: () => imageBrushControls.snapshot(),
+    repeat: () => repeatControls.settings(),
     onion:()=>framePanel!.onion(),
     selection,
+    selectionSettings: () => selectionControls.settings(), report,
     pick(value) { color = value; syncColor(); paletteControls.remember(pixelHex(color)); render(); },
     changed() { if (editor && !disposed) { render(); options.tabsChanged(); } },
     viewChanged: () => sizePreview?.refresh(),
@@ -261,6 +282,7 @@ export function createPlacementPixelTool(options: {
     controller?.abort(); serial++;
     paletteControls.cancel();
     canvasControls.cancel();
+    effectsControls.cancel();
     sizePreview?.suspend();
     closeNormalPreview();
     dismissConfirmation?.();
@@ -326,7 +348,7 @@ export function createPlacementPixelTool(options: {
     }
     invalidate();
     if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined;
-    void recovery.forget(); recoveryHold = false; drawingControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
+    void recovery.forget(); recoveryHold = false; drawingControls.reset(); selectionControls.reset(); imageBrushControls.reset(); repeatControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
     atlasSelect.replaceChildren();
     for (const frame of editor.atlas()?.frames ?? []) {
       const option = document.createElement("option"); option.value = frame.id; option.textContent = frame.id; atlasSelect.append(option);
@@ -364,8 +386,10 @@ export function createPlacementPixelTool(options: {
     workspace.dataset.pixelBusy = String(busy);
     const history = editor.history(),editing=busy||(framePanel?.isPlaying()??false)||surface.ownsGesture(),pending=selection.pending();
     selectionControls.sync(tool === "select" || pending, editing || !options.context().canEdit);
-    drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds());
-    paletteControls.sync(); canvasControls.sync(); syncPalette(); sizePreview?.sync();
+    drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds(), imageBrushControls.active());
+    imageBrushControls.sync();
+    repeatControls.sync();
+    paletteControls.sync(); canvasControls.sync(); effectsControls.sync(); syncPalette(); sizePreview?.sync();
     for (const [key, node] of toolButtons) {
       node.setAttribute("aria-pressed", String(key === tool)); node.disabled = editing;
     }
@@ -737,7 +761,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);

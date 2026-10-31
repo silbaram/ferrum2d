@@ -4,6 +4,7 @@ import type { PixelTool } from "./placementPixelCanvas";
 
 export function createPixelDrawingControls(options: { choose(shape: PixelShape): void; cancel(): void; changed(): void; report(error: unknown): void }) {
   let settings: PixelDrawSettings = { ...PIXEL_DRAW_DEFAULTS };
+  let perfect = false;
   const picker = document.createElement("select"); picker.dataset.pixelShapeTool = "true"; setUiAttribute(picker, "aria-label", "Shape Tool");
   for (const [value, text] of [["", "Shape Tool"], ["line", "Line (L)"], ["rectangle", "Rectangle (R)"], ["ellipse", "Ellipse (O)"]]) {
     const option = document.createElement("option"); option.value = value; setUiText(option, text); picker.append(option);
@@ -31,16 +32,23 @@ export function createPixelDrawingControls(options: { choose(shape: PixelShape):
     return { input, label };
   }
   const mirrorX = flag("mirrorX", "Mirror Horizontal"), mirrorY = flag("mirrorY", "Mirror Vertical"), filled = flag("filled", "Filled Shape");
+  const perfectLabel = document.createElement("label"), perfectInput = document.createElement("input"), perfectText = document.createElement("span"), perfectHint = document.createElement("span");
+  perfectInput.type = "checkbox"; perfectInput.dataset.pixelPerfect = "true"; setUiAttribute(perfectInput, "aria-label", "Pixel Perfect");
+  setUiText(perfectText, "Pixel Perfect"); setUiText(perfectHint, "1px Pencil Only"); perfectLabel.append(perfectInput, perfectText); element.append(perfectLabel, perfectHint);
+  perfectInput.onchange = () => { const checked = perfectInput.checked; options.cancel(); perfect = checked; options.changed(); };
   const hint = document.createElement("span"), mask = document.createElement("span");
   setUiText(hint, "Release to draw · Shift for square/circle"); setUiText(mask, "Selection mask · Escape to clear"); element.append(hint, mask);
   return {
     element, picker, settings: () => ({ ...settings }),
-    reset() { settings = { ...PIXEL_DRAW_DEFAULTS }; },
-    sync(tool: PixelTool, disabled: boolean, selected: boolean) {
+    pixelPerfect: () => perfect && settings.size === 1,
+    reset() { settings = { ...PIXEL_DRAW_DEFAULTS }; perfect = false; },
+    sync(tool: PixelTool, disabled: boolean, selected: boolean, imageBrush = false) {
       const shape = tool === "line" || tool === "rectangle" || tool === "ellipse", paint = tool === "pencil" || tool === "eraser";
       element.hidden = !shape && !paint && !(tool === "fill" && selected);
       picker.value = shape ? tool : ""; picker.disabled = disabled;
-      size.value = String(settings.size); size.disabled = disabled; sizeLabel.hidden = !paint && (!shape || (tool !== "line" && settings.filled));
+      size.value = String(settings.size); size.disabled = disabled; sizeLabel.hidden = (tool === "pencil" && imageBrush) || (!paint && (!shape || (tool !== "line" && settings.filled)));
+      perfectInput.checked = perfect; perfectInput.disabled = disabled || settings.size !== 1 || imageBrush; perfectLabel.hidden = tool !== "pencil";
+      perfectHint.hidden = tool !== "pencil" || (settings.size === 1 && !imageBrush); setUiText(perfectHint, imageBrush ? "Square 1px Pencil Only" : "1px Pencil Only");
       for (const [key, control] of [["mirrorX", mirrorX], ["mirrorY", mirrorY], ["filled", filled]] as const) {
         control.input.checked = settings[key]; control.input.disabled = disabled;
         control.label.hidden = key === "filled" ? tool !== "rectangle" && tool !== "ellipse" : !shape && !paint;
