@@ -60,6 +60,25 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 선택만 단독 진단하려면 save 허용 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-selection-only`를 사용한다.
 노멀 smoke는 floating 선택의 적용 차단과 확정 후 stale/Undo/cache 복원도 검사한다. 전체 UI gate가 CI validate에서 실행되므로 별도 중복 gate를 추가하지 않는다.
 
+도트 편의성 회귀도 같은 `test:pixel-authoring`/`smoke:pixel-authoring` CI 경로에서 실행한다.
+`pixelDrawing`은 브러시·대칭·도형/Shift·선택 마스크·취소·한 Undo를, `pixelPalette`는 metadata와 픽셀 교체의 분리·잠금/숨김 보호·늦은 가져오기 거절을 검사한다.
+`pixelCanvasPreview`는 모든 cel의 여백/자르기·치수 Undo/Redo·고정 atlas 차단·실제 크기1×/2×·DPR1/2·프레임/태그 연동·blur/접기/탭 전환 자원 해제를 검사한다.
+자르기 전 제거 영역 표시와 팔레트/치수 변경의 노멀 stale 차단·Undo 후 검증 cache 재사용도 확인한다. native 프로젝트 검사는 크기/팔레트를 바꾼 원본의 저장·재열기와 게임 로딩을 포함한다.
+각 helper는 한글390px 캡처와 씬 변경 없음도 확인한다. 크기 연산 단위는 기준점9개·홀수 offset·raw RGBA·예산 초과의 원자성을 검사한다.
+집중 진단은 save 허용 앱 build 후 위 Node 진입점에 `--pixel-drawing-only`, `--pixel-palette-only`, `--pixel-canvas-preview-only`를 지정한다.
+집중 실행은 전체 검증을 대체하지 않는다. 결과는 같은 `artifacts/pixel-authoring/verification.json`을 사용한다.
+
+같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
+용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.
+전체 `smoke:pixel-authoring`의 `pixelRecovery`는 실제 IndexedDB에서 확정 전 저장 차단과 reload 복원,
+raw RGBA/태그/레이어 보존·미저장 상태·씬/Undo 불변·다중 탭의 독립 항목을 확인한다.
+실제 transaction abort를 주입해 이전 완료본 보존·수동 내보내기·재시도·도트 닫기/원본 내보내기의 해당 항목 정리를 검사하며,
+손상 원본 복원 거절·저장소 접근 거부·메뉴 클릭·한글390px 캡처도 포함한다.
+단독 진단은 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-recovery-only`다.
+IndexedDB 검증은 같은 origin의 브라우저/WebView 저장소 기준이며 실제 설치 앱·OS별 storage 정책이나 전원 종료 직전 완료되지 않은 write를 증명하지 않는다.
+native pixel 프로젝트의 공통 노멀 저장 검증은 실제 Rust 저장 뒤 잘못된 응답을 주입한다. 앱의 저장 검증 실패 후 복구 원본이 남고,
+재시도 성공 후 해당 세션 항목이 정리되는지 확인한 뒤 저장된 pair를 새 게임에 로딩한다. 단독 normal-project 진단도 같은 검증 함수를 실행한다.
+
 ## 제품 Runtime Budget Readiness
 
 런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.

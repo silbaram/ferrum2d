@@ -1481,6 +1481,11 @@ texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 �
 도트 제작은 app의 `placementPixelDocument`(원본 검증·픽셀 연산·transaction·bounded Undo),
 `placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelLayers`(이미지 레이어 패널), `placementPixelPng`(straight-alpha RGBA PNG 출력),
 `placementPixelAssets`(불변 session revision·기존 component patch), `placementPixelTool`(에셋 탭·수명·내보내기)로 분리한다.
+`placementPixelDrawing`은 bounded 정수 브러시/대칭/도형 mask 연산이고, Canvas가 확정 전 preview만 소유한다.
+팔레트 metadata·정확한 RGBA 교체·전체 cel 여백/자르기는 문서 모델 transaction을 사용한다. 치수도 이력에 포함하고 캐시/활성 영역을 함께 갱신한다.
+`placementPixelPaletteControls`/`placementPixelCanvasControls`는 파일/확인창 identity·revision 검증과 UI를 소유한다.
+`placementPixelSizePreview`는 기존 합성/프레임 시계의 변경 알림에서만 redraw하며 별도 재생 루프 없이 CSS1×/2×를 표시한다.
+접기·비활성·blur·종료에서 canvas/RAF를 해제한다. 이 경로들은 app-private이며 public API·source v1~v5·Rust simulation/Wasm ABI를 확장하지 않는다.
 `placementPixelSelection`은 UI 선택·정수 변형 미리보기·현재 원본에 한정된 내부 클립보드를 소유하고,
 `placementPixelSelectionControls`는 조건부 메뉴와 확정/취소를 제공한다. preview는 선택 cel 사본을 합성하며
 원본/revision/dirty/Undo를 변경하지 않는다. 확정은 문서 모델의 bounded `editRegion` 한 transaction으로 적용한다.
@@ -1488,6 +1493,16 @@ editor identity·revision·frame/layer/atlas ID가 바뀌면 이전 preview를 �
 원본 교체/종료 시 clipboard를 해제한다. 선택 state·clipboard·preview는 저장 원본이나 runtime으로 전달하지 않는다.
 포인터 gesture 중에는 키보드 확정/잘라내기로 다른 transaction을 시작하지 않으며 Escape/Undo 취소를 처리한다.
 workspace의 Enter 확정은 canvas target으로 제한해 버튼·summary의 기본 키보드 활성화를 보존한다.
+`placementPixelRecovery`는 검증된 원본 JSON만 저장하는 IndexedDB adapter다. transaction complete를 성공 경계로 쓰고,
+같은 readwrite transaction에서 개수/UTF-8 byte/기간 상한을 적용한다. 프로젝트/씬 scope와 편집 세션 UUID로 다른 탭의 checkpoint를 덮어쓰지 않는다.
+`placementPixelRecoverySession`은 600ms debounce·직렬 write/delete·완료 상태·늦은 list 무효화를 소유한다.
+쓰기 중 추가 변경은 최신 상태로 합치고 실제 writer 시작 때만 직렬화해 원본 JSON 사본을 대기열에 누적하지 않는다.
+stroke/선택 미리보기를 관찰하지 않으며 정상 저장·폐기 뒤 오래된 write가 재생성하지 않게 delete를 큐 뒤에 둔다.
+`placementPixelRecoveryControls`는 문맥별 복원/폐기 목록이며 workspace popover는 편집 영역 안으로 위치를 제한한다.
+복원은 기존 원본 교체 경로에서 새 미저장 editor로 열고 기존 normal 생성 근거를 해제한다. 씬 patch·GPU 복원·프로젝트 파일 쓰기는 수행하지 않는다.
+저장 실패는 명시적으로 표시하고 수동 원본 내보내기를 유지한다. 창 종료의 마지막 flush는 best effort이며 마지막 완료 checkpoint만 복구 대상이다.
+IndexedDB 성공/업그레이드 차단 처리는 [MDN transaction complete](https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/complete_event)와
+[blocked](https://developer.mozilla.org/en-US/docs/Web/API/IDBOpenDBRequest/blocked_event)의 경계를 따른다.
 `placementPixelFrames`는 프레임 조작과 미리보기 RAF, `placementPixelAnimation`은 atlas UV/정수 시간의 기존 runtime clip 변환을 담당한다.
 `placementFrameNormals`는 Aseprite와 자체 도트가 공유하는 rect별 Worker 생성·normal texture 수명·불변 pair 저장 구현이다.
 `placementAsepriteNormals`는 기존 provenance를 유지하는 얇은 adapter이며 `placementPixelNormals`는 자체 source JSON hash·frame ID/rect·paired patch 검증을 담당한다.
