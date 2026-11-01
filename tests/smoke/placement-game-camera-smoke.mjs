@@ -117,6 +117,7 @@ export async function smokePlacementGameCamera(parent, timeoutMs = 30000) {
       await undo(); assert.deepEqual(await source(), beforeZoom);
       const invalidHistory = await history();
       await edit(lens, 0); assert.deepEqual(await source(), beforeZoom); assert.deepEqual(await history(), invalidHistory);
+      assert.notEqual(await field(lens).getAttribute("aria-invalid"), "true", "Restored accepted values must not retain invalid-field state");
       await page.evaluate(() => {
         const engine = window.ferrumEngine, original = engine.configureDataSceneSpatial;
         let injected = false;

@@ -36,7 +36,13 @@ import type { tileEvidence } from "./placementTileAssets";
 import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
+import { createPlacementInspectorContext } from "./placementInspectorContext";
+import { createPlacementInspectorProperties, inspectorPropertyKey, type InspectorPropertyControl } from "./placementInspectorProperties";
+import { createPlacementInspectorOriginals, type InspectorResetPlan } from "./placementInspectorOriginals";
+import { readPlacementAuthoredComponents, preservePlacementComponentMetadata } from "./placementComponentEdits";
 import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
+import { createPlacementCommandPalette } from "./placementCommandPalette";
+import { placementWorkspaceCommands } from "./placementWorkspaceCommands";
 import { createPlacementUpdates } from "./placementUpdates";
 import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
@@ -92,6 +98,7 @@ import {
   createPlacementAssetBrowser,
   type PlacementBrowserAsset,
 } from "./placementAssetBrowser";
+import { createPlacementAssetUsagePanel } from "./placementAssetUsagePanel";
 import {
   createPlacementAssetChanges,
   type PlacementAssetRevision,
@@ -525,9 +532,13 @@ interface PlacementInspectorOptions {
   assetProvider: PlacementAssetProviderGetter;
   sourceDocument: string;
   layerView?: PlacementLayerViewState;
+  baselineDocument: SceneAuthoringDocumentSpec;
+  document(): SceneAuthoringDocumentSpec;
+  restoreProperty(control: InspectorPropertyControl, prepare: () => InspectorResetPlan): void;
 }
 
 type PlacementAssetProviderGetter = () => ScenePlacementAssetProvider;
+type PlacementComponentSource = (id: string) => ReturnType<typeof readPlacementAuthoredComponents>;
 
 type PlacementAddAction =
   | "add-rect"
@@ -732,11 +743,22 @@ async function bootstrap(): Promise<void> {
       saveEnabled,
       assetProvider: currentAssetProvider,
       sourceDocument,
+      baselineDocument: document,
+      document: () => viewer.exportPatch() ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!).document : savedDocument,
+      restoreProperty: restoreInspectorProperty,
     });
     const chromeOptions = { saveEnabled, sourceDocument };
     const appChrome = createPlacementAppChrome(shell, chromeOptions);
     const interaction = createPlacementInteractionState();
     let savedDocument = document;
+    const currentComponentSource: PlacementComponentSource = (id) => {
+      const patch = viewer.exportPatch();
+      return readPlacementAuthoredComponents(
+        patch ? mergeScenePlacementPatch(savedDocument, patch).document : savedDocument,
+        viewer.state().fragment,
+        id,
+      );
+    };
     let acknowledgedDocument: SceneAuthoringDocumentSpec | undefined;
     const saveAdapter: ScenePlacementSaveAdapter = {
       id: "placement-viewer-memory",
@@ -1035,6 +1057,8 @@ async function bootstrap(): Promise<void> {
       | undefined;
     let switching = false;
     let sceneExplorer: ReturnType<typeof createPlacementSceneExplorer> | undefined;
+    let assetUsage: ReturnType<typeof createPlacementAssetUsagePanel> | undefined;
+    let refreshWorkspaceAvailability: (() => void) | undefined;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
     let layerVisibilitySignature = "";
     const syncTabs = () => {
@@ -1050,6 +1074,7 @@ async function bootstrap(): Promise<void> {
         pixelTool?.isOpen() ? PIXEL_TAB : activeDocument.key);
       const dock = inspector.element.querySelector<HTMLElement>(".placement-scene-dock");
       if (dock) sceneExplorer?.sync(entries, activeDocument.key, dock);
+      refreshWorkspaceAvailability?.();
     };
     const publishCurrentAgentHandoff = (
       state: ScenePlacementViewerState,
@@ -1273,6 +1298,7 @@ async function bootstrap(): Promise<void> {
         }
       } finally {
         runtimeAssetReloadInFlight = false;
+        refreshWorkspaceAvailability?.();
       }
     };
     window.addEventListener("ferrum-placement-desktop-statechange", () => {
@@ -1386,6 +1412,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         } finally {
           documentSession?.setSaving(false);
+          refreshWorkspaceAvailability?.();
           lightingControls?.sync(viewer.state());
         }
       },
@@ -1410,8 +1437,9 @@ async function bootstrap(): Promise<void> {
       interaction,
       currentAssetProvider,
       setState,
+      currentComponentSource,
     );
-    installPlacementComponentControls(inspector.element, viewer, setState);
+    installPlacementComponentControls(inspector.element, viewer, setState, currentComponentSource);
     const cancelPlacementTool = () => {
       if (spatialWorkspace?.mode() === "spatial")
         spatialWorkspace.assetPalette.cancel();
@@ -1492,6 +1520,7 @@ async function bootstrap(): Promise<void> {
       viewer,
       interaction,
       setState,
+      currentComponentSource,
     );
     installPlacementColliderOffsetHandle(
       overlay.element,
@@ -1499,6 +1528,7 @@ async function bootstrap(): Promise<void> {
       viewer,
       interaction,
       setState,
+      currentComponentSource,
     );
     installPlacementKeyboard(shell.canvas, viewer, interaction, setState);
     transformGizmo = installPlacementTransformGizmo({
@@ -1570,7 +1600,7 @@ async function bootstrap(): Promise<void> {
           .state()
           .instances.find((instance) => instance.instanceId === id);
         if (!selected) throw new Error("Unknown proxy instance");
-        return placementObjectDefinitionFromSelected(selected).props!
+        return placementObjectDefinitionFromSelected(selected, currentComponentSource(id)).props!
           .components;
       },
     });
@@ -1638,6 +1668,7 @@ async function bootstrap(): Promise<void> {
         tool?.dragging,
       );
       assetBrowser?.sync();
+      refreshWorkspaceAvailability?.();
     }
     const chooseBrowserSprite = (asset: PlacementBrowserAsset, arm = true) => {
       const control = inspector.element.querySelector<HTMLSelectElement>(
@@ -1677,7 +1708,7 @@ async function bootstrap(): Promise<void> {
             key: "model-file:" + file.path,
             id: file.id,
             kind: "model" as const,
-            label: file.fileName + (loaded ? "" : " · Click to Load"),
+            label: file.fileName,
           };
         }),
         ...registered.filter(
@@ -1721,11 +1752,10 @@ async function bootstrap(): Promise<void> {
         );
       } finally {
         switching = false;
-        root.inert = false;
+        root.inert = false; refreshWorkspaceAvailability?.();
       }
     };
-    assetBrowser = createPlacementAssetBrowser({
-      entries: () => [
+    const browserAssets = () => [
         ...currentAssetProvider()
           .listSpriteAssets()
           .flatMap((asset) => [
@@ -1750,7 +1780,10 @@ async function bootstrap(): Promise<void> {
               })),
           ]),
         ...browserModels(),
-      ],
+      ];
+    assetBrowser = createPlacementAssetBrowser({
+      entries: browserAssets,
+      dragging: () => currentPlacementTool()?.dragging === true,
       selected: (asset) => {
         const tool = currentPlacementTool();
         return (
@@ -1810,6 +1843,9 @@ async function bootstrap(): Promise<void> {
         spatialWorkspace?.mode() !== "game" &&
         (asset.kind === "sprite" || spatialWorkspace?.mode() === "spatial"),
       projectKey: () => activeDocument.desktop?.projectPath ?? sourceDocument,
+      target: () => viewer.state().selectedInstanceId,
+      unavailable: asset => spatialWorkspace?.mode() === "game" ? "Stop game preview to place or edit assets" : asset.kind === "model" ? "Models require HD-2D editing" : "Placement is unavailable in the current view",
+      usage: asset => assetUsage?.showAsset(asset.id, asset.kind),
       normal: (asset) => {
         if (asset.thumbnail)
           void normalTool?.openAsset(asset.id, asset.thumbnail);
@@ -2178,7 +2214,7 @@ async function bootstrap(): Promise<void> {
           throw error;
         } finally {
           switching = false;
-          root.inert = false;
+          root.inert = false; refreshWorkspaceAvailability?.();
         }
       },
     });
@@ -2292,26 +2328,34 @@ async function bootstrap(): Promise<void> {
           );
         } finally {
           switching = false;
-          root.inert = false;
+          root.inert = false; refreshWorkspaceAvailability?.();
         }
       },
     });
+    const canChangeWorkspace = () => !root.inert && !switching && !documentSession?.isSaving() && !documentSession?.isFinishingPointerEdit() && !runtimeAssetReloadInFlight &&
+      !interaction.dragging && !interaction.pendingAdd && !placementAssetDrag && !viewportNavigation?.ownsGesture() &&
+      !spatialWorkspace?.ownsGesture() && !pixelTool?.isBusy() && viewer.historyState().transactionLabel === undefined;
     const layout = installPlacementWorkspaceLayout(
       root,
       (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
         ?.projectPath ??
         desktopSceneDocumentPath ??
         "browser",
+      { canChange: canChangeWorkspace },
     );
+    refreshWorkspaceAvailability = () => { layout.refreshAvailability(); assetUsage?.sync(); };
     // This context belongs to the explicitly opened project, independent of the active tab.
     let sceneProject = structuredClone(activeDocument.desktop);
     const sceneProjectPath = sceneProject?.projectPath;
-    const nativeScenePaths = new Set<string>();
+    // Discovery may run independently of the explorer; keep provenance on each entry.
+    const nativeSceneEntries = new WeakSet<PlacementSceneEntry>();
     window.addEventListener("ferrum-placement-desktop-statechange", () => {
       const current = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
       if (sceneProjectPath && current?.projectPath === sceneProjectPath) sceneProject = structuredClone(current);
     });
     let selectedFolder = false;
+    let selectedFolderCatalog: PlacementSceneCatalog | undefined;
+    let sceneCatalogRevision = 0;
     async function chooseSceneFolder(): Promise<PlacementSceneCatalog | undefined> {
       if (placementDesktopInvoke()) {
         if (!placementDesktopOpenDialog()) throw new Error("Open Project using File before browsing project scenes");
@@ -2330,38 +2374,48 @@ async function bootstrap(): Promise<void> {
         if (!files) return undefined;
         const catalog = await folderSceneCatalog(files, crypto.randomUUID());
         selectedFolder = true;
+        selectedFolderCatalog = catalog;
+        sceneCatalogRevision++;
+        refreshWorkspaceAvailability?.();
         return catalog;
       } finally { input.remove(); }
     }
     function sceneMatches(entry: PlacementSceneEntry, doc: { key: string; source: string }) {
       if (entry.id.startsWith("folder:")) return doc.key === entry.id;
-      if (nativeScenePaths.has(entry.id)) return doc.key === entry.id;
+      if (nativeSceneEntries.has(entry)) return doc.key === entry.id;
       if (doc.key.startsWith("file:") || doc.key.startsWith("folder:") || documents.get(doc.key)?.desktop?.enabled) return false;
       try { return new URL(doc.source, window.document.baseURI).href === entry.source; }
       catch { return false; }
     }
+    async function loadProjectSceneCatalog(refreshFolder = false, signal?: AbortSignal): Promise<PlacementSceneCatalog | undefined> {
+      if (selectedFolder) return refreshFolder ? chooseSceneFolder() : selectedFolderCatalog;
+      const invoke = placementDesktopInvoke();
+      if (!invoke) return hostedSceneCatalog(new URL("./", window.document.baseURI), signal);
+      if (!sceneProject?.projectPath) throw new Error("Open Project using File before browsing project scenes");
+      const projectPath = sceneProject.projectPath;
+      const response = await invoke<{ scenes: { path: string; relativePath: string; mode: PlacementSceneEntry["mode"]; diagnostic?: string }[]; truncated: boolean; diagnostics?: unknown }>("list_placement_project_scenes", { projectPath });
+      if (!response || !Array.isArray(response.scenes) || response.scenes.length > 256) throw new Error("Invalid scene catalog");
+      const scenes = response.scenes.map(item => {
+        if (!item || typeof item.path !== "string" || !safeSceneRelativePath(item.relativePath) || !["2d", "hd2d", "invalid"].includes(item.mode)) throw new Error("Invalid scene catalog entry");
+        const entry: PlacementSceneEntry = { id: item.path, source: item.path, relativePath: item.relativePath, mode: item.mode, diagnostic: item.diagnostic,
+          inspect: async (maxBytes?: number) => {
+            const result = await invoke<PlacementDesktopSceneDocumentResponse & { bytes: number }>("inspect_placement_project_scene", { projectPath, sceneDocumentPath: item.path, maxBytes });
+            if (!isPlacementDesktopSceneDocumentResponse(result) || result.path !== item.path) throw new Error("Invalid scene document response");
+            return { document: result.document, bytes: result.bytes };
+          },
+          read: async () => {
+            const result = await invoke<PlacementDesktopSceneDocumentResponse>(DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND, { sceneDocumentPath: item.path });
+            if (!isPlacementDesktopSceneDocumentResponse(result) || result.path !== item.path) throw new Error("Invalid scene document response");
+            return result.document;
+          },
+        };
+        nativeSceneEntries.add(entry);
+        return entry;
+      });
+      return { label: projectPath, scenes, truncated: response.truncated === true, diagnostics: readSceneScanDiagnostics(response.diagnostics) };
+    }
     sceneExplorer = createPlacementSceneExplorer({
-      async load() {
-        if (selectedFolder) return chooseSceneFolder();
-        const invoke = placementDesktopInvoke();
-        if (!invoke) return hostedSceneCatalog(new URL("./", window.document.baseURI));
-        if (!sceneProject?.projectPath) throw new Error("Open Project using File before browsing project scenes");
-        const response = await invoke<{ scenes: { path: string; relativePath: string; mode: PlacementSceneEntry["mode"]; diagnostic?: string }[]; truncated: boolean; diagnostics?: unknown }>("list_placement_project_scenes", { projectPath: sceneProject.projectPath });
-        if (!response || !Array.isArray(response.scenes) || response.scenes.length > 256) throw new Error("Invalid scene catalog");
-        nativeScenePaths.clear();
-        const scenes = response.scenes.map(item => {
-          if (!item || typeof item.path !== "string" || !safeSceneRelativePath(item.relativePath) || !["2d", "hd2d", "invalid"].includes(item.mode)) throw new Error("Invalid scene catalog entry");
-          nativeScenePaths.add(item.path);
-          return { id: item.path, source: item.path, relativePath: item.relativePath, mode: item.mode, diagnostic: item.diagnostic,
-            read: async () => {
-              const result = await invoke<PlacementDesktopSceneDocumentResponse>(DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND, { sceneDocumentPath: item.path });
-              if (!isPlacementDesktopSceneDocumentResponse(result) || result.path !== item.path) throw new Error("Invalid scene document response");
-              return result.document;
-            },
-          };
-        });
-        return { label: sceneProject.projectPath, scenes, truncated: response.truncated === true, diagnostics: readSceneScanDiagnostics(response.diagnostics) };
-      },
+      load: () => loadProjectSceneCatalog(true),
       chooseFolder: chooseSceneFolder,
       match: sceneMatches,
       async open(entry, run) {
@@ -2370,18 +2424,32 @@ async function bootstrap(): Promise<void> {
         const existing = [...documents.values()].find(doc => sceneMatches(entry, doc));
         switching = true; root.inert = true;
         try {
-          const native = nativeScenePaths.has(entry.id) ? sceneProject : undefined;
+          const native = nativeSceneEntries.has(entry) ? sceneProject : undefined;
           const key = existing?.key ?? entry.id;
           await openDocument(key, entry.source, existing?.document ?? await entry.read(), !!native,
             native ? { ...native, requestedSceneDocumentPath: entry.id, sceneDocumentPath: entry.id,
               lastSavePath: undefined, lastHandoffPath: undefined, lastHandoffError: undefined, handoffSyncStatus: "idle" } : undefined);
           if (activeDocument.key !== key) throw new Error("Scene activation was not completed");
-          switching = false; root.inert = false;
+          switching = false; root.inert = false; refreshWorkspaceAvailability?.();
           if (run && !spatialWorkspace?.runScene()) throw new Error("Scene playback could not start; finish the current edit first");
           shell.canvas.focus({ preventScroll: true });
-        } finally { switching = false; root.inert = false; }
+        } finally { switching = false; root.inert = false; refreshWorkspaceAvailability?.(); }
       },
     });
+    assetUsage = createPlacementAssetUsagePanel({
+      load: signal => loadProjectSceneCatalog(false, signal),
+      assets: () => browserAssets().filter(asset => !("frameId" in asset) || !asset.frameId).map(({kind, id}) => ({kind, id})),
+      *documents() {
+        for (const entry of documents.values()) {
+          yield { scene: entry.source, source: "saved" as const, document: entry.document };
+          const patch = entry.viewer.exportPatch();
+          if (patch) yield { scene: entry.source, source: "draft" as const, document: mergeScenePlacementPatch(entry.document, patch).document };
+        }
+      },
+      context: () => JSON.stringify([sceneProjectPath, sceneCatalogRevision, activeDocument.key, runtimeApplyRevision, [...documents.keys()]]),
+      canScan: canChangeWorkspace,
+    });
+    assetBrowser.element.querySelector("h3")!.after(assetUsage.element);
     const review = shell.canvas.ownerDocument.createElement("button"),
       exportButton = shell.canvas.ownerDocument.createElement("button");
     review.type = exportButton.type = "button";
@@ -2474,9 +2542,19 @@ async function bootstrap(): Promise<void> {
           const existing = [...documents.values()].find(doc => !doc.desktop?.enabled && !doc.key.startsWith("folder:") && !doc.key.startsWith("file:") && new URL(doc.source, window.document.baseURI).href === url.href);
           await openDocument(existing?.key ?? url.href, url.href, existing?.document ?? await fetchSceneJson(url), false);
         } catch (error) { tabs?.report(error); }
-        finally { switching = false; root.inert = false; }
+        finally { switching = false; root.inert = false; refreshWorkspaceAvailability?.(); }
       })();
     }, () => { layout.reveal("scene"); sceneExplorer?.show(); }, () => updates.show());
+    const commandPalette = createPlacementCommandPalette({
+      root,
+      commands: () => {
+        layout.refreshAvailability();
+        return placementWorkspaceCommands({ root, documentRoot: () => inspector.element, mode: () => spatialWorkspace?.mode() ?? "2d", pixelOpen: () => pixelTool?.isOpen() ?? false, reveal: dock => layout.reveal(dock) });
+      },
+      canOpen: () => canChangeWorkspace() && !layout.ownsGesture(),
+      context: () => JSON.stringify([activeDocument.key, spatialWorkspace?.mode(), pixelTool?.isOpen()]),
+    });
+    root.querySelector(".placement-app-menu")?.append(commandPalette.button);
     if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
@@ -2507,10 +2585,20 @@ async function bootstrap(): Promise<void> {
         );
       } finally {
         switching = false;
-        root.inert = false;
+        root.inert = false; refreshWorkspaceAvailability?.();
       }
     };
 
+    function restoreInspectorProperty(control: InspectorPropertyControl, prepare: () => InspectorResetPlan) {
+      if (!root || root.inert || switching || documentSession?.isSaving() || pixelTool?.isOpen() || spatialWorkspace?.mode() === "game" || spatialWorkspace?.ownsGesture() || lightingControls?.ownsGesture() || currentPlacementTool()?.dragging || viewer.historyState().transactionLabel !== undefined || control.disabled || !inspector.element.contains(control))
+        throw new Error("Finish the current edit before restoring properties");
+      documentSession?.finishEdit();
+      const plan = prepare();
+      if (plan.kind === "transform") setState(viewer.updateInstanceTransforms(plan.updates));
+      else if (plan.kind === "layers") setState(viewer.updateInstanceRenderLayers(plan.updates));
+      else if (plan.kind === "components") setState(viewer.updateInstanceComponents(plan.id, plan.components));
+      else control.dispatchEvent(new Event("change", {bubbles:true}));
+    }
     function createDocumentInspector(
       entry: WorkspaceDocument,
       layerView?: PlacementLayerViewState,
@@ -2519,8 +2607,11 @@ async function bootstrap(): Promise<void> {
         saveEnabled: entry.saveEnabled,
         assetProvider: currentAssetProvider,
         sourceDocument: entry.source,
+        baselineDocument: entry.document,
         signal: entry.lifetime.signal,
         layerView,
+        document: () => entry.viewer.exportPatch() ? mergeScenePlacementPatch(entry.document, entry.viewer.exportPatch()!).document : entry.document,
+        restoreProperty: restoreInspectorProperty,
       });
       next.element.hidden = true;
       shell.debugRoot.before(next.element);
@@ -2544,8 +2635,9 @@ async function bootstrap(): Promise<void> {
         interaction,
         currentAssetProvider,
         setState,
+        currentComponentSource,
       );
-      installPlacementComponentControls(next.element, viewer, setState);
+      installPlacementComponentControls(next.element, viewer, setState, currentComponentSource);
       return next;
     }
     function applyDocumentPreview(entry: WorkspaceDocument) {
@@ -3261,7 +3353,7 @@ function createPlacementInspector(
   const list = document.createElement("div");
   const documentDetails = createPlacementDetailsList();
   const identityDetails = createPlacementDetailsList();
-  const transformDetails = createPlacementDetailsList();
+  const diagnosticDetails = createPlacementDetailsList();
   const visualDetails = createPlacementDetailsList();
   const colliderDetails = createPlacementDetailsList();
   const behaviorDetails = createPlacementDetailsList();
@@ -3287,6 +3379,12 @@ function createPlacementInspector(
     saveEnabled: options.saveEnabled,
     assetProvider: options.assetProvider,
   });
+  const storageSummary = document.createElement("section"), storageTarget = document.createElement("p"), storageStatus = document.createElement("output"), storageHint = document.createElement("p"), storageReview = document.createElement("button");
+  storageSummary.className = "placement-document-summary"; storageSummary.dataset.placementDocumentSummary = "true";
+  storageStatus.setAttribute("role", "status"); storageReview.type = "button";
+  setUiText(storageReview, "Review and Export");
+  storageReview.addEventListener("click", () => revealHandoff());
+  storageSummary.append(storageTarget, storageStatus, storageHint, storageReview);
   const rows = {
     source: appendRow(documentDetails, "source"),
     project: appendRow(documentDetails, "project"),
@@ -3294,14 +3392,14 @@ function createPlacementInspector(
     assetFolder: appendRow(documentDetails, "asset folder"),
     saveMode: appendRow(documentDetails, "save"),
     selected: appendRow(identityDetails, "selected"),
-    hovered: appendRow(identityDetails, "hovered"),
+    hovered: appendRow(diagnosticDetails, "hovered"),
     identity: appendRow(identityDetails, "identity"),
     role: appendRow(identityDetails, "role"),
-    entity: appendRow(identityDetails, "entity"),
+    entity: appendRow(diagnosticDetails, "entity"),
     prefab: appendRow(identityDetails, "prefab"),
-    transform: appendRow(transformDetails, "transform"),
-    pointer: appendRow(transformDetails, "pointer"),
-    draft: appendRow(transformDetails, "draft"),
+    transform: appendRow(diagnosticDetails, "transform"),
+    pointer: appendRow(diagnosticDetails, "pointer"),
+    draft: appendRow(diagnosticDetails, "draft"),
     visual: appendRow(visualDetails, "visual"),
     collider: appendRow(colliderDetails, "collider"),
     behavior: appendRow(behaviorDetails, "behavior"),
@@ -3332,6 +3430,7 @@ function createPlacementInspector(
     ["placement", "Placement"],
   ] as const);
   const selectionHeader = document.createElement("output");
+  const selectionContext = createPlacementInspectorContext();
   selectionHeader.className = "placement-selection-header";
   selectionHeader.dataset.placementSelectionHeader = "true";
   const syncDocumentRows = (): void => {
@@ -3343,6 +3442,8 @@ function createPlacementInspector(
     setUiText(rows.assetFolder, placementAssetFolderStatusLabel());
     setUiText(rows.saveMode, placementSaveStatusLabel(options.saveEnabled));
     documentControls.setState();
+    setUiText(storageTarget, uiMessage("Save target: {0}", options.saveEnabled ? placementDocumentSourceLabel(options.sourceDocument) : uiMessage("Export Only")));
+    setUiText(storageHint, options.saveEnabled ? "Scene changes are saved separately from generated asset files. Review references and asset readiness before saving." : "File saving is unavailable in this host. Copy Patch or Handoff, or use Export to keep your work.");
   };
   window.addEventListener(
     "ferrum-placement-desktop-statechange",
@@ -3352,13 +3453,13 @@ function createPlacementInspector(
   inspectorTabs.panels
     .get("properties")!
     .append(
-      createPlacementInspectorSection("Identity", identityDetails),
+      selectionContext.element,
       createPlacementInspectorSection(
         "Transform",
-        createPlacementInspectorSectionBody(transformDetails, controls.element),
+        controls.element,
       ),
-      createPlacementInspectorSection("Object", editControls.element),
       componentControls.element,
+      createPlacementInspectorSection("Object", editControls.element),
       createPlacementInspectorSection(
         "Behavior Binding",
         createPlacementInspectorSectionBody(
@@ -3366,9 +3467,12 @@ function createPlacementInspector(
           behaviorControls.element,
         ),
       ),
+      createPlacementInspectorSection("Identity", identityDetails, false),
+      createPlacementInspectorSection("Diagnostics", diagnosticDetails, false),
       createPlacementInspectorSection(
         "Document",
         createPlacementInspectorSectionBody(
+          storageSummary,
           documentDetails,
           documentControls.element,
         ),
@@ -3387,11 +3491,28 @@ function createPlacementInspector(
     paletteMount = document.createElement("div");
   spatialMount.dataset.placementSpatialProperties = "true";
   paletteMount.dataset.placementSpatialPlacement = "true";
-  inspectorTabs.panels.get("properties")!.prepend(spatialMount);
+  selectionContext.element.after(spatialMount);
   inspectorTabs.panels
     .get("placement")!
     .append(editControls.placementElement, paletteMount);
-  detailPanel.append(title, selectionHeader, inspectorTabs.element);
+  let propertyState: ScenePlacementViewerState | undefined;
+  let propertyTarget: {kind:string;id:string} | undefined;
+  const originals = createPlacementInspectorOriginals(resolved, {normalize:normalizedPlacementColor,primitive:DEFAULT_PRIMITIVE_COLOR,point:DEFAULT_POINT_COLOR}, options.baselineDocument.spatial);
+  const propertyFilters = createPlacementInspectorProperties({
+    root: inspectorTabs.panels.get("properties")!,
+    original: control => propertyState ? originals.read(inspectorPropertyKey(control), propertyState, propertyTarget) : undefined,
+    restore: control => options.restoreProperty(control, () => {
+      if (!propertyState) throw new Error("Choose an object before restoring properties");
+      return originals.plan(inspectorPropertyKey(control),propertyState,propertyTarget,options.document());
+    }),
+  });
+  inspectorTabs.panels.get("properties")!.prepend(propertyFilters.element);
+  const inspectorHeader = document.createElement("div");
+  inspectorHeader.className = "placement-inspector-header";
+  const tablist = inspectorTabs.element.querySelector<HTMLElement>(".placement-panel-tablist")!;
+  inspectorHeader.append(selectionHeader, tablist);
+  inspectorTabs.element.prepend(inspectorHeader);
+  detailPanel.append(title, inspectorTabs.element);
   const sceneDock = document.createElement("section");
   sceneDock.className = "placement-scene-dock";
   const assetMount = document.createElement("div");
@@ -3401,27 +3522,25 @@ function createPlacementInspector(
   sceneDock.append(navigator.element, layers.element, list, assetMount);
   element.append(sceneDock, detailPanel);
 
+  function revealHandoff() {
+    inspectorTabs.select("properties"); propertyFilters.resetFilters();
+    const handoff = detailPanel.querySelector<HTMLDetailsElement>("[data-section=handoff]");
+    if (handoff) { handoff.open = true; handoff.scrollIntoView({block:"nearest"}); handoff.querySelector<HTMLElement>("summary")?.focus({preventScroll:true}); }
+  }
+
   return {
     element,
     assetMount,
     layerView: () => layers.view,
     properties() {
       inspectorTabs.select("properties");
+      propertyFilters.resetFilters();
     },
     review() {
-      inspectorTabs.select("properties");
-      const handoff = detailPanel.querySelector<HTMLDetailsElement>(
-        "[data-section=handoff]",
-      );
-      if (handoff) {
-        handoff.open = true;
-        handoff.scrollIntoView({ block: "nearest" });
-        handoff
-          .querySelector<HTMLElement>("summary")
-          ?.focus({ preventScroll: true });
-      }
+      revealHandoff();
     },
     setState(state, migrationPreview, context) {
+      propertyState = state; propertyTarget = context?.mode === "spatial" ? context.target : undefined;
       syncPlacementInstanceList(list, state);
       navigator.sync(
         state,
@@ -3443,6 +3562,10 @@ function createPlacementInspector(
       }
       const selected = state.selected;
       const target = context?.target;
+      selectionContext.sync({ mode: context?.mode ?? "2d", count: state.selectedInstanceIds.length,
+        target: context?.mode === "spatial" ? target?.kind : undefined,
+        locked: context?.mode === "spatial" && target
+          ? target.kind !== "surface" && state.lockedInstanceIds.includes(target.id) : hasLockedSelection(state) });
       setUiText(
         selectionHeader,
         state.spatial && target && context?.mode === "spatial"
@@ -3542,6 +3665,7 @@ function createPlacementInspector(
       behaviorControls.setState(state);
       componentControls.setState(state);
       handoffControls.setState(state, migrationPreview);
+      setUiText(storageStatus, uiMessage("{0} pending operations · {1} blocked references", placementPatchOperationCount(state.draftPatch), migrationPreview?.references.length ?? 0));
       if (state.selectedInstanceIds.length !== 1 || hasLockedSelection(state)) {
         for (const control of componentControls.element.querySelectorAll<
           HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -3558,6 +3682,7 @@ function createPlacementInspector(
         ))
           control.disabled = true;
       }
+      propertyFilters.sync();
     },
   };
 }
@@ -4138,14 +4263,17 @@ function createPlacementTransformControls(
   const form = document.createElement("form");
   const row = document.createElement("div");
   const snapRow = document.createElement("div");
+  const orderRow = document.createElement("div"), orderTitle = document.createElement("strong");
+  orderRow.className = "placement-control-grid"; orderTitle.className = "placement-control-subheading";
+  setUiText(orderTitle, "Draw Order");
   const fields = {
     x: appendNumberControl(row, "x", "x", "1"),
     y: appendNumberControl(row, "y", "y", "1"),
-    scale: appendNumberControl(row, "scale", "scale", "0.05", "0.01"),
-    rotationRadians: appendNumberControl(row, "rot", "rotationRadians", "0.01"),
-    layer: appendNumberControl(row, "Render Layer", "layer", "1"),
-    sortOrder: appendNumberControl(row, "Order in Layer", "sortOrder", "1"),
-    depthSort: appendCheckboxControl(row, "Foot Position Sort", "depthSort"),
+    scale: appendNumberControl(row, "Scale (×)", "scale", "0.05", "0.01"),
+    rotationRadians: appendNumberControl(row, "Rotation (rad)", "rotationRadians", "0.01"),
+    layer: appendNumberControl(orderRow, "Render Layer", "layer", "1"),
+    sortOrder: appendNumberControl(orderRow, "Order in Layer", "sortOrder", "1"),
+    depthSort: appendCheckboxControl(orderRow, "Foot Position Sort", "depthSort"),
   };
   fields.depthSort.dataset.placementTransformField = "depthSort";
   setUiAttribute(fields.depthSort, "title", "Sort sprite feet inside this layer");
@@ -4167,7 +4295,7 @@ function createPlacementTransformControls(
   grid.value = String(DEFAULT_SNAP_GRID_SIZE);
   grid.dataset.placementSnapGrid = "true";
   snapRow.append(save, clear);
-  form.append(row, snapRow);
+  form.append(row, orderTitle, orderRow, snapRow);
   form.addEventListener("submit", (event) => event.preventDefault());
 
   return {
@@ -5088,6 +5216,7 @@ function installPlacementEditControls(
   interaction: PlacementInteractionState,
   assetProvider: PlacementAssetProviderGetter,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  componentSource: PlacementComponentSource,
 ): void {
   const invalidatePlacementTool = (event: Event) => {
     if (
@@ -5143,7 +5272,7 @@ function installPlacementEditControls(
           clearPlacementDefinitionError(root);
           const state = viewer.addObjectDefinition(
             definitionId,
-            placementObjectDefinitionFromSelected(selected),
+            placementObjectDefinitionFromSelected(selected, componentSource(selected.instanceId)),
           );
           setState(state);
         } catch (error) {
@@ -5237,6 +5366,7 @@ function installPlacementComponentControls(
   root: HTMLElement,
   viewer: ScenePlacementViewer,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  componentSource: PlacementComponentSource,
 ): void {
   root.addEventListener("click", (event) => {
     const target = event.target;
@@ -5253,7 +5383,7 @@ function installPlacementComponentControls(
     try {
       const components = placementComponentsPatchFromControls(root, selected);
       setState(
-        viewer.updateInstanceComponents(selected.instanceId, components),
+        viewer.updateInstanceComponents(selected.instanceId, preservePlacementComponentMetadata(componentSource(selected.instanceId), components)),
       );
     } catch (error) {
       reportPlacementComponentError(root, error);
@@ -5965,6 +6095,7 @@ interface PlacementResizeDrag {
   pointerId: number;
   handle: HTMLElement;
   instance: ScenePlacementViewerInstance;
+  components: ReturnType<PlacementComponentSource>;
   latestPoint: ScenePlacementPoint;
   queued: boolean;
   cancelled?: boolean;
@@ -5976,6 +6107,7 @@ function installPlacementResizeHandle(
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  componentSource: PlacementComponentSource,
 ): void {
   let drag: PlacementResizeDrag | undefined;
 
@@ -6000,6 +6132,7 @@ function installPlacementResizeHandle(
       pointerId: event.pointerId,
       handle: target,
       instance: selected,
+      components: componentSource(selected.instanceId),
       latestPoint: pointerScreenPoint(canvas, event),
       queued: false,
     };
@@ -6071,7 +6204,7 @@ function queuePlacementResizeUpdate(
       pointerState.pointerWorld,
     );
     setState(
-      viewer.updateInstanceComponents(drag.instance.instanceId, components),
+      viewer.updateInstanceComponents(drag.instance.instanceId, preservePlacementComponentMetadata(drag.components, components)),
     );
   });
 }
@@ -6093,6 +6226,7 @@ interface PlacementColliderOffsetDrag {
   pointerId: number;
   handle: HTMLElement;
   instance: ScenePlacementViewerInstance;
+  components: ReturnType<PlacementComponentSource>;
   startPointerWorld: ScenePlacementPoint;
   latestPoint: ScenePlacementPoint;
   queued: boolean;
@@ -6105,6 +6239,7 @@ function installPlacementColliderOffsetHandle(
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  componentSource: PlacementComponentSource,
 ): void {
   let drag: PlacementColliderOffsetDrag | undefined;
 
@@ -6131,6 +6266,7 @@ function installPlacementColliderOffsetHandle(
       pointerId: event.pointerId,
       handle: target,
       instance: selected,
+      components: componentSource(selected.instanceId),
       startPointerWorld: pointerState.pointerWorld,
       latestPoint: point,
       queued: false,
@@ -6217,7 +6353,7 @@ function queuePlacementColliderOffsetUpdate(
       pointerState.pointerWorld,
     );
     setState(
-      viewer.updateInstanceComponents(drag.instance.instanceId, components),
+      viewer.updateInstanceComponents(drag.instance.instanceId, preservePlacementComponentMetadata(drag.components, components)),
     );
   });
 }
@@ -6972,6 +7108,7 @@ function nextPlacementObjectDefinitionId(
 
 function placementObjectDefinitionFromSelected(
   selected: ScenePlacementViewerInstance,
+  components?: ReturnType<PlacementComponentSource>,
 ): Parameters<ScenePlacementViewer["addObjectDefinition"]>[1] {
   if (selected.visual === undefined) {
     throw new Error(
@@ -6980,7 +7117,7 @@ function placementObjectDefinitionFromSelected(
   }
   return {
     props: {
-      components: {
+      components: components ?? {
         visual: placementVisualPatchFromResolved(selected.visual),
         collider:
           selected.collider === undefined

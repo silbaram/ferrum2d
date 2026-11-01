@@ -56,14 +56,39 @@ export async function showPlacementInspector(page, tab = "properties") {
   await showPlacementDock(page, "inspector");
   await page
     .locator(".placement-panel:not([hidden])")
-    .getByRole("tablist", { name: "Inspector sections" })
+    .locator(".placement-inspector-header [role=tablist]")
     .locator(`[data-placement-panel-tab="${tab}"]`)
     .click();
 }
 export async function showPlacementBottom(page, tab = "assets") {
   await showPlacementDock(page, "runtime");
   await page
-    .getByRole("tablist", { name: "Bottom panels" })
-    .locator(`[data-placement-panel-tab="${tab}"]`)
+    .locator(`.placement-runtime-dock [role=tablist] > [data-placement-panel-tab="${tab}"]`)
     .click();
+}
+
+/** Follow the same action overflow a user sees; never expose controls through DOM edits. */
+export async function clickPlacementToolAction(page, control) {
+  if (control === undefined) { control = page; page = control.page(); }
+  const menu = await control.evaluate(node => node.closest("[data-placement-tool-action-menu]")?.dataset.placementToolActionMenu);
+  if (menu) await showPlacementMenu(page, `tool-${menu}`);
+  await control.click();
+}
+
+export async function inspectPlacementAsset(page, control) {
+  await showPlacementBottom(page, "assets");
+  const back = page.locator(".placement-asset-back:visible");
+  if (!await control.isVisible() && await back.count()) await back.click();
+  await control.click();
+}
+
+export async function choosePlacementAsset(page, control) {
+  if (control === undefined) { control = page; page = control.page(); }
+  await inspectPlacementAsset(page, control);
+  await page.locator("[data-placement-asset-place]:visible").click();
+}
+
+export async function openPlacementLightingAdvanced(control) {
+  const group=control.locator('xpath=ancestor::details[@data-placement-lighting-advanced]');
+  if(await group.count()&&!await group.evaluate(node=>node.open))await group.locator(':scope > summary').click();
 }

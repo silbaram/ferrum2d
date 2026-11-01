@@ -1,3 +1,5 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import { smokeTileAssets } from "./tile-assets-smoke.mjs";
 import { smokePixelAuthoring } from "./pixel-authoring-smoke.mjs";
 import { strict as assert } from "node:assert";
@@ -425,7 +427,7 @@ try {
         mimeType: "image/png",
         buffer: data.png,
       });
-      await action("inspect").click();
+      await clickPlacementToolAction(action("inspect"));
       await wait(
         () =>
           document.querySelector("[data-placement-aseprite-tool]").dataset
@@ -533,7 +535,7 @@ try {
       await tool
         .getByLabel("Aseprite frame", { exact: true })
         .selectOption("hero-idle.png");
-      await action("register").click();
+      await clickPlacementToolAction(action("register"));
       await wait(() =>
         document
           .querySelector("[data-aseprite-status]")
@@ -551,10 +553,9 @@ try {
         1,
       );
       const beforePlacement = await snapshot();
-      await page
+      await choosePlacementAsset(page
         .locator("[data-placement-browser-asset]")
-        .filter({ hasText: "hero-idle.png" })
-        .click();
+        .filter({ hasText: "hero-idle.png" }));
       if (mode === "hd2d") {
         await showPlacementInspector(page, "placement");
         await page.locator("[data-placement-spatial-place]").click();
@@ -614,7 +615,7 @@ try {
         beforePlacement.state.draftPatch,
       );
       await showPlacementBottom(page, "assets");
-      await action("apply").click();
+      await clickPlacementToolAction(action("apply"));
       await applied();
       const a = await snapshot(),
         aId = a.imports[0].assetId;
@@ -718,7 +719,7 @@ try {
         await tool.locator("[data-aseprite-diff]").textContent(),
         /Changed 2/,
       );
-      await action("reimport").click();
+      await clickPlacementToolAction(action("reimport"));
       await applied();
       const b = await snapshot(),
         bId = b.imports[0].assetId;
@@ -781,7 +782,7 @@ try {
       assert((await native()).blue > 100);
       // Unreferenced registration is reclaimable; the two revisions in Undo/Redo stay live.
       const beforeCleanup = await snapshot();
-      await stage(fixture(2), "unused"); await action("register").click();
+      await stage(fixture(2), "unused"); await clickPlacementToolAction(action("register"));
       await wait(() => document.querySelector("[data-aseprite-status]").textContent.startsWith("Registered"));
       await stage(fixture(1));
       const allocated = await resources(), catalog = tool.locator("[data-placement-catalog]");
@@ -866,7 +867,7 @@ try {
           engine.loadAssets = load;
         };
       });
-      await action("reimport").click();
+      await clickPlacementToolAction(action("reimport"));
       await wait(() =>
         document
           .querySelector("[data-aseprite-status]")
@@ -876,7 +877,7 @@ try {
       assert.deepEqual(await resources(), beforeResources);
       assert.equal((await native()).image, image);
       await page.evaluate(() => window.restoreUpload());
-      await action("reimport").click();
+      await clickPlacementToolAction(action("reimport"));
       await applied();
       assert((await native()).magenta > 100);
       // Repeat a cancelled upload while the first promise is still pending.
@@ -897,13 +898,13 @@ try {
         };
       });
       const beforeCancel = await snapshot();
-      await action("reimport").click();
+      await clickPlacementToolAction(action("reimport"));
       await wait(() => !!window.finishUpload);
       await action("cancel").focus();
       await page.keyboard.press("Enter");
       assert.deepEqual(await snapshot(), beforeCancel);
       await page.evaluate(() => window.restoreUpload());
-      await action("reimport").click();
+      await clickPlacementToolAction(action("reimport"));
       await page.evaluate(() => window.finishUpload());
       await applied();
       assert.equal(
@@ -916,7 +917,7 @@ try {
         ambiguous.json.frames["hero-idle.png"],
       );
       await stage(ambiguous, "ambiguous");
-      await action("apply").click();
+      await clickPlacementToolAction(action("apply"));
       await applied();
       const beforeAmbiguous = await snapshot();
       await stage(fixture(1), "ambiguous");
@@ -1019,7 +1020,7 @@ try {
         /imported atlases/,
       );
       const downloadPromise = page.waitForEvent("download");
-      await action("export").click();
+      await clickPlacementToolAction(action("export"));
       const download = await downloadPromise;
       await download.saveAs(resolve(run, mode + "-assets.json"));
       const bundle = JSON.parse(
@@ -1108,7 +1109,7 @@ try {
         const text = await tool.locator("[data-aseprite-status]").textContent();
         attempts.push(text);
         if (text.includes("budget reached")) break;
-        await action("reimport").click();
+        await clickPlacementToolAction(action("reimport"));
         await applied();
       }
       assert(attempts.at(-1).includes("budget reached"));
@@ -1137,7 +1138,7 @@ try {
         await tool.locator(":scope > summary").click();
       await stage(first);
       assert.equal(await tool.getAttribute("data-aseprite-ready"), "true");
-      await action("register").click();
+      await clickPlacementToolAction(action("register"));
       await wait(() =>
         document
           .querySelector("[data-aseprite-status]")
@@ -1145,7 +1146,7 @@ try {
       );
       // The imported name is absent from the source/history: only its numeric ID is authored.
       const numericDownloadPromise = page.waitForEvent("download");
-      await action("export").click();
+      await clickPlacementToolAction(action("export"));
       const numericDownload = await numericDownloadPromise;
       const numericBundle = JSON.parse(await readFile(await numericDownload.path()));
       const numericAsset = numericBundle.revisions.find(revision => revision.logicalId === "hero");

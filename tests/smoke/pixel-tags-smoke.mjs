@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -30,11 +31,11 @@ export async function smokePixelTags(page, mode, run, verify) {
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
   await panel.locator('summary').click();
   const before=await page.evaluate(()=>window.ferrumPlacementViewerState.draftPatch);
-  await action('apply').click();const dialog=page.locator('dialog[open]');await dialog.waitFor();
+  await clickPlacementToolAction(action('apply'));const dialog=page.locator('dialog[open]');await dialog.waitFor();
   assert.match(await dialog.textContent(),/Clips 0 → 0, 1/);
-  await dialog.locator('[data-pixel-action="confirm-cancel"]').click();
+  await clickPlacementToolAction(dialog.locator('[data-pixel-action="confirm-cancel"]'));
   assert.deepEqual(await page.evaluate(()=>window.ferrumPlacementViewerState.draftPatch),before,'cancelling cannot alter the scene');
-  await action('apply').click();await dialog.locator('[data-pixel-action="confirm-migrate"]').click();await idle();
+  await clickPlacementToolAction(action('apply'));await clickPlacementToolAction(dialog.locator('[data-pixel-action="confirm-migrate"]'));await idle();
   assert.match(await workspace.locator('[data-pixel-status]').textContent(),/animation applied/);
   const migrated=await page.evaluate(()=>window.ferrumPlacementViewerState.draftPatch);
   const operations=migrated.operations.filter(op=>op.kind==='updateComponents');
@@ -44,13 +45,13 @@ export async function smokePixelTags(page, mode, run, verify) {
   // Changing a tag's name leaves runtime clip IDs and sequence intact.
   await panel.locator('summary').click();await panel.locator('[data-pixel-tag-select]').selectOption(second);
   await panel.locator('[data-pixel-tag-name]').fill('run');await panel.locator('[data-pixel-tag-name]').press('Enter');
-  await action('undo').click();
+  await clickPlacementToolAction(action('undo'));
   assert.equal(await panel.locator('[data-pixel-tag-name]').inputValue(),'walk');
   await panel.locator('[data-pixel-tag-select]').selectOption(first);
   assert(await tagAction('initial').isDisabled());await panel.locator('summary').click();
   async function exported(kind,name) {
     const menu=workspace.locator('.placement-pixel-export-menu');if(!await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-    const waiting=page.waitForEvent('download');await action(kind).click();const download=await waiting,path=join(run,mode+'-tags-'+name);
+    const waiting=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const download=await waiting,path=join(run,mode+'-tags-'+name);
     await download.saveAs(path);await menu.locator('summary').click();return {path,value:JSON.parse(await readFile(path,'utf8'))};
   }
   const saved=await exported('export-source','source.pixel.json');assert.equal(saved.value.version,5);

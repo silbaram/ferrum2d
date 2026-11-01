@@ -3,7 +3,7 @@ import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import assert from 'node:assert/strict';
 import { readFile,writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { showPlacementBottom } from './placement-panel-navigation.mjs';
+import { showPlacementBottom, inspectPlacementAsset, clickPlacementToolAction } from './placement-panel-navigation.mjs';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { filteredPixelPng } from './pixel-png-fixture.mjs';
@@ -18,7 +18,8 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   const action=name=>workspace().locator('[data-pixel-action="'+name+'"]');
   const idle=()=>page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
   const status=()=>workspace().locator('[data-pixel-status]').textContent();
-  const save=async()=>{await action('save-project').click();await idle();};
+  async function editAsset(id,frame){await inspectPlacementAsset(page,page.locator('[data-placement-browser-asset="sprite:'+id+(frame?'/'+frame:'')+'"]'));await page.locator('[data-placement-edit-pixels="'+id+'"]'+(frame?'[data-placement-edit-pixel-frame="'+frame+'"]':':not([data-placement-edit-pixel-frame])')).click();}
+  const save=async()=>{await clickPlacementToolAction(action('save-project'));await idle();};
   async function recoveryRows() {
     return page.evaluate(()=>new Promise((resolve,reject)=>{
       const open=indexedDB.open('ferrum-pixel-recovery');open.onerror=()=>reject(open.error);
@@ -42,14 +43,14 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   }
   async function assertReopenedSource(expected) {
     const exports=workspace().locator('.placement-pixel-export-menu');if(!await exports.evaluate(e=>e.open))await exports.locator('summary').click();
-    const waiting=page.waitForEvent('download');await action('export-source').click();const file=await waiting,path=join(run,mode+'-restored-new-tools.pixel.json');await file.saveAs(path);await exports.locator('summary').click();
+    const waiting=page.waitForEvent('download');await clickPlacementToolAction(action('export-source'));const file=await waiting,path=join(run,mode+'-restored-new-tools.pixel.json');await file.saveAs(path);await exports.locator('summary').click();
     assert.deepEqual(JSON.parse(await readFile(path,'utf8')),expected,'native reopen must preserve the retained outline and multi-frame transform bytes');
   }
   const root=join(project,'public/assets/.ferrum-pixels'),catalogPath=join(root,'catalog.json');
   if(process.argv.includes('--pixel-normals-only')) {
     const pixelNormals=await smokePixelNormalFocus(page,mode,run,saveNormalWithRecovery,true);
     await restart();page=getPage();await showPlacementBottom(page,'assets');
-    await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+    await editAsset(pixelNormals.id);await workspace().waitFor({state:'visible'});
     await assertReopenedSource(pixelNormals.source);await reuseSavedPixelNormal(page);
     const restoredNormalGame=await freshGame();await close();
     return {mode,focus:'pixel-normals',pixelNormals,restoredNormalGame,realRustStorageAndProtocol:true,newToolsSourceExact:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,released:{urls:0,textures:0}};
@@ -62,7 +63,7 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   await dialog.getByLabel('Pixel Height',{exact:true}).fill('8');
   await dialog.locator('[data-pixel-action="create"]').click();
   await workspace().waitFor({state:'visible'});
-  await workspace().locator('[data-pixel-color]').fill('#0000ff');await action('tool-fill').click();
+  await workspace().locator('[data-pixel-color]').fill('#0000ff');await clickPlacementToolAction(action('tool-fill'));
   async function point(x,y) {
     return workspace().locator('canvas').evaluate((e,p)=>{
       const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);
@@ -72,12 +73,12 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   await page.waitForFunction(()=>Number(document.querySelector('[data-pixel-canvas]').dataset.pixelZoom)>1);
   let p=await point(2,2);await page.mouse.click(p.x,p.y);
   // Save/reopen a resized source and an edited palette through the real native host.
-  await action('resize-canvas').click();const resize=page.locator('dialog[open]');
+  await clickPlacementToolAction(action('resize-canvas'));const resize=page.locator('dialog[open]');
   await resize.locator('[data-pixel-resize="width"]').fill('10');await resize.locator('[data-pixel-resize="height"]').fill('10');
   await resize.locator('[data-pixel-resize="anchor"]').selectOption('top-left');await resize.locator('[data-pixel-resize-confirm]').click();
   const palette=workspace().locator('.placement-pixel-palette-menu');await palette.locator('summary').click();
   await palette.locator('[data-pixel-palette-action="add"]').click();await palette.locator('summary').click();
-  await action('apply').click();await idle();
+  await clickPlacementToolAction(action('apply'));await idle();
   setCorrupt(true);await save();setCorrupt(false);
   assert.match(await status(),/differs/);
   assert.equal(await workspace().getAttribute('data-pixel-dirty'),'true');
@@ -99,14 +100,14 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   // A valid external catalog edit must conflict with the token captured when opened.
   const originalCatalog=await readFile(catalogPath);const externalCatalog=Buffer.concat([originalCatalog,Buffer.from('\n')]);
   await writeFile(catalogPath,externalCatalog);
-  await workspace().locator('[data-pixel-color]').fill('#ff0000');await action('tool-pencil').click();
+  await workspace().locator('[data-pixel-color]').fill('#ff0000');await clickPlacementToolAction(action('tool-pencil'));
   p=await point(0,0);await page.mouse.click(p.x,p.y);await save();
   assert.match(await status(),/changed on disk/);assert.equal(await workspace().getAttribute('data-pixel-dirty'),'true');
   assert.deepEqual(await readFile(catalogPath),externalCatalog);assert.deepEqual(JSON.parse(await readFile(scene,'utf8')),saved);
   await writeFile(catalogPath,originalCatalog);await save();assert.match(await status(),/^Project saved/);
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,2);
   // Source save and scene save have separate commit boundaries.
-  await action('apply').click();await idle();
+  await clickPlacementToolAction(action('apply'));await idle();
   const previousScene=await readFile(scene);await writeFile(scene,JSON.stringify({...saved,externalEdit:true}));
   await save();assert.match(await status(),/changed|conflict/i);
   assert.equal(await workspace().getAttribute('data-pixel-dirty'),'false','source really committed even if scene failed');
@@ -117,8 +118,8 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   const committedScene=await readFile(scene);
   await workspace().locator('[data-pixel-color]').fill('#00ff00');
   p=await point(1,1);await page.mouse.click(p.x,p.y);
-  holdSave();await action('save-project').click();await waitHeld();
-  await action('back').click();releaseSave();
+  holdSave();await clickPlacementToolAction(action('save-project'));await waitHeld();
+  await clickPlacementToolAction(action('back'));releaseSave();
   await page.waitForFunction(()=>!document.querySelector('[data-pixel-action="new"]').disabled);
   assert.deepEqual(await readFile(scene),committedScene,'late native completion cannot save the scene after leaving the source');
   assert.match(await page.locator('[data-pixel-launcher]').textContent(),/interrupted/);
@@ -140,12 +141,12 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   await showPlacementBottom(page,'assets');
   // Select the saved revision card by its stable ID rather than runtime texture number.
   const lastCatalog=JSON.parse(await readFile(catalogPath,'utf8'));
-  const latest=lastCatalog.revisions.at(-1),target=page.locator('[data-placement-edit-pixels="'+latest.assetId+'"]');
-  await target.click();await workspace().waitFor({state:'visible'});
+  const latest=lastCatalog.revisions.at(-1);
+  await editAsset(latest.assetId);await workspace().waitFor({state:'visible'});
   assert.equal(await workspace().getAttribute('data-pixel-dirty'),'false');
   const download=page.waitForEvent('download');
   await workspace().locator('.placement-pixel-export-menu > summary').click();
-  await action('export-source').click();const file=await download;const exported=join(run,mode+'-restored.pixel.json');await file.saveAs(exported);
+  await clickPlacementToolAction(action('export-source'));const file=await download;const exported=join(run,mode+'-restored.pixel.json');await file.saveAs(exported);
   const reopened=JSON.parse(await readFile(exported,'utf8'));
   assert.deepEqual(reopened,JSON.parse(await readFile(join(root,latest.assetId+'.json'),'utf8')));
   await workspace().locator('.placement-pixel-export-menu > summary').click();
@@ -154,17 +155,17 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,4);
   const imageLayers=await smokePixelLayers(page,mode,run);
   const imageFrames=await smokePixelFrames(page,mode,run);
-  await action('apply').click();await idle();await save();assert.match(await status(),/^Project saved/);
+  await clickPlacementToolAction(action('apply'));await idle();await save();assert.match(await status(),/^Project saved/);
   const layeredCatalog=JSON.parse(await readFile(catalogPath,'utf8'));
   assert.equal(layeredCatalog.revisions.length,5);
   const layeredId=layeredCatalog.revisions.at(-1).assetId;
   assert.deepEqual(JSON.parse(await readFile(join(root,layeredId+'.json'),'utf8')),imageFrames.source);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
-  await page.locator('[data-placement-edit-pixels="'+layeredId+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+  await editAsset(layeredId);await workspace().waitFor({state:'visible'});
   assert.equal(await workspace().locator('[data-pixel-layer-select]').count(),2);
   assert.equal(await workspace().locator('[data-pixel-layer-name]').inputValue(),'Armor');
   assert.equal(await workspace().locator('[data-pixel-frame-select]').count(),2);
-  const downloadFrames=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  const downloadFrames=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await clickPlacementToolAction(action('export-source'));
   const frameFile=await downloadFrames,framePath=join(run,mode+'-restored-frames.pixel.json');await frameFile.saveAs(framePath);
   assert.deepEqual(JSON.parse(await readFile(framePath,'utf8')),imageFrames.source);
   const game=await freshGame();
@@ -172,8 +173,8 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   const tags=await smokePixelTags(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
   assert.deepEqual(JSON.parse(await readFile(join(root,tags.id+'.json'),'utf8')),tags.source);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
-  await page.locator('[data-placement-edit-pixels="'+tags.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
-  const tagReopen=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  await editAsset(tags.id);await workspace().waitFor({state:'visible'});
+  const tagReopen=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await clickPlacementToolAction(action('export-source'));
   const tagFile=await tagReopen,tagPath=join(run,mode+'-restored-tags.pixel.json');await tagFile.saveAs(tagPath);
   assert.deepEqual(JSON.parse(await readFile(tagPath,'utf8')),tags.source);
   await workspace().locator('.placement-pixel-export-menu > summary').click();
@@ -184,9 +185,9 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,7);
   assert.deepEqual(JSON.parse(await readFile(join(root,atlas.id+'.json'),'utf8')),atlas.source);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
-  await page.locator('[data-placement-edit-pixels="'+atlas.id+'"][data-placement-edit-pixel-frame="right"]').click();
+  await editAsset(atlas.id,'right');
   await workspace().waitFor({state:'visible'});assert.equal(await workspace().locator('[data-pixel-atlas-frame]').inputValue(),'right');
-  const atlasDownload=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await action('export-source').click();
+  const atlasDownload=page.waitForEvent('download');await workspace().locator('.placement-pixel-export-menu > summary').click();await clickPlacementToolAction(action('export-source'));
   const atlasFile=await atlasDownload,atlasPath=join(run,mode+'-restored-atlas.pixel.json');await atlasFile.saveAs(atlasPath);
   assert.deepEqual(JSON.parse(await readFile(atlasPath,'utf8')),atlas.source);
   await workspace().locator('.placement-pixel-export-menu > summary').click();
@@ -194,7 +195,7 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
   assert.equal(JSON.parse(await readFile(catalogPath,'utf8')).revisions.length,8);
   const normalCatalog=JSON.parse(await readFile(join(project,'public/assets/.ferrum-normals/catalog.json'),'utf8'));assert.equal(normalCatalog.entries.length,1);
   await restart();page=getPage();await showPlacementBottom(page,'assets');
-  await page.locator('[data-placement-edit-pixels="'+pixelNormals.id+'"]:not([data-placement-edit-pixel-frame])').click();await workspace().waitFor({state:'visible'});
+  await editAsset(pixelNormals.id);await workspace().waitFor({state:'visible'});
   await assertReopenedSource(pixelNormals.source);await reuseSavedPixelNormal(page);
   const restoredNormalGame=await freshGame();assert(restoredNormalGame.normalMapping?.lightingChanged);
   await close();

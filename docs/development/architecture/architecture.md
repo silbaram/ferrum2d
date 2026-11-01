@@ -289,6 +289,11 @@ canvas·FerrumRuntime·renderer는 하나를 유지하며 탭 전환 시 해당 
 준비하고 성공 뒤 공개한다. native 설정이 scene 교체 후 거절되어도 정상 authoring 문서를 재적용하여
 generational handle을 갱신하며, 이 복구까지 실패하면 registry를 비우고 오류를 전달한다.
 `placementWorkspaceLayout.ts`는 dock 크기·접힘·집중 모드를 맡으며 localStorage에는 문서 데이터 없이 프로젝트별 UI 설정만 기록한다.
+`placementWorkspacePreferences.ts`는 내 구성/씬 배치/자산 작업/게임 검토의 기본값·범위 검증·직렬화만 담당한다.
+기존 `ferrum.placement.layout.v1:<project>`는 내 구성으로 유지하고, 별도 `ferrum.placement.layout-presets.v1:<project>`에 활성 id와 나머지 구성의 크기·숨김을 저장한다.
+전환은 현재 구성의 focus/drawer/하단 탭을 세션에 보관하고 다음 구성의 상태를 복원한다. 초기화는 현재 구성에만 적용한다.
+하단 탭은 outer tablist의 기존 버튼에 위임하며 문서·뷰 모드·게임/도트 상태를 소유하지 않는다.
+공통 `canChangeWorkspace`와 layout의 resize 소유권으로 프리셋/F3를 보호한다. 명령 목록 생성 시 owner의 availability를 새로 계산해 문서 전환 중의 disabled 상태를 캐시하지 않는다.
 뷰포트의 확장/복원 버튼은 같은 집중 상태를 공유한다. 8px 경계 손잡이는 기존 pointer/keyboard resize로 연결하고,
 크기 표시는 ResizeObserver가 실제 canvas의 CSS 치수를 읽는다. renderer/native camera의 기존 resize 경로를 사용한다.
 공식 app의 `placementLocale.ts`와 `placementLocaleMessages.ts`는 한국어·영어 UI 전용 상태와 메시지를 관리한다.
@@ -346,6 +351,12 @@ HD-2D의 Select/Pan·H/V와 Space 임시 이동은 기존 camera gesture 경로�
 desktop 패널 토글은 화면 구성 메뉴에, compact 패널 토글은 기존 탭 행에 같은 DOM control을 배치한다.
 `placementViewportToolbar.ts`는 공통 보기 disclosure와 배치/탐색 안내를 소유한다. native gesture의 UI 상태 이벤트로
 Space 임시 이동/복귀와 pressed 상태를 갱신하며 게임 상태나 카메라 좌표를 복제하지 않는다.
+선택·화면 이동은 같은 owner의 버튼을 뷰포트 세로 도구 모음에 배치하고, 게임/도트 화면에서는 숨긴다.
+2D/HD-2D 선택 팝업은 `viewportNavigationInset(...)`으로 세로 도구 모음의 실제 너비를 비워 두고 남은 canvas 너비에 맞춘다.
+`placementCommandPalette.ts`는 F3 명령 검색의 UI·focus·IME·수명과 한국어/영문 metadata 검색을 맡는다.
+`placementWorkspaceCommands.ts`는 현재 모드에 맞는 기존 버튼과 패널 공개 동작에 위임한다. JSON patch 생성이나 게임 상태를 소유하지 않는다.
+문서별 씬·속성 패널은 host가 제공하는 현재 inspector root에서 찾으며, 보존된 이전 문서의 hidden 컨트롤을 사용하지 않는다.
+검색 실행 전 문서/작업 모드·사용 가능 상태를 다시 확인하고, 저장·gesture·미확정 도트 편집·다른 modal을 우회하지 않는다.
 격자 표시·공유 간격과 공간 overlay/snap은 보기 disclosure에 연결하고 층 선택은 툴바에 유지한다.
 Escape는 disclosure 안에서만 소비하고 바깥 pointer/focus는 focus를 빼앗지 않고 닫는다.
 summary의 Enter/Space 활성화는 app에서 처리하여 전역 runtime 입력과 충돌하지 않게 한다.
@@ -391,8 +402,27 @@ model collider는 자동 추론하지 않는다. cache의 GLB resource와 씬 in
 `placementRuntimeSummary.ts`는 이 owned snapshot의 요약 행·변수·event 표시만 담당하며 raw JSON은 접는다.
 추가 Wasm 조회나 게임 상태 소유권을 만들지 않는다.
 `placementViewportToolbar.ts`는 canvas 밖 고정 행에 camera 도구와 배치 상태·취소 동작을 둔다.
-에셋 카드의 pressed 상태는 현재 placement tool에서 파생하며 drag 중 카드 DOM을 교체하지 않는다.
+에셋 카드의 `aria-pressed`는 검사 중인 자산, `data-selected`는 현재 배치 대기 자산이다.
+단일 클릭·방향키는 검사만 하고 명시적 배치·더블클릭·기존 drag가 placement owner를 호출한다. drag 중 카드 DOM을 교체하지 않는다.
+목록/타일·필터/스크롤/즐겨찾기는 앱 UI 상태이며 선택 자산 상세의 사용처는 기존 읽기 전용 collector를 필터해 연결한다.
 Inspector는 고정 선택 이름·종류와 Properties/Placement 탭으로 속성과 새 객체 배치 도구를 나눈다.
+원래 tablist 노드를 선택 이름과 같은 sticky header에 배치해 기존 키보드/tab owner와 aria-controls를 유지한다.
+Properties는 2D 변형·시각·충돌 입력을 먼저 두고 Identity/Diagnostics는 기본으로 접는다. pointer/entity/초안 요약은 Diagnostics로 옮긴다.
+`placementInspectorContext.ts`는 선택 수·기존 lock 판정·mode/target kind의 UI metadata만으로 안내를 만든다.
+같은 안내를 매 frame 다시 쓰지 않으며 실제 입력 disabled·단위 변환·patch·native capability는 기존 소유자가 맡는다.
+2D rad/배수와 HD-2D 도 단위를 명시하고 기존 숫자/Undo 경로는 바꾸지 않는다.
+`placementInspectorProperties.ts`는 기존 입력 DOM의 metadata만 검색·필터한다. 복귀는 기존 bulk transform/layer,
+component update 또는 공간 입력 owner를 호출한다. `placementInspectorOriginals.ts`는 문서의 저장/열기 원본을 읽고
+현재 merged component JSON의 해당 leaf만 복귀해 normal/animation/shadow/body 데이터를 보존한다.
+공유 공간 입력이 문서 Inspector 사이를 이동하면 이전 filter row/reset 소유권을 해제하고 현재 Inspector에 연결한다.
+섹션의 편집 모드별 hidden은 기존 owner가 유지하며 검색 필터는 별도 표시 속성으로 합성한다.
+`placementComponentEdits.ts`는 일반 속성 적용·resize·collider offset·선택 객체의 정의 생성에서도
+현재 authored JSON의 비편집 metadata를 보존한다. 드래그 시작에 원본을 한 번 캡처하며 pointer frame마다 문서를 resolve하지 않는다.
+공간 optional 필드의 존재 여부는 resolve 후 기본값이 아닌 authored spatial 원본에서 판정한다. 새 schema·Wasm 조회·보조 runtime을 만들지 않는다.
+`placementToolPanel.ts`는 원래 action 노드를 주 동작/다른 작업으로 배치하고 단계·입력 피드백·비활성 이유만 표현한다.
+가져오기·노멀·도트의 검사/생성/등록/적용/저장·취소 수명은 각 기존 owner가 유지한다. 도트 문서 동작과 도구 옵션·레이어·프레임 영역을 분리한다.
+카메라/조명은 편집 시점·씬 값의 범위와 단위를 표시하며 고급 조명 disclosure는 기존 control을 이동할 뿐 값이나 gesture 계약을 바꾸지 않는다.
+저장 대상·업데이트 대상·읽기 쉬운 import 진단과 raw JSON 상세는 앱 presentation이다. native 권한·서명·백업·저장 원자성은 변경하지 않는다.
 Scene의 검색·종류/layer 필터·기존 fragment 그룹은 UI 상태이며 authored hierarchy·선택·잠금을 변경하지 않는다.
 하단 Assets/Problems/Runtime/Agent Changes는 한 패널씩 표시하고, 문서별 asset mount는 활성 문서를 따라 이동한다.
 Document는 기본 접힘, GLB import는 하단 Assets에 둔다. 표시 중인 Runtime 탭에서만 bounded native 진단을 조회한다.
@@ -1567,3 +1597,25 @@ behavior binding/body나 게임 시뮬레이션 상태로 사용하지 않는다
 asset transaction은 components 수정뿐 아니라 definition/instance 추가·삭제와 기존 behavior binding 참조 복원도 preflight 뒤 한 Undo로 처리한다.
 셀 identity는 grid 좌표이며 legacy index는 정확한 원본 revision으로 복원해 기존 ID/key를 유지한다. 미지원 authored prop은 변경 전에 거절한다.
 저장 응답의 기준 문서는 깨끗한 새 viewer와 함께 공개하여 add-definition이 남은 초안과 중복 병합되지 않게 한다.
+
+
+### 프로젝트 에셋 사용처 조회
+
+공식 앱의 `placementAssetUsage.ts`는 Scene Authoring의 원본 참조를 수집하는 순수 cold-path 분석기다.
+씬 탐색기의 기존 hosted 목록/선택 File snapshot/native Open Project 범위와 열린 작업공간 원본/draft만 입력으로 사용한다.
+sprite/normal·model/LOD의 문자열 ID와 JSON pointer를 근거로 보존하며 prefab 상속이나 runtime render 상태를 계산하지 않는다.
+사용하지 않는 정의·variant·inactive fragment/include도 원본 참조로 포함한다. 숫자 texture와 외부 template은 진단한다.
+`placementAssetUsagePanel.ts`는 명시적 조회/검색/JSON 내보내기를 소유하고 문서/프로젝트 문맥이 바뀐 늦은 결과를 폐기한다.
+조회는 bounded 파일/노드/에셋/참조 예산을 사용하며 GPU 업로드·scene activation·patch/history·게임 시뮬레이션을 호출하지 않는다.
+열린 문서는 lazy iterator에서 최대 64 snapshot만 복제한다. 형식 검사는 기존 composition/components/spatial SDK parser를 재사용하되 include/인스턴스를 전개하지 않는다.
+씬 inspection은 document와 실제 원문 byte 수를 함께 반환하고 각 읽기에 남은 합계 예산을 전달한다. 다시 직렬화한 JSON 크기로 원문 비용을 추측하지 않는다.
+조회 전용 inspect가 없는 entry는 문제로 남기며 문서 open으로 대체하지 않는다. 스트림 취소 실패도 원래 quota/read 진단을 덮지 않는다.
+패널이 조회 AbortController를 소유하고 문서/폴더 문맥 변경에서 목록/본문 요청을 취소한다. 중단할 수 없는 host Promise는 별도 대기 경계로 늦은 완료를 소비하며 이전 snapshot을 유지하지 않는다.
+native entry 출처는 WeakSet의 객체 단위로 유지해 독립적인 catalog 재생성이 기존 explorer의 native 저장 문맥을 바꾸지 않는다.
+공통 가드의 사용 가능 상태는 탭 변경과 비동기 작업의 busy/inert 해제 뒤 함께 갱신한다.
+
+native `inspect_placement_project_scene`은 명시적 Open Project 권한을 확인하고 public 내부 regular JSON을 기존 한도로 읽는다.
+일반 load/open command를 호출하지 않으므로 다른 문서의 저장 allowlist를 넓히지 않는다.
+앱 전용 `ferrum2d.asset-usage` v1 보고서는 snapshot 범위·부분 실패·등록 여부·출처를 제공하고 `deletionAllowed:false`를 명시한다.
+코드·외부 manifest·GLB 내부·Undo 이력 및 전체 디스크 의존성 그래프를 보장하지 않으며 GC/원본 삭제 API를 추가하지 않는다.
+Rust simulation/Wasm ABI와 SDK/public schema는 변경하지 않는다.

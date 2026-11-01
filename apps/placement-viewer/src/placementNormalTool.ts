@@ -29,6 +29,7 @@ import {
 } from "./placementNormalAssets";
 import { createPlacementNormalPreview } from "./placementNormalPreview";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { createPlacementToolActions, createPlacementFieldFeedback, placementActionReason } from "./placementToolPanel";
 
 interface Context {
   project?: string;
@@ -50,6 +51,7 @@ interface Draft {
   candidate?: PlacementNormalAsset;
   dirty: boolean;
   status: UiContent;
+  failed?: boolean;
 }
 const defaults: Required<Omit<SpriteNormalGenerationSettings, "frameSize">> = {
   normalStrength: 1.5,
@@ -104,12 +106,19 @@ export function createPlacementNormalTool(options: {
   }
   const settings = document.createElement("div");
   settings.className = "placement-normal-settings";
+  const advanced = document.createElement("details"), advancedTitle = document.createElement("summary");
+  advanced.className = "placement-tool-advanced"; advanced.dataset.normalAdvanced = "true";
+  setUiText(advancedTitle, "Advanced Settings"); advanced.append(advancedTitle);
+  const feedback = new Map<HTMLInputElement, ReturnType<typeof createPlacementFieldFeedback>>();
   const inputs = new Map<keyof typeof defaults, HTMLInputElement>();
-  function field(label: string, control: HTMLElement, parent = body) {
+  function field(label: string, control: HTMLElement, parent: HTMLElement = body) {
     const wrapper = document.createElement("label");
     if (!control.hasAttribute("aria-label"))
       setUiAttribute(control, "aria-label", label);
     wrapper.append(uiText(label), control);
+    if (control instanceof HTMLInputElement) {
+      const message = createPlacementFieldFeedback(control); feedback.set(control, message); wrapper.append(message.element);
+    }
     parent.append(wrapper);
   }
   field("Source", file);
@@ -127,7 +136,7 @@ export function createPlacementNormalTool(options: {
     });
     setUiAttribute(input, "aria-label", label);
     inputs.set(key, input);
-    field(label, input, settings);
+    field(label, input, key === "normalStrength" ? settings : advanced);
   }
   const grid = document.createElement("input"),
     animation = document.createElement("input"),
@@ -136,7 +145,7 @@ export function createPlacementNormalTool(options: {
   setUiAttribute(grid, "aria-label", "PNG frame grid");
   setUiAttribute(animation, "aria-label", "Export animation");
   setUiAttribute(loop, "aria-label", "Loop animation");
-  field("PNG Frame Grid", grid, settings);
+  field("PNG Frame Grid", grid, advanced);
   const width = document.createElement("input"),
     height = document.createElement("input");
   for (const [input, label] of [
@@ -148,10 +157,11 @@ export function createPlacementNormalTool(options: {
     input.max = "4096";
     input.step = "1";
     setUiAttribute(input, "aria-label", label);
-    field(label, input, settings);
+    field(label, input, advanced);
   }
-  field("Export Animation", animation, settings);
-  field("Loop", loop, settings);
+  field("Export Animation", animation, advanced);
+  field("Loop", loop, advanced);
+  settings.append(advanced);
   const actions = document.createElement("div");
   actions.className = "placement-normal-actions";
   function button(label: string, action: string) {
@@ -196,8 +206,13 @@ export function createPlacementNormalTool(options: {
   ] as const);
   panels.panels.get("settings")!.append(editor);
   panels.panels.get("preview")!.append(light, preview, hint);
-  body.append(actions, sourceLabel, status, target, panels.element);
   const expand = button("Expand", "expand");
+  const actionBar = createPlacementToolActions("normal", "Normal actions", [generate, cancel, apply, save, exportButton]);
+  const scope = document.createElement("p"), reason = document.createElement("p");
+  scope.className = "placement-tool-scope"; reason.className = "placement-tool-reason";
+  setUiText(scope, "Project assets · Generated normals");
+  const panelHeading=document.createElement("div");panelHeading.className="placement-tool-heading";panelHeading.append(scope,expand);
+  body.append(panelHeading, sourceLabel, target, panels.element, status, reason, actionBar.element);
   let expanded = false;
   function expandPanel(value: boolean) {
     expanded = value;
@@ -226,6 +241,13 @@ export function createPlacementNormalTool(options: {
   const draft = () => drafts.get(key)!;
   function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error);
+  }
+  function fieldIssue(input: HTMLInputElement): UiContent | undefined {
+    if (input.disabled || input.type !== "number") return undefined;
+    // Step controls increment size, not the generator's accepted precision.
+    if (!Number.isFinite(input.valueAsNumber) || input.validity.badInput || input.validity.rangeOverflow || input.validity.rangeUnderflow)
+      return uiMessage("Enter a value from {0} to {1}", input.min || "−∞", input.max || "∞");
+    return undefined;
   }
   function alive(token: number) {
     return (
@@ -312,7 +334,19 @@ export function createPlacementNormalTool(options: {
       d.candidate.persisted ||
       !options.host()?.saveAssets;
     exportButton.disabled = busy || d.dirty || !d.candidate;
+    const waiting = "Wait for the current generation to finish";
+    const needsResult = "Generate a current result before applying or saving";
+    setUiAttribute(generate, "title", busy ? waiting : !context.canEdit ? "Finish the current edit before using this tool" : !d.source ? "Choose a source image first" : "Generate Normal");
+    setUiAttribute(cancel, "title", busy ? "Cancel" : "No generation is running");
+    setUiAttribute(apply, "title", busy ? waiting : d.dirty || !d.candidate ? needsResult : !context.canEdit ? "Finish the current edit before using this tool" : !applicable ? "Select an unlocked HD-2D sprite to apply" : "Apply");
+    setUiAttribute(save, "title", busy ? waiting : d.dirty || !d.candidate ? needsResult : d.candidate.persisted ? "Assets are already saved" : !options.host()?.saveAssets ? "Asset save host unavailable" : "Save without overwriting files");
+    setUiAttribute(exportButton, "title", busy ? waiting : d.dirty || !d.candidate ? needsResult : "Export Assets");
     setUiText(generate, d.candidate ? "Regenerate" : "Generate Normal");
+    status.dataset.tone = d.failed ? "error" : busy ? "busy" : "info";
+    status.setAttribute("role", d.failed ? "alert" : "status");
+    const primary = busy ? cancel : d.dirty || !d.candidate ? generate : !apply.disabled ? apply : !save.disabled ? save : exportButton;
+    actionBar.primary(primary);
+    placementActionReason(primary, primary.disabled ? !context.canEdit ? "Finish the current edit before using this tool" : !d.source ? "Choose a source image first" : "Generate a current result before applying or saving" : undefined, reason);
     setUiText(
       sourceLabel,
       d.source
@@ -340,6 +374,7 @@ export function createPlacementNormalTool(options: {
           ),
     );
     element.dataset.normalBusy = String(busy);
+    element.setAttribute("aria-busy", String(busy));
     element.dataset.normalReady = String(!!d.candidate && !d.dirty);
     setUiText(
       target,
@@ -347,18 +382,13 @@ export function createPlacementNormalTool(options: {
         ? uiMessage("Apply Target · {0}", selected)
         : "Select an unlocked HD-2D sprite to apply",
     );
-    setUiAttribute(
-      save,
-      "title",
-      options.host()?.saveAssets
-        ? "Save without overwriting files"
-        : "Asset save host unavailable",
-    );
     void show(d.candidate);
   }
   function markChanged() {
     read();
     draft().dirty = true;
+    draft().failed = false;
+    for (const [input, message] of feedback) message.set(fieldIssue(input));
     preset.value = "Custom";
     draft().status = uiMessage("Settings changed. Generate to update.");
     render();
@@ -416,6 +446,7 @@ export function createPlacementNormalTool(options: {
     stop();
     const token = serial;
     busy = true;
+    draft().failed = false; feedback.get(file)?.set();
     draft().status = uiMessage("Reading source…");
     render();
     try {
@@ -427,7 +458,7 @@ export function createPlacementNormalTool(options: {
         token,
       );
     } catch (error) {
-      if (alive(token)) draft().status = errorMessage(error);
+      if (alive(token)) { draft().status = errorMessage(error); draft().failed = true; feedback.get(file)?.set(errorMessage(error)); }
     } finally {
       if (alive(token)) {
         busy = false;
@@ -444,11 +475,24 @@ export function createPlacementNormalTool(options: {
     () =>
       void (async () => {
         if (generate.disabled) return;
+        let invalid: HTMLInputElement | undefined;
+        for (const [input, message] of feedback) {
+          if (input.type === "file" || input.disabled) continue;
+          const error = fieldIssue(input);
+          message.set(error);
+          if (error && !invalid) invalid = input;
+        }
+        if (invalid) {
+          if (advanced.contains(invalid)) advanced.open = true;
+          panels.select("settings"); invalid.focus(); draft().failed = true;
+          draft().status = "Review the highlighted fields"; render(); return;
+        }
         read();
         stop();
         const token = serial;
         controller = new AbortController();
         busy = true;
+        draft().failed = false;
         draft().dirty = true;
         draft().status = uiMessage("Generating…");
         render();
@@ -508,11 +552,13 @@ export function createPlacementNormalTool(options: {
           if (previous && previous !== candidate && !previous.uploaded)
             assets.discard(previous);
         } catch (error) {
-          if (alive(token))
+          if (alive(token)) {
+            draft().failed = true;
             draft().status = uiMessage(
               "Generation failed. {0}",
               errorMessage(error),
             );
+          }
         } finally {
           if (alive(token)) {
             busy = false;
@@ -538,6 +584,7 @@ export function createPlacementNormalTool(options: {
         const token = serial;
         controller = new AbortController();
         busy = true;
+        draft().failed = false;
         draft().status = uiMessage("Preparing assets…");
         render();
         try {
@@ -574,11 +621,13 @@ export function createPlacementNormalTool(options: {
           );
           options.changed();
         } catch (error) {
-          if (alive(token))
+          if (alive(token)) {
+            draft().failed = true;
             draft().status = uiMessage(
               "Apply failed. {0}",
               errorMessage(error),
             );
+          }
         } finally {
           if (alive(token)) {
             busy = false;
@@ -602,6 +651,7 @@ export function createPlacementNormalTool(options: {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     draft().status = uiMessage("Exported · Project files have not been saved");
+    draft().failed = false;
     render();
   });
   save.addEventListener(
@@ -616,6 +666,7 @@ export function createPlacementNormalTool(options: {
         const token = serial;
         controller = new AbortController();
         busy = true;
+        draft().failed = false;
         draft().status = uiMessage("Saving assets…");
         render();
         try {
@@ -656,8 +707,10 @@ export function createPlacementNormalTool(options: {
           draft().status = uiMessage("Assets saved and registered");
           options.changed();
         } catch (error) {
-          if (alive(token))
+          if (alive(token)) {
+            draft().failed = true;
             draft().status = uiMessage("Save failed. {0}", errorMessage(error));
+          }
         } finally {
           if (alive(token)) {
             busy = false;
@@ -687,6 +740,8 @@ export function createPlacementNormalTool(options: {
   });
   function updateFields() {
     panels.select("settings");
+    actionBar.close();
+    for (const message of feedback.values()) message.set();
     const d = draft();
     name.value = d.stem;
     for (const [key, input] of inputs)
@@ -750,6 +805,7 @@ export function createPlacementNormalTool(options: {
     previewSerial++;
     visibility.disconnect();
     previewResource?.destroy();
+    actionBar.destroy();
     assets.destroy();
     drafts.clear();
     evidence.clear();
@@ -771,6 +827,7 @@ export function createPlacementNormalTool(options: {
       const token = serial;
       controller = new AbortController();
       busy = true;
+      draft().failed = false;
       draft().status = uiMessage("Reading asset…");
       render();
       try {
@@ -785,7 +842,7 @@ export function createPlacementNormalTool(options: {
           token,
         );
       } catch (error) {
-        if (alive(token)) draft().status = errorMessage(error);
+        if (alive(token)) { draft().status = errorMessage(error); draft().failed = true; }
       } finally {
         if (alive(token)) {
           busy = false;

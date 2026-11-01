@@ -74,86 +74,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
     );
   }
   await importModel(page);
-  const components = {
-    visual: {
-      kind: "sprite",
-      asset: "crate",
-      width: 20,
-      height: 32,
-      originX: 0.5,
-      originY: 1,
-    },
-    collider: { type: "aabb", halfWidth: 4, halfHeight: 4, isTrigger: false },
-    layer: "wall",
-    body: {
-      type: "static",
-      heightSpan: { elevation: 0, height: 32, floorId: 0 },
-    },
-  };
-  const source = {
-    format: "ferrum2d.consumer.scene-authoring",
-    version: 1,
-    behaviorRecipes: { entities: {} },
-    sceneComposition: {
-      initialFragment: "main",
-      prefabs: { object: { props: { components } } },
-      fragments: {
-        main: {
-          instances: [
-            { id: "sprite", prefab: "object", x: -40, y: 0 },
-            { id: "rock", prefab: "object", x: 40, y: 0 },
-          ],
-        },
-      },
-    },
-    spatial: {
-      camera: {
-        projection: "orthographic",
-        position: { x: 160, y: -240, elevation: 220 },
-        target: { x: 0, y: 25, elevation: 0 },
-        height: 240,
-        near: 0.1,
-        far: 2000,
-      },
-      terrain: [
-        {
-          id: "ground",
-          x: -100,
-          y: -80,
-          width: 200,
-          depth: 220,
-          elevation: 0,
-          color: [0.12, 0.3, 0.2, 1],
-        },
-        {
-          id: "bridge",
-          x: 0,
-          y: 50,
-          width: 80,
-          depth: 60,
-          elevation: 40,
-          baseElevation: 32,
-          floorId: 1,
-          kind: "bridge",
-          color: [0.5, 0.4, 0.2, 1],
-        },
-        {
-          id: "ramp",
-          x: -80,
-          y: 20,
-          width: 40,
-          depth: 80,
-          elevation: 0,
-          endElevation: 40,
-          floorId: 2,
-          kind: "ramp",
-          color: [0.2, 0.35, 0.6, 1],
-        },
-      ],
-      billboards: { sprite: {} },
-      models: { rock: { asset: "rock", contentId, scale: 1 } },
-    },
-  };
+  const source = placementSpatialWorkspaceSource(contentId);
   const open = async (doc, name = "spatial.scene.json") => {
     await page.locator("[data-placement-document-file]").setInputFiles({
       name,
@@ -1387,4 +1308,89 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
       modelContentId: contentId,
     },
   };
+}
+
+/** Shared exact two-object fixture for aggregate and focused authoring checks. */
+export function placementSpatialWorkspaceSource(contentId) {
+  const components = {
+    visual: {
+      kind: "sprite",
+      asset: "crate",
+      width: 20,
+      height: 32,
+      originX: 0.5,
+      originY: 1,
+    },
+    collider: { type: "aabb", halfWidth: 4, halfHeight: 4, isTrigger: false },
+    layer: "wall",
+    body: {
+      type: "static",
+      heightSpan: { elevation: 0, height: 32, floorId: 0 },
+    },
+  };
+  const source = {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    behaviorRecipes: { entities: {} },
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: { object: { props: { components } } },
+      fragments: {
+        main: {
+          instances: [
+            { id: "sprite", prefab: "object", x: -40, y: 0 },
+            { id: "rock", prefab: "object", x: 40, y: 0 },
+          ],
+        },
+      },
+    },
+    spatial: {
+      camera: {
+        projection: "orthographic",
+        position: { x: 160, y: -240, elevation: 220 },
+        target: { x: 0, y: 25, elevation: 0 },
+        height: 240,
+        near: 0.1,
+        far: 2000,
+      },
+      terrain: [
+        {
+          id: "ground",
+          x: -100,
+          y: -80,
+          width: 200,
+          depth: 220,
+          elevation: 0,
+          color: [0.12, 0.3, 0.2, 1],
+        },
+        {
+          id: "bridge",
+          x: 0,
+          y: 50,
+          width: 80,
+          depth: 60,
+          elevation: 40,
+          baseElevation: 32,
+          floorId: 1,
+          kind: "bridge",
+          color: [0.5, 0.4, 0.2, 1],
+        },
+        {
+          id: "ramp",
+          x: -80,
+          y: 20,
+          width: 40,
+          depth: 80,
+          elevation: 0,
+          endElevation: 40,
+          floorId: 2,
+          kind: "ramp",
+          color: [0.2, 0.35, 0.6, 1],
+        },
+      ],
+      billboards: { sprite: {} },
+      models: { rock: { asset: "rock", contentId, scale: 1 } },
+    },
+  };
+  return source;
 }

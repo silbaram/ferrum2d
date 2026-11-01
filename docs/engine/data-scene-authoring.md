@@ -43,6 +43,20 @@ Ferrum2D authoring 문서에서 `sceneComposition.prefabs`는 재사용 가능�
 전체 교체만 수행한다. behavior recipe 본문, FSM command, gameplay sequence는 agent-owned 영역으로 남기고,
 rename/remove 시에는 binding migration preview 또는 conflict diagnostic을 먼저 노출한다.
 
+공식 뷰어의 선택·화면 이동은 2D/HD-2D 뷰포트 왼쪽 도구 모음에 둔다.
+**F3 / 명령 검색**은 한국어·영문 이름으로 기존 도구·보기·패널·도트 동작을 찾는 앱 UI다.
+현재 문서/모드와 버튼의 사용 가능 상태를 실행 직전에 확인하며, 저장·gesture·미확정 도트 편집·다른 modal을 우회하지 않는다.
+검색/취소는 원본과 Undo를 바꾸지 않고, 명령 실행은 기존 authoring/패널 동작에 위임한다. 별도 JSON 필드를 추가하지 않는다.
+`보기 → 화면 구성`의 내 구성·씬 배치·자산 작업·게임 검토는 프로젝트별 UI 패널 프리셋이다.
+F3의 `레이아웃` 검색에서도 전환하며 구성별 크기·숨김을 기억한다. 현재 구성 초기화는 다른 구성을 덮어쓰지 않는다.
+뷰 모드·게임 재생·활성 문서·선택·초안·Undo와 도트 편집 상태를 유지하며 진행 중 gesture/저장/미확정 편집에서는 전환하지 않는다.
+Inspector는 변형·시각 입력을 먼저 표시하고 식별/진단 정보는 기본으로 접는다. 2D의 회전은 rad, 크기는 배수이며 공간 회전은 도 단위를 유지한다.
+선택/잠금/다중 선택/게임 안내는 기존 control의 capability를 설명할 뿐 새 편집 권한이나 patch 필드를 추가하지 않는다.
+속성 검색·변경 필터·고급 표시는 입력 DOM과 미확정 값을 유지하는 보기 설정이다. 지원 필드의 복귀는 현재 문서를 열거나 저장한 원본값으로 한 Undo에 반영한다.
+구성 요소의 복귀는 해당 leaf만 바꿔 노멀·애니메이션·그림자·바디와 다른 입력을 보존한다. 원본 없는 객체·구조 변경·제거 미지원 optional 값은 임의 기본값으로 복귀하지 않는다.
+에셋 카드 클릭은 검사 대상만 바꾼다. 상세의 배치·도트·노멀·사용처는 기존 작업에 위임하며 씬 객체 선택을 자산 검사와 구분한다.
+가져오기/노멀의 주 동작·다른 작업과 단계 표시는 등록·씬 적용·파일 저장을 자동 연쇄 실행하지 않는다. 저장·참조·stale 가드는 그대로 유지한다.
+
 ## 최소 동작 계약
 
 - `sceneComposition.initialFragment`는 생성할 root fragment를 가리킨다.
@@ -196,7 +210,18 @@ Tiled/LDtk와 Aseprite Import 패널의 **Catalog → Clean Unused**(자산 목�
 나머지 **미저장 세션 revision**의 source bytes·Blob URL·GPU texture를 명시적으로 정리한다.
 문자열 자산명과 현재 runtime의 숫자 texture alias를 모두 확인한다. 숫자 reference는 세션 내 보존 근거이며 원본 ID의 저장·이식 보장을 추가하지 않는다.
 정리로 기존 8건/64 MiB 예산을 회수하며 예산을 자동 확대하지 않는다. GPU 해제 실패 시 원본/등록 항목을 유지하고 texture 복원을 시도한다.
-프로젝트에 저장·검증한 revision은 닫힌 씬의 참조를 확인할 수 없어 보호한다. 디스크 catalog/원본 파일 GC 기능은 아니다.
+프로젝트에 저장·검증한 revision은 보호한다. 디스크 catalog/원본 파일 GC 기능은 아니다.
+공식 앱의 **Assets → Asset Usage**는 씬 탐색기 범위의 닫힌 씬과 열린 작업공간 원본/draft에서
+texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·정의/객체 ID·JSON pointer를 표시한다.
+정의/variant·비활성 fragment/include도 포함하며 prefab 상속은 원본 정의의 경로로 남긴다.
+숫자 texture·외부 template은 해소하지 않으며 파일/분석 한도·읽기 실패를 명시한다.
+참조 영역의 composition/components/spatial은 기존 SDK parser로 구문을 검사하되 include를 전개하거나 전체 게임의 실행 가능성을 판정하지 않는다.
+잘못된 영역의 원본 참조도 근거로 보존한다. 원문 UTF-8 바이트(공백 포함)를 세며 열린 snapshot은 복제 전에 제한한다.
+참조 owner는 선언된 instance/surface ID 또는 prefab/model/billboard key만 사용한다. `props.id`를 객체 ID로 간주하지 않으며 식별자 한도 초과는 잘린 ID 대신 문제로 기록한다.
+결과는 조회 당시 근거이며 코드·외부 manifest·GLB 내부·Undo 이력이나 전체 디스크를 검증하지 않는다.
+등록되지 않은 참조도 표시하지만 참조 미발견은 삭제 허가가 아니다. 별도 SDK/schema/GC API가 아니라 앱 전용 조회다.
+보고서는 `ferrum2d.asset-usage` v1과 `deletionAllowed:false`를 사용한다.
+상한·폴더 snapshot·검색/내보내기 사용법은 `apps/placement-viewer/README.md`의 에셋 사용처 조회 절을 따른다.
 실제 참조 frame 누락은 **Import Diagnostics**와 **Problems**에 원본 JSON 파일·collection pointer·frame ID와
 현재 씬의 정확한 JSON pointer를 표시한다. prefab 상속은 해당 prefab의 원본 경로를 표시하며 경로는 최대 64개다.
 진단 수집은 순회 65,536단계·pointer 4,096자 상한을 사용하고 제한/순환 참조로 일부를 생략하면 `scenePathsTruncated:true`를 표시한다.

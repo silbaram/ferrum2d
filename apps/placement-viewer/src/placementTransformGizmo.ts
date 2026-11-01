@@ -4,6 +4,7 @@ import type {
   ScenePlacementViewerState,
 } from "@ferrum2d/ferrum-web/authoring";
 import { hasLockedSelection } from "./placementSelection";
+import { viewportNavigationInset } from "./placementViewportChrome";
 
 /** The primary authored pivot is shared by numeric, keyboard and pointer edits. */
 export function transformPlacementSelection(
@@ -218,13 +219,14 @@ export function installPlacementTransformGizmo(options: {
     setUiText(hint, instructions);
     setUiAttribute(hint, "title", instructions);
     if (drag) return; // Keep the grabbed control still until release.
-    root.style.maxWidth = `${Math.max(0, canvasRect.width - 16)}px`;
+    const leftInset = viewportNavigationInset(options.stage, canvasRect);
+    root.style.maxWidth = `${Math.max(0, canvasRect.width - leftInset - 8)}px`;
     const width = root.offsetWidth, height = root.offsetHeight;
     const x = (bounds.left + bounds.right) / 2 - canvasRect.left - width / 2;
     const above = bounds.top - canvasRect.top - height - 8;
     const below = bounds.bottom - canvasRect.top + 8;
     const y = above >= 8 ? above : below + height <= canvasRect.height - 8 ? below : above;
-    root.style.left = `${Math.max(8, Math.min(canvasRect.width - width - 8, x))}px`;
+    root.style.left = `${Math.max(leftInset, Math.min(canvasRect.width - width - 8, x))}px`;
     root.style.top = `${Math.max(8, Math.min(canvasRect.height - height - 8, y))}px`;
   }
   return {

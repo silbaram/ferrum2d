@@ -1,5 +1,6 @@
 import { resolveSpatialCameraSpec, type SpatialCameraSpec } from "@ferrum2d/ferrum-web/core";
 import { setUiAttribute, setUiText } from "./placementLocale";
+import { createPlacementFieldFeedback } from "./placementToolPanel";
 import { decorateViewportAction } from "./placementViewportChrome";
 import { spatialCameraPitch, orbitSpatialCameraPitch } from "./placementSpatialCamera";
 import { installGameCameraGestures } from "./placementGameCameraGestures";
@@ -24,6 +25,11 @@ export function createPlacementGameCamera(options: {
   errorMessage.className = "placement-game-camera-error";
   errorMessage.setAttribute("role", "alert"); errorMessage.hidden = true;
   setUiText(heading, "Game Camera");
+  const scope = document.createElement("p"), units = document.createElement("p");
+  scope.className = units.className = "placement-tool-scope";
+  scope.dataset.placementCameraScope = "scene";
+  setUiText(scope, "Scene setting · Used by Game Preview and the game");
+  setUiText(units, "Position, size and distance: world units · Angles: degrees");
   setUiText(hint, "Changes affect Game Preview. Save or export to keep them.");
   const dock = document.createElement("aside"), dockHeader = document.createElement("div"), liveLabel = document.createElement("strong"), close = document.createElement("button");
   dock.className = "placement-game-camera-dock";
@@ -70,6 +76,7 @@ export function createPlacementGameCamera(options: {
     if (!event.repeat) advanced.open = !advanced.open;
   });
   const fields = new Map<string, HTMLInputElement>();
+  const feedbacks = new Map<HTMLInputElement, ReturnType<typeof createPlacementFieldFeedback>>();
   const ranges = new Map<string, HTMLInputElement>();
   const scrubFields: Array<{ label: HTMLElement; input: HTMLInputElement; build(): SpatialCameraSpec }> = [];
   const inputEdits = new Map<HTMLInputElement, { apply(resetOnFailure?: boolean): boolean; displayed: string }>();
@@ -89,9 +96,15 @@ export function createPlacementGameCamera(options: {
     if (min !== undefined) input.min = String(min);
     if (max !== undefined) input.max = String(max);
     input.dataset.placementGameCameraField = name;
-    row.append(text, input); parent.append(row); fields.set(name, input);
+    const feedback = createPlacementFieldFeedback(input);
+    feedbacks.set(input, feedback);
+    row.append(text, input, feedback.element); parent.append(row); fields.set(name, input);
     const build = () => {
-      if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) throw new Error("Enter a valid camera value");
+      if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
+        feedback.set("Enter a valid camera value");
+        throw new Error("Enter a valid camera value");
+      }
+      feedback.set();
       const value = input.valueAsNumber, current = read();
       if (name === "pitch") return orbitSpatialCameraPitch(current, value);
       if (name === "yaw") {
@@ -110,7 +123,13 @@ export function createPlacementGameCamera(options: {
       }
       return current;
     };
-    const apply = (resetOnFailure = true) => edit(build, resetOnFailure);
+    const apply = (resetOnFailure = true) => {
+      const accepted = edit(build, resetOnFailure);
+      // A failed committed edit restores the accepted value. Mark only a
+      // rejected value that the input owner deliberately keeps for correction.
+      feedback.set(!accepted && !resetOnFailure ? "Check the value and camera clipping range" : undefined);
+      return accepted;
+    };
     scrubFields.push({ label: text, input, build });
     const pending = { apply, displayed: "" };
     inputEdits.set(input, pending);
@@ -127,7 +146,7 @@ export function createPlacementGameCamera(options: {
     const escapeInput = (event: KeyboardEvent) => {
       if (event.code !== "Escape" || !options.live()) return;
       event.preventDefault(); event.stopPropagation();
-      try { options.previewInput(); sync(true); report(); }
+      try { options.previewInput(); sync(true); feedback.set(); report(); }
       catch (error) { report(error); }
     };
     input.addEventListener("keydown", escapeInput);
@@ -178,7 +197,7 @@ export function createPlacementGameCamera(options: {
   setUiText(lensHint, "Smaller view size zooms in. Perspective uses distance and field of view.");
   const gestureHint = document.createElement("p");
   setUiText(gestureHint, "Drag: orbit · Space/middle drag: pan · Wheel: zoom");
-  element.append(heading, hint, gestureHint, errorMessage, actions, form, zoom, lensHint, advanced);
+  element.append(heading, scope, hint, gestureHint, errorMessage, actions, form, zoom, lensHint, units, advanced);
   projection.addEventListener("change", () => edit(() => {
     const current = read(), next = projection.value;
     if (next !== "orthographic" && next !== "perspective") throw new Error("Unknown camera projection");
@@ -289,6 +308,7 @@ export function createPlacementGameCamera(options: {
       const range = ranges.get(name);
       if (reset || (document.activeElement !== input && document.activeElement !== range)) {
         input.value = value === undefined ? "" : String(value);
+        feedbacks.get(input)?.set();
         inputEdits.get(input)!.displayed = input.value;
         if (range) range.value = String(value);
       }

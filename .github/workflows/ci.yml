@@ -155,8 +155,8 @@ jobs:
         # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
         run: node tests/smoke/placement-village-smoke.mjs
 
-      - name: Placement camera, grid, locale and layer contracts
-        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers
+      - name: Placement camera, grid, locale, layer and command contracts
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage
 
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context

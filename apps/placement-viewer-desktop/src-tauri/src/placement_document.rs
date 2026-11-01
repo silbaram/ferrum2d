@@ -109,6 +109,7 @@ pub enum PlacementDesktopError {
     },
     InvalidDocumentPath(String),
     InvalidDocument(String),
+    SceneReadLimit,
     InvalidAssetFolderPath(String),
     InvalidProjectPath(String),
     InvalidHandoff(String),
@@ -149,6 +150,7 @@ impl fmt::Display for PlacementDesktopError {
             Self::InvalidDocument(detail) => {
                 write!(formatter, "invalid placement scene document: {detail}")
             }
+            Self::SceneReadLimit => write!(formatter, "placement scene read limit exceeded"),
             Self::InvalidAssetFolderPath(detail) => {
                 write!(formatter, "invalid placement asset folder path: {detail}")
             }
@@ -172,6 +174,7 @@ impl std::error::Error for PlacementDesktopError {
             Self::Json { source, .. } => Some(source),
             Self::InvalidDocumentPath(_) => None,
             Self::InvalidDocument(_) => None,
+            Self::SceneReadLimit => None,
             Self::InvalidAssetFolderPath(_) => None,
             Self::InvalidProjectPath(_) => None,
             Self::InvalidHandoff(_) => None,
@@ -249,6 +252,22 @@ pub fn list_placement_project_scenes(
     write_registry: State<'_, PlacementWriteRegistry>,
 ) -> CommandResult<scene_catalog::SceneCatalog> {
     scene_catalog::list_project_scenes(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn inspect_placement_project_scene(
+    project_path: String,
+    scene_document_path: String,
+    max_bytes: Option<usize>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<scene_catalog::SceneRead> {
+    scene_catalog::inspect_project_scene(
+        Path::new(&project_path),
+        Path::new(&scene_document_path),
+        &write_registry,
+        max_bytes,
+    )
 }
 
 fn load_placement_scene_document_inner(
@@ -495,29 +514,37 @@ fn write_agent_handoff(
 }
 
 fn read_scene_document(path: &Path) -> CommandResult<Value> {
+    match read_scene_document_snapshot(path, MAX_SCENE_DOCUMENT_BYTES as usize) {
+        Ok((document, _)) => Ok(document),
+        Err(PlacementDesktopError::SceneReadLimit) => Err(PlacementDesktopError::InvalidDocument(
+            "Document exceeds 2 MiB".into(),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_scene_document_snapshot(path: &Path, max_bytes: usize) -> CommandResult<(Value, usize)> {
     let file = fs::File::open(path).map_err(|source| PlacementDesktopError::Io {
         path: path.to_path_buf(),
         source,
     })?;
-    let mut source = String::new();
-    file.take(MAX_SCENE_DOCUMENT_BYTES + 1)
-        .read_to_string(&mut source)
+    let mut source = Vec::new();
+    file.take(max_bytes as u64 + 1)
+        .read_to_end(&mut source)
         .map_err(|source| PlacementDesktopError::Io {
             path: path.to_path_buf(),
             source,
         })?;
-    if source.len() as u64 > MAX_SCENE_DOCUMENT_BYTES {
-        return Err(PlacementDesktopError::InvalidDocument(
-            "Document exceeds 2 MiB".into(),
-        ));
+    if source.len() > max_bytes {
+        return Err(PlacementDesktopError::SceneReadLimit);
     }
     let document =
-        serde_json::from_str::<Value>(&source).map_err(|source| PlacementDesktopError::Json {
+        serde_json::from_slice::<Value>(&source).map_err(|source| PlacementDesktopError::Json {
             path: path.to_path_buf(),
             source,
         })?;
     validate_scene_document(&document)?;
-    Ok(document)
+    Ok((document, source.len()))
 }
 
 #[cfg(test)]

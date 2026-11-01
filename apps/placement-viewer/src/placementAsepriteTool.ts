@@ -16,6 +16,7 @@ import type {
   SceneSpriteNormalBindingEvidence,
 } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { createPlacementToolActions, createPlacementToolSteps, placementActionReason } from "./placementToolPanel";
 import { canUsePlacementAsset } from "./placementAssetScope";
 import { createPlacementAsepriteNormals } from "./placementAsepriteNormals";
 import {
@@ -165,7 +166,12 @@ export function createPlacementAsepriteTool(options: {
   diff.dataset.asepriteDiff = "true";
   diagnostics.dataset.asepriteDiagnostics = "true";
   preview.append(canvas, diff, diagnostics);
-  body.append(actions, status, hint, tabs.element);
+  const actionBar = createPlacementToolActions("aseprite", "Sprite import actions", [inspect, register, apply, reimport, applyAnimation, reimportAnimation, generateNormals, reimportNormals, applyPaired, reimportPaired, saveNormals, cancel, save, exportButton]);
+  const steps = createPlacementToolSteps("Sprite import progress"), reason = document.createElement("p"), scope = document.createElement("p");
+  reason.className = "placement-tool-reason"; scope.className = "placement-tool-scope";
+  setUiText(scope, "Project assets · Sprite import");
+  const help=document.createElement("details"),helpTitle=document.createElement("summary");setUiText(helpTitle,"Format and Limits");help.append(helpTitle,hint);
+  body.append(scope, steps.element, sourceFiles, tabs.element, status, reason, actionBar.element, help);
   element.append(summary, body);
   const assets =
       options.assets ??
@@ -467,7 +473,15 @@ export function createPlacementAsepriteTool(options: {
         : "Inspect a matching JSON and PNG export",
     );
     element.dataset.asepriteBusy = String(busy);
+    element.setAttribute("aria-busy", String(busy));
     element.dataset.asepriteReady = String(valid);
+    steps.select(valid ? 2 : d.json && d.png ? 1 : 0, busy);
+    setUiAttribute(cancel, "title", busy ? "Cancel" : "No import is running");
+    const primary = busy ? cancel : !valid ? inspect : !d.candidate!.uploaded ? register : !apply.disabled ? apply : !save.disabled ? save : exportButton;
+    actionBar.primary(primary);
+    placementActionReason(primary, primary.disabled ? !context.canEdit ? "Finish the current edit before using this tool" : !d.json || !d.png ? "Choose the source JSON and PNG first" : !valid ? "Inspect the current source files first" : "Select a compatible unlocked object or export the assets" : undefined, reason);
+    status.dataset.tone = d.importFailure ? "error" : busy ? "busy" : "info";
+    status.setAttribute("role", d.importFailure ? "alert" : "status");
   }
   async function paint() {
     const token = ++previewSerial,
@@ -503,6 +517,7 @@ export function createPlacementAsepriteTool(options: {
     }
   }
   function fields() {
+    actionBar.close();
     const d = draft();
     name.value = d.name;
     json.value = png.value = "";
@@ -572,6 +587,7 @@ export function createPlacementAsepriteTool(options: {
     stop();
     draft().name = name.value.trim();
     draft().dirty = true;
+    draft().importFailure = undefined;
     draft().status = uiMessage("Source changed · Inspect before applying");
     render();
   };
@@ -1086,6 +1102,7 @@ export function createPlacementAsepriteTool(options: {
     stop();
     disposed = true;
     importDiagnostics.clear();
+    actionBar.destroy();
     previewSerial++;
     assets.destroy();
     normals.destroy();

@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 
@@ -8,10 +9,10 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   async function source() { return JSON.parse((await exportFile("export-source", `-selection-${counter++}.pixel.json`)).bytes); }
   async function waitFrame() { await page.evaluate(() => new Promise(requestAnimationFrame)); }
   async function select(x0 = 0, y0 = 0, x1 = 1, y1 = 2) {
-    await action("tool-select").click(); await page.keyboard.press("Escape"); const a = await point(x0, y0), b = await point(x1, y1);
+    await clickPlacementToolAction(action("tool-select")); await page.keyboard.press("Escape"); const a = await point(x0, y0), b = await point(x1, y1);
     await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 2 }); await page.mouse.up(); await waitFrame();
   }
-  async function menu(key) { await controls.locator("summary").click(); await action(key).click(); await waitFrame(); }
+  async function menu(key) { await controls.locator("summary").click(); await clickPlacementToolAction(action(key)); await waitFrame(); }
   async function unchanged() { assert.deepEqual(await source(), baseline, "selection/cancel/Undo must preserve the complete source"); }
   const sample = (value, x, y) => [...Buffer.from(value.rgba, "base64").subarray((y * value.width + x) * 4, (y * value.width + x + 1) * 4)];
   await select();
@@ -34,7 +35,7 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   await action("rotate").focus(); await page.keyboard.press("Enter"); await waitFrame();
   assert.equal(await canvas.getAttribute("data-pixel-selection-pending"), "true", "Enter on Rotate transforms the preview without confirming");
   assert.equal(JSON.parse(await canvas.getAttribute("data-pixel-selection")).width, 3);
-  await action("selection-cancel").click(); await unchanged();
+  await clickPlacementToolAction(action("selection-cancel")); await unchanged();
   // Keyboard edits cannot commit or replace the target of a pointer gesture in progress.
   await select();
   const heldStart = await point(0, 0), heldEnd = await point(2, 1);
@@ -48,7 +49,7 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   await page.keyboard.press("Enter"); await waitFrame();
   assert(await action("export-source").isDisabled(), "Enter while dragging cannot commit the pointer gesture");
   await page.keyboard.press("Escape"); await page.mouse.up(); await unchanged();
-  await action("tool-select").click(); await page.keyboard.press("Escape");
+  await clickPlacementToolAction(action("tool-select")); await page.keyboard.press("Escape");
   const marqueeEnd = await point(1, 2);
   await page.mouse.move(heldStart.x, heldStart.y); await page.mouse.down(); await page.mouse.move(marqueeEnd.x, marqueeEnd.y);
   await page.keyboard.press("Control+x"); await page.keyboard.press("Escape"); await page.mouse.up(); await unchanged();
@@ -64,25 +65,25 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   }
   await select();
   await menu("flip-x"); assert(await action("selection-confirm").isVisible());
-  await action("selection-confirm").click(); const flipped = await source();
+  await clickPlacementToolAction(action("selection-confirm")); const flipped = await source();
   assert.deepEqual(sample(flipped, 0, 0), [0, 0, 0, 0]); assert.deepEqual(sample(flipped, 1, 0), [255, 0, 0, 255]);
   await canvas.focus(); await page.keyboard.press("Control+z"); await unchanged();
   await select(); await menu("rotate");
   assert.deepEqual(JSON.parse(await canvas.getAttribute("data-pixel-selection")), { x: 0, y: 0, width: 3, height: 2 });
   await page.keyboard.press("Enter"); const rotated = await source();
   assert.deepEqual(sample(rotated, 2, 0), [255, 0, 0, 255]); assert.deepEqual(sample(rotated, 0, 0), [0, 0, 0, 0]);
-  await action("undo").click(); await unchanged();
+  await clickPlacementToolAction(action("undo")); await unchanged();
   await select(); await canvas.focus(); await page.keyboard.press("Control+c"); await page.keyboard.press("Control+v");
   await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter");
   const pasted = await source(); assert.deepEqual(sample(pasted, 0, 0), [255, 0, 0, 255]); assert.deepEqual(sample(pasted, 2, 1), [255, 0, 0, 255]);
-  await action("undo").click(); await unchanged();
+  await clickPlacementToolAction(action("undo")); await unchanged();
   await select(); await canvas.focus(); await page.keyboard.press("Control+x");
-  assert.deepEqual(sample(await source(), 0, 0), [0, 0, 0, 0]); await action("undo").click(); await unchanged();
+  assert.deepEqual(sample(await source(), 0, 0), [0, 0, 0, 0]); await clickPlacementToolAction(action("undo")); await unchanged();
   await canvas.focus(); await page.keyboard.press("Control+a"); await page.keyboard.press("ArrowLeft");
   assert.match(await controls.locator("output").textContent(), /clipped/);
   await page.evaluate(() => window.dispatchEvent(new Event("blur"))); await unchanged();
   const retained = await canvas.getAttribute("data-pixel-selection");
-  await action("tool-pan").click(); await action("tool-select").click(); await waitFrame();
+  await clickPlacementToolAction(action("tool-pan")); await clickPlacementToolAction(action("tool-select")); await waitFrame();
   assert.equal(await canvas.getAttribute("data-pixel-selection"), retained, "returning from pan preserves the selection");
   await canvas.hover(); await page.mouse.wheel(0, -100); await waitFrame();
   const panStart = await point(3, 3); await canvas.focus(); await page.keyboard.down("Space");
@@ -95,6 +96,6 @@ export async function smokePixelSelection(page, mode, run, { action, canvas, poi
   await page.screenshot({ path: resolve(run, mode + "-pixel-selection-ko-narrow.png"), fullPage: true });
   await controls.locator("summary").click(); await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator("[data-placement-language]").selectOption("en"); await canvas.focus(); await page.keyboard.press("Escape");
-  await action("tool-pencil").click(); await action("fit").click(); await unchanged();
+  await clickPlacementToolAction(action("tool-pencil")); await clickPlacementToolAction(action("fit")); await unchanged();
   return { marquee: true, deferredMove: true, cancelAndBlur: true, focusedControlEnter: true, pointerKeyboardIsolation: true, flipAndRotate: true, clipboard: true, oneUndo: true, clippedWarning: true, panZoomCoordinates: true, localeAndNarrow: true };
 }

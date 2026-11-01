@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -545,7 +546,7 @@ try {
         mimeType: "image/png",
         buffer: data.png,
       });
-      await action("inspect").click();
+      await clickPlacementToolAction(action("inspect"));
       await page.waitForFunction(
         () =>
           document.querySelector("[data-placement-aseprite-tool]").dataset
@@ -745,7 +746,7 @@ try {
       assert(await action("save").isDisabled());
       const first = fixture();
       await stage(first);
-      await action(animationMode ? "animation" : "apply").click();
+      await clickPlacementToolAction(action(animationMode ? "animation" : "apply"));
       await applied();
       if (normalMode) {
         reports.push(
@@ -800,7 +801,7 @@ try {
       await mkdir(assetRoot, { recursive: true });
       const conflict = join(assetRoot, id + ".json");
       await writeFile(conflict, "competing source");
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       await saveFailed();
       assert.equal(await readFile(conflict, "utf8"), "competing source");
       assert.equal((await imported())[0].persisted, false);
@@ -808,24 +809,24 @@ try {
       await unlink(conflict);
       // Native persistence completes, then a malformed host reply must still block scene save.
       corruptReply = true;
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       await saveFailed();
       corruptReply = false;
       assert.equal((await imported())[0].persisted, false);
       assert.deepEqual(JSON.parse(await readFile(scene)), initial);
       hold = true;
       held = false;
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       for (let i = 0; i < 100 && !held; i++)
         await new Promise((done) => setTimeout(done, 20));
       assert(held, "Native save was not held");
-      await action("cancel").click();
+      await clickPlacementToolAction(action("cancel"));
       hold = false;
       release();
       await page.waitForTimeout(100);
       assert.equal((await imported())[0].persisted, false);
       assert.deepEqual(JSON.parse(await readFile(scene)), initial);
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       await saveSucceeded();
       assert.equal((await imported())[0].persisted, true);
       if (animationMode) {
@@ -871,7 +872,7 @@ try {
       await reveal();
       const next = fixture(true);
       await stage(next);
-      await action(animationMode ? "reimport-animation" : "reimport").click();
+      await clickPlacementToolAction(action(animationMode ? "reimport-animation" : "reimport"));
       await applied();
       const newId = (await imported())[0].assetId;
       assert.notEqual(newId, id);
@@ -897,7 +898,7 @@ try {
       external.sceneComposition.fragments.main.instances[0].x += 17;
       await writeFile(scene, JSON.stringify(external));
       await reveal();
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       await saveFailed();
       assert.deepEqual(JSON.parse(await readFile(scene)), external);
       assert.equal((await imported())[0].persisted, true);
@@ -909,7 +910,7 @@ try {
       );
       await writeFile(scene, JSON.stringify(saved));
       await reveal();
-      await action("save").click();
+      await clickPlacementToolAction(action("save"));
       await saveSucceeded();
       const finalBytes = await readFile(scene);
       assert.equal(

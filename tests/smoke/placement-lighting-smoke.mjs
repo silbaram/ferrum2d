@@ -1,7 +1,7 @@
 import { smokeLightingUpgrade } from "./placement-lighting-upgrade-smoke.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { showPlacementMenu, openPlacementLightingAdvanced } from "./placement-panel-navigation.mjs";
 import { placementRegressionFixture, placementSpatialRegressionFixture } from "./placement-test-build.mjs";
 
 /** Real renderer/Wasm output, authored history and reachable View controls. */
@@ -18,7 +18,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
   const enabled=page.locator('[data-placement-lighting-toggle="enabled"]');
   const open=()=>showPlacementMenu(page,"lighting");
   const field=name=>page.locator(`[data-placement-lighting-field="${name}"]`);
-  const edit=async(name,value)=>{await open();await field(name).fill(String(value));await field(name).press("Enter");await paint();};
+  const edit=async(name,value)=>{await open();await openPlacementLightingAdvanced(field(name));await field(name).fill(String(value));await field(name).press("Enter");await paint();};
   const pixels=()=>page.evaluate(()=>{
     const canvas=document.querySelector("canvas.demo-canvas"), gl=canvas.getContext("webgl2"), bytes=new Uint8Array(canvas.width*canvas.height*4);
     gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,bytes);

@@ -1,3 +1,5 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,7 +36,7 @@ export async function smokeTileAssets({
       ),
     status = () => tool.locator("[data-tile-status]").textContent(),
     click = async (name) => {
-      await action(name).click();
+      await clickPlacementToolAction(action(name));
       await idle();
     },
     document = async () =>
@@ -127,12 +129,11 @@ export async function smokeTileAssets({
     );
     // Actual catalog frame placement uses the normal 2D/HD-2D placement workflow.
     await reveal();
-    await page
+    await choosePlacementAsset(page
       .locator("[data-placement-browser-asset]")
       .filter({ hasText: `(${kind})` })
       .filter({ hasText: "terrain.1" })
-      .first()
-      .click();
+      .first());
     const beforePlacement = await snapshot();
     if (mode === "hd2d") {
       await showPlacementInspector(page, "placement");
@@ -233,7 +234,7 @@ export async function smokeTileAssets({
         };
       });
     await pauseUpload();
-    await action("reimport").click();
+    await clickPlacementToolAction(action("reimport"));
     await wait(() => !!window.releaseTileUpload);
     await page.locator('button[data-placement-lock-instance="sprite"]').click();
     await page.evaluate(() => window.releaseTileUpload());
@@ -247,10 +248,10 @@ export async function smokeTileAssets({
     assert.deepEqual(await snapshot(), stable);
     assert.deepEqual(await resources(), stableResources);
     await pauseUpload();
-    await action("reimport").click();
+    await clickPlacementToolAction(action("reimport"));
     await wait(() => !!window.releaseTileUpload);
     await click("cancel");
-    await action("reimport").click();
+    await clickPlacementToolAction(action("reimport"));
     await page.evaluate(() => window.releaseTileUpload());
     await idle();
     assert.match(await status(), /^Applied/);
@@ -323,7 +324,7 @@ export async function smokeTileAssets({
     );
     await stage(kind, true);
     const downloading = page.waitForEvent("download");
-    await action("export").click();
+    await clickPlacementToolAction(action("export"));
     const exported = JSON.parse(
       await readFile(await (await downloading).path(), "utf8"),
     );

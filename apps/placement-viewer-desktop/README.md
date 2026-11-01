@@ -21,7 +21,17 @@ native 저장은 줄바꿈을 포함한 실제 UTF-8 직렬화 크기가 2 MiB�
 탐색 도중 읽지 못한 하위 경로는 최대 32개 `diagnostics`로 반환하며 정상 씬 목록을 유지한다. 루트 접근 실패는 오류로 반환한다.
 목록·문서 읽기 한도와 웹/폴더 입력 차이는 [씬 탐색기 사용법](../placement-viewer/README.md#프로젝트-씬-탐색기)을 따른다.
 
+공통 UI의 **에셋 → 에셋 사용처**는 같은 목록을 읽어 닫힌 씬의 참조도 표시한다.
+`inspect_placement_project_scene`은 Open Project로 허용한 프로젝트 `public/`의 regular JSON만 읽는다.
+숨김·assets·node_modules·dist·target 디렉터리·경로 이탈·symlink를 거절하고 기존 2 MiB 문서 한도/검증을 적용한다.
+일반 문서 열기의 `load_placement_scene_document`와 달리 scene 저장 allowlist를 추가하지 않는다.
+응답은 `path`·`document`·실제로 읽은 원본 UTF-8 `bytes`를 반환한다. 선택형 `maxBytes`로 남은 읽기 예산을 받으며 파일당 2 MiB를 넘기지 않는다.
+한도 초과는 `placement scene read limit exceeded` 오류로 구분한다. 프런트엔드/호스트는 함께 빌드한 버전을 사용한다.
+조회는 scene/catalog/원본 파일·GPU registry를 변경하지 않으며 별도 삭제 command가 없다.
+독립적인 사용처 재조회가 기존 씬 탐색기의 entry 출처를 지우지 않으므로 이전 목록의 씬을 열어도 native 저장 문맥을 유지한다.
+
 ## 버전 확인과 업데이트
+
 
 공통 UI의 **파일 → 버전 및 업데이트**에서 앱/내장 엔진과 열린 게임 프로젝트의 엔진을 따로 갱신한다.
 `updates.rs`는 Open Project 권한만 프로젝트 CLI에 전달하고, 앱 설치에는 공식 Tauri updater의 서명 검증을 사용한다.

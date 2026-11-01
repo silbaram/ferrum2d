@@ -10,7 +10,7 @@ import {
 } from "../../scripts/tools/pack-textures.mjs";
 import { sha256 } from "../../scripts/tools/sprite-normals-tool.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
-import { showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { showPlacementBottom, clickPlacementToolAction, inspectPlacementAsset } from "./placement-panel-navigation.mjs";
 import { animatedGif, animatedApng } from "./sprite-normal-media-fixtures.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
 
@@ -317,7 +317,7 @@ async function upload(name, buffer) {
   );
 }
 async function generate() {
-  await action("generate").click();
+  await clickPlacementToolAction(page, action("generate"));
   await wait(
     () =>
       document.querySelector("[data-placement-normal-tool]").dataset
@@ -348,7 +348,8 @@ try {
     "Run the smoke with the save-enabled UI build",
   );
   await showPlacementBottom(page, "assets");
-  await tool.locator("summary").click();
+  await tool.locator(":scope > summary").click();
+  await inspectPlacementAsset(page, page.locator('[data-placement-browser-asset="sprite:crate"]'));
   await page
     .getByRole("button", { name: "Generate Normal Crate", exact: true })
     .click();
@@ -358,7 +359,7 @@ try {
       ?.textContent.includes("crate.png"),
   );
   const original = await snapshot();
-  await action("expand").click();
+  await clickPlacementToolAction(page, action("expand"));
   if (integration) {
     const settings = tool.getByRole("tab", { name: "Settings", exact: true }),
       preview = tool.getByRole("tab", { name: "Preview", exact: true });
@@ -421,7 +422,7 @@ try {
       engine.loadAssets = load;
     };
   });
-  await action("apply").click();
+  await clickPlacementToolAction(page, action("apply"));
   await wait(() => !!globalThis.__finishNormalUpload);
   await page.evaluate(() => {
     globalThis.ferrumPlacementViewerSelect();
@@ -438,7 +439,7 @@ try {
     original.state.draftPatch,
   );
   await page.evaluate(() => globalThis.ferrumPlacementViewerSelect("sprite"));
-  await action("apply").click();
+  await clickPlacementToolAction(page, action("apply"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -476,7 +477,7 @@ try {
         textures: globalThis.__normalUiResources.textures.size,
         urls: globalThis.__normalUiResources.urls.size,
       }));
-    await action("apply").click();
+    await clickPlacementToolAction(page, action("apply"));
     await wait(() =>
       document
         .querySelector("[data-normal-status]")
@@ -497,7 +498,7 @@ try {
       "Partial upload leaked a texture or URL",
     );
     await page.evaluate(() => globalThis.__restoreNormalUpload());
-    await action("apply").click();
+    await clickPlacementToolAction(page, action("apply"));
     await wait(() =>
       document
         .querySelector("[data-normal-status]")
@@ -574,7 +575,7 @@ try {
     /generated assets/i,
   );
   const downloadPromise = page.waitForEvent("download");
-  await action("export").click();
+  await clickPlacementToolAction(page, action("export"));
   const download = await downloadPromise;
   await download.saveAs(resolve(run, "export.normal-assets.json"));
   const exported = JSON.parse(
@@ -625,7 +626,7 @@ try {
   });
   const stablePatch = JSON.stringify((await snapshot()).state.draftPatch);
   await upload("invalid.png", Buffer.from("invalid"));
-  await action("generate").click();
+  await clickPlacementToolAction(page, action("generate"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -637,11 +638,11 @@ try {
   );
   assert(await action("apply").isDisabled());
   await upload("large.png", sprite(1024));
-  await action("generate").click();
+  await clickPlacementToolAction(page, action("generate"));
   if (integration) {
     await action("cancel").focus();
     await page.keyboard.press("Enter");
-  } else await action("cancel").click();
+  } else await clickPlacementToolAction(page, action("cancel"));
   assert.match(
     await tool.locator("[data-normal-status]").textContent(),
     /Cancelled/,
@@ -651,10 +652,11 @@ try {
     stablePatch,
   );
   await upload("anim.gif", animatedGif());
+  if (!await tool.locator("[data-normal-advanced]").evaluate(n=>n.open)) await tool.locator("[data-normal-advanced] > summary").click();
   await tool.getByLabel("Export animation", { exact: true }).check();
   await tool.getByLabel("Loop animation").uncheck();
   await generate();
-  await action("apply").click();
+  await clickPlacementToolAction(page, action("apply"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -683,7 +685,7 @@ try {
     };
     globalThis.ferrumPlacementViewerSelect("sprite");
   });
-  await action("save").click();
+  await clickPlacementToolAction(page, action("save"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -691,7 +693,7 @@ try {
   );
   assert.equal(sceneSaves, 0);
   await page.evaluate(() => (globalThis.__normalHostMode = "corrupt"));
-  await action("save").click();
+  await clickPlacementToolAction(page, action("save"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -700,7 +702,7 @@ try {
   await page.evaluate(() => globalThis.ferrumPlacementViewerSaveDraft());
   assert.equal(sceneSaves, 0);
   await page.evaluate(() => (globalThis.__normalHostMode = "ok"));
-  await action("save").click();
+  await clickPlacementToolAction(page, action("save"));
   await wait(() =>
     document
       .querySelector("[data-normal-status]")
@@ -720,12 +722,13 @@ try {
   await wait(() => globalThis.ferrumPlacementWorkspaceMode === "2d");
   await showPlacementBottom(page, "assets");
   if ((await tool.getAttribute("open")) === null)
-    await tool.locator("summary").click();
+    await tool.locator(":scope > summary").click();
   assert.match(
     await tool.locator("[data-normal-source]").textContent(),
     /Choose/,
   );
   await upload("anim.apng", animatedApng());
+  if (!await tool.locator("[data-normal-advanced]").evaluate(n=>n.open)) await tool.locator("[data-normal-advanced] > summary").click();
   await tool.getByLabel("Export animation", { exact: true }).check();
   await generate();
   assert(await action("apply").isDisabled());
@@ -740,7 +743,7 @@ try {
   await wait(() => globalThis.ferrumPlacementWorkspaceMode === "2d");
   let budget;
   await upload("large.png", sprite(1024));
-  await action("generate").click();
+  await clickPlacementToolAction(page, action("generate"));
   await tab.click();
   await wait(() => globalThis.ferrumPlacementWorkspaceMode === "spatial");
   await page.waitForTimeout(250);
@@ -800,10 +803,10 @@ try {
         crypto.subtle.digest = digest;
       };
     });
-    await action("generate").click();
+    await clickPlacementToolAction(page, action("generate"));
     await wait(() => !!globalThis.__finishNormalHash);
     const beforeCancel = await snapshot();
-    await action("cancel").click();
+    await clickPlacementToolAction(page, action("cancel"));
     await page.evaluate(async () => {
       globalThis.__restoreNormalHash();
       globalThis.__finishNormalHash();
@@ -819,7 +822,7 @@ try {
       "Cancelled regeneration remained applicable",
     );
     await generate();
-    await action("apply").click();
+    await clickPlacementToolAction(page, action("apply"));
     await wait(() =>
       document
         .querySelector("[data-normal-status]")
@@ -833,7 +836,7 @@ try {
         .getByLabel("Generated asset name", { exact: true })
         .fill("budget" + i);
       const before = await snapshot();
-      await action("generate").click();
+      await clickPlacementToolAction(page, action("generate"));
       await wait(
         () =>
           document.querySelector("[data-placement-normal-tool]").dataset
@@ -849,7 +852,7 @@ try {
         );
         break;
       }
-      await action("apply").click();
+      await clickPlacementToolAction(page, action("apply"));
       await wait(() =>
         document
           .querySelector("[data-normal-status]")

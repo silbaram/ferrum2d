@@ -6,6 +6,7 @@ import { placementLightAnchor } from "./placementSpatialPose";
 import { lightingMood, lightingQuality, type LightingMood, type LightingQuality } from "./placementLightingPresets";
 import { createPlacementControlMenu } from "./placementControlMenu";
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
+import { createPlacementFieldFeedback } from "./placementToolPanel";
 
 type Draft = { spatial: true; environment: SpatialEnvironmentSpec; light: SpatialLightingSpec; bindings: Record<string,readonly number[]> }
   | { spatial: false; light: LightingScene2D };
@@ -26,6 +27,12 @@ export function createPlacementLighting(options: {
 }) {
   const menu = createPlacementControlMenu("lighting", "Lighting", "sun");
   menu.panel.classList.add("placement-lighting-panel");
+  const heading = document.createElement("h4"), scope = document.createElement("p"), units = document.createElement("p");
+  setUiText(heading, "Scene Lighting");
+  scope.className = units.className = "placement-tool-scope";
+  scope.dataset.placementLightingScope = "scene";
+  setUiText(scope, "Scene setting · Lighting in the viewport and game");
+  setUiText(units, "Position and radius: world units · Strength: relative value");
   const hint = document.createElement("p"), message = document.createElement("p");
   message.className = "placement-lighting-error";
   message.setAttribute("role", "alert"); message.hidden = true;
@@ -72,9 +79,10 @@ export function createPlacementLighting(options: {
   }));
   const pointActions = document.createElement("div"); pointActions.className = "placement-lighting-actions";
   pointActions.append(addPoint, removePoint); points.append(pointIndex, pointActions, pointForm);
-  form.append(master.row, ambient, hemisphere, sun, points); menu.panel.append(hint, message, form);
-  const fields: Array<{ input: HTMLInputElement; read(d: Draft): string | number; row: HTMLElement; apply(): boolean; visible?(d: Draft): boolean }> = [];
+  form.append(master.row, ambient, hemisphere, sun, points); menu.panel.append(heading, scope, hint, message, form, units);
+  const fields: Array<{ input: HTMLInputElement; read(d: Draft): string | number; row: HTMLElement; feedback: ReturnType<typeof createPlacementFieldFeedback>; apply(): boolean; visible?(d: Draft): boolean }> = [];
   let state = options.viewer.state(), nativeSunSignature = "";
+  let feedbackDocument = options.key();
   const selectedPoints = new Map<string, number>();
   const selectedIndex = () => selectedPoints.get(options.key()) ?? 0;
   pointIndex.addEventListener("change", () => { selectedPoints.set(options.key(), Number(pointIndex.value)); gizmos.select(); options.clearSelection(); sync(options.viewer.state()); });
@@ -206,6 +214,25 @@ export function createPlacementLighting(options: {
     d.light.maxActiveLights??=4;
   }));
 
+  // Reparent existing controls. Validation, transactions and light binding stay
+  // with their original owners; expanding a group never changes the scene.
+  for (const [id, parent, names] of [
+    ["atmosphere", atmosphere, ["light-budget", "bloom-strength", "bloom-radius", "bloom-threshold", "ao-strength", "ao-radius", "ao-bias"]],
+    ["sun", sunForm, ["sun-normal-bias", "shadow-coverage"]],
+    ["point", pointForm, ["point-normal-bias", "spot-x", "spot-y", "spot-elevation", "spot-angle", "spot-penumbra"]],
+  ] as const) {
+    const details = document.createElement("details"), summary = document.createElement("summary");
+    details.className = "placement-tool-advanced";
+    details.dataset.placementLightingAdvanced = id;
+    setUiText(summary, "Advanced Lighting"); details.append(summary);
+    if (id === "atmosphere") details.append(qualitySelect, budgetStatus);
+    for (const name of names) {
+      const row = fields.find(field => field.input.dataset.placementLightingField === name)?.row;
+      if (row) details.append(row);
+    }
+    parent.append(details);
+  }
+
   function draft(): Draft {
     if (state.spatial) {
       const environment = structuredClone(state.spatial.environment ?? {});
@@ -244,20 +271,23 @@ export function createPlacementLighting(options: {
     const row = document.createElement("label"), text = document.createElement("span"), input = document.createElement("input");
     setUiText(text, label); input.type = type; input.dataset.placementLightingField = name;
     setUiAttribute(input, "aria-label", label); row.append(text, input); parent.append(row);
+    const feedback = createPlacementFieldFeedback(input); row.append(feedback.element);
     const apply = () => {
       if (!input.validity.valid || (type === "number" && !Number.isFinite(input.valueAsNumber))) {
+        feedback.set(uiMessage("Enter a valid value ({0}–{1})", input.min, input.max));
         setUiText(message, "Enter a valid light value"); message.hidden = false; return false;
       }
+      feedback.set();
       const accepted = String(read(draft()));
       if (type === "number" ? Number(input.value) === Number(accepted) : input.value === accepted) { message.hidden = true; return true; }
       return change(d => write(d, input.value));
     };
-    fields.push({ row, input, read, visible, apply });
+    fields.push({ row, input, read, visible, apply, feedback });
     input.addEventListener("change", apply);
     input.addEventListener("keydown", event => {
       if (event.code === "Enter") { event.preventDefault(); event.stopPropagation(); input.dispatchEvent(new Event("change")); }
       if (event.code === "Escape" && (input.value !== String(read(draft())) || !message.hidden)) {
-        event.preventDefault(); event.stopPropagation(); input.value = String(read(draft())); message.hidden = true;
+        event.preventDefault(); event.stopPropagation(); input.value = String(read(draft())); message.hidden = true; feedback.set();
       }
     });
     return input;
@@ -283,6 +313,8 @@ export function createPlacementLighting(options: {
     }, (d, hex) => write(d, [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255) as [number, number, number]));
   }
   function sync(next: ScenePlacementViewerState) {
+    const documentChanged = feedbackDocument !== options.key();
+    if (documentChanged) { feedbackDocument = options.key(); message.hidden = true; }
     state = next;
     gizmos.sync(next);
     const light = state.lighting, sun = !state.spatial && light?.enabled !== false ? light?.directionalLight : undefined;
@@ -320,7 +352,7 @@ export function createPlacementLighting(options: {
     addPoint.disabled = total >= (d.spatial ? 16 : 32);
     for (const f of fields) {
       f.row.hidden = f.visible ? !f.visible(d) : false;
-      if (document.activeElement !== f.input) f.input.value = String(f.read(d));
+      if (documentChanged || document.activeElement !== f.input) { f.input.value = String(f.read(d)); f.feedback.set(); }
       if (f.input.dataset.placementLightingField === "ambient" || f.input.dataset.placementLightingField === "sun-intensity") f.input.max = String(d.spatial ? f.input.dataset.placementLightingField === "ambient" ? 4 : 64 : 1);
     }
     shadows.input.checked = d.spatial ? d.light.shadows?.lightIndex === index : typeof d.light.shadows === "object" ? d.light.shadows.enabled !== false : d.light.shadows === true;

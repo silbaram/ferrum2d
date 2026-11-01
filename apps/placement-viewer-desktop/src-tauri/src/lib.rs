@@ -42,6 +42,7 @@ pub fn run() {
             placement_document::load_placement_project_folder,
             placement_document::load_placement_scene_document,
             placement_document::list_placement_project_scenes,
+            placement_document::inspect_placement_project_scene,
             placement_document::load_placement_aseprite_assets,
             placement_document::load_placement_pixel_assets,
             placement_document::save_placement_pixel_assets,

@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -8,12 +9,12 @@ export async function smokePixelLayers(page,mode,run) {
   const workspace=page.locator('#placement-pixel-workspace');
   const action=name=>workspace.locator('[data-pixel-action="'+name+'"]');
   const layerAction=name=>workspace.locator('[data-pixel-layer-action="'+name+'"]');
-  await page.locator('[data-pixel-action="new"]').click();
+  await clickPlacementToolAction(page.locator('[data-pixel-action="new"]'));
   const dialog=page.locator('dialog[open]');
   await dialog.getByLabel('Pixel Name',{exact:true}).fill('layered-sprite');
   await dialog.getByLabel('Pixel Width',{exact:true}).fill('8');
   await dialog.getByLabel('Pixel Height',{exact:true}).fill('8');
-  await dialog.locator('[data-pixel-action="create"]').click();
+  await clickPlacementToolAction(dialog.locator('[data-pixel-action="create"]'));
   await workspace.waitFor({state:'visible'});
   const canvas=workspace.locator('canvas');
   async function click(x,y) {
@@ -25,7 +26,7 @@ export async function smokePixelLayers(page,mode,run) {
   async function exported(kind,suffix) {
     const menu=workspace.locator('.placement-pixel-export-menu');
     if(!await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-    const pending=page.waitForEvent('download');await action(kind).click();const file=await pending;
+    const pending=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const file=await pending;
     const path=join(run,mode+'-layers-'+suffix);await file.saveAs(path);
     if(await menu.evaluate(e=>e.open))await menu.locator('summary').click();
     return await readFile(path);
@@ -37,7 +38,7 @@ export async function smokePixelLayers(page,mode,run) {
   }
   assert(await layerAction('remove').isDisabled());
   await workspace.locator('[data-pixel-color]').fill('#0000ff');await workspace.locator('[data-pixel-alpha]').fill('255');
-  await action('tool-fill').click();await click(1,1);
+  await clickPlacementToolAction(action('tool-fill'));await click(1,1);
   assert.equal((await source('legacy')).version,1);
   await layerAction('add').click();
   const top=await workspace.locator('[data-pixel-layer-select][aria-pressed=true]').getAttribute('data-pixel-layer-select');
@@ -45,8 +46,8 @@ export async function smokePixelLayers(page,mode,run) {
   await click(1,1);
   await workspace.locator('[data-pixel-layer-name]').fill('Armor');await workspace.locator('[data-pixel-layer-name]').press('Enter');
   const renamed=await source('renamed');assert.equal(renamed.layers[1].name,'Armor');
-  await action('undo').click();assert.notEqual((await source('rename-undo')).layers[1].name,'Armor');
-  await action('redo').click();assert.equal((await source('rename-redo')).layers[1].name,'Armor');
+  await clickPlacementToolAction(action('undo'));assert.notEqual((await source('rename-undo')).layers[1].name,'Armor');
+  await clickPlacementToolAction(action('redo'));assert.equal((await source('rename-redo')).layers[1].name,'Armor');
   const baseSelect=workspace.locator('[data-pixel-layer-select="'+renamed.layers[0].id+'"]');
   const topSelect=workspace.locator('[data-pixel-layer-select="'+top+'"]'),name=workspace.locator('[data-pixel-layer-name]');
   await baseSelect.focus();await baseSelect.press('Enter');

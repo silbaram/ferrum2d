@@ -1,3 +1,4 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
 import {
   showPlacementInspector,
   showPlacementBottom,
@@ -256,7 +257,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
         .count(),
     );
     await page.selectOption("[data-placement-asset-filter]", "all");
-    await page.locator('[data-placement-browser-asset="sprite:crate"]').click();
+    await choosePlacementAsset(page.locator('[data-placement-browser-asset="sprite:crate"]'));
     await showPlacementInspector(page, "placement");
     await page.locator("[data-placement-spatial-repeat]").check();
     await page.locator("[data-placement-spatial-add-rotation]").fill("30");
@@ -278,7 +279,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     assert.equal(
       await page
         .locator('[data-placement-browser-asset="sprite:crate"]')
-        .getAttribute("aria-pressed"),
+        .getAttribute("data-selected"),
       "true",
     );
     assert.match(
@@ -345,13 +346,18 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     await page.locator("[data-placement-spatial-repeat]").uncheck();
     await showPlacementInspector(page, "placement");
     await page.locator("[data-placement-spatial-new-id]").fill("new_model");
-    await modelButton.click();
-    await paint();
+    await choosePlacementAsset(page, modelButton);
+    await wait(() => !document.querySelector(".demo-shell").inert && !document.querySelector("[data-placement-tool-cancel]").hidden);
 
     await place({ x: 70, y: -40, elevation: 0 });
     await wait(
       () => !!globalThis.ferrumPlacementViewerState.spatial?.models.new_model,
     );
+    await showPlacementInspector(page);
+    const propertySearch = page.locator('.placement-inspector:visible [data-placement-property-search]');
+    await propertySearch.fill('Model Yaw');
+    assert(await page.locator('.placement-inspector:visible [data-placement-spatial-field="yaw"]').isVisible(),'Property search follows the current model caption');
+    await propertySearch.fill('');
     await detail("Collision Proxy");
     const visualElevation = await page.evaluate(
       () =>
@@ -600,7 +606,8 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
         .textContent.includes("changes detected"),
     );
     assert.deepEqual(await snapshot(), beforeImport);
-    await modelButton.click();
+    await choosePlacementAsset(page, modelButton);
+    assert(await page.locator("[data-placement-tool-cancel]").isVisible());
     await page.locator("[data-placement-apply-assets]").click();
     await wait(
       () =>
@@ -684,7 +691,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     await page.locator("[data-placement-add-rotation]").fill("45");
     await page.locator("[data-placement-add-scale]").fill("2");
     await page.locator("[data-placement-repeat]").check();
-    await page.locator('[data-placement-browser-asset="sprite:crate"]').click();
+    await choosePlacementAsset(page.locator('[data-placement-browser-asset="sprite:crate"]'));
     const canvas = await page.locator("canvas.demo-canvas").boundingBox();
     const previousCount = await count();
     await page.mouse.click(
@@ -729,7 +736,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     );
     assert.deepEqual(await snapshot(), beforeTexture);
     await page.locator("[data-placement-watch-assets]").uncheck();
-    await page.locator('[data-placement-browser-asset="sprite:crate"]').click();
+    await choosePlacementAsset(page.locator('[data-placement-browser-asset="sprite:crate"]'));
     await page.locator("[data-placement-apply-assets]").click();
     await wait(
       () =>
@@ -750,7 +757,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     assert.equal(
       await page
         .locator('[data-placement-browser-asset="sprite:crate"]')
-        .getAttribute("aria-pressed"),
+        .getAttribute("data-selected"),
       "false",
     );
     assert.deepEqual(errors, []);

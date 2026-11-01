@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
-import { showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { showPlacementMenu, openPlacementLightingAdvanced } from "./placement-panel-navigation.mjs";
 
 export async function smokeLightingUpgrade(page) {
   const open=()=>showPlacementMenu(page,"lighting"), source=()=>page.evaluate(()=>window.ferrumPlacementSpatialExportDocument());
   const paint=()=>page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
-  const edit=async(name,value)=>{await open();const input=page.locator(`[data-placement-lighting-field="${name}"]`);await input.fill(String(value));await input.press("Enter");await paint();};
+  const edit=async(name,value)=>{await open();const input=page.locator(`[data-placement-lighting-field="${name}"]`);await openPlacementLightingAdvanced(input);await input.fill(String(value));await input.press("Enter");await paint();};
   const original=await source(),lights=original.spatial.environment.lighting.lights;
   for(const mood of ["Day","Sunset","Night","Interior"]){
     await open();await page.locator('[data-placement-lighting-preset="Atmosphere Preset"]').selectOption(mood);await paint();
     const doc=await source();assert.deepEqual(doc.spatial.environment.lighting.lights,lights);assert(doc.spatial.environment.bloom);assert(doc.spatial.environment.ambientOcclusion);
     assert.equal(doc.spatial.environment.colorGrading.toneMapping,"aces");
   }
-  await open();await page.locator('[data-placement-lighting-preset="Lighting Quality"]').selectOption("Low");await paint();
+  await open();await openPlacementLightingAdvanced(page.locator('[data-placement-lighting-preset="Lighting Quality"]'));await page.locator('[data-placement-lighting-preset="Lighting Quality"]').selectOption("Low");await paint();
   assert.equal((await source()).spatial.environment.lighting.maxActiveLights,1);assert.equal((await source()).spatial.environment.bloom,undefined);
-  await page.locator('[data-placement-lighting-preset="Lighting Quality"]').selectOption("High");await paint();
+  await openPlacementLightingAdvanced(page.locator('[data-placement-lighting-preset="Lighting Quality"]'));await page.locator('[data-placement-lighting-preset="Lighting Quality"]').selectOption("High");await paint();
   assert.equal((await source()).spatial.environment.lighting.maxActiveLights,4);
   await page.locator('[data-placement-lighting-toggle="spot"]').check();await edit("spot-angle",55);await edit("spot-penumbra",.4);
   await edit("point-x",0);await edit("point-y",0);await edit("point-elevation",64);

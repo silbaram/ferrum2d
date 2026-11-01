@@ -1,24 +1,9 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { createPlacementControlMenu } from "./placementControlMenu";
 import { decorateViewportAction } from "./placementViewportChrome";
-type Dock = "scene" | "inspector" | "runtime";
-type Layout = {
-  scene: number;
-  inspector: number;
-  runtime: number;
-  hidden: Dock[];
-};
-const DEFAULTS: Layout = {
-  scene: 240,
-  inspector: 320,
-  runtime: 168,
-  hidden: [],
-};
-const LIMITS = {
-  scene: [160, 400],
-  inspector: [240, 480],
-  runtime: [64, 280],
-} as const;
+import { WORKSPACE_PRESETS, WORKSPACE_LIMITS as LIMITS, clampWorkspaceSize as clamp,
+  defaultWorkspaceLayout, readWorkspacePreferences, serializeWorkspacePresets,
+  type WorkspaceDock as Dock, type WorkspacePreset } from "./placementWorkspacePreferences";
 const LABELS = {
   scene: "Scene",
   inspector: "Inspector",
@@ -29,11 +14,19 @@ const LABELS = {
 export function installPlacementWorkspaceLayout(
   root: HTMLElement,
   projectKey: string,
+  options: { canChange(): boolean } = { canChange: () => true },
 ) {
   const storageKey = `ferrum.placement.layout.v1:${projectKey}`;
-  let layout = loadLayout(storageKey);
+  const presetsKey = `ferrum.placement.layout-presets.v1:${projectKey}`;
+  const runtimeTabs = '.placement-runtime-dock > .placement-panel-tabs > .placement-panel-tablist > [data-placement-panel-tab]';
+  const read = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+  const preferences = readWorkspacePreferences(read(storageKey), read(presetsKey));
+  let layout = preferences.layouts[preferences.active];
   let focused = false;
-  let compactPanel: Dock | undefined;
+  const defaultPanel = (): Dock | undefined => preferences.active === "scene" ? "scene" : preferences.active === "custom" ? undefined : "runtime";
+  const defaultTab = () => preferences.active === "assets" ? "assets" : preferences.active === "review" ? "runtime" : undefined;
+  let compactPanel: Dock | undefined = defaultPanel();
+  const sessions = new Map<WorkspacePreset, { focused: boolean; compactPanel?: Dock; runtimeTab?: string }>();
   let returnFocus: HTMLElement | undefined;
   const compact = () => root.clientWidth <= 860;
   const viewportTab = document.createElement("button"),
@@ -73,6 +66,46 @@ export function installPlacementWorkspaceLayout(
   controls.className = "placement-layout-controls";
   setUiAttribute(controls, "aria-label", "Workspace panels");
   const layoutMenu = createPlacementControlMenu("layout", "Layout", "layout");
+  const presets = document.createElement("fieldset"), legend = document.createElement("legend"), hint = document.createElement("p");
+  presets.className = "placement-layout-presets";
+  setUiText(legend, "Task Layouts"); setUiText(hint, "View mode and playback stay unchanged");
+  presets.append(legend);
+  const presetButtons = new Map<WorkspacePreset, HTMLButtonElement>();
+  for (const { id, label } of WORKSPACE_PRESETS) {
+    const button = document.createElement("button"); button.type = "button";
+    button.dataset.placementLayoutPreset = id; setUiText(button, label);
+    button.addEventListener("click", () => {
+      if (drag || root.inert || !options.canChange()) return;
+      if (preferences.active !== id) {
+        sessions.set(preferences.active, { focused, compactPanel,
+          runtimeTab: root.querySelector<HTMLElement>(runtimeTabs + '[aria-selected="true"]')?.dataset.placementPanelTab });
+        preferences.active = id; layout = preferences.layouts[id];
+        const session = sessions.get(id);
+        focused = session?.focused ?? false;
+        compactPanel = session ? session.compactPanel : defaultPanel();
+        const tab = session?.runtimeTab ?? defaultTab();
+        sync(false); persistPreferences(false); selectRuntimeTab(tab);
+      }
+      layoutMenu.close(true);
+    });
+    presetButtons.set(id, button); presets.append(button);
+  }
+  presets.append(hint); layoutMenu.panel.append(presets);
+  function selectRuntimeTab(id?: string) {
+    const tab = [...root.querySelectorAll<HTMLButtonElement>(runtimeTabs)]
+      .find(button => button.dataset.placementPanelTab === id);
+    if (tab && !tab.disabled) tab.click();
+  }
+  function refreshPresets() {
+    const blocked = !!drag || root.inert || !options.canChange();
+    for (const [id, button] of presetButtons) {
+      button.setAttribute("aria-pressed", String(preferences.active === id));
+      button.disabled = blocked;
+    }
+    reset.disabled = blocked;
+  }
+  layoutMenu.element.addEventListener("toggle", refreshPresets);
+  layoutMenu.summary.addEventListener("click", refreshPresets);
   const panelToggles = document.createElement("div");
   panelToggles.className = "placement-panel-toggles";
   layoutMenu.panel.append(panelToggles);
@@ -215,10 +248,13 @@ export function installPlacementWorkspaceLayout(
   setUiText(reset, "Reset Layout");
   reset.dataset.placementAction = "reset-layout";
   reset.addEventListener("click", () => {
-    layout = { ...DEFAULTS, hidden: [] };
+    if (drag || root.inert || !options.canChange()) return;
+    layout = preferences.layouts[preferences.active] = defaultWorkspaceLayout(preferences.active);
     focused = false;
-    compactPanel = undefined;
+    compactPanel = defaultPanel();
+    sessions.delete(preferences.active);
     sync(true);
+    selectRuntimeTab(defaultTab());
   });
   layoutMenu.panel.append(focus, reset);
   controls.append(panelToggles, layoutMenu.element);
@@ -266,6 +302,7 @@ export function installPlacementWorkspaceLayout(
     if (!event.persisted) observer.disconnect();
   });
   function sync(persist: boolean) {
+    refreshPresets();
     const width = root.clientWidth;
     const isCompact = compact();
     root.dataset.compact = String(isCompact);
@@ -419,20 +456,24 @@ export function installPlacementWorkspaceLayout(
         focused,
         compact: isCompact,
         compactPanel: compactPanel ?? "none",
+        preset: preferences.active,
       },
     });
-    if (persist) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(layout));
-      } catch {
-        /* Storage may be unavailable. */
-      }
-    }
+    if (persist) persistPreferences(true);
+  }
+  function persistPreferences(includeCustom: boolean) {
+    try {
+      if (includeCustom && preferences.active === "custom") localStorage.setItem(storageKey, JSON.stringify(layout));
+      localStorage.setItem(presetsKey, serializeWorkspacePresets(preferences));
+    } catch { /* Storage may be unavailable. */ }
   }
   sync(false);
+  selectRuntimeTab(defaultTab());
   return {
     controls,
     sync: () => sync(false),
+    refreshAvailability: refreshPresets,
+    ownsGesture: () => drag !== undefined,
     reveal(dock: Dock) {
       if (compact()) compactPanel = dock;
       else {
@@ -442,31 +483,4 @@ export function installPlacementWorkspaceLayout(
       sync(false);
     },
   };
-}
-
-function clamp(dock: Dock, value: number) {
-  return Math.max(
-    LIMITS[dock][0],
-    Math.min(LIMITS[dock][1], Math.round(value)),
-  );
-}
-function loadLayout(key: string): Layout {
-  const layout = { ...DEFAULTS, hidden: [] as Dock[] };
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
-    if (!value || typeof value !== "object") return layout;
-    for (const dock of ["scene", "inspector", "runtime"] as const) {
-      const size: unknown = Reflect.get(value, dock);
-      if (typeof size === "number" && Number.isFinite(size))
-        layout[dock] = clamp(dock, size);
-    }
-    const hidden: unknown = Reflect.get(value, "hidden");
-    if (Array.isArray(hidden))
-      layout.hidden = (["scene", "inspector", "runtime"] as const).filter(
-        (dock) => hidden.includes(dock),
-      );
-  } catch {
-    /* Malformed preferences use defaults. */
-  }
-  return layout;
 }

@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -23,7 +24,7 @@ export async function smokePixelOnion(page,mode,run,original,restorePath) {
   async function exported(kind,suffix) {
     const exports=workspace.locator('.placement-pixel-export-menu');
     if(!await exports.evaluate(e=>e.open))await exports.locator('summary').click();
-    const pending=page.waitForEvent('download');await action(kind).click();const download=await pending;
+    const pending=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const download=await pending;
     const path=join(run,mode+'-onion-'+suffix);await download.saveAs(path);
     if(await exports.evaluate(e=>e.open))await exports.locator('summary').click();
     return await readFile(path);
@@ -64,21 +65,21 @@ export async function smokePixelOnion(page,mode,run,original,restorePath) {
   assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false');assert(await action('undo').isDisabled());
   assert.deepEqual(await exported('export-source','view-only.pixel.json'),sourceBefore);
   assert.deepEqual(await exported('export-png','view-only.png'),pngBefore,'view settings cannot enter PNG output');
-  await action('tool-eyedropper').click();await click(1,2);
+  await clickPlacementToolAction(action('tool-eyedropper'));await click(1,2);
   assert.equal(await workspace.locator('[data-pixel-alpha]').inputValue(),'0','picker samples the editing frame, never the ghost');
-  await workspace.locator('[data-pixel-color]').fill('#ffffff');await workspace.locator('[data-pixel-alpha]').fill('255');await action('tool-pencil').click();await click(1,2);
+  await workspace.locator('[data-pixel-color]').fill('#ffffff');await workspace.locator('[data-pixel-alpha]').fill('255');await clickPlacementToolAction(action('tool-pencil'));await click(1,2);
   const painted=JSON.parse(await exported('export-source','painted.pixel.json')),before=JSON.parse(sourceBefore);
   assert.deepEqual(painted.frames[0],before.frames[0]);assert.deepEqual(painted.frames[2],before.frames[2]);
   const current=Buffer.from(painted.frames[1].cels[0].rgba,'base64');assert.deepEqual([...current.subarray((2*8+1)*4,(2*8+1)*4+4)],[255,255,255,255]);
   assert.deepEqual(painted.frames[1].cels[1],before.frames[1].cels[1]);
-  await action('undo').click();assert.deepEqual(await exported('export-source','paint-undo.pixel.json'),sourceBefore);
+  await clickPlacementToolAction(action('undo'));assert.deepEqual(await exported('export-source','paint-undo.pixel.json'),sourceBefore);
   await openSettings();await setting('enabled').uncheck();await setting('enabled').check();
   assert(await action('redo').isEnabled(),'view toggles preserve pixel Redo');assert(await action('undo').isDisabled());
   await menu.locator('summary').click();
   const locked=workspace.locator('[data-pixel-layer-locked="'+base+'"]'),visible=workspace.locator('[data-pixel-layer-visible="'+base+'"]');
-  const prior=await pixels();await locked.check();assert.deepEqual(await pixels(),prior,'locked layers still contribute to view');await action('undo').click();
+  const prior=await pixels();await locked.check();assert.deepEqual(await pixels(),prior,'locked layers still contribute to view');await clickPlacementToolAction(action('undo'));
   await visible.uncheck();const hiddenPixels=await pixels();assert.deepEqual(hiddenPixels.previous,baseline.previous);assert.deepEqual(hiddenPixels.next,baseline.next);
-  await action('undo').click();assert.deepEqual(await pixels(),prior,'Undo invalidates all cached composites');
+  await clickPlacementToolAction(action('undo'));assert.deepEqual(await pixels(),prior,'Undo invalidates all cached composites');
   await panel.locator('[data-pixel-frame-action=left]').click();const reordered=await pixels();
   assert(reordered.previous[2]>reordered.previous[0]+30,'reordered next frame changes ghost tint');assert.deepEqual(reordered.next,baseline.next);
   await page.keyboard.press('Control+z');assert.deepEqual(await pixels(),prior);
@@ -87,7 +88,7 @@ export async function smokePixelOnion(page,mode,run,original,restorePath) {
   await select(ids[0]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'next'}]);assert.deepEqual((await pixels()).next,baseline.next,'first frame never wraps to last');
   await select(ids[2]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'previous'}]);assert.deepEqual((await pixels()).previous,baseline.previous,'last frame never wraps to first');
   await select(ids[1]).click();
-  await action('zoom-in').click();assert.deepEqual(await pixels(),prior,'ghost aligns after zoom');
+  await clickPlacementToolAction(action('zoom-in'));assert.deepEqual(await pixels(),prior,'ghost aligns after zoom');
   const bounds=await canvas.boundingBox();await canvas.focus();await page.keyboard.down('Space');
   await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+24,bounds.y+bounds.height/2+12);await page.mouse.up();await page.keyboard.up('Space');
   assert.deepEqual(await pixels(),prior,'ghost aligns after pan at either DPR');
@@ -103,7 +104,7 @@ export async function smokePixelOnion(page,mode,run,original,restorePath) {
   try{assert.deepEqual(await previewSample.jsonValue(),baseline,'preview hides ghosts on an actual rendered editing frame');}finally{await previewSample.dispose();}
   await menu.locator('summary').focus();await menu.locator('summary').press('Escape');
   assert.equal(await panel.getAttribute('data-pixel-playing'),'false','Escape from a closed menu still stops preview');assert.deepEqual(await pixels(),prior);
-  await action('back').click();await workspace.waitFor({state:'hidden'});await page.locator('[data-placement-document-key="ferrum:pixel-document"]').click();await workspace.waitFor({state:'visible'});
+  await clickPlacementToolAction(action('back'));await workspace.waitFor({state:'hidden'});await page.locator('[data-placement-document-key="ferrum:pixel-document"]').click();await workspace.waitFor({state:'visible'});
   assert(await setting('enabled').isChecked());assert.equal(await opacity.inputValue(),'50');assert.deepEqual(await pixels(),prior);
   assert.deepEqual(await exported('export-source','after.pixel.json'),sourceBefore);assert.deepEqual(await exported('export-png','after.png'),pngBefore);
   await openSettings();await page.locator('[data-placement-language]').selectOption('ko');await page.setViewportSize({width:390,height:840});

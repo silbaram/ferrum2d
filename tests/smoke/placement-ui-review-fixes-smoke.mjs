@@ -1,3 +1,4 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
 import { clickPlacementControl, showPlacementInspector } from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -41,7 +42,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     );
     assert.equal(
       await page
-        .locator('[data-placement-browser-asset][aria-pressed="true"]')
+        .locator('[data-placement-browser-asset][data-selected="true"]')
         .count(),
       0,
     );
@@ -84,7 +85,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     await page.locator('[data-placement-mode="2d"]').click();
     for (const mode of ["spatial", "game"]) {
       const before = await snapshot();
-      await page.locator(card).click();
+      await choosePlacementAsset(page.locator(card));
       await page.locator(`[data-placement-mode="${mode}"]`).click();
       await idle();
       await page.locator('[data-placement-mode="2d"]').click();
@@ -100,7 +101,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     await showPlacementInspector(page, "placement");
     // Changing the live asset/settings must invalidate the captured ghost/tool snapshot.
     const beforeAsset = await snapshot();
-    await page.locator(card).click();
+    await choosePlacementAsset(page.locator(card));
     await page.selectOption(
       ".placement-inspector:visible [data-placement-add-sprite]",
       "floor",
@@ -120,7 +121,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     assert.equal(
       await page
         .locator('[data-placement-browser-asset="sprite:floor"]')
-        .getAttribute("aria-pressed"),
+        .getAttribute("data-selected"),
       "true",
     );
     const preview = await page.evaluate(
@@ -140,7 +141,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     );
     await page.locator('[data-placement-action="undo"]').click();
     assert.equal((await snapshot()).document, beforeAsset.document);
-    await page.locator(card).click();
+    await choosePlacementAsset(page.locator(card));
     const frame = await page
       .locator(
         ".placement-inspector:visible [data-placement-add-sprite-frame] option",
@@ -167,7 +168,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
     assert.equal(
       await page
         .locator(`[data-placement-browser-asset="sprite:crate/${frame}"]`)
-        .getAttribute("aria-pressed"),
+        .getAttribute("data-selected"),
       "true",
     );
     await page.locator("[data-placement-tool-cancel]").click();
@@ -176,7 +177,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
       ["scale", "2"],
     ]) {
       const beforeSettings = await snapshot();
-      await page.locator(card).click();
+      await choosePlacementAsset(page.locator(card));
       await page
         .locator(`.placement-inspector:visible [data-placement-add-${field}]`)
         .fill(value);
@@ -186,7 +187,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
       assert.deepEqual(await snapshot(), beforeSettings);
     }
     // Native drag Escape does not dispatch DOM keydown; dragend must still leave no old armed tool.
-    await page.locator(card).click();
+    await choosePlacementAsset(page.locator(card));
     await page.evaluate(() => {
       globalThis.__reviewDragEvents = [];
       for (const type of ["dragstart", "dragend"])
@@ -196,6 +197,10 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
           true,
         );
     });
+    // The detail action may scroll the list out of the dock. Bring the actual
+    // drag source into view rather than pressing stale/offscreen coordinates.
+    await page.locator(card).scrollIntoViewIfNeeded();
+    await page.locator(card).evaluate(node=>{window.__reviewDraggedNode=node;});
     const asset = await page.locator(card).boundingBox();
     await page.mouse.move(
       asset.x + asset.width / 2,
@@ -216,6 +221,8 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
       await page.locator("[data-placement-tool-status]").textContent(),
       /Drag:/,
     );
+    await page.locator('[data-placement-asset-search]').dispatchEvent('input');
+    assert(await page.evaluate(()=>window.__reviewDraggedNode.isConnected),'Queued list refresh must retain the native drag source until its owner finishes');
     await page.keyboard.press("Escape");
     await page.mouse.up();
     await paint();
@@ -227,7 +234,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
 
     // A rejected native transition must preserve the old mode AND its pending tool.
     const beforeFailure = await snapshot();
-    await page.locator(card).click();
+    await choosePlacementAsset(page.locator(card));
     await page.evaluate(() => {
       const engine = globalThis.ferrumEngine,
         original = engine.configureDataSceneSpatial;
@@ -250,7 +257,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
       ),
       "add-sprite",
     );
-    assert.equal(await page.locator(card).getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator(card).getAttribute("data-selected"), "true");
     assert.deepEqual(await snapshot(), beforeFailure);
     await page.locator("[data-placement-tool-cancel]").click();
 

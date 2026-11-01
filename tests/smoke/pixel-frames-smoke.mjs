@@ -1,3 +1,5 @@
+import {inspectPlacementAsset} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -12,7 +14,7 @@ export async function smokePixelFrames(page,mode,run) {
   const duration=panel.locator('[data-pixel-frame-duration]');
   async function exported(kind,suffix) {
     const menu=workspace.locator('.placement-pixel-export-menu');if(!await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-    const pending=page.waitForEvent('download');await action(kind).click();const file=await pending;
+    const pending=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const file=await pending;
     const path=join(run,mode+'-frames-'+suffix);await file.saveAs(path);
     if(await menu.evaluate(e=>e.open))await menu.locator('summary').click();return {path,bytes:await readFile(path)};
   }
@@ -23,7 +25,7 @@ export async function smokePixelFrames(page,mode,run) {
   const duplicated=await source('duplicated');assert.equal(duplicated.version,3);
   assert.deepEqual(duplicated.frames[0].cels,duplicated.frames[1].cels,'duplication copies every layer');
   await duration.fill('200');await duration.press('Enter');
-  await workspace.locator('[data-pixel-color]').fill('#ff0000');await workspace.locator('[data-pixel-alpha]').fill('255');await action('tool-fill').click();
+  await workspace.locator('[data-pixel-color]').fill('#ff0000');await workspace.locator('[data-pixel-alpha]').fill('255');await clickPlacementToolAction(action('tool-fill'));
   const canvas=workspace.locator('canvas');
   async function paint() {
     await page.evaluate(()=>new Promise(requestAnimationFrame));
@@ -38,8 +40,8 @@ export async function smokePixelFrames(page,mode,run) {
   assert.equal(await panel.locator('[data-pixel-frame-select]').count(),2);
   await page.keyboard.press('Control+Shift+z');assert.equal((await source('add-redo')).frames.length,3);
   await frameAction('remove').click();assert.equal((await source('removed')).frames.length,2);
-  await action('undo').click();assert.equal((await source('remove-undo')).frames.length,3);
-  await action('redo').click();assert.equal((await source('remove-redo')).frames.length,2);
+  await clickPlacementToolAction(action('undo'));assert.equal((await source('remove-undo')).frames.length,3);
+  await clickPlacementToolAction(action('redo'));assert.equal((await source('remove-redo')).frames.length,2);
   await frameAction('left').click();
   assert(await workspace.evaluate(e=>e.contains(document.activeElement)),'disabling the first-frame order button must keep keyboard focus in the pixel editor');
   await page.keyboard.press('Control+z');
@@ -61,7 +63,7 @@ export async function smokePixelFrames(page,mode,run) {
   assert.deepEqual(await source('preview-unchanged'),beforePreview,'preview and canvas clicks cannot edit source');
   await frameAction('play').click();await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
   assert.equal(await panel.getAttribute('data-pixel-playing'),'false');
-  await frameAction('play').click();await action('back').click();await workspace.waitFor({state:'hidden'});
+  await frameAction('play').click();await clickPlacementToolAction(action('back'));await workspace.waitFor({state:'hidden'});
   assert.equal(await panel.getAttribute('data-pixel-playing'),'false','leaving the pixel tab stops its preview clock');
   await page.locator('[data-placement-document-key="ferrum:pixel-document"]').click();await workspace.waitFor({state:'visible'});
   assert.equal(await panel.getAttribute('data-pixel-preview-frame'),first,'returning to the tab restores the editing frame');
@@ -90,8 +92,9 @@ export async function smokePixelFrames(page,mode,run) {
 export async function smokePixelFrameCard(page,mode,run,assetId,source) {
   const workspace=page.locator('#placement-pixel-workspace'),menu=workspace.locator('.placement-pixel-export-menu');
   if(await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-  await workspace.locator('[data-pixel-action="back"]').click();
+  await clickPlacementToolAction(workspace.locator('[data-pixel-action="back"]'));
   const second=source.frames[1].id;
+  await inspectPlacementAsset(page, page.locator('[data-placement-browser-asset="sprite:'+assetId+'/'+second+'"]'));
   await page.locator('[data-placement-edit-pixels="'+assetId+'"][data-placement-edit-pixel-frame="'+second+'"]').click();
   await workspace.waitFor({state:'visible'});
   assert.equal(await workspace.locator('[data-pixel-frame-select][aria-pressed=true]').getAttribute('data-pixel-frame-select'),second,
@@ -112,13 +115,13 @@ export async function smokePixelFrameCard(page,mode,run,assetId,source) {
   });
   let encodings;
   try {
-    await workspace.locator('[data-pixel-action="tool-eraser"]').click();
-    await workspace.locator('[data-pixel-action="tool-pencil"]').click();
+    await clickPlacementToolAction(workspace.locator('[data-pixel-action="tool-eraser"]'));
+    await clickPlacementToolAction(workspace.locator('[data-pixel-action="tool-pencil"]'));
     encodings=await page.evaluate(()=>window.pixelToolEncodingCalls);
   } finally { await page.evaluate(()=>window.restorePixelToolEncoding()); }
   assert.equal(encodings,0,'tool UI changes must not serialize every cel just to validate an Apply preview');
   await menu.locator('summary').click();
-  const waiting=page.waitForEvent('download');await workspace.locator('[data-pixel-action="export-source"]').click();
+  const waiting=page.waitForEvent('download');await clickPlacementToolAction(workspace.locator('[data-pixel-action="export-source"]'));
   const download=await waiting,path=join(run,mode+'-frame-card.pixel.json');await download.saveAs(path);
   assert.deepEqual(JSON.parse(await readFile(path,'utf8')),source,'opening a cel preserves the entire editing source');
   await menu.locator('summary').click();

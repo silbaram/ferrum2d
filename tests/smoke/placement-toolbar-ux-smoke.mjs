@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { showPlacementViewOptions, showPlacementMenu } from "./placement-panel-navigation.mjs";
 import { smokePlacementMenuRegressions } from "./placement-menu-regressions-smoke.mjs";
+import { smokePlacementCommandPalette } from "./placement-command-palette-smoke.mjs";
+import { smokePlacementLayoutPresets } from "./placement-layout-presets-smoke.mjs";
+import { smokePlacementInspector } from "./placement-inspector-smoke.mjs";
+import { smokePlacementAssetUsage } from "./placement-asset-usage-smoke.mjs";
+import { smokePlacementToolUi } from "./placement-tool-ui-smoke.mjs";
 
 /** Real toolbar controls: modes, temporary pan, display disclosure and focus. */
 export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
@@ -25,7 +30,12 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
   const grid = page.locator("[data-placement-grid-toggle]");
   const spacing = page.locator(".placement-grid-controls input[type=number]");
   try {
+    await smokePlacementLayoutPresets(page, mode, timeoutMs);
+    await smokePlacementInspector(page, mode, timeoutMs);
+    await smokePlacementAssetUsage(page, mode, timeoutMs);
+    await smokePlacementToolUi(page, mode, timeoutMs);
     await smokePlacementMenuRegressions(page, mode);
+    await smokePlacementCommandPalette(page, mode);
     for (const locale of ["ko", "en"]) {
       await language.selectOption(locale);
       const cameraMenu = page.locator(`[data-placement-menu="camera-${mode === "spatial" ? "spatial" : "2d"}"]`);
@@ -56,7 +66,7 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
       assert.equal(await pan.getAttribute("aria-label"), name);
       assert.equal(await pan.locator("svg").count(), 1);
       await select.focus();
-      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowDown");
       assert(await pan.evaluate((b) => b === document.activeElement));
       assert.equal(await select.getAttribute("aria-pressed"), "true");
       await pan.click();
@@ -151,6 +161,15 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
       for (const control of [select, pan, summary, page.locator('.placement-workspace-modes')]) {
         const bounds = await control.boundingBox();
         assert(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `${width}px primary control overflow`);
+      }
+      for (const control of [select, pan]) assert(await control.evaluate(element=>{
+        const r=element.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+        return hit===element||element.contains(hit);
+      }),`${width}px navigation tools must receive pointer input`);
+      const transform=page.locator(mode==='spatial'?'.placement-spatial-transform-tools':'.placement-transform-gizmo');
+      if(await transform.isVisible()){
+        const tools=await transform.boundingBox(),rail=await page.locator('[data-placement-navigation-rail]').boundingBox();
+        assert(tools.x>=rail.x+rail.width+7&&tools.x+tools.width<=box.x+box.width+1,`${width}px selection tools must leave room for the navigation rail`);
       }
       await showPlacementViewOptions(page);
       const bounds = await page.locator('.placement-view-panel').boundingBox();

@@ -1,3 +1,4 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
 import { clickPlacementControl, showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -44,15 +45,15 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     );
     assert.equal(
       await page
-        .locator('[data-placement-browser-asset][aria-pressed="true"]')
+        .locator('[data-placement-browser-asset][data-selected="true"]')
         .count(),
       0,
     );
   }
   async function arm() {
     await showPlacementBottom(page, "assets");
-    await page.locator(card).click();
-    assert.equal(await page.locator(card).getAttribute("aria-pressed"), "true");
+    await choosePlacementAsset(page.locator(card));
+    assert.equal(await page.locator(card).getAttribute("data-selected"), "true");
     assert.match(await page.locator(tool).textContent(), /Place:.*crate/i);
   }
   async function measure(name) {
@@ -136,7 +137,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     );
     assert(
       await page
-        .locator(".placement-viewport-toolbar .placement-viewport-controls")
+        .locator(".placement-navigation-rail .placement-viewport-controls")
         .count(),
     );
     assert.equal(
@@ -269,7 +270,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     );
     assert(
       await page
-        .locator(".placement-viewport-toolbar .placement-spatial-camera")
+        .locator(".placement-navigation-rail .placement-spatial-camera")
         .count(),
     );
     for (const field of ["rotation", "scale"]) {
