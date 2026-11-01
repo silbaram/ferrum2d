@@ -83,10 +83,14 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 
 같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
 용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.
+종료 직후 host가 에디터를 해제해도 최신 확정본을 저장하고, 이전 write가 지연 중이면 그 뒤에 최신본을 남기는지 검사한다.
+활성 stroke·선택 미리보기는 종료 캡처에서도 제외하며 중복 destroy는 저장 작업을 추가하지 않는다.
 전체 `smoke:pixel-authoring`의 `pixelRecovery`는 실제 IndexedDB에서 확정 전 저장 차단과 reload 복원,
 raw RGBA/태그/레이어 보존·미저장 상태·씬/Undo 불변·다중 탭의 독립 항목을 확인한다.
 실제 transaction abort를 주입해 이전 완료본 보존·수동 내보내기·재시도·도트 닫기/원본 내보내기의 해당 항목 정리를 검사하며,
 손상 원본 복원 거절·저장소 접근 거부·메뉴 클릭·한글390px 캡처도 포함한다.
+600ms debounce 전 확정 직후 같은 task에서 실제 도구의 `pagehide` 정리를 실행하고, 다른 탭의 IndexedDB 조회로 정확한 v5 원본 저장을 확인한다.
+명시적으로 도트 문서를 닫으면 팔레트 원본 참조와 팔레트/최근 색 목록을 비우며, 잠시 씬으로 돌아가는 동작은 편집 상태를 유지한다.
 단독 진단은 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-recovery-only`다.
 IndexedDB 검증은 같은 origin의 브라우저/WebView 저장소 기준이며 실제 설치 앱·OS별 storage 정책이나 전원 종료 직전 완료되지 않은 write를 증명하지 않는다.
 native pixel 프로젝트의 공통 노멀 저장 검증은 실제 Rust 저장 뒤 잘못된 응답을 주입한다. 앱의 저장 검증 실패 후 복구 원본이 남고,

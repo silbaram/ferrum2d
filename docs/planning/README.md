@@ -6,10 +6,12 @@
 완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
 현재 사용법과 검증 계약은 `docs/engine/`, `docs/development/`를 기준으로 한다.
 
-도트 선 보정·마스크 선택·외곽선·이미지 브러시·반복 타일·프레임 범위 편집과2D/HD-2D 노멀 적용의 현재 계약은
+현재 진행 중인 구현 계획은 없다. 아래 4개 문서는 미착수 설계 후보, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
+완료된 도트 개발계획과 리뷰 결과는 새 미완료 작업으로 등록하지 않는다.
+
+도트 제작의 현재 계약은
 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)과
 앱 안내(`apps/placement-viewer/README.md`)를 따른다.
-아래 문서는 개발 계획, 설계 후보, 후속 검증 또는 제품 결정 대기를 관리한다.
 
 ## 다음 개선 추천
 
@@ -18,7 +20,7 @@
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
 | 1 | 프로젝트 디스크 Catalog 정리 설계 | 닫힌 씬이 참조하는 프로젝트 원본을 보호한다. | [제작 편의성 후보](game-development-convenience-review.md#asset-반복-작업): 프로젝트 전체 참조·동시 수정·실패 복원을 설계한 뒤 삭제 범위 결정. 구현 착수 전 설계 후보 |
-| 2 | AI 도트 생성 설계 | 직접 그리기 전에 초안 이미지를 준비하는 시간을 줄인다. | [제작 편의성 후보](game-development-convenience-review.md#asset-반복-작업): 입력·결과 선택·인증/비용·출처·기존 원본 등록 경계 결정. 구현 착수 전 설계 후보 |
+| 2 | AI 도트 생성 설계 | 직접 그리기 전에 초안 이미지를 준비하는 시간을 줄인다. | [도트 제작 후보](game-development-convenience-review.md#도트-제작-후보): 입력·결과 선택·인증/비용·출처·기존 원본 등록 경계 결정. 구현 착수 전 설계 후보 |
 
 [실물 GPU·장시간·LOD 외형](feature-candidates.md#실게임-품질-후속-검증)과 [실제 설치·GUI·서명](deployment-roadmap.md#남은-검증-후보)은 후속 검증이다.
 필요한 기기·설치 자료·실행 조건을 먼저 확보하며, 기능 구현을 다시 시작하는 항목으로 취급하지 않는다.
@@ -28,12 +30,12 @@
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
-| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 프로젝트 디스크 정리·외부 맵·reload 등의 실제 필요와 저장 경계 확정 |
+| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 프로젝트 디스크 정리·도트 생성/변형·외부 맵·reload의 실제 필요와 저장 경계 확정 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |
 | [배포 후속 검증 후보](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 검증 |
 
-공간 오디오·에셋 로딩·glTF 변환·WebGPU 계측의 사용법은 [Core API](../engine/public-api/core.md)와
-[공간 계약](../engine/data-scene-spatial.md), 세션 revision 정리·Import 진단은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
+현재 엔진 기능은 [Core API](../engine/public-api/core.md)와 [공간 계약](../engine/data-scene-spatial.md),
+자산 제작·가져오기·정리는 [Scene Authoring](../engine/data-scene-authoring.md)를 따른다.
 이미 제공하는 기능을 미완료 후보로 다시 등록하지 않는다.
 
 ## 관리 규칙
