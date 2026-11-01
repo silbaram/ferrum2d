@@ -1,5 +1,12 @@
+import {smokePixelBatch} from './pixel-batch-smoke.mjs';
 import { smokePixelNormals, smokePixelNormalFocus } from "./pixel-normals-smoke.mjs";
 import { smokePixelTags } from "./pixel-tags-smoke.mjs";
+import { smokePixelSelection } from "./pixel-selection-smoke.mjs";
+import { smokePixelRecovery } from "./pixel-recovery-smoke.mjs";
+import { smokePixelDrawing } from "./pixel-drawing-smoke.mjs";
+import { smokePixelPalette } from "./pixel-palette-smoke.mjs";
+import { smokePixelCanvasPreview } from "./pixel-canvas-preview-smoke.mjs";
+import { smokePixelNextTools } from "./pixel-next-tools-smoke.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -11,6 +18,12 @@ import { smokePixelAtlas } from "./pixel-atlas-smoke.mjs";
 import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-batch-layout-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch-layout"};
+  if (process.argv.includes("--pixel-batch-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch"};
+  if (process.argv.includes("--pixel-next-only")) return {pixelNext:await smokePixelNextTools(page,mode,run),focus:"pixel-next"};
+  if (process.argv.includes("--pixel-canvas-preview-only")) return {pixelCanvasPreview:await smokePixelCanvasPreview(page,mode,run),focus:"pixel-canvas-preview"};
+  if (process.argv.includes("--pixel-drawing-only")) return {pixelDrawing:await smokePixelDrawing(page,mode,run),focus:"pixel-drawing"};
+  if (process.argv.includes("--pixel-palette-only")) return {pixelPalette:await smokePixelPalette(page,mode,run),focus:"pixel-palette"};
   if(process.argv.includes("--pixel-normals-only")) {
     const pixelNormals=await smokePixelNormalFocus(page,mode,run,async bundle=>{
       setResume(bundle);const game=await page.context().newPage(),errors=[];
@@ -21,6 +34,12 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     });
     return {pixelNormals,focus:"pixel-normals"};
   }
+  const pixelRecovery = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelRecovery(page, mode, run);
+  if (process.argv.includes("--pixel-recovery-only")) return {pixelRecovery,focus:"pixel-recovery"};
+  const pixelDrawing = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelDrawing(page,mode,run);
+  const pixelPalette = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelPalette(page,mode,run);
+  const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
+  const pixelNext = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelNextTools(page,mode,run);
   await showPlacementBottom(page, "assets");
   await page.locator('[data-pixel-action="new"]').click();
   const dialog = page.locator("dialog[open]");
@@ -67,6 +86,9 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const bytes = Buffer.from(first.rgba, "base64");
   for (let i = 0; i < 8; i++) assert.deepEqual([...bytes.subarray((i * 8 + i) * 4, (i * 8 + i) * 4 + 4)], [255, 0, 0, 255]);
   assert.deepEqual(await snapshot(), original, "Pixel drawing must not mutate the scene or scene Undo");
+  const pixelSelection = await smokePixelSelection(page, mode, run, { action, canvas, point, exportFile, baseline: first });
+  assert.deepEqual(await snapshot(), original, "Pixel selection cannot mutate scene state/history");
+  if (process.argv.includes("--pixel-selection-only")) return { pixelSelection, focus: "pixel-selection" };
   const cancelStart = await point(0, 5), cancelEnd = await point(7, 5);
   await page.mouse.move(cancelStart.x, cancelStart.y); await page.mouse.down();
   await page.mouse.move(cancelEnd.x, cancelEnd.y); await page.keyboard.press("Escape"); await page.mouse.up();
@@ -340,13 +362,21 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     }finally{await game.close();setResume(exported);}
   });
   const pixelNormals=await smokePixelNormals(page,mode,run,async bundle=>{
-    setResume(bundle);const game=await page.context().newPage();
-    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50});
+    setResume(bundle);const game=await page.context().newPage(),errors=[];
+    game.on("pageerror",error=>errors.push(String(error)));game.on("requestfailed",request=>errors.push(request.url()+" "+request.failure()?.errorText));
+    try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{polling:50}).catch(async error=>{
+      let timer;
+      const state=await Promise.race([
+        game.evaluate(()=>({stage:window.pixelResumeStage,visibility:document.visibilityState,focus:document.hasFocus(),ready:document.readyState})).catch(error=>({snapshotError:String(error)})),
+        new Promise(resolve=>{timer=setTimeout(()=>resolve({snapshotTimeout:true}),3000);}),
+      ]);
+      clearTimeout(timer);throw Error(String(error)+" "+JSON.stringify({state,errors}));
+    });
       return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
     }finally{await game.close();setResume(exported);}
   });
   return {
-    frameCard, tags, atlas, pixelNormals, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
+    frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelPalette, pixelCanvasPreview, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
     eyedropper: true, eraserUndo: true, panZoom: true, invalidSourcePreserved: true, editAssetPng: true, compact: true,
     releaseEndpoint: true, blurCancelsStroke: true, blurResetsPan: true,

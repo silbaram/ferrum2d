@@ -64,11 +64,15 @@ export function verifyPairedPlayback(engine, scene, pump, read) {
     let changed = 0,
       colored = 0;
     for (let i = 0; i < flat.length; i += 4) {
-      if ([0, 1, 2].some((c) => Math.abs(pixels[i + c] - flat[i + c]) > 5))
+      if (
+        Math.abs(pixels[i] - flat[i]) > 5 ||
+        Math.abs(pixels[i + 1] - flat[i + 1]) > 5 ||
+        Math.abs(pixels[i + 2] - flat[i + 2]) > 5
+      )
         changed++;
       if (
-        Math.max(...pixels.subarray(i, i + 3)) -
-          Math.min(...pixels.subarray(i, i + 3)) >
+        Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) -
+          Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) >
         30
       )
         colored++;

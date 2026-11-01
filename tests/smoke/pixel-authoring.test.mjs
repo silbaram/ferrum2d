@@ -34,6 +34,143 @@ const {pixelOnionFrames,PIXEL_ONION_DEFAULTS}=await checkedImport(await moduleUr
 const { createPixelEditor: create, newPixelDocument: blank, readPixelDocument: read, pixelBytes, pixelDocumentFromRgba, pixelAtlas, pixelFrames, PIXEL_LIMITS } = await checkedImport(documentUrl);
 const { pixelPng, readPixelPng } = await checkedImport(await moduleUrl("placementPixelPng", { "./placementPixelDocument": documentUrl }));
 const red = [255, 0, 0, 255], blue = [0, 0, 255, 255], transparent = [0, 0, 0, 0];
+const drawingUrl = await moduleUrl("placementPixelDrawing", {"./placementPixelDocument": documentUrl});
+const maskUrl = await moduleUrl("placementPixelMask", {"./placementPixelDocument": documentUrl, "./placementPixelDrawing": drawingUrl});
+const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection", {"./placementPixelDocument": documentUrl, "./placementPixelMask": maskUrl}));
+function selectedEditor(source = blank(4, 3)) {
+  const editor = create(source); let canEdit = true;
+  const selection = createPixelSelection({ editor: () => editor, canEdit: () => canEdit });
+  return { editor, selection, readOnly(value) { canEdit = !value; } };
+}
+test("selection preview/move/cancel never modifies source, dirty, revision or history", () => {
+  const { editor, selection } = selectedEditor(); stroke(editor, 0, 0, 1, 0); editor.markExported();
+  const source = editor.document(), revision = editor.revision(), history = editor.history();
+  selection.select({ x: 0, y: 0, width: 2, height: 1 }); selection.moveBy(1, 1);
+  assert(selection.pending()); assert(selection.preview().some(value => value));
+  assert.deepEqual(editor.document(), source); assert.deepEqual(editor.history(), history);
+  assert.equal(editor.revision(), revision); assert.equal(editor.dirty(), false);
+  selection.cancel(); assert(!selection.pending()); assert.deepEqual(selection.bounds(), { x: 0, y: 0, width: 2, height: 1 });
+  assert.deepEqual(editor.document(), source); assert.equal(editor.revision(), revision);
+});
+test("overlapping selection moves use the original cel, commit once, and Undo restores exact RGBA", () => {
+  const bytes = new Uint8Array([255,0,0,255, 1,2,3,0, 0,0,255,127, 9,8,7,0]);
+  const { editor, selection } = selectedEditor(pixelDocumentFromRgba(4, 1, "RGBA", bytes));
+  selection.select({ x: 0, y: 0, width: 3, height: 1 }); selection.moveBy(1, 0); selection.confirm();
+  assert.deepEqual(editor.layerBytes(editor.selectedLayer()), new Uint8Array([0,0,0,0, ...bytes.subarray(0,12)]));
+  assert.equal(editor.history().undo, 1); editor.undo(); assert.deepEqual(editor.bytes(), bytes);
+  editor.redo(); assert.deepEqual([...editor.bytes().subarray(8,12)], [1,2,3,0]);
+});
+test("flip and non-square clockwise rotation are lossless, pending until confirmed", () => {
+  const bytes = new Uint8Array(Array.from({length:6},(_,i)=>[i+1,0,0,255]).flat());
+  for (const [operation, expected] of [["flip-x",[2,1,4,3,6,5]], ["flip-y",[5,6,3,4,1,2]]]) {
+    const { editor, selection } = selectedEditor(pixelDocumentFromRgba(2,3,"shape",bytes));
+    selection.all(); selection.transform(operation); assert.deepEqual(editor.bytes(),bytes); selection.confirm();
+    assert.deepEqual([...editor.bytes()].filter((_,i)=>i%4===0),expected); assert.equal(editor.history().undo,1);
+  }
+  const { editor, selection } = selectedEditor(blank(4,4));
+  editor.editRegion({x:0,y:0,width:2,height:3},bytes); const before=editor.document(), history=editor.history();
+  selection.select({x:0,y:0,width:2,height:3});selection.transform("rotate");
+  assert.deepEqual(selection.bounds(),{x:0,y:0,width:3,height:2});selection.confirm();
+  assert.deepEqual([...editor.readRegion({x:0,y:0,width:3,height:2}).pixels].filter((_,i)=>i%4===0),[5,3,1,6,4,2]);
+  assert.equal(editor.history().undo,history.undo+1);editor.undo();assert.deepEqual(editor.document(),before);
+});
+test("clipboard copies active-layer bytes across frames/layers and cancels pending pastes", () => {
+  const {editor,selection}=selectedEditor();stroke(editor,0,0,0,0,red);
+  selection.select({x:0,y:0,width:1,height:1});selection.copy();
+  const original=editor.selectedLayer();editor.addLayer();const top=editor.selectedLayer();editor.addFrame();
+  selection.paste();assert(selection.pending());assert(editor.layerBytes(top).every(v=>v===0));selection.cancel();
+  selection.paste();selection.confirm();assert.deepEqual(editor.sample(0,0),red);assert(editor.layerBytes(original).every(v=>v===0));
+  selection.copy();selection.cut();assert.deepEqual(editor.sample(0,0),transparent);editor.undo();assert.deepEqual(editor.sample(0,0),red);
+});
+test("selection rejects stale transforms after Undo, frame/layer changes, locking and playback", () => {
+  const f=selectedEditor(),{editor,selection}=f;stroke(editor,0,0,0,0);
+  selection.all();selection.moveBy(1,0);editor.undo();assert.equal(selection.pending(),false);assert.equal(selection.confirm(),false);
+  editor.redo();selection.all();selection.transform("flip-x");editor.addFrame();assert.equal(selection.pending(),false);
+  selection.all();selection.transform("rotate");f.readOnly(true);assert.equal(selection.pending(),false);assert.equal(selection.confirm(),false);
+  f.readOnly(false);selection.all();selection.transform("flip-y");editor.setLayerLocked(editor.selectedLayer(),true);assert.equal(selection.pending(),false);
+  assert.equal(selection.moveBy(1,0),false);assert.equal(selection.remove(),false);
+});
+test("new documents/reset discard the internal clipboard and cannot reuse another source preview", () => {
+  let editor=create(blank(2,2));const selection=createPixelSelection({editor:()=>editor,canEdit:()=>true});
+  selection.all();selection.copy();selection.moveBy(1,0);editor=create(blank(2,2));
+  assert.equal(selection.hasClipboard(),false);assert.equal(selection.pending(),false);selection.all();selection.copy();selection.reset();assert.equal(selection.hasClipboard(),false);
+});
+test("fixed atlas selection clips paste/move to its frame and preserves neighbouring frame bytes", () => {
+  const source={...blank(4,2),version:4,atlas:{texture:"sheet",frames:[{id:"left",frame:{u0:0,v0:0,u1:.5,v1:1}},{id:"right",frame:{u0:.5,v0:0,u1:1,v1:1}}]}};
+  const {editor,selection}=selectedEditor(source);stroke(editor,0,0,1,0);const before=editor.bytes();
+  selection.all();selection.moveBy(1,0);assert(selection.clipped());selection.confirm();
+  assert.deepEqual(editor.sample(1,0),red);for(const y of [0,1])assert.deepEqual(editor.bytes().slice((y*4+2)*4,(y*4+4)*4),before.slice((y*4+2)*4,(y*4+4)*4));
+  editor.undo();assert.deepEqual(editor.bytes(),before);selection.all();selection.copy();editor.selectAtlasFrame("right");selection.paste();selection.confirm();assert.deepEqual(editor.sample(2,0),red);
+});
+test("region validation and no-op/outside pastes preserve source and Redo atomically", () => {
+  const {editor,selection}=selectedEditor();stroke(editor,0,0,0,0);editor.undo();const history=editor.history(),source=editor.document();
+  for(const rect of [{x:0,y:0,width:0,height:1},{x:NaN,y:0,width:1,height:1},{x:0,y:0,width:257,height:1}])
+    assert.throws(()=>editor.editRegion(rect,new Uint8Array(4)),/selection/);
+  assert.throws(()=>editor.editRegion({x:0,y:0,width:1,height:1},new Uint8Array(3)),/bytes/);
+  assert.throws(()=>editor.editRegion({x:0,y:0,width:1,height:1},new Uint8Array(4),{x:-1,y:0,width:1,height:1}),/region/);
+  assert.equal(editor.editRegion({x:100,y:100,width:1,height:1},new Uint8Array(4)),false);
+  assert.deepEqual(editor.document(),source);assert.deepEqual(editor.history(),history);
+  selection.all();assert.throws(()=>selection.moveBy(Infinity,0),/offset/);assert(!selection.pending());
+  assert.throws(()=>selection.moveBy(1_048_577,0),/offset/);assert(!selection.pending());
+});
+test("selection edits preserve v1-v5 metadata and exact source shape through Undo", () => {
+  const layered=create(blank(4,4));layered.addLayer();
+  const framed=create(blank(4,4));framed.addFrame();
+  const tagged=create(blank(4,4));tagged.addTag("idle",[tagged.frames()[0].id]);
+  const atlas={...blank(4,4),version:4,atlas:{texture:"sheet",frames:[{id:"left",frame:{u0:0,v0:0,u1:.5,v1:1}},{id:"right",frame:{u0:.5,v0:0,u1:1,v1:1}}]}};
+  const sources=[blank(4,4),layered.document(),framed.document(),atlas,tagged.document()];
+  assert.deepEqual(sources.map(source=>source.version),[1,2,3,4,5]);
+  const metadata=source=>JSON.parse(JSON.stringify(source,(key,value)=>key==="rgba"?undefined:value));
+  for(const source of sources){
+    const {editor,selection}=selectedEditor(source);
+    editor.editRegion({x:1,y:1,width:1,height:1},new Uint8Array([7,8,9,128]));editor.markExported();
+    const before=editor.document(),history=editor.history();selection.select({x:1,y:1,width:1,height:1});selection.moveBy(-1,0);selection.confirm();
+    assert.deepEqual(metadata(editor.document()),metadata(before));assert.equal(editor.document().version,source.version);
+    assert.equal(editor.history().undo,history.undo+1);editor.undo();assert.deepEqual(editor.document(),before);assert.equal(editor.dirty(),false);
+  }
+});
+test("UI-only frame/layer/atlas switches discard floating targets without relying on revision changes", () => {
+  for(const kind of ["frame","layer","atlas"]){
+    const atlas={...blank(4,2),version:4,atlas:{texture:"sheet",frames:[{id:"left",frame:{u0:0,v0:0,u1:.5,v1:1}},{id:"right",frame:{u0:.5,v0:0,u1:1,v1:1}}]}};
+    const {editor,selection}=selectedEditor(kind==="atlas"?atlas:blank(4,2));
+    if(kind==="layer")editor.addLayer();if(kind==="frame")editor.addFrame();stroke(editor,0,0,0,0);
+    const before=editor.document(),revision=editor.revision(),history=editor.history();
+    selection.all();selection.copy();selection.moveBy(1,0);
+    if(kind==="layer")editor.selectLayer(editor.layers()[0].id);
+    if(kind==="frame")editor.selectFrame(editor.frames()[0].id);
+    if(kind==="atlas")editor.selectAtlasFrame("right");
+    assert.equal(editor.revision(),revision);assert.equal(selection.pending(),false);assert.equal(selection.confirm(),false);
+    assert.deepEqual(editor.document(),before);assert.deepEqual(editor.history(),history);assert(selection.hasClipboard());
+  }
+});
+test("preview composites only the edited cel while clipboard keeps independent raw alpha bytes", () => {
+  const {editor,selection}=selectedEditor(blank(3,2));
+  stroke(editor,0,0,2,0,blue);editor.addLayer();editor.editRegion({x:0,y:0,width:1,height:1},new Uint8Array([42,7,9,0]));
+  const current=editor.selectedLayer(),lower=editor.layers()[0].id,beforeLower=editor.layerBytes(lower),before=editor.document();
+  selection.select({x:0,y:0,width:1,height:1});selection.copy();selection.moveBy(1,1);
+  const preview=selection.preview().slice();assert.deepEqual(editor.document(),before);selection.confirm();assert.deepEqual(editor.bytes(),preview);
+  assert.deepEqual([...editor.layerBytes(current).subarray(16,20)],[42,7,9,0]);assert.deepEqual(editor.layerBytes(lower),beforeLower);
+  editor.undo();selection.paste();selection.confirm();assert.deepEqual([...editor.layerBytes(current).subarray(0,4)],[42,7,9,0]);
+});
+test("inverse floating transforms are no-ops and retain revision, dirty checkpoint and Redo", () => {
+  for(const operations of [["flip-x","flip-x"],["flip-y","flip-y"],["rotate","rotate","rotate","rotate"]]){
+    const {editor,selection}=selectedEditor(blank(8,8));
+    const pixels=Uint8Array.from({length:5*3*4},(_,index)=>(index*71+19)%256);
+    editor.editRegion({x:1,y:1,width:5,height:3},pixels);editor.markExported();
+    stroke(editor,7,7,7,7);editor.undo();
+    const before=editor.document(),history=editor.history(),revision=editor.revision();
+    selection.select({x:1,y:1,width:5,height:3});for(const operation of operations)selection.transform(operation);
+    assert.deepEqual(editor.document(),before);assert.equal(selection.confirm(),false);
+    assert.deepEqual(editor.document(),before);assert.deepEqual(editor.history(),history);assert.equal(editor.revision(),revision);assert.equal(editor.dirty(),false);
+  }
+});
+test("atlas movement clips both axes at a nonzero frame origin and leaves all neighbouring pixels intact", () => {
+  const rgba=Uint8Array.from({length:4*4*4},(_,index)=>(index*37+11)%256);
+  const source={...pixelDocumentFromRgba(4,4,"offset",rgba),version:4,atlas:{texture:"sheet",frames:[{id:"corner",frame:{u0:.5,v0:.5,u1:1,v1:1}}]}};
+  const {editor,selection}=selectedEditor(source);selection.all();selection.moveBy(-1,-1);assert(selection.clipped());selection.confirm();
+  const expected=rgba.slice();for(const index of [10,11,14,15])expected.fill(0,index*4,index*4+4);expected.set(rgba.subarray(60,64),40);
+  assert.deepEqual(editor.bytes(),expected);assert.equal(editor.history().undo,1);editor.undo();assert.deepEqual(editor.bytes(),rgba);
+});
 test('onion neighbours are view-only, directional and never wrap or include the current frame',()=>{
   const frames=[{id:'a'},{id:'b'},{id:'c'}],settings={...PIXEL_ONION_DEFAULTS,enabled:true};
   assert.deepEqual(pixelOnionFrames(frames,'b',settings),[{id:'a',side:'previous'},{id:'c',side:'next'}]);

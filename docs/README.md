@@ -15,7 +15,7 @@ Data Scene 캐릭터별 clip, 2.5D view, 방향광·caster API는 [애니메이�
 | `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [Showcase Hub](engine/showcase-hub.md), [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [좌표계와 2D 기하 변환](engine/coordinate-system.md), [Public API Migration Guide](engine/public-api/migration-guide.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Data Scene Authoring](engine/data-scene-authoring.md), [Physics Spec](engine/physics-spec.md) |
 | `examples/` | 공식 예제별 authoring contract와 예제 전용 설명 | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) |
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
-| `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
+| `planning/` | 진행할 개발 계획·신규 기능 후보·제품 결정을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
 
 ## 목적별 빠른 찾기
 

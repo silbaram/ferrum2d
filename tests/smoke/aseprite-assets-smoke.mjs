@@ -473,6 +473,7 @@ try {
           'destroy must not repopulate the cleared frame panel during canvas teardown');
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,
           'destroy must release tag frame rows too');
+        assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-batch-frame]').length), 0, "destroy must release batch frame rows");
         await frames.dispose();
         const released = await resources();
         assert.deepEqual(released, { urls: 0, textures: 0 });
@@ -1228,16 +1229,32 @@ try {
         released,
       });
     } catch (error) {
+      let snapshotTimer;
+      const pageState = await Promise.race([
+        page.evaluate(() => ({
+          ready: document.readyState, visibility: document.visibilityState, focus: document.hasFocus(),
+          dpr: devicePixelRatio, viewport: [innerWidth, innerHeight],
+          pixelBusy: document.querySelector('#placement-pixel-workspace')?.getAttribute('data-pixel-busy'),
+          pixelStatus: document.querySelector('[data-pixel-status]')?.textContent,
+          canvases: [...document.querySelectorAll('canvas')].map(canvas => ({width:canvas.width,height:canvas.height,css:[canvas.clientWidth,canvas.clientHeight]})),
+          resources: {textures:window.resources?.textures?.size,urls:window.resources?.urls?.size},
+        })).catch(error => ({ snapshotError: String(error) })),
+        new Promise(resolve => { snapshotTimer = setTimeout(() => resolve({ snapshotTimeout: true }), 3000); }),
+      ]);
+      clearTimeout(snapshotTimer);
+      const failure = { ok:false, run, browser:browser.version(), mode, results, errors, pageState, error:String(error?.stack ?? error) };
+      await writeFile(resolve(run, 'failure.json'), JSON.stringify(failure,null,2)+'\n');
+      await writeFile(resolve(artifact, 'verification.json'), JSON.stringify(failure,null,2)+'\n');
       await page
         .screenshot({
           path: resolve(run, mode + "-failure.png"),
           fullPage: true,
+          timeout: 2000,
         })
         .catch(() => {});
       console.error(
         mode,
-        await tool
-          .locator("[data-aseprite-status]")
+        await (pixelMode ? page.locator('[data-pixel-status]') : tool.locator("[data-aseprite-status]"))
           .textContent()
           .catch(() => "unavailable"),
         errors,

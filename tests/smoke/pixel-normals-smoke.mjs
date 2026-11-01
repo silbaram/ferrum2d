@@ -8,11 +8,20 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
   const workspace=page.locator('#placement-pixel-workspace'),action=name=>workspace.locator('[data-pixel-action="'+name+'"]');
   const idle=()=>page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
   const menu=workspace.locator('.placement-pixel-export-menu');if(await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-  const rgba=(color,shift)=>{const bytes=Buffer.alloc(8*8*4);for(let y=0;y<8;y++)for(let x=0;x<8;x++)if(Math.hypot(x-3.5-shift,y-3.5)<3)bytes.set(color,(y*8+x)*4);return bytes.toString('base64');};
-  const source={format:'ferrum2d.pixel-document',version:5,name:'normal-sprite',width:8,height:8,colorSpace:'srgb',palette:['#0000ffff','#ff0000ff'],
+  const rgba=(color,shift)=>{const bytes=Buffer.from(Array(64).fill([13,17,23,0]).flat());for(let y=0;y<8;y++)for(let x=0;x<8;x++)if(Math.hypot(x-3.5-shift,y-3.5)<3)bytes.set(color,(y*8+x)*4);return bytes.toString('base64');};
+  let source={format:'ferrum2d.pixel-document',version:5,name:'normal-sprite',width:8,height:8,colorSpace:'srgb',palette:['#0000ffff','#ff0000ff'],
     layers:[{id:'body',name:'Body',visible:true,locked:false}],frames:[{id:'blue',durationMs:100,cels:[{layerId:'body',rgba:rgba([0,0,255,255],0)}]},{id:'red',durationMs:200,cels:[{layerId:'body',rgba:rgba([255,0,0,255],0.5)}]}],
     tags:[{id:'idle',name:'idle',clipId:0,frameIds:['blue'],loop:true},{id:'walk',name:'walk',clipId:1,frameIds:['blue','red'],loop:false}],initialTag:'idle',nextClipId:2};
   await page.locator('[data-pixel-file]').setInputFiles({name:'normal-sprite.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(source))});await idle();
+  // Retain new operations in the actual saved/reopened normal source, not just a preview.
+  const range=workspace.locator('.placement-pixel-batch-menu');await range.locator('summary').click();
+  await range.locator('[data-pixel-batch-range="all"]').click();await range.locator('[data-pixel-batch-operation]').selectOption('flip-x');await range.locator('[data-pixel-batch-review]').click();
+  await page.locator('[data-pixel-batch-confirm]').click();
+  const flipped=source.frames.map(frame=>{const raw=Buffer.from(frame.cels[0].rgba,'base64'),next=Buffer.alloc(raw.length);for(let y=0;y<8;y++)for(let x=0;x<8;x++)next.set(raw.subarray((y*8+x)*4,(y*8+x+1)*4),(y*8+7-x)*4);return next.toString('base64');});
+  await workspace.locator('[data-pixel-color]').fill('#0000ff');await workspace.locator('[data-pixel-alpha]').fill('255');await workspace.locator('[data-pixel-alpha]').dispatchEvent('input');
+  const effects=workspace.locator('.placement-pixel-effects-menu');await effects.locator('summary').click();await action('outline').click();await page.locator('[data-pixel-outline-confirm]').click();
+  await menu.locator('summary').click();const sourceDownload=page.waitForEvent('download');await action('export-source').click();const sourceFile=await sourceDownload,editedPath=join(run,mode+'-normal-new-tools-source.json');await sourceFile.saveAs(editedPath);await menu.locator('summary').click();
+  const edited=JSON.parse(await readFile(editedPath,'utf8'));assert.notEqual(edited.frames[0].cels[0].rgba,flipped[0]);assert.deepEqual([...Buffer.from(edited.frames[0].cels[0].rgba,'base64').subarray(0,4)],[13,17,23,0]);assert.equal(edited.frames[1].cels[0].rgba,flipped[1]);assert.deepEqual(edited.tags,source.tags);assert.deepEqual(edited.layers,source.layers);source=edited;
   const controls=workspace.locator('.placement-pixel-normal-menu');await controls.locator('summary').click();
   assert(await action('normal-generate').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'normal action labels must fit without overlapping the next button');
   const scene=()=>page.evaluate(()=>structuredClone(window.ferrumPlacementViewerState.draftPatch));
@@ -35,6 +44,17 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/Normals generated/);
     assert.deepEqual(await scene(),before,'generation is explicit asset work, not a scene edit');
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
+    // Metadata-only palette edits and canvas dimensions both invalidate source provenance.
+    const palette=workspace.locator('.placement-pixel-palette-menu');await palette.locator('summary').click();
+    await palette.locator('[data-pixel-palette-file]').setInputFiles({name:'normal-palette.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'ferrum2d.pixel-palette',version:1,colors:[...source.palette,'#ffffffff']}))});
+    await page.waitForFunction(()=>document.querySelector('[data-pixel-palette-list]').options.length===3);
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());
+    await action('undo').click();await palette.locator('summary').click();await action('normal-generate').click();await idle();
+    assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'palette Undo reuses only the original verified source cache');
+    await action('resize-canvas').click();const resize=page.locator('dialog[open]');await resize.locator('[data-pixel-resize="width"]').fill('9');await resize.locator('[data-pixel-resize-confirm]').click();
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());assert(await action('normal-preview').isDisabled());
+    await action('undo').click();await action('normal-generate').click();await idle();
+    assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'dimension Undo reuses the original source cache');
     await page.evaluate(()=>{const original=window.btoa;window.normalUiEncodings=0;window.restoreNormalUiEncoding=()=>window.btoa=original;window.btoa=value=>{window.normalUiEncodings++;return original(value);};});
     try{await action('tool-eraser').click();await action('tool-pencil').click();assert.equal(await page.evaluate(()=>window.normalUiEncodings),0,'normal Apply validation must not encode all PNGs on tool changes');}
     finally{await page.evaluate(()=>window.restoreNormalUiEncoding());}
@@ -54,12 +74,23 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     assert.deepEqual(await scene(),before,'lighting preview cannot change game state/camera or the scene');
     await page.screenshot({path:join(run,mode+'-pixel-normal-lighting.png'),fullPage:true});
     await dialog.locator('[data-pixel-action="normal-preview-close"]').click();
+    // New outline and range edits must invalidate normals, then Undo must reuse the exact source cache.
+    await workspace.locator('[data-pixel-color]').fill('#ffffff');
+    await effects.locator('summary').click();await action('outline').click();await page.locator('[data-pixel-outline-confirm]').click();
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await action('undo').click();
+    await range.locator('summary').click();await range.locator('[data-pixel-batch-operation]').selectOption('move');await range.locator('[data-pixel-batch-offset="x"]').fill('1');await range.locator('[data-pixel-batch-review]').click();await page.locator('[data-pixel-batch-confirm]').click();
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await action('undo').click();await action('normal-generate').click();await idle();assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2);
+
     await workspace.locator('[data-pixel-color]').fill('#ffffff');await action('tool-pencil').click();
     const canvas=workspace.locator('[data-pixel-canvas]');await page.evaluate(()=>new Promise(requestAnimationFrame));
     const point=await canvas.evaluate(e=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {x:r.x+Number(e.dataset.pixelOriginX)+3.5*z,y:r.y+Number(e.dataset.pixelOriginY)+3.5*z};});
     await page.mouse.click(point.x,point.y);
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());assert(await action('normal-preview').isDisabled());
-    await action('undo').click();await action('normal-generate').click();await idle();
+    await action('undo').click();
+    await action('tool-select').click();await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('ArrowRight');
+    assert(await action('normal-apply').isDisabled(),'floating pixels cannot be applied with the old pair');
+    await page.keyboard.press('Enter');assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');
+    await action('undo').click();await action('tool-pencil').click();await action('normal-generate').click();await idle();
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
     assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'restored source reuses its immutable normal cache');
     const strength=controls.locator('[data-pixel-normal-strength]');await strength.fill('2');await strength.dispatchEvent('change');
@@ -81,7 +112,7 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     await page.screenshot({path:join(run,mode+'-pixel-normal-ko-narrow.png'),fullPage:true});
     await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
     return {source,id:pair.binding.textures.color.asset,normalId:pair.binding.textures.normal.asset,frameIsolation:true,previewLightingDifference:lighting.difference,
-      generationDoesNotEditScene:true,staleBlocked:true,cancelPreservesPair:true,cacheReused:true,workersReleased:true,metadataOnlyValidation:true,documentScope,game};
+      newToolsIncludedInSource:true,outlineAndBatchInvalidateNormals:true,generationDoesNotEditScene:true,staleBlocked:true,paletteAndResizeInvalidateNormals:true,cancelPreservesPair:true,cacheReused:true,workersReleased:true,metadataOnlyValidation:true,documentScope,game};
   }finally{await page.evaluate(()=>window.restorePixelNormalWorkers?.());}
 }
 

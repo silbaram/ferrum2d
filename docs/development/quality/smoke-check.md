@@ -50,6 +50,52 @@ SDK/Rust 단위 검사는 optional ABI·bulk 원자성·정렬/수명·prototype
 SDK는 normal instance 65,537개를 활성화·spawn 전에 거절하는지도 검사한다.
 `test:native-normal-project`는 숫자 normal alias의 프로젝트 범위 보호와 잘못된 JSON의 참조 수집 경계를 검사한다.
 
+`test:pixel-authoring`는 선택 영역의 raw RGBA·겹치는 이동·비정사각형90도 회전·frame/layer 클립보드와
+preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성을 검사한다.
+`smoke:pixel-authoring`의 `pixelSelection`은 DPR1의2D와 DPR2의HD-2D에서 실제 marquee/drag/keyboard/menu,
+저장·적용 차단, Enter 확정·Escape/blur 취소·한 번의 Undo, pan/zoom 좌표와 한글390px 캡처를 검사한다.
+취소 버튼·메뉴 summary/회전 항목의 Enter, 드래그 중 Enter/Ctrl-X 차단, pointercancel/lost capture의 원본 보존도 검사한다.
+단위는 v1~v5의 편집·Undo 원본/metadata 보존과 revision을 바꾸지 않는 frame/layer/atlas 전환의 오래된 target 폐기를 확인한다.
+전체 atlas UI 검사는 x offset이 있는 활성 frame의 선택 이동·잘림·인접 frame RGBA 보존과 Undo를 확인한다.
+선택만 단독 진단하려면 save 허용 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-selection-only`를 사용한다.
+노멀 smoke는 floating 선택의 적용 차단과 확정 후 stale/Undo/cache 복원도 검사한다. 전체 UI gate가 CI validate에서 실행되므로 별도 중복 gate를 추가하지 않는다.
+
+도트 편의성 회귀도 같은 `test:pixel-authoring`/`smoke:pixel-authoring` CI 경로에서 실행한다.
+`pixelDrawing`은 브러시·대칭·도형/Shift·선택 마스크·취소·한 Undo를, `pixelPalette`는 metadata와 픽셀 교체의 분리·잠금/숨김 보호·늦은 가져오기 거절을 검사한다.
+`pixelCanvasPreview`는 모든 cel의 여백/자르기·치수 Undo/Redo·고정 atlas 차단·실제 크기1×/2×·DPR1/2·프레임/태그 연동·blur/접기/탭 전환 자원 해제를 검사한다.
+자르기 전 제거 영역 표시와 팔레트/치수 변경의 노멀 stale 차단·Undo 후 검증 cache 재사용도 확인한다. native 프로젝트 검사는 크기/팔레트를 바꾼 원본의 저장·재열기와 게임 로딩을 포함한다.
+각 helper는 한글390px 캡처와 씬 변경 없음도 확인한다. 크기 연산 단위는 기준점9개·홀수 offset·raw RGBA·예산 초과의 원자성을 검사한다.
+집중 진단은 save 허용 앱 build 후 위 Node 진입점에 `--pixel-drawing-only`, `--pixel-palette-only`, `--pixel-canvas-preview-only`를 지정한다.
+집중 실행은 전체 검증을 대체하지 않는다. 결과는 같은 `artifacts/pixel-authoring/verification.json`을 사용한다.
+
+도트 후속 도구의 `pixelNext`는 같은 전체 UI gate에서 픽셀 퍼펙트의 원래 RGBA 복원·마스크 선택과 조합·자유형/다각형·외곽선 미리보기/확정,
+이미지 브러시 등록/간격/중심점/hover/취소/한 Undo, 반복9타일의 실제 canvas 픽셀과 경계 그리기/채우기·단일 PNG·고정 atlas 차단을 검사한다.
+캔버스 밖 이탈·재진입이 픽셀 퍼펙트의 가짜L을 만들지 않는지 실제 드래그와4방향/offset atlas/반복 바깥 경계 단위 회귀로 확인한다. 선택 soft mask는 보정 후 최종 적용하는 계약을 별도 검사한다.
+2D DPR1/HD-2D DPR2·한글390px·씬 무변경·종료 시 URL/texture0도 확인한다. 집중 진단은 위 Node 진입점의 `--pixel-next-only`다.
+순수 연산 회귀는 `pixel-perfect`, `pixel-mask`, `pixel-outline`, `pixel-image-brush`, `pixel-repeat`, `pixel-batch` 단위 검사를 `test:pixel-authoring`에 연결한다.
+`pixel-batch`는 프레임 범위 모델의 대상/제외·metadata/raw RGBA 보존·잘못된 입력의 원자성·잘림·한 Undo/Redo를 검사한다.
+전체 gate의 `pixelNext.frameBatch`는 실제 sparse 이동/좌우·상하 반전·읽기 전용 프레임별 미리보기·잠금/숨김 제외·재생/대상 전환 폐기·잘림·no-op의 Redo 보존을 확인한다.
+인라인 패널 크기로 실제 렌더된 캔버스의 픽셀을 클릭해, 패널 접기에 따른 좌표 이동이나 잘못된 원본 쓰기가 없는지도 확인한다.
+확정 원본을 IndexedDB에서 다른 탭으로 복원하고 정확한 raw RGBA/metadata를 내보내 비교한다. 탭 종료·destroy의 범위 목록/브러시 해제와64자 ID/한글390px도 검사한다.
+집중 진단은 `--pixel-batch-only`다. 다각형의 Backspace/더블클릭과 반복 보기의 pan/zoom 좌표는 `pixelNext`의 실제 입력으로 검사한다.
+공통 노멀 검사는 범위 반전·외곽선 결과를 원본에 유지한 뒤 Worker 입력·원본 내보내기·게임 실행을 검증한다. native 프로젝트 gate는 이 원본과 pair를 저장하고 재시작 후 정확히 재열어 실행한다.
+추가 외곽선/범위 편집의 stale 차단·Undo 후 원본 cache 재사용도 같은 공통 함수에서 검사한다.
+
+같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
+용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.
+종료 직후 host가 에디터를 해제해도 최신 확정본을 저장하고, 이전 write가 지연 중이면 그 뒤에 최신본을 남기는지 검사한다.
+활성 stroke·선택 미리보기는 종료 캡처에서도 제외하며 중복 destroy는 저장 작업을 추가하지 않는다.
+전체 `smoke:pixel-authoring`의 `pixelRecovery`는 실제 IndexedDB에서 확정 전 저장 차단과 reload 복원,
+raw RGBA/태그/레이어 보존·미저장 상태·씬/Undo 불변·다중 탭의 독립 항목을 확인한다.
+실제 transaction abort를 주입해 이전 완료본 보존·수동 내보내기·재시도·도트 닫기/원본 내보내기의 해당 항목 정리를 검사하며,
+손상 원본 복원 거절·저장소 접근 거부·메뉴 클릭·한글390px 캡처도 포함한다.
+600ms debounce 전 확정 직후 같은 task에서 실제 도구의 `pagehide` 정리를 실행하고, 다른 탭의 IndexedDB 조회로 정확한 v5 원본 저장을 확인한다.
+명시적으로 도트 문서를 닫으면 팔레트 원본 참조와 팔레트/최근 색 목록을 비우며, 잠시 씬으로 돌아가는 동작은 편집 상태를 유지한다.
+단독 진단은 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-recovery-only`다.
+IndexedDB 검증은 같은 origin의 브라우저/WebView 저장소 기준이며 실제 설치 앱·OS별 storage 정책이나 전원 종료 직전 완료되지 않은 write를 증명하지 않는다.
+native pixel 프로젝트의 공통 노멀 저장 검증은 실제 Rust 저장 뒤 잘못된 응답을 주입한다. 앱의 저장 검증 실패 후 복구 원본이 남고,
+재시도 성공 후 해당 세션 항목이 정리되는지 확인한 뒤 저장된 pair를 새 게임에 로딩한다. 단독 normal-project 진단도 같은 검증 함수를 실행한다.
+
 ## 제품 Runtime Budget Readiness
 
 런타임 렌더러 계약의 확장성은 SDK `runtimeFrameRenderer`/`createFerrumRuntime.integration` 테스트로 검증한다.

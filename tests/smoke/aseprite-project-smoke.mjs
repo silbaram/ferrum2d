@@ -643,11 +643,19 @@ try {
           close: closePage,
           freshGame: async () => {
             const game = await browser.newPage({viewport:{width:480,height:360},deviceScaleFactor:mode === "hd2d" ? 2 : 1});
+            const failures = [], pendingRequests = new Set();
+            game.on("pageerror", error => failures.push(String(error)));
+            game.on("requestfailed", request => { failures.push(request.url()+" "+request.failure()?.errorText); pendingRequests.delete(request); });
+            game.on("request", request => pendingRequests.add(request));
+            game.on("requestfinished", request => pendingRequests.delete(request));
             try {
               await game.goto(origin+"/game.html");
-              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50});
+              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50}).catch(async error => {
+                const stage = await game.evaluate(()=>window.pixelResumeStage).catch(()=>"unavailable");
+                throw Error(String(error)+" stage "+stage+" "+JSON.stringify({failures,pending:[...pendingRequests].map(request=>request.url())}));
+              });
               const result = await game.evaluate(()=>({report:window.savedGameReport,error:window.savedGameFailure}));
-              assert.equal(result.error,undefined);return result.report;
+              assert.equal(result.error,undefined);assert.deepEqual(failures,[]);return result.report;
             } finally {await game.close();}
           },
         }));
