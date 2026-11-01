@@ -471,6 +471,56 @@ Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Esc
 다른 메뉴를 열면 기존 메뉴 닫기, 화면 구성의 초기화 접근, 카메라/화면 구성/안내의 390×500 경계도 검사한다.
 메뉴를 닫은 주 도구 행은 표시 버튼 6개 이하로 제한한다. `placement-panel-navigation.mjs`는 실제 summary를 열고
 카메라·패널 동작 후 Escape로 닫는다. 숨긴 control을 DOM 변경으로 노출하지 않는다.
+`pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
+이 단위 검사는 `smoke:placement-viewer`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는
+실제 2D/HD-2D 세로 도구 클릭·위/아래 focus, F3 검색·실행·취소·focus 복귀, 동적 비활성 재검사와 IME Enter/Escape를 확인한다.
+320~1125px에서는 실제 hit-test로 선택/이동 버튼이 입력을 받는지, 선택 팝업이 도구 모음과 겹치거나 canvas 오른쪽을 넘지 않는지 검사한다.
+두 번째 문서를 열고 속성 명령을 실행해 현재 문서의 탭만 바뀌며, 숨겨 둔 이전 문서의 컨트롤은 바꾸지 않는지 검사한다.
+세로 도구 모음에는 선택/이동만 두고 게임 카메라는 상단에서 접근한다. 공간 데이터가 없는 문서의 게임 카메라 명령은 비활성인지 확인한다.
+드래그·다른 modal·도트 미확정 편집의 F3 차단, 도트/게임 전환의 도구 숨김, 한영/390px와 씬 원본·선택·이력 보존을 함께 검사한다.
+화면과 결과는 `artifacts/workspace-command-search/`에 남긴다.
+`pnpm test:placement-layouts`는 legacy 내 구성 보존·잘못된 저장값 검증·구성 간 독립성·named profile round-trip을 검사하며 뷰어 단위 CI와 공식 viewer smoke에 연결된다.
+`pnpm smoke:placement-layouts`는 같은 `placement-layout-presets-smoke.mjs`를 2D DPR 1/HD-2D DPR 2에서 실행한다.
+이 helper는 기존 두 모드의 toolbar gate에도 연결되며 별도 browser context에서 실행해 caller 문서/저장 설정을 바꾸지 않는다.
+기존 내 구성 복귀·구성별 수정/현재 구성만 초기화·focus/drawer/하단 탭 복귀·reload·storage 거부,
+문서 전환 및 도트 pending 취소 후 F3 availability 회복, dirty 씬·실행 중 게임·실제 도트 stroke/Undo 보존을 확인한다.
+실제 줌으로 구성한 수동 편집 시점도 비교하며, 한영·320/390px 메뉴 경계·128px 이상 canvas와 실제 native entity 3개 이상·draw 1~32회를 함께 검사한다.
+근거는 `artifacts/workspace-layout-presets/`에 남긴다.
+`pnpm test:placement-asset-usage`는 닫힌 씬의 prefab/variant/include/instance·model/LOD 참조, JSON pointer escaping,
+원본/draft 구분·읽기 실패·미해소 숫자/template·참조/노드/씬/재읽기 byte 한도와 stale 결과 중단을 검사한다.
+또한 잘못된 참조 container/컴포넌트의 진단, 복제 전 열린 snapshot 제한, 공백 포함 원문 byte와 남은 읽기 예산,
+읽기 전용 inspect 부재 시 open fallback 차단, 스트림 정리 실패 후 원래 오류/reader lock 보존을 검사한다.
+지연된 catalog/scene host가 취소 이후 응답하지 않아도 호출자를 해제하는지 확인한다.
+압축 응답의 encoded Content-Length/decoded 본문 구분, 선언된 owner와 게임 `props.id` 구분,
+빈 dictionary key의 JSON pointer·긴 식별자 한도도 검사한다.
+이 단위 명령은 빌드된 public SDK를 사용하므로 최초에는 `pnpm build`로 준비한다. 공식 viewer smoke는 Wasm/SDK 빌드 뒤 이 명령을 실행하며 CI 단위 gate도 전체 빌드 이후에 실행한다.
+CI 단위 gate와 공식 `smoke:placement-viewer`에 연결한다. `pnpm smoke:placement-asset-usage`와 양쪽 toolbar gate는
+별도 브라우저 context에서 동일한 사용처 helper를 실행한다. 실제 조회/검색/JSON 다운로드와 source/patch/Undo/선택/모드/탭 불변,
+편집본 근거, 부분 실패, 한영·compact, 읽기 중 문서 교체, 선택 폴더 snapshot을 확인한다.
+문서 교체 시 목록/본문 fetch signal의 실제 abort, Open JSON 완료 후 재조회,
+독립적인 native 재조회 뒤 이전 explorer entry의 저장 문맥 보존과 저장 완료 후 재조회도 검사한다.
+2D DPR 1·HD-2D DPR 2에서 native frame entity ≥3·drawCalls 1..32·pageerror 0을 요구한다.
+native 브라우저 검증은 IPC emulation임을 보고서에 명시하고 inspect command만 사용하며 scene open/save를 호출하지 않는지 검사한다.
+`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features`는 실제 native 파일 조회·경로/symlink·2 MiB·저장 allowlist 불변을 검사한다.
+설치형 GUI 검증은 별도이며 결과는 `artifacts/project-asset-usage/`에 남긴다.
+
+`pnpm test:placement-inspector`는 선택 없음·게임·잠금·2D 그룹·spatial target 안내와 한영/단위 표시를 검사하며 CI/공식 viewer 단위 gate에 연결된다.
+같은 명령의 `placement-inspector-originals.test.mjs`는 표시 정밀도와 실제 원본 정밀도의 구분, 다중 선택의 개별 원본/단일 Undo,
+modern/legacy component의 정상·노멀·애니메이션·그림자·바디 보존, optional leaf 제거, 잠금/새 객체, rename와 저장 기준 재설정을 검사한다.
+공간 baseline은 authored 원본으로 optional 존재를 판단하며 모델 rename·지형/빌보드의 미지원 optional 복귀도 검사한다.
+같은 명령의 `placement-component-edits.test.mjs`는 일반 속성 편집의 노멀·animationSet·projection·그림자·dynamic body·확장 metadata 보존,
+legacy sprite 변환·색상 변경·shape 변경·원본 불변과 단일 Undo를 검사한다. 실제 Inspector browser도 이 metadata를 가진 객체의 크기를 변경한다.
+`node tests/smoke/placement-tool-ui-runner.mjs --spatial-fields`는 모델 가져오기 후 지형/빌보드/모델 선택과 문서 왕복에서
+공유 필드의 표시·단일 filter/reset 소유권·원본 불변을 검사한다. 공식 공간 aggregate도 새 문서에서 모델 회전 입력을 실행한다.
+`pnpm smoke:placement-inspector`와 두 모드의 toolbar gate는 같은 `placement-inspector-smoke.mjs`를 별도 context에서 실행한다.
+2D DPR1/HD-2D DPR2의 입력 우선 순서·읽기 전용 details 토글, 실제 rad/도/좌표/시각 입력과 atomic Undo,
+잠금·다중 선택·terrain/empty/game 안내, 프리팹 원본 보존, 240px sticky header/tablist와 320px 화면·한영을 검사한다.
+Rust frame entity 6/3개와 draw 1~32회 조건을 유지하며 `artifacts/inspector-properties/`에 근거를 남긴다.
+속성 검색·변경/고급 필터는 source/patch/이력을 보존하고 필드 복귀는 단일 Undo로 되돌린다. 다른 staged component 값이 필터/필드 복귀로 사라지면 실패한다.
+`pnpm smoke:placement-tools`와 두 모드 toolbar gate의 `placement-tool-ui-smoke.mjs`는 실제 More Actions 메뉴와
+에셋 검사→명시적 배치·사용처 이동, 목록/키보드·compact 복귀, 노멀 기본/고급·오류/정밀도/초점 복귀를 검사한다.
+잘못된 가져오기 원본의 읽기 쉬운 복구 안내와 접힌 raw 진단, 입력 수정 후 stale 진단 제거도 검사하며 `artifacts/editor-ux-modernization/`에 근거를 남긴다.
+기존 pixel/normal/import 통합 runner도 실제 action overflow·에셋 상세 경로로 동작해야 한다. helper module을 단독 import한 종료값은 동작 검증으로 세지 않는다.
 같은 gate에 연결된 `placement-menu-regressions-smoke.mjs`는 2D·HD-2D 에셋 배치 대기 중
 중첩 메뉴의 Escape가 안쪽부터 메뉴를 닫고 마지막 Escape가 배치를 취소하는지 검사한다.
 390×320에서 실제 세로 wheel로 상위 보기 패널을 이동해 기준 버튼이 움직인 팝업을 닫는지,

@@ -10,6 +10,9 @@
 
 ## Asset 반복 작업
 
+공식 뷰어의 읽기 전용 [에셋 사용처 조회](../engine/data-scene-authoring.md)는 씬 파일과 열린 작업공간 원본/draft의 근거를 제공한다.
+코드·외부 매니페스트·GLB 내부·Undo 이력과 전체 디스크 검증은 포함하지 않으므로 아래 디스크 정리 설계와 구분한다.
+
 가져오기·세션 revision 정리·Import 진단의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
 
 | 후보 | 착수 시 완료 조건 |
