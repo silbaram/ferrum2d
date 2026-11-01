@@ -818,7 +818,7 @@ export function createPlacementPixelTool(options: {
       invalidate();
       const token = serial, previous = editor;
       if (!await confirmDiscard() || disposed || token !== serial || editor !== previous) return;
-      suspend();if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined; void recovery.forget(); recoveryHold = false; selection.reset(); imageBrushControls.reset(); batchControls.clear(); repeatControls.reset(); editor = undefined; imageLayers.clear(); framePanel?.clear(); palette.replaceChildren(); options.tabsChanged();
+      suspend();if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined; void recovery.forget(); recoveryHold = false; selection.reset(); imageBrushControls.reset(); batchControls.clear(); paletteControls.clear(); repeatControls.reset(); editor = undefined; imageLayers.clear(); framePanel?.clear(); palette.replaceChildren(); options.tabsChanged();
     },
     sync() {
       if (active && (options.context().mode === "game" || owner !== options.context().key)) suspend();

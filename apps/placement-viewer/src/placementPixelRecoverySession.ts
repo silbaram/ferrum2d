@@ -32,6 +32,11 @@ export function createPixelRecoverySession(options: {
     } catch (value) { if (!disposed && token === request) error(value); }
   }
   function cancelTimer() { clearTimeout(timer); timer = undefined; }
+  function checkpoint(current: { id: string; scope: string; editor: Editor }) {
+    const source = JSON.stringify(current.editor.document());
+    return { id: current.id, scope: current.scope, name: current.editor.name, source,
+      bytes: new TextEncoder().encode(source).length, updatedAt: Date.now() };
+  }
   function flush() {
     cancelTimer(); const current = session;
     if (!current || current.editor.active() || !options.canCapture()) { if (current) current.stamp = undefined; return queue; }
@@ -42,9 +47,7 @@ export function createPixelRecoverySession(options: {
         if (session !== current) return;
         if (current.editor.active() || !options.canCapture()) { current.stamp = undefined; return; }
         // Capture only when the writer can start: a stalled store cannot accumulate JSON snapshots.
-        const source = JSON.stringify(current.editor.document());
-        await store.put({ id: current.id, scope: current.scope, name: current.editor.name, source,
-          bytes: new TextEncoder().encode(source).length, updatedAt: Date.now() });
+        await store.put(checkpoint(current));
         if (session === current) { status = "Draft saved locally"; changed(); }
         await refresh(scope);
       } finally {
@@ -75,6 +78,20 @@ export function createPixelRecoverySession(options: {
     async read(id: string, key = scope) { return store.read(key, id); },
     async discard(id: string) { try { await store.remove(scope, id); await refresh(scope); } catch (value) { error(value); } },
     retry() { if (session) { session.stamp = undefined; void flush(); } void refresh(scope); },
-    destroy() { void flush(); disposed = true; request++; cancelTimer(); void queue.then(() => store.close()); },
+    destroy() {
+      if (disposed) return;
+      disposed = true; request++; cancelTimer();
+      const current = session; session = undefined;
+      // The host releases its editor immediately after teardown. Capture one final
+      // committed source now, then write it after any older in-flight checkpoint.
+      // Clearing the session also cancels deferred captures and coalesced timers.
+      try {
+        if (current && !current.editor.active() && options.canCapture()) {
+          const final = checkpoint(current);
+          void enqueue(() => store.put(final));
+        }
+      } catch (value) { error(value); }
+      void queue.then(() => store.close());
+    },
   };
 }

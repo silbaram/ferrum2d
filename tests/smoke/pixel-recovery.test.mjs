@@ -143,6 +143,44 @@ test('dispose keeps the last completed checkpoint and releases storage after que
   const s=session(),editor=createPixelEditor(newPixelDocument(2,2));s.client.observe(editor,scope,true);await s.client.flush();
   s.client.destroy();await tick();assert.equal(s.store.rows.size,1);assert(s.store.closed);
 });
+test('dispose captures completed edits before the host releases its editor',async()=>{
+  const s=session(),editor=createPixelEditor(newPixelDocument(2,2));
+  const put=s.store.put,close=s.store.close;let writes=0,closes=0;
+  s.store.put=async value=>{writes++;await put(value);};s.store.close=()=>{closes++;close();};
+  editor.begin();editor.line(0,0,1,1,[13,17,23,0]);editor.commit();
+  const expected=editor.document(),history=editor.history(),revision=editor.revision();
+  s.client.observe(editor,scope,true);
+  s.client.destroy();s.block();s.client.destroy(); // The host drops its editor synchronously after teardown.
+  await tick();
+  assert.equal(s.store.rows.size,1);
+  assert.deepEqual(JSON.parse([...s.store.rows.values()][0].source),expected);
+  assert.deepEqual(editor.history(),history);assert.equal(editor.revision(),revision);assert(s.store.closed);
+  assert.equal(writes,1);assert.equal(closes,1);
+});
+test('dispose queues the final committed source after a stalled older write',async()=>{
+  const s=session(),put=s.store.put;let release,started;
+  const ready=new Promise(resolve=>started=resolve);
+  s.store.put=async value=>{if(!release){started();await new Promise(resolve=>release=resolve);}await put(value);};
+  const editor=createPixelEditor(newPixelDocument(2,2));s.client.observe(editor,scope,true);
+  const writing=s.client.flush();await ready;
+  editor.begin();editor.line(1,0,1,0,[51,61,71,255]);editor.commit();
+  const expected=editor.document();s.client.observe(editor,scope,true);
+  s.client.destroy();s.block();release();await writing;await tick();
+  assert.equal(s.store.rows.size,1);
+  assert.deepEqual(JSON.parse([...s.store.rows.values()][0].source),expected);assert(s.store.closed);
+});
+test('dispose keeps completed recovery when a stroke or floating preview blocks capture',async()=>{
+  for(const blocked of ['stroke','floating']) {
+    const s=session(),editor=createPixelEditor(newPixelDocument(2,2));
+    s.client.observe(editor,scope,true);await s.client.flush();
+    const before=structuredClone([...s.store.rows.values()]);
+    if(blocked==='stroke'){editor.begin();editor.line(0,0,1,1,[255,0,0,255]);}
+    else{s.block();}
+    s.client.destroy();s.client.destroy();await tick();
+    assert.deepEqual([...s.store.rows.values()],before);assert(s.store.closed);
+    editor.cancel();
+  }
+});
 test('unavailable IndexedDB fails explicitly without requiring a browser global',async()=>{
   const store=createPixelRecoveryStore(()=>{throw new DOMException('blocked','SecurityError');});
   await assert.rejects(store.list(scope),/blocked/);store.close();

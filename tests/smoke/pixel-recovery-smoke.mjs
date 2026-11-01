@@ -88,10 +88,33 @@ export async function smokePixelRecovery(page,mode,run) {
     await untilRows(other,r=>r.length===1&&r[0].id===saved.id);
     await move(other,'ArrowDown');list=await untilRows(other,r=>r.length===2);
     assert(list.some(r=>r.id!==saved.id),'editing after storage recovery can checkpoint again');
+    assert.equal(await workspace(other).locator('[data-pixel-palette-list] option').count(),source.palette.length);
     await other.locator('[data-placement-close-document="ferrum:pixel-document"]').click();
     await other.locator('dialog[open] [data-pixel-action="confirm-discard"]').click();
     await untilRows(other,r=>r.length===1&&r[0].id===saved.id);
+    assert.equal(await workspace(other).locator('[data-pixel-palette-list] option').count(),0,'closed source clears palette UI and its editor cache');
+    assert.equal(await workspace(other).locator('[data-pixel-recent-colors] button').count(),0);
   } finally {await other.close();}
+  // Exercise actual Tool.destroy before the 600ms debounce can run. The source
+  // must be captured while the host still owns its editor, not in a later task.
+  const closing=await page.context().newPage();closing.on('pageerror',e=>errors.push(String(e)));
+  let teardown;
+  try {
+    await closing.goto(origin);await ready(closing);await openSource(closing);
+    await action(closing,'tool-select').click();await workspace(closing).locator('[data-pixel-canvas]').focus();
+    await closing.keyboard.press('Control+a');
+    await closing.evaluate(()=>{
+      const canvas=document.querySelector('[data-pixel-canvas]');
+      for(const code of ['ArrowRight','Enter'])canvas.dispatchEvent(new KeyboardEvent('keydown',{code,bubbles:true}));
+      window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:false}));
+    });
+    assert.equal(await workspace(closing).count(),0,'pagehide releases the pixel workspace synchronously');
+    teardown=(await untilRows(page,r=>r.length===2)).find(r=>r.id!==saved.id);
+    assert.deepEqual(JSON.parse(teardown.source),expected,'teardown preserves the latest committed raw source');
+  } finally {await closing.close();}
+  menu=await recoveryMenu(page);
+  await menu.locator('[data-pixel-recovery-id="'+teardown.id+'"] [data-pixel-action="recovery-discard"]').click();
+  await untilRows(page,r=>r.length===1&&r[0].id===saved.id);
   // Corrupted stored JSON must neither replace the source nor create a scene edit.
   await rows(page,{...saved,source:'{',bytes:1});menu=await recoveryMenu(page);
   await menu.locator('[data-pixel-recovery-id="'+saved.id+'"] [data-pixel-action="recovery-restore"]').click();
@@ -122,5 +145,5 @@ export async function smokePixelRecovery(page,mode,run) {
   await action(page,'tool-pencil').click();await action(page,'fit').click();
   return {committedOnly:true,reloadRestoresExactV5:true,transparentRgbAndMetadata:true,restoredDirty:true,noSceneEdit:true,
     independentTabs:true,quotaRollbackAndManualExport:true,storageDeniedManualExport:true,corruptSourceRejected:true,
-    explicitDiscard:true,exportClearsOwnedOnly:true,closeClearsOwned:true,localeAndNarrow:true};
+    explicitDiscard:true,exportClearsOwnedOnly:true,closeClearsOwned:true,closedPaletteCleared:true,teardownCapturesCommittedSource:true,localeAndNarrow:true};
 }

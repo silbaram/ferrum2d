@@ -101,5 +101,9 @@ export function createPixelPaletteControls(options: {
     replace.disabled ||= !valid || colors[selected]?.toLowerCase() === pixelHex(options.color()) || (scope.value !== "document" && !editor.canPaint()) || (scope.value === "selection" && !options.selection()) || (scope.value === "document" && !!editor.atlas());
   }
   element.addEventListener("keydown", event => { if (event.code === "Escape" && element.open) { event.preventDefault(); event.stopPropagation(); element.open = false; summary.focus(); } });
-  return { element, sync, remember, cancel, select(index: number) { selected = index; sync(); }, destroy() { disposed = true; cancel(); } };
+  function clear() {
+    cancel(); previous = undefined; signature = ""; selected = 0; scope.value = "cel";
+    recent.length = 0; list.replaceChildren(); recents.replaceChildren(); element.open = false;
+  }
+  return { element, sync, remember, cancel, clear, select(index: number) { selected = index; sync(); }, destroy() { disposed = true; clear(); } };
 }
