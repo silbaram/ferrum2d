@@ -1,4 +1,4 @@
-import { setUiText } from "./placementLocale";
+import { setUiText, uiMessage } from "./placementLocale";
 
 export interface PlacementImportDiagnostic {
   severity: "error";
@@ -64,8 +64,23 @@ export function createPlacementImportDiagnostic(error: unknown, context: {
 
 export function installPlacementImportDiagnostics(root: HTMLElement, channel: string) {
   const section = document.createElement("details"), summary = document.createElement("summary"), report = document.createElement("pre");
+  const readable = document.createElement("div"), raw = document.createElement("details"), rawTitle = document.createElement("summary"), copy = document.createElement("button"), copyStatus = document.createElement("output");
   setUiText(summary, "Import Diagnostics"); section.dataset.placementImportDiagnostics = channel;
-  section.append(summary, report); root.append(section);
+  setUiText(rawTitle, "Technical Details"); setUiText(copy, "Copy Diagnostics"); copy.type = "button";
+  copy.dataset.placementCopyImportDiagnostics = channel; copyStatus.setAttribute("role", "status");
+  raw.append(rawTitle, report); section.append(summary, readable, copy, copyStatus, raw); root.append(section);
+  copy.addEventListener("click", () => {
+    const expected = signature;
+    void (async () => {
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable. Select the technical details to copy.");
+        await navigator.clipboard.writeText(report.textContent ?? "");
+        if (signature === expected) setUiText(copyStatus, "Diagnostics copied");
+      } catch (error) {
+        if (signature === expected) setUiText(copyStatus, uiMessage("Could not copy diagnostics: {0}", error instanceof Error ? error.message : String(error)));
+      }
+    })();
+  });
   let signature = "";
   return { update(diagnostics: readonly PlacementImportDiagnostic[]) {
     const next = JSON.stringify(diagnostics);
@@ -74,11 +89,25 @@ export function installPlacementImportDiagnostics(root: HTMLElement, channel: st
     if (diagnostics.length) reports.set(channel, structuredClone(diagnostics));
     else reports.delete(channel);
     report.textContent = JSON.stringify(diagnostics, null, 2);
+    readable.replaceChildren(...diagnostics.map(createPlacementImportDiagnosticSummary));
+    copyStatus.textContent = "";
     section.open = diagnostics.length > 0;
     window.dispatchEvent(new CustomEvent("ferrum-placement-import-diagnostics", { detail: { channel, diagnostics } }));
   }, clear() {
     signature = ""; reports.delete(channel); section.hidden = true;
     report.textContent = "";
+    readable.replaceChildren(); copyStatus.textContent = ""; raw.open = false;
     window.dispatchEvent(new CustomEvent("ferrum-placement-import-diagnostics"));
   } };
+}
+
+/** Read-only explanation. Original IDs, file paths and pointers stay verbatim. */
+export function createPlacementImportDiagnosticSummary(diagnostic: PlacementImportDiagnostic): HTMLElement {
+  const element = document.createElement("section"), message = document.createElement("p"), target = document.createElement("p"), recovery = document.createElement("p");
+  element.className = "placement-import-problem-summary";
+  message.className = "placement-field-feedback"; message.textContent = diagnostic.message;
+  setUiText(target, uiMessage("Document: {0} · Source: {1}", diagnostic.document, diagnostic.source.file));
+  setUiText(recovery, diagnostic.hint);
+  element.append(message, target, recovery);
+  return element;
 }

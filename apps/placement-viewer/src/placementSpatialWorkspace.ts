@@ -5,7 +5,7 @@ import {
   uiMessage,
   uiText,
 } from "./placementLocale";
-import { decorateViewportAction, viewportGroup } from "./placementViewportChrome";
+import { decorateViewportAction, viewportGroup, viewportNavigationInset } from "./placementViewportChrome";
 import { createPlacementControlMenu } from "./placementControlMenu";
 import { createPlacementGameCamera } from "./placementGameCamera";
 import {
@@ -336,6 +336,8 @@ export function installPlacementSpatialWorkspace(options: {
     floorGroup = viewportGroup("Floor view");
   const cameraMenu = createPlacementControlMenu("camera-spatial", "Editor View", "camera");
   const cameraHint = document.createElement("p");
+  cameraHint.className = "placement-tool-scope";
+  cameraHint.dataset.placementCameraScope = "editor";
   setUiText(cameraHint, "Editor view only. Game Preview uses the scene camera.");
   cameraMenu.panel.append(cameraHint, cameraGroup);
   cameraControls.append(toolsGroup);
@@ -681,7 +683,7 @@ export function installPlacementSpatialWorkspace(options: {
     });
     objectActions.append(button);
   }
-  form.before(objectActions);
+  editHint.after(objectActions);
   const snapRow = document.createElement("label"),
     snapToggle = document.createElement("input"),
     support = document.createElement("output");
@@ -1325,7 +1327,7 @@ export function installPlacementSpatialWorkspace(options: {
     cameraControls.hidden = !state.spatial || active.mode === "2d";
     for (const group of [toolsGroup, cameraMenu.element, frameGroup, floorGroup]) group.hidden = active.mode !== "spatial";
     gameCameraLaunch.setAttribute("aria-pressed", String(liveGameCamera()));
-    gameCameraLaunch.disabled = suspended || !!drag || cameraTransaction;
+    gameCameraLaunch.disabled = suspended || !!drag || cameraTransaction || !state.spatial;
     syncPitchControls();
     gameCamera.sync(resetInputs);
     const importDisabled = active.mode === "game" || suspended;
@@ -2425,13 +2427,15 @@ export function installPlacementSpatialWorkspace(options: {
         points.map((p) => p.x - rect.left + "," + (p.y - rect.top)).join(" "),
       );
       if (!drag) {
+        const leftInset = viewportNavigationInset(stage, rect);
+        transformTools.style.maxWidth = Math.max(0, rect.width - leftInset - 8) + "px";
         const width = transformTools.offsetWidth, height = transformTools.offsetHeight,
           rightSide = right - rect.left + 8, leftSide = left - rect.left - width - 8,
           sideFits = rightSide + width <= rect.width - 8 || leftSide >= 8,
           x = rightSide + width <= rect.width - 8 ? rightSide : leftSide >= 8 ? leftSide : rightSide,
           y = sideFits ? top - rect.top : top - rect.top - height - 8 >= 32
             ? top - rect.top - height - 8 : bottom - rect.top + 8;
-        transformTools.style.left = Math.max(8, Math.min(rect.width - width - 8, x)) + "px";
+        transformTools.style.left = Math.max(leftInset, Math.min(rect.width - width - 8, x)) + "px";
         transformTools.style.top = Math.max(32, Math.min(rect.height - height - 8, y)) + "px";
       }
       Object.assign(window, {

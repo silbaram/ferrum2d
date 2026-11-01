@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,7 +30,7 @@ export async function smokeAsepritePaired({
             .asepriteBusy === "false",
       ),
     click = async (name) => {
-      await action(name).click();
+      await clickPlacementToolAction(action(name));
       await idle();
     },
     status = () => tool.locator("[data-aseprite-status]").textContent(),
@@ -172,7 +173,7 @@ export async function smokeAsepritePaired({
       };
     });
   await hold();
-  await action("reimport-paired").click();
+  await clickPlacementToolAction(action("reimport-paired"));
   await wait(() => !!window.releasePairedUpload);
   await page.locator('button[data-placement-lock-instance="sprite"]').click();
   await page.evaluate(() => window.releasePairedUpload());
@@ -187,7 +188,7 @@ export async function smokeAsepritePaired({
   await page.evaluate(() => window.restorePairedUpload());
   // Cancel + immediate retry serializes resource ownership across the old upload.
   await hold();
-  await action("reimport-paired").click();
+  await clickPlacementToolAction(action("reimport-paired"));
   await wait(() => !!window.releasePairedUpload);
   await click("cancel");
   await page.evaluate(() => {
@@ -235,7 +236,7 @@ export async function smokeAsepritePaired({
   await idle();
   assert.deepEqual(await bindings(), changedBindings);
   const downloading = page.waitForEvent("download");
-  await action("export").click();
+  await clickPlacementToolAction(action("export"));
   const bundle = JSON.parse(
       await readFile(await (await downloading).path(), "utf8"),
     ),

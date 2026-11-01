@@ -6,7 +6,10 @@ export interface PlacementSceneEntry {
   mode: "2d" | "hd2d" | "invalid";
   diagnostic?: string;
   read(): Promise<unknown>;
+  /** Native hosts use this path to inspect without authorizing document writes. */
+  inspect?(maxBytes?: number, signal?: AbortSignal): Promise<PlacementSceneRead>;
 }
+export interface PlacementSceneRead { document: unknown; bytes: number }
 export interface PlacementSceneCatalog {
   label: string;
   scenes: PlacementSceneEntry[];
@@ -26,6 +29,10 @@ export function readSceneScanDiagnostics(value: unknown): SceneScanDiagnostic[] 
   });
 }
 export const MAX_SCENE_BYTES = 2 * 1024 * 1024;
+export class PlacementSceneReadLimitError extends Error {
+  constructor() { super("Document exceeds scene read budget"); this.name = "PlacementSceneReadLimitError"; }
+}
+export const isPlacementSceneReadLimit = (error: unknown) => error instanceof PlacementSceneReadLimitError || error === "placement scene read limit exceeded";
 const FORMAT = "ferrum2d.consumer.scene-authoring";
 
 export function safeSceneRelativePath(value: unknown): value is string {
@@ -34,11 +41,22 @@ export function safeSceneRelativePath(value: unknown): value is string {
 }
 
 /** Bounded streaming protects both manifest and lazy document reads. */
-export async function fetchSceneJson(url: URL): Promise<unknown> {
-  const response = await fetch(url, { cache: "no-store" });
+export async function fetchSceneJson(url: URL, signal?: AbortSignal): Promise<unknown> {
+  return (await fetchSceneRead(url, MAX_SCENE_BYTES, signal)).document;
+}
+
+/** Actual UTF-8 response bytes, including whitespace; never infer IO cost from reserialized JSON. */
+export async function fetchSceneRead(url: URL, maxBytes = MAX_SCENE_BYTES, signal?: AbortSignal): Promise<PlacementSceneRead> {
+  if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_SCENE_BYTES) throw new PlacementSceneReadLimitError();
+  const response = await fetch(url, { cache: "no-store", signal });
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${url.pathname}`);
-  if (!response.body || Number(response.headers.get("content-length")) > MAX_SCENE_BYTES)
-    throw new Error("Document exceeds 2 MiB or response body is unavailable");
+  // Fetch exposes a decoded body; Content-Length describes the encoded transfer when compressed.
+  const encoding = response.headers.get("content-encoding");
+  if ((!encoding || encoding.toLowerCase() === "identity") && Number(response.headers.get("content-length")) > maxBytes) {
+    try { await response.body?.cancel(); } catch { /* Cleanup cannot replace the quota diagnostic. */ }
+    throw new PlacementSceneReadLimitError();
+  }
+  if (!response.body) throw new Error("Response body is unavailable");
   const reader = response.body.getReader(), chunks: Uint8Array[] = [];
   let size = 0;
   try {
@@ -46,18 +64,21 @@ export async function fetchSceneJson(url: URL): Promise<unknown> {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_SCENE_BYTES) throw new Error("Document exceeds 2 MiB");
+      if (size > maxBytes) throw new PlacementSceneReadLimitError();
       chunks.push(value);
     }
-  } finally { await reader.cancel(); reader.releaseLock(); }
+  } finally {
+    try { await reader.cancel(); } catch { /* Preserve the original read/quota failure. */ }
+    reader.releaseLock();
+  }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  return { document: JSON.parse(new TextDecoder().decode(bytes)) as unknown, bytes: size };
 }
 
-export async function hostedSceneCatalog(base: URL): Promise<PlacementSceneCatalog> {
-  const value = await fetchSceneJson(new URL("placement-scenes.json", base)) as {
+export async function hostedSceneCatalog(base: URL, signal?: AbortSignal): Promise<PlacementSceneCatalog> {
+  const value = await fetchSceneJson(new URL("placement-scenes.json", base), signal) as {
     version?: unknown; scenes?: unknown; truncated?: unknown; diagnostics?: unknown;
   };
   if (value?.version !== 1 || !Array.isArray(value.scenes) || value.scenes.length > 256)
@@ -74,6 +95,7 @@ export async function hostedSceneCatalog(base: URL): Promise<PlacementSceneCatal
       mode: item.mode as PlacementSceneEntry["mode"],
       diagnostic: typeof item.diagnostic === "string" ? item.diagnostic.slice(0, 1024) : undefined,
       read: () => fetchSceneJson(url),
+      inspect: (maxBytes, signal) => fetchSceneRead(url, maxBytes, signal),
     };
   });
   return { label: base.pathname, scenes, truncated: value.truncated === true, hosted: true, diagnostics: readSceneScanDiagnostics(value.diagnostics) };
@@ -111,6 +133,10 @@ export async function folderSceneCatalog(files: readonly File[], selection: stri
     scenes.push({
       id: `folder:${selection}:${path}`, source: path, relativePath: path, mode, diagnostic,
       read: async () => JSON.parse(await file.text()) as unknown,
+      inspect: async (maxBytes = MAX_SCENE_BYTES) => {
+        if (file.size > maxBytes) throw new PlacementSceneReadLimitError();
+        return { document: JSON.parse(await file.text()) as unknown, bytes: file.size };
+      },
     });
   }
   return { label: files[0]?.webkitRelativePath.split("/")[0] || "Selected folder", scenes, truncated, folderSnapshot: true };

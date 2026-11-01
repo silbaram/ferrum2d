@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -26,7 +27,7 @@ export async function smokeAsepriteAnimation({
           .asepriteBusy === "false",
     );
   const click = async (name) => {
-    await action(name).click();
+    await clickPlacementToolAction(action(name));
     await idle();
   };
   const document = async () =>
@@ -126,10 +127,10 @@ export async function smokeAsepriteAnimation({
       await load(manifest);
     };
   });
-  await action("reimport-animation").click();
+  await clickPlacementToolAction(action("reimport-animation"));
   await wait(() => !!window.releaseAnimationUpload);
   await click("cancel");
-  await action("reimport-animation").click();
+  await clickPlacementToolAction(action("reimport-animation"));
   await page.evaluate(() => window.releaseAnimationUpload());
   await idle();
   assert.match(
@@ -162,7 +163,7 @@ export async function smokeAsepriteAnimation({
   await idle();
   assert.deepEqual(component(await document()).visual.animationSet, nextSet);
   const download = page.waitForEvent("download");
-  await action("export").click();
+  await clickPlacementToolAction(action("export"));
   const bundle = JSON.parse(
     await readFile(await (await download).path(), "utf8"),
   );

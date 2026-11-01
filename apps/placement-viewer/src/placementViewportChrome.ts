@@ -2,6 +2,7 @@ import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 
 // App-owned stroke icons; keep their labels in the locale catalog, never in SVG.
 const paths = {
+  search: '<circle cx="7" cy="7" r="4"/><path d="m10 10 4 4"/>',
   eye: '<path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5Z"/><circle cx="8" cy="8" r="2"/>',
   eyeOff: '<path d="m2 2 12 12M6 3c5-1 9 5 9 5l-2 2M3 5 1 8s3 5 7 5l3-1"/>',
   lock: '<rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5 7V4a3 3 0 0 1 6 0v3"/>',
@@ -34,6 +35,12 @@ const paths = {
   close: '<path d="m4 4 8 8M12 4l-8 8"/>',
 } as const;
 export type ViewportIcon = keyof typeof paths;
+
+/** Floating selection tools leave the persistent navigation rail reachable. */
+export function viewportNavigationInset(stage: HTMLElement, canvas: DOMRect): number {
+  const rail = stage.querySelector<HTMLElement>("[data-placement-navigation-rail]");
+  return rail?.getClientRects().length ? Math.max(8, rail.getBoundingClientRect().right - canvas.left + 8) : 8;
+}
 
 export function decorateViewportAction(
   button: HTMLElement,
@@ -74,14 +81,16 @@ export function installViewportToolbarKeys(toolbar: HTMLElement) {
   toolbar.addEventListener("keydown", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches("button, summary") || target.closest(".placement-view-panel, .placement-control-panel") || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.code)) return;
+    const vertical = toolbar.getAttribute("aria-orientation") === "vertical";
+    const backward = vertical ? "ArrowUp" : "ArrowLeft", forward = vertical ? "ArrowDown" : "ArrowRight";
+    if (![backward, forward, "Home", "End"].includes(event.code)) return;
     const buttons = [...toolbar.querySelectorAll<HTMLElement>("button:not(:disabled), summary")].filter((b) => b.getClientRects().length && !b.closest(".placement-view-panel, .placement-control-panel"));
     const index = buttons.indexOf(target);
     if (index < 0) return;
     event.preventDefault();
     event.stopPropagation();
     const next = event.code === "Home" ? 0 : event.code === "End" ? buttons.length - 1
-      : (index + (event.code === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+      : (index + (event.code === forward ? 1 : -1) + buttons.length) % buttons.length;
     buttons[next].focus({ preventScroll: true });
     buttons[next].scrollIntoView({ block: "nearest", inline: "nearest" });
   });

@@ -37,6 +37,16 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   let mode = "2d", label: string | undefined, dragging = false;
   const states: Record<string, NavigationState> = {};
   element.className = "placement-viewport-toolbar";
+  const rail = document.createElement("div");
+  rail.className = "placement-navigation-rail";
+  rail.dataset.placementNavigationRail = "true";
+  rail.setAttribute("role", "toolbar");
+  rail.setAttribute("aria-orientation", "vertical");
+  setUiAttribute(rail, "aria-label", "Selection tools");
+  rail.append(navigation); stage.append(rail);
+  rail.addEventListener("pointerdown", event => event.stopPropagation());
+  installViewportToolbarKeys(rail);
+  let spatialTools: HTMLElement | undefined;
   setUiAttribute(element, "aria-label", "Viewport tools");
   primary.className = "placement-viewport-primary";
   primary.setAttribute("role", "toolbar");
@@ -124,6 +134,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   const instructions = document.createElement("dl");
   instructions.className = "placement-controls-guide";
   for (const [label, description] of [
+    ["Search Commands", "F3: find tools, views and panels by name."],
     ["Place objects", "Drag an asset from Assets into the viewport."],
     ["Edit selection", "Select an object, then edit its properties in Inspector."],
     ["Navigate", "V: select · H or Space + drag: pan · Wheel: zoom"],
@@ -139,7 +150,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   }
   help.panel.append(instructions);
   panel.append(help.element, size);
-  primary.append(navigation, camera, button, options, expand);
+  primary.append(camera, button, options, expand);
   element.append(primary, readout);
   installViewportToolbarKeys(primary);
   stage.closest(".demo-shell")?.append(element);
@@ -170,6 +181,16 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
       if (mode !== nextMode) closeOptions();
       mode = nextMode; label = nextLabel; dragging = nextDragging;
       navigation.hidden = mode !== "2d";
+      spatialTools ??= camera.querySelector<HTMLElement>(".placement-spatial-camera") ?? undefined;
+      if (spatialTools) {
+        const gameCamera = spatialTools.querySelector<HTMLElement>("[data-placement-game-camera-edit]");
+        if (gameCamera) camera.append(gameCamera);
+        if (spatialTools.parentElement !== rail) rail.append(spatialTools);
+        spatialTools.hidden = mode !== "spatial";
+        spatialTools.setAttribute("aria-orientation", "vertical");
+      }
+      navigation.querySelector('[role="toolbar"]')?.setAttribute("aria-orientation", "vertical");
+      rail.hidden = mode === "game";
       camera.hidden = mode === "2d";
       spatialSettings.hidden = mode !== "spatial";
       flatNavigation.hidden = mode !== "2d";

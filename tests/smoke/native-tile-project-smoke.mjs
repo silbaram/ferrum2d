@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -41,7 +42,7 @@ export async function smokeNativeTiles({
             .tileBusy === "false",
       ),
     click = async (name) => {
-      await action(name).click();
+      await clickPlacementToolAction(action(name));
       await idle();
     },
     status = () => tool().locator("[data-tile-status]").textContent(),
@@ -193,9 +194,9 @@ export async function smokeNativeTiles({
   assert.deepEqual(JSON.parse(await readFile(scene)), initial);
   setCorrupt(false);
   holdSave();
-  await action("save").click();
+  await clickPlacementToolAction(action("save"));
   await waitHeld();
-  await action("cancel").click();
+  await clickPlacementToolAction(action("cancel"));
   releaseSave();
   await getPage().waitForTimeout(100);
   assert.equal((await imports())[0].persisted, false);

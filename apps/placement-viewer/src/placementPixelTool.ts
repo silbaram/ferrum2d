@@ -29,6 +29,7 @@ import { createPlacementNormalPreview } from "./placementNormalPreview";
 import type { SpriteNormalGenerationSettings } from "@ferrum2d/ferrum-web/authoring";
 import { createPixelFrames } from "./placementPixelFrames";
 import { readPixelAtlas, type PixelAtlasMetadata } from "./placementPixelAtlas";
+import { createPlacementToolActions, placementActionReason } from "./placementToolPanel";
 
 export const PIXEL_TAB = "ferrum:pixel-document";
 type Editor = ReturnType<typeof createPixelEditor>;
@@ -102,6 +103,12 @@ export function createPlacementPixelTool(options: {
   const exportSummary = document.createElement("summary"); setUiText(exportSummary, "Export");
   const exportPanel = document.createElement("div"); exportPanel.append(source, png, bundle);
   exports.append(exportSummary, exportPanel); actions.insertBefore(exports, register);
+  const documentActions=createPlacementToolActions("pixel-document","Pixel document actions",[save,register,apply,clean]);
+  documentActions.primary(register);actions.insertBefore(documentActions.element,back);
+  const documentReason=document.createElement("output");documentReason.className="placement-tool-reason";actions.append(documentReason);
+  const toolOptions=document.createElement("div"),toolCaption=document.createElement("strong");
+  toolOptions.className="placement-pixel-tool-options";toolOptions.dataset.pixelToolOptions="true";
+  toolOptions.setAttribute("role","group");setUiAttribute(toolOptions,"aria-label","Active Tool Options");toolOptions.append(toolCaption);
   const body = document.createElement("div"); body.className = "placement-pixel-body";
   const tools = document.createElement("div"); tools.className = "placement-pixel-tools";
   tools.setAttribute("role", "toolbar"); setUiAttribute(tools, "aria-label", "Pixel tools");
@@ -140,17 +147,17 @@ export function createPlacementPixelTool(options: {
   const status = document.createElement("output"); status.setAttribute("role", "status"); status.dataset.pixelStatus = "true";
   const launchStatus = document.createElement("output"); launchStatus.setAttribute("role", "status"); element.append(launchStatus);
   footer.append(status);
-  workspace.append(header, actions, body, footer); body.append(tools, area);
+  workspace.append(header, actions, toolOptions, body, footer); body.append(tools, area);
   let editor: Editor | undefined, owner = "", active = false, disposed = false, busy = false;
   const selection = createPixelSelection({ editor: () => editor!, canEdit: () => !busy && !(framePanel?.isPlaying() ?? false) && options.context().canEdit });
   const selectionControls = createPixelSelectionControls({ selection, perform: editSelection, report,
     configure() { surface.cancel(); tool = "select"; render(); surface.refresh(); surface.element.focus(); } });
-  actions.append(selectionControls.element);
+  toolOptions.append(selectionControls.element);
   const drawingControls = createPixelDrawingControls({
     choose(shape) { surface.cancel(); tool = shape; render(); surface.refresh(); surface.element.focus(); },
     cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report,
   });
-  tools.prepend(drawingControls.picker); actions.append(drawingControls.element);
+  tools.prepend(drawingControls.picker); toolOptions.append(drawingControls.element);
   const paletteControls = createPixelPaletteControls({
     editor: () => editor!, color: () => color, selection: () => selection.area(), selectionKey: () => selection.version(), retainSelection: rect => selection.select(rect),
     key: () => JSON.stringify([options.context().key, options.context().project]),
@@ -260,7 +267,11 @@ export function createPlacementPixelTool(options: {
     editor:()=>editor!,busy:()=>busy||(framePanel?.isPlaying()??false)||selection.pending()||surface.ownsGesture(),cancelStroke:()=>surface.cancel(),report,
     changed:()=>{render();surface.refresh();options.tabsChanged();},
   });
-  body.append(imageLayers.element);
+  const sidebar=document.createElement("aside");sidebar.className="placement-pixel-sidebar";
+  setUiAttribute(sidebar,"aria-label","Layers and document operations");
+  const operationsTitle=document.createElement("h3");setUiText(operationsTitle,"Document and Effects");
+  sidebar.append(imageLayers.element,operationsTitle,paletteControls.element,canvasControls.element,effectsControls.element,imageBrushControls.element,normalMenu);
+  body.append(sidebar);
   framePanel=createPixelFrames({editor:()=>editor!,busy:()=>busy||selection.pending()||surface.ownsGesture(),cancelStroke:()=>surface.cancel(),report,
     changed:()=>{render();surface.refresh();options.tabsChanged();},viewChanged:()=>surface.refresh()});
   workspace.insertBefore(framePanel.element,footer);
@@ -382,6 +393,8 @@ export function createPlacementPixelTool(options: {
     create.disabled = open.disabled = busy || !options.context().canEdit;
     setUiText(launchStatus, message);
     if (!editor || !active) return;
+    const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)"};
+    setUiText(toolCaption,uiMessage("Tool options · {0}",uiMessage(toolNames[tool])));
     title.textContent = editor.name + (dirty() ? " •" : "");
     const region = editor.region(), atlas = editor.atlas();
     info.textContent = region.width + " × " + region.height + (atlas ? " / Atlas " + editor.width + " × " + editor.height : "");
@@ -391,6 +404,7 @@ export function createPlacementPixelTool(options: {
     workspace.dataset.pixelAtlas = String(!!atlas);
     workspace.dataset.pixelDirty = String(dirty());
     workspace.dataset.pixelBusy = String(busy);
+    workspace.setAttribute("aria-busy", String(busy));
     const history = editor.history(),editing=busy||(framePanel?.isPlaying()??false)||surface.ownsGesture(),pending=selection.pending();
     selectionControls.sync(tool === "select" || pending, editing || !options.context().canEdit);
     drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds(), imageBrushControls.active());
@@ -419,6 +433,10 @@ export function createPlacementPixelTool(options: {
     }
     back.disabled = false;
     if (!apply.disabled) setUiAttribute(apply, "title", editor.frames().length>1?"Replace the selected sprite animation":"Replace the selected sprite image");
+    // The primary action must not swap or resize the canvas during a stroke.
+    const primary=options.projectHost?.()?save:register;
+    documentActions.primary(primary);
+    placementActionReason(primary,primary.disabled?pending?"Confirm or cancel the pixel preview first":editing?"Finish the current edit before using this tool":"Pixel editing is unavailable in this document":undefined,documentReason);
     normalStrength.disabled=editing||editor.active()||pending;
     generateNormal.disabled=editing||editor.active()||pending;
     previewNormal.disabled=editing||editor.active()||pending||!freshNormal();
@@ -768,7 +786,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);

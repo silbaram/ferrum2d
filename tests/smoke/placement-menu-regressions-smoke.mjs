@@ -1,3 +1,4 @@
+import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import {
@@ -40,7 +41,7 @@ export async function smokePlacementMenuRegressions(page, mode) {
         await page.locator("[data-placement-spatial-place]").click();
       } else {
         await showPlacementBottom(page, "assets");
-        await page.locator('[data-placement-browser-asset="sprite:crate"]').click();
+        await choosePlacementAsset(page.locator('[data-placement-browser-asset="sprite:crate"]'));
       }
       await pending(true);
       if (id === "view") await showPlacementViewOptions(page);

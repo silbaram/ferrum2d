@@ -1,3 +1,5 @@
+import {inspectPlacementAsset} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import {smokePixelBatch} from './pixel-batch-smoke.mjs';
 import { smokePixelNormals, smokePixelNormalFocus } from "./pixel-normals-smoke.mjs";
 import { smokePixelTags } from "./pixel-tags-smoke.mjs";
@@ -41,12 +43,12 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
   const pixelNext = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelNextTools(page,mode,run);
   await showPlacementBottom(page, "assets");
-  await page.locator('[data-pixel-action="new"]').click();
+  await clickPlacementToolAction(page.locator('[data-pixel-action="new"]'));
   const dialog = page.locator("dialog[open]");
   await dialog.getByLabel("Pixel Name", { exact: true }).fill("my-sprite");
   await dialog.getByLabel("Pixel Width", { exact: true }).fill("8");
   await dialog.getByLabel("Pixel Height", { exact: true }).fill("8");
-  await dialog.locator('[data-pixel-action="create"]').click();
+  await clickPlacementToolAction(dialog.locator('[data-pixel-action="create"]'));
   const workspace = page.locator("#placement-pixel-workspace"), canvas = workspace.locator("canvas");
   await workspace.waitFor({ state: "visible" });
   await page.waitForFunction(() => Number(document.querySelector("[data-pixel-canvas]").dataset.pixelZoom) >= 1);
@@ -67,7 +69,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   async function exportFile(kind, suffix) {
     const menu = workspace.locator(".placement-pixel-export-menu");
     if (!await menu.evaluate(e => e.open)) await menu.locator("summary").click();
-    const pending = page.waitForEvent("download"); await action(kind).click();
+    const pending = page.waitForEvent("download"); await clickPlacementToolAction(action(kind));
     const download = await pending, path = resolve(run, mode + suffix);
     await download.saveAs(path);
     if (await menu.evaluate(e => e.open)) await menu.locator("summary").click();
@@ -106,37 +108,37 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.mouse.up();
   const releasedStroke = JSON.parse((await exportFile("export-source", "-release-end.pixel.json")).bytes);
   assert.deepEqual([...Buffer.from(releasedStroke.rgba, "base64").subarray((1 * 8 + 6) * 4, (1 * 8 + 6) * 4 + 4)], [255, 0, 0, 255]);
-  await action("undo").click();
+  await clickPlacementToolAction(action("undo"));
   await canvas.focus(); await page.keyboard.down("Space");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   // The real keyup may happen outside the window; synthetic blur must reset Space.
   await click(1, 5);
   const afterBlur = JSON.parse((await exportFile("export-source", "-after-blur.pixel.json")).bytes);
   assert.deepEqual([...Buffer.from(afterBlur.rgba, "base64").subarray((5 * 8 + 1) * 4, (5 * 8 + 1) * 4 + 4)], [255, 0, 0, 255]);
-  await page.keyboard.up("Space"); await action("undo").click();
+  await page.keyboard.up("Space"); await clickPlacementToolAction(action("undo"));
   const blurStart = await point(1, 4), blurEnd = await point(5, 4);
   await page.mouse.move(blurStart.x, blurStart.y); await page.mouse.down(); await page.mouse.move(blurEnd.x, blurEnd.y);
   await page.evaluate(() => window.dispatchEvent(new Event("blur"))); await page.mouse.up();
   assert.equal(JSON.parse((await exportFile("export-source", "-blur-cancel.pixel.json")).bytes).rgba, first.rgba);
-  await color("#0000ff"); await action("tool-eyedropper").click(); await click(0, 0);
+  await color("#0000ff"); await clickPlacementToolAction(action("tool-eyedropper")); await click(0, 0);
   assert.equal(await workspace.locator("[data-pixel-color]").inputValue(), "#ff0000");
-  await action("tool-eraser").click(); await click(0, 0);
+  await clickPlacementToolAction(action("tool-eraser")); await click(0, 0);
   await canvas.focus(); await page.keyboard.press("Control+z");
   assert.equal(JSON.parse((await exportFile("export-source", "-eraser-undo.pixel.json")).bytes).rgba, first.rgba);
   const beforeNavigation = await canvas.evaluate(e => ({ x: Number(e.dataset.pixelOriginX), zoom: Number(e.dataset.pixelZoom) }));
-  await action("tool-pan").click();
+  await clickPlacementToolAction(action("tool-pan"));
   const pan = await point(3, 3);
   await page.mouse.move(pan.x, pan.y); await page.mouse.down(); await page.mouse.move(pan.x + 40, pan.y + 24); await page.mouse.up();
   await page.waitForFunction(x => Number(document.querySelector("[data-pixel-canvas]").dataset.pixelOriginX) > x, beforeNavigation.x);
   await canvas.hover(); await page.mouse.wheel(0, -100);
   await page.waitForFunction(zoom => Number(document.querySelector("[data-pixel-canvas]").dataset.pixelZoom) > zoom, beforeNavigation.zoom);
-  await action("fit").click();
+  await clickPlacementToolAction(action("fit"));
   await page.locator("[data-pixel-file]").setInputFiles({
     name: "invalid.pixel.json", mimeType: "application/json", buffer: Buffer.from('{"format":"wrong"}'),
   });
   await page.waitForFunction(() => document.querySelector("[data-pixel-status]").textContent.includes("Unsupported pixel document"));
   assert.equal(JSON.parse((await exportFile("export-source", "-after-invalid.pixel.json")).bytes).rgba, first.rgba);
-  await action("tool-fill").click(); await click(0, 7); await click(7, 0);
+  await clickPlacementToolAction(action("tool-fill")); await click(0, 7); await click(7, 0);
   await canvas.focus(); await page.keyboard.press("Control+z"); await page.keyboard.press("Control+Shift+z");
   assert.deepEqual(await snapshot(), original, "Pixel shortcuts must not reach scene history");
   // A native app update must also protect pixel-only edits, with a clean scene.
@@ -197,7 +199,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
   });
   assert.equal(await page.locator("dialog[open]").count(), 1, "Late file reads must not stack another confirmation");
-  await page.locator('dialog[open] [data-pixel-action="confirm-cancel"]').click();
+  await clickPlacementToolAction(page.locator('dialog[open] [data-pixel-action="confirm-cancel"]'));
   const intact = JSON.parse((await exportFile("export-source", "-after-close-race.pixel.json")).bytes);
   assert.equal(intact.name, "my-sprite");
   for (let i = 0, rgba = Buffer.from(intact.rgba, "base64"); i < rgba.length; i += 4)
@@ -215,7 +217,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
       return result;
     };
   });
-  await action("apply").click();
+  await clickPlacementToolAction(action("apply"));
   await page.waitForFunction(() => typeof window.finishPixelUpload === "function");
   assert(await page.locator('[data-placement-close-document="ferrum:pixel-document"]').isDisabled());
   await page.evaluate(() => { window.ferrumPlacementViewerSelect(); window.finishPixelUpload(); });
@@ -226,7 +228,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.evaluate(() => window.ferrumPlacementViewerSelect("sprite"));
   assert.deepEqual(await snapshot(), original);
   await page.screenshot({ path: resolve(run, mode + "-pixel-editor.png"), fullPage: true });
-  await action("apply").click();
+  await clickPlacementToolAction(action("apply"));
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelBusy === "false" &&
     document.querySelector("[data-pixel-status]").textContent.startsWith("Pixel sprite applied"));
   const redState = await snapshot();
@@ -239,19 +241,19 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   for (const field of ["collider", "body", "layer"])
     assert.deepEqual(redScene.sceneComposition.fragments.main.instances[0].props.components[field],
       active.sceneComposition.fragments.main.instances[0].props.components[field]);
-  await color("#0000ff"); await click(0, 0); await action("apply").click();
+  await color("#0000ff"); await click(0, 0); await clickPlacementToolAction(action("apply"));
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelBusy === "false" &&
     window.ferrumPlacementViewerHistory.undoCount >= 2);
   const blueState = await snapshot(), blueScene = mergeScenePlacementPatch(active, blueState.state.draftPatch).document;
   const blueTexture = blueScene.sceneComposition.fragments.main.instances[0].props.components.visual.texture;
   assert.notEqual(blueTexture, redTexture);
-  await color("#ff00ff"); await click(0, 0); await action("register").click();
+  await color("#ff00ff"); await click(0, 0); await clickPlacementToolAction(action("register"));
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelBusy === "false" &&
     document.querySelector("[data-pixel-status]").textContent.startsWith("Pixel asset registered"));
-  await action("cleanup").click();
+  await clickPlacementToolAction(action("cleanup"));
   await page.waitForFunction(() => document.querySelector("[data-pixel-status]").textContent.startsWith("Removed 1 revisions"));
   assert.deepEqual(await snapshot(), blueState, "Cleanup must retain both scene/history revisions");
-  await action("back").click();
+  await clickPlacementToolAction(action("back"));
   assert((await native()).blue > 100, "The authored PNG must render in the game");
   await undo(); assert((await native()).red > 100);
   await redo(); assert((await native()).blue > 100);
@@ -284,13 +286,14 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await color("#00ff00"); await click(0, 0);
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelDirty === "true");
   await page.locator('[data-placement-close-document="ferrum:pixel-document"]').click();
-  await page.locator('dialog[open] [data-pixel-action="confirm-cancel"]').click();
+  await clickPlacementToolAction(page.locator('dialog[open] [data-pixel-action="confirm-cancel"]'));
   assert(await workspace.isVisible());
   await page.locator('[data-placement-close-document="ferrum:pixel-document"]').click();
-  await page.locator('dialog[open] [data-pixel-action="confirm-discard"]').click();
+  await clickPlacementToolAction(page.locator('dialog[open] [data-pixel-action="confirm-discard"]'));
   await page.locator("[data-pixel-file]").setInputFiles(source.path);
   await workspace.waitFor({ state: "visible" });
   assert.equal(JSON.parse((await exportFile("export-source", "-reopened.pixel.json")).bytes).rgba, JSON.parse(source.bytes).rgba);
+  await inspectPlacementAsset(page, page.locator('[data-placement-browser-asset="sprite:' + blueTexture + '"]'));
   await page.locator('[data-placement-edit-pixels="' + blueTexture + '"]').click();
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelDirty === "true");
   const pngSource = JSON.parse((await exportFile("export-source", "-edited-png.pixel.json")).bytes);
@@ -314,7 +317,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.locator("[data-placement-language]").selectOption("en");
   const imageLayers=await smokePixelLayers(page,mode,run);
   const imageFrames=await smokePixelFrames(page,mode,run);
-  await action('apply').click();
+  await clickPlacementToolAction(action('apply'));
   await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
   exported=JSON.parse((await exportFile('export-assets','-layered-assets.json')).bytes);
   assert.equal(exported.assets.length,3);

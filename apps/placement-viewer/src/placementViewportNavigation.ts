@@ -406,6 +406,7 @@ export function installPlacementViewportNavigation(options: {
     cancelGesture,
     refresh,
     isNavigationGesture,
+    ownsGesture: () => drag !== undefined,
     isNavigating: () => spaceHeld || tool === "pan" || drag !== undefined,
     syncSelection: (state: ScenePlacementViewerState) => {
       frame.disabled = state.selected === undefined;

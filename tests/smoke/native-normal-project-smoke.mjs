@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ export async function smokeNativeNormals({
           .asepriteBusy === "false",
     );
   const click = async (name) => {
-    await action(name).click();
+    await clickPlacementToolAction(action(name));
     await idle();
   };
   const status = () => tool().locator("[data-aseprite-status]").textContent();
@@ -77,9 +78,9 @@ export async function smokeNativeNormals({
   assert.deepEqual(JSON.parse(await readFile(scene, "utf8")), initial);
   setCorrupt(false);
   holdSave();
-  await action("save").click();
+  await clickPlacementToolAction(action("save"));
   await waitHeld();
-  await action("cancel").click();
+  await clickPlacementToolAction(action("cancel"));
   releaseSave();
   await getPage().waitForTimeout(100);
   assert.deepEqual(JSON.parse(await readFile(scene, "utf8")), initial);
@@ -164,7 +165,7 @@ export async function smokeNativeNormals({
   // Reopened exports retain measured normal assets and current instance evidence.
   await reveal();
   const download = getPage().waitForEvent("download");
-  await action("export").click();
+  await clickPlacementToolAction(action("export"));
   const bundle = JSON.parse(
     await readFile(await (await download).path(), "utf8"),
   );

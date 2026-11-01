@@ -22,6 +22,7 @@ export function createPlacementControlMenu(id: string, label: string, icon: View
   summary.append(caret);
   panel.id = `placement-menu-${id}`;
   panel.className = "placement-control-panel";
+  panel.tabIndex = -1;
   panel.setAttribute("role", "group");
   setUiAttribute(panel, "aria-label", label);
   setUiText(heading, label);
@@ -60,7 +61,7 @@ export function createPlacementControlMenu(id: string, label: string, icon: View
       event.preventDefault();
       event.stopPropagation();
       if (!element.open) summary.click();
-      panel.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")?.focus();
+      (panel.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)") ?? panel).focus();
     }
   });
   element.addEventListener("toggle", () => {
@@ -89,5 +90,5 @@ export function createPlacementControlMenu(id: string, label: string, icon: View
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) lifetime.abort();
   }, { signal: lifetime.signal });
-  return { element, summary, panel, close };
+  return { element, summary, panel, close, destroy() { close(); lifetime.abort(); } };
 }

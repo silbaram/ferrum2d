@@ -244,6 +244,7 @@ try {
         "Save",
       );
       await page.locator('[data-instance-id="Save"]').click();
+      await page.locator('.placement-inspector:visible [data-section="identity"] > summary').click();
       assert.equal(
         await page
           .locator('[data-section="identity"] dd:visible')

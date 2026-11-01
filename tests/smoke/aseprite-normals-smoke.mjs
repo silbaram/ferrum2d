@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -42,7 +43,7 @@ export async function smokeAsepriteNormals({
     mergeScenePlacementPatch(active, (await snapshot()).state.draftPatch)
       .document;
   const click = async (name) => {
-    await action(name).click();
+    await clickPlacementToolAction(action(name));
     await idle();
   };
   await page.evaluate(() => {
@@ -203,7 +204,7 @@ export async function smokeAsepriteNormals({
   );
   assert.deepEqual(await normals(), changedBindings);
   const downloadPromise = page.waitForEvent("download");
-  await action("export").click();
+  await clickPlacementToolAction(action("export"));
   const download = await downloadPromise,
     exportPath = resolve(run, "aseprite-normal-assets.json");
   await download.saveAs(exportPath);
@@ -364,7 +365,7 @@ export async function smokeAsepriteNormals({
     });
   }
   await pauseUpload();
-  await action("reimport-normals").click();
+  await clickPlacementToolAction(action("reimport-normals"));
   await wait(() => window.normalUploadPaused);
   await page.locator('button[data-placement-lock-instance="sprite"]').click();
   await page.evaluate(() => window.resumeNormalUpload());
@@ -378,7 +379,7 @@ export async function smokeAsepriteNormals({
   assert.deepEqual(await resources(), stableResources);
   await page.evaluate(() => window.restoreNormalUpload());
   await pauseUpload();
-  await action("reimport-normals").click();
+  await clickPlacementToolAction(action("reimport-normals"));
   await wait(() => window.normalUploadPaused);
   await page.evaluate(() =>
     window.ferrumPlacementViewerUpdateTransform("sprite", { x: 5 }),
@@ -391,14 +392,14 @@ export async function smokeAsepriteNormals({
   assert.deepEqual(await resources(), stableResources);
   await page.evaluate(() => window.restoreNormalUpload());
   await pauseUpload();
-  await action("reimport-normals").click();
+  await clickPlacementToolAction(action("reimport-normals"));
   await wait(() => window.normalUploadPaused);
-  await action("cancel").click();
+  await clickPlacementToolAction(action("cancel"));
   await page.evaluate(() => {
     window.restoreNormalUpload();
     window.resumeNormalUpload();
   });
-  await action("reimport-normals").click();
+  await clickPlacementToolAction(action("reimport-normals"));
   await idle();
   assert.match(await status(), /^Applied normals/);
   assert((await native()).magenta > 100);

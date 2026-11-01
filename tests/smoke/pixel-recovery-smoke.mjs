@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -43,19 +44,19 @@ export async function smokePixelRecovery(page,mode,run) {
     await workspace(p).waitFor({state:'visible'});
   }
   async function move(p,key,commit=true) {
-    await action(p,'tool-select').click();const canvas=workspace(p).locator('canvas');await canvas.focus();
+    await clickPlacementToolAction(action(p,'tool-select'));const canvas=workspace(p).locator('canvas');await canvas.focus();
     await p.keyboard.press('Control+a');await p.keyboard.press(key);if(commit)await p.keyboard.press('Enter');
   }
   async function exported(p,suffix) {
     const menu=workspace(p).locator('.placement-pixel-export-menu');if(await menu.getAttribute('open')===null)await menu.locator('summary').click();
-    const waiting=p.waitForEvent('download');await action(p,'export-source').click();const file=await waiting;
+    const waiting=p.waitForEvent('download');await clickPlacementToolAction(action(p,'export-source'));const file=await waiting;
     const path=resolve(run,mode+'-recovery-'+suffix+'.pixel.json');await file.saveAs(path);await menu.locator('summary').click();
     return JSON.parse(await readFile(path,'utf8'));
   }
   async function recoveryMenu(p) {
     const menu=await workspace(p).isVisible()?workspace(p).locator('[data-pixel-recovery]'):p.locator('[data-pixel-launcher] [data-pixel-recovery]');
     if(await menu.getAttribute('open')===null)await menu.locator('summary').click();
-    await menu.locator('[data-pixel-action="recovery-refresh"]').click();return menu;
+    await clickPlacementToolAction(menu.locator('[data-pixel-action="recovery-refresh"]'));return menu;
   }
   await openSource(page);await move(page,'ArrowRight',false);
   await page.waitForTimeout(750);assert.equal((await rows(page)).length,0,'floating pixels are never checkpointed');
@@ -69,7 +70,7 @@ export async function smokePixelRecovery(page,mode,run) {
   assert.deepEqual(JSON.parse((await rows(page))[0].source),committed);
   page.once('dialog',dialog=>dialog.accept());await page.reload();await ready(page);await showPlacementBottom(page,'assets');
   let menu=await recoveryMenu(page);const old=menu.locator('[data-pixel-recovery-id="'+saved.id+'"]');await old.waitFor();
-  await old.locator('[data-pixel-action="recovery-restore"]').click();await workspace(page).waitFor({state:'visible'});
+  await clickPlacementToolAction(old.locator('[data-pixel-action="recovery-restore"]'));await workspace(page).waitFor({state:'visible'});
   assert.equal(await workspace(page).getAttribute('data-pixel-dirty'),'true');
   assert(await action(page,'normal-apply').isDisabled());assert(await action(page,'undo').isDisabled(),'restoration does not manufacture Undo history');
   const restored=await exported(page,'restored');assert.deepEqual(restored,committed);assert.deepEqual(await scene(page),before);
@@ -90,7 +91,7 @@ export async function smokePixelRecovery(page,mode,run) {
     assert(list.some(r=>r.id!==saved.id),'editing after storage recovery can checkpoint again');
     assert.equal(await workspace(other).locator('[data-pixel-palette-list] option').count(),source.palette.length);
     await other.locator('[data-placement-close-document="ferrum:pixel-document"]').click();
-    await other.locator('dialog[open] [data-pixel-action="confirm-discard"]').click();
+    await clickPlacementToolAction(other.locator('dialog[open] [data-pixel-action="confirm-discard"]'));
     await untilRows(other,r=>r.length===1&&r[0].id===saved.id);
     assert.equal(await workspace(other).locator('[data-pixel-palette-list] option').count(),0,'closed source clears palette UI and its editor cache');
     assert.equal(await workspace(other).locator('[data-pixel-recent-colors] button').count(),0);
@@ -101,7 +102,7 @@ export async function smokePixelRecovery(page,mode,run) {
   let teardown;
   try {
     await closing.goto(origin);await ready(closing);await openSource(closing);
-    await action(closing,'tool-select').click();await workspace(closing).locator('[data-pixel-canvas]').focus();
+    await clickPlacementToolAction(action(closing,'tool-select'));await workspace(closing).locator('[data-pixel-canvas]').focus();
     await closing.keyboard.press('Control+a');
     await closing.evaluate(()=>{
       const canvas=document.querySelector('[data-pixel-canvas]');
@@ -113,11 +114,11 @@ export async function smokePixelRecovery(page,mode,run) {
     assert.deepEqual(JSON.parse(teardown.source),expected,'teardown preserves the latest committed raw source');
   } finally {await closing.close();}
   menu=await recoveryMenu(page);
-  await menu.locator('[data-pixel-recovery-id="'+teardown.id+'"] [data-pixel-action="recovery-discard"]').click();
+  await clickPlacementToolAction(menu.locator('[data-pixel-recovery-id="'+teardown.id+'"] [data-pixel-action="recovery-discard"]'));
   await untilRows(page,r=>r.length===1&&r[0].id===saved.id);
   // Corrupted stored JSON must neither replace the source nor create a scene edit.
   await rows(page,{...saved,source:'{',bytes:1});menu=await recoveryMenu(page);
-  await menu.locator('[data-pixel-recovery-id="'+saved.id+'"] [data-pixel-action="recovery-restore"]').click();
+  await clickPlacementToolAction(menu.locator('[data-pixel-recovery-id="'+saved.id+'"] [data-pixel-action="recovery-restore"]'));
   await page.waitForFunction(()=>document.querySelector('[data-pixel-status]').textContent.includes('Invalid pixel recovery data'));
   assert.deepEqual(await exported(page,'after-corrupt'),committed);assert.deepEqual(await scene(page),before);
   menu=await recoveryMenu(page);
@@ -128,21 +129,21 @@ export async function smokePixelRecovery(page,mode,run) {
   assert.equal(await menu.locator('[data-pixel-action="recovery-discard"]').textContent(),'폐기');
   assert(await workspace(page).evaluate(e=>e.scrollWidth<=e.clientWidth+1));
   await page.screenshot({path:resolve(run,mode+'-pixel-recovery-ko-narrow.png'),fullPage:true});
-  await menu.locator('[data-pixel-recovery-id="'+saved.id+'"] [data-pixel-action="recovery-discard"]').click();await untilRows(page,r=>!r.length);
+  await clickPlacementToolAction(menu.locator('[data-pixel-recovery-id="'+saved.id+'"] [data-pixel-action="recovery-discard"]'));await untilRows(page,r=>!r.length);
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
   const denied=await page.context().newPage();denied.on('pageerror',e=>errors.push(String(e)));
   try {
     await denied.addInitScript(()=>Object.defineProperty(globalThis,'indexedDB',{get(){throw new DOMException('denied','SecurityError');}}));
     await denied.goto(origin);await denied.waitForFunction(()=>window.ferrumEngine);
-    await showPlacementBottom(denied,'assets');await denied.locator('[data-pixel-action="new"]').click();
-    await denied.locator('dialog[open] [data-pixel-action="create"]').click();await workspace(denied).waitFor({state:'visible'});
+    await showPlacementBottom(denied,'assets');await clickPlacementToolAction(denied.locator('[data-pixel-action="new"]'));
+    await clickPlacementToolAction(denied.locator('dialog[open] [data-pixel-action="create"]'));await workspace(denied).waitFor({state:'visible'});
     await denied.waitForFunction(()=>document.querySelector('#placement-pixel-workspace [data-pixel-recovery-status]').textContent.includes('unavailable'));
     assert.equal((await exported(denied,'denied-manual')).format,'ferrum2d.pixel-document');
   } finally {await denied.close();}
   assert.deepEqual(errors,[]);assert.deepEqual(await scene(page),before);
   const currentMenu=workspace(page).locator('[data-pixel-recovery]');
   if(await currentMenu.getAttribute('open')!==null)await currentMenu.locator('summary').click();
-  await action(page,'tool-pencil').click();await action(page,'fit').click();
+  await clickPlacementToolAction(action(page,'tool-pencil'));await clickPlacementToolAction(action(page,'fit'));
   return {committedOnly:true,reloadRestoresExactV5:true,transparentRgbAndMetadata:true,restoredDirty:true,noSceneEdit:true,
     independentTabs:true,quotaRollbackAndManualExport:true,storageDeniedManualExport:true,corruptSourceRejected:true,
     explicitDiscard:true,exportClearsOwnedOnly:true,closeClearsOwned:true,closedPaletteCleared:true,teardownCapturesCommittedSource:true,localeAndNarrow:true};

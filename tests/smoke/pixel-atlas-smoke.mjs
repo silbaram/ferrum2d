@@ -1,3 +1,4 @@
+import {clickPlacementToolAction, inspectPlacementAsset} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -11,7 +12,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   async function exported(kind,name) {
     const menu=workspace.locator('.placement-pixel-export-menu');
     if(!await menu.evaluate(e=>e.open))await menu.locator('summary').click();
-    const waiting=page.waitForEvent('download');await action(kind).click();const download=await waiting,path=join(run,mode+'-atlas-'+name);
+    const waiting=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const download=await waiting,path=join(run,mode+'-atlas-'+name);
     await download.saveAs(path);if(await menu.evaluate(e=>e.open))await menu.locator('summary').click();return {path,bytes:await readFile(path)};
   }
   const restore=await exported('export-source','restore.pixel.json');
@@ -26,7 +27,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
       {id:'left',frame:{u0:0,v0:0,u1:0.5,v1:1}},
       {id:'right',frame:{u0:0.5,v0:0,u1:1,v1:1}},
     ]}};
-  await action('back').click();
+  await clickPlacementToolAction(action('back'));
   const importer=page.locator('[data-placement-aseprite-tool]');
   if(!await importer.evaluate(e=>e.open))await importer.locator(':scope > summary').click();
   await importer.getByRole('tab',{name:'Source',exact:true}).click();
@@ -36,9 +37,11 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
     frames:{left:entry(0),right:entry(4)},meta:{image:'external.png',size:{w:8,h:4}},
   }))});
   await importer.getByLabel('Aseprite PNG',{exact:true}).setInputFiles({name:'external.png',mimeType:'image/png',buffer:encodePngRgba(8,4,pixels)});
-  await importer.locator('[data-aseprite-action="inspect"]').click();
+  await clickPlacementToolAction(importer.locator('[data-aseprite-action="inspect"]'));
   await page.waitForFunction(()=>document.querySelector('[data-placement-aseprite-tool]').dataset.asepriteBusy==='false');
-  assert.equal(await importer.getAttribute('data-aseprite-ready'),'true');await importer.locator('[data-aseprite-action="register"]').click();
+  assert.equal(await importer.getAttribute('data-aseprite-ready'),'true');await clickPlacementToolAction(importer.locator('[data-aseprite-action="register"]'));
+  const frameCard=page.locator('[data-placement-browser-asset^="sprite:aseprite.external-atlas."][data-placement-browser-asset$="/right"]');
+  await inspectPlacementAsset(page,frameCard);
   const external=page.locator('[data-placement-edit-pixel-frame="right"]');await external.waitFor();
   source.atlas.texture=await external.getAttribute('data-placement-edit-pixels');
   const target=structuredClone(components);target.visual.texture=source.atlas.texture;target.visual.asset=source.atlas.texture;delete target.visual.animationSet;delete target.visual.animation;
@@ -60,7 +63,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   });
   await external.click();await page.waitForFunction(()=>window.atlasDecodeHeld);
   await page.locator('[data-placement-document-key="ferrum:pixel-document"]').click();await workspace.waitFor({state:'visible'});
-  await action('tool-pencil').click();await workspace.locator('[data-pixel-color]').fill('#ff00ff');
+  await clickPlacementToolAction(action('tool-pencil'));await workspace.locator('[data-pixel-color]').fill('#ff00ff');
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   const mark=await canvas.evaluate(e=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {x:r.x+Number(e.dataset.pixelOriginX)+1.5*z,y:r.y+Number(e.dataset.pixelOriginY)+1.5*z};});
   await page.mouse.click(mark.x,mark.y);assert.equal(await workspace.getAttribute('data-pixel-dirty'),'true');
@@ -68,7 +71,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   await page.waitForFunction(()=>window.atlasDecodeFinished);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   assert.equal(await page.locator('dialog[open]').count(),0,'stale atlas decode must not ask to discard the newly edited source');
   assert.equal(await workspace.getAttribute('data-pixel-atlas'),'false');assert.equal(await workspace.getAttribute('data-pixel-dirty'),'true');
-  await action('undo').click();await action('back').click();
+  await clickPlacementToolAction(action('undo'));await clickPlacementToolAction(action('back'));
   await external.click();await workspace.waitFor({state:'visible'});
   const initial=JSON.parse((await exported('export-source','imported.pixel.json')).bytes);
   assert.equal(initial.version,4);assert.equal(initial.rgba,source.rgba);assert.deepEqual(initial.atlas,source.atlas);
@@ -76,7 +79,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   await select.selectOption('left');await select.selectOption('right');
   assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false');
   assert(await workspace.locator('.placement-pixel-frames').isHidden());assert(await workspace.locator('.placement-pixel-layers').isHidden());
-  await workspace.locator('[data-pixel-color]').fill('#0000ff');await action('tool-pencil').click();
+  await workspace.locator('[data-pixel-color]').fill('#0000ff');await clickPlacementToolAction(action('tool-pencil'));
   await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-pixel-canvas]').dataset.pixelRegion).x===4);
   async function point(x,y) {
     // Tool context bars can resize the canvas; use origin metadata from its next draw.
@@ -84,7 +87,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
     return canvas.evaluate((e,p)=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {
       x:r.x+Number(e.dataset.pixelOriginX)+(p.x+0.5)*z,y:r.y+Number(e.dataset.pixelOriginY)+(p.y+0.5)*z};},{x,y});
   }
-  await action('tool-select').click();await canvas.focus();await page.keyboard.press('Control+a');
+  await clickPlacementToolAction(action('tool-select'));await canvas.focus();await page.keyboard.press('Control+a');
   await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-pixel-canvas]').dataset.pixelSelection)?.x===4);
   await page.keyboard.press('ArrowRight');
   assert.match(await workspace.locator('[data-pixel-selection-status]').textContent(),/clipped/);
@@ -95,8 +98,8 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
     const offset=(y*8+x)*4,previous=(y*8+x-1)*4;
     assert.deepEqual(selectionBytes.subarray(offset,offset+4),x<4?pixels.subarray(offset,offset+4):x===4?Buffer.alloc(4):pixels.subarray(previous,previous+4));
   }
-  await action('undo').click();assert.deepEqual(JSON.parse((await exported('export-source','selection-undo.pixel.json')).bytes),initial);
-  await action('tool-pencil').click();
+  await clickPlacementToolAction(action('undo'));assert.deepEqual(JSON.parse((await exported('export-source','selection-undo.pixel.json')).bytes),initial);
+  await clickPlacementToolAction(action('tool-pencil'));
   const start=await point(0,1),end=await point(8,1);
   await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y);await page.mouse.up();
   const edited=JSON.parse((await exported('export-source','edited.pixel.json')).bytes),output=Buffer.from(edited.rgba,'base64');
@@ -105,15 +108,15 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
     const i=(y*8+x)*4;
     assert.deepEqual(output.subarray(i,i+4),x>=4&&y===1?Buffer.from([0,0,255,255]):pixels.subarray(i,i+4));
   }
-  await action('undo').click();assert.equal(JSON.parse((await exported('export-source','undo.pixel.json')).bytes).rgba,source.rgba);
-  await action('redo').click();
+  await clickPlacementToolAction(action('undo'));assert.equal(JSON.parse((await exported('export-source','undo.pixel.json')).bytes).rgba,source.rgba);
+  await clickPlacementToolAction(action('redo'));
   assert.deepEqual(JSON.parse((await exported('export-source','redo.pixel.json')).bytes),edited);
   await select.selectOption('left');assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false');
   assert(await action('apply').isDisabled(),'UV mismatch cannot apply to a different frame');
   await select.selectOption('right');
   const png=decodePng((await exported('export-png','sheet.png')).bytes);
   assert.deepEqual(new Uint8Array(png.pixels),new Uint8Array(output));assert.equal(png.width,8);assert.equal(png.height,4);
-  await action('apply').click();
+  await clickPlacementToolAction(action('apply'));
   await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
   assert.match(await workspace.locator('[data-pixel-status]').textContent(),/applied/);
   const bundle=JSON.parse((await exported('export-assets','assets.json')).bytes),visual=bundle.sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual;
@@ -126,7 +129,8 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1));
   await page.screenshot({path:join(run,mode+'-atlas-ko.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
-  await action('back').click();
+  await clickPlacementToolAction(action('back'));
+  await inspectPlacementAsset(page,page.locator('[data-placement-browser-asset="sprite:'+asset.id+'/right"]'));
   await page.locator('[data-placement-edit-pixels="'+asset.id+'"][data-placement-edit-pixel-frame="right"]').click();
   await workspace.waitFor({state:'visible'});assert.equal(await select.inputValue(),'right');
   assert.deepEqual(JSON.parse((await exported('export-source','reopened.pixel.json')).bytes),edited);
@@ -135,7 +139,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
   await page.locator('[data-pixel-file]').setInputFiles({name:'overlap.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(invalid))});
   await page.waitForFunction(()=>document.querySelector('[data-pixel-status]').textContent.includes('Overlapping'));
   assert.deepEqual(JSON.parse((await exported('export-source','rejected.pixel.json')).bytes),edited);
-  await action('back').click();
+  await clickPlacementToolAction(action('back'));
   await page.evaluate(({id,components})=>window.ferrumPlacementViewerUpdateComponents(id,components),{id:instance.id,components});
   await page.locator('[data-pixel-file]').setInputFiles(restore.path);await workspace.waitFor({state:'visible'});
   assert.equal(await workspace.getAttribute('data-pixel-atlas'),'false');assert(await workspace.locator('.placement-pixel-frames').isVisible());

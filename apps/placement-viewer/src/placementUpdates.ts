@@ -1,4 +1,4 @@
-import { registerUiRoot, setUiText, uiMessage, type UiContent } from "./placementLocale";
+import { registerUiRoot, setUiAttribute, setUiText, uiMessage, type UiContent } from "./placementLocale";
 import { compareUpdateVersions, fetchUpdateReleases, safeReleasePage } from "./placementReleaseVersions";
 declare const __FERRUM_VIEWER_SOURCE_VERSION__: string;
 type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -19,9 +19,15 @@ export function createPlacementUpdates(options: {
   close.dataset.updateAction = "close"; check.dataset.updateAction = "check";
   toolbar.append(check, close); dialog.append(heading, toolbar);
   function section(title: string, id: string) {
-    const element = document.createElement("section"), label = document.createElement("h3"), versions = document.createElement("p"), status = document.createElement("p"), action = document.createElement("button"), link = document.createElement("a");
+    const element = document.createElement("section"), label = document.createElement("h3"), scope = document.createElement("p"), target = document.createElement("p"), versions = document.createElement("p"), status = document.createElement("p"), recovery = document.createElement("p"), action = document.createElement("button"), link = document.createElement("a");
     element.className = "placement-update-section"; element.dataset.updateSection = id;
     setUiText(label, title); status.setAttribute("role", "status");
+    scope.className = "placement-tool-scope"; target.className = "placement-update-target";
+    target.dataset.updateTarget = id; recovery.dataset.updateRecovery = id; recovery.hidden = true;
+    setUiText(scope, id === "viewer" ? "Installs the editor app and its bundled engine. Restart required." : "Updates the opened project's SDK packages and lock file. Run project checks afterwards.");
+    status.id = `placement-update-${id}-status`;
+    action.setAttribute("aria-describedby", status.id);
+    setUiAttribute(action, "aria-label", id === "viewer" ? "Update editor app" : "Update project engine");
     action.type = "button"; action.dataset.updateAction = id;
     setUiText(action, "Update"); setUiText(link, "Release notes"); link.target = "_blank"; link.rel = "noopener noreferrer"; link.hidden = true;
     link.addEventListener("click", event => {
@@ -31,8 +37,8 @@ export function createPlacementUpdates(options: {
       void invoke("open_placement_release_page", { url: safeReleasePage(link.href) }).catch(error => setUiText(status, uiMessage("Cannot open release page: {0}", errorMessage(error))));
     });
     const actions = document.createElement("div"); actions.className = "placement-update-actions"; actions.append(action, link);
-    element.append(label, versions, status, actions); dialog.append(element);
-    return { element, versions, status, action, link };
+    element.append(label, scope, target, versions, status, recovery, actions); dialog.append(element);
+    return { element, target, versions, status, recovery, action, link };
   }
   const editor = section("Editor app", "viewer"), project = section("Project engine", "project");
   const note = document.createElement("p"); note.className = "placement-update-note";
@@ -41,14 +47,21 @@ export function createPlacementUpdates(options: {
   let active = false, busy = false, applying = false, priorInert = false, token = 0, controller: AbortController | undefined;
   let app: AppInfo | undefined, installed: ProjectInfo | undefined, prepared: PreparedUpdate | undefined;
   let sourceProject: string | undefined, restart = false;
+  let returnFocus: HTMLElement | undefined;
   function controls() {
     check.disabled = busy; close.disabled = applying;
     editor.action.disabled = busy || (!restart && !prepared?.token);
     project.action.disabled = busy || !installed?.available;
     setUiText(editor.action, restart ? "Restart" : "Update");
+    setUiAttribute(editor.action, "aria-label", restart ? "Restart editor app" : "Update editor app");
     dialog.setAttribute("aria-busy", String(busy));
   }
-  function status(target: typeof editor, message: UiContent) { setUiText(target.status, message); }
+  function status(target: typeof editor, message: UiContent, recovery?: UiContent) {
+    setUiText(target.status, message);
+    target.status.dataset.tone = recovery ? "error" : "info";
+    target.recovery.hidden = recovery === undefined;
+    setUiText(target.recovery, recovery ?? "");
+  }
   function link(target: typeof editor, value?: string) {
     target.link.hidden = !value;
     if (value) target.link.href = safeReleasePage(value); else target.link.removeAttribute("href");
@@ -60,8 +73,11 @@ export function createPlacementUpdates(options: {
     const abort = controller;
     const timeout = setTimeout(() => abort.abort(), 35_000);
     const invoke = options.invoke(); sourceProject = options.projectPath();
+    setUiText(editor.target, "Target: this editor installation");
+    setUiText(project.target, sourceProject ? uiMessage("Project: {0}", sourceProject) : "No project open");
+    project.versions.textContent = "";
     installed = undefined; prepared = undefined; busy = true; controls();
-    status(editor, "Checking versions…"); status(project, sourceProject ?? "Open a project to check its engine version");
+    status(editor, "Checking versions…"); status(project, sourceProject ? "Checking versions…" : "Open a project to check its engine version");
     link(editor); link(project);
     try {
       const results = await Promise.allSettled([
@@ -108,14 +124,14 @@ export function createPlacementUpdates(options: {
         })(),
       ]);
       if (serial !== token || !active) return;
-      results.forEach((result, index) => { if (result.status === "rejected") status(index === 0 ? editor : project, uiMessage("Update check failed: {0}", uiMessage(errorMessage(result.reason)))); });
+      results.forEach((result, index) => { if (result.status === "rejected") status(index === 0 ? editor : project, uiMessage("Update check failed: {0}", uiMessage(errorMessage(result.reason))), "Resolve the reported cause, then check updates again."); });
     } finally { clearTimeout(timeout); if (serial === token) { busy = false; controls(); } }
   }
   async function apply(kind: "viewer" | "project") {
     if (busy) return;
     const target = kind === "viewer" ? editor : project, invoke = options.invoke();
     if (!invoke) return;
-    try { options.guard(); } catch (error) { status(target, uiMessage("Update blocked: {0}", uiMessage(errorMessage(error)))); return; }
+    try { options.guard(); } catch (error) { status(target, uiMessage("Update blocked: {0}", uiMessage(errorMessage(error))), "Finish or save the current work, then retry."); return; }
     if (kind === "project" && (!installed?.available || sourceProject !== options.projectPath())) { status(project, "Project changed. Check updates again."); return; }
     if (kind === "viewer" && !restart && !prepared?.token) return;
     busy = applying = true; controls(); status(target, "Updating… Keep the application open.");
@@ -141,12 +157,14 @@ export function createPlacementUpdates(options: {
         setUiText(project.versions, uiMessage("Current {0}", result.version));
         status(project, uiMessage("Engine updated. Run project checks before playing. Backup: {0}", result.backup));
       }
-    } catch (error) { if (kind === "viewer" && !restart) prepared = undefined; status(target, uiMessage("Update failed: {0}", uiMessage(errorMessage(error)))); }
+    } catch (error) { if (kind === "viewer" && !restart) prepared = undefined; status(target, uiMessage("Update failed: {0}", uiMessage(errorMessage(error))), "Resolve the reported cause, then check updates again."); }
     finally { unlisten?.(); busy = applying = false; controls(); }
   }
   function hide() {
     if (applying) return;
     active = false; busy = false; token++; controller?.abort(); options.root.inert = priorInert; dialog.close();
+    const focus = returnFocus; returnFocus = undefined;
+    if (!priorInert && focus?.isConnected) focus.focus({preventScroll:true});
   }
   close.addEventListener("click", hide); check.addEventListener("click", () => void refresh());
   editor.action.addEventListener("click", () => void apply("viewer")); project.action.addEventListener("click", () => void apply("project"));
@@ -155,7 +173,10 @@ export function createPlacementUpdates(options: {
   controls();
   return {
     show() {
-      if (active) return; active = true; priorInert = options.root.inert; options.root.inert = true;
+      if (active) return;
+      const focused = document.activeElement;
+      returnFocus = focused instanceof HTMLElement ? focused.closest("details")?.querySelector<HTMLElement>(":scope > summary") ?? focused : undefined;
+      active = true; priorInert = options.root.inert; options.root.inert = true;
       dialog.showModal();
       void refresh();
     },

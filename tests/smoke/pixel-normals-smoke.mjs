@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -19,8 +20,8 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
   await page.locator('[data-pixel-batch-confirm]').click();
   const flipped=source.frames.map(frame=>{const raw=Buffer.from(frame.cels[0].rgba,'base64'),next=Buffer.alloc(raw.length);for(let y=0;y<8;y++)for(let x=0;x<8;x++)next.set(raw.subarray((y*8+x)*4,(y*8+x+1)*4),(y*8+7-x)*4);return next.toString('base64');});
   await workspace.locator('[data-pixel-color]').fill('#0000ff');await workspace.locator('[data-pixel-alpha]').fill('255');await workspace.locator('[data-pixel-alpha]').dispatchEvent('input');
-  const effects=workspace.locator('.placement-pixel-effects-menu');await effects.locator('summary').click();await action('outline').click();await page.locator('[data-pixel-outline-confirm]').click();
-  await menu.locator('summary').click();const sourceDownload=page.waitForEvent('download');await action('export-source').click();const sourceFile=await sourceDownload,editedPath=join(run,mode+'-normal-new-tools-source.json');await sourceFile.saveAs(editedPath);await menu.locator('summary').click();
+  const effects=workspace.locator('.placement-pixel-effects-menu');await effects.locator('summary').click();await clickPlacementToolAction(action('outline'));await page.locator('[data-pixel-outline-confirm]').click();
+  await menu.locator('summary').click();const sourceDownload=page.waitForEvent('download');await clickPlacementToolAction(action('export-source'));const sourceFile=await sourceDownload,editedPath=join(run,mode+'-normal-new-tools-source.json');await sourceFile.saveAs(editedPath);await menu.locator('summary').click();
   const edited=JSON.parse(await readFile(editedPath,'utf8'));assert.notEqual(edited.frames[0].cels[0].rgba,flipped[0]);assert.deepEqual([...Buffer.from(edited.frames[0].cels[0].rgba,'base64').subarray(0,4)],[13,17,23,0]);assert.equal(edited.frames[1].cels[0].rgba,flipped[1]);assert.deepEqual(edited.tags,source.tags);assert.deepEqual(edited.layers,source.layers);source=edited;
   const controls=workspace.locator('.placement-pixel-normal-menu');await controls.locator('summary').click();
   assert(await action('normal-generate').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'normal action labels must fit without overlapping the next button');
@@ -37,10 +38,10 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
   try {
     const route='**/__ferrum-normal-generator/config.json';
     await page.route(route,route=>route.fulfill({status:503,body:'Unavailable'}));
-    await action('normal-generate').click();await idle();await page.unroute(route);
+    await clickPlacementToolAction(action('normal-generate'));await idle();await page.unroute(route);
     assert.deepEqual(await scene(),before,'generator failure cannot modify the scene');
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/unavailable/i);
-    await action('normal-generate').click();await idle();
+    await clickPlacementToolAction(action('normal-generate'));await idle();
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/Normals generated/);
     assert.deepEqual(await scene(),before,'generation is explicit asset work, not a scene edit');
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
@@ -49,14 +50,14 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     await palette.locator('[data-pixel-palette-file]').setInputFiles({name:'normal-palette.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'ferrum2d.pixel-palette',version:1,colors:[...source.palette,'#ffffffff']}))});
     await page.waitForFunction(()=>document.querySelector('[data-pixel-palette-list]').options.length===3);
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());
-    await action('undo').click();await palette.locator('summary').click();await action('normal-generate').click();await idle();
+    await clickPlacementToolAction(action('undo'));await palette.locator('summary').click();await clickPlacementToolAction(action('normal-generate'));await idle();
     assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'palette Undo reuses only the original verified source cache');
-    await action('resize-canvas').click();const resize=page.locator('dialog[open]');await resize.locator('[data-pixel-resize="width"]').fill('9');await resize.locator('[data-pixel-resize-confirm]').click();
+    await clickPlacementToolAction(action('resize-canvas'));const resize=page.locator('dialog[open]');await resize.locator('[data-pixel-resize="width"]').fill('9');await resize.locator('[data-pixel-resize-confirm]').click();
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());assert(await action('normal-preview').isDisabled());
-    await action('undo').click();await action('normal-generate').click();await idle();
+    await clickPlacementToolAction(action('undo'));await clickPlacementToolAction(action('normal-generate'));await idle();
     assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'dimension Undo reuses the original source cache');
     await page.evaluate(()=>{const original=window.btoa;window.normalUiEncodings=0;window.restoreNormalUiEncoding=()=>window.btoa=original;window.btoa=value=>{window.normalUiEncodings++;return original(value);};});
-    try{await action('tool-eraser').click();await action('tool-pencil').click();assert.equal(await page.evaluate(()=>window.normalUiEncodings),0,'normal Apply validation must not encode all PNGs on tool changes');}
+    try{await clickPlacementToolAction(action('tool-eraser'));await clickPlacementToolAction(action('tool-pencil'));assert.equal(await page.evaluate(()=>window.normalUiEncodings),0,'normal Apply validation must not encode all PNGs on tool changes');}
     finally{await page.evaluate(()=>window.restoreNormalUiEncoding());}
     const inputs=await page.evaluate(()=>window.pixelNormalInputs);
     assert.equal(inputs.length,2,'one Worker job per independent source frame');
@@ -64,7 +65,7 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
       const image=decodePng(Buffer.from(bytes));assert.equal(image.width,8);assert.equal(image.height,8);
       for(let i=0;i<image.pixels.length;i+=4)if(image.pixels[i+3])assert.equal(image.pixels[i+(index?2:0)],0,'neighbour frame colors cannot bleed into a crop');
     }
-    await action('normal-preview').click();await idle();const dialog=page.locator('.placement-pixel-normal-dialog[open]');
+    await clickPlacementToolAction(action('normal-preview'));await idle();const dialog=page.locator('.placement-pixel-normal-dialog[open]');
     await dialog.waitFor();assert.equal(await dialog.locator('canvas').count(),3);
     const lighting=await dialog.locator('canvas').nth(2).evaluate(canvas=>{
       const gl=canvas.getContext('webgl2'),pixels=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
@@ -73,35 +74,35 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
     assert.equal(lighting.error,0);assert(lighting.difference>20,'normal map must visibly change the isolated lighting');
     assert.deepEqual(await scene(),before,'lighting preview cannot change game state/camera or the scene');
     await page.screenshot({path:join(run,mode+'-pixel-normal-lighting.png'),fullPage:true});
-    await dialog.locator('[data-pixel-action="normal-preview-close"]').click();
+    await clickPlacementToolAction(dialog.locator('[data-pixel-action="normal-preview-close"]'));
     // New outline and range edits must invalidate normals, then Undo must reuse the exact source cache.
     await workspace.locator('[data-pixel-color]').fill('#ffffff');
-    await effects.locator('summary').click();await action('outline').click();await page.locator('[data-pixel-outline-confirm]').click();
-    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await action('undo').click();
+    await effects.locator('summary').click();await clickPlacementToolAction(action('outline'));await page.locator('[data-pixel-outline-confirm]').click();
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await clickPlacementToolAction(action('undo'));
     await range.locator('summary').click();await range.locator('[data-pixel-batch-operation]').selectOption('move');await range.locator('[data-pixel-batch-offset="x"]').fill('1');await range.locator('[data-pixel-batch-review]').click();await page.locator('[data-pixel-batch-confirm]').click();
-    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await action('undo').click();await action('normal-generate').click();await idle();assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2);
+    assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());await clickPlacementToolAction(action('undo'));await clickPlacementToolAction(action('normal-generate'));await idle();assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2);
 
-    await workspace.locator('[data-pixel-color]').fill('#ffffff');await action('tool-pencil').click();
+    await workspace.locator('[data-pixel-color]').fill('#ffffff');await clickPlacementToolAction(action('tool-pencil'));
     const canvas=workspace.locator('[data-pixel-canvas]');await page.evaluate(()=>new Promise(requestAnimationFrame));
     const point=await canvas.evaluate(e=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return {x:r.x+Number(e.dataset.pixelOriginX)+3.5*z,y:r.y+Number(e.dataset.pixelOriginY)+3.5*z};});
     await page.mouse.click(point.x,point.y);
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');assert(await action('normal-apply').isDisabled());assert(await action('normal-preview').isDisabled());
-    await action('undo').click();
-    await action('tool-select').click();await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('ArrowRight');
+    await clickPlacementToolAction(action('undo'));
+    await clickPlacementToolAction(action('tool-select'));await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('ArrowRight');
     assert(await action('normal-apply').isDisabled(),'floating pixels cannot be applied with the old pair');
     await page.keyboard.press('Enter');assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'true');
-    await action('undo').click();await action('tool-pencil').click();await action('normal-generate').click();await idle();
+    await clickPlacementToolAction(action('undo'));await clickPlacementToolAction(action('tool-pencil'));await clickPlacementToolAction(action('normal-generate'));await idle();
     assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
     assert.equal(await page.evaluate(()=>window.pixelNormalInputs.length),2,'restored source reuses its immutable normal cache');
     const strength=controls.locator('[data-pixel-normal-strength]');await strength.fill('2');await strength.dispatchEvent('change');
     await page.evaluate(()=>{window.holdPixelNormalJob=true;window.heldPixelNormalJob=false;});
-    await action('normal-generate').click();await page.waitForFunction(()=>window.heldPixelNormalJob);
-    await action('normal-cancel').click();await idle();await page.evaluate(()=>window.holdPixelNormalJob=false);
+    await clickPlacementToolAction(action('normal-generate'));await page.waitForFunction(()=>window.heldPixelNormalJob);
+    await clickPlacementToolAction(action('normal-cancel'));await idle();await page.evaluate(()=>window.holdPixelNormalJob=false);
     await strength.fill('1.5');await strength.dispatchEvent('change');assert.equal(await controls.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');
     assert.deepEqual(await scene(),before,'cancel preserves the previous pair and scene');
     assert.equal(await page.evaluate(()=>window.pixelNormalWorkers.size),0);
-    await action('normal-apply').click();await idle();assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);assert(await action('apply').isDisabled(),'paired pixels cannot silently replace imagery without regenerating normals');
-    await menu.locator('summary').click();const waiting=page.waitForEvent('download');await action('export-assets').click();const file=await waiting,path=join(run,mode+'-pixel-normal-assets.json');await file.saveAs(path);await menu.locator('summary').click();
+    await clickPlacementToolAction(action('normal-apply'));await idle();assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);assert(await action('apply').isDisabled(),'paired pixels cannot silently replace imagery without regenerating normals');
+    await menu.locator('summary').click();const waiting=page.waitForEvent('download');await clickPlacementToolAction(action('export-assets'));const file=await waiting,path=join(run,mode+'-pixel-normal-assets.json');await file.saveAs(path);await menu.locator('summary').click();
     const bundle=JSON.parse(await readFile(path,'utf8'));assert.equal(bundle.normalBindings.length,1);
     const pair=bundle.normalBindings[0];assert.equal(pair.report.format,'ferrum2d.pixel-normal.report');assert.deepEqual(pair.report.frames.map(frame=>({id:frame.id,rect:frame.rect})),[{id:'blue',rect:[0,0,8,8]},{id:'red',rect:[8,0,8,8]}]);
     assert.equal(bundle.manifest.textureOptions[pair.binding.textures.normal.asset].colorSpace,'none');
@@ -119,16 +120,16 @@ export async function smokePixelNormals(page,mode,run,verify,persisted=false) {
 /** Short diagnostic entry; full gates also call the same assertions after earlier pixel work. */
 export async function smokePixelNormalFocus(page,mode,run,verify,persisted=false) {
   const {showPlacementBottom}=await import('./placement-panel-navigation.mjs');await showPlacementBottom(page,'assets');
-  await page.locator('[data-pixel-action="new"]').click();await page.locator('dialog[open] [data-pixel-action="create"]').click();
+  await clickPlacementToolAction(page.locator('[data-pixel-action="new"]'));await clickPlacementToolAction(page.locator('dialog[open] [data-pixel-action="create"]'));
   const workspace=page.locator('#placement-pixel-workspace');await workspace.waitFor({state:'visible'});
   const menu=workspace.locator('.placement-pixel-export-menu');await menu.locator('summary').click();
-  const waiting=page.waitForEvent('download');await workspace.locator('[data-pixel-action="export-source"]').click();const file=await waiting;await file.saveAs(join(run,mode+'-normal-focus-blank.json'));await menu.locator('summary').click();
+  const waiting=page.waitForEvent('download');await clickPlacementToolAction(workspace.locator('[data-pixel-action="export-source"]'));const file=await waiting;await file.saveAs(join(run,mode+'-normal-focus-blank.json'));await menu.locator('summary').click();
   return smokePixelNormals(page,mode,run,verify,persisted);
 }
 
 /** View-only editor tabs cannot transfer document-owned generated GPU assets. */
 async function smokePixelNormalDocumentScope(page,mode,persisted) {
-  await page.locator('#placement-pixel-workspace [data-pixel-action="back"]').click();
+  await clickPlacementToolAction(page.locator('#placement-pixel-workspace [data-pixel-action="back"]'));
   const original=await page.evaluate(()=>window.ferrumPlacementWorkspaceActiveDocument);
   const initialPatch=await page.evaluate(()=>structuredClone(window.ferrumPlacementViewerState.draftPatch));
   const document={format:'ferrum2d.consumer.scene-authoring',version:1,behaviorRecipes:{entities:{}},
@@ -151,12 +152,12 @@ async function smokePixelNormalDocumentScope(page,mode,persisted) {
   assert.equal(await action('normal-preview').isEnabled(),persisted,'only verified project pairs can be reused in another scene');
   assert.equal(await workspace.locator('[data-pixel-normal-status]').getAttribute('data-stale'),String(!persisted));
   if(persisted){
-    assert(await action('normal-apply').isEnabled());await action('normal-apply').click();
+    assert(await action('normal-apply').isEnabled());await clickPlacementToolAction(action('normal-apply'));
     await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/color and normals applied/);
     await page.evaluate(()=>window.ferrumPlacementViewerRefreshHandoff());
     assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerAgentHandoff.normalBindings.length),1,'normal evidence belongs to the target scene');
-    await action('back').click();await page.locator('[data-placement-action="undo"]').click();
+    await clickPlacementToolAction(action('back'));await page.locator('[data-placement-action="undo"]').click();
   }
   await page.locator('[data-placement-document-key='+JSON.stringify(original)+']').click();
   await page.locator('[data-placement-close-document='+JSON.stringify(sibling)+']').click();
@@ -171,7 +172,7 @@ export async function reuseSavedPixelNormal(page) {
   if(!await panel.evaluate(e=>e.open))await panel.locator('summary').click();
   await page.evaluate(()=>{const Base=window.Worker;window.restoredNormalWorkerCount=0;window.restoreSavedNormalWorkers=()=>window.Worker=Base;window.Worker=class extends Base{constructor(...args){super(...args);window.restoredNormalWorkerCount++;}};});
   try{
-    await workspace.locator('[data-pixel-action="normal-generate"]').click();
+    await clickPlacementToolAction(workspace.locator('[data-pixel-action="normal-generate"]'));
     await page.waitForFunction(()=>document.querySelector('#placement-pixel-workspace').dataset.pixelBusy==='false');
     assert.match(await workspace.locator('[data-pixel-status]').textContent(),/Normals generated/);
     assert.equal(await panel.locator('[data-pixel-normal-status]').getAttribute('data-stale'),'false');

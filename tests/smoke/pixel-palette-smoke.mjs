@@ -1,3 +1,4 @@
+import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -14,7 +15,7 @@ export async function smokePixelPalette(page,mode,run) {
   const menu=workspace.locator('.placement-pixel-palette-menu');await menu.locator('summary').click();
   const button=key=>menu.locator('[data-pixel-palette-action="'+key+'"]'),action=key=>workspace.locator('[data-pixel-action="'+key+'"]');
   const list=menu.locator('[data-pixel-palette-list]');let serial=0;
-  async function source(){const exports=workspace.locator('.placement-pixel-export-menu');await exports.locator('summary').click();const waiting=page.waitForEvent('download');await action('export-source').click();const file=await waiting,path=resolve(run,mode+'-palette-'+serial+++'.pixel.json');await file.saveAs(path);await exports.locator('summary').click();return JSON.parse(await readFile(path,'utf8'));}
+  async function source(){const exports=workspace.locator('.placement-pixel-export-menu');await exports.locator('summary').click();const waiting=page.waitForEvent('download');await clickPlacementToolAction(action('export-source'));const file=await waiting,path=resolve(run,mode+'-palette-'+serial+++'.pixel.json');await file.saveAs(path);await exports.locator('summary').click();return JSON.parse(await readFile(path,'utf8'));}
   async function color(hex,alpha=128){await workspace.locator('[data-pixel-color]').fill(hex);await workspace.locator('[data-pixel-alpha]').fill(String(alpha));await workspace.locator('[data-pixel-alpha]').dispatchEvent('input');}
   const scene=await page.evaluate(()=>({patch:window.ferrumPlacementViewerState.draftPatch,history:window.ferrumPlacementViewerHistory}));
   await color('#ff0000');await button('add').click();let value=await source();assert.deepEqual(value.palette,[...original.palette,'#ff000080']);assert.deepEqual(value.frames,original.frames);
@@ -26,7 +27,7 @@ export async function smokePixelPalette(page,mode,run) {
   await button('replace').click();await page.locator('[data-pixel-palette-confirm]').click();value=await source();
   assert.deepEqual(value.palette,original.palette);assert.deepEqual(value.layers,original.layers);
   for(let i=0;i<2;i++){assert.deepEqual(value.frames[i].cels.slice(1),original.frames[i].cels.slice(1));assert.deepEqual([...Buffer.from(value.frames[i].cels[0].rgba,'base64').subarray(0,4)],[255,0,0,128]);}
-  await action('undo').click();assert.deepEqual(await source(),original);
+  await clickPlacementToolAction(action('undo'));assert.deepEqual(await source(),original);
   const imported=['#0000ff80','#11223300'];
   const paletteFile=colors=>Buffer.from(JSON.stringify({format:'ferrum2d.pixel-palette',version:1,colors}));
   await menu.locator('[data-pixel-palette-file]').setInputFiles({name:'colors.json',mimeType:'application/json',buffer:paletteFile(imported)});

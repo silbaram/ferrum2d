@@ -94,6 +94,10 @@ export function uiContent(element: Element): UiContent {
     ? (texts.get(child) ?? child.data)
     : (element.textContent ?? "");
 }
+/** Preserve the untranslated binding when reusing a control's explanation. */
+export function uiAttributeContent(element: Element, name: string): UiContent | undefined {
+  return attributes.get(element)?.get(name) ?? element.getAttribute(name) ?? undefined;
+}
 export function refreshUi(root: HTMLElement): void {
   const walk = document.createTreeWalker(
     root,

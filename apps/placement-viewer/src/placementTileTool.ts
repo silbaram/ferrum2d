@@ -22,6 +22,7 @@ import type {
   ScenePlacementPatch,
 } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { createPlacementToolActions, createPlacementToolSteps, placementActionReason } from "./placementToolPanel";
 import { canUsePlacementAsset } from "./placementAssetScope";
 import {
   createPlacementTileAssets,
@@ -168,7 +169,12 @@ export function createPlacementTileTool(options: {
   canvas.className = "placement-aseprite-preview";
   setUiAttribute(canvas, "aria-label", "Tile frame preview");
   preview.append(canvas, diff);
-  body.append(actions, status, hint, tabs.element);
+  const actionBar = createPlacementToolActions("tile", "Tile import actions", [inspect, register, apply, reimport, map, save, cancel, exportButton]);
+  const steps = createPlacementToolSteps("Tile import progress"), reason = document.createElement("p"), scope = document.createElement("p");
+  reason.className = "placement-tool-reason"; scope.className = "placement-tool-scope";
+  setUiText(scope, "Project assets · Tile import");
+  const help=document.createElement("details"),helpTitle=document.createElement("summary");setUiText(helpTitle,"Format and Limits");help.append(helpTitle,hint);
+  body.append(scope, steps.element, tabs.element, status, reason, actionBar.element, help);
   element.append(summary, body);
   let key = "",
     mode = "",
@@ -319,7 +325,15 @@ export function createPlacementTileTool(options: {
       ),
     );
     element.dataset.tileBusy = String(busy);
+    element.setAttribute("aria-busy", String(busy));
     element.dataset.tileReady = String(valid);
+    steps.select(valid ? 2 : d.json && d.png ? 1 : 0, busy);
+    setUiAttribute(cancel, "title", busy ? "Cancel" : "No import is running");
+    const primary = busy ? cancel : !valid ? inspect : !d.candidate!.uploaded ? register : !apply.disabled ? apply : !save.disabled ? save : exportButton;
+    actionBar.primary(primary);
+    placementActionReason(primary, primary.disabled ? !context.canEdit ? "Finish the current edit before using this tool" : !d.json || !d.png ? "Choose the source JSON and PNG first" : !valid ? "Select a valid tileset and inspect the source" : "Select a compatible unlocked object or export the assets" : undefined, reason);
+    status.dataset.tone = d.importFailure ? "error" : busy ? "busy" : "info";
+    status.setAttribute("role", d.importFailure ? "alert" : "status");
   }
   async function draw() {
     const token = ++previewSerial,
@@ -358,6 +372,7 @@ export function createPlacementTileTool(options: {
     }
   }
   function fields() {
+    actionBar.close();
     const d = draft(),
       selected = frame.value;
     if(d.mapOptions===undefined&&d.candidate){
@@ -433,6 +448,7 @@ export function createPlacementTileTool(options: {
     d.kind = format.value === "ldtk" ? "ldtk" : "tiled";
     d.levelIndex = level.valueAsNumber;
     d.dirty = true;
+    d.importFailure = undefined;
     d.status = uiMessage("Source changed · Inspect again");
     render();
   }
@@ -508,6 +524,7 @@ export function createPlacementTileTool(options: {
     if (!busy && drafts.has(key)) {
       draft().name = name.value;
       draft().dirty = true;
+      draft().importFailure = undefined;
       render();
     }
   });
@@ -786,6 +803,7 @@ export function createPlacementTileTool(options: {
     stop();
     disposed = true;
     importDiagnostics.clear();
+    actionBar.destroy();
     previewSerial++;
     assets.destroy();
     drafts.clear();

@@ -7,6 +7,87 @@ use std::{fs, io::Read, path::Path};
 const MAX_FILE: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
+pub struct SceneRead {
+    path: String,
+    document: Value,
+    bytes: usize,
+}
+
+/// Inspect a discovered project scene without registering it for saving.
+pub(super) fn inspect_project_scene(
+    project: &Path,
+    scene: &Path,
+    registry: &PlacementWriteRegistry,
+    max_bytes: Option<usize>,
+) -> CommandResult<SceneRead> {
+    let max_bytes = max_bytes
+        .unwrap_or(MAX_FILE as usize)
+        .min(MAX_FILE as usize);
+    if max_bytes == 0 {
+        return Err(PlacementDesktopError::SceneReadLimit);
+    }
+    let project = registry.require_asset_project(project)?;
+    let root = project.join("public");
+    let invalid = || {
+        PlacementDesktopError::InvalidProjectPath(
+            "Scene inspection requires a regular JSON file inside project public".into(),
+        )
+    };
+    let relative = scene.strip_prefix(&root).map_err(|_| invalid())?;
+    if relative.as_os_str().is_empty() {
+        return Err(invalid());
+    }
+    let mut path = root.clone();
+    let check = |path: &Path| -> CommandResult<()> {
+        let metadata = fs::symlink_metadata(path).map_err(|source| PlacementDesktopError::Io {
+            path: path.to_owned(),
+            source,
+        })?;
+        if metadata.file_type().is_symlink()
+            || path
+                .canonicalize()
+                .map_err(|source| PlacementDesktopError::Io {
+                    path: path.to_owned(),
+                    source,
+                })?
+                != path
+        {
+            return Err(invalid());
+        }
+        Ok(())
+    };
+    check(&root)?;
+    for component in relative.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(invalid());
+        };
+        let name = name.to_str().ok_or_else(invalid)?;
+        if name.starts_with('.')
+            || ["assets", "node_modules", "dist", "target"].contains(&name)
+            || name.len() > 255
+            || name
+                .chars()
+                .any(|c| c.is_control() || ['\\', '?', '#', '%', ':'].contains(&c))
+        {
+            return Err(invalid());
+        }
+        path.push(name);
+        check(&path)?;
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json") || !path.is_file()
+    {
+        return Err(invalid());
+    }
+    let (document, bytes) = super::read_scene_document_snapshot(&path, max_bytes)?;
+    check(&path)?;
+    Ok(SceneRead {
+        path: path.to_string_lossy().into_owned(),
+        document,
+        bytes,
+    })
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneEntry {
     path: String,
@@ -241,6 +322,65 @@ fn visit(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn inspection_reads_closed_scenes_without_granting_write_authority() {
+        let root =
+            std::env::temp_dir().join(format!("ferrum-scene-inspect-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("public/levels")).unwrap();
+        fs::create_dir_all(root.join("public/assets")).unwrap();
+        let root = root.canonicalize().unwrap();
+        let file = root.join("public/levels/room.json");
+        let document = json!({"format":SCENE_AUTHORING_FORMAT,"version":1,"sceneComposition":{"prefabs":{},"fragments":{}}});
+        fs::write(&file, document.to_string()).unwrap();
+        let registry = PlacementWriteRegistry::default();
+        assert!(inspect_project_scene(&root, &file, &registry, None).is_err());
+        registry.authorize_project(&root).unwrap();
+        let result = inspect_project_scene(&root, &file, &registry, None).unwrap();
+        assert_eq!(result.document, document);
+        assert_eq!(result.bytes, document.to_string().len());
+        let padded = root.join("public/padded.json");
+        let source = format!("  {}\n", document);
+        fs::write(&padded, &source).unwrap();
+        let snapshot = inspect_project_scene(&root, &padded, &registry, None).unwrap();
+        assert_eq!(snapshot.bytes, source.len());
+        assert!(matches!(
+            inspect_project_scene(&root, &padded, &registry, Some(source.len() - 1)),
+            Err(PlacementDesktopError::SceneReadLimit)
+        ));
+        assert_eq!(fs::read_to_string(&file).unwrap(), document.to_string());
+        assert!(registry.require_scene_document(&file).is_err());
+        assert!(inspect_project_scene(
+            &root,
+            &root.join("public/../public/levels/room.json"),
+            &registry,
+            None
+        )
+        .is_err());
+        assert!(inspect_project_scene(&root, &root.join("outside.json"), &registry, None).is_err());
+        let asset = root.join("public/assets/hidden.json");
+        fs::write(&asset, document.to_string()).unwrap();
+        assert!(inspect_project_scene(&root, &asset, &registry, None).is_err());
+        let large = root.join("public/large.json");
+        fs::write(&large, vec![b' '; MAX_FILE as usize + 1]).unwrap();
+        assert!(inspect_project_scene(&root, &large, &registry, None).is_err());
+        #[cfg(unix)]
+        {
+            let link = root.join("public/link.json");
+            std::os::unix::fs::symlink(&file, &link).unwrap();
+            assert!(inspect_project_scene(&root, &link, &registry, None).is_err());
+            let directory_link = root.join("public/linked");
+            std::os::unix::fs::symlink(root.join("public/levels"), &directory_link).unwrap();
+            assert!(inspect_project_scene(
+                &root,
+                &directory_link.join("room.json"),
+                &registry,
+                None
+            )
+            .is_err());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn missing_child_is_reported_without_losing_other_scenes_and_root_failure_is_an_error() {
         let root = std::env::temp_dir().join(format!("ferrum-scene-io-{}", std::process::id()));

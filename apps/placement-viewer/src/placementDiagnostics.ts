@@ -1,5 +1,5 @@
 import { setUiText, uiMessage } from "./placementLocale";
-import { readPlacementImportDiagnostics } from "./placementImportDiagnostics";
+import { readPlacementImportDiagnostics, createPlacementImportDiagnosticSummary } from "./placementImportDiagnostics";
 import { createPlacementRuntimeSummary } from "./placementRuntimeSummary";
 import {
   mergeScenePlacementPatch,
@@ -114,12 +114,10 @@ export function installPlacementDiagnostics(options: {
     );
     problems.body.replaceChildren();
     for (const diagnostic of imported) {
-      const row = document.createElement("pre");
+      const row = createPlacementImportDiagnosticSummary(diagnostic), technical = document.createElement("details"), title = document.createElement("summary"), data = document.createElement("pre");
       row.dataset.placementImportProblem = diagnostic.source.file;
-      row.textContent = diagnostic.source.file + "#" + diagnostic.source.pointer +
-        (diagnostic.source.item ? " · " + diagnostic.source.item : "") + "\n" + diagnostic.message +
-        "\n" + diagnostic.scenePaths.join("\n") +
-        (diagnostic.scenePathsTruncated ? "\n…" : "") + "\n" + diagnostic.hint;
+      setUiText(title, "Technical Details"); data.textContent = JSON.stringify(diagnostic, null, 2);
+      technical.append(title, data); row.append(technical);
       problems.body.append(row);
     }
     for (const diagnostic of diagnostics) {
