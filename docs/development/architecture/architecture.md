@@ -1674,5 +1674,11 @@ WebGL2 normal pass는 메타데이터 생략 시에도 색상 pass의 최종 gro
 WebGL2 SpriteBatch는 uniform으로 zoom/비활성 0을 전달한다. WebGPU Resolution은 기존 groundYScale과
 shadowProjection 사이 정렬 padding(byte 12)에 같은 값을 넣어 uniform buffer 크기를 유지한다.
 RenderTexture는 화면 스냅을 잠시 해제하고 성공/실패 후 기존 상태를 복원한다.
+
+PNG 아틀라스의 선택형 extrusion은 `scripts/tools/pack-textures.mjs`의 빌드 단계 처리다.
+`extrude`는 기본 0이며 기존 padding의 안쪽에 가장 가까운 RGBA를 복제한다.
+layout·UV·Game Spec·명령 ABI·렌더 셰이더를 바꾸지 않고, 픽셀이 없는 metadata helper에는 옵션을 추가하지 않는다.
+기존 color/normal 애니메이션 패킹은 별도의 공유 layout·edge 복제 계약을 유지한다.
+일반 PNG CLI와 해당 pair 변환의 범위를 합쳐서 자동 normal pair 패킹으로 안내하지 않는다.
 광원/물리 debug/포인터는 연속 좌표를 유지하며 shader snapping은 entity나 camera 저장 좌표에 역전파하지 않는다.
 [Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

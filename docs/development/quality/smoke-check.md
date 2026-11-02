@@ -2057,6 +2057,38 @@ normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata�
 GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
 동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.
 
+## PNG 아틀라스 가장자리 보호 gate
+
+```bash
+pnpm build
+pnpm smoke:atlas-extrusion
+```
+
+Node 검사는 실제 PNG 합성 결과에서 원본 RGBA·모서리·투명 RGB·반투명 알파·부분 extrusion·
+남은 투명 여백·기본/명시 0의 PNG 바이트 동일성을 확인한다. CLI/config 우선순위, 0 padding,
+layout/UV/Game Spec 보존과 잘못된 옵션의 기존 파일 무변경도 검사한다.
+빈 CLI 값이 config의 보호 설정을 끄지 못하는지, 비유한 padding이 쓰기 전에 거절되는지도 확인한다.
+브라우저 실행 실패를 별도 `--artifact-dir`에서 재현해 이전 성공 JSON이 `ok: false`, `status: failed`로
+바뀌고 run별 보고서와 일치하는지 검사한다. 실행 중 보고서도 `ok: false`, `status: running`이다.
+
+browser smoke는 CLI가 생성한 atlas와 **동일 크기·동일 UV**의 독립 단일 프레임 참조를 비교한다.
+참조는 다른 프레임 없이 해당 프레임의 edge를 texture 전체로 확장한 이미지다. 크기가 다른 PNG끼리의
+nearest 텍셀 선택 차이를 경계 번짐으로 오인하지 않는다. GL/GPU × DPR 1/1.5/2에서
+회전·소수 크기/위치·UV flip·반투명 이미지의 정상 렌더와 색상+표시 2 draw, destroy 후 자원 해제를 확인한다.
+`colorSpace: "none"`과 기본 `"srgb"` 로딩 모두 각 backend의 독립 참조와 전체 렌더/경계 행렬을 비교한다.
+보호된 정상 출력은 참조와 channel 오차 최대 1이다. 별도 축 정렬 프레임의 backend 직접 비교는
+RGBA data(`none`) 디코드에서 최대 오차 2를 허용한다. sRGB legacy 업로드의 alpha 처리까지 두 backend가 같다고 주장하지 않는다.
+두 renderer에 검정 clear를 명시하고 DPR 1에서 빈 참조 이미지로 실제 음성 대조군을 실행해 빈 화면을 거절한다.
+나머지 DPR의 `emptyReferenceCheck`는 `not-run`으로 기록해 실제 실행 범위를 구분한다.
+
+별도 UV edge probe는 경계 및 경계 밖 0.25~1.75 texel에 실제 샘플을 보내 투명 여백과 extrusion의
+보호 폭을 측정한다. 이는 정상 게임 UV가 그만큼 벗어난다는 뜻이 아니다. `normalCases`와 `edgeProbes`를
+분리해 기록하며 정상 nearest 사례의 번짐이 0이어도 그대로 보고한다. 원본 프레임 UV를 전역 inset하지 않는다.
+CI validate job과 `smoke:check`에서 실행하고 PNG·JSON·검증 보고서는 `artifacts/atlas-extrusion/`에 남긴다.
+기존 노멀 pair는 `sprite-normal-animation.test.mjs`, asset CLI/병합은 기존 `pack-textures-smoke`·`smoke:asset-pipeline`로 회귀 검증한다.
+대상은 Chromium WebGL2와 소프트웨어 WebGPU offscreen이며 실물 모바일 fp16·2048px 이상 GPU UV 오차·
+실기기 GPU 시간·native compositor는 이 gate의 검증 범위가 아니다. 기본 fragment 정밀도는 유지한다.
+
 ## Public package 선언 타입 gate
 
 `pnpm package:check:ferrum-web`는 실제 tarball allowlist 검사에 이어

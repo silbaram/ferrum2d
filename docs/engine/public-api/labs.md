@@ -85,6 +85,31 @@ buffer에 남고, VFX는 frame-end presentation adapter에서 재생한다.
 
 Asset helper는 build/import pipeline 또는 explicit runtime preload 경로에서 사용한다.
 
+### PNG 아틀라스의 가장자리 보호
+
+저장소의 PNG 합성 CLI는 기존 padding 안에 가장자리 RGBA를 복제하는 선택형 extrusion을 제공한다.
+
+```bash
+pnpm pack:textures --input-dir ./assets/raw --output-image ./public/atlas.png --output-json ./public/atlas.json --padding 2 --extrude 2
+```
+
+- config JSON의 `extrude` 또는 CLI `--extrude`를 쓴다. CLI 값이 config보다 우선한다.
+- 기본은 `0`이다. 기존 투명 padding과 PNG 출력이 유지된다. `extrude`는 정수 `0..padding`이며
+  null·문자열·boolean·소수·음수·범위 밖 값은 거절한다. CLI의 숫자 문자열은 숫자로 읽으며 빈 값·공백은 거절한다.
+  padding은 정규화 전에 유한 숫자인지 확인해 `-Infinity`가 0 여백으로 바뀌는 것도 거절한다.
+- `padding`은 프레임마다 예약한 여백, `extrude`는 그 안쪽에 복제할 폭이다. `padding: 2, extrude: 1`이면
+  가장 가까운 1픽셀만 복제하고 바깥 1픽셀은 투명하게 남긴다. 모서리·알파 0의 RGB·반투명 RGBA도 원본 바이트를 보존한다.
+- layout·프레임 크기·UV·atlas v1·Game Spec frame은 바뀌지 않는다. half-texel inset이나 런타임 셰이더 변경은 적용하지 않는다.
+  잘못된 extrusion은 PNG/JSON/Game Spec을 쓰기 전에 거절한다.
+- `packTextureAtlas(...)`는 위치/UV 메타데이터만 생성한다. 이 helper에 `extrude` 옵션을 넣거나
+  metadata JSON만 수정해도 PNG의 픽셀이 합성되는 것은 아니다. CLI는 저장소 개발 도구이며 SDK tarball에 포함되지 않는다.
+- color/normal 애니메이션 변환의 기존 `animation.padding`은 이미 같은 layout과 edge 복제를 사용한다.
+  이 CLI의 `extrude`는 그 변환 옵션을 변경하지 않는다. 일반 CLI는 normal pair를 자동으로 구성하지 않는다.
+
+extrusion은 프레임 밖을 잘못 샘플링할 때 제한된 보호 여백을 제공한다. 정상 nearest 샘플링에서 항상 번짐이
+발생하는 것은 아니며, 큰 아틀라스의 내부 텍셀 선택 오차·압축 손실·모든 모바일 GPU 정밀도를 해결하는 옵션은 아니다.
+검증 명령과 측정 경계는 [Smoke Check](../../development/quality/smoke-check.md#png-아틀라스-가장자리-보호-gate)를 따른다.
+
 ## Pixel Mask And HD-2D Helpers
 
 | API | 계약 |
