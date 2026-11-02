@@ -1,6 +1,6 @@
 # 게임 개발 편의성 후보
 
-기준일: 2026-11-01
+기준일: 2026-11-02
 상태: 설계 후보·미착수. 개별 항목의 필요성과 완료 조건을 정한 뒤 개발 계획으로 구체화한다.
 
 현재 제작 흐름은 [개발자 퀵스타트](../engine/developer-quickstart.md),
@@ -11,13 +11,13 @@
 ## Asset 반복 작업
 
 공식 뷰어의 읽기 전용 [에셋 사용처 조회](../engine/data-scene-authoring.md)는 씬 파일과 열린 작업공간 원본/draft의 근거를 제공한다.
-코드·외부 매니페스트·GLB 내부·Undo 이력과 전체 디스크 검증은 포함하지 않으므로 아래 디스크 정리 설계와 구분한다.
+코드·외부 매니페스트·GLB 내부·Undo 이력과 전체 디스크 검증은 포함하지 않는다.
+데스크톱의 복구 가능한 관리 Catalog 정리는 [Scene Authoring](../engine/data-scene-authoring.md)의 현재 지원 범위를 따른다.
 
 가져오기·세션 revision 정리·Import 진단의 현재 계약은 [Scene Authoring](../engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
-| 프로젝트 디스크 Catalog 정리 | 저장된 revision·원본 파일의 제거 후보만 다룬다. 닫힌 모든 프로젝트 씬의 참조·동시 수정 충돌 감지·실패 복원을 설계한 뒤 삭제 범위를 정함. 기존 8 revision/64 MiB 예산은 실제 부족 사례를 측정한 뒤 확대 판단 |
 | 외부 맵 지원 범위 확대 | [현재 전체 맵](../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스) 이후 실제 필요를 확인해 다중 PNG·2,048개 초과·flip/animation·TSX·외부 level·IntGrid 어댑터를 각각 설계. 좌표/게임 상태·실패 원자성·원본 저장을 검증 |
 | 추가 문서의 host 저장 | 기본 문서 밖 저장 대상과 project-root allowlist·동시 수정·원본/catalog 관계를 정함. browser-only export 경계 유지 |
 | Generated game 개발 reload | runtime 교체 시 asset/handle/input/오디오 수명과 stale 결과 차단을 정하고 실제 게임에서 재로딩 검증 |

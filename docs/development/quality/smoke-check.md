@@ -2013,7 +2013,7 @@ Rust unit은 잘못된 source hash/PNG/frame/generator metadata와 디스크의 
 Undo/Redo 픽셀 보존, 누락 frame의 source 파일·frame ID·정확한 씬 pointer를 검증한다.
 등록된 자산을 숫자 texture ID로만 작성한 경우에도 정리 후 자원 수와 실제 표시 픽셀이 유지되는지 검사한다.
 `pnpm smoke:tile-map`도 Tiled/LDtk의 실제 missing frame 진단과 기존 save/reopen 회귀를 함께 검사한다.
-프로젝트 디스크 원본 삭제/GC나 닫힌 모든 프로젝트 씬의 참조 분석을 검증한 것으로 해석하지 않는다.
+이 세션 정리 gate를 프로젝트 디스크 원본 정리/GC의 검증으로 해석하지 않는다. 관리 Catalog는 아래 별도 gate를 사용한다.
 Import 진단 단위 검사는 늦은 Problems 초기화를 위한 상태 재조회·snapshot 분리와
 공유 객체/순환·깊이·대량 속성에서 순회 상한 및 `scenePathsTruncated` 표시를 검사한다.
 
@@ -2027,3 +2027,32 @@ Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. �
 `pnpm smoke:tile-project`는 기존 Rust headless transport의 실제 파일 저장·원본/catalog/CAS·protocol·새 세션과 fresh game에
 2D whole-map provenance·재import도 연결한다. 구형 선형 key의 실제 저장 파일과 원본 catalog를 다시 열어 좌표 identity로 이관하고, 너비 변경 뒤 ID·동작 참조·fresh game을 확인한다. 저장 실패/취소 시 원문 보존과 저장 직후 baseline/viewer의 일관성도 검사한다.
 이 결과는 GTK/WebView native GUI나 설치 파일 검증이 아니다. 미지원 형식은 [현재 사용 범위](../../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
+
+## 복구 가능한 프로젝트 Catalog 정리
+
+```bash
+pnpm test:placement-asset-cleanup
+cargo fmt --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
+cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features
+pnpm smoke:placement-asset-cleanup
+```
+
+단위 검사는 bounded host 응답·열린 저장/초안 보호·한 Catalog 명시적 선택·필수 재열기 계약을 확인한다.
+Rust는 네 Catalog의 실제 원본 검증/정리/복구, 공유 PNG, 닫힌/escaped JSON·추가 manifest alias 참조,
+normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata의 참조, 들여쓰기로1 MiB를 넘는 compact Catalog의 안전한 발행,
+권한·외부 변경·변조·링크·한도·불완전 백업과8개 한도에서의 복구를 검증한다.
+발행 충돌/후속 실패는 원본을 복구하고 새 외부 Catalog를 보존해야 한다.
+발행 직후 프로세스 중단을 모사한 뒤 새 registry에서 축소 Catalog를 정상 로드하고 백업으로 원문을 복원한다.
+분석을 막는 손상된 public JSON에서도 독립적인 백업 목록과 실제 복구를 확인한다. 손상된 완료 marker는 다른 백업을 숨기면 안 된다.
+
+브라우저는 실제 Rust 저장/protocol 함수를 기존 test-only stdio bridge로 호출한다.
+생성된 임시 프로젝트에서 명시적 분석·선택·계획 내보내기, 닫힌 씬 참조, 미적용 속성/미저장/Redo 보호,
+분석 이후의 새 참조 거절, 처리 중 Escape 차단, 전체 백업 bytes와 정리 대상 파일 제거를 검사한다.
+읽기 전용 분석 중 Escape는 즉시 닫히고 늦은 응답이 재분석 결과를 덮어쓰지 않아야 한다.
+닫힌 JSON을 손상시켜 분석 실패 뒤에도 실제 백업 복구가 가능하고 해당 JSON을 변경하지 않는지 검사한다.
+쓰기 뒤 강제 재열기, Rust/브라우저 새 세션 복구, 한국어/680px 모달과 URL/GL texture 해제도 확인한다.
+앱 쓰기는 사용자 프로젝트에 실행하지 않는다. CI의 독립 단계에서 실행하고
+`artifacts/project-asset-cleanup/browser/verification.json`과 run별 화면/계획/`rust-build.log`를 남긴다.
+GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
+동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.

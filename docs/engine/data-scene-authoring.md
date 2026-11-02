@@ -222,6 +222,21 @@ texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·�
 등록되지 않은 참조도 표시하지만 참조 미발견은 삭제 허가가 아니다. 별도 SDK/schema/GC API가 아니라 앱 전용 조회다.
 보고서는 `ferrum2d.asset-usage` v1과 `deletionAllowed:false`를 사용한다.
 상한·폴더 snapshot·검색/내보내기 사용법은 `apps/placement-viewer/README.md`의 에셋 사용처 조회 절을 따른다.
+
+데스크톱의 **Assets → Catalog Cleanup**은 별도의 관리 원본 정리 흐름이다.
+명시적으로 연 프로젝트의 pixel/Aseprite/tile/normal Catalog를 기존 parser로 검증하고,
+닫힌 씬을 포함한 public JSON·관리 원본/metadata와 열린 저장/초안의 보수적 문자열 참조를 보호한다.
+사용자가 한 Catalog의 미참조 revision을 선택하면 전체 원본을 `.ferrum-asset-backups/<작업 ID>/`에 보관하고
+live Catalog와 다른 revision이 공유하지 않는 파일을 정리한다. 일반 파일·씬·백업의 영구 삭제는 하지 않는다.
+동적 코드·GLB 내부·외부 파일의 미사용 판정은 아니며 SDK/schema/GC API를 추가하지 않는다.
+쓰기 직전 전체 fingerprint와 Catalog bytes를 재검사하고 충돌 시 새 편집을 보존한다.
+미저장 씬·Undo/Redo·미적용 속성·도트/에셋 초안·실행/로딩/gesture를 보호하고, 쓰기 시도 뒤 프로젝트 재열기를 요구한다.
+복구는 완전한 백업과 Catalog의 before/after hash가 일치할 때만 허용한다.
+백업 목록은 현재 JSON 분석과 독립적으로 조회하므로 닫힌 JSON의 손상에도 복구에 진입할 수 있다.
+리비전 ID도 참조로 보호하며 숫자 `texture`/`normalTexture`는 이름을 확정할 수 없어 모든 후보를 보호한다.
+참조/용량 한도와 백업 비용은 [호스트 구조](../development/architecture/architecture.md#프로젝트-관리-catalog의-복구-가능한-정리)를 따른다.
+메뉴별 복구 절차는 앱 안내(`apps/placement-viewer/README.md`)의 프로젝트 디스크 Catalog 정리 절을 따른다.
+
 실제 참조 frame 누락은 **Import Diagnostics**와 **Problems**에 원본 JSON 파일·collection pointer·frame ID와
 현재 씬의 정확한 JSON pointer를 표시한다. prefab 상속은 해당 prefab의 원본 경로를 표시하며 경로는 최대 64개다.
 진단 수집은 순회 65,536단계·pointer 4,096자 상한을 사용하고 제한/순환 참조로 일부를 생략하면 `scenePathsTruncated:true`를 표시한다.
@@ -547,7 +562,7 @@ sRGB 원본과 충돌하는 감마·색도 정보와 ICC/HDR 프로필은 거절
 
 자산과 씬은 별도 저장 경계다. 자산 저장 성공 후 씬 충돌이 발생하면 저장된 원본과 기존 디스크 씬을 보존하고 씬 초안을 유지한다.
 처리 중 탭 전환·종료로 결과 확인이 중단되면 이미 저장된 파일을 취소됐다고 표시하지 않고 프로젝트 재열기를 안내한다.
-미사용 정리는 persisted 프로젝트 자산을 삭제하지 않는다. 프로젝트 전체 디스크 정리는 별도 설계 범위다.
+세션 미사용 정리는 persisted 프로젝트 자산을 삭제하지 않는다. 프로젝트의 관리 Catalog 정리는 별도 명시적 흐름을 따른다.
 문자열 이름과 runtime 숫자 ID를 모두 검사해 저장·다른 씬 열기의 경계를 유지한다.
 bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard normal ID를 안정적인 자산 이름으로 변환한 scene 사본을 내보낸다.
 다른 metadata는 바꾸지 않으며 지원하지 않는 위치의 숫자 texture 참조는 조용히 이식하지 않고 진단한다.

@@ -170,3 +170,12 @@ v1/v2와 최대16프레임·8레이어 v3 원본, 고정 atlas v4 원본을 지�
 v3 PNG만8 MiB/한 변1024 atlas를 허용하며 모든 프레임의 합성과 padding을 대조한다. 기존 PNG/원본과 프로젝트 총예산은 유지한다.
 `pnpm smoke:pixel-project`는 실제 Rust 파일 저장과 protocol을 stdio test transport로 호출해 검증한다.
 이 검사는 실제 native GUI의 picker/IPC 수동 확인과 구분한다.
+
+프로젝트의 관리 원본을 정리하려면 **에셋 → Catalog 정리**를 사용한다.
+분석 후 한 Catalog의 revision을 명시적으로 선택하면 `.ferrum-asset-backups/<작업 ID>/`에 전체 원본을 보관하고
+live Catalog와 공유되지 않는 파일을 정리한다. 씬·미저장 도구·Undo/Redo가 있으면 쓰기를 차단하고 쓰기 시도 후에는 프로젝트 재열기가 필요하다.
+복구는 before/after Catalog hash가 그대로인 경우만 허용한다. 새로운 Catalog와 외부 파일은 덮어쓰지 않는다.
+닫힌 JSON이 손상돼 정리 분석이 실패해도 복구 백업은 별도로 조회할 수 있다. 숫자 텍스처 참조는 모든 정리 후보를 보호한다.
+이 기능은 백업을 영구 삭제하거나 프로젝트 밖 파일을 분석하지 않으며, 전체 디스크 공간은 늘 수 있다.
+한도·참조 검사 범위·사용 순서는 [뷰어 안내](../placement-viewer/README.md#프로젝트-디스크-catalog-정리)를 따른다.
+`pnpm smoke:placement-asset-cleanup`은 실제 Rust 저장소와 브라우저를 stdio transport로 연결해 분석/정리/재열기/복구를 검증한다.
