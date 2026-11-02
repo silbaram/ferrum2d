@@ -99,6 +99,7 @@ import {
   type PlacementBrowserAsset,
 } from "./placementAssetBrowser";
 import { createPlacementAssetUsagePanel } from "./placementAssetUsagePanel";
+import { createPlacementAssetCleanupPanel } from "./placementAssetCleanupPanel";
 import {
   createPlacementAssetChanges,
   type PlacementAssetRevision,
@@ -489,6 +490,7 @@ interface PlacementInspector {
   layerView(): PlacementLayerViewState;
   review(): void;
   properties(): void;
+  hasPendingEdits(): boolean;
   setState(
     state: ScenePlacementViewerState,
     migrationPreview?: ScenePlacementBindingMigrationPreview,
@@ -1058,6 +1060,7 @@ async function bootstrap(): Promise<void> {
     let switching = false;
     let sceneExplorer: ReturnType<typeof createPlacementSceneExplorer> | undefined;
     let assetUsage: ReturnType<typeof createPlacementAssetUsagePanel> | undefined;
+    let assetCleanup: ReturnType<typeof createPlacementAssetCleanupPanel> | undefined;
     let refreshWorkspaceAvailability: (() => void) | undefined;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
     let layerVisibilitySignature = "";
@@ -2332,7 +2335,7 @@ async function bootstrap(): Promise<void> {
         }
       },
     });
-    const canChangeWorkspace = () => !root.inert && !switching && !documentSession?.isSaving() && !documentSession?.isFinishingPointerEdit() && !runtimeAssetReloadInFlight &&
+    const canChangeWorkspace = () => !root.inert && !switching && !assetCleanup?.writing() && !documentSession?.isSaving() && !documentSession?.isFinishingPointerEdit() && !runtimeAssetReloadInFlight &&
       !interaction.dragging && !interaction.pendingAdd && !placementAssetDrag && !viewportNavigation?.ownsGesture() &&
       !spatialWorkspace?.ownsGesture() && !pixelTool?.isBusy() && viewer.historyState().transactionLabel === undefined;
     const layout = installPlacementWorkspaceLayout(
@@ -2343,7 +2346,7 @@ async function bootstrap(): Promise<void> {
         "browser",
       { canChange: canChangeWorkspace },
     );
-    refreshWorkspaceAvailability = () => { layout.refreshAvailability(); assetUsage?.sync(); };
+    refreshWorkspaceAvailability = () => { layout.refreshAvailability(); assetUsage?.sync(); assetCleanup?.sync(); };
     // This context belongs to the explicitly opened project, independent of the active tab.
     let sceneProject = structuredClone(activeDocument.desktop);
     const sceneProjectPath = sceneProject?.projectPath;
@@ -2450,6 +2453,46 @@ async function bootstrap(): Promise<void> {
       canScan: canChangeWorkspace,
     });
     assetBrowser.element.querySelector("h3")!.after(assetUsage.element);
+    assetCleanup = createPlacementAssetCleanupPanel({
+      host() {
+        const invoke = placementDesktopInvoke();
+        return sceneProjectPath && invoke ? { project: sceneProjectPath, invoke } : undefined;
+      },
+      context: () => JSON.stringify([sceneProjectPath, sceneCatalogRevision, activeDocument.key, runtimeApplyRevision,
+        [...documents.values()].map(entry => {
+          const history = entry.viewer.historyState();
+          return [entry.key, entry.dirty, history.undoCount, history.redoCount, history.transactionLabel];
+        })]),
+      *documents() {
+        for (const entry of documents.values()) {
+          yield { scene: entry.source, document: entry.document };
+          const patch = entry.viewer.exportPatch();
+          if (patch) yield { scene: entry.source, document: mergeScenePlacementPatch(entry.document, patch).document };
+        }
+      },
+      guard(write) {
+        if (!canChangeWorkspace() || lightingControls?.ownsGesture() || spatialWorkspace?.mode() === "game")
+          throw Error("Finish the current edit, load or running scene before cleanup");
+        if (write) {
+          if ([...documents.values()].some(entry => entry.viewer.exportPatch()))
+            throw Error("Save all scene changes before catalog cleanup");
+          if ([...documents.values()].some(entry => {
+            const history = entry.viewer.historyState();
+            return history.undoCount || history.redoCount || history.transactionLabel;
+          })) throw Error("Reopen saved scenes to clear Undo and Redo before catalog cleanup");
+          if ([...documents.values()].some(entry => entry.inspector.hasPendingEdits()))
+            throw Error("Apply or revert pending component inputs before catalog cleanup");
+          if (pixelTool?.isOpen() || pixelTool?.blocksReload() || normalTool?.blocksReload() || asepriteTool?.blocksReload() || tileTool?.blocksReload())
+            throw Error("Save prepared assets or reopen the project before catalog cleanup");
+        }
+      },
+      reopen(project) {
+        if (project !== sceneProjectPath) throw Error("Project changed. Reopen the original project manually.");
+        openPlacementProjectFolder(project);
+      },
+    });
+    assetUsage.element.after(assetCleanup.element);
+    window.addEventListener("pagehide", event => { if (!event.persisted) assetCleanup?.destroy(); });
     const review = shell.canvas.ownerDocument.createElement("button"),
       exportButton = shell.canvas.ownerDocument.createElement("button");
     review.type = exportButton.type = "button";
@@ -3532,6 +3575,7 @@ function createPlacementInspector(
     element,
     assetMount,
     layerView: () => layers.view,
+    hasPendingEdits: () => componentControls.hasPendingEdits(),
     properties() {
       inspectorTabs.select("properties");
       propertyFilters.resetFilters();
@@ -4683,6 +4727,7 @@ function createPlacementComponentControls(summaries: {
 }): {
   element: HTMLFormElement;
   setState(state: ScenePlacementViewerState): void;
+  hasPendingEdits(): boolean;
 } {
   const form = document.createElement("form");
   const visualRow = document.createElement("div");
@@ -4816,6 +4861,10 @@ function createPlacementComponentControls(summaries: {
   };
   const apply = document.createElement("button");
   let syncedInstanceId: string | undefined;
+  const synchronized = new Map<Element, string | boolean>();
+  const currentValue = (field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) =>
+    field instanceof HTMLInputElement && field.type === "checkbox" ? field.checked : field.value;
+  const capture = () => { for (const field of Object.values(fields)) synchronized.set(field, currentValue(field)); };
 
   form.className = "placement-controls placement-component-controls";
   visualRow.className = "placement-control-grid placement-component-grid";
@@ -4849,6 +4898,7 @@ function createPlacementComponentControls(summaries: {
 
   return {
     element: form,
+    hasPendingEdits: () => Object.values(fields).some(field => !field.disabled && synchronized.get(field) !== currentValue(field)),
     setState(state) {
       const selected = state.selected;
       const disabled = selected === undefined;
@@ -4859,6 +4909,7 @@ function createPlacementComponentControls(summaries: {
       if (selected === undefined) {
         syncedInstanceId = undefined;
         clearPlacementComponentFields(fields);
+        capture();
         return;
       }
       if (
@@ -4867,6 +4918,7 @@ function createPlacementComponentControls(summaries: {
       ) {
         syncedInstanceId = selected.instanceId;
         populatePlacementComponentFields(fields, selected);
+        capture();
       }
       syncPlacementComponentFieldState(fields);
     },

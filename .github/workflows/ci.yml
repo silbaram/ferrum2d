@@ -156,7 +156,7 @@ jobs:
         run: node tests/smoke/placement-village-smoke.mjs
 
       - name: Placement camera, grid, locale, layer and command contracts
-        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage && pnpm test:placement-asset-cleanup
 
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context
@@ -190,6 +190,21 @@ jobs:
 
       - name: Native pixel source storage and fresh game roundtrip
         run: pnpm smoke:pixel-project
+
+      - name: Recoverable project asset catalog cleanup
+        run: node tests/smoke/aseprite-project-smoke.mjs --cleanup
+
+      - name: Upload project catalog cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-asset-cleanup
+          path: |
+            artifacts/project-asset-cleanup/browser/verification.json
+            artifacts/project-asset-cleanup/browser/run-*/*.png
+            artifacts/project-asset-cleanup/browser/run-*/cleanup-plan.json
+            artifacts/project-asset-cleanup/browser/run-*/rust-build.log
+          if-no-files-found: ignore
 
       - name: Upload pixel and 2D material evidence
         if: always()

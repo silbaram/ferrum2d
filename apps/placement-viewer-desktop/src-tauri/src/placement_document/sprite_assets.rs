@@ -234,7 +234,7 @@ fn publish_catalog(
 ) -> CommandResult<()> {
     super::asset_files::publish_catalog(project, contract.directory, root, temporary, expected)
 }
-fn catalog_sources(
+pub(super) fn catalog_sources(
     contract: &Contract,
     root: &Path,
     bytes: Option<&[u8]>,

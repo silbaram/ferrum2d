@@ -829,6 +829,7 @@ export function createPlacementPixelTool(options: {
       })().catch(error => { if (token === serial && !signal.aborted) report(error); });
     },
     dirty,
+    blocksReload: () => busy || dirty() || assets.entries().some(asset => !asset.persisted) || (normals?.hasUnsaved() ?? false),
     tab: () => editor ? { key: PIXEL_TAB, label: editor.name + ".pixel", source: editor.name,
       dirty: dirty(), controls: workspace.id, closable: !busy } : undefined,
     async close() {

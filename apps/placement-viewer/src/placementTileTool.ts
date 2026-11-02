@@ -823,6 +823,7 @@ export function createPlacementTileTool(options: {
     element,
     sync,
     destroy,
+    blocksReload: () => busy || assets.entries().some(asset => !asset.persisted) || [...drafts.values()].some(draft => !!(draft.json || draft.png) && (draft.dirty || !draft.candidate?.persisted)),
     has: (id: string) => assets.entries().some((a) => a.id === id),
     close(document: string) {
       if (document === key) {

@@ -20,7 +20,9 @@ import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/serv
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
 import { smokeNativePixels } from "./native-pixel-project-smoke.mjs";
+import { smokeAssetCleanup } from "./placement-asset-cleanup-smoke.mjs";
 
+const cleanupMode = process.argv.includes("--cleanup");
 const tileMode = process.argv.includes("--tiles");
 const pixelMode = process.argv.includes("--pixels");
 const externalTileMode = tileMode && process.argv.includes("--external-tsj");
@@ -29,7 +31,7 @@ const animationMode = process.argv.includes("--animations");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  pixelMode ? "artifacts/pixel-project" : externalTileMode
+  cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -185,7 +187,10 @@ const server = createServer(async (request, response) => {
         command === "save_placement_tile_assets" ||
         command === "save_placement_pixel_assets" ||
         command === "save_placement_aseprite_assets" ||
-        command === "save_placement_normal_assets"
+        command === "save_placement_normal_assets" ||
+        command === "apply_placement_asset_cleanup" ||
+        command === "inspect_placement_asset_cleanup" ||
+        command === "restore_placement_asset_cleanup"
       ) {
         if (hold) {
           held = true;
@@ -426,7 +431,7 @@ function fixture(updated = false) {
 }
 const reports = [];
 try {
-  for (const scenario of tileMode
+  for (const scenario of cleanupMode ? ["2d"] : tileMode
     ? externalTileMode
       ? ["tiled:2d", "tiled:hd2d"]
       : ["tiled:2d", "tiled:hd2d", "ldtk:2d", "ldtk:hd2d"]
@@ -629,6 +634,27 @@ try {
     try {
       await open();
       await ready();
+      if (cleanupMode) {
+        reports.push(await smokeAssetCleanup({
+          getPage: () => page, project, scene, initial, run, commands,
+          invoke: (command,args) => bridge.invoke(command,args),
+          restart: async () => { await closePage(); await bridge.close(); bridge=rustBridge(); await open(); await ready(); },
+          holdWrite: () => { hold=true; held=false; },
+          waitHeld: async () => { for(let i=0;i<200&&!held;i++)await new Promise(done=>setTimeout(done,10)); assert(held); },
+          releaseWrite: () => { hold=false; release(); },
+          close: closePage,
+          webProbe: async () => {
+            const web = await browser.newPage();
+            try {
+              await web.goto(origin + "/");
+              await web.waitForFunction(() => window.ferrumPlacementViewerState && window.ferrumEngine);
+              await showPlacementBottom(web, "assets");
+              assert(await web.locator('[data-placement-cleanup-open]').isDisabled());
+            } finally { await web.close(); }
+          },
+        }));
+        continue;
+      }
       if (pixelMode) {
         reports.push(await smokeNativePixels({
           getPage: () => page,mode,project,scene,initial,run,

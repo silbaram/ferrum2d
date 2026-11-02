@@ -48,6 +48,8 @@
     "smoke:placement-layouts": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-layout-presets-runner.mjs",
     "test:placement-layers": "node --test tests/smoke/placement-layers.test.mjs",
     "test:placement-asset-usage": "node --test tests/smoke/placement-asset-usage.test.mjs",
+    "test:placement-asset-cleanup": "node --test tests/smoke/placement-asset-cleanup.test.mjs",
+    "smoke:placement-asset-cleanup": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/aseprite-project-smoke.mjs --cleanup",
     "smoke:placement-asset-usage": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-asset-usage-runner.mjs",
     "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs tests/smoke/placement-asset-loading.test.mjs",
     "test:updates": "node --test tests/smoke/engine-updates.test.mjs tests/smoke/placement-updates.test.mjs",

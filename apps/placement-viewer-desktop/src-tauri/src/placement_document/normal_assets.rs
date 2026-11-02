@@ -163,18 +163,18 @@ fn validate_binding(binding: &Value) -> CommandResult<(u64, u64)> {
 }
 
 #[derive(Debug)]
-struct Pair {
-    metadata: Vec<u8>,
-    value: Value,
-    pngs: Vec<Vec<u8>>,
+pub(super) struct Pair {
+    pub(super) metadata: Vec<u8>,
+    pub(super) value: Value,
+    pub(super) pngs: Vec<Vec<u8>>,
     width: u64,
     height: u64,
 }
 impl Pair {
-    fn id(&self) -> String {
+    pub(super) fn id(&self) -> String {
         hash(&self.metadata)
     }
-    fn binding(&self) -> &Value {
+    pub(super) fn binding(&self) -> &Value {
         &self.value["binding"]
     }
 }
@@ -538,7 +538,7 @@ fn budget(pairs: &[Pair]) -> CommandResult<()> {
     }
     Ok(())
 }
-fn png_name(sha: &str) -> String {
+pub(super) fn png_name(sha: &str) -> String {
     format!("normal-{sha}.png")
 }
 fn manifest(pairs: &[Pair]) -> Value {
@@ -557,7 +557,7 @@ fn manifest(pairs: &[Pair]) -> Value {
     }
     json!({"textures":textures,"textureOptions":options})
 }
-fn load_pairs(root: &Path, bytes: Option<&[u8]>) -> CommandResult<Vec<Pair>> {
+pub(super) fn load_pairs(root: &Path, bytes: Option<&[u8]>) -> CommandResult<Vec<Pair>> {
     let Some(bytes) = bytes else {
         return Ok(Vec::new());
     };
@@ -744,7 +744,7 @@ pub(super) fn load_inner(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::{fs, path::PathBuf};
     struct Project(PathBuf);
@@ -772,7 +772,7 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-    fn fixture(index: u8) -> (String, Vec<Value>) {
+    pub(in super::super) fn fixture(index: u8) -> (String, Vec<Value>) {
         let encode = |rgba: [u8; 4]| {
             let mut bytes = Vec::new();
             {
