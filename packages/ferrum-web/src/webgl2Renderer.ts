@@ -34,6 +34,7 @@ import { resolveSpriteMaterialPreset } from "./spriteMaterial";
 import { groundShadowProjection } from "./groundShadowProjection.js";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
 import { WebGL2RenderTarget } from "./webgl2RenderTarget";
+import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectOptions, type PixelPerfectPresentation } from "./pixelPerfect.js";
 import { WebGL2RenderTextureStore } from "./webgl2RenderTextureStore";
 import type { RenderTexture, RenderTextureOptions, RenderToTextureOptions } from "./renderTexture";
 import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement";
@@ -60,6 +61,7 @@ const COPY_POST_PROCESS_PASS: ResolvedPostProcessPass = {
 };
 
 export interface WebGL2RendererOptions extends TextureManagerOptions {
+  pixelPerfect?: PixelPerfectOptions | false;
   /** Opt-in nonblocking EXT_disjoint_timer_query_webgl2 measurement. Default false. */
   gpuTiming?: boolean;
   colorManagement?: ColorManagementMode;
@@ -99,6 +101,9 @@ export class WebGL2Renderer implements Renderer {
   private postProcessScratchA?: WebGL2RenderTarget;
   private postProcessScratchB?: WebGL2RenderTarget;
   private viewportZoom = 1;
+  private pixelPerfect?: PixelPerfectOptions;
+  private presentation?: PixelPerfectPresentation;
+  private presentationTarget?: WebGL2RenderTarget;
   private groundYScale = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
@@ -111,6 +116,7 @@ export class WebGL2Renderer implements Renderer {
   private destroyed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: WebGL2RendererOptions = {}) {
+    this.pixelPerfect = resolvePixelPerfectOptions(options.pixelPerfect);
     this.colorManagement = resolveColorManagementMode(options.colorManagement);
     const gl = canvas.getContext("webgl2", {
       preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
@@ -158,6 +164,7 @@ export class WebGL2Renderer implements Renderer {
     options: WebGL2RendererOptions = {},
     preparation: ShaderPreparationOptions = {},
   ): Promise<WebGL2Renderer> {
+    resolvePixelPerfectOptions(options.pixelPerfect);
     resolveColorManagementMode(options.colorManagement);
     if (preparation.signal?.aborted) throw new DOMException("Shader preparation was cancelled.", "AbortError");
     const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: options.preserveDrawingBuffer ?? false });
@@ -348,7 +355,7 @@ export class WebGL2Renderer implements Renderer {
     renderTargetCount+=spatialEffects.renderTargetCount;
     targetBytes+=spatialEffects.textureBytes;
     const normals=this.spriteNormals?.resourceStats();renderTargetCount+=normals?.renderTargetCount??0;targetBytes+=normals?.textureBytes??0;
-    for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB]) {
+    for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB, this.presentationTarget]) {
       const bytes = target?.allocatedTextureBytes ?? 0;
       if (bytes > 0) renderTargetCount += 1;
       targetBytes += bytes;
@@ -428,14 +435,65 @@ export class WebGL2Renderer implements Renderer {
     this.resize();
   }
 
+  setPixelPerfect(options: PixelPerfectOptions | false | undefined): void {
+    this.assertAlive();
+    if (this.frameStarted) throw Error("Configure pixelPerfect between frames");
+    const next = resolvePixelPerfectOptions(options);
+    if ((!next && !this.pixelPerfect) || (next && this.pixelPerfect &&
+        next.width === this.pixelPerfect.width && next.height === this.pixelPerfect.height)) {
+      this.pixelPerfect = next;
+      this.resize();
+      return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const width = next?.width ?? Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
+    const height = next?.height ?? Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
+    const offscreen = next !== undefined || this.postProcessPasses.length > 0 || this.colorManagement === "linear-srgb";
+    const prepared: WebGL2RenderTarget[] = [];
+    const allocate = (filter: "nearest" | "linear", srgb = false) => {
+      const target = new WebGL2RenderTarget(this.gl, width, height, filter, srgb);
+      prepared.push(target);
+      return target;
+    };
+    let scene: WebGL2RenderTarget | undefined;
+    let scratchA: WebGL2RenderTarget | undefined;
+    let scratchB: WebGL2RenderTarget | undefined;
+    let presentation: WebGL2RenderTarget | undefined;
+    try {
+      // Stage every replacement before changing settings or resizing an old
+      // texture. A later allocation failure must preserve the entire old frame.
+      const srgb = this.colorManagement === "linear-srgb";
+      if (offscreen) {
+        scene = allocate("linear", srgb);
+        if (this.postProcessScratchA || this.postProcessPasses.length > 1) scratchA = allocate("linear", srgb);
+        if (this.postProcessScratchB || this.postProcessPasses.length > 1) scratchB = allocate("linear", srgb);
+        if (next && (this.presentationTarget || this.postProcessPasses.length || srgb)) presentation = allocate("nearest");
+      }
+    } catch (error) {
+      for (const target of prepared) target.destroy();
+      throw error;
+    }
+    const previous = [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB, this.presentationTarget];
+    this.pixelPerfect = next;
+    this.sceneRenderTarget = scene;
+    this.postProcessScratchA = scratchA;
+    this.postProcessScratchB = scratchB;
+    this.presentationTarget = presentation;
+    this.resize();
+    for (const target of previous) target?.destroy();
+  }
+
+  pixelPerfectPresentation(): PixelPerfectPresentation | undefined { return this.presentation; }
+
   resize(): void {
     this.assertAlive();
     const dpr = window.devicePixelRatio || 1;
-    this.logicalWidth = this.canvas.clientWidth / this.viewportZoom;
-    this.logicalHeight = this.canvas.clientHeight / this.viewportZoom;
+    this.logicalWidth = (this.pixelPerfect?.width ?? this.canvas.clientWidth) / this.viewportZoom;
+    this.logicalHeight = (this.pixelPerfect?.height ?? this.canvas.clientHeight) / this.viewportZoom;
 
-    const drawingBufferWidth = Math.floor(this.canvas.clientWidth * dpr);
-    const drawingBufferHeight = Math.floor(this.canvas.clientHeight * dpr);
+    const minimum = this.pixelPerfect ? 1 : 0;
+    const drawingBufferWidth = Math.max(minimum, Math.floor(this.canvas.clientWidth * dpr));
+    const drawingBufferHeight = Math.max(minimum, Math.floor(this.canvas.clientHeight * dpr));
 
     if (this.canvas.width !== drawingBufferWidth || this.canvas.height !== drawingBufferHeight) {
       this.canvas.width = drawingBufferWidth;
@@ -443,6 +501,7 @@ export class WebGL2Renderer implements Renderer {
     }
     this.logicalResolution[0] = this.logicalWidth;
     this.logicalResolution[1] = this.logicalHeight;
+    this.presentation = this.pixelPerfect ? resolvePixelPerfectPresentation(drawingBufferWidth, drawingBufferHeight, this.pixelPerfect) : undefined;
 
     this.resizePostProcessTargets();
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -499,11 +558,12 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    if (commands.spatial && this.pixelPerfect) throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     const mapped=spriteNormalsActive(commands);
     if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");
     if (commands.spatial && this.lightingScene.enabled) throw new Error("Flat LightingScene2D cannot be combined with a spatial scene; use spatial.environment.lighting");
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,Math.max(1,this.canvas.width),Math.max(1,this.canvas.height),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget()):undefined;
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget()):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;
@@ -583,6 +643,7 @@ export class WebGL2Renderer implements Renderer {
     if (postProcess !== undefined) {
       this.setPostProcess(postProcess);
     }
+    if (this.pixelPerfect) return this.presentPixelPerfect();
     if (this.postProcessPasses.length === 0) {
       let copyDrawCalls = 0;
       if (this.frameTargetMode === "postProcess") {
@@ -622,8 +683,8 @@ export class WebGL2Renderer implements Renderer {
   }
 
   private currentDrawingBufferResolution(): [number, number] {
-    this.drawingBufferResolution[0] = this.canvas.width;
-    this.drawingBufferResolution[1] = this.canvas.height;
+    this.drawingBufferResolution[0] = this.renderWidth();
+    this.drawingBufferResolution[1] = this.renderHeight();
     return this.drawingBufferResolution;
   }
 
@@ -642,6 +703,7 @@ export class WebGL2Renderer implements Renderer {
     this.sceneRenderTarget?.destroy();
     this.postProcessScratchA?.destroy();
     this.postProcessScratchB?.destroy();
+    this.presentationTarget?.destroy();
     this.renderTextures.destroy();
     this.textureManager.destroy();
     // deleteProgram defers deletion while a program is current. Clear only a
@@ -651,7 +713,7 @@ export class WebGL2Renderer implements Renderer {
   }
 
   private bindFrameStartTarget(): void {
-    if (this.postProcessPasses.length === 0 && this.colorManagement === "legacy") {
+    if (!this.pixelPerfect && this.postProcessPasses.length === 0 && this.colorManagement === "legacy") {
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       this.frameTargetMode = "default";
@@ -659,7 +721,7 @@ export class WebGL2Renderer implements Renderer {
     }
     const target = this.ensureSceneRenderTarget();
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target.framebuffer);
-    this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    this.gl.viewport(0, 0, this.renderWidth(), this.renderHeight());
     this.frameTargetMode = "postProcess";
   }
 
@@ -667,7 +729,7 @@ export class WebGL2Renderer implements Renderer {
     if (!this.frameStarted || this.frameHasDrawnScene) {
       return;
     }
-    const expectedTargetMode = this.postProcessPasses.length === 0 && this.colorManagement === "legacy" ? "default" : "postProcess";
+    const expectedTargetMode = !this.pixelPerfect && this.postProcessPasses.length === 0 && this.colorManagement === "legacy" ? "default" : "postProcess";
     if (this.frameTargetMode !== expectedTargetMode) {
       this.bindFrameStartTarget();
       this.clearFrameTarget();
@@ -707,8 +769,8 @@ export class WebGL2Renderer implements Renderer {
   }
 
   private ensureSceneRenderTarget(): WebGL2RenderTarget {
-    const width = Math.max(1, this.canvas.width);
-    const height = Math.max(1, this.canvas.height);
+    const width = this.renderWidth();
+    const height = this.renderHeight();
     this.sceneRenderTarget ??= new WebGL2RenderTarget(this.gl, width, height, "linear", this.colorManagement === "linear-srgb");
     this.sceneRenderTarget.resize(width, height);
     return this.sceneRenderTarget;
@@ -719,8 +781,8 @@ export class WebGL2Renderer implements Renderer {
     scratchA: WebGL2FullscreenRenderTarget;
     scratchB: WebGL2FullscreenRenderTarget;
   } {
-    const width = Math.max(1, this.canvas.width);
-    const height = Math.max(1, this.canvas.height);
+    const width = this.renderWidth();
+    const height = this.renderHeight();
     const srgbStorage = this.colorManagement === "linear-srgb";
     const scene = this.ensureSceneRenderTarget();
     this.postProcessScratchA ??= new WebGL2RenderTarget(this.gl, width, height, "linear", srgbStorage);
@@ -738,11 +800,59 @@ export class WebGL2Renderer implements Renderer {
     if (!this.sceneRenderTarget && !this.postProcessScratchA && !this.postProcessScratchB) {
       return;
     }
-    const width = Math.max(1, this.canvas.width);
-    const height = Math.max(1, this.canvas.height);
+    const width = this.renderWidth();
+    const height = this.renderHeight();
     this.sceneRenderTarget?.resize(width, height);
     this.postProcessScratchA?.resize(width, height);
     this.postProcessScratchB?.resize(width, height);
+    this.presentationTarget?.resize(width, height);
+  }
+
+  private renderWidth(): number { return this.pixelPerfect?.width ?? Math.max(1, this.canvas.width); }
+  private renderHeight(): number { return this.pixelPerfect?.height ?? Math.max(1, this.canvas.height); }
+
+  private presentPixelPerfect(): RendererStats {
+    if (!this.frameStarted) return this.stats();
+    const p = this.presentation!, gl = this.gl;
+    let output = this.ensureSceneRenderTarget();
+    if (this.postProcessPasses.length || this.colorManagement === "linear-srgb") {
+      this.presentationTarget ??= new WebGL2RenderTarget(gl, this.renderWidth(), this.renderHeight(), "nearest");
+      const targets = this.postProcessPasses.length > 1 ? this.ensurePostProcessTargets() : undefined;
+      const result = this.fullscreenPass.draw({ sourceTexture: output.texture,
+        passes: this.postProcessPasses.length ? this.postProcessPasses : [COPY_POST_PROCESS_PASS],
+        resolution: this.currentDrawingBufferResolution(), destination: this.presentationTarget,
+        scratchTargets: targets && [targets.scratchA, targets.scratchB], encodeSrgb: this.colorManagement === "linear-srgb" });
+      addPostProcessStatsInto(this.currentStats, result.drawCalls, this.postProcessPasses.length);
+      output = this.presentationTarget;
+    }
+    const scissor = gl.isEnabled(gl.SCISSOR_TEST);
+    const colorMask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
+    gl.disable(gl.SCISSOR_TEST);
+    try {
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      const color = this.pixelPerfect!.background!;
+      gl.colorMask(true,true,true,true);
+      gl.clearColor(color[0], color[1], color[2], 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      // Presentation is opaque on both backends, regardless of intermediate
+      // sprite blend alpha or the browser canvas compositing mode.
+      gl.colorMask(true,true,true,false);
+      const bottom = p.canvasHeight - p.y - p.height;
+      // A single-sample FBO cannot be scaled into a multisampled default buffer
+      // with blitFramebuffer. A nearest fullscreen draw works with either canvas.
+      const result=this.fullscreenPass.draw({sourceTexture:output.texture,passes:[COPY_POST_PROCESS_PASS],
+        resolution:[p.canvasWidth,p.canvasHeight],viewport:[p.x,bottom,p.width,p.height],nearest:true});
+      addPostProcessStatsInto(this.currentStats,result.drawCalls,0);
+    } finally {
+      gl.colorMask(colorMask[0],colorMask[1],colorMask[2],colorMask[3]);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      if (scissor) gl.enable(gl.SCISSOR_TEST);
+      this.frameStarted = false;
+      this.frameTargetMode = "default";
+    }
+    this.currentStats.presentationPassCount = 1;
+    return this.stats();
   }
 
   private assertAssetTextureId(textureId: number): void {

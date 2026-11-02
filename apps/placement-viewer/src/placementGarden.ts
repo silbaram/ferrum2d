@@ -65,6 +65,7 @@ export function createGardenPreview(options: {
   mode(): "2d" | "spatial" | "game";
   revision(): number;
   pointerToWorld(point: { x: number; y: number }): { x: number; y: number };
+  contains?(point: { x: number; y: number }): boolean;
 }) {
   const hint = document.createElement("output");
   hint.className = "placement-garden-hint";
@@ -77,6 +78,7 @@ export function createGardenPreview(options: {
   options.canvas.addEventListener("pointerdown", event => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey ||
         options.mode() !== "game" || !isGardenScene(options.document()) || options.engine.dataSceneState() !== "playing") return;
+    if(options.contains?.({x:event.clientX,y:event.clientY})===false)return;
     const point = options.pointerToWorld({ x: event.clientX, y: event.clientY });
     const accepted = options.engine.moveDataSceneActorTo({ ...point, speed: 110, arrivalRadius: 0.5, cancelOnInput: true });
     if (accepted) text(); else setUiText(hint, "Choose walkable ground. Walls and the canal block the path.");

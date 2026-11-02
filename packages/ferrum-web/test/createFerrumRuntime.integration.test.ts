@@ -1,4 +1,4 @@
-import { deepEqual, equal, throws } from "node:assert/strict";
+import { deepEqual, equal, throws, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import {
   createFerrumRuntime,
@@ -13,6 +13,7 @@ import { VirtualControls } from "../src/virtualControls.js";
 import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
 import type { DataSceneGameState } from "../src/gameState.js";
+import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectPresentation } from "../src/pixelPerfect.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import {
   attachDataSceneRuntimeEngineAdapter,
@@ -619,4 +620,79 @@ test("runtime startup failure clears its physics scene without destroying inject
   equal(bodyPresent, false);
   equal(autoStep, false);
   deepEqual(calls, []);
+});
+
+
+test("pixel display defaults, scene overrides, failed reapply and injected renderer ownership", async () => {
+  const flow: MutableDataSceneFlow={state:"playing"};
+  const engine=attachMemoryDataSceneVariableRuntime(attachDataSceneRuntimeEngineAdapter(fakeEngine([],flow),new RuntimeDataSceneAdapter(flow)));
+  const sizes: unknown[]=[];engine.setViewportSize=(width,height)=>{sizes.push([width,height]);};
+  const renderer=fakeRuntimeRenderer();let presentation: PixelPerfectPresentation | undefined;
+  renderer.setPixelPerfect=value=>{const config=resolvePixelPerfectOptions(value);presentation=config?resolvePixelPerfectPresentation(1280,720,config):undefined;};
+  renderer.pixelPerfectPresentation=()=>presentation;
+  renderer.viewportSize=()=>({width:presentation?.sourceWidth??640,height:presentation?.sourceHeight??360});
+  const document=runtimeDataSceneDocument("crate",32,48);
+  const runtime=await createFerrumRuntime({canvas:{} as HTMLCanvasElement,engineInstance:engine,renderer,input:{} as InputManager,assetHost:fakeAssetHost([]),ui:false,
+    pixelPerfect:{width:320,height:180},dataScene:document});
+  try {
+    equal(presentation?.sourceWidth,320);
+    runtime.dataScene!.reapply({...document,display:{pixelPerfect:false}});equal(presentation,undefined);
+    runtime.dataScene!.reapply({...document,display:{pixelPerfect:{width:160,height:90}}});equal(renderer.pixelPerfectPresentation()?.sourceWidth,160);
+    const viewportWritesBeforeFailure=sizes.length;
+    // Display must roll back even when a later, unrelated scene validation fails.
+    throws(()=>runtime.dataScene!.reapply({...document,display:{pixelPerfect:{width:64,height:48}},sceneComposition:{...document.sceneComposition,initialFragment:"missing"}}));
+    equal(renderer.pixelPerfectPresentation()?.sourceWidth,160);
+    equal(sizes.length,viewportWritesBeforeFailure);
+    runtime.dataScene!.reapply();equal(renderer.pixelPerfectPresentation()?.sourceWidth,160);
+    runtime.dataScene!.transition(document);equal(renderer.pixelPerfectPresentation()?.sourceWidth,320);
+    equal(sizes.length>0,true);
+  }finally{runtime.destroy();}
+  equal(renderer.pixelPerfectPresentation()?.sourceWidth,320); // Caller still owns the renderer.
+});
+
+test("pixel display preflights capability and conflicts, and restores injected display on startup failure", async () => {
+  const renderer=fakeRuntimeRenderer(),base={canvas:{} as HTMLCanvasElement,engineInstance:fakeEngine([]),renderer,input:{} as InputManager,assetHost:fakeAssetHost([]),ui:false as const};
+  await rejects(createFerrumRuntime({...base,pixelPerfect:{width:320,height:180}}),/support pixelPerfect/);
+  await rejects(createFerrumRuntime({...base,pixelPerfect:false,webgl2:{pixelPerfect:{width:320,height:180}}}),/Conflicting/);
+  let presentation: PixelPerfectPresentation | undefined=resolvePixelPerfectPresentation(640,360,{width:64,height:48});
+  renderer.pixelPerfectPresentation=()=>presentation;
+  renderer.setPixelPerfect=value=>{const config=resolvePixelPerfectOptions(value);presentation=config?resolvePixelPerfectPresentation(640,360,config):undefined;};
+  let viewportWrites=0;base.engineInstance.setViewportSize=()=>{viewportWrites++;};
+  renderer.resize=()=>{throw Error("startup resize failed");};
+  await rejects(createFerrumRuntime({...base,pixelPerfect:{width:320,height:180}}),/startup resize failed/);
+  equal(renderer.pixelPerfectPresentation()?.sourceWidth,64);
+  equal(viewportWrites,0);
+});
+
+
+test("pixel display updates an injected native viewport without a Data Scene document",async()=>{
+  const renderer=fakeRuntimeRenderer(),engine=fakeEngine([]);let presentation: PixelPerfectPresentation | undefined;
+  const sizes: number[][]=[];engine.setViewportSize=(width,height)=>{sizes.push([width,height]);};
+  renderer.pixelPerfectPresentation=()=>presentation;
+  renderer.setPixelPerfect=value=>{const config=resolvePixelPerfectOptions(value);presentation=config?resolvePixelPerfectPresentation(640,360,config):undefined;};
+  renderer.viewportSize=()=>({width:presentation?.sourceWidth??640,height:presentation?.sourceHeight??360});
+  const base={canvas:{} as HTMLCanvasElement,engineInstance:engine,renderer,input:{} as InputManager,assetHost:fakeAssetHost([]),ui:false as const};
+  const pixel=await createFerrumRuntime({...base,pixelPerfect:{width:320,height:180}});pixel.destroy();
+  const plain=await createFerrumRuntime({...base,pixelPerfect:false});plain.destroy();
+  deepEqual(sizes,[[320,180],[640,360]]);
+});
+
+test("failed display rollback reports both failures and retains the last successful document",async()=>{
+  const engine=attachMemoryDataSceneVariableRuntime(attachDataSceneRuntimeEngineAdapter(fakeEngine([]),new RuntimeDataSceneAdapter()));
+  engine.setViewportSize=()=>{};
+  const renderer=fakeRuntimeRenderer();let presentation:PixelPerfectPresentation|undefined,blockRollback=false;
+  renderer.pixelPerfectPresentation=()=>presentation;
+  renderer.viewportSize=()=>({width:presentation?.sourceWidth??640,height:presentation?.sourceHeight??360});
+  const rollbackError=new Error('injected rollback allocation failure');
+  renderer.setPixelPerfect=value=>{const config=resolvePixelPerfectOptions(value);if(blockRollback&&config?.width===320)throw rollbackError;presentation=config?resolvePixelPerfectPresentation(640,360,config):undefined;};
+  const document={...runtimeDataSceneDocument('crate',32,48),display:{pixelPerfect:{width:320,height:180}}};
+  const runtime=await createFerrumRuntime({canvas:{} as HTMLCanvasElement,engineInstance:engine,renderer,input:{} as InputManager,assetHost:fakeAssetHost([]),ui:false,dataScene:document});
+  try{
+    const previous=runtime.dataScene!.document();blockRollback=true;let caught:unknown;
+    try{runtime.dataScene!.reapply({...document,display:{pixelPerfect:{width:160,height:90}},sceneComposition:{...document.sceneComposition,initialFragment:'missing'}});}catch(error){caught=error;}
+    if(!(caught instanceof Error)||!('cause' in caught)||!('displayRollbackError' in caught))throw Error('both failures must be exposed');
+    equal(caught.displayRollbackError,rollbackError);
+    equal(caught.cause instanceof Error,true);equal(caught.message.includes('display rollback also failed'),true);
+    equal(runtime.dataScene!.document(),previous);
+  }finally{blockRollback=false;runtime.destroy();}
 });

@@ -618,3 +618,5 @@ export {
   validateBuiltInShooterStateSnapshot,
 } from "../builtInShooterStateSnapshot";
 export type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot";
+export { resolveSceneDisplay } from "../sceneDisplay.js";
+export type { SceneDisplaySpec } from "../sceneDisplay.js";

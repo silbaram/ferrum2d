@@ -230,7 +230,14 @@
         "SpriteNormalWorkerPort",
         "SpriteNormalWorkerClient",
         "CreateSpriteNormalWorkerClientOptions",
-        "SpriteNormalWorkerGenerateOptions"
+        "SpriteNormalWorkerGenerateOptions",
+        "PixelPerfectOptions",
+        "PixelPerfectPresentation",
+        "resolvePixelPerfectOptions",
+        "resolvePixelPerfectPresentation",
+        "pixelPerfectPointToViewport",
+        "SceneDisplaySpec",
+        "resolveSceneDisplay"
       ]
     },
     {
@@ -391,7 +398,14 @@
         "DataSceneProjectileAnimationSpec",
         "DataSceneProjectileAnimationProgress",
         "DataSceneCombatVisualProjectileSnapshot",
-        "DataSceneCombatVisualProgressSnapshot"
+        "DataSceneCombatVisualProgressSnapshot",
+        "PixelPerfectOptions",
+        "PixelPerfectPresentation",
+        "resolvePixelPerfectOptions",
+        "resolvePixelPerfectPresentation",
+        "pixelPerfectPointToViewport",
+        "SceneDisplaySpec",
+        "resolveSceneDisplay"
       ]
     },
     {
@@ -527,7 +541,9 @@
         "SpriteNormalWorkerPort",
         "SpriteNormalWorkerClient",
         "CreateSpriteNormalWorkerClientOptions",
-        "SpriteNormalWorkerGenerateOptions"
+        "SpriteNormalWorkerGenerateOptions",
+        "SceneDisplaySpec",
+        "resolveSceneDisplay"
       ]
     },
     {

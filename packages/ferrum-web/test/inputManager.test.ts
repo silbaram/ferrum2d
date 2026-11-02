@@ -687,3 +687,19 @@ test("mouse chord handling preserves pen eraser drag gestures", () => {
     input.destroy();
   });
 });
+
+test("pointer region filtering preserves keyboard, gamepad and virtual primary controls", () => {
+  const win=new FakeEventTarget(),canvas=new FakeCanvas();let primary=false;
+  withWindowAndNavigator(win,{getGamepads:()=>[gamepadSnapshot([0,0],[gamepadButton(primary)])]},()=>{
+    const virtual=new VirtualControls({} as HTMLElement,{enabled:false});
+    const input=new InputManager(canvas as unknown as HTMLCanvasElement,{virtualControls:virtual,gamepadMapping:{pointerButtons:[0]}});
+    const filtered=()=>input.snapshot({pointerPrimaryEnabled:false});
+    canvas.dispatch("pointerdown",preventableEvent({pointerId:1,pointerType:"mouse",button:0,clientX:30,clientY:40}));
+    equal(input.snapshot().mouseLeft,true);equal(filtered().mouseLeft,false);
+    primary=true;equal(filtered().mouseLeft,true);primary=false;
+    virtual.setButtonPressed("primary",true);equal(filtered().mouseLeft,true);virtual.setButtonPressed("primary",false);
+    win.dispatch("keydown",keyEvent("KeyW"));equal(filtered().w,true);equal(filtered().mouseLeft,false);
+    win.dispatch("pointerup",{pointerId:1});equal(input.snapshot().mouseLeft,false);
+    input.destroy();virtual.destroy();
+  });
+});

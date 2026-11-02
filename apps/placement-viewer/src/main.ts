@@ -24,6 +24,7 @@ import {
   villageTextureMetadata,
 } from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
+import { createPlacementPixelPresentation } from "./placementPixelPresentation";
 import { ensureGardenAssets, isGardenScene, gardenTextures, gardenAtlasFrames, gardenTextureMetadata, configureGardenActor, createGardenPreview } from "./placementGarden";
 import {
   createDesktopTileProjectHost,
@@ -597,6 +598,7 @@ async function bootstrap(): Promise<void> {
   window.addEventListener("pagehide",event=>{if(!event.persisted) {assetLoading.destroy(); spatialModels.clear();}});
   let runtime: FerrumRuntime | undefined;
   let gridRenderer: PlacementGridRenderer | undefined;
+  let pixelPresentation: ReturnType<typeof createPlacementPixelPresentation> | undefined;
   let viewportNavigation:
     | ReturnType<typeof installPlacementViewportNavigation>
     | undefined;
@@ -824,6 +826,9 @@ async function bootstrap(): Promise<void> {
       if (!event.persisted) gridRenderer?.destroy();
     });
     const runtimeEngine = runtime.engine;
+    pixelPresentation = createPlacementPixelPresentation({runtime,canvas:shell.canvas,
+      camera:()=>viewportNavigation?.snapshot()??{x:runtimeEngine.cameraX(),y:runtimeEngine.cameraY(),zoom:1},
+      restore:camera=>viewportNavigation?.restorePresentation(camera)});
     const runtimeTextures = placementRuntimeTextureManifest();
     let runtimeAssetAttemptSignature =
       placementRuntimeAssetSignature(runtimeTextures);
@@ -1113,7 +1118,10 @@ async function bootstrap(): Promise<void> {
     const setState = (
       state: ScenePlacementViewerState,
     ): ScenePlacementViewerState => {
+      pixelPresentation?.capture(activeDocument.key,spatialWorkspace?.mode(),activeDocument.document);
       state = spatialWorkspace?.sync(state) ?? state;
+      if (pixelPresentation?.sync(activeDocument.key,spatialWorkspace?.mode(),activeDocument.document,runtimeApplyRevision))
+        state = viewportNavigation?.refresh(false) ?? state;
       lightingControls?.sync(state);
       gardenPreview?.sync();
       const mode = spatialWorkspace?.mode();
@@ -1625,6 +1633,7 @@ async function bootstrap(): Promise<void> {
       mode: () => spatialWorkspace?.mode() ?? "2d",
       revision: () => runtimeApplyRevision,
       pointerToWorld: point => viewportNavigation!.pointerToWorld(point),
+      contains: point => pixelPresentation?.contains(point) ?? true,
     });
     gardenPreview.sync();
     gridRenderer.grid = createPlacementGrid(
@@ -2306,6 +2315,7 @@ async function bootstrap(): Promise<void> {
           }
         }
         documents.delete(key);
+        pixelPresentation?.forget(key);
         normalTool?.close(key);
         asepriteTool?.close(key);
         tileTool?.close(key);
@@ -2765,7 +2775,7 @@ async function bootstrap(): Promise<void> {
           "Finish or cancel the current spatial edit before switching documents",
         );
       viewportNavigation?.cancelGesture();
-      activeDocument.camera = viewportNavigation?.snapshot();
+      activeDocument.camera = pixelPresentation?.editingCamera(activeDocument.key) ?? viewportNavigation?.snapshot();
       activeDocument.snap = {
         enabled: interaction.enabled,
         gridSize: interaction.gridSize,
@@ -2913,6 +2923,7 @@ async function bootstrap(): Promise<void> {
           );
       } catch (error) {
         documents.delete(key);
+        pixelPresentation?.forget(key);
         next.lifetime.abort();
         next.inspector.element.remove();
         syncTabs();

@@ -285,6 +285,17 @@ jobs:
       - name: Color management browser smoke
         run: pnpm smoke:color-management
 
+      - name: Flat 2D pixel-perfect rendering and Game Preview smoke
+        run: pnpm smoke:flat-pixel-perfect
+
+      - name: Upload pixel-perfect verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flat-pixel-perfect
+          path: artifacts/flat-pixel-perfect
+          if-no-files-found: ignore
+
       - name: GPU resource lifecycle browser smoke
         run: pnpm smoke:gpu-resources
 

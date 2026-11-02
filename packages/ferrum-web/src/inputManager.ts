@@ -242,7 +242,10 @@ export class InputManager {
   private get active(): boolean { return this.enabled && !this.clearing && this.focused && this.eventDocument?.hidden !== true; }
 
   /** Legacy snapshot does not consume action edges. Coordinates remain canvas-local CSS pixels. */
-  snapshot(): InputSnapshot { return this.sample(); }
+  /** Region filtering excludes the physical pointer, preserving keyboard/gamepad/virtual controls. */
+  snapshot(options?: { pointerPrimaryEnabled?: boolean }): InputSnapshot {
+    return options?.pointerPrimaryEnabled === false ? this.readSnapshot(false) : this.sample();
+  }
 
   /** Call once per application input update; subsequent calls consume no previous edges. */
   actionSnapshot(): InputActionSnapshot {
@@ -343,13 +346,13 @@ export class InputManager {
     return input;
   }
 
-  private readSnapshot(): InputSnapshot {
+  private readSnapshot(pointerPrimaryEnabled = true): InputSnapshot {
     this.virtualButtons = {};
     if (!this.active) return emptyInputSnapshot(this.mouseX, this.mouseY);
     let input = this.readGamepad();
     for (const control of INPUT_DIGITAL_CONTROLS) input[control] ||= this.keyBindings[control].some((code) => this.keys.has(code));
     for (const control of ["w", "a", "s", "d"] as const) input[control] ||= this.gesture[control];
-    input.mouseLeft ||= this.mouseDown || this.pointerDown || this.touchDown;
+    input.mouseLeft ||= pointerPrimaryEnabled && (this.mouseDown || this.pointerDown || this.touchDown);
     if (this.options.virtualControls) {
       input = this.options.virtualControls.applyToSnapshot(input);
       this.virtualButtons = { ...this.options.virtualControls.virtualButtons() };

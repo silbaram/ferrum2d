@@ -8,6 +8,7 @@ import { WebGPURenderer, WebGpuCanvasCommitError } from "./webgpuRenderer";
 import { WebGL2Renderer } from "./webgl2Renderer";
 import { resolveColorManagementMode } from "./colorManagement";
 import type { ColorManagementMode } from "./colorManagement";
+import { resolvePixelPerfectOptions, type PixelPerfectOptions } from "./pixelPerfect.js";
 
 export type CreatedRenderer = WebGL2Renderer | WebGPURenderer;
 
@@ -18,6 +19,7 @@ export interface RendererFallbackInfo {
 }
 
 export interface CreateRendererOptions {
+  pixelPerfect?: PixelPerfectOptions | false;
   /** Shared by the requested renderer and its fallback. */
   colorManagement?: ColorManagementMode;
   /** Opt-in WebGL2 shader readiness, including a WebGL2 fallback. */
@@ -38,12 +40,14 @@ export async function createRenderer(
   if (options.shaderPreparation?.signal?.aborted)
     throw new DOMException("Renderer creation was cancelled.", "AbortError");
   const colorManagement = resolveRendererColorManagement(options);
+  const pixelPerfect = resolveRendererPixelPerfect(options);
   const spatial =
     options.spatial === undefined ? undefined : resolveDataSceneSpatialSpec(options.spatial);
+  if(spatial && pixelPerfect)throw Error("Flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
   if (options.preferred === "webgpu") {
     try {
       if (spatial) assertWebGpuSpatialSpecSupported(spatial);
-      const renderer = await WebGPURenderer.create(canvas, { ...options.webgpu, colorManagement });
+      const renderer = await WebGPURenderer.create(canvas, { ...options.webgpu, colorManagement, pixelPerfect });
       if (options.shaderPreparation?.signal?.aborted) {
         renderer.destroy();
         throw new DOMException("Renderer creation was cancelled.", "AbortError");
@@ -67,7 +71,7 @@ export async function createRenderer(
     }
   }
 
-  const webgl2 = { ...options.webgl2, colorManagement };
+  const webgl2 = { ...options.webgl2, colorManagement, pixelPerfect };
   return options.shaderPreparation === undefined
     ? new WebGL2Renderer(canvas, webgl2)
     : WebGL2Renderer.create(canvas, webgl2, options.shaderPreparation);
@@ -90,4 +94,11 @@ export function resolveRendererColorManagement(
     }
   }
   return colorManagement;
+}
+
+export function resolveRendererPixelPerfect(options: Pick<CreateRendererOptions,"pixelPerfect"|"webgl2"|"webgpu">): PixelPerfectOptions | undefined {
+  const values=[options.pixelPerfect,options.webgl2?.pixelPerfect,options.webgpu?.pixelPerfect].filter(value=>value!==undefined);
+  const settings=values.map(resolvePixelPerfectOptions);
+  if(settings.some(value=>JSON.stringify(value)!==JSON.stringify(settings[0])))throw Error("Conflicting renderer pixelPerfect options");
+  return settings[0];
 }
