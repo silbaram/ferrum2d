@@ -1915,8 +1915,8 @@ v1→v2 전환·독립 레이어 픽셀·정수 alpha 합성, 순서/표시/잠�
 8개·256×256의 1 MiB 초과 원본과 3 MiB/16 MiB 예산, v1 400,000 bytes 유지·중복 ID/잘못된 flag 거절을 확인한다.
 JSON 정수의 소수/지수 표기·JS 공백 판정·UTF-16 길이와 짝 없는 surrogate 거절도 검사한다.
 v3 프레임 추가/복제/삭제/순서/시간과 모든 frame의 layer/cel 연결·독립 픽셀·Undo를 검사한다.
-최대16프레임/전체8 MiB cel/12 MiB 원본과 최대 문서의16 MiB history, atlas 순서/투명 RGB/마지막 padding, snapshot·PNG 대조를 확인한다.
-원본 시간의 GCD→고정FPS UV tick·32개 한도 진단, frame 선택/preview cursor의 dirty 불변과 서식 있는 v3 revision의 그대로 재사용도 검사한다.
+최대64프레임(v3/v5 읽기는16)/전체8 MiB cel/12 MiB 원본과 최대 문서의16 MiB history, atlas 순서/투명 RGB/마지막 padding, snapshot·PNG 대조를 확인한다.
+기존 유효 GCD→고정FPS UV tick 호환과 v6/32 tick 초과의 원본 프레임 시간 변환, frame 선택/preview cursor의 dirty 불변과 서식 있는 v3 revision의 그대로 재사용도 검사한다.
 v5 태그의 고유 ID/이름/clip ID·frame 참조·단조 증가 할당·초기 태그, Undo/Redo·저장/재열기·이전 버전 거절을 확인한다.
 태그 순서의 독립성과 기존 clip 보존, 정확한 전후 set에만 유효한 migration 승인·승인 취소·수동 변경 보호도 검사한다.
 v4 고정 atlas의 정수 UV·비중첩·한도·버전 경계, 선택 rect 밖으로 나가지 않는 선/fill, 프레임 선택의 비변경성, 구조 변경 거절도 검사한다.
@@ -2152,3 +2152,29 @@ Game Preview fixture는 `display.pixelPerfect.snap: true`를 열어 옵션 적�
 결과는 `artifacts/flat-pixel-perfect/`에 남고 CI validate job에서 실행한다.
 이 gate는 native GPU canvas compositor·실물 GPU·CSS/OS 확대 품질을 검증했다고 주장하지 않는다.
 회귀 비교는 `smoke:color-management`, `smoke:sprite-normal-2d`, `smoke:render-texture`, `smoke:runtime-budgets`와 공식 placement viewer gate를 사용한다.
+
+## 내장 도트 편집기64프레임 용량 검증
+
+```bash
+pnpm test:pixel-authoring
+pnpm profile:pixel-capacity
+pnpm smoke:pixel-capacity
+```
+
+`pixel-capacity.test.mjs`는 v6의64프레임·8방향 태그, v3/v5의16프레임 거부 경계, 17번째 frame의
+원자적 upgrade/Undo,64번째 frame 편집과16 MiB history, 원본 UV/ms 전달과 PNG 투명 RGB를 검사한다.
+기존 v1~v5의 source/checkpoint/revision 계약을 유지하고 v6 tag metadata 일부만 있는 입력은 거절한다.
+작은 v6(1·8·16프레임)도 편집기 메타데이터와 원본 내보내기의 시간 형식이 같아야 한다. 17번째 프레임 추가·삭제·Undo/Redo로 바뀌는 버전을 따라가며 UI 검증 중 cel 직렬화를 호출하지 않는다.
+
+profile은16프레임 기준선,32×32×64 대표 시트,8레이어, 최대 cel 예산, 고엔트로피32프레임 큰 시트의
+열기·편집·Undo/Redo·JSON 저장/재열기·PNG 생성/검증 시간과 Node memory stage 표본을 기록한다.
+고엔트로피 PNG가 기존8 MiB를 넘지만 v6의16 MiB 안에 들어오는 사례도 실제 인코딩으로 확인한다.
+`artifacts/pixel-editor-capacity/profile.json`은 진행/실패 때 ok:false이며 성공 때만 true다.
+메모리는 stage별 Node process 관측치와 cel/atlas/history byte를 구분하고 실물 browser/mobile peak나 FPS로 해석하지 않는다.
+
+smoke는 공식 UI에서 16→17버전 전환,64개 막대의 End/Home·선택 가시성, 마지막 cel의 편집·Undo/Redo,
+좁은 화면·PNG·게임에서 사용하는 고유 UV32개 노멀 한도(미사용 cel 제외) 안내와 원본 UV64개를 내보내는 게임 적용을 검사한다.
+새 게임이8개 clip의64개 원본 frame을 실제 재생하며 state·draw 예산·UV·색상 픽셀을 함께 assert한다.
+같은 시나리오를 실제 Rust 저장/protocol transport에서 실행하고 host/browser 재시작 후 frame63/source와
+저장된 새 게임의64프레임 출력을 확인한다. native GUI IPC는 이 stdio transport 검증에 포함되지 않는다.
+CI validate와 aggregate smoke에 연결하며 browser/native 고유 run·PNG·JSON과 profile을 같은 artifact 폴더에 둔다.

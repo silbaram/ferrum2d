@@ -1544,14 +1544,17 @@ IndexedDB 성공/업그레이드 차단 처리는 [MDN transaction complete](htt
 `placementPixelOnion`은 순환 없는 인접 프레임 선택을 계산하며 어니언 설정은 `placementPixelFrames`의 UI 상태다.
 `placementPixelCanvas`는 최대2개 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 현재 이미지 뒤에 그린다.
 설정·tint는 모델/PNG·history에 들어가지 않고 스포이트·그리기는 현재 프레임만 사용한다. 재생 중 표시를 숨기며 문서 교체/종료는 보기 설정과 event listener를 정리한다.
-편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
 v1의 단일 레이어를 유지하고 구조·표시·잠금을 편집할 때만 v2의 아래→위 `layers` 배열로 전환한다.
 v2는 최대 8개·256×256·원본 3 MiB이며 고유 ID·이름·표시·잠금·독립 RGBA를 보존한다. 선택은 UI 상태이고 픽셀/레이어 편집은 64단계·실제 snapshot 16 MiB 이력을 공유한다.
-프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 최대16개·전체8 MiB RGBA·원본12 MiB로 제한하고 같은 Undo 예산을 적용한다.
+프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 보관한다. v3/v5 입력의 최대16개를 유지하고 17번째 프레임부터 v6로 전환해 최대64개를 허용한다.
+v6의 태그 묶음은 모두 함께 있거나 생략하며 기존 source identity를 재작성하지 않는다. 전체8 MiB RGBA·원본12 MiB와 같은 Undo 예산을 적용한다.
 합성 cache는 현재/인접 프레임을 위해 최대3개(256×256 기준768 KiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
 미리보기 재생 위치/프레임 선택은 UI 상태이며 게임 simulation을 갱신하지 않는다. 정지/blur/탭 전환/해제에서 RAF와 편집기 참조를 정리한다.
-PNG는 최대4×4 atlas/한 변1024다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
-원본 ms의 GCD로 UV를 반복해 기존32-frame/f32 FPS clip0을 구성한다. 범위 초과는 진단하며 정확한 게임 적용을 막고 원본/PNG 저장은 유지한다.
+v6 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
+기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
+64-frame source를 UV 복제로 부풀리지 않으며 native 저장 검증·normal source 재검증에도 같은 버전/치수 계약을 적용한다.
+paired normal 생성은 모든 태그가 사용하는 고유 UV32개 한도를 먼저 진단하여 색상 시트64-frame 경로와 분리한다.
 같은 도트 source에서 생성한 기존 animationSet만 교체하고 수동 변경/다른 animation/normal binding을 보호한다. 게임 재생은 기존 Rust SpritePlayback이 소유한다.
 레이어 패널은 ID별 행을 재사용해 이름 blur 직후 클릭과 키보드 포커스를 보존하며 IME 조합 키를 편집 명령으로 처리하지 않는다.
 문서를 닫거나 도구를 해제할 때 행과 편집기 identity cache를 비워 닫힌 문서의 픽셀 이력을 붙잡지 않는다. 씬 탭으로 잠시 전환할 때는 이력을 보존한다.
