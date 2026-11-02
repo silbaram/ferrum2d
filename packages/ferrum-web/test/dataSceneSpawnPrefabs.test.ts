@@ -29,6 +29,7 @@ import {
   preflightDataSceneProgressRestore,
 } from "../src/dataSceneProgress.js";
 import { assertDataSceneCombatSaveSupported } from "../src/dataSceneProgress.js";
+import { dataSceneSpriteClipDurationSeconds, type DataSceneSpriteClipSpec } from "../src/dataSceneSpriteAnimation.js";
 
 function document() {
   const components = {
@@ -432,6 +433,21 @@ test("spawn animation presence follows the native single-frame optimization and 
       ),
     /looping time/,
   );
+  for (const clip of [
+    { id: 6, frames: [{}, {}, {}], frameDurationsMs: [100, 250, 50], direction: "pingpong" },
+    { id: 6, frames: [{}, {}, {}], fps: 4, direction: "pingpong" },
+    { id: 6, frames: [{}, {}, {}], frameDurationsMs: [100, 250, 50], direction: "reverse" },
+  ] satisfies DataSceneSpriteClipSpec[]) {
+    const looping = withVisual({ ...components.visual, animationSet: { clips: [clip] } });
+    const duration = dataSceneSpriteClipDurationSeconds(clip);
+    validateDataSceneCombatProgress(change({ animation: { ...animation, elapsedSeconds: duration - 0.001 } }), looping, instances);
+    throws(() => validateDataSceneCombatProgress(change({ animation: { ...animation, elapsedSeconds: duration } }), looping, instances), /looping time/);
+    const nonloop = { ...clip, loop: false };
+    const completed = withVisual({ ...components.visual, animationSet: { clips: [nonloop] } });
+    const completion = dataSceneSpriteClipDurationSeconds(nonloop);
+    validateDataSceneCombatProgress(change({ animation: { ...animation, elapsedSeconds: completion } }), completed, instances);
+    throws(() => validateDataSceneCombatProgress(change({ animation: { ...animation, elapsedSeconds: completion + 0.001 } }), completed, instances), /animation|finite|range/);
+  }
 });
 
 test("spawn consumed interaction validates the final authored upsert", () => {

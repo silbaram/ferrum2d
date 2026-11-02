@@ -30,6 +30,7 @@ pub(in crate::engine) struct EngineFrameBuffers {
     pub(in crate::engine) effect_events: Vec<EffectEvent>,
     pub(in crate::engine) collision_events: Vec<CollisionEvent>,
     pub(in crate::engine) gameplay_events: Vec<GameplayEvent>,
+    pub(in crate::engine) animation_event_overflow: Option<usize>,
     pub(in crate::engine) frame_telemetry: FrameTelemetry,
     pub(in crate::engine) physics_debug_lines: Vec<PhysicsDebugLine>,
     pub(in crate::engine) tilemap_navigation_path_points: Vec<f32>,
@@ -49,6 +50,7 @@ impl EngineFrameBuffers {
             effect_events: Vec::with_capacity(EFFECT_EVENT_CAPACITY),
             collision_events: Vec::with_capacity(COLLISION_EVENT_CAPACITY),
             gameplay_events: Vec::with_capacity(GAMEPLAY_EVENT_CAPACITY),
+            animation_event_overflow: None,
             frame_telemetry: FrameTelemetry::default(),
             physics_debug_lines: Vec::with_capacity(PHYSICS_DEBUG_LINE_CAPACITY),
             tilemap_navigation_path_points: Vec::with_capacity(
@@ -77,6 +79,7 @@ impl EngineFrameBuffers {
 
     pub(in crate::engine) fn clear_gameplay_events(&mut self) {
         self.gameplay_events.clear();
+        self.animation_event_overflow = None;
     }
 
     pub(in crate::engine) fn clear_effect_events(&mut self) {

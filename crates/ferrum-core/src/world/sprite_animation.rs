@@ -1,12 +1,31 @@
 use super::World;
 
 impl World {
-    pub(super) fn update_sprite_animations(&mut self, delta: f32) {
+    pub(super) fn update_sprite_animations(
+        &mut self,
+        delta: f32,
+        mut events: Option<(
+            &mut Vec<crate::gameplay_event::GameplayEvent>,
+            &mut Option<usize>,
+        )>,
+    ) {
         let alive_count = self.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = self.alive_indices()[alive_position];
             if let Some(playback) = self.sprite_playbacks[i].as_mut() {
-                playback.advance(delta);
+                if let Some((buffer, overflow)) = events.as_mut() {
+                    playback.advance_with_events(
+                        delta,
+                        crate::entity::Entity {
+                            id: i as u32,
+                            generation: self.generations[i],
+                        },
+                        buffer,
+                        overflow,
+                    );
+                } else {
+                    playback.advance(delta);
+                }
                 if let Some(sprite) = self.sprites[i].as_mut() {
                     playback.write_sprite(sprite);
                 }

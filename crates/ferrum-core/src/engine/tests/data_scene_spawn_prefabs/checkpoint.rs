@@ -7,6 +7,49 @@ struct Saved {
     rotations: Vec<f64>,
     combat: Vec<f64>,
 }
+
+#[test]
+fn spawned_actor_checkpoint_preserves_timed_pingpong_phase_and_completion() {
+    fn extended_scene(e: &mut Engine, texture: u32) -> (Entity, Entity, Vec<u32>) {
+        let (actor, prototype, handles) = scene(e, texture, false, false);
+        assert!(e.configure_data_scene_sprite_clips_v2(
+            prototype.id,
+            prototype.generation,
+            &[7.0, 2.0, 0.0, 0.0, 2.0, 1.0, 1.0],
+            &[0.0, 0.0, 0.5, 1.0, 0.5, 0.0, 1.0, 1.0],
+            &[90.0, 180.0],
+            7
+        ));
+        assert!(configure(e, actor, prototype));
+        (actor, prototype, handles)
+    }
+    for finished in [false, true] {
+        let mut e = Engine::new();
+        let (_, prototype, handles) = extended_scene(&mut e, 10);
+        e.world.despawn(prototype);
+        click(&mut e, true, 0.017);
+        let child = actors(&e)[0];
+        let playback = e.world.sprite_playbacks[child.id as usize]
+            .as_mut()
+            .unwrap();
+        playback.elapsed = if finished {
+            playback.clips[0].duration_seconds()
+        } else {
+            0.3
+        };
+        playback.paused = !finished;
+        let expected = e.data_scene_sprite_animation_state(child.id, child.generation);
+        let saved = capture(&e, &handles);
+        let (_, _, fresh) = extended_scene(&mut e, 70);
+        assert!(restore(&mut e, &fresh, &saved));
+        let restored = actors(&e)[0];
+        assert_eq!(
+            e.data_scene_sprite_animation_state(restored.id, restored.generation),
+            expected
+        );
+        assert_eq!(capture(&e, &fresh).combat, saved.combat);
+    }
+}
 fn capture(e: &Engine, handles: &[u32]) -> Saved {
     let epoch = e.data_scene_epoch();
     let saved = Saved {

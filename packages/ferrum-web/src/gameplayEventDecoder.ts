@@ -10,6 +10,9 @@ export type GameplayEventKind =
   | "tileImpact"
   | "factionDamageDenied"
   | "presentationEffect"
+  | "spriteAnimationFrame"
+  | "spriteAnimationCompleted"
+  | "spriteAnimationOverflow"
   | "unknown";
 
 export interface GameplayEventView {
@@ -45,6 +48,9 @@ export const GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED = 8;
 export const GAMEPLAY_EVENT_KIND_TILE_IMPACT = 9;
 export const GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED = 10;
 export const GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT = 11;
+export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME = 12;
+export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED = 13;
+export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW = 14;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND = 1;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE = 2;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE = 3;
@@ -122,6 +128,9 @@ export function gameplayEventKind(kindCode: number): GameplayEventKind {
   if (kindCode === GAMEPLAY_EVENT_KIND_TILE_IMPACT) return "tileImpact";
   if (kindCode === GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED) return "factionDamageDenied";
   if (kindCode === GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT) return "presentationEffect";
+  if (kindCode === GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME) return "spriteAnimationFrame";
+  if (kindCode === GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED) return "spriteAnimationCompleted";
+  if (kindCode === GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW) return "spriteAnimationOverflow";
   return "unknown";
 }
 

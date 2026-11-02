@@ -10,7 +10,7 @@ import { attachDataSceneProgressAdapter, forgetDataSceneProgressContext } from "
 import type { NativeCombatProgressRuntime } from "./dataSceneCombatProgress.js";
 import { configureDataSceneGameplay, dataSceneCombatStats, dataSceneCombatEnabled, supportsDataSceneInputProjectiles, supportsDataSceneCombatActions, supportsDataSceneSpawnPrefabs, supportsDataSceneProjectileVisuals, supportsDataSceneCombatProgress, supportsDataSceneProjectilePrefabs } from "./dataSceneGameplay.js";
 import { configureDataSceneSun } from "./dataSceneSun.js";
-import { configureDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
+import { configureDataSceneSpriteAnimation, prepareDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
 import { configureSpriteNormals, supportsSpriteNormals } from "./spriteNormals.js";
 import type { Engine } from "../pkg/ferrum_core";
@@ -1027,6 +1027,7 @@ export async function createEngineWithFramePipeline(
     },
     spawnDataSceneEntity: (request) => {
       requireAlive();
+      const configureAnimation = request.animationSet === undefined ? undefined : prepareDataSceneSpriteAnimation(rustEngine, request.animationSet);
       const ok = rustEngine.spawn_data_scene_entity(
         request.x,
         request.y,
@@ -1097,7 +1098,7 @@ export async function createEngineWithFramePipeline(
           return undefined;
         }
       }
-      if (request.animationSet !== undefined && !configureDataSceneSpriteAnimation(rustEngine, { entityId, entityGeneration }, request.animationSet)) {
+      if (configureAnimation !== undefined && !configureAnimation({ entityId, entityGeneration })) {
         rustEngine.despawn_physics_entity(entityId, entityGeneration);
         return undefined;
       }

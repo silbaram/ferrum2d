@@ -116,6 +116,9 @@ export {
   GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
   GAMEPLAY_EVENT_KIND_PREFAB_SPAWNED,
   GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW,
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_TIMER,
   GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK,
@@ -403,7 +406,7 @@ export { CameraRigController, resolveCameraRigSpec, clampCameraToBounds } from "
 export type { CameraRigSpec, CameraRigSnapshot, CameraBounds } from "./cameraPostProcessing.js";
 
 export { resolveDataSceneSpriteAnimationSet } from "./dataSceneSpriteAnimation.js";
-export type { DataSceneSpriteClipSpec, DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
+export type { DataSceneSpriteAnimationDirection, DataSceneSpriteClipSpec, DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 
 export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
 export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";

@@ -4,6 +4,7 @@ import {
   type DataSceneCombatVisualProgressSnapshot,
 } from "./dataSceneProjectileVisualProgress.js";
 import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
+import { dataSceneSpriteClipDurationSeconds } from "./dataSceneSpriteAnimation.js";
 import {
   actorContract,
   array,
@@ -248,7 +249,7 @@ export function validateSpawnProgress(
         [playback.paused, playback.flipX, playback.flipY].some((flag) => typeof flag !== "boolean")
       )
         fail(`${path}.animation has an unknown clip or invalid flag.`);
-      const duration = clip.frames.length / Math.fround(clip.fps),
+      const duration = dataSceneSpriteClipDurationSeconds(clip),
         elapsed = time(playback.elapsedSeconds, path, duration);
       if (clip.loop !== false && elapsed >= duration)
         fail(`${path}.animation looping time must remain below duration.`);

@@ -312,7 +312,7 @@ fn validate_animation(world: &World, e: Entity, record: &[f64]) -> Option<()> {
         (None, 0.) => {}
         (Some(playback), 1.) => {
             let clip = playback.clips.iter().find(|clip| clip.id as f64 == v[1])?;
-            let duration = clip.frames.len() as f64 / clip.fps as f64;
+            let duration = clip.duration_seconds();
             if v[2] > duration || clip.looping && v[2] >= duration {
                 return None;
             }

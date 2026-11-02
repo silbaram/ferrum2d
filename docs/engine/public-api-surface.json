@@ -237,7 +237,11 @@
         "resolvePixelPerfectPresentation",
         "pixelPerfectPointToViewport",
         "SceneDisplaySpec",
-        "resolveSceneDisplay"
+        "resolveSceneDisplay",
+        "DataSceneSpriteAnimationDirection",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW"
       ]
     },
     {
@@ -405,7 +409,11 @@
         "resolvePixelPerfectPresentation",
         "pixelPerfectPointToViewport",
         "SceneDisplaySpec",
-        "resolveSceneDisplay"
+        "resolveSceneDisplay",
+        "DataSceneSpriteAnimationDirection",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW"
       ]
     },
     {
@@ -543,7 +551,8 @@
         "CreateSpriteNormalWorkerClientOptions",
         "SpriteNormalWorkerGenerateOptions",
         "SceneDisplaySpec",
-        "resolveSceneDisplay"
+        "resolveSceneDisplay",
+        "DataSceneSpriteAnimationDirection"
       ]
     },
     {

@@ -279,6 +279,17 @@ jobs:
       - name: Data Scene animation projection and sun browser smoke
         run: pnpm smoke:data-scene-presentation
 
+      - name: Native sprite timing directions events and save browser smoke
+        run: pnpm smoke:sprite-animation-runtime
+
+      - name: Upload runtime animation verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-animation
+          path: artifacts/runtime-animation
+          if-no-files-found: ignore
+
       - name: RenderTexture browser smoke
         run: pnpm smoke:render-texture
 

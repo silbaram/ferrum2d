@@ -21,6 +21,9 @@ import {
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
   GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED,
+  GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
   GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
   GAMEPLAY_EVENT_FLAG_ONCE,
@@ -46,6 +49,9 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [GAMEPLAY_EVENT_KIND_TILE_IMPACT, gameplayEventKind(GAMEPLAY_EVENT_KIND_TILE_IMPACT)],
     [GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED, gameplayEventKind(GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED)],
     [GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT, gameplayEventKind(GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT)],
+    [GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME, gameplayEventKind(GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME)],
+    [GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED, gameplayEventKind(GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED)],
+    [GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW, gameplayEventKind(GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW)],
   ], [
     [1, "interaction"],
     [2, "collisionDamage"],
@@ -58,6 +64,23 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [9, "tileImpact"],
     [10, "factionDamageDenied"],
     [11, "presentationEffect"],
+    [12, "spriteAnimationFrame"],
+    [13, "spriteAnimationCompleted"],
+    [14, "spriteAnimationOverflow"],
+  ]);
+});
+
+test("animation events expose clip IDs, original frame indices and global overflow counts", () => {
+  deepEqual(decodeGameplayEvents({
+    buffer: new Uint32Array([
+      12, 42, 3, 42, 3, 65535, 0, 255,
+      13, 42, 3, 42, 3, 65535, 0, 0,
+      14, 0xffffffff, 0, 0xffffffff, 0, 0, 0, 0xffffffff,
+    ]), eventCount: 3, u32sPerEvent: 8,
+  }), [
+    { kind: "spriteAnimationFrame", kindCode: 12, actorId: 42, actorGeneration: 3, sourceId: 42, sourceGeneration: 3, tokenId: 65535, flags: 0, payloadBits: 255, once: false, consumedThisFrame: false, targetRemoved: false },
+    { kind: "spriteAnimationCompleted", kindCode: 13, actorId: 42, actorGeneration: 3, sourceId: 42, sourceGeneration: 3, tokenId: 65535, flags: 0, payloadBits: 0, once: false, consumedThisFrame: false, targetRemoved: false },
+    { kind: "spriteAnimationOverflow", kindCode: 14, actorId: 0xffffffff, actorGeneration: 0, sourceId: 0xffffffff, sourceGeneration: 0, tokenId: 0, flags: 0, payloadBits: 0xffffffff, once: false, consumedThisFrame: false, targetRemoved: false },
   ]);
 });
 
