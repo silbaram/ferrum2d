@@ -154,7 +154,7 @@
     "smoke:physics-sandbox": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/physics-sandbox build && node tests/smoke/browser-render-smoke.mjs --mode=physics-sandbox examples/physics-sandbox/dist",
     "smoke:physics-sandbox-budget": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/physics-sandbox build && node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=physics-sandbox --mode=physics-sandbox examples/physics-sandbox/dist",
     "smoke:physics-demo-suite": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/physics-sandbox build && node tests/smoke/browser-render-smoke.mjs --mode=physics-demo-suite examples/physics-sandbox/dist",
-    "package:check:ferrum-web": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/package/check-package-files.mjs --require-wasm-pkg --verify-pack",
+    "package:check:ferrum-web": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/package/check-package-files.mjs --require-wasm-pkg --verify-pack && node --test tests/smoke/ferrum-web-public-types.test.mjs",
     "package:check:authoring-viewer": "pnpm --filter @ferrum2d/authoring-viewer build && node scripts/package/check-authoring-viewer-package.mjs --verify-pack",
     "package:check:create-game": "node scripts/package/check-create-game-package.mjs --verify-pack",
     "package:check:agents": "node scripts/package/check-agents-package.mjs --verify-pack",
