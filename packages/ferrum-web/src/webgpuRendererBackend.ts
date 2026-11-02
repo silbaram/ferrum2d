@@ -528,6 +528,8 @@ export class WebGpuRendererBackend implements Renderer {
     this.resolutionStaging[0] = Math.max(this.logicalWidth, 1);
     this.resolutionStaging[1] = Math.max(this.logicalHeight, 1);
     this.resolutionStaging[2] = this.groundYScale;
+    // Occupies the existing alignment padding before shadowProjection (byte 12).
+    this.resolutionStaging[3] = this.pixelPerfect?.snap ? this.viewportZoom : 0;
     this.device.queue.writeBuffer(
       this.resolutionBuffer,
       0,

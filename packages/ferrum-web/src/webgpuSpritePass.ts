@@ -100,6 +100,7 @@ export class WebGpuSpritePass {
         struct Resolution {
           size: vec2f,
           groundYScale: f32,
+          pixelSnap: f32,
           shadowProjection: vec3f,
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
@@ -150,7 +151,19 @@ export class WebGpuSpritePass {
               -s.x * rotated.x - s.y * rotated.y * s.z);
           }
           if ((u32(input.flags) & 4u) != 0u) { rotated.y *= resolution.groundYScale; }
-          let pixelPosition = input.rect.xy + input.rect.zw * 0.5 + rotated;
+          var pixelPosition = input.rect.xy + input.rect.zw * 0.5 + rotated;
+          if (resolution.pixelSnap > 0.0) {
+            if (min(abs(rotationCos), abs(rotationSin)) < 0.000001 && (u32(input.flags) & 32u) == 0u) {
+              if (input.rotation == 0.0) {
+                var edge = corner;
+                if ((u32(input.flags) & 4u) != 0u) { edge.y = 0.5 + (corner.y - 0.5) * resolution.groundYScale; }
+                pixelPosition = input.rect.xy + input.rect.zw * edge;
+              }
+              pixelPosition = floor(pixelPosition * resolution.pixelSnap + vec2f(0.5)) / resolution.pixelSnap;
+            } else {
+              pixelPosition += floor(input.rect.xy * resolution.pixelSnap + vec2f(0.5)) / resolution.pixelSnap - input.rect.xy;
+            }
+          }
           let zeroToOne = pixelPosition / resolution.size;
           let clip = zeroToOne * 2.0 - vec2f(1.0, 1.0);
           var output: VertexOutput;
@@ -335,7 +348,9 @@ struct NormalOutput { @location(0) normal:vec4f, @location(1) coverage:vec4f, };
   if((flags&24u)!=0u){let q=(input.corner-.5)*2.;if((flags&8u)!=0u&&dot(q,q)>1.){discard;}}
   else {alpha*=textureSampleLevel(spriteTexture,spriteSampler,input.uv,0.).a;}
   let mapped=(flags&64u)!=0u&&(flags&56u)==0u;var n=vec3f(0.);
-  if(mapped){let raw=textureSampleLevel(normalTexture,normalSampler,input.uv,0.).rgb*2.-1.;var local=vec3f(0.,0.,1.);
+  if(mapped){let normalSize=textureDimensions(normalTexture);
+    let texel=clamp(vec2i(floor((input.uv+vec2f(1./4194304.))*vec2f(normalSize))),vec2i(0),vec2i(normalSize)-1);
+    let raw=textureLoad(normalTexture,texel,0).rgb*2.-1.;var local=vec3f(0.,0.,1.);
     if(length(raw)>=0.01){local=normalize(raw);}local=vec3f(local.xy*input.uvSign,local.z);
     let c=input.rotationCS.x;let s=input.rotationCS.y;n=vec3f(c*local.x+s*local.y,s*local.x-c*local.y,local.z);
   }

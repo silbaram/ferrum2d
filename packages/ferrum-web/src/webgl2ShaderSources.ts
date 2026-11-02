@@ -1,7 +1,37 @@
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
-      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`;
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform float u_pixel_snap;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
+      void main(){
+        vec2 corner=a_corner;
+        vec2 local=(corner-vec2(0.5))*a_rect.zw;
+        float c=cos(a_rotation),s=sin(a_rotation);
+        vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);
+        if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}
+        if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}
+        vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;
+        if(u_pixel_snap>0.0){
+          // Shared edge rounding prevents tile cracks at fractional zoom.
+          if(min(abs(c),abs(s))<0.000001&&(int(a_flags)&32)==0){
+            // Avoid center +/- half-size cancellation at exact half-pixel edges.
+            if(a_rotation==0.0){
+              vec2 edge=corner;
+              if((int(a_flags)&4)!=0){edge.y=0.5+(corner.y-0.5)*u_ground_y_scale;}
+              position=a_rect.xy+u_screen_offset+a_rect.zw*edge;
+            }
+            position=floor(position*u_pixel_snap+0.5)/u_pixel_snap;
+          }else{
+            // Keep rotated/projected shapes rigid; translate their origin only.
+            vec2 origin=a_rect.xy+u_screen_offset;
+            position+=floor(origin*u_pixel_snap+0.5)/u_pixel_snap-origin;
+          }
+        }
+        vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;
+        gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);
+        v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;
+        v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);
+        if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}
+        v_color=a_color;v_corner=corner;v_flags=a_flags;
+      }`;
 // Internal shader sources shared by synchronous construction and async preparation.
 export const WEBGL2_SHADER_SOURCES = {
   sprite: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
@@ -20,7 +50,11 @@ export const WEBGL2_SHADER_SOURCES = {
       bool mapped=u_has_normal&&(flags&56)==0;
       vec3 n=vec3(0.);
       if(mapped){vec2 uv=v_normal_uv;if(u_normal_flip_y)uv.y=1.-uv.y;
-        vec3 local=texture(u_normal_texture,uv).rgb*2.-1.;
+        // Treat tiny interpolation differences at an exact texel boundary
+        // identically across GL and WGSL. Normal maps always use nearest data.
+        ivec2 normalSize=textureSize(u_normal_texture,0);
+        ivec2 texel=clamp(ivec2(floor((uv+vec2(1.0/4194304.0))*vec2(normalSize))),ivec2(0),normalSize-1);
+        vec3 local=texelFetch(u_normal_texture,texel,0).rgb*2.-1.;
         local=length(local)<0.01?vec3(0.,0.,1.):normalize(local);local.xy*=v_uv_sign;
         float c=v_rotation_cs.x,s=v_rotation_cs.y;
         n=vec3(c*local.x+s*local.y,s*local.x-c*local.y,local.z);

@@ -7,7 +7,7 @@ import { preparePlacementTestBuild } from './placement-test-build.mjs';
 import { showPlacementMenu } from './placement-panel-navigation.mjs';
 const base = await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
 const scene = JSON.parse(await readFile(resolve(base, 'placement.scene-authoring.json'), 'utf8'));
-scene.display = { pixelPerfect: { width: 320, height: 180, background: [.03, .06, .09] } };
+scene.display = { pixelPerfect: { width: 320, height: 180, snap: true, background: [.03, .06, .09] } };
 const server = createServer(async (req, res) => { try {
     const url = new URL(req.url, 'http://localhost'), file = resolve(base, '.' + (url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname)));
     assert(file.startsWith(base + sep));
@@ -48,6 +48,7 @@ try {
                 await page.getByRole('button', { name: 'Game Preview', exact: true }).click();
                 await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === 'game' && window.ferrumRuntime.renderer.stats().presentationPassCount === 1);
                 const game = await page.evaluate(() => ({ p: window.ferrumRuntime.renderer.pixelPerfectPresentation(), camera: { x: window.ferrumEngine.cameraX(), y: window.ferrumEngine.cameraY() }, frame: window.ferrumPlacementViewerRuntimeFrame, state: window.ferrumEngine.dataSceneState(), view: window.ferrumRuntime.renderer.viewportSize() }));
+                assert.equal(game.p.settings.snap, true, 'authored snap must reach Game Preview');
                 const visible=await page.evaluate(()=>{const canvas=document.querySelector('canvas.demo-canvas'),gl=canvas.getContext('webgl2'),data=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);if(gl.getError())throw Error('readback failed');let colored=0;for(let i=0;i<data.length;i+=4)if(data[i]>70||data[i+1]>70||data[i+2]>70)colored++;return colored;});
                 assert(visible>1000,'preview must actually show textured objects');
                 assert.equal(game.view.width, 320);

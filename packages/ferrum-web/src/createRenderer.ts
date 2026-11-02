@@ -99,6 +99,9 @@ export function resolveRendererColorManagement(
 export function resolveRendererPixelPerfect(options: Pick<CreateRendererOptions,"pixelPerfect"|"webgl2"|"webgpu">): PixelPerfectOptions | undefined {
   const values=[options.pixelPerfect,options.webgl2?.pixelPerfect,options.webgpu?.pixelPerfect].filter(value=>value!==undefined);
   const settings=values.map(resolvePixelPerfectOptions);
-  if(settings.some(value=>JSON.stringify(value)!==JSON.stringify(settings[0])))throw Error("Conflicting renderer pixelPerfect options");
+  // Omitted snap and explicit false describe the same default presentation.
+  const key = (value: PixelPerfectOptions | undefined) => value === undefined ? undefined :
+    JSON.stringify([value.width, value.height, value.background, value.snap ?? false]);
+  if(settings.some(value=>key(value)!==key(settings[0])))throw Error("Conflicting renderer pixelPerfect options");
   return settings[0];
 }

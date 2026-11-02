@@ -315,7 +315,10 @@ export class WebGL2Renderer implements Renderer {
     const scissorEnabled = gl.isEnabled(gl.SCISSOR_TEST);
     const stats = emptyRendererStats();
     const previousGroundYScale = this.groundYScale;
+    const previousPixelSnap = this.spriteBatch.pixelSnap;
     try {
+      // Captures have their own resolution; canvas presentation must not leak in.
+      this.spriteBatch.pixelSnap = 0;
       if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resource.framebuffer);
       gl.viewport(0, 0, target.width, target.height);
@@ -336,6 +339,7 @@ export class WebGL2Renderer implements Renderer {
       this.offscreenStats.textureBindCount += stats.textureBindCount;
       this.offscreenStats.textureSwitchCount += stats.textureSwitchCount;
     } finally {
+      this.spriteBatch.pixelSnap = previousPixelSnap;
       this.setGroundYScale(previousGroundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousFramebuffer);
       gl.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -563,7 +567,9 @@ export class WebGL2Renderer implements Renderer {
     if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");
     if (commands.spatial && this.lightingScene.enabled) throw new Error("Flat LightingScene2D cannot be combined with a spatial scene; use spatial.environment.lighting");
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget()):undefined;
+    const pixelSnap = this.pixelPerfect?.snap ? this.viewportZoom : 0;
+    this.spriteBatch.pixelSnap = pixelSnap;
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;

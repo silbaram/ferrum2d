@@ -65,6 +65,9 @@ export class SpriteBatch {
   private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
   groundYScale = 1;
+  /** Virtual pixels per logical unit, or zero to retain continuous geometry. */
+  pixelSnap = 0;
+  private readonly pixelSnapLocation: WebGLUniformLocation;
   private readonly groundYScaleLocation: WebGLUniformLocation;
   private readonly groundShadowProjectionLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
@@ -135,6 +138,9 @@ export class SpriteBatch {
       const groundYScaleLocation = this.gl.getUniformLocation(this.program, "u_ground_y_scale");
       if (!groundYScaleLocation) throw new Error("Missing ground projection uniform");
       this.groundYScaleLocation = groundYScaleLocation;
+      const pixelSnapLocation = this.gl.getUniformLocation(this.program, "u_pixel_snap");
+      if (!pixelSnapLocation) throw new Error("Missing pixel snap uniform");
+      this.pixelSnapLocation = pixelSnapLocation;
       const groundShadowProjectionLocation = this.gl.getUniformLocation(this.program, "u_ground_shadow_projection");
       if (!groundShadowProjectionLocation) throw new Error("Missing ground shadow projection uniform");
       this.groundShadowProjectionLocation = groundShadowProjectionLocation;
@@ -282,6 +288,7 @@ export class SpriteBatch {
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);
+    this.gl.uniform1f(this.pixelSnapLocation, this.pixelSnap);
     this.gl.uniform3f(this.groundShadowProjectionLocation, projection[0], projection[1], projection[2]);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
