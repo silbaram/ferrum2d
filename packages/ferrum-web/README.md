@@ -83,3 +83,9 @@ pnpm package:check
 이 명령은 Wasm package와 TypeScript dist를 생성한 뒤 실제 `pnpm pack` 결과에 필요한 파일이 포함되고 source/test/cache 파일이 빠져 있는지 확인한다.
 
 실제 publish 직전에는 저장소 문서의 npm 베타 패키징 절차를 따르고 `pnpm package:publish-check`로 `private: false`와 beta semver 상태를 별도로 확인한다.
+
+## 기본 2D 픽셀 퍼펙트
+
+Scene Authoring JSON의 `display.pixelPerfect: {width: 320, height: 180}`으로 가상 해상도를 지정한다.
+실제 런타임과 게임 미리보기는 정수 확대·nearest·여백을 적용하며, 편집 화면은 기존 viewport를 유지한다.
+작은 창의 축소, 포인터 변환과 opt-in 사용법은 [표시 계약](../../docs/engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

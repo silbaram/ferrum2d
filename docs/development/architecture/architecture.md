@@ -1648,3 +1648,21 @@ JSON은 256개/32 MiB/개별 2 MiB, 방문 4,096개/깊이 8이며 손상·링�
 복구도 백업 원본을 기존 parser로 검증하고 live Catalog가 journal의 before/after 중 하나일 때만 발행한다.
 쓰기 시도 뒤 재열기로 stale Catalog/expected token을 폐기한다. 브라우저 단독에서는 비활성이다.
 Rust simulation, Wasm ABI, SDK 공개 API와 generated viewer 계약은 변경하지 않는다.
+
+## Flat 2D virtual presentation
+
+선택 `display.pixelPerfect`/runtime `pixelPerfect`는 TypeScript 표시 계약이다.
+`pixelPerfect.ts`가 가상 치수·물리 정수 배율·여백·포인터 변환을 공통 계산하고,
+WebGL2/WebGPU는 조명·노멀·지원 후처리를 가상 타깃에 마친 뒤 nearest fullscreen pass로 출력한다.
+WebGL2는 MSAA default framebuffer로의 확대 blit을 사용하지 않으며, 필요 시 가상 후처리 출력 타깃을 둔다.
+WebGPU는 장치 복구 facade를 통해 마지막 설정을 새 backend에 전달한다.
+타깃은 GPU resource 통계/수명 관리에 포함하며 최종 표시 pass는 drawCalls/presentationPassCount로 계측한다.
+
+runtime은 문서 적용/전환 시 renderer 표시 설정을 준비하고, 문서 적용 성공 후 native viewport를 맞춘다.
+검증 실패 시 native 카메라를 유지하고 표시를 복원한다. 복원까지 실패하면 두 오류를 보고한다.
+GL 타깃 치수 변경은 모든 candidate를 준비한 후 교체하며 중간 실패는 candidate만 정리한다.
+최종 alpha와 중복 frame finalization은 두 backend가 같은 계약을 사용한다. 여백의 물리 포인터 클릭을 막는다.
+DataSceneView는 virtual viewport와 실제 canvas CSS 크기를 구분해 world 좌표를 왕복한다.
+뷰어는 문서별 편집 카메라를 보관해 게임 미리보기 종료 시 카메라·zoom과 선택/overlay viewport를 함께 복구한다. 게임 상태·entity 위치·카메라 상태는 Rust가 소유한다.
+render command ABI와 시뮬레이션은 바꾸지 않으며 spatial pixelArt와 독립적이다.
+[Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

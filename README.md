@@ -592,3 +592,9 @@ raycast 등 공간 query에서 제외된다. [옵션·stepping·저장 범위](d
 Blender 정적 모델 경로는 큰 모델의 재질 batch 병합, unlit/발광 strength, 움직이는 root·자식 proxy,
 자유 각도 OBB, 사전 등록한 LOD와 visual 청크 GPU 수명을 지원한다. 지원 형식·예산·저장 v8과
 예시는 [공간 모델 계약](docs/engine/data-scene-spatial.md)을 참고한다.
+
+## 기본 2D 픽셀 퍼펙트
+
+Scene Authoring JSON의 `display.pixelPerfect: {width: 320, height: 180}`으로 가상 해상도를 지정한다.
+실제 런타임과 게임 미리보기는 정수 확대·nearest·여백을 적용하며, 편집 화면은 기존 viewport를 유지한다.
+작은 창의 축소, 포인터 변환과 opt-in 사용법은 [표시 계약](docs/engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

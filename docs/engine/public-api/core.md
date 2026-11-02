@@ -20,6 +20,57 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 ```
 
+## 기본 2D 픽셀 퍼펙트 표시
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  pixelPerfect: { width: 320, height: 180, background: [0, 0, 0] },
+});
+const presentation = runtime.renderer.pixelPerfectPresentation?.();
+```
+
+`PixelPerfectOptions`는 flat 2D의 가상 해상도다. WebGL2/WebGPU에서 스프라이트·노멀·조명·지원 후처리를
+가상 크기로 그린 뒤 nearest로 한 번 확대한다. 물리 canvas(CSS×DPR)에 들어가는 가장 큰 정수 배율을 쓰고
+나머지는 불투명 RGB 여백으로 채운다. 홀수 여백은 오른쪽/아래가 1픽셀 더 클 수 있다.
+한 변은 정수 1~2048, 전체는 최대 1,048,576픽셀이다. 잘못된 치수·RGB·알 수 없는 필드는 오류다.
+가상 화면보다 작은 창은 nearest fit으로 축소하며 `integerScale: false`다.
+브라우저 CSS transform·페이지 확대·OS 합성 이후까지 물리 픽셀의 정수 배율을 보장하지 않는다.
+
+- `createRenderer`·직접 renderer 생성·`createFerrumRuntime`의 `pixelPerfect`는 기본 표시 설정이다.
+  shared/backend 옵션을 함께 주면 동일한 값을 사용해야 한다. 충돌은 context 연결 전에 거부한다.
+- 씬의 `display.pixelPerfect`가 runtime 기본값보다 우선한다. `false`는 해제하고 생략하면 기본값을 사용한다.
+  `transition`/`reapply` 시 함께 갱신하며 문서 적용 실패 시 이전 표시로 복귀한다.
+  native viewport는 문서 적용 성공 후 변경하므로 검증 실패가 기존 bounded/follow 카메라를 재배치하지 않는다.
+  복원 자체도 실패하면 오류의 `cause`에 원래 적용 오류, `displayRollbackError`에 복원 오류를 보관한다.
+  이 경우 오류 메시지에 두 원인이 표시되며 호출자는 renderer를 복구하거나 다시 생성해야 한다.
+- `renderer.setPixelPerfect(options | false | undefined)`는 프레임 사이에 호출한다.
+  `pixelPerfectPresentation()`은 불변 설정·가상/물리 크기·왼쪽 위 기준 표시 영역·배율을 반환한다.
+  비활성 상태에서는 `undefined`다. 동기 타깃 준비 실패 시 이전 설정·화면·할당을 유지한다.
+  WebGPU 장치 복구에서도 마지막 성공 설정을 유지한다.
+- `resolvePixelPerfectOptions`, `resolvePixelPerfectPresentation`, `pixelPerfectPointToViewport`는 GPU 없이
+  동일 설정과 표시 영역, canvas CSS 좌표의 가상 픽셀 변환을 제공한다. 여백 좌표는 clamp하지 않고 `inside: false`다.
+- runtime은 포인터를 논리 viewport 좌표로 변환한 뒤 `inputTransform`에 전달하고, 여백의 `mouseLeft`를 끈다.
+  키보드·게임패드·가상 버튼은 유지한다. `InputManager.snapshot({pointerPrimaryEnabled: false})`는 물리 포인터만 제외한다.
+  `actionSnapshot`/입력 context를 직접 소비하는 앱은 자체 영역 가드를 적용해야 한다.
+- `createDataSceneView(..., {pixelPerfect})` 또는 `view.setPixelPerfect(...)`는 renderer와 native viewport를 함께 바꾼다.
+  `pointerToWorld`/`screenToWorld`/`worldToScreen`은 표시 영역·DPR·zoom·groundYScale을 반영한다.
+  직접 canvas 이벤트로 이동 명령을 보내는 앱은 helper의 `inside`를 먼저 확인한다.
+- `viewportSize()`는 가상 크기/scene zoom이다. 표시 확대 배율과 카메라 zoom은 서로 다른 값이다.
+  카메라/스프라이트 위치 스냅과 atlas padding은 별도 기능이며 여기서 자동 적용하지 않는다.
+
+custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를 함께 제공해야 한다.
+저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
+`spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
+WebGPU의 지원 후처리는 기존 fade 범위이며 `linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+
+최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
+가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
+픽셀 퍼펙트 모드의 최종 출력 alpha는 두 backend 모두 1이다. 활성 프레임 없이 `renderPostProcess`를 반복 호출해도 출력·fade·비용이 누적되지 않는다.
+이때 인자로 전달한 새 후처리 설정은 다음 프레임에 사용한다.
+WebGL2에서 후처리/색 관리가 필요하면 별도 가상 출력 타깃을 사용한다. 해제/재설정은 기존 타깃을 재사용하거나 정리한다.
+
 ## Runtime 생성
 
 | API | 계약 |

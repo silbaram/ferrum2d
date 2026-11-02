@@ -2056,3 +2056,20 @@ normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata�
 `artifacts/project-asset-cleanup/browser/verification.json`과 run별 화면/계획/`rust-build.log`를 남긴다.
 GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
 동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.
+
+## Flat 2D 픽셀 퍼펙트 gate
+
+```bash
+pnpm smoke:flat-pixel-perfect
+```
+
+SDK build/Wasm와 공식 뷰어 build 후 DPR 1/1.5/2에서 실제 WebGL2 및 software WebGPU offscreen target을 검사한다.
+가상 픽셀마다 정수 블록 색 일치, RGB/alpha backend parity, 불투명 여백, normal·point light·fade,
+WebGL2 multipass·linear-sRGB fallback·RenderTexture 격리, resize 시 고정 virtual allocation과 destroy 자원 해제를 확인한다.
+실제 Wasm Playing Data Scene의 포인터/여백·zoom/ground projection·문서 재적용과 bounded 카메라의 실패 보존을 검사한다.
+투명 clear의 opaque 출력, 중복 finalization, 최대 1메가픽셀·hidden canvas, GL 각 candidate/GPU bind group 동기 할당 실패의 기존 화면·메모리·후보 자원 정리도 검사한다.
+private 뷰어 fixture에서 UI로 Game Preview 왕복·resize·Play/Pause/Stop·다른 가상 해상도의 문서 탭 왕복/닫기·HD-2D 문서 전환을 실행한다.
+source/patch/history와 편집 카메라·zoom·선택 viewport의 복원을 확인하고 실제 객체를 클릭해 선택한다.
+결과는 `artifacts/flat-pixel-perfect/`에 남고 CI validate job에서 실행한다.
+이 gate는 native GPU canvas compositor·실물 GPU·CSS/OS 확대 품질을 검증했다고 주장하지 않는다.
+회귀 비교는 `smoke:color-management`, `smoke:sprite-normal-2d`, `smoke:render-texture`, `smoke:runtime-budgets`와 공식 placement viewer gate를 사용한다.

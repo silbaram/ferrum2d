@@ -21,6 +21,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
 | `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
 | `spatial` | 아니오 | 개발 소스의 opt-in 입체 지형·camera·billboard·native actor와 선택 shared-edge `connections` 설정. [공간 계약](data-scene-spatial.md)을 따른다. |
+| `display` | 아니오 | flat 2D의 선택 `pixelPerfect` 표시 설정. 가상 해상도·정수 확대·여백을 정의한다. |
 | `lighting` | 아니오 | world 좌표의 flat `LightingScene2D`. 공간 문서와 동시 지정 불가. [조명 작성·patch 계약](public-api/authoring.md#2d-scene-lighting-placement-patch)을 따른다. |
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
@@ -30,6 +31,31 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 적용 전에 현재 texture registry에서 해석한다. 별도 생성 binding JSON에는 provenance를 보관하고
 scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined patch/handoff는
 [노멀맵 binding 계약](data-scene-spatial.md#생성-에셋-binding과-패치handoff)을 따른다.
+
+## 기본 2D 표시 설정
+
+```json
+{
+  "display": {
+    "pixelPerfect": { "width": 320, "height": 180, "background": [0, 0, 0] }
+  }
+}
+```
+
+위 설정을 기존 Scene Authoring v1 문서의 root에 추가한다. `SceneDisplaySpec`와 `resolveSceneDisplay`는
+`/core`와 `/authoring`에서 제공한다. 한 변은 1~2048 정수, 총 1,048,576픽셀 이하이며 RGB는 각 0~1이다.
+`display`/`pixelPerfect`의 알 수 없는 필드는 오류다. `false`는 runtime 기본 표시 설정을 해제하며,
+생략하면 runtime 기본값을 사용한다. `spatial` 문서에서는 flat 설정을 켤 수 없다.
+
+공식 뷰어에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
+2D 편집 화면에서는 넓은 편집 viewport를 유지하며 돌아오면 편집 카메라 위치·zoom과 객체 선택 좌표계를 함께 복원한다.
+flat 미리보기의 기본 카메라 중심과 zoom 1을 사용한다. 게임 코드가 별도로 설치하는 카메라 follow/스크립트는
+프로젝트 런타임에서 설정해야 한다. 표시 설정을 바꾸는 전용 Inspector UI는 아직 없으며 JSON으로 작성한다.
+기본 예제의 표시 설정은 변경하지 않는다.
+
+창이 작으면 nearest 축소(`integerScale: false`)를 사용한다. 포인터 변환과 여백 클릭 처리는
+[Core API](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)를 따른다. 저수준 apply 함수는 문서를 검증·적용하며
+renderer 설정은 호출자가 연결한다. `createFerrumRuntime({dataScene})`는 이 연결을 자동 수행한다.
 
 ## Object Definition And Instance
 
