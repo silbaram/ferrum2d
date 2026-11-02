@@ -29,7 +29,7 @@ const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  pixelMode ? "artifacts/pixel-authoring" : tileMode
+  pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"

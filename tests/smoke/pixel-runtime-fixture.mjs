@@ -73,7 +73,7 @@ export async function probePixelResume(providedBundle) {
     const pausedSample={...sample};
     let playback;
     const pose=bundle.sceneDocument.sceneComposition.fragments.main.instances[0],visual=pose.props.components.visual;
-    if(visual.animationSet&&bundle.assets.find(asset=>asset.id===visual.texture)?.source.version!==5) {
+    if(visual.animationSet&&![5,6].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
       const source=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
       if(source?.version!==3||source.frames.length!==2)throw Error('Fresh animation source metadata missing');
       const clip=visual.animationSet.clips[0],handle=handles[pose.id],nativeFrames=new Set(),sourceFrames=new Set(),visible=new Set();
@@ -136,6 +136,47 @@ export async function probePixelResume(providedBundle) {
       taggedPlayback={clips:clips.length,allClipsPlayed:true,clipStates:clips,renderedUVs:true,visibleFrames:seen.size,maxDraws,playingState:sample.state};
       playback={sourceFrames:seen.size,playingState:sample.state};
     }
+    let capacityPlayback;
+    if(taggedSource?.version===6) {
+      window.pixelResumeStage="capacityPlayback";
+      const capacityStarted=performance.now();
+      const handle=handles[pose.id],set=visual.animationSet,seen=new Set();
+      if(!set||set.clips.length!==taggedSource.tags.length)throw Error('Capacity tags differ from native clips');
+      if(!engine.resumeDataScene())throw Error('Capacity animation did not enter Playing');
+      let time=32,maxDraws=0,pixelChecks=0,renders=0;
+      const columns=Math.ceil(Math.sqrt(taggedSource.frames.length)),rows=Math.ceil(taggedSource.frames.length/columns);
+      for(const clip of set.clips) {
+        window.pixelResumeStage="capacityPlayback:clip-"+clip.id;
+        const tag=taggedSource.tags.find(tag=>tag.clipId===clip.id),visited=new Set();
+        if(!tag||clip.fps!==undefined||clip.frames.length!==tag.frameIds.length||!clip.frameDurationsMs)throw Error('Capacity export duplicated or lost source frames');
+        if(!engine.updateDataSceneSpriteAnimations([{entity:handle,clip:clip.id,restart:true}]))throw Error('Capacity clip switch failed');
+        const duration=clip.frameDurationsMs.reduce((sum,ms)=>sum+ms,0);
+        // 50ms is the actual GameLoop clamp and is shorter than every fixture
+        // frame (83ms minimum), so every original cel must still be displayed.
+        for(let elapsed=0;elapsed<=duration+50;elapsed+=50) {
+          time+=50;const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(time);renders++;
+          const state=engine.dataSceneSpriteAnimationState(handle);
+          if(!state||state.clip!==clip.id||sample.state!==1||sample.entities!==1||sample.drawCalls<1||sample.drawCalls>16||sample.textureSwitches>16)throw Error('Capacity runtime state or budget differs');
+          maxDraws=Math.max(maxDraws,sample.drawCalls);
+          const id=tag.frameIds[state.frame],index=taggedSource.frames.findIndex(frame=>frame.id===id);
+          const expected=[index%columns/columns,Math.floor(index/columns)/rows,(index%columns+1)/columns,(Math.floor(index/columns)+1)/rows];
+          const actual=bundle.sceneDocument.spatial ? spatialUvs.length ? [[Math.min(...spatialUvs.map(uv=>uv[0])),Math.min(...spatialUvs.map(uv=>uv[1])),Math.max(...spatialUvs.map(uv=>uv[0])),Math.max(...spatialUvs.map(uv=>uv[1]))]] : [] : spriteUvs;
+          if(!actual.length||actual.some(uv=>uv.some((v,i)=>Math.abs(v-expected[i])>1e-6)))throw Error('Capacity native UV differs from original cel: '+JSON.stringify({id,actual,expected}));
+          if(!visited.has(id)) {
+            gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+            if(gl.getError())throw Error('Capacity readback failed');
+            const rgba=atob(taggedSource.frames[index].cels[0].rgba),red=rgba.charCodeAt(4),green=rgba.charCodeAt(5);
+            let matches=0;for(let i=0;i<pixels.length;i+=4)if(Math.abs(pixels[i]-red)<=2&&Math.abs(pixels[i+1]-green)<=2&&pixels[i+3]>240)matches++;
+            if(matches<20)throw Error('Capacity source cel is absent from actual pixels: '+id+' '+matches);
+            pixelChecks++;visited.add(id);seen.add(id);
+          }
+        }
+        if(visited.size!==tag.frameIds.length)throw Error('Capacity playback skipped original frames');
+      }
+      if(seen.size!==64||taggedSource.frames.length!==64)throw Error('Capacity fixture must exercise all64 original frames');
+      capacityPlayback={originalFrames:64,clips:set.clips.length,visitedOriginalFrames:seen.size,renderedUVs:true,pixelChecks,maxDraws,renders,elapsedMs:performance.now()-capacityStarted,playingState:sample.state};
+      playback={sourceFrames:64,nativeFrames:64,playingState:sample.state};
+    }
     let fixedAtlas;
     const atlasSource=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
     if(atlasSource?.version===4) {
@@ -187,7 +228,7 @@ export async function probePixelResume(providedBundle) {
       if(sample.state!==1)throw Error('Normal mapped game did not resume Playing');
       normalMapping={lightingChanged:true,differentPixels:difference,colorSpace:'none',playingState:sample.state,drawCalls:sample.drawCalls,textureSwitches:sample.textureSwitches,controlledLighting:true,...(pairedPlayback?{pairedPlayback}:{}),...(!mapped.spatial?{normalDrawCalls:mappedStats.normalDrawCalls,flatNormalDrawCalls:0}:{})};
     }
-    return { freshSession: true, assets: bundle.assets.length, hashes: true, bluePixels: blue, ...pausedSample,...(playback?{playback}:{}),...(fixedAtlas?{fixedAtlas}:{}),...(taggedPlayback?{taggedPlayback}:{}),...(normalMapping?{normalMapping}:{}) };
+    return { freshSession: true, assets: bundle.assets.length, hashes: true, bluePixels: blue, ...pausedSample,...(playback?{playback}:{}),...(fixedAtlas?{fixedAtlas}:{}),...(taggedPlayback?{taggedPlayback}:{}),...(capacityPlayback?{capacityPlayback}:{}),...(normalMapping?{normalMapping}:{}) };
   } finally {
     engine?.destroy(); renderer.destroy();
     globalThis.requestAnimationFrame = raf; globalThis.cancelAnimationFrame = cancel;

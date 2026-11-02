@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { pixelCapacitySource } from "./pixel-capacity-fixture.mjs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { decodePng } from "../../scripts/tools/pack-textures.mjs";
@@ -29,7 +30,7 @@ const animationUrl=await moduleUrl("placementPixelAnimation",{
   "./placementPixelDocument":documentUrl,
   "@ferrum2d/ferrum-web/authoring":new URL("../../packages/ferrum-web/dist/authoring.js",import.meta.url).href,
 });
-const {pixelAnimation,pixelPreviewFrame,pixelAnimationInput}=await checkedImport(animationUrl);
+const {pixelAnimation,pixelPreviewFrame,pixelAnimationInput,pixelEditorAnimationInput}=await checkedImport(animationUrl);
 const {pixelOnionFrames,PIXEL_ONION_DEFAULTS}=await checkedImport(await moduleUrl("placementPixelOnion"));
 const { createPixelEditor: create, newPixelDocument: blank, readPixelDocument: read, pixelBytes, pixelDocumentFromRgba, pixelAtlas, pixelFrames, PIXEL_LIMITS } = await checkedImport(documentUrl);
 const { pixelPng, readPixelPng } = await checkedImport(await moduleUrl("placementPixelPng", { "./placementPixelDocument": documentUrl }));
@@ -792,7 +793,7 @@ test('v3 validates stable frame IDs, cel associations, duration and aggregate bo
     d=>d.frames[0].cels[0].rgba='AAAA',d=>d.layers[0].rgba='AAAA',d=>d.frame={id:'frame',durationMs:100}]) {
     const invalid=structuredClone(source);mutate(invalid);assert.throws(()=>read(JSON.stringify(invalid)));
   }
-  const small=create(blank(1,1));for(let i=1;i<16;i++)small.addFrame();assert.throws(()=>small.addFrame(),/limit/);
+  const small=create(blank(1,1));for(let i=1;i<PIXEL_LIMITS.frames;i++)small.addFrame();assert.throws(()=>small.addFrame(),/limit/);
   const removed=small.selectedFrame();small.removeFrame(removed);const restored=create(read(JSON.stringify(small.document())));assert.notEqual(restored.addFrame(),removed);
   const large=create(blank(256,256));for(let i=1;i<8;i++)large.addLayer();for(let i=1;i<4;i++)large.addFrame();
   assert.equal(large.frames().length,4);assert.throws(()=>large.addFrame(),/budget/);
@@ -820,7 +821,9 @@ test('preview and native UV ticks agree on exact source frame duration and order
   assert.equal(compiled.nativeCycleMs,300);
   assert.deepEqual([0,99,100,299,300,400].map(ms=>pixelPreviewFrame(info.frames,ms)),[0,0,1,1,0,1]);
   editor.setFrameDuration(first,83);editor.setFrameDuration(second,124);
-  assert.throws(()=>pixelAnimation(pixelAnimationInput(editor.document())),/32 native/);
+  const exact=pixelAnimation(pixelAnimationInput(editor.document()));
+  assert.deepEqual(exact.set.clips[0].frameDurationsMs,[83,124]);
+  assert.equal(exact.set.clips[0].frames.length,2);assert.equal(exact.set.clips[0].fps,undefined);
   assert.equal(pixelPreviewFrame(editor.frames(),83),1);assert.doesNotThrow(()=>read(JSON.stringify(editor.document())));
 });
 
@@ -843,6 +846,24 @@ test('animated pixel patches preserve components and only migrate verified owned
   for(const key of ['collider','body','layer'])assert.deepEqual(detached[key],operation.components[key]);
   assert.deepEqual(visual.animationSet.clips[0].frames,operation.components.visual.animationSet.clips[0].frames,'patch generation preserves its input animation');
   visual.animationSet.clips[0].fps=20;assert.throws(()=>patch(owned,state,'pixel.next',info,revisions),/Migrate/);
+});
+
+test('small v6 UI application and exported clips agree and unchanged reapplication needs no migration',async()=>{
+  for(const tagged of [false,true]) {
+    const source=pixelCapacitySource({side:2,layers:1,count:8,tagged});
+    source.frames.forEach(frame=>frame.durationMs=100);
+    const editor=create(source),assets=createPixelAssets({engine:{async loadAssets(){},textureId(){return 41;},releaseAssets(){}},taken:()=>false,retains:()=>false});
+    try {
+      const asset=await assets.prepare('scene',source,new AbortController().signal);assets.commit(asset);
+      const document=scene();
+      document.sceneComposition.fragments.main.instances[0].props.components=patch(document,state,asset.id,pixelEditorAnimationInput(editor)).operations[0].components;
+      const applied=document.sceneComposition.fragments.main.instances[0].props.components.visual.animationSet;
+      const exported=assets.bundle('scene',document).assets.find(entry=>entry.id===asset.id).animationSet;
+      assert.deepEqual(applied,exported);
+      assert.deepEqual(applied.clips[0].frameDurationsMs,Array(8).fill(100));
+      assert.doesNotThrow(()=>patch(document,state,asset.id,pixelEditorAnimationInput(editor),assets.entries()));
+    } finally { assets.destroy(); }
+  }
 });
 
 test('animated revision bundle and native reader verify sheet dimensions and preserve exact frame source',async()=>{
@@ -1056,6 +1077,15 @@ const pixelNormalUrl=await moduleUrl('placementPixelNormals',{
   '@ferrum2d/ferrum-web/authoring':new URL('../../packages/ferrum-web/dist/authoring.js',import.meta.url).href,
 });
 const {pixelNormalFrames,pixelNormalSource,pixelNormalPatch}=await checkedImport(pixelNormalUrl);
+test('expanded color sheets diagnose the separate normal frame cap before generation', async()=>{
+  const source=pixelCapacitySource();
+  assert.equal(pixelNormalFrames(source).length,64);
+  const asset={id:'pixel.'+'a'.repeat(24),document:'scene',source,sourceJson:JSON.stringify(source),width:256,height:256,png:new ArrayBuffer(0),sha256:'b'.repeat(64)};
+  await assert.rejects(pixelNormalSource(asset),/Normals support up to 32 animation frames/);
+  // Unused cels do not consume the runtime's distinct animated-UV budget.
+  const subset={...source,tags:source.tags.slice(0,1)};
+  assert.equal((await pixelNormalSource({...asset,source:subset,sourceJson:JSON.stringify(subset)})).frames.length,64);
+});
 const {createPlacementFrameNormals}=await checkedImport(await moduleUrl('placementFrameNormals',{
   './placementNormalReferences':await moduleUrl('placementNormalReferences'),
   './placementLocale':'data:text/javascript,export function uiMessage(text,...args){return {text,args}}',

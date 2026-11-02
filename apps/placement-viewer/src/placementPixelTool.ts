@@ -24,10 +24,11 @@ import { placementNormalRead, type PlacementNormalAssetHost, type PlacementNorma
 import { readPixelProject, type PixelProjectHost } from "./placementPixelProject";
 import { canUsePlacementAsset } from "./placementAssetScope";
 import { createPixelLayers } from "./placementPixelLayers";
-import { createPixelNormals, pixelNormalSource, pixelNormalPatch } from "./placementPixelNormals";
+import { createPixelNormals, pixelNormalSource, pixelNormalPatch, pixelNormalFrameCount } from "./placementPixelNormals";
 import { createPlacementNormalPreview } from "./placementNormalPreview";
 import type { SpriteNormalGenerationSettings } from "@ferrum2d/ferrum-web/authoring";
 import { createPixelFrames } from "./placementPixelFrames";
+import { pixelEditorAnimationInput } from "./placementPixelAnimation";
 import { readPixelAtlas, type PixelAtlasMetadata } from "./placementPixelAtlas";
 import { createPlacementToolActions, placementActionReason } from "./placementToolPanel";
 
@@ -284,7 +285,7 @@ export function createPlacementPixelTool(options: {
       { atlas }, editor!.selectedAtlasFrame(), assets.entries()) : pixelComponentPatch(options.context().document,
       options.viewer.state(), texture, animationInput(), assets.entries(),migrationApproval);
   }
-  const animationInput=()=>({width:editor!.width,height:editor!.height,frames:editor!.frames(),...(editor!.tags().length?{tags:editor!.tags(),initialTag:editor!.initialTag()}:{})});
+  const animationInput=()=>pixelEditorAnimationInput(editor!);
   function syncColor() { colorInput.value = pixelHex(color).slice(0, 7); alpha.value = String(color[3]); }
   syncColor();
   function download(blob: Blob, filename: string) {
@@ -438,12 +439,14 @@ export function createPlacementPixelTool(options: {
     documentActions.primary(primary);
     placementActionReason(primary,primary.disabled?pending?"Confirm or cancel the pixel preview first":editing?"Finish the current edit before using this tool":"Pixel editing is unavailable in this document":undefined,documentReason);
     normalStrength.disabled=editing||editor.active()||pending;
-    generateNormal.disabled=editing||editor.active()||pending;
+    const normalFrameLimit=pixelNormalFrameCount(editor.frames(),editor.tags())>32;
+    generateNormal.disabled=editing||editor.active()||pending||normalFrameLimit;
+    setUiAttribute(generateNormal,"title",normalFrameLimit?"Normals support up to 32 animation frames":"Generate Normals");
     previewNormal.disabled=editing||editor.active()||pending||!freshNormal();
     cancelNormal.hidden=!normalInFlight;cancelNormal.disabled=!normalInFlight;
     applyNormal.disabled=editing||editor.active()||pending||!freshNormal()||!options.context().canEdit||owner!==options.context().key;
     if(!applyNormal.disabled){try{pairedPatch();}catch(error){applyNormal.disabled=!(error instanceof PixelClipMigrationRequired);setUiAttribute(applyNormal,"title",error instanceof Error?error.message:String(error));}}
-    setUiText(normalStatus,generated?(freshNormal()?"Normals Ready":"Pixels changed. Regenerate normals."):"Generate normals from the current frames.");
+    setUiText(normalStatus,normalFrameLimit?"Normals support up to 32 animation frames":generated?(freshNormal()?"Normals Ready":"Pixels changed. Regenerate normals."):"Generate normals from the current frames.");
     normalStatus.dataset.stale=String(!!generated&&!freshNormal());
     if(generated&&!freshNormal())closeNormalPreview();
     setUiText(status, message);

@@ -31,7 +31,7 @@ const animationMode = process.argv.includes("--animations");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? "artifacts/pixel-project" : externalTileMode
+  cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -677,7 +677,7 @@ try {
             game.on("requestfinished", request => pendingRequests.delete(request));
             try {
               await game.goto(origin+"/game.html");
-              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50}).catch(async error => {
+              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50,timeout:process.argv.includes('--pixel-capacity-only')?120_000:30_000}).catch(async error => {
                 const stage = await game.evaluate(()=>window.pixelResumeStage).catch(()=>"unavailable");
                 throw Error(String(error)+" stage "+stage+" "+JSON.stringify({failures,pending:[...pendingRequests].map(request=>request.url())}));
               });

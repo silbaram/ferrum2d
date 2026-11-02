@@ -1,7 +1,7 @@
 import { createSceneSpriteNormalPatch, mergeScenePlacementPatch, instantiateSceneFragment, resolveSpriteNormalAssetBinding,
   type SceneAuthoringDocumentSpec, type ScenePlacementViewerState, type ScenePlacementPatch } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementFrameNormals } from "./placementFrameNormals";
-import { pixelAtlasLayout, pixelFrames, type PixelDocument } from "./placementPixelDocument";
+import { pixelAtlasLayout, pixelFrames, type PixelDocument, type PixelFrameInfo, type PixelFrameTag } from "./placementPixelDocument";
 import { pixelAnimationInput } from "./placementPixelAnimation";
 import { pixelComponentPatch, pixelAtlasComponentPatch, type PixelAsset } from "./placementPixelAssets";
 import { placementNormalHash, type PlacementNormalAssetBundle } from "./placementNormalAssets";
@@ -15,7 +15,13 @@ export function pixelNormalFrames(source: PixelDocument) {
   const frames=pixelFrames(source),layout=pixelAtlasLayout(source,frames.length);
   return frames.map((frame,index)=>({id:frame.id,x:(index%layout.columns)*source.width,y:Math.floor(index/layout.columns)*source.height,width:source.width,height:source.height}));
 }
+/** Runtime normal bindings count unique used UVs, including all configured tags. */
+export function pixelNormalFrameCount(frames: readonly PixelFrameInfo[], tags: readonly PixelFrameTag[] = []): number {
+  return tags.length ? new Set(tags.flatMap(tag=>tag.frameIds)).size : frames.length;
+}
 export async function pixelNormalSource(asset: PixelAsset) {
+  const input=pixelAnimationInput(asset.source);
+  if(pixelNormalFrameCount(input.frames,input.tags)>32)throw Error("Normals support up to 32 animation frames");
   const snapshot={id:asset.id,document:asset.document,width:asset.width,height:asset.height,png:asset.png.slice(0),
     sourceJson:asset.sourceJson,pngSha256:asset.sha256,pngName:asset.id+".png",frames:pixelNormalFrames(asset.source)};
   return {...snapshot,jsonSha256:await placementNormalHash(snapshot.sourceJson)};

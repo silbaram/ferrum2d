@@ -53,7 +53,7 @@ export async function smokePixelFrames(page,mode,run) {
   const select=id=>panel.locator('[data-pixel-frame-select="'+id+'"]');
   await select(first).click();assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false','frame selection is UI state');
   await duration.fill('83');await duration.press('Enter');await select(second).click();await duration.fill('124');await duration.press('Enter');
-  assert.equal(await panel.locator('[data-pixel-frame-compatibility]').getAttribute('data-error'),'true');assert(await action('apply').isDisabled());
+  assert.equal(await panel.locator('[data-pixel-frame-compatibility]').getAttribute('data-error'),'false','nonuniform frame durations use native source-frame timing');
   await select(first).click();const beforePreview=await source('preview-source');
   await frameAction('play').click();assert.equal(await panel.getAttribute('data-pixel-playing'),'true');
   assert(await duration.isDisabled());assert(await frameAction('add').isDisabled());assert(await action('tool-pencil').isDisabled());
@@ -85,7 +85,7 @@ export async function smokePixelFrames(page,mode,run) {
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
   const onionSkin=await smokePixelOnion(page,mode,run,final,join(run,mode+'-frames-source.pixel.json'));
   return {source:final,frameIds:[first,second],durations:[100,200],frameOperations:true,independentCels:true,
-    previewDoesNotEdit:true,blurStopsPreview:true,tabStopsPreview:true,boundaryActionFocus:true,unsupportedTimingDiagnosed:true,atlasVerified:true,onionSkin};
+    previewDoesNotEdit:true,blurStopsPreview:true,tabStopsPreview:true,boundaryActionFocus:true,nonuniformTimingReady:true,atlasVerified:true,onionSkin};
 }
 
 /** The owned second-frame card must open that cel, including after native restore. */

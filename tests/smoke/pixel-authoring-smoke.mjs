@@ -18,8 +18,20 @@ import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authori
 import { smokePixelLayers } from "./pixel-layers-smoke.mjs";
 import { smokePixelAtlas } from "./pixel-atlas-smoke.mjs";
 import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs";
+import { smokePixelCapacity } from "./pixel-capacity-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-capacity-only")) {
+    const capacity=await smokePixelCapacity(page,mode,run,async bundle=>{
+      setResume(bundle);const game=await page.context().newPage(),errors=[];
+      game.on('pageerror',error=>errors.push(error.message));game.on('requestfailed',request=>errors.push(request.url()+': '+request.failure()?.errorText));
+      game.on('response',response=>{if(response.status()>=400)errors.push(response.status()+' '+response.url());});
+      try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{timeout:120_000}).catch(async error=>{throw Error(String(error)+' stage '+await game.evaluate(()=>window.pixelResumeStage)+' '+JSON.stringify(errors));});
+        return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
+      }finally{await game.close();}
+    });
+    return {capacity,focus:"pixel-capacity"};
+  }
   if (process.argv.includes("--pixel-batch-layout-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch-layout"};
   if (process.argv.includes("--pixel-batch-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch"};
   if (process.argv.includes("--pixel-next-only")) return {pixelNext:await smokePixelNextTools(page,mode,run),focus:"pixel-next"};

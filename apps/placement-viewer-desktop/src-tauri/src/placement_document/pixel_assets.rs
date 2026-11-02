@@ -13,7 +13,7 @@ pub(super) const CONTRACT: Contract = Contract {
     project_format: "ferrum2d.pixel.project",
     max_dependencies: 0,
     max_source_json: 12 * 1024 * 1024,
-    max_source_png: 8 * 1024 * 1024,
+    max_source_png: 16 * 1024 * 1024,
     check_catalog_revision: true,
     validate: validate_source,
 };
@@ -168,10 +168,15 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
     }
     let layers = array(source, "layers")?;
     let frames = array(source, "frames")?;
-    if layers.is_empty() || layers.len() > 8 || frames.is_empty() || frames.len() > 16 {
-        return Err(invalid(
-            "pixel source requires 1..8 layers and 1..16 frames",
-        ));
+    let max_frames = if bounded_integer(source, "version", 1, 6)? == 6 {
+        64
+    } else {
+        16
+    };
+    if layers.is_empty() || layers.len() > 8 || frames.is_empty() || frames.len() > max_frames {
+        return Err(invalid(format!(
+            "pixel source requires 1..8 layers and 1..{max_frames} frames"
+        )));
     }
     if width * height * layers.len() as u64 * frames.len() as u64 > 2_097_152 {
         return Err(invalid("pixel cel budget exceeded"));
@@ -192,7 +197,7 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
             .ok_or_else(|| invalid("invalid image layer flags"))?;
         metadata.push((id, visible));
     }
-    let columns = (1_u64..=4)
+    let columns = (1_u64..=8)
         .find(|columns| columns * columns >= frames.len() as u64)
         .ok_or_else(|| invalid("invalid pixel atlas columns"))?;
     let rows = (frames.len() as u64).div_ceil(columns);
@@ -266,7 +271,12 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
         let references = array(tag, "frameIds")?;
         let mut seen = std::collections::HashSet::new();
         if references.is_empty()
-            || references.len() > 16
+            || references.len()
+                > if bounded_integer(source, "version", 1, 6)? == 6 {
+                    64
+                } else {
+                    16
+                }
             || references.iter().any(|value| {
                 !value
                     .as_str()
@@ -290,7 +300,7 @@ fn validate_source(
 ) -> CommandResult<Source> {
     if !dependencies.is_empty()
         || bytes.len() > 12 * 1024 * 1024
-        || png.len() > 8 * 1024 * 1024
+        || png.len() > 16 * 1024 * 1024
         || text(metadata, "jsonSha256")? != hash(&bytes)
         || text(metadata, "pngSha256")? != hash(&png)
     {
@@ -302,7 +312,7 @@ fn validate_source(
     let raw = std::str::from_utf8(&bytes).map_err(|_| invalid("pixel source must be UTF-8"))?;
     let source: Value =
         serde_json::from_str(raw).map_err(|_| invalid("invalid pixel source JSON"))?;
-    let version = bounded_integer(&source, "version", 1, 5)
+    let version = bounded_integer(&source, "version", 1, 6)
         .map_err(|_| invalid("unsupported pixel document format or version"))?;
     if source["format"] != "ferrum2d.pixel-document" {
         return Err(invalid("unsupported pixel document format or version"));
@@ -310,8 +320,9 @@ fn validate_source(
     if (version == 1 || version == 4) && bytes.len() > 400_000 {
         return Err(invalid("pixel v1 source exceeds byte limit"));
     }
-    if (version == 2 && bytes.len() > 3 * 1024 * 1024)
-        || (!matches!(version, 3 | 5)
+    if (version != 6 && png.len() > 8 * 1024 * 1024)
+        || (version == 2 && bytes.len() > 3 * 1024 * 1024)
+        || (!matches!(version, 3 | 5 | 6)
             && (png.len() > 4 * 1024 * 1024 || source.get("frames").is_some()))
     {
         return Err(invalid(
@@ -326,7 +337,7 @@ fn validate_source(
     } else if source.get("atlas").is_some() {
         return Err(invalid("invalid pixel atlas version"));
     }
-    if !matches!(version, 3 | 5) {
+    if !matches!(version, 3 | 5 | 6) {
         source_text(&source["frame"], "id")?;
         bounded_integer(&source["frame"], "durationMs", 1, 60_000)?;
     }
@@ -344,7 +355,7 @@ fn validate_source(
         return Err(invalid("invalid pixel palette"));
     }
     let count = (width * height * 4) as usize;
-    let pixels = if matches!(version, 3 | 5) {
+    let pixels = if matches!(version, 3 | 5 | 6) {
         Vec::new()
     } else if version == 1 || version == 4 {
         if source.get("layers").is_some() {
@@ -386,12 +397,12 @@ fn validate_source(
         }
         composite.unwrap_or_else(|| vec![0; count])
     };
-    let (width, height, pixels) = if matches!(version, 3 | 5) {
+    let (width, height, pixels) = if matches!(version, 3 | 5 | 6) {
         frame_atlas(&source, width, height)?
     } else {
         (width, height, pixels)
     };
-    if version == 5 {
+    if version == 5 || (version == 6 && source.get("tags").is_some()) {
         validate_tags(&source)?;
     } else if ["tags", "initialTag", "nextClipId"]
         .iter()
@@ -400,8 +411,9 @@ fn validate_source(
         return Err(invalid("invalid pixel tag version"));
     }
     let count = (width * height * 4) as usize;
-    if bounded_integer(metadata, "width", 1, 1024)? != width
-        || bounded_integer(metadata, "height", 1, 1024)? != height
+    let max_side = if version == 6 { 2048 } else { 1024 };
+    if bounded_integer(metadata, "width", 1, max_side)? != width
+        || bounded_integer(metadata, "height", 1, max_side)? != height
     {
         return Err(invalid("pixel dimensions differ"));
     }
@@ -413,7 +425,7 @@ fn validate_source(
     }
     let mut decoder = png::Decoder::new(Cursor::new(&png));
     decoder.set_limits(png::Limits {
-        bytes: if matches!(version, 3 | 5) {
+        bytes: if matches!(version, 3 | 5 | 6) {
             16 * 1024 * 1024
         } else {
             2 * 1024 * 1024
@@ -895,6 +907,89 @@ pub(super) mod tests {
         .unwrap_err()
         .to_string()
         .contains("editable source"));
+    }
+
+    fn capacity_source(count: usize, side: usize) -> (Value, Vec<u8>, usize, usize) {
+        let columns = (count as f64).sqrt().ceil() as usize;
+        let rows = count.div_ceil(columns);
+        let (width, height) = (side * columns, side * rows);
+        let mut atlas = vec![0; width * height * 4];
+        let frames: Vec<_> = (0..count)
+            .map(|index| {
+                let mut pixels = [index as u8, 40, 70, 255].repeat(side * side);
+                pixels[3] = 0; // Preserve hidden RGB even in the final cel.
+                for y in 0..side {
+                    let start = ((index / columns * side + y) * width + index % columns * side) * 4;
+                    atlas[start..start + side * 4]
+                        .copy_from_slice(&pixels[y * side * 4..(y + 1) * side * 4]);
+                }
+                json!({"id":format!("frame-{index}"),"durationMs":83+index,
+                    "cels":[{"layerId":"body","rgba":STANDARD.encode(pixels)}]})
+            })
+            .collect();
+        let source = json!({"format":"ferrum2d.pixel-document","version":6,"name":"Capacity",
+            "width":side,"height":side,"colorSpace":"srgb","palette":[],
+            "layers":[{"id":"body","name":"Body","visible":true,"locked":false}],"frames":frames});
+        (source, atlas, width, height)
+    }
+
+    #[test]
+    fn v6_capacity_sources_save_reopen_and_accept_wide_atlases_and_numeric_version_spelling() {
+        for (count, side) in [(64, 32), (17, 256)] {
+            let (mut source, pixels, width, height) = capacity_source(count, side);
+            source["version"] = json!(6.0);
+            source["tags"] = json!([{"id":"all","name":"All","clipId":7,"frameIds":
+                (0..count).map(|i|format!("frame-{i}")).collect::<Vec<_>>(),"loop":false}]);
+            source["initialTag"] = json!("all");
+            source["nextClipId"] = json!(8);
+            let project = Project::new();
+            let saved = save_inner(
+                &project.0,
+                &pixel_bundle(&source, &pixels, width as u32, height as u32),
+                &PlacementAssetRegistry::default(),
+                &project.writes(),
+            )
+            .unwrap();
+            assert_eq!(saved["assets"][0]["metadata"]["width"], width);
+            assert_eq!(
+                load_inner(
+                    &project.0,
+                    &PlacementAssetRegistry::default(),
+                    &project.writes()
+                )
+                .unwrap(),
+                saved
+            );
+        }
+    }
+
+    #[test]
+    fn v6_capacity_validation_rejects_legacy_overflow_and_partial_tags_before_storage() {
+        for version in [3, 5, 6] {
+            let (mut source, pixels, width, height) =
+                capacity_source(if version == 6 { 65 } else { 17 }, 2);
+            source["version"] = json!(version);
+            let project = Project::new();
+            assert!(save_inner(
+                &project.0,
+                &pixel_bundle(&source, &pixels, width as u32, height as u32),
+                &PlacementAssetRegistry::default(),
+                &project.writes()
+            )
+            .is_err());
+            assert!(!project.root().join("catalog.json").exists());
+        }
+        let (mut source, pixels, width, height) = capacity_source(64, 2);
+        source["initialTag"] = json!("missing");
+        let project = Project::new();
+        assert!(save_inner(
+            &project.0,
+            &pixel_bundle(&source, &pixels, width as u32, height as u32),
+            &PlacementAssetRegistry::default(),
+            &project.writes()
+        )
+        .is_err());
+        assert!(!project.root().join("catalog.json").exists());
     }
 
     #[test]

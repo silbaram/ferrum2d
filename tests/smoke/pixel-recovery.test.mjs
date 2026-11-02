@@ -45,7 +45,7 @@ test('checkpoint validation preserves exact source and rejects corrupt or mismat
   const r=row();assert.deepEqual(readPixelCheckpoint(r),r);
   for(const change of [{source:'{'},{bytes:r.bytes+1},{name:'other'},{id:'bad'},{updatedAt:Infinity},{updatedAt:Number.MAX_SAFE_INTEGER}])
     assert.throws(()=>readPixelCheckpoint({...r,...change}));
-  const bad={...newPixelDocument(2,2),version:6};assert.throws(()=>readPixelCheckpoint(row(bad)),/Invalid pixel recovery data/);
+  const bad={...newPixelDocument(2,2),version:7};assert.throws(()=>readPixelCheckpoint(row(bad)),/Invalid pixel recovery data/);
 });
 test('checkpoint roundtrip preserves all existing source versions and stable metadata',()=>{
   const layered=createPixelEditor(newPixelDocument(4,4));layered.addLayer();

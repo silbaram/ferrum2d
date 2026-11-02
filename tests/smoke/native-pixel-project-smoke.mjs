@@ -10,6 +10,7 @@ import { filteredPixelPng } from './pixel-png-fixture.mjs';
 import { smokePixelLayers } from './pixel-layers-smoke.mjs';
 import { smokePixelAtlas } from './pixel-atlas-smoke.mjs';
 import { smokePixelFrames, smokePixelFrameCard } from './pixel-frames-smoke.mjs';
+import { smokePixelCapacity } from './pixel-capacity-smoke.mjs';
 
 /** The browser calls actual Rust storage/protocol functions over the shared test transport. */
 export async function smokeNativePixels({getPage,mode,project,scene,initial,run,invoke,setCorrupt,holdSave,waitHeld,releaseSave,restart,close,freshGame}) {
@@ -47,6 +48,17 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
     assert.deepEqual(JSON.parse(await readFile(path,'utf8')),expected,'native reopen must preserve the retained outline and multi-frame transform bytes');
   }
   const root=join(project,'public/assets/.ferrum-pixels'),catalogPath=join(root,'catalog.json');
+  if(process.argv.includes('--pixel-capacity-only')) {
+    const capacity=await smokePixelCapacity(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
+    assert.deepEqual(JSON.parse(await readFile(join(root,capacity.id+'.json'),'utf8')),capacity.source);
+    await restart();page=getPage();await showPlacementBottom(page,'assets');
+    await editAsset(capacity.id,'frame-63');await workspace().waitFor({state:'visible'});
+    assert.equal(await workspace().locator('[data-pixel-frame-select][aria-pressed=true]').getAttribute('data-pixel-frame-select'),'frame-63');
+    await assertReopenedSource(capacity.source);
+    const restoredGame=await freshGame();assert.equal(restoredGame.capacityPlayback.visitedOriginalFrames,64);
+    await close();
+    return {mode,focus:'pixel-capacity',capacity,restoredGame,realRustStorageAndProtocol:true,restoredSourceExact:true,freshRustAndBrowserSessions:true,released:{urls:0,textures:0}};
+  }
   if(process.argv.includes('--pixel-normals-only')) {
     const pixelNormals=await smokePixelNormalFocus(page,mode,run,saveNormalWithRecovery,true);
     await restart();page=getPage();await showPlacementBottom(page,'assets');

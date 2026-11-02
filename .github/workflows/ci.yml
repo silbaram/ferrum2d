@@ -191,6 +191,17 @@ jobs:
       - name: Native pixel source storage and fresh game roundtrip
         run: pnpm smoke:pixel-project
 
+      - name: 64-frame pixel editing capacity and native save compatibility
+        run: pnpm smoke:pixel-capacity
+
+      - name: Upload pixel capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-editor-capacity
+          path: artifacts/pixel-editor-capacity
+          if-no-files-found: ignore
+
       - name: Recoverable project asset catalog cleanup
         run: node tests/smoke/aseprite-project-smoke.mjs --cleanup
 

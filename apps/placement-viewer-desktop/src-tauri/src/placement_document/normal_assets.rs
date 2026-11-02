@@ -425,7 +425,7 @@ fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
     if hash(&bytes) != text(&report["source"], "jsonSha256")? {
         return Err(invalid("pixel source hash differs from normals"));
     }
-    let color = asset_files::bounded_read(&root.join(format!("{id}.png")), 8 * 1024 * 1024)?;
+    let color = asset_files::bounded_read(&root.join(format!("{id}.png")), 16 * 1024 * 1024)?;
     if hash(&color) != text(&report["source"], "pngSha256")? {
         return Err(invalid("pixel source PNG differs from normals"));
     }
@@ -434,13 +434,13 @@ fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
     let width = integer(&source, "width", 1, 256)?;
     let height = integer(&source, "height", 1, 256)?;
     let mut expected = Vec::new();
-    match integer(&source, "version", 1, 5)? {
-        3 | 5 => {
+    match integer(&source, "version", 1, 6)? {
+        version @ (3 | 5 | 6) => {
             let frames = array(&source, "frames")?;
-            if frames.is_empty() || frames.len() > 16 {
+            if frames.is_empty() || frames.len() > if version == 6 { 64 } else { 16 } {
                 return Err(invalid("invalid pixel source frame count"));
             }
-            let columns = (1_u64..=4)
+            let columns = (1_u64..=8)
                 .find(|n| n * n >= frames.len() as u64)
                 .ok_or_else(|| invalid("invalid pixel columns"))?;
             for (index, frame) in frames.iter().enumerate() {

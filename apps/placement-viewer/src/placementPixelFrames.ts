@@ -1,6 +1,6 @@
 import { PIXEL_LIMITS, type createPixelEditor } from "./placementPixelDocument";
 import { createPixelTags } from "./placementPixelTags";
-import { pixelAnimation, pixelPreviewFrame } from "./placementPixelAnimation";
+import { pixelAnimation, pixelPreviewFrame, pixelEditorAnimationInput } from "./placementPixelAnimation";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
 import { PIXEL_ONION_DEFAULTS, type PixelOnionSettings } from "./placementPixelOnion";
 
@@ -54,6 +54,15 @@ export function createPixelFrames(options:{
   let playing=false,request=0,start=0,offset=0,preview=0,signature="";
   let previousEditor:ReturnType<typeof createPixelEditor>|undefined;
   const rows=new Map<string,HTMLButtonElement>(),buttons=new Map<string,HTMLButtonElement>();
+  function keepSelectionVisible() {
+    const current=list.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if(!current)return;
+    const bounds=list.getBoundingClientRect(),item=current.getBoundingClientRect();
+    if(bounds.width<=0)return;
+    if(item.left<bounds.left)list.scrollLeft-=bounds.left-item.left;
+    else if(item.right>bounds.right)list.scrollLeft+=item.right-bounds.right;
+  }
+  const frameResize=new ResizeObserver(keepSelectionVisible);frameResize.observe(list);
   function changeOnion(run:()=>void) {
     if(options.busy()||options.editor().active())return;
     run();signature="";sync();options.viewChanged();
@@ -135,7 +144,7 @@ export function createPixelFrames(options:{
     playButton.querySelector("path")!.setAttribute("d",playing?"M6 6h12v12H6z":"m8 5 11 7-11 7z");
     duration.disabled=disabled;duration.value=String((playing?previewFrames[preview]:frames[index]).durationMs);
     setUiText(status,uiMessage("Frame {0}/{1}",playing?preview+1:index+1,playing?previewFrames.length:frames.length));
-    try{pixelAnimation({width:editor.width,height:editor.height,frames,...(editor.tags().length?{tags:editor.tags(),initialTag:editor.initialTag()}:{})});setUiText(compatibility,"Game Timing Ready");compatibility.dataset.error="false";}
+    try{pixelAnimation(pixelEditorAnimationInput(editor));setUiText(compatibility,"Game Timing Ready");compatibility.dataset.error="false";}
     catch(error){setUiText(compatibility,error instanceof Error?error.message:String(error));compatibility.dataset.error="true";}
     for(const [id,row] of rows)if(!frames.some(frame=>frame.id===id)){row.remove();rows.delete(id);}
     for(const [i,frame] of frames.entries()) {
@@ -144,9 +153,10 @@ export function createPixelFrames(options:{
         button=document.createElement("button");button.type="button";button.dataset.pixelFrameSelect=frame.id;
         button.onclick=()=>perform(()=>options.editor().selectFrame(frame.id));
         button.addEventListener("keydown",event=>{
-          if(event.isComposing||!["ArrowLeft","ArrowRight"].includes(event.code)||playing||options.busy())return;
-          event.preventDefault();const current=options.editor().frames(),index=current.findIndex(f=>f.id===frame.id),target=current[index+(event.code==="ArrowLeft"?-1:1)];
-          if(target){perform(()=>options.editor().selectFrame(target.id));rows.get(target.id)?.focus();}
+          if(event.isComposing||!["ArrowLeft","ArrowRight","Home","End"].includes(event.code)||playing||options.busy())return;
+          event.preventDefault();const current=options.editor().frames(),index=current.findIndex(f=>f.id===frame.id);
+          const target=current[event.code==="Home"?0:event.code==="End"?current.length-1:index+(event.code==="ArrowLeft"?-1:1)];
+          if(target){perform(()=>options.editor().selectFrame(target.id));rows.get(target.id)?.focus({preventScroll:true});}
         });rows.set(frame.id,button);
       }
       button.textContent=String(i+1)+" · "+frame.durationMs+" ms";button.disabled=disabled;
@@ -159,11 +169,13 @@ export function createPixelFrames(options:{
       const target=(focusId&&rows.get(focusId))||rows.get(selected);
       if(target&&!target.disabled&&document.activeElement!==target)target.focus({preventScroll:true});
     }
+    // Keep selection/playback visible in long sheets without scrolling the whole workspace.
+    keepSelectionVisible();
   }
   const loseFocus=()=>stop(),visibility=()=>{if(document.hidden)stop();};
   window.addEventListener("blur",loseFocus);document.addEventListener("visibilitychange",visibility);
   function clear(){stop(false);previousEditor=undefined;signature="";rows.clear();list.replaceChildren();element.dataset.pixelPlaying="false";onion={...PIXEL_ONION_DEFAULTS};onionMenu.open=false;tagPanel.clear();syncOnion(false,false,0);}
   return {element,sync,stop,clear,isPlaying:()=>playing,frameId:()=>playing?tagPanel.previewFrames()[preview].id:options.editor().selectedFrame(),
     onion:()=>({...onion}),
-    destroy(){clear();window.removeEventListener("pointerdown",closeOnionOutside,true);window.removeEventListener("blur",loseFocus);document.removeEventListener("visibilitychange",visibility);}};
+    destroy(){frameResize.disconnect();clear();window.removeEventListener("pointerdown",closeOnionOutside,true);window.removeEventListener("blur",loseFocus);document.removeEventListener("visibilitychange",visibility);}};
 }
