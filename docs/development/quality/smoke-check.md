@@ -2057,6 +2057,33 @@ normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata�
 GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
 동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.
 
+## 명시적 sprite animation 런타임 gate
+
+```bash
+pnpm smoke:sprite-animation-runtime
+```
+
+새 Wasm과 SDK를 빌드하고 WebGL2·software WebGPU offscreen을 모두 필수로 검사한다.
+실제 GameLoop/FrameState callback·Rust playback·GameStateSnapshot API를 사용하며 JS는 재생 상태를 계산하지 않는다.
+90/180ms 경계, 역순 시간, loop/nonloop pingpong, 1프레임, 한 update의 중간 frame 이벤트를 확인한다.
+8방향×48원본 frame atlas에서 GCD UV 복제 없이 각 clip의 재생·seek47·seek48 거절과 실제 UV/픽셀을 확인한다.
+paused/flipped pingpong 중간 phase·완료 phase·legacy FPS 저장 왕복과 완료 이벤트 중복 방지도 검사한다.
+각 renderer에서 100개 이상의 실제 render, 300개 이상의 frame 이벤트, 완료 이벤트와 draw 예산을 assert한다.
+보고서는 `artifacts/runtime-animation/verification.json`과 고유 run 폴더에 기록하며 실패도 `ok: false`로 남긴다.
+실행 시작부터 `ok: false`·`status: running`으로 이전 성공을 무효화하고, 종료 시 passed/failed로 갱신한다.
+같은 명령의 report 회귀 테스트는 SDK 준비 실패와 POSIX FIFO에서 중단된 실행의 root/run 보고서가 일치하는지 검사한다.
+CI validate와 `smoke:check`에 연결하며, actual color target readback PNG와 visible canvas screenshot의 종류를 구분한다.
+
+Rust의 `data_scene_animation_extended` 테스트는 256프레임·4096원본 frame 예산·v2 원자적 거절·
+여러 loop/fixed step·4096 이벤트+전역 overflow record·재사용 capacity를 검사한다.
+큰 유효 delta의 정확한 binary period 나머지와 bounded 이벤트 작업량, WorldSnapshot으로 교체된 clip metadata·
+핑퐁 복귀 phase·pause/flip·완료 상태를 되돌린 뒤의 재개도 검증한다.
+`data_scene_spawn_prefabs::checkpoint`는 spawned actor의 timed pingpong 중간/완료 phase 복원을 검사한다.
+SDK tests는 v2 capability·owned cold plan·시간 합산·authored/spawn progress·이벤트 decoder와 공개 타입을 확인한다.
+잘못된 null clip/frame·희소 update 배열은 일부 항목도 native에 전달하지 않고 거절되어야 한다.
+뷰어 재가져오기 검사는 새 emitEvents 정책을 보존하고 수동 변경한 timing/direction을 덮어쓰지 않고 거절한다.
+기존 replay golden과 공식 placement viewer gate를 함께 사용한다. 실물 GPU/모바일·장시간 timing 검증을 대신하지 않는다.
+
 ## PNG 아틀라스 가장자리 보호 gate
 
 ```bash

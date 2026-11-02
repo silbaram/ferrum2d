@@ -646,12 +646,14 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 ## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
 
 `/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
-`DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
+`DataSceneSpriteAnimationState`, `DataSceneSpriteAnimationDirection`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
 `resolveDirectionalLight2D`, `DataSceneGroundShadowSpec`, `DataSceneGroundShadowStats`를 제공한다.
 `FerrumEngine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations`,
 `dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
 `dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
 [애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.
+현재 소스의 `animationSet`은 fps 또는 `frameDurationsMs`, optional `direction`·`emitEvents`를 보존한다.
+명시적 clip 256프레임/64클립/합계 4096 한도와 기존 v1 문서 호환은 [클립 계약](../data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 
 #73 B2는 optional `visual.shadow.shape`에 `"alpha"`를 추가한다. width/height/opacity/layer의
 기존 기본값과 instance scale 적용은 유지하며 새로운 texture나 collider 정의는 필요 없다.

@@ -485,7 +485,7 @@ PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮�
 - `clipId`: 0~65535의 정수. `nextClipId`는 다음 할당 번호(1~65536)로 모든 현재 clip ID보다 커야 한다. 삭제한 번호를 재사용하지 않는다.
 - `initialTag`: 존재하는 태그 ID. 이름·프레임 편집으로 clip ID는 바뀌지 않으며 태그가 사용하는 프레임 삭제와 마지막 태그 삭제는 차단한다.
 
-각 태그는 기존 runtime `animationSet`의 한 clip으로 출력하며 시간 GCD·32 native frame/FPS 한도를 태그마다 검사한다.
+각 태그는 runtime `animationSet`의 한 clip으로 출력하며 변환기 자체의 시간 GCD·32 frame/FPS 한도를 태그마다 검사한다.
 기존 도트 애니메이션에 태그를 적용하거나 소유 clip을 수동 변경한 경우 **클립 변경 검토 → 클립 변경 적용**으로 전후 ID/초기 clip을 확인한다.
 취소는 revision 등록·씬 변경을 하지 않으며 승인은 해당 자산과 정확한 전후 animationSet에만 유효하다. 기존 clip ID가 새 출력에서 사라지면 적용을 차단한다.
 기존 ID를 유지하며 프레임·초기 clip·반복을 변경하고 한 씬 Undo로 복원한다. 닫힌 씬·외부 게임 코드의 참조는 자동 수정하지 않는다.
@@ -648,7 +648,7 @@ Apply Frame은 정적 교체이고 이 action은 명시적 애니메이션 변�
 - `forward`, `reverse`, `pingpong`, `pingpong_reverse`를 지원한다. pingpong은 양 끝을 중복하지 않는 한 주기로 펼친다.
 - frame 인덱스는 원본 JSON의 array/hash 순서를 따른다. 태그에 포함된 frame의 duration은 양의 uint32 정수 ms다.
 - duration의 정수 GCD를 tick으로 삼아 UV를 반복한다. 예: 90ms/180ms는 90ms tick 3개가 된다.
-  기존 native clip의 32 frame·FPS 0.001..1000 제한을 넘으면 근사하지 않고 거절한다.
+  이 변환 경로의 기존 32 frame·FPS 0.001..1000 제한을 넘으면 근사하지 않고 거절한다.
 - native FPS는 float32이므로 미세한 시간 오차가 있다. evidence의 sourceCycleMs/nativeFps/nativeCycleMs/nativeCycleErrorMs로 공개한다.
 - Aseprite의 유한 repeat 횟수는 native loop boolean으로 보존할 수 없으므로 거절한다. repeat 생략/0/문자열 `"0"`만 허용하며
   loop 여부는 UI에서 명시한다. [원본 repeat 의미](https://www.aseprite.org/api/tag#tagrepeats)와 native loop는 다른 계약이다.
@@ -1146,7 +1146,8 @@ restoreGameStateSnapshot(engine, saved);
 collider가 없는 instance에 `colliderEnabled`를 저장하면 복원 전에 거절한다. 장애물은 먼저 새 handle에
 연결한 뒤 제거/physics flag를 적용하므로 닫힌 문·열린 문·제거된 문 모두 격자 상태가 일치한다.
 `animationSet`을 가진 live instance에는 `animation: {clip, elapsedSeconds, paused, flipX, flipY,
-movement?}`를 저장한다. frame과 finished는 authored clip/fps와 경과 시간에서 다시 계산한다.
+movement?}`를 저장한다. frame과 finished·pingpong 진행 방향은 authored clip의 시간·재생 순서와 경과 phase에서 다시 계산한다.
+명시적 `animationSet`의 프레임별 ms·방향·256프레임·이벤트 계약은 [런타임 클립](data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 `movement`는 runtime에 연결한 idle/walk pose와 현재 `initialDirection`을 저장한다. 생략된
 movement는 수동 playback의 해제 상태를 보존하며, 저장된 연결은 새 primaryActor에 자동 복원한다.
 정적 clip 정의는 authoring 문서에서 재설치하고 재생 상태만 bulk numeric buffer로 Rust에 전달한다.

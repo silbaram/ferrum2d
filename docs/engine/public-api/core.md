@@ -921,12 +921,14 @@ cast에서 제외하며 `getPhysicsEntity`/bulk state 조회는 계속 가능하
 ## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
 
 `/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
-`DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
+`DataSceneSpriteAnimationState`, `DataSceneSpriteAnimationDirection`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
 `resolveDirectionalLight2D`, `DataSceneGroundShadowSpec`, `DataSceneGroundShadowStats`를 제공한다.
 `FerrumEngine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations`,
 `dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
 `dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
 [애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.
+현재 소스의 명시적 clip은 최대 256프레임, 프레임별 ms·reverse/pingpong·opt-in frame/completed 이벤트를 지원한다.
+시간·seek·이벤트 예산과 저장 호환은 [클립 계약](../data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 
 #73 B2의 `DataSceneGroundShadowSpec.shape: "alpha"`는 기존 texture/frame/flip의 alpha를
 지면에 투영한다. 기존 ellipse/box는 유지한다. render buffer의 `groundShadowProjection` 세 f32와

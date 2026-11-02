@@ -1682,3 +1682,19 @@ layout·UV·Game Spec·명령 ABI·렌더 셰이더를 바꾸지 않고, 픽셀�
 일반 PNG CLI와 해당 pair 변환의 범위를 합쳐서 자동 normal pair 패킹으로 안내하지 않는다.
 광원/물리 debug/포인터는 연속 좌표를 유지하며 shader snapping은 entity나 camera 저장 좌표에 역전파하지 않는다.
 [Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
+
+## 명시적 sprite clip 시간과 이벤트
+
+`world/sprite_clip.rs`는 명시적 clip의 immutable UV·시간 prefix·재생 순서를 보관하고 `Arc`로 prototype과 공유한다.
+원본 frame 256/clip, 64 clips, 합계 4096 한도를 cold configure에서 검증한다. 기존 Copy legacy frame 배열은 늘리지 않는다.
+`SpritePlayback` hot state는 기존 elapsed phase만 유지한다. FPS-only scalar 계산은 그대로 두고,
+variable/reverse/pingpong의 현재 frame·seek·전체 길이는 공통 clip 계산을 사용한다.
+매우 큰 delta에서는 최소 frame 간격(1ms)에 비해 f64 해상도가 부족해지기 전에 modulo reduction을 사용해
+큰 cycle 곱을 뺄 때 phase가 0으로 소실되는 현상을 막는다. 보통 크기의 기존 loop 경계 계산은 유지한다.
+authored/spawned progress 검증도 같은 길이를 사용해 별도 방향 cursor나 snapshot ABI 변경을 피한다.
+
+JS는 cold plan에서 설정과 Wasm v2 capability를 준비한 후 entity를 생성한다. 기존 fps-only <=32의 configure ABI는 유지하고
+새 설정은 descriptor7f32·UV·ms bulk 배열로 전달한다. hot path에 entity별 JS 호출이나 TS playback state를 추가하지 않는다.
+Data Scene world step이 기존 GameplayEvent vector에 kind12/13을 append하고, fixed step 전체가 예산과 overflow index를 공유한다.
+첫4096개 밖의 새 애니메이션 이벤트는 kind14 전역 누락 수로 모은다. cold configure에서 event capacity를 준비하며
+frame clear에서 overflow index도 초기화한다. frame 끝의 기존 관측/디코드 경로를 사용하고 render15f32/event8u32 ABI는 유지한다.

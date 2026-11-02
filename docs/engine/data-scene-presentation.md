@@ -3,6 +3,8 @@
 #68~#70에서 추가한 공개 API이며 `0.1.0-beta.3`부터 제공한다.
 아래 `shape: "alpha"`는 #73 B2 후속 구현이며 **`0.1.0-beta.5`부터 제공한다**.
 beta.4 이하에서는 ellipse/box를 사용하거나 패키지를 업그레이드한다.
+프레임별 시간·재생 방향·256프레임·재생 이벤트(PX-04)는 현재 개발 소스의 확장이다.
+SDK와 함께 빌드한 v2 configure 지원 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 [native actor 조립](data-scene-native-runtime.md)에
 이어 적용한다. 초기 설치용 템플릿은 예제 게임이나 아래 recipe를 자동 생성하지 않는다.
 
@@ -33,20 +35,87 @@ engine.updateDataSceneSpriteAnimations([
 ]);
 ```
 
-- clip ID는 0~65535 정수, 한 set은 1~64 clips, clip마다 1~32 UV frames와 fps 0.001~1000이다.
+- clip ID는 0~65535 정수, 한 set은 1~64 clips, clip마다 1~256 UV frames이고 원본 frame 합계는 4096 이하다.
+- 시간은 `fps: 0.001..1000` 또는 `frameDurationsMs` 중 하나만 지정한다. ms 배열은 frames와 같은 길이이며 각 값은 1..1,000,000의 유한 f32다.
 - `initialClip` 기본값은 첫 clip ID, `loop` 기본값은 true다. UV는 f32 변환 후에도 양의 면적을 갖는 [0,1] 범위다.
 - `clip` 변경 시 `restart` 기본값은 true다. false이면 경과한 **초**를 보존하고 새 clip 길이에 따라 반복 또는 끝으로 제한한다.
-- `frame`은 선택 clip의 0 기반 위치다. seek 자체는 정지하지 않으므로 고정하려면 `paused: true`를 함께 전달한다.
+- `frame`은 원본 frames의 0 기반 index다. reverse에서도 같은 원본 index를 쓰고 pingpong은 첫 등장(outbound)을 선택한다.
+  seek 자체는 정지하지 않으므로 고정하려면 `paused: true`를 함께 전달한다.
 - `flipX/flipY`는 UV만 바꾼다. entity, origin, body, collider, depth 기준, texture ID는 유지한다.
-- `loop: false`는 마지막 frame을 유지하며 재생 길이에 도달하면 `finished: true`가 된다.
+- `loop: false`는 재생 순서의 마지막 frame을 유지하며 재생 길이에 도달하면 `finished: true`가 된다.
 - scene pause 중 시간은 진행하지 않는다. clip pause와 scene pause는 별도 상태다.
 - 형식 오류는 diagnostic을 던진다. 없는 clip/frame, 중복 handle 또는 stale handle이면 batch 전체가 false로 거부되고 아무 항목도 변경하지 않는다.
+  명시적인 `clip: null`·`frame: null`과 빈 항목이 있는 배열도 형식 오류이며 native batch를 호출하기 전에 거절한다.
 - `dataSceneSpriteAnimationState(handle)`는 진단용 snapshot이다. 없는/stale handle은 undefined이며 destroy 이후 API는 오류를 던진다.
 
 기존 `animation: { frameCount, fps }`와 명시적인 animation frames는 그대로 쓸 수 있다.
 `animation`과 `animationSet`을 동시에 지정하면 모호한 재생을 피하기 위해 거부한다. 재설정은 clock/pause/flip을 초기화한다.
 scene reapply 시 새 handle로 다시 연결한다. AnimationTimeline은 앱의 연출 이벤트를 구성할 때
 전환 batch를 호출할 수 있지만 native clip의 시간을 매 frame JS에서 계산할 필요는 없다.
+
+### 프레임별 시간과 재생 방향
+
+```ts
+engine.configureDataSceneSpriteAnimation(actor, {
+  initialClip: 10,
+  clips: [{
+    id: 10,
+    frames: [
+      { u0: 0, v0: 0, u1: 0.25, v1: 1 },
+      { u0: 0.25, v0: 0, u1: 0.5, v1: 1 },
+      { u0: 0.5, v0: 0, u1: 0.75, v1: 1 },
+    ],
+    frameDurationsMs: [90, 180, 90],
+    direction: "pingpong", loop: true, emitEvents: true,
+  }],
+});
+```
+
+`direction`은 생략 시 `forward`다. `reverse`는 마지막 원본 frame부터 시작하고 각 frame의 시간을 역순으로 소비한다.
+3프레임 pingpong loop는 `0,1,2,1`이며 끝점을 중복하지 않는다. nonloop는 `0,1,2,1,0`의 마지막 0번 frame 시간까지
+재생한 뒤 0에서 완료한다. 1프레임은 어느 방향이든 한 step이다. UV를 GCD tick으로 복제하지 않아 위 예제는 원본 3프레임 그대로다.
+
+명시적인 `animationSet`을 확장하며 기존 고정 배열 기반 legacy SpriteAnimation은 유지한다.
+기존 가져오기/노멀 변환기의 GCD·프레임 한도는 해당 도구의 별도 계약이다.
+새 필드 또는 33프레임 이상은 v2 bulk configure를 사용하고, 없는 Wasm에서는 명확한 오류로 거절한다.
+runtime target은 설정 검증과 capability 준비를 entity 생성 전에 수행한다.
+
+### 프레임·완료 이벤트
+
+`emitEvents`는 기본 false다. true이면 기존 `onFrame`의 `FrameState.gameplayEvents`에서 관측한다.
+`includeGameplayEvents: false`면 decoded 배열을 받지 않으므로 이 옵션을 함께 확인한다.
+
+| kind / code | tokenId | payloadBits | 의미 |
+| --- | --- | --- | --- |
+| `spriteAnimationFrame` / 12 | clip ID | 원본 frame index | 양의 시간 진행으로 다음 frame에 진입 |
+| `spriteAnimationCompleted` / 13 | clip ID | 완료 시 원본 frame index | nonloop 끝을 통과한 완료 전이 |
+| `spriteAnimationOverflow` / 14 | 0 | 누락 이벤트 수 | frame 전체 애니메이션 이벤트 예산 초과 |
+
+12/13은 actor/source에 같은 entity id·generation을 담고 flags는 0이다. 14는 actor/source id가 `0xffffffff`,
+generation이 0인 전역 진단이며 누락 수는 u32 최대에서 포화한다. overflow도 처리해 과부하 시 이벤트 손실을 감지한다.
+
+```ts
+for (const event of frame.gameplayEvents) {
+  if (event.kind === "spriteAnimationFrame" && event.tokenId === 10 && event.payloadBits === 1) {
+    // 해당 프레임의 소리·표현 효과를 연결한다.
+  }
+}
+```
+
+한 update가 여러 frame/loop를 통과해 최종 frame이 같아도 중간 진입을 순서대로 발행한다.
+순서는 fixed step, 살아 있는 entity 순회, 해당 clip의 시간 순서다.
+configure·seek·restart·복원은 초기/과거 frame 이벤트를 발행하지 않는다. 1프레임 loop는 주기마다 frame 0을 발행한다.
+완료 상태는 다음 update에서 반복 통지하지 않으며 완료 상태를 복원해도 재발행하지 않는다.
+scene/clip pause 중 시간과 이벤트는 진행하지 않는다.
+
+기존 8u32 GameplayEvent ABI를 유지한다. frame buffer의 첫 4096개 범위에서 새 애니메이션 이벤트를 제공하며
+다른 gameplay 이벤트도 이 범위를 차지할 수 있다. 초과 시 새 frame/완료 이벤트를 생략하고 전역 overflow 레코드 한 개에
+누락 수를 누적한다. 기존 gameplay 이벤트를 제거하지 않는다. 기본 비활성으로 기존 replay/event 출력을 유지한다.
+FSM/Behavior Recipe의 새 이벤트 binding이나 타임라인 편집 UI는 이 관측 API에 포함하지 않는다.
+
+재생 위치는 기존 `elapsedSeconds` phase로 저장한다. frame/finished와 pingpong 진행 방향은 authored clip에서 다시 계산하므로
+기존 progress 포맷·spawned actor checkpoint·WorldSnapshot을 유지한다. FPS-only duration은 기존 나눗셈을 그대로 사용하며,
+variable ms는 재생 순서대로 f32 ms를 f64 초로 누적한다.
 
 ## 지면과 직립 이미지
 
