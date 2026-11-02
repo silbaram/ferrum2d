@@ -37,7 +37,7 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 ```json
 {
   "display": {
-    "pixelPerfect": { "width": 320, "height": 180, "background": [0, 0, 0] }
+    "pixelPerfect": { "width": 320, "height": 180, "snap": true, "background": [0, 0, 0] }
   }
 }
 ```
@@ -46,6 +46,12 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 `/core`와 `/authoring`에서 제공한다. 한 변은 1~2048 정수, 총 1,048,576픽셀 이하이며 RGB는 각 0~1이다.
 `display`/`pixelPerfect`의 알 수 없는 필드는 오류다. `false`는 runtime 기본 표시 설정을 해제하며,
 생략하면 runtime 기본값을 사용한다. `spatial` 문서에서는 flat 설정을 켤 수 없다.
+
+선택 `snap`은 boolean이며 생략·`false`는 기존 출력을 유지한다. `true`는 카메라 변환 후의
+스프라이트·타일 화면 경계를 가상 픽셀에 정렬한다. 회전·투영 그림자는 원점 이동만 정렬한다.
+게임 좌표·충돌·저장 형식·render command ABI는 유지하며 atlas 번짐 방지는 별도 범위다.
+광원·물리 debug·포인터/world 변환은 연속 좌표를 사용한다. 정렬 경계와 작은 객체의 처리 등은
+[Core 표시 계약](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
 
 공식 뷰어에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
 2D 편집 화면에서는 넓은 편집 viewport를 유지하며 돌아오면 편집 카메라 위치·zoom과 객체 선택 좌표계를 함께 복원한다.

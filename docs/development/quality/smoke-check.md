@@ -2057,6 +2057,13 @@ normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata�
 GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
 동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.
 
+## Public package 선언 타입 gate
+
+`pnpm package:check:ferrum-web`는 실제 tarball allowlist 검사에 이어
+`ferrum-web-public-types.test.mjs`를 실행한다. 임시 consumer의 공개 subpath를 ES2022·DOM,
+`strict: true`, `skipLibCheck: false`, `types: []`로 검사해 Wasm 선언의 누락된 타입 lib와 `snap` 타입 회귀를 잡는다.
+독립된 브라우저 consumer를 검사하며 저장소 SDK test의 Node ambient type에 의존하지 않는다.
+
 ## Flat 2D 픽셀 퍼펙트 gate
 
 ```bash
@@ -2070,6 +2077,19 @@ WebGL2 multipass·linear-sRGB fallback·RenderTexture 격리, resize 시 고정 
 투명 clear의 opaque 출력, 중복 finalization, 최대 1메가픽셀·hidden canvas, GL 각 candidate/GPU bind group 동기 할당 실패의 기존 화면·메모리·후보 자원 정리도 검사한다.
 private 뷰어 fixture에서 UI로 Game Preview 왕복·resize·Play/Pause/Stop·다른 가상 해상도의 문서 탭 왕복/닫기·HD-2D 문서 전환을 실행한다.
 source/patch/history와 편집 카메라·zoom·선택 viewport의 복원을 확인하고 실제 객체를 클릭해 선택한다.
+`pixel-snap-fixture.mjs`는 snap 생략/false의 동일 출력, 소수 이동 fixture의 실제 off 픽셀 변화와 on 안정성,
+소수 zoom·회전 원점·normal/color 정합·1,024 sprite 배칭·명령 버퍼 불변·RenderTexture 격리·WebGPU 장치 복구를 검사한다.
+`pixel-snap-native-tiles-fixture.mjs`는 실제 Rust 타일 커맨드를 소비해 소수 카메라/zoom의 이음새와
+GPU 렌더 전후 native snapshot 불변을 확인한다. 별도 실제 Playing Data Scene에서 시작해 일시정지한 뒤
+카메라의 소수 이동과 출력 안정성, 원본·좌표·명령 불변도 비교한다. 테스트용 타일 snapshot 설정은 named accessor를 쓴다.
+타일 fixture는 follow 대상도 같은 소수 좌표로 배치하고 실제 frame 카메라가 각 요청 좌표에 도달했는지 검사한다.
+회전·노멀 조명·UV flip·입자·소수 재질 offset·13-float 호환·명시/생략 투영의 backend 픽셀을 비교한다.
+스냅 사각형의 coverage는 분석한 정수 경계와 일치해야 한다. 스냅 활성 결과와 공통 coverage의 RGB 오차는 최대 2다.
+스냅 off에서만, 실제 단색 사각형 coverage가 다르고 분석한 경계에서 1/16 가상 픽셀 이내인 픽셀은
+legacy raster 경계 차이로 별도 계측한다. 내부 coverage 차이나 공통 영역의 색/노멀 차이는 허용하지 않는다.
+장치 복구는 노멀 조명까지 복원한 화면을 비교한다. `snap.parityCases`는 공통 영역/원본 최대 channel 차이와
+`legacyEdgeCoveragePixels`를 구분해 기록하므로 legacy 경계 예외를 전체 픽셀 동일로 보고하지 않는다.
+Game Preview fixture는 `display.pixelPerfect.snap: true`를 열어 옵션 적용과 편집 복원을 확인한다.
 결과는 `artifacts/flat-pixel-perfect/`에 남고 CI validate job에서 실행한다.
 이 gate는 native GPU canvas compositor·실물 GPU·CSS/OS 확대 품질을 검증했다고 주장하지 않는다.
 회귀 비교는 `smoke:color-management`, `smoke:sprite-normal-2d`, `smoke:render-texture`, `smoke:runtime-budgets`와 공식 placement viewer gate를 사용한다.

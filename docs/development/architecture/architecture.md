@@ -1665,4 +1665,14 @@ GL 타깃 치수 변경은 모든 candidate를 준비한 후 교체하며 중간
 DataSceneView는 virtual viewport와 실제 canvas CSS 크기를 구분해 world 좌표를 왕복한다.
 뷰어는 문서별 편집 카메라를 보관해 게임 미리보기 종료 시 카메라·zoom과 선택/overlay viewport를 함께 복구한다. 게임 상태·entity 위치·카메라 상태는 Rust가 소유한다.
 render command ABI와 시뮬레이션은 바꾸지 않으며 spatial pixelArt와 독립적이다.
+선택 `pixelPerfect.snap`은 GPU vertex 단계에서 가상 픽셀 기준으로 최종 화면 좌표를 반올림한다.
+축 정렬 사각형은 경계를 각각 정렬하고, 회전/투영 그림자는 원점 delta만 더한다.
+색상과 normal MRT는 같은 shader 정책을 사용하며 Rust 커맨드나 Wasm view를 복사/수정하지 않는다.
+WebGL2 normal pass는 메타데이터 생략 시에도 색상 pass의 최종 groundYScale을 전달받는다.
+두 backend의 노멀 데이터 읽기는 mip 0의 정수 texel fetch와 정규화 UV `2^-22` 경계 허용값을 공유한다.
+이 규칙은 연속 좌표에서 정확한 텍셀 경계의 미세 보간 차이로 다른 노멀을 선택하는 것을 방지한다.
+WebGL2 SpriteBatch는 uniform으로 zoom/비활성 0을 전달한다. WebGPU Resolution은 기존 groundYScale과
+shadowProjection 사이 정렬 padding(byte 12)에 같은 값을 넣어 uniform buffer 크기를 유지한다.
+RenderTexture는 화면 스냅을 잠시 해제하고 성공/실패 후 기존 상태를 복원한다.
+광원/물리 debug/포인터는 연속 좌표를 유지하며 shader snapping은 entity나 camera 저장 좌표에 역전파하지 않는다.
 [Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

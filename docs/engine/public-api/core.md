@@ -20,13 +20,17 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 ```
 
+공개 엔진 타입은 generated Wasm의 `Symbol.dispose` 선언에 필요한 `ESNext.Disposable` 타입 라이브러리를
+함께 참조한다. ES2022·DOM consumer의 strict 검사에서도 별도 `lib` 추가나 `skipLibCheck`가 필요하지 않다.
+이는 타입 선언의 의존성이며 런타임의 엔진 해제는 기존 `destroy()` 계약을 따른다.
+
 ## 기본 2D 픽셀 퍼펙트 표시
 
 ```ts
 const runtime = await createFerrumRuntime({
   canvas,
   dataScene: document,
-  pixelPerfect: { width: 320, height: 180, background: [0, 0, 0] },
+  pixelPerfect: { width: 320, height: 180, snap: true, background: [0, 0, 0] },
 });
 const presentation = runtime.renderer.pixelPerfectPresentation?.();
 ```
@@ -58,7 +62,16 @@ const presentation = runtime.renderer.pixelPerfectPresentation?.();
   `pointerToWorld`/`screenToWorld`/`worldToScreen`은 표시 영역·DPR·zoom·groundYScale을 반영한다.
   직접 canvas 이벤트로 이동 명령을 보내는 앱은 helper의 `inside`를 먼저 확인한다.
 - `viewportSize()`는 가상 크기/scene zoom이다. 표시 확대 배율과 카메라 zoom은 서로 다른 값이다.
-  카메라/스프라이트 위치 스냅과 atlas padding은 별도 기능이며 여기서 자동 적용하지 않는다.
+- 선택 `snap: true`는 이미 카메라 변환된 스프라이트·타일·bitmap text·파티클의 화면 좌표를 가상 픽셀에 맞춘다.
+  생략·`false`는 기존 연속 좌표 출력을 유지하며, boolean 이외의 값은 오류다. 가상 해상도를 켜는 것만으로 스냅을 켜지 않는다.
+  WebGL2/WebGPU의 색상·노멀 패스가 같은 정렬을 사용하고 추가 draw나 명령 버퍼 복사 없이 처리한다.
+  축 정렬 사각형은 양쪽 경계를 `floor(가상 픽셀 좌표 + 0.5)`로 반올림한다. 소수 zoom에서도 인접 타일의 경계를 맞추며,
+  크기가 정수 픽셀로 표현되지 않으면 화면상 폭/높이가 최대 1픽셀 달라지거나 아주 작은 요소가 사라질 수 있다.
+  회전된 sprite·투영된 지면 그림자는 원점 이동만 정렬해 회전·투영 모양을 유지한다. atlas UV/padding은 변경하지 않는다.
+  렌더링에 전달된 camera shake와 material offset도 정렬 대상이다. 광원·물리 debug 좌표와 시뮬레이션·충돌·replay는 연속 좌표를 유지한다.
+  화면 경계를 넘을 때는 한 픽셀씩 이동하며 모든 소수 이동에서 이미지가 고정되는 옵션은 아니다.
+  포인터/world helper는 연속 좌표를 왕복하므로 실제 sprite 테두리와 반올림 차이가 날 수 있다.
+  `renderToTexture`는 캡처 고유 viewport를 사용하며 화면 스냅을 적용하지 않는다.
 
 custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를 함께 제공해야 한다.
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
@@ -1162,6 +1175,11 @@ scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께
 전체 batch를 거절한다. normal ID는0..16,777,214이고 내부 NONE 값은16,777,215다.
 Data Scene은 `components.visual.normalTexture` 또는 legacy `components.sprite.normalTexture`로 같은 기능을 설정한다.
 normal은 color와 같은 크기의 데이터 texture(`none`/`linear`)이고 현재 animation UV·flip·rotation을 공유한다.
+색상/노멀 패스는 프레임 `groundYScale`이 생략되면 renderer에 남아 있는 같은 투영값을 사용한다.
+노멀 데이터는 mip 0의 nearest 텍셀을 읽는다. 정수 텍셀 경계에 걸친 UV의 작은 보간 차이는
+정규화 UV `2^-22`의 경계 허용값으로 처리해 WebGL2/WebGPU의 선택을 맞춘다.
+스냅이 꺼진 연속 좌표에서는 반 픽셀 가장자리의 raster coverage가 backend마다 다를 수 있다.
+스냅을 켠 축 정렬 경계는 정수 가상 픽셀에 맞추며, 두 패스가 같은 경계를 사용한다.
 
 기존 sprite command는15-f32/60-byte다. 선택형 `RenderCommandBufferView.spriteNormalMaterials`는 v1/stride2의
 `Uint32Array`로 명령마다 `[normalTextureId,flags=0]`를 제공한다. 전부 NONE이면 생략한다.

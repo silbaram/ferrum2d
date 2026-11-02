@@ -22,7 +22,7 @@
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
 | 1 | AI 도트 생성 설계 | 직접 그리기 전에 초안 이미지를 준비하는 시간을 줄인다. | [도트 제작 후보](game-development-convenience-review.md#도트-제작-후보): 입력·결과 선택·인증/비용·출처·기존 원본 등록 경계 결정. 구현 착수 전 설계 후보 |
-| 2 | 도트 게임 상용 수준 개선 | 카메라/스프라이트 스냅·atlas·런타임 클립·임포트 격차를 줄여 도트 게임 엔진으로서 상용 수준에 다가간다. | [개발 계획 후보](pixel-art-commercial-readiness-plan.md): PX-01 가상 해상도·정수 배율은 반영했다. 다음은 PX-02 카메라/스프라이트 스냅. 후속 항목은 개별 설계·착수 승인 후 진행. |
+| 2 | 도트 게임 상용 수준 개선 | atlas·런타임 클립·임포트 격차를 줄여 도트 게임 엔진으로서 상용 수준에 다가간다. | [개발 계획 후보](pixel-art-commercial-readiness-plan.md): PX-01 가상 해상도·정수 배율과 PX-02 화면 픽셀 스냅은 반영했다. 다음은 PX-03 atlas 가장자리 번짐 방지. 후속 항목은 개별 설계·착수 승인 후 진행. |
 
 [실물 GPU·장시간·LOD 외형](feature-candidates.md#실게임-품질-후속-검증)과 [실제 설치·GUI·서명](deployment-roadmap.md#남은-검증-후보)은 후속 검증이다.
 필요한 기기·설치 자료·실행 조건을 먼저 확보하며, 기능 구현을 다시 시작하는 항목으로 취급하지 않는다.
@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
 | [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 도트 생성/변형·외부 맵·reload의 실제 필요와 저장 경계 확정 |
-| [도트 게임 상용 수준 개선 계획](pixel-art-commercial-readiness-plan.md) | PX-01 반영 · 후속 후보 | [기본 2D 표시 계약](../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 제공한다. 후속 PX-02 위치 스냅·PX-03 atlas 및 클립 한도·`.ase` 파서 필요성 등을 개별 확정 |
+| [도트 게임 상용 수준 개선 계획](pixel-art-commercial-readiness-plan.md) | PX-01·02 반영 · 후속 후보 | [기본 2D 표시 계약](../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 제공한다. 후속 PX-03 atlas 및 클립 한도·`.ase` 파서 필요성 등을 개별 확정 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |
 | [배포 후속 검증 후보](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 검증 |
 
