@@ -2,6 +2,7 @@ import type { RendererResourceStats } from "./rendererResources";
 import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { PostProcessStackInput } from "./cameraPostProcessing";
+import type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
 
 /** Backend-neutral spatial pass metrics shared by WebGL2 and WebGPU. */
 export interface SpatialRendererStats {
@@ -54,6 +55,8 @@ export interface PhysicsDebugLineCamera {
 }
 
 export interface RendererStats {
+  /** Final nearest presentation operations; absent when flat pixel-perfect is disabled. */
+  presentationPassCount?: number;
   /** Extra command-ordered normal MRT draw calls; 0 when inactive. */
   normalDrawCalls?: number;
   spatial?: SpatialRendererStats;
@@ -190,6 +193,8 @@ export interface Renderer {
   resize(): void;
   /** Optional view capability: world units per logical viewport, without reducing device pixels. */
   setViewportZoom?(zoom: number): void;
+  setPixelPerfect?(options: PixelPerfectOptions | false | undefined): void;
+  pixelPerfectPresentation?(): PixelPerfectPresentation | undefined;
   setGroundYScale?(scale: number): void;
   stats(): RendererStats;
   /** Optional capability: absent means unsupported, not zero resources. */
@@ -224,6 +229,7 @@ export function emptyRendererStats(): RendererStats {
 }
 
 export function resetRendererStatsInto(stats: RendererStats): RendererStats {
+  delete stats.presentationPassCount;
   delete stats.spatial;
   delete stats.normalDrawCalls;
   stats.drawCalls = 0;

@@ -209,7 +209,7 @@ fn validate_source(
     })
 }
 
-const CONTRACT: super::sprite_assets::Contract = super::sprite_assets::Contract {
+pub(super) const CONTRACT: super::sprite_assets::Contract = super::sprite_assets::Contract {
     check_catalog_revision: false,
     directory: DIRECTORY,
     prefix: "aseprite.",
@@ -250,7 +250,7 @@ fn register(
     super::sprite_assets::register(&CONTRACT, root, sources, registry, publish)
 }
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::super::asset_files::{create_file, rollback};
     use super::*;
     use std::collections::HashMap;
@@ -314,6 +314,37 @@ mod tests {
                     &assets,
                     &writes,
                 ),
+                "inspect_placement_asset_cleanup" => {
+                    serde_json::to_value(super::super::asset_cleanup::inspect(
+                        Path::new(text(args, "projectPath")?),
+                        &writes,
+                    )?)
+                    .map_err(|_| invalid("bridge cleanup report serialization"))
+                }
+                "apply_placement_asset_cleanup" => {
+                    serde_json::to_value(super::super::asset_cleanup::apply(
+                        Path::new(text(args, "projectPath")?),
+                        serde_json::from_value(args["request"].clone())
+                            .map_err(|_| invalid("bridge cleanup request"))?,
+                        &writes,
+                    )?)
+                    .map_err(|_| invalid("bridge cleanup result serialization"))
+                }
+                "list_placement_asset_cleanup_backups" => {
+                    serde_json::to_value(super::super::asset_cleanup::list_backups(
+                        Path::new(text(args, "projectPath")?),
+                        &writes,
+                    )?)
+                    .map_err(|_| invalid("bridge cleanup backups serialization"))
+                }
+                "restore_placement_asset_cleanup" => {
+                    serde_json::to_value(super::super::asset_cleanup::restore(
+                        Path::new(text(args, "projectPath")?),
+                        text(args, "backupId")?,
+                        &writes,
+                    )?)
+                    .map_err(|_| invalid("bridge cleanup result serialization"))
+                }
                 "save_placement_pixel_assets" => super::super::pixel_assets::save_inner(
                     Path::new(text(args, "projectPath")?),
                     &args["bundle"],
@@ -420,7 +451,7 @@ mod tests {
         }
     }
 
-    fn fixture(color: u8) -> Value {
+    pub(in super::super) fn fixture(color: u8) -> Value {
         let mut png = Vec::new();
         {
             let mut encoder = png::Encoder::new(&mut png, 8, 4);

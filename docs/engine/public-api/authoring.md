@@ -825,3 +825,10 @@ scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께
 맵 재적용은 raw instance의 명시적 `behaviorRecipes` 참조를 기존 `updateBehaviorBinding` 연산으로 보존한다.
 명시적 detach도 유지하고, instance override가 없으면 새로 선택한 prefab의 binding을 상속한다. recipe 본문은 수정하지 않는다.
 지원하지 않는 추가 authored prop이 있는 인스턴스는 데이터를 버리는 대신 적용 전에 진단한다.
+
+## Flat display 설정
+
+Scene Authoring v1의 선택 `display.pixelPerfect`는 `SceneDisplaySpec`/`resolveSceneDisplay`로 검증한다.
+`/core`에서도 같은 계약을 제공한다. 저수준 apply 함수는 renderer 설정을 바꾸지 않으며,
+자동 연결은 `createFerrumRuntime({dataScene})`를 사용한다.
+[표시 작성 계약](../data-scene-authoring.md#기본-2d-표시-설정)과 [런타임 표시 API](core.md#기본-2d-픽셀-퍼펙트-표시)를 따른다.

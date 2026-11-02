@@ -34,11 +34,13 @@ import { resolveDataSceneGameplaySpec, type DataSceneGameplaySpec } from "./data
 import { resolveDataSceneNavigationSpec, type DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 import { resolveSceneLighting } from "./sceneLighting.js";
 import type { LightingScene2D } from "./lightingTypes.js";
+import { resolveSceneDisplay, type SceneDisplaySpec } from "./sceneDisplay.js";
 
 export const SCENE_AUTHORING_DOCUMENT_FORMAT = "ferrum2d.consumer.scene-authoring" as const;
 export const SCENE_AUTHORING_DOCUMENT_VERSION = 1 as const;
 
 export interface SceneAuthoringDocumentSpec {
+  display?: SceneDisplaySpec;
   format: typeof SCENE_AUTHORING_DOCUMENT_FORMAT;
   version: typeof SCENE_AUTHORING_DOCUMENT_VERSION;
   sceneComposition: SceneCompositionSpec;
@@ -53,6 +55,7 @@ export interface SceneAuthoringDocumentSpec {
 }
 
 export interface ResolvedSceneAuthoringDocument {
+  display?: SceneDisplaySpec;
   format: typeof SCENE_AUTHORING_DOCUMENT_FORMAT;
   version: typeof SCENE_AUTHORING_DOCUMENT_VERSION;
   sceneComposition: ResolvedSceneCompositionSpec;
@@ -135,6 +138,8 @@ export function resolveSceneAuthoringDocument(
   const navigation = document.navigation === undefined ? undefined : resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`);
   const spatial = document.spatial === undefined ? undefined : resolveDataSceneSpatialSpec(document.spatial, `${path}.spatial`);
   const lighting = document.lighting === undefined ? undefined : resolveSceneLighting(document.lighting, `${path}.lighting`);
+  const display=resolveSceneDisplay(document.display,`${path}.display`);
+  if(spatial && display?.pixelPerfect)throw sceneCompositionDiagnosticError(`${path}.display.pixelPerfect`,"flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
   if (spatial && lighting) throw sceneCompositionDiagnosticError(`${path}.lighting`, "flat lighting cannot be combined with spatial; use spatial.environment.lighting");
   const instances = validateComponents || spatial !== undefined || navigation?.obstacles !== undefined
     ? bindingPlan?.instances ?? instantiateSceneFragment(sceneComposition, { ...bindingOptions, path: `${path}.composition` })
@@ -220,6 +225,7 @@ export function resolveSceneAuthoringDocument(
     ...(navigation === undefined ? {} : { navigation }),
     ...(spatial === undefined ? {} : { spatial }),
     ...(lighting === undefined ? {} : { lighting }),
+    ...(display === undefined ? {} : { display }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }

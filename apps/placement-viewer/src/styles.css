@@ -322,6 +322,23 @@ textarea {
 .placement-property-row[data-property-modified="true"] { border-left: 2px solid var(--accent); padding-left: 4px; }
 .placement-property-row[hidden], .placement-property-row > button[hidden] { display: none; }
 [data-placement-property-filtered] { display: none !important; }
+.placement-asset-cleanup { border-bottom: 1px solid var(--border); padding: 8px 4px; }
+.placement-asset-cleanup p { margin: 4px 0; color: var(--fg-3); font-size: 12px; }
+.placement-cleanup-dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; padding: 12px; background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border); border-radius: 4px; }
+.placement-cleanup-dialog::backdrop { background: rgb(0 0 0 / 60%); }
+.placement-cleanup-dialog header, .placement-cleanup-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.placement-cleanup-dialog header h2 { font-size: 14px; margin: 0; flex: 1; }
+.placement-cleanup-dialog p, .placement-cleanup-dialog output { display: block; font-size: 12px; line-height: 1.5; margin: 8px 0; overflow-wrap: anywhere; }
+.placement-cleanup-dialog select { max-width: 100%; }
+.placement-cleanup-list > div, .placement-cleanup-backups > div { border-top: 1px solid var(--border); padding: 8px 0; }
+.placement-cleanup-list label { display: flex; gap: 8px; align-items: start; overflow-wrap: anywhere; }
+.placement-cleanup-list label span { min-width: 0; }
+.placement-cleanup-list input { flex: 0 0 auto; }
+.placement-cleanup-list details { margin: 4px 0 0 24px; font-size: 12px; }
+.placement-cleanup-list li, .placement-cleanup-backups span { overflow-wrap: anywhere; }
+.placement-cleanup-backups > div { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.placement-cleanup-backups span { min-width: 0; flex: 1 1 200px; font-size: 12px; }
+.placement-cleanup-actions { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
 .placement-document-summary, .placement-import-problem-summary { padding: 8px; border: 1px solid var(--border); margin-bottom: 8px; overflow-wrap: anywhere; }
 .placement-document-summary p, .placement-import-problem-summary p { margin: 4px 0; }
 .placement-document-summary output { display: block; margin: 4px 0; }

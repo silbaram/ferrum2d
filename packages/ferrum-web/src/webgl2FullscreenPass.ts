@@ -18,6 +18,10 @@ export interface WebGL2FullscreenPassOptions {
   passes: readonly ResolvedPostProcessPass[];
   resolution: [number, number];
   scratchTargets?: readonly [WebGL2FullscreenRenderTarget, WebGL2FullscreenRenderTarget];
+  /** Optional final output (used before nearest pixel-perfect presentation). */
+  destination?: WebGL2FullscreenRenderTarget;
+  viewport?: readonly [number,number,number,number];
+  nearest?: boolean;
 }
 
 const POST_PROCESS_KIND = {
@@ -39,6 +43,7 @@ export class WebGL2FullscreenPass {
   private readonly encodeSrgbLocation: WebGLUniformLocation;
   private readonly linearWorkingSpaceLocation: WebGLUniformLocation;
   private destroyed = false;
+  private nearestSampler?: WebGLSampler;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
     const programs: WebGLProgram[] = [];
@@ -98,11 +103,24 @@ export class WebGL2FullscreenPass {
     let drawCalls = 0;
     let passCount = 0;
     try {
+      if(options.nearest) {
+        if(!this.nearestSampler) {
+          const sampler=this.gl.createSampler();if(!sampler)throw Error("Nearest presentation sampler allocation failed");
+          this.nearestSampler=sampler;
+          this.gl.samplerParameteri(sampler,this.gl.TEXTURE_MIN_FILTER,this.gl.NEAREST);
+          this.gl.samplerParameteri(sampler,this.gl.TEXTURE_MAG_FILTER,this.gl.NEAREST);
+          this.gl.samplerParameteri(sampler,this.gl.TEXTURE_WRAP_S,this.gl.CLAMP_TO_EDGE);
+          this.gl.samplerParameteri(sampler,this.gl.TEXTURE_WRAP_T,this.gl.CLAMP_TO_EDGE);
+        }
+        this.gl.bindSampler(0,this.nearestSampler);
+      }
       for (const pass of passes) {
         const isLastPass = passCount === passes.length - 1;
-        const destination = isLastPass ? undefined : options.scratchTargets?.[passCount % 2];
+        const destination = isLastPass ? options.destination : options.scratchTargets?.[passCount % 2];
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, destination?.framebuffer ?? null);
-        this.gl.viewport(0, 0, options.resolution[0], options.resolution[1]);
+        const viewport=options.viewport;
+        if(isLastPass&&viewport)this.gl.viewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+        else this.gl.viewport(0, 0, options.resolution[0], options.resolution[1]);
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, sourceTexture);
         this.writePassUniforms(pass);
@@ -113,6 +131,7 @@ export class WebGL2FullscreenPass {
         passCount += 1;
       }
     } finally {
+      if(options.nearest)this.gl.bindSampler(0,null);
       this.gl.bindTexture(this.gl.TEXTURE_2D, null);
       this.gl.bindVertexArray(null);
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
@@ -140,6 +159,7 @@ export class WebGL2FullscreenPass {
     this.destroyed = true;
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
+    if(this.nearestSampler)this.gl.deleteSampler(this.nearestSampler);
   }
 
   private writePassUniforms(pass: ResolvedPostProcessPass): void {

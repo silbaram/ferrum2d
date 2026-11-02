@@ -1578,7 +1578,7 @@ desktop `pixel_assets`는 공통 `sprite_assets`/`asset_files`의 allowlist·bou
 같은 문서에서 의미가 같은 원본을 준비하면 기존 검증 revision을 재사용해 서식만 다른 원본의 ID/bytes도 유지한다.
 원본 이름/ID의 Unicode·UTF-16 길이·빈 값과 JSON 정수의 값 판정을 양쪽에서 맞추고, metadata 치수만 정수로 정규화해 JS 왕복 시 불변 revision 충돌을 막는다.
 저장 bundle과 PNG verifier는 비동기 작업 전에 입력을 복제하며 RGBA8 filter/Adam7 복원·끝 청크/CRC·sRGB 해석을 native/frontend 양쪽에서 검증한다.
-재열기 시 catalog 자산은 씬 runtime 생성 전에 로드한다. 브라우저는 기존 export를 유지하며 프로젝트 디스크 삭제는 범위에 포함하지 않는다.
+재열기 시 catalog 자산은 씬 runtime 생성 전에 로드한다. 세션 정리는 프로젝트 원본을 삭제하지 않으며 별도 명시적 Catalog 정리를 사용한다.
 
 `ScenePlacementHistory.someSnapshot`과 viewer의 `retainsAssetReference`는 cold 자원 정리를 위한 보수적 참조 query다.
 Import 패널은 모든 열린 문서·Undo/Redo·transaction·후보를 확인한 뒤 미저장 session revision만 정리한다.
@@ -1619,3 +1619,50 @@ native `inspect_placement_project_scene`은 명시적 Open Project 권한을 확
 앱 전용 `ferrum2d.asset-usage` v1 보고서는 snapshot 범위·부분 실패·등록 여부·출처를 제공하고 `deletionAllowed:false`를 명시한다.
 코드·외부 manifest·GLB 내부·Undo 이력 및 전체 디스크 의존성 그래프를 보장하지 않으며 GC/원본 삭제 API를 추가하지 않는다.
 Rust simulation/Wasm ABI와 SDK/public schema는 변경하지 않는다.
+
+### 프로젝트 관리 Catalog의 복구 가능한 정리
+
+앱 전용 `placementAssetCleanup`은 native 응답 검증·열린 문서 보호·선택 계약을 소유하고,
+`placementAssetCleanupPanel`은 분석/선택/백업/복구 모달의 비동기 상태와 재열기를 소유한다.
+진행 중 쓰기는 workspace 변경을 차단한다. 미저장 문서·Undo/Redo·미적용 component 입력과 도구별
+`blocksReload`/normal draft 상태를 확인해 mandatory reload로 작업을 잃지 않게 한다.
+닫힌 모달은 참조 그래프나 문서 사본을 매 프레임 만들지 않는다.
+
+native `inspect_placement_asset_cleanup`, `list_placement_asset_cleanup_backups`, `apply_placement_asset_cleanup`, `restore_placement_asset_cleanup`은
+명시적 Open Project 권한과 기존 `scene_save_lock`을 사용한다. scene write allowlist를 확대하지 않는다.
+`placement_document/asset_cleanup`은 기존 sprite/normal parser와 `asset_files`의 bounded read·immutable 생성·CAS 발행을 재사용한다.
+네 관리 Catalog의 원본/hash, public JSON과 관리 source/metadata 문자열 참조를 fingerprint로 고정한다.
+JSON은 256개/32 MiB/개별 2 MiB, 방문 4,096개/깊이 8이며 손상·링크·읽기 실패·한도 초과에서 실패한다.
+전체 의존성 GC나 외부 파일시스템에 대한 전역 잠금/원자 snapshot을 제공하지 않는다.
+문자열 에셋·파일과 normal pair를 포함한 리비전 ID를 보호한다. 숫자 texture/normalTexture는 이름을 확정할 수 없어 모든 후보를 보호한다.
+백업 조회는 public JSON/Catalog 분석과 독립적이며 한 백업의 손상된 완료 기록은 해당 행의 문제로 격리한다.
+읽기 전용 분석은 닫기에서 대기를 해제하고 token으로 늦은 응답을 폐기한다. 실제 native 읽기의 취소를 약속하지 않는다.
+
+한 번에 한 Catalog 전체를 `.ferrum-asset-backups/<64hex ID>/`에 복사·재검증하고 before/after hash journal을 준비한다.
+백업은 원본 최대64 MiB+Catalog 최대1 MiB+journal 최대16 KiB, 프로젝트당8개이며 자동 영구 삭제하지 않는다.
+전체 fingerprint를 다시 확인한 뒤 CAS로 축소 Catalog를 발행하고 공유되지 않는 원본만 제거한다.
+축소 Catalog는 발행 전에 기존1 MiB 읽기 한도를 검사하고 들여쓰기 때문에 커지는 경우 compact JSON으로 보존한다.
+프로세스 중단 시 old Catalog+전체 원본 또는 load 가능한 reduced Catalog+여분 원본이 남아 복구 진입이 가능하다.
+실패 시 누락 원본을 복원하되 외부의 새 파일/Catalog는 덮어쓰지 않는다. 복구 실패는 백업 경로와 함께 보고한다.
+백업 후 재검사 실패와 백업 자체 검증 실패도 원본 변경 단계/백업 경로를 포함해 보고한다.
+복구도 백업 원본을 기존 parser로 검증하고 live Catalog가 journal의 before/after 중 하나일 때만 발행한다.
+쓰기 시도 뒤 재열기로 stale Catalog/expected token을 폐기한다. 브라우저 단독에서는 비활성이다.
+Rust simulation, Wasm ABI, SDK 공개 API와 generated viewer 계약은 변경하지 않는다.
+
+## Flat 2D virtual presentation
+
+선택 `display.pixelPerfect`/runtime `pixelPerfect`는 TypeScript 표시 계약이다.
+`pixelPerfect.ts`가 가상 치수·물리 정수 배율·여백·포인터 변환을 공통 계산하고,
+WebGL2/WebGPU는 조명·노멀·지원 후처리를 가상 타깃에 마친 뒤 nearest fullscreen pass로 출력한다.
+WebGL2는 MSAA default framebuffer로의 확대 blit을 사용하지 않으며, 필요 시 가상 후처리 출력 타깃을 둔다.
+WebGPU는 장치 복구 facade를 통해 마지막 설정을 새 backend에 전달한다.
+타깃은 GPU resource 통계/수명 관리에 포함하며 최종 표시 pass는 drawCalls/presentationPassCount로 계측한다.
+
+runtime은 문서 적용/전환 시 renderer 표시 설정을 준비하고, 문서 적용 성공 후 native viewport를 맞춘다.
+검증 실패 시 native 카메라를 유지하고 표시를 복원한다. 복원까지 실패하면 두 오류를 보고한다.
+GL 타깃 치수 변경은 모든 candidate를 준비한 후 교체하며 중간 실패는 candidate만 정리한다.
+최종 alpha와 중복 frame finalization은 두 backend가 같은 계약을 사용한다. 여백의 물리 포인터 클릭을 막는다.
+DataSceneView는 virtual viewport와 실제 canvas CSS 크기를 구분해 world 좌표를 왕복한다.
+뷰어는 문서별 편집 카메라를 보관해 게임 미리보기 종료 시 카메라·zoom과 선택/overlay viewport를 함께 복구한다. 게임 상태·entity 위치·카메라 상태는 Rust가 소유한다.
+render command ABI와 시뮬레이션은 바꾸지 않으며 spatial pixelArt와 독립적이다.
+[Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

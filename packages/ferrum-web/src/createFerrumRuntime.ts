@@ -28,7 +28,9 @@ import type {
   FerrumRuntimeLevelStreamingTarget,
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
-import { createRenderer, resolveRendererColorManagement } from "./createRenderer.js";
+import { createRenderer, resolveRendererColorManagement, resolveRendererPixelPerfect } from "./createRenderer.js";
+import { pixelPerfectPointToViewport, type PixelPerfectOptions } from "./pixelPerfect.js";
+import { resolveSceneDisplay } from "./sceneDisplay.js";
 import type { RendererStats } from "./renderer.js";
 import type { FerrumRuntimeRenderer } from "./runtimeRenderer.js";
 import { AnimationTimelinePlayer } from "./animationTimeline.js";
@@ -269,6 +271,8 @@ export interface FerrumRuntimeDataScene {
 }
 
 export interface FerrumRuntimeOptions {
+  /** Flat 2D default; per-scene display.pixelPerfect overrides it (including false). */
+  pixelPerfect?: PixelPerfectOptions | false;
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
   /** Applied when this runtime creates its renderer. */
@@ -356,20 +360,44 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let engine: FerrumEngine | undefined = options.engineInstance;
   let levelStreaming: FerrumRuntimeLevelStreaming | undefined;
   let physicsScene: PhysicsSceneProfileApplyResult | undefined;
+  let restoreExternalDisplay: (() => void) | undefined;
+  let displayViewportCommitted = false;
 
   let destroyed = false;
 
   try {
     const colorManagement = ownsRenderer ? resolveRendererColorManagement(options) : options.colorManagement;
+    const explicitPixelDefault = [options.pixelPerfect,options.webgl2?.pixelPerfect,options.webgpu?.pixelPerfect].some(value=>value!==undefined);
+    const pixelDefault = explicitPixelDefault ? resolveRendererPixelPerfect(options) : renderer?.pixelPerfectPresentation?.()?.settings;
+    const initialDocument = options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document : undefined;
+    const scenePixel = (doc?: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => {
+      const display=resolveSceneDisplay(doc?.display);
+      const config=display?.pixelPerfect===false?undefined:display?.pixelPerfect??pixelDefault;
+      if(config && doc?.spatial)throw Error("Flat pixelPerfect cannot be combined with spatial; use spatial.environment.pixelArt");
+      return config;
+    };
+    const initialPixel = scenePixel(initialDocument);
     renderer ??= await createRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
       colorManagement: options.colorManagement,
-      webgl2: options.webgl2,
+      pixelPerfect: initialPixel,
+      webgl2: {...options.webgl2,pixelPerfect:initialPixel},
       shaderPreparation: options.shaderPreparation,
-      webgpu: webGpuOptionsWithStaticPostProcess(options),
+      webgpu: {...webGpuOptionsWithStaticPostProcess(options),pixelPerfect:initialPixel},
       spatial: options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document.spatial : undefined,
     });
     const runtimeRenderer = renderer;
+    if(initialPixel || explicitPixelDefault || initialDocument?.display?.pixelPerfect!==undefined) {
+      if(!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation)throw Error("Renderer does not support pixelPerfect presentation");
+      if(!ownsRenderer) {
+        const previous=runtimeRenderer.pixelPerfectPresentation()?.settings;
+        restoreExternalDisplay=()=>{
+          runtimeRenderer.setPixelPerfect!(previous??false);
+          if(displayViewportCommitted && engine?.setViewportSize) { const size=runtimeRenderer.viewportSize();engine.setViewportSize(size.width,size.height); }
+        };
+      }
+      runtimeRenderer.setPixelPerfect(initialPixel??false);
+    }
     input ??= new InputManager(options.canvas, options.inputOptions);
     assetHost ??= new BrowserPlatformHost(runtimeRenderer);
     const profiler = createRuntimeProfiler(options.profiler);
@@ -426,7 +454,17 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     detachRendererResize = observeRendererResize(options.canvas, runtimeRenderer);
 
     const inputProvider: InputProvider = () => {
-      const snapshot = runtimeInput.snapshot();
+      let snapshot = runtimeInput.snapshot();
+      const presentation=runtimeRenderer.pixelPerfectPresentation?.();
+      if(presentation) {
+        const rect=options.canvas.getBoundingClientRect();
+        if(rect.width>0 && rect.height>0) {
+          const point=pixelPerfectPointToViewport(presentation,snapshot.mouseX,snapshot.mouseY,rect.width,rect.height);
+          const viewport=runtimeRenderer.viewportSize();
+          if(!point.inside)snapshot=runtimeInput.snapshot({pointerPrimaryEnabled:false});
+          snapshot={...snapshot,mouseX:point.x*viewport.width/presentation.sourceWidth,mouseY:point.y*viewport.height/presentation.sourceHeight};
+        } else snapshot=runtimeInput.snapshot({pointerPrimaryEnabled:false});
+      }
       return options.inputTransform?.(snapshot) ?? snapshot;
     };
     const runtimeFrameRenderer = new RuntimeFrameRenderer({
@@ -453,7 +491,34 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
-    const dataScene = createRuntimeDataScene(engine, options.dataScene, colorManagement);
+    const configureDisplay = (doc: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => {
+      const next=scenePixel(doc), previous=runtimeRenderer.pixelPerfectPresentation?.()?.settings;
+      if(!next && !previous)return undefined;
+      if(!runtimeRenderer.setPixelPerfect || !runtimeRenderer.pixelPerfectPresentation)throw Error("Renderer does not support pixelPerfect presentation");
+      const previousViewport = runtimeRenderer.viewportSize();
+      let committed = false;
+      runtimeRenderer.setPixelPerfect(next??false);
+      // Changing the native viewport can clamp a bounded/follow camera. Keep it
+      // untouched until authoring validation/application has succeeded.
+      return {
+        commit() {
+          const viewport=runtimeRenderer.viewportSize();
+          committed = true;
+          displayViewportCommitted = true;
+          engine!.setViewportSize(viewport.width,viewport.height);
+        },
+        rollback() {
+          runtimeRenderer.setPixelPerfect!(previous??false);
+          if (committed) engine!.setViewportSize(previousViewport.width, previousViewport.height);
+        },
+      };
+    };
+    const dataScene = createRuntimeDataScene(engine, options.dataScene, colorManagement, configureDisplay);
+    if (!dataScene && (initialPixel || explicitPixelDefault)) {
+      const viewport = runtimeRenderer.viewportSize();
+      displayViewportCommitted = true;
+      engine.setViewportSize(viewport.width, viewport.height);
+    }
     if (options.physicsScene !== undefined && options.physicsScene !== false) {
       physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
     }
@@ -510,6 +575,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     // Preserve the startup error after attempting every owned resource cleanup.
     disposeRuntimeResources([
       () => detachRendererResize?.(),
+      () => restoreExternalDisplay?.(),
       () => levelStreaming?.destroy(),
       () => physicsScene?.clear(),
       () => { if (ownsUiOverlay) uiOverlay?.destroy(); },
@@ -889,10 +955,28 @@ function createRuntimeCutscene(
   return cutscene;
 }
 
+interface RuntimeDisplayChange {
+  commit(): void;
+  rollback(): void;
+}
+
+function failRuntimeDisplayChange(change: RuntimeDisplayChange | undefined, error: unknown): never {
+  try { change?.rollback(); } catch (rollbackError) {
+    const message = (value: unknown) => value instanceof Error ? value.message : String(value);
+    // Preserve both failures without requiring newer Error/AggregateError APIs.
+    throw Object.assign(new Error(`Data Scene apply failed: ${message(error)}; display rollback also failed: ${message(rollbackError)}`), {
+      cause: error,
+      displayRollbackError: rollbackError,
+    });
+  }
+  throw error;
+}
+
 function createRuntimeDataScene(
   engine: FerrumEngine,
   option: FerrumRuntimeOptions["dataScene"],
   colorManagement?: ColorManagementMode,
+  configureDisplay?: (document: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument) => RuntimeDisplayChange | undefined,
 ): FerrumRuntimeDataScene | undefined {
   if (option === undefined || option === false) {
     return undefined;
@@ -911,21 +995,25 @@ function createRuntimeDataScene(
   applyOptions.colorManagement = colorManagement ?? applyOptions.colorManagement;
   const basePath = applyOptions.path ?? "dataScene";
   let currentDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument = document;
-  let result = applyDataSceneAuthoringDocument(engine, currentDocument, {
+  let result: ApplyDataSceneAuthoringDocumentResult;
+  const initialDisplay=configureDisplay?.(currentDocument);
+  try { result = applyDataSceneAuthoringDocument(engine, currentDocument, {
     ...applyOptions,
     path: basePath,
-  });
+  }); initialDisplay?.commit(); } catch(error) { failRuntimeDisplayChange(initialDisplay, error); }
   const applyNextDocument = (
     nextDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
     nextOptions: ApplyDataSceneAuthoringDocumentOptions,
   ): ApplyDataSceneAuthoringDocumentResult => {
     checkColorManagement(nextOptions.colorManagement);
-    const nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
+    const display=configureDisplay?.(nextDocument);
+    let nextResult: ApplyDataSceneAuthoringDocumentResult;
+    try { nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
       ...applyOptions,
       ...nextOptions,
       colorManagement: colorManagement ?? nextOptions.colorManagement ?? applyOptions.colorManagement,
       path: nextOptions.path ?? basePath,
-    });
+    }); display?.commit(); } catch(error) { failRuntimeDisplayChange(display, error); }
     currentDocument = nextDocument;
     result = nextResult;
     return result;

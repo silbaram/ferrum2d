@@ -1128,6 +1128,7 @@ export function createPlacementAsepriteTool(options: {
     element,
     sync,
     destroy,
+    blocksReload: () => busy || normals.hasUnsaved() || assets.entries().some(asset => !asset.persisted) || [...drafts.values()].some(draft => !!(draft.json || draft.png) && (draft.dirty || !draft.candidate?.persisted)),
     close(document: string) {
       if (document === key) stop();
       drafts.delete(document);

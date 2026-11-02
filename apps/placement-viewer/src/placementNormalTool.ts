@@ -817,6 +817,7 @@ export function createPlacementNormalTool(options: {
     element,
     sync,
     destroy,
+    blocksReload: () => busy || assets.entries().some(asset => !asset.persisted) || [...drafts.values()].some(draft => !!draft.source && (draft.dirty || !draft.candidate?.persisted)),
     generationSettings() {
       return { ...draft().settings };
     },

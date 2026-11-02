@@ -5,7 +5,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use std::{io::Cursor, path::Path};
 
-const CONTRACT: Contract = Contract {
+pub(super) const CONTRACT: Contract = Contract {
     directory: ".ferrum-pixels",
     prefix: "pixel.",
     bundle_format: "ferrum2d.pixel-project.assets",
@@ -471,7 +471,7 @@ pub(super) fn load_inner(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::{
         fs,
@@ -506,7 +506,7 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-    fn fixture(color: u8) -> Value {
+    pub(in super::super) fn fixture(color: u8) -> Value {
         // A zero-alpha pixel deliberately carries RGB that canvas would lose.
         let pixels = [color, 40, 160, 255, 12, 34, 56, 0];
         let source = json!({"format":"ferrum2d.pixel-document","version":1,"name":"캐릭터","width":2,"height":1,

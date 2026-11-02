@@ -1,4 +1,5 @@
 mod aseprite_assets;
+mod asset_cleanup;
 mod asset_files;
 mod checked_save;
 mod normal_assets;
@@ -23,6 +24,44 @@ use serde_json::Value;
 use tauri::{Manager, State};
 
 type CommandResult<T> = Result<T, PlacementDesktopError>;
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn inspect_placement_asset_cleanup(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupReport> {
+    asset_cleanup::inspect(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn apply_placement_asset_cleanup(
+    project_path: String,
+    request: asset_cleanup::CleanupRequest,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupResult> {
+    asset_cleanup::apply(Path::new(&project_path), request, &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn list_placement_asset_cleanup_backups(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Vec<asset_cleanup::BackupSummary>> {
+    asset_cleanup::list_backups(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn restore_placement_asset_cleanup(
+    project_path: String,
+    backup_id: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupResult> {
+    asset_cleanup::restore(Path::new(&project_path), &backup_id, &write_registry)
+}
 
 const AGENT_HANDOFF_FORMAT: &str = "ferrum2d.placement-viewer.agent-handoff";
 const PROJECT_ASSET_FOLDER: &str = "public/assets";

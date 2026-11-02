@@ -456,3 +456,7 @@ export type { SpatialAudioVoice } from "./spatialAudio.js";
 export type { AudioPoseBufferView } from "./audioPoseBuffer.js";
 export { createSpatialAudioScene } from "./spatialAudioScene.js";
 export type { SpatialAudioScene, SpatialAudioSceneSpec, SpatialAudioSourceSpec, SpatialAudioListener } from "./spatialAudioScene.js";
+export { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, pixelPerfectPointToViewport } from "./pixelPerfect.js";
+export type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
+export { resolveSceneDisplay } from "./sceneDisplay.js";
+export type { SceneDisplaySpec } from "./sceneDisplay.js";

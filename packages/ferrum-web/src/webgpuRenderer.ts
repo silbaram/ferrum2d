@@ -5,6 +5,7 @@ export type { WebGPURendererOptions } from "./webgpuRendererBackend.js";
 import { emptyRendererStats, type Renderer, type RendererStats, type PhysicsDebugLineCamera } from "./renderer.js";
 import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
 import type { TextureLoadOptions } from "./colorManagement.js";
+import type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
 import type { LightingScene2D } from "./lighting.js";
 import type { SpriteMaterialPresetInput } from "./spriteMaterial.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
@@ -241,6 +242,11 @@ export class WebGPURenderer implements Renderer {
     setPostProcess(post: PostProcessStackInput): void { this.ready(); this.backend.setPostProcess(post); this.options.postProcess = structuredClone(post); }
     setGroundYScale(scale: number): void { this.ready(); this.backend.setGroundYScale(scale); this.groundScale = scale; }
     setViewportZoom(zoom: number): void { this.ready(); this.backend.setViewportZoom(zoom); this.zoom = zoom; }
+    setPixelPerfect(options: PixelPerfectOptions | false | undefined): void {
+        this.ready(); this.backend.setPixelPerfect(options);
+        this.options.pixelPerfect = this.backend.pixelPerfectPresentation()?.settings ?? false;
+    }
+    pixelPerfectPresentation(): PixelPerfectPresentation | undefined { return this.backend.pixelPerfectPresentation(); }
     resize(): void { this.alive(); if (this.status === "ready")
         this.backend.resize(); }
     render(): void { this.alive(); if (this.status === "ready")

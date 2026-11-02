@@ -526,3 +526,6 @@ export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePref
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
 export { importAsepriteAtlas, importAsepriteAtlasFrames } from "./assetPipelineAseprite.js";
 export type { AsepriteAtlasFrameSizeSource, AsepriteAtlasImportOptions, AsepriteAtlasImportResult } from "./assetPipelineTypes.js";
+
+export type { SceneDisplaySpec } from "./sceneDisplay.js";
+export { resolveSceneDisplay } from "./sceneDisplay.js";

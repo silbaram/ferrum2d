@@ -163,6 +163,7 @@ export function createPlacementFrameNormals(options: {
   }
   return {
     bundle,
+    hasUnsaved: () => [...entries.values()].some(entry => !entry.persisted),
     available: (entry:Entry,key:string) => !disposed && entries.get(entry.key) === entry && canUsePlacementAsset(entry,key,options.project?.()),
     claims: (key:string) => [...entries.values()].filter(entry=>canUsePlacementAsset(entry,key,options.project?.())).map(entry=>({binding:entry.binding,report:entry.report})),
     retainsColor: (assetId: string) => [...entries.values()].some(entry => entry.source.id === assetId),

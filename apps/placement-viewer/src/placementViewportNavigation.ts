@@ -113,7 +113,7 @@ export function installPlacementViewportNavigation(options: {
     const state = view.snapshot();
     return { x: state.cameraX, y: state.cameraY, zoom: state.zoom };
   }
-  function refresh() {
+  function refresh(notify = true) {
     const state = viewer.updateViewport(view.snapshot());
     setUiText(
       percent,
@@ -121,9 +121,10 @@ export function installPlacementViewportNavigation(options: {
     );
     frame.disabled = state.selected === undefined;
     Object.assign(window, { ferrumPlacementEditCamera: snapshot() });
-    options.onChange(state);
+    if (notify) options.onChange(state);
+    return state;
   }
-  function apply(camera: PlacementEditCamera) {
+  function apply(camera: PlacementEditCamera, notify = true) {
     view.setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.zoom)));
     view.setCamera({
       x: Math.max(-CAMERA_LIMIT, Math.min(CAMERA_LIMIT, camera.x)),
@@ -132,7 +133,7 @@ export function installPlacementViewportNavigation(options: {
     });
     // A stale world pointer must not leave an Add ghost at its former camera location.
     viewer.pointerAtScreen();
-    refresh();
+    if(notify)refresh();
   }
   function restore(camera: PlacementEditCamera = initial) {
     cancelGesture();
@@ -403,6 +404,7 @@ export function installPlacementViewportNavigation(options: {
     lighting: (scene: LightingScene2D | undefined, frame: FrameState) => scene ? view.lighting(scene, view.snapshot(frame)) : false as const,
     snapshot,
     restore,
+    restorePresentation: (camera: PlacementEditCamera) => apply(camera,false),
     cancelGesture,
     refresh,
     isNavigationGesture,

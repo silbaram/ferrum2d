@@ -4,7 +4,7 @@ use super::{CommandResult, PlacementAssetRegistry, PlacementWriteRegistry};
 use serde_json::{json, Value};
 use std::{io::Cursor, path::Path};
 
-const CONTRACT: Contract = Contract {
+pub(super) const CONTRACT: Contract = Contract {
     check_catalog_revision: false,
     directory: ".ferrum-tiles",
     prefix: "tile.",
@@ -371,7 +371,7 @@ pub(super) fn load_inner(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     use std::{
@@ -405,7 +405,7 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-    fn fixture(kind: &str) -> Value {
+    pub(in super::super) fn fixture(kind: &str) -> Value {
         let mut png = Vec::new();
         {
             let mut e = png::Encoder::new(&mut png, 2, 1);
