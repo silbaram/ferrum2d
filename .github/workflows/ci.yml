@@ -288,6 +288,17 @@ jobs:
       - name: Flat 2D pixel-perfect rendering and Game Preview smoke
         run: pnpm smoke:flat-pixel-perfect
 
+      - name: Atlas PNG extrusion and renderer boundary smoke
+        run: pnpm smoke:atlas-extrusion
+
+      - name: Upload atlas extrusion verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-extrusion
+          path: artifacts/atlas-extrusion
+          if-no-files-found: ignore
+
       - name: Upload pixel-perfect verification
         if: always()
         uses: actions/upload-artifact@v4

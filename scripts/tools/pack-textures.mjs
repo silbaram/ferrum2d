@@ -38,7 +38,12 @@ export async function packTexturePngs(config) {
   const inputDir = path.resolve(config.inputDir);
   const outputImage = path.resolve(config.outputImage);
   const texture = config.texture ?? DEFAULT_TEXTURE_NAME;
-  const padding = Math.max(0, Math.floor(config.padding ?? 2));
+  const paddingInput = Number(config.padding ?? 2);
+  const padding = Math.max(0, Math.floor(paddingInput));
+  const extrude = config.extrude === undefined ? 0 : config.extrude;
+  if (!Number.isFinite(paddingInput) || !Number.isSafeInteger(padding) || !Number.isSafeInteger(extrude) || extrude < 0 || extrude > padding) {
+    throw new Error("extrude must be an integer in [0, padding]; padding must be finite.");
+  }
   const maxSize = Math.max(64, Math.floor(config.maxSize ?? DEFAULT_MAX_SIZE));
   const powerOfTwo = config.powerOfTwo ?? true;
   const sprites = await readPngSprites(inputDir);
@@ -59,6 +64,7 @@ export async function packTexturePngs(config) {
       layout.width,
       placement.x,
       placement.y,
+      extrude,
     );
   }
   await mkdir(path.dirname(outputImage), { recursive: true });
@@ -213,6 +219,7 @@ function parseArgs(argv) {
     gameJson: undefined,
     texture: undefined,
     padding: undefined,
+    extrude: undefined,
     maxSize: undefined,
     powerOfTwo: undefined,
     ifPresent: undefined,
@@ -233,6 +240,10 @@ function parseArgs(argv) {
       options.texture = requiredValue(argv, ++index, arg);
     } else if (arg === "--padding") {
       options.padding = Number(requiredValue(argv, ++index, arg));
+    } else if (arg === "--extrude") {
+      const value = requiredValue(argv, ++index, arg);
+      if (value.trim() === "") throw new Error("--extrude requires a number value.");
+      options.extrude = Number(value);
     } else if (arg === "--max-size") {
       options.maxSize = Number(requiredValue(argv, ++index, arg));
     } else if (arg === "--no-power-of-two") {
@@ -268,6 +279,7 @@ async function resolveConfig(options) {
       gameJson: options.gameJson,
       texture: options.texture,
       padding: options.padding,
+      extrude: options.extrude,
       maxSize: options.maxSize,
       powerOfTwo: options.powerOfTwo,
       ifPresent: options.ifPresent,
@@ -474,11 +486,19 @@ function mergeGameJsonAtlas(gameJsonPath, frames) {
     });
 }
 
-function copyRgba(source, sourceWidth, sourceHeight, target, targetWidth, targetX, targetY) {
-  for (let y = 0; y < sourceHeight; y += 1) {
-    const sourceStart = y * sourceWidth * 4;
+function copyRgba(source, sourceWidth, sourceHeight, target, targetWidth, targetX, targetY, extrude = 0) {
+  // Keep original pixels byte-identical, including transparent RGB. Repeat only
+  // the requested inner part of the padding; layout and UVs remain unchanged.
+  for (let y = -extrude; y < sourceHeight + extrude; y += 1) {
+    const sourceY = Math.max(0, Math.min(sourceHeight - 1, y));
     const targetStart = ((targetY + y) * targetWidth + targetX) * 4;
+    const sourceStart = sourceY * sourceWidth * 4;
     target.set(source.subarray(sourceStart, sourceStart + sourceWidth * 4), targetStart);
+    for (let x = 1; x <= extrude; x += 1) {
+      target.set(source.subarray(sourceStart, sourceStart + 4), targetStart - x * 4);
+      const right = sourceStart + (sourceWidth - 1) * 4;
+      target.set(source.subarray(right, right + 4), targetStart + (sourceWidth - 1 + x) * 4);
+    }
   }
 }
 
