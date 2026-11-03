@@ -144,7 +144,7 @@ export function createPlacementAsepriteTool(options: {
   const policy = document.createElement("p");
   setUiText(
     policy,
-    "Untrimmed, unrotated frames only. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.",
+    "Trimmed RGBA8 frames restore their original canvas. Rotated frames are unsupported. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.",
   );
   source.append(sourceFiles, policy);
   field("Aseprite frame", frame, preview);

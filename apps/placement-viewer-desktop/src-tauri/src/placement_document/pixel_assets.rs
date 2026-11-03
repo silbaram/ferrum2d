@@ -1,4 +1,5 @@
 //! Native pixel sources use the shared immutable sprite transaction, independently of importers.
+use super::png_layout::rgba8_srgb as complete_png;
 use super::sprite_assets::{array, hash, invalid, text, Contract, Dependency, Source};
 use super::{CommandResult, PlacementAssetRegistry, PlacementWriteRegistry};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -12,6 +13,7 @@ pub(super) const CONTRACT: Contract = Contract {
     catalog_format: "ferrum2d.pixel.catalog",
     project_format: "ferrum2d.pixel.project",
     max_dependencies: 0,
+    allow_source_png: false,
     max_source_json: 12 * 1024 * 1024,
     max_source_png: 16 * 1024 * 1024,
     check_catalog_revision: true,
@@ -40,42 +42,6 @@ fn source_text_limit<'a>(value: &'a Value, key: &str, max: usize) -> CommandResu
         return Err(invalid("invalid pixel source text"));
     }
     Ok(result)
-}
-fn complete_png(bytes: &[u8]) -> bool {
-    if !bytes.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10]) {
-        return false;
-    }
-    let mut offset: usize = 8;
-    while let Some(header) = bytes.get(offset..offset.saturating_add(8)) {
-        let size = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
-        let Some(end) = offset
-            .checked_add(size)
-            .and_then(|v| v.checked_add(12))
-            .filter(|v| *v <= bytes.len())
-        else {
-            return false;
-        };
-        let body = &bytes[offset + 8..end - 4];
-        let kind = &header[4..8];
-        if [b"iCCP", b"cICP", b"mDCv", b"cLLi"]
-            .iter()
-            .any(|name| kind == name.as_slice())
-            || (kind == b"gAMA" && body != 45455_u32.to_be_bytes())
-            || (kind == b"cHRM"
-                && (body.len() != 32
-                    || body
-                        .chunks_exact(4)
-                        .zip([31270_u32, 32900, 64000, 33000, 30000, 60000, 15000, 6000])
-                        .any(|(bytes, value)| bytes != value.to_be_bytes())))
-        {
-            return false;
-        }
-        if &header[4..8] == b"IEND" {
-            return size == 0 && end == bytes.len();
-        }
-        offset = end;
-    }
-    false
 }
 fn rgba_bytes(value: &Value, count: usize) -> CommandResult<Vec<u8>> {
     let encoded = value
@@ -297,7 +263,11 @@ fn validate_source(
     png: Vec<u8>,
     bytes: Vec<u8>,
     dependencies: Vec<Dependency>,
+    source_png: Option<Vec<u8>>,
 ) -> CommandResult<Source> {
+    if source_png.is_some() {
+        return Err(invalid("Unexpected source PNG"));
+    }
     if !dependencies.is_empty()
         || bytes.len() > 12 * 1024 * 1024
         || png.len() > 16 * 1024 * 1024
@@ -463,6 +433,7 @@ fn validate_source(
         png,
         json: bytes,
         dependencies,
+        source_png,
     })
 }
 

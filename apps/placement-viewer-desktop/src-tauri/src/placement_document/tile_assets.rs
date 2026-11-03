@@ -12,6 +12,7 @@ pub(super) const CONTRACT: Contract = Contract {
     catalog_format: "ferrum2d.tile-import.catalog",
     project_format: "ferrum2d.tile-import.project",
     max_dependencies: 8,
+    allow_source_png: false,
     max_source_json: 1024 * 1024,
     max_source_png: 16 * 1024 * 1024,
     validate: validate_source,
@@ -183,7 +184,11 @@ fn validate_source(
     png: Vec<u8>,
     bytes: Vec<u8>,
     dependencies: Vec<Dependency>,
+    source_png: Option<Vec<u8>>,
 ) -> CommandResult<Source> {
+    if source_png.is_some() {
+        return Err(invalid("Unexpected source PNG"));
+    }
     let name = text(meta, "logicalId")?;
     let identity = text(meta, "identityDocument")?;
     let kind = text(meta, "kind")?;
@@ -352,6 +357,7 @@ fn validate_source(
         png,
         json: bytes,
         dependencies,
+        source_png,
     })
 }
 pub(super) fn save_inner(

@@ -1,7 +1,6 @@
 import { createPlacementSpriteRevisions } from "./placementSpriteRevisions";
 import type { FerrumRuntime } from "@ferrum2d/ferrum-web/core";
 import {
-  importAsepriteAtlas,
   instantiateSceneFragment,
   type SceneAuthoringDocumentSpec,
   type ScenePlacementPatch,
@@ -13,6 +12,7 @@ type ComponentsPatch = Extract<
   { kind: "updateComponents" }
 >["components"];
 import { placementNormalHash } from "./placementNormalAssets";
+import { asepriteTrimPlan, asepriteRestoredFrames, restoreAsepriteTrim } from "./placementAsepriteTrim";
 
 export const ASEPRITE_LIMITS = {
   jsonBytes: 1_048_576,
@@ -43,6 +43,8 @@ export interface PlacementAsepriteAsset {
   jsonText: string;
   json: ArrayBuffer;
   png: ArrayBuffer;
+  /** Only trimmed imports retain a separate immutable packed source PNG. */
+  sourcePng?: { png: ArrayBuffer; sha256: string; width: number; height: number };
   jsonSha256: string;
   pngSha256: string;
   width: number;
@@ -141,44 +143,7 @@ export async function inspectAseprite(
     : Object.entries(record(root.frames));
   if (!raw.length || raw.length > ASEPRITE_LIMITS.frames)
     error("Aseprite requires 1–256 frames");
-  for (const [id, entry] of raw) {
-    const value = record(entry);
-    if (
-      typeof id !== "string" ||
-      !id.length ||
-      id.length > 256 ||
-      ["__proto__", "prototype", "constructor"].includes(id)
-    )
-      error("Unsupported frame name");
-    if (
-      (value.trimmed !== undefined && typeof value.trimmed !== "boolean") ||
-      value.trimmed === true ||
-      value.rotated === true
-    )
-      error(
-        "Rotated or trimmed frames are unsupported. Export untrimmed frames.",
-      );
-    const r = record(value.frame),
-      w = integer(r.w, 1, width),
-      h = integer(r.h, 1, height);
-    integer(r.x, 0, width - w);
-    integer(r.y, 0, height - h);
-    if (value.sourceSize) {
-      const source = record(value.sourceSize);
-      if (source.w !== w || source.h !== h)
-        error("Trimmed sourceSize is unsupported");
-    }
-    if (value.spriteSourceSize) {
-      const source = record(value.spriteSourceSize);
-      if (source.x !== 0 || source.y !== 0 || source.w !== w || source.h !== h)
-        error("Trimmed spriteSourceSize is unsupported");
-    }
-  }
-  const imported = importAsepriteAtlas(json, {
-    texture: name,
-    stripFrameExtension: false,
-    sizeSource: "frame",
-  });
+  const plan = asepriteTrimPlan(raw, width, height);
   const bitmap = await createImageBitmap(
     new Blob([png], { type: "image/png" }),
   );
@@ -189,32 +154,22 @@ export async function inspectAseprite(
     bitmap.close();
   }
   signal.throwIfAborted();
-  const [jsonSha256, pngSha256] = await Promise.all([
-    placementNormalHash(jsonBytes),
-    placementNormalHash(png),
+  const restored = await restoreAsepriteTrim(png, width, height, plan, signal);
+  const texturePng = restored ?? png;
+  const textureWidth = plan.restored?.width ?? width, textureHeight = plan.restored?.height ?? height;
+  const [jsonSha256, sourceSha256] = await Promise.all([
+    placementNormalHash(jsonBytes), placementNormalHash(png),
   ]);
+  const pngSha256 = restored ? await placementNormalHash(restored) : sourceSha256;
   signal.throwIfAborted();
   const digest = await placementNormalHash(
-    JSON.stringify([document, name, jsonSha256, pngSha256]),
+    JSON.stringify([document, name, jsonSha256, sourceSha256]),
   );
   signal.throwIfAborted();
-  const frames = imported.frameNames.map((id) => {
-    const f = imported.atlas.frames![id],
-      uv = {
-        u0: f.uv?.u0 ?? 0,
-        v0: f.uv?.v0 ?? 0,
-        u1: f.uv?.u1 ?? 1,
-        v1: f.uv?.v1 ?? 1,
-      };
-    return {
-      id,
-      x: Math.round(uv.u0 * width),
-      y: Math.round(uv.v0 * height),
-      width: integer(f.size?.width, 1, width),
-      height: integer(f.size?.height, 1, height),
-      uv,
-    };
-  });
+  const frames = asepriteRestoredFrames(plan).map(frame => ({...frame, uv: {
+    u0: frame.x / textureWidth, v0: frame.y / textureHeight,
+    u1: (frame.x + frame.width) / textureWidth, v1: (frame.y + frame.height) / textureHeight,
+  }}));
   return {
     document,
     identityDocument: document,
@@ -225,13 +180,14 @@ export async function inspectAseprite(
     pngName: pngFile.name,
     jsonText,
     json: jsonBytes,
-    png,
+    png: texturePng,
+    ...(restored ? { sourcePng: { png, sha256: sourceSha256, width, height } } : {}),
     jsonSha256,
     pngSha256,
-    width,
-    height,
+    width: textureWidth,
+    height: textureHeight,
     frames,
-    bytes: png.byteLength + jsonBytes.byteLength,
+    bytes: texturePng.byteLength + jsonBytes.byteLength + (restored ? png.byteLength : 0),
     uploaded: false,
   };
 }
@@ -249,7 +205,7 @@ export function createPlacementAsepriteAssets(
       entry.document === asset.document &&
       entry.name === asset.name &&
       entry.jsonSha256 === asset.jsonSha256 &&
-      entry.pngSha256 === asset.pngSha256,
+      (entry.sourcePng?.sha256 ?? entry.pngSha256) === (asset.sourcePng?.sha256 ?? asset.pngSha256),
   );
 }
 export function asepriteProviderAsset(
@@ -384,9 +340,11 @@ export function asepriteEvidence(a: PlacementAsepriteAsset) {
     pngName: a.pngName,
     jsonSha256: a.jsonSha256,
     pngSha256: a.pngSha256,
+    ...(a.sourcePng ? {sourcePng:{sha256:a.sourcePng.sha256,width:a.sourcePng.width,height:a.sourcePng.height}} : {}),
     width: a.width,
     height: a.height,
-    frames: structuredClone(a.frames),
+    // Trim evidence follows deterministic atlas placement; UI/tag source order stays in a.frames.
+    frames: structuredClone(a.sourcePng ? [...a.frames].sort((left,right)=>left.y-right.y||left.x-right.x) : a.frames),
     persisted: a.persisted,
   };
 }
@@ -415,6 +373,7 @@ export function asepriteBundle(
       ),
     },
     files: assets.flatMap((a) => [
+      ...(a.sourcePng ? [{path:a.id+".source.png",mediaType:"image/png",sha256:a.sourcePng.sha256,base64:base64(a.sourcePng.png)}] : []),
       {
         path: a.id + ".png",
         mediaType: "image/png",

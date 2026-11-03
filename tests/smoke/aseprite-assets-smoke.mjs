@@ -22,14 +22,17 @@ import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/serv
 import { smokeAsepriteNormals } from "./aseprite-normals-smoke.mjs";
 import { smokeAsepriteAnimation } from "./aseprite-animation-smoke.mjs";
 import { smokeAsepritePaired } from "./aseprite-paired-smoke.mjs";
+import { smokeTrimNormals } from "./aseprite-trim-normal-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
+const trimMode = process.argv.includes("--trim");
+const trimNormalMode = trimMode && process.argv.includes("--trim-normals");
 const pixelMode = process.argv.includes("--pixels");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
+  trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"
@@ -41,7 +44,7 @@ const artifact = resolve(
 );
 let generatorRoute,
   generatorAvailable = true;
-if (normalMode || pixelMode)
+if (normalMode || pixelMode || trimNormalMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -130,7 +133,7 @@ let active,
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   try {
-    if ((normalMode || pixelMode) && path.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode || trimNormalMode) && path.startsWith(generatorRoute.prefix + "/")) {
       if (!generatorAvailable) {
         response.writeHead(503).end("Normal generator unavailable");
         return;
@@ -514,6 +517,13 @@ try {
       }
       await showPlacementBottom(page, "assets");
       await tool.locator(":scope > summary").click();
+      if(trimMode) {
+        const trimNormals=mode==='hd2d'&&trimNormalMode?await smokeTrimNormals({page,fixture,stage,tool,action,snapshot,undo,wait}):undefined;
+        const result=await smokeAsepriteAnimation({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,origin,setResume:value=>{resume=value;}});
+        await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent("pagehide",{persisted:false})));
+        const released=await resources();assert.deepEqual(released,{urls:0,textures:0});assert.deepEqual(errors,[]);
+        results.push({mode,...result,...(trimNormals?{trimNormals}:{}),released});continue;
+      }
       const original = await snapshot(),
         first = fixture();
       await stage(first);
@@ -816,7 +826,7 @@ try {
       const bad = [];
       const rotated = fixture();
       rotated.json.frames["hero-idle.png"].rotated = true;
-      bad.push([rotated, /Rotated or trimmed/]);
+      bad.push([rotated, /Rotated/]);
       const trimmed = fixture();
       trimmed.json.frames["hero-idle.png"].spriteSourceSize.x = 1;
       bad.push([trimmed, /Trimmed/]);
@@ -832,7 +842,7 @@ try {
         ...duplicate.json.frames["hero-idle.png"],
         filename: "same",
       });
-      bad.push([duplicate, /duplicate imported frame/]);
+      bad.push([duplicate, /duplicate.*frame/]);
       for (const [data, pattern] of bad) {
         await stage(data);
         assert.match(

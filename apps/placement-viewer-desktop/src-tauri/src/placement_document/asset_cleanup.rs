@@ -170,6 +170,9 @@ fn catalog(kind: CatalogKind, root: PathBuf, bytes: Vec<u8>) -> CommandResult<Ca
                 file(format!("{id}.json"), &source.json),
                 file(format!("{id}.png"), &source.png),
             ];
+            if let Some(original) = &source.source_png {
+                files.push(file(format!("{id}.source.png"), original));
+            }
             for (index, dependency) in source.dependencies.iter().enumerate() {
                 files.push(file(format!("{id}.dep.{index}.tsj"), &dependency.json));
             }

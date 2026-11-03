@@ -1249,8 +1249,8 @@ export const koreanMessages: Readonly<Record<string, string>> = {
     "모델 표면과 빌보드 형태로 작성 객체를 선택합니다. 모델 변형은 충돌 프록시를 움직이지 않습니다.",
   "Select a tileset and its PNG; other tiles are excluded from the converted map. Save Project or Export Assets preserves the original source. For external Tiled tilesets, choose all referenced TSJ files; filenames must match the source paths.":
     "타일셋과 PNG를 선택하세요. 다른 타일은 변환 맵에서 제외됩니다. 프로젝트 저장 또는 에셋 내보내기로 원본을 보관할 수 있습니다. 외부 Tiled 타일셋은 참조된 TSJ를 모두 선택하고 원본 경로와 파일명을 맞추세요.",
-  "Untrimmed, unrotated frames only. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.":
-    "잘림·회전이 없는 프레임을 지원합니다. 애니메이션 적용은 태그와 정확한 재생 시간을 가져옵니다 (클립당 최대 32프레임). 다시 가져오기는 클립 ID·시작 클립·반복 설정을 유지합니다. 노멀이 연결되어 있으면 애니메이션·노멀 적용/갱신을 사용하세요.",
+  "Trimmed RGBA8 frames restore their original canvas. Rotated frames are unsupported. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.":
+    "잘린 RGBA8 프레임을 원래 캔버스로 복원합니다. 회전된 프레임은 지원하지 않습니다. 애니메이션 적용은 태그와 정확한 재생 시간을 가져옵니다 (클립당 최대 32프레임). 다시 가져오기는 클립 ID·시작 클립·반복 설정을 유지합니다. 노멀이 연결되어 있으면 애니메이션·노멀 적용/갱신을 사용하세요.",
   "/absolute/path/to/placement.scene-authoring.json":
     "/absolute/path/to/placement.scene-authoring.json",
   "/absolute/path/to/project": "/absolute/path/to/project",

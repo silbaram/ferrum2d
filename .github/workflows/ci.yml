@@ -182,6 +182,17 @@ jobs:
       - name: Asset revision cleanup and import diagnostics
         run: pnpm smoke:aseprite-assets
 
+      - name: Trimmed sprite restoration and native source preservation
+        run: pnpm smoke:aseprite-trim
+
+      - name: Upload trim restoration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aseprite-trim
+          path: artifacts/aseprite-trim
+          if-no-files-found: ignore
+
       - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
         run: pnpm smoke:sprite-normal-2d
 

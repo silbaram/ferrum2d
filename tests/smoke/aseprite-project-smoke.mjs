@@ -19,6 +19,7 @@ import { showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
+import { smokeNativeTrim } from "./aseprite-trim-native-smoke.mjs";
 import { smokeNativePixels } from "./native-pixel-project-smoke.mjs";
 import { smokeAssetCleanup } from "./placement-asset-cleanup-smoke.mjs";
 
@@ -28,10 +29,11 @@ const pixelMode = process.argv.includes("--pixels");
 const externalTileMode = tileMode && process.argv.includes("--external-tsj");
 const multiTileMode = tileMode && process.argv.includes("--multi-tilesets");
 const animationMode = process.argv.includes("--animations");
+const trimMode = process.argv.includes("--trim");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
+  trimMode ? "artifacts/aseprite-trim/native" : cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -227,9 +229,10 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/aseprite-paired-runtime-fixture.mjs")
       file = resolve("tests/smoke/aseprite-paired-runtime-fixture.mjs");
     else if (url.pathname === "/pixel-runtime-fixture.mjs") file = resolve("tests/smoke/pixel-runtime-fixture.mjs");
+    else if (url.pathname === "/aseprite-resume-browser-fixture.mjs") file = resolve("tests/smoke/aseprite-resume-browser-fixture.mjs");
     else if (url.pathname === "/game-fixture.mjs")
       file = resolve(
-        pixelMode ? "tests/smoke/native-pixel-game-fixture.mjs" : tileMode
+        trimMode ? "tests/smoke/aseprite-trim-project-game-fixture.mjs" : pixelMode ? "tests/smoke/native-pixel-game-fixture.mjs" : tileMode
           ? "tests/smoke/native-tile-game-fixture.mjs"
           : "tests/smoke/aseprite-project-game-fixture.mjs",
       );
@@ -689,6 +692,12 @@ try {
         continue;
       }
       await reveal();
+      if(trimMode) {
+        reports.push(await smokeNativeTrim({getPage:()=>page,mode,project,scene,initial,run,stage,action,tool,
+          restart:async()=>{await closePage();await bridge.close();bridge=rustBridge();await open();await ready();await reveal();},close:closePage,invoke:(command,args)=>bridge.invoke(command,args),
+          freshGame:async()=>{const game=await browser.newPage();try{await game.goto(origin+'/game.html');await game.waitForFunction(()=>window.savedGameReport||window.savedGameFailure,undefined,{timeout:60_000});const result=await game.evaluate(()=>({report:window.savedGameReport,failure:window.savedGameFailure}));assert.equal(result.failure,undefined);return result.report;}finally{await game.close();}}
+        }));continue;
+      }
       if (tileMode) {
         reports.push(
           await smokeNativeTiles({
