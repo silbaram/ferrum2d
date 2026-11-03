@@ -78,6 +78,8 @@ generated pair의 기존 format과 public engine API·Wasm ABI를 유지하며 n
 `placementAsepriteTrim.ts`는 bounded sRGB RGBA8 trim 입력을 원본 크기·offset에 복원한다. 원본 JSON과 packed PNG의 hash로 identity를 유지하고 게임용 PNG/UV만 파생한다.
 native `aseprite_trim.rs`는 같은 배치·pixels를 독립 검증한다. Aseprite만 optional sourcePng/`.source.png`를 허용하고 `sprite_assets`가 파일·예산·protocol·정리 수명을 함께 관리한다.
 `png_layout.rs`는 자체 도트/trim의 PNG chunk·CRC·sRGB·완전한 IEND 경계를 공유한다. 기존 untrim·tile 계약과 Rust core/렌더 ABI는 유지한다.
+`placementAsepriteSlices.ts`는 불변 원본 JSON의 bounded slice/key/pivot/center를 해석하고 기존 `updateComponents`로 선택 sprite의 origin만 바꾼다.
+원본 timeline key는 명시적으로 선택하며 일반 재가져오기와 분리한다. metadata는 기존 JSON으로 저장하고 새 runtime/schema/native catalog 필드를 추가하지 않는다.
 `placementTileDependencies.ts`는 명시적으로 고른 외부 TSJ를 상대 source의 유일한 basename과 연결한다. 자동 경로 읽기 없이 map/TSJ 합계 1 MiB를 제한하고 원본과 변환 입력을 분리한다.
 `placementTileSelection.ts`는 bounded 원본 metadata에서 선택 목록과 명시적 단일 PNG projection을 만든다. 원본 bytes와 선택 범위 evidence는 별도로 보존한다.
 `placementTileAssets.ts`는 기존 public starter-scenes importer로 선택 tileset을 검증하고 frame provider/placement patch/export를 만든다.

@@ -651,6 +651,24 @@ optional `revisions[].sourcePng: {sha256,width,height}`는 원본 PNG를 가리�
 새 세션은 도트 JSON/PNG와 normal metadata/PNG를 각각 읽고 source SHA-256·frame ID/rect가 모두 일치해야 pair를 활성화한다.
 color texture는 pixel store와 공유하고 normal texture만 normal store가 소유한다. 저장된 pair와 같은 설정의 재생성은 업로드된 normal을 빌려 중복 등록/해제하지 않는다.
 
+### 영역(slice) 메타데이터와 명시적 기준점 적용
+
+`Inspect` 후 Preview의 **Slice and Origin / 영역·기준점**을 펼치면 이름 있는 slice와 원본 key frame을 선택할 수 있다.
+미리보기에는 bounds, pivot 십자와 9-slice center 점선을 표시한다. 선택과 미리보기는 씬을 바꾸지 않는다.
+프레임에 자산을 적용한 뒤 **Apply Origin / 기준점 적용**을 누르면 선택한 unlocked sprite의 `visual.originX/Y`만 바뀐다.
+기존 크기·UV·위치·회전·scale·collider/body·normal·animation 설정은 보존하며 한 번의 Undo/Redo로 되돌린다.
+일반 Apply Frame/Reimport/Animation migration은 현재 origin을 계속 보존한다. 새 원본의 pivot을 쓰려면 다시 명시적으로 적용한다.
+
+- `meta.slices` 최대64개, keys 합계256개. 이름은 고유한 비어 있지 않은 최대256자 문자열이고 key.frame은0..65535의 중복 없는 오름차순 정수다. 원본에 keys가 없는 slice도 표시한다.
+- [Aseprite 좌표 규칙](https://www.aseprite.org/api/slice)에 따라 bounds는 원본 canvas 기준, pivot/center는 bounds 좌상단 기준이다. 좌표는 정수이며 bounds x/y·pivot x/y는-4096..4096, w/h는1..4096이다. center는 bounds 안의 양수 사각형이어야 한다.
+- 적용 origin은 `(bounds.x + pivot.x) / frameCanvasWidth`, `(bounds.y + pivot.y) / frameCanvasHeight`다. trim 복원 canvas에도 같은 규칙을 쓴다. 적용할 bounds가 canvas 밖이면 거절한다. pivot 자체는 canvas 밖의 유한 origin도 허용한다.
+- [원본 exporter의 key.frame](https://github.com/aseprite/aseprite/blob/main/src/app/doc_exporter.cpp)은 원본 timeline 번호다. 내보낸 frame 목록 순서와 같다고 추정하지 않고 직접 고른다. 키 선택은 시간별 pivot 애니메이션을 만들지 않는다.
+- 정적 sprite는 Preview에서 현재 사용 중인 frame을 골라야 한다. animated sprite는 같은 원본 canvas 크기의 알려진 frame들을 사용할 때 하나의 공통 origin을 적용한다. 여러 frame ID가 같은 rect를 공유해도 허용한다.
+- pivot 없는 key와 center는 읽기 전용이다. 잘못되거나 미지원인 slice metadata는 이 기능에서 진단하고 일반 frame/animation import를 막지 않는다. 9-slice 렌더링·자동 resize/crop은 제공하지 않는다.
+
+원본 JSON 안의 slice metadata와 씬의 origin을 기존 자산·씬 저장 경로로 보존하고, 재열기에서 메타데이터를 다시 해석한다.
+선택 중인 slice/key는 임시 UI 상태다. 새 scene schema/native catalog/runtime 필드는 없으며 standalone importer API도 바꾸지 않는다.
+
 ### Aseprite 애니메이션 import와 migration
 
 `Inspect` 후 Preview의 **Aseprite initial animation**과 **Aseprite loop new clips**를 선택하고

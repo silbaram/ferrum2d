@@ -61,7 +61,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | 게임플레이 | 선언형 씬·prefab, actor 이동·경로 탐색, 프레임별 시간·역방향·핑퐁·재생 이벤트, projectile·weapon, Behavior Recipe·FSM 실행 | [Data Scene](docs/engine/data-scene-authoring.md) · [애니메이션](docs/engine/data-scene-presentation.md) · [Native Runtime](docs/engine/data-scene-native-runtime.md) |
 | 물리·충돌 | AABB·원·다각형, raycast·shape cast, CCD, controller·platform, 공간 높이·층 연결 | [물리 기능 맵](docs/development/architecture/physics-engine.md) · [Physics Spec](docs/engine/physics-spec.md) |
 | 입력·오디오 | action binding·context, 키보드·포인터·gamepad, 오디오 정책·공간 오디오 | [입력](docs/engine/input-actions.md) · [Core API](docs/engine/public-api/core.md) |
-| 에셋 | atlas, 뷰어의 trim 스프라이트 복원·원본 보존, 타일맵 가져오기, 병렬 로딩·취소, 선택 KTX2, 모델 캐시·스트리밍·GPU 자원 진단 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
+| 에셋 | atlas, 뷰어의 trim 스프라이트 복원·원본 보존·영역 기준점 적용, 타일맵 가져오기, 병렬 로딩·취소, 선택 KTX2, 모델 캐시·스트리밍·GPU 자원 진단 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
 | 배치·도트 보조 도구 | 프로젝트 씬 탐색, 다중 문서, 드래그 배치·변형·Undo, 레이어, 게임 카메라, 한국어/영문 UI, 도트 캔버스·팔레트·64프레임 편집·노멀 생성, 디스크 에셋 사용처·정리 | [뷰어 사용법](apps/placement-viewer/README.md) |
 | 검증 | spec validation, replay/hash, browser smoke, runtime budget·profiler, package·consumer smoke | [검증 기준](docs/development/quality/smoke-check.md) |
 

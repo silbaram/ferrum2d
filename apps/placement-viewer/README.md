@@ -558,6 +558,13 @@ JSON의 `meta.image` basename과 선택한 PNG 파일명이 같아야 한다. JS
 JSON hash/array frame export, 정수 rect의 비회전 프레임과 trim 복원을 지원한다. frame ID는 확장자까지 원래 이름을 유지한다.
 잘린 sRGB RGBA8 PNG는 `sourceSize`·`spriteSourceSize`의 원본 크기와 offset으로 투명 여백을 복원한다. 모든 프레임은 같은 원본 canvas 크기를 사용한다.
 원본 밖 offset·회전·지원하지 않는 PNG 색 공간·복원 한도 초과는 Inspect에서 진단한다. 기존 객체의 작성한 크기·origin은 유지한다.
+
+Preview의 **영역·기준점 / Slice and Origin**에서 slice와 원본 key frame을 직접 선택하면 영역·pivot·9-slice center를 확인한다.
+**기준점 적용 / Apply Origin**은 같은 자산을 사용하는 선택 객체의 origin만 변경한다. 정적 객체는 현재 frame을 선택하며,
+애니메이션은 같은 원본 canvas 크기의 알려진 frame들에 공통 origin을 적용한다. 크기·UV·배치·normal·clip 설정은 유지하고 단일 Undo/Redo를 제공한다.
+일반 재가져오기는 수동 origin을 보존한다. pivot 없는 key는 읽기 전용이며 9-slice는 metadata 표시만 지원한다.
+원본 key frame은 export 순서로 추정하지 않는다. 자산·씬 저장 후 재열기에서도 원본 metadata와 적용 origin이 유지된다.
+잘못된 slice metadata는 이 기능에서만 진단한다. [좌표·제한 계약](../../docs/engine/data-scene-authoring.md#영역slice-메타데이터와-명시적-기준점-적용)을 따른다.
 frameTags/duration은 명시적 Apply Animation/Reimport Animation에서 native animation으로 변환한다. 일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다.
 normal binding이 있는 대상의 일반 Apply Frame/Reimport도 차단한다. 정적 대상은 Generate Normals/Reimport Normals,
 애니메이션 대상은 Apply Paired/Reimport Paired로 노멀을 함께 교체한다.

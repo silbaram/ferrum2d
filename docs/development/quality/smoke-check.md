@@ -314,6 +314,12 @@ workspace 전환의 native readback은 최대 16 RAF 안에 CSS/DPR와 drawing b
 desktop 단위 검사는 sourcePng의 지원 필드 정규화·불변 재시도, PNG trailing bytes/non-sRGB 거절, 원본 PNG의 정리/백업/복원을 포함한다.
 증거는 `artifacts/aseprite-trim/{browser,native}/verification.json`과 run별 PNG/JSON에 남긴다. CI와 aggregate smoke에 연결한다.
 선택 노멀 생성기 설치 후 `pnpm smoke:aseprite-trim-normals`로 실제 Worker 입력의 복원 frame RGBA·여백과 normal 적용/Undo를 검증한다. 이 추가 gate는 `artifacts/aseprite-trim/normals/`에 기록하며 기본 trim CI는 선택 생성기를 요구하지 않는다.
+
+`pnpm test:aseprite-slices`는 명시적 원본 key frame, bounds-local pivot/center, metadata 상한/오류, 정적/animated origin patch, 같은 packed rect를 공유하는 frame, 선택/잠금/UV 검사와 다른 속성 보존을 검사한다.
+`pnpm smoke:aseprite-slices`는 2D·HD-2D에서 실제 Preview 선택·명시적 origin 적용·단일 Undo/Redo·일반 재가져오기 origin 보존·KO/EN 전환을 검증한다.
+slice 패널 toggle과 선택 변경·기준점 적용 이벤트를 queue한 뒤 같은 task에서 작업공간을 종료해, 뒤늦은 이벤트에도 일반/Promise 예외가 없고 URL/GL 자원이 정리되는지 확인한다.
+native 분기는 실제 Rust 저장/protocol·재시작·원본 slice JSON/scene origin 보존·trim 재검사와 새 게임의 Playing/UV/visible frames/draw 예산을 확인한다. 종료 시 Blob URL/GL 자원0도 검사한다.
+보고서는 `artifacts/aseprite-slices/browser/verification.json`과 `artifacts/aseprite-slices/native/verification.json`에 기록한다. 기본 CI에 연결하며 선택 normal 생성기는 필요하지 않다. 실제 native GUI IPC·실물 GPU 검증은 포함하지 않는다.
 기존16 MiB·4096·4MP·256frame·8revision/64 MiB 예산을 원본/복원에 각각 적용하며 합계에는 두 PNG를 모두 포함한다. native GUI IPC·실물 GPU/모바일 성능은 이 검증 대상이 아니다.
 
 `pnpm test:aseprite-animation`은 duration GCD/native float32 오차·4개 방향·array/hash 순서,
