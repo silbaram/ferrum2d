@@ -2037,6 +2037,20 @@ Import 진단 단위 검사는 늦은 Problems 초기화를 위한 상태 재조
 
 ### 전체 타일 맵과 native 저장
 
+`pnpm smoke:tile-autotile`는 프레임 이름 규칙의 순서·원본 이웃·8방향·범위/작업량 제한과
+결과 충돌 정책·원본 불변·단일 Undo를 단위 검사한다. 실제 브라우저에서는 Tiled/LDtk 맵 미리보기의 픽셀과
+씬 무변경·오류/설정 변경 시 무효화·KO/EN·적용/Undo/Redo·GID 변경 재가져오기를 검사하고 HD-2D는 명시적으로 거절한다.
+원본에서 미사용인 출력 프레임의 UV/충돌도 검사한다. 설정 변경·종료 후 늦게 완료된 bitmap은 표시하지 않고 해제한다.
+디코딩을 지연시킨 상태에서 연속 클릭해도 요청은 하나이며, 종료 뒤 도착한 파일/입력/버튼 이벤트가 정리된 draft에 접근하지 않는지 검사한다.
+Data Scene의 64/512/2,048 타일에서 실제 Playing·entity/렌더 명령 규모·draw/texture switch·렌더 CPU 시간과
+Rust body raycast 충돌을 함께 측정한다. 작성 미리보기/적용 시간은 브라우저 작업의 전체 경과 시간이며 Rust update CPU 측정이 아니다.
+각 규모에서 미리보기/적용 각각 10초 미만, 렌더 CPU 평균 50ms 미만, draw 1~32·texture switch 8 이하를 검사한다.
+SDK batch 테스트는 2,048개 단일 검증·Undo/Redo·중복/잘못된 prefab/host 거절 시 원복을 확인한다.
+배치 크기 초과·잘못된 배열 같은 초기 입력 오류도 열린 transaction 전체를 취소한다.
+native 분기는 실제 Rust 저장/protocol·재시작에서 규칙·UV·collider·셀 ID/behavior와 원본·fresh game을 확인한다.
+보고서는 `artifacts/tile-autotile/browser/verification.json`, `artifacts/tile-autotile/native/verification.json`이며 CI와 `smoke:check`에 연결된다.
+headless software rendering 기준이며 실제 GUI IPC·실물 GPU/모바일 성능은 별도 검증이다.
+
 `pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에
 Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. 기존 negative upload 검사를 먼저 실행해 캐시로 실패 주입을 건너뛰지 않는다.
 좌표/offset·layer 방향·object mapping·명시적 nonblocking 셀·제외 tileset·lock·provenance 경계를 검사한다.

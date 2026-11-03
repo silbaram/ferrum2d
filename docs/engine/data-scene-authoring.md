@@ -321,6 +321,53 @@ Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기�
   원본 PNG/JSON/TSJ와 이 metadata는 기존 Save Project·Export Assets·새 세션 재열기 경로를 따른다.
   저장 완료 시 새 기준 문서와 깨끗한 viewer를 함께 교체해 add-definition 패치가 중복 적용되지 않는다.
 
+### 작성 시점 오토타일과 맵 미리보기
+
+2D의 **Map Options → Preview Map / 맵 미리보기**는 원본 격자를 계산한 뒤 타일 이미지와 객체 위치를 보여준다.
+주황색 테두리는 충돌 셀이다. 미리보기는 GPU 자산 등록·씬 편집·Undo 기록을 만들지 않으며,
+설정·원본·문서가 바뀌면 이전 이미지를 무효화한다. **Apply Map**으로 결과를 명시적으로 적용한다.
+맵 미리보기 이미지 디코딩은 한 번에 하나만 진행하며 준비 중에는 미리보기 버튼이 비활성화된다.
+준비 중 설정을 바꾸거나 도구를 종료하면 늦게 완성된 이미지는 표시하지 않고 해제한다.
+
+Map Options의 선택적 `autotile`은 레이어 이름별 규칙을 받는다.
+아래 예는 `ground` 레이어에서 위쪽이 빈 타일을 `terrain.1` 프레임으로 바꾼다.
+
+```json
+{
+  "collisionLayers": ["ground"],
+  "autotile": {
+    "ground": {
+      "rules": [
+        { "match": "filled", "neighbors": { "n": "empty" }, "output": "terrain.1" }
+      ],
+      "preserveUnmatched": true,
+      "emptyOutOfBounds": true
+    }
+  }
+}
+```
+
+- `output`: 선택 tileset의 프레임 이름 또는 `null`(빈 셀). source GID가 바뀌어도 프레임 이름으로 다시 대응한다.
+  원본 맵에서 아직 사용하지 않은 타일도 `tileset이름.로컬타일번호`로 참조할 수 있다.
+  원본 importer로 해당 타일의 UV·충돌 metadata를 검증하며 기존 프레임과 규칙 참조의 합계는 256개까지다.
+  개별 프레임 목록이나 원본 catalog를 늘리지 않으며, 이런 맵의 갱신은 **Apply Map**을 사용한다.
+- `match`: 프레임 이름, 이름 목록(1~16개), `any`/`empty`/`filled`. 생략하면 `filled`다.
+- `neighbors`: `n/e/s/w/ne/se/sw/nw`별 같은 조건을 지정한다. 이웃에는 현재 **원본** 타일과 같은 `same`도 허용한다.
+- 원본 격자에서 처음 일치하는 규칙 하나만 적용한다. 결과를 같은 실행의 다음 규칙 입력으로 사용하지 않는다.
+  불일치 셀은 기본적으로 보존하며 `preserveUnmatched:false`면 비운다.
+  맵 밖은 기본적으로 빈 셀이며 `emptyOutOfBounds:false`면 해당 이웃 조건이 일치하지 않는다.
+- 결과 타일의 `blocksMovement`와 기존 `collisionLayers` 정책으로 collider를 생성한다.
+  이미지 규칙을 바꾸면 충돌도 달라질 수 있으므로 미리보기의 충돌 셀 수를 확인한다.
+- 최대 16 레이어·전체 64규칙, 규칙 JSON UTF-8 8KiB, 계산 비용 2,000,000 단위다.
+  Map Options 입력 전체는 UTF-8 16KiB까지 허용한다.
+  비용은 원본 셀 수 × 규칙별 기본 비교 및 이웃/목록 비교량으로 제한한다.
+  기존 2,048 instance 제한과 미지원 타일 속성 거절은 유지하며 전체가 빈 결과도 거절한다.
+- 원본 JSON/PNG/TSJ와 revision identity는 그대로다. 규칙은 기존 `tileMapImport.options.autotile`에 저장하고,
+  결과는 기존 sprite/AABB로 저장한다. 게임은 규칙을 다시 계산하지 않는다.
+  기존 옵션 없는 씬·catalog와 호환되고 schema/ABI 버전을 바꾸지 않는다.
+- 저장·재열기에서 설정을 복원하며 재적용은 같은 셀의 ID·behavior binding과 단일 Undo/Redo를 유지한다.
+  HD-2D 전체 맵 적용, 런타임 지형 편집과 타일 애니메이션은 이번 기능에 포함하지 않는다.
+
 ### 타일 자산의 native 저장·재열기
 
 명시적으로 **Open Project**한 기본 문서에서 **Import Tile Frames → Save Project**를 누르면

@@ -508,7 +508,8 @@ Assets → **Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 �
 LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. Inspect 후 Preview에서 사용 중인 frame을 확인한다.
 
 - **Register**: 문서 세션 catalog/GPU와 Assets 목록에 등록한다. 씬은 바꾸지 않는다.
-- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
+- **Preview Map**: **Source → Map Options**에서 전체 맵과 충돌 셀을 미리 본다. 씬과 Undo 기록은 바뀌지 않는다.
+- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑·오토타일 규칙을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
 - **Apply Frame**: 선택한 unlocked sprite의 texture/UV를 한 Undo로 교체한다.
 - **Reimport**: 같은 포맷·논리 이름의 이전 revision을 참조하는 활성 fragment를 frame 이름으로 대응시켜 한 Undo로 갱신한다.
 - **Save Project**: desktop Open Project 기본 문서의 원본·catalog를 저장하고 실제 파일 재검증 후 씬을 저장한다. 재열기 시 프레임을 원본에서 복원한다.
@@ -520,6 +521,11 @@ normal binding, animated/legacy sprite, 잠긴 대상, 누락/모호한 frame은
 Apply Map은 타일과 매핑 객체의 합계 2,048개 이하 범위에서 선택 tileset 한 장을 지원한다. 제외 tileset 타일이 있으면 적용을 거절한다. 충돌은 명시한 layer/blocksMovement만, entity/object는 objectPrefabs로 매핑한 기존 prefab만 사용한다. 프레임 Reimport는 배치 구조를 바꾸지 않으므로 셀/객체 변경은 Apply Map을 다시 누른다.
 같은 grid 셀의 ID와 명시적 instance 동작 연결은 유지한다. 구형 map은 원본 revision catalog가 필요하며, 보존할 수 없는 추가 사용자 속성이 있으면 적용 전에 진단한다.
 [전체 맵 옵션과 미지원 범위](../../docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
+
+선택적 `autotile`은 원본 이웃을 기준으로 가장 먼저 일치하는 규칙의 프레임을 배치한다.
+아직 맵에 쓰지 않은 tileset 타일도 이름으로 지정할 수 있고, 결과 타일의 충돌 정보를 적용한다.
+규칙은 씬에 함께 저장·복원하며 게임에서는 이미 계산한 sprite/AABB를 사용한다.
+[오토타일 JSON 예시와 제한](../../docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기)을 참고한다.
 
 지원 범위는 **원본 tileset 1..8개, import당 선택 tileset 1개/PNG 1개**, finite orthogonal Tiled의 embedded/외부 TSJ tileset·비압축 data 배열,
 LDtk embedded level의 Tiles/AutoLayer·entity metadata다. 외부 TSX·LDtk external level, IntGrid, flip/회전은 지원하지 않는다. 다중 tileset 선택에서 Tiled group layer는 먼저 평탄화한다.

@@ -84,6 +84,15 @@ native `aseprite_trim.rs`는 같은 배치·pixels를 독립 검증한다. Asepr
 `placementTileSelection.ts`는 bounded 원본 metadata에서 선택 목록과 명시적 단일 PNG projection을 만든다. 원본 bytes와 선택 범위 evidence는 별도로 보존한다.
 `placementTileAssets.ts`는 기존 public starter-scenes importer로 선택 tileset을 검증하고 frame provider/placement patch/export를 만든다.
 `placementTileTool.ts`는 문서별 UI/취소/자원 수명을 소유한다. map/grid·LDtk entity는 report/export 데이터이며 TS simulation state로 설치하지 않는다.
+`placementTileRules.ts`는 bounded frame-name 규칙을 기존 public `applyTileRules`에 전달해 원본 격자에서 한 번 베이크한다.
+`placementTileRulePalette.ts`는 규칙이 참조한 미사용 타일을 기존 Tiled/LDtk importer로 검증한다. 이 계산용 palette는 원본·catalog identity를 바꾸지 않는다.
+자산별 마지막 설정만 약한 캐시에 보관하고 immutable 원본과 runtime 상태는 바꾸지 않는다.
+`placementTileMap.ts`가 결과를 기존 sprite/static AABB·단일 placement patch로 변환하며 설정은 기존 provenance options에 보존한다.
+평면 맵의 연속 추가는 `ScenePlacementViewer.addInstances`로 묶어 파생 상태와 history snapshot의 반복 생성을 피한다.
+연속 삭제도 기존 `removeInstances`로 처리하며, 오류 rollback과 잠금·단일 Undo 계약은 유지한다.
+가져오기 도구 context는 생성 시 draft를 캡처하고 document를 읽을 때만 병합한다. Catalog의 scope 조회가 매번 전체 씬을 검증하지 않으며 비동기 저장의 snapshot은 유지한다.
+`placementTileMapPreview.ts`는 생성 패치의 타일과 객체 위치를 Canvas2D로만 표시하고 bitmap 수명·설정 무효화를 처리한다.
+씬·native catalog·Rust 렌더 ABI는 확장하지 않는다.
 미설치 참조의 Save를 막고 app handoff에 `tileImports` 근거를 연결한다.
 `placementTileProject.ts`는 Open Project 기본 문서의 원본을 preload하고 source identity/hash를 재검증한다.
 native `tile_assets.rs`는 원본 식별 정보와 선택형 tileset key·TSJ dependency source/name/hash만 저장하며 변환 frame/map은 frontend public importer가 다시 계산한다.
