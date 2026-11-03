@@ -2239,3 +2239,23 @@ WebGPU는 소프트웨어 offscreen target이므로 실물 GPU 성능·native ca
 
 단위 검사는 입력 한도·중복/잘못된 RGB·불변 복사·base-only pass·기존 command staging 무변경,
 WebGPU 독립 uniform/동일 설정 재사용/실패 원자성·해제, optional shader의 기본 준비 제외를 확인한다.
+
+## 도트 후처리
+
+`pnpm smoke:pixel-postprocess`는 Wasm/SDK 빌드 후 Game Spec JSON 스키마와 resolver의 입력 범위·순서 동등성을 검사하고,
+WebGL2와 소프트웨어 WebGPU의 실제 shader를 DPR 1/2에서 실행한다.
+RGB 양자화·Bayer 임계값·홀수 행 감쇠를 CPU 기대값과 오차 2 이내로 비교하고 alpha 전후 일치,
+fade 전/후 순서와 반투명·투명 픽셀의 alpha 보존, 잘못된 설정 거절과 이전 출력 유지, WebGPU 미지원 효과 진단을 검사한다.
+가상 31×23 픽셀의 확대 블록·홀수 행 원점·resize·backend/DPR 간 출력을 비교한다. GL linear-sRGB도 별도 실행하며
+양쪽 virtual/nonvirtual 경로의 device loss 2회·off baseline·destroy 자원 0을 확인한다.
+반복 설정/프레임 중 실제 createTexture/createBuffer/createProgram 또는 createRenderPipeline 호출이 0인지 검사한다.
+단위 검사는 숫자 범위·불변 복사·순서·실패한 resize의 이전 자원 보존·선택 자원 해제를 확인한다.
+선택 효과의 uniform 할당 실패 시 생성 중인 pipeline을 해제하고 기존 fade를 유지하며, 이후 재시도가 성공하는지도 검사한다.
+직접 pass/shorthand의 알 수 없는 필드, 누락 kind, 잘못된 enabled, 비활성 내부 설정과 color null은 실제 Game Spec resolver까지 검사한다.
+기본 fade `{}`의 schema 호환도 유지해야 한다. 두 pixelArt pass의 순서·통계와 잘못된 형태의 설정 거절 후 화면 보존을 검사한다.
+반투명 RGB oracle은 이상적인 PNG 색이 아니라 실제 SRGB8_ALPHA8 입력 타깃을 읽어 계산한다.
+
+실제 Rust Data Scene은 Playing·1,024 entities/commands·60프레임·draw=2·texture switch=0·후처리 pass=1·
+CPU frame p95<250ms와 객체 색상 픽셀을 함께 assert한다. presentation은 authored postProcess 통계를 덮어쓰지 않아야 한다.
+보고서는 `artifacts/pixel-postprocess/run-*/verification.json`과 최신 `verification.json`이다. CI와 aggregate smoke에 연결한다.
+이 검증은 실제 GPU 명령의 software/offscreen 실행이며 실물 GPU 성능·native canvas compositor를 보장하지 않는다.

@@ -13,7 +13,7 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 | Core runtime | Rust/Wasm frame loop, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot/replay처럼 1.0 제품 계약 후보인 표면 |
 | Authoring primitive | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM, effect registry처럼 장르 adapter가 낮은 빈도로 조합하는 데이터 계약 |
 | Starter scene/template | Shooter/Breakout/Platformer built-in scene과 create-game template처럼 검증된 시작점. 장르 전체를 범용으로 자동 제작하는 engine mode는 아님 |
-| Optional/lab/helper | WebGPU, WebGPU fade-only post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
+| Optional/lab/helper | WebGPU, WebGPU fade/pixelArt post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
 | Compatibility/quality infrastructure | deprecated shim, smoke/report/runtime budget/package QA/Pages build처럼 제품 기능과 분리해 관리하는 보조 표면 |
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
@@ -816,7 +816,20 @@ main/offscreen 비용을 frame 통계에 합산한다. 공개 API와 제약은 [
 adapter/device의 pipeline 생성·GPU 오류 확인까지 canvas context 연결 전에 끝낸다.
 이 단계의 실패는 같은 canvas의 WebGL2로 fallback한다. context 연결 뒤 configure/resize 오류는
 다른 API로 교체할 수 없으므로 전파하며 새 canvas가 필요하다. debug/postprocess pass도 context getter를
-draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는 fade만 지원한다.
+draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는 fade와 pixelArt를 지원한다.
+
+`cameraPostProcessing/postProcess.ts`가 pixelArt의 채널 단계 수·디더·스캔라인을 검증한다.
+`pixelPostProcessShaders.ts`는 두 shader 언어에서 같은 4×4 Bayer 표와 좌상단 행 규칙을 사용한다.
+GL pixelArt는 전용 highp sampler/수치와 texelFetch를 사용하며 기존 fullscreen 효과의 mediump 계산을 유지한다.
+linear-sRGB에서만 straight sRGB 변환 후 효과를 계산하고 작업 공간으로 복귀한다.
+공용 fade는 색상 강도만 혼합한다. WebGPU의 alpha blend는 destination coverage를 유지하여 GL fullscreen 결과와 맞춘다.
+`webgpuPixelPostProcess.ts`는 활성 시에만 pipeline/uniform과 copy texture를 소유한다. 현재 frame target의 COPY_SRC에서
+별도 COPY_DST/TEXTURE_BINDING으로 복사한 뒤 원 타깃에 그려 read/write alias를 피한다. pass별 submit으로 uniform 재사용 순서를 보장한다.
+resize는 새 texture와 group 성공 후 교체하고, off/destroy는 선택 자원을 해제한다. 기존 renderer snapshot으로 복구한다.
+pixelPerfect는 가상 타깃에서 후처리한 뒤 nearest 확대한다. 확대는 authored postprocess 통계를 덮어쓰지 않고
+drawCalls/presentationPassCount에만 반영한다. Rust/15-float ABI·Data Scene 저장 계약은 변경하지 않는다.
+공용 후처리 resolver는 직접 pass·shorthand·config의 허용 필드와 enabled 타입을 검증하고 비활성 stack도 검증한다.
+Game Spec schema config는 식별 필드를 요구해 기본 fade `{}`와 oneOf에서 중복 일치하지 않는다.
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
 

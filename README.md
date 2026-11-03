@@ -56,7 +56,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | --- | --- | --- |
 | 런타임 | Rust/Wasm 업데이트, 엔티티·씬, bulk command buffer, snapshot·저장/복원 | [Core API](docs/engine/public-api/core.md) |
 | 2D 렌더링 | WebGL2 sprite batch, atlas·tilemap, 레이어·깊이 정렬, 카메라, bitmap text, render texture | [Public API](docs/engine/public-api.md) |
-| 픽셀 표현·조명 | 평면 2D 고정 해상도·정수 확대·레터박스·선택형 화면 픽셀 스냅, PNG 아틀라스 edge 복제, texture별 RGB 팔레트 스왑, sprite normal map, 점광원·그림자·후처리 | [2D 표시 설정](docs/engine/data-scene-authoring.md) · [아틀라스 보호](docs/engine/public-api/labs.md#png-아틀라스의-가장자리-보호) · [팔레트 스왑](docs/engine/public-api/labs.md#평면-2d-팔레트-스왑) · [표현 효과](docs/engine/data-scene-presentation.md) |
+| 픽셀 표현·조명 | 평면 2D 고정 해상도·정수 확대·레터박스·선택형 화면 픽셀 스냅, PNG 아틀라스 edge 복제, texture별 RGB 팔레트 스왑, 도트 양자화·디더·스캔라인, sprite normal map, 점광원·그림자·후처리 | [2D 표시 설정](docs/engine/data-scene-authoring.md) · [아틀라스 보호](docs/engine/public-api/labs.md#png-아틀라스의-가장자리-보호) · [팔레트 스왑](docs/engine/public-api/labs.md#평면-2d-팔레트-스왑) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) · [표현 효과](docs/engine/data-scene-presentation.md) |
 | HD-2D | 정적 GLB/glTF, 지형·경사·높이·층, billboard, 공간 카메라·picking, 조명·그림자·안개·DOF, 선택 WebGPU 경로 | [공간 씬과 지원 범위](docs/engine/data-scene-spatial.md) |
 | 게임플레이 | 선언형 씬·prefab, actor 이동·경로 탐색, 프레임별 시간·역방향·핑퐁·재생 이벤트, projectile·weapon, Behavior Recipe·FSM 실행 | [Data Scene](docs/engine/data-scene-authoring.md) · [애니메이션](docs/engine/data-scene-presentation.md) · [Native Runtime](docs/engine/data-scene-native-runtime.md) |
 | 물리·충돌 | AABB·원·다각형, raycast·shape cast, CCD, controller·platform, 공간 높이·층 연결 | [물리 기능 맵](docs/development/architecture/physics-engine.md) · [Physics Spec](docs/engine/physics-spec.md) |

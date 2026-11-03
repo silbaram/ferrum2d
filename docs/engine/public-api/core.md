@@ -76,13 +76,72 @@ const presentation = runtime.renderer.pixelPerfectPresentation?.();
 custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를 함께 제공해야 한다.
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
 `spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
-WebGPU의 지원 후처리는 기존 fade 범위이며 `linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+WebGPU의 지원 후처리는 `fade`와 아래 `pixelArt`이며 `linear-srgb` 요청은 WebGL2 fallback을 유지한다.
 
 최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
 가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
 픽셀 퍼펙트 모드의 최종 출력 alpha는 두 backend 모두 1이다. 활성 프레임 없이 `renderPostProcess`를 반복 호출해도 출력·fade·비용이 누적되지 않는다.
 이때 인자로 전달한 새 후처리 설정은 다음 프레임에 사용한다.
 WebGL2에서 후처리/색 관리가 필요하면 별도 가상 출력 타깃을 사용한다. 해제/재설정은 기존 타깃을 재사용하거나 정리한다.
+
+## 도트 후처리
+
+`postProcess`의 `pixelArt` 패스는 WebGL2/WebGPU에서 RGB 채널별 포스터라이즈·4×4 Bayer 디더링·
+정수 행 스캔라인을 적용한다. 확대 전에 렌더 타깃의 좌상단 픽셀을 기준으로 계산하므로
+`pixelPerfect`를 함께 쓰면 CSS 크기·DPR이 변해도 같은 가상 픽셀 패턴을 유지한다.
+픽셀 퍼펙트가 꺼져 있으면 물리 렌더 픽셀 기준이며 DPR에 따라 패턴의 CSS 크기가 달라진다.
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  pixelPerfect: { width: 320, height: 180 },
+  postProcess: {
+    kind: "pixelArt",
+    levels: 8,
+    dither: 0.5,
+    scanlineIntensity: 0.15,
+  },
+});
+// 설정 변경은 프레임 사이에 수행한다. provider를 사용하면 provider의 반환값을 변경한다.
+runtime.renderer.setPostProcess?.(false);
+```
+
+| 설정 | 범위 · 기본값 |
+| --- | --- |
+| `levels` | 채널별 단계 수, 정수 2~256 · 기본 8 |
+| `dither` | 양자화 임계값에 더하는 ordered dither 강도, 0~1 · 기본 0 |
+| `scanlineIntensity` | 위에서 센 홀수 행의 RGB 감쇠, 0~1 · 기본 0 |
+
+`{ pixelArt: { ... } }` shorthand와 기존 순서 있는 pass 배열을 지원한다. shorthand는 다른 효과 뒤에 적용한다.
+`[{ kind: "pixelArt", levels: 4 }, { opacity: 0.25 }]`는 양자화 후 fade를 적용하며, 순서를 바꾸면 결과도 달라진다.
+잘못된 수치·정수가 아닌 단계 수는 오류다. 직접 pass에는 `kind`와 해당 효과의 필드만, shorthand에는 해당 효과의 필드만 허용한다.
+예외적으로 기존 `fade` shorthand의 `kind: "fade"`도 허용한다. 알 수 없는 필드·`kind: null`·`color: null`은 오류이고,
+`enabled`는 boolean만 받는다. `enabled: false`도 내부 설정을 검증한 후 비활성화한다.
+`{ levels: 4 }`처럼 도트 설정에서 `kind`를 빠뜨리면 오류이며 검정 fade로 대체하지 않는다.
+기존 기본 fade `{}`는 계속 유효하다. `false`·`undefined`는 전체 후처리를 해제하고,
+`pixelArt: false`는 해당 shorthand만 해제한다. `levels: 256`도 명시적인 8-bit 양자화 패스이며 해제와 다르다.
+
+효과는 렌더된 RGB에 적용하고 pass 입력의 alpha를 보존한다. 원본 PNG·팔레트·노멀맵은 수정하지 않는다.
+`fade`의 opacity도 색상 혼합 강도이며 장면의 alpha를 늘리지 않는다. `fade`와 `pixelArt`를 어느 순서로 조합해도
+WebGL2·WebGPU 모두 입력의 투명도를 유지한다.
+`linear-srgb`에서는 premultiplied linear RGB를 straight sRGB로 변환해 양자화·감쇠한 뒤 원래 작업 공간으로 복귀한다.
+따라서 이 패스의 단계/디더는 표시 색상 기준이며 기존 bloom 등 linear 연산과 구분한다.
+계산 입력은 실제 8-bit 프레임버퍼다. 특히 반투명·여러 pass에서는 중간 저장 반올림이 양자화 임계값을 넘을 수 있으므로,
+같은 효과를 두 번 적용한 결과가 한 번의 결과와 같다고 보장하지 않는다.
+픽셀 퍼펙트의 최종 확대 출력은 기존처럼 불투명하다. 레터박스는 효과 적용 대상이 아니다.
+
+패스 하나당 `postProcessPassCount: 1`, `postProcessDrawCalls: 1`이며 최종 확대는 별도 `presentationPassCount`다.
+WebGPU는 타깃 복사를 위한 scratch texture 하나를 재사용한다. 같은 크기의 반복 설정/프레임은 texture·buffer·pipeline을
+다시 만들지 않는다. 해제하면 선택적 자원을 해제하며 장치 복구는 마지막 성공 설정을 다시 적용한다.
+WebGL2는 기존 fullscreen 타깃을 재사용한다. 원본을 읽는 WebGPU copy 비용은 draw 횟수에 포함되지 않는다.
+
+WebGPU는 `fade`·`pixelArt`만 지원한다. 기존 `bloom`·곡면 `crt`·`vignette`·`glitch`는
+계속 WebGL2 전용이며 지원하지 않는 활성 패스를 섞으면 설정 전체를 거절한다.
+이 API는 게임 코드의 runtime 설정이며 Data Scene 저장 필드나 에디터 UI를 추가하지 않는다.
+Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므로 JSON 스키마에서 선택적 `pixelArt`를 허용한다.
+기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
+명시적 타입 `PixelArtPostProcessPassInput`, `ResolvedPixelArtPostProcessPass`와 resolver는 `@ferrum2d/ferrum-web/authoring`에서 제공한다.
 
 ## Runtime 생성
 
@@ -404,7 +463,7 @@ RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 
 | linear 이미지/수치 데이터 | `linear`/`none`. RGB 전송함수 변환을 생략한다. data 이미지의 브라우저 색 보정도 끈다. |
 | 숫자 색상 | sprite command/tint, material, clear, light, shadow, fade/vignette, debug RGB는 **linear 값**이다. alpha는 선형 coverage 값이다. |
 | 중간 target/RenderTexture | `SRGB8_ALPHA8`에 저장한다. GPU가 저장·샘플·blend 경계의 변환을 담당하므로 계산은 linear이며 어두운 색의 8-bit 정밀도를 유지한다. |
-| 후처리 | linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. |
+| 후처리 | 기본적으로 linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. `pixelArt`는 표시용 sRGB로 변환해 양자화한 뒤 linear로 복귀한다. |
 | 화면 | 마지막 fullscreen pass에서 sRGB로 변환한다. 투명 canvas는 linear premultiplied RGB를 풀어서 변환한 뒤 sRGB에서 다시 premultiply한다. |
 
 `renderer.loadTexture(id, url, { colorSpace })`, raw texture 반환형인
