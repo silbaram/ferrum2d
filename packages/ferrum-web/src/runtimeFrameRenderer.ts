@@ -13,11 +13,9 @@ import type {
   FerrumRuntimeAnimationTimeline,
   FerrumRuntimeCutscene,
   FerrumRuntimeLevelStreaming,
-  PostProcessProvider,
-  SpriteMaterialProvider,
   UiOverlayStateProvider,
 } from "./createFerrumRuntime.js";
-import type { RendererStats } from "./renderer.js";
+import { emptyRendererStats, type RendererStats } from "./renderer.js";
 import type { RuntimeFrameRenderTarget } from "./runtimeRenderer.js";
 
 export interface RuntimeFrameRendererOptions {
@@ -67,25 +65,30 @@ export class RuntimeFrameRenderer {
       throw new Error("Renderer does not support physics debug lines");
     const renderStartMs = this.options.needsRuntimeFrame ? this.now() : 0;
     this.rendererFrameId++;
-    let frame = this.applyDynamicFrameProviders(renderFrame);
+    const ready = renderer.isRenderReady?.() !== false;
+    let frame = ready ? this.applyDynamicFrameProviders(renderFrame) : undefined;
 
     let rendererStats: RendererStats;
-    let frameSucceeded = false;
-    this.options.renderer.beginGpuTiming?.();
-    try {
-      this.options.renderer.render();
-      rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
-      if (debugLines !== undefined && renderDebugLines !== undefined) {
-        const physicsDebugLines = this.options.physicsDebugLineComposer?.(debugLines) ?? debugLines;
-        rendererStats = renderDebugLines.call(renderer, physicsDebugLines, {
-          x: renderFrame.cameraX,
-          y: renderFrame.cameraY,
-        });
+    if (ready) {
+      let frameSucceeded = false;
+      renderer.beginGpuTiming?.();
+      try {
+        renderer.render();
+        rendererStats = renderer.renderCommands(renderFrame.renderCommandBuffer);
+        if (debugLines !== undefined && renderDebugLines !== undefined) {
+          const physicsDebugLines = this.options.physicsDebugLineComposer?.(debugLines) ?? debugLines;
+          rendererStats = renderDebugLines.call(renderer, physicsDebugLines, {
+            x: renderFrame.cameraX,
+            y: renderFrame.cameraY,
+          });
+        }
+        rendererStats = renderer.renderPostProcess?.() ?? rendererStats;
+        frameSucceeded = true;
+      } finally {
+        renderer.endGpuTiming?.(!frameSucceeded);
       }
-      rendererStats = this.options.renderer.renderPostProcess?.() ?? rendererStats;
-      frameSucceeded = true;
-    } finally {
-      this.options.renderer.endGpuTiming?.(!frameSucceeded);
+    } else {
+      rendererStats = emptyRendererStats();
     }
     if (!this.options.needsRuntimeFrame) {
       return;
@@ -108,41 +111,19 @@ export class RuntimeFrameRenderer {
     }
     if (typeof this.options.spriteMaterial === "function") {
       const spriteMaterial = this.options.spriteMaterial(frame);
-      if (this.shouldApplySpriteMaterial(spriteMaterial)) {
+      if (!isPrimitiveDynamicProviderValue(spriteMaterial) || this.lastPrimitiveSpriteMaterialProviderValue !== spriteMaterial) {
         this.options.renderer.setSpriteMaterial?.(spriteMaterial);
+        this.lastPrimitiveSpriteMaterialProviderValue = isPrimitiveDynamicProviderValue(spriteMaterial) ? spriteMaterial : UNSET_PROVIDER_VALUE;
       }
     }
     if (typeof this.options.postProcess === "function") {
       const postProcess = this.options.postProcess(frame);
-      if (this.shouldApplyPostProcess(postProcess)) {
+      if (!isPrimitiveDynamicProviderValue(postProcess) || this.lastPrimitivePostProcessProviderValue !== postProcess) {
         this.options.renderer.setPostProcess?.(postProcess);
+        this.lastPrimitivePostProcessProviderValue = isPrimitiveDynamicProviderValue(postProcess) ? postProcess : UNSET_PROVIDER_VALUE;
       }
     }
     return frame;
-  }
-
-  private shouldApplySpriteMaterial(value: ReturnType<SpriteMaterialProvider>): boolean {
-    if (!isPrimitiveDynamicProviderValue(value)) {
-      this.lastPrimitiveSpriteMaterialProviderValue = UNSET_PROVIDER_VALUE;
-      return true;
-    }
-    if (this.lastPrimitiveSpriteMaterialProviderValue === value) {
-      return false;
-    }
-    this.lastPrimitiveSpriteMaterialProviderValue = value;
-    return true;
-  }
-
-  private shouldApplyPostProcess(value: ReturnType<PostProcessProvider>): boolean {
-    if (!isPrimitiveDynamicProviderValue(value)) {
-      this.lastPrimitivePostProcessProviderValue = UNSET_PROVIDER_VALUE;
-      return true;
-    }
-    if (this.lastPrimitivePostProcessProviderValue === value) {
-      return false;
-    }
-    this.lastPrimitivePostProcessProviderValue = value;
-    return true;
   }
 
   private publishRuntimeFrame(frame: FrameState, rendererStats: RendererStats, renderTimeMs: number, renderAtMs: number): void {

@@ -1,4 +1,7 @@
 import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
+import { WebGpuSpritePalette } from "./webgpuSpritePalette.js";
+import { SPRITE_PALETTE_WGSL } from "./spritePaletteShaders.js";
+import type { ResolvedSpritePalettes } from "./spritePalette.js";
 import { webGpuResources } from "./webgpuResources.js";
 import {
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -32,12 +35,13 @@ export class WebGpuSpritePass {
   private materialStaging = new Float32Array(0);
   private readonly spriteRangeScratch: WebGpuSpriteRange[] = [];
   private readonly normalRangeScratch: (WebGpuSpriteRange & {normalTextureId:number})[] = [];
+  private palette?: { resources:WebGpuSpritePalette; alpha:GPURenderPipeline; additive:GPURenderPipeline };
 
   constructor(
     private readonly device: GPUDevice,
     private readonly format: GPUTextureFormat,
-    uniformBindGroupLayout: GPUBindGroupLayout,
-    textureBindGroupLayout: GPUBindGroupLayout,
+    private readonly uniformBindGroupLayout: GPUBindGroupLayout,
+    private readonly textureBindGroupLayout: GPUBindGroupLayout,
     private readonly textureStore: WebGpuTextureStore,
     private readonly resolutionBindGroup: GPUBindGroup,
     private readonly normalMode=false,
@@ -51,6 +55,33 @@ export class WebGpuSpritePass {
     });
     this.spritePipeline = this.createSpritePipeline("alpha");
     this.additiveSpritePipeline = normalMode?this.spritePipeline:this.createSpritePipeline("additive");
+  }
+
+  configurePalettes(palettes:ResolvedSpritePalettes|undefined):void {
+    if(this.normalMode) return;
+    if(!palettes) { this.releasePalette(); return; }
+    if(this.palette) { this.palette.resources.configure(palettes); return; }
+    const resources=new WebGpuSpritePalette(this.device);
+    const pipelines:GPURenderPipeline[]=[];
+    try {
+      resources.configure(palettes);
+      const layout=this.device.createPipelineLayout({bindGroupLayouts:[this.uniformBindGroupLayout,this.textureBindGroupLayout,resources.layout]});
+      const alpha=this.createSpritePipeline("alpha",layout);pipelines.push(alpha);
+      const additive=this.createSpritePipeline("additive",layout);pipelines.push(additive);
+      this.palette={resources,alpha,additive};
+    } catch(error) { resources.destroy(); for(const pipeline of pipelines) webGpuResources(this.device).releasePipeline(pipeline); throw error; }
+  }
+
+  validatePalettes(commands:RenderCommandBufferView):void {
+    if(this.palette&&commands.spatial) throw new Error("paletteSwap currently supports flat 2D sprite commands only.");
+  }
+
+  private releasePalette():void {
+    if(!this.palette) return;
+    this.palette.resources.destroy();
+    webGpuResources(this.device).releasePipeline(this.palette.alpha);
+    webGpuResources(this.device).releasePipeline(this.palette.additive);
+    this.palette=undefined;
   }
 
   draw(
@@ -77,10 +108,13 @@ export class WebGpuSpritePass {
     let drawCalls = 0;
     for (let passIndex = 0; passIndex < spriteMaterialPasses.length; passIndex += 1) {
       const materialPass = spriteMaterialPasses[passIndex];
-      pass.setPipeline(this.spritePipelineForBlendMode(materialPass.blendMode));
+      if(!this.palette) pass.setPipeline(this.spritePipelineForBlendMode(materialPass.blendMode));
       pass.setBindGroup(0, this.resolutionBindGroup);
       const passByteOffset = passIndex * commandBytes;
       for (const range of (normalRanges&&materialPass.kind==="base"?normalRanges:ranges)) {
+        const palette=materialPass.kind==="base"?this.palette?.resources.group(range.textureId):undefined;
+        if(this.palette) pass.setPipeline(palette?(materialPass.blendMode==="additive"?this.palette.additive:this.palette.alpha):this.spritePipelineForBlendMode(materialPass.blendMode));
+        if(palette) pass.setBindGroup(2,palette);
         drawCalls += this.drawRange(pass, range, passByteOffset,"normalTextureId" in range?range.normalTextureId as number:SPRITE_NORMAL_NONE);
       }
     }
@@ -88,13 +122,14 @@ export class WebGpuSpritePass {
   }
 
   destroy(): void {
+    this.releasePalette();
     webGpuResources(this.device).destroy(this.spriteInstanceBuffer);
     this.materialStaging = new Float32Array(0);
     this.spriteRangeScratch.length = 0;
     this.spriteInstanceCapacityBytes = 0;
   }
 
-  private createSpritePipeline(blendMode: SpriteMaterialBlendMode): GPURenderPipeline {
+  private createSpritePipeline(blendMode: SpriteMaterialBlendMode, paletteLayout?:GPUPipelineLayout): GPURenderPipeline {
     const module = this.device.createShaderModule({
       code: `
         struct Resolution {
@@ -107,6 +142,7 @@ export class WebGpuSpritePass {
         @group(1) @binding(0) var spriteSampler: sampler;
         @group(1) @binding(1) var spriteTexture: texture_2d<f32>;
         ${this.normalMode?"@group(2) @binding(0) var normalSampler:sampler; @group(2) @binding(1) var normalTexture:texture_2d<f32>;":""}
+        ${paletteLayout?SPRITE_PALETTE_WGSL:""}
 
         struct VertexInput {
           @location(0) rect: vec4f,
@@ -187,14 +223,14 @@ export class WebGpuSpritePass {
             if ((u32(input.flags) & 8u) != 0u && dot(q, q) > 1.0) { discard; }
             return input.color;
           }
-          return sampled * input.color;
+          return ${paletteLayout?"paletteColor(sampled)":"sampled"} * input.color;
         }`}
 
       `,
     });
 
     return webGpuResources(this.device).createRenderPipeline({
-      layout: this.spritePipelineLayout,
+      layout: paletteLayout??this.spritePipelineLayout,
       vertex: {
         module,
         entryPoint: "vs_main",

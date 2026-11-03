@@ -19,6 +19,9 @@ import {
   test,
 } from "./publicApiTypes.shared.js";
 
+import type { SpritePaletteSwap } from "../src/index.js";
+import type { SpritePaletteSwap as LabsPaletteSwap } from "../src/labs.js";
+
 import type {
   BloomPostProcessPassInput,
   CameraBounds,
@@ -118,11 +121,14 @@ test("public API sprite material, lighting, camera, post process, and debug gizm
     directions: "cardinal",
   };
   const spriteMaterialBlendMode: SpriteMaterialBlendMode = "alpha";
+  const palette: SpritePaletteSwap = { textureId: 1, colors: [{ from: "#ff0000", to: "#00ff00" }] };
+  const labsPalette: LabsPaletteSwap = palette;
   const spriteMaterialPreset: SpriteMaterialPreset = {
     name: "custom",
     blendMode: spriteMaterialBlendMode,
     colorMix: spriteMaterialColorMix,
     outline: spriteMaterialOutlineOptions,
+    paletteSwap: [labsPalette],
   };
   const spriteMaterialInput: SpriteMaterialPresetInput = spriteMaterialPreset;
   const publicResolveSpriteMaterialPreset: PublicApi["resolveSpriteMaterialPreset"] = resolveSpriteMaterialPreset;

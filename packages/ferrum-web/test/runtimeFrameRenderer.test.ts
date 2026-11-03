@@ -450,6 +450,48 @@ test("RuntimeFrameRenderer still applies object visual provider values every fra
   ]);
 });
 
+test("failed primitive provider setters are retried instead of caching unapplied values", () => {
+  for (const kind of ["spriteMaterial", "postProcess"] as const) {
+    const renderer=fakeRuntimeRenderer([]);
+    let calls=0;
+    const apply=()=>{if(++calls===1)throw Error("transient setter failure");};
+    if(kind==="spriteMaterial")renderer.setSpriteMaterial=apply;
+    else renderer.setPostProcess=apply;
+    const runtime=new RuntimeFrameRenderer({renderer,[kind]:()=>false,
+      shouldRenderPhysicsDebugLines:false,needsRuntimeFrame:false});
+    const frame=renderFrameState({frameState:frameState()});
+    throws(()=>runtime.renderFrame(frame),/transient setter failure/);
+    runtime.renderFrame(frame);
+    equal(calls,2,kind+" retries after failure");
+    runtime.renderFrame(frame);
+    equal(calls,2,kind+" caches only after success");
+  }
+});
+
+test("unavailable renderers skip providers and submissions while runtime frames keep publishing", () => {
+  const order:string[]=[], published:RendererStats[]=[];
+  let ready=false;
+  const renderer={...fakeRuntimeRenderer(order),
+    isRenderReady(){equal(this,renderer);return ready;},
+    beginGpuTiming(){order.push("gpu_begin");},endGpuTiming(){order.push("gpu_end");},
+  };
+  const runtime=new RuntimeFrameRenderer({renderer,
+    spriteMaterial:()=>{order.push("material_provider");return {paletteSwap:[{textureId:1,colors:[{from:"#ff0000",to:"#00ff00"}]}]};},
+    lighting:()=>{order.push("light_provider");return false;},
+    postProcess:()=>{order.push("post_provider");return false;},
+    shouldRenderPhysicsDebugLines:true,needsRuntimeFrame:true,
+    onFrame:frame=>published.push(frame.rendererStats),
+  });
+  const frame=renderFrameState({frameState:frameState(),includePhysicsDebugLines:true});
+  runtime.renderFrame(frame);runtime.renderFrame(frame);
+  deepEqual(order,[]);equal(published.length,2);
+  deepEqual(published[0],emptyRendererStats());deepEqual(published[1],emptyRendererStats());
+  ready=true;runtime.renderFrame(frame);
+  equal(published.length,3);
+  deepEqual(order,["light_provider","set_lighting","material_provider","set_sprite","post_provider","set_post",
+    "gpu_begin","render","render_commands","render_debug:11,22","post_process","gpu_end"]);
+});
+
 function fakeRuntimeRenderer(
   order: string[],
   stats: {

@@ -1,3 +1,5 @@
+import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
+
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
       uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform float u_pixel_snap;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
@@ -34,6 +36,10 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
       }`;
 // Internal shader sources shared by synchronous construction and async preparation.
 export const WEBGL2_SHADER_SOURCES = {
+  spritePalette: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
+      precision highp float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
+      ${SPRITE_PALETTE_GLSL}
+      void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=paletteColor(texture(u_texture,v_uv))*v_color;}}` },
   sprite: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
       void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=texture(u_texture,v_uv)*v_color;}}` },

@@ -48,6 +48,8 @@ class WebGpuResources {
     this.buffers.delete(resource);
     this.textures.delete(resource);
   }
+  /** Pipeline objects have no destroy(); drop ownership when an optional variant is disabled. */
+  releasePipeline(pipeline: GPURenderPipeline): void { this.pipelines.delete(pipeline); }
   stats(): RendererResourceStats {
     let textureBytes = 0, unmeasuredTextureCount = 0, renderTargetCount = 0, bufferBytes = 0;
     for (const value of this.textures.values()) {

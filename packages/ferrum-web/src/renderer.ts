@@ -189,6 +189,8 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
 
 export interface Renderer {
   readonly supportsSpatialScene?: boolean;
+  /** False while a live renderer cannot submit frames (e.g. device recovery). Absent means ready. */
+  isRenderReady?(): boolean;
   render(): void;
   resize(): void;
   /** Optional view capability: world units per logical viewport, without reducing device pixels. */

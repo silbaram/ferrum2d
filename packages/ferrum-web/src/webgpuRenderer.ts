@@ -237,9 +237,24 @@ export class WebGPURenderer implements Renderer {
             ...(stats.frameId === undefined ? {} : { frameId: stats.frameId + this.timingFrameOffset }) };
     }
     stats(): RendererStats { return this.status === "ready" ? this.backend.stats() : emptyRendererStats(); }
-    setLighting(scene: LightingScene2D | false | undefined): void { this.ready(); this.backend.setLighting(scene); this.options.lighting = structuredClone(scene); }
-    setSpriteMaterial(material: SpriteMaterialPresetInput): void { this.ready(); this.backend.setSpriteMaterial(material); this.options.spriteMaterial = structuredClone(material); }
-    setPostProcess(post: PostProcessStackInput): void { this.ready(); this.backend.setPostProcess(post); this.options.postProcess = structuredClone(post); }
+    setLighting(scene: LightingScene2D | false | undefined): void {
+        this.ready();
+        const snapshot = structuredClone(scene);
+        this.backend.setLighting(snapshot);
+        this.options.lighting = snapshot;
+    }
+    setSpriteMaterial(material: SpriteMaterialPresetInput): void {
+        this.ready();
+        const snapshot = structuredClone(material);
+        this.backend.setSpriteMaterial(snapshot);
+        this.options.spriteMaterial = snapshot;
+    }
+    setPostProcess(post: PostProcessStackInput): void {
+        this.ready();
+        const snapshot = structuredClone(post);
+        this.backend.setPostProcess(snapshot);
+        this.options.postProcess = snapshot;
+    }
     setGroundYScale(scale: number): void { this.ready(); this.backend.setGroundYScale(scale); this.groundScale = scale; }
     setViewportZoom(zoom: number): void { this.ready(); this.backend.setViewportZoom(zoom); this.zoom = zoom; }
     setPixelPerfect(options: PixelPerfectOptions | false | undefined): void {
@@ -247,6 +262,7 @@ export class WebGPURenderer implements Renderer {
         this.options.pixelPerfect = this.backend.pixelPerfectPresentation()?.settings ?? false;
     }
     pixelPerfectPresentation(): PixelPerfectPresentation | undefined { return this.backend.pixelPerfectPresentation(); }
+    isRenderReady(): boolean { this.alive(); return this.status === "ready"; }
     resize(): void { this.alive(); if (this.status === "ready")
         this.backend.resize(); }
     render(): void { this.alive(); if (this.status === "ready")
@@ -261,9 +277,14 @@ export class WebGPURenderer implements Renderer {
         return stats;
     }
     renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats { this.alive(); return this.status === "ready" ? this.backend.renderPhysicsDebugLines(lines, camera) : emptyRendererStats(); }
-    renderPostProcess(post?: PostProcessStackInput): RendererStats { this.alive(); if (this.status !== "ready")
-        return emptyRendererStats(); const stats = this.backend.renderPostProcess(post); if (post !== undefined)
-        this.options.postProcess = structuredClone(post); return stats; }
+    renderPostProcess(post?: PostProcessStackInput): RendererStats {
+        this.alive();
+        if (this.status !== "ready") return emptyRendererStats();
+        const snapshot = post === undefined ? undefined : structuredClone(post);
+        const stats = this.backend.renderPostProcess(snapshot);
+        if (snapshot !== undefined) this.options.postProcess = snapshot;
+        return stats;
+    }
     destroy(): void {
         if (this.status === "destroyed")
             return;

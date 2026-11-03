@@ -141,6 +141,7 @@ export class WebGL2Renderer implements Renderer {
       this.textureManager.createPlaceholderTextureForId(0);
       this.spriteBatch = new SpriteBatch(gl, this.colorManagement === "linear-srgb");
       cleanup.push(() => this.spriteBatch.destroy());
+      this.spriteBatch.prepareMaterial(this.spriteMaterial);
       this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl, this.colorManagement === "linear-srgb");
       cleanup.push(() => this.physicsDebugLineBatch.destroy());
       this.lightingPass = new WebGL2LightingPass(gl, this.colorManagement === "linear-srgb");
@@ -299,6 +300,7 @@ export class WebGL2Renderer implements Renderer {
       throw new Error("Invalid RenderTexture command buffer layout.");
     }
     // Validate before clearing: a feedback or missing-texture error must preserve the image.
+    this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
     groundShadowProjection(commands);
     for (let i = 0; i < commands.commandCount; i += 1) {
       const id = Math.trunc(commands.buffer[i * commands.floatsPerCommand + 12]);
@@ -404,7 +406,9 @@ export class WebGL2Renderer implements Renderer {
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
-    this.spriteMaterial = resolveSpriteMaterialPreset(material);
+    const resolved = resolveSpriteMaterialPreset(material);
+    this.spriteBatch.prepareMaterial(resolved);
+    this.spriteMaterial = resolved;
   }
 
   setSpriteScreenOffset(x: number, y: number): void {
@@ -560,8 +564,10 @@ export class WebGL2Renderer implements Renderer {
     second?: RenderCommandBufferView,
   ): RendererStats {
     this.assertAlive();
-    this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    if (second && this.spriteMaterial.paletteSwap) throw new Error("paletteSwap requires texture-id renderCommands.");
+    this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
+    this.ensureCurrentFrameTarget();
     if (commands.spatial && this.pixelPerfect) throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     const mapped=spriteNormalsActive(commands);
     if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");

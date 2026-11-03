@@ -220,6 +220,7 @@ export type {
   SpriteMaterialPreset,
   SpriteMaterialPresetInput,
   SpriteMaterialPresetName,
+  SpritePaletteSwap,
 } from "../spriteMaterial";
 export type {
   LightingColor3,

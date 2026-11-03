@@ -46,6 +46,7 @@ export type {
   SpriteMaterialPreset,
   SpriteMaterialPresetInput,
   SpriteMaterialPresetName,
+  SpritePaletteSwap,
   TextureAtlasLayout,
   TextureAtlasOptions,
   TextureAtlasPackInput,

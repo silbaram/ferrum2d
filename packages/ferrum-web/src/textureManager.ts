@@ -36,7 +36,7 @@ export class TextureManager {
   private ownedTranscoder?: Ktx2Transcoder;
   private destroyed = false;
   private revision = 0;
-  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none" }>();
+  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean }>();
   textureInfo(textureId: number) { return this.textureInfos.get(this.texture(textureId)); }
   contentRevision(): number { return this.revision; }
 
@@ -93,7 +93,7 @@ export class TextureManager {
           });
           this.assertLoadActive(signal);
           texture = this.createCompressedTexture(image, format);
-          this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace });
+          this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace, compressed: true });
         } catch (reason) {
           this.assertLoadActive(signal);
           this.options.onKtx2Fallback?.({ url, ktx2Url: options.ktx2Url, reason });

@@ -1,4 +1,6 @@
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
+import { resolveSpritePalettes, type ResolvedSpritePalettes, type SpritePaletteSwap } from "./spritePalette.js";
+export type { SpritePaletteSwap } from "./spritePalette.js";
 
 export const SPRITE_RENDER_COMMAND_FLOATS = 15;
 const LEGACY_SPRITE_RENDER_COMMAND_FLOATS = 13;
@@ -25,6 +27,8 @@ export interface SpriteMaterialPreset {
   blendMode?: SpriteMaterialBlendMode;
   colorMix?: SpriteMaterialColorMix;
   outline?: boolean | SpriteMaterialOutlineOptions;
+  /** Flat 2D only; RGB replacement before tint/lighting, preserving source alpha. */
+  paletteSwap?: readonly SpritePaletteSwap[];
 }
 
 export type SpriteMaterialPresetInput = SpriteMaterialPresetName | SpriteMaterialPreset | false | undefined;
@@ -46,6 +50,7 @@ export interface ResolvedSpriteMaterialPreset {
   blendMode: SpriteMaterialBlendMode;
   colorMix?: ResolvedSpriteMaterialColorMix;
   outline?: ResolvedSpriteMaterialOutline;
+  paletteSwap?: ResolvedSpritePalettes;
 }
 
 export interface SpriteMaterialPass {
@@ -55,6 +60,7 @@ export interface SpriteMaterialPass {
   offsetY: number;
   colorOverride?: SpriteMaterialColor;
   colorMix?: ResolvedSpriteMaterialColorMix;
+  paletteSwap?: ResolvedSpritePalettes;
 }
 
 export const SPRITE_MATERIAL_PRESETS: Readonly<Record<SpriteMaterialPresetName, SpriteMaterialPreset>> = Object.freeze({
@@ -108,6 +114,7 @@ export function resolveSpriteMaterialPreset(input: SpriteMaterialPresetInput): R
     name: input.name ?? "custom",
     blendMode: normalizeBlendMode(input.blendMode ?? "alpha"),
     ...(input.colorMix === undefined ? {} : { colorMix: normalizeColorMix(input.colorMix) }),
+    ...(input.paletteSwap === undefined ? {} : { paletteSwap: resolveSpritePalettes(input.paletteSwap) }),
     ...(input.outline === undefined || input.outline === false
       ? {}
       : { outline: normalizeOutline(input.outline) }),
@@ -135,6 +142,7 @@ export function spriteMaterialPasses(material: ResolvedSpriteMaterialPreset): re
     offsetX: 0,
     offsetY: 0,
     ...(material.colorMix === undefined ? {} : { colorMix: material.colorMix }),
+    ...(material.paletteSwap === undefined ? {} : { paletteSwap: material.paletteSwap }),
   });
   return passes;
 }
