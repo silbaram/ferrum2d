@@ -9,8 +9,13 @@ import { clickPlacementToolAction } from './placement-panel-navigation.mjs';
 /** Already queued UI events must remain safe after synchronous workspace disposal. */
 export async function teardownSlicePreview(page) {
   assert(await page.locator('[data-aseprite-action="pivot"]').isEnabled(), 'Teardown must exercise the live origin action');
+  const tool=page.locator('[data-placement-aseprite-tool]');
+  assert.equal(await tool.locator('input[type="file"]').count(),2);
+  assert.equal(await tool.locator('input[type="text"]').count(),1);
+  for (const action of ['inspect','register','export'])
+    assert(await tool.locator(`[data-aseprite-action="${action}"]`).isEnabled(),`Teardown must exercise ${action}`);
   return page.evaluate(async()=>{
-    const errors=[],element=document.querySelector('[data-aseprite-slices]');
+    const errors=[],element=document.querySelector('[data-aseprite-slices]'),tool=document.querySelector('[data-placement-aseprite-tool]');
     const rejected=event=>errors.push(String(event.reason?.stack??event.reason));
     const failed=event=>errors.push(String(event.error?.stack??event.message));
     window.addEventListener('unhandledrejection',rejected);
@@ -23,6 +28,11 @@ export async function teardownSlicePreview(page) {
       const changed=new Promise(done=>setTimeout(()=>{
         element.querySelector('select').dispatchEvent(new Event('change'));
         element.querySelector('button').click();
+        // File chooser results and queued import actions may arrive after disposal too.
+        for (const input of tool.querySelectorAll('input[type="file"], input[type="text"]'))
+          input.dispatchEvent(new Event(input.type==='text'?'input':'change'));
+        for (const button of tool.querySelectorAll('[data-aseprite-action]'))
+          if (!button.disabled) button.click();
         done();
       },0));
       element.open=!element.open;
@@ -49,6 +59,11 @@ export async function smokeAsepriteSlices({page,active,fixture,stage,tool,action
   await tool.getByLabel('Sprite slice',{exact:true}).selectOption('feet');
   await tool.getByLabel('Slice key frame',{exact:true}).selectOption('12');
   assert.deepEqual(await doc(),before,'metadata selection must not edit the scene');
+  await page.evaluate(()=>{
+    window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+    window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+  });
+  assert.deepEqual(await doc(),before,'persisted page transitions must retain the draft');
   await click('pivot');
   const changed=await doc(),expected=structuredClone(before);Object.assign(visual(expected),{originX:.25,originY:1});
   assert.deepEqual(changed,expected);assert.equal((await snapshot()).history.undoCount,history+1);
@@ -76,5 +91,5 @@ export async function smokeAsepriteSlices({page,active,fixture,stage,tool,action
   const previewPng=await tool.getByLabel('Aseprite frame preview',{exact:true}).evaluate(canvas=>canvas.toDataURL('image/png'));
   await writeFile(join(run,mode+'-slice-preview.png'),Buffer.from(previewPng.split(',')[1],'base64'));
   await panel.scrollIntoViewIfNeeded();await page.screenshot({path:join(run,mode+'-slice-origin.png'),fullPage:true});
-  return {slices:{explicitSourceKey:12,origin:[13/24,22/24],onlyOriginChanged:true,singleUndoRedo:true,reimportPreservedOrigin:true,invalidMetadataIsolated:true,noPivotReadOnly:true,localizedControls:true,pivotOverlayPixels:true}};
+  return {slices:{explicitSourceKey:12,origin:[13/24,22/24],onlyOriginChanged:true,singleUndoRedo:true,reimportPreservedOrigin:true,invalidMetadataIsolated:true,noPivotReadOnly:true,localizedControls:true,pivotOverlayPixels:true,persistedPageTransition:true}};
 }

@@ -317,7 +317,7 @@ desktop 단위 검사는 sourcePng의 지원 필드 정규화·불변 재시도,
 
 `pnpm test:aseprite-slices`는 명시적 원본 key frame, bounds-local pivot/center, metadata 상한/오류, 정적/animated origin patch, 같은 packed rect를 공유하는 frame, 선택/잠금/UV 검사와 다른 속성 보존을 검사한다.
 `pnpm smoke:aseprite-slices`는 2D·HD-2D에서 실제 Preview 선택·명시적 origin 적용·단일 Undo/Redo·일반 재가져오기 origin 보존·KO/EN 전환을 검증한다.
-slice 패널 toggle과 선택 변경·기준점 적용 이벤트를 queue한 뒤 같은 task에서 작업공간을 종료해, 뒤늦은 이벤트에도 일반/Promise 예외가 없고 URL/GL 자원이 정리되는지 확인한다.
+slice 패널 toggle과 선택 변경·기준점 적용, 원본 파일/이름 입력·가져오기 버튼 이벤트를 queue한 뒤 같은 task에서 작업공간을 종료해, 뒤늦은 이벤트에도 일반/Promise 예외가 없고 URL/GL 자원이 정리되는지 확인한다. `persisted` 페이지 전환에서는 편집 상태와 이벤트를 유지해 복귀 후에도 기준점 적용·Undo/Redo가 동작해야 한다.
 native 분기는 실제 Rust 저장/protocol·재시작·원본 slice JSON/scene origin 보존·trim 재검사와 새 게임의 Playing/UV/visible frames/draw 예산을 확인한다. 종료 시 Blob URL/GL 자원0도 검사한다.
 보고서는 `artifacts/aseprite-slices/browser/verification.json`과 `artifacts/aseprite-slices/native/verification.json`에 기록한다. 기본 CI에 연결하며 선택 normal 생성기는 필요하지 않다. 실제 native GUI IPC·실물 GPU 검증은 포함하지 않는다.
 기존16 MiB·4096·4MP·256frame·8revision/64 MiB 예산을 원본/복원에 각각 적용하며 합계에는 두 PNG를 모두 포함한다. native GUI IPC·실물 GPU/모바일 성능은 이 검증 대상이 아니다.

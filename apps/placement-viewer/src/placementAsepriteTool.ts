@@ -218,6 +218,8 @@ export function createPlacementAsepriteTool(options: {
     disposed = false,
     previewSerial = 0;
   let sliceFailure = "";
+  const events = new AbortController();
+  const listenerOptions = { signal: events.signal };
   const draft = () => drafts.get(key)!;
   const catalog = installPlacementCatalogTools({
     root: body, store: assets,
@@ -695,22 +697,22 @@ export function createPlacementAsepriteTool(options: {
     draft().status = uiMessage("Source changed · Inspect before applying");
     render();
   };
-  name.addEventListener("input", dirty);
+  name.addEventListener("input", dirty, listenerOptions);
   json.addEventListener("change", () => {
     draft().json = json.files?.[0];
     dirty();
-  });
+  }, listenerOptions);
   png.addEventListener("change", () => {
     draft().png = png.files?.[0];
     dirty();
-  });
+  }, listenerOptions);
   frame.addEventListener("change", () => {
     void paint();
     render();
-  });
-  slice.addEventListener("change", () => { fillSliceKeys(); void paint(); render(); });
-  sliceKey.addEventListener("change", () => { void paint(); render(); });
-  slices.addEventListener("toggle", () => { void paint(); });
+  }, listenerOptions);
+  slice.addEventListener("change", () => { fillSliceKeys(); void paint(); render(); }, listenerOptions);
+  sliceKey.addEventListener("change", () => { void paint(); render(); }, listenerOptions);
+  slices.addEventListener("toggle", () => { void paint(); }, listenerOptions);
   applyPivot.addEventListener("click", () => {
     const currentDraft = drafts.get(key);
     if (disposed || !currentDraft || applyPivot.disabled || !options.context().canEdit || !currentDraft.candidate) return;
@@ -725,9 +727,9 @@ export function createPlacementAsepriteTool(options: {
         currentDraft.status = cause instanceof Error ? cause.message : String(cause);
     }
     render();
-  });
-  initialAnimation.addEventListener("change", render);
-  animationLoop.addEventListener("change", render);
+  }, listenerOptions);
+  initialAnimation.addEventListener("change", render, listenerOptions);
+  animationLoop.addEventListener("change", render, listenerOptions);
   inspect.addEventListener(
     "click",
     () =>
@@ -777,6 +779,7 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   async function commit(
     kind:
@@ -892,13 +895,14 @@ export function createPlacementAsepriteTool(options: {
       }
     }
   }
-  register.addEventListener("click", () => void commit("register"));
-  apply.addEventListener("click", () => void commit("apply"));
-  reimport.addEventListener("click", () => void commit("reimport"));
-  applyAnimation.addEventListener("click", () => void commit("animation"));
+  register.addEventListener("click", () => void commit("register"), listenerOptions);
+  apply.addEventListener("click", () => void commit("apply"), listenerOptions);
+  reimport.addEventListener("click", () => void commit("reimport"), listenerOptions);
+  applyAnimation.addEventListener("click", () => void commit("animation"), listenerOptions);
   reimportAnimation.addEventListener(
     "click",
     () => void commit("reimport-animation"),
+    listenerOptions,
   );
   function commitNormals(selected: boolean, animated = false) {
     const control = animated
@@ -1003,10 +1007,10 @@ export function createPlacementAsepriteTool(options: {
       if (normalInFlight === task) normalInFlight = undefined;
     });
   }
-  generateNormals.addEventListener("click", () => commitNormals(true));
-  reimportNormals.addEventListener("click", () => commitNormals(false));
-  applyPaired.addEventListener("click", () => commitNormals(true, true));
-  reimportPaired.addEventListener("click", () => commitNormals(false, true));
+  generateNormals.addEventListener("click", () => commitNormals(true), listenerOptions);
+  reimportNormals.addEventListener("click", () => commitNormals(false), listenerOptions);
+  applyPaired.addEventListener("click", () => commitNormals(true, true), listenerOptions);
+  reimportPaired.addEventListener("click", () => commitNormals(false, true), listenerOptions);
   saveNormals.addEventListener(
     "click",
     () =>
@@ -1041,11 +1045,12 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   cancel.addEventListener("click", () => {
     stop();
     render();
-  });
+  }, listenerOptions);
   save.addEventListener(
     "click",
     () =>
@@ -1121,6 +1126,7 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   exportButton.addEventListener("click", () => {
     const normalAssets = [
@@ -1177,7 +1183,7 @@ export function createPlacementAsepriteTool(options: {
       "Exported · Install the catalog and scene patch before reopening",
     );
     render();
-  });
+  }, listenerOptions);
   function sync() {
     if (disposed) return;
     const context = options.context();
@@ -1223,6 +1229,8 @@ export function createPlacementAsepriteTool(options: {
     if (disposed) return;
     stop();
     disposed = true;
+    // Remove queued DOM callbacks before clearing drafts or releasing their assets.
+    events.abort();
     importDiagnostics.clear();
     actionBar.destroy();
     previewSerial++;

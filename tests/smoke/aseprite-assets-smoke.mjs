@@ -521,9 +521,9 @@ try {
       await tool.locator(":scope > summary").click();
       if (sliceMode) {
         const result = await smokeAsepriteSlices({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,mode});
-        assert.deepEqual(await teardownSlicePreview(page), [], "Queued slice controls failed after workspace disposal");
+        assert.deepEqual(await teardownSlicePreview(page), [], "Queued import and slice controls failed after workspace disposal");
         const released=await resources();assert.deepEqual(released,{urls:0,textures:0});assert.deepEqual(errors,[]);
-        results.push({mode,...result,queuedToggleAfterDestroy:true,queuedControlsAfterDestroy:true,released});continue;
+        results.push({mode,...result,queuedToggleAfterDestroy:true,queuedControlsAfterDestroy:true,queuedImportEventsAfterDestroy:true,released});continue;
       }
       if(trimMode) {
         const trimNormals=mode==='hd2d'&&trimNormalMode?await smokeTrimNormals({page,fixture,stage,tool,action,snapshot,undo,wait}):undefined;
@@ -1283,7 +1283,7 @@ try {
       await context.close();
     }
   }
-  if (sliceMode) assert(results.length === 2 && results.every(value => value.slices?.singleUndoRedo && value.slices?.reimportPreservedOrigin && value.queuedToggleAfterDestroy && value.queuedControlsAfterDestroy), "Both slice scenarios must execute including queued control disposal");
+  if (sliceMode) assert(results.length === 2 && results.every(value => value.slices?.singleUndoRedo && value.slices?.reimportPreservedOrigin && value.slices?.persistedPageTransition && value.queuedToggleAfterDestroy && value.queuedControlsAfterDestroy && value.queuedImportEventsAfterDestroy), "Both slice scenarios must execute including persisted transitions and queued import disposal");
   const report = { ok: true, run, browser: browser.version(), results };
   await writeFile(
     resolve(artifact, "verification.json"),
