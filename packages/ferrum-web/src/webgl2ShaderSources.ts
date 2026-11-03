@@ -1,4 +1,5 @@
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
+import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
 
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
@@ -182,7 +183,9 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform bool u_encode_srgb;
       uniform bool u_linear_working_space;
       in vec2 v_uv;
-      out vec4 outColor;
+      out highp vec4 outColor;
+
+      ${PIXEL_POST_PROCESS_GLSL}
 
       float luminance(vec3 color) {
         return dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -270,6 +273,15 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       void main() {
+        // Keep legacy effect precision unchanged; only pixel-art math/sampling is highp.
+        if (u_kind == 6) {
+          highp vec4 pixelColor = applyPixelArt();
+          if (u_encode_srgb) {
+            pixelColor.rgb = pixelColor.a > 0.0 ? pixelLinearToSrgb(pixelColor.rgb / pixelColor.a) * pixelColor.a : vec3(0.0);
+          }
+          outColor = pixelColor;
+          return;
+        }
         vec4 color = applyPass();
         // Sampling the sRGB targets yields premultiplied linear RGB; canvas expects premultiplied sRGB.
         if (u_encode_srgb) {

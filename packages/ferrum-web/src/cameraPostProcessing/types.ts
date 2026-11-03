@@ -61,7 +61,7 @@ export interface CameraRigSnapshot {
   desiredY: number;
 }
 
-export type PostProcessPassKind = "fade" | "bloom" | "crt" | "vignette" | "glitch";
+export type PostProcessPassKind = "fade" | "bloom" | "crt" | "vignette" | "glitch" | "pixelArt";
 export type PostProcessColor = readonly [number, number, number] | readonly [number, number, number, number];
 export type ResolvedPostProcessColor = readonly [number, number, number, number];
 
@@ -142,6 +142,25 @@ export interface PostProcessingConfigInput {
   crt?: false | Omit<CrtPostProcessPassInput, "kind">;
   vignette?: false | Omit<VignettePostProcessPassInput, "kind">;
   glitch?: false | Omit<GlitchPostProcessPassInput, "kind">;
+  pixelArt?: false | Omit<PixelArtPostProcessPassInput, "kind">;
+}
+
+/** Render-pixel effects; applied before pixelPerfect nearest presentation. */
+export interface PixelArtPostProcessPassInput {
+  kind: "pixelArt";
+  /** RGB levels per channel, integer 2..256. Default 8. */
+  levels?: number;
+  /** Ordered 4x4 Bayer dithering strength, 0..1. Default 0. */
+  dither?: number;
+  /** Darken odd rows counted from the top, 0..1. Default 0. */
+  scanlineIntensity?: number;
+}
+
+export interface ResolvedPixelArtPostProcessPass {
+  kind: "pixelArt";
+  levels: number;
+  dither: number;
+  scanlineIntensity: number;
 }
 
 export type PostProcessPassInput =
@@ -149,12 +168,14 @@ export type PostProcessPassInput =
   | BloomPostProcessPassInput
   | CrtPostProcessPassInput
   | VignettePostProcessPassInput
+  | PixelArtPostProcessPassInput
   | GlitchPostProcessPassInput;
 export type ResolvedPostProcessPass =
   | ResolvedFadePostProcessPass
   | ResolvedBloomPostProcessPass
   | ResolvedCrtPostProcessPass
   | ResolvedVignettePostProcessPass
+  | ResolvedPixelArtPostProcessPass
   | ResolvedGlitchPostProcessPass;
 export type PostProcessStackInput =
   | false

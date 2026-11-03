@@ -854,7 +854,8 @@ export class WebGL2Renderer implements Renderer {
       // with blitFramebuffer. A nearest fullscreen draw works with either canvas.
       const result=this.fullscreenPass.draw({sourceTexture:output.texture,passes:[COPY_POST_PROCESS_PASS],
         resolution:[p.canvasWidth,p.canvasHeight],viewport:[p.x,bottom,p.width,p.height],nearest:true});
-      addPostProcessStatsInto(this.currentStats,result.drawCalls,0);
+      // Presentation is accounted separately; preserve the authored postprocess counters.
+      this.currentStats.drawCalls += result.drawCalls;
     } finally {
       gl.colorMask(colorMask[0],colorMask[1],colorMask[2],colorMask[3]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);

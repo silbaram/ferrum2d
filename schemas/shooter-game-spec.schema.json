@@ -459,8 +459,20 @@
                 { "type": "boolean", "const": false },
                 { "$ref": "#/$defs/glitchPostProcessConfig" }
               ]
+            },
+            "pixelArt": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/pixelArtPostProcessConfig" }
+              ]
             }
-          }
+          },
+          "anyOf": [
+            { "required": ["enabled"] }, { "required": ["passes"] },
+            { "required": ["fade"] }, { "required": ["bloom"] },
+            { "required": ["crt"] }, { "required": ["vignette"] },
+            { "required": ["glitch"] }, { "required": ["pixelArt"] }
+          ]
         }
       ]
     },
@@ -470,7 +482,8 @@
         { "$ref": "#/$defs/bloomPostProcessPass" },
         { "$ref": "#/$defs/crtPostProcessPass" },
         { "$ref": "#/$defs/vignettePostProcessPass" },
-        { "$ref": "#/$defs/glitchPostProcessPass" }
+        { "$ref": "#/$defs/glitchPostProcessPass" },
+        { "$ref": "#/$defs/pixelArtPostProcessPass" }
       ]
     },
     "postProcessColor": {
@@ -578,6 +591,26 @@
         "intensity": { "type": "number", "minimum": 0 },
         "chromaticAberration": { "type": "number", "minimum": 0 },
         "seed": { "type": "number" }
+      }
+    },
+    "pixelArtPostProcessConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "levels": { "type": "integer", "minimum": 2, "maximum": 256 },
+        "dither": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "pixelArtPostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "pixelArt" },
+        "levels": { "type": "integer", "minimum": 2, "maximum": 256 },
+        "dither": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "tilemap": {

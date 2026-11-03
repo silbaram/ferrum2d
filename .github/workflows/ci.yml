@@ -210,6 +210,17 @@ jobs:
       - name: Sprite palette RGB parity, native scene and recovery
         run: pnpm smoke:sprite-palette
 
+      - name: Pixel postprocess parity, virtual pixels and recovery
+        run: pnpm smoke:pixel-postprocess
+
+      - name: Upload pixel postprocess evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-postprocess
+          path: artifacts/pixel-postprocess
+          if-no-files-found: ignore
+
       - name: Upload sprite palette evidence
         if: always()
         uses: actions/upload-artifact@v4

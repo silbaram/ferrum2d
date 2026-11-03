@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   CameraRigController,
@@ -8,6 +8,27 @@ import {
   resolveCameraRigSpec,
   resolvePostProcessPasses,
 } from "../src/cameraPostProcessing.js";
+
+test("pixelArt postprocess validates RGB levels and ordered dither strengths", () => {
+  deepEqual(resolvePostProcessPasses({ pixelArt: {} }), [
+    { kind: "pixelArt", levels: 8, dither: 0, scanlineIntensity: 0 },
+  ]);
+  deepEqual(resolvePostProcessPasses({ pixelArt: false }), []);
+  for (const levels of [1, 257, 2.5, NaN, Infinity]) {
+    throws(() => resolvePostProcessPasses({ kind: "pixelArt", levels }), /postProcess\[0\]\.levels/);
+  }
+  for (const name of ["dither", "scanlineIntensity"] as const) {
+    for (const value of [-0.1, 1.1, NaN, Infinity]) {
+      throws(() => resolvePostProcessPasses({ kind: "pixelArt", [name]: value }), new RegExp(name));
+    }
+  }
+  const input = { kind: "pixelArt" as const, levels: 256, dither: 1, scanlineIntensity: 1 };
+  const passes = resolvePostProcessPasses([{ opacity: 0.5 }, input, { opacity: 0.2 }]);
+  input.levels = 2;
+  deepEqual(passes.map(pass => pass.kind), ["fade", "pixelArt", "fade"]);
+  equal(passes[1]?.kind === "pixelArt" && passes[1].levels, 256);
+  throws(() => resolvePostProcessPasses({ pixelArt: null } as never), /must be an object/);
+});
 
 test("CameraRigController applies dead-zone movement and viewport bounds", () => {
   const camera = new CameraRigController({

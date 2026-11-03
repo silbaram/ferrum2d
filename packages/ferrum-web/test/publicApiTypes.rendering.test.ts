@@ -21,6 +21,15 @@ import {
 
 import type { SpritePaletteSwap } from "../src/index.js";
 import type { SpritePaletteSwap as LabsPaletteSwap } from "../src/labs.js";
+import type { PixelArtPostProcessPassInput, ResolvedPixelArtPostProcessPass } from "../src/authoring.js";
+
+test("public authoring pixelArt types compose with runtime postprocessing", () => {
+  const input: PixelArtPostProcessPassInput = { kind: "pixelArt", levels: 4, dither: 1, scanlineIntensity: .2 };
+  const result = resolvePostProcessPasses(input)[0];
+  if (result?.kind !== "pixelArt") throw Error("pixelArt pass missing");
+  const typed: ResolvedPixelArtPostProcessPass = result;
+  equal(typed.levels, 4);
+});
 
 import type {
   BloomPostProcessPassInput,

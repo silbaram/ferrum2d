@@ -114,7 +114,7 @@ test("unsupported postprocessing rejects before WebGPU context or GPU allocation
   try {
     await rejects(
       WebGPURenderer.create(canvas(device), { postProcess: [{ kind: "bloom" }] }),
-      /only fade/,
+      /supports fade and pixelArt/,
     );
     deepEqual(device.events, []);
   } finally {
