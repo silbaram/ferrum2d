@@ -92,12 +92,17 @@ native `aseprite_trim.rs`는 같은 배치·pixels를 독립 검증한다. Asepr
 연속 삭제도 기존 `removeInstances`로 처리하며, 오류 rollback과 잠금·단일 Undo 계약은 유지한다.
 가져오기 도구 context는 생성 시 draft를 캡처하고 document를 읽을 때만 병합한다. Catalog의 scope 조회가 매번 전체 씬을 검증하지 않으며 비동기 저장의 snapshot은 유지한다.
 `placementTileMapPreview.ts`는 생성 패치의 타일과 객체 위치를 Canvas2D로만 표시하고 bitmap 수명·설정 무효화를 처리한다.
+`placementTileAnimation.ts`는 선택적 Tiled 원본/이름별 clip을 기존 `visual.animationSet`으로 변환한다.
+오토타일 결과의 기준 프레임으로 clip을 고르고 첫 UV와 고정 collider를 작성하며, 재생 프레임의 물리 metadata는 사용하지 않는다.
+설정 1,024·배치 8,192 animation frame 예산을 둔다. 실제 시간은 기존 Rust playback이 소유하며 JS의 타일별 update나 새 ABI는 없다.
+명시적 시간 입력의 Canvas2D 미리보기는 검증된 clip에서 정수 밀리초로 UV를 고른다. 초 단위 왕복 변환의 경계 오차를 피하며 시간은 보기 상태이고 씬·Undo를 바꾸지 않는다.
+Map Options뿐 아니라 source 식별자·셀 좌표를 포함한 provenance의 16KiB 예산도 패치 생성 전에 확인한다.
 씬·native catalog·Rust 렌더 ABI는 확장하지 않는다.
 미설치 참조의 Save를 막고 app handoff에 `tileImports` 근거를 연결한다.
 `placementTileProject.ts`는 Open Project 기본 문서의 원본을 preload하고 source identity/hash를 재검증한다.
 native `tile_assets.rs`는 원본 식별 정보와 선택형 tileset key·TSJ dependency source/name/hash만 저장하며 변환 frame/map은 frontend public importer가 다시 계산한다.
 Aseprite와 `sprite_assets.rs`의 bounded immutable 저장·protocol 등록을 공유한다. Tile 계약만 최대 8개 TSJ 원본을 허용하고 source/hash를 revision ID에 포함한다. TSJ도 exclusive create/충돌 보존/rollback과 hash가 지정된 protocol URL을 사용하며 Aseprite는 dependency를 허용하지 않는다. 저장 검증 후 기존 scene CAS를 사용한다.
-전체 map 적용은 별도 후속이다.
+전체 map 적용과 애니메이션은 기존 scene save를 사용한다. native catalog에는 변환한 map/clip을 중복 저장하지 않는다.
 
 `placementAsepriteAnimation.ts`는 immutable 원본 JSON에서 frameTags/duration을 변환하는 app 전용 모듈이다.
 방향별 frame 순서·정수 GCD 반복 UV로 기존 `visual.animationSet`을 만들며 native frame/FPS 한도 초과를 거절한다.

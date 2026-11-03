@@ -302,7 +302,7 @@ Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기�
   다른 tileset·TSX·외부 level·IntGrid·flip/회전의 기존 제한을 확대하지 않는다.
 - Tiled의 직교 셀·레이어 offset과 원래 앞뒤 순서를 반영한다. Group은 먼저 평탄화해야 한다.
   LDtk는 원래 layer 순서와 offset을 반영하며 Entities의 x/y와 필드를 보존한다.
-  타일 이미지 크기는 셀 크기와 같아야 하고, Tiled tileset offset·animation·반투명/tint/parallax layer,
+  타일 이미지 크기는 셀 크기와 같아야 하고, Tiled tileset offset·반투명/tint/parallax layer,
   slope/one-way/공간 높이 metadata는 전용 adapter가 필요한 항목으로 거절한다.
 - `collisionLayers`는 정확한 layer 이름이다. 명시적 collision/blocksMovement 셀과 함께 static AABB를 생성한다. 셀의 `blocksMovement:false`는 collision layer에서도 비충돌로 보존한다.
   다른 셀은 collider가 없다. 게임의 충돌 그룹은 `wall`이고 그리기 레이어 번호와 구분한다.
@@ -366,7 +366,49 @@ Map Options의 선택적 `autotile`은 레이어 이름별 규칙을 받는다.
   결과는 기존 sprite/AABB로 저장한다. 게임은 규칙을 다시 계산하지 않는다.
   기존 옵션 없는 씬·catalog와 호환되고 schema/ABI 버전을 바꾸지 않는다.
 - 저장·재열기에서 설정을 복원하며 재적용은 같은 셀의 ID·behavior binding과 단일 Undo/Redo를 유지한다.
-  HD-2D 전체 맵 적용, 런타임 지형 편집과 타일 애니메이션은 이번 기능에 포함하지 않는다.
+  HD-2D 전체 맵 적용과 런타임 지형 편집은 포함하지 않는다. 이미지 재생은 아래 타일 애니메이션을 사용한다.
+
+### 타일 애니메이션과 고정 충돌
+
+2D **Map Options**의 선택적 `animations`는 기준 타일 이름을 기존 sprite `animationSet`에 연결한다.
+게임의 **실행**에서 Rust가 시간을 진행하고 **일시정지**하면 함께 멈춘다. 각 타일은 clip 0 하나를 가지며
+맵을 다시 적용하거나 게임을 다시 시작하면 첫 프레임에서 재생한다. 설치된 SDK/Wasm에 프레임별 시간 지원이 필요하다.
+
+```json
+{
+  "collisionLayers": ["ground"],
+  "animations": {
+    "terrain.0": {
+      "frames": [
+        { "frame": "terrain.0", "durationMs": 90 },
+        { "frame": "terrain.1", "durationMs": 180 }
+      ],
+      "loop": true
+    }
+  }
+}
+```
+
+- Tiled/LDtk 공통으로 선택 tileset의 프레임 이름을 사용한다. 오토타일을 함께 지정하면 **오토타일 결과**의 이름으로 clip을 고른다.
+  아직 사용하지 않은 프레임도 원본 importer로 검증한다. 모든 재생 프레임은 같은 PNG와 기준 타일 크기를 사용한다.
+- 순서는 `frames` 그대로, `durationMs`는 1~1,000,000ms 정수다. `loop` 기본값은 true이고 false면 마지막 프레임에서 멈춘다.
+  프레임을 반복 복제하지 않는다. 방향 전환·재생 이벤트·시작 offset은 이 옵션에 포함하지 않는다.
+- Tiled의 embedded/외부 TSJ 원본 animation은 `"animations": "source"`로 명시적으로 가져온다.
+  [Tiled Frame](https://doc.mapeditor.org/en/stable/reference/json-map-format/#frame)의 tileset-local `tileid`와 ms `duration`을 사용하며 반복 재생한다.
+  LDtk에서는 이름별 직접 설정을 사용한다. 원본에 animation이 있으면 옵션 없이 정적 타일로 묵살하지 않고 거절한다.
+  직접 설정으로 덮어쓰려면 원본의 모든 animated tile에 대응하는 clip을 지정한다. clip 참조는 재귀적으로 확장하지 않는다.
+- collider/body/위치/크기/ID는 **기준 타일**의 충돌과 배치 결과로 고정한다. 재생 프레임의 `blocksMovement`·높이 등은 물리에 반영하지 않는다.
+  물의 그림만 움직인다고 통과 가능 여부가 바뀌지 않는다. 게임 로직으로 바뀌는 지형·문은 별도 behavior/spec으로 작성한다.
+- **맵 미리보기 시간 (ms)**에 0~3,600,000 정수를 입력하고 **맵 미리보기**를 눌러 그 시점의 이미지를 확인한다.
+  이 값은 보기 상태이며 저장·Undo·게임의 시작 시간을 바꾸지 않는다. 0ms가 첫 프레임이다. 주황색 충돌 테두리는 어느 시점에도 유지된다.
+  정수 밀리초로 프레임을 고르므로 1,001ms 같은 정확한 전환 경계에서도 다음 프레임이 표시된다. 반복 구간의 끝은 첫 프레임으로 돌아간다.
+- 설정은 최대 64 clips, clip당 256 frames, 전체 1,024 frame steps다. 배치된 애니메이션 타일의 frame 수 합계는 8,192 이하다.
+  기존 Map Options 16KiB, palette 합계 256 frames, 맵 2,048 instances 및 history 예산도 함께 적용한다.
+  저장되는 source 식별자·셀 좌표·옵션을 합친 `tileMapImport` 메타데이터도 16KiB 이하여야 하며, 초과하면 미리보기·적용 전에 거절한다.
+- 원본 JSON/PNG/TSJ와 catalog 버전은 유지하고, 설정은 기존 `tileMapImport.options.animations`, 실행 데이터는 기존 `visual.animationSet`에 저장한다.
+  **Apply Map** 재적용은 같은 셀의 ID·명시적 behavior binding과 단일 Undo를 유지한다. source가 소유한 clip 수동 수정은 교체한다.
+  animated map에 일반 **Apply Frame/Reimport**를 사용하면 animation 손실을 막기 위해 **Apply Map** 사용을 안내한다.
+  source 애니메이션이 없는 기존 정적 맵은 옵션 생략 시 같은 동작을 유지한다.
 
 ### 타일 자산의 native 저장·재열기
 

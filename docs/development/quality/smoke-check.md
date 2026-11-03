@@ -2051,6 +2051,15 @@ native 분기는 실제 Rust 저장/protocol·재시작에서 규칙·UV·collid
 보고서는 `artifacts/tile-autotile/browser/verification.json`, `artifacts/tile-autotile/native/verification.json`이며 CI와 `smoke:check`에 연결된다.
 headless software rendering 기준이며 실제 GUI IPC·실물 GPU/모바일 성능은 별도 검증이다.
 
+`pnpm smoke:tile-animation`는 이름별/Tiled 원본 clip의 시간·반복·미사용 frame/외부 TSJ·예산·고정 충돌·Undo를 검사한다.
+옵션만 16KiB 이내여도 source 식별자와 합친 저장 메타데이터가 초과하면 패치 생성·미리보기·적용 전에 거절하는지 확인한다.
+브라우저에서 0/100/280ms 미리보기 픽셀과 씬 무변경, 1,001ms 프레임·2,002ms 반복/종료 경계, 빈 값·음수·소수·상한 및 초과 시간 입력을 검사한다.
+실제 Playing 프레임 변화·pause/resume·nonloop 종료도 확인한다.
+64/512/2,048 animated tiles의 native frame과 렌더 UV 변화, command/entity 수, 실제 FrameState의 Rust update 시간·renderer CPU·draw·texture switch,
+고정 body raycast와 Apply 10초 예산을 검사한다. 시간·UV view는 test sample에서 숫자로 복사하고 보관한 Wasm view를 재사용하지 않는다.
+native 분기는 실제 Rust 저장·재시작과 독립 게임에서 animationSet/설정·source hash·ID/binding·시간·pause·고정 충돌을 확인한다.
+보고서는 `artifacts/tile-animation/browser/verification.json`, `artifacts/tile-animation/native/verification.json`이다. CI와 `smoke:check`에서 직접 실행한다.
+
 `pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에
 Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. 기존 negative upload 검사를 먼저 실행해 캐시로 실패 주입을 건너뛰지 않는다.
 좌표/offset·layer 방향·object mapping·명시적 nonblocking 셀·제외 tileset·lock·provenance 경계를 검사한다.

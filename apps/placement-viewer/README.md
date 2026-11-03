@@ -527,6 +527,10 @@ Apply Map은 타일과 매핑 객체의 합계 2,048개 이하 범위에서 선�
 규칙은 씬에 함께 저장·복원하며 게임에서는 이미 계산한 sprite/AABB를 사용한다.
 [오토타일 JSON 예시와 제한](../../docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기)을 참고한다.
 
+선택적 `animations`는 Tiled 원본(`"source"`) 또는 이름별 frame/durationMs/loop를 기존 게임 재생에 연결한다.
+**Map preview time (ms)**와 **Preview Map**으로 시간별 이미지를 확인한다. 이미지가 바뀌어도 충돌은 기준 타일에 고정된다.
+애니메이션 타일의 갱신은 **Apply Map**을 사용한다. [설정·저장·제한](../../docs/engine/data-scene-authoring.md#타일-애니메이션과-고정-충돌)을 따른다.
+
 지원 범위는 **원본 tileset 1..8개, import당 선택 tileset 1개/PNG 1개**, finite orthogonal Tiled의 embedded/외부 TSJ tileset·비압축 data 배열,
 LDtk embedded level의 Tiles/AutoLayer·entity metadata다. 외부 TSX·LDtk external level, IntGrid, flip/회전은 지원하지 않는다. 다중 tileset 선택에서 Tiled group layer는 먼저 평탄화한다.
 다중 tileset의 변환 map은 선택 범위의 부분 결과다. 제외한 타일 수를 표시하며 원본 map JSON과 TSJ는 그대로 보존한다. TSJ만 변경해도 새 revision이 되며 native 저장·재열기와 export에도 원본을 포함한다.
