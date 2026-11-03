@@ -610,13 +610,16 @@ bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard 
 
 ## Aseprite Assets 가져오기·재import
 
-공식 Placement Viewer는 기존 `importAsepriteAtlas`를 사용해 Aseprite JSON+PNG를 Assets catalog에 연결한다.
+공식 Placement Viewer는 Aseprite JSON+PNG를 검증하고 Assets catalog에 연결한다.
 `Inspect`는 PNG 서명·실제 decode 크기·SHA-256과 metadata/frame rect를 확인하며 씬을 바꾸지 않는다.
 `Register`는 문서 세션에 atlas/frame을 등록한다. `Apply Frame`과 `Reimport`는 기존 `updateComponents` patch를
 한 번의 Undo transaction으로 적용하며, 작성한 size/pivot/transform/collider/body/behavior는 유지한다.
 
-공식 UI의 첫 지원 범위는 비회전·비트림 정수 rect, 1~256 frame이다. frame ID는 확장자까지 유지한다.
+공식 UI는 비회전 정수 rect, 1~256 frame과 trim 프레임 복원을 지원한다. frame ID는 확장자까지 유지한다.
 JSON hash/array 형식을 받으며 `meta.image` basename과 선택 PNG 파일명을 대조한다. 외부 파일/URL을 자동으로 읽지 않는다.
+`trimmed:true`에는 `sourceSize`와 `spriteSourceSize`가 필요하다. [Aseprite 개발자 설명](https://community.aseprite.org/t/checking-trim-in-export-sprite-sheet-window-cause-the-sprite-to-move-in-the-sheet/1248/2)의 원본 canvas·offset 의미를 따른다. 원본 canvas 안의 정수 offset에 RGBA를 복사해 투명 여백을 복원한다.
+trim 원본은 sRGB RGBA8 PNG(Adam7 포함)이며 모든 프레임의 원본 canvas 크기가 같아야 한다. 누락/초과 offset·회전·색 공간 변경·복원 예산 초과는 거절한다.
+배치 위치는 UTF-8 frame ID 순으로 결정하지만 목록과 frameTags는 원본 순서를 유지한다. 기존 객체의 크기·origin·transform은 바꾸지 않는다.
 frameTags/duration은 아래 명시적 animation import/migration으로 연결한다.
 일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다. normal binding이 있는 대상의 일반 Apply Frame/Reimport는 차단하고,
 정적 대상은 Generate Normals/Reimport Normals, 애니메이션 대상은 Apply Paired/Reimport Paired로 color/UV와 노멀을 함께 교체한다.
@@ -628,13 +631,16 @@ frameTags/duration은 아래 명시적 animation import/migration으로 연결�
 revision별 내용 기반 texture 이름으로 새 이미지를 별도 업로드하므로 실패/취소가 이전 GPU 이미지를 덮어쓰지 않는다.
 잠금/문서/선택 변경은 적용 직전에 다시 확인한다. 문서 전환·Game Preview 진입은 진행 작업을 취소한다.
 
-JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, session revision 합계 8건/64 MiB 상한이다.
+JSON 1 MiB, 원본/복원 PNG 각각16 MiB·한 변4096/4 megapixel, session revision 합계8건/64 MiB 상한이다. 합계에는 별도로 보존한 원본 PNG도 포함한다.
 문서 닫기는 미저장 Blob URL·GPU texture를 해제한다. 검증·저장된 프로젝트 에셋은 같은 프로젝트의 다른 씬을 위해 유지하고 작업공간 종료 때 해제한다.
 2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
 
 app 전용 `asepriteImports[]` handoff 확장은 현재 씬이 참조하는 논리 asset 이름·revision ID·원본명·hash·frame을 제공한다.
 engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 필드를 추가하지 않는다.
 `Export Assets`의 `ferrum2d.aseprite.assets` v1 bundle은 문서 키·revisions·manifest·원본 JSON/PNG files를 담는다.
+trim revision은 `<id>.json`에 원본 JSON, `<id>.source.png`에 원본 packed PNG, `<id>.png`에 복원된 게임용 atlas를 담는다.
+optional `revisions[].sourcePng: {sha256,width,height}`는 원본 PNG를 가리키며 반드시 해당 파일과 함께 제공한다. revision ID는 원본 JSON/packed PNG hash를 사용한다.
+게임은 manifest의 `<id>.png`와 씬 patch의 복원 UV를 사용한다. 원본 JSON을 별도 importer로 읽을 때는 `<id>.source.png`를 짝지어 사용한다.
 파일별 base64/SHA-256을 검증하고 프로젝트 안에 `overwrite:false`로 설치한 뒤, manifest의 stable 이름과 `srgb`를 catalog에 등록한다.
 동반 Copy Patch/handoff를 씬에 반영하고 새 세션에서 catalog를 먼저 로드해 다시 연다. bundle 자체에는 씬 JSON이 없다.
 설치 전 imported reference의 scene-only Save와 문서 간 복사를 막으며, export를 실제 저장 완료로 간주하지 않는다.
@@ -755,6 +761,10 @@ Cancel은 후속 씬 저장과 오래된 UI 적용을 차단하지만 이미 시
 `catalog.json`은 app 전용 `ferrum2d.aseprite.catalog` v1이다. `revisions[]`에 원본명/hash/frame과 ID 생성에 쓴
 `identityDocument`를 보존하며, `manifest.textures`의 PNG 경로는 **catalog URL 기준 상대 경로**다.
 `manifest.textureOptions`는 `srgb`를 명시한다. 원본 Aseprite JSON의 `meta.image`는 바꾸지 않는다.
+trim host는 원본에서 pixels·rect·UV를 독립 복원해 게임용 PNG를 검증하고, 원본 PNG도 exclusive create·protocol 등록·정리/백업/복원 대상으로 포함한다.
+재열기는 source sidecar hash/identity와 게임용 PNG의 전체 RGBA를 확인한 뒤 저장된 PNG를 재사용한다. 압축 bytes가 달라도 원본 ID가 바뀌지 않는다.
+trim 저장 metadata의 `sourcePng`는 지원하는 세 필드로, frame rect/UV는 검증된 값과 UTF-8 ID 순으로 정규화한다. UI와 태그의 원본 순서는 유지한다. 기존 untrim v1 자산은 원본 PNG와 JSON 두 파일을 그대로 사용한다.
+새 trim 자산은 최신 앱/desktop host를 함께 사용해야 하며 이전 호스트는 trim 원본을 거절한다. Data Scene schema·Rust/Wasm ABI는 바꾸지 않는다.
 기존 export v1에 identityDocument가 없으면 native import는 bundle.document에서 이를 복원한다.
 프로젝트 재개방 시 원본을 검증·로드하고 frame browser/재import를 복원한다. handoff의 `persisted`는 실제 파일 확인 뒤 true가 된다.
 첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다.

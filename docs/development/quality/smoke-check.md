@@ -282,12 +282,12 @@ export bundle과 동반 patch로 만든 씬은 별도 새 페이지에서 PNG ha
 
 `pnpm smoke:aseprite-assets`는 빌드한 ferrum-web/엔진 Wasm과 Chromium을 준비한 뒤 실행한다.
 optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 별도 HTTP host에서 실행하며
-기본 CI 편입 없이 opt-in으로 다음을 확인한다.
+기본 CI에서도 다음을 확인한다.
 
 - 2D DPR 1·HD-2D DPR 2의 JSON+PNG 검사와 frame Preview, 등록 후 실제 frame 배치·Apply Frame
 - frame 이름을 유지한 크기/위치 변경 재import의 실제 native PNG 픽셀과 pose/size/pivot/collider/body 보존
 - 한 건 Undo/Redo와 revision handoff 복원, 제거·모호한 frame 및 animation/normal migration 진단
-- 잘못된 JSON/PNG 크기·파일명·회전·trim·범위·중복·byte 한도 거절과 기존 씬 보존
+- 잘못된 JSON/PNG 크기·파일명·회전·잘못된 trim offset·범위·중복·byte 한도 거절과 기존 씬 보존
 - 실제 GPU 업로드 뒤 실패 rollback, 취소 직후 같은 revision 재시도, URL/GL texture 해제
 - 문서별 catalog 분리·8 revision 한도·닫기 후 재개, compact Source/Preview 방향키/Home/End
 - scene-only Save 차단, 원본 JSON/PNG byte hash와 sRGB manifest가 담긴 Export Assets,
@@ -295,7 +295,7 @@ optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 �
 - BFCache pagehide/pageshow 후 재개와 최종 pagehide 이후 Blob URL/실제 GL texture 잔여 0
 
 근거는 `artifacts/aseprite-assets/verification.json`, `checks.json`과 run별 PNG/bundle/resume JSON이다.
-입력은 비회전·비트림 atlas로 제한하며 JSON 1 MiB/PNG 16 MiB·한 변 4,096·4 MP·256 frame,
+기존 기본 fixture는 비회전·비트림 atlas이며 trim 복원은 아래 전용 gate로 검증한다. JSON 1 MiB/PNG 16 MiB·한 변 4,096·4 MP·256 frame,
 세션 8 revision/원본 64 MiB 한도를 사용한다. resource 개수 검사는 JS heap·실제 기기 성능 검증을 대체하지 않는다.
 이 명령은 generated create-game viewer와 프로젝트 filesystem 설치를 검사하지 않는다. 프로젝트 저장은 아래 별도 smoke로 검증한다.
 명령이 남긴 테스트용 save-enabled app은
@@ -303,6 +303,18 @@ optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 �
 공식 작업공간 smoke의 입력·크기·focus 대상은 `canvas.demo-canvas`로 지정해 Assets의 frame preview canvas와 구분한다.
 workspace 전환의 native readback은 최대 16 RAF 안에 CSS/DPR와 drawing buffer 크기가 일치하고
 세 프레임 연속 크기가 안정될 때만 읽는다. 실패 전후 PNG의 완전 동일성 조건은 유지한다.
+
+### Trim 프레임 복원과 원본 보존
+
+`pnpm test:aseprite-trim`은 offset/원본 canvas·혼합 프레임·UTF-8 ID 배치와 source 순서, alpha-zero RGB·투명 여백, Adam7, 원본 기반 identity·기존 untrim의 두 파일 호환을 검사한다.
+프로젝트 재열기는 별도 PNG encoding을 보존하고, 원본 sidecar 변조·pixels 불일치·복원 치수 초과를 거절해야 한다.
+`pnpm smoke:aseprite-trim`은 save-enabled app과 기존 Aseprite harness의 `--trim` 분기로 2D DPR1·HD-2D DPR2를 검증한다.
+실제 재가져오기·단일 Undo/Redo·pose/size/origin/collider/body·clip ID를 보존하고 export PNG의 전체 RGBA/여백과 원본 JSON/packed PNG hash를 독립 대조한다.
+새 게임은 Playing·실제 native UV·visible frame·draw/texture switch 예산을 함께 검사한다. native는 실제 Rust writer/protocol·재시작·원본 PNG 변조 거절을 확인한다.
+desktop 단위 검사는 sourcePng의 지원 필드 정규화·불변 재시도, PNG trailing bytes/non-sRGB 거절, 원본 PNG의 정리/백업/복원을 포함한다.
+증거는 `artifacts/aseprite-trim/{browser,native}/verification.json`과 run별 PNG/JSON에 남긴다. CI와 aggregate smoke에 연결한다.
+선택 노멀 생성기 설치 후 `pnpm smoke:aseprite-trim-normals`로 실제 Worker 입력의 복원 frame RGBA·여백과 normal 적용/Undo를 검증한다. 이 추가 gate는 `artifacts/aseprite-trim/normals/`에 기록하며 기본 trim CI는 선택 생성기를 요구하지 않는다.
+기존16 MiB·4096·4MP·256frame·8revision/64 MiB 예산을 원본/복원에 각각 적용하며 합계에는 두 PNG를 모두 포함한다. native GUI IPC·실물 GPU/모바일 성능은 이 검증 대상이 아니다.
 
 `pnpm test:aseprite-animation`은 duration GCD/native float32 오차·4개 방향·array/hash 순서,
 numeric clip ID/initial/loop 보존·태그 추가/누락/모호함·수동 수정·frame/FPS 제한·lock/normal/legacy 거절을 확인한다.

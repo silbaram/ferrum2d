@@ -555,7 +555,9 @@ JSON의 `meta.image` basename과 선택한 PNG 파일명이 같아야 한다. JS
 | Save Project | 데스크톱에서 연 프로젝트의 원본/manifest를 확정하고 기존 씬 저장을 실행한다. 파일 충돌과 외부 씬 변경을 검사한다. |
 | Export Assets | 등록한 문서 revision들의 원본 JSON/PNG·hash·frame·manifest가 든 agent bundle을 내보낸다. 프로젝트 파일 저장 완료가 아니다. |
 
-JSON hash/array frame export, 정수 rect의 비회전·비트림 프레임을 지원한다. frame ID는 확장자까지 원래 이름을 유지한다.
+JSON hash/array frame export, 정수 rect의 비회전 프레임과 trim 복원을 지원한다. frame ID는 확장자까지 원래 이름을 유지한다.
+잘린 sRGB RGBA8 PNG는 `sourceSize`·`spriteSourceSize`의 원본 크기와 offset으로 투명 여백을 복원한다. 모든 프레임은 같은 원본 canvas 크기를 사용한다.
+원본 밖 offset·회전·지원하지 않는 PNG 색 공간·복원 한도 초과는 Inspect에서 진단한다. 기존 객체의 작성한 크기·origin은 유지한다.
 frameTags/duration은 명시적 Apply Animation/Reimport Animation에서 native animation으로 변환한다. 일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다.
 normal binding이 있는 대상의 일반 Apply Frame/Reimport도 차단한다. 정적 대상은 Generate Normals/Reimport Normals,
 애니메이션 대상은 Apply Paired/Reimport Paired로 노멀을 함께 교체한다.
@@ -574,7 +576,7 @@ Save Project 후 새 실행에서도 애니메이션과 노멀 binding evidence�
 실패/취소된 업로드가 기존 이미지를 덮어쓰지 않는다. 잠금/문서/선택 변경과 native 적용 실패도 이전 씬을 유지한다.
 2D 작성 화면은 기존 overlay 경로를 유지하며 실제 native 결과는 Game Preview에서 확인한다. HD-2D는 작성 preview에도 적용한다.
 
-JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, 1~256 frame을 허용한다. 세션은 staged/등록 revision 합계 8건/64 MiB다.
+JSON1 MiB, 원본/복원 PNG 각각16 MiB·한 변4096/4 megapixel, 1~256 frame을 허용한다. 세션은 staged/등록 revision 합계8건/64 MiB이며 별도 원본 PNG도 합산한다.
 문서 전환·Game Preview 진입은 진행 작업을 취소하고, 닫기/종료는 그 문서의 Blob URL과 GPU texture를 해제한다.
 Source/Preview 탭은 방향키/Home/End로, Cancel은 Enter/Space로 조작한다.
 
@@ -585,12 +587,15 @@ app 전용 handoff 확장 `asepriteImports[]`는 현재 씬에서 참조하는 r
 `files`의 base64를 decode하고 SHA-256·PNG 크기·JSON frame을 다시 검증한 뒤 프로젝트 안에 기존 파일을 덮어쓰지 않고 설치한다.
 manifest의 stable texture 이름과 `srgb` 색 공간을 유지해 catalog에 등록하고, **동반 Copy Patch/handoff**를 씬에 반영한다.
 원본 JSON/PNG bytes는 그대로 보관한다. bundle의 문서 키는 씬 JSON이 아니며, bundle만 설치해도 씬이 자동으로 바뀌지 않는다.
+trim 자산은 `.json`(원본 JSON)·`.source.png`(원본 packed PNG)·`.png`(복원된 게임용 이미지) 세 파일을 쓴다.
+`revisions[].sourcePng`의 hash/치수는 원본 PNG 근거이며 stable ID도 원본 JSON/PNG로 만든다. 게임은 manifest와 동반 patch의 복원 UV를 사용한다.
 새 세션에서는 catalog를 `loadAssets`로 로드한 뒤 씬을 열어 확인한다. 미저장 session 참조의 scene-only Save와 다른 문서 복사는 막는다.
 
 데스크톱에서 `Open Project`로 연 기본 프로젝트 문서에는 **Save Project**를 제공한다. 저장 순서는 다음과 같다.
 
 1. 원본 byte/SHA-256·PNG decode·frame·이름·색 공간을 native host에서 검증한다.
 2. `public/assets/.ferrum-aseprite/<assetId>.png`, `<assetId>.json`을 독점 생성한다. 같은 원본은 재시도에서 재사용하며 다른 bytes를 덮어쓰지 않는다.
+   trim 자산은 `<assetId>.source.png`도 저장한다. 호스트는 원본 pixels에서 게임용 이미지·여백·rect/UV를 대조하며 정리/백업/복원도 세 파일을 함께 처리한다.
 3. `catalog.json`을 원자적으로 확정하고 durable protocol URL의 원본을 app이 다시 검증한다.
 4. 기존 Scene Save의 기준 JSON 비교 후 교체를 실행한다. 외부 씬이 바뀌었으면 보존하고 실패를 표시한다.
 

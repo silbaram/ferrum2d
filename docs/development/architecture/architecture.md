@@ -75,6 +75,9 @@ generated pair의 기존 format과 public engine API·Wasm ABI를 유지하며 n
 
 `placementSpriteRevisions.ts`는 Aseprite와 tile import가 공유하는 bounded immutable PNG revision store다.
 동일 이름의 upload를 직렬화하며 취소/부분 upload 실패/문서 닫기 후 늦게 완료된 texture도 소유권 안에서 회수한다.
+`placementAsepriteTrim.ts`는 bounded sRGB RGBA8 trim 입력을 원본 크기·offset에 복원한다. 원본 JSON과 packed PNG의 hash로 identity를 유지하고 게임용 PNG/UV만 파생한다.
+native `aseprite_trim.rs`는 같은 배치·pixels를 독립 검증한다. Aseprite만 optional sourcePng/`.source.png`를 허용하고 `sprite_assets`가 파일·예산·protocol·정리 수명을 함께 관리한다.
+`png_layout.rs`는 자체 도트/trim의 PNG chunk·CRC·sRGB·완전한 IEND 경계를 공유한다. 기존 untrim·tile 계약과 Rust core/렌더 ABI는 유지한다.
 `placementTileDependencies.ts`는 명시적으로 고른 외부 TSJ를 상대 source의 유일한 basename과 연결한다. 자동 경로 읽기 없이 map/TSJ 합계 1 MiB를 제한하고 원본과 변환 입력을 분리한다.
 `placementTileSelection.ts`는 bounded 원본 metadata에서 선택 목록과 명시적 단일 PNG projection을 만든다. 원본 bytes와 선택 범위 evidence는 별도로 보존한다.
 `placementTileAssets.ts`는 기존 public starter-scenes importer로 선택 tileset을 검증하고 frame provider/placement patch/export를 만든다.
