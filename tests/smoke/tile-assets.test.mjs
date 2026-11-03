@@ -12,6 +12,7 @@ import {
   tileFixture,
   multiTileFixture,
   externalTileFixture,
+  tileMapFixture,
 } from "./tile-import-fixtures.mjs";
 const require = createRequire(
     new URL("../../apps/placement-viewer/package.json", import.meta.url),
@@ -38,6 +39,7 @@ async function source(file, replacements = []) {
         import.meta.url,
       ).href,
     );
+  code = code.replaceAll('"@ferrum2d/ferrum-web"', JSON.stringify(new URL('../../packages/ferrum-web/dist/index.js', import.meta.url).href));
   for (const [from, to] of replacements) code = code.replaceAll(from, to);
   return "data:text/javascript;base64," + Buffer.from(code).toString("base64");
 }
@@ -900,7 +902,10 @@ test("map plus TSJ budget and late cancelled metadata reads fail before source a
 });
 
 const mapSpawnDefinition={props:{components:{visual:{kind:'primitive',shape:'rect',width:8,height:8,color:'#ffffff'},collider:'none',layer:'wall'}}};
-const {tileMapPlacementPatch:mapPatch}=await import(await source("placementTileMap.ts"));
+const paletteSource=await source('placementTileRulePalette.ts',[['./placementTileDependencies',dependenciesSource],['./placementTileSelection',selectionSource]]);
+const rulesSource=await source('placementTileRules.ts',[['./placementTileRulePalette',paletteSource]]);
+const {bakeTileMapRules:bakeRules}=await import(rulesSource);
+const {tileMapPlacementPatch:mapPatch}=await import(await source("placementTileMap.ts", [['./placementTileRules',rulesSource]]));
 for(const kind of ["tiled","ldtk"])test(kind+" whole-map patch preserves coordinates, source, layers and replaces only its group",async()=>{
   const asset=await check(kind),next=await check(kind,true),document=doc(asset.id,asset.frames[0].uv);
   const sourceBefore=JSON.stringify(document),rawBefore=Buffer.from(asset.json).toString('hex');
@@ -1100,4 +1105,118 @@ test('map reimport rejects unsupported authored props before dropping data',asyn
   const saved=mergeScenePlacementPatch(d,mapPatch(d,state,a)).document;
   const target=saved.sceneComposition.fragments.main.instances.find(i=>i.props?.tileMapImport);target.props.agentNote='preserve me';
   const before=JSON.stringify(saved);assert.throws(()=>mapPatch(saved,state,a),/unsupported authored prop agentNote/);assert.equal(JSON.stringify(saved),before);
+});
+
+const edgeRules={ground:{rules:[{match:'filled',neighbors:{n:'empty'},output:'terrain.1'}]}};
+for(const kind of ['tiled','ldtk'])test(kind+' autotile bakes original neighbors with stable names, retains source, collisions, IDs and saved rules',async()=>{
+  const a=await check(kind,false,tileMapFixture(kind)),b=await check(kind,true,tileMapFixture(kind,true)),d=doc(a.id,a.frames[0].uv);
+  d.sceneComposition.prefabs.spawn=structuredClone(mapSpawnDefinition);
+  const options={autotile:edgeRules,collisionLayers:['ground'],objectPrefabs:{Spawn:'spawn'}};
+  const original=JSON.stringify(a.imported),bytes=Buffer.from(a.json).toString('hex');
+  const first=mergeScenePlacementPatch(d,mapPatch(d,state,a,options)).document;
+  const cells=first.sceneComposition.fragments.main.instances.filter(i=>i.props?.tileMapImport?.cell);
+  assert.equal(cells.length,4);
+  for(const cell of cells.filter(i=>i.props.tileMapImport.cell.row===0))assert.deepEqual(cell.props.components.visual.frame,a.frames.find(f=>f.id==='terrain.1').uv);
+  assert(cells.every(i=>i.props.components.collider.type==='aabb'));
+  assert.deepEqual(cells[0].props.tileMapImport.options.autotile,edgeRules);
+  const reopened=JSON.parse(JSON.stringify(first)),next=mergeScenePlacementPatch(reopened,mapPatch(reopened,state,b,options)).document;
+  const newCells=next.sceneComposition.fragments.main.instances.filter(i=>i.props?.tileMapImport?.cell);
+  for(const cell of cells)assert(newCells.some(i=>i.id===cell.id));
+  for(const cell of newCells.filter(i=>i.props.tileMapImport.cell.row===0))assert.deepEqual(cell.props.components.visual.frame,b.frames.find(f=>f.id==='terrain.1').uv);
+  assert.equal(JSON.stringify(a.imported),original);assert.equal(Buffer.from(a.json).toString('hex'),bytes);
+});
+
+test('autotile first-match wins, matches original grid, diagonal/same/set and boundary policies',async()=>{
+  const a=await check('tiled',false,tileMapFixture('tiled'));
+  const id=name=>Object.entries(a.imported.tilemap.tiles).find(([,tile])=>tile.frame===name)[0]*1;
+  const one=id('terrain.0'),two=id('terrain.1');
+  assert.deepEqual([...bakeRules(a,{ground:{rules:[{match:['terrain.0'],neighbors:{s:'same',se:'terrain.1'},output:'terrain.1'},{match:'filled',output:null}]}}).layers.get('ground')],[two,0,0,0]);
+  assert.deepEqual([...bakeRules(a,{ground:{rules:[{neighbors:{n:'empty'},output:'terrain.1'}],emptyOutOfBounds:false}}).layers.get('ground')],[one,two,one,two]);
+  assert.deepEqual([...bakeRules(a,{ground:{rules:[{match:'terrain.0',output:'terrain.1'},{match:'terrain.1',output:null}],preserveUnmatched:false}}).layers.get('ground')],[two,0,two,0]);
+});
+
+test('autotile output metadata controls collision including explicit false overrides',async()=>{
+  const f=tileMapFixture('tiled');f.json.tilesets[0].tiles=[{id:1,properties:[{name:'blocksMovement',type:'bool',value:false}]}];
+  const a=await check('tiled',false,f),d=doc(a.id,a.frames[0].uv);
+  const saved=mergeScenePlacementPatch(d,mapPatch(d,state,a,{autotile:edgeRules,collisionLayers:['ground']})).document;
+  const cells=saved.sceneComposition.fragments.main.instances.filter(i=>i.props?.tileMapImport?.cell);
+  assert(cells.filter(i=>i.props.tileMapImport.cell.row===0).every(i=>i.props.components.collider==='none'));
+  assert.equal(cells.find(i=>i.props.tileMapImport.cell.row===1&&i.props.tileMapImport.cell.column===0).props.components.collider.type,'aabb');
+});
+
+test('autotile bad rules and budget excess reject atomically, without poisoning valid cached results',async()=>{
+  const a=await check('tiled',false,tileMapFixture('tiled')),d=doc(a.id,a.frames[0].uv),before=JSON.stringify(d);
+  const rule={output:'terrain.0'};
+  for(const bad of [null,[],{typo:{rules:[]}},{ground:null},{ground:{rules:null}},{ground:{rules:[null]}},{ground:{rules:[{...rule,typo:true}]}},{ground:{rules:[{output:'missing'}]}},{ground:{rules:[{...rule,match:'same'}]}},{ground:{rules:[{...rule,neighbors:{up:'filled'}}]}},{ground:{rules:[{...rule,match:[]}]}},{ground:{rules:[{...rule,match:Array(17).fill('terrain.0')}]}},{ground:{rules:[rule],emptyOutOfBounds:1}},{ground:{rules:Array(65).fill(rule)}},{ground:{rules:[{output:'x'.repeat(8192)}]}}]){
+    assert.throws(()=>mapPatch(d,state,a,{autotile:bad}));assert.equal(JSON.stringify(d),before);
+  }
+  assert.doesNotThrow(()=>mapPatch(d,state,a,{autotile:edgeRules}));
+  const huge={...a,imported:structuredClone(a.imported)};Object.assign(huge.imported.tilemap.layers[0],{columns:256,rows:256,data:Array(65536).fill(1)});
+  assert.throws(()=>bakeRules(huge,{ground:{rules:Array(32).fill(rule)}}),/work exceeds/);
+  assert.throws(()=>mapPatch(d,state,a,{autotile:{ground:{rules:[{output:null}]}}}),/map is empty/);
+});
+
+test('autotile uses one viewer transaction, retains locks and restores the exact previous patch on Undo',async()=>{
+  const a=await check('tiled',false,tileMapFixture('tiled')),d=doc(a.id,a.frames[0].uv);
+  const saved=mergeScenePlacementPatch(d,mapPatch(d,state,a)).document;
+  const viewer=createScenePlacementViewer({document:saved,viewport:{cssWidth:320,cssHeight:240}});
+  const p=mapPatch(saved,viewer.state(),a,{autotile:edgeRules});applyMapEdit(viewer,p);
+  assert.equal(viewer.historyState().undoCount,1);const after=viewer.exportPatch();assert(after);
+  viewer.undo();assert.equal(viewer.exportPatch(),undefined);viewer.redo();assert.deepEqual(viewer.exportPatch(),after);
+  const target=saved.sceneComposition.fragments.main.instances.find(i=>i.props?.tileMapImport);
+  assert.throws(()=>mapPatch(saved,{...state,lockedInstanceIds:[target.id]},a,{autotile:edgeRules}),/unlock/);
+});
+
+for(const kind of ['tiled','ldtk'])test(kind+' autotile can use an unused tileset frame and validates its metadata without changing the asset catalog',async()=>{
+  const f=tileMapFixture(kind);
+  if(kind==='tiled'){
+    f.json.layers[0].data.fill(1);
+    f.json.tilesets[0].tiles=[{id:1,properties:[{name:'blocksMovement',type:'bool',value:false}]}];
+  } else {
+    f.json.levels[0].layerInstances[0].gridTiles.forEach(t=>{t.t=0;t.src=[0,0];});
+    f.json.defs.tilesets[0].customData=[{tileId:1,data:JSON.stringify({blocksMovement:false})}];
+  }
+  const a=await check(kind,false,f),d=doc(a.id,a.frames[0].uv);d.sceneComposition.prefabs.spawn=structuredClone(mapSpawnDefinition);
+  assert.equal(a.frames.length,1);const before=JSON.stringify(a.imported),frames=JSON.stringify(a.frames);
+  const options={autotile:edgeRules,collisionLayers:['ground'],objectPrefabs:{Spawn:'spawn'}};
+  const saved=mergeScenePlacementPatch(d,mapPatch(d,state,a,options)).document;
+  const cells=saved.sceneComposition.fragments.main.instances.filter(i=>i.props?.tileMapImport?.cell);
+  assert(cells.filter(i=>i.props.tileMapImport.cell.row===0).every(i=>i.props.components.visual.frame.u0===.5&&i.props.components.collider==='none'));
+  assert(cells.filter(i=>i.props.tileMapImport.cell.row===1).every(i=>i.props.components.visual.frame.u0===0&&i.props.components.collider.type==='aabb'));
+  assert.equal(JSON.stringify(a.imported),before);assert.equal(JSON.stringify(a.frames),frames);
+  assert.deepEqual(mergeScenePlacementPatch(saved,mapPatch(saved,state,a,options)).document,saved);
+  assert.throws(()=>mapPatch(d,state,a,{autotile:{ground:{rules:[{output:'terrain.9999'}]}}}));
+});
+
+for(const kind of ['tiled','ldtk'])test(kind+' unused autotile frames match actual import with spacing and padding',async()=>{
+  const f=tileFixture(kind),width=36,height=18;
+  f.png=encodePngRgba(width,height,new Uint8Array(width*height*4));
+  if(kind==='tiled'){
+    Object.assign(f.json.tilesets[0],{firstgid:21,imagewidth:width,imageheight:height,columns:2,margin:1,spacing:2});
+    f.json.layers[0].data=[21,21];
+  }else{
+    Object.assign(f.json.defs.tilesets[0],{pxWid:width,pxHei:height,padding:1,spacing:2});
+    f.json.levels[0].layerInstances[0].gridTiles.forEach(t=>{t.t=0;t.src=[1,1];});
+  }
+  const original=await check(kind,false,f),used=structuredClone(f);
+  if(kind==='tiled')used.json.layers[0].data[1]=22;
+  else Object.assign(used.json.levels[0].layerInstances[0].gridTiles[1],{t:1,src:[19,1]});
+  const actual=await check(kind,false,used),palette=bakeRules(original,edgeRules).palette;
+  assert.deepEqual(palette.frames.find(f=>f.id==='terrain.1'),actual.frames.find(f=>f.id==='terrain.1'));
+  assert.equal(original.frames.length,1);
+});
+
+test('unused autotile palette resolves original external TSJ and selected LDtk level',async()=>{
+  const external=tileFixture('tiled');external.json.layers[0].data=[1,1];
+  const set=external.json.tilesets[0];external.dependencies=[{name:'terrain.tsj',json:{...set,type:'tileset'}}];
+  external.json.tilesets=[{firstgid:1,source:'tiles/terrain.tsj'}];
+  const imported=await check('tiled',false,external);
+  assert.equal(bakeRules(imported,edgeRules).palette.frames.find(f=>f.id==='terrain.1').uv.u0,.5);
+  const multi=tileFixture('ldtk');
+  const second=structuredClone(multi.json.levels[0]);second.identifier='Second';second.iid='second';
+  second.layerInstances[0].gridTiles.forEach(t=>{t.t=0;t.src=[0,0];});
+  multi.json.levels.push(second);
+  const ldtk=await check('ldtk',false,multi,'scene',1);
+  assert.equal(ldtk.frames.length,1);
+  assert.equal(bakeRules(ldtk,edgeRules).palette.frames.find(f=>f.id==='terrain.1').uv.u0,.5);
 });

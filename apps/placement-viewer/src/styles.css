@@ -249,6 +249,8 @@ textarea {
   border: 1px solid var(--border);
 }
 .placement-aseprite-frame-preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.placement-tile-map-preview { display: grid; gap: 4px; margin-top: 8px; }
+.placement-tile-map-preview canvas { max-width: 100%; height: auto; image-rendering: pixelated; background: var(--bg-2); border: 1px solid var(--border-strong); }
 .placement-aseprite-slices { flex: 1 1 240px; min-width: 0; border-top: 1px solid var(--border); padding: 4px 0; }
 .placement-aseprite-slices > summary { cursor: pointer; padding: 4px 0; }
 .placement-aseprite-slices select { min-width: 0; max-width: 60%; }

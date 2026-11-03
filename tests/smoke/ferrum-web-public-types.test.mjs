@@ -15,7 +15,7 @@ test('public package declarations compile in an ES2022 consumer without skipping
     await symlink(packageRoot, join(project, 'node_modules/@ferrum2d/ferrum-web'), 'junction');
     await writeFile(join(project, 'consumer.ts'), `
       import type { PixelPerfectOptions, FerrumEngine } from '@ferrum2d/ferrum-web/core';
-      import '@ferrum2d/ferrum-web/authoring';
+      import type { ScenePlacementViewer } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
       import '@ferrum2d/ferrum-web/labs';
       import '@ferrum2d/ferrum-web/quality';
@@ -24,6 +24,12 @@ test('public package declarations compile in an ES2022 consumer without skipping
       // @ts-expect-error snap is strictly boolean
       const invalid: PixelPerfectOptions = { ...config, snap: 'on' };
       declare const engine: FerrumEngine;
+      declare const viewer: ScenePlacementViewer;
+      viewer.addInstances('main', [{ id: 'tile_0', prefab: 'tile', x: 16, y: 16 }] as const);
+      // @ts-expect-error batch requires a fragment string
+      viewer.addInstances(1, []);
+      // @ts-expect-error entries require a prefab
+      viewer.addInstances('main', [{ id: 'tile_1' }]);
       void [config, disabled, invalid, engine];
     `);
     await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: {

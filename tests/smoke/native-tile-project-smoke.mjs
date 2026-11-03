@@ -8,6 +8,7 @@ import {
   multiTileFixture,
   externalTileFixture,
 } from "./tile-import-fixtures.mjs";
+import { autotileRules } from "./tile-autotile-smoke.mjs";
 
 /** Actual Rust filesystem/protocol; only IPC transport is replaced by the harness. */
 export async function smokeNativeTiles({
@@ -53,6 +54,7 @@ export async function smokeNativeTiles({
         ),
       );
   const wholeMap=mode==='2d'&&!multi&&!externalTsj;
+  const autotile=wholeMap&&process.argv.includes('--autotile');
   let mapTarget;
   const stage = async (updated) => {
     const previousKey = multi
@@ -152,7 +154,12 @@ export async function smokeNativeTiles({
     await tool().locator('details').first().evaluate(el=>{el.open=true;});
     const mapping={};const data=tileFixture(kind);
     if(kind==='ldtk')for(const layer of data.json.levels[0].layerInstances)for(const e of layer.entityInstances??[])mapping[e.__identifier]='map_spawn';
-    await tool().getByLabel('Map placement options (JSON)',{exact:true}).fill(JSON.stringify({originX:-60,originY:48,objectPrefabs:mapping}));
+    await tool().getByLabel('Map placement options (JSON)',{exact:true}).fill(JSON.stringify({originX:-60,originY:48,objectPrefabs:mapping,...(autotile?{autotile:autotileRules,collisionLayers:['ground']}:{})}));
+    if(autotile){
+      const before=await getPage().evaluate(()=>window.ferrumPlacementViewerState.draftPatch);
+      await click('preview-map');await getPage().waitForFunction(()=>document.querySelector('[data-tile-map-preview]').dataset.tileMapPreview==='ready');
+      assert.deepEqual(await getPage().evaluate(()=>window.ferrumPlacementViewerState.draftPatch),before);
+    }
     await click('map');assert.match(await status(),/^Applied/);
     mapTarget=await getPage().evaluate(()=>window.ferrumPlacementViewerState.draftPatch.operations.find(op=>op.kind==='addInstance'&&op.instance.props?.tileMapImport?.cell?.column===0&&op.instance.props?.tileMapImport?.cell?.row===1).instance);
     await getPage().evaluate(id=>window.ferrumPlacementViewerUpdateBehaviorBinding({kind:'instance',instanceId:id},'map_guard'),mapTarget.id);
@@ -233,6 +240,7 @@ export async function smokeNativeTiles({
   }
   await restart();
   assert.equal((await imports())[0].assetId, id);
+  if(autotile)assert.deepEqual(JSON.parse(await tool().getByLabel('Map placement options (JSON)',{exact:true}).inputValue()).autotile,autotileRules);
   assert.equal((await imports())[0].persisted, true);
   assert.equal(
     await tool().getByLabel("Tile asset name", { exact: true }).inputValue(),
@@ -298,6 +306,12 @@ export async function smokeNativeTiles({
     assert.equal(imported.filter(i=>i.props.tileMapImport.cell).length,5);
     const target=imported.find(i=>i.id===mapTarget.id);assert.deepEqual([target.x,target.y,target.props.behaviorRecipes],[mapTarget.x,mapTarget.y,'map_guard']);
     assert.deepEqual(target.props.tileMapImport.cell,{layer:'ground',column:0,row:1});
+    if(autotile){
+      assert.deepEqual(imported.find(i=>i.props.tileMapImport.options)?.props.tileMapImport.options.autotile,autotileRules);
+      const top=imported.filter(i=>i.props.tileMapImport.cell?.row===0);
+      assert(top.every(i=>i.props.components.visual.frame.u0===1/3&&i.props.components.visual.frame.u1===2/3));
+      assert(imported.filter(i=>i.props.tileMapImport.cell).every(i=>i.props.components.collider.type==='aabb'));
+    }
   }
   assert.notDeepEqual(
     instances[0].props.components.visual.frame,
@@ -389,6 +403,7 @@ export async function smokeNativeTiles({
     canonicalIdentity: true,
     reimportUndoRedo: true,
     ...(wholeMap?{wholeMapSavedAndReopened:true,stableMapIds:true,resizedCellIdentity:true,instanceBehaviorPreserved:true,legacySourceMigration:kind==='tiled'}:{}),
+    ...(autotile?{autotileSavedAndReopened:true}:{}),
     sceneCasPreserved: true,
     rawExport: true,
     tamperRejected: true,

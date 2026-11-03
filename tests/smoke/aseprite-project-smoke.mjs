@@ -26,6 +26,7 @@ import { smokeAssetCleanup } from "./placement-asset-cleanup-smoke.mjs";
 
 const cleanupMode = process.argv.includes("--cleanup");
 const tileMode = process.argv.includes("--tiles");
+const autotileMode = tileMode && process.argv.includes("--autotile");
 const pixelMode = process.argv.includes("--pixels");
 const externalTileMode = tileMode && process.argv.includes("--external-tsj");
 const multiTileMode = tileMode && process.argv.includes("--multi-tilesets");
@@ -35,7 +36,7 @@ const sliceMode = process.argv.includes("--slices");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  sliceMode ? "artifacts/aseprite-slices/native" : trimMode ? "artifacts/aseprite-trim/native" : cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
+  autotileMode ? "artifacts/tile-autotile/native" : sliceMode ? "artifacts/aseprite-slices/native" : trimMode ? "artifacts/aseprite-trim/native" : cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -1050,6 +1051,7 @@ try {
     results: reports,
     commands,
   };
+  if(autotileMode)assert(reports.filter(r=>r.mode==='2d'&&r.autotileSavedAndReopened).length===2,'Both native autotile formats must run');
   await writeFile(
     join(artifact, "verification.json"),
     JSON.stringify(report, null, 2) + "\n",

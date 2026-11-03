@@ -26,6 +26,7 @@ import { smokeTrimNormals } from "./aseprite-trim-normal-smoke.mjs";
 import { smokeAsepriteSlices, teardownSlicePreview } from "./aseprite-slices-browser-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
+const autotileMode = tileMode && process.argv.includes("--autotile");
 const trimMode = process.argv.includes("--trim");
 const sliceMode = process.argv.includes("--slices");
 const trimNormalMode = trimMode && process.argv.includes("--trim-normals");
@@ -34,7 +35,7 @@ const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  sliceMode ? "artifacts/aseprite-slices/browser" : trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
+  autotileMode ? "artifacts/tile-autotile/browser" : sliceMode ? "artifacts/aseprite-slices/browser" : trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"
@@ -1285,6 +1286,7 @@ try {
   }
   if (sliceMode) assert(results.length === 2 && results.every(value => value.slices?.singleUndoRedo && value.slices?.reimportPreservedOrigin && value.slices?.persistedPageTransition && value.queuedToggleAfterDestroy && value.queuedControlsAfterDestroy && value.queuedImportEventsAfterDestroy), "Both slice scenarios must execute including persisted transitions and queued import disposal");
   const report = { ok: true, run, browser: browser.version(), results };
+  if(autotileMode)assert(results.length===2&&results.find(r=>r.mode==='2d')?.autotile?.budgets?.length===3&&results.find(r=>r.mode==='hd2d')?.autotile?.unsupportedSpatialRejected,'Autotile browser scenarios must all run');
   await writeFile(
     resolve(artifact, "verification.json"),
     JSON.stringify(report, null, 2) + "\n",

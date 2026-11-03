@@ -1,11 +1,13 @@
 import { resolveDataSceneComponentsSpec, instantiateSceneFragment, type SceneAuthoringDocumentSpec, type ScenePlacementBehaviorBindingPatch, type ScenePlacementPatch, type ScenePlacementViewerState } from '@ferrum2d/ferrum-web/authoring';
 import type { PlacementTileAsset } from './placementTileAssets';
+import { bakeTileMapRules, type TileMapRules } from './placementTileRules';
 export interface TileMapPlacementOptions {
     originX?: number;
     originY?: number;
     layerBase?: number;
     collisionLayers?: readonly string[];
     objectPrefabs?: Readonly<Record<string, string>>;
+    autotile?: TileMapRules;
 }
 interface MapCell { layer: string; column: number; row: number }
 interface MapMarker { name: string; lineage: string; key: string; assetId?: string; cell?: MapCell }
@@ -23,7 +25,7 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
     if (!options || typeof options !== 'object' || Array.isArray(options))
         fail('options must be an object');
     for (const key of Object.keys(options))
-        if (!['originX', 'originY', 'layerBase', 'collisionLayers', 'objectPrefabs'].includes(key))
+        if (!['originX', 'originY', 'layerBase', 'collisionLayers', 'objectPrefabs', 'autotile'].includes(key))
             fail('unknown option ' + key);
     const x = finite(options.originX, 'originX'), y = finite(options.originY, 'originY'), base = finite(options.layerBase, 'layerBase');
     if (!Number.isInteger(base) || base < -2147483648 || base > 2147482600)
@@ -60,6 +62,7 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
     const imported = asset.imported, tm = imported.tilemap, layers = tm.layers ?? [], names = layers.map((l, i) => l.name ?? 'layer-' + i);
     if (new Set(names).size !== names.length)
         fail('layer names must be unique');
+    const bakedLayers = bakeTileMapRules(asset, options.autotile);
     for (const name of options.collisionLayers ?? [])
         if (!names.includes(name))
             fail('unknown collision layer ' + name);
@@ -116,12 +119,12 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         if (original?.props && Object.hasOwn(original.props, 'behaviorRecipes'))
             operations.push({ kind: 'updateBehaviorBinding', target: { kind: 'instance', instanceId: id }, behaviorRecipes: copyBinding(original.props.behaviorRecipes) });
     };
-    const frames = new Map(asset.frames.map(f => [f.id, f]));
+    const frames = new Map(bakedLayers.palette.frames.map(f => [f.id, f]));
     layers.forEach((layer, index) => {
         const w = finite(layer.tileWidth ?? tm.tileWidth, 'tile width'), h = finite(layer.tileHeight ?? tm.tileHeight, 'tile height');
         if (w <= 0 || h <= 0)
             fail('invalid tile size');
-        const columns = layer.columns!, rows = layer.rows!, data = layer.data!;
+        const columns = layer.columns!, rows = layer.rows!, data = bakedLayers.layers.get(names[index]) ?? layer.data!;
         if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns <= 0 || rows <= 0 || data.length !== columns * rows)
             fail('invalid tile grid');
         const raw=sourceLayers.get(names[index]);if(!raw)fail('source layer missing');
@@ -132,7 +135,7 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         data.forEach((tile, cell) => {
             if (tile === 0)
                 return;
-            const spec = tm.tiles?.[String(tile)], frame = spec?.frame ? frames.get(spec.frame) : undefined;
+            const spec = bakedLayers.palette.tiles[String(tile)], frame = spec?.frame ? frames.get(spec.frame) : undefined;
             if (!spec || !frame)
                 fail('missing tile frame ' + tile);
             if(frame.width!==w||frame.height!==h)fail('whole-map tiles must match the map cell size');

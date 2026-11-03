@@ -336,6 +336,8 @@ export interface ScenePlacementViewer {
     instance: SceneCompositionFragmentInstanceSpec,
     spatial?: ScenePlacementSpatialAddition,
   ): ScenePlacementViewerState;
+  /** Flat 2D import batch: validate atomically and rebuild derived state once. */
+  addInstances(fragment: string, instances: readonly SceneCompositionFragmentInstanceSpec[]): ScenePlacementViewerState;
   removeInstance(instanceId: string): ScenePlacementViewerState;
   removeInstances(instanceIds: readonly string[]): ScenePlacementViewerState;
   duplicateInstances(
@@ -1174,6 +1176,28 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     fragment: string,
     instance: SceneCompositionFragmentInstanceSpec,
   ): ScenePlacementViewerState {
+    this.appendInstanceDraft(fragment, instance);
+    this.pickBounds = this.createPickBounds(this.path);
+    return this.state();
+  }
+
+  addInstances(fragment: string, instances: readonly SceneCompositionFragmentInstanceSpec[]): ScenePlacementViewerState {
+    return this.edit("Add Instances", () => {
+      if (this.spatial) throw new Error("Batch instance addition requires a flat 2D document.");
+      if (!Array.isArray(instances) || instances.length > 2048)
+        throw new Error("Instance batch must contain at most 2048 entries.");
+      const ids = new Set(this.visibleInstanceRefs().map(ref => this.refId(ref)));
+      for (const instance of instances) this.appendInstanceDraft(fragment, instance, ids);
+      this.pickBounds = this.createPickBounds(this.path);
+      return this.state();
+    });
+  }
+
+  private appendInstanceDraft(
+    fragment: string,
+    instance: SceneCompositionFragmentInstanceSpec,
+    ids?: Set<string>,
+  ): void {
     const checkedFragment = requiredPlacementInstanceId(
       fragment,
       "scenePlacementViewer.addInstance.fragment",
@@ -1201,7 +1225,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       "scenePlacementViewer.addInstance.instance",
     );
     if (
-      this.instanceRefForId(instanceId) !== undefined ||
+      (ids ? ids.has(instanceId) : this.instanceRefForId(instanceId) !== undefined) ||
       (this.instancesById.has(instanceId) && !(
         !this.spatial && this.draftRemovedInstanceIds.has(instanceId) &&
         sameTileMapImportIdentity(
@@ -1220,9 +1244,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       fragment: checkedFragment,
       instance: checkedInstance,
     });
+    ids?.add(instanceId);
     this.selectedInstanceIds = [instanceId];
-    this.pickBounds = this.createPickBounds(this.path);
-    return this.state();
   }
 
   addObjectDefinition(
