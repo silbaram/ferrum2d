@@ -2219,3 +2219,23 @@ smoke는 공식 UI에서 16→17버전 전환,64개 막대의 End/Home·선택 �
 같은 시나리오를 실제 Rust 저장/protocol transport에서 실행하고 host/browser 재시작 후 frame63/source와
 저장된 새 게임의64프레임 출력을 확인한다. native GUI IPC는 이 stdio transport 검증에 포함되지 않는다.
 CI validate와 aggregate smoke에 연결하며 browser/native 고유 run·PNG·JSON과 profile을 같은 artifact 폴더에 둔다.
+
+## 평면 2D 팔레트 스왑
+
+`pnpm smoke:sprite-palette`는 SDK를 빌드하고 WebGL2/WebGPU의 실제 shader/buffer를 DPR 1/2에서 실행한다.
+두 팀과 미지정 texture를 한 프레임에 그려 RGB 교체·미매칭·한 번만 치환·투명/반투명·tint/colorMix·additive·outline·normal 조명을 비교한다.
+RGB 채널 허용 오차는 2이고 tint/flash/additive/outline은 기대 픽셀도 직접 검사한다. alpha는 같은 backend의 전후 값을 비교하며
+제외 pass 색과 충돌하는 mapping을 넣어 primitive/그림자/normal이 교체되지 않는지 검사한다.
+GL linear-sRGB의 비원색 교체, RenderTexture 출력과 미지원 입력 진단, 동일 설정 반복 시 자원 유지,
+변경/비활성 복귀, 64번째 binding 실제 draw, 4096px 미지정 atlas의 sampling 불변, WebGPU 장치 손실 2회 복구, destroy 자원 0을 검사한다.
+반복 설정 동안 실제 GPU create 호출을 계수하며, 비활성 시 draw·program/buffer/texture 개수가 기준값으로 돌아오는지 확인한다.
+이 결과를 전체 CPU/GPU 비용이 0이라는 주장으로 확대하지 않는다. 설정 복사 실패의 화면 원자성과 단일 owned snapshot도 검사한다.
+실제 Rust Data Scene은 Playing·2,048 entities/commands·60프레임·draw≤2·texture switch=0·CPU p95<250ms와
+팔레트가 적용된 실제 픽셀을 assert한다. `webgl2.gpuTiming`은 실제 지원 상태/결과를 보고하며 unsupported를 0ms로 취급하지 않는다.
+각 native runtime의 실제 backend를 확인하고, 동적 provider를 사용해 lost/recovering 중 native update·onFrame 유지와
+GPU 제출/provider 호출 0, 복구 후 팔레트 해제/교체의 실제 픽셀을 검사한다.
+보고서는 `artifacts/sprite-palette/verification.json`과 `run-*/verification.json`이다. CI와 `smoke:check`에 직접 연결한다.
+WebGPU는 소프트웨어 offscreen target이므로 실물 GPU 성능·native canvas compositor 검증을 주장하지 않는다.
+
+단위 검사는 입력 한도·중복/잘못된 RGB·불변 복사·base-only pass·기존 command staging 무변경,
+WebGPU 독립 uniform/동일 설정 재사용/실패 원자성·해제, optional shader의 기본 준비 제외를 확인한다.

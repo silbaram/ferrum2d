@@ -27,6 +27,47 @@ WebGPU와 material helper는 Rust render command ABI를 바꾸지 않는다. Rus
 모델은 `await preloadSpatialModels(assets)` 후 동기 `prepareSpatialModels` lease로 활성화한다.
 환경 효과를 포함한 현재 제한은 [WebGPU 공간 경로](../data-scene-spatial.md#webgpu-공간-경로)를 따른다.
 
+### 평면 2D 팔레트 스왑
+
+`SpriteMaterialPreset.paletteSwap`은 원본 이미지를 수정하지 않고 RGB 색을 교체한다.
+`SpritePaletteSwap` 타입은 root/labs에서 가져온다. 기존 `createFerrumRuntime({ spriteMaterial })`,
+renderer의 `setSpriteMaterial(...)` 또는 renderer 생성 옵션의 `webgl2.spriteMaterial`/`webgpu.spriteMaterial`을 사용한다.
+
+```ts
+// 두 ID는 같은 원본 PNG를 사용한다. 현재 로더는 ID마다 GPU 이미지를 소유한다.
+await renderer.loadTexture(1, "/assets/hero.png", { colorSpace: "none" });
+await renderer.loadTexture(2, "/assets/hero.png", { colorSpace: "none" });
+renderer.setSpriteMaterial({
+  paletteSwap: [
+    { textureId: 1, colors: [{ from: "#b03030", to: "#4080d0" }] },
+    { textureId: 2, colors: [{ from: "#b03030", to: "#40b060" }] },
+  ],
+});
+// 기존 sprite/animation frame의 texture ID로 팀별 색을 선택한다.
+// 해제: renderer.setSpriteMaterial(false);
+```
+
+- 최대 64개 texture binding, 각 1~32색이다. `#rrggbb`만 받으며 대소문자는 구분하지 않는다.
+  texture ID는 정수 `0..16777215`, 중복 ID/원본색과 잘못된 값은 거절한다. 빈 배열은 비활성이다.
+- 업로드된 RGB8 색을 정확히 매칭하고 **한 번만** 교체한다. `red→blue`, `blue→green`을 함께 지정해도 red는 blue가 된다.
+  알파는 유지하며 투명 texel·매칭되지 않은 색은 유지한다. 텍스처 필터는 기존 nearest를 사용한다.
+- 교체한 RGB에 기존 tint/colorMix와 조명을 적용한다. outline·ground shadow·절차적 도형·normal/coverage pass는 기존 결과를 유지한다.
+  같은 atlas의 다른 UV 프레임에도 같은 ID의 팔레트가 적용된다.
+- 양쪽 renderer에서 동일하게 쓰려면 PNG를 `colorSpace: "none"`으로 로드한다.
+  `AssetLoader`는 `textureOptions: { hero: { colorSpace: "none" } }`을 지원한다.
+  WebGL2 `linear-srgb`의 sRGB 이미지는 linear sample을 RGB8 키로 변환하고 교체색을 linear로 돌려 조명에 전달한다.
+  WebGL2 legacy sRGB는 업로드 시 premultiply로 정보가 소실되어 진단 오류를 낸다.
+  WebGPU는 straight-alpha 이미지이므로 sRGB 입력도 지원한다. WebGPU의 `linear-srgb`는 기존 WebGL2 fallback을 따른다.
+- 압축 KTX2·메타데이터 없는 texture·RenderTexture **입력**·HD-2D spatial packet은 지원하지 않고 오류를 낸다.
+  KTX2 대상은 `ktx2Url` 없이 PNG를 로드한다. WebGL2 `renderToTexture` **출력**에는 팔레트를 적용할 수 있다.
+  raw `renderCommands(texture, commands)` 대신 texture ID를 사용하는 `renderCommands(commands)`를 사용한다.
+- 추가 패스나 palette texture fetch 없이 bounded uniform 테이블을 사용한다. WebGPU는 binding별 독립 uniform을 유지하며
+  동일한 provider 설정은 GPU 자원을 재생성하지 않는다. 비활성 상태는 기존 shader/pipeline이고 추가 draw·texture·palette buffer가 없다.
+  WebGPU 장치 복구는 마지막 팔레트 설정을 복구한다. 원본 PNG 저장·씬 JSON schema·Wasm 15-float ABI는 바꾸지 않는다.
+
+현재는 runtime API다. 내장 도트 편집기의 원본 색상 교체와 별개이며 에디터 팔레트 재질 UI는 추가하지 않는다.
+검증 범위는 [팔레트 smoke](../../development/quality/smoke-check.md#평면-2d-팔레트-스왑)를 따른다.
+
 ## WebGPU 장치 수명과 복구
 
 개발 소스의 `WebGPURenderer.deviceState()`는 `status`(`ready`/`lost`/`recovering`/`destroyed`),
@@ -53,6 +94,11 @@ if (renderer instanceof WebGPURenderer && renderer.deviceState().status === "los
   내용 hash가 같아도 별도로 로드한 opaque asset handle은 각각 복구한다.
 - renderer 설정과 zoom·지면 투영은 유지하고 현재 canvas 크기를 다시 읽는다. texture ID와 엔진의 entity handle은 유지한다.
   이전 `gpuDevice()`·`GPUTexture`·외부 pipeline/buffer 참조는 무효다. ID 없는 raw texture나 호출자가 직접 만든 GPU 자원은 호출자가 다시 만든다.
+- `isRenderReady()`는 lost/recovering에서 false, ready에서 true이며 destroy 이후에는 오류를 낸다.
+  runtime은 준비되지 않은 동안 visual provider와 GPU 제출만 건너뛰고 native update·프레임 콜백은 유지한다.
+  복구 직후 provider의 최신 팔레트/해제 값을 적용한다. 수동 setter 호출은 계속 ready 상태를 요구한다.
+- lighting/material/postprocess 설정은 먼저 복구용 snapshot을 만든 뒤 같은 snapshot을 backend에 적용한다.
+  복사·검증이 실패하면 이전 live 설정과 복구 설정을 유지한다.
 - 실패하면 Promise를 reject하고 `lost`를 유지해 재시도할 수 있다. 복구 중 destroy는 작업을 취소하고 새 자원을 폐기한다.
   진행 중이던 기존 texture load는 취소되며 성공한 등록을 임의로 대체하지 않는다.
 - 이미 선택한 WebGPU canvas를 WebGL2로 조용히 교체하지 않는다. 초기 context 선택 전 fallback은 기존 factory 계약을 유지한다.

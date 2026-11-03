@@ -267,6 +267,16 @@ GL scissor/depth/cull/color mask를 복원하고 resize/비활성/destroy에서 
 현재 반투명 합성은 deferred 방향 혼합이며 per-layer 물리 광학/PBR 범위는 포함하지 않는다.
 도트2D 적용은 component patch v2와 기존 source/color→normal→scene 저장·검증 경로를 사용한다.
 
+### 평면 2D 팔레트 재질
+
+팔레트는 기존 `SpriteMaterialPreset`의 texture ID별 renderer 설정이다. Rust simulation·15-f32 command와
+normal sidecar를 확장하지 않는다. `spritePalette.ts`가 RGB8 교체표를 복사·검증하고 64 binding×32색으로 제한한다.
+기존 texture range 정렬/순서/배치를 유지하며 source RGB를 한 번 교체한 뒤 기존 tint와 조명을 적용한다.
+GL은 optional SpriteBatch/shader, WebGPU는 optional pipeline과 ID별 독립 uniform buffer를 소유한다.
+normal/outline/ground-shadow는 기존 경로를 사용한다. 동일 설정은 GPU 자원을 재사용하고 해제 시 optional 자원을 폐기한다.
+원본 이미지는 교체하지 않는다. 팔레트 없는 렌더러에는 variant shader·uniform·추가 pass/texture lookup이 없다.
+색 공간·premultiplication·압축/공간 입력 제한은 [공개 계약](../../engine/public-api/labs.md#평면-2d-팔레트-스왑)을 따른다.
+
 ### Runtime 렌더러 확장 경계
 
 `runtimeRenderer.ts`의 `FerrumRuntimeRenderer`는 GPU 클래스의 private 멤버를 포함하지 않는 구조적 포트다.
@@ -274,6 +284,9 @@ GL scissor/depth/cull/color mask를 복원하고 resize/비활성/destroy에서 
 프레임 소비자 `RuntimeFrameRenderer`는 `RuntimeFrameRenderTarget`의 그리기·선택 진단 capability만 받으며,
 텍스처 로딩·canvas 크기·자원 소유권과 결합하지 않는다. flat command sink만으로 프레임을 검증할 수 있다.
 미지원 공간 geometry/디버그 라인은 frame target이나 GPU timer를 건드리기 전에 거부한다.
+선택 `isRenderReady`는 concrete WebGPU 클래스에 의존하지 않는 제출 가능 여부다. false일 때 visual provider·GPU 작업만 건너뛰고
+native 프레임 publish는 빈 renderer 통계로 이어간다. primitive provider 캐시는 성공한 setter만 기록하며,
+WebGPU의 설정 snapshot은 backend commit 전에 준비하여 live/recovery 설정의 원자성을 유지한다.
 
 공통 `SpatialRendererStats`와 `PhysicsDebugLineCamera`의 canonical 정의는 `renderer.ts`다.
 WebGL2/WebGPU 구현이 이 계약에 의존하고 기존 내부 타입 경로는 재export로 호환한다.

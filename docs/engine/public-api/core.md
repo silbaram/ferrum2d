@@ -117,6 +117,11 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
 
+선택 `Renderer.isRenderReady()`가 false이면 runtime은 해당 프레임의 visual provider 평가·GPU 타이밍·렌더 제출을 건너뛴다.
+Rust update와 `onFrame`/overlay/profiler 흐름은 계속되고 renderer 통계는 0으로 보고된다.
+메서드가 없으면 기존처럼 준비된 renderer로 취급한다. 복구 후에는 최신 provider 값을 다시 평가하며,
+반복 primitive 설정의 캐시는 setter가 성공한 뒤에만 갱신한다. provider나 setter의 일반 오류를 숨기지는 않는다.
+
 ## 에셋 묶음 로딩과 취소
 
 `AssetLoadOptions`는 core/root에서 제공한다. `FerrumEngine.loadAssets`, `AssetLoader.loadAssets`,
