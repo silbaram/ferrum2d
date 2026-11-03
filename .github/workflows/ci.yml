@@ -185,6 +185,17 @@ jobs:
       - name: Trimmed sprite restoration and native source preservation
         run: pnpm smoke:aseprite-trim
 
+      - name: Slice metadata and explicit sprite origin authoring
+        run: pnpm smoke:aseprite-slices
+
+      - name: Upload slice origin evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aseprite-slices
+          path: artifacts/aseprite-slices
+          if-no-files-found: ignore
+
       - name: Upload trim restoration evidence
         if: always()
         uses: actions/upload-artifact@v4

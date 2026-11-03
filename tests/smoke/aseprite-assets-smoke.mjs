@@ -23,16 +23,18 @@ import { smokeAsepriteNormals } from "./aseprite-normals-smoke.mjs";
 import { smokeAsepriteAnimation } from "./aseprite-animation-smoke.mjs";
 import { smokeAsepritePaired } from "./aseprite-paired-smoke.mjs";
 import { smokeTrimNormals } from "./aseprite-trim-normal-smoke.mjs";
+import { smokeAsepriteSlices, teardownSlicePreview } from "./aseprite-slices-browser-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
 const trimMode = process.argv.includes("--trim");
+const sliceMode = process.argv.includes("--slices");
 const trimNormalMode = trimMode && process.argv.includes("--trim-normals");
 const pixelMode = process.argv.includes("--pixels");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
+  sliceMode ? "artifacts/aseprite-slices/browser" : trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"
@@ -517,6 +519,12 @@ try {
       }
       await showPlacementBottom(page, "assets");
       await tool.locator(":scope > summary").click();
+      if (sliceMode) {
+        const result = await smokeAsepriteSlices({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,mode});
+        assert.deepEqual(await teardownSlicePreview(page), [], "Queued slice controls failed after workspace disposal");
+        const released=await resources();assert.deepEqual(released,{urls:0,textures:0});assert.deepEqual(errors,[]);
+        results.push({mode,...result,queuedToggleAfterDestroy:true,queuedControlsAfterDestroy:true,released});continue;
+      }
       if(trimMode) {
         const trimNormals=mode==='hd2d'&&trimNormalMode?await smokeTrimNormals({page,fixture,stage,tool,action,snapshot,undo,wait}):undefined;
         const result=await smokeAsepriteAnimation({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,origin,setResume:value=>{resume=value;}});
@@ -1275,6 +1283,7 @@ try {
       await context.close();
     }
   }
+  if (sliceMode) assert(results.length === 2 && results.every(value => value.slices?.singleUndoRedo && value.slices?.reimportPreservedOrigin && value.queuedToggleAfterDestroy && value.queuedControlsAfterDestroy), "Both slice scenarios must execute including queued control disposal");
   const report = { ok: true, run, browser: browser.version(), results };
   await writeFile(
     resolve(artifact, "verification.json"),

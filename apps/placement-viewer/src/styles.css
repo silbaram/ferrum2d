@@ -248,6 +248,12 @@ textarea {
   background: var(--viewport-bg);
   border: 1px solid var(--border);
 }
+.placement-aseprite-frame-preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.placement-aseprite-slices { flex: 1 1 240px; min-width: 0; border-top: 1px solid var(--border); padding: 4px 0; }
+.placement-aseprite-slices > summary { cursor: pointer; padding: 4px 0; }
+.placement-aseprite-slices select { min-width: 0; max-width: 60%; }
+.placement-aseprite-slices > output { display: block; margin: 4px 0; overflow-wrap: anywhere; }
+.placement-aseprite-slices > p { margin: 4px 0; color: var(--fg-3); }
 
 .placement-normal-tool {
   min-width: 240px;
