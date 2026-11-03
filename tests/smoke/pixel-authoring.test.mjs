@@ -30,11 +30,77 @@ const animationUrl=await moduleUrl("placementPixelAnimation",{
   "./placementPixelDocument":documentUrl,
   "@ferrum2d/ferrum-web/authoring":new URL("../../packages/ferrum-web/dist/authoring.js",import.meta.url).href,
 });
-const {pixelAnimation,pixelPreviewFrame,pixelAnimationInput,pixelEditorAnimationInput}=await checkedImport(animationUrl);
+const {pixelAnimation,pixelPreviewFrame,pixelAnimationInput,pixelEditorAnimationInput,pixelTagPreviewFrames}=await checkedImport(animationUrl);
 const {pixelOnionFrames,PIXEL_ONION_DEFAULTS}=await checkedImport(await moduleUrl("placementPixelOnion"));
 const { createPixelEditor: create, newPixelDocument: blank, readPixelDocument: read, pixelBytes, pixelDocumentFromRgba, pixelAtlas, pixelFrames, PIXEL_LIMITS } = await checkedImport(documentUrl);
 const { pixelPng, readPixelPng } = await checkedImport(await moduleUrl("placementPixelPng", { "./placementPixelDocument": documentUrl }));
 const red = [255, 0, 0, 255], blue = [0, 0, 255, 255], transparent = [0, 0, 0, 0];
+test('showcase editable sources reproduce the shipped PNGs and native animation clips', async () => {
+  const root = new URL('../../examples/pixel-art/public/', import.meta.url);
+  for (const name of ['keeper', 'star']) {
+    const source = read(await readFile(new URL(`assets/${name}.pixel.json`, root), 'utf8'));
+    const editor = create(source);
+    assert.deepEqual(editor.document(), source, 'opening source must not discard tags or timing');
+    const atlas = pixelAtlas(source), png = decodePng(await readFile(new URL(`assets/${name}.png`, root)));
+    assert.equal(png.width, atlas.width); assert.equal(png.height, atlas.height);
+    assert.deepEqual([...png.pixels], [...atlas.pixels], 'runtime PNG must be the exact source export');
+    if (name === 'keeper') {
+      const scene = JSON.parse(await readFile(new URL('scene.json', root), 'utf8'));
+      assert.deepEqual(pixelAnimation(pixelAnimationInput(source)).set,
+        scene.sceneComposition.prefabs.keeper.props.components.visual.animationSet);
+      const normals = decodePng(await readFile(new URL('assets/keeper-normal.png', root)));
+      assert.equal(normals.width, atlas.width); assert.equal(normals.height, atlas.height);
+      for (let i = 3; i < atlas.pixels.length; i += 4) assert.equal(normals.pixels[i], atlas.pixels[i], 'normal/color frame coverage must agree');
+    }
+  }
+});
+test('direction tags upgrade only on edit, survive history/source, and match native ordered timing',()=>{
+  const original=pixelCapacitySource({count:3,side:2,layers:1,tagged:true,version:5});
+  original.frames.forEach((frame,i)=>frame.durationMs=100*(i+1));
+  const editor=create(original),id=editor.initialTag(),tag=editor.tags()[0];
+  assert.equal(editor.updateTag(id,{...tag,direction:'forward'}),false);
+  for(const direction of ['reverse','pingpong'])for(const loop of [false,true]) {
+    editor.updateTag(id,{...tag,direction,loop});const saved=editor.document();
+    assert.equal(saved.version,7);assert.deepEqual(read(JSON.stringify(saved)),saved);
+    const preview=pixelTagPreviewFrames(editor.frames(),editor.tags()[0]);
+    const indices=direction==='reverse'?[2,1,0]:loop?[0,1,2,1]:[0,1,2,1,0];
+    assert.deepEqual(preview.map(frame=>frame.id),indices.map(i=>original.frames[i].id));
+    const animation=pixelAnimation(pixelEditorAnimationInput(editor)),clip=animation.set.clips[0];
+    assert.equal(clip.direction,direction);assert.equal(clip.loop,loop);
+    assert.deepEqual(clip.frameDurationsMs,[100,200,300]);assert.equal(clip.frames.length,3);
+    assert.equal(animation.cycleMs,indices.reduce((sum,i)=>sum+original.frames[i].durationMs,0));
+    editor.undo();assert.deepEqual(editor.document(),original);editor.redo();assert.deepEqual(editor.document(),saved);editor.undo();
+  }
+  editor.updateTag(id,{...tag,direction:'reverse'});editor.addFrame();assert.equal(editor.version,7);
+  editor.addTag('Another',[editor.selectedFrame()]);assert.equal(editor.version,7);
+  editor.updateTag(id,{...tag,direction:'forward'});assert.equal(editor.version,7);
+  assert.equal(editor.tags()[0].direction,undefined);
+  for(const direction of [null,1,[],['forward'],'invalid']) {
+    const bad=structuredClone(original);bad.version=7;bad.tags[0].direction=direction;
+    assert.throws(()=>read(JSON.stringify(bad)),/direction/);
+  }
+  for(const version of [5,6]) {
+    const bad=structuredClone(original);bad.version=version;bad.tags[0].direction='reverse';
+    assert.throws(()=>read(JSON.stringify(bad)),/direction/);
+  }
+  const missing=structuredClone(original);missing.version=7;delete missing.tags;assert.throws(()=>read(JSON.stringify(missing)),/tags/);
+  for(const count of [1,2,64]) {
+    const source=pixelCapacitySource({count,side:2,layers:1,version:7});source.tags[0].direction='pingpong';source.tags[0].frameIds=source.frames.map(f=>f.id);
+    const plan=pixelAnimation(pixelAnimationInput(read(JSON.stringify(source))));assert.equal(plan.set.clips[0].frames.length,count);
+  }
+});
+test('onion ranges are bounded, farthest first, exclude self and never wrap or alter saved state',()=>{
+  const editor=create(pixelCapacitySource({count:12,side:2,layers:1,tagged:false})),frames=editor.frames();
+  const source=editor.document(),settings={...PIXEL_ONION_DEFAULTS,enabled:true,previousCount:4,nextCount:3};
+  const ghosts=pixelOnionFrames(frames,frames[5].id,settings);
+  assert.deepEqual(ghosts.map(g=>[frames.findIndex(f=>f.id===g.id),g.distance]),[[1,4],[2,3],[8,3],[3,2],[7,2],[4,1],[6,1]]);
+  assert.equal(pixelOnionFrames(frames,frames[0].id,settings).length,3);
+  assert.equal(pixelOnionFrames(frames,frames.at(-1).id,settings).length,4);
+  assert.deepEqual(pixelOnionFrames(frames,frames[5].id,settings,true),[]);
+  for(const count of [0,5,1.5,NaN,Infinity])assert.throws(()=>pixelOnionFrames(frames,frames[5].id,{...settings,nextCount:count}),/range/);
+  for(const ghost of ghosts)editor.bytes(ghost.id).fill(0);
+  assert.deepEqual(editor.document(),source);assert.equal(editor.history().undo,0);assert.equal(editor.dirty(),false);
+});
 const drawingUrl = await moduleUrl("placementPixelDrawing", {"./placementPixelDocument": documentUrl});
 const maskUrl = await moduleUrl("placementPixelMask", {"./placementPixelDocument": documentUrl, "./placementPixelDrawing": drawingUrl});
 const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection", {"./placementPixelDocument": documentUrl, "./placementPixelMask": maskUrl}));
@@ -174,18 +240,18 @@ test("atlas movement clips both axes at a nonzero frame origin and leaves all ne
 });
 test('onion neighbours are view-only, directional and never wrap or include the current frame',()=>{
   const frames=[{id:'a'},{id:'b'},{id:'c'}],settings={...PIXEL_ONION_DEFAULTS,enabled:true};
-  assert.deepEqual(pixelOnionFrames(frames,'b',settings),[{id:'a',side:'previous'},{id:'c',side:'next'}]);
-  assert.deepEqual(pixelOnionFrames(frames,'a',settings),[{id:'b',side:'next'}]);
-  assert.deepEqual(pixelOnionFrames(frames,'c',settings),[{id:'b',side:'previous'}]);
+  assert.deepEqual(pixelOnionFrames(frames,'b',settings),[{id:'a',side:'previous',distance:1},{id:'c',side:'next',distance:1}]);
+  assert.deepEqual(pixelOnionFrames(frames,'a',settings),[{id:'b',side:'next',distance:1}]);
+  assert.deepEqual(pixelOnionFrames(frames,'c',settings),[{id:'b',side:'previous',distance:1}]);
   assert.deepEqual(pixelOnionFrames([{id:'a'}],'a',settings),[]);
   for(const patch of [{enabled:false},{opacity:0},{previous:false,next:false}])assert.deepEqual(pixelOnionFrames(frames,'b',{...settings,...patch}),[]);
   assert.deepEqual(pixelOnionFrames(frames,'b',settings,true),[]);
-  assert.deepEqual(pixelOnionFrames(frames,'b',{...settings,next:false}),[{id:'a',side:'previous'}]);
-  assert.deepEqual(pixelOnionFrames(frames,'b',{...settings,previous:false}),[{id:'c',side:'next'}]);
-  assert.deepEqual(pixelOnionFrames([frames[1],frames[0],frames[2]],'b',settings),[{id:'a',side:'next'}]);
+  assert.deepEqual(pixelOnionFrames(frames,'b',{...settings,next:false}),[{id:'a',side:'previous',distance:1}]);
+  assert.deepEqual(pixelOnionFrames(frames,'b',{...settings,previous:false}),[{id:'c',side:'next',distance:1}]);
+  assert.deepEqual(pixelOnionFrames([frames[1],frames[0],frames[2]],'b',settings),[{id:'a',side:'next',distance:1}]);
   assert.throws(()=>pixelOnionFrames(frames,'missing',settings),/frame not found/);
   for(const opacity of [-1,101,NaN,Infinity,0.5])assert.throws(()=>pixelOnionFrames(frames,'b',{...settings,opacity}),/opacity/);
-  assert.deepEqual(settings,{enabled:true,previous:true,next:true,opacity:30});assert.deepEqual(frames,[{id:'a'},{id:'b'},{id:'c'}]);
+  assert.deepEqual(settings,{enabled:true,previous:true,next:true,opacity:30,previousCount:1,nextCount:1});assert.deepEqual(frames,[{id:'a'},{id:'b'},{id:'c'}]);
 });
 test('reading onion neighbours preserves history and source; cached composites follow edits, layers and Undo',()=>{
   const editor=create(blank(2,1));stroke(editor,0,0,0,0,red);editor.addFrame();stroke(editor,1,0,1,0,blue);editor.addFrame();

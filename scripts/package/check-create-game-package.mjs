@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
+import { encodePngRgba } from "../tools/pack-textures.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +56,7 @@ const sharedTemplateFiles = [
   "_shared/public/assets/localization.manifest.json",
   "_shared/public/assets/texture-atlas.input.json",
   "_shared/scripts/ferrum-assets.mjs",
+  "_shared/scripts/ferrum-pixel-assets.mjs",
   "_shared/scripts/ferrum-check.mjs",
   "_shared/scripts/ferrum-deploy.mjs",
   "_shared/scripts/ferrum-harness-coverage.mjs",
@@ -1220,6 +1222,21 @@ async function assertAssetPipelineValidate(projectRoot, templateName) {
     report.assetPipeline?.localization?.status === expectedLocalizationStatus,
     `${templateName} asset pipeline localization validate status must be ${expectedLocalizationStatus}`,
   );
+  const profilePath=path.join(projectRoot,"public/assets/pixel-art.profile.json");
+  const pngPath=path.join(projectRoot,"public/assets/pixel-profile-check.png");
+  const profile={format:"ferrum2d.consumer.pixel-art-profile",version:1,scale:2,filter:"nearest",palette:["#12345600"],assets:[{source:"public/assets/pixel-profile-check.png",tileWidth:1,tileHeight:1}]};
+  try {
+    await writeFile(pngPath,encodePngRgba(1,1,new Uint8Array([18,52,86,0])));
+    await writeFile(profilePath,JSON.stringify(profile));
+    const valid=await run(process.execPath,["scripts/ferrum-assets.mjs","validate","--profile","pixel-art"],projectRoot);
+    assert(valid.code===0,`${templateName} pixel profile validation failed: ${valid.stderr}`);
+    const evidence=JSON.parse(valid.stdout);assert(evidence.ok===true&&evidence.assetPipeline.pixelArt.assets.length===1&&evidence.assetPipeline.pixelArt.runtimeVerified===false,"pixel profile must inspect PNG without claiming runtime validation");
+    profile.palette=["#00000000"];await writeFile(profilePath,JSON.stringify(profile));
+    const invalid=await run(process.execPath,["scripts/ferrum-assets.mjs","validate"],projectRoot);
+    const diagnostic=JSON.parse(invalid.stdout);
+    assert(invalid.code===1&&diagnostic.ok===false&&diagnostic.assetPipeline.reports.some(r=>r.code==="FERRUM_PIXEL_PALETTE_PIXEL"),"pixel profile must reject a transparent RGB mismatch in normal asset validation");
+  } finally {await rm(profilePath,{force:true});await rm(pngPath,{force:true});}
+
 }
 
 async function linkWorkspaceFerrumWeb(projectRoot) {

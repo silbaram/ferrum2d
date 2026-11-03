@@ -103,6 +103,8 @@ class FakeGpuDevice {
     return {} as GPUBindGroup;
   }
 
+  createSampler(): GPUSampler { return {} as GPUSampler; }
+
   createShaderModule(): GPUShaderModule {
     return {} as GPUShaderModule;
   }
@@ -124,15 +126,13 @@ class FakeGpuCanvasContext {
   }
 }
 
-test("resolveWebGpuPostProcessPasses accepts fade passes and rejects unsupported WebGPU passes", () => {
+test("resolveWebGpuPostProcessPasses accepts every validated effect and preserves order", () => {
   const fade = resolveWebGpuPostProcessPasses({ opacity: 0.5 });
   equal(fade.length, 1);
   equal(fade[0]?.kind, "fade");
 
-  throwsWithMessage(
-    () => resolveWebGpuPostProcessPasses({ bloom: { intensity: 1 } }),
-    /requires the WebGL2 renderer/,
-  );
+  deepEqual(resolveWebGpuPostProcessPasses({bloom:{},crt:{},vignette:{},glitch:{},pixelArt:{}}).map(pass=>pass.kind),["bloom","crt","vignette","glitch","pixelArt"]);
+  throwsWithMessage(()=>resolveWebGpuPostProcessPasses({bloom:{threshold:2}}),/threshold/);
 });
 
 test("WebGpuPostProcessPass draws only visible fade passes", () => {
@@ -203,7 +203,7 @@ test("WebGPU pixelArt preserves pass order, reuses copies, rejects invalid updat
   }
   equal(device.textures.length, 1);
   equal(device.buffers.length, 2);
-  throws(() => pass.setPostProcess([{ kind: "pixelArt" }, { kind: "bloom" }]), /requires the WebGL2 renderer/);
+  throws(() => pass.setPostProcess([{ kind: "pixelArt" }, { kind: "bloom", threshold: 2 }]), /threshold/);
   deepEqual(pass.drawPasses(), { drawCalls: 1, passCount: 1 });
   texture = new FakeGpuTexture(32, 16);
   device.failGroup = true;
@@ -254,3 +254,48 @@ function throwsWithMessage(run: () => void, expected: RegExp): void {
   }
   throw new Error(`Expected callback to throw ${expected}.`);
 }
+
+test("all sampled WebGPU effects share one target and retain their pass order/settings",()=>{
+  installWebGpuGlobals();const device=new FakeGpuDevice(),writes:number[][]=[];
+  const queue=device.queue as unknown as GPUQueue;
+  queue.writeBuffer=(_buffer,_offset,data)=>{writes.push(Array.from(data as unknown as Float32Array));};
+  const target=new FakeGpuTexture(31,23),pass=new WebGpuPostProcessPass(device as unknown as GPUDevice,()=>target as unknown as GPUTexture,"rgba8unorm");
+  const settings=[{kind:"bloom",threshold:1,intensity:.5,radius:2},{kind:"crt",curvature:.1},{kind:"vignette",radius:0,color:[1,0,0,.5]},{kind:"glitch",seed:13},{kind:"pixelArt",levels:4}] as const;
+  pass.setPostProcess(settings);deepEqual(pass.drawPasses(),{drawCalls:5,passCount:5});
+  deepEqual(writes.map(v=>v[8]),[2,3,4,5,6]);deepEqual(writes[0]?.slice(0,3),[1,.5,2]);equal(writes[2]?.[4],1);equal(writes[2]?.[7],.5);equal(writes[3]?.[2],13);
+  for(let i=0;i<5;i++){pass.setPostProcess(settings);pass.drawPasses();}
+  equal(device.textures.length,1);equal(device.buffers.length,2);ok(device.encoders.every(e=>e.copies===1));
+  equal(device.queue.submitCount,30);pass.setPostProcess(false);pass.destroy();
+  ok(device.buffers.every(b=>b.destroyed));ok(device.textures.every(t=>t.destroyed));
+});
+
+test("constructor failure releases fade resources before ownership can escape",()=>{
+  installWebGpuGlobals();const device=new FakeGpuDevice();device.failGroup=true;
+  const native=device as unknown as GPUDevice,owner=webGpuResources(native),before=owner.stats();
+  throws(()=>new WebGpuPostProcessPass(native,()=>new FakeGpuTexture() as unknown as GPUTexture,"rgba8unorm"),/group failure/);
+  deepEqual(owner.stats(),before);
+});
+
+test("Float32 overflow updates preserve the active stack and its resource ownership", () => {
+  installWebGpuGlobals();
+  const device = new FakeGpuDevice(), native = device as unknown as GPUDevice;
+  const pass = new WebGpuPostProcessPass(native, () => new FakeGpuTexture() as unknown as GPUTexture,
+    "rgba8unorm", [{ kind: "pixelArt", levels: 4 }, { opacity: .25 }]);
+  const owner = webGpuResources(native);
+  const before = owner.stats();
+  for (const invalid of [
+    { kind: "crt", curvature: 1e100 },
+    { kind: "glitch", seed: -1e100 },
+    { enabled: false, bloom: { intensity: 0, radius: 1e100 } },
+    { enabled: false, glitch: { intensity: 0, chromaticAberration: 0, seed: 1e100 } },
+  ] as const) {
+    throws(() => pass.setPostProcess(invalid), /Float32/);
+    deepEqual(owner.stats(), before);
+  }
+  deepEqual(pass.drawPasses(), { drawCalls: 2, passCount: 2 });
+  deepEqual(device.encoders.map(encoder => encoder.copies), [1, 0]);
+  pass.destroy();
+  equal(owner.stats().textureCount, 0);
+  equal(owner.stats().bufferCount, 0);
+  equal(owner.stats().programCount, 0);
+});

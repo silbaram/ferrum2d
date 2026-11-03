@@ -47,7 +47,7 @@ export async function smokePixelDrawing(page,mode,run) {
   await canvas.focus();await page.keyboard.press('Escape');await clickPlacementToolAction(action('tool-pencil'));await size.fill('');await size.dispatchEvent('change');assert.equal(await size.inputValue(),'32');
   await size.fill('1');await size.dispatchEvent('change');await picker.selectOption('ellipse');
   await page.locator('[data-placement-language]').selectOption('ko');await page.setViewportSize({width:390,height:840});
-  assert.equal(await picker.getAttribute('aria-label'),'도형 도구');assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1));
+  assert.equal(await picker.getAttribute('aria-label'),'도형·채색 도구');assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1));
   await page.screenshot({path:resolve(run,mode+'-pixel-drawing-ko-narrow.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');
   await clickPlacementToolAction(action('tool-pencil'));await workspace.locator('[data-pixel-alpha]').fill('255');await workspace.locator('[data-pixel-alpha]').dispatchEvent('input');

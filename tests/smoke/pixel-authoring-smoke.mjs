@@ -1,3 +1,4 @@
+import {smokePixelAnimationTools} from "./pixel-animation-tools-smoke.mjs";
 import {inspectPlacementAsset} from "./placement-panel-navigation.mjs";
 import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import {smokePixelBatch} from './pixel-batch-smoke.mjs';
@@ -6,6 +7,7 @@ import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import { smokePixelSelection } from "./pixel-selection-smoke.mjs";
 import { smokePixelRecovery } from "./pixel-recovery-smoke.mjs";
 import { smokePixelDrawing } from "./pixel-drawing-smoke.mjs";
+import { smokePixelInk } from "./pixel-ink-smoke.mjs";
 import { smokePixelPalette } from "./pixel-palette-smoke.mjs";
 import { smokePixelCanvasPreview } from "./pixel-canvas-preview-smoke.mjs";
 import { smokePixelNextTools } from "./pixel-next-tools-smoke.mjs";
@@ -21,22 +23,24 @@ import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs"
 import { smokePixelCapacity } from "./pixel-capacity-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
-  if (process.argv.includes("--pixel-capacity-only")) {
-    const capacity=await smokePixelCapacity(page,mode,run,async bundle=>{
+  if (process.argv.includes("--pixel-capacity-only") || process.argv.includes("--pixel-animation-tools-only")) {
+    const check=process.argv.includes("--pixel-animation-tools-only")?smokePixelAnimationTools:smokePixelCapacity;
+    const capacity=await check(page,mode,run,async bundle=>{
       setResume(bundle);const game=await page.context().newPage(),errors=[];
       game.on('pageerror',error=>errors.push(error.message));game.on('requestfailed',request=>errors.push(request.url()+': '+request.failure()?.errorText));
       game.on('response',response=>{if(response.status()>=400)errors.push(response.status()+' '+response.url());});
-      try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{timeout:120_000}).catch(async error=>{throw Error(String(error)+' stage '+await game.evaluate(()=>window.pixelResumeStage)+' '+JSON.stringify(errors));});
+      try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{timeout:120_000,polling:50}).catch(async error=>{throw Error(String(error)+' stage '+await game.evaluate(()=>window.pixelResumeStage)+' '+JSON.stringify(errors));});
         return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
       }finally{await game.close();}
     });
-    return {capacity,focus:"pixel-capacity"};
+    return {capacity,focus:check===smokePixelCapacity?"pixel-capacity":"pixel-animation-tools"};
   }
   if (process.argv.includes("--pixel-batch-layout-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch-layout"};
   if (process.argv.includes("--pixel-batch-only")) return {frameBatch:await smokePixelBatch(page,mode,run),focus:"pixel-batch"};
   if (process.argv.includes("--pixel-next-only")) return {pixelNext:await smokePixelNextTools(page,mode,run),focus:"pixel-next"};
   if (process.argv.includes("--pixel-canvas-preview-only")) return {pixelCanvasPreview:await smokePixelCanvasPreview(page,mode,run),focus:"pixel-canvas-preview"};
   if (process.argv.includes("--pixel-drawing-only")) return {pixelDrawing:await smokePixelDrawing(page,mode,run),focus:"pixel-drawing"};
+  if (process.argv.includes("--pixel-ink-only")) return {pixelInk:await smokePixelInk(page,mode,run),focus:"pixel-ink"};
   if (process.argv.includes("--pixel-palette-only")) return {pixelPalette:await smokePixelPalette(page,mode,run),focus:"pixel-palette"};
   if(process.argv.includes("--pixel-normals-only")) {
     const pixelNormals=await smokePixelNormalFocus(page,mode,run,async bundle=>{
@@ -51,6 +55,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pixelRecovery = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelRecovery(page, mode, run);
   if (process.argv.includes("--pixel-recovery-only")) return {pixelRecovery,focus:"pixel-recovery"};
   const pixelDrawing = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelDrawing(page,mode,run);
+  const pixelInk = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelInk(page,mode,run);
   const pixelPalette = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelPalette(page,mode,run);
   const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
   const pixelNext = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelNextTools(page,mode,run);
@@ -391,7 +396,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     }finally{await game.close();setResume(exported);}
   });
   return {
-    frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelPalette, pixelCanvasPreview, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
+    frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelInk, pixelPalette, pixelCanvasPreview, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
     eyedropper: true, eraserUndo: true, panZoom: true, invalidSourcePreserved: true, editAssetPng: true, compact: true,
     releaseEndpoint: true, blurCancelsStroke: true, blurResetsPan: true,

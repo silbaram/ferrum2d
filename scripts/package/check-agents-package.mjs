@@ -30,6 +30,7 @@ const skills = [
   "ferrum-consumer-architecture",
   "ferrum-consumer-game-spec",
   "ferrum-consumer-asset-pipeline",
+  "ferrum-consumer-pixel-art",
   "ferrum-consumer-gameplay",
   "ferrum-consumer-playtest",
   "ferrum-consumer-build",

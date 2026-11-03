@@ -213,6 +213,17 @@ jobs:
       - name: Pixel postprocess parity, virtual pixels and recovery
         run: pnpm smoke:pixel-postprocess
 
+      - name: Pixel art showcase movement, collection and visual controls
+        run: pnpm smoke:pixel-showcase
+
+      - name: Upload pixel showcase evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-showcase
+          path: artifacts/pixel-showcase
+          if-no-files-found: ignore
+
       - name: Upload pixel postprocess evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -174,7 +174,8 @@ export const WEBGL2_SHADER_SOURCES = {
         v_uv = position * 0.5 + 0.5;
         gl_Position = vec4(position, 0.0, 1.0);
       }`, fragment: `#version 300 es
-      precision mediump float;
+      precision highp float;
+      precision highp int;
       uniform sampler2D u_scene;
       uniform vec2 u_texelSize;
       uniform int u_kind;
@@ -198,7 +199,7 @@ export const WEBGL2_SHADER_SOURCES = {
           for (int x = -2; x <= 2; x += 1) {
             vec2 offset = vec2(float(x), float(y)) * u_texelSize * radius;
             vec3 color = texture(u_scene, clamp(uv + offset, vec2(0.0), vec2(1.0))).rgb;
-            float bright = smoothstep(threshold, 1.0, luminance(color));
+            float bright = threshold >= 1.0 ? 0.0 : smoothstep(threshold, 1.0, luminance(color));
             float distanceWeight = 1.0 / (1.0 + length(vec2(float(x), float(y))));
             sum += color * bright * distanceWeight;
             weightSum += distanceWeight;
@@ -207,8 +208,12 @@ export const WEBGL2_SHADER_SOURCES = {
         return weightSum <= 0.0 ? vec3(0.0) : sum / weightSum;
       }
 
-      float hash(float value) {
-        return fract(sin(value * 12.9898) * 43758.5453);
+      float bandNoise(uint band, float seed) {
+        uint value = band ^ floatBitsToUint(seed);
+        value = (value ^ (value >> 16u)) * 0x7feb352du;
+        value = (value ^ (value >> 15u)) * 0x846ca68bu;
+        value = value ^ (value >> 16u);
+        return float(value >> 8u) / 16777216.0;
       }
 
       vec4 applyCrt(vec2 uv) {
@@ -228,8 +233,8 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       vec4 applyGlitch(vec2 uv) {
-        float band = floor(uv.y * 48.0);
-        float noise = hash(band + u_params.z);
+        float band = floor(gl_FragCoord.y * 48.0 / float(textureSize(u_scene, 0).y));
+        float noise = bandNoise(uint(band), u_params.z);
         float offset = (noise - 0.5) * u_params.x;
         vec2 shifted = clamp(uv + vec2(offset, 0.0), vec2(0.0), vec2(1.0));
         float chroma = u_params.y + abs(offset) * 0.25;
@@ -240,28 +245,34 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       vec4 applyPass() {
-        vec4 scene = texture(u_scene, v_uv);
+        // Sampled effects render 1:1 into source-sized targets. Interpolated UVs
+        // can miss the exact center; fade also handles scaled letterbox copies.
+        vec2 uv = u_kind >= 2 && u_kind <= 5
+          ? gl_FragCoord.xy / vec2(textureSize(u_scene, 0)) : v_uv;
+        vec4 scene = texture(u_scene, uv);
         if (u_kind == 1) {
           vec3 fadeColor = u_linear_working_space ? u_color.rgb * scene.a : u_color.rgb;
           return vec4(mix(scene.rgb, fadeColor, u_color.a), scene.a);
         }
         if (u_kind == 2) {
-          vec3 bloom = bloomSample(v_uv, u_params.x, max(0.0, u_params.z));
+          vec3 bloom = bloomSample(uv, u_params.x, max(0.0, u_params.z));
           return vec4(scene.rgb + bloom * u_params.y, scene.a);
         }
         if (u_kind == 3) {
-          return applyCrt(v_uv);
+          return applyCrt(uv);
         }
         if (u_kind == 4) {
-          float distanceFromCenter = distance(v_uv, vec2(0.5));
+          float distanceFromCenter = distance(uv, vec2(0.5));
           float inner = max(0.0, u_params.y - u_params.z);
-          float edge = smoothstep(inner, u_params.y, distanceFromCenter);
+          float edge = u_params.y <= 0.0 ? 1.0
+            : (inner < u_params.y ? smoothstep(inner, u_params.y, distanceFromCenter)
+              : step(u_params.y, distanceFromCenter));
           float amount = edge * u_params.x * u_color.a;
           vec3 vignetteColor = u_linear_working_space ? u_color.rgb * scene.a : u_color.rgb;
           return vec4(mix(scene.rgb, vignetteColor, amount), scene.a);
         }
         if (u_kind == 5) {
-          return applyGlitch(v_uv);
+          return applyGlitch(uv);
         }
         return scene;
       }
@@ -273,7 +284,7 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       void main() {
-        // Keep legacy effect precision unchanged; only pixel-art math/sampling is highp.
+        // Sampled effects share highp arithmetic with WebGPU; pixelArt uses exact texels.
         if (u_kind == 6) {
           highp vec4 pixelColor = applyPixelArt();
           if (u_encode_srgb) {

@@ -81,7 +81,7 @@ export async function probePixelPostProcess(preferred, colorManagement='legacy',
     verifyEffect(quantized,sample(stacked.data),width,height,{levels:2,scanlineIntensity:.25});
     check(stacked.stats.postProcessPassCount===2&&stacked.stats.postProcessDrawCalls===2,'stacked effect budget');
     renderer.setPostProcess(effect);
-    if(gpu){let rejected=false;try{renderer.setPostProcess([effect,{kind:'bloom'}]);}catch(e){rejected=/requires the WebGL2/.test(String(e));}check(rejected,'unsupported stack silently dropped');}
+    if(gpu){let rejected=false;try{renderer.setPostProcess([effect,{kind:'bloom',threshold:2}]);}catch{rejected=true;}check(rejected,'invalid stack silently dropped');}
     // Measure real GPU allocations only while rendering; readback owns separate buffers.
     const owner=device??canvas.getContext('webgl2'),methods=gpu?['createTexture','createBuffer','createRenderPipeline']:['createTexture','createBuffer','createProgram'];
     const counts={},originals=new Map();for(const name of methods){const fn=owner[name];originals.set(name,fn);counts[name]=0;owner[name]=function(...args){counts[name]++;return Reflect.apply(fn,this,args);};}
@@ -158,24 +158,25 @@ export async function probePixelPostProcessAlpha() {
   } finally {renderer.destroy();canvas.remove();}
 }
 
-export async function probePixelPostProcessRuntime(preferred) {
+export async function probePixelPostProcessRuntime(preferred,full=false) {
+  const stack=full?[{kind:"bloom",intensity:.2},{kind:"crt",curvature:.02,scanlineIntensity:.1},{kind:"vignette",intensity:.1},{kind:"glitch",intensity:.02},effect]:effect,passCount=full?5:1;
   const canvas=document.createElement('canvas');canvas.style.cssText='width:128px;height:96px';canvas.dataset.spatialGpuTarget='true';document.body.append(canvas);
   const renderer=await createRenderer(canvas,{preferred,webgl2:{preserveDrawingBuffer:true}}),loader=new AssetLoader(renderer);
   check((typeof renderer.gpuDevice==='function')===(preferred==='webgpu'),'native backend');
   await loader.loadAssets({textures:{hero:image()},textureOptions:{hero:{colorSpace:'none'}}});
   const count=1024;
   const dataScene={format:'ferrum2d.consumer.scene-authoring',version:1,behaviorRecipes:{entities:{}},sceneComposition:{initialFragment:'main',prefabs:{object:{}},fragments:{main:{instances:Array.from({length:count},(_,i)=>({id:'sprite_'+i,prefab:'object',x:784+i%32,y:448+Math.floor(i/32),props:{components:{visual:{kind:'sprite',texture:'hero',width:1,height:1,frame:{u0:.5,v0:0,u1:.625,v1:.125}},collider:'none',layer:'wall'}}}))}}}};
-  let last;const runtime=await createFerrumRuntime({canvas,renderer,assetHost:loader,dataScene,autostart:false,postProcess:()=>effect,onFrame:frame=>{last=frame;}});
+  let last;const runtime=await createFerrumRuntime({canvas,renderer,assetHost:loader,dataScene,autostart:false,postProcess:()=>stack,onFrame:frame=>{last=frame;}});
   const raf=requestAnimationFrame,cancel=cancelAnimationFrame,pending=new Map();let serial=0,time=0;
   globalThis.requestAnimationFrame=callback=>{pending.set(++serial,callback);return serial;};globalThis.cancelAnimationFrame=id=>pending.delete(id);
   try {
     runtime.start();const costs=[];
     for(let i=0;i<60;i++){time+=16;const callbacks=[...pending.values()];pending.clear();check(callbacks.length===1,'native loop');const start=performance.now();callbacks[0](time);costs.push(performance.now()-start);await renderer.gpuDevice?.().queue.onSubmittedWorkDone();}
     check(last.frame.gameState===1&&last.frame.entityCount===count&&last.frame.renderCommandBuffer.commandCount===count,'native state/size');
-    check(last.rendererStats.postProcessPassCount===1&&last.rendererStats.drawCalls===2&&last.rendererStats.textureSwitchCount===0,'native cost');
+    check(last.rendererStats.postProcessPassCount===passCount&&last.rendererStats.drawCalls===passCount+1&&last.rendererStats.textureSwitchCount===0,'native cost');
     costs.sort((a,b)=>a-b);const p95=costs[57];check(p95<250,'native CPU budget');
     const data=await pixels(renderer,canvas);let colored=0;for(let i=0;i<data.length;i+=4)if(data[i]>=60&&data[i+2]>=60&&data[i+1]<3)colored++;
     check(colored>100,'native effect not visible');
-    return {preferred,playing:1,entities:count,commands:count,drawCalls:2,postProcessPassCount:1,frames:60,frameCpuP95Ms:p95,coloredPixels:colored};
+    return {preferred,full,playing:1,entities:count,commands:count,drawCalls:passCount+1,postProcessPassCount:passCount,frames:60,frameCpuP95Ms:p95,coloredPixels:colored};
   } finally {runtime.destroy();renderer.destroy();globalThis.requestAnimationFrame=raf;globalThis.cancelAnimationFrame=cancel;window.disposeSpatialGpuTarget?.(canvas);canvas.remove();}
 }

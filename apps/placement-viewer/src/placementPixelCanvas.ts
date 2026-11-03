@@ -1,5 +1,6 @@
 import { setUiAttribute } from "./placementLocale";
-import { pixelRegionContains, type createPixelEditor, type PixelColor } from "./placementPixelDocument";
+import { pixelColor, pixelRegionContains, type createPixelEditor, type PixelColor } from "./placementPixelDocument";
+import { ditherPixelPaint, gradientPixelPaint, pixelInkSettings, PIXEL_INK_DEFAULTS, type PixelInkSettings } from "./placementPixelInk";
 import { pixelOnionFrames, PIXEL_ONION_DEFAULTS, type PixelOnionSettings } from "./placementPixelOnion";
 import type { createPixelSelection } from "./placementPixelSelection";
 import type { PixelRegion } from "./placementPixelDocument";
@@ -8,13 +9,14 @@ import { createPixelPerfectStroke } from "./placementPixelPerfect";
 import { PIXEL_SELECTION_DEFAULTS, PIXEL_SELECTION_PATH_LIMIT, type PixelSelectionSettings } from "./placementPixelMask";
 import { createPixelImageBrushStroke, type PixelImageBrush } from "./placementPixelImageBrush";
 
-export type PixelTool = "pencil" | "eraser" | "fill" | "eyedropper" | "pan" | "select" | PixelShape;
+export type PixelTool = "pencil" | "eraser" | "fill" | "eyedropper" | "pan" | "select" | "dither" | "gradient" | PixelShape;
 /** View state only. Pixel mutations and Undo belong to the document model. */
 export function createPixelCanvas(options: {
   editor(): ReturnType<typeof createPixelEditor>;
   tool(): PixelTool;
   color(): PixelColor;
   drawing?(): PixelDrawSettings;
+  ink?(): PixelInkSettings;
   pixelPerfect?(): boolean;
   imageBrush?(): PixelImageBrush | undefined;
   repeat?(): PixelRepeat;
@@ -45,7 +47,8 @@ export function createPixelCanvas(options: {
     previous?: PixelRegion;
     editor: ReturnType<typeof createPixelEditor>; target: string; revision: number;
     settings: PixelDrawSettings; clip?: PixelRegion; region: PixelRegion;
-    shape?: PixelShape; endX?: number; endY?: number; square?: boolean;
+    shape?: PixelShape | "gradient"; endX?: number; endY?: number; square?: boolean;
+    dither?: boolean; ink: PixelInkSettings; palette: PixelColor[];
     perfect?: ReturnType<typeof createPixelPerfectStroke>;
     brush?: ReturnType<typeof createPixelImageBrushStroke>;
     selectionSettings: PixelSelectionSettings; path?: { x: number; y: number }[];
@@ -60,13 +63,22 @@ export function createPixelCanvas(options: {
   function paint(g: Gesture, x: number, y: number, finish = false) {
     if (g.brush) { const result = g.brush.add(x, y, finish); g.editor.paintRegion(result.region, result.pixels); }
     else if (g.perfect) g.editor.paintStrokeMask(g.perfect.add(x, y), g.color);
-    else g.editor.paintMask(rasterPixelDrawing("line", g.region, g, { x, y }, g.settings, g.clip, false, g.repeat), g.color);
+    else {
+      const mask = rasterPixelDrawing("line", g.region, g, { x, y }, g.settings, g.clip, false, g.repeat);
+      if (g.dither) { const result = ditherPixelPaint(mask, g.color, g.ink, g.settings); g.editor.paintRegion(result.region, result.pixels); }
+      else g.editor.paintMask(mask, g.color);
+    }
     retainSelection(g);
   }
   function previewShape(g: Gesture, x: number, y: number, square: boolean) {
     if (!paintable(g) || g.revision !== g.editor.revision()) { cancel(); return; }
     g.endX = x; g.endY = y; g.square = square;
-    shapePreview = g.editor.previewPaint(rasterPixelDrawing(g.shape!, g.region, g, { x, y }, g.settings, g.clip, square, g.repeat), g.color);
+    try {
+      if (g.shape === "gradient") {
+        const result = gradientPixelPaint(g.region, g, { x, y }, g.color, g.ink, g.palette, g.clip, g.settings);
+        shapePreview = g.editor.previewRegion(result.region, result.pixels);
+      } else shapePreview = g.editor.previewPaint(rasterPixelDrawing(g.shape!, g.region, g, { x, y }, g.settings, g.clip, square, g.repeat), g.color);
+    } catch (error) { cancel(); options.report?.(error); }
   }
   function dimensions() {
     const rect = element.getBoundingClientRect(), region = options.editor().region();
@@ -116,7 +128,7 @@ export function createPixelCanvas(options: {
       imageContext!.globalCompositeOperation="source-in";
       imageContext!.fillStyle=style.getPropertyValue(ghost.side==="previous"?"--red":"--cyan").trim()||(ghost.side==="previous"?"#FF6B6B":"#38D5E8");
       imageContext!.fillRect(0,0,editor.width,editor.height);imageContext!.restore();
-      context!.globalAlpha=onion.opacity/100;
+      context!.globalAlpha=onion.opacity/(100*ghost.distance);
       for (let y = repeat.y ? -1 : 0; y <= (repeat.y ? 1 : 0); y++) for (let x = repeat.x ? -1 : 0; x <= (repeat.x ? 1 : 0); x++)
         context!.drawImage(image, region.x, region.y, region.width, region.height, left + x * region.width * zoom, top + y * region.height * zoom, region.width * zoom, region.height * zoom);
     }
@@ -227,8 +239,13 @@ export function createPixelCanvas(options: {
     } else if (gesture.mode === "shape") {
       if (commit && paintable(gesture) && gesture.revision === gesture.editor.revision()) {
         const p = point(event);
-        gesture.editor.editPaint(rasterPixelDrawing(gesture.shape!, gesture.region, gesture, p, gesture.settings, gesture.clip, event.shiftKey, gesture.repeat), gesture.color);
-        retainSelection(gesture);
+        try {
+          if (gesture.shape === "gradient") {
+            const result = gradientPixelPaint(gesture.region, gesture, p, gesture.color, gesture.ink, gesture.palette, gesture.clip, gesture.settings);
+            gesture.editor.editRegion(result.region, result.pixels);
+          } else gesture.editor.editPaint(rasterPixelDrawing(gesture.shape!, gesture.region, gesture, p, gesture.settings, gesture.clip, event.shiftKey, gesture.repeat), gesture.color);
+          retainSelection(gesture);
+        } catch (error) { options.report?.(error); }
       }
     } else if (gesture.mode === "select") {
       if (commit) { const p = point(event); marquee(p.x, p.y); }
@@ -254,6 +271,7 @@ export function createPixelCanvas(options: {
     const selectionSettings = { ...(options.selectionSettings?.() ?? PIXEL_SELECTION_DEFAULTS) };
     if (event.shiftKey || event.altKey) selectionSettings.operation = event.shiftKey && event.altKey ? "intersect" : event.shiftKey ? "add" : "subtract";
     const snapshot = { editor, target: target(editor), revision: editor.revision(), settings: pixelDrawSettings(options.drawing?.() ?? PIXEL_DRAW_DEFAULTS),
+      ink: pixelInkSettings(options.ink?.() ?? PIXEL_INK_DEFAULTS), palette: editor.palette.map(pixelColor),
       clip: options.selection?.area(), region: editor.region(), selectionSettings, repeat: editor.atlas() ? { ...PIXEL_REPEAT_DEFAULTS } : { ...(options.repeat?.() ?? PIXEL_REPEAT_DEFAULTS) } };
     if (tool === "pan" || space || event.button === 1) {
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY,
@@ -277,14 +295,14 @@ export function createPixelCanvas(options: {
       }
       if (!editor.canPaint() || options.readOnly?.()) return;
       const color: PixelColor = tool === "eraser" ? [0, 0, 0, 0] : options.color();
-      if (tool === "line" || tool === "rectangle" || tool === "ellipse") {
+      if (tool === "line" || tool === "rectangle" || tool === "ellipse" || tool === "gradient") {
         gesture = { id: event.pointerId, ...p, mode: "shape", shape: tool, panX, panY, color, ...snapshot };
         previewShape(gesture, p.x, p.y, event.shiftKey);
-        element.setPointerCapture(event.pointerId); options.changed(); refresh(); return;
+        if (gesture) element.setPointerCapture(event.pointerId); options.changed(); refresh(); return;
       }
       editor.begin();
       if (tool === "fill") { editor.fill(p.x, p.y, color, snapshot.clip, snapshot.repeat); editor.commit(); if (snapshot.clip) options.selection?.select(snapshot.clip); options.changed(); refresh(); return; }
-      gesture = { id: event.pointerId, ...p, mode: "paint", panX, panY, color, ...snapshot };
+      gesture = { id: event.pointerId, ...p, mode: "paint", panX, panY, color, dither: tool === "dither", ...snapshot };
       const imageBrush = tool === "pencil" ? options.imageBrush?.() : undefined;
       if (imageBrush) gesture.brush = createPixelImageBrushStroke(snapshot.region, p, imageBrush, snapshot.clip, snapshot.settings.mirrorX, snapshot.settings.mirrorY, snapshot.repeat);
       else if (tool === "pencil" && snapshot.settings.size === 1 && options.pixelPerfect?.()) gesture.perfect = createPixelPerfectStroke(snapshot.region, p, snapshot.settings, snapshot.clip, snapshot.repeat);

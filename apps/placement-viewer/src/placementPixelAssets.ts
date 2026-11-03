@@ -261,7 +261,7 @@ export function createPixelAssets(options: {
         return {
         id: asset.id, label: asset.name + " @" + asset.id.slice(-6),
         width: asset.width, height: asset.height, thumbnailUrl: asset.url,
-        ...((asset.source.version===3||asset.source.version===5||asset.source.version===6)?{frames:frames.map((frame,index)=>({
+        ...((asset.source.version===3||asset.source.version===5||(asset.source.version===6||asset.source.version===7))?{frames:frames.map((frame,index)=>({
           id:frame.id,label:"Frame "+(index+1)+" · "+frame.durationMs+" ms",width:asset.source.width,height:asset.source.height,
           frame:layout.frames[index],
         }))}:asset.source.version===4?{frames:asset.source.atlas.frames.map(frame=>({

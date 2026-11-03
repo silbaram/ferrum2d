@@ -134,7 +134,7 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
     }
     let layers = array(source, "layers")?;
     let frames = array(source, "frames")?;
-    let max_frames = if bounded_integer(source, "version", 1, 6)? == 6 {
+    let max_frames = if bounded_integer(source, "version", 1, 7)? >= 6 {
         64
     } else {
         16
@@ -231,6 +231,13 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
         if !ids.insert(id) || !names.insert(name) || !clips.insert(clip) || clip >= next {
             return Err(invalid("duplicate or invalid pixel tag identity"));
         }
+        if let Some(direction) = tag.get("direction") {
+            if bounded_integer(source, "version", 1, 7)? < 7
+                || !matches!(direction.as_str(), Some("forward" | "reverse" | "pingpong"))
+            {
+                return Err(invalid("invalid pixel tag direction"));
+            }
+        }
         if !tag["loop"].is_boolean() {
             return Err(invalid("invalid pixel tag loop"));
         }
@@ -238,7 +245,7 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
         let mut seen = std::collections::HashSet::new();
         if references.is_empty()
             || references.len()
-                > if bounded_integer(source, "version", 1, 6)? == 6 {
+                > if bounded_integer(source, "version", 1, 7)? >= 6 {
                     64
                 } else {
                     16
@@ -282,7 +289,7 @@ fn validate_source(
     let raw = std::str::from_utf8(&bytes).map_err(|_| invalid("pixel source must be UTF-8"))?;
     let source: Value =
         serde_json::from_str(raw).map_err(|_| invalid("invalid pixel source JSON"))?;
-    let version = bounded_integer(&source, "version", 1, 6)
+    let version = bounded_integer(&source, "version", 1, 7)
         .map_err(|_| invalid("unsupported pixel document format or version"))?;
     if source["format"] != "ferrum2d.pixel-document" {
         return Err(invalid("unsupported pixel document format or version"));
@@ -290,9 +297,9 @@ fn validate_source(
     if (version == 1 || version == 4) && bytes.len() > 400_000 {
         return Err(invalid("pixel v1 source exceeds byte limit"));
     }
-    if (version != 6 && png.len() > 8 * 1024 * 1024)
+    if (version < 6 && png.len() > 8 * 1024 * 1024)
         || (version == 2 && bytes.len() > 3 * 1024 * 1024)
-        || (!matches!(version, 3 | 5 | 6)
+        || (!matches!(version, 3 | 5 | 6 | 7)
             && (png.len() > 4 * 1024 * 1024 || source.get("frames").is_some()))
     {
         return Err(invalid(
@@ -307,7 +314,7 @@ fn validate_source(
     } else if source.get("atlas").is_some() {
         return Err(invalid("invalid pixel atlas version"));
     }
-    if !matches!(version, 3 | 5 | 6) {
+    if !matches!(version, 3 | 5 | 6 | 7) {
         source_text(&source["frame"], "id")?;
         bounded_integer(&source["frame"], "durationMs", 1, 60_000)?;
     }
@@ -325,7 +332,7 @@ fn validate_source(
         return Err(invalid("invalid pixel palette"));
     }
     let count = (width * height * 4) as usize;
-    let pixels = if matches!(version, 3 | 5 | 6) {
+    let pixels = if matches!(version, 3 | 5 | 6 | 7) {
         Vec::new()
     } else if version == 1 || version == 4 {
         if source.get("layers").is_some() {
@@ -367,12 +374,12 @@ fn validate_source(
         }
         composite.unwrap_or_else(|| vec![0; count])
     };
-    let (width, height, pixels) = if matches!(version, 3 | 5 | 6) {
+    let (width, height, pixels) = if matches!(version, 3 | 5 | 6 | 7) {
         frame_atlas(&source, width, height)?
     } else {
         (width, height, pixels)
     };
-    if version == 5 || (version == 6 && source.get("tags").is_some()) {
+    if version == 5 || version == 7 || (version == 6 && source.get("tags").is_some()) {
         validate_tags(&source)?;
     } else if ["tags", "initialTag", "nextClipId"]
         .iter()
@@ -381,7 +388,7 @@ fn validate_source(
         return Err(invalid("invalid pixel tag version"));
     }
     let count = (width * height * 4) as usize;
-    let max_side = if version == 6 { 2048 } else { 1024 };
+    let max_side = if version >= 6 { 2048 } else { 1024 };
     if bounded_integer(metadata, "width", 1, max_side)? != width
         || bounded_integer(metadata, "height", 1, max_side)? != height
     {
@@ -395,7 +402,7 @@ fn validate_source(
     }
     let mut decoder = png::Decoder::new(Cursor::new(&png));
     decoder.set_limits(png::Limits {
-        bytes: if matches!(version, 3 | 5 | 6) {
+        bytes: if matches!(version, 3 | 5 | 6 | 7) {
             16 * 1024 * 1024
         } else {
             2 * 1024 * 1024
@@ -768,6 +775,60 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn directional_sources_save_reopen_and_reject_legacy_or_invalid_directions() {
+        let pixels = [0, 0, 255, 255];
+        let source = json!({"format":"ferrum2d.pixel-document","version":7,"name":"Direction","width":1,"height":1,"colorSpace":"srgb","palette":[],
+            "layers":[{"id":"body","name":"Body","visible":true,"locked":false}],
+            "frames":[{"id":"a","durationMs":100,"cels":[{"layerId":"body","rgba":STANDARD.encode(pixels)}]}],
+            "tags":[{"id":"walk","name":"Walk","clipId":7,"frameIds":["a"],"loop":true,"direction":"reverse"}],
+            "initialTag":"walk","nextClipId":8});
+        for direction in ["forward", "reverse", "pingpong"] {
+            let mut source = source.clone();
+            source["tags"][0]["direction"] = json!(direction);
+            let project = Project::new();
+            let saved = save_inner(
+                &project.0,
+                &pixel_bundle(&source, &pixels, 1, 1),
+                &PlacementAssetRegistry::default(),
+                &project.writes(),
+            )
+            .unwrap();
+            assert_eq!(
+                load_inner(
+                    &project.0,
+                    &PlacementAssetRegistry::default(),
+                    &project.writes()
+                )
+                .unwrap(),
+                saved
+            );
+        }
+        for change in 0..7 {
+            let mut bad = source.clone();
+            match change {
+                0 => bad["version"] = json!(5),
+                1 => bad["version"] = json!(6),
+                2 => bad["tags"][0]["direction"] = json!("wrong"),
+                3 => bad["tags"][0]["direction"] = json!(["forward"]),
+                4 => bad["tags"][0]["direction"] = json!(null),
+                5 => bad["tags"][0]["direction"] = json!(0),
+                _ => {
+                    bad.as_object_mut().unwrap().remove("tags");
+                }
+            }
+            let target = Project::new();
+            assert!(save_inner(
+                &target.0,
+                &pixel_bundle(&bad, &pixels, 1, 1),
+                &PlacementAssetRegistry::default(),
+                &target.writes()
+            )
+            .is_err());
+            assert!(!target.root().join("catalog.json").exists());
+        }
+    }
+
+    #[test]
     fn tagged_sources_keep_ids_and_reject_invalid_metadata_atomically() {
         let source = json!({"format":"ferrum2d.pixel-document","version":5,"name":"Tagged","width":2,"height":1,"colorSpace":"srgb","palette":[],
             "layers":[{"id":"body","name":"Body","visible":true,"locked":false}],
@@ -938,7 +999,7 @@ pub(super) mod tests {
     fn v6_capacity_validation_rejects_legacy_overflow_and_partial_tags_before_storage() {
         for version in [3, 5, 6] {
             let (mut source, pixels, width, height) =
-                capacity_source(if version == 6 { 65 } else { 17 }, 2);
+                capacity_source(if version >= 6 { 65 } else { 17 }, 2);
             source["version"] = json!(version);
             let project = Project::new();
             assert!(save_inner(

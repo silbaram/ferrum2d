@@ -1,0 +1,20 @@
+{
+  "name": "@ferrum2d/pixel-art",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/generate-assets.mjs",
+    "dev": "vite",
+    "lint": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build --base=./",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ferrum2d/ferrum-web": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19"
+  }
+}

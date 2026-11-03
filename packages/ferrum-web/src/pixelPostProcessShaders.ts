@@ -26,21 +26,13 @@ highp vec4 applyPixelArt() {
   return vec4(rgb, scene.a);
 }`;
 
-export const PIXEL_POST_PROCESS_WGSL = `
-struct Settings { levels: f32, dither: f32, scanline: f32, padding: f32 };
-@group(0) @binding(0) var image: texture_2d<f32>;
-@group(0) @binding(1) var<uniform> settings: Settings;
-@vertex fn vertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
-  let positions = array<vec2f, 3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
-  return vec4f(positions[index], 0, 1);
-}
-@fragment fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
+export const PIXEL_POST_PROCESS_WGSL_FUNCTION = `
+fn applyPixelArt(position: vec4f, scene: vec4f, params: vec4f) -> vec4f {
   let bayer = array<u32, 16>(${BAYER_4.map(value => value + "u").join(",")});
   let pixel = vec2u(position.xy);
-  let scene = textureLoad(image, vec2i(pixel), 0);
   let threshold = (f32(bayer[(pixel.y % 4u) * 4u + pixel.x % 4u]) + 0.5) / 16.0 - 0.5;
-  let steps = settings.levels - 1.0;
-  var rgb = clamp(floor(clamp(scene.rgb, vec3f(0), vec3f(1)) * steps + 0.5 + threshold * settings.dither), vec3f(0), vec3f(steps)) / steps;
-  rgb *= 1.0 - f32(pixel.y % 2u) * settings.scanline;
+  let steps = params.x - 1.0;
+  var rgb = clamp(floor(clamp(scene.rgb, vec3f(0), vec3f(1)) * steps + 0.5 + threshold * params.y), vec3f(0), vec3f(steps)) / steps;
+  rgb *= 1.0 - f32(pixel.y % 2u) * params.z;
   return vec4f(rgb, scene.a);
 }`;

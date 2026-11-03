@@ -153,6 +153,45 @@ test("resolvePostProcessPasses accepts ordered pass arrays and disabled configs"
   equal(passes[1]?.kind, "vignette");
 });
 
+test("postprocess uniforms reject Float32 overflow before filtering disabled effects", () => {
+  const invalid = [
+    { kind: "bloom", intensity: 1e100 },
+    { kind: "bloom", intensity: 0, radius: 1e100 },
+    { kind: "crt", curvature: 1e100 },
+    { kind: "crt", chromaticAberration: 1e100 },
+    { kind: "glitch", intensity: 1e100 },
+    { kind: "glitch", chromaticAberration: 1e100 },
+    { kind: "glitch", intensity: 0, chromaticAberration: 0, seed: 1e100 },
+    { kind: "glitch", intensity: 0, chromaticAberration: 0, seed: -1e100 },
+  ] as const;
+  for (const pass of invalid) {
+    const { kind, ...settings } = pass;
+    for (const input of [pass, [{ opacity: .25 }, pass],
+      { enabled: false, passes: [pass] }, { enabled: false, [kind]: settings }]) {
+      throws(() => resolvePostProcessPasses(input as Parameters<typeof resolvePostProcessPasses>[0]), /Float32/);
+    }
+  }
+});
+
+test("postprocess keeps finite Float32 endpoints and positive subnormal softness", () => {
+  const maximum = 3.4028234663852886e38;
+  const passes = resolvePostProcessPasses([
+    { kind: "bloom", intensity: maximum, radius: maximum },
+    { kind: "crt", curvature: maximum, chromaticAberration: maximum },
+    { kind: "glitch", intensity: maximum, chromaticAberration: maximum, seed: -maximum },
+    { kind: "glitch", seed: maximum },
+    { kind: "vignette", radius: .3999999761581421, softness: 1e-9 },
+    { kind: "vignette", radius: 0, softness: Number.MIN_VALUE },
+  ]);
+  equal(passes.length, 6);
+  for (const pass of passes)
+    for (const value of Object.values(pass))
+      if (typeof value === "number") ok(Number.isFinite(Math.fround(value)));
+  deepEqual(resolvePostProcessPasses({ kind: "vignette", softness: 0 }), []);
+  // The postprocess bound must not change an unrelated camera coordinate contract.
+  equal(resolveCameraRigSpec({ x: 1e100 }).x, 1e100);
+});
+
 test("resolvePostProcessPasses ignores inherited config marker keys", () => {
   const input = Object.create({ enabled: false }) as { opacity: number };
   input.opacity = 0.25;

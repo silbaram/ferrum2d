@@ -33,11 +33,11 @@ export async function smokePixelRecovery(page,mode,run) {
   await ready(page);
   assert.equal((await rows(page)).length,0,'isolated browser context begins without recovery data');
   const rgba=(offset)=>Buffer.from(Array.from({length:12},(_,i)=>[i+offset,50+i,180-i,i%3?255:0]).flat()).toString('base64');
-  const source={format:'ferrum2d.pixel-document',version:5,name:'복구-'+mode,width:4,height:3,colorSpace:'srgb',palette:['#12345600','#abcdef80'],
+  const source={format:'ferrum2d.pixel-document',version:7,name:'복구-'+mode,width:4,height:3,colorSpace:'srgb',palette:['#12345600','#abcdef80'],
     layers:[{id:'body',name:'Body',visible:true,locked:false},{id:'shadow',name:'Shadow',visible:false,locked:true}],
     frames:[{id:'idle',durationMs:100,cels:[{layerId:'body',rgba:rgba(1)},{layerId:'shadow',rgba:rgba(30)}]},
       {id:'walk',durationMs:200,cels:[{layerId:'body',rgba:rgba(60)},{layerId:'shadow',rgba:rgba(90)}]}],
-    tags:[{id:'move',name:'Move',clipId:0,frameIds:['idle','walk'],loop:false}],initialTag:'move',nextClipId:1};
+    tags:[{id:'move',name:'Move',clipId:0,frameIds:['idle','walk'],loop:false,direction:'reverse'}],initialTag:'move',nextClipId:1};
   async function openSource(p) {
     await showPlacementBottom(p,'assets');
     await p.locator('[data-pixel-file]').setInputFiles({name:'recovery.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(source))});

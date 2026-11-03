@@ -23,7 +23,6 @@ import {
   finiteNumber,
   invalid,
   isRecord,
-  nonNegativeNumber,
   resolveColor,
   unitNumber,
 } from "./validation.js";
@@ -39,6 +38,22 @@ const PASS_FIELDS = {
   pixelArt: ["levels", "dither", "scanlineIntensity"],
 } as const;
 const CONFIG_FIELDS = ["enabled", "passes", ...Object.keys(PASS_FIELDS)];
+// Shared shader uniforms are f32 even though authoring JSON/JavaScript use f64.
+const MAX_POST_PROCESS_NUMBER = 3.4028234663852886e38;
+
+function postProcessNumber(value: number | undefined, path: string, fallback: number): number {
+  const result = finiteNumber(value, path, fallback);
+  if (Math.abs(result) > MAX_POST_PROCESS_NUMBER) {
+    throw invalid(path, "must be within the finite Float32 range");
+  }
+  return result;
+}
+
+function nonNegativePostProcessNumber(value: number | undefined, path: string, fallback: number): number {
+  const result = postProcessNumber(value, path, fallback);
+  if (result < 0) throw invalid(path, "must be a non-negative finite number");
+  return result;
+}
 
 function assertKnownFields(input: object, fields: readonly string[], path: string, allowKind = false): void {
   for (const key of Object.keys(input)) {
@@ -127,8 +142,8 @@ function resolveBloomPass(
   return {
     kind: "bloom",
     threshold: unitNumber(pass.threshold, `${path}.threshold`, 0.72),
-    intensity: nonNegativeNumber(pass.intensity, `${path}.intensity`, 0.45),
-    radius: nonNegativeNumber(pass.radius, `${path}.radius`, 1.5),
+    intensity: nonNegativePostProcessNumber(pass.intensity, `${path}.intensity`, 0.45),
+    radius: nonNegativePostProcessNumber(pass.radius, `${path}.radius`, 1.5),
   };
 }
 
@@ -138,9 +153,9 @@ function resolveCrtPass(
 ): ResolvedCrtPostProcessPass {
   return {
     kind: "crt",
-    curvature: nonNegativeNumber(pass.curvature, `${path}.curvature`, 0.08),
+    curvature: nonNegativePostProcessNumber(pass.curvature, `${path}.curvature`, 0.08),
     scanlineIntensity: unitNumber(pass.scanlineIntensity, `${path}.scanlineIntensity`, 0.18),
-    chromaticAberration: nonNegativeNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.0015),
+    chromaticAberration: nonNegativePostProcessNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.0015),
   };
 }
 
@@ -163,9 +178,9 @@ function resolveGlitchPass(
 ): ResolvedGlitchPostProcessPass {
   return {
     kind: "glitch",
-    intensity: nonNegativeNumber(pass.intensity, `${path}.intensity`, 0.04),
-    chromaticAberration: nonNegativeNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.003),
-    seed: finiteNumber(pass.seed, `${path}.seed`, 0),
+    intensity: nonNegativePostProcessNumber(pass.intensity, `${path}.intensity`, 0.04),
+    chromaticAberration: nonNegativePostProcessNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.003),
+    seed: postProcessNumber(pass.seed, `${path}.seed`, 0),
   };
 }
 

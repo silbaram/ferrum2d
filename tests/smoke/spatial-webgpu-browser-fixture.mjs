@@ -457,7 +457,7 @@ export async function probeSpatialFallbacks() {
     const options =
       kind === "postprocess"
         ? {
-            webgpu: { postProcess: [{ kind: "bloom" }] },
+            webgpu: { postProcess: [{ kind: "bloom", threshold: 2 }] },
             webgl2: { postProcess: [{ kind: "bloom" }] },
           }
         : { colorManagement: "linear-srgb" };

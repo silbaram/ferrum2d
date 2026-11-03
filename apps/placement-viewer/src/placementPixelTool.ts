@@ -9,6 +9,7 @@ import { createPixelSelection } from "./placementPixelSelection";
 import { createPixelSelectionControls } from "./placementPixelSelectionControls";
 import { createPixelDrawingControls } from "./placementPixelDrawingControls";
 import { createPixelPaletteControls } from "./placementPixelPaletteControls";
+import { createPixelInkControls } from "./placementPixelInkControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
@@ -159,6 +160,8 @@ export function createPlacementPixelTool(options: {
     cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report,
   });
   tools.prepend(drawingControls.picker); toolOptions.append(drawingControls.element);
+  const inkControls = createPixelInkControls({ cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report });
+  toolOptions.append(inkControls.element);
   const paletteControls = createPixelPaletteControls({
     editor: () => editor!, color: () => color, selection: () => selection.area(), selectionKey: () => selection.version(), retainSelection: rect => selection.select(rect),
     key: () => JSON.stringify([options.context().key, options.context().project]),
@@ -253,6 +256,7 @@ export function createPlacementPixelTool(options: {
     editor: () => editor!, tool: () => tool, color: () => color,
     frame:()=>framePanel?.frameId()??editor!.selectedFrame(),readOnly:()=>!!framePanel?.isPlaying()||!options.context().canEdit,
     drawing: () => drawingControls.settings(),
+    ink: () => inkControls.snapshot(),
     pixelPerfect: () => drawingControls.pixelPerfect(),
     imageBrush: () => imageBrushControls.snapshot(),
     repeat: () => repeatControls.settings(),
@@ -367,7 +371,7 @@ export function createPlacementPixelTool(options: {
     }
     invalidate();
     if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined;
-    void recovery.forget(); recoveryHold = false; drawingControls.reset(); selectionControls.reset(); imageBrushControls.reset(); repeatControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
+    void recovery.forget(); recoveryHold = false; drawingControls.reset(); inkControls.reset(); selectionControls.reset(); imageBrushControls.reset(); repeatControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
     atlasSelect.replaceChildren();
     for (const frame of editor.atlas()?.frames ?? []) {
       const option = document.createElement("option"); option.value = frame.id; option.textContent = frame.id; atlasSelect.append(option);
@@ -394,7 +398,7 @@ export function createPlacementPixelTool(options: {
     create.disabled = open.disabled = busy || !options.context().canEdit;
     setUiText(launchStatus, message);
     if (!editor || !active) return;
-    const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)"};
+    const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)",dither:"Dither (D)",gradient:"Gradient (J)"};
     setUiText(toolCaption,uiMessage("Tool options · {0}",uiMessage(toolNames[tool])));
     title.textContent = editor.name + (dirty() ? " •" : "");
     const region = editor.region(), atlas = editor.atlas();
@@ -409,6 +413,7 @@ export function createPlacementPixelTool(options: {
     const history = editor.history(),editing=busy||(framePanel?.isPlaying()??false)||surface.ownsGesture(),pending=selection.pending();
     selectionControls.sync(tool === "select" || pending, editing || !options.context().canEdit);
     drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds(), imageBrushControls.active());
+    inkControls.sync(tool, editing || !options.context().canEdit);
     imageBrushControls.sync();
     repeatControls.sync();
     paletteControls.sync(); canvasControls.sync(); effectsControls.sync(); batchControls.sync(); syncPalette(); sizePreview?.sync();
@@ -781,7 +786,7 @@ export function createPlacementPixelTool(options: {
       if (direction) { event.preventDefault(); editSelection(() => selection.moveBy(direction[0] * (event.shiftKey ? 10 : 1), direction[1] * (event.shiftKey ? 10 : 1))); }
       if (event.code === "Delete" || event.code === "Backspace") { event.preventDefault(); editSelection(() => selection.remove()); }
     }
-    const map: Record<string, PixelTool> = { KeyM: "select", KeyB: "pencil", KeyE: "eraser", KeyG: "fill", KeyI: "eyedropper", KeyH: "pan", KeyL: "line", KeyR: "rectangle", KeyO: "ellipse" };
+    const map: Record<string, PixelTool> = { KeyM: "select", KeyB: "pencil", KeyE: "eraser", KeyG: "fill", KeyI: "eyedropper", KeyH: "pan", KeyL: "line", KeyR: "rectangle", KeyO: "ellipse", KeyD: "dither", KeyJ: "gradient" };
     if (map[event.code]) { event.preventDefault(); surface.cancel(); tool = map[event.code]; render(); surface.refresh(); }
   });
   workspace.addEventListener("pointerdown", event => event.stopPropagation());

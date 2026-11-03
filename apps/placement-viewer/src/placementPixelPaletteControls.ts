@@ -61,7 +61,8 @@ export function createPixelPaletteControls(options: {
       popup.addEventListener("cancel", event => { event.preventDefault(); cancel(); }); popup.append(confirm, dismiss); registerUiRoot(popup); document.body.append(popup); popup.showModal(); dismiss.focus();
     } catch (error) { options.report(error); }
   });
-  const file = document.createElement("input"); file.type = "file"; file.accept = ".json,application/json"; file.hidden = true; file.dataset.pixelPaletteFile = "true"; panel.append(file);
+  const formatHint = document.createElement("p"); setUiText(formatHint, "Import JSON, GPL or HEX. Export preserves RGBA as JSON."); panel.append(formatHint);
+  const file = document.createElement("input"); file.type = "file"; file.accept = ".json,.gpl,.hex,application/json,application/x-gimp-palette"; file.hidden = true; file.dataset.pixelPaletteFile = "true"; panel.append(file);
   button("Import Palette", "import", panel, () => file.click());
   button("Export Palette", "export", panel, () => options.download(exportPixelPalette(options.editor().palette)));
   file.onchange = () => {
@@ -69,7 +70,7 @@ export function createPixelPaletteControls(options: {
     const token = ++request, editor = options.editor(), captured = stamp();
     void (async () => {
       if (chosen.size > PIXEL_PALETTE_BYTES) throw Error("Palette file exceeds 16 KiB");
-      const colors = readPixelPalette(await chosen.text());
+      const colors = readPixelPalette(await chosen.text(), chosen.name);
       if (disposed || token !== request || options.disabled() || editor !== options.editor() || stamp() !== captured) return;
       edit(() => editor.setPalette(colors));
     })().catch(error => { if (!disposed && token === request) options.report(error); });

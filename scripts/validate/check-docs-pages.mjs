@@ -29,6 +29,7 @@ const requiredDistPages = [
   "docs/development/operations/npm-release.html",
   "docs/development/operations/demo-deploy.html",
   "starter-runtime/index.html",
+  "pixel-art/index.html",
   "topdown-shooter/index.html",
   "placement-viewer/index.html",
   "physics-sandbox/index.html",

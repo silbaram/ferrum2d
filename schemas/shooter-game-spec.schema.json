@@ -516,8 +516,8 @@
       "additionalProperties": false,
       "properties": {
         "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
-        "intensity": { "type": "number", "minimum": 0 },
-        "radius": { "type": "number", "minimum": 0 }
+        "intensity": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "radius": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 }
       }
     },
     "bloomPostProcessPass": {
@@ -527,17 +527,17 @@
       "properties": {
         "kind": { "const": "bloom" },
         "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
-        "intensity": { "type": "number", "minimum": 0 },
-        "radius": { "type": "number", "minimum": 0 }
+        "intensity": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "radius": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 }
       }
     },
     "crtPostProcessConfig": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "curvature": { "type": "number", "minimum": 0 },
+        "curvature": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
         "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 },
-        "chromaticAberration": { "type": "number", "minimum": 0 }
+        "chromaticAberration": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 }
       }
     },
     "crtPostProcessPass": {
@@ -546,9 +546,9 @@
       "required": ["kind"],
       "properties": {
         "kind": { "const": "crt" },
-        "curvature": { "type": "number", "minimum": 0 },
+        "curvature": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
         "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 },
-        "chromaticAberration": { "type": "number", "minimum": 0 }
+        "chromaticAberration": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 }
       }
     },
     "vignettePostProcessConfig": {
@@ -577,9 +577,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "intensity": { "type": "number", "minimum": 0 },
-        "chromaticAberration": { "type": "number", "minimum": 0 },
-        "seed": { "type": "number" }
+        "intensity": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "chromaticAberration": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "seed": { "type": "number", "minimum": -3.4028234663852886e38, "maximum": 3.4028234663852886e38 }
       }
     },
     "glitchPostProcessPass": {
@@ -588,9 +588,9 @@
       "required": ["kind"],
       "properties": {
         "kind": { "const": "glitch" },
-        "intensity": { "type": "number", "minimum": 0 },
-        "chromaticAberration": { "type": "number", "minimum": 0 },
-        "seed": { "type": "number" }
+        "intensity": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "chromaticAberration": { "type": "number", "minimum": 0, "maximum": 3.4028234663852886e38 },
+        "seed": { "type": "number", "minimum": -3.4028234663852886e38, "maximum": 3.4028234663852886e38 }
       }
     },
     "pixelArtPostProcessConfig": {

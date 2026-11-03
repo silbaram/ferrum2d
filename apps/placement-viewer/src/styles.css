@@ -90,6 +90,7 @@
 .placement-pixel-onion-options label[data-onion-side=previous] { color: var(--red); }
 .placement-pixel-onion-options label[data-onion-side=next] { color: var(--cyan); }
 .placement-pixel-onion-options input[type=range] { flex: 1; min-width: 0; width: 64px; }
+.placement-pixel-onion-options input[type=number] { width: 48px; margin-left: auto; }
 .placement-pixel-onion-options output { min-width: 32px; text-align: right; }
 .placement-pixel-onion-options p { margin: 0; color: var(--fg-3); }
 .placement-pixel-tags { position: relative; }

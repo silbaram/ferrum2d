@@ -46,3 +46,31 @@ test('valid default fade and disabled stacks remain backward compatible in schem
     deepEqual(resolveShooterGameSpec({postProcessing:input}).postProcessing,resolvePostProcessPasses(input));
   }
 });
+
+test('postprocess schema and runtime bound shader uniforms to finite Float32 values',()=>{
+  const maximum=3.4028234663852886e38;
+  const invalid=[
+    {kind:'bloom',intensity:1e100},{kind:'bloom',intensity:0,radius:1e100},
+    {kind:'crt',curvature:1e100},{kind:'crt',chromaticAberration:1e100},
+    {kind:'glitch',intensity:1e100},{kind:'glitch',chromaticAberration:1e100},
+    {kind:'glitch',intensity:0,chromaticAberration:0,seed:1e100},
+    {kind:'glitch',intensity:0,chromaticAberration:0,seed:-1e100},
+  ];
+  for(const pass of invalid) {
+    const {kind,...settings}=pass;
+    for(const input of [pass,[{opacity:.25},pass],{enabled:false,passes:[pass]},{enabled:false,[kind]:settings}]) {
+      throws(()=>validateJsonSchemaContract(postSchema,input),JSON.stringify(input));
+      throws(()=>resolvePostProcessPasses(input),/Float32/);
+      throws(()=>resolveShooterGameSpec({postProcessing:input}),/Float32/);
+    }
+  }
+  for(const input of [
+    {kind:'bloom',intensity:maximum,radius:maximum},
+    {kind:'crt',curvature:maximum,chromaticAberration:maximum},
+    {kind:'glitch',intensity:maximum,chromaticAberration:maximum,seed:-maximum},
+    {glitch:{seed:maximum}},{kind:'vignette',radius:0,softness:Number.MIN_VALUE},
+  ]) {
+    validateJsonSchemaContract(postSchema,input);
+    deepEqual(resolveShooterGameSpec({postProcessing:input}).postProcessing,resolvePostProcessPasses(input));
+  }
+});

@@ -24,7 +24,7 @@ test('legacy frame limits and complete v6 tag metadata remain strict', () => {
   const source = pixelCapacitySource({ count: 17 });
   for (const version of [3, 5]) assert.throws(() => d.readPixelDocument(JSON.stringify(pixelCapacitySource({ count: 17, version, tagged: version === 5 }))), /16/);
   for (const invalid of [
-    pixelCapacitySource({ count: 65 }), { ...source, version: 7 },
+    pixelCapacitySource({ count: 65 }), { ...source, version: 8 },
     { ...source, tags: undefined }, { ...source, initialTag: undefined }, { ...source, nextClipId: undefined },
     { ...source, tags: null }, { ...source, atlas: {} },
   ]) assert.throws(() => d.readPixelDocument(JSON.stringify(invalid)));

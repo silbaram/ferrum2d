@@ -126,9 +126,9 @@ export async function readPixelPng(bytes: ArrayBuffer, maxSide: number = PIXEL_L
 export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) {
   const document = readPixelDocument(JSON.stringify(source));
   const expected = pixelAtlas(document);
-  const framed = document.version === 3 || document.version === 5 || document.version === 6;
+  const framed = document.version === 3 || document.version === 5 || (document.version === 6 || document.version === 7);
   const actual = await readPixelPng(bytes, framed ? Math.max(expected.width, expected.height) : PIXEL_LIMITS.side,
-    document.version === 6 ? PIXEL_LIMITS.pngBytes : framed ? 8 * 1024 * 1024 : 4 * 1024 * 1024);
+    (document.version === 6 || document.version === 7) ? PIXEL_LIMITS.pngBytes : framed ? 8 * 1024 * 1024 : 4 * 1024 * 1024);
   if (actual.width !== expected.width || actual.height !== expected.height) throw Error("Pixel PNG dimensions or format differ");
   if (actual.pixels.some((v,i) => v !== expected.pixels[i])) throw Error("Pixel PNG and editable source differ");
 }

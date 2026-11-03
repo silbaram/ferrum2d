@@ -69,3 +69,5 @@ Run the narrowest available checks for the asset type you changed:
 - Browser-only audio unlock or decode issues: run the project's browser playtest/smoke and report whether audio required a user gesture.
 
 If a command is unavailable, say that explicitly and use the next closest project-owned command. Do not require Ferrum2D engine workspace `pnpm` commands in a normal consumer game.
+
+For built-in dot authoring, sprite palettes, frame tags and pixel-art validation, read `.agents/skills/ferrum-consumer-pixel-art/SKILL.md`. This remains consumer game work, not engine implementation.

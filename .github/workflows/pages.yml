@@ -92,6 +92,7 @@ jobs:
             "/physics-sandbox/"
             "/breakout/"
             "/platformer/"
+            "/pixel-art/"
           )
           for route in "${routes[@]}"; do
             url="${base}${route}"
