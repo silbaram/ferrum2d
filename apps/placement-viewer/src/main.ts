@@ -306,6 +306,7 @@ interface PlacementViewerWindow extends Window {
     entityCount: number;
     renderCommandCount: number;
     drawCalls: number;
+    rustUpdateTimeMs: number;
     spatial?: {
       terrainVertices: number;
       billboardVertices: number;
@@ -8718,6 +8719,7 @@ function publishFrameStats(frame: FerrumRuntimeFrame): void {
         }
       : {}),
     entityCount: frame.frame.entityCount,
+    rustUpdateTimeMs: frame.frame.rustUpdateTimeMs,
     renderCommandCount: frame.rendererStats.renderCommandCount,
     drawCalls: frame.rendererStats.drawCalls,
   };

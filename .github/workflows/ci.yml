@@ -279,6 +279,17 @@ jobs:
           path: artifacts/tile-autotile
           if-no-files-found: ignore
 
+      - name: Tile animation, fixed collision and native roundtrip
+        run: pnpm smoke:tile-animation
+
+      - name: Upload tile animation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tile-animation
+          path: artifacts/tile-animation
+          if-no-files-found: ignore
+
       - name: Real village combat, audio, ramp and LOD quality evidence
         run: pnpm smoke:village-game-quality
 

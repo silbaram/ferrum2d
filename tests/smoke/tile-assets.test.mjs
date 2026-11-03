@@ -905,7 +905,9 @@ const mapSpawnDefinition={props:{components:{visual:{kind:'primitive',shape:'rec
 const paletteSource=await source('placementTileRulePalette.ts',[['./placementTileDependencies',dependenciesSource],['./placementTileSelection',selectionSource]]);
 const rulesSource=await source('placementTileRules.ts',[['./placementTileRulePalette',paletteSource]]);
 const {bakeTileMapRules:bakeRules}=await import(rulesSource);
-const {tileMapPlacementPatch:mapPatch}=await import(await source("placementTileMap.ts", [['./placementTileRules',rulesSource]]));
+const animationSource=await source('placementTileAnimation.ts',[['./placementTileDependencies',dependenciesSource],['./placementTileSelection',selectionSource],['./placementTileRulePalette',paletteSource]]);
+const {compileTileMapAnimations:compileAnimations}=await import(animationSource);
+const {tileMapPlacementPatch:mapPatch}=await import(await source("placementTileMap.ts", [['./placementTileRules',rulesSource],['./placementTileAnimation',animationSource]]));
 for(const kind of ["tiled","ldtk"])test(kind+" whole-map patch preserves coordinates, source, layers and replaces only its group",async()=>{
   const asset=await check(kind),next=await check(kind,true),document=doc(asset.id,asset.frames[0].uv);
   const sourceBefore=JSON.stringify(document),rawBefore=Buffer.from(asset.json).toString('hex');
@@ -1219,4 +1221,92 @@ test('unused autotile palette resolves original external TSJ and selected LDtk l
   const ldtk=await check('ldtk',false,multi,'scene',1);
   assert.equal(ldtk.frames.length,1);
   assert.equal(bakeRules(ldtk,edgeRules).palette.frames.find(f=>f.id==='terrain.1').uv.u0,.5);
+});
+
+const animatedClips={'terrain.0':{frames:[{frame:'terrain.1',durationMs:90},{frame:'terrain.0',durationMs:180}],loop:false}};
+const mapCells=document=>document.sceneComposition.fragments.main.instances.filter(i=>i.props?.tileMapImport?.cell);
+for(const kind of ['tiled','ldtk'])test(kind+' named tile animation retains timing, fixed collision, provenance and IDs across repack and Undo',async()=>{
+  const fixture=tileMapFixture(kind);
+  if(kind==='tiled')fixture.json.tilesets[0].tiles=[{id:0,properties:[{name:'blocksMovement',type:'bool',value:true}]},{id:1,properties:[{name:'blocksMovement',type:'bool',value:false}]}];
+  const asset=await check(kind,false,fixture),next=await check(kind,true,tileMapFixture(kind,true));
+  const document=doc(asset.id,asset.frames[0].uv),options={animations:animatedClips,collisionLayers:['ground'],objectPrefabs:{Spawn:'spawn'}};
+  document.sceneComposition.prefabs.spawn=structuredClone(mapSpawnDefinition);
+  const raw=Buffer.from(asset.json).toString('hex'),original=JSON.stringify(asset.imported);
+  const p=mapPatch(document,state,asset,options),saved=mergeScenePlacementPatch(document,p).document;
+  const cells=mapCells(saved),animated=cells.filter(i=>i.props.components.visual.animationSet);
+  assert.equal(animated.length,2);
+  for(const cell of animated){
+    const v=cell.props.components.visual,c=cell.props.components;
+    assert.deepEqual(v.animationSet.clips[0].frameDurationsMs,[90,180]);assert.equal(v.animationSet.clips[0].loop,false);
+    assert.equal(v.animationSet.clips[0].emitEvents,false);assert.equal(v.animationSet.initialClip,0);
+    assert.deepEqual(v.frame,asset.frames.find(f=>f.id==='terrain.1').uv);
+    assert.equal(c.collider.type,'aabb');assert.equal(c.body.type,'static');
+  }
+  if(kind==='tiled')assert(cells.filter(i=>!i.props.components.visual.animationSet).every(i=>i.props.components.collider==='none'));
+  assert.deepEqual(cells[0].props.tileMapImport.options.animations,animatedClips);
+  assert.equal(Buffer.from(asset.json).toString('hex'),raw);assert.equal(JSON.stringify(asset.imported),original);
+  assert.throws(()=>patch(saved,state,[asset],next),/Apply Map/);
+  const nextPatch=mapPatch(saved,state,next,options),repacked=mergeScenePlacementPatch(saved,nextPatch).document;
+  for(const cell of cells)assert(mapCells(repacked).some(n=>n.id===cell.id));
+  for(const cell of mapCells(repacked).filter(i=>i.props.components.visual.animationSet))assert.equal(cell.props.components.visual.animationSet.clips[0].frames[0].u0,1/3);
+  const viewer=createScenePlacementViewer({document:saved,viewport:{cssWidth:320,cssHeight:240}});
+  applyMapEdit(viewer,nextPatch);const after=viewer.exportPatch();assert.equal(viewer.historyState().undoCount,1);
+  viewer.undo();assert.equal(viewer.exportPatch(),undefined);viewer.redo();assert.deepEqual(viewer.exportPatch(),after);
+});
+
+test('Tiled source animation resolves tileset-local IDs and unused external TSJ frames without changing source bytes',async()=>{
+  const f=tileFixture('tiled',true);f.json.layers[0].data=[21,21];
+  const set=f.json.tilesets[0];set.tiles=[{id:0,animation:[{tileid:1,duration:90},{tileid:0,duration:180}]}];
+  f.dependencies=[{name:'terrain.tsj',json:{...set,type:'tileset'}}];f.json.tilesets=[{firstgid:21,source:'terrain.tsj'}];
+  const a=await check('tiled',false,f),d=doc(a.id,a.frames[0].uv),bytes=Buffer.from(a.dependencies[0].json).toString('hex');
+  assert.equal(a.frames.length,1);
+  assert.throws(()=>mapPatch(d,state,a),/animated Tiled tiles/);
+  const saved=mergeScenePlacementPatch(d,mapPatch(d,state,a,{animations:'source'})).document;
+  for(const i of mapCells(saved)){const c=i.props.components.visual.animationSet.clips[0];assert.deepEqual(c.frameDurationsMs,[90,180]);assert.equal(c.loop,true);assert.equal(c.frames[0].u0,1/3);}
+  assert.equal(a.frames.length,1);assert.equal(Buffer.from(a.dependencies[0].json).toString('hex'),bytes);
+  assert.throws(()=>mapPatch(d,state,a,{animations:{}}),/animated Tiled tiles/);
+});
+
+test('animations follow autotile output and do not recursively expand animated frame references',async()=>{
+  const a=await check('tiled',false,tileMapFixture('tiled')),d=doc(a.id,a.frames[0].uv);
+  const opts={autotile:edgeRules,animations:{'terrain.1':{frames:[{frame:'terrain.0',durationMs:100},{frame:'terrain.1',durationMs:200}]}}};
+  const cells=mapCells(mergeScenePlacementPatch(d,mapPatch(d,state,a,opts)).document);
+  assert(cells.filter(c=>c.props.tileMapImport.cell.row===0).every(c=>c.props.components.visual.animationSet.clips[0].frames.length===2));
+  assert.equal(cells.find(c=>c.props.tileMapImport.cell.row===1&&c.props.tileMapImport.cell.column===0).props.components.visual.animationSet,undefined);
+});
+
+test('invalid animations, unknown fields and limits reject without mutation or poisoning cached results',async()=>{
+  const a=await check('tiled',false,tileMapFixture('tiled')),d=doc(a.id,a.frames[0].uv),before=JSON.stringify(d);
+  mapPatch(d,state,a); // Undefined and null must never share a successful cache entry.
+  const step={frame:'terrain.0',durationMs:90};
+  const bad=[null,[],true,'other',{'terrain.0':null},{'terrain.0':{frames:[]}},{'terrain.0':{frames:[step],loop:0}},{'terrain.0':{frames:[step],fps:10}},{'terrain.0':{frames:[{...step,durationMs:0}]}},{'terrain.0':{frames:[{...step,durationMs:1.5}]}},{'terrain.0':{frames:[{...step,durationMs:1000001}]}},{'terrain.0':{frames:[{...step,frame:'missing'}]}},{'terrain.0':{frames:[{...step,extra:1}]}},{'terrain.0':{frames:Array(257).fill(step)}}];
+  for(const animations of bad){assert.throws(()=>mapPatch(d,state,a,{animations}));assert.equal(JSON.stringify(d),before);}
+  assert.doesNotThrow(()=>mapPatch(d,state,a,{animations:animatedClips}));
+  const ldtk=await check('ldtk');assert.throws(()=>compileAnimations(ldtk,'source',ldtk.frames),/requires Tiled/);
+  assert.throws(()=>compileAnimations(a,Object.fromEntries(Array.from({length:65},(_,i)=>['terrain.'+i,{frames:[step]}])),a.frames),/64/);
+  assert.throws(()=>compileAnimations(a,Object.fromEntries(Array.from({length:5},(_,i)=>['terrain.'+i,{frames:Array(256).fill(step)}])),a.frames),/1024/);
+  const large=tileFixture('tiled');Object.assign(large.json,{width:64,height:32});Object.assign(large.json.layers[0],{width:64,height:32,data:Array(2048).fill(1)});
+  const asset=await check('tiled',false,large);
+  assert.throws(()=>mapPatch(d,state,asset,{animations:{'terrain.0':{frames:Array(5).fill(step)}}}),/8192/);
+  assert.doesNotThrow(()=>mapPatch(d,state,asset,{animations:{'terrain.0':{frames:Array(4).fill(step)}}}));
+});
+
+test('malformed Tiled source duration and local frame IDs are rejected explicitly',async()=>{
+  for(const frames of [[],[{tileid:1,duration:0}],[{tileid:999,duration:90}],[{tileid:-1,duration:90}],[{tileid:1,duration:90,extra:1}]]){
+    const f=tileFixture('tiled');f.json.tilesets[0].tiles=[{id:0,animation:frames}];
+    const a=await check('tiled',false,f);assert.throws(()=>mapPatch(doc(a.id,a.frames[0].uv),state,a,{animations:'source'}));
+  }
+});
+
+test('animation options plus source identity must fit the saved metadata budget before returning a patch',async()=>{
+  const asset=await check('tiled',false,tileMapFixture('tiled')),document=doc(asset.id,asset.frames[0].uv);
+  const step={frame:'terrain.0',durationMs:90};
+  const options={animations:{'terrain.0':{frames:Array(256).fill(step)},'terrain.1':{frames:Array(173).fill(step)}}};
+  const bytes=Buffer.byteLength(JSON.stringify(options));
+  assert(bytes<=16384&&bytes>16000,`Fixture must fit the option budget: ${bytes}`);
+  const before=JSON.stringify(document);
+  assert.throws(()=>mapPatch(document,state,asset,options),/metadata.*16 KiB/);
+  assert.equal(JSON.stringify(document),before);
+  options.animations['terrain.1'].frames=Array(150).fill(step);
+  assert.doesNotThrow(()=>mergeScenePlacementPatch(document,mapPatch(document,state,asset,options)));
 });

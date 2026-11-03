@@ -123,7 +123,9 @@ export function createPlacementTileTool(options: {
   const mapOptions = document.createElement("textarea");
   mapOptions.rows=3;mapOptions.value="{}";
   const mapPreview = createTileMapPreview(), previewMap = button("Preview Map", "preview-map"), mapHint = document.createElement("p");
-  setUiText(mapHint, "Autotile rules use frame names and run before placement. Preview does not change the scene.");
+  const previewTime = document.createElement("input");
+  previewTime.type = "number"; previewTime.min = "0"; previewTime.max = "3600000"; previewTime.step = "1"; previewTime.value = "0";
+  setUiText(mapHint, "Autotile rules run before placement. Animations change images only; collision stays fixed. Preview does not change the scene.");
   const format = document.createElement("select"),
     name = document.createElement("input"),
     level = document.createElement("input"),
@@ -162,6 +164,7 @@ export function createPlacementTileTool(options: {
   const mapSettings=document.createElement("details"),mapSummary=document.createElement("summary");
   setUiText(mapSummary,"Map Options");mapSettings.append(mapSummary);
   field("Map placement options (JSON)",mapOptions,mapSettings);
+  field("Map preview time (ms)",previewTime,mapSettings);
   mapSettings.append(mapHint, previewMap, mapPreview.element);source.append(mapSettings);
   field("External TSJ Files", dependencies, source);
   field("Tileset", tileset, source);
@@ -220,10 +223,11 @@ export function createPlacementTileTool(options: {
     return tileMapPlacementPatch(options.context().document, options.viewer.state(),next,JSON.parse(draft().mapOptions??"{}"),registered());
   };
   mapOptions.addEventListener("input",()=>{if(disposed||!drafts.has(key))return;draft().mapOptions=mapOptions.value;render();}, listenerOptions);
+  previewTime.addEventListener("input", () => render(), listenerOptions);
   previewMap.addEventListener("click",async()=>{
     if(disposed||previewMap.disabled||!drafts.has(key))return;
     try {
-      const work = mapPreview.show(draft().candidate!, planMap(draft().candidate!));
+      const work = mapPreview.show(draft().candidate!, planMap(draft().candidate!), previewTime.valueAsNumber);
       render();
       await work;
     } catch(error) { if(!disposed&&drafts.has(key))draft().status=String(error); }
@@ -259,9 +263,11 @@ export function createPlacementTileTool(options: {
     mapOptions.disabled=busy||!context.canEdit;
     let mapError="Inspect a map", mapPatch: ScenePlacementPatch | undefined;
     if(valid)try{mapPatch=planMap(d.candidate!);mapError="";}catch(error){mapError=String(error);}
-    mapPreview.invalidate(JSON.stringify([key, context.mode, options.viewer.state().fragment, d.candidate?.id, d.mapOptions, mapError, mapPatch]));
-    previewMap.disabled=busy||mapPreview.isLoading()||!valid||!!mapError;
-    setUiAttribute(previewMap,"title",mapError||(mapPreview.isLoading()?"Preparing map preview…":"Preview without editing the scene"));
+    const time = previewTime.valueAsNumber;
+    const timeError = !Number.isInteger(time) || time < 0 || time > 3600000 ? "Preview time must be 0..3600000 ms" : "";
+    mapPreview.invalidate(JSON.stringify([key, context.mode, options.viewer.state().fragment, d.candidate?.id, d.mapOptions, mapError, mapPatch, previewTime.value]));
+    previewMap.disabled=busy||mapPreview.isLoading()||!valid||!!mapError||!!timeError;
+    setUiAttribute(previewMap,"title",mapError||timeError||(mapPreview.isLoading()?"Preparing map preview…":"Preview without editing the scene"));
     map.disabled=busy||!valid||!context.canEdit||!!mapError;setUiAttribute(map,"title",mapError||"Replace the imported map as one Undo transaction");
     cancel.disabled = !busy;
     exportButton.disabled = busy || !registered().length;

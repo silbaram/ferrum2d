@@ -9,6 +9,7 @@ import {
   externalTileFixture,
 } from "./tile-import-fixtures.mjs";
 import { autotileRules } from "./tile-autotile-smoke.mjs";
+import { tileAnimationClips } from "./tile-animation-smoke.mjs";
 
 /** Actual Rust filesystem/protocol; only IPC transport is replaced by the harness. */
 export async function smokeNativeTiles({
@@ -55,6 +56,7 @@ export async function smokeNativeTiles({
       );
   const wholeMap=mode==='2d'&&!multi&&!externalTsj;
   const autotile=wholeMap&&process.argv.includes('--autotile');
+  const tileAnimation=wholeMap&&process.argv.includes('--tile-animation');
   let mapTarget;
   const stage = async (updated) => {
     const previousKey = multi
@@ -292,6 +294,14 @@ export async function smokeNativeTiles({
   await writeFile(scene, JSON.stringify(saved));
   await click("save");
   assert.match(await status(), /^Project saved/);
+  if(tileAnimation){
+    await tool().getByRole('tab',{name:'Source',exact:true}).click();
+    const input=tool().getByLabel('Map placement options (JSON)',{exact:true});
+    await input.locator('..').locator('..').evaluate(el=>{el.open=true;});
+    const options=JSON.parse(await input.inputValue());options.animations=tileAnimationClips;options.collisionLayers=['ground'];
+    await input.fill(JSON.stringify(options));await click('map');assert.match(await status(),/^Applied/);
+    await click('save');assert.match(await status(),/^Project saved/);
+  }
   const finalBytes = await readFile(scene),
     finalDoc = JSON.parse(finalBytes),
     instances = finalDoc.sceneComposition.fragments.main.instances;
@@ -320,6 +330,15 @@ export async function smokeNativeTiles({
   await restart();
   assert.equal((await imports())[0].assetId, next.assetId);
   assert.equal((await imports())[0].persisted, true);
+  if(tileAnimation){
+    const options=JSON.parse(await tool().getByLabel('Map placement options (JSON)',{exact:true}).inputValue());
+    assert.deepEqual(options.animations,tileAnimationClips);
+    const animated=instances.filter(i=>i.props?.tileMapImport?.cell&&i.props.components.visual.animationSet);
+    assert.equal(animated.length,3);
+    for(const cell of animated){assert.deepEqual(cell.props.components.visual.animationSet.clips[0].frameDurationsMs,[90,180]);assert.equal(cell.props.components.collider.type,'aabb');}
+    const before=await readFile(scene);await click('inspect');await click('map');assert.match(await status(),/^Applied/);await click('save');
+    assert.deepEqual(JSON.parse(await readFile(scene)),JSON.parse(before));
+  }
   const download = getPage().waitForEvent("download");
   await click("export");
   const exportPath = join(run, `${kind}-${mode}-assets.json`);
@@ -404,6 +423,7 @@ export async function smokeNativeTiles({
     reimportUndoRedo: true,
     ...(wholeMap?{wholeMapSavedAndReopened:true,stableMapIds:true,resizedCellIdentity:true,instanceBehaviorPreserved:true,legacySourceMigration:kind==='tiled'}:{}),
     ...(autotile?{autotileSavedAndReopened:true}:{}),
+    ...(tileAnimation?{tileAnimationSavedAndReopened:true}:{}),
     sceneCasPreserved: true,
     rawExport: true,
     tamperRejected: true,
