@@ -425,7 +425,7 @@ fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
     if hash(&bytes) != text(&report["source"], "jsonSha256")? {
         return Err(invalid("pixel source hash differs from normals"));
     }
-    let color = asset_files::bounded_read(&root.join(format!("{id}.png")), 8 * 1024 * 1024)?;
+    let color = asset_files::bounded_read(&root.join(format!("{id}.png")), 16 * 1024 * 1024)?;
     if hash(&color) != text(&report["source"], "pngSha256")? {
         return Err(invalid("pixel source PNG differs from normals"));
     }
@@ -434,13 +434,13 @@ fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
     let width = integer(&source, "width", 1, 256)?;
     let height = integer(&source, "height", 1, 256)?;
     let mut expected = Vec::new();
-    match integer(&source, "version", 1, 5)? {
-        3 | 5 => {
+    match integer(&source, "version", 1, 7)? {
+        version @ (3 | 5 | 6 | 7) => {
             let frames = array(&source, "frames")?;
-            if frames.is_empty() || frames.len() > 16 {
+            if frames.is_empty() || frames.len() > if version >= 6 { 64 } else { 16 } {
                 return Err(invalid("invalid pixel source frame count"));
             }
-            let columns = (1_u64..=4)
+            let columns = (1_u64..=8)
                 .find(|n| n * n >= frames.len() as u64)
                 .ok_or_else(|| invalid("invalid pixel columns"))?;
             for (index, frame) in frames.iter().enumerate() {
@@ -806,77 +806,99 @@ pub(super) mod tests {
     }
     #[test]
     fn pixel_normal_pairs_verify_source_json_png_and_frame_layout_before_publish() {
-        let project = Project::new();
-        let registry = PlacementAssetRegistry::default();
-        let writes = project.writes();
-        let (metadata, mut files) = fixture(1);
-        let mut value: Value = serde_json::from_str(&metadata).unwrap();
-        let id = format!("pixel.{}", "a".repeat(24));
-        let source = json!({"format":"ferrum2d.pixel-document","version":1,"name":"Sprite","width":1,"height":1,"colorSpace":"srgb","palette":[],"layer":{"id":"body","name":"Body"},"frame":{"id":"frame-1","durationMs":100},"rgba":STANDARD.encode([1,40,70,255])});
-        let source_bytes = serde_json::to_vec(&source).unwrap();
-        let root = asset_files::directory(&project.0, ".ferrum-pixels", true)
-            .unwrap()
-            .unwrap();
-        fs::write(root.join(format!("{id}.json")), &source_bytes).unwrap();
-        fs::write(
-            root.join(format!("{id}.png")),
-            STANDARD
-                .decode(files[0]["base64"].as_str().unwrap())
-                .unwrap(),
-        )
-        .unwrap();
-        let color = value["binding"]["textures"]["color"]["sha256"].clone();
-        let normal = value["binding"]["textures"]["normal"]["sha256"].clone();
-        let generated = value["report"].clone();
-        value["binding"]["textures"]["color"]["asset"] = json!(id);
-        value["binding"]["textures"]["color"]["path"] = json!(format!("{id}.png"));
-        value["binding"]["generation"]["settings"] =
-            json!({"pipeline":"pixel-rects-v1","jsonSha256":hash(&source_bytes)});
-        value["manifest"]["textures"]
-            .as_object_mut()
-            .unwrap()
-            .remove("pair1.color");
-        value["manifest"]["textures"][&id] = json!(format!("{id}.png"));
-        value["manifest"]["textureOptions"]
-            .as_object_mut()
-            .unwrap()
-            .remove("pair1.color");
-        value["manifest"]["textureOptions"][&id] = json!({"colorSpace":"srgb"});
-        files[0]["path"] = json!(format!("{id}.png"));
-        value["report"] = json!({"format":"ferrum2d.pixel-normal.report","version":1,"pipeline":"pixel-rects-v1","source":{"assetId":id,"jsonSha256":hash(&source_bytes),"pngSha256":color},"settings":{},"frames":[{"id":"frame-1","rect":[0,0,1,1],"report":generated}],"output":{"sha256":normal,"width":1,"height":1},"config":{"sha256":"a".repeat(64)}});
-        value["metadataJson"] = json!(value["report"].to_string());
-        let saved = save_inner(&project.0, &value.to_string(), &files, &registry, &writes).unwrap();
-        assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
-        for change in 0..5 {
-            let mut bad = value.clone();
-            match change {
-                0 => bad["report"]["source"]["jsonSha256"] = json!("f".repeat(64)),
-                1 => bad["report"]["frames"][0]["id"] = json!("other"),
-                2 => bad["report"]["frames"][0]["rect"] = json!([0, 0, 2, 1]),
-                3 => {
-                    bad["report"]["frames"][0]["report"]["generator"]["revision"] =
-                        json!("f".repeat(40))
+        for version in [1, 6, 7] {
+            let project = Project::new();
+            let registry = PlacementAssetRegistry::default();
+            let writes = project.writes();
+            let (metadata, mut files) = fixture(1);
+            let mut value: Value = serde_json::from_str(&metadata).unwrap();
+            let id = format!("pixel.{}", "a".repeat(24));
+            let mut source = json!({"format":"ferrum2d.pixel-document","version":1,"name":"Sprite","width":1,"height":1,"colorSpace":"srgb","palette":[],"layer":{"id":"body","name":"Body"},"frame":{"id":"frame-1","durationMs":100},"rgba":STANDARD.encode([1,40,70,255])});
+            if version != 1 {
+                let raw = source["rgba"].clone();
+                for key in ["layer", "frame", "rgba"] {
+                    source.as_object_mut().unwrap().remove(key);
                 }
-                _ => bad["report"]["frames"] = json!([]),
+                source["version"] = json!(version);
+                source["layers"] =
+                    json!([{"id":"body","name":"Body","visible":true,"locked":false}]);
+                source["frames"] = json!([{"id":"frame-1","durationMs":100,"cels":[{"layerId":"body","rgba":raw}]}]);
+                if version == 7 {
+                    source["tags"] = json!([{"id":"walk","name":"Walk","clipId":0,"frameIds":["frame-1"],"loop":true,"direction":"pingpong"}]);
+                    source["initialTag"] = json!("walk");
+                    source["nextClipId"] = json!(1);
+                }
             }
-            bad["metadataJson"] = json!(bad["report"].to_string());
-            assert!(save_inner(&project.0, &bad.to_string(), &files, &registry, &writes).is_err());
+            let source_bytes = serde_json::to_vec(&source).unwrap();
+            let root = asset_files::directory(&project.0, ".ferrum-pixels", true)
+                .unwrap()
+                .unwrap();
+            fs::write(root.join(format!("{id}.json")), &source_bytes).unwrap();
+            fs::write(
+                root.join(format!("{id}.png")),
+                STANDARD
+                    .decode(files[0]["base64"].as_str().unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+            let color = value["binding"]["textures"]["color"]["sha256"].clone();
+            let normal = value["binding"]["textures"]["normal"]["sha256"].clone();
+            let generated = value["report"].clone();
+            value["binding"]["textures"]["color"]["asset"] = json!(id);
+            value["binding"]["textures"]["color"]["path"] = json!(format!("{id}.png"));
+            value["binding"]["generation"]["settings"] =
+                json!({"pipeline":"pixel-rects-v1","jsonSha256":hash(&source_bytes)});
+            value["manifest"]["textures"]
+                .as_object_mut()
+                .unwrap()
+                .remove("pair1.color");
+            value["manifest"]["textures"][&id] = json!(format!("{id}.png"));
+            value["manifest"]["textureOptions"]
+                .as_object_mut()
+                .unwrap()
+                .remove("pair1.color");
+            value["manifest"]["textureOptions"][&id] = json!({"colorSpace":"srgb"});
+            files[0]["path"] = json!(format!("{id}.png"));
+            value["report"] = json!({"format":"ferrum2d.pixel-normal.report","version":1,"pipeline":"pixel-rects-v1","source":{"assetId":id,"jsonSha256":hash(&source_bytes),"pngSha256":color},"settings":{},"frames":[{"id":"frame-1","rect":[0,0,1,1],"report":generated}],"output":{"sha256":normal,"width":1,"height":1},"config":{"sha256":"a".repeat(64)}});
+            value["metadataJson"] = json!(value["report"].to_string());
+            let saved =
+                save_inner(&project.0, &value.to_string(), &files, &registry, &writes).unwrap();
             assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+            for change in 0..5 {
+                let mut bad = value.clone();
+                match change {
+                    0 => bad["report"]["source"]["jsonSha256"] = json!("f".repeat(64)),
+                    1 => bad["report"]["frames"][0]["id"] = json!("other"),
+                    2 => bad["report"]["frames"][0]["rect"] = json!([0, 0, 2, 1]),
+                    3 => {
+                        bad["report"]["frames"][0]["report"]["generator"]["revision"] =
+                            json!("f".repeat(40))
+                    }
+                    _ => bad["report"]["frames"] = json!([]),
+                }
+                bad["metadataJson"] = json!(bad["report"].to_string());
+                assert!(
+                    save_inner(&project.0, &bad.to_string(), &files, &registry, &writes).is_err()
+                );
+                assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+            }
+            let png_path = root.join(format!("{id}.png"));
+            let source_png = fs::read(&png_path).unwrap();
+            let normal_catalog = fs::read(project.root().join("catalog.json")).unwrap();
+            fs::write(&png_path, b"changed").unwrap();
+            assert!(load_inner(&project.0, &registry, &writes).is_err());
+            assert!(
+                save_inner(&project.0, &value.to_string(), &files, &registry, &writes).is_err()
+            );
+            assert_eq!(
+                fs::read(project.root().join("catalog.json")).unwrap(),
+                normal_catalog
+            );
+            fs::write(&png_path, source_png).unwrap();
+            assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
+            fs::write(root.join(format!("{id}.json")), b"changed").unwrap();
+            assert!(load_inner(&project.0, &registry, &writes).is_err());
         }
-        let png_path = root.join(format!("{id}.png"));
-        let source_png = fs::read(&png_path).unwrap();
-        let normal_catalog = fs::read(project.root().join("catalog.json")).unwrap();
-        fs::write(&png_path, b"changed").unwrap();
-        assert!(load_inner(&project.0, &registry, &writes).is_err());
-        assert!(save_inner(&project.0, &value.to_string(), &files, &registry, &writes).is_err());
-        assert_eq!(
-            fs::read(project.root().join("catalog.json")).unwrap(),
-            normal_catalog
-        );
-        fs::write(&png_path, source_png).unwrap();
-        assert_eq!(saved, load_inner(&project.0, &registry, &writes).unwrap());
-        fs::write(root.join(format!("{id}.json")), b"changed").unwrap();
-        assert!(load_inner(&project.0, &registry, &writes).is_err());
     }
 
     #[test]

@@ -1,8 +1,8 @@
 import { PIXEL_LIMITS, type createPixelEditor } from "./placementPixelDocument";
 import { createPixelTags } from "./placementPixelTags";
-import { pixelAnimation, pixelPreviewFrame } from "./placementPixelAnimation";
+import { pixelAnimation, pixelPreviewFrame, pixelEditorAnimationInput } from "./placementPixelAnimation";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
-import { PIXEL_ONION_DEFAULTS, type PixelOnionSettings } from "./placementPixelOnion";
+import { PIXEL_ONION_DEFAULTS, PIXEL_ONION_RANGE, type PixelOnionSettings } from "./placementPixelOnion";
 
 /** Asset frame controls and preview clock. This never owns game animation state. */
 export function createPixelFrames(options:{
@@ -31,6 +31,16 @@ export function createPixelFrames(options:{
     row.dataset.onionSide=key;onionPanel.append(row);onionChecks.set(key,input);
     input.onchange=()=>changeOnion(()=>{onion={...onion,[key]:input.checked};});
   }
+  const onionRanges=new Map<"previousCount"|"nextCount",HTMLInputElement>();
+  for(const [key,title] of [["previousCount","Previous Frame Count"],["nextCount","Next Frame Count"]] as const) {
+    const row=document.createElement("label"),input=document.createElement("input");
+    setUiText(row,title);input.type="number";input.min="1";input.max=String(PIXEL_ONION_RANGE);input.step="1";
+    input.dataset.pixelOnionRange=key;setUiAttribute(input,"aria-label",title);row.append(input);onionPanel.append(row);onionRanges.set(key,input);
+    input.onchange=()=>changeOnion(()=>{
+      const count=input.valueAsNumber;
+      if(Number.isInteger(count)&&count>=1&&count<=PIXEL_ONION_RANGE)onion={...onion,[key]:count};
+    });
+  }
   const opacityLabel=document.createElement("label"),opacity=document.createElement("input"),opacityValue=document.createElement("output");
   setUiText(opacityLabel,"Opacity");opacity.type="range";opacity.min="0";opacity.max="100";opacity.step="1";
   opacity.dataset.pixelOnionOpacity="true";setUiAttribute(opacity,"aria-label","Onion Opacity Percent");
@@ -48,19 +58,33 @@ export function createPixelFrames(options:{
   });
   const closeOnionOutside=(event:PointerEvent)=>{if(event.target instanceof Node&&!onionMenu.contains(event.target))onionMenu.open=false;};
   window.addEventListener("pointerdown",closeOnionOutside,true);
-  const tagPanel=createPixelTags({editor:options.editor,disabled:()=>options.busy()||playing||options.editor().active(),
+  const tagPanel=createPixelTags({editor:options.editor,disabled:()=>!currentEditor()||options.busy()||playing||options.editor().active(),
     perform,viewChanged:()=>{stop(false);signature="";options.viewChanged();}});
   controls.append(tagPanel.element);
-  let playing=false,request=0,start=0,offset=0,preview=0,signature="";
+  let disposed=false,playing=false,request=0,start=0,offset=0,preview=0,signature="";
   let previousEditor:ReturnType<typeof createPixelEditor>|undefined;
+  // A cleared panel can be reused by sync; a destroyed panel is terminal.
+  function currentEditor(){return !disposed&&previousEditor===options.editor()?previousEditor:undefined;}
   const rows=new Map<string,HTMLButtonElement>(),buttons=new Map<string,HTMLButtonElement>();
+  function keepSelectionVisible() {
+    const current=list.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if(!current)return;
+    const bounds=list.getBoundingClientRect(),item=current.getBoundingClientRect();
+    if(bounds.width<=0)return;
+    if(item.left<bounds.left)list.scrollLeft-=bounds.left-item.left;
+    else if(item.right>bounds.right)list.scrollLeft+=item.right-bounds.right;
+  }
+  const frameResize=new ResizeObserver(keepSelectionVisible);frameResize.observe(list);
   function changeOnion(run:()=>void) {
-    if(options.busy()||options.editor().active())return;
+    if(!currentEditor()||options.busy()||options.editor().active())return;
     run();signature="";sync();options.viewChanged();
   }
   function syncOnion(disabled:boolean,previewing:boolean,count:number) {
     onionMenu.dataset.enabled=String(onion.enabled);
     for(const [key,input] of onionChecks){input.checked=onion[key];input.disabled=disabled||(key!=="enabled"&&!onion.enabled);}
+    for(const [key,input] of onionRanges) {
+      input.value=String(onion[key]);input.disabled=disabled||!onion.enabled||!onion[key==="previousCount"?"previous":"next"];
+    }
     opacity.disabled=disabled||!onion.enabled;opacity.value=String(onion.opacity);opacityValue.textContent=onion.opacity+"%";
     setUiText(onionHint,previewing?"Onion skin is hidden during playback.":count<2?"Add frames to compare.":"Previous coral · Next cyan. Opaque pixels cover ghosts.");
   }
@@ -70,22 +94,24 @@ export function createPixelFrames(options:{
     if(notify){options.changed();options.viewChanged();}
   }
   function perform(run:()=>void) {
-    if(options.busy()||playing)return;options.cancelStroke();
+    if(!currentEditor()||options.busy()||playing)return;options.cancelStroke();
     try{run();options.changed();options.viewChanged();}catch(error){options.report(error);signature="";sync();}
   }
   function tick(now:number) {
     request=0;if(!playing)return;
-    if(options.busy()||previousEditor!==options.editor()){stop();return;}
+    if(!currentEditor()){stop(false);return;}
+    if(options.busy()){stop();return;}
     const frames=tagPanel.previewFrames(),elapsed=now-start+offset,total=frames.reduce((sum,frame)=>sum+frame.durationMs,0);
     const next=pixelPreviewFrame(frames,!tagPanel.previewLoop()?Math.min(elapsed,total-0.001):elapsed);
     if(preview!==next){preview=next;signature="";sync();options.viewChanged();}
     request=requestAnimationFrame(tick);
   }
   function play() {
+    if(!currentEditor())return;
     if(playing){stop();return;}
     if(options.busy()||tagPanel.previewFrames().length<1)return;
     options.cancelStroke();const frames=tagPanel.previewFrames();
-    preview=Math.max(0,frames.findIndex(frame=>frame.id===options.editor().selectedFrame()));
+    preview=tagPanel.hasPreviewTag()?0:Math.max(0,frames.findIndex(frame=>frame.id===options.editor().selectedFrame()));
     offset=frames.slice(0,preview).reduce((sum,frame)=>sum+frame.durationMs,0);start=performance.now();
     playing=true;signature="";options.changed();options.viewChanged();request=requestAnimationFrame(tick);
   }
@@ -105,12 +131,13 @@ export function createPixelFrames(options:{
   function changeDuration(){perform(()=>options.editor().setFrameDuration(options.editor().selectedFrame(),duration.valueAsNumber));}
   duration.addEventListener("change",changeDuration);
   duration.addEventListener("keydown",event=>{
-    if(event.isComposing)return;
+    if(event.isComposing||!currentEditor())return;
     if(event.code==="Enter"){event.preventDefault();changeDuration();}
     if(event.code==="Escape"){event.preventDefault();signature="";sync();}
   });
   function sync() {
-    const editor=options.editor(),frames=editor.frames(),selected=editor.selectedFrame();
+    const editor=options.editor();if(disposed||!editor)return;
+    const frames=editor.frames(),selected=editor.selectedFrame();
     if(previousEditor!==editor){stop(false);rows.clear();list.replaceChildren();signature="";previousEditor=editor;onion={...PIXEL_ONION_DEFAULTS};onionMenu.open=false;}
     tagPanel.sync();
     const previewFrames=tagPanel.previewFrames();
@@ -135,18 +162,19 @@ export function createPixelFrames(options:{
     playButton.querySelector("path")!.setAttribute("d",playing?"M6 6h12v12H6z":"m8 5 11 7-11 7z");
     duration.disabled=disabled;duration.value=String((playing?previewFrames[preview]:frames[index]).durationMs);
     setUiText(status,uiMessage("Frame {0}/{1}",playing?preview+1:index+1,playing?previewFrames.length:frames.length));
-    try{pixelAnimation({width:editor.width,height:editor.height,frames,...(editor.tags().length?{tags:editor.tags(),initialTag:editor.initialTag()}:{})});setUiText(compatibility,"Game Timing Ready");compatibility.dataset.error="false";}
+    try{pixelAnimation(pixelEditorAnimationInput(editor));setUiText(compatibility,"Game Timing Ready");compatibility.dataset.error="false";}
     catch(error){setUiText(compatibility,error instanceof Error?error.message:String(error));compatibility.dataset.error="true";}
     for(const [id,row] of rows)if(!frames.some(frame=>frame.id===id)){row.remove();rows.delete(id);}
     for(const [i,frame] of frames.entries()) {
       let button=rows.get(frame.id);
       if(!button){
         button=document.createElement("button");button.type="button";button.dataset.pixelFrameSelect=frame.id;
-        button.onclick=()=>perform(()=>options.editor().selectFrame(frame.id));
+        button.onclick=()=>{if(rows.get(frame.id)===button)perform(()=>options.editor().selectFrame(frame.id));};
         button.addEventListener("keydown",event=>{
-          if(event.isComposing||!["ArrowLeft","ArrowRight"].includes(event.code)||playing||options.busy())return;
-          event.preventDefault();const current=options.editor().frames(),index=current.findIndex(f=>f.id===frame.id),target=current[index+(event.code==="ArrowLeft"?-1:1)];
-          if(target){perform(()=>options.editor().selectFrame(target.id));rows.get(target.id)?.focus();}
+          if(!currentEditor()||rows.get(frame.id)!==button||event.isComposing||!["ArrowLeft","ArrowRight","Home","End"].includes(event.code)||playing||options.busy())return;
+          event.preventDefault();const current=options.editor().frames(),index=current.findIndex(f=>f.id===frame.id);
+          const target=current[event.code==="Home"?0:event.code==="End"?current.length-1:index+(event.code==="ArrowLeft"?-1:1)];
+          if(target){perform(()=>options.editor().selectFrame(target.id));rows.get(target.id)?.focus({preventScroll:true});}
         });rows.set(frame.id,button);
       }
       button.textContent=String(i+1)+" · "+frame.durationMs+" ms";button.disabled=disabled;
@@ -159,11 +187,13 @@ export function createPixelFrames(options:{
       const target=(focusId&&rows.get(focusId))||rows.get(selected);
       if(target&&!target.disabled&&document.activeElement!==target)target.focus({preventScroll:true});
     }
+    // Keep selection/playback visible in long sheets without scrolling the whole workspace.
+    keepSelectionVisible();
   }
   const loseFocus=()=>stop(),visibility=()=>{if(document.hidden)stop();};
   window.addEventListener("blur",loseFocus);document.addEventListener("visibilitychange",visibility);
-  function clear(){stop(false);previousEditor=undefined;signature="";rows.clear();list.replaceChildren();element.dataset.pixelPlaying="false";onion={...PIXEL_ONION_DEFAULTS};onionMenu.open=false;tagPanel.clear();syncOnion(false,false,0);}
+  function clear(){stop(false);previousEditor=undefined;signature="";rows.clear();list.replaceChildren();element.dataset.pixelPlaying="false";onion={...PIXEL_ONION_DEFAULTS};onionMenu.open=false;tagPanel.clear();syncOnion(true,false,0);duration.disabled=true;for(const button of buttons.values())button.disabled=true;}
   return {element,sync,stop,clear,isPlaying:()=>playing,frameId:()=>playing?tagPanel.previewFrames()[preview].id:options.editor().selectedFrame(),
     onion:()=>({...onion}),
-    destroy(){clear();window.removeEventListener("pointerdown",closeOnionOutside,true);window.removeEventListener("blur",loseFocus);document.removeEventListener("visibilitychange",visibility);}};
+    destroy(){disposed=true;frameResize.disconnect();clear();window.removeEventListener("pointerdown",closeOnionOutside,true);window.removeEventListener("blur",loseFocus);document.removeEventListener("visibilitychange",visibility);}};
 }

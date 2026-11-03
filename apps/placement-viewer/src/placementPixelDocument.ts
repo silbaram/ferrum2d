@@ -3,11 +3,11 @@ import type { PixelDrawMask, PixelRepeat } from "./placementPixelDrawing";
 
 /** Ferrum-owned editing source. Runtime assets contain flattened PNGs only. */
 export const PIXEL_LIMITS = {
-  side: 256, layers: 8, frames: 16, tags: 16, pixels: 2_097_152,
+  side: 256, layers: 8, frames: 64, legacyFrames: 16, atlasSide: 2048, tags: 16, pixels: 2_097_152,
   documentBytes: 400_000,
   layerSourceBytes: 3 * 1024 * 1024,
   sourceBytes: 12 * 1024 * 1024,
-  pngBytes: 8 * 1024 * 1024,
+  pngBytes: 16 * 1024 * 1024,
   historySteps: 64,
   historyBytes: 16 * 1024 * 1024,
 } as const;
@@ -56,8 +56,9 @@ export interface PixelDocumentV4 extends Omit<PixelDocumentV1, "version"> {
   version: 4;
   atlas: PixelAtlasMetadata;
 }
+export type PixelTagDirection = "forward" | "reverse" | "pingpong";
 export interface PixelFrameTag {
-  id: string; name: string; clipId: number; frameIds: string[]; loop: boolean;
+  id: string; name: string; clipId: number; frameIds: string[]; loop: boolean; direction?: PixelTagDirection;
 }
 /** Tagged cels use a new version so older editors cannot silently discard clips. */
 export interface PixelDocumentV5 extends Omit<PixelDocumentV3, "version"> {
@@ -67,7 +68,16 @@ export interface PixelDocumentV5 extends Omit<PixelDocumentV3, "version"> {
   /** Monotonic allocation; deleted clip IDs are never reused. */
   nextClipId: number;
 }
-export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5;
+/** Expanded cel sheets. The tag metadata group is either complete or absent. */
+export interface PixelDocumentV6 extends Omit<PixelDocumentV3, "version"> {
+  version: 6;
+  tags?: PixelFrameTag[];
+  initialTag?: string;
+  nextClipId?: number;
+}
+/** Direction-aware clips; v1–v6 sources retain their original serialization. */
+export interface PixelDocumentV7 extends Omit<PixelDocumentV5, "version"> { version: 7; }
+export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5 | PixelDocumentV6 | PixelDocumentV7;
 export const PIXEL_PALETTE = [
   "#000000ff", "#ffffffff", "#6b7280ff", "#374151ff",
   "#ef4444ff", "#f97316ff", "#f5a742ff", "#fde047ff",
@@ -126,18 +136,20 @@ function rgba(value: unknown, expected: number): string {
   return value;
 }
 /** Metadata-only validation; never serialize cel pixels for UI previews. */
-export function readPixelTags(input: unknown, frames: readonly PixelFrameInfo[]): PixelFrameTag[] {
+export function readPixelTags(input: unknown, frames: readonly PixelFrameInfo[], maxFrames: number = PIXEL_LIMITS.frames, allowDirection = true): PixelFrameTag[] {
   if (!Array.isArray(input) || input.length < 1 || input.length > PIXEL_LIMITS.tags) return fail("Pixel tags require 1–16 entries");
   const ids = new Set<string>(), names = new Set<string>(), clips = new Set<number>(), validFrames = new Set(frames.map(frame => frame.id));
-  return input.map((raw: unknown) => {
+  return Array.from(input, (raw: unknown) => {
     const value = object(raw), id = text(value.id), name = text(value.name);
     const clipId = integer(value.clipId, 0, 65535, "Invalid pixel clip ID");
     if (ids.has(id) || names.has(name) || clips.has(clipId)) fail("Duplicate pixel tag ID, name or clip ID");
     ids.add(id); names.add(name); clips.add(clipId);
-    if (!Array.isArray(value.frameIds) || value.frameIds.length < 1 || value.frameIds.length > PIXEL_LIMITS.frames ||
+    if (!Array.isArray(value.frameIds) || value.frameIds.length < 1 || value.frameIds.length > maxFrames ||
         value.frameIds.some(frame => typeof frame !== "string" || !validFrames.has(frame)) || new Set(value.frameIds).size !== value.frameIds.length)
-      return fail("Pixel tags must reference 1–16 unique frames");
-    return { id, name, clipId, frameIds: value.frameIds.map((id: unknown) => text(id)), loop: boolean(value.loop) };
+      return fail(`Pixel tags must reference 1–${maxFrames} unique frames`);
+    if (value.direction !== undefined && (!allowDirection || typeof value.direction !== "string" || !["forward", "reverse", "pingpong"].includes(value.direction)))
+      fail("Invalid pixel tag direction");
+    return { ...(value.direction !== undefined ? {direction: value.direction as PixelTagDirection} : {}), id, name, clipId, frameIds: value.frameIds.map((id: unknown) => text(id)), loop: boolean(value.loop) };
   });
 }
 export function pixelPaletteColors(value: unknown): string[] {
@@ -148,13 +160,13 @@ export function readPixelDocument(input: string): PixelDocument {
   const size = new TextEncoder().encode(input).length;
   if (size > PIXEL_LIMITS.sourceBytes) fail("Pixel document exceeds the byte limit");
   const value = object(JSON.parse(input));
-  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5) || value.colorSpace !== "srgb")
+  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7) || value.colorSpace !== "srgb")
     fail("Unsupported pixel document format or version");
   if ((value.version === 1 || value.version === 4) && size > PIXEL_LIMITS.documentBytes) fail("Pixel document exceeds the byte limit");
   if (value.version === 2 && size > PIXEL_LIMITS.layerSourceBytes) fail("Pixel document exceeds the byte limit");
   if (value.version !== 4 && value.atlas !== undefined) fail("Invalid pixel atlas version");
-  if (value.version !== 3 && value.version !== 5 && value.frames !== undefined) fail("Invalid pixel frame version");
-  if (value.version !== 5 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
+  if (value.version !== 3 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.frames !== undefined) fail("Invalid pixel frame version");
+  if (value.version !== 5 && value.version !== 6 && value.version !== 7 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
   const width = integer(value.width, 1, PIXEL_LIMITS.side), height = integer(value.height, 1, PIXEL_LIMITS.side);
   const palette = pixelPaletteColors(value.palette);
   const common: PixelDocumentBase = {
@@ -166,13 +178,14 @@ export function readPixelDocument(input: string): PixelDocument {
     return { id: text(frame.id), durationMs: integer(frame.durationMs, 1, 60000, "Frame duration must be an integer from 1 to 60000") };
   };
   const expected = width * height * 4;
-  if (value.version === 3 || value.version === 5) {
+  if (value.version === 3 || value.version === 5 || value.version === 6 || value.version === 7) {
+    const maxFrames = (value.version === 6 || value.version === 7) ? PIXEL_LIMITS.frames : PIXEL_LIMITS.legacyFrames;
     if (value.frame !== undefined || value.layer !== undefined || value.rgba !== undefined)
       fail("Invalid pixel frame version");
     if (!Array.isArray(value.layers) || value.layers.length < 1 || value.layers.length > PIXEL_LIMITS.layers)
       return fail("Image layers require 1–8 entries");
-    if (!Array.isArray(value.frames) || value.frames.length < 1 || value.frames.length > PIXEL_LIMITS.frames)
-      return fail("Pixel frames require 1–16 entries");
+    if (!Array.isArray(value.frames) || value.frames.length < 1 || value.frames.length > maxFrames)
+      return fail(`Pixel frames require 1–${maxFrames} entries`);
     if (width * height * value.layers.length * value.frames.length > PIXEL_LIMITS.pixels) fail("Pixel cel budget exceeded");
     const ids = new Set<string>();
     const layers = value.layers.map((raw: unknown) => {
@@ -196,10 +209,14 @@ export function readPixelDocument(input: string): PixelDocument {
     });
     const result: PixelDocumentV3 = { ...common, version: 3, layers, frames };
     if (value.version === 3) return result;
-    const tags = readPixelTags(value.tags, frames);
+    if (value.version === 6 && value.tags === undefined) {
+      if (value.initialTag !== undefined || value.nextClipId !== undefined) fail("Invalid pixel tag references");
+      return { ...result, version: 6 };
+    }
+    const tags = readPixelTags(value.tags, frames, maxFrames, value.version === 7);
     const initialTag = text(value.initialTag), nextClipId = integer(value.nextClipId, 1, 65536, "Invalid next pixel clip ID");
     if (!tags.some(tag => tag.id === initialTag) || tags.some(tag => tag.clipId >= nextClipId)) fail("Invalid pixel tag references");
-    return { ...result, version: 5, tags, initialTag, nextClipId };
+    return { ...result, version: value.version === 7 ? 7 : value.version === 6 ? 6 : 5, tags, initialTag, nextClipId };
   }
   const frame = frameInfo(value.frame);
   if (value.version === 1 || value.version === 4) {
@@ -235,7 +252,7 @@ export function pixelDocumentFromRgba(width: number, height: number, name: strin
 }
 interface LayerPixels { id: string; name: string; visible: boolean; locked: boolean; pixels: Uint8Array; }
 export function pixelFrames(document: PixelDocument): PixelFrameInfo[] {
-  return (document.version === 3 || document.version === 5) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
+  return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
 }
 function sourceLayers(document: PixelDocument, frameIndex = 0): LayerPixels[] {
   if (document.version === 1 || document.version === 4) return [{...document.layer,visible:true,locked:false,pixels:decodeRgba(document.rgba)}];
@@ -246,7 +263,7 @@ function sourceLayers(document: PixelDocument, frameIndex = 0): LayerPixels[] {
 }
 /** Near-square atlas; frame order is source order. Empty trailing cells remain zero RGBA. */
 export function pixelAtlasLayout(document: Pick<PixelDocument, "width"|"height">, count: number) {
-  integer(count,1,PIXEL_LIMITS.frames,"Pixel frames require 1–16 entries");
+  integer(count,1,PIXEL_LIMITS.frames,"Pixel frames require 1–64 entries");
   const columns = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / columns);
   return {width:document.width*columns,height:document.height*rows,columns,
     frames:Array.from({length:count},(_,index) => ({u0:(index%columns)/columns,v0:Math.floor(index/columns)/rows,
@@ -279,7 +296,7 @@ export function pixelAtlas(document: PixelDocument) {
 }
 const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((n,i) => n === b[i]);
 interface FramePixels extends PixelFrameInfo { pixels: Uint8Array[]; }
-interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
+interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5 | 6 | 7; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
 function clone(state: ImageState): ImageState {
   return {...state,palette:[...state.palette],tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>bytes.slice())}))};
 }
@@ -297,11 +314,12 @@ function newId(prefix:string,ids:readonly string[]) {
 export function createPixelEditor(source: PixelDocument) {
   const document=readPixelDocument(JSON.stringify(source)),first=sourceLayers(document);
   const layers=first.map(({pixels,...layer})=>layer),frames=pixelFrames(document).map((frame,index)=>({...frame,pixels:sourceLayers(document,index).map(layer=>layer.pixels)}));
-  let state:ImageState={width:document.width,height:document.height,version:document.version,palette:[...document.palette],tags:document.version===5?structuredClone(document.tags):[],
-    initialTag:document.version===5?document.initialTag:"",nextClipId:document.version===5?document.nextClipId:0,layers,frames,selected:[...layers].reverse().find(l=>l.visible&&!l.locked)?.id??layers.at(-1)!.id,selectedFrame:frames[0].id};
+  const tagged = document.version === 5 || document.version === 6 || document.version === 7 ? document : undefined;
+  let state:ImageState={width:document.width,height:document.height,version:document.version,palette:[...document.palette],tags:structuredClone(tagged?.tags??[]),
+    initialTag:tagged?.initialTag??"",nextClipId:tagged?.nextClipId??0,layers,frames,selected:[...layers].reverse().find(l=>l.visible&&!l.locked)?.id??layers.at(-1)!.id,selectedFrame:frames[0].id};
   let revision=0;
   let checkpoint=clone(state),pending:ImageState|undefined,dirtyCache:boolean|undefined=false;
-  // Current frame plus two onion neighbours; pan/zoom must not recompose every layer.
+  // Current frame plus up to eight onion neighbours (2.25 MiB at 256²); pan/zoom must not recompose every layer.
   const flattened=new Map<string,Uint8Array>();
   type Step={before:ImageState;after:ImageState;bytes:number};
   const undo:Step[]=[],redo:Step[]=[];
@@ -331,7 +349,7 @@ export function createPixelEditor(source: PixelDocument) {
       output=composite(state.layers.map((layer,index)=>({...layer,pixels:frame.pixels[index]})));
     }
     flattened.delete(id);flattened.set(id,output);
-    if(flattened.size>3)flattened.delete(flattened.keys().next().value!);
+    if(flattened.size>9)flattened.delete(flattened.keys().next().value!);
     return output;
   }
   function begin(){if(pending)fail("Finish the pixel stroke first");paintPixels();pending=clone(state);}
@@ -343,13 +361,13 @@ export function createPixelEditor(source: PixelDocument) {
   }
   function mutate(run:()=>void, atlasAllowed=false){if(document.version===4&&!atlasAllowed)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");pending=clone(state);try{run();changed();return commit();}catch(error){cancel();throw error;}}
   const layerVersion=()=>{if(state.version===1)state.version=2;};
-  const frameVersion=()=>{if(state.version!==5)state.version=3;};
+  const frameVersion=()=>{if(state.version===7)return;if(state.frames.length>PIXEL_LIMITS.legacyFrames)state.version=6;else if(state.version!==5&&state.version!==6)state.version=3;};
   function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels().set(color,(y*state.width+x)*4);changed();}}
   function samplePixels(pixels:Uint8Array,x:number,y:number):PixelColor|undefined {if(!validPoint(x,y))return;const i=(y*state.width+x)*4;return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];}
   function createFrame(duplicate:boolean) {
     if(state.frames.length>=PIXEL_LIMITS.frames)fail("Pixel frame limit reached");budget(state.layers.length,state.frames.length+1);
     const current=currentFrame(),id=newId("frame",state.frames.map(f=>f.id)),pixels=current.pixels.map(bytes=>duplicate?bytes.slice():new Uint8Array(bytes.length));
-    mutate(()=>{frameVersion();state.frames.splice(state.frames.indexOf(current)+1,0,{id,durationMs:current.durationMs,pixels});state.selectedFrame=id;});return id;
+    mutate(()=>{state.frames.splice(state.frames.indexOf(current)+1,0,{id,durationMs:current.durationMs,pixels});frameVersion();state.selectedFrame=id;});return id;
   }
   function checkRegion(rect: PixelRegion, inside = false) {
     const r = region();
@@ -478,7 +496,7 @@ export function createPixelEditor(source: PixelDocument) {
       begin(); try { currentFrame().pixels[layerIndex(state.selected)] = next; changed(); return commit(); }
       catch (error) { cancel(); throw error; }
     },
-    get width(){return state.width;},get height(){return state.height;},name:document.name,get palette(){return [...state.palette];},begin,commit,cancel,region,
+    get version(){return state.version;},get width(){return state.width;},get height(){return state.height;},name:document.name,get palette(){return [...state.palette];},begin,commit,cancel,region,
     setPalette(value: readonly string[]) {
       const next = pixelPaletteColors(value); if (JSON.stringify(next) === JSON.stringify(state.palette)) return false;
       return mutate(() => { state.palette = next; }, true);
@@ -557,14 +575,18 @@ export function createPixelEditor(source: PixelDocument) {
       const id=newId("tag",state.tags.map(tag=>tag.id));
       const tag={id,name,clipId:state.nextClipId,frameIds:[...frameIds],loop:true};
       readPixelTags([...state.tags,tag],state.frames);
-      mutate(()=>{state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
+      mutate(()=>{if(state.version!==6&&state.version!==7)state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
     },
-    updateTag(id:string,update:Pick<PixelFrameTag,"name"|"frameIds"|"loop">) {
+    updateTag(id:string,update:Pick<PixelFrameTag,"name"|"frameIds"|"loop"|"direction">) {
       const index=state.tags.findIndex(tag=>tag.id===id);if(index<0)fail("Pixel tag not found");
       const tags=structuredClone(state.tags);tags[index]={...tags[index],name:update.name,loop:update.loop,frameIds:[...update.frameIds]};
+      if(update.direction!==undefined) {
+        if(update.direction==="forward")delete tags[index].direction;
+        else tags[index].direction=update.direction;
+      }
       readPixelTags(tags,state.frames);
       if(JSON.stringify(tags)===JSON.stringify(state.tags))return false;
-      return mutate(()=>{state.tags=tags;});
+      return mutate(()=>{state.tags=tags;if(tags.some(tag=>tag.direction&&tag.direction!=="forward"))state.version=7;});
     },
     removeTag(id:string) {
       if(!state.tags.some(tag=>tag.id===id))fail("Pixel tag not found");
@@ -601,6 +623,8 @@ export function createPixelEditor(source: PixelDocument) {
       if(state.version===1||state.version===4){const layer=state.layers[0];return {...structuredClone(document) as PixelDocumentV1|PixelDocumentV4,width:state.width,height:state.height,palette:[...state.palette],layer:{id:layer.id,name:layer.name},frame:{id:frame.id,durationMs:frame.durationMs},rgba:base64(frame.pixels[0])};}
       if(state.version===2)return {format:document.format,version:2,name:document.name,width:state.width,height:state.height,colorSpace:"srgb",frame:{id:frame.id,durationMs:frame.durationMs},palette:[...state.palette],layers:state.layers.map((layer,i)=>({...layer,rgba:base64(frame.pixels[i])}))};
       const result:PixelDocumentV3={...common,version:3,layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({id:frame.id,durationMs:frame.durationMs,cels:state.layers.map((layer,i)=>({layerId:layer.id,rgba:base64(frame.pixels[i])}))}))};
+      if(state.version===7)return {...result,version:7,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId};
+      if(state.version===6)return {...result,version:6,...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       return state.version===5?{...result,version:5,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:result;
     },
     history:()=>({undo:undo.length,redo:redo.length,bytes:[...undo,...redo].reduce((n,s)=>n+s.bytes,0)}),

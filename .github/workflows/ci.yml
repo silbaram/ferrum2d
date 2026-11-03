@@ -182,14 +182,80 @@ jobs:
       - name: Asset revision cleanup and import diagnostics
         run: pnpm smoke:aseprite-assets
 
+      - name: Trimmed sprite restoration and native source preservation
+        run: pnpm smoke:aseprite-trim
+
+      - name: Slice metadata and explicit sprite origin authoring
+        run: pnpm smoke:aseprite-slices
+
+      - name: Upload slice origin evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aseprite-slices
+          path: artifacts/aseprite-slices
+          if-no-files-found: ignore
+
+      - name: Upload trim restoration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aseprite-trim
+          path: artifacts/aseprite-trim
+          if-no-files-found: ignore
+
       - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
         run: pnpm smoke:sprite-normal-2d
+
+      - name: Sprite palette RGB parity, native scene and recovery
+        run: pnpm smoke:sprite-palette
+
+      - name: Pixel postprocess parity, virtual pixels and recovery
+        run: pnpm smoke:pixel-postprocess
+
+      - name: Pixel art showcase movement, collection and visual controls
+        run: pnpm smoke:pixel-showcase
+
+      - name: Upload pixel showcase evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-showcase
+          path: artifacts/pixel-showcase
+          if-no-files-found: ignore
+
+      - name: Upload pixel postprocess evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-postprocess
+          path: artifacts/pixel-postprocess
+          if-no-files-found: ignore
+
+      - name: Upload sprite palette evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprite-palette
+          path: artifacts/sprite-palette
+          if-no-files-found: ignore
 
       - name: Built-in pixel creation, source export and fresh game rendering
         run: pnpm smoke:pixel-authoring
 
       - name: Native pixel source storage and fresh game roundtrip
         run: pnpm smoke:pixel-project
+
+      - name: 64-frame pixel editing capacity and native save compatibility
+        run: pnpm smoke:pixel-capacity
+
+      - name: Upload pixel capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-editor-capacity
+          path: artifacts/pixel-editor-capacity
+          if-no-files-found: ignore
 
       - name: Recoverable project asset catalog cleanup
         run: node tests/smoke/aseprite-project-smoke.mjs --cleanup
@@ -233,6 +299,28 @@ jobs:
           path: |
             artifacts/native-tile-assets/verification.json
             artifacts/native-tile-assets/run-*/*.png
+          if-no-files-found: ignore
+
+      - name: Autotile bake, preview, Data Scene budget and native roundtrip
+        run: pnpm smoke:tile-autotile
+
+      - name: Upload autotile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tile-autotile
+          path: artifacts/tile-autotile
+          if-no-files-found: ignore
+
+      - name: Tile animation, fixed collision and native roundtrip
+        run: pnpm smoke:tile-animation
+
+      - name: Upload tile animation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tile-animation
+          path: artifacts/tile-animation
           if-no-files-found: ignore
 
       - name: Real village combat, audio, ramp and LOD quality evidence
@@ -279,6 +367,17 @@ jobs:
       - name: Data Scene animation projection and sun browser smoke
         run: pnpm smoke:data-scene-presentation
 
+      - name: Native sprite timing directions events and save browser smoke
+        run: pnpm smoke:sprite-animation-runtime
+
+      - name: Upload runtime animation verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-animation
+          path: artifacts/runtime-animation
+          if-no-files-found: ignore
+
       - name: RenderTexture browser smoke
         run: pnpm smoke:render-texture
 
@@ -287,6 +386,17 @@ jobs:
 
       - name: Flat 2D pixel-perfect rendering and Game Preview smoke
         run: pnpm smoke:flat-pixel-perfect
+
+      - name: Atlas PNG extrusion and renderer boundary smoke
+        run: pnpm smoke:atlas-extrusion
+
+      - name: Upload atlas extrusion verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-extrusion
+          path: artifacts/atlas-extrusion
+          if-no-files-found: ignore
 
       - name: Upload pixel-perfect verification
         if: always()

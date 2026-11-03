@@ -20,13 +20,17 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 ```
 
+공개 엔진 타입은 generated Wasm의 `Symbol.dispose` 선언에 필요한 `ESNext.Disposable` 타입 라이브러리를
+함께 참조한다. ES2022·DOM consumer의 strict 검사에서도 별도 `lib` 추가나 `skipLibCheck`가 필요하지 않다.
+이는 타입 선언의 의존성이며 런타임의 엔진 해제는 기존 `destroy()` 계약을 따른다.
+
 ## 기본 2D 픽셀 퍼펙트 표시
 
 ```ts
 const runtime = await createFerrumRuntime({
   canvas,
   dataScene: document,
-  pixelPerfect: { width: 320, height: 180, background: [0, 0, 0] },
+  pixelPerfect: { width: 320, height: 180, snap: true, background: [0, 0, 0] },
 });
 const presentation = runtime.renderer.pixelPerfectPresentation?.();
 ```
@@ -58,18 +62,102 @@ const presentation = runtime.renderer.pixelPerfectPresentation?.();
   `pointerToWorld`/`screenToWorld`/`worldToScreen`은 표시 영역·DPR·zoom·groundYScale을 반영한다.
   직접 canvas 이벤트로 이동 명령을 보내는 앱은 helper의 `inside`를 먼저 확인한다.
 - `viewportSize()`는 가상 크기/scene zoom이다. 표시 확대 배율과 카메라 zoom은 서로 다른 값이다.
-  카메라/스프라이트 위치 스냅과 atlas padding은 별도 기능이며 여기서 자동 적용하지 않는다.
+- 선택 `snap: true`는 이미 카메라 변환된 스프라이트·타일·bitmap text·파티클의 화면 좌표를 가상 픽셀에 맞춘다.
+  생략·`false`는 기존 연속 좌표 출력을 유지하며, boolean 이외의 값은 오류다. 가상 해상도를 켜는 것만으로 스냅을 켜지 않는다.
+  WebGL2/WebGPU의 색상·노멀 패스가 같은 정렬을 사용하고 추가 draw나 명령 버퍼 복사 없이 처리한다.
+  축 정렬 사각형은 양쪽 경계를 `floor(가상 픽셀 좌표 + 0.5)`로 반올림한다. 소수 zoom에서도 인접 타일의 경계를 맞추며,
+  크기가 정수 픽셀로 표현되지 않으면 화면상 폭/높이가 최대 1픽셀 달라지거나 아주 작은 요소가 사라질 수 있다.
+  회전된 sprite·투영된 지면 그림자는 원점 이동만 정렬해 회전·투영 모양을 유지한다. atlas UV/padding은 변경하지 않는다.
+  렌더링에 전달된 camera shake와 material offset도 정렬 대상이다. 광원·물리 debug 좌표와 시뮬레이션·충돌·replay는 연속 좌표를 유지한다.
+  화면 경계를 넘을 때는 한 픽셀씩 이동하며 모든 소수 이동에서 이미지가 고정되는 옵션은 아니다.
+  포인터/world helper는 연속 좌표를 왕복하므로 실제 sprite 테두리와 반올림 차이가 날 수 있다.
+  `renderToTexture`는 캡처 고유 viewport를 사용하며 화면 스냅을 적용하지 않는다.
 
 custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를 함께 제공해야 한다.
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
 `spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
-WebGPU의 지원 후처리는 기존 fade 범위이며 `linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 지원하며,
+`linear-srgb` 요청은 WebGL2 fallback을 유지한다.
 
 최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
 가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
 픽셀 퍼펙트 모드의 최종 출력 alpha는 두 backend 모두 1이다. 활성 프레임 없이 `renderPostProcess`를 반복 호출해도 출력·fade·비용이 누적되지 않는다.
 이때 인자로 전달한 새 후처리 설정은 다음 프레임에 사용한다.
 WebGL2에서 후처리/색 관리가 필요하면 별도 가상 출력 타깃을 사용한다. 해제/재설정은 기존 타깃을 재사용하거나 정리한다.
+
+## 도트 후처리
+
+`postProcess`의 `pixelArt` 패스는 WebGL2/WebGPU에서 RGB 채널별 포스터라이즈·4×4 Bayer 디더링·
+정수 행 스캔라인을 적용한다. 확대 전에 렌더 타깃의 좌상단 픽셀을 기준으로 계산하므로
+`pixelPerfect`를 함께 쓰면 CSS 크기·DPR이 변해도 같은 가상 픽셀 패턴을 유지한다.
+픽셀 퍼펙트가 꺼져 있으면 물리 렌더 픽셀 기준이며 DPR에 따라 패턴의 CSS 크기가 달라진다.
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  dataScene: document,
+  pixelPerfect: { width: 320, height: 180 },
+  postProcess: {
+    kind: "pixelArt",
+    levels: 8,
+    dither: 0.5,
+    scanlineIntensity: 0.15,
+  },
+});
+// 설정 변경은 프레임 사이에 수행한다. provider를 사용하면 provider의 반환값을 변경한다.
+runtime.renderer.setPostProcess?.(false);
+```
+
+| 설정 | 범위 · 기본값 |
+| --- | --- |
+| `levels` | 채널별 단계 수, 정수 2~256 · 기본 8 |
+| `dither` | 양자화 임계값에 더하는 ordered dither 강도, 0~1 · 기본 0 |
+| `scanlineIntensity` | 위에서 센 홀수 행의 RGB 감쇠, 0~1 · 기본 0 |
+
+`{ pixelArt: { ... } }` shorthand와 기존 순서 있는 pass 배열을 지원한다. shorthand는 다른 효과 뒤에 적용한다.
+`[{ kind: "pixelArt", levels: 4 }, { opacity: 0.25 }]`는 양자화 후 fade를 적용하며, 순서를 바꾸면 결과도 달라진다.
+잘못된 수치·정수가 아닌 단계 수는 오류다. 직접 pass에는 `kind`와 해당 효과의 필드만, shorthand에는 해당 효과의 필드만 허용한다.
+예외적으로 기존 `fade` shorthand의 `kind: "fade"`도 허용한다. 알 수 없는 필드·`kind: null`·`color: null`은 오류이고,
+`enabled`는 boolean만 받는다. `enabled: false`도 내부 설정을 검증한 후 비활성화한다.
+`{ levels: 4 }`처럼 도트 설정에서 `kind`를 빠뜨리면 오류이며 검정 fade로 대체하지 않는다.
+기존 기본 fade `{}`는 계속 유효하다. `false`·`undefined`는 전체 후처리를 해제하고,
+`pixelArt: false`는 해당 shorthand만 해제한다. `levels: 256`도 명시적인 8-bit 양자화 패스이며 해제와 다르다.
+
+효과는 렌더된 RGB에 적용하고 pass 입력의 alpha를 보존한다. 원본 PNG·팔레트·노멀맵은 수정하지 않는다.
+`fade`의 opacity도 색상 혼합 강도이며 장면의 alpha를 늘리지 않는다. `fade`와 `pixelArt`를 어느 순서로 조합해도
+WebGL2·WebGPU 모두 입력의 투명도를 유지한다.
+`linear-srgb`에서는 premultiplied linear RGB를 straight sRGB로 변환해 양자화·감쇠한 뒤 원래 작업 공간으로 복귀한다.
+따라서 이 패스의 단계/디더는 표시 색상 기준이며 기존 bloom 등 linear 연산과 구분한다.
+계산 입력은 실제 8-bit 프레임버퍼다. 특히 반투명·여러 pass에서는 중간 저장 반올림이 양자화 임계값을 넘을 수 있으므로,
+같은 효과를 두 번 적용한 결과가 한 번의 결과와 같다고 보장하지 않는다.
+픽셀 퍼펙트의 최종 확대 출력은 기존처럼 불투명하다. 레터박스는 효과 적용 대상이 아니다.
+
+패스 하나당 `postProcessPassCount: 1`, `postProcessDrawCalls: 1`이며 최종 확대는 별도 `presentationPassCount`다.
+WebGPU는 타깃 복사를 위한 scratch texture 하나를 재사용한다. 같은 크기의 반복 설정/프레임은 texture·buffer·pipeline을
+다시 만들지 않는다. 해제하면 선택적 자원을 해제하며 장치 복구는 마지막 성공 설정을 다시 적용한다.
+WebGL2는 기존 fullscreen 타깃을 재사용한다. 원본을 읽는 WebGPU copy 비용은 draw 횟수에 포함되지 않는다.
+
+WebGPU는 기존 `bloom`·곡면 `crt`·`vignette`·`glitch`도 같은 설정과 순서로 지원한다.
+`pixelArt`는 정확한 texel을 읽고 나머지 네 효과는 선형 보간으로 장면을 샘플한다.
+Bloom의 `threshold: 1`은 밝은 영역 추가를 끄며, vignette의 `radius: 0`은 화면 전체에 일정한 색 혼합을 적용한다.
+양수 `softness`가 float32에서 너무 작아 비네트의 안팎 경계가 같아지면 해당 반경에서 선명하게 전환한다.
+정확히 `softness: 0`이면 기존처럼 비네트 패스를 비활성화한다.
+Bloom의 `intensity`/`radius`, CRT의 `curvature`/`chromaticAberration`, glitch의 `intensity`/`chromaticAberration`은
+0~3.4028234663852886e38, glitch의 `seed`는 ±3.4028234663852886e38 범위다.
+이를 넘는 수치는 JavaScript에서 유한하더라도 GPU float32로 전달할 수 없어 설정 단계에서 거절한다.
+비활성 설정에도 같은 검증을 적용하며 실패하면 이전 효과와 자원을 유지한다.
+CRT는 휘어진 중심 좌표의 alpha를 사용하고 화면 밖을 불투명 검정으로 채운다. Glitch는 이동한 중심 좌표의 alpha를 사용한다.
+두 효과의 가장자리 alpha가 원래 위치와 같지는 않다. 효과를 가상 해상도에 적용하면 CRT도 확대 전 행을 기준으로 계산한다.
+
+Glitch는 양쪽 backend에서 같은 float32 seed 비트와 32-bit 정수 hash를 사용한다. 이에 따라 기존 WebGL2의
+삼각함수 hash 기반 줄무늬와 무늬가 달라진다. 같은 seed의 반복과 seed 복귀는 동일한 결과를 낸다.
+WebGL2 fullscreen 계산은 WebGPU와 맞춰 highp를 사용한다. legacy 모드의 기존 sprite alpha 혼합은 유지하므로,
+반투명 sprite의 효과 적용 전 입력 alpha 자체가 backend마다 다를 수 있다. 후처리는 각 입력의 alpha 계약을 따른다.
+`linear-srgb`는 계속 WebGL2에서만 제공한다.
+이 API는 게임 코드의 runtime 설정이며 Data Scene 저장 필드나 에디터 UI를 추가하지 않는다.
+Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므로 JSON 스키마에서 선택적 `pixelArt`를 허용한다.
+위 수치 범위의 기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
+명시적 타입 `PixelArtPostProcessPassInput`, `ResolvedPixelArtPostProcessPass`와 resolver는 `@ferrum2d/ferrum-web/authoring`에서 제공한다.
 
 ## Runtime 생성
 
@@ -103,6 +191,11 @@ ID 기반 `loadTexture`를 제공한다. 디버그 라인·모델 준비·픽셀
 외부에서 주입한 renderer의 수명은 호출자가 소유하며 `runtime.destroy()`로 해제하지 않는다.
 기본 생성 경로와 `createRenderer()`의 구체 반환형은 유지한다.
 직접 backend 기능을 쓰던 consumer는 [custom renderer 이전 방법](migration-guide.md#custom-renderer-계약-이전)을 따른다.
+
+선택 `Renderer.isRenderReady()`가 false이면 runtime은 해당 프레임의 visual provider 평가·GPU 타이밍·렌더 제출을 건너뛴다.
+Rust update와 `onFrame`/overlay/profiler 흐름은 계속되고 renderer 통계는 0으로 보고된다.
+메서드가 없으면 기존처럼 준비된 renderer로 취급한다. 복구 후에는 최신 provider 값을 다시 평가하며,
+반복 primitive 설정의 캐시는 setter가 성공한 뒤에만 갱신한다. provider나 setter의 일반 오류를 숨기지는 않는다.
 
 ## 에셋 묶음 로딩과 취소
 
@@ -386,7 +479,7 @@ RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 
 | linear 이미지/수치 데이터 | `linear`/`none`. RGB 전송함수 변환을 생략한다. data 이미지의 브라우저 색 보정도 끈다. |
 | 숫자 색상 | sprite command/tint, material, clear, light, shadow, fade/vignette, debug RGB는 **linear 값**이다. alpha는 선형 coverage 값이다. |
 | 중간 target/RenderTexture | `SRGB8_ALPHA8`에 저장한다. GPU가 저장·샘플·blend 경계의 변환을 담당하므로 계산은 linear이며 어두운 색의 8-bit 정밀도를 유지한다. |
-| 후처리 | linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. |
+| 후처리 | 기본적으로 linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. `pixelArt`는 표시용 sRGB로 변환해 양자화한 뒤 linear로 복귀한다. |
 | 화면 | 마지막 fullscreen pass에서 sRGB로 변환한다. 투명 canvas는 linear premultiplied RGB를 풀어서 변환한 뒤 sRGB에서 다시 premultiply한다. |
 
 `renderer.loadTexture(id, url, { colorSpace })`, raw texture 반환형인
@@ -908,12 +1001,14 @@ cast에서 제외하며 `getPhysicsEntity`/bulk state 조회는 계속 가능하
 ## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
 
 `/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
-`DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
+`DataSceneSpriteAnimationState`, `DataSceneSpriteAnimationDirection`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
 `resolveDirectionalLight2D`, `DataSceneGroundShadowSpec`, `DataSceneGroundShadowStats`를 제공한다.
 `FerrumEngine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations`,
 `dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
 `dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
 [애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.
+현재 소스의 명시적 clip은 최대 256프레임, 프레임별 ms·reverse/pingpong·opt-in frame/completed 이벤트를 지원한다.
+시간·seek·이벤트 예산과 저장 호환은 [클립 계약](../data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 
 #73 B2의 `DataSceneGroundShadowSpec.shape: "alpha"`는 기존 texture/frame/flip의 alpha를
 지면에 투영한다. 기존 ellipse/box는 유지한다. render buffer의 `groundShadowProjection` 세 f32와
@@ -1162,6 +1257,11 @@ scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께
 전체 batch를 거절한다. normal ID는0..16,777,214이고 내부 NONE 값은16,777,215다.
 Data Scene은 `components.visual.normalTexture` 또는 legacy `components.sprite.normalTexture`로 같은 기능을 설정한다.
 normal은 color와 같은 크기의 데이터 texture(`none`/`linear`)이고 현재 animation UV·flip·rotation을 공유한다.
+색상/노멀 패스는 프레임 `groundYScale`이 생략되면 renderer에 남아 있는 같은 투영값을 사용한다.
+노멀 데이터는 mip 0의 nearest 텍셀을 읽는다. 정수 텍셀 경계에 걸친 UV의 작은 보간 차이는
+정규화 UV `2^-22`의 경계 허용값으로 처리해 WebGL2/WebGPU의 선택을 맞춘다.
+스냅이 꺼진 연속 좌표에서는 반 픽셀 가장자리의 raster coverage가 backend마다 다를 수 있다.
+스냅을 켠 축 정렬 경계는 정수 가상 픽셀에 맞추며, 두 패스가 같은 경계를 사용한다.
 
 기존 sprite command는15-f32/60-byte다. 선택형 `RenderCommandBufferView.spriteNormalMaterials`는 v1/stride2의
 `Uint32Array`로 명령마다 `[normalTextureId,flags=0]`를 제공한다. 전부 NONE이면 생략한다.

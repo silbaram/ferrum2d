@@ -1,7 +1,9 @@
-/** Flat 2D virtual framebuffer. Camera/sprite snapping is a separate setting. */
+/** Flat 2D virtual framebuffer with optional render-only pixel snapping. */
 export interface PixelPerfectOptions {
     width: number;
     height: number;
+    /** Snap projected sprite/tile geometry to virtual pixels. Defaults to false. */
+    snap?: boolean;
     /** Opaque display RGB in [0,1]; defaults to black. */
     background?: readonly [
         number,
@@ -30,8 +32,10 @@ export function resolvePixelPerfectOptions(value: unknown): PixelPerfectOptions 
     if (!value || typeof value !== "object" || Array.isArray(value))
         throw Error("pixelPerfect must be false or an object");
     const v = value as Record<string, unknown>;
-    if (Object.keys(v).some(key => !["width", "height", "background"].includes(key)))
+    if (Object.keys(v).some(key => !["width", "height", "background", "snap"].includes(key)))
         throw Error("Unknown pixelPerfect option");
+    if (v.snap !== undefined && typeof v.snap !== "boolean")
+        throw Error("pixelPerfect.snap must be a boolean");
     const valid = (n: unknown): n is number => Number.isInteger(n) && Number(n) >= 1 && Number(n) <= 2048;
     if (!valid(v.width) || !valid(v.height) || v.width * v.height > 1048576)
         throw Error("pixelPerfect dimensions must be integers in [1,2048], at most 1 megapixel");
@@ -41,7 +45,7 @@ export function resolvePixelPerfectOptions(value: unknown): PixelPerfectOptions 
         return typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1;
     }))
         throw Error("pixelPerfect.background must be RGB in [0,1]");
-    return Object.freeze({ width: v.width, height: v.height, background: Object.freeze([...background]) as readonly [
+    return Object.freeze({ width: v.width, height: v.height, ...(v.snap === undefined ? {} : { snap: v.snap }), background: Object.freeze([...background]) as readonly [
             number,
             number,
             number

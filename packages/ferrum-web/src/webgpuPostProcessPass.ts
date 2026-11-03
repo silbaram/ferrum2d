@@ -1,14 +1,14 @@
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
+import { WebGpuTexturePostProcess } from "./webgpuTexturePostProcess.js";
 import { resolvePostProcessPasses } from "./cameraPostProcessing.js";
 import type {
   PostProcessStackInput,
-  ResolvedFadePostProcessPass,
   ResolvedPostProcessPass,
 } from "./cameraPostProcessing.js";
-import { cameraPostProcessingDiagnosticError } from "./diagnostics.js";
 
 const POST_PROCESS_UNIFORM_BYTES = 16;
+type WebGpuPostProcess = ResolvedPostProcessPass;
 
 export interface WebGpuPostProcessStats {
   drawCalls: number;
@@ -22,7 +22,8 @@ export class WebGpuPostProcessPass {
   private readonly bindGroup: GPUBindGroup;
   private readonly pipeline: GPURenderPipeline;
   private readonly uniformStaging = new Float32Array(4);
-  private passes: readonly ResolvedFadePostProcessPass[] = [];
+  private passes: readonly WebGpuPostProcess[] = [];
+  private texturePass?: WebGpuTexturePostProcess;
   private destroyed = false;
 
   constructor(
@@ -35,21 +36,39 @@ export class WebGpuPostProcessPass {
     this.pipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.bindGroupLayout],
     });
-    this.uniformBuffer = webGpuResources(this.device).createBuffer({
-      size: POST_PROCESS_UNIFORM_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
-    this.pipeline = this.createPipeline();
-    this.setPostProcess(postProcess);
+    const owner = webGpuResources(this.device);
+    let uniform: GPUBuffer | undefined;
+    let pipeline: GPURenderPipeline | undefined;
+    try {
+      uniform = owner.createBuffer({
+        size: POST_PROCESS_UNIFORM_BYTES,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      this.uniformBuffer = uniform;
+      this.bindGroup = this.device.createBindGroup({
+        layout: this.bindGroupLayout,
+        entries: [{ binding: 0, resource: { buffer: uniform } }],
+      });
+      pipeline = this.createPipeline();
+      this.pipeline = pipeline;
+      this.setPostProcess(postProcess);
+    } catch (error) {
+      owner.destroy(uniform);
+      if (pipeline) owner.releasePipeline(pipeline);
+      throw error;
+    }
   }
 
   setPostProcess(postProcess: PostProcessStackInput): void {
     this.assertAlive();
-    this.passes = resolveWebGpuPostProcessPasses(postProcess);
+    const passes = resolveWebGpuPostProcessPasses(postProcess);
+    if (passes.some(pass => pass.kind !== "fade")) {
+      this.texturePass ??= new WebGpuTexturePostProcess(this.device, this.format);
+    } else {
+      this.texturePass?.destroy();
+      this.texturePass = undefined;
+    }
+    this.passes = passes;
   }
 
   drawPasses(): WebGpuPostProcessStats {
@@ -62,6 +81,12 @@ export class WebGpuPostProcessPass {
     let drawCalls = 0;
     let passCount = 0;
     for (const pass of passes) {
+      if (pass.kind !== "fade") {
+        this.texturePass!.draw(this.currentTexture(), pass);
+        drawCalls += 1;
+        passCount += 1;
+        continue;
+      }
       if (pass.color[3] <= 0) {
         continue;
       }
@@ -96,7 +121,10 @@ export class WebGpuPostProcessPass {
       return;
     }
     this.destroyed = true;
+    this.texturePass?.destroy();
+    this.texturePass = undefined;
     webGpuResources(this.device).destroy(this.uniformBuffer);
+    webGpuResources(this.device).releasePipeline(this.pipeline);
   }
 
   private createBindGroupLayout(): GPUBindGroupLayout {
@@ -153,7 +181,8 @@ export class WebGpuPostProcessPass {
           format: this.format,
           blend: {
             color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
-            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+            // Fade opacity is effect strength, not additional scene coverage.
+            alpha: { srcFactor: "zero", dstFactor: "one", operation: "add" },
           },
         }],
       },
@@ -168,14 +197,6 @@ export class WebGpuPostProcessPass {
   }
 }
 
-export function resolveWebGpuPostProcessPasses(input: PostProcessStackInput): readonly ResolvedFadePostProcessPass[] {
-  const passes = resolvePostProcessPasses(input);
-  const unsupported = passes.find((pass) => pass.kind !== "fade");
-  if (unsupported !== undefined) {
-    throw cameraPostProcessingDiagnosticError(
-      "webgpu.postProcess",
-      `WebGPU renderer currently supports only fade post-process passes; '${unsupported.kind}' requires the WebGL2 renderer.`,
-    );
-  }
-  return passes as readonly ResolvedFadePostProcessPass[];
+export function resolveWebGpuPostProcessPasses(input: PostProcessStackInput): readonly WebGpuPostProcess[] {
+  return resolvePostProcessPasses(input);
 }

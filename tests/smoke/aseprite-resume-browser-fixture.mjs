@@ -2,6 +2,7 @@ import {
   createEngine,
   AssetLoader,
   WebGL2Renderer,
+  decodeRenderCommands,
 } from "@ferrum2d/ferrum-web/core";
 import {
   applyDataSceneAuthoringDocument,
@@ -14,33 +15,40 @@ const hash = async (bytes) =>
   [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("");
-export async function probeAsepriteResume() {
+export async function probeAsepriteResume(provided) {
   const {
       bundle,
       document: scene,
       instance,
       animation,
-    } = await (await fetch("/resume.json")).json(),
+    } = provided ?? await (await fetch("/resume.json")).json(),
     textures = {};
+  const assetBase=new URL(provided?.assetBase??"/resume/",location.href);
   for (const rev of bundle.revisions) {
     const json = await (
-        await fetch("/resume/" + rev.assetId + ".json")
+        await fetch(new URL(rev.assetId + ".json",assetBase))
       ).arrayBuffer(),
       png = await (
-        await fetch("/resume/" + rev.assetId + ".png")
+        await fetch(new URL(rev.assetId + ".png",assetBase))
       ).arrayBuffer();
     check(
       (await hash(json)) === rev.jsonSha256 &&
         (await hash(png)) === rev.pngSha256,
       "Resume source hash differs",
     );
+    if(rev.sourcePng) {
+      const original=await(await fetch(new URL(rev.assetId+".source.png",assetBase))).arrayBuffer();
+      check(await hash(original)===rev.sourcePng.sha256,"Resume original trim PNG hash differs");
+      const identity=await hash(new TextEncoder().encode(JSON.stringify([rev.identityDocument,rev.logicalId,rev.jsonSha256,rev.sourcePng.sha256])));
+      check(rev.assetId===`aseprite.${rev.logicalId}.${identity.slice(0,24)}`,"Resume original trim identity differs");
+    }
     const imported = importAsepriteAtlas(
       JSON.parse(new TextDecoder().decode(json)),
       { texture: rev.assetId, stripFrameExtension: false },
     );
     check(
-      JSON.stringify(imported.frameNames) ===
-        JSON.stringify(rev.frames.map((f) => f.id)),
+      JSON.stringify(rev.sourcePng?[...imported.frameNames].sort():imported.frameNames) ===
+        JSON.stringify(rev.sourcePng?rev.frames.map(f=>f.id).sort():rev.frames.map(f=>f.id)),
       "Resume frame identity differs",
     );
     const bitmap = await createImageBitmap(new Blob([png]));
@@ -52,7 +60,7 @@ export async function probeAsepriteResume() {
     } finally {
       bitmap.close();
     }
-    textures[rev.assetId] = "/resume/" + rev.assetId + ".png";
+    textures[rev.assetId] = new URL(rev.assetId + ".png",assetBase).href;
   }
   const canvas = document.querySelector("canvas"),
     renderer = new WebGL2Renderer(canvas, { preserveDrawingBuffer: true }),
@@ -61,7 +69,9 @@ export async function probeAsepriteResume() {
     cancel = cancelAnimationFrame,
     pending = new Map();
   let next = 0,
-    engine;
+    engine,sample,spriteUvs=[],spatialUvs=[],maxDraws=0;
+  const trimMode=bundle.revisions.some(rev=>rev.sourcePng);
+  const visual=scene.sceneComposition.fragments.main.instances.find(item=>item.id===instance).props.components.visual;
   globalThis.requestAnimationFrame = (callback) => {
     pending.set(++next, callback);
     return next;
@@ -77,6 +87,13 @@ export async function probeAsepriteResume() {
         renderer.render();
         renderer.renderCommands(frame.renderCommandBuffer);
         renderer.renderPostProcess();
+        sample={state:frame.gameState,entities:frame.entityCount,draws:renderer.stats().drawCalls,switches:renderer.stats().textureSwitchCount};
+        if(trimMode&&engine){
+          const texture=engine.textureId(visual.texture??visual.asset);
+          spriteUvs=decodeRenderCommands(frame.renderCommandBuffer).filter(c=>c.textureId===texture).map(c=>c.uv);
+          spatialUvs=[];const spatial=frame.renderCommandBuffer.spatial;
+          if(spatial)for(let i=0;i<spatial.billboardVertexCount;i++){const j=i*spatial.vertexStride;if(spatial.billboards[j+9]===texture)spatialUvs.push([spatial.billboards[j+3],spatial.billboards[j+4]]);}
+        }
       },
       () => ({}),
       loader,
@@ -129,6 +146,13 @@ export async function probeAsepriteResume() {
             `Native duration mismatch at ${elapsed}ms: ${state.frame}/${expected}`,
           );
         visited.add(state.frame);
+        if(trimMode){
+          check(sample.state===1&&sample.entities===1&&sample.draws>=1&&sample.draws<=16&&sample.switches<=16,"Trim runtime state or draw budget differs");
+          maxDraws=Math.max(maxDraws,sample.draws);
+          const f=clip.frames[state.frame],expected=[f.u0??0,f.v0??0,f.u1??1,f.v1??1];
+          const actual=scene.spatial?(spatialUvs.length?[[Math.min(...spatialUvs.map(v=>v[0])),Math.min(...spatialUvs.map(v=>v[1])),Math.max(...spatialUvs.map(v=>v[0])),Math.max(...spatialUvs.map(v=>v[1]))]]:[]):spriteUvs;
+          check(actual.length>0&&actual.every(uv=>uv.every((v,i)=>Math.abs(v-expected[i])<1e-6)),"Trim native rendered UV differs");
+        }
         const gl = canvas.getContext("webgl2"),
           pixels = new Uint8Array(canvas.width * canvas.height * 4);
         gl.readPixels(
@@ -190,6 +214,7 @@ export async function probeAsepriteResume() {
       colorSpace: "srgb",
       coloredPixels,
       ...(playback ? { animation: playback } : {}),
+      ...(trimMode?{trimRuntime:{playingState:sample.state,renderedUVs:true,maxDraws,visibleFrames:playback?.visibleFrames,sourceSidecarHash:true}}:{}),
     };
   } finally {
     engine?.destroy();

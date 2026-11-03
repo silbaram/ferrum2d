@@ -7,6 +7,8 @@ import type {
   PostProcessingConfigInput,
   PostProcessPassInput,
   PostProcessStackInput,
+  PixelArtPostProcessPassInput,
+  ResolvedPixelArtPostProcessPass,
   ResolvedBloomPostProcessPass,
   ResolvedCrtPostProcessPass,
   ResolvedFadePostProcessPass,
@@ -21,13 +23,45 @@ import {
   finiteNumber,
   invalid,
   isRecord,
-  nonNegativeNumber,
   resolveColor,
   unitNumber,
 } from "./validation.js";
 
 export const DEFAULT_FADE_COLOR: ResolvedPostProcessColor = [0, 0, 0, 1];
 const DEFAULT_VIGNETTE_COLOR: ResolvedPostProcessColor = [0, 0, 0, 1];
+const PASS_FIELDS = {
+  fade: ["color", "opacity"],
+  bloom: ["threshold", "intensity", "radius"],
+  crt: ["curvature", "scanlineIntensity", "chromaticAberration"],
+  vignette: ["color", "intensity", "radius", "softness"],
+  glitch: ["intensity", "chromaticAberration", "seed"],
+  pixelArt: ["levels", "dither", "scanlineIntensity"],
+} as const;
+const CONFIG_FIELDS = ["enabled", "passes", ...Object.keys(PASS_FIELDS)];
+// Shared shader uniforms are f32 even though authoring JSON/JavaScript use f64.
+const MAX_POST_PROCESS_NUMBER = 3.4028234663852886e38;
+
+function postProcessNumber(value: number | undefined, path: string, fallback: number): number {
+  const result = finiteNumber(value, path, fallback);
+  if (Math.abs(result) > MAX_POST_PROCESS_NUMBER) {
+    throw invalid(path, "must be within the finite Float32 range");
+  }
+  return result;
+}
+
+function nonNegativePostProcessNumber(value: number | undefined, path: string, fallback: number): number {
+  const result = postProcessNumber(value, path, fallback);
+  if (result < 0) throw invalid(path, "must be a non-negative finite number");
+  return result;
+}
+
+function assertKnownFields(input: object, fields: readonly string[], path: string, allowKind = false): void {
+  for (const key of Object.keys(input)) {
+    if (!(allowKind && key === "kind") && !fields.includes(key)) {
+      throw invalid(`${path}.${key}`, "is not a supported field for this post-process configuration");
+    }
+  }
+}
 
 export function resolvePostProcessPasses(
   input: PostProcessStackInput = undefined,
@@ -57,7 +91,11 @@ function resolvePostProcessPass(input: PostProcessPassInput, path: string): Reso
     throw invalid(path, "must be an object");
   }
   const pass = input as PostProcessPassInput;
-  const kind = pass.kind ?? "fade";
+  const kind = pass.kind === undefined ? "fade" : pass.kind;
+  if (typeof kind !== "string" || !Object.prototype.hasOwnProperty.call(PASS_FIELDS, kind)) {
+    throw invalid(`${path}.kind`, "must be fade, bloom, crt, vignette, glitch, or pixelArt");
+  }
+  assertKnownFields(pass, PASS_FIELDS[kind], path, true);
   if (kind === "fade") {
     return resolveFadePass(pass as FadePostProcessPassInput, path);
   }
@@ -73,13 +111,27 @@ function resolvePostProcessPass(input: PostProcessPassInput, path: string): Reso
   if (kind === "glitch") {
     return resolveGlitchPass(pass as GlitchPostProcessPassInput, path);
   }
-  throw invalid(`${path}.kind`, "must be fade, bloom, crt, vignette, or glitch");
+  if (kind === "pixelArt") return resolvePixelArtPass(pass as PixelArtPostProcessPassInput, path);
+  throw invalid(`${path}.kind`, "must be fade, bloom, crt, vignette, glitch, or pixelArt");
+}
+
+function resolvePixelArtPass(
+  pass: Omit<PixelArtPostProcessPassInput, "kind">,
+  path: string,
+): ResolvedPixelArtPostProcessPass {
+  const levels = finiteNumber(pass.levels, `${path}.levels`, 8);
+  if (!Number.isInteger(levels) || levels < 2 || levels > 256) {
+    throw invalid(`${path}.levels`, "must be an integer in [2, 256]");
+  }
+  return { kind: "pixelArt", levels,
+    dither: unitNumber(pass.dither, `${path}.dither`, 0),
+    scanlineIntensity: unitNumber(pass.scanlineIntensity, `${path}.scanlineIntensity`, 0) };
 }
 
 function resolveFadePass(pass: FadePostProcessPassInput, path: string): ResolvedFadePostProcessPass {
   return {
     kind: "fade",
-    color: resolveColor(pass.color ?? DEFAULT_FADE_COLOR, `${path}.color`, pass.opacity),
+    color: resolveColor(pass.color === undefined ? DEFAULT_FADE_COLOR : pass.color, `${path}.color`, pass.opacity),
   };
 }
 
@@ -90,8 +142,8 @@ function resolveBloomPass(
   return {
     kind: "bloom",
     threshold: unitNumber(pass.threshold, `${path}.threshold`, 0.72),
-    intensity: nonNegativeNumber(pass.intensity, `${path}.intensity`, 0.45),
-    radius: nonNegativeNumber(pass.radius, `${path}.radius`, 1.5),
+    intensity: nonNegativePostProcessNumber(pass.intensity, `${path}.intensity`, 0.45),
+    radius: nonNegativePostProcessNumber(pass.radius, `${path}.radius`, 1.5),
   };
 }
 
@@ -101,9 +153,9 @@ function resolveCrtPass(
 ): ResolvedCrtPostProcessPass {
   return {
     kind: "crt",
-    curvature: nonNegativeNumber(pass.curvature, `${path}.curvature`, 0.08),
+    curvature: nonNegativePostProcessNumber(pass.curvature, `${path}.curvature`, 0.08),
     scanlineIntensity: unitNumber(pass.scanlineIntensity, `${path}.scanlineIntensity`, 0.18),
-    chromaticAberration: nonNegativeNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.0015),
+    chromaticAberration: nonNegativePostProcessNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.0015),
   };
 }
 
@@ -113,7 +165,7 @@ function resolveVignettePass(
 ): ResolvedVignettePostProcessPass {
   return {
     kind: "vignette",
-    color: resolveColor(pass.color ?? DEFAULT_VIGNETTE_COLOR, `${path}.color`),
+    color: resolveColor(pass.color === undefined ? DEFAULT_VIGNETTE_COLOR : pass.color, `${path}.color`),
     intensity: unitNumber(pass.intensity, `${path}.intensity`, 0.35),
     radius: unitNumber(pass.radius, `${path}.radius`, 0.55),
     softness: unitNumber(pass.softness, `${path}.softness`, 0.35),
@@ -126,9 +178,9 @@ function resolveGlitchPass(
 ): ResolvedGlitchPostProcessPass {
   return {
     kind: "glitch",
-    intensity: nonNegativeNumber(pass.intensity, `${path}.intensity`, 0.04),
-    chromaticAberration: nonNegativeNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.003),
-    seed: finiteNumber(pass.seed, `${path}.seed`, 0),
+    intensity: nonNegativePostProcessNumber(pass.intensity, `${path}.intensity`, 0.04),
+    chromaticAberration: nonNegativePostProcessNumber(pass.chromaticAberration, `${path}.chromaticAberration`, 0.003),
+    seed: postProcessNumber(pass.seed, `${path}.seed`, 0),
   };
 }
 
@@ -149,9 +201,12 @@ function appendResolvedPostProcessPasses(
     return;
   }
   const config = input as PostProcessingConfigInput;
-  if (config.enabled === false) {
-    return;
+  assertKnownFields(config, CONFIG_FIELDS, path);
+  if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
+    throw invalid(`${path}.enabled`, "must be a boolean");
   }
+  // Disabled stacks still validate their shape and numeric bounds, like the JSON schema.
+  const start = resolved.length;
   let index = 0;
   if (config.passes !== undefined) {
     if (!Array.isArray(config.passes)) {
@@ -161,28 +216,34 @@ function appendResolvedPostProcessPasses(
   }
   if (config.fade !== undefined && config.fade !== false) {
     const passPath = `${path}[${index}]`;
-    appendEnabledPass(resolved, resolveFadePass(requireConfigPass(config.fade, passPath), passPath));
+    appendEnabledPass(resolved, resolveFadePass(requireConfigPass(config.fade, passPath, "fade"), passPath));
     index += 1;
   }
   if (config.bloom !== undefined && config.bloom !== false) {
     const passPath = `${path}[${index}]`;
-    appendEnabledPass(resolved, resolveBloomPass(requireConfigPass(config.bloom, passPath), passPath));
+    appendEnabledPass(resolved, resolveBloomPass(requireConfigPass(config.bloom, passPath, "bloom"), passPath));
     index += 1;
   }
   if (config.crt !== undefined && config.crt !== false) {
     const passPath = `${path}[${index}]`;
-    appendEnabledPass(resolved, resolveCrtPass(requireConfigPass(config.crt, passPath), passPath));
+    appendEnabledPass(resolved, resolveCrtPass(requireConfigPass(config.crt, passPath, "crt"), passPath));
     index += 1;
   }
   if (config.vignette !== undefined && config.vignette !== false) {
     const passPath = `${path}[${index}]`;
-    appendEnabledPass(resolved, resolveVignettePass(requireConfigPass(config.vignette, passPath), passPath));
+    appendEnabledPass(resolved, resolveVignettePass(requireConfigPass(config.vignette, passPath, "vignette"), passPath));
     index += 1;
   }
   if (config.glitch !== undefined && config.glitch !== false) {
     const passPath = `${path}[${index}]`;
-    appendEnabledPass(resolved, resolveGlitchPass(requireConfigPass(config.glitch, passPath), passPath));
+    appendEnabledPass(resolved, resolveGlitchPass(requireConfigPass(config.glitch, passPath, "glitch"), passPath));
+    index += 1;
   }
+  if (config.pixelArt !== undefined && config.pixelArt !== false) {
+    const passPath = `${path}[${index}]`;
+    appendEnabledPass(resolved, resolvePixelArtPass(requireConfigPass(config.pixelArt, passPath, "pixelArt"), passPath));
+  }
+  if (config.enabled === false) resolved.length = start;
 }
 
 function appendPassArray(
@@ -206,9 +267,13 @@ function appendEnabledPass(resolved: ResolvedPostProcessPass[], pass: ResolvedPo
   }
 }
 
-function requireConfigPass<T>(input: T, path: string): T {
+function requireConfigPass<T>(input: T, path: string, kind: keyof typeof PASS_FIELDS): T {
   if (!isRecord(input)) {
     throw invalid(path, "must be an object");
+  }
+  assertKnownFields(input, PASS_FIELDS[kind], path, kind === "fade");
+  if (kind === "fade" && input.kind !== undefined && input.kind !== "fade") {
+    throw invalid(`${path}.kind`, "must be fade");
   }
   return input;
 }
@@ -220,10 +285,12 @@ function isPostProcessingConfigInput(input: Record<string, unknown>): boolean {
     || hasOwnKey(input, "bloom")
     || hasOwnKey(input, "crt")
     || hasOwnKey(input, "vignette")
-    || hasOwnKey(input, "glitch");
+    || hasOwnKey(input, "glitch")
+    || hasOwnKey(input, "pixelArt");
 }
 
 function postProcessPassEnabled(pass: ResolvedPostProcessPass): boolean {
+  if (pass.kind === "pixelArt") return true;
   if (pass.kind === "fade") {
     return pass.color[3] > 0;
   }

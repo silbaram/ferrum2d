@@ -108,13 +108,13 @@ function canvas(device: Device, fails = false) {
     },
   } as unknown as HTMLCanvasElement;
 }
-test("unsupported postprocessing rejects before WebGPU context or GPU allocation", async () => {
+test("invalid postprocessing rejects before WebGPU context or GPU allocation", async () => {
   const device = new Device(),
     restore = install(device);
   try {
     await rejects(
-      WebGPURenderer.create(canvas(device), { postProcess: [{ kind: "bloom" }] }),
-      /only fade/,
+      WebGPURenderer.create(canvas(device), { postProcess: [{ kind: "bloom", threshold: 2 }] }),
+      /threshold/,
     );
     deepEqual(device.events, []);
   } finally {

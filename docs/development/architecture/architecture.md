@@ -13,7 +13,7 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 | Core runtime | Rust/Wasm frame loop, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot/replay처럼 1.0 제품 계약 후보인 표면 |
 | Authoring primitive | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM, effect registry처럼 장르 adapter가 낮은 빈도로 조합하는 데이터 계약 |
 | Starter scene/template | Shooter/Breakout/Platformer built-in scene과 create-game template처럼 검증된 시작점. 장르 전체를 범용으로 자동 제작하는 engine mode는 아님 |
-| Optional/lab/helper | WebGPU, WebGPU fade-only post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
+| Optional/lab/helper | WebGPU, WebGPU fullscreen post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
 | Compatibility/quality infrastructure | deprecated shim, smoke/report/runtime budget/package QA/Pages build처럼 제품 기능과 분리해 관리하는 보조 표면 |
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
@@ -75,15 +75,34 @@ generated pair의 기존 format과 public engine API·Wasm ABI를 유지하며 n
 
 `placementSpriteRevisions.ts`는 Aseprite와 tile import가 공유하는 bounded immutable PNG revision store다.
 동일 이름의 upload를 직렬화하며 취소/부분 upload 실패/문서 닫기 후 늦게 완료된 texture도 소유권 안에서 회수한다.
+`placementAsepriteTrim.ts`는 bounded sRGB RGBA8 trim 입력을 원본 크기·offset에 복원한다. 원본 JSON과 packed PNG의 hash로 identity를 유지하고 게임용 PNG/UV만 파생한다.
+native `aseprite_trim.rs`는 같은 배치·pixels를 독립 검증한다. Aseprite만 optional sourcePng/`.source.png`를 허용하고 `sprite_assets`가 파일·예산·protocol·정리 수명을 함께 관리한다.
+`png_layout.rs`는 자체 도트/trim의 PNG chunk·CRC·sRGB·완전한 IEND 경계를 공유한다. 기존 untrim·tile 계약과 Rust core/렌더 ABI는 유지한다.
+`placementAsepriteSlices.ts`는 불변 원본 JSON의 bounded slice/key/pivot/center를 해석하고 기존 `updateComponents`로 선택 sprite의 origin만 바꾼다.
+원본 timeline key는 명시적으로 선택하며 일반 재가져오기와 분리한다. metadata는 기존 JSON으로 저장하고 새 runtime/schema/native catalog 필드를 추가하지 않는다.
 `placementTileDependencies.ts`는 명시적으로 고른 외부 TSJ를 상대 source의 유일한 basename과 연결한다. 자동 경로 읽기 없이 map/TSJ 합계 1 MiB를 제한하고 원본과 변환 입력을 분리한다.
 `placementTileSelection.ts`는 bounded 원본 metadata에서 선택 목록과 명시적 단일 PNG projection을 만든다. 원본 bytes와 선택 범위 evidence는 별도로 보존한다.
 `placementTileAssets.ts`는 기존 public starter-scenes importer로 선택 tileset을 검증하고 frame provider/placement patch/export를 만든다.
 `placementTileTool.ts`는 문서별 UI/취소/자원 수명을 소유한다. map/grid·LDtk entity는 report/export 데이터이며 TS simulation state로 설치하지 않는다.
+`placementTileRules.ts`는 bounded frame-name 규칙을 기존 public `applyTileRules`에 전달해 원본 격자에서 한 번 베이크한다.
+`placementTileRulePalette.ts`는 규칙이 참조한 미사용 타일을 기존 Tiled/LDtk importer로 검증한다. 이 계산용 palette는 원본·catalog identity를 바꾸지 않는다.
+자산별 마지막 설정만 약한 캐시에 보관하고 immutable 원본과 runtime 상태는 바꾸지 않는다.
+`placementTileMap.ts`가 결과를 기존 sprite/static AABB·단일 placement patch로 변환하며 설정은 기존 provenance options에 보존한다.
+평면 맵의 연속 추가는 `ScenePlacementViewer.addInstances`로 묶어 파생 상태와 history snapshot의 반복 생성을 피한다.
+연속 삭제도 기존 `removeInstances`로 처리하며, 오류 rollback과 잠금·단일 Undo 계약은 유지한다.
+가져오기 도구 context는 생성 시 draft를 캡처하고 document를 읽을 때만 병합한다. Catalog의 scope 조회가 매번 전체 씬을 검증하지 않으며 비동기 저장의 snapshot은 유지한다.
+`placementTileMapPreview.ts`는 생성 패치의 타일과 객체 위치를 Canvas2D로만 표시하고 bitmap 수명·설정 무효화를 처리한다.
+`placementTileAnimation.ts`는 선택적 Tiled 원본/이름별 clip을 기존 `visual.animationSet`으로 변환한다.
+오토타일 결과의 기준 프레임으로 clip을 고르고 첫 UV와 고정 collider를 작성하며, 재생 프레임의 물리 metadata는 사용하지 않는다.
+설정 1,024·배치 8,192 animation frame 예산을 둔다. 실제 시간은 기존 Rust playback이 소유하며 JS의 타일별 update나 새 ABI는 없다.
+명시적 시간 입력의 Canvas2D 미리보기는 검증된 clip에서 정수 밀리초로 UV를 고른다. 초 단위 왕복 변환의 경계 오차를 피하며 시간은 보기 상태이고 씬·Undo를 바꾸지 않는다.
+Map Options뿐 아니라 source 식별자·셀 좌표를 포함한 provenance의 16KiB 예산도 패치 생성 전에 확인한다.
+씬·native catalog·Rust 렌더 ABI는 확장하지 않는다.
 미설치 참조의 Save를 막고 app handoff에 `tileImports` 근거를 연결한다.
 `placementTileProject.ts`는 Open Project 기본 문서의 원본을 preload하고 source identity/hash를 재검증한다.
 native `tile_assets.rs`는 원본 식별 정보와 선택형 tileset key·TSJ dependency source/name/hash만 저장하며 변환 frame/map은 frontend public importer가 다시 계산한다.
 Aseprite와 `sprite_assets.rs`의 bounded immutable 저장·protocol 등록을 공유한다. Tile 계약만 최대 8개 TSJ 원본을 허용하고 source/hash를 revision ID에 포함한다. TSJ도 exclusive create/충돌 보존/rollback과 hash가 지정된 protocol URL을 사용하며 Aseprite는 dependency를 허용하지 않는다. 저장 검증 후 기존 scene CAS를 사용한다.
-전체 map 적용은 별도 후속이다.
+전체 map 적용과 애니메이션은 기존 scene save를 사용한다. native catalog에는 변환한 map/clip을 중복 저장하지 않는다.
 
 `placementAsepriteAnimation.ts`는 immutable 원본 JSON에서 frameTags/duration을 변환하는 app 전용 모듈이다.
 방향별 frame 순서·정수 GCD 반복 UV로 기존 `visual.animationSet`을 만들며 native frame/FPS 한도 초과를 거절한다.
@@ -248,6 +267,16 @@ GL scissor/depth/cull/color mask를 복원하고 resize/비활성/destroy에서 
 현재 반투명 합성은 deferred 방향 혼합이며 per-layer 물리 광학/PBR 범위는 포함하지 않는다.
 도트2D 적용은 component patch v2와 기존 source/color→normal→scene 저장·검증 경로를 사용한다.
 
+### 평면 2D 팔레트 재질
+
+팔레트는 기존 `SpriteMaterialPreset`의 texture ID별 renderer 설정이다. Rust simulation·15-f32 command와
+normal sidecar를 확장하지 않는다. `spritePalette.ts`가 RGB8 교체표를 복사·검증하고 64 binding×32색으로 제한한다.
+기존 texture range 정렬/순서/배치를 유지하며 source RGB를 한 번 교체한 뒤 기존 tint와 조명을 적용한다.
+GL은 optional SpriteBatch/shader, WebGPU는 optional pipeline과 ID별 독립 uniform buffer를 소유한다.
+normal/outline/ground-shadow는 기존 경로를 사용한다. 동일 설정은 GPU 자원을 재사용하고 해제 시 optional 자원을 폐기한다.
+원본 이미지는 교체하지 않는다. 팔레트 없는 렌더러에는 variant shader·uniform·추가 pass/texture lookup이 없다.
+색 공간·premultiplication·압축/공간 입력 제한은 [공개 계약](../../engine/public-api/labs.md#평면-2d-팔레트-스왑)을 따른다.
+
 ### Runtime 렌더러 확장 경계
 
 `runtimeRenderer.ts`의 `FerrumRuntimeRenderer`는 GPU 클래스의 private 멤버를 포함하지 않는 구조적 포트다.
@@ -255,6 +284,9 @@ GL scissor/depth/cull/color mask를 복원하고 resize/비활성/destroy에서 
 프레임 소비자 `RuntimeFrameRenderer`는 `RuntimeFrameRenderTarget`의 그리기·선택 진단 capability만 받으며,
 텍스처 로딩·canvas 크기·자원 소유권과 결합하지 않는다. flat command sink만으로 프레임을 검증할 수 있다.
 미지원 공간 geometry/디버그 라인은 frame target이나 GPU timer를 건드리기 전에 거부한다.
+선택 `isRenderReady`는 concrete WebGPU 클래스에 의존하지 않는 제출 가능 여부다. false일 때 visual provider·GPU 작업만 건너뛰고
+native 프레임 publish는 빈 renderer 통계로 이어간다. primitive provider 캐시는 성공한 setter만 기록하며,
+WebGPU의 설정 snapshot은 backend commit 전에 준비하여 live/recovery 설정의 원자성을 유지한다.
 
 공통 `SpatialRendererStats`와 `PhysicsDebugLineCamera`의 canonical 정의는 `renderer.ts`다.
 WebGL2/WebGPU 구현이 이 계약에 의존하고 기존 내부 타입 경로는 재export로 호환한다.
@@ -784,7 +816,29 @@ main/offscreen 비용을 frame 통계에 합산한다. 공개 API와 제약은 [
 adapter/device의 pipeline 생성·GPU 오류 확인까지 canvas context 연결 전에 끝낸다.
 이 단계의 실패는 같은 canvas의 WebGL2로 fallback한다. context 연결 뒤 configure/resize 오류는
 다른 API로 교체할 수 없으므로 전파하며 새 canvas가 필요하다. debug/postprocess pass도 context getter를
-draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는 fade만 지원한다.
+draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는
+fade·bloom·CRT·vignette·glitch·pixelArt를 지원한다. linear-sRGB는 기존 WebGL2 fallback 범위를 유지한다.
+
+`cameraPostProcessing/postProcess.ts`가 pixelArt의 채널 단계 수·디더·스캔라인을 검증한다.
+`pixelPostProcessShaders.ts`는 두 shader 언어에서 같은 4×4 Bayer 표와 좌상단 행 규칙을 사용한다.
+GL fullscreen은 highp 계산을 사용한다. pixelArt는 전용 sampler/texelFetch, 나머지 sampled 효과는 선형 보간을 사용한다.
+`webgpuPostProcessShaders.ts`는 GL식 아래 원점 UV를 위 원점 texture 좌표로 변환한다.
+glitch는 두 언어에서 같은 float32 seed bit/uint hash를 사용하며 이전 GL 삼각함수 hash 무늬와 달라진다.
+linear-sRGB에서만 straight sRGB 변환 후 효과를 계산하고 작업 공간으로 복귀한다.
+공용 fade는 색상 강도만 혼합한다. WebGPU의 alpha blend는 destination coverage를 유지하여 GL fullscreen 결과와 맞춘다.
+`webgpuTexturePostProcess.ts`는 sampled 효과 활성 시에만 공용 pipeline/48-byte uniform/linear sampler와 copy texture 하나를 소유한다. 현재 frame target의 COPY_SRC에서
+별도 COPY_DST/TEXTURE_BINDING으로 복사한 뒤 원 타깃에 그려 read/write alias를 피한다. pass별 submit으로 uniform 재사용 순서를 보장한다.
+resize는 새 texture와 group 성공 후 교체하고, off/destroy는 선택 자원을 해제한다. 기존 renderer snapshot으로 복구한다.
+Bloom threshold=1과 vignette radius=0은 smoothstep의 동일 양 끝값을 피하도록 명시 처리한다.
+CRT는 warped 중심 alpha/화면 밖 불투명 검정, glitch는 shifted 중심 alpha를 사용한다. 기존 legacy sprite blending은 바꾸지 않는다.
+pixelPerfect는 가상 타깃에서 후처리한 뒤 nearest 확대한다. 확대는 authored postprocess 통계를 덮어쓰지 않고
+drawCalls/presentationPassCount에만 반영한다. Rust/15-float ABI·Data Scene 저장 계약은 변경하지 않는다.
+공용 후처리 resolver는 직접 pass·shorthand·config의 허용 필드와 enabled 타입을 검증하고 비활성 stack도 검증한다.
+Bloom·CRT·glitch의 강도·반경·왜곡·seed도 유한 float32 범위로 제한해 uniform 변환의 Infinity를 막는다.
+비네트는 float32에서 안팎 경계가 합쳐지면 hard edge를 적용해 동일 인자의 smoothstep을 피한다.
+Bloom·CRT·vignette·glitch의 1:1 fullscreen 패스는 실제 출력 픽셀 중심으로 UV를 계산한다.
+확대·부분 viewport 복사에도 쓰이는 fade/copy는 기존 보간 UV를 유지한다.
+Game Spec schema config는 식별 필드를 요구해 기본 fade `{}`와 oneOf에서 중복 일치하지 않는다.
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
 
@@ -1540,18 +1594,22 @@ IndexedDB 성공/업그레이드 차단 처리는 [MDN transaction complete](htt
 노멀의 최신 여부는 편집 revision/강도와 함께 color/normal store의 생존 여부·문서/저장된 프로젝트 범위를 확인한다. 적용 evidence는 원본 자산의 소유 문서가 아닌 적용한 씬의 key로 기록하고, 비동기 복원 중 store가 닫히면 entry를 다시 등록하지 않는다.
 `placementAssetPatch`는 active fragment의 component scope를 검증한 뒤 같은 target의 normal binding만 spatial patch로 허용한다. 조명/카메라/다른 target 변경으로 권한을 확대하지 않는다.
 `placementPixelTags`는 태그 metadata 편집·UI preview 범위 선택을 담당한다. v5의 stable frame/tag ID와 단조 증가 clip ID는 편집 원본에 보관하고,
-`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
+`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. 역방향·왕복 편집은 direction을 보관하는 v7로 승격하며 기존 원본 읽기는 v1~v6 그대로다. v7은 필수 태그 묶음과64프레임 한도를 사용하며 desktop source/normal 검사도 함께 수용한다. 미리보기와 native는 양끝 중복 없는 반복 왕복·처음으로 돌아와 멈추는 비반복 왕복 및 프레임별 원본 시간을 공유한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
+`placementPixelInk`는 원본 RGBA의 두 색 디더·그라데이션 buffer를 계산하고 canvas는 기존 선택/atlas 경계·preview/paintRegion 이력에 연결한다. `placementPixelPalette`는 JSON/GPL/HEX를 동일한 검증된 RGBA 목록으로 변환하며 자산을 직접 변경하지 않는다.
 `placementPixelOnion`은 순환 없는 인접 프레임 선택을 계산하며 어니언 설정은 `placementPixelFrames`의 UI 상태다.
-`placementPixelCanvas`는 최대2개 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 현재 이미지 뒤에 그린다.
+`placementPixelCanvas`는 앞뒤 각각최대4개(총8개) 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 거리에 반비례하는 alpha로 먼 프레임부터 현재 이미지 뒤에 그린다.
 설정·tint는 모델/PNG·history에 들어가지 않고 스포이트·그리기는 현재 프레임만 사용한다. 재생 중 표시를 숨기며 문서 교체/종료는 보기 설정과 event listener를 정리한다.
-편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
 v1의 단일 레이어를 유지하고 구조·표시·잠금을 편집할 때만 v2의 아래→위 `layers` 배열로 전환한다.
 v2는 최대 8개·256×256·원본 3 MiB이며 고유 ID·이름·표시·잠금·독립 RGBA를 보존한다. 선택은 UI 상태이고 픽셀/레이어 편집은 64단계·실제 snapshot 16 MiB 이력을 공유한다.
-프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 최대16개·전체8 MiB RGBA·원본12 MiB로 제한하고 같은 Undo 예산을 적용한다.
-합성 cache는 현재/인접 프레임을 위해 최대3개(256×256 기준768 KiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
+프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 보관한다. v3/v5 입력의 최대16개를 유지하고 17번째 프레임부터 v6로 전환해 최대64개를 허용한다.
+v6의 태그 묶음은 모두 함께 있거나 생략하며 기존 source identity를 재작성하지 않는다. 전체8 MiB RGBA·원본12 MiB와 같은 Undo 예산을 적용한다.
+합성 cache는 현재/인접 프레임을 위해 최대9개(256×256 기준2.25 MiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
 미리보기 재생 위치/프레임 선택은 UI 상태이며 게임 simulation을 갱신하지 않는다. 정지/blur/탭 전환/해제에서 RAF와 편집기 참조를 정리한다.
-PNG는 최대4×4 atlas/한 변1024다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
-원본 ms의 GCD로 UV를 반복해 기존32-frame/f32 FPS clip0을 구성한다. 범위 초과는 진단하며 정확한 게임 적용을 막고 원본/PNG 저장은 유지한다.
+v6/v7 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
+기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6/v7·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
+64-frame source를 UV 복제로 부풀리지 않으며 native 저장 검증·normal source 재검증에도 같은 버전/치수 계약을 적용한다.
+paired normal 생성은 모든 태그가 사용하는 고유 UV32개 한도를 먼저 진단하여 색상 시트64-frame 경로와 분리한다.
 같은 도트 source에서 생성한 기존 animationSet만 교체하고 수동 변경/다른 animation/normal binding을 보호한다. 게임 재생은 기존 Rust SpritePlayback이 소유한다.
 레이어 패널은 ID별 행을 재사용해 이름 blur 직후 클릭과 키보드 포커스를 보존하며 IME 조합 키를 편집 명령으로 처리하지 않는다.
 문서를 닫거나 도구를 해제할 때 행과 편집기 identity cache를 비워 닫힌 문서의 픽셀 이력을 붙잡지 않는다. 씬 탭으로 잠시 전환할 때는 이력을 보존한다.
@@ -1665,4 +1723,36 @@ GL 타깃 치수 변경은 모든 candidate를 준비한 후 교체하며 중간
 DataSceneView는 virtual viewport와 실제 canvas CSS 크기를 구분해 world 좌표를 왕복한다.
 뷰어는 문서별 편집 카메라를 보관해 게임 미리보기 종료 시 카메라·zoom과 선택/overlay viewport를 함께 복구한다. 게임 상태·entity 위치·카메라 상태는 Rust가 소유한다.
 render command ABI와 시뮬레이션은 바꾸지 않으며 spatial pixelArt와 독립적이다.
+선택 `pixelPerfect.snap`은 GPU vertex 단계에서 가상 픽셀 기준으로 최종 화면 좌표를 반올림한다.
+축 정렬 사각형은 경계를 각각 정렬하고, 회전/투영 그림자는 원점 delta만 더한다.
+색상과 normal MRT는 같은 shader 정책을 사용하며 Rust 커맨드나 Wasm view를 복사/수정하지 않는다.
+WebGL2 normal pass는 메타데이터 생략 시에도 색상 pass의 최종 groundYScale을 전달받는다.
+두 backend의 노멀 데이터 읽기는 mip 0의 정수 texel fetch와 정규화 UV `2^-22` 경계 허용값을 공유한다.
+이 규칙은 연속 좌표에서 정확한 텍셀 경계의 미세 보간 차이로 다른 노멀을 선택하는 것을 방지한다.
+WebGL2 SpriteBatch는 uniform으로 zoom/비활성 0을 전달한다. WebGPU Resolution은 기존 groundYScale과
+shadowProjection 사이 정렬 padding(byte 12)에 같은 값을 넣어 uniform buffer 크기를 유지한다.
+RenderTexture는 화면 스냅을 잠시 해제하고 성공/실패 후 기존 상태를 복원한다.
+
+PNG 아틀라스의 선택형 extrusion은 `scripts/tools/pack-textures.mjs`의 빌드 단계 처리다.
+`extrude`는 기본 0이며 기존 padding의 안쪽에 가장 가까운 RGBA를 복제한다.
+layout·UV·Game Spec·명령 ABI·렌더 셰이더를 바꾸지 않고, 픽셀이 없는 metadata helper에는 옵션을 추가하지 않는다.
+기존 color/normal 애니메이션 패킹은 별도의 공유 layout·edge 복제 계약을 유지한다.
+일반 PNG CLI와 해당 pair 변환의 범위를 합쳐서 자동 normal pair 패킹으로 안내하지 않는다.
+광원/물리 debug/포인터는 연속 좌표를 유지하며 shader snapping은 entity나 camera 저장 좌표에 역전파하지 않는다.
 [Core 계약](../../engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
+
+## 명시적 sprite clip 시간과 이벤트
+
+`world/sprite_clip.rs`는 명시적 clip의 immutable UV·시간 prefix·재생 순서를 보관하고 `Arc`로 prototype과 공유한다.
+원본 frame 256/clip, 64 clips, 합계 4096 한도를 cold configure에서 검증한다. 기존 Copy legacy frame 배열은 늘리지 않는다.
+`SpritePlayback` hot state는 기존 elapsed phase만 유지한다. FPS-only scalar 계산은 그대로 두고,
+variable/reverse/pingpong의 현재 frame·seek·전체 길이는 공통 clip 계산을 사용한다.
+매우 큰 delta에서는 최소 frame 간격(1ms)에 비해 f64 해상도가 부족해지기 전에 modulo reduction을 사용해
+큰 cycle 곱을 뺄 때 phase가 0으로 소실되는 현상을 막는다. 보통 크기의 기존 loop 경계 계산은 유지한다.
+authored/spawned progress 검증도 같은 길이를 사용해 별도 방향 cursor나 snapshot ABI 변경을 피한다.
+
+JS는 cold plan에서 설정과 Wasm v2 capability를 준비한 후 entity를 생성한다. 기존 fps-only <=32의 configure ABI는 유지하고
+새 설정은 descriptor7f32·UV·ms bulk 배열로 전달한다. hot path에 entity별 JS 호출이나 TS playback state를 추가하지 않는다.
+Data Scene world step이 기존 GameplayEvent vector에 kind12/13을 append하고, fixed step 전체가 예산과 overflow index를 공유한다.
+첫4096개 밖의 새 애니메이션 이벤트는 kind14 전역 누락 수로 모은다. cold configure에서 event capacity를 준비하며
+frame clear에서 overflow index도 초기화한다. frame 끝의 기존 관측/디코드 경로를 사용하고 render15f32/event8u32 ABI는 유지한다.

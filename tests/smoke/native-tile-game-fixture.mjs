@@ -135,7 +135,7 @@ export async function probeSavedProjectGame() {
     const size = renderer.viewportSize();
     engine.setViewportSize(size.width, size.height);
     const scene = bundle.sceneDocument;
-    applyDataSceneAuthoringDocument(engine, scene);
+    const applied = applyDataSceneAuthoringDocument(engine, scene);
     engine.pauseDataScene();
     if (!scene.spatial) {
       const first = scene.sceneComposition.fragments.main.instances[0];
@@ -170,6 +170,26 @@ export async function probeSavedProjectGame() {
       blue > 100 && green > 100,
       "Fresh tile runtime did not render both migrated frame colors",
     );
+    let tileAnimation;
+    const animated = scene.sceneComposition.fragments.main.instances.filter(i => i.props?.tileMapImport?.cell && i.props.components.visual.animationSet);
+    if (animated.length) {
+      const cell = animated[0], handle = applied.entityHandles[cell.id];
+      const query = { originX: cell.x - 9, originY: cell.y, directionX: 1, directionY: 0, maxDistance: 10 };
+      const hits = JSON.stringify(engine.raycastBodies(query));
+      check(engine.raycastBodies(query).some(hit => hit.entityId === handle.entityId), 'Saved animated collider missing');
+      const state = () => engine.dataSceneSpriteAnimationState(handle);
+      check(state()?.frame === 0, 'Saved tile did not start at frame zero');
+      let time = 0;
+      const advance = steps => {
+        for(let i=0;i<steps;i++) { time+=25; const callbacks=[...pending.values()];pending.clear();check(callbacks.length===1,'Game loop missing');for(const callback of callbacks)callback(time); }
+      };
+      check(engine.resumeDataScene(), 'Saved game resume failed');
+      advance(4);check(state().frame === 1, 'Native saved tile frame duration was lost');
+      engine.pauseDataScene();const paused=JSON.stringify(state());advance(4);check(JSON.stringify(state())===paused,'Paused tile advanced');
+      check(engine.resumeDataScene(), 'Saved game second resume failed');advance(8);check(state().frame===0,'Native saved tile loop was lost');
+      check(JSON.stringify(engine.raycastBodies(query))===hits,'Saved animated collider changed');
+      tileAnimation={count:animated.length,frames:[0,1,0],pauseResume:true,fixedCollision:true};
+    }
     return {
       freshSession: true,
       sourceHashes: true,
@@ -177,6 +197,7 @@ export async function probeSavedProjectGame() {
       colorSpace: "srgb",
       bluePixels: blue,
       greenPixels: green,
+      ...(tileAnimation ? {tileAnimation} : {}),
     };
   } finally {
     engine?.destroy();

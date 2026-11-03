@@ -224,7 +224,7 @@ impl Engine {
             else {
                 return false;
             };
-            let duration = clip.frames.len() as f64 / f64::from(clip.fps);
+            let duration = clip.duration_seconds();
             if *state == 0
                 || animation[0] != 1.0
                 || self.world.sprites[entity.id as usize].is_none()

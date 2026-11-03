@@ -9,6 +9,7 @@ import { createPixelSelection } from "./placementPixelSelection";
 import { createPixelSelectionControls } from "./placementPixelSelectionControls";
 import { createPixelDrawingControls } from "./placementPixelDrawingControls";
 import { createPixelPaletteControls } from "./placementPixelPaletteControls";
+import { createPixelInkControls } from "./placementPixelInkControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
@@ -24,10 +25,11 @@ import { placementNormalRead, type PlacementNormalAssetHost, type PlacementNorma
 import { readPixelProject, type PixelProjectHost } from "./placementPixelProject";
 import { canUsePlacementAsset } from "./placementAssetScope";
 import { createPixelLayers } from "./placementPixelLayers";
-import { createPixelNormals, pixelNormalSource, pixelNormalPatch } from "./placementPixelNormals";
+import { createPixelNormals, pixelNormalSource, pixelNormalPatch, pixelNormalFrameCount } from "./placementPixelNormals";
 import { createPlacementNormalPreview } from "./placementNormalPreview";
 import type { SpriteNormalGenerationSettings } from "@ferrum2d/ferrum-web/authoring";
 import { createPixelFrames } from "./placementPixelFrames";
+import { pixelEditorAnimationInput } from "./placementPixelAnimation";
 import { readPixelAtlas, type PixelAtlasMetadata } from "./placementPixelAtlas";
 import { createPlacementToolActions, placementActionReason } from "./placementToolPanel";
 
@@ -158,6 +160,8 @@ export function createPlacementPixelTool(options: {
     cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report,
   });
   tools.prepend(drawingControls.picker); toolOptions.append(drawingControls.element);
+  const inkControls = createPixelInkControls({ cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report });
+  toolOptions.append(inkControls.element);
   const paletteControls = createPixelPaletteControls({
     editor: () => editor!, color: () => color, selection: () => selection.area(), selectionKey: () => selection.version(), retainSelection: rect => selection.select(rect),
     key: () => JSON.stringify([options.context().key, options.context().project]),
@@ -252,6 +256,7 @@ export function createPlacementPixelTool(options: {
     editor: () => editor!, tool: () => tool, color: () => color,
     frame:()=>framePanel?.frameId()??editor!.selectedFrame(),readOnly:()=>!!framePanel?.isPlaying()||!options.context().canEdit,
     drawing: () => drawingControls.settings(),
+    ink: () => inkControls.snapshot(),
     pixelPerfect: () => drawingControls.pixelPerfect(),
     imageBrush: () => imageBrushControls.snapshot(),
     repeat: () => repeatControls.settings(),
@@ -284,7 +289,7 @@ export function createPlacementPixelTool(options: {
       { atlas }, editor!.selectedAtlasFrame(), assets.entries()) : pixelComponentPatch(options.context().document,
       options.viewer.state(), texture, animationInput(), assets.entries(),migrationApproval);
   }
-  const animationInput=()=>({width:editor!.width,height:editor!.height,frames:editor!.frames(),...(editor!.tags().length?{tags:editor!.tags(),initialTag:editor!.initialTag()}:{})});
+  const animationInput=()=>pixelEditorAnimationInput(editor!);
   function syncColor() { colorInput.value = pixelHex(color).slice(0, 7); alpha.value = String(color[3]); }
   syncColor();
   function download(blob: Blob, filename: string) {
@@ -366,7 +371,7 @@ export function createPlacementPixelTool(options: {
     }
     invalidate();
     if(generated&&!generated.entry.committed)normals?.discard(generated.entry);generated=undefined;
-    void recovery.forget(); recoveryHold = false; drawingControls.reset(); selectionControls.reset(); imageBrushControls.reset(); repeatControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
+    void recovery.forget(); recoveryHold = false; drawingControls.reset(); inkControls.reset(); selectionControls.reset(); imageBrushControls.reset(); repeatControls.reset(); sizePreview?.reset(); paletteSignature = ""; editor = next;
     atlasSelect.replaceChildren();
     for (const frame of editor.atlas()?.frames ?? []) {
       const option = document.createElement("option"); option.value = frame.id; option.textContent = frame.id; atlasSelect.append(option);
@@ -393,7 +398,7 @@ export function createPlacementPixelTool(options: {
     create.disabled = open.disabled = busy || !options.context().canEdit;
     setUiText(launchStatus, message);
     if (!editor || !active) return;
-    const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)"};
+    const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)",dither:"Dither (D)",gradient:"Gradient (J)"};
     setUiText(toolCaption,uiMessage("Tool options · {0}",uiMessage(toolNames[tool])));
     title.textContent = editor.name + (dirty() ? " •" : "");
     const region = editor.region(), atlas = editor.atlas();
@@ -408,6 +413,7 @@ export function createPlacementPixelTool(options: {
     const history = editor.history(),editing=busy||(framePanel?.isPlaying()??false)||surface.ownsGesture(),pending=selection.pending();
     selectionControls.sync(tool === "select" || pending, editing || !options.context().canEdit);
     drawingControls.sync(tool, editing || !options.context().canEdit, !!selection.bounds(), imageBrushControls.active());
+    inkControls.sync(tool, editing || !options.context().canEdit);
     imageBrushControls.sync();
     repeatControls.sync();
     paletteControls.sync(); canvasControls.sync(); effectsControls.sync(); batchControls.sync(); syncPalette(); sizePreview?.sync();
@@ -438,12 +444,14 @@ export function createPlacementPixelTool(options: {
     documentActions.primary(primary);
     placementActionReason(primary,primary.disabled?pending?"Confirm or cancel the pixel preview first":editing?"Finish the current edit before using this tool":"Pixel editing is unavailable in this document":undefined,documentReason);
     normalStrength.disabled=editing||editor.active()||pending;
-    generateNormal.disabled=editing||editor.active()||pending;
+    const normalFrameLimit=pixelNormalFrameCount(editor.frames(),editor.tags())>32;
+    generateNormal.disabled=editing||editor.active()||pending||normalFrameLimit;
+    setUiAttribute(generateNormal,"title",normalFrameLimit?"Normals support up to 32 animation frames":"Generate Normals");
     previewNormal.disabled=editing||editor.active()||pending||!freshNormal();
     cancelNormal.hidden=!normalInFlight;cancelNormal.disabled=!normalInFlight;
     applyNormal.disabled=editing||editor.active()||pending||!freshNormal()||!options.context().canEdit||owner!==options.context().key;
     if(!applyNormal.disabled){try{pairedPatch();}catch(error){applyNormal.disabled=!(error instanceof PixelClipMigrationRequired);setUiAttribute(applyNormal,"title",error instanceof Error?error.message:String(error));}}
-    setUiText(normalStatus,generated?(freshNormal()?"Normals Ready":"Pixels changed. Regenerate normals."):"Generate normals from the current frames.");
+    setUiText(normalStatus,normalFrameLimit?"Normals support up to 32 animation frames":generated?(freshNormal()?"Normals Ready":"Pixels changed. Regenerate normals."):"Generate normals from the current frames.");
     normalStatus.dataset.stale=String(!!generated&&!freshNormal());
     if(generated&&!freshNormal())closeNormalPreview();
     setUiText(status, message);
@@ -778,7 +786,7 @@ export function createPlacementPixelTool(options: {
       if (direction) { event.preventDefault(); editSelection(() => selection.moveBy(direction[0] * (event.shiftKey ? 10 : 1), direction[1] * (event.shiftKey ? 10 : 1))); }
       if (event.code === "Delete" || event.code === "Backspace") { event.preventDefault(); editSelection(() => selection.remove()); }
     }
-    const map: Record<string, PixelTool> = { KeyM: "select", KeyB: "pencil", KeyE: "eraser", KeyG: "fill", KeyI: "eyedropper", KeyH: "pan", KeyL: "line", KeyR: "rectangle", KeyO: "ellipse" };
+    const map: Record<string, PixelTool> = { KeyM: "select", KeyB: "pencil", KeyE: "eraser", KeyG: "fill", KeyI: "eyedropper", KeyH: "pan", KeyL: "line", KeyR: "rectangle", KeyO: "ellipse", KeyD: "dither", KeyJ: "gradient" };
     if (map[event.code]) { event.preventDefault(); surface.cancel(); tool = map[event.code]; render(); surface.refresh(); }
   });
   workspace.addEventListener("pointerdown", event => event.stopPropagation());

@@ -4,6 +4,11 @@
 
 AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고, Rust/TypeScript 코드는 검증기나 엔진 기능이 부족할 때만 변경한다.
 
+선택 `postProcessing`은 공용 후처리 설정이다. `{ "pixelArt": { "levels": 8, "dither": 0.5, "scanlineIntensity": 0.15 } }`로
+도트 효과를 요청할 수 있다. `levels`는 정수 2~256, 나머지는 0~1이고 기본값은 각각 8·0·0이다.
+기존 pass 배열과 조합할 수 있으며 기존 설정의 호환성과 생략 시 동작을 유지한다.
+렌더러 지원·순서·표시 색상 계산은 [도트 후처리](../../engine/public-api/core.md#도트-후처리)를 따른다.
+
 ## 구조
 
 ```json

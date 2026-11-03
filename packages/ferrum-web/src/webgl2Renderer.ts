@@ -141,6 +141,7 @@ export class WebGL2Renderer implements Renderer {
       this.textureManager.createPlaceholderTextureForId(0);
       this.spriteBatch = new SpriteBatch(gl, this.colorManagement === "linear-srgb");
       cleanup.push(() => this.spriteBatch.destroy());
+      this.spriteBatch.prepareMaterial(this.spriteMaterial);
       this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl, this.colorManagement === "linear-srgb");
       cleanup.push(() => this.physicsDebugLineBatch.destroy());
       this.lightingPass = new WebGL2LightingPass(gl, this.colorManagement === "linear-srgb");
@@ -299,6 +300,7 @@ export class WebGL2Renderer implements Renderer {
       throw new Error("Invalid RenderTexture command buffer layout.");
     }
     // Validate before clearing: a feedback or missing-texture error must preserve the image.
+    this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
     groundShadowProjection(commands);
     for (let i = 0; i < commands.commandCount; i += 1) {
       const id = Math.trunc(commands.buffer[i * commands.floatsPerCommand + 12]);
@@ -315,7 +317,10 @@ export class WebGL2Renderer implements Renderer {
     const scissorEnabled = gl.isEnabled(gl.SCISSOR_TEST);
     const stats = emptyRendererStats();
     const previousGroundYScale = this.groundYScale;
+    const previousPixelSnap = this.spriteBatch.pixelSnap;
     try {
+      // Captures have their own resolution; canvas presentation must not leak in.
+      this.spriteBatch.pixelSnap = 0;
       if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resource.framebuffer);
       gl.viewport(0, 0, target.width, target.height);
@@ -336,6 +341,7 @@ export class WebGL2Renderer implements Renderer {
       this.offscreenStats.textureBindCount += stats.textureBindCount;
       this.offscreenStats.textureSwitchCount += stats.textureSwitchCount;
     } finally {
+      this.spriteBatch.pixelSnap = previousPixelSnap;
       this.setGroundYScale(previousGroundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousFramebuffer);
       gl.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -400,7 +406,9 @@ export class WebGL2Renderer implements Renderer {
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
-    this.spriteMaterial = resolveSpriteMaterialPreset(material);
+    const resolved = resolveSpriteMaterialPreset(material);
+    this.spriteBatch.prepareMaterial(resolved);
+    this.spriteMaterial = resolved;
   }
 
   setSpriteScreenOffset(x: number, y: number): void {
@@ -556,14 +564,18 @@ export class WebGL2Renderer implements Renderer {
     second?: RenderCommandBufferView,
   ): RendererStats {
     this.assertAlive();
-    this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    if (second && this.spriteMaterial.paletteSwap) throw new Error("paletteSwap requires texture-id renderCommands.");
+    this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
+    this.ensureCurrentFrameTarget();
     if (commands.spatial && this.pixelPerfect) throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     const mapped=spriteNormalsActive(commands);
     if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");
     if (commands.spatial && this.lightingScene.enabled) throw new Error("Flat LightingScene2D cannot be combined with a spatial scene; use spatial.environment.lighting");
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget()):undefined;
+    const pixelSnap = this.pixelPerfect?.snap ? this.viewportZoom : 0;
+    this.spriteBatch.pixelSnap = pixelSnap;
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;
@@ -842,7 +854,8 @@ export class WebGL2Renderer implements Renderer {
       // with blitFramebuffer. A nearest fullscreen draw works with either canvas.
       const result=this.fullscreenPass.draw({sourceTexture:output.texture,passes:[COPY_POST_PROCESS_PASS],
         resolution:[p.canvasWidth,p.canvasHeight],viewport:[p.x,bottom,p.width,p.height],nearest:true});
-      addPostProcessStatsInto(this.currentStats,result.drawCalls,0);
+      // Presentation is accounted separately; preserve the authored postprocess counters.
+      this.currentStats.drawCalls += result.drawCalls;
     } finally {
       gl.colorMask(colorMask[0],colorMask[1],colorMask[2],colorMask[3]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);

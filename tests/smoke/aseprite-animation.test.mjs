@@ -94,6 +94,25 @@ function doc(
 const bind = (a, loop = false) =>
   patch(doc(), state, [a], a, { instance: "sprite", initial: "rest", loop });
 const visual = (p) => p.operations[0].components.visual;
+
+test("reimport preserves explicit forward and event policy and rejects manually edited native timing/direction", () => {
+  const a = asset(), v = visual(bind(a));
+  v.animationSet.clips[0].direction = "forward";
+  v.animationSet.clips[0].emitEvents = true;
+  const migrated = visual(patch(doc(v), state, [a], asset("new"), { instance: "sprite", initial: "rest", loop: true }));
+  assert.equal(migrated.animationSet.clips[0].direction, "forward");
+  assert.equal(migrated.animationSet.clips[0].emitEvents, true);
+  for (const edit of ["reverse", "timed"]) {
+    const edited = structuredClone(v);
+    if (edit === "reverse") edited.animationSet.clips[0].direction = "reverse";
+    else {
+      const clip = edited.animationSet.clips[0];
+      clip.frameDurationsMs = clip.frames.map(() => 100);
+      delete clip.fps;
+    }
+    assert.throws(() => patch(doc(edited), state, [a], asset("new"), { instance: "sprite", initial: "rest", loop: true }), /manually edited/);
+  }
+});
 test("integer durations become exact repeated frames with native float32 timing disclosure", () => {
   const [run] = catalog(asset("old", [90, 180, 90]));
   assert.deepEqual(run.repeats, [1, 2, 1]);

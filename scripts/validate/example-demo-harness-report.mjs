@@ -13,6 +13,12 @@ const SHARED_SHELL_CALL_PATTERN = /\bcreateRuntimeDemoShell\s*\(/u;
 
 const SURFACES = [
   {
+    id: "pixel-art",
+    file: "examples/pixel-art/src/main.ts",
+    mode: "shared-shell",
+    style: "shared-theme-override",
+  },
+  {
     id: "starter-runtime",
     file: "examples/starter-runtime/src/main.ts",
     mode: "shared-shell",

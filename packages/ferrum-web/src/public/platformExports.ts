@@ -220,6 +220,7 @@ export type {
   SpriteMaterialPreset,
   SpriteMaterialPresetInput,
   SpriteMaterialPresetName,
+  SpritePaletteSwap,
 } from "../spriteMaterial";
 export type {
   LightingColor3,
@@ -383,6 +384,7 @@ export type {
   CrtPostProcessPassInput,
   FadePostProcessPassInput,
   GlitchPostProcessPassInput,
+  PixelArtPostProcessPassInput,
   PostProcessColor,
   PostProcessPassInput,
   PostProcessPassKind,
@@ -396,6 +398,7 @@ export type {
   ResolvedCrtPostProcessPass,
   ResolvedFadePostProcessPass,
   ResolvedGlitchPostProcessPass,
+  ResolvedPixelArtPostProcessPass,
   ResolvedPostProcessColor,
   ResolvedPostProcessPass,
   ResolvedVignettePostProcessPass,

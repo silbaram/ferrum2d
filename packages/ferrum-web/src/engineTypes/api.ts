@@ -1,3 +1,5 @@
+/// <reference lib="esnext.disposable" preserve="true" />
+
 import type { AudioPoseBufferView } from "../audioPoseBuffer.js";
 import type { DataSceneCombatCrowdStats } from "../dataSceneCombatCrowd.js";
 import type { DataSceneCombatNavigationStats, DataSceneCombatNavigationSchedulerStats } from "../dataSceneCombatNavigation.js";

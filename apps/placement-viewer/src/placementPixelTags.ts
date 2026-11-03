@@ -1,4 +1,5 @@
-import type { createPixelEditor, PixelFrameTag } from "./placementPixelDocument";
+import type { createPixelEditor, PixelFrameTag, PixelTagDirection } from "./placementPixelDocument";
+import { pixelTagPreviewFrames } from "./placementPixelAnimation";
 import { PIXEL_LIMITS } from "./placementPixelDocument";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
 
@@ -17,6 +18,12 @@ export function createPixelTags(options: {
   const loop = document.createElement("input"); loop.type = "checkbox"; loop.dataset.pixelTagLoop = "true";
   const loopLabel = document.createElement("label"), loopText = document.createElement("span");
   setUiText(loopText, "Loop"); loopLabel.append(loop, loopText);
+  const direction=document.createElement("select");direction.dataset.pixelTagDirection="true";
+  setUiAttribute(direction,"aria-label","Playback Direction");
+  for(const [value,title] of [["forward","Forward"],["reverse","Reverse"],["pingpong","Ping-Pong"]]) {
+    const option=document.createElement("option");option.value=value;setUiText(option,title);direction.append(option);
+  }
+  direction.onchange=()=>perform(()=>update({direction:direction.value as PixelTagDirection}));
   const actions = document.createElement("div"); actions.className = "placement-pixel-tag-actions";
   const buttons = new Map<string, HTMLButtonElement>();
   function button(action: string, title: string, run: () => void) {
@@ -26,10 +33,11 @@ export function createPixelTags(options: {
   let selected = "", previous: ReturnType<typeof createPixelEditor> | undefined, signature = "";
   const frames = document.createElement("div"); frames.className = "placement-pixel-tag-frames";
   const hint = document.createElement("p"); setUiText(hint, "Clip IDs are preserved. Select frames in playback order.");
-  panel.append(select, name, loopLabel, actions, frames, hint); element.append(summary, panel);
+  panel.append(select, name, direction, loopLabel, actions, frames, hint); element.append(summary, panel);
   const rows = new Map<string, { label: HTMLLabelElement; input: HTMLInputElement; text: HTMLSpanElement }>();
   const current = () => options.editor().tags().find(tag => tag.id === selected);
-  function update(change: Partial<Pick<PixelFrameTag, "name" | "frameIds" | "loop">>) {
+  const inactive = () => !previous || previous !== options.editor() || options.disabled();
+  function update(change: Partial<Pick<PixelFrameTag, "name" | "frameIds" | "loop" | "direction">>) {
     const tag = current(); if (tag) options.editor().updateTag(tag.id, { ...tag, ...change });
   }
   button("add", "Add Tag", () => {
@@ -42,13 +50,13 @@ export function createPixelTags(options: {
   });
   button("initial", "Initial Clip", () => options.editor().setInitialTag(selected));
   select.onchange = () => {
-    if (options.disabled()) return;
+    if (inactive()) return;
     selected = select.value; signature = ""; options.viewChanged(); sync();
   };
   name.onchange = () => perform(() => update({ name: name.value }));
   loop.onchange = () => perform(() => update({ loop: loop.checked }));
   name.addEventListener("keydown", event => {
-    if (event.isComposing) return;
+    if (event.isComposing || inactive()) return;
     if (event.code === "Enter") { event.preventDefault(); name.dispatchEvent(new Event("change")); }
     if (event.code === "Escape") { event.preventDefault(); signature = ""; sync(); }
   });
@@ -57,12 +65,14 @@ export function createPixelTags(options: {
     event.preventDefault(); event.stopPropagation(); element.open = false; summary.focus();
   });
   function perform(run: () => void) {
+    if (inactive()) return;
     options.perform(run);
     // Invalid edits leave the model unchanged; restore their input values too.
     signature = ""; sync();
   }
   function sync() {
-    const editor = options.editor(), tags = editor.tags(), allFrames = editor.frames();
+    const editor = options.editor(); if (!editor) return;
+    const tags = editor.tags(), allFrames = editor.frames();
     if (previous !== editor) { previous = editor; selected = ""; signature = ""; element.open = false; }
     if (selected && !tags.some(tag => tag.id === selected)) selected = "";
     const focused = document.activeElement;
@@ -73,7 +83,7 @@ export function createPixelTags(options: {
     select.replaceChildren(...choices.map(choice => { const option = document.createElement("option"); option.value = choice.id; setUiText(option, choice.label); return option; }));
     select.value = selected; select.disabled = disabled;
     name.value = tag?.name ?? ""; name.disabled = loop.disabled = disabled || !tag;
-    loop.checked = tag?.loop ?? true;
+    loop.checked = tag?.loop ?? true;direction.disabled=disabled||!tag;direction.value=tag?.direction??"forward";
     buttons.get("add")!.disabled = disabled || tags.length >= PIXEL_LIMITS.tags;
     buttons.get("remove")!.disabled = disabled || !tag || tags.length < 2;
     const initial = buttons.get("initial")!; initial.disabled = disabled || !tag || tag.id === editor.initialTag();
@@ -84,10 +94,13 @@ export function createPixelTags(options: {
       if (!row) {
         const label = document.createElement("label"), input = document.createElement("input"), text = document.createElement("span");
         input.type = "checkbox"; input.dataset.pixelTagFrame = frame.id; label.append(input, text); row = { label, input, text }; rows.set(frame.id, row);
-        input.onchange = () => perform(() => {
-          const tag = current(); if (!tag) return;
-          update({ frameIds: input.checked ? [...tag.frameIds, frame.id] : tag.frameIds.filter(id => id !== frame.id) });
-        });
+        input.onchange = () => {
+          if (rows.get(frame.id)?.input !== input) return;
+          perform(() => {
+            const tag = current(); if (!tag) return;
+            update({ frameIds: input.checked ? [...tag.frameIds, frame.id] : tag.frameIds.filter(id => id !== frame.id) });
+          });
+        };
       }
       row.input.checked = tag?.frameIds.includes(frame.id) ?? false; row.input.disabled = disabled || !tag;
       row.text.textContent = String(index + 1) + " · " + frame.durationMs + " ms" + (tag?.frameIds.includes(frame.id) ? " · #" + (tag.frameIds.indexOf(frame.id) + 1) : "");
@@ -98,9 +111,10 @@ export function createPixelTags(options: {
   return { element, sync,
     previewFrames() {
       const all = options.editor().frames(), tag = current();
-      return tag ? tag.frameIds.map(id => all.find(frame => frame.id === id)!) : all;
+      return tag ? pixelTagPreviewFrames(all,tag) : all;
     },
     previewLoop: () => current()?.loop ?? true,
-    clear() { selected = ""; previous = undefined; signature = ""; rows.clear(); frames.replaceChildren(); element.open = false; },
+    hasPreviewTag: () => !!current(),
+    clear() { selected = ""; previous = undefined; signature = ""; rows.clear(); frames.replaceChildren(); element.open = false; select.disabled = name.disabled = direction.disabled = loop.disabled = true; for (const button of buttons.values()) button.disabled = true; },
   };
 }

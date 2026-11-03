@@ -362,6 +362,8 @@ export function tileComponentPatch(
     if (visual.kind !== "sprite") fail("choose a sprite instance");
     if (state.lockedInstanceIds.includes(instance.id))
       fail("unlock affected instances before importing");
+    if (visual.animationSet && instance.props.tileMapImport)
+      fail("animated map tiles require Apply Map; frame import would remove their animation");
     if (visual.animation || visual.animationSet || components.sprite)
       fail("animated/legacy sprites require an explicit game-spec migration");
     const billboard = document.spatial?.billboards?.[instance.id];

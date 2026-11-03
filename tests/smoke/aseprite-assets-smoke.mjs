@@ -22,14 +22,21 @@ import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/serv
 import { smokeAsepriteNormals } from "./aseprite-normals-smoke.mjs";
 import { smokeAsepriteAnimation } from "./aseprite-animation-smoke.mjs";
 import { smokeAsepritePaired } from "./aseprite-paired-smoke.mjs";
+import { smokeTrimNormals } from "./aseprite-trim-normal-smoke.mjs";
+import { smokeAsepriteSlices, teardownSlicePreview } from "./aseprite-slices-browser-smoke.mjs";
 
 const tileMode = process.argv.includes("--tiles");
+const autotileMode = tileMode && process.argv.includes("--autotile");
+const tileAnimationMode = tileMode && process.argv.includes("--tile-animation");
+const trimMode = process.argv.includes("--trim");
+const sliceMode = process.argv.includes("--slices");
+const trimNormalMode = trimMode && process.argv.includes("--trim-normals");
 const pixelMode = process.argv.includes("--pixels");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const animationMode = process.argv.includes("--animations");
 const artifact = resolve(
-  pixelMode ? "artifacts/pixel-authoring" : tileMode
+  tileAnimationMode ? "artifacts/tile-animation/browser" : autotileMode ? "artifacts/tile-autotile/browser" : sliceMode ? "artifacts/aseprite-slices/browser" : trimMode ? trimNormalMode ? "artifacts/aseprite-trim/normals" : "artifacts/aseprite-trim/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/browser" : "artifacts/pixel-authoring" : tileMode
     ? "artifacts/tile-assets"
     : pairedMode
       ? "artifacts/aseprite-paired"
@@ -41,7 +48,7 @@ const artifact = resolve(
 );
 let generatorRoute,
   generatorAvailable = true;
-if (normalMode || pixelMode)
+if (normalMode || pixelMode || trimNormalMode)
   placementNormalGeneratorPlugin().configurePreviewServer({
     middlewares: {
       use(prefix, handler) {
@@ -130,7 +137,7 @@ let active,
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   try {
-    if ((normalMode || pixelMode) && path.startsWith(generatorRoute.prefix + "/")) {
+    if ((normalMode || pixelMode || trimNormalMode) && path.startsWith(generatorRoute.prefix + "/")) {
       if (!generatorAvailable) {
         response.writeHead(503).end("Normal generator unavailable");
         return;
@@ -471,6 +478,7 @@ try {
         await page.locator('[data-pixel-frame-action="play"]').click();
         assert.equal(await frames.getAttribute('data-pixel-playing'), 'true');
         await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
+        await page.evaluate(() => { window.pixelAnimationLateEvents?.(false); delete window.pixelAnimationLateEvents; });
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-frame-select]').length), 0,
           'destroy must not repopulate the cleared frame panel during canvas teardown');
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,
@@ -514,6 +522,19 @@ try {
       }
       await showPlacementBottom(page, "assets");
       await tool.locator(":scope > summary").click();
+      if (sliceMode) {
+        const result = await smokeAsepriteSlices({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,mode});
+        assert.deepEqual(await teardownSlicePreview(page), [], "Queued import and slice controls failed after workspace disposal");
+        const released=await resources();assert.deepEqual(released,{urls:0,textures:0});assert.deepEqual(errors,[]);
+        results.push({mode,...result,queuedToggleAfterDestroy:true,queuedControlsAfterDestroy:true,queuedImportEventsAfterDestroy:true,released});continue;
+      }
+      if(trimMode) {
+        const trimNormals=mode==='hd2d'&&trimNormalMode?await smokeTrimNormals({page,fixture,stage,tool,action,snapshot,undo,wait}):undefined;
+        const result=await smokeAsepriteAnimation({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,origin,setResume:value=>{resume=value;}});
+        await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent("pagehide",{persisted:false})));
+        const released=await resources();assert.deepEqual(released,{urls:0,textures:0});assert.deepEqual(errors,[]);
+        results.push({mode,...result,...(trimNormals?{trimNormals}:{}),released});continue;
+      }
       const original = await snapshot(),
         first = fixture();
       await stage(first);
@@ -816,7 +837,7 @@ try {
       const bad = [];
       const rotated = fixture();
       rotated.json.frames["hero-idle.png"].rotated = true;
-      bad.push([rotated, /Rotated or trimmed/]);
+      bad.push([rotated, /Rotated/]);
       const trimmed = fixture();
       trimmed.json.frames["hero-idle.png"].spriteSourceSize.x = 1;
       bad.push([trimmed, /Trimmed/]);
@@ -832,7 +853,7 @@ try {
         ...duplicate.json.frames["hero-idle.png"],
         filename: "same",
       });
-      bad.push([duplicate, /duplicate imported frame/]);
+      bad.push([duplicate, /duplicate.*frame/]);
       for (const [data, pattern] of bad) {
         await stage(data);
         assert.match(
@@ -1265,7 +1286,10 @@ try {
       await context.close();
     }
   }
+  if (sliceMode) assert(results.length === 2 && results.every(value => value.slices?.singleUndoRedo && value.slices?.reimportPreservedOrigin && value.slices?.persistedPageTransition && value.queuedToggleAfterDestroy && value.queuedControlsAfterDestroy && value.queuedImportEventsAfterDestroy), "Both slice scenarios must execute including persisted transitions and queued import disposal");
   const report = { ok: true, run, browser: browser.version(), results };
+  if(autotileMode)assert(results.length===2&&results.find(r=>r.mode==='2d')?.autotile?.budgets?.length===3&&results.find(r=>r.mode==='hd2d')?.autotile?.unsupportedSpatialRejected,'Autotile browser scenarios must all run');
+  if(tileAnimationMode)assert(results.length===2&&results.find(r=>r.mode==='2d')?.tileAnimation?.formats?.length===2&&results.find(r=>r.mode==='2d')?.tileAnimation?.budgets?.length===3&&results.find(r=>r.mode==='hd2d')?.tileAnimation?.unsupportedSpatialRejected,'Tile animation browser scenarios must all run');
   await writeFile(
     resolve(artifact, "verification.json"),
     JSON.stringify(report, null, 2) + "\n",

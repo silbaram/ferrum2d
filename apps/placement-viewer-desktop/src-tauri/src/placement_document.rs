@@ -1,9 +1,11 @@
 mod aseprite_assets;
+mod aseprite_trim;
 mod asset_cleanup;
 mod asset_files;
 mod checked_save;
 mod normal_assets;
 mod pixel_assets;
+mod png_layout;
 mod scene_catalog;
 mod sprite_assets;
 mod tile_assets;

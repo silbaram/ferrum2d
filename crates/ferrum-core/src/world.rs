@@ -41,6 +41,7 @@ mod rigid_bodies;
 mod snapshot;
 mod spawning;
 mod sprite_animation;
+mod sprite_clip;
 pub(crate) mod sprite_playback;
 mod templates;
 #[cfg(test)]
@@ -139,15 +140,17 @@ pub struct World {
 impl World {
     pub fn update(&mut self, delta: f32) {
         PhysicsSystem::integrate(self, delta);
-        self.update_sprite_animations(delta);
+        self.update_sprite_animations(delta, None);
     }
 
     pub(crate) fn update_with_rigid_body_step(
         &mut self,
         delta: f32,
         rigid_body_step_enabled: bool,
+        events: &mut Vec<crate::gameplay_event::GameplayEvent>,
+        overflow: &mut Option<usize>,
     ) {
         PhysicsSystem::integrate_legacy_velocities(self, delta, rigid_body_step_enabled);
-        self.update_sprite_animations(delta);
+        self.update_sprite_animations(delta, Some((events, overflow)));
     }
 }

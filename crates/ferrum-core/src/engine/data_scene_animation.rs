@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 
 use super::{Engine, SceneMode};
 use crate::components::SpriteFrame;
-use crate::world::sprite_playback::{SpriteClip, SpritePlayback};
+use crate::world::sprite_playback::{SpriteClip, SpritePlayback, ANIMATION_EVENT_LIMIT};
 
 const UPDATE_STRIDE: usize = 8;
 
@@ -60,35 +60,39 @@ impl Engine {
                 clip_frames.push(frame);
             }
             offset = end;
-            clips.push(SpriteClip {
-                id: id as u32,
-                frames: clip_frames,
+            clips.push(SpriteClip::uniform(
+                id as u32,
+                clip_frames,
                 fps,
-                looping: looping == 1.0,
-            });
+                looping == 1.0,
+            ));
         }
         if offset != frames.len() {
             return false;
         }
-        let Some(active) = clips.iter().position(|clip| clip.id == initial_clip) else {
+        self.install_sprite_playback(entity_id, generation, clips, initial_clip)
+    }
+
+    /// V2 descriptors: [id, count, fps, loop, direction, emit_events, timed].
+    /// Timed clips use fps=0 and append one millisecond duration per source frame.
+    pub fn configure_data_scene_sprite_clips_v2(
+        &mut self,
+        entity_id: u32,
+        generation: u32,
+        descriptors: &[f32],
+        frames: &[f32],
+        durations_ms: &[f32],
+        initial_clip: u32,
+    ) -> bool {
+        if self.scene_mode != SceneMode::Data {
+            return false;
+        }
+        let Some(clips) =
+            super::data_scene_animation_config::decode_clips(descriptors, frames, durations_ms)
+        else {
             return false;
         };
-        let playback = SpritePlayback {
-            clips: clips.into(),
-            active,
-            elapsed: 0.0,
-            paused: false,
-            flip_x: false,
-            flip_y: false,
-        };
-        let index = entity.id as usize;
-        if let Some(sprite) = self.world.sprites[index].as_mut() {
-            playback.write_sprite(sprite);
-        }
-        self.world.sprite_playbacks[index] = Some(playback);
-        self.world.sprite_animations[index] = None;
-        self.data_scene.movement_animation.detach(entity);
-        true
+        self.install_sprite_playback(entity_id, generation, clips, initial_clip)
     }
 
     /// Atomic batch: [id, generation, mask, clip, frame, flip_x, flip_y, paused].
@@ -152,8 +156,7 @@ impl Engine {
                 playback.normalize_time();
             }
             if mask & 2 != 0 {
-                playback.elapsed =
-                    f64::from(update[4]) / f64::from(playback.clips[playback.active].fps);
+                playback.elapsed = playback.clips[playback.active].frame_start(update[4] as usize);
             }
             if mask & 4 != 0 {
                 playback.flip_x = update[5] != 0;
@@ -191,5 +194,46 @@ impl Engine {
             u8::from(state.flip_x).into(),
             u8::from(state.flip_y).into(),
         ]
+    }
+}
+
+impl Engine {
+    fn install_sprite_playback(
+        &mut self,
+        entity_id: u32,
+        generation: u32,
+        clips: Vec<SpriteClip>,
+        initial_clip: u32,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, generation) else {
+            return false;
+        };
+        let index = entity.id as usize;
+        if self.world.sprites[index].is_none() {
+            return false;
+        }
+        let Some(active) = clips.iter().position(|clip| clip.id == initial_clip) else {
+            return false;
+        };
+        if clips.iter().any(|clip| clip.emit_events) {
+            self.frame_buffers
+                .gameplay_events
+                .reserve(ANIMATION_EVENT_LIMIT + 1);
+        }
+        let playback = SpritePlayback {
+            clips: clips.into(),
+            active,
+            elapsed: 0.0,
+            paused: false,
+            flip_x: false,
+            flip_y: false,
+        };
+        if let Some(sprite) = self.world.sprites[index].as_mut() {
+            playback.write_sprite(sprite);
+        }
+        self.world.sprite_playbacks[index] = Some(playback);
+        self.world.sprite_animations[index] = None;
+        self.data_scene.movement_animation.detach(entity);
+        true
     }
 }

@@ -218,6 +218,8 @@ declare global {
   }
 
   interface GPUTexture {
+    readonly width: number;
+    readonly height: number;
     createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
     destroy(): void;
   }
@@ -306,6 +308,7 @@ declare global {
   }
 
   interface GPUCommandEncoder {
+    copyTextureToTexture(source: GPUImageCopyTexture, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void;
     resolveQuerySet(querySet: GPUQuerySet, firstQuery: number, queryCount: number, destination: GPUBuffer, destinationOffset: number): void;
     copyBufferToBuffer(source: GPUBuffer, sourceOffset: number, destination: GPUBuffer, destinationOffset: number, size: number): void;
     beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;

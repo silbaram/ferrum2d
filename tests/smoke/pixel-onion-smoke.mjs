@@ -83,10 +83,10 @@ export async function smokePixelOnion(page,mode,run,original,restorePath) {
   await panel.locator('[data-pixel-frame-action=left]').click();const reordered=await pixels();
   assert(reordered.previous[2]>reordered.previous[0]+30,'reordered next frame changes ghost tint');assert.deepEqual(reordered.next,baseline.next);
   await page.keyboard.press('Control+z');assert.deepEqual(await pixels(),prior);
-  await panel.locator('[data-pixel-frame-action=remove]').click();assert.deepEqual(await ghosts(),[{id:ids[0],side:'previous'}]);
+  await panel.locator('[data-pixel-frame-action=remove]').click();assert.deepEqual(await ghosts(),[{id:ids[0],side:'previous',distance:1}]);
   await page.keyboard.press('Control+z');assert.deepEqual(await pixels(),prior);
-  await select(ids[0]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'next'}]);assert.deepEqual((await pixels()).next,baseline.next,'first frame never wraps to last');
-  await select(ids[2]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'previous'}]);assert.deepEqual((await pixels()).previous,baseline.previous,'last frame never wraps to first');
+  await select(ids[0]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'next',distance:1}]);assert.deepEqual((await pixels()).next,baseline.next,'first frame never wraps to last');
+  await select(ids[2]).click();assert.deepEqual(await ghosts(),[{id:ids[1],side:'previous',distance:1}]);assert.deepEqual((await pixels()).previous,baseline.previous,'last frame never wraps to first');
   await select(ids[1]).click();
   await clickPlacementToolAction(action('zoom-in'));assert.deepEqual(await pixels(),prior,'ghost aligns after zoom');
   const bounds=await canvas.boundingBox();await canvas.focus();await page.keyboard.down('Space');

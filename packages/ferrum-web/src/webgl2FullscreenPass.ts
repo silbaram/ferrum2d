@@ -30,6 +30,7 @@ const POST_PROCESS_KIND = {
   crt: 3,
   vignette: 4,
   glitch: 5,
+  pixelArt: 6,
 } as const;
 
 export class WebGL2FullscreenPass {
@@ -40,6 +41,8 @@ export class WebGL2FullscreenPass {
   private readonly kindLocation: WebGLUniformLocation;
   private readonly colorLocation: WebGLUniformLocation;
   private readonly paramsLocation: WebGLUniformLocation;
+  private readonly pixelParamsLocation: WebGLUniformLocation;
+  private readonly pixelSceneLocation: WebGLUniformLocation;
   private readonly encodeSrgbLocation: WebGLUniformLocation;
   private readonly linearWorkingSpaceLocation: WebGLUniformLocation;
   private destroyed = false;
@@ -63,6 +66,8 @@ export class WebGL2FullscreenPass {
       this.kindLocation = this.requireUniform("u_kind");
       this.colorLocation = this.requireUniform("u_color");
       this.paramsLocation = this.requireUniform("u_params");
+      this.pixelParamsLocation = this.requireUniform("u_pixel_params");
+      this.pixelSceneLocation = this.requireUniform("u_pixel_scene");
       this.encodeSrgbLocation = this.requireUniform("u_encode_srgb");
       this.linearWorkingSpaceLocation = this.requireUniform("u_linear_working_space");
     } catch (error) {
@@ -92,6 +97,7 @@ export class WebGL2FullscreenPass {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.uniform1i(this.sceneLocation, 0);
+    this.gl.uniform1i(this.pixelSceneLocation, 0);
     this.gl.uniform1i(this.linearWorkingSpaceLocation, options.encodeSrgb ? 1 : 0);
     this.gl.uniform2f(
       this.texelSizeLocation,
@@ -164,6 +170,11 @@ export class WebGL2FullscreenPass {
 
   private writePassUniforms(pass: ResolvedPostProcessPass): void {
     this.gl.uniform1i(this.kindLocation, POST_PROCESS_KIND[pass.kind]);
+    if (pass.kind === "pixelArt") {
+      this.gl.uniform4f(this.colorLocation, 0, 0, 0, 0);
+      this.gl.uniform4f(this.pixelParamsLocation, pass.levels, pass.dither, pass.scanlineIntensity, 0);
+      return;
+    }
     if (pass.kind === "fade") {
       this.gl.uniform4f(this.colorLocation, pass.color[0], pass.color[1], pass.color[2], pass.color[3]);
       this.gl.uniform4f(this.paramsLocation, 0, 0, 0, 0);

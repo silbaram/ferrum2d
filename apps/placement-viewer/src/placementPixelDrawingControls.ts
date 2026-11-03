@@ -2,16 +2,16 @@ import { setUiAttribute, setUiText } from "./placementLocale";
 import { PIXEL_BRUSH_MAX, PIXEL_DRAW_DEFAULTS, type PixelDrawSettings, type PixelShape } from "./placementPixelDrawing";
 import type { PixelTool } from "./placementPixelCanvas";
 
-export function createPixelDrawingControls(options: { choose(shape: PixelShape): void; cancel(): void; changed(): void; report(error: unknown): void }) {
+export function createPixelDrawingControls(options: { choose(shape: PixelShape | "dither" | "gradient"): void; cancel(): void; changed(): void; report(error: unknown): void }) {
   let settings: PixelDrawSettings = { ...PIXEL_DRAW_DEFAULTS };
   let perfect = false;
-  const picker = document.createElement("select"); picker.dataset.pixelShapeTool = "true"; setUiAttribute(picker, "aria-label", "Shape Tool");
-  for (const [value, text] of [["", "Shape Tool"], ["line", "Line (L)"], ["rectangle", "Rectangle (R)"], ["ellipse", "Ellipse (O)"]]) {
+  const picker = document.createElement("select"); picker.dataset.pixelShapeTool = "true"; setUiAttribute(picker, "aria-label", "Drawing Tool");
+  for (const [value, text] of [["", "Drawing Tool"], ["line", "Line (L)"], ["rectangle", "Rectangle (R)"], ["ellipse", "Ellipse (O)"], ["dither", "Dither (D)"], ["gradient", "Gradient (J)"]]) {
     const option = document.createElement("option"); option.value = value; setUiText(option, text); picker.append(option);
   }
   picker.onchange = () => {
     const value = picker.value;
-    if (value === "line" || value === "rectangle" || value === "ellipse") options.choose(value);
+    if (value === "line" || value === "rectangle" || value === "ellipse" || value === "dither" || value === "gradient") options.choose(value);
   };
   const element = document.createElement("div"); element.className = "placement-pixel-drawing-options";
   element.setAttribute("role", "toolbar"); setUiAttribute(element, "aria-label", "Pixel Drawing Options"); element.hidden = true;
@@ -43,15 +43,15 @@ export function createPixelDrawingControls(options: { choose(shape: PixelShape):
     pixelPerfect: () => perfect && settings.size === 1,
     reset() { settings = { ...PIXEL_DRAW_DEFAULTS }; perfect = false; },
     sync(tool: PixelTool, disabled: boolean, selected: boolean, imageBrush = false) {
-      const shape = tool === "line" || tool === "rectangle" || tool === "ellipse", paint = tool === "pencil" || tool === "eraser";
-      element.hidden = !shape && !paint && !(tool === "fill" && selected);
-      picker.value = shape ? tool : ""; picker.disabled = disabled;
+      const shape = tool === "line" || tool === "rectangle" || tool === "ellipse", paint = tool === "pencil" || tool === "eraser" || tool === "dither", gradient = tool === "gradient";
+      element.hidden = !shape && !paint && !gradient && !(tool === "fill" && selected);
+      picker.value = shape || gradient || tool === "dither" ? tool : ""; picker.disabled = disabled;
       size.value = String(settings.size); size.disabled = disabled; sizeLabel.hidden = (tool === "pencil" && imageBrush) || (!paint && (!shape || (tool !== "line" && settings.filled)));
       perfectInput.checked = perfect; perfectInput.disabled = disabled || settings.size !== 1 || imageBrush; perfectLabel.hidden = tool !== "pencil";
       perfectHint.hidden = tool !== "pencil" || (settings.size === 1 && !imageBrush); setUiText(perfectHint, imageBrush ? "Square 1px Pencil Only" : "1px Pencil Only");
       for (const [key, control] of [["mirrorX", mirrorX], ["mirrorY", mirrorY], ["filled", filled]] as const) {
         control.input.checked = settings[key]; control.input.disabled = disabled;
-        control.label.hidden = key === "filled" ? tool !== "rectangle" && tool !== "ellipse" : !shape && !paint;
+        control.label.hidden = key === "filled" ? tool !== "rectangle" && tool !== "ellipse" : !shape && !paint && !gradient;
       }
       hint.hidden = !shape; mask.hidden = !selected;
     },

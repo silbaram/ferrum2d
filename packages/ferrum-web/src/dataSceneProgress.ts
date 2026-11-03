@@ -1,5 +1,6 @@
 import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
 import { combatSpawnPrefabNames } from "./dataSceneSpawnProgress.js";
+import { dataSceneSpriteClipDurationSeconds } from "./dataSceneSpriteAnimation.js";
 import { combatCrowdRequired } from "./dataSceneCombatCrowd.js";
 import { combatActionsRequired, finalCombatActions } from "./dataSceneCombatActions.js";
 import type { FerrumEngine } from "./engineTypes.js";
@@ -604,7 +605,7 @@ export function validateDataSceneProgress(
           "Data Scene animation progress requires live authored clips and valid playback state.",
         );
       }
-      const duration = clip.frames.length / Math.fround(clip.fps);
+      const duration = dataSceneSpriteClipDurationSeconds(clip);
       if (
         animation.elapsedSeconds > duration ||
         (clip.loop !== false && animation.elapsedSeconds >= duration)

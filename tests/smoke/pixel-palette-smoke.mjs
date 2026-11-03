@@ -33,6 +33,20 @@ export async function smokePixelPalette(page,mode,run) {
   await menu.locator('[data-pixel-palette-file]').setInputFiles({name:'colors.json',mimeType:'application/json',buffer:paletteFile(imported)});
   await page.waitForFunction(()=>document.querySelector('[data-pixel-palette-list]').options.length===2);assert.deepEqual((await source()).palette,imported);
   let waiting=page.waitForEvent('download');await button('export').click();let file=await waiting;const palettePath=resolve(run,mode+'-exported.pixel-palette.json');await file.saveAs(palettePath);assert.deepEqual(JSON.parse(await readFile(palettePath,'utf8')).colors,imported);
+  for(const [name,text,colors] of [
+    ['external.gpl','GIMP Palette\r\nName: Own palette\r\nColumns: 2\r\n# fixture\r\n255 0 0 Red\r\n0 128 255 Blue\r\n255 0 0 Duplicate',['#ff0000ff','#0080ffff','#ff0000ff']],
+    ['external.hex','// fixture\n112233\n#AABBCC80\n11223300\n112233',['#112233ff','#aabbcc80','#11223300','#112233ff']],
+  ]) {
+    await menu.locator('[data-pixel-palette-file]').setInputFiles({name,mimeType:'text/plain',buffer:Buffer.from(text)});
+    await page.waitForFunction(n=>document.querySelector('[data-pixel-palette-list]').options.length===n,colors.length);
+    const external=await source();assert.deepEqual(external.palette,colors);assert.deepEqual(external.frames,original.frames);
+    await clickPlacementToolAction(action('undo'));assert.deepEqual((await source()).palette,imported);
+    await clickPlacementToolAction(action('redo'));assert.deepEqual((await source()).palette,colors);
+    await clickPlacementToolAction(action('undo'));
+  }
+  await menu.locator('[data-pixel-palette-file]').setInputFiles({name:'invalid.hex',mimeType:'text/plain',buffer:Buffer.from('112233\nnot a color')});
+  await page.waitForFunction(()=>document.querySelector('[data-pixel-status]').textContent.includes('Invalid HEX palette'));
+  assert.deepEqual((await source()).palette,imported);
   await page.evaluate(()=>{const original=File.prototype.text;window.restorePaletteRead=()=>{File.prototype.text=original;};File.prototype.text=function(){if(this.name==='late-palette.json')return new Promise(resolve=>{window.finishPaletteRead=()=>resolve(JSON.stringify({format:'ferrum2d.pixel-palette',version:1,colors:['#000000ff']}));});return original.call(this);};});
   await menu.locator('[data-pixel-palette-file]').setInputFiles({name:'late-palette.json',mimeType:'application/json',buffer:paletteFile(['#000000ff'])});
   await page.waitForFunction(()=>typeof window.finishPaletteRead==='function');await color('#ff0000');await button('add').click();
@@ -48,5 +62,5 @@ export async function smokePixelPalette(page,mode,run) {
   await page.screenshot({path:resolve(run,mode+'-pixel-palette-ko-narrow.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});await page.locator('[data-placement-language]').selectOption('en');await menu.locator('summary').click();await color('#ff0000',255);
   assert.deepEqual(await source(),original);assert.deepEqual(await page.evaluate(()=>({patch:window.ferrumPlacementViewerState.draftPatch,history:window.ferrumPlacementViewerHistory})),scene);
-  return{metadataOnly:true,reorder:true,exactRgbaReplacement:true,hiddenAndLockedProtected:true,cancelReadonly:true,oneUndo:true,importExport:true,lateReadRejected:true,invalidInputPreserved:true,boundedRecents:true,localeAndNarrow:true,noSceneEdit:true};
+  return{metadataOnly:true,reorder:true,exactRgbaReplacement:true,hiddenAndLockedProtected:true,cancelReadonly:true,oneUndo:true,importExport:true,externalGplHex:true,externalUndoRedo:true,lateReadRejected:true,invalidInputPreserved:true,boundedRecents:true,localeAndNarrow:true,noSceneEdit:true};
 }

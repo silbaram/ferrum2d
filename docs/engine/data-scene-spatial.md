@@ -919,7 +919,7 @@ descriptor는 `ferrum2d.sprite-normal.animation` v1이며 다음을 기록한다
   실제 raw metadata 파일 hash는 완료 report의 `outputs`에 별도로 기록한다.
 
 원본 지연 시간의 유리수 최대공약수를 tick으로 삼아 UV frame을 반복한다. 예를 들어 50/90/120/60ms는
-10ms tick의 5/9/12/6 frame으로 변환된다. 기존 native clip의 **1..32 frame, 고정 FPS 0.001..1000** 한도 안에서만
+10ms tick의 5/9/12/6 frame으로 변환된다. 이 변환기의 **1..32 frame, 고정 FPS 0.001..1000** 한도 안에서만
 변환하며, 0 지연·32개 초과·범위 밖 FPS는 `FERRUM_NORMAL_TIMING_UNSUPPORTED`로 거절한다.
 타이밍을 임의로 반올림하거나 프레임을 버리지 않는다. native FPS는 f32로 저장하므로 descriptor에 cycle 오차를 남긴다.
 이 수치는 FPS 표현 오차이며 프레임 루프 delta 누적·화면 표시 시점의 오차까지 보장하지 않는다.
@@ -1067,7 +1067,7 @@ JS·Wasm·LICENSE의 bytes/hash를 검증한 뒤 lazy init한다. host는 HTTP(S
 입력은 `name` basename·`bytes: Uint8Array`와 선택형 settings/animation이다. 원본 bytes를 복사한 뒤 복사본만 transfer한다.
 7개 생성 설정과 `frameSize`의 범위·기본값은 위 CLI와 같다. 브라우저 v1은 upstream의 **원본 frame grid**를 유지한다.
 추가 packing·padding·회전·trim 설정을 받지 않으며 `animation`은 명시적 `loop`와 선택형 `clipId`만 받는다.
-descriptor의 padding은 0이고 color/normal은 같은 grid·UV를 쓴다. 유리수 delay와 32 native frame/FPS 한도는 CLI와 같다.
+descriptor의 padding은 0이고 color/normal은 같은 grid·UV를 쓴다. 유리수 delay와 변환기의 32 frame/FPS 한도는 CLI와 같다.
 정적 PNG color는 원본 bytes이며 애니메이션 color는 생성된 RGBA8 atlas다. normal은 OpenGL 방향·non-color다.
 
 결과에는 owned color/normal PNG, upstream `metadataJson`, CLI 호환 report, 선택형 descriptor/hash와 resource stats가 있다.
@@ -1079,7 +1079,7 @@ report의 `config.path`는 `worker:<name>` locator이며 파일이 아니다. ge
 | --- | --- |
 | 입력 bytes·이름 | 16 MiB, 경로 없는 PNG/GIF/APNG basename 128자 |
 | 이미지 | 각 변 4096, 전체 4,194,304 pixel, source frame 256 |
-| native clip | 반복 UV를 포함해 32 frame, FPS 0.001..1000 |
+| 변환기 clip 출력 | 반복 UV를 포함해 32 frame, FPS 0.001..1000 |
 | 결과·metadata | color/normal 합계 40 MiB, metadata 256 KiB |
 | Wasm linear memory | linker에 최대 256 MiB를 인코딩하고 bundle 검사에서도 확인 |
 | cache·시간 | LRU 최대 4건/8 MiB, 기본 30초·요청별 최대 120초 |

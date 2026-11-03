@@ -30,6 +30,31 @@ test('palette import/export is bounded, versioned and preserves order/duplicates
   assert.deepEqual(readPixelPalette(exportPixelPalette([])),[]);
   for(const input of ['{',JSON.stringify({colors}),JSON.stringify({format:'ferrum2d.pixel-palette',version:2,colors}),' '.repeat(16385)])assert.throws(()=>readPixelPalette(input));
 });
+test('external GPL palettes accept old/new headers, names and CRLF without losing order or duplicates',()=>{
+  const expected=['#ff0000ff','#010203ff','#ff0000ff'];
+  for(const header of ['GIMP Palette\n','GIMP Palette\nName: 내 팔레트\nColumns: 2\n']) {
+    const input=header+'# comment\n255 0 0 Red\n 1\t2\t3\tName with spaces\n\n255 0 0';
+    assert.deepEqual(readPixelPalette(input,'colors.GPL'),expected);
+    assert.deepEqual(readPixelPalette('\ufeff'+input.replaceAll('\n','\r\n'),'colors.gpl'),expected);
+  }
+});
+test('HEX import keeps RGB/RGBA order, duplicate and transparent colors through source save and Undo',()=>{
+  const colors=readPixelPalette('// own colors\n112233\r\n#AABBCC80\n11223300\n112233\n','colors.hex');
+  assert.deepEqual(colors,['#112233ff','#aabbcc80','#11223300','#112233ff']);
+  const editor=create(blank(2,2)),before=editor.document();
+  editor.setPalette(colors);const saved=editor.document();assert.deepEqual(create(saved).palette,colors);
+  assert.deepEqual(readPixelPalette(exportPixelPalette(colors)),colors);
+  assert.equal(editor.history().undo,1);editor.undo();assert.deepEqual(editor.document(),before);editor.redo();assert.deepEqual(editor.document(),saved);
+});
+test('external palette rejection is bounded and never partially changes a source',()=>{
+  const editor=create(blank(2,2)),before=editor.document(),revision=editor.revision();
+  for(const [filename,inputs] of [
+    ['x.gpl',['GIMP Palette\n256 0 0','GIMP Palette\n-1 0 0','GIMP Palette\n1.5 0 0','GIMP Palette\nName: X\nColumns: 256\n1 2 3','GIMP Palette\n1 2','GIMP Palette\nName: X\nColumns: -1\n1 2 3','GIMP Palette\n1 2 3\nbad','GIMP Palette\n', 'GIMP Palette\n'+Array(257).fill('1 2 3').join('\n')]],
+    ['x.hex',['','#123','abcdxy','12 34 56','# comment','112233\ninvalid',Array(257).fill('112233').join('\n'),' '.repeat(16385)]],
+  ])for(const input of inputs)assert.throws(()=>editor.setPalette(readPixelPalette(input,filename)),filename+': '+input.slice(0,60));
+  assert.deepEqual(editor.document(),before);assert.equal(editor.revision(),revision);assert.equal(editor.history().undo,0);
+  assert.equal(readPixelPalette(Array(256).fill('112233').join('\n'),'x.hex').length,256);
+});
 test('color replacement scopes keep other cels/hidden/locked layers and metadata intact',()=>{
   const editor=create(blank(4,4));editor.begin();editor.fill(0,0,blue);editor.commit();const body=editor.selectedLayer();
   const locked=editor.addLayer();editor.begin();editor.fill(0,0,blue);editor.commit();editor.setLayerLocked(locked,true);

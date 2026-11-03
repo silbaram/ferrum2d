@@ -12,11 +12,13 @@ export class WebGL2SpriteNormals {
   private readonly neutral=new Float32Array([0.5,0.5,0.5,0]);
   private readonly empty=new Float32Array(4);
   constructor(private readonly gl:WebGL2RenderingContext){this.batch=new SpriteBatch(gl,true,true);}
-  draw(source:SpriteTextureSource,commands:RenderCommandBufferView,width:number,height:number,resolution:[number,number],material:ResolvedSpriteMaterialPreset,offset:readonly[number,number],restore:()=>void):SpriteBatchStats {
+  draw(source:SpriteTextureSource,commands:RenderCommandBufferView,width:number,height:number,resolution:[number,number],material:ResolvedSpriteMaterialPreset,offset:readonly[number,number],restore:()=>void,pixelSnap=0,groundYScale=commands.groundYScale??1):SpriteBatchStats {
     const gl=this.gl, capabilities=[gl.DEPTH_TEST,gl.CULL_FACE,gl.SCISSOR_TEST], enabled=capabilities.map(capability=>gl.isEnabled(capability)), mask=gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
     try{
       gl.colorMask(true,true,true,true);
-      this.resize(width,height);this.batch.groundYScale=commands.groundYScale??1;
+      // The host supplies its resolved projection, including retained state when
+      // this frame omits groundYScale. Match the color pass exactly.
+      this.resize(width,height);this.batch.groundYScale=groundYScale;this.batch.pixelSnap=pixelSnap;
       gl.bindFramebuffer(gl.FRAMEBUFFER,this.framebuffer!);gl.viewport(0,0,width,height);
       gl.disable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.SCISSOR_TEST);
       gl.clearBufferfv(gl.COLOR,0,this.neutral);gl.clearBufferfv(gl.COLOR,1,this.empty);

@@ -35,6 +35,8 @@ export async function probeSavedProjectGame() {
   const sceneDocument=await (await fetch('/game/scene-authoring.json')).json();
   const report=await probePixelResume({assets,manifest:catalog.manifest,sceneDocument,normalBindings});
   if(report.bluePixels<100)throw Error('Saved pixel game did not render blue sprite');
-  if(sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual.animationSet&&report.playback?.sourceFrames!==2)throw Error('Saved pixel animation did not advance');
+  const visual=sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual;
+  const activeSource=assets.find(asset=>asset.id===visual.texture)?.source;
+  if(visual.animationSet&&report.playback?.sourceFrames!==(activeSource?.version===6?64:2))throw Error('Saved pixel animation did not advance');
   return {...report,editableSourcesVerified:true};
 }

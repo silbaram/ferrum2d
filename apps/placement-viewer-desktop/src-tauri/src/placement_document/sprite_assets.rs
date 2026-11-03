@@ -17,7 +17,8 @@ const MAX_JSON: usize = 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_REVISIONS: usize = 8;
 static SERIAL: AtomicU64 = AtomicU64::new(0);
-type ValidateSource = fn(&Value, Vec<u8>, Vec<u8>, Vec<Dependency>) -> CommandResult<Source>;
+type ValidateSource =
+    fn(&Value, Vec<u8>, Vec<u8>, Vec<Dependency>, Option<Vec<u8>>) -> CommandResult<Source>;
 #[derive(Debug)]
 pub(super) struct Contract {
     pub(super) directory: &'static str,
@@ -26,6 +27,7 @@ pub(super) struct Contract {
     pub(super) catalog_format: &'static str,
     pub(super) project_format: &'static str,
     pub(super) max_dependencies: usize,
+    pub(super) allow_source_png: bool,
     pub(super) max_source_json: usize,
     pub(super) max_source_png: usize,
     pub(super) check_catalog_revision: bool,
@@ -78,6 +80,7 @@ pub(super) struct Source {
     pub(super) png: Vec<u8>,
     pub(super) json: Vec<u8>,
     pub(super) dependencies: Vec<Dependency>,
+    pub(super) source_png: Option<Vec<u8>>,
 }
 
 impl Source {
@@ -87,11 +90,20 @@ impl Source {
     fn bytes(&self) -> usize {
         self.png.len()
             + self.json.len()
+            + self.source_png.as_ref().map_or(0, Vec::len)
             + self
                 .dependencies
                 .iter()
                 .map(|d| d.json.len())
                 .sum::<usize>()
+    }
+}
+
+fn has_source_png(contract: &Contract, meta: &Value) -> CommandResult<bool> {
+    match meta.get("sourcePng") {
+        None => Ok(false),
+        Some(value) if contract.allow_source_png && value.is_object() => Ok(true),
+        _ => Err(invalid("source PNG metadata is unsupported or invalid")),
     }
 }
 
@@ -142,7 +154,11 @@ fn bundle_sources(contract: &Contract, bundle: &Value) -> CommandResult<Vec<Sour
         || files.len()
             != revisions
                 .iter()
-                .map(|meta| dependency_metadata(contract, meta).map(|d| 2 + d.len()))
+                .map(|meta| {
+                    dependency_metadata(contract, meta).and_then(|d| {
+                        Ok(2 + d.len() + usize::from(has_source_png(contract, meta)?))
+                    })
+                })
                 .collect::<CommandResult<Vec<_>>>()?
                 .iter()
                 .sum::<usize>()
@@ -208,6 +224,11 @@ fn bundle_sources(contract: &Contract, bundle: &Value) -> CommandResult<Vec<Sour
             read("png", contract.max_source_png, "image/png")?,
             json,
             dependencies,
+            if has_source_png(contract, &normalized)? {
+                Some(read("source.png", contract.max_source_png, "image/png")?)
+            } else {
+                None
+            },
         )?;
         total += source.bytes();
         if total > MAX_TOTAL {
@@ -285,6 +306,14 @@ pub(super) fn catalog_sources(
             bounded_read(&root.join(format!("{id}.png")), contract.max_source_png)?,
             json,
             dependencies,
+            if has_source_png(contract, entry)? {
+                Some(bounded_read(
+                    &root.join(format!("{id}.source.png")),
+                    contract.max_source_png,
+                )?)
+            } else {
+                None
+            },
         )?;
         total += source.bytes();
         if total > MAX_TOTAL {
@@ -327,6 +356,9 @@ pub(super) fn register(
         };
         entry["pngUrl"] = json!(register_file("png", "image/png")?);
         entry["jsonUrl"] = json!(register_file("json", "application/json")?);
+        if source.source_png.is_some() {
+            entry["sourcePngUrl"] = json!(register_file("source.png", "image/png")?);
+        }
         if !source.dependencies.is_empty() {
             let mut dependencies = Vec::new();
             for (i, dep) in source.dependencies.iter().enumerate() {
@@ -389,6 +421,7 @@ pub(super) fn save_inner(
                 || old.png != source.png
                 || old.json != source.json
                 || old.dependencies != source.dependencies
+                || old.source_png != source.source_png
             {
                 return Err(invalid("immutable catalog revision differs"));
             }
@@ -408,6 +441,13 @@ pub(super) fn save_inner(
             let id = source.id()?;
             create_file(&root.join(format!("{id}.png")), &source.png, &mut created)?;
             create_file(&root.join(format!("{id}.json")), &source.json, &mut created)?;
+            if let Some(original) = &source.source_png {
+                create_file(
+                    &root.join(format!("{id}.source.png")),
+                    original,
+                    &mut created,
+                )?;
+            }
             for (i, dep) in source.dependencies.iter().enumerate() {
                 create_file(
                     &root.join(format!("{id}.dep.{i}.tsj")),

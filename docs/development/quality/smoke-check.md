@@ -282,12 +282,12 @@ export bundle과 동반 patch로 만든 씬은 별도 새 페이지에서 PNG ha
 
 `pnpm smoke:aseprite-assets`는 빌드한 ferrum-web/엔진 Wasm과 Chromium을 준비한 뒤 실행한다.
 optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 별도 HTTP host에서 실행하며
-기본 CI 편입 없이 opt-in으로 다음을 확인한다.
+기본 CI에서도 다음을 확인한다.
 
 - 2D DPR 1·HD-2D DPR 2의 JSON+PNG 검사와 frame Preview, 등록 후 실제 frame 배치·Apply Frame
 - frame 이름을 유지한 크기/위치 변경 재import의 실제 native PNG 픽셀과 pose/size/pivot/collider/body 보존
 - 한 건 Undo/Redo와 revision handoff 복원, 제거·모호한 frame 및 animation/normal migration 진단
-- 잘못된 JSON/PNG 크기·파일명·회전·trim·범위·중복·byte 한도 거절과 기존 씬 보존
+- 잘못된 JSON/PNG 크기·파일명·회전·잘못된 trim offset·범위·중복·byte 한도 거절과 기존 씬 보존
 - 실제 GPU 업로드 뒤 실패 rollback, 취소 직후 같은 revision 재시도, URL/GL texture 해제
 - 문서별 catalog 분리·8 revision 한도·닫기 후 재개, compact Source/Preview 방향키/Home/End
 - scene-only Save 차단, 원본 JSON/PNG byte hash와 sRGB manifest가 담긴 Export Assets,
@@ -295,7 +295,7 @@ optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 �
 - BFCache pagehide/pageshow 후 재개와 최종 pagehide 이후 Blob URL/실제 GL texture 잔여 0
 
 근거는 `artifacts/aseprite-assets/verification.json`, `checks.json`과 run별 PNG/bundle/resume JSON이다.
-입력은 비회전·비트림 atlas로 제한하며 JSON 1 MiB/PNG 16 MiB·한 변 4,096·4 MP·256 frame,
+기존 기본 fixture는 비회전·비트림 atlas이며 trim 복원은 아래 전용 gate로 검증한다. JSON 1 MiB/PNG 16 MiB·한 변 4,096·4 MP·256 frame,
 세션 8 revision/원본 64 MiB 한도를 사용한다. resource 개수 검사는 JS heap·실제 기기 성능 검증을 대체하지 않는다.
 이 명령은 generated create-game viewer와 프로젝트 filesystem 설치를 검사하지 않는다. 프로젝트 저장은 아래 별도 smoke로 검증한다.
 명령이 남긴 테스트용 save-enabled app은
@@ -303,6 +303,24 @@ optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 �
 공식 작업공간 smoke의 입력·크기·focus 대상은 `canvas.demo-canvas`로 지정해 Assets의 frame preview canvas와 구분한다.
 workspace 전환의 native readback은 최대 16 RAF 안에 CSS/DPR와 drawing buffer 크기가 일치하고
 세 프레임 연속 크기가 안정될 때만 읽는다. 실패 전후 PNG의 완전 동일성 조건은 유지한다.
+
+### Trim 프레임 복원과 원본 보존
+
+`pnpm test:aseprite-trim`은 offset/원본 canvas·혼합 프레임·UTF-8 ID 배치와 source 순서, alpha-zero RGB·투명 여백, Adam7, 원본 기반 identity·기존 untrim의 두 파일 호환을 검사한다.
+프로젝트 재열기는 별도 PNG encoding을 보존하고, 원본 sidecar 변조·pixels 불일치·복원 치수 초과를 거절해야 한다.
+`pnpm smoke:aseprite-trim`은 save-enabled app과 기존 Aseprite harness의 `--trim` 분기로 2D DPR1·HD-2D DPR2를 검증한다.
+실제 재가져오기·단일 Undo/Redo·pose/size/origin/collider/body·clip ID를 보존하고 export PNG의 전체 RGBA/여백과 원본 JSON/packed PNG hash를 독립 대조한다.
+새 게임은 Playing·실제 native UV·visible frame·draw/texture switch 예산을 함께 검사한다. native는 실제 Rust writer/protocol·재시작·원본 PNG 변조 거절을 확인한다.
+desktop 단위 검사는 sourcePng의 지원 필드 정규화·불변 재시도, PNG trailing bytes/non-sRGB 거절, 원본 PNG의 정리/백업/복원을 포함한다.
+증거는 `artifacts/aseprite-trim/{browser,native}/verification.json`과 run별 PNG/JSON에 남긴다. CI와 aggregate smoke에 연결한다.
+선택 노멀 생성기 설치 후 `pnpm smoke:aseprite-trim-normals`로 실제 Worker 입력의 복원 frame RGBA·여백과 normal 적용/Undo를 검증한다. 이 추가 gate는 `artifacts/aseprite-trim/normals/`에 기록하며 기본 trim CI는 선택 생성기를 요구하지 않는다.
+
+`pnpm test:aseprite-slices`는 명시적 원본 key frame, bounds-local pivot/center, metadata 상한/오류, 정적/animated origin patch, 같은 packed rect를 공유하는 frame, 선택/잠금/UV 검사와 다른 속성 보존을 검사한다.
+`pnpm smoke:aseprite-slices`는 2D·HD-2D에서 실제 Preview 선택·명시적 origin 적용·단일 Undo/Redo·일반 재가져오기 origin 보존·KO/EN 전환을 검증한다.
+slice 패널 toggle과 선택 변경·기준점 적용, 원본 파일/이름 입력·가져오기 버튼 이벤트를 queue한 뒤 같은 task에서 작업공간을 종료해, 뒤늦은 이벤트에도 일반/Promise 예외가 없고 URL/GL 자원이 정리되는지 확인한다. `persisted` 페이지 전환에서는 편집 상태와 이벤트를 유지해 복귀 후에도 기준점 적용·Undo/Redo가 동작해야 한다.
+native 분기는 실제 Rust 저장/protocol·재시작·원본 slice JSON/scene origin 보존·trim 재검사와 새 게임의 Playing/UV/visible frames/draw 예산을 확인한다. 종료 시 Blob URL/GL 자원0도 검사한다.
+보고서는 `artifacts/aseprite-slices/browser/verification.json`과 `artifacts/aseprite-slices/native/verification.json`에 기록한다. 기본 CI에 연결하며 선택 normal 생성기는 필요하지 않다. 실제 native GUI IPC·실물 GPU 검증은 포함하지 않는다.
+기존16 MiB·4096·4MP·256frame·8revision/64 MiB 예산을 원본/복원에 각각 적용하며 합계에는 두 PNG를 모두 포함한다. native GUI IPC·실물 GPU/모바일 성능은 이 검증 대상이 아니다.
 
 `pnpm test:aseprite-animation`은 duration GCD/native float32 오차·4개 방향·array/hash 순서,
 numeric clip ID/initial/loop 보존·태그 추가/누락/모호함·수동 수정·frame/FPS 제한·lock/normal/legacy 거절을 확인한다.
@@ -1094,6 +1112,7 @@ machine-readable report에 포함된다.
 이 수치는 전체가 public API 비용이라는 뜻이 아니다. Breakout과 Platformer는 작은 runtime integration
 기준선으로 사용하고, Minimal Game은 여러 lab/content smoke가 함께 들어간 showcase로 해석한다. Physics,
 Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하지 않고 공유 primitive만 사용한다.
+도트 쇼케이스(`examples/pixel-art`)도 shared shell을 사용하며 같은 report의 누락·중복 검사 대상이다.
 
 ## Browser render smoke check
 
@@ -1915,8 +1934,8 @@ v1→v2 전환·독립 레이어 픽셀·정수 alpha 합성, 순서/표시/잠�
 8개·256×256의 1 MiB 초과 원본과 3 MiB/16 MiB 예산, v1 400,000 bytes 유지·중복 ID/잘못된 flag 거절을 확인한다.
 JSON 정수의 소수/지수 표기·JS 공백 판정·UTF-16 길이와 짝 없는 surrogate 거절도 검사한다.
 v3 프레임 추가/복제/삭제/순서/시간과 모든 frame의 layer/cel 연결·독립 픽셀·Undo를 검사한다.
-최대16프레임/전체8 MiB cel/12 MiB 원본과 최대 문서의16 MiB history, atlas 순서/투명 RGB/마지막 padding, snapshot·PNG 대조를 확인한다.
-원본 시간의 GCD→고정FPS UV tick·32개 한도 진단, frame 선택/preview cursor의 dirty 불변과 서식 있는 v3 revision의 그대로 재사용도 검사한다.
+최대64프레임(v3/v5 읽기는16)/전체8 MiB cel/12 MiB 원본과 최대 문서의16 MiB history, atlas 순서/투명 RGB/마지막 padding, snapshot·PNG 대조를 확인한다.
+기존 유효 GCD→고정FPS UV tick 호환과 v6/32 tick 초과의 원본 프레임 시간 변환, frame 선택/preview cursor의 dirty 불변과 서식 있는 v3 revision의 그대로 재사용도 검사한다.
 v5 태그의 고유 ID/이름/clip ID·frame 참조·단조 증가 할당·초기 태그, Undo/Redo·저장/재열기·이전 버전 거절을 확인한다.
 태그 순서의 독립성과 기존 clip 보존, 정확한 전후 set에만 유효한 migration 승인·승인 취소·수동 변경 보호도 검사한다.
 v4 고정 atlas의 정수 UV·비중첩·한도·버전 경계, 선택 rect 밖으로 나가지 않는 선/fill, 프레임 선택의 비변경성, 구조 변경 거절도 검사한다.
@@ -1928,6 +1947,14 @@ sprite component patch의 설정 보존·잠금/다른 애니메이션/normal �
 비동기 PNG 중 caller 원본 변경, numeric-only texture alias의 save/문서 경계 우회,
 prefab/variant/include/legacy/normal export 정규화, 큰 metadata 보존·미지원 참조 진단,
 미확정/확정 revision rollback과 원본 씬을 닫은 뒤 다른 씬의 참조 보존도 검사한다.
+
+도트 팔레트 검사는 JSON/GPL/HEX 가져오기·오류 원자성·Undo/Redo·기존 픽셀 보존을 확인한다.
+디더·그라데이션 검사는 정확한 두 RGBA·팔레트 단계·미리보기 취소·선택 마스크·고정 atlas 인접 프레임 보호·한 Undo와 실제 stroke 취소/Redo 보존을 확인한다.
+`pixel-animation-tools-smoke.mjs`는 전체 도트 gate의 별도 세션에서 실행한다. v5→v7 방향 편집·Undo·재열기·KR/EN 메뉴와8장 어니언의 실제 canvas 변화를 확인하고,
+내보낸 네 방향/반복 조합을 새 native 런타임에서 Playing·프레임 시간·UV·실제 색상 픽셀·완료 상태·draw/texture 예산으로 대조한다.
+문서 닫기·destroy 뒤 남은 프레임/태그/어니언 이벤트는 예외·행 재생성·씬 변경을 일으키지 않아야 한다.
+다시 연 문서의 정상 편집·Undo는 유지하고, 이전 문서에서 분리된 frame/tag 행 이벤트는 새 원본을 바꾸지 않는지 확인한다.
+Rust headless 검사는 v7 source·normal 저장/재열기, 구버전 direction 필드 거절과 실패 시 catalog 불변을 검증한다. 실제 packaged GUI 검증과는 구분한다.
 
 `pnpm smoke:pixel-authoring`은 save-enabled app에서 Aseprite 입력 없이 새 도트를 만든다.
 2D DPR 1·HD-2D DPR 2에서 실제 마우스 stroke·Esc 취소·채우기·도트/씬 Undo 분리·적용,
@@ -2019,6 +2046,29 @@ Import 진단 단위 검사는 늦은 Problems 초기화를 위한 상태 재조
 
 ### 전체 타일 맵과 native 저장
 
+`pnpm smoke:tile-autotile`는 프레임 이름 규칙의 순서·원본 이웃·8방향·범위/작업량 제한과
+결과 충돌 정책·원본 불변·단일 Undo를 단위 검사한다. 실제 브라우저에서는 Tiled/LDtk 맵 미리보기의 픽셀과
+씬 무변경·오류/설정 변경 시 무효화·KO/EN·적용/Undo/Redo·GID 변경 재가져오기를 검사하고 HD-2D는 명시적으로 거절한다.
+원본에서 미사용인 출력 프레임의 UV/충돌도 검사한다. 설정 변경·종료 후 늦게 완료된 bitmap은 표시하지 않고 해제한다.
+디코딩을 지연시킨 상태에서 연속 클릭해도 요청은 하나이며, 종료 뒤 도착한 파일/입력/버튼 이벤트가 정리된 draft에 접근하지 않는지 검사한다.
+Data Scene의 64/512/2,048 타일에서 실제 Playing·entity/렌더 명령 규모·draw/texture switch·렌더 CPU 시간과
+Rust body raycast 충돌을 함께 측정한다. 작성 미리보기/적용 시간은 브라우저 작업의 전체 경과 시간이며 Rust update CPU 측정이 아니다.
+각 규모에서 미리보기/적용 각각 10초 미만, 렌더 CPU 평균 50ms 미만, draw 1~32·texture switch 8 이하를 검사한다.
+SDK batch 테스트는 2,048개 단일 검증·Undo/Redo·중복/잘못된 prefab/host 거절 시 원복을 확인한다.
+배치 크기 초과·잘못된 배열 같은 초기 입력 오류도 열린 transaction 전체를 취소한다.
+native 분기는 실제 Rust 저장/protocol·재시작에서 규칙·UV·collider·셀 ID/behavior와 원본·fresh game을 확인한다.
+보고서는 `artifacts/tile-autotile/browser/verification.json`, `artifacts/tile-autotile/native/verification.json`이며 CI와 `smoke:check`에 연결된다.
+headless software rendering 기준이며 실제 GUI IPC·실물 GPU/모바일 성능은 별도 검증이다.
+
+`pnpm smoke:tile-animation`는 이름별/Tiled 원본 clip의 시간·반복·미사용 frame/외부 TSJ·예산·고정 충돌·Undo를 검사한다.
+옵션만 16KiB 이내여도 source 식별자와 합친 저장 메타데이터가 초과하면 패치 생성·미리보기·적용 전에 거절하는지 확인한다.
+브라우저에서 0/100/280ms 미리보기 픽셀과 씬 무변경, 1,001ms 프레임·2,002ms 반복/종료 경계, 빈 값·음수·소수·상한 및 초과 시간 입력을 검사한다.
+실제 Playing 프레임 변화·pause/resume·nonloop 종료도 확인한다.
+64/512/2,048 animated tiles의 native frame과 렌더 UV 변화, command/entity 수, 실제 FrameState의 Rust update 시간·renderer CPU·draw·texture switch,
+고정 body raycast와 Apply 10초 예산을 검사한다. 시간·UV view는 test sample에서 숫자로 복사하고 보관한 Wasm view를 재사용하지 않는다.
+native 분기는 실제 Rust 저장·재시작과 독립 게임에서 animationSet/설정·source hash·ID/binding·시간·pause·고정 충돌을 확인한다.
+보고서는 `artifacts/tile-animation/browser/verification.json`, `artifacts/tile-animation/native/verification.json`이다. CI와 `smoke:check`에서 직접 실행한다.
+
 `pnpm smoke:tile-map`는 tile assets 단위 검사와 공식 viewer의 기존 PNG/upload/lock/cancel/재import 회귀에
 Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. 기존 negative upload 검사를 먼저 실행해 캐시로 실패 주입을 건너뛰지 않는다.
 좌표/offset·layer 방향·object mapping·명시적 nonblocking 셀·제외 tileset·lock·provenance 경계를 검사한다.
@@ -2057,6 +2107,72 @@ normal 리비전 ID·숫자 텍스처·등록된 textureOptions 확장 metadata�
 GTK/WebView native GUI·picker·실제 IPC·전원 상실 내구성 검증은 이 테스트가 대신하지 않는다.
 동적 코드·GLB 내부·외부 파일 전체 GC 및 백업 영구 삭제도 검증 범위가 아니다.
 
+## 명시적 sprite animation 런타임 gate
+
+```bash
+pnpm smoke:sprite-animation-runtime
+```
+
+새 Wasm과 SDK를 빌드하고 WebGL2·software WebGPU offscreen을 모두 필수로 검사한다.
+실제 GameLoop/FrameState callback·Rust playback·GameStateSnapshot API를 사용하며 JS는 재생 상태를 계산하지 않는다.
+90/180ms 경계, 역순 시간, loop/nonloop pingpong, 1프레임, 한 update의 중간 frame 이벤트를 확인한다.
+8방향×48원본 frame atlas에서 GCD UV 복제 없이 각 clip의 재생·seek47·seek48 거절과 실제 UV/픽셀을 확인한다.
+paused/flipped pingpong 중간 phase·완료 phase·legacy FPS 저장 왕복과 완료 이벤트 중복 방지도 검사한다.
+각 renderer에서 100개 이상의 실제 render, 300개 이상의 frame 이벤트, 완료 이벤트와 draw 예산을 assert한다.
+보고서는 `artifacts/runtime-animation/verification.json`과 고유 run 폴더에 기록하며 실패도 `ok: false`로 남긴다.
+실행 시작부터 `ok: false`·`status: running`으로 이전 성공을 무효화하고, 종료 시 passed/failed로 갱신한다.
+같은 명령의 report 회귀 테스트는 SDK 준비 실패와 POSIX FIFO에서 중단된 실행의 root/run 보고서가 일치하는지 검사한다.
+CI validate와 `smoke:check`에 연결하며, actual color target readback PNG와 visible canvas screenshot의 종류를 구분한다.
+
+Rust의 `data_scene_animation_extended` 테스트는 256프레임·4096원본 frame 예산·v2 원자적 거절·
+여러 loop/fixed step·4096 이벤트+전역 overflow record·재사용 capacity를 검사한다.
+큰 유효 delta의 정확한 binary period 나머지와 bounded 이벤트 작업량, WorldSnapshot으로 교체된 clip metadata·
+핑퐁 복귀 phase·pause/flip·완료 상태를 되돌린 뒤의 재개도 검증한다.
+`data_scene_spawn_prefabs::checkpoint`는 spawned actor의 timed pingpong 중간/완료 phase 복원을 검사한다.
+SDK tests는 v2 capability·owned cold plan·시간 합산·authored/spawn progress·이벤트 decoder와 공개 타입을 확인한다.
+잘못된 null clip/frame·희소 update 배열은 일부 항목도 native에 전달하지 않고 거절되어야 한다.
+뷰어 재가져오기 검사는 새 emitEvents 정책을 보존하고 수동 변경한 timing/direction을 덮어쓰지 않고 거절한다.
+기존 replay golden과 공식 placement viewer gate를 함께 사용한다. 실물 GPU/모바일·장시간 timing 검증을 대신하지 않는다.
+
+## PNG 아틀라스 가장자리 보호 gate
+
+```bash
+pnpm build
+pnpm smoke:atlas-extrusion
+```
+
+Node 검사는 실제 PNG 합성 결과에서 원본 RGBA·모서리·투명 RGB·반투명 알파·부분 extrusion·
+남은 투명 여백·기본/명시 0의 PNG 바이트 동일성을 확인한다. CLI/config 우선순위, 0 padding,
+layout/UV/Game Spec 보존과 잘못된 옵션의 기존 파일 무변경도 검사한다.
+빈 CLI 값이 config의 보호 설정을 끄지 못하는지, 비유한 padding이 쓰기 전에 거절되는지도 확인한다.
+브라우저 실행 실패를 별도 `--artifact-dir`에서 재현해 이전 성공 JSON이 `ok: false`, `status: failed`로
+바뀌고 run별 보고서와 일치하는지 검사한다. 실행 중 보고서도 `ok: false`, `status: running`이다.
+
+browser smoke는 CLI가 생성한 atlas와 **동일 크기·동일 UV**의 독립 단일 프레임 참조를 비교한다.
+참조는 다른 프레임 없이 해당 프레임의 edge를 texture 전체로 확장한 이미지다. 크기가 다른 PNG끼리의
+nearest 텍셀 선택 차이를 경계 번짐으로 오인하지 않는다. GL/GPU × DPR 1/1.5/2에서
+회전·소수 크기/위치·UV flip·반투명 이미지의 정상 렌더와 색상+표시 2 draw, destroy 후 자원 해제를 확인한다.
+`colorSpace: "none"`과 기본 `"srgb"` 로딩 모두 각 backend의 독립 참조와 전체 렌더/경계 행렬을 비교한다.
+보호된 정상 출력은 참조와 channel 오차 최대 1이다. 별도 축 정렬 프레임의 backend 직접 비교는
+RGBA data(`none`) 디코드에서 최대 오차 2를 허용한다. sRGB legacy 업로드의 alpha 처리까지 두 backend가 같다고 주장하지 않는다.
+두 renderer에 검정 clear를 명시하고 DPR 1에서 빈 참조 이미지로 실제 음성 대조군을 실행해 빈 화면을 거절한다.
+나머지 DPR의 `emptyReferenceCheck`는 `not-run`으로 기록해 실제 실행 범위를 구분한다.
+
+별도 UV edge probe는 경계 및 경계 밖 0.25~1.75 texel에 실제 샘플을 보내 투명 여백과 extrusion의
+보호 폭을 측정한다. 이는 정상 게임 UV가 그만큼 벗어난다는 뜻이 아니다. `normalCases`와 `edgeProbes`를
+분리해 기록하며 정상 nearest 사례의 번짐이 0이어도 그대로 보고한다. 원본 프레임 UV를 전역 inset하지 않는다.
+CI validate job과 `smoke:check`에서 실행하고 PNG·JSON·검증 보고서는 `artifacts/atlas-extrusion/`에 남긴다.
+기존 노멀 pair는 `sprite-normal-animation.test.mjs`, asset CLI/병합은 기존 `pack-textures-smoke`·`smoke:asset-pipeline`로 회귀 검증한다.
+대상은 Chromium WebGL2와 소프트웨어 WebGPU offscreen이며 실물 모바일 fp16·2048px 이상 GPU UV 오차·
+실기기 GPU 시간·native compositor는 이 gate의 검증 범위가 아니다. 기본 fragment 정밀도는 유지한다.
+
+## Public package 선언 타입 gate
+
+`pnpm package:check:ferrum-web`는 실제 tarball allowlist 검사에 이어
+`ferrum-web-public-types.test.mjs`를 실행한다. 임시 consumer의 공개 subpath를 ES2022·DOM,
+`strict: true`, `skipLibCheck: false`, `types: []`로 검사해 Wasm 선언의 누락된 타입 lib와 `snap` 타입 회귀를 잡는다.
+독립된 브라우저 consumer를 검사하며 저장소 SDK test의 Node ambient type에 의존하지 않는다.
+
 ## Flat 2D 픽셀 퍼펙트 gate
 
 ```bash
@@ -2070,6 +2186,118 @@ WebGL2 multipass·linear-sRGB fallback·RenderTexture 격리, resize 시 고정 
 투명 clear의 opaque 출력, 중복 finalization, 최대 1메가픽셀·hidden canvas, GL 각 candidate/GPU bind group 동기 할당 실패의 기존 화면·메모리·후보 자원 정리도 검사한다.
 private 뷰어 fixture에서 UI로 Game Preview 왕복·resize·Play/Pause/Stop·다른 가상 해상도의 문서 탭 왕복/닫기·HD-2D 문서 전환을 실행한다.
 source/patch/history와 편집 카메라·zoom·선택 viewport의 복원을 확인하고 실제 객체를 클릭해 선택한다.
+`pixel-snap-fixture.mjs`는 snap 생략/false의 동일 출력, 소수 이동 fixture의 실제 off 픽셀 변화와 on 안정성,
+소수 zoom·회전 원점·normal/color 정합·1,024 sprite 배칭·명령 버퍼 불변·RenderTexture 격리·WebGPU 장치 복구를 검사한다.
+`pixel-snap-native-tiles-fixture.mjs`는 실제 Rust 타일 커맨드를 소비해 소수 카메라/zoom의 이음새와
+GPU 렌더 전후 native snapshot 불변을 확인한다. 별도 실제 Playing Data Scene에서 시작해 일시정지한 뒤
+카메라의 소수 이동과 출력 안정성, 원본·좌표·명령 불변도 비교한다. 테스트용 타일 snapshot 설정은 named accessor를 쓴다.
+타일 fixture는 follow 대상도 같은 소수 좌표로 배치하고 실제 frame 카메라가 각 요청 좌표에 도달했는지 검사한다.
+회전·노멀 조명·UV flip·입자·소수 재질 offset·13-float 호환·명시/생략 투영의 backend 픽셀을 비교한다.
+스냅 사각형의 coverage는 분석한 정수 경계와 일치해야 한다. 스냅 활성 결과와 공통 coverage의 RGB 오차는 최대 2다.
+스냅 off에서만, 실제 단색 사각형 coverage가 다르고 분석한 경계에서 1/16 가상 픽셀 이내인 픽셀은
+legacy raster 경계 차이로 별도 계측한다. 내부 coverage 차이나 공통 영역의 색/노멀 차이는 허용하지 않는다.
+장치 복구는 노멀 조명까지 복원한 화면을 비교한다. `snap.parityCases`는 공통 영역/원본 최대 channel 차이와
+`legacyEdgeCoveragePixels`를 구분해 기록하므로 legacy 경계 예외를 전체 픽셀 동일로 보고하지 않는다.
+Game Preview fixture는 `display.pixelPerfect.snap: true`를 열어 옵션 적용과 편집 복원을 확인한다.
 결과는 `artifacts/flat-pixel-perfect/`에 남고 CI validate job에서 실행한다.
 이 gate는 native GPU canvas compositor·실물 GPU·CSS/OS 확대 품질을 검증했다고 주장하지 않는다.
 회귀 비교는 `smoke:color-management`, `smoke:sprite-normal-2d`, `smoke:render-texture`, `smoke:runtime-budgets`와 공식 placement viewer gate를 사용한다.
+
+## 내장 도트 편집기64프레임 용량 검증
+
+```bash
+pnpm test:pixel-authoring
+pnpm profile:pixel-capacity
+pnpm smoke:pixel-capacity
+```
+
+`pixel-capacity.test.mjs`는 v6의64프레임·8방향 태그, v3/v5의16프레임 거부 경계, 17번째 frame의
+원자적 upgrade/Undo,64번째 frame 편집과16 MiB history, 원본 UV/ms 전달과 PNG 투명 RGB를 검사한다.
+기존 v1~v5의 source/checkpoint/revision 계약을 유지하고 v6 tag metadata 일부만 있는 입력은 거절한다.
+작은 v6(1·8·16프레임)도 편집기 메타데이터와 원본 내보내기의 시간 형식이 같아야 한다. 17번째 프레임 추가·삭제·Undo/Redo로 바뀌는 버전을 따라가며 UI 검증 중 cel 직렬화를 호출하지 않는다.
+
+profile은16프레임 기준선,32×32×64 대표 시트,8레이어, 최대 cel 예산, 고엔트로피32프레임 큰 시트의
+열기·편집·Undo/Redo·JSON 저장/재열기·PNG 생성/검증 시간과 Node memory stage 표본을 기록한다.
+고엔트로피 PNG가 기존8 MiB를 넘지만 v6의16 MiB 안에 들어오는 사례도 실제 인코딩으로 확인한다.
+`artifacts/pixel-editor-capacity/profile.json`은 진행/실패 때 ok:false이며 성공 때만 true다.
+메모리는 stage별 Node process 관측치와 cel/atlas/history byte를 구분하고 실물 browser/mobile peak나 FPS로 해석하지 않는다.
+
+smoke는 공식 UI에서 16→17버전 전환,64개 막대의 End/Home·선택 가시성, 마지막 cel의 편집·Undo/Redo,
+좁은 화면·PNG·게임에서 사용하는 고유 UV32개 노멀 한도(미사용 cel 제외) 안내와 원본 UV64개를 내보내는 게임 적용을 검사한다.
+새 게임이8개 clip의64개 원본 frame을 실제 재생하며 state·draw 예산·UV·색상 픽셀을 함께 assert한다.
+같은 시나리오를 실제 Rust 저장/protocol transport에서 실행하고 host/browser 재시작 후 frame63/source와
+저장된 새 게임의64프레임 출력을 확인한다. native GUI IPC는 이 stdio transport 검증에 포함되지 않는다.
+CI validate와 aggregate smoke에 연결하며 browser/native 고유 run·PNG·JSON과 profile을 같은 artifact 폴더에 둔다.
+
+## 평면 2D 팔레트 스왑
+
+`pnpm smoke:sprite-palette`는 SDK를 빌드하고 WebGL2/WebGPU의 실제 shader/buffer를 DPR 1/2에서 실행한다.
+두 팀과 미지정 texture를 한 프레임에 그려 RGB 교체·미매칭·한 번만 치환·투명/반투명·tint/colorMix·additive·outline·normal 조명을 비교한다.
+RGB 채널 허용 오차는 2이고 tint/flash/additive/outline은 기대 픽셀도 직접 검사한다. alpha는 같은 backend의 전후 값을 비교하며
+제외 pass 색과 충돌하는 mapping을 넣어 primitive/그림자/normal이 교체되지 않는지 검사한다.
+GL linear-sRGB의 비원색 교체, RenderTexture 출력과 미지원 입력 진단, 동일 설정 반복 시 자원 유지,
+변경/비활성 복귀, 64번째 binding 실제 draw, 4096px 미지정 atlas의 sampling 불변, WebGPU 장치 손실 2회 복구, destroy 자원 0을 검사한다.
+반복 설정 동안 실제 GPU create 호출을 계수하며, 비활성 시 draw·program/buffer/texture 개수가 기준값으로 돌아오는지 확인한다.
+이 결과를 전체 CPU/GPU 비용이 0이라는 주장으로 확대하지 않는다. 설정 복사 실패의 화면 원자성과 단일 owned snapshot도 검사한다.
+실제 Rust Data Scene은 Playing·2,048 entities/commands·60프레임·draw≤2·texture switch=0·CPU p95<250ms와
+팔레트가 적용된 실제 픽셀을 assert한다. `webgl2.gpuTiming`은 실제 지원 상태/결과를 보고하며 unsupported를 0ms로 취급하지 않는다.
+각 native runtime의 실제 backend를 확인하고, 동적 provider를 사용해 lost/recovering 중 native update·onFrame 유지와
+GPU 제출/provider 호출 0, 복구 후 팔레트 해제/교체의 실제 픽셀을 검사한다.
+보고서는 `artifacts/sprite-palette/verification.json`과 `run-*/verification.json`이다. CI와 `smoke:check`에 직접 연결한다.
+WebGPU는 소프트웨어 offscreen target이므로 실물 GPU 성능·native canvas compositor 검증을 주장하지 않는다.
+
+단위 검사는 입력 한도·중복/잘못된 RGB·불변 복사·base-only pass·기존 command staging 무변경,
+WebGPU 독립 uniform/동일 설정 재사용/실패 원자성·해제, optional shader의 기본 준비 제외를 확인한다.
+
+## 도트 후처리
+
+`pnpm smoke:pixel-postprocess`는 Wasm/SDK 빌드 후 Game Spec JSON 스키마와 resolver의 입력 범위·순서 동등성을 검사하고,
+WebGL2와 소프트웨어 WebGPU의 실제 shader를 DPR 1/2에서 실행한다.
+RGB 양자화·Bayer 임계값·홀수 행 감쇠를 CPU 기대값과 오차 2 이내로 비교하고 alpha 전후 일치,
+fade 전/후 순서와 반투명·투명 픽셀의 alpha 보존, 잘못된 설정 거절과 이전 출력 유지를 검사한다.
+가상 31×23 픽셀의 확대 블록·홀수 행 원점·resize·backend/DPR 간 출력을 비교한다. GL linear-sRGB도 별도 실행하며
+양쪽 virtual/nonvirtual 경로의 device loss 2회·off baseline·destroy 자원 0을 확인한다.
+반복 설정/프레임 중 실제 createTexture/createBuffer/createProgram 또는 createRenderPipeline 호출이 0인지 검사한다.
+단위 검사는 숫자 범위·불변 복사·순서·실패한 resize의 이전 자원 보존·선택 자원 해제를 확인한다.
+선택 효과의 uniform 할당 실패 시 생성 중인 pipeline을 해제하고 기존 fade를 유지하며, 이후 재시도가 성공하는지도 검사한다.
+직접 pass/shorthand의 알 수 없는 필드, 누락 kind, 잘못된 enabled, 비활성 내부 설정과 color null은 실제 Game Spec resolver까지 검사한다.
+기본 fade `{}`의 schema 호환도 유지해야 한다. 두 pixelArt pass의 순서·통계와 잘못된 형태의 설정 거절 후 화면 보존을 검사한다.
+반투명 RGB oracle은 이상적인 PNG 색이 아니라 실제 SRGB8_ALPHA8 입력 타깃을 읽어 계산한다.
+
+실제 Rust Data Scene은 Playing·1,024 entities/commands·60프레임·draw=2·texture switch=0·후처리 pass=1·
+CPU frame p95<250ms와 객체 색상 픽셀을 함께 assert한다. presentation은 authored postProcess 통계를 덮어쓰지 않아야 한다.
+같은 규모에서 bloom·CRT·vignette·glitch·pixelArt를 함께 실행하는 경로도 draw=6·후처리 pass=5로 검증한다.
+
+Sampled 효과는 source 1texel/logical pixel의 불투명 장면에서 **baseline을 먼저 비교**하고 네 효과·7개 혼합/역순 pass의
+전체 RGBA를 backend 간 오차 2 이내로 비교한다. 같은 seed 반복·다른 seed의 영상 변화·원래 seed 복귀를 검사한다.
+legacy의 sprite alpha 누적은 backend마다 달라 반투명 end-to-end RGBA가 동일하다고 주장하지 않는다.
+별도 반투명·투명 입력에서는 실제 baseline에 대해 bloom/vignette alpha 보존과 CRT/glitch의 warped/shifted bilinear alpha CPU oracle을 검사한다.
+GL linear-sRGB의 네 효과와 pixelArt/fade 혼합도 실행하며 radius=0 색상 oracle은 최종 불투명 확대 화면이 아닌
+효과 직전 실제 SRGB8_ALPHA8 FBO를 읽어 계산한다. threshold=1, resize/off, device 복구와 자원 0도 확인한다.
+WebGPU sampled 효과 전체가 복사 texture 하나를 공유하며 반복 설정/프레임의 실제 sampler 생성도 0이어야 한다.
+고정5×5 가상 타깃으로 극소 양수 softness의 비네트 경계 픽셀·radius0·softness0, 최대 유한 float32 curvature의 중앙 픽셀과 seed 재현성을 검사한다.
+float32 범위 밖의 값은 비활성 설정에서도 거절하고, 기존 출력·texture/buffer/program 수를 보존해야 한다. JSON 스키마도 같은 범위를 검사한다.
+보고서는 `artifacts/pixel-postprocess/run-*/verification.json`과 최신 `verification.json`이다. CI와 aggregate smoke에 연결한다.
+이 검증은 실제 GPU 명령의 software/offscreen 실행이며 실물 GPU 성능·native canvas compositor를 보장하지 않는다.
+
+## Consumer 도트 프로필
+
+`test:pixel-authoring`에 포함된 `consumer-pixel-profile.test.mjs`는 PNG RGBA/CRC·팔레트(투명 RGB 포함)·타일·정수 scale·nearest 선언·atlas rect/실제 extrusion·경로/용량과 CLI 종료코드/JSON 진단을 확인한다.
+파일 열기 직전 leaf/상위 폴더 symlink 교체·동일 경로 파일 교체와 읽기 중 변경은 거절하고 descriptor를 닫아야 한다.
+FIFO 입력은 CLI를 멈추지 않아야 하며, 정상 프로젝트 내부 symlink와 Linux procfs 없는 portable 검사도 유지한다.
+빈/1-byte IDAT가 많아도 추가 메모리는 chunk 객체 수에 비례하지 않아야 한다. 정상 빈·분할 IDAT/압축 뒤 잔여 byte는 허용하고 중복 PLTE는 거절한다.
+`package:check:create-game`은 생성한 템플릿의 실제 validator로 정상 프로필과 팔레트 오류를 검사한다. `package:check:agents`는 shared/Claude skill의 설치 및 tarball 포함을 검사한다.
+공통 생성 스크립트 변경은 `smoke:create-game-template-reports`와 full `package:consumer-smoke` 및 해당 report validator를 통과해야 한다. 선언과 PNG 검증은 런타임 renderer 검증을 대신하지 않는다.
+
+## 도트 쇼케이스
+
+`pnpm smoke:pixel-showcase`는 `examples/pixel-art`의 production build를 project subpath에서 실행한다.
+WebGL2 canvas와 software WebGPU offscreen에서 실제 키보드 버튼/캔버스 클릭으로 목적지를 보내고,
+Rust의 걷기 clip/frame·좌표 이동·씨앗 변수 0→3·pickup 소멸 250→247 entities·Playing을 확인한다.
+재시작·일시정지, 가상 320×192와 정수 배율, 좁은 화면에서도 상태 유지·가로 넘침 없음,
+실제 노멀 조명/팔레트/후처리의 픽셀 변화와 drawCalls≤20을 검사한다.
+PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME·브라우저 오류 0과 종료 시 texture/buffer/program 0을 확인한다.
+`artifacts/pixel-showcase/run-*/verification.json`에 결과와 desktop/mobile 캡처를 남긴다.
+`test:pixel-authoring`은 예제의 편집 가능한 원본을 실제 도트 reader/exporter로 읽어 배포 PNG의 RGBA와
+씬의 animationSet이 일치하는지 확인한다. 노멀 시트의 크기·불투명 영역도 색상 시트와 대조한다.
+실물 GPU와 OS compositor 검증은 별도이며, 원격 배포는 이 명령에 포함되지 않는다.

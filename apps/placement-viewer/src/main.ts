@@ -306,6 +306,7 @@ interface PlacementViewerWindow extends Window {
     entityCount: number;
     renderCommandCount: number;
     drawCalls: number;
+    rustUpdateTimeMs: number;
     spatial?: {
       terrainVertices: number;
       billboardVertices: number;
@@ -1006,6 +1007,7 @@ async function bootstrap(): Promise<void> {
       renameInstance: (id, next) => currentViewer.renameInstance(id, next),
       addInstance: (fragment, instance, spatial) =>
         currentViewer.addInstance(fragment, instance, spatial),
+      addInstances: (fragment, instances) => currentViewer.addInstances(fragment, instances),
       addObjectDefinition: (id, definition) =>
         currentViewer.addObjectDefinition(id, definition),
       removeInstance: (id) => currentViewer.removeInstance(id),
@@ -1916,12 +1918,35 @@ async function bootstrap(): Promise<void> {
       viewer.beginEdit(label);
       try {
         assetBatchEditing = true;
-        for (const operation of patch.operations) {
+        for (let index = 0; index < patch.operations.length; index++) {
+          const operation = patch.operations[index];
           switch (operation.kind) {
             case "updateComponents": viewer.updateInstanceComponents(operation.instanceId, operation.components); break;
             case "addObjectDefinition": viewer.addObjectDefinition(operation.id, operation.definition); break;
-            case "addInstance": viewer.addInstance(operation.fragment, operation.instance); break;
-            case "removeInstance": viewer.removeInstance(operation.instanceId); break;
+            case "addInstance": {
+              if (viewer.state().spatial) {
+                viewer.addInstance(operation.fragment, operation.instance);
+                break;
+              }
+              const instances = [operation.instance];
+              while (index + 1 < patch.operations.length && instances.length < 2048) {
+                const next = patch.operations[index + 1];
+                if (next.kind !== "addInstance" || next.fragment !== operation.fragment) break;
+                instances.push(next.instance); index++;
+              }
+              viewer.addInstances(operation.fragment, instances);
+              break;
+            }
+            case "removeInstance": {
+              const ids = [operation.instanceId];
+              while (index + 1 < patch.operations.length) {
+                const next = patch.operations[index + 1];
+                if (next.kind !== "removeInstance") break;
+                ids.push(next.instanceId); index++;
+              }
+              viewer.removeInstances(ids);
+              break;
+            }
             case "updateBehaviorBinding": viewer.updateBehaviorBinding(operation.target, operation.behaviorRecipes); break;
             default: throw new Error("Unsupported asset component operation");
           }
@@ -1939,23 +1964,28 @@ async function bootstrap(): Promise<void> {
         assetBatchEditing = false;
       }
     }
-    const importedAssetContext = () => ({
-      key: activeDocument.key,
-      project: currentAssetProject(),
-      recoveryKey: activeDocument.desktop?.enabled ? activeDocument.key : activeDocument.source,
-      document: viewer.exportPatch()
-        ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
-            .document
-        : savedDocument,
-      mode: spatialWorkspace?.mode() ?? "2d",
-      canEdit:
-        !switching &&
-        !documentSession?.isSaving() &&
-        !runtimeAssetReloadInFlight &&
-        spatialWorkspace?.mode() !== "game" &&
-        !spatialWorkspace?.ownsGesture() &&
-        viewer.historyState().transactionLabel === undefined,
-    });
+    const importedAssetContext = () => {
+      // Scope/capability queries are frequent during catalog rendering. Capture
+      // the immutable draft now, but only validate/merge when a tool reads it.
+      const patch = viewer.exportPatch(), source = savedDocument;
+      let document: SceneAuthoringDocumentSpec | undefined;
+      return {
+        key: activeDocument.key,
+        project: currentAssetProject(),
+        recoveryKey: activeDocument.desktop?.enabled ? activeDocument.key : activeDocument.source,
+        get document() {
+          return document ??= patch ? mergeScenePlacementPatch(source, patch).document : source;
+        },
+        mode: spatialWorkspace?.mode() ?? "2d",
+        canEdit:
+          !switching &&
+          !documentSession?.isSaving() &&
+          !runtimeAssetReloadInFlight &&
+          spatialWorkspace?.mode() !== "game" &&
+          !spatialWorkspace?.ownsGesture() &&
+          viewer.historyState().transactionLabel === undefined,
+      };
+    };
     const retainsImportedAsset = (id: string) => {
       let textureId: number | undefined;
       try { textureId = runtimeEngine.textureId(id); }
@@ -8689,6 +8719,7 @@ function publishFrameStats(frame: FerrumRuntimeFrame): void {
         }
       : {}),
     entityCount: frame.frame.entityCount,
+    rustUpdateTimeMs: frame.frame.rustUpdateTimeMs,
     renderCommandCount: frame.rendererStats.renderCommandCount,
     drawCalls: frame.rendererStats.drawCalls,
   };

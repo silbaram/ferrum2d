@@ -4,6 +4,7 @@ import { resolvePixelPerfectOptions as options, resolvePixelPerfectPresentation 
 import { resolveSceneDisplay } from "../src/sceneDisplay.js";
 import { resolveSceneAuthoringDocument } from "../src/sceneAuthoringDocument.js";
 import { createDataSceneView } from "../src/dataSceneView.js";
+import { resolveRendererPixelPerfect } from "../src/createRenderer.js";
 import type { FerrumEngine } from "../src/engineTypes.js";
 test("pixelPerfect is opt-in, bounded and snapshots caller-owned settings", () => {
     equal(options(undefined), undefined);
@@ -18,6 +19,24 @@ test("pixelPerfect is opt-in, bounded and snapshots caller-owned settings", () =
     for (const invalid of [null, true, {}, { width: 0, height: 1 }, { width: 1.5, height: 1 }, { width: 2049, height: 1 }, { width: 2048, height: 2048 },
         { width: 1, height: 1, background: null }, { width: 1, height: 1, background: new Array(3) }, { width: 1, height: 1, background: [0, 0] }, { width: 1, height: 1, background: [0, 0, NaN] }, { width: 1, height: 1, background: [2, 0, 0] }, { width: 1, height: 1, typo: true }])
         throws(() => options(invalid));
+});
+test("pixel snap is optional, strictly boolean and retained through scene validation", () => {
+    equal(options({ width: 32, height: 24 })!.snap, undefined);
+    for (const snap of [false, true]) {
+        equal(options({ width: 32, height: 24, snap })!.snap, snap);
+        const display = resolveSceneDisplay({ pixelPerfect: { width: 32, height: 24, snap } });
+        ok(display?.pixelPerfect && display.pixelPerfect.snap === snap);
+    }
+    for (const snap of [0, 1, "true", null, {}, []]) {
+        throws(() => options({ width: 32, height: 24, snap }), /snap must be a boolean/);
+        throws(() => resolveSceneDisplay({ pixelPerfect: { width: 32, height: 24, snap } }), /snap/);
+    }
+});
+test("shared/backend settings treat omitted snap as false and reject real conflicts", () => {
+    const plain = { width: 32, height: 24 }, off = { ...plain, snap: false }, on = { ...plain, snap: true };
+    equal(resolveRendererPixelPerfect({ pixelPerfect: off, webgl2: { pixelPerfect: plain } })!.snap, false);
+    equal(resolveRendererPixelPerfect({ pixelPerfect: plain, webgpu: { pixelPerfect: off } })!.snap, undefined);
+    throws(() => resolveRendererPixelPerfect({ pixelPerfect: on, webgl2: { pixelPerfect: off } }), /Conflicting/);
 });
 test("integer device pixels, centered odd margins, fractional DPR and nearest small-window fallback", () => {
     for (const dpr of [1, 1.5, 2]) {

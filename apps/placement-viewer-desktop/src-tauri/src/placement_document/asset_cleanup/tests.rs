@@ -348,6 +348,40 @@ fn all_catalog_types_retire_restore_exactly_and_keep_shared_files() {
 }
 
 #[test]
+fn trimmed_aseprite_cleanup_backs_up_and_restores_the_original_png_sidecar() {
+    let project = Project::new();
+    let bundle = aseprite_assets::tests::trim_fixture();
+    aseprite_assets::save_inner(&project.root, &bundle, &project.assets, &project.writes).unwrap();
+    let before = snapshot(&project.root).unwrap();
+    let row = before
+        .report
+        .revisions
+        .iter()
+        .find(|r| r.kind == CatalogKind::Aseprite)
+        .unwrap();
+    assert_eq!(row.files.len(), 3);
+    assert!(row.files.iter().any(|f| f.name.ends_with(".source.png")));
+    let root = project.root.join("public/assets/.ferrum-aseprite");
+    let contents = row
+        .files
+        .iter()
+        .map(|f| (f.name.clone(), fs::read(root.join(&f.name)).unwrap()))
+        .collect::<Vec<_>>();
+    let result = apply(&project.root, project.request(&row.key), &project.writes).unwrap();
+    for (name, _) in &contents {
+        assert!(!root.join(name).exists());
+    }
+    restore(&project.root, &result.backup_id, &project.writes).unwrap();
+    for (name, bytes) in contents {
+        assert_eq!(fs::read(root.join(name)).unwrap(), bytes);
+    }
+    assert_eq!(
+        inspect(&project.root, &project.writes).unwrap().snapshot,
+        before.report.snapshot
+    );
+}
+
+#[test]
 fn stale_disk_state_and_open_workspace_protection_reject_without_backup() {
     let project = Project::new();
     let id = project.pixel(7);

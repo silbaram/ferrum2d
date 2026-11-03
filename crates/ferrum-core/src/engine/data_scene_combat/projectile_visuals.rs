@@ -69,12 +69,12 @@ impl ProjectilePrefabConfig {
             {
                 return None;
             }
-            prefab.animation = Some(Arc::from([SpriteClip {
-                id: 0,
-                frames: sequence,
+            prefab.animation = Some(Arc::from([SpriteClip::uniform(
+                0,
+                sequence,
                 fps,
-                looping: m[2] != 0,
-            }]));
+                m[2] != 0,
+            )]));
             offset = end;
         }
         (offset == frames.len()).then_some(())
@@ -109,7 +109,7 @@ impl ProjectilePrefab {
             return None;
         }
         let clip = &playback.clips[0];
-        let duration = clip.frames.len() as f64 / f64::from(clip.fps);
+        let duration = clip.duration_seconds();
         if v[2] > duration || clip.looping && v[2] >= duration {
             return None;
         }

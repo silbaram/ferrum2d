@@ -10,6 +10,8 @@ import {
   showPlacementInspector,
 } from "./placement-panel-navigation.mjs";
 import { tileFixture, tileMapFixture } from "./tile-import-fixtures.mjs";
+import { smokeTileAutotile } from "./tile-autotile-smoke.mjs";
+import { smokeTileAnimation } from "./tile-animation-smoke.mjs";
 
 export async function smokeTileAssets({
   page,
@@ -82,6 +84,8 @@ export async function smokeTileAssets({
   };
   const results = [];
   await reveal();
+  if(process.argv.includes('--tile-animation'))return smokeTileAnimation({page,mode,stage,tool,action,click,document,snapshot,undo,redo,run});
+  if(process.argv.includes('--autotile'))return smokeTileAutotile({page,mode,stage,tool,action,click,document,snapshot,undo,redo,run});
   for (const kind of ["tiled", "ldtk"]) {
     await select("sprite");
     await stage(kind);

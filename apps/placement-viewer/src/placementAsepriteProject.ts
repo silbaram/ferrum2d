@@ -6,7 +6,8 @@ import {
   type PlacementAsepriteEvidence,
   type asepriteBundle,
 } from "./placementAsepriteAssets";
-import { placementNormalRead } from "./placementNormalAssets";
+import { placementNormalRead, placementNormalHash } from "./placementNormalAssets";
+import { readPixelPng } from "./placementPixelPng";
 
 export type PlacementAsepriteBundle = ReturnType<typeof asepriteBundle>;
 export interface PlacementAsepriteProjectCatalog {
@@ -16,6 +17,7 @@ export interface PlacementAsepriteProjectCatalog {
     metadata: PlacementAsepriteEvidence;
     pngUrl: string;
     jsonUrl: string;
+    sourcePngUrl?: string;
   }[];
 }
 export interface PlacementAsepriteProjectHost {
@@ -141,16 +143,38 @@ export async function readPlacementAsepriteProject(
       await fetch(pngUrl, { signal, cache: "no-store" }),
       ASEPRITE_LIMITS.pngBytes,
     );
-    bytes += json.byteLength + png.byteLength;
+    if ((meta.sourcePng !== undefined) !== (entry.sourcePngUrl !== undefined) ||
+      meta.sourcePng !== undefined && (!meta.sourcePng || typeof meta.sourcePng !== "object" || Array.isArray(meta.sourcePng)))
+      throw new Error("Saved trim source PNG metadata differs");
+    const packed = entry.sourcePngUrl === undefined ? png : await placementNormalRead(
+      await fetch(durableUrl(entry.sourcePngUrl), { signal, cache: "no-store" }), ASEPRITE_LIMITS.pngBytes,
+    );
+    bytes += json.byteLength + png.byteLength + (entry.sourcePngUrl === undefined ? 0 : packed.byteLength);
     if (bytes > ASEPRITE_LIMITS.bytes)
       throw new Error("Project atlas sources exceed 64 MiB");
     const asset = await inspectAseprite(
       meta.identityDocument,
       meta.logicalId,
       new File([json], meta.jsonName, { type: "application/json" }),
-      new File([png], meta.pngName, { type: "image/png" }),
+      new File([packed], meta.pngName, { type: "image/png" }),
       signal,
     );
+    if ((asset.sourcePng !== undefined) !== (meta.sourcePng !== undefined))
+      throw new Error("Saved trim source PNG metadata differs");
+    if (asset.sourcePng && meta.sourcePng) {
+      if (asset.sourcePng.sha256 !== meta.sourcePng.sha256 || asset.sourcePng.width !== meta.sourcePng.width || asset.sourcePng.height !== meta.sourcePng.height)
+        throw new Error("Saved trim source PNG metadata differs");
+      if (png.byteLength < 24 || new DataView(png).getUint32(16) !== asset.width || new DataView(png).getUint32(20) !== asset.height)
+        throw new Error("Saved restored PNG dimensions differ");
+      const hash = await placementNormalHash(png);
+      const expected = await readPixelPng(asset.png, ASEPRITE_LIMITS.side, ASEPRITE_LIMITS.pngBytes);
+      const stored = await readPixelPng(png, ASEPRITE_LIMITS.side, ASEPRITE_LIMITS.pngBytes);
+      if (hash !== meta.pngSha256 || expected.width !== stored.width || expected.height !== stored.height || expected.pixels.some((v,i)=>v!==stored.pixels[i]))
+        throw new Error("Saved restored PNG differs from its trim source");
+      // Compression bytes may differ across browsers. Keep the verified immutable file.
+      asset.png=png;asset.pngSha256=hash;asset.bytes=png.byteLength+json.byteLength+packed.byteLength;
+    }
+    signal.throwIfAborted();
     const actual = asepriteEvidence(asset);
     if (
       actual.assetId !== meta.assetId ||

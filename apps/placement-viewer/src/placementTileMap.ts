@@ -1,11 +1,15 @@
 import { resolveDataSceneComponentsSpec, instantiateSceneFragment, type SceneAuthoringDocumentSpec, type ScenePlacementBehaviorBindingPatch, type ScenePlacementPatch, type ScenePlacementViewerState } from '@ferrum2d/ferrum-web/authoring';
 import type { PlacementTileAsset } from './placementTileAssets';
+import { bakeTileMapRules, type TileMapRules } from './placementTileRules';
+import { compileTileMapAnimations, TILE_ANIMATION_LIMITS, type TileMapAnimations } from './placementTileAnimation';
 export interface TileMapPlacementOptions {
     originX?: number;
     originY?: number;
     layerBase?: number;
     collisionLayers?: readonly string[];
     objectPrefabs?: Readonly<Record<string, string>>;
+    autotile?: TileMapRules;
+    animations?: TileMapAnimations;
 }
 interface MapCell { layer: string; column: number; row: number }
 interface MapMarker { name: string; lineage: string; key: string; assetId?: string; cell?: MapCell }
@@ -22,8 +26,10 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         fail('whole map placement requires a flat 2D document');
     if (!options || typeof options !== 'object' || Array.isArray(options))
         fail('options must be an object');
+    if (new TextEncoder().encode(JSON.stringify(options)).byteLength > 16384)
+        fail('options exceed 16 KiB');
     for (const key of Object.keys(options))
-        if (!['originX', 'originY', 'layerBase', 'collisionLayers', 'objectPrefabs'].includes(key))
+        if (!['originX', 'originY', 'layerBase', 'collisionLayers', 'objectPrefabs', 'autotile', 'animations'].includes(key))
             fail('unknown option ' + key);
     const x = finite(options.originX, 'originX'), y = finite(options.originY, 'originY'), base = finite(options.layerBase, 'layerBase');
     if (!Number.isInteger(base) || base < -2147483648 || base > 2147482600)
@@ -54,12 +60,13 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         const sets=[...(source.tilesets??[]),...(asset.dependencies??[]).map(d=>JSON.parse(new TextDecoder().decode(d.json)))];
         for(const set of sets){
             if(set.tileoffset&&(set.tileoffset.x||set.tileoffset.y))fail('nonzero Tiled tileset offsets require an explicit adapter');
-            if((set.tiles??[]).some((t:{animation?:unknown})=>t.animation))fail('animated Tiled tiles require an explicit runtime adapter');
         }
     }
     const imported = asset.imported, tm = imported.tilemap, layers = tm.layers ?? [], names = layers.map((l, i) => l.name ?? 'layer-' + i);
     if (new Set(names).size !== names.length)
         fail('layer names must be unique');
+    const bakedLayers = bakeTileMapRules(asset, options.autotile);
+    const animations = compileTileMapAnimations(asset, options.animations, bakedLayers.palette.frames);
     for (const name of options.collisionLayers ?? [])
         if (!names.includes(name))
             fail('unknown collision layer ' + name);
@@ -98,7 +105,7 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         operations.push({ kind: 'addObjectDefinition', id: prefab, definition: { props: { tileMapImport: { name: asset.name, lineage: asset.lineage, key: 'definition' } } } });
     for (const i of owned)
         operations.push({ kind: 'removeInstance', instanceId: i.id });
-    let count = 0;
+    let count = 0, animationFrames = 0;
     const add = (key: string, objectPrefab: string, px: number, py: number, layer: number, props: Record<string, unknown>, cell?: MapCell) => {
         if (++count > 2048)
             fail('whole map exceeds 2048 instances');
@@ -111,17 +118,22 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         // their meaning. Existing saved IDs and agent references remain unchanged.
         const identity = previous ? (previous.props.tileMapImport as unknown as MapMarker).key : key;
         const { tileMapObject, ...componentsProps } = props;
-        const ownedProps = { ...componentsProps, tileMapImport: { ...(tileMapObject ? { object: tileMapObject } : {}), name: asset.name, lineage: asset.lineage, assetId: asset.id, key: identity, ...(cell ? { cell } : {}), ...(count === 1 ? { options: structuredClone(options) } : {}) } };
+        const tileMapImport = { ...(tileMapObject ? { object: tileMapObject } : {}), name: asset.name, lineage: asset.lineage, assetId: asset.id, key: identity, ...(cell ? { cell } : {}), ...(count === 1 ? { options: structuredClone(options) } : {}) };
+        // The existing provenance limit covers the envelope as well as options.
+        // Reject here so Preview/Apply cannot accept a patch that save/merge rejects.
+        if (new TextEncoder().encode(JSON.stringify(tileMapImport)).byteLength > 16384)
+            fail('source metadata including options exceeds 16 KiB');
+        const ownedProps = { ...componentsProps, tileMapImport };
         operations.push({ kind: 'addInstance', fragment, instance: { id, prefab: objectPrefab, ...(original?.prefab === objectPrefab && original.variant !== undefined ? { variant: original.variant } : {}), x: finite(px, 'tile x'), y: finite(py, 'tile y'), layer, props: ownedProps as never } });
         if (original?.props && Object.hasOwn(original.props, 'behaviorRecipes'))
             operations.push({ kind: 'updateBehaviorBinding', target: { kind: 'instance', instanceId: id }, behaviorRecipes: copyBinding(original.props.behaviorRecipes) });
     };
-    const frames = new Map(asset.frames.map(f => [f.id, f]));
+    const frames = new Map(bakedLayers.palette.frames.map(f => [f.id, f]));
     layers.forEach((layer, index) => {
         const w = finite(layer.tileWidth ?? tm.tileWidth, 'tile width'), h = finite(layer.tileHeight ?? tm.tileHeight, 'tile height');
         if (w <= 0 || h <= 0)
             fail('invalid tile size');
-        const columns = layer.columns!, rows = layer.rows!, data = layer.data!;
+        const columns = layer.columns!, rows = layer.rows!, data = bakedLayers.layers.get(names[index]) ?? layer.data!;
         if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns <= 0 || rows <= 0 || data.length !== columns * rows)
             fail('invalid tile grid');
         const raw=sourceLayers.get(names[index]);if(!raw)fail('source layer missing');
@@ -132,7 +144,7 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
         data.forEach((tile, cell) => {
             if (tile === 0)
                 return;
-            const spec = tm.tiles?.[String(tile)], frame = spec?.frame ? frames.get(spec.frame) : undefined;
+            const spec = bakedLayers.palette.tiles[String(tile)], frame = spec?.frame ? frames.get(spec.frame) : undefined;
             if (!spec || !frame)
                 fail('missing tile frame ' + tile);
             if(frame.width!==w||frame.height!==h)fail('whole-map tiles must match the map cell size');
@@ -140,9 +152,13 @@ export function tileMapPlacementPatch(document: SceneAuthoringDocumentSpec, stat
             if (spec.slope || spec.oneWayPlatform || spec.ramp || spec.bridgePortal || spec.kind && spec.kind !== 'flat' || spec.elevation || spec.floor || spec.height)
                 fail('spatial/sloped tile metadata requires a separate runtime map adapter');
             const solid = spec.blocksMovement ?? (layer.collision === true || (options.collisionLayers ?? []).includes(names[index]));
+            const animation = animations.get(frame.id);
+            if (animation && (animationFrames += animation.frames.length) > TILE_ANIMATION_LIMITS.placedFrames)
+                fail('placed animations exceed 8192 frames; simplify clips or split the map');
             const coordinate = { layer: names[index], column: cell % columns, row: Math.floor(cell / columns) };
             add(cellKey(coordinate), prefab, ox + (cell % columns + .5) * w, oy + (Math.floor(cell / columns) + .5) * h, z, { components: {
-                    visual: { kind: 'sprite', asset: asset.id, width: w, height: h, originX: .5, originY: .5, layer: z, frame: frame.uv },
+                    visual: { kind: 'sprite', asset: asset.id, width: w, height: h, originX: .5, originY: .5, layer: z,
+                        frame: animation?.frames[0].uv ?? frame.uv, ...(animation ? { animationSet: animation.animationSet } : {}) },
                     collider: solid ? { type: 'aabb', halfWidth: w / 2, halfHeight: h / 2, isTrigger: false } : 'none', layer: 'wall', ...(solid ? { body: { type: 'static' } } : {}),
                 } }, coordinate);
         });

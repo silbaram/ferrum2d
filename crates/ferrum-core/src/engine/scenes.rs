@@ -280,9 +280,12 @@ impl DataSceneRuntime {
                 tilemap: context.tilemap,
             },
         );
-        context
-            .world
-            .update_with_rigid_body_step(delta, context.auto_rigid_body_step_enabled);
+        context.world.update_with_rigid_body_step(
+            delta,
+            context.auto_rigid_body_step_enabled,
+            context.gameplay_events,
+            context.animation_event_overflow,
+        );
         context
             .spatial_scene
             .attachments
@@ -358,6 +361,7 @@ pub(super) struct SceneUpdateContext<'a> {
     pub(super) collision_events: &'a mut Vec<CollisionEvent>,
     pub(super) collision_event_counts: &'a mut CollisionEventCounts,
     pub(super) gameplay_events: &'a mut Vec<GameplayEvent>,
+    pub(super) animation_event_overflow: &'a mut Option<usize>,
     pub(super) effect_events: &'a mut Vec<EffectEvent>,
     pub(super) particles: &'a mut ParticleSystem,
     pub(super) tweens: &'a mut TweenSystem,
@@ -885,6 +889,7 @@ impl Engine {
             collision_events: &mut self.frame_buffers.collision_events,
             collision_event_counts: &mut self.collision_event_counts,
             gameplay_events: &mut self.frame_buffers.gameplay_events,
+            animation_event_overflow: &mut self.frame_buffers.animation_event_overflow,
             effect_events: &mut self.frame_buffers.effect_events,
             particles: &mut self.particles,
             tweens: &mut self.tweens,

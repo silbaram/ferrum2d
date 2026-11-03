@@ -99,14 +99,15 @@ export function pixelComponentPatch(
   if(visual.animationSet) {
     const reference=visual.texture??visual.asset,previous=revisions.find(asset=>asset.id===reference);
     if(!previous)throw Error("Only owned pixel animations can be replaced");
-    const actual=resolveDataSceneSpriteAnimationSet(visual.animationSet),expected=pixelAnimation(pixelAnimationInput(previous.source)).set;
+    const previousInput=pixelAnimationInput(previous.source),previousTagged=previousInput.tags!==undefined;
+    const actual=resolveDataSceneSpriteAnimationSet(visual.animationSet),expected=pixelAnimation(previousInput).set;
     // Legacy one-clip sources allowed an authored loop override. Keep that contract.
-    if(!input?.tags&&nextSet&&previous.source.version!==5)
+    if(!input?.tags&&nextSet&&!previousTagged)
       nextSet={...nextSet,clips:nextSet.clips.map(clip=>({...clip,loop:actual.clips[0]?.loop??true}))};
     const afterIds=nextSet?.clips.map(clip=>clip.id)??[];
-    if((input?.tags||previous.source.version===5)&&actual.clips.some(clip=>!afterIds.includes(clip.id)))
+    if((input?.tags||previousTagged)&&actual.clips.some(clip=>!afterIds.includes(clip.id)))
       throw Error("Keep existing clip IDs before applying pixel tags");
-    const legacyExpected=previous.source.version===5?expected:{...expected,clips:expected.clips.map(clip=>({...clip,loop:actual.clips[0]?.loop??true}))};
+    const legacyExpected=previousTagged?expected:{...expected,clips:expected.clips.map(clip=>({...clip,loop:actual.clips[0]?.loop??true}))};
     const requiresMigration=JSON.stringify(actual)!==JSON.stringify(legacyExpected)||
       (!!input?.tags&&JSON.stringify(actual)!==JSON.stringify(nextSet));
     if(requiresMigration) {
@@ -260,7 +261,7 @@ export function createPixelAssets(options: {
         return {
         id: asset.id, label: asset.name + " @" + asset.id.slice(-6),
         width: asset.width, height: asset.height, thumbnailUrl: asset.url,
-        ...((asset.source.version===3||asset.source.version===5)?{frames:frames.map((frame,index)=>({
+        ...((asset.source.version===3||asset.source.version===5||(asset.source.version===6||asset.source.version===7))?{frames:frames.map((frame,index)=>({
           id:frame.id,label:"Frame "+(index+1)+" · "+frame.durationMs+" ms",width:asset.source.width,height:asset.source.height,
           frame:layout.frames[index],
         }))}:asset.source.version===4?{frames:asset.source.atlas.frames.map(frame=>({
@@ -294,7 +295,7 @@ export function createPixelAssets(options: {
           for (let i = 0; i < bytes.length; i += 16384)
             binary += String.fromCharCode(...bytes.subarray(i, i + 16384));
           let animationSet,animationDiagnostic;
-          if(pixelFrames(asset.source).length>1||asset.source.version===5) {
+          if(pixelFrames(asset.source).length>1||pixelAnimationInput(asset.source).tags) {
             try {animationSet=pixelAnimation(pixelAnimationInput(asset.source)).set;}
             catch(error){animationDiagnostic=error instanceof Error?error.message:String(error);}
           }

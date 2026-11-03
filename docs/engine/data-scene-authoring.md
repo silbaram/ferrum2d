@@ -37,7 +37,7 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 ```json
 {
   "display": {
-    "pixelPerfect": { "width": 320, "height": 180, "background": [0, 0, 0] }
+    "pixelPerfect": { "width": 320, "height": 180, "snap": true, "background": [0, 0, 0] }
   }
 }
 ```
@@ -46,6 +46,12 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 `/core`와 `/authoring`에서 제공한다. 한 변은 1~2048 정수, 총 1,048,576픽셀 이하이며 RGB는 각 0~1이다.
 `display`/`pixelPerfect`의 알 수 없는 필드는 오류다. `false`는 runtime 기본 표시 설정을 해제하며,
 생략하면 runtime 기본값을 사용한다. `spatial` 문서에서는 flat 설정을 켤 수 없다.
+
+선택 `snap`은 boolean이며 생략·`false`는 기존 출력을 유지한다. `true`는 카메라 변환 후의
+스프라이트·타일 화면 경계를 가상 픽셀에 정렬한다. 회전·투영 그림자는 원점 이동만 정렬한다.
+게임 좌표·충돌·저장 형식·render command ABI는 유지하며 atlas 번짐 방지는 별도 범위다.
+광원·물리 debug·포인터/world 변환은 연속 좌표를 사용한다. 정렬 경계와 작은 객체의 처리 등은
+[Core 표시 계약](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
 
 공식 뷰어에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
 2D 편집 화면에서는 넓은 편집 viewport를 유지하며 돌아오면 편집 카메라 위치·zoom과 객체 선택 좌표계를 함께 복원한다.
@@ -296,7 +302,7 @@ Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기�
   다른 tileset·TSX·외부 level·IntGrid·flip/회전의 기존 제한을 확대하지 않는다.
 - Tiled의 직교 셀·레이어 offset과 원래 앞뒤 순서를 반영한다. Group은 먼저 평탄화해야 한다.
   LDtk는 원래 layer 순서와 offset을 반영하며 Entities의 x/y와 필드를 보존한다.
-  타일 이미지 크기는 셀 크기와 같아야 하고, Tiled tileset offset·animation·반투명/tint/parallax layer,
+  타일 이미지 크기는 셀 크기와 같아야 하고, Tiled tileset offset·반투명/tint/parallax layer,
   slope/one-way/공간 높이 metadata는 전용 adapter가 필요한 항목으로 거절한다.
 - `collisionLayers`는 정확한 layer 이름이다. 명시적 collision/blocksMovement 셀과 함께 static AABB를 생성한다. 셀의 `blocksMovement:false`는 collision layer에서도 비충돌로 보존한다.
   다른 셀은 collider가 없다. 게임의 충돌 그룹은 `wall`이고 그리기 레이어 번호와 구분한다.
@@ -314,6 +320,95 @@ Inspect 오류도 원본 파일과 함께 표시하고 실패한 import가 기�
 - GPU 업로드·문서/선택/잠금 재검증과 기존 asset transaction을 재사용한다. 실패하면 전체 초안을 취소한다.
   원본 PNG/JSON/TSJ와 이 metadata는 기존 Save Project·Export Assets·새 세션 재열기 경로를 따른다.
   저장 완료 시 새 기준 문서와 깨끗한 viewer를 함께 교체해 add-definition 패치가 중복 적용되지 않는다.
+
+### 작성 시점 오토타일과 맵 미리보기
+
+2D의 **Map Options → Preview Map / 맵 미리보기**는 원본 격자를 계산한 뒤 타일 이미지와 객체 위치를 보여준다.
+주황색 테두리는 충돌 셀이다. 미리보기는 GPU 자산 등록·씬 편집·Undo 기록을 만들지 않으며,
+설정·원본·문서가 바뀌면 이전 이미지를 무효화한다. **Apply Map**으로 결과를 명시적으로 적용한다.
+맵 미리보기 이미지 디코딩은 한 번에 하나만 진행하며 준비 중에는 미리보기 버튼이 비활성화된다.
+준비 중 설정을 바꾸거나 도구를 종료하면 늦게 완성된 이미지는 표시하지 않고 해제한다.
+
+Map Options의 선택적 `autotile`은 레이어 이름별 규칙을 받는다.
+아래 예는 `ground` 레이어에서 위쪽이 빈 타일을 `terrain.1` 프레임으로 바꾼다.
+
+```json
+{
+  "collisionLayers": ["ground"],
+  "autotile": {
+    "ground": {
+      "rules": [
+        { "match": "filled", "neighbors": { "n": "empty" }, "output": "terrain.1" }
+      ],
+      "preserveUnmatched": true,
+      "emptyOutOfBounds": true
+    }
+  }
+}
+```
+
+- `output`: 선택 tileset의 프레임 이름 또는 `null`(빈 셀). source GID가 바뀌어도 프레임 이름으로 다시 대응한다.
+  원본 맵에서 아직 사용하지 않은 타일도 `tileset이름.로컬타일번호`로 참조할 수 있다.
+  원본 importer로 해당 타일의 UV·충돌 metadata를 검증하며 기존 프레임과 규칙 참조의 합계는 256개까지다.
+  개별 프레임 목록이나 원본 catalog를 늘리지 않으며, 이런 맵의 갱신은 **Apply Map**을 사용한다.
+- `match`: 프레임 이름, 이름 목록(1~16개), `any`/`empty`/`filled`. 생략하면 `filled`다.
+- `neighbors`: `n/e/s/w/ne/se/sw/nw`별 같은 조건을 지정한다. 이웃에는 현재 **원본** 타일과 같은 `same`도 허용한다.
+- 원본 격자에서 처음 일치하는 규칙 하나만 적용한다. 결과를 같은 실행의 다음 규칙 입력으로 사용하지 않는다.
+  불일치 셀은 기본적으로 보존하며 `preserveUnmatched:false`면 비운다.
+  맵 밖은 기본적으로 빈 셀이며 `emptyOutOfBounds:false`면 해당 이웃 조건이 일치하지 않는다.
+- 결과 타일의 `blocksMovement`와 기존 `collisionLayers` 정책으로 collider를 생성한다.
+  이미지 규칙을 바꾸면 충돌도 달라질 수 있으므로 미리보기의 충돌 셀 수를 확인한다.
+- 최대 16 레이어·전체 64규칙, 규칙 JSON UTF-8 8KiB, 계산 비용 2,000,000 단위다.
+  Map Options 입력 전체는 UTF-8 16KiB까지 허용한다.
+  비용은 원본 셀 수 × 규칙별 기본 비교 및 이웃/목록 비교량으로 제한한다.
+  기존 2,048 instance 제한과 미지원 타일 속성 거절은 유지하며 전체가 빈 결과도 거절한다.
+- 원본 JSON/PNG/TSJ와 revision identity는 그대로다. 규칙은 기존 `tileMapImport.options.autotile`에 저장하고,
+  결과는 기존 sprite/AABB로 저장한다. 게임은 규칙을 다시 계산하지 않는다.
+  기존 옵션 없는 씬·catalog와 호환되고 schema/ABI 버전을 바꾸지 않는다.
+- 저장·재열기에서 설정을 복원하며 재적용은 같은 셀의 ID·behavior binding과 단일 Undo/Redo를 유지한다.
+  HD-2D 전체 맵 적용과 런타임 지형 편집은 포함하지 않는다. 이미지 재생은 아래 타일 애니메이션을 사용한다.
+
+### 타일 애니메이션과 고정 충돌
+
+2D **Map Options**의 선택적 `animations`는 기준 타일 이름을 기존 sprite `animationSet`에 연결한다.
+게임의 **실행**에서 Rust가 시간을 진행하고 **일시정지**하면 함께 멈춘다. 각 타일은 clip 0 하나를 가지며
+맵을 다시 적용하거나 게임을 다시 시작하면 첫 프레임에서 재생한다. 설치된 SDK/Wasm에 프레임별 시간 지원이 필요하다.
+
+```json
+{
+  "collisionLayers": ["ground"],
+  "animations": {
+    "terrain.0": {
+      "frames": [
+        { "frame": "terrain.0", "durationMs": 90 },
+        { "frame": "terrain.1", "durationMs": 180 }
+      ],
+      "loop": true
+    }
+  }
+}
+```
+
+- Tiled/LDtk 공통으로 선택 tileset의 프레임 이름을 사용한다. 오토타일을 함께 지정하면 **오토타일 결과**의 이름으로 clip을 고른다.
+  아직 사용하지 않은 프레임도 원본 importer로 검증한다. 모든 재생 프레임은 같은 PNG와 기준 타일 크기를 사용한다.
+- 순서는 `frames` 그대로, `durationMs`는 1~1,000,000ms 정수다. `loop` 기본값은 true이고 false면 마지막 프레임에서 멈춘다.
+  프레임을 반복 복제하지 않는다. 방향 전환·재생 이벤트·시작 offset은 이 옵션에 포함하지 않는다.
+- Tiled의 embedded/외부 TSJ 원본 animation은 `"animations": "source"`로 명시적으로 가져온다.
+  [Tiled Frame](https://doc.mapeditor.org/en/stable/reference/json-map-format/#frame)의 tileset-local `tileid`와 ms `duration`을 사용하며 반복 재생한다.
+  LDtk에서는 이름별 직접 설정을 사용한다. 원본에 animation이 있으면 옵션 없이 정적 타일로 묵살하지 않고 거절한다.
+  직접 설정으로 덮어쓰려면 원본의 모든 animated tile에 대응하는 clip을 지정한다. clip 참조는 재귀적으로 확장하지 않는다.
+- collider/body/위치/크기/ID는 **기준 타일**의 충돌과 배치 결과로 고정한다. 재생 프레임의 `blocksMovement`·높이 등은 물리에 반영하지 않는다.
+  물의 그림만 움직인다고 통과 가능 여부가 바뀌지 않는다. 게임 로직으로 바뀌는 지형·문은 별도 behavior/spec으로 작성한다.
+- **맵 미리보기 시간 (ms)**에 0~3,600,000 정수를 입력하고 **맵 미리보기**를 눌러 그 시점의 이미지를 확인한다.
+  이 값은 보기 상태이며 저장·Undo·게임의 시작 시간을 바꾸지 않는다. 0ms가 첫 프레임이다. 주황색 충돌 테두리는 어느 시점에도 유지된다.
+  정수 밀리초로 프레임을 고르므로 1,001ms 같은 정확한 전환 경계에서도 다음 프레임이 표시된다. 반복 구간의 끝은 첫 프레임으로 돌아간다.
+- 설정은 최대 64 clips, clip당 256 frames, 전체 1,024 frame steps다. 배치된 애니메이션 타일의 frame 수 합계는 8,192 이하다.
+  기존 Map Options 16KiB, palette 합계 256 frames, 맵 2,048 instances 및 history 예산도 함께 적용한다.
+  저장되는 source 식별자·셀 좌표·옵션을 합친 `tileMapImport` 메타데이터도 16KiB 이하여야 하며, 초과하면 미리보기·적용 전에 거절한다.
+- 원본 JSON/PNG/TSJ와 catalog 버전은 유지하고, 설정은 기존 `tileMapImport.options.animations`, 실행 데이터는 기존 `visual.animationSet`에 저장한다.
+  **Apply Map** 재적용은 같은 셀의 ID·명시적 behavior binding과 단일 Undo를 유지한다. source가 소유한 clip 수동 수정은 교체한다.
+  animated map에 일반 **Apply Frame/Reimport**를 사용하면 animation 손실을 막기 위해 **Apply Map** 사용을 안내한다.
+  source 애니메이션이 없는 기존 정적 맵은 옵션 생략 시 같은 동작을 유지한다.
 
 ### 타일 자산의 native 저장·재열기
 
@@ -380,7 +475,11 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 짝수 브러시는 포인터 픽셀에서 오른쪽/아래로 한 픽셀 더 차지하며 대칭은 브러시의 실제 픽셀을 반전한다.
 
 **팔레트 편집**은 색 추가·수정·삭제·순서 변경을 원본 metadata와 Undo에 기록한다. 색 목록 편집은 픽셀 색을 바꾸지 않는다.
-팔레트 가져오기/내보내기는 `ferrum2d.pixel-palette` v1 JSON(16KiB·256색 상한)이며 순서·중복·RGBA를 유지한다. 최근 선택색12개는 UI 전용이다.
+팔레트 가져오기는 `ferrum2d.pixel-palette` v1 JSON, `.gpl`, `.hex`를 지원한다(16KiB·256색 상한).
+[GPL v1/v2](https://developer.gimp.org/core/standards/gpl/)는 RGB를 불투명 RGBA로 읽으며 이름·열 수는 가져오지 않는다.
+HEX는 한 줄에 `RRGGBB` 또는 `RRGGBBAA` 하나와 선택적 `#` 접두사, 빈 줄·`//` 주석을 받는다.
+외부 파일은 최소 한 색이 필요하고 잘못된 행은 전체 가져오기를 거절한다. 순서·중복·투명 RGB를 유지하며 한 번의 Undo로 복원한다.
+내보내기는 RGBA를 보존하는 기존 JSON 형식을 유지한다. 최근 선택색12개는 UI 전용이다.
 **픽셀 색 교체**는 정확히 일치하는 RGBA의 개수를 확인하고 현재 셀/선택 영역/문서 전체 중 지정한 범위에 한 Undo로 적용한다.
 문서 전체는 모든 프레임의 표시·잠금 해제 레이어이며 숨김·잠금은 보호한다. 고정 atlas는 선택 frame rect만 교체한다.
 투명 픽셀도 RGB까지 일치해야 교체된다. 늦은 파일 읽기·확인창은 원본/revision과 편집 대상을 다시 확인한다.
@@ -413,12 +512,15 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
   프레임 버튼의 좌우 방향키와 Undo/Redo에서도 도트 편집기 포커스를 보존한다.
   순서·삭제 등의 프레임/레이어 도구가 경계에서 비활성화되면 선택 항목으로 포커스를 복원해 다음 Undo가 씬 이력에 전달되지 않게 한다.
 - 프레임 막대의 **어니언 스킨**에서 표시·이전/다음과 불투명도(0~100%, 기본30%)를 설정한다. 기본 표시는 꺼짐이다.
-  바로 이전/다음 한 프레임을 코랄/청록으로 현재 프레임 뒤에 표시하고 경계에서 순환하지 않는다. 현재의 불투명 픽셀은 ghost를 덮는다.
+  이전/다음 각각 1~4프레임(기본1)을 코랄/청록으로 현재 프레임 뒤에 표시하고 경계에서 순환하지 않는다. 먼 프레임부터 그리며 거리가 두 배면 불투명도는 절반이다. 합성 cache는 현재 프레임 포함 최대9장(256px에서2.25 MiB)이다. 현재의 불투명 픽셀은 ghost를 덮는다.
   보이는 이미지 레이어를 합성하며 잠금은 ghost 표시를 막지 않는다. 그리기·fill·스포이트는 현재 프레임만 사용한다.
   재생 중에는 ghost를 숨기고 정지 시 복원한다. 동일 문서의 탭 전환은 설정을 유지하고 원본 교체·닫기·도구 해제는 기본값으로 초기화한다.
   설정은 UI 전용으로 source·PNG/atlas·자산·프로젝트 저장·Undo·dirty에 포함하지 않는다. 설정 메뉴는 Escape 또는 바깥 클릭으로 닫는다.
 - 한 번의 stroke/fill은 한 Undo다. Ctrl/Cmd+Z·Shift+Z와 Ctrl+Y는 도트 문서 이력에 적용되며 Esc/포인터 취소는 진행 중 stroke를 복원한다.
   마지막 pointerup 좌표도 선에 포함하며 창 포커스를 잃으면 진행 stroke·임시 Space 이동 상태를 취소한다. 빈 값·범위 밖 알파 입력은 마지막 유효한 색을 유지한다.
+- **도형·채색 도구**에서 **디더(D)**와 **그라데이션(J)**을 선택한다. 디더는 기본색과 두 번째 색의 RGBA를 그대로 사용하며 4×4 패턴의 밀도를 0~16으로 조절한다.
+  그라데이션은 드래그 방향을 따라 두 색 RGBA 보간, 두 색 디더, 팔레트 순서의 세 방식을 제공한다. 팔레트 방식은 두 색 이상이 필요하다.
+  드래그 중에는 미리보기만 표시하며 놓으면 한 Undo로 확정한다. Escape·창 blur는 취소한다. 선택 마스크·좌우/상하 대칭·잠금·고정 atlas의 현재 프레임 경계를 유지하며, 게임 후처리와 달리 원본 픽셀을 편집한다.
 - **선택(M)**은 현재 frame/layer를 대상으로 하며 사각형 모드에서는 드래그로 범위를 잡는다. 선택·전체 선택·해제는 원본/dirty/Undo에 포함하지 않는다.
   드래그·방향키(Shift는10픽셀)의 이동, 좌우/상하 반전·시계 방향90도 회전과 붙여넣기는 원본을 바꾸지 않는 미리보기다.
   **확정** 또는 캔버스의 Enter로 한 Undo에 적용하고 **취소/Escape**·창 blur·탭 전환에서 폐기한다. 겹치는 이동은 원본 snapshot으로 계산한다.
@@ -430,7 +532,7 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 - **내보내기 → 편집 원본 내보내기**는 편집 가능한 `.pixel.json`, **PNG 내보내기**는 게임용 RGBA 이미지를 다운로드한다.
   닫기/새 원본으로 교체할 때 변경이 있으면 원본 내보내기·폐기·취소를 선택한다. 씬 탭 전환은 원본을 유지한다.
 - **복구** 메뉴는 확정한 원본의 로컬 임시 저장과 명시적 복원/폐기를 제공한다. 600ms debounce 후 IndexedDB transaction이 완료된 자료만 저장 성공으로 표시한다.
-  복원은 v1~v5 원본·프레임/레이어/태그 ID·팔레트·투명 RGB를 유지하며 새 편집 세션의 미저장 원본으로 연다. Undo·선택·GPU 자산·씬은 복원하지 않는다.
+  복원은 v1~v6 원본·프레임/레이어/태그 ID·팔레트·투명 RGB를 유지하며 새 편집 세션의 미저장 원본으로 연다. Undo·선택·GPU 자산·씬은 복원하지 않는다.
   각 탭과 복원 작업은 새 저장 ID를 써서 다른 작업을 덮어쓰지 않는다. 복원 원본 항목은 명시적 폐기 전 유지한다.
   현재 작업의 원본 내보내기 시작·성공한 프로젝트 저장·도트 문서 폐기는 해당 임시 원본만 지우며, 프로젝트 저장 중단/실패와 씬·도트 탭 이동은 마지막 완료본을 보존한다.
   브라우저 다운로드의 최종 파일 보관 여부는 기존 원본 내보내기/dirty 계약처럼 앱에서 확인하지 않는다.
@@ -449,18 +551,23 @@ PNG 생성·업로드는 검증된 원본 snapshot으로 시작한다. 적용 �
 기존 확정 자산과 실제 참조 중인 자산은 유지한다. 닫기/새 원본 선택은 이전 파일 읽기·확인창의 권한을 취소해 늦은 결과가 다른 문서를 닫거나 교체하지 못하게 한다.
 미저장 도트 또는 진행 중인 픽셀 편집/업로드가 있으면 에디터·엔진 업데이트와 재시작을 차단한다.
 
-도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
-UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB, v3/v5 JSON 12 MiB로 제한한다.
+도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
+UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB, v3/v5/v6/v7 JSON 12 MiB로 제한한다.
 이름과 layer/frame ID는 올바른 Unicode 문자열·UTF-16 최대 64단위이며 JavaScript `trim` 기준으로 빈 값이면 거절한다.
 짝이 없는 surrogate는 자산 등록 전에 진단한다. 편집 원본의 정수 필드는 표기가 아닌 값으로 검사하므로 `1.0`·`1e0`도 정수 1로 읽는다.
-v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. v1에서 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다. v3/v5 레이어 편집은 해당 버전을 유지한다.
+v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. v1에서 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다. v3/v5/v6/v7 레이어 편집은 해당 버전을 유지한다.
 v2는 아래→위 순서의 `layers` 배열(1~8개)에 고유 `id`·`name`·`visible`·`locked`·`rgba`를 보관한다.
 각 레이어는 문서와 같은 치수이며 `frame`·`palette`는 문서 전체가 공유한다. 선택 레이어는 UI 상태여서 선택만 바꿔도 원본이나 dirty 상태는 바뀌지 않는다.
 프레임 추가/복제/삭제/순서/시간 편집은 v3로 전환하고 Undo로 이전 형식까지 복원한다.
 v3는 공통 `layers[{id,name,visible,locked}]`와 `frames[{id,durationMs,cels:[{layerId,rgba}]}]`를 담는다.
 frame ID는 고유하며 cel 순서/ID는 공통 layers와 정확히 일치해야 한다. 시간은 1~60000ms 정수다.
-최대 16프레임·8레이어이며 모든 cel의 합계가 2,097,152픽셀(8 MiB RGBA)을 넘으면 편집·읽기를 거절한다.
-PNG는 프레임 개수의 제곱근을 올림한 열 수로 배치한 최대4×4 atlas다. 남은 마지막 칸은 RGBA0이며 프레임별 원본 치수/UV와 시간을 자산에서 확인할 수 있다.
+현재 편집기는 최대64프레임·8레이어다. 모든 cel의 합계가 2,097,152픽셀(8 MiB RGBA)을 넘으면 편집·읽기를 거절한다.
+v3/v5 읽기 한도16은 유지하고 17번째 프레임 추가·복제부터 v6로 전환한다. Undo는 정확한 이전 버전까지 복원하며,
+v6에서 프레임을 줄여도 자동으로 이전 버전으로 내려가지 않는다. v6는 v3의 cel 구조를 사용하고 v5의 태그 묶음
+(`tags`·`initialTag`·`nextClipId`)은 모두 함께 있거나 모두 생략해야 한다. 이전 앱/호스트는 v6를 거절하므로 함께 업데이트한다.
+v6는16프레임 이하에서도 원본 프레임별 시간을 유지한다. 화면 적용·노멀 연결·자산 내보내기가 같은 시간 형식을 사용하며, 같은 원본을 재적용할 때는 클립 변경 확인이 필요하지 않다.
+PNG는 프레임 개수의 제곱근을 올림한 열 수로 배치한 최대8×8 atlas다. v6 출력은 한 변2048·PNG16 MiB 이내이며,
+기존 v3/v5 출력은 한 변1024·PNG8 MiB 한도를 유지한다. 남은 마지막 칸은 RGBA0이며 프레임별 원본 치수/UV와 시간을 자산에서 확인할 수 있다.
 PNG는 표시 중인 레이어를 encoded sRGB RGBA8에서 정수 반올림하는 straight-alpha source-over로 합성한다.
 맨 아래 표시 레이어의 투명 RGB도 보존하고 모두 숨기면 RGBA 0을 출력한다. 숨긴 레이어의 원본 픽셀은 JSON에 남는다.
 픽셀·레이어·프레임 편집은 같은 Undo/Redo를 사용하며 합계 최대 64단계/실제 RGBA snapshot 16 MiB다.
@@ -472,14 +579,23 @@ PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮�
 미리보기 태그는 UI 상태다. 프레임 체크 순서가 재생 순서이며 각 행의 `#` 번호로 확인한다. 체크 해제 후 다시 선택하면 마지막에 추가한다.
 **모든 프레임**은 원본 순서로 반복 재생하며 선택 태그는 해당 순서·loop 정책으로 재생한다. 비반복 태그는 마지막 프레임을 유지한다.
 
-태그 추가는 **v5**로 전환하며 Undo로 기존 형식까지 돌아간다. v5는 v3의 layers/frames에 다음 필수 필드를 추가한다.
+태그 추가는 기존 원본을 **v5**로 전환하고 v6/v7은 유지한다. Undo로 기존 형식까지 돌아간다. v5는 v3의 layers/frames에 다음 필수 필드를 추가한다.
 
 - `tags`: 1~16개의 `{id,name,clipId,frameIds,loop}`. ID·이름·clip ID는 각각 고유하며 이름/ID는 기존64단위 문자열 규칙을 따른다.
 - `frameIds`: 1~16개의 중복 없는 stable frame ID. 목록 순서가 재생 순서이며 원본 프레임 순서 이동과 독립적이다. 여러 태그가 같은 프레임을 사용할 수 있다.
 - `clipId`: 0~65535의 정수. `nextClipId`는 다음 할당 번호(1~65536)로 모든 현재 clip ID보다 커야 한다. 삭제한 번호를 재사용하지 않는다.
 - `initialTag`: 존재하는 태그 ID. 이름·프레임 편집으로 clip ID는 바뀌지 않으며 태그가 사용하는 프레임 삭제와 마지막 태그 삭제는 차단한다.
 
-각 태그는 기존 runtime `animationSet`의 한 clip으로 출력하며 시간 GCD·32 native frame/FPS 한도를 태그마다 검사한다.
+태그의 **재생 방향**은 정방향·역방향·왕복이다. 역방향 또는 왕복을 선택하면 원본을 **v7**로 전환하며 Undo는 이전 버전까지 복원한다.
+v7은 v6의64프레임·12 MiB 원본·2048px/16 MiB PNG 한도와 v5의 필수 태그 묶음을 사용한다.
+`tags[].direction?: "forward" | "reverse" | "pingpong"`은 생략 시 정방향이다. v5/v6에 이 필드를 넣으면 거절한다.
+방향을 정방향으로 되돌리거나 프레임 수를 줄여도 v7을 자동 강등하지 않는다. 이전 앱/호스트는 v7을 거절하므로 함께 업데이트한다.
+태그 재생 미리보기는 해당 방향의 첫 프레임에서 시작한다. 왕복 반복은 양 끝을 중복하지 않고, 비반복 왕복은 처음으로 돌아온 프레임의 표시 시간까지 재생한 뒤 유지한다.
+한 프레임 왕복은 그 프레임만 사용하며, 프레임별 시간은 역방향/왕복에서도 원래 프레임을 따라간다.
+
+각 태그는 runtime `animationSet`의 한 clip으로 출력한다. v6/v7은 `frameDurationsMs`를 사용해 원본 UV와 시간 배열을 그대로 전달한다.
+기존 유효 v1~v5의 GCD/FPS 변환은 유지하며, 32 tick을 초과해 과거 거절되던 시간은 native 원본 프레임 시간으로 출력한다.
+새 시간 형식은 PX-04 v2 configure를 지원하는 SDK/Wasm이 필요하다.
 기존 도트 애니메이션에 태그를 적용하거나 소유 clip을 수동 변경한 경우 **클립 변경 검토 → 클립 변경 적용**으로 전후 ID/초기 clip을 확인한다.
 취소는 revision 등록·씬 변경을 하지 않으며 승인은 해당 자산과 정확한 전후 animationSet에만 유효하다. 기존 clip ID가 새 출력에서 사라지면 적용을 차단한다.
 기존 ID를 유지하며 프레임·초기 clip·반복을 변경하고 한 씬 Undo로 복원한다. 닫힌 씬·외부 게임 코드의 참조는 자동 수정하지 않는다.
@@ -498,7 +614,7 @@ UV×시트 치수는 정수 픽셀 경계(허용 오차1e-7px)여야 하며 시�
 **자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
 각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
 세션 store는 최대 8 revision/64 MiB다. 브라우저 내보내기를 프로젝트 저장 완료로 표시하지 않는다.
-태그가 없는 다중 프레임의 bundle은 기존 `animationSet` 단일 clip0을, v5 bundle은 태그별 clip과 초기 clip을 포함한다. 프레임 시간의 GCD로 반복 UV를 생성해 고정 FPS의 원본 시간/순서를 유지한다.
+태그가 없는 다중 프레임의 bundle은 `animationSet` 단일 clip0을, 태그가 있는 v5/v6/v7 bundle은 태그별 clip과 초기 clip을 포함한다. v6는 원본 UV를 복제하지 않으며 기존 유효 GCD 변환의 owned animation 비교·재적용을 유지한다.
 최대32 native UV/FPS 범위를 넘으면 프레임 패널에서 진단하고 게임 적용을 막는다. 편집 원본/PNG 저장은 가능하며 해당 bundle 자산에는 `animationDiagnostic`을 담는다.
 편집 미리보기는 원본 ms 기준, 게임은 기존 Rust sprite playback과 f32 FPS 기준이다. 타이밍 검증은 이 정밀도 차이를 구분한다.
 미설치 도트 자산·다른 프로젝트의 자산이나 runtime 숫자 texture 참조가 남은 씬 Save는 차단한다.
@@ -507,7 +623,8 @@ UV×시트 치수는 정수 픽셀 경계(허용 오차1e-7px)여야 하며 시�
 
 도트 탭 왼쪽의 **노멀맵** 메뉴에서 강도(0~8, 기본1.5)를 설정하고 **노멀 생성**을 실행한다.
 현재 보이는 레이어 합성을 source frame별 독립 rect로 잘라 기존 Sprite Normal Worker로 처리한다.
-v1/v2는 한 rect, v3/v5는 source frame 순서의 atlas rect, v4는 고정 atlas의 rect를 사용한다. 태그의 반복 UV는 중복 생성하지 않으며 빈 atlas 칸은 flat normal `(128,128,255,0)`로 남긴다.
+v1/v2는 한 rect, v3/v5/v6는 source frame 순서의 atlas rect, v4는 고정 atlas의 rect를 사용한다. 노멀은 게임의 모든 태그가 사용하는 고유 UV32개 한도를 유지한다. 사용하지 않는 cel은 예산에서 제외하고, 초과 시 색상 시트 편집·적용은 유지하며 생성 버튼에서 안내한다.
+태그의 반복 UV는 중복 생성하지 않으며 빈 atlas 칸은 flat normal `(128,128,255,0)`로 남긴다.
 결과는 `ferrum2d.pixel-normal.report` v1·`pixel-rects-v1` provenance로 color/source/normal SHA-256·stable frame ID/rect·생성 설정을 연결한다. 외부 Aseprite 파일이 필요하지 않다.
 
 - **생성**은 자산 준비이며 씬·게임 카메라를 바꾸지 않는다. 실패·취소 시 기존 pair와 씬을 유지한다.
@@ -563,7 +680,7 @@ normal이 없거나 lighting이 꺼지면 추가 target/pass가 없고 이전 ta
 현재 도트를 자산으로 등록하고 원본·PNG를 저장한 뒤 기존 씬 초안을 저장한다. 그림 등록/저장이 객체의 이미지를 자동 교체하지는 않으며 **선택 객체에 적용**은 별도 동작이다.
 위치·크기·collider/body·behavior와 씬/픽셀 Undo의 경계를 유지한다.
 
-- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2/v3/v4/v5 원본.
+- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7 원본.
 - 같은 위치의 `<assetId>.png`: 원본의 모든 프레임에서 보이는 레이어를 합성한 RGBA8 PNG.
 - `catalog.json`: `ferrum2d.pixel.catalog` v1의 revisions와 게임용 texture manifest.
 
@@ -571,7 +688,7 @@ desktop 전용 `load_placement_pixel_assets`/`save_placement_pixel_assets`는 �
 저장 요청은 `ferrum2d.pixel-project.assets` v1로 원본/PNG의 base64·SHA-256·identityDocument·치수와 `expectedCatalogRevision`을 전달한다.
 이 값은 마지막 load/save에서 확인한 catalog 원본 bytes의 SHA-256이며 최초 catalog 부재는 빈 문자열이다.
 외부 catalog 변경, 링크/경로 이탈, 원본/PNG 불일치와 기존 불변 파일의 다른 bytes는 저장을 거절한다.
-상한은 catalog 8 revision/64 MiB, 원본 v1/v4 400,000 bytes/v2 3 MiB/v3 12 MiB다. PNG는 기존4 MiB/한 변256, v3만8 MiB/한 변1024다.
+상한은 catalog 8 revision/64 MiB, 원본 v1/v4 400,000 bytes/v2 3 MiB/v3·v5·v6·v7 12 MiB다. PNG는 기존4 MiB/한 변256, v3/v5는8 MiB/한 변1024, v6/v7은16 MiB/한 변2048다. cel·Undo 예산은 확대하지 않는다.
 v3 metadata의 width/height는 atlas 치수이며 편집 프레임 치수는 원본 width/height를 사용한다.
 native 호스트는 숨긴 레이어까지 검증하고 TypeScript와 같은 합성 규칙으로 PNG를 대조한다. Pixel 전용 원본 상한이며 Aseprite/타일 원본 상한은 확대하지 않는다.
 
@@ -596,13 +713,16 @@ bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard 
 
 ## Aseprite Assets 가져오기·재import
 
-공식 Placement Viewer는 기존 `importAsepriteAtlas`를 사용해 Aseprite JSON+PNG를 Assets catalog에 연결한다.
+공식 Placement Viewer는 Aseprite JSON+PNG를 검증하고 Assets catalog에 연결한다.
 `Inspect`는 PNG 서명·실제 decode 크기·SHA-256과 metadata/frame rect를 확인하며 씬을 바꾸지 않는다.
 `Register`는 문서 세션에 atlas/frame을 등록한다. `Apply Frame`과 `Reimport`는 기존 `updateComponents` patch를
 한 번의 Undo transaction으로 적용하며, 작성한 size/pivot/transform/collider/body/behavior는 유지한다.
 
-공식 UI의 첫 지원 범위는 비회전·비트림 정수 rect, 1~256 frame이다. frame ID는 확장자까지 유지한다.
+공식 UI는 비회전 정수 rect, 1~256 frame과 trim 프레임 복원을 지원한다. frame ID는 확장자까지 유지한다.
 JSON hash/array 형식을 받으며 `meta.image` basename과 선택 PNG 파일명을 대조한다. 외부 파일/URL을 자동으로 읽지 않는다.
+`trimmed:true`에는 `sourceSize`와 `spriteSourceSize`가 필요하다. [Aseprite 개발자 설명](https://community.aseprite.org/t/checking-trim-in-export-sprite-sheet-window-cause-the-sprite-to-move-in-the-sheet/1248/2)의 원본 canvas·offset 의미를 따른다. 원본 canvas 안의 정수 offset에 RGBA를 복사해 투명 여백을 복원한다.
+trim 원본은 sRGB RGBA8 PNG(Adam7 포함)이며 모든 프레임의 원본 canvas 크기가 같아야 한다. 누락/초과 offset·회전·색 공간 변경·복원 예산 초과는 거절한다.
+배치 위치는 UTF-8 frame ID 순으로 결정하지만 목록과 frameTags는 원본 순서를 유지한다. 기존 객체의 크기·origin·transform은 바꾸지 않는다.
 frameTags/duration은 아래 명시적 animation import/migration으로 연결한다.
 일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다. normal binding이 있는 대상의 일반 Apply Frame/Reimport는 차단하고,
 정적 대상은 Generate Normals/Reimport Normals, 애니메이션 대상은 Apply Paired/Reimport Paired로 color/UV와 노멀을 함께 교체한다.
@@ -614,13 +734,16 @@ frameTags/duration은 아래 명시적 animation import/migration으로 연결�
 revision별 내용 기반 texture 이름으로 새 이미지를 별도 업로드하므로 실패/취소가 이전 GPU 이미지를 덮어쓰지 않는다.
 잠금/문서/선택 변경은 적용 직전에 다시 확인한다. 문서 전환·Game Preview 진입은 진행 작업을 취소한다.
 
-JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, session revision 합계 8건/64 MiB 상한이다.
+JSON 1 MiB, 원본/복원 PNG 각각16 MiB·한 변4096/4 megapixel, session revision 합계8건/64 MiB 상한이다. 합계에는 별도로 보존한 원본 PNG도 포함한다.
 문서 닫기는 미저장 Blob URL·GPU texture를 해제한다. 검증·저장된 프로젝트 에셋은 같은 프로젝트의 다른 씬을 위해 유지하고 작업공간 종료 때 해제한다.
 2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
 
 app 전용 `asepriteImports[]` handoff 확장은 현재 씬이 참조하는 논리 asset 이름·revision ID·원본명·hash·frame을 제공한다.
 engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 필드를 추가하지 않는다.
 `Export Assets`의 `ferrum2d.aseprite.assets` v1 bundle은 문서 키·revisions·manifest·원본 JSON/PNG files를 담는다.
+trim revision은 `<id>.json`에 원본 JSON, `<id>.source.png`에 원본 packed PNG, `<id>.png`에 복원된 게임용 atlas를 담는다.
+optional `revisions[].sourcePng: {sha256,width,height}`는 원본 PNG를 가리키며 반드시 해당 파일과 함께 제공한다. revision ID는 원본 JSON/packed PNG hash를 사용한다.
+게임은 manifest의 `<id>.png`와 씬 patch의 복원 UV를 사용한다. 원본 JSON을 별도 importer로 읽을 때는 `<id>.source.png`를 짝지어 사용한다.
 파일별 base64/SHA-256을 검증하고 프로젝트 안에 `overwrite:false`로 설치한 뒤, manifest의 stable 이름과 `srgb`를 catalog에 등록한다.
 동반 Copy Patch/handoff를 씬에 반영하고 새 세션에서 catalog를 먼저 로드해 다시 연다. bundle 자체에는 씬 JSON이 없다.
 설치 전 imported reference의 scene-only Save와 문서 간 복사를 막으며, export를 실제 저장 완료로 간주하지 않는다.
@@ -630,6 +753,24 @@ engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 �
 앞 단계가 실패하면 씬을 저장하지 않고 기존 파일/씬을 보존한다. 취소가 디스크 commit 뒤 도착한 경우에는 파일 저장 가능성을 안내하고 재열기를 요구한다.
 새 세션은 도트 JSON/PNG와 normal metadata/PNG를 각각 읽고 source SHA-256·frame ID/rect가 모두 일치해야 pair를 활성화한다.
 color texture는 pixel store와 공유하고 normal texture만 normal store가 소유한다. 저장된 pair와 같은 설정의 재생성은 업로드된 normal을 빌려 중복 등록/해제하지 않는다.
+
+### 영역(slice) 메타데이터와 명시적 기준점 적용
+
+`Inspect` 후 Preview의 **Slice and Origin / 영역·기준점**을 펼치면 이름 있는 slice와 원본 key frame을 선택할 수 있다.
+미리보기에는 bounds, pivot 십자와 9-slice center 점선을 표시한다. 선택과 미리보기는 씬을 바꾸지 않는다.
+프레임에 자산을 적용한 뒤 **Apply Origin / 기준점 적용**을 누르면 선택한 unlocked sprite의 `visual.originX/Y`만 바뀐다.
+기존 크기·UV·위치·회전·scale·collider/body·normal·animation 설정은 보존하며 한 번의 Undo/Redo로 되돌린다.
+일반 Apply Frame/Reimport/Animation migration은 현재 origin을 계속 보존한다. 새 원본의 pivot을 쓰려면 다시 명시적으로 적용한다.
+
+- `meta.slices` 최대64개, keys 합계256개. 이름은 고유한 비어 있지 않은 최대256자 문자열이고 key.frame은0..65535의 중복 없는 오름차순 정수다. 원본에 keys가 없는 slice도 표시한다.
+- [Aseprite 좌표 규칙](https://www.aseprite.org/api/slice)에 따라 bounds는 원본 canvas 기준, pivot/center는 bounds 좌상단 기준이다. 좌표는 정수이며 bounds x/y·pivot x/y는-4096..4096, w/h는1..4096이다. center는 bounds 안의 양수 사각형이어야 한다.
+- 적용 origin은 `(bounds.x + pivot.x) / frameCanvasWidth`, `(bounds.y + pivot.y) / frameCanvasHeight`다. trim 복원 canvas에도 같은 규칙을 쓴다. 적용할 bounds가 canvas 밖이면 거절한다. pivot 자체는 canvas 밖의 유한 origin도 허용한다.
+- [원본 exporter의 key.frame](https://github.com/aseprite/aseprite/blob/main/src/app/doc_exporter.cpp)은 원본 timeline 번호다. 내보낸 frame 목록 순서와 같다고 추정하지 않고 직접 고른다. 키 선택은 시간별 pivot 애니메이션을 만들지 않는다.
+- 정적 sprite는 Preview에서 현재 사용 중인 frame을 골라야 한다. animated sprite는 같은 원본 canvas 크기의 알려진 frame들을 사용할 때 하나의 공통 origin을 적용한다. 여러 frame ID가 같은 rect를 공유해도 허용한다.
+- pivot 없는 key와 center는 읽기 전용이다. 잘못되거나 미지원인 slice metadata는 이 기능에서 진단하고 일반 frame/animation import를 막지 않는다. 9-slice 렌더링·자동 resize/crop은 제공하지 않는다.
+
+원본 JSON 안의 slice metadata와 씬의 origin을 기존 자산·씬 저장 경로로 보존하고, 재열기에서 메타데이터를 다시 해석한다.
+선택 중인 slice/key는 임시 UI 상태다. 새 scene schema/native catalog/runtime 필드는 없으며 standalone importer API도 바꾸지 않는다.
 
 ### Aseprite 애니메이션 import와 migration
 
@@ -642,7 +783,7 @@ Apply Frame은 정적 교체이고 이 action은 명시적 애니메이션 변�
 - `forward`, `reverse`, `pingpong`, `pingpong_reverse`를 지원한다. pingpong은 양 끝을 중복하지 않는 한 주기로 펼친다.
 - frame 인덱스는 원본 JSON의 array/hash 순서를 따른다. 태그에 포함된 frame의 duration은 양의 uint32 정수 ms다.
 - duration의 정수 GCD를 tick으로 삼아 UV를 반복한다. 예: 90ms/180ms는 90ms tick 3개가 된다.
-  기존 native clip의 32 frame·FPS 0.001..1000 제한을 넘으면 근사하지 않고 거절한다.
+  이 변환 경로의 기존 32 frame·FPS 0.001..1000 제한을 넘으면 근사하지 않고 거절한다.
 - native FPS는 float32이므로 미세한 시간 오차가 있다. evidence의 sourceCycleMs/nativeFps/nativeCycleMs/nativeCycleErrorMs로 공개한다.
 - Aseprite의 유한 repeat 횟수는 native loop boolean으로 보존할 수 없으므로 거절한다. repeat 생략/0/문자열 `"0"`만 허용하며
   loop 여부는 UI에서 명시한다. [원본 repeat 의미](https://www.aseprite.org/api/tag#tagrepeats)와 native loop는 다른 계약이다.
@@ -741,6 +882,10 @@ Cancel은 후속 씬 저장과 오래된 UI 적용을 차단하지만 이미 시
 `catalog.json`은 app 전용 `ferrum2d.aseprite.catalog` v1이다. `revisions[]`에 원본명/hash/frame과 ID 생성에 쓴
 `identityDocument`를 보존하며, `manifest.textures`의 PNG 경로는 **catalog URL 기준 상대 경로**다.
 `manifest.textureOptions`는 `srgb`를 명시한다. 원본 Aseprite JSON의 `meta.image`는 바꾸지 않는다.
+trim host는 원본에서 pixels·rect·UV를 독립 복원해 게임용 PNG를 검증하고, 원본 PNG도 exclusive create·protocol 등록·정리/백업/복원 대상으로 포함한다.
+재열기는 source sidecar hash/identity와 게임용 PNG의 전체 RGBA를 확인한 뒤 저장된 PNG를 재사용한다. 압축 bytes가 달라도 원본 ID가 바뀌지 않는다.
+trim 저장 metadata의 `sourcePng`는 지원하는 세 필드로, frame rect/UV는 검증된 값과 UTF-8 ID 순으로 정규화한다. UI와 태그의 원본 순서는 유지한다. 기존 untrim v1 자산은 원본 PNG와 JSON 두 파일을 그대로 사용한다.
+새 trim 자산은 최신 앱/desktop host를 함께 사용해야 하며 이전 호스트는 trim 원본을 거절한다. Data Scene schema·Rust/Wasm ABI는 바꾸지 않는다.
 기존 export v1에 identityDocument가 없으면 native import는 bundle.document에서 이를 복원한다.
 프로젝트 재개방 시 원본을 검증·로드하고 frame browser/재import를 복원한다. handoff의 `persisted`는 실제 파일 확인 뒤 true가 된다.
 첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다.
@@ -1140,7 +1285,8 @@ restoreGameStateSnapshot(engine, saved);
 collider가 없는 instance에 `colliderEnabled`를 저장하면 복원 전에 거절한다. 장애물은 먼저 새 handle에
 연결한 뒤 제거/physics flag를 적용하므로 닫힌 문·열린 문·제거된 문 모두 격자 상태가 일치한다.
 `animationSet`을 가진 live instance에는 `animation: {clip, elapsedSeconds, paused, flipX, flipY,
-movement?}`를 저장한다. frame과 finished는 authored clip/fps와 경과 시간에서 다시 계산한다.
+movement?}`를 저장한다. frame과 finished·pingpong 진행 방향은 authored clip의 시간·재생 순서와 경과 phase에서 다시 계산한다.
+명시적 `animationSet`의 프레임별 ms·방향·256프레임·이벤트 계약은 [런타임 클립](data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 `movement`는 runtime에 연결한 idle/walk pose와 현재 `initialDirection`을 저장한다. 생략된
 movement는 수동 playback의 해제 상태를 보존하며, 저장된 연결은 새 primaryActor에 자동 복원한다.
 정적 clip 정의는 authoring 문서에서 재설치하고 재생 상태만 bulk numeric buffer로 Rust에 전달한다.

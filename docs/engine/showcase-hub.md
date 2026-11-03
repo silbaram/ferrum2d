@@ -9,6 +9,7 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 | 기능군 | 대표 demo 또는 경로 | 기준 문서 | 검증 명령 |
 | --- | --- | --- | --- |
 | Runtime baseline | Starter Runtime, Platformer, Breakout | [User Guide](user-guide.md), [Public API](public-api.md) | `pnpm build`, `pnpm smoke:starter-runtime`, `pnpm smoke:platformer`, `pnpm smoke:breakout` |
+| 도트 게임 제작 | 작은 빛의 정원 · Pixel Art | [도트 제작](data-scene-authoring.md#에디터-내장-도트-제작), [도트 후처리](public-api/core.md#도트-후처리) | `pnpm dev:pixel-art`, `pnpm smoke:pixel-showcase` |
 | Game Spec authoring | Top-down Shooter | [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md) | `pnpm validate:game-spec`, `pnpm smoke:headless`, `pnpm smoke:topdown-authored-behavior-runtime` |
 | Scene/Object authoring | Placement Viewer, generated placement viewer | [Data Scene Authoring](data-scene-authoring.md), [Authoring API](public-api/authoring.md) | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets` |
 | Physics authoring | Physics Sandbox | [Physics Spec](physics-spec.md), [2D Physics Map](../development/architecture/physics-engine.md) | `pnpm validate:physics-authoring`, `pnpm smoke:physics`, `pnpm smoke:physics-demo-suite` |
@@ -22,6 +23,7 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
 | Starter Runtime | 최소 runtime boot, UI overlay, debug/profiler path | `createFerrumRuntime(...)`, public root/core API, starter runtime smoke |
+| Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |
 | Physics Sandbox | Physics Spec apply, debug line, solver fixture catalog | Physics Spec sample, physics smoke suite, demo-suite browser smoke |
@@ -51,7 +53,7 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-Pages home은 runtime, authoring, physics demo route와 핵심 문서 카드를 제공한다. 현재 public Pages demo route는 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer`다. 이 Showcase Hub는 기능을 설명하고, 실제 demo route는 Pages home의 demo 카드에서 진입한다.
+Pages home은 runtime, authoring, physics demo route와 핵심 문서 카드를 제공한다. 현재 Pages artifact의 demo route는 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer`, `pixel-art`다. 새 route의 원격 공개 여부는 실제 배포 상태를 별도로 확인한다. 이 Showcase Hub는 기능을 설명하고, 실제 demo route는 Pages home의 demo 카드에서 진입한다.
 
 ## 보류 범위
 

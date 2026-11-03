@@ -326,6 +326,11 @@ component/binding/rename/remove patch는 잘못된 flat target을 만들지 않�
 
 `addInstance(...)`는 명시 `instance.id`를 요구하고 invalid/duplicate id를 거절한다. Core viewer API는
 id를 자동 생성하지 않으며, 공식 host가 사용자 입력이 비어 있을 때 deterministic id를 채운 뒤 호출한다.
+`addInstances(fragment, instances)`는 평면 2D 문서의 최대 2,048개 추가를 한 번에 검증하고
+선택·pick bounds·history를 한 번 갱신한다. 실패하면 전체 batch를 되돌리며, 기존 편집 transaction 안에서는
+그 transaction의 Undo 단위를 따른다. 명시 ID·prefab·삭제된 ID 예약 규칙은 단건 추가와 같다.
+초기 입력/용량 검사도 같은 실패 원복 경로를 거치므로 열린 transaction의 이전 편집을 남기지 않는다.
+공간 문서는 별도 billboard/model 연결이 필요하므로 이 batch API를 거절한다.
 `apps/placement-viewer`는 primitive/prefab/sprite prefix 기반 id를 만들고, generated create-game
 viewer는 `sprite-*`/`object-*` prefix helper를 사용한다. `renameInstance(...)`와
 `removeInstance(...)`는 behavior recipe 본문을 직접 갱신하지 않고 draft patch만 만든다. 저장 host는
@@ -646,12 +651,14 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 ## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
 
 `/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
-`DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
+`DataSceneSpriteAnimationState`, `DataSceneSpriteAnimationDirection`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
 `resolveDirectionalLight2D`, `DataSceneGroundShadowSpec`, `DataSceneGroundShadowStats`를 제공한다.
 `FerrumEngine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations`,
 `dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
 `dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
 [애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.
+현재 소스의 `animationSet`은 fps 또는 `frameDurationsMs`, optional `direction`·`emitEvents`를 보존한다.
+명시적 clip 256프레임/64클립/합계 4096 한도와 기존 v1 문서 호환은 [클립 계약](../data-scene-presentation.md#캐릭터별-atlas-클립)을 따른다.
 
 #73 B2는 optional `visual.shadow.shape`에 `"alpha"`를 추가한다. width/height/opacity/layer의
 기존 기본값과 instance scale 적용은 유지하며 새로운 texture나 collider 정의는 필요 없다.

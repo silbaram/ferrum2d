@@ -182,10 +182,11 @@ export function asepriteNormalLayout(visual: Record<string, unknown>) {
 // Compare values as consumed by the native Float32 ABI, without loop/ID policy.
 function signature(clip: AnimationSet["clips"][number]) {
   return JSON.stringify([
-    Math.fround(clip.fps),
+    clip.fps === undefined ? ["timed", ...clip.frameDurationsMs!.map(Math.fround)] : Math.fround(clip.fps),
     clip.frames.map((f) =>
       [f.u0 ?? 0, f.v0 ?? 0, f.u1 ?? 1, f.v1 ?? 1].map(Math.fround),
     ),
+    clip.direction ?? "forward",
   ]);
 }
 function identify(catalog: Catalog, input: unknown) {
@@ -221,7 +222,10 @@ function migrate(
   const clips = next.map((tag) => {
     const previous = matched.find((match) => match.name === tag.name);
     if (previous)
-      return { ...tag.clip, id: previous.clip.id, loop: previous.clip.loop };
+      return { ...tag.clip, id: previous.clip.id, loop: previous.clip.loop,
+        ...(previous.clip.direction === undefined ? {} : { direction: previous.clip.direction }),
+        ...(previous.clip.emitEvents === undefined ? {} : { emitEvents: previous.clip.emitEvents }),
+      };
     while (used.has(available)) available++;
     const id = available++;
     used.add(id);

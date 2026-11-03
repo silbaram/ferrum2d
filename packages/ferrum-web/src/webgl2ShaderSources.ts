@@ -1,9 +1,46 @@
+import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
+import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
+
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
-      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`;
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform float u_pixel_snap;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
+      void main(){
+        vec2 corner=a_corner;
+        vec2 local=(corner-vec2(0.5))*a_rect.zw;
+        float c=cos(a_rotation),s=sin(a_rotation);
+        vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);
+        if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}
+        if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}
+        vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;
+        if(u_pixel_snap>0.0){
+          // Shared edge rounding prevents tile cracks at fractional zoom.
+          if(min(abs(c),abs(s))<0.000001&&(int(a_flags)&32)==0){
+            // Avoid center +/- half-size cancellation at exact half-pixel edges.
+            if(a_rotation==0.0){
+              vec2 edge=corner;
+              if((int(a_flags)&4)!=0){edge.y=0.5+(corner.y-0.5)*u_ground_y_scale;}
+              position=a_rect.xy+u_screen_offset+a_rect.zw*edge;
+            }
+            position=floor(position*u_pixel_snap+0.5)/u_pixel_snap;
+          }else{
+            // Keep rotated/projected shapes rigid; translate their origin only.
+            vec2 origin=a_rect.xy+u_screen_offset;
+            position+=floor(origin*u_pixel_snap+0.5)/u_pixel_snap-origin;
+          }
+        }
+        vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;
+        gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);
+        v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;
+        v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);
+        if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}
+        v_color=a_color;v_corner=corner;v_flags=a_flags;
+      }`;
 // Internal shader sources shared by synchronous construction and async preparation.
 export const WEBGL2_SHADER_SOURCES = {
+  spritePalette: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
+      precision highp float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
+      ${SPRITE_PALETTE_GLSL}
+      void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=paletteColor(texture(u_texture,v_uv))*v_color;}}` },
   sprite: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
       void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=texture(u_texture,v_uv)*v_color;}}` },
@@ -20,7 +57,11 @@ export const WEBGL2_SHADER_SOURCES = {
       bool mapped=u_has_normal&&(flags&56)==0;
       vec3 n=vec3(0.);
       if(mapped){vec2 uv=v_normal_uv;if(u_normal_flip_y)uv.y=1.-uv.y;
-        vec3 local=texture(u_normal_texture,uv).rgb*2.-1.;
+        // Treat tiny interpolation differences at an exact texel boundary
+        // identically across GL and WGSL. Normal maps always use nearest data.
+        ivec2 normalSize=textureSize(u_normal_texture,0);
+        ivec2 texel=clamp(ivec2(floor((uv+vec2(1.0/4194304.0))*vec2(normalSize))),ivec2(0),normalSize-1);
+        vec3 local=texelFetch(u_normal_texture,texel,0).rgb*2.-1.;
         local=length(local)<0.01?vec3(0.,0.,1.):normalize(local);local.xy*=v_uv_sign;
         float c=v_rotation_cs.x,s=v_rotation_cs.y;
         n=vec3(c*local.x+s*local.y,s*local.x-c*local.y,local.z);
@@ -133,7 +174,8 @@ export const WEBGL2_SHADER_SOURCES = {
         v_uv = position * 0.5 + 0.5;
         gl_Position = vec4(position, 0.0, 1.0);
       }`, fragment: `#version 300 es
-      precision mediump float;
+      precision highp float;
+      precision highp int;
       uniform sampler2D u_scene;
       uniform vec2 u_texelSize;
       uniform int u_kind;
@@ -142,7 +184,9 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform bool u_encode_srgb;
       uniform bool u_linear_working_space;
       in vec2 v_uv;
-      out vec4 outColor;
+      out highp vec4 outColor;
+
+      ${PIXEL_POST_PROCESS_GLSL}
 
       float luminance(vec3 color) {
         return dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -155,7 +199,7 @@ export const WEBGL2_SHADER_SOURCES = {
           for (int x = -2; x <= 2; x += 1) {
             vec2 offset = vec2(float(x), float(y)) * u_texelSize * radius;
             vec3 color = texture(u_scene, clamp(uv + offset, vec2(0.0), vec2(1.0))).rgb;
-            float bright = smoothstep(threshold, 1.0, luminance(color));
+            float bright = threshold >= 1.0 ? 0.0 : smoothstep(threshold, 1.0, luminance(color));
             float distanceWeight = 1.0 / (1.0 + length(vec2(float(x), float(y))));
             sum += color * bright * distanceWeight;
             weightSum += distanceWeight;
@@ -164,8 +208,12 @@ export const WEBGL2_SHADER_SOURCES = {
         return weightSum <= 0.0 ? vec3(0.0) : sum / weightSum;
       }
 
-      float hash(float value) {
-        return fract(sin(value * 12.9898) * 43758.5453);
+      float bandNoise(uint band, float seed) {
+        uint value = band ^ floatBitsToUint(seed);
+        value = (value ^ (value >> 16u)) * 0x7feb352du;
+        value = (value ^ (value >> 15u)) * 0x846ca68bu;
+        value = value ^ (value >> 16u);
+        return float(value >> 8u) / 16777216.0;
       }
 
       vec4 applyCrt(vec2 uv) {
@@ -185,8 +233,8 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       vec4 applyGlitch(vec2 uv) {
-        float band = floor(uv.y * 48.0);
-        float noise = hash(band + u_params.z);
+        float band = floor(gl_FragCoord.y * 48.0 / float(textureSize(u_scene, 0).y));
+        float noise = bandNoise(uint(band), u_params.z);
         float offset = (noise - 0.5) * u_params.x;
         vec2 shifted = clamp(uv + vec2(offset, 0.0), vec2(0.0), vec2(1.0));
         float chroma = u_params.y + abs(offset) * 0.25;
@@ -197,28 +245,34 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       vec4 applyPass() {
-        vec4 scene = texture(u_scene, v_uv);
+        // Sampled effects render 1:1 into source-sized targets. Interpolated UVs
+        // can miss the exact center; fade also handles scaled letterbox copies.
+        vec2 uv = u_kind >= 2 && u_kind <= 5
+          ? gl_FragCoord.xy / vec2(textureSize(u_scene, 0)) : v_uv;
+        vec4 scene = texture(u_scene, uv);
         if (u_kind == 1) {
           vec3 fadeColor = u_linear_working_space ? u_color.rgb * scene.a : u_color.rgb;
           return vec4(mix(scene.rgb, fadeColor, u_color.a), scene.a);
         }
         if (u_kind == 2) {
-          vec3 bloom = bloomSample(v_uv, u_params.x, max(0.0, u_params.z));
+          vec3 bloom = bloomSample(uv, u_params.x, max(0.0, u_params.z));
           return vec4(scene.rgb + bloom * u_params.y, scene.a);
         }
         if (u_kind == 3) {
-          return applyCrt(v_uv);
+          return applyCrt(uv);
         }
         if (u_kind == 4) {
-          float distanceFromCenter = distance(v_uv, vec2(0.5));
+          float distanceFromCenter = distance(uv, vec2(0.5));
           float inner = max(0.0, u_params.y - u_params.z);
-          float edge = smoothstep(inner, u_params.y, distanceFromCenter);
+          float edge = u_params.y <= 0.0 ? 1.0
+            : (inner < u_params.y ? smoothstep(inner, u_params.y, distanceFromCenter)
+              : step(u_params.y, distanceFromCenter));
           float amount = edge * u_params.x * u_color.a;
           vec3 vignetteColor = u_linear_working_space ? u_color.rgb * scene.a : u_color.rgb;
           return vec4(mix(scene.rgb, vignetteColor, amount), scene.a);
         }
         if (u_kind == 5) {
-          return applyGlitch(v_uv);
+          return applyGlitch(uv);
         }
         return scene;
       }
@@ -230,6 +284,15 @@ export const WEBGL2_SHADER_SOURCES = {
       }
 
       void main() {
+        // Sampled effects share highp arithmetic with WebGPU; pixelArt uses exact texels.
+        if (u_kind == 6) {
+          highp vec4 pixelColor = applyPixelArt();
+          if (u_encode_srgb) {
+            pixelColor.rgb = pixelColor.a > 0.0 ? pixelLinearToSrgb(pixelColor.rgb / pixelColor.a) * pixelColor.a : vec3(0.0);
+          }
+          outColor = pixelColor;
+          return;
+        }
         vec4 color = applyPass();
         // Sampling the sRGB targets yields premultiplied linear RGB; canvas expects premultiplied sRGB.
         if (u_encode_srgb) {

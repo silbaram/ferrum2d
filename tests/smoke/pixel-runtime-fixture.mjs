@@ -73,7 +73,7 @@ export async function probePixelResume(providedBundle) {
     const pausedSample={...sample};
     let playback;
     const pose=bundle.sceneDocument.sceneComposition.fragments.main.instances[0],visual=pose.props.components.visual;
-    if(visual.animationSet&&bundle.assets.find(asset=>asset.id===visual.texture)?.source.version!==5) {
+    if(visual.animationSet&&![5,6,7].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
       const source=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
       if(source?.version!==3||source.frames.length!==2)throw Error('Fresh animation source metadata missing');
       const clip=visual.animationSet.clips[0],handle=handles[pose.id],nativeFrames=new Set(),sourceFrames=new Set(),visible=new Set();
@@ -136,6 +136,88 @@ export async function probePixelResume(providedBundle) {
       taggedPlayback={clips:clips.length,allClipsPlayed:true,clipStates:clips,renderedUVs:true,visibleFrames:seen.size,maxDraws,playingState:sample.state};
       playback={sourceFrames:seen.size,playingState:sample.state};
     }
+    let capacityPlayback;
+    if(taggedSource?.version===6) {
+      window.pixelResumeStage="capacityPlayback";
+      const capacityStarted=performance.now();
+      const handle=handles[pose.id],set=visual.animationSet,seen=new Set();
+      if(!set||set.clips.length!==taggedSource.tags.length)throw Error('Capacity tags differ from native clips');
+      if(!engine.resumeDataScene())throw Error('Capacity animation did not enter Playing');
+      let time=32,maxDraws=0,pixelChecks=0,renders=0;
+      const columns=Math.ceil(Math.sqrt(taggedSource.frames.length)),rows=Math.ceil(taggedSource.frames.length/columns);
+      for(const clip of set.clips) {
+        window.pixelResumeStage="capacityPlayback:clip-"+clip.id;
+        const tag=taggedSource.tags.find(tag=>tag.clipId===clip.id),visited=new Set();
+        if(!tag||clip.fps!==undefined||clip.frames.length!==tag.frameIds.length||!clip.frameDurationsMs)throw Error('Capacity export duplicated or lost source frames');
+        if(!engine.updateDataSceneSpriteAnimations([{entity:handle,clip:clip.id,restart:true}]))throw Error('Capacity clip switch failed');
+        const duration=clip.frameDurationsMs.reduce((sum,ms)=>sum+ms,0);
+        // 50ms is the actual GameLoop clamp and is shorter than every fixture
+        // frame (83ms minimum), so every original cel must still be displayed.
+        for(let elapsed=0;elapsed<=duration+50;elapsed+=50) {
+          time+=50;const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(time);renders++;
+          const state=engine.dataSceneSpriteAnimationState(handle);
+          if(!state||state.clip!==clip.id||sample.state!==1||sample.entities!==1||sample.drawCalls<1||sample.drawCalls>16||sample.textureSwitches>16)throw Error('Capacity runtime state or budget differs');
+          maxDraws=Math.max(maxDraws,sample.drawCalls);
+          const id=tag.frameIds[state.frame],index=taggedSource.frames.findIndex(frame=>frame.id===id);
+          const expected=[index%columns/columns,Math.floor(index/columns)/rows,(index%columns+1)/columns,(Math.floor(index/columns)+1)/rows];
+          const actual=bundle.sceneDocument.spatial ? spatialUvs.length ? [[Math.min(...spatialUvs.map(uv=>uv[0])),Math.min(...spatialUvs.map(uv=>uv[1])),Math.max(...spatialUvs.map(uv=>uv[0])),Math.max(...spatialUvs.map(uv=>uv[1]))]] : [] : spriteUvs;
+          if(!actual.length||actual.some(uv=>uv.some((v,i)=>Math.abs(v-expected[i])>1e-6)))throw Error('Capacity native UV differs from original cel: '+JSON.stringify({id,actual,expected}));
+          if(!visited.has(id)) {
+            gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+            if(gl.getError())throw Error('Capacity readback failed');
+            const rgba=atob(taggedSource.frames[index].cels[0].rgba),red=rgba.charCodeAt(4),green=rgba.charCodeAt(5);
+            let matches=0;for(let i=0;i<pixels.length;i+=4)if(Math.abs(pixels[i]-red)<=2&&Math.abs(pixels[i+1]-green)<=2&&pixels[i+3]>240)matches++;
+            if(matches<20)throw Error('Capacity source cel is absent from actual pixels: '+id+' '+matches);
+            pixelChecks++;visited.add(id);seen.add(id);
+          }
+        }
+        if(visited.size!==tag.frameIds.length)throw Error('Capacity playback skipped original frames');
+      }
+      if(seen.size!==64||taggedSource.frames.length!==64)throw Error('Capacity fixture must exercise all64 original frames');
+      capacityPlayback={originalFrames:64,clips:set.clips.length,visitedOriginalFrames:seen.size,renderedUVs:true,pixelChecks,maxDraws,renders,elapsedMs:performance.now()-capacityStarted,playingState:sample.state};
+      playback={sourceFrames:64,nativeFrames:64,playingState:sample.state};
+    }
+    let directionPlayback;
+    if(taggedSource?.version===7) {
+      window.pixelResumeStage='directionPlayback';
+      const handle=handles[pose.id],set=visual.animationSet,results=[];
+      if(!set||set.clips.length!==taggedSource.tags.length||!engine.resumeDataScene())throw Error('Direction source did not enter Playing');
+      let time=32;
+      for(const tag of taggedSource.tags) {
+        const clip=set.clips.find(clip=>clip.id===tag.clipId),ids=tag.frameIds,count=ids.length;
+        let order=Array.from({length:count},(_,i)=>i);
+        if(tag.direction==='reverse')order.reverse();
+        else if(tag.direction==='pingpong'&&count>1)order.push(...order.slice(tag.loop?1:0,-1).reverse());
+        const durations=ids.map(id=>taggedSource.frames.find(frame=>frame.id===id).durationMs);
+        const cycle=order.reduce((n,i)=>n+durations[i],0),visited=new Set();let samples=0;
+        if(!engine.updateDataSceneSpriteAnimations([{entity:handle,clip:tag.clipId,restart:true}]))throw Error('Direction clip switch failed');
+        for(let elapsed=10;elapsed<=cycle+50;elapsed+=10) {
+          time+=10;const callbacks=[...pending.values()];pending.clear();for(const callback of callbacks)callback(time);
+          const state=engine.dataSceneSpriteAnimationState(handle);
+          if(!state||state.clip!==tag.clipId||sample.state!==1||sample.entities!==1||sample.drawCalls<1||sample.drawCalls>16||sample.textureSwitches>16)throw Error('Direction runtime state/budget differs');
+          let phase=tag.loop?elapsed%cycle:Math.min(elapsed,cycle-.001),step=0;
+          while(step<order.length-1&&phase>=durations[order[step]])phase-=durations[order[step++]];
+          if(phase<.01||durations[order[step]]-phase<.01)continue;
+          const expectedIndex=order[step];if(state.frame!==expectedIndex)throw Error('Native direction/time mismatch '+JSON.stringify({tag,elapsed,expectedIndex,state}));
+          const sourceIndex=taggedSource.frames.findIndex(frame=>frame.id===ids[expectedIndex]);
+          const columns=Math.ceil(Math.sqrt(taggedSource.frames.length)),rows=Math.ceil(taggedSource.frames.length/columns);
+          const expected=[sourceIndex%columns/columns,Math.floor(sourceIndex/columns)/rows,(sourceIndex%columns+1)/columns,(Math.floor(sourceIndex/columns)+1)/rows];
+          const actual=bundle.sceneDocument.spatial?spatialUvs.length?[[Math.min(...spatialUvs.map(uv=>uv[0])),Math.min(...spatialUvs.map(uv=>uv[1])),Math.max(...spatialUvs.map(uv=>uv[0])),Math.max(...spatialUvs.map(uv=>uv[1]))]]:[]:spriteUvs;
+          if(!actual.length||actual.some(uv=>uv.some((v,i)=>Math.abs(v-expected[i])>1e-6)))throw Error('Direction rendered UV differs from source');
+          if(elapsed%50===0) {
+            gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);if(gl.getError())throw Error('Direction readback failed');
+            const channel=[2,0,1][sourceIndex];let visible=0;
+            for(let i=0;i<pixels.length;i+=4)if(pixels[i+channel]>100&&pixels[i+channel]>pixels[i+(channel+1)%3]*1.5&&pixels[i+channel]>pixels[i+(channel+2)%3]*1.5)visible++;
+            if(visible<100)throw Error('Direction pixels differ '+sourceIndex);samples++;
+          }
+          visited.add(state.frame);
+        }
+        const final=engine.dataSceneSpriteAnimationState(handle);
+        if(visited.size!==count||final.finished===tag.loop)throw Error('Direction completion differs');
+        results.push({direction:tag.direction??'forward',loop:tag.loop,frames:visited.size,pixelChecks:samples});
+      }
+      directionPlayback={clips:results,playingState:sample.state,renderedUVs:true,sourceTiming:true};
+    }
     let fixedAtlas;
     const atlasSource=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
     if(atlasSource?.version===4) {
@@ -187,7 +269,7 @@ export async function probePixelResume(providedBundle) {
       if(sample.state!==1)throw Error('Normal mapped game did not resume Playing');
       normalMapping={lightingChanged:true,differentPixels:difference,colorSpace:'none',playingState:sample.state,drawCalls:sample.drawCalls,textureSwitches:sample.textureSwitches,controlledLighting:true,...(pairedPlayback?{pairedPlayback}:{}),...(!mapped.spatial?{normalDrawCalls:mappedStats.normalDrawCalls,flatNormalDrawCalls:0}:{})};
     }
-    return { freshSession: true, assets: bundle.assets.length, hashes: true, bluePixels: blue, ...pausedSample,...(playback?{playback}:{}),...(fixedAtlas?{fixedAtlas}:{}),...(taggedPlayback?{taggedPlayback}:{}),...(normalMapping?{normalMapping}:{}) };
+    return { freshSession: true, assets: bundle.assets.length, hashes: true, bluePixels: blue, ...pausedSample,...(playback?{playback}:{}),...(fixedAtlas?{fixedAtlas}:{}),...(directionPlayback?{directionPlayback}:{}),...(taggedPlayback?{taggedPlayback}:{}),...(capacityPlayback?{capacityPlayback}:{}),...(normalMapping?{normalMapping}:{}) };
   } finally {
     engine?.destroy(); renderer.destroy();
     globalThis.requestAnimationFrame = raf; globalThis.cancelAnimationFrame = cancel;

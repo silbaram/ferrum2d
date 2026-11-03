@@ -29,6 +29,12 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 예제의 아트와 게임 구성은 엔진 API 위에 만든 콘텐츠입니다.
 [캡처 환경과 재생성 방법](docs/development/quality/screenshots/README.md)을 참고하세요.
 
+**작은 빛의 정원** — 직접 만든 도트 원본을 애니메이션·조명·팔레트·화면 효과와 연결한 조작형 예제입니다.
+
+![작은 빛의 정원: 도트 게임과 화면 설정](docs/development/quality/screenshots/pixel-art-showcase.png)
+
+씨앗 세 개를 모으며 표현 효과를 바꿔 보고, 편집 가능한 캐릭터 원본과 PNG 시트를 내려받을 수 있습니다.
+
 ### 직접 실행하기
 
 먼저 아래 [소스 개발환경](#소스-개발환경)을 준비하고 저장소 루트에서 실행합니다. 접속 주소와 포트는 Vite 터미널에 표시됩니다.
@@ -39,6 +45,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
 | Starter Runtime | `pnpm dev:starter-runtime` | [examples/starter-runtime](examples/starter-runtime/) |
+| 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
 | Breakout | `pnpm dev:breakout` | [examples/breakout](examples/breakout/) |
 | Platformer | `pnpm dev:platformer` | [examples/platformer](examples/platformer/) |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | [examples/physics-sandbox](examples/physics-sandbox/) |
@@ -46,6 +53,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 - **정원:** 실행 버튼을 누른 뒤 바닥을 클릭합니다. 벽·건물·운하는 통과할 수 없고, 다리로 건넙니다. 정지는 원래 배치와 토큰을 복원합니다.
 - **마을:** HD-2D에서 객체 배치와 편집 카메라를 확인하고, 게임 미리보기에서 씬에 저장된 게임 카메라 구도를 확인합니다.
 - **Shooter:** Enter로 시작, WASD로 이동, 마우스로 조준, 왼쪽 클릭 또는 Space로 발사합니다. 게임 종료 후 Space로 재시작합니다.
+- **도트 쇼케이스:** 바닥을 클릭하거나 씨앗 버튼으로 이동합니다. 조명·캐릭터 팔레트·후처리를 바꿔 보고, 편집 가능한 도트 원본도 내려받을 수 있습니다.
 
 뷰어의 게임 미리보기는 Scene Authoring 런타임을 실행합니다. 외부 게임 프로젝트의 임의 TypeScript 진입점이나 자체 HUD까지 자동으로 실행하지는 않습니다.
 전체 예제와 기능의 연결은 [Showcase Hub](docs/engine/showcase-hub.md)에 정리되어 있습니다.
@@ -56,14 +64,14 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | --- | --- | --- |
 | 런타임 | Rust/Wasm 업데이트, 엔티티·씬, bulk command buffer, snapshot·저장/복원 | [Core API](docs/engine/public-api/core.md) |
 | 2D 렌더링 | WebGL2 sprite batch, atlas·tilemap, 레이어·깊이 정렬, 카메라, bitmap text, render texture | [Public API](docs/engine/public-api.md) |
-| 픽셀 표현·조명 | 평면 2D 고정 해상도·정수 확대·레터박스, sprite normal map, 점광원·그림자·후처리 | [2D 표시 설정](docs/engine/data-scene-authoring.md) · [표현 효과](docs/engine/data-scene-presentation.md) |
+| 픽셀 표현·조명 | 평면 2D 고정 해상도·정수 확대·레터박스·선택형 화면 픽셀 스냅, PNG 아틀라스 edge 복제, texture별 RGB 팔레트 스왑, 도트 양자화·디더·스캔라인, sprite normal map, 점광원·그림자·후처리 | [2D 표시 설정](docs/engine/data-scene-authoring.md) · [아틀라스 보호](docs/engine/public-api/labs.md#png-아틀라스의-가장자리-보호) · [팔레트 스왑](docs/engine/public-api/labs.md#평면-2d-팔레트-스왑) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) · [표현 효과](docs/engine/data-scene-presentation.md) |
 | HD-2D | 정적 GLB/glTF, 지형·경사·높이·층, billboard, 공간 카메라·picking, 조명·그림자·안개·DOF, 선택 WebGPU 경로 | [공간 씬과 지원 범위](docs/engine/data-scene-spatial.md) |
-| 게임플레이 | 선언형 씬·prefab, actor 이동·경로 탐색, animation, projectile·weapon, Behavior Recipe·FSM 실행 | [Data Scene](docs/engine/data-scene-authoring.md) · [Native Runtime](docs/engine/data-scene-native-runtime.md) |
+| 게임플레이 | 선언형 씬·prefab, actor 이동·경로 탐색, 프레임별 시간·역방향·핑퐁·재생 이벤트, projectile·weapon, Behavior Recipe·FSM 실행 | [Data Scene](docs/engine/data-scene-authoring.md) · [애니메이션](docs/engine/data-scene-presentation.md) · [Native Runtime](docs/engine/data-scene-native-runtime.md) |
 | 물리·충돌 | AABB·원·다각형, raycast·shape cast, CCD, controller·platform, 공간 높이·층 연결 | [물리 기능 맵](docs/development/architecture/physics-engine.md) · [Physics Spec](docs/engine/physics-spec.md) |
 | 입력·오디오 | action binding·context, 키보드·포인터·gamepad, 오디오 정책·공간 오디오 | [입력](docs/engine/input-actions.md) · [Core API](docs/engine/public-api/core.md) |
-| 에셋 | atlas, 타일맵 가져오기, 병렬 로딩·취소, 선택 KTX2, 모델 캐시·스트리밍·GPU 자원 진단 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
-| 배치·도트 보조 도구 | 프로젝트 씬 탐색, 다중 문서, 드래그 배치·변형·Undo, 레이어, 게임 카메라, 한국어/영문 UI, 도트 캔버스·팔레트·프레임 편집·노멀 생성, 디스크 에셋 사용처·정리 | [뷰어 사용법](apps/placement-viewer/README.md) |
-| 검증 | spec validation, replay/hash, browser smoke, runtime budget·profiler, package·consumer smoke | [검증 기준](docs/development/quality/smoke-check.md) |
+| 에셋 | atlas, 뷰어의 trim 스프라이트 복원·원본 보존·영역 기준점 적용, 타일맵 가져오기, 병렬 로딩·취소, 선택 KTX2, 모델 캐시·스트리밍·GPU 자원 진단 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
+| 배치·도트 보조 도구 | 프로젝트 씬 탐색, 다중 문서, 드래그 배치·변형·Undo, 레이어, 게임 카메라, 한국어/영문 UI, 도트 팔레트 JSON/GPL/HEX·디더/그라데이션·64프레임·태그 방향·어니언 범위·노멀 생성, 오토타일·타일 애니메이션·시간별 맵 미리보기, 디스크 에셋 사용처·정리 | [뷰어 사용법](apps/placement-viewer/README.md) |
+| 검증 | spec validation, replay/hash, browser smoke, runtime budget·profiler, package·consumer smoke, consumer 도트 skill·PNG/팔레트/타일 검증 프로필 | [검증 기준](docs/development/quality/smoke-check.md) |
 
 기능별 제약과 opt-in 조건은 각 문서를 기준으로 합니다. HD-2D는 정적 모델과 2D 게임을 위한 경로이며,
 범용 3D 제작 도구나 스켈레탈 애니메이션을 제공하는 것은 아닙니다.

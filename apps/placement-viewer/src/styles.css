@@ -90,6 +90,7 @@
 .placement-pixel-onion-options label[data-onion-side=previous] { color: var(--red); }
 .placement-pixel-onion-options label[data-onion-side=next] { color: var(--cyan); }
 .placement-pixel-onion-options input[type=range] { flex: 1; min-width: 0; width: 64px; }
+.placement-pixel-onion-options input[type=number] { width: 48px; margin-left: auto; }
 .placement-pixel-onion-options output { min-width: 32px; text-align: right; }
 .placement-pixel-onion-options p { margin: 0; color: var(--fg-3); }
 .placement-pixel-tags { position: relative; }
@@ -248,6 +249,14 @@ textarea {
   background: var(--viewport-bg);
   border: 1px solid var(--border);
 }
+.placement-aseprite-frame-preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.placement-tile-map-preview { display: grid; gap: 4px; margin-top: 8px; }
+.placement-tile-map-preview canvas { max-width: 100%; height: auto; image-rendering: pixelated; background: var(--bg-2); border: 1px solid var(--border-strong); }
+.placement-aseprite-slices { flex: 1 1 240px; min-width: 0; border-top: 1px solid var(--border); padding: 4px 0; }
+.placement-aseprite-slices > summary { cursor: pointer; padding: 4px 0; }
+.placement-aseprite-slices select { min-width: 0; max-width: 60%; }
+.placement-aseprite-slices > output { display: block; margin: 4px 0; overflow-wrap: anywhere; }
+.placement-aseprite-slices > p { margin: 4px 0; color: var(--fg-3); }
 
 .placement-normal-tool {
   min-width: 240px;

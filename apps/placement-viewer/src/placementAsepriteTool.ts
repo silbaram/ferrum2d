@@ -19,6 +19,7 @@ import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementToolActions, createPlacementToolSteps, placementActionReason } from "./placementToolPanel";
 import { canUsePlacementAsset } from "./placementAssetScope";
 import { createPlacementAsepriteNormals } from "./placementAsepriteNormals";
+import { asepriteSliceCatalog, asepriteSliceOrigin, asepriteSlicePivotPatch } from "./placementAsepriteSlices";
 import {
   asepriteAnimationCatalog,
   asepriteAnimationPatch,
@@ -144,10 +145,28 @@ export function createPlacementAsepriteTool(options: {
   const policy = document.createElement("p");
   setUiText(
     policy,
-    "Untrimmed, unrotated frames only. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.",
+    "Trimmed RGBA8 frames restore their original canvas. Rotated frames are unsupported. Apply Animation imports frameTags and exact millisecond timing into native clips (max 32 frames per clip). Reimport Animation preserves clip IDs, initial clip and existing loop policy. Use Apply Paired/Reimport Paired to regenerate bound normals with animations.",
   );
   source.append(sourceFiles, policy);
   field("Aseprite frame", frame, preview);
+  const slices = document.createElement("details"), sliceSummary = document.createElement("summary"),
+    slice = document.createElement("select"), sliceKey = document.createElement("select"),
+    sliceInfo = document.createElement("output"), sliceReason = document.createElement("output"), sliceNote = document.createElement("p"),
+    applyPivot = document.createElement("button");
+  slices.className = "placement-aseprite-slices";
+  slices.dataset.asepriteSlices = "true";
+  sliceInfo.dataset.asepriteSliceInfo = "true";
+  sliceInfo.setAttribute("aria-live", "polite");
+  sliceReason.setAttribute("role", "status");
+  setUiText(sliceSummary, "Slice and Origin");
+  slices.append(sliceSummary);
+  field("Sprite slice", slice, slices);
+  field("Slice key frame", sliceKey, slices);
+  applyPivot.type = "button";
+  applyPivot.dataset.asepriteAction = "pivot";
+  setUiText(applyPivot, "Apply Origin");
+  setUiText(sliceNote, "Choose a source key explicitly. Apply Origin changes only the selected sprite origin, for all animation frames. Size and UV stay unchanged. Nine-slice center is metadata only.");
+  slices.append(sliceInfo, sliceReason, applyPivot, sliceNote);
   const initialAnimation = document.createElement("select"),
     animationLoop = document.createElement("input"),
     animationInfo = document.createElement("output");
@@ -165,7 +184,10 @@ export function createPlacementAsepriteTool(options: {
     diagnostics = document.createElement("output");
   diff.dataset.asepriteDiff = "true";
   diagnostics.dataset.asepriteDiagnostics = "true";
-  preview.append(canvas, diff, diagnostics);
+  const framePreview = document.createElement("div");
+  framePreview.className = "placement-aseprite-frame-preview";
+  framePreview.append(canvas, slices);
+  preview.append(framePreview, diff, diagnostics);
   const actionBar = createPlacementToolActions("aseprite", "Sprite import actions", [inspect, register, apply, reimport, applyAnimation, reimportAnimation, generateNormals, reimportNormals, applyPaired, reimportPaired, saveNormals, cancel, save, exportButton]);
   const steps = createPlacementToolSteps("Sprite import progress"), reason = document.createElement("p"), scope = document.createElement("p");
   reason.className = "placement-tool-reason"; scope.className = "placement-tool-scope";
@@ -195,6 +217,9 @@ export function createPlacementAsepriteTool(options: {
     busy = false,
     disposed = false,
     previewSerial = 0;
+  let sliceFailure = "";
+  const events = new AbortController();
+  const listenerOptions = { signal: events.signal };
   const draft = () => drafts.get(key)!;
   const catalog = installPlacementCatalogTools({
     root: body, store: assets,
@@ -259,6 +284,58 @@ export function createPlacementAsepriteTool(options: {
       normalTexture,
     );
   }
+  const sliceSelection = () => ({ slice: slice.value, keyFrame: Number(sliceKey.value), frame: frame.value });
+  function fillSliceKeys() {
+    const currentDraft = drafts.get(key);
+    if (disposed || !currentDraft) return;
+    const previous = sliceKey.value;
+    sliceKey.replaceChildren();
+    const candidate = currentDraft.candidate;
+    if (candidate && !sliceFailure) {
+      for (const key of asepriteSliceCatalog(candidate).find(value => value.name === slice.value)?.keys ?? []) {
+        const option = document.createElement("option");
+        option.value = String(key.frame);
+        setUiText(option, uiMessage("Source frame {0}", key.frame));
+        sliceKey.append(option);
+      }
+    }
+    if ([...sliceKey.options].some(value => value.value === previous)) sliceKey.value = previous;
+  }
+  function fillSlices() {
+    const previous = slice.value;
+    slice.replaceChildren();
+    sliceFailure = "";
+    try {
+      for (const item of draft().candidate ? asepriteSliceCatalog(draft().candidate!) : []) {
+        const option = document.createElement("option");
+        option.value = option.textContent = item.name;
+        slice.append(option);
+      }
+      if ([...slice.options].some(value => value.value === previous)) slice.value = previous;
+    } catch (cause) { sliceFailure = cause instanceof Error ? cause.message : String(cause); }
+    fillSliceKeys();
+  }
+  function renderSlices(valid: boolean) {
+    const candidate = draft().candidate;
+    setUiText(sliceInfo, "");
+    slice.disabled = busy || !valid || !slice.options.length;
+    sliceKey.disabled = busy || !valid || !sliceKey.options.length;
+    let reason = sliceFailure || (!valid ? "Inspect the current source files first" : !slice.options.length ? "No slice metadata in this source" : !sliceKey.options.length ? "This slice has no keys" : "");
+    if (!reason && candidate) {
+      try {
+        const value = asepriteSliceOrigin(candidate, slice.value, Number(sliceKey.value), frame.value);
+        setUiText(sliceInfo, uiMessage("Bounds {0}, {1} · {2} × {3} · Origin {4} · Center {5}",
+          value.bounds.x, value.bounds.y, value.bounds.w, value.bounds.h,
+          value.origin ? `${value.origin.x.toFixed(4)}, ${value.origin.y.toFixed(4)}` : uiMessage("No pivot"),
+          value.center ? `${value.center.x}, ${value.center.y}, ${value.center.w} × ${value.center.h}` : uiMessage("None")));
+        asepriteSlicePivotPatch(options.context().document, options.viewer.state(), candidate, sliceSelection());
+      } catch (cause) { reason = cause instanceof Error ? cause.message : String(cause); }
+    }
+    setUiText(sliceReason, reason);
+    const blocked = reason || (!options.context().canEdit ? "Finish the current edit before using this tool" : !candidate?.uploaded ? "Apply this atlas to the selected sprite first" : "");
+    applyPivot.disabled = busy || !valid || !!blocked;
+    setUiAttribute(applyPivot, "title", blocked || "Apply the chosen pivot to the selected sprite");
+  }
   function render() {
     if (disposed || !drafts.has(key)) return;
     const d = draft(),
@@ -292,6 +369,7 @@ export function createPlacementAsepriteTool(options: {
       ),
     );
     catalog.sync();
+    renderSlices(valid);
     let reimportCause: unknown;
     let applyError = "",
       reimportError = "",
@@ -484,8 +562,11 @@ export function createPlacementAsepriteTool(options: {
     status.setAttribute("role", d.importFailure ? "alert" : "status");
   }
   async function paint() {
+    // A details toggle can arrive after close/destroy has cleared its draft.
+    const previewDraft = drafts.get(key);
+    if (disposed || !previewDraft) return;
     const token = ++previewSerial,
-      candidate = draft().candidate,
+      candidate = previewDraft.candidate,
       rect = candidate?.frames.find((f) => f.id === frame.value),
       ctx = canvas.getContext("2d")!;
     ctx.clearRect(0, 0, 160, 160);
@@ -495,7 +576,7 @@ export function createPlacementAsepriteTool(options: {
         new Blob([candidate.png], { type: "image/png" }),
       );
       try {
-        if (disposed || token !== previewSerial) return;
+        if (disposed || token !== previewSerial || drafts.get(key) !== previewDraft) return;
         const scale = Math.min(160 / rect.width, 160 / rect.height);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(
@@ -509,11 +590,35 @@ export function createPlacementAsepriteTool(options: {
           rect.width * scale,
           rect.height * scale,
         );
+        if (slices.open && sliceKey.options.length) {
+          try {
+            const value = asepriteSliceOrigin(candidate, slice.value, Number(sliceKey.value), frame.value),
+              x = (160 - rect.width * scale) / 2, y = (160 - rect.height * scale) / 2,
+              b = value.bounds;
+            ctx.save();
+            ctx.strokeStyle = getComputedStyle(element).getPropertyValue("--accent").trim();
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + b.x * scale, y + b.y * scale, b.w * scale, b.h * scale);
+            if (value.center) {
+              const c = value.center;
+              ctx.setLineDash([3, 2]);
+              ctx.strokeRect(x + (b.x + c.x) * scale, y + (b.y + c.y) * scale, c.w * scale, c.h * scale);
+              ctx.setLineDash([]);
+            }
+            if (value.point) {
+              const px = x + value.point.x * scale, py = y + value.point.y * scale;
+              ctx.beginPath(); ctx.moveTo(px - 5, py); ctx.lineTo(px + 5, py);
+              ctx.moveTo(px, py - 5); ctx.lineTo(px, py + 5); ctx.stroke();
+            }
+            ctx.restore();
+          } catch { /* Slice diagnostics do not block ordinary frame preview/import. */ }
+        }
       } finally {
         bitmap.close();
       }
     } catch (error) {
-      if (token === previewSerial && !disposed) draft().status = String(error);
+      if (token === previewSerial && !disposed && drafts.get(key) === previewDraft)
+        previewDraft.status = String(error);
     }
   }
   function fields() {
@@ -528,6 +633,7 @@ export function createPlacementAsepriteTool(options: {
         return o;
       }),
     );
+    fillSlices();
     const selectedTag = initialAnimation.value;
     initialAnimation.replaceChildren();
     if (d.candidate) {
@@ -591,21 +697,39 @@ export function createPlacementAsepriteTool(options: {
     draft().status = uiMessage("Source changed · Inspect before applying");
     render();
   };
-  name.addEventListener("input", dirty);
+  name.addEventListener("input", dirty, listenerOptions);
   json.addEventListener("change", () => {
     draft().json = json.files?.[0];
     dirty();
-  });
+  }, listenerOptions);
   png.addEventListener("change", () => {
     draft().png = png.files?.[0];
     dirty();
-  });
+  }, listenerOptions);
   frame.addEventListener("change", () => {
     void paint();
     render();
-  });
-  initialAnimation.addEventListener("change", render);
-  animationLoop.addEventListener("change", render);
+  }, listenerOptions);
+  slice.addEventListener("change", () => { fillSliceKeys(); void paint(); render(); }, listenerOptions);
+  sliceKey.addEventListener("change", () => { void paint(); render(); }, listenerOptions);
+  slices.addEventListener("toggle", () => { void paint(); }, listenerOptions);
+  applyPivot.addEventListener("click", () => {
+    const currentDraft = drafts.get(key);
+    if (disposed || !currentDraft || applyPivot.disabled || !options.context().canEdit || !currentDraft.candidate) return;
+    try {
+      const patch = asepriteSlicePivotPatch(options.context().document, options.viewer.state(), currentDraft.candidate, sliceSelection());
+      options.apply(patch, "Apply Sprite Origin");
+      if (disposed || drafts.get(key) !== currentDraft) return;
+      currentDraft.status = uiMessage("Origin applied · Size and UV preserved");
+      options.changed();
+    } catch (cause) {
+      if (!disposed && drafts.get(key) === currentDraft)
+        currentDraft.status = cause instanceof Error ? cause.message : String(cause);
+    }
+    render();
+  }, listenerOptions);
+  initialAnimation.addEventListener("change", render, listenerOptions);
+  animationLoop.addEventListener("change", render, listenerOptions);
   inspect.addEventListener(
     "click",
     () =>
@@ -655,6 +779,7 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   async function commit(
     kind:
@@ -770,13 +895,14 @@ export function createPlacementAsepriteTool(options: {
       }
     }
   }
-  register.addEventListener("click", () => void commit("register"));
-  apply.addEventListener("click", () => void commit("apply"));
-  reimport.addEventListener("click", () => void commit("reimport"));
-  applyAnimation.addEventListener("click", () => void commit("animation"));
+  register.addEventListener("click", () => void commit("register"), listenerOptions);
+  apply.addEventListener("click", () => void commit("apply"), listenerOptions);
+  reimport.addEventListener("click", () => void commit("reimport"), listenerOptions);
+  applyAnimation.addEventListener("click", () => void commit("animation"), listenerOptions);
   reimportAnimation.addEventListener(
     "click",
     () => void commit("reimport-animation"),
+    listenerOptions,
   );
   function commitNormals(selected: boolean, animated = false) {
     const control = animated
@@ -881,10 +1007,10 @@ export function createPlacementAsepriteTool(options: {
       if (normalInFlight === task) normalInFlight = undefined;
     });
   }
-  generateNormals.addEventListener("click", () => commitNormals(true));
-  reimportNormals.addEventListener("click", () => commitNormals(false));
-  applyPaired.addEventListener("click", () => commitNormals(true, true));
-  reimportPaired.addEventListener("click", () => commitNormals(false, true));
+  generateNormals.addEventListener("click", () => commitNormals(true), listenerOptions);
+  reimportNormals.addEventListener("click", () => commitNormals(false), listenerOptions);
+  applyPaired.addEventListener("click", () => commitNormals(true, true), listenerOptions);
+  reimportPaired.addEventListener("click", () => commitNormals(false, true), listenerOptions);
   saveNormals.addEventListener(
     "click",
     () =>
@@ -919,11 +1045,12 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   cancel.addEventListener("click", () => {
     stop();
     render();
-  });
+  }, listenerOptions);
   save.addEventListener(
     "click",
     () =>
@@ -999,6 +1126,7 @@ export function createPlacementAsepriteTool(options: {
           }
         }
       })(),
+    listenerOptions,
   );
   exportButton.addEventListener("click", () => {
     const normalAssets = [
@@ -1055,7 +1183,7 @@ export function createPlacementAsepriteTool(options: {
       "Exported · Install the catalog and scene patch before reopening",
     );
     render();
-  });
+  }, listenerOptions);
   function sync() {
     if (disposed) return;
     const context = options.context();
@@ -1075,7 +1203,7 @@ export function createPlacementAsepriteTool(options: {
                 json: new File([restored.json], restored.jsonName, {
                   type: "application/json",
                 }),
-                png: new File([restored.png], restored.pngName, {
+                png: new File([restored.sourcePng?.png ?? restored.png], restored.pngName, {
                   type: "image/png",
                 }),
                 status: uiMessage(
@@ -1101,6 +1229,8 @@ export function createPlacementAsepriteTool(options: {
     if (disposed) return;
     stop();
     disposed = true;
+    // Remove queued DOM callbacks before clearing drafts or releasing their assets.
+    events.abort();
     importDiagnostics.clear();
     actionBar.destroy();
     previewSerial++;

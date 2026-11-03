@@ -88,4 +88,6 @@ pnpm package:check
 
 Scene Authoring JSON의 `display.pixelPerfect: {width: 320, height: 180}`으로 가상 해상도를 지정한다.
 실제 런타임과 게임 미리보기는 정수 확대·nearest·여백을 적용하며, 편집 화면은 기존 viewport를 유지한다.
+같은 객체에 `snap: true`를 추가하면 카메라 변환 후의 타일·스프라이트를 가상 픽셀에 맞춘다.
+생략·false는 기존 출력이며 게임 상태·명령 ABI는 바꾸지 않는다. 회전된 객체는 원점 이동만 정렬한다.
 작은 창의 축소, 포인터 변환과 opt-in 사용법은 [표시 계약](../../docs/engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.

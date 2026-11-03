@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
 import { showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { asTrimmed, verifyTrimBundle } from "./aseprite-trim-fixture.mjs";
 
 export async function smokeAsepriteAnimation({
   page,
@@ -30,9 +31,10 @@ export async function smokeAsepriteAnimation({
     await clickPlacementToolAction(action(name));
     await idle();
   };
-  const document = async () =>
-    mergeScenePlacementPatch(active, (await snapshot()).state.draftPatch)
-      .document;
+  const document = async () => {
+    const patch=(await snapshot()).state.draftPatch;
+    return patch?mergeScenePlacementPatch(active,patch).document:structuredClone(active);
+  };
   const component = (doc) =>
     doc.sceneComposition.fragments.main.instances[0].props.components;
   const animationFixture = (version = 0) => {
@@ -42,11 +44,13 @@ export async function smokeAsepriteAnimation({
     const run = { name: "run", from: 0, to: 1, direction: "forward" },
       rest = { name: "rest", from: 0, to: 0, direction: "forward" };
     data.json.meta.frameTags = version ? [rest, run] : [run, rest];
+    if (process.argv.includes("--trim")) asTrimmed(data, version);
     return data;
   };
   const original = await snapshot(),
     before = await document();
   await stage(animationFixture());
+  await tool.getByRole('tab',{name:'Preview',exact:true}).click();
   await tool.getByLabel("Aseprite loop new clips", { exact: true }).uncheck();
   await tool
     .getByLabel("Aseprite initial animation", { exact: true })
@@ -151,6 +155,8 @@ export async function smokeAsepriteAnimation({
   assert.equal(nextSet.initialClip, 0);
   for (const key of ["body", "collider", "layer"])
     assert.deepEqual(component(changedDoc)[key], component(before)[key]);
+  for (const key of ["width", "height", "originX", "originY", "tint"])
+    assert.deepEqual(component(changedDoc).visual[key], component(before).visual[key]);
   for (const key of ["x", "y", "rotationRadians", "scale"])
     assert.equal(
       changedDoc.sceneComposition.fragments.main.instances[0][key],
@@ -168,6 +174,7 @@ export async function smokeAsepriteAnimation({
     await readFile(await (await download).path(), "utf8"),
   );
   assert.equal(bundle.animations.length, 1);
+  const trimProof=process.argv.includes("--trim")?verifyTrimBundle(bundle):undefined;
   assert.deepEqual(
     bundle.animations[0].tags.map((t) => [t.name, t.id]),
     [
@@ -224,5 +231,6 @@ export async function smokeAsepriteAnimation({
     uploadRollback: true,
     cancelRetry: true,
     freshSession: result.report,
+    ...(trimProof?{trim:trimProof,pivotAndSizePreserved:true}:{}),
   };
 }

@@ -106,3 +106,28 @@ AI agent/skill/command 템플릿은 별도 패키지로 명시적으로 설치�
 ```bash
 npm run ferrum:agents
 ```
+
+## 도트 제작 검증
+
+도트 작업은 `.agents/skills/ferrum-consumer-pixel-art/SKILL.md`를 참고한다. `public/assets/pixel-art.profile.json`을 두면 기존 `ferrum:asset-validate`와 `ferrum:check`가 도트 PNG도 검사한다.
+명시적으로 요구하려면 `npm run ferrum:asset-validate -- --profile pixel-art`를 사용한다. 파일이 없으면 실패한다.
+
+```json
+{
+  "format": "ferrum2d.consumer.pixel-art-profile",
+  "version": 1,
+  "scale": 3,
+  "filter": "nearest",
+  "palette": ["#00000000", "#ffffffff"],
+  "assets": [{"source": "public/assets/hero.png", "tileWidth": 16, "tileHeight": 16}]
+}
+```
+
+실제 파일·색상·배율을 적는다. 최대64자산, 프로필64 KiB, PNG 한 변2048px·16 MiB·비인터레이스 RGBA8를 지원한다.
+일반 파일과 프로젝트 안의 심볼릭 링크를 읽으며 FIFO 같은 특수 파일·검사 중 교체된 파일은 진단한다.
+경로와 열린 파일의 동일성을 검사하지만, 검증 중 프로젝트 루트·상위 폴더를 악의적으로 계속 교체하는 환경의 보안 sandbox는 아니다.
+팔레트는1~256개 `#RRGGBBAA`이며 자산별 `palette`로 대체할 수 있다. 투명 RGB까지 실제 픽셀과 대조한다.
+기본은 PNG 치수가 tile 치수의 배수인지 검사한다. 여백 atlas는 자산별 `atlas:{padding:1,extrude:1,frames:[{x:1,y:1,width:16,height:16}]}`로 content rect를 지정한다.
+정수 rect·범위·중첩·타일 치수·실제 가장자리 복제 픽셀을 확인한다. padding은 각 rect 사방의 예약 여백이며 PNG 밖으로 나가거나 다른 rect의 예약 여백과 겹치면 실패한다. 팔레트 검사는 content rect 안만 대상으로 한다.
+프로필의 정수 scale(1~16)·nearest 선언은 제작 의도다. 실행 중 renderer 설정을 읽지 않으므로 report의 `runtimeVerified`는 false이며 실제 게임은 별도 `ferrum:smoke`와 화면 비교로 확인한다.
+오류는 JSON report의 `assetPipeline.reports[]`에 `FERRUM_PIXEL_*` 코드와 경로로 기록되고 종료코드는1이다. 원본·PNG·manifest를 수정하지 않는다.

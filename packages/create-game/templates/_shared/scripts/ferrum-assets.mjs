@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { validatePixelArtProfile } from "./ferrum-pixel-assets.mjs";
 
 const ASSET_REPORT_FORMAT = "ferrum2d.consumer.asset-pipeline.report";
 const TEXTURE_ATLAS_INPUT_FORMAT = "ferrum2d.consumer.texture-atlas-input";
@@ -13,8 +14,12 @@ const DEFAULT_OUTPUT_JSON = "public/assets/atlas.json";
 const DEFAULT_GAME_SPEC = "public/game.json";
 
 const command = process.argv[2] ?? "report";
+let pixelArtEvidence;
 
 try {
+  const args=process.argv.slice(3);
+  if(args.length && !(args.length===2&&args[0]==="--profile"&&args[1]==="pixel-art"&&["report","validate"].includes(command)))
+    throw Error("Expected --profile pixel-art after report or validate.");
   if (command === "report") {
     await printReport();
   } else if (command === "pack-textures") {
@@ -27,17 +32,23 @@ try {
     throw new Error(`Unknown ferrum asset command: ${command}`);
   }
 } catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  const message=error instanceof Error ? error.message : String(error);
+  if(command==="report"||command==="validate")printJson({...assetPipelineReport({pixelArt:pixelArtEvidence,packed:false,validated:false,
+    reports:[diagnostic("asset-pipeline","FERRUM_CONSUMER_ASSET_VALIDATION_FAILED","assets",message,"Fix the reported asset configuration and retry.")]}),ok:false});
+  console.error(message);
+  process.exitCode=1;
 }
 
 async function printReport() {
+  const pixelArt=pixelArtEvidence=await validatePixelArtProfile({required:process.argv.includes("--profile")});
+  if(!pixelArt.ok)process.exitCode=1;
   const config = await readOptionalConfig();
   const audioManifest = await readOptionalAudioManifest();
   const localizationManifest = await readOptionalLocalizationManifest();
   const gameSpecPath = config?.gameSpec ?? DEFAULT_GAME_SPEC;
   const gameSpec = await readOptionalJson(gameSpecPath);
   printJson(assetPipelineReport({
+    pixelArt,
     config,
     audioManifest,
     localizationManifest,
@@ -59,6 +70,8 @@ async function printReport() {
 }
 
 async function validateAssets() {
+  const pixelArt=pixelArtEvidence=await validatePixelArtProfile({required:process.argv.includes("--profile")});
+  if(!pixelArt.ok)process.exitCode=1;
   const config = await readOptionalConfig();
   const audioManifest = await readOptionalAudioManifest();
   const localizationManifest = await readOptionalLocalizationManifest();
@@ -91,6 +104,7 @@ async function validateAssets() {
   }
 
   printJson(assetPipelineReport({
+    pixelArt,
     config,
     audioManifest,
     localizationManifest,
@@ -160,6 +174,7 @@ async function packTextures() {
 }
 
 function assetPipelineReport({
+  pixelArt,
   config,
   audioManifest,
   localizationManifest,
@@ -178,8 +193,9 @@ function assetPipelineReport({
   return {
     format: ASSET_REPORT_FORMAT,
     version: 1,
-    ok: true,
+    ok: pixelArt?.ok ?? true,
     assetPipeline: {
+      ...(pixelArt ? {pixelArt} : {}),
       textureAtlas: {
         configured: config !== undefined,
         status: config === undefined ? "not-configured" : spriteCount === 0 ? "scaffold" : "configured",
@@ -233,7 +249,7 @@ function assetPipelineReport({
           "@ferrum2d/ferrum-web/labs",
         ] : undefined,
       },
-      reports,
+      reports: [...reports, ...(pixelArt?.reports ?? [])],
     },
   };
 }
@@ -467,11 +483,13 @@ function printHelp() {
   console.log(`Usage:
   node scripts/ferrum-assets.mjs report
   node scripts/ferrum-assets.mjs pack-textures
-  node scripts/ferrum-assets.mjs validate
+  node scripts/ferrum-assets.mjs validate [--profile pixel-art]
 
 Commands:
   report         Print asset pipeline status without requiring @ferrum2d/ferrum-web.
   pack-textures  Generate atlas metadata with public @ferrum2d/ferrum-web helpers and merge Game Spec frames when present.
-  validate       Validate texture, audio, localization, and Game Spec asset metadata through the public package entrypoint.
+  validate       Validate asset metadata and an optional public/assets/pixel-art.profile.json.
+                 --profile pixel-art requires the profile and checks PNG palette/grid, integer scale, nearest sampling and atlas rectangles.
+                 Profile declarations do not prove the running renderer configuration.
 `);
 }

@@ -3,6 +3,7 @@ import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
 import { groundShadowProjection } from "./groundShadowProjection.js";
 import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
+import { validatePaletteTexture, type ResolvedSpritePalette } from "./spritePalette.js";
 import {
   DEFAULT_SPRITE_MATERIAL_PRESET,
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -32,7 +33,7 @@ export interface SpriteTextureSource {
   texture(textureId: number): WebGLTexture;
   /** Undefined means mutable/untracked; spatial shadow results must then be regenerated. */
   textureRevision?(textureId: number): number | undefined;
-  textureInfo?(textureId: number): { width: number; height: number; colorSpace: "srgb" | "linear" | "none" } | undefined;
+  textureInfo?(textureId: number): { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean } | undefined;
   /** Framebuffer textures need bottom-left storage mapped to top-left sprite UVs. */
   textureFlipY?(textureId: number): boolean;
 }
@@ -65,6 +66,9 @@ export class SpriteBatch {
   private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
   groundYScale = 1;
+  /** Virtual pixels per logical unit, or zero to retain continuous geometry. */
+  pixelSnap = 0;
+  private readonly pixelSnapLocation: WebGLUniformLocation;
   private readonly groundYScaleLocation: WebGLUniformLocation;
   private readonly groundShadowProjectionLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
@@ -75,13 +79,15 @@ export class SpriteBatch {
   private cachedMaterialPasses: readonly SpriteMaterialPass[] = DEFAULT_SPRITE_MATERIAL_PASSES;
   private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
+  private paletteBatch?: SpriteBatch;
+  private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, normalMode?"spriteNormal":"sprite");
+      this.program = createWebGL2Program(this.gl, normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -135,6 +141,9 @@ export class SpriteBatch {
       const groundYScaleLocation = this.gl.getUniformLocation(this.program, "u_ground_y_scale");
       if (!groundYScaleLocation) throw new Error("Missing ground projection uniform");
       this.groundYScaleLocation = groundYScaleLocation;
+      const pixelSnapLocation = this.gl.getUniformLocation(this.program, "u_pixel_snap");
+      if (!pixelSnapLocation) throw new Error("Missing pixel snap uniform");
+      this.pixelSnapLocation = pixelSnapLocation;
       const groundShadowProjectionLocation = this.gl.getUniformLocation(this.program, "u_ground_shadow_projection");
       if (!groundShadowProjectionLocation) throw new Error("Missing ground shadow projection uniform");
       this.groundShadowProjectionLocation = groundShadowProjectionLocation;
@@ -142,12 +151,34 @@ export class SpriteBatch {
       this.screenOffsetLocation = screenOffsetLocation;
       this.textureLocation = textureLocation;
       this.textureFlipYLocation = textureFlipYLocation;
+      if (paletteMode) {
+        const count=gl.getUniformLocation(this.program,"u_palette_count"), from=gl.getUniformLocation(this.program,"u_palette_from[0]"), to=gl.getUniformLocation(this.program,"u_palette_to[0]"), srgb=gl.getUniformLocation(this.program,"u_palette_srgb");
+        if (!count || !from || !to || !srgb) throw new Error("Missing sprite palette uniforms");
+        this.paletteUniforms={count,from,to,srgb};
+      }
       if(normalMode){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
     } catch (error) {
       for (const buffer of buffers) gl.deleteBuffer(buffer);
       for (const vao of vaos) gl.deleteVertexArray(vao);
       for (const program of programs) gl.deleteProgram(program);
       throw error;
+    }
+  }
+
+  /** Call during configuration so shader creation is outside steady-state drawing. */
+  prepareMaterial(material: ResolvedSpriteMaterialPreset): void {
+    this.assertAlive();
+    if (this.paletteMode || this.normalUniforms) return;
+    if (material.paletteSwap) this.paletteBatch ??= new SpriteBatch(this.gl,this.linearTarget,false,true);
+    else { this.paletteBatch?.destroy(); this.paletteBatch=undefined; }
+  }
+
+  validateMaterialTextures(source: SpriteTextureSource, material: ResolvedSpriteMaterialPreset, commands: RenderCommandBufferView): void {
+    if (!material.paletteSwap) return;
+    if (commands.spatial) throw new Error("paletteSwap currently supports flat 2D sprite commands only.");
+    if (commands.commandCount===0) return;
+    for (const range of this.textureRanges(commands)) {
+      if (material.paletteSwap.has(range.textureId)) validatePaletteTexture(source.textureInfo?.(range.textureId),this.linearTarget);
     }
   }
 
@@ -166,7 +197,15 @@ export class SpriteBatch {
     screenOffset: readonly [number, number] = ZERO_SCREEN_OFFSET,
   ): SpriteBatchStats {
     this.assertAlive();
+    if (this.paletteBatch && !material.paletteSwap) this.prepareMaterial(material);
     if (commands.commandCount === 0) return { drawCalls: 0, textureSwitchCount: 0 };
+    if (!this.paletteMode && material.paletteSwap) {
+      this.validateMaterialTextures(textureManager,material,commands);
+      this.prepareMaterial(material);
+      const batch=this.paletteBatch!;
+      batch.groundYScale=this.groundYScale; batch.pixelSnap=this.pixelSnap;
+      return batch.drawBatches(textureManager,commands,resolution,material,screenOffset);
+    }
     const ranges = this.textureRanges(commands);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
@@ -176,6 +215,8 @@ export class SpriteBatch {
         this.applyBlendMode(pass.blendMode);
         for (const range of ranges) {
           const texture = textureManager.texture(range.textureId);
+          const palette=pass.paletteSwap?.get(range.textureId);
+          this.bindPalette(palette,palette?validatePaletteTexture(textureManager.textureInfo?.(range.textureId),this.linearTarget):false);
           drawCalls += this.drawRange(texture, commands, range.start, range.end, pass,
             textureManager.textureFlipY?.(range.textureId) ?? false);
         }
@@ -202,6 +243,8 @@ export class SpriteBatch {
     screenOffset: readonly [number, number] = ZERO_SCREEN_OFFSET,
   ): SpriteBatchStats {
     this.assertAlive();
+    if (material.paletteSwap) throw new Error("paletteSwap requires texture IDs; use drawBatches/renderCommands instead of drawBatch.");
+    if (this.paletteBatch) this.prepareMaterial(material);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
     this.bindForDraw(resolution, screenOffset, commands);
@@ -215,6 +258,14 @@ export class SpriteBatch {
       this.applyBlendMode("alpha");
     }
     return { drawCalls, textureSwitchCount: 0 };
+  }
+
+  private bindPalette(palette: ResolvedSpritePalette | undefined, srgb: boolean): void {
+    const uniforms=this.paletteUniforms;
+    if (!uniforms) return;
+    this.gl.uniform1i(uniforms.count,palette?.count??0);
+    this.gl.uniform1i(uniforms.srgb,srgb?1:0);
+    if (palette) { this.gl.uniform4fv(uniforms.from,palette.from); this.gl.uniform4fv(uniforms.to,palette.to); }
   }
 
   /** Same order/alpha as color, with an independent normal/coverage target. */
@@ -282,6 +333,7 @@ export class SpriteBatch {
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);
+    this.gl.uniform1f(this.pixelSnapLocation, this.pixelSnap);
     this.gl.uniform3f(this.groundShadowProjectionLocation, projection[0], projection[1], projection[2]);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
@@ -352,10 +404,11 @@ export class SpriteBatch {
 
   /** Internal allocation summary; no GPU queries or per-command work. */
   resourceStats(): { bufferCount: number; programCount: number; bufferBytes: number } {
+    const palette=this.paletteBatch?.resourceStats();
     return {
-      bufferCount: this.destroyed ? 0 : 3,
-      programCount: this.destroyed ? 0 : 1,
-      bufferBytes: this.destroyed ? 0 : QUAD_VERTEX_DATA.byteLength + QUAD_INDEX_DATA.byteLength + this.instanceCapacityFloats * BYTES_PER_F32,
+      bufferCount: this.destroyed ? 0 : 3+(palette?.bufferCount??0),
+      programCount: this.destroyed ? 0 : 1+(palette?.programCount??0),
+      bufferBytes: this.destroyed ? 0 : QUAD_VERTEX_DATA.byteLength + QUAD_INDEX_DATA.byteLength + this.instanceCapacityFloats * BYTES_PER_F32+(palette?.bufferBytes??0),
     };
   }
 
@@ -364,6 +417,7 @@ export class SpriteBatch {
       return;
     }
     this.destroyed = true;
+    this.paletteBatch?.destroy(); this.paletteBatch=undefined;
     this.gl.deleteBuffer(this.quadVbo);
     this.gl.deleteBuffer(this.instanceVbo);
     this.gl.deleteBuffer(this.indexBuffer);

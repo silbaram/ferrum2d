@@ -42,6 +42,12 @@ pub const GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK: u32 =
     0xff << GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT;
 pub const GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK: u32 = 0x00ff_ffff;
 pub const GAMEPLAY_EVENT_PRESENTATION_EFFECT: u32 = 11;
+/// Opt-in sprite clip transition; token=clip ID, payload=source frame index.
+pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_FRAME: u32 = 12;
+/// Nonloop clip completion transition, emitted once while crossing its end.
+pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_COMPLETED: u32 = 13;
+/// Global dropped-animation-event count; actor/source ID are u32::MAX.
+pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_OVERFLOW: u32 = 14;
 pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND: u32 = 1;
 pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE: u32 = 2;
 /// Category kept in `payload_bits` so Rust gameplay remains data-driven while TS decides playback.

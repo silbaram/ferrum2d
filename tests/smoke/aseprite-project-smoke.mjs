@@ -19,19 +19,25 @@ import { showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
+import { smokeNativeTrim } from "./aseprite-trim-native-smoke.mjs";
+import { smokeNativeSlices } from "./aseprite-slices-native-smoke.mjs";
 import { smokeNativePixels } from "./native-pixel-project-smoke.mjs";
 import { smokeAssetCleanup } from "./placement-asset-cleanup-smoke.mjs";
 
 const cleanupMode = process.argv.includes("--cleanup");
 const tileMode = process.argv.includes("--tiles");
+const autotileMode = tileMode && process.argv.includes("--autotile");
+const tileAnimationMode = tileMode && process.argv.includes("--tile-animation");
 const pixelMode = process.argv.includes("--pixels");
 const externalTileMode = tileMode && process.argv.includes("--external-tsj");
 const multiTileMode = tileMode && process.argv.includes("--multi-tilesets");
 const animationMode = process.argv.includes("--animations");
+const trimMode = process.argv.includes("--trim");
+const sliceMode = process.argv.includes("--slices");
 const pairedMode = process.argv.includes("--paired");
 const normalMode = pairedMode || process.argv.includes("--normals");
 const artifact = resolve(
-  cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? "artifacts/pixel-project" : externalTileMode
+  tileAnimationMode ? "artifacts/tile-animation/native" : autotileMode ? "artifacts/tile-autotile/native" : sliceMode ? "artifacts/aseprite-slices/native" : trimMode ? "artifacts/aseprite-trim/native" : cleanupMode ? "artifacts/project-asset-cleanup/browser" : pixelMode ? process.argv.includes("--pixel-capacity-only") ? "artifacts/pixel-editor-capacity/native" : "artifacts/pixel-project" : externalTileMode
     ? "artifacts/tiled-external-assets"
     : multiTileMode
       ? "artifacts/multi-tileset-assets"
@@ -227,9 +233,10 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/aseprite-paired-runtime-fixture.mjs")
       file = resolve("tests/smoke/aseprite-paired-runtime-fixture.mjs");
     else if (url.pathname === "/pixel-runtime-fixture.mjs") file = resolve("tests/smoke/pixel-runtime-fixture.mjs");
+    else if (url.pathname === "/aseprite-resume-browser-fixture.mjs") file = resolve("tests/smoke/aseprite-resume-browser-fixture.mjs");
     else if (url.pathname === "/game-fixture.mjs")
       file = resolve(
-        pixelMode ? "tests/smoke/native-pixel-game-fixture.mjs" : tileMode
+        trimMode ? "tests/smoke/aseprite-trim-project-game-fixture.mjs" : pixelMode ? "tests/smoke/native-pixel-game-fixture.mjs" : tileMode
           ? "tests/smoke/native-tile-game-fixture.mjs"
           : "tests/smoke/aseprite-project-game-fixture.mjs",
       );
@@ -677,7 +684,7 @@ try {
             game.on("requestfinished", request => pendingRequests.delete(request));
             try {
               await game.goto(origin+"/game.html");
-              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50}).catch(async error => {
+              await game.waitForFunction(()=>window.savedGameReport || window.savedGameFailure,{},{polling:50,timeout:process.argv.includes('--pixel-capacity-only')?120_000:30_000}).catch(async error => {
                 const stage = await game.evaluate(()=>window.pixelResumeStage).catch(()=>"unavailable");
                 throw Error(String(error)+" stage "+stage+" "+JSON.stringify({failures,pending:[...pendingRequests].map(request=>request.url())}));
               });
@@ -689,6 +696,12 @@ try {
         continue;
       }
       await reveal();
+      if(trimMode) {
+        reports.push(await (sliceMode ? smokeNativeSlices : smokeNativeTrim)({getPage:()=>page,mode,project,scene,initial,run,stage,action,tool,
+          restart:async()=>{await closePage();await bridge.close();bridge=rustBridge();await open();await ready();await reveal();},close:closePage,invoke:(command,args)=>bridge.invoke(command,args),
+          freshGame:async()=>{const game=await browser.newPage();try{await game.goto(origin+'/game.html');await game.waitForFunction(()=>window.savedGameReport||window.savedGameFailure,undefined,{timeout:60_000});const result=await game.evaluate(()=>({report:window.savedGameReport,failure:window.savedGameFailure}));assert.equal(result.failure,undefined);return result.report;}finally{await game.close();}}
+        }));continue;
+      }
       if (tileMode) {
         reports.push(
           await smokeNativeTiles({
@@ -1029,6 +1042,7 @@ try {
       throw error;
     }
   }
+  if (sliceMode) assert(reports.length === 2 && reports.every(value => value.slices?.originalMetadataPreserved && value.slices?.trimReinspect), "Both native slice scenarios must execute");
   const report = {
     ok: true,
     run,
@@ -1038,6 +1052,8 @@ try {
     results: reports,
     commands,
   };
+  if(autotileMode)assert(reports.filter(r=>r.mode==='2d'&&r.autotileSavedAndReopened).length===2,'Both native autotile formats must run');
+  if(tileAnimationMode)assert(reports.filter(r=>r.mode==='2d'&&r.tileAnimationSavedAndReopened&&r.savedManifestGame?.tileAnimation?.fixedCollision).length===2,'Both native tile animation formats must run');
   await writeFile(
     join(artifact, "verification.json"),
     JSON.stringify(report, null, 2) + "\n",

@@ -18,7 +18,7 @@ export interface FerrumRuntimeRenderer extends Renderer, TextureAssetManager,
 
 /** A frame consumer does not load textures, resize a canvas or own renderer lifetime. */
 export type RuntimeFrameRenderTarget = Pick<FerrumRuntimeRenderer,
-  | "supportsSpatialScene" | "render" | "renderCommands" | "renderPhysicsDebugLines"
+  | "supportsSpatialScene" | "isRenderReady" | "render" | "renderCommands" | "renderPhysicsDebugLines"
   | "setLighting" | "setSpriteMaterial" | "setPostProcess" | "renderPostProcess"
   | "beginGpuTiming" | "endGpuTiming" | "gpuTimingStats" | "resourceStats"
 >;

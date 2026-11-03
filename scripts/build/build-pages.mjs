@@ -16,6 +16,11 @@ const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
 const examples = [
   {
+    id: "pixel-art",
+    title: "작은 빛의 정원 · Pixel Art",
+    description: "Editable pixel sources, native walking and pickups, normal lighting, palette swaps, and WebGL2/WebGPU effects.",
+  },
+  {
     id: "starter-runtime",
     title: "Starter Runtime",
     description: "Smallest createFerrumRuntime flow with WebGL2, UiOverlay, DebugOverlay, and profiler smoke.",

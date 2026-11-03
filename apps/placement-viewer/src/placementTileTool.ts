@@ -1,6 +1,7 @@
 import { installPlacementCatalogTools } from "./placementCatalogTools";
 import { createPlacementImportDiagnostic, installPlacementImportDiagnostics } from "./placementImportDiagnostics";
 import { tileMapPlacementPatch } from "./placementTileMap";
+import { createTileMapPreview } from "./placementTileMapPreview";
 import {
   setUiAttribute,
   setUiText,
@@ -121,6 +122,10 @@ export function createPlacementTileTool(options: {
     preview = tabs.panels.get("preview")!;
   const mapOptions = document.createElement("textarea");
   mapOptions.rows=3;mapOptions.value="{}";
+  const mapPreview = createTileMapPreview(), previewMap = button("Preview Map", "preview-map"), mapHint = document.createElement("p");
+  const previewTime = document.createElement("input");
+  previewTime.type = "number"; previewTime.min = "0"; previewTime.max = "3600000"; previewTime.step = "1"; previewTime.value = "0";
+  setUiText(mapHint, "Autotile rules run before placement. Animations change images only; collision stays fixed. Preview does not change the scene.");
   const format = document.createElement("select"),
     name = document.createElement("input"),
     level = document.createElement("input"),
@@ -158,7 +163,9 @@ export function createPlacementTileTool(options: {
   field("Tile JSON", json, source);
   const mapSettings=document.createElement("details"),mapSummary=document.createElement("summary");
   setUiText(mapSummary,"Map Options");mapSettings.append(mapSummary);
-  field("Map placement options (JSON)",mapOptions,mapSettings);source.append(mapSettings);
+  field("Map placement options (JSON)",mapOptions,mapSettings);
+  field("Map preview time (ms)",previewTime,mapSettings);
+  mapSettings.append(mapHint, previewMap, mapPreview.element);source.append(mapSettings);
   field("External TSJ Files", dependencies, source);
   field("Tileset", tileset, source);
   field("Tileset PNG", png, source);
@@ -184,6 +191,8 @@ export function createPlacementTileTool(options: {
     controller: AbortController | undefined,
     previewSerial = 0,
     commitInFlight: Promise<void> | undefined;
+  const events = new AbortController();
+  const listenerOptions = { signal: events.signal };
   const draft = () => drafts.get(key)!;
   const catalog = installPlacementCatalogTools({
     root: body, store: assets,
@@ -210,9 +219,20 @@ export function createPlacementTileTool(options: {
     );
   const planMap = (next: PlacementTileAsset) => {
     if(options.context().mode!=="2d")throw Error("Whole map placement requires 2D mode");
+    if (new TextEncoder().encode(draft().mapOptions ?? "{}").byteLength > 16384) throw Error("Map options exceed 16 KiB");
     return tileMapPlacementPatch(options.context().document, options.viewer.state(),next,JSON.parse(draft().mapOptions??"{}"),registered());
   };
-  mapOptions.addEventListener("input",()=>{draft().mapOptions=mapOptions.value;render();});
+  mapOptions.addEventListener("input",()=>{if(disposed||!drafts.has(key))return;draft().mapOptions=mapOptions.value;render();}, listenerOptions);
+  previewTime.addEventListener("input", () => render(), listenerOptions);
+  previewMap.addEventListener("click",async()=>{
+    if(disposed||previewMap.disabled||!drafts.has(key))return;
+    try {
+      const work = mapPreview.show(draft().candidate!, planMap(draft().candidate!), previewTime.valueAsNumber);
+      render();
+      await work;
+    } catch(error) { if(!disposed&&drafts.has(key))draft().status=String(error); }
+    finally { render(); }
+  }, listenerOptions);
   function stop(message = "Cancelled") {
     serial++;
     controller?.abort();
@@ -241,8 +261,13 @@ export function createPlacementTileTool(options: {
     tileset.disabled = busy || d.choices.length < 2;
     frame.disabled = busy || !valid;
     mapOptions.disabled=busy||!context.canEdit;
-    let mapError="Inspect a map";
-    if(valid)try{planMap(d.candidate!);mapError="";}catch(error){mapError=String(error);}
+    let mapError="Inspect a map", mapPatch: ScenePlacementPatch | undefined;
+    if(valid)try{mapPatch=planMap(d.candidate!);mapError="";}catch(error){mapError=String(error);}
+    const time = previewTime.valueAsNumber;
+    const timeError = !Number.isInteger(time) || time < 0 || time > 3600000 ? "Preview time must be 0..3600000 ms" : "";
+    mapPreview.invalidate(JSON.stringify([key, context.mode, options.viewer.state().fragment, d.candidate?.id, d.mapOptions, mapError, mapPatch, previewTime.value]));
+    previewMap.disabled=busy||mapPreview.isLoading()||!valid||!!mapError||!!timeError;
+    setUiAttribute(previewMap,"title",mapError||timeError||(mapPreview.isLoading()?"Preparing map preview…":"Preview without editing the scene"));
     map.disabled=busy||!valid||!context.canEdit||!!mapError;setUiAttribute(map,"title",mapError||"Replace the imported map as one Undo transaction");
     cancel.disabled = !busy;
     exportButton.disabled = busy || !registered().length;
@@ -456,18 +481,18 @@ export function createPlacementTileTool(options: {
     draft().json = json.files?.[0];
     dirty();
     void refreshChoices();
-  });
+  }, listenerOptions);
   dependencies.addEventListener("change", () => {
     draft().dependencies = [...(dependencies.files ?? [])];
     dirty();
     void refreshChoices();
-  });
+  }, listenerOptions);
   png.addEventListener("change", () => {
     draft().png = png.files?.[0];
     dirty();
     // A file picker may finish while source metadata is still being read.
     if (draft().json && !draft().choices.length) void refreshChoices();
-  });
+  }, listenerOptions);
   async function refreshChoices() {
     const d = draft(),
       previous = d.tilesetKey;
@@ -509,17 +534,17 @@ export function createPlacementTileTool(options: {
     dependencies.value = "";
     dirty();
     void refreshChoices();
-  });
+  }, listenerOptions);
   tileset.addEventListener("change", () => {
     draft().tilesetKey = tileset.value;
     dirty();
-  });
+  }, listenerOptions);
   for (const field of [name, level])
     field.addEventListener("change", () => {
       dirty();
       // A late blur event must not leave an interrupted metadata read without choices.
       if (draft().json && !draft().choices.length) void refreshChoices();
-    });
+    }, listenerOptions);
   name.addEventListener("input", () => {
     if (!busy && drafts.has(key)) {
       draft().name = name.value;
@@ -527,11 +552,11 @@ export function createPlacementTileTool(options: {
       draft().importFailure = undefined;
       render();
     }
-  });
+  }, listenerOptions);
   frame.addEventListener("change", () => {
     void draw().catch(() => {});
     render();
-  });
+  }, listenerOptions);
   inspect.addEventListener("click", async () => {
     if (inspect.disabled) return;
     const d = draft();
@@ -580,7 +605,7 @@ export function createPlacementTileTool(options: {
         fields();
       }
     }
-  });
+  }, listenerOptions);
   function commit(kind: "register" | "apply" | "reimport" | "map") {
     if ({ register, apply, reimport, map }[kind].disabled) return;
     const previous = commitInFlight;
@@ -649,12 +674,12 @@ export function createPlacementTileTool(options: {
   }
   for (const kind of ["register", "apply", "reimport", "map"] as const)
     ({ register, apply, reimport, map })[kind].addEventListener("click", () =>
-      commit(kind),
+      commit(kind), listenerOptions,
     );
   cancel.addEventListener("click", () => {
     stop();
     render();
-  });
+  }, listenerOptions);
   exportButton.addEventListener("click", () => {
     if (exportButton.disabled) return;
     const bundle = {
@@ -676,7 +701,7 @@ export function createPlacementTileTool(options: {
       "Exported · Install the catalog and scene patch before reopening",
     );
     render();
-  });
+  }, listenerOptions);
   save.addEventListener(
     "click",
     () =>
@@ -740,7 +765,7 @@ export function createPlacementTileTool(options: {
             render();
           }
         }
-      })(),
+      })(), listenerOptions,
   );
   function sync() {
     if (disposed) return;
@@ -802,6 +827,9 @@ export function createPlacementTileTool(options: {
     if (disposed) return;
     stop();
     disposed = true;
+    // A file picker or queued control event may complete after workspace disposal.
+    events.abort();
+    mapPreview.destroy();
     importDiagnostics.clear();
     actionBar.destroy();
     previewSerial++;

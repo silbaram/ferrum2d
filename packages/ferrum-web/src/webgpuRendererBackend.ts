@@ -143,6 +143,7 @@ export class WebGpuRendererBackend implements Renderer {
     );
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
+    this.spritePass.configurePalettes(this.spriteMaterialPasses[this.spriteMaterialPasses.length-1]?.paletteSwap);
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
     this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
     if(this.pixelPerfect) {
@@ -298,7 +299,9 @@ export class WebGpuRendererBackend implements Renderer {
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
-    this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(material));
+    const resolved = resolveSpriteMaterialPreset(material);
+    this.spritePass.configurePalettes(resolved.paletteSwap);
+    this.spriteMaterialPasses = spriteMaterialPasses(resolved);
   }
 
   setPostProcess(postProcess: PostProcessStackInput): void {
@@ -369,6 +372,7 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
+    this.spritePass.validatePalettes(commands);
     if(commands.spatial && this.pixelPerfect)throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
     const projection = groundShadowProjection(commands);
@@ -528,6 +532,8 @@ export class WebGpuRendererBackend implements Renderer {
     this.resolutionStaging[0] = Math.max(this.logicalWidth, 1);
     this.resolutionStaging[1] = Math.max(this.logicalHeight, 1);
     this.resolutionStaging[2] = this.groundYScale;
+    // Occupies the existing alignment padding before shadowProjection (byte 12).
+    this.resolutionStaging[3] = this.pixelPerfect?.snap ? this.viewportZoom : 0;
     this.device.queue.writeBuffer(
       this.resolutionBuffer,
       0,

@@ -16,6 +16,7 @@ Scope:
 - public asset paths
 - texture/audio/json manifest names
 - atlas, Tiled, LDtk, and Game Spec asset references
+- For pixel-art creation and validation, also read `.agents/skills/ferrum-consumer-pixel-art/SKILL.md`.
 - raw asset import -> validation -> Game Spec atlas/content update loops
 - Aseprite import, audio registration, and localization bundle wiring through public Ferrum2D helpers
 - build output asset checks

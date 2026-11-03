@@ -357,12 +357,15 @@ VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true pnpm --filter @ferrum2d/placement-viewer 
 
 브러시 크기는 1~32픽셀 사각형이며 좌우/상하 대칭은 활성 프레임의 중앙 축을 사용한다.
 선택 영역은 그리기의 최종 마스크이고 채우기도 선택 영역 밖으로 전파하지 않는다.
-**도형 도구**의 직선(L)·사각형(R)·타원(O)은 드래그로 미리보고 포인터를 놓을 때 한 Undo로 확정한다.
+**도형·채색 도구**의 직선(L)·사각형(R)·타원(O)은 드래그로 미리보고 포인터를 놓을 때 한 Undo로 확정한다.
 사각형/타원은 윤곽선·채움과 Shift의 정사각형/원을 지원한다. Escape·blur·포인터 취소·대상 변경은 미리보기를 폐기한다.
 미리보기는 원본/revision/dirty/Undo·씬·GPU 자산을 변경하지 않는다. 고정 atlas는 현재 frame rect만 수정한다.
 짝수 브러시는 포인터 픽셀에서 오른쪽/아래로 한 픽셀 더 차지하며 대칭은 브러시의 실제 픽셀을 반전한다.
 
-오른쪽 **팔레트 편집**에서 색 목록과 자체 JSON 가져오기/내보내기를 관리한다. 색 목록 수정은 픽셀을 바꾸지 않으며,
+**디더(D)**는 기본색과 두 번째 RGBA 색·4×4 밀도(0~16), **그라데이션(J)**은 두 색 보간·두 색 디더·팔레트 순서를 제공한다.
+그라데이션은 드래그 미리보기 후 놓으면 한 Undo로 확정한다. 선택 마스크·대칭·잠금·고정 atlas 경계와 취소를 유지한다.
+
+오른쪽 **팔레트 편집**에서 JSON·GPL·HEX를 가져오고 RGBA JSON으로 내보낸다. 가져오기는256색·16 KiB 이내이며 순서·중복·HEX의 알파를 보존한다. 색 목록 수정은 픽셀을 바꾸지 않으며,
 **픽셀 색 교체**에서 현재 셀/선택 영역/모든 프레임의 표시·잠금 해제 레이어 범위를 확인한 뒤 일괄 변경한다.
 목록 편집·색 교체는 Undo를 지원한다. 최근 선택색12개는 UI 전용이다.
 
@@ -395,15 +398,21 @@ Tab·Enter로 레이어를 선택하고 Space로 표시·잠금을 전환할 수
 이미지 레이어는 한 sprite 내부의 그림이며 씬 객체의 그리기 레이어와 별개다.
 
 캔버스 아래 **도트 프레임**에서 추가·복제·삭제·앞뒤 순서와 프레임별 표시 시간(ms)을 편집한다.
-최대 16프레임이며 픽셀·레이어·프레임 편집은 같은 Undo/Redo를 사용한다. 레이어 순서·표시·잠금은 모든 프레임에 적용되고 그림은 프레임별로 독립적이다.
+최대 64프레임이며 픽셀·레이어·프레임 편집은 같은 Undo/Redo를 사용한다. 레이어 순서·표시·잠금은 모든 프레임에 적용되고 그림은 프레임별로 독립적이다.
+17번째 프레임부터 원본 v6로 전환하고, 삭제로 다시16개가 되어도 v6를 유지한다. 기존 v1~v5 읽기·복구와 Undo 호환은 유지한다.
+64프레임 시트는 최대8×8 atlas와 원본 프레임별 시간으로 출력한다. 한 변256·8레이어·cel8 MiB·Undo64단계/16 MiB 예산은 유지한다.
+색상 시트는64프레임을 지원하지만 노멀은 게임에서 사용하는 고유 프레임32개 한도를 유지한다. 태그에서 사용하지 않는 cel은 이 예산에서 제외한다.
 Assets의 개별 프레임 카드에서 **도트 편집**을 열면 클릭한 프레임을 선택해 표시한다.
 프레임 선택과 재생 미리보기는 원본을 변경하지 않는다. 재생 중에는 편집을 막고 정지·창 포커스 이탈·탭 전환 시 재생을 멈춘다.
-프레임 버튼의 좌우 방향키로 이동하고 Ctrl/Cmd+Z로 취소해도 도트 편집기에 포커스를 유지한다.
+프레임 버튼의 좌우 방향키로 이동하고 Home/End로 처음·마지막 프레임을 선택한다. 긴 프레임 막대는 선택을 가로 스크롤로 따라간다. Ctrl/Cmd+Z로 취소해도 도트 편집기에 포커스를 유지한다.
 프레임·레이어 이동/삭제 버튼이 비활성화되면 선택 항목에 포커스를 돌려 키보드 Undo가 픽셀 문서에 적용되게 한다.
 
+어니언 스킨은 앞뒤 각각1~4프레임과 불투명도를 제공하며 먼 프레임은 옅게 표시한다. 설정은 UI 전용이고 게임 자산에 포함하지 않는다.
+
 프레임 막대의 **프레임 태그**에서 `idle`, `walk` 등의 이름을 붙이고 재생할 순서대로 프레임을 체크한다.
-태그별 반복·초기 클립을 설정하며 미리보기 태그 선택은 게임/원본을 변경하지 않는다. 비반복 태그는 마지막 프레임에 머문다.
-v5 원본에 안정적인 tag/frame ID·단조 증가 clip ID를 저장한다. 프레임 순서를 옮겨도 태그 재생 순서는 유지되며 태그에 사용 중인 프레임은 삭제할 수 없다.
+태그별 정방향·역방향·왕복·반복·초기 클립을 설정하며 미리보기 태그 선택은 게임/원본을 변경하지 않는다. 비반복 태그는 마지막 프레임에 머문다.
+역방향·왕복 편집은 v7로 저장하며 이전 앱/호스트는 거절한다. Undo는 이전 원본 형식까지 복원한다. 반복 왕복은 양 끝을 중복하지 않고 비반복 왕복은 시작 프레임으로 돌아와 멈춘다.
+v5/v6/v7 원본에 안정적인 tag/frame ID·단조 증가 clip ID를 저장한다. 프레임 순서를 옮겨도 태그 재생 순서는 유지되며 태그에 사용 중인 프레임은 삭제할 수 없다.
 기존 도트 애니메이션에 적용할 때는 **클립 변경 검토**에서 전후 ID·초기 clip을 확인하고 적용한다. 취소하면 씬·자산은 유지된다.
 기존 clip ID를 제거하는 변경은 차단하므로 참조를 보존한다. 씬 Undo로 이전 clip을 복원하고 native 저장/재열기에서도 태그를 유지한다.
 
@@ -505,7 +514,8 @@ Assets → **Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 �
 LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. Inspect 후 Preview에서 사용 중인 frame을 확인한다.
 
 - **Register**: 문서 세션 catalog/GPU와 Assets 목록에 등록한다. 씬은 바꾸지 않는다.
-- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
+- **Preview Map**: **Source → Map Options**에서 전체 맵과 충돌 셀을 미리 본다. 씬과 Undo 기록은 바뀌지 않는다.
+- **Apply Map**: 2D 문서에 전체 타일 배치를 한 Undo로 적용한다. **Map Options** JSON에서 원점·레이어·충돌 레이어·기존 prefab 매핑·오토타일 규칙을 정한다. 같은 원본은 같은 ID로 재적용하며 다른 객체는 보존한다.
 - **Apply Frame**: 선택한 unlocked sprite의 texture/UV를 한 Undo로 교체한다.
 - **Reimport**: 같은 포맷·논리 이름의 이전 revision을 참조하는 활성 fragment를 frame 이름으로 대응시켜 한 Undo로 갱신한다.
 - **Save Project**: desktop Open Project 기본 문서의 원본·catalog를 저장하고 실제 파일 재검증 후 씬을 저장한다. 재열기 시 프레임을 원본에서 복원한다.
@@ -517,6 +527,15 @@ normal binding, animated/legacy sprite, 잠긴 대상, 누락/모호한 frame은
 Apply Map은 타일과 매핑 객체의 합계 2,048개 이하 범위에서 선택 tileset 한 장을 지원한다. 제외 tileset 타일이 있으면 적용을 거절한다. 충돌은 명시한 layer/blocksMovement만, entity/object는 objectPrefabs로 매핑한 기존 prefab만 사용한다. 프레임 Reimport는 배치 구조를 바꾸지 않으므로 셀/객체 변경은 Apply Map을 다시 누른다.
 같은 grid 셀의 ID와 명시적 instance 동작 연결은 유지한다. 구형 map은 원본 revision catalog가 필요하며, 보존할 수 없는 추가 사용자 속성이 있으면 적용 전에 진단한다.
 [전체 맵 옵션과 미지원 범위](../../docs/engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스)를 따른다.
+
+선택적 `autotile`은 원본 이웃을 기준으로 가장 먼저 일치하는 규칙의 프레임을 배치한다.
+아직 맵에 쓰지 않은 tileset 타일도 이름으로 지정할 수 있고, 결과 타일의 충돌 정보를 적용한다.
+규칙은 씬에 함께 저장·복원하며 게임에서는 이미 계산한 sprite/AABB를 사용한다.
+[오토타일 JSON 예시와 제한](../../docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기)을 참고한다.
+
+선택적 `animations`는 Tiled 원본(`"source"`) 또는 이름별 frame/durationMs/loop를 기존 게임 재생에 연결한다.
+**Map preview time (ms)**와 **Preview Map**으로 시간별 이미지를 확인한다. 이미지가 바뀌어도 충돌은 기준 타일에 고정된다.
+애니메이션 타일의 갱신은 **Apply Map**을 사용한다. [설정·저장·제한](../../docs/engine/data-scene-authoring.md#타일-애니메이션과-고정-충돌)을 따른다.
 
 지원 범위는 **원본 tileset 1..8개, import당 선택 tileset 1개/PNG 1개**, finite orthogonal Tiled의 embedded/외부 TSJ tileset·비압축 data 배열,
 LDtk embedded level의 Tiles/AutoLayer·entity metadata다. 외부 TSX·LDtk external level, IntGrid, flip/회전은 지원하지 않는다. 다중 tileset 선택에서 Tiled group layer는 먼저 평탄화한다.
@@ -552,7 +571,16 @@ JSON의 `meta.image` basename과 선택한 PNG 파일명이 같아야 한다. JS
 | Save Project | 데스크톱에서 연 프로젝트의 원본/manifest를 확정하고 기존 씬 저장을 실행한다. 파일 충돌과 외부 씬 변경을 검사한다. |
 | Export Assets | 등록한 문서 revision들의 원본 JSON/PNG·hash·frame·manifest가 든 agent bundle을 내보낸다. 프로젝트 파일 저장 완료가 아니다. |
 
-JSON hash/array frame export, 정수 rect의 비회전·비트림 프레임을 지원한다. frame ID는 확장자까지 원래 이름을 유지한다.
+JSON hash/array frame export, 정수 rect의 비회전 프레임과 trim 복원을 지원한다. frame ID는 확장자까지 원래 이름을 유지한다.
+잘린 sRGB RGBA8 PNG는 `sourceSize`·`spriteSourceSize`의 원본 크기와 offset으로 투명 여백을 복원한다. 모든 프레임은 같은 원본 canvas 크기를 사용한다.
+원본 밖 offset·회전·지원하지 않는 PNG 색 공간·복원 한도 초과는 Inspect에서 진단한다. 기존 객체의 작성한 크기·origin은 유지한다.
+
+Preview의 **영역·기준점 / Slice and Origin**에서 slice와 원본 key frame을 직접 선택하면 영역·pivot·9-slice center를 확인한다.
+**기준점 적용 / Apply Origin**은 같은 자산을 사용하는 선택 객체의 origin만 변경한다. 정적 객체는 현재 frame을 선택하며,
+애니메이션은 같은 원본 canvas 크기의 알려진 frame들에 공통 origin을 적용한다. 크기·UV·배치·normal·clip 설정은 유지하고 단일 Undo/Redo를 제공한다.
+일반 재가져오기는 수동 origin을 보존한다. pivot 없는 key는 읽기 전용이며 9-slice는 metadata 표시만 지원한다.
+원본 key frame은 export 순서로 추정하지 않는다. 자산·씬 저장 후 재열기에서도 원본 metadata와 적용 origin이 유지된다.
+잘못된 slice metadata는 이 기능에서만 진단한다. [좌표·제한 계약](../../docs/engine/data-scene-authoring.md#영역slice-메타데이터와-명시적-기준점-적용)을 따른다.
 frameTags/duration은 명시적 Apply Animation/Reimport Animation에서 native animation으로 변환한다. 일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다.
 normal binding이 있는 대상의 일반 Apply Frame/Reimport도 차단한다. 정적 대상은 Generate Normals/Reimport Normals,
 애니메이션 대상은 Apply Paired/Reimport Paired로 노멀을 함께 교체한다.
@@ -571,7 +599,7 @@ Save Project 후 새 실행에서도 애니메이션과 노멀 binding evidence�
 실패/취소된 업로드가 기존 이미지를 덮어쓰지 않는다. 잠금/문서/선택 변경과 native 적용 실패도 이전 씬을 유지한다.
 2D 작성 화면은 기존 overlay 경로를 유지하며 실제 native 결과는 Game Preview에서 확인한다. HD-2D는 작성 preview에도 적용한다.
 
-JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, 1~256 frame을 허용한다. 세션은 staged/등록 revision 합계 8건/64 MiB다.
+JSON1 MiB, 원본/복원 PNG 각각16 MiB·한 변4096/4 megapixel, 1~256 frame을 허용한다. 세션은 staged/등록 revision 합계8건/64 MiB이며 별도 원본 PNG도 합산한다.
 문서 전환·Game Preview 진입은 진행 작업을 취소하고, 닫기/종료는 그 문서의 Blob URL과 GPU texture를 해제한다.
 Source/Preview 탭은 방향키/Home/End로, Cancel은 Enter/Space로 조작한다.
 
@@ -582,12 +610,15 @@ app 전용 handoff 확장 `asepriteImports[]`는 현재 씬에서 참조하는 r
 `files`의 base64를 decode하고 SHA-256·PNG 크기·JSON frame을 다시 검증한 뒤 프로젝트 안에 기존 파일을 덮어쓰지 않고 설치한다.
 manifest의 stable texture 이름과 `srgb` 색 공간을 유지해 catalog에 등록하고, **동반 Copy Patch/handoff**를 씬에 반영한다.
 원본 JSON/PNG bytes는 그대로 보관한다. bundle의 문서 키는 씬 JSON이 아니며, bundle만 설치해도 씬이 자동으로 바뀌지 않는다.
+trim 자산은 `.json`(원본 JSON)·`.source.png`(원본 packed PNG)·`.png`(복원된 게임용 이미지) 세 파일을 쓴다.
+`revisions[].sourcePng`의 hash/치수는 원본 PNG 근거이며 stable ID도 원본 JSON/PNG로 만든다. 게임은 manifest와 동반 patch의 복원 UV를 사용한다.
 새 세션에서는 catalog를 `loadAssets`로 로드한 뒤 씬을 열어 확인한다. 미저장 session 참조의 scene-only Save와 다른 문서 복사는 막는다.
 
 데스크톱에서 `Open Project`로 연 기본 프로젝트 문서에는 **Save Project**를 제공한다. 저장 순서는 다음과 같다.
 
 1. 원본 byte/SHA-256·PNG decode·frame·이름·색 공간을 native host에서 검증한다.
 2. `public/assets/.ferrum-aseprite/<assetId>.png`, `<assetId>.json`을 독점 생성한다. 같은 원본은 재시도에서 재사용하며 다른 bytes를 덮어쓰지 않는다.
+   trim 자산은 `<assetId>.source.png`도 저장한다. 호스트는 원본 pixels에서 게임용 이미지·여백·rect/UV를 대조하며 정리/백업/복원도 세 파일을 함께 처리한다.
 3. `catalog.json`을 원자적으로 확정하고 durable protocol URL의 원본을 app이 다시 검증한다.
 4. 기존 Scene Save의 기준 JSON 비교 후 교체를 실행한다. 외부 씬이 바뀌었으면 보존하고 실패를 표시한다.
 
