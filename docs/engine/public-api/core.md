@@ -76,7 +76,8 @@ const presentation = runtime.renderer.pixelPerfectPresentation?.();
 custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를 함께 제공해야 한다.
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
 `spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
-WebGPU의 지원 후처리는 `fade`와 아래 `pixelArt`이며 `linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 지원하며,
+`linear-srgb` 요청은 WebGL2 fallback을 유지한다.
 
 최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
 가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
@@ -136,11 +137,26 @@ WebGPU는 타깃 복사를 위한 scratch texture 하나를 재사용한다. 같
 다시 만들지 않는다. 해제하면 선택적 자원을 해제하며 장치 복구는 마지막 성공 설정을 다시 적용한다.
 WebGL2는 기존 fullscreen 타깃을 재사용한다. 원본을 읽는 WebGPU copy 비용은 draw 횟수에 포함되지 않는다.
 
-WebGPU는 `fade`·`pixelArt`만 지원한다. 기존 `bloom`·곡면 `crt`·`vignette`·`glitch`는
-계속 WebGL2 전용이며 지원하지 않는 활성 패스를 섞으면 설정 전체를 거절한다.
+WebGPU는 기존 `bloom`·곡면 `crt`·`vignette`·`glitch`도 같은 설정과 순서로 지원한다.
+`pixelArt`는 정확한 texel을 읽고 나머지 네 효과는 선형 보간으로 장면을 샘플한다.
+Bloom의 `threshold: 1`은 밝은 영역 추가를 끄며, vignette의 `radius: 0`은 화면 전체에 일정한 색 혼합을 적용한다.
+양수 `softness`가 float32에서 너무 작아 비네트의 안팎 경계가 같아지면 해당 반경에서 선명하게 전환한다.
+정확히 `softness: 0`이면 기존처럼 비네트 패스를 비활성화한다.
+Bloom의 `intensity`/`radius`, CRT의 `curvature`/`chromaticAberration`, glitch의 `intensity`/`chromaticAberration`은
+0~3.4028234663852886e38, glitch의 `seed`는 ±3.4028234663852886e38 범위다.
+이를 넘는 수치는 JavaScript에서 유한하더라도 GPU float32로 전달할 수 없어 설정 단계에서 거절한다.
+비활성 설정에도 같은 검증을 적용하며 실패하면 이전 효과와 자원을 유지한다.
+CRT는 휘어진 중심 좌표의 alpha를 사용하고 화면 밖을 불투명 검정으로 채운다. Glitch는 이동한 중심 좌표의 alpha를 사용한다.
+두 효과의 가장자리 alpha가 원래 위치와 같지는 않다. 효과를 가상 해상도에 적용하면 CRT도 확대 전 행을 기준으로 계산한다.
+
+Glitch는 양쪽 backend에서 같은 float32 seed 비트와 32-bit 정수 hash를 사용한다. 이에 따라 기존 WebGL2의
+삼각함수 hash 기반 줄무늬와 무늬가 달라진다. 같은 seed의 반복과 seed 복귀는 동일한 결과를 낸다.
+WebGL2 fullscreen 계산은 WebGPU와 맞춰 highp를 사용한다. legacy 모드의 기존 sprite alpha 혼합은 유지하므로,
+반투명 sprite의 효과 적용 전 입력 alpha 자체가 backend마다 다를 수 있다. 후처리는 각 입력의 alpha 계약을 따른다.
+`linear-srgb`는 계속 WebGL2에서만 제공한다.
 이 API는 게임 코드의 runtime 설정이며 Data Scene 저장 필드나 에디터 UI를 추가하지 않는다.
 Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므로 JSON 스키마에서 선택적 `pixelArt`를 허용한다.
-기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
+위 수치 범위의 기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
 명시적 타입 `PixelArtPostProcessPassInput`, `ResolvedPixelArtPostProcessPass`와 resolver는 `@ferrum2d/ferrum-web/authoring`에서 제공한다.
 
 ## Runtime 생성

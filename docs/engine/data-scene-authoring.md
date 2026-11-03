@@ -475,7 +475,11 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
 짝수 브러시는 포인터 픽셀에서 오른쪽/아래로 한 픽셀 더 차지하며 대칭은 브러시의 실제 픽셀을 반전한다.
 
 **팔레트 편집**은 색 추가·수정·삭제·순서 변경을 원본 metadata와 Undo에 기록한다. 색 목록 편집은 픽셀 색을 바꾸지 않는다.
-팔레트 가져오기/내보내기는 `ferrum2d.pixel-palette` v1 JSON(16KiB·256색 상한)이며 순서·중복·RGBA를 유지한다. 최근 선택색12개는 UI 전용이다.
+팔레트 가져오기는 `ferrum2d.pixel-palette` v1 JSON, `.gpl`, `.hex`를 지원한다(16KiB·256색 상한).
+[GPL v1/v2](https://developer.gimp.org/core/standards/gpl/)는 RGB를 불투명 RGBA로 읽으며 이름·열 수는 가져오지 않는다.
+HEX는 한 줄에 `RRGGBB` 또는 `RRGGBBAA` 하나와 선택적 `#` 접두사, 빈 줄·`//` 주석을 받는다.
+외부 파일은 최소 한 색이 필요하고 잘못된 행은 전체 가져오기를 거절한다. 순서·중복·투명 RGB를 유지하며 한 번의 Undo로 복원한다.
+내보내기는 RGBA를 보존하는 기존 JSON 형식을 유지한다. 최근 선택색12개는 UI 전용이다.
 **픽셀 색 교체**는 정확히 일치하는 RGBA의 개수를 확인하고 현재 셀/선택 영역/문서 전체 중 지정한 범위에 한 Undo로 적용한다.
 문서 전체는 모든 프레임의 표시·잠금 해제 레이어이며 숨김·잠금은 보호한다. 고정 atlas는 선택 frame rect만 교체한다.
 투명 픽셀도 RGB까지 일치해야 교체된다. 늦은 파일 읽기·확인창은 원본/revision과 편집 대상을 다시 확인한다.
@@ -508,12 +512,15 @@ Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는
   프레임 버튼의 좌우 방향키와 Undo/Redo에서도 도트 편집기 포커스를 보존한다.
   순서·삭제 등의 프레임/레이어 도구가 경계에서 비활성화되면 선택 항목으로 포커스를 복원해 다음 Undo가 씬 이력에 전달되지 않게 한다.
 - 프레임 막대의 **어니언 스킨**에서 표시·이전/다음과 불투명도(0~100%, 기본30%)를 설정한다. 기본 표시는 꺼짐이다.
-  바로 이전/다음 한 프레임을 코랄/청록으로 현재 프레임 뒤에 표시하고 경계에서 순환하지 않는다. 현재의 불투명 픽셀은 ghost를 덮는다.
+  이전/다음 각각 1~4프레임(기본1)을 코랄/청록으로 현재 프레임 뒤에 표시하고 경계에서 순환하지 않는다. 먼 프레임부터 그리며 거리가 두 배면 불투명도는 절반이다. 합성 cache는 현재 프레임 포함 최대9장(256px에서2.25 MiB)이다. 현재의 불투명 픽셀은 ghost를 덮는다.
   보이는 이미지 레이어를 합성하며 잠금은 ghost 표시를 막지 않는다. 그리기·fill·스포이트는 현재 프레임만 사용한다.
   재생 중에는 ghost를 숨기고 정지 시 복원한다. 동일 문서의 탭 전환은 설정을 유지하고 원본 교체·닫기·도구 해제는 기본값으로 초기화한다.
   설정은 UI 전용으로 source·PNG/atlas·자산·프로젝트 저장·Undo·dirty에 포함하지 않는다. 설정 메뉴는 Escape 또는 바깥 클릭으로 닫는다.
 - 한 번의 stroke/fill은 한 Undo다. Ctrl/Cmd+Z·Shift+Z와 Ctrl+Y는 도트 문서 이력에 적용되며 Esc/포인터 취소는 진행 중 stroke를 복원한다.
   마지막 pointerup 좌표도 선에 포함하며 창 포커스를 잃으면 진행 stroke·임시 Space 이동 상태를 취소한다. 빈 값·범위 밖 알파 입력은 마지막 유효한 색을 유지한다.
+- **도형·채색 도구**에서 **디더(D)**와 **그라데이션(J)**을 선택한다. 디더는 기본색과 두 번째 색의 RGBA를 그대로 사용하며 4×4 패턴의 밀도를 0~16으로 조절한다.
+  그라데이션은 드래그 방향을 따라 두 색 RGBA 보간, 두 색 디더, 팔레트 순서의 세 방식을 제공한다. 팔레트 방식은 두 색 이상이 필요하다.
+  드래그 중에는 미리보기만 표시하며 놓으면 한 Undo로 확정한다. Escape·창 blur는 취소한다. 선택 마스크·좌우/상하 대칭·잠금·고정 atlas의 현재 프레임 경계를 유지하며, 게임 후처리와 달리 원본 픽셀을 편집한다.
 - **선택(M)**은 현재 frame/layer를 대상으로 하며 사각형 모드에서는 드래그로 범위를 잡는다. 선택·전체 선택·해제는 원본/dirty/Undo에 포함하지 않는다.
   드래그·방향키(Shift는10픽셀)의 이동, 좌우/상하 반전·시계 방향90도 회전과 붙여넣기는 원본을 바꾸지 않는 미리보기다.
   **확정** 또는 캔버스의 Enter로 한 Undo에 적용하고 **취소/Escape**·창 blur·탭 전환에서 폐기한다. 겹치는 이동은 원본 snapshot으로 계산한다.
@@ -544,11 +551,11 @@ PNG 생성·업로드는 검증된 원본 snapshot으로 시작한다. 적용 �
 기존 확정 자산과 실제 참조 중인 자산은 유지한다. 닫기/새 원본 선택은 이전 파일 읽기·확인창의 권한을 취소해 늦은 결과가 다른 문서를 닫거나 교체하지 못하게 한다.
 미저장 도트 또는 진행 중인 픽셀 편집/업로드가 있으면 에디터·엔진 업데이트와 재시작을 차단한다.
 
-도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
-UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB, v3/v5/v6 JSON 12 MiB로 제한한다.
+도트 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7다. stable layer/frame ID·팔레트·sRGB straight-alpha RGBA8 base64를 보관하며
+UI·Undo log나 게임 simulation state는 포함하지 않는다. 한 변 최대 256, v1 JSON 400,000 bytes, v2 JSON 3 MiB, v3/v5/v6/v7 JSON 12 MiB로 제한한다.
 이름과 layer/frame ID는 올바른 Unicode 문자열·UTF-16 최대 64단위이며 JavaScript `trim` 기준으로 빈 값이면 거절한다.
 짝이 없는 surrogate는 자산 등록 전에 진단한다. 편집 원본의 정수 필드는 표기가 아닌 값으로 검사하므로 `1.0`·`1e0`도 정수 1로 읽는다.
-v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. v1에서 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다. v3/v5/v6 레이어 편집은 해당 버전을 유지한다.
+v1의 단일 `layer`·`rgba` 표현은 계속 읽고 그대로 저장한다. v1에서 레이어 추가·삭제·순서·표시·잠금 편집은 v2로 전환하며 Undo로 원래 v1까지 복원할 수 있다. v3/v5/v6/v7 레이어 편집은 해당 버전을 유지한다.
 v2는 아래→위 순서의 `layers` 배열(1~8개)에 고유 `id`·`name`·`visible`·`locked`·`rgba`를 보관한다.
 각 레이어는 문서와 같은 치수이며 `frame`·`palette`는 문서 전체가 공유한다. 선택 레이어는 UI 상태여서 선택만 바꿔도 원본이나 dirty 상태는 바뀌지 않는다.
 프레임 추가/복제/삭제/순서/시간 편집은 v3로 전환하고 Undo로 이전 형식까지 복원한다.
@@ -572,14 +579,21 @@ PNG 열기는 4 MiB/한 변 256을 decode 전에 검사하며 원본 PNG를 덮�
 미리보기 태그는 UI 상태다. 프레임 체크 순서가 재생 순서이며 각 행의 `#` 번호로 확인한다. 체크 해제 후 다시 선택하면 마지막에 추가한다.
 **모든 프레임**은 원본 순서로 반복 재생하며 선택 태그는 해당 순서·loop 정책으로 재생한다. 비반복 태그는 마지막 프레임을 유지한다.
 
-태그 추가는 기존 원본을 **v5**로 전환하고 v6는 유지한다. Undo로 기존 형식까지 돌아간다. v5는 v3의 layers/frames에 다음 필수 필드를 추가한다.
+태그 추가는 기존 원본을 **v5**로 전환하고 v6/v7은 유지한다. Undo로 기존 형식까지 돌아간다. v5는 v3의 layers/frames에 다음 필수 필드를 추가한다.
 
 - `tags`: 1~16개의 `{id,name,clipId,frameIds,loop}`. ID·이름·clip ID는 각각 고유하며 이름/ID는 기존64단위 문자열 규칙을 따른다.
 - `frameIds`: 1~16개의 중복 없는 stable frame ID. 목록 순서가 재생 순서이며 원본 프레임 순서 이동과 독립적이다. 여러 태그가 같은 프레임을 사용할 수 있다.
 - `clipId`: 0~65535의 정수. `nextClipId`는 다음 할당 번호(1~65536)로 모든 현재 clip ID보다 커야 한다. 삭제한 번호를 재사용하지 않는다.
 - `initialTag`: 존재하는 태그 ID. 이름·프레임 편집으로 clip ID는 바뀌지 않으며 태그가 사용하는 프레임 삭제와 마지막 태그 삭제는 차단한다.
 
-각 태그는 runtime `animationSet`의 한 clip으로 출력한다. v6는 `frameDurationsMs`를 사용해 원본 UV와 시간 배열을 그대로 전달한다.
+태그의 **재생 방향**은 정방향·역방향·왕복이다. 역방향 또는 왕복을 선택하면 원본을 **v7**로 전환하며 Undo는 이전 버전까지 복원한다.
+v7은 v6의64프레임·12 MiB 원본·2048px/16 MiB PNG 한도와 v5의 필수 태그 묶음을 사용한다.
+`tags[].direction?: "forward" | "reverse" | "pingpong"`은 생략 시 정방향이다. v5/v6에 이 필드를 넣으면 거절한다.
+방향을 정방향으로 되돌리거나 프레임 수를 줄여도 v7을 자동 강등하지 않는다. 이전 앱/호스트는 v7을 거절하므로 함께 업데이트한다.
+태그 재생 미리보기는 해당 방향의 첫 프레임에서 시작한다. 왕복 반복은 양 끝을 중복하지 않고, 비반복 왕복은 처음으로 돌아온 프레임의 표시 시간까지 재생한 뒤 유지한다.
+한 프레임 왕복은 그 프레임만 사용하며, 프레임별 시간은 역방향/왕복에서도 원래 프레임을 따라간다.
+
+각 태그는 runtime `animationSet`의 한 clip으로 출력한다. v6/v7은 `frameDurationsMs`를 사용해 원본 UV와 시간 배열을 그대로 전달한다.
 기존 유효 v1~v5의 GCD/FPS 변환은 유지하며, 32 tick을 초과해 과거 거절되던 시간은 native 원본 프레임 시간으로 출력한다.
 새 시간 형식은 PX-04 v2 configure를 지원하는 SDK/Wasm이 필요하다.
 기존 도트 애니메이션에 태그를 적용하거나 소유 clip을 수동 변경한 경우 **클립 변경 검토 → 클립 변경 적용**으로 전후 ID/초기 clip을 확인한다.
@@ -600,7 +614,7 @@ UV×시트 치수는 정수 픽셀 경계(허용 오차1e-7px)여야 하며 시�
 **자산 내보내기**의 `ferrum2d.pixel-assets` v1 bundle에는 원본·PNG base64/SHA-256·texture manifest·현재 scene document가 있다.
 각 PNG를 `assets[].path`에 설치하고 manifest의 자산 이름과 `srgb` 옵션을 게임 프로젝트에 등록한 뒤 동반 scene을 사용한다.
 세션 store는 최대 8 revision/64 MiB다. 브라우저 내보내기를 프로젝트 저장 완료로 표시하지 않는다.
-태그가 없는 다중 프레임의 bundle은 `animationSet` 단일 clip0을, 태그가 있는 v5/v6 bundle은 태그별 clip과 초기 clip을 포함한다. v6는 원본 UV를 복제하지 않으며 기존 유효 GCD 변환의 owned animation 비교·재적용을 유지한다.
+태그가 없는 다중 프레임의 bundle은 `animationSet` 단일 clip0을, 태그가 있는 v5/v6/v7 bundle은 태그별 clip과 초기 clip을 포함한다. v6는 원본 UV를 복제하지 않으며 기존 유효 GCD 변환의 owned animation 비교·재적용을 유지한다.
 최대32 native UV/FPS 범위를 넘으면 프레임 패널에서 진단하고 게임 적용을 막는다. 편집 원본/PNG 저장은 가능하며 해당 bundle 자산에는 `animationDiagnostic`을 담는다.
 편집 미리보기는 원본 ms 기준, 게임은 기존 Rust sprite playback과 f32 FPS 기준이다. 타이밍 검증은 이 정밀도 차이를 구분한다.
 미설치 도트 자산·다른 프로젝트의 자산이나 runtime 숫자 texture 참조가 남은 씬 Save는 차단한다.
@@ -666,7 +680,7 @@ normal이 없거나 lighting이 꺼지면 추가 target/pass가 없고 이전 ta
 현재 도트를 자산으로 등록하고 원본·PNG를 저장한 뒤 기존 씬 초안을 저장한다. 그림 등록/저장이 객체의 이미지를 자동 교체하지는 않으며 **선택 객체에 적용**은 별도 동작이다.
 위치·크기·collider/body·behavior와 씬/픽셀 Undo의 경계를 유지한다.
 
-- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6 원본.
+- `public/assets/.ferrum-pixels/<assetId>.json`: 편집 가능한 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7 원본.
 - 같은 위치의 `<assetId>.png`: 원본의 모든 프레임에서 보이는 레이어를 합성한 RGBA8 PNG.
 - `catalog.json`: `ferrum2d.pixel.catalog` v1의 revisions와 게임용 texture manifest.
 
@@ -674,7 +688,7 @@ desktop 전용 `load_placement_pixel_assets`/`save_placement_pixel_assets`는 �
 저장 요청은 `ferrum2d.pixel-project.assets` v1로 원본/PNG의 base64·SHA-256·identityDocument·치수와 `expectedCatalogRevision`을 전달한다.
 이 값은 마지막 load/save에서 확인한 catalog 원본 bytes의 SHA-256이며 최초 catalog 부재는 빈 문자열이다.
 외부 catalog 변경, 링크/경로 이탈, 원본/PNG 불일치와 기존 불변 파일의 다른 bytes는 저장을 거절한다.
-상한은 catalog 8 revision/64 MiB, 원본 v1/v4 400,000 bytes/v2 3 MiB/v3·v5·v6 12 MiB다. PNG는 기존4 MiB/한 변256, v3/v5는8 MiB/한 변1024, v6는16 MiB/한 변2048다. cel·Undo 예산은 확대하지 않는다.
+상한은 catalog 8 revision/64 MiB, 원본 v1/v4 400,000 bytes/v2 3 MiB/v3·v5·v6·v7 12 MiB다. PNG는 기존4 MiB/한 변256, v3/v5는8 MiB/한 변1024, v6/v7은16 MiB/한 변2048다. cel·Undo 예산은 확대하지 않는다.
 v3 metadata의 width/height는 atlas 치수이며 편집 프레임 치수는 원본 width/height를 사용한다.
 native 호스트는 숨긴 레이어까지 검증하고 TypeScript와 같은 합성 규칙으로 PNG를 대조한다. Pixel 전용 원본 상한이며 Aseprite/타일 원본 상한은 확대하지 않는다.
 

@@ -6,7 +6,7 @@
 이 문서는 이미 구현된 데모의 사용법을 반복하지 않고, smoke/report 중심의 기능을 public
 showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route와 운영 계약은
 [Showcase Hub](../engine/showcase-hub.md)와
-[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다. 기존 여섯 demo route는 해당 문서에서 관리하며 다시 만드는 후보로 등록하지 않는다.
+[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다. 도트 쇼케이스를 포함한 기존 일곱 demo route는 해당 문서에서 관리하며 다시 만드는 후보로 등록하지 않는다.
 
 ## 남은 public 노출 후보
 

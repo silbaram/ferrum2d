@@ -4,7 +4,8 @@
 현재 이미지는 개발 소스의 production 빌드를 Chromium의 WebGL2/SwiftShader에서 실행해 캡처했다.
 합성 이미지나 제품 UI 시안이 아니며, 공개 beta에 같은 기능이 포함되었다는 의미는 아니다.
 
-현재 세트는 2026-11-02에 엔진 소스 커밋 `7bc6504`의 빌드를 Chromium `148.0.7778.96`에서 캡처했다.
+정원·마을·Shooter 세트는 2026-11-02에 엔진 소스 커밋 `7bc6504`의 빌드를 Chromium `148.0.7778.96`에서 캡처했다.
+도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 같은 Chromium에서 캡처했다.
 
 ## 현재 이미지
 
@@ -15,6 +16,7 @@
 | [village-game-preview.png](village-game-preview.png) | 씬에 저장된 게임 카메라를 적용한 HD-2D 마을, 실행 후 일시정지 |
 | [topdown-shooter-title.png](topdown-shooter-title.png) | 실제 Shooter 시작 화면과 시작 안내. 기존 정적 preview를 대체하며 Pages 홈에서도 사용 |
 | [topdown-shooter-gameplay.png](topdown-shooter-gameplay.png) | 실제 Shooter 실행 중 조준·발사 화면 |
+| [pixel-art-showcase.png](pixel-art-showcase.png) | 작은 빛의 정원: 노멀 조명·장미 팔레트·일시정지 상태와 실제 조작 패널 |
 
 캡처 기준은 `1440 × 1000`, DPR 1, 뷰어 한국어 UI다. 전체 작업공간은 body를,
 게임 미리보기·플레이는 실제 canvas를 캡처하므로 이미지의 최종 크기는 서로 다르다.
@@ -38,6 +40,18 @@ node scripts/tools/capture-readme-screenshots.mjs
 실행 시각, 소스 커밋, Chromium 버전, 객체·렌더 통계와 이미지 SHA-256은
 `artifacts/readme-refresh/capture.json`에 남긴다. 이 report는 로컬 검증 산출물이며 Git에 포함하지 않는다.
 게임 진행에 따라 Shooter의 적·발사체·점수와 이미지 해시는 달라질 수 있다.
+
+도트 쇼케이스는 다음 명령으로 별도 캡처한다. production 예제를 project subpath에서 열어 실제
+이동·수집·애니메이션·화면 효과를 검사한 뒤 데스크톱(1440×1000)·모바일(390×844) 전체 페이지를 저장한다.
+
+```bash
+pnpm smoke:pixel-showcase
+```
+
+실행 폴더는 `artifacts/pixel-showcase/verification.json`의 `run`이다. 그 안의
+`pixel-showcase-desktop.png`를 이 디렉터리의 `pixel-art-showcase.png`로 복사한다.
+화면을 직접 확인한 캡처의 run·환경·해시는 `artifacts/pixel-workflow-next-six/showcase-capture.json`에 남긴다.
+소프트웨어 WebGPU 검증은 offscreen readback을 사용하며 README 이미지는 WebGL2 canvas 캡처다.
 
 갱신 후 모든 이미지를 열어 비어 있거나 잘린 영역과 오류 안내가 없는지 확인한다.
 문서 링크와 Pages 이미지 복사도 검증한다.

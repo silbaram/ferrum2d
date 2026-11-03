@@ -13,7 +13,7 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 | Core runtime | Rust/Wasm frame loop, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot/replay처럼 1.0 제품 계약 후보인 표면 |
 | Authoring primitive | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM, effect registry처럼 장르 adapter가 낮은 빈도로 조합하는 데이터 계약 |
 | Starter scene/template | Shooter/Breakout/Platformer built-in scene과 create-game template처럼 검증된 시작점. 장르 전체를 범용으로 자동 제작하는 engine mode는 아님 |
-| Optional/lab/helper | WebGPU, WebGPU fade/pixelArt post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
+| Optional/lab/helper | WebGPU, WebGPU fullscreen post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
 | Compatibility/quality infrastructure | deprecated shim, smoke/report/runtime budget/package QA/Pages build처럼 제품 기능과 분리해 관리하는 보조 표면 |
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
@@ -816,19 +816,28 @@ main/offscreen 비용을 frame 통계에 합산한다. 공개 API와 제약은 [
 adapter/device의 pipeline 생성·GPU 오류 확인까지 canvas context 연결 전에 끝낸다.
 이 단계의 실패는 같은 canvas의 WebGL2로 fallback한다. context 연결 뒤 configure/resize 오류는
 다른 API로 교체할 수 없으므로 전파하며 새 canvas가 필요하다. debug/postprocess pass도 context getter를
-draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는 fade와 pixelArt를 지원한다.
+draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는
+fade·bloom·CRT·vignette·glitch·pixelArt를 지원한다. linear-sRGB는 기존 WebGL2 fallback 범위를 유지한다.
 
 `cameraPostProcessing/postProcess.ts`가 pixelArt의 채널 단계 수·디더·스캔라인을 검증한다.
 `pixelPostProcessShaders.ts`는 두 shader 언어에서 같은 4×4 Bayer 표와 좌상단 행 규칙을 사용한다.
-GL pixelArt는 전용 highp sampler/수치와 texelFetch를 사용하며 기존 fullscreen 효과의 mediump 계산을 유지한다.
+GL fullscreen은 highp 계산을 사용한다. pixelArt는 전용 sampler/texelFetch, 나머지 sampled 효과는 선형 보간을 사용한다.
+`webgpuPostProcessShaders.ts`는 GL식 아래 원점 UV를 위 원점 texture 좌표로 변환한다.
+glitch는 두 언어에서 같은 float32 seed bit/uint hash를 사용하며 이전 GL 삼각함수 hash 무늬와 달라진다.
 linear-sRGB에서만 straight sRGB 변환 후 효과를 계산하고 작업 공간으로 복귀한다.
 공용 fade는 색상 강도만 혼합한다. WebGPU의 alpha blend는 destination coverage를 유지하여 GL fullscreen 결과와 맞춘다.
-`webgpuPixelPostProcess.ts`는 활성 시에만 pipeline/uniform과 copy texture를 소유한다. 현재 frame target의 COPY_SRC에서
+`webgpuTexturePostProcess.ts`는 sampled 효과 활성 시에만 공용 pipeline/48-byte uniform/linear sampler와 copy texture 하나를 소유한다. 현재 frame target의 COPY_SRC에서
 별도 COPY_DST/TEXTURE_BINDING으로 복사한 뒤 원 타깃에 그려 read/write alias를 피한다. pass별 submit으로 uniform 재사용 순서를 보장한다.
 resize는 새 texture와 group 성공 후 교체하고, off/destroy는 선택 자원을 해제한다. 기존 renderer snapshot으로 복구한다.
+Bloom threshold=1과 vignette radius=0은 smoothstep의 동일 양 끝값을 피하도록 명시 처리한다.
+CRT는 warped 중심 alpha/화면 밖 불투명 검정, glitch는 shifted 중심 alpha를 사용한다. 기존 legacy sprite blending은 바꾸지 않는다.
 pixelPerfect는 가상 타깃에서 후처리한 뒤 nearest 확대한다. 확대는 authored postprocess 통계를 덮어쓰지 않고
 drawCalls/presentationPassCount에만 반영한다. Rust/15-float ABI·Data Scene 저장 계약은 변경하지 않는다.
 공용 후처리 resolver는 직접 pass·shorthand·config의 허용 필드와 enabled 타입을 검증하고 비활성 stack도 검증한다.
+Bloom·CRT·glitch의 강도·반경·왜곡·seed도 유한 float32 범위로 제한해 uniform 변환의 Infinity를 막는다.
+비네트는 float32에서 안팎 경계가 합쳐지면 hard edge를 적용해 동일 인자의 smoothstep을 피한다.
+Bloom·CRT·vignette·glitch의 1:1 fullscreen 패스는 실제 출력 픽셀 중심으로 UV를 계산한다.
+확대·부분 viewport 복사에도 쓰이는 fade/copy는 기존 보간 UV를 유지한다.
 Game Spec schema config는 식별 필드를 요구해 기본 fade `{}`와 oneOf에서 중복 일치하지 않는다.
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
@@ -1585,19 +1594,20 @@ IndexedDB 성공/업그레이드 차단 처리는 [MDN transaction complete](htt
 노멀의 최신 여부는 편집 revision/강도와 함께 color/normal store의 생존 여부·문서/저장된 프로젝트 범위를 확인한다. 적용 evidence는 원본 자산의 소유 문서가 아닌 적용한 씬의 key로 기록하고, 비동기 복원 중 store가 닫히면 entry를 다시 등록하지 않는다.
 `placementAssetPatch`는 active fragment의 component scope를 검증한 뒤 같은 target의 normal binding만 spatial patch로 허용한다. 조명/카메라/다른 target 변경으로 권한을 확대하지 않는다.
 `placementPixelTags`는 태그 metadata 편집·UI preview 범위 선택을 담당한다. v5의 stable frame/tag ID와 단조 증가 clip ID는 편집 원본에 보관하고,
-`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
+`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. 역방향·왕복 편집은 direction을 보관하는 v7로 승격하며 기존 원본 읽기는 v1~v6 그대로다. v7은 필수 태그 묶음과64프레임 한도를 사용하며 desktop source/normal 검사도 함께 수용한다. 미리보기와 native는 양끝 중복 없는 반복 왕복·처음으로 돌아와 멈추는 비반복 왕복 및 프레임별 원본 시간을 공유한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
+`placementPixelInk`는 원본 RGBA의 두 색 디더·그라데이션 buffer를 계산하고 canvas는 기존 선택/atlas 경계·preview/paintRegion 이력에 연결한다. `placementPixelPalette`는 JSON/GPL/HEX를 동일한 검증된 RGBA 목록으로 변환하며 자산을 직접 변경하지 않는다.
 `placementPixelOnion`은 순환 없는 인접 프레임 선택을 계산하며 어니언 설정은 `placementPixelFrames`의 UI 상태다.
-`placementPixelCanvas`는 최대2개 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 현재 이미지 뒤에 그린다.
+`placementPixelCanvas`는 앞뒤 각각최대4개(총8개) 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 거리에 반비례하는 alpha로 먼 프레임부터 현재 이미지 뒤에 그린다.
 설정·tint는 모델/PNG·history에 들어가지 않고 스포이트·그리기는 현재 프레임만 사용한다. 재생 중 표시를 숨기며 문서 교체/종료는 보기 설정과 event listener를 정리한다.
-편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
 v1의 단일 레이어를 유지하고 구조·표시·잠금을 편집할 때만 v2의 아래→위 `layers` 배열로 전환한다.
 v2는 최대 8개·256×256·원본 3 MiB이며 고유 ID·이름·표시·잠금·독립 RGBA를 보존한다. 선택은 UI 상태이고 픽셀/레이어 편집은 64단계·실제 snapshot 16 MiB 이력을 공유한다.
 프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 보관한다. v3/v5 입력의 최대16개를 유지하고 17번째 프레임부터 v6로 전환해 최대64개를 허용한다.
 v6의 태그 묶음은 모두 함께 있거나 생략하며 기존 source identity를 재작성하지 않는다. 전체8 MiB RGBA·원본12 MiB와 같은 Undo 예산을 적용한다.
-합성 cache는 현재/인접 프레임을 위해 최대3개(256×256 기준768 KiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
+합성 cache는 현재/인접 프레임을 위해 최대9개(256×256 기준2.25 MiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
 미리보기 재생 위치/프레임 선택은 UI 상태이며 게임 simulation을 갱신하지 않는다. 정지/blur/탭 전환/해제에서 RAF와 편집기 참조를 정리한다.
-v6 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
-기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
+v6/v7 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
+기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6/v7·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
 64-frame source를 UV 복제로 부풀리지 않으며 native 저장 검증·normal source 재검증에도 같은 버전/치수 계약을 적용한다.
 paired normal 생성은 모든 태그가 사용하는 고유 UV32개 한도를 먼저 진단하여 색상 시트64-frame 경로와 분리한다.
 같은 도트 source에서 생성한 기존 animationSet만 교체하고 수동 변경/다른 animation/normal binding을 보호한다. 게임 재생은 기존 Rust SpritePlayback이 소유한다.

@@ -16,6 +16,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 | `/physics-sandbox/` | `examples/physics-sandbox/dist` |
 | `/breakout/` | `examples/breakout/dist` |
 | `/platformer/` | `examples/platformer/dist` |
+| `/pixel-art/` | `examples/pixel-art/dist` · 작은 빛의 정원 |
 
 예제 package의 production build는 `vite build --base=./`를 사용한다. 이 설정은 GitHub Pages의 project subpath에서도 JS/CSS/Wasm asset을 상대 경로로 찾게 하기 위한 것이다.
 
@@ -54,7 +55,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | 항목 | 기준 | 확인 |
 | --- | --- | --- |
 | production build | Wasm package, packages, examples dist가 최신이다. | `pnpm build` |
-| Pages artifact | Pages home, docs HTML, six public demo routes가 생성된다. | `pnpm build:pages` |
+| Pages artifact | Pages home, docs HTML, seven demo routes가 생성된다. | `pnpm build:pages` |
 | route/link integrity | 주요 docs route와 generated HTML 로컬 링크가 깨지지 않는다. | `pnpm validate:pages-artifact` |
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
 | Starter Runtime route | `/starter-runtime/`가 WebGL2 기본 runtime demo를 제공한다. | `dist-pages/starter-runtime/index.html` |
@@ -63,6 +64,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | Physics Sandbox route | `/physics-sandbox/`가 Physics Spec scenario catalog와 debug overlay를 제공한다. | `dist-pages/physics-sandbox/index.html` |
 | Breakout route | `/breakout/`가 두 번째 장르 runtime/render path를 제공한다. | `dist-pages/breakout/index.html` |
 | Platformer route | `/platformer/`가 platformer controller demo를 제공한다. | `dist-pages/platformer/index.html` |
+| Pixel Art route | `/pixel-art/`가 도트 원본·native 이동/수집·조명/팔레트/효과 비교를 제공한다. | `dist-pages/pixel-art/index.html`, `pnpm smoke:pixel-showcase` |
 | rendering-sensitive change | renderer/input/assets/audio/example behavior가 바뀐 경우 관련 browser smoke를 실행한다. | `pnpm smoke:browser`, `pnpm smoke:topdown`, `pnpm smoke:placement-viewer`, `pnpm smoke:physics-sandbox`, `pnpm smoke:breakout`, `pnpm smoke:platformer` 중 변경 표면에 맞게 선택 |
 
 ## GitHub Actions
@@ -74,6 +76,6 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 3. `pnpm build`로 Wasm package와 모든 예제를 빌드한다.
 4. `pnpm build:pages`로 demo dist와 docs HTML을 포함한 `dist-pages/` artifact를 만든다.
 5. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
-6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/` route를 `curl --fail`로 확인한다.
+6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 배포만 담당한다. PR 회귀 검증은 기존 `CI` workflow와 smoke 문서를 기준으로 유지한다.
