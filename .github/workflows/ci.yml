@@ -207,6 +207,28 @@ jobs:
       - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
         run: pnpm smoke:sprite-normal-2d
 
+      - name: Engine Playground movement, physics, lighting and camera
+        run: pnpm smoke:engine-playground
+
+      - name: Upload Engine Playground evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-playground
+          path: artifacts/engine-playground
+          if-no-files-found: ignore
+
+      - name: Nine-slice native geometry and WebGL2/WebGPU pixel parity
+        run: pnpm smoke:sprite-nine-slice
+
+      - name: Upload nine-slice evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprite-nine-slice
+          path: artifacts/pixel-tools-and-demo/nine-slice/runtime
+          if-no-files-found: ignore
+
       - name: Sprite palette RGB parity, native scene and recovery
         run: pnpm smoke:sprite-palette
 

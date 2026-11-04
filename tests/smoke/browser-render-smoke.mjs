@@ -585,6 +585,7 @@ function parseArgs(args) {
 function browserSmokeUrl(port, options) {
   const { mode } = options;
   const params = new URLSearchParams({ preserveDrawingBuffer: "true" });
+  if (options.distDir.replaceAll("\\", "/").includes("starter-runtime")) params.set("mode", "starter");
   if (mode !== DEFAULT_MODE) {
     params.set("debug", "false");
   }

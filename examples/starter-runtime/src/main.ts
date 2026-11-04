@@ -1,9 +1,9 @@
+import { startEnginePlayground } from "./enginePlayground";
 import {
   captureGameStateSnapshot,
   createFerrumRuntime,
   hashGameStateSnapshot,
   type FerrumRuntime,
-  type FerrumRuntimeEnvironment,
   type GameStateSnapshot,
 } from "@ferrum2d/ferrum-web/core";
 import {
@@ -202,7 +202,7 @@ async function bootstrap(): Promise<void> {
   try {
     const searchParams = new URLSearchParams(window.location.search);
     const debugParam = searchParams.get("debug");
-    const environment: FerrumRuntimeEnvironment = searchParams.get("environment") === "production"
+    const environment = searchParams.get("environment") === "production"
       ? "production"
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
@@ -677,9 +677,11 @@ function requireInputActionBinding(
   }
 }
 
-void bootstrap().catch((error) => {
+const entryParams = new URLSearchParams(location.search);
+const legacyStarter = entryParams.get("mode") === "starter" || ["profile", "reportSmoke", "profilerSmoke"].some(key => entryParams.has(key));
+void (legacyStarter ? bootstrap() : startEnginePlayground()).catch((error) => {
   renderRuntimeDemoError(error, {
-    title: "Starter Runtime",
+    title: legacyStarter ? "Starter Runtime" : "Engine Playground",
     diagnosticReport,
   });
 });
