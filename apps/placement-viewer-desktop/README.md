@@ -30,6 +30,12 @@ native 저장은 줄바꿈을 포함한 실제 UTF-8 직렬화 크기가 2 MiB�
 조회는 scene/catalog/원본 파일·GPU registry를 변경하지 않으며 별도 삭제 command가 없다.
 독립적인 사용처 재조회가 기존 씬 탐색기의 entry 출처를 지우지 않으므로 이전 목록의 씬을 열어도 native 저장 문맥을 유지한다.
 
+## 도트 이미지 입력
+
+공통 UI의 도트 제작 영역/편집기는 PNG 파일 드롭과 사용자가 실행한 이미지 붙여넣기를 받는다. [사용법](../placement-viewer/README.md#내장-도트-제작)을 따른다.
+Windows WebView2의 HTML5 파일 드롭을 위해 `app.windows[].dragDropEnabled: false`로 Tauri native 드롭 가로채기를 해제했다. [Tauri 설정](https://v2.tauri.app/reference/config/#dragdropenabled) 기준이며, 파일 경로 접근 권한이나 native 파일 읽기 command를 추가하지 않는다.
+실제 PNG bytes는 기존 프런트엔드 가져오기 검증을 거친다. OS 클립보드가 PNG File을 전달하지 않으면 파일로 저장해 드롭하거나 **이미지 가져오기**로 연다.
+
 ## 버전 확인과 업데이트
 
 

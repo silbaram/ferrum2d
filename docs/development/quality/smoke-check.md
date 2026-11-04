@@ -1932,7 +1932,17 @@ runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
 브라우저에서는 큰 PNG의 자동 변환 진입·드래그/수치 crop·실제 결과 픽셀·PNG/원본 재열기·잘못된 입력/디코드 실패·취소·늦은 bitmap 해제·미저장 확인·한국어 좁은 화면을 검증한다.
 좁은 화면에서 Esc가 가져오기 창만 닫고 에셋 패널은 유지하는지, 대기 중인 수치 미리보기가 자르기 드래그 중 적용 버튼을 활성화하지 않는지도 확인한다.
 HD-2D에서 객체 배치 대기 중에도 첫 Esc는 가져오기 창을 닫고, 배치 대기 상태는 유지해야 한다.
+입력 회귀는 실제 Chromium 클립보드 PNG와 Ctrl+V로 제작 영역·편집기·가져오기 버튼을 확인하고, 기존 내부 픽셀 붙여넣기 우선순위와 텍스트 입력을 검증한다.
+파일 드롭은 실제 DOM의 DataTransfer/DragEvent로 두 영역·hover 해제·잘못된 형식/여러 파일·미확정 선택/모달 차단·취소 후 원본 불변·한국어 오류를 확인한다. OS 파일 관리자 제스처 자체를 자동화하는 검사는 아니다.
+테스트에만 클립보드 권한을 부여하고 종료 시 비운다. 프로덕션은 사용자가 실행한 paste 이벤트만 소비한다. Windows/macOS 설치본의 파일 관리자 드롭·붙여넣기는 별도 수동 QA가 필요하다.
+새 레이어 경로는 v1→v2·태그/방향 포함 다중 프레임의 원본/cel 보존, RGBA 소유권, 한 Undo/Redo, 잘못된 좌표/bytes·레이어/픽셀 예산·고정 atlas·stroke 차단을 단위 검사한다.
+브라우저에서는 기존 프레임 위 합성 픽셀, 초기 중앙 배치·범위 오류, 미저장 문서 보존, 현재 프레임만 채우기, 원본 재열기, 제한 이유, 탭 전환 취소 및 한국어 좁은 화면을 확인한다.
 변환 검사는 `test:pixel-authoring`, 브라우저 검사는 전체 `smoke:pixel-authoring`에도 포함한다. AI 서비스 호출이나 실제 생성 품질 검증은 이 gate에 포함하지 않는다.
+
+`pnpm smoke:pixel-merge`는 모델 검사와 2D/HD-2D 병합·기존 레이어 패널 browser 검사를 실행한다. 아래/visible 병합의 모든 frame PNG 일치·숨긴 locked 원본·이름/ID·태그/시간 보존·한 Undo/Redo·원본 재열기·import→merge를 확인한다.
+반올림 차이가 있는 비활성 frame 때문에 전체 작업을 거절하는 경우와 visible 병합 대체 경로를 검사한다. 메뉴의 잠금/숨김/대상 수·재생/미확정 선택 차단, 메뉴 Esc, 한국어 좁은 화면, 종료 후 retained merge callback 무효화도 포함한다.
+레이어 문서를 닫은 뒤 남은 제어의 click/Escape와 재열기 뒤 이전 행의 select/change를 전달해도 예외·선택 변경·새 문서 잠금 변경이 없어야 한다. 일반 편집에서 비활성 드롭 표시를 위해 작업영역의 layout을 측정하지 않는지도 확인한다.
+최대 cel 예산·history 상한·투명 RGB·오류 시 Redo/revision 불변은 단위 검사한다. 병합 browser 시나리오는 전체 `smoke:pixel-authoring`에도 포함한다.
 
 `pnpm test:pixel-authoring`은 자체 편집 원본의 검증·roundtrip, 정수 선 보간·clipping, 연결 영역 채우기,
 transaction 취소·Undo/Redo 분기·64단계/16 MiB 상한, PNG의 반투명/투명 RGBA 수치 보존을 검사한다.
