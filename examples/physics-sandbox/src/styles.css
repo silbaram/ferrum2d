@@ -1,21 +1,22 @@
+@import "../../shared/exampleFont.css";
 :root {
-  color: #f3f7f2;
-  background: #0f1513;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #0f1513;
-  --surface: #171d1a;
-  --surface-strong: #202a25;
-  --surface-soft: #121815;
-  --border: #33443b;
-  --border-strong: #5f7869;
-  --text: #f3f7f2;
-  --muted: #a6b7ad;
-  --accent: #72dc9d;
-  --accent-strong: #48bd83;
+  color: #dce5ee;
+  background: #080b0f;
+  font-family: "Ferrum Example UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #080b0f;
+  --surface: #111821;
+  --surface-strong: #172130;
+  --surface-soft: #0b1016;
+  --border: #2a3645;
+  --border-strong: #788596;
+  --text: #dce5ee;
+  --muted: #aeb9c6;
+  --accent: #f5a742;
+  --accent-strong: #f5a742;
   --blue: #78a9ff;
   --amber: #f0b75f;
   --danger: #ff9b76;
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  --shadow: none;
 }
 
 * {
@@ -27,15 +28,14 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, #141b18 0%, #0f1513 58%, #0c100f 100%);
+  background: var(--bg);
 }
 
 button,
 select {
   height: 36px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   color: var(--text);
   background: var(--surface-strong);
   font: inherit;
@@ -50,7 +50,7 @@ button {
 button:hover,
 select:hover {
   border-color: var(--border-strong);
-  background: #26352d;
+  background: #202b3a;
 }
 
 button:disabled {
@@ -62,8 +62,8 @@ button:disabled {
 
 button.is-active,
 .category-button.is-active {
-  border-color: rgba(114, 220, 157, 0.78);
-  background: #214f37;
+  border-color: rgba(245, 167, 66, 0.78);
+  background: #3b2b18;
   color: #ffffff;
 }
 
@@ -206,8 +206,8 @@ ol {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #0f1513;
+  border-radius: 4px;
+  background: #080b0f;
   box-shadow: var(--shadow);
 }
 
@@ -216,7 +216,7 @@ ol {
   width: 100%;
   aspect-ratio: 5 / 3;
   height: auto;
-  background: #0f1513;
+  background: #080b0f;
   cursor: crosshair;
 }
 
@@ -237,7 +237,7 @@ ol {
   overflow: hidden;
   padding: 5px 8px;
   border: 1px solid rgba(196, 210, 202, 0.2);
-  border-radius: 6px;
+  border-radius: 3px;
   color: #eef7f0;
   background: rgba(8, 12, 10, 0.74);
   font-size: 12px;
@@ -262,7 +262,7 @@ ol {
   min-height: 30px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--surface);
 }
 
@@ -301,7 +301,7 @@ ol {
 .warning-list {
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface);
 }
 
@@ -327,7 +327,7 @@ ol {
   min-height: 64px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface);
 }
 
@@ -413,7 +413,7 @@ ol {
   min-width: 0;
   padding: 10px;
   border: 1px solid rgba(196, 210, 202, 0.14);
-  border-radius: 8px;
+  border-radius: 4px;
   background: rgba(9, 16, 13, 0.48);
 }
 
@@ -458,7 +458,7 @@ ol {
   min-width: 0;
   padding: 5px 6px;
   border: 1px solid rgba(196, 210, 202, 0.2);
-  border-radius: 6px;
+  border-radius: 3px;
   color: #ffffff;
   background: rgba(8, 12, 10, 0.62);
   font-variant-numeric: tabular-nums;
@@ -502,7 +502,7 @@ ol {
   margin: 12px auto 0;
   padding: 12px;
   border: 1px solid rgba(255, 155, 118, 0.58);
-  border-radius: 8px;
+  border-radius: 4px;
   background: #2a1b16;
 }
 

@@ -1,0 +1,14 @@
+@import "./exampleFont.css";
+.example-guide { display: grid; grid-template-columns: minmax(180px, .8fr) repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1120px; padding: 16px; margin: 0 auto 16px; border: 1px solid #2a3645; border-radius: 3px; background: #0b1016; color: #aeb9c6; font: 13px/1.6 "Ferrum Example UI", system-ui, sans-serif; }
+.example-guide label { display: grid; gap: 8px; align-content: start; color: #f5a742; }
+.example-guide select, .example-guide button { border: 1px solid #2a3645; background: #111821; color: #dce5ee; border-radius: 3px; padding: 6px 10px; font: inherit; min-width: 0; width: 100%; }
+.example-guide p { margin: 0; }
+.example-guide strong { display: block; color: #dce5ee; margin-bottom: 8px; }
+.example-guide-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; grid-column: 1 / -1; border-top: 1px solid #1b2430; padding-top: 12px; }
+.example-guide-actions button { width: auto; cursor: pointer; }
+.example-guide a { color: #7aa2ff; text-decoration: none; }
+.example-guide :is(select, a, button):focus-visible { outline: 2px solid #f5a742; outline-offset: 3px; }
+.example-guided { font-family: "Ferrum Example UI", system-ui, sans-serif; --demo-text: #dce5ee; --demo-background: #080b0f; --demo-body-background: #080b0f; --demo-focus: #f5a742; --demo-button-border: #2a3645; --demo-button-background: #111821; --demo-button-hover-background: #172130; --demo-canvas-border: #2a3645; --demo-metrics-background: #0b1016; --demo-metrics-label: #aeb9c6; background: #080b0f; }
+.example-guided .demo-toolbar h1 { font-size: 18px; }
+.example-guided button, .example-guided .demo-metrics { border-radius: 3px; }
+@media (max-width: 700px) { .example-guide { grid-template-columns: minmax(0, 1fr); gap: 12px; } }

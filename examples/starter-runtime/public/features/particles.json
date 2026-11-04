@@ -1,0 +1,65 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "tray",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 560,
+                  "height": 320,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  },
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "marker",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 32,
+                  "height": 32
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

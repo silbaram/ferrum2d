@@ -1,7 +1,7 @@
 import {
   createFerrumRuntime,
   type FerrumEngine,
-  type FerrumRuntimeEnvironment,
+  type FerrumRuntimeOptions,
 } from "@ferrum2d/ferrum-web/core";
 import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 
@@ -11,6 +11,7 @@ import {
 } from "../../shared/runtimeDemoShell";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
+import { createExampleGuide } from "../../shared/exampleGuide";
 
 function gameStateLabel(code: number): string {
   if (code === 0) return "Title";
@@ -21,7 +22,7 @@ function gameStateLabel(code: number): string {
 
 async function bootstrap(): Promise<void> {
   const shell = createRuntimeDemoShell({
-    title: "Ferrum2D Breakout",
+    title: "Ferrum2D · 충돌 반응 실험",
     gameStateLabel,
     metrics: [
       { key: "state", label: "state" },
@@ -33,11 +34,17 @@ async function bootstrap(): Promise<void> {
       { key: "fps", label: "fps" },
     ],
   });
+  const root = shell.stage.closest<HTMLElement>(".demo-shell")!;
+  root.classList.add("example-guided");
+  root.querySelector(".demo-toolbar")!.after(createExampleGuide([
+    { title: "공 · 벽 · 패들 충돌", action: "A/D 또는 방향키로 패들을 움직여 공을 받아보세요.", observe: "충돌면에 따라 공이 반사합니다. 충돌 영역을 켜면 실제 판정 형태를 비교할 수 있습니다." },
+    { title: "충돌 이벤트 · 파티클", action: "공이 벽돌에 닿을 때 score와 particles를 확인하세요.", observe: "벽돌 충돌이 점수·제거·파티클로 이어집니다. hits는 현재 프레임의 hit 이벤트 수입니다." },
+  ], shell.canvas));
 
   try {
     const searchParams = new URLSearchParams(window.location.search);
     const debugParam = searchParams.get("debug");
-    const environment: FerrumRuntimeEnvironment = searchParams.get("environment") === "production"
+    const environment: FerrumRuntimeOptions["environment"] = searchParams.get("environment") === "production"
       ? "production"
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
@@ -47,7 +54,7 @@ async function bootstrap(): Promise<void> {
     const runtime = await createFerrumRuntime({
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
-      debug: debugParam === null ? undefined : { enabled: debugParam !== "false" },
+      debug: { enabled: debugParam === "true", layout: "inline" },
       physicsDebugLines,
       environment,
       profiler: profilerSmokeEnabled,
@@ -63,6 +70,7 @@ async function bootstrap(): Promise<void> {
     });
 
     shell.attachRuntime(runtime);
+    await runtime.renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href);
     runtime.engine.useBreakoutGame();
     runtimeEngine = runtime.engine;
     runtime.start();

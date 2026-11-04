@@ -1,0 +1,119 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "backdrop",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 480,
+                  "height": 288,
+                  "layer": -100,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  }
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 300,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 96,
+                  "height": 120,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  }
+                },
+                "collider": "none",
+                "layer": "player"
+              }
+            },
+            "layer": 2
+          },
+          {
+            "id": "orb",
+            "prefab": "object",
+            "x": 340,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "ball",
+                  "width": 128,
+                  "height": 128
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            },
+            "layer": 1
+          },
+          {
+            "id": "panel",
+            "prefab": "object",
+            "x": 340,
+            "y": 264,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 224,
+                  "height": 112,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  }
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            },
+            "layer": -1
+          }
+        ]
+      }
+    }
+  }
+}

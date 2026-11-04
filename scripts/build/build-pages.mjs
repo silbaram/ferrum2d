@@ -14,6 +14,7 @@ import { githubHeadingId, stripInlineMarkdown } from "../lib/markdown-heading-id
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
+const featureExamples = JSON.parse(readFileSync("examples/shared/featureCatalog.json", "utf8"));
 const examples = [
   {
     id: "pixel-art",
@@ -22,8 +23,8 @@ const examples = [
   },
   {
     id: "starter-runtime",
-    title: "Engine Playground",
-    description: "Play with native movement, pickups, rigid-body materials, normal lighting, camera controls, and screen effects.",
+    title: "엔진 기능 실험실",
+    description: "스프라이트·물리·조명·타일맵·레이어·파티클·공간 오디오·입력 등 12개 기능을 독립된 씬에서 비교합니다.",
   },
   {
     id: "topdown-shooter",
@@ -43,13 +44,13 @@ const examples = [
   },
   {
     id: "breakout",
-    title: "Breakout",
-    description: "Second genre example using the same runtime API and collision events.",
+    title: "충돌 반응 · Breakout",
+    description: "공의 반사와 충돌 이벤트가 벽돌 제거·점수·파티클로 이어지는 과정입니다.",
   },
   {
     id: "platformer",
-    title: "Platformer",
-    description: "Kinematic controller example with one-way platforms, moving platforms, slopes, and physics stats.",
+    title: "플랫폼 이동 · Platformer",
+    description: "점프·착지, 단방향 발판, 이동 발판을 선택해 해당 위치에서 실험합니다.",
   },
 ];
 const documentationHighlights = [
@@ -248,6 +249,11 @@ function firstHeading(markdown) {
 }
 
 function pageHtml(items) {
+  const featureLinks = featureExamples.map(item => `
+          <a class="tile" href="./starter-runtime/?feature=${escapeAttribute(item.id)}">
+            <span class="tile-title">${escapeHtml(item.title)}</span>
+            <span class="tile-description">${escapeHtml(item.summary)}</span>
+          </a>`).join("");
   const demoLinks = items.map((item) => `
           <a class="tile" href="./${escapeAttribute(item.id)}/">
             <span class="tile-title">${escapeHtml(item.title)}</span>
@@ -260,7 +266,7 @@ function pageHtml(items) {
           </a>`).join("");
 
   return `<!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -273,17 +279,24 @@ function pageHtml(items) {
         <div>
           <p class="eyebrow">Rust + WebAssembly 2D web game engine</p>
           <h1>Ferrum2D</h1>
-          <p class="lead">Production builds and documentation for the current Ferrum2D browser runtime.</p>
+          <p class="lead">엔진 기능을 하나씩 선택하고, 설정을 바꾸며 결과를 확인하세요.</p>
           <div class="actions">
-            <a class="button primary" href="./docs/">Docs</a>
-            <a class="button" href="./topdown-shooter/">Top-down Shooter</a>
+            <a class="button primary" href="./starter-runtime/">기능 실험실</a>
+            <a class="button" href="./docs/">사용 문서</a>
           </div>
         </div>
-        <img class="preview" src="./docs/development/quality/screenshots/topdown-shooter-title.png" alt="Top-down Shooter title screen preview" />
+        <img class="preview" src="./docs/development/quality/screenshots/engine-feature-lab.png" alt="엔진 기능 실험실: 단순 확대와 9-slice 비교" />
       </section>
       <section class="section">
         <div class="section-heading">
-          <h2>Demos</h2>
+          <h2>기능별 실험</h2>
+          <a href="./physics-sandbox/">물리 심화 실험 7종</a>
+        </div>
+        <div class="grid">${featureLinks}</div>
+      </section>
+      <section class="section">
+        <div class="section-heading">
+          <h2>기존 예제 · 통합 데모 · 제작 도구</h2>
           <a href="./docs/development/operations/demo-deploy.html">Deploy notes</a>
         </div>
         <div class="grid">${demoLinks}

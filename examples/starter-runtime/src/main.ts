@@ -1,4 +1,5 @@
 import { startEnginePlayground } from "./enginePlayground";
+import { startFeatureLab } from "./featureLab";
 import {
   captureGameStateSnapshot,
   createFerrumRuntime,
@@ -679,9 +680,9 @@ function requireInputActionBinding(
 
 const entryParams = new URLSearchParams(location.search);
 const legacyStarter = entryParams.get("mode") === "starter" || ["profile", "reportSmoke", "profilerSmoke"].some(key => entryParams.has(key));
-void (legacyStarter ? bootstrap() : startEnginePlayground()).catch((error) => {
+void (legacyStarter ? bootstrap() : entryParams.get("mode") === "playground" ? startEnginePlayground() : startFeatureLab()).catch((error) => {
   renderRuntimeDemoError(error, {
-    title: legacyStarter ? "Starter Runtime" : "Engine Playground",
+    title: legacyStarter ? "Starter Runtime" : entryParams.get("mode") === "playground" ? "Engine Playground" : "엔진 기능 실험실",
     diagnosticReport,
   });
 });
