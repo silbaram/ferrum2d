@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 도트 제작 편의성·호환 범위 | 실제 제작에서 반복되는 편집·가져오기 비용을 줄인다. | [제작 후보](game-development-convenience-review.md#도트-제작-후보)의 레이어 blend/opacity·OS 클립보드로 이미지 내보내기·측정 기반 차분 Undo부터 필요성을 확인한다. [상용 수준 분석](pixel-art-commercial-readiness-plan.md)의 9-slice 렌더링·직접 바이너리 읽기·자동 재임포트는 개별 설계 후보이며, 초기 분석의 미지원 설명은 현재 구현 상태를 뜻하지 않는다. 현재 도트 제작·WebGPU 후처리 지원은 공식 사용법을 따른다. |
+| 1 | 도트 제작 편의성·호환 범위 | 실제 제작에서 반복되는 편집·가져오기 비용을 줄인다. | [제작 후보](game-development-convenience-review.md#도트-제작-후보)의 레이어 blend·추가 변형·측정 기반 차분 Undo부터 필요성을 확인한다. [상용 수준 분석](pixel-art-commercial-readiness-plan.md)의 9-slice 렌더링·직접 바이너리 읽기·자동 재임포트는 개별 설계 후보이며, 초기 분석의 미지원 설명은 현재 구현 상태를 뜻하지 않는다. 현재 도트 제작·WebGPU 후처리 지원은 공식 사용법을 따른다. |
 
 AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.
 

@@ -1565,11 +1565,15 @@ texture upload/등록 실패는 새 allocation만 rollback하므로 ledger와 �
 도트 제작은 app의 `placementPixelDocument`(원본 검증·픽셀 연산·transaction·bounded Undo),
 `placementPixelCanvas`(포인터/CSS/DPR/zoom/pan), `placementPixelLayers`(이미지 레이어 패널), `placementPixelPng`(straight-alpha RGBA PNG 출력),
 `placementPixelAssets`(불변 session revision·기존 component patch), `placementPixelTool`(에셋 탭·수명·내보내기)로 분리한다.
+`placementPixelOpacity`는 선택 레이어의 비파괴 합성 미리보기와 Apply/Cancel을 제공한다. editor identity·revision·선택 layer/frame과 읽기 전용/gesture 상태를 검사하고 Back/문서 전환/종료에서 취소한다. 값은0~100% 보기이며 원본에는0~255 정수를 저장한다.
+실제 값 변경은 v8로 승격한다. 모든 layer에 opacity가 필수이며 새 레이어와 이미지 레이어도255를 명시해 저장 원본과 dirty 비교가 일치하게 한다. 기존 원본은 no-op에서 형식을 유지하고 Undo는 이전 형식까지 복원한다.
+합성 시 alpha만 `round(rawAlpha*opacity/255)`로 계산하고 원본 RGBA는 보존한다.0은 합성에서 제외하고255는 기존 출력을 유지한다. 병합은 이미 합성한 픽셀과 남은 layer의255를 저장한다. TS와 native 저장 호스트가 같은 정수 규칙을 독립 검증한다.
+`placementPixelClipboard`는 명시적 PNG 복사에서만 브라우저 clipboard write를 호출한다. user activation 안에서 PNG promise를 전달하고 원본·Undo·dirty는 바꾸지 않는다. Abort는 UI 대기/늦은 결과를 해제하며 OS가 이미 받은 쓰기의 취소를 보장하지 않는다. 내부 픽셀 선택 클립보드와 분리한다.
 `placementPixelDrawing`은 bounded 정수 브러시/대칭/도형 mask 연산이고, Canvas가 확정 전 preview만 소유한다.
 팔레트 metadata·정확한 RGBA 교체·전체 cel 여백/자르기는 문서 모델 transaction을 사용한다. 치수도 이력에 포함하고 캐시/활성 영역을 함께 갱신한다.
 `placementPixelPaletteControls`/`placementPixelCanvasControls`는 파일/확인창 identity·revision 검증과 UI를 소유한다.
 `placementPixelSizePreview`는 기존 합성/프레임 시계의 변경 알림에서만 redraw하며 별도 재생 루프 없이 CSS1×/2×를 표시한다.
-접기·비활성·blur·종료에서 canvas/RAF를 해제한다. 이 경로들은 app-private이며 public API·source v1~v5·Rust simulation/Wasm ABI를 확장하지 않는다.
+접기·비활성·blur·종료에서 canvas/RAF를 해제한다. 이 경로들은 app-private이며 public API·Rust simulation/Wasm ABI를 확장하지 않는다.
 `placementPixelSelection`은 UI 선택·정수 변형 미리보기·현재 원본에 한정된 내부 클립보드를 소유하고,
 `placementPixelSelectionControls`는 조건부 메뉴와 확정/취소를 제공한다. preview는 선택 cel 사본을 합성하며
 원본/revision/dirty/Undo를 변경하지 않는다. 확정은 문서 모델의 bounded `editRegion` 한 transaction으로 적용한다.
@@ -1594,20 +1598,20 @@ IndexedDB 성공/업그레이드 차단 처리는 [MDN transaction complete](htt
 노멀의 최신 여부는 편집 revision/강도와 함께 color/normal store의 생존 여부·문서/저장된 프로젝트 범위를 확인한다. 적용 evidence는 원본 자산의 소유 문서가 아닌 적용한 씬의 key로 기록하고, 비동기 복원 중 store가 닫히면 entry를 다시 등록하지 않는다.
 `placementAssetPatch`는 active fragment의 component scope를 검증한 뒤 같은 target의 normal binding만 spatial patch로 허용한다. 조명/카메라/다른 target 변경으로 권한을 확대하지 않는다.
 `placementPixelTags`는 태그 metadata 편집·UI preview 범위 선택을 담당한다. v5의 stable frame/tag ID와 단조 증가 clip ID는 편집 원본에 보관하고,
-`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. 역방향·왕복 편집은 direction을 보관하는 v7로 승격하며 기존 원본 읽기는 v1~v6 그대로다. v7은 필수 태그 묶음과64프레임 한도를 사용하며 desktop source/normal 검사도 함께 수용한다. 미리보기와 native는 양끝 중복 없는 반복 왕복·처음으로 돌아와 멈추는 비반복 왕복 및 프레임별 원본 시간을 공유한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
+`placementPixelAnimation`이 태그별 기존 runtime clip으로 변환한다. v8이 아닌 원본의 역방향·왕복 편집은 direction을 보관하는 v7로 승격하며 기존 v1~v6 읽기는 유지한다. v8은 해당 버전을 유지한다. v7은 필수 태그 묶음과64프레임 한도를 사용하며 desktop source/normal 검사도 함께 수용한다. 미리보기와 native는 양끝 중복 없는 반복 왕복·처음으로 돌아와 멈추는 비반복 왕복 및 프레임별 원본 시간을 공유한다. clip 변경 확인은 정확한 전후 set에 묶이며 기존 ID 제거는 차단한다. 게임/behavior 참조를 UI에서 재작성하지 않는다.
 `placementPixelInk`는 원본 RGBA의 두 색 디더·그라데이션 buffer를 계산하고 canvas는 기존 선택/atlas 경계·preview/paintRegion 이력에 연결한다. `placementPixelPalette`는 JSON/GPL/HEX를 동일한 검증된 RGBA 목록으로 변환하며 자산을 직접 변경하지 않는다.
 `placementPixelOnion`은 순환 없는 인접 프레임 선택을 계산하며 어니언 설정은 `placementPixelFrames`의 UI 상태다.
 `placementPixelCanvas`는 앞뒤 각각최대4개(총8개) 인접 프레임 합성을 offscreen canvas의 source-in으로 tint해 거리에 반비례하는 alpha로 먼 프레임부터 현재 이미지 뒤에 그린다.
 설정·tint는 모델/PNG·history에 들어가지 않고 스포이트·그리기는 현재 프레임만 사용한다. 재생 중 표시를 숨기며 문서 교체/종료는 보기 설정과 event listener를 정리한다.
-편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
+편집 원본은 app 전용 `ferrum2d.pixel-document` v1/v2/v3/v4/v5/v6/v7/v8이며 runtime은 합성 PNG와 기존 scene-authoring `animationSet`만 소비한다.
 v1의 단일 레이어를 유지하고 구조·표시·잠금을 편집할 때만 v2의 아래→위 `layers` 배열로 전환한다.
 v2는 최대 8개·256×256·원본 3 MiB이며 고유 ID·이름·표시·잠금·독립 RGBA를 보존한다. 선택은 UI 상태이고 픽셀/레이어 편집은 64단계·실제 snapshot 16 MiB 이력을 공유한다.
 프레임 편집은 v3로 전환한다. 공통 layer metadata와 프레임별 순서/ID/시간/cel을 보관한다. v3/v5 입력의 최대16개를 유지하고 17번째 프레임부터 v6로 전환해 최대64개를 허용한다.
 v6의 태그 묶음은 모두 함께 있거나 생략하며 기존 source identity를 재작성하지 않는다. 전체8 MiB RGBA·원본12 MiB와 같은 Undo 예산을 적용한다.
 합성 cache는 현재/인접 프레임을 위해 최대9개(256×256 기준2.25 MiB)의 RGBA만 보관하며 문서 변경/Undo에서 비운다. 화면 이동/확대만으로 모든 레이어를 재합성하지 않는다.
 미리보기 재생 위치/프레임 선택은 UI 상태이며 게임 simulation을 갱신하지 않는다. 정지/blur/탭 전환/해제에서 RAF와 편집기 참조를 정리한다.
-v6/v7 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
-기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6/v7·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
+v6/v7/v8 PNG는 최대8×8 atlas/한 변2048·16 MiB이며 기존 v3/v5의4×4/1024·8 MiB 입력 한도를 유지한다. native와 TypeScript는 모든 frame cel·합성·padding을 검증하고 metadata 치수는 atlas 치수로 유지한다.
+기존 유효 source의 GCD 반복 UV/f32 FPS clip은 유지하고 v6/v7/v8·32 tick 초과 시간은 PX-04 원본 frameDurationsMs를 사용한다.
 64-frame source를 UV 복제로 부풀리지 않으며 native 저장 검증·normal source 재검증에도 같은 버전/치수 계약을 적용한다.
 paired normal 생성은 모든 태그가 사용하는 고유 UV32개 한도를 먼저 진단하여 색상 시트64-frame 경로와 분리한다.
 같은 도트 source에서 생성한 기존 animationSet만 교체하고 수동 변경/다른 animation/normal binding을 보호한다. 게임 재생은 기존 Rust SpritePlayback이 소유한다.

@@ -60,6 +60,10 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 선택만 단독 진단하려면 save 허용 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-selection-only`를 사용한다.
 노멀 smoke는 floating 선택의 적용 차단과 확정 후 stale/Undo/cache 복원도 검사한다. 전체 UI gate가 CI validate에서 실행되므로 별도 중복 gate를 추가하지 않는다.
 
+`smoke:pixel-authoring`의 `pixelOpacity`는2D/HD-2D에서 숫자·슬라이더 미리보기의 원본 무변경, Apply/Cancel/Escape, 레거시 no-op·v8 승격·한 Undo/Redo·새 레이어 추가 뒤 불투명도 역편집의 dirty 복원·0/100% 오해 없는 소수 표시, 잠금/재생 차단·씬으로 돌아가기/닫힌 창의 늦은 적용 및 숨긴 버튼 재열기 거절, PNG/병합 결과와 한글390px을 검사한다. 집중 실행은 `pnpm smoke:pixel-opacity`다.
+`pixel-authoring.test.mjs`는 모든 프레임/태그/방향·원본 RGBA 보존, opacity0/255·반투명 정수 합성, 잘못된 버전/값 거절, PNG·애니메이션·그리기 미리보기의 일치와 병합 중복 적용 방지를 검사한다.
+`smoke:pixel-project`는 전체 기존 프로젝트 검사 후 opacity 집중 native 검사를 추가로 실행한다. `pnpm smoke:pixel-opacity-project`로 단독 실행할 수 있다. 실제 Rust host 저장·독립 PNG 검증·태그 유무 두 원본의 sidecar 일치·새 Rust/browser 세션 재열기와 두 방향 frame의 실제 Wasm Playing/UV/색·draw 예산을 확인한다. GUI 배포 앱이나 실물 GPU 검증은 포함하지 않는다.
+
 도트 편의성 회귀도 같은 `test:pixel-authoring`/`smoke:pixel-authoring` CI 경로에서 실행한다.
 `pixelDrawing`은 브러시·대칭·도형/Shift·선택 마스크·취소·한 Undo를, `pixelPalette`는 metadata와 픽셀 교체의 분리·잠금/숨김 보호·늦은 가져오기 거절을 검사한다.
 `pixelCanvasPreview`는 모든 cel의 여백/자르기·치수 Undo/Redo·고정 atlas 차단·실제 크기1×/2×·DPR1/2·프레임/태그 연동·blur/접기/탭 전환 자원 해제를 검사한다.
@@ -81,7 +85,7 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 공통 노멀 검사는 범위 반전·외곽선 결과를 원본에 유지한 뒤 Worker 입력·원본 내보내기·게임 실행을 검증한다. native 프로젝트 gate는 이 원본과 pair를 저장하고 재시작 후 정확히 재열어 실행한다.
 추가 외곽선/범위 편집의 stale 차단·Undo 후 원본 cache 재사용도 같은 공통 함수에서 검사한다.
 
-같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v5 checkpoint, 원본/이력 무변경,
+같은 `test:pixel-authoring`는 `pixel-recovery.test.mjs`도 실행해 v1~v8 checkpoint, 원본/이력 무변경,
 용량/기간/개수 상한·project/scene 격리·늦은 list 무시·write 뒤 delete 순서·quota/접근 거부·종료 수명을 검사한다.
 종료 직후 host가 에디터를 해제해도 최신 확정본을 저장하고, 이전 write가 지연 중이면 그 뒤에 최신본을 남기는지 검사한다.
 활성 stroke·선택 미리보기는 종료 캡처에서도 제외하며 중복 destroy는 저장 작업을 추가하지 않는다.
@@ -89,7 +93,7 @@ preview/cancel/Undo·stale target·atlas 경계·잘못된 입력의 원자성�
 raw RGBA/태그/레이어 보존·미저장 상태·씬/Undo 불변·다중 탭의 독립 항목을 확인한다.
 실제 transaction abort를 주입해 이전 완료본 보존·수동 내보내기·재시도·도트 닫기/원본 내보내기의 해당 항목 정리를 검사하며,
 손상 원본 복원 거절·저장소 접근 거부·메뉴 클릭·한글390px 캡처도 포함한다.
-600ms debounce 전 확정 직후 같은 task에서 실제 도구의 `pagehide` 정리를 실행하고, 다른 탭의 IndexedDB 조회로 정확한 v5 원본 저장을 확인한다.
+600ms debounce 전 확정 직후 같은 task에서 실제 도구의 `pagehide` 정리를 실행하고, 다른 탭의 IndexedDB 조회로 정확한 v8 원본 저장을 확인한다.
 명시적으로 도트 문서를 닫으면 팔레트 원본 참조와 팔레트/최근 색 목록을 비우며, 잠시 씬으로 돌아가는 동작은 편집 상태를 유지한다.
 단독 진단은 앱 build 후 `node tests/smoke/aseprite-assets-smoke.mjs --pixels --pixel-recovery-only`다.
 IndexedDB 검증은 같은 origin의 브라우저/WebView 저장소 기준이며 실제 설치 앱·OS별 storage 정책이나 전원 종료 직전 완료되지 않은 write를 증명하지 않는다.
@@ -1938,6 +1942,10 @@ HD-2D에서 객체 배치 대기 중에도 첫 Esc는 가져오기 창을 닫고
 새 레이어 경로는 v1→v2·태그/방향 포함 다중 프레임의 원본/cel 보존, RGBA 소유권, 한 Undo/Redo, 잘못된 좌표/bytes·레이어/픽셀 예산·고정 atlas·stroke 차단을 단위 검사한다.
 브라우저에서는 기존 프레임 위 합성 픽셀, 초기 중앙 배치·범위 오류, 미저장 문서 보존, 현재 프레임만 채우기, 원본 재열기, 제한 이유, 탭 전환 취소 및 한국어 좁은 화면을 확인한다.
 변환 검사는 `test:pixel-authoring`, 브라우저 검사는 전체 `smoke:pixel-authoring`에도 포함한다. AI 서비스 호출이나 실제 생성 품질 검증은 이 gate에 포함하지 않는다.
+
+`pnpm smoke:pixel-clipboard`는 쓰기의 동기 시작·PNG Blob bytes·capability/permission/encoding 실패·abort 전후 지연 promise 정리를 단위 검사하고 2D/HD-2D 실제 Clipboard API를 검증한다.
+브라우저에서는 OS PNG read-back과 파일 PNG 비교, 복사→가져오기, dirty/한 Undo 유지, 전체 애니메이션 sheet/fixed atlas, 내부 Ctrl+C/V, 재생/미확정 선택 차단, 미지원/권한 오류·지연 OS write 중 Back/늦은 결과·한국어 좁은 메뉴를 확인한다.
+실제 성공 경로만 클립보드 권한을 사용하고 실패/지연 경로는 writer를 대체해 검사한다. 마지막에 원래 API/권한을 복원한다. 설치된 OS 앱 자체의 붙여넣기 및 native WebView GUI 시험은 별도 환경에서 수행한다. 새 검사는 `test:pixel-authoring`와 전체 `smoke:pixel-authoring`에도 포함된다.
 
 `pnpm smoke:pixel-merge`는 모델 검사와 2D/HD-2D 병합·기존 레이어 패널 browser 검사를 실행한다. 아래/visible 병합의 모든 frame PNG 일치·숨긴 locked 원본·이름/ID·태그/시간 보존·한 Undo/Redo·원본 재열기·import→merge를 확인한다.
 반올림 차이가 있는 비활성 frame 때문에 전체 작업을 거절하는 경우와 visible 병합 대체 경로를 검사한다. 메뉴의 잠금/숨김/대상 수·재생/미확정 선택 차단, 메뉴 Esc, 한국어 좁은 화면, 종료 후 retained merge callback 무효화도 포함한다.
