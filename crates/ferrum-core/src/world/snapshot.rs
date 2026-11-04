@@ -22,6 +22,7 @@ pub struct WorldSnapshot {
     alive: Vec<bool>,
     transforms: Vec<Option<Transform2D>>,
     sprites: Vec<Option<Sprite>>,
+    sprite_nine_slices: Vec<Option<crate::components::SpriteNineSlice>>,
     sprite_normal_materials: Vec<Option<crate::render_command::SpriteNormalMaterial>>,
     sprite_animations: Vec<Option<SpriteAnimation>>,
     ground_shadows: Vec<Option<super::ground_shadow::GroundShadowCaster>>,
@@ -100,6 +101,7 @@ impl World {
             alive: self.alive.clone(),
             transforms: self.transforms.clone(),
             sprites: self.sprites.clone(),
+            sprite_nine_slices: self.sprite_nine_slices.clone(),
             sprite_normal_materials: self.sprite_normal_materials.clone(),
             sprite_animations: self.sprite_animations.clone(),
             sprite_playbacks: self.sprite_playbacks.clone(),
@@ -178,6 +180,7 @@ impl World {
         self.rebuild_alive_indices();
         self.transforms = snapshot.transforms.clone();
         self.sprites = snapshot.sprites.clone();
+        self.sprite_nine_slices = snapshot.sprite_nine_slices.clone();
         self.sprite_normal_materials = snapshot.sprite_normal_materials.clone();
         self.sprite_animations = snapshot.sprite_animations.clone();
         self.sprite_playbacks = snapshot.sprite_playbacks.clone();

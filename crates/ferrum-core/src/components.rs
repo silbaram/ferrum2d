@@ -8,6 +8,8 @@ mod material;
 mod motion;
 mod rigid_body;
 mod sprite;
+mod sprite_nine_slice;
+pub(crate) use sprite_nine_slice::SpriteNineSlice;
 
 pub use colliders::{
     AabbCollider, CapsuleCollider, ChainCollider, CircleCollider, CompoundCollider,

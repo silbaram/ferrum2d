@@ -70,6 +70,9 @@ impl Engine {
             return false;
         };
         let index = entity.id as usize;
+        if shape == 3 && self.world.sprite_nine_slices[index].is_some() {
+            return false;
+        }
         let Some(sprite) = self.world.sprites[index] else {
             return false;
         };

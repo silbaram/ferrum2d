@@ -1,3 +1,4 @@
+export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export { createKtx2Transcoder } from "./ktx2Transcoder";
 export type { Ktx2Transcoder, Ktx2TranscoderOptions, Ktx2TextureFormat, Ktx2TranscodedImage, Ktx2TranscodeOptions } from "./ktx2Texture";
 export type { RendererResourceStats } from "./rendererResources";

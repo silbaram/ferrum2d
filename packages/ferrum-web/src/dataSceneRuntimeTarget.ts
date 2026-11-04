@@ -1,3 +1,4 @@
+import { resolveSpriteNineSlice, MAX_SPRITE_NINE_SLICE_UPDATES, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
 import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd.js";
 import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
 import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
@@ -97,6 +98,7 @@ export interface DataSceneRuntimeSpawnRequest {
   color: readonly [number, number, number, number];
   textureId: number;
   normalTextureId?: number;
+  nineSlice?: SpriteNineSliceSpec;
   spriteWidth: number;
   spriteHeight: number;
   frameU0: number;
@@ -125,6 +127,7 @@ export interface DataSceneRuntimeSpawnRequest {
 
 export interface DataSceneRuntimeEngineAdapter {
   supportsSpriteNormalMaterials?(): boolean;
+  supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
   /** Optional cold capability; absence rejects render:false before scene activation. */
   supportsSpatialSurfaceProxies?(): boolean;
@@ -160,7 +163,7 @@ export function createDataSceneRuntimeTarget(
 ): SceneBehaviorRuntimeTarget {
   return createRuntimeTarget(engine, options, false);
 }
-function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntimeTargetOptions, deferNormals:boolean):SceneBehaviorRuntimeTarget {
+function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntimeTargetOptions, deferSpriteBindings:boolean):SceneBehaviorRuntimeTarget {
   const path = options.path ?? "dataSceneRuntimeTarget";
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
@@ -185,9 +188,10 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
         colorManagement,
       );
       if(request.normalTextureId!==undefined&&!adapter.supportsSpriteNormalMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite normal materials require native v1 support");
+      if(request.nineSlice!==undefined&&!adapter.supportsSpriteNineSlices?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"9-slice requires native v1 support");
       activateDataScene();
-      const {normalTextureId:_normal,...unmapped}=request;
-      const handle = adapter.spawnDataSceneEntity(deferNormals?unmapped:request);
+      const {normalTextureId:_normal,nineSlice:_nineSlice,...unmapped}=request;
+      const handle = adapter.spawnDataSceneEntity(deferSpriteBindings?unmapped:request);
       if (handle === undefined) {
         throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "failed to spawn data-scene entity");
       }
@@ -254,20 +258,28 @@ export function applyDataSceneAuthoringDocument(
   if (resolved.spatial?.terrain.some(s => s.rampAxis === "x") && !runtimeAdapter.supportsSpatialRampAxis?.())
     throw sceneCompositionDiagnosticError(`${path}.spatial.terrain`, "X ramps require native spatial ramp axis v1 support");
   const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
-  // Resolve all optional normal refs/capabilities before replacing the current scene.
-  const normalMaterials=bindingPlan.instances.flatMap(instance=>{
-    const raw=instance.props.components;
-    if(!raw||typeof raw!=="object"||Array.isArray(raw))return [];
-    const component=raw as Record<string,unknown>;
-    const hasNormal=[component.visual,component.sprite].some(value=>value&&typeof value==="object"&&!Array.isArray(value)&&"normalTexture" in value);
-    if(!hasNormal&&!(component.template!==undefined&&componentTemplates!==undefined))return [];
-    const components=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),componentTemplates,path);
-    return components.sprite.normalTexture===undefined?[]:[{id:instance.id,normalTextureId:normalTextureId(components.sprite.normalTexture,textureId??(name=>runtimeAdapter.textureId(name)))}];
+  // Resolve optional sprite bindings and capabilities before replacing the active scene.
+  const spriteBindings = bindingPlan.instances.flatMap(instance => {
+    const raw = instance.props.components;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const component = raw as Record<string, unknown>;
+    const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v));
+    if (!hasBinding && !(component.template !== undefined && componentTemplates !== undefined)) return [];
+    const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, {allowTemplate:true,path}), componentTemplates, path);
+    const sprite = components.sprite;
+    return [{id:instance.id, normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
+      nineSlice:scaledNineSlice(sprite.nineSlice, instance.scale, `${path}.instances.${instance.id}.nineSlice`)}];
   });
+  const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
+  const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
     throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`, `supports at most ${MAX_SPRITE_NORMAL_UPDATES} sprite normal materials`);
   if(normalMaterials.length&&(!runtimeAdapter.supportsSpriteNormalMaterials?.()||typeof engine.configureSpriteNormalMaterials!=="function"))
     throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"sprite normal materials require native v1 support");
+  if(nineSlices.length>MAX_SPRITE_NINE_SLICE_UPDATES)
+    throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`, `supports at most ${MAX_SPRITE_NINE_SLICE_UPDATES} 9-slice bindings`);
+  if(nineSlices.length&&(!runtimeAdapter.supportsSpriteNineSlices?.()||typeof engine.configureSpriteNineSlices!=="function"))
+    throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`,"9-slice requires native v1 support");
   preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
   const crowd = combatCrowdRequired(resolved.gameplay?.combatNavigation, bindingPlan.commands);
   const chaseCommands = combatChaseCommands(bindingPlan);
@@ -347,6 +359,8 @@ export function applyDataSceneAuthoringDocument(
     );
     if(normalMaterials.length&&!engine.configureSpriteNormalMaterials(normalMaterials.map(({id,normalTextureId})=>({entity:result.entityHandles[id],normalTextureId}))))
       throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"runtime rejected sprite normal material batch");
+    if(nineSlices.length&&!engine.configureSpriteNineSlices(nineSlices.map(({id,nineSlice})=>({entity:result.entityHandles[id],nineSlice}))))
+      throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`,"runtime rejected 9-slice batch");
     // Spawn definitions capture authored billboard styles; configure space before native v7.
     const spawnCatalog = resolved.gameplay?.spawnPrefabs;
     if (spawnCatalog !== undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
@@ -487,6 +501,7 @@ function inlineDataSceneRuntimeSpawnRequest(
     color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
     ...(sprite.normalTexture===undefined?{}:{normalTextureId:normalTextureId(sprite.normalTexture,textureId)}),
+    ...(sprite.nineSlice===undefined?{}:{nineSlice:scaledNineSlice(sprite.nineSlice,scale,`instances.${instance.id}.nineSlice`)}),
     spriteWidth: sprite.width * scale,
     spriteHeight: sprite.height * scale,
     frameU0: sprite.frame.u0,
@@ -730,3 +745,7 @@ function scaleNumber(value: number, scale: number): number {
   return value * scale;
 }
 import { finalCombatActions } from "./dataSceneCombatActions.js";
+
+function scaledNineSlice(spec: SpriteNineSliceSpec | undefined, scale: number, path: string): SpriteNineSliceSpec | undefined {
+  return spec === undefined ? undefined : resolveSpriteNineSlice({...spec, borderScale:(spec.borderScale ?? 1)*scale}, path);
+}

@@ -180,7 +180,7 @@ impl Engine {
             ) {
                 continue;
             }
-            self.frame_buffers.render_items.push(SpriteRenderItem {
+            let item = SpriteRenderItem {
                 normal_material: self.world.sprite_normal_materials[i].unwrap_or_default(),
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
@@ -206,7 +206,17 @@ impl Engine {
                     s.sort_order,
                     i,
                 ),
-            });
+            };
+            if let Some(slice) = self.world.sprite_nine_slices[i] {
+                super::sprite_nine_slices::append_nine_slice(
+                    &mut self.frame_buffers.render_items,
+                    item,
+                    slice,
+                    scale_y,
+                );
+            } else {
+                self.frame_buffers.render_items.push(item);
+            }
         }
     }
 

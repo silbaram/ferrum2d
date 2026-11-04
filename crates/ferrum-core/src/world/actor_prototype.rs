@@ -11,6 +11,7 @@ pub(crate) struct ActorPrototype {
     origin: Transform2D,
     sprite: Option<Sprite>,
     normal_material: Option<crate::render_command::SpriteNormalMaterial>,
+    nine_slice: Option<crate::components::SpriteNineSlice>,
     animation: Option<SpriteAnimation>,
     playback: Option<sprite_playback::SpritePlayback>,
     shadow: Option<ground_shadow::GroundShadowCaster>,
@@ -73,6 +74,7 @@ impl World {
             origin: self.transforms[i]?,
             sprite: self.sprites[i],
             normal_material: self.sprite_normal_materials[i],
+            nine_slice: self.sprite_nine_slices[i],
             animation: self.sprite_animations[i],
             playback: self.sprite_playbacks[i].clone(),
             shadow: self.ground_shadows[i].map(|shadow| {
@@ -132,6 +134,7 @@ impl World {
         self.transforms[i] = Some(at);
         self.sprites[i] = prototype.sprite;
         self.sprite_normal_materials[i] = prototype.normal_material;
+        self.sprite_nine_slices[i] = prototype.nine_slice;
         self.sprite_animations[i] = prototype.animation;
         self.sprite_playbacks[i] = prototype.playback.clone();
         self.ground_shadows[i] = prototype.shadow;
