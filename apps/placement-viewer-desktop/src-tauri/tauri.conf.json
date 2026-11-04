@@ -15,6 +15,7 @@
       {
         "label": "main",
         "title": "Ferrum2D Placement Viewer",
+        "dragDropEnabled": false,
         "width": 1280,
         "height": 840,
         "minWidth": 960,

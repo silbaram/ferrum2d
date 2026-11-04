@@ -251,6 +251,7 @@ export function pixelDocumentFromRgba(width: number, height: number, name: strin
   document.rgba = base64(pixels); return document;
 }
 interface LayerPixels { id: string; name: string; visible: boolean; locked: boolean; pixels: Uint8Array; }
+export type PixelLayerMerge = "down" | "visible";
 export function pixelFrames(document: PixelDocument): PixelFrameInfo[] {
   return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
 }
@@ -337,6 +338,53 @@ export function createPixelEditor(source: PixelDocument) {
   const changed=()=>{if(document.version!==4&&(activeRegion.width!==state.width||activeRegion.height!==state.height))activeRegion={x:0,y:0,width:state.width,height:state.height};revision++;dirtyCache=undefined;flattened.clear();};
   function budget(layers=state.layers.length,frames=state.frames.length) {
     if(state.width*state.height*layers*frames>PIXEL_LIMITS.pixels)fail("Pixel cel budget exceeded");
+  }
+  function imageLayerBlocker() {
+    if (document.version === 4) return "Atlas layout is fixed. Edit pixels within a frame.";
+    if (state.layers.length >= PIXEL_LIMITS.layers) return "Image layer limit reached";
+    if (state.width * state.height * (state.layers.length + 1) * state.frames.length > PIXEL_LIMITS.pixels) return "Pixel cel budget exceeded";
+    return undefined;
+  }
+  function imageLayerPixels(rect: PixelRegion, pixels: Uint8Array) {
+    const reason = imageLayerBlocker(); if (reason) fail(reason);
+    if (pending) fail("Finish the pixel stroke first");
+    checkRegion(rect);
+    if (rect.mask || rect.x < 0 || rect.y < 0 || rect.x + rect.width > state.width || rect.y + rect.height > state.height)
+      fail("The imported image must fit inside the current canvas.");
+    if (!(pixels instanceof Uint8Array) || pixels.length !== rect.width * rect.height * 4) fail("Invalid pixel selection bytes");
+    const output = new Uint8Array(state.width * state.height * 4);
+    for (let y = 0; y < rect.height; y++) output.set(pixels.subarray(y * rect.width * 4, (y + 1) * rect.width * 4), ((y + rect.y) * state.width + rect.x) * 4);
+    return output;
+  }
+  function mergeLayerBlocker(mode: PixelLayerMerge) {
+    if (mode !== "down" && mode !== "visible") return "Invalid layer merge mode";
+    if (document.version === 4) return "Atlas layout is fixed. Edit pixels within a frame.";
+    if (pending) return "Finish the pixel stroke first";
+    const index = layerIndex(state.selected);
+    if (mode === "down" && index === 0) return "Select a layer above the bottom layer.";
+    const targets = mode === "down" ? state.layers.slice(index - 1, index + 1) : state.layers.filter(layer => layer.visible);
+    if (targets.length < 2) return "Show at least two layers to merge.";
+    if (targets.some(layer => !layer.visible)) return "Show both layers before merging.";
+    if (targets.some(layer => layer.locked)) return "Unlock the layers before merging.";
+    return undefined;
+  }
+  function mergeLayers(mode: PixelLayerMerge) {
+    const reason = mergeLayerBlocker(mode); if (reason) fail(reason);
+    const selected = layerIndex(state.selected);
+    const indices = state.layers.flatMap((layer, index) => (mode === "down" ? index === selected - 1 || index === selected : layer.visible) ? [index] : []);
+    const destination = indices[0], removed = new Set(indices.slice(1));
+    const layers = state.layers.filter((_, index) => !removed.has(index));
+    const frames = state.frames.map(frame => {
+      const inputs = state.layers.map((layer, index) => ({ ...layer, pixels: frame.pixels[index] }));
+      const merged = composite(indices.map(index => inputs[index]));
+      const pixels = frame.pixels.flatMap((bytes, index) => removed.has(index) ? [] : [index === destination ? merged : bytes]);
+      // Rounded RGBA8 source-over is not associative. Never silently change a
+      // rendered pixel when regrouping a middle pair over the remaining layers.
+      if (mode === "down" && !equal(composite(inputs), composite(layers.map((layer, index) => ({ ...layer, pixels: pixels[index] })))))
+        fail("Merge Down would change rounded pixels. Use Merge Visible instead.");
+      return { ...frame, pixels };
+    });
+    return mutate(() => { state.selected = state.layers[destination].id; state.layers = layers; state.frames = frames; });
   }
   function paintPixels() {
     const layer=selectedLayer();if(!layer.visible||layer.locked)fail("Show and unlock the image layer before painting");
@@ -609,6 +657,22 @@ export function createPixelEditor(source: PixelDocument) {
       text(name);if(state.layers.length>=PIXEL_LIMITS.layers)fail("Image layer limit reached");budget(state.layers.length+1);
       const id=newId("layer",state.layers.map(l=>l.id));
       mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
+    },
+    imageLayerBlocker,
+    mergeLayerBlocker, mergeLayers,
+    previewImageLayer(rect: PixelRegion, pixels: Uint8Array) {
+      const added = imageLayerPixels(rect, pixels), frame = currentFrame();
+      return composite([...state.layers.map((layer, i) => ({ ...layer, pixels: frame.pixels[i] })), { id: "import-preview", name: "", locked: false, visible: true, pixels: added }]);
+    },
+    importImageLayer(name: string, rect: PixelRegion, pixels: Uint8Array) {
+      text(name);
+      const added = imageLayerPixels(rect, pixels), target = currentFrame(), id = newId("layer", state.layers.map(layer => layer.id));
+      mutate(() => {
+        layerVersion(); state.layers.push({ id, name, visible: true, locked: false });
+        for (const frame of state.frames) frame.pixels.push(frame === target ? added : new Uint8Array(added.length));
+        state.selected = id;
+      });
+      return id;
     },
     renameLayer(id:string,name:string){text(name);const layer=state.layers[layerIndex(id)];if(layer.name===name)return false;return mutate(()=>{layer.name=name;});},
     setLayerVisible(id:string,visible:boolean){boolean(visible);const layer=state.layers[layerIndex(id)];if(layer.visible===visible)return false;return mutate(()=>{layerVersion();layer.visible=visible;});},

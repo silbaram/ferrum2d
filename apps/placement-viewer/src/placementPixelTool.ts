@@ -12,6 +12,7 @@ import { createPixelPaletteControls } from "./placementPixelPaletteControls";
 import { createPixelInkControls } from "./placementPixelInkControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
 import { createPixelImportDialog } from "./placementPixelImportDialog";
+import { installPixelImportTransfer } from "./placementPixelImportTransfer";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
 import { createPixelImageBrushControls } from "./placementPixelImageBrushControls";
@@ -65,6 +66,7 @@ export function createPlacementPixelTool(options: {
 }) {
   const element = document.createElement("section"), workspace = document.createElement("section");
   element.className = "placement-pixel-launcher"; element.dataset.pixelLauncher = "true";
+  element.tabIndex = 0;
   workspace.className = "placement-pixel-workspace"; workspace.hidden = true;
   workspace.id = "placement-pixel-workspace"; workspace.setAttribute("role", "tabpanel");
   setUiAttribute(workspace, "aria-label", "Pixel Editor");
@@ -82,7 +84,7 @@ export function createPlacementPixelTool(options: {
   const importImage = button("Import Image", "import-image", launchActions);
   element.append(heading, launchActions);
   const hint = document.createElement("p");
-  setUiText(hint, "Draw sprites here, then register or apply them.");
+  setUiText(hint, "Drop a PNG here or paste an image with Ctrl/Cmd+V.");
   element.append(hint);
   const file = document.createElement("input"); file.type = "file"; file.hidden = true;
   file.accept = ".json,.png,application/json,image/png"; file.dataset.pixelFile = "true";
@@ -97,6 +99,11 @@ export function createPlacementPixelTool(options: {
   atlasHint.hidden = true; header.append(title, info, atlasSelect, atlasHint);
   const actions = document.createElement("div"); actions.className = "placement-pixel-actions";
   const importAgain = button("Import Image", "import-image", actions);
+  for (const button of [importImage, importAgain]) setUiAttribute(button, "title", "Focus here, then Ctrl/Cmd+V to paste PNG.");
+  const importHint = document.createElement("p");
+  importHint.className = "placement-pixel-import-hint";
+  setUiText(importHint, "Drop PNG here, or focus Import Image and press Ctrl/Cmd+V.");
+  header.append(importHint);
   const undo = button("Undo", "undo", actions), redo = button("Redo", "redo", actions);
   const source = button("Export Source", "export-source", actions);
   const png = button("Export PNG", "export-png", actions);
@@ -159,10 +166,20 @@ export function createPlacementPixelTool(options: {
   const selection = createPixelSelection({ editor: () => editor!, canEdit: () => !busy && !(framePanel?.isPlaying() ?? false) && options.context().canEdit });
   const importDisabled = () => disposed || busy || !options.context().canEdit || options.context().mode === "game" || (!!editor && selection.pending());
   const imageImport = createPixelImportDialog({
-    key: () => JSON.stringify([options.context().key, options.context().project]),
+    key: () => JSON.stringify([options.context().key, options.context().project, editor?.revision(), editor?.selectedFrame()]),
     disabled: importDisabled, palette: () => editor?.palette ?? [],
-    async apply(image, name, current) {
+    layerTarget: () => editor && owner === options.context().key ? { width: editor.width, height: editor.height, frameId: editor.selectedFrame(), reason: editor.imageLayerBlocker() } : undefined,
+    previewLayer: (image, position) => editor!.previewImageLayer({ ...position, width: image.width, height: image.height }, image.pixels),
+    async apply(image, name, current, position) {
       const previous = editor, token = serial;
+      if (position) {
+        if (!current() || !editor || owner !== options.context().key) return false;
+        editor.importImageLayer(shortPixelName(name.replace(/\.png$/i, "")), { ...position, width: image.width, height: image.height }, image.pixels);
+        imageImport.cancel(); selection.clear();
+        if (!active) activate();
+        else { render(); surface.refresh(); surface.element.focus(); options.tabsChanged(); }
+        return true;
+      }
       const value = pixelDocumentFromRgba(image.width, image.height, shortPixelName(name.replace(/\.png$/i, "")), image.pixels);
       value.palette = image.palette;
       if (!await confirmDiscard() || !current() || disposed || token !== serial || previous !== editor) return false;
@@ -175,6 +192,9 @@ export function createPlacementPixelTool(options: {
   };
   importImage.onclick = importAgain.onclick = () => { if (!importDisabled()) importFile.click(); };
   importFile.onchange = () => { const chosen = importFile.files?.[0]; importFile.value = ""; if (chosen) openImport(chosen); };
+  const imageTransfer = installPixelImportTransfer({ roots: [element, workspace],
+    disabled: () => importDisabled() || !!framePanel?.isPlaying() || !!editor?.active() || surface.ownsGesture(),
+    open: openImport, report });
   const selectionControls = createPixelSelectionControls({ selection, perform: editSelection, report,
     configure() { surface.cancel(); tool = "select"; render(); surface.refresh(); surface.element.focus(); } });
   toolOptions.append(selectionControls.element);
@@ -292,7 +312,7 @@ export function createPlacementPixelTool(options: {
   });
   area.append(surface.element);
   const imageLayers = createPixelLayers({
-    editor:()=>editor!,busy:()=>busy||(framePanel?.isPlaying()??false)||selection.pending()||surface.ownsGesture(),cancelStroke:()=>surface.cancel(),report,
+    editor:()=>editor!,readOnly:()=>!options.context().canEdit,busy:()=>busy||(framePanel?.isPlaying()??false)||selection.pending()||surface.ownsGesture(),cancelStroke:()=>surface.cancel(),report,
     changed:()=>{render();surface.refresh();options.tabsChanged();},
   });
   const sidebar=document.createElement("aside");sidebar.className="placement-pixel-sidebar";
@@ -328,6 +348,7 @@ export function createPlacementPixelTool(options: {
     paletteControls.cancel();
     canvasControls.cancel();
     imageImport.cancel();
+    imageTransfer.clear();
     effectsControls.cancel();
     batchControls.cancel();
     sizePreview?.suspend();
@@ -421,6 +442,7 @@ export function createPlacementPixelTool(options: {
     for (const controls of recoveryControls) controls.sync(busy || !options.context().canEdit);
     create.disabled = open.disabled = busy || !options.context().canEdit;
     importImage.disabled = importAgain.disabled = importDisabled(); imageImport.sync();
+    imageTransfer.sync();
     setUiText(launchStatus, message);
     if (!editor || !active) return;
     const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)",dither:"Dither (D)",gradient:"Gradient (J)"};
@@ -792,13 +814,19 @@ export function createPlacementPixelTool(options: {
         if (editor.active() || selection.pending() || surface.ownsGesture()) surface.cancel();
         else if (event.shiftKey || event.code === "KeyY") redo.click(); else undo.click();
       } else if (event.code === "KeyS") { event.preventDefault(); if (options.projectHost?.()) save.click(); else exportSource(); }
-      else if (!event.shiftKey && ["KeyA", "KeyC", "KeyX", "KeyV"].includes(event.code)) {
+      else if (event.code === "KeyV") {
+        // Let native paste deliver external image files. The canvas keeps internal Ctrl+V.
+        const imageButton = event.target instanceof Element && event.target.closest('[data-pixel-action="import-image"]');
+        if (!event.shiftKey && !imageButton && selection.hasClipboard()) {
+          event.preventDefault(); editSelection(() => { tool = "select"; selection.paste(); });
+        }
+      }
+      else if (!event.shiftKey && ["KeyA", "KeyC", "KeyX"].includes(event.code)) {
         event.preventDefault();
         editSelection(() => {
           if (event.code === "KeyA") { surface.cancel(); tool = "select"; selection.all(); }
           if (event.code === "KeyC") selection.copy();
           if (event.code === "KeyX") selection.cut();
-          if (event.code === "KeyV" && selection.hasClipboard()) { tool = "select"; selection.paste(); }
         });
       }
       return;
@@ -821,7 +849,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); imageImport.destroy(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); imageImport.destroy(); imageTransfer.destroy(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);

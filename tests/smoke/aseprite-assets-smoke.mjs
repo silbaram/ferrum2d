@@ -478,7 +478,7 @@ try {
         await page.locator('[data-pixel-frame-action="play"]').click();
         assert.equal(await frames.getAttribute('data-pixel-playing'), 'true');
         await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
-        await page.evaluate(() => { window.pixelAnimationLateEvents?.(false); delete window.pixelAnimationLateEvents; });
+        await page.evaluate(() => { window.pixelAnimationLateEvents?.(false); delete window.pixelAnimationLateEvents; window.pixelLayerMergeLateEvents?.(); delete window.pixelLayerMergeLateEvents; });
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-frame-select]').length), 0,
           'destroy must not repopulate the cleared frame panel during canvas teardown');
         assert.equal(await frames.evaluate(e => e.querySelectorAll('[data-pixel-tag-frame]').length), 0,

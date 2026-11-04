@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {smokePixelImportLayer} from './pixel-import-layer-smoke.mjs';
+import {smokePixelImportTransfer} from './pixel-import-transfer-smoke.mjs';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {encodePngRgba,decodePng} from '../../scripts/tools/pack-textures.mjs';
@@ -34,6 +36,10 @@ export async function smokePixelImport(page,mode,run) {
   await page.keyboard.press('Escape');
   assert.equal(await dialog.count(),0,'Escape closes the import modal on its first press');
   assert.equal(await page.locator('.demo-shell').getAttribute('data-compact-panel'),'runtime','Escape must preserve the underlying asset drawer');
+  if(process.argv.includes('--pixel-import-only')) {
+    await page.locator('[data-pixel-import-file]').setInputFiles(file);await dialog.waitFor();
+    assert(await field('destination').locator('option[value=layer]').evaluate(e=>e.disabled));await page.keyboard.press('Escape');
+  }
   // Preserve the caller's compact layout for the later layer/frame smoke cases.
   if(!previousPanel||previousPanel==='none') await page.locator('[data-placement-compact-viewport]').click();
   else await showPlacementDock(page,previousPanel);
@@ -41,6 +47,7 @@ export async function smokePixelImport(page,mode,run) {
   await page.setViewportSize({width:1280,height:900});
   await page.waitForFunction(()=>document.querySelector('.demo-shell')?.dataset.compact==='false');
   await input.setInputFiles({name:'baseline.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});await workspace.waitFor({state:'visible'});
+  const transfer=await smokePixelImportTransfer(page,mode,run,{file,source,original});
   // A large PNG selected through the existing Open control automatically enters conversion.
   await input.setInputFiles(file);await dialog.waitFor();await page.waitForFunction(()=>document.querySelector('[data-pixel-import-action=apply]')?.disabled===false);
   assert.equal(await field('width').inputValue(),'64');assert.equal(await field('height').inputValue(),'32');
@@ -51,7 +58,7 @@ export async function smokePixelImport(page,mode,run) {
   await open();await field('crop-width').fill('4097');assert(await action('apply').isDisabled());
   await action('reset').click();await field('width').fill('257');assert(await action('apply').isDisabled());
   await field('preset').selectOption('32');await field('colors').selectOption('palette');
-  const crop=dialog.locator('[data-pixel-import-source]'),bounds=await crop.boundingBox();
+  const crop=dialog.locator('[data-pixel-import-source]');await crop.scrollIntoViewIfNeeded();const bounds=await crop.boundingBox();
   // A pending numeric preview must not re-enable Apply during a new crop gesture.
   await crop.evaluate(canvas=>canvas.addEventListener('pointerdown',()=>{
     const width=document.querySelector('[data-pixel-import-field=width]');
@@ -124,5 +131,6 @@ export async function smokePixelImport(page,mode,run) {
     await place.click();
   }
   await input.setInputFiles({name:'baseline.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});await workspace.waitFor({state:'visible'});
-  return {largePng:true,crop:true,cropPreviewRace:true,compactEscape:true,...(mode==='hd2d'?{spatialModalEscape:true}:{}),palette:true,roundTrip:true,decodeFailure:true,cancel:true,lateBitmapClosed:true,dirtyConfirmation:true,staleDismiss:true,tabSwitch:true,koreanNarrowLayout:true};
+  const layerImport=await smokePixelImportLayer(page,mode,run,{source,original,input});
+  return {transfer,layerImport,largePng:true,crop:true,cropPreviewRace:true,compactEscape:true,...(mode==='hd2d'?{spatialModalEscape:true}:{}),palette:true,roundTrip:true,decodeFailure:true,cancel:true,lateBitmapClosed:true,dirtyConfirmation:true,staleDismiss:true,tabSwitch:true,koreanNarrowLayout:true};
 }

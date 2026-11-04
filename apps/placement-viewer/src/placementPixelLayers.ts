@@ -1,10 +1,11 @@
-import { PIXEL_LIMITS, type createPixelEditor } from "./placementPixelDocument";
+import { PIXEL_LIMITS, type PixelLayerMerge, type createPixelEditor } from "./placementPixelDocument";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
 
 /** Image metadata controls. Pixel/structure mutations and history stay in the model. */
 export function createPixelLayers(options: {
   editor(): ReturnType<typeof createPixelEditor>;
   busy(): boolean;
+  readOnly(): boolean;
   cancelStroke(): void;
   changed(): void;
   report(error: unknown): void;
@@ -19,11 +20,32 @@ export function createPixelLayers(options: {
   setUiAttribute(name,"aria-label","Image Layer Name"); label.append(name);
   const hint = document.createElement("p"); setUiText(hint,"Top layers draw in front. Paint affects the selected layer.");
   const status = document.createElement("output"); status.dataset.pixelLayerStatus = "true";
-  element.append(heading,toolbar,list,label,status,hint);
-  function perform(run: () => void) {
-    if (options.busy()) return;
+  const mergeMenu = document.createElement("details"); mergeMenu.className = "placement-pixel-layer-merge";
+  const mergeSummary = document.createElement("summary"); setUiText(mergeSummary, "Merge Layers");
+  const mergePanel = document.createElement("div"), mergeHint = document.createElement("p");
+  mergeMenu.append(mergeSummary, mergePanel);
+  const mergeActions = new Map<PixelLayerMerge, { button: HTMLButtonElement; reason: HTMLOutputElement }>();
+  for (const [mode, title] of [["down", "Merge Down"], ["visible", "Merge Visible"]] as const) {
+    const button = document.createElement("button"); button.type = "button"; button.dataset.pixelLayerMerge = mode; setUiText(button, title);
+    const reason = document.createElement("output"); reason.id = "pixel-layer-merge-" + mode + "-reason"; reason.dataset.pixelLayerMergeReason = mode;
+    button.setAttribute("aria-describedby", reason.id);
+    button.onclick = () => {
+      if (!previousEditor || previousEditor !== options.editor() || options.readOnly() || options.busy() || options.editor().active()) return;
+      perform(() => { options.editor().mergeLayers(mode); mergeMenu.open = false; mergeSummary.focus({ preventScroll: true }); }, reason);
+    };
+    mergeActions.set(mode, { button, reason }); mergePanel.append(button, reason);
+  }
+  mergePanel.append(mergeHint);
+  mergeMenu.addEventListener("keydown", event => {
+    if (mergeMenu.open && event.code === "Escape") { event.preventDefault(); event.stopPropagation(); mergeMenu.open = false; mergeSummary.focus({ preventScroll: true }); }
+  });
+  element.append(heading,toolbar,mergeMenu,list,label,status,hint);
+  function perform(run: () => void, failure?: HTMLOutputElement) {
+    // Detached controls can still receive a queued blur/change/click event.
+    const editor = options.editor();
+    if (!previousEditor || editor !== previousEditor || editor.active() || options.readOnly() || options.busy()) return;
     options.cancelStroke();
-    try { run(); options.changed(); } catch (error) { options.report(error); signature="";sync(); }
+    try { run(); options.changed(); } catch (error) { options.report(error); signature="";sync(); if (failure) setUiText(failure, error instanceof Error ? error.message : String(error)); }
   }
   const buttons = new Map<string,HTMLButtonElement>();
   for (const [action,title,path,run] of [
@@ -41,7 +63,7 @@ export function createPixelLayers(options: {
   function rename() { perform(()=>{options.editor().renameLayer(options.editor().selectedLayer(),name.value);}); }
   name.addEventListener("change",rename);
   name.addEventListener("keydown",event=>{
-    if(event.isComposing)return;
+    if(event.isComposing||!previousEditor||previousEditor!==options.editor())return;
     if(event.code==="Enter"){event.preventDefault();rename();}
     if(event.code==="Escape"){event.preventDefault();name.value=options.editor().layers().find(l=>l.id===options.editor().selectedLayer())!.name;}
   });
@@ -50,15 +72,15 @@ export function createPixelLayers(options: {
   function createRow(id:string):Row {
     const row=document.createElement("div");row.className="placement-pixel-layer-row";
     const select=document.createElement("button");select.type="button";select.dataset.pixelLayerSelect=id;
-    select.onclick=()=>perform(()=>options.editor().selectLayer(id));row.append(select);
+    select.onclick=()=>{if(rows.get(id)?.element===row)perform(()=>options.editor().selectLayer(id));};row.append(select);
     const controls={visible:document.createElement("input"),locked:document.createElement("input")};
     for(const key of ["visible","locked"] as const) {
       const control=controls[key];control.type="checkbox";
       control.setAttribute("data-pixel-layer-"+key,id);
-      control.onchange=()=>perform(()=>{
+      control.onchange=()=>{if(rows.get(id)?.element!==row)return;perform(()=>{
         if(key==="visible")options.editor().setLayerVisible(id,control.checked);
         else options.editor().setLayerLocked(id,control.checked);
-      });
+      });};
       const holder=document.createElement("label"),text=document.createElement("span");setUiText(text,key==="visible"?"Show":"Lock");
       holder.append(control,text);row.append(holder);
     }
@@ -66,16 +88,23 @@ export function createPixelLayers(options: {
   }
   let signature="", previousEditor: ReturnType<typeof createPixelEditor> | undefined;
   function sync() {
-    const editor=options.editor(),layers=editor.layers(),selected=editor.selectedLayer(),disabled=options.busy()||editor.active();
-    const next=JSON.stringify([layers,selected,disabled,editor.frames().length]);
+    const editor=options.editor(),layers=editor.layers(),selected=editor.selectedLayer(),readOnly=options.readOnly(),disabled=readOnly||options.busy()||editor.active();
+    // Pixel edits can invalidate a previous rounding diagnostic, even without metadata edits.
+    const next=JSON.stringify([layers,selected,disabled,readOnly,editor.revision(),editor.frames().length,editor.width,editor.height]);
     if(signature===next&&previousEditor===editor)return;
     const focused=document.activeElement;
     const focusKey=(["select","visible","locked"] as const).find(key=>focused?.hasAttribute("data-pixel-layer-"+key));
     const focusId=focusKey?focused?.getAttribute("data-pixel-layer-"+focusKey):undefined;
     const restoreFocus=list.contains(focused);
-    if(previousEditor!==editor){list.replaceChildren();rows.clear();}
+    if(previousEditor!==editor){list.replaceChildren();rows.clear();mergeMenu.open=false;}
     signature=next;previousEditor=editor;
     const index=layers.findIndex(l=>l.id===selected),active=layers[index];
+    for (const [mode, { button, reason }] of mergeActions) {
+      const blocker = readOnly ? "Pixel editing is unavailable in this document" : disabled ? "Finish the current edit before merging layers." : editor.mergeLayerBlocker(mode);
+      button.disabled = !!blocker;
+      setUiText(reason, blocker ?? (mode === "down" ? uiMessage("Merge {0} into {1}", active.name, layers[index - 1].name) : uiMessage("Merge {0} visible layers", layers.filter(layer => layer.visible).length)));
+    }
+    setUiText(mergeHint, uiMessage("Applies to all {0} frames. Undo restores the layers.", editor.frames().length));
     buttons.get("add")!.disabled=disabled||layers.length>=PIXEL_LIMITS.layers||editor.width*editor.height*(layers.length+1)*editor.frames().length>PIXEL_LIMITS.pixels;
     buttons.get("remove")!.disabled=disabled||layers.length===1;
     buttons.get("up")!.disabled=disabled||index===layers.length-1;
@@ -104,7 +133,7 @@ export function createPixelLayers(options: {
     }
   }
   function clear() {
-    previousEditor=undefined;signature="";rows.clear();list.replaceChildren();
+    previousEditor=undefined;signature="";rows.clear();list.replaceChildren();mergeMenu.open=false;
   }
   return {element,sync,clear};
 }

@@ -1,11 +1,13 @@
 import { convertPixelImport, fitPixelImportSize, inspectPixelImportPng, PIXEL_IMPORT_LIMITS, type PixelImportImage, type PixelImportSettings } from "./placementPixelImport";
 import { registerUiRoot, setUiAttribute, setUiText, uiMessage } from "./placementLocale";
-/** Owns only the import preview. Applying a new editor document belongs to the host. */
+/** Owns only the import preview. Document/layer mutation belongs to the host. */
 export function createPixelImportDialog(options: {
     key(): string;
     disabled(): boolean;
     palette(): readonly string[];
-    apply(image: ReturnType<typeof convertPixelImport>, name: string, current: () => boolean): Promise<boolean>;
+    layerTarget(): { width: number; height: number; frameId: string; reason?: string } | undefined;
+    previewLayer(image: PixelImportImage, position: { x: number; y: number }): Uint8Array;
+    apply(image: ReturnType<typeof convertPixelImport>, name: string, current: () => boolean, position?: { x: number; y: number }): Promise<boolean>;
 }) {
     let dialog: HTMLDialogElement | undefined, serial = 0, disposed = false, key = "", frame = 0;
     let image: PixelImportImage | undefined, result: ReturnType<typeof convertPixelImport> | undefined;
@@ -42,7 +44,7 @@ export function createPixelImportDialog(options: {
         setUiText(title, "Import Image");
         popup.append(title);
         const hint = document.createElement("p");
-        setUiText(hint, "Crop a PNG, choose its pixel size and colors, then open it as a new sprite.");
+        setUiText(hint, "Crop a PNG, choose its pixel size and colors, then choose where to import it.");
         popup.append(hint);
         const name = document.createElement("p");
         name.className = "placement-pixel-import-filename";
@@ -67,6 +69,15 @@ export function createPixelImportDialog(options: {
             setUiText(option, text);
             input.append(option);
         } label(controls, text, input); return input; }
+        const layerTarget = options.layerTarget();
+        const destination = select("Import As", "destination", [["document", "New Sprite"], ["layer", "New Layer · Current Frame"]]);
+        destination.options[1].disabled = !layerTarget || !!layerTarget.reason;
+        const targetInfo = document.createElement("p");
+        targetInfo.dataset.pixelImportTarget = "true";
+        if (!layerTarget) setUiText(targetInfo, "Open a pixel document to import a layer.");
+        else if (layerTarget.reason) setUiText(targetInfo, layerTarget.reason);
+        else setUiText(targetInfo, uiMessage("Current frame: {0} · Canvas {1} × {2}", layerTarget.frameId, layerTarget.width, layerTarget.height));
+        controls.append(targetInfo);
         caption(sourcePanel, "Source · Drag To Crop");
         caption(outputPanel, "Pixel Preview");
         const source = document.createElement("canvas"), output = document.createElement("canvas"), base = document.createElement("canvas");
@@ -94,6 +105,13 @@ export function createPixelImportDialog(options: {
         const preset = select("Longest Side", "preset", [["32", "32 px"], ["64", "64 px"], ["128", "128 px"], ["256", "256 px"], ["custom", "Custom"]]);
         preset.value = "64";
         const width = numeric(controls, "Output Width", "width", 64, 256), height = numeric(controls, "Output Height", "height", 64, 256);
+        const positionControls = document.createElement("div");
+        positionControls.className = "placement-pixel-import-position"; positionControls.hidden = true;
+        controls.append(positionControls);
+        const positionX = numeric(positionControls, "Layer X", "layer-x", 0, layerTarget?.width ?? 256);
+        const positionY = numeric(positionControls, "Layer Y", "layer-y", 0, layerTarget?.height ?? 256);
+        positionX.min = positionY.min = "0";
+        const center = button(positionControls, "Center Image", "center");
         const aspect = document.createElement("input");
         aspect.type = "checkbox";
         aspect.checked = true;
@@ -151,14 +169,16 @@ export function createPixelImportDialog(options: {
                 return;
             try {
                 result = convertPixelImport(image, settings());
-                output.width = result.width;
-                output.height = result.height;
+                const layer = destination.value === "layer";
+                const pixels = layer ? options.previewLayer(result, { x: positionX.valueAsNumber, y: positionY.valueAsNumber }) : result.pixels;
+                output.width = layer ? layerTarget!.width : result.width;
+                output.height = layer ? layerTarget!.height : result.height;
                 const context = output.getContext("2d");
                 if (!context)
                     throw Error("Canvas image processing unavailable");
-                context.putImageData(new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height), 0, 0);
-                const zoom = Math.max(1, Math.floor(256 / Math.max(result.width, result.height)));
-                output.style.width = result.width * zoom + "px";
+                context.putImageData(new ImageData(new Uint8ClampedArray(pixels), output.width, output.height), 0, 0);
+                const zoom = Math.max(1, Math.floor(256 / Math.max(output.width, output.height)));
+                output.style.width = output.width * zoom + "px";
                 output.style.height = "auto";
                 setUiText(outputInfo, uiMessage("{0} × {1} · {2} RGB colors", result.width, result.height, result.colorCount));
                 setUiText(error, "");
@@ -199,6 +219,29 @@ export function createPixelImportDialog(options: {
             else if (preset.value !== "custom")
                 width.value = height.value = String(side);
         }
+        function centerImage() {
+            if (!layerTarget) return;
+            positionX.value = String(Math.max(0, Math.floor((layerTarget.width - width.valueAsNumber) / 2)));
+            positionY.value = String(Math.max(0, Math.floor((layerTarget.height - height.valueAsNumber) / 2)));
+        }
+        destination.onchange = () => {
+            if (!current() || !image) return;
+            const layer = destination.value === "layer";
+            if (layer && (!layerTarget || layerTarget.reason)) { destination.value = "document"; return; }
+            positionControls.hidden = !layer;
+            setUiText(apply, layer ? "Add Layer" : "Open In Editor");
+            setUiText(note, layer ? "Adds a top layer to the current frame. Other frames get transparent cels. Canvas and palette stay unchanged." : "Alpha is preserved. Color limits count RGB colors. This creates one layer and one frame; it does not remove backgrounds.");
+            if (layer) {
+                const c = crop(), ratio = Math.min(1, layerTarget!.width / c.width, layerTarget!.height / c.height);
+                preset.value = "custom";
+                width.value = String(Math.max(1, Math.floor(c.width * ratio)));
+                height.value = String(Math.max(1, Math.floor(c.height * ratio)));
+                centerImage();
+            }
+            queue();
+        };
+        positionX.oninput = positionY.oninput = queue;
+        center.onclick = () => { centerImage(); queue(); };
         for (const input of [x, y, cropWidth, cropHeight])
             input.oninput = () => { if (aspect.checked)
                 fit(); drawSource(); queue(); };
@@ -247,7 +290,7 @@ export function createPixelImportDialog(options: {
             apply.disabled = true;
             controls.disabled = true;
             try {
-                if (await options.apply(value, file.name, current)) {
+                if (await options.apply(value, file.name, current, destination.value === "layer" ? { x: positionX.valueAsNumber, y: positionY.valueAsNumber } : undefined)) {
                     if (current())
                         cancel();
                 }

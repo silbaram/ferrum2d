@@ -6,6 +6,14 @@ import {encodePngRgba} from '../../scripts/tools/pack-textures.mjs';
 const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
 const code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementPixelImport.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {convertPixelImport:convert,inspectPixelImportPng:inspect,fitPixelImportSize:fit,PIXEL_IMPORT_LIMITS:limits}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const transferCode=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementPixelImportTransfer.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const {pixelImportTransferFile:transferFile}=await import('data:text/javascript;base64,'+Buffer.from(transferCode).toString('base64'));
+test('paste/drop accepts exactly one PNG and preserves its bytes for importer validation',()=>{
+  for(const file of [new File(['image bytes'],'clipboard',{type:'image/png'}),new File(['image bytes'],'art.PNG')]) assert.equal(transferFile([file]),file);
+  assert.throws(()=>transferFile([]),/image itself/);
+  assert.throws(()=>transferFile([new File(['url'],'link.html',{type:'text/html'})]),/Only PNG/);
+  assert.throws(()=>transferFile([new File([],'a.png'),new File([],'b.png')]),/one PNG/);
+});
 const image=(width,height,colors)=>({width,height,pixels:Uint8Array.from(colors.flat())});
 const settings=(source,extra={})=>({crop:{x:0,y:0,width:source.width,height:source.height},width:source.width,height:source.height,sampling:'nearest',colors:{mode:'original'},...extra});
 test('nearest crop and enlargement use pixel centers and do not mutate the source',()=>{
