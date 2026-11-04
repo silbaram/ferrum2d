@@ -58,9 +58,45 @@ fn rgba_bytes(value: &Value, count: usize) -> CommandResult<Vec<u8>> {
     }
     Ok(pixels)
 }
+/// v10 stores one byte per pixel; legacy sources cannot silently accept this contract.
+fn indexed_palette(source: &Value) -> CommandResult<Option<Vec<[u8; 4]>>> {
+    if bounded_integer(source, "version", 1, 10)? != 10 {
+        if source.get("colorMode").is_some() {
+            return Err(invalid("indexed color mode requires pixel source v10"));
+        }
+        return Ok(None);
+    }
+    if source["colorMode"] != "indexed" {
+        return Err(invalid("invalid indexed color mode"));
+    }
+    let colors = array(source, "palette")?;
+    if colors.is_empty() || colors.len() > 256 || colors[0] != "#00000000" {
+        return Err(invalid("invalid indexed palette"));
+    }
+    let mut unique = std::collections::HashSet::new();
+    let mut palette = Vec::with_capacity(colors.len());
+    for color in colors {
+        let hex = color
+            .as_str()
+            .ok_or_else(|| invalid("invalid indexed palette"))?;
+        if hex.len() != 9
+            || !hex.starts_with('#')
+            || !hex[1..].bytes().all(|v| v.is_ascii_hexdigit())
+        {
+            return Err(invalid("invalid indexed palette"));
+        }
+        let value =
+            u32::from_str_radix(&hex[1..], 16).map_err(|_| invalid("invalid indexed palette"))?;
+        if !unique.insert(value) {
+            return Err(invalid("duplicate indexed color"));
+        }
+        palette.push(value.to_be_bytes());
+    }
+    Ok(Some(palette))
+}
 /// v8 requires an explicit byte multiplier; legacy sources must not silently lose it.
 fn layer_opacity(layer: &Value, version: u64) -> CommandResult<u8> {
-    if version == 8 {
+    if version >= 8 {
         return bounded_integer(layer, "opacity", 0, 255).map(|value| value as u8);
     }
     if layer.get("opacity").is_some() {
@@ -68,6 +104,28 @@ fn layer_opacity(layer: &Value, version: u64) -> CommandResult<u8> {
     }
     Ok(255)
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlendMode {
+    Normal,
+    Multiply,
+    Screen,
+}
+
+fn layer_blend(layer: &Value, version: u64) -> CommandResult<BlendMode> {
+    if version >= 9 {
+        return match layer["blendMode"].as_str() {
+            Some("normal") => Ok(BlendMode::Normal),
+            Some("multiply") => Ok(BlendMode::Multiply),
+            Some("screen") => Ok(BlendMode::Screen),
+            _ => Err(invalid("invalid layer blend mode")),
+        };
+    }
+    if layer.get("blendMode").is_some() {
+        return Err(invalid("layer blending requires pixel source v9"));
+    }
+    Ok(BlendMode::Normal)
+}
+
 fn apply_opacity(pixels: &mut [u8], opacity: u8) {
     if opacity == 255 {
         return;
@@ -78,18 +136,38 @@ fn apply_opacity(pixels: &mut [u8], opacity: u8) {
 }
 
 /// Integer straight-alpha source-over. Matches the TypeScript authoring composite.
-fn composite_over(output: &mut [u8], input: &[u8]) {
+fn composite_over(output: &mut [u8], input: &[u8], mode: BlendMode) {
     for (dst, src) in output.chunks_exact_mut(4).zip(input.chunks_exact(4)) {
-        let alpha = u32::from(src[3]);
+        let alpha = u64::from(src[3]);
         if alpha == 0 {
             continue;
         }
-        let previous = u32::from(dst[3]);
+        let previous = u64::from(dst[3]);
         let denominator = alpha * 255 + previous * (255 - alpha);
         for channel in 0..3 {
-            let value = u32::from(src[channel]) * alpha * 255
-                + u32::from(dst[channel]) * previous * (255 - alpha);
-            dst[channel] = ((value + denominator / 2) / denominator) as u8;
+            let source = u64::from(src[channel]);
+            let backdrop = u64::from(dst[channel]);
+            let (value, divisor) = if mode == BlendMode::Normal {
+                (
+                    source * alpha * 255 + backdrop * previous * (255 - alpha),
+                    denominator,
+                )
+            } else {
+                let blend = if mode == BlendMode::Multiply {
+                    source * backdrop
+                } else {
+                    255 * (source + backdrop) - source * backdrop
+                };
+                // Integer sRGB separable blending, including uncovered source coverage.
+                // u64 keeps all intermediate products exact until the final rounding.
+                (
+                    source * alpha * (255 - previous) * 255
+                        + backdrop * previous * (255 - alpha) * 255
+                        + blend * alpha * previous,
+                    denominator * 255,
+                )
+            };
+            dst[channel] = ((value + divisor / 2) / divisor) as u8;
         }
         dst[3] = ((denominator + 127) / 255) as u8;
     }
@@ -145,6 +223,7 @@ fn validate_atlas(source: &Value, width: u64, height: u64) -> CommandResult<()> 
 
 /// Validate every cel, then compose the same near-square atlas as the web authoring model.
 fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u64, Vec<u8>)> {
+    let palette = indexed_palette(source)?;
     if ["frame", "layer", "rgba"]
         .iter()
         .any(|key| source.get(key).is_some())
@@ -153,7 +232,7 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
     }
     let layers = array(source, "layers")?;
     let frames = array(source, "frames")?;
-    let max_frames = if bounded_integer(source, "version", 1, 8)? >= 6 {
+    let max_frames = if bounded_integer(source, "version", 1, 10)? >= 6 {
         64
     } else {
         16
@@ -183,7 +262,8 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
         metadata.push((
             id,
             visible,
-            layer_opacity(layer, bounded_integer(source, "version", 1, 8)?)?,
+            layer_opacity(layer, bounded_integer(source, "version", 1, 10)?)?,
+            layer_blend(layer, bounded_integer(source, "version", 1, 10)?)?,
         ));
     }
     let columns = (1_u64..=8)
@@ -206,15 +286,34 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
             return Err(invalid("pixel cels must match image layers"));
         }
         let mut composite: Option<Vec<u8>> = None;
-        for ((id, visible, opacity), cel) in metadata.iter().zip(cels) {
+        for ((id, visible, opacity, blend), cel) in metadata.iter().zip(cels) {
             if cel["layerId"].as_str() != Some(*id) {
                 return Err(invalid("pixel cels must match image layers"));
             }
-            let mut pixels = rgba_bytes(&cel["rgba"], count)?;
+            let mut pixels = if let Some(palette) = &palette {
+                if cel.get("rgba").is_some() {
+                    return Err(invalid("indexed cels cannot contain RGBA bytes"));
+                }
+                let indices = rgba_bytes(&cel["indices"], count / 4)?;
+                let mut pixels = Vec::with_capacity(count);
+                for index in indices {
+                    pixels.extend_from_slice(
+                        palette
+                            .get(usize::from(index))
+                            .ok_or_else(|| invalid("pixel palette index out of range"))?,
+                    );
+                }
+                pixels
+            } else {
+                if cel.get("indices").is_some() {
+                    return Err(invalid("indexed color mode requires pixel source v10"));
+                }
+                rgba_bytes(&cel["rgba"], count)?
+            };
             apply_opacity(&mut pixels, *opacity);
             if *visible && *opacity > 0 {
                 if let Some(output) = composite.as_mut() {
-                    composite_over(output, &pixels);
+                    composite_over(output, &pixels, *blend);
                 } else {
                     composite = Some(pixels);
                 }
@@ -256,7 +355,7 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
             return Err(invalid("duplicate or invalid pixel tag identity"));
         }
         if let Some(direction) = tag.get("direction") {
-            if bounded_integer(source, "version", 1, 8)? < 7
+            if bounded_integer(source, "version", 1, 10)? < 7
                 || !matches!(direction.as_str(), Some("forward" | "reverse" | "pingpong"))
             {
                 return Err(invalid("invalid pixel tag direction"));
@@ -269,7 +368,7 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
         let mut seen = std::collections::HashSet::new();
         if references.is_empty()
             || references.len()
-                > if bounded_integer(source, "version", 1, 8)? >= 6 {
+                > if bounded_integer(source, "version", 1, 10)? >= 6 {
                     64
                 } else {
                     16
@@ -313,8 +412,9 @@ fn validate_source(
     let raw = std::str::from_utf8(&bytes).map_err(|_| invalid("pixel source must be UTF-8"))?;
     let source: Value =
         serde_json::from_str(raw).map_err(|_| invalid("invalid pixel source JSON"))?;
-    let version = bounded_integer(&source, "version", 1, 8)
+    let version = bounded_integer(&source, "version", 1, 10)
         .map_err(|_| invalid("unsupported pixel document format or version"))?;
+    indexed_palette(&source)?;
     if source["format"] != "ferrum2d.pixel-document" {
         return Err(invalid("unsupported pixel document format or version"));
     }
@@ -323,7 +423,7 @@ fn validate_source(
     }
     if (version < 6 && png.len() > 8 * 1024 * 1024)
         || (version == 2 && bytes.len() > 3 * 1024 * 1024)
-        || (!matches!(version, 3 | 5 | 6 | 7 | 8)
+        || (!matches!(version, 3 | 5 | 6 | 7 | 8 | 9 | 10)
             && (png.len() > 4 * 1024 * 1024 || source.get("frames").is_some()))
     {
         return Err(invalid(
@@ -338,7 +438,7 @@ fn validate_source(
     } else if source.get("atlas").is_some() {
         return Err(invalid("invalid pixel atlas version"));
     }
-    if !matches!(version, 3 | 5 | 6 | 7 | 8) {
+    if !matches!(version, 3 | 5 | 6 | 7 | 8 | 9 | 10) {
         source_text(&source["frame"], "id")?;
         bounded_integer(&source["frame"], "durationMs", 1, 60_000)?;
     }
@@ -356,7 +456,7 @@ fn validate_source(
         return Err(invalid("invalid pixel palette"));
     }
     let count = (width * height * 4) as usize;
-    let pixels = if matches!(version, 3 | 5 | 6 | 7 | 8) {
+    let pixels = if matches!(version, 3 | 5 | 6 | 7 | 8 | 9 | 10) {
         Vec::new()
     } else if version == 1 || version == 4 {
         if source.get("layers").is_some() {
@@ -365,6 +465,7 @@ fn validate_source(
         source_text(&source["layer"], "id")?;
         source_text(&source["layer"], "name")?;
         layer_opacity(&source["layer"], version)?;
+        layer_blend(&source["layer"], version)?;
         rgba_bytes(&source["rgba"], count)?
     } else {
         if source.get("layer").is_some() || source.get("rgba").is_some() {
@@ -389,11 +490,12 @@ fn validate_source(
                 .as_bool()
                 .ok_or_else(|| invalid("invalid image layer flags"))?;
             let opacity = layer_opacity(layer, version)?;
+            let blend = layer_blend(layer, version)?;
             let mut pixels = rgba_bytes(&layer["rgba"], count)?;
             apply_opacity(&mut pixels, opacity);
             if visible && opacity > 0 {
                 if let Some(output) = composite.as_mut() {
-                    composite_over(output, &pixels);
+                    composite_over(output, &pixels, blend);
                 } else {
                     composite = Some(pixels);
                 }
@@ -401,14 +503,14 @@ fn validate_source(
         }
         composite.unwrap_or_else(|| vec![0; count])
     };
-    let (width, height, pixels) = if matches!(version, 3 | 5 | 6 | 7 | 8) {
+    let (width, height, pixels) = if matches!(version, 3 | 5 | 6 | 7 | 8 | 9 | 10) {
         frame_atlas(&source, width, height)?
     } else {
         (width, height, pixels)
     };
     if version == 5
         || version == 7
-        || ((version == 6 || version == 8) && source.get("tags").is_some())
+        || ((version == 6 || version >= 8) && source.get("tags").is_some())
     {
         validate_tags(&source)?;
     } else if ["tags", "initialTag", "nextClipId"]
@@ -432,7 +534,7 @@ fn validate_source(
     }
     let mut decoder = png::Decoder::new(Cursor::new(&png));
     decoder.set_limits(png::Limits {
-        bytes: if matches!(version, 3 | 5 | 6 | 7 | 8) {
+        bytes: if matches!(version, 3 | 5 | 6 | 7 | 8 | 9 | 10) {
             16 * 1024 * 1024
         } else {
             2 * 1024 * 1024
@@ -1359,6 +1461,201 @@ pub(super) mod tests {
             )
             .unwrap();
             assert!(load_inner(&other.0, &registry, &other_writes).is_err());
+        }
+    }
+    #[test]
+    fn indexed_cels_roundtrip_and_reject_ambiguous_or_out_of_range_indices() {
+        let source = json!({"format":"ferrum2d.pixel-document","version":10,"colorMode":"indexed","name":"Indices","width":2,"height":1,"colorSpace":"srgb",
+            "palette":["#00000000","#ff0000ff","#0c223800","#0000ff80"],
+            "layers":[{"id":"body","name":"Body","visible":true,"locked":false,"opacity":255,"blendMode":"normal"},
+                {"id":"hidden","name":"Hidden","visible":false,"locked":true,"opacity":42,"blendMode":"screen"}],
+            "frames":[{"id":"a","durationMs":93,"cels":[{"layerId":"body","indices":STANDARD.encode([1,2])},{"layerId":"hidden","indices":STANDARD.encode([3,1])}]},
+                {"id":"b","durationMs":177,"cels":[{"layerId":"body","indices":STANDARD.encode([3,1])},{"layerId":"hidden","indices":STANDARD.encode([1,2])}]}],
+            "tags":[{"id":"idle","name":"Idle","clipId":7,"frameIds":["b","a"],"loop":true,"direction":"pingpong"}],"initialTag":"idle","nextClipId":8});
+        let pixels = [
+            255, 0, 0, 255, 12, 34, 56, 0, 0, 0, 255, 128, 255, 0, 0, 255,
+        ];
+        let project = Project::new();
+        let saved = save_inner(
+            &project.0,
+            &pixel_bundle(&source, &pixels, 4, 1),
+            &PlacementAssetRegistry::default(),
+            &project.writes(),
+        )
+        .unwrap();
+        assert_eq!(
+            load_inner(
+                &project.0,
+                &PlacementAssetRegistry::default(),
+                &project.writes()
+            )
+            .unwrap(),
+            saved
+        );
+        let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &fs::read(project.root().join(format!("{id}.json"))).unwrap()
+            )
+            .unwrap(),
+            source
+        );
+        for case in 0..12 {
+            let mut bad = source.clone();
+            match case {
+                0 => bad["colorMode"] = json!("rgba"),
+                1 => {
+                    bad.as_object_mut().unwrap().remove("colorMode");
+                }
+                2 => bad["palette"] = json!([]),
+                3 => bad["palette"][0] = json!("#ffffff00"),
+                4 => bad["palette"][2] = json!("#FF0000FF"),
+                5 => bad["frames"][0]["cels"][0]["indices"] = json!(STANDARD.encode([9, 2])),
+                6 => bad["frames"][0]["cels"][0]["indices"] = json!(STANDARD.encode([1])),
+                7 => bad["frames"][0]["cels"][0]["rgba"] = json!(STANDARD.encode([0; 8])),
+                8 => bad["frames"][0]["cels"][0]["layerId"] = json!("other"),
+                9 => {
+                    bad["layers"][1]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("blendMode");
+                }
+                10 => {
+                    bad.as_object_mut().unwrap().remove("initialTag");
+                }
+                _ => bad["version"] = json!(9),
+            }
+            let project = Project::new();
+            assert!(
+                save_inner(
+                    &project.0,
+                    &pixel_bundle(&bad, &pixels, 4, 1),
+                    &PlacementAssetRegistry::default(),
+                    &project.writes()
+                )
+                .is_err(),
+                "case {case}"
+            );
+            assert!(
+                !project.root().exists(),
+                "reject before writing case {case}"
+            );
+        }
+        let mut floating_version = source;
+        floating_version["version"] = json!(10.0);
+        let project = Project::new();
+        assert!(save_inner(
+            &project.0,
+            &pixel_bundle(&floating_version, &pixels, 4, 1),
+            &PlacementAssetRegistry::default(),
+            &project.writes()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn v9_blends_save_and_reopen_against_independent_golden_pixels() {
+        let vectors: Vec<Value> = serde_json::from_str(include_str!(
+            "../../../../../tests/smoke/pixel-blend-vectors.json"
+        ))
+        .unwrap();
+        let bytes = |value: &Value| -> Vec<u8> {
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as u8)
+                .collect()
+        };
+        for vector in vectors {
+            for mode in ["normal", "multiply", "screen"] {
+                let source = json!({"format":"ferrum2d.pixel-document","version":9,"name":"Blend","width":1,"height":1,"colorSpace":"srgb","palette":[],
+                    "layers":[{"id":"base","name":"Base","visible":true,"locked":false,"opacity":255,"blendMode":"normal"},
+                        {"id":"top","name":"Top","visible":true,"locked":false,"opacity":vector["opacity"],"blendMode":mode}],
+                    "frames":[{"id":"f","durationMs":130,"cels":[{"layerId":"base","rgba":STANDARD.encode(bytes(&vector["bottom"]))},
+                        {"layerId":"top","rgba":STANDARD.encode(bytes(&vector["top"]))}]}]});
+                let expected = bytes(&vector["expected"][mode]);
+                let project = Project::new();
+                let saved = save_inner(
+                    &project.0,
+                    &pixel_bundle(&source, &expected, 1, 1),
+                    &PlacementAssetRegistry::default(),
+                    &project.writes(),
+                )
+                .unwrap();
+                assert_eq!(
+                    load_inner(
+                        &project.0,
+                        &PlacementAssetRegistry::default(),
+                        &project.writes()
+                    )
+                    .unwrap(),
+                    saved
+                );
+                let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+                assert_eq!(
+                    serde_json::from_slice::<Value>(
+                        &fs::read(project.root().join(format!("{id}.json"))).unwrap()
+                    )
+                    .unwrap(),
+                    source
+                );
+                let mut wrong = expected.clone();
+                wrong[0] ^= 1;
+                let rejected = Project::new();
+                assert!(save_inner(
+                    &rejected.0,
+                    &pixel_bundle(&source, &wrong, 1, 1),
+                    &PlacementAssetRegistry::default(),
+                    &rejected.writes()
+                )
+                .is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn v9_blend_validation_and_capacity_preserve_source_contract() {
+        let (mut source, pixels, width, height) = capacity_source(64, 1);
+        source["version"] = json!(9);
+        source["layers"][0]["opacity"] = json!(255);
+        source["layers"][0]["blendMode"] = json!("screen");
+        let project = Project::new();
+        save_inner(
+            &project.0,
+            &pixel_bundle(&source, &pixels, width as u32, height as u32),
+            &PlacementAssetRegistry::default(),
+            &project.writes(),
+        )
+        .unwrap();
+        for bad in [Value::Null, json!("overlay"), json!(0), json!({})] {
+            let mut invalid_source = source.clone();
+            invalid_source["layers"][0]["blendMode"] = bad;
+            assert!(frame_atlas(&invalid_source, 1, 1)
+                .unwrap_err()
+                .to_string()
+                .contains("blend"));
+        }
+        let mut missing = source.clone();
+        missing["layers"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("blendMode");
+        assert!(frame_atlas(&missing, 1, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("blend"));
+        missing = source.clone();
+        missing["layers"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("opacity");
+        assert!(frame_atlas(&missing, 1, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("opacity"));
+        for version in [1, 2, 3, 4, 5, 6, 7, 8] {
+            assert!(layer_blend(&source["layers"][0], version).is_err());
         }
     }
 }

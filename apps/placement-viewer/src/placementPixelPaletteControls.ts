@@ -10,6 +10,10 @@ export function createPixelPaletteControls(options: {
 }) {
   const element = document.createElement("details"), summary = document.createElement("summary"), panel = document.createElement("div");
   element.className = "placement-pixel-palette-menu"; setUiText(summary, "Edit Palette"); element.append(summary, panel);
+  const modeRow=document.createElement("label"),modeLabel=document.createElement("span"),mode=document.createElement("select");
+  setUiText(modeLabel,"Color Mode");setUiAttribute(mode,"aria-label","Color Mode");mode.dataset.pixelColorMode="true";
+  for(const [value,label] of [["rgba","RGBA Colors"],["indexed","Indexed Palette"]]){const item=document.createElement("option");item.value=value;setUiText(item,label);mode.append(item);}
+  modeRow.append(modeLabel,mode);panel.append(modeRow);
   const list = document.createElement("select"); list.size = 5; list.dataset.pixelPaletteList = "true"; setUiAttribute(list, "aria-label", "Palette Color"); panel.append(list);
   const actions = document.createElement("div"); actions.className = "placement-pixel-palette-actions"; panel.append(actions);
   let previous: ReturnType<typeof createPixelEditor> | undefined, signature = "", selected = 0, request = 0, disposed = false;
@@ -30,7 +34,7 @@ export function createPixelPaletteControls(options: {
     try { run(); if (clip) options.retainSelection(clip); signature = ""; options.changed(); } catch (error) { options.report(error); sync(); }
   }
   const add = button("Add Color", "add", actions, () => edit(() => { const colors = options.editor().palette; colors.push(pixelHex(options.color())); options.editor().setPalette(colors); selected = colors.length - 1; }));
-  const update = button("Update Color", "update", actions, () => edit(() => { const colors = options.editor().palette; colors[selected] = pixelHex(options.color()); options.editor().setPalette(colors); }));
+  const update = button("Update Color", "update", actions, () => edit(() => { options.editor().setPaletteEntry(selected,pixelHex(options.color())); }));
   const remove = button("Remove Color", "remove", actions, () => edit(() => { const colors = options.editor().palette; colors.splice(selected, 1); options.editor().setPalette(colors); selected = Math.min(selected, colors.length - 1); }));
   function move(direction: number) { edit(() => { const colors = options.editor().palette, next = selected + direction; [colors[selected], colors[next]] = [colors[next], colors[selected]]; options.editor().setPalette(colors); selected = next; }); }
   const up = button("Move Up", "up", actions, () => move(-1)), down = button("Move Down", "down", actions, () => move(1));
@@ -40,6 +44,7 @@ export function createPixelPaletteControls(options: {
   }
   panel.append(scope);
   const hint = document.createElement("p"); setUiText(hint, "Palette edits do not recolor pixels. Replacement uses exact RGBA in visible unlocked layers."); panel.append(hint);
+  mode.onchange=()=>{const value=mode.value;if(value==="rgba"||value==="indexed")edit(()=>options.editor().setColorMode(value));};
   const replace = button("Replace Pixels", "replace", panel, () => {
     if (options.disabled()) return;
     options.cancelStroke(); cancel();
@@ -85,12 +90,14 @@ export function createPixelPaletteControls(options: {
   }
   function sync() {
     const editor = options.editor(), colors = editor.palette, disabled = options.disabled();
+    const indexed=editor.colorMode()==="indexed";mode.value=editor.colorMode();mode.disabled=disabled||!!editor.atlas();
+    setUiText(hint,indexed?"Indexed: updating a color recolors all frames and layers, including hidden or locked layers. Index 0 stays transparent. New colors are added exactly, up to 256; no automatic quantization.":"RGBA: palette edits do not recolor pixels. Indexed conversion keeps exact colors and requires at most 256 entries including transparency.");
     if (previous !== editor) { previous = editor; selected = 0; scope.value = "cel"; signature = ""; recent.length = 0; recents.replaceChildren(); cancel(); }
     if (dialog && (disabled || stamp() !== dialogStamp)) cancel();
-    const next = JSON.stringify(colors);
+    const next = JSON.stringify([indexed,colors]);
     if (next !== signature) {
       signature = next; list.replaceChildren();
-      colors.forEach((color, i) => { const option = document.createElement("option"); option.textContent = (i + 1) + " " + color; list.append(option); });
+      colors.forEach((color, i) => { const option = document.createElement("option"); option.textContent = (indexed?i:i+1) + " " + color; list.append(option); });
       selected = Math.max(-1, Math.min(selected, colors.length - 1));
     }
     list.selectedIndex = selected; list.disabled = scope.disabled = disabled;
@@ -98,6 +105,7 @@ export function createPixelPaletteControls(options: {
     for (const node of recents.querySelectorAll<HTMLButtonElement>("button")) node.disabled = disabled;
     const valid = selected >= 0 && selected < colors.length;
     add.disabled ||= colors.length >= 256; update.disabled ||= !valid; remove.disabled ||= !valid; up.disabled ||= selected <= 0; down.disabled ||= !valid || selected >= colors.length - 1;
+    if(indexed){update.disabled ||= selected===0;remove.disabled ||= selected===0;up.disabled ||= selected<=1;down.disabled ||= selected===0;}
     scope.options[2].disabled = !!editor.atlas();
     replace.disabled ||= !valid || colors[selected]?.toLowerCase() === pixelHex(options.color()) || (scope.value !== "document" && !editor.canPaint()) || (scope.value === "selection" && !options.selection()) || (scope.value === "document" && !!editor.atlas());
   }

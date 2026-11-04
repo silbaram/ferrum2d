@@ -9,7 +9,7 @@ async function moduleUrl(name,imports={}) {
   return 'data:text/javascript;base64,'+Buffer.from(code).toString('base64');
 }
 async function load(url){try{return await import(url);}catch(error){process.exitCode=1;throw error;}}
-const atlas=await moduleUrl('placementPixelAtlas'),document=await moduleUrl('placementPixelDocument',{'./placementPixelAtlas':atlas});
+const atlas=await moduleUrl('placementPixelAtlas'),document=await moduleUrl('placementPixelDocument',{'./placementPixelIndexed':await moduleUrl('placementPixelIndexed'),'./placementPixelHistory':await moduleUrl('placementPixelHistory'),'./placementPixelAtlas':atlas});
 const {createPixelEditor:create,newPixelDocument:blank}=await load(document);
 const {rasterPixelDrawing:draw,PIXEL_DRAW_DEFAULTS:defaults}=await load(await moduleUrl('placementPixelDrawing',{'./placementPixelDocument':document}));
 const red=[255,0,0,128],box={x:0,y:0,width:8,height:8};

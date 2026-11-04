@@ -69,8 +69,8 @@ test('large sheets keep 16MiB history, selected cels, no-op, and Undo/Redo seman
     assert(editor.history().undo <= d.PIXEL_LIMITS.historySteps);
   }
   const after = editor.document(), history = editor.history();
-  assert.equal(history.undo, 4);
-  assert.equal(history.bytes, 16 * 1024 * 1024);
+  assert.equal(history.undo, 10);
+  assert(history.bytes < 1024, "small pixel edits must not retain whole documents");
   editor.begin(); editor.line(1, 1, 1, 1, [9, 7, 9, 255]); assert.equal(editor.commit(), false);
   assert.deepEqual(editor.history(), history);
   editor.undo(); assert.deepEqual(editor.sample(1, 1), [8, 7, 9, 255]);

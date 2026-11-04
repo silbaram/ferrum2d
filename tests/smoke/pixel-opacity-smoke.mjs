@@ -37,7 +37,7 @@ export async function smokePixelOpacity(page,mode,run,verify) {
   await action('undo').click();assert.deepEqual(await source(),legacy);await action('redo').click();assert.deepEqual(await source(),half);
   for(const [percent,opacity] of [['0.39',1],['99.61',254]]) {
     await button.click();await number.fill(percent);await apply.click();
-    assert.equal(await button.textContent(),'Opacity '+percent+'%','rounded byte opacity must not display as an invisible or opaque endpoint');
+    assert.equal(await button.textContent(),'Normal Blend · '+percent+'%','rounded byte opacity must not display as an invisible or opaque endpoint');
     assert.equal((await source()).layers[0].opacity,opacity);
   }
   await load(half);

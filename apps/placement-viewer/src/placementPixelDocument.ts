@@ -1,5 +1,7 @@
 import { readPixelAtlas, pixelAtlasRect, type PixelAtlasMetadata } from "./placementPixelAtlas";
 import type { PixelDrawMask, PixelRepeat } from "./placementPixelDrawing";
+import { pixelHistoryRects, applyPixelHistoryRects, type PixelHistoryRect } from "./placementPixelHistory";
+import { collectIndexedPalette, decodePixelIndices, encodePixelIndices, validateIndexedPalette } from "./placementPixelIndexed";
 
 /** Ferrum-owned editing source. Runtime assets contain flattened PNGs only. */
 export const PIXEL_LIMITS = {
@@ -11,6 +13,9 @@ export const PIXEL_LIMITS = {
   historySteps: 64,
   historyBytes: 16 * 1024 * 1024,
 } as const;
+export const PIXEL_BLEND_MODES = ["normal", "multiply", "screen"] as const;
+export type PixelBlendMode = typeof PIXEL_BLEND_MODES[number];
+export interface PixelLayerAppearance { opacity: number; blendMode: PixelBlendMode; }
 export type PixelColor = readonly [number, number, number, number];
 export type PixelColorScope = "cel" | "selection" | "document";
 export type PixelBatchTransform = { kind: "move"; dx: number; dy: number } | { kind: "flip-x" | "flip-y" };
@@ -37,6 +42,8 @@ export interface PixelImageLayer {
   id: string; name: string; visible: boolean; locked: boolean;
   /** v8 authoring multiplier; omitted legacy values mean 255. */
   opacity?: number;
+  /** v9 authoring blend; omitted legacy values mean normal. */
+  blendMode?: PixelBlendMode;
   /** Row-major straight-alpha RGBA8, base64. */
   rgba: string;
 }
@@ -81,7 +88,13 @@ export interface PixelDocumentV6 extends Omit<PixelDocumentV3, "version"> {
 export interface PixelDocumentV7 extends Omit<PixelDocumentV5, "version"> { version: 7; }
 /** Per-layer alpha multipliers; tags remain an optional complete group. */
 export interface PixelDocumentV8 extends Omit<PixelDocumentV6, "version" | "layers"> { version: 8; layers: (PixelLayerInfo & { opacity: number })[]; }
-export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5 | PixelDocumentV6 | PixelDocumentV7 | PixelDocumentV8;
+/** Blend-aware cel sources; older editors must reject rather than lose modes. */
+export interface PixelDocumentV9 extends Omit<PixelDocumentV8, "version" | "layers"> { version: 9; layers: (PixelLayerInfo & PixelLayerAppearance)[]; }
+export interface PixelDocumentV10 extends Omit<PixelDocumentV9, "version" | "frames"> {
+  version: 10; colorMode: "indexed";
+  frames: (PixelFrameInfo & { cels: { layerId: string; indices: string }[] })[];
+}
+export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5 | PixelDocumentV6 | PixelDocumentV7 | PixelDocumentV8 | PixelDocumentV9 | PixelDocumentV10;
 export const PIXEL_PALETTE = [
   "#000000ff", "#ffffffff", "#6b7280ff", "#374151ff",
   "#ef4444ff", "#f97316ff", "#f5a742ff", "#fde047ff",
@@ -114,6 +127,15 @@ function boolean(value: unknown): boolean {
 function layerOpacity(layer: Record<string, unknown>, required: boolean): { opacity?: number } {
   if (required) return { opacity: integer(layer.opacity, 0, 255, "Layer opacity must be an integer from 0 to 255") };
   if (layer.opacity !== undefined) fail("Layer opacity requires pixel source v8");
+  return {};
+}
+function blendMode(value: unknown): PixelBlendMode {
+  if (value !== "normal" && value !== "multiply" && value !== "screen") fail("Invalid layer blend mode");
+  return value as PixelBlendMode;
+}
+function layerBlend(layer: Record<string, unknown>, required: boolean): { blendMode?: PixelBlendMode } {
+  if (required) return { blendMode: blendMode(layer.blendMode) };
+  if (layer.blendMode !== undefined) fail("Layer blending requires pixel source v9");
   return {};
 }
 export function pixelColor(hex: string): PixelColor {
@@ -168,14 +190,44 @@ export function pixelPaletteColors(value: unknown): string[] {
 export function readPixelDocument(input: string): PixelDocument {
   const size = new TextEncoder().encode(input).length;
   if (size > PIXEL_LIMITS.sourceBytes) fail("Pixel document exceeds the byte limit");
-  const value = object(JSON.parse(input));
-  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8) || value.colorSpace !== "srgb")
+  return readPixelDocumentValue(object(JSON.parse(input)), size);
+}
+function readPixelDocumentValue(value: Record<string, unknown>, size: number): PixelDocument {
+  if (value.version === 10) {
+    if (value.colorMode !== "indexed") fail("Invalid indexed color mode");
+    const width = integer(value.width, 1, PIXEL_LIMITS.side), height = integer(value.height, 1, PIXEL_LIMITS.side);
+    const palette = pixelPaletteColors(value.palette); validateIndexedPalette(palette);
+    if (!Array.isArray(value.frames) || value.frames.length < 1 || value.frames.length > PIXEL_LIMITS.frames ||
+        !Array.isArray(value.layers) || value.layers.length < 1 || value.layers.length > PIXEL_LIMITS.layers ||
+        width * height * value.frames.length * value.layers.length > PIXEL_LIMITS.pixels) fail("Pixel cel budget exceeded");
+    const indexed = (value.frames as unknown[]).map(raw => {
+      const frame = object(raw);
+      if (!Array.isArray(frame.cels) || frame.cels.length !== (value.layers as unknown[]).length) fail("Pixel cels must match image layers");
+      return { ...frame, cels: (frame.cels as unknown[]).map(raw => {
+        const cel = object(raw); if (cel.rgba !== undefined) fail("Indexed cels cannot contain RGBA bytes");
+        return { layerId: cel.layerId, indices: rgba(cel.indices, width * height) };
+      }) };
+    });
+    // Reuse the complete v9 metadata/timing contract after bounded decoding; old sources never enter this path.
+    const decoded: Record<string, unknown> = { ...value, version: 9, palette, frames: indexed.map(frame => ({ ...frame, cels: frame.cels.map(cel => ({
+      layerId: cel.layerId, rgba: base64(decodePixelIndices(decodeRgba(cel.indices), palette)),
+    })) })) };
+    delete decoded.colorMode;
+    // The source byte limit was checked before decoding. Its RGBA working representation
+    // can be larger than the indexed file; cel counts/pixel budgets are checked separately.
+    const validated = readPixelDocumentValue(decoded, size) as PixelDocumentV9;
+    return { ...validated, version: 10, colorMode: "indexed", frames: validated.frames.map((frame, i) => ({
+      ...frame, cels: frame.cels.map((cel, j) => ({ layerId: cel.layerId, indices: indexed[i].cels[j].indices })),
+    })) };
+  }
+  if (value.colorMode !== undefined) fail("Indexed color mode requires pixel source v10");
+  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.version !== 9) || value.colorSpace !== "srgb")
     fail("Unsupported pixel document format or version");
   if ((value.version === 1 || value.version === 4) && size > PIXEL_LIMITS.documentBytes) fail("Pixel document exceeds the byte limit");
   if (value.version === 2 && size > PIXEL_LIMITS.layerSourceBytes) fail("Pixel document exceeds the byte limit");
   if (value.version !== 4 && value.atlas !== undefined) fail("Invalid pixel atlas version");
-  if (value.version !== 3 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.frames !== undefined) fail("Invalid pixel frame version");
-  if (value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
+  if (value.version !== 3 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.version !== 9 && value.frames !== undefined) fail("Invalid pixel frame version");
+  if (value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.version !== 9 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
   const width = integer(value.width, 1, PIXEL_LIMITS.side), height = integer(value.height, 1, PIXEL_LIMITS.side);
   const palette = pixelPaletteColors(value.palette);
   const common: PixelDocumentBase = {
@@ -187,8 +239,8 @@ export function readPixelDocument(input: string): PixelDocument {
     return { id: text(frame.id), durationMs: integer(frame.durationMs, 1, 60000, "Frame duration must be an integer from 1 to 60000") };
   };
   const expected = width * height * 4;
-  if (value.version === 3 || value.version === 5 || value.version === 6 || value.version === 7 || value.version === 8) {
-    const maxFrames = (value.version === 6 || value.version === 7 || value.version === 8) ? PIXEL_LIMITS.frames : PIXEL_LIMITS.legacyFrames;
+  if (value.version === 3 || value.version === 5 || value.version === 6 || value.version === 7 || value.version === 8 || value.version === 9) {
+    const maxFrames = (value.version === 6 || value.version === 7 || value.version === 8 || value.version === 9) ? PIXEL_LIMITS.frames : PIXEL_LIMITS.legacyFrames;
     if (value.frame !== undefined || value.layer !== undefined || value.rgba !== undefined)
       fail("Invalid pixel frame version");
     if (!Array.isArray(value.layers) || value.layers.length < 1 || value.layers.length > PIXEL_LIMITS.layers)
@@ -201,7 +253,7 @@ export function readPixelDocument(input: string): PixelDocument {
       const layer = object(raw), id = text(layer.id);
       if (ids.has(id) || layer.rgba !== undefined) fail("Invalid image layer metadata");
       ids.add(id);
-      return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, value.version === 8) };
+      return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, value.version === 8 || value.version === 9), ...layerBlend(layer, value.version === 9) };
     });
     const frameIds = new Set<string>();
     const frames = value.frames.map((raw: unknown) => {
@@ -211,28 +263,31 @@ export function readPixelDocument(input: string): PixelDocument {
       if (!Array.isArray(value.cels) || value.cels.length !== layers.length) return fail("Pixel cels must match image layers");
       const cels = value.cels.map((raw: unknown, index: number) => {
         const cel = object(raw);
+        if (cel.indices !== undefined) fail("Indexed color mode requires pixel source v10");
         if (cel.layerId !== layers[index].id) fail("Pixel cels must match image layers");
         return { layerId: layers[index].id, rgba: rgba(cel.rgba, expected) };
       });
       return { ...info, cels };
     });
     const result: PixelDocumentV3 = { ...common, version: 3, layers, frames };
-    const opacityResult = (): PixelDocumentV8 => ({ ...result, version: 8, layers: layers.map(layer => ({ ...layer, opacity: layer.opacity! })) });
+    const appearanceResult = (): PixelDocumentV8 | PixelDocumentV9 => value.version === 9
+      ? { ...result, version: 9, layers: layers.map(layer => ({ ...layer, opacity: layer.opacity!, blendMode: layer.blendMode! })) }
+      : { ...result, version: 8, layers: layers.map(layer => ({ ...layer, opacity: layer.opacity! })) };
     if (value.version === 3) return result;
-    if ((value.version === 6 || value.version === 8) && value.tags === undefined) {
+    if ((value.version === 6 || value.version === 8 || value.version === 9) && value.tags === undefined) {
       if (value.initialTag !== undefined || value.nextClipId !== undefined) fail("Invalid pixel tag references");
-      return value.version === 8 ? opacityResult() : { ...result, version: 6 };
+      return (value.version === 8 || value.version === 9) ? appearanceResult() : { ...result, version: 6 };
     }
-    const tags = readPixelTags(value.tags, frames, maxFrames, value.version === 7 || value.version === 8);
+    const tags = readPixelTags(value.tags, frames, maxFrames, value.version === 7 || value.version === 8 || value.version === 9);
     const initialTag = text(value.initialTag), nextClipId = integer(value.nextClipId, 1, 65536, "Invalid next pixel clip ID");
     if (!tags.some(tag => tag.id === initialTag) || tags.some(tag => tag.clipId >= nextClipId)) fail("Invalid pixel tag references");
-    if (value.version === 8) return { ...opacityResult(), tags, initialTag, nextClipId };
+    if (value.version === 8 || value.version === 9) return { ...appearanceResult(), tags, initialTag, nextClipId };
     return { ...result, version: value.version === 7 ? 7 : value.version === 6 ? 6 : 5, tags, initialTag, nextClipId };
   }
   const frame = frameInfo(value.frame);
   if (value.version === 1 || value.version === 4) {
     if (value.layers !== undefined) fail("Invalid image layer version");
-    const layer = object(value.layer); layerOpacity(layer, false);
+    const layer = object(value.layer); layerOpacity(layer, false); layerBlend(layer, false);
     // Preserve the v1 property order used by existing immutable revision identities.
     const single: PixelDocumentV1 = { format: common.format, version: 1, name: common.name, width, height, colorSpace: common.colorSpace,
       layer: { id: text(layer.id), name: text(layer.name) }, frame, palette, rgba: rgba(value.rgba, expected) };
@@ -246,7 +301,7 @@ export function readPixelDocument(input: string): PixelDocument {
     const layer = object(raw), id = text(layer.id);
     if (ids.has(id)) fail("Duplicate image layer ID");
     ids.add(id);
-    return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, false), rgba: rgba(layer.rgba, expected) };
+    return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, false), ...layerBlend(layer, false), rgba: rgba(layer.rgba, expected) };
   });
   return { format: common.format, version: 2, name: common.name, width, height, colorSpace: "srgb", frame, palette, layers };
 }
@@ -261,17 +316,18 @@ export function pixelDocumentFromRgba(width: number, height: number, name: strin
   if (pixels.length !== width * height * 4) fail("Invalid pixel byte length");
   document.rgba = base64(pixels); return document;
 }
-interface LayerPixels { id: string; name: string; visible: boolean; locked: boolean; opacity?: number; pixels: Uint8Array; }
+interface LayerPixels extends PixelLayerInfo { pixels: Uint8Array; }
 export type PixelLayerMerge = "down" | "visible";
 export function pixelFrames(document: PixelDocument): PixelFrameInfo[] {
-  return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
+  return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8 || document.version === 9 || document.version === 10) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
 }
 function sourceLayers(document: PixelDocument, frameIndex = 0): LayerPixels[] {
   if (document.version === 1 || document.version === 4) return [{...document.layer,visible:true,locked:false,pixels:decodeRgba(document.rgba)}];
   if (document.version === 2) return document.layers.map(({rgba,...layer}) => ({...layer,pixels:decodeRgba(rgba)}));
   const frame = document.frames[frameIndex];
   if (!frame) return fail("Pixel frame not found");
-  return document.layers.map((layer,index) => ({...layer,pixels:decodeRgba(frame.cels[index].rgba)}));
+  if (document.version === 10) return document.layers.map((layer,index) => ({...layer,pixels:decodePixelIndices(decodeRgba(document.frames[frameIndex].cels[index].indices),document.palette)}));
+  return document.layers.map((layer,index) => ({...layer,pixels:decodeRgba(document.frames[frameIndex].cels[index].rgba)}));
 }
 /** Near-square atlas; frame order is source order. Empty trailing cells remain zero RGBA. */
 export function pixelAtlasLayout(document: Pick<PixelDocument, "width"|"height">, count: number) {
@@ -295,7 +351,16 @@ function composite(layers: readonly LayerPixels[]): Uint8Array {
       const alpha = Math.round(layer.pixels[i+3] * opacity / 255), previous = output[i+3];
       if (!alpha) continue;
       const denominator = alpha*255 + previous*(255-alpha);
-      for (let c = 0; c < 3; c++) output[i+c] = Math.round((layer.pixels[i+c]*alpha*255 + output[i+c]*previous*(255-alpha))/denominator);
+      for (let c = 0; c < 3; c++) {
+        const source = layer.pixels[i+c], backdrop = output[i+c], mode = layer.blendMode ?? "normal";
+        if (mode === "normal") output[i+c] = Math.round((source*alpha*255 + backdrop*previous*(255-alpha))/denominator);
+        else {
+          // W3C source-over with separable blending. Keep B*255 integral until
+          // the final division, including uncovered source/backdrop coverage.
+          const blend = mode === "multiply" ? source*backdrop : 255*(source+backdrop)-source*backdrop;
+          output[i+c] = Math.round((source*alpha*(255-previous)*255 + backdrop*previous*(255-alpha)*255 + blend*alpha*previous)/(denominator*255));
+        }
+      }
       output[i+3] = Math.round(denominator/255);
     }
   }
@@ -311,16 +376,19 @@ export function pixelAtlas(document: PixelDocument) {
   }
   return {...layout,pixels};
 }
-const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((n,i) => n === b[i]);
+const equal = (a: Uint8Array, b: Uint8Array) => a === b || (a.length === b.length && a.every((n,i) => n === b[i]));
 interface FramePixels extends PixelFrameInfo { pixels: Uint8Array[]; }
-interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
-function clone(state: ImageState): ImageState {
-  return {...state,palette:[...state.palette],tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>bytes.slice())}))};
+interface ImageState { width: number; height: number; version: PixelDocument["version"]; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
+function clone(state: ImageState, copyPixels = true): ImageState {
+  return {...state,palette:[...state.palette],tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>copyPixels?bytes.slice():bytes)}))};
+}
+function sameMetadata(a: ImageState, b: ImageState): boolean {
+  return a.width===b.width && a.height===b.height && a.version===b.version && JSON.stringify(a.palette)===JSON.stringify(b.palette) && JSON.stringify([a.tags,a.initialTag,a.nextClipId])===JSON.stringify([b.tags,b.initialTag,b.nextClipId]) && JSON.stringify(a.layers)===JSON.stringify(b.layers) && a.frames.length===b.frames.length && a.frames.every((frame,i)=>{
+    const other=b.frames[i];return frame.id===other.id && frame.durationMs===other.durationMs;
+  });
 }
 function same(a: ImageState, b: ImageState): boolean {
-  return a.width===b.width && a.height===b.height && a.version===b.version && JSON.stringify(a.palette)===JSON.stringify(b.palette) && JSON.stringify([a.tags,a.initialTag,a.nextClipId])===JSON.stringify([b.tags,b.initialTag,b.nextClipId]) && JSON.stringify(a.layers)===JSON.stringify(b.layers) && a.frames.length===b.frames.length && a.frames.every((frame,i)=>{
-    const other=b.frames[i];return frame.id===other.id && frame.durationMs===other.durationMs && frame.pixels.every((bytes,j)=>equal(bytes,other.pixels[j]));
-  });
+  return sameMetadata(a,b) && a.frames.every((frame,i)=>frame.pixels.every((bytes,j)=>equal(bytes,b.frames[i].pixels[j])));
 }
 const stateBytes = (state: ImageState) => state.frames.reduce((sum,frame)=>sum+frame.pixels.reduce((n,bytes)=>n+bytes.byteLength,0),0);
 function newId(prefix:string,ids:readonly string[]) {
@@ -331,14 +399,17 @@ function newId(prefix:string,ids:readonly string[]) {
 export function createPixelEditor(source: PixelDocument) {
   const document=readPixelDocument(JSON.stringify(source)),first=sourceLayers(document);
   const layers=first.map(({pixels,...layer})=>layer),frames=pixelFrames(document).map((frame,index)=>({...frame,pixels:sourceLayers(document,index).map(layer=>layer.pixels)}));
-  const tagged = document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8 ? document : undefined;
+  const tagged = document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8 || document.version === 9 || document.version === 10 ? document : undefined;
   let state:ImageState={width:document.width,height:document.height,version:document.version,palette:[...document.palette],tags:structuredClone(tagged?.tags??[]),
     initialTag:tagged?.initialTag??"",nextClipId:tagged?.nextClipId??0,layers,frames,selected:[...layers].reverse().find(l=>l.visible&&!l.locked)?.id??layers.at(-1)!.id,selectedFrame:frames[0].id};
   let revision=0;
   let checkpoint=clone(state),pending:ImageState|undefined,dirtyCache:boolean|undefined=false;
+  let sharedPixels: Set<Uint8Array> | undefined;
   // Current frame plus up to eight onion neighbours (2.25 MiB at 256²); pan/zoom must not recompose every layer.
   const flattened=new Map<string,Uint8Array>();
-  type Step={before:ImageState;after:ImageState;bytes:number};
+  type Selection = Pick<ImageState, "selected" | "selectedFrame">;
+  type Step = {kind:"snapshot";before:ImageState;after:ImageState;bytes:number}
+    | {kind:"pixels";before:Selection;after:Selection;patches:PixelHistoryRect[];bytes:number};
   const undo:Step[]=[],redo:Step[]=[];
   const selectedLayer=()=>state.layers.find(l=>l.id===state.selected)!;
   const frameById=(id:string)=>state.frames.find(f=>f.id===id)??fail("Pixel frame not found");
@@ -389,7 +460,7 @@ export function createPixelEditor(source: PixelDocument) {
     const selected = layerIndex(state.selected);
     const indices = state.layers.flatMap((layer, index) => (mode === "down" ? index === selected - 1 || index === selected : layer.visible) ? [index] : []);
     const destination = indices[0], removed = new Set(indices.slice(1));
-    const layers = state.layers.flatMap((layer, index) => removed.has(index) ? [] : [state.version === 8 && index === destination ? { ...layer, opacity: 255 } : layer]);
+    const layers = state.layers.flatMap((layer, index) => removed.has(index) ? [] : [state.version >= 8 && index === destination ? { ...layer, opacity: 255, ...(state.version >= 9 ? { blendMode: "normal" as const } : {}) } : layer]);
     const frames = state.frames.map(frame => {
       const inputs = state.layers.map((layer, index) => ({ ...layer, pixels: frame.pixels[index] }));
       const merged = composite(indices.map(index => inputs[index]));
@@ -397,7 +468,7 @@ export function createPixelEditor(source: PixelDocument) {
       // Rounded RGBA8 source-over is not associative. Never silently change a
       // rendered pixel when regrouping a middle pair over the remaining layers.
       if (mode === "down" && !equal(composite(inputs), composite(layers.map((layer, index) => ({ ...layer, pixels: pixels[index] })))))
-        fail("Merge Down would change rounded pixels. Use Merge Visible instead.");
+        fail("Merge Down would change the composite. Use Merge Visible instead.");
       return { ...frame, pixels };
     });
     return mutate(() => { state.selected = state.layers[destination].id; state.layers = layers; state.frames = frames; });
@@ -408,9 +479,28 @@ export function createPixelEditor(source: PixelDocument) {
     if (pending) fail("Finish the pixel stroke first");
     if (state.layers[layerIndex(id)].locked) fail("Unlock the image layer before changing opacity");
   }
-  function paintPixels() {
+  function setLayerAppearance(id: string, appearance: PixelLayerAppearance) {
+    checkOpacityEdit(id, appearance.opacity); blendMode(appearance.blendMode);
+    const layer = state.layers[layerIndex(id)];
+    if ((layer.opacity ?? 255) === appearance.opacity && (layer.blendMode ?? "normal") === appearance.blendMode) return false;
+    return mutate(() => {
+      if (appearance.blendMode !== "normal" && state.version < 9) state.version = 9;
+      else if (state.version < 8) state.version = 8;
+      state.layers = state.layers.map(value => ({ ...value,
+        opacity: value.id === id ? appearance.opacity : value.opacity ?? 255,
+        ...(state.version >= 9 ? { blendMode: value.id === id ? appearance.blendMode : value.blendMode ?? "normal" } : {}),
+      }));
+    });
+  }
+  function writablePixels(frame: FramePixels, index: number) {
+    if (!pending) fail("Start a pixel transaction first");
+    if (sharedPixels!.has(frame.pixels[index])) frame.pixels[index] = frame.pixels[index].slice();
+    return frame.pixels[index];
+  }
+  function paintPixels(write = false) {
     const layer=selectedLayer();if(!layer.visible||layer.locked)fail("Show and unlock the image layer before painting");
-    return currentFrame().pixels[layerIndex(layer.id)];
+    const frame=currentFrame(),index=layerIndex(layer.id);
+    return write?writablePixels(frame,index):frame.pixels[index];
   }
   function bytes(id=state.selectedFrame) {
     let output=flattened.get(id);
@@ -422,17 +512,34 @@ export function createPixelEditor(source: PixelDocument) {
     if(flattened.size>9)flattened.delete(flattened.keys().next().value!);
     return output;
   }
-  function begin(){if(pending)fail("Finish the pixel stroke first");paintPixels();pending=clone(state);}
-  function cancel(){if(pending){state=pending;changed();}pending=undefined;}
+  function startTransaction(){pending=clone(state,false);sharedPixels=new Set(pending.frames.flatMap(frame=>frame.pixels));}
+  function begin(){if(pending)fail("Finish the pixel stroke first");paintPixels();startTransaction();}
+  function cancel(){if(pending){state=pending;changed();}pending=undefined;sharedPixels=undefined;}
   function commit(){
-    if(!pending)return false;const before=pending;pending=undefined;if(same(before,state))return false;
-    redo.length=0;const after=clone(state);undo.push({before,after,bytes:stateBytes(before)+stateBytes(after)});
+    if(!pending)return false;const before=pending;
+    if(state.version===10) {
+      try { state.palette=collectIndexedPalette(state.frames.flatMap(frame=>frame.pixels.filter(bytes=>!sharedPixels!.has(bytes))),state.palette); }
+      catch(error) { cancel(); throw error; }
+    }
+    if(same(before,state)){pending=undefined;sharedPixels=undefined;return false;}
+    let step:Step;
+    if(sameMetadata(before,state)){
+      const patches=pixelHistoryRects(before.frames,state.frames,state.width,state.height);
+      step={kind:"pixels",before:{selected:before.selected,selectedFrame:before.selectedFrame},after:{selected:state.selected,selectedFrame:state.selectedFrame},patches,bytes:patches.reduce((sum,p)=>sum+p.before.byteLength+p.after.byteLength,0)};
+    }else{
+      const after=clone(state);step={kind:"snapshot",before,after,bytes:stateBytes(before)+stateBytes(after)};
+    }
+    pending=undefined;sharedPixels=undefined;redo.length=0;undo.push(step);
     while(undo.length>PIXEL_LIMITS.historySteps||undo.reduce((n,s)=>n+s.bytes,0)>PIXEL_LIMITS.historyBytes)undo.shift();return true;
   }
-  function mutate(run:()=>void, atlasAllowed=false){if(document.version===4&&!atlasAllowed)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");pending=clone(state);try{run();changed();return commit();}catch(error){cancel();throw error;}}
+  function restoreStep(step:Step,side:"before"|"after"){
+    state=step.kind==="snapshot"?clone(step[side]):{...state,...step[side],frames:applyPixelHistoryRects(state.frames,step.patches,state.width,side)};
+    changed();
+  }
+  function mutate(run:()=>void, atlasAllowed=false){if(document.version===4&&!atlasAllowed)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");startTransaction();try{run();changed();return commit();}catch(error){cancel();throw error;}}
   const layerVersion=()=>{if(state.version===1)state.version=2;};
-  const frameVersion=()=>{if(state.version===7||state.version===8)return;if(state.frames.length>PIXEL_LIMITS.legacyFrames)state.version=6;else if(state.version!==5&&state.version!==6)state.version=3;};
-  function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels().set(color,(y*state.width+x)*4);changed();}}
+  const frameVersion=()=>{if(state.version>=7)return;if(state.frames.length>PIXEL_LIMITS.legacyFrames)state.version=6;else if(state.version!==5&&state.version!==6)state.version=3;};
+  function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels(true).set(color,(y*state.width+x)*4);changed();}}
   function samplePixels(pixels:Uint8Array,x:number,y:number):PixelColor|undefined {if(!validPoint(x,y))return;const i=(y*state.width+x)*4;return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];}
   function createFrame(duplicate:boolean) {
     if(state.frames.length>=PIXEL_LIMITS.frames)fail("Pixel frame limit reached");budget(state.layers.length,state.frames.length+1);
@@ -484,18 +591,18 @@ export function createPixelEditor(source: PixelDocument) {
     if (!["cel", "selection", "document"].includes(scope)) fail("Invalid color replacement scope");
     if (scope === "document") {
       if (document.version === 4) fail("Atlas colors are limited to the selected frame");
-      return state.frames.flatMap(frame => state.layers.flatMap((layer, index) => layer.visible && !layer.locked ? [{ pixels: frame.pixels[index], rect: region() }] : []));
+      return state.frames.flatMap(frame => state.layers.flatMap((layer, index) => layer.visible && !layer.locked ? [{ frame, index, rect: region() }] : []));
     }
     if (scope === "selection") { if (!clip) fail("Select pixels before replacing colors"); checkRegion(clip!, true); }
-    return [{ pixels: paintPixels(), rect: scope === "selection" ? clip! : region() }];
+    paintPixels();return [{ frame:currentFrame(),index:layerIndex(state.selected),rect: scope === "selection" ? clip! : region() }];
   }
   function visitColor(from: PixelColor, targets: ReturnType<typeof colorTargets>, to?: PixelColor) {
     let count = 0;
     for (const target of targets) for (let y = target.rect.y; y < target.rect.y + target.rect.height; y++) for (let x = target.rect.x; x < target.rect.x + target.rect.width; x++) {
       if (!pixelRegionContains(target.rect, x, y)) continue;
-      const i = (y * state.width + x) * 4, pixels = target.pixels;
+      const i = (y * state.width + x) * 4, pixels = target.frame.pixels[target.index];
       if (pixels[i] !== from[0] || pixels[i + 1] !== from[1] || pixels[i + 2] !== from[2] || pixels[i + 3] !== from[3]) continue;
-      count++; if (to) pixels.set(to, i);
+      count++; if (to) writablePixels(target.frame,target.index).set(to, i);
     }
     return count;
   }
@@ -543,12 +650,12 @@ export function createPixelEditor(source: PixelDocument) {
     revision:()=>revision,
     paintMask(mask: PixelDrawMask, color: PixelColor) {
       checkMask(mask, color); if (!pending) fail("Start a pixel transaction first");
-      if (drawMask(paintPixels(), mask, color)) changed();
+      if (drawMask(paintPixels(true), mask, color)) changed();
     },
     paintStrokeMask(mask: PixelDrawMask, color: PixelColor) {
       checkMask(mask, color);
       if (!pending || pending.selected !== state.selected || pending.selectedFrame !== state.selectedFrame) fail("Start a pixel transaction first");
-      const target = paintPixels(), original = pending!.frames.find(frame => frame.id === state.selectedFrame)!.pixels[layerIndex(state.selected)];
+      const target = paintPixels(true), original = pending!.frames.find(frame => frame.id === state.selectedFrame)!.pixels[layerIndex(state.selected)];
       let edited = false;
       for (let y = 0; y < mask.region.height; y++) for (let x = 0; x < mask.region.width; x++) {
         const i = ((y + mask.region.y) * state.width + x + mask.region.x) * 4, selected = mask.pixels[y * mask.region.width + x];
@@ -567,8 +674,33 @@ export function createPixelEditor(source: PixelDocument) {
       catch (error) { cancel(); throw error; }
     },
     get version(){return state.version;},get width(){return state.width;},get height(){return state.height;},name:document.name,get palette(){return [...state.palette];},begin,commit,cancel,region,
+    colorMode:()=>state.version===10?"indexed" as const:"rgba" as const,
+    setColorMode(mode: "indexed" | "rgba") {
+      if(mode!=="indexed"&&mode!=="rgba")fail("Invalid indexed color mode");
+      if((state.version===10)===(mode==="indexed"))return false;
+      const palette=mode==="indexed"?collectIndexedPalette(state.frames.flatMap(frame=>frame.pixels)):state.palette;
+      return mutate(()=>{state.version=mode==="indexed"?10:9;state.palette=palette;state.layers=state.layers.map(layer=>({...layer,opacity:layer.opacity??255,blendMode:layer.blendMode??"normal"}));});
+    },
+    setPaletteEntry(index: number, color: string) {
+      integer(index,0,state.palette.length-1,"Invalid palette index");pixelColor(color);color=color.toLowerCase();
+      if(state.palette[index]===color)return false;
+      const next=[...state.palette];next[index]=color;
+      if(state.version!==10)return mutate(()=>{state.palette=next;},true);
+      validateIndexedPalette(next);
+      const from=pixelColor(state.palette[index]),to=pixelColor(color);
+      return mutate(()=>{
+        for(const frame of state.frames)for(let layer=0;layer<frame.pixels.length;layer++) {
+          const pixels=frame.pixels[layer];let target:Uint8Array|undefined;
+          for(let offset=0;offset<pixels.length;offset+=4)if(from.every((v,c)=>pixels[offset+c]===v)) {
+            target??=writablePixels(frame,layer);target.set(to,offset);
+          }
+        }
+        state.palette=next;
+      });
+    },
     setPalette(value: readonly string[]) {
       const next = pixelPaletteColors(value); if (JSON.stringify(next) === JSON.stringify(state.palette)) return false;
+      if(state.version===10){validateIndexedPalette(next);for(const frame of state.frames)for(const pixels of frame.pixels)encodePixelIndices(pixels,next);}
       return mutate(() => { state.palette = next; }, true);
     },
     countColor(from: PixelColor, scope: PixelColorScope, clip?: PixelRegion) { pixelHex(from); return visitColor(from, colorTargets(scope, clip)); },
@@ -618,6 +750,7 @@ export function createPixelEditor(source: PixelDocument) {
     },
     previewRegion(rect: PixelRegion, pixels: Uint8Array, clear?: PixelRegion) {
       const next = regionPixels(rect, pixels, clear), current = currentFrame();
+      if(state.version===10)collectIndexedPalette([next],state.palette);
       return composite(state.layers.map((layer, index) => ({ ...layer, pixels: layer.id === state.selected ? next : current.pixels[index] })));
     },
     paintRegion(rect: PixelRegion, pixels: Uint8Array) {
@@ -645,7 +778,7 @@ export function createPixelEditor(source: PixelDocument) {
       const id=newId("tag",state.tags.map(tag=>tag.id));
       const tag={id,name,clipId:state.nextClipId,frameIds:[...frameIds],loop:true};
       readPixelTags([...state.tags,tag],state.frames);
-      mutate(()=>{if(state.version!==6&&state.version!==7&&state.version!==8)state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
+      mutate(()=>{if(state.version!==6&&state.version!==7&&state.version!==8&&state.version!==9&&state.version!==10)state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
     },
     updateTag(id:string,update:Pick<PixelFrameTag,"name"|"frameIds"|"loop"|"direction">) {
       const index=state.tags.findIndex(tag=>tag.id===id);if(index<0)fail("Pixel tag not found");
@@ -656,7 +789,7 @@ export function createPixelEditor(source: PixelDocument) {
       }
       readPixelTags(tags,state.frames);
       if(JSON.stringify(tags)===JSON.stringify(state.tags))return false;
-      return mutate(()=>{state.tags=tags;if(state.version!==8&&tags.some(tag=>tag.direction&&tag.direction!=="forward"))state.version=7;});
+      return mutate(()=>{state.tags=tags;if(state.version<8&&tags.some(tag=>tag.direction&&tag.direction!=="forward"))state.version=7;});
     },
     removeTag(id:string) {
       if(!state.tags.some(tag=>tag.id===id))fail("Pixel tag not found");
@@ -678,7 +811,7 @@ export function createPixelEditor(source: PixelDocument) {
     addLayer(name="Layer") {
       text(name);if(state.layers.length>=PIXEL_LIMITS.layers)fail("Image layer limit reached");budget(state.layers.length+1);
       const id=newId("layer",state.layers.map(l=>l.id));
-      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false,...(state.version===8?{opacity:255}:{})});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
+      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false,...(state.version>=8?{opacity:255}:{}),...(state.version>=9?{blendMode:"normal" as const}:{})});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
     },
     imageLayerBlocker,
     mergeLayerBlocker, mergeLayers,
@@ -690,7 +823,7 @@ export function createPixelEditor(source: PixelDocument) {
       text(name);
       const added = imageLayerPixels(rect, pixels), target = currentFrame(), id = newId("layer", state.layers.map(layer => layer.id));
       mutate(() => {
-        layerVersion(); state.layers.push({ id, name, visible: true, locked: false, ...(state.version===8?{opacity:255}:{}) });
+        layerVersion(); state.layers.push({ id, name, visible: true, locked: false, ...(state.version>=8?{opacity:255}:{}),...(state.version>=9?{blendMode:"normal" as const}:{}) });
         for (const frame of state.frames) frame.pixels.push(frame === target ? added : new Uint8Array(added.length));
         state.selected = id;
       });
@@ -701,11 +834,17 @@ export function createPixelEditor(source: PixelDocument) {
       const frame = frameById(frameId);
       return composite(state.layers.map((layer, i) => ({ ...layer, opacity: layer.id === id ? opacity : layer.opacity, pixels: frame.pixels[i] })));
     },
+    previewLayerAppearance(id: string, appearance: PixelLayerAppearance, frameId = state.selectedFrame) {
+      checkOpacityEdit(id, appearance.opacity); blendMode(appearance.blendMode);
+      const frame = frameById(frameId);
+      return composite(state.layers.map((layer, i) => ({ ...layer, ...(layer.id === id ? appearance : {}), pixels: frame.pixels[i] })));
+    },
+    setLayerAppearance,
     setLayerOpacity(id: string, opacity: number) {
-      checkOpacityEdit(id, opacity);
-      const layer = state.layers[layerIndex(id)];
-      if ((layer.opacity ?? 255) === opacity) return false;
-      return mutate(() => { state.version = 8; state.layers = state.layers.map(value => ({ ...value, opacity: value.id === id ? opacity : value.opacity ?? 255 })); });
+      return setLayerAppearance(id, { opacity, blendMode: state.layers[layerIndex(id)].blendMode ?? "normal" });
+    },
+    setLayerBlendMode(id: string, mode: PixelBlendMode) {
+      return setLayerAppearance(id, { opacity: state.layers[layerIndex(id)].opacity ?? 255, blendMode: mode });
     },
     renameLayer(id:string,name:string){text(name);const layer=state.layers[layerIndex(id)];if(layer.name===name)return false;return mutate(()=>{layer.name=name;});},
     setLayerVisible(id:string,visible:boolean){boolean(visible);const layer=state.layers[layerIndex(id)];if(layer.visible===visible)return false;return mutate(()=>{layerVersion();layer.visible=visible;});},
@@ -717,17 +856,21 @@ export function createPixelEditor(source: PixelDocument) {
     removeLayer(id:string){const index=layerIndex(id);if(state.layers.length===1)fail("Keep at least one image layer");return mutate(()=>{state.layers.splice(index,1);for(const frame of state.frames)frame.pixels.splice(index,1);layerVersion();if(state.selected===id)state.selected=state.layers[Math.min(index,state.layers.length-1)].id;});},
     document():PixelDocument {
       const common={format:document.format,name:document.name,width:state.width,height:state.height,colorSpace:document.colorSpace,palette:[...state.palette]},frame=state.frames[0];
+      if(state.version===10)return {...common,version:10,colorMode:"indexed",layers:state.layers.map(layer=>({...layer,opacity:layer.opacity??255,blendMode:layer.blendMode??"normal"})),
+        frames:state.frames.map(frame=>({id:frame.id,durationMs:frame.durationMs,cels:state.layers.map((layer,i)=>({layerId:layer.id,indices:base64(encodePixelIndices(frame.pixels[i],state.palette))}))})),
+        ...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       if(state.version===1||state.version===4){const layer=state.layers[0];return {...structuredClone(document) as PixelDocumentV1|PixelDocumentV4,width:state.width,height:state.height,palette:[...state.palette],layer:{id:layer.id,name:layer.name},frame:{id:frame.id,durationMs:frame.durationMs},rgba:base64(frame.pixels[0])};}
       if(state.version===2)return {format:document.format,version:2,name:document.name,width:state.width,height:state.height,colorSpace:"srgb",frame:{id:frame.id,durationMs:frame.durationMs},palette:[...state.palette],layers:state.layers.map((layer,i)=>({...layer,rgba:base64(frame.pixels[i])}))};
       const result:PixelDocumentV3={...common,version:3,layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({id:frame.id,durationMs:frame.durationMs,cels:state.layers.map((layer,i)=>({layerId:layer.id,rgba:base64(frame.pixels[i])}))}))};
+      if(state.version===9)return {...result,version:9,layers:state.layers.map(layer=>({...layer,opacity:layer.opacity??255,blendMode:layer.blendMode??"normal"})),...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       if(state.version===8)return {...result,version:8,layers:state.layers.map(layer=>({...layer,opacity:layer.opacity??255})),...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       if(state.version===7)return {...result,version:7,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId};
       if(state.version===6)return {...result,version:6,...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       return state.version===5?{...result,version:5,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:result;
     },
     history:()=>({undo:undo.length,redo:redo.length,bytes:[...undo,...redo].reduce((n,s)=>n+s.bytes,0)}),
-    undo(){cancel();const step=undo.pop();if(step){state=clone(step.before);changed();redo.push(step);}},
-    redo(){cancel();const step=redo.pop();if(step){state=clone(step.after);changed();undo.push(step);}},
+    undo(){cancel();const step=undo.pop();if(step){restoreStep(step,"before");redo.push(step);}},
+    redo(){cancel();const step=redo.pop();if(step){restoreStep(step,"after");undo.push(step);}},
     line(x0: number, y0: number, x1: number, y1: number, color: PixelColor) {
       pixelHex(color);
       if ([x0, y0, x1, y1].some(n => !Number.isInteger(n) || Math.abs(n) > 1_048_576))
@@ -759,10 +902,11 @@ export function createPixelEditor(source: PixelDocument) {
       if (repeat && (typeof repeat.x !== "boolean" || typeof repeat.y !== "boolean" || (document.version === 4 && (repeat.x || repeat.y)))) fail("Invalid repeat settings");
       if (clip) checkRegion(clip, true);
       if (!pending) fail("Start a pixel transaction first");
-      const pixels = paintPixels();
+      let pixels = paintPixels();
       const target = samplePixels(pixels, x, y);
       const inClip = (px: number, py: number) => !clip || pixelRegionContains(clip, px, py);
       if (!target || !inClip(x, y) || target.every((n, i) => n === color[i])) return;
+      pixels = paintPixels(true);
       // Enqueue each pixel at most once; neither recursion nor an unbounded work list.
       const queue = new Uint32Array(state.width * state.height);
       const visited = new Uint8Array(queue.length);

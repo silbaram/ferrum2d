@@ -60,7 +60,7 @@ export function installPixelImportTransfer(options: {
   // must not navigate away from the document or replace the preview in progress.
   const guardDialog = (event: DragEvent) => {
     if (filesDragged(event.dataTransfer) && event.target instanceof Element &&
-      event.target.closest('[data-pixel-import-dialog][open],[data-pixel-opacity-dialog][open]')) { consume(event); clear(); }
+      event.target.closest('[data-pixel-import-dialog][open],[data-pixel-opacity-dialog][open],[data-pixel-transform-dialog][open],[data-pixel-animation-export-dialog][open]')) { consume(event); clear(); }
   };
   document.addEventListener("dragover", guardDialog, { signal: lifetime.signal });
   document.addEventListener("drop", guardDialog, { signal: lifetime.signal });

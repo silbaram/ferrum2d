@@ -7,6 +7,7 @@ import { createPixelEditor, newPixelDocument, readPixelDocument, pixelColor, pix
 import { createPixelCanvas, type PixelTool } from "./placementPixelCanvas";
 import { createPixelSelection } from "./placementPixelSelection";
 import { createPixelSelectionControls } from "./placementPixelSelectionControls";
+import { createPixelAnimationExportDialog } from "./placementPixelAnimationExportDialog";
 import { createPixelDrawingControls } from "./placementPixelDrawingControls";
 import { createPixelPaletteControls } from "./placementPixelPaletteControls";
 import { createPixelInkControls } from "./placementPixelInkControls";
@@ -201,6 +202,10 @@ export function createPlacementPixelTool(options: {
   const selectionControls = createPixelSelectionControls({ selection, perform: editSelection, report,
     configure() { surface.cancel(); tool = "select"; render(); surface.refresh(); surface.element.focus(); } });
   toolOptions.append(selectionControls.element);
+  const animationExport = createPixelAnimationExportDialog({ editor: () => editor!, key: () => JSON.stringify([options.context().key,options.context().project]),
+    download(bytes,format) { download(new Blob([bytes],{type:format==="gif"?"image/gif":"image/apng"}),filename()+"."+format); },
+    exported() { message="Animation exported. Export Source to keep editing data.";render(); },report });
+  exportPanel.insertBefore(animationExport.button,bundle);
   const drawingControls = createPixelDrawingControls({
     choose(shape) { surface.cancel(); tool = shape; render(); surface.refresh(); surface.element.focus(); },
     cancel: () => surface.cancel(), changed: () => { render(); surface.refresh(); }, report,
@@ -348,6 +353,8 @@ export function createPlacementPixelTool(options: {
   function invalidate() {
     if (projectSaving) message = "Project save interrupted. Files may be saved; reopen the project before retrying.";
     controller?.abort(); serial++;
+    selectionControls.cancel();
+    animationExport.cancel();
     imageLayers.cancel();
     paletteControls.cancel();
     canvasControls.cancel();
@@ -477,6 +484,7 @@ export function createPlacementPixelTool(options: {
     imageLayers.sync();
     framePanel?.sync();
     for (const node of [source, png, copyPng, save, register, apply, bundle, clean, undo, redo]) node.disabled = editing || editor.active() || pending;
+    animationExport.sync(editing || editor.active() || pending || !active);
     const clipboardReason = pixelClipboardUnavailable();
     copyPng.disabled ||= !!clipboardReason;
     setUiAttribute(copyPng, "title", clipboardReason ?? "Copy the exported PNG to the system clipboard");
@@ -868,7 +876,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); imageImport.destroy(); imageTransfer.destroy(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); imageImport.destroy(); imageTransfer.destroy(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); animationExport.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);

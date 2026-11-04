@@ -1,6 +1,6 @@
 import { pixelAtlas, readPixelDocument, PIXEL_LIMITS, type PixelDocument } from "./placementPixelDocument";
 
-function chunk(name: string, data: Uint8Array): Uint8Array {
+export function pixelPngChunk(name: string, data: Uint8Array): Uint8Array {
   const bytes = new Uint8Array(data.length + 12), view = new DataView(bytes.buffer);
   view.setUint32(0, data.length);
   bytes.set(new TextEncoder().encode(name), 4);
@@ -27,8 +27,8 @@ export async function pixelPng(source: PixelDocument): Promise<ArrayBuffer> {
   header[8] = 8; header[9] = 6;
   const parts = [
     new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", header), chunk("sRGB", new Uint8Array([0])),
-    chunk("IDAT", compressed), chunk("IEND", new Uint8Array()),
+    pixelPngChunk("IHDR", header), pixelPngChunk("sRGB", new Uint8Array([0])),
+    pixelPngChunk("IDAT", compressed), pixelPngChunk("IEND", new Uint8Array()),
   ];
   const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let offset = 0;
@@ -53,7 +53,7 @@ export async function readPixelPng(bytes: ArrayBuffer, maxSide: number = PIXEL_L
     if (size > data.length - offset - 12) throw Error("Invalid pixel PNG chunk");
     const name = String.fromCharCode(...data.subarray(offset + 4,offset + 8));
     if (!/^[A-Za-z]{4}$/.test(name) || (!header && name !== "IHDR")) throw Error("Invalid pixel PNG chunk order");
-    const body = data.slice(offset + 8,offset + 8 + size), encoded = chunk(name,body);
+    const body = data.slice(offset + 8,offset + 8 + size), encoded = pixelPngChunk(name,body);
     if (encoded.some((v,i) => v !== data[offset+i])) throw Error("Pixel PNG checksum differs");
     offset += size + 12;
     if (name === "IHDR") {
@@ -126,9 +126,9 @@ export async function readPixelPng(bytes: ArrayBuffer, maxSide: number = PIXEL_L
 export async function verifyPixelPng(bytes: ArrayBuffer, source: PixelDocument) {
   const document = readPixelDocument(JSON.stringify(source));
   const expected = pixelAtlas(document);
-  const framed = document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8;
+  const framed = document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8||(document.version === 9||document.version===10);
   const actual = await readPixelPng(bytes, framed ? Math.max(expected.width, expected.height) : PIXEL_LIMITS.side,
-    (document.version === 6 || document.version === 7 || document.version === 8) ? PIXEL_LIMITS.pngBytes : framed ? 8 * 1024 * 1024 : 4 * 1024 * 1024);
+    (document.version === 6 || document.version === 7 || document.version === 8||(document.version === 9||document.version===10)) ? PIXEL_LIMITS.pngBytes : framed ? 8 * 1024 * 1024 : 4 * 1024 * 1024);
   if (actual.width !== expected.width || actual.height !== expected.height) throw Error("Pixel PNG dimensions or format differ");
   if (actual.pixels.some((v,i) => v !== expected.pixels[i])) throw Error("Pixel PNG and editable source differ");
 }

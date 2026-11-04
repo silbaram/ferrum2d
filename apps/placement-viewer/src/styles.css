@@ -119,6 +119,16 @@
 .placement-pixel-dialog { width: 320px; max-width: calc(100vw - 32px); padding: 16px; background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: var(--radius-2); }
 .placement-pixel-opacity-dialog canvas { display: block; width: 100%; max-height: 256px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(var(--bg-2) 0 25%, transparent 0 50%) 0 / 16px 16px; }
 .placement-pixel-opacity-dialog input[type=range] { width: 100%; margin: 8px 0; }
+.placement-pixel-transform-dialog canvas { display: block; width: 100%; height: 160px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(var(--bg-2) 0 25%, transparent 0 50%) 0 / 16px 16px; }
+.placement-pixel-transform-dialog label { margin-top: 8px; }
+.placement-pixel-transform-dialog input[type=checkbox] { width: auto; }
+.placement-pixel-transform-dialog output { display: block; margin-top: 8px; }
+.placement-pixel-transform-dialog output[data-error=true] { color: var(--error,var(--red)); }
+dialog[data-pixel-animation-export-dialog] label { margin: 8px 0; }
+dialog[data-pixel-animation-export-dialog] input[type=checkbox] { width: auto; }
+dialog[data-pixel-animation-export-dialog] output { display: block; margin: 8px 0; }
+dialog[data-pixel-animation-export-dialog] select { max-width: 200px; min-width: 0; }
+dialog[data-pixel-animation-export-dialog] [hidden] { display: none !important; }
 .placement-pixel-dialog::backdrop { background: rgb(0 0 0 / 50%); }
 .placement-pixel-dialog form { display: grid; gap: 8px; }
 .placement-pixel-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

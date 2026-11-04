@@ -1,3 +1,8 @@
+import {smokePixelBlend} from "./pixel-blend-smoke.mjs";
+import {smokePixelHistory} from "./pixel-history-smoke.mjs";
+import {smokePixelTransform} from "./pixel-transform-smoke.mjs";
+import {smokePixelIndexed} from "./pixel-indexed-smoke.mjs";
+import {smokePixelAnimationExport} from "./pixel-animation-export-smoke.mjs";
 import {smokePixelOpacity} from "./pixel-opacity-smoke.mjs";
 import {smokePixelAnimationTools} from "./pixel-animation-tools-smoke.mjs";
 import {smokePixelClipboard} from "./pixel-clipboard-smoke.mjs";
@@ -27,6 +32,20 @@ import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs"
 import { smokePixelCapacity } from "./pixel-capacity-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-animation-export-only")) return {pixelAnimationExport:await smokePixelAnimationExport(page,mode,run),focus:"pixel-animation-export"};
+  async function indexed() {
+    return smokePixelIndexed(page,mode,run,async bundle=>{
+      setResume(bundle);const game=await page.context().newPage(),errors=[];
+      game.on('pageerror',error=>errors.push(error.message));game.on('requestfailed',request=>errors.push(request.url()+': '+request.failure()?.errorText));
+      game.on('response',response=>{if(response.status()>=400)errors.push(response.status()+' '+response.url());});
+      try{await game.goto(origin+"/resume.html");await game.waitForFunction(()=>window.report||window.failure,undefined,{timeout:120_000,polling:50}).catch(async error=>{throw Error(String(error)+' stage '+await game.evaluate(()=>window.pixelResumeStage)+' '+JSON.stringify(errors));});return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});}
+      finally{await game.close();}
+    });
+  }
+  if (process.argv.includes("--pixel-indexed-only")) return {pixelIndexed:await indexed(),focus:"pixel-indexed"};
+  if (process.argv.includes("--pixel-transform-only")) return {pixelTransform:await smokePixelTransform(page,mode,run),focus:"pixel-transform"};
+  if (process.argv.includes("--pixel-history-only")) return {pixelHistory:await smokePixelHistory(page,mode,run),focus:"pixel-history"};
+  if (process.argv.includes("--pixel-blend-only")) return {pixelBlend:await smokePixelBlend(page,mode,run),focus:"pixel-blend"};
   if (process.argv.includes("--pixel-opacity-only")) return {pixelOpacity:await smokePixelOpacity(page,mode,run),focus:"pixel-opacity"};
   if (process.argv.includes("--pixel-clipboard-only")) return {pixelClipboard:await smokePixelClipboard(page,mode,run),focus:"pixel-clipboard"};
   if (process.argv.includes("--pixel-merge-only")) return {pixelMerge:await smokePixelLayerMerge(page,mode,run),imageLayers:await smokePixelLayers(page,mode,run),focus:"pixel-merge"};
@@ -67,6 +86,10 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pixelPalette = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelPalette(page,mode,run);
   const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
   const pixelImport = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelImport(page,mode,run);
+  const pixelHistory = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelHistory(page,mode,run);
+  const pixelTransform = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelTransform(page,mode,run);
+  const pixelAnimationExport = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelAnimationExport(page,mode,run);
+  const pixelBlend = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelBlend(page,mode,run);
   const pixelOpacity = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelOpacity(page,mode,run);
   const pixelClipboard = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelClipboard(page,mode,run);
   const pixelMerge = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelLayerMerge(page,mode,run);
@@ -235,6 +258,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     assert.deepEqual([...rgba.subarray(i, i + 4)], [255, 0, 0, 255]);
   // Delay a completed upload, change selection, and require provisional rollback.
   const beforeUpload = await page.evaluate(() => window.resources.textures.size);
+  const pixelAssetsBeforeUpload = await page.locator('[data-placement-browser-asset^="sprite:pixel."]').evaluateAll(elements => elements.map(element => element.dataset.placementBrowserAsset).sort());
   await page.evaluate(() => {
     const engine = window.ferrumEngine, previous = engine.loadAssets;
     engine.loadAssets = async function (...args) {
@@ -253,7 +277,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.waitForFunction(() => document.querySelector("#placement-pixel-workspace").dataset.pixelBusy === "false" &&
     document.querySelector("[data-pixel-status]").textContent.startsWith("Scene or selection changed"));
   assert.equal(await page.evaluate(() => window.resources.textures.size), beforeUpload);
-  assert.equal(await page.locator('[data-placement-browser-asset^="sprite:pixel."]').count(), 0);
+  assert.deepEqual(await page.locator('[data-placement-browser-asset^="sprite:pixel."]').evaluateAll(elements => elements.map(element => element.dataset.placementBrowserAsset).sort()), pixelAssetsBeforeUpload);
   await page.evaluate(() => window.ferrumPlacementViewerSelect("sprite"));
   assert.deepEqual(await snapshot(), original);
   await page.screenshot({ path: resolve(run, mode + "-pixel-editor.png"), fullPage: true });
@@ -407,6 +431,9 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
       return await game.evaluate(()=>{if(window.failure)throw Error(window.failure);return window.report;});
     }finally{await game.close();setResume(exported);}
   });
+  // Normal generation registers revisions; run the indexed scenario after the clean two-revision export contract.
+  // Native indexed binding is verified in its isolated focus/project runner; existing clip IDs here belong to the preceding animation scenario.
+  const pixelIndexed = await smokePixelIndexed(page,mode,run);
   return {
     frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelInk, pixelPalette, pixelCanvasPreview, pixelImport, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
@@ -417,6 +444,6 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     pixelDirtyUpdateGuard: true,
     alphaInputGuard: true,
     unicodePngFilename:true,longTitleFits:true,
-    pixelOpacity, pixelClipboard, pixelMerge, imageLayers, imageFrames, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
+    pixelAnimationExport, pixelIndexed, pixelTransform, pixelHistory, pixelBlend, pixelOpacity, pixelClipboard, pixelMerge, imageLayers, imageFrames, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
   };
 }

@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
 async function url(name,imports={}){let code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/'+name+'.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;for(const [from,to]of Object.entries(imports))code=code.replaceAll(JSON.stringify(from),JSON.stringify(to));return'data:text/javascript;base64,'+Buffer.from(code).toString('base64');}
 async function load(value){try{return await import(value);}catch(error){process.exitCode=1;throw error;}}
-const documentUrl=await url('placementPixelDocument',{'./placementPixelAtlas':await url('placementPixelAtlas')}),drawingUrl=await url('placementPixelDrawing',{'./placementPixelDocument':documentUrl});
+const documentUrl=await url('placementPixelDocument',{'./placementPixelIndexed':await url('placementPixelIndexed'),'./placementPixelHistory':await url('placementPixelHistory'),'./placementPixelAtlas':await url('placementPixelAtlas')}),drawingUrl=await url('placementPixelDrawing',{'./placementPixelDocument':documentUrl});
 const {createPixelEditor:create,newPixelDocument:blank}=await load(documentUrl),{PIXEL_DRAW_DEFAULTS:defaults}=await load(drawingUrl);
 const {createPixelPerfectStroke:stroke}=await load(await url('placementPixelPerfect',{'./placementPixelDrawing':drawingUrl}));
 const color=[90,80,70,128],region={x:0,y:0,width:8,height:8};

@@ -32,7 +32,7 @@ export async function smokePixelClipboard(page,mode,run) {
     await action('undo').click();assert.deepEqual(await source(),base,'one Undo still targets the rename before copying');
     await action('redo').click();assert.equal((await source()).layer.name,'Edited Base');
     // Multiple frames copy the same complete sheet as Export PNG, even if another frame is selected.
-    const animated=pixelMergeSource();animated.version=8;animated.layers=animated.layers.map((layer,i)=>({...layer,opacity:i?128:255}));await load(animated);await workspace.locator('[data-pixel-frame-select="frame-1"]').click();await copied();
+    const animated=pixelMergeSource();animated.version=9;animated.layers=animated.layers.map((layer,i)=>({...layer,opacity:i?128:255,blendMode:i?"screen":"normal"}));await load(animated);await workspace.locator('[data-pixel-frame-select="frame-1"]').click();await copied();
     const sheet=await comparePng();assert.equal(sheet.width,4);assert.equal(sheet.height,1);assert.deepEqual(await source(),animated);
     await workspace.locator('[data-pixel-frame-action=play]').click();assert(await copy.isDisabled());await copy.dispatchEvent('click');await workspace.locator('[data-pixel-frame-action=play]').click();
     const canvas=workspace.locator('[data-pixel-canvas]');await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('Control+c');await page.keyboard.press('Control+v');
@@ -57,7 +57,7 @@ export async function smokePixelClipboard(page,mode,run) {
     await load({...base,name:'replacement'});await page.evaluate(()=>{window.rejectPixelClipboardWrite(Error('Late OS write failure'));navigator.clipboard.write=window.originalPixelClipboardWrite;});
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.doesNotMatch(await status.textContent(),/copy failed|Late OS/);
     assert.equal((await source()).name,'replacement');await load(base);
-    return {nativePngReadBack:true,copyPasteImport:true,exportParity:true,dirtyAndUndoPreserved:true,allAnimationFrames:true,layerOpacity:true,fixedAtlasLayout:true,internalClipboardUnchanged:true,playbackAndSelectionGuard:true,permissionAndUnsupported:true,abortReleasesEditor:true,lateResultIgnored:true,koreanNarrow:true};
+    return {nativePngReadBack:true,copyPasteImport:true,exportParity:true,dirtyAndUndoPreserved:true,allAnimationFrames:true,layerOpacity:true,layerBlending:true,fixedAtlasLayout:true,internalClipboardUnchanged:true,playbackAndSelectionGuard:true,permissionAndUnsupported:true,abortReleasesEditor:true,lateResultIgnored:true,koreanNarrow:true};
   } finally {
     await page.evaluate(()=>{if(window.originalPixelClipboardWrite)navigator.clipboard.write=window.originalPixelClipboardWrite;delete window.originalPixelClipboardWrite;return navigator.clipboard.writeText('');});
     await page.context().clearPermissions();

@@ -45,13 +45,13 @@ export async function smokePixelLayerMerge(page,mode,run) {
   await canvas.focus();await page.keyboard.press('Escape');assert.deepEqual(await source(),initial);
   // A rounding difference in the non-current frame rejects the complete operation.
   const rounded=pixelMergeSource({rounding:true});await load(rounded);const roundingPng=await png();
-  await open();await merge('down').click();assert.match(await reason('down').textContent(),/rounded pixels/);assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false');assert.deepEqual(await source(),rounded);
+  await open();await merge('down').click();assert.match(await reason('down').textContent(),/change the composite/);assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false');assert.deepEqual(await source(),rounded);
   // A pixel-only edit invalidates the old rounding diagnostic without a layer metadata change.
   await clickPlacementToolAction(workspace.locator('[data-pixel-action=tool-pencil]'));
   await workspace.locator('[data-pixel-color]').fill('#ff0000');await workspace.locator('[data-pixel-alpha]').fill('255');
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   const point=await canvas.evaluate(e=>{const r=e.getBoundingClientRect(),z=Number(e.dataset.pixelZoom);return{x:r.x+Number(e.dataset.pixelOriginX)+z/2,y:r.y+Number(e.dataset.pixelOriginY)+z/2};});
-  await page.mouse.click(point.x,point.y);assert.doesNotMatch(await reason('down').textContent(),/rounded pixels/);
+  await page.mouse.click(point.x,point.y);assert.doesNotMatch(await reason('down').textContent(),/change the composite/);
   await workspace.locator('[data-pixel-action=undo]').click();assert.deepEqual(await source(),rounded);
   await workspace.locator('[data-pixel-layer-select=hidden]').click();
   await page.locator('[data-placement-language]').selectOption('ko');await page.setViewportSize({width:390,height:844});

@@ -1,6 +1,6 @@
 import { PIXEL_LIMITS, type PixelLayerMerge, type createPixelEditor } from "./placementPixelDocument";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
-import { createPixelOpacity } from "./placementPixelOpacity";
+import { createPixelLayerAppearance } from "./placementPixelLayerAppearance";
 
 /** Image metadata controls. Pixel/structure mutations and history stay in the model. */
 export function createPixelLayers(options: {
@@ -40,7 +40,7 @@ export function createPixelLayers(options: {
   mergeMenu.addEventListener("keydown", event => {
     if (mergeMenu.open && event.code === "Escape") { event.preventDefault(); event.stopPropagation(); mergeMenu.open = false; mergeSummary.focus({ preventScroll: true }); }
   });
-  const opacity = createPixelOpacity({ editor: options.editor, disabled: () => !previousEditor || previousEditor !== options.editor() || options.readOnly() || options.busy() || options.editor().active(), changed: options.changed });
+  const opacity = createPixelLayerAppearance({ editor: options.editor, disabled: () => !previousEditor || previousEditor !== options.editor() || options.readOnly() || options.busy() || options.editor().active(), changed: options.changed });
   const properties = document.createElement("div"); properties.className = "placement-pixel-layer-properties";
   properties.append(label,opacity.button);
   element.append(heading,toolbar,mergeMenu,list,properties,status,hint);

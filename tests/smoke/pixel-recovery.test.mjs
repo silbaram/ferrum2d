@@ -13,7 +13,7 @@ async function moduleUrl(name,imports={}) {
   for(const [from,to]of Object.entries(imports))code=code.replaceAll(JSON.stringify(from),JSON.stringify(to));
   return 'data:text/javascript;base64,'+Buffer.from(code).toString('base64');
 }
-const atlas=await moduleUrl('placementPixelAtlas'),document=await moduleUrl('placementPixelDocument',{'./placementPixelAtlas':atlas});
+const atlas=await moduleUrl('placementPixelAtlas'),document=await moduleUrl('placementPixelDocument',{'./placementPixelIndexed':await moduleUrl('placementPixelIndexed'),'./placementPixelHistory':await moduleUrl('placementPixelHistory'),'./placementPixelAtlas':atlas});
 const {newPixelDocument,createPixelEditor}=await checkedImport(document);
 const recovery=await moduleUrl('placementPixelRecovery',{'./placementPixelDocument':document});
 const {pixelRecoveryScope,readPixelCheckpoint,retainedPixelCheckpoints,PIXEL_RECOVERY_LIMITS,createPixelRecoveryStore}=await checkedImport(recovery);
@@ -57,7 +57,8 @@ test('checkpoint roundtrip preserves all existing source versions and stable met
   const capacity={...framed.document(),version:6};
   const directional={...tagged.document(),version:7,tags:tagged.document().tags.map(tag=>({...tag,direction:'reverse'}))};
   const opacity={...directional,version:8,layers:directional.layers.map(layer=>({...layer,opacity:128}))};
-  sources.push(capacity,directional,opacity);
+  const blend={...opacity,version:9,layers:opacity.layers.map(layer=>({...layer,blendMode:"multiply"}))};
+  sources.push(capacity,directional,opacity,blend);
   for(const source of sources){const r=row(source);assert.equal(readPixelCheckpoint(r).source,r.source);assert.deepEqual(JSON.parse(readPixelCheckpoint(r).source),source);}
 });
 test('retention removes expired/malformed rows and keeps newest 8 independent sessions',()=>{

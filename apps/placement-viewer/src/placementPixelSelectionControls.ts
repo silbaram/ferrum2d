@@ -1,6 +1,7 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import type { createPixelSelection } from "./placementPixelSelection";
 import { PIXEL_SELECTION_DEFAULTS, type PixelSelectionSettings } from "./placementPixelMask";
+import { createPixelTransformDialog } from "./placementPixelTransformDialog";
 
 export function createPixelSelectionControls(options: {
   selection: ReturnType<typeof createPixelSelection>;
@@ -50,6 +51,8 @@ export function createPixelSelectionControls(options: {
     return node;
   }
   for (const [key, label, shortcut, run] of actions) button(key, label, shortcut, run, panel);
+  const transform = createPixelTransformDialog(options); panel.append(transform.button);
+  transform.button.addEventListener("click", () => { menu.open = false; });
   const confirm = button("selection-confirm", "Confirm", "Enter", () => selection.confirm(), element);
   const cancel = button("selection-cancel", "Cancel", "Escape", () => selection.cancel(), element);
   const status = document.createElement("output"); status.setAttribute("role", "status"); status.dataset.pixelSelectionStatus = "true";
@@ -62,9 +65,11 @@ export function createPixelSelectionControls(options: {
   return {
     element,
     settings: () => ({ ...settings }),
-    reset() { settings = { ...PIXEL_SELECTION_DEFAULTS }; menu.open = false; },
+    cancel: transform.cancel,
+    reset() { transform.cancel(); settings = { ...PIXEL_SELECTION_DEFAULTS }; menu.open = false; },
     sync(visible: boolean, disabled: boolean) {
       element.hidden = !visible; if (!visible) menu.open = false;
+      transform.sync(disabled || !visible);
       shape.value = settings.shape; operation.value = settings.operation; tolerance.value = String(settings.tolerance); diagonal.checked = settings.diagonal;
       shape.disabled = operation.disabled = tolerance.disabled = diagonal.disabled = disabled;
       toleranceLabel.hidden = settings.shape !== "color" && settings.shape !== "wand"; diagonalLabel.hidden = settings.shape !== "wand";
@@ -82,6 +87,6 @@ export function createPixelSelectionControls(options: {
       setUiText(status, pending ? selection.clipped() ? "Outside frame pixels will be clipped" : disabled ? "Release to preview · Escape to cancel" : "Preview · Enter to confirm · Escape to cancel"
         : bounds ? uiMessage(disabled || !editable ? "Selection {0} × {1}" : moveHint, bounds.width, bounds.height) : disabled ? "" : selectHint);
     },
-    destroy() { window.removeEventListener("pointerdown", outside, true); },
+    destroy() { transform.destroy(); window.removeEventListener("pointerdown", outside, true); },
   };
 }

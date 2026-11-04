@@ -73,7 +73,7 @@ export async function probePixelResume(providedBundle) {
     const pausedSample={...sample};
     let playback;
     const pose=bundle.sceneDocument.sceneComposition.fragments.main.instances[0],visual=pose.props.components.visual;
-    if(visual.animationSet&&![5,6,7,8].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
+    if(visual.animationSet&&![5,6,7,8,9,10].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
       const source=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
       if(source?.version!==3||source.frames.length!==2)throw Error('Fresh animation source metadata missing');
       const clip=visual.animationSet.clips[0],handle=handles[pose.id],nativeFrames=new Set(),sourceFrames=new Set(),visible=new Set();
@@ -178,7 +178,7 @@ export async function probePixelResume(providedBundle) {
       playback={sourceFrames:64,nativeFrames:64,playingState:sample.state};
     }
     let directionPlayback;
-    if(visual.animationSet&&(taggedSource?.version===7||taggedSource?.version===8)) {
+    if(visual.animationSet&&(taggedSource?.version===7||taggedSource?.version===8||taggedSource?.version===9||taggedSource?.version===10)) {
       window.pixelResumeStage='directionPlayback';
       const handle=handles[pose.id],set=visual.animationSet,results=[];
       const tags=taggedSource.tags??[{id:'all',clipId:0,frameIds:taggedSource.frames.map(frame=>frame.id),loop:true}];
