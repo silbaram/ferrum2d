@@ -1,6 +1,30 @@
-# Ferrum2D Engine Playground
+# Ferrum2D 엔진 기능 실험실
 
-엔진 기능을 직접 바꾸며 체험하는 작은 발전소 게임이다. `pnpm dev:starter-runtime`으로 실행하고 터미널의 로컬 주소를 연다. 로봇으로 전지 3개를 모은 뒤에도 실험을 계속할 수 있다.
+기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
+상단에서 애니메이션·길 찾기·물리·조명·후처리·카메라·9-slice·타일맵·레이어·파티클·공간 오디오·입력을 하나씩 선택한다.
+각 화면은 조작, 관찰할 결과, 현재 엔진 수치와 구현 API를 함께 표시한다.
+
+[전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
+씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 새 5개 실험의 조작은 [src/featureExtras.ts](src/featureExtras.ts),
+기능 목록은 [featureCatalog.json](../shared/featureCatalog.json)에 있다.
+`node scripts/assets/build-feature-examples.mjs`는 12개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+텍스처는 기존 자체 제작 `public/playground/` 에셋을 재사용한다.
+
+`실험 초기화`는 설정·씬·일시정지를 기본값으로 돌린다. 렌더러 선택과 주제 이동은 페이지를 다시 연다.
+WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 실제 native 상태와 renderer stats다.
+타일맵/입력 실험은 기존 Shooter 타일맵·플레이어 컨트롤러를 사용한다. 사격은 차단하고 적 생성 간격은 24시간으로 설정해 실험을 분리했다. 다른 Data Scene 실험의 바닥은 sprite instance다.
+
+## 추가된 다섯 실험
+
+- **타일맵**: `?feature=tilemap`. WASD/방향키로 중앙 벽에 접근한 뒤 통로를 열어 통과한다. 캔버스 클릭으로 벽/바닥을 수정한다. 외곽 테두리와 캐릭터가 겹치는 칸은 보호한다. 통로 닫기는 캐릭터를 밖으로 옮긴 뒤 사용한다. 출발 위치에 벽을 놓았다면 바닥 브러시로 지워야 그 위치로 돌아갈 수 있다.
+- **레이어**: `?feature=layers`. 로봇의 `instance.layer`를 바꿔 동일 위치·크기의 겹침을 비교한다. 씬을 재적용하는 낮은 빈도 예제이며 충돌 분류인 `components.layer`는 바꾸지 않는다.
+- **파티클**: `?feature=particles`. 효과/수량/수명/속도를 정하고 방출한다. 설정 변경은 입자를 비우며, 반복/잔상은 다시 방출해야 한다. 방출 정지는 기존 입자를 수명 종료까지 유지한다. 잔상 위치는 포인터, 입자 이동·수명은 Rust가 계산한다.
+- **공간 오디오**: `?feature=audio`. 사용자 클릭으로 Web Audio를 시작하고 음원의 좌우·앞쪽 거리·볼륨을 바꾼다. 듣는 위치는 로봇에 고정된다. 일시정지/초기화/페이지 이탈은 소리도 멈추고 재생은 다시 눌러 시작한다. 공간 처리 미지원이면 일반 재생 안내를 표시한다.
+- **입력 전환**: `?feature=input`. 키보드/게임패드 왼쪽 스틱/화면의 가상 조이스틱을 같은 native 이동에 연결한다. 메뉴는 모달이고 입력란의 키가 게임에 전달되지 않는다. 닫은 뒤 키를 다시 누르거나 스틱을 중립으로 돌린 뒤 이동한다. 게임패드 연결을 브라우저가 인식하려면 장치 버튼을 한 번 눌러야 할 수 있다.
+
+## 이전 통합 게임 (`?mode=playground`)
+
+여러 기능을 연결한 작은 발전소 게임은 `?mode=playground` 또는 ‘통합 예제도 보기’로 연다. 로봇으로 전지 3개를 모은 뒤에도 실험을 계속할 수 있다.
 
 | 체험 | 조작 / 엔진 동작 |
 | --- | --- |
@@ -63,12 +87,16 @@ DebugOverlay를 켜려면 `?debug=true`를 사용한다.
 ```bash
 pnpm --filter @ferrum2d/starter-runtime lint
 pnpm --filter @ferrum2d/starter-runtime build
+pnpm smoke:feature-examples
 pnpm smoke:engine-playground
 pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:engine-playground`는 새 기본 화면을 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.
+`pnpm smoke:feature-examples`는 기능 12종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
+추가로 초기 씬/텍스처 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.
+
+`pnpm smoke:engine-playground`는 통합 게임 `?mode=playground`를 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.
 
 `pnpm smoke:starter-runtime`은 `?mode=starter`에서 WebGL2 placeholder pixel readback, profile panel 렌더링, 실제 DOM profile/capture 버튼 클릭, profile별 projectile visual texture, snapshot/replay report hook을 함께 확인한다.
 

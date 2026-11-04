@@ -34,6 +34,10 @@ pnpm --filter @ferrum2d/physics-sandbox dev
 http://localhost:5173/?debug=true
 ```
 
+한글 UI는 기존 Noto Sans KR subset을 재사용하며 OFL 고지와 출처는 `public/fonts/`에 포함한다.
+
+시나리오·조작·관찰 패널은 어두운 작업영역과 주황색 선택 표시로 기능 실험실과 시각적 기준을 맞춘다.
+
 ## Scenario Catalog
 
 브라우저 UI와 `pnpm smoke:physics-demo-suite`는 같은 scenario id를 사용한다.
@@ -60,7 +64,6 @@ pnpm smoke:physics-demo-suite
 
 `pnpm smoke:physics-sandbox`는 production build를 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount`, `visibleBodyCount`, `physicsDebugLineCount`, `customDebugLineCount`, `worldTextCount`, `frameCount`를 확인한다. `pnpm smoke:physics-demo-suite`는 catalog의 7개 scenario id를 순회한다. `pnpm smoke:physics-sandbox-budget`은 `physicsDebugLines=false`에서 두 debug line count가 모두 `0`인지 확인해 비활성 경로의 비용 회귀를 막는다.
 
-Canvas2D 우회 제거 전후의 정적 기준은 `src/main.ts` 1,910줄에서 1,652줄로 258줄 감소했고, Canvas drawing 함수 15개와 overlay canvas가 제거된 것이다. 디버그 비트맵 폰트 atlas를 갱신하려면 `pnpm --filter @ferrum2d/physics-sandbox generate:debug-font`를 실행한다.
 
 ## Pages 노출
 

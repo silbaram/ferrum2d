@@ -13,7 +13,7 @@ showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route
 | 검토 순서 | 후보 | 결정할 내용과 최소 확인 범위 |
 | ---: | --- | --- |
 | 1 | Content/UX | 기존 route 연결과 별도 demo 중 선택. HUD·locale·dialogue/quest·cutscene·reduced motion을 한 흐름에서 설명하고 keyboard/accessibility 검증 유지 |
-| 2 | Renderer/WebGPU Lab | Engine Playground의 조명·노멀·카메라·후처리/renderer 체험 이후 별도 lab이 필요한지 판단. 추가 GPU 계측·복구 노출 범위를 정하고 WebGL2 기본/WebGPU 선택·fallback 상태 설명 |
+| 2 | Renderer/WebGPU 후속 노출 | Starter Runtime의 기능별 조명·노멀·카메라·후처리 실험 이후, 추가 GPU 계측·복구 노출 범위만 판단. 기존 실험의 재구현 후보로 다루지 않음 |
 | 3 | Level Streaming | 조작 가능한 demo와 report 중 선택. chunk load/unload·asset 수명·runtime 예산을 확인할 수 있어야 함 |
 | 4 | Agent Workflow | report/docs 경로의 필요성 판단. create-game → `ferrum:check` → replay/report와 consumer agent 흐름을 설명하고 실제 공개·설치 상태 구분 |
 | 5 | Visual polish | 기존 route에 필요한 screenshot/thumbnail 결정. 새 asset의 용량·라이선스·생성 방식 확인 |

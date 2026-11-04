@@ -2,6 +2,14 @@
 
 Ferrum2D의 두 번째 장르 예제다. Top-down Shooter 전용 Game Spec 없이 Rust core의 Breakout scene mode를 실행해 같은 browser runtime/API가 다른 장르에서도 동작하는지 검증한다.
 
+상단에서 공·벽·패들 충돌과 충돌 이벤트·파티클의 관찰 안내를 선택한다.
+A/D·방향키로 패들을 움직이고 `충돌 영역 켜고 다시 시작`으로 판정 형태를 비교한다.
+`hits`는 현재 프레임 이벤트 수이며 `particles`는 살아 있는 파티클 수다.
+
+색상 도형은 공통 흰 텍스처 위에 native tint를 그대로 표시한다. 체크무늬 placeholder로 판정 색이 달라지지 않는다.
+상세 DebugOverlay는 `?debug=true`에서 화면 아래에 표시하며 기본 화면은 조작·관찰에 집중한다.
+한글 글꼴은 기존 Noto Sans KR subset을 재사용하고 OFL 고지를 `public/fonts/`에 포함한다.
+
 ## 확인 기술
 
 | 기술 | 설명 |

@@ -6,6 +6,7 @@
 
 정원·마을·Shooter 세트는 2026-11-02에 엔진 소스 커밋 `7bc6504`의 빌드를 Chromium `148.0.7778.96`에서 캡처했다.
 도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 같은 Chromium에서 캡처했다.
+기능 실험실은 2026-11-05에 `3f02342` 이후 작업 트리의 production 빌드를 캡처했다.
 
 ## 현재 이미지
 
@@ -14,9 +15,10 @@
 | [placement-village.png](placement-village.png) | HD-2D 마을 Scene/Object Placement Viewer 전체 작업공간 |
 | [garden-game-preview.png](garden-game-preview.png) | 2D 등불 정원 게임 미리보기, 실행 후 일시정지 |
 | [village-game-preview.png](village-game-preview.png) | 씬에 저장된 게임 카메라를 적용한 HD-2D 마을, 실행 후 일시정지 |
-| [topdown-shooter-title.png](topdown-shooter-title.png) | 실제 Shooter 시작 화면과 시작 안내. 기존 정적 preview를 대체하며 Pages 홈에서도 사용 |
+| [topdown-shooter-title.png](topdown-shooter-title.png) | 2026-11-02 당시 Shooter 시작 화면과 시작 안내 |
 | [topdown-shooter-gameplay.png](topdown-shooter-gameplay.png) | 실제 Shooter 실행 중 조준·발사 화면 |
 | [pixel-art-showcase.png](pixel-art-showcase.png) | 작은 빛의 정원: 노멀 조명·장미 팔레트·일시정지 상태와 실제 조작 패널 |
+| [engine-feature-lab.png](engine-feature-lab.png) | 기능 실험실: 같은 PNG의 단순 확대와 9-slice 비교. Pages 홈에서도 사용 |
 
 캡처 기준은 `1440 × 1000`, DPR 1, 뷰어 한국어 UI다. 전체 작업공간은 body를,
 게임 미리보기·플레이는 실제 canvas를 캡처하므로 이미지의 최종 크기는 서로 다르다.
@@ -54,6 +56,10 @@ pnpm smoke:pixel-showcase
 소프트웨어 WebGPU 검증은 offscreen readback을 사용하며 README 이미지는 WebGL2 canvas 캡처다.
 
 갱신 후 모든 이미지를 열어 비어 있거나 잘린 영역과 오류 안내가 없는지 확인한다.
+기능 실험실은 `pnpm smoke:feature-examples`의 `artifacts/feature-examples/verification.json`이 가리키는
+run에서 `nine-slice.png`를 `engine-feature-lab.png`로 복사한다. WebGL2·1440×1000·DPR 1의
+실제 기본 설정 화면이며 별도 합성이나 크기 변경을 하지 않는다. 캡처 출처와 SHA-256은
+`artifacts/feature-examples/readme-capture.json`에 남긴다.
 문서 링크와 Pages 이미지 복사도 검증한다.
 
 ```bash

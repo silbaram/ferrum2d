@@ -2,6 +2,11 @@
 
 Ferrum2D의 대표 Game Spec 기반 예제다. `public/game.json`으로 atlas animation, tilemap collision, wave, audio, camera, authored gameplay behavior를 구성하고, Rust core의 built-in Shooter scene을 browser runtime에서 검증한다.
 
+상단 기능 안내에서 Game Spec·웨이브와 타일 충돌·피격 효과의 조작·관찰 항목을 확인한다.
+충돌 영역 표시 링크는 query를 바꾸고 씬을 다시 시작한다. 이 안내는 Behavior Recipe/FSM 편집 또는 variant 적용 UI가 아니다.
+화면은 작은 창에서 가로 넘침 없이 canvas 비율을 유지한다. 기본 texture 0은 흰 텍스처를 써서 지형 tint가 체크무늬와 섞이지 않게 한다.
+한글 UI는 기존 Noto Sans KR subset을 재사용하며 OFL 고지를 `public/fonts/`에 포함한다.
+
 ## 확인 기술
 
 | 기술 | 설명 |

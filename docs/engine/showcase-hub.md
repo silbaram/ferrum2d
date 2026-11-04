@@ -6,6 +6,28 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 ## 기능 지도
 
+엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
+상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
+Pages 홈도 같은 기능 목록에서 직접 진입한다.
+
+| 실험 | Starter Runtime query | 바꿔볼 설정 |
+| --- | --- | --- |
+| 스프라이트 애니메이션 | `?feature=animation` | 속도, 재생 순서, 좌우 반전 |
+| 길 찾기 | `?feature=navigation` | 벽 반대편 목적지, 포인터·키보드 이동 |
+| 물리 재질 | `?feature=physics` | 고무/점토, 동일한 초기 힘 |
+| 노멀 조명 | `?feature=lighting` | 노멀 적용, 광원 위치, 원본 색상 |
+| 후처리 | `?feature=postprocess` | 원본, bloom, CRT |
+| 카메라 | `?feature=camera` | 고정/추적, 확대, 이동 목적지 |
+| 9-slice | `?feature=nine-slice` | 단순 확대와 비교, 적용/해제, 테두리 배율 |
+| 타일맵·충돌 | `?feature=tilemap` | 벽/바닥 브러시, 통로, native 통과 여부 |
+| 그리기 레이어 | `?feature=layers` | 같은 위치에서 로봇의 앞뒤 순서 |
+| 파티클·VFX | `?feature=particles` | 불꽃/먼지/포인터 잔상, 수량·수명·속도 |
+| 공간 오디오 | `?feature=audio` | 음원 좌우·거리·볼륨, 재생/정지 |
+| 입력 전환 | `?feature=input` | 키보드/게임패드/가상 조이스틱, 모달 입력 차단 |
+
+각 실험은 기본 설정과 씬으로 초기화할 수 있다. 물리 심화는 `physics-sandbox`의 7개 시나리오,
+여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다.
+
 | 기능군 | 대표 demo 또는 경로 | 기준 문서 | 검증 명령 |
 | --- | --- | --- | --- |
 | Runtime baseline | Starter Runtime, Platformer, Breakout | [User Guide](user-guide.md), [Public API](public-api.md) | `pnpm build`, `pnpm smoke:starter-runtime`, `pnpm smoke:platformer`, `pnpm smoke:breakout` |
@@ -22,13 +44,13 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| Engine Playground | 로봇 이동·수집, rigid body 재질, 노멀 조명, 카메라·후처리 체험. 기존 starter는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, 9-slice, `pnpm smoke:engine-playground` |
+| 기능 실험실 / Engine Playground | 기본 진입은 위의 12개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |
 | Physics Sandbox | Physics Spec apply, debug line, solver fixture catalog | Physics Spec sample, physics smoke suite, demo-suite browser smoke |
-| Platformer | platform controller, runtime replay, generated template coverage | create-game `platformer` template, runtime replay fixture |
-| Breakout | 두 번째 장르 runtime, collision/event path, scene authoring handle | create-game `breakout` template, scene authoring report |
+| Platformer | 점프·단방향/이동 발판의 기능 안내와 해당 위치 바로 이동 | create-game `platformer` template, runtime replay fixture |
+| Breakout | 반사·충돌 이벤트·파티클 관찰 안내와 충돌 영역 표시 | create-game `breakout` template, scene authoring report |
 
 ## Agent-first 작업 흐름
 
