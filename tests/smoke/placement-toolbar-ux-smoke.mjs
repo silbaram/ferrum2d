@@ -132,6 +132,8 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
     await showPlacementViewOptions(page);
     await page.screenshot({ path: `${artifact}/${mode}-view-ko.png`, fullPage: true });
     await page.setViewportSize({ width: 390, height: 500 });
+    // Resize intentionally closes menus. Let that event and layout commit before reopening.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await showPlacementViewOptions(page);
     const compact = await summary.boundingBox();
     assert(compact.x >= 0 && compact.x + compact.width <= 391, "View must remain reachable on narrow screens");
