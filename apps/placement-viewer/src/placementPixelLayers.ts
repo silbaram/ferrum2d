@@ -1,5 +1,6 @@
 import { PIXEL_LIMITS, type PixelLayerMerge, type createPixelEditor } from "./placementPixelDocument";
 import { setUiText, setUiAttribute, uiMessage } from "./placementLocale";
+import { createPixelOpacity } from "./placementPixelOpacity";
 
 /** Image metadata controls. Pixel/structure mutations and history stay in the model. */
 export function createPixelLayers(options: {
@@ -39,7 +40,10 @@ export function createPixelLayers(options: {
   mergeMenu.addEventListener("keydown", event => {
     if (mergeMenu.open && event.code === "Escape") { event.preventDefault(); event.stopPropagation(); mergeMenu.open = false; mergeSummary.focus({ preventScroll: true }); }
   });
-  element.append(heading,toolbar,mergeMenu,list,label,status,hint);
+  const opacity = createPixelOpacity({ editor: options.editor, disabled: () => !previousEditor || previousEditor !== options.editor() || options.readOnly() || options.busy() || options.editor().active(), changed: options.changed });
+  const properties = document.createElement("div"); properties.className = "placement-pixel-layer-properties";
+  properties.append(label,opacity.button);
+  element.append(heading,toolbar,mergeMenu,list,properties,status,hint);
   function perform(run: () => void, failure?: HTMLOutputElement) {
     // Detached controls can still receive a queued blur/change/click event.
     const editor = options.editor();
@@ -89,14 +93,17 @@ export function createPixelLayers(options: {
   let signature="", previousEditor: ReturnType<typeof createPixelEditor> | undefined;
   function sync() {
     const editor=options.editor(),layers=editor.layers(),selected=editor.selectedLayer(),readOnly=options.readOnly(),disabled=readOnly||options.busy()||editor.active();
+    const changedEditor=previousEditor!==editor;
+    if(changedEditor){opacity.cancel();previousEditor=editor;}
+    opacity.sync();
     // Pixel edits can invalidate a previous rounding diagnostic, even without metadata edits.
     const next=JSON.stringify([layers,selected,disabled,readOnly,editor.revision(),editor.frames().length,editor.width,editor.height]);
-    if(signature===next&&previousEditor===editor)return;
+    if(signature===next&&!changedEditor)return;
     const focused=document.activeElement;
     const focusKey=(["select","visible","locked"] as const).find(key=>focused?.hasAttribute("data-pixel-layer-"+key));
     const focusId=focusKey?focused?.getAttribute("data-pixel-layer-"+focusKey):undefined;
     const restoreFocus=list.contains(focused);
-    if(previousEditor!==editor){list.replaceChildren();rows.clear();mergeMenu.open=false;}
+    if(changedEditor){list.replaceChildren();rows.clear();mergeMenu.open=false;}
     signature=next;previousEditor=editor;
     const index=layers.findIndex(l=>l.id===selected),active=layers[index];
     for (const [mode, { button, reason }] of mergeActions) {
@@ -133,7 +140,7 @@ export function createPixelLayers(options: {
     }
   }
   function clear() {
-    previousEditor=undefined;signature="";rows.clear();list.replaceChildren();mergeMenu.open=false;
+    opacity.cancel();previousEditor=undefined;signature="";rows.clear();list.replaceChildren();mergeMenu.open=false;
   }
-  return {element,sync,clear};
+  return {element,sync,clear,cancel:opacity.cancel};
 }

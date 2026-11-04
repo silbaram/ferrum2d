@@ -56,11 +56,11 @@ export function installPixelImportTransfer(options: {
       importFiles(event.dataTransfer!.files);
     }, { signal: lifetime.signal });
   }
-  // The top-layer import dialog lives outside both roots. A file dropped on it
+  // Modal previews live outside both roots. A file dropped on them
   // must not navigate away from the document or replace the preview in progress.
   const guardDialog = (event: DragEvent) => {
     if (filesDragged(event.dataTransfer) && event.target instanceof Element &&
-      event.target.closest('[data-pixel-import-dialog][open]')) { consume(event); clear(); }
+      event.target.closest('[data-pixel-import-dialog][open],[data-pixel-opacity-dialog][open]')) { consume(event); clear(); }
   };
   document.addEventListener("dragover", guardDialog, { signal: lifetime.signal });
   document.addEventListener("drop", guardDialog, { signal: lifetime.signal });

@@ -58,6 +58,25 @@ fn rgba_bytes(value: &Value, count: usize) -> CommandResult<Vec<u8>> {
     }
     Ok(pixels)
 }
+/// v8 requires an explicit byte multiplier; legacy sources must not silently lose it.
+fn layer_opacity(layer: &Value, version: u64) -> CommandResult<u8> {
+    if version == 8 {
+        return bounded_integer(layer, "opacity", 0, 255).map(|value| value as u8);
+    }
+    if layer.get("opacity").is_some() {
+        return Err(invalid("layer opacity requires pixel source v8"));
+    }
+    Ok(255)
+}
+fn apply_opacity(pixels: &mut [u8], opacity: u8) {
+    if opacity == 255 {
+        return;
+    }
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel[3] = ((u32::from(pixel[3]) * u32::from(opacity) + 127) / 255) as u8;
+    }
+}
+
 /// Integer straight-alpha source-over. Matches the TypeScript authoring composite.
 fn composite_over(output: &mut [u8], input: &[u8]) {
     for (dst, src) in output.chunks_exact_mut(4).zip(input.chunks_exact(4)) {
@@ -134,7 +153,7 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
     }
     let layers = array(source, "layers")?;
     let frames = array(source, "frames")?;
-    let max_frames = if bounded_integer(source, "version", 1, 7)? >= 6 {
+    let max_frames = if bounded_integer(source, "version", 1, 8)? >= 6 {
         64
     } else {
         16
@@ -161,7 +180,11 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
         layer["locked"]
             .as_bool()
             .ok_or_else(|| invalid("invalid image layer flags"))?;
-        metadata.push((id, visible));
+        metadata.push((
+            id,
+            visible,
+            layer_opacity(layer, bounded_integer(source, "version", 1, 8)?)?,
+        ));
     }
     let columns = (1_u64..=8)
         .find(|columns| columns * columns >= frames.len() as u64)
@@ -183,12 +206,13 @@ fn frame_atlas(source: &Value, width: u64, height: u64) -> CommandResult<(u64, u
             return Err(invalid("pixel cels must match image layers"));
         }
         let mut composite: Option<Vec<u8>> = None;
-        for ((id, visible), cel) in metadata.iter().zip(cels) {
+        for ((id, visible, opacity), cel) in metadata.iter().zip(cels) {
             if cel["layerId"].as_str() != Some(*id) {
                 return Err(invalid("pixel cels must match image layers"));
             }
-            let pixels = rgba_bytes(&cel["rgba"], count)?;
-            if *visible {
+            let mut pixels = rgba_bytes(&cel["rgba"], count)?;
+            apply_opacity(&mut pixels, *opacity);
+            if *visible && *opacity > 0 {
                 if let Some(output) = composite.as_mut() {
                     composite_over(output, &pixels);
                 } else {
@@ -232,7 +256,7 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
             return Err(invalid("duplicate or invalid pixel tag identity"));
         }
         if let Some(direction) = tag.get("direction") {
-            if bounded_integer(source, "version", 1, 7)? < 7
+            if bounded_integer(source, "version", 1, 8)? < 7
                 || !matches!(direction.as_str(), Some("forward" | "reverse" | "pingpong"))
             {
                 return Err(invalid("invalid pixel tag direction"));
@@ -245,7 +269,7 @@ fn validate_tags(source: &Value) -> CommandResult<()> {
         let mut seen = std::collections::HashSet::new();
         if references.is_empty()
             || references.len()
-                > if bounded_integer(source, "version", 1, 7)? >= 6 {
+                > if bounded_integer(source, "version", 1, 8)? >= 6 {
                     64
                 } else {
                     16
@@ -289,7 +313,7 @@ fn validate_source(
     let raw = std::str::from_utf8(&bytes).map_err(|_| invalid("pixel source must be UTF-8"))?;
     let source: Value =
         serde_json::from_str(raw).map_err(|_| invalid("invalid pixel source JSON"))?;
-    let version = bounded_integer(&source, "version", 1, 7)
+    let version = bounded_integer(&source, "version", 1, 8)
         .map_err(|_| invalid("unsupported pixel document format or version"))?;
     if source["format"] != "ferrum2d.pixel-document" {
         return Err(invalid("unsupported pixel document format or version"));
@@ -299,7 +323,7 @@ fn validate_source(
     }
     if (version < 6 && png.len() > 8 * 1024 * 1024)
         || (version == 2 && bytes.len() > 3 * 1024 * 1024)
-        || (!matches!(version, 3 | 5 | 6 | 7)
+        || (!matches!(version, 3 | 5 | 6 | 7 | 8)
             && (png.len() > 4 * 1024 * 1024 || source.get("frames").is_some()))
     {
         return Err(invalid(
@@ -314,7 +338,7 @@ fn validate_source(
     } else if source.get("atlas").is_some() {
         return Err(invalid("invalid pixel atlas version"));
     }
-    if !matches!(version, 3 | 5 | 6 | 7) {
+    if !matches!(version, 3 | 5 | 6 | 7 | 8) {
         source_text(&source["frame"], "id")?;
         bounded_integer(&source["frame"], "durationMs", 1, 60_000)?;
     }
@@ -332,7 +356,7 @@ fn validate_source(
         return Err(invalid("invalid pixel palette"));
     }
     let count = (width * height * 4) as usize;
-    let pixels = if matches!(version, 3 | 5 | 6 | 7) {
+    let pixels = if matches!(version, 3 | 5 | 6 | 7 | 8) {
         Vec::new()
     } else if version == 1 || version == 4 {
         if source.get("layers").is_some() {
@@ -340,6 +364,7 @@ fn validate_source(
         }
         source_text(&source["layer"], "id")?;
         source_text(&source["layer"], "name")?;
+        layer_opacity(&source["layer"], version)?;
         rgba_bytes(&source["rgba"], count)?
     } else {
         if source.get("layer").is_some() || source.get("rgba").is_some() {
@@ -363,8 +388,10 @@ fn validate_source(
             layer["locked"]
                 .as_bool()
                 .ok_or_else(|| invalid("invalid image layer flags"))?;
-            let pixels = rgba_bytes(&layer["rgba"], count)?;
-            if visible {
+            let opacity = layer_opacity(layer, version)?;
+            let mut pixels = rgba_bytes(&layer["rgba"], count)?;
+            apply_opacity(&mut pixels, opacity);
+            if visible && opacity > 0 {
                 if let Some(output) = composite.as_mut() {
                     composite_over(output, &pixels);
                 } else {
@@ -374,12 +401,15 @@ fn validate_source(
         }
         composite.unwrap_or_else(|| vec![0; count])
     };
-    let (width, height, pixels) = if matches!(version, 3 | 5 | 6 | 7) {
+    let (width, height, pixels) = if matches!(version, 3 | 5 | 6 | 7 | 8) {
         frame_atlas(&source, width, height)?
     } else {
         (width, height, pixels)
     };
-    if version == 5 || version == 7 || (version == 6 && source.get("tags").is_some()) {
+    if version == 5
+        || version == 7
+        || ((version == 6 || version == 8) && source.get("tags").is_some())
+    {
         validate_tags(&source)?;
     } else if ["tags", "initialTag", "nextClipId"]
         .iter()
@@ -402,7 +432,7 @@ fn validate_source(
     }
     let mut decoder = png::Decoder::new(Cursor::new(&png));
     decoder.set_limits(png::Limits {
-        bytes: if matches!(version, 3 | 5 | 6 | 7) {
+        bytes: if matches!(version, 3 | 5 | 6 | 7 | 8) {
             16 * 1024 * 1024
         } else {
             2 * 1024 * 1024
@@ -1157,6 +1187,96 @@ pub(super) mod tests {
             "manifest":{"textures":textures,"textureOptions":options},
             "files":[{"path":format!("{id}.png"),"mediaType":"image/png","sha256":hash(&png),"base64":STANDARD.encode(&png)},
                 {"path":format!("{id}.json"),"mediaType":"application/json","sha256":hash(&raw),"base64":STANDARD.encode(&raw)}]})
+    }
+
+    #[test]
+    fn opacity_sources_save_reopen_and_validate_each_composited_frame() {
+        let source = json!({"format":"ferrum2d.pixel-document","version":8,"name":"Opacity","width":1,"height":1,"colorSpace":"srgb","palette":[],
+            "layers":[{"id":"body","name":"Body","visible":true,"locked":false,"opacity":128},
+                {"id":"hidden","name":"Hidden","visible":false,"locked":true,"opacity":33}],
+            "frames":[{"id":"a","durationMs":100,"cels":[{"layerId":"body","rgba":STANDARD.encode([255,0,0,255])},{"layerId":"hidden","rgba":STANDARD.encode([1,2,3,255])}]},
+                {"id":"b","durationMs":180,"cels":[{"layerId":"body","rgba":STANDARD.encode([0,0,255,128])},{"layerId":"hidden","rgba":STANDARD.encode([4,5,6,0])}]}],
+            "tags":[{"id":"idle","name":"Idle","clipId":3,"frameIds":["b","a"],"loop":true,"direction":"reverse"}],"initialTag":"idle","nextClipId":4});
+        let pixels = [255, 0, 0, 128, 0, 0, 255, 64];
+        let project = Project::new();
+        let registry = PlacementAssetRegistry::default();
+        let saved = save_inner(
+            &project.0,
+            &pixel_bundle(&source, &pixels, 2, 1),
+            &registry,
+            &project.writes(),
+        )
+        .unwrap();
+        let loaded = load_inner(
+            &project.0,
+            &PlacementAssetRegistry::default(),
+            &project.writes(),
+        )
+        .unwrap();
+        assert_eq!(loaded, saved);
+        let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &fs::read(project.root().join(format!("{id}.json"))).unwrap()
+            )
+            .unwrap(),
+            source
+        );
+        for opacity in [json!(-1), json!(256), json!(0.5), json!("128"), Value::Null] {
+            let mut bad = source.clone();
+            bad["layers"][0]["opacity"] = opacity;
+            let bad_project = Project::new();
+            let error = save_inner(
+                &bad_project.0,
+                &pixel_bundle(&bad, &pixels, 2, 1),
+                &PlacementAssetRegistry::default(),
+                &bad_project.writes(),
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("opacity"), "{error}");
+        }
+    }
+
+    #[test]
+    fn opacity_is_required_in_v8_and_rejected_in_legacy_cels() {
+        let (mut source, _, _, _) = capacity_source(2, 1);
+        source["version"] = json!(8);
+        let project = Project::new();
+        let pixels = [0; 8];
+        let save = |value: &Value, image: &[u8]| {
+            save_inner(
+                &project.0,
+                &pixel_bundle(value, image, 2, 1),
+                &PlacementAssetRegistry::default(),
+                &project.writes(),
+            )
+        };
+        assert!(save(&source, &pixels)
+            .unwrap_err()
+            .to_string()
+            .contains("opacity"));
+        source["layers"][0]["opacity"] = json!(0);
+        let saved =
+            save(&source, &pixels).expect("zero opacity is transparent without changing raw cels");
+        let id = saved["assets"][0]["metadata"]["assetId"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &fs::read(project.root().join(format!("{id}.json"))).unwrap()
+            )
+            .unwrap(),
+            source
+        );
+        source["version"] = json!(6);
+        let bad_project = Project::new();
+        assert!(save_inner(
+            &bad_project.0,
+            &pixel_bundle(&source, &pixels, 2, 1),
+            &PlacementAssetRegistry::default(),
+            &bad_project.writes()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("opacity"));
     }
 
     #[test]

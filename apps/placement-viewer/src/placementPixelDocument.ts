@@ -35,6 +35,8 @@ export interface PixelDocumentV1 extends PixelDocumentBase {
 }
 export interface PixelImageLayer {
   id: string; name: string; visible: boolean; locked: boolean;
+  /** v8 authoring multiplier; omitted legacy values mean 255. */
+  opacity?: number;
   /** Row-major straight-alpha RGBA8, base64. */
   rgba: string;
 }
@@ -77,7 +79,9 @@ export interface PixelDocumentV6 extends Omit<PixelDocumentV3, "version"> {
 }
 /** Direction-aware clips; v1–v6 sources retain their original serialization. */
 export interface PixelDocumentV7 extends Omit<PixelDocumentV5, "version"> { version: 7; }
-export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5 | PixelDocumentV6 | PixelDocumentV7;
+/** Per-layer alpha multipliers; tags remain an optional complete group. */
+export interface PixelDocumentV8 extends Omit<PixelDocumentV6, "version" | "layers"> { version: 8; layers: (PixelLayerInfo & { opacity: number })[]; }
+export type PixelDocument = PixelDocumentV1 | PixelDocumentV2 | PixelDocumentV3 | PixelDocumentV4 | PixelDocumentV5 | PixelDocumentV6 | PixelDocumentV7 | PixelDocumentV8;
 export const PIXEL_PALETTE = [
   "#000000ff", "#ffffffff", "#6b7280ff", "#374151ff",
   "#ef4444ff", "#f97316ff", "#f5a742ff", "#fde047ff",
@@ -106,6 +110,11 @@ function text(value: unknown): string {
 }
 function boolean(value: unknown): boolean {
   return typeof value === "boolean" ? value : fail("Invalid image layer flags");
+}
+function layerOpacity(layer: Record<string, unknown>, required: boolean): { opacity?: number } {
+  if (required) return { opacity: integer(layer.opacity, 0, 255, "Layer opacity must be an integer from 0 to 255") };
+  if (layer.opacity !== undefined) fail("Layer opacity requires pixel source v8");
+  return {};
 }
 export function pixelColor(hex: string): PixelColor {
   if (!/^#[\da-f]{8}$/i.test(hex)) fail("Invalid RGBA color");
@@ -160,13 +169,13 @@ export function readPixelDocument(input: string): PixelDocument {
   const size = new TextEncoder().encode(input).length;
   if (size > PIXEL_LIMITS.sourceBytes) fail("Pixel document exceeds the byte limit");
   const value = object(JSON.parse(input));
-  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7) || value.colorSpace !== "srgb")
+  if (value.format !== "ferrum2d.pixel-document" || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8) || value.colorSpace !== "srgb")
     fail("Unsupported pixel document format or version");
   if ((value.version === 1 || value.version === 4) && size > PIXEL_LIMITS.documentBytes) fail("Pixel document exceeds the byte limit");
   if (value.version === 2 && size > PIXEL_LIMITS.layerSourceBytes) fail("Pixel document exceeds the byte limit");
   if (value.version !== 4 && value.atlas !== undefined) fail("Invalid pixel atlas version");
-  if (value.version !== 3 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.frames !== undefined) fail("Invalid pixel frame version");
-  if (value.version !== 5 && value.version !== 6 && value.version !== 7 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
+  if (value.version !== 3 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.frames !== undefined) fail("Invalid pixel frame version");
+  if (value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && ["tags", "initialTag", "nextClipId"].some(key => value[key] !== undefined)) fail("Invalid pixel tag version");
   const width = integer(value.width, 1, PIXEL_LIMITS.side), height = integer(value.height, 1, PIXEL_LIMITS.side);
   const palette = pixelPaletteColors(value.palette);
   const common: PixelDocumentBase = {
@@ -178,8 +187,8 @@ export function readPixelDocument(input: string): PixelDocument {
     return { id: text(frame.id), durationMs: integer(frame.durationMs, 1, 60000, "Frame duration must be an integer from 1 to 60000") };
   };
   const expected = width * height * 4;
-  if (value.version === 3 || value.version === 5 || value.version === 6 || value.version === 7) {
-    const maxFrames = (value.version === 6 || value.version === 7) ? PIXEL_LIMITS.frames : PIXEL_LIMITS.legacyFrames;
+  if (value.version === 3 || value.version === 5 || value.version === 6 || value.version === 7 || value.version === 8) {
+    const maxFrames = (value.version === 6 || value.version === 7 || value.version === 8) ? PIXEL_LIMITS.frames : PIXEL_LIMITS.legacyFrames;
     if (value.frame !== undefined || value.layer !== undefined || value.rgba !== undefined)
       fail("Invalid pixel frame version");
     if (!Array.isArray(value.layers) || value.layers.length < 1 || value.layers.length > PIXEL_LIMITS.layers)
@@ -192,7 +201,7 @@ export function readPixelDocument(input: string): PixelDocument {
       const layer = object(raw), id = text(layer.id);
       if (ids.has(id) || layer.rgba !== undefined) fail("Invalid image layer metadata");
       ids.add(id);
-      return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked) };
+      return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, value.version === 8) };
     });
     const frameIds = new Set<string>();
     const frames = value.frames.map((raw: unknown) => {
@@ -208,20 +217,22 @@ export function readPixelDocument(input: string): PixelDocument {
       return { ...info, cels };
     });
     const result: PixelDocumentV3 = { ...common, version: 3, layers, frames };
+    const opacityResult = (): PixelDocumentV8 => ({ ...result, version: 8, layers: layers.map(layer => ({ ...layer, opacity: layer.opacity! })) });
     if (value.version === 3) return result;
-    if (value.version === 6 && value.tags === undefined) {
+    if ((value.version === 6 || value.version === 8) && value.tags === undefined) {
       if (value.initialTag !== undefined || value.nextClipId !== undefined) fail("Invalid pixel tag references");
-      return { ...result, version: 6 };
+      return value.version === 8 ? opacityResult() : { ...result, version: 6 };
     }
-    const tags = readPixelTags(value.tags, frames, maxFrames, value.version === 7);
+    const tags = readPixelTags(value.tags, frames, maxFrames, value.version === 7 || value.version === 8);
     const initialTag = text(value.initialTag), nextClipId = integer(value.nextClipId, 1, 65536, "Invalid next pixel clip ID");
     if (!tags.some(tag => tag.id === initialTag) || tags.some(tag => tag.clipId >= nextClipId)) fail("Invalid pixel tag references");
+    if (value.version === 8) return { ...opacityResult(), tags, initialTag, nextClipId };
     return { ...result, version: value.version === 7 ? 7 : value.version === 6 ? 6 : 5, tags, initialTag, nextClipId };
   }
   const frame = frameInfo(value.frame);
   if (value.version === 1 || value.version === 4) {
     if (value.layers !== undefined) fail("Invalid image layer version");
-    const layer = object(value.layer);
+    const layer = object(value.layer); layerOpacity(layer, false);
     // Preserve the v1 property order used by existing immutable revision identities.
     const single: PixelDocumentV1 = { format: common.format, version: 1, name: common.name, width, height, colorSpace: common.colorSpace,
       layer: { id: text(layer.id), name: text(layer.name) }, frame, palette, rgba: rgba(value.rgba, expected) };
@@ -235,7 +246,7 @@ export function readPixelDocument(input: string): PixelDocument {
     const layer = object(raw), id = text(layer.id);
     if (ids.has(id)) fail("Duplicate image layer ID");
     ids.add(id);
-    return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), rgba: rgba(layer.rgba, expected) };
+    return { id, name: text(layer.name), visible: boolean(layer.visible), locked: boolean(layer.locked), ...layerOpacity(layer, false), rgba: rgba(layer.rgba, expected) };
   });
   return { format: common.format, version: 2, name: common.name, width, height, colorSpace: "srgb", frame, palette, layers };
 }
@@ -250,10 +261,10 @@ export function pixelDocumentFromRgba(width: number, height: number, name: strin
   if (pixels.length !== width * height * 4) fail("Invalid pixel byte length");
   document.rgba = base64(pixels); return document;
 }
-interface LayerPixels { id: string; name: string; visible: boolean; locked: boolean; pixels: Uint8Array; }
+interface LayerPixels { id: string; name: string; visible: boolean; locked: boolean; opacity?: number; pixels: Uint8Array; }
 export type PixelLayerMerge = "down" | "visible";
 export function pixelFrames(document: PixelDocument): PixelFrameInfo[] {
-  return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
+  return (document.version === 3 || document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8) ? document.frames.map(({id,durationMs}) => ({id,durationMs})) : [{...document.frame}];
 }
 function sourceLayers(document: PixelDocument, frameIndex = 0): LayerPixels[] {
   if (document.version === 1 || document.version === 4) return [{...document.layer,visible:true,locked:false,pixels:decodeRgba(document.rgba)}];
@@ -273,10 +284,15 @@ export function pixelAtlasLayout(document: Pick<PixelDocument, "width"|"height">
 function composite(layers: readonly LayerPixels[]): Uint8Array {
   let output: Uint8Array | undefined;
   for (const layer of layers) {
-    if (!layer.visible) continue;
-    if (!output) { output = layer.pixels.slice(); continue; }
+    const opacity = layer.opacity ?? 255;
+    if (!layer.visible || opacity === 0) continue;
+    if (!output) {
+      output = layer.pixels.slice();
+      if (opacity !== 255) for (let i = 3; i < output.length; i += 4) output[i] = Math.round(output[i] * opacity / 255);
+      continue;
+    }
     for (let i = 0; i < output.length; i += 4) {
-      const alpha = layer.pixels[i+3], previous = output[i+3];
+      const alpha = Math.round(layer.pixels[i+3] * opacity / 255), previous = output[i+3];
       if (!alpha) continue;
       const denominator = alpha*255 + previous*(255-alpha);
       for (let c = 0; c < 3; c++) output[i+c] = Math.round((layer.pixels[i+c]*alpha*255 + output[i+c]*previous*(255-alpha))/denominator);
@@ -297,7 +313,7 @@ export function pixelAtlas(document: PixelDocument) {
 }
 const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((n,i) => n === b[i]);
 interface FramePixels extends PixelFrameInfo { pixels: Uint8Array[]; }
-interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5 | 6 | 7; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
+interface ImageState { width: number; height: number; version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; palette: string[]; tags: PixelFrameTag[]; initialTag: string; nextClipId: number; layers: PixelLayerInfo[]; frames: FramePixels[]; selected: string; selectedFrame: string; }
 function clone(state: ImageState): ImageState {
   return {...state,palette:[...state.palette],tags:structuredClone(state.tags),layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({...frame,pixels:frame.pixels.map(bytes=>bytes.slice())}))};
 }
@@ -315,7 +331,7 @@ function newId(prefix:string,ids:readonly string[]) {
 export function createPixelEditor(source: PixelDocument) {
   const document=readPixelDocument(JSON.stringify(source)),first=sourceLayers(document);
   const layers=first.map(({pixels,...layer})=>layer),frames=pixelFrames(document).map((frame,index)=>({...frame,pixels:sourceLayers(document,index).map(layer=>layer.pixels)}));
-  const tagged = document.version === 5 || document.version === 6 || document.version === 7 ? document : undefined;
+  const tagged = document.version === 5 || document.version === 6 || document.version === 7 || document.version === 8 ? document : undefined;
   let state:ImageState={width:document.width,height:document.height,version:document.version,palette:[...document.palette],tags:structuredClone(tagged?.tags??[]),
     initialTag:tagged?.initialTag??"",nextClipId:tagged?.nextClipId??0,layers,frames,selected:[...layers].reverse().find(l=>l.visible&&!l.locked)?.id??layers.at(-1)!.id,selectedFrame:frames[0].id};
   let revision=0;
@@ -373,7 +389,7 @@ export function createPixelEditor(source: PixelDocument) {
     const selected = layerIndex(state.selected);
     const indices = state.layers.flatMap((layer, index) => (mode === "down" ? index === selected - 1 || index === selected : layer.visible) ? [index] : []);
     const destination = indices[0], removed = new Set(indices.slice(1));
-    const layers = state.layers.filter((_, index) => !removed.has(index));
+    const layers = state.layers.flatMap((layer, index) => removed.has(index) ? [] : [state.version === 8 && index === destination ? { ...layer, opacity: 255 } : layer]);
     const frames = state.frames.map(frame => {
       const inputs = state.layers.map((layer, index) => ({ ...layer, pixels: frame.pixels[index] }));
       const merged = composite(indices.map(index => inputs[index]));
@@ -385,6 +401,12 @@ export function createPixelEditor(source: PixelDocument) {
       return { ...frame, pixels };
     });
     return mutate(() => { state.selected = state.layers[destination].id; state.layers = layers; state.frames = frames; });
+  }
+  function checkOpacityEdit(id: string, opacity: number) {
+    integer(opacity, 0, 255, "Layer opacity must be an integer from 0 to 255");
+    if (document.version === 4) fail("Atlas layout is fixed. Edit pixels within a frame.");
+    if (pending) fail("Finish the pixel stroke first");
+    if (state.layers[layerIndex(id)].locked) fail("Unlock the image layer before changing opacity");
   }
   function paintPixels() {
     const layer=selectedLayer();if(!layer.visible||layer.locked)fail("Show and unlock the image layer before painting");
@@ -409,7 +431,7 @@ export function createPixelEditor(source: PixelDocument) {
   }
   function mutate(run:()=>void, atlasAllowed=false){if(document.version===4&&!atlasAllowed)fail("Atlas layout is fixed. Edit pixels within a frame.");if(pending)fail("Finish the pixel stroke first");pending=clone(state);try{run();changed();return commit();}catch(error){cancel();throw error;}}
   const layerVersion=()=>{if(state.version===1)state.version=2;};
-  const frameVersion=()=>{if(state.version===7)return;if(state.frames.length>PIXEL_LIMITS.legacyFrames)state.version=6;else if(state.version!==5&&state.version!==6)state.version=3;};
+  const frameVersion=()=>{if(state.version===7||state.version===8)return;if(state.frames.length>PIXEL_LIMITS.legacyFrames)state.version=6;else if(state.version!==5&&state.version!==6)state.version=3;};
   function put(x:number,y:number,color:PixelColor){if(!pending)fail("Start a pixel transaction first");if(validPoint(x,y)){paintPixels().set(color,(y*state.width+x)*4);changed();}}
   function samplePixels(pixels:Uint8Array,x:number,y:number):PixelColor|undefined {if(!validPoint(x,y))return;const i=(y*state.width+x)*4;return [pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]];}
   function createFrame(duplicate:boolean) {
@@ -623,7 +645,7 @@ export function createPixelEditor(source: PixelDocument) {
       const id=newId("tag",state.tags.map(tag=>tag.id));
       const tag={id,name,clipId:state.nextClipId,frameIds:[...frameIds],loop:true};
       readPixelTags([...state.tags,tag],state.frames);
-      mutate(()=>{if(state.version!==6&&state.version!==7)state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
+      mutate(()=>{if(state.version!==6&&state.version!==7&&state.version!==8)state.version=5;state.tags.push(tag);state.nextClipId++;if(!state.initialTag)state.initialTag=id;});return id;
     },
     updateTag(id:string,update:Pick<PixelFrameTag,"name"|"frameIds"|"loop"|"direction">) {
       const index=state.tags.findIndex(tag=>tag.id===id);if(index<0)fail("Pixel tag not found");
@@ -634,7 +656,7 @@ export function createPixelEditor(source: PixelDocument) {
       }
       readPixelTags(tags,state.frames);
       if(JSON.stringify(tags)===JSON.stringify(state.tags))return false;
-      return mutate(()=>{state.tags=tags;if(tags.some(tag=>tag.direction&&tag.direction!=="forward"))state.version=7;});
+      return mutate(()=>{state.tags=tags;if(state.version!==8&&tags.some(tag=>tag.direction&&tag.direction!=="forward"))state.version=7;});
     },
     removeTag(id:string) {
       if(!state.tags.some(tag=>tag.id===id))fail("Pixel tag not found");
@@ -656,7 +678,7 @@ export function createPixelEditor(source: PixelDocument) {
     addLayer(name="Layer") {
       text(name);if(state.layers.length>=PIXEL_LIMITS.layers)fail("Image layer limit reached");budget(state.layers.length+1);
       const id=newId("layer",state.layers.map(l=>l.id));
-      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
+      mutate(()=>{layerVersion();state.layers.push({id,name,visible:true,locked:false,...(state.version===8?{opacity:255}:{})});for(const frame of state.frames)frame.pixels.push(new Uint8Array(state.width*state.height*4));state.selected=id;});return id;
     },
     imageLayerBlocker,
     mergeLayerBlocker, mergeLayers,
@@ -668,11 +690,22 @@ export function createPixelEditor(source: PixelDocument) {
       text(name);
       const added = imageLayerPixels(rect, pixels), target = currentFrame(), id = newId("layer", state.layers.map(layer => layer.id));
       mutate(() => {
-        layerVersion(); state.layers.push({ id, name, visible: true, locked: false });
+        layerVersion(); state.layers.push({ id, name, visible: true, locked: false, ...(state.version===8?{opacity:255}:{}) });
         for (const frame of state.frames) frame.pixels.push(frame === target ? added : new Uint8Array(added.length));
         state.selected = id;
       });
       return id;
+    },
+    previewLayerOpacity(id: string, opacity: number, frameId = state.selectedFrame) {
+      checkOpacityEdit(id, opacity);
+      const frame = frameById(frameId);
+      return composite(state.layers.map((layer, i) => ({ ...layer, opacity: layer.id === id ? opacity : layer.opacity, pixels: frame.pixels[i] })));
+    },
+    setLayerOpacity(id: string, opacity: number) {
+      checkOpacityEdit(id, opacity);
+      const layer = state.layers[layerIndex(id)];
+      if ((layer.opacity ?? 255) === opacity) return false;
+      return mutate(() => { state.version = 8; state.layers = state.layers.map(value => ({ ...value, opacity: value.id === id ? opacity : value.opacity ?? 255 })); });
     },
     renameLayer(id:string,name:string){text(name);const layer=state.layers[layerIndex(id)];if(layer.name===name)return false;return mutate(()=>{layer.name=name;});},
     setLayerVisible(id:string,visible:boolean){boolean(visible);const layer=state.layers[layerIndex(id)];if(layer.visible===visible)return false;return mutate(()=>{layerVersion();layer.visible=visible;});},
@@ -687,6 +720,7 @@ export function createPixelEditor(source: PixelDocument) {
       if(state.version===1||state.version===4){const layer=state.layers[0];return {...structuredClone(document) as PixelDocumentV1|PixelDocumentV4,width:state.width,height:state.height,palette:[...state.palette],layer:{id:layer.id,name:layer.name},frame:{id:frame.id,durationMs:frame.durationMs},rgba:base64(frame.pixels[0])};}
       if(state.version===2)return {format:document.format,version:2,name:document.name,width:state.width,height:state.height,colorSpace:"srgb",frame:{id:frame.id,durationMs:frame.durationMs},palette:[...state.palette],layers:state.layers.map((layer,i)=>({...layer,rgba:base64(frame.pixels[i])}))};
       const result:PixelDocumentV3={...common,version:3,layers:state.layers.map(layer=>({...layer})),frames:state.frames.map(frame=>({id:frame.id,durationMs:frame.durationMs,cels:state.layers.map((layer,i)=>({layerId:layer.id,rgba:base64(frame.pixels[i])}))}))};
+      if(state.version===8)return {...result,version:8,layers:state.layers.map(layer=>({...layer,opacity:layer.opacity??255})),...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       if(state.version===7)return {...result,version:7,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId};
       if(state.version===6)return {...result,version:6,...(state.tags.length?{tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:{})};
       return state.version===5?{...result,version:5,tags:structuredClone(state.tags),initialTag:state.initialTag,nextClipId:state.nextClipId}:result;

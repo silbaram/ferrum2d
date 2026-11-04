@@ -281,6 +281,7 @@ jobs:
             artifacts/pixel-normal-2d/runtime/verification.json
             artifacts/pixel-normal-2d/runtime/run-*/verification.json
             artifacts/pixel-project/verification.json
+            artifacts/pixel-project/run-*/verification.json
             artifacts/pixel-project/run-*/*.png
             artifacts/pixel-project/run-*/*.pixel.json
             artifacts/pixel-project/run-*/rust-build.log

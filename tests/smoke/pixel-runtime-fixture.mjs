@@ -73,7 +73,7 @@ export async function probePixelResume(providedBundle) {
     const pausedSample={...sample};
     let playback;
     const pose=bundle.sceneDocument.sceneComposition.fragments.main.instances[0],visual=pose.props.components.visual;
-    if(visual.animationSet&&![5,6,7].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
+    if(visual.animationSet&&![5,6,7,8].includes(bundle.assets.find(asset=>asset.id===visual.texture)?.source.version)) {
       const source=bundle.assets.find(asset=>asset.id===visual.texture)?.source;
       if(source?.version!==3||source.frames.length!==2)throw Error('Fresh animation source metadata missing');
       const clip=visual.animationSet.clips[0],handle=handles[pose.id],nativeFrames=new Set(),sourceFrames=new Set(),visible=new Set();
@@ -178,12 +178,13 @@ export async function probePixelResume(providedBundle) {
       playback={sourceFrames:64,nativeFrames:64,playingState:sample.state};
     }
     let directionPlayback;
-    if(taggedSource?.version===7) {
+    if(visual.animationSet&&(taggedSource?.version===7||taggedSource?.version===8)) {
       window.pixelResumeStage='directionPlayback';
       const handle=handles[pose.id],set=visual.animationSet,results=[];
-      if(!set||set.clips.length!==taggedSource.tags.length||!engine.resumeDataScene())throw Error('Direction source did not enter Playing');
+      const tags=taggedSource.tags??[{id:'all',clipId:0,frameIds:taggedSource.frames.map(frame=>frame.id),loop:true}];
+      if(set.clips.length!==tags.length||set.initialClip!==tags.find(tag=>tag.id===(taggedSource.initialTag??'all'))?.clipId||!engine.resumeDataScene())throw Error('Direction source did not enter Playing');
       let time=32;
-      for(const tag of taggedSource.tags) {
+      for(const tag of tags) {
         const clip=set.clips.find(clip=>clip.id===tag.clipId),ids=tag.frameIds,count=ids.length;
         let order=Array.from({length:count},(_,i)=>i);
         if(tag.direction==='reverse')order.reverse();

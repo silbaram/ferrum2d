@@ -1,4 +1,6 @@
+import {smokePixelOpacity} from "./pixel-opacity-smoke.mjs";
 import {smokePixelAnimationTools} from "./pixel-animation-tools-smoke.mjs";
+import {smokePixelClipboard} from "./pixel-clipboard-smoke.mjs";
 import {smokePixelLayerMerge} from "./pixel-layer-merge-smoke.mjs";
 import {smokePixelImport} from "./pixel-import-smoke.mjs";
 import {inspectPlacementAsset} from "./placement-panel-navigation.mjs";
@@ -25,6 +27,8 @@ import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs"
 import { smokePixelCapacity } from "./pixel-capacity-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-opacity-only")) return {pixelOpacity:await smokePixelOpacity(page,mode,run),focus:"pixel-opacity"};
+  if (process.argv.includes("--pixel-clipboard-only")) return {pixelClipboard:await smokePixelClipboard(page,mode,run),focus:"pixel-clipboard"};
   if (process.argv.includes("--pixel-merge-only")) return {pixelMerge:await smokePixelLayerMerge(page,mode,run),imageLayers:await smokePixelLayers(page,mode,run),focus:"pixel-merge"};
   if (process.argv.includes("--pixel-import-only")) return {pixelImport:await smokePixelImport(page,mode,run),focus:"pixel-import"};
   if (process.argv.includes("--pixel-capacity-only") || process.argv.includes("--pixel-animation-tools-only")) {
@@ -63,6 +67,8 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pixelPalette = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelPalette(page,mode,run);
   const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
   const pixelImport = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelImport(page,mode,run);
+  const pixelOpacity = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelOpacity(page,mode,run);
+  const pixelClipboard = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelClipboard(page,mode,run);
   const pixelMerge = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelLayerMerge(page,mode,run);
   const pixelNext = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelNextTools(page,mode,run);
   await showPlacementBottom(page, "assets");
@@ -411,6 +417,6 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     pixelDirtyUpdateGuard: true,
     alphaInputGuard: true,
     unicodePngFilename:true,longTitleFits:true,
-    pixelMerge, imageLayers, imageFrames, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
+    pixelOpacity, pixelClipboard, pixelMerge, imageLayers, imageFrames, revisionsPreserved: 2, sessionSaveGuard: true, freshRuntime: report,
   };
 }

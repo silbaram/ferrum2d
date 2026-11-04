@@ -37,6 +37,11 @@ export async function probeSavedProjectGame() {
   if(report.bluePixels<100)throw Error('Saved pixel game did not render blue sprite');
   const visual=sceneDocument.sceneComposition.fragments.main.instances[0].props.components.visual;
   const activeSource=assets.find(asset=>asset.id===visual.texture)?.source;
-  if(visual.animationSet&&report.playback?.sourceFrames!==(activeSource?.version===6?64:2))throw Error('Saved pixel animation did not advance');
+  if(visual.animationSet) {
+    if(activeSource?.version===8) {
+      const frameCounts=activeSource.tags?.map(tag=>tag.frameIds.length)??[activeSource.frames.length];
+      if(!report.directionPlayback||report.directionPlayback.playingState!==1||report.directionPlayback.clips.length!==frameCounts.length||report.directionPlayback.clips.some((clip,i)=>clip.frames!==frameCounts[i]))throw Error('Saved opacity animation did not advance');
+    } else if(report.playback?.sourceFrames!==(activeSource?.version===6?64:2))throw Error('Saved pixel animation did not advance');
+  }
   return {...report,editableSourcesVerified:true};
 }

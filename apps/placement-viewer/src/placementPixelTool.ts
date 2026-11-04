@@ -13,6 +13,7 @@ import { createPixelInkControls } from "./placementPixelInkControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
 import { createPixelImportDialog } from "./placementPixelImportDialog";
 import { installPixelImportTransfer } from "./placementPixelImportTransfer";
+import { copyPixelPng, pixelClipboardUnavailable } from "./placementPixelClipboard";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
 import { createPixelImageBrushControls } from "./placementPixelImageBrushControls";
@@ -107,6 +108,7 @@ export function createPlacementPixelTool(options: {
   const undo = button("Undo", "undo", actions), redo = button("Redo", "redo", actions);
   const source = button("Export Source", "export-source", actions);
   const png = button("Export PNG", "export-png", actions);
+  const copyPng = button("Copy PNG", "copy-png", actions);
   const save = button("Save Project", "save-project", actions);
   const register = button("Register Asset", "register", actions);
   const apply = button("Apply To Selection", "apply", actions);
@@ -115,7 +117,8 @@ export function createPlacementPixelTool(options: {
   const back = button("Back To Scene", "back", actions);
   const exports = document.createElement("details"); exports.className = "placement-pixel-export-menu";
   const exportSummary = document.createElement("summary"); setUiText(exportSummary, "Export");
-  const exportPanel = document.createElement("div"); exportPanel.append(source, png, bundle);
+  const copyHint = document.createElement("output"); copyHint.dataset.pixelClipboardHint = "true";
+  const exportPanel = document.createElement("div"); exportPanel.append(source, png, copyPng, copyHint, bundle);
   exports.append(exportSummary, exportPanel); actions.insertBefore(exports, register);
   const documentActions=createPlacementToolActions("pixel-document","Pixel document actions",[save,register,apply,clean]);
   documentActions.primary(register);actions.insertBefore(documentActions.element,back);
@@ -345,6 +348,7 @@ export function createPlacementPixelTool(options: {
   function invalidate() {
     if (projectSaving) message = "Project save interrupted. Files may be saved; reopen the project before retrying.";
     controller?.abort(); serial++;
+    imageLayers.cancel();
     paletteControls.cancel();
     canvasControls.cancel();
     imageImport.cancel();
@@ -472,7 +476,11 @@ export function createPlacementPixelTool(options: {
     surface.element.inert = busy;
     imageLayers.sync();
     framePanel?.sync();
-    for (const node of [source, png, save, register, apply, bundle, clean, undo, redo]) node.disabled = editing || editor.active() || pending;
+    for (const node of [source, png, copyPng, save, register, apply, bundle, clean, undo, redo]) node.disabled = editing || editor.active() || pending;
+    const clipboardReason = pixelClipboardUnavailable();
+    copyPng.disabled ||= !!clipboardReason;
+    setUiAttribute(copyPng, "title", clipboardReason ?? "Copy the exported PNG to the system clipboard");
+    setUiText(copyHint, clipboardReason ?? "Copies the full PNG, including all animation frames.");
     save.disabled ||= !options.projectHost?.() || !options.context().canEdit || owner !== options.context().key;
     setUiAttribute(save, "title", options.projectHost?.() ? "Save pixel sources and scene" : "Open a desktop project folder to save");
     undo.disabled ||= history.undo === 0; redo.disabled ||= history.redo === 0;
@@ -661,6 +669,17 @@ export function createPlacementPixelTool(options: {
     download(new Blob([bytes], { type: "image/png" }), filename() + ".png");
     message = "PNG exported. Export Source to keep editing data.";
   });
+  copyPng.onclick = () => {
+    if (copyPng.disabled || !active || !editor || editor.active() || selection.pending() || surface.ownsGesture() || framePanel?.isPlaying()) return;
+    void task(async (signal, token) => {
+      const snapshot = editor!.document();
+      await copyPixelPng(async () => {
+        const bytes = await pixelPng(snapshot); current(signal, token); return bytes;
+      }, signal);
+      current(signal, token);
+      message = "PNG image copied. Export Source to keep editing data.";
+    });
+  };
   register.onclick = () => publish(false); apply.onclick = () => publish(true);
   save.onclick = () => {
     const host = options.projectHost?.();
