@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
 async function url(name,imports={}){let code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/'+name+'.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;for(const [from,to]of Object.entries(imports))code=code.replaceAll(JSON.stringify(from),JSON.stringify(to));return'data:text/javascript;base64,'+Buffer.from(code).toString('base64');}
 async function load(url){try{return await import(url);}catch(error){process.exitCode=1;throw error;}}
-const docUrl=await url('placementPixelDocument',{'./placementPixelAtlas':await url('placementPixelAtlas')});
+const docUrl=await url('placementPixelDocument',{'./placementPixelIndexed':await url('placementPixelIndexed'),'./placementPixelHistory':await url('placementPixelHistory'),'./placementPixelAtlas':await url('placementPixelAtlas')});
 const {newPixelDocument:blank,createPixelEditor:create,readPixelDocument,PIXEL_CANVAS_ANCHORS:anchors}=await load(docUrl);
 const raw=(width,height,offset=0)=>Buffer.from(Array.from({length:width*height},(_,i)=>[i+offset,20,30,i%2?128:0]).flat());
 test('all nine anchors pad with zeros and preserve every straight-alpha byte without interpolation',()=>{

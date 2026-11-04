@@ -1054,6 +1054,8 @@ try {
   };
   if(autotileMode)assert(reports.filter(r=>r.mode==='2d'&&r.autotileSavedAndReopened).length===2,'Both native autotile formats must run');
   if(tileAnimationMode)assert(reports.filter(r=>r.mode==='2d'&&r.tileAnimationSavedAndReopened&&r.savedManifestGame?.tileAnimation?.fixedCollision).length===2,'Both native tile animation formats must run');
+  // Aggregate commands also run focused scenarios; keep evidence for each run.
+  await writeFile(join(run, "verification.json"), JSON.stringify(report, null, 2) + "\n");
   await writeFile(
     join(artifact, "verification.json"),
     JSON.stringify(report, null, 2) + "\n",

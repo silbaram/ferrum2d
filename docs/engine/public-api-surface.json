@@ -241,7 +241,9 @@
         "DataSceneSpriteAnimationDirection",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
-        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW"
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW",
+        "SpriteNineSliceSpec",
+        "SpriteNineSliceUpdate"
       ]
     },
     {
@@ -413,7 +415,9 @@
         "DataSceneSpriteAnimationDirection",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
-        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW"
+        "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW",
+        "SpriteNineSliceSpec",
+        "SpriteNineSliceUpdate"
       ]
     },
     {
@@ -552,7 +556,9 @@
         "SpriteNormalWorkerGenerateOptions",
         "SceneDisplaySpec",
         "resolveSceneDisplay",
-        "DataSceneSpriteAnimationDirection"
+        "DataSceneSpriteAnimationDirection",
+        "SpriteNineSliceSpec",
+        "SpriteNineSliceUpdate"
       ]
     },
     {

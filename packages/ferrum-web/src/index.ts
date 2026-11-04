@@ -1,3 +1,4 @@
+export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export * from "./public/workflowExports.js";
 export * from "./public/engineExports.js";
 export * from "./public/physicsAuthoringExports.js";

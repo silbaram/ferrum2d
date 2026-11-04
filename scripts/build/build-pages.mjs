@@ -22,8 +22,8 @@ const examples = [
   },
   {
     id: "starter-runtime",
-    title: "Starter Runtime",
-    description: "Smallest createFerrumRuntime flow with WebGL2, UiOverlay, DebugOverlay, and profiler smoke.",
+    title: "Engine Playground",
+    description: "Play with native movement, pickups, rigid-body materials, normal lighting, camera controls, and screen effects.",
   },
   {
     id: "topdown-shooter",

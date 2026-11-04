@@ -59,6 +59,7 @@ mod runtime_outputs;
 mod scene_switching;
 mod shooter_authoring;
 mod shooter_snapshots;
+mod sprite_nine_slices;
 mod sprite_normal_materials;
 
 fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {

@@ -1,19 +1,19 @@
 # 데모 게임 포트폴리오 후속 계획
 
 상태: 신규 public 노출 후보 결정 대기
-기준일: 2026-10-30
+기준일: 2026-11-05
 
 이 문서는 이미 구현된 데모의 사용법을 반복하지 않고, smoke/report 중심의 기능을 public
 showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route와 운영 계약은
 [Showcase Hub](../engine/showcase-hub.md)와
-[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다. 도트 쇼케이스를 포함한 기존 일곱 demo route는 해당 문서에서 관리하며 다시 만드는 후보로 등록하지 않는다.
+[GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)가 기준이다. Engine Playground와 도트 쇼케이스를 포함한 기존 일곱 demo route는 해당 문서에서 관리하며 다시 만드는 후보로 등록하지 않는다.
 
 ## 남은 public 노출 후보
 
 | 검토 순서 | 후보 | 결정할 내용과 최소 확인 범위 |
 | ---: | --- | --- |
 | 1 | Content/UX | 기존 route 연결과 별도 demo 중 선택. HUD·locale·dialogue/quest·cutscene·reduced motion을 한 흐름에서 설명하고 keyboard/accessibility 검증 유지 |
-| 2 | Renderer/WebGPU Lab | 별도 lab의 가치와 표시 범위 결정. 기존 조명·후처리·GPU 계측·복구를 재사용하고 WebGL2 기본/WebGPU 선택·fallback 상태 설명 |
+| 2 | Renderer/WebGPU Lab | Engine Playground의 조명·노멀·카메라·후처리/renderer 체험 이후 별도 lab이 필요한지 판단. 추가 GPU 계측·복구 노출 범위를 정하고 WebGL2 기본/WebGPU 선택·fallback 상태 설명 |
 | 3 | Level Streaming | 조작 가능한 demo와 report 중 선택. chunk load/unload·asset 수명·runtime 예산을 확인할 수 있어야 함 |
 | 4 | Agent Workflow | report/docs 경로의 필요성 판단. create-game → `ferrum:check` → replay/report와 consumer agent 흐름을 설명하고 실제 공개·설치 상태 구분 |
 | 5 | Visual polish | 기존 route에 필요한 screenshot/thumbnail 결정. 새 asset의 용량·라이선스·생성 방식 확인 |

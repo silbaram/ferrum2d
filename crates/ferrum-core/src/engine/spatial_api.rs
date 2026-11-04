@@ -306,6 +306,7 @@ impl Engine {
                 return false;
             };
             if self.world.sprite_at_index(entity.id as usize).is_none()
+                || self.world.sprite_nine_slices[entity.id as usize].is_some()
                 || v.iter().any(|v| !v.is_finite())
                 || v[0] <= 0.0
                 || !(0.001..=1.0).contains(&v[1])
@@ -589,6 +590,7 @@ impl Engine {
                 return false;
             };
             if self.world.sprite_at_index(entity.id as usize).is_none()
+                || self.world.sprite_nine_slices[entity.id as usize].is_some()
                 || v.iter().any(|v| !v.is_finite())
                 || v[0] <= 0.0
                 || !(0.0..=1.0).contains(&v[1])

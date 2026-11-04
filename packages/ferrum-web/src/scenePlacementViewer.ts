@@ -2331,6 +2331,7 @@ function copyResolvedDataSceneObjectVisual(
   return {
     kind: "sprite",
     texture: { ...visual.texture },
+    ...(visual.nineSlice === undefined ? {} : { nineSlice: { ...visual.nineSlice } }),
     width: visual.width,
     height: visual.height,
     frame: { ...visual.frame },

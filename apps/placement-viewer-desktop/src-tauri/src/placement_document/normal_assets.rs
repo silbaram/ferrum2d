@@ -434,8 +434,8 @@ fn validate_pixel_source(project: &Path, pair: &Pair) -> CommandResult<()> {
     let width = integer(&source, "width", 1, 256)?;
     let height = integer(&source, "height", 1, 256)?;
     let mut expected = Vec::new();
-    match integer(&source, "version", 1, 7)? {
-        version @ (3 | 5 | 6 | 7) => {
+    match integer(&source, "version", 1, 10)? {
+        version @ (3 | 5 | 6 | 7 | 8 | 9 | 10) => {
             let frames = array(&source, "frames")?;
             if frames.is_empty() || frames.len() > if version >= 6 { 64 } else { 16 } {
                 return Err(invalid("invalid pixel source frame count"));
@@ -806,7 +806,7 @@ pub(super) mod tests {
     }
     #[test]
     fn pixel_normal_pairs_verify_source_json_png_and_frame_layout_before_publish() {
-        for version in [1, 6, 7] {
+        for version in [1, 6, 7, 8, 9] {
             let project = Project::new();
             let registry = PlacementAssetRegistry::default();
             let writes = project.writes();
@@ -823,7 +823,13 @@ pub(super) mod tests {
                 source["layers"] =
                     json!([{"id":"body","name":"Body","visible":true,"locked":false}]);
                 source["frames"] = json!([{"id":"frame-1","durationMs":100,"cels":[{"layerId":"body","rgba":raw}]}]);
-                if version == 7 {
+                if version == 9 {
+                    source["layers"][0]["blendMode"] = json!("screen");
+                }
+                if version >= 8 {
+                    source["layers"][0]["opacity"] = json!(255);
+                }
+                if version >= 7 {
                     source["tags"] = json!([{"id":"walk","name":"Walk","clipId":0,"frameIds":["frame-1"],"loop":true,"direction":"pingpong"}]);
                     source["initialTag"] = json!("walk");
                     source["nextClipId"] = json!(1);

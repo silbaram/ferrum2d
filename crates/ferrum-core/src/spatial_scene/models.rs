@@ -56,6 +56,7 @@ impl SpatialModels {
             triangles += u64::from(m[5]);
             if !world.is_current_entity(entity)
                 || world.transform(entity).is_none()
+                || world.sprite_nine_slices[entity.id as usize].is_some()
                 || m[2] == 0
                 || m[3] > 3
                 || !(1..=32).contains(&m[4])

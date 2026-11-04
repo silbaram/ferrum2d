@@ -1,0 +1,38 @@
+@font-face { font-family:"Ferrum Korean UI"; src:url("../../../apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2") format("woff2"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+1100-11FF,U+3130-318F,U+A960-A97F,U+AC00-D7FF; }
+.engine-playground { font-family:"Ferrum Korean UI",ui-sans-serif,system-ui,sans-serif; }
+.engine-playground { background:radial-gradient(ellipse at 20% 0%,#213b4a 0%,#101e2a 65%); color:#e2e9e5; padding:24px; }
+.engine-playground .demo-toolbar { max-width:1280px; align-items:center; margin-bottom:24px; }
+.engine-playground h1 { font-size:19px; letter-spacing:-.02em; }
+.playground-top-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.playground-backend { font-size:11px; color:#9fb9bd; margin-right:12px; }
+.engine-playground .demo-stage-layout { max-width:1280px; grid-template-columns:minmax(0,960px) 292px; gap:24px; align-items:start; }
+.engine-playground .demo-stage { width:100%; position:sticky; top:24px; }
+.engine-playground .demo-canvas { width:100%; max-width:none; height:auto; aspect-ratio:5/3; border:1px solid #4a707a; border-radius:10px; image-rendering:pixelated; touch-action:none; box-shadow:0 20px 60px #0005; }
+.engine-playground .demo-canvas:focus-visible { outline:2px solid #f1c981; outline-offset:4px; }
+.playground-canvas-help { color:#9eb8bd; font-size:12px; text-align:center; margin:16px 0; }
+.playground-controls { border:1px solid #3c5966; background:#1a303e; border-radius:12px; padding:20px; font-size:13px; }
+.playground-eyebrow { color:#f1c981; letter-spacing:.12em; font-size:10px; margin:0 0 12px; }
+.playground-controls h2 { font-size:20px; margin:0 0 12px; line-height:1.4; letter-spacing:-.04em; }
+.playground-controls p { line-height:1.7; color:#acc2c6; }
+.playground-controls .playground-eyebrow { color:#f1c981; }
+.playground-progress { display:block; border:1px solid #496c6c; padding:12px; border-radius:6px; background:#203e46; color:#adead9; line-height:1.65; margin:18px 0; }
+.playground-progress[data-complete="true"] { border-color:#a5d5a6; color:#d2f4b9; }
+.playground-controls section { border-top:1px solid #3a5360; margin-top:20px; padding-top:16px; }
+.playground-controls h3 { font-size:14px; margin:0 0 8px; font-weight:600; }
+.playground-controls h3 span { font-size:10px; color:#f1c981; margin-right:8px; }
+.engine-playground button { background:#263f4e; border-color:#536e7b; color:#e4ece7; min-height:36px; font-size:12px; padding:0 10px; }
+.engine-playground button:hover { background:#365969; }
+.engine-playground button:focus-visible,.playground-controls select:focus-visible,.playground-controls input:focus-visible,.playground-controls summary:focus-visible,.playground-controls a:focus-visible { outline:2px solid #f1c981; outline-offset:3px; }
+.playground-destinations { display:flex; flex-wrap:wrap; gap:6px; }
+.engine-playground .playground-accent { color:#172b38; background:#edc583; border-color:#edc583; }
+.playground-controls output[role="status"] { display:block; margin-top:10px; font-size:11px; line-height:1.6; color:#a7c3c8; }
+.playground-controls label { display:grid; gap:6px; margin:14px 0; color:#d9e7e2; }
+.playground-controls select { width:100%; min-height:36px; background:#142a37; color:#e2eae5; border:1px solid #496675; border-radius:5px; font:inherit; padding:6px 8px; }
+.playground-controls .playground-check { display:flex; align-items:center; gap:8px; }
+.playground-controls input { accent-color:#efc883; }
+.playground-controls input[type="range"] { width:100%; }
+.playground-controls details { border-top:1px solid #3a5360; margin-top:20px; padding-top:16px; }
+.playground-controls summary { cursor:pointer; color:#b9d8da; }
+.playground-controls a { display:block; color:#bce1db; padding:8px 0; }
+@media(max-width:1000px) { .engine-playground { padding:16px; }.engine-playground .demo-stage-layout { grid-template-columns:minmax(0,1fr); }.engine-playground .demo-stage { position:static; }.playground-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 20px; }.playground-controls>h2,.playground-controls>.playground-intro,.playground-controls>.playground-eyebrow,.playground-progress,.playground-controls>details { grid-column:1/-1; } }
+@media(max-width:620px) { .engine-playground .demo-toolbar { display:block; }.playground-top-actions { margin-top:14px; }.playground-controls { display:block; }.playground-canvas-help { font-size:11px; }.engine-playground h1 { font-size:17px; } }

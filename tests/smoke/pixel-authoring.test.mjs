@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { pixelMergeSource } from "./pixel-layer-merge-fixture.mjs";
 import { pixelCapacitySource } from "./pixel-capacity-fixture.mjs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -25,7 +26,7 @@ async function moduleUrl(name, imports = {}) {
 }
 const atlasUrl = await moduleUrl("placementPixelAtlas");
 const {readPixelAtlas,pixelAtlasRect}=await checkedImport(atlasUrl);
-const documentUrl = await moduleUrl("placementPixelDocument", {"./placementPixelAtlas":atlasUrl});
+const documentUrl = await moduleUrl("placementPixelDocument", {"./placementPixelAtlas":atlasUrl,"./placementPixelIndexed":await moduleUrl("placementPixelIndexed"),"./placementPixelHistory":await moduleUrl("placementPixelHistory")});
 const animationUrl=await moduleUrl("placementPixelAnimation",{
   "./placementPixelDocument":documentUrl,
   "@ferrum2d/ferrum-web/authoring":new URL("../../packages/ferrum-web/dist/authoring.js",import.meta.url).href,
@@ -103,7 +104,8 @@ test('onion ranges are bounded, farthest first, exclude self and never wrap or a
 });
 const drawingUrl = await moduleUrl("placementPixelDrawing", {"./placementPixelDocument": documentUrl});
 const maskUrl = await moduleUrl("placementPixelMask", {"./placementPixelDocument": documentUrl, "./placementPixelDrawing": drawingUrl});
-const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection", {"./placementPixelDocument": documentUrl, "./placementPixelMask": maskUrl}));
+const transformUrl = await moduleUrl("placementPixelTransform", {"./placementPixelDocument": documentUrl});
+const { createPixelSelection } = await checkedImport(await moduleUrl("placementPixelSelection", {"./placementPixelDocument": documentUrl, "./placementPixelMask": maskUrl, "./placementPixelTransform": transformUrl}));
 function selectedEditor(source = blank(4, 3)) {
   const editor = create(source); let canEdit = true;
   const selection = createPixelSelection({ editor: () => editor, canEdit: () => canEdit });
@@ -334,12 +336,14 @@ test("fill treats fully transparent RGB as one region and handles the maximum do
   assert.deepEqual(editor.sample(255, 255), blue);
   assert.equal(editor.history().undo, 1);
 });
-test("history is limited by steps and actual pixel snapshot bytes", () => {
+test("history retains small deltas and limits dense edits by actual RGBA bytes", () => {
   const small = create(blank(1, 1));
   for (let i = 0; i < 70; i++) stroke(small, 0, 0, 0, 0, i % 2 ? red : blue);
   assert.equal(small.history().undo, 64);
   const large = create(blank(256, 256));
   for (let i = 0; i < 40; i++) stroke(large, 0, 0, 0, 0, i % 2 ? red : blue);
+  assert.equal(large.history().undo, 40); assert(large.history().bytes < 1024);
+  for (let i = 0; i < 40; i++) { large.begin(); large.fill(255, 255, i % 2 ? blue : red); large.commit(); }
   assert.equal(large.history().undo, 32); assert.equal(large.history().bytes, PIXEL_LIMITS.historyBytes);
   large.undo(); assert.equal(large.history().bytes, PIXEL_LIMITS.historyBytes);
 });
@@ -1270,4 +1274,262 @@ test('normal references include inherited prefab, variant, include and legacy/nu
   const refs=normalReferences(document);assert.deepEqual([...refs],['prefab',12,'instance','include',13]);
   assert(referencesNormal(refs,'known',()=>12));assert(!referencesNormal(refs,'other',()=>14));
   const copy=structuredClone(document);visitNormalReferences(copy,(owner,key)=>{if(owner[key]===12)owner[key]='stable';});assert(normalReferences(copy).has('stable'));assert(normalReferences(document).has(12));
+});
+
+test('image layer import previews without edits and commits raw RGBA with one Undo',()=>{
+  const editor=create(blank(4,3)),before=editor.document(),selected=editor.selectedLayer(),revision=editor.revision();
+  const rect={x:1,y:1,width:2,height:1},pixels=Uint8Array.from([255,0,0,128,31,42,53,0]);
+  const preview=editor.previewImageLayer(rect,pixels);
+  assert.deepEqual(editor.document(),before);assert.equal(editor.revision(),revision);assert.equal(editor.selectedLayer(),selected);
+  const id=editor.importImageLayer('Imported',rect,pixels),after=editor.document();
+  assert.equal(after.version,2);assert.equal(editor.selectedLayer(),id);assert.equal(editor.history().undo,1);assert(editor.dirty());
+  assert.deepEqual(editor.bytes(),preview);assert.deepEqual(after.palette,before.palette);
+  const cel=editor.layerBytes(id);assert.deepEqual([...cel.slice(20,28)],[255,0,0,128,31,42,53,0]);
+  for(let i=0;i<cel.length;i++)if(i<20||i>=28)assert.equal(cel[i],0);
+  pixels.fill(0);assert.deepEqual(editor.document(),after,'import owns its pixels');
+  assert.deepEqual(read(JSON.stringify(after)),after);
+  editor.undo();assert.deepEqual(editor.document(),before);assert.equal(editor.selectedLayer(),selected);assert.equal(editor.dirty(),false);
+  editor.redo();assert.deepEqual(editor.document(),after);assert.equal(editor.selectedLayer(),id);
+});
+
+test('imported top layers affect only the chosen frame and preserve tags, timing, palette and existing cels',()=>{
+  for(const version of [3,5,6,7]) {
+    const source=pixelCapacitySource({count:3,side:2,layers:2,version,tagged:version!==3});
+    source.layers[0].locked=true;source.layers[1].visible=false;
+    const editor=create(source);editor.selectFrame(source.frames[1].id);
+    const before=editor.document(),rect={x:0,y:0,width:1,height:1},pixels=Uint8Array.from([1,2,3,180]);
+    const preview=editor.previewImageLayer(rect,pixels),id=editor.importImageLayer('Overlay',rect,pixels),after=editor.document();
+    assert.equal(after.version,version);assert.deepEqual(after.layers.slice(0,-1),before.layers);
+    assert.deepEqual(after.palette,before.palette);assert.deepEqual(after.tags,before.tags);assert.equal(after.initialTag,before.initialTag);assert.equal(after.nextClipId,before.nextClipId);
+    for(let i=0;i<after.frames.length;i++) {
+      const frame=after.frames[i];assert.equal(frame.id,before.frames[i].id);assert.equal(frame.durationMs,before.frames[i].durationMs);
+      assert.deepEqual(frame.cels.slice(0,-1),before.frames[i].cels);assert.equal(frame.cels.at(-1).layerId,id);
+      const bytes=Buffer.from(frame.cels.at(-1).rgba,'base64');
+      assert.deepEqual([...bytes.slice(0,4)],i===1?[1,2,3,180]:[0,0,0,0]);assert(bytes.slice(4).every(v=>v===0));
+    }
+    assert.deepEqual(editor.bytes(),preview);assert.deepEqual(read(JSON.stringify(after)),after);
+    assert.equal(editor.history().undo,1);editor.undo();assert.deepEqual(editor.document(),before);editor.redo();assert.deepEqual(editor.document(),after);
+  }
+});
+
+test('image layer import rejects bounds, capacity, atlas and active strokes without changing source/history',()=>{
+  const rect={x:0,y:0,width:1,height:1},pixels=Uint8Array.from([2,3,4,255]);
+  const editor=create(blank(2,2));editor.importImageLayer('Temporary',rect,pixels);editor.undo();
+  const before=editor.document(),history=editor.history(),revision=editor.revision();
+  for(const [area,data] of [[{...rect,x:-1},pixels],[{...rect,x:2},pixels],[{...rect,y:NaN},pixels],[{...rect,width:3},pixels],[{...rect,mask:new Uint8Array([1])},pixels],[rect,new Uint8Array(3)]]) {
+    assert.throws(()=>editor.previewImageLayer(area,data));assert.throws(()=>editor.importImageLayer('Bad',area,data));
+    assert.deepEqual(editor.document(),before);assert.deepEqual(editor.history(),history);assert.equal(editor.revision(),revision);
+  }
+  editor.begin();assert.throws(()=>editor.importImageLayer('Busy',rect,pixels),/stroke/);assert(editor.active());editor.cancel();
+  const capped=create(pixelCapacitySource({count:1,side:1,layers:8,tagged:false}));
+  assert.match(capped.imageLayerBlocker(),/limit/);assert.throws(()=>capped.importImageLayer('Overflow',rect,pixels),/limit/);assert.equal(capped.history().undo,0);
+  const budget=create(pixelCapacitySource({count:32,side:256,layers:1,tagged:false}));
+  assert.match(budget.imageLayerBlocker(),/budget/);assert.throws(()=>budget.importImageLayer('Overflow',rect,pixels),/budget/);assert.equal(budget.history().undo,0);
+  const fixed=atlasSource();
+  const atlas=create(fixed);assert.match(atlas.imageLayerBlocker(),/fixed/);assert.throws(()=>atlas.importImageLayer('No',rect,pixels),/fixed/);assert.deepEqual(atlas.document(),fixed);
+});
+
+test('Merge Down retains exact composite and transparent RGB, lower identity, and one Undo',()=>{
+  const base=blank(2,1),source={format:base.format,version:2,name:base.name,width:2,height:1,colorSpace:'srgb',palette:base.palette,frame:base.frame,layers:[
+    {id:'base',name:'Body',visible:true,locked:false,rgba:Buffer.from([0,0,255,255,9,8,7,0]).toString('base64')},
+    {id:'top',name:'Equipment',visible:true,locked:false,rgba:Buffer.from([255,0,0,64,1,2,3,0]).toString('base64')},
+  ]};
+  const editor=create(source),before=editor.bytes();assert.equal(editor.mergeLayerBlocker('down'),undefined);
+  editor.mergeLayers('down');const after=editor.document();
+  assert.equal(after.version,2);assert.equal(after.layers.length,1);assert.equal(after.layers[0].id,'base');assert.equal(after.layers[0].name,'Body');assert.equal(editor.selectedLayer(),'base');
+  assert.deepEqual([...editor.bytes()],[64,0,191,255,9,8,7,0]);assert.deepEqual(editor.bytes(),before);
+  assert.deepEqual(read(JSON.stringify(after)),after);assert.deepEqual(after.palette,source.palette);assert.deepEqual(after.frame,source.frame);
+  assert.equal(editor.history().undo,1);editor.undo();assert.deepEqual(editor.document(),source);assert.equal(editor.selectedLayer(),'top');assert.equal(editor.dirty(),false);
+  editor.redo();assert.deepEqual(editor.document(),after);assert.equal(editor.selectedLayer(),'base');
+});
+
+test('layer merges preserve every frame, hidden original, timing and animation tags across source versions',()=>{
+  for(const version of [3,5,6,7])for(const mode of ['down','visible']) {
+    const source=pixelMergeSource({version}),editor=create(source);editor.selectFrame('frame-1');
+    if(mode==='visible')editor.selectLayer('hidden');
+    const selected=editor.selectedLayer(),before=source.frames.map((_,i)=>pixelBytes(source,i));
+    editor.mergeLayers(mode);const after=editor.document();
+    assert.equal(after.version,version);assert.equal(after.layers.length,mode==='down'?3:2);assert.equal(editor.selectedFrame(),'frame-1');
+    assert.equal(editor.selectedLayer(),mode==='down'?'middle':'base');assert.deepEqual(after.palette,source.palette);
+    assert.deepEqual(after.tags,source.tags);assert.equal(after.initialTag,source.initialTag);assert.equal(after.nextClipId,source.nextClipId);
+    assert.deepEqual(after.layers.find(l=>l.id==='hidden'),source.layers[1]);
+    after.frames.forEach((frame,i)=>{
+      assert.equal(frame.id,source.frames[i].id);assert.equal(frame.durationMs,source.frames[i].durationMs);
+      assert.deepEqual(frame.cels.find(c=>c.layerId==='hidden'),source.frames[i].cels[1]);
+      if(mode==='down')assert.deepEqual(frame.cels[0],source.frames[i].cels[0]);
+      assert.deepEqual(pixelBytes(after,i),before[i]);
+    });
+    assert.deepEqual(read(JSON.stringify(after)),after);assert.equal(editor.history().undo,1);
+    editor.undo();assert.deepEqual(editor.document(),source);assert.equal(editor.selectedLayer(),selected);editor.redo();assert.deepEqual(editor.document(),after);
+  }
+});
+
+test('middle-pair rounding changes in a non-current frame reject atomically, while Merge Visible stays exact',()=>{
+  const source=pixelMergeSource({rounding:true}),editor=create(source),history=editor.history(),revision=editor.revision();
+  assert.equal(editor.selectedFrame(),'frame-0');assert.deepEqual([...pixelBytes(source,1).slice(0,4)],[38,87,154,255]);
+  assert.throws(()=>editor.mergeLayers('down'),/change the composite/);assert.deepEqual(editor.document(),source);assert.deepEqual(editor.history(),history);assert.equal(editor.revision(),revision);assert.equal(editor.dirty(),false);
+  editor.mergeLayers('visible');const after=editor.document();source.frames.forEach((_,i)=>assert.deepEqual(pixelBytes(after,i),pixelBytes(source,i)));
+  editor.undo();assert.deepEqual(editor.document(),source);
+});
+
+test('layer merge blockers protect locks, hidden layers, atlas, strokes and Redo state',()=>{
+  const source=pixelMergeSource(),editor=create(source);
+  editor.mergeLayers('visible');editor.undo();const history=editor.history();
+  for(const invalid of ['bad',null,undefined])assert.throws(()=>editor.mergeLayers(invalid),/mode/);
+  editor.selectLayer('base');assert.match(editor.mergeLayerBlocker('down'),/bottom/);assert.throws(()=>editor.mergeLayers('down'),/bottom/);
+  assert.deepEqual(editor.history(),history);assert.deepEqual(editor.document(),source);
+  const hidden=structuredClone(source);hidden.layers[2].visible=false;const h=create(hidden);assert.throws(()=>h.mergeLayers('down'),/Show both/);assert.deepEqual(h.document(),hidden);
+  const locked=structuredClone(source);locked.layers[2].locked=true;const l=create(locked);for(const mode of ['down','visible'])assert.throws(()=>l.mergeLayers(mode),/Unlock/);assert.deepEqual(l.document(),locked);
+  const one=create(blank(1,1));assert.throws(()=>one.mergeLayers('visible'),/at least two/);assert.equal(one.history().undo,0);
+  const atlas=create(atlasSource());for(const mode of ['down','visible'])assert.throws(()=>atlas.mergeLayers(mode),/fixed/);assert.equal(atlas.history().undo,0);
+  editor.selectLayer('top');editor.begin();editor.line(0,0,0,0,[4,3,2,1]);const pending=editor.document();
+  for(const mode of ['down','visible'])assert.throws(()=>editor.mergeLayers(mode),/stroke/);
+  assert(editor.active());assert.deepEqual(editor.document(),pending);editor.cancel();assert.deepEqual(editor.document(),source);assert.deepEqual(editor.history(),history);
+});
+
+test('merging the maximum cel budget stays within bounded history and round-trips the complete source',()=>{
+  const source=pixelCapacitySource({count:4,side:256,layers:8,version:5});source.layers.forEach(l=>l.visible=true);
+  const before=source.frames.map((_,i)=>pixelBytes(source,i)),editor=create(source);editor.mergeLayers('visible');
+  const after=editor.document();assert.equal(after.layers.length,1);assert(editor.history().bytes<=PIXEL_LIMITS.historyBytes);assert.equal(editor.history().undo,1);
+  before.forEach((pixels,i)=>assert.deepEqual(pixelBytes(after,i),pixels));assert.deepEqual(read(JSON.stringify(after)),after);
+  editor.undo();assert.deepEqual(editor.document(),source);assert.equal(editor.dirty(),false);editor.redo();assert.deepEqual(editor.document(),after);
+});
+
+test('layer opacity is a non-destructive v8 multiplier with a pure preview and one Undo',()=>{
+  const source=pixelDocumentFromRgba(2,1,'Opacity',Uint8Array.from([255,0,0,255,12,34,56,128])),editor=create(source),id=editor.selectedLayer();
+  const before=editor.document(),revision=editor.revision();
+  assert.equal(editor.setLayerOpacity(id,255),false);assert.deepEqual(editor.document(),before);assert.equal(editor.history().undo,0);
+  const preview=editor.previewLayerOpacity(id,128);assert.deepEqual([...preview],[255,0,0,128,12,34,56,64]);
+  assert.deepEqual(editor.document(),before);assert.equal(editor.revision(),revision);
+  editor.setLayerOpacity(id,128);const saved=editor.document();assert.equal(saved.version,8);assert.equal(saved.layers[0].opacity,128);
+  assert.deepEqual(editor.layerBytes(id),Uint8Array.from([255,0,0,255,12,34,56,128]));assert.deepEqual(editor.bytes(),preview);
+  assert.deepEqual(read(JSON.stringify(saved)),saved);assert.equal(editor.history().undo,1);
+  editor.undo();assert.deepEqual(editor.document(),before);assert.equal(editor.dirty(),false);editor.redo();assert.deepEqual(editor.document(),saved);
+  editor.setLayerOpacity(id,0);assert(editor.bytes().every(v=>v===0));assert.equal(editor.layerBytes(id)[3],255);
+});
+test('opacity upgrades legacy cel/tag sources without changing frame timing, tags or raw data',()=>{
+  for(const version of [3,5,6,7]) {
+    const source=pixelMergeSource({version}),editor=create(source);editor.selectFrame('frame-1');
+    editor.setLayerOpacity('top',128);const saved=editor.document();assert.equal(saved.version,8);
+    assert.deepEqual(saved.frames,source.frames);assert.deepEqual(saved.tags,source.tags);assert.deepEqual(saved.palette,source.palette);
+    assert.equal(saved.initialTag,source.initialTag);assert.equal(saved.nextClipId,source.nextClipId);assert.equal(editor.selectedFrame(),'frame-1');
+    assert.deepEqual(saved.layers.map(({opacity,...layer})=>layer),source.layers);assert.deepEqual(saved.layers.map(l=>l.opacity),[255,255,255,128]);
+    assert.deepEqual(read(JSON.stringify(saved)),saved);
+    editor.addFrame();assert.equal(editor.version,8);editor.addLayer();assert.equal(editor.version,8);
+    const added=editor.addTag('New',[editor.selectedFrame()]);assert.equal(editor.version,8);editor.updateTag(added,{...editor.tags().at(-1),direction:'reverse'});assert.equal(editor.version,8);
+    assert.deepEqual(read(JSON.stringify(editor.document())),editor.document());
+  }
+});
+test('opacity v8 PNG and animation timing include all frames and do not bake into the source',async()=>{
+  const source=pixelMergeSource(),editor=create(source);editor.setLayerOpacity('middle',100);const saved=editor.document();
+  const png=decodePng(Buffer.from(await pixelPng(saved))),atlas=pixelAtlas(saved);assert.deepEqual(png.pixels,atlas.pixels);
+  const input=pixelAnimationInput(saved);assert.equal(input.originalTiming,true);assert.deepEqual(input.tags,saved.tags);
+  assert.deepEqual(pixelEditorAnimationInput(editor),input);assert.deepEqual(editor.document(),saved);
+});
+test('merging opacity layers bakes once, keeps hidden multipliers and preserves every RGBA output',()=>{
+  for(const mode of ['down','visible']) {
+    const source=pixelMergeSource(),editor=create(source);editor.setLayerOpacity('top',128);
+    editor.setLayerLocked('hidden',false);editor.setLayerOpacity('hidden',23);editor.setLayerLocked('hidden',true);
+    const before=editor.document(),images=before.frames.map((_,i)=>pixelBytes(before,i));editor.mergeLayers(mode);const after=editor.document();
+    assert.equal(after.version,8);assert.equal(after.layers.find(l=>l.id===editor.selectedLayer()).opacity,255);
+    assert.deepEqual(after.layers.find(l=>l.id==='hidden'),before.layers[1]);
+    images.forEach((pixels,i)=>assert.deepEqual(pixelBytes(after,i),pixels));assert.deepEqual(read(JSON.stringify(after)),after);
+    editor.undo();assert.deepEqual(editor.document(),before);editor.redo();assert.deepEqual(editor.document(),after);
+  }
+});
+test('opacity rejects malformed versions, values, locked layers and atlas without mutation',()=>{
+  const editor=create(blank(2,1)),id=editor.selectedLayer();editor.setLayerOpacity(id,128);const source=editor.document();
+  for(const opacity of [-1,256,NaN,Infinity,1.5,'100',null,undefined]) {
+    assert.throws(()=>editor.setLayerOpacity(id,opacity));assert.throws(()=>read(JSON.stringify({...source,layers:source.layers.map(l=>({...l,opacity}))})));
+  }
+  const legacy=create(blank(2,1)).document();legacy.layer.opacity=100;assert.throws(()=>read(JSON.stringify(legacy)),/requires.*v8/);
+  for(const version of [3,5,6,7]){const bad=pixelMergeSource({version});bad.layers[0].opacity=100;assert.throws(()=>read(JSON.stringify(bad)),/requires.*v8/);}
+  editor.setLayerLocked(id,true);const before=editor.document();assert.throws(()=>editor.setLayerOpacity(id,30),/Unlock/);assert.deepEqual(editor.document(),before);
+  const atlas=create(atlasSource());assert.throws(()=>atlas.setLayerOpacity(atlas.selectedLayer(),10),/fixed/);
+  const fresh=create(blank(1,1));fresh.begin();assert.throws(()=>fresh.setLayerOpacity(fresh.selectedLayer(),10),/stroke/);fresh.cancel();assert.equal(fresh.history().undo,0);
+});
+test('painting, import and previews retain layer opacity and exact raw RGBA ownership',()=>{
+  const editor=create(blank(2,1));const id=editor.selectedLayer();editor.setLayerOpacity(id,128);
+  stroke(editor,0,0,0,0,[255,0,0,255]);assert.deepEqual([...editor.layerBytes(id).slice(0,4)],[255,0,0,255]);assert.deepEqual([...editor.bytes().slice(0,4)],[255,0,0,128]);
+  const before=editor.document();editor.previewPaint({region:{x:0,y:0,width:2,height:1},pixels:Uint8Array.from([1,0])},[0,255,0,255]);assert.deepEqual(editor.document(),before);
+  editor.importImageLayer('Imported',{x:1,y:0,width:1,height:1},Uint8Array.from([0,0,255,255]));assert.equal(editor.document().layers.at(-1).opacity,255);
+});
+
+test('v8 added and imported layers remain clean after reversing an opacity edit',()=>{
+  for(const importPixels of [false,true]) {
+    const editor=create(blank(2,1)),base=editor.selectedLayer();editor.setLayerOpacity(base,128);
+    const added=importPixels?editor.importImageLayer('Imported',{x:0,y:0,width:1,height:1},Uint8Array.from([0,0,255,255])):editor.addLayer('Added');
+    editor.markExported();const saved=editor.document();
+    editor.setLayerOpacity(base,64);editor.setLayerOpacity(base,128);
+    assert.deepEqual(editor.document(),saved,'raw source and all metadata have returned to the saved state');
+    assert.equal(editor.dirty(),false,'a default opacity must not become a phantom unsaved metadata edit');
+    assert.equal(editor.layers().find(layer=>layer.id===added).opacity,255);
+  }
+});
+
+const blendVectors=JSON.parse(await readFile(new URL('./pixel-blend-vectors.json',import.meta.url),'utf8'));
+function blendSource(vector=blendVectors[0],mode='multiply') {
+  return {format:'ferrum2d.pixel-document',version:9,name:'Blend',width:1,height:1,colorSpace:'srgb',palette:[],
+    layers:[{id:'base',name:'Base',visible:true,locked:false,opacity:255,blendMode:'normal'},{id:'top',name:'Top',visible:true,locked:false,opacity:vector.opacity,blendMode:mode}],
+    frames:[{id:'f',durationMs:130,cels:[{layerId:'base',rgba:Buffer.from(vector.bottom).toString('base64')},{layerId:'top',rgba:Buffer.from(vector.top).toString('base64')}]}]};
+}
+test('v9 blends match independent fixed reference vectors including transparent coverage and opacity',async()=>{
+  for(const vector of blendVectors)for(const mode of ['normal','multiply','screen']) {
+    const source=blendSource(vector,mode),editor=create(source);assert.deepEqual(read(JSON.stringify(source)),source);
+    assert.deepEqual([...pixelBytes(source)],vector.expected[mode]);assert.deepEqual([...editor.bytes()],vector.expected[mode]);
+    assert.deepEqual([...decodePng(Buffer.from(await pixelPng(source))).pixels],vector.expected[mode]);
+    assert.deepEqual([...editor.layerBytes('top')],vector.top,'compositing does not bake the source');
+    if(mode==='normal'){const legacy={...source,version:8,layers:source.layers.map(({blendMode,...layer})=>layer)};assert.deepEqual(pixelBytes(source),pixelBytes(legacy));}
+  }
+});
+test('combined layer appearance is a pure preview and one undo step, with legacy no-op and v9 persistence',()=>{
+  const source=blank(2,2),editor=create(source),id=editor.selectedLayer();
+  assert.equal(editor.setLayerAppearance(id,{opacity:255,blendMode:'normal'}),false);assert.deepEqual(editor.document(),source);
+  const before={source:editor.document(),history:editor.history(),revision:editor.revision(),dirty:editor.dirty()};
+  editor.previewLayerAppearance(id,{opacity:128,blendMode:'screen'});
+  assert.deepEqual({source:editor.document(),history:editor.history(),revision:editor.revision(),dirty:editor.dirty()},before);
+  editor.setLayerAppearance(id,{opacity:128,blendMode:'screen'});const saved=editor.document();assert.equal(saved.version,9);assert.equal(editor.history().undo,1);
+  editor.undo();assert.deepEqual(editor.document(),source);editor.redo();assert.deepEqual(editor.document(),saved);
+  editor.setLayerOpacity(id,64);assert.equal(editor.document().version,9);assert.equal(editor.document().layers[0].blendMode,'screen');
+  editor.addFrame();assert.equal(editor.document().version,9);
+  editor.addTag('idle',editor.frames().map(frame=>frame.id));assert.equal(editor.document().version,9);assert.deepEqual(read(JSON.stringify(editor.document())),editor.document());
+});
+test('v9 new and imported layer defaults do not leave phantom dirty after inverse edits',()=>{
+  for(const kind of ['add','import']) {
+    const editor=create(blendSource()),id=kind==='add'?editor.addLayer():editor.importImageLayer('Imported',{x:0,y:0,width:1,height:1},Uint8Array.from([1,2,3,255]));
+    editor.markExported();const before=editor.document();assert.equal(before.layers.at(-1).blendMode,'normal');assert.equal(before.layers.at(-1).opacity,255);
+    editor.setLayerBlendMode(id,'screen');editor.setLayerBlendMode(id,'normal');assert.equal(editor.dirty(),false);assert.deepEqual(editor.document(),before);
+  }
+});
+test('v9 blend fields reject missing/unknown/legacy values and locked or active edits atomically',()=>{
+  const source=blendSource();for(const mode of [undefined,null,'overlay','NORMAL',0,{},[]]) {
+    const bad=structuredClone(source);bad.layers[1].blendMode=mode;assert.throws(()=>read(JSON.stringify(bad)),/blend mode/);
+    const editor=create(source);assert.throws(()=>editor.setLayerBlendMode('top',mode));assert.deepEqual(editor.document(),source);
+  }
+  for(const version of [3,6,8])assert.throws(()=>read(JSON.stringify({...source,version})),/opacity|blending/);
+  const legacy=blank(1,1);legacy.layer.blendMode='normal';assert.throws(()=>read(JSON.stringify(legacy)),/blending/);
+  const editor=create(source);editor.setLayerLocked('top',true);const locked=editor.document();assert.throws(()=>editor.setLayerBlendMode('top','screen'),/Unlock/);assert.deepEqual(editor.document(),locked);
+  editor.selectLayer('base');editor.begin();assert.throws(()=>editor.setLayerBlendMode('base','screen'),/stroke/);editor.cancel();
+  const fixed=create(atlasSource());assert.throws(()=>fixed.setLayerBlendMode(fixed.selectedLayer(),'screen'),/fixed/);
+});
+test('v9 merge bakes once across frames, preserves hidden metadata and rejects backdrop-dependent middle pairs',()=>{
+  const source=blendSource();source.layers.push({id:'hidden',name:'Hidden',visible:false,locked:true,opacity:75,blendMode:'screen'});source.frames[0].cels.push({layerId:'hidden',rgba:Buffer.from([1,2,3,4]).toString('base64')});
+  source.frames.push({...structuredClone(source.frames[0]),id:'f2',durationMs:270});
+  const editor=create(source),before=source.frames.map((_,i)=>pixelBytes(source,i));editor.selectLayer('top');editor.mergeLayers('down');
+  const merged=editor.document();assert.equal(merged.layers[0].blendMode,'normal');assert.equal(merged.layers[0].opacity,255);assert.deepEqual(merged.layers[1],source.layers[2]);
+  for(let i=0;i<2;i++)assert.deepEqual(pixelBytes(merged,i),before[i]);editor.undo();assert.deepEqual(editor.document(),source);
+  const middle=blendSource();middle.layers.push({id:'upper',name:'Upper',visible:true,locked:false,opacity:255,blendMode:'normal'});middle.frames[0].cels.push({layerId:'upper',rgba:Buffer.from([4,5,6,128]).toString('base64')});
+  const pair=create(middle);pair.selectLayer('upper');assert.throws(()=>pair.mergeLayers('down'),/change the composite/);assert.deepEqual(pair.document(),middle);assert.equal(pair.history().undo,0);
+  pair.mergeLayers('visible');assert.deepEqual(pair.bytes(),pixelBytes(middle));assert.equal(pair.document().layers[0].blendMode,'normal');
+});
+test('v9 tagged and untagged expanded sheets preserve timing and all modes through mutation',()=>{
+  for(const tagged of [false,true]) {
+    const source=pixelCapacitySource({side:2,count:64,layers:2,version:7});source.version=9;
+    source.layers=source.layers.map((l,i)=>({...l,opacity:255,blendMode:i?'screen':'multiply'}));
+    if(!tagged)for(const key of ['tags','initialTag','nextClipId'])delete source[key];
+    const editor=create(source);assert.deepEqual(read(JSON.stringify(source)),source);
+    editor.setLayerOpacity(source.layers[0].id,120);assert.equal(editor.document().version,9);
+    assert.equal(pixelFrames(editor.document()).length,64);assert.deepEqual(pixelAnimationInput(editor.document()).originalTiming,true);
+    assert.equal(pixelAnimation(pixelAnimationInput(editor.document())).set.clips.length,tagged?source.tags.length:1);
+  }
 });

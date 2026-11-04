@@ -2107,6 +2107,8 @@ export function installPlacementSpatialWorkspace(options: {
   window.addEventListener(
     "keydown",
     (event) => {
+      // Modal authoring tools own their keys before pending scene placement.
+      if (event.target instanceof Element && event.target.closest("dialog[open]")) return;
       // A disclosure owns Escape before placement/candidate cancellation.
       if (
         event.code === "Escape" &&

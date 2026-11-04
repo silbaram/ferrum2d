@@ -1,3 +1,6 @@
+import {smokePixelBlend} from "./pixel-blend-smoke.mjs";
+import {smokePixelIndexed} from "./pixel-indexed-smoke.mjs";
+import {smokePixelOpacity} from "./pixel-opacity-smoke.mjs";
 import { smokePixelNormals, smokePixelNormalFocus, reuseSavedPixelNormal } from "./pixel-normals-smoke.mjs";
 import { smokePixelTags } from "./pixel-tags-smoke.mjs";
 import assert from 'node:assert/strict';
@@ -48,6 +51,26 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
     assert.deepEqual(JSON.parse(await readFile(path,'utf8')),expected,'native reopen must preserve the retained outline and multi-frame transform bytes');
   }
   const root=join(project,'public/assets/.ferrum-pixels'),catalogPath=join(root,'catalog.json');
+  if(process.argv.includes('--pixel-indexed-only')) {
+    const indexed=await smokePixelIndexed(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
+    assert.deepEqual(JSON.parse(await readFile(join(root,indexed.id+'.json'),'utf8')),indexed.source);
+    await restart();page=getPage();await showPlacementBottom(page,'assets');await editAsset(indexed.id,'frame-0');await workspace().waitFor({state:'visible'});await assertReopenedSource(indexed.source);
+    const restoredGame=await freshGame();assert.equal(restoredGame.directionPlayback.clips[0].frames,2);await close();
+    return {mode,focus:'pixel-indexed',indexed,restoredGame,realRustStorageAndProtocol:true,restoredSourceExact:true,freshRustAndBrowserSessions:true,released:{urls:0,textures:0}};
+  }
+  if(process.argv.includes('--pixel-opacity-only')||process.argv.includes('--pixel-blend-only')) {
+    const helper=process.argv.includes('--pixel-blend-only')?smokePixelBlend:smokePixelOpacity;
+    const opacity=await helper(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
+    assert.deepEqual(JSON.parse(await readFile(join(root,opacity.id+'.json'),'utf8')),opacity.source);
+    assert.deepEqual(JSON.parse(await readFile(join(root,opacity.tagged.id+'.json'),'utf8')),opacity.tagged.source);
+    await restart();page=getPage();await showPlacementBottom(page,'assets');
+    await editAsset(opacity.tagged.id,'frame-1');await workspace().waitFor({state:'visible'});await assertReopenedSource(opacity.tagged.source);
+    await editAsset(opacity.id,'frame-1');await workspace().waitFor({state:'visible'});
+    await assertReopenedSource(opacity.source);
+    const restoredGame=await freshGame();assert.equal(restoredGame.directionPlayback.clips[0].frames,2);
+    await close();
+    return {mode,focus:helper===smokePixelBlend?'pixel-blend':'pixel-opacity',opacity,restoredGame,realRustStorageAndProtocol:true,restoredSourceExact:true,freshRustAndBrowserSessions:true,released:{urls:0,textures:0}};
+  }
   if(process.argv.includes('--pixel-capacity-only')) {
     const capacity=await smokePixelCapacity(page,mode,run,async()=>{await save();assert.match(await status(),/^Project saved/);return freshGame();});
     assert.deepEqual(JSON.parse(await readFile(join(root,capacity.id+'.json'),'utf8')),capacity.source);

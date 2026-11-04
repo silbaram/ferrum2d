@@ -171,6 +171,7 @@ export function resolveSceneAuthoringDocument(
       const instance=byId.get(id);if (!instance) throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"must reference the applied fragment");
       const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:allowComponentTemplates,path:`${path}.spatial.billboards.${id}`});
       if (c.mode!=="inline") throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"requires inline components");
+      if (c.sprite.nineSlice) throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"9-slice supports flat 2D sprites, not spatial billboards");
       if (spatial.actor?.instanceId===id && (c.body?.type!=="kinematic" || !c.body.heightSpan || c.collider.type!=="aabb" || c.collider.isTrigger || !c.collider.enabled)) throw sceneCompositionDiagnosticError(`${path}.spatial.actor`,"requires a kinematic heightSpan body and enabled non-trigger AABB");
     }
     for (const [id,model] of Object.entries(spatial.models ?? {})) {
@@ -179,6 +180,7 @@ export function resolveSceneAuthoringDocument(
       const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:false,path:`${path}.spatial.models.${id}`});
       if(c.mode!=="inline" || c.body?.type==="dynamic")
         throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"requires inline static or kinematic model components");
+      if (c.sprite.nineSlice) throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"9-slice supports flat 2D sprites, not spatial models");
       // These are authored transforms, not a second runtime pose. Reject overflow before activation.
       if(!Number.isFinite(Math.fround(instance.x)) || !Number.isFinite(Math.fround(instance.y)) || !Number.isFinite(Math.fround(model.scale ?? 1)))
         throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"invalid model transform");

@@ -95,13 +95,22 @@ export async function smokePixelLayers(page,mode,run) {
   assert.equal(await workspace.getAttribute('data-pixel-dirty'),'false','selection is not source data');
   await workspace.locator('[data-pixel-layer-select="'+top+'"]').click();
   await checkPng([64,0,191,255],'sprite');
+  const staleSelect=await baseSelect.elementHandle(),staleLock=await workspace.locator('[data-pixel-layer-locked="'+top+'"]').elementHandle();
+  const closedAdd=await layerAction('add').elementHandle();
   await page.locator('[data-placement-close-document="ferrum:pixel-document"]').click();
   await workspace.waitFor({state:'hidden'});
   assert.equal(await workspace.locator('[data-pixel-layer-select]').count(),0,'closed source releases panel rows and editor references');
+  await closedAdd.evaluate(button=>button.onclick?.(new MouseEvent('click')));await closedAdd.dispose();
+  await name.evaluate(input=>input.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',bubbles:true})));
   await page.locator('[data-pixel-file]').setInputFiles(join(run,mode+'-layers-source.pixel.json'));
   await workspace.waitFor({state:'visible'});
   assert.equal(await workspace.locator('[data-pixel-layer-select]').count(),2);
   assert.equal(await name.inputValue(),'Armor');
+  await staleSelect.evaluate(button=>button.click());
+  await staleLock.evaluate(control=>{control.checked=true;control.dispatchEvent(new Event('change',{bubbles:true}));});
+  await staleSelect.dispose();await staleLock.dispose();
+  assert.equal(await workspace.locator('[data-pixel-layer-select][aria-pressed=true]').getAttribute('data-pixel-layer-select'),top,'detached rows cannot select a layer in the reopened document');
+  assert.deepEqual(await source('stale-rows'),final,'detached controls cannot lock a layer in the reopened document');
   async function checkLayerLayout() {
     const bounds=await workspace.evaluate(e=>{
       const pane=e.querySelector('.placement-pixel-layers'),parent=e.getBoundingClientRect(),r=pane.getBoundingClientRect();

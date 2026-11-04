@@ -4,15 +4,15 @@ import { pixelAtlasLayout, pixelFrames, type createPixelEditor, type PixelDocume
 export interface PixelAnimationInput { width: number; height: number; frames: PixelFrameInfo[]; tags?: PixelFrameTag[]; initialTag?: string; originalTiming?: boolean; }
 export function pixelAnimationInput(source: PixelDocument): PixelAnimationInput {
   return {width:source.width,height:source.height,frames:pixelFrames(source),
-    ...((source.version===5||source.version===6||source.version===7)&&source.tags?{tags:structuredClone(source.tags),initialTag:source.initialTag}:{}),
-    ...((source.version===6||source.version===7)?{originalTiming:true}:{})};
+    ...((source.version===5||source.version===6||source.version===7||source.version===8||(source.version===9||source.version===10))&&source.tags?{tags:structuredClone(source.tags),initialTag:source.initialTag}:{}),
+    ...((source.version===6||source.version===7||source.version===8||(source.version===9||source.version===10))?{originalTiming:true}:{})};
 }
 /** Match source exports without serializing cel pixels during UI validation. */
 export function pixelEditorAnimationInput(editor: ReturnType<typeof createPixelEditor>): PixelAnimationInput {
   const tags=editor.tags();
   return {width:editor.width,height:editor.height,frames:editor.frames(),
     ...(tags.length?{tags,initialTag:editor.initialTag()}:{}),
-    ...((editor.version===6||editor.version===7)?{originalTiming:true}:{})};
+    ...((editor.version===6||editor.version===7||editor.version===8||(editor.version===9||editor.version===10))?{originalTiming:true}:{})};
 }
 /** Keep old valid clip identities; expanded or nonuniform sheets use native source-frame timing. */
 export function pixelAnimation(input: PixelAnimationInput) {

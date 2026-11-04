@@ -1,10 +1,15 @@
 import { pixelRegionContains, type createPixelEditor, type PixelBlock, type PixelRegion } from "./placementPixelDocument";
 import { clipPixelArea, copyPixelArea, combinePixelAreas, colorPixelArea, polygonPixelArea, type PixelSelectionOperation } from "./placementPixelMask";
+import { transformPixelBlock, type PixelTransform } from "./placementPixelTransform";
 
 type Editor = ReturnType<typeof createPixelEditor>;
 type Floating = { rect: PixelRegion; block: PixelBlock; clear?: PixelRegion; previous?: PixelRegion };
 const copyBlock = (block: PixelBlock): PixelBlock => ({ ...block, pixels: block.pixels.slice(), ...(block.mask ? { mask: block.mask.slice() } : {}) });
 export function intersectPixelRegion(a: PixelRegion, b: PixelRegion): PixelRegion | undefined { return clipPixelArea(a, b); }
+function clippedPixels(rect: PixelRegion, domain: PixelRegion) {
+  if (rect.mask) return rect.mask.some((selected, i) => !!selected && !pixelRegionContains(domain, rect.x + i % rect.width, rect.y + Math.floor(i / rect.width)));
+  return rect.x < domain.x || rect.y < domain.y || rect.x + rect.width > domain.x + domain.width || rect.y + rect.height > domain.y + domain.height;
+}
 /** UI selection and bounded internal clipboard. Only confirmed pixel operations mutate the source. */
 export function createPixelSelection(options: { editor(): Editor; canEdit(): boolean }) {
   let editor: Editor | undefined, stamp = "", selected: PixelRegion | undefined;
@@ -62,6 +67,35 @@ export function createPixelSelection(options: { editor(): Editor; canEdit(): boo
     pending() { sync(); return floating !== undefined; },
     hasClipboard() { sync(); return clipboard !== undefined; },
     editable, beginMove,
+    beginFreeTransform() {
+      const current = sync();
+      if (!editable() || current.active() || (!selected && !floating)) throw Error("Select editable pixels before transforming");
+      const rect = copyPixelArea(floating?.rect ?? selected)!;
+      const source = floating ? copyBlock(floating.block) : current.readRegion(rect);
+      const clear = copyPixelArea(floating ? floating.clear : selected), version = sequence;
+      let closed = false;
+      const valid = () => !closed && sync() === current && sequence === version && options.canEdit() && current.canPaint() && !current.active();
+      function plan(settings: PixelTransform) {
+        if (!valid()) throw Error("Pixel transform context changed");
+        const block = transformPixelBlock(source, settings);
+        const next: PixelRegion = { x: rect.x + Math.floor((rect.width - block.width) / 2), y: rect.y + Math.floor((rect.height - block.height) / 2),
+          width: block.width, height: block.height, ...(block.mask ? { mask: block.mask } : {}) };
+        return { block, rect: next, clipped: clippedPixels(next, current.region()) };
+      }
+      return {
+        valid, cancel() { closed = true; },
+        preview(settings: PixelTransform) {
+          const value = plan(settings);
+          return { width: value.block.width, height: value.block.height, clipped: value.clipped, canvasWidth: current.width, canvasHeight: current.height,
+            pixels: current.previewRegion(value.rect, value.block.pixels, clear) };
+        },
+        apply(settings: PixelTransform) {
+          const value = plan(settings), changed = current.editRegion(value.rect, value.block.pixels, clear);
+          closed = true; floating = undefined; preview = undefined; selected = clipPixelArea(value.rect, current.region()); stamp = signature(current); sequence++;
+          return changed;
+        },
+      };
+    },
     moveBy(dx: number, dy: number) {
       if (![dx, dy].every(Number.isSafeInteger)) throw Error("Invalid pixel selection offset");
       const current = area(); if (!current) return false;
@@ -93,8 +127,7 @@ export function createPixelSelection(options: { editor(): Editor; canEdit(): boo
     },
     clipped() {
       const current = sync(); if (!floating) return false;
-      const visible = clipPixelArea(floating.rect, current.region());
-      return !visible || visible.width !== floating.rect.width || visible.height !== floating.rect.height;
+      return clippedPixels(floating.rect, current.region());
     },
     preview() {
       const current = sync(); if (!floating) return undefined;

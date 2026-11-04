@@ -1,6 +1,21 @@
-# Ferrum2D Starter Runtime
+# Ferrum2D Engine Playground
 
-`createFerrumRuntime(...)`로 Ferrum2D 브라우저 runtime을 시작하는 starter 예제다. 별도 texture, sound, Game Spec 없이 기본 Rust engine state와 placeholder texture만 사용하되, 첫 화면에서 runtime profile 전환과 snapshot/replay report를 확인할 수 있다.
+엔진 기능을 직접 바꾸며 체험하는 작은 발전소 게임이다. `pnpm dev:starter-runtime`으로 실행하고 터미널의 로컬 주소를 연다. 로봇으로 전지 3개를 모은 뒤에도 실험을 계속할 수 있다.
+
+| 체험 | 조작 / 엔진 동작 |
+| --- | --- |
+| 이동·장애물·수집 | 바닥 클릭, WASD/방향키, 전지 목적지 버튼. Rust 경로 탐색과 이동 애니메이션, trigger 기반 수집 변수 |
+| 물리 | 공 던지기, 고무/점토 재질 전환. 고정 시간 간격 rigid body·CCD·반사·감속 |
+| 조명 | 포인터로 작업등 이동, 원본 색상/조명 전환, 스프라이트 노멀맵 비교 |
+| 카메라 | 전체 보기, 로봇 추적, 공 실험장 보기, 확대/축소 |
+| 화면 효과 | 기본, bloom/vignette, CRT 비교 |
+| 씬 수명 | 일시정지·계속하기·다시 시작. 화면 설정은 유지하고 게임 진행을 초기화 |
+| 렌더러 | WebGL2 또는 WebGPU 선택. 미지원 환경은 WebGL2 fallback |
+| 9-slice | 실험장과 수조 패널의 테두리를 유지하며 크기를 늘리는 실제 runtime 렌더링 |
+
+씬은 [public/playground/scene.json](public/playground/scene.json), 결정론적 원본 에셋 생성기는 [build-engine-playground.mjs](../../scripts/assets/build-engine-playground.mjs)다. `node scripts/assets/build-engine-playground.mjs`로 에셋을 재생성한다. 바닥은 타일 모양의 sprite instance이며 별도 TileMap API 예제는 아니다. TS는 입력/UI와 화면 설정을, Rust는 이동·수집·물리를 소유한다.
+
+기존 사격 프로필·snapshot/replay 예제는 **`?mode=starter`** 또는 ‘더 살펴보기’ 링크로 연다. 기존 `profile`, `reportSmoke`, `profilerSmoke` query도 그대로 지원한다. 아래 기술/콘솔 API 설명은 이 기존 모드에 해당한다.
 
 ## 확인 기술
 
@@ -46,12 +61,16 @@ DebugOverlay를 켜려면 `?debug=true`를 사용한다.
 ## 검증
 
 ```bash
+pnpm --filter @ferrum2d/starter-runtime lint
 pnpm --filter @ferrum2d/starter-runtime build
+pnpm smoke:engine-playground
 pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:starter-runtime`은 WebGL2 placeholder pixel readback, profile panel 렌더링, 실제 DOM profile/capture 버튼 클릭, profile별 projectile visual texture, snapshot/replay report hook을 함께 확인한다.
+`pnpm smoke:engine-playground`는 새 기본 화면을 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.
+
+`pnpm smoke:starter-runtime`은 `?mode=starter`에서 WebGL2 placeholder pixel readback, profile panel 렌더링, 실제 DOM profile/capture 버튼 클릭, profile별 projectile visual texture, snapshot/replay report hook을 함께 확인한다.
 
 ## Pages 노출
 

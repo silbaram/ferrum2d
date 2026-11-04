@@ -1,3 +1,4 @@
+import { resolveSpriteNineSlice, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
 import { resolveDataSceneGroundShadow, type DataSceneGroundShadowSpec, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import { resolveDataSceneSpriteAnimationSet, type DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
@@ -52,6 +53,7 @@ export interface DataSceneSpriteAnimationSpec {
 export interface DataSceneSpriteComponentSpec {
   texture: DataSceneTextureRefSpec;
   normalTexture?: DataSceneTextureRefSpec;
+  nineSlice?: SpriteNineSliceSpec;
   width: number;
   height: number;
   frame?: DataSceneSpriteFrameSpec;
@@ -76,6 +78,7 @@ export interface DataSceneSpriteVisualSpec {
   shadow?: DataSceneGroundShadowSpec;
   texture?: DataSceneTextureRefSpec;
   normalTexture?: DataSceneTextureRefSpec;
+  nineSlice?: SpriteNineSliceSpec;
   asset?: DataSceneTextureRefSpec;
   width: number;
   height: number;
@@ -200,6 +203,7 @@ export interface ResolvedDataSceneSpriteAnimation {
 export interface ResolvedDataSceneSpriteComponent {
   texture: ResolvedDataSceneTextureRef;
   normalTexture?: ResolvedDataSceneTextureRef;
+  nineSlice?: SpriteNineSliceSpec;
   width: number;
   height: number;
   frame: ResolvedDataSceneSpriteFrame;
@@ -230,6 +234,7 @@ export type ResolvedDataSceneObjectVisual =
       shadow?: ResolvedDataSceneGroundShadow;
       texture: ResolvedDataSceneTextureRef;
       normalTexture?: ResolvedDataSceneTextureRef;
+      nineSlice?: SpriteNineSliceSpec;
       width: number;
       height: number;
       frame: ResolvedDataSceneSpriteFrame;
@@ -421,7 +426,10 @@ function resolveObjectVisual(value: unknown, path: string): ResolvedDataSceneObj
 }
 
 function withGroundShadow<T extends ResolvedDataSceneObjectVisual>(visual: T, shadow: unknown, path: string): T & { shadow?: ResolvedDataSceneGroundShadow } {
-  return shadow === undefined ? visual : { ...visual, shadow: resolveDataSceneGroundShadow(shadow, visual.width, visual.height, `${path}.shadow`) };
+  if (shadow === undefined) return visual;
+  const resolved = resolveDataSceneGroundShadow(shadow, visual.width, visual.height, `${path}.shadow`);
+  if (visual.kind === "sprite" && visual.nineSlice && resolved.shape === "alpha") throw sceneCompositionDiagnosticError(`${path}.shadow`, "9-slice supports ellipse/box ground shadows, not alpha silhouettes");
+  return {...visual, shadow:resolved};
 }
 
 function resolvePrimitiveVisual(
@@ -475,6 +483,7 @@ function resolveSpriteVisual(
   const sprite = resolveSpriteComponent({
     texture: textureValue,
     ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
+    ...(visual.nineSlice === undefined ? {} : {nineSlice:visual.nineSlice}),
     width: visual.width,
     height: visual.height,
     ...(visual.frame === undefined ? {} : { frame: visual.frame }),
@@ -506,6 +515,7 @@ function resolveSpriteVisual(
     kind: "sprite",
     texture: sprite.texture,
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
+    ...(sprite.nineSlice === undefined ? {} : {nineSlice:sprite.nineSlice}),
     width: sprite.width,
     height: sprite.height,
     frame: sprite.frame,
@@ -527,6 +537,7 @@ function runtimeSpriteForVisual(visual: ResolvedDataSceneObjectVisual): Resolved
     return {
       texture: visual.texture,
       ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
+      ...(visual.nineSlice === undefined ? {} : {nineSlice:visual.nineSlice}),
       width: visual.width,
       height: visual.height,
       frame: visual.frame,
@@ -553,6 +564,7 @@ function spriteVisualFromResolvedSprite(
     kind: "sprite",
     texture: sprite.texture,
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
+    ...(sprite.nineSlice === undefined ? {} : {nineSlice:sprite.nineSlice}),
     width: sprite.width,
     height: sprite.height,
     frame: sprite.frame,
@@ -573,6 +585,7 @@ function resolveSpriteComponent(value: unknown, path: string): ResolvedDataScene
   return {
     texture: resolveTextureRef(requiredProperty(sprite, "texture", path), `${path}.texture`),
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:resolveTextureRef(sprite.normalTexture,`${path}.normalTexture`)}),
+    ...(sprite.nineSlice === undefined ? {} : {nineSlice:resolveSpriteNineSlice(sprite.nineSlice, `${path}.nineSlice`)}),
     width: positiveNumber(requiredProperty(sprite, "width", path), `${path}.width`),
     height: positiveNumber(requiredProperty(sprite, "height", path), `${path}.height`),
     frame: resolveSpriteFrame(sprite.frame, `${path}.frame`),

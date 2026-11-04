@@ -220,6 +220,8 @@ export interface FerrumSceneApi {
   dataSceneGroundShadowStats(): DataSceneGroundShadowStats;
   configureDataSceneSpriteAnimation(entity: GameplayEntityHandle, clips: DataSceneSpriteAnimationSetSpec): boolean;
   /** Cold atomic batch. Omitted normalTextureId detaches; no per-frame entity calls. */
+  /** Atomically configure flat-sprite borders, or detach with nineSlice omitted. */
+  configureSpriteNineSlices(updates: readonly import("../spriteNineSlice.js").SpriteNineSliceUpdate[]): boolean;
   configureSpriteNormalMaterials(updates: readonly { entity: GameplayEntityHandle; normalTextureId?: number }[]): boolean;
   /** Opt-in idle/walk and facing policy for the primary actor. false preserves playback and detaches. */
   configureDataSceneMovementAnimation(spec: DataSceneMovementAnimationSpec | false): boolean;
