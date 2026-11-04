@@ -1,6 +1,6 @@
 # 개발 계획과 개선 후보
 
-기준일: 2026-11-04
+기준일: 2026-11-05
 
 `docs/planning/`은 진행 중인 작업, 미착수 후보, 제품 결정이 필요한 항목만 관리한다.
 완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 도트 제작 편의성·호환 범위 | 실제 제작에서 반복되는 편집·가져오기 비용을 줄인다. | [제작 후보](game-development-convenience-review.md#도트-제작-후보)의 레이어 blend·추가 변형·측정 기반 차분 Undo부터 필요성을 확인한다. [상용 수준 분석](pixel-art-commercial-readiness-plan.md)의 9-slice 렌더링·직접 바이너리 읽기·자동 재임포트는 개별 설계 후보이며, 초기 분석의 미지원 설명은 현재 구현 상태를 뜻하지 않는다. 현재 도트 제작·WebGPU 후처리 지원은 공식 사용법을 따른다. |
+| 1 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
 
 AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.
 
@@ -33,8 +33,7 @@ AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenienc
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
-| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 도트 생성/변형·외부 맵·reload의 실제 필요와 저장 경계 확정 |
-| [도트 게임 상용 수준 개선 계획](pixel-art-commercial-readiness-plan.md) | 초기 분석 포함 · 남은 범위 개별 판단 | 미구현 여부는 [내장 도트 제작](../engine/data-scene-authoring.md#에디터-내장-도트-제작), [런타임 표시·효과](../engine/public-api/core.md), [소스 기반 쇼케이스](../engine/showcase-hub.md)로 확인한다. 실기기 검증은 별도 후보로 관리하고 완료한 기능을 다시 개발 목록에 올리지 않는다. |
+| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |
 | [배포 후속 검증 후보](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 검증 |
 

@@ -1,6 +1,6 @@
 # 배포 후속 검증 후보
 
-기준일: 2026-10-29
+기준일: 2026-11-05
 상태: 실제 native 설치·GUI·서명 증거와 추가 host 필요성 검토. 원격 공개 상태를 뜻하지 않는다.
 
 현재 운영 계약은 [정적 웹 배포](../development/operations/demo-deploy.md),
@@ -20,6 +20,7 @@ OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/
 
 | 후보 | 완료 조건 |
 | --- | --- |
+| 개발 기능의 릴리스 반영 | 릴리스 작업을 요청받으면 개발 소스와 실제 공개 tag/tarball의 포함 범위를 대조하고 CHANGELOG·버전·설치 안내를 동기화. 로컬 구현·테스트 성공을 이미 배포된 기능으로 표기하지 않음 |
 | Release artifact의 실제 GUI | 대상 OS에 실제 설치한 앱에서 project/file picker, save·재열기, asset protocol·reload, handoff, interactive canvas를 확인하고 artifact hash·환경·조작·캡처 보존 |
 | 실제 앱 업데이트 | 이전 설치 앱과 새 signed 자료를 준비한 환경에서 확인·설치·재시작, 변조/서명 불일치 거절과 실패 상태를 검증. 프로젝트 SDK 업데이트와 구분 |
 | 플랫폼 서명·notarization | Windows/macOS 대상과 키 관리·서명 검증·배포 정책을 별도 결정. updater 서명으로 대체하지 않음 |

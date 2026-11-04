@@ -22,7 +22,7 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| Starter Runtime | 최소 runtime boot, UI overlay, debug/profiler path | `createFerrumRuntime(...)`, public root/core API, starter runtime smoke |
+| Engine Playground | 로봇 이동·수집, rigid body 재질, 노멀 조명, 카메라·후처리 체험. 기존 starter는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, 9-slice, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |

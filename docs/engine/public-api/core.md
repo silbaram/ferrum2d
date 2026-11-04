@@ -1273,3 +1273,35 @@ WebGL2/WebGPU는 기존 2D additive point/sun 조명에 Lambert 응답을 적용
 `RendererStats.normalDrawCalls`는 추가 normal MRT draw 수이며 비활성일 때0 또는 생략된다.
 전체 draw/texture 통계와 GPU resource 통계에도 비용을 포함한다. 활성 target 비용은 physical pixel당8 bytes다.
 가림/색 공간/반투명 한계는 [2D 재질 계약](../data-scene-authoring.md#일반-2d-노멀-재질과-조명)을 따른다.
+
+
+## 2D 9-slice 렌더링 (개발 소스)
+
+`SpriteNineSliceSpec`와 `SpriteNineSliceUpdate`는 `/core`에서 type import한다.
+`engine.configureSpriteNineSlices([{entity, nineSlice}])`는 원본 frame의 테두리를 유지하며
+sprite의 width/height를 채운다. `nineSlice`를 생략한 update는 일반 늘이기로 되돌린다.
+한 번에 최대65,536개의 고유 entity handle을 받으며 stale handle·중복·잘못된 값은 batch 전체를 거절해 `false`를 반환한다.
+
+```ts
+engine.configureSpriteNineSlices([{
+  entity: panel,
+  nineSlice: {
+    sourceWidth: 16, sourceHeight: 12,
+    left: 2, right: 4, top: 3, bottom: 1,
+    borderScale: 1, flipX: false, flipY: false,
+  },
+}]);
+```
+
+source 크기는 선택된 UV frame의 픽셀 크기(1~16384)이며 테두리는0이상 정수다.
+left+right와 top+bottom은 각각 sourceWidth/sourceHeight보다 작아야 한다.
+borderScale은 양수 f32(최대65536)로 테두리의 월드 크기를 결정한다.
+타깃이 테두리 합보다 작으면 양쪽을 같은 비율로 축소하고 가운데를 접는다.
+각 cell은 stretch이며 타일 반복은 하지 않는다. flip은 비대칭 테두리와 UV를 함께 뒤집고
+애니메이션 playback의 flip과 합성한다. clip의 모든 frame은 같은 원본 pixel 크기/테두리 레이아웃을 사용해야 한다.
+
+Rust가 단일 entity에서 최대9개의 기존 sprite command를 만든다. collider·선택 영역은 전체 object 크기를 유지하고,
+origin·rotation·layer·sort·tint·ground projection·normal material과 snapshot/actor prototype을 보존한다.
+flat2D sprite용 기능이다. spatial billboard/model, alpha silhouette shadow 조합은 거절하며 ellipse/box shadow는 지원한다.
+별도 per-frame JS/Wasm 호출이나 새 render command ABI는 없다.
+Data Scene의 `components.visual.nineSlice` 및 호환용 `components.sprite.nineSlice`에도 같은 계약을 사용한다.

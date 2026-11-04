@@ -1,6 +1,6 @@
 # HD-2D 후속 기능·검증 후보
 
-기준일: 2026-10-30
+기준일: 2026-11-05
 상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기다.
 기능 개발은 대상 장면과 완료 조건을, 환경 검증은 기기·실행 조건을 정한 뒤 시작한다.
 
@@ -18,13 +18,14 @@ Blender tree/pine 후보는 삼각형 수를 줄였지만 FPS 개선이 확인�
 | LOD 전환 외형 | 거리 경계 왕복·다양한 카메라에서 pivot/외곽선·cutout·그림자·전환 튐 캡처. 외형과 실제 성능이 모두 수용될 때 콘텐츠 기본 적용 판단 |
 | 실제 마을 제출 비용 | 원본 draw 수는 재질 인접 병합으로 줄지 않았다. 효과 켬/끔의 GPU 시간·제출 비용을 대조한 후 별도 최적화 선택 |
 
-### 평면 2D 아틀라스 실기기 검증
+### 평면 2D 픽셀 표현·아틀라스 실기기 검증
 
-PX-03 PNG extrusion 구현과 로컬 browser 검증은 완료했다. 현재 계약과 명령은
+PNG extrusion의 현재 계약과 검증 명령은
 [PNG 가장자리 보호](../engine/public-api/labs.md#png-아틀라스의-가장자리-보호)와
 [Smoke Check](../development/quality/smoke-check.md#png-아틀라스-가장자리-보호-gate)를 따른다.
 아래는 환경 검증 대기이며 기능 미구현 목록이 아니다.
 
+- 실제 기기의 해상도/DPR·정수 배율·카메라 이동에서 sprite/tile/text/particle·shake의 픽셀 정합과 letterbox·pointer 좌표를 확인한다. 시뮬레이션/replay 불변과 GPU target 비용을 함께 기록한다.
 - 실제 모바일 GPU 또는 fp16 mediump 환경에서 2048px 이상 atlas의 소수 크기·위치·회전·UV flip을 측정한다.
 - 경계 오차와 내부 텍셀 선택 오차를 구분한다. extrusion이 내부 텍셀 오차도 해결한다고 가정하지 않는다.
 - 기본 fragment 정밀도 변경이 필요하다면 같은 장면의 `webgl2.gpuTiming` draw 비용·color/normal 정합·기존 아트 변화를 비교한다.
