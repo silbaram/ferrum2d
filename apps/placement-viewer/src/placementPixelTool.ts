@@ -11,6 +11,7 @@ import { createPixelDrawingControls } from "./placementPixelDrawingControls";
 import { createPixelPaletteControls } from "./placementPixelPaletteControls";
 import { createPixelInkControls } from "./placementPixelInkControls";
 import { createPixelCanvasControls } from "./placementPixelCanvasControls";
+import { createPixelImportDialog } from "./placementPixelImportDialog";
 import { createPixelSizePreview } from "./placementPixelSizePreview";
 import { createPixelEffectsControls } from "./placementPixelEffectsControls";
 import { createPixelImageBrushControls } from "./placementPixelImageBrushControls";
@@ -78,6 +79,7 @@ export function createPlacementPixelTool(options: {
   const launchActions = document.createElement("div"); launchActions.className = "placement-pixel-actions";
   const create = button("New Pixel", "new", launchActions);
   const open = button("Open Pixel / PNG", "open", launchActions);
+  const importImage = button("Import Image", "import-image", launchActions);
   element.append(heading, launchActions);
   const hint = document.createElement("p");
   setUiText(hint, "Draw sprites here, then register or apply them.");
@@ -85,6 +87,8 @@ export function createPlacementPixelTool(options: {
   const file = document.createElement("input"); file.type = "file"; file.hidden = true;
   file.accept = ".json,.png,application/json,image/png"; file.dataset.pixelFile = "true";
   element.append(file);
+  const importFile = document.createElement("input"); importFile.type = "file"; importFile.hidden = true;
+  importFile.accept = ".png,image/png"; importFile.dataset.pixelImportFile = "true"; element.append(importFile);
   const header = document.createElement("div"); header.className = "placement-pixel-header";
   const title = document.createElement("strong"), info = document.createElement("output");
   const atlasSelect = document.createElement("select"); atlasSelect.dataset.pixelAtlasFrame = "true";
@@ -92,6 +96,7 @@ export function createPlacementPixelTool(options: {
   const atlasHint = document.createElement("span"); setUiText(atlasHint, "Fixed Atlas · Other frames and UVs are preserved");
   atlasHint.hidden = true; header.append(title, info, atlasSelect, atlasHint);
   const actions = document.createElement("div"); actions.className = "placement-pixel-actions";
+  const importAgain = button("Import Image", "import-image", actions);
   const undo = button("Undo", "undo", actions), redo = button("Redo", "redo", actions);
   const source = button("Export Source", "export-source", actions);
   const png = button("Export PNG", "export-png", actions);
@@ -152,6 +157,24 @@ export function createPlacementPixelTool(options: {
   workspace.append(header, actions, toolOptions, body, footer); body.append(tools, area);
   let editor: Editor | undefined, owner = "", active = false, disposed = false, busy = false;
   const selection = createPixelSelection({ editor: () => editor!, canEdit: () => !busy && !(framePanel?.isPlaying() ?? false) && options.context().canEdit });
+  const importDisabled = () => disposed || busy || !options.context().canEdit || options.context().mode === "game" || (!!editor && selection.pending());
+  const imageImport = createPixelImportDialog({
+    key: () => JSON.stringify([options.context().key, options.context().project]),
+    disabled: importDisabled, palette: () => editor?.palette ?? [],
+    async apply(image, name, current) {
+      const previous = editor, token = serial;
+      const value = pixelDocumentFromRgba(image.width, image.height, shortPixelName(name.replace(/\.png$/i, "")), image.pixels);
+      value.palette = image.palette;
+      if (!await confirmDiscard() || !current() || disposed || token !== serial || previous !== editor) return false;
+      replace(value); return true;
+    },
+  });
+  const openImport = (chosen: File) => {
+    if (importDisabled()) return;
+    invalidate(); framePanel?.stop(false); surface.cancel(); imageImport.open(chosen);
+  };
+  importImage.onclick = importAgain.onclick = () => { if (!importDisabled()) importFile.click(); };
+  importFile.onchange = () => { const chosen = importFile.files?.[0]; importFile.value = ""; if (chosen) openImport(chosen); };
   const selectionControls = createPixelSelectionControls({ selection, perform: editSelection, report,
     configure() { surface.cancel(); tool = "select"; render(); surface.refresh(); surface.element.focus(); } });
   toolOptions.append(selectionControls.element);
@@ -304,6 +327,7 @@ export function createPlacementPixelTool(options: {
     controller?.abort(); serial++;
     paletteControls.cancel();
     canvasControls.cancel();
+    imageImport.cancel();
     effectsControls.cancel();
     batchControls.cancel();
     sizePreview?.suspend();
@@ -396,6 +420,7 @@ export function createPlacementPixelTool(options: {
     if (editor && owner === options.context().key) recovery.observe(editor, scope, dirty() || recoveryHold);
     for (const controls of recoveryControls) controls.sync(busy || !options.context().canEdit);
     create.disabled = open.disabled = busy || !options.context().canEdit;
+    importImage.disabled = importAgain.disabled = importDisabled(); imageImport.sync();
     setUiText(launchStatus, message);
     if (!editor || !active) return;
     const toolNames:Record<PixelTool,string>={select:"Select (M)",pencil:"Pencil (B)",eraser:"Eraser (E)",fill:"Fill (G)",eyedropper:"Eyedropper (I)",pan:"Pan (H)",line:"Line (L)",rectangle:"Rectangle (R)",ellipse:"Ellipse (O)",dither:"Dither (D)",gradient:"Gradient (J)"};
@@ -570,11 +595,13 @@ export function createPlacementPixelTool(options: {
     void (async () => {
       let value: PixelDocument;
       if (/\.png$/i.test(chosen.name)) {
-        if (chosen.size > 4 * 1024 * 1024) throw Error("PNG exceeds the pixel editor limit");
+        if (chosen.size > 4 * 1024 * 1024) { openImport(chosen); return; }
         const header = new Uint8Array(await chosen.slice(0, 24).arrayBuffer());
         if (header.length !== 24 || [137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82].some((n, i) => n !== header[i]))
           throw Error("Choose a valid PNG");
         const view = new DataView(header.buffer), width = view.getUint32(16), height = view.getUint32(20);
+        if (token !== serial || disposed || key !== options.context().key) return;
+        if (width > PIXEL_LIMITS.side || height > PIXEL_LIMITS.side) { openImport(chosen); return; }
         newPixelDocument(width, height);
         const bitmap = await createImageBitmap(chosen), canvas = document.createElement("canvas");
         try {
@@ -794,7 +821,7 @@ export function createPlacementPixelTool(options: {
   registerUiRoot(element); registerUiRoot(workspace);
   function destroy() {
     if (disposed) return;
-    disposed = true; active = false; invalidate(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
+    disposed = true; active = false; invalidate(); imageImport.destroy(); documentActions.destroy(); framePanel?.destroy(); selectionControls.destroy(); paletteControls.destroy(); canvasControls.destroy(); effectsControls.destroy(); batchControls.destroy(); imageBrushControls.destroy(); sizePreview?.destroy(); surface.destroy(); selection.reset(); recovery.destroy(); normals?.destroy(); assets.destroy();
     document.removeEventListener("visibilitychange", flushRecovery);
     for (const controls of recoveryControls) controls.destroy();
     for (const url of downloads) URL.revokeObjectURL(url);

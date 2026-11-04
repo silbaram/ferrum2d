@@ -1,4 +1,5 @@
 import {smokePixelAnimationTools} from "./pixel-animation-tools-smoke.mjs";
+import {smokePixelImport} from "./pixel-import-smoke.mjs";
 import {inspectPlacementAsset} from "./placement-panel-navigation.mjs";
 import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import {smokePixelBatch} from './pixel-batch-smoke.mjs';
@@ -23,6 +24,7 @@ import { smokePixelFrames, smokePixelFrameCard } from "./pixel-frames-smoke.mjs"
 import { smokePixelCapacity } from "./pixel-capacity-smoke.mjs";
 
 export async function smokePixelAuthoring({ page, mode, active, native, snapshot, undo, redo, run, origin, getSaves, setResume }) {
+  if (process.argv.includes("--pixel-import-only")) return {pixelImport:await smokePixelImport(page,mode,run),focus:"pixel-import"};
   if (process.argv.includes("--pixel-capacity-only") || process.argv.includes("--pixel-animation-tools-only")) {
     const check=process.argv.includes("--pixel-animation-tools-only")?smokePixelAnimationTools:smokePixelCapacity;
     const capacity=await check(page,mode,run,async bundle=>{
@@ -58,6 +60,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   const pixelInk = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelInk(page,mode,run);
   const pixelPalette = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelPalette(page,mode,run);
   const pixelCanvasPreview = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelCanvasPreview(page,mode,run);
+  const pixelImport = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelImport(page,mode,run);
   const pixelNext = process.argv.includes("--pixel-selection-only") ? undefined : await smokePixelNextTools(page,mode,run);
   await showPlacementBottom(page, "assets");
   await clickPlacementToolAction(page.locator('[data-pixel-action="new"]'));
@@ -396,7 +399,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
     }finally{await game.close();setResume(exported);}
   });
   return {
-    frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelInk, pixelPalette, pixelCanvasPreview, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
+    frameCard, tags, atlas, pixelNormals, pixelSelection, pixelRecovery, pixelDrawing, pixelInk, pixelPalette, pixelCanvasPreview, pixelImport, pixelNext, createdWithoutExternalTool: true, continuousStroke: true, cancellation: true,
     independentUndo: true, sceneUndoRedo: true, sourceReopen: true, locale: true,
     eyedropper: true, eraserUndo: true, panZoom: true, invalidSourcePreserved: true, editAssetPng: true, compact: true,
     releaseEndpoint: true, blurCancelsStroke: true, blurResetsPan: true,
