@@ -1927,6 +1927,13 @@ runtime render 실패 시 WebGL2/WebGPU 부분 timing 폐기도 검사한다.
 
 ### 에디터 내장 도트 제작
 
+`pnpm smoke:pixel-import`는 외부 PNG 가져오기 변환 단위 검사와 2D/HD-2D 실제 브라우저 검증을 실행한다.
+순수 변환은 crop 좌표·픽셀 중심 최근접·분수 영역 평균·알파 가중·자동 RGB 개수 상한·팔레트 매핑·결정성·원본 불변과 최대4MP 입력을 확인한다.
+브라우저에서는 큰 PNG의 자동 변환 진입·드래그/수치 crop·실제 결과 픽셀·PNG/원본 재열기·잘못된 입력/디코드 실패·취소·늦은 bitmap 해제·미저장 확인·한국어 좁은 화면을 검증한다.
+좁은 화면에서 Esc가 가져오기 창만 닫고 에셋 패널은 유지하는지, 대기 중인 수치 미리보기가 자르기 드래그 중 적용 버튼을 활성화하지 않는지도 확인한다.
+HD-2D에서 객체 배치 대기 중에도 첫 Esc는 가져오기 창을 닫고, 배치 대기 상태는 유지해야 한다.
+변환 검사는 `test:pixel-authoring`, 브라우저 검사는 전체 `smoke:pixel-authoring`에도 포함한다. AI 서비스 호출이나 실제 생성 품질 검증은 이 gate에 포함하지 않는다.
+
 `pnpm test:pixel-authoring`은 자체 편집 원본의 검증·roundtrip, 정수 선 보간·clipping, 연결 영역 채우기,
 transaction 취소·Undo/Redo 분기·64단계/16 MiB 상한, PNG의 반투명/투명 RGBA 수치 보존을 검사한다.
 v1→v2 전환·독립 레이어 픽셀·정수 alpha 합성, 순서/표시/잠금/삭제와 픽셀의 통합 Undo,

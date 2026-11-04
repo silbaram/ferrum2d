@@ -8,7 +8,7 @@
 
 에디터의 현재 사용법은 [Scene Authoring](../engine/data-scene-authoring.md),
 회귀 검증은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
-아래 5개 후보 문서는 미착수 설계, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
+아래 후보 문서는 미착수 설계, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
 완료된 도트 개발계획과 리뷰 결과는 새 미완료 작업으로 등록하지 않는다.
 
 도트 제작의 현재 계약은
@@ -21,8 +21,9 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | AI 도트 생성 설계 | 직접 그리기 전에 초안 이미지를 준비하는 시간을 줄인다. | [도트 제작 후보](game-development-convenience-review.md#도트-제작-후보): 입력·결과 선택·인증/비용·출처·기존 원본 등록 경계 결정. 구현 착수 전 설계 후보 |
-| 2 | 도트 제작 편의성·호환 범위 | 실제 제작에서 반복되는 편집·가져오기 비용을 줄인다. | [제작 후보](game-development-convenience-review.md#도트-제작-후보)의 레이어 합성·OS 클립보드·측정 기반 차분 Undo부터 필요성을 확인한다. [상용 수준 분석](pixel-art-commercial-readiness-plan.md)의 9-slice 렌더링·직접 바이너리 읽기·자동 재임포트는 개별 설계 후보이며, 초기 분석의 미지원 설명은 현재 구현 상태를 뜻하지 않는다. 현재 도트 제작·WebGPU 후처리 지원은 공식 사용법을 따른다. |
+| 1 | 도트 제작 편의성·호환 범위 | 실제 제작에서 반복되는 편집·가져오기 비용을 줄인다. | [제작 후보](game-development-convenience-review.md#도트-제작-후보)의 레이어 합성·OS 클립보드·측정 기반 차분 Undo부터 필요성을 확인한다. [상용 수준 분석](pixel-art-commercial-readiness-plan.md)의 9-slice 렌더링·직접 바이너리 읽기·자동 재임포트는 개별 설계 후보이며, 초기 분석의 미지원 설명은 현재 구현 상태를 뜻하지 않는다. 현재 도트 제작·WebGPU 후처리 지원은 공식 사용법을 따른다. |
+
+AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.
 
 [실물 GPU·장시간·LOD 외형](feature-candidates.md#실게임-품질-후속-검증)과 [실제 설치·GUI·서명](deployment-roadmap.md#남은-검증-후보)은 후속 검증이다.
 필요한 기기·설치 자료·실행 조건을 먼저 확보하며, 기능 구현을 다시 시작하는 항목으로 취급하지 않는다.
