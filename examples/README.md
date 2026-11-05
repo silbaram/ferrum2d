@@ -14,7 +14,7 @@ pnpm dev:starter-runtime
 
 | 기능 | id | 직접 바꾸는 항목 |
 | --- | --- | --- |
-| 스프라이트 애니메이션 | `animation` | 속도·정방향/역방향/왕복·좌우 반전 |
+| 스프라이트 애니메이션 | `animation` | 시트 재생·이동/대기·방향·프레임 발소리·단발 완료 |
 | 길 찾기와 장애물 | `navigation` | 목적지·키보드/포인터 이동 |
 | 물리 재질과 반사 | `physics` | 고무/점토·같은 초기 힘으로 던지기 |
 | 노멀맵과 점광원 | `lighting` | 광원 위치·조명/원본·노멀 적용 |
@@ -35,12 +35,17 @@ pnpm dev:starter-runtime
 | 컷신과 동작 감소 | `cutscene` | 카메라·자막·효과음, 건너뛰기·동작 감소 |
 | 에셋 로딩과 캐시 | `asset-loading` | 실제 fetch·메모리 캐시, 취소·실패·재시도 |
 | 레벨 스트리밍 | `streaming` | 구역 로드·전용 텍스처 해제·공통 자산 유지 |
+| HD-2D 공간 이동 | `hd2d-movement` | 경사로·층 연결·승강/수평 이동 발판·탑승과 하차 |
+| AI 추적과 전투 | `ai-combat` | 장애물 우회·근접/원거리 공격·체력과 투사체 관찰 |
+| 부모·자식 연결 | `attachments` | 수레 위치/회전·등불/상자 연결·해제 후 위치 비교 |
+| HD-2D 조명·그림자·안개 | `hd2d-environment` | 광원 위치·조명·그림자·거리 안개 전후 비교 |
+| 지형 파괴와 충돌 갱신 | `destructible-terrain` | 클릭으로 지형 깎기·공 낙하·충돌 청크 갱신·복구 |
 
 ## 기존 예제에서 더 살펴보기
 
 | 디렉터리 | 주제 | 실행 |
 | --- | --- | --- |
-| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 21종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
+| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 26종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
 | [physics-sandbox](physics-sandbox/README.md) | rigid body, collider, contact/sensor, joint, CCD, platformer physics, scene query 7개 시나리오 | `pnpm dev:physics-sandbox` |
 | [platformer](platformer/README.md) | 점프·착지·단방향 발판·이동 발판. 기능 선택 후 해당 위치로 이동 | `pnpm dev:platformer` |
 | [breakout](breakout/README.md) | 반사·충돌 이벤트·파티클. 관찰 항목과 충돌 영역 표시 | `pnpm dev:breakout` |

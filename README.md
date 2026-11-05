@@ -44,7 +44,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
 | HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
-| 기능별 실험실 · 독립 실험 21종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
+| 기능별 실험실 · 독립 실험 26종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
 | Breakout | `pnpm dev:breakout` | [examples/breakout](examples/breakout/) |
 | Platformer | `pnpm dev:platformer` | [examples/platformer](examples/platformer/) |

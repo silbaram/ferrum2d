@@ -750,6 +750,32 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 
 Physics authoring 세부 계약은 [Physics Spec](../physics-spec.md)을 기준으로 한다.
 
+```ts
+engine.configureFixedTimestep({ enabled: true, stepSeconds: 1 / 60, interpolate: true });
+engine.configurePhysicsContactImpacts({ minApproachSpeed: 10 });
+// update 뒤에 읽는다. resting contact cache와 달리 접근 속도를 만족한 충격만 포함한다.
+for (const hit of engine.queryPhysicsContactImpacts()) {
+  // hit.pointX/Y, normalX/Y, normalImpulse, tangentImpulse로 효과음/VFX를 선택한다.
+}
+const overflow = engine.getPhysicsContactImpactsDropped();
+```
+
+표시 보간은 기본 false이며 dynamic/kinematic rigid body에만 적용한다. 물리 한 step의 표시 지연이
+있고 `getPhysicsEntity`/physics query/replay는 현재 simulation 좌표를 유지한다.
+충격 수집은 기본 off, 최소 접근 속도 기본값 1이다. query는 비파괴이며 update 사이 최대 4096개를
+순서대로 제공한다. 여러 manual step도 다음 update/재설정 전까지 누적된다. 초과분은 dropped 수로 확인한다.
+
+`spawnPhysicsJoint({ type: "spring", frequencyHz: 2, dampingRatio: 1, ... })`로 Hz/감쇠비 튜닝을
+선택할 수 있다. 범위와 legacy 기본값은 Physics Spec을 따른다.
+
+`capturePhysicsSolverState(handles)`/`restorePhysicsSolverState(buffer)`는 accumulator 8 floats/body와
+contact handles/6 floats/contact를 소유하는 cold-path bulk buffer를 사용한다. 복원은 전체 검증 후
+적용하고 선택하지 않은 body의 cache는 유지한다. 일반 저장은 logical id와 v1/v2 검증을 갖춘
+`capturePhysicsWorldSnapshot`/`restorePhysicsWorldSnapshot`을 우선한다.
+`withPhysicsWorldTransaction`은 동기 physics world 변경의 rollback 경계이며 runtime 설정·임의 플랫폼
+side effect나 비동기 작업을 transaction 안에 넣지 않는다.
+
+
 `spawnPhysicsJoint(...)`의 `distance`/`rope`/`spring` 옵션은 `localAnchorAX/Y`,
 `localAnchorBX/Y`를 선택값으로 받을 수 있다. 생략하면 각 body center(`0, 0`)에
 연결되며, off-center anchor는 Rust solver에서 회전 관성까지 반영된다.
@@ -1305,3 +1331,70 @@ origin·rotation·layer·sort·tint·ground projection·normal material과 snaps
 flat2D sprite용 기능이다. spatial billboard/model, alpha silhouette shadow 조합은 거절하며 ellipse/box shadow는 지원한다.
 별도 per-frame JS/Wasm 호출이나 새 render command ABI는 없다.
 Data Scene의 `components.visual.nineSlice` 및 호환용 `components.sprite.nineSlice`에도 같은 계약을 사용한다.
+
+### 물리 제작 보조 API
+
+- `setPhysicsBodyFixedRotation(handle, boolean)`: 회전 고정, 해제 시 기존 관성 복구.
+- `setPhysicsJointLoadLimits(handle, {breakForce?, breakTorque?})`: 8종 관절의
+  하중 제한 교체. 생략한 값은 무제한, 0은 작은 양의 하중에도 파손.
+- `configurePhysicsDiagnostics(true)` / `queryPhysicsDiagnostics()`:
+  마지막 solver 호출의 CCD 상한 원인(`sweepBudget`, `dependencyDepth`)과
+  관절 handle·force·torque·기하 오차를 소유 배열로 조회한다. 기본 꺼짐.
+  CCD와 관절 표본은 각각 최대 256개이며 `dropped`를 제공한다.
+  관절 오차는 길이/anchor 간격/축 이탈, gear·weld는 각도다. `errorUnit`을
+  확인해야 하며 prismatic/revolute의 모든 limit 오차를 대변하지 않는다.
+  활성 상태에서는 `FrameState.physicsDiagnostics`와 DebugOverlay에도 연결된다.
+  기존 Rust update ms와 CCD 작업량으로 비용을 함께 확인한다.
+- `drainPhysicsJointBreaks()`: 최대 256개 누적 파손 이벤트와 overflow 수를
+  **소비**한다. 각 이벤트는 관절 type/index/generation, `force | torque | geometry`
+  사유와 하중을 담는다. 명시적 삭제는 파손 이벤트가 아니다.
+
+```ts
+engine.configurePhysicsDiagnostics(true);
+const { events, dropped } = engine.drainPhysicsJointBreaks();
+const results = engine.batchCastBodies([
+  { kind: "ray", originX: 0, originY: 0, directionX: 1, directionY: 0,
+    maxDistance: 500, maxHits: 8 },
+  { kind: "circle", x: 10, y: 10, radius: 8, directionX: 0, directionY: 1,
+    maxDistance: 200, heightSpan: { floorId: 0, elevation: 0, height: 16 } },
+]);
+```
+
+`batchCastBodies`는 최대 128개 요청을 **단일 native 호출**로 처리한다.
+`ray`, `segment`, `aabb`, `circle`, `orientedBox`, `capsule`, `convexPolygon`을
+지원하며 단건 body cast와 동일한 최근접 순서를 사용한다. 각 요청의
+`maxHits`는 1~32(기본 32), polygon은 3~16개 꼭짓점이다. 결과는
+`requestIndex`, `hits`, `totalHits`, `truncated`를 포함한다. 다음 호출이나
+Wasm memory grow 후에도 유효한 복사본이다. 유효하지 않은 입력은 전체 요청을
+거부한다. 쿼리 연산 자체를 줄이는 기능이 아니라 JS/Wasm 호출 비용을 줄이는
+기능이며 tile cast는 이 batch에 포함하지 않는다.
+
+### 접촉 충격에 따른 소리·입자
+
+```ts
+engine.setParticlePreset(23, {
+  texture: "spark", burstCount: 8, lifetime: [0.1, 0.3], speed: [20, 60],
+});
+engine.configurePhysicsImpactFeedback([
+  { categoryBits: 2, minImpulse: 10, cooldownSeconds: 0.15,
+    soundId: 7, particlePresetId: 23, volume: 0.4 },
+]);
+```
+
+category는 물리 collision category 비트다. 금속·목재 등의 그룹에 대응시켜
+재질별 profile을 지정하며, 두 body category의 합집합에서 **처음으로 조건을
+만족하는 profile 하나**를 사용한다. `PhysicsMaterial`의 마찰/반발 수치를
+자동으로 재질 이름으로 추론하지 않는다. 실제 접근 속도 > 1 world-unit/s인
+충격과 `minImpulse`를 모두 통과해야 한다. body generation을 포함한 pair
+cooldown이 접점·substep 중복을 제거한다. 최대 32 profiles, cooldown 0~60초,
+동시 pair 1024개, frame당 32회로 제한한다. 수동 물리 step도 다음
+engine update까지 같은 frame 예산을 공유한다.
+`physicsImpactFeedbackStats()`에서 발생·누락·활성 cooldown 수를 확인한다.
+
+판정과 입자 발생은 Rust, 소리 재생은 기존 AssetHost/AudioManager 경로다.
+particle preset은 설정 전에 등록하고 sound는 플랫폼에 로드해야 한다.
+브라우저 오디오는 사용자 입력으로 unlock해야 한다. `[]`로 끄며, pause 중에는
+cooldown 시간이 진행되지 않는다. 같은 게임 reset은 profile을 유지하고,
+`useDataScene()`으로 씬을 교체하면 profile을 재설정한다. 효과 cooldown과
+진단은 disposable 상태로 checkpoint 복원 시 비우며 물리 상태 hash에 넣지 않는다.
+이 경로의 입자는 기존 2D particle renderer를 사용한다.

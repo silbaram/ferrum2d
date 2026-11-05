@@ -1,7 +1,7 @@
 # Ferrum2D 엔진 기능 실험실
 
 기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
-상단에서 화면·움직임·게임 구성·플랫폼 분류로 21개 실험을 선택한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
+상단에서 화면·움직임·게임 구성·플랫폼·HD-2D 분류로 26개 실험을 선택한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
 각 화면은 조작, 관찰할 결과, 현재 엔진 수치와 구현 API를 함께 표시한다.
 
 [전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
@@ -9,12 +9,22 @@
 게임 구성 예제는 [src/featureGameplay.ts](src/featureGameplay.ts)와 [src/featureContent.ts](src/featureContent.ts),
 후속 실험은 `featureProjectiles.ts`, `featureCutscene.ts`, `featureLoading.ts`, `featureStreaming.ts`이며,
 기능 목록은 [featureCatalog.json](../shared/featureCatalog.json)에 있다.
-`node scripts/assets/build-feature-examples.mjs`는 21개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+`node scripts/assets/build-feature-examples.mjs`는 26개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+HD-2D 4종만 다시 만들 때는 `node scripts/assets/build-hd2d-feature-scenes.mjs`를 쓴다.
+이 생성기는 기존 마을의 수레·등불 GLB를 복사하고 원본 SHA-256을 authoring JSON에 기록한다.
 텍스처는 기존 자체 제작 `public/playground/` 에셋을 재사용한다.
 
 `실험 초기화`는 설정·씬·일시정지를 기본값으로 돌린다. 렌더러 선택과 주제 이동은 페이지를 다시 연다.
 WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 실제 native 상태와 renderer stats다.
-타일맵/입력 실험은 기존 Shooter 타일맵·플레이어 컨트롤러를 사용한다. 사격은 차단하고 적 생성 간격은 24시간으로 설정해 실험을 분리했다. 다른 Data Scene 실험의 바닥은 sprite instance다.
+타일맵/입력 실험은 기존 Shooter 타일맵·플레이어 컨트롤러를 사용한다. 사격은 차단하고 적 생성 간격은 24시간으로 설정해 실험을 분리했다. 2D Data Scene 실험의 바닥은 sprite instance이며 HD-2D 실험은 공간 지형을 사용한다.
+
+## 애니메이션과 지형 실험
+
+- **캐릭터 애니메이션**: `?feature=animation`. 기존 시트 재생의 속도/순서/반전을 유지한다. ‘이동과 대기’에서는 바닥 클릭·방향 버튼·WASD/방향키로 목적지를 정하면 Rust가 이동과 idle/walk 클립을 전환한다. 기존 로봇 시트를 재사용하므로 방향 표현은 좌우 반전이다. 프레임 2·4 진입은 화면 표식과 선택적인 합성 발소리로 표시한다. ‘한 번 재생과 완료’는 마지막 프레임을 유지하고 완료 이벤트를 한 번만 센다. 음원은 사용자 버튼으로 켜며 pause/reset/페이지 이탈은 소리와 대기 중 로딩을 중단한다.
+- **지형 파괴와 충돌 갱신**: `?feature=destructible-terrain`. 128×48 마스크를 4배 월드 단위로 표시한다. 클릭은 원형으로 지형을 깎고, ‘중앙 구멍’은 지면을 관통해 공이 아래 기반암까지 떨어지게 한다. 텍스처 dirty 영역과 충돌 청크를 함께 갱신한다. 편집 전후 중력은 300으로 유지하며 한 번의 갱신은 최대 8청크다. pause 중 편집은 차단하고 Reset은 지형·공을 함께 복구한다. 작은 클릭 단위 편집 예제이며 대규모 연속 파괴 성능 보장은 아니다.
+
+구현은 [featureAnimation.ts](src/featureAnimation.ts)와 [featureTerrain.ts](src/featureTerrain.ts)에 있다.
+지형 마스크 편집/청크 작성은 기존 TS helper를 사용하고 공의 낙하·충돌과 애니메이션 시간·전환은 Rust가 계산한다.
 
 ## 타일·효과·입력 실험
 
@@ -39,6 +49,20 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 - **에셋 로딩**: `?feature=asset-loading`. 이미지 2개·씬 JSON 1개를 실제 `preloadAssetManifest`로 읽는다. 두 번째 실행은 이 실험의 **세션 메모리 캐시**를 사용하며 fetch 호출/캐시 적중을 표시한다. IndexedDB나 브라우저 HTTP 캐시 성능 측정은 아니다. 각 요청 앞 300ms 지연과 실패 버튼의 네트워크 오류는 실험용 주입이다. 취소 시 이미 완료된 캐시는 유지하고, 캐시 비우기·실험 초기화·새로고침은 비운다. 씬 일시정지와 네트워크 작업 수명은 별개다.
 - **스트리밍**: `?feature=streaming`. 3개 구역을 오가며 실제 텍스처 업로드/해제를 확인한다. `LevelChunkStreamer`가 필요한 구역을 계산하고 `AssetLoader`가 자원을 관리한다. 각 구역은 전용 텍스처 1개와 공유 바닥을 사용한다. 로딩 중 구역 변경/초기화는 이전 작업을 취소하고 완료된 최신 구역만 씬에 적용한다. 로딩 실패 시 기존 구역과 공유 텍스처를 유지하며 같은 구역 버튼으로 재시도할 수 있다. 표시된 구역의 sprite들을 재적용하는 작은 예제로, 대규모 연속 월드·물리 청크 접합의 성능 보장을 뜻하지 않는다.
 
+## HD-2D 공간·게임플레이 실험
+
+- **공간 이동**: `?feature=hd2d-movement`. 경사로에서 목적지 이동과 층·높이 변화를 확인한다. 승강 발판과 수평 발판으로 전환해 탑승 시 캐릭터가 함께 이동하는지 비교한다. WASD/방향키와 가상 조이스틱도 지원한다.
+- **AI 추적과 전투**: `?feature=ai-combat`. 추적은 중앙 장애물 우회, 근접은 접근 후 피해, 원거리는 발사체와 적중을 보여준다. 원거리 모드는 벽에 가리지 않는 발사선에서 시작한다. 체력·발사·적중 수치를 관찰하며 캐릭터가 사망해도 초기화할 수 있다.
+- **부모·자식 연결**: `?feature=attachments`. 수레의 위치·회전 슬라이더로 등불과 상자의 상대 위치를 확인한다. 연결을 해제하면 자식은 마지막 위치에 머물고, 다시 연결하면 저장된 상대 위치로 돌아온다. 정적인 모델 연결 예제이며 스켈레탈 애니메이션은 아니다.
+
+- **HD-2D 조명·그림자·안개**: `?feature=hd2d-environment`. 마름모 광원 표식을 좌우로 옮기고 조명·그림자·거리 안개를 개별 비교한다. 공간 지형과 빌보드가 실제 그림자를 만들고 받는다. 이 장면은 정적이므로 설정·크기 변경 때만 GPU에 다시 제출한다. 일시정지는 시뮬레이션을 멈추며 비교 설정은 계속 바꿀 수 있다.
+
+공통 화면은 [featureSpatialLab.ts](src/featureSpatialLab.ts), 모드별 작성 설정은 [featureSpatialScenes.ts](src/featureSpatialScenes.ts)에 있다.
+이동·전투·발판·연결 계산은 Rust가 수행한다. WebGPU 모델은 GPU 사전 로드를 마친 뒤 씬을 적용한다.
+JSON 다운로드는 현재 모드의 작성 설정이다. 부모·자식 연결과 조명·그림자·안개 실험은
+슬라이더로 바꾼 정적 배치도 반영하며, 연결 해제된 자식은 마지막 월드 위치를 보존한다.
+진행 중인 캐릭터 위치나 이동 발판의 phase를 담는 게임 저장 파일은 아니다.
+
 ## 이전 통합 게임 (`?mode=playground`)
 
 여러 기능을 연결한 작은 발전소 게임은 `?mode=playground` 또는 ‘통합 예제도 보기’로 연다. 로봇으로 전지 3개를 모은 뒤에도 실험을 계속할 수 있다.
@@ -46,7 +70,7 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 | 체험 | 조작 / 엔진 동작 |
 | --- | --- |
 | 이동·장애물·수집 | 바닥 클릭, WASD/방향키, 전지 목적지 버튼. Rust 경로 탐색과 이동 애니메이션, trigger 기반 수집 변수 |
-| 물리 | 공 던지기, 고무/점토 재질 전환. 고정 시간 간격 rigid body·CCD·반사·감속 |
+| 물리 | 공 던지기, 고무/점토, 30/60/120 Hz와 표시 보간 비교. rigid body·CCD·반사·감속 및 실제 충격 횟수/충격량 |
 | 조명 | 포인터로 작업등 이동, 원본 색상/조명 전환, 스프라이트 노멀맵 비교 |
 | 카메라 | 전체 보기, 로봇 추적, 공 실험장 보기, 확대/축소 |
 | 화면 효과 | 기본, bloom/vignette, CRT 비교 |
@@ -110,8 +134,10 @@ pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:feature-examples`는 기능 21종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 사격의 실제 소멸/관통/반사 궤적, 컷신 시간/카메라/음원 시작, 실제 fetch와 캐시/취소/실패, 구역 전환 후 텍스처 수 복귀, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
-추가로 초기 씬/텍스처 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.
+`pnpm smoke:feature-examples`는 기능 26종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 사격의 실제 소멸/관통/반사 궤적, 컷신 시간/카메라/음원 시작, 실제 fetch와 캐시/취소/실패, 구역 전환 후 텍스처 수 복귀, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
+HD-2D 경사로 층 전환·발판 탑승·AI 우회/근접/원거리 피해·부모 회전/연결 해제를 native 상태로 검사한다. 사망 후 초기화와 일회성 렌더 오류 복구도 두 렌더러에서 확인한다.
+애니메이션 클립/방향·프레임/완료 이벤트·실제 AudioBufferSource 시작과 실패/취소 후 재시도, 지형 편집 전후 실제 낙하 가속도·관통·복구·DPR 2 터치, 공간 조명/그림자/안개의 pixel 변화와 정적 장면의 중복 제출 방지도 확인한다.
+추가로 초기 씬/텍스처/모델 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.
 
 `pnpm smoke:engine-playground`는 통합 게임 `?mode=playground`를 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.
 
@@ -133,3 +159,13 @@ pnpm smoke:starter-runtime-budget
 - texture/sound/JSON asset이 필요하면 `examples/topdown-shooter`의 manifest 흐름을 따른다.
 - lighting, material, post-process, particle VFX를 확인하려면 `examples/minimal-game`의 `visual-runtime-lab` profile을 참고한다.
 - 새 Physics Spec fixture를 확인하려면 `examples/physics-sandbox`를 사용한다.
+
+물리 기능 예제(`?feature=physics`)에서는 회전 고정, 충돌 소리·입자, 파손 관절을
+비교할 수 있다. ‘왼쪽 벽에 파손 관절 연결’ 뒤 ‘같은 힘으로 던지기’를 누르면
+force 제한에 따라 연결이 끊어진다. 소리는 던지기 클릭으로 활성화한다.
+진단 표시에는 CCD 상한과 파손 수, 4방향 batch 탐색 결과가 나온다.
+
+HD-2D 이동 보행면은 `../data-scene-native/moving-platforms.mjs`의
+`startMovingPlatformScene(canvas)` consumer recipe에 있다. WASD로 승강 바닥과
+수평 이동 다리에 오르내리고, 반환 객체의 `save()`/`restore(snapshot)`로
+탑승 위치와 왕복 phase를 복원한다.

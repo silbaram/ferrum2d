@@ -1629,6 +1629,8 @@ WebGPU 공간 인스턴싱은 아래 C6 geometry·GLB gate에서 별도로 검�
 point/sun shadow·DOF/fog 경로에서 3 model/11 main draw/118 triangles·준비 후 첫/warm model upload 0을 검사한다.
 건물 proxy의 ramp 상승 floor 1/elevation 32, x=42 벽 차단, 상층 picking 및 fresh v7 복원의 픽셀 차이 0을 확인한다.
 실제 누락 binary·읽는 중 abort·변경된 dependency contentId 불일치는 기존 handle/hash/GPU 자원을 보존해야 한다.
+읽는 중 취소는 실제 응답의 첫 body chunk를 소비할 때 발생시킨다. 타이머로 취소하면
+이미 버퍼된 응답의 완료와 경쟁하므로 취소 경로를 검증한 근거로 사용하지 않는다.
 원래 목록 밖 accessor가 추가 image view를 가리키는 입력도 거절하고 기존 씬을 보존한다.
 실제 gzip 응답의 압축 길이가 decoded binary보다 큰 조건에서도 원래 contentId를 유지하며,
 다른 origin의 CORS 응답에서 Content-Encoding이 숨겨져도 같은 검증을 통과해야 한다.
@@ -2350,7 +2352,7 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 
 ### 엔진 기능별 예제
 
-`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 21종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 26종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
 애니메이션 재생/반전, 장애물 우회와 도달 불가 목적지, 물리 재질에 따른 실제 속도와 pause,
 노멀/광원/후처리 GPU pixel 차이, 카메라 추적/확대, 9-slice 명령 수/테두리 차이를 확인한다.
 타일 통로의 native 충돌/통과·점유 중 닫기 거절·벽으로 막힌 출발 위치 복귀 방지, 레이어 변경 pixel, 파티클 burst/loop/trail·수명·정지, 실제 Web Audio 노드의 좌우 출력·거리 감쇠·context 종료, 키보드/가상 조이스틱/게임패드 polling과 메뉴 복귀 중립화도 확인한다. 중첩 URL, 설정 초기화, 390px 폭, 키보드 접근, 자원 0 복귀도 검사한다. 기존 Platformer의 구역 이동, Breakout/Shooter의 기능 안내 전환, 충돌 영역 재시작 링크와 실제 debug line 렌더링, 작은 화면 배치도 검증한다. Shooter는 타이틀에서 Enter로 시작한 뒤 확인한다.
@@ -2363,9 +2365,14 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 사격 비교는 실제 Rust 탄의 벽 소멸·벽 뒤 통과·역방향 반사 궤적을 검사한다. 컷신은 카메라 이동·멈춘 타임라인·명령 순서·실제 AudioBufferSourceNode 시작·동작 감소·건너뛰기를 확인한다.
 로딩은 실제 fetch 3회→캐시 3개/fetch 0회, 취소 후 완료된 캐시만 재사용·의도한 실패 후 재시도·초기화 중 늦은 완료 차단을 검사한다. 스트리밍은 구역별 픽셀 변화, 공통 바닥 유지, 왕복 시 실제 텍스처 수 일정, 빠른 이동·로딩 중 초기화 후 자원 수 복귀를 검사한다. 신규 3종의 네트워크 응답을 보류한 상태에서 destroy 후 늦은 응답을 풀어도 GPU 자원이 재생성되지 않고 AudioContext가 종료되는지 두 렌더러에서 검사한다.
 오디오 잠금 거부 시 무음 연출, 초기화 후 늦은 unlock의 추가 요청 차단, 오디오 로딩 중 건너뛰기·취소·재시작, 스트리밍 네트워크 실패 시 기존 구역/공유 텍스처 보존과 재시도를 두 렌더러의 별도 8개 복구 검사로 확인한다.
+HD-2D 실험은 경사로의 층·높이 전환과 양방향 이동, 승강/수평 발판의 native 탑승, 일시정지 중 위치 고정, AI 장애물 우회와 근접/발사체 피해, 모델 부모 위치·회전과 자식 연결 해제/복귀를 확인한다. 정상 사망한 캐릭터는 오래된 handle 조회로 렌더링을 중단하지 않아야 하며, 사망과 일회성 렌더 오류 후 초기화가 실제 프레임 진행을 복구해야 한다. 새 공통 화면의 씬/텍스처/모델 로딩 취소·실패 정리, BFCache 복귀 reload, DPR 2 조이스틱 이동/해제도 검사한다.
+`node tests/smoke/feature-examples-smoke.mjs --spatial-only`는 빌드 후 HD-2D 4종과 관련 생명주기·입력·복구 검사만 실행하고 `artifacts/hd2d-feature-examples/browser/verification.json`에 별도로 기록한다.
+애니메이션 실험은 기존 재생 설정 외에 native idle/walk·방향·프레임 이벤트·단발 완료 1회·재시작, 실제 음원 시작과 pause 중단을 검사한다. 음원 HTTP 실패/재시도, reset으로 로딩 취소 후 늦은 응답 차단을 양쪽 렌더러에서 확인한다.
+HD-2D 환경 실험은 동일 장면의 그림자 켬/끔·광원 위치·안개·초기화 pixel을 비교하고 정적 장면에 GPU 프레임이 계속 제출되지 않는지도 검사한다. 지형 실험은 마스크 변경, 수정 범위 texture patch, native 충돌/공 낙하와 초기화 자원 수, 편집 전후 실제 속도 변화/고정 스텝 소비 시간 기반 중력 300 유지, DPR 2 터치 좌표를 확인한다.
+`node tests/smoke/feature-examples-smoke.mjs --next-only`는 애니메이션/공간 환경/지형 3종과 관련 검사를 선택해 `artifacts/feature-examples-next/browser/verification.json`에 기록한다.
 탐색은 분류 버튼의 키보드 조작, 390px에서 메뉴 높이 80px 미만, 모바일 주제 전환과 렌더러 유지까지 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
-수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 42개 기능/renderer 조합, 기존 안내 3종, 초기 로딩 생명주기 3종, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료 6개 조합, DPR/터치 4개 조합, 실패/복구 8개 조합을 실행한다.
+수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 52개 기능/renderer 조합, 기존 안내 3종, 초기 로딩 생명주기 11종, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료 6개 조합, DPR/터치 8개 조합, 실패/복구 16개 조합을 실행한다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
 ### Engine Playground 통합 데모
@@ -2373,3 +2380,59 @@ WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바�
 `pnpm smoke:engine-playground`는 빌드된 SDK/Wasm을 전제로 starter-runtime lint/build 후 `?mode=playground` 통합 게임을 검증한다. CI에서는 앞선 SDK/Wasm build 이후 실행한다. 중첩 URL 경로에서 WebGL2 및 WebGPU로 실제 키보드 이동/애니메이션, 장애물 경로와 전지 3개 수집, 고무·점토 공 반사/감속, 움직이는 공의 pause/resume, 재시작, 카메라 추적/확대, 광원·노멀·후처리 pixel readback 변화, 390px 화면과 키보드 접근, 자원 0 복귀를 확인한다. 증거는 `artifacts/engine-playground/verification.json` 및 고유 run 디렉터리다. WebGPU는 Chromium 소프트웨어 offscreen target으로 검증하며 네이티브 presentation과 하드웨어 성능을 보증하지 않는다.
 
 기존 `smoke:starter-runtime`, `smoke:starter-runtime-budget` 및 공용 browser-render harness는 이 디렉터리에 대해 `?mode=starter`를 명시하여 기존 profile/replay budget 기준을 유지한다. 새 기본 화면은 별도 위 gate에서 검사한다.
+
+
+### 물리 품질 회귀
+
+`pnpm smoke:physics`의 `physics:quality-upgrade`는 CCD 상한/동적 연쇄/회전·offset·근접 접촉,
+표시 보간/순간이동/pause-resume/추적 카메라/HD-2D attachment와 focus, 충격 수집 수명, bulk 복원 실패 원자성, static proxy invalidation,
+spring 질량·iteration·timestep 응답을 검증한다. `pnpm test:web`의 `physicsQuality.test.ts`는
+실제 Wasm으로 v2 JSON round-trip, pending force/impulse, v1 호환, ID 재할당·접촉 방향 반전 후 궤적/hash, 실패 후 기존 world/clock,
+spring 주파수 authoring, collider 종류 불일치가 포함된 bulk 복원에서 모든 body의 상태 보존을 검증한다.
+Rust 회귀는 실패한 transaction의 미소비 파손/충격 큐 보존, offset OBB/convex의
+회전 접점과 실제 충격 방향, 원·캡슐의 표면 접점도 확인한다. 회전 sweep 연산 한도는
+실제 접촉과 구분하며 한도 diagnostic만 남고 가짜 hit·impulse·feedback은 없어야 한다.
+
+정적 proxy 최적화는 아래 release 측정으로 uncached/cached를 같은 fixture에서 비교한다.
+시간값은 관찰값이며 CI 절대 시간 gate로 쓰지 않는다.
+
+```bash
+cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_reuse_benchmark -- --ignored --nocapture
+```
+
+`pnpm smoke:feature-examples`의 physics 경로는 30 Hz 표시 보간과 실제 충격량을 두 renderer에서
+확인한다. 표시 보간은 렌더 명령의 위치를 물리 위치와 직접 대조하고, 끈 뒤에는 새 표본에서
+두 위치가 일치하는지 검사한다. Rust rendering 회귀는 bitmap label의 표시 위치와
+물리 debug marker의 실제 위치도 구분한다. 이 결과는 소프트웨어 WebGL2/WebGPU 기준이며 실물 GPU 검증과 구분한다.
+
+### 물리 제작 확장 회귀
+
+- Rust `engine::tests::physics_expansion`: 회전 잠금/해제·이동 유지, 반복 횟수와
+  관절 힘 환산, 파손 큐 소비·stale handle, batch parity/입력 상한, impact
+  실제 discrete/CCD의 report와 효과 독립성·cooldown, reset 후 재발생,
+  수동 step 간 frame 상한, 복원 commit/rollback·일반 despawn의 효과 수명,
+  발판 carry/하차/차단/동승자 순서 독립성.
+- `spatial_progress::moving_platform_checkpoint_*`,
+  `data_scene_combat_progress::combat_checkpoint_accepts_validated_platform_suffix_*`:
+  원래 8값 pose·비시각 body·발판 phase·combat의 원자적 복원과 half-open 지형 경계 소유권 일치.
+  `moving_platforms` 회귀는 원형/OBB trigger 통과와 compound의 활성 solid collider별 차단·filter를 확인한다.
+- `physicsQuality.test.ts`: 실제 Wasm에서 회전 고정/런타임 하중 제한 JSON 복원,
+  7가지 batch cast와 단건 결과·height filter·소유 배열 수명 일치,
+  보고 기능을 끈 충돌의 오디오 이벤트·입자 발생과 잘못된 profile 교체 거부.
+- `physicsBatchQueries.test.ts`: 8개 쿼리의 native 호출 1회, 입력 실패 시 0회,
+  destroy 이후 접근 거부. `spatialMovingPlatforms.test.ts`: phase/ID/종류/stride 검증.
+- `pnpm smoke:spatial-scene`: 기존 4 viewport/DPR matrix에 승강 바닥·이동 다리,
+  pause 저장 v10, 새 handle 복원, 손상 phase 거부·기존 scene 보존·GPU 해제를
+  추가했다. 기존 CI의 동일 gate에 포함된다.
+- `pnpm smoke:feature-examples`: 물리 예제의 기존 두 renderer 회귀에 더해
+  회전 고정·충돌 효과·관절 파손·일괄 탐색을 육안으로도 확인할 수 있다.
+  단순 screenshot을 물리 계약 검증으로 취급하지 않는다.
+
+소프트웨어 Chromium 결과는 실물 모바일 GPU·오디오 장치·장시간 부하 검증을
+대체하지 않는다. batch 성능은 데이터·브라우저별 측정값이며 고정 배속을 보장하지 않는다.
+`pnpm build` 후 `node tests/smoke/physics-batch-benchmark.mjs`로 전체 적중/최근접
+적중 시나리오의 단건·batch 결과 일치와 교차 순서 5회 중앙값을 측정한다.
+`raycast_bodies`·`batch_cast_bodies`의 JS→Wasm dispatch를 wrapper로 실제 계측해
+반복당 단건 32회·batch 1회를 assert하며 getter·buffer 접근은 이 횟수에서 제외한다.
+시간 측정 trial은 wrapper를 제거한 뒤 실행해 계측 오버헤드를 섞지 않는다.
+결과는 `artifacts/physics-gameplay-expansion/batch-benchmark.json`에 남는다.
