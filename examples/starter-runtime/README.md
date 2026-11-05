@@ -1,26 +1,35 @@
 # Ferrum2D 엔진 기능 실험실
 
 기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
-상단에서 애니메이션·길 찾기·물리·조명·후처리·카메라·9-slice·타일맵·레이어·파티클·공간 오디오·입력을 하나씩 선택한다.
+상단에서 애니메이션·길 찾기·물리·조명·후처리·카메라·9-slice·타일맵·레이어·파티클·공간 오디오·입력·씬 전환·상호작용·저장·대화·HUD를 하나씩 선택한다.
 각 화면은 조작, 관찰할 결과, 현재 엔진 수치와 구현 API를 함께 표시한다.
 
 [전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
-씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 새 5개 실험의 조작은 [src/featureExtras.ts](src/featureExtras.ts),
+씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 타일·효과·입력 조작은 [src/featureExtras.ts](src/featureExtras.ts),
+게임 구성 예제는 [src/featureGameplay.ts](src/featureGameplay.ts)와 [src/featureContent.ts](src/featureContent.ts),
 기능 목록은 [featureCatalog.json](../shared/featureCatalog.json)에 있다.
-`node scripts/assets/build-feature-examples.mjs`는 12개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+`node scripts/assets/build-feature-examples.mjs`는 17개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
 텍스처는 기존 자체 제작 `public/playground/` 에셋을 재사용한다.
 
 `실험 초기화`는 설정·씬·일시정지를 기본값으로 돌린다. 렌더러 선택과 주제 이동은 페이지를 다시 연다.
 WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 실제 native 상태와 renderer stats다.
 타일맵/입력 실험은 기존 Shooter 타일맵·플레이어 컨트롤러를 사용한다. 사격은 차단하고 적 생성 간격은 24시간으로 설정해 실험을 분리했다. 다른 Data Scene 실험의 바닥은 sprite instance다.
 
-## 추가된 다섯 실험
+## 타일·효과·입력 실험
 
 - **타일맵**: `?feature=tilemap`. WASD/방향키로 중앙 벽에 접근한 뒤 통로를 열어 통과한다. 캔버스 클릭으로 벽/바닥을 수정한다. 외곽 테두리와 캐릭터가 겹치는 칸은 보호한다. 통로 닫기는 캐릭터를 밖으로 옮긴 뒤 사용한다. 출발 위치에 벽을 놓았다면 바닥 브러시로 지워야 그 위치로 돌아갈 수 있다.
 - **레이어**: `?feature=layers`. 로봇의 `instance.layer`를 바꿔 동일 위치·크기의 겹침을 비교한다. 씬을 재적용하는 낮은 빈도 예제이며 충돌 분류인 `components.layer`는 바꾸지 않는다.
 - **파티클**: `?feature=particles`. 효과/수량/수명/속도를 정하고 방출한다. 설정 변경은 입자를 비우며, 반복/잔상은 다시 방출해야 한다. 방출 정지는 기존 입자를 수명 종료까지 유지한다. 잔상 위치는 포인터, 입자 이동·수명은 Rust가 계산한다.
 - **공간 오디오**: `?feature=audio`. 사용자 클릭으로 Web Audio를 시작하고 음원의 좌우·앞쪽 거리·볼륨을 바꾼다. 듣는 위치는 로봇에 고정된다. 일시정지/초기화/페이지 이탈은 소리도 멈추고 재생은 다시 눌러 시작한다. 공간 처리 미지원이면 일반 재생 안내를 표시한다.
 - **입력 전환**: `?feature=input`. 키보드/게임패드 왼쪽 스틱/화면의 가상 조이스틱을 같은 native 이동에 연결한다. 메뉴는 모달이고 입력란의 키가 게임에 전달되지 않는다. 닫은 뒤 키를 다시 누르거나 스틱을 중립으로 돌린 뒤 이동한다. 게임패드 연결을 브라우저가 인식하려면 장치 버튼을 한 번 눌러야 할 수 있다.
+
+## 게임 구성 실험
+
+- **씬 전환·페이드**: `?feature=scenes`. 카운터를 올리고 A/B 공간을 왕복한다. `transition`은 씬 카운터를 초기화하고 전역 카운터를 유지한다. 암전 중 재입력은 무시하고, 일시정지·초기화는 전환에도 적용한다.
+- **상호작용·트리거**: `?feature=interaction`. 이동 후 64 단위 안에서 Space 또는 상호작용 버튼을 누른다. 스위치는 한 번 작동하고 문 사용 조건을 해제한다. 아래 패널 구역의 진입/이탈은 실제 native collision event다. 문은 조건부 상호작용 표식이며 물리 벽 개폐는 타일맵 예제에 있다.
+- **저장·불러오기**: `?feature=save-load`. 에너지를 수집하고 저장한 뒤 초기화/새로고침 후 불러온다. 위치·변수·수집으로 사라진 아이템을 함께 복원한다. 일반 2D 좌표는 snapshot의 custom state에 기록하고, 수집 진행은 Data Scene progress로 저장한다. 슬롯은 `ferrum2d.feature-lab.save-load.v1`이며 다른 저장 키는 건드리지 않는다. 브라우저·사이트 주소별 로컬 저장으로 서버/클라우드 저장이 아니다. 손상 데이터·다른 씬뿐 아니라 진행/변수 누락, 캐릭터 제거·비활성화, 수집 수와 아이템 상태 불일치도 씬 변경 전에 거절한다. 저장소 접근 실패는 화면에 안내하며 기존 저장을 유지한다. 일시정지 중 저장 작업은 차단하고 실험 초기화는 슬롯을 유지한다.
+- **대화·퀘스트**: `?feature=dialogue`. 캔버스 아래 실제 `UiOverlay`에서 부탁을 거절/수락하고 소포를 챙겨 전달한다. 조건 플래그가 전달 선택지를 열고 `QuestLog`에 목표/완료를 기록한다. Tab/Enter 선택, 화면 갱신 후 포커스 유지와 초기화를 지원한다. 이 예제의 대화 진행은 새로고침하면 초기화된다.
+- **HUD·다국어·접근성**: `?feature=hud`. native 체력 변수에 피해/회복을 적용하고 HUD만 한영·14/18/22px·고대비로 바꾼다. 체력은 0~100이며 progressbar의 접근성 값과 이름도 함께 갱신한다. 실험실 전체의 언어 전환 기능은 아니다.
 
 ## 이전 통합 게임 (`?mode=playground`)
 
@@ -93,7 +102,7 @@ pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:feature-examples`는 기능 12종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
+`pnpm smoke:feature-examples`는 기능 17종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
 추가로 초기 씬/텍스처 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.
 
 `pnpm smoke:engine-playground`는 통합 게임 `?mode=playground`를 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.

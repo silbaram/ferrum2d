@@ -26,12 +26,17 @@ pnpm dev:starter-runtime
 | 파티클·VFX | `particles` | 불꽃/먼지/잔상·수량/수명/속도·방출/정지 |
 | 공간 오디오 | `audio` | 재생/정지·좌우 위치/거리/볼륨 |
 | 입력 장치와 메뉴 전환 | `input` | 키보드/게임패드/가상 조이스틱·메뉴 입력 차단 |
+| 씬 전환과 페이드 | `scenes` | A/B 왕복·씬/전역 카운터·전환 중 pause |
+| 상호작용과 트리거 | `interaction` | 거리·스위치 조건·문 사용·구역 출입 |
+| 저장과 불러오기 | `save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
+| 대화와 퀘스트 | `dialogue` | 수락/거절·소포 조건·목표 완료 |
+| HUD·다국어·접근성 | `hud` | 체력·한국어/영어·글자 크기·대비 |
 
 ## 기존 예제에서 더 살펴보기
 
 | 디렉터리 | 주제 | 실행 |
 | --- | --- | --- |
-| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 12종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
+| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 17종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
 | [physics-sandbox](physics-sandbox/README.md) | rigid body, collider, contact/sensor, joint, CCD, platformer physics, scene query 7개 시나리오 | `pnpm dev:physics-sandbox` |
 | [platformer](platformer/README.md) | 점프·착지·단방향 발판·이동 발판. 기능 선택 후 해당 위치로 이동 | `pnpm dev:platformer` |
 | [breakout](breakout/README.md) | 반사·충돌 이벤트·파티클. 관찰 항목과 충돌 영역 표시 | `pnpm dev:breakout` |

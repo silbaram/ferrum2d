@@ -2350,15 +2350,18 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 
 ### 엔진 기능별 예제
 
-`pnpm smoke:feature-examples`는 SDK/Wasm 빌드 후 관련 예제 4종을 lint/build한 뒤 독립 실험 12종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples`는 SDK/Wasm 빌드 후 관련 예제 4종을 lint/build한 뒤 독립 실험 17종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
 애니메이션 재생/반전, 장애물 우회와 도달 불가 목적지, 물리 재질에 따른 실제 속도와 pause,
 노멀/광원/후처리 GPU pixel 차이, 카메라 추적/확대, 9-slice 명령 수/테두리 차이를 확인한다.
 타일 통로의 native 충돌/통과·점유 중 닫기 거절·벽으로 막힌 출발 위치 복귀 방지, 레이어 변경 pixel, 파티클 burst/loop/trail·수명·정지, 실제 Web Audio 노드의 좌우 출력·거리 감쇠·context 종료, 키보드/가상 조이스틱/게임패드 polling과 메뉴 복귀 중립화도 확인한다. 중첩 URL, 설정 초기화, 390px 폭, 키보드 접근, 자원 0 복귀도 검사한다. 기존 Platformer의 구역 이동, Breakout/Shooter의 기능 안내 전환, 충돌 영역 재시작 링크와 실제 debug line 렌더링, 작은 화면 배치도 검증한다. Shooter는 타이틀에서 Enter로 시작한 뒤 확인한다.
 각 실험은 native Playing 상태로 전환된 뒤 검사한다. 레이어/조명/후처리/오디오의 기본 픽셀이 시간에 따라 바뀌지 않는지도 확인해 비교 결과에 애니메이션이 섞이는 것을 막는다.
 기존 예제에서는 기능 메뉴를 선택한 뒤 캔버스를 누르면 키보드 포커스가 복귀하는지 확인한다. 저수준 `createEngine`을 사용하는 Shooter는 debug 활성화와 FrameState 포함 옵션을 함께 설정한다.
-초기 씬/텍스처 응답을 지연한 상태의 pagehide(일반 이탈/캐시 저장)와 HTTP 실패에서 실제 WebGL 객체의 해제를 확인한다. 캐시 복귀 이벤트를 모사해 초기화가 다시 완료되는지도 확인한다. DPR 2·390px의 WebGL2/WebGPU에서 터치 타일 편집에 따른 native 충돌 변화와 조이스틱 이동/해제를 별도로 검사한다.
+초기 씬/텍스처 응답을 지연한 상태의 pagehide(일반 이탈/캐시 저장)와 HTTP 실패에서 실제 WebGL 객체의 해제를 확인한다. 캐시 복귀 이벤트를 모사해 초기화가 다시 완료되는지도 확인한다. DPR 2·390px의 WebGL2/WebGPU에서 터치 타일 편집에 따른 native 충돌 변화와 조이스틱 이동/해제를 별도로 검사한다. 조이스틱 검사는 고정 대기시간 대신 제한 시간 안에 실제 native 이동·입력 해제가 발생해야 통과한다.
+추가 게임 구성 실험은 두 씬의 scene/global 변수 수명·전환 재입력 차단·첫 씬의 실제 중간 페이드 픽셀·pause/reset·반복 전환 GPU 자원 수, 근접/잠금 조건·Space 단발·트리거 진입/이탈을 검사한다.
+저장 슬롯은 실제 localStorage로 수집/위치 복원, 복원 뒤 다시 저장, 페이지 reload, 손상 데이터 거절, pause 중 덮어쓰기 차단과 다른 키 보존을 검증한다. SDK checksum/형식 검증에는 통과하지만 진행·변수·캐릭터가 누락되거나 수집 상태/활성 상태/이동 범위가 맞지 않는 저장도 현재 씬 변경 전에 거절해야 한다. 저장 용량 오류 시 기존 슬롯 유지와 복원 뒤 최신 generation의 애니메이션 진단도 확인한다.
+대화의 조건부 선택지·퀘스트 목표/완료·키보드 포커스 유지와 HUD의 native 체력, 한영 label, progressbar 접근성 값, 22px/390px·고대비 표시도 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
-CI는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 24개 기능/renderer 조합, 기존 안내 3종, 로딩 생명주기 3종, DPR/터치 4개 조합을 실행한다.
+CI는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 34개 기능/renderer 조합, 기존 안내 3종, 로딩 생명주기 3종, DPR/터치 4개 조합을 실행한다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
 ### Engine Playground 통합 데모
