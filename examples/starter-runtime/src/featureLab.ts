@@ -10,6 +10,9 @@ import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type Fea
 
 import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
 import { createContentFeature, contentControls, contentHelp } from "./featureContent";
+import { createFeatureNavigation } from "./featureNavigation";
+import { createProjectileFeature, projectileControls } from "./featureProjectiles";
+import { createSystemFeature, systemControls } from "./featureSystems";
 
 const frames = Array.from({ length: 4 }, (_, i) => ({ u0: i / 4, v0: 0, u1: (i + 1) / 4, v1: 1 }));
 const effects: Record<string, PostProcessStackInput> = {
@@ -18,7 +21,7 @@ const effects: Record<string, PostProcessStackInput> = {
   crt: [{ kind: "crt", curvature: .035, scanlineIntensity: .3 }],
 };
 const controls: Record<string, string> = {
-  ...extraControls, ...gameplayControls, ...contentControls,
+  ...extraControls, ...gameplayControls, ...contentControls, ...systemControls, projectiles: projectileControls,
   animation: `<label>재생 속도 <output data-value="fps">6 fps</output><input data-control="fps" type="range" min="1" max="16" value="6"></label>
     <label>재생 순서<select data-control="direction"><option value="forward">정방향</option><option value="reverse">역방향</option><option value="pingpong">왕복</option></select></label>
     <label class="feature-check"><input data-control="flip" type="checkbox"> 좌우 반전</label>`,
@@ -57,21 +60,8 @@ export async function startFeatureLab(): Promise<void> {
   top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
     <span data-value="backend" role="status">준비 중…</span><button data-control="pause">일시정지</button><button data-control="reset">실험 초기화</button>`;
   toolbar.append(top);
-  const nav = document.createElement("nav");
-  nav.className = "feature-topics";
-  nav.setAttribute("aria-label", "엔진 기능 선택");
-  for (const [index, item] of catalog.entries()) {
-    const a = document.createElement("a");
-    const url = new URL(location.href);
-    url.search = "";
-    url.searchParams.set("feature", item.id);
-    if (params.get("renderer") === "webgpu") url.searchParams.set("renderer", "webgpu");
-    a.href = url.href;
-    a.textContent = `${String(index + 1).padStart(2, "0")} ${item.title}`;
-    if (item.id === id) a.setAttribute("aria-current", "page");
-    nav.append(a);
-  }
-  toolbar.after(nav);
+  const navigation = createFeatureNavigation(id);
+  toolbar.after(navigation.element);
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
@@ -81,7 +71,7 @@ export async function startFeatureLab(): Promise<void> {
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
-    <p>설정 적용 코드는 src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts에 있습니다.</p></details>`;
+    <p>설정 적용 코드는 src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts에 있습니다.</p></details>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   // Buttons in the settings form must never submit/reload the page.
   for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
@@ -113,7 +103,7 @@ export async function startFeatureLab(): Promise<void> {
   let light = { x: 160, y: 96 }, lastUi = -Infinity, destroyed = false, ready = false, launches = 0, collisions = 0;
   let lastFrame = { entities: 0, commands: 0, drawCalls: 0, normalDrawCalls: 0, postProcessPassCount: 0, cameraX: 320, cameraY: 192, nativeState: 0 };
   let resources: (() => ReturnType<NonNullable<FerrumRuntime["renderer"]["resourceStats"]>>) | undefined;
-  const cleanups: Array<() => void> = [() => shell.destroy()];
+  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy()];
   // Async initialization may finish after navigation. Adopt late resources by disposing immediately.
   const own = (dispose: () => void) => { if (destroyed) dispose(); else cleanups.push(dispose); };
   const cleanup = () => {
@@ -173,8 +163,8 @@ export async function startFeatureLab(): Promise<void> {
     runtime = await createFerrumRuntime({ canvas, renderer, assetHost: loader, dataScene: scene, autostart: false,
       inputOptions: { pointerGestures: false, virtualControls: virtual,
         keyBindings: shooter ? { w: ["KeyW", "ArrowUp"], a: ["KeyA", "ArrowLeft"], s: ["KeyS", "ArrowDown"], d: ["KeyD", "ArrowRight"] } : undefined },
-      // The Shooter controller supplies movement, but these experiments have no shooting or title/menu hotkeys.
-      inputTransform: snapshot => shooter ? shell.inputTransform({ ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
+      // Only the projectile experiment supplies fire input; the other Shooter fixtures use movement alone.
+      inputTransform: snapshot => shooter ? shell.inputTransform(id === "projectiles" ? extra?.input?.(snapshot) ?? snapshot : { ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
       engine: { includeCollisionEvents: true },
       lighting: frame => id !== "lighting" || choice("lighting") === "off" || !view ? false : view.lighting({
         enabled: true, ambient: [.3, .35, .4, .55],
@@ -217,8 +207,9 @@ export async function startFeatureLab(): Promise<void> {
         const viewport = renderer.viewportSize(); engine.setViewportSize(viewport.width, viewport.height);
         return;
       }
-      view!.setZoom(Math.min(canvas.clientWidth / 640, canvas.clientHeight / 384) * scale);
-      view!.setCamera({ x: 320, y: 192, ...(id === "camera" && choice("camera") === "follow" ? { follow: handles().robot } : {}), smoothTimeSeconds: .12 });
+      if (!view) return;
+      view.setZoom(Math.min(canvas.clientWidth / 640, canvas.clientHeight / 384) * scale);
+      view!.setCamera(extra?.camera?.() ?? { x: 320, y: 192, ...(id === "camera" && choice("camera") === "follow" ? { follow: handles().robot } : {}), smoothTimeSeconds: .12 });
       if (id === "camera") output("zoom", `${input("zoom").value}%`);
     };
     const animation = () => {
@@ -258,7 +249,7 @@ export async function startFeatureLab(): Promise<void> {
         check(engine.configureDataSceneMovementAnimation({ idle, walk }), "이동 애니메이션");
       }
     };
-    const context: FeatureContext = { id, root, canvas, runtime, source, signal, playing, configureView: configure,
+    const context: FeatureContext = { id, root, canvas, runtime, assets: loader, source, signal, playing, configureView: camera,
       worldPoint: event => {
         if (view) return view.pointerToWorld({ x: event.clientX, y: event.clientY });
         const rect = canvas.getBoundingClientRect(), viewport = renderer.viewportSize();
@@ -271,7 +262,7 @@ export async function startFeatureLab(): Promise<void> {
         if (paused) runtime!.dataScene!.pause();
       },
     };
-    extra = createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context);
+    extra = id === "projectiles" ? createProjectileFeature(context) : createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context) ?? createSystemFeature(context);
     own(() => extra?.destroy());
     extra?.reset();
     configure();

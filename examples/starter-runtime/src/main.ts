@@ -512,7 +512,9 @@ function createStarterRuntimeControlPanel(
       "data-starter-capture-button": "true",
       "aria-label": "Capture runtime report",
     }));
-    element.replaceChildren(title, summary, details, actions);
+    const range = document.createElement("a");
+    range.href = "?feature=projectiles"; range.textContent = "벽 표적에서 일반·관통·반사 비교하기";
+    element.replaceChildren(title, summary, range, details, actions);
   };
 
   update();

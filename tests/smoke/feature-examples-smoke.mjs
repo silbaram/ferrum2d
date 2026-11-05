@@ -6,6 +6,9 @@ import {chromium} from 'playwright-core';
 import {installSpatialGpuTarget} from './spatial-webgpu-capture.mjs';
 import {checkFeatureExtra, observeFeatureAudio} from './feature-extras-checks.mjs';
 import {checkFeatureGameplay} from './feature-gameplay-checks.mjs';
+import {checkFeatureRecovery} from './feature-recovery-checks.mjs';
+import {checkFeatureSystems} from './feature-systems-checks.mjs';
+import {checkSystemLifecycle} from './feature-system-lifecycle-checks.mjs';
 import {checkFeatureLifecycle} from './feature-lifecycle-checks.mjs';
 import {checkFeaturePointer} from './feature-pointer-checks.mjs';
 
@@ -86,6 +89,12 @@ try {
         assert.equal((await page.evaluate(pixelHash)).hash, pixels.hash, `${id} baseline changes without a feature edit`);
       }
       if (id === 'animation') {
+        const category = page.locator('.feature-categories button').filter({ hasText: '플랫폼' });
+        await category.focus(); await page.keyboard.press('Enter');
+        assert.equal(await category.getAttribute('aria-pressed'), 'true');
+        assert.equal(await page.locator('.feature-topic-links a:not([hidden])').count(), catalog.filter(f => f.group === '플랫폼').length);
+        await page.locator('.feature-categories button').filter({ hasText: '화면' }).click();
+        assert(await page.locator('.feature-topics a[aria-current]').isVisible());
         await control('pause').click();
         const paused = (await snapshot()).animation;
         await page.waitForTimeout(200); assert.deepEqual((await snapshot()).animation, paused);
@@ -169,18 +178,30 @@ try {
       }
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
+      await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
       console.log(`Controls passed ${backend}/${id}`);
       if (backend === 'webgl2') await page.screenshot({ path: resolve(run, `${id}.png`), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(100);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${id} narrow overflow`);
+      assert(await page.locator('.feature-topics').evaluate(e => e.getBoundingClientRect().height < 80), 'mobile navigation must stay compact');
+      assert.equal(await page.locator('.feature-topic-picker select option:checked').textContent(), catalog.find(f => f.id === id).title);
       const bounds = await page.locator('canvas').boundingBox(); assert(bounds.width >= 300 && bounds.x >= 0 && bounds.x + bounds.width <= 390);
       const state = (await snapshot()).state;
       await control('pause').focus(); await page.keyboard.press('Enter'); assert.notEqual((await snapshot()).state, state);
+      if (id === 'animation') {
+        const picker = page.locator('.feature-topic-picker select');
+        await picker.selectOption({ label: '에셋 로딩과 캐시' });
+        await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().id === 'asset-loading');
+        assert.equal((await snapshot()).backend, backend);
+        await page.locator('.feature-topic-picker select').selectOption({ label: '스프라이트 애니메이션' });
+        await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().id === 'animation');
+        assert.equal((await snapshot()).backend, backend);
+      }
       if (id === 'animation' && backend === 'webgl2') await page.screenshot({ path: resolve(run, 'mobile.png'), fullPage: true });
       assert.deepEqual(errors, []); assert.equal(await page.evaluate(() => window.playgroundGpuError), undefined);
       const resources = await page.evaluate(() => window.ferrumFeatureLab.destroy());
       console.log(`Destroyed ${backend}/${id}`);
-      if (id === 'audio') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
+      if (id === 'audio' || id === 'cutscene') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
       assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
       results.push({ backend, id, initial, pixels, controls: 'native state / GPU readback checked', narrow: true, resources });
@@ -244,12 +265,14 @@ try {
     guides.push({ id, controls: true, debugReload: true, narrow: true });
     await page.close();
   }
+  const recovery = await checkFeatureRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
+  const systemsLifecycle = await checkSystemLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
   const lifecycle = await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
   const pointer = await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const report = { ok: true, run, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, pointer };
+  const report = { ok: true, run, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases. ${run}`);
+  console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length + systemsLifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases, ${recovery.length} failure/recovery cases. ${run}`);
 } catch (error) {
   const state = await activePage?.evaluate(() => window.ferrumFeatureLab?.snapshot()).catch(() => undefined);
   await activePage?.screenshot({ path: resolve(run, 'failure.png'), fullPage: true }).catch(() => {});

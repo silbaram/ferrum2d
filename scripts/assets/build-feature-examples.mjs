@@ -53,7 +53,7 @@ for (const [id, instances] of Object.entries(scenes)) {
 }
 // Gameplay/content labs use the same assets, with native recipes and variable storage.
 const bind = (instance, recipe) => ({ ...instance, props: { ...instance.props, behaviorRecipes: [recipe] } });
-for (const id of ['scenes', 'interaction', 'save-load', 'dialogue', 'hud']) {
+for (const id of ['scenes', 'interaction', 'save-load', 'dialogue', 'hud', 'cutscene', 'asset-loading', 'streaming']) {
   const moving = id === 'interaction' || id === 'save-load';
   const instances = [...floor(), moving ? robot(128, 192, 1, true) : stillRobot(240, 192, 2)];
   const scene = {
@@ -99,15 +99,15 @@ for (const id of ['scenes', 'interaction', 'save-load', 'dialogue', 'hud']) {
       energy: { recipes: [{ kind: 'pickup', item: 'energy', count: 1, despawn: true }] },
     };
   }
-  if (id === 'dialogue' || id === 'hud') instances.push(object('energy', 416, 192, sprite('energy', 64, 64)));
+  if (['dialogue', 'hud', 'cutscene', 'asset-loading', 'streaming'].includes(id)) instances.push(object('energy', 416, 192, sprite('energy', 64, 64)));
   if (id === 'hud') scene.variables = [{ name: 'health', scope: 'scene', type: 'integer', default: 100 }];
   await writeFile(new URL(`${id}.json`, out), JSON.stringify(scene, null, 2) + '\n');
 }
 // Tilemap/input deliberately reuse the native Shooter controller, without enemy waves.
-for (const id of ['tilemap', 'input']) {
+for (const id of ['tilemap', 'input', 'projectiles']) {
   const cells = Array.from({ length: 20 * 12 }, (_, i) => {
     const x = i % 20, y = Math.floor(i / 20);
-    return x === 0 || x === 19 || y === 0 || y === 11 || (id === 'tilemap' && x === 10) ? 2 : 0;
+    return x === 0 || x === 19 || y === 0 || y === 11 || ((id === 'tilemap' || id === 'projectiles') && x === 10) ? 2 : 0;
   });
   const frame = (texture, width, height, u1 = 1) => ({ texture, size: { width, height }, uv: { u0: 0, v0: 0, u1, v1: 1 } });
   await writeFile(new URL(`${id}.json`, out), JSON.stringify({
@@ -131,4 +131,4 @@ for (let i = 0; i < samples; i++) {
   wav.writeInt16LE(Math.round(6000 * envelope * (Math.sin(2 * Math.PI * 440 * t) + .3 * Math.sin(2 * Math.PI * 660 * t))), 44 + i * 2);
 }
 await writeFile(new URL('beacon.wav', out), wav);
-console.log('Generated seventeen engine feature fixtures and the original spatial audio cue.');
+console.log('Generated twenty-one engine feature fixtures and the original spatial audio cue.');

@@ -3,9 +3,14 @@ import assert from 'node:assert/strict';
 // Observe real Web Audio nodes. Do not replace decoding, playback or panning with mocks.
 export function observeFeatureAudio() {
   const Base = window.AudioContext;
-  window.featureAudio = { contexts: [], panners: [], taps: [] };
+  window.featureAudio = { contexts: [], panners: [], taps: [], starts: 0 };
   window.AudioContext = class extends Base {
     constructor(...args) { super(...args); window.featureAudio.contexts.push(this); }
+    createBufferSource() {
+      const source = super.createBufferSource(), start = source.start.bind(source);
+      source.start = (...args) => { start(...args); window.featureAudio.starts++; };
+      return source;
+    }
     createPanner() {
       const panner = super.createPanner(); window.featureAudio.panners.push(panner);
       const splitter = this.createChannelSplitter(2), mute = this.createGain(); mute.gain.value = 0;

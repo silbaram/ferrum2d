@@ -5,7 +5,8 @@
     "summary": "한 장의 시트에서 프레임을 골라 재생합니다.",
     "action": "재생 속도와 순서를 바꾸고, 좌우 반전도 비교하세요.",
     "observe": "로봇의 위치는 고정되고 프레임과 방향만 바뀝니다. 일시정지하면 현재 프레임을 유지합니다.",
-    "api": "configureDataSceneSpriteAnimation · updateDataSceneSpriteAnimations"
+    "api": "configureDataSceneSpriteAnimation · updateDataSceneSpriteAnimations",
+    "group": "화면"
   },
   {
     "id": "navigation",
@@ -13,7 +14,8 @@
     "summary": "이동 목적지를 전달하면 Rust가 통과 가능한 경로를 찾습니다.",
     "action": "벽 반대편 목적지를 누르거나 바닥을 클릭하세요. 벽 안쪽도 클릭해 보세요.",
     "observe": "로봇이 벽을 통과하지 않고 위아래로 우회합니다. 이동 불가능한 목적지는 거절됩니다.",
-    "api": "configureDataSceneNavigation · moveDataSceneActorTo"
+    "api": "configureDataSceneNavigation · moveDataSceneActorTo",
+    "group": "움직임"
   },
   {
     "id": "physics",
@@ -21,7 +23,8 @@
     "summary": "같은 초기 힘으로 공을 던져 반발과 감쇠를 비교합니다.",
     "action": "고무로 던진 뒤 점토로 바꾸어 다시 던지세요.",
     "observe": "고무는 벽에서 반사하며 오래 움직이고, 점토는 빠르게 에너지를 잃습니다.",
-    "api": "setPhysicsBodyMaterial · setPhysicsBodyTuning · applyPhysicsBodyImpulse"
+    "api": "setPhysicsBodyMaterial · setPhysicsBodyTuning · applyPhysicsBodyImpulse",
+    "group": "움직임"
   },
   {
     "id": "lighting",
@@ -29,7 +32,8 @@
     "summary": "같은 2D 이미지에 표면 방향 정보를 더해 빛을 계산합니다.",
     "action": "포인터로 빛을 움직이거나 광원 위치 버튼을 누르세요. 노멀맵을 껐다 켜보세요.",
     "observe": "오브젝트는 그대로 있어도 밝은 면과 어두운 면이 이동합니다. 원본 색상과도 비교할 수 있습니다.",
-    "api": "configureSpriteNormalMaterials · lighting · DataSceneView.lighting"
+    "api": "configureSpriteNormalMaterials · lighting · DataSceneView.lighting",
+    "group": "화면"
   },
   {
     "id": "postprocess",
@@ -37,7 +41,8 @@
     "summary": "완성된 같은 씬에 화면 효과만 바꿔 적용합니다.",
     "action": "원본, bloom, CRT를 차례로 선택하세요.",
     "observe": "오브젝트 수와 위치는 같고 빛 번짐·스캔라인만 달라집니다. 처리 패스 수로 활성 상태를 확인합니다.",
-    "api": "createFerrumRuntime({ postProcess })"
+    "api": "createFerrumRuntime({ postProcess })",
+    "group": "화면"
   },
   {
     "id": "camera",
@@ -45,7 +50,8 @@
     "summary": "월드 좌표와 카메라가 보여주는 영역을 구분합니다.",
     "action": "확대 후 추적 모드로 바꾸고 로봇을 왼쪽·오른쪽으로 이동하세요.",
     "observe": "고정 카메라는 배경을 유지하고, 추적 카메라는 로봇을 따라갑니다. 확대는 오브젝트의 월드 크기를 바꾸지 않습니다.",
-    "api": "createDataSceneView · setCamera · setZoom · pointerToWorld"
+    "api": "createDataSceneView · setCamera · setZoom · pointerToWorld",
+    "group": "화면"
   },
   {
     "id": "nine-slice",
@@ -53,7 +59,8 @@
     "summary": "한 PNG를 여러 크기로 늘리면서 모서리 두께를 유지합니다.",
     "action": "왼쪽 단순 확대와 오른쪽 9-slice를 비교하세요. 테두리 배율과 적용 여부를 바꿔보세요.",
     "observe": "오른쪽 두 패널은 크기가 달라도 테두리 두께가 같습니다. 끄면 테두리도 이미지와 함께 늘어납니다.",
-    "api": "configureSpriteNineSlices"
+    "api": "configureSpriteNineSlices",
+    "group": "화면"
   },
   {
     "id": "tilemap",
@@ -61,7 +68,8 @@
     "summary": "타일 배열로 바닥과 벽을 만들고 실행 중에 수정합니다.",
     "action": "닫힌 중앙 벽을 향해 이동한 뒤 통로를 열고 다시 건너세요. 브러시로 내부 타일도 바꿀 수 있습니다.",
     "observe": "벽 타일을 지우면 렌더링과 실제 충돌이 함께 바뀝니다. 캐릭터가 있는 칸은 벽을 놓지 못하게 보호합니다.",
-    "api": "setGameSpec · setShooterTilemapTile"
+    "api": "setGameSpec · setShooterTilemapTile",
+    "group": "움직임"
   },
   {
     "id": "layers",
@@ -69,7 +77,8 @@
     "summary": "겹친 로봇·공·패널의 그리기 순서를 바꿉니다.",
     "action": "로봇을 맨 앞, 공 뒤, 맨 뒤로 바꾸세요.",
     "observe": "위치와 크기는 그대로이고 겹친 부분의 보이는 순서만 달라집니다. 숫자가 큰 그리기 레이어가 앞입니다.",
-    "api": "sceneComposition.instances.layer · runtime.dataScene.reapply"
+    "api": "sceneComposition.instances.layer · runtime.dataScene.reapply",
+    "group": "화면"
   },
   {
     "id": "particles",
@@ -77,7 +86,8 @@
     "summary": "불꽃·먼지·포인터 잔상을 같은 입자 시스템으로 비교합니다.",
     "action": "효과와 수량·수명·속도를 정하고 방출하세요. 잔상은 방출 후 포인터를 움직입니다.",
     "observe": "반복 방출을 멈추면 남은 입자는 수명이 끝날 때 사라집니다. 설정 변경은 이전 입자를 지우며 새 방출을 기다립니다.",
-    "api": "ParticleVfxEmitter · particleVfxPreset · particleCount"
+    "api": "ParticleVfxEmitter · particleVfxPreset · particleCount",
+    "group": "화면"
   },
   {
     "id": "audio",
@@ -85,7 +95,8 @@
     "summary": "음원 위치와 거리에 따라 좌우 방향과 소리 크기가 바뀝니다.",
     "action": "소리 재생을 누른 뒤 좌우 위치와 거리를 바꾸세요. 정면에서 가까운 소리와 먼 소리를 비교하세요.",
     "observe": "로봇은 듣는 위치에 고정되고 빛나는 표식이 음원입니다. 거리가 멀어질수록 작게 들립니다.",
-    "api": "AudioManager.playSpatial · setListenerPose · SpatialAudioVoice.setPose"
+    "api": "AudioManager.playSpatial · setListenerPose · SpatialAudioVoice.setPose",
+    "group": "플랫폼"
   },
   {
     "id": "input",
@@ -93,7 +104,8 @@
     "summary": "키보드·게임패드·가상 조이스틱 입력을 같은 캐릭터에 연결합니다.",
     "action": "캐릭터를 이동하고 메뉴를 열어 WASD를 입력하세요. 메뉴를 닫은 뒤 키를 다시 눌러 이동하세요.",
     "observe": "메뉴에서는 게임 입력이 중립 상태가 되고 캐릭터가 멈춥니다. 엔진 시간은 계속 흐릅니다.",
-    "api": "InputManager · VirtualControls · setEnabled · actionSnapshot"
+    "api": "InputManager · VirtualControls · setEnabled · actionSnapshot",
+    "group": "움직임"
   },
   {
     "id": "scenes",
@@ -101,7 +113,8 @@
     "summary": "두 공간을 오가며 씬 상태와 전역 상태의 수명을 비교합니다.",
     "action": "카운터를 올린 뒤 다음 공간으로 이동하세요. 전환 중 일시정지도 해보세요.",
     "observe": "암전 뒤 새 씬이 나타납니다. 씬 카운터는 초기화되고 전역 카운터는 유지됩니다.",
-    "api": "runtime.dataScene.transition · ScreenFadeTransition · DataSceneVariableStore"
+    "api": "runtime.dataScene.transition · ScreenFadeTransition · DataSceneVariableStore",
+    "group": "게임 구성"
   },
   {
     "id": "interaction",
@@ -109,7 +122,8 @@
     "summary": "가까이 있는 장치와 상호작용하고 조건에 따라 문 사용을 허용합니다.",
     "action": "먼 곳에서 상호작용한 뒤 스위치 앞으로 이동해 다시 누르세요. 문 사용과 구역 출입도 비교하세요.",
     "observe": "거리와 해제 조건은 엔진이 판정합니다. 테두리 패널은 통과 가능한 트리거이며 진입·이탈 횟수를 표시합니다.",
-    "api": "interaction / guard recipes · input action · collisionEvents"
+    "api": "interaction / guard recipes · input action · collisionEvents",
+    "group": "게임 구성"
   },
   {
     "id": "save-load",
@@ -117,7 +131,8 @@
     "summary": "캐릭터 위치와 수집 진행을 브라우저에 저장합니다.",
     "action": "에너지를 수집하고 저장하세요. 초기화나 새로고침 후 불러오면 어떻게 될까요?",
     "observe": "위치·수집 수·사라진 아이템이 함께 복원됩니다. 초기화는 저장 슬롯을 지우지 않습니다.",
-    "api": "captureGameStateSnapshot · localStorage · restoreGameStateSnapshot"
+    "api": "captureGameStateSnapshot · localStorage · restoreGameStateSnapshot",
+    "group": "게임 구성"
   },
   {
     "id": "dialogue",
@@ -125,7 +140,8 @@
     "summary": "선택지·조건 플래그·목표 진행을 연결합니다.",
     "action": "화면 아래 대화에서 부탁을 수락하거나 거절하세요. 수락 후 소포를 챙기고 전달하세요.",
     "observe": "소포를 챙겨야 전달 선택지가 나타납니다. 목표 완료와 퀘스트 완료를 함께 확인합니다.",
-    "api": "DialogueSession · QuestLog · UiOverlay"
+    "api": "DialogueSession · QuestLog · UiOverlay",
+    "group": "게임 구성"
   },
   {
     "id": "hud",
@@ -133,6 +149,43 @@
     "summary": "같은 체력 정보를 언어와 표시 설정에 맞추어 보여줍니다.",
     "action": "피해·회복을 누르고 HUD의 언어, 글자 크기, 대비를 바꾸세요.",
     "observe": "체력 값은 유지되며 HUD의 문구와 표시만 달라집니다. 키보드로도 설정을 바꿀 수 있습니다.",
-    "api": "createHudOverlayState · LocalizationBundle · resolveAccessibilityHudTheme"
+    "api": "createHudOverlayState · LocalizationBundle · resolveAccessibilityHudTheme",
+    "group": "게임 구성"
+  },
+  {
+    "id": "projectiles",
+    "title": "사격과 벽 충돌",
+    "group": "움직임",
+    "summary": "같은 속도의 탄을 벽 표적에 쏘아 충돌 정책만 비교합니다.",
+    "action": "일반·벽 관통·반사를 바꾸고 한 발씩 발사하세요.",
+    "observe": "일반탄은 중앙 벽에서 사라지고, 관통탄은 벽 뒤로, 반사탄은 발사점 쪽으로 돌아옵니다. 적 관통과는 다른 벽 충돌 정책입니다.",
+    "api": "projectile · compileWeaponProfiles · setGameSpec"
+  },
+  {
+    "id": "cutscene",
+    "title": "컷신과 동작 감소",
+    "group": "게임 구성",
+    "summary": "카메라·자막·효과음을 순서대로 실행합니다.",
+    "action": "재생 후 일시정지·건너뛰기·동작 감소를 비교하세요.",
+    "observe": "카메라와 자막이 단계별로 바뀝니다. 동작 감소는 카메라 이동을 즉시 적용하고 소리 시작은 사용자 조작이 필요합니다.",
+    "api": "CutsceneSequencePlayer · setDataSceneCamera · AudioManager"
+  },
+  {
+    "id": "asset-loading",
+    "title": "에셋 로딩과 캐시",
+    "group": "플랫폼",
+    "summary": "이미지와 씬 데이터를 미리 읽고 캐시 사용량을 확인합니다.",
+    "action": "처음 불러온 뒤 다시 실행하세요. 취소·실패 실험도 비교하세요.",
+    "observe": "완료 항목과 실제 fetch 호출 수, 캐시 적중 수가 표시됩니다. 지연/실패는 이 실험에서 의도적으로 주입합니다.",
+    "api": "preloadAssetManifest · AssetPreloadCache · AbortController"
+  },
+  {
+    "id": "streaming",
+    "title": "레벨 스트리밍",
+    "group": "플랫폼",
+    "summary": "보고 있는 구역에 필요한 에셋만 불러오고 떠난 구역은 해제합니다.",
+    "action": "왼쪽·가운데·오른쪽 구역을 오가세요. 로딩 중 빠르게 바꿔도 됩니다.",
+    "observe": "구역별 이미지가 로드/해제되고 공통 바닥 텍스처는 유지됩니다. 완료된 구역만 화면에 표시합니다.",
+    "api": "LevelChunkStreamer · AssetLoader · releaseAssets"
   }
 ]

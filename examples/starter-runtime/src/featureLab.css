@@ -50,3 +50,16 @@
 .feature-content-preview [data-ferrum-ui-dialog], .feature-content-preview [data-ferrum-ui-panel] { box-sizing: border-box; max-width: 100%; }
 .feature-content-preview button { height: auto; min-height: 36px; white-space: normal; }
 .feature-content-preview:focus-visible { outline: 2px solid #f5a742; outline-offset: 2px; }
+.feature-topics { display: block; }
+.feature-categories, .feature-topic-links { display: flex; gap: 4px; flex-wrap: wrap; }
+.feature-categories { margin-bottom: 4px; }
+.feature-categories button[aria-pressed=true] { color: #f5a742; border-color: #f5a742; background: #f5a74220; }
+.feature-topic-links [hidden] { display: none; }
+.feature-topic-picker { display: none; }
+.feature-system-status { padding: 12px; margin: 12px 0; border: 1px solid #2a3645; color: #dce5ee; line-height: 1.6; min-height: 48px; }
+.feature-controls progress { width: 100%; accent-color: #f5a742; }
+@media (max-width: 900px) {
+  .feature-categories, .feature-topic-links { display: none; }
+  .feature-topic-picker { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .feature-topic-picker select { flex: 1; min-width: 0; }
+}

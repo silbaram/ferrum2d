@@ -5,7 +5,7 @@ import { ParticleVfxEmitter, particleVfxPreset } from "@ferrum2d/ferrum-web/labs
 import { type SceneAuthoringDocumentSpec, type GameplayEntityHandle } from "@ferrum2d/ferrum-web/authoring";
 type ShooterGameSpec = Parameters<FerrumRuntime["engine"]["setGameSpec"]>[0];
 
-export const shooterFeatures = new Set(["tilemap", "input"]);
+export const shooterFeatures = new Set(["tilemap", "input", "projectiles"]);
 export const extraControls: Record<string, string> = {
   tilemap: `<label>타일 브러시<select data-control="brush"><option value="wall">벽 · 충돌 있음</option><option value="floor">바닥 · 통과</option></select></label>
     <div class="feature-buttons"><button data-control="open-gate">통로 열기</button><button data-control="close-gate">통로 닫기</button></div>
@@ -38,6 +38,7 @@ export interface FeatureContext {
   root: HTMLElement;
   canvas: HTMLCanvasElement;
   runtime: FerrumRuntime;
+  assets: import("@ferrum2d/ferrum-web/core").AssetLoader;
   source: SceneAuthoringDocumentSpec | ShooterGameSpec;
   signal: AbortSignal;
   worldPoint(event: PointerEvent): { x: number; y: number };
@@ -54,6 +55,7 @@ export interface FeatureExtra {
   destroy(): void;
   postProcess?(): import("@ferrum2d/ferrum-web/authoring").PostProcessStackInput;
   input?(snapshot: ReturnType<FerrumRuntime["input"]["snapshot"]>): ReturnType<FerrumRuntime["input"]["snapshot"]>;
+  camera?(): { x: number; y: number; smoothTimeSeconds: number };
 }
 export function nativePosition(runtime: FerrumRuntime, handle?: GameplayEntityHandle) {
   if (!handle) return undefined;
