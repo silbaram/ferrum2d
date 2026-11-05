@@ -19,7 +19,10 @@ const stillRobot = (x, y, scale = 1) => object('robot', x, y, sprite('robot', 32
 const wall = (id, x, y, w, h) => object(id, x, y, sprite('wall', w, h), box(w, h), { type: 'static' });
 const floor = () => Array.from({ length: 60 }, (_, i) => object(`floor_${i}`, (i % 10) * 64 + 32, Math.floor(i / 10) * 64 + 32, sprite('floor', 64, 64, { layer: -100 })));
 const scenes = {
-  animation: [robot(320, 192, 3)],
+  animation: [robot(320, 192, 3, true)],
+  'destructible-terrain': [object('terrain', 320, 256, sprite('floor', 512, 192)),
+    object('ball', 320, 80, sprite('ball', 24, 24), { type: 'circle', radius: 12, isTrigger: false }, { type: 'dynamic', mass: 1, canSleep: false }, 'player'),
+    wall('bedrock', 320, 376, 592, 16)],
   navigation: [...floor(), wall('obstacle', 320, 192, 64, 192), robot(128, 192, 1, true)],
   physics: [
     object('tray', 320, 192, sprite('panel', 464, 272, { nineSlice: border, layer: -10 })),
@@ -38,7 +41,7 @@ const scenes = {
   audio: [...floor(), stillRobot(320, 304, 1.5), object('source', 160, 176, sprite('energy', 48, 48), { type: 'circle', radius: 1, isTrigger: true }, { type: 'kinematic' })],
 };
 for (const [id, instances] of Object.entries(scenes)) {
-  const moving = id === 'navigation' || id === 'camera';
+  const moving = id === 'animation' || id === 'navigation' || id === 'camera';
   const costs = Array.from({ length: 40 * 24 }, (_, i) => {
     const x = (i % 40) * 16 + 8, y = Math.floor(i / 40) * 16 + 8;
     return x < 16 || x > 624 || y < 16 || y > 368 || (id === 'navigation' && Math.abs(x - 320) < 40 && Math.abs(y - 192) < 104) ? 0 : 1;
@@ -131,4 +134,5 @@ for (let i = 0; i < samples; i++) {
   wav.writeInt16LE(Math.round(6000 * envelope * (Math.sin(2 * Math.PI * 440 * t) + .3 * Math.sin(2 * Math.PI * 660 * t))), 44 + i * 2);
 }
 await writeFile(new URL('beacon.wav', out), wav);
-console.log('Generated twenty-one engine feature fixtures and the original spatial audio cue.');
+console.log('Generated twenty-two flat engine feature fixtures and the original spatial audio cue.');
+await import('./build-hd2d-feature-scenes.mjs');

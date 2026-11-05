@@ -11,9 +11,13 @@ import {checkFeatureSystems} from './feature-systems-checks.mjs';
 import {checkSystemLifecycle} from './feature-system-lifecycle-checks.mjs';
 import {checkFeatureLifecycle} from './feature-lifecycle-checks.mjs';
 import {checkFeaturePointer} from './feature-pointer-checks.mjs';
+import {checkNextRecovery, checkTerrainPointer} from './feature-next-lifecycle.mjs';
+import {checkNextFeature, nextFeatureIds} from './feature-next-checks.mjs';
+import {checkSpatialFeature, checkSpatialRecovery, spatialFeatureIds} from './feature-spatial-checks.mjs';
 
 const dist=resolve('examples/starter-runtime/dist'),prefix='/nested/starter-runtime/';
-const parent=resolve('artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
+const spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=spatialOnly||nextOnly;
+const parent=resolve(nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ ok: false, status: 'running', run }, null, 2) + '\n');
 const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.json':'application/json'};
 const server=createServer((req,res)=>void(async()=>{
@@ -63,7 +67,7 @@ try {
     if (backend === 'webgpu') await page.addInitScript({ content: `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();` });
     const snapshot = () => page.evaluate(() => window.ferrumFeatureLab.snapshot());
     const control = key => page.locator(`[data-control="${key}"]`);
-    for (const { id } of catalog) {
+    for (const { id } of catalog.filter(item => nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
       console.log(`Checking ${backend}/${id}`);
       await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?feature=${id}&renderer=${backend}`);
       // The Shooter controller consumes the queued start input on its next native update.
@@ -73,7 +77,7 @@ try {
       const scene = JSON.parse(await readFile(resolve(dist, `features/${id}.json`), 'utf8'));
       assert.equal(initial.id, id);
       assert.equal(initial.backend, backend, 'requested backend must really render');
-      if (scene.sceneComposition) assert.equal(initial.entities, scene.sceneComposition.fragments.lab.instances.length);
+      if (scene.sceneComposition) assert.equal(initial.entities, scene.sceneComposition.fragments.lab.instances.length + (initial.terrain?.colliderBodies ?? 0));
       else assert(initial.entities >= 1 && initial.entities < 4, 'isolated tile/controller fixture must have no enemy waves');
       assert(initial.commands > 0 && initial.drawCalls > 0);
       assert.equal(initial.nativeState, 1, `${id} must actually run in native Playing state`);
@@ -84,6 +88,7 @@ try {
       const pixels = await page.evaluate(pixelHash);
       // The original panel PNG deliberately has only five colors plus the canvas background.
       assert(pixels.colors >= (['nine-slice', 'particles'].includes(id) ? 6 : 13), `${id} canvas appears empty (${pixels.colors} colors)`);
+      await checkSpatialFeature(page, id);
       if (['layers', 'lighting', 'postprocess', 'audio'].includes(id)) {
         await page.waitForTimeout(220);
         assert.equal((await page.evaluate(pixelHash)).hash, pixels.hash, `${id} baseline changes without a feature edit`);
@@ -126,7 +131,22 @@ try {
         assert.match(await page.locator('[data-value=destination]').textContent(), /이동할 수 없는/);
       }
       if (id === 'physics') {
-        await control('launch').click(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().collisions > 0);
+        await control('physics-rate').selectOption('30');
+        await control('interpolate').check();
+        await control('launch').click();
+        await page.waitForFunction(() => {
+          const p = window.ferrumFeatureLab.snapshot().physicsPresentation;
+          return p && p.alpha >= 0 && p.alpha < 1 && Math.hypot(p.displayX - p.nativeX, p.displayY - p.nativeY) > .5;
+        });
+        const interpolatedSample = (await snapshot()).physicsPresentation.sample;
+        await control('interpolate').uncheck();
+        await page.waitForFunction(previous => {
+          const p = window.ferrumFeatureLab.snapshot().physicsPresentation;
+          return p && p.sample > previous && Math.hypot(p.displayX - p.nativeX, p.displayY - p.nativeY) < .001;
+        }, interpolatedSample);
+        await control('interpolate').check();
+        await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().collisions > 0 && window.ferrumFeatureLab.snapshot().impactCount > 0);
+        assert((await snapshot()).lastImpulse > 0);
         await control('pause').click(); const ball = (await snapshot()).ball;
         await page.waitForTimeout(200); assert.deepEqual((await snapshot()).ball, ball);
         await control('pause').click(); await control('launch').click(); await page.waitForTimeout(1300);
@@ -136,6 +156,15 @@ try {
         assert(Math.hypot(clay.velocityX, clay.velocityY) < Math.hypot(rubber.velocityX, rubber.velocityY) * .5, 'material did not affect velocity');
         await control('reset').click();
         assert.equal((await snapshot()).launches, 0); assert.equal((await snapshot()).ball.x, 200);
+        await control('fixed-rotation').check();
+        await control('break-joint').click(); await control('launch').click();
+        await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().brokenJointCount > 0);
+        const locked = await snapshot();
+        assert.equal(locked.ball.fixedRotation, true); assert.equal(locked.ball.angularVelocityRadiansPerSecond, 0);
+        await control('fixed-rotation').uncheck(); await control('launch').click();
+        await page.waitForFunction(() => Math.abs(window.ferrumFeatureLab.snapshot().ball.angularVelocityRadiansPerSecond) > 0.01);
+        await control('reset').click();
+
         assert.equal(await control('material').inputValue(), 'rubber');
       }
       if (id === 'lighting') {
@@ -179,6 +208,7 @@ try {
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
+      await checkNextFeature({ page, id, control, snapshot, pixelHash });
       console.log(`Controls passed ${backend}/${id}`);
       if (backend === 'webgl2') await page.screenshot({ path: resolve(run, `${id}.png`), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(100);
@@ -201,7 +231,7 @@ try {
       assert.deepEqual(errors, []); assert.equal(await page.evaluate(() => window.playgroundGpuError), undefined);
       const resources = await page.evaluate(() => window.ferrumFeatureLab.destroy());
       console.log(`Destroyed ${backend}/${id}`);
-      if (id === 'audio' || id === 'cutscene') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
+      if (id === 'audio' || id === 'cutscene' || id === 'animation') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
       assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
       results.push({ backend, id, initial, pixels, controls: 'native state / GPU readback checked', narrow: true, resources });
@@ -210,7 +240,7 @@ try {
     await page.close();
   }
   const guides = [];
-  for (const id of ['platformer', 'breakout', 'topdown-shooter']) {
+  for (const id of focused ? [] : ['platformer', 'breakout', 'topdown-shooter']) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
     activePage = page;
     const errors = [];
@@ -265,11 +295,20 @@ try {
     guides.push({ id, controls: true, debugReload: true, narrow: true });
     await page.close();
   }
-  const recovery = await checkFeatureRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const systemsLifecycle = await checkSystemLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const lifecycle = await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
-  const pointer = await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const report = { ok: true, run, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
+  const recovery = focused ? [] : await checkFeatureRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
+  const systemsLifecycle = focused ? [] : await checkSystemLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
+  const lifecycle = spatialOnly ? [] : await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
+  lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'hd2d-movement' }));
+  lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'attachments', stages: ['model', 'model-failure'] }));
+  if (!spatialOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'destructible-terrain', texture: 'floor' }));
+  const pointer = focused ? [] : await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
+  pointer.push(...await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`, ['hd2d-movement']));
+  recovery.push(...await checkSpatialRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
+  if (!spatialOnly) {
+    pointer.push(...await checkTerrainPointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
+    recovery.push(...await checkNextRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
+  }
+  const report = { ok: true, run, spatialOnly, nextOnly, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length + systemsLifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases, ${recovery.length} failure/recovery cases. ${run}`);

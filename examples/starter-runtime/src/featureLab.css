@@ -24,6 +24,7 @@
 .feature-controls input[type=checkbox] { width: 16px; height: 16px; }
 .feature-controls output { color: #f5a742; font-variant-numeric: tabular-nums; }
 .feature-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.feature-lab button:disabled { opacity: 0.45; cursor: not-allowed; }
 .feature-observation { display: block; padding: 12px; border-left: 2px solid #f5a742; background: #111821; color: #dce5ee; min-height: 48px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .feature-panel details { border-top: 1px solid #1b2430; margin-top: 20px; padding-top: 12px; }
 .feature-panel summary { cursor: pointer; color: #aeb9c6; }
@@ -63,3 +64,6 @@
   .feature-topic-picker { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .feature-topic-picker select { flex: 1; min-width: 0; }
 }
+
+.feature-animation-cue { display: block; padding: 8px; border: 1px solid var(--demo-button-border); }
+.feature-animation-cue[data-phase="1"] { border-color: var(--demo-focus); background: #f5a7421a; }

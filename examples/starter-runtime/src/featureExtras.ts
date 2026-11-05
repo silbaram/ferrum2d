@@ -38,7 +38,7 @@ export interface FeatureContext {
   root: HTMLElement;
   canvas: HTMLCanvasElement;
   runtime: FerrumRuntime;
-  assets: import("@ferrum2d/ferrum-web/core").AssetLoader;
+  assets: Pick<import("@ferrum2d/ferrum-web/core").AssetLoader, "loadAssets" | "releaseAssets" | "textureId" | "soundId">;
   source: SceneAuthoringDocumentSpec | ShooterGameSpec;
   signal: AbortSignal;
   worldPoint(event: PointerEvent): { x: number; y: number };
@@ -47,6 +47,7 @@ export interface FeatureContext {
   configureView(): void;
 }
 export interface FeatureExtra {
+  beforeReset?(): void;
   reset(): void;
   frame(frame: FrameState): void;
   observation(): string;

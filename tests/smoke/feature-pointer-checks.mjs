@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 /** Browser-emulated touch and DPR 2 exercise CSS-to-world mapping, not physical devices. */
-export async function checkFeaturePointer(browser, address, webgpuSetup) {
+export async function checkFeaturePointer(browser, address, webgpuSetup, ids = ['tilemap', 'input']) {
   const results = [];
   for (const backend of ['webgl2', 'webgpu']) {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
@@ -17,7 +17,7 @@ export async function checkFeaturePointer(browser, address, webgpuSetup) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     if (backend === 'webgpu') await page.addInitScript({ content: webgpuSetup });
     try {
-      for (const id of ['tilemap', 'input']) {
+      for (const id of ids) {
         await page.goto(`${address}?feature=${id}&renderer=${backend}`);
         await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1);
         assert.match(await page.locator('.feature-statistics').textContent(), /오브젝트 \d+/, 'first native frame must also publish statistics before touch targets are measured');
@@ -45,20 +45,21 @@ export async function checkFeaturePointer(browser, address, webgpuSetup) {
           assert((await snapshot()).actor.x > 230, 'erased touch tile still blocked native movement');
         } else {
           const stick = page.locator('[data-ferrum-virtual-joystick]'); await stick.scrollIntoViewIfNeeded();
-          const box = await stick.boundingBox(), before = (await snapshot()).actor.x;
+          const actor = state => state.poses?.actor ?? state.actor;
+          const box = await stick.boundingBox(), before = actor(await snapshot()).x;
           const cdp = await page.context().newCDPSession(page);
           try {
             await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width - 4, y: box.y + box.height / 2, id: 1 }] });
             // Wait for the native effect, not a fixed wall-clock delay under software GPU load.
-            await page.waitForFunction(x => window.ferrumFeatureLab.snapshot().actor.x > x + 20, before, { timeout: 5000 });
+            await page.waitForFunction(x => { const s = window.ferrumFeatureLab.snapshot(); return (s.poses?.actor ?? s.actor).x > x + 20; }, before, { timeout: 5000 });
           } finally {
             try { await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); }
             finally { await cdp.detach(); }
           }
-          assert((await snapshot()).actor.x > before + 20, 'emulated touch joystick did not move native actor');
+          assert(actor(await snapshot()).x > before + 20, 'emulated touch joystick did not move native actor');
           await page.waitForFunction(() => !window.ferrumFeatureLab.snapshot().input.d);
-          const stopped = (await snapshot()).actor;
-          await page.waitForTimeout(150); assert.deepEqual((await snapshot()).actor, stopped, 'touch release left input held');
+          const stopped = actor(await snapshot());
+          await page.waitForTimeout(150); assert.deepEqual(actor(await snapshot()), stopped, 'touch release left input held');
         }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         assert.deepEqual(errors, []);

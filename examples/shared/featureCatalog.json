@@ -2,10 +2,10 @@
   {
     "id": "animation",
     "title": "스프라이트 애니메이션",
-    "summary": "한 장의 시트에서 프레임을 골라 재생합니다.",
-    "action": "재생 속도와 순서를 바꾸고, 좌우 반전도 비교하세요.",
-    "observe": "로봇의 위치는 고정되고 프레임과 방향만 바뀝니다. 일시정지하면 현재 프레임을 유지합니다.",
-    "api": "configureDataSceneSpriteAnimation · updateDataSceneSpriteAnimations",
+    "summary": "시트 재생과 이동·대기 전환, 프레임·완료 이벤트를 비교합니다.",
+    "action": "시트 재생 후 이동과 대기로 바꾸세요. 바닥을 클릭하거나 방향 버튼을 누르고 발소리도 켜보세요.",
+    "observe": "멈추면 대기 클립, 걷는 동안 이동 클립을 재생합니다. 프레임 이벤트는 표식·소리를, 단발 클립은 완료 횟수를 갱신합니다.",
+    "api": "configureDataSceneSpriteAnimation · configureDataSceneMovementAnimation · gameplayEvents",
     "group": "화면"
   },
   {
@@ -187,5 +187,50 @@
     "action": "왼쪽·가운데·오른쪽 구역을 오가세요. 로딩 중 빠르게 바꿔도 됩니다.",
     "observe": "구역별 이미지가 로드/해제되고 공통 바닥 텍스처는 유지됩니다. 완료된 구역만 화면에 표시합니다.",
     "api": "LevelChunkStreamer · AssetLoader · releaseAssets"
+  },
+  {
+    "id": "hd2d-movement",
+    "title": "HD-2D 공간 이동",
+    "summary": "같은 캐릭터로 경사로·층·움직이는 발판을 비교합니다.",
+    "action": "위층으로 이동을 누르거나 직접 걸어보세요. 승강·수평 이동 발판으로 바꿔 탑승과 하차도 확인하세요.",
+    "observe": "경사로에서는 높이와 층이 바뀌고, 움직이는 발판에서는 입력하지 않아도 탑승자가 함께 이동합니다.",
+    "api": "spatial.terrain · connections · movingPlatforms · moveDataSceneSpatialActorTo",
+    "group": "HD-2D"
+  },
+  {
+    "id": "ai-combat",
+    "title": "AI 추적과 전투",
+    "summary": "적 한 개의 추적·근접 공격·원거리 공격을 독립적으로 비교합니다.",
+    "action": "적 행동을 바꾼 뒤 플레이어를 이동하세요. 적이 회색 장애물을 어떻게 우회하는지 관찰하세요.",
+    "observe": "추적에서는 공격하지 않습니다. 근접 공격은 가까워진 뒤 체력을 줄이고, 원거리 공격은 투사체를 발사합니다.",
+    "api": "combatNavigation · chase · meleeAction · projectileAction · timerTrigger",
+    "group": "HD-2D"
+  },
+  {
+    "id": "attachments",
+    "title": "부모·자식 연결",
+    "summary": "수레를 부모로 연결된 등불과 상자의 위치를 함께 바꿉니다.",
+    "action": "부모 위치·회전을 조절하세요. 연결을 끄고 다시 움직인 뒤, 연결을 켜서 차이를 비교하세요.",
+    "observe": "연결된 자식은 부모의 이동·회전을 따릅니다. 연결을 해제하면 자식은 마지막 위치에 남습니다.",
+    "api": "spatial.models · attachments · setPhysicsBodyPosition · setPhysicsBodyRotation",
+    "group": "HD-2D"
+  },
+  {
+    "id": "hd2d-environment",
+    "title": "HD-2D 조명·그림자·안개",
+    "group": "HD-2D",
+    "summary": "같은 기둥과 캐릭터에서 공간 광원·그림자·거리 안개를 비교합니다.",
+    "action": "광원을 좌우로 옮기고 그림자와 안개를 껐다 켜보세요.",
+    "observe": "광원 위치에 따라 밝은 면과 그림자가 이동하고, 안개는 먼 표면부터 색을 바꿉니다.",
+    "api": "setDataSceneSpatialEnvironment · lighting.shadows · fog"
+  },
+  {
+    "id": "destructible-terrain",
+    "title": "지형 파괴와 충돌 갱신",
+    "group": "움직임",
+    "summary": "작은 지형을 원형으로 깎아 그림과 실제 충돌을 함께 바꿉니다.",
+    "action": "공이 지면에 멈추면 중앙 구멍을 누르세요. 지형을 클릭해 직접 깎거나 공을 다시 놓으세요.",
+    "observe": "지형이 사라진 부분으로 공이 떨어집니다. 수정한 영역의 텍스처와 충돌 청크만 갱신하며 초기화하면 지형도 복구됩니다.",
+    "api": "PixelMaskTerrainRuntime · carveCircle · dirty texture patch · chunk colliders"
   }
 ]

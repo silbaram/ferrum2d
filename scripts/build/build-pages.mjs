@@ -24,7 +24,7 @@ const examples = [
   {
     id: "starter-runtime",
     title: "엔진 기능 실험실",
-    description: "렌더링·물리·입력·씬 전환·저장·대화·HUD 등 21개 기능을 독립된 씬에서 비교합니다.",
+    description: "렌더링·물리·입력·씬·HD-2D 이동·AI·부모 자식 연결 등 26개 기능을 독립된 씬에서 비교합니다.",
   },
   {
     id: "topdown-shooter",

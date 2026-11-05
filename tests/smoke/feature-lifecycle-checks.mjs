@@ -20,34 +20,35 @@ function trackGlResources() {
 }
 
 /** Validate partial bootstrap, which cannot use the ready-only application test hook. */
-export async function checkFeatureLifecycle(browser, address) {
+export async function checkFeatureLifecycle(browser, address, { feature = 'animation', texture = 'robot', stages = ['scene', 'texture', 'failure'] } = {}) {
   const cases = [];
-  for (const stage of ['scene', 'texture', 'failure']) {
+  for (const stage of stages) {
     const page = await browser.newPage(); page.setDefaultTimeout(10000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(trackGlResources);
     let release, arrived;
     const requestArrived = new Promise(resolve => { arrived = resolve; });
     const released = new Promise(resolve => { release = resolve; });
-    const pattern = stage === 'texture' ? '**/playground/robot.png' : '**/features/animation.json';
+    const failure = stage.endsWith('failure');
+    const pattern = stage.startsWith('model') ? '**/features/spatial/cart.glb' : stage === 'texture' ? `**/playground/${texture}.png` : `**/features/${feature}.json`;
     await page.route(pattern, async route => {
       arrived(); await released;
       try {
-        if (stage === 'failure') await route.fulfill({ status: 503, contentType: 'text/plain', body: 'Unavailable test fixture' });
+        if (failure) await route.fulfill({ status: 503, contentType: 'text/plain', body: 'Unavailable test fixture' });
         else await route.continue();
       } catch { /* Navigation cancellation can close the request before release. */ }
     });
     try {
-      await page.goto(`${address}?feature=animation`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${address}?feature=${feature}`, { waitUntil: 'domcontentloaded' });
       let timer;
       try { await Promise.race([requestArrived, new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`No ${stage} request`)), 10000); })]); }
       finally { clearTimeout(timer); }
       assert.equal(await page.locator('[data-control="pause"]').isDisabled(), true);
       const allocated = await page.evaluate(() => window.featureGlResources.reduce((n, r) => n + r.Program.size + r.Buffer.size, 0));
       assert(allocated > 0, `${stage} test did not reach allocated renderer`);
-      if (stage !== 'failure') await page.evaluate(persisted => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted })), stage === 'texture');
+      if (!failure) await page.evaluate(persisted => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted })), stage === 'texture');
       release();
-      if (stage === 'failure') await page.waitForSelector('.demo-error-shell');
+      if (failure) await page.waitForSelector('.demo-error-shell');
       await page.waitForFunction(() => window.featureGlResources.every(r => Object.values(r).every(set => set.size === 0)));
       await page.waitForTimeout(100); // Late responses must not adopt resources after teardown.
       const resources = await page.evaluate(() => window.featureGlResources.map(r => Object.fromEntries(Object.entries(r).map(([k, set]) => [k, set.size]))));
@@ -67,7 +68,7 @@ export async function checkFeatureLifecycle(browser, address) {
         restored = true;
       }
       assert.deepEqual(errors, []);
-      cases.push({ stage, resources, cancelled: stage !== 'failure', errorUi: stage === 'failure', restored });
+      cases.push({ feature, stage, resources, cancelled: !failure, errorUi: failure, restored });
     } catch (error) {
       const state = await page.evaluate(() => ({ ready: !!window.ferrumFeatureLab,
         resources: window.featureGlResources?.map(r => Object.fromEntries(Object.entries(r).map(([k, set]) => [k, set.size]))) })).catch(() => undefined);
