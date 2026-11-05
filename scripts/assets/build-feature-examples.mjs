@@ -51,6 +51,58 @@ for (const [id, instances] of Object.entries(scenes)) {
   };
   await writeFile(new URL(`${id}.json`, out), JSON.stringify(scene, null, 2) + '\n');
 }
+// Gameplay/content labs use the same assets, with native recipes and variable storage.
+const bind = (instance, recipe) => ({ ...instance, props: { ...instance.props, behaviorRecipes: [recipe] } });
+for (const id of ['scenes', 'interaction', 'save-load', 'dialogue', 'hud']) {
+  const moving = id === 'interaction' || id === 'save-load';
+  const instances = [...floor(), moving ? robot(128, 192, 1, true) : stillRobot(240, 192, 2)];
+  const scene = {
+    format: 'ferrum2d.consumer.scene-authoring', version: 1, behaviorRecipes: { entities: {} },
+    sceneComposition: { initialFragment: 'lab', prefabs: { object: {} }, fragments: { lab: { instances } } },
+  };
+  if (moving) {
+    scene.gameplay = { primaryActor: 'robot' };
+    scene.navigation = { columns: 40, rows: 24, cellWidth: 16, cellHeight: 16,
+      costs: Array.from({ length: 960 }, (_, i) => i % 40 === 0 || i % 40 === 39 || i < 40 || i >= 920 ? 0 : 1) };
+  }
+  if (id === 'scenes') {
+    scene.variables = [{ name: 'local', scope: 'scene', type: 'integer', default: 0 }, { name: 'total', scope: 'global', type: 'integer', default: 0 }];
+    instances.push(object('beacon', 416, 192, sprite('energy', 80, 80)));
+    scene.sceneComposition.fragments.other = { instances: [...floor(), stillRobot(400, 192, 2), object('beacon', 224, 192, sprite('ball', 80, 80))] };
+  }
+  if (id === 'interaction') {
+    scene.gameplay.interactionInputActionId = 91;
+    scene.ids = { actions: { unlock: 17, open: 18 } };
+    scene.variables = [{ name: 'unlocked', scope: 'scene', type: 'bool', default: false }, { name: 'uses', scope: 'scene', type: 'integer', default: 0 }];
+    instances[60] = bind(instances[60], 'operator');
+    instances.push(
+      bind(object('switch', 224, 160, sprite('energy', 32, 32)), 'switch'),
+      bind(object('door', 480, 160, sprite('panel', 48, 64, { nineSlice: border })), 'door'),
+      object('zone', 320, 272, sprite('panel', 128, 80, { nineSlice: border, layer: -50 }), { ...box(128, 80), isTrigger: true }, { type: 'static' }, 'enemy'),
+    );
+    scene.behaviorRecipes.entities = {
+      operator: { recipes: [
+        { kind: 'setVariable', variable: 'unlocked', value: true, when: { type: 'gameplayEvent', event: 'interaction', action: 'unlock' } },
+        { kind: 'incrementVariable', variable: 'uses', amount: 1, when: { type: 'gameplayEvent', event: 'interaction', action: 'open' } },
+      ] },
+      switch: { recipes: [{ kind: 'interaction', action: 'unlock', radius: 64, once: true }] },
+      door: { recipes: [{ kind: 'interaction', action: 'open', radius: 64, once: false, guard: { variable: 'unlocked', op: '==', value: true } }] },
+    };
+  }
+  if (id === 'save-load') {
+    scene.ids = { items: { energy: 2 } };
+    scene.variables = [{ name: 'collected', scope: 'scene', type: 'integer', default: 0 }];
+    instances[60] = bind(instances[60], 'collector');
+    instances.push(bind(object('energy', 448, 192, sprite('energy', 32, 32), { ...box(24, 24), isTrigger: true }, { type: 'static' }, 'pickup'), 'energy'));
+    scene.behaviorRecipes.entities = {
+      collector: { recipes: [{ kind: 'collisionPickup', target: 'other' }, { kind: 'incrementVariable', variable: 'collected', amount: 1, when: { type: 'gameplayEvent', event: 'pickupCollected', item: 'energy' } }] },
+      energy: { recipes: [{ kind: 'pickup', item: 'energy', count: 1, despawn: true }] },
+    };
+  }
+  if (id === 'dialogue' || id === 'hud') instances.push(object('energy', 416, 192, sprite('energy', 64, 64)));
+  if (id === 'hud') scene.variables = [{ name: 'health', scope: 'scene', type: 'integer', default: 100 }];
+  await writeFile(new URL(`${id}.json`, out), JSON.stringify(scene, null, 2) + '\n');
+}
 // Tilemap/input deliberately reuse the native Shooter controller, without enemy waves.
 for (const id of ['tilemap', 'input']) {
   const cells = Array.from({ length: 20 * 12 }, (_, i) => {
@@ -79,4 +131,4 @@ for (let i = 0; i < samples; i++) {
   wav.writeInt16LE(Math.round(6000 * envelope * (Math.sin(2 * Math.PI * 440 * t) + .3 * Math.sin(2 * Math.PI * 660 * t))), 44 + i * 2);
 }
 await writeFile(new URL('beacon.wav', out), wav);
-console.log('Generated twelve engine feature fixtures and the original spatial audio cue.');
+console.log('Generated seventeen engine feature fixtures and the original spatial audio cue.');

@@ -6,7 +6,10 @@ import { resolveSceneAuthoringDocument, type PostProcessStackInput } from "@ferr
 import catalog from "../../shared/featureCatalog.json";
 import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
 import "./featureLab.css";
-import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type FeatureExtra } from "./featureExtras";
+import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type FeatureExtra, type FeatureContext } from "./featureExtras";
+
+import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
+import { createContentFeature, contentControls, contentHelp } from "./featureContent";
 
 const frames = Array.from({ length: 4 }, (_, i) => ({ u0: i / 4, v0: 0, u1: (i + 1) / 4, v1: 1 }));
 const effects: Record<string, PostProcessStackInput> = {
@@ -15,7 +18,7 @@ const effects: Record<string, PostProcessStackInput> = {
   crt: [{ kind: "crt", curvature: .035, scanlineIntensity: .3 }],
 };
 const controls: Record<string, string> = {
-  ...extraControls,
+  ...extraControls, ...gameplayControls, ...contentControls,
   animation: `<label>재생 속도 <output data-value="fps">6 fps</output><input data-control="fps" type="range" min="1" max="16" value="6"></label>
     <label>재생 순서<select data-control="direction"><option value="forward">정방향</option><option value="reverse">역방향</option><option value="pingpong">왕복</option></select></label>
     <label class="feature-check"><input data-control="flip" type="checkbox"> 좌우 반전</label>`,
@@ -78,18 +81,20 @@ export async function startFeatureLab(): Promise<void> {
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
-    <p>설정 적용 코드는 src/featureLab.ts 및 featureExtras.ts에 있습니다.</p></details>`;
+    <p>설정 적용 코드는 src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts에 있습니다.</p></details>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   // Buttons in the settings form must never submit/reload the page.
   for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
   const help = document.createElement("p");
   help.className = "feature-canvas-help";
-  help.textContent = extraHelp[id] ?? (id === "nine-slice" ? "왼쪽: 단순 확대 / 오른쪽 위·아래: 서로 다른 크기의 9-slice" :
+  help.textContent = extraHelp[id] ?? gameplayHelp[id] ?? contentHelp[id] ?? (id === "nine-slice" ? "왼쪽: 단순 확대 / 오른쪽 위·아래: 서로 다른 크기의 9-slice" :
     id === "navigation" || id === "camera" ? "바닥 클릭 · 방향키 / WASD: 32 단위 이동 명령" :
     id === "lighting" ? "화면 위에서 포인터를 움직이거나 광원 위치 버튼을 사용하세요." : "설정을 바꾸며 같은 장면의 변화를 비교하세요.");
   stage.append(help);
   const stats = document.createElement("p");
   stats.className = "feature-statistics";
+  // Reserve the diagnostics row before controls mount; delayed text must not shift touch targets.
+  stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
   stage.append(stats);
   const more = document.createElement("details");
   more.className = "feature-more";
@@ -105,7 +110,7 @@ export async function startFeatureLab(): Promise<void> {
   let extra: FeatureExtra | undefined, shooterPaused = false;
   let runtime: FerrumRuntime | undefined, view: DataSceneView | undefined, resize: ResizeObserver | undefined;
   const playing = () => shooter ? !shooterPaused : runtime?.dataScene?.state() === "playing";
-  let light = { x: 160, y: 96 }, lastUi = 0, destroyed = false, ready = false, launches = 0, collisions = 0;
+  let light = { x: 160, y: 96 }, lastUi = -Infinity, destroyed = false, ready = false, launches = 0, collisions = 0;
   let lastFrame = { entities: 0, commands: 0, drawCalls: 0, normalDrawCalls: 0, postProcessPassCount: 0, cameraX: 320, cameraY: 192, nativeState: 0 };
   let resources: (() => ReturnType<NonNullable<FerrumRuntime["renderer"]["resourceStats"]>>) | undefined;
   const cleanups: Array<() => void> = [() => shell.destroy()];
@@ -151,10 +156,12 @@ export async function startFeatureLab(): Promise<void> {
     const response = await fetch(new URL(`./features/${id}.json`, document.baseURI), { signal });
     if (!response.ok) throw Error(`실험 씬을 불러오지 못했습니다: ${response.status}`);
     const source = await response.json();
-    const scene = shooter ? undefined : resolveSceneAuthoringDocument(source, { validateBindings: true, validateComponents: true });
+    // Keep the authored input for apply/reset/save; validation resolves a separate inspection value.
+    const scene = shooter ? undefined : source;
+    if (scene) resolveSceneAuthoringDocument(scene, { validateBindings: true, validateComponents: true });
     const textures: Record<string, string> = {};
     if (shooter) Object.assign(textures, { robot: "robot", floor: "floor", wall: "wall", energy: "energy" });
-    else for (const instance of source.sceneComposition.fragments.lab.instances) {
+    else for (const fragment of Object.values(source.sceneComposition.fragments) as Array<{ instances: Array<{ props: { components: { visual: { texture: string } } } }> }>) for (const instance of fragment.instances) {
       const texture: string = instance.props.components.visual.texture;
       textures[texture] = texture;
     }
@@ -167,13 +174,13 @@ export async function startFeatureLab(): Promise<void> {
       inputOptions: { pointerGestures: false, virtualControls: virtual,
         keyBindings: shooter ? { w: ["KeyW", "ArrowUp"], a: ["KeyA", "ArrowLeft"], s: ["KeyS", "ArrowDown"], d: ["KeyD", "ArrowRight"] } : undefined },
       // The Shooter controller supplies movement, but these experiments have no shooting or title/menu hotkeys.
-      inputTransform: shooter ? snapshot => shell.inputTransform({ ...snapshot, space: false, enter: false, mouseLeft: false }) : undefined,
+      inputTransform: snapshot => shooter ? shell.inputTransform({ ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
       engine: { includeCollisionEvents: true },
       lighting: frame => id !== "lighting" || choice("lighting") === "off" || !view ? false : view.lighting({
         enabled: true, ambient: [.3, .35, .4, .55],
         pointLights: [{ ...light, radius: 420, height: 60, intensity: .8, falloff: 1.2, color: [1, .86, .65, 1] }],
       }, view.snapshot(frame)),
-      postProcess: () => id === "postprocess" ? effects[choice("effect")] : false,
+      postProcess: () => id === "postprocess" ? effects[choice("effect")] : extra?.postProcess?.() ?? false,
       onFrame: ({ frame: f, rendererStats: s }) => {
         lastFrame = { entities: f.entityCount, commands: s.renderCommandCount, drawCalls: s.drawCalls,
           normalDrawCalls: s.normalDrawCalls ?? 0, postProcessPassCount: s.postProcessPassCount ?? 0, cameraX: f.cameraX, cameraY: f.cameraY, nativeState: f.gameState };
@@ -251,7 +258,7 @@ export async function startFeatureLab(): Promise<void> {
         check(engine.configureDataSceneMovementAnimation({ idle, walk }), "이동 애니메이션");
       }
     };
-    extra = createFeatureExtra({ id, root, canvas, runtime, source, signal, playing,
+    const context: FeatureContext = { id, root, canvas, runtime, source, signal, playing, configureView: configure,
       worldPoint: event => {
         if (view) return view.pointerToWorld({ x: event.clientX, y: event.clientY });
         const rect = canvas.getBoundingClientRect(), viewport = renderer.viewportSize();
@@ -263,7 +270,8 @@ export async function startFeatureLab(): Promise<void> {
         runtime!.dataScene!.reapply(document); configure();
         if (paused) runtime!.dataScene!.pause();
       },
-    });
+    };
+    extra = createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context);
     own(() => extra?.destroy());
     extra?.reset();
     configure();

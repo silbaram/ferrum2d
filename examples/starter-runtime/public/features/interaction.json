@@ -1,0 +1,2367 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {
+      "operator": {
+        "recipes": [
+          {
+            "kind": "setVariable",
+            "variable": "unlocked",
+            "value": true,
+            "when": {
+              "type": "gameplayEvent",
+              "event": "interaction",
+              "action": "unlock"
+            }
+          },
+          {
+            "kind": "incrementVariable",
+            "variable": "uses",
+            "amount": 1,
+            "when": {
+              "type": "gameplayEvent",
+              "event": "interaction",
+              "action": "open"
+            }
+          }
+        ]
+      },
+      "switch": {
+        "recipes": [
+          {
+            "kind": "interaction",
+            "action": "unlock",
+            "radius": 64,
+            "once": true
+          }
+        ]
+      },
+      "door": {
+        "recipes": [
+          {
+            "kind": "interaction",
+            "action": "open",
+            "radius": 64,
+            "once": false,
+            "guard": {
+              "variable": "unlocked",
+              "op": "==",
+              "value": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "floor_0",
+            "prefab": "object",
+            "x": 32,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_1",
+            "prefab": "object",
+            "x": 96,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_2",
+            "prefab": "object",
+            "x": 160,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_3",
+            "prefab": "object",
+            "x": 224,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_4",
+            "prefab": "object",
+            "x": 288,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_5",
+            "prefab": "object",
+            "x": 352,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_6",
+            "prefab": "object",
+            "x": 416,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_7",
+            "prefab": "object",
+            "x": 480,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_8",
+            "prefab": "object",
+            "x": 544,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_9",
+            "prefab": "object",
+            "x": 608,
+            "y": 32,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_10",
+            "prefab": "object",
+            "x": 32,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_11",
+            "prefab": "object",
+            "x": 96,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_12",
+            "prefab": "object",
+            "x": 160,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_13",
+            "prefab": "object",
+            "x": 224,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_14",
+            "prefab": "object",
+            "x": 288,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_15",
+            "prefab": "object",
+            "x": 352,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_16",
+            "prefab": "object",
+            "x": 416,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_17",
+            "prefab": "object",
+            "x": 480,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_18",
+            "prefab": "object",
+            "x": 544,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_19",
+            "prefab": "object",
+            "x": 608,
+            "y": 96,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_20",
+            "prefab": "object",
+            "x": 32,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_21",
+            "prefab": "object",
+            "x": 96,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_22",
+            "prefab": "object",
+            "x": 160,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_23",
+            "prefab": "object",
+            "x": 224,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_24",
+            "prefab": "object",
+            "x": 288,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_25",
+            "prefab": "object",
+            "x": 352,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_26",
+            "prefab": "object",
+            "x": 416,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_27",
+            "prefab": "object",
+            "x": 480,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_28",
+            "prefab": "object",
+            "x": 544,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_29",
+            "prefab": "object",
+            "x": 608,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_30",
+            "prefab": "object",
+            "x": 32,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_31",
+            "prefab": "object",
+            "x": 96,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_32",
+            "prefab": "object",
+            "x": 160,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_33",
+            "prefab": "object",
+            "x": 224,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_34",
+            "prefab": "object",
+            "x": 288,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_35",
+            "prefab": "object",
+            "x": 352,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_36",
+            "prefab": "object",
+            "x": 416,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_37",
+            "prefab": "object",
+            "x": 480,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_38",
+            "prefab": "object",
+            "x": 544,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_39",
+            "prefab": "object",
+            "x": 608,
+            "y": 224,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_40",
+            "prefab": "object",
+            "x": 32,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_41",
+            "prefab": "object",
+            "x": 96,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_42",
+            "prefab": "object",
+            "x": 160,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_43",
+            "prefab": "object",
+            "x": 224,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_44",
+            "prefab": "object",
+            "x": 288,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_45",
+            "prefab": "object",
+            "x": 352,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_46",
+            "prefab": "object",
+            "x": 416,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_47",
+            "prefab": "object",
+            "x": 480,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_48",
+            "prefab": "object",
+            "x": 544,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_49",
+            "prefab": "object",
+            "x": 608,
+            "y": 288,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_50",
+            "prefab": "object",
+            "x": 32,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_51",
+            "prefab": "object",
+            "x": 96,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_52",
+            "prefab": "object",
+            "x": 160,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_53",
+            "prefab": "object",
+            "x": 224,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_54",
+            "prefab": "object",
+            "x": 288,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_55",
+            "prefab": "object",
+            "x": 352,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_56",
+            "prefab": "object",
+            "x": 416,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_57",
+            "prefab": "object",
+            "x": 480,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_58",
+            "prefab": "object",
+            "x": 544,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "floor_59",
+            "prefab": "object",
+            "x": 608,
+            "y": 352,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 64,
+                  "height": 64,
+                  "layer": -100
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 128,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 32,
+                  "height": 40,
+                  "animationSet": {
+                    "initialClip": 1,
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 1,
+                        "frames": [
+                          {
+                            "u0": 0,
+                            "v0": 0,
+                            "u1": 0.25,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0,
+                            "u1": 0.5,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0,
+                            "u1": 0.75,
+                            "v1": 1
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0,
+                            "u1": 1,
+                            "v1": 1
+                          }
+                        ],
+                        "fps": 6,
+                        "loop": true
+                      }
+                    ]
+                  },
+                  "originY": 0.85
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 6,
+                  "halfHeight": 6,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic"
+                }
+              },
+              "behaviorRecipes": [
+                "operator"
+              ]
+            }
+          },
+          {
+            "id": "switch",
+            "prefab": "object",
+            "x": 224,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 32,
+                  "height": 32
+                },
+                "collider": "none",
+                "layer": "wall"
+              },
+              "behaviorRecipes": [
+                "switch"
+              ]
+            }
+          },
+          {
+            "id": "door",
+            "prefab": "object",
+            "x": 480,
+            "y": 160,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 48,
+                  "height": 64,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  }
+                },
+                "collider": "none",
+                "layer": "wall"
+              },
+              "behaviorRecipes": [
+                "door"
+              ]
+            }
+          },
+          {
+            "id": "zone",
+            "prefab": "object",
+            "x": 320,
+            "y": 272,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 128,
+                  "height": 80,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  },
+                  "layer": -50
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 64,
+                  "halfHeight": 40,
+                  "isTrigger": true
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "gameplay": {
+    "primaryActor": "robot",
+    "interactionInputActionId": 91
+  },
+  "navigation": {
+    "columns": 40,
+    "rows": 24,
+    "cellWidth": 16,
+    "cellHeight": 16,
+    "costs": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "ids": {
+    "actions": {
+      "unlock": 17,
+      "open": 18
+    }
+  },
+  "variables": [
+    {
+      "name": "unlocked",
+      "scope": "scene",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "name": "uses",
+      "scope": "scene",
+      "type": "integer",
+      "default": 0
+    }
+  ]
+}

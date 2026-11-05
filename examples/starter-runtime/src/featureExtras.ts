@@ -33,7 +33,7 @@ export const extraHelp: Record<string, string> = {
   input: "캔버스 클릭 후 이동 · 메뉴에서는 입력만 차단하며 엔진 시간은 계속 흐릅니다.",
 };
 
-interface Context {
+export interface FeatureContext {
   id: string;
   root: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -43,6 +43,7 @@ interface Context {
   worldPoint(event: PointerEvent): { x: number; y: number };
   reapply(scene: SceneAuthoringDocumentSpec): void;
   playing(): boolean;
+  configureView(): void;
 }
 export interface FeatureExtra {
   reset(): void;
@@ -51,6 +52,8 @@ export interface FeatureExtra {
   snapshot(): object;
   pause(paused: boolean): void;
   destroy(): void;
+  postProcess?(): import("@ferrum2d/ferrum-web/authoring").PostProcessStackInput;
+  input?(snapshot: ReturnType<FerrumRuntime["input"]["snapshot"]>): ReturnType<FerrumRuntime["input"]["snapshot"]>;
 }
 export function nativePosition(runtime: FerrumRuntime, handle?: GameplayEntityHandle) {
   if (!handle) return undefined;
@@ -60,7 +63,7 @@ export function nativePosition(runtime: FerrumRuntime, handle?: GameplayEntityHa
 }
 
 /** Topic adapters own controls and presentation. All movement/collision/particle integration is native. */
-export function createFeatureExtra(ctx: Context): FeatureExtra | undefined {
+export function createFeatureExtra(ctx: FeatureContext): FeatureExtra | undefined {
   if (!(ctx.id in extraControls)) return undefined;
   const { id, root, canvas, runtime, signal } = ctx, engine = runtime.engine;
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;

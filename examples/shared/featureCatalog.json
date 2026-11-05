@@ -94,5 +94,45 @@
     "action": "캐릭터를 이동하고 메뉴를 열어 WASD를 입력하세요. 메뉴를 닫은 뒤 키를 다시 눌러 이동하세요.",
     "observe": "메뉴에서는 게임 입력이 중립 상태가 되고 캐릭터가 멈춥니다. 엔진 시간은 계속 흐릅니다.",
     "api": "InputManager · VirtualControls · setEnabled · actionSnapshot"
+  },
+  {
+    "id": "scenes",
+    "title": "씬 전환과 페이드",
+    "summary": "두 공간을 오가며 씬 상태와 전역 상태의 수명을 비교합니다.",
+    "action": "카운터를 올린 뒤 다음 공간으로 이동하세요. 전환 중 일시정지도 해보세요.",
+    "observe": "암전 뒤 새 씬이 나타납니다. 씬 카운터는 초기화되고 전역 카운터는 유지됩니다.",
+    "api": "runtime.dataScene.transition · ScreenFadeTransition · DataSceneVariableStore"
+  },
+  {
+    "id": "interaction",
+    "title": "상호작용과 트리거",
+    "summary": "가까이 있는 장치와 상호작용하고 조건에 따라 문 사용을 허용합니다.",
+    "action": "먼 곳에서 상호작용한 뒤 스위치 앞으로 이동해 다시 누르세요. 문 사용과 구역 출입도 비교하세요.",
+    "observe": "거리와 해제 조건은 엔진이 판정합니다. 테두리 패널은 통과 가능한 트리거이며 진입·이탈 횟수를 표시합니다.",
+    "api": "interaction / guard recipes · input action · collisionEvents"
+  },
+  {
+    "id": "save-load",
+    "title": "저장과 불러오기",
+    "summary": "캐릭터 위치와 수집 진행을 브라우저에 저장합니다.",
+    "action": "에너지를 수집하고 저장하세요. 초기화나 새로고침 후 불러오면 어떻게 될까요?",
+    "observe": "위치·수집 수·사라진 아이템이 함께 복원됩니다. 초기화는 저장 슬롯을 지우지 않습니다.",
+    "api": "captureGameStateSnapshot · localStorage · restoreGameStateSnapshot"
+  },
+  {
+    "id": "dialogue",
+    "title": "대화와 퀘스트",
+    "summary": "선택지·조건 플래그·목표 진행을 연결합니다.",
+    "action": "화면 아래 대화에서 부탁을 수락하거나 거절하세요. 수락 후 소포를 챙기고 전달하세요.",
+    "observe": "소포를 챙겨야 전달 선택지가 나타납니다. 목표 완료와 퀘스트 완료를 함께 확인합니다.",
+    "api": "DialogueSession · QuestLog · UiOverlay"
+  },
+  {
+    "id": "hud",
+    "title": "HUD·다국어·접근성",
+    "summary": "같은 체력 정보를 언어와 표시 설정에 맞추어 보여줍니다.",
+    "action": "피해·회복을 누르고 HUD의 언어, 글자 크기, 대비를 바꾸세요.",
+    "observe": "체력 값은 유지되며 HUD의 문구와 표시만 달라집니다. 키보드로도 설정을 바꿀 수 있습니다.",
+    "api": "createHudOverlayState · LocalizationBundle · resolveAccessibilityHudTheme"
   }
 ]

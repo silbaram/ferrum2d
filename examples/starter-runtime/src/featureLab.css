@@ -45,3 +45,8 @@
   .feature-lab .demo-stage-layout { grid-template-columns: minmax(0, 1fr); }
   .feature-topics a { padding: 8px; }
 }
+
+.feature-content-preview { position: relative; min-height: 320px; width: 100%; border: 1px solid #2a3645; box-sizing: border-box; background: #080b0f; }
+.feature-content-preview [data-ferrum-ui-dialog], .feature-content-preview [data-ferrum-ui-panel] { box-sizing: border-box; max-width: 100%; }
+.feature-content-preview button { height: auto; min-height: 36px; white-space: normal; }
+.feature-content-preview:focus-visible { outline: 2px solid #f5a742; outline-offset: 2px; }

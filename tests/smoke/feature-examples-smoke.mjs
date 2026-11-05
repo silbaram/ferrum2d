@@ -5,6 +5,7 @@ import {resolve,extname,sep} from 'node:path';
 import {chromium} from 'playwright-core';
 import {installSpatialGpuTarget} from './spatial-webgpu-capture.mjs';
 import {checkFeatureExtra, observeFeatureAudio} from './feature-extras-checks.mjs';
+import {checkFeatureGameplay} from './feature-gameplay-checks.mjs';
 import {checkFeatureLifecycle} from './feature-lifecycle-checks.mjs';
 import {checkFeaturePointer} from './feature-pointer-checks.mjs';
 
@@ -167,6 +168,7 @@ try {
         await control('reset').click(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().commands === 19);
       }
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
+      await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       console.log(`Controls passed ${backend}/${id}`);
       if (backend === 'webgl2') await page.screenshot({ path: resolve(run, `${id}.png`), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(100);
@@ -179,7 +181,7 @@ try {
       const resources = await page.evaluate(() => window.ferrumFeatureLab.destroy());
       console.log(`Destroyed ${backend}/${id}`);
       if (id === 'audio') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
-      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu').count(), 0);
+      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
       results.push({ backend, id, initial, pixels, controls: 'native state / GPU readback checked', narrow: true, resources });
       await page.setViewportSize({ width: 1440, height: 1000 });
