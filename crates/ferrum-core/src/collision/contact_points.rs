@@ -31,8 +31,8 @@ pub(super) fn contact_point(
         (ColliderShapeRef::Circle(ac), ColliderShapeRef::Aabb(bc)) => {
             circle_aabb_contact_point(at, ac, bt, bc, contact)
         }
-        (ColliderShapeRef::Circle(ac), ColliderShapeRef::Circle(_bc)) => {
-            circle_circle_contact_point(at, ac, contact)
+        (ColliderShapeRef::Circle(ac), ColliderShapeRef::Circle(bc)) => {
+            round_surface_midpoint(ac.center(at), ac.radius, bc.center(bt), bc.radius, contact)
         }
         (ColliderShapeRef::Aabb(ac), ColliderShapeRef::OrientedBox(bc, b_rotation)) => {
             let a_box = aabb_as_oriented_box(AabbBounds::from_transform(at, ac));
@@ -144,8 +144,8 @@ pub(super) fn contact_point(
         (ColliderShapeRef::Aabb(ac), ColliderShapeRef::Capsule(bc)) => {
             aabb_capsule_contact_point(at, ac, bt, bc, contact)
         }
-        (ColliderShapeRef::Circle(ac), ColliderShapeRef::Capsule(_bc)) => {
-            circle_circle_contact_point(at, ac, contact)
+        (ColliderShapeRef::Circle(ac), ColliderShapeRef::Capsule(bc)) => {
+            capsule_circle_contact_point(bt, bc, at, ac, invert_contact(contact))
         }
         (ColliderShapeRef::Capsule(ac), ColliderShapeRef::Aabb(bc)) => {
             capsule_aabb_contact_point(at, ac, bt, bc, contact)
@@ -243,15 +243,18 @@ fn circle_aabb_contact_point(
     )
 }
 
-fn circle_circle_contact_point(
-    at: Transform2D,
-    ac: CircleCollider,
+fn round_surface_midpoint(
+    a: Transform2D,
+    a_radius: f32,
+    b: Transform2D,
+    b_radius: f32,
     contact: AabbContact,
 ) -> (f32, f32) {
-    let center = ac.center(at);
+    // The contact must not move from one surface to the other when handles
+    // reverse pair orientation (for example after snapshot restoration).
     (
-        center.x + contact.normal_x * ac.radius,
-        center.y + contact.normal_y * ac.radius,
+        ((a.x + contact.normal_x * a_radius) + (b.x - contact.normal_x * b_radius)) * 0.5,
+        ((a.y + contact.normal_y * a_radius) + (b.y - contact.normal_y * b_radius)) * 0.5,
     )
 }
 
@@ -307,10 +310,7 @@ fn capsule_circle_contact_point(
 ) -> (f32, f32) {
     let circle_center = bc.center(bt);
     let closest = closest_point_on_segment(circle_center, ac.start(at), ac.end(at));
-    (
-        closest.x + contact.normal_x * ac.radius,
-        closest.y + contact.normal_y * ac.radius,
-    )
+    round_surface_midpoint(closest, ac.radius, circle_center, bc.radius, contact)
 }
 
 pub(super) fn capsule_capsule_contact_point(

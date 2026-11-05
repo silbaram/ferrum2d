@@ -135,6 +135,8 @@ impl Engine {
     }
 
     pub fn use_data_scene(&mut self) {
+        self.impact_feedback = super::physics_impact_feedback::ImpactFeedback::default();
+        self.world.impact_feedback_enabled = false;
         self.activate_data_scene();
         self.tilemap.clear();
         self.particles.clear();
@@ -155,6 +157,7 @@ impl Engine {
             return false;
         }
         self.data_scene.gameplay.observe_input(self.input);
+        self.world.reset_render_interpolation();
         self.fixed_timestep_input_latch.clear();
         self.previous_input_sample = self.input;
         true

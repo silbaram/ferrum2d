@@ -126,7 +126,12 @@ impl Engine {
         }
         let config = &mut self.data_scene.camera;
         if let Some(entity) = config.follow {
-            if let Some(target) = self.world.transform(entity) {
+            if let Some(target) = self
+                .world
+                .is_current_entity(entity)
+                .then(|| self.world.render_transform_at_index(entity.id as usize))
+                .flatten()
+            {
                 let blend = if config.smooth_seconds == 0.0 {
                     1.0
                 } else {

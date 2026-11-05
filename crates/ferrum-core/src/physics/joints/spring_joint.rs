@@ -12,16 +12,26 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraints(
             continue;
         };
         if spring_joint_should_break(world, joint) {
+            let key = (2, index as u32, world.spring_joint_generations[index]);
             if clear_spring_joint_at_index(world, index) {
+                world.record_joint_break(key, 3, 0.0, 0.0);
                 stats.broken_joints = stats.broken_joints.saturating_add(1);
             }
             continue;
         }
+        let measurement = world.begin_joint_measure(
+            (2, index as u32, world.spring_joint_generations[index]),
+            joint.entity_a,
+            joint.entity_b,
+            joint.break_force,
+            joint.break_torque,
+        );
         if solve_spring_joint_velocity_constraint(world, joint, delta_seconds, velocity_iterations)
         {
             stats.constraint_velocity_corrections =
                 stats.constraint_velocity_corrections.saturating_add(1);
         }
+        world.finish_joint_measure(measurement);
     }
 }
 
@@ -33,7 +43,7 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
 ) -> bool {
     let stiffness = sanitize_unit_interval(joint.stiffness, SpringJoint::DEFAULT_STIFFNESS);
     let damping = sanitize_unit_interval(joint.damping, SpringJoint::DEFAULT_DAMPING);
-    if stiffness <= 0.0 && damping <= 0.0 {
+    if joint.frequency_hz.is_none() && stiffness <= 0.0 && damping <= 0.0 {
         return false;
     }
     let Some(context) = spring_joint_constraint_context(world, joint) else {
@@ -47,17 +57,35 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
         vy: velocity_b.vy - velocity_a.vy,
     };
     let velocity_along_axis = dot_velocity(relative_velocity, context.normal);
-    let Some(impulse_magnitude) = spring_joint_soft_velocity_impulse(
-        context,
-        stiffness,
-        damping,
-        delta_seconds,
-        velocity_iterations,
-        velocity_along_axis,
-    ) else {
+    let impulse = if let Some(hz) = joint.frequency_hz {
+        frequency_impulse(
+            context,
+            hz,
+            joint.damping_ratio,
+            delta_seconds,
+            velocity_iterations,
+            velocity_along_axis,
+        )
+    } else {
+        spring_joint_soft_velocity_impulse(
+            context,
+            stiffness,
+            damping,
+            delta_seconds,
+            velocity_iterations,
+            velocity_along_axis,
+        )
+    };
+    let Some(impulse_magnitude) = impulse else {
         return false;
     };
-    if !impulse_magnitude.is_finite() || impulse_magnitude.abs() <= KINEMATIC_EPSILON {
+    if !impulse_magnitude.is_finite()
+        || if joint.frequency_hz.is_some() {
+            impulse_magnitude.abs() * context.denominator <= f32::EPSILON
+        } else {
+            impulse_magnitude.abs() <= KINEMATIC_EPSILON
+        }
+    {
         return false;
     }
     apply_pair_anchor_impulse(
@@ -228,6 +256,37 @@ pub(in crate::physics) fn clear_spring_joint_at_index(world: &mut World, index: 
             generation,
         })
         .is_some()
+}
+
+// Implicit spring response split across solver iterations. Effective mass is
+// derived from both anchors (including rotational inertia), not a user constant.
+fn frequency_impulse(
+    context: SpringJointConstraintContext,
+    hz: f32,
+    ratio: f32,
+    dt: f32,
+    iterations: u32,
+    velocity: f32,
+) -> Option<f32> {
+    if !hz.is_finite()
+        || !(0.0..=1000.0).contains(&hz)
+        || !ratio.is_finite()
+        || !(0.0..=10.0).contains(&ratio)
+        || dt <= 0.0
+        || context.denominator <= 0.0
+    {
+        return None;
+    }
+    let omega = std::f32::consts::TAU * hz.min(0.5 / dt);
+    let stiffness = omega * omega;
+    let damping = 2.0 * ratio * omega;
+    let rate = damping + dt * stiffness;
+    if rate <= 0.0 {
+        return None;
+    }
+    let retain = (1.0 + dt * rate).powf(-1.0 / iterations.max(1) as f32);
+    let equilibrium = -stiffness * context.error / rate;
+    Some((equilibrium - velocity) * (1.0 - retain) / context.denominator)
 }
 
 #[cfg(test)]

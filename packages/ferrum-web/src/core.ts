@@ -464,3 +464,12 @@ export { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, pixelPerfe
 export type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
 export { resolveSceneDisplay } from "./sceneDisplay.js";
 export type { SceneDisplaySpec } from "./sceneDisplay.js";
+
+export type { PhysicsSolverStateBuffer } from "./engineTypes/physicsBodies.js";
+export type { PhysicsWorldSolverState } from "./physicsSnapshotTypes.js";
+
+export type { PhysicsBatchCastRequest, PhysicsBatchCastResult } from "./engineTypes/physicsQueries.js";
+export type { PhysicsDiagnostics, PhysicsJointBreakEvents } from "./physicsDiagnostics.js";
+export type { PhysicsImpactFeedbackProfile, PhysicsImpactFeedbackStats } from "./physicsImpactFeedback.js";
+
+export type { SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";

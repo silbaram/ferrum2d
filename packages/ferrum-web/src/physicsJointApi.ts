@@ -51,6 +51,9 @@ export function createPhysicsJointApi({
       const entityA = physicsEntityHandle(options.entityA);
       const entityB = physicsEntityHandle(options.entityB);
       const enabled = options.enabled ?? true;
+      const force = options.breakForce === undefined ? Infinity : nonNegativeNumber(options.breakForce, "breakForce");
+      const torque = options.breakTorque === undefined ? Infinity : nonNegativeNumber(options.breakTorque, "breakTorque");
+      if ((options.breakForce !== undefined || options.breakTorque !== undefined) && typeof rustEngine.set_physics_joint_load_limits !== "function") throw new Error("joint load limits require a compatible Wasm build");
       let spawned = false;
 
       switch (options.type) {
@@ -94,8 +97,12 @@ export function createPhysicsJointApi({
             enabled,
           );
           break;
-        case "spring":
-          spawned = rustEngine.spawn_physics_spring_joint(
+        case "spring": {
+          if (options.dampingRatio !== undefined && options.frequencyHz === undefined) throw new Error("spring dampingRatio requires frequencyHz");
+          const frequency = options.frequencyHz === undefined ? undefined : nonNegativeNumber(options.frequencyHz, "spring frequencyHz");
+          const ratio = nonNegativeNumber(options.dampingRatio ?? 1, "spring dampingRatio");
+          if ((frequency ?? 0) > 1000 || ratio > 10) throw new Error("spring frequencyHz must be <= 1000 and dampingRatio <= 10");
+          const args = [
             entityA.entityId,
             entityA.entityGeneration,
             entityB.entityId,
@@ -111,9 +118,13 @@ export function createPhysicsJointApi({
               options.breakDistance ?? Number.POSITIVE_INFINITY,
               "physics spring joint breakDistance",
             ),
-            enabled,
-          );
+            enabled
+          ] as const;
+          spawned = frequency === undefined
+            ? rustEngine.spawn_physics_spring_joint(...args)
+            : rustEngine.spawn_physics_frequency_spring_joint(...args, frequency, ratio);
           break;
+        }
         case "pulley":
           spawned = rustEngine.spawn_physics_pulley_joint(
             entityA.entityId,
@@ -261,9 +272,24 @@ export function createPhysicsJointApi({
       if (!spawned) {
         throw new Error("spawnPhysicsJoint() rejected invalid physics joint options.");
       }
-      return readPhysicsJointHandle(rustEngine);
+      const handle = readPhysicsJointHandle(rustEngine);
+      if (options.breakForce !== undefined || options.breakTorque !== undefined) {
+        if (!rustEngine.set_physics_joint_load_limits(PHYSICS_JOINT_TYPE_CODES[handle.jointType], handle.jointIndex, handle.jointGeneration, force, torque)) {
+          rustEngine.clear_physics_joint(PHYSICS_JOINT_TYPE_CODES[handle.jointType], handle.jointIndex, handle.jointGeneration);
+          throw new Error("runtime rejected joint load limits");
+        }
+      }
+      return handle;
     },
 
+    setPhysicsJointLoadLimits(handle, limits) {
+      requireAlive();
+      const h = physicsJointHandle(handle);
+      if (typeof rustEngine.set_physics_joint_load_limits !== "function") return limits.breakForce === undefined && limits.breakTorque === undefined && rustEngine.query_physics_joint(PHYSICS_JOINT_TYPE_CODES[h.jointType],h.jointIndex,h.jointGeneration);
+      return rustEngine.set_physics_joint_load_limits(PHYSICS_JOINT_TYPE_CODES[h.jointType], h.jointIndex, h.jointGeneration,
+        limits.breakForce === undefined ? Infinity : nonNegativeNumber(limits.breakForce, "breakForce"),
+        limits.breakTorque === undefined ? Infinity : nonNegativeNumber(limits.breakTorque, "breakTorque"));
+    },
     getPhysicsJoint(handle) {
       requireAlive();
       const resolved = physicsJointHandle(handle);
@@ -344,10 +370,15 @@ function readPhysicsJointSnapshot(rustEngine: Engine): PhysicsJointSnapshot {
     ratio: rustEngine.physics_joint_ratio(),
     slack: rustEngine.physics_joint_slack(),
     referenceAngle: rustEngine.physics_joint_reference_angle(),
+    ...(Number.isFinite(rustEngine.physics_joint_break_force?.()) ? { breakForce: rustEngine.physics_joint_break_force() } : {}),
+    ...(Number.isFinite(rustEngine.physics_joint_break_torque?.()) ? { breakTorque: rustEngine.physics_joint_break_torque() } : {}),
     breakDistance: rustEngine.physics_joint_break_distance(),
     breakAngle: rustEngine.physics_joint_break_angle(),
     stiffness: rustEngine.physics_joint_stiffness(),
     damping: rustEngine.physics_joint_damping(),
+    ...(rustEngine.physics_joint_uses_frequency() ? {
+      frequencyHz: rustEngine.physics_joint_frequency_hz(), dampingRatio: rustEngine.physics_joint_damping_ratio(),
+    } : {}),
     angularStiffness: rustEngine.physics_joint_angular_stiffness(),
     angularDamping: rustEngine.physics_joint_angular_damping(),
     localAnchorAX: rustEngine.physics_joint_local_anchor_a_x(),

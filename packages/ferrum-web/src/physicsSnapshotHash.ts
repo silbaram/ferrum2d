@@ -13,6 +13,15 @@ export function hashPhysicsWorldSnapshot(
   options: PhysicsWorldSnapshotHashOptions = {},
 ): string {
   const canonical = {
+    ...(snapshot.version === 2 ? { solverState: snapshot.solverState && {
+      ...snapshot.solverState,
+      // Native pair orientation may flip after handle allocation. Hash by logical
+      // endpoint order while preserving contact order and impulse magnitudes.
+      contacts: snapshot.solverState.contacts.map(contact => contact.bodyA <= contact.bodyB
+        ? contact
+        : { ...contact, bodyA: contact.bodyB, bodyB: contact.bodyA,
+          normalX: -contact.normalX, normalY: -contact.normalY }),
+    } } : {}),
     format: snapshot.format,
     version: snapshot.version,
     frame: snapshot.frame,
@@ -83,6 +92,7 @@ function canonicalBodySnapshot(body: PhysicsWorldSnapshotBody, includeHandles: b
       velocityX: state.velocityX,
       velocityY: state.velocityY,
       rotationRadians: state.rotationRadians,
+      ...(state.fixedRotation ? { fixedRotation: true } : {}),
       angularVelocityRadiansPerSecond: state.angularVelocityRadiansPerSecond,
       bodyType: state.bodyType,
       bodyEnabled: state.bodyEnabled,
@@ -158,8 +168,11 @@ function canonicalJointSnapshot(joint: PhysicsWorldSnapshotJoint, includeHandles
       ratio: state.ratio,
       slack: state.slack,
       referenceAngle: state.referenceAngle,
+      ...(state.breakForce === undefined ? {} : { breakForce: state.breakForce }),
+      ...(state.breakTorque === undefined ? {} : { breakTorque: state.breakTorque }),
       breakDistance: state.breakDistance,
       breakAngle: state.breakAngle,
+      ...(state.frequencyHz === undefined ? {} : { frequencyHz: state.frequencyHz, dampingRatio: state.dampingRatio }),
       stiffness: state.stiffness,
       damping: state.damping,
       angularStiffness: state.angularStiffness,

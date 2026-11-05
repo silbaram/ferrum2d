@@ -366,6 +366,7 @@ function fakeJointContext(requireAliveOverride?: () => void): PhysicsJointApiCon
     physics_joint_break_angle: () => 6,
     physics_joint_stiffness: () => 0.7,
     physics_joint_damping: () => 0.8,
+    physics_joint_uses_frequency: () => false,
     physics_joint_angular_stiffness: () => 0.9,
     physics_joint_angular_damping: () => 1,
     physics_joint_local_anchor_a_x: () => 11,

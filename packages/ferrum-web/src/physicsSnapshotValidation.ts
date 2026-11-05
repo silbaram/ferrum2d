@@ -1,3 +1,5 @@
+import { nonNegativeNumber } from "./physicsAuthoringNumbers.js";
+import { validateWorldSolverState } from "./physicsWorldSolverState.js";
 import { physicsSpecDiagnosticError } from "./diagnostics.js";
 import type {
   PhysicsBodyColliderSnapshot,
@@ -173,7 +175,7 @@ export function validatePhysicsWorldSnapshot(
   if (snapshotRecord.format !== PHYSICS_WORLD_SNAPSHOT_FORMAT) {
     throw physicsSpecDiagnosticError(`${path}.format`, `must be '${PHYSICS_WORLD_SNAPSHOT_FORMAT}'`);
   }
-  if (snapshotRecord.version !== PHYSICS_WORLD_SNAPSHOT_VERSION) {
+  if (snapshotRecord.version !== 1 && snapshotRecord.version !== PHYSICS_WORLD_SNAPSHOT_VERSION) {
     throw physicsSpecDiagnosticError(`${path}.version`, `must be ${PHYSICS_WORLD_SNAPSHOT_VERSION}`);
   }
   if (snapshotRecord.source !== "physics-spec") {
@@ -214,6 +216,7 @@ export function validatePhysicsWorldSnapshot(
   arrayValue(snapshotRecord.worldAnchors, `${path}.worldAnchors`).forEach((handle, index) => {
     validateEntityHandle(handle, `${path}.worldAnchors.${index}`);
   });
+  validateWorldSolverState(snapshot as PhysicsWorldSnapshot);
   stringValue(snapshotRecord.replayHash, `${path}.replayHash`);
   const expectedHash = hashPhysicsWorldSnapshot(snapshot as PhysicsWorldSnapshot);
   if (snapshotRecord.replayHash !== expectedHash) {
@@ -384,6 +387,7 @@ function validateBodyState(value: unknown, path: string): PhysicsEntitySnapshot 
   const state = recordValue(value, path);
   validateEntityHandle(state, path);
   enumValue(state.bodyType, BODY_TYPES, `${path}.bodyType`);
+  if (state.fixedRotation !== undefined) booleanValue(state.fixedRotation, `${path}.fixedRotation`);
   enumValue(state.colliderType, COLLIDER_TYPES, `${path}.colliderType`);
   validateMaterialSnapshot(state.colliderMaterial, `${path}.colliderMaterial`);
   for (const field of BODY_STATE_NUMBER_FIELDS) {
@@ -434,6 +438,9 @@ function validateJointState(value: unknown, path: string): PhysicsJointSnapshot 
   validateJointHandle(state, path);
   validateEntityHandle(state.entityA, `${path}.entityA`);
   validateEntityHandle(state.entityB, `${path}.entityB`);
+  for (const field of ["breakForce", "breakTorque"] as const) {
+    if (state[field] !== undefined) nonNegativeNumber(finiteNumber(state[field], `${path}.${field}`), `${path}.${field}`);
+  }
   for (const field of JOINT_STATE_NUMBER_FIELDS) {
     finiteNumber(state[field], `${path}.${String(field)}`);
   }

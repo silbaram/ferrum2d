@@ -65,6 +65,7 @@ export type {
   PhysicsReplayRollbackResult,
   PhysicsReplayWorkerRunResult,
   PhysicsWorldSnapshot,
+  PhysicsWorldSolverState,
 } from "./public/physicsAuthoringExports.js";
 export type {
   DebugGizmoArrowOptions,

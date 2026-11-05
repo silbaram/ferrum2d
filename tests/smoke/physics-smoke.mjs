@@ -8,6 +8,27 @@ const REPLAY_FRAME = "suite";
 
 const scenarios = [
   {
+    id: "physics:quality-upgrade",
+    purpose: "bounded linear/angular CCD, render interpolation, impact buffers, atomic solver-state restore and frequency tuning",
+    tests: [
+      "physics::tests::rigid_body_ccd::ccd_budget::ccd_budget_does_not_advance_unchecked_after_repeated_bounces",
+      "physics::tests::rigid_body_ccd::ccd_budget::ccd_follows_dynamic_impact_target_before_a_thin_wall",
+      "physics::tests::rigid_body_ccd::ccd_budget::ccd_checks_dynamic_target_prefix_before_predicted_interception",
+      "physics::tests::rigid_body_ccd::ccd_budget::ccd_detects_a_rotating_bar_that_crosses_a_thin_obstacle_between_endpoints",
+      "physics::tests::rigid_body_ccd::ccd_budget::angular_ccd_includes_offset_rotating_geometry_and_near_touch",
+      "engine::tests::physics_quality::physics_render_interpolation_leaves_simulation_and_teleports_untouched",
+      "engine::tests::physics_quality::physics_render_interpolation_resume_and_follow_camera_use_displayed_pose",
+      "engine::tests::spatial_scene::spatial_attachments_interpolate_nested_rotation_without_moving_colliders",
+      "engine::tests::spatial_environment::spatial_billboard_and_actor_focus_share_interpolated_height_and_position",
+      "engine::tests::physics_quality::physics_solver_state_restores_accumulators_and_rejects_whole_invalid_batch",
+      "engine::tests::physics_quality::physics_body_bulk_restore_validates_all_entries_before_mutating",
+      "engine::tests::physics_quality::physics_contact_impacts_include_ccd_and_clear_each_frame",
+      "collision::broadphase::static_cache_tests::static_cache_matches_uncached_geometry_after_every_invalidation",
+      "collision::tests::contact_builders::round_contact_points_are_invariant_under_pair_reversal",
+      "physics::tests::rigid_body_joints::spring_joint::frequency_spring_response_is_mass_and_iteration_independent",
+    ],
+  },
+  {
     id: "physics:stacked-boxes",
     purpose: "stack stability, sleeping island stats, and solver drift regression",
     tests: [

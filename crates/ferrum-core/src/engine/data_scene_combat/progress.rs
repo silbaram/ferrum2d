@@ -710,7 +710,10 @@ impl Engine {
         {
             return None;
         }
-        if spatial.len() != 13 + handles.len() / 2 * 8 || rotations.len() != handles.len() / 2 {
+        if spatial.len() < 13 + handles.len() / 2 * 8
+            || !(spatial.len() - 13).is_multiple_of(8)
+            || rotations.len() != handles.len() / 2
+        {
             return None;
         }
         if self.data_scene.gameplay.combat.prefabs.has_visuals() != (packet.version == 4) {
@@ -1137,6 +1140,7 @@ impl Engine {
         self.tweens.clear();
         self.input = crate::input::InputState::default();
         self.data_scene.gameplay.observe_input(self.input);
+        self.reset_physics_impact_feedback();
         self.clear_physics_history();
         self.world.clear_rigid_contact_impulses();
         self.world

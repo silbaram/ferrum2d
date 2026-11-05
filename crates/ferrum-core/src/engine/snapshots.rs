@@ -16,6 +16,143 @@ use super::{
 
 #[wasm_bindgen]
 impl Engine {
+    pub fn begin_physics_restore_transaction(&mut self) -> bool {
+        if self.physics_restore_transaction.is_some() {
+            return false;
+        }
+        self.physics_restore_transaction = Some(self.world.transaction_snapshot());
+        true
+    }
+
+    pub fn end_physics_restore_transaction(&mut self, commit: bool) -> bool {
+        let Some(snapshot) = self.physics_restore_transaction.take() else {
+            return false;
+        };
+        if !commit {
+            self.world.restore_transaction_snapshot(&snapshot);
+        } else {
+            self.reset_physics_impact_feedback();
+            self.clear_physics_history();
+        }
+        true
+    }
+
+    /// Eight f32 values per requested body: force XY, impulse XY, torque,
+    /// angular impulse, sleep timer, can-sleep flag. Empty means invalid input.
+    pub fn capture_physics_solver_state_bulk(&self, handles: &[u32]) -> Vec<f32> {
+        if !handles.len().is_multiple_of(2) {
+            return Vec::new();
+        }
+        let mut values = Vec::with_capacity(handles.len() * 4);
+        for h in handles.chunks_exact(2) {
+            let Some(body) = self
+                .entity_from_handle(h[0], h[1])
+                .and_then(|e| self.world.rigid_body(e))
+            else {
+                return Vec::new();
+            };
+            values.extend([
+                body.force.vx,
+                body.force.vy,
+                body.impulse.vx,
+                body.impulse.vy,
+                body.torque,
+                body.angular_impulse,
+                body.sleep_timer_seconds,
+                u8::from(body.can_sleep) as f32,
+            ]);
+        }
+        values
+    }
+
+    pub fn restore_physics_solver_state_bulk(
+        &mut self,
+        handles: &[u32],
+        values: &[f32],
+        contact_handles: &[u32],
+        contacts: &[f32],
+    ) -> bool {
+        use crate::components::{RigidContactImpulse, Velocity};
+        if !handles.len().is_multiple_of(2)
+            || values.len() != handles.len() * 4
+            || !contact_handles.len().is_multiple_of(4)
+            || contacts.len() != contact_handles.len() / 4 * 6
+            || values.iter().chain(contacts).any(|v| !v.is_finite())
+        {
+            return false;
+        }
+        let mut entities = Vec::with_capacity(handles.len() / 2);
+        let mut selected = std::collections::HashSet::new();
+        for (h, v) in handles.chunks_exact(2).zip(values.chunks_exact(8)) {
+            let Some(entity) = self.entity_from_handle(h[0], h[1]) else {
+                return false;
+            };
+            if self.world.rigid_body(entity).is_none()
+                || !selected.insert((entity.id, entity.generation))
+                || v[6] < 0.0
+                || (v[7] != 0.0 && v[7] != 1.0)
+            {
+                return false;
+            }
+            entities.push(entity);
+        }
+        let mut restored_contacts = Vec::with_capacity(contact_handles.len() / 4);
+        for (h, v) in contact_handles
+            .chunks_exact(4)
+            .zip(contacts.chunks_exact(6))
+        {
+            if !selected.contains(&(h[0], h[1]))
+                || !selected.contains(&(h[2], h[3]))
+                || h[..2] == h[2..]
+                || v[4] < 0.0
+                || (v[2].hypot(v[3]) - 1.0).abs() > 0.01
+            {
+                return false;
+            }
+            restored_contacts.push(RigidContactImpulse {
+                entity_a: crate::entity::Entity {
+                    id: h[0],
+                    generation: h[1],
+                },
+                entity_b: crate::entity::Entity {
+                    id: h[2],
+                    generation: h[3],
+                },
+                point_x: v[0],
+                point_y: v[1],
+                normal_x: v[2],
+                normal_y: v[3],
+                normal_impulse: v[4],
+                tangent_impulse: v[5],
+            });
+        }
+        // Commit only after every handle, accumulator and contact has passed validation.
+        for (entity, v) in entities.into_iter().zip(values.chunks_exact(8)) {
+            let body = self.world.rigid_bodies[entity.id as usize]
+                .as_mut()
+                .expect("validated body");
+            body.force = Velocity { vx: v[0], vy: v[1] };
+            body.impulse = Velocity { vx: v[2], vy: v[3] };
+            body.torque = v[4];
+            body.angular_impulse = v[5];
+            body.sleep_timer_seconds = v[6];
+            body.can_sleep = v[7] == 1.0;
+        }
+        let retained: Vec<_> = self
+            .world
+            .rigid_contact_impulses()
+            .filter(|c| {
+                !selected.contains(&(c.entity_a.id, c.entity_a.generation))
+                    && !selected.contains(&(c.entity_b.id, c.entity_b.generation))
+            })
+            .collect();
+        self.world.clear_rigid_contact_impulses();
+        for c in retained.into_iter().chain(restored_contacts) {
+            self.world.record_rigid_contact_impulse(c);
+        }
+        true
+    }
+
     pub fn physics_body_snapshot_floats_per_body(&self) -> usize {
         PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY
     }
@@ -174,6 +311,7 @@ impl Engine {
             &snapshot,
         );
         if restored {
+            self.reset_physics_impact_feedback();
             self.activate_built_in_shooter_scene();
             self.input_actions = input_actions;
             self.world
@@ -249,6 +387,19 @@ impl Engine {
             let handle_offset = index * PHYSICS_BODY_SNAPSHOT_HANDLE_U32S;
             let float_offset = index * PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY;
             let u32_offset = index * PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY;
+            if !self.validate_physics_body_snapshot_entry(
+                handles[handle_offset],
+                handles[handle_offset + 1],
+                &floats[float_offset..float_offset + PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY],
+                &u32s[u32_offset..u32_offset + PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY],
+            ) {
+                return false;
+            }
+        }
+        for index in 0..body_count {
+            let handle_offset = index * PHYSICS_BODY_SNAPSHOT_HANDLE_U32S;
+            let float_offset = index * PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY;
+            let u32_offset = index * PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY;
             if !self.restore_physics_body_snapshot_entry(
                 handles[handle_offset],
                 handles[handle_offset + 1],
@@ -257,6 +408,9 @@ impl Engine {
             ) {
                 return false;
             }
+        }
+        if self.physics_restore_transaction.is_none() {
+            self.reset_physics_impact_feedback();
         }
         true
     }

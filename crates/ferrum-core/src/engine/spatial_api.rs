@@ -774,6 +774,39 @@ impl Engine {
     pub fn spatial_vertex_stride(&self) -> u32 {
         11
     }
+    pub fn preflight_spatial_moving_platforms(
+        &self,
+        terrain: &[f32],
+        metadata: &[u32],
+        connections: &[u32],
+        values: &[f64],
+    ) -> bool {
+        let mut scene = crate::spatial_scene::SpatialScene::default();
+        scene.configure_surfaces(terrain, metadata)
+            && scene.configure_connections(connections)
+            && scene.parse_platform_state(values).is_some()
+    }
+    pub fn configure_spatial_moving_platforms(&mut self, values: &[f64]) -> bool {
+        let Some((platforms, surfaces)) = self.spatial_scene.parse_platform_state(values) else {
+            return false;
+        };
+        self.spatial_scene.apply_platform_state(platforms, surfaces);
+        true
+    }
+    pub fn capture_spatial_moving_platforms(&self) -> Vec<f64> {
+        self.spatial_scene.platform_state()
+    }
+    pub fn spatial_moving_platform_stats(&self) -> Vec<u32> {
+        vec![
+            self.spatial_scene.platform_carried,
+            self.spatial_scene.platform_blocked,
+        ]
+    }
+    pub fn spatial_configuration_revision(&self) -> u32 {
+        self.spatial_scene
+            .revision
+            .wrapping_sub(self.spatial_scene.platform_revision)
+    }
     pub fn spatial_terrain_revision(&self) -> u32 {
         self.spatial_scene.revision
     }

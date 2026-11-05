@@ -6,6 +6,10 @@ use crate::entity::Entity;
 use crate::world::World;
 
 mod aabb_manifold;
+mod angular_sweep;
+pub(crate) use angular_sweep::{
+    angular_swept_bounds, rotated_shape, shape_angular_velocity, AngularSweepResult, ShapeMotion,
+};
 mod bounds;
 mod broadphase;
 mod capsule_manifold;
@@ -168,7 +172,7 @@ struct ContactFace {
     tangent_extent: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ColliderShapeRef {
     Aabb(AabbCollider),
     Circle(CircleCollider),

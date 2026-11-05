@@ -242,3 +242,20 @@ export interface PhysicsCapsuleBodyShapeCastQuery extends PhysicsShapeCastMotion
 export interface PhysicsConvexPolygonBodyShapeCastQuery extends PhysicsShapeCastMotionQuery {
   vertices: PhysicsConvexPolygonVertexBuffer;
 }
+
+/** Bounded native batch; each request defaults to 32 nearest hits. */
+export type PhysicsBatchCastRequest = { maxHits?: number } & (
+  | ({ kind: "ray" } & PhysicsRaycastBodyQuery)
+  | ({ kind: "segment" } & PhysicsSegmentCastBodyQuery)
+  | ({ kind: "aabb" } & PhysicsAabbBodyShapeCastQuery)
+  | ({ kind: "circle" } & PhysicsCircleBodyShapeCastQuery)
+  | ({ kind: "orientedBox" } & PhysicsOrientedBoxBodyShapeCastQuery)
+  | ({ kind: "capsule" } & PhysicsCapsuleBodyShapeCastQuery)
+  | ({ kind: "convexPolygon" } & PhysicsConvexPolygonBodyShapeCastQuery)
+);
+export interface PhysicsBatchCastResult {
+  requestIndex: number;
+  hits: readonly import("../wasmBridge.js").PhysicsRaycastBodyHit[];
+  totalHits: number;
+  truncated: boolean;
+}

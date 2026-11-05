@@ -1,7 +1,8 @@
 use crate::collision::{
-    collider_segment_count_at, collider_shape_at_segment, AabbBounds, ColliderKey,
-    ColliderPair as CollisionColliderPair, ColliderShapeRef, CollisionPair, CollisionScratch,
-    CollisionSystem, RigidBodyCcdCandidateQuery,
+    collider_segment_count_at, collider_shape_at_segment, rotated_shape, shape_angular_velocity,
+    AabbBounds, AngularSweepResult, ColliderKey, ColliderPair as CollisionColliderPair,
+    ColliderShapeRef, CollisionPair, CollisionScratch, CollisionSystem, RigidBodyCcdCandidateQuery,
+    ShapeMotion,
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, ConvexPolygonCollider, EdgeCollider, RigidBodyCcdDebugHit,
@@ -23,9 +24,11 @@ struct RigidBodyCcdHit {
     target_index: usize,
     collider_pair: CollisionColliderPair,
     target_dynamic: bool,
+    advancement_limited: bool,
     time: f32,
     normal: Velocity,
     point: Transform2D,
+    rotation_origins: [Transform2D; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -40,10 +43,14 @@ struct RigidBodyCcdQuery<'a> {
     start: Transform2D,
     velocity: Velocity,
     delta_seconds: f32,
+    elapsed_seconds: f32,
     integrated: &'a [bool],
+    ignored_target: Option<usize>,
 }
 
 pub(super) struct RigidBodyCcdScratch<'a> {
+    pub(super) chain_depth: usize,
+    pub(super) time_offset: f32,
     pub(super) collision: &'a mut CollisionScratch,
     pub(super) candidate_keys: &'a mut Vec<ColliderKey>,
 }
@@ -57,18 +64,29 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     stats: &mut RigidBodyStepStats,
     scratch: &mut RigidBodyCcdScratch<'_>,
 ) -> bool {
+    if scratch.chain_depth >= 8 {
+        world.record_ccd_limit(index, 2);
+        return true;
+    }
     let Some(mut current_start) = world.transform_at_index(index) else {
         return false;
     };
     let mut remaining_seconds = delta_seconds;
+    let mut elapsed_seconds = scratch.time_offset;
     let mut handled_ccd_hit = false;
 
-    for _ in 0..MAX_RIGID_BODY_CCD_ITERATIONS {
+    for attempt in 0..MAX_RIGID_BODY_CCD_ITERATIONS {
         if remaining_seconds <= KINEMATIC_EPSILON {
             break;
         }
         let velocity = finite_velocity(world.velocity_at_index_or_default(index));
-        if velocity_len_squared(velocity) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
+        if velocity_len_squared(velocity) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON
+            && world
+                .angular_velocity_at_index_or_default(index)
+                .radians_per_second
+                .abs()
+                <= KINEMATIC_EPSILON
+        {
             break;
         }
         let Some(hit) = earliest_rigid_body_ccd_hit(
@@ -78,7 +96,9 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
                 start: current_start,
                 velocity,
                 delta_seconds: remaining_seconds,
+                elapsed_seconds,
                 integrated,
+                ignored_target: None,
             },
             stats,
             scratch,
@@ -87,9 +107,84 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
         };
 
         let impact_seconds = remaining_seconds * hit.time.clamp(0.0, 1.0);
+        if hit.advancement_limited {
+            // This pose is checked but there is no confirmed contact. Clip the
+            // remainder without an impulse, impact event, or synthetic CCD hit.
+            integrate_rigid_body_rotation(world, index, impact_seconds);
+            world.set_transform_at_index(
+                index,
+                Transform2D {
+                    x: current_start.x + velocity.vx * impact_seconds,
+                    y: current_start.y + velocity.vy * impact_seconds,
+                },
+            );
+            world.record_ccd_limit(index, 1);
+            return true;
+        }
+        // A predicted target pose is only valid if its prefix is collision-free.
+        // Resolve an earlier obstruction first, then retry this source's sweep.
+        // The source is a stationary barrier during that bounded recursive pass.
+        if hit.target_dynamic {
+            let prefix_seconds = elapsed_seconds + impact_seconds;
+            let Some(target_start) = world.transform_at_index(hit.target_index) else {
+                return true;
+            };
+            let target_velocity =
+                finite_velocity(world.velocity_at_index_or_default(hit.target_index));
+            let obstructed = prefix_seconds > 0.0
+                && earliest_rigid_body_ccd_hit(
+                    world,
+                    RigidBodyCcdQuery {
+                        moving_index: hit.target_index,
+                        start: target_start,
+                        velocity: target_velocity,
+                        delta_seconds: prefix_seconds,
+                        elapsed_seconds: 0.0,
+                        integrated,
+                        ignored_target: Some(index),
+                    },
+                    stats,
+                    scratch,
+                )
+                .is_some();
+            if obstructed {
+                let was_integrated = integrated[index];
+                integrated[index] = true;
+                let old_offset = scratch.time_offset;
+                scratch.time_offset = 0.0;
+                scratch.chain_depth += 1;
+                let duration = old_offset + delta_seconds;
+                let handled = integrate_dynamic_rigid_body_position_with_ccd(
+                    world,
+                    hit.target_index,
+                    duration,
+                    config,
+                    integrated,
+                    stats,
+                    scratch,
+                );
+                scratch.chain_depth -= 1;
+                scratch.time_offset = old_offset;
+                integrated[index] = was_integrated;
+                if !handled {
+                    integrate_rigid_body_ccd_dynamic_target_remainder(
+                        world,
+                        hit.target_index,
+                        duration,
+                        integrated,
+                    );
+                }
+                integrated[hit.target_index] = true;
+                if attempt + 1 == MAX_RIGID_BODY_CCD_ITERATIONS {
+                    world.record_ccd_limit(index, 1);
+                    return true;
+                }
+                continue;
+            }
+        }
         let dynamic_target = hit
             .target_dynamic
-            .then(|| rigid_body_ccd_dynamic_target(world, hit.target_index))
+            .then(|| rigid_body_ccd_dynamic_target(world, hit.target_index, elapsed_seconds))
             .flatten();
 
         integrate_rigid_body_rotation(world, index, impact_seconds);
@@ -101,7 +196,11 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
 
         if let Some(target) = dynamic_target {
             wake_rigid_body_for_ccd_impact(world, hit.target_index, stats);
-            integrate_rigid_body_rotation(world, hit.target_index, impact_seconds);
+            integrate_rigid_body_rotation(
+                world,
+                hit.target_index,
+                elapsed_seconds + impact_seconds,
+            );
             world.set_transform_at_index(
                 hit.target_index,
                 Transform2D {
@@ -126,14 +225,46 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
         stats.ccd_hits = stats.ccd_hits.saturating_add(1);
         handled_ccd_hit = true;
 
+        // An already integrated body (including a recursion ancestor) is a
+        // stationary barrier for this remaining interval. Do not advance past it.
+        if integrated.get(hit.target_index).copied().unwrap_or(false) {
+            return true;
+        }
         remaining_seconds = (remaining_seconds - impact_seconds).max(0.0);
+        elapsed_seconds += impact_seconds;
         if dynamic_target.is_some() {
-            integrate_rigid_body_ccd_dynamic_target_remainder(
+            let was_integrated = integrated[index];
+            integrated[index] = true;
+            scratch.chain_depth += 1;
+            let old_offset = scratch.time_offset;
+            scratch.time_offset = elapsed_seconds;
+            let handled = integrate_dynamic_rigid_body_position_with_ccd(
                 world,
                 hit.target_index,
                 remaining_seconds,
+                config,
                 integrated,
+                stats,
+                scratch,
             );
+            scratch.chain_depth -= 1;
+            scratch.time_offset = old_offset;
+            integrated[index] = was_integrated;
+            if !handled {
+                integrate_rigid_body_ccd_dynamic_target_remainder(
+                    world,
+                    hit.target_index,
+                    remaining_seconds,
+                    integrated,
+                );
+            }
+            integrated[hit.target_index] = true;
+        }
+        // The budget limits checked sweeps, including deferred target prefixes.
+        // Never turn exhaustion into unchecked remaining movement.
+        if attempt + 1 == MAX_RIGID_BODY_CCD_ITERATIONS {
+            world.record_ccd_limit(index, 1);
+            return true;
         }
     }
 
@@ -150,10 +281,20 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     true
 }
 
-fn rigid_body_ccd_dynamic_target(world: &World, index: usize) -> Option<RigidBodyCcdDynamicTarget> {
+fn rigid_body_ccd_dynamic_target(
+    world: &World,
+    index: usize,
+    elapsed_seconds: f32,
+) -> Option<RigidBodyCcdDynamicTarget> {
     let start = world.transform_at_index(index)?;
     let velocity = finite_velocity(world.velocity_at_index_or_default(index));
-    Some(RigidBodyCcdDynamicTarget { start, velocity })
+    Some(RigidBodyCcdDynamicTarget {
+        start: Transform2D {
+            x: start.x + velocity.vx * elapsed_seconds,
+            y: start.y + velocity.vy * elapsed_seconds,
+        },
+        velocity,
+    })
 }
 
 fn integrate_rigid_body_ccd_dynamic_target_remainder(
@@ -255,17 +396,18 @@ fn earliest_collider_ccd_hit(
             moving_start: query.start,
             moving_shape,
             moving_velocity: query.velocity,
-            delta_seconds: query.delta_seconds,
+            delta_seconds: query.delta_seconds + query.elapsed_seconds,
         },
         scratch.candidate_keys,
     );
     for &target_key in scratch.candidate_keys.iter() {
         let target_index = target_key.entity_index;
-        if !rigid_body_ccd_target_allows(world, query.moving_index, target_index, query.integrated)
+        if query.ignored_target == Some(target_index)
+            || !rigid_body_ccd_target_allows(world, query.moving_index, target_index)
         {
             continue;
         }
-        let Some(target_shape) = collider_shape_at_segment(
+        let Some(mut target_shape) = collider_shape_at_segment(
             world,
             target_index,
             target_key.collider_index,
@@ -276,9 +418,25 @@ fn earliest_collider_ccd_hit(
         if target_shape.is_trigger() {
             continue;
         }
-        let Some(target_transform) = world.transform_at_index(target_index) else {
+        let Some(mut target_transform) = world.transform_at_index(target_index) else {
             continue;
         };
+        let target_integrated = query.integrated.get(target_index).copied().unwrap_or(false);
+        let target_velocity = if target_integrated {
+            Velocity::default()
+        } else {
+            finite_velocity(world.velocity_at_index_or_default(target_index))
+        };
+        let target_omega = if target_integrated {
+            0.0
+        } else {
+            shape_angular_velocity(world, target_index, target_shape)
+        };
+        if !target_integrated {
+            target_transform.x += target_velocity.vx * query.elapsed_seconds;
+            target_transform.y += target_velocity.vy * query.elapsed_seconds;
+            target_shape = rotated_shape(target_shape, target_omega * query.elapsed_seconds);
+        }
         if CollisionSystem::shapes_overlap(
             query.start,
             moving_shape,
@@ -287,19 +445,52 @@ fn earliest_collider_ccd_hit(
         ) {
             continue;
         }
-        let target_velocity = finite_velocity(world.velocity_at_index_or_default(target_index));
         stats.ccd_checks = stats.ccd_checks.saturating_add(1);
-        let Some(contact) = CollisionSystem::swept_shape_contact(
-            query.start,
-            query.velocity,
-            moving_shape,
-            target_transform,
-            target_velocity,
-            target_shape,
-            query.delta_seconds,
-        ) else {
+        let moving_omega = shape_angular_velocity(world, query.moving_index, moving_shape);
+        let moving_motion = ShapeMotion {
+            start: query.start,
+            shape: moving_shape,
+            velocity: query.velocity,
+            angular_velocity: moving_omega,
+        };
+        let target_motion = ShapeMotion {
+            start: target_transform,
+            shape: target_shape,
+            velocity: target_velocity,
+            angular_velocity: target_omega,
+        };
+
+        let angular = moving_omega != 0.0 || target_omega != 0.0;
+        let contact = if angular {
+            CollisionSystem::angular_swept_shape_contact(
+                moving_motion,
+                target_motion,
+                query.delta_seconds,
+            )
+            .map(|result| match result {
+                AngularSweepResult::Contact(hit) => (hit, false),
+                AngularSweepResult::BudgetLimit(hit) => (hit, true),
+            })
+        } else {
+            CollisionSystem::swept_shape_contact(
+                query.start,
+                query.velocity,
+                moving_shape,
+                target_transform,
+                target_velocity,
+                target_shape,
+                query.delta_seconds,
+            )
+            .map(|hit| (hit, false))
+        };
+        let Some((contact, advancement_limited)) = contact else {
             continue;
         };
+        // Meeting a completed body's boundary exactly at the end does not need
+        // an extra impact; its velocity was already resolved in the earlier TOI.
+        if !advancement_limited && target_integrated && contact.time >= 1.0 - KINEMATIC_EPSILON {
+            continue;
+        }
         let normal = Velocity {
             vx: contact.normal_x,
             vy: contact.normal_y,
@@ -308,7 +499,7 @@ fn earliest_collider_ccd_hit(
             vx: query.velocity.vx - target_velocity.vx,
             vy: query.velocity.vy - target_velocity.vy,
         };
-        if dot_velocity(relative_velocity, normal) <= KINEMATIC_EPSILON {
+        if !angular && dot_velocity(relative_velocity, normal) <= KINEMATIC_EPSILON {
             continue;
         }
         let time = contact.time.clamp(0.0, 1.0);
@@ -322,50 +513,53 @@ fn earliest_collider_ccd_hit(
         };
         let hit = RigidBodyCcdHit {
             target_index,
+            advancement_limited,
             collider_pair: CollisionColliderPair {
                 a: moving_key,
                 b: target_key,
             },
-            target_dynamic: world
-                .rigid_bodies
-                .get(target_index)
-                .copied()
-                .flatten()
-                .is_some_and(|body| body.body_type == RigidBodyType::Dynamic),
+            target_dynamic: !target_integrated
+                && world
+                    .rigid_bodies
+                    .get(target_index)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|body| body.body_type == RigidBodyType::Dynamic),
             time,
             normal,
-            point: rigid_body_ccd_contact_point(
-                moving_at_impact,
-                moving_shape,
-                target_at_impact,
-                target_shape,
-                normal,
-            ),
+            rotation_origins: [
+                moving_motion.rotation_origin_at(query.delta_seconds * time),
+                target_motion.rotation_origin_at(query.delta_seconds * time),
+            ],
+            point: if advancement_limited {
+                moving_at_impact
+            } else if angular {
+                CollisionSystem::angular_contact_point(
+                    moving_motion,
+                    target_motion,
+                    query.delta_seconds * time,
+                )
+                .unwrap_or(moving_at_impact)
+            } else {
+                rigid_body_ccd_contact_point(
+                    moving_at_impact,
+                    rotated_shape(moving_shape, moving_omega * query.delta_seconds * time),
+                    target_at_impact,
+                    rotated_shape(target_shape, target_omega * query.delta_seconds * time),
+                    normal,
+                )
+            },
         };
         update_rigid_body_ccd_hit(&mut best, hit);
     }
     best
 }
 
-fn rigid_body_ccd_target_allows(
-    world: &World,
-    moving_index: usize,
-    target_index: usize,
-    integrated: &[bool],
-) -> bool {
-    if moving_index == target_index || !world.is_alive_index(target_index) {
-        return false;
-    }
-    if has_disabled_rigid_body(world, moving_index) || has_disabled_rigid_body(world, target_index)
-    {
-        return false;
-    }
-    if let Some(body) = world.rigid_bodies.get(target_index).copied().flatten() {
-        body.body_type != RigidBodyType::Dynamic
-            || !integrated.get(target_index).copied().unwrap_or(false)
-    } else {
-        true
-    }
+fn rigid_body_ccd_target_allows(world: &World, moving_index: usize, target_index: usize) -> bool {
+    moving_index != target_index
+        && world.is_alive_index(target_index)
+        && !has_disabled_rigid_body(world, moving_index)
+        && !has_disabled_rigid_body(world, target_index)
 }
 
 fn rigid_body_ccd_contact_point(
@@ -637,6 +831,7 @@ fn apply_rigid_body_ccd_impact(
         hit.point,
         hit.normal,
         config,
+        hit.rotation_origins,
     )
 }
 

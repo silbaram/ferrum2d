@@ -21,6 +21,8 @@ pub struct RigidBody {
     pub inverse_mass: f32,
     pub inertia: f32,
     pub inverse_inertia: f32,
+    /// Prevent solver/integration rotation while retaining authored inertia for unlocking.
+    pub fixed_rotation: bool,
     pub gravity_scale: f32,
     pub linear_damping: f32,
     pub angular_damping: f32,
@@ -66,6 +68,7 @@ impl RigidBody {
             inverse_mass: 0.0,
             inertia: f32::INFINITY,
             inverse_inertia: 0.0,
+            fixed_rotation: false,
             gravity_scale: 0.0,
             linear_damping: 0.0,
             angular_damping: 0.0,
@@ -88,6 +91,7 @@ impl RigidBody {
             inverse_mass: 0.0,
             inertia: f32::INFINITY,
             inverse_inertia: 0.0,
+            fixed_rotation: false,
             gravity_scale: 0.0,
             linear_damping: 0.0,
             angular_damping: 0.0,
@@ -111,6 +115,7 @@ impl RigidBody {
             inverse_mass: 1.0 / mass,
             inertia: mass,
             inverse_inertia: 1.0 / mass,
+            fixed_rotation: false,
             gravity_scale: 1.0,
             linear_damping: 0.0,
             angular_damping: 0.0,
@@ -282,10 +287,29 @@ impl RigidBody {
         self
     }
 
+    /// Lock physical rotation; explicit authored rotation/teleports remain allowed.
+    pub fn with_fixed_rotation(mut self, fixed: bool) -> Self {
+        self.fixed_rotation = fixed;
+        self.inverse_inertia = if fixed || self.body_type != RigidBodyType::Dynamic {
+            0.0
+        } else {
+            1.0 / self.inertia
+        };
+        if fixed {
+            self.torque = 0.0;
+            self.angular_impulse = 0.0;
+        }
+        self
+    }
+
     pub fn with_inertia(mut self, inertia: f32) -> Self {
         if self.body_type == RigidBodyType::Dynamic && valid_positive_mass_property(inertia) {
             self.inertia = inertia;
-            self.inverse_inertia = 1.0 / inertia;
+            self.inverse_inertia = if self.fixed_rotation {
+                0.0
+            } else {
+                1.0 / inertia
+            };
         }
         self
     }

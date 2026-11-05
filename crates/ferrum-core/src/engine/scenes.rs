@@ -216,6 +216,9 @@ impl DataSceneRuntime {
         }
         context
             .spatial_scene
+            .step_moving_platforms(context.world, delta);
+        context
+            .spatial_scene
             .attachments
             .synchronize_or_restore(context.world, &context.spatial_scene.models);
         if self
@@ -859,6 +862,7 @@ impl Engine {
                 .reset_to_title(&mut context);
         }
         self.particles.clear();
+        self.reset_physics_impact_feedback();
         self.tweens.clear();
         self.clear_physics_history();
         self.clear_data_scene_entity_handle();

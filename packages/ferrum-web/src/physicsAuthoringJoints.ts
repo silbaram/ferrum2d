@@ -161,6 +161,8 @@ function jointOptionsFromResolved(
   const base = {
     entityA,
     entityB,
+    ...(joint.breakForce === undefined ? {} : { breakForce: joint.breakForce }),
+    ...(joint.breakTorque === undefined ? {} : { breakTorque: joint.breakTorque }),
     stiffness: joint.stiffness,
     damping: joint.damping,
     enabled: joint.enabled,
@@ -192,6 +194,7 @@ function jointOptionsFromResolved(
       return {
         ...base,
         type: "spring",
+        ...(joint.frequencyHz === undefined ? {} : { frequencyHz: joint.frequencyHz, dampingRatio: joint.dampingRatio }),
         localAnchorAX: joint.localAnchorAX,
         localAnchorAY: joint.localAnchorAY,
         localAnchorBX: joint.localAnchorBX,
@@ -290,6 +293,8 @@ function jointOptionsFromAuthoring(
   const base = {
     entityA,
     entityB,
+    ...(options.breakForce === undefined ? {} : { breakForce: nonNegativeNumber(options.breakForce, `${path}.breakForce`) }),
+    ...(options.breakTorque === undefined ? {} : { breakTorque: nonNegativeNumber(options.breakTorque, `${path}.breakTorque`) }),
     ...(options.stiffness === undefined ? {} : { stiffness: unitIntervalNumber(options.stiffness, `${path}.stiffness`) }),
     ...(options.damping === undefined ? {} : { damping: unitIntervalNumber(options.damping, `${path}.damping`) }),
     ...(options.enabled === undefined ? {} : { enabled: options.enabled }),
@@ -321,6 +326,7 @@ function jointOptionsFromAuthoring(
       return {
         ...base,
         type: "spring",
+        frequencyHz: options.frequencyHz, dampingRatio: options.dampingRatio,
         localAnchorAX: localAnchorA.x,
         localAnchorAY: localAnchorA.y,
         localAnchorBX: localAnchorB.x,

@@ -114,7 +114,7 @@ impl World {
         if !self.is_alive_index(index) {
             return None;
         }
-        let transform = self.transforms.get(index).copied().flatten()?;
+        let transform = self.render_transform_at_index(index)?;
         let sprite = self.sprites.get(index).copied().flatten()?;
         Some((transform, sprite))
     }

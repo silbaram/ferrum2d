@@ -4,6 +4,9 @@ use super::super::Engine;
 
 #[wasm_bindgen]
 impl Engine {
+    pub fn physics_entity_fixed_rotation(&self) -> bool {
+        self.physics_entity_snapshot.fixed_rotation
+    }
     pub fn physics_query_entity_id(&self) -> u32 {
         self.physics_query_result.entity_id
     }

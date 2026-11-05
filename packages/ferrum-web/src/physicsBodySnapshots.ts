@@ -71,6 +71,7 @@ export function readPhysicsEntitySnapshot(rustEngine: Engine): PhysicsEntitySnap
     inverseMass: rustEngine.physics_entity_inverse_mass(),
     inertia: rustEngine.physics_entity_inertia(),
     inverseInertia: rustEngine.physics_entity_inverse_inertia(),
+    ...(rustEngine.physics_entity_fixed_rotation?.() ? { fixedRotation: true } : {}),
     gravityScale: rustEngine.physics_entity_gravity_scale(),
     linearDamping: rustEngine.physics_entity_linear_damping(),
     angularDamping: rustEngine.physics_entity_angular_damping(),

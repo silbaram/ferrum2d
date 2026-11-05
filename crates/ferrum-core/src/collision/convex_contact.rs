@@ -290,7 +290,7 @@ fn convex_contact_axis(
     Some(true)
 }
 
-fn convex_contact_geometry_project(
+pub(super) fn convex_contact_geometry_project(
     geometry: ConvexContactGeometry,
     axis_x: f32,
     axis_y: f32,

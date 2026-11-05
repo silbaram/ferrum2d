@@ -17,6 +17,10 @@ struct SpatialPose {
 struct SpatialProgress {
     camera: Option<SpatialCamera>,
     poses: Vec<Option<SpatialPose>>,
+    platforms: Option<(
+        Vec<crate::spatial_scene::MovingPlatform>,
+        Vec<crate::spatial_scene::Surface>,
+    )>,
 }
 
 #[wasm_bindgen]
@@ -82,6 +86,14 @@ impl Engine {
 }
 
 impl Engine {
+    fn platform_progress_body(&self, entity: Entity) -> bool {
+        !self.spatial_scene.moving_platforms.is_empty()
+            && self.world.height_span(entity).is_some()
+            && self
+                .world
+                .rigid_body(entity)
+                .is_some_and(|b| b.body_type == crate::components::RigidBodyType::Kinematic)
+    }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn restore_data_scene_progress_with_spatial_motion_base(
         &mut self,
@@ -240,7 +252,8 @@ impl Engine {
             };
             if self.spatial_scene.camera.is_none()
                 || self.spatial_scene.attachments.contains(entity)
-                || !(self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
+                || !(self.platform_progress_body(entity)
+                    || self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
                     || self
                         .spatial_scene
                         .models
@@ -366,7 +379,8 @@ impl Engine {
             };
             let bound = progress.camera.is_some()
                 && !self.spatial_scene.attachments.contains(entity)
-                && (self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
+                && (self.platform_progress_body(entity)
+                    || self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
                     || self
                         .spatial_scene
                         .models
@@ -436,6 +450,9 @@ impl Engine {
             return false;
         }
         // Every operation below has been preflighted for this complete batch.
+        if let Some((platforms, surfaces)) = progress.platforms {
+            self.spatial_scene.apply_platform_state(platforms, surfaces);
+        }
         for (h, pose) in handles.chunks_exact(2).zip(&progress.poses) {
             let Some(pose) = pose else {
                 continue;
@@ -472,6 +489,7 @@ impl Engine {
         self.data_scene.movement.cancel();
         self.spatial_scene.navigation = Default::default();
         self.input = crate::input::InputState::default();
+        self.reset_physics_impact_feedback();
         self.clear_physics_history();
         self.frame_buffers.clear_scene_output();
         self.spatial_scene.billboards.clear();
@@ -498,8 +516,32 @@ fn decode(source: &SpatialScene, values: &[f64], viewport: [f32; 2]) -> Option<S
         }
         _ => return None,
     };
-    let mut poses = Vec::with_capacity((values.len() - CAMERA_VALUES) / POSE_VALUES);
-    for record in values[CAMERA_VALUES..].chunks_exact(POSE_VALUES) {
+    let records = &values[CAMERA_VALUES..];
+    let pose_len = records
+        .chunks_exact(POSE_VALUES)
+        .position(|r| r[0] == 2.0)
+        .unwrap_or(records.len() / POSE_VALUES)
+        * POSE_VALUES;
+    let platforms = if pose_len < records.len() {
+        camera?;
+        Some(source.parse_platform_state(&records[pose_len..])?)
+    } else {
+        None
+    };
+    let mut preview = SpatialScene::default();
+    if let Some((_, surfaces)) = &platforms {
+        // Match runtime support ownership at shared surface edges during preflight.
+        preview.physics = crate::tilemap::Tilemap::with_half_open_hd2d_surfaces();
+        preview.surfaces = surfaces.clone();
+        preview.rebuild_platform_geometry();
+    }
+    let source = if platforms.is_some() {
+        &preview
+    } else {
+        source
+    };
+    let mut poses = Vec::with_capacity(pose_len / POSE_VALUES);
+    for record in records[..pose_len].chunks_exact(POSE_VALUES) {
         if record[0] == 0.0 && record.iter().all(|v| *v == 0.0) {
             poses.push(None);
             continue;
@@ -535,7 +577,11 @@ fn decode(source: &SpatialScene, values: &[f64], viewport: [f32; 2]) -> Option<S
         };
         poses.push(Some(SpatialPose { at, span }));
     }
-    Some(SpatialProgress { camera, poses })
+    Some(SpatialProgress {
+        camera,
+        poses,
+        platforms,
+    })
 }
 
 fn integer(value: f64, max: u32) -> Option<u32> {

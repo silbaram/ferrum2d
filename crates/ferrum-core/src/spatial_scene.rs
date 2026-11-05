@@ -298,6 +298,10 @@ pub(crate) struct Billboard {
 
 #[derive(Default)]
 pub(crate) struct SpatialScene {
+    pub moving_platforms: Vec<MovingPlatform>,
+    pub platform_revision: u32,
+    pub platform_carried: u32,
+    pub platform_blocked: u32,
     /// Disposable authoring presentation; never participates in simulation or checkpoints.
     pub preview_hidden_entities: BTreeSet<(u32, u32)>,
     pub preview_hidden_surfaces: BTreeSet<u32>,
@@ -345,6 +349,7 @@ impl SpatialScene {
     }
 
     pub fn clear(&mut self) {
+        self.moving_platforms.clear();
         self.preview_hidden_entities.clear();
         self.preview_hidden_surfaces.clear();
         self.attachments = Default::default();
@@ -473,6 +478,7 @@ impl SpatialScene {
             })
             .collect();
         self.navigation_revision = self.navigation_revision.wrapping_add(1);
+        self.moving_platforms.clear();
         self.surfaces = surfaces;
         self.terrain = mesh;
         self.physics = physics;
@@ -665,10 +671,12 @@ impl SpatialScene {
             let Some((t, mut s)) = world.renderable_sprite_at_index(id as usize) else {
                 continue;
             };
-            s.rotation_radians += world.rotation_at_index_or_default(id as usize).radians
+            s.rotation_radians += world.render_rotation_at_index(id as usize).radians
                 + self.runtime_sprite_rotation(entity);
-            let elevation =
-                world.height_span(entity).map_or(0.0, |s| s.elevation) + style.elevation;
+            let elevation = world
+                .render_height_span_at(entity.id as usize)
+                .map_or(0.0, |s| s.elevation)
+                + style.elevation;
             let first = self.billboards.len();
             if style.material.flags & 1 != 0
                 && self.environment.shadows()
@@ -697,8 +705,8 @@ impl SpatialScene {
                 [t.x, elevation, -t.y],
                 camera.right,
             );
-            if let Some(span) = world.height_span(entity) {
-                self.debug.height_span(t, span, &camera);
+            if let Some((at, span)) = world.transform(entity).zip(world.height_span(entity)) {
+                self.debug.height_span(at, span, &camera);
             }
         }
         self.debug.physics(world, &camera);
@@ -1186,3 +1194,6 @@ fn ray_triangle(origin: Point, dir: Point, a: Point, b: Point, c: Point) -> Opti
     let distance = dot(e2, q) / det;
     (distance >= 0.0 && distance.is_finite()).then_some(distance)
 }
+
+mod moving_platforms;
+pub(crate) use moving_platforms::MovingPlatform;

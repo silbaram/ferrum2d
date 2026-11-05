@@ -22,6 +22,7 @@ pub(in crate::engine) struct PhysicsEntitySnapshot {
     pub(in crate::engine) body_type: u32,
     pub(in crate::engine) body_enabled: bool,
     pub(in crate::engine) is_sleeping: bool,
+    pub(in crate::engine) fixed_rotation: bool,
     pub(in crate::engine) collider_type: u32,
     pub(in crate::engine) collider_enabled: bool,
     pub(in crate::engine) collider_is_trigger: bool,
@@ -79,6 +80,8 @@ pub(in crate::engine) struct PhysicsBodyColliderSnapshot {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::engine) struct PhysicsJointSnapshot {
+    pub(in crate::engine) frequency_hz: Option<f32>,
+    pub(in crate::engine) damping_ratio: f32,
     pub(in crate::engine) joint_type: u32,
     pub(in crate::engine) joint_index: u32,
     pub(in crate::engine) joint_generation: u32,
@@ -91,6 +94,8 @@ pub(in crate::engine) struct PhysicsJointSnapshot {
     pub(in crate::engine) ratio: f32,
     pub(in crate::engine) slack: bool,
     pub(in crate::engine) reference_angle: f32,
+    pub(in crate::engine) break_force: f32,
+    pub(in crate::engine) break_torque: f32,
     pub(in crate::engine) break_distance: f32,
     pub(in crate::engine) break_angle: f32,
     pub(in crate::engine) stiffness: f32,

@@ -26,7 +26,6 @@ import {
   PHYSICS_REPLAY_INPUT_STREAM_FORMAT,
   PHYSICS_REPLAY_INPUT_STREAM_VERSION,
   PHYSICS_WORLD_SNAPSHOT_FORMAT,
-  PHYSICS_WORLD_SNAPSHOT_VERSION,
   restorePhysicsWorldSnapshot,
   runPhysicsReplayInputStream,
   verifyPhysicsReplayInputStreamRollback,
@@ -450,7 +449,7 @@ test("physics world snapshot captures versioned state and restores via Physics S
 
   engine.stepRigidBodies(0.5, world.stepOptions);
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 2 });
-  equal(snapshot.version, PHYSICS_WORLD_SNAPSHOT_VERSION);
+  equal(snapshot.version, 1, "engines without solver-state support retain v1 compatibility");
   equal(snapshot.bodyCount, 1);
   equal(snapshot.bodies.crate.state.x, 2);
   equal(snapshot.bodies.crate.state.velocityX, 4);

@@ -1,3 +1,4 @@
+import { decodeMovingPlatforms, compileMovingPlatforms } from "./spatialMovingPlatforms.js";
 import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
 import { combatSpawnPrefabNames } from "./dataSceneSpawnProgress.js";
 import { dataSceneSpriteClipDurationSeconds } from "./dataSceneSpriteAnimation.js";
@@ -80,6 +81,7 @@ export interface DataSceneProgressAdapter {
   navigation(): Float64Array;
   obstacles(): Uint32Array;
   animations(epoch: number, handles: Uint32Array): Float64Array;
+  movingPlatforms?(): Float64Array;
   spatialRevision(): number;
   viewport(): { width: number; height: number };
   spatial(epoch: number, handles: Uint32Array): Float64Array;
@@ -235,6 +237,9 @@ export function captureDataSceneProgress(
       "Data Scene spatial progress requires the original authored terrain/billboard configuration; reapply after reconfiguration. Camera changes are supported.",
     );
   }
+  const movingPlatforms = spatialValues?.[0] === 1
+    ? decodeMovingPlatforms(adapter.movingPlatforms?.(), spatialSpec)
+    : undefined;
   const grid = adapter.navigation();
   const obstacleValues = adapter.obstacles();
   const obstacles: NonNullable<DataSceneNavigationSpec["obstacles"]>[number][] =
@@ -302,6 +307,7 @@ export function captureDataSceneProgress(
       : {
           spatial: {
             camera: decodeSpatialProgressCamera(spatialValues),
+            ...(movingPlatforms === undefined ? {} : { movingPlatforms }),
             ...(environment === undefined ? {} : { environment }),
           },
         }),
@@ -491,6 +497,8 @@ export function validateDataSceneProgress(
     throw new Error(
       "Data Scene spatial progress requires an authored spatial scene.",
     );
+  if (resolved.spatial?.movingPlatforms?.length && spatial?.camera !== null && spatial?.movingPlatforms === undefined) throw new Error("moving platform scenes require complete platform progress");
+  if (spatial?.movingPlatforms !== undefined && resolved.spatial !== undefined) compileMovingPlatforms(resolved.spatial, spatial.movingPlatforms);
   const interactions = new Map<string, boolean>();
   for (const binding of plan.bindings) {
     if (binding.command.type === "configureInteraction")
@@ -528,13 +536,13 @@ export function validateDataSceneProgress(
       spatial.camera !== null &&
       !instance.removed &&
       !Object.prototype.hasOwnProperty.call(resolved.spatial!.attachments??{},instance.id) &&
-      (Object.prototype.hasOwnProperty.call(
+      ((!!resolved.spatial!.movingPlatforms?.length && component?.mode === "inline" && component.body?.type === "kinematic" && component.body.heightSpan !== undefined) || Object.prototype.hasOwnProperty.call(
         resolved.spatial!.billboards,
         instance.id,
       ) || Object.prototype.hasOwnProperty.call(resolved.spatial!.models ?? {},instance.id));
     if (needsPose !== (instance.spatialPose !== undefined))
       throw new Error(
-        "Data Scene spatial progress requires poses for all live authored billboards/models, and only those instances.",
+        "Data Scene spatial progress requires poses for live billboards/models and authored kinematic platform bodies, and only those instances.",
       );
     if (instance.spatialPose !== undefined) {
       const pose = resolveSpatialPose(instance.spatialPose);

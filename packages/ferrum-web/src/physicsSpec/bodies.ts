@@ -73,6 +73,7 @@ export function physicsBodies(
       angularDamping: nonNegativeNumber(object.angularDamping, `${bodyPath}.angularDamping`, 0),
       enabled: booleanValue(object.enabled, `${bodyPath}.enabled`, true),
       canSleep: booleanValue(object.canSleep, `${bodyPath}.canSleep`, true),
+      ...(object.fixedRotation === undefined ? {} : { fixedRotation: booleanValue(object.fixedRotation, `${bodyPath}.fixedRotation`, false) }),
     };
     if (object.mass !== undefined) {
       resolvedBody.mass = positiveNumber(object.mass, `${bodyPath}.mass`, 1);

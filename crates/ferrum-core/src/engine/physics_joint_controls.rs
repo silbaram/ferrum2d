@@ -163,6 +163,62 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn spawn_physics_frequency_spring_joint(
+        &mut self,
+        entity_a_id: u32,
+        entity_a_generation: u32,
+        entity_b_id: u32,
+        entity_b_generation: u32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
+        rest_length: f32,
+        stiffness: f32,
+        damping: f32,
+        break_distance: f32,
+        enabled: bool,
+        frequency_hz: f32,
+        damping_ratio: f32,
+    ) -> bool {
+        if !frequency_hz.is_finite()
+            || !(0.0..=1000.0).contains(&frequency_hz)
+            || !damping_ratio.is_finite()
+            || !(0.0..=10.0).contains(&damping_ratio)
+            || !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !Self::valid_non_negative(rest_length)
+            || !Self::valid_unit_interval(stiffness)
+            || !Self::valid_unit_interval(damping)
+            || !Self::valid_break_limit(break_distance)
+        {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        }
+        let Some(entity_a) = self.entity_from_handle(entity_a_id, entity_a_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let Some(entity_b) = self.entity_from_handle(entity_b_id, entity_b_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let joint = SpringJoint::new(entity_a, entity_b, rest_length)
+            .with_frequency(frequency_hz, damping_ratio)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
+            .with_stiffness(stiffness)
+            .with_damping(damping)
+            .with_break_distance(break_distance)
+            .with_enabled(enabled);
+        let Some(id) = self.world.try_add_spring_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        self.store_spring_joint_snapshot(id, joint)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_pulley_joint(
         &mut self,
         entity_a_id: u32,

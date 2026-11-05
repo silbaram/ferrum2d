@@ -6,6 +6,45 @@ use crate::components::{
 use crate::entity::Entity;
 
 impl World {
+    pub fn configure_contact_impacts(&mut self, min_approach_speed: Option<f32>) {
+        self.contact_impact_min_speed = min_approach_speed.filter(|v| v.is_finite() && *v >= 0.0);
+        self.contact_impacts.clear();
+        self.contact_impacts_dropped = 0;
+    }
+
+    /// Impacts from the last rigid-body step (all of its substeps), in solver order.
+    pub fn contact_impacts(&self) -> &[RigidContactImpulse] {
+        &self.contact_impacts
+    }
+
+    pub(crate) fn record_contact_impact(
+        &mut self,
+        impulse: RigidContactImpulse,
+        approach_speed: f32,
+    ) {
+        if impulse.normal_impulse <= 0.0001 {
+            return;
+        }
+        if self.impact_feedback_enabled && approach_speed > 1.0 {
+            if self.impact_feedback_impacts.len() < 4096 {
+                self.impact_feedback_impacts.push(impulse);
+            } else {
+                self.impact_feedback_dropped = self.impact_feedback_dropped.saturating_add(1);
+            }
+        }
+        if !self
+            .contact_impact_min_speed
+            .is_some_and(|min| approach_speed > min)
+        {
+            return;
+        }
+        if self.contact_impacts.len() < 4096 {
+            self.contact_impacts.push(impulse);
+        } else {
+            self.contact_impacts_dropped = self.contact_impacts_dropped.saturating_add(1);
+        }
+    }
+
     pub fn rigid_body(&self, entity: Entity) -> Option<RigidBody> {
         let i = self.valid_index(entity)?;
         self.rigid_bodies[i]
@@ -16,6 +55,9 @@ impl World {
             return;
         };
         self.rigid_bodies[i] = Some(body);
+        if body.fixed_rotation {
+            self.angular_velocities[i] = Some(AngularVelocity::default());
+        }
         if self.velocities[i].is_none() {
             self.velocities[i] = Some(Velocity::default());
         }

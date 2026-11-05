@@ -1,6 +1,52 @@
 use super::*;
 
 #[test]
+fn frequency_spring_response_is_mass_and_iteration_independent() {
+    fn run(mass: f32, iterations: u32, dt: f32) -> (f32, f32) {
+        let mut world = World::default();
+        let anchor = world.spawn_entity();
+        let body = world.spawn_entity();
+        world.set_transform(anchor, Transform2D::default());
+        world.set_rigid_body(anchor, RigidBody::static_body());
+        world.set_transform(body, Transform2D { x: 10.0, y: 0.0 });
+        world.set_rigid_body(body, RigidBody::dynamic(mass).with_sleeping_enabled(false));
+        world.add_spring_joint(SpringJoint::new(anchor, body, 4.0).with_frequency(2.0, 1.0));
+        for _ in 0..(1.0 / dt).round() as u32 {
+            PhysicsSystem::step_rigid_bodies_with_config(
+                &mut world,
+                dt,
+                RigidBodyStepConfig {
+                    gravity: Velocity::default(),
+                    velocity_iterations: iterations,
+                    ..Default::default()
+                },
+            );
+        }
+        (
+            world.transform(body).unwrap().x,
+            world.velocity(body).unwrap().vx,
+        )
+    }
+    let baseline = run(1.0, 1, 1.0 / 60.0);
+    for mass in [0.1, 10.0, 100.0] {
+        for iterations in [1, 4, 12] {
+            let response = run(mass, iterations, 1.0 / 60.0);
+            assert!(
+                (response.0 - baseline.0).abs() < 0.002 && (response.1 - baseline.1).abs() < 0.002,
+                "{mass}/{iterations}: {response:?} vs {baseline:?}"
+            );
+        }
+    }
+    for dt in [1.0 / 30.0, 1.0 / 120.0] {
+        let response = run(1.0, 4, dt);
+        assert!(
+            (response.0 - 4.0).abs() < 0.02 && response.1.abs() < 0.1,
+            "dt={dt}: {response:?}"
+        );
+    }
+}
+
+#[test]
 fn spring_joint_pulls_stretched_body_toward_rest_length() {
     let mut world = World::default();
     let anchor = world.spawn_entity();

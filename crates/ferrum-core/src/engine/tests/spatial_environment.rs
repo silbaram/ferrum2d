@@ -524,3 +524,47 @@ fn lighting_v4_selects_by_influence_and_tracks_bound_entity_without_mutating_aut
         assert_eq!(e.capture_spatial_environment(), v);
     }
 }
+
+#[test]
+fn spatial_billboard_and_actor_focus_share_interpolated_height_and_position() {
+    let (mut e, actor) = setup();
+    e.spatial_scene.actor = Some((actor, 0., 32., 32.));
+    let mut settings = values(false);
+    settings.resize(112, 0.);
+    settings[0] = 5.;
+    settings[83..95].copy_from_slice(&[1., 0., 1., 0., 2., 1., 1., 1., 200., 128., 0.05, 128.]);
+    settings[96..99].copy_from_slice(&[1., 1., 8.]);
+    assert!(e.configure_spatial_environment(&settings));
+    e.build_render_commands();
+    let before_focus = e.spatial_scene.environment.frame_values[99];
+    let before_vertex = e.spatial_scene.billboards[0].position;
+    e.world.begin_render_interpolation_step();
+    e.world.set_transform(actor, Transform2D { x: 10., y: 20. });
+    e.world.set_height_span(
+        actor,
+        HeightSpan::new(crate::components::PhysicsFloorId(0), 36., 8.).unwrap(),
+    );
+    e.world.end_render_interpolation_step();
+    e.build_render_commands();
+    let after_focus = e.spatial_scene.environment.frame_values[99];
+    let after_vertex = e.spatial_scene.billboards[0].position;
+    e.world.set_render_interpolation_alpha(Some(0.5));
+    e.build_render_commands();
+    assert!(
+        (e.spatial_scene.environment.frame_values[99] - (before_focus + after_focus) * 0.5).abs()
+            < 0.001
+    );
+    for axis in 0..3 {
+        assert!(
+            (e.spatial_scene.billboards[0].position[axis]
+                - (before_vertex[axis] + after_vertex[axis]) * 0.5)
+                .abs()
+                < 0.001
+        );
+    }
+    assert_eq!(
+        e.world.transform(actor).unwrap(),
+        Transform2D { x: 10., y: 20. }
+    );
+    assert_eq!(e.world.height_span(actor).unwrap().elevation, 36.);
+}

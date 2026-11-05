@@ -532,3 +532,5 @@ export type { AsepriteAtlasFrameSizeSource, AsepriteAtlasImportOptions, Aseprite
 
 export type { SceneDisplaySpec } from "./sceneDisplay.js";
 export { resolveSceneDisplay } from "./sceneDisplay.js";
+
+export type { SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";

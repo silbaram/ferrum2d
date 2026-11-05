@@ -275,6 +275,29 @@ impl Engine {
         self.store_physics_body_manifolds_from_scratch()
     }
 
+    pub fn configure_physics_contact_impacts(&mut self, enabled: bool, min_approach_speed: f32) {
+        self.world
+            .configure_contact_impacts(enabled.then_some(min_approach_speed));
+        self.frame_buffers.contact_impacts.clear();
+        self.frame_buffers.contact_impacts_dropped = 0;
+    }
+
+    pub fn physics_contact_impacts_dropped(&self) -> u32 {
+        self.frame_buffers.contact_impacts_dropped
+    }
+
+    pub fn query_physics_contact_impacts(&mut self) -> u32 {
+        self.physics_rigid_contact_impulse_hits.clear();
+        self.physics_rigid_contact_impulse_hits.extend(
+            self.frame_buffers
+                .contact_impacts
+                .iter()
+                .copied()
+                .map(PhysicsRigidContactImpulseHit::from_rigid_contact_impulse),
+        );
+        self.physics_rigid_contact_impulse_hits.len() as u32
+    }
+
     pub fn query_rigid_contact_impulses(&mut self) -> u32 {
         self.physics_rigid_contact_impulse_hits.clear();
         self.physics_rigid_contact_impulse_hits.extend(

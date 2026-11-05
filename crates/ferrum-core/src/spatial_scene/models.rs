@@ -166,13 +166,13 @@ impl SpatialModels {
 }
 impl ModelBinding {
     fn pose(&self, world: &World, entity: Entity) -> Option<([f32; 16], Point, Point)> {
-        let at = world.transform(entity)?;
+        let at = world.render_transform_at_index(entity.id as usize)?;
         self.pose_at_rotation(
             at,
-            world.height_span(entity).map_or(0., |s| s.elevation),
             world
-                .rotation_at_index_or_default(entity.id as usize)
-                .radians,
+                .render_height_span_at(entity.id as usize)
+                .map_or(0., |s| s.elevation),
+            world.render_rotation_at_index(entity.id as usize).radians,
         )
     }
     pub(crate) fn pose_at(

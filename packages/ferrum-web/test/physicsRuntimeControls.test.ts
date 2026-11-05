@@ -100,6 +100,7 @@ function fakeRuntimeEngine(): FakeRuntimeEngine {
     autoStepCalls,
     stepCalls,
     stepConfigCalls,
+    configure_physics_render_interpolation(_enabled: boolean): void {},
     configure_fixed_timestep(...args: unknown[]): void {
       fixedCalls.push(args);
     },

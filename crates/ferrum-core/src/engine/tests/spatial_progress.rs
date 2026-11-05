@@ -218,3 +218,111 @@ fn removed_billboards_and_explicitly_disabled_spatial_mode_restore_cleanly() {
     assert!(dest.spatial_scene.bindings.is_empty());
     assert!(dest.world.is_current_entity(fresh_a));
 }
+
+#[test]
+fn moving_platform_checkpoint_restores_surface_phase_and_nonvisual_rider_atomically() {
+    let mut source = Engine::new();
+    let (a, b) = scene(&mut source);
+    assert!(source.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
+    source.spatial_scene.bindings.remove(&(b.id, b.generation));
+    source
+        .spatial_scene
+        .step_moving_platforms(&mut source.world, 0.5);
+    let hs = handles(a, b);
+    let epoch = source.data_scene_epoch();
+    let states = source.capture_data_scene_progress(epoch, &hs);
+    let mut saved = source.capture_data_scene_spatial_progress(epoch, &hs);
+    assert_eq!(saved[21], 1., "nonvisual kinematic rider must have a pose");
+    saved.extend(source.capture_spatial_moving_platforms());
+    let mut dest = Engine::new();
+    let (c, d) = scene(&mut dest);
+    assert!(dest.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
+    dest.spatial_scene.bindings.remove(&(d.id, d.generation));
+    assert!(dest.restore_data_scene_progress_with_spatial(
+        dest.data_scene_epoch(),
+        &handles(c, d),
+        &states,
+        &[],
+        &saved
+    ));
+    assert_eq!(dest.world.height_span(d).unwrap().elevation, 4.);
+    assert_eq!(dest.capture_spatial_moving_platforms()[6], 0.5);
+    let before = dest.world.snapshot();
+    let platform_before = dest.capture_spatial_moving_platforms();
+    let tail = saved.len() - 8;
+    saved[tail + 1] = 999.;
+    assert!(!dest.restore_data_scene_progress_with_spatial(
+        dest.data_scene_epoch(),
+        &handles(c, d),
+        &states,
+        &[],
+        &saved
+    ));
+    assert_eq!(dest.world.snapshot(), before);
+    assert_eq!(dest.capture_spatial_moving_platforms(), platform_before);
+}
+
+#[test]
+fn moving_platform_checkpoint_preserves_half_open_support_edges() {
+    for axis in 0..2 {
+        // The surface owning the shared edge is deliberately earlier in layer order.
+        let mut terrain = vec![
+            0., 0., 32., 32., 0., 0., 0., 1., 1., 1., 1., 0., 0., 32., 32., 0., 0., 0., 1., 1., 1.,
+            1., 128., 128., 32., 32., 0., 0., 0., 1., 1., 1., 1.,
+        ];
+        terrain[axis] = 32.;
+        let metadata = [1, 0, 16777215, 1, 2, 0, 16777215, 1, 3, 0, 16777215, 1];
+        let platform = [2., 3., 0., 0., 8., 1., 0., 0.];
+        let mut source = Engine::new();
+        let (a, b) = scene(&mut source);
+        assert!(source.configure_spatial_terrain(&terrain, &metadata));
+        assert!(source.configure_spatial_moving_platforms(&platform));
+        source.world.set_transform(
+            a,
+            Transform2D {
+                x: if axis == 0 { 32. } else { 16. },
+                y: if axis == 1 { 32. } else { 16. },
+            },
+        );
+        source
+            .world
+            .set_transform(b, Transform2D { x: 16., y: 16. });
+        source
+            .spatial_scene
+            .step_moving_platforms(&mut source.world, 0.5);
+        let epoch = source.data_scene_epoch();
+        let states = source.capture_data_scene_progress(epoch, &handles(a, b));
+        let mut saved = source.capture_data_scene_spatial_progress(epoch, &handles(a, b));
+        assert_eq!(saved[20], 1., "the lower edge belongs to the first surface");
+        saved.extend(source.capture_spatial_moving_platforms());
+
+        let mut dest = Engine::new();
+        let (c, d) = scene(&mut dest);
+        assert!(dest.configure_spatial_terrain(&terrain, &metadata));
+        assert!(dest.configure_spatial_moving_platforms(&platform));
+        assert!(dest.preflight_data_scene_spatial_progress(&terrain, &metadata, &saved));
+        assert!(dest.restore_data_scene_progress_with_spatial(
+            dest.data_scene_epoch(),
+            &handles(c, d),
+            &states,
+            &[],
+            &saved,
+        ));
+        assert_eq!(dest.world.transform(c), source.world.transform(a));
+        assert_eq!(dest.capture_spatial_moving_platforms()[6], 0.5);
+
+        let before = dest.world.snapshot();
+        let platform_before = dest.capture_spatial_moving_platforms();
+        saved[20] = 2.;
+        assert!(!dest.preflight_data_scene_spatial_progress(&terrain, &metadata, &saved));
+        assert!(!dest.restore_data_scene_progress_with_spatial(
+            dest.data_scene_epoch(),
+            &handles(c, d),
+            &states,
+            &[],
+            &saved,
+        ));
+        assert_eq!(dest.world.snapshot(), before);
+        assert_eq!(dest.capture_spatial_moving_platforms(), platform_before);
+    }
+}

@@ -129,7 +129,12 @@ impl PhysicsSystem {
         config: RigidBodyStepConfig,
         scratch: &mut RigidBodyStepScratch,
     ) -> RigidBodyStepStats {
+        world.physics_diagnostics.begin_step();
         world.clear_rigid_body_ccd_debug_hits();
+        world.contact_impacts.clear();
+        world.impact_feedback_impacts.clear();
+        world.impact_feedback_dropped = 0;
+        world.contact_impacts_dropped = 0;
         let delta_seconds = sanitize_delta_seconds(delta_seconds);
         if delta_seconds <= 0.0 {
             return RigidBodyStepStats::default();
@@ -302,6 +307,7 @@ impl PhysicsSystem {
         constraints: &mut RigidBodyConstraintBatch,
         stats: &mut RigidBodyStepStats,
     ) {
+        world.physics_diagnostics.loads.clear();
         for _ in 0..config.velocity_iterations {
             for island in constraints.island_schedule.islands() {
                 let island_root = island.root();
@@ -380,6 +386,9 @@ impl PhysicsSystem {
                 }
             }
         }
+        stats.broken_joints = stats
+            .broken_joints
+            .saturating_add(world.finish_joint_loads(delta_seconds));
         if let Some(split_impulses) = constraints.split_impulses.as_ref() {
             split_impulses.apply_to_world(world, delta_seconds);
         }

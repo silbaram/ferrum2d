@@ -31,7 +31,7 @@ pub(super) use contact_filter::should_solve_rigid_contact;
 use contact_impulse::{
     apply_contact_impulse_at_point, apply_contact_position_impulse_at_point,
     contact_constraint_tangent, contact_impulse_denominator, contact_normal_block_matrix,
-    relative_contact_velocity, rigid_contact_mass_context,
+    relative_contact_velocity, rigid_contact_mass_context, RigidContactMassContext,
 };
 use contact_material::contact_material_for_collider;
 use restitution::{
@@ -206,10 +206,58 @@ pub(super) fn solve_ccd_velocity_contact(
     point: Transform2D,
     normal: Velocity,
     config: RigidBodyStepConfig,
+    rotation_origins: [Transform2D; 2],
 ) -> bool {
     let mut constraint =
         RigidContactConstraint::new(pair, collider_pair, point, normal, 0.0, 0.0, 0.0);
-    solve_velocity_contact_constraint(world, &mut constraint, config, 1.0).applied_impulse
+    let Some(mut context) =
+        rigid_contact_mass_context(world, pair.a.id as usize, pair.b.id as usize)
+    else {
+        return false;
+    };
+    // CCD predicts offset OBB/convex geometry about its collider origin. Use
+    // those same origins for approach speed, effective mass, friction and torque.
+    // The discrete contact solver keeps its existing entity-origin contract.
+    context.transform_a = rotation_origins[0];
+    context.transform_b = rotation_origins[1];
+    let approach_speed =
+        if world.contact_impact_min_speed.is_some() || world.impact_feedback_enabled {
+            -dot_velocity(relative_contact_velocity(world, context, point), normal)
+        } else {
+            0.0
+        };
+    let normal_result =
+        solve_normal_contact_with_context(world, &mut constraint, config, 1.0, context);
+    let tangent_applied = solve_tangent_contact_with_context(world, &mut constraint, context);
+    world.record_contact_impact(constraint_impulse(&constraint), approach_speed);
+    normal_result.applied_impulse || tangent_applied
+}
+
+fn contact_approach_speed(world: &World, constraint: &RigidContactConstraint) -> f32 {
+    rigid_contact_mass_context(
+        world,
+        constraint.pair.a.id as usize,
+        constraint.pair.b.id as usize,
+    )
+    .map_or(0.0, |context| {
+        -dot_velocity(
+            relative_contact_velocity(world, context, constraint.point),
+            constraint.normal,
+        )
+    })
+}
+
+fn constraint_impulse(c: &RigidContactConstraint) -> crate::components::RigidContactImpulse {
+    crate::components::RigidContactImpulse {
+        entity_a: c.pair.a,
+        entity_b: c.pair.b,
+        point_x: c.point.x,
+        point_y: c.point.y,
+        normal_x: c.normal.vx,
+        normal_y: c.normal.vy,
+        normal_impulse: c.normal_impulse.max(0.0),
+        tangent_impulse: c.tangent_impulse,
+    }
 }
 
 fn solve_normal_contact_constraint(
@@ -224,6 +272,16 @@ fn solve_normal_contact_constraint(
         return RigidContactSolveResult::default();
     };
 
+    solve_normal_contact_with_context(world, constraint, config, delta_seconds, context)
+}
+
+fn solve_normal_contact_with_context(
+    world: &mut World,
+    constraint: &mut RigidContactConstraint,
+    config: RigidBodyStepConfig,
+    delta_seconds: f32,
+    context: RigidContactMassContext,
+) -> RigidContactSolveResult {
     let point = finite_transform(constraint.point);
     let normal = finite_velocity(constraint.normal);
     let relative_velocity = relative_contact_velocity(world, context, point);
@@ -362,6 +420,14 @@ fn solve_tangent_contact_constraint(
         return false;
     };
 
+    solve_tangent_contact_with_context(world, constraint, context)
+}
+
+fn solve_tangent_contact_with_context(
+    world: &mut World,
+    constraint: &mut RigidContactConstraint,
+    context: RigidContactMassContext,
+) -> bool {
     let point = finite_transform(constraint.point);
     let normal = finite_velocity(constraint.normal);
     let material_a = contact_material_for_collider(world, constraint.collider_pair.a);

@@ -58,8 +58,14 @@ impl RigidContactImpulseCacheIndex {
         let mut current_index = Some(bucket.head_index);
         while let Some(index) = current_index {
             let entry = self.entries[index];
-            if entry.impulse.normal_x * manifold.normal_x
-                + entry.impulse.normal_y * manifold.normal_y
+            let direction = if entry.impulse.entity_a == manifold.pair.a {
+                1.0
+            } else {
+                -1.0
+            };
+            if direction
+                * (entry.impulse.normal_x * manifold.normal_x
+                    + entry.impulse.normal_y * manifold.normal_y)
                 >= CONTACT_CACHE_NORMAL_DOT_MIN
                 && contact_cache_point_matches(entry.impulse, point_x, point_y)
             {
@@ -112,6 +118,12 @@ struct ContactCachePairKey {
 
 impl ContactCachePairKey {
     fn new(entity_a: Entity, entity_b: Entity) -> Self {
+        let (entity_a, entity_b) =
+            if (entity_a.id, entity_a.generation) <= (entity_b.id, entity_b.generation) {
+                (entity_a, entity_b)
+            } else {
+                (entity_b, entity_a)
+            };
         Self {
             entity_a_id: entity_a.id,
             entity_a_generation: entity_a.generation,
@@ -170,6 +182,10 @@ pub(in crate::physics) fn store_rigid_contact_impulses(
     world.clear_rigid_contact_impulses();
     let mut stored_impulses = 0_u32;
     for constraint in constraints {
+        world.record_contact_impact(
+            super::constraint_impulse(constraint),
+            constraint.approach_speed,
+        );
         if constraint.normal_impulse.abs() <= CONTACT_IMPULSE_EPSILON
             && constraint.tangent_impulse.abs() <= CONTACT_IMPULSE_EPSILON
         {
@@ -256,6 +272,17 @@ mod tests {
             3.0,
         );
         assert_eq!(impulse, Some((4.0, -0.5)));
+        // Restoring logical ids can reverse native handle ordering. The normal
+        // reverses with the endpoints; impulse magnitudes retain their signs.
+        assert_eq!(
+            cached_contact_impulse_for_point(
+                &cache,
+                contact_cache_test_manifold(matching_b, matching_a, 0.0, -1.0),
+                12.5,
+                3.0,
+            ),
+            Some((4.0, -0.5))
+        );
     }
 
     #[test]

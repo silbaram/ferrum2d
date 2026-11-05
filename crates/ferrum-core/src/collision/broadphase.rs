@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "static_cache_tests.rs"]
+mod static_cache_tests;
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CollisionProxy {
     key: ColliderKey,
@@ -15,12 +19,106 @@ pub(super) enum PairFilter {
 
 #[derive(Default, Debug)]
 pub(crate) struct CollisionScratch {
+    static_entries: Vec<StaticProxyEntry>,
+    static_proxies: Vec<CollisionProxy>,
+    dynamic_proxies: Vec<CollisionProxy>,
     pub(super) current_proxies: Vec<CollisionProxy>,
     pub(super) moving_proxies: Vec<CollisionProxy>,
     pub(super) target_proxies: Vec<CollisionProxy>,
     pub(super) collider_pairs: Vec<ColliderPair>,
     pair_dedupe: Vec<CollisionPairDedupeEntry>,
     kinematic_target_visits: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct StaticProxyEntry {
+    key: ColliderKey,
+    generation: u32,
+    transform: Transform2D,
+    shape: ColliderShapeRef,
+}
+
+fn fill_cached_current_proxies(world: &World, scratch: &mut CollisionScratch) {
+    let mut cursor = 0;
+    let mut changed = false;
+    scratch.dynamic_proxies.clear();
+    for &index in world.alive_indices() {
+        let Some(transform) = world.transform_at_index(index) else {
+            continue;
+        };
+        let dynamic = world
+            .rigid_bodies
+            .get(index)
+            .copied()
+            .flatten()
+            .is_some_and(|body| body.body_type != crate::components::RigidBodyType::Static);
+        for collider_index in 0..world.compound_collider_count_at(index) {
+            for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                let Some(shape) =
+                    collider_shape_at_segment(world, index, collider_index, segment_index)
+                else {
+                    continue;
+                };
+                let key = ColliderKey {
+                    entity_index: index,
+                    collider_index,
+                    segment_index,
+                };
+                if dynamic {
+                    scratch.dynamic_proxies.push(CollisionProxy {
+                        key,
+                        bounds: collider_bounds(transform, shape),
+                    });
+                } else {
+                    let entry = StaticProxyEntry {
+                        key,
+                        generation: world.entity_at_index(index).map_or(0, |e| e.generation),
+                        transform,
+                        shape,
+                    };
+                    if scratch.static_entries.get(cursor) != Some(&entry) {
+                        changed = true;
+                        if let Some(slot) = scratch.static_entries.get_mut(cursor) {
+                            *slot = entry;
+                        } else {
+                            scratch.static_entries.push(entry);
+                        }
+                    }
+                    cursor += 1;
+                }
+            }
+        }
+    }
+    changed |= cursor != scratch.static_entries.len();
+    scratch.static_entries.truncate(cursor);
+    if changed {
+        scratch.static_proxies.clear();
+        scratch
+            .static_proxies
+            .extend(scratch.static_entries.iter().map(|e| CollisionProxy {
+                key: e.key,
+                bounds: collider_bounds(e.transform, e.shape),
+            }));
+        scratch.static_proxies.sort_by(proxy_order);
+    }
+    scratch.dynamic_proxies.sort_by(proxy_order);
+    scratch.current_proxies.clear();
+    let (mut a, mut b) = (0, 0);
+    while a < scratch.static_proxies.len() && b < scratch.dynamic_proxies.len() {
+        if proxy_order(&scratch.static_proxies[a], &scratch.dynamic_proxies[b]).is_le() {
+            scratch.current_proxies.push(scratch.static_proxies[a]);
+            a += 1;
+        } else {
+            scratch.current_proxies.push(scratch.dynamic_proxies[b]);
+            b += 1;
+        }
+    }
+    scratch
+        .current_proxies
+        .extend_from_slice(&scratch.static_proxies[a..]);
+    scratch
+        .current_proxies
+        .extend_from_slice(&scratch.dynamic_proxies[b..]);
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -160,7 +258,7 @@ impl CollisionSystem {
         world: &World,
         pairs: &mut Vec<CollisionPair>,
     ) {
-        fill_current_proxies(world, &mut scratch.current_proxies);
+        fill_cached_current_proxies(world, scratch);
         pairs.clear();
         collect_current_pairs(
             world,
@@ -262,7 +360,7 @@ impl CollisionSystem {
         world: &World,
         pair_filter: PairFilter,
     ) -> &'a [ColliderPair] {
-        fill_current_proxies(world, &mut scratch.current_proxies);
+        fill_cached_current_proxies(world, scratch);
         scratch.collider_pairs.clear();
         collect_current_collider_pairs(
             world,
@@ -280,7 +378,7 @@ impl CollisionSystem {
         layer_b: CollisionLayer,
         pairs: &mut Vec<CollisionPair>,
     ) {
-        fill_current_proxies(world, &mut scratch.current_proxies);
+        fill_cached_current_proxies(world, scratch);
         pairs.clear();
         collect_current_pairs(
             world,
@@ -299,7 +397,7 @@ impl CollisionSystem {
         category_b: CollisionMask,
         pairs: &mut Vec<CollisionPair>,
     ) {
-        fill_current_proxies(world, &mut scratch.current_proxies);
+        fill_cached_current_proxies(world, scratch);
         pairs.clear();
         collect_current_pairs(
             world,
@@ -395,10 +493,17 @@ impl CollisionSystem {
         query: RigidBodyCcdCandidateQuery,
         candidates: &mut Vec<ColliderKey>,
     ) {
-        let moving_bounds = swept_collider_bounds(
-            query.moving_start,
-            query.moving_shape,
-            finite_broadphase_velocity(query.moving_velocity),
+        let moving_bounds = angular_swept_bounds(
+            ShapeMotion {
+                start: query.moving_start,
+                shape: query.moving_shape,
+                velocity: finite_broadphase_velocity(query.moving_velocity),
+                angular_velocity: shape_angular_velocity(
+                    world,
+                    query.moving_key.entity_index,
+                    query.moving_shape,
+                ),
+            },
             query.delta_seconds,
         );
         fill_rigid_body_ccd_target_proxies(
@@ -500,7 +605,7 @@ pub(super) fn current_proxy_bounds_with_scratch<'a>(
     scratch: &'a mut CollisionScratch,
     world: &World,
 ) -> impl Iterator<Item = AabbBounds> + 'a {
-    fill_current_proxies(world, &mut scratch.current_proxies);
+    fill_cached_current_proxies(world, scratch);
     scratch.current_proxies.iter().map(|proxy| proxy.bounds)
 }
 
@@ -711,7 +816,15 @@ fn fill_rigid_body_ccd_target_proxies(
                 }
                 proxies.push(CollisionProxy {
                     key,
-                    bounds: swept_collider_bounds(transform, shape, velocity, delta_seconds),
+                    bounds: angular_swept_bounds(
+                        ShapeMotion {
+                            start: transform,
+                            shape,
+                            velocity,
+                            angular_velocity: shape_angular_velocity(world, index, shape),
+                        },
+                        delta_seconds,
+                    ),
                 });
             }
         }
@@ -749,7 +862,7 @@ fn fill_kinematic_sweep_target_proxies(
     visits
 }
 
-fn swept_collider_bounds(
+pub(super) fn swept_collider_bounds(
     start: Transform2D,
     shape: ColliderShapeRef,
     velocity: Velocity,

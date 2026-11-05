@@ -31,6 +31,11 @@ pub(super) fn integrate_rigid_body_velocities(
         let Some(mut body) = world.rigid_bodies[index] else {
             continue;
         };
+        if body.fixed_rotation {
+            world.set_angular_velocity_at_index(index, Default::default());
+            body.torque = 0.0;
+            body.angular_impulse = 0.0;
+        }
         if !body.enabled {
             clear_rigid_body_accumulators(&mut body);
             body.is_sleeping = false;
@@ -141,6 +146,8 @@ pub(super) fn integrate_rigid_body_positions(
         }
         if config.continuous && body.body_type == RigidBodyType::Dynamic && {
             let mut ccd_scratch = RigidBodyCcdScratch {
+                chain_depth: 0,
+                time_offset: 0.0,
                 collision: &mut *ccd_collision,
                 candidate_keys: &mut *ccd_candidates,
             };

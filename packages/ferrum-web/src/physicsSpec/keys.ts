@@ -36,6 +36,7 @@ export const BODY_KEYS = new Set([
   "angularDamping",
   "enabled",
   "canSleep",
+  "fixedRotation",
 ]);
 
 export const COLLIDER_BASE_KEYS = new Set(["shape", "offset", "material", "layer", "trigger", "enabled"]);
@@ -54,6 +55,8 @@ export const JOINT_KEYS = new Set([
   "maxLength",
   "stiffness",
   "damping",
+  "frequencyHz",
+  "dampingRatio",
   "enabled",
   "limit",
   "motor",
@@ -62,6 +65,8 @@ export const JOINT_KEYS = new Set([
   "referenceAngle",
   "breakDistance",
   "breakAngle",
+  "breakForce",
+  "breakTorque",
 ]);
 
 export const LIMIT_KEYS = new Set(["enabled", "lower", "upper", "continuous"]);

@@ -14,13 +14,13 @@ import type {
 import type { ResolvedPhysicsColliderSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 
 export const PHYSICS_WORLD_SNAPSHOT_FORMAT = "ferrum2d.physics-world.snapshot";
-export const PHYSICS_WORLD_SNAPSHOT_VERSION = 1;
+export const PHYSICS_WORLD_SNAPSHOT_VERSION = 2;
 export const PHYSICS_REPLAY_INPUT_STREAM_FORMAT = "ferrum2d.physics-replay.input-stream";
 export const PHYSICS_REPLAY_INPUT_STREAM_VERSION = 1;
 
 export interface PhysicsWorldSnapshot {
   format: typeof PHYSICS_WORLD_SNAPSHOT_FORMAT;
-  version: typeof PHYSICS_WORLD_SNAPSHOT_VERSION;
+  version: 1 | typeof PHYSICS_WORLD_SNAPSHOT_VERSION;
   frame: number;
   source: "physics-spec";
   spec: ResolvedPhysicsSpec;
@@ -32,6 +32,7 @@ export interface PhysicsWorldSnapshot {
   bodyCount: number;
   jointCount: number;
   replayHash: string;
+  solverState?: PhysicsWorldSolverState;
 }
 
 export interface PhysicsWorldSnapshotBody {
@@ -177,4 +178,10 @@ export interface PhysicsReplayRollbackResult {
   actualSnapshot: PhysicsWorldSnapshot;
   restoredWorld: PhysicsWorldRestoreResult;
   stepStats: readonly PhysicsRigidBodyStepStats[];
+}
+
+/** Logical body ids are prefixed with body:; world anchors use anchor:<index>. */
+export interface PhysicsWorldSolverState {
+  bodies: Record<string, { forceX: number; forceY: number; impulseX: number; impulseY: number; torque: number; angularImpulse: number; sleepTimerSeconds: number; canSleep: boolean }>;
+  contacts: readonly { bodyA: string; bodyB: string; pointX: number; pointY: number; normalX: number; normalY: number; normalImpulse: number; tangentImpulse: number }[];
 }

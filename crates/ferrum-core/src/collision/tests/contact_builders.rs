@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn round_contact_points_are_invariant_under_pair_reversal() {
+    let at = Transform2D { x: 0.0, y: 0.0 };
+    let bt = Transform2D { x: 7.5, y: 0.0 };
+    let b = ColliderShapeRef::Circle(circle(2.0));
+    let contact = AabbContact {
+        normal_x: 1.0,
+        normal_y: 0.0,
+        penetration: 0.5,
+    };
+    for a in [
+        ColliderShapeRef::Circle(circle(6.0)),
+        ColliderShapeRef::Capsule(capsule(-5.0, 0.0, 5.0, 0.0, 1.0)),
+    ] {
+        let forward = contact_point(at, a, bt, b, contact);
+        let reverse = contact_point(bt, b, at, a, invert_contact(contact));
+        assert_eq!(forward, (5.75, 0.0));
+        assert_eq!(forward, reverse);
+    }
+}
+
+#[test]
 fn mask_contacts_and_manifolds_support_custom_categories() {
     let mut world = World::default();
     let sensor_category = CollisionMask::bit(8).expect("bit index is valid");
@@ -137,7 +158,7 @@ fn build_contacts_supports_circle_pairs() {
             normal_x: 1.0,
             normal_y: 0.0,
             penetration: 2.0,
-            point_x: 5.0,
+            point_x: 4.0,
             point_y: 0.0,
         }]
     );
@@ -175,7 +196,7 @@ fn build_contacts_supports_capsule_circle_pairs() {
             normal_x: 1.0,
             normal_y: 0.0,
             penetration: 0.5,
-            point_x: 6.0,
+            point_x: 5.75,
             point_y: 0.0,
         }]
     );
@@ -215,7 +236,7 @@ fn build_contacts_supports_circle_edge_pairs() {
     assert!(contacts[0].normal_y > 0.99);
     assert!(contacts[0].penetration > 0.24);
     assert!(contacts[0].point_x.abs() <= 0.01);
-    assert!(contacts[0].point_y.abs() <= 0.01);
+    assert!((contacts[0].point_y + 0.125).abs() <= 0.01);
 }
 
 #[test]

@@ -54,6 +54,7 @@ pub(super) fn sanitized_inverse_inertia(body: RigidBody) -> f32 {
     if !body.enabled
         || body.body_type != RigidBodyType::Dynamic
         || body.is_sleeping
+        || body.fixed_rotation
         || !body.inverse_inertia.is_finite()
         || body.inverse_inertia <= 0.0
     {

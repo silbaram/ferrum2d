@@ -44,6 +44,8 @@ export function spawnPhysicsRigidBody(
   rustEngine: Engine,
   options: PhysicsRigidBodySpawnOptions,
 ): PhysicsEntityHandle {
+  if (options.fixedRotation !== undefined && typeof options.fixedRotation !== "boolean") throw new Error("physics body fixedRotation must be boolean");
+  if (options.fixedRotation && typeof rustEngine.set_physics_body_fixed_rotation !== "function") throw new Error("fixedRotation requires a compatible Wasm build");
   const x = finiteNumber(options.x, "physics body x");
   const y = finiteNumber(options.y, "physics body y");
   const bodyType = physicsRigidBodyType(options.bodyType);
@@ -239,6 +241,9 @@ export function spawnPhysicsRigidBody(
       handle.entityGeneration,
       finiteNumber(options.rotationRadians, "physics body rotationRadians"),
     );
+  }
+  if (options.fixedRotation !== undefined && typeof rustEngine.set_physics_body_fixed_rotation === "function") {
+    rustEngine.set_physics_body_fixed_rotation(handle.entityId, handle.entityGeneration, options.fixedRotation);
   }
   if (options.angularVelocityRadiansPerSecond !== undefined) {
     rustEngine.set_physics_body_angular_velocity(

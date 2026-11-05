@@ -128,6 +128,7 @@ export interface PhysicsRigidBodyAuthoringOptions {
   colliderEnabled?: boolean;
   trigger?: boolean;
   canSleep?: boolean;
+  fixedRotation?: boolean;
 }
 
 export interface RuntimeResolvedCollider {
@@ -136,6 +137,8 @@ export interface RuntimeResolvedCollider {
 }
 
 interface PhysicsJointAuthoringBase {
+  breakForce?: number;
+  breakTorque?: number;
   bodyA: PhysicsJointEndpoint;
   bodyB: PhysicsJointEndpoint;
   anchor?: PhysicsSpecVector2;
@@ -159,6 +162,8 @@ export type PhysicsJointAuthoringOptions =
     })
   | (PhysicsJointAuthoringBase & {
       type: "spring";
+      frequencyHz?: number;
+      dampingRatio?: number;
       restLength: number;
       breakDistance?: number;
     })

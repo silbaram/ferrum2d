@@ -209,8 +209,10 @@ export function applyFixedTimestepOptions(
   }
   if (typeof fixedTimestep === "boolean") {
     rustEngine.configure_fixed_timestep(fixedTimestep, 1 / 60, 0.25, 8);
+    rustEngine.configure_physics_render_interpolation(false);
     return;
   }
+  rustEngine.configure_physics_render_interpolation(fixedTimestep.interpolate ?? false);
   rustEngine.configure_fixed_timestep(
     fixedTimestep.enabled ?? true,
     fixedTimestep.stepSeconds ?? 1 / 60,
