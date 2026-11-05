@@ -1,14 +1,15 @@
 # Ferrum2D 엔진 기능 실험실
 
 기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
-상단에서 애니메이션·길 찾기·물리·조명·후처리·카메라·9-slice·타일맵·레이어·파티클·공간 오디오·입력·씬 전환·상호작용·저장·대화·HUD를 하나씩 선택한다.
+상단에서 화면·움직임·게임 구성·플랫폼 분류로 21개 실험을 선택한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
 각 화면은 조작, 관찰할 결과, 현재 엔진 수치와 구현 API를 함께 표시한다.
 
 [전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
 씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 타일·효과·입력 조작은 [src/featureExtras.ts](src/featureExtras.ts),
 게임 구성 예제는 [src/featureGameplay.ts](src/featureGameplay.ts)와 [src/featureContent.ts](src/featureContent.ts),
+후속 실험은 `featureProjectiles.ts`, `featureCutscene.ts`, `featureLoading.ts`, `featureStreaming.ts`이며,
 기능 목록은 [featureCatalog.json](../shared/featureCatalog.json)에 있다.
-`node scripts/assets/build-feature-examples.mjs`는 17개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+`node scripts/assets/build-feature-examples.mjs`는 21개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
 텍스처는 기존 자체 제작 `public/playground/` 에셋을 재사용한다.
 
 `실험 초기화`는 설정·씬·일시정지를 기본값으로 돌린다. 렌더러 선택과 주제 이동은 페이지를 다시 연다.
@@ -30,6 +31,13 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 - **저장·불러오기**: `?feature=save-load`. 에너지를 수집하고 저장한 뒤 초기화/새로고침 후 불러온다. 위치·변수·수집으로 사라진 아이템을 함께 복원한다. 일반 2D 좌표는 snapshot의 custom state에 기록하고, 수집 진행은 Data Scene progress로 저장한다. 슬롯은 `ferrum2d.feature-lab.save-load.v1`이며 다른 저장 키는 건드리지 않는다. 브라우저·사이트 주소별 로컬 저장으로 서버/클라우드 저장이 아니다. 손상 데이터·다른 씬뿐 아니라 진행/변수 누락, 캐릭터 제거·비활성화, 수집 수와 아이템 상태 불일치도 씬 변경 전에 거절한다. 저장소 접근 실패는 화면에 안내하며 기존 저장을 유지한다. 일시정지 중 저장 작업은 차단하고 실험 초기화는 슬롯을 유지한다.
 - **대화·퀘스트**: `?feature=dialogue`. 캔버스 아래 실제 `UiOverlay`에서 부탁을 거절/수락하고 소포를 챙겨 전달한다. 조건 플래그가 전달 선택지를 열고 `QuestLog`에 목표/완료를 기록한다. Tab/Enter 선택, 화면 갱신 후 포커스 유지와 초기화를 지원한다. 이 예제의 대화 진행은 새로고침하면 초기화된다.
 - **HUD·다국어·접근성**: `?feature=hud`. native 체력 변수에 피해/회복을 적용하고 HUD만 한영·14/18/22px·고대비로 바꾼다. 체력은 0~100이며 progressbar의 접근성 값과 이름도 함께 갱신한다. 실험실 전체의 언어 전환 기능은 아니다.
+
+## 사격·컷신·로딩·스트리밍
+
+- **사격과 벽 충돌**: `?feature=projectiles`. 중앙의 실제 충돌 벽에 한 발씩 발사한다. 속도 220·수명 4초를 고정해 `despawn`/`passThrough`/`bounce` 차이만 비교한다. 여기서 관통은 **벽 통과**이며 적 다중 관통을 뜻하지 않는다. 궤적 수치는 Rust render buffer의 낮은 빈도 표본이고 TS가 탄 이동을 계산하지 않는다. 기존 `?mode=starter` 사격 패널에서 이 실험으로 연결한다.
+- **컷신**: `?feature=cutscene`. 재생 버튼이 오디오를 준비한 뒤 카메라·자막·효과음을 순서대로 실행한다. 일시정지하면 연출 시간도 멈추며 소리를 정지한다. 건너뛰기는 남은 명령을 실행하지 않고 중앙 구도로 복귀한다. 동작 감소는 카메라 보간을 끄며 자막 읽기 시간은 유지한다. 오디오 잠금·준비 실패는 화면에 표시하고 무음으로 시각 연출을 유지한다. 건너뛰기·초기화는 진행 중 사운드 요청을 취소하며, 늦게 완료된 이전 요청은 새 연출에 적용하지 않는다.
+- **에셋 로딩**: `?feature=asset-loading`. 이미지 2개·씬 JSON 1개를 실제 `preloadAssetManifest`로 읽는다. 두 번째 실행은 이 실험의 **세션 메모리 캐시**를 사용하며 fetch 호출/캐시 적중을 표시한다. IndexedDB나 브라우저 HTTP 캐시 성능 측정은 아니다. 각 요청 앞 300ms 지연과 실패 버튼의 네트워크 오류는 실험용 주입이다. 취소 시 이미 완료된 캐시는 유지하고, 캐시 비우기·실험 초기화·새로고침은 비운다. 씬 일시정지와 네트워크 작업 수명은 별개다.
+- **스트리밍**: `?feature=streaming`. 3개 구역을 오가며 실제 텍스처 업로드/해제를 확인한다. `LevelChunkStreamer`가 필요한 구역을 계산하고 `AssetLoader`가 자원을 관리한다. 각 구역은 전용 텍스처 1개와 공유 바닥을 사용한다. 로딩 중 구역 변경/초기화는 이전 작업을 취소하고 완료된 최신 구역만 씬에 적용한다. 로딩 실패 시 기존 구역과 공유 텍스처를 유지하며 같은 구역 버튼으로 재시도할 수 있다. 표시된 구역의 sprite들을 재적용하는 작은 예제로, 대규모 연속 월드·물리 청크 접합의 성능 보장을 뜻하지 않는다.
 
 ## 이전 통합 게임 (`?mode=playground`)
 
@@ -85,7 +93,7 @@ DebugOverlay를 켜려면 `?debug=true`를 사용한다.
 
 ### 사격 프로필
 
-초기 profile은 `?profile=standard|piercing|bounce` query로 지정할 수 있고, 실행 중에는 캔버스 아래 Weapon Profile 패널에서 전환한다. 모든 profile은 같은 primary action id에 설치되므로 input binding은 `Space`/마우스 왼쪽 버튼 하나만 유지한다. profile별 새 발사체는 서로 다른 texture id와 bullet prefab size를 사용해 색, 형태, 크기가 구분된다. 기본 starter 장면은 적과 타일 fixture가 없어서 관통/바운스 충돌 차이는 report에서 더 분명하고, 실제 탄 동작 차이는 충돌 대상이 있는 장면에서 더 크게 보인다.
+초기 profile은 `?profile=standard|piercing|bounce` query로 지정할 수 있고, 실행 중에는 캔버스 아래 Weapon Profile 패널에서 전환한다. 모든 profile은 같은 primary action id에 설치되므로 input binding은 `Space`/마우스 왼쪽 버튼 하나만 유지한다. profile별 새 발사체는 서로 다른 texture id와 bullet prefab size를 사용해 색, 형태, 크기가 구분된다. 기본 starter 장면은 보고서 계약을 유지한다. 벽 충돌 차이는 패널의 “벽 표적에서 일반·관통·반사 비교하기” 링크로 연다.
 
 - `standard`(기본): 작은 `6x6` green pellet이 빠르게 연사된다.
 - `piercing`: 긴 `20x5` cyan spear가 중간 속도로 나가며 `passThrough` tile impact를 가진다.
@@ -102,7 +110,7 @@ pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:feature-examples`는 기능 17종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
+`pnpm smoke:feature-examples`는 기능 21종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 사격의 실제 소멸/관통/반사 궤적, 컷신 시간/카메라/음원 시작, 실제 fetch와 캐시/취소/실패, 구역 전환 후 텍스처 수 복귀, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
 추가로 초기 씬/텍스처 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.
 
 `pnpm smoke:engine-playground`는 통합 게임 `?mode=playground`를 중첩 URL 경로에서 열어 실제 이동·수집·공 반사/감속·일시정지·초기화·광원/노멀/후처리 pixel 변화·카메라·390px 화면·GPU 자원 해제를 검증한다. WebGPU 검증은 Chromium 소프트웨어 offscreen target이며 하드웨어 성능/네이티브 표시 검증은 아니다.

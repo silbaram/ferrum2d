@@ -29,6 +29,10 @@ Pages 홈도 같은 기능 목록에서 직접 진입한다.
 | 저장과 불러오기 | `?feature=save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
 | 대화와 퀘스트 | `?feature=dialogue` | 수락/거절·소포 조건·목표 완료 |
 | HUD·다국어·접근성 | `?feature=hud` | 체력·한국어/영어·글자 크기·대비 |
+| 사격과 벽 충돌 | `?feature=projectiles` | 동일 속도 일반·벽 관통·반사 |
+| 컷신과 동작 감소 | `?feature=cutscene` | 재생·건너뛰기·자막·효과음·동작 감소 |
+| 에셋 로딩과 캐시 | `?feature=asset-loading` | fetch·세션 메모리 캐시·취소·실패 후 재시도 |
+| 레벨 스트리밍 | `?feature=streaming` | 구역 변경·고유 텍스처 해제·공통 바닥 유지 |
 
 각 실험은 기본 설정과 씬으로 초기화할 수 있다. 물리 심화는 `physics-sandbox`의 7개 시나리오,
 여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다.
@@ -49,7 +53,7 @@ Pages 홈도 같은 기능 목록에서 직접 진입한다.
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| 기능 실험실 / Engine Playground | 기본 진입은 위의 17개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
+| 기능 실험실 / Engine Playground | 기본 진입은 위의 21개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |

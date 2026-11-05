@@ -2350,7 +2350,7 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 
 ### 엔진 기능별 예제
 
-`pnpm smoke:feature-examples`는 SDK/Wasm 빌드 후 관련 예제 4종을 lint/build한 뒤 독립 실험 17종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 21종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
 애니메이션 재생/반전, 장애물 우회와 도달 불가 목적지, 물리 재질에 따른 실제 속도와 pause,
 노멀/광원/후처리 GPU pixel 차이, 카메라 추적/확대, 9-slice 명령 수/테두리 차이를 확인한다.
 타일 통로의 native 충돌/통과·점유 중 닫기 거절·벽으로 막힌 출발 위치 복귀 방지, 레이어 변경 pixel, 파티클 burst/loop/trail·수명·정지, 실제 Web Audio 노드의 좌우 출력·거리 감쇠·context 종료, 키보드/가상 조이스틱/게임패드 polling과 메뉴 복귀 중립화도 확인한다. 중첩 URL, 설정 초기화, 390px 폭, 키보드 접근, 자원 0 복귀도 검사한다. 기존 Platformer의 구역 이동, Breakout/Shooter의 기능 안내 전환, 충돌 영역 재시작 링크와 실제 debug line 렌더링, 작은 화면 배치도 검증한다. Shooter는 타이틀에서 Enter로 시작한 뒤 확인한다.
@@ -2360,8 +2360,12 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 추가 게임 구성 실험은 두 씬의 scene/global 변수 수명·전환 재입력 차단·첫 씬의 실제 중간 페이드 픽셀·pause/reset·반복 전환 GPU 자원 수, 근접/잠금 조건·Space 단발·트리거 진입/이탈을 검사한다.
 저장 슬롯은 실제 localStorage로 수집/위치 복원, 복원 뒤 다시 저장, 페이지 reload, 손상 데이터 거절, pause 중 덮어쓰기 차단과 다른 키 보존을 검증한다. SDK checksum/형식 검증에는 통과하지만 진행·변수·캐릭터가 누락되거나 수집 상태/활성 상태/이동 범위가 맞지 않는 저장도 현재 씬 변경 전에 거절해야 한다. 저장 용량 오류 시 기존 슬롯 유지와 복원 뒤 최신 generation의 애니메이션 진단도 확인한다.
 대화의 조건부 선택지·퀘스트 목표/완료·키보드 포커스 유지와 HUD의 native 체력, 한영 label, progressbar 접근성 값, 22px/390px·고대비 표시도 확인한다.
+사격 비교는 실제 Rust 탄의 벽 소멸·벽 뒤 통과·역방향 반사 궤적을 검사한다. 컷신은 카메라 이동·멈춘 타임라인·명령 순서·실제 AudioBufferSourceNode 시작·동작 감소·건너뛰기를 확인한다.
+로딩은 실제 fetch 3회→캐시 3개/fetch 0회, 취소 후 완료된 캐시만 재사용·의도한 실패 후 재시도·초기화 중 늦은 완료 차단을 검사한다. 스트리밍은 구역별 픽셀 변화, 공통 바닥 유지, 왕복 시 실제 텍스처 수 일정, 빠른 이동·로딩 중 초기화 후 자원 수 복귀를 검사한다. 신규 3종의 네트워크 응답을 보류한 상태에서 destroy 후 늦은 응답을 풀어도 GPU 자원이 재생성되지 않고 AudioContext가 종료되는지 두 렌더러에서 검사한다.
+오디오 잠금 거부 시 무음 연출, 초기화 후 늦은 unlock의 추가 요청 차단, 오디오 로딩 중 건너뛰기·취소·재시작, 스트리밍 네트워크 실패 시 기존 구역/공유 텍스처 보존과 재시도를 두 렌더러의 별도 8개 복구 검사로 확인한다.
+탐색은 분류 버튼의 키보드 조작, 390px에서 메뉴 높이 80px 미만, 모바일 주제 전환과 렌더러 유지까지 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
-CI는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 34개 기능/renderer 조합, 기존 안내 3종, 로딩 생명주기 3종, DPR/터치 4개 조합을 실행한다.
+수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 42개 기능/renderer 조합, 기존 안내 3종, 초기 로딩 생명주기 3종, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료 6개 조합, DPR/터치 4개 조합, 실패/복구 8개 조합을 실행한다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
 ### Engine Playground 통합 데모

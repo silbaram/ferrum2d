@@ -12,11 +12,9 @@ showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route
 
 | 검토 순서 | 후보 | 결정할 내용과 최소 확인 범위 |
 | ---: | --- | --- |
-| 1 | 컷신·동작 감소 설정 | 카메라/자막 순서와 reduced motion을 독립 실험으로 노출할 가치 판단. HUD·locale·dialogue/quest는 기능 실험실에 있으므로 재구현 대상에서 제외. keyboard/accessibility 검증 유지 |
-| 2 | Renderer/WebGPU 후속 노출 | Starter Runtime의 기능별 조명·노멀·카메라·후처리 실험 이후, 추가 GPU 계측·복구 노출 범위만 판단. 기존 실험의 재구현 후보로 다루지 않음 |
-| 3 | Level Streaming | 조작 가능한 demo와 report 중 선택. chunk load/unload·asset 수명·runtime 예산을 확인할 수 있어야 함 |
-| 4 | Agent Workflow | report/docs 경로의 필요성 판단. create-game → `ferrum:check` → replay/report와 consumer agent 흐름을 설명하고 실제 공개·설치 상태 구분 |
-| 5 | Visual polish | 기존 route에 필요한 screenshot/thumbnail 결정. 새 asset의 용량·라이선스·생성 방식 확인 |
+| 1 | Renderer/WebGPU 후속 노출 | Starter Runtime의 기능별 조명·노멀·카메라·후처리 실험 이후, 추가 GPU 계측·복구 노출 범위만 판단. 기존 실험의 재구현 후보로 다루지 않음 |
+| 2 | Agent Workflow | report/docs 경로의 필요성 판단. create-game → `ferrum:check` → replay/report와 consumer agent 흐름을 설명하고 실제 공개·설치 상태 구분 |
+| 3 | Visual polish | 기존 route에 필요한 screenshot/thumbnail 결정. 새 asset의 용량·라이선스·생성 방식 확인 |
 
 후보는 구현 우선순위가 아니라 제품 노출 결정을 위한 검토 순서다. 현재 smoke가 있다는 이유만으로
 새 route를 만들지 않는다.
@@ -47,6 +45,6 @@ showcase로 노출할지 결정하기 위한 planning 기록이다. 현재 route
 
 ## 다음 결정
 
-가장 먼저 컷신·동작 감소 설정을 조작형 실험으로 노출할 가치가 있는지 판단한다. 가치가 불명확하면 신규
-route 대신 Showcase Hub의 기능 coverage와 smoke/report 링크만 보강한다. Renderer/Streaming/Agent
-Workflow도 같은 기준을 순서대로 적용한다.
+가장 먼저 Renderer/WebGPU의 GPU 계측·복구를 조작형 실험으로 노출할 가치가 있는지 판단한다.
+가치가 불명확하면 신규 route 대신 Showcase Hub의 기능 coverage와 smoke/report 링크만 보강한다.
+Agent Workflow와 기존 route의 시각 보강도 같은 기준을 순서대로 적용한다.

@@ -31,12 +31,16 @@ pnpm dev:starter-runtime
 | 저장과 불러오기 | `save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
 | 대화와 퀘스트 | `dialogue` | 수락/거절·소포 조건·목표 완료 |
 | HUD·다국어·접근성 | `hud` | 체력·한국어/영어·글자 크기·대비 |
+| 사격과 벽 충돌 | `projectiles` | 일반·벽 관통·반사, 동일 속도 한 발 비교 |
+| 컷신과 동작 감소 | `cutscene` | 카메라·자막·효과음, 건너뛰기·동작 감소 |
+| 에셋 로딩과 캐시 | `asset-loading` | 실제 fetch·메모리 캐시, 취소·실패·재시도 |
+| 레벨 스트리밍 | `streaming` | 구역 로드·전용 텍스처 해제·공통 자산 유지 |
 
 ## 기존 예제에서 더 살펴보기
 
 | 디렉터리 | 주제 | 실행 |
 | --- | --- | --- |
-| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 17종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
+| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 21종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
 | [physics-sandbox](physics-sandbox/README.md) | rigid body, collider, contact/sensor, joint, CCD, platformer physics, scene query 7개 시나리오 | `pnpm dev:physics-sandbox` |
 | [platformer](platformer/README.md) | 점프·착지·단방향 발판·이동 발판. 기능 선택 후 해당 위치로 이동 | `pnpm dev:platformer` |
 | [breakout](breakout/README.md) | 반사·충돌 이벤트·파티클. 관찰 항목과 충돌 영역 표시 | `pnpm dev:breakout` |
