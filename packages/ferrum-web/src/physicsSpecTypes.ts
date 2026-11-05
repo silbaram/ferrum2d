@@ -80,6 +80,7 @@ export interface PhysicsBodySpec {
   angularDamping?: number;
   enabled?: boolean;
   canSleep?: boolean;
+  fixedRotation?: boolean;
 }
 
 export type PhysicsColliderSpec =
@@ -157,12 +158,16 @@ export interface PhysicsJointSpec {
   maxLength?: number;
   stiffness?: number;
   damping?: number;
+  frequencyHz?: number;
+  dampingRatio?: number;
   enabled?: boolean;
   limit?: PhysicsJointLimitSpec;
   motor?: PhysicsJointMotorSpec;
   ratio?: number;
   slack?: boolean;
   referenceAngle?: number;
+  breakForce?: number;
+  breakTorque?: number;
   breakDistance?: number;
   breakAngle?: number;
 }
@@ -256,6 +261,7 @@ export interface ResolvedPhysicsBodySpec {
   angularDamping: number;
   enabled: boolean;
   canSleep: boolean;
+  fixedRotation?: boolean;
 }
 
 export type ResolvedPhysicsColliderSpec =
@@ -350,6 +356,8 @@ export interface ResolvedPhysicsJointSpec {
   maxLength: number;
   stiffness: number;
   damping: number;
+  frequencyHz?: number;
+  dampingRatio?: number;
   enabled: boolean;
   limitEnabled: boolean;
   continuousLimit: boolean;
@@ -362,6 +370,8 @@ export interface ResolvedPhysicsJointSpec {
   ratio: number;
   slack: boolean;
   referenceAngle: number;
+  breakForce?: number;
+  breakTorque?: number;
   breakDistance: number;
   breakAngle: number;
 }

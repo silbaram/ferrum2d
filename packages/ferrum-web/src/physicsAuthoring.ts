@@ -86,6 +86,7 @@ export function createRigidBody(
     ...(options.colliderEnabled === undefined ? {} : { colliderEnabled: options.colliderEnabled }),
     ...(options.trigger === undefined ? {} : { isTrigger: options.trigger }),
     ...(options.canSleep === undefined ? {} : { canSleep: options.canSleep }),
+    ...(options.fixedRotation === undefined ? {} : { fixedRotation: options.fixedRotation }),
     ...(options.rotationRadians === undefined ? {} : { rotationRadians: finiteNumber(options.rotationRadians, `${path}.rotationRadians`) }),
     ...(options.angularVelocityRadiansPerSecond === undefined
       ? {}

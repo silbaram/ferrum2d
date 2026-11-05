@@ -42,6 +42,7 @@ const PHYSICS_BODY_STATE_U32_ENTITY_GENERATION = 1;
 const PHYSICS_BODY_STATE_U32_BODY_TYPE = 2;
 const PHYSICS_BODY_STATE_U32_COLLIDER_TYPE = 3;
 const PHYSICS_BODY_STATE_U32_FLAGS = 4;
+const PHYSICS_BODY_STATE_FLAG_FIXED_ROTATION = 1 << 5;
 const PHYSICS_BODY_STATE_FLAG_BODY_ENABLED = 1 << 0;
 const PHYSICS_BODY_STATE_FLAG_SLEEPING = 1 << 1;
 const PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED = 1 << 2;
@@ -175,6 +176,7 @@ export function decodePhysicsBodyStateBuffer(
       bodyType: PHYSICS_BODY_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_BODY_TYPE]] ?? "dynamic",
       bodyEnabled: (flags & PHYSICS_BODY_STATE_FLAG_BODY_ENABLED) !== 0,
       isSleeping: (flags & PHYSICS_BODY_STATE_FLAG_SLEEPING) !== 0,
+      ...((flags & PHYSICS_BODY_STATE_FLAG_FIXED_ROTATION) ? { fixedRotation: true } : {}),
       colliderType:
         PHYSICS_COLLIDER_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_COLLIDER_TYPE]] ?? "none",
       colliderEnabled: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED) !== 0,
@@ -196,7 +198,7 @@ export function decodePhysicsBodyStateBuffer(
       mass: snapshot.floats[floatOffset + 6],
       inverseMass: inverseOrZero(snapshot.floats[floatOffset + 6]),
       inertia: snapshot.floats[floatOffset + 7],
-      inverseInertia: inverseOrZero(snapshot.floats[floatOffset + 7]),
+      inverseInertia: (flags & PHYSICS_BODY_STATE_FLAG_FIXED_ROTATION) ? 0 : inverseOrZero(snapshot.floats[floatOffset + 7]),
       gravityScale: snapshot.floats[floatOffset + 8],
       linearDamping: snapshot.floats[floatOffset + 9],
       angularDamping: snapshot.floats[floatOffset + 10],
@@ -228,6 +230,7 @@ function physicsColliderTypeCode(colliderType: PhysicsColliderType): number {
 
 function physicsBodyStateFlags(state: PhysicsEntitySnapshot): number {
   return (state.bodyEnabled ? PHYSICS_BODY_STATE_FLAG_BODY_ENABLED : 0)
+    | (state.fixedRotation ? PHYSICS_BODY_STATE_FLAG_FIXED_ROTATION : 0)
     | (state.isSleeping ? PHYSICS_BODY_STATE_FLAG_SLEEPING : 0)
     | (state.colliderEnabled ? PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED : 0)
     | (state.colliderIsTrigger ? PHYSICS_BODY_STATE_FLAG_COLLIDER_TRIGGER : 0)

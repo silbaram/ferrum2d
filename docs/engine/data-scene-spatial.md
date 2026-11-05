@@ -1685,3 +1685,48 @@ Panner 미지원 fallback은 [공간 오디오 사용 계약](public-api/core.md
 [실게임 품질 검증](../development/quality/smoke-check.md#실제-마을-성능과-lod-외형)을 따른다.
 후보의 삼각형 감소만으로 FPS 개선을 주장하거나 기본 마을 모델을 교체하지 않는다.
 장치 손실의 명시적 복구는 [WebGPU 수명 계약](public-api/labs.md#webgpu-장치-수명과-복구)을 따른다.
+
+## 이동 보행면·승강 발판
+
+`spatial.movingPlatforms`는 native HD-2D support의 위치·높이를 왕복 이동시킨다.
+
+```json
+"movingPlatforms": [
+  { "surfaceId": "lift", "offsetElevation": 32, "durationSeconds": 2 },
+  { "surfaceId": "bridge", "offsetX": 48, "durationSeconds": 3 }
+]
+```
+
+`durationSeconds`는 편도 시간(0.05~3600초), offset은 authored 위치에서의
+변위다. 최대 16개, 서로 다른 flat walkable surface만 허용한다. surface ID,
+배열 순서, material 및 **floorId는 유지**한다. ramp, 회전 이동, 명시적 층 간
+connection에 연결된 이동면은 지원하지 않는다. 보행면의 수평 이동·승강을
+위한 기능이며 범용 3D rigid solver가 아니다.
+
+현재 generation의 enabled kinematic AABB body가 collider 중심·floor·발 높이로
+보행면 위에 있으면 함께 운반한다. support 밖으로 걸어나가면 다음 step부터
+운반하지 않는다. 동승자는 상대 위치를 유지하는 하나의 이동 묶음으로 검사한다.
+외부 collider 또는 같은 층의 다른 surface가 막으면 해당 발판과 탑승자를
+그 step 이전 상태로 되돌린다. 관통을 피하는 보수적인 swept AABB 검사이므로
+모서리 부근에서는 정지할 수 있다. 층 변경은 자동 추론하지 않는다.
+
+발판당 탑승자 최대 256명, 이동 분할 최대 64회이며 초과하면 안전하게 정지한다.
+`dataSceneMovingPlatformStats()`는 마지막 step의 `carriedBodies`,
+`blockedPlatforms`를 돌려준다. pause 시 발판도 멈춘다. 지형 GPU mesh와
+navigation revision은 이동이 있는 step에 한 번 갱신하고, collision layer는
+변경된 surface만 갱신한다. navigation 경로는 이동 지형에 맞춰 무효화한다.
+
+Data Scene state **v10**은 발판별 phase를 `progress.spatial.movingPlatforms`
+sidecar에 저장한다. 기존 entity pose 8값 stride는 유지하며 authored kinematic
+비시각 body도 저장한다. 복원은 이동된 terrain에서 support를 먼저 검증한 후
+phase·body pose·camera를 함께 적용한다. 손상된 ID/phase는 scene 교체 전에
+거부한다. 기존 v2~v9 저장은 계속 지원하며 발판 없는 scene은 기존 저장 버전을
+사용한다. Runtime terrain revision과 저장용 configuration revision을 분리하여
+정상 발판 이동 때문에 저장이 막히지 않는다.
+`clearDataSceneSpatial()`로 공간 모드를 해제한 뒤에도 저장·복원할 수 있다.
+이때 `camera: null`로 비활성 상태를 기록하고 발판 phase와 공간 pose는 생략한다.
+공간 모드가 활성인 저장에서 phase가 누락되거나, 비활성 저장에 phase가 포함되면 거부한다.
+
+`examples/data-scene-native/moving-platforms.mjs`의
+`startMovingPlatformScene(canvas)`은 승강 바닥과 이동 다리를 함께 체험하는
+예제다. 기존 spatial recipe의 `save()`/`restore()`도 사용할 수 있다.

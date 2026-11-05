@@ -19,6 +19,7 @@ pub(in crate::physics) struct RigidContactConstraint {
     pub(super) normal_impulse: f32,
     pub(super) tangent_impulse: f32,
     pub(super) split_normal_impulse: f32,
+    pub(super) approach_speed: f32,
 }
 
 #[derive(Debug, Default)]
@@ -47,6 +48,7 @@ impl RigidContactConstraint {
             normal_impulse,
             tangent_impulse,
             split_normal_impulse: 0.0,
+            approach_speed: 0.0,
         }
     }
 
@@ -86,7 +88,15 @@ pub(in crate::physics) fn build_rigid_contact_constraints_into(
         if !should_solve_rigid_contact(world, a_index, b_index) {
             continue;
         }
-        for point in collider_manifold.points() {
+        // Keep solver/cache order independent of a manifold's A/B direction.
+        let mut points = manifold.points;
+        let points = &mut points[..collider_manifold.points().len()];
+        points.sort_unstable_by(|a, b| {
+            a.point_x
+                .total_cmp(&b.point_x)
+                .then_with(|| a.point_y.total_cmp(&b.point_y))
+        });
+        for point in points {
             let (normal_impulse, tangent_impulse) = cached_contact_impulse_for_point(
                 &scratch.contact_cache,
                 manifold,
@@ -109,6 +119,10 @@ pub(in crate::physics) fn build_rigid_contact_constraints_into(
                 normal_impulse,
                 tangent_impulse,
             ));
+            if world.contact_impact_min_speed.is_some() || world.impact_feedback_enabled {
+                let constraint = constraints.last_mut().expect("just appended constraint");
+                constraint.approach_speed = super::contact_approach_speed(world, constraint);
+            }
         }
     }
 }

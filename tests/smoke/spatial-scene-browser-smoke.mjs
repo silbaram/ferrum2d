@@ -877,7 +877,40 @@ try {
         Object.values(remaining.live).every((n) => n === 0),
         "GPU resources survived renderer destroy",
       );
-      report.cases.push({ viewport, deviceScaleFactor, ...result, remaining });
+      await page.evaluate(async () => {
+        const { startSpatialScene } = await import("/recipe.mjs");
+        window.spatialScene = await startSpatialScene(document.querySelector("canvas"), { movingPlatforms: true });
+      });
+      await page.waitForFunction(() => (window.spatialScene?.engine.getPhysicsEntity(window.spatialScene.handles.actor)?.heightSpan?.elevation ?? 0) > 2);
+      const movingPlatforms = await page.evaluate(async () => {
+        const s = window.spatialScene;
+        const { hashGameStateSnapshot } = await import("@ferrum2d/ferrum-web/core");
+        s.engine.pauseDataScene();
+        const saved = s.save();
+        const actorBefore = s.engine.getPhysicsEntity(s.handles.actor);
+        const invalid = structuredClone(saved);
+        invalid.dataScene.progress.spatial.movingPlatforms.low = 9999;
+        invalid.snapshotHash = hashGameStateSnapshot(invalid);
+        let rejected = false;
+        try { s.restore(invalid); } catch { rejected = true; }
+        const preserved = s.engine.getPhysicsEntity(s.handles.actor)?.heightSpan?.elevation === actorBefore.heightSpan.elevation;
+        const restored = s.restore(JSON.parse(JSON.stringify(saved)));
+        const actorAfter = s.engine.getPhysicsEntity(s.handles.actor);
+        return { version: saved.dataScene.version, phases: saved.dataScene.progress.spatial.movingPlatforms,
+          carried: actorBefore.heightSpan.elevation, restored: restored.dataSceneStateApplied,
+          restoredElevation: actorAfter.heightSpan.elevation, rejected, preserved, state: s.engine.dataSceneState() };
+      });
+      assert.equal(movingPlatforms.version, 10);
+      assert(movingPlatforms.carried > 2);
+      assert.equal(movingPlatforms.restoredElevation, movingPlatforms.carried);
+      assert.equal(movingPlatforms.restored, true);
+      assert.equal(movingPlatforms.rejected, true);
+      assert.equal(movingPlatforms.preserved, true);
+      assert.equal(movingPlatforms.state, "paused");
+      await page.screenshot({ path: resolve(output, `moving-platforms-${viewport.width}-dpr${deviceScaleFactor}.png`) });
+      const platformResources = await page.evaluate(() => { window.spatialScene.destroy(); return window.spatialGpuResources(); });
+      assert(Object.values(platformResources.live).every(n => n === 0));
+      report.cases.push({ viewport, deviceScaleFactor, ...result, movingPlatforms, remaining });
       await page.close();
     }
   report.status = "passed";

@@ -12,16 +12,26 @@ pub(in crate::physics) fn solve_pulley_joint_velocity_constraints(
             continue;
         };
         if pulley_joint_should_break(world, joint) {
+            let key = (7, index as u32, world.pulley_joint_generations[index]);
             if clear_pulley_joint_at_index(world, index) {
+                world.record_joint_break(key, 3, 0.0, 0.0);
                 stats.broken_joints = stats.broken_joints.saturating_add(1);
             }
             continue;
         }
+        let measurement = world.begin_joint_measure(
+            (7, index as u32, world.pulley_joint_generations[index]),
+            joint.entity_a,
+            joint.entity_b,
+            joint.break_force,
+            joint.break_torque,
+        );
         if solve_pulley_joint_velocity_constraint(world, joint, delta_seconds, velocity_iterations)
         {
             stats.constraint_velocity_corrections =
                 stats.constraint_velocity_corrections.saturating_add(1);
         }
+        world.finish_joint_measure(measurement);
     }
 }
 
@@ -35,7 +45,9 @@ pub(in crate::physics) fn solve_pulley_joint_position_constraints(
             continue;
         };
         if pulley_joint_should_break(world, joint) {
+            let key = (7, index as u32, world.pulley_joint_generations[index]);
             if clear_pulley_joint_at_index(world, index) {
+                world.record_joint_break(key, 3, 0.0, 0.0);
                 stats.broken_joints = stats.broken_joints.saturating_add(1);
             }
             continue;

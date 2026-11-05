@@ -39,7 +39,6 @@ PNG extrusion의 현재 계약과 검증 명령은
 | 공통 URL 해석·요청 공유 | texture/sound/JSON의 cache key·인증·독립 취소·참조 수명을 정의한다. 기존 bounded manifest 로딩·모델 요청 공유·CPU/GPU cache·IndexedDB preload를 중복 구현하지 않는다. |
 | 네트워크 geometry 스트리밍 | 사전 등록 CPU LOD·native visual chunk와 구분한다. 요청 취소·재진입·자원 상한·오래된 결과 차단부터 설계한다. |
 | 추가 모델 형식·재질·압축 | 실제 자산에서 BLEND, UV1, 추가 재질, Draco/Meshopt 필요성을 측정한다. decoder 의존성·CPU/메모리 예산·실패/fallback을 먼저 정하며 skin/morph/전체 PBR로 자동 확대하지 않는다. |
-| 움직이는 공간 보행면·탑승자 운반 | 일반 2D moving-platform carry나 모델 attachment와 다른 층/높이·탐색·저장 계약을 설계한다. |
 
 장치 손실 처리의 플랫폼 기준은 [GPUDevice.lost](https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/lost)다.
 현재 명시적 복구와 terminal destroy를 구분한다. 자동 재시도 UI 정책·실물 GPU loss 검증은 앱 필요에 따라 별도 범위를 정한다.
@@ -51,10 +50,7 @@ PNG extrusion의 현재 계약과 검증 명령은
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
-| 충돌 탐색 비용·정적 대상 재사용 | body/collider 수·배치·CCD 비율을 고정하고 후보/정렬/좁은 판정 비용 측정. mutation/teleport/despawn의 invalidation을 검증한 뒤 최적화 선택 |
-| 렌더 표시 보간 | 30/60 Hz 물리와 60/120 Hz 표시, 회전·카메라·picking·teleport·restore 검증. simulation transform과 render pose를 분리하고 TS에 물리 상태를 복제하지 않음 |
-| 대형 경로·물리 진단 | 기존 bounded 분할 탐색 이후의 규모 요구와 contact manifold·joint/CCD 진단을 각각 정함 |
-| 회전 CCD | 고각속도·회전 반경·최소 두께의 실패 fixture와 substep 상한·snapshot/API 영향을 별도 설계. 기존 선형 CCD 지원 약속에 포함하지 않음 |
+| 대형 경로·물리 진단 | 기존 bounded joint/CCD 진단·batch cast 이후의 대형 scene 비용을 측정하고, 추가 broadphase/query 가속이 필요한 경우 착수 |
 
 ## 추가 시각 효과와 제품 경계
 

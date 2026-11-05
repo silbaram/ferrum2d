@@ -1,0 +1,142 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "actor",
+            "prefab": "object",
+            "x": 0,
+            "y": -64,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "gameplay": {
+    "primaryActor": "actor"
+  },
+  "spatial": {
+    "camera": {
+      "projection": "orthographic",
+      "position": {
+        "x": 240,
+        "y": -320,
+        "elevation": 420
+      },
+      "target": {
+        "x": 0,
+        "y": 0,
+        "elevation": 16
+      },
+      "height": 250,
+      "near": 0.1,
+      "far": 2000
+    },
+    "terrain": [
+      {
+        "id": "ground",
+        "x": -64,
+        "y": -96,
+        "width": 128,
+        "depth": 64,
+        "elevation": 0,
+        "color": [
+          0.18,
+          0.32,
+          0.3,
+          1
+        ]
+      },
+      {
+        "id": "ramp",
+        "x": -64,
+        "y": -32,
+        "width": 128,
+        "depth": 64,
+        "elevation": 0,
+        "endElevation": 48,
+        "kind": "ramp",
+        "color": [
+          0.35,
+          0.42,
+          0.48,
+          1
+        ]
+      },
+      {
+        "id": "upper",
+        "x": -64,
+        "y": 32,
+        "width": 128,
+        "depth": 64,
+        "elevation": 48,
+        "baseElevation": 40,
+        "floorId": 1,
+        "kind": "bridge",
+        "color": [
+          0.62,
+          0.44,
+          0.22,
+          1
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": "ramp",
+        "to": "upper"
+      }
+    ],
+    "billboards": {
+      "actor": {}
+    },
+    "actor": {
+      "instanceId": "actor",
+      "speed": 72,
+      "maxStepHeight": 12,
+      "maxDropHeight": 52
+    }
+  }
+}

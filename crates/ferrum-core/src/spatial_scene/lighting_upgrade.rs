@@ -134,9 +134,12 @@ pub(super) fn select(
                 visible[i] = false;
             }
             if let Some((entity, offset)) = binding.filter(|(a, _)| world.is_current_entity(*a)) {
-                if let Some(t) = world.transform(entity) {
+                if let Some(t) = world.render_transform_at_index(entity.id as usize) {
                     position[0] += t.x;
-                    position[1] += world.height_span(entity).map_or(0., |s| s.elevation) + offset;
+                    position[1] += world
+                        .render_height_span_at(entity.id as usize)
+                        .map_or(0., |s| s.elevation)
+                        + offset;
                     position[2] -= t.y;
                 }
             }

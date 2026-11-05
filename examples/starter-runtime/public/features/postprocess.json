@@ -1,0 +1,89 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "panel",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 400,
+                  "height": 256,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  },
+                  "layer": -10
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 240,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 64,
+                  "height": 80,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  }
+                },
+                "collider": "none",
+                "layer": "player"
+              }
+            }
+          },
+          {
+            "id": "ball",
+            "prefab": "object",
+            "x": 400,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "energy",
+                  "width": 96,
+                  "height": 96
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

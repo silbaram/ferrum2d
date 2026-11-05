@@ -63,6 +63,9 @@ impl Engine {
         physics_debug_lines: bool,
     ) {
         self.advance_simulation(delta);
+        self.spatial_scene
+            .attachments
+            .prepare_render_poses(&mut self.world, &self.spatial_scene.models);
         self.update_data_scene_camera(delta as f32);
         if physics_debug_lines {
             self.build_physics_debug_lines();
@@ -85,11 +88,14 @@ impl Engine {
 
     fn advance_simulation(&mut self, delta: f64) {
         self.elapsed_seconds += delta;
+        self.impact_feedback.begin_frame();
         self.clear_physics_frame();
+        self.world.set_render_interpolation_alpha(None);
         self.world
             .clear_retired_gameplay_variable_mutation_triggers();
         self.reset_active_scene_action_trigger_frame_diagnostics();
         if self.active_scene_game_state().freezes_simulation() {
+            self.world.reset_render_interpolation();
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.fixed_timestep_input_latch.clear();
             self.previous_input_sample = self.input;
@@ -103,6 +109,9 @@ impl Engine {
             self.physics_counters.record_fixed_update(update);
             let step_seconds = self.fixed_timestep.config().step_seconds;
             for step_index in 0..update.steps {
+                if self.render_interpolation_enabled {
+                    self.world.begin_render_interpolation_step();
+                }
                 let input = self.fixed_step_input(step_index == 0);
                 let latched_presses = if step_index == 0 {
                     self.fixed_timestep_input_latch
@@ -118,6 +127,13 @@ impl Engine {
                 }
                 self.record_collision_lifecycle_events();
                 self.update_data_scene_gameplay(input, latched_presses, step_seconds);
+                if self.render_interpolation_enabled {
+                    self.world.end_render_interpolation_step();
+                }
+            }
+            if self.render_interpolation_enabled {
+                self.world
+                    .set_render_interpolation_alpha(Some(update.alpha));
             }
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
@@ -154,6 +170,12 @@ impl Engine {
         self.particles.update(delta as f32);
     }
 
+    /// Render-only interpolation of native rigid-body poses. Simulation and replay stay unchanged.
+    pub fn configure_physics_render_interpolation(&mut self, enabled: bool) {
+        self.render_interpolation_enabled = enabled;
+        self.world.reset_render_interpolation();
+    }
+
     pub fn configure_fixed_timestep(
         &mut self,
         enabled: bool,
@@ -163,6 +185,7 @@ impl Engine {
     ) {
         let was_enabled = self.fixed_timestep_enabled;
         self.fixed_timestep_enabled = enabled;
+        self.world.reset_render_interpolation();
         self.fixed_timestep = FixedTimestep::new(FixedTimestepConfig {
             step_seconds,
             max_frame_seconds,
@@ -203,6 +226,7 @@ impl Engine {
 
     pub fn reset_game(&mut self) {
         self.reset_active_scene_game();
+        self.reset_physics_impact_feedback();
         self.particles.clear();
         self.tweens.clear();
         self.clear_physics_history();
@@ -214,6 +238,7 @@ impl Engine {
 
 impl Engine {
     pub(super) fn clear_scene_output_buffers(&mut self) {
+        self.reset_physics_impact_feedback();
         self.frame_buffers.clear_scene_output();
         self.spatial_scene.clear();
     }
@@ -227,11 +252,17 @@ impl Engine {
     }
 
     pub(super) fn clear_physics_history(&mut self) {
+        // Staged restores may allocate and clean up candidate bodies. Preserve
+        // the live world's clock/events until the transaction commits.
+        if self.physics_restore_transaction.is_some() {
+            return;
+        }
         self.collision_event_tracker.clear();
         self.frame_buffers.clear_physics_frame_output();
         self.collision_event_counts.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
         self.fixed_timestep.reset();
+        self.world.reset_render_interpolation();
         self.rigid_body_step_stats = RigidBodyStepStats::default();
         self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
         self.physics_body_collider_snapshot = PhysicsBodyColliderSnapshot::default();
@@ -252,6 +283,7 @@ impl Engine {
             self.auto_rigid_body_step_config,
             &mut self.rigid_body_step_scratch,
         );
+        self.process_physics_impact_feedback(delta_seconds);
         self.record_rigid_body_step_stats(stats);
         self.spatial_scene
             .attachments

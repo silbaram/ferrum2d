@@ -6,6 +6,42 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 ## 기능 지도
 
+엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
+상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
+Pages 홈도 같은 기능 목록에서 직접 진입한다.
+
+| 실험 | Starter Runtime query | 바꿔볼 설정 |
+| --- | --- | --- |
+| 스프라이트 애니메이션 | `?feature=animation` | 재생 설정, 이동/대기, 프레임 소리·표식, 단발 완료 |
+| 길 찾기 | `?feature=navigation` | 벽 반대편 목적지, 포인터·키보드 이동 |
+| 물리 재질 | `?feature=physics` | 고무/점토, 동일한 초기 힘 |
+| 노멀 조명 | `?feature=lighting` | 노멀 적용, 광원 위치, 원본 색상 |
+| 후처리 | `?feature=postprocess` | 원본, bloom, CRT |
+| 카메라 | `?feature=camera` | 고정/추적, 확대, 이동 목적지 |
+| 9-slice | `?feature=nine-slice` | 단순 확대와 비교, 적용/해제, 테두리 배율 |
+| 타일맵·충돌 | `?feature=tilemap` | 벽/바닥 브러시, 통로, native 통과 여부 |
+| 그리기 레이어 | `?feature=layers` | 같은 위치에서 로봇의 앞뒤 순서 |
+| 파티클·VFX | `?feature=particles` | 불꽃/먼지/포인터 잔상, 수량·수명·속도 |
+| 공간 오디오 | `?feature=audio` | 음원 좌우·거리·볼륨, 재생/정지 |
+| 입력 전환 | `?feature=input` | 키보드/게임패드/가상 조이스틱, 모달 입력 차단 |
+| 씬 전환과 페이드 | `?feature=scenes` | A/B 왕복·씬/전역 카운터·전환 중 pause |
+| 상호작용과 트리거 | `?feature=interaction` | 거리·스위치 조건·문 사용·구역 출입 |
+| 저장과 불러오기 | `?feature=save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
+| 대화와 퀘스트 | `?feature=dialogue` | 수락/거절·소포 조건·목표 완료 |
+| HUD·다국어·접근성 | `?feature=hud` | 체력·한국어/영어·글자 크기·대비 |
+| 사격과 벽 충돌 | `?feature=projectiles` | 동일 속도 일반·벽 관통·반사 |
+| 컷신과 동작 감소 | `?feature=cutscene` | 재생·건너뛰기·자막·효과음·동작 감소 |
+| 에셋 로딩과 캐시 | `?feature=asset-loading` | fetch·세션 메모리 캐시·취소·실패 후 재시도 |
+| 레벨 스트리밍 | `?feature=streaming` | 구역 변경·고유 텍스처 해제·공통 바닥 유지 |
+| HD-2D 공간 이동 | `?feature=hd2d-movement` | 경사로·층 전환·승강/수평 발판 탑승 |
+| AI 추적과 전투 | `?feature=ai-combat` | 장애물 우회·근접 피해·원거리 발사체 |
+| 부모·자식 연결 | `?feature=attachments` | 수레 위치/회전·자식 연결 해제/복귀 |
+| HD-2D 조명·그림자·안개 | `?feature=hd2d-environment` | 광원 이동·그림자·거리 안개 전후 비교 |
+| 지형 파괴와 충돌 갱신 | `?feature=destructible-terrain` | 마스크 깎기·공 낙하·충돌 청크 갱신·초기화 |
+
+각 실험은 기본 설정과 씬으로 초기화할 수 있다. 물리 심화는 `physics-sandbox`의 7개 시나리오,
+여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다.
+
 | 기능군 | 대표 demo 또는 경로 | 기준 문서 | 검증 명령 |
 | --- | --- | --- | --- |
 | Runtime baseline | Starter Runtime, Platformer, Breakout | [User Guide](user-guide.md), [Public API](public-api.md) | `pnpm build`, `pnpm smoke:starter-runtime`, `pnpm smoke:platformer`, `pnpm smoke:breakout` |
@@ -14,7 +50,7 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 | Scene/Object authoring | Placement Viewer, generated placement viewer | [Data Scene Authoring](data-scene-authoring.md), [Authoring API](public-api/authoring.md) | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets` |
 | Physics authoring | Physics Sandbox | [Physics Spec](physics-spec.md), [2D Physics Map](../development/architecture/physics-engine.md) | `pnpm validate:physics-authoring`, `pnpm smoke:physics`, `pnpm smoke:physics-demo-suite` |
 | Runtime extensibility | projectile, weapon, behavior, VFX, replay helpers | [Runtime Extensibility](runtime-extensibility.md), [Public API](public-api.md) | `pnpm validate:gameplay-authoring:report`, `pnpm smoke:gameplay-replay:report` |
-| HD-2D 공간·전투 (개발 소스) | packed 공간·WebGPU·전투 browser fixture | [공간 지형·모델·WebGPU](data-scene-spatial.md), [전투 authoring](data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스) | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen`, `pnpm smoke:hd2d-combat` |
+| HD-2D 공간·전투 (개발 소스) | 기능 실험실의 공간 이동·AI 전투·부모/자식 연결 및 packed 공간 browser fixture | [공간 지형·모델·WebGPU](data-scene-spatial.md), [전투 authoring](data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스) | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen`, `pnpm smoke:hd2d-combat` |
 | Consumer project workflow | create-game templates, consumer agents | [Developer Quickstart](developer-quickstart.md), [npm Package Strategy](../development/operations/npm-package-strategy.md) | `pnpm smoke:create-game-template-catalog`, `pnpm smoke:create-game-template-reports`, `pnpm package:consumer-smoke` |
 | Package/release readiness | local tarball install and release rehearsal | [npm Release Procedure](../development/operations/npm-release.md) | `pnpm package:check`, `pnpm package:consumer-smoke`, `pnpm release:local-check` |
 
@@ -22,13 +58,13 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| Engine Playground | 로봇 이동·수집, rigid body 재질, 노멀 조명, 카메라·후처리 체험. 기존 starter는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, 9-slice, `pnpm smoke:engine-playground` |
+| 기능 실험실 / Engine Playground | 기본 진입은 위의 26개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |
 | Physics Sandbox | Physics Spec apply, debug line, solver fixture catalog | Physics Spec sample, physics smoke suite, demo-suite browser smoke |
-| Platformer | platform controller, runtime replay, generated template coverage | create-game `platformer` template, runtime replay fixture |
-| Breakout | 두 번째 장르 runtime, collision/event path, scene authoring handle | create-game `breakout` template, scene authoring report |
+| Platformer | 점프·단방향/이동 발판의 기능 안내와 해당 위치 바로 이동 | create-game `platformer` template, runtime replay fixture |
+| Breakout | 반사·충돌 이벤트·파티클 관찰 안내와 충돌 영역 표시 | create-game `breakout` template, scene authoring report |
 
 ## Agent-first 작업 흐름
 

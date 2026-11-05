@@ -69,19 +69,19 @@ use gameplay_authoring::GameplayAuthoringSnapshot;
 use physics_abi::{
     PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED, PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED,
     PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE,
-    PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER, PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING,
-    PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY, PHYSICS_BODY_SNAPSHOT_HANDLE_U32S,
-    PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY, PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE,
-    PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE, PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION,
-    PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID, PHYSICS_BODY_SNAPSHOT_U32_FLAGS,
-    PHYSICS_BODY_TYPE_DYNAMIC, PHYSICS_BODY_TYPE_KINEMATIC, PHYSICS_BODY_TYPE_STATIC,
-    PHYSICS_COLLIDER_TYPE_AABB, PHYSICS_COLLIDER_TYPE_CAPSULE, PHYSICS_COLLIDER_TYPE_CHAIN,
-    PHYSICS_COLLIDER_TYPE_CIRCLE, PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON, PHYSICS_COLLIDER_TYPE_EDGE,
-    PHYSICS_COLLIDER_TYPE_NONE, PHYSICS_COLLIDER_TYPE_ORIENTED_BOX, PHYSICS_EDGE_BODY_RADIUS,
-    PHYSICS_JOINT_DISTANCE, PHYSICS_JOINT_GEAR, PHYSICS_JOINT_PRISMATIC, PHYSICS_JOINT_PULLEY,
-    PHYSICS_JOINT_REVOLUTE, PHYSICS_JOINT_ROPE, PHYSICS_JOINT_SPRING, PHYSICS_JOINT_WELD,
-    PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER,
-    PHYSICS_LAYER_WALL,
+    PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER, PHYSICS_BODY_SNAPSHOT_FLAG_FIXED_ROTATION,
+    PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING, PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY,
+    PHYSICS_BODY_SNAPSHOT_HANDLE_U32S, PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY,
+    PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE, PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE,
+    PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION, PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID,
+    PHYSICS_BODY_SNAPSHOT_U32_FLAGS, PHYSICS_BODY_TYPE_DYNAMIC, PHYSICS_BODY_TYPE_KINEMATIC,
+    PHYSICS_BODY_TYPE_STATIC, PHYSICS_COLLIDER_TYPE_AABB, PHYSICS_COLLIDER_TYPE_CAPSULE,
+    PHYSICS_COLLIDER_TYPE_CHAIN, PHYSICS_COLLIDER_TYPE_CIRCLE,
+    PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON, PHYSICS_COLLIDER_TYPE_EDGE, PHYSICS_COLLIDER_TYPE_NONE,
+    PHYSICS_COLLIDER_TYPE_ORIENTED_BOX, PHYSICS_EDGE_BODY_RADIUS, PHYSICS_JOINT_DISTANCE,
+    PHYSICS_JOINT_GEAR, PHYSICS_JOINT_PRISMATIC, PHYSICS_JOINT_PULLEY, PHYSICS_JOINT_REVOLUTE,
+    PHYSICS_JOINT_ROPE, PHYSICS_JOINT_SPRING, PHYSICS_JOINT_WELD, PHYSICS_LAYER_BULLET,
+    PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
 };
 use physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot, PhysicsQueryResult,
@@ -122,6 +122,7 @@ pub struct Engine {
     bitmap_text: BitmapTextSystem,
     tweens: TweenSystem,
     particle_presets: Vec<Option<ParticlePreset>>,
+    impact_feedback: physics_impact_feedback::ImpactFeedback,
     shooter_hit_particle_preset: Option<u32>,
     frame_buffers: EngineFrameBuffers,
     tilemap_navigation_scratch: TilemapNavigationScratch,
@@ -172,6 +173,8 @@ pub struct Engine {
     auto_rigid_body_step_config: RigidBodyStepConfig,
     fixed_timestep: FixedTimestep,
     fixed_timestep_enabled: bool,
+    render_interpolation_enabled: bool,
+    physics_restore_transaction: Option<crate::world::WorldTransactionSnapshot>,
     last_fixed_update: FixedTimestepUpdate,
 }
 
@@ -200,6 +203,7 @@ impl Engine {
             bitmap_text: BitmapTextSystem::default(),
             tweens: TweenSystem::new(),
             particle_presets: Vec::new(),
+            impact_feedback: physics_impact_feedback::ImpactFeedback::default(),
             shooter_hit_particle_preset: None,
             frame_buffers: EngineFrameBuffers::new(),
             tilemap_navigation_scratch: TilemapNavigationScratch::default(),
@@ -250,6 +254,8 @@ impl Engine {
             auto_rigid_body_step_config: RigidBodyStepConfig::default(),
             fixed_timestep: FixedTimestep::default(),
             fixed_timestep_enabled: false,
+            render_interpolation_enabled: false,
+            physics_restore_transaction: None,
             last_fixed_update: FixedTimestepUpdate::default(),
         };
         engine.reset_to_title();
@@ -289,8 +295,19 @@ impl Engine {
     pub(in crate::engine) fn record_rigid_body_step_stats(&mut self, stats: RigidBodyStepStats) {
         self.rigid_body_step_stats = stats;
         self.rigid_body_frame_stats.record_step(stats);
+        let remaining = 4096usize.saturating_sub(self.frame_buffers.contact_impacts.len());
+        self.frame_buffers
+            .contact_impacts
+            .extend(self.world.contact_impacts.iter().copied().take(remaining));
+        self.frame_buffers.contact_impacts_dropped = self
+            .frame_buffers
+            .contact_impacts_dropped
+            .saturating_add(self.world.contact_impacts_dropped)
+            .saturating_add(self.world.contact_impacts.len().saturating_sub(remaining) as u32);
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+mod physics_impact_feedback;

@@ -1,5 +1,7 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 
+import type { PhysicsSolverStateBuffer } from "./physicsBodies.js";
+
 import type { AudioPoseBufferView } from "../audioPoseBuffer.js";
 import type { DataSceneCombatCrowdStats } from "../dataSceneCombatCrowd.js";
 import type { DataSceneCombatNavigationStats, DataSceneCombatNavigationSchedulerStats } from "../dataSceneCombatNavigation.js";
@@ -343,9 +345,14 @@ export interface FerrumPhysicsBodyApi {
   getPhysicsEntity(handle: PhysicsEntityHandle): PhysicsEntitySnapshot | undefined;
   capturePhysicsBodyStateBuffer(handles: readonly PhysicsEntityHandle[]): PhysicsBodyStateBufferSnapshot;
   restorePhysicsBodyStateBuffer(snapshot: PhysicsBodyStateBufferSnapshot): boolean;
+  capturePhysicsSolverState(handles: readonly PhysicsEntityHandle[]): PhysicsSolverStateBuffer;
+  restorePhysicsSolverState(buffer: PhysicsSolverStateBuffer): boolean;
+  /** Cold-path, synchronous entity/solver transaction; runtime configuration is separate. */
+  withPhysicsWorldTransaction<T>(operation: () => T): T;
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean;
   setPhysicsBodyPosition(handle: PhysicsEntityHandle, x: number, y: number): boolean;
   setPhysicsBodyVelocity(handle: PhysicsEntityHandle, velocityX: number, velocityY: number): boolean;
+  setPhysicsBodyFixedRotation(handle: PhysicsEntityHandle, fixed: boolean): boolean;
   setPhysicsBodyRotation(handle: PhysicsEntityHandle, rotationRadians: number): boolean;
   setPhysicsBodyAngularVelocity(handle: PhysicsEntityHandle, radiansPerSecond: number): boolean;
   setPhysicsBodyHeightSpan(handle: PhysicsEntityHandle, span: PhysicsBodyHeightSpan): boolean;
@@ -381,6 +388,7 @@ export interface FerrumPhysicsBodyApi {
 }
 
 export interface FerrumPhysicsJointApi {
+  setPhysicsJointLoadLimits(handle: PhysicsJointHandle, limits: { breakForce?: number; breakTorque?: number }): boolean;
   spawnPhysicsJoint(options: PhysicsJointSpawnOptions): PhysicsJointHandle;
   getPhysicsJoint(handle: PhysicsJointHandle): PhysicsJointSnapshot | undefined;
   clearPhysicsJoint(handle: PhysicsJointHandle): boolean;
@@ -388,11 +396,22 @@ export interface FerrumPhysicsJointApi {
 }
 
 export interface FerrumPhysicsQueryApi {
+  configurePhysicsImpactFeedback(profiles: readonly import("../physicsImpactFeedback.js").PhysicsImpactFeedbackProfile[]): void;
+  physicsImpactFeedbackStats(): import("../physicsImpactFeedback.js").PhysicsImpactFeedbackStats;
+  configurePhysicsDiagnostics(enabled: boolean): void;
+  queryPhysicsDiagnostics(): import("../physicsDiagnostics.js").PhysicsDiagnostics;
+  drainPhysicsJointBreaks(): import("../physicsDiagnostics.js").PhysicsJointBreakEvents;
+  batchCastBodies(requests: readonly import("./physicsQueries.js").PhysicsBatchCastRequest[]): readonly import("./physicsQueries.js").PhysicsBatchCastResult[];
   queryNearestBody(query: PhysicsNearestBodyQuery): PhysicsNearestBodyHit | undefined;
   queryNearestTileObstacle(query: PhysicsNearestTileObstacleQuery): PhysicsNearestTileObstacleHit | undefined;
   queryBodyContacts(query?: PhysicsBodyContactQuery): readonly PhysicsBodyContactHit[];
   queryBodyManifolds(query?: PhysicsBodyManifoldQuery): readonly PhysicsBodyManifoldHit[];
   queryRigidContactImpulses(): readonly PhysicsRigidContactImpulseHit[];
+  /** Opt-in impact collection. Defaults to minimum approach speed 1 world unit/second. */
+  configurePhysicsContactImpacts(options: boolean | { minApproachSpeed?: number }): void;
+  /** All fixed/substep impacts since the last update; non-destructive, capped at 4096. */
+  queryPhysicsContactImpacts(): readonly PhysicsRigidContactImpulseHit[];
+  getPhysicsContactImpactsDropped(): number;
   queryPointBodies(query: PhysicsPointBodyQuery): readonly PhysicsBodyQueryHit[];
   queryAabbBodies(query: PhysicsAabbBodyQuery): readonly PhysicsBodyQueryHit[];
   queryCircleBodies(query: PhysicsCircleBodyQuery): readonly PhysicsBodyQueryHit[];

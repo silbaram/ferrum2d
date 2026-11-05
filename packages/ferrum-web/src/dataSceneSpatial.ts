@@ -1,3 +1,4 @@
+import { resolveMovingPlatforms, compileMovingPlatforms, type SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";
 import { uint32Number } from "./particlePreset.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { GameplayEntityHandle } from "./gameplayAuthoring.js";
@@ -103,6 +104,7 @@ export interface SpatialMoveStats {
   };
 }
 export interface DataSceneSpatialSpec {
+  movingPlatforms?: readonly SpatialMovingPlatformSpec[];
   /** Static model resources must be loaded/registered before applying authoring. */
   models?: Readonly<Record<string, SpatialModelInstanceSpec>>;
   /** Visual GPU residency only; physics/supports remain loaded. Up to 64 world-space chunks. */
@@ -198,6 +200,7 @@ export interface SpatialModelDrawSnapshot {
   readonly cameraVisible: boolean;
 }
 export interface FerrumSpatialApi {
+  dataSceneMovingPlatformStats(): { carriedBodies: number; blockedPlatforms: number };
   /** Authoring presentation only. Hidden terrain is excluded from visual picking, never physics. Null restores all. */
   /** Cold editor-only 2D/spatial filter. Does not alter simulation or saved scene data. */
   setDataSceneSpatialPreviewFilter(options: {hiddenEntities: readonly GameplayEntityHandle[];hiddenSurfaces:readonly string[]} | null): boolean;
@@ -489,7 +492,7 @@ export function resolveDataSceneSpatialSpec(
   const o = record(v, path);
   keys(
     o,
-    ["camera", "terrain", "billboards", "actor", "connections", "environment", "models", "attachments", "modelChunks", "lightBindings"],
+    ["movingPlatforms", "camera", "terrain", "billboards", "actor", "connections", "environment", "models", "attachments", "modelChunks", "lightBindings"],
     path,
   );
   const camera = resolveSpatialCameraSpec(o.camera, `${path}.camera`);
@@ -607,6 +610,7 @@ export function resolveDataSceneSpatialSpec(
   return {
     camera,
     terrain,
+    ...(o.movingPlatforms === undefined ? {} : { movingPlatforms: resolveMovingPlatforms(o.movingPlatforms, terrain, connections, `${path}.movingPlatforms`) }),
     ...(o.models === undefined ? {} : {models}),
     ...(o.modelChunks===undefined?{}:{modelChunks}),
     ...(o.attachments===undefined?{}:{attachments}),
@@ -793,6 +797,7 @@ export function createSpatialApi(
 ): FerrumSpatialApi {
   let surfaceIds: readonly string[] = [];
   const api: FerrumSpatialApi = {
+    dataSceneMovingPlatformStats() { requireAlive(); const v = rust.spatial_moving_platform_stats?.(); return { carriedBodies: v?.[0] ?? 0, blockedPlatforms: v?.[1] ?? 0 }; },
     registerDataSceneSpatialModel(id, asset) {
       requireAlive();
       const resource=spatialModelResource(asset);
@@ -1035,6 +1040,8 @@ export function createSpatialApi(
       const attachmentMetadata:number[]=[],attachmentValues:number[]=[];
       for(const[id,a]of Object.entries(spec.attachments??{})){const child=handles[id],parent=handles[a.parent];if(!child||!parent)throw sceneCompositionDiagnosticError(`spatial.attachments.${id}`,'must reference applied handles');attachmentMetadata.push(child.entityId,child.entityGeneration,parent.entityId,parent.entityGeneration,a.inheritFloor?1:0);attachmentValues.push(a.x!,a.y!,a.elevation!,a.yawDegrees!*Math.PI/180);}
       if(attachmentMetadata.length&&(typeof rust.preflight_spatial_attachments!=='function'||!rust.preflight_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues),Uint32Array.from(modelMetadata),Float32Array.from(modelStyles))))return false;
+      const platformValues = compileMovingPlatforms(spec);
+      if (platformValues.length && (typeof rust.preflight_spatial_moving_platforms !== "function" || !rust.preflight_spatial_moving_platforms(terrain.values,terrain.metadata,connectionValues,platformValues))) return false;
       const accepted = modelMetadata.length
         ? rust.configure_spatial_scene_models(...args, connectionValues, compileSpatialEnvironment(spec.environment ?? null),
             Uint32Array.from(spec.terrain.map(materialFlags)),Uint32Array.from(Object.values(spec.billboards).flatMap(b=>[b.normalTextureId ?? 16777215,materialFlags(b)])),
@@ -1068,6 +1075,7 @@ export function createSpatialApi(
               )
             : rust.configure_spatial_scene(...args);
       if (!accepted) return false;
+      if (platformValues.length && !rust.configure_spatial_moving_platforms(platformValues)) return false;
       if(lightMetadata.length && !rust.configure_spatial_light_bindings(Uint32Array.from(lightMetadata),Float32Array.from(lightOffsets)))return false;
       if(Object.keys(spec.attachments??{}).length){
         if(!rust.configure_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues)))return false;

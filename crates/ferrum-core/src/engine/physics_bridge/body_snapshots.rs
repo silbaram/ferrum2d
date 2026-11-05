@@ -6,10 +6,11 @@ use crate::entity::Entity;
 use super::super::{
     Engine, PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED, PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED,
     PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE,
-    PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER, PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING,
-    PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE, PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE,
-    PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION, PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID,
-    PHYSICS_BODY_SNAPSHOT_U32_FLAGS, PHYSICS_COLLIDER_TYPE_NONE,
+    PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER, PHYSICS_BODY_SNAPSHOT_FLAG_FIXED_ROTATION,
+    PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING, PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE,
+    PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE, PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION,
+    PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID, PHYSICS_BODY_SNAPSHOT_U32_FLAGS,
+    PHYSICS_COLLIDER_TYPE_NONE,
 };
 use super::snapshot_types::PhysicsEntitySnapshot;
 
@@ -47,6 +48,7 @@ impl Engine {
             body_type: Self::rigid_body_type_code(body.body_type),
             body_enabled: body.enabled,
             is_sleeping: body.is_sleeping,
+            fixed_rotation: body.fixed_rotation,
             collider_type,
             collider_enabled,
             collider_is_trigger,
@@ -137,7 +139,11 @@ impl Engine {
     }
 
     fn physics_body_snapshot_flags(snapshot: PhysicsEntitySnapshot) -> u32 {
-        let mut flags = 0;
+        let mut flags = if snapshot.fixed_rotation {
+            PHYSICS_BODY_SNAPSHOT_FLAG_FIXED_ROTATION
+        } else {
+            0
+        };
         if snapshot.body_enabled {
             flags |= PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED;
         }
@@ -154,6 +160,66 @@ impl Engine {
             flags |= PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE;
         }
         flags
+    }
+
+    pub(in crate::engine) fn validate_physics_body_snapshot_entry(
+        &self,
+        entity_id: u32,
+        entity_generation: u32,
+        floats: &[f32],
+        u32s: &[u32],
+    ) -> bool {
+        if u32s[PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID] != entity_id
+            || u32s[PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION] != entity_generation
+        {
+            return false;
+        }
+        let Some(body_type) =
+            Self::rigid_body_type_from_code(u32s[PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE])
+        else {
+            return false;
+        };
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        let Some(body) = self.world.rigid_body(entity) else {
+            return false;
+        };
+        // A body packet updates existing components; it cannot replace the collider
+        // shape. Check this before any entry in the bulk restore is mutated.
+        if body.body_type != body_type
+            || self.physics_collider_snapshot(entity).0
+                != u32s[PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE]
+        {
+            return false;
+        }
+        if !Self::valid_transform(floats[0], floats[1])
+            || !Self::valid_transform(floats[2], floats[3])
+            || !floats[4].is_finite()
+            || !floats[5].is_finite()
+            || !floats[8].is_finite()
+            || !Self::valid_non_negative(floats[9])
+            || !Self::valid_non_negative(floats[10])
+            || !Self::valid_transform(floats[20], floats[21])
+            || !Self::valid_physics_material_parts(
+                floats[11], floats[12], floats[13], floats[14], floats[15], floats[16], floats[17],
+                floats[18], floats[19],
+            )
+            || !Self::valid_physics_material_parts(
+                floats[22], floats[23], floats[24], floats[25], floats[26], floats[27], floats[28],
+                floats[29], floats[30],
+            )
+        {
+            return false;
+        }
+        if body.body_type == RigidBodyType::Dynamic
+            && (!valid_positive_mass_property(floats[6])
+                || !valid_positive_mass_property(floats[7]))
+        {
+            return false;
+        }
+
+        true
     }
 
     pub(in crate::engine) fn restore_physics_body_snapshot_entry(
@@ -233,6 +299,7 @@ impl Engine {
         );
 
         body.enabled = flags & PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED != 0;
+        body.fixed_rotation = flags & PHYSICS_BODY_SNAPSHOT_FLAG_FIXED_ROTATION != 0;
         body.is_sleeping = flags & PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING != 0;
         body.sleep_timer_seconds = 0.0;
         body.force = Velocity::default();
@@ -243,7 +310,11 @@ impl Engine {
             body.mass = floats[6];
             body.inverse_mass = 1.0 / floats[6];
             body.inertia = floats[7];
-            body.inverse_inertia = 1.0 / floats[7];
+            body.inverse_inertia = if body.fixed_rotation {
+                0.0
+            } else {
+                1.0 / floats[7]
+            };
         }
         body.gravity_scale = floats[8];
         body.linear_damping = floats[9];

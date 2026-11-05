@@ -1,6 +1,15 @@
 # Ferrum2D Platformer
 
-Kinematic platformer controller를 검증하는 장르 예제다. `createFerrumRuntime(...)`과 `FerrumEngine.usePlatformerGame()`이 같은 renderer/input/runtime 경로에서 slope, one-way platform, moving platform, grounded state를 처리하는지 확인한다.
+Kinematic platformer controller를 검증하는 장르 예제다. `createFerrumRuntime(...)`과 `FerrumEngine.usePlatformerGame()`이 같은 renderer/input/runtime 경로에서 one-way platform, moving platform, grounded state를 처리하는지 확인한다.
+
+상단의 `체험할 기능`에서 점프·착지 / 단방향 발판 / 이동 발판을 선택하고 `이 위치에서 실험`을 누르면
+해당 구역으로 플레이어를 옮긴다. A/D·방향키와 Space로 조작한다.
+`충돌 영역 켜고 다시 시작`은 query를 바꿔 충돌 선을 표시하며 씬을 다시 시작한다.
+색상 사각형은 controller 판정을 보여주는 fixture다. 경사면 실험은 Physics Sandbox의 platformer-physics 시나리오에서 확인한다.
+
+색상 도형은 공통 흰 텍스처 위에 native tint를 그대로 표시한다. 체크무늬 placeholder로 판정 색이 달라지지 않는다.
+상세 DebugOverlay는 `?debug=true`에서 화면 아래에 표시하며 기본 화면은 조작·관찰에 집중한다.
+한글 글꼴은 기존 Noto Sans KR subset을 재사용하고 OFL 고지를 `public/fonts/`에 포함한다.
 
 ## 확인 기술
 
@@ -8,7 +17,7 @@ Kinematic platformer controller를 검증하는 장르 예제다. `createFerrumR
 | --- | --- |
 | Scene switch API | `FerrumEngine.usePlatformerGame()`으로 Platformer scene을 선택한다. |
 | Kinematic controller | horizontal movement, jump, gravity, max fall speed, coyote/jump buffer tuning을 검증한다. |
-| Platform collision | slope, one-way platform, moving platform, step block fixture를 확인한다. |
+| Platform collision | 고정 발판, one-way platform, moving platform를 확인한다. |
 | Landing side effect | player가 grounded 상태로 전환될 때 landing dust particle burst가 생성된다. |
 | Physics counters | physics counters/debug line buffer와 runtime budget smoke를 확인한다. |
 

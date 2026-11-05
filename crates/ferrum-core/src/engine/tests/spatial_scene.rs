@@ -559,8 +559,7 @@ fn static_model_instances_share_native_height_and_restore_without_geometry_in_pr
     assert!(!e.spatial_model_asset_in_use(1));
 }
 
-#[test]
-fn spatial_model_attachments_follow_native_root_pose_and_motion_restore_atomically() {
+fn attachment_fixture() -> (Engine, Entity, Entity, Entity) {
     let mut e = Engine::new();
     e.use_data_scene();
     let root = sprite(&mut e, 71, 100., 200., 0);
@@ -614,6 +613,12 @@ fn spatial_model_attachments_follow_native_root_pose_and_motion_restore_atomical
         1,
     ];
     assert!(e.configure_spatial_attachments(&metadata, &[10., 0., 2., 0., 0., 5., 3., 0.]));
+    (e, root, child, proxy)
+}
+
+#[test]
+fn spatial_model_attachments_follow_native_root_pose_and_motion_restore_atomically() {
+    let (mut e, root, child, proxy) = attachment_fixture();
     assert_eq!(
         e.world.transform(child),
         Some(Transform2D { x: 110., y: 200. })
@@ -1275,4 +1280,206 @@ fn static_model_batch_limits_are_bounded_and_rejections_preserve_previous_bindin
     assert!(!configure(&mut e, &too_many_triangles, &styles[..1024 * 9]));
     e.build_render_commands();
     assert_eq!(e.spatial_model_len(), 1024);
+}
+
+#[test]
+fn spatial_attachments_interpolate_nested_rotation_without_moving_colliders() {
+    let (mut e, root, child, proxy) = attachment_fixture();
+    e.world.begin_render_interpolation_step();
+    e.world
+        .set_transform(root, Transform2D { x: 120., y: 200. });
+    e.world.set_rotation(
+        root,
+        crate::components::Rotation2D {
+            radians: std::f32::consts::FRAC_PI_2,
+        },
+    );
+    e.world.set_height_span(
+        root,
+        HeightSpan::new(crate::components::PhysicsFloorId(0), 30., 1.).unwrap(),
+    );
+    e.spatial_scene
+        .attachments
+        .synchronize_or_restore(&mut e.world, &e.spatial_scene.models);
+    e.world.end_render_interpolation_step();
+    let native_child = e.world.transform(child).unwrap();
+    let native_proxy = e.world.transform(proxy).unwrap();
+    e.world.set_render_interpolation_alpha(Some(0.5));
+    e.build_render_commands();
+    let c = std::f32::consts::FRAC_1_SQRT_2;
+    let child_at = e
+        .world
+        .render_transform_at_index(child.id as usize)
+        .unwrap();
+    let proxy_at = e
+        .world
+        .render_transform_at_index(proxy.id as usize)
+        .unwrap();
+    assert!((child_at.x - (110. + 10. * c)).abs() < 0.001);
+    assert!((child_at.y - (200. + 10. * c)).abs() < 0.001);
+    assert!((proxy_at.x - (child_at.x - 5. * c)).abs() < 0.001);
+    assert!((proxy_at.y - (child_at.y + 5. * c)).abs() < 0.001);
+    assert_eq!(
+        e.world
+            .render_height_span_at(child.id as usize)
+            .unwrap()
+            .elevation,
+        22.
+    );
+    assert_eq!(
+        e.world
+            .render_height_span_at(proxy.id as usize)
+            .unwrap()
+            .elevation,
+        25.
+    );
+    assert_eq!(e.world.transform(child).unwrap(), native_child);
+    assert_eq!(e.world.transform(proxy).unwrap(), native_proxy);
+    let packet = unsafe { std::slice::from_raw_parts(e.spatial_model_ptr(), 40) };
+    assert!((packet[36] - child_at.x).abs() < 0.001);
+    assert!((packet[38] + child_at.y).abs() < 0.001);
+    e.world.set_render_interpolation_alpha(None);
+    e.build_render_commands();
+    assert_eq!(
+        e.world
+            .render_transform_at_index(child.id as usize)
+            .unwrap(),
+        native_child
+    );
+}
+
+#[test]
+fn spatial_world_text_interpolates_models_and_attached_billboards_without_moving_queries() {
+    let (mut e, root, child, proxy) = attachment_fixture();
+    assert!(e.configure_spatial_billboards(&[proxy.id, proxy.generation], &[1., 0.5, 0.]));
+    for (index, entity) in [root, child, proxy].into_iter().enumerate() {
+        let font = index as u32 + 7;
+        assert!(e.register_bitmap_font(
+            font,
+            index as u32 + 99,
+            8.,
+            u32::MAX,
+            &[65],
+            &[0., 0., 1., 1., 8., 8., 0., 0., 8.],
+            &[],
+            &[]
+        ));
+        assert!(e.set_world_text(
+            index as u32,
+            font,
+            "A",
+            0.,
+            0.,
+            1.,
+            1.,
+            1.,
+            1.,
+            1.,
+            0.,
+            0,
+            4,
+            0,
+            0.,
+            entity.id,
+            entity.generation
+        ));
+    }
+    e.build_render_commands();
+    let initial = e.spatial_scene.billboards.clone();
+    e.world.begin_render_interpolation_step();
+    e.world
+        .set_transform(root, Transform2D { x: 120., y: 220. });
+    e.world.set_rotation(
+        root,
+        crate::components::Rotation2D {
+            radians: std::f32::consts::FRAC_PI_2,
+        },
+    );
+    e.world
+        .set_height_span(root, HeightSpan::new(PhysicsFloorId(0), 30., 1.).unwrap());
+    e.spatial_scene
+        .attachments
+        .synchronize_or_restore(&mut e.world, &e.spatial_scene.models);
+    e.world.end_render_interpolation_step();
+    let native = e.world.snapshot();
+    e.world.set_render_interpolation_alpha(Some(0.5));
+    e.build_render_commands();
+
+    let c = std::f32::consts::FRAC_1_SQRT_2;
+    let displayed = [
+        [110., 210., 20.],
+        [110. + 10. * c, 210. + 10. * c, 22.],
+        [110. + 5. * c, 210. + 15. * c, 25.],
+    ];
+    let starts = [[100., 200., 10.], [110., 200., 12.], [110., 205., 15.]];
+    for (index, entity) in [root, child, proxy].into_iter().enumerate() {
+        let texture = (index + 99) as f32;
+        let before: Vec<_> = initial.iter().filter(|v| v.texture == texture).collect();
+        let after: Vec<_> = e
+            .spatial_scene
+            .billboards
+            .iter()
+            .filter(|v| v.texture == texture)
+            .collect();
+        assert_eq!(after.len(), 6);
+        let delta = [
+            displayed[index][0] - starts[index][0],
+            displayed[index][2] - starts[index][2],
+            starts[index][1] - displayed[index][1],
+        ];
+        for (before, after) in before.iter().zip(after) {
+            for (axis, expected) in delta.iter().enumerate() {
+                assert!((after.position[axis] - before.position[axis] - expected).abs() < 0.001);
+            }
+        }
+        let current = e.world.transform(entity).unwrap();
+        assert!(e.query_physics_entity(entity.id, entity.generation));
+        assert_eq!(e.physics_entity_x(), current.x);
+        assert_eq!(e.physics_entity_y(), current.y);
+        assert!((current.x - displayed[index][0]).abs() > 1.);
+    }
+    assert_eq!(e.world.snapshot(), native);
+    assert!(e
+        .frame_buffers
+        .render_commands
+        .iter()
+        .all(|command| !(99. ..=101.).contains(&command.texture_id)));
+}
+
+#[test]
+fn spatial_height_debug_marker_keeps_native_position_and_height_during_interpolation() {
+    let mut e = Engine::new();
+    e.use_data_scene();
+    let entity = actor(&mut e);
+    assert!(e.configure_spatial_camera(&camera(false)));
+    assert!(e.configure_spatial_billboards(&[entity.id, entity.generation], &[1., 0.5, 0.]));
+    assert!(e.configure_spatial_debug(4));
+    e.world.begin_render_interpolation_step();
+    e.world
+        .set_transform(entity, Transform2D { x: 40., y: 16. });
+    e.world
+        .set_height_span(entity, HeightSpan::new(PhysicsFloorId(0), 10., 8.).unwrap());
+    e.world.end_render_interpolation_step();
+    e.world.set_render_interpolation_alpha(Some(0.5));
+    e.build_render_commands();
+
+    assert_eq!(
+        e.world
+            .render_transform_at_index(entity.id as usize)
+            .unwrap()
+            .x,
+        28.
+    );
+    assert_eq!(
+        e.world
+            .render_height_span_at(entity.id as usize)
+            .unwrap()
+            .elevation,
+        5.
+    );
+    let vertices = &e.spatial_scene.debug.vertices;
+    assert_eq!(vertices[0].position, [40., 10., -16.]);
+    assert_eq!(vertices[1].position, [40., 18., -16.]);
+    assert!(e.query_physics_entity(entity.id, entity.generation));
+    assert_eq!(e.physics_entity_x(), 40.);
 }

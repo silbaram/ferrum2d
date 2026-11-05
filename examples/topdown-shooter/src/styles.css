@@ -1,0 +1,10 @@
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #080b0f; color: #dce5ee; font: 13px "Ferrum Example UI", system-ui, sans-serif; }
+#app { padding: 24px; }
+.shooter-column { width: min(800px, 100%); min-width: 0; }
+.shooter-column h1 { font-size: 18px; margin: 0 0 16px; }
+.shooter-column .example-guide { width: 100%; grid-template-columns: 1fr 1fr; }
+.shooter-column .example-guide label { grid-column: 1 / -1; }
+.shooter-column > p { line-height: 1.6; color: #aeb9c6; }
+.shooter-column canvas { outline: 1px solid #2a3645; }
+@media (max-width: 700px) { #app { padding: 12px; } .shooter-column .example-guide { grid-template-columns: minmax(0, 1fr); } }

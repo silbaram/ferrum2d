@@ -20,6 +20,8 @@ pub struct PulleyJoint {
     pub local_anchor_b_y: f32,
     pub rest_length: f32,
     pub ratio: f32,
+    pub break_force: f32,
+    pub break_torque: f32,
     pub break_distance: f32,
     pub stiffness: f32,
     pub damping: f32,
@@ -50,6 +52,8 @@ impl PulleyJoint {
                 0.0
             },
             ratio: Self::DEFAULT_RATIO,
+            break_force: f32::INFINITY,
+            break_torque: f32::INFINITY,
             break_distance: f32::INFINITY,
             stiffness: Self::DEFAULT_STIFFNESS,
             damping: Self::DEFAULT_DAMPING,

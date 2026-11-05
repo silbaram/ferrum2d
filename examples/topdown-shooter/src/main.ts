@@ -1,3 +1,5 @@
+import { createExampleGuide } from "../../shared/exampleGuide";
+import "./styles.css";
 import {
   BrowserPlatformHost,
   InputManager,
@@ -15,10 +17,8 @@ import {
   type AssetManifest,
   type BuiltInShooterStateAccessor,
   type FerrumEngine,
-  type GameplayEntityHandle,
   type GameplayEventView,
   type LoadedAssets,
-  type PhysicsCollisionLayer,
   type PhysicsEntityHandle,
   type RendererStats,
   type RenderCommandAccessor,
@@ -33,19 +33,16 @@ import {
   resolveSceneCompositionSpec,
   type BehaviorRecipeDocumentSpec,
   type BehaviorStateMachineRuntimeInstallPlan,
-  type BehaviorStateMachineStateCommandApplyMode,
   type BehaviorStateMachineDocumentSpec,
   type GameplayBehaviorRuntimeIds,
+  type GameplayEntityHandle,
   type SceneCompositionSpec,
-  type SceneBehaviorBindingPlan,
-  type ShooterGameSpec,
   type ResolvedBehaviorRecipeDocument,
   type ResolvedBehaviorStateMachineDocument,
   type ResolvedSceneCompositionSpec,
 } from "@ferrum2d/ferrum-web/authoring";
 import {
   IndexedDbAssetCache,
-  type ParticlePresetConfig,
 } from "@ferrum2d/ferrum-web/labs";
 import {
   DebugOverlay,
@@ -56,6 +53,12 @@ import {
   cleanupRuntimeDemoResources,
   runtimeDemoDiagnosticRows,
 } from "../../shared/runtimeDemoShell";
+
+type ShooterGameSpec = Parameters<FerrumEngine["setGameSpec"]>[0];
+type PhysicsCollisionLayer = NonNullable<Parameters<FerrumEngine["spawnRigidBody"]>[0]["layer"]>;
+type ParticlePresetConfig = Parameters<FerrumEngine["setParticlePreset"]>[1];
+type SceneBehaviorBindingPlan = NonNullable<ReturnType<typeof dryRunSceneBehaviorRecipes>["plan"]>;
+type BehaviorStateMachineStateCommandApplyMode = NonNullable<NonNullable<Parameters<FerrumEngine["applyBehaviorStateMachineStateCommands"]>[2]>["mode"]>;
 
 const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
 const TOPDOWN_AUTHORED_RUNTIME_ENTITY_BUILTIN_PLAYER = "builtinShooterPlayer";
@@ -698,7 +701,7 @@ function runtimeHandleForTopdownAuthoredBehaviorInstance(
 }
 
 function recordTopdownAuthoredBehaviorFrame(
-  frame: { gameState: number; score: number; entityCount: number; gameplayEvents: readonly { kind: string }[] },
+  frame: { gameState: number; score: number; entityCount: number; gameplayEvents: readonly GameplayEventView[] },
   summary: TopdownAuthoredBehaviorVariantSummary | undefined,
   engine: FerrumEngine | undefined,
 ): void {
@@ -808,7 +811,7 @@ function applyTopdownPresentationEffects(
         cameraShakeState.remainingMs,
         TOPDOWN_CAMERA_SHAKE_DURATION_MS,
       );
-      cameraShakeState.phaseRadians += (action.actor.id + action.source.id) * 0.17;
+      cameraShakeState.phaseRadians += (action.actor.entityId + action.source.entityId) * 0.17;
       continue;
     }
 
@@ -1229,7 +1232,7 @@ async function bootstrap(): Promise<void> {
   try {
     const title = document.createElement("h1");
     const hudEl = document.createElement("p");
-    title.textContent = "Ferrum2D Top-down Shooter MVP";
+    title.textContent = "Ferrum2D · Game Spec 통합 예제";
     const searchParams = new URLSearchParams(window.location.search);
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
@@ -1238,15 +1241,19 @@ async function bootstrap(): Promise<void> {
     const authoredBehaviorVariantApplyEnabled = searchParams.get("authoredBehaviorVariantApply") === "true";
 
     const canvas = document.createElement("canvas");
-    canvas.style.width = "800px";
-    canvas.style.height = "480px";
+    canvas.style.width = "100%";
+    canvas.style.aspectRatio = "5 / 3";
     canvas.style.display = "block";
     const debugEnabled = searchParams.get("debug") === "true";
     const gameColumn = document.createElement("section");
+    gameColumn.className = "shooter-column";
     gameColumn.style.display = "flex";
     gameColumn.style.flexDirection = "column";
     gameColumn.style.alignItems = "flex-start";
-    gameColumn.append(title, hudEl, canvas);
+    gameColumn.append(title, createExampleGuide([
+      { title: "Game Spec · 웨이브", action: "Enter로 시작한 뒤 WASD로 이동하고 마우스 왼쪽 버튼으로 발사하세요.", observe: "game.json의 텍스처·웨이브·오디오·타일맵 설정을 하나의 게임에 적용합니다." },
+      { title: "타일 충돌 · 피격 효과", action: "벽 가까이에서 이동하고 적을 향해 사격하세요.", observe: "타일 충돌과 피격 파티클·오디오·카메라 흔들림을 확인합니다. 사운드는 첫 입력 후 활성화됩니다." },
+    ], canvas), hudEl, canvas);
     const shell = document.createElement("div");
     shell.style.display = "flex";
     shell.style.alignItems = "flex-start";
@@ -1263,6 +1270,7 @@ async function bootstrap(): Promise<void> {
 
     const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
     cleanups.push(() => renderer.destroy());
+    await renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href);
     const resizeRenderer = (): void => renderer.resize();
     window.addEventListener("resize", resizeRenderer);
     cleanups.push(() => window.removeEventListener("resize", resizeRenderer));
@@ -1404,7 +1412,10 @@ async function bootstrap(): Promise<void> {
       };
       runtimeProfiler?.recordFrame(debugMetrics);
       debugOverlay.update(debugMetrics);
-    }, inputSnapshot, platformHost, () => renderer.viewportSize(), { enablePhysicsDebugLines: physicsDebugLines });
+    }, inputSnapshot, platformHost, () => renderer.viewportSize(), {
+      enablePhysicsDebugLines: physicsDebugLines,
+      includePhysicsDebugLines: physicsDebugLines,
+    });
     runtimeEngine = engine;
     renderCommandAccessor = engine.createRenderCommandAccessor();
     cleanups.push(() => engine.destroy());

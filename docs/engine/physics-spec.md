@@ -265,13 +265,13 @@ runtime.carveCircle(48, 24, 8);
 | `weld` | local anchor, `referenceAngle`, `stiffness`, `damping`, `breakDistance`, `breakAngle` | 지원 |
 | `gear` | `ratio`, `referenceAngle`, `breakAngle` | 지원 |
 
-`distance`/`rope`/`spring`의 `localAnchorA`/`localAnchorB`는 각 body local 좌표의 연결점을 지정한다. 생략하면 `{ x: 0, y: 0 }`으로 해석되어 기존 center-to-center 동작과 같다. off-center anchor는 Rust solver에서 anchor point velocity와 회전 관성까지 함께 반영되므로 차량 suspension, hanging object, rope endpoint처럼 body center가 아닌 지점에 힘을 전달하는 authoring에 사용한다. `spring`의 `stiffness`는 0..1 범위의 기존 authoring 값을 유지하며, partial stiffness는 runtime velocity solve에서 soft denominator로 적용된다. `frequencyHz`/`dampingRatio`는 현재 공식 Physics Spec 필드가 아니며 별도 API 설계 후 추가한다.
+`distance`/`rope`/`spring`의 `localAnchorA`/`localAnchorB`는 각 body local 좌표의 연결점을 지정한다. 생략하면 `{ x: 0, y: 0 }`으로 해석되어 기존 center-to-center 동작과 같다. off-center anchor는 Rust solver에서 anchor point velocity와 회전 관성까지 함께 반영되므로 차량 suspension, hanging object, rope endpoint처럼 body center가 아닌 지점에 힘을 전달하는 authoring에 사용한다. `spring`의 `stiffness`는 0..1 범위의 기존 authoring 값을 유지하며, partial stiffness는 runtime velocity solve에서 soft denominator로 적용된다. `spring`에만 `frequencyHz: 0..1000`과 `dampingRatio: 0..10`을 선택적으로 지정할 수 있다. 주파수가 있으면 기존 stiffness/damping 대신 양 끝점의 유효 질량을 반영하는 implicit spring 응답을 사용한다. 감쇠비 기본값은 1(임계 감쇠)이며 단독 지정은 거부한다. 주파수 0은 spring 응답을 끄고, 계산 주파수는 substep 주파수의 절반 이하로 제한한다. 옵션을 생략하면 기존 동작을 유지한다.
 
 `pulley`는 기본적으로 두 body anchor와 두 world-space ground anchor 사이의 총 길이 `lengthA + ratio * lengthB = restLength`를 유지한다. `groundAnchorA`/`groundAnchorB`는 world 좌표이고, `localAnchorA`/`localAnchorB`는 각 body local 좌표다. `ratio`는 양수만 허용한다. `slack: true`이면 `lengthA + ratio * lengthB <= restLength` 상태에서는 correction과 break 판정을 적용하지 않고, rest length를 초과해 줄이 팽팽해졌을 때만 당긴다. `breakDistance`는 기본 equality pulley에서는 가중 길이 오차의 절댓값, slack pulley에서는 초과 길이 오차가 지정값을 넘으면 joint를 제거한다.
 
 `revolute.limit`은 기본적으로 상대 각도를 `[-pi, pi]` 범위로 정규화한 뒤 `lower`/`upper`와 비교한다. 이 기본값은 기존 hinge authoring과 wrap-around 회전 동작을 보존한다. `limit.continuous: true`이면 정규화하지 않은 누적 상대 각도를 사용하므로 `lower`/`upper`에 `2pi`를 넘는 multi-turn 제한을 줄 수 있다. `limit.continuous`는 revolute joint 전용이며 root `physics.continuous` CCD 설정과 별개다.
 
-`weld`는 두 body의 local anchor와 상대 각도를 고정하는 목적형 joint다. Physics Spec의 `stiffness`/`damping`은 runtime apply 시 anchor constraint와 angular constraint에 함께 적용된다. Rust solver는 off-center anchor position correction을 relative angle correction과 coupled solve로 처리해, anchor gap 보정이 회전 응답 없이 body center만 밀리는 동작을 피한다. 더 세밀하게 나누어야 하는 low-level Web API에서는 `spawnPhysicsJoint({ type: "weld", angularStiffness, angularDamping })`을 사용할 수 있다. `breakDistance`는 두 anchor 간 거리 오차, `breakAngle`은 상대 각도 오차가 지정값을 넘으면 joint를 제거한다. `frequencyHz`/`dampingRatio`/force 기반 break event는 현재 공식 Physics Spec 필드가 아니며, 필요 시 별도 설계 후 추가한다.
+`weld`는 두 body의 local anchor와 상대 각도를 고정하는 목적형 joint다. Physics Spec의 `stiffness`/`damping`은 runtime apply 시 anchor constraint와 angular constraint에 함께 적용된다. Rust solver는 off-center anchor position correction을 relative angle correction과 coupled solve로 처리해, anchor gap 보정이 회전 응답 없이 body center만 밀리는 동작을 피한다. 더 세밀하게 나누어야 하는 low-level Web API에서는 `spawnPhysicsJoint({ type: "weld", angularStiffness, angularDamping })`을 사용할 수 있다. `breakDistance`는 두 anchor 간 거리 오차, `breakAngle`은 상대 각도 오차가 지정값을 넘으면 joint를 제거한다. 공통 `breakForce`/`breakTorque` 하중 제한과 파손 이벤트도 지원한다. Hz/감쇠비 옵션은 spring 전용이며 weld에는 적용하지 않는다.
 
 ## Snapshot/replay API
 
@@ -316,13 +316,15 @@ workerClient.destroy();
 
 Snapshot 계약:
 
-- `format: "ferrum2d.physics-world.snapshot"`와 `version: 1`을 포함한다.
+- `format: "ferrum2d.physics-world.snapshot"`와 `version: 2`를 기록한다. reader는 v1/v2를 지원한다. solver-state API가 없는 구형 호환 engine에서는 v1을 기록하며, 해당 engine으로 v2를 복원하려 하면 변경 전에 거부한다.
 - `ResolvedPhysicsSpec`, body/joint logical id, runtime handle, body/joint snapshot, Physics Spec 기반 collider snapshot, step option, replay hash를 포함한다.
 - restore는 `ResolvedPhysicsSpec`을 다시 적용한 뒤 position, velocity, rotation, body/collider enabled state, mass/tuning/material, secondary collider material override, joint enabled state를 복원한다.
 - body state는 가능하면 `capturePhysicsBodyStateBuffer(...)`/`restorePhysicsBodyStateBuffer(...)` bulk ABI를 사용하고, 해당 API가 없는 호환 target에서는 기존 per-body setter 경로로 fallback한다.
 - hash는 기본적으로 logical id와 runtime state를 기준으로 하며 새 handle/generation 차이는 제외한다. handle까지 비교해야 하면 `hashPhysicsWorldSnapshot(snapshot, { includeHandles: true })`를 사용한다.
 - snapshot은 `PhysicsWorldApplyResult.spec`에 포함된 collider 집합을 기준으로 한다. `addPhysicsBodyCollider(...)`로 spec 밖 runtime collider를 추가한 world는 shape metadata를 안정적으로 복원할 수 없으므로 snapshot capture 시 diagnostic으로 거부한다.
-- force/impulse accumulator, island graph, warm-start contact cache는 현재 public JSON snapshot에 포함하지 않는다. Rust-native `World::snapshot()`은 accumulator, sleep state, warm-start contact impulse cache를 보존하지만 island graph는 step 시점의 derived state로 재계산한다.
+- v2 `solverState`는 힘/impulse XY, torque/angular impulse, canSleep/sleep timer 및 warm-start 접점·법선·normal/tangent impulse를 보존한다. `body:<logical id>`와 `anchor:<index>`로 handle을 재매핑하며 접촉 배열 순서를 보존한다. 대상 world 밖 body와 접촉 캐시가 연결되어 있으면 불완전한 저장을 피하기 위해 capture를 거부한다. island graph는 파생 상태로 재계산한다.
+- body/collider 복원 이후 solverState를 마지막에 적용한다. 새 엔진의 복원은 기존 world를 유지한 채 후보 world를 staging하고, 실패 시 native transaction으로 물체·수면·접촉 상태를 되돌린다. 기존 world의 `clear()`와 runtime 설정 변경은 후보 복원 성공 후 실행한다. bulk body/solver-state 복원도 전체 입력 검증 후 반영한다.
+- 무제한 joint break distance/angle과 static/kinematic의 무한 질량·관성은 JSON에 Infinity를 넣지 않고 `0` sentinel로 저장한다. 비동적 body의 질량·관성은 복원 시 bodyType으로 결정한다. v1에는 solverState를 넣지 않으며 기존 v1 hash 계약을 유지한다. v2 hash는 접촉의 logical endpoint 방향을 정규화해 handle 재할당으로 A/B 순서가 뒤집혀도 동일하다.
 
 Replay input stream 계약:
 
@@ -451,3 +453,40 @@ const layers = createPhysicsLayerMap({
 - TypeScript는 authoring JSON 검증, 낮은 빈도의 runtime option 병합, debug 표시를 담당한다.
 - `physics.mode`는 built-in Shooter/Breakout/Platformer scene을 generic rigid solver 기반으로 자동 재작성하지 않는다.
 - Web hot path에서 body별 JS/Wasm 왕복 호출을 만들지 않는다.
+
+## 회전 고정과 관절 하중 제한
+
+`bodies.<id>.fixedRotation`은 기본 `false`다. `true`면 이동·충돌은 유지하고
+물리 각속도·토크·각충격을 차단한다. 명시적인 배치 회전은 허용한다.
+해제하면 authored `inertia`로 역관성을 복구한다. kinematic body에도 적용한다.
+
+`joints.<id>.breakForce`, `breakTorque`는 선택적인 0 이상의 유한수다.
+생략하면 제한하지 않으며 **0은 힘이 발생하면 파손**을 뜻한다. 기존
+`breakDistance`/`breakAngle`의 authoring 0 sentinel과 다르다.
+
+```json
+{
+  "mode": "rigid",
+  "gravity": [0, 100],
+  "bodies": {
+    "crate": { "type": "dynamic", "fixedRotation": true,
+      "collider": { "shape": "box", "size": [16, 16] } }
+  },
+  "joints": {
+    "tether": { "type": "distance", "bodyA": "world", "bodyB": "crate",
+      "restLength": 40, "breakForce": 800 }
+  }
+}
+```
+
+하중은 velocity solver에서 해당 관절만이 두 endpoint에 준 순 운동량 변화를
+반복 전체에 걸쳐 합산한 뒤 **substep 초**로 나눈 값이다. force는
+질량×world-unit/s², torque는 관성×rad/s²다. 토크에는 anchor 지렛팔의 반작용도
+포함된다. 위치 보정량은 힘으로 환산하지 않는다. 힘·토크 중 큰 endpoint
+반작용을 사용하고, force와 torque가 동시에 초과하면 force 사유를 우선한다.
+8종 관절 모두 지원한다. 질량/관성을 가진 dynamic endpoint가 없는 관절은
+하중이 0이며 기존 기하 제한을 사용할 수 있다.
+
+`setPhysicsJointLoadLimits(handle, { breakForce, breakTorque })`는 두 제한을
+교체한다. 생략한 제한은 해제한다. JSON world snapshot은 회전 고정과
+런타임 하중 제한도 저장·복원한다. 예전 snapshot의 누락 필드는 기존 기본값이다.

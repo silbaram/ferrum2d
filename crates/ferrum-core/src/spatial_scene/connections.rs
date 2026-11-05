@@ -7,8 +7,8 @@ use crate::world::World;
 
 #[derive(Clone, Copy)]
 pub(super) struct SurfaceConnection {
-    from: usize,
-    to: usize,
+    pub(super) from: usize,
+    pub(super) to: usize,
     axis: usize,
     boundary: f32,
     lower: f32,
@@ -110,6 +110,13 @@ impl SpatialScene {
             let Some(to) = self.surfaces.iter().position(|s| s.id == pair[1]) else {
                 return false;
             };
+            if self
+                .moving_platforms
+                .iter()
+                .any(|p| p.origin.id == pair[0] || p.origin.id == pair[1])
+            {
+                return false;
+            }
             let a = self.surfaces[from];
             let b = self.surfaces[to];
             if !a.walkable || !b.walkable || a.floor == b.floor {

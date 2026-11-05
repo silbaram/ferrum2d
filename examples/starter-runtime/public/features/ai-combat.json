@@ -1,0 +1,249 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "actor",
+            "prefab": "object",
+            "x": 88,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              },
+              "behaviorRecipes": [
+                "actor"
+              ]
+            }
+          },
+          {
+            "id": "enemy",
+            "prefab": "object",
+            "x": -88,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  },
+                  "color": "#ff9370"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "enemy",
+                "body": {
+                  "type": "kinematic",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              },
+              "behaviorRecipes": [
+                "enemy"
+              ]
+            }
+          },
+          {
+            "id": "wall",
+            "prefab": "object",
+            "x": 0,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "color": "#ffffff00"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12,
+                  "halfHeight": 30,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 40
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "actor": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 1000
+          },
+          {
+            "kind": "faction",
+            "faction": "player",
+            "damages": [
+              "enemy"
+            ]
+          }
+        ]
+      },
+      "enemy": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 100
+          },
+          {
+            "kind": "faction",
+            "faction": "enemy",
+            "damages": [
+              "player"
+            ]
+          },
+          {
+            "kind": "chase",
+            "target": "primaryActor",
+            "speed": 64,
+            "stopDistance": 16
+          }
+        ]
+      }
+    }
+  },
+  "gameplay": {
+    "primaryActor": "actor",
+    "combat": true,
+    "combatNavigation": {
+      "maxAgents": 4,
+      "arrivalRadius": 0
+    }
+  },
+  "spatial": {
+    "camera": {
+      "projection": "orthographic",
+      "position": {
+        "x": 240,
+        "y": -320,
+        "elevation": 420
+      },
+      "target": {
+        "x": 0,
+        "y": 0,
+        "elevation": 16
+      },
+      "height": 250,
+      "near": 0.1,
+      "far": 2000
+    },
+    "terrain": [
+      {
+        "id": "ground",
+        "x": -160,
+        "y": -100,
+        "width": 320,
+        "depth": 200,
+        "elevation": 0,
+        "color": [
+          0.16,
+          0.25,
+          0.28,
+          1
+        ]
+      },
+      {
+        "id": "obstacle",
+        "x": -12,
+        "y": -30,
+        "width": 24,
+        "depth": 60,
+        "elevation": 40,
+        "baseElevation": 0,
+        "floorId": 1,
+        "walkable": false,
+        "color": [
+          0.4,
+          0.43,
+          0.48,
+          1
+        ]
+      }
+    ],
+    "billboards": {
+      "actor": {},
+      "enemy": {}
+    },
+    "actor": {
+      "instanceId": "actor",
+      "speed": 72,
+      "maxStepHeight": 8,
+      "maxDropHeight": 8
+    }
+  },
+  "ids": {
+    "actions": {
+      "attack": 7
+    },
+    "timers": {
+      "attack": 7
+    }
+  }
+}

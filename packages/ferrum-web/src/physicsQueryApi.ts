@@ -1,3 +1,6 @@
+import { configureImpactFeedback } from "./physicsImpactFeedback.js";
+import { readPhysicsDiagnostics, drainJointBreaks } from "./physicsDiagnostics.js";
+import { batchCastBodies } from "./physicsBatchQueries.js";
 import type { Engine } from "../pkg/ferrum_core";
 import type { FerrumPhysicsQueryApi, PhysicsBodyHeightSpan } from "./engineTypes.js";
 import { finiteNumber, uint32Number } from "./particlePreset";
@@ -17,6 +20,16 @@ export function createPhysicsQueryApi({
   requireAlive,
 }: PhysicsQueryApiContext): FerrumPhysicsQueryApi {
   return {
+    configurePhysicsImpactFeedback(profiles) { requireAlive(); configureImpactFeedback(rustEngine, profiles); },
+    physicsImpactFeedbackStats() { requireAlive(); const v = rustEngine.physics_impact_feedback_stats(); return { emitted: v[0]!, dropped: v[1]!, activeCooldowns: v[2]! }; },
+    configurePhysicsDiagnostics(enabled) {
+      requireAlive();
+      if (typeof enabled !== "boolean") throw new TypeError("diagnostics enabled must be boolean");
+      rustEngine.configure_physics_diagnostics(enabled);
+    },
+    queryPhysicsDiagnostics() { requireAlive(); return readPhysicsDiagnostics(rustEngine); },
+    drainPhysicsJointBreaks() { requireAlive(); return drainJointBreaks(rustEngine); },
+    batchCastBodies(requests) { requireAlive(); return batchCastBodies(rustEngine, requests); },
     queryNearestBody(query) {
       requireAlive();
       const maskBits = physicsMaskBits(query.queryMaskBits);
@@ -88,6 +101,21 @@ export function createPhysicsQueryApi({
       return bridge.readPhysicsBodyManifoldHits();
     },
 
+    configurePhysicsContactImpacts(options) {
+      requireAlive();
+      const enabled = options !== false;
+      const speed = typeof options === "object" ? options.minApproachSpeed ?? 1 : 1;
+      rustEngine.configure_physics_contact_impacts(enabled, nonNegativeNumber(speed, "minApproachSpeed"));
+    },
+    queryPhysicsContactImpacts() {
+      requireAlive();
+      rustEngine.query_physics_contact_impacts();
+      return bridge.readPhysicsRigidContactImpulseHits();
+    },
+    getPhysicsContactImpactsDropped() {
+      requireAlive();
+      return rustEngine.physics_contact_impacts_dropped();
+    },
     queryRigidContactImpulses() {
       requireAlive();
       rustEngine.query_rigid_contact_impulses();

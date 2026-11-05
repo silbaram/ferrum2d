@@ -21,6 +21,27 @@ impl Engine {
         true
     }
 
+    pub fn set_physics_body_fixed_rotation(
+        &mut self,
+        id: u32,
+        generation: u32,
+        fixed: bool,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(id, generation) else {
+            return false;
+        };
+        let Some(mut body) = self.world.rigid_body(entity) else {
+            return false;
+        };
+        body = body.with_fixed_rotation(fixed);
+        body.is_sleeping = false;
+        body.sleep_timer_seconds = 0.0;
+        self.world.set_rigid_body(entity, body);
+        self.world.clear_rigid_contact_impulses();
+        self.world.reset_render_interpolation();
+        self.store_physics_entity_snapshot(entity)
+    }
+
     pub fn set_physics_body_position(
         &mut self,
         entity_id: u32,
@@ -138,8 +159,20 @@ impl Engine {
         if self.spatial_scene.attachments.contains(entity) {
             return false;
         }
-        self.world
-            .set_angular_velocity(entity, AngularVelocity { radians_per_second });
+        self.world.set_angular_velocity(
+            entity,
+            AngularVelocity {
+                radians_per_second: if self
+                    .world
+                    .rigid_body(entity)
+                    .is_some_and(|b| b.fixed_rotation)
+                {
+                    0.0
+                } else {
+                    radians_per_second
+                },
+            },
+        );
         self.store_physics_entity_snapshot(entity)
     }
 
@@ -300,7 +333,11 @@ impl Engine {
         body.mass = mass;
         body.inverse_mass = 1.0 / mass;
         body.inertia = inertia;
-        body.inverse_inertia = 1.0 / inertia;
+        body.inverse_inertia = if body.fixed_rotation {
+            0.0
+        } else {
+            1.0 / inertia
+        };
         self.world.set_rigid_body(entity, body);
         self.store_physics_entity_snapshot(entity)
     }

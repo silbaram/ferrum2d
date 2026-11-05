@@ -56,6 +56,10 @@ export interface DebugOverlayMetrics {
   collisionPairCount?: number;
   collisionEventCount?: number;
   physicsDebugLineCount?: number;
+  physicsCcdLimits?: number;
+  physicsJointMaxForce?: number;
+  physicsJointMaxError?: number;
+  physicsDiagnosticsDropped?: number;
   physicsCcdChecks?: number;
   physicsCcdHits?: number;
   physicsSleepingBodies?: number;
@@ -120,6 +124,10 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
   { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
   { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
+  { id: "physicsCcdLimits", label: "ccd limits", unit: "count", optional: true },
+  { id: "physicsJointMaxForce", label: "joint force max", unit: "world", optional: true },
+  { id: "physicsJointMaxError", label: "joint error max", unit: "world", optional: true },
+  { id: "physicsDiagnosticsDropped", label: "diagnostics dropped", unit: "count", optional: true },
   { id: "physicsCcdChecks", label: "ccd checks", unit: "count", optional: true },
   { id: "physicsCcdHits", label: "ccd hits", unit: "count", optional: true },
   { id: "physicsSleepingBodies", label: "sleeping bodies", unit: "count", optional: true },
@@ -290,6 +298,10 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.physicsDebugLineCount !== undefined) {
     lines.push(row("physicsDebugLineCount", metrics.physicsDebugLineCount));
   }
+  if (metrics.physicsCcdLimits !== undefined) lines.push(row("physicsCcdLimits", metrics.physicsCcdLimits));
+  if (metrics.physicsJointMaxForce !== undefined) lines.push(row("physicsJointMaxForce", metrics.physicsJointMaxForce));
+  if (metrics.physicsJointMaxError !== undefined) lines.push(row("physicsJointMaxError", metrics.physicsJointMaxError));
+  if (metrics.physicsDiagnosticsDropped !== undefined) lines.push(row("physicsDiagnosticsDropped", metrics.physicsDiagnosticsDropped));
   if (metrics.physicsCcdChecks !== undefined) {
     lines.push(row("physicsCcdChecks", metrics.physicsCcdChecks));
   }

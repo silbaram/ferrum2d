@@ -93,7 +93,45 @@ pub struct WorldSnapshot {
     primary_actor: Option<Entity>,
 }
 
+pub(crate) struct WorldTransactionSnapshot {
+    simulation: WorldSnapshot,
+    render_history: super::render_interpolation::RenderHistory,
+    physics_diagnostics: super::physics_diagnostics::PhysicsDiagnostics,
+    contact_impact_min_speed: Option<f32>,
+    contact_impacts: Vec<crate::components::RigidContactImpulse>,
+    contact_impacts_dropped: u32,
+    impact_feedback_enabled: bool,
+    impact_feedback_impacts: Vec<crate::components::RigidContactImpulse>,
+    impact_feedback_dropped: u32,
+}
+
 impl World {
+    pub(crate) fn transaction_snapshot(&self) -> WorldTransactionSnapshot {
+        WorldTransactionSnapshot {
+            simulation: self.snapshot(),
+            render_history: self.render_history.clone(),
+            physics_diagnostics: self.physics_diagnostics.clone(),
+            contact_impact_min_speed: self.contact_impact_min_speed,
+            contact_impacts: self.contact_impacts.clone(),
+            contact_impacts_dropped: self.contact_impacts_dropped,
+            impact_feedback_enabled: self.impact_feedback_enabled,
+            impact_feedback_impacts: self.impact_feedback_impacts.clone(),
+            impact_feedback_dropped: self.impact_feedback_dropped,
+        }
+    }
+
+    pub(crate) fn restore_transaction_snapshot(&mut self, snapshot: &WorldTransactionSnapshot) {
+        self.restore_snapshot(&snapshot.simulation);
+        self.render_history = snapshot.render_history.clone();
+        self.physics_diagnostics = snapshot.physics_diagnostics.clone();
+        self.contact_impact_min_speed = snapshot.contact_impact_min_speed;
+        self.contact_impacts = snapshot.contact_impacts.clone();
+        self.contact_impacts_dropped = snapshot.contact_impacts_dropped;
+        self.impact_feedback_enabled = snapshot.impact_feedback_enabled;
+        self.impact_feedback_impacts = snapshot.impact_feedback_impacts.clone();
+        self.impact_feedback_dropped = snapshot.impact_feedback_dropped;
+    }
+
     pub fn snapshot(&self) -> WorldSnapshot {
         WorldSnapshot {
             generations: self.generations.clone(),
@@ -174,6 +212,14 @@ impl World {
     }
 
     pub fn restore_snapshot(&mut self, snapshot: &WorldSnapshot) {
+        self.reset_render_interpolation();
+        let diagnostics_enabled = self.physics_diagnostics.enabled;
+        self.physics_diagnostics = Default::default();
+        self.physics_diagnostics.enabled = diagnostics_enabled;
+        self.impact_feedback_impacts.clear();
+        self.impact_feedback_dropped = 0;
+        self.contact_impacts.clear();
+        self.contact_impacts_dropped = 0;
         self.generations = snapshot.generations.clone();
         self.free_list = snapshot.free_list.clone();
         self.alive = snapshot.alive.clone();

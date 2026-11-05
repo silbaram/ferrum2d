@@ -1784,3 +1784,24 @@ frame clear에서 overflow index도 초기화한다. frame 끝의 기존 관측/
 ### 엔진 기능 체험 데모
 
 `examples/starter-runtime` 기본 진입은 Engine Playground다. Data Scene의 Rust 이동·경로 탐색·수집 trigger와 rigid body 자동 계산을 사용하고, TS는 입력 목적지/impulse 명령, camera·light·postprocess 설정만 전달한다. 물리 런타임 설정과 `configureAutoRigidBodyStep`을 모두 켜며, CCD가 접촉을 해결한 뒤 overlap event가 없을 수 있어 공 충돌 피드백은 native CCD telemetry도 사용한다. 한 개의 dynamic body를 갖는 예제이므로 이 값은 공의 충돌을 의미한다. 기존 profile/replay/profiler 경로는 `?mode=starter`에 유지한다.
+
+
+### 물리 품질 고도화 경계
+
+회전 CCD의 보수적 진행/상한, render-only native 보간, 충격 bulk 조회, 정적 broadphase geometry 재사용,
+JSON snapshot v2의 누적 입력·접촉 캐시와 atomic staging, spring frequency/ratio는
+[물리 아키텍처](physics-engine.md)와 [Physics Spec](../../engine/physics-spec.md)을 따른다.
+보간 상태와 broadphase cache는 Rust에 있고 TS는 화면 설정·bulk 직렬화만 담당한다.
+CollisionEvent 24-byte 및 render-command ABI는 유지한다.
+
+### 물리 게임 제작 기능 확장
+
+회전 고정, 관절 하중 파손, material category 기반 충격 효과, HD-2D 이동 보행면은
+Rust가 상태와 발생 조건을 소유한다. TS는 authoring validation·bulk query packet·
+진단 표시·기존 오디오 재생을 담당한다. 진단은 opt-in이고 이벤트·응답은 bounded다.
+기존 단건 cast는 유지하며 batch 요청만 단일 Wasm 경로를 추가한다.
+
+공간 저장 v10은 발판 phase sidecar와 기존 pose 8값을 함께 검증한다.
+Runtime 지형 이동 revision은 렌더/탐색에 반영하고 authoring configuration
+revision과 분리한다. 이동 중 저장, 비시각 탑승자, combat 상태를 기존
+preflight→commit 순서에 포함한다. v2~v9 reader는 유지한다.

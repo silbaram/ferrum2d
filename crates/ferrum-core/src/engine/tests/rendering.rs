@@ -488,6 +488,90 @@ fn bitmap_world_text_uses_cached_sprite_commands_camera_transform_and_entity_anc
 }
 
 #[test]
+fn bitmap_world_text_interpolates_display_without_changing_native_queries() {
+    let mut engine = Engine::new();
+    engine.use_data_scene();
+    engine.camera.x = 100.;
+    engine.camera.y = 100.;
+    let actor = super::data_scene_visuals::sprite(&mut engine, 71, 100., 100., 0);
+    engine.world.set_aabb_collider(
+        actor,
+        AabbCollider::new(1., 1., false, CollisionLayer::Player),
+    );
+    engine
+        .world
+        .set_rigid_body(actor, RigidBody::dynamic(1.).with_sleeping_enabled(false));
+    engine
+        .world
+        .set_velocity(actor, Velocity { vx: 100., vy: 0. });
+    engine.auto_rigid_body_step_enabled = true;
+    engine.auto_rigid_body_step_config.gravity = Velocity::default();
+    engine.configure_fixed_timestep(true, 0.1, 1., 8);
+    engine.configure_physics_render_interpolation(true);
+    register_test_bitmap_font(&mut engine, 7, 99);
+    assert!(engine.set_world_text(
+        3,
+        7,
+        "A",
+        0.,
+        0.,
+        1.,
+        1.,
+        1.,
+        1.,
+        1.,
+        0.,
+        0,
+        4,
+        0,
+        0.,
+        actor.id,
+        actor.generation
+    ));
+
+    engine.update(0.15);
+    let expected = engine
+        .camera
+        .world_to_screen(Transform2D { x: 105., y: 100. });
+    let command = bitmap_text_commands(&engine, 99)[0];
+    assert!((command.x - expected.x).abs() < 0.001);
+    assert!((command.y - expected.y).abs() < 0.001);
+    assert_eq!(
+        command.rotation_radians, 0.,
+        "labels retain their upright layout"
+    );
+    assert!(engine.query_physics_entity(actor.id, actor.generation));
+    assert!((engine.physics_entity_x() - 110.).abs() < 0.001);
+    assert_eq!(
+        engine.query_point_bodies(110., 100., CollisionMask::PLAYER.bits),
+        1
+    );
+    assert_eq!(
+        engine.query_point_bodies(105., 100., CollisionMask::PLAYER.bits),
+        0
+    );
+
+    engine
+        .world
+        .set_transform(actor, Transform2D { x: 200., y: 100. });
+    engine.build_render_commands();
+    assert_eq!(
+        bitmap_text_commands(&engine, 99)[0].x,
+        engine
+            .camera
+            .world_to_screen(Transform2D { x: 200., y: 100. })
+            .x
+    );
+
+    engine.world.despawn(actor);
+    let replacement = super::data_scene_visuals::sprite(&mut engine, 72, 100., 100., 0);
+    assert_eq!(replacement.id, actor.id);
+    assert_ne!(replacement.generation, actor.generation);
+    engine.build_render_commands();
+    assert!(bitmap_text_commands(&engine, 99).is_empty());
+}
+
+#[test]
 fn bitmap_world_text_participates_in_layer_sort_hd2d_sort_and_culling() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1_600.0, 960.0);

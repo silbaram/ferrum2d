@@ -4,6 +4,16 @@ use super::super::Engine;
 
 #[wasm_bindgen]
 impl Engine {
+    pub fn physics_joint_uses_frequency(&self) -> bool {
+        self.physics_joint_snapshot.frequency_hz.is_some()
+    }
+    pub fn physics_joint_frequency_hz(&self) -> f32 {
+        self.physics_joint_snapshot.frequency_hz.unwrap_or(0.0)
+    }
+    pub fn physics_joint_damping_ratio(&self) -> f32 {
+        self.physics_joint_snapshot.damping_ratio
+    }
+
     pub fn physics_joint_type(&self) -> u32 {
         self.physics_joint_snapshot.joint_type
     }

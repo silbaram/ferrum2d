@@ -48,7 +48,18 @@ export function physicsJoints(
     rejectUnknownKeys(limit, `${jointPath}.limit`, LIMIT_KEYS);
     const motor = optionalObject(object.motor, `${jointPath}.motor`);
     rejectUnknownKeys(motor, `${jointPath}.motor`, MOTOR_KEYS);
+    if ((object.frequencyHz !== undefined || object.dampingRatio !== undefined) && type !== "spring") {
+      throw physicsSpecError(jointPath, "frequencyHz/dampingRatio are supported only for spring joints");
+    }
+    if (object.dampingRatio !== undefined && object.frequencyHz === undefined) {
+      throw physicsSpecError(`${jointPath}.dampingRatio`, "requires frequencyHz");
+    }
+    const frequencyHz = object.frequencyHz === undefined ? undefined : nonNegativeNumber(object.frequencyHz, `${jointPath}.frequencyHz`, 0);
+    const dampingRatio = frequencyHz === undefined ? undefined : nonNegativeNumber(object.dampingRatio, `${jointPath}.dampingRatio`, 1);
+    if (frequencyHz !== undefined && frequencyHz > 1000) throw physicsSpecError(`${jointPath}.frequencyHz`, "must be at most 1000");
+    if (dampingRatio !== undefined && dampingRatio > 10) throw physicsSpecError(`${jointPath}.dampingRatio`, "must be at most 10");
     setRecordEntry(resolved, id, {
+      ...(frequencyHz === undefined ? {} : { frequencyHz, dampingRatio }),
       id,
       type,
       bodyA,
@@ -85,6 +96,8 @@ export function physicsJoints(
         : finiteNumber(object.ratio, `${jointPath}.ratio`, 1),
       slack: booleanValue(object.slack, `${jointPath}.slack`, false),
       referenceAngle: finiteNumber(object.referenceAngle, `${jointPath}.referenceAngle`, 0),
+      ...(object.breakForce === undefined ? {} : { breakForce: nonNegativeNumber(object.breakForce, `${jointPath}.breakForce`, 0) }),
+      ...(object.breakTorque === undefined ? {} : { breakTorque: nonNegativeNumber(object.breakTorque, `${jointPath}.breakTorque`, 0) }),
       breakDistance: nonNegativeNumber(object.breakDistance, `${jointPath}.breakDistance`, 0),
       breakAngle: nonNegativeNumber(object.breakAngle, `${jointPath}.breakAngle`, 0),
     });

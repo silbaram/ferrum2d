@@ -14,7 +14,7 @@ import {
   applyDataSceneAuthoringDocument,
   createSceneInstanceHandleRegistry,
 } from "@ferrum2d/ferrum-web/authoring";
-export async function startSpatialScene(canvas, { audio: enableAudio = false } = {}) {
+export async function startSpatialScene(canvas, { audio: enableAudio = false, movingPlatforms = false } = {}) {
   const ambienceAudio = enableAudio ? new AudioManager() : undefined;
   let ambience, audioSpec;
   const unlockAudio = () => { void ambienceAudio?.unlock(); };
@@ -117,6 +117,7 @@ export async function startSpatialScene(canvas, { audio: enableAudio = false } =
     behaviorRecipes: { entities: {} },
     spatial: {
       camera,
+      ...(movingPlatforms ? {movingPlatforms:[{surfaceId:"low",offsetElevation:32,durationSeconds:2},{surfaceId:"bridge",offsetX:48,durationSeconds:3}]} : {}),
       terrain: [
         {
           id: "low",
@@ -264,7 +265,7 @@ export async function startSpatialScene(canvas, { audio: enableAudio = false } =
     attachLabel();
     const view = createDataSceneSpatialView(engine, canvas);
     const hud = globalThis.document.createElement("div");
-    hud.textContent = "WASD · native terrain";
+    hud.textContent = movingPlatforms ? "WASD · 승강 바닥 / 이동 다리 · save()/restore()로 탑승 위치 복원" : "WASD · native terrain";
     hud.style.cssText =
       "position:fixed;left:8px;top:8px;color:white;font:12px monospace;pointer-events:none";
     globalThis.document.body.append(hud);

@@ -20,6 +20,8 @@ const TILEMAP_NAVIGATION_PATH_POINT_CAPACITY: usize = 32;
 const TILEMAP_NAVIGATION_DEBUG_LINE_CAPACITY: usize = 16;
 
 pub(in crate::engine) struct EngineFrameBuffers {
+    pub(in crate::engine) contact_impacts: Vec<crate::components::RigidContactImpulse>,
+    pub(in crate::engine) contact_impacts_dropped: u32,
     pub(in crate::engine) render_commands: Vec<SpriteRenderCommand>,
     pub(in crate::engine) sprite_normal_materials: Vec<crate::render_command::SpriteNormalMaterial>,
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
@@ -40,6 +42,8 @@ pub(in crate::engine) struct EngineFrameBuffers {
 impl EngineFrameBuffers {
     pub(in crate::engine) fn new() -> Self {
         Self {
+            contact_impacts: Vec::new(),
+            contact_impacts_dropped: 0,
             render_commands: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
             sprite_normal_materials: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
@@ -92,6 +96,8 @@ impl EngineFrameBuffers {
     }
 
     pub(in crate::engine) fn clear_physics_frame_output(&mut self) {
+        self.contact_impacts.clear();
+        self.contact_impacts_dropped = 0;
         self.collision_events.clear();
         self.clear_gameplay_events();
         self.clear_effect_events();

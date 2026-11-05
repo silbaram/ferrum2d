@@ -383,7 +383,12 @@ impl WorldText {
     fn origin(&self, world: &World) -> Option<Transform2D> {
         let anchor = match self.spec.anchor {
             WorldTextAnchor::World => Transform2D::default(),
-            WorldTextAnchor::Entity(entity) => world.transform(entity)?,
+            WorldTextAnchor::Entity(entity) => {
+                if !world.is_current_entity(entity) {
+                    return None;
+                }
+                world.render_transform_at_index(entity.id as usize)?
+            }
         };
         Some(Transform2D {
             x: anchor.x + self.spec.x,
@@ -676,6 +681,9 @@ impl BitmapTextSystem {
             let WorldTextAnchor::Entity(entity) = text.spec.anchor else {
                 continue;
             };
+            if !world.is_current_entity(entity) {
+                continue;
+            }
             let key = (entity.id, entity.generation);
             let Some(style) = scene.bindings.get(&key).copied().or_else(|| {
                 scene
@@ -691,13 +699,15 @@ impl BitmapTextSystem {
             }) else {
                 continue;
             };
-            let Some(anchor) = world.transform(entity) else {
+            let Some(anchor) = world.render_transform_at_index(entity.id as usize) else {
                 continue;
             };
             let Some(owner) = world.sprite_at_index(entity.id as usize) else {
                 continue;
             };
-            let elevation = world.height_span(entity).map_or(0.0, |s| s.elevation)
+            let elevation = world
+                .render_height_span_at(entity.id as usize)
+                .map_or(0.0, |s| s.elevation)
                 + style.elevation
                 + text.spec.elevation;
             for c in &text.cached_commands {

@@ -53,6 +53,7 @@ export type {
   PhysicsReplaySetVelocityEvent,
   PhysicsWorldRestoreResult,
   PhysicsWorldSnapshot,
+  PhysicsWorldSolverState,
   PhysicsWorldSnapshotBody,
   PhysicsWorldSnapshotCollider,
   PhysicsWorldSnapshotHashOptions,

@@ -14,6 +14,7 @@ impl Engine {
             RigidBodyStepConfig::default(),
             &mut self.rigid_body_step_scratch,
         );
+        self.process_physics_impact_feedback(delta_seconds);
         self.record_rigid_body_step_stats(stats);
     }
 
@@ -91,6 +92,7 @@ impl Engine {
             },
             &mut self.rigid_body_step_scratch,
         );
+        self.process_physics_impact_feedback(delta_seconds);
         self.record_rigid_body_step_stats(stats);
     }
 }

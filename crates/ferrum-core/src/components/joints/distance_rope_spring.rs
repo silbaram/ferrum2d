@@ -15,6 +15,8 @@ pub struct DistanceJoint {
     pub local_anchor_b_x: f32,
     pub local_anchor_b_y: f32,
     pub rest_length: f32,
+    pub break_force: f32,
+    pub break_torque: f32,
     pub break_distance: f32,
     pub stiffness: f32,
     pub damping: f32,
@@ -38,6 +40,8 @@ impl DistanceJoint {
             } else {
                 0.0
             },
+            break_force: f32::INFINITY,
+            break_torque: f32::INFINITY,
             break_distance: f32::INFINITY,
             stiffness: Self::DEFAULT_STIFFNESS,
             damping: Self::DEFAULT_DAMPING,
@@ -98,6 +102,8 @@ pub struct RopeJoint {
     pub local_anchor_b_x: f32,
     pub local_anchor_b_y: f32,
     pub max_length: f32,
+    pub break_force: f32,
+    pub break_torque: f32,
     pub break_distance: f32,
     pub stiffness: f32,
     pub damping: f32,
@@ -121,6 +127,8 @@ impl RopeJoint {
             } else {
                 0.0
             },
+            break_force: f32::INFINITY,
+            break_torque: f32::INFINITY,
             break_distance: f32::INFINITY,
             stiffness: Self::DEFAULT_STIFFNESS,
             damping: Self::DEFAULT_DAMPING,
@@ -174,6 +182,9 @@ pub struct SpringJointId {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpringJoint {
+    /// None preserves the legacy stiffness/damping solver.
+    pub frequency_hz: Option<f32>,
+    pub damping_ratio: f32,
     pub entity_a: Entity,
     pub entity_b: Entity,
     pub local_anchor_a_x: f32,
@@ -181,6 +192,8 @@ pub struct SpringJoint {
     pub local_anchor_b_x: f32,
     pub local_anchor_b_y: f32,
     pub rest_length: f32,
+    pub break_force: f32,
+    pub break_torque: f32,
     pub break_distance: f32,
     pub stiffness: f32,
     pub damping: f32,
@@ -188,11 +201,18 @@ pub struct SpringJoint {
 }
 
 impl SpringJoint {
+    pub fn with_frequency(mut self, frequency_hz: f32, damping_ratio: f32) -> Self {
+        self.frequency_hz = Some(frequency_hz);
+        self.damping_ratio = damping_ratio;
+        self
+    }
     pub const DEFAULT_STIFFNESS: f32 = 1.0;
     pub const DEFAULT_DAMPING: f32 = 0.0;
 
     pub fn new(entity_a: Entity, entity_b: Entity, rest_length: f32) -> Self {
         Self {
+            frequency_hz: None,
+            damping_ratio: 1.0,
             entity_a,
             entity_b,
             local_anchor_a_x: 0.0,
@@ -204,6 +224,8 @@ impl SpringJoint {
             } else {
                 0.0
             },
+            break_force: f32::INFINITY,
+            break_torque: f32::INFINITY,
             break_distance: f32::INFINITY,
             stiffness: Self::DEFAULT_STIFFNESS,
             damping: Self::DEFAULT_DAMPING,

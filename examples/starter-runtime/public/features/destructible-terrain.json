@@ -1,0 +1,90 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "terrain",
+            "prefab": "object",
+            "x": 320,
+            "y": 256,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "floor",
+                  "width": 512,
+                  "height": 192
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "ball",
+            "prefab": "object",
+            "x": 320,
+            "y": 80,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "ball",
+                  "width": 24,
+                  "height": 24
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 12,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "dynamic",
+                  "mass": 1,
+                  "canSleep": false
+                }
+              }
+            }
+          },
+          {
+            "id": "bedrock",
+            "prefab": "object",
+            "x": 320,
+            "y": 376,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 592,
+                  "height": 16
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 296,
+                  "halfHeight": 8,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

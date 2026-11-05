@@ -65,7 +65,17 @@ export async function probeSpatialGltf(scene,canvas){
   check(encodedBinary&&corsEncodedBinary,"encoded glTF binary identity differs",{encodedBinary,corsEncodedBinary,hiddenEncoding});
   try{await loadSpatialGltf("/gltf/broken.gltf",{materialProfile:"diffuse"});}catch(error){missing=/HTTP 404/.test(String(error));}
   const fetch=globalThis.fetch,controller=new AbortController();
-  globalThis.fetch=async(...args)=>{const response=await fetch(...args);if(String(args[0]).endsWith("/gltf-slow.bin")){streamStarted=true;setTimeout(()=>controller.abort(),0);}return response;};
+  globalThis.fetch=async(...args)=>{
+    const response=await fetch(...args);
+    if(!String(args[0]).endsWith("/gltf-slow.bin")||!response.body)return response;
+    // Cancel at the first consumed body chunk. A timer can lose to a fully buffered
+    // response when rendering delays browser tasks beyond the server's slow period.
+    const body=response.body.pipeThrough(new TransformStream({transform(chunk,output){
+      output.enqueue(chunk);
+      if(chunk.byteLength&&!controller.signal.aborted){streamStarted=true;controller.abort();}
+    }}));
+    return new Response(body,{status:response.status,statusText:response.statusText,headers:response.headers});
+  };
   try{await loadSpatialGltf("/gltf/slow.gltf",{materialProfile:"diffuse",signal:controller.signal});}catch(error){aborted=/AbortError/.test(String(error));}finally{globalThis.fetch=fetch;}
   const changed=await loadSpatialGltf("/gltf/changed.gltf",{materialProfile:"diffuse"});
   check(changed.contentId!==external[2].contentId&&engine.registerDataSceneSpatialModel("gltf-changed",changed),"dependency bytes did not change content identity");

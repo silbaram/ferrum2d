@@ -17,6 +17,8 @@ export interface PhysicsJointHandle {
 }
 
 export interface PhysicsJointBaseOptions {
+  breakForce?: number;
+  breakTorque?: number;
   entityA: PhysicsEntityHandle;
   entityB: PhysicsEntityHandle;
   stiffness?: number;
@@ -45,6 +47,8 @@ export type PhysicsJointSpawnOptions =
     })
   | (PhysicsJointBaseOptions & {
       type: "spring";
+      frequencyHz?: number;
+      dampingRatio?: number;
       localAnchorAX?: number;
       localAnchorAY?: number;
       localAnchorBX?: number;
@@ -121,6 +125,10 @@ export type PhysicsJointSpawnOptions =
     });
 
 export interface PhysicsJointSnapshot extends PhysicsJointHandle {
+  breakForce?: number;
+  breakTorque?: number;
+  frequencyHz?: number;
+  dampingRatio?: number;
   entityA: PhysicsEntityHandle;
   entityB: PhysicsEntityHandle;
   enabled: boolean;

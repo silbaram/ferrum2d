@@ -1,3 +1,5 @@
+import { captureWorldSolverState, restoreWorldSolverState } from "./physicsWorldSolverState.js";
+import { stagePhysicsWorldFromSpec, configureAppliedPhysicsRuntime } from "./physicsAuthoringWorld.js";
 import type {
   FerrumEngine,
   PhysicsBodyColliderSnapshot,
@@ -13,7 +15,6 @@ import {
   type PhysicsBodyStateBufferSnapshot,
 } from "./physicsBodyStateBuffer.js";
 import {
-  createPhysicsWorldFromSpec,
   resolvedPhysicsColliderRuntimeCount,
   type PhysicsWorldApplyResult,
 } from "./physicsAuthoring.js";
@@ -82,7 +83,13 @@ export function capturePhysicsWorldSnapshot(
           state: colliderState,
         };
       });
-      return [id, { id, handle: { ...handle }, state, colliders }];
+      return [id, { id, handle: { ...handle }, state: {
+        ...state,
+        // Native immovable bodies use infinite mass/inertia. JSON uses zero;
+        // restore derives their physical mass properties from bodyType.
+        mass: state.bodyType !== "dynamic" && state.mass === Infinity ? 0 : state.mass,
+        inertia: state.bodyType !== "dynamic" && state.inertia === Infinity ? 0 : state.inertia,
+      }, colliders }];
     }),
   );
   const joints = Object.fromEntries(
@@ -91,12 +98,19 @@ export function capturePhysicsWorldSnapshot(
       if (!state) {
         throw physicsSpecDiagnosticError(`physics.snapshot.joints.${id}`, "joint handle is no longer alive");
       }
-      return [id, { id, handle: { ...handle }, state }];
+      return [id, { id, handle: { ...handle }, state: {
+        ...state,
+        // JSON has no Infinity. Zero is the authoring sentinel for no break limit.
+        breakDistance: Number.isFinite(state.breakDistance) ? state.breakDistance : 0,
+        breakAngle: Number.isFinite(state.breakAngle) ? state.breakAngle : 0,
+      } }];
     }),
   );
+  const solverState = captureWorldSolverState(engine, world);
   const snapshot: PhysicsWorldSnapshot = {
+    ...(solverState === undefined ? {} : { solverState }),
     format: PHYSICS_WORLD_SNAPSHOT_FORMAT,
-    version: PHYSICS_WORLD_SNAPSHOT_VERSION,
+    version: solverState === undefined ? 1 : PHYSICS_WORLD_SNAPSHOT_VERSION,
     frame,
     source: "physics-spec",
     spec: world.spec,
@@ -121,13 +135,24 @@ export function restorePhysicsWorldSnapshot(
   options: RestorePhysicsWorldSnapshotOptions = {},
 ): PhysicsWorldRestoreResult {
   validatePhysicsWorldSnapshot(snapshot, options.path ?? "physics.snapshot");
-  const restored = createPhysicsWorldFromSpec(engine, snapshot.spec, {
+  if (snapshot.version === 2 && (typeof engine.restorePhysicsSolverState !== "function" || typeof engine.withPhysicsWorldTransaction !== "function")) {
+    throw physicsSpecDiagnosticError("physics.snapshot.version", "version 2 requires solver state and transaction support");
+  }
+  const operation = () => restorePreparedPhysicsWorldSnapshot(engine, snapshot, options);
+  const restored = typeof engine.withPhysicsWorldTransaction === "function" ? engine.withPhysicsWorldTransaction(operation) : operation();
+  configureAppliedPhysicsRuntime(engine, snapshot.spec);
+  options.replace?.clear();
+  return restored;
+}
+
+function restorePreparedPhysicsWorldSnapshot(engine: FerrumEngine, snapshot: PhysicsWorldSnapshot, options: RestorePhysicsWorldSnapshotOptions): PhysicsWorldRestoreResult {
+  const restored = stagePhysicsWorldFromSpec(engine, snapshot.spec, {
     path: options.path ?? "physics",
-    replace: options.replace,
     unsafeUnitScaleThreshold: options.unsafeUnitScaleThreshold,
     onWarning: options.onWarning,
   });
 
+  try {
   const bodyEntries = Object.entries(snapshot.bodies);
   const restoredBodyStates: PhysicsEntitySnapshot[] = [];
   for (const [id, entry] of bodyEntries) {
@@ -168,17 +193,25 @@ export function restorePhysicsWorldSnapshot(
     if (!handle) {
       throw physicsSpecDiagnosticError(`physics.snapshot.joints.${id}`, "joint is missing after restore");
     }
+    if (entry.state.breakForce !== undefined || entry.state.breakTorque !== undefined || typeof engine.setPhysicsJointLoadLimits === "function") {
+      if (!engine.setPhysicsJointLoadLimits(handle, entry.state)) throw physicsSpecDiagnosticError(`physics.snapshot.joints.${id}`, "runtime rejected joint load limits");
+    }
     if (!engine.setPhysicsJointEnabled(handle, entry.state.enabled)) {
       throw physicsSpecDiagnosticError(`physics.snapshot.joints.${id}.enabled`, "runtime rejected joint enabled state");
     }
   }
 
+  if (snapshot.solverState !== undefined) restoreWorldSolverState(engine, restored, snapshot.solverState);
   return {
     ...restored,
     sourceSnapshot: snapshot,
     restoredBodyCount: Object.keys(snapshot.bodies).length,
     restoredJointCount: Object.keys(snapshot.joints).length,
   };
+  } catch (error) {
+    restored.clear();
+    throw error;
+  }
 }
 
 export function verifyPhysicsReplayRollback(
@@ -291,6 +324,9 @@ function restorePhysicsBodyState(
     engine.setPhysicsBodyRotation(handle, state.rotationRadians),
     `${path}.rotationRadians`,
   );
+  if (state.fixedRotation !== undefined || typeof engine.setPhysicsBodyFixedRotation === "function") {
+    ensureRuntimeAccepted(engine.setPhysicsBodyFixedRotation(handle, state.fixedRotation ?? false), `${path}.fixedRotation`);
+  }
   ensureRuntimeAccepted(
     engine.setPhysicsBodyAngularVelocity(handle, state.angularVelocityRadiansPerSecond),
     `${path}.angularVelocityRadiansPerSecond`,

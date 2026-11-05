@@ -902,7 +902,8 @@
         "linearDamping": { "type": "number", "minimum": 0 },
         "angularDamping": { "type": "number", "minimum": 0 },
         "enabled": { "type": "boolean" },
-        "canSleep": { "type": "boolean" }
+        "canSleep": { "type": "boolean" },
+        "fixedRotation": { "type": "boolean", "default": false }
       },
       "not": { "required": ["collider", "colliders"] }
     },
@@ -1060,6 +1061,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "bodyA", "bodyB"],
+      "allOf": [
+        { "if": { "required": ["frequencyHz"] }, "then": { "properties": { "type": { "const": "spring" } } } },
+        { "if": { "required": ["dampingRatio"] }, "then": { "required": ["frequencyHz"], "properties": { "type": { "const": "spring" } } } }
+      ],
       "properties": {
         "type": {
           "enum": ["distance", "rope", "spring", "pulley", "revolute", "prismatic", "weld", "gear"]
@@ -1076,12 +1081,16 @@
         "maxLength": { "type": "number", "minimum": 0 },
         "stiffness": { "type": "number", "minimum": 0, "maximum": 1 },
         "damping": { "type": "number", "minimum": 0, "maximum": 1 },
+        "frequencyHz": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "dampingRatio": { "type": "number", "minimum": 0, "maximum": 10 },
         "enabled": { "type": "boolean" },
         "limit": { "$ref": "#/$defs/physicsJointLimit" },
         "motor": { "$ref": "#/$defs/physicsJointMotor" },
         "ratio": { "type": "number" },
         "slack": { "type": "boolean" },
         "referenceAngle": { "type": "number" },
+        "breakForce": { "type": "number", "minimum": 0 },
+        "breakTorque": { "type": "number", "minimum": 0 },
         "breakDistance": { "type": "number", "minimum": 0 },
         "breakAngle": { "type": "number", "minimum": 0 }
       }

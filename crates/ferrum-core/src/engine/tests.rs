@@ -52,6 +52,7 @@ mod physics_body_queries;
 mod physics_body_snapshots;
 mod physics_debug_abi;
 mod physics_joint_controls;
+mod physics_quality;
 mod physics_queries;
 mod physics_rigid_steps;
 mod rendering;
@@ -186,3 +187,5 @@ mod spatial_physics_obstacles;
 mod spatial_progress;
 mod spatial_scene;
 mod spatial_terrain_chunks;
+
+mod physics_expansion;

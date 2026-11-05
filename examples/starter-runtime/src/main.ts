@@ -1,4 +1,5 @@
 import { startEnginePlayground } from "./enginePlayground";
+import { startFeatureLab } from "./featureLab";
 import {
   captureGameStateSnapshot,
   createFerrumRuntime,
@@ -511,7 +512,9 @@ function createStarterRuntimeControlPanel(
       "data-starter-capture-button": "true",
       "aria-label": "Capture runtime report",
     }));
-    element.replaceChildren(title, summary, details, actions);
+    const range = document.createElement("a");
+    range.href = "?feature=projectiles"; range.textContent = "벽 표적에서 일반·관통·반사 비교하기";
+    element.replaceChildren(title, summary, range, details, actions);
   };
 
   update();
@@ -679,9 +682,9 @@ function requireInputActionBinding(
 
 const entryParams = new URLSearchParams(location.search);
 const legacyStarter = entryParams.get("mode") === "starter" || ["profile", "reportSmoke", "profilerSmoke"].some(key => entryParams.has(key));
-void (legacyStarter ? bootstrap() : startEnginePlayground()).catch((error) => {
+void (legacyStarter ? bootstrap() : entryParams.get("mode") === "playground" ? startEnginePlayground() : startFeatureLab()).catch((error) => {
   renderRuntimeDemoError(error, {
-    title: legacyStarter ? "Starter Runtime" : "Engine Playground",
+    title: legacyStarter ? "Starter Runtime" : entryParams.get("mode") === "playground" ? "Engine Playground" : "엔진 기능 실험실",
     diagnosticReport,
   });
 });

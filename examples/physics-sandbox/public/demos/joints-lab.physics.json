@@ -122,8 +122,8 @@
       "bodyA": "springA",
       "bodyB": "springB",
       "restLength": 94,
-      "stiffness": 0.35,
-      "damping": 0.36
+      "frequencyHz": 2,
+      "dampingRatio": 0.7
     },
     "revolute": {
       "type": "revolute",

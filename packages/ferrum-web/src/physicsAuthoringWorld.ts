@@ -43,10 +43,11 @@ import type {
 const DEFAULT_APPLY_PATH = "physics";
 const DEFAULT_UNSAFE_UNIT_SCALE_THRESHOLD = 5000;
 
-export function createPhysicsWorldFromSpec(
+function applyPhysicsWorldFromSpec(
   engine: FerrumEngine,
   input: PhysicsSpec | ResolvedPhysicsSpec,
   options: PhysicsWorldApplyOptions = {},
+  configureRuntime = true,
 ): PhysicsWorldApplyResult {
   const path = options.path ?? DEFAULT_APPLY_PATH;
   const spec = isResolvedPhysicsSpec(input) ? input : resolvePhysicsSpec(input, { path });
@@ -57,14 +58,7 @@ export function createPhysicsWorldFromSpec(
   }
 
   options.replace?.clear();
-  const runtimeConfigurable = engine as FerrumEngine & {
-    configurePhysicsRuntime?: (spec: ResolvedPhysicsSpec) => ResolvedPhysicsSpec;
-  };
-  if (typeof runtimeConfigurable.configurePhysicsRuntime === "function") {
-    runtimeConfigurable.configurePhysicsRuntime(spec);
-  } else {
-    applyPhysicsRuntimeOptions(engine, spec);
-  }
+  if (configureRuntime) configureAppliedPhysicsRuntime(engine, spec);
 
   const warnings = physicsApplyWarnings(spec, path, options.unsafeUnitScaleThreshold);
   for (const warning of warnings) {
@@ -197,6 +191,7 @@ function spawnResolvedBody(
     colliderEnabled: collider.enabled,
     bodyEnabled: body.enabled,
     canSleep: body.canSleep,
+    fixedRotation: body.fixedRotation,
     velocityX: body.velocityX,
     velocityY: body.velocityY,
     rotationRadians: body.rotationRadians,
@@ -357,4 +352,26 @@ function isResolvedPhysicsSpec(input: PhysicsSpec | ResolvedPhysicsSpec): input 
     && isObject(input.bodies)
     && isObject(input.joints)
     && isObject(input.solver);
+}
+
+export function createPhysicsWorldFromSpec(engine: FerrumEngine, input: PhysicsSpec | ResolvedPhysicsSpec, options: PhysicsWorldApplyOptions = {}): PhysicsWorldApplyResult {
+  return applyPhysicsWorldFromSpec(engine, input, options);
+}
+
+// Snapshot restore stages entities without changing the live runtime or clearing
+// the previous world. Only a successfully restored candidate is committed.
+export function stagePhysicsWorldFromSpec(engine: FerrumEngine, spec: ResolvedPhysicsSpec, options: PhysicsWorldApplyOptions): PhysicsWorldApplyResult {
+  return applyPhysicsWorldFromSpec(engine, spec, { ...options, replace: undefined }, false);
+}
+
+export function configureAppliedPhysicsRuntime(engine: FerrumEngine, spec: ResolvedPhysicsSpec): void {
+  const runtimeConfigurable = engine as FerrumEngine & {
+    configurePhysicsRuntime?: (spec: ResolvedPhysicsSpec) => ResolvedPhysicsSpec;
+  };
+  if (typeof runtimeConfigurable.configurePhysicsRuntime === "function") {
+    runtimeConfigurable.configurePhysicsRuntime(spec);
+  } else {
+    applyPhysicsRuntimeOptions(engine, spec);
+  }
+
 }

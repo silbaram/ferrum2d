@@ -152,6 +152,7 @@ export interface PhysicsRigidBodySpawnOptions {
   colliderEnabled?: boolean;
   bodyEnabled?: boolean;
   canSleep?: boolean;
+  fixedRotation?: boolean;
   velocityX?: number;
   velocityY?: number;
   rotationRadians?: number;
@@ -196,6 +197,7 @@ export interface PhysicsEntitySnapshot extends PhysicsEntityHandle {
   bodyType: PhysicsRigidBodyType;
   bodyEnabled: boolean;
   isSleeping: boolean;
+  fixedRotation?: boolean;
   colliderType: PhysicsColliderType;
   colliderEnabled: boolean;
   colliderIsTrigger: boolean;
@@ -220,4 +222,12 @@ export interface PhysicsEntitySnapshot extends PhysicsEntityHandle {
   contactPositionCorrectionScale: number;
   contactPositionCorrectionSlopScale: number;
   heightSpan?: PhysicsBodyHeightSpan | null;
+}
+
+/** Owned bulk data. Eight accumulator floats/body and six contact floats/contact. */
+export interface PhysicsSolverStateBuffer {
+  handles: Uint32Array;
+  values: Float32Array;
+  contactHandles: Uint32Array;
+  contacts: Float32Array;
 }

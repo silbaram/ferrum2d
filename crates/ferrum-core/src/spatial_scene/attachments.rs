@@ -59,6 +59,37 @@ impl SpatialAttachments {
         *self = next;
         true
     }
+    /// Derive the attachment graph from presentation poses, without moving native colliders.
+    pub fn prepare_render_poses(&self, world: &mut World, models: &SpatialModels) {
+        if !world.begin_render_attachment_poses() {
+            return;
+        }
+        // Links are topologically ordered at configure time, including nested attachments.
+        for link in &self.links {
+            if !world.is_current_entity(link.parent) || !world.is_current_entity(link.child) {
+                continue;
+            }
+            let Some(at) = world.render_transform_at_index(link.parent.id as usize) else {
+                continue;
+            };
+            let parent = AttachmentPose {
+                at,
+                span: world.render_height_span_at(link.parent.id as usize),
+                yaw: world
+                    .render_rotation_at_index(link.parent.id as usize)
+                    .radians,
+            };
+            let pose = child_pose(world, link, parent);
+            if valid_pose(models, link.child, pose) {
+                world.set_render_attachment_pose(
+                    link.child,
+                    pose.at,
+                    Rotation2D { radians: pose.yaw },
+                    pose.span,
+                );
+            }
+        }
+    }
     /// Five metadata words: child handle, parent handle, inherit-floor flag. Four local floats.
     pub fn build_checked(
         world: &World,
@@ -250,24 +281,7 @@ impl SpatialAttachments {
                 self.scratch[index] = None;
                 continue;
             };
-            let (s, c) = parent.yaw.sin_cos();
-            let at = Transform2D {
-                x: parent.at.x + c * link.local[0] - s * link.local[1],
-                y: parent.at.y + s * link.local[0] + c * link.local[1],
-            };
-            let yaw = parent.yaw + link.local[3];
-            let span = world.height_span(link.child).and_then(|child| {
-                HeightSpan::new(
-                    if link.inherit_floor {
-                        parent.span.map_or(child.floor, |p| p.floor)
-                    } else {
-                        child.floor
-                    },
-                    parent.span.map_or(0., |p| p.elevation) + link.local[2],
-                    child.height,
-                )
-            });
-            let pose = AttachmentPose { at, span, yaw };
+            let pose = child_pose(world, link, parent);
             if !valid_pose(models, link.child, pose) {
                 return false;
             }
@@ -292,6 +306,27 @@ impl SpatialAttachments {
             world.set_angular_velocity(link.child, AngularVelocity::default());
         }
     }
+}
+
+fn child_pose(world: &World, link: &Link, parent: AttachmentPose) -> AttachmentPose {
+    let (s, c) = parent.yaw.sin_cos();
+    let at = Transform2D {
+        x: parent.at.x + c * link.local[0] - s * link.local[1],
+        y: parent.at.y + s * link.local[0] + c * link.local[1],
+    };
+    let yaw = parent.yaw + link.local[3];
+    let span = world.height_span(link.child).and_then(|child| {
+        HeightSpan::new(
+            if link.inherit_floor {
+                parent.span.map_or(child.floor, |p| p.floor)
+            } else {
+                child.floor
+            },
+            parent.span.map_or(0., |p| p.elevation) + link.local[2],
+            child.height,
+        )
+    });
+    AttachmentPose { at, span, yaw }
 }
 
 fn valid_pose(models: &SpatialModels, entity: Entity, pose: AttachmentPose) -> bool {

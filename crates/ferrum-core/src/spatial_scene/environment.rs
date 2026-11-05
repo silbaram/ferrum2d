@@ -242,9 +242,12 @@ impl SpatialEnvironment {
             let focus = actor
                 .filter(|(a, _)| world.is_current_entity(*a))
                 .and_then(|(a, visual_offset)| {
-                    let p = world.transform(a)?;
-                    let elevation =
-                        world.height_span(a).map_or(0., |s| s.elevation) + visual_offset + v[98];
+                    let p = world.render_transform_at_index(a.id as usize)?;
+                    let elevation = world
+                        .render_height_span_at(a.id as usize)
+                        .map_or(0., |s| s.elevation)
+                        + visual_offset
+                        + v[98];
                     let depth = dot(
                         super::sub(
                             [p.x, elevation, -p.y],

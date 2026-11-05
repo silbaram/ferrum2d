@@ -40,6 +40,8 @@ impl Engine {
         joint: DistanceJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             rest_length: joint.rest_length,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
@@ -66,6 +68,8 @@ impl Engine {
         joint: RopeJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             max_length: joint.max_length,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
@@ -92,6 +96,10 @@ impl Engine {
         joint: SpringJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
+            frequency_hz: joint.frequency_hz,
+            damping_ratio: joint.damping_ratio,
             rest_length: joint.rest_length,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
@@ -118,6 +126,8 @@ impl Engine {
         joint: PulleyJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             rest_length: joint.rest_length,
             ratio: joint.ratio,
             slack: joint.slack,
@@ -150,6 +160,8 @@ impl Engine {
         joint: RevoluteJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
             damping: joint.damping,
@@ -182,6 +194,8 @@ impl Engine {
         joint: PrismaticJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             reference_angle: joint.reference_angle,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
@@ -218,6 +232,8 @@ impl Engine {
         joint: WeldJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             reference_angle: joint.reference_angle,
             break_distance: joint.break_distance,
             break_angle: joint.break_angle,
@@ -247,6 +263,8 @@ impl Engine {
         joint: GearJoint,
     ) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
+            break_force: joint.break_force,
+            break_torque: joint.break_torque,
             ratio: joint.ratio,
             reference_angle: joint.reference_angle,
             break_angle: joint.break_angle,

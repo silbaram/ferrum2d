@@ -1,0 +1,183 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "tray",
+            "prefab": "object",
+            "x": 320,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "panel",
+                  "width": 464,
+                  "height": 272,
+                  "nineSlice": {
+                    "sourceWidth": 24,
+                    "sourceHeight": 24,
+                    "left": 4,
+                    "right": 4,
+                    "top": 4,
+                    "bottom": 4,
+                    "borderScale": 2
+                  },
+                  "layer": -10
+                },
+                "collider": "none",
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "north",
+            "prefab": "object",
+            "x": 320,
+            "y": 64,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 448,
+                  "height": 8
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 224,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "south",
+            "prefab": "object",
+            "x": 320,
+            "y": 320,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 448,
+                  "height": 8
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 224,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "west",
+            "prefab": "object",
+            "x": 100,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 8,
+                  "height": 256
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 128,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "east",
+            "prefab": "object",
+            "x": 540,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 8,
+                  "height": 256
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 128,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static"
+                }
+              }
+            }
+          },
+          {
+            "id": "ball",
+            "prefab": "object",
+            "x": 200,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "ball",
+                  "width": 32,
+                  "height": 32
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 16,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "dynamic",
+                  "mass": 1,
+                  "gravityScale": 0,
+                  "linearDamping": 0.08,
+                  "material": {
+                    "friction": 0.02,
+                    "restitution": 0.92
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

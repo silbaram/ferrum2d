@@ -1,3 +1,4 @@
+import { createPhysicsSolverStateApi } from "./physicsSolverState.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { finiteNumber, uint32Number } from "./particlePreset";
 import { nonNegativeNumber, positiveNumber } from "./physicsAuthoringNumbers.js";
@@ -514,6 +515,7 @@ export function createPhysicsBodyApi({
   };
 
   return {
+    ...createPhysicsSolverStateApi(rustEngine, bridge, requireAlive),
     spawnRigidBody,
     addPhysicsBodyCollider,
     getPhysicsBodyColliderCount,
@@ -524,6 +526,13 @@ export function createPhysicsBodyApi({
     despawnPhysicsEntity,
     setPhysicsBodyPosition,
     setPhysicsBodyVelocity,
+    setPhysicsBodyFixedRotation(handle, fixed) {
+      requireAlive();
+      if (typeof fixed !== "boolean") throw new Error("fixedRotation must be boolean");
+      const h = physicsEntityHandle(handle);
+      if (typeof rustEngine.set_physics_body_fixed_rotation !== "function") return !fixed && rustEngine.query_physics_entity(h.entityId, h.entityGeneration);
+      return rustEngine.set_physics_body_fixed_rotation(h.entityId, h.entityGeneration, fixed);
+    },
     setPhysicsBodyRotation,
     setPhysicsBodyAngularVelocity,
     setPhysicsBodyHeightSpan,

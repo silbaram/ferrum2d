@@ -43,7 +43,7 @@ try {
     const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1}),errors=[];activePage=page;
     page.on('pageerror',error=>errors.push(error.message));page.on('response',response=>{if(!response.ok())errors.push(`HTTP ${response.status()} ${response.url()}`);});
     if(backend==='webgpu')await page.addInitScript({content:`(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`});
-    await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?renderer=${backend}`);
+    await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?mode=playground&renderer=${backend}`);
     const snapshot=()=>page.evaluate(()=>window.ferrumEnginePlayground.snapshot());
     const ready=()=>page.waitForFunction(()=>window.ferrumEnginePlayground?.snapshot().state===1,undefined,{timeout:30000}).catch(error=>{throw Error(String(error)+' '+errors.join('\n'));});
     await ready();const initial=await snapshot();assert.equal(initial.backend,backend);assert.equal(initial.cells,0);assert.equal(initial.entities,258);assert(initial.commands>258&&initial.commands<=280);assert(initial.normalDrawCalls>0);assert(initial.drawCalls<=64);

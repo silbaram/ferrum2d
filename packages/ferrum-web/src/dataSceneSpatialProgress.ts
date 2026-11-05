@@ -1,3 +1,4 @@
+import { compileMovingPlatforms, resolveMovingPlatformPhases } from "./spatialMovingPlatforms.js";
 import {
   resolveSpatialCameraSpec,
   spatialCameraValues,
@@ -22,6 +23,8 @@ export interface DataSceneSpatialPoseSnapshot {
 }
 
 export interface DataSceneSpatialProgressSnapshot {
+  /** v10 only. Present while spatial mode is enabled; omitted after clearDataSceneSpatial(). */
+  readonly movingPlatforms?: Readonly<Record<string, number>>;
   /** v7 only. Null disables authored effects; absent preserves authored defaults. */
   readonly environment?: SpatialEnvironmentSpec | null;
   /** null explicitly restores spatial mode as disabled. No matrix, viewport or DPR is saved. */
@@ -136,7 +139,7 @@ export function resolveSpatialProgress(
   if (
     !record(value) ||
     Object.keys(value).some(
-      (key) => key !== "camera" && key !== "environment",
+      (key) => key !== "camera" && key !== "environment" && key !== "movingPlatforms",
     ) ||
     value.camera === undefined
   ) {
@@ -150,7 +153,13 @@ export function resolveSpatialProgress(
     value.environment !== null
   )
     throw new Error("Disabled spatial progress cannot contain an environment");
+  const movingPlatforms = value.movingPlatforms === undefined
+    ? undefined
+    : resolveMovingPlatformPhases(value.movingPlatforms);
+  if (value.camera === null && movingPlatforms !== undefined)
+    throw new Error("Disabled spatial progress cannot contain moving platforms");
   return {
+    ...(movingPlatforms === undefined ? {} : { movingPlatforms }),
     ...(value.environment === undefined
       ? {}
       : {
@@ -181,8 +190,10 @@ export function spatialProgressValues(
   spec: DataSceneSpatialSpec,
   viewport: { width: number; height: number },
 ): Float64Array {
+  const platforms = state.movingPlatforms === undefined ? new Float64Array() : compileMovingPlatforms(spec, state.movingPlatforms);
+  if (state.camera === null && platforms.length) throw new Error("disabled spatial state cannot contain moving platforms");
   const values = new Float64Array(
-    SPATIAL_PROGRESS_CAMERA_VALUES +
+    platforms.length + SPATIAL_PROGRESS_CAMERA_VALUES +
       instances.length * SPATIAL_PROGRESS_POSE_VALUES,
   );
   if (state.camera !== null) {
@@ -216,6 +227,7 @@ export function spatialProgressValues(
       SPATIAL_PROGRESS_CAMERA_VALUES + index * SPATIAL_PROGRESS_POSE_VALUES,
     );
   });
+  values.set(platforms, SPATIAL_PROGRESS_CAMERA_VALUES + instances.length * SPATIAL_PROGRESS_POSE_VALUES);
   return values;
 }
 

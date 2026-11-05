@@ -1,0 +1,178 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "cart",
+            "prefab": "object",
+            "x": 0,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "color": "#ffffff00"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "kinematic",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "lamp",
+            "prefab": "object",
+            "x": 30,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "color": "#ffffff00"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 64
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "box",
+            "prefab": "object",
+            "x": -18,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 18,
+                  "height": 18,
+                  "originY": 1,
+                  "color": "#f5a742"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 24,
+                    "height": 16
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "gameplay": {},
+  "spatial": {
+    "camera": {
+      "projection": "orthographic",
+      "position": {
+        "x": 240,
+        "y": -320,
+        "elevation": 420
+      },
+      "target": {
+        "x": 0,
+        "y": 0,
+        "elevation": 16
+      },
+      "height": 250,
+      "near": 0.1,
+      "far": 2000
+    },
+    "terrain": [
+      {
+        "id": "ground",
+        "x": -140,
+        "y": -80,
+        "width": 280,
+        "depth": 160,
+        "elevation": 0,
+        "color": [
+          0.17,
+          0.25,
+          0.29,
+          1
+        ]
+      }
+    ],
+    "models": {
+      "cart": {
+        "asset": "cart",
+        "contentId": "90838fa4174117e9179c6cca832ea66a4a76bf54f19e8c1d49a0f51ab7bff46b"
+      },
+      "lamp": {
+        "asset": "lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.65
+      }
+    },
+    "billboards": {
+      "box": {}
+    },
+    "attachments": {
+      "lamp": {
+        "parent": "cart",
+        "x": 30
+      },
+      "box": {
+        "parent": "cart",
+        "x": -18,
+        "elevation": 24
+      }
+    }
+  }
+}

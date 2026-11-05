@@ -72,6 +72,7 @@ export interface FrameState {
   spawnDiagnostics: SpawnFrameDiagnostics;
   audioEventCount: number;
   audioEvents: readonly AudioEventView[];
+  physicsDiagnostics?: import("../physicsDiagnostics.js").PhysicsDiagnostics;
   physics: PhysicsFrameStats;
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   collisionEventBuffer: CollisionEventBufferView;
@@ -113,6 +114,8 @@ export interface SpawnFrameDiagnostics {
 }
 
 export interface FixedTimestepOptions {
+  /** Interpolate native rigid-body render poses between fixed steps; adds one step of display latency. */
+  interpolate?: boolean;
   enabled?: boolean;
   stepSeconds?: number;
   maxFrameSeconds?: number;

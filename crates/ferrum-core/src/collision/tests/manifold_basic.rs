@@ -35,7 +35,7 @@ fn build_manifolds_keeps_circle_circle_contact_single_point() {
             point_count: 1,
             points: [
                 CollisionContactPoint {
-                    point_x: 1.0,
+                    point_x: 0.75,
                     point_y: 0.0,
                     penetration: 0.5,
                 },
@@ -124,7 +124,7 @@ fn build_manifolds_supports_capsule_contacts_as_single_point() {
             point_count: 1,
             points: [
                 CollisionContactPoint {
-                    point_x: 6.0,
+                    point_x: 5.75,
                     point_y: 0.0,
                     penetration: 0.5,
                 },

@@ -11,6 +11,9 @@ impl Engine {
         self.spatial_scene
             .attachments
             .synchronize_or_restore(&mut self.world, &self.spatial_scene.models);
+        self.spatial_scene
+            .attachments
+            .prepare_render_poses(&mut self.world, &self.spatial_scene.models);
         self.frame_buffers.clear_render_work_buffers();
         if let Some(camera) = self.spatial_scene.camera {
             let mut values = camera.parameters;
@@ -150,7 +153,7 @@ impl Engine {
                 continue;
             };
             if self.scene_mode == SceneMode::Data {
-                s.rotation_radians += self.world.rotation_at_index_or_default(i).radians
+                s.rotation_radians += self.world.render_rotation_at_index(i).radians
                     + self
                         .world
                         .entity_at_index(i)
@@ -185,7 +188,7 @@ impl Engine {
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
                     if self.scene_mode != SceneMode::Data || s.depth_sort {
-                        self.world.height_span_at(i)
+                        self.world.render_height_span_at(i)
                     } else {
                         None
                     },

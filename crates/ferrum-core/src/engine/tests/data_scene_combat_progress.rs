@@ -830,3 +830,36 @@ fn projectile_prefab_checkpoint_v2_roundtrips_mixed_default_and_custom_bullets()
 
 #[path = "data_scene_combat_progress/projectile_visuals.rs"]
 mod projectile_visuals;
+
+#[test]
+fn combat_checkpoint_accepts_validated_platform_suffix_and_preserves_carried_actor() {
+    fn lift(engine: &mut Engine, actor: Entity) {
+        engine.world.set_aabb_collider(
+            actor,
+            AabbCollider::new(3., 3., false, CollisionLayer::Player),
+        );
+        assert!(engine.spatial_scene.configure_surfaces(
+            &[0., 0., 256., 192., 0., 8., 8., 1., 1., 1., 1.],
+            &[1, 0, 16777215, 1]
+        ));
+        assert!(engine.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
+        assert!(engine.configure_data_scene_gameplay_v2(true, actor.id, actor.generation, 0, true));
+    }
+    let mut source = Engine::new();
+    let (a, _, handles) = setup(&mut source, 1);
+    lift(&mut source, a);
+    source
+        .spatial_scene
+        .step_moving_platforms(&mut source.world, 0.5);
+    assert_eq!(source.world.height_span(a).unwrap().elevation, 12.);
+    let mut saved = capture(&source, &handles);
+    saved
+        .spatial
+        .extend(source.capture_spatial_moving_platforms());
+    let mut dest = Engine::new();
+    let (b, _, fresh) = setup(&mut dest, 1);
+    lift(&mut dest, b);
+    assert!(restore(&mut dest, &fresh, &saved));
+    assert_eq!(dest.world.height_span(b).unwrap().elevation, 12.);
+    assert_eq!(dest.capture_spatial_moving_platforms()[6], 0.5);
+}

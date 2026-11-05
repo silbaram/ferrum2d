@@ -37,6 +37,7 @@ pub(crate) mod ground_shadow;
 mod hd2d;
 mod joints;
 mod projectiles;
+mod render_interpolation;
 mod rigid_bodies;
 mod snapshot;
 mod spawning;
@@ -48,14 +49,25 @@ mod templates;
 mod tests;
 
 pub use snapshot::WorldSnapshot;
+pub(crate) use snapshot::WorldTransactionSnapshot;
 pub(crate) use spawning::{PrefabEntitySpawnRequest, PrefabSpriteTint, ProjectileSpawnRequest};
 pub use templates::{
     EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, DEFAULT_BULLET_TEMPLATE,
     DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
 };
 
+mod physics_diagnostics;
+
 #[derive(Default)]
 pub struct World {
+    pub(crate) impact_feedback_enabled: bool,
+    pub(crate) impact_feedback_dropped: u32,
+    pub(crate) impact_feedback_impacts: Vec<RigidContactImpulse>,
+    pub(crate) physics_diagnostics: physics_diagnostics::PhysicsDiagnostics,
+    pub(crate) contact_impact_min_speed: Option<f32>,
+    pub(crate) contact_impacts: Vec<RigidContactImpulse>,
+    pub(crate) contact_impacts_dropped: u32,
+    render_history: render_interpolation::RenderHistory,
     generations: Vec<u32>,
     free_list: Vec<u32>,
     alive: Vec<bool>,

@@ -252,6 +252,12 @@ function buildDebugMetrics(
     playerElevation: frame.playerElevation,
     playerHeight: frame.playerHeight,
     ...collisionDebugMetrics(frame),
+    ...(frame.physicsDiagnostics === undefined ? {} : {
+      physicsCcdLimits: frame.physicsDiagnostics.ccdLimits.length,
+      physicsJointMaxForce: Math.max(0,...frame.physicsDiagnostics.joints.map(j=>j.force)),
+      physicsJointMaxError: Math.max(0,...frame.physicsDiagnostics.joints.filter(j=>j.errorUnit==="world").map(j=>j.error)),
+      physicsDiagnosticsDropped: frame.physicsDiagnostics.dropped,
+    }),
     physicsCcdChecks: frame.physics.ccdChecks,
     physicsCcdHits: frame.physics.ccdHits,
     physicsSleepingBodies: frame.physics.sleepingBodies,

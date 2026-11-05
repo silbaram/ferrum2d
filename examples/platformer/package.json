@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "tsc -p tsconfig.json",
     "dev": "pnpm --filter @ferrum2d/ferrum-web build && vite",
     "build": "vite build --base=./",
     "preview": "vite preview"
