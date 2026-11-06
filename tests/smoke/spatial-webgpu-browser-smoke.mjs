@@ -236,10 +236,14 @@ try {
           assert.equal(shadows.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of shadows) {
-            assert.equal(entry.comparisons.length, 19);
+            assert.equal(entry.comparisons.length, 25);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 19);
+              assert.equal(backend.rows.length, 25);
+              assert.equal(backend.sunStability.length, 6);
+              for (const y of [0.9899, 0.9901])
+                for (const filter of ["off", "hard", "pcf3"])
+                  assert(backend.rows.some(row => row.name === `sun-stability-${y}-${filter}`));
               for (const row of backend.rows) {
                 const file = `shadow-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(

@@ -700,6 +700,55 @@ async function probe(canvas, backend, projection) {
       difference(distantPixels, lastPixels, 3) > 100,
       "camera-culled model did not cast onto visible ground",
     );
+    // This receiver lies inside the fixed-roll map, but outside the old map
+    // immediately below its reference-up switch. A small solar motion must
+    // not make the bridge's shadow disappear from the same world position.
+    const stabilityReceiver = { x: 55, y: -55, elevation: 0 },
+      sunStability = [],
+      stabilityDoc = (d) => {
+        d.spatial.camera.position.x = 0;
+        d.spatial.camera.target = { x: 0, y: 0, elevation: 0 };
+        d.spatial.billboards.actor.castShadow = false;
+        d.spatial.models.tree.castShadow = false;
+        d.spatial.terrain[0] = {
+          ...d.spatial.terrain[0], x: -160, y: -160, width: 320, depth: 320,
+        };
+        d.spatial.terrain.push({
+          id: "stability-bridge", floorId: 1, kind: "bridge",
+          x: 55, y: -63, width: 8, depth: 8, elevation: 40, baseElevation: 38,
+          walkable: false, color: [0.5, 0.5, 0.5, 1],
+        });
+      };
+    for (const y of [0.9899, 0.9901]) {
+      const horizontal = Math.sqrt(1 - y * y) / Math.SQRT2,
+        lighting = {
+          ambient: [0.03, 0.03, 0.03], lights: [],
+          directional: {
+            direction: { x: horizontal, y: -horizontal, elevation: y }, intensity: 2,
+          },
+        };
+      for (const filter of ["off", "hard", "pcf3"]) {
+        const environment = { lighting: structuredClone(lighting) };
+        if (filter !== "off") {
+          environment.lighting.shadowFilter = filter;
+          environment.lighting.directional.shadows = {
+            extent: 64, resolution: 512, distance: 512, bias: 0.05,
+          };
+        }
+        const row = await configure(`sun-stability-${y}-${filter}`, environment, "scale0", false, false, stabilityDoc);
+        sunStability.push({ y, filter, receiver: sample({ data: lastPixels, spatial: row.spatial }, stabilityReceiver) });
+      }
+    }
+    for (const filter of ["hard", "pcf3"]) {
+      const samples = sunStability.filter((row) => row.filter === filter);
+      for (const row of samples) {
+        const lit = sunStability.find((r) => r.y === row.y && r.filter === "off");
+        check(lit.receiver[0] > row.receiver[0] + 40,
+          "sun basis transition lost the bridge shadow at a fixed world receiver", { lit, row });
+      }
+      check(Math.abs(samples[0].receiver[0] - samples[1].receiver[0]) <= 3,
+        "small sun motion changed receiver occlusion across the old up-axis threshold", samples);
+    }
     const debug = await configure("debug-shadows", both, "scale0", false, true);
     check(
       debug.stats.debugDrawCalls === 1 && debug.stats.debugLineCount > 0,
@@ -756,6 +805,7 @@ async function probe(canvas, backend, projection) {
       errors,
       rows,
       pcfChanges,
+      sunStability,
       alphaUpdate: alphaUpdate.stats,
       atlasReplace: atlasReplace.stats,
       normalOnly: normalOnly.stats,
