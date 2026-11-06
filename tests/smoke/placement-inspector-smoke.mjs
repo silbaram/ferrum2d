@@ -58,9 +58,9 @@ export async function smokePlacementInspector(parent,mode,timeoutMs=30000){
    assert(sections.indexOf('transform')<sections.indexOf('visual')&&sections.indexOf('visual')<sections.indexOf('identity'));
    assert.equal(await inspector.locator('[data-section="transform"] .placement-details').count(),0);
    const field=name=>inspector.locator(`[data-placement-transform-field="${name}"]`);
-   assert.match(await field('rotationRadians').evaluate(e=>e.labels[0].textContent),/Rotation.*rad/);
+   assert.match(await field('rotationDegrees').evaluate(e=>e.labels[0].textContent),/Rotation.*°/);
    assert.match(await field('scale').evaluate(e=>e.labels[0].textContent),/Scale.*×/);
-   await input(field('rotationRadians'),0.5);assert(Math.abs((await state()).selected.transform.rotationRadians-0.5)<1e-8);assert.equal((await history()).undoCount,1);await undo();
+   await input(field('rotationDegrees'),45);assert(Math.abs((await state()).selected.transform.rotationRadians-Math.PI/4)<1e-8);assert.equal((await history()).undoCount,1);await undo();
    const component=inspector.locator('[data-placement-component-field="visualWidth"]'),width=(await state()).selected.visual.width;
    await component.fill(String(width+4));await inspector.locator('[data-placement-action="apply-components"]').click();await paint();
    assert.equal((await state()).selected.visual.width,width+4);assert.equal((await history()).undoCount,1);assert.deepEqual((await doc()).sceneComposition.prefabs,original.sceneComposition.prefabs);
@@ -122,7 +122,7 @@ export async function smokePlacementInspector(parent,mode,timeoutMs=30000){
   assert.deepEqual(await doc(),original);
   for(const locale of ['ko','en']){
    await page.locator('[data-placement-language]').selectOption(locale);await showPlacementDock(page,'inspector');await inspector.locator('.placement-inspector-header [data-placement-panel-tab="properties"]').click();await inspector.evaluate(e=>{e.scrollTop=0;});
-   assert.match(await feedback.textContent(),locale==='ko'?/공간|라디안/:/Spatial|radians/);
+   assert.match(await feedback.textContent(),locale==='ko'?/공간|드래그/:/Spatial|Drag/);
    await page.screenshot({path:`${artifact}/${mode}-${locale}.png`,fullPage:true});
   }
   await page.setViewportSize({width:320,height:500});await showPlacementDock(page,'inspector');await inspector.locator('.placement-inspector-header [data-placement-panel-tab="properties"]').click();await page.screenshot({path:`${artifact}/${mode}-320.png`,fullPage:true});

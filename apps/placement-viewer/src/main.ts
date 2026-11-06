@@ -4177,7 +4177,11 @@ function syncPlacementInstanceList(
     const isLocked = locked.has(control.dataset.placementLockInstance ?? "");
     const instance = instances.get(control.dataset.placementLockInstance!);
     control.disabled = !!instance && !!state.layerEditing?.lockedLayers.includes(placementRenderLayer(instance));
-    setUiText(control, isLocked ? "Unlock" : "Lock");
+    const lockCaption = isLocked ? "Unlock" : "Lock";
+    if (control.dataset.caption !== lockCaption) {
+      decorateViewportAction(control, isLocked ? "lock" : "unlock", lockCaption, undefined, true);
+      control.dataset.caption = lockCaption;
+    }
     setUiAttribute(
       control,
       "title",
@@ -4358,7 +4362,7 @@ function createPlacementTransformControls(
     x: appendNumberControl(row, "x", "x", "1"),
     y: appendNumberControl(row, "y", "y", "1"),
     scale: appendNumberControl(row, "Scale (×)", "scale", "0.05", "0.01"),
-    rotationRadians: appendNumberControl(row, "Rotation (rad)", "rotationRadians", "0.01"),
+    rotationDegrees: appendNumberControl(row, "Rotation (°)", "rotationDegrees", "1"),
     layer: appendNumberControl(orderRow, "Render Layer", "layer", "1"),
     sortOrder: appendNumberControl(orderRow, "Order in Layer", "sortOrder", "1"),
     depthSort: appendCheckboxControl(orderRow, "Foot Position Sort", "depthSort"),
@@ -4366,8 +4370,8 @@ function createPlacementTransformControls(
   fields.depthSort.dataset.placementTransformField = "depthSort";
   setUiAttribute(fields.depthSort, "title", "Sort sprite feet inside this layer");
   setUiAttribute(fields.sortOrder, "title", "Break ties after foot sorting");
-  appendCheckboxControl(snapRow, "snap", "snap");
-  const grid = appendNumberControl(snapRow, "grid", "snapGrid", "1", "1");
+  appendCheckboxControl(snapRow, "Snap to Grid", "snap");
+  const grid = appendNumberControl(snapRow, "Grid Size", "snapGrid", "1", "1");
   const save = document.createElement("button");
   const clear = document.createElement("button");
 
@@ -4411,10 +4415,7 @@ function createPlacementTransformControls(
       setNumberInputValue(fields.x, selected.transform.x);
       setNumberInputValue(fields.y, selected.transform.y);
       setNumberInputValue(fields.scale, selected.transform.scale);
-      setNumberInputValue(
-        fields.rotationRadians,
-        selected.transform.rotationRadians,
-      );
+      setNumberInputValue(fields.rotationDegrees, placementRotationDegrees(selected.transform.rotationRadians));
       setNumberInputValue(fields.layer, placementRenderLayer(selected));
       setNumberInputValue(fields.sortOrder, selected.visual?.kind === "sprite" ? selected.visual.sortOrder ?? 0 : 0);
       fields.depthSort.checked = selected.visual?.kind === "sprite" && selected.visual.depthSort === "hd2d";
@@ -4865,7 +4866,7 @@ function createPlacementComponentControls(summaries: {
     ),
     colliderRotation: appendComponentNumberControl(
       colliderRow,
-      "rotation",
+      "Rotation (rad)",
       "colliderRotation",
       "0.01",
     ),
@@ -5204,8 +5205,9 @@ function installPlacementSelection(
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
   root.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    // Icon buttons receive clicks on their SVG, not on the button itself.
+    const target = event.target instanceof Element ? event.target.closest("button") : null;
+    if (!target) {
       return;
     }
     if (target.dataset.placementLockInstance) {
@@ -6775,6 +6777,10 @@ function installPlacementKeyboard(
   });
 }
 
+function placementRotationDegrees(radians: number): number {
+  return Number(((radians * 180) / Math.PI).toFixed(4));
+}
+
 function applyTransformInput(
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
@@ -6815,10 +6821,12 @@ function applyTransformInput(
     );
     return;
   }
-  if (field === "rotationRadians") {
+  if (field === "rotationDegrees") {
+    // Radians stay authoritative: re-submitting the rounded display must not drift them.
+    if (value === placementRotationDegrees(selected.transform.rotationRadians)) return;
     setState(
       transformPlacementSelection(viewer, viewer.state(), {
-        rotation: value - selected.transform.rotationRadians,
+        rotation: (value * Math.PI) / 180 - selected.transform.rotationRadians,
       }),
     );
     return;
