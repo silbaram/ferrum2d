@@ -243,7 +243,7 @@ Tiled/LDtk와 Aseprite Import 패널의 **Catalog → Clean Unused**(자산 목�
 문자열 자산명과 현재 runtime의 숫자 texture alias를 모두 확인한다. 숫자 reference는 세션 내 보존 근거이며 원본 ID의 저장·이식 보장을 추가하지 않는다.
 정리로 기존 8건/64 MiB 예산을 회수하며 예산을 자동 확대하지 않는다. GPU 해제 실패 시 원본/등록 항목을 유지하고 texture 복원을 시도한다.
 프로젝트에 저장·검증한 revision은 보호한다. 디스크 catalog/원본 파일 GC 기능은 아니다.
-공식 앱의 **Assets → Asset Usage**는 씬 탐색기 범위의 닫힌 씬과 열린 작업공간 원본/draft에서
+공식 앱의 **Assets → Manage → Asset Usage**는 씬 탐색기 범위의 닫힌 씬과 열린 작업공간 원본/draft에서
 texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·정의/객체 ID·JSON pointer를 표시한다.
 정의/variant·비활성 fragment/include도 포함하며 prefab 상속은 원본 정의의 경로로 남긴다.
 숫자 texture·외부 template은 해소하지 않으며 파일/분석 한도·읽기 실패를 명시한다.
@@ -255,7 +255,7 @@ texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·�
 보고서는 `ferrum2d.asset-usage` v1과 `deletionAllowed:false`를 사용한다.
 상한·폴더 snapshot·검색/내보내기 사용법은 `apps/placement-viewer/README.md`의 에셋 사용처 조회 절을 따른다.
 
-데스크톱의 **Assets → Catalog Cleanup**은 별도의 관리 원본 정리 흐름이다.
+데스크톱의 **Assets → Manage → Catalog Cleanup**은 별도의 관리 원본 정리 흐름이다.
 명시적으로 연 프로젝트의 pixel/Aseprite/tile/normal Catalog를 기존 parser로 검증하고,
 닫힌 씬을 포함한 public JSON·관리 원본/metadata와 열린 저장/초안의 보수적 문자열 참조를 보호한다.
 사용자가 한 Catalog의 미참조 revision을 선택하면 전체 원본을 `.ferrum-asset-backups/<작업 ID>/`에 보관하고
@@ -525,7 +525,7 @@ HEX는 한 줄에 `RRGGBB` 또는 `RRGGBBAA` 하나와 선택적 `#` 접두사, 
 접기·탭 비활성·창 blur·종료 시 canvas/예약 RAF를 해제하며 포커스 복귀 후 다시 표시한다.
 이 보기의 조작은 원본/이력을 바꾸지 않는다. 게임 카메라와 객체 크기는 기존 **게임 미리보기**로 확인한다.
 
-공식 Placement Viewer의 Assets에서 **새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
+공식 Placement Viewer의 Assets에서 **가져오기 → 도트 제작 → 새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
 기본 32×32이며 1~256의 정수 크기를 선택할 수 있다. 원본 문서나 PNG로 시작하려면 **도트 원본 / PNG 열기**,
 기존 sprite 자산은 **도트 편집**을 사용한다. 이미지 레이어 1~8개·프레임 1~16개를 지원한다.
 
