@@ -14,6 +14,7 @@ export {
   PHYSICS_BODY_STATE_U32S_PER_BODY,
   createEngine,
   createFerrumRuntime,
+  initializeFerrumWasm,
   createPhysicsBodyStateBufferSnapshot,
   createRenderer,
   GAME_STATE_CODE,

@@ -35,6 +35,7 @@ mod gameplay_query_indices;
 mod gameplay_variables;
 pub(crate) mod ground_shadow;
 mod hd2d;
+mod joint_dispatch;
 mod joints;
 mod projectiles;
 mod render_interpolation;
@@ -48,6 +49,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use joint_dispatch::JointKind;
 pub use snapshot::WorldSnapshot;
 pub(crate) use snapshot::WorldTransactionSnapshot;
 pub(crate) use spawning::{PrefabEntitySpawnRequest, PrefabSpriteTint, ProjectileSpawnRequest};

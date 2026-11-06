@@ -93,6 +93,8 @@ export class PixelMaskTerrainRuntime {
   private readonly chunks = new Map<string, RuntimeChunk>();
   private textureCreated = false;
   private destroyed = false;
+  private syncing = false;
+  private forceSyncPending = false;
 
   constructor(options: PixelMaskTerrainRuntimeOptions) {
     this.terrain = options.terrain;
@@ -102,17 +104,23 @@ export class PixelMaskTerrainRuntime {
     const includeTexture = this.texture !== undefined && this.texture.uploadOnCreate !== false;
     const includePhysics = this.physics !== undefined && this.physics.applyOnCreate !== false;
     if (includeTexture || includePhysics) {
-      this.syncInternal({
-        force: true,
-        clearDirty: this.clearDirtyAfterSync,
-        includeTexture,
-        includePhysics,
-      });
+      try {
+        this.syncInternal({
+          force: true,
+          clearDirty: this.clearDirtyAfterSync,
+          includeTexture,
+          includePhysics,
+        });
+      } catch (error) {
+        // The caller never receives this runtime, so release every completed chunk.
+        try { this.destroy(); } catch { /* Preserve the original startup failure. */ }
+        throw error;
+      }
     }
   }
 
   setPixel(x: number, y: number, alpha: number): PixelMaskTerrainRuntimeSyncResult {
-    this.assertAlive();
+    this.assertCanSync();
     this.terrain.setPixel(x, y, alpha);
     return this.sync();
   }
@@ -124,7 +132,7 @@ export class PixelMaskTerrainRuntime {
     height: number,
     alpha = 0,
   ): PixelMaskTerrainRuntimeSyncResult {
-    this.assertAlive();
+    this.assertCanSync();
     this.terrain.carveRect(x, y, width, height, alpha);
     return this.sync();
   }
@@ -135,7 +143,7 @@ export class PixelMaskTerrainRuntime {
     radius: number,
     alpha = 0,
   ): PixelMaskTerrainRuntimeSyncResult {
-    this.assertAlive();
+    this.assertCanSync();
     this.terrain.carveCircle(centerX, centerY, radius, alpha);
     return this.sync();
   }
@@ -149,10 +157,13 @@ export class PixelMaskTerrainRuntime {
       return;
     }
     this.destroyed = true;
-    for (const chunk of this.chunks.values()) {
-      chunk.world?.clear();
-    }
+    const chunks = [...this.chunks.values()];
     this.chunks.clear();
+    let failure: { error: unknown } | undefined;
+    for (const chunk of chunks) {
+      try { chunk.world?.clear(); } catch (error) { failure ??= { error }; }
+    }
+    if (failure !== undefined) throw failure.error;
   }
 
   private syncInternal(
@@ -162,12 +173,48 @@ export class PixelMaskTerrainRuntime {
       includePhysics?: boolean;
     },
   ): PixelMaskTerrainRuntimeSyncResult {
-    this.assertAlive();
+    this.assertCanSync();
+    const force = options.force === true || this.forceSyncPending;
+    this.syncing = true;
+    try {
+      const result = this.performSync({ ...options, force });
+      this.forceSyncPending = false;
+      return result;
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  private performSync(
+    options: PixelMaskTerrainRuntimeSyncOptions & {
+      clearDirty: boolean;
+      includeTexture?: boolean;
+      includePhysics?: boolean;
+    },
+  ): PixelMaskTerrainRuntimeSyncResult {
+    const startVersion = this.terrain.version;
     const dirty = this.terrain.dirtyRect();
     const shouldForce = options.force === true;
     let textureUploaded = false;
     let texturePatch: PixelMaskTerrainDirtyRect | undefined;
     let colliderChunksRebuilt = 0;
+
+    const dirtyChunks = options.includePhysics !== false && this.physics !== undefined
+      && (shouldForce || dirty !== undefined)
+      ? shouldForce ? allChunks(this.terrain, this.physics) : chunksForDirtyRect(dirty, this.physics)
+      : [];
+    if (this.physics !== undefined && dirtyChunks.length > this.physics.maxDirtyChunksPerSync) {
+      throw new Error(
+        `pixel mask terrain sync requires ${dirtyChunks.length} dirty chunks, ` +
+          `which exceeds maxDirtyChunksPerSync=${this.physics.maxDirtyChunksPerSync}.`,
+      );
+    }
+    // A forced rebuild can fail while the native mask is clean. Once preflight
+    // succeeds, retain that delivery work until the entire attempt succeeds.
+    this.forceSyncPending ||= shouldForce;
+    // Capture the same native revision as dirtyChunks before invoking external targets.
+    // One owned occupancy snapshot serves every chunk in this sync.
+    const solid = dirtyChunks.length === 0 ? undefined : this.terrain.solidData();
 
     if (
       options.includeTexture !== false
@@ -180,6 +227,7 @@ export class PixelMaskTerrainRuntime {
           this.terrain,
           this.texture.upload,
         );
+        this.assertAlive();
         texturePatch = { x: 0, y: 0, width: this.terrain.width, height: this.terrain.height };
         this.textureCreated = true;
       } else {
@@ -190,31 +238,25 @@ export class PixelMaskTerrainRuntime {
             patch,
             this.texture.upload,
           );
+          this.assertAlive();
           texturePatch = patch.rect;
         }
       }
       textureUploaded = true;
     }
 
-    if (
-      options.includePhysics !== false
-      && this.physics !== undefined
-      && (shouldForce || dirty !== undefined)
-    ) {
-      const dirtyChunks = shouldForce ? allChunks(this.terrain, this.physics) : chunksForDirtyRect(dirty, this.physics);
-      if (dirtyChunks.length > this.physics.maxDirtyChunksPerSync) {
-        throw new Error(
-          `pixel mask terrain sync requires ${dirtyChunks.length} dirty chunks, ` +
-            `which exceeds maxDirtyChunksPerSync=${this.physics.maxDirtyChunksPerSync}.`,
-        );
-      }
+    if (solid !== undefined) {
       for (const chunk of dirtyChunks) {
-        this.rebuildChunk(chunk);
+        this.rebuildChunk(chunk, solid);
       }
       colliderChunksRebuilt = dirtyChunks.length;
     }
+    this.assertAlive();
 
-    if (options.clearDirty && (textureUploaded || colliderChunksRebuilt > 0)) {
+    // A target may synchronously edit the native mask. Preserve that dirtiness for the
+    // next sync instead of acknowledging pixels that this snapshot did not consume.
+    if (options.clearDirty && (textureUploaded || colliderChunksRebuilt > 0)
+      && this.terrain.version === startVersion) {
       this.terrain.clearDirty();
     }
 
@@ -230,16 +272,18 @@ export class PixelMaskTerrainRuntime {
     };
   }
 
-  private rebuildChunk(coord: ChunkCoord): void {
+  private rebuildChunk(coord: ChunkCoord, solid: Uint8Array): void {
+    this.assertAlive();
     const physics = this.physics;
     if (physics === undefined) {
       return;
     }
     const key = chunkKey(coord);
     const previous = this.chunks.get(key);
-    const extraction = extractChunkBoundaryChains(this.terrain, coord, physics);
+    const extraction = extractChunkBoundaryChains(this.terrain, solid, coord, physics);
     if (extraction.chainCount === 0) {
       previous?.world?.clear();
+      this.assertAlive();
       this.chunks.delete(key);
       return;
     }
@@ -248,12 +292,25 @@ export class PixelMaskTerrainRuntime {
       bodies: extraction.bodies,
       joints: {},
     }, {
-      replace: previous?.world,
       path: `${physics.path}.chunks.${coord.x}.${coord.y}`,
       unsafeUnitScaleThreshold: physics.unsafeUnitScaleThreshold,
-      onWarning: physics.onWarning,
+      onWarning: (warning) => {
+        this.assertAlive();
+        physics.onWarning?.(warning);
+        this.assertAlive();
+      },
     });
-    this.chunks.set(key, { coord, world, extraction });
+    try {
+      // Keep the previous world alive until its replacement was created successfully.
+      // Native engine adapters can invoke user code while creating/clearing bodies.
+      this.assertAlive();
+      previous?.world?.clear();
+      this.assertAlive();
+      this.chunks.set(key, { coord, world, extraction });
+    } catch (error) {
+      try { world.clear(); } catch { /* Preserve the interrupted apply failure. */ }
+      throw error;
+    }
   }
 
   private colliderStats(): { bodies: number; chains: number; segments: number } {
@@ -272,6 +329,11 @@ export class PixelMaskTerrainRuntime {
     if (this.destroyed) {
       throw new Error("PixelMaskTerrainRuntime has been destroyed.");
     }
+  }
+
+  private assertCanSync(): void {
+    this.assertAlive();
+    if (this.syncing) throw new Error("PixelMaskTerrainRuntime cannot sync reentrantly.");
   }
 }
 
@@ -328,10 +390,11 @@ function normalizePhysicsOptions(
 
 function extractChunkBoundaryChains(
   terrain: PixelMaskTerrain,
+  solid: Uint8Array,
   coord: ChunkCoord,
   options: RequiredChunkPhysicsOptions,
 ): TilemapBoundaryExtractionResult {
-  const layer = chunkTilemapLayer(terrain, coord, options);
+  const layer = chunkTilemapLayer(terrain, solid, coord, options);
   const tilemap: ResolvedShooterTilemap = {
     tiles: [{
       id: SOLID_TILE_ID,
@@ -367,6 +430,7 @@ function extractChunkBoundaryChains(
 
 function chunkTilemapLayer(
   terrain: PixelMaskTerrain,
+  solid: Uint8Array,
   coord: ChunkCoord,
   options: RequiredChunkPhysicsOptions,
 ): ResolvedShooterTileLayer {
@@ -381,8 +445,8 @@ function chunkTilemapLayer(
   const data: number[] = [];
   for (let row = 0; row < height; row += 1) {
     const sourceOffset = (startY + row) * terrain.width + startX;
-    for (const alpha of terrain.data.subarray(sourceOffset, sourceOffset + width)) {
-      data.push(alpha >= terrain.solidThreshold ? SOLID_TILE_ID : 0);
+    for (const occupied of solid.subarray(sourceOffset, sourceOffset + width)) {
+      data.push(occupied);
     }
   }
   return {

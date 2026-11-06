@@ -5,6 +5,8 @@ import { assertWebGpuSpatialSpecSupported } from "../src/webgpuSpatialSupport.js
 import { createSpatialModelAsset } from "../src/spatialModel.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/wasmBridge.js";
+import { WebGpuRendererBackend } from "../src/webgpuRendererBackend.js";
+import type { TextureLoadOptions } from "../src/colorManagement.js";
 class Buffer {
   destroy() {}
 }
@@ -21,7 +23,7 @@ class Device {
   lost = new Promise<{reason:string;message:string}>(resolve => { this.resolveLost=resolve; });
   events: string[] = [];
   error = false;
-  queue = { writeBuffer() {}, writeTexture() {}, onSubmittedWorkDone: async () => {} };
+  queue = { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {}, onSubmittedWorkDone: async () => {} };
   pushErrorScope() {
     this.events.push("push");
   }
@@ -270,4 +272,77 @@ for (const sameContent of [false, true]) test(`recovery retains both legal model
     equal(calls, 3);
     renderer.destroy();
   } finally { restore(); }
+});
+
+for (const inherited of [false, true]) test(`texture recovery preserves original settings and captured Blob (inherited options: ${inherited})`, async () => {
+  const first = new Device(), second = new Device(); let devices = 0;
+  const restore = install(() => ++devices === 1 ? first : second);
+  const create = WebGpuRendererBackend.create, fetch = globalThis.fetch, bitmap = globalThis.createImageBitmap;
+  const calls: { url: string; colorSpace?: string; ktx2Url?: string; signal?: AbortSignal }[] = [];
+  const fetched: string[] = [], decoded: Uint8Array[] = [], decodeOptions: (ImageBitmapOptions | undefined)[] = [];
+  const source = new Blob([new Uint8Array([7, 8, 9])], { type: "image/png" });
+  let started!: () => void, finish!: () => void, closed = 0;
+  const ready = new Promise<void>((resolve) => { started = resolve; }), gate = new Promise<void>((resolve) => { finish = resolve; });
+  let renderer: WebGPURenderer | undefined;
+  WebGpuRendererBackend.create = async (...args) => {
+    const backend = await create(...args), load = backend.loadTexture.bind(backend);
+    backend.loadTexture = async (id: number | string, url?: string | TextureLoadOptions, options?: TextureLoadOptions) => {
+      if (typeof id !== "number") return load(id, typeof url === "object" ? url : undefined);
+      if (typeof url !== "string") throw Error("Expected a registered texture URL");
+      calls.push({ url, colorSpace: options?.colorSpace, ktx2Url: options?.ktx2Url, signal: options?.signal });
+      return load(id, url, options);
+    };
+    return backend;
+  };
+  globalThis.fetch = async (url, options) => {
+    fetched.push(String(url));
+    if (String(url).startsWith("blob:")) return fetch(url, options);
+    if (url === "original.png") return new Response(source);
+    throw Error("Recovery must use the captured image Blob");
+  };
+  // Exercise the actual backend/store/facade pipeline; only browser image decoding
+  // and GPU objects are fakes. Both decodes must receive the same encoded bytes.
+  globalThis.createImageBitmap = (async (input: ImageBitmapSource, options?: ImageBitmapOptions) => {
+    if (!(input instanceof Blob)) throw Error("Expected encoded image Blob");
+    decoded.push(new Uint8Array(await input.arrayBuffer())); decodeOptions.push(options);
+    if (decoded.length === 1) { started(); await gate; }
+    return { width: 2, height: 2, close: () => { closed++; } } as ImageBitmap;
+  }) as typeof createImageBitmap;
+  try {
+    renderer = await WebGPURenderer.create(canvas(first));
+    const external = new AbortController(), replacement = new AbortController();
+    const settings = { colorSpace: "none" as const, ktx2Url: "original.ktx2" };
+    const options: TextureLoadOptions = inherited
+      ? Object.assign(Object.create(settings), { signal: external.signal })
+      : { ...settings, signal: external.signal };
+    const loading = renderer.loadTexture(7, "original.png", options);
+    await ready;
+    options.colorSpace = "srgb"; options.ktx2Url = "mutated.ktx2"; options.signal = replacement.signal;
+    finish(); await loading;
+    external.abort(); replacement.abort();
+    first.resolveLost({ reason: "unknown", message: "restore texture settings" }); await Promise.resolve();
+    equal(renderer.deviceState().status, "lost");
+    equal(await renderer.recoverDevice(), true);
+    equal(renderer.deviceState().status, "ready"); equal(renderer.deviceState().generation, 2); equal(renderer.gpuDevice(), second);
+    deepEqual(calls.map(({ colorSpace, ktx2Url }) => ({ colorSpace, ktx2Url })), [
+      { colorSpace: "none", ktx2Url: "original.ktx2" }, { colorSpace: "none", ktx2Url: "original.ktx2" },
+    ]);
+    equal(calls[0].signal, external.signal); equal(calls[1].signal === external.signal, false); equal(calls[1].signal?.aborted, false);
+    equal(calls[1].url.startsWith("blob:"), true);
+    deepEqual(fetched, ["original.png", calls[1].url]);
+    deepEqual(decoded.map((bytes) => Array.from(bytes)), [[7, 8, 9], [7, 8, 9]]);
+    deepEqual(decodeOptions, [{ colorSpaceConversion: "none", premultiplyAlpha: "none" }, { colorSpaceConversion: "none", premultiplyAlpha: "none" }]);
+    equal(closed, 2);
+  } finally {
+    finish(); renderer?.destroy(); WebGpuRendererBackend.create = create;
+    globalThis.fetch = fetch; globalThis.createImageBitmap = bitmap; restore();
+  }
+});
+
+test("texture wrapper rejects invalid options before recording a recovery request", async () => {
+  const device = new Device(), restore = install(device);
+  const renderer = await WebGPURenderer.create(canvas(device));
+  try {
+    for (const options of [null, []]) await rejects(renderer.loadTexture(7, "invalid.png", options as unknown as TextureLoadOptions), /options must be an object/);
+  } finally { renderer.destroy(); restore(); }
 });

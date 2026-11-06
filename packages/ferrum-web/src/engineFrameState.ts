@@ -1,4 +1,4 @@
-import { readPhysicsDiagnostics } from "./physicsDiagnostics.js";
+import type { PhysicsDiagnostics } from "./physicsDiagnostics.js";
 import { EMPTY_COLLISION_EVENTS } from "./collisionEventDecoder.js";
 import { EMPTY_PHYSICS_DEBUG_LINES } from "./physicsDebugLineDecoder.js";
 import type { AudioDrainResult } from "./engineFrameAudio.js";
@@ -40,6 +40,7 @@ export interface FrameStateBuildInput {
   effectEventBuffer: EffectEventBufferView;
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsSpec: ResolvedPhysicsSpec;
+  physicsDiagnostics?: PhysicsDiagnostics;
   options: CreateEngineOptions;
 }
 
@@ -149,7 +150,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     audioEventCount: audioEvents.audioEventCount,
     audioEvents: audioEvents.audioEvents,
     physics,
-    ...(bridge.engine?.()?.physics_diagnostics_enabled?.() ? { physicsDiagnostics: readPhysicsDiagnostics(bridge.engine()) } : {}),
+    ...(input.physicsDiagnostics === undefined ? {} : { physicsDiagnostics: input.physicsDiagnostics }),
     collisionEventBuffer,
     collisionEvents: includeCollisionLifecycleEvents
       ? bridge.decodeCollisionEvents(collisionEventBuffer)

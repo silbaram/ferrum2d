@@ -213,3 +213,25 @@ function dispatchBase(): EffectEventDispatchBase {
     radius: event.radius,
   };
 }
+
+
+test("effect adapters retain class prototype handlers and asset validation receivers", () => {
+  class SoundHost {
+    readonly sound = 7;
+    hasSound(id: number): boolean { return this.sound === id; }
+  }
+  class EffectTarget {
+    sounds: number[] = [];
+    particles: number[] = [];
+    playSoundEffect(dispatch: { soundId: number }): void { this.sounds.push(dispatch.soundId); }
+    spawnParticleEffect(dispatch: { particlePresetId: number }): void { this.particles.push(dispatch.particlePresetId); }
+  }
+  const source = new EffectTarget();
+  const target = createEffectEventDispatchTarget({
+    target: source, assetHost: new SoundHost(), assetValidation: "error", hasParticlePreset: () => true,
+  });
+  target.playSoundEffect!({ ...dispatchBase(), kind: "sound", soundId: 7, volume: 1, pitch: 1 });
+  target.spawnParticleEffect!({ ...dispatchBase(), kind: "particle", particlePresetId: 3 });
+  deepEqual(source.sounds, [7]);
+  deepEqual(source.particles, [3]);
+});

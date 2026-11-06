@@ -1,4 +1,4 @@
-use super::World;
+use super::{JointKind, World};
 use crate::components::*;
 use crate::entity::Entity;
 use std::collections::BTreeMap;
@@ -182,62 +182,18 @@ impl World {
         broken
     }
     fn clear_load_joint(&mut self, key: JointLoadKey) -> bool {
-        match key.0 {
-            0 => self
-                .clear_distance_joint(DistanceJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            1 => self
-                .clear_rope_joint(RopeJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            2 => self
-                .clear_spring_joint(SpringJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            3 => self
-                .clear_revolute_joint(RevoluteJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            4 => self
-                .clear_prismatic_joint(PrismaticJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            5 => self
-                .clear_gear_joint(GearJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            6 => self
-                .clear_weld_joint(WeldJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            7 => self
-                .clear_pulley_joint(PulleyJointId {
-                    index: key.1,
-                    generation: key.2,
-                })
-                .is_some(),
-            _ => false,
-        }
+        let Ok(kind) = JointKind::try_from(key.0) else {
+            return false;
+        };
+        self.clear_joint_by_kind(kind, key.1, key.2)
     }
     fn joint_constraint_error(&self, key: JointLoadKey) -> f32 {
         // Scalar geometric violation; angular joints report radians.
-        match key.0 {
-            0 => {
+        let Ok(kind) = JointKind::try_from(key.0) else {
+            return 0.0;
+        };
+        match kind {
+            JointKind::Distance => {
                 let Some(j) = self.distance_joint(DistanceJointId {
                     index: key.1,
                     generation: key.2,
@@ -248,7 +204,7 @@ impl World {
                 let b = self.anchor_point(j.entity_b, j.local_anchor_b_x, j.local_anchor_b_y);
                 ((b.0 - a.0).hypot(b.1 - a.1) - j.rest_length).abs()
             }
-            1 => {
+            JointKind::Rope => {
                 let Some(j) = self.rope_joint(RopeJointId {
                     index: key.1,
                     generation: key.2,
@@ -259,7 +215,7 @@ impl World {
                 let b = self.anchor_point(j.entity_b, j.local_anchor_b_x, j.local_anchor_b_y);
                 ((b.0 - a.0).hypot(b.1 - a.1) - j.max_length).max(0.0)
             }
-            2 => {
+            JointKind::Spring => {
                 let Some(j) = self.spring_joint(SpringJointId {
                     index: key.1,
                     generation: key.2,
@@ -270,7 +226,7 @@ impl World {
                 let b = self.anchor_point(j.entity_b, j.local_anchor_b_x, j.local_anchor_b_y);
                 ((b.0 - a.0).hypot(b.1 - a.1) - j.rest_length).abs()
             }
-            3 => {
+            JointKind::Revolute => {
                 let Some(j) = self.revolute_joint(RevoluteJointId {
                     index: key.1,
                     generation: key.2,
@@ -281,7 +237,7 @@ impl World {
                 let b = self.anchor_point(j.entity_b, j.local_anchor_b_x, j.local_anchor_b_y);
                 (b.0 - a.0).hypot(b.1 - a.1)
             }
-            4 => {
+            JointKind::Prismatic => {
                 let Some(j) = self.prismatic_joint(PrismaticJointId {
                     index: key.1,
                     generation: key.2,
@@ -300,7 +256,7 @@ impl World {
                 let len = axis_x.hypot(axis_y).max(f32::EPSILON);
                 ((b.0 - a.0) * axis_y - (b.1 - a.1) * axis_x).abs() / len
             }
-            5 => {
+            JointKind::Gear => {
                 let Some(j) = self.gear_joint(GearJointId {
                     index: key.1,
                     generation: key.2,
@@ -312,7 +268,7 @@ impl World {
                     - j.reference_angle)
                     .abs()
             }
-            6 => {
+            JointKind::Weld => {
                 let Some(j) = self.weld_joint(WeldJointId {
                     index: key.1,
                     generation: key.2,
@@ -324,7 +280,7 @@ impl World {
                     - j.reference_angle)
                     .abs()
             }
-            7 => {
+            JointKind::Pulley => {
                 let Some(j) = self.pulley_joint(PulleyJointId {
                     index: key.1,
                     generation: key.2,
@@ -338,7 +294,6 @@ impl World {
                     - j.rest_length)
                     .abs()
             }
-            _ => 0.0,
         }
     }
     fn anchor_point(&self, entity: Entity, x: f32, y: f32) -> (f32, f32) {

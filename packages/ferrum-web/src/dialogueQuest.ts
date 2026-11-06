@@ -1,5 +1,10 @@
 import { dialogueQuestDiagnosticError } from "./diagnostics.js";
 import type { UiOverlayState } from "./uiOverlay.js";
+import {
+  NativeDialogueSession, NativeQuestLog, decodeDialogueSnapshot, decodeQuestSnapshot,
+  dialogueQuestNativeCall, encodeDialogueGraph, encodeDialogueSnapshot, encodeQuestConfig,
+  encodeQuestSnapshot, encodeQuestUpdates, immutableDialogueQuestContent, requireDialogueQuestWasm,
+} from "./dialogueQuestNative.js";
 
 export type QuestStatus = "inactive" | "active" | "completed";
 export type QuestUpdateAction = "start" | "setStage" | "completeObjective" | "complete";
@@ -163,10 +168,9 @@ export function resolveQuestDocument(
   if (!isRecord(input.quests)) {
     throw invalid(`${path}.quests`, "must be an object");
   }
-  const quests: Record<string, ResolvedQuest> = {};
-  for (const [questId, quest] of Object.entries(input.quests)) {
-    quests[stringKey(questId, `${path}.quests key`)] = resolveQuest(questId, quest, `${path}.quests.${questId}`);
-  }
+  const quests: Record<string, ResolvedQuest> = Object.fromEntries(Object.entries(input.quests).map(([questId, quest]) => [
+    stringKey(questId, `${path}.quests key`), resolveQuest(questId, quest, `${path}.quests.${questId}`),
+  ]));
   return { quests };
 }
 
@@ -183,16 +187,15 @@ export function resolveDialogueGraph(
   if (!isRecord(input.nodes)) {
     throw invalid(`${path}.nodes`, "must be an object");
   }
-  const nodes: Record<string, ResolvedDialogueNode> = {};
-  for (const [nodeId, node] of Object.entries(input.nodes)) {
-    nodes[stringKey(nodeId, `${path}.nodes key`)] = resolveDialogueNode(nodeId, node, `${path}.nodes.${nodeId}`);
-  }
-  if (nodes[initialNode] === undefined) {
+  const nodes: Record<string, ResolvedDialogueNode> = Object.fromEntries(Object.entries(input.nodes).map(([nodeId, node]) => [
+    stringKey(nodeId, `${path}.nodes key`), resolveDialogueNode(nodeId, node, `${path}.nodes.${nodeId}`),
+  ]));
+  if (!Object.prototype.hasOwnProperty.call(nodes, initialNode)) {
     throw invalid(`${path}.initialNode`, `references missing node '${initialNode}'`);
   }
   for (const node of Object.values(nodes)) {
     for (const choice of node.choices) {
-      if (choice.to !== undefined && nodes[choice.to] === undefined) {
+      if (choice.to !== undefined && !Object.prototype.hasOwnProperty.call(nodes, choice.to)) {
         throw invalid(`${path}.nodes.${node.id}.choices.${choice.id}.to`, `references missing node '${choice.to}'`);
       }
     }
@@ -200,12 +203,20 @@ export function resolveDialogueGraph(
   return { initialNode, nodes };
 }
 
+// These maps retain native resource handles for combined restore and linked sessions, never progress.
+const questNativeHandles = new WeakMap<QuestLog, NativeQuestLog>();
+const dialogueNativeHandles = new WeakMap<DialogueSession, NativeDialogueSession>();
+const destroyedDialogueQuestResources = new WeakSet<object>();
+
 export class QuestLog {
   private readonly document: ResolvedQuestDocument;
-  private readonly progress = new Map<string, QuestProgressSnapshot>();
+  private readonly native: NativeQuestLog;
 
   constructor(document: QuestDocumentSpec | ResolvedQuestDocument) {
-    this.document = isResolvedQuestDocument(document) ? document : resolveQuestDocument(document);
+    this.document = immutableDialogueQuestContent(isResolvedQuestDocument(document) ? document : resolveQuestDocument(document));
+    requireDialogueQuestWasm();
+    this.native = dialogueQuestNativeCall(() => new NativeQuestLog(encodeQuestConfig(this.document)));
+    questNativeHandles.set(this, this.native);
   }
 
   static create(document: QuestDocumentSpec | ResolvedQuestDocument): QuestLog {
@@ -213,69 +224,49 @@ export class QuestLog {
   }
 
   apply(update: QuestUpdateSpec | ResolvedQuestUpdate): QuestProgressSnapshot {
-    const resolved = resolveQuestUpdate(update, "questUpdate");
-    const quest = this.document.quests[resolved.quest];
-    if (quest === undefined) {
-      throw invalid("questUpdate.quest", `references missing quest '${resolved.quest}'`);
-    }
-    const current = this.progress.get(quest.id) ?? inactiveQuestProgress(quest);
-    let next: QuestProgressSnapshot;
-    if (resolved.action === "start") {
-      next = { ...current, status: "active", stage: resolved.stage ?? current.stage ?? quest.stages[0]?.id };
-    } else if (resolved.action === "setStage") {
-      const stage = requiredStage(quest, resolved.stage, "questUpdate.stage");
-      next = { ...current, status: "active", stage };
-    } else if (resolved.action === "completeObjective") {
-      const objective = stringKey(resolved.objective, "questUpdate.objective");
-      const completedObjectives = current.completedObjectives.includes(objective)
-        ? current.completedObjectives
-        : [...current.completedObjectives, objective];
-      next = { ...current, status: "active", completedObjectives };
-    } else {
-      next = { ...current, status: "completed" };
-    }
-    this.progress.set(quest.id, next);
-    return { ...next, completedObjectives: [...next.completedObjectives] };
+    return this.applyAll([update])[0];
   }
 
   applyAll(updates: readonly (QuestUpdateSpec | ResolvedQuestUpdate)[]): readonly QuestProgressSnapshot[] {
-    return updates.map((update) => this.apply(update));
+    requireLiveDialogueQuestResource(this);
+    const packet = encodeQuestUpdates(updates.map(update => resolveQuestUpdate(update, "questUpdate")));
+    requireLiveDialogueQuestResource(this);
+    return decodeQuestSnapshot(dialogueQuestNativeCall(() => this.native.apply(packet))).quests;
   }
 
   snapshot(): QuestLogSnapshot {
-    return {
-      quests: Object.keys(this.document.quests).map((questId) => (
-        this.progress.get(questId) ?? inactiveQuestProgress(this.document.quests[questId])
-      )),
-    };
+    requireLiveDialogueQuestResource(this);
+    return decodeQuestSnapshot(dialogueQuestNativeCall(() => this.native.snapshot()));
   }
 
   restore(snapshot: QuestLogSnapshot): void {
-    this.progress.clear();
-    for (const quest of snapshot.quests) {
-      if (this.document.quests[quest.id] === undefined) {
-        continue;
-      }
-      this.progress.set(quest.id, {
-        id: quest.id,
-        status: quest.status,
-        ...(quest.stage === undefined ? {} : { stage: quest.stage }),
-        completedObjectives: [...quest.completedObjectives],
-      });
-    }
+    requireLiveDialogueQuestResource(this);
+    const packet = encodeQuestSnapshot(snapshot);
+    requireLiveDialogueQuestResource(this);
+    dialogueQuestNativeCall(() => this.native.restore(packet));
+  }
+
+  destroy(): void {
+    if (destroyedDialogueQuestResources.has(this)) return;
+    destroyedDialogueQuestResources.add(this);
+    questNativeHandles.delete(this);
+    this.native.free();
   }
 }
 
 export class DialogueSession {
   private readonly graph: ResolvedDialogueGraph;
-  private nodeId: string;
-  private readonly flags = new Set<string>();
-  private ended = false;
+  private readonly native: NativeDialogueSession;
 
-  constructor(graph: DialogueGraphSpec | ResolvedDialogueGraph, private readonly questLog?: QuestLog) {
-    this.graph = isResolvedDialogueGraph(graph) ? graph : resolveDialogueGraph(graph);
-    this.nodeId = this.graph.initialNode;
-    this.applyNodeUpdates(this.currentNode());
+  constructor(graph: DialogueGraphSpec | ResolvedDialogueGraph, questLog?: QuestLog) {
+    this.graph = immutableDialogueQuestContent(isResolvedDialogueGraph(graph) ? graph : resolveDialogueGraph(graph));
+    requireDialogueQuestWasm();
+    const packet = encodeDialogueGraph(this.graph);
+    const quests = questLog === undefined ? undefined : requireDialogueQuestHandle(questLog, questNativeHandles);
+    this.native = dialogueQuestNativeCall(() => questLog === undefined
+      ? new NativeDialogueSession(packet)
+      : NativeDialogueSession.with_quests(packet, quests!));
+    dialogueNativeHandles.set(this, this.native);
   }
 
   static create(graph: DialogueGraphSpec | ResolvedDialogueGraph, questLog?: QuestLog): DialogueSession {
@@ -283,62 +274,56 @@ export class DialogueSession {
   }
 
   currentNode(): ResolvedDialogueNode {
-    return this.graph.nodes[this.nodeId];
+    requireLiveDialogueQuestResource(this);
+    return Object.values(this.graph.nodes)[dialogueQuestNativeCall(() => this.native.current_node())];
   }
 
   availableChoices(): readonly ResolvedDialogueChoice[] {
-    return this.currentNode().choices.filter((choice) => choice.requireFlags.every((flag) => this.flags.has(flag)));
+    const node = this.currentNode();
+    return Array.from(dialogueQuestNativeCall(() => this.native.available_choices()), index => node.choices[index]);
   }
 
   choose(choiceId: string): DialogueChoiceResult {
-    if (this.ended) {
-      throw invalid("dialogue.choice", "cannot choose after dialogue ended");
-    }
-    const choice = this.availableChoices().find((candidate) => candidate.id === choiceId);
-    if (choice === undefined) {
+    const node = this.currentNode();
+    const available = dialogueQuestNativeCall(() => this.native.available_choices());
+    const index = Array.from(available).find(candidate => node.choices[candidate].id === choiceId);
+    if (index === undefined) {
+      if (this.snapshot().ended) throw invalid("dialogue.choice", "cannot choose after dialogue ended");
       throw invalid("dialogue.choice", `unknown or unavailable choice '${choiceId}'`);
     }
-    for (const flag of choice.setFlags) {
-      this.flags.add(flag);
-    }
-    for (const flag of choice.clearFlags) {
-      this.flags.delete(flag);
-    }
-    this.questLog?.applyAll(choice.questUpdates);
-    if (choice.to !== undefined) {
-      this.nodeId = choice.to;
-      this.applyNodeUpdates(this.currentNode());
-    } else {
-      this.ended = true;
-    }
-    const node = this.currentNode();
-    this.ended = this.ended || node.end;
-    return { choice, node, ended: this.ended };
+    dialogueQuestNativeCall(() => this.native.choose(index));
+    return { choice: node.choices[index], node: this.currentNode(), ended: this.snapshot().ended };
   }
 
   snapshot(): DialogueSessionSnapshot {
-    return {
-      nodeId: this.nodeId,
-      flags: [...this.flags].sort(),
-      ended: this.ended,
-    };
+    requireLiveDialogueQuestResource(this);
+    return decodeDialogueSnapshot(dialogueQuestNativeCall(() => this.native.snapshot()));
   }
 
   restore(snapshot: DialogueSessionSnapshot): void {
-    if (this.graph.nodes[snapshot.nodeId] === undefined) {
-      throw invalid("dialogue.snapshot.nodeId", `references missing node '${snapshot.nodeId}'`);
-    }
-    this.nodeId = snapshot.nodeId;
-    this.flags.clear();
-    for (const flag of snapshot.flags) {
-      this.flags.add(stringKey(flag, "dialogue.snapshot.flags"));
-    }
-    this.ended = snapshot.ended;
+    requireLiveDialogueQuestResource(this);
+    const packet = encodeDialogueSnapshot(snapshot);
+    requireLiveDialogueQuestResource(this);
+    dialogueQuestNativeCall(() => this.native.restore(packet));
   }
 
-  private applyNodeUpdates(node: ResolvedDialogueNode): void {
-    this.questLog?.applyAll(node.questUpdates);
+  destroy(): void {
+    if (destroyedDialogueQuestResources.has(this)) return;
+    destroyedDialogueQuestResources.add(this);
+    dialogueNativeHandles.delete(this);
+    this.native.free();
   }
+}
+
+function requireLiveDialogueQuestResource(resource: object): void {
+  if (destroyedDialogueQuestResources.has(resource)) throw invalid("dialogueQuest.lifecycle", "cannot use a destroyed dialogue/quest resource");
+}
+
+function requireDialogueQuestHandle<R extends object, N>(resource: R, handles: WeakMap<R, N>): N {
+  requireLiveDialogueQuestResource(resource);
+  const native = handles.get(resource);
+  if (native === undefined) throw invalid("dialogueQuest.lifecycle", "dialogue/quest native resource is unavailable");
+  return native;
 }
 
 export function dialogueNodeToUiOverlayState(
@@ -375,15 +360,26 @@ export function restoreDialogueQuestState(
   snapshot: DialogueQuestStateSnapshot,
   options: RestoreDialogueQuestStateOptions,
 ): void {
-  if (snapshot.format !== DIALOGUE_QUEST_STATE_FORMAT || snapshot.version !== DIALOGUE_QUEST_STATE_VERSION) {
+  if (!isRecord(snapshot) || snapshot.format !== DIALOGUE_QUEST_STATE_FORMAT || snapshot.version !== DIALOGUE_QUEST_STATE_VERSION) {
     throw invalid("dialogueQuestState", "unsupported snapshot format or version");
   }
-  if (snapshot.dialogue !== undefined) {
-    options.dialogue?.restore(snapshot.dialogue);
-  }
-  if (snapshot.quests !== undefined) {
-    options.questLog?.restore(snapshot.quests);
-  }
+  const dialogueSnapshot = snapshot.dialogue;
+  const questSnapshot = snapshot.quests;
+  const dialogue = dialogueSnapshot === undefined ? undefined : options.dialogue;
+  const quests = questSnapshot === undefined ? undefined : options.questLog;
+  if (dialogue !== undefined) requireLiveDialogueQuestResource(dialogue);
+  if (quests !== undefined) requireLiveDialogueQuestResource(quests);
+  // Input getters can dispose a resource. Finish encoding, then acquire both live handles before any commit.
+  const dialoguePacket = dialogue !== undefined ? encodeDialogueSnapshot(dialogueSnapshot!) : undefined;
+  const questPacket = quests !== undefined ? encodeQuestSnapshot(questSnapshot!) : undefined;
+  const dialogueNative = dialogue !== undefined ? requireDialogueQuestHandle(dialogue, dialogueNativeHandles) : undefined;
+  const questNative = quests !== undefined ? requireDialogueQuestHandle(quests, questNativeHandles) : undefined;
+  dialogueQuestNativeCall(() => {
+    if (dialogueNative && dialoguePacket) dialogueNative.validate_restore(dialoguePacket);
+    if (questNative && questPacket) questNative.validate_restore(questPacket);
+    if (dialogueNative && dialoguePacket) dialogueNative.restore(dialoguePacket);
+    if (questNative && questPacket) questNative.restore(questPacket);
+  });
 }
 
 function resolveQuest(id: string, quest: QuestSpec, path: string): ResolvedQuest {
@@ -489,23 +485,6 @@ function resolveQuestUpdate(update: QuestUpdateSpec | ResolvedQuestUpdate, path:
     ...(input.stage === undefined ? {} : { stage: stringKey(input.stage, `${path}.stage`) }),
     ...(input.objective === undefined ? {} : { objective: stringKey(input.objective, `${path}.objective`) }),
   };
-}
-
-function inactiveQuestProgress(quest: ResolvedQuest): QuestProgressSnapshot {
-  return {
-    id: quest.id,
-    status: "inactive",
-    ...(quest.stages[0] === undefined ? {} : { stage: quest.stages[0].id }),
-    completedObjectives: [],
-  };
-}
-
-function requiredStage(quest: ResolvedQuest, stage: string | undefined, path: string): string {
-  const stageId = stringKey(stage, path);
-  if (!quest.stages.some((candidate) => candidate.id === stageId)) {
-    throw invalid(path, `references missing stage '${stageId}'`);
-  }
-  return stageId;
 }
 
 function flags(input: readonly string[] | undefined, path: string): readonly string[] {

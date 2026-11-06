@@ -12,6 +12,7 @@
       "requiredExports": [
         "createFerrumRuntime",
         "createEngine",
+        "initializeFerrumWasm",
         "resolveBitmapFontAtlas",
         "RenderCommandAccessor",
         "BuiltInShooterStateAccessor",
@@ -255,6 +256,7 @@
       "requiredExports": [
         "createFerrumRuntime",
         "createEngine",
+        "initializeFerrumWasm",
         "resolveBitmapFontAtlas",
         "RenderCommandAccessor",
         "BuiltInShooterStateAccessor",

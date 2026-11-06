@@ -5,6 +5,7 @@ use crate::components::{
     PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId, RopeJoint, RopeJointId,
     SpringJoint, SpringJointId, WeldJoint, WeldJointId,
 };
+use crate::world::JointKind;
 
 use super::physics_bridge::PhysicsJointSnapshot;
 use super::{
@@ -526,65 +527,12 @@ impl Engine {
         joint_index: u32,
         joint_generation: u32,
     ) -> bool {
-        let cleared = match joint_type {
-            PHYSICS_JOINT_DISTANCE => self
-                .world
-                .clear_distance_joint(DistanceJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_ROPE => self
-                .world
-                .clear_rope_joint(RopeJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_SPRING => self
-                .world
-                .clear_spring_joint(SpringJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_PULLEY => self
-                .world
-                .clear_pulley_joint(PulleyJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_REVOLUTE => self
-                .world
-                .clear_revolute_joint(RevoluteJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_PRISMATIC => self
-                .world
-                .clear_prismatic_joint(PrismaticJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_WELD => self
-                .world
-                .clear_weld_joint(WeldJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            PHYSICS_JOINT_GEAR => self
-                .world
-                .clear_gear_joint(GearJointId {
-                    index: joint_index,
-                    generation: joint_generation,
-                })
-                .is_some(),
-            _ => false,
+        let Ok(kind) = JointKind::try_from(joint_type) else {
+            return false;
         };
+        let cleared = self
+            .world
+            .clear_joint_by_kind(kind, joint_index, joint_generation);
         if cleared {
             self.physics_joint_snapshot = PhysicsJointSnapshot::default();
         }

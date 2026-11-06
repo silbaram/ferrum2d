@@ -1,5 +1,6 @@
 import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import { test } from "node:test";
+import "./nativeRuntimeTestHelper.js";
 import { PixelMaskTerrain } from "../src/pixelMaskTerrain.js";
 import { WebGpuTextureStore, rgbaFromAlpha, textureWriteBytes } from "../src/webgpuTextureStore.js";
 import { webGpuResources } from "../src/webgpuResources.js";

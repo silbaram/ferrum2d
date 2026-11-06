@@ -1,3 +1,4 @@
+import { NativePixelMaskTerrain, wasm_memory } from "../pkg/ferrum_core.js";
 import type { ResolvedShooterTileLayer, ResolvedShooterTilemap } from "./gameSpec.js";
 import {
   extractTilemapBoundaryChains,
@@ -47,124 +48,92 @@ export interface PixelMaskTerrainTextureUploadOptions {
   alphaScale?: number;
 }
 
+/** Synchronous native mask facade. Initialize Ferrum2D Wasm before construction. */
 export class PixelMaskTerrain {
   readonly width: number;
   readonly height: number;
   readonly solidThreshold: number;
-  readonly data: Uint8Array;
-  version = 0;
-  private dirty: PixelMaskTerrainDirtyRect | undefined;
+  private native: NativePixelMaskTerrain | undefined;
 
   constructor(options: PixelMaskTerrainOptions) {
     this.width = positiveInteger(options.width, "pixelMaskTerrain.width");
     this.height = positiveInteger(options.height, "pixelMaskTerrain.height");
     this.solidThreshold = alphaByte(options.solidThreshold ?? DEFAULT_SOLID_THRESHOLD, "pixelMaskTerrain.solidThreshold");
-    const pixelCount = this.width * this.height;
-    if (options.data !== undefined) {
-      if (options.data.length !== pixelCount) {
-        throw new Error("pixelMaskTerrain.data length must equal width * height");
-      }
-      this.data = Uint8Array.from(options.data, (value) => alphaByte(value, "pixelMaskTerrain.data"));
-    } else {
-      this.data = new Uint8Array(pixelCount);
-      this.data.fill(options.fill === "solid" ? 255 : 0);
+    const input = options.data;
+    if (input !== undefined && input.length !== this.width * this.height) {
+      throw new Error("pixelMaskTerrain.data length must equal width * height");
     }
+    // These are immutable construction inputs, never a mutable runtime fallback.
+    const data = input === undefined ? new Uint8Array(0)
+      : Uint8Array.from(input, (value) => alphaByte(value, "pixelMaskTerrain.data"));
+    try {
+      wasm_memory();
+    } catch {
+      throw new Error("PixelMaskTerrain requires initialized Ferrum2D Wasm; await initializeFerrumWasm() or createEngine() before creating terrain.");
+    }
+    this.native = nativeResult(() => new NativePixelMaskTerrain(
+      this.width, this.height, this.solidThreshold, options.fill === "solid", data,
+    ));
+  }
+
+  /** Owned alpha snapshot. Editing it does not change the native terrain. */
+  get data(): Uint8Array {
+    return this.requireNative().alpha_data();
+  }
+
+  get version(): number {
+    return this.requireNative().version();
+  }
+
+  /** Owned 0/1 occupancy snapshot, classified by Rust using solidThreshold. */
+  solidData(): Uint8Array {
+    return this.requireNative().solid_data();
   }
 
   isSolid(x: number, y: number): boolean {
-    if (!this.contains(x, y)) {
-      return false;
-    }
-    return this.data[this.index(x, y)] >= this.solidThreshold;
+    return this.requireNative().is_solid(x, y);
   }
 
   alphaAt(x: number, y: number): number {
-    if (!this.contains(x, y)) {
-      return 0;
-    }
-    return this.data[this.index(x, y)];
+    return this.requireNative().alpha_at(x, y);
   }
 
   setPixel(x: number, y: number, alpha: number): boolean {
-    if (!this.contains(x, y)) {
-      return false;
-    }
-    const nextAlpha = alphaByte(alpha, "pixelMaskTerrain.alpha");
-    const index = this.index(x, y);
-    if (this.data[index] === nextAlpha) {
-      return false;
-    }
-    this.data[index] = nextAlpha;
-    this.markDirty(x, y);
-    this.version += 1;
-    return true;
+    return nativeResult(() => this.requireNative().set_pixel(x, y, alpha));
   }
 
   carveRect(x: number, y: number, width: number, height: number, alpha = 0): boolean {
-    const minX = Math.max(0, Math.floor(x));
-    const minY = Math.max(0, Math.floor(y));
-    const maxX = Math.min(this.width, Math.ceil(x + width));
-    const maxY = Math.min(this.height, Math.ceil(y + height));
-    return this.writeArea(minX, minY, maxX, maxY, alphaByte(alpha, "pixelMaskTerrain.alpha"));
+    return nativeResult(() => this.requireNative().carve_rect(x, y, width, height, alpha));
   }
 
   carveCircle(centerX: number, centerY: number, radius: number, alpha = 0): boolean {
-    if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !Number.isFinite(radius) || radius < 0) {
-      return false;
-    }
-    const minX = Math.max(0, Math.floor(centerX - radius));
-    const minY = Math.max(0, Math.floor(centerY - radius));
-    const maxX = Math.min(this.width, Math.ceil(centerX + radius));
-    const maxY = Math.min(this.height, Math.ceil(centerY + radius));
-    const radiusSquared = radius * radius;
-    let changed = false;
-    const nextAlpha = alphaByte(alpha, "pixelMaskTerrain.alpha");
-    for (let py = minY; py < maxY; py += 1) {
-      for (let px = minX; px < maxX; px += 1) {
-        const dx = px + 0.5 - centerX;
-        const dy = py + 0.5 - centerY;
-        if (dx * dx + dy * dy > radiusSquared) {
-          continue;
-        }
-        const index = this.index(px, py);
-        if (this.data[index] === nextAlpha) {
-          continue;
-        }
-        this.data[index] = nextAlpha;
-        this.markDirty(px, py);
-        changed = true;
-      }
-    }
-    if (changed) {
-      this.version += 1;
-    }
-    return changed;
+    return nativeResult(() => this.requireNative().carve_circle(centerX, centerY, radius, alpha));
   }
 
   dirtyRect(): PixelMaskTerrainDirtyRect | undefined {
-    return this.dirty === undefined ? undefined : { ...this.dirty };
+    const words = this.requireNative().dirty_rect();
+    return words.length === 0 ? undefined
+      : { x: words[0], y: words[1], width: words[2], height: words[3] };
   }
 
   clearDirty(): void {
-    this.dirty = undefined;
+    this.requireNative().clear_dirty();
   }
 
   dirtyAlphaPatch(): PixelMaskTerrainAlphaPatch | undefined {
-    if (this.dirty === undefined) {
-      return undefined;
-    }
-    const rect = { ...this.dirty };
-    const alpha = new Uint8Array(rect.width * rect.height);
-    for (let row = 0; row < rect.height; row += 1) {
-      const sourceOffset = this.index(rect.x, rect.y + row);
-      const targetOffset = row * rect.width;
-      alpha.set(this.data.subarray(sourceOffset, sourceOffset + rect.width), targetOffset);
-    }
-    return { rect, alpha };
+    const packet = this.requireNative().dirty_alpha_patch();
+    if (packet.length === 0) return undefined;
+    const header = new DataView(packet.buffer, packet.byteOffset, 16);
+    const rect = {
+      x: header.getUint32(0, true), y: header.getUint32(4, true),
+      width: header.getUint32(8, true), height: header.getUint32(12, true),
+    };
+    // packet already owns its bytes, so this subview cannot alias Wasm memory.
+    return { rect, alpha: packet.subarray(16) };
   }
 
   toTilemapLayer(options: PixelMaskTerrainLayerOptions = {}): ResolvedShooterTileLayer {
-    const data = Array.from(this.data, (alpha) => alpha >= this.solidThreshold ? SOLID_TILE_ID : 0);
+    const data = Array.from(this.solidData());
     return {
       index: options.layerIndex ?? 0,
       name: options.name ?? "pixel-mask-terrain",
@@ -184,46 +153,24 @@ export class PixelMaskTerrain {
     return extractPixelMaskBoundaryChains(this, options);
   }
 
-  private writeArea(minX: number, minY: number, maxX: number, maxY: number, alpha: number): boolean {
-    if (minX >= maxX || minY >= maxY) {
-      return false;
-    }
-    let changed = false;
-    for (let py = minY; py < maxY; py += 1) {
-      for (let px = minX; px < maxX; px += 1) {
-        const index = this.index(px, py);
-        if (this.data[index] === alpha) {
-          continue;
-        }
-        this.data[index] = alpha;
-        this.markDirty(px, py);
-        changed = true;
-      }
-    }
-    if (changed) {
-      this.version += 1;
-    }
-    return changed;
+  /** Releases this mask only; runtimes that reference it must be stopped first. */
+  destroy(): void {
+    const native = this.native;
+    this.native = undefined;
+    native?.free();
   }
 
-  private contains(x: number, y: number): boolean {
-    return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < this.width && y < this.height;
+  private requireNative(): NativePixelMaskTerrain {
+    if (this.native === undefined) throw new Error("PixelMaskTerrain has been destroyed.");
+    return this.native;
   }
+}
 
-  private index(x: number, y: number): number {
-    return y * this.width + x;
-  }
-
-  private markDirty(x: number, y: number): void {
-    if (this.dirty === undefined) {
-      this.dirty = { x, y, width: 1, height: 1 };
-      return;
-    }
-    const minX = Math.min(this.dirty.x, x);
-    const minY = Math.min(this.dirty.y, y);
-    const maxX = Math.max(this.dirty.x + this.dirty.width, x + 1);
-    const maxY = Math.max(this.dirty.y + this.dirty.height, y + 1);
-    this.dirty = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+function nativeResult<T>(operation: () => T): T {
+  try {
+    return operation();
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
 
@@ -275,8 +222,8 @@ export function extractPixelMaskBoundaryChains(
 }
 
 function positiveInteger(value: number, path: string): number {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${path} must be a positive integer`);
+  if (!Number.isInteger(value) || value <= 0 || value > 4096) {
+    throw new Error(`${path} must be a positive integer at most 4096`);
   }
   return value;
 }

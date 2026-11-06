@@ -23,7 +23,9 @@ export function createTerrainFeature(ctx: FeatureContext): FeatureExtra {
   const output = (key: string, text: string) => { root.querySelector(`[data-value="${key}"]`)!.textContent = text; };
   const handle = () => runtime.dataScene!.result.entityHandles.ball!;
   const check = (ok: boolean) => { if (!ok) throw Error("지형 실험의 물리 설정을 적용하지 못했습니다."); };
-  const dispose = () => { terrain?.destroy(); terrain = undefined; };
+  const dispose = () => {
+    if (terrain) { terrain.destroy(); terrain.terrain.destroy(); terrain = undefined; }
+  };
   const resetBall = () => {
     if (!ctx.playing()) return;
     check(engine.setPhysicsBodyPosition(handle(), 320, 80)); check(engine.setPhysicsBodyVelocity(handle(), 0, 0));

@@ -36,6 +36,10 @@ runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
 
 게임 규칙과 simulation state는 Rust/Wasm core가 소유한다. 앱 코드는 `createFerrumRuntime(...)`, `createEngine(...)`, `BrowserPlatformHost`, `InputManager`, `WebGL2Renderer`처럼 package entrypoint에서 export하는 API만 사용한다.
 
+독립 `QuestLog`/`DialogueSession`/`PixelMaskTerrain` 생성 전에는 `await initializeFerrumWasm()`을 호출한다.
+일반 `createEngine`/`createFerrumRuntime`은 같은 초기화를 수행한다. 이 helper의 진행/충돌 상태는 Rust가 소유하며,
+최종 사용 후 소유자가 `destroy()`로 해제한다. 자세한 계약은 [Core API](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/public-api/core.md)를 참고한다.
+
 ## Public entrypoints
 
 신규 코드는 목적별 subpath를 우선 사용한다.

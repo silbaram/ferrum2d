@@ -1,3 +1,5 @@
+import "./nativeRuntimeTestHelper.js";
+import { DialogueSession } from "../src/dialogueQuest.js";
 import { deepEqual, equal, throws, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -695,4 +697,63 @@ test("failed display rollback reports both failures and retains the last success
     equal(caught.cause instanceof Error,true);equal(caught.message.includes('display rollback also failed'),true);
     equal(runtime.dataScene!.document(),previous);
   }finally{blockRollback=false;runtime.destroy();}
+});
+
+
+test("runtime releases its native dialogue while injected sessions remain caller-owned", async () => {
+  const graph = { initialNode: "start", nodes: { start: { text: "Hello", end: true } } };
+  const options = {
+    canvas: {} as HTMLCanvasElement,
+    engineInstance: fakeEngine([]), renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager, assetHost: fakeAssetHost([]), ui: false as const,
+  };
+  const owned = await createFerrumRuntime({ ...options, dialogue: { graph } });
+  const ownedSession = owned.dialogue!.session;
+  owned.destroy();
+  owned.destroy();
+  throws(() => ownedSession.snapshot(), /destroyed/);
+  const session = new DialogueSession(graph);
+  const injected = await createFerrumRuntime({ ...options, dialogue: { graph, session } });
+  injected.destroy();
+  equal(session.snapshot().nodeId, "start");
+  session.destroy();
+});
+
+test("runtime startup failure frees an already-created native dialogue", async () => {
+  const graph = { initialNode: "start", nodes: { start: { text: "Hello", end: true } } };
+  let freed = 0;
+  const original = DialogueSession.prototype.destroy;
+  DialogueSession.prototype.destroy = function () { freed++; original.call(this); };
+  try {
+    await rejects(createFerrumRuntime({
+      canvas: {} as HTMLCanvasElement,
+      engineInstance: { ...fakeEngine([]), start: () => { throw new Error("startup failure"); } }, renderer: fakeRuntimeRenderer(),
+      input: {} as InputManager, assetHost: fakeAssetHost([]), ui: false,
+      dialogue: { graph },
+      autostart: true,
+    }), /startup failure/);
+    equal(freed, 1);
+  } finally {
+    DialogueSession.prototype.destroy = original;
+  }
+});
+
+
+test("dialogue ownership follows the captured resource despite option or public handle replacement", async () => {
+  const graph = { initialNode: "start", nodes: { start: { text: "Hello", end: true } } };
+  const external = new DialogueSession(graph);
+  const dialogue: { graph: typeof graph; session?: DialogueSession } = { graph };
+  const pending = createFerrumRuntime({
+    canvas: {} as HTMLCanvasElement, engineInstance: fakeEngine([]), renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager, assetHost: fakeAssetHost([]), ui: false, dialogue,
+  });
+  dialogue.session = external;
+  const runtime = await pending;
+  const owned = runtime.dialogue!.session;
+  equal(owned === external, false);
+  runtime.dialogue!.session = external;
+  runtime.destroy();
+  throws(() => owned.snapshot(), /destroyed/);
+  equal(external.snapshot().nodeId, "start");
+  external.destroy();
 });

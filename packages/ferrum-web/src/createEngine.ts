@@ -262,6 +262,7 @@ export async function createEngineWithFramePipeline(
   });
   applyPhysicsRuntimeOptions(rustEngine, initialPhysicsSpec, options, options.physicsMode !== undefined);
   const framePipeline: FramePipelineContext = {
+    isAlive: () => !destroyed,
     bridge,
     rustEngine,
     physicsSpec: initialPhysicsSpec,

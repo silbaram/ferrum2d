@@ -53,6 +53,9 @@ export class GameLoop {
   }
 
   private scheduleNextFrame(): void {
+    // A frame callback may pause/stop or restart the loop itself. Do not revive
+    // a stopped loop or overwrite the RAF already scheduled by that restart.
+    if (!this.running || this.paused || this.rafId !== null) return;
     this.rafId = requestAnimationFrame((timestampMs) => {
       this.rafId = null;
       this.tick(timestampMs);

@@ -1,10 +1,45 @@
 declare module "../pkg/ferrum_core.js" {
+  export class NativeQuestLog {
+    constructor(config: Uint8Array);
+    apply(updates: Uint8Array): Uint8Array;
+    snapshot(): Uint8Array;
+    validate_restore(snapshot: Uint8Array): void;
+    restore(snapshot: Uint8Array): void;
+    free(): void;
+  }
+  export class NativeDialogueSession {
+    constructor(graph: Uint8Array);
+    static with_quests(graph: Uint8Array, quests: NativeQuestLog): NativeDialogueSession;
+    current_node(): number;
+    available_choices(): Uint32Array;
+    choose(choiceIndex: number): void;
+    snapshot(): Uint8Array;
+    validate_restore(snapshot: Uint8Array): void;
+    restore(snapshot: Uint8Array): void;
+    free(): void;
+  }
+  export class NativePixelMaskTerrain {
+    constructor(width: number, height: number, solid_threshold: number, fill_solid: boolean, data: Uint8Array);
+    free(): void;
+    version(): number;
+    alpha_data(): Uint8Array;
+    solid_data(): Uint8Array;
+    is_solid(x: number, y: number): boolean;
+    alpha_at(x: number, y: number): number;
+    set_pixel(x: number, y: number, alpha: number): boolean;
+    carve_rect(x: number, y: number, width: number, height: number, alpha: number): boolean;
+    carve_circle(x: number, y: number, radius: number, alpha: number): boolean;
+    dirty_rect(): Uint32Array;
+    clear_dirty(): void;
+    dirty_alpha_patch(): Uint8Array;
+  }
   export interface InitOutput {
     readonly memory: WebAssembly.Memory;
   }
 
   export default function init(
-    module_or_path?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module,
+    module_or_path?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module
+      | { module_or_path: RequestInfo | URL | Response | BufferSource | WebAssembly.Module },
   ): Promise<InitOutput>;
 
   export class Engine {

@@ -1383,7 +1383,18 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 - 사용자 영향
 - 후속 조치 또는 보류 사유
 
+### Gameplay authoring 모듈 경계 회귀
+
+`pnpm test:web`의 `gameplayAuthoring.test.ts`는 공개 command 적용 경로에서 7종 action의 이름 조회·명시 ID 우선순위·누락/잘못된 ID 진단과 prefab/timer 구분, 선택적 timer action을 검사한다. 검증 실패는 runtime setter를 호출하지 않아야 한다. 기존 registry 회귀는 handle 복사·generation·역방향 조회·stale 제거·sync를 검증한다. 모듈 분리 뒤에도 공개 import와 declaration은 `pnpm package:check:ferrum-web`의 packed consumer 타입 검증으로 확인한다.
+
+ID 회귀에는 특수 이름의 JSON 왕복·required 선언 검사·상속 속성 차단과 u32 상한/상한 초과를 포함한다. 엔티티 핸들 검증 실패는 기존 registry와 runtime을 바꾸지 않아야 한다. 패키지 타입 검사는 실제 `.tgz`를 임시 consumer에 추출하고 registry factory → 공개 타입 → apply 옵션 연결을 ES2022/strict/`skipLibCheck: false`로 컴파일한다.
+직접 command의 점수·효과음 uint32 경계, 타일 충돌 코드 0/2와 이름 일치, 알 수 없는 이벤트·비교 연산자의 거부도 검사한다. `gameplayFactionRelations.test.ts`는 고정 진영·관계 코드표의 상속 속성을 거부하고 정상 이름·숫자 코드와 unsigned 상위 비트 mask를 보존하는지 확인한다.
+
 ### 에셋 묶음 로딩 수명 회귀
+
+`pnpm test:web`의 `textureManager.test.ts`는 WebGL2/WebGPU 업로드 byte와 오류 문구 일치, pre-abort, 늦은 decode 중 취소·evict·destroy, 성공·실패 시 abort listener 해제, 이전 요청의 finally가 같은 ID의 새 요청을 제거하지 않는지를 검증한다. GPU mock 단위 검증과 아래 실제 브라우저 검증을 구분한다.
+
+같은 ID의 abort 재진입·동기 교체·eviction은 최신 요청을 보존해야 한다. 성공 등록은 자기 signal을 abort하지 않고, 종료·취소로 등록하지 못한 texture를 회수한다. HTTP body 취소 실패는 원래 HTTP 오류를 덮어쓰지 않으며, 외부 size 변경은 patch bounds와 byte 통계를 바꾸지 않아야 한다. `webgpuRendererCreation.test.ts`는 own/inherited 옵션 변경 뒤 loss→recover가 원래 Blob·decode 설정을 사용하고 별도 signal로 ready 상태에 복귀하는지 검증한다.
 
 `pnpm smoke:asset-loading`은 실제 public `runtime.engine.loadAssets`와 preload를 로컬 HTTP 서버에서 실행한다.
 CI의 수동 `validate` job과 `smoke:check`에 연결한다. 보고서는 `artifacts/asset-loading/report.json`이다.
@@ -2407,6 +2418,8 @@ cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_
 
 ### 물리 제작 확장 회귀
 
+- Rust `joint_dispatch`와 `engine::tests::physics_joint_controls`는 8종 관절의 코드 0..7, unknown/stale 거부, 명시 삭제 성공 시 snapshot 초기화, force/torque 파손 및 슬롯 재사용 뒤 이전 generation의 삭제 차단을 확인한다.
+  pending load가 남은 상태의 endpoint·joint 슬롯 동시 재사용과 full snapshot restore의 진단 초기화도 8종에 대해 조합 검증한다.
 - Rust `engine::tests::physics_expansion`: 회전 잠금/해제·이동 유지, 반복 횟수와
   관절 힘 환산, 파손 큐 소비·stale handle, batch parity/입력 상한, impact
   실제 discrete/CCD의 report와 효과 독립성·cooldown, reset 후 재발생,
@@ -2436,3 +2449,28 @@ cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_
 반복당 단건 32회·batch 1회를 assert하며 getter·buffer 접근은 이 횟수에서 제외한다.
 시간 측정 trial은 wrapper를 제거한 뒤 실행해 계측 오버헤드를 섞지 않는다.
 결과는 `artifacts/physics-gameplay-expansion/batch-benchmark.json`에 남는다.
+
+
+## Rust / TypeScript 역할 경계 회귀
+
+- `pnpm test:language-boundaries`: AST 소유권 검사 자체의 negative fixture 15개.
+- `pnpm validate:language-boundaries`: QuestLog/DialogueSession/PixelMaskTerrain의 native 위임과 필드·쓰기·타입 출처를 검사한다.
+  세 facade의 scoped regression gate이며 전체 TS 코드의 gameplay 부재를 증명하는 정적 분석기는 아니다.
+- 현재 `pnpm build:wasm` 및 SDK build 후 `pnpm smoke:language-boundaries`:
+  실제 Wasm ABI, 1/128/1024 엔티티에서 동일한 frame 호출 분포와 21회 예산,
+  render→effect summary 순서·memory.grow 뒤 frame snapshot 유지,
+  native quest/dialogue/terrain 위임·공유 상태·owned snapshot을 검사한다.
+- `pnpm test:web`: callback 재진입, provider/custom renderer/audio getter의 native 성장,
+  초기화 실패 후 재시도·동시 초기화, native helper 수명·원자 복원, terrain sync 중 재편집을 검증한다.
+- `.github/workflows/language-boundaries.yml`은 PR/main push에서 frozen install, 위 ownership 검사,
+  현재 Wasm 빌드·SDK 단위 테스트와 native harness를 실행하도록 구성한다. 기존 무거운 수동 CI/browser matrix는 유지한다.
+
+자동 보고서는 `artifacts/language-boundaries/`에 기록한다. frame 비용 예산은 기본 flat 경로의
+계측된 호출 수이며 모든 renderer/extension의 시간·메모리 예산을 의미하지 않는다.
+
+
+언어 경계 native harness는 추가로 실제 allocator pressure에서 diagnostics Vec 반환이 memory.grow를
+발생시키는 경우를 검증한다. 현재 frame의 view는 query 후에 획득하며 render 15 floats와 telemetry 62 floats를
+정상 소비해야 한다. 테스트의 raw allocation은 finally에서 해제하고, 상한 안에서 query growth가 없으면 실패한다.
+SDK 회귀는 callback 중 실제 native engine 해제, RAF 재시작 중복 방지, getter 중 해제된 quest 복원,
+terrain nested sync/destroy/constructor rollback/force retry 및 클래스형 effect target의 receiver를 검사한다.

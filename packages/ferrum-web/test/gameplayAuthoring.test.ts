@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
+  SceneInstanceHandleRegistry,
   applyFactionRelationTable,
   applyGameplayBehaviorCommands,
   applySceneBehaviorRecipes,
@@ -387,6 +388,194 @@ class PayloadMockGameplayEngine extends MockGameplayEngine {
     return this.consumeResult();
   }
 }
+
+// Exercise resolution through the public command API so dispatch and diagnostics stay coupled.
+const runtimeIdCommandCases = [
+  { command: { type: "configureInteraction", radius: 12, once: true }, description: "interaction action", actionIndex: 3 },
+  { command: { type: "configureProjectileAction", cooldownSeconds: 0, speed: 20, damage: 2, lifetimeSeconds: 1 }, description: "projectile action", actionIndex: 3 },
+  { command: { type: "configureDashAction", cooldownSeconds: 0, distance: 20 }, description: "dash action", actionIndex: 3 },
+  { command: { type: "configureMeleeAction", cooldownSeconds: 0, range: 12, damage: 2 }, description: "melee action", actionIndex: 3 },
+  { command: { type: "configureSpawnPrefabAction", prefab: "actor", cooldownSeconds: 0, anchor: "self", phase: "prePhysics", offsetX: 0, offsetY: 0 }, description: "spawn prefab action", actionIndex: 3 },
+  { command: { type: "configureCollisionSpawnPrefab", prefab: "actor", target: "other", offsetX: 0, offsetY: 0 }, description: "collision spawn prefab action", actionIndex: 3 },
+  { command: { type: "configureTimerTrigger", timer: "wake", seconds: 1 }, description: "timer action", actionIndex: 5 },
+] as const;
+
+for (const entry of runtimeIdCommandCases) {
+  test(`runtime ID resolution preserves precedence and diagnostics for ${entry.command.type}`, () => {
+    const command: BehaviorRecipeCommand = {
+      entity: "actor", recipe: "test", tags: [], action: "use", ...entry.command,
+    };
+    const engine = new MockGameplayEngine();
+    const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+    const ids = { actions: { use: 7 }, prefabs: { actor: 9 }, timers: { wake: 6 } };
+    applyGameplayBehaviorCommands(engine, [command, { ...command, actionId: 13 }], handles, { ids });
+    equal(engine.calls[0][entry.actionIndex], 7);
+    equal(engine.calls[1][entry.actionIndex], 13);
+
+    const missing = expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, {
+      path: "custom", ids: { ...ids, actions: {} },
+    }), "custom.commands.0.action") as Error & { context: { detail: string } };
+    equal(missing.context.detail, `must resolve ${entry.description} 'use' to a runtime action id`);
+    for (const actionId of [0, -1, 1.5, NaN, Infinity]) {
+      const invalid = expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, actionId }], handles, {
+        path: "custom", ids,
+      }), "custom.commands.0.actionId") as Error & { context: { detail: string } };
+      equal(invalid.context.detail, "must be a positive integer runtime action id");
+    }
+    // Validation failures must not call the runtime, even when a valid named fallback exists.
+    equal(engine.calls.length, 2);
+  });
+}
+
+test("spawn and timer IDs preserve explicit precedence and field-specific diagnostics", () => {
+  const engine = new MockGameplayEngine();
+  const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+  const ids = { actions: { use: 7 }, prefabs: { actor: 9 }, timers: { wake: 6 } };
+  for (const entry of runtimeIdCommandCases) {
+    if (entry.command.type !== "configureSpawnPrefabAction" && entry.command.type !== "configureCollisionSpawnPrefab") continue;
+    const command: BehaviorRecipeCommand = { entity: "actor", recipe: "test", tags: [], action: "use", ...entry.command };
+    const before = engine.calls.length;
+    applyGameplayBehaviorCommands(engine, [{ ...command, prefabId: 15 }], handles, { ids });
+    equal(engine.calls[before][entry.command.type === "configureSpawnPrefabAction" ? 5 : 4], 15);
+    const missing = expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, {
+      ids: { actions: ids.actions },
+    }), "gameplayAuthoring.commands.0.prefab") as Error & { context: { detail: string } };
+    const label = entry.command.type === "configureSpawnPrefabAction" ? "spawn prefab" : "collision spawn prefab";
+    equal(missing.context.detail, `must resolve ${label} 'actor' to a runtime prefab id`);
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, prefabId: 0 }], handles, { ids }), "gameplayAuthoring.commands.0.prefabId");
+    equal(engine.calls.length, before + 1);
+  }
+  const timer: BehaviorRecipeCommand = { entity: "actor", recipe: "test", tags: [], type: "configureTimerTrigger", timer: "wake", seconds: 1 };
+  applyGameplayBehaviorCommands(engine, [{ ...timer, timerId: 17 }], handles, { ids });
+  deepEqual(engine.calls[2], ["set_gameplay_timer_trigger", 12, 4, 17, 1]);
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [timer], handles), "gameplayAuthoring.commands.0.timer");
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...timer, timerId: 0 }], handles, { ids }), "gameplayAuthoring.commands.0.timerId");
+  equal(engine.calls.length, 3);
+});
+
+test("runtime ID namespaces preserve declared prototype-shaped names and reject missing declarations", () => {
+  for (const namespace of ["items", "actions", "prefabs", "timers", "tags", "effects", "variables"] as const) {
+    const required = { items: "requiredItems", actions: "requiredActions", prefabs: "requiredPrefabs", timers: "requiredTimers", tags: "requiredTags", effects: "requiredEffects", variables: "requiredVariables" }[namespace];
+    for (const name of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      const input = JSON.parse(JSON.stringify({ [namespace]: { [name]: 7 } }));
+      const ids = resolveGameplayBehaviorRuntimeIds(input, { [required]: [name] });
+      equal(Object.prototype.hasOwnProperty.call(ids[namespace], name), true);
+      equal(ids[namespace]?.[name], 7);
+      deepEqual(JSON.parse(JSON.stringify(ids)), input);
+      expectDiagnostic(() => resolveGameplayBehaviorRuntimeIds({ [namespace]: {} }, {
+        [required]: [name],
+      }), `gameplayRuntimeIds.${namespace}.${name}`);
+    }
+  }
+});
+
+test("runtime commands only resolve own named IDs while explicit IDs retain precedence", () => {
+  const engine = new MockGameplayEngine();
+  const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+  const command: BehaviorRecipeCommand = { type: "configureInteraction", entity: "actor", recipe: "test", tags: [], action: "use", radius: 12, once: false };
+  const inherited: Record<string, number> = Object.create({ use: 7 });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, { ids: { actions: inherited } }), "gameplayAuthoring.commands.0.action");
+  deepEqual(engine.calls, []);
+  const ids = resolveGameplayBehaviorRuntimeIds(JSON.parse('{"actions":{"__proto__":9}}'));
+  applyGameplayBehaviorCommands(engine, [{ ...command, action: "__proto__" }, { ...command, actionId: 13 }], handles, { ids });
+  equal(engine.calls[0][3], 9);
+  equal(engine.calls[1][3], 13);
+});
+
+test("null ID namespaces retain structured diagnostics and the default score pickup", () => {
+  const engine = new MockGameplayEngine();
+  const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+  for (const entry of runtimeIdCommandCases) {
+    const command: BehaviorRecipeCommand = { entity: "actor", recipe: "test", tags: [], action: "use", ...entry.command };
+    const ids = JSON.parse('{"actions":null,"prefabs":{"actor":9},"timers":{"wake":6}}');
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, { ids }), "gameplayAuthoring.commands.0.action");
+    ids.actions = { use: 7 };
+    if (command.type === "configureSpawnPrefabAction" || command.type === "configureCollisionSpawnPrefab") {
+      ids.prefabs = null;
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, { ids }), "gameplayAuthoring.commands.0.prefab");
+    }
+    if (command.type === "configureTimerTrigger") {
+      ids.timers = null;
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, { ids }), "gameplayAuthoring.commands.0.timer");
+    }
+  }
+  deepEqual(engine.calls, []);
+  applyGameplayBehaviorCommands(engine, [{ type: "configurePickup", entity: "actor", recipe: "test", tags: [], item: "score", count: 1, despawn: true }], handles, { ids: JSON.parse('{"items":null}') });
+  equal(engine.calls.length, 1);
+});
+
+test("command entity dictionaries do not resolve inherited handles", () => {
+  const engine = new MockGameplayEngine();
+  const handle = { entityId: 12, entityGeneration: 4 };
+  const command: BehaviorRecipeCommand = { type: "configureInteraction", entity: "actor", recipe: "test", tags: [], action: "use", actionId: 7, radius: 12, once: false };
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], Object.create({ actor: handle })), "gameplayAuthoring.commands.0.entity");
+  deepEqual(engine.calls, []);
+  const names = ["__proto__", "constructor", "toString"];
+  for (const entity of names) {
+    applyGameplayBehaviorCommands(engine, [{ ...command, entity }], { [entity]: handle });
+    applyGameplayBehaviorCommands(engine, [{ ...command, entity }], new Map([[entity, handle]]));
+  }
+  equal(engine.calls.length, names.length * 2);
+});
+
+test("action, prefab and timer IDs cannot wrap at the Wasm uint32 boundary", () => {
+  const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+  const ids = { actions: { use: 7 }, prefabs: { actor: 9 }, timers: { wake: 6 } };
+  for (const entry of runtimeIdCommandCases) {
+    const command: BehaviorRecipeCommand = { entity: "actor", recipe: "test", tags: [], action: "use", ...entry.command };
+    const engine = new MockGameplayEngine();
+    for (const value of [2 ** 32, 2 ** 32 + 1, Number.MAX_SAFE_INTEGER, 1e100]) {
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, actionId: value }], handles, { ids }), "gameplayAuthoring.commands.0.actionId");
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], handles, { ids: { ...ids, actions: { use: value } } }), "gameplayAuthoring.commands.0.actionId");
+      if (command.type === "configureSpawnPrefabAction" || command.type === "configureCollisionSpawnPrefab") {
+        expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, prefabId: value }], handles, { ids }), "gameplayAuthoring.commands.0.prefabId");
+      }
+      if (command.type === "configureTimerTrigger") {
+        expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, timerId: value }], handles, { ids }), "gameplayAuthoring.commands.0.timerId");
+      }
+    }
+    deepEqual(engine.calls, []);
+    applyGameplayBehaviorCommands(engine, [{ ...command, actionId: 0xffffffff }], handles, { ids });
+    equal(engine.calls[0][entry.actionIndex], 0xffffffff);
+  }
+});
+
+test("direct score rewards and collision sound IDs retain Data Scene uint32 bounds", () => {
+  const engine = new MockGameplayEngine();
+  const handles = { actor: { entityId: 12, entityGeneration: 4 } };
+  const reward: BehaviorRecipeCommand = { type: "configureScoreReward", entity: "actor", recipe: "test", tags: [], reward: 0 };
+  const sound: BehaviorRecipeCommand = { type: "configureCollisionSound", entity: "actor", recipe: "test", tags: [], soundId: 1, volume: 1, pitch: 1 };
+  for (const value of [2 ** 32, 2 ** 32 + 1, Number.MAX_SAFE_INTEGER, 1e100]) {
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...reward, reward: value }], handles), "gameplayAuthoring.commands.0.reward");
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...sound, soundId: value }], handles), "gameplayAuthoring.commands.0.soundId");
+  }
+  deepEqual(engine.calls, []);
+  applyGameplayBehaviorCommands(engine, [reward, { ...reward, reward: 0xffffffff }, sound, { ...sound, soundId: 0xffffffff }], handles);
+  deepEqual(engine.calls.map(call => call[3]), [0, 0xffffffff, 1, 0xffffffff]);
+});
+
+test("registry and command handles reject uint32 aliases without mutating live bindings", () => {
+  const registry = createSceneInstanceHandleRegistry();
+  ok(registry instanceof SceneInstanceHandleRegistry);
+  equal(registry.constructor, SceneInstanceHandleRegistry);
+  const valid = { entityId: 12, entityGeneration: 4 };
+  registry.set("actor", valid);
+  const before = registry.entries();
+  const engine = new MockGameplayEngine();
+  const command: BehaviorRecipeCommand = { type: "configureInteraction", entity: "actor", recipe: "test", tags: [], action: "use", actionId: 1, radius: 12, once: false };
+  for (const field of ["entityId", "entityGeneration"] as const) {
+    for (const value of [2 ** 32, 2 ** 32 + 1, Number.MAX_SAFE_INTEGER, 1e100]) {
+      const invalid = { ...valid, [field]: value };
+      expectDiagnostic(() => registry.set("actor", invalid), `sceneInstanceHandles.actor.handle.${field}`);
+      expectDiagnostic(() => registry.instanceIdForHandle(invalid), `sceneInstanceHandles.handle.${field}`);
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], { actor: invalid }), `gameplayAuthoring.commands.0.entity.${field}`);
+      deepEqual(registry.entries(), before);
+    }
+  }
+  deepEqual(engine.calls, []);
+  deepEqual(registry.set("limit", { entityId: 0xffffffff, entityGeneration: 0xffffffff }).handle,
+    { entityId: 0xffffffff, entityGeneration: 0xffffffff });
+});
 
 test("resolveGameplayBehaviorRuntimeIds validates named runtime id registries", () => {
   deepEqual(resolveGameplayBehaviorRuntimeIds({
@@ -3057,6 +3246,85 @@ test("applyGameplayBehaviorCommands sends variable writes and guards as numeric 
     ["mutation", 7, 3, 1, 9, 2, 0, 1],
     ["interactionGuard", 7, 3, 10, 24, false, 2, 0, 0, 1],
   ]);
+});
+
+test("variable mutation tile events reject coercion and preserve named and numeric tokens", () => {
+  const calls: number[][] = [];
+  const engine = {
+    add_gameplay_variable_mutation_trigger: (...args: number[]) => {
+      calls.push(args);
+      return true;
+    },
+  } as unknown as GameplayBehaviorRuntimeEngine;
+  const base = { entity: "actor", recipe: "r", tags: [], variableId: 1 };
+  const handle = { actor: { entityId: 7, entityGeneration: 3 } };
+  for (const type of ["configureSetVariable", "configureIncrementVariable"] as const) {
+    const command = type === "configureSetVariable"
+      ? { ...base, type, value: 1 }
+      : { ...base, type, amount: 1 };
+    for (const code of [1, -1, 2.5, 2 ** 32 + 2, -(2 ** 32), NaN, Infinity]) {
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+        ...command, when: { type: "gameplayEvent", event: "tileImpact", tileImpactCode: code },
+      }], handle), "gameplayAuthoring.commands.0.when.tileImpactCode");
+    }
+    for (const when of [
+      { type: "gameplayEvent", event: "tileImpact" },
+      { type: "gameplayEvent", event: "tileImpact", tileImpact: "bounce", tileImpactCode: 0 },
+    ] as const) {
+      expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{ ...command, when }], handle),
+        "gameplayAuthoring.commands.0.when");
+    }
+    equal(calls.length, 0);
+    for (const when of [
+      { type: "gameplayEvent", event: "tileImpact", tileImpactCode: 0 },
+      { type: "gameplayEvent", event: "tileImpact", tileImpactCode: 2 },
+      { type: "gameplayEvent", event: "tileImpact", tileImpact: "despawn" },
+      { type: "gameplayEvent", event: "tileImpact", tileImpact: "bounce", tileImpactCode: 2 },
+    ] as const) applyGameplayBehaviorCommands(engine, [{ ...command, when }], handle);
+    deepEqual(calls.map((args) => args[3]), [0, 2, 0, 2]);
+    calls.length = 0;
+  }
+});
+
+test("invalid direct event names and comparison operators do not become default enums", () => {
+  const calls: unknown[][] = [];
+  const engine = {
+    add_gameplay_variable_mutation_trigger: (...args: unknown[]) => { calls.push(args); return true; },
+    set_gameplay_interaction_with_guard: (...args: unknown[]) => { calls.push(args); return true; },
+  } as unknown as GameplayBehaviorRuntimeEngine;
+  const handle = { actor: { entityId: 7, entityGeneration: 3 } };
+  const command = { entity: "actor", recipe: "r", tags: [] };
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    ...command, type: "configureSetVariable", variableId: 1, value: 1,
+    when: { type: "gameplayEvent", event: "typo" as "tileImpact", tileImpactCode: 0 },
+  }], handle), "gameplayAuthoring.commands.0.when.event");
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    ...command, type: "configureInteraction", action: "go", actionId: 1, radius: 12, once: false,
+    guard: { variableId: 1, op: "typo" as "==", value: 1 },
+  }], handle), "gameplayAuthoring.commands.0.guard.op");
+  deepEqual(calls, []);
+});
+
+test("collision area damage rejects inherited layer names before runtime mutation", () => {
+  const engine = new MockGameplayEngine();
+  for (const targetLayer of ["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty"]) {
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+      entity: "actor", recipe: "r", tags: [], type: "configureCollisionAreaDamage",
+      amount: 1, radius: 8, targetLayer: targetLayer as "player",
+    }], { actor: { entityId: 7, entityGeneration: 3 } }), "gameplayAuthoring.commands.0.targetLayer");
+  }
+  deepEqual(engine.calls, []);
+});
+
+test("direct damage rejects unknown targets with and without a variable guard", () => {
+  const engine = new MockGameplayEngine();
+  for (const guard of [undefined, { variableId: 1, op: "==" as const, value: 1 }]) {
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+      entity: "actor", recipe: "r", tags: [], type: "configureDamage", amount: 1,
+      cooldownSeconds: 0, target: "typo" as "other", ...(guard === undefined ? {} : { guard }),
+    }], { actor: { entityId: 7, entityGeneration: 3 } }), "gameplayAuthoring.commands.0.target");
+  }
+  deepEqual(engine.calls, []);
 });
 
 test("applyFactionRelationTable validates and applies directed relations", () => {

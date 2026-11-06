@@ -56,6 +56,8 @@ export function createContentFeature(ctx: FeatureContext): FeatureExtra | undefi
       // Updating a dialogue replaces its buttons. Keep keyboard focus in this interaction.
       (preview.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? preview).focus({ preventScroll: true });
     } });
+    const destroyContent = extra.destroy;
+    extra.destroy = () => { session.destroy(); quests.destroy(); destroyContent?.(); };
     extra.reset = () => { session.restore(initialDialogue); quests.restore(initialQuests); draw(); };
     extra.pause = draw;
     extra.observation = () => `대화: ${session.currentNode().speaker} · 퀘스트 ${questText()}`;

@@ -1,4 +1,6 @@
 import { createKtx2Transcoder } from "./ktx2Transcoder.js";
+import { createAssetLoadScope } from "./assetLoadTasks.js";
+import { rgbaFromAlpha } from "./pixelMaskTextureData.js";
 import { KTX2_MAX_INPUT_BYTES, KTX2_MAX_DIMENSION, ktx2BlockBytes, textureLoadAbortError } from "./ktx2Texture.js";
 import type { Ktx2Transcoder, Ktx2TranscodedImage } from "./ktx2Texture.js";
 import { selectWebGL2Ktx2Format } from "./webgl2CompressedTexture.js";
@@ -60,24 +62,32 @@ export class TextureManager {
   private async loadManaged(url: string, options: TextureLoadOptions = {}, textureId?: number): Promise<WebGLTexture> {
     this.assertAlive();
     const colorSpace = resolveTextureColorSpace(options);
+    const ktx2Url = options.ktx2Url;
     if (options.signal?.aborted) throw textureLoadAbortError();
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    options.signal?.addEventListener("abort", abort, { once: true });
+    const scope = createAssetLoadScope(options.signal);
+    const controller = scope.controller;
     this.pendingLoads.add(controller);
-    if (textureId !== undefined) {
-      this.pendingIds.get(textureId)?.abort();
-      this.pendingIds.set(textureId, controller);
-    }
     const signal = controller.signal;
+    let texture: WebGLTexture | undefined;
     try {
-      let texture: WebGLTexture | undefined;
-      if (options.ktx2Url !== undefined && this.options.ktx2 !== false) {
+      if (textureId !== undefined) {
+        const previous = this.pendingIds.get(textureId);
+        // Abort listeners may start a newer load or synchronously replace this ID.
+        this.pendingIds.set(textureId, controller);
+        previous?.abort();
+      }
+      this.assertLoadActive(signal);
+      if (ktx2Url !== undefined && this.options.ktx2 !== false) {
         try {
           const format = selectWebGL2Ktx2Format(this.gl, this.colorManagement === "linear-srgb" && colorSpace === "srgb");
           if (!format) throw new Error("No supported KTX2 GPU block format.");
-          const response = await fetch(options.ktx2Url, { signal });
-          if (!response.ok) throw new Error(`KTX2 fetch failed: HTTP ${response.status}.`);
+          const response = await fetch(ktx2Url, { signal });
+          if (!response.ok) {
+            try { await response.body?.cancel(); }
+            catch { /* Preserve the HTTP failure if cleanup fails. */ }
+            this.assertLoadActive(signal);
+            throw new Error(`KTX2 fetch failed: HTTP ${response.status}.`);
+          }
           const length = Number(response.headers.get("content-length"));
           if (length > KTX2_MAX_INPUT_BYTES) {
             await response.body?.cancel();
@@ -96,22 +106,28 @@ export class TextureManager {
           this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace, compressed: true });
         } catch (reason) {
           this.assertLoadActive(signal);
-          this.options.onKtx2Fallback?.({ url, ktx2Url: options.ktx2Url, reason });
+          this.options.onKtx2Fallback?.({ url, ktx2Url, reason });
         }
       }
       if (texture === undefined) {
+        this.assertLoadActive(signal);
         const image = await this.loadImageBitmap(url, colorSpace, signal);
         try {
           this.assertLoadActive(signal);
           texture = this.createTextureFromSource(image, { colorSpace });
         } finally { image.close(); }
       }
-      if (textureId !== undefined) this.setTexture(textureId, texture);
+      this.assertLoadActive(signal);
+      // Completing this request must not emit an abort on its own signal.
+      if (textureId !== undefined) this.registerTexture(textureId, texture);
       return texture;
+    } catch (error) {
+      if (texture && this.textures.has(texture)) this.releaseUnreferencedTexture(texture);
+      throw error;
     } finally {
       this.pendingLoads.delete(controller);
       if (textureId !== undefined && this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
-      options.signal?.removeEventListener("abort", abort);
+      scope.dispose();
     }
   }
 
@@ -196,7 +212,11 @@ export class TextureManager {
       terrain.height,
       rgbaFromAlpha(terrain.width, terrain.height, terrain.data, options),
     );
-    this.setTexture(textureId, texture, { width: terrain.width, height: terrain.height });
+    try { this.setTexture(textureId, texture, { width: terrain.width, height: terrain.height }); }
+    catch (error) {
+      if (this.textures.has(texture)) this.releaseUnreferencedTexture(texture);
+      throw error;
+    }
     return texture;
   }
 
@@ -249,7 +269,11 @@ export class TextureManager {
     this.assertAlive();
     validateTextureId(textureId);
     const texture = this.createPlaceholderTexture(size);
-    this.setTexture(textureId, texture);
+    try { this.setTexture(textureId, texture); }
+    catch (error) {
+      if (this.textures.has(texture)) this.releaseUnreferencedTexture(texture);
+      throw error;
+    }
     return texture;
   }
 
@@ -279,9 +303,22 @@ export class TextureManager {
     this.assertAlive();
     validateTextureId(textureId);
 
-    if (size !== undefined && (!Number.isInteger(size.width) || !Number.isInteger(size.height)
-      || size.width <= 0 || size.height <= 0)) throw new Error("Texture dimensions must be positive integers.");
-    this.pendingIds.get(textureId)?.abort();
+    const dimensions = size === undefined ? undefined : { width: size.width, height: size.height };
+    if (dimensions !== undefined && (!Number.isInteger(dimensions.width) || !Number.isInteger(dimensions.height)
+      || dimensions.width <= 0 || dimensions.height <= 0)) throw new Error("Texture dimensions must be positive integers.");
+    const controller = new AbortController(), previous = this.pendingIds.get(textureId);
+    // Synchronous replacements also participate in the same-ID ordering fence.
+    this.pendingIds.set(textureId, controller);
+    try {
+      previous?.abort();
+      this.assertLoadActive(controller.signal);
+      this.registerTexture(textureId, texture, dimensions);
+    } finally {
+      if (this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
+    }
+  }
+
+  private registerTexture(textureId: number, texture: WebGLTexture, size?: TextureSize): void {
     const previousTexture = this.texturesById.get(textureId);
     this.adoptTexture(texture, size === undefined ? undefined : size.width * size.height * 4);
     this.texturesById.set(textureId, texture);
@@ -290,7 +327,7 @@ export class TextureManager {
     if (size === undefined) {
       this.textureSizesById.delete(textureId);
     } else {
-      this.textureSizesById.set(textureId, size);
+      this.textureSizesById.set(textureId, { width: size.width, height: size.height });
     }
   }
 
@@ -298,14 +335,22 @@ export class TextureManager {
     this.assertAlive();
     validateTextureId(textureId);
     if (textureId === 0) return false;
-    this.pendingIds.get(textureId)?.abort();
-    const texture = this.texturesById.get(textureId);
-    if (!texture) return false;
-    this.texturesById.delete(textureId);
-    this.revision++;
-    this.textureSizesById.delete(textureId);
-    this.releaseUnreferencedTexture(texture);
-    return true;
+    const controller = new AbortController(), previous = this.pendingIds.get(textureId);
+    this.pendingIds.set(textureId, controller);
+    try {
+      previous?.abort();
+      // A replacement started by the abort callback is newer than this eviction.
+      if (this.destroyed || controller.signal.aborted) return false;
+      const texture = this.texturesById.get(textureId);
+      if (!texture) return false;
+      this.texturesById.delete(textureId);
+      this.revision++;
+      this.textureSizesById.delete(textureId);
+      this.releaseUnreferencedTexture(texture);
+      return true;
+    } finally {
+      if (this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
+    }
   }
 
   resourceStats(): { textureCount: number; textureBytes?: number; unmeasuredTextureCount: number } {
@@ -436,6 +481,9 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_LOAD");
     }
     if (!response.ok) {
+      try { await response.body?.cancel(); }
+      catch { /* Preserve the HTTP failure if cleanup fails. */ }
+      this.assertLoadActive(signal);
       throw diagnosticError("Texture load error", {
         kind: "texture",
         url,
@@ -445,7 +493,9 @@ export class TextureManager {
 
     let blob: Blob;
     try {
+      this.assertLoadActive(signal);
       blob = await response.blob();
+      this.assertLoadActive(signal);
     } catch (error) {
       this.assertLoadActive(signal);
       throw diagnosticError("Texture load error", {
@@ -469,45 +519,6 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_DECODE");
     }
   }
-}
-
-function rgbaFromAlpha(
-  width: number,
-  height: number,
-  alpha: Uint8Array,
-  options: PixelMaskTerrainTextureUploadOptions,
-): Uint8Array {
-  if (alpha.length !== width * height) {
-    throw new Error("pixel mask terrain alpha length must equal width * height.");
-  }
-  const [rawR, rawG, rawB] = options.color ?? [255, 255, 255];
-  const r = colorByte(rawR, "pixelMaskTerrain.texture.color[0]");
-  const g = colorByte(rawG, "pixelMaskTerrain.texture.color[1]");
-  const b = colorByte(rawB, "pixelMaskTerrain.texture.color[2]");
-  const alphaScale = finitePositiveNumber(options.alphaScale ?? 1, "pixelMaskTerrain.texture.alphaScale");
-  const rgba = new Uint8Array(width * height * 4);
-  for (let index = 0; index < alpha.length; index += 1) {
-    const offset = index * 4;
-    rgba[offset] = r;
-    rgba[offset + 1] = g;
-    rgba[offset + 2] = b;
-    rgba[offset + 3] = Math.min(255, Math.round(alpha[index] * alphaScale));
-  }
-  return rgba;
-}
-
-function colorByte(value: number, path: string): number {
-  if (!Number.isFinite(value) || value < 0 || value > 255) {
-    throw new Error(`${path} must be between 0 and 255.`);
-  }
-  return Math.round(value);
-}
-
-function finitePositiveNumber(value: number, path: string): number {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${path} must be a non-negative finite number.`);
-  }
-  return value;
 }
 
 function validateTextureId(textureId: number): void {
