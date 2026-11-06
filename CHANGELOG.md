@@ -8,6 +8,11 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Changed
 
+- 공식 Placement Viewer의 하단 패널을 기본 서랍으로 바꿨다. 탭 줄만 표시해 viewport를 넓히고,
+  탭을 누르면 canvas 크기를 바꾸지 않고 펼친다. 핀 버튼으로 기존처럼 고정할 수 있다.
+  Assets 탭은 에셋 격자만 표시하고 도구는 `Import`/`Manage` 메뉴에서 한 번에 하나씩 연다.
+- 공식 Placement Viewer 상단에 `File`/`Edit`/`View`/`Window`/`Tools`/`Run`/`Help` 메뉴바를 추가했다. 메뉴는 기존 명령을 호출만 하며, 860px 이하 좁은 화면은 기존 구성을 유지한다.
+- 공식 Placement Viewer의 조명 설정을 보기 드롭다운에서 오른쪽 패널의 `Lighting` 탭으로 옮겼다. 좌·우·아래 패널은 접을 수 있고, 접으면 가장자리에 탭 줄이 남아 누르면 해당 탭이 열린다.
 - `FerrumRuntimeRenderer`를 WebGL2/WebGPU 구체 클래스 교차 타입에서 구조적 렌더러 계약으로 분리했다.
   평면 custom renderer는 private GPU 상태나 모델·픽셀 마스크 기능 없이 주입할 수 있다.
   기존 `runtime.renderer`에서 백엔드 기능을 직접 호출하던 TypeScript 코드는 capability 확인이 필요하다.

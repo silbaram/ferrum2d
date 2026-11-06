@@ -33,6 +33,7 @@ const paths = {
   pause: '<path d="M5 3v10M11 3v10"/>',
   stop: '<rect x="4" y="4" width="8" height="8"/>',
   close: '<path d="m4 4 8 8M12 4l-8 8"/>',
+  pin: '<path d="M6 2h4l-1 5 3 3H4l3-3ZM8 10v5"/>',
 } as const;
 export type ViewportIcon = keyof typeof paths;
 

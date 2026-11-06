@@ -128,12 +128,29 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     for(const locale of ["ko","en"]){
       await page.locator('[data-placement-language]').selectOption(locale);await open();
       if(mode==="spatial")await page.locator('[data-placement-lighting-toggle="hemisphere"]').scrollIntoViewIfNeeded();
-      assert.equal(await page.locator('[data-placement-menu="lighting"] > summary').getAttribute("aria-label"),locale==="ko"?"조명":"Lighting");
+      assert.equal((await page.locator('.placement-panel:not([hidden]) .placement-inspector-header [data-placement-panel-tab="lighting"]').textContent()).trim(),locale==="ko"?"조명":"Lighting");
       await page.screenshot({path:`${output}/${mode}-${locale}.png`,fullPage:true});
+    }
+    if(mode==="2d"){
+      await open();const ambient=field("ambient"),before=Number(await ambient.inputValue()),row=ambient.locator("xpath=ancestor::label"),undo=()=>page.evaluate(()=>globalThis.ferrumPlacementViewerHistory.undoCount),start=await undo();
+      await row.locator('[data-placement-number-step="up"]').click();
+      assert.equal(Number(await ambient.inputValue()),Number((before+.05).toFixed(6)),"Stepper must use the field step, not native 1");
+      const box=await row.locator(".placement-number-scrub").boundingBox();
+      await page.mouse.move(box.x+4,box.y+box.height/2);await page.mouse.down();
+      for(const x of [-10,-20])await page.mouse.move(box.x+4+x,box.y+box.height/2);
+      await page.mouse.up();
+      assert.equal(Number(await ambient.inputValue()),Number((before+.05-5*.05).toFixed(6)),"Dragging the label scrubs by step");
+      assert.equal(await undo(),start+2,"One scrub is one undo step");
+      await page.locator('[data-placement-action="undo"]').click();await page.locator('[data-placement-action="undo"]').click();
+      assert.equal(Number(await ambient.inputValue()),before);
     }
     await page.setViewportSize({width:390,height:500}); await open();
     const panel=await page.locator('.placement-lighting-panel').boundingBox();
-    assert(panel.x>=0 && panel.y>=0 && panel.x+panel.width<=391 && panel.y+panel.height<=501);
+    const scroller=await page.locator('.placement-panel:not([hidden]) .placement-inspector').boundingBox();
+    assert(panel.x>=0 && panel.x+panel.width<=391,"Lighting must fit the narrow width");
+    assert(scroller.y>=0 && scroller.y+scroller.height<=501,"The inspector owns lighting scroll inside the viewport");
+    const last=page.locator('.placement-lighting-panel > :last-child');await last.scrollIntoViewIfNeeded();
+    const end=await last.boundingBox();assert(end.y+end.height<=scroller.y+scroller.height+1,"Scrolling must reach the end of lighting");
     await page.screenshot({path:`${output}/${mode}-compact.png`,fullPage:true});
     assert.deepEqual(errors,[]);
     const result={ok:true,mode,advanced,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};

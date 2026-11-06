@@ -42,7 +42,9 @@ import { createPlacementInspectorProperties, inspectorPropertyKey, type Inspecto
 import { createPlacementInspectorOriginals, type InspectorResetPlan } from "./placementInspectorOriginals";
 import { readPlacementAuthoredComponents, preservePlacementComponentMetadata } from "./placementComponentEdits";
 import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
-import { createPlacementCommandPalette } from "./placementCommandPalette";
+import { createPlacementCommandPalette, type PlacementCommand } from "./placementCommandPalette";
+import { installPlacementMenuBar } from "./placementMenuBar";
+import { decorateViewportAction } from "./placementViewportChrome";
 import { placementWorkspaceCommands } from "./placementWorkspaceCommands";
 import { createPlacementUpdates } from "./placementUpdates";
 import { createPlacementLighting } from "./placementLighting";
@@ -613,6 +615,7 @@ async function bootstrap(): Promise<void> {
     | ReturnType<typeof installPlacementSpatialWorkspace>
     | undefined;
   let lightingControls: ReturnType<typeof createPlacementLighting> | undefined;
+  let workspaceCommandById: (id: string) => PlacementCommand | undefined = () => undefined;
   let gardenPreview: ReturnType<typeof createGardenPreview> | undefined;
   let showColliderBounds = false;
   let workspaceDiagnostics:
@@ -1069,6 +1072,7 @@ async function bootstrap(): Promise<void> {
     let assetUsage: ReturnType<typeof createPlacementAssetUsagePanel> | undefined;
     let assetCleanup: ReturnType<typeof createPlacementAssetCleanupPanel> | undefined;
     let refreshWorkspaceAvailability: (() => void) | undefined;
+    let dismissBottomDrawer: (() => void) | undefined;
     let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
     let layerVisibilitySignature = "";
     const syncTabs = () => {
@@ -1177,44 +1181,27 @@ async function bootstrap(): Promise<void> {
       transformGizmo?.sync(state);
       const assetMount = inspector.assetMount;
       bottomDock.mountAssets(assetMount);
-      if (pixelTool && assetMount && pixelTool.element.parentElement !== assetMount)
-        assetMount.prepend(pixelTool.element);
+      for (const [id, panel] of [
+        ["browse", assetBrowser?.element],
+        ["pixel", pixelTool?.element],
+        ["usage", assetUsage?.element],
+        ["cleanup", assetCleanup?.element],
+        ["changes", assetChanges?.element],
+        ["normal", normalTool?.element],
+        ["aseprite", asepriteTool?.element],
+        ["tile", tileTool?.element],
+      ] as const) {
+        if (!panel) continue;
+        if (panel.parentElement !== assetMount) assetMount.append(panel);
+        bottomDock.assetPanels.register(id, panel);
+      }
+      const modelImport = assetMount.querySelector<HTMLElement>(":scope > .placement-model-import");
+      if (modelImport) bottomDock.assetPanels.register("model", modelImport);
       pixelTool?.sync();
-      if (
-        assetBrowser &&
-        assetMount &&
-        assetBrowser.element.parentElement !== assetMount
-      )
-        assetMount.prepend(assetBrowser.element);
       syncToolState();
-      const changesMount = inspector.assetMount;
-      if (
-        assetChanges &&
-        changesMount &&
-        assetChanges.element.parentElement !== changesMount
-      )
-        changesMount.append(assetChanges.element);
       assetChanges?.sync();
-      if (
-        normalTool &&
-        assetMount &&
-        normalTool.element.parentElement !== assetMount
-      )
-        assetMount.append(normalTool.element);
       normalTool?.sync();
-      if (
-        asepriteTool &&
-        assetMount &&
-        asepriteTool.element.parentElement !== assetMount
-      )
-        assetMount.append(asepriteTool.element);
       asepriteTool?.sync();
-      if (
-        tileTool &&
-        assetMount &&
-        tileTool.element.parentElement !== assetMount
-      )
-        assetMount.append(tileTool.element);
       tileTool?.sync();
       placementWorkspaceEvidence = workspaceDiagnostics?.sync(
         state,
@@ -1627,8 +1614,14 @@ async function bootstrap(): Promise<void> {
       busy: () => switching || documentSession?.isSaving() === true || interaction.dragging || viewer.historyState().transactionLabel !== undefined,
       finishEdit: () => documentSession?.finishEdit(),
       onChange: setState,
+      mount: () => window.document.querySelector<HTMLElement>(".placement-panel:not([hidden]) [data-placement-lighting-mount]"),
     });
-    viewportToolbar.lightingSettings.append(lightingControls.element);
+    const lightingEntry = window.document.createElement("button");
+    lightingEntry.type = "button";
+    lightingEntry.dataset.placementLightingOpen = "true";
+    decorateViewportAction(lightingEntry, "sun", "Lighting");
+    lightingEntry.addEventListener("click", () => workspaceCommandById("lighting")?.run());
+    viewportToolbar.lightingSettings.append(lightingEntry);
     gardenPreview = createGardenPreview({
       canvas: shell.canvas, stage: shell.stage, engine: runtimeEngine,
       document: () => savedDocument,
@@ -1815,6 +1808,7 @@ async function bootstrap(): Promise<void> {
           void loadBrowserModel(asset);
           return;
         }
+        dismissBottomDrawer?.();
         if (spatialWorkspace?.mode() === "spatial")
           spatialWorkspace.assetPalette.choose(asset);
         else chooseBrowserSprite(asset);
@@ -2098,7 +2092,8 @@ async function bootstrap(): Promise<void> {
       apply: applyAssetPatch,
       changed: () => setState(viewer.state()),
       tabsChanged: () => { syncTabs(); documentSession?.sync(); },
-      beforeOpen: () => { documentSession?.finishEdit(); cancelPlacementTool(); },
+      beforeOpen: () => { documentSession?.finishEdit(); cancelPlacementTool(); bottomDock.assetPanels.show("browse"); dismissBottomDrawer?.(); },
+      recoveryChanged: count => bottomDock.assetPanels.attention("pixel", count > 0),
     });
     const assetRevisions = (
       images: readonly ScenePlacementAgentHandoffAssetFile[],
@@ -2115,6 +2110,7 @@ async function bootstrap(): Promise<void> {
         revision: file.contentRevision ?? "",
       })),
     ];
+    assetBrowser.element.querySelector(".placement-asset-toolbar")!.append(bottomDock.assetPanels.actions);
     assetChanges = createPlacementAssetChanges({
       path: () =>
         (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
@@ -2270,7 +2266,7 @@ async function bootstrap(): Promise<void> {
         bottomDock.tabs.active() === "runtime" &&
         (root.dataset.compact === "true"
           ? root.dataset.compactPanel === "runtime"
-          : root.dataset.runtimeDockHidden !== "true"),
+          : root.dataset.runtimeDockHidden !== "true" && root.dataset.runtimeDrawer !== "closed"),
       counts: (changes, problems) => {
         bottomDock.counts(changes, problems);
         setUiText(
@@ -2387,6 +2383,8 @@ async function bootstrap(): Promise<void> {
       { canChange: canChangeWorkspace },
     );
     refreshWorkspaceAvailability = () => { layout.refreshAvailability(); assetUsage?.sync(); assetCleanup?.sync(); };
+    dismissBottomDrawer = layout.dismissDrawer;
+    bottomDock.assetPanels.bindReveal(() => layout.reveal("runtime"));
     // This context belongs to the explicitly opened project, independent of the active tab.
     let sceneProject = structuredClone(activeDocument.desktop);
     const sceneProjectPath = sceneProject?.projectPath;
@@ -2492,7 +2490,6 @@ async function bootstrap(): Promise<void> {
       context: () => JSON.stringify([sceneProjectPath, sceneCatalogRevision, activeDocument.key, runtimeApplyRevision, [...documents.keys()]]),
       canScan: canChangeWorkspace,
     });
-    assetBrowser.element.querySelector("h3")!.after(assetUsage.element);
     assetCleanup = createPlacementAssetCleanupPanel({
       host() {
         const invoke = placementDesktopInvoke();
@@ -2531,7 +2528,6 @@ async function bootstrap(): Promise<void> {
         openPlacementProjectFolder(project);
       },
     });
-    assetUsage.element.after(assetCleanup.element);
     window.addEventListener("pagehide", event => { if (!event.persisted) assetCleanup?.destroy(); });
     const review = shell.canvas.ownerDocument.createElement("button"),
       exportButton = shell.canvas.ownerDocument.createElement("button");
@@ -2628,16 +2624,21 @@ async function bootstrap(): Promise<void> {
         finally { switching = false; root.inert = false; refreshWorkspaceAvailability?.(); }
       })();
     }, () => { layout.reveal("scene"); sceneExplorer?.show(); }, () => updates.show());
+    const workspaceCommands = () => {
+      layout.refreshAvailability();
+      return placementWorkspaceCommands({ root, documentRoot: () => inspector.element, mode: () => spatialWorkspace?.mode() ?? "2d", pixelOpen: () => pixelTool?.isOpen() ?? false, reveal: dock => layout.reveal(dock), showPixelLauncher: () => bottomDock.assetPanels.show("pixel") });
+    };
+    workspaceCommandById = id => workspaceCommands().find(command => command.id === id);
+    const canUseCommands = () => canChangeWorkspace() && !layout.ownsGesture();
     const commandPalette = createPlacementCommandPalette({
       root,
-      commands: () => {
-        layout.refreshAvailability();
-        return placementWorkspaceCommands({ root, documentRoot: () => inspector.element, mode: () => spatialWorkspace?.mode() ?? "2d", pixelOpen: () => pixelTool?.isOpen() ?? false, reveal: dock => layout.reveal(dock) });
-      },
-      canOpen: () => canChangeWorkspace() && !layout.ownsGesture(),
+      commands: workspaceCommands,
+      canOpen: canUseCommands,
       context: () => JSON.stringify([activeDocument.key, spatialWorkspace?.mode(), pixelTool?.isOpen()]),
     });
     root.querySelector(".placement-app-menu")?.append(commandPalette.button);
+    const menuBar = root.querySelector<HTMLElement>(".placement-menu-bar");
+    if (menuBar) installPlacementMenuBar(menuBar, { commands: workspaceCommands, canOpen: canUseCommands });
     if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
@@ -3512,7 +3513,9 @@ function createPlacementInspector(
   const inspectorTabs = createPlacementPanelTabs("Inspector sections", [
     ["properties", "Properties"],
     ["placement", "Placement"],
+    ["lighting", "Lighting"],
   ] as const);
+  inspectorTabs.panels.get("lighting")!.dataset.placementLightingMount = "true";
   const selectionHeader = document.createElement("output");
   const selectionContext = createPlacementInspectorContext();
   selectionHeader.className = "placement-selection-header";

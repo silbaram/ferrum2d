@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
-import {showPlacementBottom} from './placement-panel-navigation.mjs';
+import {showPlacementAssetPanel} from './placement-panel-navigation.mjs';
 
 /** Native clipboard keyboard events and browser file-drop routing, using the real importer. */
 export async function smokePixelImportTransfer(page,mode,run,{file,source,original}) {
@@ -46,7 +46,7 @@ export async function smokePixelImportTransfer(page,mode,run,{file,source,origin
     await action('import-image').focus();await page.keyboard.press('Control+v');
     assert.equal(await dialog.count(),0);assert.match(await workspace.locator('[data-pixel-status]').textContent(),/image itself/);
     await page.evaluate(async bytes=>navigator.clipboard.write([new ClipboardItem({'image/png':new Blob([Uint8Array.from(bytes)],{type:'image/png'})})]),bytes);
-    await action('back').click();await showPlacementBottom(page,'assets');await launcher.focus();
+    await action('back').click();await showPlacementAssetPanel(page,'pixel');await launcher.focus();
     await page.keyboard.press('Control+v');await ready();await cancel();
     assert.equal(await drop(launcher,undefined,'dragover'),true);assert.equal(await launcher.getAttribute('data-pixel-image-drop'),'true');
     await page.screenshot({path:resolve(run,mode+'-pixel-image-drop.png'),fullPage:true});

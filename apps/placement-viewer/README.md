@@ -25,7 +25,7 @@ HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geom
 
 ## 엔진·에디터 버전 업데이트
 
-**파일 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
+**도움말 → 버전 및 업데이트**에서 현재·최신 버전을 확인한다. 패널을 열거나 **업데이트 확인**을 누를 때
 공개된 GitHub beta 릴리스를 조회하며, Git push나 draft를 새 버전으로 취급하지 않는다.
 각 영역에 에디터 설치 또는 열린 프로젝트 경로와 영향 범위를 표시한다. 실패 시 표시된 원인을 해결한 뒤 **업데이트 확인**으로 다시 조회한다.
 
@@ -230,6 +230,19 @@ Grid 조작은 문서·patch·Undo를 만들지 않으며 Game Preview에서는 
 HD-2D 선은 전체 편집 해상도에서 투명도를 혼합하며 지형·건물의 깊이 가림을 유지한다.
 공식 app의 WebGL2 preview에 제공하며 engine public renderer API와 WebGPU 경로는 변경하지 않는다.
 하단 Assets / Problems / Runtime / Agent Changes 탭은 한 번에 한 패널을 넓게 표시한다.
+상단 메뉴바는 **파일·편집·보기·창·도구·실행·도움말**로 나뉜다. 메뉴를 연 상태에서 옆 메뉴로 포인터를 옮기거나 좌우 화살표를 누르면 전환된다.
+메뉴 항목은 `F3` 명령 검색과 같은 명령을 실행하고 기존 컨트롤의 상태·핸들러를 바꾸지 않는다. 860px 이하에서는 파일 메뉴와 기존 보기 버튼만 표시한다.
+
+조명은 오른쪽 패널의 **조명** 탭에서 편집한다. **보기 → 조명** 또는 **창 → 조명**으로 바로 열 수 있다.
+패널 오른쪽 위 **패널 작게** 버튼이나 경계를 최소 크기 아래로 끌면 좌우 패널이 가장자리의 세로 탭 줄로 접힌다. 탭을 누르면 해당 탭이 열린 채 패널이 복원된다.
+하단은 탭 줄이 접힌 형태이며, 숨긴 구성에서는 뷰포트 아래쪽에 작은 탭 줄을 표시한다. 화면 집중과 860px 이하에서는 탭 줄을 표시하지 않는다.
+
+기본 구성의 하단은 탭 줄만 표시한다. 탭을 누르면 canvas 크기를 바꾸지 않는 서랍이 펼쳐지고, 같은 탭 재클릭·바깥 클릭·Esc로 접는다.
+Ctrl+Space는 Assets 서랍을 여닫고 검색으로 이동한다. 서랍의 에셋을 뷰포트로 끌면 서랍이 비켜났다가 놓는 즉시 접힌다.
+탭 줄 오른쪽의 핀 버튼은 패널을 레이아웃에 고정하며 구성별로 기억한다. 고정한 패널만 경계 드래그로 높이를 조절한다.
+Assets 탭은 에셋 격자만 표시한다. 도구는 `Import`(Pixel Art·Import Aseprite·Import Tile Frames·Import Model·Generate Normal)와
+`Manage`(Asset Usage·Catalog Cleanup·Asset Changes) 메뉴에서 열며, 격자 자리에 한 번에 하나만 표시하고 `Back to Assets`로 돌아온다.
+복구할 도트 초안이 있으면 접힌 상태에서도 Assets 탭과 Import 메뉴에 표시 점이 나타난다.
 Runtime 탭에서 선택 native entity 진단과 원본 경로를, Agent Changes에서 JSON 경로별 변경을 확인한다.
 상단 Play/Pause/Resume/Stop은 native Data Scene 진행을 제어하며 렌더링은 계속한다.
 Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
@@ -516,7 +529,7 @@ bundle의 PNG·manifest·scene을 프로젝트에 설치해 사용하며 미설�
 정적/외부 host는 `window.ferrumPlacementNormalAssetHost.generator`에 고정 manifest URL/hash를 제공한다.
 상세 계약은 [브라우저 생성기](../../docs/engine/data-scene-spatial.md#선택형-브라우저-노멀맵-worker)를 따른다.
 
-Assets의 sprite `Normal` 버튼 또는 `Generate Normal`을 열어 PNG/GIF/APNG를 선택한다.
+Assets의 sprite `Normal` 버튼 또는 `Import → Generate Normal`을 열어 PNG/GIF/APNG를 선택한다.
 Settings에는 7개 설정·Default/Soft/Crisp preset·균일 PNG grid·명시적 animation/loop가 있다.
 Preview는 color/normal과 Flat/Normal 조명, Fixed/Moving Light를 비교한다. Expand/Restore는
 Assets 영역을 도구에 집중하며 문서나 저장된 dock 크기를 바꾸지 않는다.
@@ -549,7 +562,7 @@ Settings/Preview는 방향키·Home/End, Cancel은 Enter/Space로 조작한다. 
 
 ## Tiled/LDtk 타일 프레임·전체 맵
 
-Assets → **Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 고른 뒤 **Tileset** 목록에서 이름/파일명을 확인하고 해당 PNG를 선택한다.
+Assets → **Import → Import Tile Frames**에서 포맷, 논리 asset 이름과 JSON을 고른 뒤 **Tileset** 목록에서 이름/파일명을 확인하고 해당 PNG를 선택한다.
 외부 Tiled tileset은 **External TSJ Files**에서 참조된 `.tsj`를 모두 선택한다. 상대 source의 basename과 파일명이 일치해야 하며 중복 basename/누락/추가 파일은 거절한다. 경로 자동 읽기는 하지 않는다.
 LDtk는 0부터 시작하는 Level Index로 embedded level 하나를 고른다. Inspect 후 Preview에서 사용 중인 frame을 확인한다.
 
@@ -592,7 +605,7 @@ Open Project 기본 문서는 Save Project로 `.ferrum-tiles`에 원본·source-
 
 ## Aseprite Assets 가져오기·재import
 
-Assets의 `Import Aseprite`에서 Aseprite JSON과 해당 PNG를 명시적으로 선택하고 논리적인 asset 이름을 입력한다.
+Assets의 `Import → Import Aseprite`에서 Aseprite JSON과 해당 PNG를 명시적으로 선택하고 논리적인 asset 이름을 입력한다.
 JSON의 `meta.image` basename과 선택한 PNG 파일명이 같아야 한다. JSON 경로를 따라 파일을 자동으로 읽거나 fetch하지 않는다.
 `Inspect`는 실제 PNG 크기/SHA-256과 JSON frame rect/name을 확인하고 선택 프레임을 보여준다. 파일 선택과 Inspect는 씬을 바꾸지 않는다.
 
@@ -864,10 +877,10 @@ Export Only에서는 복사/내보내기를 사용한다. 생성 에셋 파일 �
 
 | 구성 | 기본 배치 |
 | --- | --- |
-| 내 구성 | 기존에 사용하던 패널 크기와 접힘 상태 |
+| 내 구성 | 기존에 사용하던 패널 크기와 접힘 상태, 하단은 고정 전까지 서랍 |
 | 씬 배치 | 왼쪽 씬·오른쪽 속성 표시, 하단 패널 숨김 |
-| 자산 작업 | 좌우 패널 숨김, 하단 에셋 패널 확대 |
-| 게임 검토 | 좌우 패널 숨김, 하단 실행 정보 표시 |
+| 자산 작업 | 좌우 패널 숨김, 하단 에셋 패널 확대·고정 |
+| 게임 검토 | 좌우 패널 숨김, 하단 실행 정보 고정 표시 |
 
 구성별로 조절한 크기·접힘 상태를 따로 기억한다. `Reset Layout`은 현재 구성만 초기화하며 다른 구성과 기존 내 구성을 덮어쓰지 않는다.
 전환 중 viewport 집중 상태·좁은 화면의 서랍 선택·하단 탭도 해당 구성으로 돌아올 때 복원한다.
@@ -881,6 +894,8 @@ Export Only에서는 복사/내보내기를 사용한다. 생성 에셋 파일 �
 ## 씬 조명
 
 **편집 시점**은 문서를 저장하지 않는 탐색 설정이다. **게임 카메라**는 미리보기와 실제 게임이 사용하는 씬 값이며 위치·크기·거리는 월드 단위, 각도는 도(°)다.
+숫자 칸은 항목 라벨을 좌우로 끌어 값을 바꾼다(Shift 세밀, Ctrl 크게). 드래그 한 번은 실행 취소 한 번이며, 위·아래 버튼과 화살표 키는 항목별 단위로 움직인다.
+
 **씬 조명**도 문서 초안·저장 대상이다. 밝기·색·위치·기본 그림자는 바로 표시하고,
 보정·그림자 범위·스포트 세부·광원 예산·후처리 수치는 각 그룹의 **고급 조명**에 둔다. 그룹 열기만으로 patch를 만들지 않는다.
 
@@ -921,7 +936,7 @@ HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
 현재 모드에서 사용할 수 없는 항목은 비활성으로 표시한다. 저장·드래그·배치 대기·도트 미확정 편집이나 다른 대화상자 중에는 검색을 열지 않는다.
 공간 카메라 데이터가 없는 2D 문서에서는 게임 카메라 명령을 비활성으로 표시한다.
 
-`사용 안내 / Controls`는 배치·속성 편집·화면 이동·맞춤 단축키·실행·변경 보관 방법을 설명한다.
+`도움말 / Help`은 배치·속성 편집·화면 이동·맞춤 단축키·실행·변경 보관 방법을 설명한다.
 편집 카메라와 씬에 설정된 게임 카메라의 차이도 확인할 수 있다. 실행 전에는 `Play`, 실행 중에는 `Pause/Resume`와 `Stop`을 표시한다.
 편집 시점·화면 구성·사용 안내는 Enter/Space로 열고 Escape로 닫아 원래 버튼에 focus를 돌린다.
 바깥 클릭·focus 이동으로 닫히며 창 크기가 바뀌면 닫아 잘못된 위치의 메뉴가 남지 않게 한다.

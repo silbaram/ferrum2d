@@ -130,7 +130,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     closeOptions(true);
   });
   readout.append(status);
-  const help = createPlacementControlMenu("help", "Controls", "help");
+  const help = createPlacementControlMenu("help", "Help", "help");
   const instructions = document.createElement("dl");
   instructions.className = "placement-controls-guide";
   for (const [label, description] of [

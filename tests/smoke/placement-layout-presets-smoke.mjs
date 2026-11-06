@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
-import {showPlacementMenu,clickPlacementControl} from './placement-panel-navigation.mjs';
+import {showPlacementMenu,clickPlacementControl,clickPlacementToolAction} from './placement-panel-navigation.mjs';
 
 /** Isolated real UI preferences; the caller's documents, runtime and storage are untouched. */
 export async function smokePlacementLayoutPresets(parent,mode,timeoutMs=30000){
@@ -76,7 +76,7 @@ export async function smokePlacementLayoutPresets(parent,mode,timeoutMs=30000){
     const playing=await source();await command('scene');await command('review');assert.equal(await source(),playing);
     assert.equal(await page.evaluate(()=>window.ferrumEngine.dataSceneState()),'playing');
     await page.locator('[data-placement-playback="stop"]').click();await page.waitForFunction(mode=>window.ferrumPlacementWorkspaceMode===mode,mode);
-    await command('assets');await page.locator('[data-pixel-launcher] [data-pixel-action="new"]').click();
+    await command('assets');await clickPlacementToolAction(page.locator('[data-pixel-launcher] [data-pixel-action="new"]'));
     const create=page.locator('dialog[open]');await create.getByLabel('Pixel Width',{exact:true}).fill('8');await create.getByLabel('Pixel Height',{exact:true}).fill('8');await create.locator('[data-pixel-action="create"]').click();
     const pixel=page.locator('#placement-pixel-workspace');await pixel.waitFor({state:'visible'});
     await pixel.locator('[data-pixel-canvas]').click();assert.equal(await pixel.getAttribute('data-pixel-dirty'),'true');

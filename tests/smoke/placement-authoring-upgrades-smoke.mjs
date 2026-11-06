@@ -2,6 +2,7 @@ import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
 import {
   showPlacementInspector,
   showPlacementBottom,
+  showPlacementAssetPanel,
   showPlacementViewOptions,
   clickPlacementControl,
 } from "./placement-panel-navigation.mjs";
@@ -203,7 +204,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
   }
   async function detail(label) {
     if (label === "Asset Changes") {
-      await showPlacementBottom(page, "assets");
+      await showPlacementAssetPanel(page, "changes");
     }
     if (label === "Selected Runtime") {
       await showPlacementBottom(page, "runtime");
@@ -608,6 +609,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     assert.deepEqual(await snapshot(), beforeImport);
     await choosePlacementAsset(page, modelButton);
     assert(await page.locator("[data-placement-tool-cancel]").isVisible());
+    await showPlacementAssetPanel(page, "changes");
     await page.locator("[data-placement-apply-assets]").click();
     await wait(
       () =>
@@ -737,6 +739,7 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     assert.deepEqual(await snapshot(), beforeTexture);
     await page.locator("[data-placement-watch-assets]").uncheck();
     await choosePlacementAsset(page.locator('[data-placement-browser-asset="sprite:crate"]'));
+    await showPlacementAssetPanel(page, "changes");
     await page.locator("[data-placement-apply-assets]").click();
     await wait(
       () =>

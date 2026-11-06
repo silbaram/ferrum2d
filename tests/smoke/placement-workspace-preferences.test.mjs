@@ -25,7 +25,7 @@ test('stored sizes and hidden docks are sanitized within each profile',()=>{
   const prefs=read(JSON.stringify({scene:0,inspector:999,runtime:'bad',hidden:['runtime','runtime','unknown']}),
     JSON.stringify({active:'review',layouts:{review:{scene:999,inspector:0,runtime:167.7,hidden:['scene','scene','invalid']},assets:false}}));
   assert.deepEqual(prefs.layouts.custom,{scene:160,inspector:480,runtime:168,hidden:['runtime']});
-  assert.deepEqual(prefs.layouts.review,{scene:400,inspector:240,runtime:168,hidden:['scene']});
+  assert.deepEqual(prefs.layouts.review,{scene:400,inspector:240,runtime:168,hidden:['scene'],runtimePinned:true});
   assert.deepEqual(prefs.layouts.assets,defaults('assets'));
 });
 test('named profile edits round-trip independently while custom remains in its legacy key',()=>{
@@ -43,4 +43,13 @@ test('default and loaded layouts never share mutable dock visibility arrays',()=
   assert.deepEqual(b.layouts.assets.hidden,['scene','inspector']);assert.deepEqual(b.layouts.custom.hidden,['runtime']);
   const value=defaults('scene');value.hidden.length=0;assert.deepEqual(defaults('scene').hidden,['runtime']);
   assert.deepEqual(a.layouts.review.hidden,['scene','inspector']);
+});
+test('bottom panels start as a drawer except in layouts built around them, and the choice round-trips',()=>{
+  assert.equal(defaults('custom').runtimePinned,undefined);assert.equal(defaults('scene').runtimePinned,undefined);
+  assert.equal(defaults('assets').runtimePinned,true);assert.equal(defaults('review').runtimePinned,true);
+  const prefs=read(legacy,null);assert.equal(prefs.layouts.custom.runtimePinned,undefined);
+  prefs.layouts.assets.runtimePinned=false;
+  assert.equal(read(legacy,serialize(prefs)).layouts.assets.runtimePinned,false);
+  assert.equal(read(JSON.stringify({...JSON.parse(legacy),runtimePinned:true}),null).layouts.custom.runtimePinned,true);
+  assert.equal(read(JSON.stringify({...JSON.parse(legacy),runtimePinned:'yes'}),null).layouts.custom.runtimePinned,undefined);
 });

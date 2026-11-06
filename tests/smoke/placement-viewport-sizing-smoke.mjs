@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokePlacementToolbarUx } from "./placement-toolbar-ux-smoke.mjs";
+import { showPlacementBottom } from "./placement-panel-navigation.mjs";
 
 /** Exercise the visible viewport controls through the real canvas resize path. */
 export async function smokePlacementViewportSizing(page, timeoutMs, mode) {
@@ -29,6 +30,9 @@ export async function smokePlacementViewportSizing(page, timeoutMs, mode) {
     await page.setViewportSize({ width: 1440, height: 960 });
     await ready();
     await smokePlacementToolbarUx(page, timeoutMs, mode);
+    // Only a docked bottom panel takes layout space and offers its resize handle.
+    await showPlacementBottom(page, "assets");
+    await ready();
     const before = await authored(), initial = await dimensions();
     const expand = page.locator("[data-placement-viewport-expand]");
     await page.locator("[data-placement-language]").selectOption("ko");

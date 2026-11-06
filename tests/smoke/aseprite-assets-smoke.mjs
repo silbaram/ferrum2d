@@ -1,5 +1,5 @@
 import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
-import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction, showPlacementAssetPanel} from "./placement-panel-navigation.mjs";
 import { smokeTileAssets } from "./tile-assets-smoke.mjs";
 import { smokePixelAuthoring } from "./pixel-authoring-smoke.mjs";
 import { strict as assert } from "node:assert";
@@ -520,8 +520,7 @@ try {
         results.push({ mode, ...result, released });
         continue;
       }
-      await showPlacementBottom(page, "assets");
-      await tool.locator(":scope > summary").click();
+      await showPlacementAssetPanel(page, "aseprite");
       if (sliceMode) {
         const result = await smokeAsepriteSlices({page,active,fixture,stage,tool,action,snapshot,undo,redo,wait,run,mode});
         assert.deepEqual(await teardownSlicePreview(page), [], "Queued import and slice controls failed after workspace disposal");
@@ -1154,9 +1153,7 @@ try {
       await page.locator('[data-placement-close-document="sample"]').click();
       const afterClose = await resources();
       assert(afterClose.urls < beforeClose.urls);
-      await showPlacementBottom(page, "assets");
-      if ((await tool.getAttribute("open")) === null)
-        await tool.locator(":scope > summary").click();
+      await showPlacementAssetPanel(page, "aseprite");
       await stage(first);
       assert.equal(await tool.getAttribute("data-aseprite-ready"), "true");
       await clickPlacementToolAction(action("register"));

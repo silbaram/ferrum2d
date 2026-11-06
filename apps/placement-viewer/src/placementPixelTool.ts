@@ -65,6 +65,7 @@ export function createPlacementPixelTool(options: {
   changed(): void;
   tabsChanged(): void;
   beforeOpen(): void;
+  recoveryChanged?(count: number): void;
 }) {
   const element = document.createElement("section"), workspace = document.createElement("section");
   element.className = "placement-pixel-launcher"; element.dataset.pixelLauncher = "true";
@@ -451,6 +452,7 @@ export function createPlacementPixelTool(options: {
     if (scope !== recoveryScopeKey) { recoveryScopeKey = scope; void recovery.refresh(scope); }
     if (editor && owner === options.context().key) recovery.observe(editor, scope, dirty() || recoveryHold);
     for (const controls of recoveryControls) controls.sync(busy || !options.context().canEdit);
+    options.recoveryChanged?.(recovery.state().entries.length);
     create.disabled = open.disabled = busy || !options.context().canEdit;
     importImage.disabled = importAgain.disabled = importDisabled(); imageImport.sync();
     imageTransfer.sync();

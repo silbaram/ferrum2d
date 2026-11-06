@@ -1,5 +1,5 @@
 import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
-import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction, showPlacementAssetPanel} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -51,9 +51,7 @@ export async function smokeTileAssets({
         ),
       );
   const reveal = async () => {
-    await showPlacementBottom(page, "assets");
-    if ((await tool.getAttribute("open")) === null)
-      await tool.locator(":scope > summary").click();
+    await showPlacementAssetPanel(page, "tile");
   };
   const select = async (id) => {
     await page.evaluate((id) => window.ferrumPlacementViewerSelect(id), id);

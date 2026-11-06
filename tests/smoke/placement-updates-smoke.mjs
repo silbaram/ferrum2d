@@ -46,7 +46,7 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
     const url = new URL("./", parent.url()); url.searchParams.set("projectPath", projectPath);
     await page.goto(url.href, { waitUntil: "networkidle" }); await wait(() => window.ferrumPlacementViewerRuntimeFrame?.entityCount === 6);
     await page.locator("[data-placement-language]").selectOption("en");
-    const open = async () => { await showPlacementMenu(page, "file"); await page.locator("[data-placement-action=updates]").click(); };
+    const open = async () => { await showPlacementMenu(page, "help"); await page.locator("[data-placement-action=updates]").click(); };
     await open(); await wait(() => !document.querySelector('[data-update-action=project]').disabled);
     assert.equal(await page.locator(".demo-shell").evaluate(root => root.inert), true);
     assert(await action("viewer").isDisabled()); assert.match(await status("viewer").textContent(), /no update signing key/);
@@ -101,7 +101,7 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
       await web.route("https://api.github.com/**", route => route.fulfill({ json: [{ draft: false, tag_name: "ferrum-web-v0.1.0-beta.10", assets: [] }] }));
       await web.goto(new URL("./", parent.url()).href, { waitUntil: "networkidle" });
       await web.locator("[data-placement-language]").selectOption("en");
-      await showPlacementMenu(web, "file"); await web.locator("[data-placement-action=updates]").click();
+      await showPlacementMenu(web, "help"); await web.locator("[data-placement-action=updates]").click();
       await web.waitForFunction(() => !document.querySelector('[data-update-action=check]').disabled);
       assert(await web.locator('[data-update-action=viewer]').isDisabled()); assert(await web.locator('[data-update-action=project]').isDisabled());
       assert.match(await web.locator('[data-update-section=viewer] [role=status]').textContent(), /Browser builds update when/);

@@ -102,6 +102,14 @@ export async function smokePlacementGameCamera(parent, timeoutMs = 30000) {
       await redo(); assert.deepEqual(await source(), applied);
       const firstGame = await pausedView(applied.spatial.camera);
       assert.deepEqual(await editor(), navigation);
+    await open();
+    const near = field("near"), nearGroup = near.locator("xpath=ancestor::details[1]");
+    if (!await nearGroup.evaluate(node => node.open)) await nearGroup.locator(":scope > summary").click();
+    const nearBefore = Number(await near.inputValue());
+    await near.locator("xpath=ancestor::label").locator('[data-placement-number-step="up"]').click(); await paint();
+    assert.equal(Number(await near.inputValue()), Number((nearBefore + 0.1).toFixed(6)), "Stepper must use the field step, not native 1");
+    await undo(); await open();
+    assert.equal(Number(await near.inputValue()), nearBefore);
       await edit("pitch", 45); await edit("yaw", 90); await edit("targetX", 12);
       const lens = projection === "orthographic" ? "height" : "fov";
       await edit(lens, projection === "orthographic" ? 180 : 65);

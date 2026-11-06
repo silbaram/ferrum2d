@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { showPlacementAssetPanel, showPlacementBottom } from "./placement-panel-navigation.mjs";
 
 /** Actual LOD silhouette and a camera edit before the next render remain selectable. */
 export async function smokePlacementModelPicking(parent, timeoutMs=30000) {
@@ -18,7 +18,7 @@ export async function smokePlacementModelPicking(parent, timeoutMs=30000) {
       for(const name of ["rock","tree"]) {
         const bytes=await readFile(`examples/data-scene-native/assets/${name}.glb`);
         ids[name]=createHash("sha256").update(bytes).digest("hex");
-        await showPlacementBottom(page,"assets");
+        await showPlacementAssetPanel(page,"model");
         await page.locator("[data-placement-model-key]:visible").fill(name);
         await page.evaluate(()=>{window.__pickingImported=false;window.addEventListener("ferrum-placement-model-import",()=>window.__pickingImported=true,{once:true});});
         await page.locator("[data-placement-model-file]:visible").setInputFiles({name:name+".glb",mimeType:"model/gltf-binary",buffer:bytes});

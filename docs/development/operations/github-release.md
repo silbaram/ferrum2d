@@ -134,7 +134,7 @@ sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev liba
 
 ## 버전 확인과 업데이트
 
-전체 뷰어의 **파일 → 버전 및 업데이트**는 앱/내장 엔진과 게임 프로젝트 SDK를 따로 표시한다.
+전체 뷰어의 **도움말 → 버전 및 업데이트**는 앱/내장 엔진과 게임 프로젝트 SDK를 따로 표시한다.
 GitHub `/releases/latest`는 beta를 제외하므로 공개 release 목록을 최대 5페이지 조회하고 exact beta를 숫자로 비교한다.
 draft·source archive·단순 Git push는 새 버전으로 선택하지 않는다. API 제한/오프라인은 오류를 표시하며 설치를 시작하지 않는다.
 

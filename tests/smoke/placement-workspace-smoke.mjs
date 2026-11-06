@@ -5,6 +5,7 @@ import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smok
 import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
 import { smokePlacementGarden } from "./placement-garden-smoke.mjs";
 import { smokePlacementSelectionControls } from "./placement-selection-controls-smoke.mjs";
+import { smokePlacementAssetDrawer } from "./placement-asset-drawer-smoke.mjs";
 
 /** Real UI checks for dock preferences and isolated document drafts on one runtime. */
 export async function smokePlacementWorkspace(page, timeoutMs) {
@@ -12,6 +13,7 @@ export async function smokePlacementWorkspace(page, timeoutMs) {
   await smokePlacementGarden(page, timeoutMs);
   await smokePlacementSelectionControls(page, timeoutMs);
   await smokePlacementPanelNavigation(page);
+  await smokePlacementAssetDrawer(page, timeoutMs);
   const wait = (predicate, arg) =>
     page.waitForFunction(predicate, arg, { timeout: timeoutMs });
   await wait(() => globalThis.ferrumPlacementWorkspaceDocuments?.length === 1);

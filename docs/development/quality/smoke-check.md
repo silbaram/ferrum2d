@@ -502,6 +502,9 @@ Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Esc
 다른 메뉴를 열면 기존 메뉴 닫기, 화면 구성의 초기화 접근, 카메라/화면 구성/안내의 390×500 경계도 검사한다.
 메뉴를 닫은 주 도구 행은 표시 버튼 6개 이하로 제한한다. `placement-panel-navigation.mjs`는 실제 summary를 열고
 카메라·패널 동작 후 Escape로 닫는다. 숨긴 control을 DOM 변경으로 노출하지 않는다.
+`showPlacementBottom`은 뷰포트 클릭 뒤에도 패널을 유지하도록 실제 핀 버튼으로 고정하고, 도구는 `showPlacementAssetPanel`로 Import/Manage 메뉴를 거쳐 연다.
+`placement-asset-drawer-smoke.mjs`는 서랍이 canvas 크기를 바꾸지 않는지, 탭 재클릭·바깥 클릭·Esc·Ctrl+Space 동작,
+도구 뷰 왕복, 실제 마우스 드래그로 뷰포트에 놓는 흐름, 고정 시 레이아웃 복귀를 확인한다.
 `pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
 이 단위 검사는 `smoke:placement-viewer`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는
 실제 2D/HD-2D 세로 도구 클릭·위/아래 focus, F3 검색·실행·취소·focus 복귀, 동적 비활성 재검사와 IME Enter/Escape를 확인한다.

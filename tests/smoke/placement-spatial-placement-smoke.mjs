@@ -1,4 +1,4 @@
-import { showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { showPlacementAssetPanel, showPlacementInspector } from "./placement-panel-navigation.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
@@ -91,6 +91,7 @@ export async function smokeSpatialObjectPlacement(parent, source, timeoutMs) {
       ],
       ["tree.glb", conflictingModel],
     ]) {
+      await showPlacementAssetPanel(page, "model");
       await page.locator("[data-placement-model-key]").fill("rock");
       await page.evaluate(() => {
         globalThis.__placementImport = false;

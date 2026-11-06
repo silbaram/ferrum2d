@@ -12,7 +12,7 @@ import {preparePlacementTestBuild} from './placement-test-build.mjs';
 import {smokePlacementToolUi} from './placement-tool-ui-smoke.mjs';
 import {smokePlacementUpdates} from './placement-updates-smoke.mjs';
 import {smokePlacementGameCamera} from './placement-game-camera-smoke.mjs';
-import {showPlacementBottom,showPlacementInspector} from './placement-panel-navigation.mjs';
+import {showPlacementAssetPanel,showPlacementBottom,showPlacementInspector} from './placement-panel-navigation.mjs';
 const base=await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
 const server=createServer(async(request,response)=>{
  try{const path=new URL(request.url,'http://localhost').pathname,file=resolve(base,'.'+(path==='/'?'/index.html':decodeURIComponent(path)));assert(file.startsWith(base+sep));response.setHeader('content-type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.png':'image/png','.woff2':'font/woff2'})[extname(file)]??'application/octet-stream');response.end(await readFile(file));}
@@ -26,7 +26,7 @@ try{
  if(process.argv.includes('--spatial-fields')){
   await parent.setViewportSize({width:1440,height:960});
   const initialKey=await parent.evaluate(()=>window.ferrumPlacementWorkspaceActiveDocument);
-  await showPlacementBottom(parent,'assets');
+  await showPlacementAssetPanel(parent,'model');
   await parent.locator('[data-placement-model-key]:visible').fill('rock');
   await parent.evaluate(()=>{window.__fieldModelImported=false;window.addEventListener('ferrum-placement-model-import',()=>{window.__fieldModelImported=true;},{once:true});});
   await parent.locator('[data-placement-model-file]:visible').setInputFiles('examples/data-scene-native/assets/rock.glb');

@@ -1,4 +1,4 @@
-import { clickPlacementControl, showPlacementBottom, showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementAssetPanel, showPlacementBottom, showPlacementMenu } from "./placement-panel-navigation.mjs";
 import { smokePlacementSixPanels } from "./placement-six-panels-smoke.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -48,7 +48,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
   const bytes = await readFile("examples/data-scene-native/assets/rock.glb");
   const contentId = createHash("sha256").update(bytes).digest("hex");
   async function importModel(targetPage, id = "rock", modelBytes = bytes) {
-    await showPlacementBottom(targetPage, "assets");
+    await showPlacementAssetPanel(targetPage, "model");
     await targetPage.locator("[data-placement-model-key]:visible").fill(id);
     await targetPage.evaluate(() => {
       globalThis.__modelImported = false;

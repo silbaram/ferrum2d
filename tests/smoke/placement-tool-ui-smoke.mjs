@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {mkdir, writeFile} from "node:fs/promises";
 import {encodePngRgba} from "../../scripts/tools/pack-textures.mjs";
-import {showPlacementBottom, clickPlacementToolAction, inspectPlacementAsset, choosePlacementAsset} from "./placement-panel-navigation.mjs";
+import {showPlacementBottom, showPlacementAssetPanel, clickPlacementToolAction, inspectPlacementAsset, choosePlacementAsset} from "./placement-panel-navigation.mjs";
 
 export async function smokePlacementToolUi(parent, mode = "2d", timeoutMs = 30000) {
   const output = "artifacts/editor-ux-modernization"; await mkdir(output, {recursive:true});
@@ -18,13 +18,13 @@ export async function smokePlacementToolUi(parent, mode = "2d", timeoutMs = 3000
     const density=[];
     for(const [kind,baseline] of [['normal',8],['aseprite',16],['tile',10]]){
       const tool=page.locator(`[data-placement-${kind}-tool]`);
-      if(!await tool.evaluate(node=>node.open))await tool.locator(':scope > summary').click();
+      await showPlacementAssetPanel(page,kind);
       await tool.scrollIntoViewIfNeeded();
       const count=await tool.evaluate(node=>[...node.querySelectorAll('button')].filter(button=>button.getClientRects().length>0&&!button.closest('details:not([open])')).length);
       assert(count<baseline,`${kind} visible actions (${count}) must be fewer than baseline (${baseline})`);
       assert(await tool.locator('[data-placement-tool-action-menu]').isVisible());
       density.push({kind,baseline,visibleButtons:count,comparison:'initial empty tool · same button visibility rule'});
-      await tool.locator(':scope > summary').click();
+      await page.locator('[data-placement-asset-view-back]').click();
     }
     const browser=page.locator('[data-placement-asset-browser]'),card=browser.locator('[data-placement-browser-asset="sprite:crate"]');
     await inspectPlacementAsset(page,card);
@@ -40,10 +40,10 @@ export async function smokePlacementToolUi(parent, mode = "2d", timeoutMs = 3000
     await browser.locator('[data-placement-asset-usage-open]').click();
     const usage=page.locator('[data-placement-asset-usage]');
     assert.equal(await usage.evaluate(n=>n.open),true);
-    assert(await usage.locator('[data-placement-usage-clear-filter]').isVisible());
+    await usage.locator('[data-placement-usage-clear-filter]').waitFor({state:'visible'});
     await usage.locator('[data-placement-usage-clear-filter]').click();
-    await usage.locator(':scope > summary').click();
-    const normal=page.locator('[data-placement-normal-tool]'); await normal.locator(':scope > summary').click();
+    await page.locator('[data-placement-asset-view-back]').click();
+    const normal=page.locator('[data-placement-normal-tool]'); await showPlacementAssetPanel(page,'normal');
     assert(await normal.locator('[data-normal-action=generate]').isVisible());
     assert(await normal.locator('[data-normal-action=generate]').isDisabled());
     assert.match(await normal.locator('.placement-tool-reason').innerText(),/source image/);
@@ -95,7 +95,7 @@ export async function smokePlacementToolUi(parent, mode = "2d", timeoutMs = 3000
     assert.deepEqual(errors,[]);
     await page.locator('[data-placement-language]').selectOption('en');
     const importer=page.locator('[data-placement-aseprite-tool]');
-    if(!await importer.evaluate(n=>n.open))await importer.locator(':scope > summary').click();
+    await showPlacementAssetPanel(page,'aseprite');
     await importer.getByRole('tab',{name:'Source',exact:true}).click();
     assert(await importer.locator('[data-aseprite-action=inspect]').isDisabled());
     assert.match(await importer.locator('.placement-tool-reason').innerText(),/JSON and PNG/);

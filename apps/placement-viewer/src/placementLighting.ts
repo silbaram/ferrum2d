@@ -5,6 +5,7 @@ import { createPlacementLightGizmos } from "./placementLightGizmos";
 import { placementLightAnchor } from "./placementSpatialPose";
 import { lightingMood, lightingQuality, type LightingMood, type LightingQuality } from "./placementLightingPresets";
 import { createPlacementControlMenu } from "./placementControlMenu";
+import { installPlacementNumberStepper, numberStepScale } from "./placementNumberStepper";
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { createPlacementFieldFeedback } from "./placementToolPanel";
 
@@ -24,6 +25,8 @@ export function createPlacementLighting(options: {
   clearSelection():void;
   hasObjectSelection():boolean;
   onChange(state: ScenePlacementViewerState): unknown;
+  /** The active document inspector owns the visible lighting tab. */
+  mount(): HTMLElement | null;
 }) {
   const menu = createPlacementControlMenu("lighting", "Lighting", "sun");
   menu.panel.classList.add("placement-lighting-panel");
@@ -80,6 +83,8 @@ export function createPlacementLighting(options: {
   const pointActions = document.createElement("div"); pointActions.className = "placement-lighting-actions";
   pointActions.append(addPoint, removePoint); points.append(pointIndex, pointActions, pointForm);
   form.append(master.row, ambient, hemisphere, sun, points); menu.panel.append(heading, scope, hint, message, form, units);
+  const advancedGroups: HTMLDetailsElement[] = [];
+  let scrubbing = false;
   const fields: Array<{ input: HTMLInputElement; read(d: Draft): string | number; row: HTMLElement; feedback: ReturnType<typeof createPlacementFieldFeedback>; apply(): boolean; visible?(d: Draft): boolean }> = [];
   let state = options.viewer.state(), nativeSunSignature = "";
   let feedbackDocument = options.key();
@@ -231,6 +236,7 @@ export function createPlacementLighting(options: {
       if (row) details.append(row);
     }
     parent.append(details);
+    advancedGroups.push(details);
   }
 
   function draft(): Draft {
@@ -243,9 +249,10 @@ export function createPlacementLighting(options: {
   function count(d: Draft) { return d.spatial ? d.light.lights.length : d.light.pointLights?.length ?? 0; }
   function point(d: Draft) { return d.spatial ? d.light.lights[selectedIndex()] : d.light.pointLights?.[selectedIndex()]; }
   function change(edit: (d: Draft) => void) {
-    if (options.busy() || options.mode() === "game" || (state.spatial && options.mode() !== "spatial")) return false;
+    if ((!scrubbing && options.busy()) || options.mode() === "game" || (state.spatial && options.mode() !== "spatial")) return false;
     try {
-      options.finishEdit(); const next = draft(); edit(next);
+      if (!scrubbing) options.finishEdit();
+      const next = draft(); edit(next);
       const changed = next.spatial
         ? options.viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment: { ...next.environment, lighting: next.light }, lightBindings: next.bindings } }])
         : options.viewer.updateLighting(next.light);
@@ -295,15 +302,40 @@ export function createPlacementLighting(options: {
   function number(parent: HTMLElement, label: string, name: string, min: number, max: number, step: number, read: (d: Draft) => number, write: (d: Draft, value: number) => void, visible?: (d: Draft) => boolean) {
     const input = field(parent, label, name, "number", d => Number(read(d).toFixed(4)), (d, value) => write(d, Number(value)), visible);
     input.min = String(min); input.max = String(max); input.step = "any";
-    input.addEventListener("keydown", event => {
-      if (event.code !== "ArrowUp" && event.code !== "ArrowDown") return;
-      event.preventDefault(); event.stopPropagation();
-      const value = input.valueAsNumber;
-      if (!Number.isFinite(value)) return;
-      const next = value + (event.code === "ArrowUp" ? step : -step) * (event.shiftKey ? 0.1 : event.ctrlKey || event.metaKey ? 10 : 1);
-      input.value = String(Number(Math.max(Number(input.min), Math.min(Number(input.max), next)).toFixed(6)));
-      input.dispatchEvent(new Event("change"));
+    const commit = () => { input.dispatchEvent(new Event("change")); };
+    installPlacementNumberStepper(input, step, commit);
+    const handle = input.closest("label")!.firstElementChild as HTMLElement;
+    handle.classList.add("placement-number-scrub");
+    setUiAttribute(handle, "title", "Drag left or right to adjust · Shift: fine · Ctrl: coarse");
+    let scrub: { pointerId: number; x: number; value: number; active: boolean } | undefined, suppressClick = false;
+    const finishScrub = (cancel: boolean) => {
+      const active = scrub?.active; scrub = undefined; scrubbing = false;
+      if (!active) return;
+      suppressClick = true;
+      options.onChange(cancel ? options.viewer.cancelEdit() : options.viewer.commitEdit());
+    };
+    handle.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || input.disabled || !Number.isFinite(input.valueAsNumber)) return;
+      scrub = { pointerId: event.pointerId, x: event.clientX, value: input.valueAsNumber, active: false };
+      handle.setPointerCapture(event.pointerId);
     });
+    handle.addEventListener("pointermove", event => {
+      if (scrub?.pointerId !== event.pointerId) return;
+      const distance = event.clientX - scrub.x;
+      if (!scrub.active) {
+        if (Math.abs(distance) < 3 || options.busy() || options.mode() === "game") return;
+        options.finishEdit(); options.viewer.beginEdit("Scene Lighting");
+        scrub.active = scrubbing = true;
+      }
+      const next = scrub.value + Math.round(distance / 4) * step * numberStepScale(event);
+      input.value = String(Number(Math.max(Number(input.min), Math.min(Number(input.max), next)).toFixed(6)));
+      commit();
+    });
+    handle.addEventListener("pointerup", event => { if (scrub?.pointerId === event.pointerId) finishScrub(false); });
+    handle.addEventListener("pointercancel", event => { if (scrub?.pointerId === event.pointerId) finishScrub(true); });
+    handle.addEventListener("lostpointercapture", event => { if (scrub?.pointerId === event.pointerId) finishScrub(false); });
+    // The row is a label: ending a drag must not also focus the input.
+    handle.addEventListener("click", event => { if (suppressClick) event.preventDefault(); suppressClick = false; });
     return input;
   }
   function color(parent: HTMLElement, label: string, name: string, read: (d: Draft) => readonly number[], write: (d: Draft, rgb: [number, number, number]) => void) {
@@ -313,6 +345,7 @@ export function createPlacementLighting(options: {
     }, (d, hex) => write(d, [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255) as [number, number, number]));
   }
   function sync(next: ScenePlacementViewerState) {
+    const home = options.mount(); if (home && menu.panel.parentElement !== home) home.append(menu.panel);
     const documentChanged = feedbackDocument !== options.key();
     if (documentChanged) { feedbackDocument = options.key(); message.hidden = true; }
     state = next;
@@ -355,12 +388,14 @@ export function createPlacementLighting(options: {
       if (documentChanged || document.activeElement !== f.input) { f.input.value = String(f.read(d)); f.feedback.set(); }
       if (f.input.dataset.placementLightingField === "ambient" || f.input.dataset.placementLightingField === "sun-intensity") f.input.max = String(d.spatial ? f.input.dataset.placementLightingField === "ambient" ? 4 : 64 : 1);
     }
+    // Some groups are HD-2D only; an empty disclosure must not be offered in 2D.
+    for (const group of advancedGroups) group.hidden = ![...group.children].some(child => child.localName !== "summary" && !(child as HTMLElement).hidden);
     shadows.input.checked = d.spatial ? d.light.shadows?.lightIndex === index : typeof d.light.shadows === "object" ? d.light.shadows.enabled !== false : d.light.shadows === true;
   }
   const helpers=checkbox("Light Helpers","helpers",()=>{});helpers.input.checked=true;points.prepend(helpers.row);
   const gizmos=createPlacementLightGizmos({...options,enabled:()=>options.mode()==="spatial"&&helpers.input.checked,
     selected: selectedIndex,select(index){selectedPoints.set(options.key(),index);options.clearSelection();sync(options.viewer.state());}});
-  return { element: menu.element, sync, ownsGesture:gizmos.ownsGesture, frame(update:Parameters<typeof gizmos.frame>[0]){gizmos.frame(update);const spatial=update.frame.renderCommandBuffer.spatial?.environment?.values;setUiText(budgetStatus,uiMessage("Active {0} / Authored {1}",spatial?.[1]??0,state.spatial?.environment?.lighting?.lights.length??0));}, flatLighting: () => state.spatial ? undefined : state.lighting,
+  return { element: menu.element, sync, ownsGesture:()=>scrubbing||gizmos.ownsGesture(), frame(update:Parameters<typeof gizmos.frame>[0]){gizmos.frame(update);const spatial=update.frame.renderCommandBuffer.spatial?.environment?.values;setUiText(budgetStatus,uiMessage("Active {0} / Authored {1}",spatial?.[1]??0,state.spatial?.environment?.lighting?.lights.length??0));}, flatLighting: () => state.spatial ? undefined : state.lighting,
     flushInput() {
       gizmos.cancel();
       const field = fields.find(field => field.input === document.activeElement);

@@ -24,7 +24,10 @@ export async function smokePlacementGameCameraRegressions(parent, timeoutMs = 30
   const load = async (document, name) => {
     const expendable = await page.evaluate(() => window.ferrumPlacementWorkspaceDocuments.length >= 7
       ? window.ferrumPlacementWorkspaceDocuments.find(tab => tab.key !== window.ferrumPlacementWorkspaceActiveDocument && !tab.dirty)?.key : undefined);
-    if (expendable) await page.locator(`[data-placement-close-document=${JSON.stringify(expendable)}]`).click();
+    if (expendable) {
+      await page.locator(".placement-status-bar").click({ position: { x: 4, y: 4 } }); // View opens over the document tabs.
+      await page.locator(`[data-placement-close-document=${JSON.stringify(expendable)}]`).click();
+    }
     await page.locator("[data-placement-document-file]").setInputFiles({ name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(document)) });
     await page.waitForFunction(name => !document.querySelector(".demo-shell").inert &&
       window.ferrumPlacementWorkspaceDocuments.some(tab => tab.label === name && tab.key === window.ferrumPlacementWorkspaceActiveDocument), name, { timeout: timeoutMs });
@@ -95,6 +98,8 @@ export async function smokePlacementGameCameraRegressions(parent, timeoutMs = 30
     await load(second, "camera-review-B.json");
     const sizeAfter = await page.locator("canvas.demo-canvas").boundingBox();
     assert.equal(sizeAfter.width, sizeBefore.width); assert.equal(sizeAfter.height, sizeBefore.height);
+    // View opens over the document tabs; dismiss it as a user would.
+    await page.locator(".placement-status-bar").click({ position: { x: 4, y: 4 } });
     await page.locator("[data-placement-document-key]").filter({ hasText: "camera-review-A.json" }).click(); await paint();
     assert.deepEqual(await source(), documentA); assert.deepEqual(await history(), historyA); assert.deepEqual(await navigation(), navigationA);
     checks.documentUnlockWithoutResize = true;
