@@ -24,6 +24,23 @@ import {
 함께 참조한다. ES2022·DOM consumer의 strict 검사에서도 별도 `lib` 추가나 `skipLibCheck`가 필요하지 않다.
 이는 타입 선언의 의존성이며 런타임의 엔진 해제는 기존 `destroy()` 계약을 따른다.
 
+## 독립 native helper 초기화
+
+`initializeFerrumWasm(module?: BufferSource | WebAssembly.Module): Promise<void>`는
+world·renderer 없이 Wasm 모듈만 준비한다. root 및 `/core`에서 export한다.
+브라우저 기본 호출은 package의 Wasm URL을 로드하고, headless/custom host는 bytes나 컴파일된 모듈을 전달한다.
+반복 호출은 초기화된 모듈을 재사용하며 게임 상태를 초기화하지 않는다.
+
+```ts
+import { initializeFerrumWasm } from "@ferrum2d/ferrum-web/core";
+await initializeFerrumWasm();
+// 이제 QuestLog, DialogueSession, PixelMaskTerrain을 동기 생성할 수 있다.
+```
+
+일반 `createEngine`/`createFerrumRuntime` 흐름에서는 별도로 호출할 필요가 없다.
+`createFerrumRuntime({dialogue: {graph}})`가 생성한 session은 runtime 종료/초기화 실패 시 해제한다.
+외부 `dialogue.session`을 주입한 경우에는 호출자가 해제한다.
+
 ## 기본 2D 픽셀 퍼펙트 표시
 
 ```ts
@@ -1398,3 +1415,11 @@ cooldown 시간이 진행되지 않는다. 같은 게임 reset은 profile을 유
 `useDataScene()`으로 씬을 교체하면 profile을 재설정한다. 효과 cooldown과
 진단은 disposable 상태로 checkpoint 복원 시 비우며 물리 상태 hash에 넣지 않는다.
 이 경로의 입자는 기존 2D particle renderer를 사용한다.
+
+
+### 프레임 callback과 수명
+
+입력·viewport·audio host·render callback에서 engine을 해제하면 이후 native frame 단계는 실행하지 않는다.
+runtime의 provider·renderer callback에서 runtime을 해제하면 남은 GPU 제출·UI 소비를 중단한다.
+callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예약된다.
+효과 target은 객체와 클래스 인스턴스를 모두 받을 수 있고, 등록한 메서드는 원래 receiver를 유지한다.

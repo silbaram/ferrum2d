@@ -226,10 +226,12 @@ Apply 정책:
 
 ```ts
 import {
+  initializeFerrumWasm,
   createPixelMaskTerrain,
   createPixelMaskTerrainRuntime,
 } from "@ferrum2d/ferrum-web";
 
+await initializeFerrumWasm();
 const terrain = createPixelMaskTerrain({ width: 128, height: 64, fill: "solid" });
 const runtime = createPixelMaskTerrainRuntime({
   terrain,
@@ -248,6 +250,7 @@ const runtime = createPixelMaskTerrainRuntime({
 });
 
 runtime.carveCircle(48, 24, 8);
+// 최종 사용 후: runtime.destroy(); terrain.destroy();
 ```
 
 이 runtime helper는 낮은 빈도의 destructible terrain 편집용이다. 프레임 hot path에서 매 entity 단위 JS/Wasm 왕복을 만들지 않는다.

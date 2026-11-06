@@ -208,6 +208,17 @@ handle을 제거한다. 이 registry는 scene load, reload, reapply, agent patch
 frame loop에서 entity별 JS/Wasm 호출을 추가하지 않는다. 배치 UI나 agent 타겟팅처럼 안정 id가 필요한
 경로는 `requireExplicitInstanceIds: true`로 fallback id 의존을 막을 수 있다.
 
+Entity handle의 `entityId`/`entityGeneration`은 0..4,294,967,295의 정수여야 한다.
+`resolveGameplayBehaviorRuntimeIds(...)`와 직접 behavior command에 넣는 action/prefab/timer ID는
+1..4,294,967,295의 정수이며, 범위를 벗어나면 Wasm 호출 전에 진단 오류로 거부한다.
+이전의 범위 초과 숫자 변환에 의존하던 입력은 유효한 ID로 수정해야 한다.
+직접 command의 점수 보상도 0..4,294,967,295, 충돌 효과음 ID는 1..4,294,967,295로 제한한다.
+타일 충돌 이벤트의 `tileImpactCode`는 0(despawn) 또는 2(bounce)이며, 이름과 코드를 함께
+지정하면 서로 일치해야 한다. 알 수 없는 이벤트 이름·비교 연산자·진영/관계 이름도 거부한다.
+이름 기반 runtime ID와 record형 entity handle은 명시한 own property만 사용한다.
+`__proto__`, `constructor`, `toString`도 명시적으로 선언하면 일반 이름처럼 보존하지만,
+동명의 상속 속성을 선언으로 간주하지 않는다. `ReadonlyMap`형 handle 조회도 계속 지원한다.
+
 Scene Placement Authoring Viewer의 viewport helper는 TypeScript authoring layer의 순수 좌표 변환
 도구다. `createScenePlacementViewport(...)`는 CSS logical canvas 크기, optional DPR/backbuffer
 크기, camera center, zoom을 정규화한다. `screenToSceneWorld(...)`는 pointer 좌표를 Rust camera와
@@ -839,3 +850,21 @@ Scene Authoring v1의 선택 `display.pixelPerfect`는 `SceneDisplaySpec`/`resol
 `/core`에서도 같은 계약을 제공한다. 저수준 apply 함수는 renderer 설정을 바꾸지 않으며,
 자동 연결은 `createFerrumRuntime({dataScene})`를 사용한다.
 [표시 작성 계약](../data-scene-authoring.md#기본-2d-표시-설정)과 [런타임 표시 API](core.md#기본-2d-픽셀-퍼펙트-표시)를 따른다.
+
+
+## 대화·퀘스트 상태의 native 소유권
+
+`QuestLog`와 `DialogueSession`은 Rust 상태의 동기 facade다. 생성 전 `createEngine()` 또는
+`/core`의 `initializeFerrumWasm()`을 기다린다. 생성자와 `create(...)`, 선택/조회 및 JSON snapshot API는 유지한다.
+해석한 graph/document는 복사·동결하며, 외부 콘텐츠 객체를 변경해 진행 규칙을 바꾸지 않는다.
+퀘스트 변경 묶음·대화 선택의 quest update·복합 restore는 실패 시 이전 상태를 유지한다.
+`captureDialogueQuestState`/`restoreDialogueQuestState`의 version 1 저장 형식을 유지하며,
+호스트가 해당 결과를 게임 저장 데이터에 포함해야 한다. World snapshot에 자동으로 추가되지 않는다.
+
+사용을 마친 session/log에는 각각 `destroy()`를 호출한다. 반복 해제는 안전하고 해제된 wrapper의 사용은 오류다.
+연결된 session은 native quest 상태를 공유하므로 log wrapper를 먼저 해제해도 session이 dangling reference를 갖지 않는다.
+
+
+저장 데이터나 update의 getter가 wrapper를 해제할 수도 있으므로, packet encoding을 끝낸 뒤
+native handle의 수명을 다시 확인한다. 복합 restore의 두 대상 중 하나라도 해제되면 어느 쪽에도
+복원 값을 commit하지 않고 lifecycle 오류를 낸다. getter가 직접 만든 외부 부작용 자체는 rollback하지 않는다.

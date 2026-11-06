@@ -168,3 +168,25 @@ extrusion은 프레임 밖을 잘못 샘플링할 때 제한된 보호 여백을
 
 이 helper들은 optional authoring/runtime 보조 기능이다. 복잡한 destructible terrain이나 3D
 solver로 확장하는 것은 별도 설계 대상이다.
+
+
+### PixelMaskTerrain의 데이터·수명
+
+생성 전에 `createEngine()` 또는 `/core`의 `initializeFerrumWasm()`을 기다린다.
+Rust가 alpha 원본·solid 판정·편집·dirty/version을 소유한다. 한 변은 1~4096, 전체는 최대 16,777,216픽셀이다.
+`data`는 alpha 복사본, `solidData()`는 0/1 occupancy 복사본이다. 복사본 수정은 지형에 반영되지 않는다.
+`setPixel`, `carveRect`, `carveCircle`로 편집하며 `version`은 읽기 전용이다.
+`PixelMaskTerrainRuntime.sync()`는 한 revision의 solidity를 bulk로 받아 collider chunk들에 재사용한다.
+texture callback 중 추가 편집은 dirty를 유지해 다음 sync에 적용한다.
+
+호출자는 마지막 사용 후 `terrain.destroy()`를 호출한다. `runtime.destroy()`는 자신이 만든 collider chunk를
+해제하지만 전달받은 terrain이나 texture target은 해제하지 않는다. texture ID의 eviction과 target 수명은 호출자가 관리한다.
+두 객체를 모두 소유하면 runtime부터 해제한 뒤 terrain을 해제한다.
+
+
+`sync()` 실행 중 같은 runtime의 `sync`/`setPixel`/`carveRect`/`carveCircle` 재진입은 편집 전에 오류로 거절한다.
+callback에서 native `terrain`만 직접 편집하면 다음 sync를 위해 dirty가 유지된다.
+callback 중 runtime을 해제하면 진행 중 sync는 오류로 중단하고 등록 전 collider도 회수한다.
+생성 실패 시 이미 생성한 collider chunk를 회수한다. force sync가 도중에 실패한 경우에는 native mask가
+깨끗하더라도 다음 일반 sync에서 다시 전달한다. 교체 collider가 준비될 때까지 기존 collider는 유지한다.
+여러 chunk를 한 번에 교체하는 전체 transaction은 아니며, 성공한 앞 chunk는 유지하고 실패한 전달은 재시도한다.

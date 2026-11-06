@@ -176,3 +176,12 @@ root aggregate는 compatibility tier다. 기존 consumer 코드의 갑작스러�
 semantic을 바꾸는 경우 release note와 migration을 요구하고, 가능한 경우 한 beta
 기간 이상 compatibility shim을 유지한다. preview API는 1.0 전 변경 가능하지만
 `public-api-surface.json`, reference 문서, consumer smoke를 함께 갱신해야 한다.
+
+
+## Rust 소유 상태 helper
+
+`QuestLog`/`DialogueSession`/`PixelMaskTerrain`을 엔진보다 먼저 생성했다면 이제
+`await initializeFerrumWasm()`(`/core` 또는 root)을 먼저 호출한다. Node host는 Wasm bytes를 전달한다.
+진행 상태는 Rust에 있으며 mutable TS fallback은 제공하지 않는다. 대화·퀘스트 JSON snapshot v1은 유지한다.
+`PixelMaskTerrain.data`에 직접 쓰던 코드는 `setPixel`/`carveRect`/`carveCircle`로 바꾼다.
+`data`/`solidData()`는 복사본이고 `version`은 조회 전용이다. 독립 helper의 소유자는 `destroy()`로 해제한다.

@@ -2,6 +2,40 @@
 
 Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeScript platform layer가 브라우저 API를 다루며, renderer가 Rust에서 만든 command buffer를 소비하는 2D 웹 게임 엔진이다.
 
+
+## Rust와 TypeScript의 상태 소유권
+
+| 영역 | Rust | TypeScript |
+| --- | --- | --- |
+| 게임 프레임 | 엔티티·충돌·진행·씬·렌더 커맨드 생성 | 입력 수집·bulk command 소비·GPU 제출 |
+| 대화·퀘스트 | 진행, flag, 선택 조건·전이·quest update, 저장·복원 검증 | 불변 콘텐츠 해석·이름 매핑·byte packet 변환·대화 UI |
+| 파괴 지형 | alpha 원본·편집·solid 판정·dirty rect·version | texture upload·chunk collider authoring 적용 |
+| 표시 도구 | 게임 판정에 필요한 native 상태 | UI 상태, 표시용 timeline/cutscene clock, 카메라 보간·자원 수명 |
+
+`NativeQuestLog`와 `NativeDialogueSession`은 독립 native 자원이며 shared quest 상태를 Rust에서 연결한다.
+이 상태가 `World`의 game-state snapshot에 자동 포함되는 것은 아니다. 호스트가
+`captureDialogueQuestState`/`restoreDialogueQuestState` 결과를 저장 데이터에 포함한다.
+공개 TS wrapper는 mutable 진행 상태를 복제하지 않는다. 버전이 있는 bounded byte packet을 사용하며
+선택/복합 복원은 검증 후 적용한다. JSON 저장 형식은 기존 version 1을 유지한다.
+
+`NativePixelMaskTerrain`은 최대 4096×4096 alpha를 소유한다. `data`/`solidData()`는 독립 복사본이고,
+편집은 native 메서드를 거친다. collider 동기화는 solidity를 한 번 bulk로 읽어 chunk들에 재사용한다.
+외부 upload callback이 새 편집을 만든 경우 그 dirty는 다음 sync까지 유지한다.
+독립 helper 사용 전에는 `initializeFerrumWasm()`을 기다린다. 일반 `createEngine`/`createFerrumRuntime`
+초기화도 같은 모듈을 준비하며, 자원 소유자는 helper의 `destroy()`를 호출한다.
+
+물리 진단의 `query_physics_diagnostics()` 역시 native Vec 할당을 일으키므로 frame의 render/event/telemetry
+view를 얻기 전에 끝낸다. `buildFrameState`는 이미 복사된 진단 결과를 받으며 borrowed view 처리 중 native query를 하지 않는다.
+engine/runtime callback이 자신을 해제하면 내부 lifetime check가 남은 native·GPU 단계와 후속 callback을 중단한다.
+RAF scheduler는 현재 실행 상태와 기존 예약을 함께 확인해 callback 안의 stop/pause/restart가 중복 RAF를 만들지 않는다.
+
+Wasm typed-array view는 native 메모리를 빌린 값이다. 기본 내장 GPU 경로는 즉시 소비하며 복사하지 않는다.
+렌더 후 효과를 dispatch하고, 이후 소비자가 있거나 dynamic provider/custom renderer가 있으면
+그 callback 전에 frame/sidecar를 한 번 소유 복사한다. 외부 오디오 host의 메서드는 borrow 전에 확보하고,
+이벤트 해석·복사·native queue 소비를 끝낸 뒤 host를 호출해 새로 생성된 이벤트를 지우지 않는다.
+이 보장은 내장 파이프라인의 소비 순서에 대한 것이며, 저수준 borrowed view를 임의 native 호출 뒤까지
+저장하는 사용자 코드에는 적용되지 않는다.
+
 제품 목표는 비주얼 에디터 중심 엔진이 아니라 **AI agent-first 2D game engine**이다. 사용자는 `@ferrum2d/create-game`으로 프로젝트를 만들고, AI agent는 Game Spec, Physics Spec, asset metadata, agent/skill, 검증 스크립트를 반복적으로 수정/실행해 게임을 개발한다. Visual editor는 기본 authoring surface가 아니며, 필요한 경우에도 별도 승인된 보조 도구로만 다룬다.
 
 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발**이다. 기준 예제는 `examples/minimal-game`, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`다.
@@ -649,7 +683,10 @@ Distance/Rope/Spring local anchor는 TypeScript authoring/facade가 낮은 빈�
 | --- | --- |
 | Entity despawn cascade | `crates/ferrum-core/src/world/entity_lifecycle.rs`, `crates/ferrum-core/src/world/joints.rs` |
 | Checked joint mutation과 storage | `crates/ferrum-core/src/world/joints.rs` |
+| 관절 종류 코드·공통 삭제 dispatch | `crates/ferrum-core/src/world/joint_dispatch.rs` |
 | Snapshot runtime state rebuild | `crates/ferrum-core/src/world/snapshot.rs`, `crates/ferrum-core/src/world/joints.rs` |
+
+관절 종류의 내부 계약은 `JointKind`가 소유한다. 기존 Wasm·진단 코드 0..7을 유지하며 알 수 없는 코드는 `TryFrom<u32>`에서 거부한다. Engine의 명시적 삭제와 진단 하중 파손은 `World::clear_joint_by_kind`를 공유하고, 각 저장소의 generation 검증과 free-list 갱신을 그대로 사용한다. 종류별 삭제와 기하 오차 계산은 enum의 exhaustive match로 분기하여 종류 추가 시 누락을 컴파일 단계에서 확인한다. 명시적 삭제는 성공한 경우에만 Engine joint snapshot을 초기화한다.
 
 유효한 entity를 `World::despawn(...)`으로 제거하면 lifecycle generation을 갱신하기 전에 그 entity를 어느 endpoint로든 참조하는 distance, rope, spring, pulley, revolute, prismatic, weld, gear joint를 함께 제거한다. public `despawnPhysicsEntity(...)`도 이 경로를 사용한다. cascade로 제거된 joint는 generation 증가와 free-list 반환을 함께 수행하므로 기존 handle이 즉시 무효화되며, 유효하지 않은 entity handle은 World와 joint 상태를 변경하지 않는다. World의 public Rust joint mutation은 양 endpoint가 현재 alive/generation과 일치해야 한다. 복구 가능한 mutation은 `try_add_*_joint(...) -> Option<JointId>`와 `try_set_*_joint(...) -> bool`을 사용해 invalid endpoint를 저장소 변경 없이 거부한다. 기존 `add_*_joint(...)` convenience API는 이 precondition 위반을 programming error로 취급해 저장 전에 panic하고, 기존 `set_*_joint(...)` 시그니처는 호환성을 유지하면서 invalid 입력을 무변경으로 처리한다. Wasm `Engine` joint spawn/control은 checked 경로만 사용해 panic을 JS 경계로 전달하지 않는다. World는 generation-aware per-entity incident joint count를 derived runtime index로 유지해 joint와 무관한 entity의 despawn은 O(1) gate에서 8종 storage 순회를 생략한다. snapshot restore는 이 index를 active joint endpoint에서 재구축한다. joint free-list는 slot 생성과 snapshot restore 시 storage high-watermark까지 capacity를 확보해 despawn cascade의 free-list 반환이 재할당을 만들지 않게 한다.
 
@@ -668,9 +705,13 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 | 영역 | 코드 기준 |
 | --- | --- |
 | Data Scene runtime target과 document apply | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
-| Instance handle registry와 binding guard | `packages/ferrum-web/src/gameplayAuthoring.ts` |
+| Behavior binding·preflight·낮은 빈도 command apply | `packages/ferrum-web/src/gameplayAuthoring.ts` |
+| Instance handle registry·역방향 조회·stale 제거 | `packages/ferrum-web/src/sceneInstanceHandles.ts` |
+| Authoring 타입·기본 검증·runtime ID 해석 | `packages/ferrum-web/src/gameplayAuthoringTypes.ts`, `gameplayAuthoringValidation.ts`, `gameplayRuntimeIds.ts` |
 | Runtime startup/transition/reapply composition | `packages/ferrum-web/src/createFerrumRuntime.ts` |
 | Rust lifecycle state와 transition cleanup | `crates/ferrum-core/src/game_state.rs`, `crates/ferrum-core/src/engine/{scenes,scene_controls,runtime}.rs` |
+
+`gameplayAuthoring.ts`는 기존 공개 이름을 재수출한다. registry는 command 실행에 의존하지 않으며 타입 모듈과의 참조는 type-only다. action·prefab·timer의 명시 ID 우선순위와 오류 경로는 `gameplayRuntimeIds.ts`에서 공통 처리한다. action·prefab·timer ID는 namespace와 직접 command 모두에서 양의 uint32, entity handle의 index/generation은 0을 포함한 uint32로 검증해 Wasm 변환 시 다른 ID로 wrapping되는 입력을 차단한다. 이름 기반 ID와 record형 entity handle은 own property만 조회하며 `__proto__`를 포함한 명시 이름은 일반 data property로 보존한다. 새 내부 모듈을 public subpath로 추가하지 않는다.
 
 `applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope와 optional variable declaration을 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. binding/component/variable runtime preflight는 runtime activation 전에 끝내고, activation 뒤 Rust variable slot을 먼저 동기화한 다음 guarded recipe/FSM command를 설치한다. variable 동기화 이후 spawn 또는 recipe apply가 실패하면 이전 declaration/slot/current value를 복원하므로 변수 저장소의 트랜잭션 경계를 유지한다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행하고, full apply는 zero-instance 문서도 validation 성공 뒤 실제 Data Scene 전환으로 활성화한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
 
@@ -784,6 +825,10 @@ Scene Composition fragment include의 occurrence별 배치는 resolved flat id�
 unsupported diagnostic을 반환한다.
 
 ### Renderer
+
+WebGL2 `TextureManager`와 `WebGpuTextureStore`는 `pixelMaskTextureData.ts`의 CPU alpha→RGBA 변환·검증을 공유한다. 실제 GPU 업로드 형식·row alignment·자원 소유권은 각 backend에 남긴다. 외부 AbortSignal의 연결·해제는 기존 `assetLoadTasks.ts`의 `createAssetLoadScope`를 사용한다. 같은 ID의 새 요청을 먼저 기록하고 이전 요청을 취소한 뒤 활성 여부를 다시 검사하므로 abort callback이 시작한 더 최신 요청을 덮어쓰지 않는다. 동기 교체와 eviction도 같은 순서를 따르고, 완료 등록은 자기 요청을 취소하지 않는다. 늦은 decode의 bitmap과 등록하지 못한 GPU 자원은 회수하며 HTTP 실패 body는 원래 오류를 보존하면서 취소한다.
+
+Texture colorSpace·KTX2 URL과 WebGL 크기 metadata는 작업 시작 시 값으로 보관한다. WebGPU renderer는 상속받은 설정도 포함해 알려진 primitive 옵션을 복사하고, device 복구 때 저장된 이미지 Blob과 동일 설정을 사용한다. 원래 요청의 signal은 복구 metadata에 넣지 않으며 복구가 자체 signal을 전달한다. 종료된 store의 placeholder 생성도 자원을 할당하기 전에 거부한다.
 
 WebGL2 자원 통계는 기존 소유 모듈에서 집계한다. TextureManager는 texture 객체별 크기와
 합계를 변경 시 갱신하고, RenderTexture store도 생성/resize/release 때 합계를 갱신한다.

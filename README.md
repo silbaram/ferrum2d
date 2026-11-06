@@ -90,8 +90,10 @@ flowchart LR
     Spec --> Checks["Validation · Replay · Smoke"]
 ```
 
-- **Rust:** 게임 상태, 시뮬레이션, 충돌, 씬 로직과 렌더 명령 생성을 담당합니다.
-- **TypeScript:** 브라우저 API, 입력·오디오·에셋 로딩과 GPU 렌더링을 담당합니다.
+- **Rust:** 게임 상태, 시뮬레이션, 충돌, 씬 로직과 렌더 명령 생성을 담당합니다. 퀘스트·대화 진행과 파괴 지형 원본도 Rust가 소유합니다.
+- **TypeScript:** 브라우저 API, 입력·오디오·에셋 로딩과 GPU 렌더링, 콘텐츠 검증·UI 표시를 담당합니다.
+
+독립 대화·지형 도구를 엔진보다 먼저 생성할 때는 `await initializeFerrumWasm()`으로 초기화합니다. [초기화·수명 계약](docs/engine/public-api/core.md)을 확인하세요.
 - **Wasm 경계:** 객체마다 왕복 호출하지 않고 숫자 버퍼로 데이터를 묶어 전달합니다.
 - **검증:** 화면 확인에 spec validation, replay와 성능 예산을 함께 사용합니다.
 
