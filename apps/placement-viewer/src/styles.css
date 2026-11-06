@@ -450,10 +450,14 @@ textarea {
   display: grid;
   gap: 8px;
 }
-.demo-shell[data-normal-tool-expanded="true"][data-runtime-dock-hidden="false"]:not(
+.demo-shell[data-normal-tool-expanded="true"][data-runtime-dock-hidden="false"][data-runtime-drawer="pinned"]:not(
     [data-compact="true"]
   ):has([data-placement-panel-tab="assets"][aria-selected="true"]) {
   --runtime-row-height: min(440px, 55vh);
+}
+/* The drawer is already tall; Expand only resizes a docked panel. */
+.demo-shell:not([data-runtime-drawer="pinned"]) [data-normal-action="expand"] {
+  display: none;
 }
 .demo-shell[data-normal-tool-expanded="true"]
   .placement-runtime-dock
@@ -646,12 +650,118 @@ textarea {
 }
 .placement-runtime-dock [data-placement-asset-mount] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   align-items: start;
 }
-.placement-runtime-dock .placement-asset-browser {
-  grid-row: span 2;
+.placement-runtime-dock [data-asset-panel-active="false"] {
+  display: none;
+}
+.placement-runtime-dock [data-asset-panel] > summary,
+.placement-runtime-dock [data-asset-panel="pixel"] > h3,
+.placement-runtime-dock [data-asset-panel="model"] > h4 {
+  display: none;
+}
+.placement-asset-view-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.placement-asset-view-bar[hidden] {
+  display: none;
+}
+.placement-asset-view-bar > .placement-asset-back {
+  display: inline-flex;
+}
+.placement-asset-actions {
+  display: flex;
+  gap: 4px;
+}
+.placement-asset-actions .placement-control-panel > button {
+  width: 100%;
+  text-align: left;
+}
+[data-asset-attention="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* Unpinned bottom dock: a strip whose body overlays the viewport without resizing it. */
+.demo-shell:is([data-runtime-drawer="closed"], [data-runtime-drawer="open"], [data-runtime-drawer="dragging"]):not([data-runtime-dock-hidden="true"]) {
+  --runtime-row-height: 33px;
+}
+.demo-shell:is([data-runtime-drawer="closed"], [data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-dock-separator-runtime {
+  display: none;
+}
+.demo-shell[data-runtime-drawer="closed"] .placement-runtime-dock .placement-panel-tabbody {
+  display: none;
+}
+.demo-shell[data-runtime-drawer="closed"] .placement-runtime-dock .placement-panel-tablist [aria-selected="true"] {
+  color: inherit;
+  background: transparent;
+  border-bottom-color: transparent;
+}
+.demo-shell:is([data-runtime-drawer="closed"], [data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock {
+  position: relative;
+  z-index: 40;
+  overflow: visible;
+}
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock > .placement-panel-tabs > .placement-panel-tabbody {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  box-sizing: border-box;
+  height: min(480px, 60vh);
+  border-top: 1px solid var(--border-strong);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-2);
+}
+.demo-shell[data-runtime-drawer="dragging"] .placement-runtime-dock > .placement-panel-tabs > .placement-panel-tabbody {
+  opacity: 0;
+  pointer-events: none;
+}
+.placement-runtime-dock {
+  position: relative;
+}
+.placement-runtime-dock > .placement-dock-pin {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.placement-runtime-dock > .placement-dock-pin[aria-pressed="true"] {
+  color: var(--accent);
+}
+.placement-runtime-dock > .placement-dock-pin[hidden] {
+  display: none;
+}
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock [data-placement-asset-mount] {
+  height: 100%;
+  align-items: stretch;
+}
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-browser {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-body {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-grid {
+  max-height: 100%;
 }
 .placement-spatial-info {
   position: absolute;
@@ -710,9 +820,6 @@ textarea {
   }
   .placement-runtime-dock .placement-panel-tablist {
     padding-right: 72px;
-  }
-  .placement-runtime-dock [data-placement-asset-mount] {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -2267,15 +2374,15 @@ textarea {
   container-name: asset-browser;
 }
 .placement-asset-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.placement-asset-toolbar > input { min-width: 80px; flex: 1 1 100%; width: 100%; box-sizing: border-box; }
-.placement-asset-toolbar > select { flex: 1 1 96px; min-width: 0; }
+.placement-asset-toolbar > input { min-width: 120px; flex: 1 1 160px; box-sizing: border-box; }
+.placement-asset-toolbar > select { flex: 0 1 96px; min-width: 0; }
 .placement-asset-body { display: grid; grid-template-columns: minmax(0,1fr) minmax(160px,220px); gap: 8px; align-items: start; }
-.placement-asset-detail { min-width: 0; display: grid; gap: 8px; padding: 8px; border-left: 1px solid var(--border); font-size: 12px; }
+.placement-asset-detail { min-width: 0; display: grid; align-content: start; gap: 8px; padding: 8px; border-left: 1px solid var(--border); font-size: 12px; }
 .placement-asset-detail :is(strong,p,dd) { overflow-wrap: anywhere; margin: 0; }
 .placement-asset-detail dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 8px; margin: 0; }
 .placement-asset-detail dt { color: var(--fg-3); }
 .placement-asset-detail-actions { display: flex; flex-wrap: wrap; gap: 4px; }
-.placement-asset-detail-actions [hidden] { display: none; }
+.placement-asset-detail-actions[hidden], .placement-asset-detail-actions [hidden] { display: none; }
 .placement-asset-detail-actions > [data-placement-asset-place] { border-left: 2px solid var(--accent); }
 .placement-asset-back { display: none; }
 .placement-asset-cell > button[data-inspected="true"] { outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -2497,6 +2604,7 @@ textarea {
   right: 8px;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
   align-items: center;
   pointer-events: none;
@@ -3537,11 +3645,7 @@ textarea {
   color: var(--red) !important;
 }
 .placement-lighting-panel .placement-lighting-master {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   padding: 8px 0;
-  background: var(--bg-1);
   border-bottom: 1px solid var(--border);
 }
 .placement-garden-hint {
@@ -3593,3 +3697,67 @@ textarea {
 .placement-pixel-normal-dialog figure { margin: 4px; min-width: 0; }
 .placement-pixel-normal-dialog canvas { max-width: 100%; height: auto; image-rendering: pixelated; }
 .placement-pixel-normal-dialog figcaption { font-size: 11px; color: var(--fg-3); }
+
+/* Application menu bar: text entries, one row, sharing the header with mode and history controls. */
+/* Above the bottom dock (40): tall menu panels reach the bottom tab strip. */
+.placement-menu-bar { position: relative; z-index: 60; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.placement-menu-bar > details > summary { display: flex; align-items: center; gap: 0; height: 26px; min-width: 0; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-1); background: transparent; color: var(--fg-1); font-size: 12px; line-height: 1; white-space: nowrap; cursor: default; }
+.placement-menu-bar > details > summary:hover, .placement-menu-bar > details[open] > summary { color: var(--fg-0); background: var(--bg-3); }
+.placement-menu-bar > details > summary svg { display: none; }
+.placement-menu-bar > .placement-view-options { position: relative; }
+.placement-menu-bar > .placement-view-options > .placement-view-panel { top: calc(100% + 4px); right: auto; left: 0; }
+.placement-menu-bar .placement-control-panel:has(> .placement-menu-items) { width: 240px; padding: 4px; }
+.placement-menu-bar .placement-control-panel:has(> .placement-menu-items:not(:empty) + *) { width: min(296px, calc(100vw - 16px)); padding: 8px; }
+.placement-menu-bar .placement-control-panel:has(> .placement-menu-items) > strong { display: none; }
+.placement-menu-items button { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 26px; padding: 2px 8px; border: 0; border-radius: var(--radius-1); background: transparent; color: var(--fg-1); font-size: 12px; text-align: left; }
+.placement-menu-items button:hover:not(:disabled), .placement-menu-items button:focus-visible { color: var(--fg-0); background: var(--accent-soft); outline: none; }
+.placement-menu-items button:disabled { color: var(--fg-4); }
+.placement-menu-items kbd { color: var(--fg-3); font: inherit; font-size: 11px; }
+.placement-menu-separator { height: 1px; margin: 4px 0; border: 0; background: var(--border); }
+.demo-shell[data-compact="true"] .placement-menu-bar > details:not([data-placement-menu="file"]) { display: none; }
+.placement-app-menu > .placement-menu-bar { flex: 0 0 auto; }
+/* The centered mode switch needs equal side columns; give the menu bar room first. */
+@media (min-width: 861px) and (max-width: 1280px) {
+  .demo-shell[data-compact-chrome="true"] .demo-toolbar { grid-template-columns: auto auto minmax(0, 1fr); }
+}
+@media (min-width: 861px) and (max-width: 1120px) {
+  .placement-app-menu h1 { display: none; }
+}
+
+/* Lighting lives in the inspector; the shared menu panel chrome does not apply here. */
+.placement-inspector .placement-lighting-panel { position: static; width: auto; max-height: none !important; padding: 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.placement-inspector .placement-lighting-panel > strong { display: none; }
+[data-placement-lighting-open] { width: 100%; justify-content: center; }
+
+/* Collapsed docks: IDE-style tool window stripes along the workspace edges. */
+.placement-dock-rail { position: relative; z-index: 7; display: flex; gap: 2px; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-1); }
+.placement-dock-rail[hidden] { display: none; }
+.placement-dock-rail-scene, .placement-dock-rail-inspector { flex-direction: column; padding: 4px 0; }
+.placement-dock-rail-scene { grid-area: left; border-right: 1px solid var(--border); }
+.placement-dock-rail-inspector { grid-area: right; border-left: 1px solid var(--border); }
+.placement-dock-rail-runtime { grid-area: viewport; align-self: end; justify-self: start; margin-left: 8px; padding: 2px; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-1) var(--radius-1) 0 0; }
+.demo-shell .placement-dock-rail button { width: auto; min-width: 0; height: auto; min-height: 0; padding: 6px 2px; border: 0; border-radius: var(--radius-1); background: transparent; color: var(--fg-2); font-size: 11px; line-height: 1.2; white-space: nowrap; }
+.demo-shell .placement-dock-rail-runtime button { padding: 2px 8px; }
+.demo-shell .placement-dock-rail-scene button, .demo-shell .placement-dock-rail-inspector button { width: 100%; padding: 8px 0; writing-mode: vertical-rl; }
+.placement-dock-rail button:hover, .placement-dock-rail button:focus-visible { color: var(--fg-0); background: var(--bg-3); }
+.placement-dock-minimize { position: absolute; z-index: 4; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center; width: 24px; min-width: 24px; height: 24px; padding: 3px; border: 0; background: transparent; color: var(--fg-3); }
+.placement-dock-minimize:hover { color: var(--fg-0); background: var(--bg-3); }
+.placement-dock-minimize[hidden] { display: none; }
+.placement-scene-dock { position: relative; }
+.placement-runtime-dock > .placement-dock-minimize { right: 34px; }
+.demo-shell[data-compact="true"] .placement-dock-minimize { display: none; }
+
+/* Lighting number fields: field-step buttons and a draggable label replace native spinners. */
+.placement-number-control { display: inline-flex; flex: 0 0 auto; align-items: stretch; }
+.demo-shell .placement-number-control input[type="number"] { appearance: textfield; border-right: 0; border-radius: var(--radius-1) 0 0 var(--radius-1); }
+.placement-number-control input::-webkit-inner-spin-button, .placement-number-control input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.placement-number-stepper { display: flex; flex-direction: column; width: 16px; border: 1px solid var(--border-strong); border-radius: 0 var(--radius-1) var(--radius-1) 0; overflow: hidden; }
+.demo-shell .placement-number-stepper button { position: relative; flex: 1; width: 100%; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--bg-2); }
+.demo-shell .placement-number-stepper button:hover { background: var(--bg-3); }
+.placement-number-stepper button::after { content: ""; position: absolute; left: calc(50% - 3px); top: calc(50% - 2px); border: 3px solid transparent; }
+.placement-number-stepper [data-placement-number-step="up"]::after { top: calc(50% - 4px); border-bottom-color: var(--fg-2); }
+.placement-number-stepper [data-placement-number-step="down"]::after { top: calc(50% - 1px); border-top-color: var(--fg-2); }
+.placement-number-scrub:hover { color: var(--fg-0); }
+.placement-number-control input:disabled + .placement-number-stepper { opacity: 0.4; pointer-events: none; }
+.placement-game-camera-fields .placement-number-control { display: flex; width: 100%; min-width: 0; }
+.placement-game-camera-fields .placement-number-control input { flex: 1; }

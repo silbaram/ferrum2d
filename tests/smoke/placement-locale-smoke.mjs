@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { chromium } from "playwright-core";
-import { showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
+import { showPlacementAssetPanel, showPlacementBottom, showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 const artifact = resolve("artifacts/viewer-localization");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url"),
@@ -116,6 +116,9 @@ try {
           (window.__localeCanvas =
             document.querySelector("canvas.demo-canvas")),
       );
+      // Docking resizes the viewport, so take the camera baseline in the final layout.
+      await showPlacementBottom(page, "assets");
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const before = await snapshot(page);
       for (const locale of ["ko", "en", "ko"]) {
         await language.selectOption(locale);
@@ -174,15 +177,15 @@ try {
         );
       }
       // All asset tool labels use live UI bindings, including lazily opened content.
-      for (const [selector, name] of [
-        ["[data-placement-aseprite-tool] > summary", "Aseprite 가져오기"],
-        ["[data-placement-tile-tool] > summary", "타일 프레임 가져오기"],
-        ["[data-placement-normal-tool] > summary", "노멀 생성"],
+      for (const [id, selector, name] of [
+        ["aseprite", "[data-placement-aseprite-tool] > summary", "Aseprite 가져오기"],
+        ["tile", "[data-placement-tile-tool] > summary", "타일 프레임 가져오기"],
+        ["normal", "[data-placement-normal-tool] > summary", "노멀 생성"],
       ]) {
-        const summary = page.locator(selector);
-        assert.equal(await summary.innerText(), name);
-        await summary.click();
-        if (name === "노멀 생성") {
+        assert.equal(await page.locator(selector).textContent(), name);
+        assert.equal(await page.locator(`[data-placement-asset-open="${id}"]`).textContent(), name);
+        await showPlacementAssetPanel(page, id);
+        if (id === "normal") {
           assert.equal(
             await page.getByLabel("노멀 원본 이미지", { exact: true }).count(),
             1,
@@ -192,7 +195,7 @@ try {
             1,
           );
         }
-        await summary.click();
+        await page.locator("[data-placement-asset-view-back]").click();
       }
       // Open another document, switch while the original inspector is detached, and restore it.
       const fixture = {

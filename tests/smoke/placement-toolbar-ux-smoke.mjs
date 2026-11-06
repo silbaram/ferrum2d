@@ -42,7 +42,7 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
       const cameraToggle = cameraMenu.locator(":scope > summary");
       const helpToggle = page.locator('[data-placement-menu="help"] > summary');
       assert.equal(await cameraToggle.getAttribute("aria-label"), locale === "ko" ? "편집 시점" : "Editor View");
-      assert.equal(await helpToggle.getAttribute("aria-label"), locale === "ko" ? "사용 안내" : "Controls");
+      assert.equal(await helpToggle.getAttribute("aria-label"), locale === "ko" ? "도움말" : "Help");
       assert(await cameraMenu.locator("button").first().isHidden(), "Secondary camera actions must start collapsed");
       await showPlacementViewOptions(page);
       assert.equal(await cameraToggle.locator(".placement-disclosure-caret").evaluate(element => getComputedStyle(element).transform), "none", "Opening View must not rotate a closed submenu caret");
@@ -95,7 +95,7 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
       await page.keyboard.press("Space");
       await wait(() => document.querySelector(".placement-view-options").open);
       await showPlacementViewOptions(page);
-      await select.click();
+      await page.locator(".placement-status-bar").click({ position: { x: 4, y: 4 } });
       assert.equal(await summary.getAttribute("aria-expanded"), "false");
     }
     await showPlacementViewOptions(page);

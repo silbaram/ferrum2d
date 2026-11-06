@@ -1,5 +1,5 @@
 import {choosePlacementAsset} from "./placement-panel-navigation.mjs";
-import { clickPlacementControl, showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementAssetPanel, showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
@@ -197,6 +197,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
         field === "rotation" ? /Rotation.*°/ : /Scale.*×/,
       );
     }
+    await showPlacementBottom(page, "assets");
     const favorite = page.getByRole("button", {
       name: "Favorite Crate",
       exact: true,
@@ -237,6 +238,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     assert.deepEqual(await snapshot(), original);
 
     // Load a real GLB and spatial authoring document using the public file inputs.
+    await showPlacementAssetPanel(page, "model");
     await page.locator("[data-placement-model-key]").fill("rock");
     await page.evaluate(() =>
       window.addEventListener(

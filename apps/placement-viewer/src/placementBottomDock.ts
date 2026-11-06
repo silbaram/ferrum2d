@@ -1,4 +1,5 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
+import { createPlacementAssetPanels } from "./placementAssetPanels";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 
 export type PlacementBottomTab = "assets" | "problems" | "runtime" | "changes";
@@ -26,10 +27,12 @@ export function createPlacementBottomDock(metrics: HTMLElement) {
   element.append(tabs.element);
   metrics.before(element);
   tabs.panels.get("runtime")!.append(metrics);
+  const assetPanels = createPlacementAssetPanels(tabs.panels.get("assets")!, tabs.buttons.get("assets")!, () => tabs.select("assets"));
   let assetMount: HTMLElement | undefined, assetHome: HTMLElement | undefined;
   return {
     element,
     tabs,
+    assetPanels,
     mountAssets(mount: HTMLElement) {
       if (assetMount === mount) return;
       if (assetMount && assetHome) assetHome.append(assetMount);

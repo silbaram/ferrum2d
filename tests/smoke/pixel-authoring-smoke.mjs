@@ -367,6 +367,8 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   await page.setViewportSize({width:390,height:840});
   assert(await workspace.evaluate(e=>e.scrollWidth<=e.clientWidth+1),'long pixel names cannot overflow a narrow workspace');
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Panel toggles change meaning with the layout, so wait for the width change to land.
+  await page.waitForFunction(() => document.querySelector(".demo-shell").dataset.compact === "false");
   await page.locator("[data-placement-language]").selectOption("en");
   const imageLayers=await smokePixelLayers(page,mode,run);
   const imageFrames=await smokePixelFrames(page,mode,run);

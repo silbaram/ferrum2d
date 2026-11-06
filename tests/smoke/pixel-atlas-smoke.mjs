@@ -1,4 +1,4 @@
-import {clickPlacementToolAction, inspectPlacementAsset} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction, inspectPlacementAsset, showPlacementAssetPanel} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -29,7 +29,7 @@ export async function smokePixelAtlas(page, mode, run, base, verify) {
     ]}};
   await clickPlacementToolAction(action('back'));
   const importer=page.locator('[data-placement-aseprite-tool]');
-  if(!await importer.evaluate(e=>e.open))await importer.locator(':scope > summary').click();
+  await showPlacementAssetPanel(page,'aseprite');
   await importer.getByRole('tab',{name:'Source',exact:true}).click();
   await importer.getByLabel('Aseprite asset name',{exact:true}).fill('external-atlas');
   const entry=x=>({frame:{x,y:0,w:4,h:4},rotated:false,trimmed:false,spriteSourceSize:{x:0,y:0,w:4,h:4},sourceSize:{w:4,h:4},duration:100});

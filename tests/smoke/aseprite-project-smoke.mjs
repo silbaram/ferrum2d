@@ -15,7 +15,7 @@ import { resolve, join, extname, sep } from "node:path";
 import { chromium } from "playwright-core";
 import { encodePngRgba } from "../../scripts/tools/pack-textures.mjs";
 import { sha256 } from "../../scripts/tools/sprite-normals-tool.mjs";
-import { showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { showPlacementAssetPanel, showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
@@ -537,9 +537,7 @@ try {
           `[data-${tileMode ? "tile" : "aseprite"}-action="${name}"]`,
         );
     async function reveal() {
-      await showPlacementBottom(page, "assets");
-      if ((await tool().getAttribute("open")) === null)
-        await tool().locator(":scope > summary").click();
+      await showPlacementAssetPanel(page, tileMode ? "tile" : "aseprite");
     }
     async function stage(data) {
       await tool().getByRole("tab", { name: "Source", exact: true }).click();

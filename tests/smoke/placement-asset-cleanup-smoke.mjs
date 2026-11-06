@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { encodePngRgba } from "../../scripts/tools/pack-textures.mjs";
-import { showPlacementBottom, showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { showPlacementAssetPanel, showPlacementInspector } from "./placement-panel-navigation.mjs";
 const hash = value => createHash("sha256").update(value).digest("hex");
 function pixelBundle(identity, color, revision) {
   const pixels = Buffer.from([color, 40, 160, 255, 12, 34, 56, 0]);
@@ -48,7 +48,7 @@ export async function smokeAssetCleanup({ getPage, project, scene, initial, run,
   const status = () => dialog().locator('[data-placement-cleanup-status]').textContent();
   const row = id => dialog().locator(`[data-placement-cleanup-revision=".ferrum-pixels:${id}"]`);
   const source = () => page.evaluate(() => JSON.stringify({ doc: window.ferrumPlacementSpatialExportDocument(), patch: window.ferrumPlacementViewerExportPatch(), history: window.ferrumPlacementViewerHistory }));
-  async function launch() { await showPlacementBottom(page); await page.locator('[data-placement-cleanup-open]').click(); }
+  async function launch() { await showPlacementAssetPanel(page, "cleanup"); await page.locator('[data-placement-cleanup-open]').click(); }
   async function analyze() { await action("scan").click(); await page.waitForFunction(() => document.querySelector('[data-placement-cleanup-dialog]').getAttribute("aria-busy") === "false"); assert.match(await status(), /Review references/); }
   async function reopen() { await action("reopen").click(); await page.waitForFunction(() => window.ferrumEngine && document.querySelector('[data-placement-cleanup-dialog]')?.open === false); await page.locator('[data-placement-language]').selectOption("en"); }
   assert(!commands.includes("inspect_placement_asset_cleanup"), "opening a project must not analyze cleanup automatically");

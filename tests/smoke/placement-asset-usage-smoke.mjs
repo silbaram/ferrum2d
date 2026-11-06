@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {mkdir,readFile,writeFile,mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {showPlacementDock,showPlacementInspector,showPlacementMenu} from "./placement-panel-navigation.mjs";
+import {showPlacementAssetPanel,showPlacementDock,showPlacementInspector,showPlacementMenu} from "./placement-panel-navigation.mjs";
 
 const assetDocument=()=>({
  format:"ferrum2d.consumer.scene-authoring",version:1,
@@ -15,7 +15,7 @@ const assetDocument=()=>({
 });
 const evidence=page=>page.evaluate(()=>JSON.stringify({document:window.ferrumPlacementSpatialExportDocument(),patch:window.ferrumPlacementViewerExportPatch(),history:window.ferrumPlacementViewerHistory,selected:window.ferrumPlacementViewerState.selectedInstanceIds,mode:window.ferrumPlacementWorkspaceMode,tabs:window.ferrumPlacementWorkspaceDocuments}));
 const panel=page=>page.locator('[data-placement-asset-usage]');
-async function reveal(page){await showPlacementDock(page,'runtime');await page.locator('.placement-runtime-dock [data-placement-panel-tab="assets"]').click();if(!await panel(page).evaluate(e=>e.open))await panel(page).locator(':scope > summary').click();}
+async function reveal(page){await showPlacementAssetPanel(page,'usage');}
 async function report(page){const download=page.waitForEvent('download');await panel(page).locator('[data-placement-usage-export]').click();const item=await download;return JSON.parse(await readFile(await item.path(),'utf8'));}
 async function scan(page){await reveal(page);await panel(page).locator('[data-placement-usage-scan]').click();await panel(page).locator('[data-placement-usage-export]').waitFor({state:'visible'});await page.waitForFunction(()=>!document.querySelector('[data-placement-usage-export]').disabled);return report(page);}
 

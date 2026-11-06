@@ -10,7 +10,7 @@ import {
 } from "../../scripts/tools/pack-textures.mjs";
 import { sha256 } from "../../scripts/tools/sprite-normals-tool.mjs";
 import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
-import { showPlacementBottom, clickPlacementToolAction, inspectPlacementAsset } from "./placement-panel-navigation.mjs";
+import { showPlacementBottom, showPlacementAssetPanel, clickPlacementToolAction, inspectPlacementAsset } from "./placement-panel-navigation.mjs";
 import { animatedGif, animatedApng } from "./sprite-normal-media-fixtures.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
 
@@ -347,8 +347,7 @@ try {
     true,
     "Run the smoke with the save-enabled UI build",
   );
-  await showPlacementBottom(page, "assets");
-  await tool.locator(":scope > summary").click();
+  await showPlacementAssetPanel(page, "normal");
   await inspectPlacementAsset(page, page.locator('[data-placement-browser-asset="sprite:crate"]'));
   await page
     .getByRole("button", { name: "Generate Normal Crate", exact: true })
@@ -639,10 +638,9 @@ try {
   assert(await action("apply").isDisabled());
   await upload("large.png", sprite(1024));
   await clickPlacementToolAction(page, action("generate"));
-  if (integration) {
-    await action("cancel").focus();
-    await page.keyboard.press("Enter");
-  } else await clickPlacementToolAction(page, action("cancel"));
+  // Keyboard activation skips pointer stability waits; a large sprite can finish before them.
+  await action("cancel").focus();
+  await page.keyboard.press("Enter");
   assert.match(
     await tool.locator("[data-normal-status]").textContent(),
     /Cancelled/,
@@ -720,9 +718,7 @@ try {
     buffer: Buffer.from(JSON.stringify(second)),
   });
   await wait(() => globalThis.ferrumPlacementWorkspaceMode === "2d");
-  await showPlacementBottom(page, "assets");
-  if ((await tool.getAttribute("open")) === null)
-    await tool.locator(":scope > summary").click();
+  await showPlacementAssetPanel(page, "normal");
   assert.match(
     await tool.locator("[data-normal-source]").textContent(),
     /Choose/,

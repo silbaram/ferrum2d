@@ -21,11 +21,6 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   const file = createPlacementControlMenu("file", "File", "file");
   if (fileStrip) file.panel.append(fileStrip);
   if (open) file.panel.append(open);
-  if (showUpdates) {
-    const updates = document.createElement("button"); updates.type = "button"; updates.dataset.placementAction = "updates";
-    setUiText(updates, "Versions and updates");
-    updates.addEventListener("click", () => { file.close(true); showUpdates(); }); file.panel.append(updates);
-  }
   if (showScenes) {
     const scenes = document.createElement("button"); scenes.type = "button";
     scenes.dataset.placementAction = "scene-explorer";
@@ -47,7 +42,11 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
     }
     file.panel.append(examples.element);
   }
-  brand.append(title, file.element);
+  const bar = document.createElement("nav");
+  bar.className = "placement-menu-bar";
+  setUiAttribute(bar, "aria-label", "Application menu");
+  bar.append(file.element);
+  brand.append(title, bar);
   header.replaceChildren(brand, modes, actions);
   root.dataset.compactChrome = "true";
   strip.insertBefore(viewport.element, layout);
@@ -60,9 +59,28 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   setUiAttribute(actions, "aria-label", "History, language and playback");
 
   // Compact screens retain direct panel tabs. Desktop layout settings live in View.
+  const viewOptions = viewport.element.querySelector<HTMLElement>(".placement-view-options"),
+    viewHome = viewOptions?.parentElement, viewNext = viewOptions?.nextElementSibling ?? null,
+    help = viewport.element.querySelector<HTMLDetailsElement>('[data-placement-menu="help"]'),
+    helpHome = help?.parentElement, helpNext = help?.nextElementSibling ?? null;
+  if (showUpdates && help) {
+    const updates = document.createElement("button"); updates.type = "button"; updates.dataset.placementAction = "updates";
+    setUiText(updates, "Versions and updates");
+    updates.addEventListener("click", () => { help.open = false; showUpdates(); });
+    help.querySelector(":scope > .placement-control-panel")?.append(updates);
+  }
   function syncLayoutHome() {
-    const home = root.dataset.compact === "true" ? strip! : viewport.layoutSettings;
+    const compact = root.dataset.compact === "true";
+    const home = compact ? strip! : viewport.layoutSettings;
     if (layout!.parentElement !== home) home.append(layout!);
+    // Desktop gets the menu bar; compact keeps the existing single View entry.
+    if (compact) {
+      if (viewOptions && viewOptions.parentElement !== viewHome) viewHome?.insertBefore(viewOptions, viewNext);
+      if (help && help.parentElement !== helpHome) helpHome?.insertBefore(help, helpNext);
+    } else {
+      if (viewOptions && viewOptions.parentElement !== bar) bar.insertBefore(viewOptions, file.element.nextElementSibling?.nextElementSibling ?? null);
+      if (help && help.parentElement !== bar) bar.append(help);
+    }
   }
   syncLayoutHome();
   const observer = new MutationObserver(syncLayoutHome);

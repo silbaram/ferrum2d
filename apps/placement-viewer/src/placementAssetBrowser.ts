@@ -32,8 +32,6 @@ export function createPlacementAssetBrowser(options: {
     const element = document.createElement("section");
     element.className = "placement-asset-browser";
     element.dataset.placementAssetBrowser = "true";
-    const heading = document.createElement("h3");
-    setUiText(heading, "Assets");
     const search = document.createElement("input");
     search.type = "search";
     setUiAttribute(search, "placeholder", "Search Assets");
@@ -85,7 +83,7 @@ export function createPlacementAssetBrowser(options: {
     const status = document.createElement("output");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    element.append(heading, toolbar, body, status);
+    element.append(toolbar, body, status);
     let project = "", favorites: string[] = [], recent: string[] = [], inspected: string | undefined;
     let signature: readonly (readonly unknown[])[] | undefined;
     const rendered = new Map<HTMLButtonElement, PlacementBrowserAsset>();

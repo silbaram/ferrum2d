@@ -4,6 +4,13 @@ import { decorateViewportAction } from "./placementViewportChrome";
 import { WORKSPACE_PRESETS, WORKSPACE_LIMITS as LIMITS, clampWorkspaceSize as clamp,
   defaultWorkspaceLayout, readWorkspacePreferences, serializeWorkspacePresets,
   type WorkspaceDock as Dock, type WorkspacePreset } from "./placementWorkspacePreferences";
+const RAIL_SIZE = 26;
+/** Collapsed docks leave these entries behind, like IDE tool window stripes. */
+const RAIL_TABS = {
+  scene: [["objects", "Objects"], ["project", "Project scenes"]],
+  inspector: [["properties", "Properties"], ["placement", "Placement"], ["lighting", "Lighting"]],
+  runtime: [["assets", "Assets"], ["problems", "Problems"], ["runtime", "Runtime"], ["changes", "Agent Changes"]],
+} as const;
 const LABELS = {
   scene: "Scene",
   inspector: "Inspector",
@@ -23,6 +30,10 @@ export function installPlacementWorkspaceLayout(
   const preferences = readWorkspacePreferences(read(storageKey), read(presetsKey));
   let layout = preferences.layouts[preferences.active];
   let focused = false;
+  // An unpinned bottom dock is a strip whose body overlays the viewport without resizing it.
+  let drawerOpen = false, drawerDragging = false, drawerTab: string | undefined, drawerReturn: HTMLElement | undefined;
+  const pinned = () => layout.runtimePinned === true;
+  const selectedRuntimeTab = () => root.querySelector<HTMLElement>(runtimeTabs + '[aria-selected="true"]')?.dataset.placementPanelTab;
   const defaultPanel = (): Dock | undefined => preferences.active === "scene" ? "scene" : preferences.active === "custom" ? undefined : "runtime";
   const defaultTab = () => preferences.active === "assets" ? "assets" : preferences.active === "review" ? "runtime" : undefined;
   let compactPanel: Dock | undefined = defaultPanel();
@@ -60,6 +71,7 @@ export function installPlacementWorkspaceLayout(
         origin: number;
         size: number;
         target: HTMLElement;
+        collapse?: boolean;
       }
     | undefined;
   const controls = document.createElement("div");
@@ -111,6 +123,7 @@ export function installPlacementWorkspaceLayout(
   layoutMenu.panel.append(panelToggles);
   const buttons = new Map<Dock, HTMLButtonElement>();
   const handles = new Map<Dock, HTMLDivElement>();
+  const rails = new Map<Dock, HTMLDivElement>();
   controls.append(viewportTab);
   for (const dock of ["scene", "inspector", "runtime"] as const) {
     const button = document.createElement("button");
@@ -172,20 +185,22 @@ export function installPlacementWorkspaceLayout(
     handle.addEventListener("pointermove", (event) => {
       if (drag?.pointerId !== event.pointerId) return;
       const position = dock === "runtime" ? event.clientY : event.clientX;
-      layout[dock] = clamp(
-        dock,
-        drag.size + (position - drag.origin) * (dock === "scene" ? 1 : -1),
-      );
+      const size = drag.size + (position - drag.origin) * (dock === "scene" ? 1 : -1);
+      // Dragging well past the minimum collapses the dock instead of stopping at it.
+      drag.collapse = size < LIMITS[dock][0] - 48;
+      layout[dock] = clamp(dock, size);
       sync(false);
     });
     const finish = (event: PointerEvent, cancel: boolean) => {
       if (drag?.pointerId !== event.pointerId) return;
-      if (cancel) layout[dock] = drag.size;
+      const collapse = !cancel && drag.collapse === true;
+      if (cancel || collapse) layout[dock] = drag.size;
       drag = undefined;
       delete root.dataset.resizingDock;
       if (handle.hasPointerCapture(event.pointerId))
         handle.releasePointerCapture(event.pointerId);
-      sync(true);
+      if (collapse) minimize(dock);
+      else sync(true);
     };
     handle.addEventListener("pointerup", (event) => finish(event, false));
     handle.addEventListener("pointercancel", (event) => finish(event, true));
@@ -219,6 +234,22 @@ export function installPlacementWorkspaceLayout(
     });
     handles.set(dock, handle);
     root.append(handle);
+    const rail = document.createElement("div");
+    rail.className = `placement-dock-rail placement-dock-rail-${dock}`;
+    rail.dataset.placementDockRail = dock;
+    rail.setAttribute("role", "toolbar");
+    setUiAttribute(rail, "aria-label", "Tool windows");
+    if (dock !== "runtime") rail.setAttribute("aria-orientation", "vertical");
+    for (const [id, label] of RAIL_TABS[dock]) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.dataset.placementRailTab = id;
+      setUiText(tab, label);
+      tab.addEventListener("click", () => openTool(dock, id));
+      rail.append(tab);
+    }
+    rails.set(dock, rail);
+    root.append(rail);
   }
   const focus = document.createElement("button");
   focus.type = "button";
@@ -256,6 +287,69 @@ export function installPlacementWorkspaceLayout(
     sync(true);
     selectRuntimeTab(defaultTab());
   });
+  const pin = document.createElement("button");
+  pin.type = "button";
+  pin.className = "placement-dock-pin";
+  pin.dataset.placementDockPin = "true";
+  root.querySelector(".placement-runtime-dock")?.append(pin);
+  pin.addEventListener("click", () => {
+    if (drag || root.inert) return;
+    layout.runtimePinned = !pinned();
+    drawerOpen = drawerDragging = false;
+    sync(true);
+  });
+  function minimize(dock: Dock) {
+    if (drag || root.inert) return;
+    if (dock === "runtime") {
+      // The tab strip is the bottom dock's minimized form.
+      layout.runtimePinned = false;
+      drawerOpen = drawerDragging = false;
+    } else if (!layout.hidden.includes(dock)) layout.hidden = [...layout.hidden, dock];
+    sync(true);
+  }
+  function openTool(dock: Dock, id: string) {
+    if (drag || root.inert) return;
+    if (dock === "runtime") {
+      selectRuntimeTab(id);
+      reveal(dock);
+    } else {
+      reveal(dock);
+      root.querySelector<HTMLElement>(`.placement-panel:not([hidden]) [data-placement-panel-tab="${id}"]`)?.click();
+    }
+    sync(true);
+  }
+  root.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-placement-dock-minimize]") : null;
+    if (button) minimize(button.dataset.placementDockMinimize as Dock);
+  });
+  function closeBottomDrawer(restoreFocus = false) {
+    if (!drawerOpen) return;
+    drawerOpen = drawerDragging = false;
+    sync(false);
+    if (restoreFocus) drawerReturn?.focus({ preventScroll: true });
+    drawerReturn = undefined;
+  }
+  // Tabs select their panel first; this listener only decides whether the drawer stays open.
+  root.addEventListener("click", (event) => {
+    const tab = event.target instanceof Element ? event.target.closest<HTMLElement>(runtimeTabs) : null;
+    if (!tab || pinned() || compact()) return;
+    const id = tab.dataset.placementPanelTab;
+    // detail is 0 for commands and keyboard activation, which must never close the panel.
+    drawerOpen = !(drawerOpen && drawerTab === id && event.detail > 0);
+    drawerTab = id;
+    sync(false);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!drawerOpen || pinned() || compact()) return;
+    if (event.target instanceof Element && event.target.closest(".placement-runtime-dock, dialog, [role=dialog], [role=alertdialog]")) return;
+    closeBottomDrawer();
+  }, { capture: true });
+  // Wait a task so the browser captures the drag image from the visible drawer.
+  root.addEventListener("dragstart", (event) => {
+    if (!drawerOpen || pinned() || !(event.target instanceof Element) || !event.target.closest(".placement-runtime-dock")) return;
+    setTimeout(() => { if (drawerOpen) { drawerDragging = true; sync(false); } });
+  });
+  window.addEventListener("dragend", () => { if (drawerDragging) closeBottomDrawer(); });
   layoutMenu.panel.append(focus, reset);
   controls.append(panelToggles, layoutMenu.element);
   focus.addEventListener("click", () => layoutMenu.close(true));
@@ -294,6 +388,42 @@ export function installPlacementWorkspaceLayout(
     event.preventDefault();
     close();
   });
+  const editingText = (event: KeyboardEvent) => event.target instanceof Element &&
+    !!event.target.closest("input, textarea, select, [contenteditable=true]");
+  // Inside the drawer Escape dismisses it, after a filled field has had its own Escape.
+  const ownsEscape = (event: KeyboardEvent) => event.target instanceof Element && event.target.closest(".placement-runtime-dock")
+    ? event.target instanceof HTMLInputElement && event.target.value !== ""
+    : editingText(event);
+  window.addEventListener("keydown", (event) => {
+    if (event.code !== "Escape" || event.defaultPrevented || !drawerOpen || pinned() || compact() || root.inert || ownsEscape(event)) return;
+    event.preventDefault();
+    closeBottomDrawer(true);
+  });
+  // Capture: viewport canvases consume Space for panning before the event bubbles here.
+  window.addEventListener("keydown", (event) => {
+    if (event.code !== "Space" || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+        event.repeat || event.isComposing || root.inert || compact() || editingText(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (drawerOpen && !pinned()) { closeBottomDrawer(true); return; }
+    const active = document.activeElement;
+    drawerReturn = active instanceof HTMLElement ? active : undefined;
+    selectRuntimeTab("assets");
+    reveal("runtime");
+    root.querySelector<HTMLElement>("[data-placement-asset-search]")?.focus({ preventScroll: true });
+  }, { capture: true });
+  function reveal(dock: Dock) {
+    if (compact()) compactPanel = dock;
+    else {
+      focused = false;
+      layout.hidden = layout.hidden.filter((value) => value !== dock);
+      if (dock === "runtime" && !pinned()) {
+        drawerOpen = true;
+        drawerTab = selectedRuntimeTab();
+      }
+    }
+    sync(false);
+  }
   const observer = new ResizeObserver(() => sync(false));
   const observedRows = new Set<Element>();
   observer.observe(root);
@@ -360,6 +490,16 @@ export function installPlacementWorkspaceLayout(
     viewportTab.tabIndex = compactPanel ? -1 : 0;
     // Desktop reserves 360px for the viewport. Collapse is always explicit.
     const hidden = focused ? ["scene", "inspector", "runtime"] : layout.hidden;
+    if (hidden.includes("runtime") || isCompact) drawerOpen = drawerDragging = false;
+    const drawer = isCompact || pinned() ? "pinned" : !drawerOpen ? "closed" : drawerDragging ? "dragging" : "open";
+    root.dataset.runtimeDrawer = drawer;
+    pin.hidden = isCompact;
+    pin.setAttribute("aria-pressed", String(pinned()));
+    const pinLabel = pinned() ? "Undock Panel" : "Dock Panel";
+    if (pin.dataset.caption !== pinLabel) {
+      decorateViewportAction(pin, "pin", pinLabel, undefined, true);
+      pin.dataset.caption = pinLabel;
+    }
     const available = Math.max(0, width - 360 - 16);
     let scene = hidden.includes("scene") ? 0 : layout.scene;
     let inspector = hidden.includes("inspector") ? 0 : layout.inspector;
@@ -377,10 +517,11 @@ export function installPlacementWorkspaceLayout(
         inspector *= available / total;
       }
     }
-    root.style.setProperty("--scene-dock-width", `${Math.round(scene)}px`);
+    const stripe = (dock: Dock) => !isCompact && !focused && hidden.includes(dock);
+    root.style.setProperty("--scene-dock-width", `${stripe("scene") ? RAIL_SIZE : Math.round(scene)}px`);
     root.style.setProperty(
       "--inspector-dock-width",
-      `${Math.round(inspector)}px`,
+      `${stripe("inspector") ? RAIL_SIZE : Math.round(inspector)}px`,
     );
     root.style.setProperty("--runtime-dock-height", `${layout.runtime}px`);
     for (const dock of ["scene", "inspector", "runtime"] as const) {
@@ -401,6 +542,22 @@ export function installPlacementWorkspaceLayout(
       );
       for (const inactive of candidates)
         if (inactive !== panel) inactive.removeAttribute("id");
+      rails.get(dock)!.hidden = !stripe(dock);
+      for (const candidate of candidates) {
+        const host = dock === "inspector" ? candidate.querySelector<HTMLElement>(".placement-inspector-header") : candidate;
+        if (!host) continue;
+        // Scene tabs adopt the dock's children, so keep the button on the dock itself.
+        const existing = host.querySelector<HTMLElement>("[data-placement-dock-minimize]");
+        if (existing) { if (existing.parentElement !== host) host.append(existing); continue; }
+        const minimizeButton = document.createElement("button");
+        minimizeButton.type = "button";
+        minimizeButton.className = "placement-dock-minimize";
+        minimizeButton.dataset.placementDockMinimize = dock;
+        decorateViewportAction(minimizeButton, "minus", "Minimize Panel", undefined, true);
+        host.append(minimizeButton);
+      }
+      if (dock === "runtime") for (const button of root.querySelectorAll<HTMLElement>('[data-placement-dock-minimize="runtime"]'))
+        button.hidden = isCompact || drawer === "closed";
       if (panel) {
         panel.id = "placement-" + dock + "-dock";
         button.setAttribute("aria-controls", panel.id);
@@ -457,6 +614,7 @@ export function installPlacementWorkspaceLayout(
         compact: isCompact,
         compactPanel: compactPanel ?? "none",
         preset: preferences.active,
+        runtimeDrawer: drawer,
       },
     });
     if (persist) persistPreferences(true);
@@ -474,13 +632,7 @@ export function installPlacementWorkspaceLayout(
     sync: () => sync(false),
     refreshAvailability: refreshPresets,
     ownsGesture: () => drag !== undefined,
-    reveal(dock: Dock) {
-      if (compact()) compactPanel = dock;
-      else {
-        focused = false;
-        layout.hidden = layout.hidden.filter((value) => value !== dock);
-      }
-      sync(false);
-    },
+    reveal,
+    dismissDrawer: () => closeBottomDrawer(),
   };
 }

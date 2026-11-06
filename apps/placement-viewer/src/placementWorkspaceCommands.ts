@@ -8,6 +8,7 @@ export function placementWorkspaceCommands(options: {
   mode(): string;
   pixelOpen(): boolean;
   reveal(dock: "scene" | "inspector" | "runtime"): void;
+  showPixelLauncher(): void;
 }): PlacementCommand[] {
   const commands: PlacementCommand[] = [];
   const editorView = () => !options.pixelOpen() && options.mode() !== "game";
@@ -33,16 +34,27 @@ export function placementWorkspaceCommands(options: {
   for (const [id, label, dock, selector] of [
     ["objects", "Objects", "scene", '[data-placement-panel-tab="objects"]'],
     ["properties", "Properties", "inspector", '.placement-inspector [data-placement-panel-tab="properties"]'],
+    ["lighting", "Lighting", "inspector", '.placement-inspector [data-placement-panel-tab="lighting"]'],
     ["assets", "Assets", "runtime", '.placement-runtime-dock [data-placement-panel-tab="assets"]'],
     ["problems", "Problems", "runtime", '.placement-runtime-dock [data-placement-panel-tab="problems"]'],
     ["runtime", "Runtime", "runtime", '.placement-runtime-dock [data-placement-panel-tab="runtime"]'],
   ] as const) action(id, label, "Panels", () => selector, () => true, undefined, () => options.reveal(dock), dock === "runtime" ? () => options.root : options.documentRoot);
+  const inspector = options.documentRoot;
+  action("undo", "Undo", "Edit", () => '[data-placement-action="undo"]', () => !options.pixelOpen(), "Ctrl/Cmd Z");
+  action("redo", "Redo", "Edit", () => '[data-placement-action="redo"]', () => !options.pixelOpen(), "Ctrl/Cmd Shift Z");
+  action("duplicate-selected", "Duplicate", "Edit", () => '[data-placement-action="duplicate-selected"]', editorView, undefined, undefined, inspector);
+  action("remove-selected", "Remove", "Edit", () => '[data-placement-action="remove-selected"]', editorView, undefined, undefined, inspector);
+  action("save", "Save", "File", () => '[data-placement-action="save-draft"]', () => !options.pixelOpen(), undefined, undefined, inspector);
+  action("export", "Export", "File", () => '[data-placement-export]', () => !options.pixelOpen());
   action("focus-view", "Focus", "Workspace", () => '[data-placement-action="focus-viewport"]');
   action("reset-layout", "Reset Layout", "Workspace", () => '[data-placement-action="reset-layout"]');
   for (const { id, label } of WORKSPACE_PRESETS)
     action(`layout-${id}`, label, "Layouts", () => `[data-placement-layout-preset="${id}"]`);
-  action("new-pixel", "New Pixel", "Pixel Art", () => '[data-pixel-launcher] [data-pixel-action="new"]');
-  action("open-pixel", "Open Pixel / PNG", "Pixel Art", () => '[data-pixel-launcher] [data-pixel-action="open"]');
+  // Launch failures report in the launcher, so it must be on screen before the action runs.
+  action("new-pixel", "New Pixel", "Pixel Art", () => '[data-pixel-launcher] [data-pixel-action="new"]', () => true, undefined, options.showPixelLauncher);
+  action("open-pixel", "Open Pixel / PNG", "Pixel Art", () => '[data-pixel-launcher] [data-pixel-action="open"]', () => true, undefined, options.showPixelLauncher);
+  for (const [id, label] of [["aseprite", "Import Aseprite"], ["tile", "Import Tile Frames"], ["model", "Import Model"], ["normal", "Generate Normal"], ["usage", "Asset Usage"], ["cleanup", "Catalog Cleanup"], ["changes", "Asset Changes"]])
+    action(`asset-${id}`, label, "Assets", () => `[data-placement-asset-open="${id}"]`);
   for (const [id, label, actionName, key] of [["pixel-undo", "Undo", "undo", "Ctrl/Cmd Z"], ["pixel-redo", "Redo", "redo", "Ctrl/Cmd Shift Z"], ["pixel-fit", "Fit", "fit", ""], ["back-to-scene", "Back To Scene", "back", ""]])
     action(id, label, "Pixel Art", () => `#placement-pixel-workspace [data-pixel-action="${actionName}"]`, options.pixelOpen, key);
   const properties = commands.find(command => command.id === "properties");

@@ -1,4 +1,4 @@
-import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
+import {showPlacementAssetPanel,clickPlacementToolAction} from "./placement-panel-navigation.mjs";
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -54,6 +54,7 @@ export async function smokePixelRecovery(page,mode,run) {
     return JSON.parse(await readFile(path,'utf8'));
   }
   async function recoveryMenu(p) {
+    if(!await workspace(p).isVisible())await showPlacementAssetPanel(p,'pixel');
     const menu=await workspace(p).isVisible()?workspace(p).locator('[data-pixel-recovery]'):p.locator('[data-pixel-launcher] [data-pixel-recovery]');
     if(await menu.getAttribute('open')===null)await menu.locator('summary').click();
     await clickPlacementToolAction(menu.locator('[data-pixel-action="recovery-refresh"]'));return menu;
@@ -68,7 +69,10 @@ export async function smokePixelRecovery(page,mode,run) {
   assert.equal(await workspace(page).getAttribute('data-pixel-dirty'),'true');
   await move(page,'ArrowDown',false);await page.waitForTimeout(750);
   assert.deepEqual(JSON.parse((await rows(page))[0].source),committed);
-  page.once('dialog',dialog=>dialog.accept());await page.reload();await ready(page);await showPlacementBottom(page,'assets');
+  page.once('dialog',dialog=>dialog.accept());await page.reload();await ready(page);
+  // A collapsed drawer must still announce recoverable drafts without opening anything.
+  await page.waitForFunction(()=>document.querySelector('.placement-runtime-dock [data-placement-panel-tab="assets"]').dataset.assetAttention==='true');
+  await showPlacementAssetPanel(page,'pixel');
   let menu=await recoveryMenu(page);const old=menu.locator('[data-pixel-recovery-id="'+saved.id+'"]');await old.waitFor();
   await clickPlacementToolAction(old.locator('[data-pixel-action="recovery-restore"]'));await workspace(page).waitFor({state:'visible'});
   assert.equal(await workspace(page).getAttribute('data-pixel-dirty'),'true');

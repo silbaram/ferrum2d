@@ -9,7 +9,7 @@ export async function smokePixelImportLayer(page,mode,run,{source,original,input
   const apply=dialog.locator('[data-pixel-import-action=apply]');
   const rgba=Uint8Array.from([255,0,0,255,0,0,255,128]);
   const file={name:'overlay.png',mimeType:'image/png',buffer:Buffer.from(encodePngRgba(2,1,rgba))};
-  async function load(value){await input.setInputFiles({name:'layer-test.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});await workspace.waitFor({state:'visible'});}
+  async function load(value){await input.setInputFiles({name:'layer-test.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});await workspace.waitFor({state:'visible'});await page.waitForFunction(name=>document.querySelector('#placement-pixel-workspace .placement-pixel-header strong')?.textContent.startsWith(name),value.name);}
   async function ready(){await page.waitForFunction(()=>document.querySelector('[data-pixel-import-action=apply]')?.disabled===false);}
   async function open(drop=false){
     if(drop) await workspace.evaluate((element,bytes)=>{const data=new DataTransfer();data.items.add(new File([Uint8Array.from(bytes)],'overlay.png',{type:'image/png'}));element.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));},[...file.buffer]);

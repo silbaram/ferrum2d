@@ -1,5 +1,5 @@
 export type WorkspaceDock = "scene" | "inspector" | "runtime";
-export type WorkspaceLayout = Record<WorkspaceDock, number> & { hidden: WorkspaceDock[] };
+export type WorkspaceLayout = Record<WorkspaceDock, number> & { hidden: WorkspaceDock[]; runtimePinned?: boolean };
 export const WORKSPACE_DOCKS = ["scene", "inspector", "runtime"] as const;
 export const WORKSPACE_LIMITS = { scene: [160, 400], inspector: [240, 480], runtime: [64, 280] } as const;
 export const WORKSPACE_PRESETS = [
@@ -15,8 +15,11 @@ export function clampWorkspaceSize(dock: WorkspaceDock, value: number): number {
   return Math.max(WORKSPACE_LIMITS[dock][0], Math.min(WORKSPACE_LIMITS[dock][1], Math.round(value)));
 }
 export function defaultWorkspaceLayout(preset: WorkspacePreset): WorkspaceLayout {
-  return { scene: 240, inspector: 320, runtime: preset === "assets" ? 240 : preset === "review" ? 120 : 168,
+  const layout: WorkspaceLayout = { scene: 240, inspector: 320, runtime: preset === "assets" ? 240 : preset === "review" ? 120 : 168,
     hidden: preset === "scene" ? ["runtime"] : preset === "custom" ? [] : ["scene", "inspector"] };
+  // Layouts built around the bottom panels keep it docked; others start as a drawer.
+  if (preset === "assets" || preset === "review") layout.runtimePinned = true;
+  return layout;
 }
 function parse(text: string | null): unknown {
   try { return JSON.parse(text ?? "null"); } catch { return undefined; }
@@ -30,6 +33,8 @@ function readLayout(value: unknown, preset: WorkspacePreset): WorkspaceLayout {
   }
   const hidden: unknown = Reflect.get(value, "hidden");
   if (Array.isArray(hidden)) layout.hidden = WORKSPACE_DOCKS.filter(dock => hidden.includes(dock));
+  const pinned: unknown = Reflect.get(value, "runtimePinned");
+  if (typeof pinned === "boolean") layout.runtimePinned = pinned;
   return layout;
 }
 /** Legacy custom settings remain independent of the new task preferences. */

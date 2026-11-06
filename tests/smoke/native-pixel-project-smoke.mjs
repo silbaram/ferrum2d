@@ -91,7 +91,7 @@ export async function smokeNativePixels({getPage,mode,project,scene,initial,run,
     return {mode,focus:'pixel-normals',pixelNormals,restoredNormalGame,realRustStorageAndProtocol:true,newToolsSourceExact:true,recoveryFailedSaveKept:true,recoverySavedSessionCleared:true,released:{urls:0,textures:0}};
   }
   await showPlacementBottom(page,'assets');
-  await page.locator('[data-pixel-action="new"]').click();
+  await clickPlacementToolAction(page.locator('[data-pixel-action="new"]'));
   const dialog=page.locator('dialog[open]');
   await dialog.getByLabel('Pixel Name',{exact:true}).fill('native-pixel');
   await dialog.getByLabel('Pixel Width',{exact:true}).fill('8');

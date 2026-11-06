@@ -4,6 +4,7 @@ import { createPlacementFieldFeedback } from "./placementToolPanel";
 import { decorateViewportAction } from "./placementViewportChrome";
 import { spatialCameraPitch, orbitSpatialCameraPitch } from "./placementSpatialCamera";
 import { installGameCameraGestures } from "./placementGameCameraGestures";
+import { installPlacementNumberStepper } from "./placementNumberStepper";
 
 /** Cold authored camera controls. The workspace owns transactions and native apply. */
 export function createPlacementGameCamera(options: {
@@ -99,6 +100,10 @@ export function createPlacementGameCamera(options: {
     const feedback = createPlacementFieldFeedback(input);
     feedbacks.set(input, feedback);
     row.append(text, input, feedback.element); parent.append(row); fields.set(name, input);
+    installPlacementNumberStepper(input, name === "near" || name === "far" ? 0.1 : 1, () => {
+      input.dispatchEvent(new Event("input"));
+      input.dispatchEvent(new Event("change"));
+    });
     const build = () => {
       if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
         feedback.set("Enter a valid camera value");

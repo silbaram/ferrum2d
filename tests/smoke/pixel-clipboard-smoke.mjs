@@ -11,7 +11,7 @@ export async function smokePixelClipboard(page,mode,run) {
   const action=k=>workspace.locator('[data-pixel-action="'+k+'"]'),menu=workspace.locator('.placement-pixel-export-menu');
   const copy=action('copy-png'),status=workspace.locator('[data-pixel-status]');let serial=0;
   async function open(){if(!await menu.evaluate(e=>e.open))await menu.locator('summary').click();}
-  async function load(value){await input.setInputFiles({name:'clipboard.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});await workspace.waitFor({state:'visible'});}
+  async function load(value){await input.setInputFiles({name:'clipboard.pixel.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(value))});await workspace.waitFor({state:'visible'});await page.waitForFunction(name=>document.querySelector('#placement-pixel-workspace .placement-pixel-header strong')?.textContent.startsWith(name),value.name);}
   async function exported(kind){await open();const pending=page.waitForEvent('download');await clickPlacementToolAction(action(kind));const file=await pending,path=resolve(run,mode+'-clipboard-'+serial+++(kind==='export-source'?'.pixel.json':'.png'));await file.saveAs(path);await menu.locator('summary').click();return readFile(path);}
   const source=async()=>JSON.parse(await exported('export-source'));
   async function clipboard(){return Buffer.from(await page.evaluate(async()=>{const items=await navigator.clipboard.read();const item=items.find(i=>i.types.includes('image/png'));if(!item)throw Error('No clipboard PNG');return [...new Uint8Array(await(await item.getType('image/png')).arrayBuffer())];}));}

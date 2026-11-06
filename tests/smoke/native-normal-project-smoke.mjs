@@ -1,4 +1,4 @@
-import {clickPlacementToolAction} from "./placement-panel-navigation.mjs";
+import {clickPlacementToolAction, showPlacementAssetPanel} from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -200,7 +200,7 @@ export async function smokeNativeNormals({
     await getPage().locator('[data-placement-mode="spatial"]').click();
     await reveal();
     const normalTool = getPage().locator('[data-placement-normal-tool="true"]');
-    await normalTool.locator("summary").click();
+    await showPlacementAssetPanel(getPage(), "normal");
     await normalTool
       .getByRole("tab", { name: "Settings", exact: true })
       .click();
@@ -232,6 +232,8 @@ export async function smokeNativeNormals({
       .getByLabel("Generated asset name", { exact: true })
       .fill(animated ? "native-animation" : "native-static");
     if (animated) {
+      if (!(await normalTool.locator("[data-normal-advanced]").evaluate((node) => node.open)))
+        await normalTool.locator("[data-normal-advanced] > summary").click();
       await normalTool.getByLabel("PNG frame grid").check();
       await normalTool.getByLabel("Frame Width", { exact: true }).fill("16");
       await normalTool
@@ -262,7 +264,7 @@ export async function smokeNativeNormals({
         .querySelector("[data-normal-status]")
         .textContent.includes("Applied"),
     );
-    await normalAction("save").click();
+    await clickPlacementToolAction(normalAction("save"));
     await getPage().waitForFunction(
       () =>
         document.querySelector('[data-placement-normal-tool="true"]').dataset
@@ -274,7 +276,7 @@ export async function smokeNativeNormals({
     );
     const binding = (await bindings())[0].binding;
     assert.equal(!!binding.animationSet, animated);
-    await normalTool.locator("summary").click();
+    await getPage().locator("[data-placement-asset-view-back]").click();
     await reveal();
     await click("save");
     assert.match(await status(), /^Project saved/);
