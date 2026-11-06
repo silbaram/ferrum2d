@@ -92,7 +92,14 @@ export async function smokePlacementLayoutPresets(parent,mode,timeoutMs=30000){
     await command('scene');assert.equal((await layout()).preset,'scene');assert(await pixel.isVisible());
     await pixel.locator('[data-pixel-action="undo"]').click();assert.equal(await pixel.getAttribute('data-pixel-dirty'),'true');
     assert(await pixel.locator('[data-pixel-action="undo"]').isDisabled(),'one undo must still remove the only pixel stroke');
+    // Scene docks yield to the pixel editor without changing the saved layout.
+    const shell=page.locator('.demo-shell'),dockHidden=dock=>shell.getAttribute(`data-${dock}-dock-hidden`),savedHidden=(await layout()).hidden;
+    assert.equal(await dockHidden('scene'),'true');assert.equal(await dockHidden('inspector'),'true');
+    await page.locator('[data-placement-dock-rail="inspector"] [data-placement-rail-tab="properties"]').click();assert.equal(await dockHidden('inspector'),'false');
+    await page.locator('.placement-panel:not([hidden]) [data-placement-dock-minimize="inspector"]').click();assert.equal(await dockHidden('inspector'),'true');
+    assert.deepEqual((await layout()).hidden,savedHidden,'Pixel docks are transient');
     await pixel.locator('[data-pixel-action="back"]').click();
+    await page.waitForFunction(()=>document.querySelector('.demo-shell').dataset.sceneDockHidden==='false');assert.equal(await dockHidden('inspector'),'false');
     await page.locator('[data-placement-close-document="ferrum:pixel-document"]').click();await page.locator('dialog[open] [data-pixel-action="confirm-discard"]').click();
     assert.equal(await source(),before);
     // A dirty second scene must remain selected, with its patch and undo entry intact.

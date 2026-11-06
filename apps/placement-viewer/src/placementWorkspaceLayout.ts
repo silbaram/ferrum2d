@@ -30,6 +30,10 @@ export function installPlacementWorkspaceLayout(
   const preferences = readWorkspacePreferences(read(storageKey), read(presetsKey));
   let layout = preferences.layouts[preferences.active];
   let focused = false;
+  // The pixel editor brings its own side panels, so scene docks yield without
+  // touching saved layouts. Docks opened from there stay until the tab changes.
+  let pixelActive = false;
+  const pixelRevealed = new Set<Dock>();
   // An unpinned bottom dock is a strip whose body overlays the viewport without resizing it.
   let drawerOpen = false, drawerDragging = false, drawerTab: string | undefined, drawerReturn: HTMLElement | undefined;
   const pinned = () => layout.runtimePinned === true;
@@ -40,6 +44,7 @@ export function installPlacementWorkspaceLayout(
   const sessions = new Map<WorkspacePreset, { focused: boolean; compactPanel?: Dock; runtimeTab?: string }>();
   let returnFocus: HTMLElement | undefined;
   const compact = () => root.clientWidth <= 860;
+  const pixelYields = (dock: Dock) => pixelActive && dock !== "runtime";
   const viewportTab = document.createElement("button"),
     drawerHeader = document.createElement("div"),
     drawerTitle = document.createElement("span"),
@@ -143,6 +148,11 @@ export function installPlacementWorkspaceLayout(
         return;
       }
       focused = false;
+      if (pixelYields(dock)) {
+        if (!pixelRevealed.delete(dock)) pixelRevealed.add(dock);
+        sync(false);
+        return;
+      }
       layout.hidden = layout.hidden.includes(dock)
         ? layout.hidden.filter((item) => item !== dock)
         : [...layout.hidden, dock];
@@ -300,6 +310,11 @@ export function installPlacementWorkspaceLayout(
   });
   function minimize(dock: Dock) {
     if (drag || root.inert) return;
+    if (pixelYields(dock)) {
+      pixelRevealed.delete(dock);
+      sync(false);
+      return;
+    }
     if (dock === "runtime") {
       // The tab strip is the bottom dock's minimized form.
       layout.runtimePinned = false;
@@ -416,6 +431,7 @@ export function installPlacementWorkspaceLayout(
     if (compact()) compactPanel = dock;
     else {
       focused = false;
+      if (pixelYields(dock)) pixelRevealed.add(dock);
       layout.hidden = layout.hidden.filter((value) => value !== dock);
       if (dock === "runtime" && !pinned()) {
         drawerOpen = true;
@@ -424,12 +440,21 @@ export function installPlacementWorkspaceLayout(
     }
     sync(false);
   }
+  const stage = root.querySelector<HTMLElement>(".demo-stage");
+  const pixelObserver = new MutationObserver(() => {
+    const active = stage?.dataset.pixelEditor === "true";
+    if (active === pixelActive) return;
+    pixelActive = active;
+    pixelRevealed.clear();
+    sync(false);
+  });
+  if (stage) pixelObserver.observe(stage, { attributes: true, attributeFilter: ["data-pixel-editor"] });
   const observer = new ResizeObserver(() => sync(false));
   const observedRows = new Set<Element>();
   observer.observe(root);
   if (canvas) observer.observe(canvas);
   window.addEventListener("pagehide", (event) => {
-    if (!event.persisted) observer.disconnect();
+    if (!event.persisted) { observer.disconnect(); pixelObserver.disconnect(); }
   });
   function sync(persist: boolean) {
     refreshPresets();
@@ -489,7 +514,8 @@ export function installPlacementWorkspaceLayout(
     viewportTab.setAttribute("aria-controls", "placement-viewport");
     viewportTab.tabIndex = compactPanel ? -1 : 0;
     // Desktop reserves 360px for the viewport. Collapse is always explicit.
-    const hidden = focused ? ["scene", "inspector", "runtime"] : layout.hidden;
+    const hidden: readonly Dock[] = focused ? ["scene", "inspector", "runtime"]
+      : [...new Set([...layout.hidden, ...(["scene", "inspector"] as const).filter(dock => pixelYields(dock) && !isCompact && !pixelRevealed.has(dock))])];
     if (hidden.includes("runtime") || isCompact) drawerOpen = drawerDragging = false;
     const drawer = isCompact || pinned() ? "pinned" : !drawerOpen ? "closed" : drawerDragging ? "dragging" : "open";
     root.dataset.runtimeDrawer = drawer;
