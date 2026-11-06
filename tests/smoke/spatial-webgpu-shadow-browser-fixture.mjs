@@ -779,6 +779,68 @@ async function probe(canvas, backend, projection) {
       check(Math.abs(open[0] - contactLit[0]) <= 3, "sun receiver correction introduced planar acne", { resolution, filter, contactLit, open });
       contactShadows.push({ resolution, filter, lit: contactLit, receiver, open });
     }
+    const shadowEdges = [], edgeReceiver = { x: 0, y: 0, elevation: 0 },
+      edgeLighting = {
+        ambient: [0.03, 0.03, 0.03], lights: [],
+        directional: { direction: { x: 0, y: 0, elevation: 1 }, intensity: 2 },
+      },
+      edgeDoc = (d, margin) => {
+        stabilityDoc(d);
+        d.spatial.camera.position.x = 32 - margin;
+        d.spatial.camera.target.x = 32 - margin;
+        d.spatial.terrain[1] = {
+          id: "edge-bridge", floorId: 1, kind: "bridge",
+          x: -8, y: -8, width: 16, depth: 16, elevation: 40, baseElevation: 38,
+          walkable: false, color: [0.5, 0.5, 0.5, 1],
+        };
+      };
+    const edgeOff = await configure("sun-edge-off", { lighting: edgeLighting }, "scale0", false, false, d => edgeDoc(d, 3));
+    const edgeLit = sample({ data: lastPixels, spatial: edgeOff.spatial }, edgeReceiver);
+    for (const filter of ["hard", "pcf3"]) {
+      const values = [];
+      for (const margin of [3, 2, 1.5, 1, 0.5, 0, -1]) {
+        const lighting = structuredClone(edgeLighting);
+        lighting.shadowFilter = filter;
+        lighting.directional.shadows = { resolution: 128, extent: 32, distance: 256, bias: 0.05 };
+        const row = await configure(`sun-edge-${filter}-${margin}`, { lighting }, "scale0", false, false, d => edgeDoc(d, margin));
+        values.push({ margin, receiver: sample({ data: lastPixels, spatial: row.spatial }, edgeReceiver) });
+      }
+      const inside = values[0].receiver[0], middle = values[3].receiver[0], outside = values.at(-1).receiver[0];
+      check(edgeLit[0] > inside + 40 && middle > inside + 10 && middle < edgeLit[0] - 5 && Math.abs(outside - edgeLit[0]) <= 3,
+        "sun shadow ended abruptly instead of fading at the finite map boundary", { filter, edgeLit, values });
+      for (let i = 1; i < values.length; i++)
+        check(values[i].receiver[0] >= values[i - 1].receiver[0] - 3, "sun map boundary fade reversed during camera pan", { filter, values });
+      shadowEdges.push({ axis: "xy", filter, lit: edgeLit, values });
+    }
+    const depthDoc = (d) => {
+      edgeDoc(d, 32);
+      d.spatial.terrain[0].elevation = -200;
+      d.spatial.terrain[0].baseElevation = -202;
+      // Keep the roof clear of the ground sample in this oblique camera.
+      d.spatial.terrain[1].elevation = -160;
+      d.spatial.terrain[1].baseElevation = -162;
+      d.spatial.terrain[1].y = -4;
+      d.spatial.terrain[1].depth = 8;
+    }, depthReceiver = { x: 0, y: 0, elevation: -200 };
+    const depthOff = await configure("sun-depth-edge-off", { lighting: edgeLighting }, "scale0", false, false, depthDoc);
+    const depthLit = sample({ data: lastPixels, spatial: depthOff.spatial }, depthReceiver);
+    check(depthLit[0] > 150, "depth boundary fixture did not expose the lit top receiver", depthLit);
+    for (const filter of ["hard", "pcf3"]) {
+      const values = [];
+      for (const margin of [3, 2, 1.5, 1, 0.5, 0, -1]) {
+        const lighting = structuredClone(edgeLighting);
+        lighting.shadowFilter = filter;
+        lighting.directional.shadows = { resolution: 128, extent: 32, distance: 200 + margin, bias: 0.05 };
+        const row = await configure(`sun-depth-edge-${filter}-${margin}`, { lighting }, "scale0", false, false, depthDoc);
+        values.push({ margin, receiver: sample({ data: lastPixels, spatial: row.spatial }, depthReceiver) });
+      }
+      const inside = values[0].receiver[0], middle = values[3].receiver[0], outside = values.at(-1).receiver[0];
+      check(depthLit[0] > inside + 40 && middle > inside + 10 && middle < depthLit[0] - 5 && Math.abs(outside - depthLit[0]) <= 3,
+        "sun shadow ended abruptly at the depth coverage boundary", { filter, depthLit, values });
+      for (let i = 1; i < values.length; i++)
+        check(values[i].receiver[0] >= values[i - 1].receiver[0] - 3, "sun depth boundary fade reversed", { filter, values });
+      shadowEdges.push({ axis: "depth", filter, lit: depthLit, values });
+    }
     const debug = await configure("debug-shadows", both, "scale0", false, true);
     check(
       debug.stats.debugDrawCalls === 1 && debug.stats.debugLineCount > 0,
@@ -837,6 +899,7 @@ async function probe(canvas, backend, projection) {
       pcfChanges,
       sunStability,
       contactShadows,
+      shadowEdges,
       alphaUpdate: alphaUpdate.stats,
       atlasReplace: atlasReplace.stats,
       normalOnly: normalOnly.stats,

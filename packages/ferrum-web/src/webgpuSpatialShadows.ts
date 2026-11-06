@@ -40,6 +40,9 @@ fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  let clip=env.shadow[6]*vec4f(world+geometric*e(124u),1.);let q=clip.xyz/clip.w*.5+.5;
  if(any(q<vec3f(0.))||any(q>vec3f(1.))){return 1.;}
  let size=textureDimensions(sunMap);let filtered=e(95u)==1.;let extent=e(94u);let span=e(91u)*2.;
+ let xyEdge=min(min(q.x,1.-q.x),min(q.y,1.-q.y))*2.*extent;
+ let depthEdge=min(q.z,1.-q.z)*span;
+ let weight=smoothstep(0.,8.*extent/f32(size.x),min(xyEdge,depthEdge));
  let incidence=dot(geometric,direction);var gradient=vec2f(0.);var bias=e(93u)/span+.000001;
  if(abs(incidence)>.001){
   // Same receiver plane as GLSL, with no additional fragment derivatives.
@@ -49,11 +52,11 @@ fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  }else{bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered)/span;}
  // Choose canonical Y-up texels first; flip the integer row only for textureLoad.
  let pixel=vec2i(floor(q.xy*vec2f(size)));
- if(!filtered){return sunCompare(pixel,size,q,gradient,bias);}
+ if(!filtered){return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);}
  var visibility=0.;
  for(var y= -1;y<=1;y++){for(var x= -1;x<=1;x++){
   visibility+=sunCompare(pixel+vec2i(x,y),size,q,gradient,bias);
- }}return visibility/9.;
+ }}return mix(1.,visibility/9.,weight);
 }`;
 export const spatialShadowCameraWGSL = `
 struct ShadowCamera{matrix:mat4x4f,light:vec4f,params:vec4f};

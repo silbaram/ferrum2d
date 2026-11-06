@@ -29,6 +29,11 @@ float sunVisibility(vec3 world,vec3 geometric){
  vec4 clip=u_sunMatrix*vec4(world+geometric*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
  if(any(lessThan(q,vec3(0.))) || any(greaterThan(q,vec3(1.))))return 1.;
  vec2 size=vec2(textureSize(u_sunMap,0)),texel=1./size;
+ // Fade only inside the finite map, across four XY texels in world units.
+ // The same world width guards the depth planes; outside remains fully lit.
+ float xyEdge=min(min(q.x,1.-q.x),min(q.y,1.-q.y))*2.*u_sunParams.z;
+ float depthEdge=min(q.z,1.-q.z)*u_sunParams.x;
+ float weight=smoothstep(0.,8.*u_sunParams.z/size.x,min(xyEdge,depthEdge));
  float incidence=dot(geometric,normalize(u_sunDirection));
  bool plane=abs(incidence)>.001;vec2 gradient=vec2(0.);
  float bias=u_sunParams.y/u_sunParams.x+.000001;
@@ -43,12 +48,12 @@ float sunVisibility(vec3 world,vec3 geometric){
   float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
   bias+=2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.)/u_sunParams.x;
  }
- vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return sunCompare(pixel,size,q,gradient,bias);
+ vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);
  float visibility=0.;
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
   visibility+=sunCompare(pixel+vec2(x,y),size,q,gradient,bias);
  }
- return visibility/9.;
+ return mix(1.,visibility/9.,weight);
 }
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
