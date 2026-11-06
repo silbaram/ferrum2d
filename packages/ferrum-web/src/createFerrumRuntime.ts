@@ -1,6 +1,7 @@
 import type { ShaderPreparationOptions } from "./shaderPreparation";
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
 import { createEngineWithFramePipeline } from "./createEngine.js";
+import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
 import type {
   AssetHost,
   CreateEngineOptions,
@@ -359,6 +360,10 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let detachRendererResize: (() => void) | undefined;
   let engine: FerrumEngine | undefined = options.engineInstance;
   let levelStreaming: FerrumRuntimeLevelStreaming | undefined;
+  let dialogue: FerrumRuntimeDialogue | undefined;
+  const requestedDialogue = options.dialogue;
+  const dialogueOptions = requestedDialogue && { ...requestedDialogue };
+  let ownedDialogueSession: DialogueSession | undefined;
   let physicsScene: PhysicsSceneProfileApplyResult | undefined;
   let restoreExternalDisplay: (() => void) | undefined;
   let displayViewportCommitted = false;
@@ -405,7 +410,9 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const hud = createRuntimeHud(options.hud);
     const animationTimeline = createRuntimeAnimationTimeline(options.animationTimeline);
     const localization = createRuntimeLocalization(options.localization);
-    const dialogue = createRuntimeDialogue(options.dialogue);
+    if (dialogueOptions) await initializeFerrumWasm();
+    dialogue = createRuntimeDialogue(dialogueOptions);
+    if (dialogueOptions && dialogueOptions.session === undefined) ownedDialogueSession = dialogue?.session;
     const cutscene = createRuntimeCutscene(options.cutscene, localization, assetHost);
     levelStreaming = createRuntimeLevelStreamingOption(
       options.levelStreaming,
@@ -469,6 +476,8 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     };
     const runtimeFrameRenderer = new RuntimeFrameRenderer({
       renderer: runtimeRenderer,
+      borrowNativeBuffers: ownsRenderer,
+      isAlive: () => !destroyed,
       lighting: options.lighting,
       postProcess: options.postProcess,
       spriteMaterial: options.spriteMaterial,
@@ -555,6 +564,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
         disposeRuntimeResources([
           () => detach?.(),
           () => levelStreaming?.destroy(),
+          () => ownedDialogueSession?.destroy(),
           () => physicsScene?.clear(),
           () => { if (ownsEngine) runtimeEngine.destroy(); },
           () => { if (ownsUiOverlay) uiOverlay?.destroy(); },
@@ -577,6 +587,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       () => detachRendererResize?.(),
       () => restoreExternalDisplay?.(),
       () => levelStreaming?.destroy(),
+      () => ownedDialogueSession?.destroy(),
       () => physicsScene?.clear(),
       () => { if (ownsUiOverlay) uiOverlay?.destroy(); },
       () => debugOverlay?.destroy(),

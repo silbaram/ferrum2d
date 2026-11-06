@@ -1,5 +1,6 @@
 import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
-import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import {
   createBuiltInShooterStateAccessor,
@@ -109,7 +110,7 @@ export class WasmBridge {
   }
 
   static async init(): Promise<WasmBridge> {
-    await init();
+    await initializeFerrumWasm();
     const memory = wasm_memory();
     return new WasmBridge(new Engine(), memory);
   }

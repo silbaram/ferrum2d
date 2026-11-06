@@ -7,6 +7,7 @@ export {
   createPhysicsBodyStateBufferSnapshot,
 } from "../createEngine";
 export { createFerrumRuntime } from "../createFerrumRuntime";
+export { initializeFerrumWasm } from "../initializeFerrumWasm.js";
 export { createRenderer } from "../createRenderer";
 export { GAME_STATE_CODE, gameStateName } from "../gameState.js";
 export type {

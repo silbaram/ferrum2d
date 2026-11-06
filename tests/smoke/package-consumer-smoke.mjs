@@ -1449,6 +1449,7 @@ async function writePublicImportSmoke(targetRoot) {
   instantiateSceneFragment,
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
+  initializeFerrumWasm,
   createShooterContentRuntimeOptions,
   diagnosticReport,
   dryRunSceneBehaviorRecipes,
@@ -1485,6 +1486,10 @@ async function writePublicImportSmoke(targetRoot) {
   packTextureAtlas,
   textureAtlasDocumentToShooterAtlas,
 } from "@ferrum2d/ferrum-web";
+
+// Headless hosts supply the installed package's bytes through the public API.
+const { readFile: readWasmBytes } = await import("node:fs/promises");
+await initializeFerrumWasm(await readWasmBytes(new URL("../pkg/ferrum_core_bg.wasm", import.meta.resolve("@ferrum2d/ferrum-web"))));
 
 const coreEntrypoint = await import("@ferrum2d/ferrum-web/core");
 const authoringEntrypoint = await import("@ferrum2d/ferrum-web/authoring");
@@ -1896,6 +1901,8 @@ dialogue.choose("yes");
 if (captureDialogueQuestState(dialogue, questLog).dialogue?.nodeId !== "done") {
   throw new Error("captureDialogueQuestState must capture public dialogue state.");
 }
+dialogue.destroy();
+questLog.destroy();
 const physicsSceneEngine = {
   configurePhysicsRuntime: (spec) => spec,
   configureAutoRigidBodyStep: (options) => {

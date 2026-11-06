@@ -325,9 +325,9 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     "viewport",
     "update",
     "read_audio",
-    "play_audio_buffer",
     "decode_audio",
     "clear_audio",
+    "play_audio_buffer",
     "read_render",
     "read_telemetry",
     "read_gameplay",
@@ -460,8 +460,9 @@ test("runFrame clears audio events when audio host throws", () => {
     "viewport",
     "update",
     "read_audio",
-    "play_audio_buffer",
+    "decode_audio",
     "clear_audio",
+    "play_audio_buffer",
   ]);
 });
 
@@ -517,8 +518,8 @@ test("runFrame omits FrameState audio objects when includeAudioEvents is false a
     "update",
     "read_audio",
     "decode_audio",
-    "play_audio_events",
     "clear_audio",
+    "play_audio_events",
     "read_render",
     "read_telemetry",
     "read_gameplay",
@@ -842,6 +843,53 @@ test("runFrame pushes viewport only when changed or invalidated", () => {
   equal(order.filter((entry) => entry === "viewport").length, 3);
 });
 
+test("runFrame presents before effects and preserves frame buffers across callback native growth", () => {
+  const order: string[] = [];
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const original = new Float32Array(memory.buffer, 0, 15);
+  original[0] = 42;
+  const bridge = new FakeBridge(order, 0);
+  bridge.readRenderCommandBuffer = () => ({ buffer: original, commandCount: 1, floatsPerCommand: 15 });
+  const observed: string[] = [];
+  const context = framePipelineContext({
+    bridge, engine: new FakeEngine(order), order,
+    options: { effectEvents: {
+      registry: resolvePresentationEffectRegistry({}),
+      onDispatchSummary(_summary, frame) {
+        observed.push("effect");
+        memory.grow(1);
+        equal(frame.renderCommandBuffer.buffer.length, 15);
+        equal(frame.renderCommandBuffer.buffer[0], 42);
+      },
+    } },
+    onFrame(frame) {
+      observed.push("onFrame");
+      equal(frame.renderCommandBuffer.buffer[0], 42);
+      equal(frame.renderCommandBuffer.commandCount, 1);
+    },
+  });
+  context.onRenderFrame = frame => {
+    observed.push("render");
+    equal(frame.renderCommandBuffer.buffer[0], 42);
+    // A renderer's frame-end callback can rebuild the native scene too.
+    original.fill(0);
+    memory.grow(1);
+  };
+  runFrame(context, 0.016);
+  deepEqual(observed, ["render", "effect", "onFrame"]);
+});
+
+test("render-only frames retain the zero-copy native buffer path", () => {
+  const order: string[] = [], bridge = new FakeBridge(order, 0);
+  const buffer = new Float32Array(15);
+  bridge.readRenderCommandBuffer = () => ({ buffer, commandCount: 1, floatsPerCommand: 15 });
+  const context = framePipelineContext({ bridge, engine: new FakeEngine(order), order });
+  context.onFrame = undefined;
+  context.needsFrameState = false;
+  context.onRenderFrame = frame => { equal(frame.renderCommandBuffer.buffer, buffer); };
+  runFrame(context, 0.016);
+});
+
 function framePipelineContext(args: {
   bridge: FakeBridge;
   engine: FakeEngine;
@@ -945,3 +993,43 @@ function physicsSpec(): ResolvedPhysicsSpec {
     },
   };
 }
+
+
+test("allocating physics diagnostics finish before any frame buffers are borrowed", () => {
+  const order: string[] = [];
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  new Float32Array(memory.buffer)[0] = 42;
+  const engine = Object.assign(new FakeEngine(order), {
+    physics_diagnostics_enabled: () => true,
+    query_physics_diagnostics: () => {
+      order.push("query_diagnostics");
+      memory.grow(1);
+      return new Float64Array([0, 0, 0]);
+    },
+  });
+  const bridge = Object.assign(new FakeBridge(order, 0), { engine: () => engine });
+  bridge.readRenderCommandBuffer = () => {
+    order.push("read_render");
+    return { buffer: new Float32Array(memory.buffer, 0, 15), commandCount: 1, floatsPerCommand: 15 };
+  };
+  const context = framePipelineContext({ bridge, engine, order, onFrame(frame) {
+    equal(frame.renderCommandBuffer.buffer.length, 15);
+    equal(frame.renderCommandBuffer.buffer[0], 42);
+    deepEqual(frame.physicsDiagnostics, { dropped: 0, ccdLimits: [], joints: [] });
+  } });
+  runFrame(context, 0.016);
+  equal(order.indexOf("query_diagnostics") < order.indexOf("read_render"), true);
+});
+
+test("a renderer that destroys the engine prevents remaining effects and public callbacks", () => {
+  const order: string[] = [];
+  let alive = true;
+  const context = framePipelineContext({ bridge: new FakeBridge(order, 0), engine: new FakeEngine(order), order,
+    options: { effectEvents: { registry: resolvePresentationEffectRegistry({}), onDispatchSummary: () => { throw Error("after destruction"); } } },
+    onFrame: () => { throw Error("after destruction"); },
+  });
+  context.isAlive = () => alive;
+  context.onRenderFrame = () => { alive = false; };
+  runFrame(context, 0.016);
+  equal(alive, false);
+});

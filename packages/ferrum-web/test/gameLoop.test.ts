@@ -87,3 +87,27 @@ test("GameLoop clamps large frame deltas", () => {
     raf.restore();
   }
 });
+
+
+for (const action of ["stop", "pause", "restart", "resume"] as const) {
+  test(`GameLoop frame callback ${action} keeps at most one cancellable RAF`, () => {
+    const raf = installAnimationFrameMock();
+    let callbacks = 0;
+    const loop = new GameLoop(() => {
+      callbacks++;
+      if (action === "stop" || action === "restart") loop.stop();
+      else loop.pause();
+      if (action === "restart") loop.start();
+      if (action === "resume") loop.resume();
+    });
+    try {
+      loop.start(); raf.fire(0); raf.fire(16);
+      equal(callbacks, 1);
+      equal(raf.pendingCount(), action === "restart" || action === "resume" ? 1 : 0);
+      loop.stop();
+      equal(raf.pendingCount(), 0);
+      raf.fire(32);
+      equal(callbacks, 1);
+    } finally { loop.stop(); raf.restore(); }
+  });
+}

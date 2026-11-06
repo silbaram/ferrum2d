@@ -1,5 +1,10 @@
 use wasm_bindgen::prelude::*;
 
+mod dialogue_quest;
+mod pixel_mask_terrain;
+pub use dialogue_quest::{NativeDialogueSession, NativeQuestLog};
+pub use pixel_mask_terrain::NativePixelMaskTerrain;
+
 pub mod audio_event;
 pub(crate) mod bitmap_text;
 pub(crate) mod breakout_scene;

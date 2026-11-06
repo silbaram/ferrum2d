@@ -1,6 +1,7 @@
 import { createPixelMaskTerrain } from "@ferrum2d/ferrum-web/labs";
 import {
   createEngine,
+  initializeFerrumWasm,
   createRenderer,
   createDataSceneSpatialView,
   loadSpatialGlb,
@@ -62,6 +63,7 @@ function ownedSpatial(s) {
   };
 }
 async function probe(canvas, backend, projection) {
+  await initializeFerrumWasm();
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
@@ -150,11 +152,12 @@ async function probe(canvas, backend, projection) {
     const c = image.getContext("2d");
     c.fillStyle = "#ff4040";
     c.fillRect(0, 0, 32, 32);
-    renderer.createPixelMaskTerrainTexture(
-      1,
-      createPixelMaskTerrain({ width: 32, height: 32, data: new Uint8Array(32 * 32).fill(255) }),
-      { color: [255, 64, 64] },
-    );
+    const mask = createPixelMaskTerrain({ width: 32, height: 32, fill: "solid" });
+    try {
+      renderer.createPixelMaskTerrainTexture(1, mask, { color: [255, 64, 64] });
+    } finally {
+      mask.destroy();
+    }
     const data = c.createImageData(32, 32);
     for (let i = 0; i < data.data.length; i += 4) data.data.set([128, 128, 0, 255], i);
     c.putImageData(data, 0, 0);

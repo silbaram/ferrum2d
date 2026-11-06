@@ -43,9 +43,19 @@ export function createEffectEventDispatchTarget(
 ): EffectEventDispatchTarget {
   const path = options.path ?? "effectEvents";
   const assetValidation = effectEventAssetValidationPolicy(options.assetValidation ?? "ignore", `${path}.assetValidation`);
-  const soundExists = options.hasSoundEffect ?? options.assetHost?.hasSound;
+  const assetHost = options.assetHost;
+  const hasSound = assetHost?.hasSound;
+  const soundExists = options.hasSoundEffect ?? hasSound?.bind(assetHost);
   const particlePresetExists = options.hasParticlePreset;
-  const target: EffectEventDispatchTarget = { ...(options.target ?? {}) };
+  // Targets may be class instances: spreading drops prototype methods and
+  // extracting them without binding loses access to the adapter's own state.
+  const source = options.target;
+  const target: EffectEventDispatchTarget = {
+    playSoundEffect: source?.playSoundEffect?.bind(source),
+    spawnParticleEffect: source?.spawnParticleEffect?.bind(source),
+    shakeCameraEffect: source?.shakeCameraEffect?.bind(source),
+    applyCustomEffect: source?.applyCustomEffect?.bind(source),
+  };
 
   if (target.playSoundEffect !== undefined) {
     const playSoundEffect = target.playSoundEffect;

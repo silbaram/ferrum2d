@@ -17,9 +17,13 @@ import type {
 } from "./createFerrumRuntime.js";
 import { emptyRendererStats, type RendererStats } from "./renderer.js";
 import type { RuntimeFrameRenderTarget } from "./runtimeRenderer.js";
+import { snapshotFrameBuffers, snapshotRenderFrameBuffers } from "./frameBufferSnapshot.js";
 
 export interface RuntimeFrameRendererOptions {
   renderer: RuntimeFrameRenderTarget;
+  /** Internal opt-in for built-in GPU consumers that never mutate native state. */
+  borrowNativeBuffers?: boolean;
+  isAlive?: () => boolean;
   lighting?: FerrumRuntimeOptions["lighting"];
   postProcess?: FerrumRuntimeOptions["postProcess"];
   spriteMaterial?: FerrumRuntimeOptions["spriteMaterial"];
@@ -56,6 +60,13 @@ export class RuntimeFrameRenderer {
   }
 
   renderFrame(renderFrame: RenderFrameState): void {
+    if (this.options.isAlive?.() === false) return;
+    // Providers/composers are application code and can call allocating native
+    // APIs. Capture the presented frame before invoking them, not after growth.
+    if (this.options.borrowNativeBuffers !== true || hasDynamicFrameProviders(this.options)
+      || this.options.physicsDebugLineComposer !== undefined) {
+      renderFrame = snapshotRenderFrameBuffers(renderFrame);
+    }
     const renderer = this.options.renderer;
     if (renderFrame.renderCommandBuffer.spatial && !renderer.supportsSpatialScene)
       throw new Error("Renderer does not support spatial scene geometry");
@@ -66,31 +77,38 @@ export class RuntimeFrameRenderer {
     const renderStartMs = this.options.needsRuntimeFrame ? this.now() : 0;
     this.rendererFrameId++;
     const ready = renderer.isRenderReady?.() !== false;
+    if (this.options.isAlive?.() === false) return;
     let frame = ready ? this.applyDynamicFrameProviders(renderFrame) : undefined;
+    if (this.options.isAlive?.() === false) return;
 
     let rendererStats: RendererStats;
     if (ready) {
       let frameSucceeded = false;
       renderer.beginGpuTiming?.();
       try {
+        if (this.options.isAlive?.() === false) return;
         renderer.render();
+        if (this.options.isAlive?.() === false) return;
         rendererStats = renderer.renderCommands(renderFrame.renderCommandBuffer);
+        if (this.options.isAlive?.() === false) return;
         if (debugLines !== undefined && renderDebugLines !== undefined) {
           const physicsDebugLines = this.options.physicsDebugLineComposer?.(debugLines) ?? debugLines;
+          if (this.options.isAlive?.() === false) return;
           rendererStats = renderDebugLines.call(renderer, physicsDebugLines, {
             x: renderFrame.cameraX,
             y: renderFrame.cameraY,
           });
         }
+        if (this.options.isAlive?.() === false) return;
         rendererStats = renderer.renderPostProcess?.() ?? rendererStats;
         frameSucceeded = true;
       } finally {
-        renderer.endGpuTiming?.(!frameSucceeded);
+        if (this.options.isAlive?.() !== false) renderer.endGpuTiming?.(!frameSucceeded);
       }
     } else {
       rendererStats = emptyRendererStats();
     }
-    if (!this.options.needsRuntimeFrame) {
+    if (!this.options.needsRuntimeFrame || this.options.isAlive?.() === false) {
       return;
     }
 
@@ -107,17 +125,23 @@ export class RuntimeFrameRenderer {
 
     const frame = requireFrameState(renderFrame);
     if (typeof this.options.lighting === "function") {
-      this.options.renderer.setLighting?.(this.options.lighting(frame));
+      const lighting = this.options.lighting(frame);
+      if (this.options.isAlive?.() === false) return frame;
+      this.options.renderer.setLighting?.(lighting);
     }
+    if (this.options.isAlive?.() === false) return frame;
     if (typeof this.options.spriteMaterial === "function") {
       const spriteMaterial = this.options.spriteMaterial(frame);
+      if (this.options.isAlive?.() === false) return frame;
       if (!isPrimitiveDynamicProviderValue(spriteMaterial) || this.lastPrimitiveSpriteMaterialProviderValue !== spriteMaterial) {
         this.options.renderer.setSpriteMaterial?.(spriteMaterial);
         this.lastPrimitiveSpriteMaterialProviderValue = isPrimitiveDynamicProviderValue(spriteMaterial) ? spriteMaterial : UNSET_PROVIDER_VALUE;
       }
     }
+    if (this.options.isAlive?.() === false) return frame;
     if (typeof this.options.postProcess === "function") {
       const postProcess = this.options.postProcess(frame);
+      if (this.options.isAlive?.() === false) return frame;
       if (!isPrimitiveDynamicProviderValue(postProcess) || this.lastPrimitivePostProcessProviderValue !== postProcess) {
         this.options.renderer.setPostProcess?.(postProcess);
         this.lastPrimitivePostProcessProviderValue = isPrimitiveDynamicProviderValue(postProcess) ? postProcess : UNSET_PROVIDER_VALUE;
@@ -127,6 +151,10 @@ export class RuntimeFrameRenderer {
   }
 
   private publishRuntimeFrame(frame: FrameState, rendererStats: RendererStats, renderTimeMs: number, renderAtMs: number): void {
+    // A single final onFrame callback can borrow. Chained content callbacks must
+    // not invalidate the frame that the following consumers receive.
+    if (this.options.animationTimeline || this.options.cutscene || this.options.levelStreaming
+      || this.options.uiState || this.options.gameStateLabel) frame = snapshotFrameBuffers(frame);
     this.audioEventRateCount += frame.audioEventCount;
     const nowMs = this.now();
     const audioEventRateElapsedMs = nowMs - this.audioEventRateWindowStartMs;
@@ -138,6 +166,9 @@ export class RuntimeFrameRenderer {
 
     const fps = frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0;
     const gpuTiming=this.options.renderer.gpuTimingStats?.();
+    if (this.options.isAlive?.() === false) return;
+    const resourceStats = this.options.renderer.resourceStats?.();
+    if (this.options.isAlive?.() === false) return;
     const debugMetrics = buildDebugMetrics(
       frame,
       rendererStats,
@@ -145,10 +176,11 @@ export class RuntimeFrameRenderer {
       renderTimeMs,
       this.audioEventsPerSecond,
       this.options.gameStateLabel ?? defaultGameStateLabel,
-      this.options.renderer.resourceStats?.(),
+      resourceStats,
       gpuTiming,
     );
     debugMetrics.rendererFrameId=gpuTiming?.currentFrameId??this.rendererFrameId;
+    if (this.options.isAlive?.() === false) return;
     if(this.previousRenderAtMs!==undefined)debugMetrics.frameIntervalMs=Math.max(0,renderAtMs-this.previousRenderAtMs);
     this.previousRenderAtMs=renderAtMs;
     this.options.debugOverlay?.update(debugMetrics);
@@ -160,12 +192,18 @@ export class RuntimeFrameRenderer {
       renderTimeMs,
     };
     this.options.animationTimeline?.update(runtimeFrame);
+    if (this.options.isAlive?.() === false) return;
     this.options.cutscene?.update(runtimeFrame);
+    if (this.options.isAlive?.() === false) return;
     this.options.levelStreaming?.update(runtimeFrame);
+    if (this.options.isAlive?.() === false) return;
     if (this.options.uiOverlay && this.options.uiState) {
-      this.options.uiOverlay.update(this.options.uiState(runtimeFrame));
+      const state = this.options.uiState(runtimeFrame);
+      if (this.options.isAlive?.() === false) return;
+      this.options.uiOverlay.update(state);
     }
     this.options.profiler?.recordFrame(debugMetrics);
+    if (this.options.isAlive?.() === false) return;
     this.options.onFrame?.(runtimeFrame);
   }
 }

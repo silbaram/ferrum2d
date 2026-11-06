@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFile } from "node:fs/promises";
 import {
   DialogueSession,
   QuestLog,
@@ -6,7 +7,10 @@ import {
   captureDialogueQuestState,
   dialogueNodeToUiOverlayState,
   restoreDialogueQuestState,
+  initializeFerrumWasm,
 } from "../../packages/ferrum-web/dist/index.js";
+
+await initializeFerrumWasm(await readFile(new URL("../../packages/ferrum-web/pkg/ferrum_core_bg.wasm", import.meta.url)));
 
 const quests = {
   quests: {
@@ -75,3 +79,4 @@ console.log(JSON.stringify({
     quest: restoredQuestLog.snapshot().quests[0],
   },
 }, null, 2));
+session.destroy(); questLog.destroy(); restoredSession.destroy(); restoredQuestLog.destroy();

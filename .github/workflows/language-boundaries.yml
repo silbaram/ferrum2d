@@ -1,0 +1,57 @@
+name: Language boundaries
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: language-boundaries-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  language-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatin/rust-cache@v2
+        with:
+          workspaces: crates/ferrum-core -> target
+          cache-on-failure: true
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check scoped ownership rules and negative fixtures
+        run: |
+          pnpm test:language-boundaries
+          pnpm validate:language-boundaries
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+      - name: Build current Rust and run SDK boundary regressions
+        run: |
+          pnpm build:wasm
+          pnpm test:web
+      - name: Check actual Wasm ABI, frame lifetime and dispatch counts
+        run: pnpm smoke:language-boundaries
+      - name: Upload boundary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-boundaries
+          path: artifacts/language-boundaries
+          if-no-files-found: warn

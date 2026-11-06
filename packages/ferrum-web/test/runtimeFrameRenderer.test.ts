@@ -22,6 +22,42 @@ test("frame rendering accepts a backend-neutral command sink without asset or li
   deepEqual(order, ["clear", "commands"]);
 });
 
+test("custom renderer callbacks cannot detach the packet before submission", () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const buffer = new Float32Array(memory.buffer, 0, 15);
+  buffer[0] = 42;
+  const frame = renderFrameState();
+  frame.renderCommandBuffer = { ...frame.renderCommandBuffer, buffer, commandCount: 1 };
+  const runtime = new RuntimeFrameRenderer({
+    renderer: {
+      isRenderReady: () => { memory.grow(1); return true; },
+      render: () => { new Float32Array(memory.buffer)[0] = 99; memory.grow(1); },
+      renderCommands: (packet) => {
+        equal(packet.buffer.length, 15);
+        equal(packet.buffer[0], 42);
+        return emptyRendererStats();
+      },
+    },
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+  runtime.renderFrame(frame);
+});
+
+test("built-in render consumer keeps the original native packet", () => {
+  const frame = renderFrameState();
+  const runtime = new RuntimeFrameRenderer({
+    renderer: {
+      render: () => {},
+      renderCommands: (packet) => { equal(packet, frame.renderCommandBuffer); return emptyRendererStats(); },
+    },
+    borrowNativeBuffers: true,
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+  runtime.renderFrame(frame);
+});
+
 test("unsupported debug rendering fails before touching the frame target", () => {
   const order: string[] = [];
   const runtime = new RuntimeFrameRenderer({
@@ -492,6 +528,37 @@ test("unavailable renderers skip providers and submissions while runtime frames 
     "gpu_begin","render","render_commands","render_debug:11,22","post_process","gpu_end"]);
 });
 
+test("dynamic providers preserve the presented packet through native growth and scene replacement", () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const buffer = new Float32Array(memory.buffer, 0, 15);
+  buffer[0] = 42;
+  const view = { buffer, commandCount: 1, floatsPerCommand: 15 };
+  const state = frameState({ renderCommandBuffer: view });
+  let draws = 0;
+  const renderer = {
+    render() {}, setLighting() {}, setPostProcess() {},
+    renderCommands(packet: typeof view) {
+      equal(packet.buffer.length, 15);
+      equal(packet.buffer[0], 42);
+      draws++;
+      return emptyRendererStats();
+    },
+  };
+  const runtime = new RuntimeFrameRenderer({
+    renderer, shouldRenderPhysicsDebugLines: false, needsRuntimeFrame: true,
+    lighting(frame) {
+      buffer.fill(0);
+      memory.grow(1);
+      equal(frame.renderCommandBuffer.buffer[0], 42);
+      return false;
+    },
+    postProcess(frame) { equal(frame.renderCommandBuffer.buffer[0], 42); return false; },
+    onFrame(frame) { equal(frame.frame.renderCommandBuffer.buffer[0], 42); },
+  });
+  runtime.renderFrame({ ...renderFrameState({ frameState: state }), renderCommandBuffer: view });
+  equal(draws, 1);
+});
+
 function fakeRuntimeRenderer(
   order: string[],
   stats: {
@@ -714,3 +781,64 @@ test('automatic profiler trace uses the issuing renderer ID and records spatial 
  equal(capture.frames[1].gpuFrameTimeMs,39);equal(capture.frames[1].modelUploadBytes,69360);equal(capture.frames[1].spatialShadowDrawCalls,400);
  equal(capture.frames[1].spatialShadowCacheHit,false);equal(capture.frames[2].gpuFrameTimeMs,undefined);
 });
+
+
+test("runtime destruction inside a provider skips GPU submission and remaining consumers", () => {
+  let alive = true;
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  renderer.setLighting = () => { throw Error("setter after destruction"); };
+  const runtime = new RuntimeFrameRenderer({
+    renderer, isAlive: () => alive,
+    lighting: () => { alive = false; return false; },
+    needsRuntimeFrame: true, shouldRenderPhysicsDebugLines: false,
+    onFrame: () => { throw Error("published after destruction"); },
+  });
+  runtime.renderFrame(renderFrameState({ frameState: frameState() }));
+  deepEqual(order, []);
+});
+
+for (const phase of ["isRenderReady", "beginGpuTiming", "render", "renderCommands"] as const) {
+  test(`runtime destruction inside renderer ${phase} stops subsequent passes`, () => {
+    let alive = true;
+    const order: string[] = [];
+    const visit = (name: string) => { equal(alive, true); order.push(name); if (name === phase) alive = false; };
+    const runtime = new RuntimeFrameRenderer({
+      renderer: {
+        isRenderReady: () => { visit("isRenderReady"); return true; },
+        beginGpuTiming: () => { visit("beginGpuTiming"); },
+        render: () => { visit("render"); },
+        renderCommands: () => { visit("renderCommands"); return emptyRendererStats(); },
+        renderPostProcess: () => { throw Error("post process after destruction"); },
+        endGpuTiming: () => { throw Error("end query after destruction"); },
+      },
+      isAlive: () => alive, needsRuntimeFrame: false, shouldRenderPhysicsDebugLines: false,
+    });
+    runtime.renderFrame(renderFrameState());
+    equal(order[order.length - 1], phase);
+  });
+}
+
+
+for (const phase of ["gpuTimingStats", "resourceStats"] as const) {
+  test(`destruction inside ${phase} skips subsequent stats and labels`, () => {
+    let alive = true;
+    const renderer = fakeRuntimeRenderer([]);
+    renderer.gpuTimingStats = () => {
+      if (phase === "gpuTimingStats") alive = false;
+      return { status: "unsupported", pendingQueryCount: 0 };
+    };
+    renderer.resourceStats = () => {
+      equal(alive, true);
+      alive = false;
+      return {} as ReturnType<NonNullable<typeof renderer.resourceStats>>;
+    };
+    const runtime = new RuntimeFrameRenderer({
+      renderer, isAlive: () => alive, needsRuntimeFrame: true, shouldRenderPhysicsDebugLines: false,
+      gameStateLabel: () => { throw Error("label after destruction"); },
+      onFrame: () => { throw Error("publish after destruction"); },
+    });
+    runtime.renderFrame(renderFrameState({ frameState: frameState() }));
+    equal(alive, false);
+  });
+}

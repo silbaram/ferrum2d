@@ -1,3 +1,4 @@
+import "./nativeRuntimeTestHelper.js";
 import {
   PHYSICS_REPLAY_WORKER_REQUEST_FORMAT,
   PHYSICS_WORLD_SNAPSHOT_FORMAT,

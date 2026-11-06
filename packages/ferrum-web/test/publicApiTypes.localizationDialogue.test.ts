@@ -1,3 +1,4 @@
+import "./nativeRuntimeTestHelper.js";
 import {
   DialogueSession,
   LocalizationBundle,
@@ -266,4 +267,5 @@ test("public API localization, font, dialogue, and quest types", () => {
   equal(dialogueSessionSnapshot.nodeId, "done");
   equal(dialogueUiState.dialog?.title, "Talk");
   equal(dialogueQuestSnapshot.format, "ferrum-dialogue-quest-state");
+  dialogueSession.destroy(); questLog.destroy();
 });
