@@ -20,6 +20,36 @@ uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGrou
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
+ vec2 at=clamp(pixel,vec2(0.),size-1.);vec2 uv=(at+.5)/size;
+ float expected=q.z+dot(gradient,uv-q.xy);
+ return texelFetch(u_sunMap,ivec2(at),0).r+bias<expected?0.:1.;
+}
+float sunVisibility(vec3 world,vec3 geometric){
+ vec4 clip=u_sunMatrix*vec4(world+geometric*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
+ if(any(lessThan(q,vec3(0.))) || any(greaterThan(q,vec3(1.))))return 1.;
+ vec2 size=vec2(textureSize(u_sunMap,0)),texel=1./size;
+ float incidence=dot(geometric,normalize(u_sunDirection));
+ bool plane=abs(incidence)>.001;vec2 gradient=vec2(0.);
+ float bias=u_sunParams.y/u_sunParams.x+.000001;
+ if(plane){
+  // Orthographic receiver-plane depth gradient in canonical (Y-up) shadow UV.
+  // Using the geometric normal avoids derivatives in divergent shadow branches.
+  vec3 r=vec3(u_sunMatrix[0][0],u_sunMatrix[1][0],u_sunMatrix[2][0])*u_sunParams.z;
+  vec3 up=vec3(u_sunMatrix[0][1],u_sunMatrix[1][1],u_sunMatrix[2][1])*u_sunParams.z;
+  gradient=vec2(dot(geometric,r),dot(geometric,up))*(2.*u_sunParams.z/(u_sunParams.x*incidence));
+ }else{
+  float angle=max(incidence,0.);
+  float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
+  bias+=2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.)/u_sunParams.x;
+ }
+ vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return sunCompare(pixel,size,q,gradient,bias);
+ float visibility=0.;
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+  visibility+=sunCompare(pixel+vec2(x,y),size,q,gradient,bias);
+ }
+ return visibility/9.;
+}
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
 vec4 texel=u_textured?texture(u_texture,uv):vec4(1.0);vec4 c=texel*v_color;
@@ -84,17 +114,7 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
  }
  if(u_sunColor.a>0.){
   float lambert=max(dot(n,normalize(u_sunDirection)),0.),visibility=1.;
-  if(u_sunShadow && u_receiveShadow){
-   vec4 clip=u_sunMatrix*vec4(v_world+geometricNormal*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
-   if(all(greaterThanEqual(q,vec3(0.))) && all(lessThanEqual(q,vec3(1.)))){
-    vec2 texel=1./vec2(textureSize(u_sunMap,0));
-    float incidence=max(dot(geometricNormal,normalize(u_sunDirection)),0.);
-    float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
-    float bias=(u_sunParams.y+2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.))/u_sunParams.x;
-    visibility=texture(u_sunMap,q.xy).r+bias<q.z?0.:1.;
-    if(u_shadowFilter==1){visibility=0.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) visibility+=texture(u_sunMap,q.xy+vec2(x,y)*texel).r+bias<q.z?0.:1.;visibility/=9.;}
-   }
-  }
+  if(u_sunShadow && u_receiveShadow)visibility=sunVisibility(v_world,geometricNormal);
   illumination+=u_sunColor.rgb*u_sunColor.a*lambert*visibility;
  }
  color=albedo*illumination;

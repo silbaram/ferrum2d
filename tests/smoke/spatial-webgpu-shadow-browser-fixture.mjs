@@ -749,6 +749,36 @@ async function probe(canvas, backend, projection) {
       check(Math.abs(samples[0].receiver[0] - samples[1].receiver[0]) <= 3,
         "small sun motion changed receiver occlusion across the old up-axis threshold", samples);
     }
+    // A two-unit-high plate at 30 degrees must retain contact occlusion even
+    // when the PCF footprint is wider than the light-space caster separation.
+    const contactReceiver = { x: -8, y: 0, elevation: 0 }, contactShadows = [],
+      contactDoc = (d) => {
+        stabilityDoc(d);
+        d.spatial.terrain[1] = {
+          id: "contact-plate", floorId: 1, kind: "bridge",
+          x: -6, y: -6, width: 12, depth: 12, elevation: 2, baseElevation: 1.5,
+          walkable: false, color: [0.5, 0.5, 0.5, 1],
+        };
+      },
+      contactLighting = {
+        ambient: [0.03, 0.03, 0.03], lights: [],
+        directional: { direction: { x: Math.sqrt(3), y: 0, elevation: 1 }, intensity: 2 },
+      };
+    const contactOff = await configure("sun-contact-off", { lighting: contactLighting }, "scale0", false, false, contactDoc);
+    const contactLit = sample({ data: lastPixels, spatial: contactOff.spatial }, contactReceiver);
+    for (const resolution of [256, 512, 1024]) for (const filter of ["hard", "pcf3"]) {
+      const lighting = structuredClone(contactLighting);
+      lighting.shadowFilter = filter;
+      lighting.directional.shadows = { resolution, extent: 256, distance: 512, bias: 0.05 };
+      const row = await configure(`sun-contact-${resolution}-${filter}`, { lighting }, "scale0", false, false, contactDoc);
+      const receiver = sample({ data: lastPixels, spatial: row.spatial }, contactReceiver);
+      check(contactLit[0] > receiver[0] + 30,
+        "automatic sun bias erased the low caster's contact shadow", { resolution, filter, contactLit, receiver });
+      // An unobstructed receiver checks that preserving contact did not add acne.
+      const open = sample({ data: lastPixels, spatial: row.spatial }, { x: -24, y: 0, elevation: 0 });
+      check(Math.abs(open[0] - contactLit[0]) <= 3, "sun receiver correction introduced planar acne", { resolution, filter, contactLit, open });
+      contactShadows.push({ resolution, filter, lit: contactLit, receiver, open });
+    }
     const debug = await configure("debug-shadows", both, "scale0", false, true);
     check(
       debug.stats.debugDrawCalls === 1 && debug.stats.debugLineCount > 0,
@@ -806,6 +836,7 @@ async function probe(canvas, backend, projection) {
       rows,
       pcfChanges,
       sunStability,
+      contactShadows,
       alphaUpdate: alphaUpdate.stats,
       atlasReplace: atlasReplace.stats,
       normalOnly: normalOnly.stats,

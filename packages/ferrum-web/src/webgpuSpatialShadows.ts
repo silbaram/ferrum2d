@@ -31,16 +31,28 @@ fn pointVisibility(delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
   visibility+=select(1.,0.,pointDepth(direction)*radius+bias<d);
  }}return visibility/9.;
 }
+fn sunCompare(pixel:vec2i,size:vec2u,q:vec3f,gradient:vec2f,bias:f32)->f32{
+ let at=clamp(pixel,vec2i(0),vec2i(size)-1);
+ let uv=(vec2f(at)+.5)/vec2f(size);let expected=q.z+dot(gradient,uv-q.xy);
+ return select(1.,0.,textureLoad(sunMap,vec2i(at.x,i32(size.y)-1-at.y),0)+bias<expected);
+}
 fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  let clip=env.shadow[6]*vec4f(world+geometric*e(124u),1.);let q=clip.xyz/clip.w*.5+.5;
  if(any(q<vec3f(0.))||any(q>vec3f(1.))){return 1.;}
- let size=textureDimensions(sunMap);let filtered=e(95u)==1.;
- let bias=(e(93u)+2.*e(94u)/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered))/(e(91u)*2.);
- let uv=vec2f(q.x,1.-q.y);let pixel=vec2i(clamp(uv*vec2f(size),vec2f(0.),vec2f(size)-1.));
- if(!filtered){return select(1.,0.,textureLoad(sunMap,pixel,0)+bias<q.z);}
- var visibility=0.;for(var y= -1;y<=1;y++){for(var x= -1;x<=1;x++){
-  let at=clamp(pixel+vec2i(x,y),vec2i(0),vec2i(size)-1);
-  visibility+=select(1.,0.,textureLoad(sunMap,at,0)+bias<q.z);
+ let size=textureDimensions(sunMap);let filtered=e(95u)==1.;let extent=e(94u);let span=e(91u)*2.;
+ let incidence=dot(geometric,direction);var gradient=vec2f(0.);var bias=e(93u)/span+.000001;
+ if(abs(incidence)>.001){
+  // Same receiver plane as GLSL, with no additional fragment derivatives.
+  let m=env.shadow[6];let r=vec3f(m[0][0],m[1][0],m[2][0])*extent;
+  let up=vec3f(m[0][1],m[1][1],m[2][1])*extent;
+  gradient=vec2f(dot(geometric,r),dot(geometric,up))*(2.*extent/(span*incidence));
+ }else{bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered)/span;}
+ // Choose canonical Y-up texels first; flip the integer row only for textureLoad.
+ let pixel=vec2i(floor(q.xy*vec2f(size)));
+ if(!filtered){return sunCompare(pixel,size,q,gradient,bias);}
+ var visibility=0.;
+ for(var y= -1;y<=1;y++){for(var x= -1;x<=1;x++){
+  visibility+=sunCompare(pixel+vec2i(x,y),size,q,gradient,bias);
  }}return visibility/9.;
 }`;
 export const spatialShadowCameraWGSL = `

@@ -236,11 +236,12 @@ try {
           assert.equal(shadows.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of shadows) {
-            assert.equal(entry.comparisons.length, 25);
+            assert.equal(entry.comparisons.length, 32);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 25);
+              assert.equal(backend.rows.length, 32);
               assert.equal(backend.sunStability.length, 6);
+              assert.equal(backend.contactShadows.length, 6);
               for (const y of [0.9899, 0.9901])
                 for (const filter of ["off", "hard", "pcf3"])
                   assert(backend.rows.some(row => row.name === `sun-stability-${y}-${filter}`));
