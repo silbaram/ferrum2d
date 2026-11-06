@@ -2,7 +2,7 @@
 
 기준일: 2026-11-07
 
-상태: 코드 검토 기반 개발 계획 · 구현 미착수 · 실제 문제 장면의 픽셀 재현 대기
+상태: 개발 진행 중 · 태양광 안정화부터 구현 · 실제 사용자 문제 장면의 픽셀 재현 대기
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -15,7 +15,7 @@
 
 ## 1. 검토 기준과 증거 수준
 
-- Ferrum2D 코드 기준: `d2200d832bddb720d849c35d94aa791118bb51b5`.
+- Ferrum2D 초기 검토 코드 기준: `d2200d832bddb720d849c35d94aa791118bb51b5`. 이후 구현한 계약은 공식 문서로 옮기고 아래에는 남은 작업을 유지한다.
 - Godot 비교 기준: `b47a795aa585d7bdb589f465e6ffcf15ebb31b9b`의 Canvas/GLES3 및 Forward Clustered 경로.
 - three.js 비교 기준: `a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de`의 WebGL shader/light 및 postprocessing 경로.
 - 외부 기준은 조회한 개발 브랜치의 고정 commit이다. 안정 버전 전체 또는 모든 backend의 보장으로 확대하지 않는다.
@@ -130,15 +130,14 @@ resolution/coverage/필터만 바꿔도 접촉부가 달라질 수 있고, norma
 [WGSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts),
 [태양 깊이 범위 전달](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialEnvironmentPass.ts).
 
-### S03 · P1 · 태양 그림자 범위와 기준축의 불연속
+### S03 · P1 · 태양 그림자 범위 경계
 
 **구현 확인·수치 재현 / 시각적 정도는 추가 측정.** 한 장의 고정 extent map이 camera target을 따라간다.
 범위 밖 receiver는 즉시 visibility 1이 되며 fade가 없다. 고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다.
-또한 normalized sun Y의 절댓값 0.99, 양의 고도로 약 81.9°에서 up 축을 교체해 샘플 격자가 급회전한다.
-빛의 물리 방향이 90° 뒤집히는 현상과는 구분한다.
+기준축의 현재 동작과 극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
 
 **방향:** texel snapping을 유지하면서 receiver 범위·화면 밖 caster 여유·경계 fade를 설계한다.
-태양 고도 연속 변화에서는 basis와 유효 coverage가 급변하지 않도록 한다. pole 처리는 결정적인 규칙이 필요하다.
+기준축 연속성 회귀를 유지하면서 pan/zoom에 따른 유효 coverage의 급변을 줄인다.
 큰 맵/원근 카메라에서 단일 map으로 목표를 만족하지 못할 때만 cascade를 별도 단계로 검토한다.
 
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
@@ -156,7 +155,7 @@ flat 노멀용 고도와 별도 길이 배율, Spatial 고도·coverage·bias도
 
 근거: [flat sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/dataSceneSun.ts),
 [Spatial sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
-[뷰어 조명 입력](../../apps/placement-viewer/src/placementLighting.ts).
+[뷰어 조명 입력](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/apps/placement-viewer/src/placementLighting.ts).
 
 ### E01 · P1 · AO·발광·안개·DOF·Bloom 결합
 
@@ -292,13 +291,14 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 
 ## 6. 단계별 실행 계획
 
-모든 단계는 미착수다. 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
+M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위다.
+각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 `lightingProfile`, `shadowCasterMode`, `lightMask` 같은 명칭은 설계 후보이지 새 공개 API가 아니다.
 
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy 설계·native caster, S02 bias 진단/개선, S03 basis/coverage/fade, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M1 태양광 안정화 | S01 proxy 설계·native caster, S02 bias 진단/개선, S03 coverage/fade, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
 | M2 flat lit 합성 | L01/L02. 광원별 visibility·표면색·수신 제어, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
 | M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
@@ -314,7 +314,7 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
    회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
 4. **M1-b:** thin box·경사면에서 hard/PCF와 bias/normalBias/coverage/resolution을 독립 sweep한다.
    적용한 effective bias를 report에 기록하고 접촉 보존과 acne 제한을 동시에 통과시킨다.
-5. **M1-c:** 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 basis/coverage 안정화와 경계 fade를 검증한다.
+5. **M1-c:** 기존 기준축 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage 안정화와 경계 fade를 검증한다.
 6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 
@@ -324,7 +324,7 @@ M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법
 
-아래는 추가할 검증 요구사항이다. 현재 통과한 테스트 목록을 뜻하지 않는다.
+아래는 추가하거나 유지할 검증 요구사항이다. 현재 통과한 테스트 목록을 뜻하지 않는다.
 픽셀 오차는 M0에서 backend/색공간별로 고정하고, 큰 전체 이미지 차이 하나로 합격시키지 않는다.
 
 | fixture | 핵심 판정 |
@@ -379,7 +379,7 @@ software adapter 결과와 실제 모바일/desktop GPU의 품질·성능 결과
 public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서 `docs/engine/**`,
 `docs/development/architecture/architecture.md`, `docs/development/quality/smoke-check.md`,
 설치/사용이 달라지는 경우 `README.md`를 동기화한다.
-현재 단계에서는 계획과 확인된 문서 오류만 수정한다.
+구현이 끝난 항목의 현재 사용법·회귀 기준은 공식 문서에서 관리한다.
 
 ## 9. 범위 결정과 보류 조건
 

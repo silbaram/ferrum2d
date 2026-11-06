@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0 재현·계약 → M1 태양광 안정화부터 진행한다. 구현은 미착수다. |
+| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 다음은 billboard shadow proxy·bias·coverage 검증이다. |
 | 2 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
 
 AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.
@@ -33,7 +33,7 @@ AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenienc
 
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
-| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | 개발 계획 · 구현 미착수 | 현재 기능/한계 구분, 태양광 재현, 효과 합성·호환성 계약과 단계별 검증 확정 |
+| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | 개발 진행 중 · M0/M1 | billboard shadow proxy·접촉·범위 경계, 효과 합성·호환성 계약과 단계별 검증 확정 |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
 | [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정 |
 | [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |

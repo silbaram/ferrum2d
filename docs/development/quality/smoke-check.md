@@ -1869,12 +1869,19 @@ SDK 단위 테스트는 malformed/overflow 입력과 null required-extension 목
 HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의 resize/disable/destroy 경쟁은 단위 회귀로 검사한다.
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
 그림자 fixture는 point/sun 단독·동시·hard/PCF, model MASK의 실제 바닥 light hole, model cast와 terrain/model/billboard receive,
-벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정 복합19상태를 비교한다.
+벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정,
+태양 고도 기준축 경계 회귀를 포함한 25상태를 비교한다.
 alpha patch/atlas 교체 뒤 cache miss, native caster revision에 따른 camera 변경 재계산, GPU normal-only 갱신의 cache 보존을 검사한다.
 각 상태 cold6/1/7 pass와 warm shadow draw/upload0·실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
 GPU/GL 간 채널3·상이 pixel1% 미만을 적용하며 `report.shadowCases`와 shadow PNG에 증거를 남긴다.
 point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 초과하는 변화 pixel이100개보다 많아야 한다. 전체 화면 허용치 안에 묻히는 hard-only 회귀도 거절한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --shadows-only`로 그림자19상태만 실행할 수 있다.
+태양 기준축 회귀는 normalized native Y 0.9899/0.9901에서 shadow off/hard/PCF3 6상태를 추가한다.
+같은 world 수신점의 R 채널 값이 shadow off보다 40을 초과해 낮고, 두 고도 사이의 값 차이는 3 이하여야 한다.
+사각 맵 경계 근처의 작은 다리를 사용하므로 전체 이미지 허용 오차에 가려지는 그림자 소멸도 거절한다.
+증거는 각 backend의 `sunStability`와 해당 상태의 PNG이며 기존 직교/원근·가로/세로·DPR 1/2 matrix에 포함된다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자25상태만 실행할 수 있다.
+`cargo test --manifest-path crates/ferrum-core/Cargo.toml spatial_sun_stability`는 동일 경계와 천정/지평선의
+기준축 연속성, 양 극점의 유한·직교 행렬, camera orbit 불변과 subtexel/한 texel 이동을 검사한다.
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.
 abandoned encoder·main 인코딩 오류·resize 뒤 bind-group 오류 때 미제출 shadow map을 cache hit으로 오인하지 않는지도 검사한다.
 디버그 버퍼의 최초 할당·성장이 인코딩된 shadow caster buffer를 해제하지 않는지도 cold/warm·재계산 수명 회귀로 검사한다.

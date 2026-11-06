@@ -58,6 +58,11 @@ command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 
 그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
 WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
 
+태양 shadow matrix의 기준축과 texel snapping은 Rust가 계산하고 양 backend가 같은 bulk matrix를 소비한다.
+기준축은 +elevation에서 태양 방향으로의 최소 회전으로 정하며, 고도 임계값에 따른 reference-up 교체나
+이전 frame의 축 상태를 두지 않는다. 정확한 반대 극점은 고정축을 사용한다. camera orbit과 고도 변화의
+native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. render/environment ABI와 GPU pass 수는 바뀌지 않는다.
+
 공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
 `raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
 포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.

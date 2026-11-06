@@ -1172,6 +1172,14 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
 적용하며 무한 거리 그림자나 cascade를 제공하지 않는다.
 
+그림자 맵의 기준축은 월드 +elevation에서 태양 방향으로 최소 회전한 고정 프레임으로 계산한다.
+고도 약 81.9°에서 reference-up을 교체하지 않으므로 천정과 지평선 통과 때 격자가 갑자기 회전하지 않는다.
+정확히 -elevation을 향하는 방향은 회전축이 유일하지 않아 고정된 축을 사용한다. 그 반대 극점까지
+모든 접근 방향의 격자 연속성을 보장하지는 않는다. 기존 버전과 사각 맵의 방향이 달라질 수 있어
+범위 경계와 그림자 가장자리 픽셀은 달라질 수 있다. 광원의 방향·강도와 저장 형식은 유지한다.
+같은 target에서 camera만 회전하면 sun matrix는 유지되지만, camera-facing billboard의
+caster 형상은 여전히 camera를 따른다. billboard의 그림자용 별도 형상과 범위 경계 fade는 제공하지 않는다.
+
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
