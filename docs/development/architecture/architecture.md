@@ -68,6 +68,8 @@ native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 
 양 backend는 Y-up texel을 먼저 선택하고 WGSL만 최종 integer row를 뒤집는다. 추가 화면 미분이나 target은 없고
 hard 1회/PCF 최대 9회 깊이 조회를 유지한다. 거의 평행한 면은 기존 slope 보정을 사용한다.
 이 계산은 shader ALU를 늘리므로 sample 수가 같다는 사실을 GPU 시간 동등성으로 해석하지 않는다.
+단일 태양 map은 XY texel 4개의 world 폭으로 내부 경계의 visibility를 직접 조명에 혼합한다.
+XY·깊이 경계의 최소 거리를 사용하며 영역 밖 visibility 1, native coverage·snapping·shadow cache는 유지한다.
 
 공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
 `raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.

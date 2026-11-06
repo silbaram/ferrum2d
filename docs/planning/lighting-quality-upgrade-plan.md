@@ -111,11 +111,11 @@ right 축을 `[1,0,0]` → `[0,0,1]`로 바꾸면 평면 바닥 투영 면적은
 고정된 평면 한 장도 빛과 평행하면 사라지므로 그것만으로 해결됐다고 판정하지 않는다.
 proxy는 렌더용 데이터이며 collider를 암묵적으로 변경하지 않는다. 모델은 기존 mesh caster를 유지한다.
 
-우선 비교할 설계는 기존 model binding의 shadow-only 선택이다. 같은 entity의 billboard 표시와
-명시적인 GLB volume caster를 연결하고, native pose·기존 model shadow budget/cache를 재사용한다.
+우선 비교할 설계는 기존 model binding의 shadow-only 선택이다. 별도의 GLB volume caster instance를
+billboard 부모에 native attachment로 연결해 pose·기존 model shadow budget/cache를 재사용한다.
 작성 옵션은 cold bulk configuration에서 검증하며 기존 output model flags/stride를 확장할 필요가 있는지도 먼저 확인한다.
 보이지 않는 proxy의 picking·GLB collision/navigation metadata·streaming·LOD가 표시/물리 계약을 바꾸지 않도록 해야 한다.
-현재 허용하지 않는 billboard/model 중복 instance ID, old Wasm의 원자적 거절, 저장/복원까지 같은 작업에서 다룬다.
+billboard/model의 고유 instance ID 계약, old Wasm의 원자적 거절, 저장/복원까지 같은 작업에서 다룬다.
 이는 다음 구현의 설계 후보이며 현재 제공하는 옵션이 아니다.
 
 근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
@@ -129,20 +129,22 @@ proxy는 렌더용 데이터이며 collider를 암묵적으로 변경하지 않�
 
 **방향:** explicit bias, 점광원 자동 slope 보정, normal offset, 필터 반경을 구분하고 실제 적용량을 진단한다.
 얇은 물체·경사면·낮은 광원·cube 면 경계에서 acne와 접촉 분리를 동시에 측정한 뒤 보정의 상한/식을 결정한다.
+점광원은 각 cube face의 실제 texel 중심 ray를 복원하고 수신 평면과의 교점으로 radial 비교 거리를 구하는 방법을 우선 비교한다.
+WebGL cube sampling과 WebGPU array-face sampling의 texel·면 경계 선택이 같아야 하며, 평행 ray와 광원 뒤 교점은 fallback이 필요하다.
 단순히 bias를 0으로 낮추거나 Godot 상수를 복사하는 방식은 완료 조건이 아니다.
 
 근거: [GLSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
 [WGSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts),
 [태양 깊이 범위 전달](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialEnvironmentPass.ts).
 
-### S03 · P1 · 태양 그림자 범위 경계
+### S03 · P1 · 태양 그림자 coverage와 화면 밖 caster 여유
 
 **구현 확인·수치 재현 / 시각적 정도는 추가 측정.** 한 장의 고정 extent map이 camera target을 따라간다.
-범위 밖 receiver는 즉시 visibility 1이 되며 fade가 없다. 고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다.
-기준축의 현재 동작과 극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
+고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다. 기준축·내부 경계 fade의 현재 동작과
+극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
 
-**방향:** texel snapping을 유지하면서 receiver 범위·화면 밖 caster 여유·경계 fade를 설계한다.
-기준축 연속성 회귀를 유지하면서 pan/zoom에 따른 유효 coverage의 급변을 줄인다.
+**방향:** texel snapping과 내부 경계 fade를 유지하면서 receiver 범위·화면 밖 caster 여유를 설계한다.
+기준축·경계 전환 회귀를 유지하면서 pan/zoom에 따른 유효 coverage의 급변을 줄인다.
 큰 맵/원근 카메라에서 단일 map으로 목표를 만족하지 못할 때만 cascade를 별도 단계로 검토한다.
 
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
@@ -281,7 +283,7 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 
 | 관점·소스 | 확인한 차이 | Ferrum2D 적용 판단 |
 | --- | --- | --- |
-| [Godot directional bias·split·fade](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl) | 입사각 기반 normal offset과 light 방향 bias 분리, split 혼합과 거리 fade | 접촉 보정과 경계 전환을 독립 검증. 단일 map 경계 fade는 남은 S03, cascade는 별도 비용 단계 |
+| [Godot directional bias·split·fade](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl) | 입사각 기반 normal offset과 light 방향 bias 분리, split 혼합과 거리 fade | 현재 단일 map은 내부 경계에서 직접 조명으로 전환. coverage/외부 caster 여유는 남은 S03, cascade는 별도 비용 단계 |
 | [three.js LightShadow](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/lights/LightShadow.js) | depth bias·normalBias·filter radius·map 크기를 분리 | 기존 world 단위 bias 계약을 유지하면서 필터 때문에 생기는 접촉 손실을 별도로 해결 |
 | [Unity URP bias](https://github.com/Unity-Technologies/Graphics/blob/0efc28ea742b1966b9dd9cc4489e58b986a13faf/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl) | light 방향 offset과 입사각에 따른 normal offset을 구분 | caster/receiver 보정을 혼동하지 않으며 기존 normalBias 의미를 조용히 변경하지 않음 |
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
@@ -322,7 +324,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy 설계·native caster, S02 bias 진단/개선, S03 coverage/fade, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M1 태양광 안정화 | S01 proxy 설계·native caster, S02 bias 진단/개선, S03 coverage/caster 여유, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
 | M2 flat lit 합성 | L01/L02. 광원별 visibility·표면색·수신 제어, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
 | M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
@@ -338,7 +340,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
    회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
 4. **M1-b:** thin box·경사면에서 hard/PCF와 bias/normalBias/coverage/resolution을 독립 sweep한다.
    적용한 effective bias를 report에 기록하고 접촉 보존과 acne 제한을 동시에 통과시킨다.
-5. **M1-c:** 기존 기준축 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage 안정화와 경계 fade를 검증한다.
+5. **M1-c:** 기존 기준축·경계 전환 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage와 외부 caster 여유를 검증한다.
 6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 

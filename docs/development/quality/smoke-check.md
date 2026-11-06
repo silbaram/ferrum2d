@@ -1870,7 +1870,7 @@ HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
 그림자 fixture는 point/sun 단독·동시·hard/PCF, model MASK의 실제 바닥 light hole, model cast와 terrain/model/billboard receive,
 벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정,
-태양 고도 기준축 경계와 낮은 caster 접촉 그림자 회귀를 포함한 32상태를 비교한다.
+태양 고도 기준축 경계·낮은 caster 접촉·유한 범위 경계 회귀를 포함한 62상태를 비교한다.
 alpha patch/atlas 교체 뒤 cache miss, native caster revision에 따른 camera 변경 재계산, GPU normal-only 갱신의 cache 보존을 검사한다.
 각 상태 cold6/1/7 pass와 warm shadow draw/upload0·실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
 GPU/GL 간 채널3·상이 pixel1% 미만을 적용하며 `report.shadowCases`와 shadow PNG에 증거를 남긴다.
@@ -1883,7 +1883,11 @@ point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 �
 해상도 256/512/1024 × hard/PCF3 6상태에서 고정 바닥 수신점의 R 값이 off보다 30을 초과해 낮아야 한다.
 열린 바닥의 R 값 차이는 3 이하로 제한해 bias 축소로 생기는 평면 자기 그림자도 거절한다.
 `contactShadows`에 해상도·필터·lit/receiver/open 값을 기록한다. 기존 backend 픽셀 parity와 cold/warm 예산도 함께 적용한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자32상태만 실행할 수 있다.
+범위 경계는 수직 태양·128 map/extent 32의 같은 수신점에서 camera X를 이동하거나 depth distance를 바꾼다.
+XY/depth 각각 shadow off와 hard/PCF3 × 내부 여유 3/2/1.5/1/0.5/0/-1 world unit을 검사한다.
+중간 구간은 fully shadowed/fully lit 사이여야 하며 범위 밖은 off와 채널 차이 3 이하, pan 순서의 밝기는 역전하지 않아야 한다.
+`shadowEdges`에 축·필터·여유·수신점 값을 기록한다. 내부 접촉/기준축/다른 광원 검증도 유지한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자62상태만 실행할 수 있다.
 `cargo test --manifest-path crates/ferrum-core/Cargo.toml spatial_sun_stability`는 동일 경계와 천정/지평선의
 기준축 연속성, 양 극점의 유한·직교 행렬, camera orbit 불변과 subtexel/한 texel 이동을 검사한다.
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.
