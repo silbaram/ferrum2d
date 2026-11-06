@@ -1,29 +1,46 @@
 import {
-  diagnosticReport,
-  gameplayAuthoringDiagnosticError,
-  type DiagnosticReport,
-} from "./diagnostics.js";
-import {
   behaviorRecipeCommandsForEntity,
   resolveBehaviorRecipeDocument,
   type BehaviorRecipeApplyResult,
   type BehaviorRecipeCommand,
-  type BehaviorRecipeCommandOptions,
   type BehaviorRecipeDocumentSpec,
   type BehaviorRecipeRuntimeTarget,
+  type ResolvedBehaviorRecipeDocument,
   type ResolvedBehaviorRecipeEventPredicate,
   type ResolvedBehaviorRecipeVariableComparison,
-  type ResolvedBehaviorRecipeDocument,
 } from "./behaviorRecipes.js";
 import { DATA_SCENE_COMPONENTS_PROP } from "./dataSceneComponents.js";
+import { diagnosticReport, gameplayAuthoringDiagnosticError } from "./diagnostics.js";
+import type {
+  ApplyGameplayBehaviorCommandsOptions,
+  ApplySceneBehaviorRecipesOptions,
+  BoundBehaviorRecipeCommand,
+  ClassifySceneInstanceOptions,
+  GameplayBehaviorRuntimeEngine,
+  GameplayBehaviorRuntimeIds,
+  GameplayEntityHandle,
+  GameplayEntityHandleMap,
+  GameplayPrefabRegistration,
+  GameplayPrefabRegistrationKind,
+  MissingSceneBehaviorBinding,
+  RegisterGameplayPrefabsOptions,
+  RegisterGameplayPrefabsResult,
+  SceneBehaviorApplyResult,
+  SceneBehaviorBindingDryRunResult,
+  SceneBehaviorBindingOptions,
+  SceneBehaviorBindingPlan,
+  SceneBehaviorRuntimeTarget,
+  SceneInstanceAuthoringClassification,
+} from "./gameplayAuthoringTypes.js";
+import { isRecord, positiveU32, requiredBehaviorProp } from "./gameplayAuthoringValidation.js";
 import {
-  instantiateSceneFragment,
-  resolveSceneCompositionSpec,
-  type InstantiateSceneFragmentOptions,
-  type ResolvedSceneCompositionInstance,
-  type ResolvedSceneCompositionSpec,
-  type SceneCompositionSpec,
-} from "./sceneComposition.js";
+  GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+  GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
+  GAMEPLAY_EVENT_KIND_INTERACTION,
+  GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
+  GAMEPLAY_EVENT_KIND_TILE_IMPACT,
+  GAMEPLAY_EVENT_KIND_TIMER,
+} from "./gameplayEventDecoder.js";
 import {
   GAMEPLAY_FACTION_CODES,
   GAMEPLAY_FACTION_ID_RANGE_LABEL,
@@ -33,13 +50,55 @@ import {
   type GameplayFactionReference,
 } from "./gameplayFactionRelations.js";
 import {
-  GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
-  GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
-  GAMEPLAY_EVENT_KIND_INTERACTION,
-  GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
-  GAMEPLAY_EVENT_KIND_TILE_IMPACT,
-  GAMEPLAY_EVENT_KIND_TIMER,
-} from "./gameplayEventDecoder.js";
+  GAMEPLAY_PICKUP_ITEM_SCORE,
+  gameplayActionId,
+  gameplayTagIdValue,
+  resolvedPickupItemId,
+  runtimeIdByName,
+  spawnPrefabId,
+  timerTriggerActionId,
+  timerTriggerId,
+} from "./gameplayRuntimeIds.js";
+import {
+  instantiateSceneFragment,
+  resolveSceneCompositionSpec,
+  type ResolvedSceneCompositionInstance,
+  type ResolvedSceneCompositionSpec,
+  type SceneCompositionSpec,
+} from "./sceneComposition.js";
+import { gameplayEntityHandle } from "./sceneInstanceHandles.js";
+export type {
+  ApplyGameplayBehaviorCommandsOptions,
+  ApplySceneBehaviorRecipesOptions,
+  BoundBehaviorRecipeCommand,
+  ClassifySceneInstanceOptions,
+  GameplayBehaviorBindingSpec,
+  GameplayBehaviorRuntimeEngine,
+  GameplayBehaviorRuntimeIds,
+  GameplayEntityHandle,
+  GameplayEntityHandleMap,
+  GameplayPrefabRegistration,
+  GameplayPrefabRegistrationKind,
+  MissingSceneBehaviorBinding,
+  RegisterGameplayPrefabsOptions,
+  RegisterGameplayPrefabsResult,
+  ResolveGameplayBehaviorRuntimeIdsOptions,
+  SceneBehaviorApplyResult,
+  SceneBehaviorBindingDryRunResult,
+  SceneBehaviorBindingOptions,
+  SceneBehaviorBindingPlan,
+  SceneBehaviorRuntimeTarget,
+  SceneInstanceAuthoringClassification,
+  SceneInstanceAuthoringKind,
+  SceneInstanceEntityExists,
+  SceneInstanceHandleLookupOptions,
+  SceneInstanceHandleRegistryEntry,
+  SceneInstanceHandleRegistryOptions,
+  SceneInstanceHandleRegistrySyncOptions,
+  SceneInstanceHandleRegistrySyncResult,
+} from "./gameplayAuthoringTypes.js";
+export { resolveGameplayBehaviorRuntimeIds } from "./gameplayRuntimeIds.js";
+export { createSceneInstanceHandleRegistry, SceneInstanceHandleRegistry } from "./sceneInstanceHandles.js";
 
 export {
   applyFactionRelationTable,
@@ -54,264 +113,7 @@ export {
 
 export const GAMEPLAY_BEHAVIOR_BINDING_PROP = "behaviorRecipes" as const;
 
-export type GameplayBehaviorBindingSpec = string | readonly string[];
-export type MissingSceneBehaviorBinding = "ignore" | "error";
-export type SceneInstanceAuthoringKind = "worldObject" | "actor";
-export type SceneInstanceEntityExists = (handle: GameplayEntityHandle) => boolean;
-
-export interface ClassifySceneInstanceOptions {
-  behaviorProp?: string;
-  path?: string;
-}
-
-export interface SceneInstanceAuthoringClassification {
-  kind: SceneInstanceAuthoringKind;
-  hasDataSceneComponents: boolean;
-  behaviorProfiles: readonly string[];
-}
-
-export interface SceneInstanceHandleRegistryOptions {
-  entityExists?: SceneInstanceEntityExists;
-}
-
-export interface SceneInstanceHandleLookupOptions {
-  validateLive?: boolean;
-  path?: string;
-}
-
-export interface SceneInstanceHandleRegistrySyncOptions {
-  removeMissing?: boolean;
-  pruneStale?: boolean;
-  path?: string;
-}
-
-export interface SceneInstanceHandleRegistryEntry {
-  instanceId: string;
-  handle: GameplayEntityHandle;
-}
-
-export interface SceneInstanceHandleRegistrySyncResult {
-  entries: readonly SceneInstanceHandleRegistryEntry[];
-  removedInstanceIds: readonly string[];
-  staleInstanceIds: readonly string[];
-}
-
-export class SceneInstanceHandleRegistry {
-  private readonly handlesByInstanceId = new Map<string, GameplayEntityHandle>();
-  private readonly instanceIdByHandleKey = new Map<string, string>();
-  private readonly entityExists?: SceneInstanceEntityExists;
-
-  constructor(options: SceneInstanceHandleRegistryOptions = {}) {
-    this.entityExists = options.entityExists;
-  }
-
-  get size(): number {
-    return this.handlesByInstanceId.size;
-  }
-
-  set(
-    instanceId: string,
-    handle: GameplayEntityHandle,
-    options: { path?: string } = {},
-  ): SceneInstanceHandleRegistryEntry {
-    const path = options.path ?? `sceneInstanceHandles.${instanceId}`;
-    const key = requiredBehaviorProp(instanceId, `${path}.instanceId`);
-    const nextHandle = gameplayEntityHandle(handle, `${path}.handle`);
-    const nextHandleKey = handleKey(nextHandle);
-    const previousHandle = this.handlesByInstanceId.get(key);
-    if (previousHandle !== undefined) {
-      this.instanceIdByHandleKey.delete(handleKey(previousHandle));
-    }
-    const previousInstanceId = this.instanceIdByHandleKey.get(nextHandleKey);
-    if (previousInstanceId !== undefined && previousInstanceId !== key) {
-      this.handlesByInstanceId.delete(previousInstanceId);
-    }
-    const storedHandle = copyGameplayEntityHandle(nextHandle);
-    this.handlesByInstanceId.set(key, storedHandle);
-    this.instanceIdByHandleKey.set(nextHandleKey, key);
-    return {
-      instanceId: key,
-      handle: copyGameplayEntityHandle(storedHandle),
-    };
-  }
-
-  get(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): GameplayEntityHandle | undefined {
-    const key = requiredBehaviorProp(instanceId, `${options.path ?? "sceneInstanceHandles"}.instanceId`);
-    const handle = this.handlesByInstanceId.get(key);
-    if (handle === undefined) {
-      return undefined;
-    }
-    if ((options.validateLive ?? false) && !this.isLive(handle)) {
-      this.delete(key);
-      return undefined;
-    }
-    return copyGameplayEntityHandle(handle);
-  }
-
-  require(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): GameplayEntityHandle {
-    const handle = this.get(instanceId, options);
-    if (handle === undefined) {
-      throw gameplayAuthoringDiagnosticError(
-        options.path ?? `sceneInstanceHandles.${instanceId}`,
-        `references unknown or stale scene instance '${instanceId}'`,
-      );
-    }
-    return handle;
-  }
-
-  has(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): boolean {
-    return this.get(instanceId, options) !== undefined;
-  }
-
-  instanceIdForHandle(
-    handle: GameplayEntityHandle,
-    options: SceneInstanceHandleLookupOptions = {},
-  ): string | undefined {
-    const path = options.path ?? "sceneInstanceHandles.handle";
-    const checkedHandle = gameplayEntityHandle(handle, path);
-    const instanceId = this.instanceIdByHandleKey.get(handleKey(checkedHandle));
-    if (instanceId === undefined) {
-      return undefined;
-    }
-    if ((options.validateLive ?? false) && !this.isLive(checkedHandle)) {
-      this.delete(instanceId);
-      return undefined;
-    }
-    return instanceId;
-  }
-
-  delete(instanceId: string): boolean {
-    const handle = this.handlesByInstanceId.get(instanceId);
-    if (handle === undefined) {
-      return false;
-    }
-    this.handlesByInstanceId.delete(instanceId);
-    this.instanceIdByHandleKey.delete(handleKey(handle));
-    return true;
-  }
-
-  clear(): void {
-    this.handlesByInstanceId.clear();
-    this.instanceIdByHandleKey.clear();
-  }
-
-  entries(options: SceneInstanceHandleLookupOptions = {}): readonly SceneInstanceHandleRegistryEntry[] {
-    if (options.validateLive ?? false) {
-      this.pruneStale(options);
-    }
-    return Array.from(this.handlesByInstanceId.entries(), ([instanceId, handle]) => ({
-      instanceId,
-      handle: copyGameplayEntityHandle(handle),
-    }));
-  }
-
-  sync(
-    instances: readonly ResolvedSceneCompositionInstance[],
-    handles: readonly GameplayEntityHandle[],
-    options: SceneInstanceHandleRegistrySyncOptions = {},
-  ): SceneInstanceHandleRegistrySyncResult {
-    const path = options.path ?? "sceneInstanceHandles";
-    if (instances.length !== handles.length) {
-      throw gameplayAuthoringDiagnosticError(`${path}.handles`, "must match scene instance count");
-    }
-    const seen = new Set<string>();
-    const seenHandleIndexes = new Map<string, number>();
-    const nextEntries = instances.map((instance, index) => {
-      const instanceId = requiredBehaviorProp(instance.id, `${path}.instances.${index}.id`);
-      if (seen.has(instanceId)) {
-        throw gameplayAuthoringDiagnosticError(`${path}.instances.${index}.id`, "must be unique");
-      }
-      seen.add(instanceId);
-      const handle = gameplayEntityHandle(handles[index]!, `${path}.instances.${index}.handle`);
-      const nextHandleKey = handleKey(handle);
-      const previousHandleIndex = seenHandleIndexes.get(nextHandleKey);
-      if (previousHandleIndex !== undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.instances.${index}.handle`,
-          `must be unique; duplicates instances.${previousHandleIndex}.handle`,
-        );
-      }
-      seenHandleIndexes.set(nextHandleKey, index);
-      return {
-        instanceId,
-        handle: copyGameplayEntityHandle(handle),
-      };
-    });
-    const entries = nextEntries.map((entry, index) =>
-      this.set(entry.instanceId, entry.handle, {
-        path: `${path}.instances.${index}`,
-      }),
-    );
-    const removedInstanceIds: string[] = [];
-    if (options.removeMissing ?? true) {
-      for (const instanceId of Array.from(this.handlesByInstanceId.keys())) {
-        if (!seen.has(instanceId) && this.delete(instanceId)) {
-          removedInstanceIds.push(instanceId);
-        }
-      }
-    }
-    const staleInstanceIds = (options.pruneStale ?? true)
-      ? this.pruneStale({ path: `${path}.stale` })
-      : [];
-    const staleInstanceIdSet = new Set(staleInstanceIds);
-    const syncedEntries = entries.filter((entry) =>
-      !staleInstanceIdSet.has(entry.instanceId) && this.handlesByInstanceId.has(entry.instanceId),
-    );
-    this.reorderSyncedEntries(syncedEntries, seen);
-    return {
-      entries: syncedEntries,
-      removedInstanceIds,
-      staleInstanceIds,
-    };
-  }
-
-  pruneStale(_options: { path?: string } = {}): readonly string[] {
-    if (this.entityExists === undefined) {
-      return [];
-    }
-    const staleInstanceIds: string[] = [];
-    for (const [instanceId, handle] of Array.from(this.handlesByInstanceId.entries())) {
-      if (!this.isLive(handle)) {
-        this.delete(instanceId);
-        staleInstanceIds.push(instanceId);
-      }
-    }
-    return staleInstanceIds;
-  }
-
-  private isLive(handle: GameplayEntityHandle): boolean {
-    return this.entityExists?.(copyGameplayEntityHandle(handle)) ?? true;
-  }
-
-  private reorderSyncedEntries(
-    entries: readonly SceneInstanceHandleRegistryEntry[],
-    syncedInstanceIds: ReadonlySet<string>,
-  ): void {
-    const remainingEntries = Array.from(this.handlesByInstanceId.entries())
-      .filter(([instanceId]) => !syncedInstanceIds.has(instanceId))
-      .map(([instanceId, handle]) => ({
-        instanceId,
-        handle: copyGameplayEntityHandle(handle),
-      }));
-    this.clear();
-    for (const entry of [...entries, ...remainingEntries]) {
-      const handle = copyGameplayEntityHandle(entry.handle);
-      this.handlesByInstanceId.set(entry.instanceId, handle);
-      this.instanceIdByHandleKey.set(handleKey(handle), entry.instanceId);
-    }
-  }
-}
-
-export function createSceneInstanceHandleRegistry(
-  options: SceneInstanceHandleRegistryOptions = {},
-): SceneInstanceHandleRegistry {
-  return new SceneInstanceHandleRegistry(options);
-}
-
-const GAMEPLAY_PICKUP_ITEM_SCORE = 1;
 const MAX_PARTICLE_PRESETS = 256;
-const MAX_GAMEPLAY_TAG_ID = 31;
-const GAMEPLAY_TAG_ID_RANGE_LABEL = `0..${MAX_GAMEPLAY_TAG_ID}`;
 const GAMEPLAY_MOVEMENT_QUERY_LAYER_TARGET_PREFIX = "nearestLayer:" as const;
 const GAMEPLAY_MOVEMENT_QUERY_FACTION_TARGET_PREFIX = "nearestFaction:" as const;
 const GAMEPLAY_MOVEMENT_QUERY_TAG_TARGET_PREFIX = "nearestTag:" as const;
@@ -325,509 +127,6 @@ const GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES = Object.freeze({
 type GameplayMovementQueryLayer = keyof typeof GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES;
 type GameplayMovementQueryFaction = GameplayFactionReference;
 
-export type GameplayEntityHandleMap =
-  | Readonly<Record<string, GameplayEntityHandle>>
-  | ReadonlyMap<string, GameplayEntityHandle>;
-
-export interface GameplayBehaviorRuntimeIds {
-  items?: Readonly<Record<string, number>>;
-  actions?: Readonly<Record<string, number>>;
-  prefabs?: Readonly<Record<string, number>>;
-  timers?: Readonly<Record<string, number>>;
-  tags?: Readonly<Record<string, number>>;
-  effects?: Readonly<Record<string, number>>;
-  variables?: Readonly<Record<string, number>>;
-}
-
-export interface ResolveGameplayBehaviorRuntimeIdsOptions {
-  path?: string;
-  requiredItems?: readonly string[];
-  requiredActions?: readonly string[];
-  requiredPrefabs?: readonly string[];
-  requiredTimers?: readonly string[];
-  requiredTags?: readonly string[];
-  requiredEffects?: readonly string[];
-  requiredVariables?: readonly string[];
-}
-
-export type GameplayPrefabRegistrationKind = "enemy" | "bullet";
-
-export interface GameplayPrefabRegistration {
-  prefab?: string;
-  prefabId?: number;
-  kind: GameplayPrefabRegistrationKind;
-}
-
-export interface RegisterGameplayPrefabsOptions {
-  path?: string;
-  ids?: GameplayBehaviorRuntimeIds;
-}
-
-export interface RegisterGameplayPrefabsResult {
-  registrations: readonly GameplayPrefabRegistration[];
-  results: readonly boolean[];
-}
-
-export interface GameplayEntityHandle {
-  entityId: number;
-  entityGeneration: number;
-}
-
-export interface GameplayBehaviorRuntimeEngine {
-  register_gameplay_enemy_prefab?(prefabId: number): boolean;
-  register_gameplay_bullet_prefab?(prefabId: number): boolean;
-  gameplay_entity_exists?(entityId: number, entityGeneration: number): boolean;
-  capture_gameplay_authoring_snapshot?(entityId: number, entityGeneration: number): boolean;
-  restore_gameplay_authoring_snapshot?(entityId: number, entityGeneration: number): boolean;
-  clear_gameplay_authoring_snapshot?(): void;
-  set_gameplay_health(entityId: number, entityGeneration: number, current: number): boolean;
-  clear_gameplay_health(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_damage(entityId: number, entityGeneration: number, amount: number): boolean;
-  clear_gameplay_damage(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_damage_reaction?(entityId: number, entityGeneration: number, amount: number, target: number): boolean;
-  set_gameplay_area_damage_reaction?(
-    entityId: number,
-    entityGeneration: number,
-    amount: number,
-    radius: number,
-    targetLayerCode: number,
-  ): boolean;
-  set_gameplay_faction?(entityId: number, entityGeneration: number, factionId: number, damageMask: number): boolean;
-  clear_gameplay_faction?(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_tags?(entityId: number, entityGeneration: number, tagMask: number): boolean;
-  clear_gameplay_tags?(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_lifetime(entityId: number, entityGeneration: number, seconds: number): boolean;
-  clear_gameplay_lifetime(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_score_reward(entityId: number, entityGeneration: number, reward: number): boolean;
-  clear_gameplay_score_reward(entityId: number, entityGeneration: number): boolean;
-  supports_gameplay_pickup_item?(itemId: number): boolean;
-  set_gameplay_pickup(
-    entityId: number,
-    entityGeneration: number,
-    itemId: number,
-    count: number,
-    despawnOnCollect: boolean,
-  ): boolean;
-  clear_gameplay_pickup(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_interaction(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    radius: number,
-    once: boolean,
-  ): boolean;
-  set_gameplay_interaction_with_guard?(
-    entityId: number, entityGeneration: number, actionId: number, radius: number, once: boolean,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  clear_gameplay_interaction(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_timer_trigger?(entityId: number, entityGeneration: number, timerId: number, durationSeconds: number): boolean;
-  set_gameplay_timer_action_trigger?(
-    entityId: number,
-    entityGeneration: number,
-    timerId: number,
-    durationSeconds: number,
-    actionId: number,
-  ): boolean;
-  set_gameplay_timer_trigger_with_guard?(
-    entityId: number, entityGeneration: number, timerId: number, durationSeconds: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  set_gameplay_timer_action_trigger_with_guard?(
-    entityId: number, entityGeneration: number, timerId: number, durationSeconds: number,
-    actionId: number, leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  clear_gameplay_timer_trigger?(entityId: number, entityGeneration: number): boolean;
-  add_gameplay_variable_mutation_trigger?(
-    entityId: number, entityGeneration: number, eventKind: number, tokenId: number,
-    variableSlot: number, operation: number, value: number,
-  ): boolean;
-  clear_gameplay_variable_mutation_triggers?(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_action_projectile?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    speed: number,
-    damage: number,
-    lifetimeSeconds: number,
-  ): boolean;
-  set_gameplay_action_projectile_with_target?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    speed: number,
-    damage: number,
-    lifetimeSeconds: number,
-    aimCode: number,
-    collisionTargetCode: number,
-    tileImpactCode: number,
-  ): boolean;
-  set_gameplay_action_dash?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    distance: number,
-  ): boolean;
-  set_gameplay_action_dash_with_aim?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    distance: number,
-    aimCode: number,
-  ): boolean;
-  set_gameplay_action_melee?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    range: number,
-    damage: number,
-  ): boolean;
-  set_gameplay_action_melee_with_target?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    range: number,
-    damage: number,
-    targetCode: number,
-  ): boolean;
-  set_gameplay_action_spawn_prefab?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    prefabId: number,
-    anchorCode: number,
-    phaseCode: number,
-    offsetX: number,
-    offsetY: number,
-  ): boolean;
-  set_gameplay_action_spawn_projectile_prefab?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    cooldownSeconds: number,
-    prefabId: number,
-    anchorCode: number,
-    phaseCode: number,
-    offsetX: number,
-    offsetY: number,
-    speed: number,
-    damage: number,
-    lifetimeSeconds: number,
-    aimCode: number,
-    collisionTargetCode: number,
-    tileImpactCode: number,
-  ): boolean;
-  clear_gameplay_actions?(entityId: number, entityGeneration: number): boolean;
-  set_gameplay_movement_chase_player(entityId: number, entityGeneration: number, speed: number): boolean;
-  set_gameplay_movement_chase_primary_actor?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_player?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_primary_actor?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_enemy?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_layer?(
-    entityId: number,
-    entityGeneration: number,
-    layerCode: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_faction?(
-    entityId: number,
-    entityGeneration: number,
-    factionId: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_nearest_tag?(
-    entityId: number,
-    entityGeneration: number,
-    tagId: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_chase_entity(
-    entityId: number,
-    entityGeneration: number,
-    targetId: number,
-    targetGeneration: number,
-    speed: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_player?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_primary_actor?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_player?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_primary_actor?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_enemy?(
-    entityId: number,
-    entityGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_layer?(
-    entityId: number,
-    entityGeneration: number,
-    layerCode: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_faction?(
-    entityId: number,
-    entityGeneration: number,
-    factionId: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_nearest_tag?(
-    entityId: number,
-    entityGeneration: number,
-    tagId: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_seek_target_entity?(
-    entityId: number,
-    entityGeneration: number,
-    targetId: number,
-    targetGeneration: number,
-    speed: number,
-    turnRate: number,
-  ): boolean;
-  set_gameplay_movement_accelerate?(
-    entityId: number,
-    entityGeneration: number,
-    accelerationX: number,
-    accelerationY: number,
-    maxSpeed: number,
-  ): boolean;
-  clear_gameplay_movement?(entityId: number, entityGeneration: number): boolean;
-  clear_gameplay_collision_reactions?(entityId: number, entityGeneration: number): boolean;
-  add_gameplay_collision_damage(entityId: number, entityGeneration: number, target: number): boolean;
-  add_gameplay_collision_damage_with_guard?(
-    entityId: number, entityGeneration: number, amount: number, target: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_area_damage?(entityId: number, entityGeneration: number, radius: number, targetLayerCode: number): boolean;
-  add_gameplay_collision_area_damage_with_guard?(
-    entityId: number, entityGeneration: number, amount: number, radius: number, targetLayerCode: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_knockback?(
-    entityId: number,
-    entityGeneration: number,
-    target: number,
-    impulse: number,
-  ): boolean;
-  add_gameplay_collision_knockback_with_guard?(
-    entityId: number, entityGeneration: number, target: number, impulse: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_emit_effect?(
-    entityId: number,
-    entityGeneration: number,
-    effectId: number,
-    effectType: number,
-    target: number,
-    cooldownSeconds: number,
-    trigger: number,
-  ): boolean;
-  add_gameplay_collision_emit_effect_with_payload?(
-    entityId: number,
-    entityGeneration: number,
-    effectId: number,
-    effectType: number,
-    target: number,
-    cooldownSeconds: number,
-    trigger: number,
-    intensity: number,
-    radius: number,
-  ): boolean;
-  add_gameplay_collision_emit_effect_with_guard?(
-    entityId: number, entityGeneration: number, effectId: number, effectType: number,
-    target: number, cooldownSeconds: number, trigger: number, intensity: number, radius: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_spawn_prefab?(
-    entityId: number,
-    entityGeneration: number,
-    actionId: number,
-    prefabId: number,
-    target: number,
-    cooldownSeconds: number,
-    trigger: number,
-    offsetX: number,
-    offsetY: number,
-  ): boolean;
-  add_gameplay_collision_spawn_prefab_with_guard?(
-    entityId: number, entityGeneration: number, actionId: number, prefabId: number,
-    target: number, cooldownSeconds: number, trigger: number, offsetX: number, offsetY: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_pickup?(entityId: number, entityGeneration: number, target: number): boolean;
-  add_gameplay_collision_pickup_with_guard?(
-    entityId: number, entityGeneration: number, target: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_sound?(entityId: number, entityGeneration: number, soundId: number, volume: number, pitch: number): boolean;
-  add_gameplay_collision_sound_with_cooldown?(
-    entityId: number,
-    entityGeneration: number,
-    soundId: number,
-    volume: number,
-    pitch: number,
-    cooldownSeconds: number,
-  ): boolean;
-  add_gameplay_collision_sound_with_policy?(
-    entityId: number,
-    entityGeneration: number,
-    soundId: number,
-    volume: number,
-    pitch: number,
-    cooldownSeconds: number,
-    replaceDefault: boolean,
-  ): boolean;
-  add_gameplay_collision_sound_with_trigger?(
-    entityId: number,
-    entityGeneration: number,
-    soundId: number,
-    volume: number,
-    pitch: number,
-    cooldownSeconds: number,
-    replaceDefault: boolean,
-    trigger: number,
-  ): boolean;
-  add_gameplay_collision_sound_with_guard?(
-    entityId: number, entityGeneration: number, soundId: number, volume: number, pitch: number,
-    cooldownSeconds: number, replaceDefault: boolean, trigger: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_camera_shake?(
-    entityId: number,
-    entityGeneration: number,
-  ): boolean;
-  add_gameplay_collision_camera_shake_with_cooldown?(
-    entityId: number,
-    entityGeneration: number,
-    cooldownSeconds: number,
-  ): boolean;
-  add_gameplay_collision_camera_shake_with_trigger?(
-    entityId: number,
-    entityGeneration: number,
-    cooldownSeconds: number,
-    trigger: number,
-  ): boolean;
-  add_gameplay_collision_camera_shake_with_guard?(
-    entityId: number, entityGeneration: number, cooldownSeconds: number, trigger: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_particle?(entityId: number, entityGeneration: number, presetId: number, target: number): boolean;
-  add_gameplay_collision_particle_with_cooldown?(
-    entityId: number,
-    entityGeneration: number,
-    presetId: number,
-    target: number,
-    cooldownSeconds: number,
-  ): boolean;
-  add_gameplay_collision_particle_with_policy?(
-    entityId: number,
-    entityGeneration: number,
-    presetId: number,
-    target: number,
-    cooldownSeconds: number,
-    replaceDefault: boolean,
-  ): boolean;
-  add_gameplay_collision_particle_with_trigger?(
-    entityId: number,
-    entityGeneration: number,
-    presetId: number,
-    target: number,
-    cooldownSeconds: number,
-    replaceDefault: boolean,
-    trigger: number,
-  ): boolean;
-  add_gameplay_collision_particle_with_guard?(
-    entityId: number, entityGeneration: number, presetId: number, target: number,
-    cooldownSeconds: number, replaceDefault: boolean, trigger: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-  add_gameplay_collision_despawn?(entityId: number, entityGeneration: number, target: number): boolean;
-  add_gameplay_collision_despawn_with_guard?(
-    entityId: number, entityGeneration: number, target: number,
-    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
-  ): boolean;
-}
-
-export interface SceneBehaviorBindingOptions extends InstantiateSceneFragmentOptions, BehaviorRecipeCommandOptions {
-  behaviorProp?: string;
-  missingBehavior?: MissingSceneBehaviorBinding;
-  requireExplicitInstanceIds?: boolean;
-}
-
-export interface BoundBehaviorRecipeCommand {
-  instance: ResolvedSceneCompositionInstance;
-  behaviorEntity: string;
-  sourceCommand: BehaviorRecipeCommand;
-  command: BehaviorRecipeCommand;
-}
-
-export interface SceneBehaviorBindingPlan {
-  fragment: string;
-  instances: readonly ResolvedSceneCompositionInstance[];
-  bindings: readonly BoundBehaviorRecipeCommand[];
-  commands: readonly BehaviorRecipeCommand[];
-}
-
-export interface SceneBehaviorRuntimeTarget {
-  spawnSceneInstance(instance: ResolvedSceneCompositionInstance): GameplayEntityHandle;
-}
-
-export interface ApplyGameplayBehaviorCommandsOptions {
-  path?: string;
-  ids?: GameplayBehaviorRuntimeIds;
-}
-
-export interface ApplySceneBehaviorRecipesOptions extends SceneBehaviorBindingOptions {
-  ids?: GameplayBehaviorRuntimeIds;
-  instanceHandleRegistry?: SceneInstanceHandleRegistry;
-}
-
 interface GameplayBehaviorCommandFacade {
   applyGameplayBehaviorCommands(
     commands: readonly BehaviorRecipeCommand[],
@@ -837,26 +136,6 @@ interface GameplayBehaviorCommandFacade {
 }
 
 type SceneBehaviorApplyEngine = GameplayBehaviorRuntimeEngine | GameplayBehaviorCommandFacade;
-
-export interface SceneBehaviorApplyResult {
-  plan: SceneBehaviorBindingPlan;
-  entityHandles: Readonly<Record<string, GameplayEntityHandle>>;
-  spawnResults: readonly GameplayEntityHandle[];
-  instanceHandleSync?: SceneInstanceHandleRegistrySyncResult;
-  behaviorApplyResult: BehaviorRecipeApplyResult;
-}
-
-export type SceneBehaviorBindingDryRunResult =
-  | {
-      ok: true;
-      diagnostics: readonly DiagnosticReport[];
-      plan: SceneBehaviorBindingPlan;
-    }
-  | {
-      ok: false;
-      diagnostics: readonly DiagnosticReport[];
-      plan?: undefined;
-    };
 
 export function bindSceneBehaviorRecipes(
   composition: SceneCompositionSpec | ResolvedSceneCompositionSpec,
@@ -1064,39 +343,6 @@ export function registerGameplayPrefabs(
   };
 }
 
-export function resolveGameplayBehaviorRuntimeIds(
-  value: unknown,
-  options: ResolveGameplayBehaviorRuntimeIdsOptions = {},
-): GameplayBehaviorRuntimeIds {
-  const path = options.path ?? "gameplayRuntimeIds";
-  if (!isRecord(value)) {
-    throw gameplayAuthoringDiagnosticError(path, "must be an object");
-  }
-  const items = runtimeIdNamespace(value.items, `${path}.items`);
-  const actions = runtimeIdNamespace(value.actions, `${path}.actions`);
-  const prefabs = runtimeIdNamespace(value.prefabs, `${path}.prefabs`);
-  const timers = runtimeIdNamespace(value.timers, `${path}.timers`);
-  const tags = runtimeTagIdNamespace(value.tags, `${path}.tags`);
-  const effects = runtimeIdNamespace(value.effects, `${path}.effects`);
-  const variables = runtimeIdNamespace(value.variables, `${path}.variables`);
-  requireRuntimeIdNames(items, options.requiredItems ?? [], `${path}.items`);
-  requireRuntimeIdNames(actions, options.requiredActions ?? [], `${path}.actions`);
-  requireRuntimeIdNames(prefabs, options.requiredPrefabs ?? [], `${path}.prefabs`);
-  requireRuntimeIdNames(timers, options.requiredTimers ?? [], `${path}.timers`);
-  requireRuntimeIdNames(tags, options.requiredTags ?? [], `${path}.tags`);
-  requireRuntimeIdNames(effects, options.requiredEffects ?? [], `${path}.effects`);
-  requireRuntimeIdNames(variables, options.requiredVariables ?? [], `${path}.variables`);
-  return {
-    ...(Object.keys(items).length === 0 ? {} : { items }),
-    ...(Object.keys(actions).length === 0 ? {} : { actions }),
-    ...(Object.keys(prefabs).length === 0 ? {} : { prefabs }),
-    ...(Object.keys(timers).length === 0 ? {} : { timers }),
-    ...(Object.keys(tags).length === 0 ? {} : { tags }),
-    ...(Object.keys(effects).length === 0 ? {} : { effects }),
-    ...(Object.keys(variables).length === 0 ? {} : { variables }),
-  };
-}
-
 function registerGameplayPrefab(
   engine: GameplayBehaviorRuntimeEngine,
   registration: GameplayPrefabRegistration,
@@ -1163,9 +409,6 @@ export function validateDataSceneGameplayCommand(
       break;
     case "configureScoreReward":
       assertSupportedScoreRewardCommand(command, path);
-      if (command.reward > 0xffffffff) {
-        throw gameplayAuthoringDiagnosticError(`${path}.reward`, "must fit uint32 gameplay score storage");
-      }
       break;
     case "configurePickup":
       assertSupportedPickupCommand(command, path);
@@ -1176,7 +419,7 @@ export function validateDataSceneGameplayCommand(
       break;
     case "configureInteraction":
       assertSupportedInteractionCommand(command, path);
-      positiveU32(interactionActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(gameplayActionId(command, ids, path), `${path}.actionId`);
       dataSceneFloat32(command.radius, `${path}.radius`, true);
       break;
     case "configureTimerTrigger":
@@ -1197,7 +440,7 @@ export function validateDataSceneGameplayCommand(
         throw gameplayAuthoringDiagnosticError(`${path}.when.event`, "this event is not emitted by Data Scene gameplay");
       }
       const slot = runtimeVariableSlot(command.variable, command.variableId, ids, `${path}.variable`);
-      const eventKind = runtimeGameplayEventKind(command.when.event);
+      const eventKind = runtimeGameplayEventKind(command.when.event, `${path}.when.event`);
       const tokenId = runtimeGameplayEventTokenId(command.when, ids, `${path}.when`);
       variableMutationKey = `${eventKind}:${tokenId}:${slot}:${command.type === "configureSetVariable" ? 0 : 1}`;
       const value = command.type === "configureSetVariable"
@@ -1226,20 +469,20 @@ function validateDataSceneCombatCommand(command: BehaviorRecipeCommand, ids: Gam
     case "configureSpawnPrefabAction":
       assertSupportedSpawnPrefabActionCommand(command, path);
       if (command.projectile !== undefined) throw gameplayAuthoringDiagnosticError(path, "Data Scene spawn actions require an actor prefab, without projectile overrides");
-      positiveU32(spawnPrefabActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(gameplayActionId(command, ids, path), `${path}.actionId`);
       positiveU32(spawnPrefabId(command, ids, path), `${path}.prefabId`);
       dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
       if (![command.offsetX, command.offsetY].every(value => Number.isFinite(Math.fround(value)))) throw gameplayAuthoringDiagnosticError(path, "spawn offsets must fit finite float32");
       return;
     case "configureDashAction":
       assertSupportedDashActionCommand(command, path);
-      positiveU32(dashActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(gameplayActionId(command, ids, path), `${path}.actionId`);
       dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
       dataSceneFloat32(command.distance, `${path}.distance`, true);
       return;
     case "configureMeleeAction":
       assertSupportedMeleeActionCommand(command, path);
-      positiveU32(meleeActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(gameplayActionId(command, ids, path), `${path}.actionId`);
       dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
       dataSceneFloat32(command.range, `${path}.range`, true);
       dataSceneFloat32(command.damage, `${path}.damage`, true);
@@ -1268,7 +511,7 @@ function validateDataSceneCombatCommand(command: BehaviorRecipeCommand, ids: Gam
       if ((command.tileImpact ?? "despawn") !== "despawn") {
         throw gameplayAuthoringDiagnosticError(path, "Data Scene combat requires despawn tile impact");
       }
-      positiveU32(projectileActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(gameplayActionId(command, ids, path), `${path}.actionId`);
       dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
       dataSceneFloat32(command.speed, `${path}.speed`, true);
       dataSceneFloat32(command.damage, `${path}.damage`, true);
@@ -1292,7 +535,6 @@ function validateDataSceneCombatCommand(command: BehaviorRecipeCommand, ids: Gam
       return;
     case "configureCollisionSound":
       assertSupportedCollisionSoundCommand(command, path);
-      positiveU32(command.soundId, `${path}.soundId`);
       dataSceneFloat32(command.volume, `${path}.volume`, false);
       dataSceneFloat32(command.pitch, `${path}.pitch`, true);
       dataSceneFloat32(command.cooldownSeconds ?? 0, `${path}.cooldownSeconds`, false);
@@ -1581,7 +823,7 @@ function applyConfigureInteractionCommand(
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedInteractionCommand(command, path);
-  const actionId = interactionActionId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
   if (command.guard !== undefined) {
     const setGuarded = requireRuntimeMethod(
       engine.set_gameplay_interaction_with_guard,
@@ -2180,8 +1422,8 @@ function applyConfigureCollisionSpawnPrefabCommand(
     `${path}.type`,
     "runtime engine must provide add_gameplay_collision_spawn_prefab for configureCollisionSpawnPrefab commands",
   );
-  const actionId = collisionSpawnPrefabActionId(command, ids, path);
-  const prefabId = collisionSpawnPrefabId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
+  const prefabId = spawnPrefabId(command, ids, path);
   if (command.guard !== undefined) {
     const addGuarded = requireRuntimeMethod(
       engine.add_gameplay_collision_spawn_prefab_with_guard,
@@ -2583,7 +1825,7 @@ function applyConfigureProjectileActionCommand(
 ): boolean {
   if (command.projectilePrefab !== undefined) throw gameplayAuthoringDiagnosticError(`${path}.projectilePrefab`, "requires applyDataSceneAuthoringDocument to configure the projectile catalog and bindings");
   assertSupportedProjectileActionCommand(command, path);
-  const actionId = projectileActionId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
   const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
   const collisionTarget = projectileCollisionTargetCode(command.collisionTarget, `${path}.collisionTarget`);
   const tileImpactCode = projectileTileImpactCode(command.tileImpact, `${path}.tileImpact`);
@@ -2640,7 +1882,7 @@ function applyConfigureDashActionCommand(
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedDashActionCommand(command, path);
-  const actionId = dashActionId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
   const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
   const setDashActionWithAim = engine.set_gameplay_action_dash_with_aim;
   const setDashAction = engine.set_gameplay_action_dash;
@@ -2691,7 +1933,7 @@ function applyConfigureMeleeActionCommand(
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedMeleeActionCommand(command, path);
-  const actionId = meleeActionId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
   const targetCode = meleeTargetCode(command.target, `${path}.target`);
   if (targetCode === 0) {
     const setMeleeAction = requireRuntimeMethod(
@@ -2742,7 +1984,7 @@ function applyConfigureSpawnPrefabActionCommand(
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedSpawnPrefabActionCommand(command, path);
-  const actionId = spawnPrefabActionId(command, ids, path);
+  const actionId = gameplayActionId(command, ids, path);
   const prefabId = spawnPrefabId(command, ids, path);
   const projectile = command.projectile;
   if (projectile !== undefined) {
@@ -2892,7 +2134,7 @@ function applyConfigureVariableMutationCommand(
     "runtime engine must provide add_gameplay_variable_mutation_trigger for variable mutation commands",
   );
   const slot = runtimeVariableSlot(command.variable, command.variableId, ids, `${path}.variable`);
-  const eventKind = runtimeGameplayEventKind(command.when.event);
+  const eventKind = runtimeGameplayEventKind(command.when.event, `${path}.when.event`);
   const tokenId = runtimeGameplayEventTokenId(command.when, ids, `${path}.when`);
   const value = command.type === "configureSetVariable"
     ? runtimeVariableLiteral(command.value)
@@ -2947,31 +2189,11 @@ function gameplayEntityHandleForCommand(
 ): GameplayEntityHandle {
   const raw = isHandleMap(entityHandles)
     ? entityHandles.get(entity)
-    : entityHandles[entity];
+    : Object.prototype.hasOwnProperty.call(entityHandles, entity) ? entityHandles[entity] : undefined;
   if (raw === undefined) {
     throw gameplayAuthoringDiagnosticError(path, `references unknown entity handle '${entity}'`);
   }
   return gameplayEntityHandle(raw, path);
-}
-
-function gameplayEntityHandle(value: unknown, path: string): GameplayEntityHandle {
-  if (!isRecord(value)) {
-    throw gameplayAuthoringDiagnosticError(path, "must be an entity handle object");
-  }
-  const entityId = nonNegativeInteger(value.entityId, `${path}.entityId`);
-  const entityGeneration = nonNegativeInteger(value.entityGeneration, `${path}.entityGeneration`);
-  return { entityId, entityGeneration };
-}
-
-function copyGameplayEntityHandle(handle: GameplayEntityHandle): GameplayEntityHandle {
-  return {
-    entityId: handle.entityId,
-    entityGeneration: handle.entityGeneration,
-  };
-}
-
-function handleKey(handle: GameplayEntityHandle): string {
-  return `${handle.entityId}:${handle.entityGeneration}`;
 }
 
 function validateExplicitSceneInstanceIds(
@@ -3033,6 +2255,9 @@ function assertSupportedDamageCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureDamage" }>,
   path: string,
 ): void {
+  if (command.target !== "self" && command.target !== "other") {
+    throw gameplayAuthoringDiagnosticError(`${path}.target`, "must be one of self or other for gameplay damage storage");
+  }
   if (command.cooldownSeconds !== 0) {
     throw gameplayAuthoringDiagnosticError(`${path}.cooldownSeconds`, "must be 0 because damage cooldown storage is not available yet");
   }
@@ -3100,6 +2325,9 @@ function assertSupportedScoreRewardCommand(
 ): void {
   if (!Number.isInteger(command.reward) || command.reward < 0) {
     throw gameplayAuthoringDiagnosticError(`${path}.reward`, "must be a non-negative integer for gameplay score reward storage");
+  }
+  if (command.reward > 0xffffffff) {
+    throw gameplayAuthoringDiagnosticError(`${path}.reward`, "must fit uint32 gameplay score storage");
   }
 }
 
@@ -3188,7 +2416,7 @@ function collisionEmitEffectId(
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
 ): number {
-  const effectId = command.effectId ?? (command.effect === undefined ? undefined : ids?.effects?.[command.effect]);
+  const effectId = command.effectId ?? runtimeIdByName(ids?.effects, command.effect);
   if (effectId === undefined) {
     throw gameplayAuthoringDiagnosticError(`${path}.effect`, `must resolve presentation effect '${command.effect}' to a runtime effect id`);
   }
@@ -3196,7 +2424,7 @@ function collisionEmitEffectId(
     throw gameplayAuthoringDiagnosticError(`${path}.effectId`, "must be a non-negative safe u32 integer runtime effect id");
   }
   if (command.effect !== undefined && command.effectId !== undefined) {
-    const mappedEffectId = ids?.effects?.[command.effect];
+    const mappedEffectId = runtimeIdByName(ids?.effects, command.effect);
     if (mappedEffectId !== undefined && mappedEffectId !== command.effectId) {
       throw gameplayAuthoringDiagnosticError(`${path}.effectId`, `conflicts with ids.effects mapping for presentation effect '${command.effect}'`);
     }
@@ -3252,6 +2480,7 @@ function assertSupportedCollisionSoundCommand(
   if (!Number.isInteger(command.soundId) || command.soundId <= 0) {
     throw gameplayAuthoringDiagnosticError(`${path}.soundId`, "must be a positive integer for gameplay collision sound storage");
   }
+  positiveU32(command.soundId, `${path}.soundId`);
   if (!Number.isFinite(command.volume) || command.volume < 0) {
     throw gameplayAuthoringDiagnosticError(`${path}.volume`, "must be a non-negative finite number for gameplay collision sound storage");
   }
@@ -3444,141 +2673,6 @@ function pickupItemId(
   return itemId;
 }
 
-function resolvedPickupItemId(
-  command: Extract<BehaviorRecipeCommand, { type: "configurePickup" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const itemId = command.itemId ?? ids?.items?.[command.item] ?? (command.item === "score" ? GAMEPLAY_PICKUP_ITEM_SCORE : undefined);
-  if (itemId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.item`, `must resolve pickup item '${command.item}' to a supported runtime item id`);
-  }
-  if (!Number.isInteger(itemId) || itemId <= 0 || itemId > 0xffffffff) {
-    throw gameplayAuthoringDiagnosticError(`${path}.itemId`, "must be a positive uint32 runtime item id");
-  }
-  return itemId;
-}
-
-function interactionActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureInteraction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve interaction action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function projectileActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureProjectileAction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve projectile action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function dashActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureDashAction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve dash action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function meleeActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureMeleeAction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve melee action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function spawnPrefabActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureSpawnPrefabAction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve spawn prefab action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function collisionSpawnPrefabActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionSpawnPrefab" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const actionId = command.actionId ?? ids?.actions?.[command.action];
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve collision spawn prefab action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
-}
-
-function spawnPrefabId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureSpawnPrefabAction" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const prefabId = command.prefabId ?? ids?.prefabs?.[command.prefab];
-  if (prefabId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `must resolve spawn prefab '${command.prefab}' to a runtime prefab id`);
-  }
-  if (!Number.isInteger(prefabId) || prefabId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.prefabId`, "must be a positive integer runtime prefab id");
-  }
-  return prefabId;
-}
-
-function collisionSpawnPrefabId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionSpawnPrefab" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const prefabId = command.prefabId ?? ids?.prefabs?.[command.prefab];
-  if (prefabId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `must resolve collision spawn prefab '${command.prefab}' to a runtime prefab id`);
-  }
-  if (!Number.isInteger(prefabId) || prefabId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.prefabId`, "must be a positive integer runtime prefab id");
-  }
-  return prefabId;
-}
-
 function gameplayPrefabRegistrationKind(value: unknown, path: string): GameplayPrefabRegistrationKind {
   if (value === "enemy" || value === "bullet") {
     return value;
@@ -3595,7 +2689,7 @@ function gameplayPrefabRegistrationId(
     requiredBehaviorProp(registration.prefab, `${path}.prefab`);
   }
   const prefabId = registration.prefabId
-    ?? (registration.prefab === undefined ? undefined : ids?.prefabs?.[registration.prefab]);
+    ?? runtimeIdByName(ids?.prefabs, registration.prefab);
   if (prefabId === undefined) {
     if (registration.prefab === undefined) {
       throw gameplayAuthoringDiagnosticError(`${path}.prefabId`, "must declare prefabId or prefab with ids.prefabs mapping");
@@ -3603,39 +2697,6 @@ function gameplayPrefabRegistrationId(
     throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `must resolve prefab '${registration.prefab}' to a runtime prefab id`);
   }
   return positiveU32(prefabId, `${path}.prefabId`);
-}
-
-function timerTriggerId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureTimerTrigger" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number {
-  const timerId = command.timerId ?? ids?.timers?.[command.timer];
-  if (timerId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.timer`, `must resolve timer '${command.timer}' to a runtime timer id`);
-  }
-  if (!Number.isInteger(timerId) || timerId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.timerId`, "must be a positive integer runtime timer id");
-  }
-  return timerId;
-}
-
-function timerTriggerActionId(
-  command: Extract<BehaviorRecipeCommand, { type: "configureTimerTrigger" }>,
-  ids: GameplayBehaviorRuntimeIds | undefined,
-  path: string,
-): number | undefined {
-  if (command.action === undefined && command.actionId === undefined) {
-    return undefined;
-  }
-  const actionId = command.actionId ?? (command.action === undefined ? undefined : ids?.actions?.[command.action]);
-  if (actionId === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.action`, `must resolve timer action '${command.action}' to a runtime action id`);
-  }
-  if (!Number.isInteger(actionId) || actionId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.actionId`, "must be a positive integer runtime action id");
-  }
-  return actionId;
 }
 
 function spawnPrefabAnchorCode(anchor: "self"): number {
@@ -3774,18 +2835,11 @@ function gameplayTagId(
   if (/^\d+$/.test(tag)) {
     return gameplayTagIdValue(Number(tag), path);
   }
-  const tagId = ids?.tags?.[tag];
+  const tagId = runtimeIdByName(ids?.tags, tag);
   if (tagId === undefined) {
     throw gameplayAuthoringDiagnosticError(path, `must resolve gameplay tag '${tag}' to a runtime tag id`);
   }
   return gameplayTagIdValue(tagId, path);
-}
-
-function gameplayTagIdValue(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_GAMEPLAY_TAG_ID) {
-    throw gameplayAuthoringDiagnosticError(path, `must be an integer gameplay tag id between ${GAMEPLAY_TAG_ID_RANGE_LABEL}`);
-  }
-  return value;
 }
 
 export function runtimeVariableComparison(
@@ -3799,7 +2853,7 @@ export function runtimeVariableComparison(
     ids,
     `${path}.variable`,
   );
-  const operator = runtimeVariableComparisonOperator(comparison.op);
+  const operator = runtimeVariableComparisonOperator(comparison.op, `${path}.op`);
   if (comparison.value !== undefined) {
     return [leftSlot, operator, 0, runtimeVariableLiteral(comparison.value)];
   }
@@ -3822,7 +2876,7 @@ function runtimeVariableSlot(
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
 ): number {
-  const namedId = name === undefined ? undefined : ids?.variables?.[name];
+  const namedId = runtimeIdByName(ids?.variables, name);
   if (name !== undefined && namedId === undefined) {
     throw gameplayAuthoringDiagnosticError(path, `must resolve variable '${name}' to a runtime slot`);
   }
@@ -3836,26 +2890,28 @@ function runtimeVariableSlot(
   return slot;
 }
 
-function runtimeVariableComparisonOperator(op: ResolvedBehaviorRecipeVariableComparison["op"]): number {
+function runtimeVariableComparisonOperator(op: ResolvedBehaviorRecipeVariableComparison["op"], path: string): number {
   if (op === "==") return 0;
   if (op === "!=") return 1;
   if (op === "<") return 2;
   if (op === "<=") return 3;
   if (op === ">") return 4;
-  return 5;
+  if (op === ">=") return 5;
+  throw gameplayAuthoringDiagnosticError(path, "must be a supported variable comparison operator");
 }
 
 function runtimeVariableLiteral(value: number | boolean): number {
   return typeof value === "boolean" ? (value ? 1 : 0) : value;
 }
 
-function runtimeGameplayEventKind(event: ResolvedBehaviorRecipeEventPredicate["event"]): number {
+function runtimeGameplayEventKind(event: ResolvedBehaviorRecipeEventPredicate["event"], path: string): number {
   if (event === "interaction") return GAMEPLAY_EVENT_KIND_INTERACTION;
   if (event === "collisionDamage") return GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE;
   if (event === "collisionDespawn") return GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN;
   if (event === "timer") return GAMEPLAY_EVENT_KIND_TIMER;
   if (event === "pickupCollected") return GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED;
-  return GAMEPLAY_EVENT_KIND_TILE_IMPACT;
+  if (event === "tileImpact") return GAMEPLAY_EVENT_KIND_TILE_IMPACT;
+  throw gameplayAuthoringDiagnosticError(path, "must be a supported gameplay event");
 }
 
 function runtimeGameplayEventTokenId(
@@ -3873,7 +2929,21 @@ function runtimeGameplayEventTokenId(
     return runtimeNamedEventToken(predicate.item, predicate.itemId, ids?.items, `${path}.item`);
   }
   if (predicate.event === "tileImpact") {
-    return predicate.tileImpactCode ?? (predicate.tileImpact === "bounce" ? 2 : 0);
+    const { tileImpact, tileImpactCode } = predicate;
+    if (tileImpactCode !== undefined && tileImpactCode !== 0 && tileImpactCode !== 2) {
+      throw gameplayAuthoringDiagnosticError(`${path}.tileImpactCode`, "must be 0 or 2");
+    }
+    if (tileImpact !== undefined && tileImpact !== "despawn" && tileImpact !== "bounce") {
+      throw gameplayAuthoringDiagnosticError(`${path}.tileImpact`, "must be 'despawn' or 'bounce'");
+    }
+    if (tileImpact === undefined && tileImpactCode === undefined) {
+      throw gameplayAuthoringDiagnosticError(path, "must provide tileImpact or tileImpactCode");
+    }
+    const namedCode = tileImpact === "bounce" ? 2 : 0;
+    if (tileImpact !== undefined && tileImpactCode !== undefined && tileImpactCode !== namedCode) {
+      throw gameplayAuthoringDiagnosticError(path, "tileImpact and tileImpactCode must match");
+    }
+    return tileImpactCode ?? namedCode;
   }
   return 0;
 }
@@ -3884,7 +2954,7 @@ function runtimeNamedEventToken(
   ids: Readonly<Record<string, number>> | undefined,
   path: string,
 ): number {
-  const namedId = name === undefined ? undefined : ids?.[name];
+  const namedId = runtimeIdByName(ids, name);
   if (name !== undefined && namedId === undefined) {
     throw gameplayAuthoringDiagnosticError(path, `must resolve '${name}' to a runtime id`);
   }
@@ -3916,9 +2986,8 @@ function collisionTargetCode(target: "self" | "other"): number {
 }
 
 function gameplayCollisionLayerCode(layer: string, path: string): number {
-  const code = GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES[layer as GameplayMovementQueryLayer];
-  if (code !== undefined) {
-    return code;
+  if (isGameplayMovementQueryLayer(layer)) {
+    return GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES[layer];
   }
   throw gameplayAuthoringDiagnosticError(path, "must be one of player, enemy, bullet, wall, or pickup");
 }
@@ -3927,78 +2996,11 @@ function collisionTriggerCode(trigger: "contact" | "enter"): number {
   return trigger === "contact" ? 0 : 1;
 }
 
-function requiredBehaviorProp(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw gameplayAuthoringDiagnosticError(path, "must be a non-empty string");
-  }
-  return value;
-}
-
 function missingBehaviorMode(value: unknown, path: string): MissingSceneBehaviorBinding {
   if (value === "ignore" || value === "error") {
     return value;
   }
   throw gameplayAuthoringDiagnosticError(path, "must be one of ignore or error");
-}
-
-function runtimeIdNamespace(value: unknown, path: string): Record<string, number> {
-  if (value === undefined) {
-    return {};
-  }
-  const raw = recordValue(value, path);
-  const ids: Record<string, number> = {};
-  for (const [key, runtimeId] of Object.entries(raw)) {
-    const name = requiredBehaviorProp(key, `${path}.${key}`);
-    ids[name] = positiveU32(runtimeId, `${path}.${key}`);
-  }
-  return ids;
-}
-
-function runtimeTagIdNamespace(value: unknown, path: string): Record<string, number> {
-  if (value === undefined) {
-    return {};
-  }
-  const raw = recordValue(value, path);
-  const ids: Record<string, number> = {};
-  for (const [key, runtimeId] of Object.entries(raw)) {
-    const name = requiredBehaviorProp(key, `${path}.${key}`);
-    ids[name] = gameplayTagIdValue(runtimeId, `${path}.${key}`);
-  }
-  return ids;
-}
-
-function requireRuntimeIdNames(
-  ids: Readonly<Record<string, number>>,
-  names: readonly string[],
-  path: string,
-): void {
-  for (const name of names) {
-    const key = requiredBehaviorProp(name, `${path}.required`);
-    if (ids[key] === undefined) {
-      throw gameplayAuthoringDiagnosticError(`${path}.${key}`, `must declare runtime id for '${key}'`);
-    }
-  }
-}
-
-function nonNegativeInteger(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw gameplayAuthoringDiagnosticError(path, "must be a non-negative integer");
-  }
-  return value;
-}
-
-function positiveU32(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > 0xffffffff) {
-    throw gameplayAuthoringDiagnosticError(path, "must be a positive safe u32 integer");
-  }
-  return value;
-}
-
-function recordValue(value: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw gameplayAuthoringDiagnosticError(path, "must be an object");
-  }
-  return value;
 }
 
 function isResolvedSceneCompositionSpec(
@@ -4024,13 +3026,6 @@ function isResolvedBehaviorRecipeDocument(
     && typeof firstEntity.id === "string"
     && Array.isArray(firstEntity.recipes)
     && (firstRecipe === undefined || (isRecord(firstRecipe) && typeof firstRecipe.id === "string" && typeof firstRecipe.enabled === "boolean"));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object"
-    && value !== null
-    && !Array.isArray(value)
-    && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
 function isHandleMap(value: GameplayEntityHandleMap): value is ReadonlyMap<string, GameplayEntityHandle> {

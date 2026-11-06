@@ -4,7 +4,7 @@ export { WebGpuCanvasCommitError } from "./webgpuRendererBackend.js";
 export type { WebGPURendererOptions } from "./webgpuRendererBackend.js";
 import { emptyRendererStats, type Renderer, type RendererStats, type PhysicsDebugLineCamera } from "./renderer.js";
 import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
-import type { TextureLoadOptions } from "./colorManagement.js";
+import { resolveTextureColorSpace, type TextureLoadOptions } from "./colorManagement.js";
 import type { PixelPerfectOptions, PixelPerfectPresentation } from "./pixelPerfect.js";
 import type { LightingScene2D } from "./lighting.js";
 import type { SpriteMaterialPresetInput } from "./spriteMaterial.js";
@@ -178,14 +178,21 @@ export class WebGPURenderer implements Renderer {
             return backend.loadTexture(first, typeof second === "object" ? second : undefined);
         if (typeof second !== "string")
             throw new Error("loadTexture(textureId, url) requires a texture URL.");
+        resolveTextureColorSpace(options);
+        // Snapshot the primitive settings before loading. The original signal is
+        // request-scoped; recovery supplies its own signal for the captured Blob.
+        const { signal, colorSpace, ktx2Url } = options;
+        const settings: TextureLoadOptions = {
+            ...(colorSpace === undefined ? {} : { colorSpace }),
+            ...(ktx2Url === undefined ? {} : { ktx2Url }),
+        };
         this.textureRequests.set(first, token);
         try {
-            const texture = await backend.loadTexture(first, second, options);
+            const texture = await backend.loadTexture(first, second, { ...settings, ...(signal === undefined ? {} : { signal }) });
             this.ready();
             if (backend !== this.backend || this.textureRequests.get(first) !== token)
                 throw new Error("Stale WebGPU texture load.");
-            const { signal: _, ...settings } = options;
-            this.textures.set(first, { source: backend.textureSource(first), options: structuredClone(settings) });
+            this.textures.set(first, { source: backend.textureSource(first), options: settings });
             return texture;
         }
         finally {

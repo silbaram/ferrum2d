@@ -1,4 +1,6 @@
 import { webGpuResources } from "./webgpuResources.js";
+import { createAssetLoadScope } from "./assetLoadTasks.js";
+import { rgbaFromAlpha } from "./pixelMaskTextureData.js";
 import { textureLoadAbortError } from "./ktx2Texture.js";
 import { resolveTextureColorSpace } from "./colorManagement.js";
 import type { TextureLoadOptions, TextureColorSpace } from "./colorManagement.js";
@@ -7,6 +9,8 @@ import type {
   PixelMaskTerrainAlphaPatch,
   PixelMaskTerrainTextureUploadOptions,
 } from "./pixelMaskTerrain.js";
+
+export { rgbaFromAlpha } from "./pixelMaskTextureData.js";
 
 export interface WebGpuTextureResource {
   texture: GPUTexture;
@@ -52,22 +56,23 @@ export class WebGpuTextureStore {
 
   private async loadManaged(url: string, options: TextureLoadOptions = {}, textureId?: number): Promise<GPUTexture> {
     this.assertAlive();
-    resolveTextureColorSpace(options);
+    const colorSpace = resolveTextureColorSpace(options);
     if (options.signal?.aborted) throw textureLoadAbortError();
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    options.signal?.addEventListener("abort", abort, { once: true });
+    const scope = createAssetLoadScope(options.signal);
+    const controller = scope.controller;
     this.pendingLoads.add(controller);
-    if (textureId !== undefined) {
-      this.pendingIds.get(textureId)?.abort();
-      this.pendingIds.set(textureId, controller);
-    }
     try {
+      if (textureId !== undefined) {
+        const previous = this.pendingIds.get(textureId);
+        this.pendingIds.set(textureId, controller);
+        previous?.abort();
+      }
+      this.assertLoadActive(controller.signal);
       // Native WebGPU currently uses the ordinary image fallback even when ktx2Url is present.
-      const {bitmap,blob} = await this.loadImageBitmap(url, options, controller.signal);
+      const {bitmap,blob} = await this.loadImageBitmap(url, colorSpace, controller.signal);
       try {
-        if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
-        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options), blob);
+        this.assertLoadActive(controller.signal);
+        return this.createTextureFromSource(textureId, bitmap, colorSpace, blob, controller.signal);
       } finally { bitmap.close(); }
     } catch (error) {
       if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
@@ -75,7 +80,7 @@ export class WebGpuTextureStore {
     } finally {
       this.pendingLoads.delete(controller);
       if (textureId !== undefined && this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
-      options.signal?.removeEventListener("abort", abort);
+      scope.dispose();
     }
   }
 
@@ -128,6 +133,7 @@ export class WebGpuTextureStore {
   restoreRgbaTexture(id: number, width: number, height: number, data: Uint8Array): GPUTexture { this.assertAlive(); return this.createTextureFromRgbaData(id,width,height,data); }
 
   createPlaceholderTextureForId(textureId: number): void {
+    this.assertAlive();
     this.createTextureFromRgbaData(textureId, 1, 1, new Uint8Array([255, 255, 255, 255]));
   }
 
@@ -137,15 +143,20 @@ export class WebGpuTextureStore {
     if (textureId === 0) {
       return false;
     }
-    this.pendingIds.get(textureId)?.abort();
-    const resource = this.texturesById.get(textureId);
-    if (resource === undefined) {
-      return false;
+    const controller = new AbortController(), previous = this.pendingIds.get(textureId);
+    this.pendingIds.set(textureId, controller);
+    try {
+      previous?.abort();
+      if (this.destroyed || controller.signal.aborted) return false;
+      const resource = this.texturesById.get(textureId);
+      if (resource === undefined) return false;
+      webGpuResources(this.device).destroy(resource.texture);
+      this.textures.delete(resource.texture);
+      this.texturesById.delete(textureId);
+      return true;
+    } finally {
+      if (this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
     }
-    webGpuResources(this.device).destroy(resource.texture);
-    this.textures.delete(resource.texture);
-    this.texturesById.delete(textureId);
-    return true;
   }
 
   textureRevision(textureId: number): number | undefined { return this.texturesById.get(textureId)?.revision; }
@@ -174,19 +185,23 @@ export class WebGpuTextureStore {
     this.texturesById.clear();
   }
 
-  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<{bitmap:ImageBitmap;blob:Blob}> {
-    const colorSpace = resolveTextureColorSpace(options);
+  private async loadImageBitmap(url: string, colorSpace: TextureColorSpace, signal: AbortSignal): Promise<{bitmap:ImageBitmap;blob:Blob}> {
     const response = await fetch(url, { signal });
     if (!response.ok) {
+      try { await response.body?.cancel(); }
+      catch { /* Preserve the HTTP failure if cleanup fails. */ }
+      this.assertLoadActive(signal);
       throw new Error(`Texture load failed: HTTP ${response.status} ${response.statusText}`.trim());
     }
+    this.assertLoadActive(signal);
     const blob = await response.blob();
+    this.assertLoadActive(signal);
     const bitmap = colorSpace === "srgb" ? await createImageBitmap(blob)
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
     return {bitmap,blob};
   }
 
-  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace, blob: Blob): GPUTexture {
+  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace, blob: Blob, signal: AbortSignal): GPUTexture {
     const texture = webGpuResources(this.device).createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
@@ -203,7 +218,9 @@ export class WebGpuTextureStore {
         return texture;
       }
       const resource = this.createTextureResource(texture, source.width, source.height, colorSpace);resource.source=blob;
-      this.setTexture(textureId,resource);
+      this.assertLoadActive(signal);
+      // Register a completed load without aborting its own controller.
+      this.registerTexture(textureId, resource);
       return texture;
     } catch (error) {
       webGpuResources(this.device).destroy(texture);
@@ -252,8 +269,20 @@ export class WebGpuTextureStore {
   }
 
   private setTexture(textureId: number, resource: WebGpuTextureResource): void {
+    this.assertAlive();
     validateTextureId(textureId);
-    this.pendingIds.get(textureId)?.abort();
+    const controller = new AbortController(), previous = this.pendingIds.get(textureId);
+    this.pendingIds.set(textureId, controller);
+    try {
+      previous?.abort();
+      this.assertLoadActive(controller.signal);
+      this.registerTexture(textureId, resource);
+    } finally {
+      if (this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
+    }
+  }
+
+  private registerTexture(textureId: number, resource: WebGpuTextureResource): void {
     const previous = this.texturesById.get(textureId);
     if (previous && previous.texture !== resource.texture) {
       webGpuResources(this.device).destroy(previous.texture);
@@ -262,6 +291,10 @@ export class WebGpuTextureStore {
     this.textures.add(resource.texture);
     resource.revision = ++this.revision;
     this.texturesById.set(textureId, resource);
+  }
+
+  private assertLoadActive(signal: AbortSignal): void {
+    if (this.destroyed || signal.aborted) throw textureLoadAbortError();
   }
 
   private assertAlive(): void {
@@ -291,47 +324,8 @@ export function textureWriteBytes(
   return { data: padded, bytesPerRow, rowsPerImage: height };
 }
 
-export function rgbaFromAlpha(
-  width: number,
-  height: number,
-  alpha: Uint8Array,
-  options: PixelMaskTerrainTextureUploadOptions = {},
-): Uint8Array {
-  if (alpha.length !== width * height) {
-    throw new Error("pixel mask terrain alpha length must equal width * height.");
-  }
-  const [rawR, rawG, rawB] = options.color ?? [255, 255, 255];
-  const r = colorByte(rawR, "pixelMaskTerrain.texture.color[0]");
-  const g = colorByte(rawG, "pixelMaskTerrain.texture.color[1]");
-  const b = colorByte(rawB, "pixelMaskTerrain.texture.color[2]");
-  const alphaScale = finitePositiveNumber(options.alphaScale ?? 1, "pixelMaskTerrain.texture.alphaScale");
-  const rgba = new Uint8Array(width * height * 4);
-  for (let index = 0; index < alpha.length; index += 1) {
-    const offset = index * 4;
-    rgba[offset] = r;
-    rgba[offset + 1] = g;
-    rgba[offset + 2] = b;
-    rgba[offset + 3] = Math.min(255, Math.round(alpha[index] * alphaScale));
-  }
-  return rgba;
-}
-
 function alignTo(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
-}
-
-function colorByte(value: number, path: string): number {
-  if (!Number.isFinite(value) || value < 0 || value > 255) {
-    throw new Error(`${path} must be between 0 and 255.`);
-  }
-  return Math.round(value);
-}
-
-function finitePositiveNumber(value: number, path: string): number {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${path} must be a non-negative finite number.`);
-  }
-  return value;
 }
 
 function validateTextureId(textureId: number): void {

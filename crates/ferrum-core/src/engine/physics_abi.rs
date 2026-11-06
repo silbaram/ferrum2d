@@ -18,14 +18,14 @@ pub(super) const PHYSICS_LAYER_BULLET: u32 = 2;
 pub(super) const PHYSICS_LAYER_WALL: u32 = 3;
 pub(super) const PHYSICS_LAYER_PICKUP: u32 = 4;
 
-pub(super) const PHYSICS_JOINT_DISTANCE: u32 = 0;
-pub(super) const PHYSICS_JOINT_ROPE: u32 = 1;
-pub(super) const PHYSICS_JOINT_SPRING: u32 = 2;
-pub(super) const PHYSICS_JOINT_REVOLUTE: u32 = 3;
-pub(super) const PHYSICS_JOINT_PRISMATIC: u32 = 4;
-pub(super) const PHYSICS_JOINT_GEAR: u32 = 5;
-pub(super) const PHYSICS_JOINT_WELD: u32 = 6;
-pub(super) const PHYSICS_JOINT_PULLEY: u32 = 7;
+pub(super) const PHYSICS_JOINT_DISTANCE: u32 = crate::world::JointKind::Distance as u32;
+pub(super) const PHYSICS_JOINT_ROPE: u32 = crate::world::JointKind::Rope as u32;
+pub(super) const PHYSICS_JOINT_SPRING: u32 = crate::world::JointKind::Spring as u32;
+pub(super) const PHYSICS_JOINT_REVOLUTE: u32 = crate::world::JointKind::Revolute as u32;
+pub(super) const PHYSICS_JOINT_PRISMATIC: u32 = crate::world::JointKind::Prismatic as u32;
+pub(super) const PHYSICS_JOINT_GEAR: u32 = crate::world::JointKind::Gear as u32;
+pub(super) const PHYSICS_JOINT_WELD: u32 = crate::world::JointKind::Weld as u32;
+pub(super) const PHYSICS_JOINT_PULLEY: u32 = crate::world::JointKind::Pulley as u32;
 
 pub(super) const PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY: usize = 31;
 pub(super) const PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY: usize = 5;

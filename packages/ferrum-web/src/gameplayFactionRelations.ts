@@ -103,7 +103,7 @@ export function gameplayFactionCode(faction: GameplayFactionReference, path: str
   if (typeof faction === "number" && Number.isInteger(faction) && faction >= 0 && faction <= MAX_GAMEPLAY_FACTION_ID) {
     return faction;
   }
-  if (typeof faction === "string") {
+  if (typeof faction === "string" && Object.prototype.hasOwnProperty.call(GAMEPLAY_FACTION_CODES, faction)) {
     const code = GAMEPLAY_FACTION_CODES[faction];
     if (code !== undefined) return code;
   }
@@ -132,7 +132,7 @@ function factionRelationEntrySpec(value: Record<string, unknown>, path: string):
 }
 
 function factionRelationValue(value: unknown, path: string): FactionRelation {
-  if (typeof value === "string" && GAMEPLAY_FACTION_RELATION_CODES[value as FactionRelation] !== undefined) {
+  if (typeof value === "string" && Object.prototype.hasOwnProperty.call(GAMEPLAY_FACTION_RELATION_CODES, value)) {
     return value as FactionRelation;
   }
   throw gameplayAuthoringDiagnosticError(path, "must be one of neutral, friendly, or hostile");
