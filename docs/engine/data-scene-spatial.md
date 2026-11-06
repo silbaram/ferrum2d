@@ -744,8 +744,8 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 조명은 실제 triangle 표면 방향과 광원 위치/높이·거리 감쇠를 사용한다. terrain의 top/side/bottom과
 authoring에 연결한 cutout billboard가 그림자를 만들고 받는다. 동일 native atlas UV·flip·alpha cutoff와
 물리 elevation을 사용하며 화면 밖 caster도 광원 기준으로 판정한다. 기본 그림자는 nearest depth의 hard shadow다.
-깊이 비교는 작성한 bias에 해상도·입사각 기반의 제한된 receiver 보정을 더해 자기 그림자 줄무늬를 줄인다.
-얇고 밀착한 geometry의 shadow offset은 해상도·bias 조정으로 관리한다.
+점광원 깊이 비교는 작성한 bias에 해상도·입사각 기반의 제한된 receiver 보정을 더해 자기 그림자 줄무늬를 줄인다.
+태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
 bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
 
@@ -1183,6 +1183,14 @@ caster 형상은 여전히 camera를 따른다. billboard의 그림자용 별도
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
+
+태양 hard/PCF는 각 shadow texel 중심에서 수신 평면의 깊이를 계산해 비교한다.
+기하 노멀과 직교 sun matrix로 깊이 기울기를 구하므로 노멀맵과 화면 해상도로 그림자 접촉 위치를 흔들지 않는다.
+PCF를 켠다는 이유만으로 평면 전체의 자동 bias를 3배로 늘리지 않아 낮은 caster의 그림자가 사라지는 문제를 줄인다.
+작성한 `bias`와 `normalBias`의 world 단위·기본값은 유지한다. 거의 빛과 평행한 수신면은
+수치 불안정을 피하려고 기존의 제한된 slope 보정을 사용하며 깊이 비교에는 작은 부동소수점 허용량도 포함한다.
+이 변경으로 기존 버전보다 접촉 그림자가 가깝게 나타날 수 있다. caster 형상·영역 밖의 visibility·필터 sample 수는 같다.
+점광원의 radial cube 비교는 기존 보정 방식을 유지한다.
 
 ### 하늘·지면 반구광과 그림자 표면 보정
 

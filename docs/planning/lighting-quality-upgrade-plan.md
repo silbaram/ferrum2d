@@ -111,19 +111,24 @@ right 축을 `[1,0,0]` → `[0,0,1]`로 바꾸면 평면 바닥 투영 면적은
 고정된 평면 한 장도 빛과 평행하면 사라지므로 그것만으로 해결됐다고 판정하지 않는다.
 proxy는 렌더용 데이터이며 collider를 암묵적으로 변경하지 않는다. 모델은 기존 mesh caster를 유지한다.
 
+우선 비교할 설계는 기존 model binding의 shadow-only 선택이다. 같은 entity의 billboard 표시와
+명시적인 GLB volume caster를 연결하고, native pose·기존 model shadow budget/cache를 재사용한다.
+작성 옵션은 cold bulk configuration에서 검증하며 기존 output model flags/stride를 확장할 필요가 있는지도 먼저 확인한다.
+보이지 않는 proxy의 picking·GLB collision/navigation metadata·streaming·LOD가 표시/물리 계약을 바꾸지 않도록 해야 한다.
+현재 허용하지 않는 billboard/model 중복 instance ID, old Wasm의 원자적 거절, 저장/복원까지 같은 작업에서 다룬다.
+이는 다음 구현의 설계 후보이며 현재 제공하는 옵션이 아니다.
+
 근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
 [현재 revision 테스트](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/engine/tests/spatial_environment.rs).
 
-### S02 · P1 · bias와 PCF에 따른 접촉 그림자 변화
+### S02 · P1 · 점광원·극단 입사각의 접촉 그림자와 bias 진단
 
-**구현 확인·수치 계산 / 과도한 분리 정도는 시각 재현 필요.** 태양의 자동 slope bias는 shadow texel의 world 크기에
-비례하고 PCF3에서 3배가 된다. 수평 수신면, 태양 고도 30°, extent 256, resolution 512, authored bias 0.05에서
-깊이 비교에 더해지는 값은 정규화 전 광원 공간 거리 약 5.246이다. hard에서는 약 1.782다.
-이 숫자는 화면 픽셀 간격이나 바닥에서 떨어진 실제 거리와 같지 않다.
-resolution/coverage/필터만 바꿔도 접촉부가 달라질 수 있고, normalBias는 별도로 추가된다.
+**기존 계약의 한계 / 추가 시각 재현 필요.** 점광원 radial cube는 texel의 world 크기와 입사각에 비례하는 자동 bias를
+사용하고 PCF3에서 3배가 된다. 태양의 일반 수신면은 [수신 평면 보정](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 사용하지만
+거의 평행한 면은 제한된 slope 보정으로 돌아간다. authored bias/normalBias가 과도한 장면의 접촉 분리도 별도다.
 
-**방향:** explicit bias, 자동 slope 보정, normal offset, 필터 반경을 구분하고 실제 적용량을 진단한다.
-얇은 물체·경사면·낮은 태양에서 acne와 접촉 분리를 동시에 측정한 뒤 자동 보정의 상한/식을 결정한다.
+**방향:** explicit bias, 점광원 자동 slope 보정, normal offset, 필터 반경을 구분하고 실제 적용량을 진단한다.
+얇은 물체·경사면·낮은 광원·cube 면 경계에서 acne와 접촉 분리를 동시에 측정한 뒤 보정의 상한/식을 결정한다.
 단순히 bias를 0으로 낮추거나 Godot 상수를 복사하는 방식은 완료 조건이 아니다.
 
 근거: [GLSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
@@ -268,6 +273,25 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 [Godot 2D 조명 문서](https://docs.godotengine.org/en/stable/tutorials/2d/2d_lights_and_shadows.html)는
 2D virtual height와 그림자 길이를 혼동하지 않는 근거다.
 외부 엔진의 기본값·성능·기능 집합을 Ferrum2D의 보장으로 가져오지 않는다.
+
+### 그림자 표현 추가 검토와 적용 판단
+
+다음 비교는 그림자 전용 후속 검토다. Godot/three.js는 위 고정 commit을 사용하며 Unity URP는
+`0efc28ea742b1966b9dd9cc4489e58b986a13faf`의 shader를 확인했다. 외부 API의 기본값이나 backend 지원을 그대로 복제하지 않는다.
+
+| 관점·소스 | 확인한 차이 | Ferrum2D 적용 판단 |
+| --- | --- | --- |
+| [Godot directional bias·split·fade](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl) | 입사각 기반 normal offset과 light 방향 bias 분리, split 혼합과 거리 fade | 접촉 보정과 경계 전환을 독립 검증. 단일 map 경계 fade는 남은 S03, cascade는 별도 비용 단계 |
+| [three.js LightShadow](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/lights/LightShadow.js) | depth bias·normalBias·filter radius·map 크기를 분리 | 기존 world 단위 bias 계약을 유지하면서 필터 때문에 생기는 접촉 손실을 별도로 해결 |
+| [Unity URP bias](https://github.com/Unity-Technologies/Graphics/blob/0efc28ea742b1966b9dd9cc4489e58b986a13faf/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl) | light 방향 offset과 입사각에 따른 normal offset을 구분 | caster/receiver 보정을 혼동하지 않으며 기존 normalBias 의미를 조용히 변경하지 않음 |
+| [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
+| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | S01의 명시적 proxy는 여전히 필요. billboard를 조명 방향으로 돌리는 한 장의 평면만으로 해결하지 않음 |
+| [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
+| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | flat L02의 광원별 차폐·겹침 union도 적용 대상. 기존 overlay 전체에 검은 그림자를 덧칠하는 한계를 남겨두고 완료로 처리하지 않음 |
+
+이 검토의 구현 종료 조건은 S01의 카메라 독립 caster 선택, S02의 접촉·극단 입사각 검증,
+S03의 단일 map 경계 전환, L02의 flat 광원별 차폐 합성, 양 backend의 실제 shadow 픽셀·자원 회귀를 확인하는 것이다.
+현재 태양 수신 평면 보정만으로 이 후속 검토 전체가 끝났다고 처리하지 않는다.
 
 ## 5. 공통 설계·호환성 원칙
 
