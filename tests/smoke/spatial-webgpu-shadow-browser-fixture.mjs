@@ -62,7 +62,7 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection) {
+async function probe(canvas, backend, projection, { pointContactOnly = false } = {}) {
   await initializeFerrumWasm();
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
@@ -419,6 +419,69 @@ async function probe(canvas, backend, projection) {
       rows.push(evidence);
       return result;
     };
+    // Keep the floor receiver outside the plate's visible footprint. Four
+    // diagonal lights also put PCF taps on both sides of the X/Z cube seams.
+    const pointContacts = [], pointReceiver = { x: -8, y: 0, elevation: 0 },
+      openReceivers = [-48, -40, -32].flatMap(x => [-48, -40, -32].map(y => ({ x, y, elevation: 0 }))),
+      pointCases = [
+        { id: "low-x", x: 100, y: 0, elevation: 100 / Math.sqrt(3) },
+        ...[92, -108].flatMap(x => [-100, 100].map(y => ({
+          id: `seam-${x > 0 ? "negx" : "posx"}-${y > 0 ? "posz" : "negz"}`,
+          x, y, elevation: 100 / Math.sqrt(3),
+        }))),
+        { id: "near-parallel", x: 100, y: 0, elevation: .1 },
+      ];
+    let pointLast;
+    for (const light of pointCases) {
+      const pointDoc = d => {
+        d.spatial.camera.position.x = 0;
+        d.spatial.camera.target = { x: 0, y: 0, elevation: 0 };
+        d.spatial.billboards.actor.castShadow = false;
+        d.spatial.models.tree.castShadow = false;
+        d.spatial.terrain[0] = { ...d.spatial.terrain[0], x: -160, y: -160, width: 320, depth: 320 };
+        d.spatial.terrain.push({
+          id: "point-contact-plate", floorId: 1, kind: "bridge",
+          x: light.x > 0 ? -7 : -21, y: -10, width: 12, depth: 20, elevation: 2, baseElevation: 1.5,
+          walkable: false, color: [.5, .5, .5, 1],
+        });
+      }, pointLighting = {
+        ambient: light.id === "near-parallel" ? [0, 0, 0] : [.03, .03, .03],
+        lights: [{ position: { x: light.x, y: light.y, elevation: light.elevation }, radius: 400, intensity: light.id === "near-parallel" ? 32 : 3 }],
+      };
+      const off = await configure(`point-contact-${light.id}-off`, { lighting: pointLighting }, "scale0", false, false, pointDoc),
+        lit = sample({ data: lastPixels, spatial: off.spatial }, pointReceiver),
+        openLit = openReceivers.map(p => sample({ data: lastPixels, spatial: off.spatial }, p));
+      check(lit[0] >= 10, "point contact baseline is too dark to detect self-shadowing", { light, lit });
+      for (const resolution of [128, 256, 512, 1024]) for (const filter of ["hard", "pcf3"]) {
+        const environment = { lighting: { ...pointLighting, shadowFilter: filter, shadows: { lightIndex: 0, resolution, bias: .05 } } };
+        pointLast = await configure(`point-contact-${light.id}-${resolution}-${filter}`, environment, "scale0", false, false, pointDoc);
+        const receiver = sample({ data: lastPixels, spatial: pointLast.spatial }, pointReceiver),
+          open = openReceivers.map(p => sample({ data: lastPixels, spatial: pointLast.spatial }, p)),
+          minimumContrast = 30,
+          native = pointLast.spatial.environment.values,
+          evidence = { light: light.id, position: { x: light.x, y: light.y, elevation: light.elevation },
+            resolution, filter, authoredBias: native[4], normalBias: native[123] ?? 0,
+            radius: native[15], minimumContrast, lit, receiver, openLit, open };
+        if (light.id === "near-parallel")
+          check(Math.abs(lit[0] - receiver[0]) <= 3, "nearly parallel point receiver gained a false shadow", evidence);
+        else
+          check(lit[0] > receiver[0] + minimumContrast, "automatic point bias erased the low caster's contact shadow", evidence);
+        check(open.every((p, i) => p.every((v, c) => Math.abs(v - openLit[i][c]) <= 3)),
+          "point receiver correction introduced planar acne", evidence);
+        pointContacts.push(evidence);
+      }
+    }
+    const pointPixels = lastPixels, pointOld = handles.actor,
+      pointSaved = JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, {
+        includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: pointLast.doc,
+      })));
+    restoreGameStateSnapshot(engine, pointSaved, { dataSceneAuthoringApplyOptions: apply });
+    handles = Object.fromEntries(registry.entries().map(e => [e.instanceId, e.handle]));
+    const pointRestored = await read();
+    check((pointOld.entityId !== handles.actor.entityId || pointOld.entityGeneration !== handles.actor.entityGeneration)
+      && difference(pointPixels, pointRestored.data) === 0 && pointRestored.stats.modelUploadBytes === 0,
+      "point contact fresh restore changed pixels or retained stale handles");
+    if (pointContactOnly) return { backend, projection, pointContacts, pointRestored: true, rows, frames, errors };
     const lighting = {
       ambient: [0.08, 0.08, 0.08],
       lights: [{ position: { x: 30, y: -80, elevation: 160 }, radius: 400, intensity: 2 }],
@@ -899,6 +962,8 @@ async function probe(canvas, backend, projection) {
       pcfChanges,
       sunStability,
       contactShadows,
+      pointContacts,
+      pointRestored: true,
       shadowEdges,
       alphaUpdate: alphaUpdate.stats,
       atlasReplace: atlasReplace.stats,
@@ -933,14 +998,14 @@ async function decodePng(url) {
     bitmap.close();
   }
 }
-export async function probeSpatialWebGpuShadows() {
+export async function probeSpatialWebGpuShadows(options) {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) {
     const pair = [];
     for (const backend of ["webgl2", "webgpu"]) {
       const canvas = document.createElement("canvas");
       document.body.replaceChildren(canvas);
-      pair.push(await probe(canvas, backend, projection));
+      pair.push(await probe(canvas, backend, projection, options));
     }
     const comparisons = [];
     for (let i = 0; i < pair[0].rows.length; i++) {

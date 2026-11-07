@@ -185,7 +185,7 @@ fn spatial_environment_rejects_invalid_settings_without_mutating_scene_or_pose()
 fn spatial_environment_cube_matrices_project_the_six_light_axes() {
     let (mut e, _) = setup();
     assert!(e.configure_spatial_environment(&values(true)));
-    for (matrix, dir) in e
+    for (face, (matrix, dir)) in e
         .spatial_scene
         .environment
         .shadow_matrices
@@ -198,12 +198,28 @@ fn spatial_environment_cube_matrices_project_the_six_light_axes() {
             [0., 0., 1.],
             [0., 0., -1.],
         ])
+        .enumerate()
     {
         let p = [dir[0] * 10., 64. + dir[1] * 10., dir[2] * 10., 1.];
         let clip: [f32; 4] =
             std::array::from_fn(|r| (0..4).map(|c| matrix[c * 4 + r] * p[c]).sum());
         assert!(clip[0].abs() < 0.001 && clip[1].abs() < 0.001 && clip[3] > 0.);
         assert!(clip[2].abs() < clip[3]);
+        // Canonical cube UVs are also a contract with the shader texel-ray
+        // reconstruction. Center axes alone would not detect flipped/rolled faces.
+        let offset = [
+            [10., 3., -2.],
+            [-10., 3., 2.],
+            [2., 10., -3.],
+            [2., -10., 3.],
+            [2., 3., 10.],
+            [-2., 3., -10.],
+        ][face];
+        let p = [offset[0], 64. + offset[1], offset[2], 1.];
+        let clip: [f32; 4] =
+            std::array::from_fn(|r| (0..4).map(|c| matrix[c * 4 + r] * p[c]).sum());
+        assert!((clip[0] / clip[3] - 0.2).abs() < 1e-6, "cube face {face} U");
+        assert!((clip[1] / clip[3] + 0.3).abs() < 1e-6, "cube face {face} V");
     }
 }
 #[test]

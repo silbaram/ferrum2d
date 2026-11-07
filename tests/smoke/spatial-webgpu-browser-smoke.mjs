@@ -29,11 +29,12 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
 const recoveryOnly = process.argv.includes("--recovery-only");
 const shadowsOnly = process.argv.includes("--shadows-only");
 const proxiesOnly = process.argv.includes("--proxies-only");
+const pointContactOnly = process.argv.includes("--point-contact-only");
 const environmentOnly = process.argv.includes("--environment-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -93,7 +94,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: recoveryOnly ? "recovery-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -164,12 +165,12 @@ try {
           continue;
         }
         const result =
-          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly
+          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly
             ? []
             : await page.evaluate(() => window.probeSpatialWebGpu());
         assert.equal(
           result.length,
-          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly ? 0 : 2,
+          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly ? 0 : 2,
         );
         assert.deepEqual(errors, []);
         for (const entry of result)
@@ -188,7 +189,7 @@ try {
             );
             backend.image = file;
           }
-        if (!fallbackOnly && !environmentOnly && !shadowsOnly && !proxiesOnly) {
+        if (!fallbackOnly && !environmentOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly) {
           const models = await page.evaluate(() => window.probeSpatialWebGpuModels());
           assert.equal(models.length, 2);
           assert.deepEqual(errors, []);
@@ -210,7 +211,7 @@ try {
             }
           report.modelCases.push({ viewport, deviceScaleFactor, result: models });
         }
-        if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly) {
+        if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly) {
           const environment = await page.evaluate(() => window.probeSpatialWebGpuEnvironment());
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
@@ -237,20 +238,23 @@ try {
           report.environmentCases.push({ viewport, deviceScaleFactor, result: environment });
         }
         if (!fallbackOnly && !modelsOnly && !environmentOnly && !proxiesOnly) {
-          const shadows = await page.evaluate(() => window.probeSpatialWebGpuShadows());
+          const shadows = await page.evaluate(pointContactOnly => window.probeSpatialWebGpuShadows({ pointContactOnly }), pointContactOnly);
           assert.equal(shadows.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of shadows) {
-            assert.equal(entry.comparisons.length, 62);
+            assert.equal(entry.comparisons.length, pointContactOnly ? 54 : 116);
             for (const backend of entry.backends) {
-              assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 62);
-              assert.equal(backend.sunStability.length, 6);
-              assert.equal(backend.contactShadows.length, 6);
-              assert.equal(backend.shadowEdges.length, 4);
-              for (const y of [0.9899, 0.9901])
-                for (const filter of ["off", "hard", "pcf3"])
-                  assert(backend.rows.some(row => row.name === `sun-stability-${y}-${filter}`));
+              assert(backend.pointRestored && backend.pointContacts.length === 48 && backend.errors.length === 0);
+              assert.equal(backend.rows.length, pointContactOnly ? 54 : 116);
+              if (!pointContactOnly) {
+                assert(backend.restored);
+                assert.equal(backend.sunStability.length, 6);
+                assert.equal(backend.contactShadows.length, 6);
+                assert.equal(backend.shadowEdges.length, 4);
+                for (const y of [0.9899, 0.9901])
+                  for (const filter of ["off", "hard", "pcf3"])
+                    assert(backend.rows.some(row => row.name === `sun-stability-${y}-${filter}`));
+              }
               for (const row of backend.rows) {
                 const file = `shadow-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(
@@ -263,7 +267,7 @@ try {
           }
           report.shadowCases.push({ viewport, deviceScaleFactor, result: shadows });
         }
-        if (!fallbackOnly && !modelsOnly && !environmentOnly) {
+        if (!fallbackOnly && !modelsOnly && !environmentOnly && !pointContactOnly) {
           const proxies = await page.evaluate(() => window.probeSpatialShadowProxy());
           assert.equal(proxies.length, 2);
           assert.deepEqual(errors, []);

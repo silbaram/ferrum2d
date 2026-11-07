@@ -20,6 +20,57 @@ uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGrou
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
+ // Quantize a canonical cube face before sampling. The center ray has a unique
+ // major axis, including when the original PCF direction lies on a cube seam.
+ vec3 a=abs(direction);int face;vec2 st;float major;
+ if(a.x>=a.y && a.x>=a.z){
+  face=direction.x>=0.?0:1;major=a.x;st=vec2(direction.x>=0.?-direction.z:direction.z,-direction.y);
+ }else if(a.y>=a.z){
+  face=direction.y>=0.?2:3;major=a.y;st=vec2(direction.x,direction.y>=0.?direction.z:-direction.z);
+ }else{
+  face=direction.z>=0.?4:5;major=a.z;st=vec2(direction.z>=0.?direction.x:-direction.x,-direction.y);
+ }
+ float size=float(textureSize(u_shadowMap,0).x);
+ vec2 pixel=clamp(floor((st/major*.5+.5)*size),vec2(0.),vec2(size-1.));
+ vec2 uv=(pixel+.5)*2./size-1.;vec3 ray;
+ if(face==0)ray=vec3(1.,-uv.y,-uv.x);
+ else if(face==1)ray=vec3(-1.,-uv.y,uv.x);
+ else if(face==2)ray=vec3(uv.x,1.,uv.y);
+ else if(face==3)ray=vec3(uv.x,-1.,-uv.y);
+ else if(face==4)ray=vec3(uv.x,-uv.y,1.);
+ else ray=vec3(-uv.x,-uv.y,-1.);
+ ray=normalize(ray);
+ float expected=d,bias=fallbackBias,denominator=dot(geometric,ray);
+ if(abs(denominator)>.000001){
+  float distance=plane/denominator;
+  if(distance>0. && distance<radius){
+   expected=distance;
+   // Subpixel rasterization also perturbs a grazing plane's stored depth.
+   // Reserve 1/16 texel in each raster axis, independent of the PCF kernel.
+   float slope=sqrt(max(1.-denominator*denominator,0.))/abs(denominator);
+   bias=u_shadowBias+expected/size*.1767766953*slope;
+  }
+ }
+ // One DEPTH_COMPONENT24 step plus relative f32 arithmetic tolerance.
+ bias+=radius/16777216.+max(expected,d)*.000001;
+ return textureLod(u_shadowMap,ray,0.).r*radius+bias<expected?0.:1.;
+}
+float pointVisibility(vec3 delta,float d,float radius,vec3 geometric){
+ if(d<=max(u_shadowBias,.000001))return 1.;
+ float size=float(textureSize(u_shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
+ float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
+ float fallbackBias=u_shadowBias+2.*d/size*slope*(u_shadowFilter==1?3.:1.);
+ vec3 axis=-delta/d;float plane=dot(geometric,axis)*d;
+ if(u_shadowFilter!=1)return pointCompare(axis,plane,d,radius,geometric,fallbackBias);
+ vec3 up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
+ vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float visibility=0.;
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+  vec3 direction=axis+(tangent*float(x)+bitangent*float(y))*2./size;
+  visibility+=pointCompare(direction,plane,d,radius,geometric,fallbackBias);
+ }
+ return visibility/9.;
+}
 float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
  vec2 at=clamp(pixel,vec2(0.),size-1.);vec2 uv=(at+.5)/size;
  float expected=q.z+dot(gradient,uv-q.xy);
@@ -98,23 +149,8 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   float visibility=1.0;
   if(u_receiveShadow && i==u_shadowIndex){
    vec3 shadowDelta=delta-geometricNormal*u_shadowNormalBias.x;float shadowDistance=length(shadowDelta);
-   if(shadowDistance>max(u_shadowBias,.000001)){
-   float nearest=texture(u_shadowMap,-shadowDelta).r*radius;
-   // A world-space bias alone cannot cover a grazing receiver's cubemap texel footprint.
-   float incidence=max(dot(geometricNormal,shadowDelta/shadowDistance),0.);
-   float slope=min(sqrt(max(1.0-incidence*incidence,0.0))/max(incidence,0.2),2.0);
-   float receiverBias=u_shadowBias+2.0*shadowDistance/float(textureSize(u_shadowMap,0).x)*slope*(u_shadowFilter==1?3.:1.);
-   visibility=nearest+receiverBias<shadowDistance?0.0:1.0;
-   if(u_shadowFilter==1){
-    vec3 axis=normalize(-shadowDelta),up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
-    vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float stepSize=2./float(textureSize(u_shadowMap,0).x);
-    visibility=0.;
-    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
-     float value=texture(u_shadowMap,axis+(tangent*float(x)+bitangent*float(y))*stepSize).r*radius;
-     visibility+=value+receiverBias<shadowDistance?0.:1.;
-    }visibility/=9.;
-   }
-  }}
+   visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
+  }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
  }
  if(u_sunColor.a>0.){
