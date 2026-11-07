@@ -1895,7 +1895,21 @@ lit/receiver/open 값을 기록한다. fresh JSON handle 복원 후 전체 frame
 XY/depth 각각 shadow off와 hard/PCF3 × 내부 여유 3/2/1.5/1/0.5/0/-1 world unit을 검사한다.
 중간 구간은 fully shadowed/fully lit 사이여야 하며 범위 밖은 off와 채널 차이 3 이하, pan 순서의 밝기는 역전하지 않아야 한다.
 `shadowEdges`에 축·필터·여유·수신점 값을 기록한다. 내부 접촉/기준축/다른 광원 검증도 유지한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자116상태와 아래 proxy 검사를 실행할 수 있다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자116상태와 아래 proxy·flat 검사를 실행할 수 있다.
+
+flat fixture는 GL legacy·GPU legacy·GL linear-srgb 각각에서 물리/가상 해상도 × 노멀맵 OFF/ON으로
+red/blue 두 빛·주변광·태양광 보존, warm 재사용, 단일/중복 차폐체, 빨강 투과, alpha 0, 광원 없음,
+조명 비활성을 검사한다. 각 GL 41/GPU 42상태(장면 40 + resize + GPU 복구)를 가로/세로·DPR 1/2에
+걸쳐 합계 496상태 검사한다. opaque 수신점에서 A 차폐 결과는 A를 제거한 장면과 채널 차이 2 이하이고,
+중복 차폐·warm·alpha 0·GPU 복구의 비교는 허용 오차를 두지 않는다.
+GL/GPU의 차폐/중복/투과 PNG는 RGB 채널3·상이 pixel1% 미만을 요구한다.
+warm frame의 실제 texture/buffer/bind group 생성 0과 비활성 시 mask 타깃 해제,
+물리/가상 해상도에서 R8 `width × height` byte의 추가 비용·destroy 후 자원 0을 검사한다.
+GL은 mask pass 뒤 framebuffer/viewport·scissor·color mask·blend equation 복원도 확인한다.
+별도 `report.flatShadowCases`와 PNG를 보존하며 기본/full/offscreen gate에 포함한다.
+`--offscreen-target --flat-shadows-only`로 독립 실행한다. software adapter의 API/픽셀 검사이며
+실제 GPU 성능이나 WebGPU canvas presentation 성공을 의미하지 않는다.
+
 proxy fixture는 별도 GLB volume과 body/collider 없는 model child를 billboard root에 연결한다.
 표시/control·shadowOnly·cast OFF·sun/point shadow·camera orbit·부모 yaw·fresh JSON restore·이동의 10상태를
 두 backend/투영/viewport·DPR 1/2에서 검사한다. main model draw0, 실제 바닥 shadow, orbit 중 같은 world

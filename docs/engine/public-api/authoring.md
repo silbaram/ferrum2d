@@ -471,7 +471,9 @@ Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`
 HD-2D의 반구광과 point/sun `shadows.normalBias`도 기존 environment 교체 patch와 문서 이력에 포함한다.
 공식 viewer의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
 점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
-점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 기존 renderer 계약을 따른다.
+점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 renderer 계약을 따른다.
+flat `shadows.color`는 해당 점광원의 RGB 투과 필터와 alpha 차폐율이다. 겹침은 MAX union이며
+주변광·다른 광원은 유지한다. [합성·비용 계약](../data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 꺼진 조명과 그림자 설정도 검증하고 보존한다. 문서를 적용하는 host는 `DataSceneView.lighting`으로
 world 광원을 화면 좌표로 바꾸고 `setSun`으로 native 지면 그림자를 연결한다. 문서 resolver가 renderer를 직접 변경하지 않는다.
 

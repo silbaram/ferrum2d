@@ -86,13 +86,16 @@
 
 ### L02 · P1 · flat 그림자가 다른 광원까지 감쇠
 
-**구현 확인 / 합성 한계.** 태양·점광원을 모두 더한 뒤 점광원 그림자 geometry를 alpha blend한다.
-A 광원의 그림자가 B 광원과 환경광의 기여분도 줄인다. 같은 광원의 occluder 투영이 겹치면
-그림자 색을 반복 합성할 수 있어 차폐율과 어두워짐의 관계도 검증해야 한다.
-ground silhouette 역시 수신면별 가시성을 계산하는 shadow map과 다른 장식적 근사다.
+**수정·픽셀 검증 완료.** 기존 전체 overlay 합성에서 차폐된 A가 환경광·태양·B도 지우는 것을
+브라우저로 재현했다. 동일 수신점의 RGB가 A 제거 시 `[18,38,89]`, 기존 그림자 시 `[0,0,0]`이었다.
+광원별 R8 MAX union 마스크를 적용한 뒤에는 A 제거와 같은 `[18,38,89]`를 유지한다.
+중복 차폐체·노멀맵·GL linear-srgb·가상 해상도·resize·GPU 복구를 포함한 실제 496상태가 통과했다.
+계약과 광원별 pass/메모리 비용은 [Flat 점광원 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성),
+반복 가능한 gate는 [Smoke Check](../development/quality/smoke-check.md)에 둔다.
 
-**방향:** 광원별 visibility를 해당 광원의 빛에만 곱한다. 같은 광원의 겹치는 차폐물은 union 의미로 처리한다.
-전체 장면을 어둡게 하는 효과와 빛의 차폐를 별도 계약으로 유지한다.
+전체 장면 overlay를 덧칠하던 결과는 수정되며 `shadows.color` RGB는 투과 필터로 정의한다.
+L01의 albedo 기반 조도 합성과 반투명 layer의 완전한 수신 모델은 별도 후속 범위다.
+ground silhouette 역시 수신면별 가시성을 계산하는 shadow map과 다른 장식적 근사다.
 
 근거: [GL 광원/그림자 순서](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2LightingPass.ts),
 [GPU 광원/그림자 순서](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
@@ -278,7 +281,7 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
 | [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy를 사용. S01은 실제 asset·애니메이션·LOD 범위 검증을 이어감 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
-| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | flat L02의 광원별 차폐·겹침 union도 적용 대상. 기존 overlay 전체에 검은 그림자를 덧칠하는 한계를 남겨두고 완료로 처리하지 않음 |
+| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 광원별 적용 원칙을 반영해 L02의 R8 MAX union을 구현. Godot의 shadow_color 보간식을 복제한 것은 아니며 Ferrum2D의 RGB 투과 필터 계약을 사용 |
 
 이 검토의 구현 종료 조건은 S01의 카메라 독립 caster 선택, S02의 접촉·극단 입사각 검증,
 S03의 단일 map 경계 전환, L02의 flat 광원별 차폐 합성, 양 backend의 실제 shadow 픽셀·자원 회귀를 확인하는 것이다.

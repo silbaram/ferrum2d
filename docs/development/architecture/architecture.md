@@ -1342,7 +1342,14 @@ world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와
 camera offset은 cache 밖에서 적용한다. transform/origin/alpha/sun/projection 변화로 무효화하고
 despawn/reset에서 제거한다. culling 후 visible caster budget을 적용하고 일반 sprite batch에 제출한다.
 caster마다 GPU resource/pass를 만들지 않는다. TS의 directional light는 기존 ambient/point-light
-pipeline에 추가되는 flat additive pass다. [지원 범위와 비용 계약](../../engine/data-scene-presentation.md).
+pipeline에 추가되는 flat additive pass다. 점광원 occluder는 renderer당 단일 R8 마스크를 재사용해
+광원별 MAX union을 계산하고 그 광원의 기여에만 적용한다. mask draw 뒤 장면 전체를 어둡게 하지 않는다.
+WebGL2는 목적 framebuffer/viewport·scissor·color mask·add blend equation을 복원한다.
+WebGPU는 호출자의 encoder와 목적 view를 받아 base pass를 닫고 mask/light pass를 기록한다.
+추가 encoder나 submit은 만들지 않으며 모든 pass를 GPU timing에 연결한다.
+마스크 크기는 DPR canvas 또는 pixelPerfect 가상 타깃과 같고 R8 1 byte/pixel을 자원 통계에 포함한다.
+warm draw는 texture/buffer/bind group을 재사용하며 비활성·유효 geometry 없음에서는 타깃을 해제한다.
+[지원 범위·투과색·비용 계약](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성).
 
 
 ## Data Scene 탐험 실행 경계

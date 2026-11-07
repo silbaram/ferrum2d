@@ -272,6 +272,31 @@ const captured = {
 포함된다. 그림자를 끈 경우에는 cache 계산도 생략하고 counter는 모두 0이다. 태양 그림자 command는 일반 sprite draw 통계에 들어가며 point-light occluder의
 `shadowDrawCalls`와 구분된다. 배치 수는 texture/layer 순서와 material 추가 pass에 따라 달라진다.
 
+## Flat 점광원의 차폐 합성
+
+`LightingScene2D.shadows`의 tile occluder 투영은 해당 점광원의 기여에만 적용한다.
+A의 그림자가 주변광, 태양 additive, B 광원이나 기존 sprite 색을 지우지 않는다.
+같은 광원의 차폐 투영은 MAX blend로 합치므로 중복·겹친 차폐물이 차폐율을 누적하지 않는다.
+반경 86%부터 끝까지의 기존 feather와 CPU geometry cache는 유지한다.
+
+`shadows.color`의 RGB는 **투과 필터**, alpha는 차폐율이다.
+mask를 `m`이라 하면 해당 빛의 RGB 기여에 `mix([1,1,1], color.rgb, m)`을 곱한다.
+검정은 차폐, 흰색은 투과, 빨강은 빨간 성분의 투과를 뜻하며 새로운 빛을 방출하지 않는다.
+alpha 0은 차폐를 해제한다. 기존의 장면 전체에 색을 덧칠하던 결과와 달라지는 버그 수정이다.
+이 변경은 flat 표면색에 조도를 곱하는 albedo 모델을 추가하지 않는다. 기존 additive·노멀 반응,
+지면 silhouette와 반투명 layer의 근사도 유지한다.
+
+WebGL2/WebGPU는 renderer마다 물리 타깃 크기의 R8 마스크 **한 장**을 재사용한다.
+DPR을 적용한 canvas 크기이며, pixelPerfect에서는 가상 framebuffer 크기다.
+기본 mip의 추정 비용은 `width × height` byte다. 매 광원마다 clear와 geometry union 후
+해당 빛을 합산하며, 광원별 texture 배열이나 caster별 GPU 객체를 만들지 않는다.
+차폐 geometry가 있는 광원 M개는 mask draw M회를 사용한다. WebGL2는 기존처럼 광원당
+light draw 1회와 mask draw 1회이고, WebGPU는 기존 일괄 shadow draw 대신 M회의 mask pass와
+M회의 light pass를 사용한다. 차폐 없는 연속 광원은 batch를 유지하며 실제 비용을 통계에 포함한다.
+WebGPU의 추가 pass는 호출자가 만든 command encoder와 한 번의 submit을 공유한다.
+비활성·alpha 0·광원 없음·유효 차폐 geometry 없음에서는 추가 mask pass를 생략하고 타깃을 해제한다.
+크기 변경은 자원을 교체하고, WebGPU 복구는 새 장치에서 재생성하며 destroy는 모든 소유 자원을 해제한다.
+
 ## 실행과 검증
 
 [공개 API recipe](https://github.com/silbaram/ferrum2d/blob/main/examples/data-scene-native/presentation.mjs)는

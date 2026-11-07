@@ -414,7 +414,7 @@ custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 
 | `bufferCount` | sprite, physics debug line, lighting shadow buffer 객체 수. 아직 storage를 할당하지 않은 객체도 포함 |
 | `programCount` | 현재 소유한 linked WebGL program 수 |
 | `renderTargetCount` | 내부 후처리 및 공개 RenderTexture framebuffer 수. attachment는 `textureCount`에 이미 포함 |
-| `textureBytes` | 모든 texture의 `width × height × 4` 합. RGBA8/SRGB8_ALPHA8의 base mip level만 사용 |
+| `textureBytes` | 저장 형식별 base mip byte 합. RGBA8/SRGB8_ALPHA8은 4 byte/pixel, flat shadow R8 마스크는 1 byte/pixel |
 | `bufferBytes` | `bufferData`로 할당한 GPU buffer 용량 합. 실제 frame에서 사용하지 않는 여유 용량도 포함 |
 | `estimatedBytes` | `textureBytes + bufferBytes`. render target attachment를 중복 합산하지 않음 |
 | `unmeasuredTextureCount` | 크기를 모르는 외부 texture나 직접 업로드한 DOM image/video source의 수. 하나라도 있으면 `textureBytes`와 `estimatedBytes`는 `undefined` |
