@@ -2,6 +2,7 @@ import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
 import { groundShadowProjection } from "./groundShadowProjection.js";
+import { groundShadowRanges } from "./groundShadowRanges.js";
 import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
 import { validatePaletteTexture, type ResolvedSpritePalette } from "./spritePalette.js";
 import {
@@ -72,6 +73,9 @@ export class SpriteBatch {
   private readonly groundYScaleLocation: WebGLUniformLocation;
   private readonly groundShadowProjectionLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
+  private readonly skipGroundShadowsLocation: WebGLUniformLocation;
+  skipGroundShadows = false;
+  maskReceivers = false;
   private normalUniforms?: {texture:WebGLUniformLocation;has:WebGLUniformLocation;flip:WebGLUniformLocation};
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
@@ -82,12 +86,12 @@ export class SpriteBatch {
   private paletteBatch?: SpriteBatch;
   private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
+      this.program = createWebGL2Program(this.gl, sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -151,6 +155,9 @@ export class SpriteBatch {
       this.screenOffsetLocation = screenOffsetLocation;
       this.textureLocation = textureLocation;
       this.textureFlipYLocation = textureFlipYLocation;
+      const skipGroundShadowsLocation = gl.getUniformLocation(this.program,"u_skip_ground_shadows");
+      if (!skipGroundShadowsLocation) throw Error("Missing ground shadow mode uniform");
+      this.skipGroundShadowsLocation = skipGroundShadowsLocation;
       if (paletteMode) {
         const count=gl.getUniformLocation(this.program,"u_palette_count"), from=gl.getUniformLocation(this.program,"u_palette_from[0]"), to=gl.getUniformLocation(this.program,"u_palette_to[0]"), srgb=gl.getUniformLocation(this.program,"u_palette_srgb");
         if (!count || !from || !to || !srgb) throw new Error("Missing sprite palette uniforms");
@@ -203,16 +210,17 @@ export class SpriteBatch {
       this.validateMaterialTextures(textureManager,material,commands);
       this.prepareMaterial(material);
       const batch=this.paletteBatch!;
-      batch.groundYScale=this.groundYScale; batch.pixelSnap=this.pixelSnap;
+      batch.groundYScale=this.groundYScale; batch.pixelSnap=this.pixelSnap; batch.skipGroundShadows=this.skipGroundShadows;
       return batch.drawBatches(textureManager,commands,resolution,material,screenOffset);
     }
-    const ranges = this.textureRanges(commands);
+    const ranges = this.sunMaskMode ? groundShadowRanges(commands,this.textureRangeScratch,this.maskReceivers) : this.textureRanges(commands);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
     this.bindForDraw(resolution, screenOffset, commands);
     try {
       for (const pass of materialPasses) {
         this.applyBlendMode(pass.blendMode);
+        if(this.sunMaskMode && !this.maskReceivers){this.gl.blendEquation(this.gl.MAX);this.gl.blendFunc(this.gl.ONE,this.gl.ONE);}
         for (const range of ranges) {
           const texture = textureManager.texture(range.textureId);
           const palette=pass.paletteSwap?.get(range.textureId);
@@ -225,7 +233,7 @@ export class SpriteBatch {
       this.gl.bindVertexArray(null);
       this.applyBlendMode("alpha");
     }
-    return { drawCalls, textureSwitchCount: ranges.length - 1 };
+    return { drawCalls, textureSwitchCount: Math.max(0,ranges.length - 1) };
   }
 
   drawBatch(
@@ -334,6 +342,7 @@ export class SpriteBatch {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);
     this.gl.uniform1f(this.pixelSnapLocation, this.pixelSnap);
+    this.gl.uniform1i(this.skipGroundShadowsLocation,this.skipGroundShadows?1:0);
     this.gl.uniform3f(this.groundShadowProjectionLocation, projection[0], projection[1], projection[2]);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
@@ -399,6 +408,7 @@ export class SpriteBatch {
 
   private applyBlendMode(blendMode: SpriteMaterialBlendMode): void {
     this.gl.enable(this.gl.BLEND);
+    this.gl.blendEquation(this.gl.FUNC_ADD);
     setSpriteBlend(this.gl, this.linearTarget, blendMode === "additive");
   }
 

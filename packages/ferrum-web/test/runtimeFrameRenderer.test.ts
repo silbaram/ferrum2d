@@ -110,6 +110,17 @@ test("optional debug capability retains the injected renderer receiver", () => {
   equal(debugCalls, 1);
 });
 
+test("custom consumers must opt into volume sidecars before clear or provider callbacks",()=>{
+  let clears=0;
+  const frame=renderFrameState();
+  frame.renderCommandBuffer.groundShadowVolumes={version:1,stride:3,vertexCount:3,casterCount:1,buffer:new Float32Array([0,0,1,10,0,1,0,10,1])};
+  const renderer={render(){clears++;},renderCommands:()=>emptyRendererStats()};
+  const runtime=new RuntimeFrameRenderer({renderer,needsRuntimeFrame:false,shouldRenderPhysicsDebugLines:false});
+  throws(()=>runtime.renderFrame(frame),/does not support ground shadow volume/);equal(clears,0);
+  const capable=new RuntimeFrameRenderer({renderer:{...renderer,supportsGroundShadowVolumes:true},needsRuntimeFrame:false,shouldRenderPhysicsDebugLines:false});
+  capable.renderFrame(frame);equal(clears,1);
+});
+
 test("runtime brackets all GPU passes and publishes delayed query plus Wasm capacity", () => {
   const order: string[] = [];
   const renderer = fakeRuntimeRenderer(order);

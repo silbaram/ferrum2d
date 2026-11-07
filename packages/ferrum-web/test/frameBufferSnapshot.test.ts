@@ -26,7 +26,7 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   };
   const frame = snapshotRenderFrameBuffers({
     renderCommandBuffer: { buffer: floats.subarray(0, 15), commandCount: 1, floatsPerCommand: 15,
-      groundShadowProjection: floats.subarray(0, 3), spriteNormalMaterials: { version: 1, stride: 2, buffer: words.subarray(0, 2) }, spatial },
+      groundShadowProjection: floats.subarray(0, 3),groundShadowVolumes:{version:1,stride:3,vertexCount:3,casterCount:1,buffer:floats.subarray(0,9)}, spriteNormalMaterials: { version: 1, stride: 2, buffer: words.subarray(0, 2) }, spatial },
     physicsDebugLineBuffer: { buffer: floats.subarray(0, 8), lineCount: 1, floatsPerLine: 8 },
     cameraX: 1, cameraY: 2,
   });
@@ -35,6 +35,8 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   const captured = frame.renderCommandBuffer.spatial!;
   equal(frame.renderCommandBuffer.buffer[0], 0.5);
   equal(frame.renderCommandBuffer.groundShadowProjection![0], 0.5);
+  equal(frame.renderCommandBuffer.groundShadowVolumes!.buffer[0],0.5);
+  equal(frame.renderCommandBuffer.groundShadowVolumes!.vertexCount,3);
   equal(frame.renderCommandBuffer.spriteNormalMaterials!.buffer[0], 7);
   equal(frame.physicsDebugLineBuffer!.buffer[0], 0.5);
   equal(captured.camera[0], 0.5); equal(captured.terrain[0], 0.5); equal(captured.billboards[0], 0.5);

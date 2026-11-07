@@ -1,4 +1,5 @@
 import type { WebGpuSpriteNormalBindings } from "./webgpuSpriteNormals.js";
+import type { WebGpuSunShadowBindings } from "./webgpuSunShadowMask.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
@@ -47,6 +48,8 @@ export class WebGpuLightingPass {
   private readonly maskTint = new Float32Array(4);
   private readonly shadowRanges: ShadowRange[] = [];
   private normalAdditivePipeline?:GPURenderPipeline;
+  private sunMaskedPipeline?:GPURenderPipeline;
+  private sunMaskedNormalPipeline?:GPURenderPipeline;
   private lightingInstanceBuffer: GPUBuffer;
   private shadowVertexBuffer: GPUBuffer;
   private lightingInstanceCapacityBytes = LIGHTING_INSTANCE_STRIDE_BYTES;
@@ -84,6 +87,7 @@ export class WebGpuLightingPass {
     viewportHeight: number,
     normals?:WebGpuSpriteNormalBindings,
     target?: LightingTarget,
+    sunMask?: WebGpuSunShadowBindings,
   ): WebGpuLightingPassStats {
     this.assertAlive();
     if (!scene.enabled || viewportWidth <= 0 || viewportHeight <= 0) {
@@ -194,6 +198,13 @@ export class WebGpuLightingPass {
       ? (this.normalAdditivePipeline ??= this.createLightingPipeline("additive", normals.layout))
       : this.additivePipeline;
     let first = pointLightFirstInstance;
+    if(sunMask&&sunCount){
+      const masked=normals
+        ?(this.sunMaskedNormalPipeline??=this.createLightingPipeline("additive",normals.layout,sunMask.layout))
+        :(this.sunMaskedPipeline??=this.createLightingPipeline("additive",undefined,sunMask.layout));
+      drawCalls+=this.drawLightingInstances(pass,masked,1,first,normals?.bindGroup,sunMask.bindGroup);
+      first+=sunCount;
+    }
     for (const range of ranges) {
       const next = pointLightFirstInstance + sunCount + range.lightIndex;
       drawCalls += this.drawLightingInstances(pass, additive, next - first, first, normals?.bindGroup);
@@ -350,8 +361,10 @@ export class WebGpuLightingPass {
             return vec4f(clamp(input.color.rgb,vec3f(0.),vec3f(1.))*transmission/visibility,alpha*visibility);`
             : "return vec4f(input.color.rgb,alpha);"}
           }
-          ${normalLayout?"if(input.mode < -0.5){return vec4f(input.color.rgb,input.color.a*normalResponse(input,input.light.xyz));}":""}
-          return input.color;
+          var alpha=input.color.a;
+          ${normalLayout?"if(input.mode < -0.5){alpha*=normalResponse(input,input.light.xyz);}":""}
+          ${maskLayout?"alpha*=1.-textureLoad(shadowMask,vec2i(input.position.xy),0).r;":""}
+          return vec4f(input.color.rgb,alpha);
         }
       `,
     });

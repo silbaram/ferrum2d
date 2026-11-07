@@ -145,7 +145,7 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets,target?:LightingTarget): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets,target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
     this.assertAlive();
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
       this.releaseMask();
@@ -181,9 +181,11 @@ export class WebGL2LightingPass {
     setSpriteBlend(this.gl, this.linearTarget, true);
     const sun = scene.directionalLight;
     if (sun !== undefined && sun.intensity > 0) {
+      if(sunMask){this.gl.uniform1i(this.maskUniforms.has,1);this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,sunMask);this.gl.activeTexture(this.gl.TEXTURE0);}
       const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
       this.gl.uniform3f(this.normalUniforms.direction,-sun.directionX*c,-sun.directionY*c,Math.sin(elevation));
       drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity],2);
+      this.gl.uniform1i(this.maskUniforms.has,0);
     }
     const shadowsActive = scene.shadows.enabled && scene.shadows.color[3] > 0 &&
       scene.tileOccluders.length > 0 && activePointLights.length > 0;

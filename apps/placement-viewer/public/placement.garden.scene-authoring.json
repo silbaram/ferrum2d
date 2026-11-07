@@ -23,7 +23,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -46,7 +47,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -69,7 +71,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -92,7 +95,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -115,7 +119,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -138,7 +143,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -161,7 +167,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -184,7 +191,8 @@
               "height": 32,
               "originX": 0.5,
               "originY": 0.5,
-              "depthSort": "layer"
+              "depthSort": "layer",
+              "projection": "ground"
             },
             "collider": "none",
             "layer": "wall"
@@ -208,6 +216,7 @@
               "originX": 0.5,
               "originY": 0.5,
               "depthSort": "layer",
+              "projection": "ground",
               "animationSet": {
                 "clips": [
                   {
@@ -3527,18 +3536,21 @@
                     "u0": 0.75,
                     "v0": 0.0,
                     "u1": 1.0,
-                    "v1": 0.25
+                    "v1": 0.244140625
                   },
                   "width": 128,
-                  "height": 128,
+                  "height": 125.0,
                   "originX": 0.5,
                   "originY": 1,
                   "depthSort": "hd2d",
                   "shadow": {
-                    "shape": "ellipse",
-                    "width": 44,
-                    "height": 12,
-                    "opacity": 0.7
+                    "shape": "volume",
+                    "width": 86,
+                    "depth": 30,
+                    "height": 52,
+                    "roofHeight": 44,
+                    "offsetY": -15,
+                    "opacity": 0.8
                   }
                 },
                 "collider": {
@@ -3574,18 +3586,21 @@
                     "u0": 0.0,
                     "v0": 0.25,
                     "u1": 0.25,
-                    "v1": 0.5
+                    "v1": 0.494140625
                   },
                   "width": 128,
-                  "height": 128,
+                  "height": 125.0,
                   "originX": 0.5,
                   "originY": 1,
                   "depthSort": "hd2d",
                   "shadow": {
-                    "shape": "ellipse",
-                    "width": 44,
-                    "height": 12,
-                    "opacity": 0.7
+                    "shape": "volume",
+                    "width": 86,
+                    "depth": 30,
+                    "height": 52,
+                    "roofHeight": 44,
+                    "offsetY": -15,
+                    "opacity": 0.8
                   }
                 },
                 "collider": {
@@ -3621,18 +3636,21 @@
                     "u0": 0.75,
                     "v0": 0.0,
                     "u1": 1.0,
-                    "v1": 0.25
+                    "v1": 0.244140625
                   },
                   "width": 128,
-                  "height": 128,
+                  "height": 125.0,
                   "originX": 0.5,
                   "originY": 1,
                   "depthSort": "hd2d",
                   "shadow": {
-                    "shape": "ellipse",
-                    "width": 44,
-                    "height": 12,
-                    "opacity": 0.7
+                    "shape": "volume",
+                    "width": 86,
+                    "depth": 30,
+                    "height": 52,
+                    "roofHeight": 44,
+                    "offsetY": -15,
+                    "opacity": 0.8
                   }
                 },
                 "collider": {
@@ -3668,18 +3686,21 @@
                     "u0": 0.0,
                     "v0": 0.25,
                     "u1": 0.25,
-                    "v1": 0.5
+                    "v1": 0.494140625
                   },
                   "width": 128,
-                  "height": 128,
+                  "height": 125.0,
                   "originX": 0.5,
                   "originY": 1,
                   "depthSort": "hd2d",
                   "shadow": {
-                    "shape": "ellipse",
-                    "width": 44,
-                    "height": 12,
-                    "opacity": 0.7
+                    "shape": "volume",
+                    "width": 86,
+                    "depth": 30,
+                    "height": 52,
+                    "roofHeight": 44,
+                    "offsetY": -15,
+                    "opacity": 0.8
                   }
                 },
                 "collider": {
@@ -3804,7 +3825,8 @@
                   "height": 64,
                   "originX": 0.5,
                   "originY": 0.5,
-                  "depthSort": "layer"
+                  "depthSort": "layer",
+                  "projection": "ground"
                 },
                 "collider": "none",
                 "layer": "wall"
@@ -5726,13 +5748,13 @@
     "directionalLight": {
       "directionX": 0.7,
       "directionY": 0.7,
-      "intensity": 0.035,
+      "intensity": 0.15,
       "color": [
         0.45,
         0.6,
         0.85
       ],
-      "shadowOpacity": 0.3,
+      "shadowOpacity": 0.65,
       "shadowLengthScale": 0.7,
       "maxCasters": 96
     },

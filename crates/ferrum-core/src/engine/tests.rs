@@ -45,6 +45,7 @@ mod data_scene_obstacles;
 mod data_scene_projection_sun;
 mod data_scene_spawn_prefabs;
 mod data_scene_visuals;
+mod data_scene_volume_shadows;
 mod fixed_timestep;
 mod mass_objects;
 mod particles;

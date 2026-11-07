@@ -3,7 +3,7 @@ import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
 
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform float u_pixel_snap;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform bool u_skip_ground_shadows;uniform float u_ground_y_scale;uniform float u_pixel_snap;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec2 v_normal_uv;flat out vec2 v_rotation_cs;flat out vec2 v_uv_sign;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
       void main(){
         vec2 corner=a_corner;
         vec2 local=(corner-vec2(0.5))*a_rect.zw;
@@ -30,6 +30,7 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
         }
         vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;
         gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);
+        if(u_skip_ground_shadows&&(int(a_flags)&4)!=0&&(int(a_flags)&56)!=0)gl_Position=vec4(2.,2.,2.,1.);
         v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_normal_uv=v_uv;
         v_rotation_cs=vec2(c,s);v_uv_sign=vec2(a_uv_rect.z<a_uv_rect.x?-1.:1.,a_uv_rect.w<a_uv_rect.y?-1.:1.);
         if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}
@@ -37,6 +38,27 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
       }`;
 // Internal shader sources shared by synchronous construction and async preparation.
 export const WEBGL2_SHADER_SOURCES = {
+  volumeShadow: { vertex: `#version 300 es
+    precision highp float;
+    layout(location=0) in vec3 a_vertex;
+    uniform vec2 u_resolution,u_screen_offset;uniform float u_pixel_snap;
+    out float v_opacity;
+    void main(){vec2 p=a_vertex.xy+u_screen_offset;if(u_pixel_snap>0.)p=floor(p*u_pixel_snap+.5)/u_pixel_snap;
+      gl_Position=vec4((p/u_resolution*2.-1.)*vec2(1.,-1.),0.,1.);v_opacity=a_vertex.z;}
+    `, fragment: `#version 300 es
+    precision highp float;in float v_opacity;out vec4 outColor;
+    void main(){outColor=vec4(v_opacity,0.,0.,1.);}` },
+  spriteSunShadow: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
+    precision highp float;
+    in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;
+    uniform sampler2D u_texture;out vec4 outColor;
+    void main(){
+      int flags=int(v_flags);float alpha=v_color.a;
+      if((flags&24)!=0){vec2 q=(v_corner-.5)*2.;if((flags&8)!=0&&dot(q,q)>1.)discard;}
+      else alpha*=texture(u_texture,v_uv).a;
+      // Casters use MAX union. Upright sprites erase ground-only coverage with their alpha.
+      outColor=(flags&4)!=0?vec4(alpha,0.,0.,1.):vec4(0.,0.,0.,alpha);
+    }` },
   spritePalette: { vertex: SPRITE_VERTEX_SOURCE, fragment: `#version 300 es
       precision highp float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
       ${SPRITE_PALETTE_GLSL}
@@ -137,7 +159,8 @@ export const WEBGL2_SHADER_SOURCES = {
           float visibility=max(max(transmission.r,transmission.g),transmission.b);
           outColor = visibility>0.?vec4(clamp(u_color.rgb,0.,1.)*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
-          outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.));
+          float visibility=(u_mode==2&&u_has_shadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
+          outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
         }
       }` },
   shadow: { vertex: `#version 300 es

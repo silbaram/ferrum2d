@@ -34,7 +34,7 @@ function fixture(parallel = true) {
   return { gl, programs, shaders, submitted, queried, setLost: () => { lost = true; }, failLink: () => { linked = false; } };
 }
 
-const baseShaderNames = Object.keys(WEBGL2_SHADER_SOURCES).filter(name=>name!=="spriteNormal"&&name!=="spritePalette");
+const baseShaderNames = Object.keys(WEBGL2_SHADER_SOURCES).filter(name=>name!=="spriteNormal"&&name!=="spritePalette"&&name!=="spriteSunShadow"&&name!=="volumeShadow");
 
 function construct(gl: WebGL2RenderingContext) {
   const programs = baseShaderNames.map((name) => createWebGL2Program(gl, name as keyof typeof WEBGL2_SHADER_SOURCES));
@@ -108,10 +108,12 @@ test("synchronous shader failure and partial allocation failure release intermed
 });
 
 
-test("color-only readiness leaves optional normal and palette shaders lazy until requested", async () => {
+test("color-only readiness leaves optional normal, palette and sun mask shaders lazy until requested", async () => {
   const f=fixture(false),renderer=await prepareWebGL2Renderer(f.gl,{},()=>construct(f.gl));
   equal(f.submitted.length,5);equal(f.programs.size,5);
   const normal=createWebGL2Program(f.gl,"spriteNormal");equal(f.submitted.length,6);equal(f.programs.size,6);
   const palette=createWebGL2Program(f.gl,"spritePalette");equal(f.submitted.length,7);equal(f.programs.size,7);
-  f.gl.deleteProgram(normal);f.gl.deleteProgram(palette);renderer.destroy();equal(f.programs.size+f.shaders.size,0);
+  const sun=createWebGL2Program(f.gl,"spriteSunShadow");equal(f.submitted.length,8);equal(f.programs.size,8);
+  const volume=createWebGL2Program(f.gl,"volumeShadow");equal(f.submitted.length,9);equal(f.programs.size,9);
+  f.gl.deleteProgram(normal);f.gl.deleteProgram(palette);f.gl.deleteProgram(sun);f.gl.deleteProgram(volume);renderer.destroy();equal(f.programs.size+f.shaders.size,0);
 });

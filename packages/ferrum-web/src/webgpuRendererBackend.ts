@@ -24,6 +24,9 @@ import {
 } from "./lightingNormalize.js";
 import { resolveSpriteMaterialPreset, spriteMaterialPasses } from "./spriteMaterial.js";
 import { groundShadowProjection } from "./groundShadowProjection.js";
+import { groundShadowCount } from "./groundShadowRanges.js";
+import { validateGroundShadowVolumes } from "./groundShadowVolumes.js";
+import { WebGpuSunShadowMask } from "./webgpuSunShadowMask.js";
 import type { SpriteMaterialPass, SpriteMaterialPresetInput } from "./spriteMaterial.js";
 import type { PixelMaskTerrain } from "./pixelMaskTerrain.js";
 import type {
@@ -60,6 +63,7 @@ const PLACEHOLDER_TEXTURE_ID = 0;
 
 export class WebGpuRendererBackend implements Renderer {
   readonly supportsSpatialScene = true;
+  readonly supportsGroundShadowVolumes = true;
   private readonly spatialPass: WebGpuSpatialPass;
   private context?: GPUCanvasContext;
   private readonly uniformBindGroupLayout: GPUBindGroupLayout;
@@ -69,6 +73,8 @@ export class WebGpuRendererBackend implements Renderer {
   private readonly resolutionBindGroup: GPUBindGroup;
   private readonly spritePass: WebGpuSpritePass;
   private spriteNormals?:WebGpuSpriteNormals;
+  private sunShadowMask?:WebGpuSunShadowMask;
+  private sunShadowConfigured=false;
   private readonly debugLinePass: WebGpuDebugLinePass;
   private readonly lightingPass: WebGpuLightingPass;
   private readonly postProcessPass: WebGpuPostProcessPass;
@@ -142,6 +148,7 @@ export class WebGpuRendererBackend implements Renderer {
       this.resolutionBindGroup,
     );
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
+    this.sunShadowConfigured=!!options.lighting&&options.lighting.directionalLight!==undefined;
     this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
     this.spritePass.configurePalettes(this.spriteMaterialPasses[this.spriteMaterialPasses.length-1]?.paletteSwap);
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
@@ -295,6 +302,7 @@ export class WebGpuRendererBackend implements Renderer {
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
+    this.sunShadowConfigured=!!scene&&scene.directionalLight!==undefined;
   }
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
@@ -372,18 +380,26 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
+    const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     this.spritePass.validatePalettes(commands);
     if(commands.spatial && this.pixelPerfect)throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
     const projection = groundShadowProjection(commands);
     const x = projection[0], y = projection[1], length = projection[2];
-    if (this.resolutionStaging[4] !== x || this.resolutionStaging[5] !== y || this.resolutionStaging[6] !== length) {
+    const deferredSun=!commands.spatial&&this.sunShadowConfigured;
+    const skipShadows=deferredSun?1:0;
+    if (this.resolutionStaging[4] !== x || this.resolutionStaging[5] !== y || this.resolutionStaging[6] !== length || this.resolutionStaging[7]!==skipShadows) {
       this.resolutionStaging[4] = x; this.resolutionStaging[5] = y; this.resolutionStaging[6] = length;
+      this.resolutionStaging[7]=skipShadows;
       this.writeResolution();
     }
     if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
     const encoder = this.device.createCommandEncoder();
     const mapped=spriteNormalsActive(commands);
+    const groundCasters=deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
+    const sunMaskStats=groundCasters>0
+      ?(this.sunShadowMask??=new WebGpuSunShadowMask(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height):undefined;
+    if(!sunMaskStats)this.sunShadowMask?.clearTarget();
     const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
@@ -391,7 +407,7 @@ export class WebGpuRendererBackend implements Renderer {
     const pass = this.beginRenderPass(encoder, "load", target);
 
     const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height});
+    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);
 
     if(!lightingStats.passEnded)pass.end();
     this.device.queue.submit([encoder.finish()]);
@@ -412,6 +428,7 @@ export class WebGpuRendererBackend implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     if (spatial) {
       this.currentStats.spatial = spatial; this.currentStats.drawCalls += spatial.drawCalls; this.currentStats.batchCount += spatial.drawCalls;
       this.currentStats.spriteCount += spatial.billboardCount; this.currentStats.textureBindCount += spatial.textureBindCount; this.currentStats.textureSwitchCount += spatial.textureSwitchCount;
@@ -466,6 +483,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.lightingPass.destroy();
     this.spritePass.destroy();
     this.spriteNormals?.destroy();
+    this.sunShadowMask?.destroy();
     this.pixelPass?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);
     webGpuResources(this.device).destroyAll();

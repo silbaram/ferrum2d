@@ -52,7 +52,7 @@ const server = createServer((req, res) => {
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -299,10 +299,15 @@ try {
           const flat = await page.evaluate(() => window.probeFlatShadowIsolation());
           assert.equal(flat.length, 3);
           for (const backend of flat) {
-            assert.equal(backend.rows.length, backend.backend === "webgpu" ? 42 : 41); assert.deepEqual(backend.errors, []);
+            assert.equal(backend.rows.length, backend.backend === "webgpu" ? 114 : 113); assert.deepEqual(backend.errors, []);
             for (const row of backend.rows) {
               const file = `flat-shadow-${row.name}-${backend.backend}-${backend.colorManagement}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
               await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64")); row.image = file;
+            }
+            assert.equal(backend.volumes.rows.length,backend.backend==="webgpu"?58:57);assert.deepEqual(backend.volumes.errors,[]);
+            for(const row of backend.volumes.rows){if(!row.image)continue;
+              const file=`volume-shadow-${row.name}-${backend.backend}-${backend.colorManagement}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+              await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64"));row.image=file;
             }
           }
           report.flatShadowCases.push({ viewport, deviceScaleFactor, result: flat });

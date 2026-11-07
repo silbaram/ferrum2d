@@ -22,6 +22,8 @@ export interface RenderCommandBufferView {
   groundYScale?: number;
   /** Three borrowed f32s: normalized sun direction X/Y, shadow length scale. Reacquire each frame. */
   groundShadowProjection?: Float32Array;
+  /** Optional v1 screen-space triangle sidecar, owned by Rust and borrowed for this frame. */
+  groundShadowVolumes?: { version:1; stride:3; vertexCount:number; casterCount:number; buffer:Float32Array };
 }
 
 export function decodeRenderCommands(view: RenderCommandBufferView): RenderCommandView[] {

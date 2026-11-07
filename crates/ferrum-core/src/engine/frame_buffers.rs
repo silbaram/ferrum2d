@@ -5,7 +5,7 @@ use crate::collision_event::CollisionEvent;
 use crate::effect_event::EffectEvent;
 use crate::gameplay_event::GameplayEvent;
 use crate::render_command::{SpriteRenderCommand, SpriteRenderItem};
-use crate::world::ground_shadow::GroundShadowProjection;
+use crate::world::ground_shadow::{GroundShadowProjection, GroundShadowVolumeVertex};
 
 use super::telemetry::frame_stats::FrameTelemetry;
 
@@ -27,6 +27,8 @@ pub(in crate::engine) struct EngineFrameBuffers {
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
     pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
     pub(in crate::engine) ground_y_scale: f32,
+    pub(in crate::engine) ground_shadow_volumes: Vec<GroundShadowVolumeVertex>,
+    pub(in crate::engine) ground_shadow_volume_casters: u32,
     pub(in crate::engine) audio_poses: Vec<AudioPose>,
     pub(in crate::engine) audio_events: Vec<AudioEvent>,
     pub(in crate::engine) effect_events: Vec<EffectEvent>,
@@ -49,6 +51,8 @@ impl EngineFrameBuffers {
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
             ground_shadow_projection: GroundShadowProjection::default(),
             ground_y_scale: 1.0,
+            ground_shadow_volumes: Vec::new(),
+            ground_shadow_volume_casters: 0,
             audio_poses: Vec::with_capacity(MAX_AUDIO_POSES),
             audio_events: Vec::with_capacity(AUDIO_EVENT_CAPACITY),
             effect_events: Vec::with_capacity(EFFECT_EVENT_CAPACITY),
@@ -67,11 +71,15 @@ impl EngineFrameBuffers {
     }
 
     pub(in crate::engine) fn clear_render_commands(&mut self) {
+        self.ground_shadow_volumes.clear();
+        self.ground_shadow_volume_casters = 0;
         self.render_commands.clear();
         self.sprite_normal_materials.clear();
     }
 
     pub(in crate::engine) fn clear_render_work_buffers(&mut self) {
+        self.ground_shadow_volumes.clear();
+        self.ground_shadow_volume_casters = 0;
         self.render_commands.clear();
         self.sprite_normal_materials.clear();
         self.render_items.clear();

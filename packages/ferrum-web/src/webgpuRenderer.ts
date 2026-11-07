@@ -15,6 +15,7 @@ import { rgbaFromAlpha } from "./webgpuTextureStore.js";
 /** Stable renderer facade. GPU objects belong to a replaceable backend; simulation stays in Rust. */
 export class WebGPURenderer implements Renderer {
     readonly supportsSpatialScene = true;
+    readonly supportsGroundShadowVolumes = true;
     private status: "ready" | "lost" | "recovering" | "destroyed" = "ready";
     private loss?: {
         reason: string;

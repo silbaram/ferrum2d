@@ -1,4 +1,5 @@
 import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
+import { readGroundShadowVolumes } from "./groundShadowVolumes.js";
 import { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
 import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
 import { spatialModelRegistry } from "./spatialModel.js";
@@ -153,6 +154,7 @@ export class WasmBridge {
 
   readRenderCommandBuffer(): RenderCommandBufferView {
     const view = renderCommandBufferView(this.bufferContext);
+    view.groundShadowVolumes=readGroundShadowVolumes(this.engineInstance,this.memory);
     view.groundYScale = this.engineInstance.render_command_ground_y_scale();
     view.groundShadowProjection = new Float32Array(
       this.memory.buffer, this.engineInstance.data_scene_ground_shadow_projection_ptr(), 3,

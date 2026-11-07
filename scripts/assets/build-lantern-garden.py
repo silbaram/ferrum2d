@@ -302,8 +302,11 @@ def uv(name):
 
 def visual(name, width=None, height=None, ground=False):
     f = frames[name]
-    return {"kind": "sprite", "asset": "garden_atlas", "frame": uv(name), "width": width or f["width"], "height": height or f["height"],
-            "originX": .5, "originY": .5 if ground else 1, "depthSort": "layer" if ground else "hd2d"}
+    result = {"kind": "sprite", "asset": "garden_atlas", "frame": uv(name), "width": width or f["width"], "height": height or f["height"],
+              "originX": .5, "originY": .5 if ground else 1, "depthSort": "layer" if ground else "hd2d"}
+    if ground:
+        result["projection"] = "ground"
+    return result
 
 
 prefabs = {"object": {"props": {}}}
@@ -337,6 +340,13 @@ def prop(identity, frame, x, y, collider=None, width=None, height=None, ground=F
         v["tint"] = tint
     if not ground:
         v["shadow"] = {"shape": "ellipse", "width": min(width or frames[frame]["width"], 44), "height": 12, "opacity": .7}
+        if frame in ("cottage", "workshop"):
+            # A fixed footprint and wall/gable heights cast a volume shadow at every sun angle.
+            # The foundation ends on row 124: exclude transparent bottom padding from the foot pivot.
+            contact_height = 125
+            v["frame"]["v1"] = (frames[frame]["y"] + contact_height) / atlas.height
+            v["height"] *= contact_height / frames[frame]["height"]
+            v["shadow"] = {"shape": "volume", "width": 86, "depth": 30, "height": 52, "roofHeight": 44, "offsetY": -15, "opacity": .8}
     components = {"visual": v, "collider": "none", "layer": "wall"}
     if collider:
         hw, hh = collider
@@ -392,7 +402,7 @@ scene = {"format": "ferrum2d.consumer.scene-authoring", "version": 1,
                                             "garden.token": {"recipes": [{"kind": "pickup", "item": "garden_token", "count": 1, "despawn": True}]}}},
          "ids": {"items": {"garden_token": 1}}, "gameplay": {"primaryActor": "garden_hero"},
          "navigation": {"columns": COLUMNS, "rows": ROWS, "cellWidth": TILE, "cellHeight": TILE, "originX": ORIGIN_X, "originY": ORIGIN_Y, "costs": costs, "obstacles": obstacles},
-         "lighting": {"enabled": True, "ambient": [.08, .12, .22, .46], "directionalLight": {"directionX": .7, "directionY": .7, "intensity": .035, "color": [.45, .6, .85], "shadowOpacity": .3, "shadowLengthScale": .7, "maxCasters": 96},
+         "lighting": {"enabled": True, "ambient": [.08, .12, .22, .46], "directionalLight": {"directionX": .7, "directionY": .7, "intensity": .15, "color": [.45, .6, .85], "shadowOpacity": .65, "shadowLengthScale": .7, "maxCasters": 96},
                       "pointLights": [{"x": x, "y": y - 20, "radius": 142, "color": [1, .8, .45, 1], "intensity": .55, "falloff": 2} for x, y in lamps],
                       "tileOccluders": occluders, "shadows": {"enabled": True, "color": [.02, .035, .06, .18], "projectionLength": 160, "maxDistance": 170}}}
 destination = OUT.parents[1] / "placement.garden.scene-authoring.json"

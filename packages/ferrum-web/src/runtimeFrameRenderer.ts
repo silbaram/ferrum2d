@@ -70,6 +70,8 @@ export class RuntimeFrameRenderer {
     const renderer = this.options.renderer;
     if (renderFrame.renderCommandBuffer.spatial && !renderer.supportsSpatialScene)
       throw new Error("Renderer does not support spatial scene geometry");
+    if((renderFrame.renderCommandBuffer.groundShadowVolumes?.vertexCount??0)>0&&!renderer.supportsGroundShadowVolumes)
+      throw new Error("Renderer does not support ground shadow volume geometry");
     const debugLines = this.options.shouldRenderPhysicsDebugLines ? renderFrame.physicsDebugLineBuffer : undefined;
     const renderDebugLines = renderer.renderPhysicsDebugLines;
     if (debugLines !== undefined && renderDebugLines === undefined)
