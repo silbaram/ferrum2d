@@ -201,7 +201,8 @@ export function resolveSceneAuthoringDocument(
       const child=byId.get(id),parent=byId.get(a.parent);
       if(!child||!parent)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'must reference applied instances');
       const c=resolveDataSceneInstanceComponents(child,{allowTemplate:false,path:`${path}.spatial.attachments.${id}`}),p=resolveDataSceneInstanceComponents(parent,{allowTemplate:false,path:`${path}.spatial.attachments.${id}.parent`});
-      if(c.mode!=='inline'||p.mode!=='inline'||c.body?.type!=='static'||!c.body.heightSpan||!p.body?.heightSpan)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'requires a static heightSpan child and heightSpan parent');
+      const renderOnly=c.mode==='inline' && !c.body && c.collider.type==='none' && Object.prototype.hasOwnProperty.call(spatial.models??{},id);
+      if(c.mode!=='inline'||p.mode!=='inline'||(!renderOnly&&(c.body?.type!=='static'||!c.body.heightSpan))||(!p.body?.heightSpan&&!Object.prototype.hasOwnProperty.call(spatial.attachments??{},a.parent)))throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'requires a static heightSpan child or visual-only model, and a heightSpan root');
       initialPose(id);
     }
   }

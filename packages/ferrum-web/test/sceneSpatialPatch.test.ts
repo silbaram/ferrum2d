@@ -13,6 +13,28 @@ import { applySceneSpatialPatch } from "../src/sceneSpatialPatch.js";
 import { resolveSpatialCameraSpec } from "../src/dataSceneSpatial.js";
 import { resolveSpatialEnvironmentSpec } from "../src/spatialEnvironment.js";
 
+test("spatial v7 shadow-only model edits round-trip false, merge and undo without changing physics", () => {
+  const source = document(), viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 } });
+  const operation = { kind: "updateModel" as const, id: "model", changes: { shadowOnly: true } };
+  viewer.updateSpatial([operation]);
+  equal(viewer.exportPatch()!.spatial!.version, 7);
+  const merged = mergeScenePlacementPatch(source, JSON.parse(JSON.stringify(viewer.exportPatch())));
+  equal(merged.document.spatial!.models!.model.shadowOnly, true);
+  deepEqual(merged.document.sceneComposition, source.sceneComposition);
+  deepEqual(merged.document.spatial!.attachments, source.spatial!.attachments);
+  viewer.undo(); equal(viewer.exportPatch(), undefined);
+  viewer.redo(); equal(viewer.state().spatial!.models!.model.shadowOnly, true);
+  viewer.updateSpatial([{ ...operation, changes: { shadowOnly: false } }]);
+  const saved = viewer.state().spatial!;
+  equal(saved.models!.model.shadowOnly, false);
+  equal(mergeScenePlacementPatch(source, viewer.exportPatch()!).document.spatial!.models!.model.shadowOnly, false);
+  for (const version of [1,2,3,4,5,6] as const)
+    throws(() => applySceneSpatialPatch(source.spatial, { format: "ferrum2d.scene-spatial.patch", version, operations: [operation] }), /version 7/);
+  const before = viewer.exportPatch(), history = viewer.historyState();
+  throws(() => viewer.updateSpatial([{ ...operation, changes: { shadowOnly: "yes" } } as never]), /boolean/);
+  deepEqual(viewer.exportPatch(), before); deepEqual(viewer.historyState(), history);
+});
+
 test("spatial v6 environment edits preserve authored settings, merge without instance scope, and undo atomically", () => {
   const source = document();
   source.spatial!.environment = { pixelArt: { width: 384, height: 256 }, colorGrading: { exposure: 1 },

@@ -186,6 +186,7 @@ mod spatial_navigation;
 mod spatial_physics_obstacles;
 mod spatial_progress;
 mod spatial_scene;
+mod spatial_shadow_only;
 mod spatial_sun_stability;
 mod spatial_terrain_chunks;
 

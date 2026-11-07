@@ -208,7 +208,8 @@ export function captureDataSceneProgress(
     );
   }
   const spatialValues = spatialSpec === undefined ? undefined : nativeSpatial;
-  const rotations=spatialSpec?.models===undefined?undefined:adapter.rotations?.(context.epoch,handleBuffer(ids,context.handles));
+  const attachmentParents=new Set(Object.values(spatialSpec?.attachments??{}).map(a=>a.parent));
+  const rotations=spatialSpec?.models===undefined && attachmentParents.size===0?undefined:adapter.rotations?.(context.epoch,handleBuffer(ids,context.handles));
   if(Object.keys(spatialSpec?.attachments??{}).length && rotations?.length!==ids.length)throw new Error('Spatial attachment progress requires compatible motion Wasm');
   const environmentValues = adapter.environment?.();
   if (spatialSpec?.environment !== undefined && environmentValues === undefined)
@@ -282,7 +283,7 @@ export function captureDataSceneProgress(
               ),
               spatialSpec!,
             );
-      if(spatialPose && spatialSpec?.models?.[id] && (rotations?.[index]!==undefined) && (rotations[index]!==0 || Object.keys(spatialSpec.attachments??{}).length))spatialPose={...spatialPose,rotationRadians:rotations[index]};
+      if(spatialPose && (spatialSpec?.models?.[id] || attachmentParents.has(id)) && (rotations?.[index]!==undefined) && (rotations[index]!==0 || attachmentParents.size))spatialPose={...spatialPose,rotationRadians:rotations[index]};
       return {
         id,
         removed: state === 0,

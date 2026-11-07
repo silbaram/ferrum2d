@@ -15,7 +15,7 @@ import {
 export interface DataSceneSpatialPoseSnapshot {
   readonly x: number;
   readonly y: number;
-  /** Motion progress v8. Native model root yaw; attached child poses are derived. */
+  /** Motion progress v8. Native model or attachment root yaw; attached child poses are derived. */
   readonly rotationRadians?: number;
   readonly heightSpan: PhysicsBodyHeightSpan | null;
   /** Optional stable terrain identity when the entity origin is supported by that surface. */

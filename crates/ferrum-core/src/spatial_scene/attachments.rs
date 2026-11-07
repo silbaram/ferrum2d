@@ -1,6 +1,8 @@
 //! Bounded Data Scene attachment transforms. Root simulation remains in World.
 use super::models::SpatialModels;
-use crate::components::{AngularVelocity, HeightSpan, Rotation2D, Transform2D, Velocity};
+use crate::components::{
+    AngularVelocity, HeightSpan, PhysicsFloorId, Rotation2D, Transform2D, Velocity,
+};
 use crate::entity::Entity;
 use crate::world::World;
 
@@ -11,6 +13,7 @@ struct Link {
     parent_link: Option<usize>,
     local: [f32; 4],
     inherit_floor: bool,
+    render_only: bool,
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AttachmentPose {
@@ -61,9 +64,7 @@ impl SpatialAttachments {
     }
     /// Derive the attachment graph from presentation poses, without moving native colliders.
     pub fn prepare_render_poses(&self, world: &mut World, models: &SpatialModels) {
-        if !world.begin_render_attachment_poses() {
-            return;
-        }
+        world.begin_render_attachment_poses();
         // Links are topologically ordered at configure time, including nested attachments.
         for link in &self.links {
             if !world.is_current_entity(link.parent) || !world.is_current_entity(link.child) {
@@ -130,20 +131,29 @@ impl SpatialAttachments {
                 id: m[2],
                 generation: m[3],
             };
+            // A visual model can follow a body without acquiring a physics body or collider.
+            // Its elevation is derived only for rendering, including without interpolation.
+            let render_only = models.bindings.contains_key(&(child.id, child.generation))
+                && world.rigid_body(child).is_none()
+                && world.collider_layer_at(child.id as usize).is_none()
+                && world.height_span(child).is_none();
             if child == parent
                 || m[4] > 1
                 || !world.is_current_entity(child)
                 || !world.is_current_entity(parent)
                 || world.transform(child).is_none()
                 || world.transform(parent).is_none()
-                || !world
-                    .rigid_body(child)
-                    .is_some_and(|b| b.body_type == crate::components::RigidBodyType::Static)
-                || world.height_span(child).is_none()
-                || world.height_span(parent).is_none()
+                || (!render_only
+                    && (!world
+                        .rigid_body(child)
+                        .is_some_and(|b| b.body_type == crate::components::RigidBodyType::Static)
+                        || world.height_span(child).is_none()))
+                || (world.height_span(parent).is_none()
+                    && !children.contains(&(parent.id, parent.generation)))
                 || (!models
                     .bindings
                     .contains_key(&(parent.id, parent.generation))
+                    && world.sprite_at_index(parent.id as usize).is_none()
                     && !children.contains(&(parent.id, parent.generation)))
             {
                 return None;
@@ -164,6 +174,7 @@ impl SpatialAttachments {
                 parent_link,
                 local: [v[0], v[1], v[2], v[3]],
                 inherit_floor: m[4] != 0,
+                render_only,
             });
         }
         let mut roots = Vec::new();
@@ -299,11 +310,13 @@ impl SpatialAttachments {
             };
             world.set_transform(link.child, pose.at);
             world.set_rotation(link.child, Rotation2D { radians: pose.yaw });
-            if let Some(span) = pose.span {
-                world.set_height_span(link.child, span);
+            if !link.render_only {
+                if let Some(span) = pose.span {
+                    world.set_height_span(link.child, span);
+                }
+                world.set_velocity(link.child, Velocity::default());
+                world.set_angular_velocity(link.child, AngularVelocity::default());
             }
-            world.set_velocity(link.child, Velocity::default());
-            world.set_angular_velocity(link.child, AngularVelocity::default());
         }
     }
 }
@@ -315,7 +328,16 @@ fn child_pose(world: &World, link: &Link, parent: AttachmentPose) -> AttachmentP
         y: parent.at.y + s * link.local[0] + c * link.local[1],
     };
     let yaw = parent.yaw + link.local[3];
-    let span = world.height_span(link.child).and_then(|child| {
+    let child_span = if link.render_only {
+        Some(HeightSpan {
+            floor: PhysicsFloorId::DEFAULT,
+            elevation: 0.,
+            height: 0.,
+        })
+    } else {
+        world.height_span(link.child)
+    };
+    let span = child_span.and_then(|child| {
         HeightSpan::new(
             if link.inherit_floor {
                 parent.span.map_or(child.floor, |p| p.floor)

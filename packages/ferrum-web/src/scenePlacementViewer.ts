@@ -553,7 +553,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         }
       this.spatial = applySceneSpatialPatch(this.spatial, {
         format: "ferrum2d.scene-spatial.patch",
-        version: operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+        version: operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && Object.prototype.hasOwnProperty.call(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
           (op) => op.kind === "setBillboardNormalTexture",
         )
           ? 4

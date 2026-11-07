@@ -20,12 +20,13 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
     equal(tarballs.length, 1, 'expected one packed runtime package');
     await run('tar', ['-xzf', join(packed, tarballs[0]), '-C', installed, '--strip-components=1'], project, 'Packed package extraction');
     await writeFile(join(project, 'consumer.ts'), `
-      import type { PixelPerfectOptions, FerrumEngine } from '@ferrum2d/ferrum-web/core';
+      import type { PixelPerfectOptions, FerrumEngine, SpatialModelInstanceSpec } from '@ferrum2d/ferrum-web/core';
       import {
         createSceneInstanceHandleRegistry,
         type ApplySceneBehaviorRecipesOptions,
         type SceneInstanceHandleRegistry,
         type ScenePlacementViewer,
+        type SceneSpatialPatch,
       } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
       import '@ferrum2d/ferrum-web/labs';
@@ -36,6 +37,12 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const invalid: PixelPerfectOptions = { ...config, snap: 'on' };
       declare const engine: FerrumEngine;
       declare const viewer: ScenePlacementViewer;
+      const proxy: SpatialModelInstanceSpec = { asset: 'proxy', contentId: 'a'.repeat(64), shadowOnly: true };
+      const shadowPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 7,
+        operations: [{ kind: 'updateModel', id: 'proxy', changes: { shadowOnly: false } }] };
+      viewer.updateSpatial(shadowPatch.operations);
+      // @ts-expect-error shadowOnly requires a boolean
+      const invalidProxy: SpatialModelInstanceSpec = { ...proxy, shadowOnly: 'on' };
       const registry: SceneInstanceHandleRegistry = createSceneInstanceHandleRegistry({
         entityExists: handle => handle.entityGeneration > 0,
       });
@@ -46,7 +53,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       viewer.addInstances(1, []);
       // @ts-expect-error entries require a prefab
       viewer.addInstances('main', [{ id: 'tile_1' }]);
-      void [config, disabled, invalid, engine, behaviorOptions];
+      void [config, disabled, invalid, engine, behaviorOptions, proxy, invalidProxy];
     `);
     await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
       target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',

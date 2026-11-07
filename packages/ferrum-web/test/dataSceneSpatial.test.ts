@@ -21,6 +21,34 @@ import type { FrameState } from "../src/engineTypes.js";
 import { createSpatialApi } from "../src/dataSceneSpatial.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 
+test("shadow-only models preserve the optional boolean and send a cold authoring flag", async () => {
+  const { createSpatialModelAsset } = await import("../src/spatialModel.js");
+  const asset = createSpatialModelAsset({ contentId: "a".repeat(64), bounds: [0,0,0,1,1,1], diagnostics: [], images: [], primitives: [{
+    vertices: new Float32Array(24), indices: Uint32Array.from([0,1,2]), color: [1,1,1,1], alphaCutoff: 0,
+    doubleSided: false, emissiveFactor: [0,0,0], sampler: [9728,9728,10497,10497],
+  }] });
+  let flags = -1, allowNew = true;
+  const api = createSpatialApi({ preflight_spatial_model_poses: () => true, configure_spatial_scene_models: (...args: unknown[]) => {
+    const metadata = args[11];
+    if (!(metadata instanceof Uint32Array)) throw new Error("missing model metadata");
+    flags = metadata[3];
+    return allowNew || flags <= 3;
+  } } as unknown as Engine, () => {}, () => ({ width: 400, height: 300 }));
+  ok(api.registerDataSceneSpatialModel("proxy", asset));
+  const spec = (shadowOnly?: unknown) => ({ ...document().spatial, actor: undefined, billboards: {}, models: {
+    proxy: { asset: "proxy", contentId: asset.contentId, receiveShadow: false, ...(shadowOnly === undefined ? {} : { shadowOnly }) },
+  } });
+  for (const [value, expected] of [[true,5], [false,1], [undefined,1]] as const) {
+    const normalized = resolveDataSceneSpatialSpec(spec(value));
+    equal(normalized.models!.proxy.shadowOnly, value);
+    ok(api.configureDataSceneSpatial(normalized, { proxy: { entityId: 7, entityGeneration: 3 } }));
+    equal(flags, expected);
+  }
+  throws(() => resolveDataSceneSpatialSpec(spec("yes")), /shadowOnly/);
+  allowNew = false;
+  equal(api.configureDataSceneSpatial(resolveDataSceneSpatialSpec(spec(true)), { proxy: { entityId: 7, entityGeneration: 3 } }), false);
+});
+
 test("light bindings reject stale or malformed handles before replacing the spatial scene", () => {
   const input = { ...resolveDataSceneSpatialSpec(document().spatial), actor: undefined, billboards: {},
     environment: { lighting: { lights: [{position:{x:0,y:0,elevation:20},radius:50}] } },

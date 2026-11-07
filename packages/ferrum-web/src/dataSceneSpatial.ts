@@ -136,6 +136,8 @@ export interface SpatialModelInstanceSpec {
   scale?: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  /** Draw only in shadow passes. Default false; authored physics and resident asset lifetime are unchanged. */
+  shadowOnly?: boolean;
 }
 /** Runtime diagnostics only; not scene authoring data or saved progress. */
 export interface SpatialDebugOptions {
@@ -565,7 +567,7 @@ export function resolveDataSceneSpatialSpec(
     if (entries.length > 1024) throw sceneCompositionDiagnosticError(`${path}.models`, "maximum 1024 instances");
     for (const [id, raw] of entries) {
       const at = `${path}.models.${id}`, m = record(raw, at);
-      keys(m, ["asset", "contentId", "elevation", "yawDegrees", "scale", "castShadow", "receiveShadow", "chunk", "lods"], at);
+      keys(m, ["asset", "contentId", "elevation", "yawDegrees", "scale", "castShadow", "receiveShadow", "shadowOnly", "chunk", "lods"], at);
       if (!id || Object.prototype.hasOwnProperty.call(billboards,id) || typeof m.asset !== "string" || !m.asset || typeof m.contentId !== "string" || !/^[a-f0-9]{64}$/.test(m.contentId))
         throw sceneCompositionDiagnosticError(at, "requires unique model instance, asset ID and SHA-256 contentId");
       const lods:NonNullable<SpatialModelInstanceSpec['lods']>[number][]=[];
@@ -578,7 +580,8 @@ export function resolveDataSceneSpatialSpec(
         ...(m.chunk===undefined?{}:{chunk:m.chunk as string}),...(m.lods===undefined?{}:{lods}),
         elevation:num(m.elevation ?? 0,`${at}.elevation`), yawDegrees:num(m.yawDegrees ?? 0,`${at}.yawDegrees`,-360,360), scale:num(m.scale ?? 1,`${at}.scale`,0.0001,10000),
         ...(m.castShadow===undefined?{}:{castShadow:bool(m.castShadow,`${at}.castShadow`)}),
-        ...(m.receiveShadow===undefined?{}:{receiveShadow:bool(m.receiveShadow,`${at}.receiveShadow`)}) };
+        ...(m.receiveShadow===undefined?{}:{receiveShadow:bool(m.receiveShadow,`${at}.receiveShadow`)}),
+        ...(m.shadowOnly===undefined?{}:{shadowOnly:bool(m.shadowOnly,`${at}.shadowOnly`)}) };
     }
   }
   const modelChunks:NonNullable<DataSceneSpatialSpec['modelChunks']>=Object.create(null);
@@ -604,7 +607,7 @@ export function resolveDataSceneSpatialSpec(
     }
     for(const id of Object.keys(attachments)){const seen=new Set<string>();let parent=id;
       while(attachments[parent]){if(seen.has(parent)||seen.size>=8)throw sceneCompositionDiagnosticError(`${path}.attachments.${id}`,'cyclic attachment or depth exceeds 8');seen.add(parent);parent=attachments[parent].parent;}
-      if(!Object.prototype.hasOwnProperty.call(models,parent))throw sceneCompositionDiagnosticError(`${path}.attachments.${id}`,'root parent must reference an authored model');
+      if(!Object.prototype.hasOwnProperty.call(models,parent)&&!Object.prototype.hasOwnProperty.call(billboards,parent))throw sceneCompositionDiagnosticError(`${path}.attachments.${id}`,'root parent must reference an authored model or billboard');
     }
   }
   return {
@@ -1034,7 +1037,7 @@ export function createSpatialApi(
       for(const [id,m] of Object.entries(spec.models ?? {})) {
         const handle=handles[id], entry=spatialModelRegistry(rust).get(m.asset)!;
         if(!handle) throw sceneCompositionDiagnosticError(`spatial.models.${id}`,"must reference an applied instance");
-        modelMetadata.push(handle.entityId,handle.entityGeneration,entry.id,materialFlags(m),entry.asset.primitives.length,entry.asset.primitives.reduce((n,p)=>n+p.indices.length/3,0));
+        modelMetadata.push(handle.entityId,handle.entityGeneration,entry.id,materialFlags(m)|(m.shadowOnly?4:0),entry.asset.primitives.length,entry.asset.primitives.reduce((n,p)=>n+p.indices.length/3,0));
         modelStyles.push(m.elevation!,m.yawDegrees!*Math.PI/180,m.scale!,...modelUnionBounds([m,...(m.lods??[])].map(l=>spatialModelRegistry(rust).get(l.asset)!.asset.bounds)));
       }
       const attachmentMetadata:number[]=[],attachmentValues:number[]=[];
