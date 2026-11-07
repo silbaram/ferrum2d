@@ -66,7 +66,9 @@ native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 
 태양 shadow sampling은 기하 노멀과 native 직교 basis로 수신 평면의 light-UV 깊이 기울기를 구한다.
 각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
 양 backend는 Y-up texel을 먼저 선택하고 WGSL만 최종 integer row를 뒤집는다. 추가 화면 미분이나 target은 없고
-hard 1회/PCF 최대 9회 깊이 조회를 유지한다. 거의 평행한 면은 기존 slope 보정을 사용한다.
+hard 1회/PCF 최대 9회 깊이 조회를 유지한다. `abs(n·L)>1e-6`까지 평면 보정을 사용하고,
+그보다 평행한 면은 기존 slope 보정으로 돌아간다. UV 깊이 기울기의 L1 크기를 이용해
+두 번의 1/16-pixel raster 오차 여유를 더하며, 예상 깊이가 `[0,1]` 밖인 tap은 밝게 처리한다.
 WebGL2 sun depth와 point/sun caster alpha sampler는 highp로 선언해 기본 lowp 조회를 피한다.
 alpha cutoff는 main/caster에서 같은 정밀도 계약을 사용하며 HDR/depth composite도 기존 highp를 유지한다.
 
@@ -77,6 +79,10 @@ alpha cutoff는 main/caster에서 같은 정밀도 계약을 사용하며 HDR/de
 기존 제한 slope 보정으로 돌아간다. 광선 재구성·교점 계산은 shader에서 수행하며 hard1/PCF9 depth 조회와 기존
 target/pass/cache/ABI는 유지한다. 기존 authored bias·normalBias의 world 단위도 바꾸지 않는다.
 sample 수가 같다는 사실을 GPU 시간 동등성으로 해석하지 않으며 광선·교점 계산 비용은 별도로 측정한다.
+point caster는 보간 world-position 대신 raster XY와 reciprocal clip-W로 radial depth를 복원한다.
+90° cube의 major-axis 거리와 texel ray 길이를 조합하므로 원본 vertex가 eye plane에 있어도
+clip-W나 광원을 이동하지 않고 같은 거리 형식을 유지한다. GLSL은 inverse resolution uniform 1개,
+WGSL은 기존 camera record의 padding field를 사용하며 CPU bulk upload 크기·target/pass·Rust ABI는 유지한다.
 단일 태양 map은 XY texel 4개의 world 폭으로 내부 경계의 visibility를 직접 조명에 혼합한다.
 XY·깊이 경계의 최소 거리를 사용하며 영역 밖 visibility 1, native coverage·snapping·shadow cache는 유지한다.
 

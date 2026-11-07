@@ -103,7 +103,7 @@ ground silhouette 역시 수신면별 가시성을 계산하는 shadow map과 �
 
 ### S01 · P1 · billboard shadow proxy 제작·동작 범위 검증
 
-기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
+**카메라 독립 선택·동작 회귀 완료.** 기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
 `shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
 
 **남은 작업:** 실제 캐릭터·나무 asset에서 표시 애니메이션 UV/flip·높이 변화·화면 밖 caster를 포함해
@@ -119,9 +119,19 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 점광원 radial cube와 일반 태양 수신면의 현재 비교식은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
 작성한 bias/normalBias가 과도한 장면의 접촉 분리와, 유효한 교점을 얻을 수 없는 tap의 근사 한계는 별도다.
 
-**남은 작업:** 경사·곡면·얇은 mesh와 거의 평행한 태양 수신면에서 acne와 접촉 분리를 함께 측정한다.
-실제 게임 asset의 큰 반경/낮은 해상도·normalBias 조합도 포함한다. fallback과 raster 정밀도 여유가 적용되는
-구간을 구별해 bias/normal offset/필터 폭의 진단을 보강하고, 단순 bias=0 변경으로 완료 처리하지 않는다.
+**수정·검증 완료:** 낮은 태양의 raster 정밀도 여유 누락, 평면 교점이 map 깊이 범위를 벗어난 tap의
+빈 texel 오인, 평면 보정의 과도한 입사각 cutoff를 수정했다. 원본 caster의 clip-W=0 정렬 장면에서는
+보간 world-position 기반 radial depth가 backend별로 달라지는 것을 확인했고, raster XY/reciprocal-W로 저장하도록 바꿨다.
+같은 장면의 문제 cubemap 면 깊이 차이는 약 0.048에서 3e-8로 줄었다. 임의 light/clip-W 이동은 채택하지 않는다.
+
+태양 5°/1°/0.1°/0.03°, thin/slope/curve GLB, 나무 MASK·바위의 radius 2048·낮은 해상도·normalBias 조합을
+실제 픽셀로 측정했다. CPU raycast는 receiver 높이와 game asset의 실제 가림/열림 oracle이다.
+저해상도 곡면 PCF는 단일 접평면 근사의 한계가 남으며, 해상도/normalBias 조합으로 해소되는지와
+같은 품질 조합에서 작은 caster 그림자가 유지되는지를 함께 검사한다. 검증 입력·판정·명령은
+[수신면·그림자 계약](../engine/data-scene-spatial.md#수신면-해상도와-bias-진단)과 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
+
+**확장 후보:** 임의 곡률을 자동 보정하는 별도 receiver 정보/필터, 실제 GPU의 정밀도·성능 검증은
+추가 비용과 대상 장면을 정한 뒤 검토한다. 전역 bias를 키우거나 authored normalBias를 자동 변경하는 방식으로 해결하지 않는다.
 WebGL2의 highp sampler 선언은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
 낮은 정밀도를 실제로 사용하는 기기의 품질·성능 측정은 software adapter 결과와 구분한다.
 
@@ -131,7 +141,7 @@ WebGL2의 highp sampler 선언은 [공간 조명 계약](../engine/data-scene-sp
 
 ### S03 · P1 · 태양 그림자 coverage와 화면 밖 caster 여유
 
-**구현 확인·수치 재현 / 시각적 정도는 추가 측정.** 한 장의 고정 extent map이 camera target을 따라간다.
+**단일 map 경계·픽셀 회귀 완료 / coverage 확장은 제안.** 한 장의 고정 extent map이 camera target을 따라간다.
 고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다. 기준축·내부 경계 fade의 현재 동작과
 극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
 
@@ -286,6 +296,15 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 이 검토의 구현 종료 조건은 S01의 카메라 독립 caster 선택, S02의 접촉·극단 입사각 검증,
 S03의 단일 map 경계 전환, L02의 flat 광원별 차폐 합성, 양 backend의 실제 shadow 픽셀·자원 회귀를 확인하는 것이다.
 태양 수신 평면 보정과 proxy 지원만으로 이 후속 검토 전체가 끝났다고 처리하지 않는다.
+
+**2026-11-07 검증 결과:** 위 그림자 후속 검토 범위의 구현·로컬 회귀를 완료했다.
+그림자 3,744 + proxy 160 + flat 합성 496 = 4,400상태와 별도 환경·재질/UV 896상태가 통과했다.
+태양 grazing의 열린 바닥 오차는 관측 RGB 0, 실제 에셋의 열린 바닥도 0이며 최소 그림자 대비는 84다.
+곡면의 해소된 대조군은 RGB 오차 0, 같은 품질 조합의 작은 caster 최소 대비는 94다.
+낮은 해상도의 곡면 PCF 진단 112행 중 96행에는 근사 한계가 관측돼 별도로 기록했으며 무오차로 판정하지 않는다.
+Rust unit 1,631 + integration 1과 웹 unit 1,408, lint/build/package/문서 검증도 통과했다.
+SwiftShader의 실제 GL/GPU API·offscreen 픽셀 검증이며 실물 GPU 성능이나 native canvas presentation 보장은 아니다.
+이 판정은 위 종료 조건에 대한 것이며, M0~M6 전체 조명 계획이나 콘텐츠별 proxy/LOD 작성, cascade·곡률 인지 필터를 완료한 것으로 확대하지 않는다.
 
 ## 5. 공통 설계·호환성 원칙
 

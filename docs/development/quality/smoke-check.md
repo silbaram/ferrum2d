@@ -1870,7 +1870,8 @@ HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
 그림자 fixture는 point/sun 단독·동시·hard/PCF, model MASK의 실제 바닥 light hole, model cast와 terrain/model/billboard receive,
 벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정,
-태양 고도 기준축 경계·낮은 caster 접촉·유한 범위 경계와 점광원 접촉 회귀를 포함한 116상태를 비교한다.
+태양 고도 기준축 경계·낮은 caster 접촉·유한 범위 경계와 점광원 접촉의 기존 116상태에
+아래 수신면 진단 118상태를 더한 234상태를 비교한다.
 alpha patch/atlas 교체 뒤 cache miss, native caster revision에 따른 camera 변경 재계산, GPU normal-only 갱신의 cache 보존을 검사한다.
 각 상태 cold6/1/7 pass와 warm shadow draw/upload0·WebGPU의 실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
 GPU/GL 간 채널3·상이 pixel1% 미만을 적용하며 `report.shadowCases`와 shadow PNG에 증거를 남긴다.
@@ -1895,7 +1896,31 @@ lit/receiver/open 값을 기록한다. fresh JSON handle 복원 후 전체 frame
 XY/depth 각각 shadow off와 hard/PCF3 × 내부 여유 3/2/1.5/1/0.5/0/-1 world unit을 검사한다.
 중간 구간은 fully shadowed/fully lit 사이여야 하며 범위 밖은 off와 채널 차이 3 이하, pan 순서의 밝기는 역전하지 않아야 한다.
 `shadowEdges`에 축·필터·여유·수신점 값을 기록한다. 내부 접촉/기준축/다른 광원 검증도 유지한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자116상태와 아래 proxy·flat 검사를 실행할 수 있다.
+수신면 진단은 다음을 검사한다.
+
+- 태양 5°/1°/0.1°/0.03° × OFF 및 128/256/512/1024 hard/PCF의 36상태다.
+  열린 바닥 9점의 RGB 차이는 OFF 대비 3 이하다. 5°/1°의 낮은 caster 그림자는 R 대비 20 초과의 차이를 요구한다.
+  caster가 light texel을 실제로 덮도록 1° fixture는 폭을 늘린다. 표본이 없는 얇은 caster의 그림자를 기대값으로 삼지 않는다.
+- 자체 제작 thin/slope/curve GLB는 CPU 삼각형 raycast로 독립 높이 oracle을 확인한다.
+  sun/point, 128/256, hard/PCF, normalBias 0/0.35를 검사하며 곡면 point에는 2와 512/1024 품질 조합도 추가한다.
+  총 62상태이며 얇은 면·경사면·sun 곡면과 해소된 point 조합은 OFF 대비 RGB 차이 3 이하다.
+  낮은 해상도의 곡면 PCF는 `approximationLimited`와 실제 오차를 기록하는 진단 행이다.
+  이 행의 자기 그림자를 무오차로 인정하지 않는다. 128/PCF/0에서 오차 10 초과를 요구해 진단 입력이 무효가 되는 것도 거절한다.
+  512/normalBias 0.35, 1024/0 및 0.35는 차이 3 이하를 강제한다.
+- 같은 곡면의 1024 PCF/normalBias 0.35에서 작은 caster OFF/ON 2상태를 더해 접촉 대비 20 초과를 요구한다.
+- 기존 나무의 geometry/UV/MASK/sampler를 유지한 diffuse 대조군과 원본 바위 GLB는 CPU triangle/alpha raycast로 보이는 바닥의 가림/열림을 분류한다.
+  나무의 normal 강도와 emission만 기존 scale0 variant로 끈다. 그림자 형상과 alpha 입력은 바꾸지 않는다.
+  radius 2048, 128/256 hard/PCF, normalBias 0/0.35의 18상태에서 차폐 대비 10 초과·열린 바닥 차이 3 이하를 요구한다.
+  광원이 바닥 모서리에 정렬된 장면도 유지해 clipped caster의 radial depth 저장 회귀를 검출한다.
+
+위 118상태는 두 backend·투영·viewport·DPR 조합에서 1,888상태가 된다. `sunGrazing`, `receiverModels`,
+`curvedContact`, `realAssetShadows`와 PNG를 보존한다. 기존 RGB 채널3/상이 pixel1% 미만 조건을 그대로 적용하고,
+parity 실패 시에도 두 실패 PNG와 위치·상태 정보를 report에 남긴다.
+`--offscreen-target --receiver-shadows-only`로 전체 진단, `--offscreen-target --game-asset-shadows-only`로
+실제 에셋 18상태만 실행한다. full/offscreen CI 경로에 포함한다. fixture당 callback 상한은
+512이며 full의 cold/warm 234×2 + 추가 read 8 = 476회다. 각 callback의 Rust 시간·draw 예산은 그대로다.
+configure의 cold에서는 기존에 사용하지 않던 픽셀 readback만 생략한다. cold 비용·warm cache와 모든 상태의 warm 픽셀은 계속 검사한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자234상태와 아래 proxy·flat 검사를 실행할 수 있다.
 
 flat fixture는 GL legacy·GPU legacy·GL linear-srgb 각각에서 물리/가상 해상도 × 노멀맵 OFF/ON으로
 red/blue 두 빛·주변광·태양광 보존, warm 재사용, 단일/중복 차폐체, 빨강 투과, alpha 0, 광원 없음,
@@ -1919,7 +1944,7 @@ fresh restore는 frame byte 차이0, GL/GPU는 채널3/상이 pixel1% 미만이�
 native `spatial_shadow_only` 회귀는 cold flag 검증·기존 output ABI·camera/light mask와
 interpolation ON/OFF의 파생 elevation·물리 body/collider/heightSpan 부재·billboard root yaw capture를 검사한다.
 native cube matrix 회귀는 6면 중심 축과 비중심점의 canonical UV를 함께 검사해 shader의 광선 복원과
-다른 방향으로 면이 뒤집히거나 회전하는 변경을 거절한다.
+다른 방향으로 면이 뒤집히거나 회전하는 변경을 거절한다. clip-W의 world major-axis 거리와 reciprocal-W radial 복원의 단위도 검사한다.
 `cargo test --manifest-path crates/ferrum-core/Cargo.toml spatial_sun_stability`는 동일 경계와 천정/지평선의
 기준축 연속성, 양 극점의 유한·직교 행렬, camera orbit 불변과 subtexel/한 texel 이동을 검사한다.
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.

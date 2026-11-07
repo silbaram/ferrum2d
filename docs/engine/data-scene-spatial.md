@@ -776,6 +776,15 @@ authoring에 연결한 cutout billboard가 그림자를 만들고 받는다. 동
 WebGPU는 같은 texel의 행만 뒤집어 array face에서 읽으므로 경계에서 서로 다른 면을 암묵적으로 고르지 않는다.
 [Khronos cube map 규칙](https://registry.khronos.org/OpenGL/specs/gl/glspec46.core.pdf)의 좌표 변환을 사용한다.
 
+점광원 caster의 radial depth도 화면의 texel 좌표와 reciprocal clip-W로 복원한다.
+90° cube 투영에서 `uv = fragCoord.xy × 2/resolution - 1`이면 world 거리는
+`length([uv.x, uv.y, 1]) / fragCoord.w`다. 광원 반경으로 나눠 기존 radial depth 형식에 저장한다.
+`fragCoord.w`는 [GLSL](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)과
+[WGSL fragment position](https://www.w3.org/TR/WGSL/)의 reciprocal-W 입력이다.
+점광원 eye plane에 정렬된 원본 정점의 world-position varying에 의존하지 않으며,
+정점의 clip-W나 light pose를 임의로 이동하지 않는다. alpha cutoff와 태양 projected depth 경로는 유지한다.
+WebGPU는 기존 camera record의 여유 field로 inverse resolution을 전달하고 업로드 크기·Rust ABI는 바꾸지 않는다.
+
 유효 교점은 광원 앞·반경 안에 있어야 하며, 광선과 기하 법선의 내적 절댓값이 `1e-6`보다 커야 한다.
 조회 위치 `q`, 광원 `L`, 단위 기하 법선 `n`, texel 중심 단위 광선 `r`이면
 `t = dot(n, q-L) / dot(n,r)`다. 이때 world 비교 허용량은 다음과 같다.
@@ -1247,10 +1256,31 @@ software adapter의 픽셀 동등성 결과만으로 확인할 수 없다.
 태양 hard/PCF는 각 shadow texel 중심에서 수신 평면의 깊이를 계산해 비교한다.
 기하 노멀과 직교 sun matrix로 깊이 기울기를 구하므로 노멀맵과 화면 해상도로 그림자 접촉 위치를 흔들지 않는다.
 PCF를 켠다는 이유만으로 평면 전체의 자동 bias를 3배로 늘리지 않아 낮은 caster의 그림자가 사라지는 문제를 줄인다.
-작성한 `bias`와 `normalBias`의 world 단위·기본값은 유지한다. 거의 빛과 평행한 수신면은
-수치 불안정을 피하려고 기존의 제한된 slope 보정을 사용하며 깊이 비교에는 작은 부동소수점 허용량도 포함한다.
+정규화된 깊이의 UV 기울기를 `g`, map 해상도를 `N`이라 하면 raster 정밀도 여유는
+`(|g.x| + |g.y|) / (8N)`이다. 두 번의 1/16-pixel 좌표 오차를 보수적으로 합친 값이며
+필터 폭으로 곱하지 않는다. 1°의 낮은 태양에서도 열린 평면의 자기 그림자를 억제한다.
+각 tap의 예상 깊이가 `[0,1]` 밖이면 그 tap은 유효한 수신 평면 교점이 없으므로 밝게 처리한다.
+빈 texel의 깊이 1을 범위 밖 예상 깊이와 비교해 가림으로 오인하지 않는다.
+`abs(n·L) > 1e-6`에서는 평면 보정을 유지한다. 더 평행한 수신면은 기존의 제한된 slope 보정을 사용하며
+깊이 비교에는 작은 부동소수점 허용량도 포함한다. 작성한 `bias`와 `normalBias`의 world 단위·기본값은 유지한다.
 이 변경으로 기존 버전보다 접촉 그림자가 가깝게 나타날 수 있다. caster 형상·영역 밖의 visibility·필터 sample 수는 같다.
 점광원의 radial cube 보정은 위 환경·조명 계약을 따른다.
+
+### 수신면 해상도와 bias 진단
+
+수신 평면 보정은 각 fragment의 **접평면** 근사다. 굽은 메시의 먼 PCF 이웃까지 같은 평면으로
+취급하면, 실제 표면이 접평면보다 올라오는 부분에서 자기 그림자가 남을 수 있다.
+자동 raster 여유는 좌표 정밀도 오차를 다루며 임의 곡률까지 상쇄하는 보정이 아니다.
+해상도와 광원-수신면 거리, world 단위 `normalBias`를 함께 조절한다. 큰 bias만 올리면
+가까운 caster 그림자가 분리되거나 사라질 수 있으므로 같은 설정에서 접촉도 비교해야 한다.
+평면 바닥·태양 고도 θ에서 normal offset `s`가 만드는 경계 이동의 기하적 근사는 `s × cot(θ)`다.
+`normalBias: 0.35`라면 30°에서는 약 0.61 world unit이지만 1°에서는 약 20 world unit이다.
+낮은 태양의 접촉 손실은 해상도와 함께 이 작성값도 확인한다. 엔진은 이 값을 자동으로 키우지 않는다.
+
+회귀용 곡면·반경 2048의 점광원에서는 128 PCF/normalBias 0의 오차와
+512/normalBias 0.35, 1024/normalBias 0의 해소 여부를 각각 기록한다.
+1024 PCF/normalBias 0.35에서는 곡면 바로 위의 작은 caster 그림자도 별도로 유지해야 한다.
+이는 해당 fixture의 검증 조합이며 모든 에셋의 권장 기본값은 아니다. 그림자 기본 해상도와 bias는 바꾸지 않는다.
 
 ### 하늘·지면 반구광과 그림자 표면 보정
 
