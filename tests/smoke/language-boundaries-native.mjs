@@ -161,45 +161,87 @@ function checkAbi() {
 }
 
 function checkConstantFrameCalls() {
+  const baseBudget = 21;
+  const volumeReads = ["ground_shadow_volume_abi_version", "ground_shadow_volume_vertex_stride",
+    "ground_shadow_volume_ptr", "ground_shadow_volume_len", "ground_shadow_volume_caster_count"];
+  const volumeExports = new Set([...volumeReads, "configure_data_scene_ground_shadow_volume"]);
   const cases = [];
-  for (const entities of [1, 128, 1024]) {
-    const native = new Engine();
-    const calls = new Map();
-    const engine = new Proxy(native, { get(target, key) {
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? (...args) => {
-        calls.set(String(key), (calls.get(String(key)) ?? 0) + 1);
-        return Reflect.apply(value, target, args);
-      } : value;
-    } });
-    try {
-      configure(engine);
-      for (let i = 0; i < entities; i++) spawn(engine);
-      const bridge = new WasmBridge(engine, wasm_memory());
-      // Setup/ABI calls are outside the measured frame, while all reads and
-      // writes performed by both runFrame and its bridge remain instrumented.
-      calls.clear();
-      let renders = 0;
-      runFrame({ bridge, rustEngine: engine, physicsSpec: resolvePhysicsSpec({}),
-        needsFrameState: true, options: {}, inputProvider: neutralInput,
-        onRenderFrame(frame) {
-          renders++;
-          assert.equal(frame.renderCommandBuffer.commandCount, entities);
-          assert.equal(frame.renderCommandBuffer.buffer.length, entities * 15);
-          assert.ok(frame.renderCommandBuffer.buffer.every(Number.isFinite));
-        },
-      }, 1 / 60);
-      assert.equal(renders, 1);
-      assert.equal(calls.get("set_input"), 1);
-      assert.equal(calls.get("update_frame"), 1);
-      const counts = Object.fromEntries([...calls].sort(([a], [b]) => a.localeCompare(b)));
-      const total = [...calls.values()].reduce((a, b) => a + b, 0);
-      assert.ok(total <= 21, `default frame dispatch budget exceeded: ${total} > 21 (${entities} entities)`);
-      cases.push({ entities, totalNativeMethodCalls: total, counts });
-    } finally { native.free(); }
+  for (const scenario of [
+    { name: "legacy-exports", volumes: false, cast: false },
+    { name: "empty-volume-sidecar", volumes: true, cast: false },
+    { name: "active-volume-sidecar", volumes: true, cast: true },
+  ]) {
+    const scenarioCases = [];
+    for (const entities of [1, 128, 1024]) {
+      const native = new Engine();
+      const calls = new Map();
+      const engine = new Proxy(native, { get(target, key) {
+        // Exercise the optional-export fallback using the actual native engine.
+        if (!scenario.volumes && volumeExports.has(key)) return undefined;
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? (...args) => {
+          calls.set(String(key), (calls.get(String(key)) ?? 0) + 1);
+          return Reflect.apply(value, target, args);
+        } : value;
+      } });
+      try {
+        configure(engine);
+        if (scenario.cast) assert.ok(engine.configure_data_scene_sun(1, 0, 0.6, 1, 10000));
+        for (let i = 0; i < entities; i++) {
+          spawn(engine);
+          if (scenario.cast) assert.ok(engine.configure_data_scene_ground_shadow_volume(
+            engine.data_scene_entity_id(), engine.data_scene_entity_generation(),
+            16, 8, 8, 4, 0, -4, 1, false, 0));
+        }
+        const bridge = new WasmBridge(engine, wasm_memory());
+        // Setup/ABI calls are outside the measured frame, while all reads and
+        // writes performed by both runFrame and its bridge remain instrumented.
+        calls.clear();
+        let renders = 0, volumeCasterCount = 0, volumeVertexCount = 0;
+        runFrame({ bridge, rustEngine: engine, physicsSpec: resolvePhysicsSpec({}),
+          needsFrameState: true, options: {}, inputProvider: neutralInput,
+          onRenderFrame(frame) {
+            renders++;
+            assert.equal(frame.renderCommandBuffer.commandCount, entities);
+            assert.equal(frame.renderCommandBuffer.buffer.length, entities * 15);
+            assert.ok(frame.renderCommandBuffer.buffer.every(Number.isFinite));
+            const volumes = frame.renderCommandBuffer.groundShadowVolumes;
+            if (scenario.cast) {
+              assert.ok(volumes, "active volume geometry must reach the renderer");
+              volumeCasterCount = volumes.casterCount; volumeVertexCount = volumes.vertexCount;
+              assert.equal(volumeCasterCount, entities);
+              assert.ok(volumeVertexCount >= entities * 3 && volumeVertexCount <= entities * 24);
+              assert.equal(volumes.buffer.length, volumeVertexCount * 3);
+              assert.ok(volumes.buffer.every(Number.isFinite));
+            } else assert.equal(volumes, undefined);
+          },
+        }, 1 / 60);
+        assert.equal(renders, 1);
+        assert.equal(calls.get("set_input"), 1);
+        assert.equal(calls.get("update_frame"), 1);
+        const counts = Object.fromEntries([...calls].sort(([a], [b]) => a.localeCompare(b)));
+        const total = [...calls.values()].reduce((a, b) => a + b, 0);
+        const volumeBudget = scenario.volumes ? volumeReads.length : 0;
+        // Only the five named bulk metadata reads receive the extension allowance.
+        // Keep the original 21-call budget for every other native method.
+        for (const name of volumeReads) assert.equal(calls.get(name) ?? 0, scenario.volumes ? 1 : 0,
+          `${name} must be read once per frame, independently of entity/caster count`);
+        const baseCalls = [...calls].filter(([name]) => !volumeReads.includes(name)).reduce((sum, [, n]) => sum + n, 0);
+        const budget = baseBudget + volumeBudget;
+        const row = { scenario: scenario.name, entities, totalNativeMethodCalls: total, baseNativeMethodCalls: baseCalls,
+          budget, volumeCasterCount, volumeVertexCount, counts };
+        cases.push(row); scenarioCases.push(row);
+        assert.ok(baseCalls <= baseBudget, `base frame dispatch budget exceeded: ${baseCalls} > ${baseBudget} (${entities} entities)`);
+        assert.ok(total <= budget, `frame dispatch budget exceeded: ${total} > ${budget} (${entities} entities)`);
+      } finally { native.free(); }
+    }
+    assert.deepEqual(scenarioCases[1].counts, scenarioCases[0].counts, `${scenario.name}: 128 entities changed frame dispatches`);
+    assert.deepEqual(scenarioCases[2].counts, scenarioCases[0].counts, `${scenario.name}: 1024 entities changed frame dispatches`);
   }
-  assert.deepEqual(cases[1].counts, cases[0].counts, "128 entities increased or changed frame dispatches");
-  assert.deepEqual(cases[2].counts, cases[0].counts, "1024 entities increased or changed frame dispatches");
+  for (const entities of [1, 128, 1024]) assert.deepEqual(
+    cases.find(row => row.scenario === "active-volume-sidecar" && row.entities === entities).counts,
+    cases.find(row => row.scenario === "empty-volume-sidecar" && row.entities === entities).counts,
+    "active volume casters must not add per-caster native calls");
   report.cases.push({ name: "constant-native-frame-dispatch", status: "passed", cases });
 }
 

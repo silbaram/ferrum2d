@@ -1295,7 +1295,7 @@ release 후보를 배포하지 않고 로컬에서 리허설할 때는 `pnpm rel
 
 ## CI와 로컬 검증 차이
 
-현재 GitHub Actions CI는 `workflow_dispatch`로 수동 실행한다. `ferrum-web-v*` tag ref에서도 GitHub 배포용 candidate guard와 `private: true` package 검사를 사용하며 consumer smoke와 extended browser matrix를 실행한다. branch에서 해당 matrix가 필요하면 각각 `consumer_smoke`, `extended_browser_smoke` input을 켠다. npm publish 전용 검사는 별도 npm 배포 절차에 남긴다.
+기본 GitHub Actions CI(`.github/workflows/ci.yml`)는 `workflow_dispatch`로 수동 실행한다. 별도 `Language boundaries` workflow는 PR/main push에서 자동 실행한다. 기본 CI는 `ferrum-web-v*` tag ref에서도 GitHub 배포용 candidate guard와 `private: true` package 검사를 사용하며 consumer smoke와 extended browser matrix를 실행한다. branch에서 해당 matrix가 필요하면 각각 `consumer_smoke`, `extended_browser_smoke` input을 켠다. npm publish 전용 검사는 별도 npm 배포 절차에 남긴다.
 
 현재 CI 기준:
 
@@ -2552,7 +2552,11 @@ cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_
 - `pnpm validate:language-boundaries`: QuestLog/DialogueSession/PixelMaskTerrain의 native 위임과 필드·쓰기·타입 출처를 검사한다.
   세 facade의 scoped regression gate이며 전체 TS 코드의 gameplay 부재를 증명하는 정적 분석기는 아니다.
 - 현재 `pnpm build:wasm` 및 SDK build 후 `pnpm smoke:language-boundaries`:
-  실제 Wasm ABI, 1/128/1024 엔티티에서 동일한 frame 호출 분포와 21회 예산,
+  실제 Wasm ABI, 1/128/1024 엔티티에서 동일한 frame 호출 분포와 기본 21회 예산을 검사한다.
+  volume export가 있으면 version/stride/ptr/vertex count/caster count의 고정 bulk 읽기 5회를 별도 허용해 총 26회다.
+  이 5개 getter는 각각 프레임당 정확히 한 번이어야 하며, 나머지 native 호출은 기존 21회 이하를 유지한다.
+  선택형 export가 없는 호환 경로·빈 sidecar·엔티티 전체가 volume caster인 경로를 같은 규모에서 비교하고,
+  실제 triangle buffer가 renderer에 전달되며 caster 증가가 호출 분포를 바꾸지 않는지 확인한다.
   render→effect summary 순서·memory.grow 뒤 frame snapshot 유지,
   native quest/dialogue/terrain 위임·공유 상태·owned snapshot을 검사한다.
 - `pnpm test:web`: callback 재진입, provider/custom renderer/audio getter의 native 성장,
