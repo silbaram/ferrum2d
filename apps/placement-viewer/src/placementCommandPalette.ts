@@ -1,4 +1,5 @@
 import { decorateViewportAction } from "./placementViewportChrome";
+import { commandSearchShortcut, isCommandSearchShortcut, isMacPlatform } from "./placementKeyHints";
 import { formatUi, onPlacementLocaleChange, registerUiRoot, setUiAttribute, setUiText, uiMessage, type UiContent } from "./placementLocale";
 
 export interface PlacementCommand {
@@ -30,7 +31,8 @@ export function createPlacementCommandPalette(options: {
 }) {
   const button = document.createElement("button"); button.type = "button";
   button.dataset.placementCommandSearch = "true";
-  decorateViewportAction(button, "search", "Search Commands", "F3", true);
+  const mac = isMacPlatform();
+  decorateViewportAction(button, "search", "Search Commands", `${commandSearchShortcut(mac)} · F3`, true);
   const dialog = document.createElement("dialog"); dialog.className = "placement-command-palette";
   dialog.id = "placement-command-palette";
   button.setAttribute("aria-haspopup", "dialog"); button.setAttribute("aria-controls", dialog.id);
@@ -114,7 +116,8 @@ export function createPlacementCommandPalette(options: {
   dialog.addEventListener("cancel", event => { event.preventDefault(); if (!composing) close(); });
   dialog.addEventListener("click", event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) close(); } });
   window.addEventListener("keydown", event => {
-    if (event.code !== "F3" || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.repeat || composing) return;
+    const f3 = event.code === "F3" && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (!(f3 || isCommandSearchShortcut(event, mac)) || event.isComposing || event.repeat || composing) return;
     if (!options.root.isConnected || !options.canOpen() || otherModal()) return;
     event.preventDefault(); event.stopImmediatePropagation(); open();
   }, { capture: true, signal: lifetime.signal });

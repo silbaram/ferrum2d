@@ -3795,3 +3795,39 @@ textarea {
 /* Locked is a state here, not a selected tool, so it skips the amber pressed style. */
 .demo-shell .placement-instance-row > [data-placement-lock-instance][aria-pressed] { border: 0; background: transparent; color: var(--fg-3); box-shadow: none; }
 .demo-shell .placement-instance-row > [data-placement-lock-instance][aria-pressed]:hover { color: var(--fg-0); background: var(--bg-3); }
+/* Idle key reference: muted and single-line; narrow bars drop hints from the tail. */
+.placement-status-bar .placement-key-hints {
+  display: flex;
+  /* Zero basis: hints take only leftover space and never squeeze the document status. */
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  min-width: 0;
+  /* One line tall: a hint that does not fit wraps out of view whole instead of being cut. */
+  height: 16px;
+  gap: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--fg-3);
+}
+.placement-status-bar .placement-key-hints[hidden] {
+  display: none;
+}
+.placement-key-hint {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+.placement-key-hint > kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font: 10px/14px var(--ff-mono);
+}
+@media (max-width: 860px) {
+  .placement-status-bar .placement-key-hints {
+    display: none;
+  }
+}

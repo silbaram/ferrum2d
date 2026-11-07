@@ -1178,6 +1178,7 @@ async function bootstrap(): Promise<void> {
       syncTabs();
       viewportNavigation?.syncSelection(state);
       selectionTools?.sync(state);
+      viewportToolbar?.syncSelection(state.selectedInstanceIds.length, hasLockedSelection(state));
       transformGizmo?.sync(state);
       const assetMount = inspector.assetMount;
       bottomDock.mountAssets(assetMount);

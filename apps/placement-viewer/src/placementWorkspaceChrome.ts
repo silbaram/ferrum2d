@@ -51,7 +51,10 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   root.dataset.compactChrome = "true";
   strip.insertBefore(viewport.element, layout);
   const readout = viewport.element.querySelector<HTMLElement>(".placement-tool-readout");
-  if (readout) root.querySelector(".placement-status-bar")?.append(readout);
+  // Between the document status and the review/export group, which keeps the right edge.
+  const statusBar = root.querySelector<HTMLElement>(".placement-status-bar");
+  if (readout && statusBar)
+    statusBar.insertBefore(readout, statusBar.querySelector(":scope > [data-placement-review-summary]")).after(viewport.keyHints);
   const language = actions.querySelector<HTMLElement>(".placement-language"),
     history = actions.querySelector<HTMLElement>(".placement-session-controls"),
     playback = actions.querySelector<HTMLElement>(".placement-mode-controls");
