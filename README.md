@@ -5,7 +5,7 @@
 Rust / WebAssembly로 게임을 실행하고, TypeScript와 WebGL2로 브라우저에 그립니다.
 AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer에서 배치와 실행 결과를 확인합니다.
 
-[시작하기](#시작하기) · [예제](#예제-갤러리) · [기능 안내](docs/engine/ai-feature-guide.md) · [문서](docs/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
+[브라우저에서 체험하기](https://silbaram.github.io/ferrum2d/) · [시작하기](#시작하기) · [예제](#예제-갤러리) · [기능 안내](docs/engine/ai-feature-guide.md) · [문서](docs/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
 
 ![Ferrum2D HD-2D 마을: Scene/Object Placement Viewer](docs/development/quality/screenshots/placement-village.png)
 
@@ -93,10 +93,12 @@ flowchart LR
 - **Rust:** 게임 상태, 시뮬레이션, 충돌, 씬 로직과 렌더 명령 생성을 담당합니다. 퀘스트·대화 진행과 파괴 지형 원본도 Rust가 소유합니다.
 - **TypeScript:** 브라우저 API, 입력·오디오·에셋 로딩과 GPU 렌더링, 콘텐츠 검증·UI 표시를 담당합니다.
 
-독립 대화·지형 도구를 엔진보다 먼저 생성할 때는 `await initializeFerrumWasm()`으로 초기화합니다. [초기화·수명 계약](docs/engine/public-api/core.md)을 확인하세요.
 - **Wasm 경계:** 객체마다 왕복 호출하지 않고 숫자 버퍼로 데이터를 묶어 전달합니다.
 - **검증:** 화면 확인에 spec validation, replay와 성능 예산을 함께 사용합니다.
 
+독립 대화·지형 도구를 엔진보다 먼저 생성할 때는 `await initializeFerrumWasm()`으로 초기화합니다. [초기화·수명 계약](docs/engine/public-api/core.md)을 확인하세요.
+
+[사용자 설명서](docs/engine/user-guide.md)에서 기능·예제·뷰어 저장 범위를,
 [아키텍처](docs/development/architecture/architecture.md)에서 책임 경계와 실행 흐름을 설명합니다.
 Behavior Recipe 본문·FSM/action graph를 UI에서 작성하는 범용 visual editor, 멀티플레이어,
 전체 게임 루프 Worker 이전·Wasm threads·복잡한 물리는 별도 설계와 승인 범위입니다.

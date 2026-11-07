@@ -9,6 +9,9 @@ const shouldCheckDistPages = process.argv.includes("--dist-pages");
 
 const requiredDistPages = [
   "index.html",
+  "fonts/NotoSansKR-UI.woff2",
+  "fonts/NotoSansKR-OFL.txt",
+  "fonts/NotoSansKR.source.json",
   "docs/index.html",
   "docs/engine/ai-agent-install.html",
   "docs/engine/ai-feature-guide.html",

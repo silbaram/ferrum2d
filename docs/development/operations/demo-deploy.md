@@ -28,12 +28,15 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 - inline code, emphasis, link, image
 - `*.md` 내부 링크를 대응하는 `*.html` 경로로 변환
 - `docs/development/quality/screenshots/*` 같은 문서 asset 복사
+- 뷰어의 한국어 subset WOFF2·OFL 라이선스·출처 정보를 `dist-pages/fonts/`에 복사하고, 홈·중첩 문서에서 상대 경로로 참조. 한글 글꼴이 없는 환경에서도 외부 CDN 없이 표시한다.
 
 문서 사이트의 기준 소스는 계속 `docs/**/*.md`다. `dist-pages/docs/`는 배포 artifact일 뿐 git에 포함하지 않는다.
 
-홈 문서 카드는 AI 설치·기능 안내, Showcase, Quickstart, Public API, Data Scene Authoring,
+홈은 기능 체험·프로젝트 생성·씬 작성의 세 경로를 먼저 제공한다.
+문서 카드는 사용자 설명서, AI 설치·기능 안내, Showcase, Quickstart, Public API, Data Scene Authoring,
 HD-2D 공간 기반, 예제 Spec, Smoke/Budget, Release 진입점을 제공한다.
 문서 메뉴는 시작하기·공개 API·게임 제작·공식 예제·엔진 개발/검증·배포/운영·개발 계획/후보로 묶는다.
+사이트는 배포한 개발 소스의 문서·예제이며, GitHub Release 설치 파일의 버전과 별개임을 홈에서 안내한다.
 시작하기와 현재 문서의 그룹을 기본으로 펼친다. `<details>`를 사용하므로 별도 JavaScript 없이
 마우스와 키보드로 다른 그룹을 펼칠 수 있다. 새 문서는 경로에 따라 해당 그룹에 자동 포함된다.
 넓은 표는 키보드로도 접근 가능한 자체 가로 스크롤 영역에 표시해 모바일에서 문서 전체 폭이 늘어나지 않게 한다.
@@ -46,7 +49,7 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-`pnpm validate:pages-artifact`는 Pages 홈, docs index, AI 설치·기능 안내, Showcase Hub, quickstart, public API, Data Scene Authoring·공간 기반, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+`pnpm validate:pages-artifact`는 Pages 홈, docs index, AI 설치·기능 안내, Showcase Hub, quickstart, public API, Data Scene Authoring·공간 기반, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. 한글 글꼴·라이선스·출처 파일의 포함도 요구한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
 
 ## Pages demo readiness checklist
 
@@ -55,7 +58,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | 항목 | 기준 | 확인 |
 | --- | --- | --- |
 | production build | Wasm package, packages, examples dist가 최신이다. | `pnpm build` |
-| Pages artifact | Pages home, docs HTML, seven demo routes가 생성된다. | `pnpm build:pages` |
+| Pages artifact | Pages home, docs HTML, 7개 demo routes가 생성된다. | `pnpm build:pages` |
 | route/link integrity | 주요 docs route와 generated HTML 로컬 링크가 깨지지 않는다. | `pnpm validate:pages-artifact` |
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
 | Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 26종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
@@ -69,7 +72,13 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 
 ## GitHub Actions
 
-`.github/workflows/pages.yml`은 수동 실행(`workflow_dispatch`)에서만 동작한다. 현재 `CI`도 수동 실행 전용이므로 일반 push/PR만으로 검증이나 Pages 배포가 실행되지 않는다. 검증과 배포가 필요한 시점에 Actions UI에서 해당 workflow를 명시적으로 실행한다.
+`.github/workflows/pages.yml`의 **Pages 배포는 수동 실행(`workflow_dispatch`) 전용**이다.
+일반 push/PR로 사이트를 배포하지 않는다. `CI`도 수동 실행 전용이지만,
+`Language boundaries`는 PR 생성·갱신과 `main` push에서 Rust/TypeScript 책임 경계·Wasm ABI·SDK 회귀를 자동 검증한다.
+자동 검증의 성공은 Pages 배포 완료를 뜻하지 않는다.
+
+문서 변경이 `main`에 병합되고 배포 승인을 받으면 Actions UI에서 `Pages` workflow의 `main`을 선택해 실행한다.
+로컬 소스와 원격 배포가 같은 버전인지 보려면 workflow의 `headSha`를 확인하고, 성공 후 공개 URL을 다시 연다.
 
 1. Rust stable과 `wasm32-unknown-unknown` target을 설정한다.
 2. `wasm-pack`과 pnpm dependencies를 설치한다.
@@ -78,4 +87,5 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 5. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
 6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
-이 workflow는 배포만 담당한다. PR 회귀 검증은 기존 `CI` workflow와 smoke 문서를 기준으로 유지한다.
+이 workflow는 build·artifact 검증·배포·공개 route 확인을 담당한다.
+PR 자동 검증은 `Language boundaries`, 전체 검증은 수동 `CI`와 [Smoke Check](../quality/smoke-check.md)를 기준으로 한다.

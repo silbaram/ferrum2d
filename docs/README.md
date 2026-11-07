@@ -8,6 +8,18 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 Data Scene 캐릭터별 clip, 2.5D view, 방향광·caster API는 [애니메이션·투영·태양 그림자](engine/data-scene-presentation.md)에서 확인한다.
 
+## 처음 읽는 순서
+
+| 순서 | 문서 | 알 수 있는 것 |
+| --- | --- | --- |
+| 1 | [사용자 설명서](engine/user-guide.md) | 엔진의 현재 기능, 예제 실행, 뷰어 편집·실행·저장 범위 |
+| 2 | [기능·예제 지도](engine/showcase-hub.md) | 설치 없이 체험하는 26개 기능 실험과 통합 예제 |
+| 3 | [개발자 퀵스타트](engine/developer-quickstart.md) | GitHub Release 패키지로 새 게임을 만들고 실행·검증하는 방법 |
+| 4 | [AI 기능 안내](engine/ai-feature-guide.md) · [Public API](engine/public-api.md) | 요구사항을 실제 공개 API와 상세 계약에 연결하는 방법 |
+
+[공개 문서·예제 사이트](https://silbaram.github.io/ferrum2d/)는 Pages에 배포한 개발 소스를 기준으로 한다.
+GitHub Release의 설치 파일과 별도로 갱신되므로 사용 중인 패키지 버전의 문서도 확인한다.
+
 ## 큰 구분
 
 | 디렉터리 | 역할 | 주요 문서 |
@@ -39,6 +51,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 | 진입점 | 기준 문서 | 목적 |
 | --- | --- | --- |
+| 엔진 사용 안내 | [사용자 설명서](engine/user-guide.md) | 현재 기능·예제·뷰어·저장 범위의 첫 진입점 |
 | AI Agent Setup | [AI 에이전트용 설치 지침](engine/ai-agent-install.md) | 엔진·개발 도구·consumer 지침 설치와 의존성 검증 |
 | AI Feature Guide | [AI 게임 개발 기능 안내](engine/ai-feature-guide.md) | 게임 요구사항을 설치 버전의 공개 API와 상세 reference에 연결 |
 | Showcase | [Showcase Hub](engine/showcase-hub.md) | demo, 기능군, agent workflow, 검증 명령을 한 화면에서 확인 |
