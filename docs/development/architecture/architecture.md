@@ -67,6 +67,8 @@ native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 
 각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
 양 backend는 Y-up texel을 먼저 선택하고 WGSL만 최종 integer row를 뒤집는다. 추가 화면 미분이나 target은 없고
 hard 1회/PCF 최대 9회 깊이 조회를 유지한다. 거의 평행한 면은 기존 slope 보정을 사용한다.
+WebGL2 sun depth와 point/sun caster alpha sampler는 highp로 선언해 기본 lowp 조회를 피한다.
+alpha cutoff는 main/caster에서 같은 정밀도 계약을 사용하며 HDR/depth composite도 기존 highp를 유지한다.
 
 점광원은 X/Y/Z 우선순위로 canonical cube face/texel을 고르고 그 중심 광선과 기하 수신 평면의
 교점까지 radial 거리를 비교한다. GL의 nearest cube lookup과 GPU의 정수 array load가 같은 texel을

@@ -119,9 +119,8 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 **남은 작업:** 경사·곡면·얇은 mesh와 거의 평행한 태양 수신면에서 acne와 접촉 분리를 함께 측정한다.
 실제 게임 asset의 큰 반경/낮은 해상도·normalBias 조합도 포함한다. fallback과 raster 정밀도 여유가 적용되는
 구간을 구별해 bias/normal offset/필터 폭의 진단을 보강하고, 단순 bias=0 변경으로 완료 처리하지 않는다.
-WebGL2의 `u_sunMap`과 shadow alpha sampler는 명시적 highp가 없어
-[GLSL ES 3.00의 sampler 기본 lowp·조회 반환 정밀도 규칙](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)을 점검해야 한다.
-depth/HDR composite의 `u_color/u_depth`는 이미 highp다. 낮은 정밀도를 실제로 사용하는 기기의 차이는 software adapter 결과와 구분한다.
+WebGL2의 highp sampler 선언은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
+낮은 정밀도를 실제로 사용하는 기기의 품질·성능 측정은 software adapter 결과와 구분한다.
 
 근거: [GLSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
 [WGSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts),

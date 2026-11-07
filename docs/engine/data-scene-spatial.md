@@ -1238,6 +1238,12 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
 
+WebGL2의 sun depth sampler와 point/sun caster의 alpha sampler는 highp를 명시한다.
+main/caster가 같은 정밀도로 alpha cutoff를 판정하며 depth24 조회를 기본 lowp sampler에 맡기지 않는다.
+[GLSL ES 3.00](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)의
+sampler 기본값과 조회 반환 정밀도 규칙에 따른 선언이다. 낮은 정밀도를 실제 사용하는 기기의 차이는
+software adapter의 픽셀 동등성 결과만으로 확인할 수 없다.
+
 태양 hard/PCF는 각 shadow texel 중심에서 수신 평면의 깊이를 계산해 비교한다.
 기하 노멀과 직교 sun matrix로 깊이 기울기를 구하므로 노멀맵과 화면 해상도로 그림자 접촉 위치를 흔들지 않는다.
 PCF를 켠다는 이유만으로 평면 전체의 자동 bias를 3배로 늘리지 않아 낮은 caster의 그림자가 사라지는 문제를 줄인다.
