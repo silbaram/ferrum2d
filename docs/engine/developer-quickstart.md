@@ -111,11 +111,11 @@ Browser input
 
 ## 템플릿 선택
 
-템플릿 목록은 CLI로 확인한다.
+템플릿 목록은 위에서 선택한 같은 GitHub Release의 CLI로 확인한다. `$ferrum_cli_url`은 프로젝트 생성 단계에서 지정한 URL이다.
 
 ```bash
-npx @ferrum2d/create-game --list-templates
-npx @ferrum2d/create-game --list-templates --json
+npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates
+npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
 ```
 
 | 템플릿 | 시작점 | 적합한 작업 |
@@ -128,9 +128,9 @@ npx @ferrum2d/create-game --list-templates --json
 특정 템플릿으로 시작하려면 다음처럼 만든다.
 
 ```bash
-npx @ferrum2d/create-game my-shooter --template topdown
-npx @ferrum2d/create-game my-platformer --template platformer
-npx @ferrum2d/create-game my-breakout --template breakout
+npx --yes --allow-remote=root "$ferrum_cli_url" my-shooter --template topdown
+npx --yes --allow-remote=root "$ferrum_cli_url" my-platformer --template platformer
+npx --yes --allow-remote=root "$ferrum_cli_url" my-breakout --template breakout
 ```
 
 ## 생성 프로젝트 구조

@@ -1,360 +1,147 @@
 # Ferrum2D 사용자 설명서
 
-Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, runtime 예제와 `apps/placement-viewer` 공식 authoring app을 기준으로 runtime, 입력, 충돌, 렌더링, 에셋, 효과음, 물리 authoring, 배치 authoring 표시와 위치 draft patch를 검증한다.
+Ferrum2D는 **AI agent-first 2D · HD-2D 웹 게임 엔진**이다. Rust/Wasm이 게임 상태·충돌·씬 진행과
+렌더 명령을 만들고, TypeScript가 브라우저 입력·에셋·오디오와 WebGL2/선택 WebGPU 렌더링을 담당한다.
+AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 결과를 확인한다.
 
-이 문서는 실행과 간단한 게임 수정 흐름을 안내한다. Top-down Shooter 예제 설정의 전체 필드, 기본값, 검증 규칙은 [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md)을 기준으로 삼는다.
+이 문서는 현재 개발 소스의 사용 흐름을 안내한다. 설치한 릴리스와 개발 소스의 기능은 다를 수 있으므로,
+게임 프로젝트에서는 설치 버전의 타입과 해당 tag의 문서를 함께 확인한다.
+
+## 목적에 맞게 시작하기
+
+| 목적 | 시작점 | 다음 문서 |
+| --- | --- | --- |
+| 설치 없이 기능을 체험하기 | [GitHub Pages](https://silbaram.github.io/ferrum2d/)의 기능 실험실 | [26개 기능과 예제 지도](showcase-hub.md) |
+| 새 게임 프로젝트 만들기 | GitHub Release의 create-game 패키지로 템플릿 생성 | [개발자 퀵스타트](developer-quickstart.md) |
+| AI에게 개발 환경 설정 맡기기 | 엔진·개발 도구·consumer 지침 설치 | [AI 설치 지침](ai-agent-install.md) |
+| 씬·에셋·카메라 작성하기 | Placement Viewer에서 Scene Authoring 문서 열기 | [Scene Authoring](data-scene-authoring.md) |
+| 게임 요구사항에 맞는 API 찾기 | 기능별 공개 API와 입력 데이터 확인 | [AI 기능 안내](ai-feature-guide.md), [Public API](public-api.md) |
 
 ## 현재 할 수 있는 일
 
-- 브라우저에서 Top-down Shooter 예제를 실행한다.
-- 브라우저에서 Breakout 예제를 실행해 shooter와 다른 장르 흐름을 확인한다.
-- 브라우저에서 Platformer 예제를 실행해 kinematic platformer controller, coyote/jump buffering, step offset, one-way/moving platform 경로를 확인한다.
-- `examples/starter-runtime`에서 `createFerrumRuntime()` 기반 starter 흐름과 `UiOverlay` HUD/dialog를 확인한다.
-- `apps/placement-viewer`에서 Data Scene 기반 오브젝트 배치, selected id/entity inspector, drag/numeric/snap 기반 위치 draft patch를 확인한다.
-- `examples/topdown-shooter/public/game.json`을 수정해 난이도, 적 등장 방식, 무기 성능, prefab 크기와 collider, camera, tilemap, audio policy를 조정한다.
-- Aseprite JSON metadata를 `importAsepriteAtlasFrames(...)`로 Game Spec `atlas.frames`에 연결한다.
-- Tiled orthogonal JSON map을 `importTiledGameSpec(...)`로 Game Spec `atlas`/`tilemap`에 연결한다.
-- LDtk project JSON embedded level 또는 미리 로드한 external `.ldtkl` level을 `importLDtkGameSpec(...)`로 Game Spec `atlas`/`tilemap`에 연결한다.
-- `pnpm validate:game-spec`로 설정 파일을 검증한다.
-- `pnpm create:game-variant`로 준비된 preset 기반 변형 파일을 만든다.
-- AI agent에게 Game Spec 수정과 검증을 맡긴다.
+| 영역 | 확인할 기능 | 기준 문서 |
+| --- | --- | --- |
+| 2D 표현 | 스프라이트·애니메이션·타일맵·레이어·9-slice·픽셀 퍼펙트·팔레트·후처리 | [표현과 애니메이션](data-scene-presentation.md), [Core API](public-api/core.md) |
+| HD-2D | 입체 지형·경사·층·정적 모델·빌보드·카메라·조명·그림자 | [공간 씬](data-scene-spatial.md) |
+| 게임플레이 | 이동·길 찾기·트리거·대화·퀘스트·저장·전투·씬 전환 | [Native Runtime](data-scene-native-runtime.md), [기능 안내](ai-feature-guide.md) |
+| 물리 | 바디·충돌체·재질·joint·CCD·query·controller·파괴 지형 | [물리 기능 맵](../development/architecture/physics-engine.md), [Physics Spec](physics-spec.md) |
+| 배치·도트 제작 | 씬 탐색·배치·변형·레이어·게임 카메라·도트 편집·PNG 가져오기·노멀 생성 | [Scene Authoring](data-scene-authoring.md) |
+| 에셋 연동 | atlas·Tiled/LDtk·Aseprite 데이터 가져오기, 로딩·캐시·자원 수명 | [Core API](public-api/core.md), [Authoring API](public-api/authoring.md) |
+
+사용 조건과 제약은 링크된 계약을 기준으로 한다. TypeScript는 콘텐츠·UI·플랫폼을 연결하고,
+게임 진행과 물리 상태의 기준은 Rust에 둔다. 자세한 책임 경계는 [아키텍처](../development/architecture/architecture.md)를 따른다.
 
 ## 예제 실행하기
 
-가장 작은 starter 예제는 별도 asset 없이 실행된다.
+[저장소 개발환경](https://github.com/silbaram/ferrum2d#소스-개발환경)을 준비한 뒤 루트에서 실행한다. 처음 실행하거나 Rust를 변경한 뒤에는
+`pnpm build`로 Wasm과 패키지를 먼저 빌드한다. 접속 주소와 포트는 실행한 Vite 터미널에 표시된다.
 
-```bash
-pnpm dev:starter-runtime
-```
+| 예제 | 실행 명령 | 관찰할 내용 |
+| --- | --- | --- |
+| 엔진 기능 실험실 | `pnpm dev:starter-runtime` | 26개 독립 실험의 설정·조작·관찰 결과·구현 API |
+| 2D 정원·HD-2D 마을 | `pnpm dev:placement-viewer` | `?scene=garden` / `?scene=village`로 배치·게임 미리보기 |
+| 물리 실험실 | `pnpm dev:physics-sandbox` | 7개 심화 시나리오와 충돌·solver 진단 |
+| Top-down Shooter | `pnpm dev:topdown` | 이동·조준·발사·wave·점수와 Game Spec |
+| Breakout | `pnpm dev:breakout` | 반사·충돌 이벤트·벽돌 제거·파티클 |
+| Platformer | `pnpm dev:platformer` | 점프·단방향 발판·이동 발판 |
+| 작은 빛의 정원 | `pnpm dev:pixel-art` | 도트 원본·씨앗 수집·조명·팔레트·화면 효과 |
 
-Breakout 예제도 별도 asset 없이 실행된다.
+기능 실험실은 기본 화면이며, 같은 Starter Runtime의 통합 게임은 `?mode=playground`,
+기존 사격 starter는 `?mode=starter`로 연다. 전체 목록과 조작법은 [Showcase Hub](showcase-hub.md)를 따른다.
 
-```bash
-pnpm dev:breakout
-```
+## 뷰어에서 작성하고 실행하기
 
-Platformer 예제도 별도 asset 없이 실행된다.
+1. **파일 → 예제**에서 정원이나 마을을 열거나, 프로젝트의 Scene Authoring JSON을 연다.
+2. 오브젝트를 선택하고 배치·변형·레이어·에셋을 수정한다. **내 변경**에서 원본 대비 변경을 검토한다.
+3. **게임 미리보기**로 씬에 저장된 게임 카메라 구도를 확인하고 **실행**으로 지원하는 씬 동작을 체험한다.
+4. **정지**하면 작성 위치·초안·편집 카메라로 돌아온다. 실행 중 캐릭터 위치를 배치 원본으로 저장하지 않는다.
+5. 현재 문서에 표시된 저장 방식에 따라 저장하거나 JSON/patch를 내보낸다.
 
-```bash
-pnpm dev:platformer
-```
+편집 카메라는 작업 화면을 탐색하는 도구다. 실제 게임 구도는 뷰어의 게임 카메라 설정으로 작성한다.
+게임 미리보기는 Scene Authoring 런타임을 실행하며, 외부 프로젝트의 임의 TypeScript 진입점이나 자체 HUD를 자동으로 실행하지 않는다.
 
-Data Scene placement authoring viewer는 다음 명령으로 실행한다.
-
-```bash
-pnpm dev:placement-viewer
-```
-
-엔진 레포의 공식 placement viewer는 dev 실행 중 현재 선택 상태와 draft patch를
-`apps/placement-viewer/.ferrum-placement-handoff.json`에도 내보낸다. 이 파일은
-agent가 "방금 이동한 instance 위치를 반영해" 같은 요청을 처리할 때 읽는 임시 handoff
-파일이며, 기본 정원 문서 `placement.garden.scene-authoring.json`을 직접 저장하지 않는다.
-
-Tauri desktop wrapper는 `project` 입력칸의 consumer project root를 `Open Project`로 열거나
-`Choose` directory dialog로 선택한 project의 `public/scene-authoring.json`을 자동 로드하고,
-`<project>/public/assets`를 기본 asset folder로 inspect한다. `assets` 입력칸의 `Use Assets`
-또는 `Choose`로 다른 asset folder를 지정하면 이미지 파일 목록, `texture-atlas.input.json` 존재 여부,
-missing/not-directory diagnostic이 handoff evidence에 포함된다. desktop host는 inspected image를
-`ferrum-asset://...` runtime URL로 노출하므로 Add Sprite selector에서 local thumbnail을 볼 수 있고,
-project open 시 scene-authoring이 이미 참조하는 local asset id는 초기 runtime texture manifest에
-등록되어 canvas preview에도 반영된다. `Use Assets` 또는 `Choose`로 asset folder를 바꾸면 viewer는
-새 image manifest를 다시 runtime texture로 등록하고 handoff/Inspector 상태를 갱신한다. Add Sprite로
-local asset draft를 만들면 image의 실제 pixel width/height가 visual 기본 크기와 AABB collider 크기에
-반영되고 pending/draft marker, draft patch, handoff evidence도 같은 local asset id, thumbnail, size를 사용한다.
-image metadata를 확인할 수 없으면 기존 default object size를 사용한다. 명시 프로젝트 또는 명시 문서 경로를
-연 상태에서 현재 선택/draft handoff payload는 debounce 후 프로젝트 루트의
-`.ferrum-placement-handoff.json`에 자동 sync된다. Handoff 섹션의 `Save Handoff`는 같은 payload를
-즉시 저장하는 수동 action이다. 이 파일도 scene-authoring 문서를 대체하지 않고, agent가 현재
-선택/draft/asset folder 상태를 읽기 위한 evidence로만 사용한다.
-
-오브젝트를 이동하거나 좌표를 입력하면 먼저 draft 상태가 된다. `Save` 버튼을 누르면
-dev server가 draft patch를 `apps/placement-viewer/public/placement.garden.scene-authoring.json`에
-반영하고 페이지를 다시 로드한다. `Revert`는 저장 전 draft만 버린다.
-
-처음 실행하거나 Rust core를 수정한 뒤에는 Wasm package를 먼저 빌드한다.
-
-```bash
-pnpm build:wasm
-pnpm --filter @ferrum2d/topdown-shooter dev
-```
-
-Vite가 출력하는 로컬 주소를 브라우저에서 연다. 기본 포트라면 다음 주소다.
-
-```text
-http://localhost:5173
-```
-
-DebugOverlay를 표시하려면 URL에 `?debug=true`를 붙인다.
-
-```text
-http://localhost:5173?debug=true
-```
-
-## 조작법
-
-| 입력 | 동작 |
+| 실행 환경 | 저장과 프로젝트 접근 |
 | --- | --- |
-| `Enter` 또는 `Space` | Title에서 Playing으로 진입 |
-| `W/A/S/D` | 플레이어 이동 |
-| `Mouse Left` 또는 `Space` | 마우스 방향으로 발사 |
-| `Space` | GameOver에서 재시작 |
-| touch/pen drag | 드래그 방향을 `W/A/S/D` 이동으로 합성 |
-| gamepad left stick / A / Start / right trigger | 이동 / Space action / Enter action / 발사 입력으로 합성 |
-| `VirtualControls` DOM preset | 화면 joystick과 `primary`/`menu` button을 `InputSnapshot` 또는 action profile virtual button으로 합성 |
+| GitHub Pages·브라우저의 내장 예제 | 내보내기 전용. 원본 예제와 로컬 프로젝트를 자동으로 덮어쓰지 않는다. |
+| 로컬 개발 서버 | 기본 저장은 비활성이다. 명시적으로 켠 저장 adapter/endpoint의 범위에서 저장한다. |
+| 데스크톱 앱 | 사용자가 연 프로젝트·문서와 host가 허용한 에셋 경로에서 저장한다. |
 
-`InputManagerOptions.gamepadMapping`으로 standard gamepad axis/button index를 다시 매핑할 수 있다. `resolveInputActionState(...)`와 `DEFAULT_INPUT_ACTION_PROFILE`은 `InputSnapshot`을 action/axis state로 바꾸는 public helper다. `VirtualControls`는 browser DOM joystick/button preset이며, `applyToSnapshot(...)`으로 raw snapshot에 합성하거나 `virtualButtons()`를 action profile에 주입한다.
+씬·도트 원본의 실제 저장과 agent용 `.ferrum-placement-handoff.json`은 별도다.
+Handoff는 선택·초안·에셋 참조를 전달하는 자료이며 씬 저장을 대체하지 않는다.
+상세 조작·저장 권한·한영 UI·`Ctrl+K` 명령 검색은 [뷰어 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
 
-## 로딩 화면과 Asset Preload
+## 게임 프로젝트에서 수정할 파일
 
-웹 배포에서 시작 전 asset URL을 미리 가져오려면 `resolveAssetPreloadPlan(...)`과 `preloadAssetManifest(...)`를 사용한다. `createAssetPreloadCachePolicy(...)`는 manifest URL 목록과 release salt에서 cache version을 만들고, `LoadingOverlay`는 `AssetLoadProgress`를 바로 표시하는 DOM preset이다.
+새 게임은 [개발자 퀵스타트](developer-quickstart.md)의 GitHub Release 설치 경로로 생성한다.
+엔진 저장소의 예제를 수정하는 작업과 생성한 게임 프로젝트를 수정하는 작업은 경로가 다르다.
 
-```ts
-const loading = new LoadingOverlay(canvas.parentElement ?? document.body);
-const cache = new IndexedDbAssetCache();
-const cachePolicy = createAssetPreloadCachePolicy(manifest, {
-  versionSalt: "game-v1",
-  ttlMs: 7 * 24 * 60 * 60 * 1000,
-});
+| 입력 | 생성 프로젝트의 경로 | 기준 |
+| --- | --- | --- |
+| Shooter 밸런스·wave·무기·카메라 | `topdown` 템플릿의 `public/game.json` | [Game Spec](../examples/topdown-shooter/game-spec.md) |
+| 씬·prefab·배치·에셋 참조 | `public/scene-authoring.json` | [Scene Authoring](data-scene-authoring.md) |
+| 이미지·소리·타일 원본 | `public/assets/`와 asset metadata | [Authoring API](public-api/authoring.md) |
+| 엔진 초기화·HUD·플랫폼 연결 | `src/main.ts`와 `src/styles.css` | [Core API](public-api/core.md) |
+| 물리 authoring 데이터 | 프로젝트의 Physics Spec 입력 | [Physics Spec](physics-spec.md) |
 
-await preloadAssetManifest(manifest, {
-  cache,
-  cachePolicy,
-  onProgress: (progress) => loading.update(progress),
-});
+씬 파일이 실제 게임 실행에 어떻게 연결되는지는 템플릿과 bootstrap에 따른다.
+뷰어에서 문서를 열었다는 사실만으로 별도의 게임 진입점에 자동 연결되지는 않는다.
+`npm run ferrum:report`의 `project.runtimeInputs`와 [Native Runtime](data-scene-native-runtime.md)을 확인한다.
 
-loading.complete();
-```
+## 수정하고 검증하는 흐름
 
-`IndexedDbAssetCache`는 JSON과 texture/sound URL body를 opt-in으로 저장한다. decoded WebGL texture는 renderer runtime에서 다시 생성하므로, cache 정책은 네트워크 fetch와 loading screen 진행률을 안정화하는 용도로 사용한다. asset URL이나 `versionSalt`가 바뀌면 `createAssetPreloadCachePolicy(...)`가 새 cache version을 만들고, 수동 삭제가 필요하면 `invalidatePreloadedAssetCache(manifest, cache, { policy: cachePolicy })`로 같은 manifest entry를 무효화한다.
-
-## 가장 먼저 볼 파일
-
-게임을 바꾸고 싶다면 먼저 이 파일을 수정한다.
-
-```text
-examples/topdown-shooter/public/game.json
-```
-
-이 파일은 Top-down Shooter의 Game Spec이다. Rust나 TypeScript 코드를 직접 고치지 않아도 많은 게임 변형을 만들 수 있다.
-
-현재 예제 설정의 기준은 실제 `game.json`이고, 문서용 필드 설명의 기준은 [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md)이다. 실제 예제는 runner/bruiser/orbiter wave와 10x6 tilemap obstacle layer를 포함한다. 아래는 구조를 빠르게 보기 위한 축약 예시다.
-
-```json
-{
-  "world": { "width": 1600, "height": 960 },
-  "player": { "speed": 180 },
-  "enemies": {
-    "speed": 72,
-    "spawnInterval": 1.0,
-    "behavior": "chase",
-    "spawnPattern": "edge",
-    "health": 1,
-    "scoreReward": 1,
-    "orbit": { "radius": 180, "radialBand": 24 },
-    "presets": {
-      "runner": { "speed": 96, "behavior": "chase", "health": 1 },
-      "bruiser": { "speed": 54, "behavior": "drift", "health": 3, "scoreReward": 4 },
-      "orbiter": { "speed": 84, "behavior": "orbit", "health": 2, "scoreReward": 3 }
-    },
-    "waves": [
-      { "enemy": "runner", "duration": 18, "spawnInterval": 0.85, "enemyCount": 18 },
-      { "enemy": "bruiser", "duration": 16, "spawnInterval": 1.25, "enemyCount": 10 },
-      { "enemy": "orbiter", "duration": 18, "spawnInterval": 1.1, "enemyCount": 12 }
-    ]
-  },
-  "weapons": { "bulletSpeed": 360, "cooldown": 0.12, "lifetime": 1.8, "damage": 1 },
-  "prefabs": {
-    "player": { "width": 36, "height": 36 },
-    "enemy": { "width": 24, "height": 24 },
-    "bullet": { "frame": "bullet.default" }
-  },
-  "atlas": {
-    "frames": {
-      "bullet.default": {
-        "texture": "bullet",
-        "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
-        "size": { "width": 8, "height": 8 }
-      }
-    }
-  },
-  "camera": { "preset": "look-ahead", "lookAhead": { "distance": 96 } },
-  "audio": { "masterVolume": 1, "sfxVolume": 0.85 }
-}
-```
-
-## 주요 조정 항목
-
-| 항목 | 설명 |
-| --- | --- |
-| `world.width`, `world.height` | 게임 월드의 크기다. |
-| `player.speed` | 플레이어 이동 속도다. |
-| `enemies.speed`, `enemies.spawnInterval` | 적 이동 속도와 등장 간격이다. |
-| `enemies.behavior` | `"chase"`, `"drift"`, `"static"`, `"orbit"` 중 하나다. |
-| `enemies.spawnPattern` | `"edge"`, `"corners"`, `"center"` 중 하나다. |
-| `enemies.orbit` | orbit behavior의 목표 반경과 접근/이탈 보정 폭이다. |
-| `enemies.presets`, `enemies.waves` | 적 설정 묶음과 wave timeline이다. |
-| `weapons.*` | 총알 속도, 발사 간격, lifetime, 피해량이다. |
-| `prefabs.*.width`, `prefabs.*.height` | 표시 크기와 충돌 기준 크기다. |
-| `prefabs.*.collider` | player/enemy/bullet AABB/circle/capsule/oriented-box/convex-polygon collider의 shape, offset, enable/trigger, material metadata다. |
-| `prefabs.*.animation` | horizontal sprite sheet 또는 `idle`/`move` state animation 설정이다. |
-| `prefabs.*.frame`, `atlas.frames` | static atlas frame의 texture, UV, size metadata다. |
-| `tilemap.tiles`, `tilemap.layers` | 정적 tile layer, 선택적 collision/collision-only layer, chase enemy navigation 장애물이다. |
-| `camera.*` | follow, dead-zone, look-ahead, shake preset 설정이다. |
-| `audio.*` | Web Audio master/sfx bus와 shoot/hit/gameOver event volume/pitch 설정이다. |
-
-필드별 타입, 기본값, 검증 조건은 [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md)의 `필드` 표를 확인한다.
-
-## 자주 쓰는 예시
-
-쉬운 게임을 만들고 싶다면 적 속도와 등장 빈도를 낮추고, 플레이어 속도나 총알 피해량을 높인다.
-
-```json
-{
-  "player": { "speed": 220 },
-  "enemies": { "speed": 50, "spawnInterval": 1.5, "health": 1 },
-  "weapons": { "cooldown": 0.1, "damage": 2 }
-}
-```
-
-어려운 게임을 만들고 싶다면 적을 더 빠르고 자주 등장하게 한다.
-
-```json
-{
-  "enemies": { "speed": 120, "spawnInterval": 0.45, "health": 2, "scoreReward": 2 },
-  "weapons": { "cooldown": 0.18, "damage": 1 }
-}
-```
-
-타겟 연습 모드를 만들고 싶다면 적을 움직이지 않게 하고 중앙 또는 모서리에서 등장시킨다.
-
-```json
-{
-  "enemies": {
-    "behavior": "static",
-    "spawnPattern": "center",
-    "spawnInterval": 0.8
-  }
-}
-```
-
-## 설정 검증하기
-
-예제 Game Spec이 올바른지 확인하려면 다음 명령을 사용한다.
-
-```bash
-pnpm validate:game-spec
-```
-
-다른 파일을 검증하려면 다음처럼 경로를 넘긴다.
-
-```bash
-pnpm --filter @ferrum2d/ferrum-web build
-node scripts/validate/validate-game-spec.mjs path/to/game.json
-```
-
-검증에 실패하면 오류 메시지의 `path`와 `detail`을 먼저 확인한다. 예를 들어 `path='weapons.cooldown' detail='must be a positive finite number'`는 해당 필드에 0보다 큰 숫자가 필요하다는 뜻이다.
-
-## 게임 변형 만들기
-
-준비된 preset으로 새 Game Spec 파일을 만들 수 있다.
-
-```bash
-pnpm create:game-variant fast-enemies
-pnpm create:game-variant drift-swarm
-pnpm create:game-variant static-targets
-pnpm create:game-variant orbit-ring
-```
-
-출력 경로를 직접 지정할 수도 있다.
-
-```bash
-pnpm create:game-variant drift-swarm /tmp/game.drift-swarm.json
-```
-
-만든 파일은 검증한 뒤 `examples/topdown-shooter/public/game.json`에 반영해서 실행해볼 수 있다.
-
-## AI 에이전트로 개발하기
-
-Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine을 목표로 한다. AI 에이전트가 Game Spec, Physics Spec, template, validation, smoke check를 반복하며 게임을 생성하고 수정하는 흐름을 우선한다.
-
-권장 흐름은 다음과 같다.
-
-1. 목표를 설명한다.
-2. 에이전트가 `@ferrum2d/create-game` 템플릿 또는 예제 프로젝트에서 시작한다.
-3. 에이전트가 Game Spec, Physics Spec, asset metadata, TypeScript glue code를 수정한다.
-4. `pnpm validate:game-spec`, `pnpm validate:physics-authoring`, smoke check로 결과를 검증한다.
-5. 브라우저에서 플레이 감각을 확인하고 다시 반복한다.
-
-`@ferrum2d/create-game`으로 만든 프로젝트는 다음 하네스 명령을 제공한다.
+1. 원하는 기능을 [AI 기능 안내](ai-feature-guide.md)에서 찾아 설치 버전의 공개 API와 상세 계약을 확인한다.
+2. spec·에셋·코드를 수정한다. 필요하면 뷰어의 배치 초안과 handoff를 함께 참고한다.
+3. 생성 프로젝트에서 기본 검증을 실행한다.
 
 ```bash
 npm run ferrum:check
 ```
 
-`ferrum:check`는 validation, asset, Scene Authoring, gameplay/runtime replay와 production build를
-순서대로 실행하고 첫 실패 단계와 다음 명령을 JSON으로 알려준다. 세부 입력 역할은
-`npm run ferrum:report`의 `project.runtimeInputs`에서 확인한다. `public/scene-authoring.json`은
-authoring validation과 patch/handoff 입력이자 generated built-in starter의 위치·Behavior Recipe source다.
-첫 Playing 전환과 reset 뒤에 scene-specific adapter가 적용하며 Data Scene visual/collider는 별도 계약이다.
+`ferrum:check`는 validation·authoring/replay·production build를 순서대로 실행한다.
+실패하면 JSON report의 실패 단계와 다음 명령을 먼저 확인한다.
 
-AI 도구별 개발 지침은 명시적으로 설치한다. Codex/Claude는 공식 subagent와 skill 경로를 사용하고, Gemini CLI는 공식 `GEMINI.md` context file과 `.gemini/commands/*.toml` custom command를 사용한다.
+4. `npm run dev`로 실제 입력·플레이·카메라·오디오를 확인한다.
+5. 정적 배포를 준비할 때는 `npm run ferrum:deploy-report`와 `npm run preview`를 실행한다.
 
-```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
-```
+AI 지침 설치는 생성 프로젝트의 `npm run ferrum:agents`를 사용한다.
+기본 설치·검증과 실제 게임 기능 구현은 별도 요청으로 진행할 수 있다.
 
-AI 에이전트에게 게임 밸런스 작업을 맡길 때는 가능하면 Rust/TypeScript 코드보다 `game.json`을 먼저 수정하게 하는 것이 좋다. 코드 변경은 새로운 엔진 기능이 필요할 때만 진행한다.
+## Top-down Shooter 예제 수정
 
-## 현재 지원하지 않는 것
-
-MVP 개발 완료 이후 상용제품 기능 개발 단계에서도 다음 기능은 아직 사용자 기능으로 제공하지 않는다.
-
-- 3D 게임
-- 비주얼 에디터
-- 멀티플레이어
-- 전체 게임 루프의 Web Worker 이전 또는 Wasm threads
-- 복잡한 물리 엔진
-- 사용자 스크립트/plugin runtime
-- 스켈레탈 애니메이션
-
-일부 이름은 deprecated compatibility shim으로 코드에 남아 있을 수 있지만 제품 런타임 기능을 제공하지 않는다. public API의 정확한 정책은 [Public API](public-api.md)를 따른다.
-
-## 관련 문서와 파일
-
-| 경로 | 용도 |
-| --- | --- |
-| `README.md` | 설치, 빌드, 프로젝트 전체 개요 |
-| `docs/README.md` | 문서 지도와 기준 소스 |
-| `docs/examples/topdown-shooter/game-spec.md` | Top-down Shooter 예제 설정 필드의 상세 설명 |
-| `docs/engine/public-api.md` | package entrypoint import 계약 |
-| `docs/development/quality/smoke-check.md` | 자동/CI/수동 검증 정책 |
-| `examples/topdown-shooter/SMOKE_CHECKLIST.md` | 브라우저 수동 점검 상세 항목 |
-| `examples/topdown-shooter/public/game.json` | 실제 예제가 읽는 게임 설정 파일 |
-| `schemas/shooter-game-spec.schema.json` | Game Spec 구조 보조 JSON Schema |
-| `scripts/validate/validate-game-spec.mjs` | Game Spec 검증 스크립트 |
-| `scripts/tools/create-game-variant.mjs` | preset 기반 변형 생성 스크립트 |
-| `.agents/skills/ferrum-game-designer/SKILL.md` | AI 에이전트용 Ferrum2D 게임 디자인 skill |
-
-## 개발자용 기본 검증
-
-게임 설정만 바꿨다면 보통 다음 검증이면 충분하다.
+엔진 저장소에서는 `examples/topdown-shooter/public/game.json`을 수정한다.
+설정 필드·기본값·제약·preset은 [Game Spec 문서](../examples/topdown-shooter/game-spec.md)를 기준으로 한다.
 
 ```bash
 pnpm validate:game-spec
+pnpm dev:topdown
 ```
 
-TypeScript나 Rust 코드를 바꿨다면 더 넓은 검증을 실행한다.
+| 입력 | 동작 |
+| --- | --- |
+| Enter 또는 Space | 타이틀에서 시작 |
+| W/A/S/D | 이동 |
+| 마우스 이동 | 조준 |
+| 마우스 왼쪽 버튼 또는 Space | 발사 |
+| 게임 종료 후 Space | 재시작 |
 
-```bash
-cargo test --manifest-path crates/ferrum-core/Cargo.toml
-pnpm lint
-pnpm test
-pnpm build
-```
+예제 URL에 `?debug=true`를 붙이면 debug overlay를 확인할 수 있다.
+터치·게임패드·가상 조작부와 action/context 설정은 [입력 액션](input-actions.md)을 따른다.
+수동 플레이 확인은 [Shooter 점검표](https://github.com/silbaram/ferrum2d/blob/main/examples/topdown-shooter/SMOKE_CHECKLIST.md)를 참고한다.
 
-Wasm 브리지 API를 바꿨다면 반드시 Wasm package도 다시 빌드한다.
+## 지원 범위와 상세 계약
 
-```bash
-pnpm build:wasm
-pnpm build
-```
+2D와 정적 모델을 사용하는 HD-2D를 제공하며, WebGL2가 기본 렌더러다.
+WebGPU는 지원 환경에서 선택하고 기능별 조건을 확인한다.
+도트 제작·씬 배치는 보조 도구의 범위이며, Behavior Recipe 본문·FSM/action graph를 UI에서 편집하는
+범용 visual editor와 multiplayer·Wasm threads·스켈레탈 애니메이션은 별도 설계/승인 범위다.
+
+| 자세히 확인할 내용 | 문서 |
+| --- | --- |
+| 공개 import·지원 수준·이전 방법 | [Public API](public-api.md), [Migration Guide](public-api/migration-guide.md) |
+| 입력·오디오·에셋·초기화·자원 수명 | [Core API](public-api/core.md) |
+| 애니메이션·카메라 표현·태양 그림자 | [Presentation](data-scene-presentation.md) |
+| 지형·층·모델·조명·그림자·WebGPU | [공간 씬](data-scene-spatial.md) |
+| Rust/TypeScript 역할과 Wasm 경계 | [아키텍처](../development/architecture/architecture.md) |
+| 소스 수정 후 회귀 검증 | [Smoke Check](../development/quality/smoke-check.md) |
+| 문서·예제 사이트 빌드와 배포 | [Pages 운영](../development/operations/demo-deploy.md) |
+| 남은 개발 계획과 설계 후보 | [Planning](../planning/README.md) |

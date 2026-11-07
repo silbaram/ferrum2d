@@ -8,7 +8,8 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
 상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
-Pages 홈도 같은 기능 목록에서 직접 진입한다.
+[GitHub Pages 홈](https://silbaram.github.io/ferrum2d/)도 같은 기능 목록에서 직접 진입한다.
+웹에서 설치 없이 체험한 뒤 로컬 실행·프로젝트 생성으로 이어갈 수 있다.
 
 | 실험 | Starter Runtime query | 바꿔볼 설정 |
 | --- | --- | --- |
@@ -70,9 +71,9 @@ Pages 홈도 같은 기능 목록에서 직접 진입한다.
 
 새 consumer game에서 Ferrum2D의 기본 작업 단위는 source file 하나가 아니라 report와 검증 명령까지 포함한 작은 루프다.
 
-1. `npm create @ferrum2d/game my-game -- --template minimal`
-2. `npx @ferrum2d/agents init --tools codex,claude,gemini`
-3. `npm run ferrum:report`
+1. [개발자 퀵스타트](developer-quickstart.md)에 따라 GitHub Release의 create-game `.tgz`로 `minimal` 프로젝트를 생성하고 `npm install`을 실행한다.
+2. 생성 프로젝트에서 `npm run ferrum:agents`로 같은 버전의 consumer 지침을 설치한다.
+3. `npm run ferrum:check`로 기본 검증을 실행하고, 상세 입력은 `npm run ferrum:report`로 확인한다.
 4. `npm run ferrum:validate`
 5. `npm run ferrum:smoke`
 6. 필요한 경우 `npm run ferrum:placement-viewer`
@@ -89,7 +90,8 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-Pages home은 runtime, authoring, physics demo route와 핵심 문서 카드를 제공한다. 현재 Pages artifact의 demo route는 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer`, `pixel-art`다. 새 route의 원격 공개 여부는 실제 배포 상태를 별도로 확인한다. 이 Showcase Hub는 기능을 설명하고, 실제 demo route는 Pages home의 demo 카드에서 진입한다.
+Pages home은 runtime, authoring, physics demo route와 핵심 문서 카드를 제공한다. 현재 Pages artifact의 demo route는 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer`, `pixel-art`다. 새 route의 원격 공개 여부는 실제 배포 상태를 별도로 확인한다. Pages의 문서와 예제는 배포한 개발 소스 기준이며, GitHub Release 설치 파일의 버전과는 별개다.
+웹 뷰어의 내장 예제는 내보내기 전용이다. 파일 저장·프로젝트 접근 조건은 [사용자 설명서](user-guide.md#뷰어에서-작성하고-실행하기)를 따른다.
 
 ## 보류 범위
 
