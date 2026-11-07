@@ -459,7 +459,8 @@ desktop 패널 토글은 화면 구성 메뉴에, compact 패널 토글은 기�
 Space 임시 이동/복귀와 pressed 상태를 갱신하며 게임 상태나 카메라 좌표를 복제하지 않는다.
 선택·화면 이동은 같은 owner의 버튼을 뷰포트 세로 도구 모음에 배치하고, 게임/도트 화면에서는 숨긴다.
 2D/HD-2D 선택 팝업은 `viewportNavigationInset(...)`으로 세로 도구 모음의 실제 너비를 비워 두고 남은 canvas 너비에 맞춘다.
-`placementCommandPalette.ts`는 F3 명령 검색의 UI·focus·IME·수명과 한국어/영문 metadata 검색을 맡는다.
+`placementCommandPalette.ts`는 Ctrl+K/F3 명령 검색의 UI·focus·IME·수명과 한국어/영문 metadata 검색을 맡는다.
+`placementKeyHints.ts`는 상태 바 단축키 안내 목록과 플랫폼별 Ctrl/⌘ 판정만 맡는다. 키 처리는 기존 뷰포트 owner에 남긴다.
 `placementWorkspaceCommands.ts`는 현재 모드에 맞는 기존 버튼과 패널 공개 동작에 위임한다. JSON patch 생성이나 게임 상태를 소유하지 않는다.
 문서별 씬·속성 패널은 host가 제공하는 현재 inspector root에서 찾으며, 보존된 이전 문서의 hidden 컨트롤을 사용하지 않는다.
 검색 실행 전 문서/작업 모드·사용 가능 상태를 다시 확인하고, 저장·gesture·미확정 도트 편집·다른 modal을 우회하지 않는다.

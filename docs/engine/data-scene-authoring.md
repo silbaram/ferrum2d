@@ -76,7 +76,7 @@ Ferrum2D authoring 문서에서 `sceneComposition.prefabs`는 재사용 가능�
 rename/remove 시에는 binding migration preview 또는 conflict diagnostic을 먼저 노출한다.
 
 공식 뷰어의 선택·화면 이동은 2D/HD-2D 뷰포트 왼쪽 도구 모음에 둔다.
-**F3 / 명령 검색**은 한국어·영문 이름으로 기존 도구·보기·패널·도트 동작을 찾는 앱 UI다.
+**Ctrl+K(Mac `⌘K`)·F3 / 명령 검색**은 한국어·영문 이름으로 기존 도구·보기·패널·도트 동작을 찾는 앱 UI다.
 현재 문서/모드와 버튼의 사용 가능 상태를 실행 직전에 확인하며, 저장·gesture·미확정 도트 편집·다른 modal을 우회하지 않는다.
 검색/취소는 원본과 Undo를 바꾸지 않고, 명령 실행은 기존 authoring/패널 동작에 위임한다. 별도 JSON 필드를 추가하지 않는다.
 `보기 → 화면 구성`의 내 구성·씬 배치·자산 작업·게임 검토는 프로젝트별 UI 패널 프리셋이다.
