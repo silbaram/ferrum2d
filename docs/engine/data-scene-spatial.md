@@ -770,7 +770,31 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 조명은 실제 triangle 표면 방향과 광원 위치/높이·거리 감쇠를 사용한다. terrain의 top/side/bottom과
 authoring에 연결한 cutout billboard가 그림자를 만들고 받는다. 동일 native atlas UV·flip·alpha cutoff와
 물리 elevation을 사용하며 화면 밖 caster도 광원 기준으로 판정한다. 기본 그림자는 nearest depth의 hard shadow다.
-점광원 깊이 비교는 작성한 bias에 해상도·입사각 기반의 제한된 receiver 보정을 더해 자기 그림자 줄무늬를 줄인다.
+점광원 hard/PCF는 각 cube texel 중심의 광선과 기하 수신 평면의 교점까지 거리를 비교한다.
+표시/노멀맵 법선 대신 triangle의 기하 법선을 사용하며, `normalBias`로 이동한 조회 위치를 평면 기준으로 삼는다.
+큐브 면 선택은 X→Y→Z 우선순위로 동률을 해소하고 texel을 먼저 정한다. GL은 해당 중심 광선으로 nearest lookup,
+WebGPU는 같은 texel의 행만 뒤집어 array face에서 읽으므로 경계에서 서로 다른 면을 암묵적으로 고르지 않는다.
+[Khronos cube map 규칙](https://registry.khronos.org/OpenGL/specs/gl/glspec46.core.pdf)의 좌표 변환을 사용한다.
+
+유효 교점은 광원 앞·반경 안에 있어야 하며, 광선과 기하 법선의 내적 절댓값이 `1e-6`보다 커야 한다.
+조회 위치 `q`, 광원 `L`, 단위 기하 법선 `n`, texel 중심 단위 광선 `r`이면
+`t = dot(n, q-L) / dot(n,r)`다. 이때 world 비교 허용량은 다음과 같다.
+
+```text
+authored bias
++ sqrt(2) × t / (8 × resolution) × sqrt(max(1 - dot(n,r)², 0)) / abs(dot(n,r))
++ radius / 2²⁴
++ max(t, distance(q,L)) × 1e-6
+```
+
+두 번째 항은 래스터 X/Y 각각 texel의 1/16 크기에 해당하는 정밀도 여유를 두 축의 길이로 합친 값이다.
+거의 평행한 면에서는 이 작은 좌표 오차도 큰 깊이 오차가 되므로 교점 거리와 입사각을 함께 사용한다.
+[OpenGL ES의 최소 subpixel 정밀도](https://registry.khronos.org/OpenGL/specs/es/3.1/es_spec_3.1.pdf)와
+GL depth24의 한 단계 오차를 고려한 보수적 보정이며 실물 GPU 전체의 시각적 무오차를 보장하지는 않는다.
+PCF 폭 때문에 일반 수신면의 bias를 3배로 늘리지 않는다. 교점을 구할 수 없거나 광원 뒤/반경 밖이면
+기존의 제한된 slope 보정과 중심 수신 거리를 사용한다. 작성한 bias/normalBias와 렌더·저장 ABI는 유지한다.
+이전 버전보다 낮은 물체의 접촉 그림자가 가깝고 진하게 나타날 수 있다. 매우 얇은 물체·큰 반경·낮은 해상도에서
+발생하는 표본화 한계는 남으므로, 필요한 경우 해상도·광원 범위와 authored bias를 함께 조절한다.
 태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
 bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
@@ -1220,7 +1244,7 @@ PCF를 켠다는 이유만으로 평면 전체의 자동 bias를 3배로 늘리�
 작성한 `bias`와 `normalBias`의 world 단위·기본값은 유지한다. 거의 빛과 평행한 수신면은
 수치 불안정을 피하려고 기존의 제한된 slope 보정을 사용하며 깊이 비교에는 작은 부동소수점 허용량도 포함한다.
 이 변경으로 기존 버전보다 접촉 그림자가 가깝게 나타날 수 있다. caster 형상·영역 밖의 visibility·필터 sample 수는 같다.
-점광원의 radial cube 비교는 기존 보정 방식을 유지한다.
+점광원의 radial cube 보정은 위 환경·조명 계약을 따른다.
 
 ### 하늘·지면 반구광과 그림자 표면 보정
 

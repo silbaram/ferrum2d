@@ -1870,9 +1870,9 @@ HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의
 report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
 그림자 fixture는 point/sun 단독·동시·hard/PCF, model MASK의 실제 바닥 light hole, model cast와 terrain/model/billboard receive,
 벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정,
-태양 고도 기준축 경계·낮은 caster 접촉·유한 범위 경계 회귀를 포함한 62상태를 비교한다.
+태양 고도 기준축 경계·낮은 caster 접촉·유한 범위 경계와 점광원 접촉 회귀를 포함한 116상태를 비교한다.
 alpha patch/atlas 교체 뒤 cache miss, native caster revision에 따른 camera 변경 재계산, GPU normal-only 갱신의 cache 보존을 검사한다.
-각 상태 cold6/1/7 pass와 warm shadow draw/upload0·실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
+각 상태 cold6/1/7 pass와 warm shadow draw/upload0·WebGPU의 실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
 GPU/GL 간 채널3·상이 pixel1% 미만을 적용하며 `report.shadowCases`와 shadow PNG에 증거를 남긴다.
 point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 초과하는 변화 pixel이100개보다 많아야 한다. 전체 화면 허용치 안에 묻히는 hard-only 회귀도 거절한다.
 태양 기준축 회귀는 normalized native Y 0.9899/0.9901에서 shadow off/hard/PCF3 6상태를 추가한다.
@@ -1883,11 +1883,19 @@ point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 �
 해상도 256/512/1024 × hard/PCF3 6상태에서 고정 바닥 수신점의 R 값이 off보다 30을 초과해 낮아야 한다.
 열린 바닥의 R 값 차이는 3 이하로 제한해 bias 축소로 생기는 평면 자기 그림자도 거절한다.
 `contactShadows`에 해상도·필터·lit/receiver/open 값을 기록한다. 기존 backend 픽셀 parity와 cold/warm 예산도 함께 적용한다.
+점광원 접촉은 높이 2 plate·낮은 광원 1개·X/Z cube 면 경계 4개·거의 평행한 광원 1개를 사용한다.
+각각 OFF 1상태와 128/256/512/1024 × hard/PCF3 8상태, 합계 54상태다. 그림자는 off보다 R 값이
+30을 초과해 낮아야 한다.
+거의 평행한 광원은 plate 아래에 있어 바닥을 가릴 수 없으므로 off와 수신점 차이를 3 이하로 제한한다.
+각 상태의 떨어진 바닥 9점도 off와 RGB 차이 3 이하여야 하며, 검은 baseline으로 거짓 통과하지 않도록
+수신점의 off R 값은 10 이상이어야 한다. `pointContacts`에 광원 위치·해상도·필터·native bias/normalBias/radius와
+lit/receiver/open 값을 기록한다. fresh JSON handle 복원 후 전체 frame byte 차이0·model upload0을 검사한다.
+기본/full/offscreen gate에 포함하며 `--offscreen-target --point-contact-only`로 이 54상태만 실행할 수 있다.
 범위 경계는 수직 태양·128 map/extent 32의 같은 수신점에서 camera X를 이동하거나 depth distance를 바꾼다.
 XY/depth 각각 shadow off와 hard/PCF3 × 내부 여유 3/2/1.5/1/0.5/0/-1 world unit을 검사한다.
 중간 구간은 fully shadowed/fully lit 사이여야 하며 범위 밖은 off와 채널 차이 3 이하, pan 순서의 밝기는 역전하지 않아야 한다.
 `shadowEdges`에 축·필터·여유·수신점 값을 기록한다. 내부 접촉/기준축/다른 광원 검증도 유지한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자62상태와 아래 proxy 검사를 실행할 수 있다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자116상태와 아래 proxy 검사를 실행할 수 있다.
 proxy fixture는 별도 GLB volume과 body/collider 없는 model child를 billboard root에 연결한다.
 표시/control·shadowOnly·cast OFF·sun/point shadow·camera orbit·부모 yaw·fresh JSON restore·이동의 10상태를
 두 backend/투영/viewport·DPR 1/2에서 검사한다. main model draw0, 실제 바닥 shadow, orbit 중 같은 world
@@ -1896,6 +1904,8 @@ fresh restore는 frame byte 차이0, GL/GPU는 채널3/상이 pixel1% 미만이�
 기본/offscreen 전체 gate에도 포함하며 `--offscreen-target --proxies-only`로 단독 실행한다.
 native `spatial_shadow_only` 회귀는 cold flag 검증·기존 output ABI·camera/light mask와
 interpolation ON/OFF의 파생 elevation·물리 body/collider/heightSpan 부재·billboard root yaw capture를 검사한다.
+native cube matrix 회귀는 6면 중심 축과 비중심점의 canonical UV를 함께 검사해 shader의 광선 복원과
+다른 방향으로 면이 뒤집히거나 회전하는 변경을 거절한다.
 `cargo test --manifest-path crates/ferrum-core/Cargo.toml spatial_sun_stability`는 동일 경계와 천정/지평선의
 기준축 연속성, 양 극점의 유한·직교 행렬, camera orbit 불변과 subtexel/한 texel 이동을 검사한다.
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.

@@ -113,15 +113,15 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 
 ### S02 · P1 · 점광원·극단 입사각의 접촉 그림자와 bias 진단
 
-**기존 계약의 한계 / 추가 시각 재현 필요.** 점광원 radial cube는 texel의 world 크기와 입사각에 비례하는 자동 bias를
-사용하고 PCF3에서 3배가 된다. 태양의 일반 수신면은 [수신 평면 보정](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 사용하지만
-거의 평행한 면은 제한된 slope 보정으로 돌아간다. authored bias/normalBias가 과도한 장면의 접촉 분리도 별도다.
+점광원 radial cube와 일반 태양 수신면의 현재 비교식은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
+작성한 bias/normalBias가 과도한 장면의 접촉 분리와, 유효한 교점을 얻을 수 없는 tap의 근사 한계는 별도다.
 
-**방향:** explicit bias, 점광원 자동 slope 보정, normal offset, 필터 반경을 구분하고 실제 적용량을 진단한다.
-얇은 물체·경사면·낮은 광원·cube 면 경계에서 acne와 접촉 분리를 동시에 측정한 뒤 보정의 상한/식을 결정한다.
-점광원은 각 cube face의 실제 texel 중심 ray를 복원하고 수신 평면과의 교점으로 radial 비교 거리를 구하는 방법을 우선 비교한다.
-WebGL cube sampling과 WebGPU array-face sampling의 texel·면 경계 선택이 같아야 하며, 평행 ray와 광원 뒤 교점은 fallback이 필요하다.
-단순히 bias를 0으로 낮추거나 Godot 상수를 복사하는 방식은 완료 조건이 아니다.
+**남은 작업:** 경사·곡면·얇은 mesh와 거의 평행한 태양 수신면에서 acne와 접촉 분리를 함께 측정한다.
+실제 게임 asset의 큰 반경/낮은 해상도·normalBias 조합도 포함한다. fallback과 raster 정밀도 여유가 적용되는
+구간을 구별해 bias/normal offset/필터 폭의 진단을 보강하고, 단순 bias=0 변경으로 완료 처리하지 않는다.
+WebGL2의 `u_sunMap`과 shadow alpha sampler는 명시적 highp가 없어
+[GLSL ES 3.00의 sampler 기본 lowp·조회 반환 정밀도 규칙](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)을 점검해야 한다.
+depth/HDR composite의 `u_color/u_depth`는 이미 highp다. 낮은 정밀도를 실제로 사용하는 기기의 차이는 software adapter 결과와 구분한다.
 
 근거: [GLSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
 [WGSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts),

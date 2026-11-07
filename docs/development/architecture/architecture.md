@@ -67,7 +67,14 @@ native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 
 각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
 양 backend는 Y-up texel을 먼저 선택하고 WGSL만 최종 integer row를 뒤집는다. 추가 화면 미분이나 target은 없고
 hard 1회/PCF 최대 9회 깊이 조회를 유지한다. 거의 평행한 면은 기존 slope 보정을 사용한다.
-이 계산은 shader ALU를 늘리므로 sample 수가 같다는 사실을 GPU 시간 동등성으로 해석하지 않는다.
+
+점광원은 X/Y/Z 우선순위로 canonical cube face/texel을 고르고 그 중심 광선과 기하 수신 평면의
+교점까지 radial 거리를 비교한다. GL의 nearest cube lookup과 GPU의 정수 array load가 같은 texel을
+읽도록 하며 GPU 행 뒤집기는 정수 좌표에서만 수행한다. 광선별 두 래스터 축 각각 1/16 angular texel에 해당하는 정밀도
+여유·depth24 한 단계·상대 f32 오차를 더하며, PCF kernel 폭과 독립적이다. 유효한 교점이 없는 tap만
+기존 제한 slope 보정으로 돌아간다. 광선 재구성·교점 계산은 shader에서 수행하며 hard1/PCF9 depth 조회와 기존
+target/pass/cache/ABI는 유지한다. 기존 authored bias·normalBias의 world 단위도 바꾸지 않는다.
+sample 수가 같다는 사실을 GPU 시간 동등성으로 해석하지 않으며 광선·교점 계산 비용은 별도로 측정한다.
 단일 태양 map은 XY texel 4개의 world 폭으로 내부 경계의 visibility를 직접 조명에 혼합한다.
 XY·깊이 경계의 최소 거리를 사용하며 영역 밖 visibility 1, native coverage·snapping·shadow cache는 유지한다.
 
