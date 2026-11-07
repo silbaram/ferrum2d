@@ -537,6 +537,7 @@ Assets는 `placementAssetPanels`가 격자와 도구를 한 번에 하나만 표
 Document는 기본 접힘, GLB import는 Assets의 Import 메뉴에 둔다. 표시 중인 Runtime 탭에서만 bounded native 진단을 조회한다.
 Play/Pause/Resume/Stop은 Data Scene 진행을 제어하며 RAF/renderer를 유지한다. Stop은 직전 편집 모드와 초안·이력을 복원한다.
 HD-2D 공간 요약은 소유한 authoring state와 기존 picker 결과를 재사용한다. 고정 Review/Export는 기존 diff/Handoff·host save gate로 연결한다.
+`placementChangeLabels.ts`는 변경 diff(인스턴스 id 짝짓기)와 표시용 오브젝트·항목 이름만 맡는다. 상단 `변경 N` 버튼은 같은 count와 Review 동작을 공유한다.
 860px 이하의 패널 서랍은 일시적 UI 상태다. 기존 v1 desktop 크기/접힘 localStorage와 문서/history를 변경하지 않는다.
 서랍 높이는 상단 고정 행을 뺀 남은 공간에서 viewport 행 128px을 먼저 확보한 뒤 제한한다.
 낮은 창의 도구 행은 가로 스크롤하며, 행 크기도 ResizeObserver로 관찰해 모드·문서 전환의 높이 변화를 반영한다.

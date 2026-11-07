@@ -505,6 +505,9 @@ Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Esc
 `showPlacementBottom`은 뷰포트 클릭 뒤에도 패널을 유지하도록 실제 핀 버튼으로 고정하고, 도구는 `showPlacementAssetPanel`로 Import/Manage 메뉴를 거쳐 연다.
 `placement-asset-drawer-smoke.mjs`는 서랍이 canvas 크기를 바꾸지 않는지, 탭 재클릭·바깥 클릭·Esc·Ctrl+Space 동작,
 도구 뷰 왕복, 실제 마우스 드래그로 뷰포트에 놓는 흐름, 고정 시 레이아웃 복귀를 확인한다.
+펼친 서랍의 도구 뷰에서 에셋 목록 전체가 숨겨지고 짧은 도구가 탭 줄을 넘지 않는지, 드롭 뒤 상단 `변경 N` 버튼이
+Agent Changes를 열어 추가된 오브젝트 한 행을 이름과 함께 보여 주고 Undo 뒤 숨는지도 검사한다.
+`placement-change-labels.test.mjs`는 인스턴스 id 짝짓기(중간 삭제가 한 건), index 비교 fallback, 오브젝트·항목 이름 해석을 검사한다.
 `pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
 `placement-key-hints.test.mjs`는 2D/HD-2D·선택·잠금별 단축키 안내, 한국어 문구 누락, Ctrl+K/⌘K 판정을 검사한다.
 이 단위 검사는 `smoke:placement-viewer`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는

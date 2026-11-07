@@ -245,7 +245,10 @@ Ctrl+Space는 Assets 서랍을 여닫고 검색으로 이동한다. 서랍의 �
 Assets 탭은 에셋 격자만 표시한다. 도구는 `Import`(Pixel Art·Import Aseprite·Import Tile Frames·Import Model·Generate Normal)와
 `Manage`(Asset Usage·Catalog Cleanup·Asset Changes) 메뉴에서 열며, 격자 자리에 한 번에 하나만 표시하고 `Back to Assets`로 돌아온다.
 복구할 도트 초안이 있으면 접힌 상태에서도 Assets 탭과 Import 메뉴에 표시 점이 나타난다.
-Runtime 탭에서 선택 native entity 진단과 원본 경로를, Agent Changes에서 JSON 경로별 변경을 확인한다.
+Runtime 탭에서 선택 native entity 진단과 원본 경로를, Agent Changes에서 원본 대비 변경을 확인한다.
+변경은 `오브젝트 · 항목 · 이전 → 이후`로 표시하고 원본 JSON 경로는 행의 툴팁에 남긴다. 행을 누르면 그 오브젝트를 선택한다.
+씬 인스턴스는 id로 짝지어 비교하므로, 중간 오브젝트를 지워도 뒤 오브젝트가 바뀐 것으로 나오지 않는다.
+변경이나 문제가 있으면 상단 오른쪽에 `변경 N` 버튼이 나타나고, 누르면 Agent Changes를 연다. 없으면 버튼은 숨겨진다.
 상단 Play/Pause/Resume/Stop은 native Data Scene 진행을 제어하며 렌더링은 계속한다.
 Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
 
@@ -862,7 +865,7 @@ Export Only에서는 복사/내보내기를 사용한다. 생성 에셋 파일 �
 - 서랍 전환은 desktop 크기·접힘 설정을 덮어쓰지 않는다. 좁은 창에서도 상단 동작 버튼은 줄바꿈해 표시한다.
   주 도구는 한 줄로 유지하고 패널 탭을 필요한 행에 배치한다. 남은 높이에 맞춰 서랍을 줄여 canvas 공간을 확보한다.
 - 패널 크기·접힘 상태와 활성 작업 구성을 프로젝트별 localStorage에 저장한다. storage가 막히거나 설정 JSON이 손상돼도 기본값으로 동작한다.
-- 고정 상태 행의 변경/문제 수 옆 `Review`는 Agent Changes를, `Export`는 Inspector의 Handoff를 연다.
+- 고정 상태 행의 변경/문제 수 옆 `Review`와 상단의 `변경 N` 버튼은 Agent Changes를, `Export`는 Inspector의 Handoff를 연다.
   Copy Patch/Handoff와 Save는 기존 참조 보호와 host 권한을 따른다. Export Only host에서는 파일 저장이 비활성화된다.
 - `파일 → Open JSON`은 2 MiB 이하의 2D·HD-2D Scene Authoring JSON을 새 탭으로 연다. 가져온 파일은 Copy Patch/Handoff를 사용하며
   개발 endpoint나 desktop 파일에 자동 저장하지 않는다. HD-2D 모델은 일치하는 GLB를 먼저 import한다.

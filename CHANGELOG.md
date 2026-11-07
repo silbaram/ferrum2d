@@ -11,6 +11,10 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 - 공식 Placement Viewer의 하단 패널을 기본 서랍으로 바꿨다. 탭 줄만 표시해 viewport를 넓히고,
   탭을 누르면 canvas 크기를 바꾸지 않고 펼친다. 핀 버튼으로 기존처럼 고정할 수 있다.
   Assets 탭은 에셋 격자만 표시하고 도구는 `Import`/`Manage` 메뉴에서 한 번에 하나씩 연다.
+- 공식 Placement Viewer에서 변경이나 문제가 있으면 상단에 `변경 N` 버튼을 표시하고, 누르면 Agent Changes를 연다.
+  Agent Changes는 JSON 경로 대신 오브젝트·항목·이전/이후 값으로 보여 주며, 행을 누르면 그 오브젝트를 선택한다.
+- Handoff `authoringEvidence`의 변경 목록이 씬 인스턴스를 id로 짝지어 비교한다. 중간 오브젝트를 지우면
+  뒤 오브젝트가 모두 바뀐 것처럼 기록되던 문제가 없어지고, 삭제 한 건으로 기록된다.
 - 공식 Placement Viewer의 명령 검색을 `Ctrl+K`(Mac은 `⌘K`)로도 연다. `F3`도 그대로 동작한다.
   하단 상태 바에 현재 모드와 선택 상태에서 실제로 동작하는 단축키를 표시한다.
 - 공식 Placement Viewer 상단에 `File`/`Edit`/`View`/`Window`/`Tools`/`Run`/`Help` 메뉴바를 추가했다. 메뉴는 기존 명령을 호출만 하며, 860px 이하 좁은 화면은 기존 구성을 유지한다.
