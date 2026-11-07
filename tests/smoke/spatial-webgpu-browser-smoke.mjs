@@ -26,6 +26,8 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
+const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
+const receiverShadowsOnly = process.argv.includes("--receiver-shadows-only");
 const flatShadowsOnly = process.argv.includes("--flat-shadows-only");
 const recoveryOnly = process.argv.includes("--recovery-only");
 const shadowsOnly = process.argv.includes("--shadows-only");
@@ -35,7 +37,7 @@ const environmentOnly = process.argv.includes("--environment-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;import{probeFlatShadowIsolation}from'/flat-shadows.mjs';window.probeFlatShadowIsolation=probeFlatShadowIsolation;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -50,7 +52,7 @@ const server = createServer((req, res) => {
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -95,7 +97,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -167,12 +169,12 @@ try {
           continue;
         }
         const result =
-          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly || flatShadowsOnly
+          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly || flatShadowsOnly || receiverShadowsOnly || gameAssetShadowsOnly
             ? []
             : await page.evaluate(() => window.probeSpatialWebGpu());
         assert.equal(
           result.length,
-          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly || flatShadowsOnly ? 0 : 2,
+          fallbackOnly || modelsOnly || environmentOnly || shadowsOnly || proxiesOnly || pointContactOnly || flatShadowsOnly || receiverShadowsOnly || gameAssetShadowsOnly ? 0 : 2,
         );
         assert.deepEqual(errors, []);
         for (const entry of result)
@@ -191,7 +193,7 @@ try {
             );
             backend.image = file;
           }
-        if (!fallbackOnly && !environmentOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly) {
+        if (!fallbackOnly && !environmentOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
           const models = await page.evaluate(() => window.probeSpatialWebGpuModels());
           assert.equal(models.length, 2);
           assert.deepEqual(errors, []);
@@ -213,7 +215,7 @@ try {
             }
           report.modelCases.push({ viewport, deviceScaleFactor, result: models });
         }
-        if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly) {
+        if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
           const environment = await page.evaluate(() => window.probeSpatialWebGpuEnvironment());
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
@@ -240,15 +242,21 @@ try {
           report.environmentCases.push({ viewport, deviceScaleFactor, result: environment });
         }
         if (!fallbackOnly && !modelsOnly && !environmentOnly && !proxiesOnly && !flatShadowsOnly) {
-          const shadows = await page.evaluate(pointContactOnly => window.probeSpatialWebGpuShadows({ pointContactOnly }), pointContactOnly);
+          const shadows = await page.evaluate(options => window.probeSpatialWebGpuShadows(options), { pointContactOnly, receiverShadowsOnly, gameAssetShadowsOnly }).catch(async error=>{
+            const failure=await page.evaluate(()=>window.shadowParityFailure);
+            if(failure){for(const backend of ["a","b"]){const file=`failed-shadow-${backend}.png`;await writeFile(resolve(output,file),Buffer.from(failure[backend].split(",")[1],"base64"));failure[backend]=file;}report.shadowParityFailure=failure;}
+            throw error;
+          });
           assert.equal(shadows.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of shadows) {
-            assert.equal(entry.comparisons.length, pointContactOnly ? 54 : 116);
+            assert.equal(entry.comparisons.length, pointContactOnly ? 54 : gameAssetShadowsOnly ? 18 : receiverShadowsOnly ? 118 : 234);
             for (const backend of entry.backends) {
-              assert(backend.pointRestored && backend.pointContacts.length === 48 && backend.errors.length === 0);
-              assert.equal(backend.rows.length, pointContactOnly ? 54 : 116);
-              if (!pointContactOnly) {
+              assert(backend.errors.length === 0);
+              if (!receiverShadowsOnly && !gameAssetShadowsOnly) assert(backend.pointRestored && backend.pointContacts.length === 48);
+              if (!pointContactOnly) { if(!gameAssetShadowsOnly){assert.equal(backend.sunGrazing.length,32);assert.equal(backend.receiverModels.length,56);assert.equal(backend.curvedContact.length,1);}assert.equal(backend.realAssetShadows.length,16); }
+              assert.equal(backend.rows.length, pointContactOnly ? 54 : gameAssetShadowsOnly ? 18 : receiverShadowsOnly ? 118 : 234);
+              if (!pointContactOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
                 assert(backend.restored);
                 assert.equal(backend.sunStability.length, 6);
                 assert.equal(backend.contactShadows.length, 6);
@@ -269,7 +277,7 @@ try {
           }
           report.shadowCases.push({ viewport, deviceScaleFactor, result: shadows });
         }
-        if (!fallbackOnly && !modelsOnly && !environmentOnly && !pointContactOnly && !flatShadowsOnly) {
+        if (!fallbackOnly && !modelsOnly && !environmentOnly && !pointContactOnly && !flatShadowsOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
           const proxies = await page.evaluate(() => window.probeSpatialShadowProxy());
           assert.equal(proxies.length, 2);
           assert.deepEqual(errors, []);
@@ -287,7 +295,7 @@ try {
           }
           report.proxyCases.push({ viewport, deviceScaleFactor, result: proxies });
         }
-        if (!fallbackOnly && !modelsOnly && !environmentOnly && !pointContactOnly && !proxiesOnly) {
+        if (!fallbackOnly && !modelsOnly && !environmentOnly && !pointContactOnly && !proxiesOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
           const flat = await page.evaluate(() => window.probeFlatShadowIsolation());
           assert.equal(flat.length, 3);
           for (const backend of flat) {

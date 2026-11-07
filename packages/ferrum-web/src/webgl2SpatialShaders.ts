@@ -74,6 +74,7 @@ float pointVisibility(vec3 delta,float d,float radius,vec3 geometric){
 float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
  vec2 at=clamp(pixel,vec2(0.),size-1.);vec2 uv=(at+.5)/size;
  float expected=q.z+dot(gradient,uv-q.xy);
+ if(expected<0. || expected>1.)return 1.;
  return texelFetch(u_sunMap,ivec2(at),0).r+bias<expected?0.:1.;
 }
 float sunVisibility(vec3 world,vec3 geometric){
@@ -86,7 +87,7 @@ float sunVisibility(vec3 world,vec3 geometric){
  float depthEdge=min(q.z,1.-q.z)*u_sunParams.x;
  float weight=smoothstep(0.,8.*u_sunParams.z/size.x,min(xyEdge,depthEdge));
  float incidence=dot(geometric,normalize(u_sunDirection));
- bool plane=abs(incidence)>.001;vec2 gradient=vec2(0.);
+ bool plane=abs(incidence)>.000001;vec2 gradient=vec2(0.);
  float bias=u_sunParams.y/u_sunParams.x+.000001;
  if(plane){
   // Orthographic receiver-plane depth gradient in canonical (Y-up) shadow UV.
@@ -94,6 +95,8 @@ float sunVisibility(vec3 world,vec3 geometric){
   vec3 r=vec3(u_sunMatrix[0][0],u_sunMatrix[1][0],u_sunMatrix[2][0])*u_sunParams.z;
   vec3 up=vec3(u_sunMatrix[0][1],u_sunMatrix[1][1],u_sunMatrix[2][1])*u_sunParams.z;
   gradient=vec2(dot(geometric,r),dot(geometric,up))*(2.*u_sunParams.z/(u_sunParams.x*incidence));
+  // Two 1/16-pixel raster error bounds, projected along the receiver plane.
+  bias+=(abs(gradient.x)+abs(gradient.y))/(8.*size.x);
  }else{
   float angle=max(incidence,0.);
   float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
@@ -166,11 +169,17 @@ outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
 uniform mat3 u_modelUvTransform;uniform bool u_mesh;
-uniform highp sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
+uniform highp sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;uniform float u_shadowTexel;
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
 float alpha=(u_textured?texture(u_texture,uv).a:1.0)*v_color.a;
-if(alpha<v_cutoff)discard;gl_FragDepth=u_directionalShadow?gl_FragCoord.z:clamp(length(v_world-u_shadowLight.xyz)/u_shadowLight.w,0.0,1.0);}`;
+if(alpha<v_cutoff)discard;
+if(u_directionalShadow){gl_FragDepth=gl_FragCoord.z;}else{
+ // A 90-degree cube projection has clip W equal to the major-axis distance.
+ // Recover radial depth from raster coordinates, even when a source vertex has W=0.
+ vec2 uv=gl_FragCoord.xy*(2.*u_shadowTexel)-1.;
+ gl_FragDepth=clamp(length(vec3(uv,1.))/(gl_FragCoord.w*u_shadowLight.w),0.,1.);
+}}`;
 export const spatialCompositeVertexSource = `#version 300 es
 out vec2 v_uv;
 void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`;

@@ -18,6 +18,7 @@ class Device {
   readonly limits = { maxTextureDimension2D: 8192, maxBufferSize: 268435456 };
   buffers: Resource[] = [];
   textures: Resource[] = [];
+  cameraWrites: Float32Array[] = [];
   writes: {
     buffer: unknown;
     bytes: number;
@@ -27,6 +28,9 @@ class Device {
     writeTexture() {},
     writeBuffer: (buffer: unknown, _offset: number, values: ArrayBufferView) => {
       this.writes.push({ buffer, bytes: values.byteLength });
+      if (buffer instanceof Resource && (buffer.descriptor as {label?:string}).label === "Spatial camera" && values instanceof Float32Array) {
+        this.cameraWrites.push(values.slice());
+      }
     },
   };
   createBuffer(descriptor: object) {
@@ -377,6 +381,13 @@ test("native shadow face ranges include camera-culled terrain and warm cache tra
   };
   const cold = draw(f);
   equal(cold.stats.shadowPassCount, 7);
+  const camera = device.cameraWrites[device.cameraWrites.length - 1]!;
+  for (let face=0;face<6;face++) {
+    const base=(face+1)*64;
+    equal(camera[base+20],0);equal(camera[base+21],1/128);equal(camera[base+19],300);
+  }
+  equal(camera[7*64+20],1);equal(camera[7*64+21],0);
+
   equal(cold.stats.shadowDrawCalls, 3);
   equal(cold.stats.shadowTriangleCount, 26);
   equal(cold.stats.shadowUploadBytes, 6 * 44);
@@ -400,6 +411,9 @@ test("native shadow face ranges include camera-culled terrain and warm cache tra
   equal(draw(f).stats.shadowCacheHit, false);
   f.environment.values[3] = 256;
   equal(draw(f).stats.shadowCacheHit, false);
+  const resizedCamera = device.cameraWrites[device.cameraWrites.length - 1]!;
+  for (let face=0;face<6;face++) equal(resizedCamera[(face+1)*64+21],1/256);
+
   equal(draw(f).stats.shadowCacheHit, true);
   pass.destroy();
   equal(

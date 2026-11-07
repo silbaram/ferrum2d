@@ -59,6 +59,7 @@ fn pointVisibility(delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
 fn sunCompare(pixel:vec2i,size:vec2u,q:vec3f,gradient:vec2f,bias:f32)->f32{
  let at=clamp(pixel,vec2i(0),vec2i(size)-1);
  let uv=(vec2f(at)+.5)/vec2f(size);let expected=q.z+dot(gradient,uv-q.xy);
+ if(expected<0. || expected>1.){return 1.;}
  return select(1.,0.,textureLoad(sunMap,vec2i(at.x,i32(size.y)-1-at.y),0)+bias<expected);
 }
 fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
@@ -69,11 +70,12 @@ fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  let depthEdge=min(q.z,1.-q.z)*span;
  let weight=smoothstep(0.,8.*extent/f32(size.x),min(xyEdge,depthEdge));
  let incidence=dot(geometric,direction);var gradient=vec2f(0.);var bias=e(93u)/span+.000001;
- if(abs(incidence)>.001){
+ if(abs(incidence)>.000001){
   // Same receiver plane as GLSL, with no additional fragment derivatives.
   let m=env.shadow[6];let r=vec3f(m[0][0],m[1][0],m[2][0])*extent;
   let up=vec3f(m[0][1],m[1][1],m[2][1])*extent;
   gradient=vec2f(dot(geometric,r),dot(geometric,up))*(2.*extent/(span*incidence));
+  bias+=(abs(gradient.x)+abs(gradient.y))/(8.*f32(size.x));
  }else{bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered)/span;}
  // Choose canonical Y-up texels first; flip the integer row only for textureLoad.
  let pixel=vec2i(floor(q.xy*vec2f(size)));
@@ -102,7 +104,8 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) world:vec3f,@loca
  let alpha=textureSample(colorTexture,colorSampler,f.uv).a*f.alpha;
  if(alpha<f.cutoff){discard;}
  if(camera.params.x>0.){return f.position.z;}
- return clamp(length(f.world-camera.light.xyz)/camera.light.w,0.,1.);
+ let uv=f.position.xy*(2.*camera.params.y)-1.;
+ return clamp(length(vec3f(uv,1.))/(f.position.w*camera.light.w),0.,1.);
 }`;
 export const spatialShadowModelWGSL =
   spatialShadowCameraWGSL +
@@ -120,7 +123,8 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) world:vec3f,@loca
 @fragment fn fs_main(f:Fragment)->@builtin(frag_depth) f32{
  if(textureSample(colorTexture,colorSampler,modelUv(f.uv,material.baseUv)).a*material.color.a<material.params.x){discard;}
  if(camera.params.x>0.){return f.position.z;}
- return clamp(length(f.world-camera.light.xyz)/camera.light.w,0.,1.);
+ let uv=f.position.xy*(2.*camera.params.y)-1.;
+ return clamp(length(vec3f(uv,1.))/(f.position.w*camera.light.w),0.,1.);
 }`;
 interface Target {
   texture: GPUTexture;

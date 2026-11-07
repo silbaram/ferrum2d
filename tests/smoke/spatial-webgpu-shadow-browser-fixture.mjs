@@ -7,11 +7,13 @@ import {
   loadSpatialGlb,
   captureGameStateSnapshot,
   restoreGameStateSnapshot,
+  raycastSpatialModel,
 } from "@ferrum2d/ferrum-web/core";
 import {
   applyDataSceneAuthoringDocument,
   createSceneInstanceHandleRegistry,
 } from "@ferrum2d/ferrum-web/authoring";
+import { receiverSurface } from "/shadow-receivers.mjs";
 import { check, pixels, difference, png } from "/fixture.mjs";
 
 function variant(bytes, edit) {
@@ -62,7 +64,7 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection, { pointContactOnly = false } = {}) {
+async function probe(canvas, backend, projection, { pointContactOnly = false, receiverShadowsOnly = false, gameAssetShadowsOnly = false } = {}) {
   await initializeFerrumWasm();
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
@@ -102,7 +104,7 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
     request,
     lastSpatial,
     frames = 0;
-  const read = () =>
+  const read = (capture = true) =>
     new Promise((resolve, reject) => {
       check(!request, "overlapping environment read");
       const timeout = setTimeout(
@@ -115,6 +117,7 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
         15000,
       );
       request = {
+        capture,
         resolve: (v) => {
           clearTimeout(timeout);
           resolve(v);
@@ -146,6 +149,15 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
       ],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
+    const receiverSurfaces = new Map();
+    if (!pointContactOnly) {
+      for (const kind of ["thin", "slope", "curve"]) {
+        const surface=receiverSurface(kind),id=`receiver-${kind}`;
+        receiverSurfaces.set(id,surface);
+        assets.set(id,await loadSpatialGlb(surface.bytes,{materialProfile:"diffuse"}));
+      }
+      assets.set("rock",await loadSpatialGlb(await(await fetch("/rock.glb")).arrayBuffer(),{materialProfile:"diffuse"}));
+    }
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -264,7 +276,7 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
           const stats = renderer.renderCommands(hud);
           renderer.renderPostProcess();
           check(
-            ++frames < 400 &&
+            ++frames < 512 &&
               state.rustUpdateTimeMs < 250 &&
               stats.drawCalls < 64 &&
               !errors.length,
@@ -277,7 +289,7 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
           );
           if (pending) {
             engine.stop();
-            pixels(renderer, canvas).then(
+            (pending.capture ? pixels(renderer, canvas) : Promise.resolve(undefined)).then(
               (data) =>
                 pending.resolve({
                   data,
@@ -344,7 +356,8 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
         ),
         "spatial debug configuration rejected",
       );
-      const first = await read(),
+      // Cold pixels were never consumed; retain cold metrics and capture every warm state.
+      const first = await read(false),
         warm = await read();
       check(
         warm.stats.terrainUploadBytes === 0 && warm.stats.modelUploadBytes === 0,
@@ -375,8 +388,8 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
       check(
         warm.stats.modelCount === 1 &&
           warm.stats.visibleModelCount === visible &&
-          warm.stats.modelDrawCalls === visible * 2 &&
-          warm.stats.modelTriangleCount === visible * 14,
+          warm.stats.modelDrawCalls === visible * assets.get(asset).primitiveCount &&
+          warm.stats.modelTriangleCount === visible * assets.get(asset).triangleCount,
         "environment model pass missing",
         warm.stats,
       );
@@ -419,6 +432,125 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
       rows.push(evidence);
       return result;
     };
+    const sunGrazing = [], receiverModels = [], realAssetShadows = [], curvedContact = [];
+    if (!pointContactOnly) {
+      for (const degrees of (gameAssetShadowsOnly?[]:[5, 1, .1, .03])) {
+        const angle=degrees*Math.PI/180, contact=degrees>=1,
+          receiver={x:contact?-2/Math.tan(angle):0,y:0,elevation:0},
+          opens=[-80,-64,-48].flatMap(x=>[-48,-40,-32].map(y=>({x,y,elevation:0}))),
+          edit=d=>{
+            d.spatial.camera.position.x=0;d.spatial.camera.target={x:0,y:0,elevation:0};
+            d.spatial.models.tree.castShadow=false;d.spatial.billboards.actor.castShadow=false;
+            d.spatial.terrain=[{id:"grazing-floor",floorId:0,x:degrees===.03?-800:-200,y:-160,width:degrees===.03?1600:400,depth:320,elevation:0,color:[.5,.5,.5,1]}];
+            if(contact)d.spatial.terrain.push({id:"grazing-plate",floorId:1,kind:"bridge",x:degrees===1?-64:-16,y:-24,width:degrees===1?128:32,depth:48,elevation:2,baseElevation:1.5,walkable:false,color:[.5,.5,.5,1]});
+          },
+          environment={lighting:{ambient:contact?[.03,.03,.03]:[.0001,.0001,.0001],lights:[],directional:{direction:{x:Math.cos(angle),y:0,elevation:Math.sin(angle)},intensity:32}},...(contact?{}:{colorGrading:{exposure:4,toneMapping:"none"}})},
+          off=await configure(`sun-grazing-${degrees}-off`,environment,"scale0",false,false,edit),
+          lit=sample({data:lastPixels,spatial:off.spatial},receiver),
+          openLit=opens.map(p=>sample({data:lastPixels,spatial:off.spatial},p));
+        check(lit[0]>30,"grazing reference does not expose self-shadowing",{degrees,lit});
+        for(const resolution of [128,256,512,1024])for(const filter of ["hard","pcf3"]){
+          const env=structuredClone(environment);env.lighting.shadowFilter=filter;
+          env.lighting.directional.shadows={resolution,extent:128,distance:512,bias:.05};
+          const row=await configure(`sun-grazing-${degrees}-${resolution}-${filter}`,env,"scale0",false,false,edit),
+            value=sample({data:lastPixels,spatial:row.spatial},receiver),open=opens.map(p=>sample({data:lastPixels,spatial:row.spatial},p)),
+            evidence={degrees,resolution,filter,lit,receiver:value,openLit,open};
+          check(open.every((v,i)=>v.every((c,j)=>Math.abs(c-openLit[i][j])<=3)),"grazing sun introduced planar self-shadowing",evidence);
+          if(contact)check(lit[0]>value[0]+20,"grazing sun lost the low caster shadow",evidence);
+          else check(value.every((c,i)=>Math.abs(c-lit[i])<=3),"near-parallel sun self-shadowed the open receiver",evidence);
+          sunGrazing.push(evidence);
+        }
+      }
+      const modelEdit = d => {
+        d.spatial.camera.position.x=0;d.spatial.camera.target={x:0,y:0,elevation:0};
+        const instances=d.sceneComposition.fragments.lab.instances;
+        instances.find(i=>i.id==="tree").x=0;instances.find(i=>i.id==="tree").y=0;
+        d.spatial.billboards.actor.castShadow=false;
+        d.spatial.terrain=[{id:"receiver-underlay",x:-240,y:-240,width:480,depth:480,elevation:0,color:[.5,.5,.5,1],castShadow:false}];
+      };
+      for(const [asset,surface] of (gameAssetShadowsOnly?[]:receiverSurfaces))for(const source of ["sun","point"]){
+        const environment={lighting:{ambient:[.03,.03,.03],lights:source==="point"?[{position:{x:1000,y:-200,elevation:800},radius:2048,intensity:8}]:[],
+          ...(source==="sun"?{directional:{direction:{x:1,y:.3,elevation:.8},intensity:2}}:{})}},
+          points=[-75,-35,5,45,85].flatMap(x=>[-55,-15,25,65].map(y=>({x,y,elevation:surface.height(x,-y)}))),
+          off=await configure(`${asset}-${source}-off`,environment,asset,false,false,modelEdit),
+          lit=points.map(p=>sample({data:lastPixels,spatial:off.spatial},p));
+        for(const p of points){const hit=raycastSpatialModel(assets.get(asset),{origin:[p.x,p.elevation+20,-p.y],direction:[0,-1,0],near:.001,far:40});check(hit&&Math.abs(hit.point[1]-p.elevation)<.001,"receiver height oracle disagrees with decoded triangles",{asset,p,hit});}
+        const pose=engine.dataSceneSpatialModelDrawSnapshot(handles.tree).transform;
+        check(pose[12]===0&&pose[13]===0&&pose[14]===0,"receiver oracle expects an untranslated model",Array.from(pose));
+
+        check(off.stats.visibleModelCount===1&&lit.every(v=>v[0]>30),"model receiver baseline is invisible or too dark",{asset,source,lit,stats:off.stats});
+        const curvePoint=asset==="receiver-curve"&&source==="point",
+          settings=[128,256].flatMap(resolution=>["hard","pcf3"].flatMap(filter=>(curvePoint?[0,.35,2]:[0,.35]).map(normalBias=>({resolution,filter,normalBias}))));
+        if(curvePoint)for(const resolution of [512,1024])for(const normalBias of [0,.35])settings.push({resolution,filter:"pcf3",normalBias});
+        for(const {resolution,filter,normalBias} of settings){
+          const env=structuredClone(environment);env.lighting.shadowFilter=filter;
+          if(source==="sun")env.lighting.directional.shadows={resolution,extent:192,distance:512,bias:.05,normalBias};
+          else env.lighting.shadows={lightIndex:0,resolution,bias:.05,normalBias};
+          const row=await configure(`${asset}-${source}-${resolution}-${filter}-${normalBias}`,env,asset,false,false,modelEdit),
+            actual=points.map(p=>sample({data:lastPixels,spatial:row.spatial},p)),
+            delta=Math.max(...actual.flatMap((v,i)=>v.map((c,j)=>Math.abs(c-lit[i][j])))),
+            evidence={asset,source,resolution,filter,normalBias,points,lit,actual,maxChannelDelta:delta};
+          const limited=curvePoint&&filter==="pcf3"&&(resolution<512||(resolution===512&&normalBias===0));
+          evidence.approximationLimited=limited&&delta>3;
+          if(!limited)check(delta<=3,"resolved model receiver introduced self-shadowing",evidence);
+          receiverModels.push(evidence);
+        }
+      }
+      if(!gameAssetShadowsOnly){
+        const low=receiverModels.find(r=>r.asset==="receiver-curve"&&r.source==="point"&&r.resolution===128&&r.filter==="pcf3"&&r.normalBias===0);
+        check(low.maxChannelDelta>10,"curvature diagnostic did not exercise an unresolved PCF footprint",low);
+        const asset="receiver-curve",surface=receiverSurfaces.get(asset),point={x:-8,y:0,elevation:surface.height(-8,0)},
+          lighting={ambient:[.03,.03,.03],lights:[{position:{x:1000,y:-200,elevation:800},radius:2048,intensity:8}]},
+          edit=d=>{modelEdit(d);d.spatial.terrain.push({id:"curved-contact",floorId:1,kind:"bridge",x:-4,y:-8,width:8,depth:16,elevation:68.5,baseElevation:68,walkable:false,color:[.5,.5,.5,1]});},
+          off=await configure("receiver-curve-contact-off",{lighting},asset,false,false,edit),lit=sample({data:lastPixels,spatial:off.spatial},point),
+          env={lighting:{...lighting,shadowFilter:"pcf3",shadows:{lightIndex:0,resolution:1024,bias:.05,normalBias:.35}}},
+          row=await configure("receiver-curve-contact-on",env,asset,false,false,edit),value=sample({data:lastPixels,spatial:row.spatial},point);
+        check(lit[0]>value[0]+20,"curvature quality profile erased a nearby caster shadow",{point,lit,receiver:value});
+        curvedContact.push({point,lit,receiver:value,resolution:1024,filter:"pcf3",normalBias:.35});
+      }
+      // Classify visible ground using CPU triangle/alpha ray queries, independently
+      // of the GPU shadow projection. Tree geometry/UV/alpha/sampler are unchanged;
+      // its existing scale0 variant disables normal strength/emission for isolation.
+      // The rock GLB is loaded without edits.
+      const pointPosition={x:240,y:-120,elevation:200};
+      for(const asset of ["scale0","rock"]){
+        const edit=d=>{
+          modelEdit(d);d.spatial.terrain[0].castShadow=true;
+          d.sceneComposition.fragments.lab.instances.find(i=>i.id==="actor").props.components.visual.color="#ffffff00";
+        },environment={lighting:{ambient:[.03,.03,.03],lights:[{position:pointPosition,radius:2048,intensity:2}]}},
+          off=await configure(`game-asset-${asset}-off`,environment,asset,false,false,edit),offData=lastPixels,
+          cpuAsset=assets.get(asset),points=[];
+        const hitLight=(p,normalBias)=>raycastSpatialModel(cpuAsset,{origin:[p.x,normalBias,-p.y],direction:[pointPosition.x-p.x,pointPosition.elevation-normalBias,-pointPosition.y+p.y],near:.001});
+        for(let x=-96;x<=64;x+=8)for(let y=-48;y<=96;y+=8){
+          const p={x,y,elevation:0},eye=[0,projection==="perspective"?600:240,160],target=[x,0,-y],
+            direction=projection==="perspective"?target.map((v,i)=>v-eye[i]):[0,-eye[1],-160],length=Math.hypot(...direction),
+            origin=projection==="perspective"?eye:target.map((v,i)=>v-direction[i]/length*2000);
+          if(raycastSpatialModel(cpuAsset,{origin,direction,near:.001,far:projection==="perspective"?length-.01:1999.99}))continue;
+          const projected=view.project(p,off.spatial);if(!projected?.visible)continue;
+          const neighborhood=[-4,0,4].flatMap(dx=>[-4,0,4].map(dy=>({x:x+dx,y:y+dy,elevation:0}))),
+            states=[0,.35].map(n=>neighborhood.map(v=>!!hitLight(v,n)));
+          if(states.every(a=>a.every(Boolean)))points.push({point:p,blocked:true});
+          else if(states.every(a=>a.every(v=>!v)))points.push({point:p,blocked:false});
+        }
+        const blocked=points.filter(p=>p.blocked),open=points.filter(p=>!p.blocked);
+        check(blocked.length>=1&&open.length>=10,"game asset oracle lacks interior shadow/open receivers",{asset,blocked:blocked.length,open:open.length});
+        // Bound the per-state oracle/readback work without choosing samples from GPU brightness.
+        const selected=[...blocked.slice(0,12),...open.filter(p=>Math.abs(p.point.x)>48).slice(0,20)];
+        for(const resolution of [128,256])for(const filter of ["hard","pcf3"])for(const normalBias of [0,.35]){
+          const env=structuredClone(environment);env.lighting.shadowFilter=filter;env.lighting.shadows={lightIndex:0,resolution,bias:.05,normalBias};
+          const row=await configure(`game-asset-${asset}-${resolution}-${filter}-${normalBias}`,env,asset,false,false,edit),
+            samples=selected.map(({point,blocked})=>({point,blocked,lit:sample({data:offData,spatial:off.spatial},point),actual:sample({data:lastPixels,spatial:row.spatial},point)})),
+            occluded=samples.filter(p=>p.blocked),unoccluded=samples.filter(p=>!p.blocked),
+            contrast=Math.max(...occluded.map(p=>p.lit[0]-p.actual[0])),
+            openDelta=Math.max(...unoccluded.flatMap(p=>p.actual.map((v,i)=>Math.abs(v-p.lit[i])))),
+            evidence={asset,resolution,filter,normalBias,radius:2048,contrast,openDelta,samples};
+          check(contrast>10,"large-radius game asset shadow disappeared",evidence);
+          check(openDelta<=3,"game asset introduced distant planar acne or excessive filtering",evidence);
+          realAssetShadows.push(evidence);
+        }
+      }
+      if(receiverShadowsOnly||gameAssetShadowsOnly)return {backend,projection,sunGrazing,receiverModels,realAssetShadows,curvedContact,rows,frames,errors};
+    }
     // Keep the floor receiver outside the plate's visible footprint. Four
     // diagonal lights also put PCF taps on both sides of the X/Z cube seams.
     const pointContacts = [], pointReceiver = { x: -8, y: 0, elevation: 0 },
@@ -960,6 +1092,10 @@ async function probe(canvas, backend, projection, { pointContactOnly = false } =
       errors,
       rows,
       pcfChanges,
+      sunGrazing,
+      receiverModels,
+      realAssetShadows,
+      curvedContact,
       sunStability,
       contactShadows,
       pointContacts,
@@ -1016,6 +1152,7 @@ export async function probeSpatialWebGpuShadows(options) {
         diff = difference(ap, bp, 3),
         count = ap.length / 4;
       const allowedFraction = a.name.startsWith("dof-") ? 0.001 : 0.01;
+      if(a.name!==b.name || diff>=count*allowedFraction)window.shadowParityFailure={projection,name:a.name,diff,count,allowedFraction,a:a.image,b:b.image};
       check(
         a.name === b.name && diff < count * allowedFraction,
         "spatial environment WebGL2/WebGPU pixel parity failed",
