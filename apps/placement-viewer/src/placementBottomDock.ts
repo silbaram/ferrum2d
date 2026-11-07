@@ -14,7 +14,7 @@ export function createPlacementBottomDock(metrics: HTMLElement) {
       ["assets", "Assets"],
       ["problems", "Problems"],
       ["runtime", "Runtime"],
-      ["changes", "Agent Changes"],
+      ["changes", "My Changes"],
     ],
     (key) => {
       for (const panel of tabs.panels.values())
@@ -57,7 +57,7 @@ export function createPlacementBottomDock(metrics: HTMLElement) {
     counts(changes: number, problems: number) {
       setUiText(
         tabs.buttons.get("changes")!,
-        uiMessage("Agent Changes ({0})", changes),
+        uiMessage("My Changes ({0})", changes),
       );
       setUiText(
         tabs.buttons.get("problems")!,
