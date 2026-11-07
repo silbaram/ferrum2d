@@ -2270,7 +2270,7 @@ async function bootstrap(): Promise<void> {
     reviewHeader.dataset.placementReviewHeader = "true";
     reviewProblems.dataset.placementReviewProblems = "true";
     reviewHeader.append(reviewChanges, reviewProblems);
-    setUiAttribute(reviewHeader, "title", "Review agent changes");
+    setUiAttribute(reviewHeader, "title", "Review my changes");
     workspaceDiagnostics = installPlacementDiagnostics({
       root: runtimeDock,
       visible: () =>
@@ -2284,7 +2284,7 @@ async function bootstrap(): Promise<void> {
         setUiText(reviewChanges, uiMessage("Changes {0}", changes));
         setUiText(reviewProblems, uiMessage("Problems {0}", problems));
         reviewProblems.hidden = !problems;
-        setUiAttribute(reviewHeader, "aria-label", uiMessage("Review agent changes: {0} changes · {1} problems", changes, problems));
+        setUiAttribute(reviewHeader, "aria-label", uiMessage("Review my changes: {0} changes · {1} problems", changes, problems));
         setUiText(
           reviewSummary,
           uiMessage("{0} changes · {1} problems", changes, problems),

@@ -56,7 +56,8 @@ export function installPlacementDiagnostics(options: {
   root.className = "placement-diagnostics";
   const problems = details("Problems"),
     runtime = details("Selected Runtime"),
-    diff = details("Agent Changes");
+    // The section id stays "Agent Changes" for automation; only the visible name changed.
+    diff = details("My Changes", "Agent Changes");
   const sourcePath = document.createElement("pre");
   sourcePath.dataset.placementSourcePath = "true";
   const runtimeValue = document.createElement("pre");
@@ -83,12 +84,12 @@ export function installPlacementDiagnostics(options: {
   });
   root.append(reload);
   options.root.append(root);
-  function details(label: string) {
+  function details(label: string, section = label) {
     const element = document.createElement("details"),
       summary = document.createElement("summary"),
       body = document.createElement("div");
     setUiText(summary, label);
-    element.dataset.placementDiagnosticSection = label;
+    element.dataset.placementDiagnosticSection = section;
     element.append(summary, body);
     root.append(element);
     return { element, summary, body };
@@ -258,7 +259,7 @@ export function installPlacementDiagnostics(options: {
       } catch (error) {
         report(error);
       }
-      setUiText(diff.summary, uiMessage("Agent Changes ({0})", changes.length));
+      setUiText(diff.summary, uiMessage("My Changes ({0})", changes.length));
       diff.body.replaceChildren(
         ...changes.slice(0, 200).map((change) => changeRow(change, scene, after, next)),
       );

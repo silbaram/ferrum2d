@@ -9,7 +9,7 @@ const RAIL_SIZE = 26;
 const RAIL_TABS = {
   scene: [["objects", "Objects"], ["project", "Project scenes"]],
   inspector: [["properties", "Properties"], ["placement", "Placement"], ["lighting", "Lighting"]],
-  runtime: [["assets", "Assets"], ["problems", "Problems"], ["runtime", "Runtime"], ["changes", "Agent Changes"]],
+  runtime: [["assets", "Assets"], ["problems", "Problems"], ["runtime", "Runtime"], ["changes", "My Changes"]],
 } as const;
 const LABELS = {
   scene: "Scene",
