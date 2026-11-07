@@ -15,7 +15,7 @@ uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
-uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform sampler2D u_sunMap;
+uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
 uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGround;uniform vec2 u_shadowNormalBias;
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
@@ -166,7 +166,7 @@ outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
 uniform mat3 u_modelUvTransform;uniform bool u_mesh;
-uniform sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
+uniform highp sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
 float alpha=(u_textured?texture(u_texture,uv).a:1.0)*v_color.a;
