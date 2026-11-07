@@ -189,6 +189,8 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
 
 export interface Renderer {
   readonly supportsSpatialScene?: boolean;
+  /** Consumes the optional native volume-shadow triangle sidecar. */
+  readonly supportsGroundShadowVolumes?: boolean;
   /** False while a live renderer cannot submit frames (e.g. device recovery). Absent means ready. */
   isRenderReady?(): boolean;
   render(): void;

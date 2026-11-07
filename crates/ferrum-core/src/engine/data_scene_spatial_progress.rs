@@ -38,11 +38,12 @@ impl Engine {
                     generation: h[1],
                 };
                 if self.world.is_current_entity(e)
-                    && self
+                    && (self
                         .spatial_scene
                         .models
                         .bindings
                         .contains_key(&(h[0], h[1]))
+                        || self.spatial_scene.attachments.has_parent(e))
                     && !self.spatial_scene.attachments.contains(e)
                 {
                     f64::from(
@@ -124,11 +125,12 @@ impl Engine {
                 generation: h[1],
             };
             let root = *state != 0
-                && self
+                && (self
                     .spatial_scene
                     .models
                     .bindings
                     .contains_key(&(h[0], h[1]))
+                    || self.spatial_scene.attachments.has_parent(e))
                 && !self.spatial_scene.attachments.contains(e);
             if !root && *rotation != 0. {
                 return false;

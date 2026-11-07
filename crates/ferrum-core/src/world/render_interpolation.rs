@@ -57,9 +57,8 @@ impl World {
         self.render_history.alpha = alpha.filter(|a| a.is_finite()).map(|a| a.clamp(0.0, 1.0));
     }
 
-    pub(crate) fn begin_render_attachment_poses(&mut self) -> bool {
+    pub(crate) fn begin_render_attachment_poses(&mut self) {
         self.render_history.attachments.clear();
-        self.render_history.alpha.is_some()
     }
 
     pub(crate) fn set_render_attachment_pose(
@@ -108,7 +107,6 @@ impl World {
     }
 
     fn interpolated_render_pose(&self, index: usize) -> Option<Pose> {
-        let alpha = self.render_history.alpha?;
         if let Some((native, rendered)) = self
             .render_history
             .attachments
@@ -120,6 +118,7 @@ impl World {
                 return Some(rendered);
             }
         }
+        let alpha = self.render_history.alpha?;
         let before = self.render_history.before.get(index).copied().flatten()?;
         let after = self.render_history.after.get(index).copied().flatten()?;
         // Teleports, restores and recycled entity slots invalidate the sample.

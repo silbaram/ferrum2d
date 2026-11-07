@@ -45,6 +45,7 @@ mod data_scene_obstacles;
 mod data_scene_projection_sun;
 mod data_scene_spawn_prefabs;
 mod data_scene_visuals;
+mod data_scene_volume_shadows;
 mod fixed_timestep;
 mod mass_objects;
 mod particles;
@@ -186,6 +187,8 @@ mod spatial_navigation;
 mod spatial_physics_obstacles;
 mod spatial_progress;
 mod spatial_scene;
+mod spatial_shadow_only;
+mod spatial_sun_stability;
 mod spatial_terrain_chunks;
 
 mod physics_expansion;

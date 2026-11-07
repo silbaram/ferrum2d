@@ -54,6 +54,10 @@ PNG extrusion의 현재 계약과 검증 명령은
 
 ## 추가 시각 효과와 제품 경계
 
+조명·태양광 그림자·재질·Bloom/AO/색공간의 구체적인 개선 순서와 검증 조건은
+[조명 고도화 계획](lighting-quality-upgrade-plan.md)에서 관리한다.
+아래 추가 효과는 해당 계획의 선택 확장 후보이며 기존 효과의 재구현 목록이 아니다.
+
 독립 평면 shadow receiver, 화면 공간 광선 mask, 반투명 다중 depth, 물리적 bokeh,
 PCSS·다중 point shadow light는 제품 필요와 비용·fallback·HUD/alpha 경계를 먼저 정할 후보다.
 현재 높이 기반 그림자·normal lighting·view-depth DOF를 신규 미구현 기능으로 세지 않는다.

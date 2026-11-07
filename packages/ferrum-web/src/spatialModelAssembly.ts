@@ -127,7 +127,7 @@ function appendAssembly(
   const height = (h: number): number => Math.fround(number(elevation + h * factor, "transformed.elevation"));
   const colliders = assembly.colliders === undefined ? [] : assembly.colliders;
   if (!Array.isArray(colliders) || colliders.length > 256) fail("colliders", "must be an array with at most 256 proxies");
-  fields(assembly.model, ["asset", "contentId", "castShadow", "receiveShadow", "chunk", "lods"], "model");
+  fields(assembly.model, ["asset", "contentId", "castShadow", "receiveShadow", "shadowOnly", "chunk", "lods"], "model");
   const composition = resolveSceneCompositionSpec(document.sceneComposition);
   if (!document.spatial) fail("document.spatial", "requires a spatial authoring document");
   const spatial = document.spatial!;

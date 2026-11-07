@@ -3,6 +3,9 @@ use super::{Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
 use std::collections::BTreeMap;
 
+/// Cold authoring bit only. Render ModelDraw flags remain the existing cast/receive pair.
+const SHADOW_ONLY: u32 = 4;
+
 #[derive(Debug)]
 pub(crate) struct ModelBinding {
     draw_index: Option<usize>,
@@ -36,6 +39,7 @@ pub(crate) struct SpatialModels {
 }
 impl SpatialModels {
     /// Metadata: entity ID/generation, asset ID, flags, primitive count, triangle count.
+    /// Flags: cast=1, receive=2, shadow-only=4. The last bit is not exported in ModelDraw.
     /// Style: elevation, yaw, positive uniform scale, local min XYZ, local max XYZ.
     pub fn configure(&mut self, world: &World, metadata: &[u32], styles: &[f32]) -> bool {
         if !metadata.len().is_multiple_of(6)
@@ -58,7 +62,7 @@ impl SpatialModels {
                 || world.transform(entity).is_none()
                 || world.sprite_nine_slices[entity.id as usize].is_some()
                 || m[2] == 0
-                || m[3] > 3
+                || m[3] > 7
                 || !(1..=32).contains(&m[4])
                 || !(1..=65536).contains(&m[5])
                 || primitives > 4096
@@ -114,7 +118,8 @@ impl SpatialModels {
             let Some((matrix, min, max)) = binding.pose(world, entity) else {
                 continue;
             };
-            let mut mask = u32::from(camera.intersects_bounds(min, max));
+            let mut mask =
+                u32::from(binding.flags & SHADOW_ONLY == 0 && camera.intersects_bounds(min, max));
             if binding.flags & 1 != 0 {
                 for (index, m) in shadow_matrices.chunks_exact(16).enumerate() {
                     if super::shadows::intersects_bounds(m, min, max) {
@@ -141,7 +146,7 @@ impl SpatialModels {
             binding.draw_index = Some(self.draws.len());
             self.draws.push(ModelDraw {
                 asset,
-                flags: binding.flags,
+                flags: binding.flags & 3,
                 mask,
                 reserved: 0,
                 matrix,

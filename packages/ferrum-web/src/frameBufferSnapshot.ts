@@ -47,6 +47,7 @@ function snapshotRenderCommandBuffer(view: RenderCommandBufferView): RenderComma
     ...view,
     buffer: view.buffer.slice(),
     ...(view.groundShadowProjection === undefined ? {} : { groundShadowProjection: view.groundShadowProjection.slice() }),
+    ...(view.groundShadowVolumes===undefined?{}:{groundShadowVolumes:{...view.groundShadowVolumes,buffer:view.groundShadowVolumes.buffer.slice()}}),
     ...(view.spriteNormalMaterials === undefined ? {} : {
       spriteNormalMaterials: { ...view.spriteNormalMaterials, buffer: view.spriteNormalMaterials.buffer.slice() },
     }),

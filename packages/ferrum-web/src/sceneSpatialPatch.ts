@@ -66,6 +66,7 @@ export type SceneSpatialPatchOperation =
         | "scale"
         | "castShadow"
         | "receiveShadow"
+        | "shadowOnly"
       >;
     }
   | {
@@ -101,14 +102,14 @@ export type SceneSpatialPatchOperation =
       changes: Partial<
         Pick<
           SpatialModelInstanceSpec,
-          "elevation" | "yawDegrees" | "scale" | "castShadow" | "receiveShadow"
+          "elevation" | "yawDegrees" | "scale" | "castShadow" | "receiveShadow" | "shadowOnly"
         >
       >;
     };
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4 | 5 | 6;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
@@ -131,6 +132,7 @@ const fields = {
     "scale",
     "castShadow",
     "receiveShadow",
+    "shadowOnly",
   ],
   updateTerrainSurface: [
     "x",
@@ -154,6 +156,7 @@ const fields = {
     "scale",
     "castShadow",
     "receiveShadow",
+    "shadowOnly",
   ],
 } as const;
 
@@ -172,11 +175,12 @@ export function applySceneSpatialPatch(
       patch.version !== 3 &&
       patch.version !== 4 &&
       patch.version !== 5 &&
-      patch.version !== 6) ||
+      patch.version !== 6 &&
+      patch.version !== 7) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5 or 6 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6 or 7 operations",
     );
   if (
     Object.keys(patch).some(
@@ -345,7 +349,9 @@ export function applySceneSpatialPatch(
           throw new Error(
             `spatial.${operation.id}.${key}: must be a nonempty string`,
           );
-      } else if (key === "castShadow" || key === "receiveShadow") {
+      } else if (key === "castShadow" || key === "receiveShadow" || key === "shadowOnly") {
+        if (key === "shadowOnly" && patch.version < 7)
+          throw new Error("Shadow-only models require spatial patch version 7");
         if (typeof value !== "boolean")
           throw new Error(`spatial.${operation.id}.${key}: must be boolean`);
       } else if (typeof value !== "number" || !Number.isFinite(value))
@@ -587,7 +593,7 @@ export function diffSceneSpatialPatch(
       throw new Error("Spatial draft contains unsupported metadata changes");
     return undefined;
   }
-  const version = operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+  const version = operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
     (op) => op.kind === "setBillboardNormalTexture",
   )
     ? 4

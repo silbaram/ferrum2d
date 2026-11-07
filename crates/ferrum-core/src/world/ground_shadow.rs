@@ -1,12 +1,21 @@
 //! Cached ground silhouettes, owned and retired with their entity.
 use crate::components::{Sprite, Transform2D};
 use crate::render_command::{SpriteRenderCommand, SPRITE_PROJECT_GROUND, SPRITE_SHADOW_ALPHA};
+mod volume;
+pub(crate) use volume::{GroundShadowHull, GroundShadowVolume, GroundShadowVolumeVertex};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum GroundShadowShape {
     Ellipse,
     Box,
     Alpha,
+    Volume(GroundShadowVolume),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum CachedGeometry {
+    Sprite(SpriteRenderCommand),
+    Volume(GroundShadowHull),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -16,7 +25,7 @@ pub(crate) struct GroundShadowCaster {
     pub height: f32,
     pub opacity: f32,
     pub layer: i32,
-    cache: Option<([f32; 15], SpriteRenderCommand)>,
+    cache: Option<([f32; 15], CachedGeometry)>,
 }
 
 impl GroundShadowCaster {
@@ -45,45 +54,17 @@ impl GroundShadowCaster {
         sun: GroundSun,
         ground_y_scale: f32,
     ) -> (SpriteRenderCommand, bool) {
-        let key = [
-            t.x,
-            t.y,
-            sprite.width,
-            sprite.height,
-            sprite.origin_x,
-            sprite.origin_y,
-            sprite.rotation_radians,
-            sprite.a,
-            sun.projection.direction_x,
-            sun.projection.direction_y,
-            sun.opacity,
-            sun.projection.length_scale,
-            ground_y_scale,
-            if sprite.project_ground { 1.0 } else { 0.0 },
-            self.opacity,
-        ];
-        if let Some((previous, command)) = self.cache {
+        let key = self.geometry_key(t, sprite, sun, ground_y_scale);
+        if let Some((previous, CachedGeometry::Sprite(command))) = self.cache {
             if previous == key {
                 return (self.with_current_frame(command, sprite), true);
             }
         }
-        // The bottom-center of the authored image is the ground contact, including pivot/rotation.
-        let dx = (0.5 - sprite.origin_x) * sprite.width;
-        let dy = (1.0 - sprite.origin_y) * sprite.height;
+        let [foot_x, foot_y] = sprite_foot(t, sprite, ground_y_scale);
         let (sin, cos) = sprite.rotation_radians.sin_cos();
-        let foot_x = t.x + dx * cos - dy * sin;
-        let foot_y = t.y
-            + (dx * sin + dy * cos)
-                / if sprite.project_ground {
-                    1.0
-                } else {
-                    ground_y_scale
-                };
         let projection = sun.projection;
         let alpha = self.shape == GroundShadowShape::Alpha;
         let length = self.height * projection.length_scale;
-        // Rotate the silhouette about its bottom-center before laying it on the ground.
-        // Keep the packed fields' meanings: size, UV, black RGBA and owner rotation.
         let (offset_x, offset_y) = if alpha {
             projection.project(self.height * 0.5 * sin, -self.height * 0.5 * cos)
         } else {
@@ -112,6 +93,10 @@ impl GroundShadowCaster {
                     GroundShadowShape::Ellipse => 8.0,
                     GroundShadowShape::Box => 16.0,
                     GroundShadowShape::Alpha => SPRITE_SHADOW_ALPHA,
+                    // append_ground_shadow routes volume casters through volume_geometry first.
+                    GroundShadowShape::Volume(_) => {
+                        unreachable!("volume shadows have triangle geometry")
+                    }
                 },
             rotation_radians: if alpha {
                 sprite.rotation_radians
@@ -119,8 +104,61 @@ impl GroundShadowCaster {
                 projection.direction_y.atan2(projection.direction_x) - std::f32::consts::FRAC_PI_2
             },
         };
-        self.cache = Some((key, command));
+        self.cache = Some((key, CachedGeometry::Sprite(command)));
         (self.with_current_frame(command, sprite), false)
+    }
+
+    pub fn volume_geometry(
+        &mut self,
+        t: Transform2D,
+        sprite: Sprite,
+        sun: GroundSun,
+        ground_y_scale: f32,
+    ) -> Option<(GroundShadowHull, bool)> {
+        let GroundShadowShape::Volume(volume) = self.shape else {
+            return None;
+        };
+        let key = self.geometry_key(t, sprite, sun, ground_y_scale);
+        if let Some((previous, CachedGeometry::Volume(hull))) = self.cache {
+            if previous == key {
+                return Some((hull, true));
+            }
+        }
+        let hull = volume.project(
+            sprite_foot(t, sprite, ground_y_scale),
+            self.width,
+            self.height,
+            sprite.rotation_radians,
+            sun.projection,
+        );
+        self.cache = Some((key, CachedGeometry::Volume(hull)));
+        Some((hull, false))
+    }
+
+    fn geometry_key(
+        &self,
+        t: Transform2D,
+        sprite: Sprite,
+        sun: GroundSun,
+        ground_y_scale: f32,
+    ) -> [f32; 15] {
+        [
+            t.x,
+            t.y,
+            sprite.width,
+            sprite.height,
+            sprite.origin_x,
+            sprite.origin_y,
+            sprite.rotation_radians,
+            sprite.a,
+            sun.projection.direction_x,
+            sun.projection.direction_y,
+            sun.opacity,
+            sun.projection.length_scale,
+            ground_y_scale,
+            if sprite.project_ground { 1.0 } else { 0.0 },
+            self.opacity,
+        ]
     }
 
     fn with_current_frame(
@@ -156,6 +194,21 @@ impl GroundShadowCaster {
             )
         }
     }
+}
+
+fn sprite_foot(t: Transform2D, sprite: Sprite, ground_y_scale: f32) -> [f32; 2] {
+    let dx = (0.5 - sprite.origin_x) * sprite.width;
+    let dy = (1.0 - sprite.origin_y) * sprite.height;
+    let (sin, cos) = sprite.rotation_radians.sin_cos();
+    [
+        t.x + dx * cos - dy * sin,
+        t.y + (dx * sin + dy * cos)
+            / if sprite.project_ground {
+                1.0
+            } else {
+                ground_y_scale
+            },
+    ]
 }
 
 /// Frame-level numeric metadata; shared with renderers without per-caster boundary calls.

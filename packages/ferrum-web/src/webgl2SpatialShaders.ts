@@ -15,11 +15,100 @@ uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
-uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform sampler2D u_sunMap;
+uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
 uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGround;uniform vec2 u_shadowNormalBias;
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
+ // Quantize a canonical cube face before sampling. The center ray has a unique
+ // major axis, including when the original PCF direction lies on a cube seam.
+ vec3 a=abs(direction);int face;vec2 st;float major;
+ if(a.x>=a.y && a.x>=a.z){
+  face=direction.x>=0.?0:1;major=a.x;st=vec2(direction.x>=0.?-direction.z:direction.z,-direction.y);
+ }else if(a.y>=a.z){
+  face=direction.y>=0.?2:3;major=a.y;st=vec2(direction.x,direction.y>=0.?direction.z:-direction.z);
+ }else{
+  face=direction.z>=0.?4:5;major=a.z;st=vec2(direction.z>=0.?direction.x:-direction.x,-direction.y);
+ }
+ float size=float(textureSize(u_shadowMap,0).x);
+ vec2 pixel=clamp(floor((st/major*.5+.5)*size),vec2(0.),vec2(size-1.));
+ vec2 uv=(pixel+.5)*2./size-1.;vec3 ray;
+ if(face==0)ray=vec3(1.,-uv.y,-uv.x);
+ else if(face==1)ray=vec3(-1.,-uv.y,uv.x);
+ else if(face==2)ray=vec3(uv.x,1.,uv.y);
+ else if(face==3)ray=vec3(uv.x,-1.,-uv.y);
+ else if(face==4)ray=vec3(uv.x,-uv.y,1.);
+ else ray=vec3(-uv.x,-uv.y,-1.);
+ ray=normalize(ray);
+ float expected=d,bias=fallbackBias,denominator=dot(geometric,ray);
+ if(abs(denominator)>.000001){
+  float distance=plane/denominator;
+  if(distance>0. && distance<radius){
+   expected=distance;
+   // Subpixel rasterization also perturbs a grazing plane's stored depth.
+   // Reserve 1/16 texel in each raster axis, independent of the PCF kernel.
+   float slope=sqrt(max(1.-denominator*denominator,0.))/abs(denominator);
+   bias=u_shadowBias+expected/size*.1767766953*slope;
+  }
+ }
+ // One DEPTH_COMPONENT24 step plus relative f32 arithmetic tolerance.
+ bias+=radius/16777216.+max(expected,d)*.000001;
+ return textureLod(u_shadowMap,ray,0.).r*radius+bias<expected?0.:1.;
+}
+float pointVisibility(vec3 delta,float d,float radius,vec3 geometric){
+ if(d<=max(u_shadowBias,.000001))return 1.;
+ float size=float(textureSize(u_shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
+ float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
+ float fallbackBias=u_shadowBias+2.*d/size*slope*(u_shadowFilter==1?3.:1.);
+ vec3 axis=-delta/d;float plane=dot(geometric,axis)*d;
+ if(u_shadowFilter!=1)return pointCompare(axis,plane,d,radius,geometric,fallbackBias);
+ vec3 up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
+ vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float visibility=0.;
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+  vec3 direction=axis+(tangent*float(x)+bitangent*float(y))*2./size;
+  visibility+=pointCompare(direction,plane,d,radius,geometric,fallbackBias);
+ }
+ return visibility/9.;
+}
+float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
+ vec2 at=clamp(pixel,vec2(0.),size-1.);vec2 uv=(at+.5)/size;
+ float expected=q.z+dot(gradient,uv-q.xy);
+ if(expected<0. || expected>1.)return 1.;
+ return texelFetch(u_sunMap,ivec2(at),0).r+bias<expected?0.:1.;
+}
+float sunVisibility(vec3 world,vec3 geometric){
+ vec4 clip=u_sunMatrix*vec4(world+geometric*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
+ if(any(lessThan(q,vec3(0.))) || any(greaterThan(q,vec3(1.))))return 1.;
+ vec2 size=vec2(textureSize(u_sunMap,0)),texel=1./size;
+ // Fade only inside the finite map, across four XY texels in world units.
+ // The same world width guards the depth planes; outside remains fully lit.
+ float xyEdge=min(min(q.x,1.-q.x),min(q.y,1.-q.y))*2.*u_sunParams.z;
+ float depthEdge=min(q.z,1.-q.z)*u_sunParams.x;
+ float weight=smoothstep(0.,8.*u_sunParams.z/size.x,min(xyEdge,depthEdge));
+ float incidence=dot(geometric,normalize(u_sunDirection));
+ bool plane=abs(incidence)>.000001;vec2 gradient=vec2(0.);
+ float bias=u_sunParams.y/u_sunParams.x+.000001;
+ if(plane){
+  // Orthographic receiver-plane depth gradient in canonical (Y-up) shadow UV.
+  // Using the geometric normal avoids derivatives in divergent shadow branches.
+  vec3 r=vec3(u_sunMatrix[0][0],u_sunMatrix[1][0],u_sunMatrix[2][0])*u_sunParams.z;
+  vec3 up=vec3(u_sunMatrix[0][1],u_sunMatrix[1][1],u_sunMatrix[2][1])*u_sunParams.z;
+  gradient=vec2(dot(geometric,r),dot(geometric,up))*(2.*u_sunParams.z/(u_sunParams.x*incidence));
+  // Two 1/16-pixel raster error bounds, projected along the receiver plane.
+  bias+=(abs(gradient.x)+abs(gradient.y))/(8.*size.x);
+ }else{
+  float angle=max(incidence,0.);
+  float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
+  bias+=2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.)/u_sunParams.x;
+ }
+ vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);
+ float visibility=0.;
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+  visibility+=sunCompare(pixel+vec2(x,y),size,q,gradient,bias);
+ }
+ return mix(1.,visibility/9.,weight);
+}
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
 vec4 texel=u_textured?texture(u_texture,uv):vec4(1.0);vec4 c=texel*v_color;
@@ -63,38 +152,13 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   float visibility=1.0;
   if(u_receiveShadow && i==u_shadowIndex){
    vec3 shadowDelta=delta-geometricNormal*u_shadowNormalBias.x;float shadowDistance=length(shadowDelta);
-   if(shadowDistance>max(u_shadowBias,.000001)){
-   float nearest=texture(u_shadowMap,-shadowDelta).r*radius;
-   // A world-space bias alone cannot cover a grazing receiver's cubemap texel footprint.
-   float incidence=max(dot(geometricNormal,shadowDelta/shadowDistance),0.);
-   float slope=min(sqrt(max(1.0-incidence*incidence,0.0))/max(incidence,0.2),2.0);
-   float receiverBias=u_shadowBias+2.0*shadowDistance/float(textureSize(u_shadowMap,0).x)*slope*(u_shadowFilter==1?3.:1.);
-   visibility=nearest+receiverBias<shadowDistance?0.0:1.0;
-   if(u_shadowFilter==1){
-    vec3 axis=normalize(-shadowDelta),up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
-    vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float stepSize=2./float(textureSize(u_shadowMap,0).x);
-    visibility=0.;
-    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
-     float value=texture(u_shadowMap,axis+(tangent*float(x)+bitangent*float(y))*stepSize).r*radius;
-     visibility+=value+receiverBias<shadowDistance?0.:1.;
-    }visibility/=9.;
-   }
-  }}
+   visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
+  }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
  }
  if(u_sunColor.a>0.){
   float lambert=max(dot(n,normalize(u_sunDirection)),0.),visibility=1.;
-  if(u_sunShadow && u_receiveShadow){
-   vec4 clip=u_sunMatrix*vec4(v_world+geometricNormal*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
-   if(all(greaterThanEqual(q,vec3(0.))) && all(lessThanEqual(q,vec3(1.)))){
-    vec2 texel=1./vec2(textureSize(u_sunMap,0));
-    float incidence=max(dot(geometricNormal,normalize(u_sunDirection)),0.);
-    float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
-    float bias=(u_sunParams.y+2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.))/u_sunParams.x;
-    visibility=texture(u_sunMap,q.xy).r+bias<q.z?0.:1.;
-    if(u_shadowFilter==1){visibility=0.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) visibility+=texture(u_sunMap,q.xy+vec2(x,y)*texel).r+bias<q.z?0.:1.;visibility/=9.;}
-   }
-  }
+  if(u_sunShadow && u_receiveShadow)visibility=sunVisibility(v_world,geometricNormal);
   illumination+=u_sunColor.rgb*u_sunColor.a*lambert*visibility;
  }
  color=albedo*illumination;
@@ -105,11 +169,17 @@ outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
 uniform mat3 u_modelUvTransform;uniform bool u_mesh;
-uniform sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
+uniform highp sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;uniform float u_shadowTexel;
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 if(u_mesh)uv=(u_modelUvTransform*vec3(uv,1.)).xy;
 float alpha=(u_textured?texture(u_texture,uv).a:1.0)*v_color.a;
-if(alpha<v_cutoff)discard;gl_FragDepth=u_directionalShadow?gl_FragCoord.z:clamp(length(v_world-u_shadowLight.xyz)/u_shadowLight.w,0.0,1.0);}`;
+if(alpha<v_cutoff)discard;
+if(u_directionalShadow){gl_FragDepth=gl_FragCoord.z;}else{
+ // A 90-degree cube projection has clip W equal to the major-axis distance.
+ // Recover radial depth from raster coordinates, even when a source vertex has W=0.
+ vec2 uv=gl_FragCoord.xy*(2.*u_shadowTexel)-1.;
+ gl_FragDepth=clamp(length(vec3(uv,1.))/(gl_FragCoord.w*u_shadowLight.w),0.,1.);
+}}`;
 export const spatialCompositeVertexSource = `#version 300 es
 out vec2 v_uv;
 void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`;

@@ -198,6 +198,12 @@ declare module "../pkg/ferrum_core.js" {
     configure_data_scene_sprite_projection(id: number, generation: number, ground: boolean): boolean;
     configure_data_scene_sun(x: number, y: number, opacity: number, lengthScale: number, maxCasters: number): boolean;
     configure_data_scene_ground_shadow(id: number, generation: number, shape: number, width: number, height: number, opacity: number, explicitLayer: boolean, layer: number): boolean;
+    configure_data_scene_ground_shadow_volume(id:number,generation:number,width:number,depth:number,height:number,roofHeight:number,offsetX:number,offsetY:number,opacity:number,explicitLayer:boolean,layer:number):boolean;
+    ground_shadow_volume_abi_version():number;
+    ground_shadow_volume_vertex_stride():number;
+    ground_shadow_volume_ptr():number;
+    ground_shadow_volume_len():number;
+    ground_shadow_volume_caster_count():number;
     data_scene_ground_shadow_stats(): Uint32Array;
     data_scene_ground_shadow_projection_ptr(): number;
     data_scene_ground_shadow_projection_len(): number;

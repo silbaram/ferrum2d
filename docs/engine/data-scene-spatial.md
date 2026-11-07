@@ -127,6 +127,10 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   일치하는 값을 작성한다. 삼각형 충돌·자동 보행층은 제공하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
   `castShadow`/`receiveShadow`는 기본 true다. native가 world bounds와 camera/light culling을 계산한다.
+  `shadowOnly: true`(기본 false)는 main camera와 placement viewer의 모델 triangle picking에서 제외하고 point/sun caster로만 사용한다.
+  `castShadow: false`와 함께 쓰면 표시와 그림자가 모두 꺼진다. collision/navigation metadata와 authored collider는
+  이 옵션으로 바뀌지 않는다. GLB의 alpha MASK·재질·기존 LOD/chunk 정책과 제출 예산을 그대로 사용하므로
+  카메라 거리로 LOD가 바뀌면 proxy 형상도 달라질 수 있다. 고정 형상에는 단일 LOD를 사용한다.
   TS는 공유 indexed GPU buffers와 decoded RGBA 자원을 관리하며 정적 정점을 매 frame 전송하지 않는다.
   같은 handle에 anchor한 world text도 공간 depth와 물리 elevation·시각 offset을 따른다.
   글꼴은 1 world unit/font pixel에 text scale을 적용하며 모델의 meter 배율로 확대하지 않는다.
@@ -154,6 +158,28 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   실패의 후속 WebGL 오류도 제한된 횟수로 비워 정상 재시도가 이전 오류로 거절되지 않게 한다.
   null을 반환하는 texture/buffer/sampler 할당 실패도 오류 flag를 정리해 다음 정상 재시도를 막지 않는다.
   선택 GPU 준비 경로는 아래 계약을 사용한다. 기존 모델 없는 v5/v6/v7 포맷·hash 계약은 유지한다.
+
+카메라가 회전해도 일정한 billboard 그림자가 필요하면 별도 instance의 volume 모델을 연결한다.
+표시 billboard는 `castShadow: false`, proxy 모델은 `shadowOnly: true`로 작성한다. 얇은 평면 한 장은
+빛과 평행할 때 그림자가 사라지므로 간단한 상자·캡슐 등 부피가 있는 GLB가 적합하다.
+
+```ts
+spatial.billboards.actor = { castShadow: false };
+spatial.models.actorShadow = {
+  asset: "actor-shadow", contentId: actorShadowAsset.contentId,
+  shadowOnly: true, castShadow: true,
+};
+spatial.attachments = {
+  ...spatial.attachments,
+  actorShadow: { parent: "actor", elevation: 0 },
+};
+```
+
+`actorShadow`는 별도 composition instance이며 `collider: "none"`, body 생략으로 작성할 수 있다.
+부모는 heightSpan이 있는 model 또는 billboard다. Rust가 부모의 XY·높이·yaw를 따라가며 proxy에
+물리 body·collider·영속 heightSpan을 추가하지 않는다. 모델 asset 등록·resident 참조·해제 규칙은 보이는 모델과 같다.
+옵션은 cold configuration flag로 전달하고 기존 80-byte model output ABI에는 추가 bit를 내보내지 않는다.
+이 flag를 모르는 이전 Wasm은 해당 설정을 거절한다. 사용 시 TS와 Wasm을 함께 갱신한다.
 
 ### 분리형 glTF 배경 모델
 
@@ -652,7 +678,8 @@ point light 6면과 directional sun의 그림자, hard/PCF3 필터, terrain/bill
 native face range·caster revision·모델 visibility/matrix를 사용하므로 카메라 밖 모델도 그림자를 드리운다.
 같은 terrain/caster/광원/matrix/색 atlas revision이면 깊이 map을 재사용하며 shadow draw/upload는0이다.
 카메라 이동으로 billboard caster 모양이 바뀌면 native revision에 따라 다시 그린다. normal atlas만 갱신하면 WebGPU 깊이 cache는 유지한다.
-`linear-srgb` renderer 색 관리와 bloom은 기존 정책대로 WebGL2 fallback을 사용한다.
+`linear-srgb` renderer 색 관리는 WebGL2 fallback을 사용한다.
+전체 화면 후처리 Bloom과 Spatial 환경의 HDR Bloom은 WebGPU에서도 지원하며 서로 별도의 효과다.
 같은 평면 `LightingScene2D`를 공간 packet에 중복 적용할 수 없다.
 
 ```ts
@@ -743,8 +770,41 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 조명은 실제 triangle 표면 방향과 광원 위치/높이·거리 감쇠를 사용한다. terrain의 top/side/bottom과
 authoring에 연결한 cutout billboard가 그림자를 만들고 받는다. 동일 native atlas UV·flip·alpha cutoff와
 물리 elevation을 사용하며 화면 밖 caster도 광원 기준으로 판정한다. 기본 그림자는 nearest depth의 hard shadow다.
-깊이 비교는 작성한 bias에 해상도·입사각 기반의 제한된 receiver 보정을 더해 자기 그림자 줄무늬를 줄인다.
-얇고 밀착한 geometry의 shadow offset은 해상도·bias 조정으로 관리한다.
+점광원 hard/PCF는 각 cube texel 중심의 광선과 기하 수신 평면의 교점까지 거리를 비교한다.
+표시/노멀맵 법선 대신 triangle의 기하 법선을 사용하며, `normalBias`로 이동한 조회 위치를 평면 기준으로 삼는다.
+큐브 면 선택은 X→Y→Z 우선순위로 동률을 해소하고 texel을 먼저 정한다. GL은 해당 중심 광선으로 nearest lookup,
+WebGPU는 같은 texel의 행만 뒤집어 array face에서 읽으므로 경계에서 서로 다른 면을 암묵적으로 고르지 않는다.
+[Khronos cube map 규칙](https://registry.khronos.org/OpenGL/specs/gl/glspec46.core.pdf)의 좌표 변환을 사용한다.
+
+점광원 caster의 radial depth도 화면의 texel 좌표와 reciprocal clip-W로 복원한다.
+90° cube 투영에서 `uv = fragCoord.xy × 2/resolution - 1`이면 world 거리는
+`length([uv.x, uv.y, 1]) / fragCoord.w`다. 광원 반경으로 나눠 기존 radial depth 형식에 저장한다.
+`fragCoord.w`는 [GLSL](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)과
+[WGSL fragment position](https://www.w3.org/TR/WGSL/)의 reciprocal-W 입력이다.
+점광원 eye plane에 정렬된 원본 정점의 world-position varying에 의존하지 않으며,
+정점의 clip-W나 light pose를 임의로 이동하지 않는다. alpha cutoff와 태양 projected depth 경로는 유지한다.
+WebGPU는 기존 camera record의 여유 field로 inverse resolution을 전달하고 업로드 크기·Rust ABI는 바꾸지 않는다.
+
+유효 교점은 광원 앞·반경 안에 있어야 하며, 광선과 기하 법선의 내적 절댓값이 `1e-6`보다 커야 한다.
+조회 위치 `q`, 광원 `L`, 단위 기하 법선 `n`, texel 중심 단위 광선 `r`이면
+`t = dot(n, q-L) / dot(n,r)`다. 이때 world 비교 허용량은 다음과 같다.
+
+```text
+authored bias
++ sqrt(2) × t / (8 × resolution) × sqrt(max(1 - dot(n,r)², 0)) / abs(dot(n,r))
++ radius / 2²⁴
++ max(t, distance(q,L)) × 1e-6
+```
+
+두 번째 항은 래스터 X/Y 각각 texel의 1/16 크기에 해당하는 정밀도 여유를 두 축의 길이로 합친 값이다.
+거의 평행한 면에서는 이 작은 좌표 오차도 큰 깊이 오차가 되므로 교점 거리와 입사각을 함께 사용한다.
+[OpenGL ES의 최소 subpixel 정밀도](https://registry.khronos.org/OpenGL/specs/es/3.1/es_spec_3.1.pdf)와
+GL depth24의 한 단계 오차를 고려한 보수적 보정이며 실물 GPU 전체의 시각적 무오차를 보장하지는 않는다.
+PCF 폭 때문에 일반 수신면의 bias를 3배로 늘리지 않는다. 교점을 구할 수 없거나 광원 뒤/반경 밖이면
+기존의 제한된 slope 보정과 중심 수신 거리를 사용한다. 작성한 bias/normalBias와 렌더·저장 ABI는 유지한다.
+이전 버전보다 낮은 물체의 접촉 그림자가 가깝고 진하게 나타날 수 있다. 매우 얇은 물체·큰 반경·낮은 해상도에서
+발생하는 표본화 한계는 남으므로, 필요한 경우 해상도·광원 범위와 authored bias를 함께 조절한다.
+태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
 bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
 
@@ -1170,10 +1230,57 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 `distance`는 target 중심 앞/뒤 깊이의 반폭 1..10,000(기본 512), `bias`는 world 0..10(기본 0.05)다.
 카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
 적용하며 무한 거리 그림자나 cascade를 제공하지 않는다.
+범위 안쪽의 경계 구간에서는 차폐를 smoothstep으로 줄여 직접 조명으로 이어진다.
+구간 폭은 XY shadow texel 4개에 해당하는 world 거리(`8 × extent / resolution`)이며 같은 거리를 깊이 경계에도 적용한다.
+영역 밖으로 그림자를 늘리거나 다른 광원·환경광을 감쇠하지 않는다. target이 움직일 때의 texel snapping은 유지한다.
+
+그림자 맵의 기준축은 월드 +elevation에서 태양 방향으로 최소 회전한 고정 프레임으로 계산한다.
+고도 약 81.9°에서 reference-up을 교체하지 않으므로 천정과 지평선 통과 때 격자가 갑자기 회전하지 않는다.
+정확히 -elevation을 향하는 방향은 회전축이 유일하지 않아 고정된 축을 사용한다. 그 반대 극점까지
+모든 접근 방향의 격자 연속성을 보장하지는 않는다. 기존 버전과 사각 맵의 방향이 달라질 수 있어
+범위 경계와 그림자 가장자리 픽셀은 달라질 수 있다. 광원의 방향·강도와 저장 형식은 유지한다.
+같은 target에서 camera만 회전하면 sun matrix는 유지되지만, camera-facing billboard의
+기본 caster 형상은 camera를 따른다. 고정된 형상이 필요하면 표시 billboard의 cast를 끄고
+위의 `shadowOnly` 모델 proxy를 attachment로 연결한다.
 
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
 수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
+
+WebGL2의 sun depth sampler와 point/sun caster의 alpha sampler는 highp를 명시한다.
+main/caster가 같은 정밀도로 alpha cutoff를 판정하며 depth24 조회를 기본 lowp sampler에 맡기지 않는다.
+[GLSL ES 3.00](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf)의
+sampler 기본값과 조회 반환 정밀도 규칙에 따른 선언이다. 낮은 정밀도를 실제 사용하는 기기의 차이는
+software adapter의 픽셀 동등성 결과만으로 확인할 수 없다.
+
+태양 hard/PCF는 각 shadow texel 중심에서 수신 평면의 깊이를 계산해 비교한다.
+기하 노멀과 직교 sun matrix로 깊이 기울기를 구하므로 노멀맵과 화면 해상도로 그림자 접촉 위치를 흔들지 않는다.
+PCF를 켠다는 이유만으로 평면 전체의 자동 bias를 3배로 늘리지 않아 낮은 caster의 그림자가 사라지는 문제를 줄인다.
+정규화된 깊이의 UV 기울기를 `g`, map 해상도를 `N`이라 하면 raster 정밀도 여유는
+`(|g.x| + |g.y|) / (8N)`이다. 두 번의 1/16-pixel 좌표 오차를 보수적으로 합친 값이며
+필터 폭으로 곱하지 않는다. 1°의 낮은 태양에서도 열린 평면의 자기 그림자를 억제한다.
+각 tap의 예상 깊이가 `[0,1]` 밖이면 그 tap은 유효한 수신 평면 교점이 없으므로 밝게 처리한다.
+빈 texel의 깊이 1을 범위 밖 예상 깊이와 비교해 가림으로 오인하지 않는다.
+`abs(n·L) > 1e-6`에서는 평면 보정을 유지한다. 더 평행한 수신면은 기존의 제한된 slope 보정을 사용하며
+깊이 비교에는 작은 부동소수점 허용량도 포함한다. 작성한 `bias`와 `normalBias`의 world 단위·기본값은 유지한다.
+이 변경으로 기존 버전보다 접촉 그림자가 가깝게 나타날 수 있다. caster 형상·영역 밖의 visibility·필터 sample 수는 같다.
+점광원의 radial cube 보정은 위 환경·조명 계약을 따른다.
+
+### 수신면 해상도와 bias 진단
+
+수신 평면 보정은 각 fragment의 **접평면** 근사다. 굽은 메시의 먼 PCF 이웃까지 같은 평면으로
+취급하면, 실제 표면이 접평면보다 올라오는 부분에서 자기 그림자가 남을 수 있다.
+자동 raster 여유는 좌표 정밀도 오차를 다루며 임의 곡률까지 상쇄하는 보정이 아니다.
+해상도와 광원-수신면 거리, world 단위 `normalBias`를 함께 조절한다. 큰 bias만 올리면
+가까운 caster 그림자가 분리되거나 사라질 수 있으므로 같은 설정에서 접촉도 비교해야 한다.
+평면 바닥·태양 고도 θ에서 normal offset `s`가 만드는 경계 이동의 기하적 근사는 `s × cot(θ)`다.
+`normalBias: 0.35`라면 30°에서는 약 0.61 world unit이지만 1°에서는 약 20 world unit이다.
+낮은 태양의 접촉 손실은 해상도와 함께 이 작성값도 확인한다. 엔진은 이 값을 자동으로 키우지 않는다.
+
+회귀용 곡면·반경 2048의 점광원에서는 128 PCF/normalBias 0의 오차와
+512/normalBias 0.35, 1024/normalBias 0의 해소 여부를 각각 기록한다.
+1024 PCF/normalBias 0.35에서는 곡면 바로 위의 작은 caster 그림자도 별도로 유지해야 한다.
+이는 해당 fixture의 검증 조합이며 모든 에셋의 권장 기본값은 아니다. 그림자 기본 해상도와 bias는 바꾸지 않는다.
 
 ### 하늘·지면 반구광과 그림자 표면 보정
 
@@ -1527,13 +1634,17 @@ kinematic transform이며 운반체 자체를 solid actor로 sweep하거나 탑�
 
 일반 attachment는 `{parent,x,y,elevation,yawDegrees,inheritFloor}`이며 수치는 parent body 좌표다.
 x/y/elevation/yawDegrees 기본 0, inheritFloor 기본 true다. 최대 1,024개·깊이 8이고 순환·중복·
-자기 참조·없는 handle·heightSpan 없는 parent·static이 아닌 child를 거절한다. root parent는 model이다.
+자기 참조·없는 handle·heightSpan 없는 root를 거절한다. root parent는 model 또는 billboard다.
+child는 static body+heightSpan 또는 body·collider가 없는 visual-only model이다.
+후자는 렌더 pose에서만 부모 elevation+local offset을 적용하고 높이 0의 가상 span을 사용한다.
+중첩 attachment도 같은 방식으로 계산한다. `inheritFloor: false`인 visual-only child의 가상 floor는 0이며,
+이 값은 물리·navigation 층을 생성하지 않는다. 기존 static child는 자신의 높이와 명시한 floor를 유지한다.
 연결된 root/child의 XY는 ±1,000,000 이내여야 하며 모델 GPU pose와 heightSpan도 유한해야 한다.
 부모 제거는 자식을 연쇄 제거하며 generation이 다른 재사용 entity를 건드리지 않는다. 자식의 직접
 position/height/rotation/velocity/force 변경은 거절한다. 유효하지 않은 root setter는 원복하며 자율
 적분이 잘못된 pose를 만들면 마지막 유효 root pose로 복구하고 선속도·각속도를 중지한다.
 
-저장 v8은 root model의 native `spatialPose.rotationRadians`를 선택적으로 보존한다. attachment child의
+저장 v8은 root model 또는 attachment 부모인 billboard의 native `spatialPose.rotationRadians`를 선택적으로 보존한다. attachment child의
 공간 pose는 별도 저장하지 않고 fresh restore 시 root에서 재계산한다. root yaw가 0인 기존 static
 문서는 v5/v6/v7 capture/hash를 유지하며 v2~v7 읽기도 유지한다. 경로·LOD 선택 상태·GPU ID는 저장하지
 않는다. fresh engine에는 모든 referenced model 자원을 먼저 등록한다. graph/pose/content를 cold preflight하며, 실패한 native progress restore는 기존 pose를 유지한다.

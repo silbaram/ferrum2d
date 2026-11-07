@@ -471,7 +471,9 @@ Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`
 HD-2D의 반구광과 point/sun `shadows.normalBias`도 기존 environment 교체 patch와 문서 이력에 포함한다.
 공식 viewer의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
 점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
-점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 기존 renderer 계약을 따른다.
+점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 renderer 계약을 따른다.
+flat `shadows.color`는 해당 점광원의 RGB 투과 필터와 alpha 차폐율이다. 겹침은 MAX union이며
+주변광·다른 광원은 유지한다. [합성·비용 계약](../data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 꺼진 조명과 그림자 설정도 검증하고 보존한다. 문서를 적용하는 host는 `DataSceneView.lighting`으로
 world 광원을 화면 좌표로 바꾸고 `setSun`으로 native 지면 그림자를 연결한다. 문서 resolver가 renderer를 직접 변경하지 않는다.
 
@@ -490,7 +492,7 @@ fragment 제한 저장은 거절한다. Undo/Redo/clearDraftPatch, patch store, 
 기존 history에 한 번 기록한다. 실패 시 열린 gesture 전체를 복원한다.
 
 조명 변경이 없는 flat patch는 계속 v2로 export하며 v1/v2를 merge한다. spatial 변경을 포함한 patch만 v3이고
-`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4 | 5 | 6, operations: [...] }`를 추가한다.
+`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4 | 5 | 6 | 7, operations: [...] }`를 추가한다.
 spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허용한다. 갱신만 있는 export는 v1을 유지한다.
 새 참조가 포함된 export만 v2를 사용하며 이전 spatial reader는 이를 거절한다.
 이전 reader는 v3를 거절하므로 spatial 변경을 무시하고 일부만 저장하지 않는다.
@@ -500,9 +502,9 @@ spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허�
 | --- | --- |
 | updateTerrainSurface | x, y, width, depth, elevation, endElevation, baseElevation, floorId |
 | updateBillboard | elevation, unitsPerPixel, castShadow, receiveShadow |
-| updateModel | elevation, yawDegrees, scale, castShadow, receiveShadow |
+| updateModel | elevation, yawDegrees, scale, castShadow, receiveShadow, shadowOnly(v7) |
 | addBillboard (spatial v2) | elevation, unitsPerPixel, castShadow, receiveShadow. 빈 `{}` 허용 |
-| addModel (spatial v2) | 필수 asset/contentId와 선택 elevation, yawDegrees, scale, castShadow, receiveShadow |
+| addModel (spatial v2) | 필수 asset/contentId와 선택 elevation, yawDegrees, scale, castShadow, receiveShadow, shadowOnly(v7) |
 | setBillboardNormalTexture (spatial v4) | normalTexture: stable project 이름 또는 null(참조 해제). 기존 numeric ID도 제거 |
 | setCamera (spatial v5) | camera: 전체 SpatialCameraSpec. 씬 수준 작업으로 id 필드를 받지 않음 |
 | setEnvironment (spatial v6) | environment: 전체 SpatialEnvironmentSpec 또는 null(환경 제거). 씬 수준 작업으로 id 필드를 받지 않음 |
@@ -511,6 +513,10 @@ Add는 같은 ID의 billboard/model 중 어느 참조라도 이미 있으면 거
 spatial v3는 아래 identity/reimport operation을 추가한다. 이전 reader는 v3를 거절한다.
 spatial v4는 normal 이름 교체/해제를 추가하고 v1~v3 operation도 받는다. 이전 reader는 v4를 거절한다.
 `viewer.updateSpatial`은 normal 변경의 Undo/Redo와 v4 sparse export를 지원한다.
+
+spatial v7은 addModel/updateModel의 boolean `shadowOnly`를 추가한다. true/false를 명시한 변경만
+최소 v7로 export하며 이전 reader는 이를 거절한다. 다른 변경의 최소 버전과 바깥 v3 envelope는 유지한다.
+Undo/Redo·저장 병합은 이 값을 보존하며 모델의 collider·body·attachment를 변경하지 않는다.
 
 spatial v6는 전체 환경을 교체/제거하는 `setEnvironment`를 추가한다. 바깥 placement envelope는 v3를 유지하며
 환경 변경이 없는 export의 최소 버전은 유지한다. 이전 reader는 v6를 거절해 환경 변경을 조용히 누락하지 않는다.

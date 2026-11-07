@@ -316,6 +316,7 @@ export class WebGpuSpatialPass {
         if (face < 6) {
           const light = 12 + env!.values[2] * 12;
           this.cameraValues.set(env!.values.subarray(light, light + 4), offset + 16);
+          this.cameraValues[offset + 21] = 1 / env!.values[3];
         } else this.cameraValues[offset + 20] = 1;
       }
     this.device.queue.writeBuffer(

@@ -54,6 +54,38 @@ function sampleDocument(): SceneAuthoringDocumentSpec {
   };
 }
 
+test("visual-only models attach to billboard roots and nested models without acquiring bodies", () => {
+  const document = {
+    format: SCENE_AUTHORING_DOCUMENT_FORMAT, version: SCENE_AUTHORING_DOCUMENT_VERSION,
+    sceneComposition: { initialFragment: "main", prefabs: { object: {} }, fragments: { main: { instances: [
+      { id: "actor", prefab: "object", props: { components: {
+        visual: { kind: "sprite", texture: 1, width: 20, height: 32 }, layer: "player",
+        collider: { type: "aabb", halfWidth: 2, halfHeight: 2 },
+        body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 10, height: 32 } },
+      } } },
+      ...["proxy", "nested"].map(id => ({ id, prefab: "object", props: { components: {
+        visual: { kind: "sprite", texture: 0, width: 1, height: 1 }, layer: "wall", collider: "none",
+      } } })),
+    ] } } },
+    behaviorRecipes: { entities: {} },
+    spatial: {
+      camera: { projection: "orthographic", position: { x: 0, y: -100, elevation: 100 }, target: { x: 0, y: 0, elevation: 0 }, height: 200 },
+      terrain: [], billboards: { actor: {} },
+      models: { proxy: { asset: "proxy", contentId: "a".repeat(64), shadowOnly: true }, nested: { asset: "proxy", contentId: "a".repeat(64) } },
+      attachments: { proxy: { parent: "actor", elevation: 2 }, nested: { parent: "proxy", elevation: 3 } },
+    },
+  };
+  const resolved = resolveSceneAuthoringDocument(document);
+  equal(resolved.spatial?.models?.proxy.shadowOnly, true);
+  equal(resolved.spatial?.attachments?.nested.parent, "proxy");
+  const noModel = structuredClone(document);
+  delete (noModel.spatial.models as Record<string, unknown>).nested;
+  expectMessage(() => resolveSceneAuthoringDocument(noModel), /visual-only model/);
+  const noRootBody = structuredClone(document);
+  delete (noRootBody.sceneComposition.fragments.main.instances[0].props.components as { body?: unknown }).body;
+  expectMessage(() => resolveSceneAuthoringDocument(noRootBody), /heightSpan root/);
+});
+
 test("resolveSceneAuthoringDocument validates the envelope and optional binding plan", () => {
   const resolved = resolveSceneAuthoringDocument(sampleDocument(), {
     validateBindings: true,

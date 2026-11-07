@@ -1032,6 +1032,8 @@ export async function createEngineWithFramePipeline(
     },
     spawnDataSceneEntity: (request) => {
       requireAlive();
+      if(request.groundShadow?.shape==="volume"&&typeof rustEngine.configure_data_scene_ground_shadow_volume!=="function")
+        throw new Error("Ground shadow volume authoring requires a Wasm core with volume shadow support");
       const configureAnimation = request.animationSet === undefined ? undefined : prepareDataSceneSpriteAnimation(rustEngine, request.animationSet);
       const ok = rustEngine.spawn_data_scene_entity(
         request.x,
@@ -1097,8 +1099,12 @@ export async function createEngineWithFramePipeline(
       }
       if (request.groundShadow !== undefined) {
         const shadow = request.groundShadow;
-        if (!rustEngine.configure_data_scene_ground_shadow(entityId, entityGeneration, shadow.shape === "ellipse" ? 1 : shadow.shape === "box" ? 2 : 3,
-          shadow.width, shadow.height, shadow.opacity, shadow.layer !== undefined, shadow.layer ?? 0)) {
+        const configured = shadow.shape==="volume"
+          ? typeof rustEngine.configure_data_scene_ground_shadow_volume === "function" && rustEngine.configure_data_scene_ground_shadow_volume(
+            entityId,entityGeneration,shadow.width,shadow.depth,shadow.height,shadow.roofHeight,shadow.offsetX,shadow.offsetY,shadow.opacity,shadow.layer!==undefined,shadow.layer??0)
+          : rustEngine.configure_data_scene_ground_shadow(entityId, entityGeneration, shadow.shape === "ellipse" ? 1 : shadow.shape === "box" ? 2 : 3,
+            shadow.width, shadow.height, shadow.opacity, shadow.layer !== undefined, shadow.layer ?? 0);
+        if (!configured) {
           rustEngine.despawn_physics_entity(entityId, entityGeneration);
           return undefined;
         }

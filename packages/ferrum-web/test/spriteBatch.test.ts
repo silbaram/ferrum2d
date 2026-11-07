@@ -128,6 +128,7 @@ class FakeWebGL2Context {
   enable(): void {}
 
   blendFunc(): void {}
+  blendEquation(): void {}
 
   useProgram(): void {}
 

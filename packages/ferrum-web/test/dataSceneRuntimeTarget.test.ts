@@ -995,6 +995,18 @@ test("visual authoring forwards pivot, tint, render layer precedence and explici
   deepEqual([r.spriteWidth, r.spriteHeight, r.colliderOffsetX, r.colliderOffsetY], [64, 128, 0, 0]);
 });
 
+test("volume shadow dimensions and footprint offsets follow instance scale without changing the body's height",()=>{
+  const adapter=new MockDataSceneRuntimeAdapter();
+  const target=createDataSceneRuntimeTarget(attachDataSceneRuntimeEngineAdapter({} as FerrumEngine,adapter));
+  target.spawnSceneInstance({id:"house",sourceId:"house",prefab:"object",x:300,y:300,scale:2,rotationRadians:.5,layer:0,
+    props:{components:{visual:{kind:"sprite",texture:71,width:128,height:125,originY:1,
+      shadow:{shape:"volume",width:86,depth:30,height:52,roofHeight:44,offsetX:2,opacity:.8}},
+      body:{type:"static",heightSpan:{elevation:0,height:1,floorId:0}},collider:{type:"aabb",halfWidth:43,halfHeight:15},layer:"wall"}}});
+  deepEqual(adapter.requests[0].groundShadow,{shape:"volume",width:172,depth:60,height:104,roofHeight:88,offsetX:4,offsetY:-30,opacity:.8});
+  equal(adapter.requests[0].body?.heightSpan?.height,1);
+  equal(adapter.requests[0].rotationRadians,.5);
+});
+
 test("Data Scene body shares the sprite handle and stays generation safe through reapply", async () => {
   await withNodeWasmFileFetch(async () => {
     const engine = await createEngine();

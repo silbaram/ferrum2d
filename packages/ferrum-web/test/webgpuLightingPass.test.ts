@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { normalizeLightingScene } from "../src/lighting.js";
 import { WebGpuLightingPass } from "../src/webgpuLightingPass.js";
@@ -56,6 +56,14 @@ class FakeGpuDevice {
   readonly buffers: FakeGpuBuffer[] = [];
   readonly renderPipelines: GPURenderPipeline[] = [];
   commandEncoderCreated = false;
+  readonly limits={maxTextureDimension2D:8192};
+  readonly textures:FakeGpuBuffer[]=[];
+  readonly descriptors:GPURenderPipelineDescriptor[]=[];
+  failGroup=false;
+  createTexture():GPUTexture {const t=new FakeGpuBuffer(0);this.textures.push(t);return Object.assign(t,{createView(){return {} as GPUTextureView;}}) as unknown as GPUTexture;}
+  createBindGroupLayout():GPUBindGroupLayout{return {} as GPUBindGroupLayout;}
+  createPipelineLayout():GPUPipelineLayout{return {} as GPUPipelineLayout;}
+  createBindGroup():GPUBindGroup{if(this.failGroup)throw Error("injected bind group failure");return {} as GPUBindGroup;}
 
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
     const buffer = new FakeGpuBuffer(descriptor.size);
@@ -67,8 +75,9 @@ class FakeGpuDevice {
     return {} as GPUShaderModule;
   }
 
-  createRenderPipeline(): GPURenderPipeline {
-    const pipeline = { id: this.renderPipelines.length };
+  createRenderPipeline(descriptor:GPURenderPipelineDescriptor): GPURenderPipeline {
+    this.descriptors.push(descriptor);
+    const pipeline = { id: this.renderPipelines.length,getBindGroupLayout(){return {} as GPUBindGroupLayout;} };
     this.renderPipelines.push(pipeline as unknown as GPURenderPipeline);
     return pipeline as unknown as GPURenderPipeline;
   }
@@ -88,6 +97,8 @@ class FakeRenderPass {
   }> = [];
   readonly vertexBuffers: GPUBuffer[] = [];
 
+  ended=false;
+  end():void {equal(this.ended,false);this.ended=true;}
   setPipeline(): void {}
 
   setBindGroup(): void {}
@@ -126,7 +137,8 @@ test("WebGpuLightingPass records lighting draws into the caller render pass with
     debug: { tileOccluders: true, color: [1, 0, 0, 0.25] },
   });
 
-  const stats = pass.draw(renderPass as unknown as GPURenderPassEncoder, scene, 200, 120);
+  const encoder=new FakeEncoder();
+  const stats = pass.draw(renderPass as unknown as GPURenderPassEncoder, scene, 200, 120,undefined,target(encoder));
 
   deepEqual(stats, {
     drawCalls: 4,
@@ -134,19 +146,22 @@ test("WebGpuLightingPass records lighting draws into the caller render pass with
     tileOccluderCount: 1,
     shadowDrawCalls: 1,
     shadowCasterCount: 1,
+    passEnded:true,
   });
   equal(device.commandEncoderCreated, false);
   equal(device.queue.submitCount, 0);
-  equal(renderPass.drawCalls.length, 4);
-  deepEqual(renderPass.drawCalls.map(({ instanceCount, firstInstance }) => ({ instanceCount, firstInstance })), [
+  equal(renderPass.ended,true);equal(encoder.passes.length,2);
+  const all=[renderPass,...encoder.passes];
+  equal(all.flatMap(p=>p.drawCalls).length,4);
+  deepEqual(all.flatMap(p=>p.drawCalls).map(({ instanceCount, firstInstance }) => ({ instanceCount, firstInstance })), [
+    { instanceCount: 1, firstInstance: 0 },
     { instanceCount: 1, firstInstance: 0 },
     { instanceCount: 1, firstInstance: 1 },
-    { instanceCount: 1, firstInstance: 0 },
     { instanceCount: 1, firstInstance: 2 },
   ]);
-  equal(renderPass.vertexBuffers[0], renderPass.vertexBuffers[1]);
-  equal(renderPass.vertexBuffers[0], renderPass.vertexBuffers[3]);
-  equal(device.queue.writeBufferCalls.length, 2);
+  equal(renderPass.vertexBuffers[0],encoder.passes[1]?.vertexBuffers[0]);
+  equal(renderPass.vertexBuffers[0],encoder.passes[1]?.vertexBuffers[1]);
+  equal(device.queue.writeBufferCalls.length, 3);
   equal(device.queue.writeBufferCalls.every((call) => !call.dataWasView), true);
   deepEqual(device.queue.writeBufferCalls[0]?.values, Array.from(new Float32Array([
     0, 0, 200, 120, 0.1, 0.2, 0.3, 0.4, 0, 0, 1, 1, 0,
@@ -215,6 +230,7 @@ function installWebGpuGlobals(): void {
   const globals = globalThis as typeof globalThis & {
     GPUBufferUsage?: typeof GPUBufferUsage;
   };
+  Object.assign(globals,{GPUShaderStage:{VERTEX:1,FRAGMENT:2,COMPUTE:4},GPUTextureUsage:{RENDER_ATTACHMENT:16,TEXTURE_BINDING:4}});
   globals.GPUBufferUsage = {
     MAP_READ: 1,
     MAP_WRITE: 2,
@@ -228,3 +244,34 @@ function installWebGpuGlobals(): void {
     QUERY_RESOLVE: 512,
   };
 }
+
+class FakeEncoder {
+  readonly passes:FakeRenderPass[]=[];
+  beginRenderPass():GPURenderPassEncoder {const pass=new FakeRenderPass();this.passes.push(pass);return pass as unknown as GPURenderPassEncoder;}
+}
+function target(encoder=new FakeEncoder(),width=240,height=120){return {encoder:encoder as unknown as GPUCommandEncoder,view:{} as GPUTextureView,width,height};}
+
+test("WebGPU reuses a single MAX mask and skips targets and passes when no geometry exists",()=>{
+  installWebGpuGlobals();const device=new FakeGpuDevice();
+  const pass=new WebGpuLightingPass(device as unknown as GPUDevice,"rgba8unorm",{} as GPUPipelineLayout,{} as GPUBindGroup);
+  const scene=normalizeLightingScene({pointLights:[{x:80,y:48,radius:120},{x:160,y:48,radius:120}],tileOccluders:[{x:112,y:24,width:16,height:16}],shadows:true});
+  const encoder=new FakeEncoder();
+  const draw=(s=scene,t=target(encoder))=>pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder,s,240,120,undefined,t);
+  const first=draw();equal(first.shadowDrawCalls,2);equal(first.shadowCasterCount,2);equal(device.textures.length,1);equal(encoder.passes.length,4);
+  const mask=device.descriptors.find(d=>d.fragment?.targets?.[0]?.format==='r8unorm');equal(mask?.fragment?.targets?.[0]?.blend?.color.operation,'max');
+  draw();equal(device.textures.length,1);
+  draw(scene,target(encoder,480,240));equal(device.textures.length,2);equal(device.textures[0]?.destroyed,true);
+  draw(normalizeLightingScene(false));equal(device.textures[1]?.destroyed,true);
+  const before=encoder.passes.length;draw(normalizeLightingScene({pointLights:scene.pointLights}));equal(encoder.passes.length,before);equal(device.textures.length,2);
+  pass.destroy();pass.destroy();equal(device.buffers.every(b=>b.destroyed),true);
+});
+
+test("WebGPU mask replacement failure preserves previous resources and cleans staged allocations",()=>{
+  installWebGpuGlobals();const device=new FakeGpuDevice();
+  const pass=new WebGpuLightingPass(device as unknown as GPUDevice,"rgba8unorm",{} as GPUPipelineLayout,{} as GPUBindGroup);
+  const scene=normalizeLightingScene({pointLights:[{x:80,y:48,radius:120}],tileOccluders:[{x:112,y:24,width:16,height:16}],shadows:true});
+  const draw=(width:number)=>pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder,scene,240,120,undefined,target(new FakeEncoder(),width));
+  draw(240);device.failGroup=true;throws(()=>draw(480),/injected/);
+  equal(device.textures[0]?.destroyed,false);equal(device.textures[1]?.destroyed,true);equal(device.buffers[device.buffers.length-1]?.destroyed,true);
+  device.failGroup=false;draw(240);equal(device.textures.length,2);pass.destroy();equal(device.textures.every(t=>t.destroyed),true);
+});

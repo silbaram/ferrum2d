@@ -483,6 +483,7 @@ function inlineDataSceneRuntimeSpawnRequest(
   const spriteVisual = visual.kind === "sprite" ? visual : undefined;
   const groundShadow = visual.shadow === undefined ? undefined : resolveDataSceneGroundShadow({
     ...visual.shadow, width: visual.shadow.width * scale, height: visual.shadow.height * scale,
+    ...(visual.shadow.shape==="volume"?{depth:visual.shadow.depth*scale,roofHeight:visual.shadow.roofHeight*scale,offsetX:visual.shadow.offsetX*scale,offsetY:visual.shadow.offsetY*scale}:{}),
   }, visual.width * scale, visual.height * scale);
   const collider = components.collider;
   const colliderShape = colliderRuntimeShape(collider, scale, instance.rotationRadians);

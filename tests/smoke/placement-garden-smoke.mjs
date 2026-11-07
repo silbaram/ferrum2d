@@ -21,6 +21,12 @@ export async function smokePlacementGarden(parent, timeoutMs = 30000) {
   const hero = source.sceneComposition.prefabs["garden-hero"].props.components;
   assert.equal(hero.collider.isTrigger, false); assert.equal(hero.visual.animationSet.clips.length, 8);
   assert(hero.visual.frame.u1 - hero.visual.frame.u0 < 0.1, "Sprite must use an atlas crop");
+  for(const id of ["garden_cottage","garden_workshop","garden_east_cottage","garden_storage"]){
+    const visual=source.sceneComposition.fragments.garden.instances.find(i=>i.id===id).props.components.visual;
+    assert.equal(visual.shadow.shape,"volume","Buildings must cast an anchored volume");
+    assert.equal(visual.shadow.width,86);assert.equal(visual.shadow.depth,30);assert.equal(visual.shadow.height,52);assert.equal(visual.shadow.roofHeight,44);
+    assert.equal((visual.frame.v1-visual.frame.v0)*manifest.texture.height,125,"Building foot must exclude transparent bottom padding");
+  }
 
   const page = await parent.context().browser().newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
@@ -64,6 +70,20 @@ export async function smokePlacementGarden(parent, timeoutMs = 30000) {
     await page.locator(`[data-placement-document-key=${JSON.stringify(gardenKey)}]`).click();
     await wait(() => window.ferrumPlacementViewerRuntimeFrame.entityCount === 465);
     await paint(); assert.deepEqual(await authored(), baseline);
+    const projectionCommands=await page.evaluate(()=>new Promise(resolve=>{
+      const renderer=window.ferrumRuntime.renderer,draw=renderer.renderCommands;
+      renderer.renderCommands=function(commands){
+        this.renderCommands=draw;
+        const flags={ground:0,upright:0,casters:0,volumes:commands.groundShadowVolumes?.casterCount??0};
+        for(let i=0;i<commands.commandCount;i++){
+          const value=commands.buffer[i*commands.floatsPerCommand+13];
+          if((value&4)!==0&&(value&56)!==0)flags.casters++;
+          else if((value&4)!==0)flags.ground++;else flags.upright++;
+        }
+        const result=draw.call(this,commands);resolve(flags);return result;
+      };
+    }));
+    assert.deepEqual(projectionCommands,{ground:433,upright:32,casters:28,volumes:4},"Floor/bridge commands must remain ground receivers, with separate native building volumes");
     const stats = await page.evaluate(() => window.ferrumRuntime.renderer.stats());
     assert(stats.spriteCount >= 465); assert(stats.drawCalls > 0 && stats.drawCalls <= 64);
     assert(stats.textureSwitchCount <= 4); assert.equal(stats.pointLightCount, 4); assert(stats.shadowDrawCalls > 0);
@@ -126,7 +146,7 @@ export async function smokePlacementGarden(parent, timeoutMs = 30000) {
     await page.goto(new URL("/?scene=garden", parent.url()).href, { waitUntil: "networkidle" });
     await wait(() => window.ferrumPlacementViewerRuntimeFrame?.entityCount === 465);
     assert.equal((await state()).game, "paused"); assert.deepEqual(errors, []);
-    const result = { ok: true, entities: 465, tiles: 432, atlasFrames: 43, stats, walking, left, stopped, collision,
+    const result = { ok: true, entities: 465, tiles: 432, atlasFrames: 43, projectionCommands, stats, walking, left, stopped, collision,
       checks: ["asset SHA and crops", "navigation canal and bridge", "in-app examples and draft isolation", "465 live entities and bounded renderer cost", "paused authoring", "click movement and native animation", "pause resume", "three native pickups and canal crossing", "blocked destination", "solid collision", "Stop restores authored scene", "Undo", "both locales", "compact viewport", "direct route"], errors };
     await writeFile(`${output}/report.json`, JSON.stringify(result, null, 2) + "\n");
     return result;

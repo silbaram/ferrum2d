@@ -345,15 +345,22 @@ fn sun_matrix(
     distance: f32,
     resolution: f32,
 ) -> [f32; 16] {
-    // Input is validated; choose an up axis that remains defined for a vertical sun.
+    // Input is validated. Rotate a fixed +Y light frame towards the sun instead
+    // of switching reference-up axes near zenith (which rotates the finite map).
     let dir = unit(direction).unwrap_or([0., 1., 0.]);
     let forward = scale(dir, -1.);
-    let up = if dir[1].abs() > 0.99 {
-        [0., 0., 1.]
+    let horizontal = dir[0].hypot(dir[2]);
+    let r = if horizontal > 0. {
+        let x = dir[0] / horizontal;
+        let z = dir[2] / horizontal;
+        let tilt = 1. - dir[1];
+        // Rodrigues' shortest rotation, without dividing by 1 + dir.y near
+        // the opposite pole. hypot also keeps tiny horizontal vectors finite.
+        [1. - tilt * x * x, -dir[0], -tilt * x * z]
     } else {
-        [0., 1., 0.]
+        // At exact -Y the shortest rotation has no unique axis; keep fixed roll.
+        [1., 0., 0.]
     };
-    let r = unit(cross(forward, up)).unwrap_or([1., 0., 0.]);
     let u = cross(r, forward);
     let texel = extent * 2. / resolution;
     let x = (dot(center, r) / texel).round() * texel - dot(center, r);

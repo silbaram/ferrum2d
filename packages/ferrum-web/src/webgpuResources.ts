@@ -71,6 +71,7 @@ class WebGpuResources {
 
 function textureFormatBytes(format: string): number | undefined {
   if (["rgba8unorm", "rgba8unorm-srgb", "bgra8unorm", "bgra8unorm-srgb", "depth32float", "r32float"].includes(format)) return 4;
+  if (format === "r8unorm") return 1;
   if (format === "rgba16float") return 8;
   // depth24plus storage is implementation dependent; never invent a byte count.
   return undefined;

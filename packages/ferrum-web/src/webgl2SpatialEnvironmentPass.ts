@@ -37,6 +37,7 @@ export class WebGL2SpatialEnvironmentPass {
   private shadowUniforms?: SpatialGeometryUniforms & {
     light: WebGLUniformLocation;
     directional: WebGLUniformLocation;
+    texel: WebGLUniformLocation;
   };
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -203,6 +204,7 @@ export class WebGL2SpatialEnvironmentPass {
         flip: spatialUniform(gl, this.shadow, "u_flip_y"),
         light: spatialUniform(gl, this.shadow, "u_shadowLight"),
         directional: spatialUniform(gl, this.shadow, "u_directionalShadow"),
+        texel: spatialUniform(gl, this.shadow, "u_shadowTexel"),
       };
     } catch (error) { this.releaseShadowProgram(); throw error; }
   }
@@ -299,6 +301,7 @@ export class WebGL2SpatialEnvironmentPass {
     gl.useProgram(this.shadow);
     gl.uniform1i(u.texture, 0);
     gl.uniform1i(u.directional, 0);
+    gl.uniform1f(u.texel,1/this.resolution);
     gl.uniform4fv(u.light, v.subarray(p, p + 4));
     for (let face = 0; face < 6; face++) {
       gl.framebufferTexture2D(

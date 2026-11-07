@@ -14,6 +14,7 @@ import type {
 } from "./spriteMaterial.js";
 import type { RenderCommandBufferView } from "./wasmBridge.js";
 import { spriteRanges } from "./webgpuSpriteRanges.js";
+import { groundShadowRanges } from "./groundShadowRanges.js";
 import type { WebGpuSpriteRange } from "./webgpuSpriteRanges.js";
 import type { WebGpuTextureStore } from "./webgpuTextureStore.js";
 
@@ -45,6 +46,7 @@ export class WebGpuSpritePass {
     private readonly textureStore: WebGpuTextureStore,
     private readonly resolutionBindGroup: GPUBindGroup,
     private readonly normalMode=false,
+    private readonly sunMaskMode=false,
   ) {
     this.spritePipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout]:[uniformBindGroupLayout, textureBindGroupLayout],
@@ -88,12 +90,13 @@ export class WebGpuSpritePass {
     pass: GPURenderPassEncoder,
     commands: RenderCommandBufferView,
     spriteMaterialPasses: readonly SpriteMaterialPass[],
+    maskReceivers=false,
   ): WebGpuSpritePassStats {
     if (commands.commandCount === 0) {
       return { drawCalls: 0, textureSwitchCount: 0 };
     }
 
-    const ranges = spriteRanges(commands, this.spriteRangeScratch);
+    const ranges = this.sunMaskMode?groundShadowRanges(commands,this.spriteRangeScratch,maskReceivers):spriteRanges(commands, this.spriteRangeScratch);
     const normalRanges=this.normalMode?this.normalRanges(commands):undefined;
     const commandBytes = commands.commandCount * COMMAND_STRIDE_BYTES;
     this.ensureSpriteInstanceCapacity(commandBytes * spriteMaterialPasses.length);
@@ -118,7 +121,7 @@ export class WebGpuSpritePass {
         drawCalls += this.drawRange(pass, range, passByteOffset,"normalTextureId" in range?range.normalTextureId as number:SPRITE_NORMAL_NONE);
       }
     }
-    return { drawCalls, textureSwitchCount: (normalRanges??ranges).length - 1 };
+    return { drawCalls, textureSwitchCount: Math.max(0,(normalRanges??ranges).length - 1) };
   }
 
   destroy(): void {
@@ -137,6 +140,7 @@ export class WebGpuSpritePass {
           groundYScale: f32,
           pixelSnap: f32,
           shadowProjection: vec3f,
+          skipGroundShadows: f32,
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
         @group(1) @binding(0) var spriteSampler: sampler;
@@ -204,6 +208,7 @@ export class WebGpuSpritePass {
           let clip = zeroToOne * 2.0 - vec2f(1.0, 1.0);
           var output: VertexOutput;
           output.position = vec4f(clip * vec2f(1.0, -1.0), 0.0, 1.0);
+          ${this.sunMaskMode?"":"if(resolution.skipGroundShadows>0.5 && (u32(input.flags)&4u)!=0u && (u32(input.flags)&56u)!=0u){output.position=vec4f(2.,2.,2.,1.);}"}
           output.uv = mix(input.uvRect.xy, input.uvRect.zw, corner);
           output.color = input.color;
           output.corner = corner;
@@ -212,7 +217,7 @@ export class WebGpuSpritePass {
           return output;
         }
 
-        ${this.normalMode?NORMAL_FRAGMENT:`        @fragment
+        ${this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
           if ((u32(input.flags) & 32u) != 0u) {
@@ -251,7 +256,7 @@ export class WebGpuSpritePass {
         entryPoint: "fs_main",
         targets: this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
           format: this.format,
-          blend: spriteBlendState(blendMode),
+          blend: this.sunMaskMode&&blendMode==="additive"?{color:{operation:"max",srcFactor:"one",dstFactor:"one"},alpha:{operation:"max",srcFactor:"one",dstFactor:"one"}}:spriteBlendState(blendMode),
         }],
       },
       primitive: { topology: "triangle-list" },
@@ -391,4 +396,13 @@ struct NormalOutput { @location(0) normal:vec4f, @location(1) coverage:vec4f, };
     let c=input.rotationCS.x;let s=input.rotationCS.y;n=vec3f(c*local.x+s*local.y,s*local.x-c*local.y,local.z);
   }
   var output:NormalOutput;output.normal=vec4f(n*.5+.5,alpha);output.coverage=vec4f(select(0.,1.,mapped),0.,0.,alpha);return output;
+}`;
+
+const SUN_MASK_FRAGMENT = `
+@fragment fn fs_main(input:VertexOutput)->@location(0) vec4f {
+  let flags=u32(input.flags);var alpha=input.color.a;
+  if((flags&24u)!=0u){let q=(input.corner-.5)*2.;if((flags&8u)!=0u&&dot(q,q)>1.){discard;}}
+  else {alpha*=textureSampleLevel(spriteTexture,spriteSampler,input.uv,0.).a;}
+  if((flags&4u)!=0u){return vec4f(alpha,0.,0.,1.);}
+  return vec4f(0.,0.,0.,alpha);
 }`;

@@ -32,6 +32,9 @@ import {
 } from "./lightingNormalize";
 import { resolveSpriteMaterialPreset } from "./spriteMaterial";
 import { groundShadowProjection } from "./groundShadowProjection.js";
+import { groundShadowCount } from "./groundShadowRanges.js";
+import { validateGroundShadowVolumes } from "./groundShadowVolumes.js";
+import { WebGL2SunShadowMask } from "./webgl2SunShadowMask.js";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
 import { WebGL2RenderTarget } from "./webgl2RenderTarget";
 import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectOptions, type PixelPerfectPresentation } from "./pixelPerfect.js";
@@ -74,6 +77,7 @@ export interface WebGL2RendererOptions extends TextureManagerOptions {
 
 export class WebGL2Renderer implements Renderer {
   readonly supportsSpatialScene = true;
+  readonly supportsGroundShadowVolumes = true;
   private spatialPass?: WebGL2SpatialPass;
   private frameHasSpatial = false;
   private modelPreparationRevision = 0;
@@ -83,12 +87,19 @@ export class WebGL2Renderer implements Renderer {
   private readonly gpuTimer?: WebGL2GpuTimer;
   private readonly textureManager: TextureManager;
   private readonly spriteBatch: SpriteBatch;
+  private sunShadowMask?: WebGL2SunShadowMask;
+  private sunShadowConfigured = false;
   private readonly renderTextures: WebGL2RenderTextureStore;
   private readonly loadingTextureIds = new Map<number, number>();
   private readonly textureSource: SpriteTextureSource;
   private readonly offscreenStats = emptyRendererStats();
   private readonly physicsDebugLineBatch: PhysicsDebugLineBatch;
   private readonly lightingPass: WebGL2LightingPass;
+  private readonly lightingTarget = {
+    width: 0,
+    height: 0,
+    restore: () => this.bindFrameStartTarget(),
+  };
   private spriteNormals?:WebGL2SpriteNormals;
   private readonly fullscreenPass: WebGL2FullscreenPass;
   private currentStats: RendererStats = emptyRendererStats();
@@ -124,6 +135,7 @@ export class WebGL2Renderer implements Renderer {
     if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
     this.gl = gl;
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
+    this.sunShadowConfigured=!!options.lighting&&options.lighting.directionalLight!==undefined;
     this.spriteMaterial = resolveSpriteMaterialPreset(options.spriteMaterial);
     this.postProcessPasses = resolvePostProcessPasses(options.postProcess);
     const cleanup: Array<() => void> = [];
@@ -283,6 +295,7 @@ export class WebGL2Renderer implements Renderer {
     options: RenderToTextureOptions = {},
   ): RendererStats {
     this.assertAlive();
+    validateGroundShadowVolumes(commands,false);
     const resource = this.renderTextures.target(target);
     if (commands.spatial) throw new Error("Spatial RenderTexture capture is not supported in this slice");
     const viewport = options.viewport ?? this.viewportSize();
@@ -318,9 +331,11 @@ export class WebGL2Renderer implements Renderer {
     const stats = emptyRendererStats();
     const previousGroundYScale = this.groundYScale;
     const previousPixelSnap = this.spriteBatch.pixelSnap;
+    const previousSkipShadows = this.spriteBatch.skipGroundShadows;
     try {
       // Captures have their own resolution; canvas presentation must not leak in.
       this.spriteBatch.pixelSnap = 0;
+      this.spriteBatch.skipGroundShadows = false;
       if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resource.framebuffer);
       gl.viewport(0, 0, target.width, target.height);
@@ -342,6 +357,7 @@ export class WebGL2Renderer implements Renderer {
       this.offscreenStats.textureSwitchCount += stats.textureSwitchCount;
     } finally {
       this.spriteBatch.pixelSnap = previousPixelSnap;
+      this.spriteBatch.skipGroundShadows = previousSkipShadows;
       this.setGroundYScale(previousGroundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousFramebuffer);
       gl.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
@@ -361,15 +377,19 @@ export class WebGL2Renderer implements Renderer {
     renderTargetCount+=spatialEffects.renderTargetCount;
     targetBytes+=spatialEffects.textureBytes;
     const normals=this.spriteNormals?.resourceStats();renderTargetCount+=normals?.renderTargetCount??0;targetBytes+=normals?.textureBytes??0;
+    const sunlight=this.sunShadowMask?.resourceStats();renderTargetCount+=sunlight?.renderTargetCount??0;targetBytes+=sunlight?.textureBytes??0;
     for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB, this.presentationTarget]) {
       const bytes = target?.allocatedTextureBytes ?? 0;
       if (bytes > 0) renderTargetCount += 1;
       targetBytes += bytes;
     }
+    const lightingTargets = this.lightingPass.resourceStats();
+    renderTargetCount += lightingTargets.renderTargetCount;
+    targetBytes += lightingTargets.textureBytes;
     let bufferCount = 0;
     let programCount = 0;
     let bufferBytes = 0;
-    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass,this.spriteNormals]) {
+    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass,this.spriteNormals,this.sunShadowMask]) {
       if (!owner) continue;
       const stats = owner.resourceStats();
       bufferCount += stats.bufferCount;
@@ -402,6 +422,7 @@ export class WebGL2Renderer implements Renderer {
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
+    this.sunShadowConfigured = !!scene && scene.directionalLight !== undefined;
   }
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
@@ -565,6 +586,7 @@ export class WebGL2Renderer implements Renderer {
   ): RendererStats {
     this.assertAlive();
     const commands = second ?? (first as RenderCommandBufferView);
+    const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     if (second && this.spriteMaterial.paletteSwap) throw new Error("paletteSwap requires texture-id renderCommands.");
     this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
     this.ensureCurrentFrameTarget();
@@ -575,7 +597,13 @@ export class WebGL2Renderer implements Renderer {
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
     const pixelSnap = this.pixelPerfect?.snap ? this.viewportZoom : 0;
     this.spriteBatch.pixelSnap = pixelSnap;
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale):undefined;
+    const deferredSun = !commands.spatial && this.sunShadowConfigured;
+    this.spriteBatch.skipGroundShadows = deferredSun;
+    const groundCasters=deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
+    const sunMaskStats=groundCasters>0
+      ?(this.sunShadowMask??=new WebGL2SunShadowMask(this.gl)).draw(second?{texture:()=>first as WebGLTexture}:this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale):undefined;
+    if(!sunMaskStats)this.sunShadowMask?.clearTarget();
+    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale,deferredSun):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;
@@ -611,7 +639,8 @@ export class WebGL2Renderer implements Renderer {
       this.currentStats.textureSwitchCount += spatialStats.textureSwitchCount;
       this.currentStats.spatial = spatialStats;
     }
-    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined);
+    this.lightingTarget.width=this.renderWidth();this.lightingTarget.height=this.renderHeight();
+    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget,sunMaskStats?.texture);
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,
@@ -620,6 +649,7 @@ export class WebGL2Renderer implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     this.frameHasDrawnScene = true;
     return this.stats();
   }
@@ -708,6 +738,7 @@ export class WebGL2Renderer implements Renderer {
     this.spatialPass?.destroy();
     this.gpuTimer?.destroy();
     this.spriteBatch.destroy();
+    this.sunShadowMask?.destroy();
     this.physicsDebugLineBatch.destroy();
     this.lightingPass.destroy();
     this.spriteNormals?.destroy();

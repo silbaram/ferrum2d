@@ -58,6 +58,34 @@ command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 
 그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
 WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
 
+태양 shadow matrix의 기준축과 texel snapping은 Rust가 계산하고 양 backend가 같은 bulk matrix를 소비한다.
+기준축은 +elevation에서 태양 방향으로의 최소 회전으로 정하며, 고도 임계값에 따른 reference-up 교체나
+이전 frame의 축 상태를 두지 않는다. 정확한 반대 극점은 고정축을 사용한다. camera orbit과 고도 변화의
+native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. render/environment ABI와 GPU pass 수는 바뀌지 않는다.
+
+태양 shadow sampling은 기하 노멀과 native 직교 basis로 수신 평면의 light-UV 깊이 기울기를 구한다.
+각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
+양 backend는 Y-up texel을 먼저 선택하고 WGSL만 최종 integer row를 뒤집는다. 추가 화면 미분이나 target은 없고
+hard 1회/PCF 최대 9회 깊이 조회를 유지한다. `abs(n·L)>1e-6`까지 평면 보정을 사용하고,
+그보다 평행한 면은 기존 slope 보정으로 돌아간다. UV 깊이 기울기의 L1 크기를 이용해
+두 번의 1/16-pixel raster 오차 여유를 더하며, 예상 깊이가 `[0,1]` 밖인 tap은 밝게 처리한다.
+WebGL2 sun depth와 point/sun caster alpha sampler는 highp로 선언해 기본 lowp 조회를 피한다.
+alpha cutoff는 main/caster에서 같은 정밀도 계약을 사용하며 HDR/depth composite도 기존 highp를 유지한다.
+
+점광원은 X/Y/Z 우선순위로 canonical cube face/texel을 고르고 그 중심 광선과 기하 수신 평면의
+교점까지 radial 거리를 비교한다. GL의 nearest cube lookup과 GPU의 정수 array load가 같은 texel을
+읽도록 하며 GPU 행 뒤집기는 정수 좌표에서만 수행한다. 광선별 두 래스터 축 각각 1/16 angular texel에 해당하는 정밀도
+여유·depth24 한 단계·상대 f32 오차를 더하며, PCF kernel 폭과 독립적이다. 유효한 교점이 없는 tap만
+기존 제한 slope 보정으로 돌아간다. 광선 재구성·교점 계산은 shader에서 수행하며 hard1/PCF9 depth 조회와 기존
+target/pass/cache/ABI는 유지한다. 기존 authored bias·normalBias의 world 단위도 바꾸지 않는다.
+sample 수가 같다는 사실을 GPU 시간 동등성으로 해석하지 않으며 광선·교점 계산 비용은 별도로 측정한다.
+point caster는 보간 world-position 대신 raster XY와 reciprocal clip-W로 radial depth를 복원한다.
+90° cube의 major-axis 거리와 texel ray 길이를 조합하므로 원본 vertex가 eye plane에 있어도
+clip-W나 광원을 이동하지 않고 같은 거리 형식을 유지한다. GLSL은 inverse resolution uniform 1개,
+WGSL은 기존 camera record의 padding field를 사용하며 CPU bulk upload 크기·target/pass·Rust ABI는 유지한다.
+단일 태양 map은 XY texel 4개의 world 폭으로 내부 경계의 visibility를 직접 조명에 혼합한다.
+XY·깊이 경계의 최소 거리를 사용하며 영역 밖 visibility 1, native coverage·snapping·shadow cache는 유지한다.
+
 공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
 `raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
 포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.
@@ -1309,7 +1337,7 @@ projection과 groundYScale은 `EngineFrameBuffers`에 render build와 함께 캡
 폭 축 `p=(sun.y,-sun.x)`와 길이 축 `-sun*lengthScale`의 행렬 B에 대해,
 발 F에서 `B * rotation * diag(width,height) * (uvCorner-(0.5,1))`를 계산하고 마지막에 ground Y를
 압축한다. Rust의 중심/AABB와 GL/WGSL vertex가 같은 순서를 사용한다. UV/frame/flip은 캐시된
-geometry와 별도로 매 command에 현재 값을 복사한다. alpha texture 재사용으로 별도 mask/FBO는 없다.
+geometry와 별도로 매 command에 현재 값을 복사한다. 별도 flat 태양 조명이 없으면 기존 sprite 합성을 유지한다.
 renderer는 f32로 반올림된 최솟값 0.01을 허용한다. upright의 depth-sort pivot offset은 scale로
 나눠 지면 단위로 비교하며, 기존 회전 독립 정렬과 ground sprite의 기준은 유지한다.
 world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와 정렬한다.
@@ -1320,7 +1348,36 @@ world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와
 camera offset은 cache 밖에서 적용한다. transform/origin/alpha/sun/projection 변화로 무효화하고
 despawn/reset에서 제거한다. culling 후 visible caster budget을 적용하고 일반 sprite batch에 제출한다.
 caster마다 GPU resource/pass를 만들지 않는다. TS의 directional light는 기존 ambient/point-light
-pipeline에 추가되는 flat additive pass다. [지원 범위와 비용 계약](../../engine/data-scene-presentation.md).
+pipeline에 추가되는 flat additive pass다. 점광원 occluder는 renderer당 단일 R8 마스크를 재사용해
+광원별 MAX union을 계산하고 그 광원의 기여에만 적용한다. mask draw 뒤 장면 전체를 어둡게 하지 않는다.
+WebGL2는 목적 framebuffer/viewport·scissor·color mask·add blend equation을 복원한다.
+WebGPU는 호출자의 encoder와 목적 view를 받아 base pass를 닫고 mask/light pass를 기록한다.
+추가 encoder나 submit은 만들지 않으며 모든 pass를 GPU timing에 연결한다.
+마스크 크기는 DPR canvas 또는 pixelPerfect 가상 타깃과 같고 R8 1 byte/pixel을 자원 통계에 포함한다.
+warm draw는 texture/buffer/bind group을 재사용하며 비활성·유효 geometry 없음에서는 타깃을 해제한다.
+[지원 범위·투과색·비용 계약](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성).
+
+flat 태양 조명과 native 지면 caster를 함께 사용하면 기존 effect flag의 지면 silhouette를 색/normal
+pass에서 제외하고 별도 R8 target 한 장에 MAX union한다. upright sprite alpha로 ground-only coverage를
+제거한 뒤 태양 additive에만 적용하므로 약한 태양이 주변광·다른 광원·원본 색을 지우지 않는다.
+GL은 공통 vertex mode uniform, WGSL은 기존 32-byte resolution uniform의 마지막 padding f32를 사용한다.
+Rust command/normal sidecar/projection ABI와 entity별 호출 수는 유지한다. texture 범위는 기존 command
+index와 UV를 재사용하고 asset texture 재업로드나 CPU 윤곽 추출을 추가하지 않는다.
+마스크는 전역 material 효과와 분리하며 추가 draw/bind/caster/R8 비용을 실제 통계에 포함한다.
+태양 설정이 없는 standalone native silhouette와 sprite-only RenderTexture는 기존 경로를 유지한다.
+[태양 합성·수신면·호환 계약](../../engine/data-scene-presentation.md#flat-태양광의-지면-그림자-합성).
+
+건물의 선택형 `visual.shadow.shape:"volume"`은 Rust world caster가 직사각형 바닥·벽·박공지붕
+10개 점을 투영하고 convex hull/fan을 만든다. 고정 foot와 상대 hull을 캐시해 태양 방향이 바뀌어도
+바닥 폭 축을 회전시키지 않는다. 캐시·culling·기존 silhouette 공통 budget·prototype/World snapshot 수명을 공유한다.
+카메라/ground scale은 render build에서 screen 좌표에 반영한다. 새 `#[repr(C)]` sidecar는
+vertex당 X/Y/opacity 세 f32(12 bytes), version 1/stride 3이며 기존 sprite와 normal ABI는 유지한다.
+frame당 ptr/len/caster count로 읽고 전역 export가 전부 없는 core는 legacy로 처리한다.
+부분 export·범위 밖 ptr/count는 거절하며 snapshot은 별도 깊은 복사를 보관한다.
+두 clear 경로가 sidecar의 vertex와 caster 수를 함께 비워 렌더 생략/씬 교체 후 이전 도형을 남기지 않는다.
+GL/WGPU는 같은 R8 마스크에 volume 전체를 한 번의 추가 draw로 제출한다. 기존 actor의 기하·physics는 바꾸지 않는다.
+custom consumer capability와 flat sun 설정을 요구하며 sprite-only RenderTexture는 명시적으로 거절한다.
+[작성·ABI·호환 계약](../../engine/data-scene-presentation.md#건물의-입체-그림자-도형).
 
 
 ## Data Scene 탐험 실행 경계
@@ -1391,6 +1448,13 @@ TS 사전 검증과 native configure 모두에서 원자적으로 거절한다.
 자식 model/collider pose를 한 번의 native batch로 갱신한다. 유효하지 않은 batch는 commit하지 않으며
 적분 실패는 마지막 유효 root로 복원한다. 저장 v8은 root yaw만 추가하고 child pose는 재계산한다.
 정적 authoring bake와 살아 있는 attachment를 구분하며 보행면이 움직이는 묶음은 허용하지 않는다.
+
+attachment root는 heightSpan이 있는 model/billboard이며 저장은 billboard root yaw도 포함한다.
+body/collider 없는 model child는 native XY/yaw와 렌더용 elevation을 파생한다. 가상 heightSpan은
+render pose overlay에만 남고 interpolation OFF에서도 적용한다. body·collider·물리 heightSpan은 만들지 않는다.
+`shadowOnly`는 cold model flags bit 2로 검증하고 camera mask만 제외한다. output flags는 기존 cast/receive
+두 bit로 제한하여 80-byte ABI를 유지한다. 표시 billboard의 cast를 끄고 별도 volume proxy를 연결할 수 있으며,
+기존 shadow culling/budget/cache·asset residency 경로를 재사용한다. 구 Wasm은 새 input bit를 거절한다.
 
 native chunk/LOD 정책은 카메라 거리·진입/이탈 hysteresis와 light visibility로 visual residency를 고른다.
 기존 80-byte model draw ABI는 유지한다. CPU asset decode/cache/lease·GPU upload/release는 TS에 남고,
