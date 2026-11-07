@@ -3831,3 +3831,76 @@ textarea {
     display: none;
   }
 }
+/* Header entry to the change review; amber like other pending-state accents. */
+.demo-shell .demo-actions > [data-placement-review-header] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-1);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.demo-shell .demo-actions > [data-placement-review-header][hidden],
+[data-placement-review-header] > [hidden] {
+  display: none;
+}
+[data-placement-review-header] > [data-placement-review-problems] {
+  color: var(--yellow);
+}
+/* Change rows: object · field · before → after, raw pointer in the title.
+   Keyed on the section: the bottom dock re-homes it outside .placement-diagnostics. */
+[data-placement-diagnostic-section] .placement-change-row {
+  display: grid;
+  grid-template-columns: minmax(96px, max-content) minmax(64px, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg-1);
+  font-size: 11px;
+  text-align: left;
+}
+[data-placement-diagnostic-section] button.placement-change-row {
+  cursor: pointer;
+}
+[data-placement-diagnostic-section] button.placement-change-row:hover {
+  background: var(--bg-2);
+}
+.placement-change-row > [hidden] {
+  display: none;
+}
+.placement-change-row > span {
+  color: var(--fg-2);
+  font-family: var(--ff-mono);
+}
+.placement-change-row > code {
+  overflow: hidden;
+  color: var(--fg-1);
+  font: 11px var(--ff-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-change-row[data-change-kind="added"] > strong {
+  color: var(--green);
+}
+.placement-change-row[data-change-kind="removed"] > strong {
+  color: var(--red);
+}
+[data-placement-changes-empty] {
+  margin: 0;
+  padding: 8px;
+  color: var(--fg-3);
+}

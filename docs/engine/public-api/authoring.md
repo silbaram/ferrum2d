@@ -580,7 +580,9 @@ Merge/save는 composition과 spatial을 복제 문서에 적용하고 전체 문
 수정하지 않은 원문 필드는 정규화 기본값으로 덮어쓰지 않는다.
 
 Handoff의 optional `authoringEvidence`는 선택 원본 JSON pointer 경로와 before/after 변경 evidence,
-`changeCount`·`truncated`를 제공한다. 공식 app은 화면에 최대 200건, handoff evidence에는 최대 512건을 담고
+`changeCount`·`truncated`를 제공한다. 공식 app은 `sceneComposition` fragment의 인스턴스 배열을 고유 id로 짝지어 비교한다.
+변경 경로는 이후 문서의 index를, 삭제는 이전 문서의 index를 가리킨다. id가 없거나 겹치는 배열은 index로 비교한다.
+공식 app은 화면에 최대 200건, handoff evidence에는 최대 512건을 담고
 전체 변경은 기존 `draftPatch`에 유지한다. 런타임 진행 상태는 저장/patch에 복제하지 않는다.
 공식 app의 Selected Runtime은 펼친 동안 선택 entity의 FSM state ID·health·timer/action cooldown을
 `gameplayEntityDiagnostics`로 최대 4 Hz 조회한다. global/scene 변수는 32개, action은 16개,

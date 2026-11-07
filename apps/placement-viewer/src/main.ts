@@ -2261,6 +2261,16 @@ async function bootstrap(): Promise<void> {
     const runtimeDock = bottomDock.element;
     const reviewSummary = shell.canvas.ownerDocument.createElement("output");
     reviewSummary.dataset.placementReviewSummary = "true";
+    // Header entry to the agent handoff review; shown only while there is something to review.
+    const reviewHeader = shell.canvas.ownerDocument.createElement("button"),
+      reviewChanges = shell.canvas.ownerDocument.createElement("span"),
+      reviewProblems = shell.canvas.ownerDocument.createElement("span");
+    reviewHeader.type = "button";
+    reviewHeader.hidden = true;
+    reviewHeader.dataset.placementReviewHeader = "true";
+    reviewProblems.dataset.placementReviewProblems = "true";
+    reviewHeader.append(reviewChanges, reviewProblems);
+    setUiAttribute(reviewHeader, "title", "Review agent changes");
     workspaceDiagnostics = installPlacementDiagnostics({
       root: runtimeDock,
       visible: () =>
@@ -2270,6 +2280,11 @@ async function bootstrap(): Promise<void> {
           : root.dataset.runtimeDockHidden !== "true" && root.dataset.runtimeDrawer !== "closed"),
       counts: (changes, problems) => {
         bottomDock.counts(changes, problems);
+        reviewHeader.hidden = !changes && !problems;
+        setUiText(reviewChanges, uiMessage("Changes {0}", changes));
+        setUiText(reviewProblems, uiMessage("Problems {0}", problems));
+        reviewProblems.hidden = !problems;
+        setUiAttribute(reviewHeader, "aria-label", uiMessage("Review agent changes: {0} changes · {1} problems", changes, problems));
         setUiText(
           reviewSummary,
           uiMessage("{0} changes · {1} problems", changes, problems),
@@ -2537,10 +2552,13 @@ async function bootstrap(): Promise<void> {
     setUiText(exportButton, "Export");
     review.dataset.placementReview = "true";
     exportButton.dataset.placementExport = "true";
-    review.addEventListener("click", () => {
+    const openReview = () => {
       bottomDock.tabs.select("changes");
       layout.reveal("runtime");
-    });
+    };
+    review.addEventListener("click", openReview);
+    reviewHeader.addEventListener("click", openReview);
+    root.querySelector(".demo-actions")?.prepend(reviewHeader);
     exportButton.addEventListener("click", () => {
       layout.reveal("inspector");
       inspector.review();
