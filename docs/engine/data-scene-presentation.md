@@ -217,7 +217,7 @@ budget을 소비하지 않는다. cache 검사/culling 자체는 등록 caster �
 이미 로드한 atlas의 **현재 UV frame과 alpha**를 GPU에서 샘플링한다. 잎 사이의 구멍은 투명하게
 남고 반투명 픽셀도 유지한다. texture RGB는 그림자 색에 영향을 주지 않는다. 기본색은 검정이며
 최종 alpha는 texture alpha × sprite alpha × caster opacity × sun shadowOpacity다.
-기존의 전역 `spriteMaterial`은 모든 sprite command에 적용된다. 따라서 ellipse/box와 마찬가지로
+별도 flat 태양 조명 없이 사용하는 기존 전역 `spriteMaterial`은 모든 sprite command에 적용된다. 따라서 ellipse/box와 마찬가지로
 flash/outline의 추가 tint/pass나 additive blend가 그림자에도 영향을 준다. 일반적인 검정 지면
 그림자는 기본 `unlit`/alpha blend에서 사용한다.
 
@@ -233,8 +233,9 @@ Rust가 같은 affine 변환으로 중심과 culling bounds를 계산한다. 화
 투영 변화에 갱신하고, texture/frame/flip만 바뀌면 캐시를 유지하면서 현재 샘플 좌표를 전달한다.
 카메라/zoom/DPR 변경은 geometry를 재생성하거나 texture를 재업로드하지 않는다.
 
-caster마다 기존 command 한 개와 texture sample을 추가한다. 새 mask texture/FBO/readback,
-CPU 윤곽 추출, frame별 texture upload는 없다. scene reset/despawn은 caster cache를 제거하며
+caster마다 기존 command 한 개와 texture sample을 추가한다. CPU 윤곽 추출, frame별 asset texture upload는 없다.
+flat 태양 조명이 없으면 기존 sprite 합성을 사용하며 별도 mask/FBO를 만들지 않는다.
+flat 태양 조명이 있으면 아래의 광원별 마스크 합성을 사용한다. scene reset/despawn은 caster cache를 제거하며
 atlas는 원래 asset 소유자가 공유한다. 다른 sprite도 사용할 수 있으므로 despawn이 공유 atlas를
 자동 삭제하지 않는다. 필요 없어진 atlas는 기존 asset/renderer 수명 관리로 해제한다.
 alpha가 전부 0인 **texture 내용**은 CPU에서 검사하지 않으므로 visible caster budget을 소비한다.
@@ -267,10 +268,82 @@ const captured = {
 // captured는 이후 RenderTexture 등에 재사용할 수 있다. 매 프레임 즉시 그릴 때는 복사가 필요 없다.
 ```
 
+### 건물의 입체 그림자 도형
+
+현재 소스의 선택형 `shape:"volume"`은 건물 PNG를 눕히지 않고 직사각형 바닥·벽·박공지붕을
+지면에 투영한다. 화면의 sprite와 물리 collider/body는 그대로 사용한다.
+
+```json
+{
+  "shape": "volume",
+  "width": 86,
+  "depth": 30,
+  "height": 52,
+  "roofHeight": 44,
+  "offsetY": -15,
+  "opacity": 0.8
+}
+```
+
+`visual.shadow`에 작성하며 `width/depth/height`는 필수 world 단위 바닥 폭/깊이/벽 높이다.
+각각 `0.001..1,000,000`이며 기존 ellipse/box/alpha의 이미지 크기 기본값을 사용하지 않는다.
+`roofHeight`는 벽 위 박공지붕의 높이(`0..1,000,000`, 기본 0)이고 용마루는 local Y축을 따른다.
+`offsetX/offsetY`는 sprite 하단 중앙에서 바닥 중심까지의 이동(`±1,000,000`)이다.
+기본값은 `0/-depth/2`로 앞쪽 바닥 모서리를 sprite 발 기준에 맞춘다.
+치수·offset은 instance scale을 함께 적용하고, 바닥 방향은 owner rotation을 따른다.
+물리 `body.heightSpan`은 이 값으로 바꾸지 않는다. 지붕 돌출·구멍·오목한 건물은 이 도형의 범위 밖이다.
+
+바닥 네 점, 벽 위 네 점, 용마루 두 점을 `groundXY + sunDirection * height * shadowLengthScale`로
+투영한 convex hull을 사용한다. 바닥은 태양 방향으로 회전하지 않으며 모든 각도에서 원래 바닥을 포함한다.
+원본 alpha·flip·animation frame과 독립적이고, 캐시·culling·despawn/reset·prototype/World 복원을 기존 caster 수명과 공유한다.
+기존 silhouette와 `maxCasters` 예산을 공유한다. 반투명 sprite와 지면 수신 제외는 같은 태양 마스크 계약을 따른다.
+
+기존 세 shape의 작성 값·60-byte sprite command·normal sidecar 정렬은 유지한다.
+작성/정규화 타입은 shape를 구분하는 union으로 확장되어 volume에는 물리 치수가 필요하다.
+구형 Wasm의 기존 shape 사용은 허용하며 volume 요청은 새 native export가 없으면 명시적 오류를 낸다.
+새 도형은 flat `LightingScene2D.directionalLight`와 함께 사용한다. standalone silhouette와 달리
+sprite-only `renderToTexture`에 volume sidecar를 넘기면 지원하지 않는 조합으로 거절한다.
+custom renderer는 `supportsGroundShadowVolumes:true`를 선언하고 아래 sidecar를 소비해야 한다.
+
+`RenderCommandBufferView.groundShadowVolumes`는 선택형 version 1/stride 3이며
+`vertexCount/casterCount/buffer`를 가진다. 정점마다 screen X/Y/opacity 세 f32(12 bytes),
+삼각형마다 세 정점이며 caster당 최대 24정점·전체 최대 10,000 caster다.
+Rust는 고정 크기 hull과 재사용 Vec로 기하를 만들고 TS는 프레임별 typed view를 GPU에 bulk upload한다.
+카메라와 ground scale은 이미 반영되어 있으며 renderer는 화면 offset/pixel snap만 적용한다.
+`buffer`는 Float32Array다. borrowed buffer는 다음 native 호출/메모리 증가 이후 보관하지 않는다. frame snapshot은 이 buffer도 복사한다.
+custom buffer의 version/stride/count/길이/finite/opacity와 지원 조합은 GPU 제출 전에 검사한다.
+
+두 backend는 기존 R8 태양 마스크 안에 volume 전체를 한 번의 triangle draw로 합친다.
+추가 target·caster별 GPU 객체·frame별 entity 호출은 없다. vertex buffer는 최대 필요 크기까지 성장해 재사용하며
+draw/caster/GPU buffer 비용을 기존 renderer 통계에 포함한다. volume은 sprite command 수에 합산하지 않는다.
+
 `engine.dataSceneGroundShadowStats()`는 직전 render build의 `casters`, `cacheHits`, `rebuilds`,
 `culled`, `skippedByBudget`를 반환한다. cache counter에는 culling/budget으로 제출하지 않은 항목도
-포함된다. 그림자를 끈 경우에는 cache 계산도 생략하고 counter는 모두 0이다. 태양 그림자 command는 일반 sprite draw 통계에 들어가며 point-light occluder의
-`shadowDrawCalls`와 구분된다. 배치 수는 texture/layer 순서와 material 추가 pass에 따라 달라진다.
+포함된다. 그림자를 끈 경우에는 cache 계산도 생략하고 counter는 모두 0이다. 기존 silhouette 명령은
+일반 sprite command 통계에 포함되며 volume은 별도 triangle sidecar다. flat 태양 조명을 함께 사용할 때의 mask draw와 caster 수도
+`RendererStats.shadowDrawCalls/shadowCasterCount`에 포함한다. 배치 수는 texture/layer 순서에 따라 달라진다.
+
+## Flat 태양광의 지면 그림자 합성
+
+`LightingScene2D.directionalLight`와 native 지면 caster를 함께 사용하면 ellipse/box/alpha 명령을
+기본 sprite 색에 그리지 않고 renderer당 한 장의 R8 마스크에 MAX union으로 합친다.
+이 마스크는 태양 additive 기여만 차폐한다. 주변광·점광원·원본 sprite 색은 보존하며
+태양 세기가 0이면 검은 silhouette도 남지 않는다. 겹친 caster는 차폐율을 누적하지 않는다.
+upright sprite의 원본 texture/tint alpha로 지면 마스크를 제거해 벽·지붕·캐릭터를 지면 수신면으로 취급하지 않는다.
+반투명 sprite는 alpha만큼 차폐율을 줄이는 근사이며 높이에 따른 벽 수신/3D 그림자를 제공하지 않는다.
+
+마스크는 기존 UV/frame/flip·projection·groundYScale·pixel snap·화면 offset을 그대로 사용한다.
+global outline/flash/palette의 추가 pass나 색은 마스크에 반영하지 않는다. 원본 sprite와 normal pass에서는
+지면 caster를 생략한다. `renderToTexture`의 sprite-only 경로와 별도 flat 태양 설정이 없는 기존
+`engine.setDataSceneSun` 사용은 이전 sprite 합성을 유지한다. `enabled:false`인 태양 설정은 마스크와
+native silhouette의 표시를 모두 끈다.
+
+마스크는 DPR/pixelPerfect 실제 타깃 크기와 같고 `width × height` byte를 사용한다. point 마스크와
+별도로 자원·draw 통계에 포함하며 caster/foreground의 연속 texture 범위별로 그린다.
+warm frame은 texture/buffer/bind group을 재사용한다. 태양 OFF·caster 없음에서 타깃을 해제하고
+resize·device recovery·destroy의 기존 renderer 수명을 따른다. 새 Wasm 호출·command ABI는 없다.
+정원 데모의 네 건물은 고정 바닥·벽·지붕의 volume을 명시하고, 이미지 하단의 투명 3행을
+frame/표시 높이에서 함께 제외해 실제 기단을 접지 기준에 맞춘다. 지면 수신 sprite는 `projection:"ground"`로 작성한다.
 
 ## Flat 점광원의 차폐 합성
 

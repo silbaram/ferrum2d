@@ -1924,16 +1924,36 @@ configure의 cold에서는 기존에 사용하지 않던 픽셀 readback만 생�
 
 flat fixture는 GL legacy·GPU legacy·GL linear-srgb 각각에서 물리/가상 해상도 × 노멀맵 OFF/ON으로
 red/blue 두 빛·주변광·태양광 보존, warm 재사용, 단일/중복 차폐체, 빨강 투과, alpha 0, 광원 없음,
-조명 비활성을 검사한다. 각 GL 41/GPU 42상태(장면 40 + resize + GPU 복구)를 가로/세로·DPR 1/2에
-걸쳐 합계 496상태 검사한다. opaque 수신점에서 A 차폐 결과는 A를 제거한 장면과 채널 차이 2 이하이고,
+조명 비활성을 검사한다. 태양 지면 caster는 box/alpha, 겹침, alpha 구멍, 불투명/반투명 upright 수신 제외,
+태양 0·약한 태양·OFF·caster 없음·standalone native 호환을 같은 네 조합에서 18상태씩 추가 검사한다.
+각 GL 113/GPU 114상태(기존 장면 40 + 태양 72 + resize + GPU 복구)를 가로/세로·DPR 1/2에
+걸쳐 합계 1,360상태 검사한다. opaque 수신점에서 A 차폐 결과는 A를 제거한 장면과 채널 차이 2 이하이고,
 중복 차폐·warm·alpha 0·GPU 복구의 비교는 허용 오차를 두지 않는다.
-GL/GPU의 차폐/중복/투과 PNG는 RGB 채널3·상이 pixel1% 미만을 요구한다.
+태양을 완전히 가린 픽셀도 태양 0 대조군과 채널 차이 2 이하이며 환경광·다른 광원을 보존한다.
+약한 태양의 대비는 sRGB 출력에 선형 강도 상한을 직접 적용하지 않고 주광 대비와 무관한 채널 불변을 함께 검사한다.
+GL/GPU의 차폐/중복/투과·전체 태양 상태 PNG는 RGB 채널3·상이 pixel1% 미만을 요구한다.
 warm frame의 실제 texture/buffer/bind group 생성 0과 비활성 시 mask 타깃 해제,
-물리/가상 해상도에서 R8 `width × height` byte의 추가 비용·destroy 후 자원 0을 검사한다.
-GL은 mask pass 뒤 framebuffer/viewport·scissor·color mask·blend equation 복원도 확인한다.
+물리/가상 해상도에서 점광원·태양 각각 R8 `width × height` byte의 추가 비용·destroy 후 자원 0을 검사한다.
+resize·GPU 복구는 두 마스크가 동시에 활성화된 상태의 픽셀을 비교한다.
+정원 회귀는 실제 native command에서 바닥·다리 ground 433개, upright 32개, 일반 지면 caster 28개와 별도 volume caster 4개를 확인한다.
+source의 접지 pivot·alpha 설정뿐 아니라 바닥이 upright 마스크 제거 대상에 잘못 포함되는 회귀를 검사한다.
+GL은 두 mask pass 뒤 framebuffer/viewport·scissor·color mask·blend equation 복원도 확인한다.
 별도 `report.flatShadowCases`와 PNG를 보존하며 기본/full/offscreen gate에 포함한다.
 `--offscreen-target --flat-shadows-only`로 독립 실행한다. software adapter의 API/픽셀 검사이며
 실제 GPU 성능이나 WebGPU canvas presentation 성공을 의미하지 않는다.
+
+같은 flat gate는 `flat-volume-shadow-browser-fixture.mjs`에서 실제 Wasm volume을 추가 검증한다.
+GL legacy/GPU legacy/GL linear-sRGB의 0~360°(15° 간격 25방향)를 3D wall/roof half-space ray clipping
+oracle과 비교한다. native convex hull을 JS로 재구현한 대조군을 사용하지 않는다.
+edge 근처를 제외한 shadow/open 픽셀과 다른 두 색 채널의 보존, 0/360 픽셀 동일성, warm texture/buffer/group 생성 0을 검사한다.
+volume-only `commandCount:0`, owner rotation/instance scale, normal·pixelPerfect·ground scale, resize,
+WebGPU device 복구와 OFF·destroy 자원 해제를 포함한다. GL 57/GPU 58상태를 네 viewport/DPR 조합에서
+합계 688상태 검사하고 선택 각도의 GL/GPU RGB 차이 채널3·상이 pixel1% 미만을 요구한다.
+실제 정점 수·caster·draw·Rust 시간·독립 oracle 표본 수·PNG는 각 backend의 `volumes`에 보존한다.
+기존 flat 1,360상태와 함께 총 2,048상태이며 full/offscreen CI gate에 연결한다.
+native는 1° 간격의 고정 footprint 포함/closure, geometry cache·공통 budget·화면 밖 owner·prototype/
+World snapshot·렌더 생략·reset을 검사한다. TS는 선택형 ABI·ptr/길이·finite/opacity·memory growth와
+frame snapshot 깊은 복사·instance scale·custom consumer capability 거절을 검사한다.
 
 proxy fixture는 별도 GLB volume과 body/collider 없는 model child를 billboard root에 연결한다.
 표시/control·shadowOnly·cast OFF·sun/point shadow·camera orbit·부모 yaw·fresh JSON restore·이동의 10상태를

@@ -1056,6 +1056,14 @@ cast에서 제외하며 `getPhysicsEntity`/bulk state 조회는 계속 가능하
 #73 B2의 `DataSceneGroundShadowSpec.shape: "alpha"`는 기존 texture/frame/flip의 alpha를
 지면에 투영한다. 기존 ellipse/box는 유지한다. render buffer의 `groundShadowProjection` 세 f32와
 flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-beta.5`부터 제공한다.
+현재 소스에서는 flat `LightingScene2D.directionalLight`를 함께 설정하면 지면 그림자를 별도 R8 마스크로
+합성해 태양빛만 차폐한다. 중복 차폐율·upright alpha·OFF·비용·기존 standalone 경로의 호환 범위는
+[태양 합성 계약](../data-scene-presentation.md#flat-태양광의-지면-그림자-합성)을 따른다.
+현재 소스의 `DataSceneGroundShadowSpec.shape:"volume"`은 필수 `width/depth/height`와 선택형
+`roofHeight/offsetX/offsetY`로 건물의 그림자용 도형을 작성한다. 기존 shape의 값 표현은 유지하며
+정규화 타입은 shape별 union이다. 별도 flat sun·새 Wasm bulk sidecar가 필요하고 custom renderer는
+`supportsGroundShadowVolumes:true`를 선언한다. sprite-only RenderTexture에서는 이 새 도형을 거절한다.
+세부 범위와 메모리 수명은 [volume 계약](../data-scene-presentation.md#건물의-입체-그림자-도형)을 따른다.
 
 
 ## Data Scene gameplay / navigation (beta.7부터)

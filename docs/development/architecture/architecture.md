@@ -1337,7 +1337,7 @@ projection과 groundYScale은 `EngineFrameBuffers`에 render build와 함께 캡
 폭 축 `p=(sun.y,-sun.x)`와 길이 축 `-sun*lengthScale`의 행렬 B에 대해,
 발 F에서 `B * rotation * diag(width,height) * (uvCorner-(0.5,1))`를 계산하고 마지막에 ground Y를
 압축한다. Rust의 중심/AABB와 GL/WGSL vertex가 같은 순서를 사용한다. UV/frame/flip은 캐시된
-geometry와 별도로 매 command에 현재 값을 복사한다. alpha texture 재사용으로 별도 mask/FBO는 없다.
+geometry와 별도로 매 command에 현재 값을 복사한다. 별도 flat 태양 조명이 없으면 기존 sprite 합성을 유지한다.
 renderer는 f32로 반올림된 최솟값 0.01을 허용한다. upright의 depth-sort pivot offset은 scale로
 나눠 지면 단위로 비교하며, 기존 회전 독립 정렬과 ground sprite의 기준은 유지한다.
 world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와 정렬한다.
@@ -1356,6 +1356,28 @@ WebGPU는 호출자의 encoder와 목적 view를 받아 base pass를 닫고 mask
 마스크 크기는 DPR canvas 또는 pixelPerfect 가상 타깃과 같고 R8 1 byte/pixel을 자원 통계에 포함한다.
 warm draw는 texture/buffer/bind group을 재사용하며 비활성·유효 geometry 없음에서는 타깃을 해제한다.
 [지원 범위·투과색·비용 계약](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성).
+
+flat 태양 조명과 native 지면 caster를 함께 사용하면 기존 effect flag의 지면 silhouette를 색/normal
+pass에서 제외하고 별도 R8 target 한 장에 MAX union한다. upright sprite alpha로 ground-only coverage를
+제거한 뒤 태양 additive에만 적용하므로 약한 태양이 주변광·다른 광원·원본 색을 지우지 않는다.
+GL은 공통 vertex mode uniform, WGSL은 기존 32-byte resolution uniform의 마지막 padding f32를 사용한다.
+Rust command/normal sidecar/projection ABI와 entity별 호출 수는 유지한다. texture 범위는 기존 command
+index와 UV를 재사용하고 asset texture 재업로드나 CPU 윤곽 추출을 추가하지 않는다.
+마스크는 전역 material 효과와 분리하며 추가 draw/bind/caster/R8 비용을 실제 통계에 포함한다.
+태양 설정이 없는 standalone native silhouette와 sprite-only RenderTexture는 기존 경로를 유지한다.
+[태양 합성·수신면·호환 계약](../../engine/data-scene-presentation.md#flat-태양광의-지면-그림자-합성).
+
+건물의 선택형 `visual.shadow.shape:"volume"`은 Rust world caster가 직사각형 바닥·벽·박공지붕
+10개 점을 투영하고 convex hull/fan을 만든다. 고정 foot와 상대 hull을 캐시해 태양 방향이 바뀌어도
+바닥 폭 축을 회전시키지 않는다. 캐시·culling·기존 silhouette 공통 budget·prototype/World snapshot 수명을 공유한다.
+카메라/ground scale은 render build에서 screen 좌표에 반영한다. 새 `#[repr(C)]` sidecar는
+vertex당 X/Y/opacity 세 f32(12 bytes), version 1/stride 3이며 기존 sprite와 normal ABI는 유지한다.
+frame당 ptr/len/caster count로 읽고 전역 export가 전부 없는 core는 legacy로 처리한다.
+부분 export·범위 밖 ptr/count는 거절하며 snapshot은 별도 깊은 복사를 보관한다.
+두 clear 경로가 sidecar의 vertex와 caster 수를 함께 비워 렌더 생략/씬 교체 후 이전 도형을 남기지 않는다.
+GL/WGPU는 같은 R8 마스크에 volume 전체를 한 번의 추가 draw로 제출한다. 기존 actor의 기하·physics는 바꾸지 않는다.
+custom consumer capability와 flat sun 설정을 요구하며 sprite-only RenderTexture는 명시적으로 거절한다.
+[작성·ABI·호환 계약](../../engine/data-scene-presentation.md#건물의-입체-그림자-도형).
 
 
 ## Data Scene 탐험 실행 경계

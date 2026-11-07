@@ -715,6 +715,9 @@ Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 �
 2D `lighting.pointLights[].height`는 선택형 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`)이고 물리 높이와 무관하다.
 `directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
 기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
+건물은 `visual.shadow.shape:"volume"`과 필수 `width/depth/height`, 선택형 `roofHeight/offsetX/offsetY`로
+고정 바닥과 벽·지붕의 그림자를 작성할 수 있다. sprite 이미지 크기와 physics 높이는 별개이며
+각 필드의 기본값·scale·지원 범위는 [건물 그림자 계약](data-scene-presentation.md#건물의-입체-그림자-도형)을 따른다.
 반투명 겹침은 방향/coverage를 합성하는 deferred 근사이며 각 투명 layer의 물리 광학 합성을 제공하지 않는다.
 
 WebGL2/WebGPU는 활성 normal 프레임에서 명령 순서대로 두 RGBA8 target(physical pixel당8 bytes)을 추가로 그린다.

@@ -917,6 +917,14 @@ HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
 2D는 `lighting`, HD-2D는 `spatial.environment.lighting`이 원본이다. 관련 버전/수치 범위는
 [authoring API](../../docs/engine/public-api/authoring.md#2d-scene-lighting-placement-patch)를 따른다.
 
+2D 태양 그림자는 태양빛만 차폐하며 환경광·등불빛을 어둡게 덧칠하지 않는다.
+정원 예제의 건물은 `visual.shadow.shape: "volume"`의 바닥·벽·지붕으로 지면에 그림자를 만든다.
+태양 방향을 바꿔도 바닥을 고정하며 PNG의 밑변을 함께 회전시키지 않는다. 세부 치수는
+[volume 작성 계약](../../docs/engine/data-scene-presentation.md#건물의-입체-그림자-도형)을 따른다.
+바닥 타일·다리는 `visual.projection: "ground"`로 작성한다. 기본 upright로 두면 지면 그림자의 수신 영역에서 제외된다.
+지면 그림자는 upright 건물·캐릭터에 투영하지 않으며, 겹침은 차폐율을 누적하지 않는다.
+태양 밝기가 낮으면 그림자 대비도 작아진다. 벽·지붕의 높이를 계산하는 공간 그림자는 HD-2D 경로를 사용한다.
+
 ## 2D 화면 탐색
 
 데스크톱 상단은 36px 두 줄로 구성한다. 첫 줄은 파일 메뉴·명령 검색·가운데 작업 모드·오른쪽 Undo/Redo와 언어·실행 제어다.
