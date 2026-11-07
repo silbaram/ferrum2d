@@ -745,11 +745,12 @@ textarea {
 .placement-runtime-dock > .placement-dock-pin[hidden] {
   display: none;
 }
-.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock [data-placement-asset-mount] {
+/* Only the browser fills the drawer; tool views scroll in the tabbody below the view bar. */
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock .placement-asset-view-bar[hidden] + [data-placement-asset-mount] {
   height: 100%;
   align-items: stretch;
 }
-.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-browser {
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-browser:not([data-asset-panel-active="false"]) {
   display: flex;
   flex-direction: column;
   min-height: 0;
