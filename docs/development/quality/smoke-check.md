@@ -506,7 +506,7 @@ Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Esc
 `placement-asset-drawer-smoke.mjs`는 서랍이 canvas 크기를 바꾸지 않는지, 탭 재클릭·바깥 클릭·Esc·Ctrl+Space 동작,
 도구 뷰 왕복, 실제 마우스 드래그로 뷰포트에 놓는 흐름, 고정 시 레이아웃 복귀를 확인한다.
 펼친 서랍의 도구 뷰에서 에셋 목록 전체가 숨겨지고 짧은 도구가 탭 줄을 넘지 않는지, 드롭 뒤 상단 `변경 N` 버튼이
-Agent Changes를 열어 추가된 오브젝트 한 행을 이름과 함께 보여 주고 Undo 뒤 숨는지도 검사한다.
+My Changes를 열어 추가된 오브젝트 한 행을 이름과 함께 보여 주고 Undo 뒤 숨는지도 검사한다.
 `placement-change-labels.test.mjs`는 인스턴스 id 짝짓기(중간 삭제가 한 건), index 비교 fallback, 오브젝트·항목 이름 해석을 검사한다.
 `pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
 `placement-key-hints.test.mjs`는 2D/HD-2D·선택·잠금별 단축키 안내, 한국어 문구 누락, Ctrl+K/⌘K 판정을 검사한다.
@@ -627,7 +627,7 @@ HD-2D gate는 orthographic/perspective에서 Pan 버튼·H·Space 드래그의 �
 휠 확대·복원과 비활성 2D 카메라·선택·문서·history 불변도 확인한다. 크기/화면 근거는 `artifacts/viewport-navigation-sizing/`다.
 HD-2D 검증은 실제 공간 renderer의 다층/경사 terrain, model bounds·billboard 선택, XY/body 높이·층/시각 offset,
 height Undo, edit camera, Game Preview 종료 후 draft/history 복원, source/diff evidence·선택 native 진단,
-JSON 재개방과 canvas offset·DPR 2 SVG overlay를 확인한다. 하단 Problems/Runtime/Agent Changes 탭을
+JSON 재개방과 canvas offset·DPR 2 SVG overlay를 확인한다. 하단 Problems/Runtime/My Changes 탭을
 실제로 선택하여 해당 패널과 native 값·원본 경로가 보이는지 검사한다.
 공간 값만 바꾼 v3 초안도 변경 수·dirty·Copy Patch에 포함하며 native 저장 버튼과 저장 후 clean 복귀를 확인한다.
 화면 근거는 `artifacts/placement-spatial-workspace/`다.

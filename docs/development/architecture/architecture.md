@@ -531,7 +531,7 @@ component update 또는 공간 입력 owner를 호출한다. `placementInspector
 카메라/조명은 편집 시점·씬 값의 범위와 단위를 표시하며 고급 조명 disclosure는 기존 control을 이동할 뿐 값이나 gesture 계약을 바꾸지 않는다.
 저장 대상·업데이트 대상·읽기 쉬운 import 진단과 raw JSON 상세는 앱 presentation이다. native 권한·서명·백업·저장 원자성은 변경하지 않는다.
 Scene의 검색·종류/layer 필터·기존 fragment 그룹은 UI 상태이며 authored hierarchy·선택·잠금을 변경하지 않는다.
-하단 Assets/Problems/Runtime/Agent Changes는 한 패널씩 표시하고, 문서별 asset mount는 활성 문서를 따라 이동한다.
+하단 Assets/Problems/Runtime/My Changes는 한 패널씩 표시하고, 문서별 asset mount는 활성 문서를 따라 이동한다.
 하단은 기본적으로 canvas 크기를 바꾸지 않는 서랍이고, `runtimePinned`를 켠 구성만 레이아웃 행을 차지한다(UI preference이며 문서·patch에 들어가지 않는다).
 Assets는 `placementAssetPanels`가 격자와 도구를 한 번에 하나만 표시한다. 도구의 `details` 열림을 따라가므로 도구별 상태·핸들러·IO 소유권은 바뀌지 않는다.
 Document는 기본 접힘, GLB import는 Assets의 Import 메뉴에 둔다. 표시 중인 Runtime 탭에서만 bounded native 진단을 조회한다.
