@@ -89,6 +89,11 @@ export class WebGL2Renderer implements Renderer {
   private readonly offscreenStats = emptyRendererStats();
   private readonly physicsDebugLineBatch: PhysicsDebugLineBatch;
   private readonly lightingPass: WebGL2LightingPass;
+  private readonly lightingTarget = {
+    width: 0,
+    height: 0,
+    restore: () => this.bindFrameStartTarget(),
+  };
   private spriteNormals?:WebGL2SpriteNormals;
   private readonly fullscreenPass: WebGL2FullscreenPass;
   private currentStats: RendererStats = emptyRendererStats();
@@ -366,6 +371,9 @@ export class WebGL2Renderer implements Renderer {
       if (bytes > 0) renderTargetCount += 1;
       targetBytes += bytes;
     }
+    const lightingTargets = this.lightingPass.resourceStats();
+    renderTargetCount += lightingTargets.renderTargetCount;
+    targetBytes += lightingTargets.textureBytes;
     let bufferCount = 0;
     let programCount = 0;
     let bufferBytes = 0;
@@ -611,7 +619,8 @@ export class WebGL2Renderer implements Renderer {
       this.currentStats.textureSwitchCount += spatialStats.textureSwitchCount;
       this.currentStats.spatial = spatialStats;
     }
-    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined);
+    this.lightingTarget.width=this.renderWidth();this.lightingTarget.height=this.renderHeight();
+    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget);
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,

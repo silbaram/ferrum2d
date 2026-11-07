@@ -387,12 +387,13 @@ export class WebGpuRendererBackend implements Renderer {
     const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
-    const pass = this.beginRenderPass(encoder, "load");
+    const target = this.frameTexture().createView();
+    const pass = this.beginRenderPass(encoder, "load", target);
 
     const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined);
+    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height});
 
-    pass.end();
+    if(!lightingStats.passEnded)pass.end();
     this.device.queue.submit([encoder.finish()]);
     if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
     writeRendererStatsForCommandsInto(
@@ -487,11 +488,12 @@ export class WebGpuRendererBackend implements Renderer {
   private beginRenderPass(
     encoder: GPUCommandEncoder,
     loadOp: GPULoadOp,
+    view?: GPUTextureView,
   ): GPURenderPassEncoder {
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
     return beginWebGpuRenderPass(this.device, encoder, {
       colorAttachments: [{
-        view: this.frameTexture().createView(),
+        view: view ?? this.frameTexture().createView(),
         loadOp,
         storeOp: "store",
         clearValue: { r: clear[0], g: clear[1], b: clear[2], a: clear[3] },

@@ -42,6 +42,7 @@ export interface LightingDebugOptions {
 
 export interface LightingShadowOptions {
   enabled?: boolean;
+  /** RGB transmission filter for this light; alpha is union mask opacity. Default black. */
   color?: LightingColor4;
   projectionLength?: number;
   maxDistance?: number;

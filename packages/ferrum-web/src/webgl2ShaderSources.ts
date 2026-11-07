@@ -113,7 +113,8 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform float u_light_radius;
       uniform float u_light_y_scale;
       uniform float u_light_falloff;
-      uniform bool u_has_normals;uniform sampler2D u_normal_buffer,u_normal_coverage;
+      uniform bool u_has_normals;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
+      uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
       float normalResponse(vec3 direction){
         if(!u_has_normals)return 1.;
@@ -131,13 +132,16 @@ export const WEBGL2_SHADER_SOURCES = {
           float alpha = pow(attenuation, u_light_falloff) * u_color.a;
           vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
           alpha*=normalResponse(length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta));
-          outColor = vec4(u_color.rgb, alpha);
+          vec3 transmission=vec3(1.);
+          if(u_has_shadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
+          float visibility=max(max(transmission.r,transmission.g),transmission.b);
+          outColor = visibility>0.?vec4(clamp(u_color.rgb,0.,1.)*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
           outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.));
         }
       }` },
   shadow: { vertex: `#version 300 es
-      precision mediump float;
+      precision highp float;
       layout(location = 0) in vec2 a_position;
       uniform vec2 u_resolution;
       out vec2 v_position;
@@ -146,7 +150,7 @@ export const WEBGL2_SHADER_SOURCES = {
         gl_Position = vec4(clip * vec2(1.0, -1.0), 0.0, 1.0);
         v_position = a_position;
       }`, fragment: `#version 300 es
-      precision mediump float;
+      precision highp float;
       in vec2 v_position;
       uniform vec4 u_color;
       uniform vec2 u_light_center;
@@ -159,7 +163,7 @@ export const WEBGL2_SHADER_SOURCES = {
         if (clippedAlpha <= 0.0) {
           discard;
         }
-        outColor = vec4(u_color.rgb, clippedAlpha);
+        outColor = vec4(clippedAlpha,0.,0.,1.);
       }` },
   fullscreen: { vertex: `#version 300 es
       precision mediump float;

@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { normalizeLightingScene } from "../src/lighting.js";
 import { WebGL2LightingPass } from "../src/webgl2LightingPass.js";
@@ -23,6 +23,29 @@ class FakeWebGL2Context {
   readonly bufferSubDataCalls: Array<{ length: number; values: number[] }> = [];
   readonly drawArraysCalls: Array<{ mode: number; first: number; count: number }> = [];
 
+  readonly FUNC_ADD=0x8006; readonly MAX=0x8008; readonly FRAMEBUFFER=0x8d40;
+  readonly FRAMEBUFFER_COMPLETE=0x8cd5; readonly SCISSOR_TEST=0xc11; readonly COLOR_WRITEMASK=0xc23;
+  readonly MAX_TEXTURE_SIZE=0xd33; readonly TEXTURE0=0x84c0; readonly TEXTURE3=0x84c3;
+  textureCount=0; deletedTextures=0; framebufferCount=0; failFramebuffer=false;
+  readonly equations:number[]=[];
+  blendEquation(value:number):void {this.equations.push(value);}
+  uniform3f():void {}
+  activeTexture():void {}
+  bindTexture():void {}
+  texParameteri():void {}
+  texImage2D():void {}
+  framebufferTexture2D():void {}
+  viewport():void {}
+  colorMask():void {}
+  clearBufferfv():void {}
+  isEnabled():boolean{return false;}
+  getParameter(name:number):unknown {return name===this.COLOR_WRITEMASK?[true,true,true,true]:8192;}
+  createFramebuffer():WebGLFramebuffer {this.framebufferCount++;return {} as WebGLFramebuffer;}
+  createTexture():WebGLTexture {this.textureCount++;return {} as WebGLTexture;}
+  bindFramebuffer():void {}
+  checkFramebufferStatus():number {return this.failFramebuffer?0:this.FRAMEBUFFER_COMPLETE;}
+  deleteTexture():void {this.deletedTextures++;}
+  deleteFramebuffer():void {}
   private nextId = 1;
 
   createProgram(): WebGLProgram {
@@ -138,7 +161,7 @@ test("WebGL2LightingPass batches tile occluder shadows per light", () => {
     shadows: { enabled: true, color: [0, 0, 0, 0.5], projectionLength: 180 },
   });
 
-  const stats = pass.draw(scene, [200, 120]);
+  const stats = pass.draw(scene, [200, 120], undefined, target());
 
   deepEqual(stats, {
     drawCalls: 2,
@@ -150,7 +173,7 @@ test("WebGL2LightingPass batches tile occluder shadows per light", () => {
   equal(gl.bufferSubDataCalls.length, 1);
   equal(gl.drawArraysCalls.length, 2);
   ok(gl.bufferSubDataCalls[0]!.length > 0);
-  equal(gl.bufferSubDataCalls[0]!.length / 2, gl.drawArraysCalls[1]!.count);
+  equal(gl.bufferSubDataCalls[0]!.length / 2, gl.drawArraysCalls[0]!.count);
 });
 
 test("WebGL2LightingPass keeps shadow draw and caster counts distinct across lights", () => {
@@ -166,7 +189,7 @@ test("WebGL2LightingPass keeps shadow draw and caster counts distinct across lig
     shadows: { enabled: true, color: [0, 0, 0, 0.5], projectionLength: 180 },
   });
 
-  const stats = pass.draw(scene, [240, 120]);
+  const stats = pass.draw(scene, [240, 120], undefined, target());
 
   equal(stats.shadowDrawCalls, 2);
   equal(stats.shadowCasterCount, 2);
@@ -183,7 +206,7 @@ test("WebGL2LightingPass skips culled shadow casters without uploads", () => {
     shadows: { enabled: true, color: [0, 0, 0, 0.5], projectionLength: 120, maxDistance: 32 },
   });
 
-  const stats = pass.draw(scene, [240, 120]);
+  const stats = pass.draw(scene, [240, 120], undefined, target());
 
   equal(stats.shadowDrawCalls, 0);
   equal(stats.shadowCasterCount, 0);
@@ -213,9 +236,9 @@ test("WebGL2LightingPass grows shadow buffer only when written shadow geometry e
   });
 
   equal(gl.bufferDataCalls.length, 1);
-  pass.draw(smallScene, [240, 120]);
+  pass.draw(smallScene, [240, 120], undefined, target());
   equal(gl.bufferDataCalls.length, 1);
-  pass.draw(largeScene, [240, 120]);
+  pass.draw(largeScene, [240, 120], undefined, target());
   equal(gl.bufferDataCalls.length, 2);
   const grownCapacityFloats =
     gl.bufferDataCalls[gl.bufferDataCalls.length - 1]!.byteLength / Float32Array.BYTES_PER_ELEMENT;
@@ -223,6 +246,31 @@ test("WebGL2LightingPass grows shadow buffer only when written shadow geometry e
   ok(uploadedFloats > 0);
   ok(uploadedFloats < grownCapacityFloats);
 
-  pass.draw(smallScene, [240, 120]);
+  pass.draw(smallScene, [240, 120], undefined, target());
   equal(gl.bufferDataCalls.length, 2);
+});
+
+function target(width=240,height=120){return {width,height,restore(){}};}
+
+test("WebGL2 masks reuse one R8 target, union with MAX, resize and release",()=>{
+  const gl=new FakeWebGL2Context(),pass=new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
+  const scene=normalizeLightingScene({pointLights:[{x:80,y:48,radius:120},{x:160,y:48,radius:120}],tileOccluders:[{x:112,y:24,width:16,height:16}],shadows:true});
+  let restored=0;const output={...target(),restore(){restored++;}};
+  pass.draw(scene,[240,120],undefined,output);
+  equal(gl.textureCount,1);equal(restored,2);equal(gl.equations.filter(x=>x===gl.MAX).length,2);
+  equal(gl.equations[gl.equations.length-1],gl.FUNC_ADD);equal(pass.resourceStats().textureBytes,240*120);
+  pass.draw(scene,[240,120],undefined,output);equal(gl.textureCount,1);
+  pass.draw(scene,[240,120],undefined,target(480,240));equal(gl.textureCount,2);equal(gl.deletedTextures,1);
+  pass.draw(normalizeLightingScene(false),[240,120]);equal(gl.deletedTextures,2);equal(pass.resourceStats().textureCount,0);
+  pass.destroy();pass.destroy();equal(gl.deletedTextures,2);
+});
+
+test("WebGL2 mask allocation failure restores destination and retains a valid previous mask",()=>{
+  const gl=new FakeWebGL2Context(),pass=new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
+  const scene=normalizeLightingScene({pointLights:[{x:80,y:48,radius:120}],tileOccluders:[{x:112,y:24,width:16,height:16}],shadows:true});
+  pass.draw(scene,[240,120],undefined,target());gl.failFramebuffer=true;let restored=0;
+  throws(()=>pass.draw(scene,[240,120],undefined,{width:480,height:240,restore(){restored++;}}),/incomplete/);
+  equal(restored,1);equal(gl.deletedTextures,1);equal(pass.resourceStats().textureBytes,240*120);
+  gl.failFramebuffer=false;pass.draw(scene,[240,120],undefined,target());equal(gl.textureCount,2);
+  pass.destroy();equal(gl.deletedTextures,2);
 });
