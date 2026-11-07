@@ -19,28 +19,28 @@ const examples = [
   {
     id: "pixel-art",
     title: "작은 빛의 정원 · Pixel Art",
-    description: "Editable pixel sources, native walking and pickups, normal lighting, palette swaps, and WebGL2/WebGPU effects.",
+    description: "도트 원본을 내려받고, 씨앗을 모으며 노멀 조명·팔레트·화면 효과를 비교합니다.",
   },
   {
     id: "starter-runtime",
     title: "엔진 기능 실험실",
-    description: "렌더링·물리·입력·씬·HD-2D 이동·AI·부모 자식 연결 등 26개 기능을 독립된 씬에서 비교합니다.",
+    description: `렌더링·물리·입력·씬·HD-2D 이동·AI·부모 자식 연결 등 ${featureExamples.length}개 기능을 독립된 씬에서 비교합니다.`,
   },
   {
     id: "topdown-shooter",
     title: "Top-down Shooter",
-    description: "Game Spec driven shooter with atlas animation, tilemap collision, waves, audio, and debug overlay.",
+    description: "Game Spec으로 이동·사격·적 등장·점수·애니메이션·오디오를 연결한 게임입니다.",
   },
   {
     id: "placement-viewer",
     source: "apps/placement-viewer/dist",
     title: "Placement Viewer",
-    description: "Agent-first scene/object authoring surface for placement patches, ObjectDefinition catalog, and handoff evidence.",
+    description: "2D 정원·HD-2D 마을에서 배치·변형·레이어·게임 카메라·도트 제작을 확인합니다. 웹 예제는 내보내기 전용입니다.",
   },
   {
     id: "physics-sandbox",
     title: "Physics Sandbox",
-    description: "Physics Spec catalog with rigid bodies, colliders, contacts, joints, CCD, queries, and debug overlays.",
+    description: "7개 시나리오에서 재질·충돌체·joint·CCD·query와 물리 진단을 확인합니다.",
   },
   {
     id: "breakout",
@@ -55,54 +55,59 @@ const examples = [
 ];
 const documentationHighlights = [
   {
+    href: "./docs/engine/user-guide.html",
+    title: "엔진 사용 안내",
+    description: "엔진의 기능과 예제 실행·뷰어 작성·저장 범위를 먼저 살펴봅니다.",
+  },
+  {
     href: "./docs/engine/ai-agent-install.html",
-    title: "AI Agent Setup",
-    description: "Install the engine and development tools with an AI agent.",
+    title: "AI 설치 지침",
+    description: "AI에게 엔진·개발 도구·consumer 지침 설치와 환경 검증을 맡깁니다.",
   },
   {
     href: "./docs/engine/ai-feature-guide.html",
-    title: "AI Feature Guide",
-    description: "Connect game requirements to supported APIs and installed-version references.",
+    title: "AI 기능 안내",
+    description: "게임 요구사항에 맞는 공개 API와 설치 버전의 기준 문서를 찾습니다.",
   },
   {
     href: "./docs/engine/showcase-hub.html",
-    title: "Showcase Hub",
-    description: "Feature map that connects demos, docs, agent workflows, and verification commands.",
+    title: "기능·예제 지도",
+    description: "26개 독립 실험과 통합 예제를 사용법·검증 명령에 연결합니다.",
   },
   {
     href: "./docs/engine/developer-quickstart.html",
-    title: "Developer Quickstart",
-    description: "Start a project and follow the AI agent-first development loop.",
+    title: "개발자 퀵스타트",
+    description: "릴리스 패키지로 프로젝트를 만들고 실행·검증·AI 개발을 시작합니다.",
   },
   {
     href: "./docs/engine/public-api.html",
     title: "Public API",
-    description: "Supported imports, API support tiers, and compatibility policy.",
+    description: "공개 import 경로, 지원 수준과 호환성 정책을 확인합니다.",
   },
   {
     href: "./docs/engine/data-scene-authoring.html",
-    title: "Data Scene Authoring",
-    description: "Generic scene composition and behavior recipe contract for agent-authored content.",
+    title: "씬·에셋 작성",
+    description: "배치·레이어·도트·타일·카메라와 씬 데이터의 저장 계약을 확인합니다.",
   },
   {
     href: "./docs/engine/data-scene-spatial.html",
-    title: "HD-2D Spatial Scenes",
-    description: "Terrain, models, multi-floor movement, and WebGL2/WebGPU support in development builds.",
+    title: "HD-2D 공간 씬",
+    description: "지형·정적 모델·층·카메라·조명·그림자의 지원 범위를 확인합니다.",
   },
   {
     href: "./docs/examples/topdown-shooter/game-spec.html",
-    title: "Top-down Shooter Spec",
-    description: "Official example Game Spec fields, defaults, and validation rules.",
+    title: "Shooter Game Spec",
+    description: "공식 사격 예제의 설정 필드·기본값·검증 규칙을 확인합니다.",
   },
   {
     href: "./docs/development/quality/smoke-check.html",
-    title: "Smoke & Runtime Budgets",
-    description: "Automatic, browser, and performance evidence gates for release candidates.",
+    title: "검증·성능 예산",
+    description: "자동 검증·실제 브라우저·replay·성능 예산의 기준을 확인합니다.",
   },
   {
     href: "./docs/development/operations/npm-release.html",
-    title: "Release Readiness",
-    description: "Beta package, changelog, tag, tarball, and publish gate procedure.",
+    title: "패키지·릴리스 운영",
+    description: "패키지 검증·tag·changelog와 릴리스 절차를 확인합니다.",
   },
 ];
 const gettingStartedDocs = new Set([
@@ -127,6 +132,8 @@ const documentationGroups = [
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
+cpSync("apps/placement-viewer/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
+cpSync("apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
 
 for (const example of examples) {
   const source = example.source ?? path.join("examples", example.id, "dist");
@@ -277,35 +284,54 @@ function pageHtml(items) {
     <main class="home-shell">
       <section class="intro">
         <div>
-          <p class="eyebrow">Rust + WebAssembly 2D web game engine</p>
+          <p class="eyebrow">AI agent-first · Rust / WebAssembly · 2D / HD-2D</p>
           <h1>Ferrum2D</h1>
-          <p class="lead">엔진 기능을 하나씩 선택하고, 설정을 바꾸며 결과를 확인하세요.</p>
+          <p class="lead">기능을 직접 체험하고, AI와 함께 게임을 만드세요. 씬·코드를 수정하고 검증하는 흐름을 제공합니다.</p>
+          <p class="site-note">이 사이트는 배포한 개발 소스의 문서·예제입니다. 설치 패키지의 기능은 해당 릴리스 문서를 확인하세요.</p>
           <div class="actions">
             <a class="button primary" href="./starter-runtime/">기능 실험실</a>
-            <a class="button" href="./docs/">사용 문서</a>
+            <a class="button" href="./docs/engine/user-guide.html">엔진 사용 안내</a>
+            <a class="button" href="./placement-viewer/">배치 뷰어</a>
           </div>
         </div>
         <img class="preview" src="./docs/development/quality/screenshots/engine-feature-lab.png" alt="엔진 기능 실험실: 단순 확대와 9-slice 비교" />
       </section>
+      <section class="section" aria-labelledby="start-heading">
+        <div class="section-heading"><h2 id="start-heading">어디서 시작할까요?</h2></div>
+        <div class="grid">
+          <a class="tile" href="./docs/engine/showcase-hub.html">
+            <span class="tile-title">기능을 체험하고 싶어요</span>
+            <span class="tile-description">기능 지도를 보고 원하는 실험을 고릅니다. 설정을 바꾸며 차이를 확인하세요.</span>
+          </a>
+          <a class="tile" href="./docs/engine/developer-quickstart.html">
+            <span class="tile-title">새 게임을 만들고 싶어요</span>
+            <span class="tile-description">GitHub Release 패키지로 템플릿을 만들고 실행·검증을 시작합니다.</span>
+          </a>
+          <a class="tile" href="./docs/engine/data-scene-authoring.html">
+            <span class="tile-title">씬과 에셋을 작성하고 싶어요</span>
+            <span class="tile-description">뷰어의 배치·변형·레이어·게임 카메라·도트 편집과 저장 방법을 확인합니다.</span>
+          </a>
+        </div>
+      </section>
       <section class="section">
         <div class="section-heading">
-          <h2>기능별 실험</h2>
+          <h2>기능별 실험 ${featureExamples.length}종</h2>
           <a href="./physics-sandbox/">물리 심화 실험 7종</a>
         </div>
         <div class="grid">${featureLinks}</div>
       </section>
       <section class="section">
         <div class="section-heading">
-          <h2>기존 예제 · 통합 데모 · 제작 도구</h2>
-          <a href="./docs/development/operations/demo-deploy.html">Deploy notes</a>
+          <h2>통합 예제 · 제작 도구</h2>
+          <a href="./docs/development/operations/demo-deploy.html">배포 안내</a>
         </div>
         <div class="grid">${demoLinks}
         </div>
       </section>
       <section class="section">
         <div class="section-heading">
-          <h2>Documentation</h2>
-          <a href="./docs/">Open index</a>
+          <h2>사용·개발 문서</h2>
+          <a href="./docs/">전체 문서 지도</a>
         </div>
         <div class="grid docs-grid">
 ${docsLinks}
@@ -345,19 +371,19 @@ function docPageHtml(page, pages) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(page.title)} | Ferrum2D Docs</title>
-    <style>${siteCss()}</style>
+    <style>${siteCss(relativeHref(path.posix.join("docs", currentDir), "fonts/NotoSansKR-UI.woff2"))}</style>
   </head>
   <body>
     <div class="docs-layout">
-      <aside class="docs-nav" aria-label="Docs navigation">
+      <aside class="docs-nav" aria-label="문서 탐색">
         <a class="brand" href="${escapeAttribute(rootHref)}">Ferrum2D Docs</a>
         <nav>${nav}
         </nav>
       </aside>
       <main class="docs-content">
         <div class="docs-topbar">
-          <a href="${escapeAttribute(siteRootHref)}">Pages home</a>
-          <a href="${escapeAttribute(rootHref)}">Docs index</a>
+          <a href="${escapeAttribute(siteRootHref)}">기능·예제 홈</a>
+          <a href="${escapeAttribute(rootHref)}">문서 지도</a>
         </div>
         <article>
 ${content}
@@ -534,10 +560,18 @@ function relativeHref(fromDir, toPath) {
   return href;
 }
 
-function siteCss() {
-  return `:root {
+function siteCss(fontHref = "./fonts/NotoSansKR-UI.woff2") {
+  return `@font-face {
+  font-family: "Ferrum Korean UI";
+  src: url("${escapeAttribute(fontHref)}") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7FF;
+}
+:root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Inter, "Ferrum Korean UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f6f8fb;
   color: #1e2933;
 }
@@ -549,12 +583,13 @@ a { color: #0f6f72; text-decoration-thickness: 0.08em; text-underline-offset: 0.
 .eyebrow { margin: 0 0 10px; color: #c2541a; font-size: 0.82rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
 h1 { margin: 0 0 12px; color: #14212b; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 0.95; letter-spacing: 0; }
 .lead { max-width: 660px; margin: 0; color: #526575; font-size: 1.08rem; line-height: 1.7; }
+.site-note { color: #526575; font-size: 0.9rem; line-height: 1.6; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .button { display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border: 1px solid #9fb3c2; border-radius: 8px; color: #1e2933; font-weight: 700; text-decoration: none; background: #ffffff; }
 .button.primary { border-color: #0f6f72; color: #ffffff; background: #0f6f72; }
 .preview { width: 100%; border: 1px solid #cad6e0; border-radius: 8px; background: #16202a; box-shadow: 0 14px 40px rgba(32, 43, 54, 0.16); }
 .section { margin-top: 34px; }
-.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 h2 { margin: 0; color: #14212b; font-size: 1.35rem; letter-spacing: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .tile { display: grid; gap: 10px; min-height: 124px; padding: 18px; border: 1px solid #d3dee8; border-radius: 8px; background: #ffffff; color: inherit; text-decoration: none; }
@@ -571,7 +606,7 @@ h2 { margin: 0; color: #14212b; font-size: 1.35rem; letter-spacing: 0; }
 .docs-nav nav a { display: block; padding: 8px 10px; border-radius: 8px; color: #394b59; text-decoration: none; line-height: 1.35; }
 .docs-nav nav a:hover, .docs-nav nav a[aria-current="page"] { background: #ffffff; color: #0f6f72; }
 .docs-content { min-width: 0; padding: 22px min(64px, 6vw) 64px; }
-.docs-topbar { display: flex; gap: 14px; justify-content: flex-end; margin-bottom: 20px; font-size: 0.92rem; }
+.docs-topbar { display: flex; flex-wrap: wrap; gap: 14px; justify-content: flex-end; margin-bottom: 20px; font-size: 0.92rem; }
 article { max-width: 920px; overflow-wrap: anywhere; }
 article h1 { font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1; }
 article h2 { margin-top: 34px; padding-top: 18px; border-top: 1px solid #d9e2ec; }
