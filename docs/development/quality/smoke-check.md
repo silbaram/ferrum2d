@@ -506,8 +506,9 @@ Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Esc
 `placement-asset-drawer-smoke.mjs`는 서랍이 canvas 크기를 바꾸지 않는지, 탭 재클릭·바깥 클릭·Esc·Ctrl+Space 동작,
 도구 뷰 왕복, 실제 마우스 드래그로 뷰포트에 놓는 흐름, 고정 시 레이아웃 복귀를 확인한다.
 `pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
+`placement-key-hints.test.mjs`는 2D/HD-2D·선택·잠금별 단축키 안내, 한국어 문구 누락, Ctrl+K/⌘K 판정을 검사한다.
 이 단위 검사는 `smoke:placement-viewer`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는
-실제 2D/HD-2D 세로 도구 클릭·위/아래 focus, F3 검색·실행·취소·focus 복귀, 동적 비활성 재검사와 IME Enter/Escape를 확인한다.
+실제 2D/HD-2D 세로 도구 클릭·위/아래 focus, Ctrl+K 열기와 상태 바 안내·이동 도구 전환 시 숨김, F3 검색·실행·취소·focus 복귀, 동적 비활성 재검사와 IME Enter/Escape를 확인한다.
 320~1125px에서는 실제 hit-test로 선택/이동 버튼이 입력을 받는지, 선택 팝업이 도구 모음과 겹치거나 canvas 오른쪽을 넘지 않는지 검사한다.
 두 번째 문서를 열고 속성 명령을 실행해 현재 문서의 탭만 바뀌며, 숨겨 둔 이전 문서의 컨트롤은 바꾸지 않는지 검사한다.
 세로 도구 모음에는 선택/이동만 두고 게임 카메라는 상단에서 접근한다. 공간 데이터가 없는 문서의 게임 카메라 명령은 비활성인지 확인한다.

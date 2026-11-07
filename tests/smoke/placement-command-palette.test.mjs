@@ -11,7 +11,8 @@ async function moduleUrl(name,imports={}) {
 async function checked(url){try{return await import(url);}catch(error){process.exitCode=1;console.error('Command test bootstrap failed:',String(error?.message??error).slice(0,400));throw error;}}
 const messages=await moduleUrl('placementLocaleMessages'),locale=await moduleUrl('placementLocale',{'./placementLocaleMessages':messages});
 const chrome=await moduleUrl('placementViewportChrome',{'./placementLocale':locale});
-const {searchPlacementCommands}=await checked(await moduleUrl('placementCommandPalette',{'./placementLocale':locale,'./placementViewportChrome':chrome}));
+const keyHints=await moduleUrl('placementKeyHints',{'./placementLocale':locale});
+const {searchPlacementCommands}=await checked(await moduleUrl('placementCommandPalette',{'./placementLocale':locale,'./placementViewportChrome':chrome,'./placementKeyHints':keyHints}));
 const preferences=await moduleUrl('placementWorkspacePreferences');
 const {placementWorkspaceCommands}=await checked(await moduleUrl('placementWorkspaceCommands',{'./placementWorkspacePreferences':preferences}));
 const commands=[

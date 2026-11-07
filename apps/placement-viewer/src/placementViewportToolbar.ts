@@ -1,6 +1,7 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { decorateViewportAction, installViewportToolbarKeys } from "./placementViewportChrome";
 import { createPlacementControlMenu } from "./placementControlMenu";
+import { commandSearchShortcut, isMacPlatform, placementKeyHints, renderPlacementKeyHints } from "./placementKeyHints";
 
 type NavigationState = { tool: "select" | "pan"; temporary: boolean; dragging: boolean };
 /** Fixed tools and a light-dismiss display disclosure outside the picking surface. */
@@ -34,7 +35,12 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   setUiText(colliderText, "Collision Bounds");
   flatOverlays.append(colliderBounds, colliderText);
   colliderBounds.addEventListener("change", () => onColliderBoundsChange(colliderBounds.checked));
-  let mode = "2d", label: string | undefined, dragging = false;
+  let mode = "2d", label: string | undefined, dragging = false, selection = { count: 0, locked: false };
+  // Static key reference, kept out of the live readout so selection changes are not announced.
+  const keyHints = document.createElement("div"), mac = isMacPlatform();
+  keyHints.className = "placement-key-hints";
+  keyHints.dataset.placementKeyHints = "true";
+  setUiAttribute(keyHints, "aria-label", "Keyboard shortcuts");
   const states: Record<string, NavigationState> = {};
   element.className = "placement-viewport-toolbar";
   const rail = document.createElement("div");
@@ -134,7 +140,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   const instructions = document.createElement("dl");
   instructions.className = "placement-controls-guide";
   for (const [label, description] of [
-    ["Search Commands", "F3: find tools, views and panels by name."],
+    ["Search Commands", uiMessage("{0} or F3: find tools, views and panels by name.", commandSearchShortcut(isMacPlatform()))],
     ["Place objects", "Drag an asset from Assets into the viewport."],
     ["Edit selection", "Select an object, then edit its properties in Inspector."],
     ["Navigate", "V: select · H or Space + drag: pan · Wheel: zoom"],
@@ -169,13 +175,25 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     readout.dataset.navigation = nav?.temporary ? "temporary-pan" : nav?.tool ?? "select";
     button.hidden = !label;
     readout.hidden = !label && mode !== "game" && !nav?.temporary && !nav?.dragging && nav?.tool !== "pan";
+    // Hints describe the idle select tool only; transient states own the readout.
+    const hintMode = mode === "2d" || mode === "spatial" ? mode : undefined;
+    keyHints.hidden = !readout.hidden || !hintMode || stage.dataset.pixelEditor === "true";
+    if (!keyHints.hidden && hintMode)
+      renderPlacementKeyHints(keyHints, placementKeyHints({ mode: hintMode, selected: selection.count, locked: selection.locked, mac }));
   }
+  new MutationObserver(renderReadout).observe(stage, { attributes: true, attributeFilter: ["data-pixel-editor"] });
   stage.addEventListener("placement-navigation-change", (event) => {
     const detail = (event as CustomEvent<NavigationState & { mode: string }>).detail;
     states[detail.mode] = detail;
     if (mode === detail.mode) renderReadout();
   });
   return {
+    keyHints,
+    syncSelection(count: number, locked: boolean) {
+      if (selection.count === count && selection.locked === locked) return;
+      selection = { count, locked };
+      renderReadout();
+    },
     element, navigation, camera, gridSettings, spatialSettings, flatNavigation, spatialNavigation, layoutSettings, lightingSettings,
     sync(nextMode: string, nextLabel?: string, nextDragging = false) {
       if (mode !== nextMode) closeOptions();

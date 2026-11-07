@@ -26,6 +26,15 @@ export async function smokePlacementCommandPalette(page,mode) {
     assert(selectBox.x>=surface.x&&panBox.x+panBox.width<=surface.x+surface.width);
     await select.focus();await page.keyboard.press('ArrowDown');assert(await pan.evaluate(e=>e===document.activeElement));
     await page.keyboard.press('ArrowUp');assert(await select.evaluate(e=>e===document.activeElement));
+    // Ctrl+K is the advertised shortcut; the idle status bar names it with only this mode's keys.
+    await canvas.focus();await page.keyboard.press('Control+k');await palette.waitFor({state:'visible'});
+    await page.keyboard.press('Escape');await palette.waitFor({state:'hidden'});
+    const hints=page.locator('[data-placement-key-hints]'),hintText=await hints.innerText();
+    assert.match(hintText,/^Ctrl\+K/,'the palette shortcut leads the hints');
+    if(mode==='spatial')assert.doesNotMatch(hintText,/↑↓←→|Ctrl\+A/,'HD-2D has no keyboard nudge or select all');
+    else assert.doesNotMatch(hintText,/Ctrl\+D/,'2D has no duplicate key');
+    await pan.click();assert(await hints.isHidden(),'the pan readout replaces the idle hints');
+    await select.click();assert(await hints.isVisible());
     await canvas.focus();await open('no-command-can-match-this');
     assert.equal(await palette.locator('[role="option"]').count(),0);await page.keyboard.press('Enter');assert(await palette.isVisible());
     await page.keyboard.press('Escape');assert(await canvas.evaluate(e=>e===document.activeElement));assert.equal(await authored(),before);

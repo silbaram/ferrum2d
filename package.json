@@ -57,7 +57,7 @@
     "test:placement-grid": "node --test tests/smoke/placement-grid.test.mjs",
     "test:placement-camera": "node --test tests/smoke/placement-spatial-camera.test.mjs tests/smoke/placement-spatial-pose.test.mjs",
     "test:placement-locale": "node --test tests/smoke/placement-locale.test.mjs",
-    "test:placement-commands": "node --test tests/smoke/placement-command-palette.test.mjs",
+    "test:placement-commands": "node --test tests/smoke/placement-command-palette.test.mjs tests/smoke/placement-key-hints.test.mjs",
     "test:placement-layouts": "node --test tests/smoke/placement-workspace-preferences.test.mjs",
     "test:placement-inspector": "node --test tests/smoke/placement-inspector-context.test.mjs tests/smoke/placement-inspector-originals.test.mjs tests/smoke/placement-component-edits.test.mjs",
     "smoke:placement-tools": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-tool-ui-runner.mjs",
