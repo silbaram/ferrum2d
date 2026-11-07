@@ -1,4 +1,5 @@
 import { setUiText, uiMessage } from "./placementLocale";
+import { comparePlacementValues, describePlacementChange, escapePointer, type PlacementChange } from "./placementChangeLabels";
 import { readPlacementImportDiagnostics, createPlacementImportDiagnosticSummary } from "./placementImportDiagnostics";
 import { createPlacementRuntimeSummary } from "./placementRuntimeSummary";
 import {
@@ -15,7 +16,7 @@ import type {
   GameplayEventView,
 } from "@ferrum2d/ferrum-web/core";
 
-type Change = { path: string; before?: unknown; after?: unknown };
+type Change = PlacementChange;
 type Evidence = NonNullable<ScenePlacementAgentHandoff["authoringEvidence"]>;
 /** Bounded presentation evidence; the full deterministic patch remains in the handoff. */
 export function installPlacementDiagnostics(options: {
@@ -195,6 +196,30 @@ export function installPlacementDiagnostics(options: {
     }
     return [...result];
   }
+  /** Names the object and field; the raw pointer stays on the row and in the handoff. */
+  function changeRow(change: Change, scene: SceneAuthoringDocumentSpec, after: SceneAuthoringDocumentSpec | undefined, next: ScenePlacementViewerState) {
+    const label = describePlacementChange(change.path, change.before, change.after,
+      scene as unknown as Record<string, unknown>, after as unknown as Record<string, unknown> | undefined);
+    const instanceId = label.object ? next.instances.find((instance) => instance.sourceId === label.object)?.instanceId : undefined;
+    const row = document.createElement(instanceId ? "button" : "div");
+    if (row instanceof HTMLButtonElement) {
+      row.type = "button";
+      row.addEventListener("click", () => options.select(instanceId!));
+    }
+    row.className = "placement-change-row";
+    row.dataset.placementChangedPath = change.path;
+    row.dataset.changeKind = label.kind;
+    row.title = change.path;
+    const object = document.createElement("strong"), field = document.createElement("span"), value = document.createElement("code");
+    object.textContent = label.object ?? "";
+    object.hidden = !label.object;
+    if (label.field) field.textContent = label.field;
+    else setUiText(field, label.kind === "added" ? "Added" : label.kind === "removed" ? "Removed" : "Changed");
+    // A whole added or removed object is named, not dumped.
+    value.textContent = !label.field && label.kind !== "changed" ? "" : short(change.before) + " → " + short(change.after);
+    row.append(object, field, value);
+    return row;
+  }
   function sync(
     next: ScenePlacementViewerState,
     scene: SceneAuthoringDocumentSpec,
@@ -224,28 +249,25 @@ export function installPlacementDiagnostics(options: {
     if (changedBase || signature !== patchSignature) {
       patchSignature = signature;
       changes = [];
+      let after: SceneAuthoringDocumentSpec | undefined;
       try {
-        const after = next.draftPatch
+        after = next.draftPatch
           ? mergeScenePlacementPatch(scene, next.draftPatch).document
           : scene;
-        compare(scene, after, "", changes);
+        comparePlacementValues(scene, after, "", changes);
       } catch (error) {
         report(error);
       }
       setUiText(diff.summary, uiMessage("Agent Changes ({0})", changes.length));
       diff.body.replaceChildren(
-        ...changes.slice(0, 200).map((change) => {
-          const row = document.createElement("pre");
-          row.dataset.placementChangedPath = change.path;
-          row.textContent =
-            change.path +
-            "\n" +
-            short(change.before) +
-            " → " +
-            short(change.after);
-          return row;
-        }),
+        ...changes.slice(0, 200).map((change) => changeRow(change, scene, after, next)),
       );
+      if (!changes.length) {
+        const empty = document.createElement("p");
+        empty.dataset.placementChangesEmpty = "true";
+        setUiText(empty, "No changes yet. Edits are compared with the original here.");
+        diff.body.append(empty);
+      }
       if (changes.length > 200) {
         const row = document.createElement("p");
         row.textContent =
@@ -366,32 +388,7 @@ export function installPlacementDiagnostics(options: {
   };
 }
 
-function escapePointer(value: string) {
-  return value.replace(/~/g, "~0").replace(/\//g, "~1");
-}
 function short(value: unknown) {
   const text = JSON.stringify(value) ?? "(absent)";
   return text.length > 500 ? text.slice(0, 500) + "…" : text;
-}
-function compare(
-  before: unknown,
-  after: unknown,
-  path: string,
-  result: Change[],
-) {
-  if (before === after) return;
-  if (
-    before &&
-    after &&
-    typeof before === "object" &&
-    typeof after === "object" &&
-    Array.isArray(before) === Array.isArray(after)
-  ) {
-    const left = before as Record<string, unknown>,
-      right = after as Record<string, unknown>;
-    for (const key of [
-      ...new Set([...Object.keys(left), ...Object.keys(right)]),
-    ].sort())
-      compare(left[key], right[key], path + "/" + escapePointer(key), result);
-  } else result.push({ path, before, after });
 }

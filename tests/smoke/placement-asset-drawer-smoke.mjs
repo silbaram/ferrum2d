@@ -74,8 +74,20 @@ export async function smokePlacementAssetDrawer(page, timeoutMs) {
   await page.mouse.up();
   await wait(() => document.querySelector(".demo-shell").dataset.runtimeDrawer === "closed");
   await wait(() => globalThis.ferrumPlacementViewerHistory.undoCount === 1);
+  // The header surfaces the pending change and reviews it by object, not by shifted indexes.
+  const reviewHeader = page.locator("[data-placement-review-header]");
+  assert(await reviewHeader.isVisible(), "a draft change shows the header review entry");
+  assert.match(await reviewHeader.innerText(), /\b1\b/);
+  await reviewHeader.click();
+  assert(await page.locator('[data-placement-panel-body="changes"]').isVisible());
+  const rows = page.locator(".placement-change-row");
+  assert.equal(await rows.count(), 1, "one dropped asset is one change");
+  assert.equal(await rows.getAttribute("data-change-kind"), "added");
+  assert.notEqual((await rows.locator("strong").textContent()).trim(), "", "the row names the added object");
+  await page.keyboard.press("Escape");
   await page.locator("button[data-placement-action=undo]").click();
   await wait(() => globalThis.ferrumPlacementViewerHistory.undoCount === 0 && !globalThis.ferrumPlacementViewerExportPatch());
+  await wait(() => document.querySelector("[data-placement-review-header]").hidden);
 
   // Docking returns the previous fixed panel, and that choice survives as a preference.
   await showPlacementAssetPanel(page, "usage");
