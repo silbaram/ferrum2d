@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 다음은 billboard shadow proxy·bias·coverage 검증이다. |
+| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 다음은 proxy asset/LOD·점광원 접촉·coverage 검증이다. |
 | 2 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
 
 AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.

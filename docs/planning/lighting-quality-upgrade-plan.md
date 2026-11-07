@@ -98,25 +98,15 @@ ground silhouette 역시 수신면별 가시성을 계산하는 shadow map과 �
 [GPU 광원/그림자 순서](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
 [tile shadow geometry](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/lightingShadows.ts).
 
-### S01 · P1 · 카메라 회전으로 바뀌는 billboard 그림자
+### S01 · P1 · billboard shadow proxy 제작·동작 범위 검증
 
-**구현 확인·수치 재현 / 기존 설계의 한계.** native `append_billboard_internal`이 카메라의 수평 right 축을
-색상 geometry와 shadow caster에 공통 사용한다. 고정된 32×64 billboard와 고정 태양 `[1,1,0]`에서
-right 축을 `[1,0,0]` → `[0,0,1]`로 바꾸면 평면 바닥 투영 면적은 0 → 2,048 world²가 된다.
-얇아짐·소멸·모양 변화는 이 구조로 설명 가능하지만 사용자가 본 장면과의 일치는 별도 재현이 필요하다.
-기존 테스트도 카메라 회전 시 caster revision 변화를 기대한다.
+기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
+`shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
 
-**방향:** billboard 표시와 그림자용 형상을 분리할 수 있는 선택 계약을 만든다.
-현재 동작, 그림자 끔, 명시적으로 작성한 간단한 volume proxy를 비교한다.
-고정된 평면 한 장도 빛과 평행하면 사라지므로 그것만으로 해결됐다고 판정하지 않는다.
-proxy는 렌더용 데이터이며 collider를 암묵적으로 변경하지 않는다. 모델은 기존 mesh caster를 유지한다.
-
-우선 비교할 설계는 기존 model binding의 shadow-only 선택이다. 별도의 GLB volume caster instance를
-billboard 부모에 native attachment로 연결해 pose·기존 model shadow budget/cache를 재사용한다.
-작성 옵션은 cold bulk configuration에서 검증하며 기존 output model flags/stride를 확장할 필요가 있는지도 먼저 확인한다.
-보이지 않는 proxy의 picking·GLB collision/navigation metadata·streaming·LOD가 표시/물리 계약을 바꾸지 않도록 해야 한다.
-billboard/model의 고유 instance ID 계약, old Wasm의 원자적 거절, 저장/복원까지 같은 작업에서 다룬다.
-이는 다음 구현의 설계 후보이며 현재 제공하는 옵션이 아니다.
+**남은 작업:** 실제 캐릭터·나무 asset에서 표시 애니메이션 UV/flip·높이 변화·화면 밖 caster를 포함해
+적절한 volume 크기와 피벗을 검증한다. 카메라 거리별 LOD 교체가 shadow silhouette에 미치는 영향과
+proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 명시적 동작을 확인한다.
+자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 
 근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
 [현재 revision 테스트](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/engine/tests/spatial_environment.rs).
@@ -287,13 +277,13 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 | [three.js LightShadow](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/lights/LightShadow.js) | depth bias·normalBias·filter radius·map 크기를 분리 | 기존 world 단위 bias 계약을 유지하면서 필터 때문에 생기는 접촉 손실을 별도로 해결 |
 | [Unity URP bias](https://github.com/Unity-Technologies/Graphics/blob/0efc28ea742b1966b9dd9cc4489e58b986a13faf/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl) | light 방향 offset과 입사각에 따른 normal offset을 구분 | caster/receiver 보정을 혼동하지 않으며 기존 normalBias 의미를 조용히 변경하지 않음 |
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
-| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | S01의 명시적 proxy는 여전히 필요. billboard를 조명 방향으로 돌리는 한 장의 평면만으로 해결하지 않음 |
+| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy를 사용. S01은 실제 asset·애니메이션·LOD 범위 검증을 이어감 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
 | [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | flat L02의 광원별 차폐·겹침 union도 적용 대상. 기존 overlay 전체에 검은 그림자를 덧칠하는 한계를 남겨두고 완료로 처리하지 않음 |
 
 이 검토의 구현 종료 조건은 S01의 카메라 독립 caster 선택, S02의 접촉·극단 입사각 검증,
 S03의 단일 map 경계 전환, L02의 flat 광원별 차폐 합성, 양 backend의 실제 shadow 픽셀·자원 회귀를 확인하는 것이다.
-현재 태양 수신 평면 보정만으로 이 후속 검토 전체가 끝났다고 처리하지 않는다.
+태양 수신 평면 보정과 proxy 지원만으로 이 후속 검토 전체가 끝났다고 처리하지 않는다.
 
 ## 5. 공통 설계·호환성 원칙
 
@@ -324,7 +314,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy 설계·native caster, S02 bias 진단/개선, S03 coverage/caster 여유, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S02 bias 진단/개선, S03 coverage/caster 여유, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
 | M2 flat lit 합성 | L01/L02. 광원별 visibility·표면색·수신 제어, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
 | M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
@@ -336,7 +326,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 1. **M0-a:** 고정 태양 + billboard/mesh/지형 + orbit/pan, 발 접촉·창문·벽이 있는 최소 재현 씬을 만든다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
 2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 smoke를 늘리는 것과 바꿔야 하는 기대값을 구별한다.
-3. **M1-a:** 캐릭터/나무 billboard의 안정적인 shadow proxy를 작은 prototype으로 비교한다.
+3. **M1-a:** 캐릭터/나무 billboard에 작성한 shadowOnly volume proxy를 실제 asset에서 비교한다.
    회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
 4. **M1-b:** thin box·경사면에서 hard/PCF와 bias/normalBias/coverage/resolution을 독립 sweep한다.
    적용한 effective bias를 report에 기록하고 접촉 보존과 acne 제한을 동시에 통과시킨다.

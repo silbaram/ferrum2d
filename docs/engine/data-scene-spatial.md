@@ -127,6 +127,10 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   일치하는 값을 작성한다. 삼각형 충돌·자동 보행층은 제공하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
   `castShadow`/`receiveShadow`는 기본 true다. native가 world bounds와 camera/light culling을 계산한다.
+  `shadowOnly: true`(기본 false)는 main camera와 placement viewer의 모델 triangle picking에서 제외하고 point/sun caster로만 사용한다.
+  `castShadow: false`와 함께 쓰면 표시와 그림자가 모두 꺼진다. collision/navigation metadata와 authored collider는
+  이 옵션으로 바뀌지 않는다. GLB의 alpha MASK·재질·기존 LOD/chunk 정책과 제출 예산을 그대로 사용하므로
+  카메라 거리로 LOD가 바뀌면 proxy 형상도 달라질 수 있다. 고정 형상에는 단일 LOD를 사용한다.
   TS는 공유 indexed GPU buffers와 decoded RGBA 자원을 관리하며 정적 정점을 매 frame 전송하지 않는다.
   같은 handle에 anchor한 world text도 공간 depth와 물리 elevation·시각 offset을 따른다.
   글꼴은 1 world unit/font pixel에 text scale을 적용하며 모델의 meter 배율로 확대하지 않는다.
@@ -154,6 +158,28 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   실패의 후속 WebGL 오류도 제한된 횟수로 비워 정상 재시도가 이전 오류로 거절되지 않게 한다.
   null을 반환하는 texture/buffer/sampler 할당 실패도 오류 flag를 정리해 다음 정상 재시도를 막지 않는다.
   선택 GPU 준비 경로는 아래 계약을 사용한다. 기존 모델 없는 v5/v6/v7 포맷·hash 계약은 유지한다.
+
+카메라가 회전해도 일정한 billboard 그림자가 필요하면 별도 instance의 volume 모델을 연결한다.
+표시 billboard는 `castShadow: false`, proxy 모델은 `shadowOnly: true`로 작성한다. 얇은 평면 한 장은
+빛과 평행할 때 그림자가 사라지므로 간단한 상자·캡슐 등 부피가 있는 GLB가 적합하다.
+
+```ts
+spatial.billboards.actor = { castShadow: false };
+spatial.models.actorShadow = {
+  asset: "actor-shadow", contentId: actorShadowAsset.contentId,
+  shadowOnly: true, castShadow: true,
+};
+spatial.attachments = {
+  ...spatial.attachments,
+  actorShadow: { parent: "actor", elevation: 0 },
+};
+```
+
+`actorShadow`는 별도 composition instance이며 `collider: "none"`, body 생략으로 작성할 수 있다.
+부모는 heightSpan이 있는 model 또는 billboard다. Rust가 부모의 XY·높이·yaw를 따라가며 proxy에
+물리 body·collider·영속 heightSpan을 추가하지 않는다. 모델 asset 등록·resident 참조·해제 규칙은 보이는 모델과 같다.
+옵션은 cold configuration flag로 전달하고 기존 80-byte model output ABI에는 추가 bit를 내보내지 않는다.
+이 flag를 모르는 이전 Wasm은 해당 설정을 거절한다. 사용 시 TS와 Wasm을 함께 갱신한다.
 
 ### 분리형 glTF 배경 모델
 
@@ -1181,7 +1207,8 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 모든 접근 방향의 격자 연속성을 보장하지는 않는다. 기존 버전과 사각 맵의 방향이 달라질 수 있어
 범위 경계와 그림자 가장자리 픽셀은 달라질 수 있다. 광원의 방향·강도와 저장 형식은 유지한다.
 같은 target에서 camera만 회전하면 sun matrix는 유지되지만, camera-facing billboard의
-caster 형상은 여전히 camera를 따른다. billboard의 그림자용 별도 형상은 제공하지 않는다.
+기본 caster 형상은 camera를 따른다. 고정된 형상이 필요하면 표시 billboard의 cast를 끄고
+위의 `shadowOnly` 모델 proxy를 attachment로 연결한다.
 
 `lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
 면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
@@ -1547,13 +1574,17 @@ kinematic transform이며 운반체 자체를 solid actor로 sweep하거나 탑�
 
 일반 attachment는 `{parent,x,y,elevation,yawDegrees,inheritFloor}`이며 수치는 parent body 좌표다.
 x/y/elevation/yawDegrees 기본 0, inheritFloor 기본 true다. 최대 1,024개·깊이 8이고 순환·중복·
-자기 참조·없는 handle·heightSpan 없는 parent·static이 아닌 child를 거절한다. root parent는 model이다.
+자기 참조·없는 handle·heightSpan 없는 root를 거절한다. root parent는 model 또는 billboard다.
+child는 static body+heightSpan 또는 body·collider가 없는 visual-only model이다.
+후자는 렌더 pose에서만 부모 elevation+local offset을 적용하고 높이 0의 가상 span을 사용한다.
+중첩 attachment도 같은 방식으로 계산한다. `inheritFloor: false`인 visual-only child의 가상 floor는 0이며,
+이 값은 물리·navigation 층을 생성하지 않는다. 기존 static child는 자신의 높이와 명시한 floor를 유지한다.
 연결된 root/child의 XY는 ±1,000,000 이내여야 하며 모델 GPU pose와 heightSpan도 유한해야 한다.
 부모 제거는 자식을 연쇄 제거하며 generation이 다른 재사용 entity를 건드리지 않는다. 자식의 직접
 position/height/rotation/velocity/force 변경은 거절한다. 유효하지 않은 root setter는 원복하며 자율
 적분이 잘못된 pose를 만들면 마지막 유효 root pose로 복구하고 선속도·각속도를 중지한다.
 
-저장 v8은 root model의 native `spatialPose.rotationRadians`를 선택적으로 보존한다. attachment child의
+저장 v8은 root model 또는 attachment 부모인 billboard의 native `spatialPose.rotationRadians`를 선택적으로 보존한다. attachment child의
 공간 pose는 별도 저장하지 않고 fresh restore 시 root에서 재계산한다. root yaw가 0인 기존 static
 문서는 v5/v6/v7 capture/hash를 유지하며 v2~v7 읽기도 유지한다. 경로·LOD 선택 상태·GPU ID는 저장하지
 않는다. fresh engine에는 모든 referenced model 자원을 먼저 등록한다. graph/pose/content를 cold preflight하며, 실패한 native progress restore는 기존 pose를 유지한다.

@@ -1405,6 +1405,13 @@ TS 사전 검증과 native configure 모두에서 원자적으로 거절한다.
 적분 실패는 마지막 유효 root로 복원한다. 저장 v8은 root yaw만 추가하고 child pose는 재계산한다.
 정적 authoring bake와 살아 있는 attachment를 구분하며 보행면이 움직이는 묶음은 허용하지 않는다.
 
+attachment root는 heightSpan이 있는 model/billboard이며 저장은 billboard root yaw도 포함한다.
+body/collider 없는 model child는 native XY/yaw와 렌더용 elevation을 파생한다. 가상 heightSpan은
+render pose overlay에만 남고 interpolation OFF에서도 적용한다. body·collider·물리 heightSpan은 만들지 않는다.
+`shadowOnly`는 cold model flags bit 2로 검증하고 camera mask만 제외한다. output flags는 기존 cast/receive
+두 bit로 제한하여 80-byte ABI를 유지한다. 표시 billboard의 cast를 끄고 별도 volume proxy를 연결할 수 있으며,
+기존 shadow culling/budget/cache·asset residency 경로를 재사용한다. 구 Wasm은 새 input bit를 거절한다.
+
 native chunk/LOD 정책은 카메라 거리·진입/이탈 hysteresis와 light visibility로 visual residency를 고른다.
 기존 80-byte model draw ABI는 유지한다. CPU asset decode/cache/lease·GPU upload/release는 TS에 남고,
 물리·보행면은 visual unload와 무관하다. 모든 LOD를 사전 등록하는 bounded 모델이며 자동 network

@@ -1887,7 +1887,15 @@ point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 �
 XY/depth 각각 shadow off와 hard/PCF3 × 내부 여유 3/2/1.5/1/0.5/0/-1 world unit을 검사한다.
 중간 구간은 fully shadowed/fully lit 사이여야 하며 범위 밖은 off와 채널 차이 3 이하, pan 순서의 밝기는 역전하지 않아야 한다.
 `shadowEdges`에 축·필터·여유·수신점 값을 기록한다. 내부 접촉/기준축/다른 광원 검증도 유지한다.
-`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자62상태만 실행할 수 있다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --shadows-only`로 그림자62상태와 아래 proxy 검사를 실행할 수 있다.
+proxy fixture는 별도 GLB volume과 body/collider 없는 model child를 billboard root에 연결한다.
+표시/control·shadowOnly·cast OFF·sun/point shadow·camera orbit·부모 yaw·fresh JSON restore·이동의 10상태를
+두 backend/투영/viewport·DPR 1/2에서 검사한다. main model draw0, 실제 바닥 shadow, orbit 중 같은 world
+수신점의 차폐·model matrix 불변·warm cache hit/draw/upload0, 부모 물리 설정 불변과 proxy body 부재를 요구한다.
+fresh restore는 frame byte 차이0, GL/GPU는 채널3/상이 pixel1% 미만이다. `report.proxyCases`와 PNG를 보존한다.
+기본/offscreen 전체 gate에도 포함하며 `--offscreen-target --proxies-only`로 단독 실행한다.
+native `spatial_shadow_only` 회귀는 cold flag 검증·기존 output ABI·camera/light mask와
+interpolation ON/OFF의 파생 elevation·물리 body/collider/heightSpan 부재·billboard root yaw capture를 검사한다.
 `cargo test --manifest-path crates/ferrum-core/Cargo.toml spatial_sun_stability`는 동일 경계와 천정/지평선의
 기준축 연속성, 양 극점의 유한·직교 행렬, camera orbit 불변과 subtexel/한 texel 이동을 검사한다.
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.
