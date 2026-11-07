@@ -8,7 +8,7 @@ export function placementInspectorContext(input: InspectorContext): { state: str
   if (input.locked) return { state: "locked", message: "Selection locked · Unlock to edit" };
   if (input.mode === "spatial") return { state: "spatial", message: "Spatial fields edit the active target" };
   if (input.count > 1) return { state: "multiple", message: uiMessage("Transform affects {0} objects · Components need one selection", input.count) };
-  return { state: "single", message: "Drag to move · Rotation is in radians" };
+  return { state: "single", message: "Drag to move" };
 }
 
 export function createPlacementInspectorContext() {

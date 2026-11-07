@@ -49,10 +49,17 @@ export async function smokePlacementAssetDrawer(page, timeoutMs) {
   await page.locator('[data-placement-asset-open="aseprite"]').click();
   const aseprite = page.locator("[data-placement-aseprite-tool]");
   assert(await aseprite.locator('[data-aseprite-action="inspect"]').isVisible());
-  assert.equal(await grid.isVisible(), false);
+  // The grid alone proves nothing: squeezed to zero height, its cells still paint over the tool.
+  assert.equal(await page.locator(".placement-asset-browser").isVisible(), false, "a tool replaces the browser in the open drawer");
   await page.locator("[data-placement-asset-view-back]").click();
   assert(await grid.isVisible());
   assert.equal(await aseprite.evaluate((node) => node.open), false);
+  await page.locator('[data-placement-menu="asset-manage"] > summary').click();
+  await page.locator('[data-placement-asset-open="cleanup"]').click();
+  const overflow = await page.locator(".placement-runtime-dock [data-placement-asset-mount]").evaluate((mount) =>
+    mount.getBoundingClientRect().bottom - mount.closest(".placement-panel-tabbody").getBoundingClientRect().bottom);
+  assert(overflow <= 0, `a short tool must stay above the dock strip (${overflow}px past it)`);
+  await page.locator("[data-placement-asset-view-back]").click();
 
   // A real drag fades the drawer so the drop lands on the viewport, then dismisses it.
   await assetsTab(page).click();

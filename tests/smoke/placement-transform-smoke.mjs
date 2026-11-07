@@ -62,7 +62,7 @@ export async function smokePlacementTransforms(page, timeoutMs) {
     );
     return patch();
   };
-  const numericRotation = await numeric("rotationRadians", Math.PI / 2);
+  const numericRotation = await numeric("rotationDegrees", 90);
   await wait(() => {
     const [a, b] = globalThis.ferrumPlacementViewerState.instances;
     return (
@@ -121,7 +121,7 @@ export async function smokePlacementTransforms(page, timeoutMs) {
   if (JSON.stringify(await patch()) !== JSON.stringify(numericScale))
     throw new Error("Pointer/numeric scale patches differ");
   await undo();
-  const keyboardRotation = await numeric("rotationRadians", Math.PI / 12);
+  const keyboardRotation = await numeric("rotationDegrees", 15);
   await undo();
   await rotate.focus();
   await page.keyboard.press("ArrowRight");

@@ -61,7 +61,7 @@
 .placement-pixel-layer-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px; align-items: center; padding: 4px; border: 1px solid var(--border); }
 .placement-pixel-layer-row[data-selected=true] { border-left: 2px solid var(--accent); background: var(--accent-soft); }
 .placement-pixel-layer-row > button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.placement-pixel-layer-row label { display: flex; flex-direction: column; align-items: center; font-size: 9px; color: var(--fg-3); }
+.placement-pixel-layer-row label { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--fg-3); }
 .placement-pixel-layer-properties { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 4px; }
 .placement-pixel-layer-properties > label { display: grid; min-width: 0; gap: 4px; font-size: 11px; }
 .placement-pixel-layer-properties > button { min-width: 0; font-size: 11px; }
@@ -254,7 +254,7 @@ dialog[data-pixel-animation-export-dialog] [hidden] { display: none !important; 
 .placement-updates { background: var(--bg-1); color: var(--fg-1); border: 1px solid var(--border-strong); border-radius: 4px; padding: 16px; width: 560px; max-width: calc(100vw - 24px); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; font: 13px var(--ff-ui); }
 .placement-updates::backdrop { background: rgb(0 0 0 / 50%); }
 .placement-updates h2 { margin: 0 0 12px; font-size: 16px; }
-.placement-updates h3 { margin: 0; font-size: 13px; }
+.placement-updates h3 { margin: 0; font-size: 12px; }
 .placement-update-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .placement-update-actions button { min-height: 28px; }
 .placement-update-actions a { color: var(--accent); }
@@ -745,11 +745,12 @@ textarea {
 .placement-runtime-dock > .placement-dock-pin[hidden] {
   display: none;
 }
-.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock [data-placement-asset-mount] {
+/* Only the browser fills the drawer; tool views scroll in the tabbody below the view bar. */
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-runtime-dock .placement-asset-view-bar[hidden] + [data-placement-asset-mount] {
   height: 100%;
   align-items: stretch;
 }
-.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-browser {
+.demo-shell:is([data-runtime-drawer="open"], [data-runtime-drawer="dragging"]) .placement-asset-browser:not([data-asset-panel-active="false"]) {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1113,7 +1114,7 @@ textarea {
 .placement-inspector h2 {
   margin: 0 0 10px;
   color: var(--fg-1);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1779,15 +1780,26 @@ textarea {
   flex: 1;
   min-width: 0;
 }
+/* Row locks stay out of the way: hover or focus shows them, locked rows keep a quiet icon. */
 .placement-instance-row > [data-placement-lock-instance] {
-  flex: 0 0 48px;
-  min-width: 48px;
-  padding: 0 4px;
-  font-size: 10px;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
   color: var(--fg-3);
+  opacity: 0;
+}
+.placement-instance-row:hover > [data-placement-lock-instance],
+.placement-instance-row > [data-placement-lock-instance]:focus-visible {
+  opacity: 1;
 }
 .placement-instance-row[data-locked="true"] > [data-placement-lock-instance] {
-  color: var(--accent);
+  opacity: 0.6;
+}
+.placement-instance-row[data-locked="true"]:hover > [data-placement-lock-instance] {
+  opacity: 1;
 }
 .placement-list [data-primary="true"] {
   color: var(--fg-1);
@@ -3761,3 +3773,25 @@ textarea {
 .placement-number-control input:disabled + .placement-number-stepper { opacity: 0.4; pointer-events: none; }
 .placement-game-camera-fields .placement-number-control { display: flex; width: 100%; min-width: 0; }
 .placement-game-camera-fields .placement-number-control input { flex: 1; }
+
+/* Scene docks yield to the pixel editor, so its own side panels get room. */
+@container (min-width: 900px) {
+  .placement-pixel-body { grid-template-columns: 136px minmax(0, 1fr) 272px; }
+  /* Wide editors keep each band on one row so the canvas gets the height. */
+  .placement-pixel-header { flex-wrap: nowrap; padding: 4px 8px; }
+  .placement-pixel-header strong { flex: 0 1 auto; }
+  .placement-pixel-import-hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .placement-pixel-actions { flex-wrap: nowrap; }
+  .placement-pixel-actions > .placement-tool-reason { order: 1; flex: 1 1 0; }
+  .placement-pixel-tool-options { height: auto; min-height: 36px; max-height: 64px; }
+  .placement-pixel-tool-options .placement-pixel-selection { flex: 1 1 auto; }
+}
+
+/* Defaults for controls without their own size; browser defaults otherwise leak 13.33px. */
+.demo-shell :where(button, input, select, textarea) { font-size: 12px; }
+.demo-shell :where(input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"]), select) { box-sizing: border-box; height: 28px; }
+/* Some control labels are lower-case identifiers shared with diagnostics. */
+.placement-control > :first-child::first-letter { text-transform: uppercase; }
+/* Locked is a state here, not a selected tool, so it skips the amber pressed style. */
+.demo-shell .placement-instance-row > [data-placement-lock-instance][aria-pressed] { border: 0; background: transparent; color: var(--fg-3); box-shadow: none; }
+.demo-shell .placement-instance-row > [data-placement-lock-instance][aria-pressed]:hover { color: var(--fg-0); background: var(--bg-3); }
