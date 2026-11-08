@@ -32,12 +32,12 @@ const scenes = {
   lighting: [stillRobot(240, 192, 3), object('ball', 432, 192, sprite('ball', 128, 128))],
   postprocess: [object('panel', 320, 192, sprite('panel', 400, 256, { nineSlice: border, layer: -10 })), stillRobot(240, 192, 2), object('ball', 400, 192, sprite('energy', 96, 96))],
   camera: [...floor(), robot(128, 192, 1, true), object('marker_left', 64, 96, sprite('energy', 24, 24)), object('marker_right', 576, 288, sprite('ball', 32, 32))],
-  'nine-slice': [object('stretched', 144, 192, sprite('panel', 200, 144)), object('sliced', 448, 120, sprite('panel', 240, 80, { nineSlice: border })), object('sliced_tall', 448, 264, sprite('panel', 144, 160, { nineSlice: border }))],
+  'nine-slice': [object('stretched', 160, 176, sprite('panel', 256, 144)), object('sliced', 480, 176, sprite('panel', 256, 144, { nineSlice: border })), object('source', 320, 352, sprite('panel', 72, 72))],
   layers: [object('backdrop', 320, 192, sprite('panel', 480, 288, { layer: -100, nineSlice: border })),
     { ...stillRobot(300, 192, 3), layer: 2 },
     { ...object('orb', 340, 160, sprite('ball', 128, 128)), layer: 1 },
     { ...object('panel', 340, 264, sprite('panel', 224, 112, { nineSlice: border })), layer: -1 }],
-  particles: [object('tray', 320, 192, sprite('panel', 560, 320, { nineSlice: border, layer: -100 })), object('marker', 320, 192, sprite('energy', 32, 32))],
+  particles: [object('tray', 320, 192, sprite('panel', 560, 320, { nineSlice: border, layer: -100 })), object('marker', 320, 192, sprite('energy', 8, 8))],
   audio: [...floor(), stillRobot(320, 304, 1.5), object('source', 160, 176, sprite('energy', 48, 48), { type: 'circle', radius: 1, isTrigger: true }, { type: 'kinematic' })],
 };
 for (const [id, instances] of Object.entries(scenes)) {
@@ -50,7 +50,7 @@ for (const [id, instances] of Object.entries(scenes)) {
     format: 'ferrum2d.consumer.scene-authoring', version: 1,
     behaviorRecipes: { entities: {} },
     ...(moving ? { gameplay: { primaryActor: 'robot' }, navigation: { columns: 40, rows: 24, cellWidth: 16, cellHeight: 16, costs } } : {}),
-    sceneComposition: { initialFragment: 'lab', prefabs: { object: {} }, fragments: { lab: { instances } } },
+    sceneComposition: { initialFragment: 'lab', prefabs: { object: id === 'nine-slice' ? { props: { behaviorRecipes: [] } } : {} }, fragments: { lab: { instances } } },
   };
   await writeFile(new URL(`${id}.json`, out), JSON.stringify(scene, null, 2) + '\n');
 }

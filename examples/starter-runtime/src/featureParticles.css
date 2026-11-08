@@ -1,0 +1,7 @@
+.feature-particle-comparison { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+.feature-particle-comparison[hidden] { display: none; }
+.feature-particle-comparison span { position: absolute; transform: translateX(-50%); padding: 4px 8px; max-width: 38%; text-align: center; box-sizing: border-box; font: 12px/1.5 var(--example-font); color: var(--example-text); border: 1px solid var(--example-border); background: var(--example-panel); }
+.feature-particle-comparison span:first-child { border-bottom: 2px solid var(--example-accent); }
+.feature-particle-comparison span:last-child { border-bottom: 2px solid var(--example-physics); }
+
+.feature-lab[data-particle-comparing="true"] .feature-role-labels { visibility: hidden; }

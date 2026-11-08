@@ -1,5 +1,6 @@
 import { startEnginePlayground } from "./enginePlayground";
 import { startFeatureLab } from "./featureLab";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 import {
   captureGameStateSnapshot,
   createFerrumRuntime,
@@ -191,10 +192,15 @@ interface StarterRuntimeControlPanel {
 }
 
 async function bootstrap(): Promise<void> {
+  const lifetime = createExampleLifetime();
+  let restoreProfileAfterReset: (() => void) | undefined;
   const shell = createRuntimeDemoShell({
     title: "Starter Runtime",
+    exampleId: "starter-profiles",
+    afterReset: () => restoreProfileAfterReset?.(),
     frameProperty: "ferrumStarterRuntimeFrame",
   });
+  lifetime.own(() => shell.destroy());
   let runtime: FerrumRuntime | undefined;
   let reportHooks: StarterRuntimeReportHooks | undefined;
   let controlPanel: StarterRuntimeControlPanel | undefined;
@@ -218,6 +224,7 @@ async function bootstrap(): Promise<void> {
     };
 
     runtime = await createFerrumRuntime({
+      autostart: false,
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
       debug: { enabled: debugParam === "true" },
@@ -253,7 +260,9 @@ async function bootstrap(): Promise<void> {
       },
     });
 
-    await loadStarterRuntimeProjectileTextures(runtime);
+    lifetime.own(() => runtime?.destroy());
+    await loadStarterRuntimeProjectileTextures(runtime, lifetime.signal);
+    lifetime.check();
     controlPanel = createStarterRuntimeControlPanel(demoState, {
       onProfile: (profile) => {
         if (runtime === undefined) {
@@ -273,6 +282,7 @@ async function bootstrap(): Promise<void> {
       },
     });
     shell.stage.append(controlPanel.element);
+    lifetime.own(() => controlPanel?.destroy());
 
     requireInputActionBinding(runtime, STARTER_PRIMARY_ACTION_ID, 0, {
       control: "space",
@@ -283,17 +293,18 @@ async function bootstrap(): Promise<void> {
       activation: "down",
     });
     applyStarterRuntimeWeaponProfile(runtime, weaponProfile);
+    restoreProfileAfterReset = () => { if (runtime) applyStarterRuntimeWeaponProfile(runtime, demoState.selectedProfile); };
     shell.attachRuntime(runtime);
     reportHooks = installStarterRuntimeReportHooks(runtime, demoState, () => controlPanel?.update());
+    lifetime.own(() => reportHooks?.uninstall());
+    lifetime.ready();
     runtime.start();
     shell.queueStart();
     reportHooks.publish("bootstrap");
   } catch (error) {
-    controlPanel?.destroy();
-    reportHooks?.uninstall();
-    runtime?.destroy();
-    shell.destroy();
-    throw error;
+    const cancelled = lifetime.disposed;
+    lifetime.dispose();
+    if (!cancelled) throw error;
   }
 }
 
@@ -565,12 +576,13 @@ function starterControlButton(
   return button;
 }
 
-async function loadStarterRuntimeProjectileTextures(runtime: FerrumRuntime): Promise<void> {
+async function loadStarterRuntimeProjectileTextures(runtime: FerrumRuntime, signal: AbortSignal): Promise<void> {
   await Promise.all(STARTER_WEAPON_PROFILE_IDS.map(async (profileId) => {
     const profile = STARTER_WEAPON_PROFILE_CATALOG[profileId];
     await runtime.renderer.loadTexture(
       profile.visual.textureId,
       starterRuntimeProjectileTextureDataUrl(profileId),
+      { signal },
     );
   }));
 }

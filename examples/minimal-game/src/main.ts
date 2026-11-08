@@ -4,7 +4,7 @@ import {
   preloadAssetManifest,
   type AssetLoadProgress,
   type FerrumEngine,
-  type FerrumRuntimeEnvironment,
+  type FerrumRuntimeOptions,
   type InputSnapshot,
   type UiOverlayState,
   VirtualControls,
@@ -26,10 +26,10 @@ import {
 import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 
 import {
-  cleanupRuntimeDemoResources,
   createRuntimeDemoShell,
   renderRuntimeDemoError,
 } from "../../shared/runtimeDemoShell";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
@@ -141,7 +141,7 @@ function runtimeUiState(
 }
 
 async function bootstrap(): Promise<void> {
-  const cleanups: Array<() => void> = [];
+  const lifetime = createExampleLifetime();
   const shell = createRuntimeDemoShell({
     title: "Ferrum2D Minimal Game",
     gameStateLabel,
@@ -153,12 +153,12 @@ async function bootstrap(): Promise<void> {
       { key: "fps", label: "fps" },
     ],
   });
-  cleanups.push(() => shell.destroy());
+  lifetime.own(() => shell.destroy());
 
   try {
     const searchParams = new URLSearchParams(window.location.search);
     const debugParam = searchParams.get("debug");
-    const environment: FerrumRuntimeEnvironment = searchParams.get("environment") === "production"
+    const environment: FerrumRuntimeOptions["environment"] = searchParams.get("environment") === "production"
       ? "production"
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
@@ -173,13 +173,14 @@ async function bootstrap(): Promise<void> {
     const virtualControlsSmoke = searchParams.get("virtualControlsSmoke") === "true";
     const contentRuntimeSmoke = searchParams.get("contentRuntimeSmoke") === "true";
     const preloadSmokeReport = preloadSmoke
-      ? await runPreloadSmoke(shell.stage, cleanups)
+      ? await runPreloadSmoke(shell.stage, lifetime.own, lifetime.signal)
       : undefined;
+    lifetime.check();
     const virtualControls = virtualControlsSmoke
       ? new VirtualControls(shell.stage)
       : undefined;
     if (virtualControls) {
-      cleanups.push(() => virtualControls.destroy());
+      lifetime.own(() => virtualControls.destroy());
     }
     let particleVfxEmitter: ParticleVfxEmitter | undefined;
     let particleVfxEngine: FerrumEngine | undefined;
@@ -188,11 +189,11 @@ async function bootstrap(): Promise<void> {
     const shaderLoading = searchParams.get("shaderPreparation") === "true"
       ? new LoadingOverlay(shell.stage)
       : undefined;
-    const shaderAbort = new AbortController();
-    if (shaderLoading) cleanups.push(() => { shaderAbort.abort(); shaderLoading.destroy(); });
+    if (shaderLoading) lifetime.own(() => shaderLoading.destroy());
     const runtime = await createFerrumRuntime({
+      autostart: false,
       shaderPreparation: shaderLoading ? {
-        signal: shaderAbort.signal,
+        signal: lifetime.signal,
         onProgress: (progress) => shaderLoading.updateShaderPreparation(progress),
       } : undefined,
       canvas: shell.canvas,
@@ -379,6 +380,7 @@ async function bootstrap(): Promise<void> {
         shell.updateFrame({ frame, rendererStats, fps });
       },
     });
+    lifetime.own(() => runtime.destroy());
     shell.attachRuntime(runtime);
 
     runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
@@ -393,19 +395,21 @@ async function bootstrap(): Promise<void> {
     }
 
     shaderLoading?.hide();
-    const onBeforeUnload = (): void => cleanupRuntimeDemoResources(cleanups);
-    window.addEventListener("beforeunload", onBeforeUnload);
-    cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
-
+    lifetime.ready();
     runtime.start();
     shell.queueStart();
     (window as Window & { ferrumVirtualControls?: VirtualControls }).ferrumVirtualControls = virtualControls;
     (window as Window & { ferrumAssetPreloadSmoke?: Awaited<ReturnType<typeof runPreloadSmoke>> })
       .ferrumAssetPreloadSmoke = preloadSmokeReport;
+    lifetime.own(() => {
+      Reflect.deleteProperty(window, "ferrumVirtualControls");
+      Reflect.deleteProperty(window, "ferrumAssetPreloadSmoke");
+    });
 
   } catch (error) {
-    cleanupRuntimeDemoResources(cleanups);
-    throw error;
+    const cancelled = lifetime.disposed;
+    lifetime.dispose();
+    if (!cancelled) throw error;
   }
 }
 
@@ -415,7 +419,7 @@ void bootstrap().catch((error) => renderRuntimeDemoError(error, {
   diagnosticReport,
 }));
 
-async function runPreloadSmoke(parent: HTMLElement, cleanups: Array<() => void>): Promise<{
+async function runPreloadSmoke(parent: HTMLElement, own: (cleanup: () => void) => void, signal: AbortSignal): Promise<{
   first: { fetched: number; cached: number; total: number };
   second: { fetched: number; cached: number; total: number };
   progress: AssetLoadProgress[];
@@ -423,7 +427,7 @@ async function runPreloadSmoke(parent: HTMLElement, cleanups: Array<() => void>)
   cacheSupported: boolean;
 }> {
   const overlay = new LoadingOverlay(parent, { title: "Loading", completeTitle: "Ready" });
-  cleanups.push(() => overlay.destroy());
+  own(() => overlay.destroy());
   const cacheSupported = typeof indexedDB !== "undefined";
   const cache = new IndexedDbAssetCache({
     databaseName: "ferrum2d-minimal-preload-smoke",
@@ -439,6 +443,7 @@ async function runPreloadSmoke(parent: HTMLElement, cleanups: Array<() => void>)
   };
   const progress: AssetLoadProgress[] = [];
   const first = await preloadAssetManifest(manifest, {
+    signal,
     cache,
     cachePolicy: { json: true, textures: true, version, ttlMs: 60_000 },
     onProgress: (nextProgress) => {
@@ -447,6 +452,7 @@ async function runPreloadSmoke(parent: HTMLElement, cleanups: Array<() => void>)
     },
   });
   const second = await preloadAssetManifest(manifest, {
+    signal,
     cache,
     cachePolicy: { json: true, textures: true, version, ttlMs: 60_000 },
     onProgress: (nextProgress) => {

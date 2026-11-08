@@ -1,10 +1,91 @@
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #080b0f; color: #dce5ee; font: 13px "Ferrum Example UI", system-ui, sans-serif; }
-#app { padding: 24px; }
-.shooter-column { width: min(800px, 100%); min-width: 0; }
-.shooter-column h1 { font-size: 18px; margin: 0 0 16px; }
-.shooter-column .example-guide { width: 100%; grid-template-columns: 1fr 1fr; }
-.shooter-column .example-guide label { grid-column: 1 / -1; }
-.shooter-column > p { line-height: 1.6; color: #aeb9c6; }
-.shooter-column canvas { outline: 1px solid #2a3645; }
-@media (max-width: 700px) { #app { padding: 12px; } .shooter-column .example-guide { grid-template-columns: minmax(0, 1fr); } }
+body { margin: 0; min-width: 320px; background: var(--example-bg); color: var(--example-text); font: 13px "Ferrum Example UI", system-ui, sans-serif; }
+button, input, a { -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: var(--example-text); background: var(--example-raised); border: 1px solid var(--example-border); padding: 10px 14px; border-radius: var(--example-radius); cursor: pointer; }
+button:hover:not(:disabled) { background: var(--example-hover); border-color: var(--example-accent); }
+button:disabled { opacity: .5; cursor: wait; }
+button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visible, canvas:focus-visible { outline: 2px solid var(--example-accent); outline-offset: 3px; }
+a { color: var(--example-render); text-underline-offset: 4px; }
+kbd { font: 11px "Ferrum Example UI", ui-monospace, monospace; color: var(--example-muted); border: 1px solid var(--example-border); background: var(--example-raised); border-radius: 4px; padding: 2px 5px; white-space: nowrap; }
+#app { position: relative; padding: 16px; }
+.shooter-shell { width: min(1240px, 100%); margin: 0 auto; }
+.shooter-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.shooter-eyebrow { color: var(--example-muted); font: 10px ui-monospace, monospace; letter-spacing: .13em; margin: 0 0 9px; }
+.shooter-header h1 { font-size: 24px; font-weight: 900; letter-spacing: -.05em; line-height: 1; margin: 0; }
+.shooter-header h1 span { color: var(--example-accent); }
+.shooter-subtitle { color: var(--example-muted); margin: 9px 0 0; font-size: 12px; }
+.shooter-back { font-size: 12px; text-decoration: none; white-space: nowrap; }
+.shooter-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.shooter-column { min-width: 0; }
+.shooter-scoreboard { display: flex; align-items: center; gap: 26px; background: var(--example-panel); border: 1px solid var(--example-border); border-bottom: 0; border-radius: var(--example-radius) var(--example-radius) 0 0; padding: 15px 20px; }
+.shooter-scoreboard > div:first-child { min-width: 90px; display: grid; gap: 3px; }
+.shooter-scoreboard strong[data-readout=score] { color: var(--example-text); font: 700 31px ui-monospace, monospace; }
+.shooter-scoreboard small { color: var(--example-subtle); font-size: 10px; }
+.shooter-status { color: var(--example-runtime); font-size: 10px; }
+.shooter-wave { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.shooter-wave > span { font: 11px ui-monospace, monospace; color: var(--example-muted); }
+.shooter-wave strong { font-size: 14px; }
+.shooter-progress { height: 3px; background: var(--example-hover); border-radius: 3px; overflow: hidden; }
+.shooter-progress i { display: block; height: 100%; width: 0; background: var(--example-runtime); }
+.shooter-scoreboard button { font-size: 11px; white-space: nowrap; }
+.shooter-stage { position: relative; overflow: hidden; border: 1px solid var(--example-border); background: #101b28; isolation: isolate; }
+.shooter-stage canvas { width: 100%; aspect-ratio: 5 / 3; display: block; image-rendering: pixelated; touch-action: none; cursor: crosshair; }
+.shooter-dialog { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 24px; background: #0b1016ed; text-align: center; }
+.shooter-dialog[hidden] { display: none; }
+.shooter-dialog h2 { font-size: clamp(20px, 2.6vw, 32px); letter-spacing: -.04em; margin: 0; }
+.shooter-dialog > p:not(.shooter-eyebrow) { max-width: 420px; margin: 0; color: var(--example-muted); line-height: 1.7; font-size: 13px; }
+.shooter-dialog .shooter-eyebrow { margin: 0; }
+.shooter-dialog-controls { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; color: var(--example-muted); font-size: 10px; }
+.shooter-primary { background: var(--example-accent); border-color: var(--example-accent); color: var(--example-bg); font-weight: 800; min-width: 170px; margin-top: 4px; }
+.shooter-primary:hover:not(:disabled) { color: var(--example-text); }
+.shooter-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 2px; color: var(--example-muted); font-size: 10px; }
+.shooter-hint { margin: 0; }
+.shooter-touch-hint { display: none; margin: 0; }
+.shooter-telemetry { font-family: ui-monospace, monospace; color: var(--example-subtle); }
+.shooter-sidebar { display: grid; gap: 16px; }
+.shooter-card { padding: 18px; border: 1px solid var(--example-border); background: var(--example-panel); border-radius: var(--example-radius); }
+.shooter-card h2 { font-size: 14px; margin: 0 0 10px; line-height: 1.5; }
+.shooter-card p { color: var(--example-muted); font-size: 11px; line-height: 1.8; }
+.shooter-card .shooter-eyebrow { color: var(--example-accent); font-size: 9px; }
+.shooter-card ol { margin: 16px 0 0; padding-left: 20px; color: var(--example-subtle); font-size: 10px; }
+.shooter-card li + li { margin-top: 13px; }
+.shooter-card li strong, .shooter-card li span { display: block; }
+.shooter-card li strong { color: var(--example-text); font-size: 11px; margin-bottom: 4px; }
+.shooter-card li span { line-height: 1.6; }
+.shooter-card label { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 7px 0; cursor: pointer; }
+.shooter-card input { accent-color: var(--example-accent); width: 14px; height: 14px; }
+.shooter-card button { width: 100%; margin-top: 12px; font-size: 11px; }
+.shooter-card .shooter-small { font-size: 10px; margin-bottom: 0; }
+.shooter-feature-guide summary { font-size: 12px; cursor: pointer; }
+.shooter-feature-guide > a { display: block; margin-top: 14px; font-size: 11px; }
+.shooter-guide-mount .example-guide { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px 0 0; border: 0; background: transparent; }
+.shooter-guide-mount .example-guide p { margin: 4px 0; }
+.shooter-debug-panel { margin-top: 18px; }
+.shooter-stage [data-ferrum-virtual-controls] { display: none; }
+/* VirtualControls supplies an inline system font; retain the local Korean glyphs. */
+.shooter-stage [data-ferrum-virtual-button] { font-family: "Ferrum Example UI", system-ui, sans-serif !important; }
+@media (max-width: 1000px) {
+  .shooter-layout { grid-template-columns: minmax(0, 1fr); }
+  .shooter-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shooter-feature-guide { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  #app { padding: 16px 12px 24px; }
+  .shooter-header { margin-bottom: 18px; gap: 8px; }
+  .shooter-eyebrow { font-size: 8px; letter-spacing: .06em; }
+  .shooter-back { font-size: 10px; }
+  .shooter-scoreboard { padding: 10px 12px; gap: 12px; }
+  .shooter-scoreboard > div:first-child { min-width: 65px; }
+  .shooter-scoreboard strong[data-readout=score] { font-size: 25px; }
+  .shooter-scoreboard button { padding: 8px; font-size: 10px; }
+  .shooter-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .shooter-touch-hint { display: block; }
+  .shooter-hint { display: none; }
+  .shooter-dialog { padding: 12px; gap: 8px; }
+  .shooter-dialog h2 { font-size: 20px; }
+  .shooter-dialog > p:not(.shooter-eyebrow) { font-size: 10px; line-height: 1.5; }
+  .shooter-dialog-controls { display: none; }
+  .shooter-primary { padding: 8px 14px; min-width: 140px; font-size: 12px; }
+  .shooter-stage[data-state=playing] [data-ferrum-virtual-controls] { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }

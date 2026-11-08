@@ -10,106 +10,13 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { githubHeadingId, stripInlineMarkdown } from "../lib/markdown-heading-ids.mjs";
+import { loadExampleCatalog } from "../validate/check-example-catalog.mjs";
 
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
 const featureExamples = JSON.parse(readFileSync("examples/shared/featureCatalog.json", "utf8"));
-const examples = [
-  {
-    id: "pixel-art",
-    title: "작은 빛의 정원 · Pixel Art",
-    description: "도트 원본을 내려받고, 씨앗을 모으며 노멀 조명·팔레트·화면 효과를 비교합니다.",
-  },
-  {
-    id: "starter-runtime",
-    title: "엔진 기능 실험실",
-    description: `렌더링·물리·입력·씬·HD-2D 이동·AI·부모 자식 연결 등 ${featureExamples.length}개 기능을 독립된 씬에서 비교합니다.`,
-  },
-  {
-    id: "topdown-shooter",
-    title: "Top-down Shooter",
-    description: "Game Spec으로 이동·사격·적 등장·점수·애니메이션·오디오를 연결한 게임입니다.",
-  },
-  {
-    id: "placement-viewer",
-    source: "apps/placement-viewer/dist",
-    title: "Placement Viewer",
-    description: "2D 정원·HD-2D 마을에서 배치·변형·레이어·게임 카메라·도트 제작을 확인합니다. 웹 예제는 내보내기 전용입니다.",
-  },
-  {
-    id: "physics-sandbox",
-    title: "Physics Sandbox",
-    description: "7개 시나리오에서 재질·충돌체·joint·CCD·query와 물리 진단을 확인합니다.",
-  },
-  {
-    id: "breakout",
-    title: "충돌 반응 · Breakout",
-    description: "공의 반사와 충돌 이벤트가 벽돌 제거·점수·파티클로 이어지는 과정입니다.",
-  },
-  {
-    id: "platformer",
-    title: "플랫폼 이동 · Platformer",
-    description: "점프·착지, 단방향 발판, 이동 발판을 선택해 해당 위치에서 실험합니다.",
-  },
-];
-const documentationHighlights = [
-  {
-    href: "./docs/engine/user-guide.html",
-    title: "엔진 사용 안내",
-    description: "엔진의 기능과 예제 실행·뷰어 작성·저장 범위를 먼저 살펴봅니다.",
-  },
-  {
-    href: "./docs/engine/ai-agent-install.html",
-    title: "AI 설치 지침",
-    description: "AI에게 엔진·개발 도구·consumer 지침 설치와 환경 검증을 맡깁니다.",
-  },
-  {
-    href: "./docs/engine/ai-feature-guide.html",
-    title: "AI 기능 안내",
-    description: "게임 요구사항에 맞는 공개 API와 설치 버전의 기준 문서를 찾습니다.",
-  },
-  {
-    href: "./docs/engine/showcase-hub.html",
-    title: "기능·예제 지도",
-    description: "26개 독립 실험과 통합 예제를 사용법·검증 명령에 연결합니다.",
-  },
-  {
-    href: "./docs/engine/developer-quickstart.html",
-    title: "개발자 퀵스타트",
-    description: "릴리스 패키지로 프로젝트를 만들고 실행·검증·AI 개발을 시작합니다.",
-  },
-  {
-    href: "./docs/engine/public-api.html",
-    title: "Public API",
-    description: "공개 import 경로, 지원 수준과 호환성 정책을 확인합니다.",
-  },
-  {
-    href: "./docs/engine/data-scene-authoring.html",
-    title: "씬·에셋 작성",
-    description: "배치·레이어·도트·타일·카메라와 씬 데이터의 저장 계약을 확인합니다.",
-  },
-  {
-    href: "./docs/engine/data-scene-spatial.html",
-    title: "HD-2D 공간 씬",
-    description: "지형·정적 모델·층·카메라·조명·그림자의 지원 범위를 확인합니다.",
-  },
-  {
-    href: "./docs/examples/topdown-shooter/game-spec.html",
-    title: "Shooter Game Spec",
-    description: "공식 사격 예제의 설정 필드·기본값·검증 규칙을 확인합니다.",
-  },
-  {
-    href: "./docs/development/quality/smoke-check.html",
-    title: "검증·성능 예산",
-    description: "자동 검증·실제 브라우저·replay·성능 예산의 기준을 확인합니다.",
-  },
-  {
-    href: "./docs/development/operations/npm-release.html",
-    title: "패키지·릴리스 운영",
-    description: "패키지 검증·tag·changelog와 릴리스 절차를 확인합니다.",
-  },
-];
+const examples = loadExampleCatalog().filter(item => item.kind !== "reference");
 const gettingStartedDocs = new Set([
   "README.md",
   "engine/ai-agent-install.md",
@@ -119,28 +26,39 @@ const gettingStartedDocs = new Set([
   "engine/user-guide.md",
 ]);
 const documentationGroups = [
-  { title: "시작하기", matches: (file) => gettingStartedDocs.has(file) },
-  { title: "공개 API", matches: (file) => file === "engine/public-api.md" || file.startsWith("engine/public-api/") },
-  { title: "게임 제작", matches: (file) => file.startsWith("engine/") },
-  { title: "공식 예제", matches: (file) => file.startsWith("examples/") },
-  { title: "엔진 개발·검증", matches: (file) => file.startsWith("development/architecture/") || file.startsWith("development/quality/") },
-  { title: "배포·운영", matches: (file) => file.startsWith("development/operations/") },
-  { title: "개발 계획·후보", matches: (file) => file.startsWith("planning/") },
-  { title: "기타 문서", matches: () => true },
+  { title: "시작하기", titleEn: "Getting started", matches: (file) => gettingStartedDocs.has(file) },
+  { title: "공개 API", titleEn: "Public API", matches: (file) => file === "engine/public-api.md" || file.startsWith("engine/public-api/") },
+  { title: "게임 제작", titleEn: "Making games", matches: (file) => file.startsWith("engine/") },
+  { title: "공식 예제", titleEn: "Examples", matches: (file) => file.startsWith("examples/") },
+  { title: "엔진 개발·검증", titleEn: "Engine development and quality", matches: (file) => file.startsWith("development/architecture/") || file.startsWith("development/quality/") },
+  { title: "배포·운영", titleEn: "Deployment and operations", matches: (file) => file.startsWith("development/operations/") },
+  { title: "개발 계획·후보", titleEn: "Plans and proposals", matches: (file) => file.startsWith("planning/") },
+  { title: "기타 문서", titleEn: "Other documents", matches: () => true },
 ];
+
+// Validate every example before replacing the last successful local preview.
+const exampleBuilds = examples.map(example => {
+  const source = example.source;
+  const entry = path.join(source, "index.html");
+  if (!existsSync(entry)) throw new Error(`Missing ${entry}. Run pnpm build before pnpm build:pages.`);
+  const html = readFileSync(entry, "utf8");
+  if (!/<head(?:\s[^>]*)?>/iu.test(html)) throw new Error(`Missing head in ${entry}. Rebuild the example before pnpm build:pages.`);
+  return { example, source, html };
+});
 
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
 cpSync("apps/placement-viewer/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
 cpSync("apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
+writeFileSync(path.join(outputDir, "exampleTheme.css"), readFileSync("examples/shared/exampleTheme.css", "utf8").replace(/^@import[^;]+;\s*/u, ""));
+for (const file of ["exampleHub.css", "exampleHub.mjs"]) cpSync(`examples/shared/${file}`, path.join(outputDir, file));
 
-for (const example of examples) {
-  const source = example.source ?? path.join("examples", example.id, "dist");
-  if (!existsSync(source)) {
-    throw new Error(`Missing ${source}. Run pnpm build before pnpm build:pages.`);
-  }
+for (const { example, source, html } of exampleBuilds) {
   cpSync(source, path.join(outputDir, example.id), { recursive: true });
+  const entry = path.join(outputDir, example.id, "index.html");
+  writeFileSync(entry, html.replace(/<head(?:\s[^>]*)?>/iu,
+    head => `${head}\n    <meta name="ferrum-example-suite" content="1" />`));
 }
 
 buildDocsSite();
@@ -155,6 +73,7 @@ function buildDocsSite() {
     const source = readFileSync(path.join(docsSourceDir, sourceRelativePath), "utf8");
     return {
       sourceRelativePath,
+      language: sourceRelativePath.startsWith("en/") ? "en" : "ko",
       outputRelativePath: outputPathForMarkdown(sourceRelativePath),
       title: firstHeading(source),
       source,
@@ -229,11 +148,10 @@ function compareDocs(a, b) {
     "planning/README.md",
     "planning/feature-candidates.md",
     "planning/game-development-convenience-review.md",
-    "planning/demo-game-showcase-plan.md",
     "planning/deployment-roadmap.md",
   ];
-  const aIndex = priority.indexOf(a);
-  const bIndex = priority.indexOf(b);
+  const aIndex = priority.indexOf(a.replace(/^en\//u, ""));
+  const bIndex = priority.indexOf(b.replace(/^en\//u, ""));
   if (aIndex !== -1 || bIndex !== -1) {
     return (aIndex === -1 ? priority.length : aIndex) - (bIndex === -1 ? priority.length : bIndex);
   }
@@ -256,100 +174,74 @@ function firstHeading(markdown) {
 }
 
 function pageHtml(items) {
-  const featureLinks = featureExamples.map(item => `
-          <a class="tile" href="./starter-runtime/?feature=${escapeAttribute(item.id)}">
-            <span class="tile-title">${escapeHtml(item.title)}</span>
-            <span class="tile-description">${escapeHtml(item.summary)}</span>
-          </a>`).join("");
-  const demoLinks = items.map((item) => `
-          <a class="tile" href="./${escapeAttribute(item.id)}/">
-            <span class="tile-title">${escapeHtml(item.title)}</span>
-            <span class="tile-description">${escapeHtml(item.description)}</span>
-          </a>`).join("");
-  const docsLinks = documentationHighlights.map((item) => `
-          <a class="tile" href="${escapeAttribute(item.href)}">
-            <span class="tile-title">${escapeHtml(item.title)}</span>
-            <span class="tile-description">${escapeHtml(item.description)}</span>
-          </a>`).join("");
-
+  const card = item => `<a class="tile" data-example-card="${escapeAttribute(item.id)}" href="./${escapeAttribute(item.path)}"><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span></a>`;
+  const featureLinks = featureExamples.map(item => `<a class="tile" data-feature-card="${escapeAttribute(item.id)}" data-feature-category="${escapeAttribute(item.group)}" href="./starter-runtime/?feature=${escapeAttribute(item.id)}"><span class="tile-category">${escapeHtml(item.group)}</span><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span><span class="tile-use-case">${escapeHtml(item.lesson.useCase)}</span></a>`).join("");
+  const filters = ["all", ...new Set(featureExamples.map(item => item.group))].map(group => `<button type="button" data-feature-group="${escapeAttribute(group)}" aria-pressed="${group === "all"}">${group === "all" ? "전체" : escapeHtml(group)}</button>`).join("");
   return `<!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ferrum2D</title>
-    <style>${siteCss()}</style>
-  </head>
-  <body>
-    <main class="home-shell">
-      <section class="intro">
-        <div>
-          <p class="eyebrow">AI agent-first · Rust / WebAssembly · 2D / HD-2D</p>
-          <h1>Ferrum2D</h1>
-          <p class="lead">기능을 직접 체험하고, AI와 함께 게임을 만드세요. 씬·코드를 수정하고 검증하는 흐름을 제공합니다.</p>
-          <p class="site-note">이 사이트는 배포한 개발 소스의 문서·예제입니다. 설치 패키지의 기능은 해당 릴리스 문서를 확인하세요.</p>
-          <div class="actions">
-            <a class="button primary" href="./starter-runtime/">기능 실험실</a>
-            <a class="button" href="./docs/engine/user-guide.html">엔진 사용 안내</a>
-            <a class="button" href="./placement-viewer/">배치 뷰어</a>
-          </div>
-        </div>
-        <img class="preview" src="./docs/development/quality/screenshots/engine-feature-lab.png" alt="엔진 기능 실험실: 단순 확대와 9-slice 비교" />
-      </section>
-      <section class="section" aria-labelledby="start-heading">
-        <div class="section-heading"><h2 id="start-heading">어디서 시작할까요?</h2></div>
-        <div class="grid">
-          <a class="tile" href="./docs/engine/showcase-hub.html">
-            <span class="tile-title">기능을 체험하고 싶어요</span>
-            <span class="tile-description">기능 지도를 보고 원하는 실험을 고릅니다. 설정을 바꾸며 차이를 확인하세요.</span>
-          </a>
-          <a class="tile" href="./docs/engine/developer-quickstart.html">
-            <span class="tile-title">새 게임을 만들고 싶어요</span>
-            <span class="tile-description">GitHub Release 패키지로 템플릿을 만들고 실행·검증을 시작합니다.</span>
-          </a>
-          <a class="tile" href="./docs/engine/data-scene-authoring.html">
-            <span class="tile-title">씬과 에셋을 작성하고 싶어요</span>
-            <span class="tile-description">뷰어의 배치·변형·레이어·게임 카메라·도트 편집과 저장 방법을 확인합니다.</span>
-          </a>
-        </div>
-      </section>
-      <section class="section">
-        <div class="section-heading">
-          <h2>기능별 실험 ${featureExamples.length}종</h2>
-          <a href="./physics-sandbox/">물리 심화 실험 7종</a>
-        </div>
-        <div class="grid">${featureLinks}</div>
-      </section>
-      <section class="section">
-        <div class="section-heading">
-          <h2>통합 예제 · 제작 도구</h2>
-          <a href="./docs/development/operations/demo-deploy.html">배포 안내</a>
-        </div>
-        <div class="grid">${demoLinks}
-        </div>
-      </section>
-      <section class="section">
-        <div class="section-heading">
-          <h2>사용·개발 문서</h2>
-          <a href="./docs/">전체 문서 지도</a>
-        </div>
-        <div class="grid docs-grid">
-${docsLinks}
-        </div>
-      </section>
-    </main>
-  </body>
-</html>
-`;
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ferrum2D · 엔진 예제</title>
+  <style>${siteCss()}</style>
+  <link rel="stylesheet" href="./exampleTheme.css" />
+  <link rel="stylesheet" href="./exampleHub.css" />
+  <script type="module" src="./exampleHub.mjs"></script>
+</head>
+<body>
+<main class="home-shell" data-example-hub>
+  <nav class="hub-topbar" aria-label="예제와 문서"><strong>Ferrum2D / 엔진 예제</strong><a href="./docs/engine/user-guide.html">엔진 안내</a><a href="./docs/">문서</a><a href="./docs/en/" lang="en" hreflang="en">English docs</a></nav>
+  <header class="intro">
+    <p class="eyebrow">Rust + WebAssembly · 2D / HD-2D</p>
+    <h1>작은 실험에서 게임 구성까지</h1>
+    <p class="lead">기능 하나를 바꿔 결과를 확인하고, 같은 기능이 게임에서 연결되는 과정을 살펴보세요. 각 예제에서 조작 방법과 관찰할 결과를 안내합니다.</p>
+    <nav class="learning-path" aria-label="추천 학습 순서"><a href="#learn"><strong>01 · 기능 하나씩</strong><span>독립 실험 ${featureExamples.length}종과 물리 심화</span></a><a href="#games"><strong>02 · 게임에 연결</strong><span>충돌 반응 → 이동 → 전투 → 도트 자산</span></a><a href="#tools"><strong>03 · 내 씬 만들기</strong><span>배치·카메라·에셋 작성과 프로젝트 시작</span></a></nav>
+  </header>
+  <section class="section" id="learn" aria-labelledby="learn-heading">
+    <div class="section-heading"><h2 id="learn-heading">01 · 기능별 실험</h2><output data-feature-count role="status" aria-live="polite">${featureExamples.length} / ${featureExamples.length}개 기능</output></div>
+    <p class="section-description">처음이라면 애니메이션·카메라부터 시작하세요. <a href="./starter-runtime/">기능 실험실 열기</a>에서 설정 하나를 바꾸고 초기화해 비교할 수 있습니다.</p>
+    <label class="hub-search">어떤 기능을 찾으세요?<input type="search" data-feature-search placeholder="예: 조명, 충돌, 저장" aria-label="기능 예제 검색" /></label>
+    <fieldset class="feature-filter"><legend>기능 분류</legend>${filters}</fieldset>
+    <p data-feature-empty hidden>검색 결과가 없습니다. 검색어를 지우거나 전체 분류를 선택하세요.</p>
+    <div class="grid">${featureLinks}</div>
+  </section>
+  <section class="section" aria-labelledby="physics-heading"><div class="section-heading"><h2 id="physics-heading">물리를 더 자세히</h2></div>${items.filter(item => item.id === "physics-sandbox").map(card).join("")}</section>
+  <section class="section" id="games" aria-labelledby="games-heading">
+    <div class="section-heading"><h2 id="games-heading">02 · 게임 응용</h2></div>
+    <p class="section-description">각 게임의 역할을 나눴습니다. 먼저 관련 기능 실험을 보고, 실제 플레이에서 조합된 결과를 확인하세요.</p>
+    <div class="grid">${items.filter(item => item.kind === "game").map(card).join("")}</div>
+  </section>
+  <section class="section" id="tools" aria-labelledby="tools-heading">
+    <div class="section-heading"><h2 id="tools-heading">03 · 씬과 에셋 작성</h2></div>
+    <div class="grid">${items.filter(item => item.kind === "tool").map(card).join("")}</div>
+    <div class="hub-tools"><a href="./docs/engine/developer-quickstart.html">새 프로젝트 시작</a><a href="./docs/engine/data-scene-authoring.html">씬·에셋 작성 안내</a><a href="./docs/engine/public-api.html">공개 API</a><a href="./docs/engine/showcase-hub.html">기능·소스 지도</a><p>웹 뷰어의 내장 예제는 내보내기 전용입니다. 실제 프로젝트 저장 방법은 씬·에셋 작성 안내를 확인하세요.</p></div>
+  </section>
+  <p class="site-note">문서와 예제는 배포한 개발 소스 기준입니다. 설치 패키지는 해당 릴리스의 문서를 확인하세요.</p>
+</main>
+</body>
+</html>`;
 }
 
 function docPageHtml(page, pages) {
+  const isEnglish = page.language === "en";
   const currentDir = path.posix.dirname(page.outputRelativePath);
-  const rootHref = relativeHref(currentDir, "index.html");
+  const rootHref = relativeHref(currentDir, isEnglish ? "en/index.html" : "index.html");
   const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "index.html");
-  const groups = documentationGroups.map((group) => ({ ...group, pages: [] }));
-  for (const item of pages) {
-    groups.find((group) => group.matches(item.sourceRelativePath)).pages.push(item);
+  const counterpartSource = isEnglish ? page.sourceRelativePath.slice(3) : `en/${page.sourceRelativePath}`;
+  const counterpart = pages.find((item) => item.sourceRelativePath === counterpartSource);
+  const languageHref = relativeHref(currentDir, counterpart?.outputRelativePath ?? (isEnglish ? "index.html" : "en/index.html"));
+  const languageLabel = counterpart ? (isEnglish ? "한국어" : "English") : (isEnglish ? "한국어 문서" : "English docs");
+  const alternateLinks = counterpart ? [page, counterpart].map((item) =>
+    `<link rel="alternate" hreflang="${item.language}" href="${escapeAttribute(relativeHref(currentDir, item.outputRelativePath))}" />`
+  ).join("\n    ") : "";
+  const groups = documentationGroups.map((group) => ({
+    ...group,
+    title: isEnglish ? group.titleEn : group.title,
+    pages: [],
+  }));
+  for (const item of pages.filter((item) => item.language === page.language)) {
+    const referencePath = item.sourceRelativePath.replace(/^en\//u, "");
+    groups.find((group) => group.matches(referencePath)).pages.push(item);
   }
   const nav = groups.filter((group) => group.pages.length > 0).map((group, index) => {
     const active = group.pages.some((item) => item.outputRelativePath === page.outputRelativePath);
@@ -366,24 +258,26 @@ function docPageHtml(page, pages) {
   const content = markdownToHtml(page.source, page.sourceRelativePath, page.outputRelativePath);
 
   return `<!doctype html>
-<html lang="ko">
+<html lang="${page.language}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(page.title)} | Ferrum2D Docs</title>
+    ${alternateLinks}
     <style>${siteCss(relativeHref(path.posix.join("docs", currentDir), "fonts/NotoSansKR-UI.woff2"))}</style>
   </head>
   <body>
     <div class="docs-layout">
-      <aside class="docs-nav" aria-label="문서 탐색">
+      <aside class="docs-nav" aria-label="${isEnglish ? "Documentation navigation" : "문서 탐색"}">
         <a class="brand" href="${escapeAttribute(rootHref)}">Ferrum2D Docs</a>
         <nav>${nav}
         </nav>
       </aside>
       <main class="docs-content">
         <div class="docs-topbar">
-          <a href="${escapeAttribute(siteRootHref)}">기능·예제 홈</a>
-          <a href="${escapeAttribute(rootHref)}">문서 지도</a>
+          <a href="${escapeAttribute(siteRootHref)}">${isEnglish ? "Demos and home" : "기능·예제 홈"}</a>
+          <a href="${escapeAttribute(rootHref)}">${isEnglish ? "Documentation index" : "문서 지도"}</a>
+          <a href="${escapeAttribute(languageHref)}" lang="${isEnglish ? "ko" : "en"}" hreflang="${isEnglish ? "ko" : "en"}">${languageLabel}</a>
         </div>
         <article>
 ${content}

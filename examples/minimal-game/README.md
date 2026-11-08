@@ -1,5 +1,8 @@
 # Ferrum2D Minimal Game
 
+최소 부트스트랩과 저수준 회귀 fixture를 위한 참고용이다. 공개 예제 메뉴에는 노출하지 않는다.
+기능을 체험하려면 [기능 실험실과 게임 응용 예제](../README.md)를 사용한다.
+
 새 프로젝트의 가장 작은 실행 형태를 보여주는 예제다. 별도 texture, sound, Game Spec 없이 placeholder texture와 기본 Rust engine state만으로 `createFerrumRuntime(...)` 흐름을 확인한다.
 
 ## 확인 기술
@@ -25,6 +28,9 @@
 
 이 profile들은 smoke/manual QA용 진입점이며 public portfolio demo나 사용자-facing in-app profile switcher가 아니다. 새 profile을 추가할 때는 query flag, `tests/smoke/browser-render-smoke.mjs` mode, 이 표를 함께 갱신한다.
 
+공통 재생 버튼은 현재 native 상태에 맞는 항목만 표시한다. 실행 중에는 Pause, 정지 중에는 Resume를 사용하며
+`P/Esc`와 탭 이탈 시 자동 정지도 지원한다. 기술 fixture의 영어 안내와 query profile은 유지한다.
+
 ## 실행
 
 ```bash
@@ -43,6 +49,7 @@ pnpm --filter @ferrum2d/minimal-game dev
 ## 검증
 
 ```bash
+pnpm --filter @ferrum2d/minimal-game lint
 pnpm --filter @ferrum2d/minimal-game build
 pnpm smoke:preload
 pnpm smoke:mobile-input

@@ -1,5 +1,7 @@
 # Ferrum2D Public API
 
+한국어 · [English](../en/engine/public-api.md)
+
 이 문서는 `@ferrum2d/ferrum-web` consumer가 import해도 되는 public surface의
 인덱스다. 세부 동작은 목적별 reference 문서로 나누고, 이 파일은 import 경로,
 지원 수준, 호환 정책, 내부 API 차단 규칙만 유지한다.

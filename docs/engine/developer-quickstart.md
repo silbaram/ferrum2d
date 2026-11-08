@@ -1,5 +1,7 @@
 # Ferrum2D 개발자 퀵스타트
 
+한국어 · [English](../en/engine/developer-quickstart.md)
+
 Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer로 구성된 2D 웹 게임 엔진이다. Ferrum2D의 개발 흐름은 비주얼 에디터 중심이 아니라 **Game Spec, Physics Spec, 생성 템플릿, AI agent, 검증 스크립트**를 중심으로 한다.
 
 이 페이지는 Ferrum2D를 처음 보는 개발자가 엔진의 방향과 구조를 이해하고, 첫 게임 프로젝트를 실행한 뒤, 어떤 파일을 수정해야 하는지 빠르게 판단하도록 돕는 시작 문서다.

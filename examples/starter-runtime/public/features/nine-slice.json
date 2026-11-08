@@ -7,7 +7,11 @@
   "sceneComposition": {
     "initialFragment": "lab",
     "prefabs": {
-      "object": {}
+      "object": {
+        "props": {
+          "behaviorRecipes": []
+        }
+      }
     },
     "fragments": {
       "lab": {
@@ -15,14 +19,14 @@
           {
             "id": "stretched",
             "prefab": "object",
-            "x": 144,
-            "y": 192,
+            "x": 160,
+            "y": 176,
             "props": {
               "components": {
                 "visual": {
                   "kind": "sprite",
                   "texture": "panel",
-                  "width": 200,
+                  "width": 256,
                   "height": 144
                 },
                 "collider": "none",
@@ -33,15 +37,15 @@
           {
             "id": "sliced",
             "prefab": "object",
-            "x": 448,
-            "y": 120,
+            "x": 480,
+            "y": 176,
             "props": {
               "components": {
                 "visual": {
                   "kind": "sprite",
                   "texture": "panel",
-                  "width": 240,
-                  "height": 80,
+                  "width": 256,
+                  "height": 144,
                   "nineSlice": {
                     "sourceWidth": 24,
                     "sourceHeight": 24,
@@ -58,26 +62,17 @@
             }
           },
           {
-            "id": "sliced_tall",
+            "id": "source",
             "prefab": "object",
-            "x": 448,
-            "y": 264,
+            "x": 320,
+            "y": 352,
             "props": {
               "components": {
                 "visual": {
                   "kind": "sprite",
                   "texture": "panel",
-                  "width": 144,
-                  "height": 160,
-                  "nineSlice": {
-                    "sourceWidth": 24,
-                    "sourceHeight": 24,
-                    "left": 4,
-                    "right": 4,
-                    "top": 4,
-                    "bottom": 4,
-                    "borderScale": 2
-                  }
+                  "width": 72,
+                  "height": 72
                 },
                 "collider": "none",
                 "layer": "wall"

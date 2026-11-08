@@ -18,6 +18,7 @@ const textureIds = new Map([
   ["player", 1],
   ["enemy", 2],
   ["bullet", 3],
+  ["arena", 4],
 ]);
 
 const paths = process.argv.slice(2);

@@ -1,6 +1,6 @@
 # 조명·그림자·화면 효과 품질 고도화 계획
 
-기준일: 2026-11-07
+기준일: 2026-11-09
 
 상태: 개발 진행 중 · 태양광 안정화부터 구현 · 실제 사용자 문제 장면의 픽셀 재현 대기
 
@@ -11,6 +11,8 @@
 이 문서의 단계·필드 후보·검증 조건은 제안이다. 현재 공개 계약은
 [Scene Authoring](../engine/data-scene-authoring.md), [공간 계약](../engine/data-scene-spatial.md),
 [Core API](../engine/public-api/core.md), 검증 명령은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
+광원별 flat 차폐 합성은 [현재 합성 계약](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성),
+점광원 radial depth·태양 PCF·bias는 [공간 계약](../engine/data-scene-spatial.md)을 기준으로 재사용한다.
 전체 PBR, 범용 3D, GI, visual editor 개발로 자동 확대하지 않는다.
 
 ## 1. 검토 기준과 증거 수준
@@ -84,26 +86,9 @@
 [GPU pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
 [sprite preset](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts).
 
-### L02 · P1 · flat 그림자가 다른 광원까지 감쇠
-
-**수정·픽셀 검증 완료.** 기존 전체 overlay 합성에서 차폐된 A가 환경광·태양·B도 지우는 것을
-브라우저로 재현했다. 동일 수신점의 RGB가 A 제거 시 `[18,38,89]`, 기존 그림자 시 `[0,0,0]`이었다.
-광원별 R8 MAX union 마스크를 적용한 뒤에는 A 제거와 같은 `[18,38,89]`를 유지한다.
-중복 차폐체·노멀맵·GL linear-srgb·가상 해상도·resize·GPU 복구를 포함한 실제 496상태가 통과했다.
-계약과 광원별 pass/메모리 비용은 [Flat 점광원 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성),
-반복 가능한 gate는 [Smoke Check](../development/quality/smoke-check.md)에 둔다.
-
-전체 장면 overlay를 덧칠하던 결과는 수정되며 `shadows.color` RGB는 투과 필터로 정의한다.
-L01의 albedo 기반 조도 합성과 반투명 layer의 완전한 수신 모델은 별도 후속 범위다.
-ground silhouette 역시 수신면별 가시성을 계산하는 shadow map과 다른 장식적 근사다.
-
-근거: [GL 광원/그림자 순서](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2LightingPass.ts),
-[GPU 광원/그림자 순서](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
-[tile shadow geometry](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/lightingShadows.ts).
-
 ### S01 · P1 · billboard shadow proxy 제작·동작 범위 검증
 
-**카메라 독립 선택·동작 회귀 완료.** 기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
+기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
 `shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
 
 **남은 작업:** 실제 캐릭터·나무 asset에서 표시 애니메이션 UV/flip·높이 변화·화면 밖 caster를 포함해
@@ -114,34 +99,21 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
 [현재 revision 테스트](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/engine/tests/spatial_environment.rs).
 
-### S02 · P1 · 점광원·극단 입사각의 접촉 그림자와 bias 진단
+### S02 · P2 · 곡면 수신면·실기기 접촉 품질 후속
 
-점광원 radial cube와 일반 태양 수신면의 현재 비교식은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
-작성한 bias/normalBias가 과도한 장면의 접촉 분리와, 유효한 교점을 얻을 수 없는 tap의 근사 한계는 별도다.
+현재 비교식·진단·회귀 명령은
+[수신면·그림자 계약](../engine/data-scene-spatial.md#수신면-해상도와-bias-진단)과
+[Smoke Check](../development/quality/smoke-check.md)를 따른다.
+저해상도 곡면 PCF의 단일 접평면 근사와, 작성한 bias/normalBias가 과도한 장면의 접촉 분리는 구분한다.
 
-**수정·검증 완료:** 낮은 태양의 raster 정밀도 여유 누락, 평면 교점이 map 깊이 범위를 벗어난 tap의
-빈 texel 오인, 평면 보정의 과도한 입사각 cutoff를 수정했다. 원본 caster의 clip-W=0 정렬 장면에서는
-보간 world-position 기반 radial depth가 backend별로 달라지는 것을 확인했고, raster XY/reciprocal-W로 저장하도록 바꿨다.
-같은 장면의 문제 cubemap 면 깊이 차이는 약 0.048에서 3e-8로 줄었다. 임의 light/clip-W 이동은 채택하지 않는다.
-
-태양 5°/1°/0.1°/0.03°, thin/slope/curve GLB, 나무 MASK·바위의 radius 2048·낮은 해상도·normalBias 조합을
-실제 픽셀로 측정했다. CPU raycast는 receiver 높이와 game asset의 실제 가림/열림 oracle이다.
-저해상도 곡면 PCF는 단일 접평면 근사의 한계가 남으며, 해상도/normalBias 조합으로 해소되는지와
-같은 품질 조합에서 작은 caster 그림자가 유지되는지를 함께 검사한다. 검증 입력·판정·명령은
-[수신면·그림자 계약](../engine/data-scene-spatial.md#수신면-해상도와-bias-진단)과 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
-
-**확장 후보:** 임의 곡률을 자동 보정하는 별도 receiver 정보/필터, 실제 GPU의 정밀도·성능 검증은
-추가 비용과 대상 장면을 정한 뒤 검토한다. 전역 bias를 키우거나 authored normalBias를 자동 변경하는 방식으로 해결하지 않는다.
-WebGL2의 highp sampler 선언은 [공간 조명 계약](../engine/data-scene-spatial.md)을 따른다.
-낮은 정밀도를 실제로 사용하는 기기의 품질·성능 측정은 software adapter 결과와 구분한다.
-
-근거: [GLSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
-[WGSL shadow](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts),
-[태양 깊이 범위 전달](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialEnvironmentPass.ts).
+**남은 작업:** 실제 게임 장면에서 기존 해상도/normalBias 설정으로 수용 가능한지 확인한다.
+수용할 수 없는 곡면이 재현될 때만 별도 receiver 정보/필터를 검토하고 비용·완료 조건을 먼저 정한다.
+같은 품질 조합에서 작은 caster 그림자의 보존도 확인한다. 전역 bias를 키우거나 authored normalBias를 자동 변경하지 않는다.
+실물 GPU에서 정밀도·품질·성능을 측정하며, 낮은 정밀도를 사용하는 기기의 결과를 software adapter 결과와 구분한다.
 
 ### S03 · P1 · 태양 그림자 coverage와 화면 밖 caster 여유
 
-**단일 map 경계·픽셀 회귀 완료 / coverage 확장은 제안.** 한 장의 고정 extent map이 camera target을 따라간다.
+현재 한 장의 고정 extent map이 camera target을 따라간다.
 고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다. 기준축·내부 경계 fade의 현재 동작과
 극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
 
@@ -291,20 +263,11 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
 | [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy를 사용. S01은 실제 asset·애니메이션·LOD 범위 검증을 이어감 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
-| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 광원별 적용 원칙을 반영해 L02의 R8 MAX union을 구현. Godot의 shadow_color 보간식을 복제한 것은 아니며 Ferrum2D의 RGB 투과 필터 계약을 사용 |
+| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 L01에서 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
 
-이 검토의 구현 종료 조건은 S01의 카메라 독립 caster 선택, S02의 접촉·극단 입사각 검증,
-S03의 단일 map 경계 전환, L02의 flat 광원별 차폐 합성, 양 backend의 실제 shadow 픽셀·자원 회귀를 확인하는 것이다.
-태양 수신 평면 보정과 proxy 지원만으로 이 후속 검토 전체가 끝났다고 처리하지 않는다.
-
-**2026-11-07 검증 결과:** 위 그림자 후속 검토 범위의 구현·로컬 회귀를 완료했다.
-그림자 3,744 + proxy 160 + flat 합성 496 = 4,400상태와 별도 환경·재질/UV 896상태가 통과했다.
-태양 grazing의 열린 바닥 오차는 관측 RGB 0, 실제 에셋의 열린 바닥도 0이며 최소 그림자 대비는 84다.
-곡면의 해소된 대조군은 RGB 오차 0, 같은 품질 조합의 작은 caster 최소 대비는 94다.
-낮은 해상도의 곡면 PCF 진단 112행 중 96행에는 근사 한계가 관측돼 별도로 기록했으며 무오차로 판정하지 않는다.
-Rust unit 1,631 + integration 1과 웹 unit 1,408, lint/build/package/문서 검증도 통과했다.
-SwiftShader의 실제 GL/GPU API·offscreen 픽셀 검증이며 실물 GPU 성능이나 native canvas presentation 보장은 아니다.
-이 판정은 위 종료 조건에 대한 것이며, M0~M6 전체 조명 계획이나 콘텐츠별 proxy/LOD 작성, cascade·곡률 인지 필터를 완료한 것으로 확대하지 않는다.
+후속 검증은 S01의 실제 asset·애니메이션·LOD, S03의 coverage 확장에 집중한다.
+S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대상 환경을 정한 뒤 별도로 착수한다.
+기존 그림자 픽셀·자원 회귀와 근사 한계는 공식 공간 계약과 Smoke Check를 기준으로 유지한다.
 
 ## 5. 공통 설계·호환성 원칙
 
@@ -335,8 +298,8 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S02 bias 진단/개선, S03 coverage/caster 여유, S04 작성 설명. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
-| M2 flat lit 합성 | L01/L02. 광원별 visibility·표면색·수신 제어, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
+| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S03 coverage/caster 여유, S04 작성 설명. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
 | M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
 | M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
@@ -349,8 +312,9 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 smoke를 늘리는 것과 바꿔야 하는 기대값을 구별한다.
 3. **M1-a:** 캐릭터/나무 billboard에 작성한 shadowOnly volume proxy를 실제 asset에서 비교한다.
    회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
-4. **M1-b:** thin box·경사면에서 hard/PCF와 bias/normalBias/coverage/resolution을 독립 sweep한다.
-   적용한 effective bias를 report에 기록하고 접촉 보존과 acne 제한을 동시에 통과시킨다.
+4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
+   설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
+   곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
 5. **M1-c:** 기존 기준축·경계 전환 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage와 외부 caster 여유를 검증한다.
 6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.

@@ -1,7 +1,7 @@
 # 게임 개발 편의성 후보
 
-기준일: 2026-11-05
-상태: 설계 후보·미착수. 개별 항목의 필요성과 완료 조건을 정한 뒤 개발 계획으로 구체화한다.
+기준일: 2026-11-09
+상태: 설계 후보·미착수. Agent Workflow 추가 공개는 제품 결정 대기다. 개별 항목의 필요성과 완료 조건을 정한 뒤 개발 계획으로 구체화한다.
 
 현재 제작 흐름은 [개발자 퀵스타트](../engine/developer-quickstart.md),
 [Scene Authoring](../engine/data-scene-authoring.md), [Authoring API](../engine/public-api/authoring.md),
@@ -61,8 +61,21 @@
 Rust가 simulation state를 소유하고 TS는 bulk telemetry나 낮은 빈도 query만 읽는다.
 Behavior Recipe 본문·FSM/action graph를 UI에서 편집하는 기능으로 확대하지 않는다.
 
+## Agent Workflow 추가 공개 판단
+
+현재 생성·검증 흐름은 [개발자 퀵스타트](../engine/developer-quickstart.md)와
+[Showcase Hub](../engine/showcase-hub.md)를 따른다.
+`create-game` → consumer agent 설정 → `ferrum:check` → replay/report 흐름을
+별도 조작형 예제나 report 페이지로 설명할 가치가 있는지 판단한다.
+
+- 기존 문서로 부족한 사용자 질문과 실제 조작할 입력·출력부터 정한다. SDK 기능 미구현으로 취급하지 않는다.
+- 필요하면 실제 공개·설치 가능한 package와 개발 소스의 차이를 표시하고, 재현 가능한 report·검증 명령을 연결한다.
+- 기존 안내 보강으로 해결할 수 있는지 먼저 확인한다. 새 route는 브라우저 검증·Pages 용량·CI 비용을 정한 뒤 결정한다.
+- full visual editor나 Behavior Recipe 본문·FSM/action graph 편집으로 확대하지 않는다. 실제 Pages 배포는 별도 승인 범위다.
+
 ## 별도 결정
 
-Public demo 노출은 [데모 후보](demo-game-showcase-plan.md), 실제 packaged GUI·서명 증거는
+현재 공개 예제는 [Showcase Hub](../engine/showcase-hub.md), 추가 GPU 학습 노출 판단은
+[기능 후보](feature-candidates.md), 실제 packaged GUI·서명 증거는
 [배포 후보](deployment-roadmap.md)를 따른다. full visual editor, scripting/plugin runtime,
 multiplayer, 범용 3D, complex physics는 별도 설계 범위다.

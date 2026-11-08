@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-function trackGlResources() {
+export function trackGlResources() {
   const original = HTMLCanvasElement.prototype.getContext, seen = new WeakSet();
   window.featureGlResources = [];
   HTMLCanvasElement.prototype.getContext = function (kind, ...args) {

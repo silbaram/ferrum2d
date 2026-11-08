@@ -1,18 +1,19 @@
 import {
   createFerrumRuntime,
+  createDataSceneView,
+  type DataSceneView,
   createPhysicsWorldFromSpec,
   resolvePhysicsSpec,
   type BitmapFontAtlasSpec,
   type FerrumEngine,
   type FerrumRuntime,
-  type FerrumRuntimeEnvironment,
+  type FerrumRuntimeOptions,
   type PhysicsBodyContactHit,
   type PhysicsBodyManifoldHit,
   type PhysicsDebugLineBufferView,
   type PhysicsDebugOptions,
   type PhysicsEntityHandle,
   type PhysicsEntitySnapshot,
-  type PhysicsRigidBodyMaterial,
   type PhysicsRaycastBodyHit,
   type PhysicsRigidContactImpulseHit,
   type PhysicsSpec,
@@ -33,6 +34,8 @@ import {
 } from "../../shared/runtimeDemoShell";
 
 import "./styles.css";
+import { createExampleHeader } from "../../shared/exampleHeader";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 
 interface PhysicsShowcaseCatalog {
   version: 1;
@@ -120,6 +123,7 @@ interface PhysicsScenarioSmokeThresholds {
 
 interface PhysicsSandboxSmokeFrame {
   demoId: string;
+  pointerWorld?: Point2;
   bodyCount: number;
   jointCount: number;
   warningCount: number;
@@ -186,6 +190,8 @@ interface SandboxWindow extends Window {
 }
 
 interface SandboxShell {
+  destroy(): void;
+  ready(): void;
   canvas: HTMLCanvasElement;
   debugRoot: HTMLElement;
   scenarioSelect: HTMLSelectElement;
@@ -403,6 +409,7 @@ function createShell(
   const categories = uniqueStrings(scenarios.map((scenario) => scenario.category));
 
   shell.className = "app-shell";
+  shell.append(createExampleHeader("physics-sandbox"));
   header.className = "showcase-header";
   titleBlock.className = "title-block";
   titleRow.className = "title-row";
@@ -436,7 +443,7 @@ function createShell(
   debugRoot.className = "debug-root";
   errorBox.className = "error-box";
 
-  title.textContent = "Ferrum2D 물리 쇼케이스 Lab";
+  title.textContent = "물리 심화 실험실";
   statusBadge.textContent = STATUS_LABELS.loading;
   statusBadge.dataset.status = "loading";
   actionTitle.textContent = "조작";
@@ -490,7 +497,7 @@ function createShell(
 
   appendMetric(metrics, "상태", statusValue);
   appendMetric(metrics, "물체", bodyValue);
-  appendMetric(metrics, "표시 물체", visibleBodyValue);
+  appendMetric(metrics, "조회 물체", visibleBodyValue);
   appendMetric(metrics, "조인트", jointValue);
   appendMetric(metrics, "접촉", contactValue);
   appendMetric(metrics, "쿼리 적중", queryValue);
@@ -523,8 +530,11 @@ function createShell(
   stage.append(canvasPanel, sidePanel);
   shell.append(header, categoryNav, stage, errorBox);
   app.replaceChildren(shell);
+  shell.inert = true;
 
   return {
+    destroy: () => shell.remove(),
+    ready: () => { shell.inert = false; },
     canvas,
     debugRoot,
     scenarioSelect,
@@ -724,16 +734,16 @@ function createMaterialSlider(
   return row;
 }
 
-async function loadJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-cache" });
+async function loadJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, { cache: "no-cache", signal });
   if (!response.ok) {
     throw new Error(`Asset load failed: ${response.status} ${response.statusText} (${url})`);
   }
   return await response.json() as T;
 }
 
-async function loadCatalog(): Promise<PhysicsShowcaseCatalog> {
-  const catalog = await loadJson<PhysicsShowcaseCatalog>(publicAssetUrl(CATALOG_PATH));
+async function loadCatalog(signal: AbortSignal): Promise<PhysicsShowcaseCatalog> {
+  const catalog = await loadJson<PhysicsShowcaseCatalog>(publicAssetUrl(CATALOG_PATH), signal);
   if (catalog.version !== 1 || !Array.isArray(catalog.scenarios) || catalog.scenarios.length === 0) {
     throw new Error("Physics showcase catalog must contain version 1 and at least one scenario.");
   }
@@ -780,7 +790,7 @@ function applyMaterialToWorld(
   materialId: string,
   material: ResolvedPhysicsMaterialSpec,
 ): number {
-  const runtimeMaterial: PhysicsRigidBodyMaterial = {
+  const runtimeMaterial: NonNullable<Parameters<FerrumEngine["spawnRigidBody"]>[0]["material"]> = {
     density: material.density,
     friction: material.friction,
     restitution: material.restitution,
@@ -874,14 +884,26 @@ function debugControlAvailability(
 }
 
 async function bootstrap(): Promise<void> {
+  const lifetime = createExampleLifetime();
+  try {
+    await initializeSandbox(lifetime);
+  } catch (error) {
+    const cancelled = lifetime.disposed;
+    lifetime.dispose();
+    if (!cancelled) throw error;
+  }
+}
+
+async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifetime>): Promise<void> {
   const searchParams = new URLSearchParams(window.location.search);
-  const environment: FerrumRuntimeEnvironment = searchParams.get("environment") === "production"
+  const environment: FerrumRuntimeOptions["environment"] = searchParams.get("environment") === "production"
     ? "production"
     : "development";
   const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
   const profilerSmoke = searchParams.get("profilerSmoke") === "true";
   const physicsDebugLinesEnabled = searchParams.get("physicsDebugLines") !== "false";
-  const catalog = await loadCatalog();
+  const catalog = await loadCatalog(lifetime.signal);
+  lifetime.check();
   const initialScenario = scenarioById(catalog, searchParams.get("demo") ?? DEFAULT_SCENARIO_ID);
   let debugOptions: PhysicsDebugOptions = physicsDebugLinesEnabled
     ? {
@@ -892,6 +914,7 @@ async function bootstrap(): Promise<void> {
     : {};
 
   let runtime: FerrumRuntime | undefined;
+  let scenarioView: DataSceneView | undefined;
   let currentWorld: PhysicsWorldApplyResult | undefined;
   let currentSpec: ResolvedPhysicsSpec | undefined;
   let currentScenario = initialScenario;
@@ -903,14 +926,16 @@ async function bootstrap(): Promise<void> {
   let queryTarget: Point2 | undefined = queryTargetFromScenario(initialScenario);
   const debugGizmoWriter = new DebugGizmoLineBufferWriter();
   const sleepingLabels = new Map<string, string>();
+  let scenarioRequest: AbortController | undefined;
+  lifetime.own(() => scenarioRequest?.abort());
 
   const shell = createShell(
     catalog.scenarios,
     (id) => {
-      void loadScenario(id);
+      void loadScenario(id).catch(() => {}); // loadScenario presents current-request errors.
     },
     () => {
-      void loadScenario(currentScenario.id);
+      void loadScenario(currentScenario.id).catch(() => {});
     },
     () => {
       paused = false;
@@ -929,7 +954,9 @@ async function bootstrap(): Promise<void> {
       shell.setStatus("step");
     },
     (id) => {
-      void runScenarioAction(id);
+      void runScenarioAction(id).catch(error => {
+        if (!lifetime.disposed) shell.setError(error);
+      });
     },
     (materialId, field, value) => {
       updateMaterialValue(materialId, field, value);
@@ -941,19 +968,21 @@ async function bootstrap(): Promise<void> {
     },
     debugOptions,
   );
+  lifetime.own(() => shell.destroy());
 
   shell.canvas.addEventListener("pointermove", (event) => {
-    queryTarget = screenEventToWorld(event, shell.canvas, cameraForScenario(currentScenario));
-  });
+    if (scenarioView) queryTarget = scenarioView.pointerToWorld({ x: event.clientX, y: event.clientY });
+  }, { signal: lifetime.signal });
   shell.canvas.addEventListener("click", (event) => {
-    const point = screenEventToWorld(event, shell.canvas, cameraForScenario(currentScenario));
+    if (!scenarioView) return;
+    const point = scenarioView.pointerToWorld({ x: event.clientX, y: event.clientY });
     const hit = runtime?.engine.queryNearestBody({ x: point.x, y: point.y, maxDistance: 54 });
     selectedBodyId = hit === undefined ? undefined : currentFramePhysicsState.bodyIdsByEntityKey.get(
       entityKey({ entityId: hit.entityId, entityGeneration: hit.entityGeneration }),
     );
     refreshWorldTextLabels();
     shell.setSelectedBody(selectedBodyReport(currentScenario, currentSpec, currentFramePhysicsState, selectedBodyId));
-  });
+  }, { signal: lifetime.signal });
 
   function refreshWorldTextLabels(): void {
     if (!runtime || !currentWorld || !currentSpec) return;
@@ -970,14 +999,19 @@ async function bootstrap(): Promise<void> {
   }
 
   async function loadScenario(id: string): Promise<void> {
+    lifetime.check();
     const scenario = scenarioById(catalog, id);
     if (!runtime) {
       throw new Error("Physics runtime is not ready.");
     }
+    scenarioRequest?.abort();
+    const request = new AbortController();
+    scenarioRequest = request;
     try {
       shell.setStatus("loading");
       (window as SandboxWindow).ferrumPhysicsSandboxSmokeFrame = undefined;
-      const rawSpec = await loadJson<PhysicsSpec>(publicAssetUrl(scenario.physicsSpec));
+      const rawSpec = await loadJson<PhysicsSpec>(publicAssetUrl(scenario.physicsSpec), request.signal);
+      if (request.signal.aborted || lifetime.disposed) return;
       const resolved = resolvePhysicsSpec(rawSpec, { path: "physics" });
       currentWorld = createPhysicsWorldFromSpec(runtime.engine, resolved, {
         replace: currentWorld,
@@ -987,6 +1021,12 @@ async function bootstrap(): Promise<void> {
       });
       currentSpec = resolved;
       currentScenario = scenario;
+      const camera = cameraForScenario(scenario);
+      scenarioView = createDataSceneView(runtime.engine, runtime.renderer, shell.canvas, {
+        x: camera.x + camera.width / 2,
+        y: camera.y + camera.height / 2,
+        pixelPerfect: { width: camera.width, height: camera.height, snap: false },
+      });
       currentFramePhysicsState = EMPTY_FRAME_PHYSICS_STATE;
       selectedBodyId = scenario.focusBodies?.find((bodyId) => currentWorld?.bodies[bodyId] !== undefined)
         ?? Object.keys(currentWorld.bodies)[0];
@@ -1011,9 +1051,12 @@ async function bootstrap(): Promise<void> {
       shell.setPaused(false);
       shell.setStatus("running");
     } catch (error) {
+      if (request.signal.aborted || lifetime.disposed) return;
       console.error("Ferrum2D physics showcase scenario load failed", error);
       shell.setError(error);
       throw error;
+    } finally {
+      if (scenarioRequest === request) scenarioRequest = undefined;
     }
   }
 
@@ -1145,6 +1188,7 @@ async function bootstrap(): Promise<void> {
       shell.setSelectedBody(selectedBodyReport(currentScenario, currentSpec, currentFramePhysicsState, selectedBodyId));
       (window as SandboxWindow).ferrumPhysicsSandboxSmokeFrame = {
         demoId: currentScenario.id,
+        pointerWorld: queryTarget,
         bodyCount: metrics.bodyCount,
         jointCount: metrics.jointCount,
         warningCount: currentWorld?.warningCount ?? 0,
@@ -1164,22 +1208,36 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  // A manually stepped physics lab uses an empty, paused Data Scene. This removes
+  // the unrelated built-in Shooter actor and avoids a second automatic solver step.
+  lifetime.own(() => runtime?.destroy());
+  runtime.engine.useDataScene();
+  runtime.engine.pauseDataScene();
+  await runtime.renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href, { signal: lifetime.signal });
+  lifetime.check();
+
   const sandboxWindow = window as SandboxWindow;
   sandboxWindow.ferrumEngine = runtime.engine;
   sandboxWindow.ferrumRuntime = runtime;
   sandboxWindow.ferrumPhysicsSandboxLoadDemo = loadScenario;
+  lifetime.own(() => {
+    if (sandboxWindow.ferrumRuntime !== runtime) return;
+    delete sandboxWindow.ferrumEngine;
+    delete sandboxWindow.ferrumRuntime;
+    delete sandboxWindow.ferrumPhysicsSandboxLoadDemo;
+    delete sandboxWindow.ferrumPhysicsSandboxSmokeFrame;
+  });
 
   await runtime.engine.loadBitmapFont(DEBUG_FONT_ID, {
     image: publicAssetUrl("assets/debug-font.png"),
     data: DEBUG_FONT_ATLAS,
     family: "Ferrum Debug",
   });
+  lifetime.check();
   await loadScenario(initialScenario.id);
+  lifetime.ready();
+  shell.ready();
   runtime.start();
-
-  window.addEventListener("beforeunload", () => {
-    runtime?.destroy();
-  }, { once: true });
 }
 
 function capturePhysicsFrameState(
@@ -1496,19 +1554,6 @@ function queryTargetFromScenario(scenario: PhysicsScenarioEntry): Point2 | undef
   return scenario.query ? { x: scenario.query.target[0], y: scenario.query.target[1] } : undefined;
 }
 
-function screenEventToWorld(
-  event: PointerEvent,
-  canvas: HTMLCanvasElement,
-  camera: PhysicsScenarioCamera,
-): Point2 {
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
-  return {
-    x: ((event.clientX - rect.left) / width) * camera.width + camera.x,
-    y: ((event.clientY - rect.top) / height) * camera.height + camera.y,
-  };
-}
 function entityKey(handle: Pick<PhysicsEntityHandle, "entityId" | "entityGeneration">): string {
   return `${handle.entityId}:${handle.entityGeneration}`;
 }

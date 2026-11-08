@@ -1,7 +1,7 @@
 import {
   AudioManager, type FerrumRuntime, type FrameState, type SpatialAudioVoice,
 } from "@ferrum2d/ferrum-web/core";
-import { ParticleVfxEmitter, particleVfxPreset } from "@ferrum2d/ferrum-web/labs";
+import { createParticleFeature, particleControls, particleHelp } from "./featureParticles";
 import { type SceneAuthoringDocumentSpec, type GameplayEntityHandle } from "@ferrum2d/ferrum-web/authoring";
 type ShooterGameSpec = Parameters<FerrumRuntime["engine"]["setGameSpec"]>[0];
 
@@ -12,11 +12,7 @@ export const extraControls: Record<string, string> = {
     <button data-control="return-left">왼쪽 출발</button><output data-value="edit" role="status">중앙 벽의 통로를 열어 보세요.</output>`,
   layers: `<label>로봇 그리기 순서<select data-control="order"><option value="front">맨 앞 · 2</option><option value="middle">공 뒤 · 0</option><option value="back">맨 뒤 · -2</option></select></label>
     <p>로봇·공·패널의 위치는 고정됩니다. 그리기 레이어와 충돌 분류는 별개입니다.</p>`,
-  particles: `<label>효과<select data-control="vfx"><option value="hit-spark">불꽃 · 한 번</option><option value="dust-loop">먼지 · 반복</option><option value="motion-trail">포인터 잔상</option></select></label>
-    <label>방출 수량 <output data-value="count">24</output><input data-control="count" type="range" min="1" max="64" value="24"></label>
-    <label>수명 <output data-value="life">0.8초</output><input data-control="life" type="range" min="2" max="20" value="8"></label>
-    <label>속도 <output data-value="speed">160</output><input data-control="speed" type="range" min="20" max="300" value="160" step="10"></label>
-    <div class="feature-buttons"><button data-control="emit">방출</button><button data-control="stop-emitter">방출 정지</button></div>`,
+  particles: particleControls,
   audio: `<div class="feature-buttons"><button data-control="audio-play">소리 재생</button><button data-control="audio-stop">소리 정지</button></div>
     <label>좌우 위치 <output data-value="pan">-160</output><input data-control="pan" type="range" min="-224" max="224" value="-160" step="8"></label>
     <label>앞쪽 거리 <output data-value="distance">128</output><input data-control="distance" type="range" min="32" max="240" value="128" step="8"></label>
@@ -28,7 +24,7 @@ export const extraControls: Record<string, string> = {
 export const extraHelp: Record<string, string> = {
   tilemap: "WASD / 방향키로 이동 · 캔버스 클릭으로 타일 수정 · 바깥 테두리와 캐릭터가 있는 칸은 보호됩니다.",
   layers: "큰 숫자의 레이어가 앞에 그려집니다. 가운데 겹치는 부분을 비교하세요.",
-  particles: "캔버스를 눌러 방출 · 잔상 모드에서 포인터를 움직이세요. 정지하면 남은 입자는 수명이 끝날 때 사라집니다.",
+  particles: particleHelp,
   audio: "로봇은 듣는 위치, 빛나는 표식은 소리가 나는 위치입니다. 좌우와 거리를 바꿔 비교하세요.",
   input: "캔버스 클릭 후 이동 · 메뉴에서는 입력만 차단하며 엔진 시간은 계속 흐릅니다.",
 };
@@ -42,6 +38,7 @@ export interface FeatureContext {
   source: SceneAuthoringDocumentSpec | ShooterGameSpec;
   signal: AbortSignal;
   worldPoint(event: PointerEvent): { x: number; y: number };
+  screenPoint(point: { x: number; y: number }): { x: number; y: number };
   reapply(scene: SceneAuthoringDocumentSpec): void;
   playing(): boolean;
   configureView(): void;
@@ -57,6 +54,7 @@ export interface FeatureExtra {
   postProcess?(): import("@ferrum2d/ferrum-web/authoring").PostProcessStackInput;
   input?(snapshot: ReturnType<FerrumRuntime["input"]["snapshot"]>): ReturnType<FerrumRuntime["input"]["snapshot"]>;
   camera?(): { x: number; y: number; smoothTimeSeconds: number };
+  viewport?(): { width: number; height: number };
 }
 export function nativePosition(runtime: FerrumRuntime, handle?: GameplayEntityHandle) {
   if (!handle) return undefined;
@@ -180,37 +178,7 @@ export function createFeatureExtra(ctx: FeatureContext): FeatureExtra | undefine
     extra.snapshot = () => ({ layers: { robot: order, orb: 1, panel: -1 } });
   }
 
-  if (id === "particles") {
-    let emitter: ParticleVfxEmitter | undefined, pointer = { x: 320, y: 192 }, lastTime: number | undefined;
-    const setup = () => {
-      emitter?.stop(); engine.clearParticles();
-      const name = value("vfx") as "hit-spark" | "dust-loop" | "motion-trail";
-      const preset = particleVfxPreset(name, "energy");
-      const life = number("life") / 10, speed = number("speed");
-      emitter = ParticleVfxEmitter.create({ target: engine, presetId: 30, preset: { ...preset,
-        particle: { ...preset.particle, burstCount: number("count"), lifetime: [life, life], speed: [speed * .5, speed] },
-        emitter: { ...preset.emitter, autostart: false, intervalSeconds: .12, maxBurstsPerUpdate: 1 },
-      } });
-      output("count", value("count")); output("life", `${life.toFixed(1)}초`); output("speed", value("speed"));
-      lastTime = undefined;
-      output("observation", extra.observation());
-    };
-    const emit = () => { if (!ctx.playing()) return; if (value("vfx") === "hit-spark") emitter!.trigger(pointer.x, pointer.y); else emitter!.start(pointer.x, pointer.y); output("observation", extra.observation()); };
-    on("vfx", "change", setup);
-    for (const key of ["count", "life", "speed"]) on(key, "input", setup);
-    on("emit", "click", emit); on("stop-emitter", "click", () => { emitter?.stop(); output("observation", extra.observation()); });
-    canvas.addEventListener("pointermove", event => { pointer = ctx.worldPoint(event); }, { signal });
-    canvas.addEventListener("pointerdown", event => { if (event.button === 0) { pointer = ctx.worldPoint(event); emit(); } }, { signal });
-    extra.reset = () => { pointer = { x: 320, y: 192 }; setup(); };
-    extra.frame = frame => {
-      const dt = lastTime === undefined ? 0 : Math.max(0, Math.min(.05, frame.timeSeconds - lastTime)); lastTime = frame.timeSeconds;
-      if (ctx.playing()) emitter?.update(dt, pointer.x, pointer.y);
-    };
-    extra.pause = () => { lastTime = undefined; };
-    extra.observation = () => `현재 입자 ${engine.particleCount()}개 · 누적 방출 ${emitter?.snapshot().spawnedParticleCount ?? 0}개 · ${emitter?.snapshot().active ? "반복 방출 중" : "방출 대기/정지"}`;
-    extra.snapshot = () => ({ particles: { count: engine.particleCount(), ...emitter?.snapshot() } });
-    extra.destroy = () => emitter?.stop();
-  }
+  if (id === "particles") return createParticleFeature(ctx);
 
   if (id === "audio") {
     const audio = new AudioManager();

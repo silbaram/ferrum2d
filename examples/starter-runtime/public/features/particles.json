@@ -50,8 +50,8 @@
                 "visual": {
                   "kind": "sprite",
                   "texture": "energy",
-                  "width": 32,
-                  "height": 32
+                  "width": 8,
+                  "height": 8
                 },
                 "collider": "none",
                 "layer": "wall"

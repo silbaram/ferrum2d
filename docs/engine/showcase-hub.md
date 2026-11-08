@@ -1,5 +1,7 @@
 # Ferrum2D Showcase Hub
 
+한국어 · [English](../en/engine/showcase-hub.md)
+
 이 문서는 Ferrum2D가 현재 제공하는 제품 기능을 demo, 기준 문서, 검증 명령 기준으로 묶은 기능 지도다. 목적은 새 사용자가 "무엇을 어디서 볼 수 있고, agent가 어떤 파일과 report를 기준으로 작업해야 하는지"를 빠르게 파악하게 하는 것이다.
 
 Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engine이다. 따라서 showcase의 기준도 화면 효과만이 아니라 public API, spec, authoring data, replay, smoke report가 함께 있는지로 판단한다.
@@ -8,8 +10,16 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
 상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
+26개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
+카메라 영역·애니메이션 원본·로딩 상태처럼 비교할 대상을 별도로 보여준다. 대화·HUD는 실제 UI를 게임 화면 안에서 조작한다.
+세부 수치는 ‘엔진 실행 정보’를 펼쳐 확인한다. 통합 홈의 각 기능 카드에도 실제 사용 상황을 표시한다.
 [GitHub Pages 홈](https://silbaram.github.io/ferrum2d/)도 같은 기능 목록에서 직접 진입한다.
 웹에서 설치 없이 체험한 뒤 로컬 실행·프로젝트 생성으로 이어갈 수 있다.
+
+예제의 기준 목록은 `examples/shared/exampleCatalog.json`, 독립 실험의 기준은 `featureCatalog.json`이다.
+통합 홈은 검색·분류와 **기능 학습 → 물리 심화 → 게임 응용** 순서를 제공한다. 게임·실험 예제는 같은 탐색·글꼴·색상과
+직접 해보기·관찰할 결과·관련 실험 안내를 공유한다. 제작 도구는 게임 예제와 구분한다.
+Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 검증만 유지하고 기본 목록에서 제외한다.
 
 | 실험 | Starter Runtime query | 바꿔볼 설정 |
 | --- | --- | --- |
@@ -19,10 +29,10 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 | 노멀 조명 | `?feature=lighting` | 노멀 적용, 광원 위치, 원본 색상 |
 | 후처리 | `?feature=postprocess` | 원본, bloom, CRT |
 | 카메라 | `?feature=camera` | 고정/추적, 확대, 이동 목적지 |
-| 9-slice | `?feature=nine-slice` | 단순 확대와 비교, 적용/해제, 테두리 배율 |
+| 게임 UI 테두리 · 9-slice | `?feature=nine-slice` | 대화창·가방의 너비/높이 변경, 일반 확대와 모서리 비교, 원본 분할선·테두리 배율 |
 | 타일맵·충돌 | `?feature=tilemap` | 벽/바닥 브러시, 통로, native 통과 여부 |
 | 그리기 레이어 | `?feature=layers` | 같은 위치에서 로봇의 앞뒤 순서 |
-| 파티클·VFX | `?feature=particles` | 불꽃/먼지/포인터 잔상, 수량·수명·속도 |
+| 파티클·VFX | `?feature=particles` | 불꽃/먼지 나란히·효과별 이미지와 기본값·방출/정지·잔상 |
 | 공간 오디오 | `?feature=audio` | 음원 좌우·거리·볼륨, 재생/정지 |
 | 입력 전환 | `?feature=input` | 키보드/게임패드/가상 조이스틱, 모달 입력 차단 |
 | 씬 전환과 페이드 | `?feature=scenes` | A/B 왕복·씬/전역 카운터·전환 중 pause |
@@ -47,7 +57,7 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 | --- | --- | --- | --- |
 | Runtime baseline | Starter Runtime, Platformer, Breakout | [User Guide](user-guide.md), [Public API](public-api.md) | `pnpm build`, `pnpm smoke:starter-runtime`, `pnpm smoke:platformer`, `pnpm smoke:breakout` |
 | 도트 게임 제작 | 작은 빛의 정원 · Pixel Art | [도트 제작](data-scene-authoring.md#에디터-내장-도트-제작), [도트 후처리](public-api/core.md#도트-후처리) | `pnpm dev:pixel-art`, `pnpm smoke:pixel-showcase` |
-| Game Spec authoring | Top-down Shooter | [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md) | `pnpm validate:game-spec`, `pnpm smoke:headless`, `pnpm smoke:topdown-authored-behavior-runtime` |
+| Game Spec authoring | Neon Outpost · Top-down Shooter | [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md) | `pnpm validate:game-spec`, `pnpm smoke:headless`, `pnpm smoke:topdown-authored-behavior-runtime` |
 | Scene/Object authoring | Placement Viewer, generated placement viewer | [Data Scene Authoring](data-scene-authoring.md), [Authoring API](public-api/authoring.md) | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets` |
 | Physics authoring | Physics Sandbox | [Physics Spec](physics-spec.md), [2D Physics Map](../development/architecture/physics-engine.md) | `pnpm validate:physics-authoring`, `pnpm smoke:physics`, `pnpm smoke:physics-demo-suite` |
 | Runtime extensibility | projectile, weapon, behavior, VFX, replay helpers | [Runtime Extensibility](runtime-extensibility.md), [Public API](public-api.md) | `pnpm validate:gameplay-authoring:report`, `pnpm smoke:gameplay-replay:report` |

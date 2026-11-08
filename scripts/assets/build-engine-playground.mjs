@@ -35,14 +35,15 @@ for(let frame=0;frame<4;frame++) {
 }
 await robot.save('robot');
 const normal=image(128,40);
+// OpenGL tangent-space normals use +Y up; PNG row coordinates increase down.
 for(let y=0;y<40;y++)for(let x=0;x<128;x++) {
-  const nx=((x%32)-16)/23,ny=(y-18)/30,nz=Math.sqrt(Math.max(.1,1-nx*nx-ny*ny));
+  const nx=((x%32)-16)/23,ny=(18-y)/30,nz=Math.sqrt(Math.max(.1,1-nx*nx-ny*ny));
   normal.point(x,y,[Math.round(128+nx*96),Math.round(128+ny*96),Math.round(128+nz*127),robot.pixels[(y*128+x)*4+3]]);
 }
 await normal.save('robot-normal');
 const ball=image(32,32),ballNormal=image(32,32);
 for(let y=0;y<32;y++)for(let x=0;x<32;x++) {
-  const nx=(x-15.5)/15,ny=(y-15.5)/15,d=nx*nx+ny*ny;if(d>1)continue;
+  const nx=(x-15.5)/15,ny=(15.5-y)/15,d=nx*nx+ny*ny;if(d>1)continue;
   const light=.55+.45*Math.sqrt(1-d);ball.point(x,y,[Math.round(244*light),Math.round(180*light),Math.round(86*light),255]);
   ballNormal.point(x,y,[Math.round(128+nx*127),Math.round(128+ny*127),Math.round(128+Math.sqrt(1-d)*127),255]);
 }

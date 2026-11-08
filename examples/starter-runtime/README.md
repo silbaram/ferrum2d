@@ -2,7 +2,10 @@
 
 기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
 상단에서 화면·움직임·게임 구성·플랫폼·HD-2D 분류로 26개 실험을 선택한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
-각 화면은 조작, 관찰할 결과, 현재 엔진 수치와 구현 API를 함께 표시한다.
+각 화면은 게임에서 쓰는 상황 → 직접 해보기 → 관찰할 차이 순서로 안내한다.
+주요 실행 버튼은 화면 위에, 객체 역할은 실제 위치 옆에 표시한다. 화면 아래 범례와 결과 설명을 함께 읽고,
+세부 설정·구현 API는 오른쪽 패널, 수치 진단은 접힌 ‘엔진 실행 정보’에서 확인한다.
+통합 홈과 공개 예제는 같은 탐색·학습 안내·UI 테마를 사용한다. 목록과 실행 방법은 [전체 예제 안내](../README.md)를 따른다.
 
 [전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
 씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 타일·효과·입력 조작은 [src/featureExtras.ts](src/featureExtras.ts),
@@ -18,6 +21,32 @@ HD-2D 4종만 다시 만들 때는 `node scripts/assets/build-hd2d-feature-scene
 WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 실제 native 상태와 renderer stats다.
 타일맵/입력 실험은 기존 Shooter 타일맵·플레이어 컨트롤러를 사용한다. 사격은 차단하고 적 생성 간격은 24시간으로 설정해 실험을 분리했다. 2D Data Scene 실험의 바닥은 sprite instance이며 HD-2D 실험은 공간 지형을 사용한다.
 
+## 화면에서 비교하는 방법
+
+- 애니메이션은 원본 4프레임과 현재 프레임, 카메라는 전체 월드와 현재 보는 영역을 함께 보여준다.
+- 조명은 원본 색상과 노멀맵, 위·아래·좌·우 광원을 비교한다. 물리는 ‘같은 힘으로 던지기’를 누른 뒤 재질별 속력과 충돌을 관찰한다.
+- 대화·퀘스트와 HUD는 실제 엔진 UI를 게임 화면 안에 표시한다. 한국어는 함께 배포한 글꼴을 사용한다.
+- 에셋 로딩·스트리밍은 실제 요청·캐시·구역 교체 상태를 화면 가운데 표시한다. 표시 중인 구역과 준비 중인 구역을 구분한다.
+- 입력·HD-2D 이동·AI 전투의 가상 조이스틱은 게임 화면 바로 아래의 전용 영역에서 조작한다. HD-2D는 객체 이름표, 높이·탑승·부모 연결 상태를 함께 읽는다.
+
+안내의 기준은 Catalog의 `lesson`이다. [featureLesson.ts](src/featureLesson.ts)는 공통 안내·범례·객체 이름표를,
+[featureLessonVisuals.ts](src/featureLessonVisuals.ts)는 주제별 비교 그림을 담당한다.
+이름표와 그림은 기존 native/platform 관측을 표시하며 게임 상태를 따로 계산하지 않는다.
+2D 객체 위치는 낮은 빈도의 일괄 조회를 복사하고, HD-2D 투영은 해당 프레임의 카메라 숫자를 복사해 사용한다.
+검증은 `pnpm smoke:feature-examples`이며 양 렌더러의 실제 동작·390px 배치·UI 영역·정리까지 검사한다.
+
+## 게임 UI 테두리 실험
+
+`?feature=nine-slice`는 작은 테두리 이미지 한 장으로 대화창·가방을 만드는 예제다.
+같은 크기·내용을 일반 확대와 9-slice로 나란히 보여준다. 너비·높이를 늘리면 일반 확대의 모서리는 길쭉해지고,
+9-slice의 테두리는 설정한 두께를 유지한다. 원본 24×24 이미지의 9개 영역과 고정할 모서리도 확인할 수 있다.
+좁은 화면에서는 비교 창이 위아래로 배치된다. Reset은 대화창·기본 크기·테두리·분할선 상태를 복구한다.
+
+테두리는 Rust의 실제 sprite 렌더 명령이며 대화·아이템 텍스트는 사용 예를 설명하는 DOM 주석이다.
+창 크기는 authoring document를 재적용하고 렌더링은 Rust/Wasm이 처리한다.
+이 예제는 크기별 테두리 표현을 설명하며 완성된 인벤토리 로직이나 드래그 UI를 제공하지 않는다.
+구현은 [featureNineSlice.ts](src/featureNineSlice.ts)에 있다.
+
 ## 애니메이션과 지형 실험
 
 - **캐릭터 애니메이션**: `?feature=animation`. 기존 시트 재생의 속도/순서/반전을 유지한다. ‘이동과 대기’에서는 바닥 클릭·방향 버튼·WASD/방향키로 목적지를 정하면 Rust가 이동과 idle/walk 클립을 전환한다. 기존 로봇 시트를 재사용하므로 방향 표현은 좌우 반전이다. 프레임 2·4 진입은 화면 표식과 선택적인 합성 발소리로 표시한다. ‘한 번 재생과 완료’는 마지막 프레임을 유지하고 완료 이벤트를 한 번만 센다. 음원은 사용자 버튼으로 켜며 pause/reset/페이지 이탈은 소리와 대기 중 로딩을 중단한다.
@@ -30,9 +59,35 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 
 - **타일맵**: `?feature=tilemap`. WASD/방향키로 중앙 벽에 접근한 뒤 통로를 열어 통과한다. 캔버스 클릭으로 벽/바닥을 수정한다. 외곽 테두리와 캐릭터가 겹치는 칸은 보호한다. 통로 닫기는 캐릭터를 밖으로 옮긴 뒤 사용한다. 출발 위치에 벽을 놓았다면 바닥 브러시로 지워야 그 위치로 돌아갈 수 있다.
 - **레이어**: `?feature=layers`. 로봇의 `instance.layer`를 바꿔 동일 위치·크기의 겹침을 비교한다. 씬을 재적용하는 낮은 빈도 예제이며 충돌 분류인 `components.layer`는 바꾸지 않는다.
-- **파티클**: `?feature=particles`. 효과/수량/수명/속도를 정하고 방출한다. 설정 변경은 입자를 비우며, 반복/잔상은 다시 방출해야 한다. 방출 정지는 기존 입자를 수명 종료까지 유지한다. 잔상 위치는 포인터, 입자 이동·수명은 Rust가 계산한다.
+- **파티클**: `?feature=particles`. 불꽃·먼지·잔상을 서로 다른 이미지와 기본값으로 비교한다. ‘불꽃·먼지 나란히’는 두 효과를 즉시 시작한다. 설정 변경은 선택 효과로 복귀하고 이전 입자를 비운다. 정지는 새 방출만 멈추고 기존 입자는 수명이 끝나면 사라진다.
 - **공간 오디오**: `?feature=audio`. 사용자 클릭으로 Web Audio를 시작하고 음원의 좌우·앞쪽 거리·볼륨을 바꾼다. 듣는 위치는 로봇에 고정된다. 일시정지/초기화/페이지 이탈은 소리도 멈추고 재생은 다시 눌러 시작한다. 공간 처리 미지원이면 일반 재생 안내를 표시한다.
 - **입력 전환**: `?feature=input`. 키보드/게임패드 왼쪽 스틱/화면의 가상 조이스틱을 같은 native 이동에 연결한다. 메뉴는 모달이고 입력란의 키가 게임에 전달되지 않는다. 닫은 뒤 키를 다시 누르거나 스틱을 중립으로 돌린 뒤 이동한다. 게임패드 연결을 브라우저가 인식하려면 장치 버튼을 한 번 눌러야 할 수 있다.
+
+## 불꽃·먼지 비교
+
+`?feature=particles`에서 **불꽃·먼지 나란히**를 누른다. 왼쪽은 작은 불꽃이 짧게 튀고,
+오른쪽은 가장자리가 부드러운 흙색 먼지가 느리게 커지며 투명해진다. 비교는 고유 기본값을 사용한다.
+
+| 효과 | 방출당 수량 | 최대 수명 | 최대 속도 | 표현 |
+| --- | --- | --- | --- | --- |
+| 불꽃 | 24 | 0.3초 | 220 | 밝은 별 모양·빠른 확산·수축 |
+| 먼지 | 5 | 1.4초 | 40 | 불규칙 구름·느린 확산·팽창·흐려짐 |
+| 잔상 | 2 | 0.5초 | 16 | 포인터가 지나간 위치에 남는 푸른 입자 |
+
+수명·속도는 범위 안에서 무작위로 정한다. 효과 선택 시 해당 기본값을 적용하며 슬라이더로 바꿀 수 있다.
+비교 중 불꽃은 1.4초 간격으로 재방출하고 먼지는 연속 방출한다. 일시정지는 둘 다 멈추고,
+초기화는 비교를 끝내고 기본 불꽃 설정으로 돌아간다. 캐릭터의 발걸음에 자동 연결하는 예제는 아니다.
+
+[featureParticles.ts](src/featureParticles.ts)는 예제 전용 프로필·방출기·비교 UI를 담당한다.
+입자의 위치 적분·크기/색 보간·수명 만료·그리기는 기존 Rust/Wasm이 처리한다.
+SDK의 `particleVfxPreset` 기본값·Wasm ABI는 변경하지 않는다.
+전용 PNG 세 장은 외부 이미지 없이 [생성 스크립트](../../scripts/assets/build-particle-demo-textures.mjs)로 작성했다.
+다시 만들 때는 루트에서 `node scripts/assets/build-particle-demo-textures.mjs`를 실행한다.
+
+먼지의 사용 상황은 [Unity 먼지 사례](https://docs.unity3d.com/6000.0/Documentation/Manual/PartSysInheritVelocity.html),
+크기·색·수명 구분은 [Unity 입자 튜토리얼](https://learn.unity.com/course/2d-magic-spells/tutorial/modifying-gravity-color-size-lifetime-of-particle-systems)과
+[Godot 2D 입자 안내](https://docs.godotengine.org/en/stable/tutorials/2d/particle_systems_2d.html)를 참고했다.
+구현은 기존 엔진 기능으로 표현한 자체 설정이다.
 
 ## 게임 구성 실험
 
@@ -65,13 +120,13 @@ JSON 다운로드는 현재 모드의 작성 설정이다. 부모·자식 연결
 
 ## 이전 통합 게임 (`?mode=playground`)
 
-여러 기능을 연결한 작은 발전소 게임은 `?mode=playground` 또는 ‘통합 예제도 보기’로 연다. 로봇으로 전지 3개를 모은 뒤에도 실험을 계속할 수 있다.
+이전 발전소 게임은 참고·회귀용 `?mode=playground` 경로로만 연다. 기본 메뉴에서는 제외하며 기능 학습은 독립 실험, 게임 응용은 도트 정원을 따른다.
 
 | 체험 | 조작 / 엔진 동작 |
 | --- | --- |
 | 이동·장애물·수집 | 바닥 클릭, WASD/방향키, 전지 목적지 버튼. Rust 경로 탐색과 이동 애니메이션, trigger 기반 수집 변수 |
 | 물리 | 공 던지기, 고무/점토, 30/60/120 Hz와 표시 보간 비교. rigid body·CCD·반사·감속 및 실제 충격 횟수/충격량 |
-| 조명 | 포인터로 작업등 이동, 원본 색상/조명 전환, 스프라이트 노멀맵 비교 |
+| 조명 | 포인터로 작업등 이동, 원본 색상/조명 전환, 스프라이트 노멀맵 비교. 공의 상하좌우 중 광원이 있는 면이 밝아진다. |
 | 카메라 | 전체 보기, 로봇 추적, 공 실험장 보기, 확대/축소 |
 | 화면 효과 | 기본, bloom/vignette, CRT 비교 |
 | 씬 수명 | 일시정지·계속하기·다시 시작. 화면 설정은 유지하고 게임 진행을 초기화 |
@@ -80,7 +135,11 @@ JSON 다운로드는 현재 모드의 작성 설정이다. 부모·자식 연결
 
 씬은 [public/playground/scene.json](public/playground/scene.json), 결정론적 원본 에셋 생성기는 [build-engine-playground.mjs](../../scripts/assets/build-engine-playground.mjs)다. `node scripts/assets/build-engine-playground.mjs`로 에셋을 재생성한다. 바닥은 타일 모양의 sprite instance이며 별도 TileMap API 예제는 아니다. TS는 입력/UI와 화면 설정을, Rust는 이동·수집·물리를 소유한다.
 
-기존 사격 프로필·snapshot/replay 예제는 **`?mode=starter`** 또는 ‘더 살펴보기’ 링크로 연다. 기존 `profile`, `reportSmoke`, `profilerSmoke` query도 그대로 지원한다. 아래 기술/콘솔 API 설명은 이 기존 모드에 해당한다.
+기존 사격 프로필·snapshot/replay fixture는 **`?mode=starter`**로 직접 연다. 기본 메뉴에서는 제외한다. 기존 `profile`, `reportSmoke`, `profilerSmoke` query도 그대로 지원한다. 아래 기술/콘솔 API 설명은 이 참고 모드에 해당한다.
+
+`?mode=starter`의 기본 재생 버튼은 상태에 맞게 표시한다. 일시정지 후 Reset을 눌러도 진행하며,
+Reset·게임 종료 후 다시 시작·Space 재시작 모두 선택한 weapon profile을 새 native player에 다시 적용한다.
+프로필 표시만 남고 실제 projectile action이 사라지는 상태를 브라우저 회귀로 검증한다.
 
 ## 확인 기술
 

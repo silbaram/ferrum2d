@@ -1,0 +1,56 @@
+[
+  {
+    "id": "starter-runtime", "kind": "lab", "title": "엔진 기능 실험실", "path": "starter-runtime/", "source": "examples/starter-runtime/dist", "command": "pnpm dev:starter-runtime",
+    "summary": "한 번에 한 기능을 바꾸며 렌더링·움직임·게임 구성·HD-2D의 동작을 배웁니다.",
+    "action": "주제를 선택하고 설정 하나를 바꾼 뒤 초기화해 비교하세요.", "observe": "화면 변화와 실제 엔진 상태·오브젝트·그리기 명령 수를 함께 확인합니다.",
+    "features": ["animation", "camera", "physics", "lighting", "scenes"]
+  },
+  {
+    "id": "physics-sandbox", "kind": "lab", "title": "물리 심화 실험실", "path": "physics-sandbox/", "source": "examples/physics-sandbox/dist", "command": "pnpm dev:physics-sandbox",
+    "summary": "7개 시나리오에서 충돌체·접촉·센서·관절·고속 충돌·공간 질의를 관찰합니다.",
+    "action": "시나리오를 선택하고 일시정지·한 프레임 진행·재질 조절을 사용하세요.", "observe": "충돌 영역과 접촉 신호, 속도·반발·감쇠가 어떻게 연결되는지 확인합니다.",
+    "features": ["physics", "tilemap", "destructible-terrain"]
+  },
+  {
+    "id": "breakout", "kind": "game", "title": "충돌 반응 · Breakout", "path": "breakout/", "source": "examples/breakout/dist", "command": "pnpm dev:breakout",
+    "summary": "충돌 이벤트가 반사·벽돌 제거·점수·파티클로 이어지는 작은 게임입니다.",
+    "action": "패들을 움직여 공을 반사하고 체험할 기능에서 충돌 영역을 켜보세요.", "observe": "공의 반사와 벽돌 제거, 점수와 파티클이 같은 충돌에서 함께 바뀝니다.",
+    "features": ["physics", "particles", "input"]
+  },
+  {
+    "id": "platformer", "kind": "game", "title": "플랫폼 이동 · Platformer", "path": "platformer/", "source": "examples/platformer/dist", "command": "pnpm dev:platformer",
+    "summary": "이동 컨트롤러와 발판의 규칙을 점프·착지·탑승으로 연결합니다.",
+    "action": "방향키 또는 A/D와 Space로 이동하세요. 체험할 기능에서 발판 위치로 이동할 수 있습니다.", "observe": "단방향 발판의 통과·착지와 움직이는 발판에 탑승했을 때의 이동을 비교합니다.",
+    "features": ["input", "physics", "camera", "hd2d-movement"]
+  },
+  {
+    "id": "topdown-shooter", "kind": "game", "title": "전투 구성 · Neon Outpost", "path": "topdown-shooter/", "source": "examples/topdown-shooter/dist", "command": "pnpm dev:topdown",
+    "summary": "Game Spec의 이동·사격·적 웨이브를 HUD·조명·오디오와 연결합니다.",
+    "action": "시작 후 WASD로 이동하고 포인터로 조준해 발사하세요. P/Esc로 일시정지합니다.", "observe": "적 행동과 웨이브, 충돌·점수·HUD를 확인하고 화면 효과만 따로 꺼서 비교합니다.",
+    "features": ["projectiles", "ai-combat", "hud", "particles", "postprocess"]
+  },
+  {
+    "id": "pixel-art", "kind": "game", "title": "도트 자산 · 작은 빛의 정원", "path": "pixel-art/", "source": "examples/pixel-art/dist", "command": "pnpm dev:pixel-art",
+    "summary": "편집 가능한 도트 원본이 애니메이션·팔레트·노멀 조명으로 이어지는 과정을 보여줍니다.",
+    "action": "바닥을 클릭해 걷고 조명·팔레트·효과를 바꾸세요. 제작 과정에서 도트 원본과 PNG를 내려받을 수 있습니다.", "observe": "같은 원본의 프레임 재생과 색상 교체, 표면 방향에 반응하는 조명을 비교합니다.",
+    "features": ["animation", "navigation", "lighting", "postprocess"]
+  },
+  {
+    "id": "placement-viewer", "kind": "tool", "title": "씬·에셋 제작 도구", "path": "placement-viewer/", "source": "apps/placement-viewer/dist", "command": "pnpm dev:placement-viewer",
+    "summary": "2D 정원·HD-2D 마을에서 배치·변형·레이어·게임 카메라·도트 편집을 확인합니다.",
+    "action": "예제 씬을 열어 오브젝트를 선택하고 배치와 게임 카메라를 조절하세요.", "observe": "게임 미리보기로 실제 구도를 비교합니다. 웹 내장 예제는 내보내기 전용입니다.",
+    "features": ["layers", "camera", "hd2d-environment"]
+  },
+  {
+    "id": "minimal-game", "kind": "reference", "title": "최소 부트스트랩·회귀 fixture", "path": "minimal-game/", "source": "examples/minimal-game/dist", "command": "pnpm dev:minimal",
+    "summary": "SDK 초기화와 입력·로딩·UI의 저수준 회귀 검증용입니다. 공개 예제 목록에서는 제외합니다.", "action": "소스 및 자동 검증에서 사용합니다.", "observe": "최소 초기화와 플랫폼 계약을 확인합니다.", "features": []
+  },
+  {
+    "id": "engine-playground", "kind": "reference", "title": "이전 이동·수집 통합 데모", "path": "starter-runtime/?mode=playground", "source": "examples/starter-runtime/dist", "command": "pnpm dev:starter-runtime",
+    "summary": "기능 실험실과 정원 예제로 역할을 정리했습니다. 기존 통합 회귀와 URL은 유지합니다.", "action": "통합 회귀 검증에서 사용합니다.", "observe": "기존 이동·수집·물리·자원 해제 동작을 보존합니다.", "features": []
+  },
+  {
+    "id": "starter-profiles", "kind": "reference", "title": "사격 프로필·리플레이 fixture", "path": "starter-runtime/?mode=starter", "source": "examples/starter-runtime/dist", "command": "pnpm dev:starter-runtime",
+    "summary": "공개 사격 안내는 사격 실험과 Neon Outpost로 모았습니다. 프로필·리플레이 검증용으로 유지합니다.", "action": "프로필 및 리플레이 검증에서 사용합니다.", "observe": "기존 프리셋과 초기화 계약을 확인합니다.", "features": []
+  }
+]

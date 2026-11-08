@@ -15,7 +15,10 @@ import { createProjectileFeature, projectileControls } from "./featureProjectile
 import { createSystemFeature, systemControls } from "./featureSystems";
 import { createTerrainFeature, terrainControls } from "./featureTerrain";
 import { createAnimationFeature, animationControls } from "./featureAnimation";
+import { createNineSliceFeature, nineSliceControls } from "./featureNineSlice";
 import { spatialFeatureIds } from "./featureSpatialScenes";
+import { createFeatureLesson } from "./featureLesson";
+import { sampleLessonPoses } from "./featureLessonGeometry";
 
 const effects: Record<string, PostProcessStackInput> = {
   clean: false,
@@ -37,14 +40,13 @@ const controls: Record<string, string> = {
     <button data-control="launch">같은 힘으로 던지기</button>`,
   lighting: `<label>조명<select data-control="lighting"><option value="lit">점광원</option><option value="off">원본 색상</option></select></label>
     <label class="feature-check"><input data-control="normal" type="checkbox" checked> 노멀맵 적용</label>
-    <div class="feature-buttons"><button data-light="160">왼쪽 광원</button><button data-light="480">오른쪽 광원</button></div>`,
+    <div class="feature-buttons"><button data-light="160">왼쪽 광원</button><button data-light="480">오른쪽 광원</button><button data-light="432" data-light-y="64">위쪽 광원</button><button data-light="432" data-light-y="320">아래쪽 광원</button></div>`,
   postprocess: `<label>화면 효과<select data-control="effect"><option value="clean">원본</option><option value="bloom">Bloom · 빛 번짐</option><option value="crt">CRT · 곡면 / 스캔라인</option></select></label>`,
   camera: `<label>카메라<select data-control="camera"><option value="fixed">중앙 고정</option><option value="follow">로봇 추적</option></select></label>
     <label>확대 <output data-value="zoom">100%</output><input data-control="zoom" type="range" min="100" max="250" value="100" step="5"></label>
     <div class="feature-buttons"><button data-target="128">왼쪽으로 이동</button><button data-target="512">오른쪽으로 이동</button></div>
     <output data-value="destination" role="status">확대 후 추적 모드와 비교하세요.</output>`,
-  "nine-slice": `<label class="feature-check"><input data-control="sliced" type="checkbox" checked> 오른쪽 패널에 9-slice 적용</label>
-    <label>테두리 배율 <output data-value="border">2×</output><input data-control="border" type="range" min="1" max="4" value="2"></label>`,
+  "nine-slice": nineSliceControls,
 };
 
 /** One independent native scene per topic. The browser owns controls, not simulation. */
@@ -57,7 +59,7 @@ export async function startFeatureLab(): Promise<void> {
     return startSpatialFeatureLab(id);
   }
   const shooter = shooterFeatures.has(id);
-  const shell = createRuntimeDemoShell({ title: "Ferrum2D · 엔진 기능 실험실", controls: false, metrics: [] });
+  const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
   const { canvas, stage } = shell;
   const root = stage.closest<HTMLElement>(".demo-shell")!;
   root.classList.add("feature-lab");
@@ -81,13 +83,13 @@ export async function startFeatureLab(): Promise<void> {
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
-    <p>설정 적용 코드는 src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts에 있습니다.</p></details>`;
+    <p>설정 적용 코드는 ${id === "nine-slice" ? "src/featureNineSlice.ts" : "src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts"}에 있습니다.</p></details>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   // Buttons in the settings form must never submit/reload the page.
   for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
   const help = document.createElement("p");
   help.className = "feature-canvas-help";
-  help.textContent = (id === "animation" ? "이동과 대기: 바닥 클릭 · WASD/방향키로 목적지 지정 · 방향 전환은 좌우 반전으로 표현합니다." : undefined) ?? extraHelp[id] ?? gameplayHelp[id] ?? contentHelp[id] ?? (id === "nine-slice" ? "왼쪽: 단순 확대 / 오른쪽 위·아래: 서로 다른 크기의 9-slice" :
+  help.textContent = (id === "animation" ? "이동과 대기: 바닥 클릭 · WASD/방향키로 목적지 지정 · 방향 전환은 좌우 반전으로 표현합니다." : undefined) ?? extraHelp[id] ?? gameplayHelp[id] ?? contentHelp[id] ?? (id === "nine-slice" ? "대화창·가방을 고른 뒤 너비를 늘려보세요. 같은 원본에서 모서리와 테두리가 어떻게 달라지는지 비교합니다." :
     id === "navigation" || id === "camera" ? "바닥 클릭 · 방향키 / WASD: 32 단위 이동 명령" :
     id === "lighting" ? "화면 위에서 포인터를 움직이거나 광원 위치 버튼을 사용하세요." : "설정을 바꾸며 같은 장면의 변화를 비교하세요.");
   stage.append(help);
@@ -96,15 +98,12 @@ export async function startFeatureLab(): Promise<void> {
   // Reserve the diagnostics row before controls mount; delayed text must not shift touch targets.
   stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
   stage.append(stats);
-  const more = document.createElement("details");
-  more.className = "feature-more";
-  more.innerHTML = `<summary>통합 예제도 보기</summary><a href="?mode=playground">이동·수집 통합 게임</a><a href="?mode=starter">사격 프로필·리플레이</a>`;
-  panel.append(more);
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;
   const choice = (key: string) => control<HTMLSelectElement>(key).value;
   const input = (key: string) => control<HTMLInputElement>(key);
   const output = (key: string, text: string) => { root.querySelector(`[data-value="${key}"]`)!.textContent = text; };
   const lifetime = new AbortController(), { signal } = lifetime;
+  const lesson = createFeatureLesson(root, canvas, id, feature.lesson);
   const requested = params.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   control<HTMLSelectElement>("renderer").value = requested;
   let extra: FeatureExtra | undefined, shooterPaused = false;
@@ -115,8 +114,9 @@ export async function startFeatureLab(): Promise<void> {
   let lastFrame = { entities: 0, commands: 0, drawCalls: 0, normalDrawCalls: 0, postProcessPassCount: 0, cameraX: 320, cameraY: 192, nativeState: 0 };
   let physicsSample = 0;
   let physicsPresentation: { sample: number; displayX: number; displayY: number; nativeX: number; nativeY: number; alpha: number } | undefined;
+  let physicsObservation: { speed: number; launches: number; contacts: number } | undefined;
   let resources: (() => ReturnType<NonNullable<FerrumRuntime["renderer"]["resourceStats"]>>) | undefined;
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy()];
+  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
   // Async initialization may finish after navigation. Adopt late resources by disposing immediately.
   const own = (dispose: () => void) => { if (destroyed) dispose(); else cleanups.push(dispose); };
   const cleanup = () => {
@@ -154,7 +154,7 @@ export async function startFeatureLab(): Promise<void> {
     output("backend", `${backend}${backend === requested ? "" : " · 호환 렌더러"}`);
     const loader = id === "physics" ? new BrowserPlatformHost(renderer) : new AssetLoader(renderer);
     if (loader instanceof BrowserPlatformHost) own(() => loader.destroy());
-    const virtual = id === "input" ? new VirtualControls(stage, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;
+    const virtual = id === "input" ? new VirtualControls(lesson.controlsHost, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;
     own(() => virtual?.destroy());
     // Load only the textures used by this topic, including matching normal data where needed.
     const response = await fetch(new URL(`./features/${id}.json`, document.baseURI), { signal });
@@ -170,6 +170,7 @@ export async function startFeatureLab(): Promise<void> {
       textures[texture] = texture;
     }
     if (id === "particles" || id === "physics") textures.energy = "energy";
+    if (id === "particles") Object.assign(textures, { particleSpark: "particle-spark", particleDust: "particle-dust", particleTrail: "particle-trail" });
     if (id === "lighting") Object.assign(textures, { robotNormal: "robot-normal", ballNormal: "ball-normal" });
     await loader.loadAssets({ ...(id === "physics" ? {sounds:{impact:new URL("./features/beacon.wav",document.baseURI).href}} : {}), textures: Object.fromEntries(Object.entries(textures).map(([key, file]) => [key, new URL(`./playground/${file}.png`, document.baseURI).href])),
       textureOptions: Object.fromEntries(Object.keys(textures).map(key => [key, { colorSpace: "none" as const }])) }, undefined, { signal });
@@ -221,12 +222,26 @@ export async function startFeatureLab(): Promise<void> {
           }
           const queries = runtime.engine.batchCastBodies([[1,0],[-1,0],[0,1],[0,-1]].map(([x,y]) => ({kind:"ray" as const,originX:ball?.x??200,originY:ball?.y??192,directionX:x!,directionY:y!,maxDistance:800,maxHits:8})));
           const d = f.physicsDiagnostics;
-          output("observation", `관절 파손 ${brokenJointCount} · CCD 상한 ${d?.ccdLimits.length??0} · 4방향 일괄 탐색 ${queries.reduce((n,q)=>n+q.totalHits,0)}건 · 속력 ${Math.hypot(ball?.velocityX ?? 0, ball?.velocityY ?? 0).toFixed(1)} · 접촉 감지 ${collisions} · 충격 ${impactCount}회 / ${lastImpulse.toFixed(1)} · 던지기 ${launches}회`);
+          physicsObservation = { speed: Math.hypot(ball?.velocityX ?? 0, ball?.velocityY ?? 0), launches, contacts: collisions };
+          output("observation", `관절 파손 ${brokenJointCount} · CCD 상한 ${d?.ccdLimits.length??0} · 4방향 일괄 탐색 ${queries.reduce((n,q)=>n+q.totalHits,0)}건 · 속력 ${physicsObservation.speed.toFixed(1)} · 접촉 감지 ${collisions} · 충격 ${impactCount}회 / ${lastImpulse.toFixed(1)} · 던지기 ${launches}회`);
         } else if (id === "camera") output("observation", `카메라 중심 ${f.cameraX.toFixed(0)}, ${f.cameraY.toFixed(0)} · ${input("zoom").value}%`);
         else if (id === "lighting") output("observation", `노멀 렌더링 ${lastFrame.normalDrawCalls}회 · 광원 ${light.x.toFixed(0)}, ${light.y.toFixed(0)}`);
         else if (id === "postprocess") output("observation", `후처리 패스 ${lastFrame.postProcessPassCount} · ${choice("effect")}`);
-        else if (id === "nine-slice") output("observation", `오브젝트 3개 → 그리기 명령 ${lastFrame.commands}개`);
         else output("observation", "이동·충돌·애니메이션은 Rust 런타임에서 처리합니다.");
+        // Rendering and borrowed-buffer consumers are finished. Sample roles in one
+        // native packet, then project the owned observations without per-entity calls.
+        const markerHandles = { ...handles() };
+        if (shooter && lesson.entityIds.includes("$player")) {
+          const player = runtime.engine.builtInShooterPlayerHandle();
+          if (player) markerHandles.$player = player;
+        }
+        const sampleState = { ...extra?.snapshot(), ...(id === "animation" ? { spriteAnimation: runtime.engine.dataSceneSpriteAnimationState(handles().robot) } : {}),
+          ...(id === "physics" ? { physicsObservation } : {}), ...(id === "navigation" ? { navigationStatus: runtime.engine.dataSceneMoveStatus() } : {}) };
+        const poses = sampleLessonPoses(runtime.engine, markerHandles, lesson.entityIds);
+        const viewport = view?.snapshot(f);
+        lesson.update({ observation: root.querySelector('[data-value="observation"]')!.textContent ?? feature.observe,
+          state: sampleState, poses, input: runtime.input.snapshot(), viewport,
+          project: point => view && viewport ? view.worldToScreen(point, viewport) : context.screenPoint(point) });
       },
     });
     const createdRuntime = runtime;
@@ -242,7 +257,8 @@ export async function startFeatureLab(): Promise<void> {
         return;
       }
       if (!view) return;
-      view.setZoom(Math.min(canvas.clientWidth / 640, canvas.clientHeight / 384) * scale);
+      const size = extra?.viewport?.() ?? { width: 640, height: 384 };
+      view.setZoom(Math.min(canvas.clientWidth / size.width, canvas.clientHeight / size.height) * scale);
       view!.setCamera(extra?.camera?.() ?? { x: 320, y: 192, ...(id === "camera" && choice("camera") === "follow" ? { follow: handles().robot } : {}), smoothTimeSeconds: .12 });
       if (id === "camera") output("zoom", `${input("zoom").value}%`);
     };
@@ -256,18 +272,11 @@ export async function startFeatureLab(): Promise<void> {
       check(engine.setPhysicsBodyFixedRotation(handles().ball,input("fixed-rotation").checked),"회전 고정");
       check(engine.setPhysicsBodyTuning(handles().ball, { gravityScale: 0, linearDamping: rubber ? .08 : 2.4, angularDamping: .2 }), "감쇠");
     };
-    const nineSlice = () => {
-      check(engine.configureSpriteNineSlices(["sliced", "sliced_tall"].map(key => ({ entity: handles()[key], ...(input("sliced").checked ? {
-        nineSlice: { sourceWidth: 24, sourceHeight: 24, left: 4, right: 4, top: 4, bottom: 4, borderScale: Number(input("border").value) },
-      } : {}) }))), "9-slice");
-      output("border", `${input("border").value}×`);
-    };
     const configure = () => {
       if (shooter) { if (engine.gameState() === 0) shell.queueStart(); camera(); return; }
       view = createDataSceneView(engine, renderer, canvas, { x: 320, y: 192 });
       camera();
       if (id === "lighting") normals();
-      if (id === "nine-slice") nineSlice();
       if (id === "physics") {
         engine.configurePhysicsRuntime(resolvePhysicsSpec({ mode: "rigid", gravity: [0, 0], continuous: true, solver: { fixedTimestep: true, stepSeconds: 1 / 60, velocityIterations: 8, positionIterations: 6 } }));
         engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0, continuous: true, velocityIterations: 8, positionIterations: 6 });
@@ -284,6 +293,12 @@ export async function startFeatureLab(): Promise<void> {
       }
     };
     const context: FeatureContext = { id, root, canvas, runtime, assets: loader, source, signal, playing, configureView: camera,
+      screenPoint: point => {
+        if (view) return view.worldToScreen(point);
+        const viewport = renderer.viewportSize();
+        return { x: ((point.x - lastFrame.cameraX) / viewport.width + .5) * canvas.clientWidth,
+          y: ((point.y - lastFrame.cameraY) / viewport.height + .5) * canvas.clientHeight };
+      },
       worldPoint: event => {
         if (view) return view.pointerToWorld({ x: event.clientX, y: event.clientY });
         const rect = canvas.getBoundingClientRect(), viewport = renderer.viewportSize();
@@ -296,18 +311,16 @@ export async function startFeatureLab(): Promise<void> {
         if (paused) runtime!.dataScene!.pause();
       },
     };
-    extra = id === "destructible-terrain" ? createTerrainFeature(context) : id === "animation" ? createAnimationFeature(context) : id === "projectiles" ? createProjectileFeature(context) : createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context) ?? createSystemFeature(context);
+    extra = id === "nine-slice" ? createNineSliceFeature(context) : id === "destructible-terrain" ? createTerrainFeature(context) : id === "animation" ? createAnimationFeature(context) : id === "projectiles" ? createProjectileFeature(context) : createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context) ?? createSystemFeature(context);
     own(() => extra?.destroy());
     for (const element of settings) element.disabled = false;
     extra?.reset();
     configure();
-    resize = new ResizeObserver(() => { if (!destroyed) camera(); });
+    resize = new ResizeObserver(() => { if (!destroyed) { camera(); lastUi = -Infinity; } });
     resize.observe(canvas);
     own(() => resize?.disconnect());
     const on = (key: string, event: string, fn: () => void) => control(key)?.addEventListener(event, fn, { signal });
     on("normal", "change", normals);
-    on("sliced", "change", nineSlice);
-    on("border", "input", nineSlice);
     on("material", "change", material);
     on("zoom", "input", camera);
     on("camera", "change", camera);
@@ -326,7 +339,7 @@ export async function startFeatureLab(): Promise<void> {
       output("destination", ok ? `목적지 ${target.x.toFixed(0)}, ${target.y.toFixed(0)}로 이동합니다.` : "이동할 수 없는 목적지입니다.");
     };
     for (const button of root.querySelectorAll<HTMLButtonElement>("[data-target]")) button.addEventListener("click", () => move({ x: Number(button.dataset.target), y: 192 }), { signal });
-    for (const button of root.querySelectorAll<HTMLButtonElement>("[data-light]")) button.addEventListener("click", () => { light = { x: Number(button.dataset.light), y: 96 }; }, { signal });
+    for (const button of root.querySelectorAll<HTMLButtonElement>("[data-light]")) button.addEventListener("click", () => { light = { x: Number(button.dataset.light), y: Number(button.dataset.lightY ?? 96) }; }, { signal });
     if (id === "navigation" || id === "camera") {
       canvas.addEventListener("pointerdown", event => { if (event.button !== 0) return; canvas.focus(); move(view!.pointerToWorld({ x: event.clientX, y: event.clientY })); }, { signal });
       canvas.addEventListener("keydown", event => {

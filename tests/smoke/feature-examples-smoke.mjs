@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import {smokeGuidedExample} from './guided-examples-smoke.mjs';
+import {smokeTopdownShowcase} from './topdown-showcase-smoke.mjs';
+import {checkFeatureLightingDirections} from './feature-lighting-checks.mjs';
+import {checkFeatureNineSlice, checkNineSliceFixtureGeneration} from './feature-nine-slice-checks.mjs';
+import {checkLearningInitial,checkLearningControls,checkLearningNarrow} from './feature-learning-checks.mjs';
 import {createServer} from 'node:http';
 import {mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
@@ -16,8 +21,9 @@ import {checkNextFeature, nextFeatureIds} from './feature-next-checks.mjs';
 import {checkSpatialFeature, checkSpatialRecovery, spatialFeatureIds} from './feature-spatial-checks.mjs';
 
 const dist=resolve('examples/starter-runtime/dist'),prefix='/nested/starter-runtime/';
-const spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=spatialOnly||nextOnly;
-const parent=resolve(nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
+const particlesOnly=process.argv.includes('--particles-only');
+const nineSliceOnly=process.argv.includes('--nine-slice-only'), spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=spatialOnly||nextOnly||nineSliceOnly||particlesOnly;
+const parent=resolve(particlesOnly?'artifacts/particle-dust-clarity/browser':nineSliceOnly?'artifacts/nine-slice-example/browser':nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ ok: false, status: 'running', run }, null, 2) + '\n');
 const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.json':'application/json'};
 const server=createServer((req,res)=>void(async()=>{
@@ -53,6 +59,7 @@ const catalog = JSON.parse(await readFile('examples/shared/featureCatalog.json',
 const results = [];
 let browser, activePage;
 try {
+  const nineSliceFixture = !particlesOnly && !spatialOnly && !nextOnly ? await checkNineSliceFixtureGeneration() : undefined;
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   browser = await chromium.launch({ headless: true, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE,
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--use-vulkan=swiftshader'] });
@@ -67,13 +74,14 @@ try {
     if (backend === 'webgpu') await page.addInitScript({ content: `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();` });
     const snapshot = () => page.evaluate(() => window.ferrumFeatureLab.snapshot());
     const control = key => page.locator(`[data-control="${key}"]`);
-    for (const { id } of catalog.filter(item => nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
+    for (const { id } of catalog.filter(item => particlesOnly ? item.id === 'particles' : nineSliceOnly ? item.id === 'nine-slice' : nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
       console.log(`Checking ${backend}/${id}`);
       await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?feature=${id}&renderer=${backend}`);
       // The Shooter controller consumes the queued start input on its next native update.
       await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1 || document.querySelector('.demo-error-shell'), undefined, { timeout: 30000 });
       assert.equal(await page.locator('.demo-error-shell').count(), 0, await page.locator('body').innerText());
       const initial = await snapshot();
+      let lightingDirections, nineSlice;
       const scene = JSON.parse(await readFile(resolve(dist, `features/${id}.json`), 'utf8'));
       assert.equal(initial.id, id);
       assert.equal(initial.backend, backend, 'requested backend must really render');
@@ -81,6 +89,7 @@ try {
       else assert(initial.entities >= 1 && initial.entities < 4, 'isolated tile/controller fixture must have no enemy waves');
       assert(initial.commands > 0 && initial.drawCalls > 0);
       assert.equal(initial.nativeState, 1, `${id} must actually run in native Playing state`);
+      const learning=await checkLearningInitial(page,catalog.find(item=>item.id===id));
       assert(initial.entities <= 100 && initial.commands <= 400 && initial.drawCalls <= 64, `${id} initial scene/render budget exceeded`);
       assert.equal(await page.locator('.feature-topics a').count(), catalog.length);
       assert.equal(await page.locator('.feature-topics a[aria-current=page]').count(), 1);
@@ -169,6 +178,7 @@ try {
       }
       if (id === 'lighting') {
         await control('pause').click(); await page.waitForTimeout(100);
+        lightingDirections = await checkFeatureLightingDirections(page);
         const normal = await page.evaluate(pixelHash);
         assert((await snapshot()).normalDrawCalls > 0);
         await control('normal').uncheck(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().normalDrawCalls === 0);
@@ -197,22 +207,18 @@ try {
         await control('reset').click(); assert.equal(await control('zoom').inputValue(), '100'); assert.equal((await snapshot()).actor.x, 128);
       }
       if (id === 'nine-slice') {
-        assert.equal(initial.commands, 19);
-        const original = await page.evaluate(pixelHash);
-        await control('border').fill('4'); await control('border').dispatchEvent('input'); await page.waitForTimeout(100);
-        assert.notEqual((await page.evaluate(pixelHash)).hash, original.hash);
-        await control('sliced').uncheck(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().commands === 3);
-        assert.notEqual((await page.evaluate(pixelHash)).hash, original.hash);
-        await control('reset').click(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().commands === 19);
+        nineSlice = await checkFeatureNineSlice({page,control,snapshot,pixelHash});
       }
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
       await checkNextFeature({ page, id, control, snapshot, pixelHash });
+      Object.assign(learning,await checkLearningControls({page,id,control,snapshot}));
       console.log(`Controls passed ${backend}/${id}`);
       if (backend === 'webgl2') await page.screenshot({ path: resolve(run, `${id}.png`), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(100);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${id} narrow overflow`);
+      await checkLearningNarrow(page,id);
       assert(await page.locator('.feature-topics').evaluate(e => e.getBoundingClientRect().height < 80), 'mobile navigation must stay compact');
       assert.equal(await page.locator('.feature-topic-picker select option:checked').textContent(), catalog.find(f => f.id === id).title);
       const bounds = await page.locator('canvas').boundingBox(); assert(bounds.width >= 300 && bounds.x >= 0 && bounds.x + bounds.width <= 390);
@@ -228,13 +234,15 @@ try {
         assert.equal((await snapshot()).backend, backend);
       }
       if (id === 'animation' && backend === 'webgl2') await page.screenshot({ path: resolve(run, 'mobile.png'), fullPage: true });
+      if (id === 'nine-slice' && backend === 'webgl2') await page.screenshot({ path: resolve(run, 'nine-slice-mobile.png'), fullPage: true });
+      if (backend === 'webgl2' && id !== 'nine-slice') await page.screenshot({ path: resolve(run, `${id}-mobile.png`), fullPage: true });
       assert.deepEqual(errors, []); assert.equal(await page.evaluate(() => window.playgroundGpuError), undefined);
       const resources = await page.evaluate(() => window.ferrumFeatureLab.destroy());
       console.log(`Destroyed ${backend}/${id}`);
       if (id === 'audio' || id === 'cutscene' || id === 'animation') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
-      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview').count(), 0);
+      assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview, .nine-slice-overlay, .feature-scene, .feature-lesson-intro, .feature-lesson-visual, .feature-particle-comparison').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
-      results.push({ backend, id, initial, pixels, controls: 'native state / GPU readback checked', narrow: true, resources });
+      results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
       await page.setViewportSize({ width: 1440, height: 1000 });
     }
     await page.close();
@@ -246,11 +254,16 @@ try {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if (!response.ok()) errors.push(`HTTP ${response.status()} ${response.url()}`); });
-    await page.goto(`http://127.0.0.1:${server.address().port}/nested/${id}/`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/nested/${id}/?preserveDrawingBuffer=true`);
     await page.waitForFunction(() => window.ferrumEngine?.entityCount() > 0 || document.querySelector('.demo-error-shell'));
     assert.equal(await page.locator('.demo-error-shell').count(), 0, await page.locator('body').innerText());
     await page.evaluate(() => document.fonts.ready);
     assert(await page.evaluate(() => document.fonts.check('13px "Ferrum Example UI"')), `${id} Korean font did not load`);
+    if (id === 'breakout' || id === 'platformer') await smokeGuidedExample(page, id);
+    if (id === 'topdown-shooter') {
+      await smokeTopdownShowcase(page, 15000);
+      await page.locator('.shooter-feature-guide summary').click();
+    }
     if (id === 'platformer') {
       await page.evaluate(() => window.ferrumRuntime.pause());
       for (const [index, x, y] of [[0, 260, 420], [1, 610, 272], [2, 760, 440]]) {
@@ -281,9 +294,8 @@ try {
     await page.waitForFunction(() => window.ferrumEngine?.entityCount() > 0);
     // Shooter's title scene has no active collision bodies; start through its public UI.
     if (id === 'topdown-shooter') {
-      await page.locator('canvas').click(); await page.keyboard.down('Enter');
-      try { await page.waitForFunction(() => window.ferrumEngine.gameState() === 1); }
-      finally { await page.keyboard.up('Enter'); }
+      await page.locator('[data-action=start]').click();
+      await page.waitForFunction(() => window.ferrumEngine.gameState() === 1);
     }
     await page.waitForFunction(() => window.ferrumRuntime.renderer.stats().physicsDebugLineCount > 0);
     await page.screenshot({ path: resolve(run, `${id}-guide.png`), fullPage: true });
@@ -297,18 +309,23 @@ try {
   }
   const recovery = focused ? [] : await checkFeatureRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
   const systemsLifecycle = focused ? [] : await checkSystemLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const lifecycle = spatialOnly ? [] : await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
+  const lifecycle = spatialOnly || particlesOnly ? [] : await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
+  if (!particlesOnly) {
   lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'hd2d-movement' }));
   lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'attachments', stages: ['model', 'model-failure'] }));
-  if (!spatialOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'destructible-terrain', texture: 'floor' }));
+  }
+  if (!spatialOnly && !particlesOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'destructible-terrain', texture: 'floor' }));
+  if (!focused || particlesOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'particles', texture: 'particle-dust' }));
   const pointer = focused ? [] : await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
+  if (!particlesOnly) {
   pointer.push(...await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`, ['hd2d-movement']));
   recovery.push(...await checkSpatialRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
-  if (!spatialOnly) {
+  }
+  if (!spatialOnly && !particlesOnly) {
     pointer.push(...await checkTerrainPointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
     recovery.push(...await checkNextRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
   }
-  const report = { ok: true, run, spatialOnly, nextOnly, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
+  const report = { ok: true, run, particlesOnly, spatialOnly, nextOnly, nineSliceOnly, nineSliceFixture, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length + systemsLifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases, ${recovery.length} failure/recovery cases. ${run}`);

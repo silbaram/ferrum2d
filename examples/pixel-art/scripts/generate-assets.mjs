@@ -71,11 +71,12 @@ await png('keeper', hero);
 
 // Deliberately painted rounded normals share the color sheet's exact frame layout.
 // Normal RGB is data (colorSpace:none), not a palette-constrained color image.
+// OpenGL tangent +Y points up, opposite to the image's increasing row coordinate.
 const normal = image(48, 48);
 for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
   const i = (y * 48 + x) * 4;
   if (!hero.pixels[i + 3]) continue;
-  const nx = ((x % 24) - 12) / 16, ny = ((y % 24) - 12) / 22, nz = 1;
+  const nx = ((x % 24) - 12) / 16, ny = (12 - (y % 24)) / 22, nz = 1;
   const length = Math.hypot(nx, ny, nz);
   normal.pixels.set([Math.round((nx / length + 1) * 127.5), Math.round((ny / length + 1) * 127.5), Math.round((nz / length + 1) * 127.5), 255], i);
 }

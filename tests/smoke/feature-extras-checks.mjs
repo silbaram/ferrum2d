@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkFeatureParticles} from './feature-particles-checks.mjs';
 
 // Observe real Web Audio nodes. Do not replace decoding, playback or panning with mocks.
 export function observeFeatureAudio() {
@@ -83,34 +84,7 @@ export async function checkFeatureExtra({ page, id, control, snapshot, pixelHash
     assert.notEqual((await page.evaluate(pixelHash)).hash, middle.hash);
     await control('reset').click(); assert.equal((await snapshot()).layers.robot, 2);
   }
-  if (id === 'particles') {
-    assert.equal((await snapshot()).particles.count, 0);
-    const empty = await page.evaluate(pixelHash);
-    await control('emit').click();
-    await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().particles.count === 24);
-    await control('pause').click();
-    const frozen = await page.evaluate(pixelHash);
-    assert.notEqual(frozen.hash, empty.hash, 'native particles must be visible');
-    await page.waitForTimeout(250); assert.equal((await snapshot()).particles.count, 24);
-    assert.equal((await page.evaluate(pixelHash)).hash, frozen.hash);
-    await control('pause').click();
-    await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().particles.count === 0);
-    await set('count', 8); await set('life', 12); await set('speed', 220);
-    await control('vfx').selectOption('dust-loop'); await control('emit').click();
-    await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().particles.emittedBurstCount >= 3);
-    assert((await snapshot()).particles.count >= 16);
-    await control('stop-emitter').click(); const bursts = (await snapshot()).particles.emittedBurstCount;
-    await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().particles.count === 0);
-    assert.equal((await snapshot()).particles.emittedBurstCount, bursts);
-    await control('vfx').selectOption('motion-trail'); await control('emit').click();
-    const box = await page.locator('canvas').boundingBox();
-    await page.mouse.move(box.x + 80, box.y + 80); await page.waitForTimeout(180);
-    await page.mouse.move(box.x + box.width - 80, box.y + box.height - 80, { steps: 12 });
-    await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().particles.emittedBurstCount >= 2);
-    await control('reset').click(); assert.equal((await snapshot()).particles.count, 0);
-    assert.equal(await control('count').inputValue(), '24');
-    await control('emit').click(); await page.waitForTimeout(200); await control('pause').click();
-  }
+  if (id === 'particles') await checkFeatureParticles({page,control,snapshot,pixelHash});
   if (id === 'audio') {
     assert.equal((await snapshot()).audio.active, false);
     await control('audio-play').click();
@@ -157,6 +131,7 @@ export async function checkFeatureExtra({ page, id, control, snapshot, pixelHash
     await page.keyboard.press('Escape'); // Held key must not leak back into the game.
     await page.waitForTimeout(160); assert.deepEqual((await snapshot()).actor, p);
     await page.keyboard.up('KeyD'); await held('ArrowRight', 300); assert((await snapshot()).actor.x > p.x + 15);
+    await page.locator('[data-ferrum-virtual-joystick]').scrollIntoViewIfNeeded();
     const stick = await page.locator('[data-ferrum-virtual-joystick]').boundingBox();
     const before = (await snapshot()).actor.x;
     await page.mouse.move(stick.x + stick.width - 4, stick.y + stick.height / 2); await page.mouse.down(); await page.waitForTimeout(300); await page.mouse.up();

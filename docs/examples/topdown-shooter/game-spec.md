@@ -2,6 +2,13 @@
 
 이 문서는 Ferrum2D 엔진 전체의 범용 설정 포맷이 아니라, 공식 Top-down Shooter 예제의 데이터 설정 계약을 설명한다. 실제 기준 파일은 `examples/topdown-shooter/public/game.json`이고, 검증/기본값/적용 로직의 코드 기준은 `packages/ferrum-web/src/gameSpec.ts`다.
 
+현재 기본 예제는 Neon Outpost 아레나다. `assets/outpost/` 도트 sheet/타일 atlas는
+`scripts/assets/build-topdown-outpost.py`로 재생성하며 asset manifest가 논리 이름 `player`·`enemy`·`bullet`·`arena`를 연결한다.
+기본 이동 속도는 220, 탄속은 500, 적 표시 크기는 32×32다. 충돌 AABB는 기존 24×24를 명시해 아트 변경으로 피격/접촉 범위가 늘지 않게 한다. orbiter preset은 실제 `orbit`를 사용한다.
+상시 camera shake는 0으로 두고 피격 이벤트에만 화면 offset을 적용한다. UI에서 흔들림 감소, 점광원·후처리·음소거를 전환한다.
+현재 HUD·native 체크포인트 재시작·모바일 조작은 저장소의 `examples/topdown-shooter/README.md`를 따른다.
+아래 JSON은 필드 구조 예시이며 실제 아트/타일 데이터는 `public/game.json`이 기준이다.
+
 AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고, Rust/TypeScript 코드는 검증기나 엔진 기능이 부족할 때만 변경한다.
 
 선택 `postProcessing`은 공용 후처리 설정이다. `{ "pixelArt": { "levels": 8, "dither": 0.5, "scanlineIntensity": 0.15 } }`로

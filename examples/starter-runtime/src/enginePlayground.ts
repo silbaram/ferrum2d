@@ -2,6 +2,7 @@ import { AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer, 
 import { resolveSceneAuthoringDocument, type PostProcessStackInput } from "@ferrum2d/ferrum-web/authoring";
 import type { LightingScene2D } from "@ferrum2d/ferrum-web/labs";
 import { createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "./enginePlayground.css";
 const destinations = [{ x: 144, y: 96 }, { x: 304, y: 296 }, { x: 552, y: 88 }];
 const effects: Record<string, PostProcessStackInput> = {
@@ -11,7 +12,9 @@ const effects: Record<string, PostProcessStackInput> = {
 };
 /** UI/input adapter only. Scene movement, collision, collection and body integration live in Rust. */
 export async function startEnginePlayground(): Promise<void> {
-    const shell = createRuntimeDemoShell({ title: "Ferrum2D · Engine Playground", controls: false, metrics: [] });
+    const lifetime = createExampleLifetime(), { signal } = lifetime;
+    const shell = createRuntimeDemoShell({ title: "Engine Playground · 참고·검증", exampleId: "engine-playground", controls: false, metrics: [] });
+    lifetime.own(() => shell.destroy());
     const { canvas, stage } = shell;
     const root = stage.closest<HTMLElement>(".demo-shell")!;
     root.classList.add("engine-playground");
@@ -65,41 +68,36 @@ export async function startEnginePlayground(): Promise<void> {
     const output = (name: string) => root.querySelector<HTMLOutputElement>(`[data-lab="${name}"]`)!;
     const normal = root.querySelector<HTMLInputElement>('[data-lab="normal"]')!, zoom = root.querySelector<HTMLInputElement>('[data-lab="zoom"]')!;
     const progress = root.querySelector<HTMLOutputElement>(".playground-progress")!;
-    const lifetime = new AbortController(), { signal } = lifetime;
     const requested = new URL(location.href).searchParams.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
     select("renderer").value = requested;
-    const renderer = await createRenderer(canvas, { preferred: requested, webgl2: { preserveDrawingBuffer: true, clearColor: [.035, .065, .09, 1] }, webgpu: { clearColor: [.035, .065, .09, 1] } });
-    const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-    root.querySelector(".playground-backend")!.textContent = `${backend === "webgpu" ? "WebGPU" : "WebGL2"}${backend !== requested ? " · 호환 모드" : ""}`;
-    const loader = new AssetLoader(renderer);
-    let runtime: FerrumRuntime | undefined, view: DataSceneView | undefined, resize: ResizeObserver | undefined;
-    let light = { x: 144, y: 96 }, destroyed = false, lastCells = -1, lastUi = 0, launches = 0, collisions = 0;
-    let lastFrame: {
-        state: number;
-        entities: number;
-        commands: number;
-        drawCalls: number;
-        normalDrawCalls: number;
-        postProcessPassCount: number;
-        cameraX: number;
-        cameraY: number;
-        collisionPairs: number;
-    } | undefined;
-    const cleanup = () => { if (!destroyed) {
-        destroyed = true;
-        lifetime.abort();
-        resize?.disconnect();
-        runtime?.destroy();
-        renderer.destroy();
-        shell.destroy();
-    } return renderer.resourceStats?.(); };
     try {
+        const renderer = await createRenderer(canvas, { preferred: requested, webgl2: { preserveDrawingBuffer: true, clearColor: [.035, .065, .09, 1] }, webgpu: { clearColor: [.035, .065, .09, 1] } });
+        lifetime.own(() => renderer.destroy());
+        const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
+        root.querySelector(".playground-backend")!.textContent = `${backend === "webgpu" ? "WebGPU" : "WebGL2"}${backend !== requested ? " · 호환 모드" : ""}`;
+        const loader = new AssetLoader(renderer);
+        let runtime: FerrumRuntime | undefined, view: DataSceneView | undefined, resize: ResizeObserver | undefined;
+        let light = { x: 144, y: 96 }, lastCells = -1, lastUi = 0, launches = 0, collisions = 0;
+        let lastFrame: {
+            state: number;
+            entities: number;
+            commands: number;
+            drawCalls: number;
+            normalDrawCalls: number;
+            postProcessPassCount: number;
+            cameraX: number;
+            cameraY: number;
+            collisionPairs: number;
+        } | undefined;
+        const cleanup = () => { lifetime.dispose(); return renderer.resourceStats?.(); };
         const textures = { floor: "floor", panel: "panel", wall: "wall", water: "water", robot: "robot", robotNormal: "robot-normal", ball: "ball", ballNormal: "ball-normal", energy: "energy" };
-        await loader.loadAssets({ textures: Object.fromEntries(Object.entries(textures).map(([key, file]) => [key, new URL(`./playground/${file}.png`, document.baseURI).href])), textureOptions: Object.fromEntries(Object.keys(textures).map(key => [key, { colorSpace: "none" as const }])) });
+        await loader.loadAssets({ textures: Object.fromEntries(Object.entries(textures).map(([key, file]) => [key, new URL(`./playground/${file}.png`, document.baseURI).href])), textureOptions: Object.fromEntries(Object.keys(textures).map(key => [key, { colorSpace: "none" as const }])) }, undefined, { signal });
+        lifetime.check();
         const response = await fetch(new URL("./playground/scene.json", document.baseURI), { signal });
         if (!response.ok)
             throw Error(`씬을 불러오지 못했습니다: ${response.status}`);
         const scene = resolveSceneAuthoringDocument(await response.json(), { validateBindings: true, validateComponents: true });
+        lifetime.check();
         runtime = await createFerrumRuntime({ canvas, renderer, assetHost: loader, dataScene: scene, autostart: false, inputOptions: { pointerGestures: false }, engine: { includeCollisionEvents: true },
             lighting: frame => {
                 if (select("lighting").value === "off" || !view)
@@ -133,6 +131,7 @@ export async function startEnginePlayground(): Promise<void> {
                     output("physics-status").textContent = collisions > 0 ? `벽과의 충돌을 확인했어요 · ${select("material").value === "rubber" ? "반사하며 움직이는 고무공" : "에너지를 잃는 점토공"}` : "공이 움직이고 있어요…";
             },
         });
+        lifetime.own(() => runtime?.destroy());
         const handles = () => runtime!.dataScene!.result.entityHandles;
         const camera = () => {
             const fit = Math.min(canvas.clientWidth / 640, canvas.clientHeight / 384);
@@ -166,8 +165,9 @@ export async function startEnginePlayground(): Promise<void> {
             button("pause").textContent = "일시정지";
         };
         configure();
-        resize = new ResizeObserver(() => { if (view && !destroyed)
+        resize = new ResizeObserver(() => { if (view && !lifetime.disposed)
             camera(); });
+        lifetime.own(() => resize?.disconnect());
         resize.observe(canvas);
         const move = (target: {
             x: number;
@@ -224,15 +224,20 @@ export async function startEnginePlayground(): Promise<void> {
         } }, { signal });
         button("reset").addEventListener("click", () => { runtime!.dataScene!.reapply(scene); launches = 0; collisions = 0; lastCells = -1; configure(); output("move-status").textContent = "길을 찾아 전지를 모아보세요."; output("physics-status").textContent = "공을 던지면 실험이 시작됩니다."; }, { signal });
         select("renderer").addEventListener("change", () => { const url = new URL(location.href); url.searchParams.set("renderer", select("renderer").value); location.assign(url); }, { signal });
-        window.addEventListener("pagehide", event => { if (!event.persisted)
-            cleanup(); }, { signal });
-        Object.assign(window, { ferrumEnginePlayground: { snapshot: () => ({ backend, ...lastFrame, cells: runtime!.dataScene!.variables.get("cells"),
+        const diagnostics = { snapshot: () => ({ backend, ...lastFrame, cells: runtime!.dataScene!.variables.get("cells"),
                     actor: runtime!.engine.getPhysicsEntity(handles().robot), ball: runtime!.engine.getPhysicsEntity(handles().ball), animation: runtime!.engine.dataSceneSpriteAnimationState(handles().robot),
-                    launches, collisions, normal: normal.checked, effect: select("effect").value, lighting: select("lighting").value, zoom: Number(zoom.value), resources: renderer.resourceStats?.() }), destroy: cleanup } });
+                    launches, collisions, normal: normal.checked, effect: select("effect").value, lighting: select("lighting").value, zoom: Number(zoom.value), resources: renderer.resourceStats?.() }), destroy: cleanup };
+        Object.assign(window, { ferrumEnginePlayground: diagnostics });
+        lifetime.own(() => {
+            const target = window as Window & { ferrumEnginePlayground?: typeof diagnostics };
+            if (target.ferrumEnginePlayground === diagnostics) delete target.ferrumEnginePlayground;
+        });
+        lifetime.ready();
         runtime.start();
     }
     catch (error) {
-        cleanup();
-        throw error;
+        const cancelled = lifetime.disposed;
+        lifetime.dispose();
+        if (!cancelled) throw error;
     }
 }

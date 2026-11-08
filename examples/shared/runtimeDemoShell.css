@@ -1,21 +1,22 @@
 :root {
-  --demo-text: #eef4ee;
-  --demo-background: #101312;
+  --demo-text: var(--example-text);
+  --demo-background: var(--example-bg);
   --demo-body-background: var(--demo-background);
   --demo-button-min-width: 72px;
-  --demo-button-border: #3f4d47;
-  --demo-button-background: #1b2421;
-  --demo-button-hover-background: #24312b;
-  --demo-focus: #7ddc9d;
-  --demo-canvas-border: #2f3b36;
+  --demo-button-border: var(--example-border);
+  --demo-button-background: var(--example-raised);
+  --demo-button-hover-background: var(--example-hover);
+  --demo-focus: var(--example-accent);
+  --demo-canvas-border: var(--example-border);
   --demo-canvas-background: #121716;
   --demo-metrics-border: var(--demo-canvas-border);
-  --demo-metrics-background: #161d1a;
-  --demo-metrics-label: #9fb0a7;
-  --demo-metrics-value: #f7faf7;
+  --demo-metrics-background: var(--example-panel);
+  --demo-metrics-label: var(--example-muted);
+  --demo-metrics-value: var(--example-text);
   color: var(--demo-text);
   background: var(--demo-background);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--example-font);
+  font-size: 13px;
 }
 
 * {
@@ -33,7 +34,7 @@ button {
   min-width: var(--demo-button-min-width);
   height: 34px;
   border: 1px solid var(--demo-button-border);
-  border-radius: 6px;
+  border-radius: var(--example-radius);
   color: var(--demo-text);
   background: var(--demo-button-background);
   font: inherit;
@@ -51,7 +52,7 @@ button:focus-visible {
 
 .demo-shell {
   min-height: 100vh;
-  padding: 24px;
+  padding: 16px;
 }
 
 .demo-toolbar {
@@ -59,7 +60,7 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  max-width: 1120px;
+  max-width: 1240px;
   margin: 0 auto 16px;
 }
 
@@ -77,16 +78,17 @@ button:focus-visible {
 
 .demo-stage-layout {
   display: grid;
-  grid-template-columns: minmax(0, 800px) 240px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 16px;
   align-items: start;
-  max-width: 1120px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 
 .demo-stage {
   position: relative;
-  width: min(800px, 100%);
+  width: 100%;
+  min-width: 0;
 }
 
 .demo-canvas {
@@ -105,7 +107,7 @@ button:focus-visible {
   margin: 0;
   padding: 12px;
   border: 1px solid var(--demo-metrics-border);
-  border-radius: 6px;
+  border-radius: var(--example-radius);
   background: var(--demo-metrics-background);
   font-size: 14px;
 }
@@ -167,4 +169,17 @@ button:focus-visible {
   .demo-metrics dd {
     text-align: left;
   }
+}
+
+/* A native phase and a paused browser loop are different states. */
+.demo-playback-status { flex: 0 0 auto; padding: 4px 8px; border: 1px solid var(--demo-canvas-border); border-radius: var(--example-radius); font-size: 11px; color: var(--demo-focus); }
+.demo-shell[data-playback] .demo-toolbar h1 { flex: 1; }
+.demo-shell[data-playback=paused] .demo-playback-status { color: #f5c46d; }
+.demo-actions button:disabled { opacity: .45; cursor: wait; }
+.demo-actions button[hidden] { display: none; }
+.demo-canvas:focus-visible { outline: 2px solid var(--demo-focus); outline-offset: 3px; }
+@media (max-width: 860px) {
+  .demo-shell[data-playback] .demo-toolbar { flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .demo-shell[data-playback] .demo-toolbar h1 { flex-basis: 70%; }
+  .demo-shell[data-playback] .demo-actions { flex-basis: 100%; }
 }

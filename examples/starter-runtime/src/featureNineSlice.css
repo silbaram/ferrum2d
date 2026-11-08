@@ -1,0 +1,19 @@
+.feature-lab[data-nine-slice-demo] .demo-canvas { aspect-ratio: 640 / 432; }
+.nine-slice-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.nine-slice-overlay > * { position: absolute; margin: 0; box-sizing: border-box; }
+.nine-slice-label { text-align: center; color: var(--example-muted); font-size: max(12px, calc(12px * var(--nine-slice-scale))); line-height: 1.5; }
+.nine-slice-label h3 { margin: 0 0 4px; color: var(--example-text); font-size: max(14px, calc(16px * var(--nine-slice-scale))); }
+.nine-slice-label p { margin: 0; }
+.nine-slice-label[data-comparison-label="sliced"] h3 { color: var(--example-runtime); }
+.nine-slice-content { display: flex; flex-direction: column; gap: calc(8px * var(--nine-slice-scale)); overflow: hidden; color: var(--example-text); font-size: max(11px, calc(13px * var(--nine-slice-scale))); line-height: 1.4; }
+.nine-slice-content strong { color: var(--example-accent); font-size: max(12px, calc(14px * var(--nine-slice-scale))); }
+.nine-slice-content p { margin: 0; }
+.nine-slice-content small { margin-top: auto; font-size: max(10px, calc(11px * var(--nine-slice-scale))); color: var(--example-muted); }
+.nine-slice-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(4px * var(--nine-slice-scale)); }
+.nine-slice-items span { padding: calc(4px * var(--nine-slice-scale)) 0; text-align: center; border: 1px solid var(--example-border); background: var(--example-bg); font-size: max(10px, calc(11px * var(--nine-slice-scale))); }
+.nine-slice-source-grid { display: grid; grid-template: 1fr 4fr 1fr / 1fr 4fr 1fr; border: 1px dashed var(--example-accent); }
+.nine-slice-source-grid[hidden] { display: none; }
+.nine-slice-source-grid i { border: 1px dashed var(--example-accent); }
+.nine-slice-source-caption { color: var(--example-text); text-align: center; font-size: max(11px, calc(12px * var(--nine-slice-scale))); line-height: 1.6; }
+.nine-slice-source-caption span { color: var(--example-muted); }
+@media (max-width: 600px) { .feature-lab[data-nine-slice-demo] .demo-canvas { aspect-ratio: 320 / 720; } }

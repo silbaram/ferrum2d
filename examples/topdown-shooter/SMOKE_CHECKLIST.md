@@ -39,7 +39,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 ### A. 부팅/화면 진입
 
 - [ ] 브라우저에서 Vite URL 진입 시 캔버스가 깨지지 않고 표시된다.
-- [ ] Title 화면이 표시되고 canvas가 비어 있지 않다.
+- [ ] Neon Outpost 시작 안내와 금속 아레나가 표시되고 canvas가 비어 있지 않다.
 - [ ] 기본 URL에서 DebugOverlay가 게임 화면을 가리지 않는다.
 - [ ] `?debug=true`로 접속하면 DebugOverlay가 표시되고 canvas와 겹치지 않은 상태로 값이 갱신된다.
 - [ ] DebugOverlay에 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `fixed steps`, `kinematic hits`, `tile checks`, `collision events`, `physics debug lines`, `mouse`, `camera`, `state`, `score` label이 표시된다.
@@ -47,7 +47,10 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 ### B. 입력/플레이 전환
 
-- [ ] `Enter` 또는 `Space`로 Title → Playing 전환이 된다.
+- [ ] 출격하기 버튼, `Enter` 또는 `Space`로 Title → Playing 전환이 된다.
+- [ ] 버튼 또는 `P`/`Esc`로 native 시간·위치·웨이브가 멈추고 계속하기로 이어진다.
+- [ ] 다른 탭으로 이동하면 자동으로 멈추며 돌아온 뒤 명시적으로 계속할 수 있다.
+- [ ] 390px 화면에서 가로 넘침 없이 가상 조이스틱·터치 조준·발사 버튼을 사용할 수 있다.
 - [ ] `W/A/S/D`로 플레이어 이동이 된다.
 - [ ] 이동 중 플레이어가 `game.json`의 `prefabs.player.animation.atlas` frame sequence에 따라 애니메이션된다.
 - [ ] camera 좌표가 `look-ahead` preset에 따라 이동 방향 앞쪽으로 변한다.
@@ -66,9 +69,18 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 - [ ] 플레이어-적 충돌 시 game over 상태로 전환된다.
 - [ ] game over 직후 재시작 안내가 표시된다.
-- [ ] `Space`로 재시작하면 score와 상태가 초기화된다.
+- [ ] 다시 출격 또는 `Space`로 재시작하면 score와 상태가 초기화된다.
+- [ ] 일시정지 중 처음부터 다시 시작을 누르면 안내창이 닫히고 첫 웨이브·0점으로 시작한다.
+- [ ] HUD의 현재 웨이브·점수·출현 수가 native snapshot과 일치한다. 세 번째 이후 첫 웨이브로 순환한다.
 
-### E. 오디오/에셋
+### E. 화면 설정
+
+- [ ] 아레나 조명을 켜거나 끌 때 타일·캐릭터 형태를 읽을 수 있고 색조/광원만 바뀐다.
+- [ ] 빛 번짐·비네트를 켜거나 끌 수 있고 일시정지 중 변경은 계속하기 후 보인다.
+- [ ] 화면 흔들림 줄이기를 켜면 피격 시 sprite screen offset이 적용되지 않는다.
+- [ ] 소리 끄기를 켜면 효과음이 꺼지고 해제하면 다시 들린다.
+
+### F. 오디오/에셋
 
 - [ ] 첫 key/pointer 입력 이후 발사/피격/game over 효과음이 정상 재생된다.
 - [ ] `audio.events.*`의 volume/pitch 설정이 과도하게 크거나 낮게 들리지 않는다.

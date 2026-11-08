@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @ferrum2d/ferrum-web build && vite",
-    "build": "vite build --base=./",
+    "build": "tsc -p tsconfig.json && vite build --base=./",
+    "lint": "tsc -p tsconfig.json",
     "preview": "vite preview"
   },
   "dependencies": {
