@@ -4,6 +4,14 @@ Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collid
 
 기존 Physics Sandbox가 fixture/regression 확인에 가까웠다면, 현재 데모는 사용자가 물리엔진 기능을 눈으로 이해하는 것을 우선한다. Rust가 생성한 physics debug line과 TypeScript `DebugGizmoLineBufferWriter`가 만든 동적 line/polyline/arrow/circle을 하나의 엔진 debug line buffer로 합쳐 WebGL2/WebGPU renderer에 전달한다. body label과 sleep 상태는 entity-anchored bitmap world text를 사용한다.
 
+## 화면과 재생 기준
+
+- 시나리오에 선언한 논리 화면(현재 800×480)과 카메라 중심을 사용한다. 기본 Shooter 캐릭터가 실험에 섞이지 않는다.
+- 레터박스·배율·작은 창에서 `createDataSceneView(...)`로 포인터를 같은 월드 좌표로 변환한다. 본 물체를 클릭하면 해당 native body를 선택한다.
+- 물체 형상은 native 충돌체 선으로 표시한다. 충돌체 표시를 끄면 형상선이 숨겨지며, label과 UI는 유지된다.
+- 이 실험실은 빈 Data Scene을 paused로 두고 `stepRigidBodies(...)`로 물리만 직접 진행한다. 일시정지는 물체를 멈추고, 한 프레임은 solver를 한 번 호출한다. UI/frame loop는 계속 실행한다.
+- `조회 물체`와 기존 smoke 필드 `visibleBodyCount`는 조회한 body 상태 수다. 화면 안에 실제 포함된 물체 수를 뜻하지 않는다. 카메라·선택·정지·단일 스텝은 별도 브라우저 검증으로 확인한다.
+
 ## 확인 기술
 
 | 기술 | 설명 |
@@ -55,6 +63,7 @@ http://localhost:5173/?debug=true
 ## 검증
 
 ```bash
+pnpm --filter @ferrum2d/physics-sandbox lint
 pnpm --filter @ferrum2d/physics-sandbox build
 pnpm smoke:physics
 pnpm smoke:physics-sandbox

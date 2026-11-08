@@ -1,5 +1,7 @@
 # Ferrum2D 문서 지도
 
+한국어 · [English](en/README.md)
+
 이 디렉터리의 문서는 역할별로 나누고, 같은 내용을 여러 파일에 길게 반복하지 않는다. 코드와 문서가 충돌할 때는 아래 기준 소스를 먼저 확인한다.
 
 Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine이다. 문서는 사람이 읽는 설명과 함께 AI agent가 Game Spec, Physics Spec, template, validation, smoke check를 안전하게 수정할 수 있는 기준 소스 역할을 한다.
@@ -7,6 +9,10 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 게임 개발 환경을 초기 설정하는 AI 에이전트는 [AI 에이전트용 설치 지침](engine/ai-agent-install.md)을 먼저 읽는다. 엔진 tarball·개발 도구·consumer 지침만 설치하고 의존성을 검증한다. 예제 코드와 게임 데이터는 생성하지 않는다.
 
 Data Scene 캐릭터별 clip, 2.5D view, 방향광·caster API는 [애니메이션·투영·태양 그림자](engine/data-scene-presentation.md)에서 확인한다.
+
+영문 안내는 [English documentation](en/README.md)에서 시작한다. 사용자 설명서·퀵스타트·기능 예제·공개 API 개요를 제공하며,
+미번역 상세 계약은 한국어 문서임을 표시한다. `docs/en/`은 한국어와 대응하는 파일명을 사용한다.
+Pages 메뉴는 현재 언어의 문서만 표시하며, 번역이 없는 문서의 English docs 링크는 영문 문서 지도로 이동한다.
 
 ## 처음 읽는 순서
 

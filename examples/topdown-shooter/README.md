@@ -2,10 +2,36 @@
 
 Ferrum2D의 대표 Game Spec 기반 예제다. `public/game.json`으로 atlas animation, tilemap collision, wave, audio, camera, authored gameplay behavior를 구성하고, Rust core의 built-in Shooter scene을 browser runtime에서 검증한다.
 
-상단 기능 안내에서 Game Spec·웨이브와 타일 충돌·피격 효과의 조작·관찰 항목을 확인한다.
-충돌 영역 표시 링크는 query를 바꾸고 씬을 다시 시작한다. 이 안내는 Behavior Recipe/FSM 편집 또는 variant 적용 UI가 아니다.
-화면은 작은 창에서 가로 넘침 없이 canvas 비율을 유지한다. 기본 texture 0은 흰 텍스처를 써서 지형 tint가 체크무늬와 섞이지 않게 한다.
+현재 기본 화면은 **Neon Outpost**다. 청록색 수비대, 붉은 드론, 금속 바닥·환기구·엄폐물,
+에너지 탄환을 재현 가능한 pixel atlas로 표시한다. `src/showcase.ts`는 DOM/HUD와 조작을,
+`src/presentation.ts`는 화면 조명을 담당한다. 이동·충돌·발사·웨이브·점수·게임 종료는 기존 Rust core가 처리한다.
+
+## 플레이와 화면 설정
+
+- **출격하기 / Enter / Space**: 시작. **WASD** 이동, **마우스** 조준, **클릭 / Space** 발사.
+- **일시정지 / P / Esc**: 멈추거나 같은 상태에서 계속한다. 다른 탭으로 이동하면 자동 일시정지한다.
+- **처음부터 다시 시작 / 다시 출격**: native 시작 체크포인트를 복원하고 점수·웨이브를 초기화한다. 일시정지와 게임 종료 상태에서도 사용할 수 있다.
+- **HUD**: native 점수와 현재 추적·중장갑·선회 웨이브, 출현 수, 경과 시간을 표시한다. 웨이브는 정해진 시간 또는 출현 수에 도달하면 넘어가며 세 번째 뒤에는 첫 번째로 순환한다. 승리/클리어 판정은 없다.
+- **화면과 소리**: 아레나 점광원, bloom·vignette, 피격 흔들림 줄이기, 음소거를 바꾼다. 동작 감소는 OS 설정을 초기값으로 사용한다. 일시정지 중 시각 설정은 계속하기 후 렌더링에 반영된다.
+- **작은 화면**: 게임 비율을 유지하고 설명·설정을 아래로 배치한다. 플레이 중 가상 조이스틱으로 이동하고 화면을 터치해 조준, 발사 버튼으로 사격할 수 있다.
+- **이 예제의 엔진 기능**: 오른쪽 펼침 영역에서 관찰 항목과 충돌 영역 표시 링크를 확인한다. 충돌 표시 링크는 query를 바꾸고 씬을 다시 시작한다.
+
+HUD는 250ms 간격으로 owned native snapshot을 읽고 named accessor를 재사용한다. TypeScript에서 웨이브 타이머나 엔티티 이동을 별도로 계산하지 않는다.
+화면 설정은 저장되지 않으며 새로 열면 기본값으로 돌아간다. 이 UI는 Behavior Recipe/FSM 편집 또는 variant 선택 도구가 아니다.
 한글 UI는 기존 Noto Sans KR subset을 재사용하며 OFL 고지를 `public/fonts/`에 포함한다.
+
+## 도트 에셋 재생성
+
+`public/assets/outpost/`의 PNG 네 개는 저장소가 직접 생성한 예제 에셋이다. 외부 아트나 새 패키지 의존성을 사용하지 않는다.
+
+```bash
+python3 scripts/assets/build-topdown-outpost.py
+python3 scripts/assets/build-topdown-outpost.py --check
+```
+
+`operator.png`는 4열 × 2행의 idle/move sheet, `sentinel.png`는 드론, `pulse.png`는 탄환,
+`arena.png`는 floor/panel/accent/block 네 프레임이다. manifest의 `player`·`enemy`·`bullet`·`arena` 이름과
+`game.json`의 UV/texture 참조가 연결된다. 기존 `assets/player.png` 등은 다른 smoke fixture에서 사용하므로 유지한다.
 
 ## 확인 기술
 
@@ -38,7 +64,7 @@ pnpm --filter @ferrum2d/topdown-shooter build
 pnpm validate:game-spec
 pnpm validate:topdown-authored-behavior-variant
 pnpm smoke:headless
-pnpm smoke:topdown
+pnpm smoke:topdown # 출격·정지·재시작·native HUD·화면 설정·모바일 이동
 pnpm smoke:topdown-save-load
 pnpm smoke:gameplay-replay
 pnpm smoke:topdown-authored-behavior-runtime

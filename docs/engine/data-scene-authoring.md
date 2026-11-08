@@ -708,6 +708,8 @@ optional generator가 설치되지 않은 host는 기존 생성기 unavailable �
 
 `normalTexture`는 color와 동일한 크기/atlas layout의 OpenGL 방향 normal이다. manifest의 normal `colorSpace`는
 `none` 또는 `linear`이며 `srgb`와 크기 불일치는 렌더 시 거절한다. 기존 animation/animationSet의 현재 UV를 공유한다.
+회전·UV 반전이 없는 스프라이트에서 OpenGL 노멀의 +Y(녹색 채널 증가)는 화면 위쪽을 뜻한다. PNG 행 좌표가 아래로 증가하므로
+직접 생성한 둥근 표면은 위쪽에서 G가 128보다 크고 아래쪽에서 작아야 한다. 반대 방향의 노멀은 상하 광원이 뒤집혀 보인다.
 Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 적용·내보내기·저장은 안정적인 자산 이름을 사용한다.
 새 material ABI를 제공하지 않는 구 Wasm은 normal이 없는 씬을 실행하며, normal을 요청한 씬은 활성화 전에 거절한다.
 한 번의 씬 적용에서 normal이 연결된 instance는 최대 65,536개다. 초과하면 기존 씬을 변경하기 전에 거절한다.

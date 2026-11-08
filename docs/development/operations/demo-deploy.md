@@ -37,9 +37,30 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 HD-2D 공간 기반, 예제 Spec, Smoke/Budget, Release 진입점을 제공한다.
 문서 메뉴는 시작하기·공개 API·게임 제작·공식 예제·엔진 개발/검증·배포/운영·개발 계획/후보로 묶는다.
 사이트는 배포한 개발 소스의 문서·예제이며, GitHub Release 설치 파일의 버전과 별개임을 홈에서 안내한다.
+예제 목록은 `examples/shared/exampleCatalog.json`에서 읽고 `pnpm validate:example-catalog`로 역할·경로·실행 명령·관련 실험을 검사한다.
+홈은 기능 검색·분류, 물리 심화, 게임 응용, 제작 도구 순서다. Minimal·이전 통합 데모는 참고·검증용으로 기본 목록에서 제외한다.
+`exampleTheme.css`, `exampleHub.css`, `exampleHub.mjs`를 함께 발행하며 검색 JavaScript가 없어도 기능 링크는 모두 열린다.
+공통 탐색은 중첩 배포 경로를 유지하고 단독 Vite에서는 교차 앱 링크를 만들지 않는다. `pnpm smoke:example-suite`로 검증한다.
+Pages 빌드는 발행 복사본 HTML에만 `ferrum-example-suite` 표식을 넣는다. 경로 이름만으로 통합 사이트를 추정하지 않으므로 개별 앱을 같은 이름의 폴더에 올려도 단독 모드를 유지한다.
+모든 예제의 `index.html`과 `head`를 출력 교체 전에 확인한다. 이 예제 입력 검증 실패는 마지막 정상 `dist-pages`를 보존한다.
+`pnpm test:example-catalog-build`가 이 실패 경로와 원본/발행 표식 경계를 검사하며 통합 예제 gate에도 포함된다.
 시작하기와 현재 문서의 그룹을 기본으로 펼친다. `<details>`를 사용하므로 별도 JavaScript 없이
 마우스와 키보드로 다른 그룹을 펼칠 수 있다. 새 문서는 경로에 따라 해당 그룹에 자동 포함된다.
 넓은 표는 키보드로도 접근 가능한 자체 가로 스크롤 영역에 표시해 모바일에서 문서 전체 폭이 늘어나지 않게 한다.
+
+## 영문 문서
+
+영문 Markdown은 `docs/en/`에 두며 한국어 문서와 같은 상대 경로·파일명을 사용한다.
+`docs/en/README.md`는 `dist-pages/docs/en/index.html`로, 영문 엔진 문서는 `dist-pages/docs/en/engine/*.html`로 생성한다.
+
+- 홈의 **English docs**에서 영문 문서 지도로 이동한다.
+- 문서 메뉴는 현재 언어의 문서만 표시하며 영문 페이지는 `lang="en"`과 영문 메뉴를 사용한다.
+- 한국어·영문 대응 문서가 있으면 언어 전환과 `hreflang`이 같은 문서를 연결한다.
+- 대응 번역이 없으면 **English docs**는 영문 문서 지도로 이동한다. 미번역 문서의 영문판이 있는 것처럼 표시하지 않는다.
+- 영문 가이드의 미번역 상세 계약 링크는 **Korean**으로 표시한다. 문서 언어를 바꿔도 데모·뷰어의 UI 언어는 바꾸지 않는다.
+
+현재 영문 범위는 문서 지도, 사용자 설명서, 퀵스타트, 기능·예제 안내, 공개 API 개요다.
+한국어 문서의 사용 계약을 바꿀 때는 대응 영문 가이드도 함께 확인한다.
 
 ## 로컬 확인
 

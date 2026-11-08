@@ -1,62 +1,71 @@
 # Ferrum2D 예제 안내
 
-엔진 기능을 하나씩 체험하려면 **Starter Runtime의 기능 실험실**부터 연다.
-기능을 선택하면 해당 기능만 있는 씬, 조작 방법, 관찰할 결과, API 이름과 씬 JSON이 나온다.
-점수나 수집 미션을 완료할 필요가 없다.
+예제는 **기능 학습 → 물리 심화 → 게임 응용** 순서로 체험한다. 제작 도구는 게임과 구분한다.
+통합 홈에서 검색·분류하고 각 예제 상단의 같은 메뉴로 이동한다. 화면은 공통 글꼴·색상·조작·관찰 안내를 사용한다.
+기능 카드에는 게임에서 쓰는 상황을 표시한다. 26개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
 
-![기능 실험실의 9-slice 비교 화면](../docs/development/quality/screenshots/engine-feature-lab.png)
+![기능 검색과 학습 순서를 제공하는 통합 예제 홈](../docs/development/quality/screenshots/example-hub.png)
+
+## 전체 예제 열기
+
+저장소 루트에서 실행한다. Wasm·SDK·예제 dist를 처음 준비하거나 엔진 코드를 바꾼 경우 전체 빌드한다.
 
 ```bash
-pnpm dev:starter-runtime
+pnpm build
+pnpm build:pages
+pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 ```
 
-터미널의 주소를 열고 상단에서 주제를 선택한다. 각 기능은 `?feature=<id>`로 바로 열 수 있다.
+`http://localhost:4173/`에서 전체 예제를 연다. 이미 빌드했다면 마지막 명령만 실행하면 된다.
+기능 실험실은 `/starter-runtime/`, 개별 실험은 `?feature=lighting`처럼 직접 연다.
 
-| 기능 | id | 직접 바꾸는 항목 |
+## 공개 예제의 역할
+
+| 단계 | 디렉터리 | 이 예제로 배우는 것 | 단독 개발 실행 |
+| --- | --- | --- | --- |
+| 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 26종 | `pnpm dev:starter-runtime` |
+| 물리 심화 | [physics-sandbox](physics-sandbox/README.md) | 충돌체·접촉/센서·joint·CCD·공간 질의 등 7개 시나리오 | `pnpm dev:physics-sandbox` |
+| 게임 응용 | [breakout](breakout/README.md) | 충돌 → 반사·벽돌 제거·점수·파티클 | `pnpm dev:breakout` |
+| 게임 응용 | [platformer](platformer/README.md) | 이동 컨트롤러 → 점프·착지·단방향/이동 발판 | `pnpm dev:platformer` |
+| 게임 응용 | [topdown-shooter](topdown-shooter/README.md) | Game Spec → 이동·사격·적 웨이브·HUD·조명·오디오 | `pnpm dev:topdown` |
+| 게임 응용 | [pixel-art](pixel-art/README.md) | 도트 원본 → 애니메이션·팔레트・노멀 조명·후처리 | `pnpm dev:pixel-art` |
+| 제작 도구 | [Placement Viewer](../apps/placement-viewer/README.md) | 씬·에셋 작성, 오브젝트 배치·카메라·도트 편집 | `pnpm dev:placement-viewer` |
+
+단독 개발 명령은 개별 Vite 서버다. 실행한 터미널 주소를 열며, 다른 예제 탐색은 통합 미리보기에서 한다.
+게임·실험 앱 6종은 목적, 직접 해보기, 관찰할 결과, 관련 기능 실험을 같은 형식으로 안내한다. 제작 도구는 자체 작업공간을 사용한다.
+Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제공한다. Shooter는 타이틀에서 시작한다.
+
+## 기능 실험 26종
+
+| 분류 | 주제 |
+| --- | --- |
+| 화면 | 애니메이션, 노멀맵·점광원, 후처리, 카메라, 9-slice, 레이어, 파티클 |
+| 움직임 | 길 찾기, 물리 재질, 타일맵·충돌, 입력 전환, 사격·벽 충돌, 지형 파괴 |
+| 게임 구성 | 씬 전환·페이드, 상호작용·트리거, 저장·불러오기, 대화·퀘스트, HUD·다국어·접근성, 컷신 |
+| 플랫폼 | 공간 오디오, 에셋 로딩·캐시, 레벨 스트리밍 |
+| HD-2D | 공간 이동·발판, AI 추적·전투, 부모·자식 연결, 조명·그림자·안개 |
+
+각 실험의 조작과 API는 [기능·예제 지도](../docs/engine/showcase-hub.md)를 따른다.
+
+## 참고·자동 검증용으로 유지하는 경로
+
+아래는 기본 예제 목록에 표시하지 않는다. 기존 URL과 검증은 유지한다.
+
+| 경로 | 유지 이유 | 공개 학습 경로 |
 | --- | --- | --- |
-| 스프라이트 애니메이션 | `animation` | 시트 재생·이동/대기·방향·프레임 발소리·단발 완료 |
-| 길 찾기와 장애물 | `navigation` | 목적지·키보드/포인터 이동 |
-| 물리 재질과 반사 | `physics` | 고무/점토·같은 초기 힘으로 던지기 |
-| 노멀맵과 점광원 | `lighting` | 광원 위치·조명/원본·노멀 적용 |
-| 화면 후처리 | `postprocess` | 원본/bloom/CRT |
-| 카메라 추적과 확대 | `camera` | 고정/추적·배율·이동 목적지 |
-| 9-slice | `nine-slice` | 단순 확대와 비교·적용 여부·테두리 배율 |
-| 타일맵과 타일 충돌 | `tilemap` | 벽/바닥 브러시·통로 열기/닫기·실제 통과 |
-| 레이어와 앞뒤 정렬 | `layers` | 로봇의 그리기 순서·겹친 부분 비교 |
-| 파티클·VFX | `particles` | 불꽃/먼지/잔상·수량/수명/속도·방출/정지 |
-| 공간 오디오 | `audio` | 재생/정지·좌우 위치/거리/볼륨 |
-| 입력 장치와 메뉴 전환 | `input` | 키보드/게임패드/가상 조이스틱·메뉴 입력 차단 |
-| 씬 전환과 페이드 | `scenes` | A/B 왕복·씬/전역 카운터·전환 중 pause |
-| 상호작용과 트리거 | `interaction` | 거리·스위치 조건·문 사용·구역 출입 |
-| 저장과 불러오기 | `save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
-| 대화와 퀘스트 | `dialogue` | 수락/거절·소포 조건·목표 완료 |
-| HUD·다국어·접근성 | `hud` | 체력·한국어/영어·글자 크기·대비 |
-| 사격과 벽 충돌 | `projectiles` | 일반·벽 관통·반사, 동일 속도 한 발 비교 |
-| 컷신과 동작 감소 | `cutscene` | 카메라·자막·효과음, 건너뛰기·동작 감소 |
-| 에셋 로딩과 캐시 | `asset-loading` | 실제 fetch·메모리 캐시, 취소·실패·재시도 |
-| 레벨 스트리밍 | `streaming` | 구역 로드·전용 텍스처 해제·공통 자산 유지 |
-| HD-2D 공간 이동 | `hd2d-movement` | 경사로·층 연결·승강/수평 이동 발판·탑승과 하차 |
-| AI 추적과 전투 | `ai-combat` | 장애물 우회·근접/원거리 공격·체력과 투사체 관찰 |
-| 부모·자식 연결 | `attachments` | 수레 위치/회전·등불/상자 연결·해제 후 위치 비교 |
-| HD-2D 조명·그림자·안개 | `hd2d-environment` | 광원 위치·조명·그림자·거리 안개 전후 비교 |
-| 지형 파괴와 충돌 갱신 | `destructible-terrain` | 클릭으로 지형 깎기·공 낙하·충돌 청크 갱신·복구 |
+| [minimal-game](minimal-game/README.md) | 최소 bootstrap 및 preload/input/content/UI fixture | 기능 실험실, 새 프로젝트는 create-game 템플릿 |
+| `starter-runtime/?mode=starter` | 사격 프로필·리플레이·reset 회귀 | 사격 실험 → Neon Outpost |
+| `starter-runtime/?mode=playground` | 이전 이동·수집·물리 통합 회귀 | 해당 기능 실험 → 도트 정원 |
 
-## 기존 예제에서 더 살펴보기
+## 목록과 검증 관리
 
-| 디렉터리 | 주제 | 실행 |
-| --- | --- | --- |
-| [starter-runtime](starter-runtime/README.md) | 위의 독립 실험 26종. `?mode=starter`는 사격 프로필/리플레이, `?mode=playground`는 이전 통합 게임 | `pnpm dev:starter-runtime` |
-| [physics-sandbox](physics-sandbox/README.md) | rigid body, collider, contact/sensor, joint, CCD, platformer physics, scene query 7개 시나리오 | `pnpm dev:physics-sandbox` |
-| [platformer](platformer/README.md) | 점프·착지·단방향 발판·이동 발판. 기능 선택 후 해당 위치로 이동 | `pnpm dev:platformer` |
-| [breakout](breakout/README.md) | 반사·충돌 이벤트·파티클. 관찰 항목과 충돌 영역 표시 | `pnpm dev:breakout` |
-| [topdown-shooter](topdown-shooter/README.md) | Game Spec·타일 충돌·웨이브·오디오를 연결한 통합 게임 | `pnpm dev:topdown` |
-| [pixel-art](pixel-art/README.md) | 도트 원본·팔레트·정수 배율을 연결한 정원 통합 예제 | `pnpm dev:pixel-art` |
-| [minimal-game](minimal-game/README.md) | 최소 bootstrap 소스와 회귀용 visual/input/UI fixture | `pnpm dev:minimal` |
+- `shared/exampleCatalog.json`: 공개/참고 역할, 경로, 목적, 조작·관찰, 실행 명령, 관련 기능.
+- `shared/featureCatalog.json`: 독립 실험의 이름, 분류, 조작·관찰·API.
+- `shared/exampleHeader.ts`, `exampleTheme.css`: 공개 예제 공통 탐색과 화면 토큰.
+- `pnpm validate:example-catalog`: 중복 ID/경로·없는 명령·관련 기능·씬 파일 검사. Pages 빌드에도 포함된다.
+- `pnpm test:example-catalog-build`: 누락된 예제 입력·잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지, 통합 탐색 표식이 발행 복사본에만 들어가는지 검사한다.
+- `pnpm smoke:example-suite`: 빌드된 전체 예제를 전제로 홈 검색·공통 UI·모바일·키보드·중첩 경로·단독 실행과 실제 게임 입력 검사.
+- `pnpm smoke:feature-examples`: 기능별 native 상태·픽셀·상호작용·자원 회귀.
 
-각 명령은 개별 Vite 서버다. 다른 예제를 열 때는 해당 명령의 터미널 주소를 사용한다.
-하나의 사이트에서 모두 탐색하려면 `pnpm build && pnpm build:pages` 후
-`pnpm preview:examples --host 127.0.0.1`로 열면 된다.
-로컬 빌드는 GitHub Pages 원격 배포를 실행하지 않는다.
-
-`shared/`는 공통 화면과 안내이며 별도 실행 예제가 아니다.
-에디터 예제는 `apps/placement-viewer/`에 있다.
+게임 규칙은 Rust, 입력·렌더링·메뉴는 TypeScript 플랫폼 계층이 담당한다. 공통 UI가 시뮬레이션 상태를 소유하지 않는다.
+통합 탐색은 Pages 빌드가 발행 HTML에 넣는 표식으로 활성화한다. 개별 dist를 같은 이름의 폴더에 단독 호스팅해도 다른 앱으로 잘못 연결하지 않는다.

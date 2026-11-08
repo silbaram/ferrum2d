@@ -33,6 +33,20 @@ native LOD snapshot·camera visibility·generation 전달·owned matrix·구 Was
 런타임 정지 후 새 camera 입력과 기존 표시 화면의 선택 일치를 검사한다. 단독 실행은
 `node tests/smoke/placement-village-smoke.mjs --model-picking-only`다.
 
+`pnpm smoke:topdown`은 Neon Outpost production 화면에서 시작 버튼, P/Esc·버튼 일시정지/계속,
+정지 중 native 시간·위치·점수·웨이브 불변, native snapshot 기반 HUD, 조명/후처리 draw 통계 전환,
+정지/게임 종료 후 재시작, 390px 가상 조이스틱 이동·취소와 렌더 규모/16 draw 이하를 검증한다.
+이 검증은 기존 `smoke:topdown`과 기본 CI의 `smoke:feature-examples`에 연결되며 테스트 구현은 `tests/smoke/topdown-showcase-smoke.mjs`다.
+에셋 생성의 재현성은 `python3 scripts/assets/build-topdown-outpost.py --check`로 확인한다.
+
+`tests/smoke/guided-examples-smoke.mjs`는 기존 gate에서 다음 예제 사용성을 확인한다.
+
+- `smoke:feature-examples`: Breakout/Platformer의 native 시간·위치 정지, P/Esc, 정지 중 초기화, 게임 종료 후 재도전(Breakout), 터치 이동·입력 취소·점프, 800×480 viewport와 8 draw 이하.
+- `smoke:physics-demo-suite`, `smoke:physics-sandbox`: 기본 시나리오의 Shooter actor 제외, camera/viewport, native body 정지, 클릭당 solver 한 번, desktop/mobile 레터박스 포인터 좌표와 선택.
+- `smoke:starter-runtime`: Reset·버튼/Space 재시작 전후 선택한 native primary action 설정 유지.
+
+Physics Lab의 `visibleBodyCount`는 기존 이름을 유지한 body 상태 조회 수이며 화면 culling 측정치가 아니다. UI에서는 `조회 물체`로 표시한다.
+
 ## 일반 2D sprite normal 검증
 
 `pnpm smoke:sprite-normal-2d`는 빌드된 SDK/Wasm으로 WebGL2와 native WebGPU offscreen 경로를 DPR1/2에서 검사한다.
@@ -2462,9 +2476,31 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 
 ### 엔진 기능별 예제
 
+파티클 구분 검사는 `feature-particles-checks.mjs`를 사용한다. 불꽃/먼지/잔상의 고유 기본값,
+서로 다른 native texture id와 실제 픽셀, 먼지 크기 증가·알파 감소, 정지 뒤 방출 종료와 기존 입자 만료를 확인한다.
+나란히 비교는 실제 두 native 입자 그룹·pause/reset·390/320px 이름표 경계와 겹침을 검사한다.
+초기화 중 새 먼지 PNG를 지연한 채 이탈하거나 씬 읽기가 실패해도 GPU 자원이 남지 않아야 한다. 이 검사는 전체 feature smoke에도 포함한다.
+빌드 후 해당 주제만 확인할 때는 `node tests/smoke/feature-examples-smoke.mjs --particles-only`를 사용한다.
+결과는 `artifacts/particle-dust-clarity/browser/verification.json`에 저장한다.
+
+
 `pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 26종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+Catalog 검증은 각 주제의 `lesson`에 사용 상황·실험 설명·2~4단계·범례·유효한 객체 참조가 있는지 확인한다.
+`feature-learning-checks.mjs`는 실제 페이지의 설명·실행 버튼 배치, 이름표의 화면 경계/겹침,
+대화/HUD의 캔버스 내부 배치와 한국어 글꼴, 게임 화면에 붙인 조이스틱의 가림 없는 배치, 접힌 수치 진단을 확인한다.
+카메라의 실제 화면 영역·광원 상하 선택·탄 충돌 정책·로딩/캐시·스트리밍·부모 연결 상태와 비교 그림의 일치도 검사한다.
+모든 주제의 WebGL2 데스크톱/390px 캡처를 run 디렉터리에 저장한다. 320px를 포함한 전수 화면 검토 근거는
+`artifacts/feature-learning-clarity/`에 보관한다. 리사이즈 후 다음 프레임에 이름표를 다시 투영해야 한다.
+학습 UI는 기존 native/platform snapshot을 표시한다. 2D 이름표는 200ms 관측 구간에서 한 번의 bulk pose 조회로 읽고,
+HD-2D는 이미 조회한 pose와 소유한 카메라 숫자를 사용한다. borrowed Wasm view를 다음 조회까지 보관하지 않는다.
 애니메이션 재생/반전, 장애물 우회와 도달 불가 목적지, 물리 재질에 따른 실제 속도와 pause,
 노멀/광원/후처리 GPU pixel 차이, 카메라 추적/확대, 9-slice 명령 수/테두리 차이를 확인한다.
+9-slice는 대화창·가방의 같은 크기 비교와 24×24 원본을 표시한다. 너비/높이를 바꿔도 native 모서리 command의 크기가 유지되고,
+테두리 배율을 바꾸면 실제 크기가 비례해야 한다. 적용 해제(11→3개 command), 일시정지 상태 유지, Reset·키보드·390/320px 세로 배치와 해제도 검사한다.
+해당 검사만 실행하려면 SDK/Wasm과 starter-runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --nine-slice-only`를 사용한다.
+별도 결과는 `artifacts/nine-slice-example/browser/verification.json`에 저장하며 전체 feature smoke와 기존 CI에도 같은 검사가 포함된다.
+조명 실험은 실제 포인터를 공의 상하좌우로 이동하고 같은 표면 픽셀의 밝기를 반대편 광원과 비교한다.
+WebGL2/WebGPU 양쪽에서 광원이 있는 면이 밝아져야 하며, 공·로봇·정원지기의 생성된 노멀맵도 OpenGL +Y 위쪽 규약을 확인한다.
 타일 통로의 native 충돌/통과·점유 중 닫기 거절·벽으로 막힌 출발 위치 복귀 방지, 레이어 변경 pixel, 파티클 burst/loop/trail·수명·정지, 실제 Web Audio 노드의 좌우 출력·거리 감쇠·context 종료, 키보드/가상 조이스틱/게임패드 polling과 메뉴 복귀 중립화도 확인한다. 중첩 URL, 설정 초기화, 390px 폭, 키보드 접근, 자원 0 복귀도 검사한다. 기존 Platformer의 구역 이동, Breakout/Shooter의 기능 안내 전환, 충돌 영역 재시작 링크와 실제 debug line 렌더링, 작은 화면 배치도 검증한다. Shooter는 타이틀에서 Enter로 시작한 뒤 확인한다.
 각 실험은 native Playing 상태로 전환된 뒤 검사한다. 레이어/조명/후처리/오디오의 기본 픽셀이 시간에 따라 바뀌지 않는지도 확인해 비교 결과에 애니메이션이 섞이는 것을 막는다.
 기존 예제에서는 기능 메뉴를 선택한 뒤 캔버스를 누르면 키보드 포커스가 복귀하는지 확인한다. 저수준 `createEngine`을 사용하는 Shooter는 debug 활성화와 FrameState 포함 옵션을 함께 설정한다.
@@ -2485,7 +2521,35 @@ HD-2D 환경 실험은 동일 장면의 그림자 켬/끔·광원 위치·안개
 수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 52개 기능/renderer 조합, 기존 안내 3종, 초기 로딩 생명주기 11종, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료 6개 조합, DPR/터치 8개 조합, 실패/복구 16개 조합을 실행한다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
+### 통합 예제 Catalog와 공통 화면
+
+`pnpm validate:example-catalog`는 공개/참고 역할·중복 ID/경로·실제 실행 명령·관련 feature와 씬 파일을 검사한다.
+Pages 빌드도 같은 검증을 실행한다. `exampleCatalog.json`은 앱 역할·목적·조작·관찰의 기준이고 `featureCatalog.json`은 기능 실험의 기준이다.
+
+`pnpm smoke:example-suite`는 전체 예제 dist를 전제로 Pages artifact를 만들고 통합 홈의 검색·분류·검색 URL 복원·빈 결과·JavaScript 없는 링크를 확인한다.
+먼저 `pnpm test:example-catalog-build`를 실행해 예제 index/head 오류 시 기존 산출물 보존과 발행 복사본의 통합 표식을 검증한다.
+공개 앱 6종의 공통 메뉴·현재 선택·관련 실험·테마, 1440/390/320px 폭, 키보드 안내 패널을 검사한다.
+안내 패널의 Space 조작이 게임 점프를 발생시키지 않고, UI로 포커스를 옮긴 뒤 키를 놓아도 게임 입력이 해제되어야 한다.
+데스크톱 도트 정원의 3배 정수 배율과 Breakout/Platformer의 DPR 1·2 전체 표시도 확인한다.
+중첩 배포와 `index.html`에서 실제 앱 전환, 단독 서버의 잘못된 교차 앱 링크 차단, 참고용 기존 URL도 검증한다.
+예제와 같은 이름의 단독 폴더, 뒤로가기의 현재 선택, 고해상도·JavaScript 비활성 보조 페이지의 오류도 확인한다.
+물리 picking은 폰트와 리사이즈된 캔버스 해상도를 확인한 뒤 좌표를 계산하며 허용 오차는 계속 1 미만이다.
+Breakout/Platformer 입력·일시정지·재시작·터치, Physics 좌표/단일 step, Shooter native HUD/입력, Starter 프로필 복원은 기존 검증 helper를 재사용한다.
+공통 수명 처리(`examples/shared/exampleLifetime.ts`)를 사용하는 게임·참고 예제 8종은 시작 전부터 `pagehide`를 처리한다.
+HTTP/Wasm 응답을 지연시킨 도중 이탈하거나 실제 로딩을 실패시켜, 뒤늦은 런타임 실행·진단 hook 노출·GPU 자원 재생성이 없는지 검사한다.
+WebGL의 실제 Texture/Buffer/Program/Shader/Framebuffer/Renderbuffer/VAO 생성·삭제를 추적하며, 취소할 수 없는 Wasm 초기화의 완료도 기다린다.
+준비된 BFcache 페이지는 런타임을 유지하고, 초기화가 취소된 BFcache 페이지는 복원 때 새로 초기화해야 한다.
+Minimal은 공개 탐색 메뉴에 재노출하지 않고 별도의 단독 빌드 테스트 경로로 검사한다.
+물리 씬 전환은 늦은 이전 응답 무시, 최신 선택 유지, 실패 시 기존 월드 유지·오류 표시와 정상 요청으로 복구까지 검증한다.
+공통 shell의 `controls:false`는 기본 재생 버튼만 숨긴다. 뷰어가 사용하는 `.demo-actions` 확장 영역을 유지해야 하며,
+공식 `smoke:placement-viewer`의 production 파일/예제 메뉴와 실행·중지 검사로 이 계약도 확인한다.
+native 객체와 명령이 실제로 존재하고 entity≤2,500·command≤3,000·draw≤64여야 한다. 이는 UI 회귀용 상한이며 성능 보증 수치는 아니다.
+결과는 `artifacts/example-suite/verification.json` 및 고유 run에 저장한다. 기존 `smoke:check`와 수동 CI에서 실행하고 artifact를 업로드한다.
+뷰어 제작 도구는 메뉴·발행 경로를 제공하며 viewer 자체 편집 동작은 기존 viewer gate를 따른다.
+
 ### Engine Playground 통합 데모
+
+이전 통합 데모는 참고·검증용 경로다. 공개 학습 안내는 기능 실험실과 역할별 게임 예제로 통합했다.
 
 `pnpm smoke:engine-playground`는 빌드된 SDK/Wasm을 전제로 starter-runtime lint/build 후 `?mode=playground` 통합 게임을 검증한다. CI에서는 앞선 SDK/Wasm build 이후 실행한다. 중첩 URL 경로에서 WebGL2 및 WebGPU로 실제 키보드 이동/애니메이션, 장애물 경로와 전지 3개 수집, 고무·점토 공 반사/감속, 움직이는 공의 pause/resume, 재시작, 카메라 추적/확대, 광원·노멀·후처리 pixel readback 변화, 390px 화면과 키보드 접근, 자원 0 복귀를 확인한다. 증거는 `artifacts/engine-playground/verification.json` 및 고유 run 디렉터리다. WebGPU는 Chromium 소프트웨어 offscreen target으로 검증하며 네이티브 presentation과 하드웨어 성능을 보증하지 않는다.
 

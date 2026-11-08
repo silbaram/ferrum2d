@@ -1,5 +1,7 @@
 # Ferrum2D 사용자 설명서
 
+한국어 · [English](../en/engine/user-guide.md)
+
 Ferrum2D는 **AI agent-first 2D · HD-2D 웹 게임 엔진**이다. Rust/Wasm이 게임 상태·충돌·씬 진행과
 렌더 명령을 만들고, TypeScript가 브라우저 입력·에셋·오디오와 WebGL2/선택 WebGPU 렌더링을 담당한다.
 AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 결과를 확인한다.
@@ -46,8 +48,12 @@ AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 �
 | Platformer | `pnpm dev:platformer` | 점프·단방향 발판·이동 발판 |
 | 작은 빛의 정원 | `pnpm dev:pixel-art` | 도트 원본·씨앗 수집·조명·팔레트·화면 효과 |
 
-기능 실험실은 기본 화면이며, 같은 Starter Runtime의 통합 게임은 `?mode=playground`,
-기존 사격 starter는 `?mode=starter`로 연다. 전체 목록과 조작법은 [Showcase Hub](showcase-hub.md)를 따른다.
+예제는 **기능 학습 → 물리 심화 → 게임 응용** 순서로 탐색한다. 제작 도구는 별도 영역에 있다.
+통합 홈은 기능 검색·분류를 제공하고, 게임·실험 예제의 상단에는 같은 탐색 메뉴와 조작·관찰·관련 실험 안내가 있다.
+전체를 로컬에서 보려면 `pnpm build && pnpm build:pages && pnpm preview:examples`를 실행한다.
+단독 Vite 서버에서는 다른 앱으로 연결하지 않으며 통합 미리보기 실행 방법을 안내한다.
+Minimal과 이전 `?mode=playground`/`?mode=starter`는 참고·검증용으로 유지하며 기본 목록에서 제외한다.
+전체 목록과 조작법은 [Showcase Hub](showcase-hub.md)를 따른다.
 
 ## 뷰어에서 작성하고 실행하기
 
