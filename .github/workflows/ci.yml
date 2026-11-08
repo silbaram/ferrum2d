@@ -216,6 +216,17 @@ jobs:
       - name: Independent engine feature examples on WebGL2 and WebGPU
         run: node tests/smoke/feature-examples-smoke.mjs
 
+      - name: Example catalog, unified UI and application navigation
+        run: pnpm smoke:example-suite
+
+      - name: Upload example suite evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-suite
+          path: artifacts/example-suite
+          if-no-files-found: ignore
+
       - name: Upload feature example evidence
         if: always()
         uses: actions/upload-artifact@v4

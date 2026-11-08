@@ -1,14 +1,2 @@
-:root {
-  --demo-text: #e9eef5;
-  --demo-background: #0d1014;
-  --demo-button-min-width: 76px;
-  --demo-button-border: #334252;
-  --demo-button-background: #17202a;
-  --demo-button-hover-background: #203040;
-  --demo-focus: #65d184;
-  --demo-canvas-border: #273340;
-  --demo-canvas-background: #10141a;
-  --demo-metrics-background: #131a22;
-  --demo-metrics-label: #98a9ba;
-  --demo-metrics-value: #f7fafc;
-}
+/* Canvas color is example-specific; chrome uses the shared theme. */
+:root { --demo-canvas-background: #10141a; }

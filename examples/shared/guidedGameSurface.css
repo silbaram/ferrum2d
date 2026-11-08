@@ -1,0 +1,17 @@
+.guided-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 12px 14px; border: 1px solid var(--demo-canvas-border); border-top: 0; background: #101922; color: #bdcad8; font-size: 12px; }
+.guided-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.guided-legend i { width: 9px; height: 9px; border-radius: 2px; }
+.guided-hint { margin: 10px 0 0; color: #97aabc; font-size: 11px; line-height: 1.6; }
+.guided-touch-pad { display: none; position: relative; height: 68px; }
+.guided-touch-pad [data-ferrum-virtual-buttons] { left: 0 !important; right: 0 !important; bottom: 0 !important; gap: 10px !important; }
+.guided-touch-pad button { flex: 1; min-width: 0 !important; height: 48px !important; padding: 0 8px !important; border-radius: var(--example-radius) !important; font-family: var(--example-font) !important; }
+.example-guided .demo-canvas { border: 0; outline: 1px solid var(--demo-canvas-border); }
+.example-guided .demo-canvas:focus-visible { outline: 2px solid var(--demo-focus); }
+.example-guided .demo-metrics { border-radius: var(--example-radius); padding: 16px; line-height: 1.7; }
+/* Fit the fixed 800px game surface instead of enlarging its letterbox. */
+.example-guided :is(.example-header, .demo-toolbar, .example-guide, .demo-stage-layout) { max-width: 1096px; }
+.example-guided .demo-stage-layout { grid-template-columns: minmax(0,800px) 280px; }
+@media (max-width: 860px) { .example-guided .demo-stage-layout { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 700px), (pointer: coarse) {
+  .demo-shell[data-playback=playing] .guided-touch-pad { display: block; }
+}

@@ -21,6 +21,9 @@ import {
   runtimeBudgetProfileIdForSmokeMode,
 } from "./runtime-budget-profiles.mjs";
 
+import { smokePhysicsLabViewport, smokeStarterProfileReset } from "./guided-examples-smoke.mjs";
+import { smokeTopdownShowcase } from "./topdown-showcase-smoke.mjs";
+
 const DEFAULT_DIST_DIR = "examples/starter-runtime/dist";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -869,7 +872,10 @@ async function waitForPageFunction(page, description, predicate, timeoutMs, arg 
   try {
     await page.waitForFunction(predicate, arg, { timeout: timeoutMs });
   } catch (error) {
-    throw new Error(`${description}: ${describeError(error)}`);
+    const authored = description.startsWith("Top-down authored behavior")
+      ? await page.evaluate(() => ({ frame: globalThis.ferrumTopdownAuthoredBehaviorFrame, runtimeApply: globalThis.ferrumTopdownAuthoredBehaviorVariant?.runtimeApply })).catch(() => undefined)
+      : undefined;
+    throw new Error(`${description}: ${describeError(error)}${authored ? `\n${JSON.stringify(authored)}` : ""}`);
   }
 }
 
@@ -976,6 +982,7 @@ async function smokeCameraPostProcess(page, timeoutMs) {
 }
 
 async function smokeDefaultRender(page, timeoutMs) {
+  if (await page.locator(".shooter-shell").count()) return await smokeTopdownShowcase(page, timeoutMs);
   await waitForPageFunction(page, "green placeholder pixels were not rendered", hasRenderedGreenPixels, timeoutMs);
   const hasStarterRuntimeHooks = await page.evaluate(() => Boolean(
     globalThis.ferrumStarterRuntimeCaptureReport
@@ -3137,6 +3144,7 @@ async function smokeStarterRuntime(page, timeoutMs) {
   const projectile = await waitForStarterRuntimeProjectileVisual(page, timeoutMs);
   await page.click("[data-starter-capture-button='true']", { timeout: timeoutMs });
   const captured = await waitForStarterRuntimeCapture(page, switched.captureCount, timeoutMs);
+  const restart = await smokeStarterProfileReset(page, timeoutMs);
 
   return {
     starterRuntime: {
@@ -3146,6 +3154,7 @@ async function smokeStarterRuntime(page, timeoutMs) {
       switched,
       projectile,
       captured,
+      restart,
     },
   };
 }
@@ -4664,9 +4673,10 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
     demoId,
   );
 
-  return await page.evaluate(() => ({
+  const viewportCheck = demoId === "rigid-materials" ? await smokePhysicsLabViewport(page, timeoutMs) : undefined;
+  return { ...(viewportCheck ? { physicsViewport: viewportCheck } : {}), ...await page.evaluate(() => ({
     physicsSandbox: globalThis.ferrumPhysicsSandboxSmokeFrame,
-  }));
+  })) };
 }
 
 async function smokePhysicsDemoSuite(page, timeoutMs) {

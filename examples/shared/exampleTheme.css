@@ -1,0 +1,49 @@
+@import "./exampleFont.css";
+
+/* Pixelforge tokens mapped to demo chrome. Local UI font keeps the suite offline. */
+:root {
+  color-scheme: dark;
+  --example-bg: #080b0f;
+  --example-panel: #0b1016;
+  --example-raised: #111821;
+  --example-hover: #172130;
+  --example-border: #2a3645;
+  --example-text: #dce5ee;
+  --example-muted: #aeb9c6;
+  --example-subtle: #788596;
+  --example-accent: #f5a742;
+  --example-selection: rgba(245,167,66,.18);
+  --example-render: #7aa2ff;
+  --example-runtime: #6ee7b7;
+  --example-physics: #38d5e8;
+  --example-font: "Ferrum Example UI", system-ui, sans-serif;
+  --example-radius: 2px;
+  font-family: var(--example-font);
+}
+
+.example-header { max-width: 1240px; margin: 0 auto 16px; color: var(--example-text); font: 13px/1.6 var(--example-font); }
+.example-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--example-border); }
+.example-brand { color: var(--example-text); font-weight: 700; font-size: 14px; }
+.example-breadcrumb { color: var(--example-accent); border-left: 1px solid var(--example-border); padding-left: 16px; }
+.example-navigation > a { color: var(--example-muted); text-decoration: none; }
+.example-switcher { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; color: var(--example-muted); }
+.example-header :is(select, button) { color: var(--example-text); background: var(--example-raised); border: 1px solid var(--example-border); border-radius: var(--example-radius); font: inherit; height: 32px; min-width: 0; max-width: 100%; padding: 0 8px; }
+.example-header :is(a, select, summary):focus-visible { outline: 2px solid var(--example-accent); outline-offset: 2px; }
+.example-purpose { margin: 12px 0 8px; color: var(--example-muted); }
+.example-learning summary { color: var(--example-text); cursor: pointer; width: fit-content; }
+.example-learning dl { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 8px 16px; padding: 12px; margin: 8px 0; border: 1px solid var(--example-border); background: var(--example-panel); }
+.example-learning dt { color: var(--example-accent); }
+.example-learning dd { margin: 0; min-width: 0; }
+.example-related { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0; }
+.example-related a { color: var(--example-render); text-decoration: none; }
+.example-standalone { display: block; color: var(--example-subtle); font-size: 12px; }
+.example-standalone code { color: var(--example-text); overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  .example-navigation { gap: 8px 12px; }
+  .example-breadcrumb { padding-left: 12px; }
+  .example-switcher { flex-basis: 100%; margin-left: 0; }
+  .example-switcher select { flex: 1; width: 0; }
+  .example-learning dl { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .example-learning dd + dt { margin-top: 8px; }
+}

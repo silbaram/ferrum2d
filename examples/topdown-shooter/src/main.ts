@@ -1,8 +1,12 @@
 import { createExampleGuide } from "../../shared/exampleGuide";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "./styles.css";
+import { createShooterShowcase, type ShowcaseWave } from "./showcase";
+import { applyOutpostLighting } from "./presentation";
 import {
   BrowserPlatformHost,
   InputManager,
+  VirtualControls,
   LoadingOverlay,
   WebGL2Renderer,
   createEngine,
@@ -50,8 +54,7 @@ import {
   diagnosticReport,
 } from "@ferrum2d/ferrum-web/quality";
 import {
-  cleanupRuntimeDemoResources,
-  runtimeDemoDiagnosticRows,
+  renderRuntimeDemoError,
 } from "../../shared/runtimeDemoShell";
 
 type ShooterGameSpec = Parameters<FerrumEngine["setGameSpec"]>[0];
@@ -66,7 +69,7 @@ const TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT = 1024;
 const TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS = 32;
 const TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS = 999;
 const TOPDOWN_MASS_OBJECTS_SMOKE_COLLISION_PAIR_BUDGET = 2_000;
-const TOPDOWN_ASSET_CACHE_SALT = "topdown-shooter-v1";
+const TOPDOWN_ASSET_CACHE_SALT = "topdown-shooter-outpost-v2";
 const TOPDOWN_ASSET_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPDOWN_CAMERA_SHAKE_DURATION_MS = 220;
 const TOPDOWN_CAMERA_SHAKE_AMPLITUDE = 8;
@@ -316,17 +319,6 @@ function assetApplyError(kind: "texture" | "sound" | "json", name: string, detai
   return new Error(`Asset apply error: kind=${kind} name='${name}' detail='${detail}'.`);
 }
 
-function applyBootstrapErrorStyles(container: HTMLElement, list: HTMLElement): void {
-  container.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  container.style.maxWidth = "760px";
-  container.style.margin = "48px auto";
-  container.style.padding = "0 24px";
-  container.style.color = "#17202a";
-  list.style.display = "grid";
-  list.style.gridTemplateColumns = "max-content minmax(0, 1fr)";
-  list.style.gap = "8px 16px";
-}
-
 function publicAssetUrl(path: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
 }
@@ -334,9 +326,10 @@ function publicAssetUrl(path: string): string {
 function topdownAssetManifest(): AssetManifest {
   return {
     textures: {
-      player: publicAssetUrl("assets/player.png"),
-      enemy: publicAssetUrl("assets/enemy.png"),
-      bullet: publicAssetUrl("assets/bullet.png"),
+      player: publicAssetUrl("assets/outpost/operator.png"),
+      enemy: publicAssetUrl("assets/outpost/sentinel.png"),
+      bullet: publicAssetUrl("assets/outpost/pulse.png"),
+      arena: publicAssetUrl("assets/outpost/arena.png"),
     },
     sounds: {
       shoot: publicAssetUrl("assets/shoot.wav"),
@@ -360,6 +353,7 @@ async function preloadTopdownAssets(
   manifest: AssetManifest,
   overlay: LoadingOverlay,
   onProgressText: (text: string) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   const cache = new IndexedDbAssetCache({
     databaseName: "ferrum2d-topdown-shooter-assets",
@@ -372,6 +366,7 @@ async function preloadTopdownAssets(
   });
 
   await preloadAssetManifest(manifest, {
+    signal,
     cache,
     cachePolicy,
     onProgress: (progress) => {
@@ -1057,6 +1052,11 @@ function restoreTopdownMassObjectsSnapshot(
     throw assetApplyError("json", "massObjectsSmoke", "Base shooter snapshot does not include a player entity.");
   }
   const playerSlot = accessor.entityIndex;
+  const placementViewport = {
+    ...viewport,
+    x: accessor.cameraX - viewport.width / 2,
+    y: accessor.cameraY - viewport.height / 2,
+  };
 
   const enemyCount = TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT;
   const entityCount = enemyCount + 1;
@@ -1097,7 +1097,7 @@ function restoreTopdownMassObjectsSnapshot(
       accessor,
       enemyIndex + 1,
       enemyIndex,
-      viewport,
+      placementViewport,
     );
   }
 
@@ -1142,7 +1142,7 @@ function writeTopdownMassObjectsEnemySnapshot(
   accessor: BuiltInShooterStateAccessor,
   slot: number,
   enemyIndex: number,
-  viewport: { width: number; height: number },
+  viewport: { x: number; y: number; width: number; height: number },
 ): void {
   const columns = TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS;
   const rows = Math.ceil(TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT / columns);
@@ -1151,8 +1151,8 @@ function writeTopdownMassObjectsEnemySnapshot(
   const column = enemyIndex % columns;
   const row = Math.floor(enemyIndex / columns);
   accessor.select(slot);
-  accessor.x = column * cellWidth + cellWidth * 0.5;
-  accessor.y = row * cellHeight + cellHeight * 0.5;
+  accessor.x = viewport.x + column * cellWidth + cellWidth * 0.5;
+  accessor.y = viewport.y + row * cellHeight + cellHeight * 0.5;
   accessor.health = 1;
   accessor.kind = "enemy";
   accessor.scoreReward = 1;
@@ -1195,31 +1195,11 @@ function recordTopdownMassObjectsSmokeFrame(
 }
 
 function reportBootstrapError(error: unknown): void {
-  console.error("Ferrum2D bootstrap failed", error);
-  const app = document.querySelector<HTMLDivElement>("#app");
-  if (!app) return;
-
-  const report = diagnosticReport(error);
-  const container = document.createElement("section");
-  const title = document.createElement("h1");
-  const summary = document.createElement("p");
-  const list = document.createElement("dl");
-  title.textContent = "Ferrum2D Top-down Shooter MVP";
-  summary.textContent = "Startup failed. Diagnostic details are shown below.";
-
-  for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
-    const term = document.createElement("dt");
-    const description = document.createElement("dd");
-    term.textContent = label;
-    description.textContent = value;
-    description.style.margin = "0";
-    description.style.wordBreak = "break-word";
-    list.append(term, description);
-  }
-
-  applyBootstrapErrorStyles(container, list);
-  container.append(title, summary, list);
-  app.replaceChildren(container);
+  renderRuntimeDemoError(error, {
+    title: "Neon Outpost · Top-down Shooter",
+    summary: "게임을 시작하지 못했습니다. 아래 진단 정보를 확인하세요.",
+    diagnosticReport,
+  });
 }
 
 async function bootstrap(): Promise<void> {
@@ -1227,12 +1207,10 @@ async function bootstrap(): Promise<void> {
   // lifecycle and diagnostic primitives without forcing those controls into RuntimeDemoShell.
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
-  const cleanups: Array<() => void> = [];
+  const lifetime = createExampleLifetime();
+  const own = lifetime.own;
 
   try {
-    const title = document.createElement("h1");
-    const hudEl = document.createElement("p");
-    title.textContent = "Ferrum2D · Game Spec 통합 예제";
     const searchParams = new URLSearchParams(window.location.search);
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
@@ -1241,61 +1219,63 @@ async function bootstrap(): Promise<void> {
     const authoredBehaviorVariantApplyEnabled = searchParams.get("authoredBehaviorVariantApply") === "true";
 
     const canvas = document.createElement("canvas");
-    canvas.style.width = "100%";
-    canvas.style.aspectRatio = "5 / 3";
-    canvas.style.display = "block";
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", "Neon Outpost 게임 화면. WASD 이동, 마우스 조준, 클릭 또는 Space 발사, P 일시정지");
+    const showcase = createShooterShowcase(canvas);
+    own(() => showcase.destroy());
+    showcase.guideMount.append(createExampleGuide([
+      { title: "Game Spec · 웨이브", action: "출격하기 또는 Enter로 시작하고 WASD로 이동·마우스로 조준하세요.", observe: "Rust가 추적·중장갑·선회 웨이브, 점수, 충돌을 처리합니다. HUD는 같은 native 상태를 읽습니다." },
+      { title: "타일 충돌 · 피격 효과", action: "금속 엄폐물을 돌아 이동하고 적을 향해 사격하세요.", observe: "타일 충돌·피격 파티클·오디오·카메라 흔들림을 확인하고 조명·후처리 설정을 비교하세요." },
+    ], canvas));
     const debugEnabled = searchParams.get("debug") === "true";
-    const gameColumn = document.createElement("section");
-    gameColumn.className = "shooter-column";
-    gameColumn.style.display = "flex";
-    gameColumn.style.flexDirection = "column";
-    gameColumn.style.alignItems = "flex-start";
-    gameColumn.append(title, createExampleGuide([
-      { title: "Game Spec · 웨이브", action: "Enter로 시작한 뒤 WASD로 이동하고 마우스 왼쪽 버튼으로 발사하세요.", observe: "game.json의 텍스처·웨이브·오디오·타일맵 설정을 하나의 게임에 적용합니다." },
-      { title: "타일 충돌 · 피격 효과", action: "벽 가까이에서 이동하고 적을 향해 사격하세요.", observe: "타일 충돌과 피격 파티클·오디오·카메라 흔들림을 확인합니다. 사운드는 첫 입력 후 활성화됩니다." },
-    ], canvas), hudEl, canvas);
-    const shell = document.createElement("div");
-    shell.style.display = "flex";
-    shell.style.alignItems = "flex-start";
-    shell.style.gap = "16px";
-    shell.style.flexWrap = "wrap";
-    shell.append(gameColumn);
     const debugPanel = document.createElement("aside");
+    debugPanel.className = "shooter-debug-panel";
     debugPanel.dataset.testid = "topdown-debug-panel";
     debugPanel.setAttribute("aria-label", "Runtime debug metrics");
-    if (debugEnabled) {
-      shell.append(debugPanel);
-    }
-    app.replaceChildren(shell);
+    if (debugEnabled) showcase.root.append(debugPanel);
+    app.replaceChildren(showcase.root);
 
     const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
-    cleanups.push(() => renderer.destroy());
-    await renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href);
+    own(() => renderer.destroy());
+    await renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href, { signal: lifetime.signal });
+    lifetime.check();
     const resizeRenderer = (): void => renderer.resize();
-    window.addEventListener("resize", resizeRenderer);
-    cleanups.push(() => window.removeEventListener("resize", resizeRenderer));
+    const resizeObserver = new ResizeObserver(resizeRenderer);
+    resizeObserver.observe(canvas);
+    own(() => resizeObserver.disconnect());
     const platformHost = new BrowserPlatformHost(renderer);
-    cleanups.push(() => platformHost.destroy());
+    own(() => platformHost.destroy());
     const unlockAudio = (): void => {
       void platformHost.unlockAudio();
     };
     window.addEventListener("keydown", unlockAudio, { once: true });
     canvas.addEventListener("pointerdown", unlockAudio, { once: true });
-    cleanups.push(() => window.removeEventListener("keydown", unlockAudio));
-    cleanups.push(() => canvas.removeEventListener("pointerdown", unlockAudio));
+    own(() => window.removeEventListener("keydown", unlockAudio));
+    own(() => canvas.removeEventListener("pointerdown", unlockAudio));
     const input = new InputManager(canvas);
-    cleanups.push(() => input.destroy());
+    own(() => input.destroy());
+    const virtualControls = new VirtualControls(showcase.stage, {
+      joystick: { label: "이동" },
+      buttons: [{ id: "fire", label: "발사", controls: ["space"] }],
+    });
+    own(() => virtualControls.destroy());
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const debugOverlay = new DebugOverlay(debugPanel, { enabled: debugEnabled, layout: "inline" });
-    cleanups.push(() => debugOverlay.destroy());
+    own(() => debugOverlay.destroy());
     const runtimeProfiler = profilerSmokeEnabled ? new RuntimeProfiler() : undefined;
     const loadingOverlay = new LoadingOverlay(app, {
-      title: "Loading assets",
-      completeTitle: "Ready",
+      title: "전초기지 에셋 준비 중",
+      completeTitle: "출격 준비 완료",
       autoHideOnComplete: true,
     });
-    cleanups.push(() => loadingOverlay.destroy());
-    let assetProgressText = "assets: 0/0";
+    own(() => loadingOverlay.destroy());
+    const showAssetProgress = (text: string): void => { showcase.hint.textContent = text; };
+    let waveAccessor: BuiltInShooterStateAccessor | undefined;
+    let nextHudSampleMs = 0;
+    let hudWave: ShowcaseWave | undefined;
+    let previousGameState = -1;
+    let presentation = showcase.settings();
+    let gameSpec: ShooterGameSpec;
     let audioEventRateWindowStartMs = performance.now();
     let audioEventRateCount = 0;
     let audioEventsPerSecond = 0;
@@ -1312,7 +1292,7 @@ async function bootstrap(): Promise<void> {
       phaseRadians: 0,
     };
     const inputSnapshot = () => {
-      const snapshot = input.snapshot();
+      const snapshot = virtualControls.applyToSnapshot(input.snapshot());
       if (smokeStartQueued) {
         smokeStartQueued = false;
         return { ...snapshot, enter: true };
@@ -1326,14 +1306,10 @@ async function bootstrap(): Promise<void> {
     };
 
     const engine = await createEngine((frame) => {
-      applyTopdownPresentationEffects(
-        { gameplayEvents: frame.gameplayEvents, audioEvents: frame.audioEvents },
-        runtimeEngine,
-        platformHost,
-        topdownCameraShakeState,
-      );
-      const cameraShakeOffset = consumeTopdownCameraShake(frame.frameTimeMs, topdownCameraShakeState);
+      const shake = consumeTopdownCameraShake(frame.frameTimeMs, topdownCameraShakeState);
+      const cameraShakeOffset = presentation.reducedMotion ? { x: 0, y: 0 } : shake;
       const renderStartMs = performance.now();
+      applyOutpostLighting(renderer, presentation.lighting, frame.cameraX, frame.cameraY, cameraShakeOffset);
       renderer.render();
       renderer.setSpriteScreenOffset(cameraShakeOffset.x, cameraShakeOffset.y);
       try {
@@ -1355,14 +1331,6 @@ async function bootstrap(): Promise<void> {
         audioEventsPerSecond = audioEventRateCount / (audioEventRateElapsedMs / 1000);
         audioEventRateWindowStartMs = performance.now();
         audioEventRateCount = 0;
-      }
-
-      hudEl.textContent = `${assetProgressText} controls: Enter or Space start, W/A/S/D move, Mouse Left or Space fire, Space restart`;
-
-      if (frame.gameState === 0) {
-        hudEl.textContent = "Press Enter or Space to start";
-      } else if (frame.gameState === 2) {
-        hudEl.textContent = `Game Over - final score ${frame.score}. Press Space to restart.`;
       }
 
       if (effectSmokeEnabled && runtimeEngine && renderCommandAccessor && smokeTextureIds) {
@@ -1412,32 +1380,67 @@ async function bootstrap(): Promise<void> {
       };
       runtimeProfiler?.recordFrame(debugMetrics);
       debugOverlay.update(debugMetrics);
+      applyTopdownPresentationEffects(
+        { gameplayEvents: frame.gameplayEvents, audioEvents: frame.audioEvents },
+        runtimeEngine,
+        platformHost,
+        topdownCameraShakeState,
+      );
+      const hudNow = performance.now();
+      // This owned bulk snapshot is sampled at 4 Hz, after borrowed render buffers are consumed.
+      // No per-entity Wasm calls or independently simulated wave timers live in the HUD.
+      if (runtimeEngine && waveAccessor && (hudNow >= nextHudSampleMs || previousGameState !== frame.gameState)) {
+        const snapshot = runtimeEngine.captureShooterStateSnapshot();
+        if (snapshot) {
+          waveAccessor.bind(snapshot);
+          const wave = gameSpec.enemies?.waves?.[waveAccessor.activeWaveIndex];
+          const labels: Record<string, string> = { runner: "추적 드론", bruiser: "중장갑 드론", orbiter: "선회 드론" };
+          hudWave = {
+            index: waveAccessor.activeWaveIndex,
+            name: labels[wave?.enemy ?? ""] ?? "외곽 경계",
+            elapsed: waveAccessor.waveElapsedSeconds,
+            duration: wave?.duration ?? 0,
+            spawned: waveAccessor.waveSpawnedCount,
+          };
+        }
+        nextHudSampleMs = hudNow + 250;
+      }
+      previousGameState = frame.gameState;
+      showcase.update({ ...frame, drawCalls: renderStats.drawCalls }, hudWave);
+
     }, inputSnapshot, platformHost, () => renderer.viewportSize(), {
       enablePhysicsDebugLines: physicsDebugLines,
       includePhysicsDebugLines: physicsDebugLines,
     });
     runtimeEngine = engine;
     renderCommandAccessor = engine.createRenderCommandAccessor();
-    cleanups.push(() => engine.destroy());
+    waveAccessor = engine.createBuiltInShooterStateAccessor();
+    own(() => engine.destroy());
 
     const manifest = topdownAssetManifest();
     let assets: LoadedAssets;
     try {
       await preloadTopdownAssets(manifest, loadingOverlay, (text) => {
-        assetProgressText = text;
-      });
+        showAssetProgress(text);
+      }, lifetime.signal);
+      lifetime.check();
       assets = await engine.loadAssets(manifest, (progress) => {
-        assetProgressText = assetProgressLabel("assets", progress);
+        showAssetProgress(assetProgressLabel("assets", progress));
         loadingOverlay.update(progress);
-      });
+      }, { signal: lifetime.signal });
+      lifetime.check();
       loadingOverlay.complete();
     } catch (error) {
-      loadingOverlay.fail(error);
+      if (!lifetime.disposed) loadingOverlay.fail(error);
       throw error;
     }
     smokeTextureIds = applyTopdownShooterAssets(engine, assets);
+    gameSpec = assets.json.game as ShooterGameSpec;
+    // Recreate the default actor at the configured world center, outside the cover tiles.
+    engine.resetGame();
     if (massObjectsSmokeEnabled) {
-      engine.setGameSpec(TOPDOWN_MASS_OBJECTS_SMOKE_SPEC);
+      gameSpec = TOPDOWN_MASS_OBJECTS_SMOKE_SPEC;
+      engine.setGameSpec(gameSpec);
       engine.resetGame();
       massObjectsSmokeApply = restoreTopdownMassObjectsSnapshot(
         engine,
@@ -1445,6 +1448,10 @@ async function bootstrap(): Promise<void> {
         renderer.viewportSize(),
       );
     }
+    // A native checkpoint returns GameOver to Title without synthesizing simulation state in TS.
+    // resetGame() alone intentionally preserves the native phase.
+    const restartCheckpoint = engine.captureShooterStateSnapshot();
+    if (!restartCheckpoint) throw new Error("Shooter restart checkpoint could not be captured.");
     const authoredBehaviorVariant = assets.json.authoredBehaviorVariant;
     if (authoredBehaviorVariant === undefined) {
       throw assetApplyError("json", "authoredBehaviorVariant", "Required authored behavior variant JSON is missing from loaded assets.");
@@ -1459,13 +1466,17 @@ async function bootstrap(): Promise<void> {
         (authoredBehaviorVariantApplyId += 1),
       );
     }
-    assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
+    showcase.hint.textContent = "WASD 이동 · 마우스 조준 · 클릭 / Space 발사 · P / Esc 일시정지";
 
-    const onBeforeUnload = (): void => cleanupRuntimeDemoResources(cleanups);
-    window.addEventListener("beforeunload", onBeforeUnload);
-    cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
+    lifetime.check();
     engine.start();
     const smokeWindow = window as TopdownSmokeWindow;
+    own(() => {
+      if (smokeWindow.ferrumEngine !== engine) return;
+      delete smokeWindow.ferrumEngine;
+      delete smokeWindow.ferrumRuntime;
+      for (const key of Object.keys(smokeWindow)) if (key.startsWith("ferrumTopdown")) Reflect.deleteProperty(smokeWindow, key);
+    });
     smokeWindow.ferrumEngine = engine;
     smokeWindow.ferrumRuntime = { engine, renderer, ...(runtimeProfiler === undefined ? {} : { profiler: runtimeProfiler }) };
     smokeWindow.ferrumTopdownAuthoredBehaviorVariant = authoredBehaviorVariantSummary;
@@ -1514,9 +1525,38 @@ async function bootstrap(): Promise<void> {
         smokeFireQueued = { mouseX, mouseY };
       };
     }
+    const applySettings = (): void => {
+      presentation = showcase.settings();
+      platformHost.configureAudio({ masterVolume: presentation.mute ? 0 : gameSpec.audio?.masterVolume ?? 1 });
+      platformHost.setPostProcess(presentation.effects ? gameSpec.postProcessing : undefined);
+    };
+    const releaseInput = (): void => { input.clear(); virtualControls.releaseAll(); };
+    const restart = (): void => {
+      releaseInput();
+      smokeFireQueued = undefined;
+      topdownCameraShakeState.remainingMs = 0;
+      nextHudSampleMs = 0;
+      engine.resetGame();
+      if (!engine.restoreShooterStateSnapshot(restartCheckpoint)) throw new Error("Shooter restart checkpoint could not be restored.");
+      if (smokeWindow.ferrumTopdownAuthoredBehaviorResetAndReapply) {
+        smokeWindow.ferrumTopdownAuthoredBehaviorResetAndReapply();
+      }
+      engine.clearParticles();
+      applySettings();
+      smokeStartQueued = true;
+    };
+    showcase.connect({
+      start() { unlockAudio(); if (engine.gameState() === 2) restart(); else smokeStartQueued = true; },
+      restart() { unlockAudio(); restart(); },
+      pause(paused) { releaseInput(); if (paused) engine.pause(); else engine.resume(); },
+      settings: applySettings,
+    });
+    applySettings();
+    lifetime.ready();
   } catch (error) {
-    cleanupRuntimeDemoResources(cleanups);
-    throw error;
+    const cancelled = lifetime.disposed;
+    lifetime.dispose();
+    if (!cancelled) throw error;
   }
 }
 

@@ -1,0 +1,58 @@
+.feature-lesson-intro { border: 1px solid var(--example-border); border-bottom: 0; background: var(--example-panel); padding: 16px; }
+.feature-lesson-intro > span { font-size: 11px; color: var(--example-accent); }
+.feature-lesson-intro h2 { margin: 4px 0 8px; font-size: 17px; line-height: 1.5; }
+.feature-lesson-intro p { margin: 0; color: var(--example-muted); font-size: 13px; line-height: 1.7; }
+.feature-lesson-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.feature-lesson-actions button { border-color: var(--example-accent); }
+.feature-lesson-steps { margin: 0 0 12px; padding-left: 20px; color: var(--example-text); }
+.feature-lesson-steps li { padding-left: 4px; margin-bottom: 8px; }
+.feature-lesson-steps li::marker { color: var(--example-accent); }
+.feature-buttons:empty { display: none; }
+.feature-scene { position: relative; width: 100%; min-width: 0; }
+.feature-lab:is([data-feature-topic="input"],[data-feature-topic="hd2d-movement"],[data-feature-topic="ai-combat"]) .feature-scene { padding-bottom: 128px; background: var(--example-panel); }
+.feature-scene > .feature-virtual-controls { inset: auto 0 0 !important; height: 128px; }
+.feature-role-labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+.feature-role-labels > span { position: absolute; background: var(--example-panel); border: 1px solid var(--example-border); border-left: 2px solid var(--example-runtime); border-radius: var(--example-radius); padding: 3px 6px; color: var(--example-text); font: 11px/1.4 var(--example-font); white-space: nowrap; box-sizing: border-box; }
+.feature-role-labels > span[hidden] { display: none; }
+.feature-role-labels [data-tone="geometry"] { border-left-color: var(--example-physics); }
+.feature-role-labels [data-tone="target"] { border-left-color: var(--example-accent); }
+.feature-lesson-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 8px 12px; background: var(--example-panel); border: 1px solid var(--example-border); border-top: 0; font-size: 12px; line-height: 1.6; color: var(--example-muted); }
+.feature-lesson-legend li::before { content: "· "; color: var(--example-accent); }
+.feature-lesson-feedback { box-sizing: border-box; min-height: 60px; font-size: 13px; line-height: 1.7; color: var(--example-text); border-left: 2px solid var(--example-accent); padding: 8px 12px; margin: 12px 0; }
+.feature-lesson-diagnostics { margin-top: 8px; font-size: 11px; color: var(--example-subtle); }
+.feature-lesson-diagnostics summary { cursor: pointer; }
+.feature-lesson-visual { border: 1px solid var(--example-border); background: var(--example-panel); padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.6; }
+.feature-lesson-visual h3 { margin: 0 0 8px; font-size: 13px; }
+.feature-lesson-visual p { margin: 8px 0 0; color: var(--example-muted); }
+.feature-lesson-cells { display: grid; grid-template-columns: repeat(auto-fit,minmax(100px,1fr)); gap: 8px; }
+.feature-lesson-cells > div { padding: 8px; border: 1px solid var(--example-border); min-width: 0; }
+.feature-lesson-cells span { display: block; color: var(--example-muted); font-size: 11px; }
+.feature-lesson-cells strong { display: block; color: var(--example-text); font-size: 16px; min-height: 24px; }
+.feature-lesson-cells [data-active="true"] { border-color: var(--example-runtime); background: var(--example-hover); }
+.feature-lesson-cells [data-pending="true"] { border-color: var(--example-accent); }
+.feature-lesson-sprite { display: block; margin: 0 auto 4px; width: 48px; height: 60px; background-size: 400% 100%; image-rendering: pixelated; }
+.feature-lesson-normal-preview { display: block; margin: 0 auto 8px; width: 80px; height: 80px; background-size: contain; background-repeat: no-repeat; image-rendering: pixelated; }
+.feature-lesson-visual svg { display: block; width: min(100%,320px); max-height: 168px; margin: 0 auto; }
+.lesson-world { fill: var(--example-hover); stroke: var(--example-border); stroke-width: 3; }
+.lesson-axis { fill: none; stroke: var(--example-subtle); stroke-dasharray: 8 8; }
+.lesson-camera-window { fill: var(--example-selection); stroke: var(--example-accent); stroke-width: 4; }
+.lesson-camera-actor, .lesson-listener { fill: var(--example-runtime); }
+.lesson-source { fill: var(--example-accent); }
+.feature-lesson-order { display: flex; flex-wrap: wrap; gap: 8px; }
+.feature-lesson-order span { padding: 4px 8px; border: 1px solid var(--example-border); }
+.feature-lesson-order span + span::before { content: "→ "; color: var(--example-accent); }
+.feature-lesson-visual progress, .feature-lesson-visual meter { display: block; width: 100%; margin-top: 12px; accent-color: var(--example-runtime); }
+.feature-lesson-dashboard { position: absolute; z-index: 2; inset: 50% 16px auto; transform: translateY(-50%); margin: 0; padding: 20px; pointer-events: none; }
+.feature-audio-connector { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.feature-audio-connector line { stroke: var(--example-accent); stroke-width: 1; stroke-dasharray: 4 4; opacity: .7; }
+.feature-lab:is([data-feature-topic="dialogue"],[data-feature-topic="hud"],[data-feature-topic="asset-loading"]) .demo-canvas { opacity: .3; min-height: 360px; }
+.feature-scene > .feature-content-preview { position: absolute; z-index: 3; inset: 0; min-height: 0; height: auto; width: auto; border: 0; background: transparent; }
+.feature-scene > .feature-system-status { position: absolute; z-index: 3; left: 12px; right: 12px; bottom: 12px; min-height: 0; margin: 0; background: var(--example-panel); }
+@media (max-width:600px) {
+  .feature-lesson-intro { padding: 12px; }
+  .feature-lesson-intro h2 { font-size: 15px; }
+  .feature-lesson-feedback { min-height: 112px; }
+  .feature-lesson-cells { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .feature-lesson-dashboard { left: 8px; right: 8px; padding: 12px; }
+  .feature-lab[data-feature-topic="streaming"] .demo-canvas { min-height: 320px; }
+}

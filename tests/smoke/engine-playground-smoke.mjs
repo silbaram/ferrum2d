@@ -38,7 +38,7 @@ async function pixelHash() {
 let browser,activePage;const results=[];
 try {
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
-  browser=await chromium.launch({headless:true,executablePath:process.env.FERRUM_BROWSER_EXECUTABLE,args:['--no-sandbox','--enable-unsafe-webgpu','--use-vulkan=swiftshader']});
+  browser=await chromium.launch({headless:true,executablePath:process.env.FERRUM_BROWSER_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-webgpu','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader','--use-vulkan=swiftshader']});
   for(const backend of ['webgl2','webgpu']) {
     const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1}),errors=[];activePage=page;
     page.on('pageerror',error=>errors.push(error.message));page.on('response',response=>{if(!response.ok())errors.push(`HTTP ${response.status()} ${response.url()}`);});

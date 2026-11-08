@@ -6,6 +6,7 @@ import { resolveSceneAuthoringDocument, type PostProcessStackInput } from "@ferr
 import type { LightingScene2D, SpriteMaterialPresetInput } from "@ferrum2d/ferrum-web/labs";
 import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 import { createRuntimeDemoShell, renderRuntimeDemoError } from "../../shared/runtimeDemoShell";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
@@ -24,7 +25,7 @@ const colors: Record<string, string[]> = {
 };
 
 async function bootstrap(): Promise<void> {
-  const shell = createRuntimeDemoShell({ title: "작은 빛의 정원", controls: false, metrics: [] });
+  const shell = createRuntimeDemoShell({ title: "작은 빛의 정원", exampleId: "pixel-art", controls: false, metrics: [] });
   const { canvas, stage } = shell;
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", "도트 정원. 바닥을 클릭하거나 Tab으로 씨앗 찾아가기 버튼을 선택하세요.");
@@ -70,32 +71,36 @@ async function bootstrap(): Promise<void> {
   const pause = panel.querySelector<HTMLButtonElement>("#pixel-pause")!;
   const requested = new URL(location.href).searchParams.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   rendererChoice.value = requested;
-  const lifetime = new AbortController();
+  const lifetime = createExampleLifetime();
+  lifetime.own(() => shell.destroy());
   const signal = lifetime.signal;
-  const renderer = await createRenderer(canvas, {
-    preferred: requested,
-    webgl2: { preserveDrawingBuffer: true, clearColor: [.035, .055, .075, 1] },
-    webgpu: { clearColor: [.035, .055, .075, 1] },
-  });
-  const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-  backendStatus.textContent = `${backend === "webgpu" ? "WebGPU" : "WebGL2"}${backend !== requested ? " · 사용 가능한 렌더러로 전환" : ""} · 정수 배율`;
-  const loader = new AssetLoader(renderer);
-  let runtime: FerrumRuntime | undefined;
-  let view: DataSceneView | undefined;
-  let material: SpriteMaterialPresetInput = false;
-  let lastSeeds = -1;
-  let lastFrame: { state: number; entities: number; commands: number; drawCalls: number; normalDrawCalls: number; postProcessPassCount: number } | undefined;
-  let light = { x: 160, y: 80 };
-  const cleanup = () => { lifetime.abort(); runtime?.destroy(); renderer.destroy(); shell.destroy(); return renderer.resourceStats?.(); };
   try {
+    const renderer = await createRenderer(canvas, {
+      preferred: requested,
+      webgl2: { preserveDrawingBuffer: true, clearColor: [.035, .055, .075, 1] },
+      webgpu: { clearColor: [.035, .055, .075, 1] },
+    });
+    lifetime.own(() => renderer.destroy());
+    const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
+    backendStatus.textContent = `${backend === "webgpu" ? "WebGPU" : "WebGL2"}${backend !== requested ? " · 사용 가능한 렌더러로 전환" : ""} · 정수 배율`;
+    const loader = new AssetLoader(renderer);
+    let runtime: FerrumRuntime | undefined;
+    let view: DataSceneView | undefined;
+    let material: SpriteMaterialPresetInput = false;
+    let lastSeeds = -1;
+    let lastFrame: { state: number; entities: number; commands: number; drawCalls: number; normalDrawCalls: number; postProcessPassCount: number } | undefined;
+    let light = { x: 160, y: 80 };
+    const cleanup = () => { lifetime.dispose(); return renderer.resourceStats?.(); };
     const assetUrl = (file: string) => new URL("./assets/" + file + ".png", document.baseURI).href;
     await loader.loadAssets({
       textures: { keeper: assetUrl("keeper"), keeperNormal: assetUrl("keeper-normal"), tiles: assetUrl("tiles"), star: assetUrl("star"), flower: assetUrl("flower") },
       textureOptions: Object.fromEntries(["keeper", "keeperNormal", "tiles", "star", "flower"].map(name => [name, { colorSpace: "none" as const }])),
-    });
-    const response = await fetch(new URL("./scene.json", document.baseURI));
+    }, undefined, { signal });
+    lifetime.check();
+    const response = await fetch(new URL("./scene.json", document.baseURI), { signal });
     if (!response.ok) throw Error(`정원을 읽지 못했습니다: ${response.status}`);
     const scene = resolveSceneAuthoringDocument(await response.json());
+    lifetime.check();
     runtime = await createFerrumRuntime({
       canvas, renderer, assetHost: loader, dataScene: scene, autostart: false,
       inputOptions: { pointerGestures: false },
@@ -121,6 +126,7 @@ async function bootstrap(): Promise<void> {
         }
       },
     });
+    lifetime.own(() => runtime!.destroy());
     const configure = () => {
       view = createDataSceneView(runtime!.engine, renderer, canvas, { x: 160, y: 96 });
       const idle = { up: { clip: 0 }, down: { clip: 0 }, left: { clip: 0, flipX: true }, right: { clip: 0 } };
@@ -151,16 +157,20 @@ async function bootstrap(): Promise<void> {
     }, { signal });
     panel.querySelector("#pixel-reset")!.addEventListener("click", () => { runtime!.dataScene!.reapply(scene); configure(); }, { signal });
     rendererChoice.addEventListener("change", () => { const url = new URL(location.href); url.searchParams.set("renderer", rendererChoice.value); location.assign(url); }, { signal });
-    window.addEventListener("pagehide", event => { if (!event.persisted) cleanup(); }, { signal });
     // Read-only evidence for the example browser smoke; simulation remains in Rust.
-    Object.assign(window, { ferrumPixelShowcase: { snapshot: () => {
+    const diagnostics = { snapshot: () => {
       const handle = runtime!.dataScene!.result.entityHandles.keeper;
       return { backend, ...lastFrame, seeds: runtime!.dataScene!.variables.get("seeds"),
         actor: runtime!.engine.getPhysicsEntity(handle), animation: runtime!.engine.dataSceneSpriteAnimationState(handle),
         presentation: renderer.pixelPerfectPresentation?.(), resources: renderer.resourceStats?.() };
-    }, destroy: cleanup } });
+    }, destroy: cleanup };
+    lifetime.own(() => {
+      if (Reflect.get(window, "ferrumPixelShowcase") === diagnostics) Reflect.deleteProperty(window, "ferrumPixelShowcase");
+    });
+    Object.assign(window, { ferrumPixelShowcase: diagnostics });
+    lifetime.ready();
     runtime.start();
-  } catch (error) { cleanup(); throw error; }
+  } catch (error) { const cancelled = lifetime.disposed; lifetime.dispose(); if (!cancelled) throw error; }
 }
 
 void bootstrap().catch(error => renderRuntimeDemoError(error, { title: "작은 빛의 정원", diagnosticReport }));

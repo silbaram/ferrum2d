@@ -1,5 +1,6 @@
 import {
   createFerrumRuntime,
+  VirtualControls,
   type FerrumEngine,
   type FerrumRuntimeOptions,
 } from "@ferrum2d/ferrum-web/core";
@@ -11,7 +12,9 @@ import {
 } from "../../shared/runtimeDemoShell";
 import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
+import { createGuidedGameSurface } from "../../shared/guidedGameSurface";
 import { createExampleGuide } from "../../shared/exampleGuide";
+import { createExampleLifetime } from "../../shared/exampleLifetime";
 
 function gameStateLabel(code: number): string {
   if (code === 0) return "Title";
@@ -21,19 +24,23 @@ function gameStateLabel(code: number): string {
 }
 
 async function bootstrap(): Promise<void> {
+  const lifetime = createExampleLifetime();
   const shell = createRuntimeDemoShell({
+    exampleId: "platformer",
     title: "Ferrum2D · 플랫폼 이동 실험",
     gameStateLabel,
+    locale: "ko",
     metrics: [
-      { key: "state", label: "state" },
-      { key: "score", label: "score" },
-      { key: "entityCount", label: "entities" },
-      { key: "renderCommandCount", label: "commands" },
-      { key: "particles", label: "particles" },
-      { key: "kinematic", label: "kinematic" },
-      { key: "fps", label: "fps" },
+      { key: "state", label: "상태" },
+      { key: "score", label: "점수" },
+      { key: "entityCount", label: "객체" },
+      { key: "renderCommandCount", label: "렌더 명령" },
+      { key: "particles", label: "파티클" },
+      { key: "kinematic", label: "이동 / 충돌" },
+      { key: "fps", label: "FPS" },
     ],
   });
+  lifetime.own(() => shell.destroy());
   let runtimeEngine: FerrumEngine | undefined;
   const jumpTo = (x: number, y: number) => {
     const player = runtimeEngine?.builtInPlatformerPlayerHandle();
@@ -47,6 +54,9 @@ async function bootstrap(): Promise<void> {
     { title: "이동 발판", action: "청록색 발판 위에 올라가 이동 입력을 멈추세요.", observe: "발판의 이동량이 플레이어에게 전달됩니다. kinematic은 이동/충돌 처리 횟수입니다.", start: () => jumpTo(760, 440) },
   ], shell.canvas));
 
+  const surface = createGuidedGameSurface(shell.stage, "platformer", (parent, buttons) => new VirtualControls(parent, { joystick: false, buttons }));
+  lifetime.own(() => surface.destroy());
+
   try {
     const searchParams = new URLSearchParams(window.location.search);
     const debugParam = searchParams.get("debug");
@@ -57,6 +67,7 @@ async function bootstrap(): Promise<void> {
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const profilerSmokeEnabled = searchParams.get("profilerSmoke") === "true";
     const runtime = await createFerrumRuntime({
+      autostart: false,
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
       debug: { enabled: debugParam === "true", layout: "inline" },
@@ -64,6 +75,7 @@ async function bootstrap(): Promise<void> {
       environment,
       profiler: profilerSmokeEnabled,
       webgl2: { clearColor: [0.08, 0.1, 0.12, 1], preserveDrawingBuffer },
+      inputOptions: { virtualControls: surface.controls, pointerGestures: false },
       inputTransform: (snapshot) => shell.inputTransform(snapshot),
       gameStateLabel,
       onFrame: ({ frame, rendererStats, fps }) => {
@@ -73,17 +85,24 @@ async function bootstrap(): Promise<void> {
         shell.setMetric("kinematic", `${frame.physics.kinematicMoves}/${frame.physics.kinematicHits}`);
       },
     });
+    lifetime.own(() => runtime.destroy());
 
+    if (!runtime.renderer.setPixelPerfect) throw new Error("This demo requires a fixed logical viewport.");
+    runtime.renderer.setPixelPerfect({ width: 800, height: 480, snap: false });
+    runtime.engine.setViewportSize(800, 480);
     shell.attachRuntime(runtime);
     // Native fixtures supply their own tint; a white texel preserves those colors.
-    await runtime.renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href);
+    await runtime.renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href, { signal: lifetime.signal });
+    lifetime.check();
     runtime.engine.usePlatformerGame();
     runtimeEngine = runtime.engine;
+    lifetime.ready();
     runtime.start();
     shell.queueStart();
   } catch (error) {
-    shell.destroy();
-    throw error;
+    const cancelled = lifetime.disposed;
+    lifetime.dispose();
+    if (!cancelled) throw error;
   }
 }
 

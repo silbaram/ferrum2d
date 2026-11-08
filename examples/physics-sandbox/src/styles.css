@@ -1,18 +1,18 @@
-@import "../../shared/exampleFont.css";
+@import "../../shared/exampleTheme.css";
 :root {
-  color: #dce5ee;
-  background: #080b0f;
+  color: var(--example-text);
+  background: var(--example-bg);
   font-family: "Ferrum Example UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #080b0f;
-  --surface: #111821;
-  --surface-strong: #172130;
-  --surface-soft: #0b1016;
-  --border: #2a3645;
-  --border-strong: #788596;
-  --text: #dce5ee;
-  --muted: #aeb9c6;
-  --accent: #f5a742;
-  --accent-strong: #f5a742;
+  --bg: var(--example-bg);
+  --surface: var(--example-raised);
+  --surface-strong: var(--example-hover);
+  --surface-soft: var(--example-panel);
+  --border: var(--example-border);
+  --border-strong: var(--example-subtle);
+  --text: var(--example-text);
+  --muted: var(--example-muted);
+  --accent: var(--example-accent);
+  --accent-strong: var(--example-accent);
   --blue: #78a9ff;
   --amber: #f0b75f;
   --danger: #ff9b76;
@@ -35,7 +35,7 @@ button,
 select {
   height: 36px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--example-radius);
   color: var(--text);
   background: var(--surface-strong);
   font: inherit;
@@ -76,7 +76,9 @@ input:focus-visible {
 
 .app-shell {
   min-height: 100vh;
-  padding: 20px;
+  width: min(1272px, 100%);
+  margin: 0 auto;
+  padding: 16px;
 }
 
 .showcase-header {
@@ -122,7 +124,7 @@ ol {
   height: 26px;
   padding: 0 10px;
   border: 1px solid rgba(114, 220, 157, 0.5);
-  border-radius: 999px;
+  border-radius: var(--example-radius);
   color: #dcffe9;
   background: rgba(40, 89, 57, 0.58);
   font-size: 12px;
@@ -207,7 +209,7 @@ ol {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: #080b0f;
+  background: var(--example-bg);
   box-shadow: var(--shadow);
 }
 
@@ -216,7 +218,7 @@ ol {
   width: 100%;
   aspect-ratio: 5 / 3;
   height: auto;
-  background: #080b0f;
+  background: var(--example-bg);
   cursor: crosshair;
 }
 
@@ -237,7 +239,7 @@ ol {
   overflow: hidden;
   padding: 5px 8px;
   border: 1px solid rgba(196, 210, 202, 0.2);
-  border-radius: 3px;
+  border-radius: var(--example-radius);
   color: #eef7f0;
   background: rgba(8, 12, 10, 0.74);
   font-size: 12px;
@@ -262,7 +264,7 @@ ol {
   min-height: 30px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--example-radius);
   background: var(--surface);
 }
 
@@ -383,7 +385,7 @@ ol {
   min-height: 30px;
   padding: 0 10px;
   border: 1px solid rgba(120, 169, 255, 0.36);
-  border-radius: 999px;
+  border-radius: var(--example-radius);
   color: #e8efff;
   background: rgba(55, 79, 128, 0.38);
   font-size: 13px;
@@ -458,7 +460,7 @@ ol {
   min-width: 0;
   padding: 5px 6px;
   border: 1px solid rgba(196, 210, 202, 0.2);
-  border-radius: 3px;
+  border-radius: var(--example-radius);
   color: #ffffff;
   background: rgba(8, 12, 10, 0.62);
   font-variant-numeric: tabular-nums;

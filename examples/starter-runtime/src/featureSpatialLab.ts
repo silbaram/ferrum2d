@@ -9,11 +9,13 @@ import { createFeatureNavigation } from "./featureNavigation";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
 import { spatialEnvironmentSettings } from "./featureSpatialEnvironment";
+import { createFeatureLesson } from "./featureLesson";
+import { lessonSpatialProjector } from "./featureLessonGeometry";
 
 /** A small native spatial scene per topic; JS owns only controls and presentation. */
 export async function startSpatialFeatureLab(id: string): Promise<void> {
   const feature = catalog.find(item => item.id === id)!;
-  const shell = createRuntimeDemoShell({ title: "Ferrum2D · 엔진 기능 실험실", controls: false, metrics: [] });
+  const shell = createRuntimeDemoShell({ title: "엔진 기능 실험실", exampleId: "starter-runtime", controls: false, metrics: [] });
   const { canvas, stage } = shell;
   const root = stage.closest<HTMLElement>(".demo-shell")!;
   root.classList.add("feature-lab");
@@ -46,10 +48,12 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;
   const output = (name: string, value: string) => { root.querySelector(`[data-value="${name}"]`)!.textContent = value; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy()];
+  const lesson = createFeatureLesson(root, canvas, id, feature.lesson);
+  const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
   let destroyed = false, ready = false, failed: string | undefined, downloadUrl: string | undefined;
   let engine: FerrumEngine | undefined;
   let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
+  let project: ReturnType<typeof lessonSpatialProjector> | undefined;
   const own = (dispose: () => void) => { if (destroyed) dispose(); else cleanups.push(dispose); };
   const cleanup = () => {
     if (!destroyed) {
@@ -87,7 +91,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     await loader.loadAssets({ textures: Object.fromEntries(["robot", "wall", "energy"].map(name =>
       [name, new URL(`./playground/${name}.png`, document.baseURI).href])) }, undefined, { signal });
     if (destroyed) return;
-    const virtual = (id === "hd2d-movement" || id === "ai-combat") ? new VirtualControls(stage, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;
+    const virtual = (id === "hd2d-movement" || id === "ai-combat") ? new VirtualControls(lesson.controlsHost, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;
     own(() => virtual?.destroy());
     const input = new InputManager(canvas, { pointerGestures: false, virtualControls: virtual,
       keyBindings: { w: ["KeyW", "ArrowUp"], a: ["KeyA", "ArrowLeft"], s: ["KeyS", "ArrowDown"], d: ["KeyD", "ArrowRight"] } });
@@ -108,7 +112,11 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         frame = { renderedFrames: frame.renderedFrames + 1, nativeState: state.gameState, entities: state.entityCount,
           commands: stats.renderCommandCount + (stats.spatial?.billboardCount ?? 0) + (stats.spatial?.modelCount ?? 0),
           drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, effectPasses: stats.spatial?.effectDrawCalls ?? 0 };
-        if (id === "hd2d-environment" || performance.now() - lastUi > 200) { lastUi = performance.now(); updateObservation(); }
+        if (id === "hd2d-environment" || performance.now() - lastUi > 200) {
+          // Copy the displayed camera before native diagnostics can grow memory.
+          if (state.renderCommandBuffer.spatial) project = lessonSpatialProjector(canvas, state.renderCommandBuffer.spatial);
+          lastUi = performance.now(); updateObservation();
+        }
       } catch (error) {
         failed = String(error); e.stop(); input.setEnabled(false);
         output("observation", `렌더링 오류: ${failed}`);
@@ -147,6 +155,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         id === "ai-combat" ? `${s.health === 0 ? "전투 종료 · 초기화로 다시 시작 · " : ""}체력 ${s.health ?? 0} · 발사 ${s.combat?.spawned ?? 0} · 적중 ${s.combat?.hits ?? 0} · 적 X ${s.poses.enemy?.x.toFixed(0)}` :
           `${actor?.heightSpan?.floorId ?? 0}층 · 높이 ${(actor?.heightSpan?.elevation ?? 0).toFixed(1)} · X ${actor?.x.toFixed(1)} / Y ${actor?.y.toFixed(1)} · 탑승 ${s.platforms.carriedBodies}`);
       statistics.textContent = `오브젝트 ${s.entities} · 공간 모델 ${s.models} · 빌보드 ${s.billboards} · 드로우 콜 ${s.drawCalls}`;
+      lesson.update({ observation: root.querySelector('[data-value="observation"]')!.textContent ?? feature.observe, state: s, input: s.input, project,
+        poses: Object.fromEntries(Object.entries(s.poses).map(([name, pose]) => [name, { x: pose.x, y: pose.y, elevation: pose.heightSpan.elevation }])) });
     }
     const download = () => {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -167,6 +177,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     };
     const resize = () => {
       if (destroyed) return;
+      lastUi = -Infinity;
       needsRender = true;
       r.resize(); const size = r.viewportSize(); e.setViewportSize(size.width, size.height);
       if (scene.spatial) e.setDataSceneSpatialCamera({ ...scene.spatial.camera,
