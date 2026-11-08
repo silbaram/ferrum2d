@@ -1,7 +1,7 @@
 # HD-2D 후속 기능·검증 후보
 
-기준일: 2026-11-05
-상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기다.
+기준일: 2026-11-09
+상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기, 추가 예제 노출은 제품 결정 대기다.
 기능 개발은 대상 장면과 완료 조건을, 환경 검증은 기기·실행 조건을 정한 뒤 시작한다.
 
 현재 지원 범위는 [공간 계약](../engine/data-scene-spatial.md), [물리 기능 맵](../development/architecture/physics-engine.md),
@@ -42,6 +42,17 @@ PNG extrusion의 현재 계약과 검증 명령은
 
 장치 손실 처리의 플랫폼 기준은 [GPUDevice.lost](https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/lost)다.
 현재 명시적 복구와 terminal destroy를 구분한다. 자동 재시도 UI 정책·실물 GPU loss 검증은 앱 필요에 따라 별도 범위를 정한다.
+
+## 추가 GPU 학습 예제의 필요성 판단
+
+현재 기능별 실험과 예제의 진입점은 [Showcase Hub](../engine/showcase-hub.md)를 따른다.
+Renderer/WebGPU의 계측·복구를 추가 조작형 실험으로 보여줄 필요가 있는지만 판단한다.
+이미 있는 렌더러·복구 기능이나 조명·노멀·카메라·후처리 실험을 다시 만드는 개발 항목은 아니다.
+
+- 기존 기능 실험과 smoke/report 설명으로 부족한 사용자 질문을 먼저 정한다.
+- 추가 노출이 필요하면 입력·관찰 결과·실패/복구 시나리오와 반복 가능한 브라우저 검증을 정의한다.
+- 기존 route 안에서 설명할 수 있는지 먼저 확인하고, 새 route는 Pages 용량·CI 실행 시간·유지 비용을 검토한 뒤 결정한다.
+- 공개 예제를 위해 Rust render command ABI나 WebGL2 fallback을 바꾸지 않는다. 실제 Pages 배포는 별도 승인 범위다.
 
 ## 물리·탐색 후속 후보
 

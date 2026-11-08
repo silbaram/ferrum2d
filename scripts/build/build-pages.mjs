@@ -148,7 +148,6 @@ function compareDocs(a, b) {
     "planning/README.md",
     "planning/feature-candidates.md",
     "planning/game-development-convenience-review.md",
-    "planning/demo-game-showcase-plan.md",
     "planning/deployment-roadmap.md",
   ];
   const aIndex = priority.indexOf(a.replace(/^en\//u, ""));

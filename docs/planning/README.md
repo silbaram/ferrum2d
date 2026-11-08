@@ -1,6 +1,6 @@
 # 개발 계획과 개선 후보
 
-기준일: 2026-11-08
+기준일: 2026-11-09
 
 `docs/planning/`은 진행 중인 작업, 미착수 후보, 제품 결정이 필요한 항목만 관리한다.
 완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
@@ -8,7 +8,7 @@
 
 에디터의 현재 사용법은 [Scene Authoring](../engine/data-scene-authoring.md),
 회귀 검증은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
-아래 후보 문서는 미착수 설계, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
+아래 문서는 진행 중인 개발, 미착수 설계, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
 완료된 도트 개발계획과 리뷰 결과는 새 미완료 작업으로 등록하지 않는다.
 
 도트 제작의 현재 계약은
@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 다음은 proxy asset/LOD·점광원 접촉·coverage 검증이다. |
+| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 다음은 실제 문제 장면 재현·proxy asset/LOD·coverage 검증이다. |
 | 2 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
 | 3 | 공용 VFX 리소스·게임 연동 | 예제 효과와 독립 Studio 출력물을 게임에서 재사용하게 한다. | [VFX 개발 계획](vfx-resource-system-plan.md)의 VX-00 실게임 검증 → VX-01 공용 리소스화 순서다. Studio 검토 사항과 엔진의 책임·합성·출력 계약을 함께 관리한다. |
 
@@ -34,11 +34,10 @@ AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenienc
 
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
-| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | 개발 진행 중 · M0/M1 | billboard shadow proxy·접촉·범위 경계, 효과 합성·호환성 계약과 단계별 검증 확정 |
+| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | 개발 진행 중 · M0/M1 | 실제 문제 장면·proxy asset/LOD·범위 확장, 효과 합성·호환성 계약과 단계별 검증 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 단계 미착수 / 독립 Studio는 첨부 문서상 진행 중 | VX-00 최소 출력·실게임 검증부터 시작. Studio의 실제 구현 재검증과 공용 리소스·이벤트 연결, 후속 표현 확장 구분 |
-| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택 |
-| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정 |
-| [데모 포트폴리오 후보](demo-game-showcase-plan.md) | 제품 결정 대기 | 기존 기능을 별도 public demo/report로 노출할 가치 판단 |
+| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택. 추가 GPU 계측·복구 학습 예제의 필요성 판단 |
+| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 / 제품 결정 대기 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정. Agent Workflow 추가 공개의 필요성 판단 |
 | [배포 후속 검증 후보](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 검증 |
 
 현재 엔진 기능은 [Core API](../engine/public-api/core.md)와 [공간 계약](../engine/data-scene-spatial.md),
