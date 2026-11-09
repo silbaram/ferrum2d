@@ -752,6 +752,12 @@ null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기�
 [모델 GPU 준비 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)에 따라 실패 시 기존 씬을 보존한다.
 옵션은 문서/저장 JSON에 직렬화하지 않는다.
 
+`ApplyDataSceneAuthoringDocumentOptions.preserveAnimationAndLod`는 기본 false인 cold preview reapply 옵션이다.
+이전의 완전한 기본 apply 문맥과 compatible Wasm이 있을 때 같은 authored ID의 호환 애니메이션 재생 단계와
+native LOD 선택을 유지한다. 초기 clip/asset/LOD policy 변경은 새 설정을 우선하며, physics/FSM/경로·scene pause는
+보존하지 않는다. runtime 값은 Rust에만 머물며 기존 game-state 저장 형식을 바꾸지 않는다.
+`activateDataScene: false`와 함께 사용할 수 없다. [상세 조건](../data-scene-authoring.md)을 따른다.
+
 `addSpatialModelAssembly(document, assembly)`와 `SpatialModelAssemblySpec`, `SpatialModelColliderProxy`는
 정적 모델의 로컬 AABB·보행면·층 연결을 한 번의 위치/높이/90도 yaw/균일 scale로 생성한다.
 결과는 기존 authoring JSON이며 입력을 변경하지 않는다. 생성 ID·지원 변환·전역 floorId·최대 개수와

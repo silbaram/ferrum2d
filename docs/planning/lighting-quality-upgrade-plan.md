@@ -1,6 +1,6 @@
 # 조명·그림자·화면 효과 품질 고도화 계획
 
-기준일: 2026-11-09
+기준일: 2026-11-10
 
 상태: 개발 진행 중 · 태양광 안정화부터 구현 · 실제 사용자 문제 장면의 픽셀 재현 대기
 
@@ -85,19 +85,6 @@
 [GL pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2LightingPass.ts),
 [GPU pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
 [sprite preset](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts).
-
-### S01 · P1 · billboard shadow proxy 제작·동작 범위 검증
-
-기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
-`shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
-
-**남은 작업:** 정원 비교 예제를 재사용해 표시 애니메이션의 flip·화면 밖 caster·추가 실제 asset의
-volume 크기와 피벗을 검증한다. 카메라 거리별 LOD 교체가 shadow silhouette에 미치는 영향과
-proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 명시적 동작을 확인한다.
-자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
-
-근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
-[현재 revision 테스트](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/engine/tests/spatial_environment.rs).
 
 ### S02 · P2 · 곡면 수신면·실기기 접촉 품질 후속
 
@@ -250,11 +237,11 @@ shadow proxy와 flat 광원별 차폐 격리가 이미 포함되어 있다. 이 
 | [three.js LightShadow](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/lights/LightShadow.js) | depth bias·normalBias·filter radius·map 크기를 분리 | 기존 world 단위 bias 계약을 유지하면서 필터 때문에 생기는 접촉 손실을 별도로 해결 |
 | [Unity URP bias](https://github.com/Unity-Technologies/Graphics/blob/0efc28ea742b1966b9dd9cc4489e58b986a13faf/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl) | light 방향 offset과 입사각에 따른 normal offset을 구분 | caster/receiver 보정을 혼동하지 않으며 기존 normalBias 의미를 조용히 변경하지 않음 |
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
-| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy를 사용. S01은 실제 asset·애니메이션·LOD 범위 검증을 이어감 |
+| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy와 [현재 검증 범위](../engine/data-scene-spatial.md)를 재사용 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
 | [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 L01에서 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
 
-후속 검증은 S01의 실제 asset·애니메이션·LOD, S03의 coverage 확장에 집중한다.
+후속 검증은 S03의 낮은 고도·pole 근방 coverage 확장에 집중한다.
 S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대상 환경을 정한 뒤 별도로 착수한다.
 기존 그림자 픽셀·자원 회귀와 근사 한계는 공식 공간 계약과 Smoke Check를 기준으로 유지한다.
 
@@ -287,7 +274,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S03 coverage/caster 여유. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M1 태양광 안정화 | S03 낮은 고도·pole coverage/caster 여유. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
 | M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
 | M3a Spatial 효과 합성 | E01. AO 성분·emission·fog·DOF·Bloom 입력과 새 opt-in profile | M0의 합성 기대값. M2와 독립 | 발광·직접광 보존 정책, 조합 픽셀·비용·저장/복원, 기존 profile 보존 |
 | M3b flat HDR | E02의 flat float target·노출·톤매핑 | M0 색/호환 계약과 M2 새 lit 경로 | HDR 범위·encode 1회·HUD·fallback·복구 검증 |
@@ -304,13 +291,12 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
    이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
    Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
-3. **M1-a:** 정원 baseline을 바탕으로 표시 애니메이션 flip·카메라 거리별 LOD·추가 asset의
-   화면 밖 caster와 피벗·volume 근사 오차를 검증한다. 기본 비교·고정 영역·높이/위치·attachment yaw 사용법은 공식 예제 안내를 따른다.
-4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
+3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-5. **M1-c:** 고정 center/target 추적의 경계 회귀를 바탕으로 추가 asset·태양 pole 근방·낮은 고도에서 coverage와 외부 caster 여유를 검증한다. 자동 영역 맞춤의 필요와 texel 밀도·비용을 별도로 확정한다.
-6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
+4. **M1-c:** 고정 center/target 추적의 경계 회귀와 정원 나무·가로등·상자 fixture를 바탕으로
+   태양 pole 근방·낮은 고도에서 coverage와 외부 caster 여유를 검증한다. 자동 영역 맞춤의 필요와 texel 밀도·비용을 별도로 확정한다.
+5. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 
 M1과 M2의 수학적 계약은 M0에서 함께 정하지만, 시각 검증과 리뷰는 별도 변경으로 수행한다.
@@ -382,6 +368,7 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 - **다음:** 선택적 재질 반사·수신 제어·cookie/spot, 광원 선택 안정화, 비용이 검증된 Bloom 개선.
 - **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
+- 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,
   반투명 다중 depth의 완전한 합성, physical bokeh, 전체 게임 루프 Worker/threads, visual shader editor.
 - 새 production 의존성은 계획에 없다. 외부 코드를 직접 가져오는 후속 작업은 해당 라이선스와 attribution을 유지한다.

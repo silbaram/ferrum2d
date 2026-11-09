@@ -54,6 +54,16 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 간소화 부피를 표시하면 그림자를 만드는 원본 모델이 보인다. 높이·위치·부피 회전과 네 프레임 재생은
 기존 native body/attachment/animation 경로를 사용한다. 부피는 고정 근사이며 프레임마다 실루엣을 재생성하지 않는다.
 
+`비교 사물`에서 나무·가로등·상자를 바꾼다. `캐릭터 자세 · 애니메이션`의 좌우·상하 반전은
+표시 UV만 바꾸며 그림자 부피는 유지한다. `부피 정밀도`의 거리 LOD는 더 간단한 모델로 바꾸므로
+그림자 모양도 달라질 수 있다. 기본은 고정 부피다. 카메라 거리를 100→200→130→100%로 바꿔
+전환·유지를 비교한다. eye와 각 모델 원점 사이 600 단위에 ±10% 경계가 적용된다.
+직교 카메라는 거리를 바꿔도 크기가 유지되며, `카메라 확대`로 크기를 바꾼다.
+부피 표시·태양·회전·그림자 원본을 바꿔도 호환되는 애니메이션 단계와 LOD 선택은 유지한다.
+다른 사물로 바꿀 때 캐릭터의 재생 단계는 유지하고 바뀐 모델의 LOD만 새로 시작한다.
+정지 프레임·재생 클립을 명시적으로 바꾸거나 실험 초기화하면 해당 시작값을 적용한다.
+모델 준비 실패는 이전 화면·설정·저장 문서를 유지하고 오류를 표시하며, 같은 조작을 다시 시도할 수 있다.
+
 `화면 밖 나무 그림자 보기`는 카메라를 이동·확대하고 영역 반경 128과 고정 월드 기준점을 설정한다.
 나무가 보이지 않아도 화면 안 바닥에 그림자가 남는다. `그림자 영역 기준`을 카메라 추적으로 바꾸면
 같은 반경의 영역 경계를 비교할 수 있다. 고정 월드 설정은 `directional.shadows.center`로 저장되며
@@ -61,12 +71,16 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 
 설정 JSON은 카메라·태양·그림자 모드·캐릭터 자세와 초기 애니메이션 클립을 보존한다.
 부피의 월드 회전은 attachment의 `yawDegrees`이며 2D 그림 자체의 회전과 구분한다.
-재생 중 경과 시간은 포함하지 않는다. `scripts/assets/build-hd2d-feature-scenes.mjs`로 atlas/GLB/씬을 재생성하며
+설정에는 runtime 반전·경과 시간을 포함하지 않는다. `재생 상태 JSON · 반전 포함`은 클릭 순간의
+공개 게임 상태 snapshot을 저장한다. 별도 예제 전용 포맷이 아니며, 복원할 때 asset을 먼저 등록하고
+`restoreGameStateSnapshot`을 사용한다. `scripts/assets/build-hd2d-feature-scenes.mjs`로 atlas/GLB/씬을 재생성하며
 원본 atlas hash와 proxy content ID는 `public/features/spatial/shadow-assets.json`에 기록한다.
 
 집중 검증은 `pnpm smoke:shadow-comparison`이다. 두 렌더러의 실제 월드 수신점과 부피 pose,
 캐릭터·나무 각각의 그림자, 카메라에 따른 표시 평면 그림자의 변화, 태양 고도 10°/85°를 확인한다.
 프레임 전환·일시정지·설정 JSON·390px 배치·자원 회수·초기 로딩 중 종료·렌더 오류 후 초기화 복구도 검사한다.
+좌우/상하/동시 반전과 재생, native LOD content ID·hysteresis·그림자 캐시, 추가 사물의 발 피벗과
+화면 밖 그림자도 실제 픽셀로 확인한다. GL/GPU의 나무·가로등·상자 수신점은 같은 RGB 허용 오차를 적용한다.
 구현은 [featureSpatialShadows.ts](src/featureSpatialShadows.ts)와 [featureSpatialLab.ts](src/featureSpatialLab.ts)에 있다.
 
 ## 게임 UI 테두리 실험

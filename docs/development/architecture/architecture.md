@@ -742,6 +742,7 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 | 영역 | 코드 기준 |
 | --- | --- |
 | Data Scene runtime target과 document apply | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
+| 선택형 animation/LOD authoring handoff | `packages/ferrum-web/src/dataSceneAuthoringContinuity.ts`, `crates/ferrum-core/src/engine/data_scene_authoring_continuity.rs` |
 | Behavior binding·preflight·낮은 빈도 command apply | `packages/ferrum-web/src/gameplayAuthoring.ts` |
 | Instance handle registry·역방향 조회·stale 제거 | `packages/ferrum-web/src/sceneInstanceHandles.ts` |
 | Authoring 타입·기본 검증·runtime ID 해석 | `packages/ferrum-web/src/gameplayAuthoringTypes.ts`, `gameplayAuthoringValidation.ts`, `gameplayRuntimeIds.ts` |
@@ -751,6 +752,13 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 `gameplayAuthoring.ts`는 기존 공개 이름을 재수출한다. registry는 command 실행에 의존하지 않으며 타입 모듈과의 참조는 type-only다. action·prefab·timer의 명시 ID 우선순위와 오류 경로는 `gameplayRuntimeIds.ts`에서 공통 처리한다. action·prefab·timer ID는 namespace와 직접 command 모두에서 양의 uint32, entity handle의 index/generation은 0을 포함한 uint32로 검증해 Wasm 변환 시 다른 ID로 wrapping되는 입력을 차단한다. 이름 기반 ID와 record형 entity handle은 own property만 조회하며 `__proto__`를 포함한 명시 이름은 일반 data property로 보존한다. 새 내부 모듈을 public subpath로 추가하지 않는다.
 
 `applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope와 optional variable declaration을 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. binding/component/variable runtime preflight는 runtime activation 전에 끝내고, activation 뒤 Rust variable slot을 먼저 동기화한 다음 guarded recipe/FSM command를 설치한다. variable 동기화 이후 spawn 또는 recipe apply가 실패하면 이전 declaration/slot/current value를 복원하므로 변수 저장소의 트랜잭션 경계를 유지한다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행하고, full apply는 zero-instance 문서도 validation 성공 뒤 실제 Data Scene 전환으로 활성화한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
+
+비교 preview의 선택 `preserveAnimationAndLod`는 같은 authored ID와 호환 구성만 TS에서 맞춘다.
+Rust는 generation-safe source handles의 playback/LOD 상태를 bounded single-use token에 보관하고,
+새 epoch의 target handles를 모두 검증한 뒤 호환되는 clip·LOD policy에만 적용한다.
+elapsed/flip/선택 LOD를 JS 시뮬레이션 상태로 복제하거나 per-entity frame 호출을 추가하지 않는다.
+임시 Arc/LOD 참조는 실패·성공 후 해제하며 기본 full apply·영속 game-state 형식·render ABI는 유지한다.
+이는 physics/FSM/경로 또는 scene pause 전체의 보존이 아니다. 상세 조건은 [authoring 계약](../../engine/data-scene-authoring.md)을 따른다.
 
 Data Scene flow는 임의 상태 graph 대신 Rust-owned `GameState`의 stable numeric code를 사용한다.
 `Playing(1)`, `Paused(3)`, `LevelComplete(4)`가 Data Scene 유효 상태이며 `Paused`와

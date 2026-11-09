@@ -973,6 +973,22 @@ built-in/data scene state를 reset하지 않는다.
 
 package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. full `applyDataSceneAuthoringDocument(...)`는 spawn 결과가 0개여도 validation 성공 뒤 `useDataScene()`을 호출하므로 빈 문서도 실제 cleanup/reset 전환이다. full apply는 Rust variable slot을 guarded recipe보다 먼저 구성하며, 이후 spawn/recipe apply가 실패하면 이전 변수 declaration/slot/current value를 복원한다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
 
+비교 preview에서 문서를 다시 적용하면서 같은 객체의 재생 단계와 거리 LOD를 유지하려면
+`{ preserveAnimationAndLod: true }`를 선택한다. 기본값은 false이며 첫 적용·일반 씬 전환은 기존처럼 초기화한다.
+이 옵션은 이전에 완전한 기본 binding 옵션으로 적용한 문맥과 새 Wasm의 cold handoff 기능이 필요하고,
+`activateDataScene: false`와 함께 사용할 수 없다. 지원하지 않는 Wasm이나 문맥은 activation 전에 거절한다.
+
+- TS는 stable authored ID를 맞추고 정규화한 animationSet(초기 clip 포함)과 asset/contentId·LOD 목록을 비교한다.
+  실제 elapsed time·flip·pause·선택 LOD는 JS로 전달하지 않고 Rust가 한 번 사용할 token 안에 보관한다.
+- 같은 animationSet은 clip·elapsed time·flip·개별 pause를 그대로 유지한다. 명시적으로 초기 clip/프레임이나
+  clip 구성을 바꾸면 새 설정이 우선한다. 다른 객체의 sprite/GLB 교체는 유지 가능한 애니메이션에 영향을 주지 않는다.
+- 같은 모델과 LOD policy는 선택 이력을 유지하고 새 카메라·배치에서 native hysteresis를 다시 평가한다.
+  바뀐 asset/거리 policy는 새 설정으로 시작한다. chunk residency 상태는 보존하지 않는다.
+- source handle이 제거됐거나 구성이 호환되지 않으면 해당 값은 넘기지 않는다. 문서 적용은 여전히 entity를 재구성하며
+  physics·FSM·경로·씬 lifecycle 전체를 보존하는 옵션이 아니다. 씬 일시정지는 caller가 별도로 유지한다.
+- handoff는 최대 10,000개 instance의 bulk handle/mask로 처리하고 성공·실패 후 임시 참조를 해제한다.
+  기존 render ABI와 game-state JSON 저장 형식은 바뀌지 않는다. LOD 이력은 여전히 영속 저장 데이터가 아니다.
+
 `createFerrumRuntime({ dataScene })`은 같은 document apply helper를 startup 단계에 연결한다.
 `dataScene` 값은 문서 자체이거나 `{ document, ...applyOptions }` object일 수 있다.
 runtime은 적용 결과를 `runtime.dataScene.result`로 노출한다. 같은 handle의 필수 문서 인자

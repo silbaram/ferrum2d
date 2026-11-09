@@ -2554,13 +2554,31 @@ HD-2D 드래그는 실제 native framebuffer 변화도 확인하며 2D 고도 �
 수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 Catalog의 기능별 양 renderer 조합, 기존 안내 3종, 초기 로딩 생명주기, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료, DPR/터치와 실패/복구 조합을 실행한다.
 
 `pnpm smoke:shadow-comparison`은 `hd2d-shadow-proxy`만 양 backend에서 실행한다.
-정원 atlas와 간소화 캐릭터/나무 GLB를 격리 재생성하여 바이트 일치를 확인하고,
+정원 atlas와 캐릭터/나무/가로등/상자의 두 LOD GLB를 격리 재생성하여 바이트 일치를 확인하고,
 실제 그림자 OFF/ON 픽셀에서 지면의 내부 수신점을 선정한다. 카메라 30/90/-90/180°와 pan 후에도
 같은 월드 수신점의 차폐가 유지되어야 한다. GL/GPU 공통 내부 수신점과 RGB 채널 오차 3 이하도 검사한다.
 캐릭터와 나무 각각에 대해 부피·표시 평면 모드의 실제 그림자를 확인하며,
 표시 평면의 월드 그림자는 카메라 회전에 따라 달라져야 한다. 태양 고도 10°/85°의 픽셀 변화와 저장 각도도 검사한다.
 모델은 카메라 회전에 따라 월드 pose가 변하지 않으며, 물리 body를 추가하지 않고 부모의 높이·위치를 따른다.
 부피의 attachment yaw 변경과 해당 설정의 JSON 저장도 검사한다.
+좌우·상하·동시 반전은 실제 sprite 픽셀을 바꾸고 157개 수신점의 부피 그림자와 native pose를 유지해야 한다.
+재생 중 반전과 일시정지 후 game-state JSON의 runtime flip·경과 시간도 확인한다.
+저LOD의 hysteresis 구간에서 부피 표시·태양 고도·attachment yaw·그림자 원본을 8회 변경해도
+paused playback의 정확한 clip/frame/elapsed/flip과 native LOD 선택이 유지돼야 한다. 다른 사물로 교체해도
+캐릭터 phase와 호환 모델의 LOD는 유지한다. 명시적 프레임/클립 변경·실험 초기화는 시작값을 우선한다.
+설정 재적용은 native single-use handoff로 수행하며 SDK는 authored ID 순서 변경·기능 미지원 선행 거절·spawn 실패 후 token 해제를,
+native는 epoch/token·전체 handle batch의 stale/중복 거절·clip/policy 불일치·Arc 해제·이벤트 재발화 방지를 검사한다.
+실패 주입은 GL buffer 할당과 WebGPU의 실제 preloaded model limits 검사에 각각 한 번 도달해야 한다.
+WebGPU의 warmed assets에는 씬 교체 시 새 할당이 없으므로 미사용 createBuffer hook을 실패 검증으로 세지 않는다.
+모델 준비 거절 후 이전 form·framebuffer·progress 저장 문맥·자원 수를 보존하고 같은 사물 선택의 재시도가 성공해야 한다.
+단일 LOD에서는 eye 거리를 200%로 바꿔도 같은 proxy와 고정 shadow cache를 유지한다.
+거리 LOD에서는 100→130→200→130→100% 왕복의 native content ID·triangle 감소·hysteresis를 검사한다.
+caster 교체 때 cache miss, 같은 LOD의 camera-only 변경 때 cache hit를 요구하며 실제 지면 실루엣 변화·복귀도 확인한다.
+가로등·상자는 실제 billboard가 camera-culled된 상태에서 12개·6개 수신점을 각각 확인한다.
+두 asset의 발 피벗·부피 높이·모델 교체와 설정 저장도 검사한다. 기본/나무 화면 밖/가로등/상자 모두
+GL/GPU 공통 수신점 95% 이상과 RGB 오차 3 이하를 요구한다.
+SDK의 `spatialModel`/`spatialModelAssembly` 테스트는 GLB 임의 extras를 collision/navigation으로 자동 해석하지 않고,
+명시한 collider·보행면이 `shadowOnly`·LOD와 독립적이며 생략 시 자동 생성되지 않는 계약을 검사한다.
 화면 밖 비교에서는 실제 billboard 0개·shadow proxy 2개를 확인하고 화면 안 지면의 tree 그림자를 OFF/ON으로 측정한다.
 고정 월드 center는 pan 224/240/256·zoom 100/125/150%에서 native matrix와 warm shadow cache를 유지해야 한다.
 동일한 extent 128에서 camera 추적의 경계 손실과 고정 기준점 복귀도 실제 수신점으로 구분한다.

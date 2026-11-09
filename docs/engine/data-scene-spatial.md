@@ -187,6 +187,30 @@ spatial.attachments = {
 간소화 모델 표시와 카메라·높이·회전·애니메이션을 전환한다. 고정 volume은 프레임별 실루엣의 근사이며
 원본 표시 그림과 다른 shadow caster를 사용하는 선택이다.
 
+표시 애니메이션의 `flipX`/`flipY`는 UV만 반전한다. 부모의 월드 pose와 attachment 부피는 반전하지 않는다.
+반전 방향에 맞춰 비대칭 부피도 바꾸려면 별도 asset/yaw를 명시해야 한다. 자동 실루엣 추출이나 프레임별 proxy 전환은 없다.
+비교 예제의 `부피 정밀도`는 기본 단일 LOD를 유지하며, 거리 LOD를 켜면 기존 `models.lods`를 사용한다.
+기준은 카메라 eye에서 각 모델 원점까지의 3D 거리다. `minDistance:600`의 진입은 660 이상, 복귀는 540 미만이다.
+직교 카메라의 eye 거리는 확대율과 독립이다. LOD 교체는 caster geometry와 그림자 cache를 갱신하며,
+같은 LOD에서 고정 월드 영역의 camera-only 변경은 cache를 재사용한다. 원래 부피로 돌아오면 같은 지면의 차폐를 복구한다.
+정원 비교는 `applyDataSceneAuthoringDocument`의 선택 `preserveAnimationAndLod`를 사용한다.
+부피 표시·원본·태양·attachment yaw를 바꿔도 호환되는 재생 단계와 LOD 선택 이력을 유지하며,
+사물을 바꾸면 해당 모델의 policy만 새로 시작한다. 명시한 초기 프레임/클립 변경과 실험 초기화는 새 값을 적용한다.
+
+| 비교 asset | 표시 크기 / originY | 부피 바닥·높이 | 근사 범위 |
+| --- | --- | --- | --- |
+| 나무 | 64×96 / 1 | 0·96 | 기존 baseline 유지. 원본의 투명 발 여백 3px 포함 |
+| 가로등 | 32×96 / 1 | 0·90 | 원본 16×48을 2배 표시. 가는 기둥·머리를 상자로 근사 |
+| 상자 | 64×64 / 30÷32 | 0·56 | 원본의 아래 투명 여백 2px를 피벗에서 제외 |
+
+이는 수동 측정한 근사다. 자동 생성이나 픽셀 단위 실루엣 일치를 보장하지 않는다.
+GLB의 임의 `extras`는 collision/navigation 입력으로 해석하지 않는다. `addSpatialModelAssembly`도
+명시한 `colliders`/`terrain`/`connections`만 생성한다. `shadowOnly`·LOD 변경은 이 입력들을 바꾸지 않으며,
+생략한 정적 proxy에는 body·충돌·보행면을 자동으로 추가하지 않는다.
+예제의 재생 상태 JSON은 공개 `captureGameStateSnapshot`의 authored document와 progress를 담는다.
+일반 설정 JSON과 달리 runtime flip·경과 시간을 포함한다. 복원은 asset 선등록 후 기존
+`restoreGameStateSnapshot`의 authoring/progress 계약을 따른다.
+
 ### 분리형 glTF 배경 모델
 
 `loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`를 `/core`에서 제공한다.
