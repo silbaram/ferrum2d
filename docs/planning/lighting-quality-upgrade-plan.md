@@ -124,20 +124,6 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
 [shadow 범위 판정](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts).
 
-### S04 · P1 · 방향·고도·그림자 옵션의 작성 의미
-
-**구현 확인 / 작성 UX 불일치.** flat `directionX/Y`는 그림자가 뻗는 방향,
-Spatial `direction`은 표면에서 태양을 향하는 방향이다. 뷰어는 같은 `Direction (°)` 라벨로 각각의 값을 표시한다.
-flat 노멀용 고도와 별도 길이 배율, Spatial 고도·coverage·bias도 서로 다른 의미다.
-
-**방향:** 저장 좌표계를 강제로 뒤집지 않고 UI/agent 설명을 구체화한다.
-‘태양 방위/그림자 방향/노멀 입사각/그림자 길이 배율’을 구별하고, 변환 예와 미리보기의 실제 backend를 제공한다.
-별도 preview 카메라와 저장된 게임 카메라 양쪽에서 같은 태양 설정을 확인한다.
-
-근거: [flat sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/dataSceneSun.ts),
-[Spatial sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
-[뷰어 조명 입력](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/apps/placement-viewer/src/placementLighting.ts).
-
 ### E01 · P1 · AO·발광·안개·DOF·Bloom 결합
 
 **구현 확인 / 합성 정책 개선.** Spatial geometry 단계에서 diffuse + emission에 fog를 적용한다.
@@ -222,6 +208,8 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 
 `ci.yml`은 현재 `workflow_dispatch` 전용이다. validate job에는 Spatial 양 backend·color management·normal 등의
 검증이 있지만, 전용 `smoke:lighting`/`smoke:lighting-webgpu`는 조건부 extended matrix에 있다.
+기본 validate의 `smoke:spatial-webgpu-offscreen`에는 점광원 contact/depth, 태양·수신면 bias,
+shadow proxy와 flat 광원별 차폐 격리가 이미 포함되어 있다. 이 검사를 새 구현 목록으로 다시 세지 않는다.
 일반 push/PR에서 자동 검증된다고 기술하지 않는다. workflow trigger 정책 변경은 이 계획의 자동 실행 범위가 아니다.
 
 근거: [CI 정의](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/.github/workflows/ci.yml),
@@ -298,18 +286,23 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S03 coverage/caster 여유, S04 작성 설명. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
+| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S03 coverage/caster 여유. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
 | M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
-| M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
-| M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
+| M3a Spatial 효과 합성 | E01. AO 성분·emission·fog·DOF·Bloom 입력과 새 opt-in profile | M0의 합성 기대값. M2와 독립 | 발광·직접광 보존 정책, 조합 픽셀·비용·저장/복원, 기존 profile 보존 |
+| M3b flat HDR | E02의 flat float target·노출·톤매핑 | M0 색/호환 계약과 M2 새 lit 경로 | HDR 범위·encode 1회·HUD·fallback·복구 검증 |
+| M3c WebGPU 전역 색공간 | E02의 전역 linear-sRGB parity | M0 capability 계약. M3a/M3b와 별도 구현 | 지원/거절/fallback 선택, GL/GPU 출력·HUD·복구 동등성 |
+| M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2 및 해당 기능에 필요한 M3 하위 단계 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
 | M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
 | M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
 ### 먼저 실행할 작업 단위
 
-1. **M0-a:** 고정 태양 + billboard/mesh/지형 + orbit/pan, 발 접촉·창문·벽이 있는 최소 재현 씬을 만든다.
+1. **M0-a:** 기존 `hd2d-environment` 실험의 고정 태양·카메라 orbit/pan·발광 창과
+   shadow proxy/contact 회귀 fixture를 재사용해 발 접촉·벽·원본 캐릭터/나무가 있는 실제 문제 씬을 축약한다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
-2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 smoke를 늘리는 것과 바꿔야 하는 기대값을 구별한다.
+2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
+   이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
+   Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
 3. **M1-a:** 캐릭터/나무 billboard에 작성한 shadowOnly volume proxy를 실제 asset에서 비교한다.
    회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
 4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
@@ -320,7 +313,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 
 M1과 M2의 수학적 계약은 M0에서 함께 정하지만, 시각 검증과 리뷰는 별도 변경으로 수행한다.
-M3의 Spatial 효과 결합 검증은 M2의 flat renderer 구현을 기다리지 않고 진행할 수 있다.
+M3a는 M2의 flat renderer 구현을 기다리지 않고 진행할 수 있다. M3b/M3c를 같은 PR에 묶지 않는다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법
@@ -368,7 +361,7 @@ software adapter 결과와 실제 모바일/desktop GPU의 품질·성능 결과
 
 | 변경 표면 | 적용할 기존 검증 |
 | --- | --- |
-| native 선택/caster/matrix/ABI | `cargo fmt`, `cargo clippy`, `cargo test --manifest-path crates/ferrum-core/Cargo.toml`, `pnpm build:wasm`, `pnpm build` |
+| native 선택/caster/matrix/ABI | `cargo fmt --manifest-path crates/ferrum-core/Cargo.toml`, `cargo clippy --manifest-path crates/ferrum-core/Cargo.toml`, `cargo test --manifest-path crates/ferrum-core/Cargo.toml`, `pnpm build:wasm`, `pnpm build` |
 | TS renderer·공통 계약 | `pnpm --filter @ferrum2d/ferrum-web test`, 관련 lint/build, `pnpm validate:public-api-surface` |
 | 2D light/normal/ground shadow | `pnpm smoke:lighting`, `pnpm smoke:lighting-webgpu`, `pnpm smoke:sprite-normal-2d`, `pnpm smoke:data-scene-presentation` |
 | Spatial light/shadow/effects | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen` |

@@ -2527,6 +2527,23 @@ HD-2D 실험은 경사로의 층·높이 전환과 양방향 이동, 승강/수�
 `node tests/smoke/feature-examples-smoke.mjs --spatial-only`는 빌드 후 HD-2D 4종과 관련 생명주기·입력·복구 검사만 실행하고 `artifacts/hd2d-feature-examples/browser/verification.json`에 별도로 기록한다.
 애니메이션 실험은 기존 재생 설정 외에 native idle/walk·방향·프레임 이벤트·단발 완료 1회·재시작, 실제 음원 시작과 pause 중단을 검사한다. 음원 HTTP 실패/재시도, reset으로 로딩 취소 후 늦은 응답 차단을 양쪽 렌더러에서 확인한다.
 HD-2D 환경 실험은 동일 장면의 그림자 켬/끔·광원 위치·안개·초기화 pixel을 비교하고 정적 장면에 GPU 프레임이 계속 제출되지 않는지도 검사한다. 지형 실험은 마스크 변경, 수정 범위 texture patch, native 충돌/공 낙하와 초기화 자원 수, 편집 전후 실제 속도 변화/고정 스텝 소비 시간 기반 중력 300 유지, DPR 2 터치 좌표를 확인한다.
+`feature-lighting-quality-checks.mjs`는 자체 생성 GLB의 HDR 발광 창을 사용해 태양 고도 10°/80°,
+방위 변화, AO/Bloom/DOF/ACES 개별·동시 적용, 안개와 혼합 광원, 각 효과 제거/재활성화 후 동일 framebuffer 복원을 검사한다.
+고정 광원에서 카메라 orbit/pan·복원, 다운로드 JSON의 실제 표시 카메라/환경 일치, 조명 OFF의 발광 영역 유지,
+혼합 광원 최초 shadow pass 7·효과만 수정할 때 shadow pass 0/캐시 재사용·효과 draw 1·전체 draw 64 이하를 확인한다. 이는 기존 screen-space 합성의 회귀 기준이며
+간접광 전용 AO·발광 보존·새 효과 순서의 품질 보장은 아니다. 양 backend의 결과와 조합 화면은 기존 주제별 보고서에 포함한다.
+관련 주제 묶음은 예제 빌드 후 `node tests/smoke/feature-examples-smoke.mjs --topics-only`로 확인한다.
+태양 방향 UI 검사는 기존 placement viewer / spatial workspace smoke 안에서 한영 라벨, 월드 방향과 반대 그림자,
+수직 태양, 노멀 고도·그림자 길이 독립성, 원본 벡터 Undo/Redo, 초점 입력 저장·재열기를 확인한다.
+`placement-sun-gizmo-smoke.mjs`는 2D/HD-2D의 SVG 태양 원형·두 회전선/화살촉, 사각 버튼 제거와 실제 화살촉 hit target/활성 축 강조,
+방향키/Shift 조절과 첫 선택 이후 키보드 포커스 유지, 드래그 한 번의 Undo, Escape·캡처 해제 취소, 광원 표시와 게임 모드 숨김을 검사한다.
+선·화살촉·태양 원형을 드래그한 뒤 시작값으로 되돌리면 원본 JSON(생략된 기본값 포함)과 Undo/Redo 이력을 보존하고,
+같은 포인터로 다시 드래그할 수 있어야 한다. 2D에서는 다른 축을 변경한 상태에서 한 축만 시작값으로 되돌리는 경우도 검사한다.
+`placement-sun-elevation-smoke.mjs`는 HD-2D의 실제 SVG 고도 화살표를 양방향 540°까지 회전해
+반바퀴·한 바퀴 경계에서도 고도 ±90°를 유지하고, 역방향 이동·원점 복귀·Escape·캡처 해제·단일 Undo/Redo가 동작하는지 검사한다.
+HD-2D 드래그는 실제 native framebuffer 변화도 확인하며 2D 고도 변경은 방향·그림자 길이 배율을 보존한다.
+집중 검증은 앱 빌드 후 `node tests/smoke/placement-village-smoke.mjs --lighting-only`로 공간 조명과
+두 모드의 저장/재열기를 검사한다. 2D 기즈모는 `pnpm smoke:placement-viewer`에 포함된다.
 `node tests/smoke/feature-examples-smoke.mjs --next-only`는 애니메이션/공간 환경/지형 3종과 관련 검사를 선택해 `artifacts/feature-examples-next/browser/verification.json`에 기록한다.
 탐색은 분류 버튼의 키보드 조작, 390px에서 메뉴 높이 80px 미만, 모바일 주제 전환과 렌더러 유지까지 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
