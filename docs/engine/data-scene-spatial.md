@@ -1234,11 +1234,30 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 이미 정규화된 f32 방향은 저장·복원 때 다시 정규화하지 않아 numeric buffer를 그대로 보존한다.
 `resolution`은 128/256/512/1024(기본 512), `extent`는 직교 맵 반폭 1..10,000(기본 256),
 `distance`는 target 중심 앞/뒤 깊이의 반폭 1..10,000(기본 512), `bias`는 world 0..10(기본 0.05)다.
-카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
+기본적으로 카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
 적용하며 무한 거리 그림자나 cascade를 제공하지 않는다.
 범위 안쪽의 경계 구간에서는 차폐를 smoothstep으로 줄여 직접 조명으로 이어진다.
 구간 폭은 XY shadow texel 4개에 해당하는 world 거리(`8 × extent / resolution`)이며 같은 거리를 깊이 경계에도 적용한다.
 영역 밖으로 그림자를 늘리거나 다른 광원·환경광을 감쇠하지 않는다. target이 움직일 때의 texel snapping은 유지한다.
+
+`directional.shadows.center?: { x, y, elevation }`는 그림자 영역의 **고정 월드 기준점**이다.
+세 좌표는 모두 필수 finite world 값(각 ±1,000,000)이며 `null`·불완전한 좌표는 거절한다.
+생략하면 기존 camera target 추적을 그대로 유지한다. 지정하면 카메라 pan·zoom·orbit가 map의
+중심·해상도·extent·distance를 바꾸지 않는다. 태양·caster의 월드 형상이 같으면 카메라만 바꿀 때 depth map을 재사용할 수 있다.
+예를 들어 마을 중심에 `center: { x: 0, y: 10, elevation: 0 }`를 작성해 해당 지역의 그림자를 고정한다.
+이 설정은 카메라를 움직이거나 광원의 방향을 고정하는 설정과 별개다. `extent`·`distance`는 그대로 유한하며
+범위를 자동 확대하거나 모든 화면 밖 물체를 포함하지 않는다. 카메라에 보이지 않는 caster도 light volume 안에 있으면
+그림자 제출에 남지만, light volume 밖 geometry·빈 shadow texel·영역 밖 수신점의 그림자를 보장하지 않는다.
+
+고정 기준점은 environment **v5 numeric528**을 사용한다. 0..511은 기존 v4 prefix,
+512는 center 존재 flag(0/1), 513..515는 native XYZ(`x`, `elevation`, `-y`), 516..527은 reserved 0이다.
+flag가 0이면 center 좌표는 모두 0이어야 하며 flag가 1이면 활성 sun shadow가 있어야 한다.
+native capture는 컴파일한 numeric 설정을 보존한다. 활성 sun shadow의 center는 기존 progress의
+environment JSON·patch/저장/복원 경로에서 유지한다. 조명을 끈 작성 문서에는 center가 남지만,
+native 출력은 기존 조명 설정처럼 비활성 표현을 사용하므로 작성 원본을 별도로 유지한다.
+새 JS/Wasm을 함께 사용해야 한다. 과거 Wasm은 길이 528을 거절하며 새 reader는 기존 v1~v4를 계속 수용한다.
+기존 vertex/model ABI와 GPU uniform 배치는 유지한다. TS는 v5 center를 GPU 카메라 슬롯으로 복사하지 않으며
+Rust가 만든 기존 16-float sun matrix를 양 renderer가 사용한다.
 
 그림자 맵의 기준축은 월드 +elevation에서 태양 방향으로 최소 회전한 고정 프레임으로 계산한다.
 고도 약 81.9°에서 reference-up을 교체하지 않으므로 천정과 지평선 통과 때 격자가 갑자기 회전하지 않는다.

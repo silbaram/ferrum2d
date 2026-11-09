@@ -2492,8 +2492,8 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 픽셀 실험은 가상 원본 해상도와 확대된 물리 출력 크기를 구분하고 기본 월드 viewport를 유지해야 한다.
 보호 여백 비교 PNG는 실제 atlas packer로 재생성하며, fixture 검증은 유지된 씬과 패킹 결과의 일치를 확인한다.
 이 검증은 software GPU의 실제 API/픽셀 검사이며 실물 GPU 정밀도·성능 검증을 대신하지 않는다.
-`pnpm smoke:example-suite`는 홈의 10개 주제·2D/HD-2D 태그와 물리 7종을 합친 38개 진입점,
-검색·빈 결과·키보드·JavaScript 비활성·모바일·중첩 경로·단독 호스팅을 확인한다.
+`pnpm smoke:example-suite`는 기능 실험실의 10개 주제와 물리 심화 7종, 공개 앱 전체의 **예제 이동**을 확인한다.
+기본 주소의 실험실 연결·중복 홈 메뉴 제거·키보드·JavaScript 비활성 진입·모바일·중첩 경로·단독 호스팅을 검사한다.
 이전 통합 데모는 취소할 수 없는 Wasm 초기화 중에는 빌린 렌더러를 유지한다.
 지연된 초기화가 끝나면 runtime의 콜백·입력·엔진을 먼저 정리한 뒤 renderer를 해제해야 한다.
 통합 수명 검사는 Wasm 요청을 막은 상태의 렌더러 생존과 요청 완료 후 모든 GPU 자원의 해제를 함께 확인한다.
@@ -2515,6 +2515,10 @@ HD-2D는 이미 조회한 pose와 소유한 카메라 숫자를 사용한다. bo
 WebGL2/WebGPU 양쪽에서 광원이 있는 면이 밝아져야 하며, 공·로봇·정원지기의 생성된 노멀맵도 OpenGL +Y 위쪽 규약을 확인한다.
 타일 통로의 native 충돌/통과·점유 중 닫기 거절·벽으로 막힌 출발 위치 복귀 방지, 레이어 변경 pixel, 파티클 burst/loop/trail·수명·정지, 실제 Web Audio 노드의 좌우 출력·거리 감쇠·context 종료, 키보드/가상 조이스틱/게임패드 polling과 메뉴 복귀 중립화도 확인한다. 중첩 URL, 설정 초기화, 390px 폭, 키보드 접근, 자원 0 복귀도 검사한다. 기존 Platformer의 구역 이동, Breakout/Shooter의 기능 안내 전환, 충돌 영역 재시작 링크와 실제 debug line 렌더링, 작은 화면 배치도 검증한다. Shooter는 타이틀에서 Enter로 시작한 뒤 확인한다.
 각 실험은 native Playing 상태로 전환된 뒤 검사한다. 레이어/조명/후처리/오디오의 기본 픽셀이 시간에 따라 바뀌지 않는지도 확인해 비교 결과에 애니메이션이 섞이는 것을 막는다.
+공통 학습 화면은 긴 사용 안내를 기본 접힘으로 두고, 하단 설정 링크로 키보드 포커스를 옮겨도
+캔버스가 화면 안에 남는지 확인한다. 설정 패널 끝의 휠 입력이 페이지 스크롤로 이어지지 않아야 하며,
+390px에서도 고정된 결과 화면과 설정이 겹치지 않아야 한다.
+세로형 9-slice는 canvas 비율을 유지하고 결과 영역의 키보드 스크롤로 하단 비교에 접근할 수 있어야 한다.
 기존 예제에서는 기능 메뉴를 선택한 뒤 캔버스를 누르면 키보드 포커스가 복귀하는지 확인한다. 저수준 `createEngine`을 사용하는 Shooter는 debug 활성화와 FrameState 포함 옵션을 함께 설정한다.
 초기 씬/텍스처 응답을 지연한 상태의 pagehide(일반 이탈/캐시 저장)와 HTTP 실패에서 실제 WebGL 객체의 해제를 확인한다. 캐시 복귀 이벤트를 모사해 초기화가 다시 완료되는지도 확인한다. DPR 2·390px의 WebGL2/WebGPU에서 터치 타일 편집에 따른 native 충돌 변화와 조이스틱 이동/해제를 별도로 검사한다. 조이스틱 검사는 고정 대기시간 대신 제한 시간 안에 실제 native 이동·입력 해제가 발생해야 통과한다.
 추가 게임 구성 실험은 두 씬의 scene/global 변수 수명·전환 재입력 차단·첫 씬의 실제 중간 페이드 픽셀·pause/reset·반복 전환 GPU 자원 수, 근접/잠금 조건·Space 단발·트리거 진입/이탈을 검사한다.
@@ -2557,6 +2561,19 @@ HD-2D 드래그는 실제 native framebuffer 변화도 확인하며 2D 고도 �
 표시 평면의 월드 그림자는 카메라 회전에 따라 달라져야 한다. 태양 고도 10°/85°의 픽셀 변화와 저장 각도도 검사한다.
 모델은 카메라 회전에 따라 월드 pose가 변하지 않으며, 물리 body를 추가하지 않고 부모의 높이·위치를 따른다.
 부피의 attachment yaw 변경과 해당 설정의 JSON 저장도 검사한다.
+화면 밖 비교에서는 실제 billboard 0개·shadow proxy 2개를 확인하고 화면 안 지면의 tree 그림자를 OFF/ON으로 측정한다.
+고정 월드 center는 pan 224/240/256·zoom 100/125/150%에서 native matrix와 warm shadow cache를 유지해야 한다.
+동일한 extent 128에서 camera 추적의 경계 손실과 고정 기준점 복귀도 실제 수신점으로 구분한다.
+기본/화면 밖 두 경우 모두 GL/GPU 공통 내부 수신점 95% 이상과 RGB 오차 3 이하를 요구한다.
+이 비교의 WebGPU canvas는 `bgra8unorm`으로 실행하고 실제 texture format을 확인한다.
+readback의 B/R 채널을 RGB로 정규화하며, 패키지 fixture의 기본 canvas format 검사와 함께 두 채널 순서를 다룬다.
+v5 계약 검사는 native/SDK의 center 좌표·flag·reserved·길이·혼합 버전 거절, legacy 입력 보존,
+진행 저장/복원, GPU 카메라 uniform 배치·자원 수 유지를 확인한다.
+패키지 proxy fixture는 고정 center와 point+sun shadow map 112 floats·spot·반구광·Bloom/AO를
+동시에 설정한다. 런타임 환경 변경 후 JSON 복원은 실제 framebuffer 차이 0이어야 하며,
+Bloom/AO만 제거하면 픽셀이 달라지고 같은 depth map을 재사용해야 한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --proxies-only --offscreen-target`로
+13상태를 직교/원근·가로/세로·DPR1/2·양 backend에서 비교한다. 이는 기존 효과의 호환 검사이며 새 합성 정책의 검증을 뜻하지 않는다.
 표시 프레임·native 애니메이션·일시정지·설정 다운로드·정확한 초기화·390px 배치와 destroy 후 자원 0을 검사한다.
 일회성 렌더 오류로 제출이 중단된 뒤 초기화하면 기본 framebuffer까지 복구되어야 한다.
 atlas/GLB 로딩 중 종료와 GLB 실패 시 자원 정리도 검사한다. 보고서는 `artifacts/shadow-comparison/verification.json`이다.
@@ -2568,9 +2585,11 @@ WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바�
 `pnpm validate:example-catalog`는 공개/참고 역할·중복 ID/경로·실제 실행 명령·관련 feature와 씬 파일을 검사한다.
 Pages 빌드도 같은 검증을 실행한다. `exampleCatalog.json`은 앱 역할·목적·조작·관찰의 기준이고 `featureCatalog.json`은 기능 실험의 기준이다.
 
-`pnpm smoke:example-suite`는 전체 예제 dist를 전제로 Pages artifact를 만들고 통합 홈의 검색·분류·검색 URL 복원·빈 결과·JavaScript 없는 링크를 확인한다.
+`pnpm smoke:example-suite`는 전체 예제 dist를 전제로 Pages artifact를 만들고 기본 주소가 기능 실험실로 연결되는지 확인한다. 상대 경로의 진입 연결은 JavaScript를 끈 상태에서도 동작해야 하며, 예제 이동에는 모든 공개 앱이 포함되고 별도 전체 예제 링크는 없어야 한다.
 먼저 `pnpm test:example-catalog-build`를 실행해 예제 index/head 오류 시 기존 산출물 보존과 발행 복사본의 통합 표식을 검증한다.
 공개 앱 6종의 공통 메뉴·현재 선택·관련 실험·테마, 1440/390/320px 폭, 키보드 안내 패널을 검사한다.
+기능 실험실의 긴 메뉴는 1024px에서 마지막 항목으로 키보드 포커스를 옮겨도 항목이 가로 스크롤 영역 안에 보여야 한다.
+메뉴 때문에 문서 전체에 가로 넘침이 생기면 실패다. 모바일은 분류된 선택 목록을 유지한다.
 안내 패널의 Space 조작이 게임 점프를 발생시키지 않고, UI로 포커스를 옮긴 뒤 키를 놓아도 게임 입력이 해제되어야 한다.
 데스크톱 도트 정원의 3배 정수 배율과 Breakout/Platformer의 DPR 1·2 전체 표시도 확인한다.
 중첩 배포와 `index.html`에서 실제 앱 전환, 단독 서버의 잘못된 교차 앱 링크 차단, 참고용 기존 URL도 검증한다.

@@ -113,12 +113,13 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 
 ### S03 · P1 · 태양 그림자 coverage와 화면 밖 caster 여유
 
-현재 한 장의 고정 extent map이 camera target을 따라간다.
-고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다. 기준축·내부 경계 fade의 현재 동작과
-극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
+기본은 한 장의 고정 extent map이 camera target을 따라간다. 선택형 고정 월드 center와
+기준축·내부 경계 fade·극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
+고정 center도 유한 범위이며, target 추적 모드에서는 고정 지점이 pan으로 범위 안팎에 들 수 있다.
 
-**방향:** texel snapping과 내부 경계 fade를 유지하면서 receiver 범위·화면 밖 caster 여유를 설계한다.
-기준축·경계 전환 회귀를 유지하면서 pan/zoom에 따른 유효 coverage의 급변을 줄인다.
+**남은 작업:** 고정 center/target 추적의 기존 계약과 회귀를 유지하면서, 추가 asset·낮은 고도·극점 근방에서
+receiver 범위와 화면 밖 caster 여유를 검증한다. target 추적 영역의 자동 맞춤이 필요하면
+texel 밀도·snapping·내부 경계 fade·지도 크기와 pan/zoom의 비용을 함께 설계한다.
 큰 맵/원근 카메라에서 단일 map으로 목표를 만족하지 못할 때만 cascade를 별도 단계로 검토한다.
 
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
@@ -303,12 +304,12 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
    이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
    Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
-3. **M1-a:** 정원 baseline을 바탕으로 표시 애니메이션 flip·카메라 거리별 LOD·화면 밖 caster와
-   추가 asset의 피벗·volume 근사 오차를 검증한다. 기본 비교·높이/위치·attachment yaw 사용법은 공식 예제 안내를 따른다.
+3. **M1-a:** 정원 baseline을 바탕으로 표시 애니메이션 flip·카메라 거리별 LOD·추가 asset의
+   화면 밖 caster와 피벗·volume 근사 오차를 검증한다. 기본 비교·고정 영역·높이/위치·attachment yaw 사용법은 공식 예제 안내를 따른다.
 4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-5. **M1-c:** 기존 기준축·경계 전환 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage와 외부 caster 여유를 검증한다.
+5. **M1-c:** 고정 center/target 추적의 경계 회귀를 바탕으로 추가 asset·태양 pole 근방·낮은 고도에서 coverage와 외부 caster 여유를 검증한다. 자동 영역 맞춤의 필요와 texel 밀도·비용을 별도로 확정한다.
 6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 

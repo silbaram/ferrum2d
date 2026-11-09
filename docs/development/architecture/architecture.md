@@ -52,16 +52,21 @@ Wasm typed-array view는 native 메모리를 빌린 값이다. 기본 내장 GPU
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
-Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512) numeric buffer를
-GLSL/WGSL이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
+Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512)/v5(528) numeric buffer를
+플랫폼이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
 command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
 그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
-WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+WebGPU는 기존 환경 uniform 배치를 재사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+
+v5는 선택형 `directional.shadows.center`를 512..515의 flag/native XYZ로 명시적으로 전달한다.
+Rust는 고정 월드 기준점 또는 기존 camera target으로 sun matrix를 계산한다. TS는 GPU uniform에
+공통 prefix 512개만 복사하며 이후 카메라 슬롯과 matrix 배치를 보존한다. 고정 기준점은 pan/zoom/orbit에
+독립적이고 기존 유한 extent/distance·texel snapping·light culling·캐시를 사용한다. 추가 target/pass나 entity별 Wasm 호출은 없다.
 
 태양 shadow matrix의 기준축과 texel snapping은 Rust가 계산하고 양 backend가 같은 bulk matrix를 소비한다.
 기준축은 +elevation에서 태양 방향으로의 최소 회전으로 정하며, 고도 임계값에 따른 reference-up 교체나
 이전 frame의 축 상태를 두지 않는다. 정확한 반대 극점은 고정축을 사용한다. camera orbit과 고도 변화의
-native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. render/environment ABI와 GPU pass 수는 바뀌지 않는다.
+native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 기준축 안정화 자체는 render/environment ABI와 GPU pass 수를 바꾸지 않는다.
 
 태양 shadow sampling은 기하 노멀과 native 직교 basis로 수신 평면의 light-UV 깊이 기울기를 구한다.
 각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
@@ -1134,7 +1139,7 @@ assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명�
 모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
 OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
-선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512를 사용한다.
+선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512, 선택형 고정 sun center에 v5 numeric528을 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
 소유한다. source camera/physics pose는 보존하고 직교 표시 camera만 opt-in pixel snap을 적용한다.
 `spatial_scene/shadows.rs`의 repr(C) 16-byte 범위는 point cube face 0..5와 sun face 6을 구분한다.

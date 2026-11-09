@@ -27,7 +27,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 | 기능 주제 | 실험 내용 | 바로 체험 |
 | --- | --- | --- |
-| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양, 실제 캐릭터·나무 그림자 비교 | [환경](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) · [그림자](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) |
+| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양, 실제 캐릭터·나무와 화면 밖 그림자·고정 영역 비교 | [환경](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) · [그림자](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) |
 | 물리·충돌 | 재질·충돌체·관절·CCD·공간 질의·지형 파괴 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
 | 카메라·화면 효과 | 추적·확대·흔들림·월드 경계, 후처리·픽셀 정렬 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
 | 스프라이트·애니메이션 | 시트·프레임 이벤트·레이어·팔레트·외곽선 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
@@ -104,8 +104,8 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 
 ## 예제 갤러리
 
-예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [통합 홈](https://silbaram.github.io/ferrum2d/)에서 기능을 검색·분류하고,
-게임·실험 예제의 공통 메뉴에서 이동하며 조작·관찰 결과·관련 실험을 확인합니다. 제작 도구는 별도 영역에 있습니다.
+예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [기능 실험실](https://silbaram.github.io/ferrum2d/)에서 주제를 고르고,
+상단의 **예제 이동**으로 게임·물리 심화·제작 도구를 엽니다. 조작·관찰 결과·관련 실험은 각 화면에서 확인합니다.
 Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제외합니다. [예제 역할과 로컬 통합 실행](examples/README.md).
 
 | 2D 등불 정원 | HD-2D 중세 마을 |

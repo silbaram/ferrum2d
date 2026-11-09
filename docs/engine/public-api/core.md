@@ -1294,6 +1294,12 @@ preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
 호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.
 
 
+HD-2D 환경 v5의 선택형 `lighting.directional.shadows.center: SpatialPoint`는 유한 shadow map의 월드 기준점을 고정한다.
+생략하면 기존 camera target 추적이다. 지정하면 카메라 pan/zoom/orbit만으로 map이 이동하지 않으며 extent/distance를 자동 확대하지 않는다.
+좌표 x/y/elevation은 모두 필수이며 각각 finite ±1M이다. v5 numeric528은 v4 prefix와 center를 전달한다.
+기존 v1~v4 reader 호환을 유지하는 새 JS/Wasm을 함께 사용하며 과거 core는 새 길이를 거절한다.
+진행 environment JSON과 기존 scene-wide 환경 patch로 저장/복원한다. renderer uniform·vertex/model ABI는 유지한다.
+
 HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
 씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
 scene-wide `setEnvironment` patch의 선택형 `changes.lightBindings`로 함께 저장한다.

@@ -8,7 +8,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 | 경로 | 원본 |
 | --- | --- |
-| `/` | Pages home: 데모와 문서 진입점 |
+| `/` | 기능 실험실(`/starter-runtime/`)로 연결하는 진입 주소 |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
 | `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 31종 |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
@@ -28,18 +28,18 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 - inline code, emphasis, link, image
 - `*.md` 내부 링크를 대응하는 `*.html` 경로로 변환
 - `docs/development/quality/screenshots/*` 같은 문서 asset 복사
-- 뷰어의 한국어 subset WOFF2·OFL 라이선스·출처 정보를 `dist-pages/fonts/`에 복사하고, 홈·중첩 문서에서 상대 경로로 참조. 한글 글꼴이 없는 환경에서도 외부 CDN 없이 표시한다.
+- 뷰어의 한국어 subset WOFF2·OFL 라이선스·출처 정보를 `dist-pages/fonts/`에 복사하고, 중첩 문서에서 상대 경로로 참조. 한글 글꼴이 없는 환경에서도 외부 CDN 없이 표시한다.
 
 문서 사이트의 기준 소스는 계속 `docs/**/*.md`다. `dist-pages/docs/`는 배포 artifact일 뿐 git에 포함하지 않는다.
 
-홈은 기능 체험·프로젝트 생성·씬 작성의 세 경로를 먼저 제공한다.
-문서 카드는 사용자 설명서, AI 설치·기능 안내, Showcase, Quickstart, Public API, Data Scene Authoring,
-HD-2D 공간 기반, 예제 Spec, Smoke/Budget, Release 진입점을 제공한다.
+기본 주소는 별도의 목록 화면 없이 기능 실험실로 바로 연결한다. `index.html`에는 상대 경로의
+meta refresh와 링크를 둬 JavaScript 비활성 상태와 GitHub Pages 하위 경로에서도 동작하게 한다.
+예제 상단의 **예제 이동**은 게임·물리 심화·제작 도구를, 기능 실험실의 주제 메뉴는 개별 실험을 선택한다.
+상단의 **문서**는 사용자 설명서·프로젝트 생성·씬 작성·공개 API 안내로 이어진다.
 문서 메뉴는 시작하기·공개 API·게임 제작·공식 예제·엔진 개발/검증·배포/운영·개발 계획/후보로 묶는다.
-사이트는 배포한 개발 소스의 문서·예제이며, GitHub Release 설치 파일의 버전과 별개임을 홈에서 안내한다.
+사이트는 배포한 개발 소스의 문서·예제이며 GitHub Release 설치 파일의 버전과 별개다.
 예제 목록은 `examples/shared/exampleCatalog.json`에서 읽고 `pnpm validate:example-catalog`로 역할·경로·실행 명령·관련 실험을 검사한다.
-홈은 기능 검색·분류, 물리 심화, 게임 응용, 제작 도구 순서다. Minimal·이전 통합 데모는 참고·검증용으로 기본 목록에서 제외한다.
-`exampleTheme.css`, `exampleHub.css`, `exampleHub.mjs`를 함께 발행하며 검색 JavaScript가 없어도 기능 링크는 모두 열린다.
+Minimal·이전 통합 데모는 참고·검증용으로 기본 메뉴에서 제외한다. 목록 전용 CSS/JS는 발행하지 않는다.
 공통 탐색은 중첩 배포 경로를 유지하고 단독 Vite에서는 교차 앱 링크를 만들지 않는다. `pnpm smoke:example-suite`로 검증한다.
 Pages 빌드는 발행 복사본 HTML에만 `ferrum-example-suite` 표식을 넣는다. 경로 이름만으로 통합 사이트를 추정하지 않으므로 개별 앱을 같은 이름의 폴더에 올려도 단독 모드를 유지한다.
 모든 예제의 `index.html`과 `head`를 출력 교체 전에 확인한다. 이 예제 입력 검증 실패는 마지막 정상 `dist-pages`를 보존한다.
@@ -53,7 +53,7 @@ Pages 빌드는 발행 복사본 HTML에만 `ferrum-example-suite` 표식을 넣
 영문 Markdown은 `docs/en/`에 두며 한국어 문서와 같은 상대 경로·파일명을 사용한다.
 `docs/en/README.md`는 `dist-pages/docs/en/index.html`로, 영문 엔진 문서는 `dist-pages/docs/en/engine/*.html`로 생성한다.
 
-- 홈의 **English docs**에서 영문 문서 지도로 이동한다.
+- 문서의 언어 전환에서 **English docs**로 영문 문서 지도를 연다.
 - 문서 메뉴는 현재 언어의 문서만 표시하며 영문 페이지는 `lang="en"`과 영문 메뉴를 사용한다.
 - 한국어·영문 대응 문서가 있으면 언어 전환과 `hreflang`이 같은 문서를 연결한다.
 - 대응 번역이 없으면 **English docs**는 영문 문서 지도로 이동한다. 미번역 문서의 영문판이 있는 것처럼 표시하지 않는다.
@@ -70,7 +70,7 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-`pnpm validate:pages-artifact`는 Pages 홈, docs index, AI 설치·기능 안내, Showcase Hub, quickstart, public API, Data Scene Authoring·공간 기반, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. 한글 글꼴·라이선스·출처 파일의 포함도 요구한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+`pnpm validate:pages-artifact`는 진입 연결, docs index, AI 설치·기능 안내, Showcase Hub, quickstart, public API, Data Scene Authoring·공간 기반, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. 한글 글꼴·라이선스·출처 파일의 포함도 요구한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
 
 ## Pages demo readiness checklist
 
@@ -79,7 +79,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | 항목 | 기준 | 확인 |
 | --- | --- | --- |
 | production build | Wasm package, packages, examples dist가 최신이다. | `pnpm build` |
-| Pages artifact | Pages home, docs HTML, 7개 demo routes가 생성된다. | `pnpm build:pages` |
+| Pages artifact | 진입 연결, docs HTML, 7개 demo routes가 생성된다. | `pnpm build:pages` |
 | route/link integrity | 주요 docs route와 generated HTML 로컬 링크가 깨지지 않는다. | `pnpm validate:pages-artifact` |
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
 | Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 31종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
