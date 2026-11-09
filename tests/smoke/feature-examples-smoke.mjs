@@ -1,3 +1,4 @@
+import {checkTopicFeature, topicFeatureIds} from './feature-topic-checks.mjs';
 import assert from 'node:assert/strict';
 import {smokeGuidedExample} from './guided-examples-smoke.mjs';
 import {smokeTopdownShowcase} from './topdown-showcase-smoke.mjs';
@@ -21,9 +22,10 @@ import {checkNextFeature, nextFeatureIds} from './feature-next-checks.mjs';
 import {checkSpatialFeature, checkSpatialRecovery, spatialFeatureIds} from './feature-spatial-checks.mjs';
 
 const dist=resolve('examples/starter-runtime/dist'),prefix='/nested/starter-runtime/';
+const topicsOnly=process.argv.includes('--topics-only');
 const particlesOnly=process.argv.includes('--particles-only');
-const nineSliceOnly=process.argv.includes('--nine-slice-only'), spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=spatialOnly||nextOnly||nineSliceOnly||particlesOnly;
-const parent=resolve(particlesOnly?'artifacts/particle-dust-clarity/browser':nineSliceOnly?'artifacts/nine-slice-example/browser':nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
+const nineSliceOnly=process.argv.includes('--nine-slice-only'), spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=topicsOnly||spatialOnly||nextOnly||nineSliceOnly||particlesOnly;
+const parent=resolve(topicsOnly?'artifacts/topic-examples':particlesOnly?'artifacts/particle-dust-clarity/browser':nineSliceOnly?'artifacts/nine-slice-example/browser':nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ ok: false, status: 'running', run }, null, 2) + '\n');
 const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.json':'application/json'};
 const server=createServer((req,res)=>void(async()=>{
@@ -74,7 +76,7 @@ try {
     if (backend === 'webgpu') await page.addInitScript({ content: `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();` });
     const snapshot = () => page.evaluate(() => window.ferrumFeatureLab.snapshot());
     const control = key => page.locator(`[data-control="${key}"]`);
-    for (const { id } of catalog.filter(item => particlesOnly ? item.id === 'particles' : nineSliceOnly ? item.id === 'nine-slice' : nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
+    for (const { id } of catalog.filter(item => topicsOnly ? topicFeatureIds.has(item.id) : particlesOnly ? item.id === 'particles' : nineSliceOnly ? item.id === 'nine-slice' : nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
       console.log(`Checking ${backend}/${id}`);
       await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?feature=${id}&renderer=${backend}`);
       // The Shooter controller consumes the queued start input on its next native update.
@@ -103,11 +105,11 @@ try {
         assert.equal((await page.evaluate(pixelHash)).hash, pixels.hash, `${id} baseline changes without a feature edit`);
       }
       if (id === 'animation') {
-        const category = page.locator('.feature-categories button').filter({ hasText: '플랫폼' });
+        const category = page.locator('.feature-categories button[data-topic=runtime]');
         await category.focus(); await page.keyboard.press('Enter');
         assert.equal(await category.getAttribute('aria-pressed'), 'true');
-        assert.equal(await page.locator('.feature-topic-links a:not([hidden])').count(), catalog.filter(f => f.group === '플랫폼').length);
-        await page.locator('.feature-categories button').filter({ hasText: '화면' }).click();
+        assert.equal(await page.locator('.feature-topic-links a:not([hidden])').count(), catalog.filter(f => f.topic === 'runtime').length);
+        await page.locator('.feature-categories button[data-topic=sprites]').click();
         assert(await page.locator('.feature-topics a[aria-current]').isVisible());
         await control('pause').click();
         const paused = (await snapshot()).animation;
@@ -212,6 +214,7 @@ try {
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
+      await checkTopicFeature({page,id,control,snapshot,pixelHash});
       await checkNextFeature({ page, id, control, snapshot, pixelHash });
       Object.assign(learning,await checkLearningControls({page,id,control,snapshot}));
       console.log(`Controls passed ${backend}/${id}`);
@@ -325,14 +328,14 @@ try {
     pointer.push(...await checkTerrainPointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
     recovery.push(...await checkNextRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
   }
-  const report = { ok: true, run, particlesOnly, spatialOnly, nextOnly, nineSliceOnly, nineSliceFixture, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
+  const report = { ok: true, run, topicsOnly, particlesOnly, spatialOnly, nextOnly, nineSliceOnly, nineSliceFixture, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length + systemsLifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases, ${recovery.length} failure/recovery cases. ${run}`);
 } catch (error) {
   const state = await activePage?.evaluate(() => window.ferrumFeatureLab?.snapshot()).catch(() => undefined);
   await activePage?.screenshot({ path: resolve(run, 'failure.png'), fullPage: true }).catch(() => {});
-  const failure = JSON.stringify({ ok: false, run, state, results, error: String(error.stack ?? error) }, null, 2) + '\n';
+  const failure = JSON.stringify({ ok: false, run, topicsOnly, state, results, error: String(error.stack ?? error) }, null, 2) + '\n';
   await writeFile(resolve(run, 'failure.json'), failure);
   await writeFile(resolve(parent, 'verification.json'), failure);
   throw error;

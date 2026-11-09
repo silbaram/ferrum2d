@@ -72,7 +72,10 @@ export async function startEnginePlayground(): Promise<void> {
     select("renderer").value = requested;
     try {
         const renderer = await createRenderer(canvas, { preferred: requested, webgl2: { preserveDrawingBuffer: true, clearColor: [.035, .065, .09, 1] }, webgpu: { clearColor: [.035, .065, .09, 1] } });
-        lifetime.own(() => renderer.destroy());
+        // Wasm startup cannot be aborted. Keep the borrowed renderer alive until
+        // the pending runtime can disconnect its callbacks and release its engine.
+        let initializingRuntime = false;
+        lifetime.own(() => { if (!initializingRuntime) renderer.destroy(); });
         const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
         root.querySelector(".playground-backend")!.textContent = `${backend === "webgpu" ? "WebGPU" : "WebGL2"}${backend !== requested ? " · 호환 모드" : ""}`;
         const loader = new AssetLoader(renderer);
@@ -98,39 +101,48 @@ export async function startEnginePlayground(): Promise<void> {
             throw Error(`씬을 불러오지 못했습니다: ${response.status}`);
         const scene = resolveSceneAuthoringDocument(await response.json(), { validateBindings: true, validateComponents: true });
         lifetime.check();
-        runtime = await createFerrumRuntime({ canvas, renderer, assetHost: loader, dataScene: scene, autostart: false, inputOptions: { pointerGestures: false }, engine: { includeCollisionEvents: true },
-            lighting: frame => {
-                if (select("lighting").value === "off" || !view)
-                    return false;
-                const lighting: LightingScene2D = { enabled: true, ambient: [.36, .46, .56, .55], pointLights: [
-                        { ...light, radius: 180, height: 38, intensity: .5, falloff: 1.2, color: [1, .86, .65, 1] },
-                        { x: 520, y: 280, radius: 140, height: 36, intensity: .25, falloff: 1, color: [.45, .85, 1, 1] },
-                    ] };
-                return view.lighting(lighting, view.snapshot(frame));
-            }, postProcess: () => effects[select("effect").value],
-            onFrame: frame => {
-                const f = frame.frame, s = frame.rendererStats;
-                lastFrame = { state: f.gameState, entities: f.entityCount, commands: f.renderCommandBuffer.commandCount, drawCalls: s.drawCalls, normalDrawCalls: s.normalDrawCalls ?? 0, postProcessPassCount: s.postProcessPassCount ?? 0, cameraX: f.cameraX, cameraY: f.cameraY, collisionPairs: f.physics.collisionSolidPairs };
-                const ball = runtime?.dataScene?.result.entityHandles.ball;
-                // CCD resolves a bounce before overlap lifecycle events are collected. This scene
-                // has one dynamic body, so native swept-hit telemetry also identifies the ball.
-                if (launches && ball)
-                    collisions += f.physics.ccdHits + f.collisionEvents.filter(e => (e.kind === "enter" || e.kind === "hit") &&
-                        ((e.aId === ball.entityId && e.aGeneration === ball.entityGeneration) || (e.bId === ball.entityId && e.bGeneration === ball.entityGeneration))).length;
-                const now = performance.now();
-                if (now - lastUi < 150)
-                    return;
-                lastUi = now;
-                const cells = Number(runtime?.dataScene?.variables.get("cells") ?? 0);
-                if (cells !== lastCells) {
-                    lastCells = cells;
-                    progress.textContent = cells === 3 ? "전지 3 / 3 · 발전소 가동 완료! 계속 실험해보세요." : `전지 ${cells} / 3`;
-                    progress.dataset.complete = String(cells === 3);
-                }
-                if (launches)
-                    output("physics-status").textContent = collisions > 0 ? `벽과의 충돌을 확인했어요 · ${select("material").value === "rubber" ? "반사하며 움직이는 고무공" : "에너지를 잃는 점토공"}` : "공이 움직이고 있어요…";
-            },
-        });
+        initializingRuntime = true;
+        try {
+            runtime = await createFerrumRuntime({ canvas, renderer, assetHost: loader, dataScene: scene, autostart: false, inputOptions: { pointerGestures: false }, engine: { includeCollisionEvents: true },
+                lighting: frame => {
+                    if (select("lighting").value === "off" || !view)
+                        return false;
+                    const lighting: LightingScene2D = { enabled: true, ambient: [.36, .46, .56, .55], pointLights: [
+                            { ...light, radius: 180, height: 38, intensity: .5, falloff: 1.2, color: [1, .86, .65, 1] },
+                            { x: 520, y: 280, radius: 140, height: 36, intensity: .25, falloff: 1, color: [.45, .85, 1, 1] },
+                        ] };
+                    return view.lighting(lighting, view.snapshot(frame));
+                }, postProcess: () => effects[select("effect").value],
+                onFrame: frame => {
+                    const f = frame.frame, s = frame.rendererStats;
+                    lastFrame = { state: f.gameState, entities: f.entityCount, commands: f.renderCommandBuffer.commandCount, drawCalls: s.drawCalls, normalDrawCalls: s.normalDrawCalls ?? 0, postProcessPassCount: s.postProcessPassCount ?? 0, cameraX: f.cameraX, cameraY: f.cameraY, collisionPairs: f.physics.collisionSolidPairs };
+                    const ball = runtime?.dataScene?.result.entityHandles.ball;
+                    // CCD resolves a bounce before overlap lifecycle events are collected. This scene
+                    // has one dynamic body, so native swept-hit telemetry also identifies the ball.
+                    if (launches && ball)
+                        collisions += f.physics.ccdHits + f.collisionEvents.filter(e => (e.kind === "enter" || e.kind === "hit") &&
+                            ((e.aId === ball.entityId && e.aGeneration === ball.entityGeneration) || (e.bId === ball.entityId && e.bGeneration === ball.entityGeneration))).length;
+                    const now = performance.now();
+                    if (now - lastUi < 150)
+                        return;
+                    lastUi = now;
+                    const cells = Number(runtime?.dataScene?.variables.get("cells") ?? 0);
+                    if (cells !== lastCells) {
+                        lastCells = cells;
+                        progress.textContent = cells === 3 ? "전지 3 / 3 · 발전소 가동 완료! 계속 실험해보세요." : `전지 ${cells} / 3`;
+                        progress.dataset.complete = String(cells === 3);
+                    }
+                    if (launches)
+                        output("physics-status").textContent = collisions > 0 ? `벽과의 충돌을 확인했어요 · ${select("material").value === "rubber" ? "반사하며 움직이는 고무공" : "에너지를 잃는 점토공"}` : "공이 움직이고 있어요…";
+                },
+            });
+        } finally {
+            initializingRuntime = false;
+            if (lifetime.disposed) {
+                try { runtime?.destroy(); } finally { renderer.destroy(); }
+                lifetime.check();
+            }
+        }
         lifetime.own(() => runtime?.destroy());
         const handles = () => runtime!.dataScene!.result.entityHandles;
         const camera = () => {

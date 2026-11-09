@@ -14,6 +14,7 @@ async function fixture() {
   const put = async (path, data) => { await mkdir(dirname(join(root,path)), {recursive:true}); await writeFile(join(root,path), data); };
   await put('examples/shared/exampleCatalog.json', JSON.stringify(catalog));
   await put('examples/shared/featureCatalog.json', JSON.stringify(features));
+  for (const path of ['examples/shared/featureTopics.json','examples/shared/physicsExamples.json','examples/physics-sandbox/public/catalog.json']) await put(path,await readFile(path,'utf8'));
   await put('package.json', JSON.stringify({scripts:Object.fromEntries(catalog.map(item=>[item.command.slice(5),'fixture dev']))}));
   for (const item of catalog) await put(join(dirname(item.source),'package.json'), '{}');
   for (const feature of features) {
@@ -63,12 +64,31 @@ test('invalid example HTML fails before replacing a successful Pages artifact', 
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 
+test('unknown topics and physics scenarios preserve the previous Pages artifact', async () => {
+  for (const kind of ['topic', 'physics']) {
+    const root = await fixture();
+    try {
+      if (kind === 'topic') {
+        const broken = structuredClone(features); broken[0].topic = 'missing';
+        await writeFile(join(root,'examples/shared/featureCatalog.json'),JSON.stringify(broken));
+      } else {
+        const path = join(root,'examples/shared/physicsExamples.json');
+        const broken = JSON.parse(await readFile(path,'utf8')); broken[0].id = 'missing';
+        await writeFile(path,JSON.stringify(broken));
+      }
+      const result = build(root); assert.notEqual(result.status,0);
+      assert.match(result.stderr,kind === 'topic' ? /Invalid topic/ : /Invalid physics entry/);
+      assert.equal(await readFile(join(root,'dist-pages/previous-build.txt'),'utf8'),'last successful build');
+    } finally { await rm(root,{recursive:true,force:true}); }
+  }
+});
+
 test('suite markers are added only to published copies', async () => {
   const root=await fixture();
   try {
     const result=build(root); assert.equal(result.status,0,result.stderr);
     const hub=await readFile(join(root,'dist-pages/index.html'),'utf8');
-    assert.equal((hub.match(/class="tile-use-case"/g)??[]).length,features.length);
+    assert.equal((hub.match(/class="tile-use-case"/g)??[]).length,features.length + JSON.parse(await readFile('examples/shared/physicsExamples.json','utf8')).length);
     for (const entry of publicEntries) {
       const source=await readFile(join(root,entry.source,'index.html'),'utf8');
       const published=await readFile(join(root,'dist-pages',entry.id,'index.html'),'utf8');

@@ -8,13 +8,20 @@ import {dirname, join, resolve} from 'node:path';
 export async function checkNineSliceFixtureGeneration() {
   const root = await mkdtemp(join(tmpdir(), 'ferrum-nine-slice-fixture-'));
   try {
-    for (const file of ['scripts/assets/build-feature-examples.mjs', 'scripts/assets/build-hd2d-feature-scenes.mjs',
+    for (const file of ['scripts/assets/build-feature-examples.mjs', 'scripts/assets/build-hd2d-feature-scenes.mjs', 'scripts/tools/pack-textures.mjs',
+      'examples/starter-runtime/public/playground/floor.png',
       'apps/placement-viewer/public/assets/rpg-village/cart.glb', 'apps/placement-viewer/public/assets/rpg-village/lamp.glb']) {
       await mkdir(dirname(join(root, file)), {recursive:true}); await copyFile(resolve(file), join(root, file));
     }
     execFileSync(process.execPath, [join(root, 'scripts/assets/build-feature-examples.mjs')], {cwd:root,timeout:15000,stdio:'pipe'});
-    const file = 'examples/starter-runtime/public/features/nine-slice.json';
-    assert.deepEqual(JSON.parse(await readFile(join(root, file), 'utf8')), JSON.parse(await readFile(file, 'utf8')), 'generated/downloadable nine-slice scene must match the maintained example');
+    for (const id of ['nine-slice','physics-queries','pixel-perfect','sprite-materials','rendering']) {
+      const file = `examples/starter-runtime/public/features/${id}.json`;
+      assert.deepEqual(JSON.parse(await readFile(join(root, file), 'utf8')), JSON.parse(await readFile(file, 'utf8')), `${id}: generated scene must match maintained example`);
+    }
+    for (const extrude of [0,2]) {
+      const file = `examples/starter-runtime/public/features/atlas/padding-${extrude}.png`;
+      assert.deepEqual(await readFile(join(root,file)),await readFile(file),'atlas preview must match actual packer output');
+    }
     return {regenerationMatches:true, isolated:true};
   } finally { await rm(root, {recursive:true,force:true}); }
 }

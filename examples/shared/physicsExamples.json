@@ -1,0 +1,37 @@
+[
+  {
+    "id": "rigid-materials",
+    "title": "질량·마찰·반발",
+    "summary": "같은 힘에서 재질과 질량에 따른 움직임을 비교합니다."
+  },
+  {
+    "id": "collider-gallery",
+    "title": "충돌체 모양",
+    "summary": "원·상자·캡슐·다각형·복합 충돌체를 관찰합니다."
+  },
+  {
+    "id": "contacts-sensors",
+    "title": "접촉과 센서",
+    "summary": "접촉점·법선·충격과 센서 신호를 확인합니다."
+  },
+  {
+    "id": "joints-lab",
+    "title": "관절과 제약",
+    "summary": "거리·로프·스프링·회전 등 관절을 비교합니다."
+  },
+  {
+    "id": "ccd-tunnel-test",
+    "title": "고속 충돌 · CCD",
+    "summary": "빠른 물체와 얇은 벽의 충돌을 확인합니다."
+  },
+  {
+    "id": "platformer-physics",
+    "title": "경사와 발판",
+    "summary": "경사·미끄러운 바닥·움직이는 발판을 확인합니다."
+  },
+  {
+    "id": "scene-queries",
+    "title": "광선으로 찾기",
+    "summary": "포인터로 광선을 보내 충돌 위치와 법선을 확인합니다."
+  }
+]

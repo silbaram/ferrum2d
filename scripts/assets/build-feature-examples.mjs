@@ -1,6 +1,10 @@
 // Small independent scenes, using the existing original Engine Playground textures.
 // Regenerates feature JSON and an original audio cue; it does not modify hand-edited artwork.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, mkdtemp, copyFile, rm } from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {packTexturePngs} from '../tools/pack-textures.mjs';
 const out = new URL('../../examples/starter-runtime/public/features/', import.meta.url);
 await mkdir(out, { recursive: true });
 const sprite = (texture, width, height, extra = {}) => ({ kind: 'sprite', texture, width, height, ...extra });
@@ -40,6 +44,8 @@ const scenes = {
   particles: [object('tray', 320, 192, sprite('panel', 560, 320, { nineSlice: border, layer: -100 })), object('marker', 320, 192, sprite('energy', 8, 8))],
   audio: [...floor(), stillRobot(320, 304, 1.5), object('source', 160, 176, sprite('energy', 48, 48), { type: 'circle', radius: 1, isTrigger: true }, { type: 'kinematic' })],
 };
+for (const id of ['pixel-perfect', 'sprite-materials', 'rendering']) scenes[id] = structuredClone(scenes.lighting);
+scenes['physics-queries'] = [object('robot', 240, 192, sprite('robot', 48, 60, {frame:frames[0]}), box(48,60), undefined, 'player'), object('ball', 432, 192, sprite('ball', 64,64), {type:'circle',radius:32,isTrigger:false})];
 for (const [id, instances] of Object.entries(scenes)) {
   const moving = id === 'animation' || id === 'navigation' || id === 'camera';
   const costs = Array.from({ length: 40 * 24 }, (_, i) => {
@@ -48,6 +54,7 @@ for (const [id, instances] of Object.entries(scenes)) {
   });
   const scene = {
     format: 'ferrum2d.consumer.scene-authoring', version: 1,
+    ...(id === 'pixel-perfect' ? {display:{pixelPerfect:{width:320,height:192,snap:true}}} : {}),
     behaviorRecipes: { entities: {} },
     ...(moving ? { gameplay: { primaryActor: 'robot' }, navigation: { columns: 40, rows: 24, cellWidth: 16, cellHeight: 16, costs } } : {}),
     sceneComposition: { initialFragment: 'lab', prefabs: { object: id === 'nine-slice' ? { props: { behaviorRecipes: [] } } : {} }, fragments: { lab: { instances } } },
@@ -134,5 +141,13 @@ for (let i = 0; i < samples; i++) {
   wav.writeInt16LE(Math.round(6000 * envelope * (Math.sin(2 * Math.PI * 440 * t) + .3 * Math.sin(2 * Math.PI * 660 * t))), 44 + i * 2);
 }
 await writeFile(new URL('beacon.wav', out), wav);
-console.log('Generated twenty-two flat engine feature fixtures and the original spatial audio cue.');
+console.log('Generated twenty-six flat engine feature fixtures and the original spatial audio cue.');
 await import('./build-hd2d-feature-scenes.mjs');
+
+// Real packer output: source pixels and layout stay identical; only reserved edge padding changes.
+const atlasInput = await mkdtemp(join(tmpdir(), 'ferrum-topic-atlas-'));
+try {
+  await copyFile(new URL('../../examples/starter-runtime/public/playground/floor.png', import.meta.url), join(atlasInput,'floor.png'));
+  await mkdir(new URL('atlas/',out), {recursive:true});
+  for (const extrude of [0,2]) await packTexturePngs({inputDir:atlasInput, outputImage:fileURLToPath(new URL(`atlas/padding-${extrude}.png`,out)), outputJson:fileURLToPath(new URL(`atlas/padding-${extrude}.json`,out)),padding:2,extrude,maxSize:256});
+} finally {await rm(atlasInput,{recursive:true,force:true});}

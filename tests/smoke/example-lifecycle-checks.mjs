@@ -49,7 +49,7 @@ export async function checkExampleLifecycles(browser, base) {
       for (const fail of failure ? [false, true] : [false]) {
         const persisted = !fail && host.id === 'pixel-art' && index === 0;
         const page = await browser.newPage(); page.setDefaultTimeout(15000);
-        const errors = []; page.on('pageerror', error => errors.push(error.message));
+        const errors = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
         page.on('console', message => { if (message.text().startsWith('Ferrum2D cleanup failed')) errors.push(message.text()); });
         await page.addInitScript(trackGlResources);
         await page.addInitScript(trackWasmInitialization);
@@ -69,6 +69,11 @@ export async function checkExampleLifecycles(browser, base) {
           finally { clearTimeout(timer); }
           const lateWasm = pattern.endsWith('*.wasm') ? page.waitForResponse(response => response.url().endsWith('.wasm')) : undefined;
           if (!fail) await page.evaluate(persisted => window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted})), persisted);
+          if (!fail && host.id === 'engine-playground' && pattern.endsWith('*.wasm')) {
+            // The pending factory borrows this renderer. Dispose its runtime first,
+            // then the renderer; allReleased below verifies eventual zero resources.
+            assert((await page.evaluate(resources)).some(counts => counts.Program > 0), 'pending Wasm runtime must retain its borrowed renderer until it settles');
+          }
           release();
           if (lateWasm) await (await lateWasm).finished();
           if (fail) await page.waitForSelector('.demo-error-shell, .error-shell');
@@ -90,7 +95,7 @@ export async function checkExampleLifecycles(browser, base) {
       }
     }
     const page = await browser.newPage(); page.setDefaultTimeout(15000);
-    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const errors = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
     page.on('console', message => { if (message.text().startsWith('Ferrum2D cleanup failed')) errors.push(message.text()); });
     await page.addInitScript(trackGlResources);
     await page.addInitScript(trackWasmInitialization);
@@ -113,7 +118,7 @@ export async function checkExampleLifecycles(browser, base) {
 /** The most recently selected scenario wins, including a slow stale request and recovery. */
 export async function checkPhysicsScenarioRequests(browser, base) {
   const page = await browser.newPage(); page.setDefaultTimeout(15000);
-  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const errors = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
   let release;
   try {
     await page.goto(new URL('physics-sandbox/', base).href);
