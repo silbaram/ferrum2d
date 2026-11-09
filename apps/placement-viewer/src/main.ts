@@ -1607,8 +1607,9 @@ async function bootstrap(): Promise<void> {
     });
     lightingControls = createPlacementLighting({
       viewer, engine: runtimeEngine, canvas:shell.canvas,stage:shell.stage,
-      clearSelection:()=>{if(spatialWorkspace?.target())spatialWorkspace.clearSelection();},
+      clearSelection:()=>{if(spatialWorkspace?.target())spatialWorkspace.clearSelection();else if(viewer.state().selectedInstanceIds.length)setState(viewer.selectInstance());},
       hasObjectSelection:()=>spatialWorkspace?.target()!==undefined,
+      inspectSun:()=>workspaceCommandById("lighting")?.run(),
       key: () => activeDocument.key,
       mode: () => spatialWorkspace?.mode() ?? "2d",
       runtimeRevision: () => runtimeApplyRevision,

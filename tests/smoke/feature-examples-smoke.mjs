@@ -53,9 +53,13 @@ async function pixelHash() {
     const buffer=device.createBuffer({size:stride*canvas.height,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
     try{const encoder=device.createCommandEncoder();encoder.copyTextureToBuffer({texture},{buffer,bytesPerRow:stride,rowsPerImage:canvas.height},{width:canvas.width,height:canvas.height,depthOrArrayLayers:1});device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);bytes=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();}finally{buffer.destroy();}
   }
+  let emissiveRgb;
+  const sample=window.ferrumFeatureLab?.snapshot().emissiveSample;
+  if(sample){const x=Math.round(sample.x*canvas.width/canvas.clientWidth),y=Math.round(sample.y*canvas.height/canvas.clientHeight),row=device?y:canvas.height-1-y,stride=device?Math.ceil(canvas.width*4/256)*256:canvas.width*4;
+    if(x>=0&&x<canvas.width&&y>=0&&y<canvas.height)emissiveRgb=Array.from(bytes.slice(row*stride+x*4,row*stride+x*4+3));}
   const colors=new Set();for(let i=0;i<bytes.length;i+=4)colors.add((bytes[i]<<16)|(bytes[i+1]<<8)|bytes[i+2]);
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
-  return {hash,colors:colors.size};
+  return {hash,colors:colors.size,...(emissiveRgb?{emissiveRgb}:{})};
 }
 const catalog = JSON.parse(await readFile('examples/shared/featureCatalog.json', 'utf8'));
 const results = [];
@@ -83,7 +87,7 @@ try {
       await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1 || document.querySelector('.demo-error-shell'), undefined, { timeout: 30000 });
       assert.equal(await page.locator('.demo-error-shell').count(), 0, await page.locator('body').innerText());
       const initial = await snapshot();
-      let lightingDirections, nineSlice;
+      let lightingDirections, lightingQuality, nineSlice;
       const scene = JSON.parse(await readFile(resolve(dist, `features/${id}.json`), 'utf8'));
       assert.equal(initial.id, id);
       assert.equal(initial.backend, backend, 'requested backend must really render');
@@ -214,7 +218,7 @@ try {
       await checkFeatureExtra({ page, id, control, snapshot, pixelHash });
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
-      await checkTopicFeature({page,id,control,snapshot,pixelHash});
+      lightingQuality = await checkTopicFeature({page,id,control,snapshot,pixelHash,artifactDir:run});
       await checkNextFeature({ page, id, control, snapshot, pixelHash });
       Object.assign(learning,await checkLearningControls({page,id,control,snapshot}));
       console.log(`Controls passed ${backend}/${id}`);
@@ -245,7 +249,7 @@ try {
       if (id === 'audio' || id === 'cutscene' || id === 'animation') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
       assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview, .nine-slice-overlay, .feature-scene, .feature-lesson-intro, .feature-lesson-visual, .feature-particle-comparison').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
-      results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
+      results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(lightingQuality ? {lightingQuality} : {}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
       await page.setViewportSize({ width: 1440, height: 1000 });
     }
     await page.close();

@@ -17,6 +17,8 @@
 .feature-panel p { color: var(--example-muted); margin: 0 0 12px; }
 .feature-panel .feature-kicker { font-size: 11px; color: var(--example-accent); margin: 0; }
 .feature-controls { display: grid; gap: 12px; }
+.feature-effect-combination { margin: 0; padding: 8px; border: 1px solid var(--example-border); min-width: 0; }
+.feature-effect-combination legend { color: var(--example-muted); padding: 0 4px; }
 .feature-controls label { display: grid; gap: 6px; }
 .feature-controls .feature-check { display: flex; align-items: center; gap: 8px; }
 .feature-controls input { accent-color: var(--example-accent); width: 100%; margin: 0; }

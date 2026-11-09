@@ -8,7 +8,7 @@ import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../share
 import { createFeatureNavigation } from "./featureNavigation";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
-import { spatialEnvironmentSettings } from "./featureSpatialEnvironment";
+import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
 import { createFeatureLesson } from "./featureLesson";
 import { lessonSpatialProjector } from "./featureLessonGeometry";
 
@@ -98,7 +98,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     own(() => input.destroy());
     let handles: Readonly<Record<string, PhysicsEntityHandle>> = {};
     let scene = source, mode = id === "ai-combat" ? "chase" : "ramp", linked = true;
-    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, billboards: 0, time: 0, shadowPasses: 0, effectPasses: 0, renderedFrames: 0 };
+    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0, renderedFrames: 0 };
     let lastUi = -Infinity, needsRender = true;
     const neutral: InputSnapshot = { w: false, a: false, s: false, d: false, space: false, enter: false, mouseLeft: false, mouseX: 0, mouseY: 0 };
     const e: FerrumEngine = await createEngine(state => {
@@ -111,7 +111,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         r.render(); const stats = r.renderCommands(state.renderCommandBuffer); r.renderPostProcess();
         frame = { renderedFrames: frame.renderedFrames + 1, nativeState: state.gameState, entities: state.entityCount,
           commands: stats.renderCommandCount + (stats.spatial?.billboardCount ?? 0) + (stats.spatial?.modelCount ?? 0),
-          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, effectPasses: stats.spatial?.effectDrawCalls ?? 0 };
+          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, shadowCacheHit: stats.spatial?.shadowCacheHit ?? false, effectPasses: stats.spatial?.effectDrawCalls ?? 0 };
         if (id === "hd2d-environment" || performance.now() - lastUi > 200) {
           // Copy the displayed camera before native diagnostics can grow memory.
           if (state.renderCommandBuffer.spatial) project = lessonSpatialProjector(canvas, state.renderCommandBuffer.spatial);
@@ -145,13 +145,17 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       const states = e.capturePhysicsBodyStateBuffer(live.map(({ name }) => handles[name]!)).states;
       return Object.fromEntries(live.map(({ name, heightSpan }, index) => [name, { ...states[index]!, heightSpan }]));
     };
-    const snapshot = () => ({ id, backend, ...frame, entities: e.entityCount(),
-      state: e.dataSceneState(), mode, linked, ...(id === "hd2d-environment" ? { environment: spatialEnvironmentSettings(root) } : {}), poses: poses(), input: input.snapshot(),
+    const snapshot = () => {
+      const current = poses(), emitter = current.emitter;
+      return { id, backend, ...frame, entities: e.entityCount(),
+      state: e.dataSceneState(), mode, linked, ...(id === "hd2d-environment" ? { environment: spatialEnvironmentSettings(root), camera: structuredClone(scene.spatial!.camera),
+        emissiveSample: emitter && project?.({ x: emitter.x, y: emitter.y, elevation: emitter.heightSpan.elevation + 20 }) } : {}), poses: current, input: input.snapshot(),
       health: handles.actor ? e.gameplayEntityDiagnostics(handles.actor)?.health ?? 0 : undefined,
-      combat: e.dataSceneCombatStats(), platforms: e.dataSceneMovingPlatformStats(), failed, resources: r.resourceStats?.() });
+      combat: e.dataSceneCombatStats(), platforms: e.dataSceneMovingPlatformStats(), failed, resources: r.resourceStats?.() };
+    };
     function updateObservation() {
       const s = snapshot(), actor = s.poses.actor, cart = s.poses.cart;
-      output("observation", id === "hd2d-environment" ? `${s.environment?.mode === "point" ? "점광원" : s.environment?.mode === "sun" ? "태양광" : "점광원 + 태양광"} · 방위 ${s.environment?.azimuth}° / 고도 ${s.environment?.elevation}° · 그림자 패스 ${s.shadowPasses} · 효과 ${s.environment?.effect}` : id === "attachments" ? `연결 ${linked ? "켬" : "끔"} · 부모 X ${cart?.x.toFixed(0)} · 회전 ${((cart?.rotationRadians ?? 0) * 180 / Math.PI).toFixed(0)}° · 상자 높이 ${s.poses.box?.heightSpan?.elevation.toFixed(0)}` :
+      output("observation", id === "hd2d-environment" ? `${s.environment?.mode === "point" ? "점광원" : s.environment?.mode === "sun" ? "태양광" : "점광원 + 태양광"} · 방위 ${s.environment?.azimuth}° / 고도 ${s.environment?.elevation}° · 그림자 새로 그리기 ${s.shadowPasses}${s.shadowCacheHit ? " (캐시 재사용)" : ""} · 효과 ${s.environment?.effect}` : id === "attachments" ? `연결 ${linked ? "켬" : "끔"} · 부모 X ${cart?.x.toFixed(0)} · 회전 ${((cart?.rotationRadians ?? 0) * 180 / Math.PI).toFixed(0)}° · 상자 높이 ${s.poses.box?.heightSpan?.elevation.toFixed(0)}` :
         id === "ai-combat" ? `${s.health === 0 ? "전투 종료 · 초기화로 다시 시작 · " : ""}체력 ${s.health ?? 0} · 발사 ${s.combat?.spawned ?? 0} · 적중 ${s.combat?.hits ?? 0} · 적 X ${s.poses.enemy?.x.toFixed(0)}` :
           `${actor?.heightSpan?.floorId ?? 0}층 · 높이 ${(actor?.heightSpan?.elevation ?? 0).toFixed(1)} · X ${actor?.x.toFixed(1)} / Y ${actor?.y.toFixed(1)} · 탑승 ${s.platforms.carriedBodies}`);
       statistics.textContent = `오브젝트 ${s.entities} · 공간 모델 ${s.models} · 빌보드 ${s.billboards} · 드로우 콜 ${s.drawCalls}`;
@@ -180,8 +184,13 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       lastUi = -Infinity;
       needsRender = true;
       r.resize(); const size = r.viewportSize(); e.setViewportSize(size.width, size.height);
-      if (scene.spatial) e.setDataSceneSpatialCamera({ ...scene.spatial.camera,
-        height: Math.max(250, 360 * size.height / Math.max(1, size.width)) }, size);
+      if (scene.spatial) {
+        const camera = id === "hd2d-environment" ? spatialEnvironmentCamera(root, source.spatial!.camera, size)
+          : { ...scene.spatial.camera, height: Math.max(250, 360 * size.height / Math.max(1, size.width)) };
+        if (!e.setDataSceneSpatialCamera(camera, size)) throw Error("공간 카메라 설정을 적용하지 못했습니다.");
+        scene = { ...scene, spatial: { ...scene.spatial, camera } };
+      }
+      download();
     };
     const updateEnvironment = () => {
       needsRender = true;
@@ -190,10 +199,12 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       scene = { ...scene, spatial: { ...scene.spatial!, environment: settings.environment } };
       output("light-x", String(settings.lightX));
       output("sun-azimuth", `${settings.azimuth}°`); output("sun-elevation", `${settings.elevation}°`);
+      output("camera-angle", `${control<HTMLInputElement>("camera-angle").value}°`);
+      output("camera-pan", control<HTMLInputElement>("camera-pan").value);
       for (const key of ["sun-azimuth", "sun-elevation"]) control<HTMLInputElement>(key).disabled = settings.mode === "point";
       control<HTMLInputElement>("light-x").disabled = settings.mode === "sun";
       control<HTMLInputElement>("environment-shadows").disabled = !settings.lighting;
-      download();
+      resize();
     };
     const apply = () => {
       scene = spatialFeatureScene(source, id, mode);
@@ -235,9 +246,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       });
     }
     if (id === "hd2d-environment") {
-      for (const key of ["light-x", "sun-azimuth", "sun-elevation"]) on(key, "input", updateEnvironment);
-      for (const key of ["light-mode", "shadow-filter", "environment-effect"]) on(key, "change", updateEnvironment);
-      for (const key of ["environment-lighting", "environment-shadows", "environment-fog"]) on(key, "change", updateEnvironment);
+      for (const key of ["light-x", "sun-azimuth", "sun-elevation", "camera-angle", "camera-pan"]) on(key, "input", updateEnvironment);
+      for (const key of ["light-mode", "shadow-filter", "environment-lighting", "environment-shadows", "environment-fog", ...environmentEffects.map(effect => `environment-${effect}`)]) on(key, "change", updateEnvironment);
     }
     const observer = new ResizeObserver(resize); observer.observe(canvas); own(() => observer.disconnect());
     settings.forEach(element => { element.disabled = false; });
