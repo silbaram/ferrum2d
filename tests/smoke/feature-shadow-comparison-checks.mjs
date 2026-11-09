@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {checkShadowAssets} from "./feature-shadow-asset-checks.mjs";
 
 /** Native world receivers projected through the displayed camera, with actual GL/GPU readback. */
 export async function checkShadowComparison({page,control,snapshot,pixelHash,artifactDir}){
@@ -127,6 +128,7 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
     receiverRgb:offscreenCore.map(i=>({index:i,off:fixed.off[i],on:fixed.on[i]}))};
   await render(()=>control("reset").click());
   assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"Coverage edits must reset to the original legacy mode framebuffer");
+  const assetChecks=await checkShadowAssets({page,control,snapshot,pixelHash,render,range,sample,points,floor,contrast,pair,model,artifactDir});
   await render(()=>control("actor-animate").check());
   await page.evaluate(backend=>{
     const prototype=backend==="webgl2"?WebGL2RenderingContext.prototype:GPUQueue.prototype;
@@ -139,6 +141,6 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
   await render(()=>control("reset").click());assert.equal((await snapshot()).failed,undefined);
   assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"Reset after a render failure must restore the actual framebuffer");
   await page.screenshot({path:`${artifactDir}/${initial.backend}-shadow-comparison.png`,fullPage:true});
-  return {canvasFormat,core:core.length,coreIndices:core,proxySubjects,billboardSubjects,changedFootprint,sunAngles:[10,85],views,pan:true,coverage,visibleVolumes:true,poseInheritance:true,animation:true,pause:true,export:true,reset:true,renderRecovery:true,
+  return {canvasFormat,core:core.length,coreIndices:core,proxySubjects,billboardSubjects,changedFootprint,sunAngles:[10,85],views,pan:true,coverage,assetChecks,visibleVolumes:true,poseInheritance:true,animation:true,pause:true,export:true,reset:true,renderRecovery:true,
     receiverRgb:core.map(i=>({index:i,off:baseline.off[i],on:baseline.on[i]}))};
 }

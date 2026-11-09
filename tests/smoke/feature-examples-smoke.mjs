@@ -266,7 +266,8 @@ try {
   if(shadowRows.length){
     assert.equal(shadowRows.length,2,'Both actual renderers must run the shadow comparison');
     const [a,b]=shadowRows.map(row=>row.shadowComparison);
-    for(const [scope,left,right]of [['baseline',a.receiverRgb,b.receiverRgb],['offscreen',a.coverage.receiverRgb,b.coverage.receiverRgb]]){
+    const assetPairs=a.assetChecks.subjects.map((subject,i)=>[subject.asset,subject.receiverRgb,b.assetChecks.subjects[i].receiverRgb]);
+    for(const [scope,left,right]of [['baseline',a.receiverRgb,b.receiverRgb],['offscreen',a.coverage.receiverRgb,b.coverage.receiverRgb],...assetPairs]){
       const samples=new Map(right.map(row=>[row.index,row])),common=left.filter(row=>samples.has(row.index));
       assert(common.length>=Math.max(left.length,right.length)*.95,`${scope}: shadow interiors differ between GL and GPU`);
       let maxRgbDifference=0;

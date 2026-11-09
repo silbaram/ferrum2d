@@ -1,5 +1,5 @@
 import {
-  AssetLoader, createEngine, createRenderer, InputManager, loadSpatialGlb, VirtualControls,
+  AssetLoader, captureGameStateSnapshot, createEngine, createRenderer, InputManager, loadSpatialGlb, VirtualControls,
   type FerrumEngine, type PhysicsEntityHandle, type InputSnapshot,
 } from "@ferrum2d/ferrum-web/core";
 import { applyDataSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
@@ -10,6 +10,7 @@ import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
 import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
 import { shadowComparisonSettings, shadowComparisonScene } from "./featureSpatialShadows";
+import shadowAssets from "../public/features/spatial/shadow-assets.json";
 import { createFeatureLesson } from "./featureLesson";
 import { lessonSpatialProjector } from "./featureLessonGeometry";
 
@@ -37,6 +38,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
   panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${spatialControls[id]}</form>
+    ${shadowComparison?'<output class="feature-control-error" data-value="control-error" role="alert" hidden></output>':""}
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code><a data-control="download" download="${id}.json">이 실험의 설정 JSON</a>
     <p>src/featureSpatialLab.ts · featureSpatialScenes.ts</p></details>`;
@@ -53,6 +55,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
   let destroyed = false, ready = false, failed: string | undefined, downloadUrl: string | undefined;
+  let playbackUrl: string | undefined;
   let engine: FerrumEngine | undefined;
   let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
   let project: ReturnType<typeof lessonSpatialProjector> | undefined;
@@ -61,6 +64,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     if (!destroyed) {
       destroyed = true; lifetime.abort(); engine?.stop();
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+      if (playbackUrl) URL.revokeObjectURL(playbackUrl);
       cleanupRuntimeDemoResources(cleanups);
     }
     return renderer?.resourceStats?.();
@@ -101,9 +105,12 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     own(() => input.destroy());
     let handles: Readonly<Record<string, PhysicsEntityHandle>> = {};
     let physicalNames: string[] = [];
-    let scene = source, mode = id === "ai-combat" ? "chase" : "ramp", linked = true;
+    let scene = source, appliedScene = source, mode = id === "ai-combat" ? "chase" : "ramp", linked = true;
     let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, visibleModels:0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0, renderedFrames: 0, sunMatrix: [] as number[] };
     let lastUi = -Infinity, needsRender = true;
+    let committedControls:Array<{element:HTMLInputElement|HTMLSelectElement;value:string;checked:boolean}>=[];
+    const rememberControls=()=>{committedControls=[...panel.querySelectorAll<HTMLInputElement|HTMLSelectElement>("form input,form select")].map(element=>({element,value:element.value,checked:element instanceof HTMLInputElement&&element.checked}));};
+    const restoreControls=()=>{for(const {element,value,checked}of committedControls){element.value=value;if(element instanceof HTMLInputElement)element.checked=checked;}};
     let shadowSettings=shadowComparison?shadowComparisonSettings(root):undefined;
     const neutral: InputSnapshot = { w: false, a: false, s: false, d: false, space: false, enter: false, mouseLeft: false, mouseX: 0, mouseY: 0 };
     const e: FerrumEngine = await createEngine(state => {
@@ -132,7 +139,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     undefined, () => r.viewportSize());
     engine = e; own(() => e.destroy()); if (destroyed) return;
     const models: Awaited<ReturnType<typeof loadSpatialGlb>>[] = [];
-    for (const name of new Set(Object.values(source.spatial?.models ?? {}).map(model => model.asset))) {
+    const modelNames=shadowComparison?Object.keys(shadowAssets.models):Object.values(source.spatial?.models??{}).flatMap(model=>[model.asset,...(model.lods??[]).map(lod=>lod.asset)]);
+    for (const name of new Set(modelNames)) {
       const asset = await loadSpatialGlb(new URL(`./features/spatial/${name}.glb`, document.baseURI).href, { materialProfile: "diffuse", signal });
       if (destroyed) return;
       if (!e.registerDataSceneSpatialModel(name, asset)) throw Error(`모델 등록 실패: ${name}`);
@@ -155,7 +163,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     const snapshot = () => {
       const current = poses(), emitter = current.emitter;
       return { id, backend, ...frame, entities: e.entityCount(),
-      ...(shadowComparison?{shadowComparison:{...shadowSettings,camera:structuredClone(scene.spatial!.camera),animation:e.dataSceneSpriteAnimationState(handles.actor!)}}:{}),
+      ...(shadowComparison?{shadowComparison:{...shadowSettings,cameraDistance:Number(control<HTMLInputElement>("camera-distance").value),camera:structuredClone(scene.spatial!.camera),animation:e.dataSceneSpriteAnimationState(handles.actor!)}}:{}),
       state: e.dataSceneState(), mode, linked, ...(id === "hd2d-environment" ? { environment: spatialEnvironmentSettings(root), camera: structuredClone(scene.spatial!.camera),
         emissiveSample: emitter && project?.({ x: emitter.x, y: emitter.y, elevation: emitter.heightSpan.elevation + 20 }) } : {}), poses: current, input: input.snapshot(),
       health: handles.actor ? e.gameplayEntityDiagnostics(handles.actor)?.health ?? 0 : undefined,
@@ -217,9 +225,17 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     };
     const apply = (reset=true) => {
       const paused=shadowComparison&&!reset&&ready&&e.dataSceneState()==="paused";
-      if(shadowComparison){if(reset)root.querySelector<HTMLFormElement>("form")!.reset();shadowSettings=shadowComparisonSettings(root);}
-      scene = shadowComparison?shadowComparisonScene(source,shadowSettings!):spatialFeatureScene(source, id, mode);
-      handles = applyDataSceneAuthoringDocument(e, scene, { textureId: name => loader.textureId(name), spatialModelPreparer: r }).entityHandles;
+      if(shadowComparison&&reset)root.querySelector<HTMLFormElement>("form")!.reset();
+      const nextSettings=shadowComparison?shadowComparisonSettings(root):undefined;
+      const candidate=shadowComparison?shadowComparisonScene(source,nextSettings!,shadowAssets):spatialFeatureScene(source, id, mode);
+      const applied=applyDataSceneAuthoringDocument(e, candidate, { textureId: name => loader.textureId(name), spatialModelPreparer: r,preserveAnimationAndLod:shadowComparison&&!reset&&ready });
+      scene=candidate;appliedScene=candidate;handles=applied.entityHandles;
+      if(shadowComparison)shadowSettings=nextSettings;
+      if(shadowComparison){
+        if(!e.updateDataSceneSpriteAnimations([{entity:handles.actor!,flipX:shadowSettings!.flipX,flipY:shadowSettings!.flipY}]))throw Error("그림 반전을 적용하지 못했습니다.");
+        const label=root.querySelector<HTMLElement>('.feature-role-labels [data-entity="tree"]');
+        if(label)label.textContent=shadowAssets.subjects[shadowSettings!.asset as keyof typeof shadowAssets.subjects].label;
+      }
       // Cold setup: shadow-only composition entities intentionally have no physics body.
       // Keep per-entity existence checks out of the observation/frame loop.
       physicalNames=Object.keys(handles).filter(name=>!!e.getPhysicsEntity(handles[name]!));
@@ -230,7 +246,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         root.querySelector<HTMLFormElement>("form")!.reset(); updateEnvironment();
       }
       control("pause").textContent = paused?"계속하기":"일시정지";
-      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
+      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("camera-distance",`${control<HTMLInputElement>("camera-distance").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
       if (id === "attachments") {
         control<HTMLInputElement>("attached").checked = true;
         control<HTMLInputElement>("position").value = control<HTMLInputElement>("rotation").value = "0";
@@ -240,7 +256,24 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       failed = undefined;
       if (ready) e.start();
     };
-    const on = (name: string, event: string, callback: () => void) => control(name).addEventListener(event, callback, { signal });
+    const runControl=(callback:()=>void,event?:Event,clearError=true)=>{
+      if(!shadowComparison){callback();return;}
+      const previous=appliedScene,previousScene=scene,previousSettings=shadowSettings;
+      try{callback();rememberControls();if(clearError){const error=root.querySelector<HTMLOutputElement>('[data-value="control-error"]')!;error.hidden=true;error.textContent="";}}
+      catch(error){
+        event?.preventDefault();
+        let preserved=false;
+        if(appliedScene===previous&&scene===previousScene){
+          // A rejected preflight retains the exact authoring context. A failure after
+          // destructive activation invalidates it, even if apply() never returned.
+          try{captureGameStateSnapshot(e,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(previous))});preserved=true;}catch{/* Require reset when the old scene cannot be proved intact. */}
+        }
+        if(preserved){restoreControls();shadowSettings=previousSettings;}
+        else{failed=String(error);e.stop();input.setEnabled(false);}
+        const message=root.querySelector<HTMLOutputElement>('[data-value="control-error"]')!;message.textContent=`설정 적용 실패: ${String(error)}${failed?" · 실험 초기화로 다시 시도하세요.":" · 이전 설정을 유지했습니다."}`;message.hidden=false;
+      }
+    };
+    const on = (name: string, event: string, callback: () => void) => control(name).addEventListener(event, e=>runControl(callback,e), { signal });
     on("pause", "click", () => {
       needsRender=true;
       if (e.dataSceneState() === "playing") { e.pauseDataScene(); input.setEnabled(false); }
@@ -269,20 +302,32 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     }
     if(shadowComparison){
       for(const key of ["actor-x","actor-height","actor-yaw","actor-frame","shadow-elevation","shadow-extent"])on(key,"input",()=>apply(false));
-      for(const key of ["shadow-mode","proxy-visible","actor-animate","shadow-center"])on(key,"change",()=>apply(false));
-      for(const key of ["camera-angle","camera-pan","camera-zoom"])on(key,"input",()=>{needsRender=true;resize();output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);});
+      for(const key of ["shadow-mode","proxy-visible","actor-animate","shadow-center","shadow-asset","shadow-lod"])on(key,"change",()=>apply(false));
+      for(const key of ["actor-flip-x","actor-flip-y"])on(key,"change",()=>{
+        shadowSettings=shadowComparisonSettings(root);
+        if(!e.updateDataSceneSpriteAnimations([{entity:handles.actor!,flipX:shadowSettings.flipX,flipY:shadowSettings.flipY}]))throw Error("그림 반전을 적용하지 못했습니다.");
+        needsRender=true;
+      });
+      for(const key of ["camera-angle","camera-pan","camera-zoom","camera-distance"])on(key,"input",()=>{needsRender=true;resize();output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("camera-distance",`${control<HTMLInputElement>("camera-distance").value}%`);});
+      on("playback-download","click",()=>{
+        if(playbackUrl)URL.revokeObjectURL(playbackUrl);
+        // Runtime flips/time belong to progress, not to the authored animation set.
+        const saved=captureGameStateSnapshot(e,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(appliedScene))});
+        playbackUrl=URL.createObjectURL(new Blob([JSON.stringify(saved,null,2)],{type:"application/json"}));
+        control<HTMLAnchorElement>("playback-download").href=playbackUrl;
+      });
       on("shadow-offscreen","click",()=>{
-        for(const [key,value]of Object.entries({"shadow-mode":"proxy","shadow-center":"world","shadow-extent":"128","camera-angle":"-30","camera-pan":"256","camera-zoom":"150","shadow-elevation":"45","actor-x":"0","actor-height":"0","actor-yaw":"0","actor-frame":"0"}))control<HTMLInputElement>(key).value=value;
-        control<HTMLInputElement>("proxy-visible").checked=false;control<HTMLInputElement>("actor-animate").checked=false;
+        for(const [key,value]of Object.entries({"shadow-mode":"proxy","shadow-asset":"tree","shadow-lod":"fixed","shadow-center":"world","shadow-extent":"128","camera-angle":"-30","camera-pan":"256","camera-zoom":"150","camera-distance":"100","shadow-elevation":"45","actor-x":"0","actor-height":"0","actor-yaw":"0","actor-frame":"0"}))control<HTMLInputElement>(key).value=value;
+        for(const key of ["proxy-visible","actor-animate","actor-flip-x","actor-flip-y"])control<HTMLInputElement>(key).checked=false;
         apply(false);
       });
     }
-    const observer = new ResizeObserver(resize); observer.observe(canvas); own(() => observer.disconnect());
+    const observer = new ResizeObserver(()=>runControl(resize,undefined,false)); observer.observe(canvas); own(() => observer.disconnect());
     settings.forEach(element => { element.disabled = false; });
-    apply(); ready = true; e.start();
+    apply();rememberControls(); ready = true; e.start();
     const hooks = { snapshot, destroy: cleanup, ...(shadowComparison?{
       projectGround:(points:readonly {x:number;y:number}[])=>points.map(point=>project?.(point)),
-      shadowModels:()=>Object.fromEntries(["actor_shadow","tree_shadow"].map(id=>{const model=e.dataSceneSpatialModelDrawSnapshot(handles[id]!);return [id,model?{transform:Array.from(model.transform),cameraVisible:model.cameraVisible,hasPhysicsBody:!!e.getPhysicsEntity(handles[id]!)}:undefined];})),
+      shadowModels:()=>Object.fromEntries(["actor_shadow","tree_shadow"].map(id=>{const model=e.dataSceneSpatialModelDrawSnapshot(handles[id]!);return [id,model?{contentId:model.asset.contentId,bounds:model.asset.bounds,triangles:model.asset.triangleCount,transform:Array.from(model.transform),cameraVisible:model.cameraVisible,hasPhysicsBody:!!e.getPhysicsEntity(handles[id]!)}:undefined];})),
     }:{}) };
     Object.assign(window, { ferrumFeatureLab: hooks });
     own(() => {

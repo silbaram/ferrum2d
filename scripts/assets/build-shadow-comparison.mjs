@@ -9,7 +9,7 @@ export async function buildShadowComparison(output){
   if(sha(atlas)!==manifest.texture.sha256)throw Error("Garden atlas differs from its manifest");
   await copyFile(new URL("atlas.png",source),new URL("spatial/shadow-garden.png",output));
   const models={};
-  for(const kind of ["actor","tree"]){const name=`shadow-${kind}`,bytes=shadowComparisonModel(kind);models[name]=sha(bytes);await writeFile(new URL(`spatial/${name}.glb`,output),bytes);}
+  for(const kind of ["actor","tree","lantern","crate"].flatMap(kind=>[kind,`${kind}-low`])){const name=`shadow-${kind}`,bytes=shadowComparisonModel(kind);models[name]=sha(bytes);await writeFile(new URL(`spatial/${name}.glb`,output),bytes);}
   const {width,height}=manifest.texture;
   const frame=name=>{const f=manifest.frames[name];return {u0:f.x/width,v0:f.y/height,u1:(f.x+f.width)/width,v1:(f.y+f.height)/height};};
   const frames=Array.from({length:4},(_,i)=>frame(`hero_0_${i}`));
@@ -33,5 +33,9 @@ export async function buildShadowComparison(output){
       environment:{lighting:{ambient:[.14,.14,.14],lights:[],directional:{direction:{x:horizontal,y:horizontal,elevation:Math.sin(elevation)},intensity:1.6,color:[1,.95,.84],
         shadows:{resolution:512,extent:240,distance:1200,bias:.03,normalBias:.02}}}}}};
   await writeFile(new URL("hd2d-shadow-proxy.json",output),JSON.stringify(document,null,2)+"\n");
-  await writeFile(new URL("spatial/shadow-assets.json",output),JSON.stringify({source:"apps/placement-viewer/public/assets/lantern-garden",atlasSha256:sha(atlas),frames:manifest.frames,models},null,2)+"\n");
+  // Measured alpha bounds, not automatic proxy generation. Preserve the original oak baseline.
+  const subjects={tree:{label:"정원 나무",frame:frame("oak"),width:64,height:96,originY:1,volumeHeight:96},
+    lantern:{label:"정원 가로등",frame:frame("lantern"),width:32,height:96,originY:1,volumeHeight:90},
+    crate:{label:"정원 상자",frame:frame("crate"),width:64,height:64,originY:30/32,volumeHeight:56}};
+  await writeFile(new URL("spatial/shadow-assets.json",output),JSON.stringify({source:"apps/placement-viewer/public/assets/lantern-garden",atlasSha256:sha(atlas),frames:manifest.frames,models,subjects},null,2)+"\n");
 }

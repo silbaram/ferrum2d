@@ -311,7 +311,7 @@ export function createLessonVisual(id: string, root: HTMLElement, scene: HTMLEle
             fields[0].amount.textContent=shadow.mode==="proxy"?"월드 부피":shadow.mode==="billboard"?"표시 평면":"OFF";
             fields[1].amount.textContent=`${num(shadow.elevation)}° / ${num(shadow.height)}`;
             fields[2].amount.textContent=`${num(s.visibleModels)} / ${num(s.models)}`;
-            note.textContent="카메라만 돌렸을 때 같은 지면의 그림자를 비교하세요. 부피는 프레임마다 변하는 정밀 실루엣이 아닙니다.";
+            note.textContent=shadow.lod==="distance"?"거리 LOD는 간소화된 부피로 바뀌므로 그림자 모양도 달라집니다. 같은 모양이 필요하면 정밀도를 고정하세요.":"반전·프레임·카메라를 바꿔 같은 지면의 그림자를 비교하세요. 고정 부피는 원본 실루엣의 근사입니다.";
             return note.textContent;
         };
     }

@@ -130,6 +130,13 @@ export function forgetDataSceneProgressContext(engine: FerrumEngine): void {
   contexts.delete(engine);
 }
 
+/** Internal cold authoring metadata; native transient values never enter this context. */
+export function dataSceneAuthoringContinuityContext(engine: FerrumEngine) {
+  const context=contexts.get(engine),adapter=adapters.get(engine);
+  if(!context||!adapter||context.epoch!==adapter.epoch())throw new Error("Preserving animation/LOD requires a previous complete default authoring apply.");
+  return {document:JSON.parse(context.document) as unknown,handles:context.handles};
+}
+
 export function rememberDataSceneProgressContext(
   engine: FerrumEngine,
   document: unknown,
@@ -785,6 +792,7 @@ function unsupportedOptions(
           "colorManagement",
           "instanceHandleRegistry",
           "spatialModelPreparer",
+          "preserveAnimationAndLod",
         ].includes(key) &&
         !(
           [

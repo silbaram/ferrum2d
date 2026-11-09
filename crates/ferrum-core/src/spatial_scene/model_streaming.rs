@@ -8,7 +8,7 @@ struct Chunk {
     exit: f32,
     active: bool,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Level {
     asset: u32,
     distance: f32,
@@ -19,12 +19,34 @@ struct Policy {
     levels: Vec<Level>,
     selected: usize,
 }
+/// A cold authoring handoff only; never part of the persisted game-state format.
+#[derive(Clone, Debug)]
+pub(crate) struct ModelLodContinuity {
+    levels: Vec<Level>,
+    selected: usize,
+}
 #[derive(Debug, Default)]
 pub(super) struct ModelStreaming {
     chunks: Vec<Chunk>,
     policies: BTreeMap<(u32, u32), Policy>,
 }
 impl SpatialModels {
+    pub(crate) fn capture_lod_continuity(&self, key: (u32, u32)) -> Option<ModelLodContinuity> {
+        self.streaming
+            .policies
+            .get(&key)
+            .map(|policy| ModelLodContinuity {
+                levels: policy.levels.clone(),
+                selected: policy.selected,
+            })
+    }
+    pub(crate) fn restore_lod_continuity(&mut self, key: (u32, u32), state: &ModelLodContinuity) {
+        if let Some(policy) = self.streaming.policies.get_mut(&key) {
+            if policy.levels == state.levels {
+                policy.selected = state.selected;
+            }
+        }
+    }
     /// Chunks: min XYZ/max XYZ/enter/exit (world XYZ). Rows: entity/generation/asset/primitives/triangles/chunk (1 based, 0 always resident).
     /// Each model starts with its original asset at distance 0; at most four ascending levels per model.
     pub fn configure_streaming(

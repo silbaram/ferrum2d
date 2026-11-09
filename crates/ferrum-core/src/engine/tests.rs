@@ -180,6 +180,7 @@ fn spawn_test_body_with_trigger(
     entity
 }
 
+mod data_scene_authoring_continuity;
 mod spatial_connections;
 mod spatial_debug;
 mod spatial_environment;

@@ -7,6 +7,7 @@ import { SpatialModelImageReader } from "../src/spatialModelImage.js";
 import { spatialModelResource } from "../src/spatialModel.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 interface Fixture {
+    extras?: Record<string,unknown>;
     extensionsRequired?: string[];
     nodes: {
         children?: number[];
@@ -46,6 +47,16 @@ interface Fixture {
     }[];
     images: unknown[];
 }
+
+test("GLB application extras do not implicitly create collision or navigation proxies", async () => {
+    const original=await loadSpatialGlb(await fixture(),{materialProfile:"diffuse"});
+    const tagged=await loadSpatialGlb(await fixture(json=>{
+        json.extras={collision:{shape:"box",size:[100,100,100]},navigation:{walkable:true}};
+    }),{materialProfile:"diffuse"});
+    deepEqual(tagged.bounds,original.bounds);equal(tagged.triangleCount,original.triangleCount);
+    deepEqual(Object.keys(tagged).sort(),Object.keys(original).sort());
+    ok(!("collision" in tagged)&&!("navigation" in tagged));
+});
 async function fixture(edit: (json: Fixture) => void = () => { }, name = "rock", preserveTextures = false): Promise<ArrayBuffer> {
     const file = await readFile(new URL(`../../../../examples/data-scene-native/assets/${name}.glb`, import.meta.url));
     const v = new DataView(file.buffer, file.byteOffset, file.byteLength), n = v.getUint32(12, true);

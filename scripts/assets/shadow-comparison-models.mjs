@@ -1,4 +1,4 @@
-/** Original low-poly volumes, sized to the garden character and oak sprites. */
+/** Original, hand-sized volumes. Feet are at glTF Y=0; these are not collision meshes. */
 export function shadowComparisonModel(kind) {
   const positions=[],normals=[],uv=[];
   const box=(x,y,z,w,h,d)=>{
@@ -17,6 +17,18 @@ export function shadowComparisonModel(kind) {
     box(-10,16,0,5,17,7);box(10,16,0,5,17,7);box(0,34,0,17,14,13);
   }else if(kind==="tree"){
     box(0,0,0,9,58,9);box(0,42,0,40,34,34);box(0,64,0,50,22,42);box(0,82,0,28,14,26);
+  }else if(kind==="actor-low"){
+    box(0,0,0,15,48,9);
+  }else if(kind==="tree-low"){
+    box(0,0,0,9,58,9);box(0,42,0,40,54,34);
+  }else if(kind==="lantern"){
+    box(0,0,0,8,6,8);box(0,6,0,4,64,4);box(0,70,0,20,16,16);box(0,86,0,24,4,20);
+  }else if(kind==="lantern-low"){
+    box(0,0,0,4,70,4);box(0,70,0,20,20,16);
+  }else if(kind==="crate"){
+    box(0,0,0,52,52,30);box(0,52,0,56,4,34);
+  }else if(kind==="crate-low"){
+    box(0,0,0,52,56,30);
   }else throw Error(`Unknown shadow volume: ${kind}`);
   const arrays=[positions,normals,uv].map(values=>Buffer.from(new Float32Array(values).buffer));
   let offset=0;

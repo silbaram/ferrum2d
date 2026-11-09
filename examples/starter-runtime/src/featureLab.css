@@ -32,6 +32,7 @@
 .feature-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .feature-lab button:disabled { opacity: 0.45; cursor: not-allowed; }
 .feature-observation { display: block; padding: 12px; border-left: 2px solid var(--example-accent); background: var(--example-raised); color: var(--example-text); min-height: 48px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.feature-control-error:not([hidden]) { display: block; padding: 8px; border-left: 2px solid var(--example-accent); background: var(--example-raised); color: var(--example-text); font-size: 12px; overflow-wrap: anywhere; }
 .feature-panel details { border-top: 1px solid #1b2430; margin-top: 20px; padding-top: 12px; }
 .feature-panel .feature-lesson-guide { margin: 0 0 12px; border: 1px solid var(--example-border); padding: 8px; }
 .feature-panel .feature-lesson-guide[open] summary { margin-bottom: 8px; }

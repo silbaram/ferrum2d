@@ -12,6 +12,7 @@ pub(crate) use attachments::{AttachmentPose, SpatialAttachments};
 mod connections;
 mod environment;
 mod model_streaming;
+pub(crate) use model_streaming::ModelLodContinuity;
 mod models;
 pub(crate) use models::preflight_model_poses;
 mod shadows;

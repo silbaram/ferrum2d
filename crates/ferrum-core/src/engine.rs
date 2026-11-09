@@ -29,6 +29,7 @@ mod audio_poses;
 mod bitmap_text_controls;
 mod data_scene_animation;
 mod data_scene_animation_config;
+mod data_scene_authoring_continuity;
 mod data_scene_combat;
 mod data_scene_gameplay;
 mod data_scene_movement;
@@ -111,6 +112,7 @@ pub struct Engine {
     scenes: BuiltInSceneSlots,
     data_scene: DataSceneRuntime,
     spatial_scene: crate::spatial_scene::SpatialScene,
+    authoring_continuity: data_scene_authoring_continuity::AuthoringContinuity,
     camera: Camera2D,
     world: World,
     data_scene_entity: Option<Entity>,
@@ -192,6 +194,7 @@ impl Engine {
             scenes: BuiltInSceneSlots::new(),
             data_scene: DataSceneRuntime::new(),
             spatial_scene: Default::default(),
+            authoring_continuity: Default::default(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             data_scene_entity: None,

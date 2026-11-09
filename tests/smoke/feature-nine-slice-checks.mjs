@@ -3,6 +3,7 @@ import {mkdtemp, mkdir, copyFile, readFile, rm} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
+import {decodePng} from '../../scripts/tools/pack-textures.mjs';
 
 /** Regenerate in isolation so other hand-edited example scenes remain untouched. */
 export async function checkNineSliceFixtureGeneration() {
@@ -21,18 +22,31 @@ export async function checkNineSliceFixtureGeneration() {
     }
     const emitter = 'examples/starter-runtime/public/features/spatial/emitter.glb';
     assert.deepEqual(await readFile(join(root, emitter)), await readFile(emitter), 'emissive model must regenerate byte-for-byte');
-    for(const name of ['shadow-actor.glb','shadow-tree.glb','shadow-garden.png','shadow-assets.json']){
+    for(const name of [...['actor','tree','lantern','crate'].flatMap(kind=>[`shadow-${kind}.glb`,`shadow-${kind}-low.glb`]),'shadow-garden.png','shadow-assets.json']){
       const file=`examples/starter-runtime/public/features/spatial/${name}`;
       assert.deepEqual(await readFile(join(root,file)),await readFile(file),`${name}: shadow comparison assets must regenerate byte-for-byte`);
     }
     const shadowScene=JSON.parse(await readFile(join(root,'examples/starter-runtime/public/features/hd2d-shadow-proxy.json'),'utf8'));
     const sun=shadowScene.spatial.environment.lighting.directional.direction;
     assert(Math.abs(Math.atan2(sun.elevation,Math.hypot(sun.x,sun.y))*180/Math.PI-45)<1e-6,'Authored shadow scene must use the same 45 degree sun as the initial UI');
+    const assets=JSON.parse(await readFile(join(root,'examples/starter-runtime/public/features/spatial/shadow-assets.json'),'utf8'));
+    const atlas=decodePng(await readFile(join(root,'examples/starter-runtime/public/features/spatial/shadow-garden.png')));
+    const footPivots=[];
+    for(const name of ['lantern','crate']){
+      const frame=assets.frames[name],subject=assets.subjects[name];
+      let top=frame.height,bottom=0;
+      for(let y=0;y<frame.height;y++)for(let x=0;x<frame.width;x++)if(atlas.pixels[((frame.y+y)*atlas.width+frame.x+x)*4+3]){top=Math.min(top,y);bottom=Math.max(bottom,y+1);}
+      const foot=bottom/frame.height*subject.height-subject.originY*subject.height;
+      const height=(bottom-top)/frame.height*subject.height;
+      assert.equal(foot,0,`${name}: actual opaque sprite foot must lie on the attachment plane`);
+      assert.equal(height,subject.volumeHeight,`${name}: volume height must match the measured opaque sprite height`);
+      footPivots.push({name,top,bottom,foot,height});
+    }
     for (const extrude of [0,2]) {
       const file = `examples/starter-runtime/public/features/atlas/padding-${extrude}.png`;
       assert.deepEqual(await readFile(join(root,file)),await readFile(file),'atlas preview must match actual packer output');
     }
-    return {regenerationMatches:true, isolated:true};
+    return {regenerationMatches:true, isolated:true,footPivots};
   } finally { await rm(root, {recursive:true,force:true}); }
 }
 

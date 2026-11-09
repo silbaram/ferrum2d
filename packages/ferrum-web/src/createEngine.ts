@@ -993,6 +993,11 @@ export async function createEngineWithFramePipeline(
     },
   });
   return attachDataSceneRuntimeEngineAdapter(engine, {
+    ...(typeof rustEngine.begin_data_scene_authoring_continuity==="function"&&typeof rustEngine.finish_data_scene_authoring_continuity==="function"&&typeof rustEngine.cancel_data_scene_authoring_continuity==="function"?{
+      beginAuthoringContinuity:(handles:Uint32Array,masks:Uint32Array)=>{requireAlive();return rustEngine.begin_data_scene_authoring_continuity(handles,masks);},
+      finishAuthoringContinuity:(token:number,handles:Uint32Array)=>{requireAlive();return rustEngine.finish_data_scene_authoring_continuity(token,handles);},
+      cancelAuthoringContinuity:(token:number)=>{requireAlive();rustEngine.cancel_data_scene_authoring_continuity(token);},
+    }:{}),
     supportsSpriteNineSlices: () => { requireAlive(); return supportsSpriteNineSlices(rustEngine); },
     supportsSpriteNormalMaterials: () => { requireAlive(); return supportsSpriteNormals(rustEngine); },
     useDataScene,

@@ -4,6 +4,7 @@ import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
 import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
 import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
+import {prepareDataSceneAuthoringContinuity} from "./dataSceneAuthoringContinuity.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
@@ -76,6 +77,8 @@ export interface ApplyDataSceneAuthoringDocumentOptions
   allowComponentTemplates?: boolean;
   /** Opt-in model GPU preparation before replacing the active scene; not serialized. */
   spatialModelPreparer?: SpatialModelPreparer;
+  /** Cold preview reapply only: retain compatible named animation phase and native LOD hysteresis. Default false. */
+  preserveAnimationAndLod?: boolean;
 }
 
 export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
@@ -139,6 +142,10 @@ export interface DataSceneRuntimeEngineAdapter {
   spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): GameplayEntityHandle | undefined;
   /** Cold native camera/environment validation before destructive authoring activation. */
   preflightSpatialEnvironment?(camera: SpatialCameraSpec, environment: SpatialEnvironmentSpec): boolean;
+  /** Internal native-owned, single-use cold authoring handoff. */
+  beginAuthoringContinuity?(handles:Uint32Array,masks:Uint32Array):number;
+  finishAuthoringContinuity?(token:number,handles:Uint32Array):boolean;
+  cancelAuthoringContinuity?(token:number):void;
 }
 
 interface DataSceneRuntimeEngine {
@@ -212,6 +219,7 @@ export function applyDataSceneAuthoringDocument(
     componentTemplates,
     textureId,
     spatialModelPreparer,
+    preserveAnimationAndLod=false,
     validateBindings = true,
     validateComponents = true,
     allowComponentTemplates = componentTemplates !== undefined,
@@ -223,6 +231,8 @@ export function applyDataSceneAuthoringDocument(
     ...bindingOptions
   } = applyOptions;
   const path = optionPath ?? "dataSceneAuthoring";
+  if(typeof preserveAnimationAndLod!=="boolean"||preserveAnimationAndLod&&activateDataScene===false)
+    throw sceneCompositionDiagnosticError(`${path}.preserveAnimationAndLod`,"requires a boolean and full scene activation");
   resolveColorManagementMode(colorManagement);
   const resolved = resolveSceneAuthoringDocument(document, {
     ...bindingOptions,
@@ -317,7 +327,9 @@ export function applyDataSceneAuthoringDocument(
       }
     }
   }
+  let continuity:ReturnType<typeof prepareDataSceneAuthoringContinuity>|undefined;
   try {
+    if(preserveAnimationAndLod)continuity=prepareDataSceneAuthoringContinuity(engine,resolved,bindingPlan.instances,runtimeAdapter,`${path}.preserveAnimationAndLod`);
     forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
       runtimeAdapter.useDataScene();
@@ -377,6 +389,7 @@ export function applyDataSceneAuthoringDocument(
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
     if (spawnCatalog === undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    continuity?.restore(result.entityHandles);
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
@@ -392,7 +405,8 @@ export function applyDataSceneAuthoringDocument(
     );
     throw error;
   } finally {
-    preparation?.dispose();
+    try { continuity?.dispose(); }
+    finally { preparation?.dispose(); }
   }
 }
 

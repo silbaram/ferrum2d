@@ -263,6 +263,53 @@
   },
   "models": {
     "shadow-actor": "dce2a7be6884da3b5120b4a24bbd0dbe7b0d2d9631e837e608e40f50c354e4cc",
-    "shadow-tree": "059f5047b5fb8cab3264df7feb833f0e01ea8f1e4ba8d39522693b21ab214cda"
+    "shadow-actor-low": "712771f1f46d86780e98216698b21afe39290c8a425a2613048d9f9d4fa36250",
+    "shadow-tree": "059f5047b5fb8cab3264df7feb833f0e01ea8f1e4ba8d39522693b21ab214cda",
+    "shadow-tree-low": "e59032c4ba2b01538963535a1dc3acac83f6033aeb614a02800d8343a22903d1",
+    "shadow-lantern": "6a7d23776a6afede6cf673c4d9250b285ffe56ad3d20ed7ac10ad4e9e173517a",
+    "shadow-lantern-low": "250c08d249ccf19d7808c03112fe1339694585d8dcd59e69bbd77c45e66c9cc7",
+    "shadow-crate": "4e25cb6526587a14f9561c7ec3416ca2a78b7a89bcc993f870d1703bfd079a0b",
+    "shadow-crate-low": "a507d12e38e095945fcb00b1f258feb2881715c213ad37e1bd42699077e69e5c"
+  },
+  "subjects": {
+    "tree": {
+      "label": "정원 나무",
+      "frame": {
+        "u0": 0.25,
+        "v0": 0.25,
+        "u1": 0.375,
+        "v1": 0.4375
+      },
+      "width": 64,
+      "height": 96,
+      "originY": 1,
+      "volumeHeight": 96
+    },
+    "lantern": {
+      "label": "정원 가로등",
+      "frame": {
+        "u0": 0.0625,
+        "v0": 0.5,
+        "u1": 0.09375,
+        "v1": 0.59375
+      },
+      "width": 32,
+      "height": 96,
+      "originY": 1,
+      "volumeHeight": 90
+    },
+    "crate": {
+      "label": "정원 상자",
+      "frame": {
+        "u0": 0,
+        "v0": 0.5,
+        "u1": 0.0625,
+        "v1": 0.5625
+      },
+      "width": 64,
+      "height": 64,
+      "originY": 0.9375,
+      "volumeHeight": 56
+    }
   }
 }
