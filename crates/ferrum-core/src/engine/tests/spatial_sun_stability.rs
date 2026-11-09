@@ -198,3 +198,77 @@ fn spatial_sun_stability_preserves_texel_snapping_and_camera_rotation_independen
         assert!((b[2] - a[2]).abs() < 1e-5);
     }
 }
+
+#[test]
+fn spatial_sun_fixed_center_preserves_coverage_during_pan_zoom_and_capture_restore() {
+    let mut engine = setup();
+    let baseline = matrix(&mut engine, direction(35., 45.));
+    let legacy = engine.capture_spatial_environment();
+    let mut anchored = legacy.clone();
+    anchored.resize(528, 0.);
+    anchored[136] = 4.;
+    anchored[138] = -1.;
+    anchored[512] = 1.; // Fixed origin, matching the initial camera target.
+    assert!(engine.configure_spatial_environment(&anchored));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_environment_abi_version(), 5);
+    assert_eq!(engine.spatial_environment_len(), 528);
+    assert_eq!(engine.spatial_scene.environment.shadow_matrices, baseline);
+    for height in [40., 200., 800.] {
+        let mut parameters = engine.spatial_scene.camera.as_ref().unwrap().parameters;
+        parameters[1] += 300.;
+        parameters[4] += 300.;
+        parameters[7] = height;
+        assert!(engine.configure_spatial_camera(&parameters));
+        engine.build_render_commands();
+        assert_eq!(engine.spatial_scene.environment.shadow_matrices, baseline);
+        assert_eq!(engine.capture_spatial_environment(), anchored);
+    }
+    assert!(engine.configure_spatial_environment(&legacy));
+    engine.build_render_commands();
+    assert_ne!(engine.spatial_scene.environment.shadow_matrices, baseline);
+    assert_eq!(engine.spatial_environment_abi_version(), 2);
+    assert!(engine.configure_spatial_environment(&anchored));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_scene.environment.shadow_matrices, baseline);
+}
+
+#[test]
+fn spatial_sun_fixed_center_rejects_invalid_extensions_atomically() {
+    let mut engine = setup();
+    matrix(&mut engine, direction(10., 30.));
+    let mut good = engine.capture_spatial_environment();
+    good.resize(528, 0.);
+    good[136] = 4.;
+    good[138] = -1.;
+    good[512..516].copy_from_slice(&[1., 32., 8., -24.]);
+    assert!(engine.configure_spatial_environment(&good));
+    for (index, value) in [
+        (512, 2.),
+        (513, f32::NAN),
+        (514, 1_000_001.),
+        (515, f32::INFINITY),
+        (516, 1.),
+        (527, 1.),
+        (512, 0.),
+        (92, 0.),
+    ] {
+        let mut bad = good.clone();
+        bad[index] = value;
+        assert!(
+            !engine.configure_spatial_environment(&bad),
+            "accepted field {index}"
+        );
+        assert_eq!(engine.capture_spatial_environment(), good);
+    }
+    for length in [513, 527, 529] {
+        let mut bad = good.clone();
+        bad.resize(length, 0.);
+        assert!(!engine.configure_spatial_environment(&bad));
+        assert_eq!(engine.capture_spatial_environment(), good);
+    }
+    let mut orphan = good.clone();
+    orphan[91..95].fill(0.);
+    assert!(!engine.configure_spatial_environment(&orphan));
+    assert_eq!(engine.capture_spatial_environment(), good);
+}

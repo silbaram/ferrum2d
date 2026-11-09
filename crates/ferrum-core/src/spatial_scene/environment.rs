@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 512;
+pub(crate) const ENVIRONMENT_VALUES: usize = 528;
 #[path = "lighting_upgrade.rs"]
 mod lighting_upgrade;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
@@ -17,14 +17,14 @@ impl SpatialEnvironment {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![80, 112, 128, ENVIRONMENT_VALUES].contains(&v.len()) {
+        if ![80, 112, 128, 512, ENVIRONMENT_VALUES].contains(&v.len()) {
             return None;
         }
         let mut a = [0.; ENVIRONMENT_VALUES];
         a[..v.len()].copy_from_slice(v);
         if a.iter().any(|x| !x.is_finite())
             || a[0].fract() != 0.
-            || !(0. ..=if v.len() == 512 { 127. } else { 31. }).contains(&a[0])
+            || !(0. ..=if v.len() >= 512 { 127. } else { 31. }).contains(&a[0])
             || a[1].fract() != 0.
             || !(0. ..=4.).contains(&a[1])
             || a[2].fract() != 0.
@@ -112,7 +112,15 @@ impl SpatialEnvironment {
         if (a[2] < 0. && a[123] != 0.) || (a[92] == 0. && a[124] != 0.) {
             return None;
         }
-        if v.len() == 512 && !lighting_upgrade::valid(&a) {
+        if v.len() >= 512 && !lighting_upgrade::valid(&a[..512]) {
+            return None;
+        }
+        // v5: optional fixed world-space sun center; the remaining extension is reserved.
+        if ![0., 1.].contains(&a[512])
+            || a[516..].iter().any(|x| *x != 0.)
+            || (a[512] == 0. && a[513..516].iter().any(|x| *x != 0.))
+            || (a[512] == 1. && (a[92] == 0. || a[513..516].iter().any(|x| x.abs() > 1e6)))
+        {
             return None;
         }
         let count = a[1] as usize;
@@ -191,11 +199,7 @@ impl SpatialEnvironment {
         self.values.as_ref().is_none_or(|v| {
             v[92] == 0.
                 || sun_matrix(
-                    [
-                        camera.parameters[4],
-                        camera.parameters[5],
-                        camera.parameters[6],
-                    ],
+                    Self::sun_center(v, camera),
                     [v[84], v[85], v[86]],
                     v[94],
                     v[91],
@@ -215,8 +219,8 @@ impl SpatialEnvironment {
         let Some(mut v) = self.values else {
             return;
         };
-        if self.value_len == 512 {
-            lighting_upgrade::select(&mut v, camera, world, bindings, actor);
+        if self.value_len >= 512 {
+            lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor);
             self.shadow_matrices.clear();
             if v[2] >= 0. {
                 let p = 12 + v[2] as usize * 12;
@@ -271,11 +275,7 @@ impl SpatialEnvironment {
         let base = if v[2] >= 0. { 96 } else { 0 };
         self.shadow_matrices.truncate(base);
         if v[92] > 0. {
-            let target = [
-                camera.parameters[4],
-                camera.parameters[5],
-                camera.parameters[6],
-            ];
+            let target = Self::sun_center(&v, camera);
             self.shadow_matrices.extend(sun_matrix(
                 target,
                 [v[84], v[85], v[86]],
@@ -289,6 +289,17 @@ impl SpatialEnvironment {
         self.values
             .as_ref()
             .is_some_and(|v| v[2] >= 0. || v[92] > 0.)
+    }
+    fn sun_center(values: &[f32; ENVIRONMENT_VALUES], camera: &SpatialCamera) -> Point {
+        if values[512] == 1. {
+            [values[513], values[514], values[515]]
+        } else {
+            [
+                camera.parameters[4],
+                camera.parameters[5],
+                camera.parameters[6],
+            ]
+        }
     }
 }
 fn cube_matrix(eye: Point, forward: Point, up: Point, near: f32, far: f32) -> Option<[f32; 16]> {

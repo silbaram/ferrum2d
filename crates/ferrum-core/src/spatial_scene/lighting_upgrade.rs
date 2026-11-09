@@ -1,7 +1,7 @@
 //! Bounded light selection. Authored records stay immutable for save/restore.
 use super::{Entity, SpatialCamera, World};
 
-pub(super) fn valid(v: &[f32; 512]) -> bool {
+pub(super) fn valid(v: &[f32]) -> bool {
     let range = |i: usize, a: f32, b: f32| (a..=b).contains(&v[i]);
     let zero = |a: usize, b: usize| v[a..b].iter().all(|x| *x == 0.);
     for p in [128, 132] {
@@ -106,7 +106,7 @@ pub(super) fn valid(v: &[f32; 512]) -> bool {
 }
 
 pub(super) fn select(
-    v: &mut [f32; 512],
+    v: &mut [f32],
     camera: &SpatialCamera,
     world: &World,
     bindings: &[Option<(Entity, f32)>; 16],

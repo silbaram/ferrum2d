@@ -1,4 +1,4 @@
-import { equal, ok, throws } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   createEngine,
@@ -120,7 +120,9 @@ test("spatial shadow restore preflights prospective caster budgets before activa
     );
     equal(destination.entityCount(), legacy.dataScene.scene.entityCount);
     equal(hashGameStateSnapshot(legacy), legacy.snapshotHash);
-    for (const environment of [pointEnvironment, { lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: {} } } } satisfies SpatialEnvironmentSpec]) {
+    for (const environment of [pointEnvironment,
+      { lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: {} } } } satisfies SpatialEnvironmentSpec,
+      { lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 64, y: 32, elevation: 8 } } } } } satisfies SpatialEnvironmentSpec]) {
     for (const [count, terrainCount, message] of [
       [1025, 1, /1024/],
       [2, 63, /64/],
@@ -173,6 +175,8 @@ test("spatial shadow restore preflights prospective caster budgets before activa
         .dataSceneStateApplied,
     );
     equal(destination.entityCount(), 1);
+    const recaptured = captureGameStateSnapshot(destination, { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: doc });
+    deepEqual(recaptured.dataScene?.progress?.spatial?.environment, saved.dataScene?.progress?.spatial?.environment);
     }
     // Valid camera values can still overflow directional shadow projection. Reject before activation.
     const doc = document(1, 1);

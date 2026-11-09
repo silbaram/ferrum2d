@@ -6,6 +6,7 @@ import {
   type SpatialEnvironmentSpec,
 } from "../src/spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "../src/dataSceneSpatial.js";
+import { validateSpatialExtensions } from "../src/spatialRenderPacket.js";
 class Resource {
   destroyed = 0;
   constructor(
@@ -90,7 +91,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -110,6 +111,25 @@ function setup() {
     pass = new WebGpuSpatialEnvironment(device as unknown as GPUDevice, "rgba8unorm");
   return { device, pass };
 }
+test("v5 center does not overwrite the GPU camera uniform or expand its allocation", () => {
+  const { device, pass } = setup();
+  const f = frame({ lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 100, y: 200, elevation: 300 } } } } });
+  equal(f.environment!.version, 5);
+  validateSpatialExtensions(f);
+  const wrongVersion = { ...f, environment: { ...f.environment!, version: 4 as const } };
+  throws(() => validateSpatialExtensions(wrongVersion), /environment buffer/);
+  pass.prepare(f, 320, 240);
+  const u = device.uniforms[device.uniforms.length - 1];
+  equal(u.length, 1280);
+  deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
+  deepEqual(u.subarray(0, 527), u.subarray(640, 1167));
+  const count = [device.textures.length, device.buffers.length];
+  pass.prepare(f, 320, 240);
+  deepEqual([device.textures.length, device.buffers.length], count);
+  pass.destroy();
+  equal(device.textures.every(t => t.destroyed === 1), true);
+  equal(device.buffers.every(b => b.destroyed === 1), true);
+});
 test("spatial HDR targets reuse warm resources, retain old target on failed resize, and release on disable", () => {
   const { device, pass } = setup(),
     f = frame({ fog: { color: [0, 0, 1], start: 100, end: 500 } });

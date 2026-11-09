@@ -282,10 +282,10 @@ try {
           assert.equal(proxies.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of proxies) {
-            assert.equal(entry.comparisons.length, 10);
+            assert.equal(entry.comparisons.length, 13);
             for (const backend of entry.backends) {
-              assert(backend.restored && backend.moved && backend.core >= 3 && backend.common >= 3 && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 10);
+              assert(backend.restored && backend.moved && backend.mixedV5 && backend.core >= 3 && backend.common >= 3 && backend.errors.length === 0);
+              assert.equal(backend.rows.length, 13);
               for (const row of backend.rows) {
                 const file = `proxy-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64"));

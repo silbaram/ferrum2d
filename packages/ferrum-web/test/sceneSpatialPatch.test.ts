@@ -13,6 +13,22 @@ import { applySceneSpatialPatch } from "../src/sceneSpatialPatch.js";
 import { resolveSpatialCameraSpec } from "../src/dataSceneSpatial.js";
 import { resolveSpatialEnvironmentSpec } from "../src/spatialEnvironment.js";
 
+test("fixed sun center survives JSON patch merge, undo, redo and removal", () => {
+  const source = document(), viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 } });
+  const environment = resolveSpatialEnvironmentSpec({ lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 32, y: 64, elevation: 8 } } } } });
+  viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment } }]);
+  const patch = JSON.parse(JSON.stringify(viewer.exportPatch()));
+  const merged = mergeScenePlacementPatch(source, patch).document;
+  deepEqual(merged.spatial!.environment, environment);
+  resolveSceneAuthoringDocument(merged);
+  viewer.undo(); equal(viewer.exportPatch(), undefined);
+  viewer.redo(); deepEqual(viewer.state().spatial!.environment, environment);
+  const following = structuredClone(environment); delete following.lighting!.directional!.shadows!.center;
+  viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment: following } }]);
+  equal(mergeScenePlacementPatch(source, viewer.exportPatch()!).document.spatial!.environment!.lighting!.directional!.shadows!.center, undefined);
+  viewer.undo(); deepEqual(viewer.state().spatial!.environment, environment);
+});
+
 test("spatial v7 shadow-only model edits round-trip false, merge and undo without changing physics", () => {
   const source = document(), viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 } });
   const operation = { kind: "updateModel" as const, id: "model", changes: { shadowOnly: true } };

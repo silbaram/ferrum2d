@@ -2,7 +2,8 @@ import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
-// Native environment v1..v4 padded to 512 floats, followed by eye/forward/view/size.
+// Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
+// v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 const UNIFORM_BYTES = 2560,
   UNIFORM_STRIDE = 2560;
 export const spatialEnvironmentWGSL = `
@@ -254,7 +255,7 @@ export class WebGpuSpatialEnvironment {
     this.shadows.prepare(frame);
     this.refreshGroups();
     this.values.fill(0);
-    if (frame.environment) this.values.set(frame.environment.values);
+    if (frame.environment) this.values.set(frame.environment.values.subarray(0, 512));
     else this.values[2] = -1;
     const c = frame.camera;
     this.values.set(c.subarray(17, 20), 512);

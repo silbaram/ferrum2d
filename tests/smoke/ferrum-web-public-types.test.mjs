@@ -20,7 +20,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
     equal(tarballs.length, 1, 'expected one packed runtime package');
     await run('tar', ['-xzf', join(packed, tarballs[0]), '-C', installed, '--strip-components=1'], project, 'Packed package extraction');
     await writeFile(join(project, 'consumer.ts'), `
-      import type { PixelPerfectOptions, FerrumEngine, SpatialModelInstanceSpec } from '@ferrum2d/ferrum-web/core';
+      import type { PixelPerfectOptions, FerrumEngine, SpatialModelInstanceSpec, SpatialDirectionalLightSpec } from '@ferrum2d/ferrum-web/core';
       import {
         createSceneInstanceHandleRegistry,
         type ApplySceneBehaviorRecipesOptions,
@@ -37,6 +37,10 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const invalid: PixelPerfectOptions = { ...config, snap: 'on' };
       declare const engine: FerrumEngine;
       declare const viewer: ScenePlacementViewer;
+      const sun: SpatialDirectionalLightSpec = { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
+      engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
+      // @ts-expect-error fixed sun center requires all three world coordinates
+      const incompleteCenter: NonNullable<SpatialDirectionalLightSpec['shadows']> = { center: { x: 0, y: 0 } };
       const proxy: SpatialModelInstanceSpec = { asset: 'proxy', contentId: 'a'.repeat(64), shadowOnly: true };
       const shadowPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 7,
         operations: [{ kind: 'updateModel', id: 'proxy', changes: { shadowOnly: false } }] };
@@ -53,7 +57,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       viewer.addInstances(1, []);
       // @ts-expect-error entries require a prefab
       viewer.addInstances('main', [{ id: 'tile_1' }]);
-      void [config, disabled, invalid, engine, behaviorOptions, proxy, invalidProxy];
+      void [config, disabled, invalid, engine, behaviorOptions, proxy, invalidProxy, sun, incompleteCenter];
     `);
     await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
       target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',

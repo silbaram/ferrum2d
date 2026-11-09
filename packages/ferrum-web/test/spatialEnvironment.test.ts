@@ -21,6 +21,35 @@ const spec: SpatialEnvironmentSpec = {
   colorGrading: { toneMapping: "aces" },
   fog: { start: 100, end: 300, color: [0.2, 0.3, 0.4] },
 };
+test("fixed sun center uses explicit v5 while legacy payloads stay unchanged", () => {
+  const original: SpatialEnvironmentSpec = { lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 2 }, shadows: { normalBias: .1 } } } };
+  const legacy = compileSpatialEnvironment(original);
+  equal(legacy.length, 128);
+  const input: SpatialEnvironmentSpec = { lighting: { ...original.lighting!, directional: { ...original.lighting!.directional!, shadows: { ...original.lighting!.directional!.shadows, center: { x: 32, y: 24, elevation: 8 } } } } };
+  const values = compileSpatialEnvironment(input);
+  equal(values.length, 528); ok(validSpatialEnvironmentValues(values));
+  deepEqual(Array.from(values.subarray(512, 516)), [1, 32, 8, -24]);
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(values)), values);
+  const combined = compileSpatialEnvironment({ ...input, bloom: {}, ambientOcclusion: {}, lighting: { ...input.lighting!, maxActiveLights: 2,
+    lights: [{ position: { x: 0, y: 0, elevation: 30 }, radius: 200, spot: { direction: { x: 0, y: 0, elevation: -1 } } }], shadows: { lightIndex: 0 } } });
+  equal(combined.length, 528); ok(validSpatialEnvironmentValues(combined));
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(combined)), combined);
+  const off = resolveSpatialEnvironmentSpec({ ...input, lighting: { ...input.lighting!, enabled: false } });
+  deepEqual(off.lighting!.directional!.shadows!.center, { x: 32, y: 24, elevation: 8 });
+  ok(validSpatialEnvironmentValues(compileSpatialEnvironment(off)));
+  const old = createSpatialApi({ configure_spatial_environment: (v: Float32Array) => v.length <= 512 } as unknown as Engine, () => {}, () => ({ width: 100, height: 100 }));
+  equal(old.setDataSceneSpatialEnvironment(input), false, "old Wasm must reject v5 rather than lose the fixed center");
+  for (const center of [null, {}, { x: 0, y: 0 }, { x: Infinity, y: 0, elevation: 0 }, { x: 0, y: 1e6 + 1, elevation: 0 }, { x: 0, y: 0, elevation: 0, typo: 1 }])
+    throws(() => resolveSpatialEnvironmentSpec({ lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: { center } } } }), /center/);
+  for (const [index, value] of [[512, 2], [512, 0], [513, NaN], [514, 1e6 + 1], [515, Infinity], [516, 1], [527, 1], [92, 0]]) {
+    const bad = values.slice(); bad[index] = value; equal(validSpatialEnvironmentValues(bad), false, `v5 field ${index}`);
+  }
+  equal(validSpatialEnvironmentValues(new Float32Array(527)), false);
+  const orphan = values.slice();
+  orphan.fill(0, 91, 95); orphan[124] = 0;
+  equal(validSpatialEnvironmentValues(orphan), false, "fixed center without sun shadows must fail even when the legacy prefix is valid");
+  deepEqual(compileSpatialEnvironment(original), legacy);
+});
 test("hemisphere and normal receiver bias use v3 without changing legacy payloads",()=>{
   equal(compileSpatialEnvironment(spec).length,80);
   const input: SpatialEnvironmentSpec={...spec,lighting:{...spec.lighting!,hemisphere:{direction:{x:1,y:2,elevation:3}},shadows:{lightIndex:0,normalBias:.5},directional:{direction:{x:0,y:0,elevation:1},shadows:{normalBias:.75}}}};

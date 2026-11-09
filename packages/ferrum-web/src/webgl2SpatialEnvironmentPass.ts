@@ -372,7 +372,7 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform4fv(u.lightPosition, this.positionValues);
     gl.uniform4fv(u.lightColor, this.colorValues);
     this.coneValues.fill(0);
-    if(v.length===512)this.coneValues.set(v.subarray(144,176));
+    if(v.length>=512)this.coneValues.set(v.subarray(144,176));
     gl.uniform4fv(u.lightCone, this.coneValues);
     gl.uniform1i(u.shadowIndex, v[2]);
     gl.uniform1f(u.shadowBias, v[4]);
