@@ -19,19 +19,23 @@ This is a real browser capture of the viewer with example village content.
 
 ## Try individual engine features
 
-The [**Engine Feature Lab**](https://silbaram.github.io/ferrum2d/starter-runtime/) provides **26 independent experiments**.
+The [**Engine Feature Lab**](https://silbaram.github.io/ferrum2d/starter-runtime/) provides **30 independent experiments**.
 Each experiment connects controls and visible results with implementation APIs.
 
 ![Feature Lab comparing ordinary scaling with 9-slice border preservation](docs/development/quality/screenshots/engine-feature-lab.png)
 
-| Interest | Topics | Try it |
+| Topic | Experiments | Try it |
 | --- | --- | --- |
-| Rendering | Animation, normal lighting, post-processing, 9-slice, layers, particles | [9-slice](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=nine-slice) · [Lighting](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=lighting) |
-| Movement and collision | Navigation, physics materials, cameras, tile collision | [Navigation](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=navigation) · [Materials](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics) |
-| Game progression | Scene transitions, interaction, saving, dialogue/quests, projectiles, cutscenes | [Dialogue](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=dialogue) · [Save/load](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=save-load) |
-| Platform and accessibility | Spatial audio, input switching, HUD/localization/accessibility | [Input](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=input) · [Audio](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=audio) |
-| Content integration | Asset loading, level streaming, parent/child attachments | [Streaming](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=streaming) · [Attachments](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=attachments) |
-| Spatial gameplay | HD-2D movement, combat AI, lighting/shadows/fog, terrain destruction | [HD-2D movement](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) · [Terrain destruction](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=destructible-terrain) |
+| Lighting and shadows | Point lights, normals, directional sun, shadows | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) |
+| Physics and collision | Materials, colliders, joints, CCD, overlap/shape queries | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
+| Cameras and screen effects | Tracking, zoom, shake, bounds, post-processing, pixel snapping | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
+| Sprites and animation | Clips, events, layers, palettes, outlines | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
+| Maps and movement | Tiles, routes, slopes, floors, platforms, attachments | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) |
+| Particles and VFX | Sparks, dust, trails and particle lifetime | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=particles) |
+| Gameplay and scenes | Transitions, combat, saves, dialogue, cutscenes | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=scenes) |
+| UI and input | HUD, accessibility, 9-slice, input devices | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hud) |
+| Audio | Spatial position and distance attenuation | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=audio) |
+| Assets and runtime | Loading, cache, streaming, GPU resource lifetime | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=rendering) |
 
 [Full English feature guide](docs/en/engine/showcase-hub.md) · [Seven advanced physics scenarios](https://silbaram.github.io/ferrum2d/physics-sandbox/)
 
@@ -100,7 +104,7 @@ See [pixel editing and saving conditions (Korean)](apps/placement-viewer/README.
 
 ## Example gallery
 
-Follow **focused features → deeper physics → game applications** in the [hub](https://silbaram.github.io/ferrum2d/).
+Follow **topic-based experiments → game applications** in the [hub](https://silbaram.github.io/ferrum2d/).
 Game and lab examples share navigation and show instructions, observations, and related experiments. Authoring tools have a separate section and retain their workspace UI.
 Minimal and legacy integrated demos remain reference/test fixtures outside the main catalog. See [example roles and local execution](examples/README.md).
 
@@ -133,7 +137,7 @@ After [building the source](#build-the-engine-source), run a command from the re
 
 | Example | Command | Source |
 | --- | --- | --- |
-| Feature Lab, 26 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
+| Feature Lab, 30 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
 | 2D garden / HD-2D village | `pnpm dev:placement-viewer`, then `?scene=garden` / `?scene=village` | [placement-viewer](apps/placement-viewer/) |
 | Top-down Shooter | `pnpm dev:topdown` | [topdown-shooter](examples/topdown-shooter/) |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | [physics-sandbox](examples/physics-sandbox/) |

@@ -18,20 +18,25 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 ## 기능을 먼저 체험하기
 
-[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **26개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
+[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **30개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
+10개 기능 주제로 탐색하고 2D·HD-2D를 따로 필터링합니다. 물리 심화 7종도 같은 주제에서 바로 엽니다.
 게임에서 쓰는 상황·조작 순서·객체 이름표·화면 범례를 따라 결과를 비교합니다.
 원본 애니메이션, 카메라 영역, 로딩 상태와 화면 안 대화·HUD를 확인하고 상세 패널에서 설정·구현 API를 읽을 수 있습니다.
 
 ![기능 실험실: 단순 확대와 9-slice의 테두리 보존 비교](docs/development/quality/screenshots/engine-feature-lab.png)
 
-| 관심 있는 기능 | 실험 주제 | 바로 체험 |
+| 기능 주제 | 실험 내용 | 바로 체험 |
 | --- | --- | --- |
-| 화면 표현 | 애니메이션·노멀 조명·후처리·9-slice·레이어·파티클 | [9-slice](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=nine-slice) · [노멀 조명](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=lighting) |
-| 이동과 충돌 | 길 찾기·물리 재질·카메라·타일 충돌 | [길 찾기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=navigation) · [물리 재질](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics) |
-| 게임 진행 | 씬 전환·상호작용·저장·대화/퀘스트·발사체·컷신 | [대화와 퀘스트](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=dialogue) · [저장/복원](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=save-load) |
-| 플랫폼과 접근성 | 공간 오디오·입력 장치 전환·HUD/다국어/접근성 | [입력](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=input) · [공간 오디오](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=audio) |
-| 콘텐츠 연결 | 에셋 로딩·레벨 스트리밍·부모/자식 연결 | [스트리밍](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=streaming) · [부모/자식](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=attachments) |
-| 공간과 전투 | HD-2D 이동·AI 전투·조명/그림자/안개·지형 파괴 | [HD-2D 이동](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) · [지형 파괴](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=destructible-terrain) |
+| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양 방위·고도·그림자 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) |
+| 물리·충돌 | 재질·충돌체·관절·CCD·공간 질의·지형 파괴 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
+| 카메라·화면 효과 | 추적·확대·흔들림·월드 경계, 후처리·픽셀 정렬 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
+| 스프라이트·애니메이션 | 시트·프레임 이벤트·레이어·팔레트·외곽선 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
+| 맵·공간·이동 | 타일맵·길 찾기·경사·층·발판·부모 연결 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) |
+| 파티클·VFX | 불꽃·먼지·잔상과 방출·수명 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=particles) |
+| 게임 로직·씬 | 씬 전환·사격·AI·저장·대화·컷신 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=scenes) |
+| UI·입력 | HUD·다국어·접근성·9-slice·입력 전환 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hud) |
+| 오디오 | 음원 위치·거리 감쇠·볼륨 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=audio) |
+| 에셋·실행 환경 | 로딩·캐시·스트리밍·렌더링 자원 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=rendering) |
 
 [전체 기능·조작 안내](docs/engine/showcase-hub.md) · [로컬 실행과 예제 소스](examples/README.md) · [물리 심화 실험 7종](https://silbaram.github.io/ferrum2d/physics-sandbox/)
 
@@ -99,7 +104,7 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 
 ## 예제 갤러리
 
-예제는 **기능 학습 → 물리 심화 → 게임 응용** 순서로 구성합니다. [통합 홈](https://silbaram.github.io/ferrum2d/)에서 기능을 검색·분류하고,
+예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [통합 홈](https://silbaram.github.io/ferrum2d/)에서 기능을 검색·분류하고,
 게임·실험 예제의 공통 메뉴에서 이동하며 조작·관찰 결과·관련 실험을 확인합니다. 제작 도구는 별도 영역에 있습니다.
 Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제외합니다. [예제 역할과 로컬 통합 실행](examples/README.md).
 
@@ -138,7 +143,7 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 | 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
 | HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
-| 기능별 실험실 · 독립 실험 26종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
+| 기능별 실험실 · 독립 실험 30종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
 | Breakout | `pnpm dev:breakout` | [examples/breakout](examples/breakout/) |
 | Platformer | `pnpm dev:platformer` | [examples/platformer](examples/platformer/) |

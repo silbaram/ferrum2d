@@ -8,6 +8,9 @@
 도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 같은 Chromium에서 캡처했다.
 Shooter 세트는 2026-11-08에 `9dc5319` 이후 `feat/topdown-shooter-refresh` 작업 트리의 Neon Outpost production 빌드로 갱신했다.
 기능 실험실 이미지는 2026-11-08에 `9dc5319` 이후 작업 트리의 9-slice 대화창 비교 production 빌드로 갱신했다.
+홈·기능 실험실 세트는 2026-11-09에 `3e8eae9` 기준 `feat/topic-based-examples` 작업 트리의 production 빌드로 갱신했다.
+홈은 10개 주제·37개 진입점, 기능 실험실은 같은 주제 탐색과 9-slice 비교를 보여준다.
+캡처 환경·실행 상태·SHA-256은 `artifacts/readme-refresh/capture-feature-lab.json`에 기록한다.
 
 Breakout·Platformer·Physics Lab 세트는 2026-11-08에 같은 작업 트리의 production 빌드를 UI로 일시정지한 뒤 캡처했다.
 
@@ -77,7 +80,7 @@ WebGL2·1440×1000·DPR 1이며 기능 실험실은 9-slice 대화창 기본 설
 9-slice 설명 보강 후 `engine-feature-lab.png`는 별도 검증의 `nine-slice.png`로 갱신했다.
 재생성은 starter-runtime 빌드 후 `node tests/smoke/feature-examples-smoke.mjs --nine-slice-only`를 실행하고,
 `artifacts/nine-slice-example/browser/verification.json`의 `run`에서 `nine-slice.png`를 복사한다.
-26개 기능의 공통 학습 안내를 적용한 뒤에는 홈과 기능 실험실 이미지만 함께 갱신한다.
+30개 기능의 공통 학습 안내를 적용한 뒤에는 홈과 기능 실험실 이미지만 함께 갱신한다.
 
 ```bash
 node scripts/tools/capture-readme-screenshots.mjs --only=feature-lab

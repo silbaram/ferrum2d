@@ -10,14 +10,14 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
 상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
-26개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
+30개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
 카메라 영역·애니메이션 원본·로딩 상태처럼 비교할 대상을 별도로 보여준다. 대화·HUD는 실제 UI를 게임 화면 안에서 조작한다.
 세부 수치는 ‘엔진 실행 정보’를 펼쳐 확인한다. 통합 홈의 각 기능 카드에도 실제 사용 상황을 표시한다.
 [GitHub Pages 홈](https://silbaram.github.io/ferrum2d/)도 같은 기능 목록에서 직접 진입한다.
 웹에서 설치 없이 체험한 뒤 로컬 실행·프로젝트 생성으로 이어갈 수 있다.
 
 예제의 기준 목록은 `examples/shared/exampleCatalog.json`, 독립 실험의 기준은 `featureCatalog.json`이다.
-통합 홈은 검색·분류와 **기능 학습 → 물리 심화 → 게임 응용** 순서를 제공한다. 게임·실험 예제는 같은 탐색·글꼴·색상과
+통합 홈은 **조명·물리·카메라·스프라이트·맵·VFX·게임 로직·UI·오디오·에셋** 10개 주제로 탐색한다. 2D·HD-2D는 별도 태그이며 물리 심화 7개 시나리오를 합쳐 37개 진입점을 제공한다. **주제별 기능 실험 → 게임 응용** 순서를 제공한다. 게임·실험 예제는 같은 탐색·글꼴·색상과
 직접 해보기·관찰할 결과·관련 실험 안내를 공유한다. 제작 도구는 게임 예제와 구분한다.
 Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 검증만 유지하고 기본 목록에서 제외한다.
 
@@ -27,8 +27,8 @@ Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 �
 | 길 찾기 | `?feature=navigation` | 벽 반대편 목적지, 포인터·키보드 이동 |
 | 물리 재질 | `?feature=physics` | 고무/점토, 동일한 초기 힘 |
 | 노멀 조명 | `?feature=lighting` | 노멀 적용, 광원 위치, 원본 색상 |
-| 후처리 | `?feature=postprocess` | 원본, bloom, CRT |
-| 카메라 | `?feature=camera` | 고정/추적, 확대, 이동 목적지 |
+| 후처리 | `?feature=postprocess` | 원본, Bloom·CRT·vignette·glitch·pixelArt·fade와 강도 |
+| 카메라 | `?feature=camera` | 고정/추적, 확대, 화면 흔들림·정지 중 차단, 월드 경계 제한, 이동 목적지 |
 | 게임 UI 테두리 · 9-slice | `?feature=nine-slice` | 대화창·가방의 너비/높이 변경, 일반 확대와 모서리 비교, 원본 분할선·테두리 배율 |
 | 타일맵·충돌 | `?feature=tilemap` | 벽/바닥 브러시, 통로, native 통과 여부 |
 | 그리기 레이어 | `?feature=layers` | 같은 위치에서 로봇의 앞뒤 순서 |
@@ -47,11 +47,16 @@ Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 �
 | HD-2D 공간 이동 | `?feature=hd2d-movement` | 경사로·층 전환·승강/수평 발판 탑승 |
 | AI 추적과 전투 | `?feature=ai-combat` | 장애물 우회·근접 피해·원거리 발사체 |
 | 부모·자식 연결 | `?feature=attachments` | 수레 위치/회전·자식 연결 해제/복귀 |
-| HD-2D 조명·그림자·안개 | `?feature=hd2d-environment` | 광원 이동·그림자·거리 안개 전후 비교 |
+| HD-2D 조명·그림자·안개 | `?feature=hd2d-environment` | 점광원·태양·혼합, 태양 방위/고도, hard/PCF, 안개·Bloom·AO·DOF·ACES |
 | 지형 파괴와 충돌 갱신 | `?feature=destructible-terrain` | 마스크 깎기·공 낙하·충돌 청크 갱신·초기화 |
 
+| 영역 검색·형상 이동 | `?feature=physics-queries` | 원·사각형 영역과 이동 원의 실제 충돌 대상 |
+| 픽셀 해상도·좌표 정렬 | `?feature=pixel-perfect` | 가상 해상도, 소수 이동, 화면 좌표 정렬 |
+| 스프라이트 표현 | `?feature=sprite-materials` | 원본·팔레트 교체·피격 색상·외곽선 |
+| 렌더링·GPU 자원 | `?feature=rendering` | 오브젝트 수·명령/드로우 수, 텍스처 준비·해제·추정 메모리 |
+
 각 실험은 기본 설정과 씬으로 초기화할 수 있다. 물리 심화는 `physics-sandbox`의 7개 시나리오,
-여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다.
+여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다. 주제별 보강만 확인하려면 `pnpm smoke:feature-examples -- --topics-only`를 쓴다. 현재 실험은 기존 API를 사용하며 재사용 VFX 리소스 시스템은 별도 개발 계획이다.
 
 | 기능군 | 대표 demo 또는 경로 | 기준 문서 | 검증 명령 |
 | --- | --- | --- | --- |
@@ -69,7 +74,7 @@ Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 �
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| 기능 실험실 / Engine Playground | 기본 진입은 위의 26개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
+| 기능 실험실 / Engine Playground | 기본 진입은 위의 30개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |

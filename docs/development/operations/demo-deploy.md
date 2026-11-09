@@ -10,7 +10,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 | --- | --- |
 | `/` | Pages home: 데모와 문서 진입점 |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
-| `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 26종 |
+| `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 30종 |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
 | `/placement-viewer/` | `apps/placement-viewer/dist` |
 | `/physics-sandbox/` | `examples/physics-sandbox/dist` |
@@ -82,7 +82,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | Pages artifact | Pages home, docs HTML, 7개 demo routes가 생성된다. | `pnpm build:pages` |
 | route/link integrity | 주요 docs route와 generated HTML 로컬 링크가 깨지지 않는다. | `pnpm validate:pages-artifact` |
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
-| Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 26종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
+| Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 30종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
 | Top-down route | `/topdown-shooter/`가 공식 Game Spec 기반 demo를 제공한다. | `dist-pages/topdown-shooter/index.html` |
 | Placement Viewer route | `/placement-viewer/`가 Data Scene placement/object authoring viewer를 제공한다. | `dist-pages/placement-viewer/index.html` |
 | Physics Sandbox route | `/physics-sandbox/`가 Physics Spec scenario catalog와 debug overlay를 제공한다. | `dist-pages/physics-sandbox/index.html` |

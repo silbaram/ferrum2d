@@ -1,7 +1,7 @@
 # Ferrum2D 엔진 기능 실험실
 
 기본 진입은 기능별 독립 실험이다. `pnpm dev:starter-runtime`으로 실행하고 터미널 주소를 연다.
-상단에서 화면·움직임·게임 구성·플랫폼·HD-2D 분류로 26개 실험을 선택한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
+상단에서 조명·물리·카메라·스프라이트 등 10개 주제로 30개 실험을 선택한다. 통합 홈은 물리 심화 7종을 포함해 37개 진입점을 제공하며 2D·HD-2D를 별도 태그로 필터링한다. 모바일에서는 분류된 선택 목록을 사용하며 현재 실험과 렌더러를 유지한다.
 각 화면은 게임에서 쓰는 상황 → 직접 해보기 → 관찰할 차이 순서로 안내한다.
 주요 실행 버튼은 화면 위에, 객체 역할은 실제 위치 옆에 표시한다. 화면 아래 범례와 결과 설명을 함께 읽고,
 세부 설정·구현 API는 오른쪽 패널, 수치 진단은 접힌 ‘엔진 실행 정보’에서 확인한다.
@@ -10,9 +10,10 @@
 [전체 기능과 실행 위치](../README.md)의 `?feature=<id>`로 바로 열 수 있다.
 씬 파일은 [public/features](public/features/), 공통 화면은 [src/featureLab.ts](src/featureLab.ts), 타일·효과·입력 조작은 [src/featureExtras.ts](src/featureExtras.ts),
 게임 구성 예제는 [src/featureGameplay.ts](src/featureGameplay.ts)와 [src/featureContent.ts](src/featureContent.ts),
+픽셀 표시·스프라이트 표현·자원 관찰은 `featureDisplay.ts`, 영역 검색·형상 이동은 `featureQueries.ts`다.
 후속 실험은 `featureProjectiles.ts`, `featureCutscene.ts`, `featureLoading.ts`, `featureStreaming.ts`이며,
 기능 목록은 [featureCatalog.json](../shared/featureCatalog.json)에 있다.
-`node scripts/assets/build-feature-examples.mjs`는 26개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
+`node scripts/assets/build-feature-examples.mjs`는 30개 실험 JSON과 직접 합성한 공간 오디오용 `beacon.wav`를 재생성한다.
 HD-2D 4종만 다시 만들 때는 `node scripts/assets/build-hd2d-feature-scenes.mjs`를 쓴다.
 이 생성기는 기존 마을의 수레·등불 GLB를 복사하고 원본 SHA-256을 authoring JSON에 기록한다.
 텍스처는 기존 자체 제작 `public/playground/` 에셋을 재사용한다.
@@ -24,6 +25,10 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 ## 화면에서 비교하는 방법
 
 - 애니메이션은 원본 4프레임과 현재 프레임, 카메라는 전체 월드와 현재 보는 영역을 함께 보여준다.
+- HD-2D 조명은 점광원·태양·혼합, 태양 방위·고도·hard/PCF 그림자와 안개·Bloom·AO·DOF·ACES를 비교한다.
+- 화면 효과는 원본과 6개 효과 및 강도를 비교한다. 카메라는 추적·확대·흔들림·월드 경계를 비교한다.
+- 픽셀 표시는 가상 해상도·소수 위치·좌표 정렬, 스프라이트 표현은 팔레트·피격 색상·외곽선을 비교한다. 렌더링 실험은 명령/드로우 수와 검사용 텍스처 준비·해제를 관찰한다.
+- 픽셀 실험의 ‘아틀라스 보호 여백 비교’는 실제 PNG 패킹의 투명 여백과 2px 가장자리 복제를 보여준다. 정상 nearest 샘플링에서 항상 외형 차이가 생기는 옵션은 아니며 내부 텍셀 정밀도와 구분한다.
 - 조명은 원본 색상과 노멀맵, 위·아래·좌·우 광원을 비교한다. 물리는 ‘같은 힘으로 던지기’를 누른 뒤 재질별 속력과 충돌을 관찰한다.
 - 대화·퀘스트와 HUD는 실제 엔진 UI를 게임 화면 안에 표시한다. 한국어는 함께 배포한 글꼴을 사용한다.
 - 에셋 로딩·스트리밍은 실제 요청·캐시·구역 교체 상태를 화면 가운데 표시한다. 표시 중인 구역과 준비 중인 구역을 구분한다.
@@ -193,7 +198,7 @@ pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
-`pnpm smoke:feature-examples`는 기능 26종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 사격의 실제 소멸/관통/반사 궤적, 컷신 시간/카메라/음원 시작, 실제 fetch와 캐시/취소/실패, 구역 전환 후 텍스처 수 복귀, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
+`pnpm smoke:feature-examples`는 기능 30종 × 렌더러 2종에서 실제 native 상태·GPU pixel 변화, 타일 충돌, 입자 수명, Web Audio 좌우 출력·감쇠, 메뉴 입력 차단, 씬 변수 수명/페이드, 거리·조건부 상호작용, 저장 후 새로고침 복원/손상 거절, 대화·퀘스트 조건/키보드 포커스, HUD locale/접근성 값, 사격의 실제 소멸/관통/반사 궤적, 컷신 시간/카메라/음원 시작, 실제 fetch와 캐시/취소/실패, 구역 전환 후 텍스처 수 복귀, 초기화, pause, 390px 화면, 중첩 경로, 자원 해제를 확인한다. 게임패드는 하드웨어 polling만 모사하며 실물 장치/스피커 청취를 검증한 것은 아니다.
 HD-2D 경사로 층 전환·발판 탑승·AI 우회/근접/원거리 피해·부모 회전/연결 해제를 native 상태로 검사한다. 사망 후 초기화와 일회성 렌더 오류 복구도 두 렌더러에서 확인한다.
 애니메이션 클립/방향·프레임/완료 이벤트·실제 AudioBufferSource 시작과 실패/취소 후 재시도, 지형 편집 전후 실제 낙하 가속도·관통·복구·DPR 2 터치, 공간 조명/그림자/안개의 pixel 변화와 정적 장면의 중복 제출 방지도 확인한다.
 추가로 초기 씬/텍스처/모델 로딩 중 페이지 이탈과 로드 실패 시 GPU 자원 해제, DPR 2·390px 화면에서 터치 타일 편집과 조이스틱 이동을 검사한다. 터치는 브라우저에서 모사한다. 레이어·조명·후처리·오디오 비교 씬의 로봇은 고정 프레임으로 표시해 무관한 애니메이션 변화가 결과에 섞이지 않게 한다.

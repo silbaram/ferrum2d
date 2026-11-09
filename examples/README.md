@@ -1,8 +1,8 @@
 # Ferrum2D 예제 안내
 
-예제는 **기능 학습 → 물리 심화 → 게임 응용** 순서로 체험한다. 제작 도구는 게임과 구분한다.
-통합 홈에서 검색·분류하고 각 예제 상단의 같은 메뉴로 이동한다. 화면은 공통 글꼴·색상·조작·관찰 안내를 사용한다.
-기능 카드에는 게임에서 쓰는 상황을 표시한다. 26개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
+예제는 **주제별 기능 실험 → 게임 응용** 순서로 체험한다. 제작 도구는 게임과 구분한다.
+통합 홈에서 10개 기능 주제와 2D·HD-2D 태그로 찾고 각 예제 상단의 같은 메뉴로 이동한다. 물리 7개 시나리오는 물리·충돌 주제에 함께 표시한다. 화면은 공통 글꼴·색상·조작·관찰 안내를 사용한다.
+기능 카드에는 게임에서 쓰는 상황을 표시한다. 30개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
 
 ![기능 검색과 학습 순서를 제공하는 통합 예제 홈](../docs/development/quality/screenshots/example-hub.png)
 
@@ -23,7 +23,7 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 
 | 단계 | 디렉터리 | 이 예제로 배우는 것 | 단독 개발 실행 |
 | --- | --- | --- | --- |
-| 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 26종 | `pnpm dev:starter-runtime` |
+| 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 30종 | `pnpm dev:starter-runtime` |
 | 물리 심화 | [physics-sandbox](physics-sandbox/README.md) | 충돌체·접촉/센서·joint·CCD·공간 질의 등 7개 시나리오 | `pnpm dev:physics-sandbox` |
 | 게임 응용 | [breakout](breakout/README.md) | 충돌 → 반사·벽돌 제거·점수·파티클 | `pnpm dev:breakout` |
 | 게임 응용 | [platformer](platformer/README.md) | 이동 컨트롤러 → 점프·착지·단방향/이동 발판 | `pnpm dev:platformer` |
@@ -35,15 +35,20 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 게임·실험 앱 6종은 목적, 직접 해보기, 관찰할 결과, 관련 기능 실험을 같은 형식으로 안내한다. 제작 도구는 자체 작업공간을 사용한다.
 Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제공한다. Shooter는 타이틀에서 시작한다.
 
-## 기능 실험 26종
+## 기능 실험 30종
 
-| 분류 | 주제 |
+| 주제 | 실험 |
 | --- | --- |
-| 화면 | 애니메이션, 노멀맵·점광원, 후처리, 카메라, 9-slice, 레이어, 파티클 |
-| 움직임 | 길 찾기, 물리 재질, 타일맵·충돌, 입력 전환, 사격·벽 충돌, 지형 파괴 |
-| 게임 구성 | 씬 전환·페이드, 상호작용·트리거, 저장·불러오기, 대화·퀘스트, HUD·다국어·접근성, 컷신 |
-| 플랫폼 | 공간 오디오, 에셋 로딩·캐시, 레벨 스트리밍 |
-| HD-2D | 공간 이동·발판, AI 추적·전투, 부모·자식 연결, 조명·그림자·안개 |
+| 조명·그림자 | 노멀맵과 점광원, HD-2D 조명·그림자·안개 |
+| 물리·충돌 | 물리 재질과 반사, 지형 파괴와 충돌 갱신, 영역 검색과 형상 이동 · 물리 심화 7종 |
+| 카메라·화면 효과 | 화면 후처리, 카메라 추적과 확대, 픽셀 해상도와 좌표 정렬 |
+| 스프라이트·애니메이션 | 스프라이트 애니메이션, 레이어와 앞뒤 정렬, 스프라이트 색상과 외곽선 |
+| 맵·공간·이동 | 길 찾기와 장애물, 타일맵과 타일 충돌, HD-2D 공간 이동, 부모·자식 연결 |
+| 파티클·VFX | 파티클·VFX |
+| 게임 로직·씬 | 씬 전환과 페이드, 상호작용과 트리거, 저장과 불러오기, 대화와 퀘스트, 사격과 벽 충돌, 컷신과 동작 감소, AI 추적과 전투 |
+| UI·입력 | 게임 UI 테두리 · 9-slice, 입력 장치와 메뉴 전환, HUD·다국어·접근성 |
+| 오디오 | 공간 오디오 |
+| 에셋·실행 환경 | 에셋 로딩과 캐시, 레벨 스트리밍, 렌더링과 GPU 자원 |
 
 각 실험의 조작과 API는 [기능·예제 지도](../docs/engine/showcase-hub.md)를 따른다.
 
@@ -60,7 +65,8 @@ Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제�
 ## 목록과 검증 관리
 
 - `shared/exampleCatalog.json`: 공개/참고 역할, 경로, 목적, 조작·관찰, 실행 명령, 관련 기능.
-- `shared/featureCatalog.json`: 독립 실험의 이름, 분류, 조작·관찰·API.
+- `shared/featureCatalog.json`: 독립 실험의 이름, 주제·2D/HD-2D 태그, 조작·관찰·API.
+- `shared/featureTopics.json`, `physicsExamples.json`: 공통 주제 순서·설명과 물리 시나리오의 직접 진입점.
 - `shared/exampleHeader.ts`, `exampleTheme.css`: 공개 예제 공통 탐색과 화면 토큰.
 - `pnpm validate:example-catalog`: 중복 ID/경로·없는 명령·관련 기능·씬 파일 검사. Pages 빌드에도 포함된다.
 - `pnpm test:example-catalog-build`: 누락된 예제 입력·잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지, 통합 탐색 표식이 발행 복사본에만 들어가는지 검사한다.
