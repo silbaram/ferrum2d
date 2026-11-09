@@ -303,6 +303,18 @@ export function createLessonVisual(id: string, root: HTMLElement, scene: HTMLEle
             return note.textContent;
         };
     }
+    else if (id === "hd2d-shadow-proxy") {
+        title.textContent = "같은 그림 · 다른 그림자 원본";
+        const fields = cells(["그림자 원본", "고도 / 캐릭터 높이", "부피 모델 표시"]);
+        update = sample => {
+            const s=record(sample.state),shadow=record(s.shadowComparison);
+            fields[0].amount.textContent=shadow.mode==="proxy"?"월드 부피":shadow.mode==="billboard"?"표시 평면":"OFF";
+            fields[1].amount.textContent=`${num(shadow.elevation)}° / ${num(shadow.height)}`;
+            fields[2].amount.textContent=`${num(s.visibleModels)} / ${num(s.models)}`;
+            note.textContent="카메라만 돌렸을 때 같은 지면의 그림자를 비교하세요. 부피는 프레임마다 변하는 정밀 실루엣이 아닙니다.";
+            return note.textContent;
+        };
+    }
     else if (id === "hd2d-environment") {
         title.textContent = "같은 장면의 표현 설정";
         const fields = cells(["공간 조명", "그림자", "거리 안개"]);

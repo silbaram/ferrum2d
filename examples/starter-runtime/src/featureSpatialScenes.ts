@@ -1,10 +1,12 @@
 import type { SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 
 import { environmentControls } from "./featureSpatialEnvironment";
+import { shadowControls } from "./featureSpatialShadows";
 
-export const spatialFeatureIds = new Set(["hd2d-movement", "ai-combat", "attachments", "hd2d-environment"]);
+export const spatialFeatureIds = new Set(["hd2d-movement", "ai-combat", "attachments", "hd2d-environment", "hd2d-shadow-proxy"]);
 export const spatialControls: Record<string, string> = {
   "hd2d-environment": environmentControls,
+  "hd2d-shadow-proxy": shadowControls,
   "hd2d-movement": `<label>이동 실험<select data-control="mode"><option value="ramp">경사로와 층</option><option value="lift">승강 발판</option><option value="bridge">수평 이동 발판</option></select></label>
     <div class="feature-buttons"><button data-control="go">위층으로 이동</button><button data-control="back">출발점으로 이동</button></div>`,
   "ai-combat": `<label>적 행동<select data-control="mode"><option value="chase">추적과 장애물 우회</option><option value="melee">근접 공격</option><option value="ranged">원거리 공격</option></select></label>

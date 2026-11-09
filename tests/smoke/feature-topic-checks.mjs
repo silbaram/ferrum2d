@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { checkLightingQuality } from './feature-lighting-quality-checks.mjs';
-export const topicFeatureIds = new Set(['lighting','hd2d-environment','postprocess','camera','physics-queries','pixel-perfect','sprite-materials','rendering']);
+export const topicFeatureIds = new Set(['lighting','hd2d-environment','hd2d-shadow-proxy','postprocess','camera','physics-queries','pixel-perfect','sprite-materials','rendering']);
 export async function checkTopicFeature({page,id,control,snapshot,pixelHash,artifactDir}) {
   const rendered = async () => { await page.waitForTimeout(260); return page.evaluate(pixelHash); };
   if(id === 'physics-queries') {

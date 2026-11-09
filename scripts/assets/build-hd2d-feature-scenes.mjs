@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { lightingQualityModel } from "./lighting-quality-model.mjs";
+import { buildShadowComparison } from "./build-shadow-comparison.mjs";
 
 // Deterministic example authoring data; runtime simulation remains in Rust.
 const output = new URL("../../examples/starter-runtime/public/features/", import.meta.url);
@@ -81,4 +82,5 @@ const environment = scene([
 for (const [id, document] of Object.entries({ "hd2d-movement": movement, "ai-combat": combat, "attachments": attachments, "hd2d-environment": environment })) {
   await writeFile(new URL(`${id}.json`, output), JSON.stringify(document, null, 2) + "\n");
 }
-console.log("HD-2D feature scenes generated (4 documents, 2 village models, 1 self-authored emissive fixture).");
+await buildShadowComparison(output);
+console.log("HD-2D feature scenes generated (5 documents, village models, emissive fixture and garden shadow comparison).");

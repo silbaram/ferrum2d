@@ -20,12 +20,14 @@ import {checkFeaturePointer} from './feature-pointer-checks.mjs';
 import {checkNextRecovery, checkTerrainPointer} from './feature-next-lifecycle.mjs';
 import {checkNextFeature, nextFeatureIds} from './feature-next-checks.mjs';
 import {checkSpatialFeature, checkSpatialRecovery, spatialFeatureIds} from './feature-spatial-checks.mjs';
+import {checkShadowComparison} from './feature-shadow-comparison-checks.mjs';
 
 const dist=resolve('examples/starter-runtime/dist'),prefix='/nested/starter-runtime/';
 const topicsOnly=process.argv.includes('--topics-only');
 const particlesOnly=process.argv.includes('--particles-only');
-const nineSliceOnly=process.argv.includes('--nine-slice-only'), spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=topicsOnly||spatialOnly||nextOnly||nineSliceOnly||particlesOnly;
-const parent=resolve(topicsOnly?'artifacts/topic-examples':particlesOnly?'artifacts/particle-dust-clarity/browser':nineSliceOnly?'artifacts/nine-slice-example/browser':nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
+const shadowOnly=process.argv.includes('--shadow-proxy-only');
+const nineSliceOnly=process.argv.includes('--nine-slice-only'), spatialOnly=process.argv.includes('--spatial-only'), nextOnly=process.argv.includes('--next-only'), focused=topicsOnly||spatialOnly||nextOnly||nineSliceOnly||particlesOnly||shadowOnly;
+const parent=resolve(shadowOnly?'artifacts/shadow-comparison':topicsOnly?'artifacts/topic-examples':particlesOnly?'artifacts/particle-dust-clarity/browser':nineSliceOnly?'artifacts/nine-slice-example/browser':nextOnly?'artifacts/feature-examples-next/browser':spatialOnly?'artifacts/hd2d-feature-examples/browser':'artifacts/feature-examples');await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ ok: false, status: 'running', run }, null, 2) + '\n');
 const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.json':'application/json'};
 const server=createServer((req,res)=>void(async()=>{
@@ -80,14 +82,14 @@ try {
     if (backend === 'webgpu') await page.addInitScript({ content: `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();` });
     const snapshot = () => page.evaluate(() => window.ferrumFeatureLab.snapshot());
     const control = key => page.locator(`[data-control="${key}"]`);
-    for (const { id } of catalog.filter(item => topicsOnly ? topicFeatureIds.has(item.id) : particlesOnly ? item.id === 'particles' : nineSliceOnly ? item.id === 'nine-slice' : nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
+    for (const { id } of catalog.filter(item => shadowOnly ? item.id==='hd2d-shadow-proxy' : topicsOnly ? topicFeatureIds.has(item.id) : particlesOnly ? item.id === 'particles' : nineSliceOnly ? item.id === 'nine-slice' : nextOnly ? nextFeatureIds.has(item.id) : !spatialOnly || spatialFeatureIds.has(item.id))) {
       console.log(`Checking ${backend}/${id}`);
       await page.goto(`http://127.0.0.1:${server.address().port}${prefix}?feature=${id}&renderer=${backend}`);
       // The Shooter controller consumes the queued start input on its next native update.
       await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1 || document.querySelector('.demo-error-shell'), undefined, { timeout: 30000 });
       assert.equal(await page.locator('.demo-error-shell').count(), 0, await page.locator('body').innerText());
       const initial = await snapshot();
-      let lightingDirections, lightingQuality, nineSlice;
+      let lightingDirections, lightingQuality, nineSlice, shadowComparison;
       const scene = JSON.parse(await readFile(resolve(dist, `features/${id}.json`), 'utf8'));
       assert.equal(initial.id, id);
       assert.equal(initial.backend, backend, 'requested backend must really render');
@@ -219,6 +221,7 @@ try {
       await checkFeatureGameplay({ page, id, control, snapshot, pixelHash });
       await checkFeatureSystems({ page, id, control, snapshot, pixelHash });
       lightingQuality = await checkTopicFeature({page,id,control,snapshot,pixelHash,artifactDir:run});
+      if(id==='hd2d-shadow-proxy')shadowComparison=await checkShadowComparison({page,control,snapshot,pixelHash,artifactDir:run});
       await checkNextFeature({ page, id, control, snapshot, pixelHash });
       Object.assign(learning,await checkLearningControls({page,id,control,snapshot}));
       console.log(`Controls passed ${backend}/${id}`);
@@ -249,12 +252,21 @@ try {
       if (id === 'audio' || id === 'cutscene' || id === 'animation') await page.waitForFunction(() => window.featureAudio.contexts.every(c => c.state === 'closed'));
       assert.equal(await page.locator('[data-ferrum-virtual-controls], .feature-input-menu, .feature-content-preview, .nine-slice-overlay, .feature-scene, .feature-lesson-intro, .feature-lesson-visual, .feature-particle-comparison').count(), 0);
       for (const key of ['textureCount', 'bufferCount', 'programCount', 'renderTargetCount']) assert.equal(resources[key], 0, `${id} leaked ${key}`);
-      results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(lightingQuality ? {lightingQuality} : {}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
+      results.push({ backend, id, initial, pixels, learning, ...(lightingDirections ? {lightingDirections} : {}), ...(lightingQuality ? {lightingQuality} : {}), ...(shadowComparison?{shadowComparison}:{}), ...(nineSlice ? {nineSlice} : {}), controls: 'native state / GPU readback checked', narrow: true, resources });
       await page.setViewportSize({ width: 1440, height: 1000 });
     }
     await page.close();
   }
   const guides = [];
+  const shadowRows=results.filter(row=>row.shadowComparison),shadowParity=[];
+  if(shadowRows.length){
+    assert.equal(shadowRows.length,2,'Both actual renderers must run the shadow comparison');
+    const [a,b]=shadowRows.map(row=>row.shadowComparison),samples=new Map(b.receiverRgb.map(row=>[row.index,row]));
+    const common=a.receiverRgb.filter(row=>samples.has(row.index));
+    assert(common.length>=Math.max(a.core,b.core)*.95,'Shadow interiors differ between GL and GPU');
+    for(const row of common){const other=samples.get(row.index);for(const key of ['off','on'])assert(row[key].every((v,i)=>Math.abs(v-other[key][i])<=3),'World receiver RGB differs between GL and GPU');}
+    shadowParity.push({commonReceivers:common.length,rgbTolerance:3});
+  }
   for (const id of focused ? [] : ['platformer', 'breakout', 'topdown-shooter']) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
     activePage = page;
@@ -316,23 +328,24 @@ try {
   }
   const recovery = focused ? [] : await checkFeatureRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
   const systemsLifecycle = focused ? [] : await checkSystemLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  const lifecycle = spatialOnly || particlesOnly ? [] : await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
-  if (!particlesOnly) {
+  const lifecycle = spatialOnly || particlesOnly || shadowOnly ? [] : await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`);
+  if(shadowRows.length)lifecycle.push(...await checkFeatureLifecycle(browser,`http://127.0.0.1:${server.address().port}${prefix}`,{feature:'hd2d-shadow-proxy',texturePattern:'**/features/spatial/shadow-garden.png',model:'shadow-actor',stages:['scene','texture','model','model-failure']}));
+  if (!particlesOnly && !shadowOnly) {
   lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'hd2d-movement' }));
   lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'attachments', stages: ['model', 'model-failure'] }));
   }
-  if (!spatialOnly && !particlesOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'destructible-terrain', texture: 'floor' }));
+  if (!spatialOnly && !particlesOnly && !shadowOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'destructible-terrain', texture: 'floor' }));
   if (!focused || particlesOnly) lifecycle.push(...await checkFeatureLifecycle(browser, `http://127.0.0.1:${server.address().port}${prefix}`, { feature: 'particles', texture: 'particle-dust' }));
   const pointer = focused ? [] : await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`);
-  if (!particlesOnly) {
+  if (!particlesOnly && !shadowOnly) {
   pointer.push(...await checkFeaturePointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`, ['hd2d-movement']));
   recovery.push(...await checkSpatialRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
   }
-  if (!spatialOnly && !particlesOnly) {
+  if (!spatialOnly && !particlesOnly && !shadowOnly) {
     pointer.push(...await checkTerrainPointer(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
     recovery.push(...await checkNextRecovery(browser, `http://127.0.0.1:${server.address().port}${prefix}`, `(${installSpatialGpuTarget.toString()})();(${gpuCapture.toString()})();`));
   }
-  const report = { ok: true, run, topicsOnly, particlesOnly, spatialOnly, nextOnly, nineSliceOnly, nineSliceFixture, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
+  const report = { ok: true, run, topicsOnly, particlesOnly, spatialOnly, nextOnly, nineSliceOnly, shadowOnly,shadowParity, nineSliceFixture, browser: browser.version(), webgpu: 'Software offscreen target, not real GPU compositor coverage', results, guides, lifecycle, systemsLifecycle, recovery, pointer };
   await writeFile(resolve(run, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(resolve(parent, 'verification.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`Feature examples passed: ${results.length} renderer/topic cases, ${guides.length} existing example guides, ${lifecycle.length + systemsLifecycle.length} lifecycle cases, ${pointer.length} DPR/touch cases, ${recovery.length} failure/recovery cases. ${run}`);

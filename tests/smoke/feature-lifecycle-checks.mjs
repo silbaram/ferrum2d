@@ -20,7 +20,7 @@ export function trackGlResources() {
 }
 
 /** Validate partial bootstrap, which cannot use the ready-only application test hook. */
-export async function checkFeatureLifecycle(browser, address, { feature = 'animation', texture = 'robot', stages = ['scene', 'texture', 'failure'] } = {}) {
+export async function checkFeatureLifecycle(browser, address, { feature = 'animation', texture = 'robot', texturePattern, model = 'cart', stages = ['scene', 'texture', 'failure'] } = {}) {
   const cases = [];
   for (const stage of stages) {
     const page = await browser.newPage(); page.setDefaultTimeout(10000);
@@ -30,7 +30,7 @@ export async function checkFeatureLifecycle(browser, address, { feature = 'anima
     const requestArrived = new Promise(resolve => { arrived = resolve; });
     const released = new Promise(resolve => { release = resolve; });
     const failure = stage.endsWith('failure');
-    const pattern = stage.startsWith('model') ? '**/features/spatial/cart.glb' : stage === 'texture' ? `**/playground/${texture}.png` : `**/features/${feature}.json`;
+    const pattern = stage.startsWith('model') ? `**/features/spatial/${model}.glb` : stage === 'texture' ? texturePattern??`**/playground/${texture}.png` : `**/features/${feature}.json`;
     await page.route(pattern, async route => {
       arrived(); await released;
       try {

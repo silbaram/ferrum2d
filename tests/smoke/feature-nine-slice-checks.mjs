@@ -8,18 +8,26 @@ import {dirname, join, resolve} from 'node:path';
 export async function checkNineSliceFixtureGeneration() {
   const root = await mkdtemp(join(tmpdir(), 'ferrum-nine-slice-fixture-'));
   try {
-    for (const file of ['scripts/assets/build-feature-examples.mjs', 'scripts/assets/build-hd2d-feature-scenes.mjs', 'scripts/assets/lighting-quality-model.mjs', 'scripts/tools/pack-textures.mjs',
+    for (const file of ['scripts/assets/build-feature-examples.mjs', 'scripts/assets/build-hd2d-feature-scenes.mjs', 'scripts/assets/lighting-quality-model.mjs', 'scripts/assets/build-shadow-comparison.mjs', 'scripts/assets/shadow-comparison-models.mjs', 'scripts/tools/pack-textures.mjs',
       'examples/starter-runtime/public/playground/floor.png',
+      'apps/placement-viewer/public/assets/lantern-garden/atlas.png', 'apps/placement-viewer/public/assets/lantern-garden/manifest.json',
       'apps/placement-viewer/public/assets/rpg-village/cart.glb', 'apps/placement-viewer/public/assets/rpg-village/lamp.glb']) {
       await mkdir(dirname(join(root, file)), {recursive:true}); await copyFile(resolve(file), join(root, file));
     }
     execFileSync(process.execPath, [join(root, 'scripts/assets/build-feature-examples.mjs')], {cwd:root,timeout:15000,stdio:'pipe'});
-    for (const id of ['nine-slice','physics-queries','pixel-perfect','sprite-materials','rendering','hd2d-environment']) {
+    for (const id of ['nine-slice','physics-queries','pixel-perfect','sprite-materials','rendering','hd2d-environment','hd2d-shadow-proxy']) {
       const file = `examples/starter-runtime/public/features/${id}.json`;
       assert.deepEqual(JSON.parse(await readFile(join(root, file), 'utf8')), JSON.parse(await readFile(file, 'utf8')), `${id}: generated scene must match maintained example`);
     }
     const emitter = 'examples/starter-runtime/public/features/spatial/emitter.glb';
     assert.deepEqual(await readFile(join(root, emitter)), await readFile(emitter), 'emissive model must regenerate byte-for-byte');
+    for(const name of ['shadow-actor.glb','shadow-tree.glb','shadow-garden.png','shadow-assets.json']){
+      const file=`examples/starter-runtime/public/features/spatial/${name}`;
+      assert.deepEqual(await readFile(join(root,file)),await readFile(file),`${name}: shadow comparison assets must regenerate byte-for-byte`);
+    }
+    const shadowScene=JSON.parse(await readFile(join(root,'examples/starter-runtime/public/features/hd2d-shadow-proxy.json'),'utf8'));
+    const sun=shadowScene.spatial.environment.lighting.directional.direction;
+    assert(Math.abs(Math.atan2(sun.elevation,Math.hypot(sun.x,sun.y))*180/Math.PI-45)<1e-6,'Authored shadow scene must use the same 45 degree sun as the initial UI');
     for (const extrude of [0,2]) {
       const file = `examples/starter-runtime/public/features/atlas/padding-${extrude}.png`;
       assert.deepEqual(await readFile(join(root,file)),await readFile(file),'atlas preview must match actual packer output');
