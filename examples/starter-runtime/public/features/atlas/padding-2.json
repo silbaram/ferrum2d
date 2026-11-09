@@ -1,0 +1,33 @@
+{
+  "format": "ferrum-texture-atlas-pack",
+  "version": 1,
+  "texture": "atlas",
+  "width": 64,
+  "height": 64,
+  "image": "padding-2.png",
+  "frames": {
+    "floor": {
+      "texture": "atlas",
+      "uv": {
+        "u0": 0.03125,
+        "v0": 0.03125,
+        "u1": 0.53125,
+        "v1": 0.53125
+      },
+      "size": {
+        "width": 32,
+        "height": 32
+      }
+    }
+  },
+  "placements": [
+    {
+      "name": "floor",
+      "source": "floor.png",
+      "x": 2,
+      "y": 2,
+      "width": 32,
+      "height": 32
+    }
+  ]
+}

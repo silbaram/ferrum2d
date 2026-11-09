@@ -45,3 +45,9 @@ body { background: var(--example-bg); color: var(--example-text); font: 13px/1.6
 }
 
 .tile-use-case { color: var(--example-accent); font-size: 11px; line-height: 1.6; border-top: 1px solid var(--example-border); padding-top: 8px; }
+.hub-dimension { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; color: var(--example-muted); }
+.hub-dimension select { font: inherit; background: var(--example-raised); color: var(--example-text); border: 1px solid var(--example-border); border-radius: var(--example-radius); padding: 8px; max-width: 100%; }
+.topic-section { margin: 24px 0; border-top: 1px solid var(--example-border); padding-top: 16px; }
+.topic-section h3 { font-size: 16px; margin: 0 0 4px; }
+.topic-section header p { color: var(--example-muted); margin: 0 0 12px; }
+.topic-section[hidden] { display: none; }

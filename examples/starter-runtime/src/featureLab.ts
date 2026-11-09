@@ -2,7 +2,7 @@ import {
   AssetLoader, BrowserPlatformHost, createDataSceneView, createFerrumRuntime, createRenderer, decodeRenderCommands, resolvePhysicsSpec, VirtualControls,
   type DataSceneView, type FerrumRuntime, type PhysicsJointHandle,
 } from "@ferrum2d/ferrum-web/core";
-import { resolveSceneAuthoringDocument, type PostProcessStackInput } from "@ferrum2d/ferrum-web/authoring";
+import { resolveSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 import catalog from "../../shared/featureCatalog.json";
 import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
 import "./featureLab.css";
@@ -19,13 +19,12 @@ import { createNineSliceFeature, nineSliceControls } from "./featureNineSlice";
 import { spatialFeatureIds } from "./featureSpatialScenes";
 import { createFeatureLesson } from "./featureLesson";
 import { sampleLessonPoses } from "./featureLessonGeometry";
+import { createDisplayFeature, displayControls, displayPostProcess, postProcessControls } from "./featureDisplay";
+import { createCameraFeature } from "./featureCamera";
+import { createQueryFeature, queryControls } from "./featureQueries";
 
-const effects: Record<string, PostProcessStackInput> = {
-  clean: false,
-  bloom: [{ kind: "bloom", threshold: .4, intensity: .8, radius: 2 }],
-  crt: [{ kind: "crt", curvature: .035, scanlineIntensity: .3 }],
-};
 const controls: Record<string, string> = {
+  ...displayControls, "physics-queries": queryControls,
   ...extraControls, ...gameplayControls, ...contentControls, ...systemControls, projectiles: projectileControls,
   animation: animationControls,
   "destructible-terrain": terrainControls,
@@ -41,10 +40,12 @@ const controls: Record<string, string> = {
   lighting: `<label>조명<select data-control="lighting"><option value="lit">점광원</option><option value="off">원본 색상</option></select></label>
     <label class="feature-check"><input data-control="normal" type="checkbox" checked> 노멀맵 적용</label>
     <div class="feature-buttons"><button data-light="160">왼쪽 광원</button><button data-light="480">오른쪽 광원</button><button data-light="432" data-light-y="64">위쪽 광원</button><button data-light="432" data-light-y="320">아래쪽 광원</button></div>`,
-  postprocess: `<label>화면 효과<select data-control="effect"><option value="clean">원본</option><option value="bloom">Bloom · 빛 번짐</option><option value="crt">CRT · 곡면 / 스캔라인</option></select></label>`,
+  postprocess: postProcessControls,
   camera: `<label>카메라<select data-control="camera"><option value="fixed">중앙 고정</option><option value="follow">로봇 추적</option></select></label>
     <label>확대 <output data-value="zoom">100%</output><input data-control="zoom" type="range" min="100" max="250" value="100" step="5"></label>
     <div class="feature-buttons"><button data-target="128">왼쪽으로 이동</button><button data-target="512">오른쪽으로 이동</button></div>
+    <button data-control="camera-shake">화면 흔들기</button>
+    <label class="feature-check"><input data-control="camera-bounds" type="checkbox"> 월드 경계 안에 제한</label>
     <output data-value="destination" role="status">확대 후 추적 모드와 비교하세요.</output>`,
   "nine-slice": nineSliceControls,
 };
@@ -83,7 +84,7 @@ export async function startFeatureLab(): Promise<void> {
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
-    <p>설정 적용 코드는 ${id === "nine-slice" ? "src/featureNineSlice.ts" : "src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts"}에 있습니다.</p></details>`;
+    <p>설정 적용 코드는 ${id === "camera" ? "src/featureCamera.ts" : id in displayControls ? "src/featureDisplay.ts" : id === "physics-queries" ? "src/featureQueries.ts" : id === "postprocess" ? "src/featureDisplay.ts" : id === "nine-slice" ? "src/featureNineSlice.ts" : "src/featureLab.ts · featureExtras.ts · featureGameplay.ts · featureContent.ts · featureSystems.ts · featureProjectiles.ts"}에 있습니다.</p></details>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
   // Buttons in the settings form must never submit/reload the page.
   for (const button of root.querySelectorAll<HTMLButtonElement>("button")) button.type = "button";
@@ -186,7 +187,7 @@ export async function startFeatureLab(): Promise<void> {
         enabled: true, ambient: [.3, .35, .4, .55],
         pointLights: [{ ...light, radius: 420, height: 60, intensity: .8, falloff: 1.2, color: [1, .86, .65, 1] }],
       }, view.snapshot(frame)),
-      postProcess: () => id === "postprocess" ? effects[choice("effect")] : extra?.postProcess?.() ?? false,
+      postProcess: () => id === "postprocess" ? displayPostProcess(root) : extra?.postProcess?.() ?? false,
       onFrame: ({ frame: f, rendererStats: s }) => {
         // Copy the displayed command before diagnostic Wasm calls can grow memory.
         // This small experiment samples at the same 5 Hz rate as its observation UI.
@@ -258,8 +259,9 @@ export async function startFeatureLab(): Promise<void> {
       }
       if (!view) return;
       const size = extra?.viewport?.() ?? { width: 640, height: 384 };
-      view.setZoom(Math.min(canvas.clientWidth / size.width, canvas.clientHeight / size.height) * scale);
-      view!.setCamera(extra?.camera?.() ?? { x: 320, y: 192, ...(id === "camera" && choice("camera") === "follow" ? { follow: handles().robot } : {}), smoothTimeSeconds: .12 });
+      const presentation = renderer.pixelPerfectPresentation?.();
+      view.setZoom(Math.min((presentation?.sourceWidth ?? canvas.clientWidth) / size.width, (presentation?.sourceHeight ?? canvas.clientHeight) / size.height) * scale);
+      view!.setCamera(extra?.camera?.() ?? { x: 320, y: 192, ...(id === "camera" && choice("camera") === "follow" ? { follow: handles().robot } : {}), ...(id === "camera" && input("camera-bounds").checked ? { bounds: { minX: 0, minY: 0, maxX: 640, maxY: 384 } } : {}), smoothTimeSeconds: .12 });
       if (id === "camera") output("zoom", `${input("zoom").value}%`);
     };
     const normals = () => check(engine.configureSpriteNormalMaterials(["robot", "ball"].map(key => ({ entity: handles()[key],
@@ -311,7 +313,7 @@ export async function startFeatureLab(): Promise<void> {
         if (paused) runtime!.dataScene!.pause();
       },
     };
-    extra = id === "nine-slice" ? createNineSliceFeature(context) : id === "destructible-terrain" ? createTerrainFeature(context) : id === "animation" ? createAnimationFeature(context) : id === "projectiles" ? createProjectileFeature(context) : createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context) ?? createSystemFeature(context);
+    extra = (id === "camera" ? createCameraFeature(context) : undefined) ?? createDisplayFeature(context) ?? (id === "physics-queries" ? createQueryFeature(context) : undefined) ?? (id === "nine-slice" ? createNineSliceFeature(context) : id === "destructible-terrain" ? createTerrainFeature(context) : id === "animation" ? createAnimationFeature(context) : id === "projectiles" ? createProjectileFeature(context) : createFeatureExtra(context) ?? createGameplayFeature(context) ?? createContentFeature(context) ?? createSystemFeature(context));
     own(() => extra?.destroy());
     for (const element of settings) element.disabled = false;
     extra?.reset();
@@ -324,6 +326,8 @@ export async function startFeatureLab(): Promise<void> {
     on("material", "change", material);
     on("zoom", "input", camera);
     on("camera", "change", camera);
+    on("camera-bounds", "change", camera);
+    on("effect-strength", "input", () => output("effect-strength", `${input("effect-strength").value}%`));
     on("launch", "click", () => {
       if (runtime!.dataScene!.state() !== "playing") return;
       material();
@@ -374,6 +378,7 @@ export async function startFeatureLab(): Promise<void> {
     on("reset", "click", () => {
       extra?.beforeReset?.();
       panel.querySelector<HTMLFormElement>("form")!.reset();
+      if (id === "postprocess") output("effect-strength", "100%");
       if (scene) runtime!.dataScene!.reapply(scene);
       if (shooterPaused) { shooterPaused = false; runtime!.resume(); }
       extra?.reset();
@@ -394,7 +399,7 @@ export async function startFeatureLab(): Promise<void> {
       snapshot: () => ({ id, backend, ...lastFrame, state: playing() ? "playing" : "paused", launches, collisions, impactCount, lastImpulse, brokenJointCount,
         ...(id === "physics" ? { feedback: engine.physicsImpactFeedbackStats(), particleCount: engine.particleCount(), physicsPresentation } : {}),
         actor: handles().robot && engine.getPhysicsEntity(handles().robot), ball: handles().ball && engine.getPhysicsEntity(handles().ball),
-        animation: handles().robot && engine.dataSceneSpriteAnimationState(handles().robot), resources: renderer.resourceStats?.(), ...extra?.snapshot() }),
+        animation: handles().robot && engine.dataSceneSpriteAnimationState(handles().robot), resources: renderer.resourceStats?.(), ...extra?.snapshot(), ...(id === "postprocess" ? { postprocess: { effect: choice("effect"), strength: Number(input("effect-strength").value) } } : {}) }),
       destroy: cleanup,
     } });
     ready = true;

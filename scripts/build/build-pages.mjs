@@ -16,6 +16,8 @@ const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
 const featureExamples = JSON.parse(readFileSync("examples/shared/featureCatalog.json", "utf8"));
+const featureTopics = JSON.parse(readFileSync("examples/shared/featureTopics.json", "utf8"));
+const physicsExamples = JSON.parse(readFileSync("examples/shared/physicsExamples.json", "utf8"));
 const examples = loadExampleCatalog().filter(item => item.kind !== "reference");
 const gettingStartedDocs = new Set([
   "README.md",
@@ -175,8 +177,13 @@ function firstHeading(markdown) {
 
 function pageHtml(items) {
   const card = item => `<a class="tile" data-example-card="${escapeAttribute(item.id)}" href="./${escapeAttribute(item.path)}"><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span></a>`;
-  const featureLinks = featureExamples.map(item => `<a class="tile" data-feature-card="${escapeAttribute(item.id)}" data-feature-category="${escapeAttribute(item.group)}" href="./starter-runtime/?feature=${escapeAttribute(item.id)}"><span class="tile-category">${escapeHtml(item.group)}</span><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span><span class="tile-use-case">${escapeHtml(item.lesson.useCase)}</span></a>`).join("");
-  const filters = ["all", ...new Set(featureExamples.map(item => item.group))].map(group => `<button type="button" data-feature-group="${escapeAttribute(group)}" aria-pressed="${group === "all"}">${group === "all" ? "전체" : escapeHtml(group)}</button>`).join("");
+  const featureCards = featureExamples.map(item => ({...item, path: `starter-runtime/?feature=${item.id}`, useCase: item.lesson.useCase}));
+  for (const item of physicsExamples) featureCards.push({...item, topic: "physics", group: "물리·충돌", tags: ["2D"], path: `physics-sandbox/?demo=${item.id}`, useCase: "물리 심화 · 한 프레임씩 진행하며 관찰"});
+  const featureLinks = featureTopics.map(topic => {
+    const cards = featureCards.filter(item => item.topic === topic.id);
+    return `<section class="topic-section" data-topic-section="${topic.id}" aria-labelledby="topic-${topic.id}"><header><h3 id="topic-${topic.id}">${escapeHtml(topic.title)}</h3><p>${escapeHtml(topic.summary)}</p></header><div class="grid">${cards.map(item => `<a class="tile" data-feature-card="${escapeAttribute(item.id)}" data-feature-category="${topic.id}" data-feature-tags="${item.tags.join(" ")}" href="./${escapeAttribute(item.path)}"><span class="tile-category">${escapeHtml(item.tags.join(" · "))}</span><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span><span class="tile-use-case">${escapeHtml(item.useCase)}</span></a>`).join("")}</div></section>`;
+  }).join("");
+  const filters = [{id: "all", title: "전체"}, ...featureTopics].map(topic => `<button type="button" data-feature-group="${topic.id}" aria-pressed="${topic.id === "all"}">${escapeHtml(topic.title)}</button>`).join("");
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -193,19 +200,19 @@ function pageHtml(items) {
   <nav class="hub-topbar" aria-label="예제와 문서"><strong>Ferrum2D / 엔진 예제</strong><a href="./docs/engine/user-guide.html">엔진 안내</a><a href="./docs/">문서</a><a href="./docs/en/" lang="en" hreflang="en">English docs</a></nav>
   <header class="intro">
     <p class="eyebrow">Rust + WebAssembly · 2D / HD-2D</p>
-    <h1>작은 실험에서 게임 구성까지</h1>
+    <h1>주제로 찾는 엔진 기능 예제</h1>
     <p class="lead">기능 하나를 바꿔 결과를 확인하고, 같은 기능이 게임에서 연결되는 과정을 살펴보세요. 각 예제에서 조작 방법과 관찰할 결과를 안내합니다.</p>
     <nav class="learning-path" aria-label="추천 학습 순서"><a href="#learn"><strong>01 · 기능 하나씩</strong><span>독립 실험 ${featureExamples.length}종과 물리 심화</span></a><a href="#games"><strong>02 · 게임에 연결</strong><span>충돌 반응 → 이동 → 전투 → 도트 자산</span></a><a href="#tools"><strong>03 · 내 씬 만들기</strong><span>배치·카메라·에셋 작성과 프로젝트 시작</span></a></nav>
   </header>
   <section class="section" id="learn" aria-labelledby="learn-heading">
-    <div class="section-heading"><h2 id="learn-heading">01 · 기능별 실험</h2><output data-feature-count role="status" aria-live="polite">${featureExamples.length} / ${featureExamples.length}개 기능</output></div>
-    <p class="section-description">처음이라면 애니메이션·카메라부터 시작하세요. <a href="./starter-runtime/">기능 실험실 열기</a>에서 설정 하나를 바꾸고 초기화해 비교할 수 있습니다.</p>
+    <div class="section-heading"><h2 id="learn-heading">01 · 기능별 실험</h2><output data-feature-count role="status" aria-live="polite">${featureCards.length} / ${featureCards.length}개 실험</output></div>
+    <p class="section-description">조명·물리·화면 등 주제를 선택하세요. 물리 심화 7개 시나리오도 같은 주제에서 직접 엽니다. <a href="./starter-runtime/">기능 실험실 열기</a>에서 설정 하나를 바꾸고 초기화해 비교할 수 있습니다.</p>
     <label class="hub-search">어떤 기능을 찾으세요?<input type="search" data-feature-search placeholder="예: 조명, 충돌, 저장" aria-label="기능 예제 검색" /></label>
-    <fieldset class="feature-filter"><legend>기능 분류</legend>${filters}</fieldset>
+    <fieldset class="feature-filter"><legend>기능 주제</legend>${filters}</fieldset>
+    <label class="hub-dimension">표현 방식 <select data-feature-dimension aria-label="표현 방식"><option value="all">2D · HD-2D 전체</option><option value="2D">2D</option><option value="HD-2D">HD-2D</option></select></label>
     <p data-feature-empty hidden>검색 결과가 없습니다. 검색어를 지우거나 전체 분류를 선택하세요.</p>
-    <div class="grid">${featureLinks}</div>
+    ${featureLinks}
   </section>
-  <section class="section" aria-labelledby="physics-heading"><div class="section-heading"><h2 id="physics-heading">물리를 더 자세히</h2></div>${items.filter(item => item.id === "physics-sandbox").map(card).join("")}</section>
   <section class="section" id="games" aria-labelledby="games-heading">
     <div class="section-heading"><h2 id="games-heading">02 · 게임 응용</h2></div>
     <p class="section-description">각 게임의 역할을 나눴습니다. 먼저 관련 기능 실험을 보고, 실제 플레이에서 조합된 결과를 확인하세요.</p>

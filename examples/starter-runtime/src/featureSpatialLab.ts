@@ -151,7 +151,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       combat: e.dataSceneCombatStats(), platforms: e.dataSceneMovingPlatformStats(), failed, resources: r.resourceStats?.() });
     function updateObservation() {
       const s = snapshot(), actor = s.poses.actor, cart = s.poses.cart;
-      output("observation", id === "hd2d-environment" ? `광원 X ${s.environment?.lightX} · 그림자 패스 ${s.shadowPasses} · 안개 ${s.environment?.fog ? "켬" : "끔"}` : id === "attachments" ? `연결 ${linked ? "켬" : "끔"} · 부모 X ${cart?.x.toFixed(0)} · 회전 ${((cart?.rotationRadians ?? 0) * 180 / Math.PI).toFixed(0)}° · 상자 높이 ${s.poses.box?.heightSpan?.elevation.toFixed(0)}` :
+      output("observation", id === "hd2d-environment" ? `${s.environment?.mode === "point" ? "점광원" : s.environment?.mode === "sun" ? "태양광" : "점광원 + 태양광"} · 방위 ${s.environment?.azimuth}° / 고도 ${s.environment?.elevation}° · 그림자 패스 ${s.shadowPasses} · 효과 ${s.environment?.effect}` : id === "attachments" ? `연결 ${linked ? "켬" : "끔"} · 부모 X ${cart?.x.toFixed(0)} · 회전 ${((cart?.rotationRadians ?? 0) * 180 / Math.PI).toFixed(0)}° · 상자 높이 ${s.poses.box?.heightSpan?.elevation.toFixed(0)}` :
         id === "ai-combat" ? `${s.health === 0 ? "전투 종료 · 초기화로 다시 시작 · " : ""}체력 ${s.health ?? 0} · 발사 ${s.combat?.spawned ?? 0} · 적중 ${s.combat?.hits ?? 0} · 적 X ${s.poses.enemy?.x.toFixed(0)}` :
           `${actor?.heightSpan?.floorId ?? 0}층 · 높이 ${(actor?.heightSpan?.elevation ?? 0).toFixed(1)} · X ${actor?.x.toFixed(1)} / Y ${actor?.y.toFixed(1)} · 탑승 ${s.platforms.carriedBodies}`);
       statistics.textContent = `오브젝트 ${s.entities} · 공간 모델 ${s.models} · 빌보드 ${s.billboards} · 드로우 콜 ${s.drawCalls}`;
@@ -189,6 +189,9 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       if (!e.setDataSceneSpatialEnvironment(settings.environment) || !e.setPhysicsBodyPosition(handles.light!, settings.lightX, -60)) throw Error("공간 조명 설정을 적용하지 못했습니다.");
       scene = { ...scene, spatial: { ...scene.spatial!, environment: settings.environment } };
       output("light-x", String(settings.lightX));
+      output("sun-azimuth", `${settings.azimuth}°`); output("sun-elevation", `${settings.elevation}°`);
+      for (const key of ["sun-azimuth", "sun-elevation"]) control<HTMLInputElement>(key).disabled = settings.mode === "point";
+      control<HTMLInputElement>("light-x").disabled = settings.mode === "sun";
       control<HTMLInputElement>("environment-shadows").disabled = !settings.lighting;
       download();
     };
@@ -232,7 +235,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       });
     }
     if (id === "hd2d-environment") {
-      on("light-x", "input", updateEnvironment);
+      for (const key of ["light-x", "sun-azimuth", "sun-elevation"]) on(key, "input", updateEnvironment);
+      for (const key of ["light-mode", "shadow-filter", "environment-effect"]) on(key, "change", updateEnvironment);
       for (const key of ["environment-lighting", "environment-shadows", "environment-fog"]) on(key, "change", updateEnvironment);
     }
     const observer = new ResizeObserver(resize); observer.observe(canvas); own(() => observer.disconnect());

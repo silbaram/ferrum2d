@@ -64,3 +64,16 @@
 
 .feature-animation-cue { display: block; padding: 8px; border: 1px solid var(--demo-button-border); }
 .feature-animation-cue[data-phase="1"] { border-color: var(--demo-focus); background: var(--example-selection); }
+.feature-current-topic { color: var(--example-muted); margin: 0 0 8px; font-size: 12px; }
+.feature-query-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.feature-query-region { position: absolute; border: 2px solid var(--example-physics, var(--example-render)); box-sizing: border-box; }
+.feature-query-path { position: absolute; height: 2px; background: var(--example-render); }
+.feature-query-overlay span { position: absolute; transform: translate(-50%, -50%); font-size: 12px; padding: 4px; border: 1px solid var(--example-border); background: var(--example-panel); color: var(--example-muted); }
+.feature-query-overlay span[data-hit=true] { color: var(--example-accent); border-color: var(--example-accent); }
+@media (max-width: 900px) { .feature-current-topic { display: none; } }
+.feature-atlas-comparison { margin-top: 12px; border: 1px solid var(--example-border); padding: 12px; font-size: 12px; }
+.feature-atlas-comparison summary { cursor: pointer; color: var(--example-text); }
+.feature-atlas-comparison p { color: var(--example-muted); }
+.feature-atlas-comparison > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.feature-atlas-comparison figure { margin: 0; min-width: 0; color: var(--example-muted); }
+.feature-atlas-comparison img { width: 100%; image-rendering: pixelated; border: 1px solid var(--example-border); box-sizing: border-box; background: repeating-conic-gradient(var(--example-panel) 0 25%,var(--example-hover) 0 50%) 0 / 8px 8px; }

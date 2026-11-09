@@ -2484,7 +2484,19 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 결과는 `artifacts/particle-dust-clarity/browser/verification.json`에 저장한다.
 
 
-`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 26종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 30종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples -- --topics-only`는 주제별 보강 8개 실험을 검사한다.
+태양 방위·공간 효과와 2D 후처리는 실제 GPU 출력 차이로 확인한다.
+영역 검색·형상 이동은 Rust hit, 픽셀 정렬은 GPU 출력과 보존된 native 소수 좌표,
+스프라이트 팔레트·외곽선은 원본 복귀, 자원 관찰은 반복 준비·해제 후 텍스처 수 복귀와 전체 정리로 판정한다.
+픽셀 실험은 가상 원본 해상도와 확대된 물리 출력 크기를 구분하고 기본 월드 viewport를 유지해야 한다.
+보호 여백 비교 PNG는 실제 atlas packer로 재생성하며, fixture 검증은 유지된 씬과 패킹 결과의 일치를 확인한다.
+이 검증은 software GPU의 실제 API/픽셀 검사이며 실물 GPU 정밀도·성능 검증을 대신하지 않는다.
+`pnpm smoke:example-suite`는 홈의 10개 주제·2D/HD-2D 태그와 물리 7종을 합친 37개 진입점,
+검색·빈 결과·키보드·JavaScript 비활성·모바일·중첩 경로·단독 호스팅을 확인한다.
+이전 통합 데모는 취소할 수 없는 Wasm 초기화 중에는 빌린 렌더러를 유지한다.
+지연된 초기화가 끝나면 runtime의 콜백·입력·엔진을 먼저 정리한 뒤 renderer를 해제해야 한다.
+통합 수명 검사는 Wasm 요청을 막은 상태의 렌더러 생존과 요청 완료 후 모든 GPU 자원의 해제를 함께 확인한다.
 Catalog 검증은 각 주제의 `lesson`에 사용 상황·실험 설명·2~4단계·범례·유효한 객체 참조가 있는지 확인한다.
 `feature-learning-checks.mjs`는 실제 페이지의 설명·실행 버튼 배치, 이름표의 화면 경계/겹침,
 대화/HUD의 캔버스 내부 배치와 한국어 글꼴, 게임 화면에 붙인 조이스틱의 가림 없는 배치, 접힌 수치 진단을 확인한다.

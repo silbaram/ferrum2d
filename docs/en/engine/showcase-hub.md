@@ -4,13 +4,13 @@
 
 Use the [public demo site](https://silbaram.github.io/ferrum2d/) to try engine features without installing tools.
 The Feature Lab separates each topic into a small scene with controls, observations, and implementation API names.
-All 26 topics explain a game use case, ordered steps, object roles, and a visual legend. Primary actions sit next to the scene.
+All 30 experiments explain a game use case, ordered steps, object roles, and a visual legend. Primary actions sit next to the scene.
 Frame strips, camera bounds, and loading dashboards expose the comparison; dialogue and HUD use the actual engine UI inside the game view.
 Technical statistics are available under a collapsed details section. The hub cards also show practical use cases.
 To run it from the engine source, use `pnpm dev:starter-runtime`.
 
-The hub follows **focused features → deeper physics → game applications**, with authoring tools in a separate section.
-Search and category filters help locate experiments. Game and lab examples share navigation, typography, colors, instructions, observations, and related experiments.
+The hub follows **topic-based experiments → game applications**, with authoring tools in a separate section.
+Ten topics cover lighting, physics, cameras, sprites, world movement, VFX, gameplay, UI/input, audio, and runtime assets. 2D/HD-2D tags are independent filters. The hub includes all seven physics scenarios, providing 37 direct experiment links. Search and topic filters help locate experiments. Game and lab examples share navigation, typography, colors, instructions, observations, and related experiments.
 `examples/shared/exampleCatalog.json` defines example roles; `featureCatalog.json` defines individual experiments.
 Minimal, the original shooter starter, and Engine Playground remain reference/test routes outside the main catalog.
 
@@ -27,8 +27,8 @@ Each link opens the corresponding experiment in Starter Runtime. Reset restores 
 | [Navigation and obstacles](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=navigation) | Select a destination across a wall and observe the native route around it. |
 | [Physics materials](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics) | Launch rubber and clay balls with the same impulse to compare bounce and damping. |
 | [Normal-map lighting](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=lighting) | Move a point light and compare lighting with and without surface normals. |
-| [Post-processing](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) | Compare the original scene, bloom, and CRT effects. |
-| [Camera tracking and zoom](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=camera) | Compare fixed and tracking cameras while changing zoom. |
+| [Post-processing](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) | Compare the original with bloom, CRT, vignette, glitch, pixel-art color, and fade, including intensity. |
+| [Camera tracking and zoom](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=camera) | Compare fixed/tracking cameras, zoom, a short screen impulse, and world bounds. |
 | [9-slice borders](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=nine-slice) | Compare ordinary image scaling against panels that preserve corner thickness. |
 | [Tilemaps and collision](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=tilemap) | Edit wall/floor tiles and observe rendering and native collision updating together. |
 | [Drawing layers](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=layers) | Change overlapping objects' drawing order without moving them. |
@@ -47,11 +47,15 @@ Each link opens the corresponding experiment in Starter Runtime. Reset restores 
 | [HD-2D movement](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) | Traverse slopes and floors and ride vertical/horizontal platforms. |
 | [AI pursuit and combat](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=ai-combat) | Observe obstacle avoidance, melee damage, and ranged projectiles. |
 | [Parent/child attachments](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=attachments) | Move or rotate a cart and detach/reattach a child object. |
-| [HD-2D lights, shadows, and fog](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) | Move lights and compare shadows and distance fog. |
+| [HD-2D lights, shadows, and fog](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) | Compare point/sun/mixed lighting, sun direction, hard/PCF shadows, fog, bloom, AO, DOF, and ACES. |
 | [Destructible terrain](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=destructible-terrain) | Erase a mask, drop a ball through the opening, and observe collider chunk updates. |
 
 Audio may require a click or key press before the browser permits playback.
 WebGPU is optional; the default renderer is WebGL2.
+| [Area queries and shape casts](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) | Compare circle/AABB overlap and moving-circle casts using native hits. |
+| [Pixel resolution and snapping](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=pixel-perfect) | Compare virtual resolution and fractional positions with display snapping. |
+| [Sprite appearance](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) | Compare palette replacement, hit flash, and outline on the same source images. |
+| [Rendering and GPU resources](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=rendering) | Compare command/draw counts and texture allocation/release; memory values are estimates. |
 
 ## Integrated examples and authoring tools
 

@@ -19,7 +19,7 @@ Pages 메뉴는 현재 언어의 문서만 표시하며, 번역이 없는 문서
 | 순서 | 문서 | 알 수 있는 것 |
 | --- | --- | --- |
 | 1 | [사용자 설명서](engine/user-guide.md) | 엔진의 현재 기능, 예제 실행, 뷰어 편집·실행·저장 범위 |
-| 2 | [기능·예제 지도](engine/showcase-hub.md) | 설치 없이 체험하는 26개 기능 실험과 통합 예제 |
+| 2 | [기능·예제 지도](engine/showcase-hub.md) | 설치 없이 체험하는 30개 기능 실험과 통합 예제 |
 | 3 | [개발자 퀵스타트](engine/developer-quickstart.md) | GitHub Release 패키지로 새 게임을 만들고 실행·검증하는 방법 |
 | 4 | [AI 기능 안내](engine/ai-feature-guide.md) · [Public API](engine/public-api.md) | 요구사항을 실제 공개 API와 상세 계약에 연결하는 방법 |
 

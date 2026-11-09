@@ -10,6 +10,9 @@ import {checkExampleLifecycles, checkPhysicsScenarioRequests} from './example-li
 
 const catalog = loadExampleCatalog(), publicExamples = catalog.filter(item => item.kind !== 'reference');
 const features = JSON.parse(await readFile('examples/shared/featureCatalog.json', 'utf8'));
+const physicsTopics = JSON.parse(await readFile('examples/shared/physicsExamples.json', 'utf8'));
+const topics = JSON.parse(await readFile('examples/shared/featureTopics.json', 'utf8'));
+const totalExperiments = features.length + physicsTopics.length;
 const parent = resolve('artifacts/example-suite'); await mkdir(parent, {recursive: true});
 const run = await mkdtemp(resolve(parent, 'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ok: false, status: 'running', run}));
@@ -51,15 +54,22 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1100}}); activePage = page; page.setDefaultTimeout(20000);
   observe(page);
   await page.goto(base);
-  assert.equal(await page.locator('[data-feature-card]').count(), features.length);
-  assert.equal(await page.locator('[data-example-card]').count(), publicExamples.filter(item => item.kind !== 'lab' || item.id !== 'starter-runtime').length);
+  assert.equal(await page.locator('[data-feature-card]').count(), totalExperiments);
+  assert.equal(await page.locator('[data-example-card]').count(), publicExamples.filter(item => item.kind === 'game' || item.kind === 'tool').length);
   assert.equal(await page.locator('a[href*="mode="], a[href*="minimal-game"]').count(), 0, 'reference demos must not appear in the public hub');
   const search = page.getByRole('searchbox', {name:'기능 예제 검색'});
   await search.fill('노멀'); assert.equal(await page.locator('[data-feature-card]:visible').count(), 1);
   await page.reload(); assert.equal(await search.inputValue(), '노멀');
   await search.fill('');
-  await page.locator('[data-feature-group="HD-2D"]').focus(); await page.keyboard.press('Space');
-  assert.equal(await page.locator('[data-feature-card]:visible').count(), features.filter(item => item.group === 'HD-2D').length);
+  for (const topic of topics) {
+    await page.locator(`[data-feature-group="${topic.id}"]`).click();
+    assert.equal(await page.locator('[data-feature-card]:visible').count(), features.filter(item => item.topic === topic.id).length + (topic.id === 'physics' ? physicsTopics.length : 0));
+    assert.equal(await page.locator('[data-topic-section]:visible').count(), 1);
+  }
+  await page.locator('[data-feature-group="all"]').click();
+  await page.locator('[data-feature-dimension]').selectOption('HD-2D');
+  assert.equal(await page.locator('[data-feature-card]:visible').count(), features.filter(item => item.tags.includes('HD-2D')).length);
+  await page.locator('[data-feature-dimension]').selectOption('all');
   await search.fill('없는기능xyz'); assert(await page.locator('[data-feature-empty]').isVisible());
   await search.fill(''); await page.locator('[data-feature-group="all"]').click();
   for (const width of [1440,390,320]) { await page.setViewportSize({width,height:1000}); assert.equal(await overflow(page), false, `hub overflow ${width}`); }
@@ -67,7 +77,7 @@ try {
   await page.screenshot({path:resolve(run,'hub.png')});
   // Native links remain usable without the filter enhancement.
   const noJs = await browser.newPage({javaScriptEnabled:false}); observe(noJs); await noJs.goto(base);
-  assert.equal(await noJs.locator('[data-feature-card]:visible').count(), features.length); await noJs.close();
+  assert.equal(await noJs.locator('[data-feature-card]:visible').count(), totalExperiments); await noJs.close();
 
   for (const entry of publicExamples.filter(item => item.kind !== 'tool')) {
     console.log(`Example suite: ${entry.id}`);
@@ -153,7 +163,7 @@ try {
   console.log('Example suite: initialization/teardown and scenario requests');
   const lifecycles = await checkExampleLifecycles(browser, base);
   const scenarioRequests = await checkPhysicsScenarioRequests(browser, base);
-  const report = {ok:true,run,hub:{features:features.length,search:true,keyboard:true,noJavaScript:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
+  const report = {ok:true,run,hub:{features:features.length,topics:topics.length,physics:physicsTopics.length,totalExperiments,dimensions:true,search:true,keyboard:true,noJavaScript:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
   await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');
   await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, hub search/navigation, reference routes, standalone and nested paths. ${run}`);
 } catch (error) {

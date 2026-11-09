@@ -1,0 +1,70 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "sceneComposition": {
+    "initialFragment": "lab",
+    "prefabs": {
+      "object": {}
+    },
+    "fragments": {
+      "lab": {
+        "instances": [
+          {
+            "id": "robot",
+            "prefab": "object",
+            "x": 240,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "robot",
+                  "width": 48,
+                  "height": 60,
+                  "frame": {
+                    "u0": 0,
+                    "v0": 0,
+                    "u1": 0.25,
+                    "v1": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 24,
+                  "halfHeight": 30,
+                  "isTrigger": false
+                },
+                "layer": "player"
+              }
+            }
+          },
+          {
+            "id": "ball",
+            "prefab": "object",
+            "x": 432,
+            "y": 192,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "ball",
+                  "width": 64,
+                  "height": 64
+                },
+                "collider": {
+                  "type": "circle",
+                  "radius": 32,
+                  "isTrigger": false
+                },
+                "layer": "wall"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

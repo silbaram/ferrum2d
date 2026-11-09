@@ -1,7 +1,7 @@
 [
   {
     "id": "starter-runtime", "kind": "lab", "title": "엔진 기능 실험실", "path": "starter-runtime/", "source": "examples/starter-runtime/dist", "command": "pnpm dev:starter-runtime",
-    "summary": "한 번에 한 기능을 바꾸며 렌더링·움직임·게임 구성·HD-2D의 동작을 배웁니다.",
+    "summary": "조명·물리·화면 등 10개 주제에서 한 번에 한 기능을 바꾸며 엔진 동작을 배웁니다.",
     "action": "주제를 선택하고 설정 하나를 바꾼 뒤 초기화해 비교하세요.", "observe": "화면 변화와 실제 엔진 상태·오브젝트·그리기 명령 수를 함께 확인합니다.",
     "features": ["animation", "camera", "physics", "lighting", "scenes"]
   },
