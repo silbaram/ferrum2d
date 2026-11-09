@@ -2484,15 +2484,15 @@ PNG의 팔레트/타일은 실제 consumer validator로 검사하며, Wasm MIME�
 결과는 `artifacts/particle-dust-clarity/browser/verification.json`에 저장한다.
 
 
-`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 30종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
-`pnpm smoke:feature-examples -- --topics-only`는 주제별 보강 8개 실험을 검사한다.
+`pnpm smoke:feature-examples`는 빌드된 SDK/Wasm을 전제로 관련 예제 4종을 lint/build한 뒤 독립 실험 31종을 WebGL2/WebGPU로 검증한다. Platformer/Breakout/Shooter도 strict TypeScript 검사를 공통 `pnpm lint`에 포함한다.
+`pnpm smoke:feature-examples -- --topics-only`는 주제별 보강 9개 실험을 검사한다.
 태양 방위·공간 효과와 2D 후처리는 실제 GPU 출력 차이로 확인한다.
 영역 검색·형상 이동은 Rust hit, 픽셀 정렬은 GPU 출력과 보존된 native 소수 좌표,
 스프라이트 팔레트·외곽선은 원본 복귀, 자원 관찰은 반복 준비·해제 후 텍스처 수 복귀와 전체 정리로 판정한다.
 픽셀 실험은 가상 원본 해상도와 확대된 물리 출력 크기를 구분하고 기본 월드 viewport를 유지해야 한다.
 보호 여백 비교 PNG는 실제 atlas packer로 재생성하며, fixture 검증은 유지된 씬과 패킹 결과의 일치를 확인한다.
 이 검증은 software GPU의 실제 API/픽셀 검사이며 실물 GPU 정밀도·성능 검증을 대신하지 않는다.
-`pnpm smoke:example-suite`는 홈의 10개 주제·2D/HD-2D 태그와 물리 7종을 합친 37개 진입점,
+`pnpm smoke:example-suite`는 홈의 10개 주제·2D/HD-2D 태그와 물리 7종을 합친 38개 진입점,
 검색·빈 결과·키보드·JavaScript 비활성·모바일·중첩 경로·단독 호스팅을 확인한다.
 이전 통합 데모는 취소할 수 없는 Wasm 초기화 중에는 빌린 렌더러를 유지한다.
 지연된 초기화가 끝나면 runtime의 콜백·입력·엔진을 먼저 정리한 뒤 renderer를 해제해야 한다.
@@ -2524,7 +2524,7 @@ WebGL2/WebGPU 양쪽에서 광원이 있는 면이 밝아져야 하며, 공·로
 로딩은 실제 fetch 3회→캐시 3개/fetch 0회, 취소 후 완료된 캐시만 재사용·의도한 실패 후 재시도·초기화 중 늦은 완료 차단을 검사한다. 스트리밍은 구역별 픽셀 변화, 공통 바닥 유지, 왕복 시 실제 텍스처 수 일정, 빠른 이동·로딩 중 초기화 후 자원 수 복귀를 검사한다. 신규 3종의 네트워크 응답을 보류한 상태에서 destroy 후 늦은 응답을 풀어도 GPU 자원이 재생성되지 않고 AudioContext가 종료되는지 두 렌더러에서 검사한다.
 오디오 잠금 거부 시 무음 연출, 초기화 후 늦은 unlock의 추가 요청 차단, 오디오 로딩 중 건너뛰기·취소·재시작, 스트리밍 네트워크 실패 시 기존 구역/공유 텍스처 보존과 재시도를 두 렌더러의 별도 8개 복구 검사로 확인한다.
 HD-2D 실험은 경사로의 층·높이 전환과 양방향 이동, 승강/수평 발판의 native 탑승, 일시정지 중 위치 고정, AI 장애물 우회와 근접/발사체 피해, 모델 부모 위치·회전과 자식 연결 해제/복귀를 확인한다. 정상 사망한 캐릭터는 오래된 handle 조회로 렌더링을 중단하지 않아야 하며, 사망과 일회성 렌더 오류 후 초기화가 실제 프레임 진행을 복구해야 한다. 새 공통 화면의 씬/텍스처/모델 로딩 취소·실패 정리, BFCache 복귀 reload, DPR 2 조이스틱 이동/해제도 검사한다.
-`node tests/smoke/feature-examples-smoke.mjs --spatial-only`는 빌드 후 HD-2D 4종과 관련 생명주기·입력·복구 검사만 실행하고 `artifacts/hd2d-feature-examples/browser/verification.json`에 별도로 기록한다.
+`node tests/smoke/feature-examples-smoke.mjs --spatial-only`는 빌드 후 HD-2D 5종과 관련 생명주기·입력·복구 검사만 실행하고 `artifacts/hd2d-feature-examples/browser/verification.json`에 별도로 기록한다.
 애니메이션 실험은 기존 재생 설정 외에 native idle/walk·방향·프레임 이벤트·단발 완료 1회·재시작, 실제 음원 시작과 pause 중단을 검사한다. 음원 HTTP 실패/재시도, reset으로 로딩 취소 후 늦은 응답 차단을 양쪽 렌더러에서 확인한다.
 HD-2D 환경 실험은 동일 장면의 그림자 켬/끔·광원 위치·안개·초기화 pixel을 비교하고 정적 장면에 GPU 프레임이 계속 제출되지 않는지도 검사한다. 지형 실험은 마스크 변경, 수정 범위 texture patch, native 충돌/공 낙하와 초기화 자원 수, 편집 전후 실제 속도 변화/고정 스텝 소비 시간 기반 중력 300 유지, DPR 2 터치 좌표를 확인한다.
 `feature-lighting-quality-checks.mjs`는 자체 생성 GLB의 HDR 발광 창을 사용해 태양 고도 10°/80°,
@@ -2547,7 +2547,20 @@ HD-2D 드래그는 실제 native framebuffer 변화도 확인하며 2D 고도 �
 `node tests/smoke/feature-examples-smoke.mjs --next-only`는 애니메이션/공간 환경/지형 3종과 관련 검사를 선택해 `artifacts/feature-examples-next/browser/verification.json`에 기록한다.
 탐색은 분류 버튼의 키보드 조작, 390px에서 메뉴 높이 80px 미만, 모바일 주제 전환과 렌더러 유지까지 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
-수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 52개 기능/renderer 조합, 기존 안내 3종, 초기 로딩 생명주기 11종, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료 6개 조합, DPR/터치 8개 조합, 실패/복구 16개 조합을 실행한다.
+수동 실행 CI(`workflow_dispatch`)는 `pnpm exec playwright-core install --with-deps chromium`으로 브라우저를 설치하고 기존 Engine Playground build를 재사용해 Catalog의 기능별 양 renderer 조합, 기존 안내 3종, 초기 로딩 생명주기, 신규 컷신/로딩/스트리밍의 실행 중 요청 종료, DPR/터치와 실패/복구 조합을 실행한다.
+
+`pnpm smoke:shadow-comparison`은 `hd2d-shadow-proxy`만 양 backend에서 실행한다.
+정원 atlas와 간소화 캐릭터/나무 GLB를 격리 재생성하여 바이트 일치를 확인하고,
+실제 그림자 OFF/ON 픽셀에서 지면의 내부 수신점을 선정한다. 카메라 30/90/-90/180°와 pan 후에도
+같은 월드 수신점의 차폐가 유지되어야 한다. GL/GPU 공통 내부 수신점과 RGB 채널 오차 3 이하도 검사한다.
+캐릭터와 나무 각각에 대해 부피·표시 평면 모드의 실제 그림자를 확인하며,
+표시 평면의 월드 그림자는 카메라 회전에 따라 달라져야 한다. 태양 고도 10°/85°의 픽셀 변화와 저장 각도도 검사한다.
+모델은 카메라 회전에 따라 월드 pose가 변하지 않으며, 물리 body를 추가하지 않고 부모의 높이·위치를 따른다.
+부피의 attachment yaw 변경과 해당 설정의 JSON 저장도 검사한다.
+표시 프레임·native 애니메이션·일시정지·설정 다운로드·정확한 초기화·390px 배치와 destroy 후 자원 0을 검사한다.
+일회성 렌더 오류로 제출이 중단된 뒤 초기화하면 기본 framebuffer까지 복구되어야 한다.
+atlas/GLB 로딩 중 종료와 GLB 실패 시 자원 정리도 검사한다. 보고서는 `artifacts/shadow-comparison/verification.json`이다.
+동일 검사는 전체 기능·주제·공간 aggregate에도 연결된다. software WebGPU를 실제 기기 성능 보장으로 해석하지 않는다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
 ### 통합 예제 Catalog와 공통 화면

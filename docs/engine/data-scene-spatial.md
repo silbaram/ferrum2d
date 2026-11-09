@@ -181,6 +181,12 @@ spatial.attachments = {
 옵션은 cold configuration flag로 전달하고 기존 80-byte model output ABI에는 추가 bit를 내보내지 않는다.
 이 flag를 모르는 이전 Wasm은 해당 설정을 거절한다. 사용 시 TS와 Wasm을 함께 갱신한다.
 
+실제 정원 캐릭터·나무의 표시 평면/부피 그림자를 비교하는 예제는
+[기능 실험실의 HD-2D 그림자 비교](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy)다.
+로컬 실행과 에셋 재생성 방법은 저장소의 `examples/starter-runtime/README.md`를 따른다.
+간소화 모델 표시와 카메라·높이·회전·애니메이션을 전환한다. 고정 volume은 프레임별 실루엣의 근사이며
+원본 표시 그림과 다른 shadow caster를 사용하는 선택이다.
+
 ### 분리형 glTF 배경 모델
 
 `loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`를 `/core`에서 제공한다.

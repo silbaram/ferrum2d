@@ -19,14 +19,14 @@ This is a real browser capture of the viewer with example village content.
 
 ## Try individual engine features
 
-The [**Engine Feature Lab**](https://silbaram.github.io/ferrum2d/starter-runtime/) provides **30 independent experiments**.
+The [**Engine Feature Lab**](https://silbaram.github.io/ferrum2d/starter-runtime/) provides **31 independent experiments**.
 Each experiment connects controls and visible results with implementation APIs.
 
 ![Feature Lab comparing ordinary scaling with 9-slice border preservation](docs/development/quality/screenshots/engine-feature-lab.png)
 
 | Topic | Experiments | Try it |
 | --- | --- | --- |
-| Lighting and shadows | Point lights, normals, directional sun, shadows | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) |
+| Lighting and shadows | Point lights, normals, directional sun, sprite versus volume shadows | [Environment](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) · [Shadows](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) |
 | Physics and collision | Materials, colliders, joints, CCD, overlap/shape queries | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
 | Cameras and screen effects | Tracking, zoom, shake, bounds, post-processing, pixel snapping | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
 | Sprites and animation | Clips, events, layers, palettes, outlines | [Open](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
@@ -137,7 +137,7 @@ After [building the source](#build-the-engine-source), run a command from the re
 
 | Example | Command | Source |
 | --- | --- | --- |
-| Feature Lab, 30 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
+| Feature Lab, 31 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
 | 2D garden / HD-2D village | `pnpm dev:placement-viewer`, then `?scene=garden` / `?scene=village` | [placement-viewer](apps/placement-viewer/) |
 | Top-down Shooter | `pnpm dev:topdown` | [topdown-shooter](examples/topdown-shooter/) |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | [physics-sandbox](examples/physics-sandbox/) |

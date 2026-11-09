@@ -91,8 +91,8 @@
 기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
 `shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
 
-**남은 작업:** 실제 캐릭터·나무 asset에서 표시 애니메이션 UV/flip·높이 변화·화면 밖 caster를 포함해
-적절한 volume 크기와 피벗을 검증한다. 카메라 거리별 LOD 교체가 shadow silhouette에 미치는 영향과
+**남은 작업:** 정원 비교 예제를 재사용해 표시 애니메이션의 flip·화면 밖 caster·추가 실제 asset의
+volume 크기와 피벗을 검증한다. 카메라 거리별 LOD 교체가 shadow silhouette에 미치는 영향과
 proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 명시적 동작을 확인한다.
 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 
@@ -297,14 +297,14 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 
 ### 먼저 실행할 작업 단위
 
-1. **M0-a:** 기존 `hd2d-environment` 실험의 고정 태양·카메라 orbit/pan·발광 창과
-   shadow proxy/contact 회귀 fixture를 재사용해 발 접촉·벽·원본 캐릭터/나무가 있는 실제 문제 씬을 축약한다.
+1. **M0-a:** `hd2d-shadow-proxy`의 정원 캐릭터·나무 비교와 `hd2d-environment`의 효과 조합,
+   기존 proxy/contact 회귀 fixture를 재사용해 실제 사용자 문제 장면의 발 접촉·벽·asset 조건을 축약한다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
 2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
    이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
    Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
-3. **M1-a:** 캐릭터/나무 billboard에 작성한 shadowOnly volume proxy를 실제 asset에서 비교한다.
-   회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
+3. **M1-a:** 정원 baseline을 바탕으로 표시 애니메이션 flip·카메라 거리별 LOD·화면 밖 caster와
+   추가 asset의 피벗·volume 근사 오차를 검증한다. 기본 비교·높이/위치·attachment yaw 사용법은 공식 예제 안내를 따른다.
 4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.

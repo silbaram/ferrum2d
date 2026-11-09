@@ -18,7 +18,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 ## 기능을 먼저 체험하기
 
-[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **30개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
+[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **31개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
 10개 기능 주제로 탐색하고 2D·HD-2D를 따로 필터링합니다. 물리 심화 7종도 같은 주제에서 바로 엽니다.
 게임에서 쓰는 상황·조작 순서·객체 이름표·화면 범례를 따라 결과를 비교합니다.
 원본 애니메이션, 카메라 영역, 로딩 상태와 화면 안 대화·HUD를 확인하고 상세 패널에서 설정·구현 API를 읽을 수 있습니다.
@@ -27,7 +27,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 | 기능 주제 | 실험 내용 | 바로 체험 |
 | --- | --- | --- |
-| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양 방위·고도·그림자 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) |
+| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양, 실제 캐릭터·나무 그림자 비교 | [환경](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) · [그림자](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) |
 | 물리·충돌 | 재질·충돌체·관절·CCD·공간 질의·지형 파괴 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
 | 카메라·화면 효과 | 추적·확대·흔들림·월드 경계, 후처리·픽셀 정렬 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
 | 스프라이트·애니메이션 | 시트·프레임 이벤트·레이어·팔레트·외곽선 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
@@ -143,7 +143,7 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 | 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
 | HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
-| 기능별 실험실 · 독립 실험 30종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
+| 기능별 실험실 · 독립 실험 31종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
 | Breakout | `pnpm dev:breakout` | [examples/breakout](examples/breakout/) |
 | Platformer | `pnpm dev:platformer` | [examples/platformer](examples/platformer/) |

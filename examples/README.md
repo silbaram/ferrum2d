@@ -2,7 +2,7 @@
 
 예제는 **주제별 기능 실험 → 게임 응용** 순서로 체험한다. 제작 도구는 게임과 구분한다.
 통합 홈에서 10개 기능 주제와 2D·HD-2D 태그로 찾고 각 예제 상단의 같은 메뉴로 이동한다. 물리 7개 시나리오는 물리·충돌 주제에 함께 표시한다. 화면은 공통 글꼴·색상·조작·관찰 안내를 사용한다.
-기능 카드에는 게임에서 쓰는 상황을 표시한다. 30개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
+기능 카드에는 게임에서 쓰는 상황을 표시한다. 31개 기능 학습 화면은 조작 순서·객체 역할·범례와 실제 상태를 함께 보여준다.
 
 ![기능 검색과 학습 순서를 제공하는 통합 예제 홈](../docs/development/quality/screenshots/example-hub.png)
 
@@ -23,7 +23,7 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 
 | 단계 | 디렉터리 | 이 예제로 배우는 것 | 단독 개발 실행 |
 | --- | --- | --- | --- |
-| 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 30종 | `pnpm dev:starter-runtime` |
+| 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 31종 | `pnpm dev:starter-runtime` |
 | 물리 심화 | [physics-sandbox](physics-sandbox/README.md) | 충돌체·접촉/센서·joint·CCD·공간 질의 등 7개 시나리오 | `pnpm dev:physics-sandbox` |
 | 게임 응용 | [breakout](breakout/README.md) | 충돌 → 반사·벽돌 제거·점수·파티클 | `pnpm dev:breakout` |
 | 게임 응용 | [platformer](platformer/README.md) | 이동 컨트롤러 → 점프·착지·단방향/이동 발판 | `pnpm dev:platformer` |
@@ -35,11 +35,11 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 게임·실험 앱 6종은 목적, 직접 해보기, 관찰할 결과, 관련 기능 실험을 같은 형식으로 안내한다. 제작 도구는 자체 작업공간을 사용한다.
 Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제공한다. Shooter는 타이틀에서 시작한다.
 
-## 기능 실험 30종
+## 기능 실험 31종
 
 | 주제 | 실험 |
 | --- | --- |
-| 조명·그림자 | 노멀맵과 점광원, HD-2D 조명·그림자·안개 |
+| 조명·그림자 | 노멀맵과 점광원, HD-2D 조명·그림자·안개, 실제 캐릭터·나무의 그림자 원본 비교 |
 | 물리·충돌 | 물리 재질과 반사, 지형 파괴와 충돌 갱신, 영역 검색과 형상 이동 · 물리 심화 7종 |
 | 카메라·화면 효과 | 화면 후처리, 카메라 추적과 확대, 픽셀 해상도와 좌표 정렬 |
 | 스프라이트·애니메이션 | 스프라이트 애니메이션, 레이어와 앞뒤 정렬, 스프라이트 색상과 외곽선 |

@@ -13,7 +13,7 @@ AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 �
 
 | 목적 | 시작점 | 다음 문서 |
 | --- | --- | --- |
-| 설치 없이 기능을 체험하기 | [GitHub Pages](https://silbaram.github.io/ferrum2d/)의 기능 실험실 | [30개 기능과 예제 지도](showcase-hub.md) |
+| 설치 없이 기능을 체험하기 | [GitHub Pages](https://silbaram.github.io/ferrum2d/)의 기능 실험실 | [31개 기능과 예제 지도](showcase-hub.md) |
 | 새 게임 프로젝트 만들기 | GitHub Release의 create-game 패키지로 템플릿 생성 | [개발자 퀵스타트](developer-quickstart.md) |
 | AI에게 개발 환경 설정 맡기기 | 엔진·개발 도구·consumer 지침 설치 | [AI 설치 지침](ai-agent-install.md) |
 | 씬·에셋·카메라 작성하기 | Placement Viewer에서 Scene Authoring 문서 열기 | [Scene Authoring](data-scene-authoring.md) |
@@ -40,7 +40,7 @@ AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 �
 
 | 예제 | 실행 명령 | 관찰할 내용 |
 | --- | --- | --- |
-| 엔진 기능 실험실 | `pnpm dev:starter-runtime` | 30개 독립 실험의 설정·조작·관찰 결과·구현 API |
+| 엔진 기능 실험실 | `pnpm dev:starter-runtime` | 31개 독립 실험의 설정·조작·관찰 결과·구현 API |
 | 2D 정원·HD-2D 마을 | `pnpm dev:placement-viewer` | `?scene=garden` / `?scene=village`로 배치·게임 미리보기 |
 | 물리 실험실 | `pnpm dev:physics-sandbox` | 7개 심화 시나리오와 충돌·solver 진단 |
 | Top-down Shooter | `pnpm dev:topdown` | 이동·조준·발사·wave·점수와 Game Spec |

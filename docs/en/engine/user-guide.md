@@ -39,7 +39,7 @@ Run `pnpm build` before the first launch or after modifying Rust. Use the addres
 
 | Example | Command | What to inspect |
 | --- | --- | --- |
-| Engine Feature Lab | `pnpm dev:starter-runtime` | 30 independent experiments with controls, observations, and API names |
+| Engine Feature Lab | `pnpm dev:starter-runtime` | 31 independent experiments with controls, observations, and API names |
 | 2D garden and HD-2D village | `pnpm dev:placement-viewer` | Use `?scene=garden` or `?scene=village` for placement and game preview |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | Seven focused scenarios and collision/solver diagnostics |
 | Top-down Shooter | `pnpm dev:topdown` | Movement, aiming, projectiles, waves, scoring, and Game Spec |
