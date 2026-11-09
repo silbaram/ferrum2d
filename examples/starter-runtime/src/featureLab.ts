@@ -68,6 +68,7 @@ export async function startFeatureLab(): Promise<void> {
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
   const toolbar = root.querySelector(".demo-toolbar")!;
+  toolbar.querySelector("h1")!.textContent = feature.title;
   const top = document.createElement("div");
   top.className = "feature-top-actions";
   top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
@@ -78,9 +79,7 @@ export async function startFeatureLab(): Promise<void> {
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
-  panel.innerHTML = `<p class="feature-kicker">한 번에 한 기능</p><h2>${feature.title}</h2><p>${feature.summary}</p>
-    <h3>직접 해보기</h3><p>${feature.action}</p><form class="feature-controls">${controls[id]}</form>
-    <h3>관찰할 결과</h3><p>${feature.observe}</p>
+  panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${controls[id]}</form>
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
@@ -104,7 +103,7 @@ export async function startFeatureLab(): Promise<void> {
   const input = (key: string) => control<HTMLInputElement>(key);
   const output = (key: string, text: string) => { root.querySelector(`[data-value="${key}"]`)!.textContent = text; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const lesson = createFeatureLesson(root, canvas, id, feature.lesson);
+  const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const requested = params.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   control<HTMLSelectElement>("renderer").value = requested;
   let extra: FeatureExtra | undefined, shooterPaused = false;
@@ -152,7 +151,7 @@ export async function startFeatureLab(): Promise<void> {
     resources = () => renderer.resourceStats?.();
     if (destroyed) return;
     const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-    output("backend", `${backend}${backend === requested ? "" : " · 호환 렌더러"}`);
+    output("backend", backend === requested ? "" : `${backend} · 호환 렌더러`);
     const loader = id === "physics" ? new BrowserPlatformHost(renderer) : new AssetLoader(renderer);
     if (loader instanceof BrowserPlatformHost) own(() => loader.destroy());
     const virtual = id === "input" ? new VirtualControls(lesson.controlsHost, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;

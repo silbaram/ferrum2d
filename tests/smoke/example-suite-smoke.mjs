@@ -12,7 +12,6 @@ const catalog = loadExampleCatalog(), publicExamples = catalog.filter(item => it
 const features = JSON.parse(await readFile('examples/shared/featureCatalog.json', 'utf8'));
 const physicsTopics = JSON.parse(await readFile('examples/shared/physicsExamples.json', 'utf8'));
 const topics = JSON.parse(await readFile('examples/shared/featureTopics.json', 'utf8'));
-const totalExperiments = features.length + physicsTopics.length;
 const parent = resolve('artifacts/example-suite'); await mkdir(parent, {recursive: true});
 const run = await mkdtemp(resolve(parent, 'run-'));
 await writeFile(resolve(parent, 'verification.json'), JSON.stringify({ok: false, status: 'running', run}));
@@ -54,30 +53,32 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1100}}); activePage = page; page.setDefaultTimeout(20000);
   observe(page);
   await page.goto(base);
-  assert.equal(await page.locator('[data-feature-card]').count(), totalExperiments);
-  assert.equal(await page.locator('[data-example-card]').count(), publicExamples.filter(item => item.kind === 'game' || item.kind === 'tool').length);
-  assert.equal(await page.locator('a[href*="mode="], a[href*="minimal-game"]').count(), 0, 'reference demos must not appear in the public hub');
-  const search = page.getByRole('searchbox', {name:'기능 예제 검색'});
-  await search.fill('노멀'); assert.equal(await page.locator('[data-feature-card]:visible').count(), 1);
-  await page.reload(); assert.equal(await search.inputValue(), '노멀');
-  await search.fill('');
+  await page.waitForURL(base+'starter-runtime/'); await ready(page);
+  assert.equal(await page.locator('[data-example-hub], [data-feature-card], [data-example-home]').count(),0);
   for (const topic of topics) {
-    await page.locator(`[data-feature-group="${topic.id}"]`).click();
-    assert.equal(await page.locator('[data-feature-card]:visible').count(), features.filter(item => item.topic === topic.id).length + (topic.id === 'physics' ? physicsTopics.length : 0));
-    assert.equal(await page.locator('[data-topic-section]:visible').count(), 1);
+    await page.locator(`.feature-categories button[data-topic="${topic.id}"]`).click();
+    assert.equal(await page.locator('.feature-topic-links a:visible').count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?physicsTopics.length:0));
   }
-  await page.locator('[data-feature-group="all"]').click();
-  await page.locator('[data-feature-dimension]').selectOption('HD-2D');
-  assert.equal(await page.locator('[data-feature-card]:visible').count(), features.filter(item => item.tags.includes('HD-2D')).length);
-  await page.locator('[data-feature-dimension]').selectOption('all');
-  await search.fill('없는기능xyz'); assert(await page.locator('[data-feature-empty]').isVisible());
-  await search.fill(''); await page.locator('[data-feature-group="all"]').click();
-  for (const width of [1440,390,320]) { await page.setViewportSize({width,height:1000}); assert.equal(await overflow(page), false, `hub overflow ${width}`); }
+  // Long topic menus remain one row, and keyboard focus reveals the final item.
+  await page.setViewportSize({width:1024,height:920});
+  await page.locator('.feature-categories button[data-topic=physics]').click();
+  const topicLinks=page.locator('.feature-topic-links a:not([hidden])');
+  await topicLinks.first().focus();
+  for(let i=1;i<await topicLinks.count();i++)await page.keyboard.press('Tab');
+  assert(await topicLinks.last().evaluate(link=>document.activeElement===link),'Tab must reach the final example');
+  assert(await page.locator('.feature-topic-links a:not([hidden])').last().evaluate(link=>{
+    const r=link.getBoundingClientRect(),parent=link.parentElement.getBoundingClientRect();
+    return r.left>=parent.left-1&&r.right<=parent.right+1;
+  }),'keyboard focus must reveal horizontally scrolled examples');
+  assert.equal(await overflow(page),false,'topic menus must scroll without overflowing the page');
+  await page.setViewportSize({width:390,height:1000});
+  assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+physicsTopics.length);
   await page.setViewportSize({width:1440,height:1100});
-  await page.screenshot({path:resolve(run,'hub.png')});
-  // Native links remain usable without the filter enhancement.
+  await page.locator(`.feature-categories button[data-topic="${features[0].topic}"]`).click();
+  await page.screenshot({path:resolve(run,'entry.png')});
+  // The relative entry redirect also works without JavaScript under a deployment prefix.
   const noJs = await browser.newPage({javaScriptEnabled:false}); observe(noJs); await noJs.goto(base);
-  assert.equal(await noJs.locator('[data-feature-card]:visible').count(), totalExperiments); await noJs.close();
+  await noJs.waitForURL(base+'starter-runtime/'); await noJs.close();
 
   for (const entry of publicExamples.filter(item => item.kind !== 'tool')) {
     console.log(`Example suite: ${entry.id}`);
@@ -89,7 +90,9 @@ try {
     assert.equal(await select.locator('option').count(), publicExamples.length);
     assert.equal(await select.locator('option:checked').textContent(), entry.title);
     assert.equal(await select.locator('option[value*="mode="]').count(), 0);
-    assert.equal(await header.locator('[data-example-home]').getAttribute('href'), base);
+    assert.equal(await header.locator('[data-example-home], .example-breadcrumb').count(),0);
+    assert.equal(await header.locator('[data-example-docs]').getAttribute('href'),base+'docs/');
+    assert.deepEqual(await select.locator('option').evaluateAll(options=>options.map(o=>o.value)),publicExamples.map(e=>new URL(e.path,base).href));
     await header.locator('summary').focus(); await page.keyboard.press('Enter');
     assert.match(await header.locator('details').innerText(), /직접 해보기[\s\S]*관찰할 결과/);
     assert.equal(await header.locator('.example-related a').count(), entry.features.length);
@@ -163,9 +166,9 @@ try {
   console.log('Example suite: initialization/teardown and scenario requests');
   const lifecycles = await checkExampleLifecycles(browser, base);
   const scenarioRequests = await checkPhysicsScenarioRequests(browser, base);
-  const report = {ok:true,run,hub:{features:features.length,topics:topics.length,physics:physicsTopics.length,totalExperiments,dimensions:true,search:true,keyboard:true,noJavaScript:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
+  const report = {ok:true,run,navigation:{features:features.length,topics:topics.length,physics:physicsTopics.length,publicApps:publicExamples.length,entryRedirect:true,noJavaScriptRedirect:true,duplicateHomeRemoved:true},results,highDpr,lifecycles,scenarioRequests,nestedPaths:true,standalone:true,standaloneMatchingFolder:true,historyNavigation:true,referenceRoutes:true,browser:browser.version()};
   await writeFile(resolve(run,'verification.json'),JSON.stringify(report,null,2)+'\n');
-  await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, hub search/navigation, reference routes, standalone and nested paths. ${run}`);
+  await writeFile(resolve(parent,'verification.json'),JSON.stringify(report,null,2)+'\n'); console.log(`Example suite passed: ${results.length} apps, direct entry/menu navigation, reference routes, standalone and nested paths. ${run}`);
 } catch (error) {
   await activePage?.screenshot({path:resolve(run,'failure.png'),fullPage:true}).catch(()=>{});
   const report = {ok:false,run,results,errors,error:String(error.stack??error)};

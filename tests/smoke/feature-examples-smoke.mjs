@@ -40,6 +40,9 @@ const server=createServer((req,res)=>void(async()=>{
   res.setHeader('Content-Type',mime[extname(path)]??'application/octet-stream');res.end(await readFile(path));
 })().catch(()=>res.writeHead(404).end()));
 function gpuCapture() {
+  // Exercise the other valid canvas channel order in the shadow comparison.
+  const preferredFormat=Object.getPrototypeOf(navigator.gpu).getPreferredCanvasFormat.bind(navigator.gpu);
+  navigator.gpu.getPreferredCanvasFormat=()=>new URLSearchParams(location.search).get('feature')==='hd2d-shadow-proxy'?'bgra8unorm':preferredFormat();
   const original=HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext=function(kind,...args){if(kind==='webgpu')this.dataset.spatialGpuTarget='true';return Reflect.apply(original,this,[kind,...args]);};
   const requestAdapter=navigator.gpu.requestAdapter.bind(navigator.gpu);
@@ -54,6 +57,7 @@ async function pixelHash() {
     await device.queue.onSubmittedWorkDone();const texture=canvas.getContext('webgpu').getCurrentTexture(),stride=Math.ceil(canvas.width*4/256)*256;
     const buffer=device.createBuffer({size:stride*canvas.height,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
     try{const encoder=device.createCommandEncoder();encoder.copyTextureToBuffer({texture},{buffer,bytesPerRow:stride,rowsPerImage:canvas.height},{width:canvas.width,height:canvas.height,depthOrArrayLayers:1});device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);bytes=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();}finally{buffer.destroy();}
+    if(texture.format.startsWith('bgra'))for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){const i=y*stride+x*4;[bytes[i],bytes[i+2]]=[bytes[i+2],bytes[i]];}
   }
   let emissiveRgb;
   const sample=window.ferrumFeatureLab?.snapshot().emissiveSample;
@@ -261,11 +265,15 @@ try {
   const shadowRows=results.filter(row=>row.shadowComparison),shadowParity=[];
   if(shadowRows.length){
     assert.equal(shadowRows.length,2,'Both actual renderers must run the shadow comparison');
-    const [a,b]=shadowRows.map(row=>row.shadowComparison),samples=new Map(b.receiverRgb.map(row=>[row.index,row]));
-    const common=a.receiverRgb.filter(row=>samples.has(row.index));
-    assert(common.length>=Math.max(a.core,b.core)*.95,'Shadow interiors differ between GL and GPU');
-    for(const row of common){const other=samples.get(row.index);for(const key of ['off','on'])assert(row[key].every((v,i)=>Math.abs(v-other[key][i])<=3),'World receiver RGB differs between GL and GPU');}
-    shadowParity.push({commonReceivers:common.length,rgbTolerance:3});
+    const [a,b]=shadowRows.map(row=>row.shadowComparison);
+    for(const [scope,left,right]of [['baseline',a.receiverRgb,b.receiverRgb],['offscreen',a.coverage.receiverRgb,b.coverage.receiverRgb]]){
+      const samples=new Map(right.map(row=>[row.index,row])),common=left.filter(row=>samples.has(row.index));
+      assert(common.length>=Math.max(left.length,right.length)*.95,`${scope}: shadow interiors differ between GL and GPU`);
+      let maxRgbDifference=0;
+      for(const row of common){const other=samples.get(row.index);for(const key of ['off','on'])for(let i=0;i<3;i++)maxRgbDifference=Math.max(maxRgbDifference,Math.abs(row[key][i]-other[key][i]));}
+      assert(maxRgbDifference<=3,`${scope}: world receiver RGB differs between GL and GPU`);
+      shadowParity.push({scope,commonReceivers:common.length,rgbTolerance:3,maxRgbDifference});
+    }
   }
   for (const id of focused ? [] : ['platformer', 'breakout', 'topdown-shooter']) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });

@@ -7,13 +7,14 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
   const points=Array.from({length:41*29},(_,i)=>({x:-72+(i%41)*6,y:-30+Math.floor(i/41)*6}));
   const sample=()=>page.evaluate(async points=>{
     const canvas=document.querySelector("canvas"),device=window.playgroundGpuDevice;
-    const projected=window.ferrumFeatureLab.projectGround(points);let bytes,stride;
+    const projected=window.ferrumFeatureLab.projectGround(points);let bytes,stride,bgra=false;
     if(!device){const gl=canvas.getContext("webgl2");stride=canvas.width*4;bytes=new Uint8Array(stride*canvas.height);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,bytes);if(gl.getError())throw Error("Ground GL readback failed");}
     else{await device.queue.onSubmittedWorkDone();stride=Math.ceil(canvas.width*4/256)*256;
+      const texture=canvas.getContext("webgpu").getCurrentTexture();bgra=texture.format.startsWith("bgra");
       const buffer=device.createBuffer({size:stride*canvas.height,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
-      try{const encoder=device.createCommandEncoder();encoder.copyTextureToBuffer({texture:canvas.getContext("webgpu").getCurrentTexture()},{buffer,bytesPerRow:stride,rowsPerImage:canvas.height},{width:canvas.width,height:canvas.height});device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);bytes=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();}finally{buffer.destroy();}}
+      try{const encoder=device.createCommandEncoder();encoder.copyTextureToBuffer({texture},{buffer,bytesPerRow:stride,rowsPerImage:canvas.height},{width:canvas.width,height:canvas.height});device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);bytes=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();}finally{buffer.destroy();}}
     return projected.map(p=>{if(!p)return null;const x=Math.round(p.x*canvas.width/canvas.clientWidth),y=Math.round(p.y*canvas.height/canvas.clientHeight);
-      if(x<0||x>=canvas.width||y<0||y>=canvas.height)return null;const row=device?y:canvas.height-1-y;return Array.from(bytes.slice(row*stride+x*4,row*stride+x*4+3));});
+      if(x<0||x>=canvas.width||y<0||y>=canvas.height)return null;const row=device?y:canvas.height-1-y,rgb=Array.from(bytes.slice(row*stride+x*4,row*stride+x*4+3));return bgra?rgb.reverse():rgb;});
   },points);
   const contrast=(off,on)=>off&&on?Math.min(...off.map((c,i)=>c-on[i])):0;
   const floor=c=>c&&Math.min(...c)>70&&Math.max(...c)-Math.min(...c)<35;
@@ -22,6 +23,8 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
   const subjects=indices=>({actor:indices.filter(i=>points[i].x<20).length,tree:indices.filter(i=>points[i].x>=20).length});
   const model=()=>page.evaluate(()=>window.ferrumFeatureLab.shadowModels());
   const initial=await snapshot(),initialPixels=await page.evaluate(pixelHash),models=await model();
+  const canvasFormat=initial.backend==="webgpu"?await page.evaluate(()=>document.querySelector("canvas").getContext("webgpu").getCurrentTexture().format):"rgba8";
+  if(initial.backend==="webgpu")assert.equal(canvasFormat,"bgra8unorm","The shadow comparison must exercise real BGRA readback");
   assert.equal(initial.visibleModels,0);assert.equal(initial.models,2);
   for(const m of Object.values(models)){assert.equal(m.cameraVisible,false);assert.equal(m.hasPhysicsBody,false);}
   const baseline=await pair(),candidates=new Set(masked(baseline));
@@ -87,6 +90,43 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
   assert.notEqual(sunAngles[0].hash,sunAngles[1].hash,"Sun elevation must change actual native lighting");
   await render(()=>control("reset").click());assert.equal((await snapshot()).shadowComparison.animate,false);
   assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"Reset must restore the exact static framebuffer");
+  await render(()=>control("shadow-center").selectOption("world"));
+  assert.deepEqual((await snapshot()).sunMatrix,initial.sunMatrix);
+  assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"v5 at the original target must preserve the legacy framebuffer exactly");
+  await render(()=>control("shadow-offscreen").click());
+  const offscreen=await snapshot(),fixedMatrix=offscreen.sunMatrix;
+  assert.equal(offscreen.billboards,0,"The real textured sprites must be camera-culled in the offscreen example");
+  assert.equal(offscreen.models,2);assert.equal(offscreen.visibleModels,0);
+  assert.equal(fixedMatrix.length,16);assert(fixedMatrix.every(Number.isFinite));
+  const fixed=await pair();
+  const offscreenCore=core.filter(i=>points[i].x>=20&&floor(fixed.off[i])&&contrast(fixed.off[i],fixed.on[i])>25);
+  assert(offscreenCore.length>=3,"A tree outside the actual camera view must still shade visible ground");
+  const fixedViews=[];
+  for(const [key,value]of [["camera-pan",240],["camera-pan",224],["camera-pan",256],["camera-zoom",100],["camera-zoom",125],["camera-zoom",150]]){
+    const s=await range(key,value);
+    assert.deepEqual(s.sunMatrix,fixedMatrix,"Fixed world coverage must not follow camera pan or zoom");
+    assert.equal(s.shadowCacheHit,true,"A fixed shadow map must be reused for camera-only edits");
+    const view=await pair(),common=offscreenCore.filter(i=>floor(view.off[i]));
+    assert(common.length>=3&&common.filter(i=>contrast(view.off[i],view.on[i])>20).length>=common.length*.95,"Camera edits lost an interior offscreen-caster shadow");
+    fixedViews.push({key,value,receivers:common.length});
+  }
+  const fixedExport=await control("download").evaluate(async a=>(await fetch(a.href)).json());
+  assert.deepEqual(fixedExport.spatial.environment.lighting.directional.shadows.center,{x:0,y:10,elevation:12});
+  assert.equal(fixedExport.spatial.environment.lighting.directional.shadows.extent,128);
+  assert.deepEqual(fixedExport.spatial.camera,(await snapshot()).shadowComparison.camera);
+  await page.screenshot({path:`${artifactDir}/${initial.backend}-offscreen-shadow.png`,fullPage:true});
+  await render(()=>control("shadow-center").selectOption("camera"));
+  assert.notDeepEqual((await snapshot()).sunMatrix,fixedMatrix);
+  const following=await pair(),lostAtBoundary=offscreenCore.filter(i=>floor(following.off[i])&&contrast(following.off[i],following.on[i])<5).length;
+  assert(lostAtBoundary>=3,"The fixture must expose the finite following-map boundary, rather than pass without testing it");
+  const followExport=await control("download").evaluate(async a=>(await fetch(a.href)).json());
+  assert.equal(followExport.spatial.environment.lighting.directional.shadows.center,undefined);
+  await render(()=>control("shadow-center").selectOption("world"));
+  const back=await sample();assert(offscreenCore.every(i=>contrast(fixed.off[i],back[i])>20),"Returning to fixed coverage must restore the world shadow");
+  const coverage={offscreenSprites:offscreen.billboards,receivers:offscreenCore.length,lostAtBoundary,fixedViews,centerExport:true,
+    receiverRgb:offscreenCore.map(i=>({index:i,off:fixed.off[i],on:fixed.on[i]}))};
+  await render(()=>control("reset").click());
+  assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"Coverage edits must reset to the original legacy mode framebuffer");
   await render(()=>control("actor-animate").check());
   await page.evaluate(backend=>{
     const prototype=backend==="webgl2"?WebGL2RenderingContext.prototype:GPUQueue.prototype;
@@ -99,6 +139,6 @@ export async function checkShadowComparison({page,control,snapshot,pixelHash,art
   await render(()=>control("reset").click());assert.equal((await snapshot()).failed,undefined);
   assert.equal((await page.evaluate(pixelHash)).hash,initialPixels.hash,"Reset after a render failure must restore the actual framebuffer");
   await page.screenshot({path:`${artifactDir}/${initial.backend}-shadow-comparison.png`,fullPage:true});
-  return {core:core.length,coreIndices:core,proxySubjects,billboardSubjects,changedFootprint,sunAngles:[10,85],views,pan:true,visibleVolumes:true,poseInheritance:true,animation:true,pause:true,export:true,reset:true,renderRecovery:true,
+  return {canvasFormat,core:core.length,coreIndices:core,proxySubjects,billboardSubjects,changedFootprint,sunAngles:[10,85],views,pan:true,coverage,visibleVolumes:true,poseInheritance:true,animation:true,pause:true,export:true,reset:true,renderRecovery:true,
     receiverRgb:core.map(i=>({index:i,off:baseline.off[i],on:baseline.on[i]}))};
 }

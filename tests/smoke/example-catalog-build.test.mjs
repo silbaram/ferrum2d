@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, rm, access} from 'node:fs/promises';
 import {dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
@@ -25,7 +25,6 @@ async function fixture() {
   await put('docs/README.md', '# Fixture docs\n');
   await put('apps/placement-viewer/public/fonts/notice.txt', 'Fixture notice');
   await put('apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2', 'Fixture font');
-  for (const file of ['exampleTheme.css','exampleHub.css','exampleHub.mjs']) await put('examples/shared/'+file, '/* Fixture */');
   await put('dist-pages/previous-build.txt', 'last successful build');
   return root;
 }
@@ -87,8 +86,11 @@ test('suite markers are added only to published copies', async () => {
   const root=await fixture();
   try {
     const result=build(root); assert.equal(result.status,0,result.stderr);
-    const hub=await readFile(join(root,'dist-pages/index.html'),'utf8');
-    assert.equal((hub.match(/class="tile-use-case"/g)??[]).length,features.length + JSON.parse(await readFile('examples/shared/physicsExamples.json','utf8')).length);
+    const entryHtml=await readFile(join(root,'dist-pages/index.html'),'utf8');
+    assert.match(entryHtml,/<meta http-equiv="refresh" content="0; url=\.\/starter-runtime\/"/);
+    assert.match(entryHtml,/<a href="\.\/starter-runtime\/">/);
+    assert(!entryHtml.includes('data-example-hub'));
+    for (const removed of ['exampleHub.css','exampleHub.mjs','exampleTheme.css']) await assert.rejects(access(join(root,'dist-pages',removed)),{code:'ENOENT'});
     for (const entry of publicEntries) {
       const source=await readFile(join(root,entry.source,'index.html'),'utf8');
       const published=await readFile(join(root,'dist-pages',entry.id,'index.html'),'utf8');

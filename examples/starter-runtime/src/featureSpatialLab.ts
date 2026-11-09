@@ -25,6 +25,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
   const toolbar = root.querySelector(".demo-toolbar")!;
+  toolbar.querySelector("h1")!.textContent = feature.title;
   const top = document.createElement("div");
   top.className = "feature-top-actions";
   top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
@@ -35,9 +36,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
-  panel.innerHTML = `<p class="feature-kicker">한 번에 한 기능</p><h2>${feature.title}</h2><p>${feature.summary}</p>
-    <h3>직접 해보기</h3><p>${feature.action}</p><form class="feature-controls">${spatialControls[id]}</form>
-    <h3>관찰할 결과</h3><p>${feature.observe}</p><output class="feature-observation" data-value="observation">엔진 준비 중…</output>
+  panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${spatialControls[id]}</form>
+    <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code><a data-control="download" download="${id}.json">이 실험의 설정 JSON</a>
     <p>src/featureSpatialLab.ts · featureSpatialScenes.ts</p></details>`;
   root.querySelector(".demo-metrics")!.replaceWith(panel);
@@ -50,7 +50,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;
   const output = (name: string, value: string) => { root.querySelector(`[data-value="${name}"]`)!.textContent = value; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const lesson = createFeatureLesson(root, canvas, id, feature.lesson);
+  const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const cleanups: Array<() => void> = [() => shell.destroy(), () => navigation.destroy(), () => lesson.destroy()];
   let destroyed = false, ready = false, failed: string | undefined, downloadUrl: string | undefined;
   let engine: FerrumEngine | undefined;
@@ -85,7 +85,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       webgpu: { clearColor: [0.043, 0.063, 0.086, 1] } });
     renderer = r; own(() => r.destroy()); if (destroyed) return;
     const backend = "gpuDevice" in r ? "webgpu" : "webgl2";
-    output("backend", `${backend}${backend === requested ? "" : " · 호환 렌더러"}`);
+    output("backend", backend === requested ? "" : `${backend} · 호환 렌더러`);
     const loader = new AssetLoader(r);
     const response = await fetch(new URL(`./features/${id}.json`, document.baseURI), { signal });
     if (!response.ok) throw Error(`실험 씬 로드 실패: ${response.status}`);
@@ -102,7 +102,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     let handles: Readonly<Record<string, PhysicsEntityHandle>> = {};
     let physicalNames: string[] = [];
     let scene = source, mode = id === "ai-combat" ? "chase" : "ramp", linked = true;
-    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, visibleModels:0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0, renderedFrames: 0 };
+    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, visibleModels:0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0, renderedFrames: 0, sunMatrix: [] as number[] };
     let lastUi = -Infinity, needsRender = true;
     let shadowSettings=shadowComparison?shadowComparisonSettings(root):undefined;
     const neutral: InputSnapshot = { w: false, a: false, s: false, d: false, space: false, enter: false, mouseLeft: false, mouseX: 0, mouseY: 0 };
@@ -117,7 +117,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         r.render(); const stats = r.renderCommands(state.renderCommandBuffer); r.renderPostProcess();
         frame = { renderedFrames: frame.renderedFrames + 1, nativeState: state.gameState, entities: state.entityCount,
           commands: stats.renderCommandCount + (stats.spatial?.billboardCount ?? 0) + (stats.spatial?.modelCount ?? 0),
-          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, visibleModels:stats.spatial?.visibleModelCount??0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, shadowCacheHit: stats.spatial?.shadowCacheHit ?? false, effectPasses: stats.spatial?.effectDrawCalls ?? 0 };
+          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, visibleModels:stats.spatial?.visibleModelCount??0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, shadowCacheHit: stats.spatial?.shadowCacheHit ?? false, effectPasses: stats.spatial?.effectDrawCalls ?? 0,
+          sunMatrix: shadowComparison ? Array.from(state.renderCommandBuffer.spatial?.environment?.shadowMatrices ?? []) : [] };
         if (id === "hd2d-environment" || (shadowComparison&&!shadowSettings?.animate) || performance.now() - lastUi > 200) {
           // Copy the displayed camera before native diagnostics can grow memory.
           if (state.renderCommandBuffer.spatial) project = lessonSpatialProjector(canvas, state.renderCommandBuffer.spatial);
@@ -229,7 +230,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         root.querySelector<HTMLFormElement>("form")!.reset(); updateEnvironment();
       }
       control("pause").textContent = paused?"계속하기":"일시정지";
-      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("shadow-elevation",`${shadowSettings!.elevation}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
+      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
       if (id === "attachments") {
         control<HTMLInputElement>("attached").checked = true;
         control<HTMLInputElement>("position").value = control<HTMLInputElement>("rotation").value = "0";
@@ -267,9 +268,14 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       for (const key of ["light-mode", "shadow-filter", "environment-lighting", "environment-shadows", "environment-fog", ...environmentEffects.map(effect => `environment-${effect}`)]) on(key, "change", updateEnvironment);
     }
     if(shadowComparison){
-      for(const key of ["actor-x","actor-height","actor-yaw","actor-frame","shadow-elevation"])on(key,"input",()=>apply(false));
-      for(const key of ["shadow-mode","proxy-visible","actor-animate"])on(key,"change",()=>apply(false));
-      for(const key of ["camera-angle","camera-pan"])on(key,"input",()=>{needsRender=true;resize();output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);});
+      for(const key of ["actor-x","actor-height","actor-yaw","actor-frame","shadow-elevation","shadow-extent"])on(key,"input",()=>apply(false));
+      for(const key of ["shadow-mode","proxy-visible","actor-animate","shadow-center"])on(key,"change",()=>apply(false));
+      for(const key of ["camera-angle","camera-pan","camera-zoom"])on(key,"input",()=>{needsRender=true;resize();output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);});
+      on("shadow-offscreen","click",()=>{
+        for(const [key,value]of Object.entries({"shadow-mode":"proxy","shadow-center":"world","shadow-extent":"128","camera-angle":"-30","camera-pan":"256","camera-zoom":"150","shadow-elevation":"45","actor-x":"0","actor-height":"0","actor-yaw":"0","actor-frame":"0"}))control<HTMLInputElement>(key).value=value;
+        control<HTMLInputElement>("proxy-visible").checked=false;control<HTMLInputElement>("actor-animate").checked=false;
+        apply(false);
+      });
     }
     const observer = new ResizeObserver(resize); observer.observe(canvas); own(() => observer.disconnect());
     settings.forEach(element => { element.disabled = false; });

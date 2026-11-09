@@ -36,17 +36,17 @@ export interface LessonSample {
     };
 }
 /** Lesson chrome and annotations only; engine owners keep inputs, state and resource lifetime. */
-export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement, id: string, spec: FeatureLessonSpec) {
+export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement, id: string, spec: FeatureLessonSpec, observationHint: string) {
     root.dataset.featureTopic = id;
     const stage = canvas.parentElement!, panel = root.querySelector<HTMLElement>(".feature-panel")!;
     const intro = document.createElement("section");
     intro.className = "feature-lesson-intro";
     intro.setAttribute("aria-label", "이 기능의 사용 상황");
     const eyebrow = document.createElement("span"), title = document.createElement("h2"), scenario = document.createElement("p");
-    eyebrow.textContent = "게임에서 쓰는 곳";
+    eyebrow.textContent = "확인할 것";
     title.textContent = spec.useCase;
     scenario.textContent = spec.scenario;
-    intro.append(eyebrow, title, scenario);
+    intro.append(eyebrow, title);
     canvas.before(intro);
     const steps = document.createElement("ol");
     steps.className = "feature-lesson-steps";
@@ -55,7 +55,13 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
         item.textContent = text;
         steps.append(item);
     }
-    panel.querySelector("form")!.previousElementSibling!.replaceWith(steps);
+    const guide = document.createElement("details"), guideTitle = document.createElement("summary");
+    guide.className = "feature-lesson-guide";
+    guideTitle.textContent = "사용 안내";
+    const hint = document.createElement("p");
+    hint.textContent = observationHint;
+    guide.append(guideTitle, scenario, steps, hint);
+    panel.querySelector("form")!.before(guide);
     const actions = document.createElement("div");
     actions.className = "feature-lesson-actions";
     actions.setAttribute("role", "group");
@@ -65,6 +71,11 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
         parent: Node;
         next: Node | null;
     }> = [];
+    for (const node of panel.querySelectorAll("form > p")) {
+        if (node.attributes.length) continue;
+        moved.push({ node, parent: node.parentNode!, next: node.nextSibling });
+        guide.append(node);
+    }
     for (const selector of spec.actions) {
         const nodes = root.querySelectorAll(selector);
         if (!nodes.length)
@@ -107,6 +118,7 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
     const feedback = document.createElement("p");
     feedback.className = "feature-lesson-feedback";
     feedback.setAttribute("aria-live", "off");
+    feedback.hidden = true;
     feedback.textContent = "준비 중 · 위 안내에 따라 같은 장면을 비교해 보세요.";
     legend.after(feedback);
     const visual = createLessonVisual(id, root, scene);
@@ -117,6 +129,17 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
     summary.textContent = "엔진 실행 정보";
     stats.before(diagnostics);
     diagnostics.append(summary, stats);
+    // Bound the preview without stretching tall lessons or their canvas-relative overlays.
+    const preview = document.createElement("div");
+    preview.className = "feature-preview";
+    preview.setAttribute("role", "region");
+    preview.setAttribute("aria-label", "실험 결과 화면");
+    preview.tabIndex = 0;
+    preview.addEventListener("keydown", event => {
+        if (event.target === preview) event.stopPropagation();
+    });
+    scene.before(preview);
+    preview.append(scene);
     let destroyed = false;
     return {
         controlsHost: scene,
@@ -125,6 +148,7 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
             if (destroyed)
                 return;
             feedback.textContent = visual.update(sample) ?? sample.observation;
+            feedback.hidden = feedback.textContent === sample.observation;
             const boxes: Array<{
                 x: number;
                 y: number;
@@ -160,7 +184,7 @@ export function createFeatureLesson(root: HTMLElement, canvas: HTMLCanvasElement
             legend.remove();
             feedback.remove();
             diagnostics.replaceWith(stats);
-            scene.replaceWith(canvas);
+            preview.replaceWith(canvas);
             delete root.dataset.featureTopic;
         },
     };

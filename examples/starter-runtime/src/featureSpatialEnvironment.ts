@@ -53,10 +53,11 @@ export function spatialEnvironmentSettings(root: HTMLElement) {
 export function spatialEnvironmentCamera(root: HTMLElement, base: NonNullable<SceneAuthoringDocumentSpec["spatial"]>["camera"], size: { width: number; height: number }) {
   const angle = Number(root.querySelector<HTMLInputElement>('[data-control="camera-angle"]')!.value) * Math.PI / 180;
   const pan = Number(root.querySelector<HTMLInputElement>('[data-control="camera-pan"]')!.value);
+  const zoom = Number(root.querySelector<HTMLInputElement>('[data-control="camera-zoom"]')?.value ?? 100) / 100;
   const dx = base.position.x - base.target.x, dy = base.position.y - base.target.y;
   const target = { ...base.target, x: base.target.x + pan };
   return { ...base, target, position: { ...base.position,
     x: target.x + dx * Math.cos(angle) - dy * Math.sin(angle),
     y: target.y + dx * Math.sin(angle) + dy * Math.cos(angle),
-  }, height: Math.max(250, 360 * size.height / Math.max(1, size.width)) };
+  }, height: Math.max(250, 360 * size.height / Math.max(1, size.width)) / zoom };
 }

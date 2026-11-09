@@ -15,9 +15,6 @@ import { loadExampleCatalog } from "../validate/check-example-catalog.mjs";
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
-const featureExamples = JSON.parse(readFileSync("examples/shared/featureCatalog.json", "utf8"));
-const featureTopics = JSON.parse(readFileSync("examples/shared/featureTopics.json", "utf8"));
-const physicsExamples = JSON.parse(readFileSync("examples/shared/physicsExamples.json", "utf8"));
 const examples = loadExampleCatalog().filter(item => item.kind !== "reference");
 const gettingStartedDocs = new Set([
   "README.md",
@@ -53,8 +50,6 @@ mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
 cpSync("apps/placement-viewer/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
 cpSync("apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
-writeFileSync(path.join(outputDir, "exampleTheme.css"), readFileSync("examples/shared/exampleTheme.css", "utf8").replace(/^@import[^;]+;\s*/u, ""));
-for (const file of ["exampleHub.css", "exampleHub.mjs"]) cpSync(`examples/shared/${file}`, path.join(outputDir, file));
 
 for (const { example, source, html } of exampleBuilds) {
   cpSync(source, path.join(outputDir, example.id), { recursive: true });
@@ -64,7 +59,7 @@ for (const { example, source, html } of exampleBuilds) {
 }
 
 buildDocsSite();
-writeFileSync(path.join(outputDir, "index.html"), pageHtml(examples));
+writeFileSync(path.join(outputDir, "index.html"), entryHtml());
 
 function buildDocsSite() {
   const markdownFiles = collectFiles(docsSourceDir)
@@ -175,57 +170,17 @@ function firstHeading(markdown) {
   return match ? stripInlineMarkdown(match[1].trim()) : "Ferrum2D Docs";
 }
 
-function pageHtml(items) {
-  const card = item => `<a class="tile" data-example-card="${escapeAttribute(item.id)}" href="./${escapeAttribute(item.path)}"><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span></a>`;
-  const featureCards = featureExamples.map(item => ({...item, path: `starter-runtime/?feature=${item.id}`, useCase: item.lesson.useCase}));
-  for (const item of physicsExamples) featureCards.push({...item, topic: "physics", group: "물리·충돌", tags: ["2D"], path: `physics-sandbox/?demo=${item.id}`, useCase: "물리 심화 · 한 프레임씩 진행하며 관찰"});
-  const featureLinks = featureTopics.map(topic => {
-    const cards = featureCards.filter(item => item.topic === topic.id);
-    return `<section class="topic-section" data-topic-section="${topic.id}" aria-labelledby="topic-${topic.id}"><header><h3 id="topic-${topic.id}">${escapeHtml(topic.title)}</h3><p>${escapeHtml(topic.summary)}</p></header><div class="grid">${cards.map(item => `<a class="tile" data-feature-card="${escapeAttribute(item.id)}" data-feature-category="${topic.id}" data-feature-tags="${item.tags.join(" ")}" href="./${escapeAttribute(item.path)}"><span class="tile-category">${escapeHtml(item.tags.join(" · "))}</span><span class="tile-title">${escapeHtml(item.title)}</span><span class="tile-description">${escapeHtml(item.summary)}</span><span class="tile-use-case">${escapeHtml(item.useCase)}</span></a>`).join("")}</div></section>`;
-  }).join("");
-  const filters = [{id: "all", title: "전체"}, ...featureTopics].map(topic => `<button type="button" data-feature-group="${topic.id}" aria-pressed="${topic.id === "all"}">${escapeHtml(topic.title)}</button>`).join("");
+/** Preserve the site's entry URL without maintaining a second example list. */
+function entryHtml() {
   return `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ferrum2D · 엔진 예제</title>
-  <style>${siteCss()}</style>
-  <link rel="stylesheet" href="./exampleTheme.css" />
-  <link rel="stylesheet" href="./exampleHub.css" />
-  <script type="module" src="./exampleHub.mjs"></script>
+  <meta http-equiv="refresh" content="0; url=./starter-runtime/" />
+  <title>Ferrum2D · 엔진 기능 실험실</title>
 </head>
-<body>
-<main class="home-shell" data-example-hub>
-  <nav class="hub-topbar" aria-label="예제와 문서"><strong>Ferrum2D / 엔진 예제</strong><a href="./docs/engine/user-guide.html">엔진 안내</a><a href="./docs/">문서</a><a href="./docs/en/" lang="en" hreflang="en">English docs</a></nav>
-  <header class="intro">
-    <p class="eyebrow">Rust + WebAssembly · 2D / HD-2D</p>
-    <h1>주제로 찾는 엔진 기능 예제</h1>
-    <p class="lead">기능 하나를 바꿔 결과를 확인하고, 같은 기능이 게임에서 연결되는 과정을 살펴보세요. 각 예제에서 조작 방법과 관찰할 결과를 안내합니다.</p>
-    <nav class="learning-path" aria-label="추천 학습 순서"><a href="#learn"><strong>01 · 기능 하나씩</strong><span>독립 실험 ${featureExamples.length}종과 물리 심화</span></a><a href="#games"><strong>02 · 게임에 연결</strong><span>충돌 반응 → 이동 → 전투 → 도트 자산</span></a><a href="#tools"><strong>03 · 내 씬 만들기</strong><span>배치·카메라·에셋 작성과 프로젝트 시작</span></a></nav>
-  </header>
-  <section class="section" id="learn" aria-labelledby="learn-heading">
-    <div class="section-heading"><h2 id="learn-heading">01 · 기능별 실험</h2><output data-feature-count role="status" aria-live="polite">${featureCards.length} / ${featureCards.length}개 실험</output></div>
-    <p class="section-description">조명·물리·화면 등 주제를 선택하세요. 물리 심화 7개 시나리오도 같은 주제에서 직접 엽니다. <a href="./starter-runtime/">기능 실험실 열기</a>에서 설정 하나를 바꾸고 초기화해 비교할 수 있습니다.</p>
-    <label class="hub-search">어떤 기능을 찾으세요?<input type="search" data-feature-search placeholder="예: 조명, 충돌, 저장" aria-label="기능 예제 검색" /></label>
-    <fieldset class="feature-filter"><legend>기능 주제</legend>${filters}</fieldset>
-    <label class="hub-dimension">표현 방식 <select data-feature-dimension aria-label="표현 방식"><option value="all">2D · HD-2D 전체</option><option value="2D">2D</option><option value="HD-2D">HD-2D</option></select></label>
-    <p data-feature-empty hidden>검색 결과가 없습니다. 검색어를 지우거나 전체 분류를 선택하세요.</p>
-    ${featureLinks}
-  </section>
-  <section class="section" id="games" aria-labelledby="games-heading">
-    <div class="section-heading"><h2 id="games-heading">02 · 게임 응용</h2></div>
-    <p class="section-description">각 게임의 역할을 나눴습니다. 먼저 관련 기능 실험을 보고, 실제 플레이에서 조합된 결과를 확인하세요.</p>
-    <div class="grid">${items.filter(item => item.kind === "game").map(card).join("")}</div>
-  </section>
-  <section class="section" id="tools" aria-labelledby="tools-heading">
-    <div class="section-heading"><h2 id="tools-heading">03 · 씬과 에셋 작성</h2></div>
-    <div class="grid">${items.filter(item => item.kind === "tool").map(card).join("")}</div>
-    <div class="hub-tools"><a href="./docs/engine/developer-quickstart.html">새 프로젝트 시작</a><a href="./docs/engine/data-scene-authoring.html">씬·에셋 작성 안내</a><a href="./docs/engine/public-api.html">공개 API</a><a href="./docs/engine/showcase-hub.html">기능·소스 지도</a><p>웹 뷰어의 내장 예제는 내보내기 전용입니다. 실제 프로젝트 저장 방법은 씬·에셋 작성 안내를 확인하세요.</p></div>
-  </section>
-  <p class="site-note">문서와 예제는 배포한 개발 소스 기준입니다. 설치 패키지는 해당 릴리스의 문서를 확인하세요.</p>
-</main>
-</body>
+<body><a href="./starter-runtime/">엔진 기능 실험실 열기</a></body>
 </html>`;
 }
 
@@ -233,7 +188,7 @@ function docPageHtml(page, pages) {
   const isEnglish = page.language === "en";
   const currentDir = path.posix.dirname(page.outputRelativePath);
   const rootHref = relativeHref(currentDir, isEnglish ? "en/index.html" : "index.html");
-  const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "index.html");
+  const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "starter-runtime/index.html");
   const counterpartSource = isEnglish ? page.sourceRelativePath.slice(3) : `en/${page.sourceRelativePath}`;
   const counterpart = pages.find((item) => item.sourceRelativePath === counterpartSource);
   const languageHref = relativeHref(currentDir, counterpart?.outputRelativePath ?? (isEnglish ? "index.html" : "en/index.html"));
@@ -282,7 +237,7 @@ function docPageHtml(page, pages) {
       </aside>
       <main class="docs-content">
         <div class="docs-topbar">
-          <a href="${escapeAttribute(siteRootHref)}">${isEnglish ? "Demos and home" : "기능·예제 홈"}</a>
+          <a href="${escapeAttribute(siteRootHref)}">${isEnglish ? "Open examples" : "예제 실행"}</a>
           <a href="${escapeAttribute(rootHref)}">${isEnglish ? "Documentation index" : "문서 지도"}</a>
           <a href="${escapeAttribute(languageHref)}" lang="${isEnglish ? "ko" : "en"}" hreflang="${isEnglish ? "ko" : "en"}">${languageLabel}</a>
         </div>
@@ -479,24 +434,8 @@ function siteCss(fontHref = "./fonts/NotoSansKR-UI.woff2") {
 * { box-sizing: border-box; }
 body { margin: 0; background: #f6f8fb; }
 a { color: #0f6f72; text-decoration-thickness: 0.08em; text-underline-offset: 0.18em; }
-.home-shell { width: min(1120px, calc(100vw - 32px)); margin: 0 auto; padding: 32px 0 56px; }
-.intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 460px); gap: 28px; align-items: center; min-height: 360px; border-bottom: 1px solid #d9e2ec; }
-.eyebrow { margin: 0 0 10px; color: #c2541a; font-size: 0.82rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
 h1 { margin: 0 0 12px; color: #14212b; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 0.95; letter-spacing: 0; }
-.lead { max-width: 660px; margin: 0; color: #526575; font-size: 1.08rem; line-height: 1.7; }
-.site-note { color: #526575; font-size: 0.9rem; line-height: 1.6; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-.button { display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border: 1px solid #9fb3c2; border-radius: 8px; color: #1e2933; font-weight: 700; text-decoration: none; background: #ffffff; }
-.button.primary { border-color: #0f6f72; color: #ffffff; background: #0f6f72; }
-.preview { width: 100%; border: 1px solid #cad6e0; border-radius: 8px; background: #16202a; box-shadow: 0 14px 40px rgba(32, 43, 54, 0.16); }
-.section { margin-top: 34px; }
-.section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 h2 { margin: 0; color: #14212b; font-size: 1.35rem; letter-spacing: 0; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
-.tile { display: grid; gap: 10px; min-height: 124px; padding: 18px; border: 1px solid #d3dee8; border-radius: 8px; background: #ffffff; color: inherit; text-decoration: none; }
-.tile:focus-visible, .tile:hover { border-color: #0f6f72; outline: 3px solid rgba(15, 111, 114, 0.16); }
-.tile-title { color: #14212b; font-size: 1.04rem; font-weight: 800; }
-.tile-description { color: #526575; line-height: 1.5; }
 .docs-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
 .docs-nav { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 22px 18px; border-right: 1px solid #d9e2ec; background: #eef3f8; }
 .brand { display: block; margin-bottom: 18px; color: #14212b; font-size: 1.08rem; font-weight: 900; text-decoration: none; }
@@ -525,7 +464,6 @@ th { background: #edf3f7; color: #14212b; }
 blockquote { margin: 18px 0; padding: 10px 16px; border-left: 4px solid #c2541a; background: #fff7f0; color: #394b59; }
 article img { max-width: 100%; height: auto; border-radius: 8px; }
 @media (max-width: 780px) {
-  .intro { grid-template-columns: 1fr; padding-bottom: 28px; }
   .docs-layout { display: block; }
   .docs-nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid #d9e2ec; }
   .docs-content { padding: 18px 16px 48px; }

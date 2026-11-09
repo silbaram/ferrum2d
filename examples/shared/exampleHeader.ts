@@ -28,10 +28,13 @@ export function createExampleHeader(id: string): HTMLElement {
   root.dataset.exampleId = entry.id;
   const nav = document.createElement("nav"); nav.className = "example-navigation"; nav.setAttribute("aria-label", "예제 탐색");
   const brand = document.createElement("span"); brand.className = "example-brand"; brand.textContent = "Ferrum2D 예제";
-  const group = document.createElement("span"); group.className = "example-breadcrumb"; group.textContent = groups[entry.kind];
-  nav.append(brand, group);
+  nav.append(brand);
+  if (entry.kind === "reference") {
+    const group = document.createElement("span"); group.className = "example-breadcrumb"; group.textContent = groups[entry.kind];
+    nav.append(group);
+  }
   if (site) {
-    const home = document.createElement("a"); home.href = site.href; home.textContent = "전체 예제"; home.dataset.exampleHome = "true";
+    const docs = document.createElement("a"); docs.href = new URL("docs/", site).href; docs.textContent = "문서"; docs.dataset.exampleDocs = "true";
     const label = document.createElement("label"), select = document.createElement("select");
     label.className = "example-switcher"; label.textContent = "예제 이동 "; select.setAttribute("aria-label", "예제 이동");
     for (const kind of ["lab", "game", "tool"]) {
@@ -44,16 +47,16 @@ export function createExampleHeader(id: string): HTMLElement {
     }
     if (entry.kind === "reference") select.prepend(new Option(entry.title, location.href, true, true));
     select.addEventListener("change", () => location.assign(select.value));
-    label.append(select); nav.append(home, label);
+    label.append(select); nav.append(docs, label);
   }
   const purpose = document.createElement("p"); purpose.className = "example-purpose"; purpose.textContent = entry.summary;
   const details = document.createElement("details"); details.className = "example-learning";
-  const summary = document.createElement("summary"); summary.textContent = "이 예제에서 배우는 것";
+  const summary = document.createElement("summary"); summary.textContent = "예제 안내";
   const list = document.createElement("dl");
   for (const [title, text] of [["직접 해보기", entry.action], ["관찰할 결과", entry.observe]]) {
     const term = document.createElement("dt"), description = document.createElement("dd"); term.textContent = title; description.textContent = text; list.append(term, description);
   }
-  details.append(summary, list);
+  details.append(summary, purpose, list);
   const related = document.createElement("div"); related.className = "example-related";
   for (const id of entry.features) {
     const feature = features.find(item => item.id === id)!;
@@ -67,9 +70,9 @@ export function createExampleHeader(id: string): HTMLElement {
   if (related.childElementCount) { related.setAttribute("aria-label", "관련 기능 실험"); details.append(related); }
   if (!site) {
     const note = document.createElement("p"); note.className = "example-standalone";
-    note.append("단독 실행 중 · 전체 예제 탐색은 저장소에서 "); const command = document.createElement("code"); command.textContent = "pnpm preview:examples"; note.append(command, "로 실행합니다."); details.append(note);
+    note.append("단독 실행 중 · 예제 간 이동은 저장소에서 "); const command = document.createElement("code"); command.textContent = "pnpm preview:examples"; note.append(command, "로 실행합니다."); details.append(note);
   }
-  root.append(nav, purpose, details);
+  root.append(nav, details);
   // Game input listens on Window. Keep UI key presses local; keyup still reaches
   // the engine so a game key held before focusing this header can be released.
   root.addEventListener("keydown", event => {

@@ -10,9 +10,6 @@ const shouldCheckDistPages = process.argv.includes("--dist-pages");
 const requiredDistPages = [
   "index.html",
   "fonts/NotoSansKR-UI.woff2",
-  "exampleTheme.css",
-  "exampleHub.css",
-  "exampleHub.mjs",
   "fonts/NotoSansKR-OFL.txt",
   "fonts/NotoSansKR.source.json",
   "docs/index.html",

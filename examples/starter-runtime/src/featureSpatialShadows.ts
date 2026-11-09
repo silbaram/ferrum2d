@@ -2,8 +2,13 @@ import type { SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring"
 
 export const shadowControls=`<label>그림자 원본<select data-control="shadow-mode"><option value="proxy">부피 모델 · 카메라와 독립</option><option value="billboard">표시 평면 · 카메라를 따라감</option><option value="off">그림자 없음 · 비교 기준</option></select></label>
   <label class="feature-check"><input data-control="proxy-visible" type="checkbox"> 간소화 부피 표시</label>
+  <label>그림자 영역 기준<select data-control="shadow-center"><option value="camera">카메라 목표점 추적</option><option value="world">고정 월드 · 정원 중심</option></select></label>
+  <label>그림자 영역 반경 <output data-value="shadow-extent">240</output><input data-control="shadow-extent" type="range" min="48" max="512" step="16" value="240"></label>
   <label>카메라 회전 <output data-value="camera-angle">0°</output><input data-control="camera-angle" type="range" min="-180" max="180" step="30" value="0"></label>
-  <label>카메라 이동 X<input data-control="camera-pan" type="range" min="-64" max="64" step="16" value="0"></label>
+  <label>카메라 이동 X<input data-control="camera-pan" type="range" min="-256" max="256" step="16" value="0"></label>
+  <label>카메라 확대 <output data-value="camera-zoom">100%</output><input data-control="camera-zoom" type="range" min="50" max="200" step="25" value="100"></label>
+  <button data-control="shadow-offscreen">화면 밖 나무 그림자 보기</button>
+  <p>위 버튼은 나무를 화면 밖에 두고 그림자만 봅니다. 영역 기준을 카메라 추적으로 바꿔 경계를 비교하세요. 고정 월드는 지정한 반경·깊이 안에서만 그림자를 유지합니다.</p>
   <label>태양 고도 <output data-value="shadow-elevation">45°</output><input data-control="shadow-elevation" type="range" min="10" max="85" step="5" value="45"></label>
   <details><summary>캐릭터 자세 · 애니메이션</summary>
     <label>위치 X<input data-control="actor-x" type="range" min="-24" max="24" step="8" value="0"></label>
@@ -16,6 +21,7 @@ export const shadowControls=`<label>그림자 원본<select data-control="shadow
 export function shadowComparisonSettings(root: HTMLElement){
   const input=(key:string)=>root.querySelector<HTMLInputElement>(`[data-control="${key}"]`)!;
   return {mode:input("shadow-mode").value,visible:input("proxy-visible").checked,elevation:Number(input("shadow-elevation").value),
+    center:input("shadow-center").value,extent:Number(input("shadow-extent").value),
     actorX:Number(input("actor-x").value),height:Number(input("actor-height").value),yaw:Number(input("actor-yaw").value),
     frame:Number(input("actor-frame").value),animate:input("actor-animate").checked};
 }
@@ -38,5 +44,9 @@ export function shadowComparisonScene(source:SceneAuthoringDocumentSpec,settings
   spatial.attachments={...spatial.attachments,actor_shadow:{...spatial.attachments!.actor_shadow!,yawDegrees:settings.yaw}};
   const angle=settings.elevation*Math.PI/180;
   spatial.environment!.lighting!.directional!.direction={x:-Math.SQRT1_2*Math.cos(angle),y:-Math.SQRT1_2*Math.cos(angle),elevation:Math.sin(angle)};
+  const shadows=spatial.environment!.lighting!.directional!.shadows!;
+  shadows.extent=settings.extent;
+  if(settings.center==="world")shadows.center={...source.spatial!.camera.target};
+  else delete shadows.center;
   return scene;
 }
