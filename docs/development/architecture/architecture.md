@@ -1968,3 +1968,13 @@ pixelPerfect는 같은 표시 변환을 확대 pass에 합친다. [색공간·�
 Flat Surface 재질은 별도40-byte native sidecar와 private24-float data staging으로 emission/specular/roughness를 전달한다.
 기존 sprite15/lighting8 ABI·world pose/정렬의 소유권을 유지하고 map별 batch·4MRT·bounded GGX·float emission 합성을
 플랫폼에서 수행한다. [Surface 구조와 수명](flat-lighting-composition.md#선택형-flat-surface)을 따른다.
+
+
+독립 light/shadow 수신 mask는 현재 **개발 중인 native 기반**이며 공개 SDK 작성·렌더 기능으로 완료하지 않았다.
+별도 `SpriteLightMasks` v1은8-byte `repr(C)`의 `[lightMask:u32, shadowMask:u32]`이고 각 값은0..255,
+기본값은255/255다. custom mask가 없으면 정렬 sidecar 길이0이며 생성 command의 간격은 기본값으로 채운다.
+기존 sprite15/lighting8/Surface40 ABI는 유지한다. 내부 cold receiver setter v2는
+`[id,generation,mode,cutoffBits,lightMask,shadowMask]`를 전체 사전 검사 후 원자적으로 적용한다.
+custom mask는 opaque/cutout receiver만 허용한다. 기존 setter는 mask를 기본값으로 되돌리고,
+unlit 해제는 Surface도 함께 해제한다. World/prototype/snapshot과 despawn 재사용 수명은 Rust가 소유한다.
+공개 facade·authoring/저장 연동·Flat GPU 합성·Spatial mask는 후속 구현과 회귀 검증이 남아 있다.

@@ -256,6 +256,8 @@ SDK·패키지·문서 자동 회귀와 리뷰를 완료했다. M4b Flat 재질�
 Surface368개를 포함한 Flat GPU904개 상태, SDK1,462개·native1,651개+integration1개,
 패키지·문서·Pages 및 실제 placement viewer 회귀를 통과했다. [재질 계약](../engine/data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
 독립 light/shadow mask, 2D spot/cookie·polygon occluder와 M5는 남아 있다.
+M4c는 별도 native8-byte mask sidecar·receiver v2 원자적 설정·수명/정렬 기반을 구현하고 Rust/SDK 회귀를 확인했다.
+공개 facade·authoring·Flat GPU·Spatial mask 구현은 아직 남아 있으며 M4c 완료로 세지 않는다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.

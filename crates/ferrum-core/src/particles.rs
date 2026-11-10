@@ -397,6 +397,7 @@ impl ParticleSystem {
                 normal_material: Default::default(),
                 lighting_material: Default::default(),
                 surface_material: Default::default(),
+                light_masks: Default::default(),
                 command: SpriteRenderCommand {
                     x: screen.x - size * 0.5,
                     y: screen.y - size * 0.5,

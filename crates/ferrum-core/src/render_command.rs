@@ -108,6 +108,23 @@ pub struct SpriteLightingMaterial {
 }
 const _: () = assert!(core::mem::size_of::<SpriteLightingMaterial>() == 8);
 
+/// Independent eight-channel light/shadow reception. All bits set preserves legacy reception.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpriteLightMasks {
+    pub light_mask: u32,
+    pub shadow_mask: u32,
+}
+impl Default for SpriteLightMasks {
+    fn default() -> Self {
+        Self {
+            light_mask: 255,
+            shadow_mask: 255,
+        }
+    }
+}
+const _: () = assert!(core::mem::size_of::<SpriteLightMasks>() == 8);
+
 /// Optional flat surface profile, separate from the stable receiver and sprite ABIs.
 /// Textures use the exact integer sentinel shared by the platform asset table.
 pub const SPRITE_SURFACE_TEXTURE_NONE: u32 = 16_777_215;
@@ -167,5 +184,6 @@ pub(crate) struct SpriteRenderItem {
     pub normal_material: SpriteNormalMaterial,
     pub lighting_material: SpriteLightingMaterial,
     pub surface_material: SpriteSurfaceMaterial,
+    pub light_masks: SpriteLightMasks,
     pub sort_key: SpriteRenderSortKey,
 }

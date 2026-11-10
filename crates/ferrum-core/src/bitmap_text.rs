@@ -654,6 +654,7 @@ impl BitmapTextSystem {
                     normal_material: Default::default(),
                     lighting_material: Default::default(),
                     surface_material: Default::default(),
+                    light_masks: Default::default(),
                     sort_key: SpriteRenderSortKey {
                         floor_id: text.spec.floor_id,
                         elevation: text.spec.elevation,

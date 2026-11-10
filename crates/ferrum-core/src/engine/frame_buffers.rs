@@ -28,6 +28,7 @@ pub(in crate::engine) struct EngineFrameBuffers {
         Vec<crate::render_command::SpriteLightingMaterial>,
     pub(in crate::engine) sprite_surface_materials:
         Vec<crate::render_command::SpriteSurfaceMaterial>,
+    pub(in crate::engine) sprite_light_masks: Vec<crate::render_command::SpriteLightMasks>,
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
     pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
     pub(in crate::engine) ground_y_scale: f32,
@@ -54,6 +55,7 @@ impl EngineFrameBuffers {
             sprite_normal_materials: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
             sprite_lighting_materials: Vec::new(),
             sprite_surface_materials: Vec::new(),
+            sprite_light_masks: Vec::new(),
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
             ground_shadow_projection: GroundShadowProjection::default(),
             ground_y_scale: 1.0,
@@ -83,6 +85,7 @@ impl EngineFrameBuffers {
         self.sprite_normal_materials.clear();
         self.sprite_lighting_materials.clear();
         self.sprite_surface_materials.clear();
+        self.sprite_light_masks.clear();
     }
 
     pub(in crate::engine) fn clear_render_work_buffers(&mut self) {
@@ -92,6 +95,7 @@ impl EngineFrameBuffers {
         self.sprite_normal_materials.clear();
         self.sprite_lighting_materials.clear();
         self.sprite_surface_materials.clear();
+        self.sprite_light_masks.clear();
         self.render_items.clear();
     }
 
@@ -288,6 +292,7 @@ mod tests {
             normal_material: Default::default(),
             lighting_material: Default::default(),
             surface_material: Default::default(),
+            light_masks: Default::default(),
             command: test_render_command(),
             sort_key: crate::render_command::SpriteRenderSortKey {
                 floor_id: 0,

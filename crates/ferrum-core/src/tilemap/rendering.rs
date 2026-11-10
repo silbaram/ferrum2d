@@ -112,6 +112,7 @@ impl Tilemap {
                     normal_material: Default::default(),
                     lighting_material: Default::default(),
                     surface_material: Default::default(),
+                    light_masks: Default::default(),
                     command: SpriteRenderCommand {
                         x: screen.x - layer.tile_width * 0.5,
                         y: screen.y - layer.tile_height * 0.5,
