@@ -63,7 +63,7 @@
     "smoke:placement-tools": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-tool-ui-runner.mjs",
     "smoke:placement-inspector": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-inspector-runner.mjs",
     "smoke:placement-layouts": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-layout-presets-runner.mjs",
-    "test:placement-layers": "node --test tests/smoke/placement-layers.test.mjs",
+    "test:placement-layers": "node --test tests/smoke/placement-layers.test.mjs tests/smoke/browser-page-cleanup.test.mjs",
     "test:placement-asset-usage": "node --test tests/smoke/placement-asset-usage.test.mjs",
     "test:placement-asset-cleanup": "node --test tests/smoke/placement-asset-cleanup.test.mjs",
     "smoke:placement-asset-cleanup": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/aseprite-project-smoke.mjs --cleanup",

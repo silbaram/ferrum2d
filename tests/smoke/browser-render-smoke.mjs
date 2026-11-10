@@ -359,6 +359,7 @@ try {
     finally { await new Promise(resolve => productionServer.close(resolve)); }
   }
   const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
+  page.setDefaultTimeout(timeoutMs);
   page.on("pageerror", (error) => {
     browserErrors.push(error.message);
   });
