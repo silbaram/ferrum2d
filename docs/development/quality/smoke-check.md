@@ -2925,3 +2925,18 @@ SDK unit은 희소/교차/오목/중복/collinear/f32 퇴화·개수/좌표/투�
 구 capability 거절 후 asset lookup/native mutation0을 검사한다. 공식 viewer의 `--flat-lit`은 도형 cold apply pixels와
 source export·invalid import 뒤 씬/handle/history 보존·다중 문서 왕복을 함께 검사한다.
 현재 static geometry의 GPU upload0을 보장하는 검사가 아니다. mask upload/draw는 기존 경로이며 M5 비용 작업으로 남는다.
+
+### M5 native 광원 전환 기반 회귀
+
+`cargo test --manifest-path crates/ferrum-core/Cargo.toml light_selection`은 opt-in v8 source와
+최대4개 native 슬롯의 경계 왕복·hysteresis·fade-out/swap/fade-in·전환 반전·큰/극소 dt를 검사한다.
+fade 마지막 구간의 f32 나눗셈 반올림 뒤에도 capture가 restore 가능한 phase/weight를 유지하는지 확인한다.
+render preview/반복 build·zero step·pause·render 생략은 이력을 진행하지 않으며 fixed-step 분할 결과가 일치해야 한다.
+simulation pose로 선택하고 interpolation pose로 제출하는지, stale generation·재binding·camera cut·명시적 reset,
+global OFF와 config OFF·v7 기본 동작, 같은 source/노출 편집의 이력 보존을 검사한다.
+
+`cargo test --manifest-path crates/ferrum-core/Cargo.toml compound_light`는 normal/combat motion과
+광원 history를 함께 복원하며 잘못된 history가 pose/source/기존 history를 바꾸지 않는지 확인한다.
+SpatialScene clear 뒤 orphan history를 설치하지 않고 fresh handle로 combat/pose를 재매핑하는지 검사한다.
+단독 native codec·diagnostic 벌크 ABI 검증이며 public semantic JSON·실제 양 backend 픽셀 연결은
+M5 후속 검증이다. 실게임·실기기는 개발 완료 후 진행한다.

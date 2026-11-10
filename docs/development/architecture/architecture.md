@@ -1699,6 +1699,21 @@ Authoring 뷰어의 광원 gizmo는 위치 작성 전용 DOM overlay이며 nativ
 광원 연결의 정수 handle/generation은 cold configure에서 씬 교체 전에 확인하여 stale handle 실패가 기존 씬을 바꾸지 않게 한다.
 `lightBindings`와 환경은 scene-wide patch/Undo/저장 경로를 공유하고 기존 v1/v2/v3 환경 입력을 유지한다.
 
+M5의 native 광원 전환 기반은 내부 environment v8 numeric580을 사용한다. 기존 v7의565..575
+예약0을 유지하고576..579에 opt-in enabled/hysteresis/fadeSeconds/resetDistance를 추가한다.
+Rust가 simulation step마다 최대4개의 source/pending/weight/phase 슬롯을 갱신하며 render-only
+재생성은 이력을 진행하거나 초기화하지 않는다. 선택은 simulation pose, 최종 제출 위치는 render
+interpolation pose를 사용한다. 단일 point shadow 소유 광원은 기존처럼 첫 슬롯에 고정한다.
+카메라 target 이동 임계값·명시적 reset·선택 입력/실제 binding 변경은 이력을 초기화하고,
+같은 source나 노출/후처리 변경은 전환을 보존한다. fadeSeconds는 교체 전후 각 leg의 길이다.
+
+내부 cold history v1은23개 f64이며 source 서명·step·camera anchor·4개 슬롯을 저장한다.
+normal/combat motion과 함께 복원할 때 모든 history 입력을 먼저 검증하고 matching source/pose
+transaction이 성공한 뒤 이력을 설치한다. SpatialScene을 지우는 복원에는 빈 이력만 허용한다.
+별도 diagnostic v1은 source/packed-slot/reason/flags/score/weight의24-byte `repr(C)` 벌크 행이다.
+이 기반 단계에서는 public TypeScript 설정·frame reader·semantic JSON save/replay 연결은 아직
+진행 중이며, 기존 공개 v1..v7 경로를 유지한다. GPU ABI·target/pass 수는 바꾸지 않는다.
+
 ## WebGPU 복구와 전체 맵 작성 경계
 
 `webgpuRenderer.ts`는 stable renderer facade와 장치 수명·cold 복구를 소유하고,
