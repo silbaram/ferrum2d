@@ -1978,3 +1978,10 @@ Flat Surface 재질은 별도40-byte native sidecar와 private24-float data stag
 custom mask는 opaque/cutout receiver만 허용한다. 기존 setter는 mask를 기본값으로 되돌리고,
 unlit 해제는 Surface도 함께 해제한다. World/prototype/snapshot과 despawn 재사용 수명은 Rust가 소유한다.
 Flat facade·authoring/저장과 GPU 합성은 [수신 mask 구조](flat-lighting-composition.md#독립-수신-mask)를 따른다. Spatial mask 구현은 남아 있다.
+
+Spatial은 native 설정·출력 기반만 추가했다. 별도 v1 receiver stream은 같은8-byte light/shadow pair를 쓰며,
+지형은 전체 surface 순서, billboard와 model은 실제 출력 순서에 맞춘다. 기본값만 있으면 stream 길이0이고,
+생성 glyph/particle 간격은255/255로 채운다. 기존 material8-byte·model80-byte ABI v1과 model reserved0은 유지한다.
+새 cold full-scene 설정은 receiver 배열까지 후보 Scene에서 검증한 뒤 원자적으로 교체한다.
+노출되지 않는 `render:false` surface에는 custom 수신 mask를 거절한다.
+광원 채널·환경 확장, TS reader/facade·authoring/저장·양 backend shader 연결은 아직 남아 있어 Spatial mask 기능 완료로 세지 않는다.
