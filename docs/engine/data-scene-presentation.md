@@ -463,3 +463,45 @@ renderer.renderPostProcess();
   HDR 비활성 시 추가 target/pass는 없으며 선택 설정은 authoring·patch·snapshot에서 보존한다.
 
 실제 GPU readback·복구·비용 검증은 `pnpm smoke:flat-lit`에 포함한다.
+
+
+## Flat sprite 표면 재질 · 개발 소스
+
+명시적 flat lit opaque/cutout sprite에 `surface`를 연결하면 선형 발광과 제한된 비금속 직접 반사를 추가한다.
+normal이 없으면 +Z, 관찰 방향은 화면 앞쪽 +Z다. ambient는 diffuse만 비추며 반사나 emission을 만들지 않는다.
+전체 glTF PBR·금속·IBL·transmission·반투명 수광층은 이 profile의 범위가 아니다.
+
+| 필드 | 범위·기본값 | map 채널 |
+| --- | --- | --- |
+| `emission` | 선형 RGB0..64, 기본 검정 | `emissionTexture`의 RGB와 곱함. sRGB는 한 번만 decode |
+| `specular` | 0..1, 기본0 | `specularTexture`의 raw A와 곱함. RGB 미사용 |
+| `roughness` | 0..1, 기본1 | `roughnessTexture`의 raw G와 곱함. 나머지 채널 미사용 |
+
+map 생략은 해당 계수에1을 곱하는 것과 같다. emission은 base albedo·tint RGB와 독립적이며 수광 coverage로 가려진다.
+cutout discard는 모든 성분을 함께 버리고, opaque는 source alpha를1로 취급한다.
+반투명 unlit 전경은 아래 기여를 source-over로 가린다. map의 alpha는 coverage를 새로 만들지 않는다.
+
+map3개는 base texture와 같은 크기의 알려진 straight-alpha 자산이어야 한다.
+발광 map은 `srgb|linear|none`, specular/roughness map은 `linear|none`이며 sRGB data map은 거절한다.
+base와 같은 atlas UV·프레임 애니메이션·flip·회전을 사용한다. 추가 map은 clamp·nearest의 level0 texel load이며
+독립 UV transform/filter/mipmap은 없다. 각 자산의 upload Y flip은 따로 적용한다.
+같은 ID를 재import하면 다음 제출부터 새 GPU view와 pixels를 사용한다.
+
+직접광은 기존 attenuation·RGB shadow visibility 뒤에 `albedo×Lambert + specular`를 합산한다.
+반사는 Spatial과 같은 bounded GGX이며 F0는0.04, roughness 최소0.12, lobe 최대16이다.
+세기 계수는 Fresnel 전체에 곱하므로0이면 정확히 반사가 없다. 에너지 보존형 전체 PBR를 보장하지 않는다.
+재질 세기·roughness는 data attachment의8-bit 정밀도로 양자화하며 emission은 float16으로 보관한다.
+SDR은 최종0..1 clamp, HDR은 발광1초과를 월드에 보존한 뒤 노출·톤매핑·표시 변환을 한 번 수행한다.
+
+작성·저장 예제는 [Scene Authoring](data-scene-authoring.md#flat-sprite-emissionspecularroughness-개발-소스),
+numeric ID bulk API는 [Core API](public-api/core.md#flat-sprite-표면-재질-개발-소스)를 따른다.
+비활성 값·patch·Undo/Redo·JSON 복원에서 stable map 참조를 유지하며 apply/restore 전에 renderer 자산 검증이 필요하다.
+활성 emission/specular 계수가 없는 packet은 기존 경로를 사용한다. `enabled:false`는 추가 pass/target이 없다.
+선택한 Surface metadata는 lit profile을 요구하므로 HUD는 별도 unlit packet으로 제출한다.
+
+활성 재질 packet은 기존 수광 scratch에 RGBA16F emission target1개(8 bytes/pixel)를 추가하고 같은 data pass의 MRT를4개로 늘린다.
+반사는 기존 조도 target에 계산하므로 별도 반사 target/pass는 없다. SDR scratch28, HDR scratch32 bytes/pixel이며
+HDR world8 bytes/pixel·광원 mask·전역 후처리·표시 target은 별도다. 재질 유무가 다른 여러 packet은 프레임 안에서
+각 variant의 target을 재사용하고 사용하지 않은 variant는 프레임 종료에 회수한다.
+같은 프레임에 기본/Surface packet이 함께 있으면 수광 scratch 합계는 SDR48/HDR56 bytes/pixel이며 HDR world는 별도다.
+검증은 `pnpm smoke:flat-lit`의 Surface fixture와 [Smoke Check](../development/quality/smoke-check.md#flat-sprite-surface-재질-회귀)를 따른다.

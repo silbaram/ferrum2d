@@ -1963,3 +1963,8 @@ Flat 2D의 opt-in lit은 Rust의 command-aligned receiver sidecar와 TS의 조�
 WebGPU 전역 linear-sRGB는 raw/data view와 sRGB color view를 분리하고 sRGB 저장 형식의 선형 합성 target을 사용한다.
 Spatial·Flat HDR·HUD·전역 효과를 선형 공간에서 연결한 뒤 최종 표시에서 alpha를 풀어 변환하고 다시 premultiply한다.
 pixelPerfect는 같은 표시 변환을 확대 pass에 합친다. [색공간·비용 계약](../../engine/public-api/core.md#색-공간-관리)을 따른다.
+
+
+Flat Surface 재질은 별도40-byte native sidecar와 private24-float data staging으로 emission/specular/roughness를 전달한다.
+기존 sprite15/lighting8 ABI·world pose/정렬의 소유권을 유지하고 map별 batch·4MRT·bounded GGX·float emission 합성을
+플랫폼에서 수행한다. [Surface 구조와 수명](flat-lighting-composition.md#선택형-flat-surface)을 따른다.

@@ -1876,9 +1876,37 @@ renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
   선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
 - color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
   normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
-- 점광원 최대32개, 점광원/태양 intensity 최대64다. 누적 조도는 float16이나 최종 출력은 SDR로 clamp한다. HDR/톤매핑 지원을 뜻하지 않는다.
+- 점광원 최대32개, 점광원/태양 intensity 최대64다. HDR을 생략하면 SDR로 clamp한다. 선택형 HDR과 재질은 [화면 표현](data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.
 - sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
 - `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
   HUD를 별도 제출할 때는 조명을 끄고 그린 뒤 한 번 `renderPostProcess()`로 마친다.
 
 공개 ABI·자원 비용과 회귀 기준은 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+
+
+## Flat sprite emission·specular·roughness · 개발 소스
+
+`DataSceneSpriteSurfaceSpec`과 `ResolvedDataSceneSpriteSurface`는 `/authoring`의 공개 type이다.
+`lighting.profile:"lit"`인 flat 씬의 sprite visual 또는 sprite shorthand에 다음 값을 저장한다.
+
+```json
+{
+  "lighting": {"mode":"cutout", "alphaCutoff":0.5},
+  "surface": {
+    "emission":[4,2,1], "emissionTexture":"hero.glow",
+    "specular":0.6, "specularTexture":"hero.specular",
+    "roughness":0.5, "roughnessTexture":"hero.roughness"
+  }
+}
+```
+
+수광 mode는 명시적 opaque/cutout이어야 하며 primitive·unlit·Spatial에는 지정하지 않는다.
+발광은 선형 RGB0..64(기본 검정), specular는0..1(기본0), roughness는0..1(기본1)이다.
+명시적0과 OFF 값, 안정적인 map asset 이름 또는 숫자 ID를 JSON·patch·Undo/Redo·진행 저장에 유지한다.
+map은 선택 사항이며 `emissionTextureId` 같은 runtime용 필드명은 authoring에서 거절한다.
+
+apply/restore에 `{flatLightingPreparer:renderer}`를 전달한다. 이름→ID, 색/데이터 역할, 크기와 straight alpha를
+기존 씬 교체 전에 검사한다. snapshot 복원은 원문 문서를 다시 적용하고 fresh handle을 사용한다.
+일시적인 runtime setter만 호출한 값은 authoring JSON으로 자동 역기록하지 않는다.
+배치 API·별도 ABI는 [Core API](public-api/core.md#flat-sprite-표면-재질-개발-소스),
+map의 채널·UV·색공간·비용은 [재질 계약](data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.

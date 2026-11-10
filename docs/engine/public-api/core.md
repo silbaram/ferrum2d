@@ -1481,3 +1481,32 @@ HDR을 생략하거나 false/disabled로 두면 기존 SDR 경로를 유지한�
 양 backend float16 world에 여러 command를 누적한 뒤 `setLighting(false)` 또는 `renderPostProcess()`에서
 한 번 resolve한다. 이후 HUD는 노출·톤매핑을 받지 않는다. input/alpha·비용·실행 제한은
 [Flat HDR 계약](../data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.
+
+
+## Flat sprite 표면 재질 · 개발 소스
+
+`SpriteSurfaceMaterialSpec`와 `SpriteSurfaceBufferView`는 `/core`에서 import한다.
+`engine.configureSpriteSurfaceMaterials([{entity,surface}])`는 최대65,536개 cold bulk API다.
+`surface` 생략은 해제이며, 중복 ID·stale handle·잘못된 계수/ID·수광 mode는 전체 batch를 false로 거절한다.
+lighting receiver를 해제하거나 unlit으로 바꾸면 해당 surface도 함께 해제한다.
+
+```ts
+engine.configureSpriteSurfaceMaterials([{entity:hero, surface:{
+  emission:[4,2,1], emissionTextureId:12,
+  specular:0.6, specularTextureId:10, roughness:0.5, roughnessTextureId:11
+}}]);
+```
+
+`emission`은 선형 RGB0..64(기본0), `specular`는0..1(기본0), `roughness`는0..1(기본1)이다.
+map ID는 정수0..16,777,214이며 생략하면 map을 쓰지 않는다. opaque/cutout receiver를 먼저 설정한다.
+선택한 재질은 renderer의 flat lit profile에서만 지원한다. `enabled:false`는 설정을 유지하고 조명 비용을 끈다.
+자산 조건·제한된 비금속 GGX·색공간·alpha·비용은 [재질 계약](../data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+선택형 `RenderCommandBufferView.spriteSurfaceMaterials`는 `{version:1,stride:10,words,values}`다.
+40-byte `repr(C)` record의 같은 offset/buffer를 Uint32Array와 Float32Array가 공유한다.
+word0/1/2는 emission/specular/roughness texture ID, word3은 flags(0없음/1선택),
+float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 예약0이다.
+미연결 ID는16,777,215다. flags0 record는 미연결 ID3개·계수0/0/0/0/1·예약0인 canonical 값만 허용한다.
+정렬된 command와 개수·순서가 같고 전체 surface 미선택이면 sidecar를 생략한다. 기존15-float command와8-byte lighting ABI는 유지한다.
+구 Wasm/부분 export/mixed version은 surface 요청에서 거절하며 기존 재질 없는 씬은 유지한다.
+다음 Wasm 호출/frame/memory growth 전에 소비한다. deferred callback은 같은 buffer의 두 alias를 소유 복사한다.

@@ -250,7 +250,11 @@
         "SpriteLightingMaterialSpec",
         "SpriteLightingBufferView",
         "FlatLightingAsset",
-        "FlatLightingPreparer"
+        "FlatLightingPreparer",
+        "SpriteSurfaceMaterialSpec",
+        "SpriteSurfaceBufferView",
+        "DataSceneSpriteSurfaceSpec",
+        "ResolvedDataSceneSpriteSurface"
       ]
     },
     {
@@ -431,7 +435,9 @@
         "SpriteLightingMaterialSpec",
         "SpriteLightingBufferView",
         "FlatLightingAsset",
-        "FlatLightingPreparer"
+        "FlatLightingPreparer",
+        "SpriteSurfaceMaterialSpec",
+        "SpriteSurfaceBufferView"
       ]
     },
     {
@@ -576,7 +582,9 @@
         "SpriteNineSliceSpec",
         "SpriteNineSliceUpdate",
         "FlatLightingAsset",
-        "FlatLightingPreparer"
+        "FlatLightingPreparer",
+        "DataSceneSpriteSurfaceSpec",
+        "ResolvedDataSceneSpriteSurface"
       ]
     },
     {

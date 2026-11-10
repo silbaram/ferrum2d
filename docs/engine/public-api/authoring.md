@@ -882,3 +882,12 @@ Scene Authoring v1의 선택 `display.pixelPerfect`는 `SceneDisplaySpec`/`resol
 저장 데이터나 update의 getter가 wrapper를 해제할 수도 있으므로, packet encoding을 끝낸 뒤
 native handle의 수명을 다시 확인한다. 복합 restore의 두 대상 중 하나라도 해제되면 어느 쪽에도
 복원 값을 commit하지 않고 lifecycle 오류를 낸다. getter가 직접 만든 외부 부작용 자체는 rollback하지 않는다.
+
+
+## Flat sprite surface · 개발 소스
+
+`DataSceneSpriteSurfaceSpec`, `ResolvedDataSceneSpriteSurface`는 안정적인 emission/specular/roughness map 참조와 계수를 표현한다.
+기존 visual/sprite components·patch·Undo/Redo·JSON 복원에서 보존하며 명시적 flat lit opaque/cutout receiver가 필요하다.
+apply/restore의 `flatLightingPreparer`로 자산을 먼저 검사한다.
+작성 예제와 역할은 [Scene Authoring](../data-scene-authoring.md#flat-sprite-emissionspecularroughness-개발-소스),
+채널·UV·색공간·비용은 [표면 재질](../data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.

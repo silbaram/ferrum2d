@@ -1,6 +1,6 @@
 # Flat 2D 조명 합성
 
-상태: 개발 소스의 M2-a opt-in lit 및 M3b Flat HDR 구현. 기존 overlay는 기본값으로 유지한다.
+상태: 개발 소스의 M2-a opt-in lit 및 M3b Flat HDR·M4b Surface 구현. 기존 overlay는 기본값으로 유지한다.
 SDK와 함께 빌드한 sprite lighting v1 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 현재 사용 계약은 [화면 표현](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 
@@ -166,3 +166,33 @@ HDR output draw는 HUD 제출이 통계를 초기화해도 프레임별 별도 �
 어두운 albedo, exposure, Reinhard/ACES/none, source/data·tint·normal/cutout, 반투명 전경·투명 canvas,
 여러 world 제출, HUD, invalid atomicity, OFF identity/자원, warm plateau, resize·pixelPerfect·복구·destroy를 검사한다.
 기존 `smoke:flat-lit`과 CI validate job이 이 fixture를 실행하며 software GPU를 실물 성능으로 주장하지 않는다.
+
+
+## 선택형 Flat Surface
+
+`SpriteSurfaceMaterial`은 별도40-byte `repr(C)` sidecar이며 기존 sprite15/lighting8을 유지한다.
+원자적 bulk 설정, world lifetime·snapshot·actor prototype과 정렬 후 command alignment는 Rust가 소유한다.
+flags0 canonical defaults는 생성된 shadow/text/tile/particle command와 정렬 간격에도 채운다.
+전체 미선택 프레임은 sidecar 길이0이다. world의 optional component vector 저장 공간은 별도이며,
+비활성 GPU pass/target0을 native 메모리 비용0으로 해석하지 않는다. JS는 프레임당 bulk u32/f32 alias를 읽고 deferred callback에서 함께 복사한다.
+
+플랫폼의 Surface data variant만 private24-float instance staging을 사용한다. emissionRGB/specular/roughness·map flags를
+17-float lighting prefix 뒤에 두며 entity별 Wasm 호출이나 simulation 상태를 추가하지 않는다.
+map ID 조합별로 batch를 나누고 WebGPU는 view identity 기반 WeakMap으로 bind group을 재사용한다.
+새 map view는 재import를 무효화하며 옛 자산을 별도 강한 cache에 보관하지 않는다.
+GL의 map은 unit2/3/4, GPU는 별도group3의 raw nearest textureLoad를 사용한다.
+GL managed의 hardware decode와 GPU raw view의 shader decode를 구분해 emission sRGB를 한 번만 변환한다.
+
+네 번째 MRT는 RGBA16F emission이다. coverage RGB를 specular/receiverCoverage/roughness로 사용하고,
+전체 sprite coverage는 normal.a에서 읽는다. Surface variant의 normal alpha blend는 별도 source-over alpha다.
+수광 albedo에 direct Lambert와 bounded GGX를 계산한 결과는 기존 조도 target에 합산한다.
+ambient는 albedo만 쓰고 emission은 광원/shadow와 독립적으로 composite에서 더한다.
+기존 subtract/add는 동일한 coverage로 원래 base 기여를 제거·교체하고 destination alpha를 유지한다.
+추가 비용·공개 제약은 [재질 계약](../../engine/data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)에 정의한다.
+
+renderer는 SDR/HDR × 기본/Surface의 네 lazy pass를 소유한다. 매 프레임 실제 사용 bitset을 유지해
+여러 renderCommands에서 기본/Surface variant가 번갈아 나와도 warm target을 다시 할당하지 않는다.
+프레임 종료와 다음 프레임 시작에 미사용 target을 회수하고 disabled·destroy·device recovery에서도 함께 정리한다.
+
+Surface의 `textureBindCount`는 기존 implied-batch 통계에 data batch당 map3개와 고정 albedo/emission2개를 더한다.
+실제 API state restore 호출을 전부 세는 GPU profiler가 아니며 target bytes·실제 draw·map sample 비용과 함께 판정한다.

@@ -2821,3 +2821,26 @@ Spatial environment 회귀는 legacy/linear-sRGB 각각70개 상태 × 두 투�
 선형 환경만 재현하려면 빌드 후 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --linear-environment-only --offscreen-target`를 실행한다.
 normal/data texture, 모델 emissive/UV/reimport·저장/복원·그림자·AO/DOF/Bloom 성분 분리·HUD 뒤 최종 표시를 검사하며
 허용 오차를 줄이거나 fixture를 생략해 managed 경로의 성공으로 대체하지 않는다. 실기기 성능·native canvas 표시는 개발 완료 후 별도 검증한다.
+
+
+### Flat sprite Surface 재질 회귀
+
+`pnpm smoke:flat-lit`은 SDR/HDR/색공간 회귀와 `flat-surface-browser-fixture.mjs`를 함께 실행한다.
+좁은 재현은 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --surface-only`다.
+실제 양 backend × legacy/linear-sRGB × DPR1/2에서 roughness GGX 수치, zero/ambient identity,
+HDR emission, raw A specular·G roughness, emission sRGB 단일 변환·독립 albedo, cutout·unlit 전경,
+atlas/flip/회전·normal, 두 colored point와 A만 차폐·중복 union, map 재import·warm 자원,
+resize·pixelPerfect·device recovery·destroy 자원0을 확인한다.
+실제 Wasm authored Playing 상태·정렬40-byte sidecar·2-frame 애니메이션과 정적 UV의 전체 이미지 일치,
+안정적 asset 이름의 JSON 저장·fresh handle 복원 후 pixels 일치를 함께 검사한다.
+
+SDK 단위 회귀는 atomic native batch·잘못된 ABI/범위/alias·memory growth·deferred copy,
+잘못된 asset/profile 복원 전 기존 씬 보존·patch/Undo/Redo·map cache 무효화를 검사한다.
+placement 사용처·cleanup은 세 map 이름/숫자 참조를 보호하며 desktop native cleanup도 검사한다.
+단독 GPU 보고서는 `artifacts/lighting-remaining/m4b/gpu-*/verification.json`이다.
+전체 명령은 기존 CI workflow_dispatch validate의 `smoke:flat-lit`에 연결되며 software adapter를 실물 성능 검증으로 세지 않는다.
+
+
+Placement layer 브라우저 회귀는 개별 predicate뿐 아니라 root/child page의 locator action에도 기존 smoke timeout을 적용한다.
+별도 page 정리는 같은 시간 안에 종료하며 앞선 assertion 오류를 보존한다. `pnpm test:placement-layers`는
+닫기 거절·응답 없는 닫기와 기존 오류 보존을 함께 검사한다. 이 검사는 기존 수동 CI validate에 포함된다.
