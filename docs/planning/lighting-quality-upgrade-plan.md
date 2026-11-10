@@ -2,7 +2,7 @@
 
 기준일: 2026-11-10
 
-상태: 개발 진행 중 · 태양광 안정화부터 구현 · 실제 사용자 문제 장면의 픽셀 재현 대기
+상태: M2-a flat lit 개발 소스 구현·회귀 검증 완료 · M0/M1 잔여 검증과 M3a 준비 · 실제 사용자 문제 장면의 픽셀 재현 대기
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -71,21 +71,6 @@
 우선순위 P1은 시각적 일관성과 기존 효과의 결합, P2는 제작 표현력·규모, P3는 추가 제품 범위다.
 아래 우선순위는 보안/크래시 심각도가 아니다.
 
-### L01 · P1 · flat 조명과 표면색의 관계
-
-**구현 확인 / 기존 계약의 한계.** `WebGL2LightingPass`와 `WebGpuLightingPass`는 장면 위에
-광원 RGB × alpha를 더한다. normal response는 alpha에 반영하지만 광원 pass가 albedo를 읽지 않는다.
-검은 표면과 밝은 표면에 같은 빛 기여가 더해지고, 빈 배경도 밝아질 수 있다.
-현재 `unlit` sprite preset도 후단 전체 조명을 피하는 개별 수신 mask를 뜻하지 않는다.
-
-**방향:** 기존 overlay 경로를 보존하고, 표면색·ambient·광원별 visibility를 계산하는 opt-in lit 경로를 설계한다.
-장식용 additive sprite는 계속 별도 효과로 둔다. 기본 노멀, 광원 높이, receiver와 투명 픽셀의 의미를 먼저 확정한다.
-
-근거: [2D GLSL](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2ShaderSources.ts),
-[GL pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2LightingPass.ts),
-[GPU pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
-[sprite preset](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts).
-
 ### S02 · P2 · 곡면 수신면·실기기 접촉 품질 후속
 
 현재 비교식·진단·회귀 명령은
@@ -133,7 +118,8 @@ fog → DOF → Bloom → exposure/tone map → 출력 변환이다. DOF와 Bloo
 그대로 저장하지 못한다. Spatial은 HDR target을 갖는다. 전역 WebGPU linear-sRGB는 명시적으로 거절하고
 `createRenderer`가 context 선택 전에 WebGL2로 fallback한다. legacy와 linear 옵션을 혼합하면 threshold·색 반응도 달라진다.
 
-**방향:** 새 lit/HDR profile은 입력 색 공간, 연산 공간, 저장 형식, 출력 변환을 하나의 계약으로 정의한다.
+현재 lit의 SDR 합성은 [flat 합성 계약](../development/architecture/flat-lighting-composition.md)을 따른다.
+**남은 방향:** HDR profile의 입력 색 공간, 연산 공간, 저장 형식, 출력 변환을 하나의 계약으로 정의한다.
 색 텍스처는 sRGB decode 1회, normal/roughness/mask는 data, alpha는 linear로 유지한다.
 HDR → tone map → sRGB encode는 1회이며 HUD와 전역 화면 효과가 어느 단계에 들어가는지 고정한다.
 기존 renderer 옵션의 기본값은 유지한다. WebGPU 전역 linear parity는 별도 완료 조건으로 다룬다.
@@ -239,7 +225,7 @@ shadow proxy와 flat 광원별 차폐 격리가 이미 포함되어 있다. 이 
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
 | [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy와 [현재 검증 범위](../engine/data-scene-spatial.md)를 재사용 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
-| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 L01에서 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
+| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 lit에서도 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
 
 후속 검증은 S03의 실게임 큰 맵·원근 카메라·실물 GPU 범위 측정에 집중한다.
 S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대상 환경을 정한 뒤 별도로 착수한다.
@@ -267,7 +253,12 @@ S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대
 
 ## 6. 단계별 실행 계획
 
-M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위다.
+M2-a의 opt-in opaque/cutout 표면 합성은 개발 소스 구현·양 backend 회귀 검증을 완료했다.
+사용법과 제한은 [표면 조명](../engine/data-scene-presentation.md#flat-2d-표면-조명-개발-소스),
+ABI·합성 구조는 [flat 합성 계약](../development/architecture/flat-lighting-composition.md)을 따른다.
+소프트웨어 GPU 검증을 실물 GPU 성능 검증이나 배포 완료로 해석하지 않는다.
+
+M0/M1의 잔여 검증은 진행 중이며 다음 신규 개발은 M3a다. M3 이후는 미착수이며 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 `lightingProfile`, `shadowCasterMode`, `lightMask` 같은 명칭은 설계 후보이지 새 공개 API가 아니다.
 
@@ -275,7 +266,6 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | [flat 합성 선행 계약](../development/architecture/flat-lighting-composition.md) | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture의 실제 새 렌더 경로 통과 |
 | M3a Spatial 효과 합성 | E01. AO 성분·emission·fog·DOF·Bloom 입력과 새 opt-in profile | M0의 합성 기대값. M2와 독립 | 발광·직접광 보존 정책, 조합 픽셀·비용·저장/복원, 기존 profile 보존 |
 | M3b flat HDR | E02의 flat float target·노출·톤매핑 | M0 색/호환 계약과 M2 새 lit 경로 | HDR 범위·encode 1회·HUD·fallback·복구 검증 |
 | M3c WebGPU 전역 색공간 | E02의 전역 linear-sRGB parity | M0 capability 계약. M3a/M3b와 별도 구현 | 지원/거절/fallback 선택, GL/GPU 출력·HUD·복구 동등성 |
@@ -294,13 +284,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-4. **M2-a:** [선행 계약과 legacy 기준선](../development/architecture/flat-lighting-composition.md)을 유지하며
-   opaque/cutout flat 장면의 실제 광원별 visibility + albedo 합성을 완성한다.
-   수광 제외·HUD·straight-alpha 자산 준비·capability 거절과 원자적 저장/복원을 동반한다.
-   반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
-
-M1과 M2의 수학적 계약은 M0에서 함께 정하지만, 시각 검증과 리뷰는 별도 변경으로 수행한다.
-M3a는 M2의 flat renderer 구현을 기다리지 않고 진행할 수 있다. M3b/M3c를 같은 PR에 묶지 않는다.
+M3a의 Spatial 효과 합성은 완료한 M2-a의 flat 계약과 분리해 검증한다. M3b/M3c를 같은 PR에 묶지 않는다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법

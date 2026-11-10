@@ -21,7 +21,7 @@
 
 | 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1을 진행 중이다. 기존 정원·범위 진단으로 실제 접촉 문제 장면·큰 맵/원근을 검증한다. [flat 선행 계약](../development/architecture/flat-lighting-composition.md)에 따라 M2-a의 새 lit 경로를 구현하고 M3a의 발광/AO 기대값을 확정한다. |
+| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M0/M1 잔여 검증을 진행 중이며 [flat lit 합성](../development/architecture/flat-lighting-composition.md)의 M2-a는 개발 소스 구현·회귀 검증을 완료했다. 실제 접촉 문제 장면·큰 맵/원근을 검증하고, 다음 M3a의 발광/AO 기대값을 확정한다. |
 | 2 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
 | 3 | 공용 VFX 리소스·게임 연동 | 예제 효과와 독립 Studio 출력물을 게임에서 재사용하게 한다. | [VFX 개발 계획](vfx-resource-system-plan.md)의 VX-00 실게임 검증 → VX-01 공용 리소스화 순서다. Studio 검토 사항과 엔진의 책임·합성·출력 계약을 함께 관리한다. |
 
@@ -34,7 +34,7 @@ AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenienc
 
 | 문서 | 구분·상태 | 다음 판단 또는 작업 |
 | --- | --- | --- |
-| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | 개발 진행 중 · M0/M1 | 실제 접촉 문제 장면·큰 맵/원근 범위, flat lit·효과 합성·호환성 계약과 단계별 검증 확정 |
+| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | M2-a 개발 소스 완료 · M0/M1 잔여 검증·M3a 준비 | 실제 접촉 문제 장면·큰 맵/원근 범위 검증, Spatial 발광/AO와 효과 합성 기대값 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 단계 미착수 / 독립 Studio는 첨부 문서상 진행 중 | VX-00 최소 출력·실게임 검증부터 시작. Studio의 실제 구현 재검증과 공용 리소스·이벤트 연결, 후속 표현 확장 구분 |
 | [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택. 추가 GPU 계측·복구 학습 예제의 필요성 판단 |
 | [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 / 제품 결정 대기 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정. Agent Workflow 추가 공개의 필요성 판단 |

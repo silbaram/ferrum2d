@@ -1940,3 +1940,6 @@ Rust가 상태와 발생 조건을 소유한다. TS는 authoring validation·bul
 Runtime 지형 이동 revision은 렌더/탐색에 반영하고 authoring configuration
 revision과 분리한다. 이동 중 저장, 비시각 탑승자, combat 상태를 기존
 preflight→commit 순서에 포함한다. v2~v9 reader는 유지한다.
+
+Flat 2D의 opt-in lit은 Rust의 command-aligned receiver sidecar와 TS의 조도/색 합성을 분리한다.
+기존 command ABI와 overlay는 유지한다. [구조·비용·호환 계약](flat-lighting-composition.md)을 따른다.

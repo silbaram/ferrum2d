@@ -2758,3 +2758,15 @@ cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_
 정상 소비해야 한다. 테스트의 raw allocation은 finally에서 해제하고, 상한 안에서 query growth가 없으면 실패한다.
 SDK 회귀는 callback 중 실제 native engine 해제, RAF 재시작 중복 방지, getter 중 해제된 quest 복원,
 terrain nested sync/destroy/constructor rollback/force retry 및 클래스형 effect target의 receiver를 검사한다.
+
+### Flat lit 표면 합성
+
+최신 Wasm을 `pnpm build:wasm`으로 생성한 뒤 `pnpm smoke:flat-lit`으로 실제 WebGL2/WebGPU/WebGL2 linear-sRGB × DPR1/2를 검증한다.
+색 수치·receiver/cutout·unlit 전경/HUD·광원별 차폐·OFF 비용·resize·기기 복구·destroy를 확인한다.
+legacy 회귀는 `pnpm smoke:flat-lighting-contract`로 별도 유지한다. 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`이다.
+두 명령은 수동 CI validate job에서 실행하며 보고서를 artifact로 남긴다. 이 headless 검증은 소프트웨어 WebGPU의
+offscreen readback을 사용하므로 실물 GPU 성능·native canvas 표시 보장을 뜻하지 않는다.
+
+Starter Runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --lighting-only`로 조명 학습 예제만 검사할 수 있다.
+양 backend에서 실제 normal 반응과 새 합성 선택의 픽셀 변화, legacy 복귀, 조명 OFF, 좁은 화면과 해제 후 자원을 확인한다.
+이 회귀는 기본 `pnpm smoke:feature-examples`에도 포함되며 좁은 실행의 보고서는 `artifacts/flat-lit-m2a/example/`에 남긴다.

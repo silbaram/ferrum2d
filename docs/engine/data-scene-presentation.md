@@ -395,3 +395,32 @@ GPU texture/buffer 생존 수, frame 중 upload/readback 부재, maxCasters와 d
 픽셀과 validation error를 검사한다. headless canvas swapchain과 분리한 offscreen target을 사용하며
 `--webgpu-only`는 이 두 사례만 실행한다. WebGL2 fallback을 성공으로 집계하지 않는다.
 소프트웨어 adapter의 수치는 실제 GPU 성능이나 native canvas presentation 검증을 대체하지 않는다.
+
+
+## Flat 2D 표면 조명 · 개발 소스
+
+기존 `LightingScene2D`는 전체 화면에 빛을 더하는 overlay다. `profile:"lit"`을 명시하면
+수광 sprite의 선형 원본 색에 조도를 곱한다. `ambientIrradiance`는 0..1의 선형 RGB이고 기본값은 `[1,1,1]`이다.
+기존 `ambient` RGBA overlay와 동시에 지정할 수 없다(정규화 저장값 `[0,0,0,0]`은 허용).
+
+```ts
+await renderer.loadTexture(1, "hero.png", { colorSpace: "srgb", alphaMode: "straight" });
+engine.configureSpriteLightingMaterials([{entity: hero, lighting:{mode:"cutout", alphaCutoff:0.5}}]);
+renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
+  pointLights:[{x:200,y:100,radius:240,height:120,color:[1,0.8,0.6,1],intensity:1}]});
+```
+
+- `components.visual`의 sprite 또는 `components.sprite`에 `lighting:{mode:"unlit"|"opaque"|"cutout",alphaCutoff?}`를 저장한다.
+  생략/unlit은 수광 제외, opaque는 source alpha를 1로 처리, cutout은 texture×tint alpha가 cutoff 미만이면 버린다. cutoff 기본0.5, 유한0..1 f32다.
+- normal은 선택이다. 생략하면 +Z 표면, 연결하면 기존 UV·flip·회전을 공유한 normal로 Lambert 응답을 계산한다.
+- `applyDataSceneAuthoringDocument(engine, document, {flatLightingPreparer:renderer})`로 사전 자산 검증을 전달한다.
+  lit snapshot restore에도 `dataSceneAuthoringApplyOptions.flatLightingPreparer`를 전달한다. 함수/renderer는 JSON에 저장하지 않는다.
+  선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
+- color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
+  normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
+- 점광원 최대32개, 점광원/태양 intensity 최대64다. 누적 조도는 float16이나 최종 출력은 SDR로 clamp한다. HDR/톤매핑 지원을 뜻하지 않는다.
+- sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
+- `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
+  HUD를 별도 제출할 때는 조명을 끄고 그린 뒤 한 번 `renderPostProcess()`로 마친다.
+
+공개 ABI·자원 비용과 회귀 기준은 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.

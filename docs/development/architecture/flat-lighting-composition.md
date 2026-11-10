@@ -1,12 +1,12 @@
-# Flat 2D 조명 합성의 선행 계약
+# Flat 2D 조명 합성
 
-상태: M0-b의 flat 설계 기준과 legacy GPU 회귀. **새 lit 렌더 경로는 아직 미구현**이다.
-이 문서의 receiver/profile 명칭은 구현 요구사항이며 현재 JSON에 넣을 수 있는 공개 필드가 아니다.
+상태: 개발 소스의 M2-a opt-in lit 구현. 기존 overlay는 기본값으로 유지한다.
+SDK와 함께 빌드한 sprite lighting v1 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 현재 사용 계약은 [화면 표현](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 
-## 현재와 다음 구현의 의미
+## 두 profile의 의미
 
-| 항목 | 현재 legacy overlay | 다음 M2-a의 수신 표면 합성 |
+| 항목 | 현재 legacy overlay | opt-in lit 수신 표면 합성 |
 | --- | --- | --- |
 | 표면색 | 기존 화면 위에 광원 RGB를 더함 | 표면의 선형 albedo에 조도를 곱함 |
 | ambient | RGBA 색 overlay. 검은색 alpha는 기존 화면을 어둡게 함 | 선형 RGB 조도. overlay alpha를 조도로 자동 재해석하지 않음 |
@@ -29,8 +29,8 @@ C = B × I
 ```
 
 - 색 텍스처의 sRGB decode는 한 번만 한다. `linear` 자산은 재해석하지 않고 data/normal/mask에는 색 변환을 하지 않는다.
-- 새 lit의 색 자산은 straight-alpha 원본을 전제로 준비한다. 현재 WebGL2 legacy sRGB의 premultiplied 업로드 자산을
-  그대로 straight RGB로 해석하지 않는다. 자산 준비·검증·재등록 조건은 M2-a의 활성화 전에 확정하고 실패 시 이전 상태를 보존한다.
+- 새 lit의 색 자산은 `loadTexture(..., {alphaMode:"straight"})`로 준비한다. 현재 WebGL2 legacy sRGB의 premultiplied 업로드 자산을
+  그대로 straight RGB로 해석하지 않는다. renderer의 `prepareFlatLighting`을 authoring의 `flatLightingPreparer`로 전달하며, apply/restore는 활성화 전에 자산과 capability를 검사한다.
 - tint·광원·ambient의 조도 계수는 새 profile의 선형 값이다. 기존 legacy overlay 값을 무조건 이 식에 옮기지 않는다.
 - 점광원 color alpha는 기존처럼 해당 광원의 세기에 포함한다. 그림자 mask의 alpha와 receiver alpha를 혼동하지 않는다.
 - 노멀 미지정 수신면의 기준은 화면 앞쪽 `+Z`다. 광원 높이·방향과 내적하고 0 아래를 자른다.
@@ -41,7 +41,7 @@ C = B × I
   새 lit WebGPU 구현의 성공으로 세지 않는다. M2-a 완료에는 실제 양 backend의 새 경로가 필요하다.
 
 수치 벡터는 `tests/smoke/flat-lighting-reference-vectors.json`에 둔다. 동일 sRGB 표면에 ambient 조도 0.5와
-백색 직접광 조도 0.125를 주면 목표 출력은 다음과 같다. 이 값은 현재 엔진의 새 lit 실행 결과가 아니다.
+백색 직접광 조도 0.125를 주면 목표 출력은 다음과 같다. 실제 lit GPU smoke는 이 값에 대한 색 오차 3 이하를 검사한다.
 
 | sRGB 표면 byte | 목표 선형 계산 | 목표 sRGB 출력 byte |
 | --- | --- | --- |
@@ -105,14 +105,34 @@ renderer·capture target·canvas의 해제를 각각 시도한다. renderer를 �
 반투명 point RGB 손상이다. 앞의 세 오류는 probe에서, 마지막은 backend 보정 비교에서 거절해야 한다.
 오류 주입이 정확히 한 번 작동했는지, 부분 측정값이 남는지, 실패 후에도 자원이 회수되는지 검사한다.
 
-새 lit 수치 벡터는 `design-reference-only`, `renderedByEngine:false`로 별도 기록한다.
+기존 baseline 보고서의 새 lit 수치 벡터는 `design-reference-only`, `renderedByEngine:false`로 별도 기록한다.
+실제 새 경로의 검증은 `pnpm smoke:flat-lit`과 분리한다.
 참조 벡터 검산이 새 렌더 경로의 GPU 검증을 대신하지 않는다.
 
 CI의 수동 `workflow_dispatch` validate job에서 해당 명령을 실행한다. 일반 push/PR trigger를 새로 추가하지 않는다.
 
-## 이후 완료 조건
+## 구현 경계와 비용
 
-M2-a는 새 profile의 공개 schema/원자적 적용·저장/복원과 실제 opaque/cutout receiver·HUD 경계를 구현해야 한다.
-위 기준선을 그대로 보존하면서 동일 벡터의 **실제 새 경로**를 추가하고 양 backend의 실제 pixels·resize/DPR·복구·비활성 비용을 검증한다.
-이 문서만으로 M2-a를 완료 처리하지 않는다. Spatial AO/emission·fog·Bloom·DOF의 기대값과 실물 GPU 예산은
-[조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 남은 M0-b/M3a 범위다.
+Rust는 명시적 수광 metadata를 world/snapshot/prototype에 보관하고 sprite 정렬 후 command와 같은 순서로 내보낸다.
+선택형 v1 sidecar는 8-byte `repr(C)` record `[mode:u32, alphaCutoff:f32]`다. 기존 15-float command ABI는 유지한다.
+전체가 unlit인 프레임은 sidecar를 생략한다. JS는 프레임당 bulk view를 읽고 GPU staging만 작성한다.
+
+TS는 원래 색상 draw, normal/coverage/weighted-albedo의 3 MRT, RGBA16F 조도 누적,
+기존 수광 색 제거와 새 기여 추가의 2 fullscreen pass를 소유한다. 합성은 RGB만 쓰므로 원래 목적지 alpha는 유지한다.
+명시적 unlit 전경은 아래 수광 기여를 source-over alpha로 가린다. 임의의 여러 반투명 수광층을 정확히 따로 조명하는 경로는 아니다.
+receiver는 opaque/cutout만 지원한다. primitive/tile/particle/text는 초기 수광 대상이 아니다.
+
+활성 scratch는 physical pixel당20 bytes(3×RGBA8 + RGBA16F)이며 광원별/태양 차폐 mask는 별도다.
+활성 receiver가 없거나 `{profile:"lit", enabled:false}`이면 추가 data/lighting/composite pass와 scratch target은 없다.
+컴파일한 program/buffer는 재사용한다. global linear-sRGB의 표시 target 비용은 별도다.
+GL은 `EXT_color_buffer_float`와 3 draw buffer를 요구한다. WebGPU는 실제 backend로 검증한다.
+새 profile은 base alpha sprite material만 지원하며 colorMix/palette/outline/additive 및 Spatial과의 결합은 사전에 거절한다.
+
+`pnpm smoke:flat-lit`은 양 backend와 GL linear-sRGB를 DPR1/2에서 실제 readback한다.
+검은/회색/흰 albedo, cutout/opaque/unlit, unlit 반투명 전경, 두 광원의 차폐, HUD,
+OFF identity/비용, warm 자원 plateau, resize 복귀와 WebGPU device recovery를 검사한다.
+실패 단계·부분 상태·destroy 후 자원을 `artifacts/flat-lit-m2a/gpu-*/verification.json`에 남긴다.
+CPU 값은 submit+완료대기+readback 시간이며 실제 GPU timer나 FPS 보장이 아니다.
+
+Spatial AO/emission·fog·Bloom·DOF/HDR의 기대값과 예산은
+[조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 남은 M0-b/M3a 이후 범위다.

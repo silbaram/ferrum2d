@@ -1437,3 +1437,16 @@ cooldown 시간이 진행되지 않는다. 같은 게임 reset은 profile을 유
 runtime의 provider·renderer callback에서 runtime을 해제하면 남은 GPU 제출·UI 소비를 중단한다.
 callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예약된다.
 효과 target은 객체와 클래스 인스턴스를 모두 받을 수 있고, 등록한 메서드는 원래 receiver를 유지한다.
+
+## Flat lighting receivers · 개발 소스
+
+`SpriteLightingMaterialSpec`, `SpriteLightingBufferView`, `FlatLightingAsset`, `FlatLightingPreparer`를 `/core`에서 import한다.
+`engine.configureSpriteLightingMaterials([{entity,lighting}])`는 cold bulk API다. 최대65,536개이며 lighting 생략은 해제다.
+중복 ID/stale handle/잘못된 mode·cutoff는 전체 batch를 false로 거절한다. authoring 필드와 자산 사전 검증은
+[표면 조명](../data-scene-presentation.md#flat-2d-표면-조명-개발-소스)을 따른다.
+
+선택형 `RenderCommandBufferView.spriteLightingMaterials`는 `{version:1,stride:2,words,values}`다.
+`words:Uint32Array`와 `values:Float32Array`는 같은 offset/buffer의 8-byte record를 공유한다.
+짝수 word는 mode(0unlit/1opaque/2cutout), 홀수 float는 cutoff다. cutoff는 cutout에만 쓰며 다른 mode는0이다.
+다음 Wasm 호출/frame/memory growth 전에 소비하고, 장기 보관할 때 alias를 유지한 소유 복사본을 만든다.
+구 Wasm은 metadata 없는 기존 씬을 유지하며 lit/receiver 요청은 활성화 전에 거절한다.
