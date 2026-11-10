@@ -508,6 +508,9 @@ impl Engine {
             }
             bindings[index] = Some((entity, *offset));
         }
+        if self.spatial_scene.light_bindings != bindings {
+            self.spatial_scene.environment.reset_light_selection();
+        }
         self.spatial_scene.light_bindings = bindings;
         self.spatial_scene.frame_active = false;
         true
@@ -516,7 +519,7 @@ impl Engine {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
             return false;
         }
-        let Some(next) = crate::spatial_scene::SpatialEnvironment::new(values) else {
+        let Some(mut next) = crate::spatial_scene::SpatialEnvironment::new(values) else {
             return false;
         };
         if self
@@ -527,6 +530,7 @@ impl Engine {
         {
             return false;
         }
+        next.retain_compatible_light_selection(&self.spatial_scene.environment);
         let previous = std::mem::replace(&mut self.spatial_scene.environment, next);
         if !self.spatial_scene.shadow_budget_valid(&self.world) {
             self.spatial_scene.environment = previous;
@@ -544,7 +548,9 @@ impl Engine {
             })
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 544 {
+        if self.spatial_scene.environment.value_len > 576 {
+            8
+        } else if self.spatial_scene.environment.value_len > 544 {
             7
         } else if self.spatial_scene.environment.value_len > 528 {
             6
@@ -563,6 +569,64 @@ impl Engine {
     /// Cold capability for explicit environment v7 packed light/shadow channels.
     pub fn spatial_light_channel_abi_version(&self) -> u32 {
         1
+    }
+    /// Cold capability for explicit v8 source config and native temporal selection v1.
+    pub fn spatial_light_selection_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_light_selection_progress_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold validation before semantic authoring restore replaces entities or assets.
+    pub fn preflight_spatial_light_selection_state(
+        &self,
+        environment: &[f32],
+        selection: &[f64],
+    ) -> bool {
+        crate::spatial_scene::SpatialEnvironment::new(environment)
+            .is_some_and(|next| next.prepare_light_selection(selection).is_some())
+    }
+    /// Borrowed diagnostic record v1 contains six4-byte fields; acquire again each frame.
+    pub fn spatial_light_selection_diagnostic_size_bytes(&self) -> u32 {
+        24
+    }
+    pub fn spatial_light_selection_diagnostics_ptr(&self) -> *const u8 {
+        self.spatial_scene
+            .environment
+            .light_selection_diagnostics()
+            .as_ptr()
+            .cast()
+    }
+    pub fn spatial_light_selection_diagnostics_len(&self) -> u32 {
+        if self.spatial_scene.frame_active {
+            self.spatial_scene
+                .environment
+                .light_selection_diagnostics()
+                .len() as u32
+        } else {
+            0
+        }
+    }
+    pub fn capture_spatial_light_selection_state(&self) -> Vec<f64> {
+        self.spatial_scene.environment.capture_light_selection()
+    }
+    /// Cold standalone state restore; compound semantic progress integration uses this validated state.
+    pub fn restore_spatial_light_selection_state(&mut self, values: &[f64]) -> bool {
+        let restored = self
+            .spatial_scene
+            .environment
+            .restore_light_selection(values);
+        if restored {
+            self.spatial_scene.frame_active = false;
+        }
+        restored
+    }
+    pub fn reset_spatial_light_selection(&mut self) -> bool {
+        let reset = self.spatial_scene.environment.reset_light_selection();
+        if reset {
+            self.spatial_scene.frame_active = false;
+        }
+        reset
     }
     pub fn spatial_environment_len(&self) -> u32 {
         if self.spatial_scene.frame_active && self.spatial_scene.environment.values.is_some() {

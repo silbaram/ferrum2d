@@ -1,25 +1,43 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 576;
+pub(crate) const ENVIRONMENT_VALUES: usize = 580;
+const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
+#[path = "light_selection.rs"]
+mod light_selection;
 #[path = "lighting_upgrade.rs"]
 mod lighting_upgrade;
+pub(crate) use light_selection::LightSelectionDiagnostic;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
+/// Validated cold history, installed only after the matching source/pose transaction commits.
+pub(crate) struct PreparedLightSelection(light_selection::LightSelection);
 #[derive(Default)]
 pub(crate) struct SpatialEnvironment {
     pub values: Option<[f32; ENVIRONMENT_VALUES]>,
     pub value_len: usize,
     pub frame_values: Vec<f32>,
     pub shadow_matrices: Vec<f32>,
+    selection: light_selection::LightSelection,
 }
 impl SpatialEnvironment {
     pub fn new(v: &[f32]) -> Option<Self> {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![80, 112, 128, 512, 528, 544, ENVIRONMENT_VALUES].contains(&v.len()) {
+        if ![
+            80,
+            112,
+            128,
+            512,
+            528,
+            544,
+            LIGHT_CHANNEL_VALUES,
+            ENVIRONMENT_VALUES,
+        ]
+        .contains(&v.len())
+        {
             return None;
         }
         let mut a = [0.; ENVIRONMENT_VALUES];
@@ -35,7 +53,7 @@ impl SpatialEnvironment {
             return None;
         }
         let flags = a[0] as u32;
-        let preserve_inactive = v.len() == ENVIRONMENT_VALUES;
+        let preserve_inactive = v.len() >= LIGHT_CHANNEL_VALUES;
         if flags & 16 != 0 {
             if v.len() < 112
                 || a[80..82]
@@ -130,7 +148,10 @@ impl SpatialEnvironment {
         if ![0., 1.].contains(&a[528]) || a[529..544].iter().any(|x| *x != 0.) {
             return None;
         }
-        if v.len() == ENVIRONMENT_VALUES && !light_channels::valid(&a) {
+        if v.len() >= LIGHT_CHANNEL_VALUES && !light_channels::valid(&a[..LIGHT_CHANNEL_VALUES]) {
+            return None;
+        }
+        if v.len() == ENVIRONMENT_VALUES && !light_selection::valid(&a) {
             return None;
         }
         let count = a[1] as usize;
@@ -184,6 +205,7 @@ impl SpatialEnvironment {
             shadow_matrices: Vec::new(),
             value_len: v.len(),
             frame_values: v.to_vec(),
+            selection: light_selection::LightSelection::new(v),
         };
         if a[2] >= 0. {
             let p = 12 + a[2] as usize * 12;
@@ -230,9 +252,44 @@ impl SpatialEnvironment {
             return;
         };
         if self.value_len >= 512 {
-            let sources = lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor);
-            if self.value_len == ENVIRONMENT_VALUES {
-                light_channels::remap(&mut v, sources);
+            let sources = if self.selection.enabled() {
+                let data = lighting_upgrade::candidates(&v, camera, world, bindings, actor, false);
+                let (sources, weights) = self.selection.display(&v, &data);
+                // Final light poses follow interpolation, without changing selection history.
+                let rendered =
+                    lighting_upgrade::candidates(&v, camera, world, bindings, actor, true);
+                v[12..60].fill(0.);
+                v[144..176].fill(0.);
+                let count = sources.iter().flatten().count();
+                v[1] = count as f32;
+                v[2] = if v[0] as u32 & 1 != 0 && v[138] >= 0. {
+                    0.
+                } else {
+                    -1.
+                };
+                if v[2] < 0. {
+                    v[3] = 0.;
+                }
+                for (slot, source) in sources.iter().enumerate() {
+                    if let Some(source) = source {
+                        let p = 192 + source * 20;
+                        let to = 12 + slot * 12;
+                        v.copy_within(p..p + 8, to);
+                        v[to..to + 3].copy_from_slice(&rendered.positions[*source]);
+                        v[to + 7] *= if rendered.visible[*source] {
+                            weights[slot]
+                        } else {
+                            0.
+                        };
+                        v.copy_within(p + 8..p + 14, 144 + slot * 8);
+                    }
+                }
+                sources
+            } else {
+                lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor)
+            };
+            if self.value_len >= LIGHT_CHANNEL_VALUES {
+                light_channels::remap(&mut v[..LIGHT_CHANNEL_VALUES], sources);
                 if v[0] as u32 & 1 == 0 {
                     // Inactive authoring remains in self.values; only the render
                     // copy loses active sun/fill/maps and fixed-map presentation.
@@ -309,6 +366,75 @@ impl SpatialEnvironment {
         self.values
             .as_ref()
             .is_some_and(|v| v[0] as u32 & 1 != 0 && (v[2] >= 0. || v[92] > 0.))
+    }
+    pub fn advance_light_selection(
+        &mut self,
+        camera: &SpatialCamera,
+        world: &World,
+        bindings: &[Option<(Entity, f32)>; 16],
+        actor: Option<(Entity, f32)>,
+        dt: f32,
+    ) {
+        if !self.selection.enabled() {
+            return;
+        }
+        let Some(v) = self.values.as_ref() else {
+            return;
+        };
+        let data = lighting_upgrade::candidates(v, camera, world, bindings, actor, false);
+        self.selection.advance(
+            v,
+            &data,
+            [
+                camera.parameters[4],
+                camera.parameters[5],
+                camera.parameters[6],
+            ],
+            dt,
+        );
+    }
+    pub fn light_selection_enabled(&self) -> bool {
+        self.selection.enabled()
+    }
+    pub fn retain_compatible_light_selection(&mut self, previous: &Self) {
+        if let (Some(source), Some(old_source)) = (&self.values, &previous.values) {
+            self.selection
+                .retain_compatible(&previous.selection, source, old_source);
+        }
+    }
+    pub fn reset_light_selection(&mut self) -> bool {
+        if !self.selection.enabled() {
+            return false;
+        }
+        self.selection.reset();
+        true
+    }
+    pub fn light_selection_diagnostics(&self) -> &[LightSelectionDiagnostic] {
+        self.selection.diagnostics()
+    }
+    pub fn capture_light_selection(&self) -> Vec<f64> {
+        self.selection.capture()
+    }
+    pub fn restore_light_selection(&mut self, values: &[f64]) -> bool {
+        if values.is_empty() {
+            return !self.selection.enabled();
+        }
+        let Some(source) = self.values.as_ref() else {
+            return false;
+        };
+        self.selection.restore(values, source)
+    }
+    pub fn prepare_light_selection(&self, values: &[f64]) -> Option<PreparedLightSelection> {
+        let mut selection = self.selection.clone();
+        if values.is_empty() {
+            return (!selection.enabled()).then_some(PreparedLightSelection(selection));
+        }
+        selection
+            .restore(values, self.values.as_ref()?)
+            .then_some(PreparedLightSelection(selection))
+    }
+    pub fn commit_light_selection(&mut self, prepared: PreparedLightSelection) {
+        self.selection = prepared.0;
     }
     fn sun_center(values: &[f32; ENVIRONMENT_VALUES], camera: &SpatialCamera) -> Point {
         if values[512] == 1. {

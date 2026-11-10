@@ -346,6 +346,24 @@ pub(crate) struct SpatialScene {
     pub navigation_revision: u32,
 }
 impl SpatialScene {
+    pub(crate) fn advance_light_selection(&mut self, world: &World, dt: f32) {
+        if !self.environment.light_selection_enabled() {
+            return;
+        }
+        let Some(camera) = self.camera else {
+            return;
+        };
+        let actor = self.actor.map(|a| {
+            (
+                a.0,
+                self.bindings
+                    .get(&(a.0.id, a.0.generation))
+                    .map_or(0., |b| b.elevation),
+            )
+        });
+        self.environment
+            .advance_light_selection(&camera, world, &self.light_bindings, actor, dt);
+    }
     pub(crate) fn runtime_sprite_rotation(&self, entity: Entity) -> f32 {
         self.runtime_sprite_rotations
             .binary_search_by_key(&(entity.id, entity.generation), |(e, _)| {

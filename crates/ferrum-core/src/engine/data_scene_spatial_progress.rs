@@ -25,6 +25,75 @@ struct SpatialProgress {
 
 #[wasm_bindgen]
 impl Engine {
+    /// Validates source/history before either normal or combat/motion progress can mutate the world.
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_data_scene_progress_with_spatial_light_selection(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+        spatial: &[f64],
+        environment: &[f32],
+        rotations: &[f64],
+        apply_environment: bool,
+        combat: &[f64],
+        selection: &[f64],
+    ) -> bool {
+        let prepared = if spatial.first() == Some(&0.) {
+            // The common restore clears the entire SpatialScene in this case,
+            // even when apply_environment=false. Never reinstall orphaned history.
+            if apply_environment && !environment.is_empty() {
+                return false;
+            }
+            crate::spatial_scene::SpatialEnvironment::default().prepare_light_selection(selection)
+        } else if apply_environment {
+            let Some(next) = crate::spatial_scene::SpatialEnvironment::new(environment) else {
+                return false;
+            };
+            next.prepare_light_selection(selection)
+        } else {
+            self.spatial_scene
+                .environment
+                .prepare_light_selection(selection)
+        };
+        let Some(prepared) = prepared else {
+            return false;
+        };
+        let restored = if combat.is_empty() {
+            self.restore_data_scene_progress_with_spatial_motion(
+                epoch,
+                handles,
+                states,
+                animations,
+                spatial,
+                environment,
+                rotations,
+                apply_environment,
+            )
+        } else {
+            self.restore_data_scene_progress_with_combat(
+                epoch,
+                handles,
+                states,
+                animations,
+                spatial,
+                environment,
+                rotations,
+                apply_environment,
+                combat,
+            )
+        };
+        if !restored {
+            return false;
+        }
+        // The source used for validation has now committed. No fallible operation follows world mutation.
+        self.spatial_scene
+            .environment
+            .commit_light_selection(prepared);
+        self.spatial_scene.frame_active = false;
+        true
+    }
     /// Motion extension v1: rotations are parallel to authored handles; child poses remain derived.
     pub fn capture_data_scene_spatial_rotations(&self, epoch: u32, handles: &[u32]) -> Vec<f64> {
         if epoch == 0 || epoch != self.data_scene_epoch() || !handles.len().is_multiple_of(2) {

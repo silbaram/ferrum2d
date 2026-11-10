@@ -121,59 +121,20 @@ pub(super) fn select(
         v[144..176].fill(0.);
         return sources;
     }
-    let mut positions = [[0.; 3]; 16];
-    let mut visible = [true; 16];
-    let mut ranked = [(0usize, 0f32); 16];
-    let count = v[137] as usize;
-    let target = [
-        camera.parameters[4],
-        camera.parameters[5],
-        camera.parameters[6],
-    ];
-    for i in 0..count {
-        let p = 192 + i * 20;
-        let mut position = [v[p], v[p + 1], v[p + 2]];
-        {
-            let binding = bindings[i].or_else(|| if v[p + 14] > 0. { actor } else { None });
-            if (bindings[i].is_some() || v[p + 14] > 0.)
-                && binding.is_none_or(|(entity, _)| {
-                    !world.is_current_entity(entity) || world.transform(entity).is_none()
-                })
-            {
-                visible[i] = false;
-            }
-            if let Some((entity, offset)) = binding.filter(|(a, _)| world.is_current_entity(*a)) {
-                if let Some(t) = world.render_transform_at_index(entity.id as usize) {
-                    position[0] += t.x;
-                    position[1] += world
-                        .render_height_span_at(entity.id as usize)
-                        .map_or(0., |s| s.elevation)
-                        + offset;
-                    position[2] -= t.y;
-                }
-            }
-        }
-        if position.iter().any(|x| !x.is_finite() || x.abs() > 1e6) {
-            visible[i] = false;
-            position = [v[p], v[p + 1], v[p + 2]];
-        }
-        positions[i] = position;
-        let distance = super::dot(
-            super::super::sub(position, target),
-            super::super::sub(position, target),
-        );
-        // Score is continuous; deterministic source order breaks ties. Shadow owner is pinned.
-        let score = if i as f32 == v[138] {
-            f32::MAX
-        } else {
-            if visible[i] {
-                v[p + 7] / (1. + distance / (v[p + 3] * v[p + 3]))
+    let candidates = candidates(v, camera, world, bindings, actor, true);
+    let positions = candidates.positions;
+    let visible = candidates.visible;
+    let count = candidates.count;
+    let mut ranked = std::array::from_fn::<_, 16, _>(|i| {
+        (
+            i,
+            if i as f32 == v[138] {
+                f32::MAX
             } else {
-                -1.
-            }
-        };
-        ranked[i] = (i, score);
-    }
+                candidates.scores[i]
+            },
+        )
+    });
     ranked[..count].sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     let active = count.min(v[136] as usize);
     v[12..60].fill(0.);
@@ -192,4 +153,88 @@ pub(super) fn select(
         v.copy_within(p + 8..p + 14, 144 + slot * 8);
     }
     sources
+}
+
+#[derive(Debug)]
+pub(super) struct Candidates {
+    pub positions: [[f32; 3]; 16],
+    pub visible: [bool; 16],
+    pub scores: [f32; 16],
+    pub unavailable: [u32; 16],
+    pub count: usize,
+}
+
+/// Simulation scoring reads authoritative poses; only emission uses render interpolation.
+pub(super) fn candidates(
+    v: &[f32],
+    camera: &SpatialCamera,
+    world: &World,
+    bindings: &[Option<(Entity, f32)>; 16],
+    actor: Option<(Entity, f32)>,
+    render: bool,
+) -> Candidates {
+    let mut positions = [[0.; 3]; 16];
+    let mut visible = [true; 16];
+    let mut scores = [-1.; 16];
+    let mut unavailable = [0u32; 16];
+    let count = v[137] as usize;
+    let target = [
+        camera.parameters[4],
+        camera.parameters[5],
+        camera.parameters[6],
+    ];
+    for i in 0..count {
+        let p = 192 + i * 20;
+        let mut position = [v[p], v[p + 1], v[p + 2]];
+        {
+            let binding = bindings[i].or_else(|| if v[p + 14] > 0. { actor } else { None });
+            if (bindings[i].is_some() || v[p + 14] > 0.)
+                && binding.is_none_or(|(entity, _)| {
+                    !world.is_current_entity(entity) || world.transform(entity).is_none()
+                })
+            {
+                visible[i] = false;
+                unavailable[i] = 6;
+            }
+            if let Some((entity, offset)) = binding.filter(|(a, _)| world.is_current_entity(*a)) {
+                if let Some(t) = if render {
+                    world.render_transform_at_index(entity.id as usize)
+                } else {
+                    world.transform(entity)
+                } {
+                    position[0] += t.x;
+                    position[1] += if render {
+                        world
+                            .render_height_span_at(entity.id as usize)
+                            .map_or(0., |s| s.elevation)
+                    } else {
+                        world.height_span(entity).map_or(0., |s| s.elevation)
+                    } + offset;
+                    position[2] -= t.y;
+                }
+            }
+        }
+        if position.iter().any(|x| !x.is_finite() || x.abs() > 1e6) {
+            visible[i] = false;
+            unavailable[i] = 9;
+            position = [v[p], v[p + 1], v[p + 2]];
+        }
+        positions[i] = position;
+        let distance = super::dot(
+            super::super::sub(position, target),
+            super::super::sub(position, target),
+        );
+        scores[i] = if visible[i] {
+            v[p + 7] / (1. + distance / (v[p + 3] * v[p + 3]))
+        } else {
+            -1.
+        };
+    }
+    Candidates {
+        positions,
+        visible,
+        scores,
+        unavailable,
+        count,
+    }
 }

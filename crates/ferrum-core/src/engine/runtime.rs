@@ -87,6 +87,8 @@ impl Engine {
     }
 
     fn advance_simulation(&mut self, delta: f64) {
+        // Seed before simulation moves any bound light. Render-only rebuilds cannot seed history.
+        self.spatial_scene.advance_light_selection(&self.world, 0.);
         self.elapsed_seconds += delta;
         self.impact_feedback.begin_frame();
         self.clear_physics_frame();
@@ -127,6 +129,8 @@ impl Engine {
                 }
                 self.record_collision_lifecycle_events();
                 self.update_data_scene_gameplay(input, latched_presses, step_seconds);
+                self.spatial_scene
+                    .advance_light_selection(&self.world, step_seconds);
                 if self.render_interpolation_enabled {
                     self.world.end_render_interpolation_step();
                 }
@@ -149,6 +153,8 @@ impl Engine {
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
             self.update_data_scene_gameplay(self.input, InputState::default(), delta as f32);
+            self.spatial_scene
+                .advance_light_selection(&self.world, delta as f32);
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
                     &mut self.world,
