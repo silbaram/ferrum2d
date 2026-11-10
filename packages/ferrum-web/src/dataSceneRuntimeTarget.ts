@@ -1,3 +1,4 @@
+import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
 import type {SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
 import type { FlatLightingPreparer } from "./flatLit.js";
 import { MAX_SPRITE_LIGHTING_UPDATES } from "./spriteLighting.js";
@@ -138,6 +139,7 @@ export interface DataSceneRuntimeSpawnRequest {
 export interface DataSceneRuntimeEngineAdapter {
   supportsSpriteNormalMaterials?(): boolean;
   supportsSpriteLightingMaterials?(): boolean;
+  supportsSpriteLightMasks?():boolean;
   supportsSpriteSurfaceMaterials?():boolean;
   supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
@@ -207,6 +209,7 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
       if(request.surface!==undefined&&!adapter.supportsSpriteSurfaceMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite surfaces require native v1 support");
       if(request.lighting!==undefined&&!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite lighting requires native v1 support");
       if(request.nineSlice!==undefined&&!adapter.supportsSpriteNineSlices?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"9-slice requires native v1 support");
+      if(requestsSpriteLightMasks(request.lighting)&&!adapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.lighting`,"light masks require native support");
       activateDataScene();
       const {normalTextureId:_normal,nineSlice:_nineSlice,lighting:_lighting,surface:_surface,...unmapped}=request;
       const handle = adapter.spawnDataSceneEntity(deferSpriteBindings?unmapped:request);
@@ -231,9 +234,12 @@ export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: u
       if(!raw||typeof raw!=="object"||Array.isArray(raw))continue;
       const components=raw as Record<string,unknown>;
       const declared=[components.visual,components.sprite].some(v=>v&&typeof v==="object"&&"surface" in v&&(v as {surface?:unknown}).surface!==undefined);
+      const masks=[components.visual,components.sprite].some(v=>v&&typeof v==="object"&&requestsSpriteLightMasks((v as {lighting?:import("./spriteLighting.js").SpriteLightingMaterialSpec}).lighting));
+      if(masks)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
       if(declared)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
       if(components.template!==undefined&&options.componentTemplates){
         const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path);
+        if(requestsSpriteLightMasks(component.sprite.lighting))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
         if(component.sprite.surface)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
       }
     }
@@ -249,6 +255,10 @@ export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: u
   const lighting = resolved.lighting!;
   const hdr = lighting.enabled !== false && lighting.hdr !== undefined && lighting.hdr !== false && lighting.hdr.enabled !== false;
   const components=plan.instances.map(instance=>dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path));
+  const maskCount=components.filter(component=>requestsSpriteLightMasks(component.sprite.lighting)).length;
+  if(maskCount>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"supports at most65536 light mask bindings");
+  if(maskCount&&resolved.spatial)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+  if(maskCount&&!adapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require native support");
   const surfaceCount=components.filter(component=>component.sprite.surface!==undefined).length;
   if(surfaceCount>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"supports at most 65536 surface materials");
   if(surfaceCount&&resolved.spatial)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
@@ -338,6 +348,9 @@ export function applyDataSceneAuthoringDocument(
   if(surfaceMaterials.length>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"supports at most 65536 surface materials");
   if(surfaceMaterials.length&&(resolved.lighting?.profile!=="lit"||resolved.spatial))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
   if(surfaceMaterials.length&&(!runtimeAdapter.supportsSpriteSurfaceMaterials?.()||typeof engine.configureSpriteSurfaceMaterials!=="function"))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"sprite surfaces require native v1 support");
+  const maskBindings=spriteBindings.filter(binding=>requestsSpriteLightMasks(binding.lighting));
+  if(maskBindings.length&&(resolved.lighting?.profile!=="lit"||resolved.spatial))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+  if(maskBindings.length&&!runtimeAdapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require native support");
   const lightingMaterials = spriteBindings.filter(b => b.lighting !== undefined);
   if (lightingMaterials.length > MAX_SPRITE_LIGHTING_UPDATES)
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);

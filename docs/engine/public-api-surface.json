@@ -254,7 +254,8 @@
         "SpriteSurfaceMaterialSpec",
         "SpriteSurfaceBufferView",
         "DataSceneSpriteSurfaceSpec",
-        "ResolvedDataSceneSpriteSurface"
+        "ResolvedDataSceneSpriteSurface",
+        "SpriteLightMaskBufferView"
       ]
     },
     {
@@ -437,7 +438,8 @@
         "FlatLightingAsset",
         "FlatLightingPreparer",
         "SpriteSurfaceMaterialSpec",
-        "SpriteSurfaceBufferView"
+        "SpriteSurfaceBufferView",
+        "SpriteLightMaskBufferView"
       ]
     },
     {

@@ -164,9 +164,9 @@ test("WebGpuLightingPass records lighting draws into the caller render pass with
   equal(device.queue.writeBufferCalls.length, 3);
   equal(device.queue.writeBufferCalls.every((call) => !call.dataWasView), true);
   deepEqual(device.queue.writeBufferCalls[0]?.values, Array.from(new Float32Array([
-    0, 0, 200, 120, 0.1, 0.2, 0.3, 0.4, 0, 0, 1, 1, 0,
-    -16, -16, 160, 160, 0.5, 0.25, 0.125, 1, 64, 64, 80, 2, 1,
-    100, 60, 16, 16, 1, 0, 0, 0.25, 0, 0, 1, 1, 0,
+    0, 0, 200, 120, 0.1, 0.2, 0.3, 0.4, 0, 0, 1, 1, 0, 65535,
+    -16, -16, 160, 160, 0.5, 0.25, 0.125, 1, 64, 64, 80, 2, 1, 65535,
+    100, 60, 16, 16, 1, 0, 0, 0.25, 0, 0, 1, 1, 0, 65535,
   ])));
 });
 
@@ -274,4 +274,11 @@ test("WebGPU mask replacement failure preserves previous resources and cleans st
   draw(240);device.failGroup=true;throws(()=>draw(480),/injected/);
   equal(device.textures[0]?.destroyed,false);equal(device.textures[1]?.destroyed,true);equal(device.buffers[device.buffers.length-1]?.destroyed,true);
   device.failGroup=false;draw(240);equal(device.textures.length,2);pass.destroy();equal(device.textures.every(t=>t.destroyed),true);
+});
+
+test("WebGPU light channels remain per-instance and distinguish receiver texture presence",()=>{
+ installWebGpuGlobals();const device=new FakeGpuDevice(),pass=new WebGpuLightingPass(device as unknown as GPUDevice,"rgba16float",{} as GPUPipelineLayout,{} as GPUBindGroup,true,false,false,true);
+ const scene=normalizeLightingScene({profile:"lit",ambientIrradiance:[0,0,0],directionalLight:{directionX:1,directionY:0,intensity:1,lightMask:1,shadowMask:8},pointLights:[{x:0,y:0,radius:10,lightMask:0,shadowMask:0},{x:1,y:1,radius:10}]});
+ pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder,scene,100,100,{layout:{} as GPUBindGroupLayout,bindGroup:{} as GPUBindGroup,hasReceiverMasks:true});
+ const values=device.queue.writeBufferCalls[0].values;equal(values.length,42);deepEqual([values[13],values[27],values[41]],[65536+1+(8<<8),65536,131071]);pass.destroy();
 });

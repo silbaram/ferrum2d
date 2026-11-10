@@ -48,6 +48,7 @@ function snapshotRenderCommandBuffer(view: RenderCommandBufferView): RenderComma
   return {
     ...view,
     buffer: view.buffer.slice(),
+    ...(view.spriteLightMasks === undefined ? {} : {spriteLightMasks:{...view.spriteLightMasks,buffer:view.spriteLightMasks.buffer.slice()}}),
     ...(view.spriteSurfaceMaterials === undefined || surfaceWords === undefined ? {} : {
       spriteSurfaceMaterials: { ...view.spriteSurfaceMaterials, words: surfaceWords, values: new Float32Array(surfaceWords.buffer) },
     }),

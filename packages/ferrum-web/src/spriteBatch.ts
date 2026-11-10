@@ -93,15 +93,15 @@ export class SpriteBatch {
   private surfaceUniforms?: WebGLUniformLocation[];
   private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data", private readonly litHdr = false, private readonly litSourceLinear = linearTarget, private readonly surfaceMode = false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data" | "masks", private readonly litHdr = false, private readonly litSourceLinear = linearTarget, private readonly surfaceMode = false) {
     if(surfaceMode && litMode!=="data")throw Error("Surface staging requires the lit data pass");
-    this.instanceFloats = surfaceMode ? 24 : litMode ? 17 : 15;
+    this.instanceFloats = litMode==="masks"?19:surfaceMode ? 24 : litMode ? 17 : 15;
     this.instanceStride = this.instanceFloats * 4;
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, litMode ? (litMode === "data" ? surfaceMode ? "spriteLitSurfaceData" : "spriteLitData" : "spriteLitColor") : sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
+      this.program = createWebGL2Program(this.gl, litMode ? (litMode==="masks"?"spriteLitMasks":litMode === "data" ? surfaceMode ? "spriteLitSurfaceData" : "spriteLitData" : "spriteLitColor") : sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -141,6 +141,7 @@ export class SpriteBatch {
       this.gl.vertexAttribDivisor(5, 1);
 
       if (litMode) { gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 2, gl.FLOAT, false, this.instanceStride, 15 * 4); gl.vertexAttribDivisor(6, 1); }
+      if(litMode==="masks"){gl.enableVertexAttribArray(7);gl.vertexAttribPointer(7,2,gl.FLOAT,false,this.instanceStride,17*4);gl.vertexAttribDivisor(7,1);}
       if (surfaceMode) {
         gl.enableVertexAttribArray(7);gl.vertexAttribPointer(7,4,gl.FLOAT,false,this.instanceStride,17*4);gl.vertexAttribDivisor(7,1);
         gl.enableVertexAttribArray(8);gl.vertexAttribPointer(8,2,gl.FLOAT,false,this.instanceStride,21*4);gl.vertexAttribDivisor(8,1);
@@ -178,7 +179,7 @@ export class SpriteBatch {
         if (!count || !from || !to || !srgb) throw new Error("Missing sprite palette uniforms");
         this.paletteUniforms={count,from,to,srgb};
       }
-      if (litMode) { const location=gl.getUniformLocation(this.program,"u_output_srgb");if(!location)throw Error("Missing lit output uniform");this.litOutputLocation=location; }
+      if (litMode&&litMode!=="masks") { const location=gl.getUniformLocation(this.program,"u_output_srgb");if(!location)throw Error("Missing lit output uniform");this.litOutputLocation=location; }
       if(normalMode || litMode === "data"){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
       if(surfaceMode)this.surfaceUniforms=["u_emission_map","u_specular_map","u_roughness_map"].map(name=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing surface map uniform");return location;});
     } catch (error) {
@@ -369,7 +370,7 @@ export class SpriteBatch {
         pass,
         this.materialStaging,
       );
-      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.litSourceLinear,this.litHdr,this.surfaceMode,this.litSourceLinear);
+      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.litSourceLinear,this.litHdr,this.surfaceMode,this.litSourceLinear,this.litMode==="masks");
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, this.litMode ? uploadFloatCount : materialFloatCount);
     } else {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);

@@ -12,6 +12,8 @@ export interface RenderCommandView {
 }
 
 export interface RenderCommandBufferView {
+  /** Optional sorted v1 independent light/shadow receiver channels. */
+  spriteLightMasks?: import("./spriteLightMasks.js").SpriteLightMaskBufferView;
   /** Optional v1 sorted flat surface metadata. */
   spriteSurfaceMaterials?: import("./spriteSurface.js").SpriteSurfaceBufferView;
   /** Optional v1 sorted flat receiver metadata, borrowed from Rust for this frame. */

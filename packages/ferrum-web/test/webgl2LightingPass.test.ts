@@ -30,6 +30,7 @@ class FakeWebGL2Context {
   readonly equations:number[]=[];
   blendEquation(value:number):void {this.equations.push(value);}
   uniform3f():void {}
+  uniform2i():void {}
   activeTexture():void {}
   bindTexture():void {}
   texParameteri():void {}
@@ -273,4 +274,19 @@ test("WebGL2 mask allocation failure restores destination and retains a valid pr
   equal(restored,1);equal(gl.deletedTextures,1);equal(pass.resourceStats().textureBytes,240*120);
   gl.failFramebuffer=false;pass.draw(scene,[240,120],undefined,target());equal(gl.textureCount,2);
   pass.destroy();equal(gl.deletedTextures,2);
+});
+
+test("Flat receiver masks restore the additional texture unit even when a light draw fails",()=>{
+ const gl=Object.assign(new FakeWebGL2Context(),{TEXTURE_2D:0x0de1,TEXTURE_BINDING_2D:0x8069,TEXTURE1:0x84c1,TEXTURE2:0x84c2,TEXTURE4:0x84c4,TEXTURE5:0x84c5});
+ const prior=gl.getParameter.bind(gl),bindings=new Map<number,WebGLTexture|null>();let active:number=gl.TEXTURE0;
+ gl.activeTexture=(value?:number)=>{if(value!==undefined)active=value;};
+ gl.bindTexture=(_target?:number,texture?:WebGLTexture|null)=>{bindings.set(active,texture??null);};
+ gl.getParameter=(name:number)=>name===gl.TEXTURE_BINDING_2D?bindings.get(active)??null:prior(name);
+ const sentinel={} as WebGLTexture;bindings.set(gl.TEXTURE5,sentinel);
+ const pass=new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext,false,true);
+ const scene=normalizeLightingScene({profile:'lit',ambientIrradiance:[0,0,0],pointLights:[{x:0,y:0,radius:10,lightMask:1,shadowMask:0}]});
+ const buffers={normal:{} as WebGLTexture,coverage:{} as WebGLTexture,receiverMasks:{} as WebGLTexture};
+ pass.draw(scene,[100,100],buffers);equal(bindings.get(gl.TEXTURE5),sentinel);equal(active,gl.TEXTURE0);
+ gl.drawArrays=()=>{throw Error('injected draw failure');};throws(()=>pass.draw(scene,[100,100],buffers),/injected draw/);
+ equal(bindings.get(gl.TEXTURE5),sentinel);equal(active,gl.TEXTURE0);pass.destroy();
 });

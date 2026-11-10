@@ -1,3 +1,4 @@
+export type {SpriteLightMaskBufferView} from "./spriteLightMasks.js";
 export type { SpriteLightingMaterialSpec, SpriteLightingBufferView } from "./spriteLighting.js";
 export type {SpriteSurfaceMaterialSpec,SpriteSurfaceBufferView} from "./spriteSurface.js";
 export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";

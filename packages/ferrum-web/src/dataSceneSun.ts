@@ -1,3 +1,4 @@
+import {resolveLightingChannelMask} from "./lightingMasks.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 import type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
@@ -27,6 +28,7 @@ export interface DataSceneGroundShadowStats {
 
 /** direction is the direction shadows travel on the ground, not a direction toward the sun. */
 export function resolveDirectionalLight2D(light: DirectionalLight2D): ResolvedDirectionalLight2D {
+  if(light&&(light.lightMask!==undefined||light.shadowMask!==undefined))throw Error("Light channel masks require the flat lit profile");
   return resolveSun(light, 1);
 }
 
@@ -47,7 +49,8 @@ function resolveSun(light: DirectionalLight2D, maxIntensity: number): ResolvedDi
   if (!Number.isInteger(maxCasters)) throw new Error("directionalLight.maxCasters must be an integer");
   const color = light.color ?? [1, 0.98, 0.9];
   if (color.length !== 3) throw new Error("directionalLight.color must have three channels");
-  return { ...(light.elevationRadians === undefined ? {} : {elevationRadians:range(light.elevationRadians,0,Math.PI/2,"directionalLight.elevationRadians")}), directionX: x / length, directionY: y / length, intensity, shadowOpacity, shadowLengthScale, maxCasters,
+  return { ...(light.lightMask===undefined?{}:{lightMask:resolveLightingChannelMask(light.lightMask,"directionalLight.lightMask")}),
+    ...(light.shadowMask===undefined?{}:{shadowMask:resolveLightingChannelMask(light.shadowMask,"directionalLight.shadowMask")}), ...(light.elevationRadians === undefined ? {} : {elevationRadians:range(light.elevationRadians,0,Math.PI/2,"directionalLight.elevationRadians")}), directionX: x / length, directionY: y / length, intensity, shadowOpacity, shadowLengthScale, maxCasters,
     color: [range(color[0], 0, 1, "directionalLight.color[0]"), range(color[1], 0, 1, "directionalLight.color[1]"), range(color[2], 0, 1, "directionalLight.color[2]")] };
 }
 

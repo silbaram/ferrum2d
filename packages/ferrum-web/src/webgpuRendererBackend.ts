@@ -87,7 +87,8 @@ export class WebGpuRendererBackend implements Renderer {
   private flatLitSurface?:WebGpuFlatLitPass;
   private flatLitHdrSurface?:WebGpuFlatLitPass;
   private flatPassesUsed=0;
-  private readonly flatSurfaceState={active:false};
+  private flatMasksUsed=0;
+  private readonly flatSurfaceState={active:false,masksActive:false};
   private hdrPass?:WebGpuHdrPass;
   private hdrActive?:ResolvedFlatHdrOptions;
   private hdrDebugLines?:WebGpuDebugLinePass;
@@ -345,6 +346,8 @@ export class WebGpuRendererBackend implements Renderer {
 
   private clearFlatTargets():void{this.flatLit?.clearTargets();this.flatLitSurface?.clearTargets();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
   private pruneFlatTargets():void{
+    if(!(this.flatMasksUsed&1))this.flatLit?.clearReceiverMasks();if(!(this.flatMasksUsed&2))this.flatLitSurface?.clearReceiverMasks();
+    if(!(this.flatMasksUsed&4))this.flatLitHdr?.clearReceiverMasks();if(!(this.flatMasksUsed&8))this.flatLitHdrSurface?.clearReceiverMasks();
     if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
     if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
   }
@@ -422,7 +425,7 @@ export class WebGpuRendererBackend implements Renderer {
 
   render(): void {
     this.assertAlive();
-    this.pruneFlatTargets();this.flatPassesUsed=0;
+    this.pruneFlatTargets();this.flatPassesUsed=0;this.flatMasksUsed=0;
     this.hdrActive=undefined;this.hdrDrawCalls=0;this.managedDrawCalls=0;this.frameHasDrawnScene=false;
     if(!flatHdrOptions(this.lightingScene)){this.hdrPass?.release();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
     resetRendererStatsInto(this.currentStats);
@@ -446,7 +449,8 @@ export class WebGpuRendererBackend implements Renderer {
         : hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking))
         :(this.flatLit??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking));
       this.flatPassesUsed|=1<<((hdr?2:0)+(surface?1:0));
-      flat.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled);
+      const masks=this.flatSurfaceState.masksActive&&this.lightingScene.enabled;if(masks)this.flatMasksUsed|=1<<((hdr?2:0)+(surface?1:0));
+      flat.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled,masks);
 
     }else{this.clearFlatTargets();}
     const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
@@ -490,6 +494,7 @@ export class WebGpuRendererBackend implements Renderer {
       spriteStats.textureSwitchCount,
     );
     if(flatStats){this.currentStats.drawCalls+=flatStats.data.drawCalls;this.currentStats.batchCount+=flatStats.data.drawCalls;this.currentStats.textureBindCount+=flatStats.data.drawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.data.textureSwitchCount;}
+    if(flatStats?.receiverMasks){const mask=flatStats.receiverMasks;this.currentStats.drawCalls+=mask.drawCalls;this.currentStats.batchCount+=mask.drawCalls;this.currentStats.textureBindCount+=mask.drawCalls+1;this.currentStats.textureSwitchCount+=mask.textureSwitchCount;}
     this.currentStats.normalDrawCalls=flatStats?.data.drawCalls??normalStats?.drawCalls??0;
     if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     addLightingStatsInto(

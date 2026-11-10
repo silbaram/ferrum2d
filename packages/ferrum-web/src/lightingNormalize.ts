@@ -1,3 +1,4 @@
+import {resolveLightingChannelMask} from "./lightingMasks.js";
 import { resolveDirectionalLight2D, resolveLitDirectionalLight2D } from "./dataSceneSun.js";
 import { resolveFlatHdr } from "./flatHdr.js";
 import type {
@@ -69,11 +70,16 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined)) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene))) {
     return DISABLED_LIGHTING_SCENE;
   }
 
   return resolveLightingSceneInto(createResolvedLightingScene(), scene);
+}
+
+function hasLightMasks(scene: LightingScene2D): boolean {
+  return scene.directionalLight?.lightMask !== undefined || scene.directionalLight?.shadowMask !== undefined
+    || !!scene.pointLights?.some(light => light.lightMask !== undefined || light.shadowMask !== undefined);
 }
 
 export function createResolvedLightingScene(): ResolvedLightingScene2D {
@@ -109,6 +115,7 @@ export function resolveLightingSceneInto(
   const mutableTarget = target as MutableResolvedLightingScene2D;
   if (scene && scene.profile !== undefined && scene.profile !== "legacy" && scene.profile !== "lit") throw Error("lighting.profile must be legacy or lit");
   const lit = !!scene && scene.profile === "lit";
+  if(scene&&!lit&&hasLightMasks(scene))throw Error("Light channel masks require the flat lit profile");
   if (scene && scene.hdr !== undefined) {
     if (!lit) throw Error("lighting.hdr requires the lit profile");
     mutableTarget.hdr = resolveFlatHdr(scene.hdr);
@@ -220,6 +227,8 @@ function tileOccludersMatch(source: readonly TileOccluder2D[], cached: readonly 
 }
 
 function resolvePointLightInto(target: MutableResolvedPointLight2D, light: PointLight2D, index: number): void {
+  if(light.lightMask===undefined)delete target.lightMask;else target.lightMask=resolveLightingChannelMask(light.lightMask,`pointLights[${index}].lightMask`);
+  if(light.shadowMask===undefined)delete target.shadowMask;else target.shadowMask=resolveLightingChannelMask(light.shadowMask,`pointLights[${index}].shadowMask`);
   if (light.height === undefined) delete target.height;
   else {
     target.height = nonNegativeIndexedNumber(light.height, "pointLights", index, "height");

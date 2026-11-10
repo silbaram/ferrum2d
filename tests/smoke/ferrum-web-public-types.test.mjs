@@ -23,7 +23,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       import { createRenderer, restoreGameStateSnapshot,
         type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
         type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer, type FlatHdrOptions, type ResolvedFlatHdrOptions,
-        type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView,
+        type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView, type SpriteLightMaskBufferView,
         type GameStateSnapshot,
       } from '@ferrum2d/ferrum-web/core';
       import {
@@ -48,10 +48,14 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       declare const viewer: ScenePlacementViewer;
       declare const renderer: Awaited<ReturnType<typeof createRenderer>>;
       declare const saved: GameStateSnapshot;
-      const receiver: SpriteLightingMaterialSpec = { mode: 'cutout', alphaCutoff: 0.5 };
+      const receiver: SpriteLightingMaterialSpec = { mode: 'cutout', alphaCutoff: 0.5, lightMask: 1, shadowMask: 0 };
+      const maskSidecar: SpriteLightMaskBufferView = { version: 1, stride: 2, buffer: new Uint32Array([1, 0]) };
+      // @ts-expect-error light channels are numeric bit masks
+      const badMask: SpriteLightingMaterialSpec = { mode: 'opaque', lightMask: 'all' };
+      void [maskSidecar, badMask];
       const hdr: FlatHdrOptions = { exposure: -1, toneMapping: 'aces' };
       const resolvedHdr: ResolvedFlatHdrOptions = { enabled: false, exposure: 2, toneMapping: 'reinhard' };
-      const lighting: LightingScene2D = { profile: 'lit', hdr, ambientIrradiance: [0.2, 0.2, 0.2] };
+      const lighting: LightingScene2D = { profile: 'lit', hdr, ambientIrradiance: [0.2, 0.2, 0.2], directionalLight: { directionX: 1, directionY: 0, lightMask: 2, shadowMask: 4 } };
       renderer.setLighting({ ...lighting, hdr: resolvedHdr });
       // @ts-expect-error tone mapping modes are explicit
       const invalidHdr: FlatHdrOptions = { toneMapping: 'filmic' };

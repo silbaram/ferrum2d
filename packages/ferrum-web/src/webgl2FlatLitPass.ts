@@ -1,3 +1,4 @@
+import {WebGL2ReceiverMasks} from "./webgl2ReceiverMasks.js";
 import { SpriteBatch, type SpriteTextureSource, type SpriteBatchStats } from "./spriteBatch.js";
 import { WebGL2LightingPass, type WebGL2LightingPassStats } from "./webgl2LightingPass.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms.js";
@@ -16,6 +17,8 @@ export class WebGL2FlatLitPass {
   private readonly colorBatch: SpriteBatch;
   private dataBatch?: SpriteBatch;
   private lights?: WebGL2LightingPass;
+  private receiverMasks?:WebGL2ReceiverMasks;
+  private masksActive=false;
   private program?: WebGLProgram;
   private vao?: WebGLVertexArrayObject;
   private uniforms?: { albedo: WebGLUniformLocation; coverage: WebGLUniformLocation; light: WebGLUniformLocation; subtract: WebGLUniformLocation; srgb: WebGLUniformLocation; hdr: WebGLUniformLocation; surface:WebGLUniformLocation;emission:WebGLUniformLocation };
@@ -32,7 +35,8 @@ export class WebGL2FlatLitPass {
   constructor(private readonly gl: WebGL2RenderingContext, private readonly linearWorking: boolean, private readonly hdr = false, private readonly surface=false) {
     this.colorBatch = new SpriteBatch(gl, linearWorking || hdr, false, false, false, "color", hdr, linearWorking);
   }
-  prepareFrame(width: number, height: number, enabled: boolean): void {
+  prepareFrame(width: number, height: number, enabled: boolean,masks=false): void {
+    this.masksActive=enabled&&masks;
     if (!enabled) { this.clearTargets(); return; }
     requireWebGL2FlatLit(this.gl);
     if(this.surface && this.gl.getParameter(this.gl.MAX_DRAW_BUFFERS)<4)throw Error("Surface materials require four draw buffers");
@@ -40,6 +44,7 @@ export class WebGL2FlatLitPass {
     this.lights ??= new WebGL2LightingPass(this.gl, true, true,this.surface,!this.linearWorking&&!this.hdr);
     if (!this.program) this.prepareComposite();
     this.resize(width, height);
+    if(this.masksActive)(this.receiverMasks??=new WebGL2ReceiverMasks(this.gl)).prepare(width,height);
   }
   drawColor(source: SpriteTextureSource, commands: RenderCommandBufferView, resolution: [number, number], material: ResolvedSpriteMaterialPreset,
     offset: readonly [number, number], snap: number, ground: number, skipShadows: boolean): SpriteBatchStats {
@@ -48,7 +53,7 @@ export class WebGL2FlatLitPass {
   }
   drawLighting(source: SpriteTextureSource, commands: RenderCommandBufferView, scene: ResolvedLightingScene2D, resolution: [number, number],
     material: ResolvedSpriteMaterialPreset, offset: readonly [number, number], snap: number, ground: number, skipShadows: boolean,
-    restore: () => void, sunMask?: WebGLTexture): { normalDrawCalls: number; normalSwitches: number; lighting: WebGL2LightingPassStats } {
+    restore: () => void, sunMask?: WebGLTexture): { normalDrawCalls: number; normalSwitches: number; lighting: WebGL2LightingPassStats;receiverMasks?:SpriteBatchStats } {
     const gl = this.gl, batch = this.dataBatch!, mask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
     const capabilities = [gl.DEPTH_TEST, gl.CULL_FACE, gl.SCISSOR_TEST], enabled = capabilities.map(v => gl.isEnabled(v));
     try {
@@ -58,13 +63,14 @@ export class WebGL2FlatLitPass {
       if(this.surface){gl.clearBufferfv(gl.COLOR,1,this.zero);gl.clearBufferfv(gl.COLOR,3,this.zero);}
       batch.pixelSnap = snap; batch.groundYScale = ground; batch.skipGroundShadows = skipShadows;
       const data = batch.drawLitBatches(source, commands, resolution, material, offset);
+      const receiverMasks=this.masksActive?this.receiverMasks!.draw(source,commands,resolution,material,offset,snap,ground,skipShadows):undefined;
       this.lightTarget.restore(); gl.clearBufferfv(gl.COLOR, 0, this.zero);
       const effective = this.effective, ambient = effective.ambient as [number, number, number, number];
       ambient[0] = scene.ambientIrradiance![0]; ambient[1] = scene.ambientIrradiance![1]; ambient[2] = scene.ambientIrradiance![2]; ambient[3] = 1;
       effective.enabled = true; effective.pointLights = scene.pointLights; effective.tileOccluders = scene.tileOccluders;
       effective.directionalLight = scene.directionalLight; effective.shadows = scene.shadows;
       this.lightTarget.width = this.width; this.lightTarget.height = this.height;
-      const lighting = this.lights!.draw(effective, resolution, { normal: this.textures[0]!, coverage: this.textures[1]!,...(this.surface?{albedo:this.textures[2]!}:{}) }, this.lightTarget, sunMask);
+      const lighting = this.lights!.draw(effective, resolution, { normal: this.textures[0]!, coverage: this.textures[1]!,...(this.surface?{albedo:this.textures[2]!}:{}),...(this.masksActive?{receiverMasks:this.receiverMasks!.texture!}:{}) }, this.lightTarget, sunMask);
       restore(); gl.colorMask(true, true, true, false); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.program!); gl.bindVertexArray(this.vao!);
       const u = this.uniforms!;
@@ -76,13 +82,15 @@ export class WebGL2FlatLitPass {
       }
       gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT); gl.uniform1i(u.subtract, 1); gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.blendEquation(gl.FUNC_ADD); gl.uniform1i(u.subtract, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
-      return { normalDrawCalls: data.drawCalls, normalSwitches: data.textureSwitchCount, lighting: { ...lighting, drawCalls: lighting.drawCalls + 2 } };
+      return { normalDrawCalls: data.drawCalls, normalSwitches: data.textureSwitchCount,receiverMasks, lighting: { ...lighting, drawCalls: lighting.drawCalls + 2 } };
     } finally {
       gl.colorMask(mask[0]!, mask[1]!, mask[2]!, mask[3]!); gl.blendEquation(gl.FUNC_ADD); setSpriteBlend(gl, this.linearWorking || this.hdr);
       capabilities.forEach((v, i) => enabled[i] ? gl.enable(v) : gl.disable(v)); gl.bindVertexArray(null); gl.activeTexture(gl.TEXTURE0); restore();
     }
   }
+  clearReceiverMasks():void{this.receiverMasks?.clearTarget();}
   clearTargets(): void {
+    this.clearReceiverMasks();
     for (const texture of this.textures) this.gl.deleteTexture(texture);
     if (this.dataFramebuffer) this.gl.deleteFramebuffer(this.dataFramebuffer);
     if (this.lightFramebuffer) this.gl.deleteFramebuffer(this.lightFramebuffer);
@@ -90,17 +98,17 @@ export class WebGL2FlatLitPass {
     this.lights?.clearTargets();
   }
   destroy(): void {
-    this.clearTargets(); this.colorBatch.destroy(); this.dataBatch?.destroy(); this.lights?.destroy();
+    this.clearTargets(); this.colorBatch.destroy(); this.dataBatch?.destroy(); this.lights?.destroy();this.receiverMasks?.destroy();
     if (this.program) this.gl.deleteProgram(this.program); if (this.vao) this.gl.deleteVertexArray(this.vao);
     this.program = undefined; this.vao = undefined;
   }
   resourceStats() {
-    const color = this.colorBatch.resourceStats(), data = this.dataBatch?.resourceStats(), light = this.lights?.resourceStats();
-    return { bufferCount: color.bufferCount + (data?.bufferCount ?? 0) + (light?.bufferCount ?? 0),
-      programCount: color.programCount + (data?.programCount ?? 0) + (light?.programCount ?? 0) + (this.program ? 1 : 0),
-      bufferBytes: color.bufferBytes + (data?.bufferBytes ?? 0) + (light?.bufferBytes ?? 0),
-      textureCount: this.textures.length + (light?.renderTargetCount ?? 0), renderTargetCount: this.textures.length + (light?.renderTargetCount ?? 0),
-      textureBytes: this.width * this.height * ((this.hdr ? 24 : 20)+(this.surface?8:0)) + (light?.textureBytes ?? 0) };
+    const color = this.colorBatch.resourceStats(), data = this.dataBatch?.resourceStats(), light = this.lights?.resourceStats(),masks=this.receiverMasks?.resourceStats();
+    return { bufferCount: color.bufferCount + (data?.bufferCount ?? 0) + (light?.bufferCount ?? 0)+(masks?.bufferCount??0),
+      programCount: color.programCount + (data?.programCount ?? 0) + (light?.programCount ?? 0) + (this.program ? 1 : 0)+(masks?.programCount??0),
+      bufferBytes: color.bufferBytes + (data?.bufferBytes ?? 0) + (light?.bufferBytes ?? 0)+(masks?.bufferBytes??0),
+      textureCount: this.textures.length + (light?.renderTargetCount ?? 0)+(masks?.renderTargetCount??0), renderTargetCount: this.textures.length + (light?.renderTargetCount ?? 0)+(masks?.renderTargetCount??0),
+      textureBytes: this.width * this.height * ((this.hdr ? 24 : 20)+(this.surface?8:0)) + (light?.textureBytes ?? 0)+(masks?.textureBytes??0) };
   }
   private prepareComposite(): void {
     const gl = this.gl, program = createWebGL2Program(gl, "flatLitComposite"), vao = gl.createVertexArray();

@@ -1,3 +1,4 @@
+import {FLAT_RECEIVER_MASK_WGSL} from "./flatReceiverMaskShaders.js";
 import { expandLitSpriteCommands } from "./spriteLighting.js";
 import { flatLitWgslFragment } from "./flatLitShaders.js";
 import { spriteSurfaceTextureId } from "./spriteSurface.js";
@@ -53,7 +54,7 @@ export class WebGpuSpritePass {
     private readonly resolutionBindGroup: GPUBindGroup,
     private readonly normalMode=false,
     private readonly sunMaskMode=false,
-    private readonly litMode?: "color" | "data",
+    private readonly litMode?: "color" | "data" | "masks",
     private readonly litHdr = false,
     private readonly linearWorking = false,
     private readonly surfaceMode = false,
@@ -71,7 +72,7 @@ export class WebGpuSpritePass {
     this.additiveSpritePipeline = normalMode?this.spritePipeline:this.createSpritePipeline("additive");
   }
 
-  private get stride(): number { return (this.surfaceMode ? 24 : this.litMode ? 17 : 15) * 4; }
+  private get stride(): number { return (this.litMode==="masks"?19:this.surfaceMode ? 24 : this.litMode ? 17 : 15) * 4; }
 
   configurePalettes(palettes:ResolvedSpritePalettes|undefined):void {
     if(this.normalMode) return;
@@ -170,6 +171,7 @@ export class WebGpuSpritePass {
           @location(3) rotation: f32,
           @location(4) flags: f32,
           ${this.litMode?"@location(5) lighting:vec2f,":""}
+          ${this.litMode==="masks"?"@location(6) receiverMasks:vec2f,":""}
           ${this.surfaceMode?"@location(6) surface:vec4f,@location(7) surfaceParams:vec2f,":""}
           @builtin(vertex_index) vertexIndex: u32,
         };
@@ -181,6 +183,7 @@ export class WebGpuSpritePass {
           @location(2) corner: vec2f,
           @location(3) @interpolate(flat) flags: f32,
           ${this.litMode?"@location(6) @interpolate(flat) lighting:vec2f,":""}
+          ${this.litMode==="masks"?"@location(7) @interpolate(flat) receiverMasks:vec2f,":""}
           ${this.surfaceMode?"@location(7) @interpolate(flat) surface:vec4f,@location(8) @interpolate(flat) surfaceParams:vec2f,":""}
           ${this.normalMode?"@location(4) @interpolate(flat) rotationCS:vec2f, @location(5) @interpolate(flat) uvSign:vec2f,":""}
         };
@@ -233,12 +236,13 @@ export class WebGpuSpritePass {
           output.corner = corner;
           output.flags = input.flags;
           ${this.litMode?"output.lighting=input.lighting;":""}
+          ${this.litMode==="masks"?"output.receiverMasks=input.receiverMasks;":""}
           ${this.surfaceMode?"output.surface=input.surface;output.surfaceParams=input.surfaceParams;":""}
           ${this.normalMode?"output.rotationCS=vec2f(rotationCos,rotationSin);output.uvSign=select(vec2f(1.),vec2f(-1.),input.uvRect.zw<input.uvRect.xy);":""}
           return output;
         }
 
-        ${this.litMode?flatLitWgslFragment(this.litMode==="data",this.linearWorking,this.surfaceMode):this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
+        ${this.litMode==="masks"?FLAT_RECEIVER_MASK_WGSL:this.litMode?flatLitWgslFragment(this.litMode==="data",this.linearWorking,this.surfaceMode):this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
           if ((u32(input.flags) & 32u) != 0u) {
@@ -270,6 +274,7 @@ export class WebGpuSpritePass {
             { shaderLocation: 3, offset: 14 * BYTES_PER_F32, format: "float32" },
             { shaderLocation: 4, offset: 13 * BYTES_PER_F32, format: "float32" },
             ...(this.litMode?[{shaderLocation:5,offset:60,format:"float32x2" as const}]:[]),
+            ...(this.litMode==="masks"?[{shaderLocation:6,offset:68,format:"float32x2" as const}]:[]),
             ...(this.surfaceMode?[{shaderLocation:6,offset:68,format:"float32x4" as const},{shaderLocation:7,offset:84,format:"float32x2" as const}]:[]),
           ],
         }],
@@ -339,7 +344,7 @@ export class WebGpuSpritePass {
         const mapped=materialPass.kind==="base"&&(commands.spriteNormalMaterials?.buffer[i*2]??SPRITE_NORMAL_NONE)!==SPRITE_NORMAL_NONE;
         this.materialStaging[i*FLOATS_PER_COMMAND+13]=(this.materialStaging[i*FLOATS_PER_COMMAND+13]&~64)|(mapped?64:0);
       }
-      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,this.linearWorking,this.litHdr,this.surfaceMode);
+      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,this.linearWorking,this.litHdr,this.surfaceMode,false,this.litMode==="masks");
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
         byteOffset,

@@ -90,7 +90,8 @@ export class WebGL2Renderer implements Renderer {
   private flatLitSurface?:WebGL2FlatLitPass;
   private flatLitHdrSurface?:WebGL2FlatLitPass;
   private flatPassesUsed=0;
-  private readonly flatSurfaceState={active:false};
+  private flatMasksUsed=0;
+  private readonly flatSurfaceState={active:false,masksActive:false};
   private hdrPass?: WebGL2HdrPass;
   private hdrActive?: ResolvedFlatHdrOptions;
   private hdrDrawCalls = 0;
@@ -455,6 +456,8 @@ export class WebGL2Renderer implements Renderer {
 
   private clearFlatTargets():void{this.flatLit?.clearTargets();this.flatLitSurface?.clearTargets();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
   private pruneFlatTargets():void{
+    if(!(this.flatMasksUsed&1))this.flatLit?.clearReceiverMasks();if(!(this.flatMasksUsed&2))this.flatLitSurface?.clearReceiverMasks();
+    if(!(this.flatMasksUsed&4))this.flatLitHdr?.clearReceiverMasks();if(!(this.flatMasksUsed&8))this.flatLitHdrSurface?.clearReceiverMasks();
     if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
     if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
   }
@@ -591,7 +594,7 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
-    this.pruneFlatTargets();this.flatPassesUsed=0;
+    this.pruneFlatTargets();this.flatPassesUsed=0;this.flatMasksUsed=0;
     if (!this.frameHasSpatial) {
       this.spatialPass?.releaseEnvironment();
       // A cold commit between frames belongs to the upcoming packet, not the old flat frame.
@@ -648,7 +651,8 @@ export class WebGL2Renderer implements Renderer {
         : hdr ? (this.flatLitHdr ??= new WebGL2FlatLitPass(this.gl, this.colorManagement === "linear-srgb", true))
         : (this.flatLit ??= new WebGL2FlatLitPass(this.gl, this.colorManagement === "linear-srgb"));
       this.flatPassesUsed|=1<<((hdr?2:0)+(surface?1:0));
-      flat.prepareFrame(this.renderWidth(), this.renderHeight(), receivers && this.lightingScene.enabled);
+      const masks=this.flatSurfaceState.masksActive&&this.lightingScene.enabled;if(masks)this.flatMasksUsed|=1<<((hdr?2:0)+(surface?1:0));
+      flat.prepareFrame(this.renderWidth(), this.renderHeight(), receivers && this.lightingScene.enabled,masks);
 
     } else { this.clearFlatTargets(); }
     this.ensureCurrentFrameTarget();
@@ -705,6 +709,7 @@ export class WebGL2Renderer implements Renderer {
     this.lightingTarget.width=this.renderWidth();this.lightingTarget.height=this.renderHeight();
     const flatStats=lit&&receivers&&this.lightingScene.enabled ? flat!.drawLighting(this.textureSource,commands,this.lightingScene,resolution,this.spriteMaterial,this.spriteScreenOffset,pixelSnap,this.groundYScale,deferredSun,()=>this.bindFrameStartTarget(),sunMaskStats?.texture):undefined;
     if(flatStats){this.currentStats.normalDrawCalls=flatStats.normalDrawCalls;this.currentStats.drawCalls+=flatStats.normalDrawCalls;this.currentStats.batchCount+=flatStats.normalDrawCalls;this.currentStats.textureBindCount+=flatStats.normalDrawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.normalSwitches;}
+    if(flatStats?.receiverMasks){const mask=flatStats.receiverMasks;this.currentStats.drawCalls+=mask.drawCalls;this.currentStats.batchCount+=mask.drawCalls;this.currentStats.textureBindCount+=mask.drawCalls+1;this.currentStats.textureSwitchCount+=mask.textureSwitchCount;}
     const lightingStats = flatStats?.lighting ?? this.lightingPass.draw(lit?this.disabledLightingScene:this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget,sunMaskStats?.texture);
     addLightingStatsInto(
       this.currentStats,

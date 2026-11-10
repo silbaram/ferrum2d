@@ -1,3 +1,4 @@
+import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
 import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
@@ -1005,6 +1006,7 @@ export async function createEngineWithFramePipeline(
     supportsSpriteNineSlices: () => { requireAlive(); return supportsSpriteNineSlices(rustEngine); },
     supportsSpriteNormalMaterials: () => { requireAlive(); return supportsSpriteNormals(rustEngine); },
     supportsSpriteLightingMaterials: () => { requireAlive(); return supportsSpriteLighting(rustEngine); },
+    supportsSpriteLightMasks:()=>{requireAlive();return supportsSpriteLightMasks(rustEngine);},
     supportsSpriteSurfaceMaterials:()=>{requireAlive();return supportsSpriteSurface(rustEngine);},
     useDataScene,
     spatialModelAssets: spec => {

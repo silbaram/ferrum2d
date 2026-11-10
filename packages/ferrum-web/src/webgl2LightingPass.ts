@@ -59,6 +59,7 @@ export class WebGL2LightingPass {
   private readonly emptyMask = new Float32Array(4);
   private readonly maskUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; tint: WebGLUniformLocation };
   private readonly normalUniforms:{has:WebGLUniformLocation;normal:WebGLUniformLocation;coverage:WebGLUniformLocation;height:WebGLUniformLocation;direction:WebGLUniformLocation};
+  private readonly receiverUniforms:{has:WebGLUniformLocation;texture:WebGLUniformLocation;channels:WebGLUniformLocation};
   private readonly surfaceUniforms:{has:WebGLUniformLocation;albedo:WebGLUniformLocation;srgb:WebGLUniformLocation};
 
   constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false, private readonly irradiance = false, private readonly surface=false, private readonly surfaceAlbedoSrgb=false) {
@@ -134,6 +135,7 @@ export class WebGL2LightingPass {
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
       const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing lighting uniform "+name);return location;};
       this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
+      this.receiverUniforms={has:uniform("u_has_receiver_masks"),texture:uniform("u_receiver_masks"),channels:uniform("u_light_channels")};
       this.surfaceUniforms={has:uniform("u_surface"),albedo:uniform("u_surface_albedo"),srgb:uniform("u_surface_albedo_srgb")};
       this.maskUniforms={has:uniform("u_has_shadow"),texture:uniform("u_shadow_mask"),tint:uniform("u_shadow_tint")};
 
@@ -152,7 +154,7 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture;receiverMasks?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
     this.assertAlive();
     if(this.surface && !normals?.albedo)throw Error("Surface lighting requires receiver albedo");
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
@@ -166,6 +168,10 @@ export class WebGL2LightingPass {
     this.gl.blendEquation(this.gl.FUNC_ADD);
     this.bindRectProgram(resolution);
     this.gl.uniform1i(this.irradianceLocation, this.irradiance ? 1 : 0);
+    this.gl.uniform1i(this.receiverUniforms.has,Number(!!normals?.receiverMasks));this.gl.uniform1i(this.receiverUniforms.texture,5);this.gl.uniform2i(this.receiverUniforms.channels,255,255);
+    let previousReceiverTexture:WebGLTexture|null=null;
+    if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);previousReceiverTexture=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;this.gl.bindTexture(this.gl.TEXTURE_2D,normals.receiverMasks);this.gl.activeTexture(this.gl.TEXTURE0);}
+    try{
     this.gl.uniform1i(this.surfaceUniforms.has,Number(this.surface));this.gl.uniform1i(this.surfaceUniforms.albedo,4);this.gl.uniform1i(this.surfaceUniforms.srgb,Number(this.surfaceAlbedoSrgb));
     if(this.surface){this.gl.activeTexture(this.gl.TEXTURE4);this.gl.bindTexture(this.gl.TEXTURE_2D,normals!.albedo!);this.gl.activeTexture(this.gl.TEXTURE0);}
     this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
@@ -193,6 +199,7 @@ export class WebGL2LightingPass {
     const sun = scene.directionalLight;
     if (sun !== undefined && sun.intensity > 0) {
       if(sunMask){this.gl.uniform1i(this.maskUniforms.has,1);this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,sunMask);this.gl.activeTexture(this.gl.TEXTURE0);}
+      this.gl.uniform2i(this.receiverUniforms.channels,sun.lightMask??255,sun.shadowMask??255);
       const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
       this.gl.uniform3f(this.normalUniforms.direction,-sun.directionX*c,-sun.directionY*c,Math.sin(elevation));
       const energy = this.irradiance ? sun.intensity : 1;
@@ -220,6 +227,7 @@ export class WebGL2LightingPass {
         setSpriteBlend(this.gl,this.linearTarget,true);
         shadowDrawCalls++;shadowCasterCount+=geometry.casterCount;
       }else this.gl.uniform1i(this.maskUniforms.has,0);
+      this.gl.uniform2i(this.receiverUniforms.channels,light.lightMask??255,light.shadowMask??255);
       drawCalls += this.drawPointLight(light);
     }
     if(!shadowDrawCalls)this.releaseMask();
@@ -244,6 +252,7 @@ export class WebGL2LightingPass {
       shadowDrawCalls,
       shadowCasterCount,
     };
+    }finally{if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);this.gl.bindTexture(this.gl.TEXTURE_2D,previousReceiverTexture);this.gl.activeTexture(this.gl.TEXTURE0);}}
   }
 
   /** Internal allocation summary; no GPU queries or per-command work. */

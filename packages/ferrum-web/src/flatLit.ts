@@ -1,3 +1,4 @@
+import {validateSpriteLightMasks} from "./spriteLightMasks.js";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lightingTypes.js";
 import type { SpriteLightingMaterialSpec } from "./spriteLighting.js";
 import { validateSpriteLighting, resolveSpriteLightingMaterial } from "./spriteLighting.js";
@@ -50,8 +51,9 @@ function validateFlatLitTextureIds(source: FlatLitTextureSource, textureId: numb
   }
 }
 /** Validate before any render target is bound/cleared. No game-state inference from texture IDs. */
-export function validateFlatLitCommands(commands: RenderCommandBufferView, scene: ResolvedLightingScene2D, source: FlatLitTextureSource, material: ResolvedSpriteMaterialPreset,surfaceState?:{active:boolean}): boolean {
+export function validateFlatLitCommands(commands: RenderCommandBufferView, scene: ResolvedLightingScene2D, source: FlatLitTextureSource, material: ResolvedSpriteMaterialPreset,surfaceState?:{active:boolean;masksActive?:boolean}): boolean {
   const active = validateSpriteLighting(commands);
+  const masks=validateSpriteLightMasks(commands,scene.profile??"legacy");if(surfaceState)surfaceState.masksActive=masks;
   const surface=validateSpriteSurface(commands,scene.profile??"legacy");if(surfaceState)surfaceState.active=surface;
   if (scene.profile !== "lit") return false;
   if (commands.spatial) throw Error("The flat lit profile cannot render a Spatial scene");

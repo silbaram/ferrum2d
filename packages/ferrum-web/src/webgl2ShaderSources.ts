@@ -1,3 +1,4 @@
+import {FLAT_RECEIVER_MASK_GLSL} from "./flatReceiverMaskShaders.js";
 import { FLAT_HDR_GLSL } from "./flatHdrShaders.js";
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
 import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
@@ -42,7 +43,9 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
 // Internal shader sources shared by synchronous construction and async preparation.
 const LIT_SPRITE_VERTEX = SPRITE_VERTEX_SOURCE.replace("void main(){", "layout(location=6) in vec2 a_lighting;flat out vec2 v_lighting;void main(){v_lighting=a_lighting;");
 const SURFACE_SPRITE_VERTEX = LIT_SPRITE_VERTEX.replace("void main(){", "layout(location=7) in vec4 a_surface;layout(location=8) in vec2 a_surface_params;flat out vec4 v_surface;flat out vec2 v_surface_params;void main(){v_surface=a_surface;v_surface_params=a_surface_params;");
+const MASKED_SPRITE_VERTEX=LIT_SPRITE_VERTEX.replace("void main(){", "layout(location=7) in vec2 a_receiver_masks;flat out vec2 v_receiver_masks;void main(){v_receiver_masks=a_receiver_masks;");
 export const WEBGL2_SHADER_SOURCES = {
+  spriteLitMasks:{vertex:MASKED_SPRITE_VERTEX,fragment:FLAT_RECEIVER_MASK_GLSL},
   spriteLitColor: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(false) },
   spriteLitData: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(true) },
   spriteLitSurfaceData: { vertex: SURFACE_SPRITE_VERTEX, fragment: flatLitGlslFragment(true,true) },
@@ -148,6 +151,7 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
+      uniform bool u_has_receiver_masks;uniform highp sampler2D u_receiver_masks;uniform ivec2 u_light_channels;
       uniform bool u_surface,u_surface_albedo_srgb;uniform highp sampler2D u_surface_albedo;
       ${SPATIAL_SPECULAR_GLSL}
       float normalResponse(vec3 direction){
@@ -170,6 +174,12 @@ export const WEBGL2_SHADER_SOURCES = {
       }
       out vec4 outColor;
       void main() {
+        bool receiveShadow=true;
+        if(u_irradiance&&(u_mode==1||u_mode==2)){
+          ivec2 receiver=ivec2(255);if(u_has_receiver_masks)receiver=ivec2(round(texelFetch(u_receiver_masks,ivec2(gl_FragCoord.xy),0).rg*255.));
+          if((receiver.x&u_light_channels.x)==0){outColor=vec4(0.);return;}
+          receiveShadow=(receiver.y&u_light_channels.y)!=0;
+        }
         if (u_mode == 1) {
           float distanceToLight = length((v_position-u_light_center)/vec2(1.0,u_light_y_scale));
           float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
@@ -178,11 +188,11 @@ export const WEBGL2_SHADER_SOURCES = {
           vec3 direction=length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta);
           vec3 response=vec3(1.);if(u_surface)response=surfaceResponse(direction,true);else alpha*=normalResponse(direction);
           vec3 transmission=vec3(1.);
-          if(u_has_shadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
+          if(u_has_shadow&&receiveShadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
           float visibility=max(max(transmission.r,transmission.g),transmission.b);
           outColor = visibility>0.?vec4((u_irradiance?u_color.rgb:clamp(u_color.rgb,0.,1.))*response*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
-          float visibility=(u_mode==2&&u_has_shadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
+          float visibility=(u_mode==2&&u_has_shadow&&receiveShadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
           if(u_surface)outColor=vec4(u_color.rgb*surfaceResponse(u_light_direction,u_mode==2),u_color.a*visibility);
           else outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
         }

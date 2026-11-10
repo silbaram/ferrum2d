@@ -1,3 +1,4 @@
+import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
 import { validateDataSceneSpawnPrefabs } from "./dataSceneSpawnPrefabs.js";
 import { validateCombatNavigationBindings } from "./dataSceneCombatNavigation.js";
 import { resolveDataSceneSpatialSpec, type DataSceneSpatialSpec } from "./dataSceneSpatial.js";
@@ -150,6 +151,7 @@ export function resolveSceneAuthoringDocument(
         allowTemplate: allowComponentTemplates,
         path: `${path}.sceneComposition.instances.${index}`,
       });
+      if(components.mode==="inline"&&requestsSpriteLightMasks(components.sprite.lighting)&&(lighting?.profile!=="lit"||spatial))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
       if(components.mode==="inline"&&components.sprite.surface&&(lighting?.profile!=="lit"||spatial))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
     });
   }

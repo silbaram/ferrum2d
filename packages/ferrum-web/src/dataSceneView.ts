@@ -1,4 +1,4 @@
-import { resolveDirectionalLight2D } from "./dataSceneSun.js";
+import { resolveDirectionalLight2D,resolveLitDirectionalLight2D } from "./dataSceneSun.js";
 import type { DirectionalLight2D } from "./lightingTypes.js";
 import type { FerrumEngine, FrameState } from "./engineTypes.js";
 import type { DataSceneCameraOptions } from "./dataSceneCamera.js";
@@ -48,7 +48,7 @@ export function createDataSceneView(
     throw Error("Renderer does not support pixelPerfect presentation");
   let sun: DirectionalLight2D | undefined;
   const setSun = (light: DirectionalLight2D | false): void => {
-    const next = light === false ? undefined : resolveDirectionalLight2D(light);
+    const next = light === false ? undefined : (light.lightMask!==undefined||light.shadowMask!==undefined?resolveLitDirectionalLight2D:resolveDirectionalLight2D)(light);
     if (!engine.setDataSceneSun(next ?? false)) throw new Error("Sun requires an active Data Scene");
     sun = next;
   };

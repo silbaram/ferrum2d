@@ -1,3 +1,4 @@
+import {readSpriteLightMasks} from "./spriteLightMasks.js";
 import type { Engine } from "../pkg/ferrum_core";
 import type { AudioEventBufferView } from "./audioEventDecoder";
 import type { CollisionEventBufferView } from "./collisionEventDecoder";
@@ -68,10 +69,12 @@ export function renderCommandBufferView(
   const normals=readSpriteNormals(context.engine,context.memory,commandCount);
   const lighting=readSpriteLighting(context.engine,context.memory,commandCount);
   const surface=readSpriteSurface(context.engine,context.memory,commandCount,lighting);
+  const masks=readSpriteLightMasks(context.engine,context.memory,commandCount,lighting);
   return {
     ...(normals?{spriteNormalMaterials:normals}:{}),
     ...(lighting?{spriteLightingMaterials:lighting}:{}),
     ...(surface?{spriteSurfaceMaterials:surface}:{}),
+    ...(masks?{spriteLightMasks:masks}:{}),
     buffer: new Float32Array(
       context.memory.buffer,
       ptr,
