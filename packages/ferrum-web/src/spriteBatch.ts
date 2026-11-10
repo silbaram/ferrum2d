@@ -91,7 +91,7 @@ export class SpriteBatch {
   private litOutputLocation?: WebGLUniformLocation;
   private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data") {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data", private readonly litHdr = false, private readonly litSourceLinear = linearTarget) {
     this.instanceFloats = litMode ? 17 : 15;
     this.instanceStride = this.instanceFloats * 4;
     const programs: WebGLProgram[] = [];
@@ -342,7 +342,7 @@ export class SpriteBatch {
         pass,
         this.materialStaging,
       );
-      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.linearTarget);
+      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.litSourceLinear,this.litHdr);
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, this.litMode ? uploadFloatCount : materialFloatCount);
     } else {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);

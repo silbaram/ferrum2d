@@ -74,12 +74,12 @@ export function validateSpriteLighting(commands: Pick<RenderCommandBufferView, "
 
 /** Private GPU staging extension; the public command remains 15 floats. Expand backwards in-place. */
 export function expandLitSpriteCommands(data: Float32Array, commands: RenderCommandBufferView, first: number, count: number,
-  source: { textureInfo?(id: number): { colorSpace: "srgb" | "linear" | "none" } | undefined }, linearWorking: boolean): void {
+  source: { textureInfo?(id: number): { colorSpace: "srgb" | "linear" | "none" } | undefined }, linearWorking: boolean, hdr = false): void {
   const material = commands.spriteLightingMaterials;
   for (let i = count - 1; i >= 0; i--) {
     data.copyWithin(i * 17, i * 15, i * 15 + 15);
     const index = first + i, mode = material?.words[index * 2] ?? 0;
     const srgb = !linearWorking && source.textureInfo?.(Math.trunc(data[i * 17 + 12]!))?.colorSpace === "srgb";
-    data[i * 17 + 15] = mode + (srgb ? 4 : 0); data[i * 17 + 16] = material?.values[index * 2 + 1] ?? 0;
+    data[i * 17 + 15] = mode + (srgb ? 4 : 0) + (hdr ? 8 : 0); data[i * 17 + 16] = material?.values[index * 2 + 1] ?? 0;
   }
 }

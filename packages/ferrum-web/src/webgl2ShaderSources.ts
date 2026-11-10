@@ -1,3 +1,4 @@
+import { FLAT_HDR_GLSL } from "./flatHdrShaders.js";
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
 import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
 import { flatLitGlslFragment, FLAT_LIT_COMPOSITE_GLSL } from "./flatLitShaders.js";
@@ -43,6 +44,7 @@ export const WEBGL2_SHADER_SOURCES = {
   spriteLitColor: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(false) },
   spriteLitData: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(true) },
   flatLitComposite: FLAT_LIT_COMPOSITE_GLSL,
+  flatHdr: FLAT_HDR_GLSL,
   volumeShadow: { vertex: `#version 300 es
     precision highp float;
     layout(location=0) in vec3 a_vertex;

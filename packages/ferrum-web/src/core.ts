@@ -413,7 +413,7 @@ export type { DataSceneSpriteAnimationDirection, DataSceneSpriteClipSpec, DataSc
 
 export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
 export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
-export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
+export type { FlatHdrOptions, ResolvedFlatHdrOptions, DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
 
 export type { DataSceneGameplayOptions, DataSceneGameplaySpec, DataSceneCombatStats } from "./dataSceneGameplay.js";
 export type { DataSceneCombatLegacyProgressSnapshot, DataSceneCombatProgressSnapshot, DataSceneCombatActorSnapshot, DataSceneCombatProjectileSnapshot } from "./dataSceneCombatProgress.js";

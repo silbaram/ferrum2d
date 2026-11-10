@@ -1,3 +1,5 @@
+import type { FlatHdrOptions, ResolvedFlatHdrOptions } from "./flatHdr.js";
+export type { FlatHdrOptions, ResolvedFlatHdrOptions } from "./flatHdr.js";
 export type LightingColor3 = readonly [number, number, number];
 export type LightingColor4 = readonly [number, number, number, number];
 
@@ -81,6 +83,8 @@ export interface ShadowProjectionScratch {
 }
 
 export interface LightingScene2D {
+  /** Optional float world target and one output transform. Requires profile lit. */
+  hdr?: FlatHdrOptions | false;
   /** Omit for the existing overlay. lit uses explicit sprite receiver metadata. */
   profile?: "legacy" | "lit";
   /** Linear ambient irradiance for lit, default white. Do not combine with ambient overlay. */
@@ -119,6 +123,7 @@ export interface ResolvedLightingShadowOptions {
 }
 
 export interface ResolvedLightingScene2D {
+  hdr?: ResolvedFlatHdrOptions;
   profile?: "legacy" | "lit";
   ambientIrradiance?: LightingColor3;
   enabled: boolean;

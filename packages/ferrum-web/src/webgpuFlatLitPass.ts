@@ -2,7 +2,7 @@ import { WebGpuSpritePass } from "./webgpuSpritePass.js";
 import { WebGpuLightingPass } from "./webgpuLightingPass.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
-import { FLAT_LIT_COMPOSITE_WGSL } from "./flatLitShaders.js";
+import { flatLitCompositeWgsl } from "./flatLitShaders.js";
 import { createResolvedLightingScene } from "./lightingNormalize.js";
 import type { ResolvedLightingScene2D } from "./lightingTypes.js";
 import type { WebGpuTextureStore } from "./webgpuTextureStore.js";
@@ -26,8 +26,8 @@ export class WebGpuFlatLitPass {
   private width=0; private height=0;
   private readonly effective=createResolvedLightingScene();
   constructor(private readonly device:GPUDevice,private readonly format:GPUTextureFormat,private readonly uniform:GPUBindGroupLayout,
-    private readonly texture:GPUBindGroupLayout,private readonly store:WebGpuTextureStore,private readonly resolution:GPUBindGroup,private readonly lightingLayout:GPUPipelineLayout){
-    this.color=new WebGpuSpritePass(device,format,uniform,texture,store,resolution,false,false,"color");
+    private readonly texture:GPUBindGroupLayout,private readonly store:WebGpuTextureStore,private readonly resolution:GPUBindGroup,private readonly lightingLayout:GPUPipelineLayout, private readonly hdr = false){
+    this.color=new WebGpuSpritePass(device,format,uniform,texture,store,resolution,false,false,"color",hdr);
     const entries=(count:number)=>Array.from({length:count},(_,binding)=>({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"unfilterable-float" as const,viewDimension:"2d" as const,multisampled:false}}));
     // Normal RGBA8 attachments use the same binding contract as the legacy lighting pass.
     this.normalLayout=device.createBindGroupLayout({entries:[0,1].map(binding=>({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float",viewDimension:"2d",multisampled:false}}))});
@@ -35,7 +35,7 @@ export class WebGpuFlatLitPass {
   }
   prepareFrame(width:number,height:number,enabled:boolean):void{
     if(!enabled){this.clearTargets();return;}
-    this.data??=new WebGpuSpritePass(this.device,"rgba8unorm",this.uniform,this.texture,this.store,this.resolution,true,false,"data");
+    this.data??=new WebGpuSpritePass(this.device,"rgba8unorm",this.uniform,this.texture,this.store,this.resolution,true,false,"data",this.hdr);
     this.lights??=new WebGpuLightingPass(this.device,"rgba16float",this.lightingLayout,this.resolution,true);
     if(!this.add)this.prepareComposite();
     this.resize(width,height);
@@ -58,7 +58,7 @@ export class WebGpuFlatLitPass {
   clearTargets(){for(const texture of this.textures)webGpuResources(this.device).destroy(texture);this.textures=[];this.views=[];this.normals=undefined;this.composite=undefined;this.width=this.height=0;this.lights?.clearTargets();}
   destroy(){this.clearTargets();this.color.destroy();this.data?.destroy();this.lights?.destroy();if(this.add)webGpuResources(this.device).releasePipeline(this.add);if(this.subtract)webGpuResources(this.device).releasePipeline(this.subtract);}
   private prepareComposite(){
-    const module=this.device.createShaderModule({code:FLAT_LIT_COMPOSITE_WGSL}),layout=this.device.createPipelineLayout({bindGroupLayouts:[this.compositeLayout]});
+    const module=this.device.createShaderModule({code:flatLitCompositeWgsl(this.hdr)}),layout=this.device.createPipelineLayout({bindGroupLayouts:[this.compositeLayout]});
     const pipeline=(subtract:boolean)=>webGpuResources(this.device).createRenderPipeline({layout,vertex:{module,entryPoint:"vs_main"},fragment:{module,entryPoint:subtract?"fs_subtract":"fs_add",targets:[{format:this.format,writeMask:7,blend:{color:{srcFactor:"one",dstFactor:"one",operation:subtract?"reverse-subtract":"add"},alpha:{srcFactor:"zero",dstFactor:"one",operation:"add"}}}]},primitive:{topology:"triangle-list"}});
     const subtract=pipeline(true);try{this.add=pipeline(false);this.subtract=subtract;}catch(error){webGpuResources(this.device).releasePipeline(subtract);throw error;}
   }
@@ -66,7 +66,7 @@ export class WebGpuFlatLitPass {
     if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width>this.device.limits.maxTextureDimension2D||height>this.device.limits.maxTextureDimension2D)throw Error("Invalid lit target dimensions");
     if(this.width===width&&this.height===height)return;
     const textures:GPUTexture[]=[],views:GPUTextureView[]=[];let normals:GPUBindGroup,composite:GPUBindGroup;
-    try{for(let i=0;i<4;i++){const texture=webGpuResources(this.device).createTexture({size:{width,height,depthOrArrayLayers:1},format:i===3?"rgba16float":"rgba8unorm",usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});textures.push(texture);views.push(texture.createView());}
+    try{for(let i=0;i<4;i++){const texture=webGpuResources(this.device).createTexture({size:{width,height,depthOrArrayLayers:1},format:i===3||i===2&&this.hdr?"rgba16float":"rgba8unorm",usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});textures.push(texture);views.push(texture.createView());}
       normals=this.device.createBindGroup({layout:this.normalLayout,entries:views.slice(0,2).map((resource,binding)=>({binding,resource}))});
       composite=this.device.createBindGroup({layout:this.compositeLayout,entries:[views[2]!,views[1]!,views[3]!].map((resource,binding)=>({binding,resource}))});
     }catch(error){textures.forEach(texture=>webGpuResources(this.device).destroy(texture));throw error;}

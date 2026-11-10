@@ -27,11 +27,20 @@ export interface DataSceneGroundShadowStats {
 
 /** direction is the direction shadows travel on the ground, not a direction toward the sun. */
 export function resolveDirectionalLight2D(light: DirectionalLight2D): ResolvedDirectionalLight2D {
+  return resolveSun(light, 1);
+}
+
+/** Internal lit radiance validation; the legacy public normalizer remains bounded to one. */
+export function resolveLitDirectionalLight2D(light: DirectionalLight2D): ResolvedDirectionalLight2D {
+  return resolveSun(light, 64);
+}
+
+function resolveSun(light: DirectionalLight2D, maxIntensity: number): ResolvedDirectionalLight2D {
   if (typeof light !== "object" || light === null) throw new Error("directionalLight must be an object");
   const x = finite(light.directionX, "directionalLight.directionX"), y = finite(light.directionY, "directionalLight.directionY");
   const length = Math.hypot(x, y);
   if (length < 0.000001) throw new Error("directionalLight direction must be nonzero");
-  const intensity = range(light.intensity ?? 0.15, 0, 1, "directionalLight.intensity");
+  const intensity = range(light.intensity ?? 0.15, 0, maxIntensity, "directionalLight.intensity");
   const shadowOpacity = range(light.shadowOpacity ?? 0.35, 0, 1, "directionalLight.shadowOpacity");
   const shadowLengthScale = range(light.shadowLengthScale ?? 0.8, 0.01, 100, "directionalLight.shadowLengthScale");
   const maxCasters = range(light.maxCasters ?? 512, 0, 10000, "directionalLight.maxCasters");
@@ -71,7 +80,7 @@ function shadowRange(value: unknown, min: number, max: number, path: string): nu
 
 export function configureDataSceneSun(engine: Engine, light: DirectionalLight2D | false): boolean {
   if (light === false) return engine.configure_data_scene_sun(1, 0, 0, 1, 0);
-  const sun = resolveDirectionalLight2D(light);
+  const sun = resolveLitDirectionalLight2D(light);
   return engine.configure_data_scene_sun(sun.directionX, sun.directionY, sun.shadowOpacity, sun.shadowLengthScale, sun.intensity === 0 ? 0 : sun.maxCasters);
 }
 

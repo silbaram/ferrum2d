@@ -90,5 +90,11 @@ throws(()=>applyDataSceneAuthoringDocument(engine,document),/preflight/);throws(
   } },
  });
  ok(selection.entityHandles.other); equal(engine.entityCount(), 1);
+ const hdrDocument={...document,lighting:{...document.lighting,hdr:{enabled:false,exposure:2,toneMapping:'aces' as const}}};
+ applyDataSceneAuthoringDocument(engine,hdrDocument,options);
+ const hdrSaved=captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:hdrDocument});
+ const hdrRestored=restoreGameStateSnapshot(engine,JSON.parse(JSON.stringify(hdrSaved)),{dataSceneAuthoringApplyOptions:options});
+ ok(hdrRestored.dataSceneAuthoringDocumentApplied);
+ deepEqual(resolveSceneAuthoringDocument(hdrDocument).lighting!.hdr,hdrDocument.lighting.hdr);
  }finally{engine.destroy();globalThis.fetch=fetch;}
 });

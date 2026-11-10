@@ -18,7 +18,7 @@ export class WebGL2FlatLitPass {
   private lights?: WebGL2LightingPass;
   private program?: WebGLProgram;
   private vao?: WebGLVertexArrayObject;
-  private uniforms?: { albedo: WebGLUniformLocation; coverage: WebGLUniformLocation; light: WebGLUniformLocation; subtract: WebGLUniformLocation; srgb: WebGLUniformLocation };
+  private uniforms?: { albedo: WebGLUniformLocation; coverage: WebGLUniformLocation; light: WebGLUniformLocation; subtract: WebGLUniformLocation; srgb: WebGLUniformLocation; hdr: WebGLUniformLocation };
   private textures: WebGLTexture[] = [];
   private dataFramebuffer?: WebGLFramebuffer;
   private lightFramebuffer?: WebGLFramebuffer;
@@ -29,13 +29,13 @@ export class WebGL2FlatLitPass {
   private readonly full = new Float32Array([1, 0, 0, 0]);
   private readonly lightTarget = { width: 0, height: 0, restore: () => { this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.lightFramebuffer!); this.gl.viewport(0, 0, this.width, this.height); } };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearWorking: boolean) {
-    this.colorBatch = new SpriteBatch(gl, linearWorking, false, false, false, "color");
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearWorking: boolean, private readonly hdr = false) {
+    this.colorBatch = new SpriteBatch(gl, linearWorking || hdr, false, false, false, "color", hdr, linearWorking);
   }
   prepareFrame(width: number, height: number, enabled: boolean): void {
     if (!enabled) { this.clearTargets(); return; }
     requireWebGL2FlatLit(this.gl);
-    this.dataBatch ??= new SpriteBatch(this.gl, this.linearWorking, false, false, false, "data");
+    this.dataBatch ??= new SpriteBatch(this.gl, this.linearWorking || this.hdr, false, false, false, "data", this.hdr, this.linearWorking);
     this.lights ??= new WebGL2LightingPass(this.gl, true, true);
     if (!this.program) this.prepareComposite();
     this.resize(width, height);
@@ -66,7 +66,7 @@ export class WebGL2FlatLitPass {
       restore(); gl.colorMask(true, true, true, false); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.program!); gl.bindVertexArray(this.vao!);
       const u = this.uniforms!;
-      gl.uniform1i(u.albedo, 0); gl.uniform1i(u.coverage, 1); gl.uniform1i(u.light, 2); gl.uniform1i(u.srgb, this.linearWorking ? 0 : 1);
+      gl.uniform1i(u.albedo, 0); gl.uniform1i(u.coverage, 1); gl.uniform1i(u.light, 2); gl.uniform1i(u.srgb, this.linearWorking || this.hdr ? 0 : 1); gl.uniform1i(u.hdr, this.hdr ? 1 : 0);
       for (const [unit, texture] of [[0, this.textures[2]!], [1, this.textures[1]!], [2, this.textures[3]!]] as const) {
         gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, texture);
       }
@@ -74,7 +74,7 @@ export class WebGL2FlatLitPass {
       gl.blendEquation(gl.FUNC_ADD); gl.uniform1i(u.subtract, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
       return { normalDrawCalls: data.drawCalls, normalSwitches: data.textureSwitchCount, lighting: { ...lighting, drawCalls: lighting.drawCalls + 2 } };
     } finally {
-      gl.colorMask(mask[0]!, mask[1]!, mask[2]!, mask[3]!); gl.blendEquation(gl.FUNC_ADD); setSpriteBlend(gl, this.linearWorking);
+      gl.colorMask(mask[0]!, mask[1]!, mask[2]!, mask[3]!); gl.blendEquation(gl.FUNC_ADD); setSpriteBlend(gl, this.linearWorking || this.hdr);
       capabilities.forEach((v, i) => enabled[i] ? gl.enable(v) : gl.disable(v)); gl.bindVertexArray(null); gl.activeTexture(gl.TEXTURE0); restore();
     }
   }
@@ -96,14 +96,14 @@ export class WebGL2FlatLitPass {
       programCount: color.programCount + (data?.programCount ?? 0) + (light?.programCount ?? 0) + (this.program ? 1 : 0),
       bufferBytes: color.bufferBytes + (data?.bufferBytes ?? 0) + (light?.bufferBytes ?? 0),
       textureCount: this.textures.length + (light?.renderTargetCount ?? 0), renderTargetCount: this.textures.length + (light?.renderTargetCount ?? 0),
-      textureBytes: this.width * this.height * 20 + (light?.textureBytes ?? 0) };
+      textureBytes: this.width * this.height * (this.hdr ? 24 : 20) + (light?.textureBytes ?? 0) };
   }
   private prepareComposite(): void {
     const gl = this.gl, program = createWebGL2Program(gl, "flatLitComposite"), vao = gl.createVertexArray();
     try {
       if (!vao) throw Error("Flat lit composite VAO allocation failed");
       const location = (name: string) => { const value = gl.getUniformLocation(program, name); if (!value) throw Error("Missing lit composite uniform " + name); return value; };
-      this.uniforms = { albedo: location("u_albedo"), coverage: location("u_coverage"), light: location("u_irradiance"), subtract: location("u_subtract"), srgb: location("u_output_srgb") };
+      this.uniforms = { albedo: location("u_albedo"), coverage: location("u_coverage"), light: location("u_irradiance"), subtract: location("u_subtract"), srgb: location("u_output_srgb"), hdr: location("u_hdr") };
       this.program = program; this.vao = vao;
     } catch (error) { gl.deleteProgram(program); if (vao) gl.deleteVertexArray(vao); throw error; }
   }
@@ -121,7 +121,7 @@ export class WebGL2FlatLitPass {
         const t = gl.createTexture(); if (!t) throw Error("Lit texture allocation failed"); textures.push(t); gl.bindTexture(gl.TEXTURE_2D, t);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, i === 3 ? gl.RGBA16F : i === 2 && this.linearWorking ? gl.SRGB8_ALPHA8 : gl.RGBA8, width, height, 0, gl.RGBA, i === 3 ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, i === 3 || i === 2 && this.hdr ? gl.RGBA16F : i === 2 && this.linearWorking && !this.hdr ? gl.SRGB8_ALPHA8 : gl.RGBA8, width, height, 0, gl.RGBA, i === 3 || i === 2 && this.hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, null);
       }
       for (let i = 0; i < 2; i++) {
         const f = gl.createFramebuffer(); if (!f) throw Error("Lit framebuffer allocation failed"); buffers.push(f); gl.bindFramebuffer(gl.FRAMEBUFFER, f);

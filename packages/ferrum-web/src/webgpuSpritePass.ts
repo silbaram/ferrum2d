@@ -50,6 +50,7 @@ export class WebGpuSpritePass {
     private readonly normalMode=false,
     private readonly sunMaskMode=false,
     private readonly litMode?: "color" | "data",
+    private readonly litHdr = false,
   ) {
     this.spritePipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout]:[uniformBindGroupLayout, textureBindGroupLayout],
@@ -263,7 +264,7 @@ export class WebGpuSpritePass {
       fragment: {
         module,
         entryPoint: "fs_main",
-        targets: this.litMode==="data"?[0,1,2].map(()=>({format:"rgba8unorm",blend:spriteBlendState("alpha")})):this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
+        targets: this.litMode==="data"?[0,1,2].map(i=>({format:i===2&&this.litHdr?"rgba16float":"rgba8unorm",blend:spriteBlendState("alpha")})):this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
           format: this.format,
           blend: this.sunMaskMode&&blendMode==="additive"?{color:{operation:"max",srcFactor:"one",dstFactor:"one"},alpha:{operation:"max",srcFactor:"one",dstFactor:"one"}}:spriteBlendState(blendMode),
         }],
@@ -317,7 +318,7 @@ export class WebGpuSpritePass {
         const mapped=materialPass.kind==="base"&&(commands.spriteNormalMaterials?.buffer[i*2]??SPRITE_NORMAL_NONE)!==SPRITE_NORMAL_NONE;
         this.materialStaging[i*FLOATS_PER_COMMAND+13]=(this.materialStaging[i*FLOATS_PER_COMMAND+13]&~64)|(mapped?64:0);
       }
-      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,false);
+      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,false,this.litHdr);
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
         byteOffset,

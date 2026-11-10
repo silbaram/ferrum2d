@@ -46,6 +46,8 @@ export async function probeFlatLit(preferred,colorManagement='legacy'){
   const overlay=commands([sprite(40,16,16,16,1,[2/3,0,1,1]),sprite(40,16,16,16,5)],[1,0]);
   const foreground=await draw('foreground',{profile:'lit',ambientIrradiance:[.25,.25,.25]},overlay);
   const expected=colorManagement==='linear-srgb'?[99,99,207,255]:[68,68,196,preferred==='webgl2'?191:255];near(foreground.rgba[1],expected,'unlit foreground');
+  const brightForeground=await draw('SDR-bright-foreground',{profile:'lit',hdr:false,ambientIrradiance:[0,0,0],directionalLight:{directionX:1,directionY:0,elevationRadians:Math.PI/2,color:[1,1,1],intensity:4}},overlay);
+  near(brightForeground.rgba[1],colorManagement==='linear-srgb'?[187,187,255,255]:[127,127,255,preferred==='webgl2'?191:255],'SDR clamp before foreground coverage');
   const A={x:32,y:24,radius:128,height:128,falloff:1,color:[1,0,0,1],intensity:.5},B={...A,x:80,y:8,color:[0,0,1,1]};
   const shadow=(lights,walls=[])=>({profile:'lit',ambientIrradiance:[.05,.05,.05],pointLights:lights,tileOccluders:walls,shadows:{color:[0,0,0,1],projectionLength:512}});
   const both=await draw('two-lights',shadow([A,B])),blocked=await draw('red-blocked',shadow([A,B],[{x:48,y:16,width:8,height:16}])),blue=await draw('blue-only',shadow([B]));

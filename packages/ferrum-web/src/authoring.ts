@@ -536,3 +536,5 @@ export { resolveSceneDisplay } from "./sceneDisplay.js";
 export type { SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";
 
 export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
+
+export type { FlatHdrOptions, ResolvedFlatHdrOptions } from "./flatHdr.js";

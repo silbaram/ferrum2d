@@ -225,9 +225,11 @@ export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: u
   const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
   const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
   const textureId=options.textureId??(name=>adapter.textureId(name));
+  const lighting = resolved.lighting!;
+  const hdr = lighting.enabled !== false && lighting.hdr !== undefined && lighting.hdr !== false && lighting.hdr.enabled !== false;
   const assets=plan.instances.flatMap(instance=>{
     const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path),sprite=component.sprite;
-    return sprite.lighting===undefined?[]:[{textureId:dataSceneTextureId(sprite,textureId),normalTextureId:sprite.normalTexture===undefined?undefined:normalTextureId(sprite.normalTexture,textureId),lighting:sprite.lighting}];
+    return sprite.lighting===undefined && (!hdr || component.visual.kind !== "sprite") ? [] : [{textureId:dataSceneTextureId(sprite,textureId),normalTextureId:sprite.normalTexture===undefined?undefined:normalTextureId(sprite.normalTexture,textureId),lighting:sprite.lighting ?? {mode:"unlit" as const}}];
   });
   preparer.prepareFlatLighting(resolved.lighting!,assets);
 }

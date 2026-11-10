@@ -22,7 +22,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
     await writeFile(join(project, 'consumer.ts'), `
       import { createRenderer, restoreGameStateSnapshot,
         type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
-        type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer,
+        type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer, type FlatHdrOptions, type ResolvedFlatHdrOptions,
         type GameStateSnapshot,
       } from '@ferrum2d/ferrum-web/core';
       import {
@@ -47,7 +47,13 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       declare const renderer: Awaited<ReturnType<typeof createRenderer>>;
       declare const saved: GameStateSnapshot;
       const receiver: SpriteLightingMaterialSpec = { mode: 'cutout', alphaCutoff: 0.5 };
-      const lighting: LightingScene2D = { profile: 'lit', ambientIrradiance: [0.2, 0.2, 0.2] };
+      const hdr: FlatHdrOptions = { exposure: -1, toneMapping: 'aces' };
+      const resolvedHdr: ResolvedFlatHdrOptions = { enabled: false, exposure: 2, toneMapping: 'reinhard' };
+      const lighting: LightingScene2D = { profile: 'lit', hdr, ambientIrradiance: [0.2, 0.2, 0.2] };
+      renderer.setLighting({ ...lighting, hdr: resolvedHdr });
+      // @ts-expect-error tone mapping modes are explicit
+      const invalidHdr: FlatHdrOptions = { toneMapping: 'filmic' };
+      void invalidHdr;
       const assets: FlatLightingAsset[] = [{ textureId: 1, lighting: receiver }];
       const preparer: FlatLightingPreparer = renderer;
       const authoredPreparer: AuthoringFlatLightingPreparer = preparer;

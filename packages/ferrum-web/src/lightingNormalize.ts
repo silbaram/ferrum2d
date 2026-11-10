@@ -1,4 +1,5 @@
-import { resolveDirectionalLight2D } from "./dataSceneSun.js";
+import { resolveDirectionalLight2D, resolveLitDirectionalLight2D } from "./dataSceneSun.js";
+import { resolveFlatHdr } from "./flatHdr.js";
 import type {
   LightingScene2D,
   LightingShadowOptions,
@@ -68,7 +69,7 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined)) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined)) {
     return DISABLED_LIGHTING_SCENE;
   }
 
@@ -108,6 +109,10 @@ export function resolveLightingSceneInto(
   const mutableTarget = target as MutableResolvedLightingScene2D;
   if (scene && scene.profile !== undefined && scene.profile !== "legacy" && scene.profile !== "lit") throw Error("lighting.profile must be legacy or lit");
   const lit = !!scene && scene.profile === "lit";
+  if (scene && scene.hdr !== undefined) {
+    if (!lit) throw Error("lighting.hdr requires the lit profile");
+    mutableTarget.hdr = resolveFlatHdr(scene.hdr);
+  } else delete mutableTarget.hdr;
   if (scene && !lit && scene.ambientIrradiance !== undefined) throw Error("ambientIrradiance requires the lit profile");
   if (scene && lit && scene.ambient !== undefined && (scene.ambient.length !== 4 || scene.ambient.some(x => x !== 0))) throw Error("lit uses ambientIrradiance, not ambient overlay");
   if (scene && scene.profile !== undefined) mutableTarget.profile = scene.profile;
@@ -134,7 +139,7 @@ export function resolveLightingSceneInto(
 
   mutableTarget.enabled = scene.enabled !== false;
   if (scene.directionalLight === undefined) delete mutableTarget.directionalLight;
-  else mutableTarget.directionalLight = resolveDirectionalLight2D(scene.directionalLight);
+  else mutableTarget.directionalLight = (lit ? resolveLitDirectionalLight2D : resolveDirectionalLight2D)(scene.directionalLight);
   writeNormalizedColor4Into(mutableTarget.ambient, lit ? DEFAULT_DISABLED_AMBIENT : scene.ambient ?? DEFAULT_AMBIENT, "ambient");
 
   const pointLights = scene.pointLights ?? [];
