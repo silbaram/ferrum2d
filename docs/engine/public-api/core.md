@@ -1158,7 +1158,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
 | `dataSceneSpatialModelDrawSnapshot(handle)` | 마지막 native 렌더의 실제 LOD asset·world XYZ 변환·cameraVisible을 복사한 cold 조회. 미렌더/미등록 handle·구 Wasm은 undefined |
 
-`loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
+`loadSpatialGlb(source, { materialProfile: "diffuse" | "specular", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
 `SpatialGlbOptions`, `SpatialModelAsset`, `SpatialModelPrimitive`, `SpatialModelInstanceSpec` 타입을 제공한다.
 `raycastSpatialModel(asset, ray: SpatialModelRay): SpatialModelRayHit | undefined`는 작성 도구의 시각 선택용
 CPU 삼각형 검사다. ray는 asset-local glTF XYZ의 `origin`/`direction` 3개 좌표이며 방향은 내부에서 정규화한다.
@@ -1170,7 +1170,7 @@ GPU 보간/mipmap 경계와 완전히 같은 픽셀 판정은 아니다. 전달�
 `SpatialModelDrawSnapshot`의 `asset`은 마지막 렌더에서 native가 선택한 LOD이며 `transform`은 소유한 16개 f32의
 column-major glTF local XYZ → world XYZ 행렬이다. `cameraVisible`이 false인 shadow-only/culled draw는 클릭 대상에서 제외한다.
 snapshot은 카메라/문서 변경을 예측하지 않고 다음 렌더 전까지 표시된 pose를 유지한다. frame loop에서 entity별로 호출하지 않는다.
-`loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
+`loadSpatialGltf(source, { materialProfile: "diffuse" | "specular", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
 같은 document origin의 최대 16 binary/16 image, document 2 MiB·전체 입력/정규화 bundle 32 MiB와 취소를 검사한다.
 기존 GLB decoder를 재사용하며 contentId는 종속 bytes를 포함한 정규화 bundle hash다. redirect/data URI는 지원하지 않는다.
 자세한 계약은 [분리형 glTF](../data-scene-spatial.md#분리형-gltf-배경-모델)를 따른다.
@@ -1189,12 +1189,20 @@ OPAQUE/MASK·단면/양면 base color·normal map·emissive·PNG/JPEG·sampler·
 `SpatialModelPrimitive.alphaCutoff`는 OPAQUE에서 0, MASK에서 GLB의 cutoff(기본 0.5)이며
 `doubleSided`는 GLB material의 양면 설정이다. alpha 비교는 color/depth와 그림자 pass에 동일하게 적용한다.
 `SpatialModelPrimitive.normal`은 image/sampler/scale, `emissive`는 image/sampler 참조이며 선택 값이다.
+개발 소스의 `specular` profile은 명시적 metallicFactor=0, roughness 0..1과 제한된
+`KHR_materials_specular` 계수/세 map을 지원한다. `SpatialModelPrimitive.specular`에는
+factor/color/roughness와 선택 texture(A raw)/colorTexture(RGB sRGB)/roughnessTexture(G raw)가 있다.
+각 참조의 image/sampler/uvTransform은 독립적이며 profile은 contentId와 CPU cache key에 포함된다.
+`SpatialModelAsset.materialProfile`은 specular 선택 시에만 존재한다. factor 0은 diffuse와 같고,
+비금속 직접광 GGX lobe만 더한다. 전체 glTF PBR·금속·IBL은 지원하지 않는다.
+[계수 범위·호환성](../data-scene-spatial.md#정적-glb-배경-모델)을 따른다.
 `uvTransform`과 `normal.uvTransform`/`emissive.uvTransform`은 선택 column-major 3×3 Float32Array이며
 생략은 identity다. loader가 `KHR_texture_transform`을 각 textureInfo에서 해석하며 UV0만 지원한다.
 변환은 각 텍스처 샘플과 base alpha 그림자/CPU picking에 적용하고 원본 geometry·tangent를 유지한다.
 음수/0 scale을 허용하며 잘못된 값·유효 UV set 1 이상·GPU 중간 계산의 overflow는 준비 오류다.
 [정적 모델 지원 범위](../data-scene-spatial.md#정적-glb-배경-모델)를 따른다.
-`emissiveFactor`는 linear RGB 0..1(기본 0)이다. CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
+원본 glTF `emissiveFactor`는 linear RGB 0..1(기본 0)이며 선택 emissiveStrength와 곱한 CPU 값은 0..64다.
+CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
 없으면 기존 8 floats다. 정상적인 GLB normal map은 UV0와 exported TANGENT VEC4를 요구한다.
 normal scale은 -64..64(기본 1), emissive texture는 sRGB·alpha 무시다. 발광도 기존 HDR/fog를 따른다.
 모델 base/emissive texture는 renderer 색상 모드와 무관하게 sRGB GPU format을 사용해 보간 전에 해석한다.

@@ -1,6 +1,6 @@
 # 조명·그림자·화면 효과 품질 고도화 계획
 
-기준일: 2026-11-10
+기준일: 2026-11-11
 
 상태: M2-a·M3a·M3b·M3c 개발 소스 구현·자동 회귀 완료 · M4/M5 잔여 개발 · 실게임·실기기 검증은 개발 완료 후 진행
 
@@ -146,7 +146,9 @@ hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·
 
 ### M01 · P2 · 재질과 빛 수신 제어
 
-**기존 계약의 한계.** 모델은 명시적 diffuse profile이고 metallic/roughness texture를 거절한다.
+**개발 소스 현황.** 기본 diffuse profile은 metallic/roughness texture를 계속 거절한다.
+M4a에서 Spatial 정적 모델용 명시적 비금속 `specular` profile과 raw A 세기·raw G roughness·sRGB 색 map을 추가했다.
+최종 자동 회귀와 리뷰를 진행 중이며, 전체 glTF PBR나 Flat 재질 지원으로 세지 않는다.
 flat에는 specular/shininess map·전용 emission map·광원 texture/cookie·light/shadow 수신 mask가 없다.
 Spatial cast/receive bool은 존재하나 광원별 mask와 같지 않다. 반투명 BLEND 모델도 현재 계약 밖이다.
 
@@ -249,7 +251,8 @@ M3b Flat HDR은 양 backend float world/albedo·노출·톤매핑·HUD 경계와
 [Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스)에서 입력·출력 공간과 비용을 관리한다.
 M3c WebGPU 전역 선형 색공간은 실제 backend의 색·alpha·후처리·팔레트·노멀·복구와
 legacy/linear Spatial 행렬 검증을 완료했다. [색공간 계약](../engine/public-api/core.md#색-공간-관리)을 따른다.
-이후 M4, M5를 각각 구현·리뷰·수정한다.
+M4a Spatial 정적 모델의 제한 재질 profile을 구현하고 최종 자동 회귀·리뷰 중이다.
+Flat emission/specular/roughness 재질, 독립 light/shadow mask, 2D spot/cookie·polygon occluder와 M5는 남아 있다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
@@ -283,7 +286,7 @@ M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 | fixture | 핵심 판정 |
 | --- | --- |
-| 검은/회색/흰 표면 + 한 빛 | 새 lit의 반사 성분은 albedo에 비례. 검은 표면에 emission이 없으면 diffuse가 생기지 않음 |
+| 검은/회색/흰 표면 + 한 빛 | diffuse는 albedo에 비례. 검은 표면에는 diffuse가 생기지 않으며, 선택 specular는 별도 계수·roughness로 하이라이트를 검증 |
 | 빨강 A + 파랑 B + A만 차폐 | B 기여 유지. A를 완전히 가린 결과를 A 비활성 결과와 비교. ambient도 보존 |
 | 한 광원 + 겹치는 두 occluder | 겹침 횟수로 차폐율이 반복 감쇠하지 않음 |
 | 태양 + 고정 billboard + orbit | stable proxy mode의 world-space shadow footprint가 camera yaw에 독립. 현재 mode는 기존 결과 유지 |

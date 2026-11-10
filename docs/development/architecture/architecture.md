@@ -1139,7 +1139,7 @@ material은 불변 asset/contentId에 속하므로 native pose ABI·instance별 
 `KHR_texture_transform`을 검사한다. 이미지 decode 전 f32 행렬/UV 중간 overflow를 검증하고 identity는 생략한다.
 base/normal/emissive별 행렬은 CPU primitive에 보관하며 asset.byteLength와 재질 batch identity에 포함한다.
 WebGL2는 main/shadow draw에 공통 base 행렬과 main 전용 normal/emissive 행렬을 전달한다.
-WebGPU는 `webgpuSpatialMaterial.ts`의 144-byte material uniform(기존 48-byte 색/옵션 + 3×32-byte UV affine rows)을
+WebGPU는 `webgpuSpatialMaterial.ts`의 272-byte private material uniform(기존 144-byte prefix + 32-byte specular 계수 + 3×32-byte 추가 UV rows)을
 color/shadow WGSL에서 공유한다. upload는 cold resource 준비에만 발생하고 warm frame 할당은 추가하지 않는다.
 CPU alpha picking도 UV 보간 후 base 행렬을 적용한다. 정점의 UV0·exported tangent와 native ABI는 그대로다.
 GLB의 image 준비는 `spatialModelImage.ts`의 격리된 임시 WebGL2 readback을 사용한다. Canvas 2D의
@@ -1153,7 +1153,14 @@ cold metadata bit 4와 native capability v1을 사용하고 TS authoring은 씬 
 frame v2·44-byte 정점·80-byte model instance 및 저장 버전은 유지한다. GLB 계층은 static bake,
 assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명시적 world-unit 데이터다.
 모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
-OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
+기본은 OPAQUE/MASK diffuse 변환이며 선택 `specular` profile은 비금속 직접광 GGX만 추가한다.
+TS cold loader가 계수·map 채널·UV·금속 거절을 검사하고 profile별 hash/cache key를 구분한다.
+Rust의 model pose/visibility·80-byte model instance·15-float sprite ABI와 저장 버전은 유지한다.
+WebGL2의 roughness/specular/specularColor는 unit 5/6/7이며 원래 texture/sampler binding을 복구한다.
+WebGPU는 같은 이미지의 color/data role별 자원을 공유하고 6개 material sampler를 독립적으로 유지한다.
+map upload·uniform은 cold 준비에만 발생한다. diffuse는 추가 map fetch/BRDF를 건너뛰며 새 pass/target이 없다.
+직접광 반사와 diffuse를 합친 뒤 emission/fog를 적용하고, separated AO의 indirect MRT에는 diffuse 환경광만 기록한다.
+BLEND·전체 glTF PBR·IBL, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
 선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512, 선택형 고정 sun center에 v5 numeric528을 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를

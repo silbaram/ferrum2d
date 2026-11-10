@@ -8,6 +8,17 @@
 반구광 sky/ground/방향·최종 노멀맵·unlit 불변, point/sun normalBias의 hard/PCF 실제 픽셀 이동과 변경 시 shadow cache 유지,
 추가 shadow pass 없음, v3+actor focus·HDR·DOF 동시 저장/복원과 renderer 픽셀 parity를 assert한다.
 단위 테스트는 legacy 80/112 buffer 보존, invalid v3 원자성, 명시적인 null 입력 거절, native 진행 복원, WebGPU 기존 uniform 할당 재사용·legacy 전환 초기화를 검사한다.
+
+Spatial 제한 재질 회귀는 같은 full smoke/CI에 연결한다. 빌드 후
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --specular-only --offscreen-target`로 단독 실행한다.
+32개 상태 × legacy/linear-sRGB × 직교/원근 × WebGL2/WebGPU × 두 화면 × DPR 1/2를 검사한다.
+roughness=1 하이라이트의 독립 수식 기대값(채널 오차 3), factor 0 diffuse 일치,
+6개 map sampler·MASK 그림자, normal 반응, >1 emission/톤매핑과 ambient/AO 경계를 검증한다.
+세 추가 map은 Blender Mapping의 별도 baked UV 참조와 비교하며 root 회전·배율도 교차한다.
+JSON 저장/새 native handle 복원, 실패한 profile import의 현재 frame 보존과 WebGPU 기기 복구 후 픽셀 일치도 검사한다.
+warm frame에는 추가 upload/allocation이 없어야 하며 새 재질 때문에 pass/target을 추가하지 않는다.
+모델 내부 세 map용 private material uniform은 272 bytes이며 native frame ABI와 구별한다.
+이 명령은 software adapter/offscreen 검증이다. 실게임·실기기 검증은 전체 개발 완료 후 진행한다.
 공식 viewer 조명 smoke는 기존 팝오버의 반구광과 두 표면 보정 입력도 native 값·문서·Undo/Redo·언어·compact 경계로 검증한다.
 `node tests/smoke/placement-village-smoke.mjs --lighting-only`로 HD-2D 조명 조작만 실행하며 반구광 OFF/ON의 색·세기 보존도 확인한다.
 같은 명령의 저장 회귀는 2D/HD-2D 모두에서 초점을 둔 값의 저장·잘못된 입력 차단·재열기를 확인한다. HD-2D는 반구광과 두 normalBias, 꺼진 반구광의 색·방향·밝기 보존도 검사한다. 파일 호스트만 public bridge로 모사하며 작성·렌더·페이지 재로딩은 실제 경로를 실행한다.

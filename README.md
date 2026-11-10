@@ -50,7 +50,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | 런타임·씬 | Rust/Wasm 게임 상태·엔티티, 선언형 씬·prefab, 씬 전환·페이드, snapshot·진행 저장/복원 | [Core API](docs/engine/public-api/core.md) |
 | 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
 | 픽셀 표현 | 고정 해상도·정수 확대·레터박스·화면 픽셀 스냅, 아틀라스 가장자리 보호, 팔레트 스왑·양자화·디더·스캔라인 | [2D 표시](docs/engine/data-scene-authoring.md) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) |
-| HD-2D 공간 | 정적 GLB/glTF, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
+| HD-2D 공간 | 정적 GLB/glTF·선택 비금속 specular 재질, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
 | 조명·그림자 | sprite/model normal map, 점광원·스포트·태양광·반구광, 그림자 필터·표면 보정, 건물 입체 도형의 지면 그림자 | [조명·환경](docs/engine/data-scene-spatial.md#광원-작성과-씬-효과) · [지면 그림자](docs/engine/data-scene-presentation.md) |
 | 화면 효과 | Bloom·CRT·vignette·fade/glitch, Spatial HDR·AO·안개·피사계심도·노출/톤매핑·색 보정 | [Core API](docs/engine/public-api/core.md) · [Spatial 환경](docs/engine/data-scene-spatial.md) |
 | 게임플레이 | actor 이동·길 찾기, 상호작용·트리거, 대화·퀘스트, projectile·weapon·전투 AI·생성 prefab, 부모/자식 연결, 컷신 | [AI 기능 안내](docs/engine/ai-feature-guide.md) · [Scene Authoring](docs/engine/data-scene-authoring.md) |

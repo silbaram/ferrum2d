@@ -52,7 +52,7 @@ camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약
 
 ## 정적 GLB 배경 모델
 
-`/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`로 URL 또는 ArrayBuffer를
+`/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse" | "specular", signal? })`로 URL 또는 ArrayBuffer를
 먼저 준비하고 `engine.registerDataSceneSpatialModel(id, asset)`로 등록한다. 반환 `SpatialModelAsset`은
 불변 contentId(SHA-256)·bounds·primitiveCount·triangleCount·byteLength·diagnostics이며 geometry나 GPU handle을 노출하지 않는다.
 `spatial.models`는 applied instance ID를 key로 사용하며 같은 instance를 billboard와 중복 연결할 수 없다.
@@ -81,6 +81,25 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   재질 값은 GLB에 저장되며 instance마다 별도 레이어를 바꾸거나 정점을 양면 복제하지 않는다.
   base color texture는 sRGB, factor와 normal은 linear다. `diffuse`는 기존 조명으로 변환하는 명시적 프로파일이며
   metallic/roughness scalar를 PBR로 렌더링하지 않는다는 diagnostics를 반환한다.
+- 개발 소스의 `materialProfile:"specular"`는 비금속 직접광 반사를 선택한다. lit 재질의
+  `pbrMetallicRoughness.metallicFactor`를 명시적으로 0으로 내보내야 하며, 기본값 1이나 금속 입력은 거절한다.
+  `roughnessFactor`는 0..1(기본 1), `metallicRoughnessTexture`의 **G**는 raw roughness이며 곱한 뒤
+  shader에서 최소 0.12로 제한한다. `diffuse`의 기존 roughness texture 거절은 유지한다.
+  `KHR_materials_specular`의 `specularFactor`는 0..1(기본 1), `specularTexture`의 **A**는 raw 세기다.
+  `specularColorFactor`는 linear RGB 0..1(기본 흰색), `specularColorTexture`의 RGB는 **sRGB**다.
+  map이 없으면 각 채널은 1이며 세 map은 UV0·`KHR_texture_transform`·sampler를 독립적으로 사용한다.
+  [Khronos 채널·색공간 정의](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_specular)를 따른다.
+  고정 F0=0.04×색, Schlick Fresnel/Smith-GGX의 제한 lobe를 기존 Lambert 직접광에 더하는 표현용 profile이다.
+  lobe의 채널별 상한은 16이며 factor 0은 diffuse와 일치한다. point/spot/sun의 falloff·차폐를 공유하고,
+  ambient/hemisphere에는 반사를 추가하지 않는다. separated AO는 반사를 어둡게 하지 않는다.
+  emission·fog·DOF·Bloom·exposure/톤매핑은 기존 순서를 사용한다. 금속·IBL·에너지 보존형 전체 glTF PBR·
+  transmission·BLEND와 1 초과 specular 색 계수는 지원하지 않는다. 지원하지 않는 확장이나 unlit/specular 조합은 준비 오류다.
+  기존 base OPAQUE/MASK·양면·normal/emission 계약은 동일하다. 추가 map은 shadow alpha를 바꾸지 않는다.
+  반환 handle은 이 profile에서만 선택 `materialProfile:"specular"`를 포함한다. contentId는
+  `ferrum2d.specular.v1`+NUL+입력 GLB bytes의 SHA-256으로 구분하며 diffuse의 기존 hash는 유지한다.
+  분리형 glTF는 종속 bytes를 포함한 정규화 GLB에 같은 규칙을 적용한다. CPU 공유 캐시 key에도 profile이 들어간다.
+  재import는 새 contentId로 준비한 뒤 기존 `replaceModelAsset` patch/문서 적용을 사용한다. 저장·Undo·복원에는
+  asset ID/contentId만 남기며 opaque handle/GPU 자원은 넣지 않는다. 실패한 준비는 현재 자산을 유지한다.
 - `normalTexture`는 linear RGB tangent-space normal이다. UV0와 f32 `TANGENT VEC4`가 필수이며
   자동 tangent 생성은 하지 않는다. Blender export에서 Tangents를 켜고 tangent가 없는 입력은 준비 전에 거절한다.
   tangent XYZ는 unit/normal과 직교, W는 ±1이며 한 triangle의 W가 섞인 입력도 거절한다.
@@ -296,7 +315,7 @@ cache.evictUnused(); // 사용하지 않는 ready 항목만 제거한다.
   원본·decoder 임시 사본, 캐시 밖 handle/engine 등록, GPU 자원은 이 CPU 캐시 예산에 포함하지 않는다.
   pendingLoadCount는 취소 후 정리 중인 작업도 포함하므로 destroy 직후에도 0보다 클 수 있다.
 - URL 내용 변경을 자동 감지하지 않는다. versioned URL/새 contentId revision을 사용하거나 release 후 unused 항목을 제거해 다시 읽는다.
-  contentId를 지정하면 실제 loader 결과와 일치해야 한다. format/revision이 다른 요청과 다른 URL은 별도 key다.
+  contentId를 지정하면 실제 loader 결과와 일치해야 한다. format/profile/revision이 다른 요청과 다른 URL은 별도 key다.
 
 캐시는 native 씬을 교체하거나 engine 등록·GPU 자원을 해제하지 않는다. 모델을 사용하는 동안 lease를 보관하고,
 씬/engine/GPU 수명은 기존 authoring·registration·preparer 계약으로 관리한다. 저장에는 캐시/lease를 넣지 않는다.
