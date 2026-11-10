@@ -261,7 +261,10 @@
         "ResolvedPointLightSpot2D",
         "PointLightCookie2D",
         "ResolvedPointLightCookie2D",
-        "PolygonOccluder2D"
+        "PolygonOccluder2D",
+        "SpatialLightSelectionSpec",
+        "SpatialLightSelectionBufferView",
+        "SpatialLightSelectionProgressSnapshot"
       ]
     },
     {
@@ -446,7 +449,10 @@
         "SpriteSurfaceMaterialSpec",
         "SpriteSurfaceBufferView",
         "SpriteLightMaskBufferView",
-        "SpatialReceiverMaskBufferView"
+        "SpatialReceiverMaskBufferView",
+        "SpatialLightSelectionSpec",
+        "SpatialLightSelectionBufferView",
+        "SpatialLightSelectionProgressSnapshot"
       ]
     },
     {
@@ -593,7 +599,10 @@
         "FlatLightingAsset",
         "FlatLightingPreparer",
         "DataSceneSpriteSurfaceSpec",
-        "ResolvedDataSceneSpriteSurface"
+        "ResolvedDataSceneSpriteSurface",
+        "SpatialLightSelectionSpec",
+        "SpatialLightSelectionBufferView",
+        "SpatialLightSelectionProgressSnapshot"
       ]
     },
     {

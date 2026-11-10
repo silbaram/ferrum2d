@@ -2938,5 +2938,9 @@ global OFF와 config OFF·v7 기본 동작, 같은 source/노출 편집의 이�
 `cargo test --manifest-path crates/ferrum-core/Cargo.toml compound_light`는 normal/combat motion과
 광원 history를 함께 복원하며 잘못된 history가 pose/source/기존 history를 바꾸지 않는지 확인한다.
 SpatialScene clear 뒤 orphan history를 설치하지 않고 fresh handle로 combat/pose를 재매핑하는지 검사한다.
-단독 native codec·diagnostic 벌크 ABI 검증이며 public semantic JSON·실제 양 backend 픽셀 연결은
-M5 후속 검증이다. 실게임·실기기는 개발 완료 후 진행한다.
+SDK의 `spatialLightSelection*.test.ts`는 source v8 ON/OFF·예약/범위·구/부분 Wasm의 자산 조회 전 거절,
+diagnostic pointer/길이/슬롯/가중치·동일 buffer alias와 memory grow 뒤 재취득,
+patch v9 guard·public 타입과 history JSON 소유 복사를 검사한다. 실제 Wasm에서 exploration/combat 중간 fade를
+v11 JSON으로 저장하고 fresh runtime에 복원해 native history·선택 채널·감쇠 값을 비교한다.
+signature/source/weight/누락/구 save version 거절 뒤 이전 progress 불변, pause 보존·정상 수렴·reset·clear도 확인한다.
+실제 양 backend 전환 픽셀·profiler/report 연결은 M5 후속 검증이다. 실게임·실기기는 개발 완료 후 진행한다.

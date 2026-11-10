@@ -1877,6 +1877,44 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 WebGPU는 512 floats로 padding한 환경 + 카메라/7 shadow matrix를 2,560-byte uniform 슬롯 두 개에 담는다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
 
+### 선택형 native 광원 전환
+
+`lighting.selection`을 생략하면 기존 순위 교체 정책을 유지한다. 다음 객체를 명시하면 Rust가
+simulation step마다 최대4개 슬롯의 선택·fade 이력을 소유한다. shadow owner는 첫 슬롯에 고정한다.
+
+```json
+"selection": { "enabled": true, "hysteresis": 0.15, "fadeSeconds": 0.15, "resetDistance": 0 }
+```
+
+- `enabled`: 기본 true. false도 작성 값을 보존하며 legacy 선택을 사용한다.
+- `hysteresis`: 0..1, 기본0.15. 기존 슬롯의 점수에 `1 + hysteresis`를 곱해 경계 왕복을 완화한다.
+- `fadeSeconds`: 0..5초, 기본0.15. 기존 광원 fade-out → 같은 슬롯에서 교체 → 새 광원 fade-in의
+  **각 leg** 길이다. 전체 교체는 최대2배 길이며0은 즉시 교체한다. 활성 슬롯 상한을 늘리지 않는다.
+- `resetDistance`: camera target의 update당 이동 거리0..1,000,000, 기본0. 0은 자동 cut 감지를 끈다.
+  양수 임계값을 넘으면 현재 순위로 즉시 초기화한다. `resetDataSceneSpatialLightSelection()`도 명시적으로 이력을 지운다.
+
+선택은 simulation pose, 최종 광원 위치는 render interpolation pose를 사용한다. render preview와 반복 build,
+pause/zero step은 전환 시간을 진행하지 않는다. point 선택 입력(config·광원·채널·상한·shadow owner)/실제 binding 변경·씬 재시작/해제는 초기화하고,
+동일 source·노출/후처리 편집은 전환을 보존한다. global lighting OFF는 이력을 초기화하고 작성 설정을 보존한다.
+GPU 장치 복구는 native history를 소유하거나 초기화하지 않는다.
+
+정책을 명시한 source는 **environment v8 numeric580**을 사용한다. 기존0..575와 예약565..575의0을
+유지하고576..579에 enabled/hysteresis/fadeSeconds/resetDistance를 추가한다. 구/부분 Wasm은 자산 조회나
+씬 변경 전에 거절한다. 환경 수정 patch는 **spatial patch v9**이며 v1..v8 읽기는 유지한다.
+
+활성 정책의 진행 저장은 **Data Scene state v11**의 `progress.spatial.lightSelection`에 native source 서명,
+initialized/step/anchor와4개 source/pending/weight/phase 슬롯을 저장한다. global OFF도 초기화된 codec을 저장한다.
+정책 disabled/생략과 legacy 문서는 종전 저장 버전을 유지한다. source와 history의 native preflight는 handle 교체 전에
+수행하며 normal/combat motion을 단일 native transaction으로 복원한다. 서명을 JS에서 재계산하지 않는다.
+
+`SpatialEnvironmentBufferView.lightSelection`은 optional borrowed v1/stride6이며 authored source당24-byte 행이다.
+`words`와 `values`는 같은 메모리다. source/slot/reason/flags는 u32이며 slot 없음은0xffffffff,
+score/weight는 마지막2개 f32다. reason은 active1/in2/out3/retained4/budget5/missing6/zero7/OFF8/position9/pending10,
+flags는 pinned1/retained2/preview4/pending8이다. retained는 pause 등으로 유지된 집합도 포함한다.
+매 frame 다시 읽고 지연 소비 전에 소유 복사한다. 정책 disabled/작성 광원0개는 행을 생략할 수 있다.
+GPU target/pass·shader loop 상한은 늘지 않는다. 실제 양 backend 전환 픽셀·비용 report 검증은 M5 후속이며,
+실게임·실기기는 전체 개발 완료 뒤 진행한다.
+
 뷰어는 **보기 → 조명**에서 분위기(낮/노을/밤/실내), 품질(낮음/균형/높음), 활성 광원 수와
 효과를 조절한다. 품질은 활성 1/2/4개, 그림자 128/512/1024, hard/PCF3를 적용하며 낮음은 추가 효과를 끈다.
 분위기는 기존 광원 배치·연결을 보존한다. `광원 조작 표시`를 켜면 아이콘 드래그로 이동하고 선택 후 높이/반경을 조절한다.

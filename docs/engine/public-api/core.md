@@ -1148,6 +1148,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `configureDataSceneSpatial(spec, handles)` | terrain/camera/billboard/actor를 검증해 atomic configure. 잘못된 JSON은 diagnostic, native 거절은 false |
 | `setDataSceneSpatialCamera(camera, viewport)` | 낮은 빈도 camera 변경. 다음 frame snapshot에 반영 |
 | `setDataSceneSpatialEnvironment(spec \| null)` | 낮은 빈도 조명/그림자/DOF/색 보정/안개 변경. null은 해제, 다음 frame 반영. 물리·route·terrain revision 유지 |
+| `resetDataSceneSpatialLightSelection()` | opt-in native 선택 이력 초기화. 다음 simulation step은 현재 순위로 시작하며 구 core/정책 비활성은 false |
 | `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 및 `sunShadowCoverage`의 높이 0 태양 맵 외곽·fade 진단선. 기본 꺼짐, depthTest 기본 true. null은 해제 |
 | `clearDataSceneSpatial()` | 공간 설정 해제, 다음 frame부터 평면 출력 |
 | `moveDataSceneSpatialBody(handle, dx, dy, options?)` | native kinematic 이동·높이와 명시적 shared-edge 연결의 층 전환. true는 도착 보장이 아님 |

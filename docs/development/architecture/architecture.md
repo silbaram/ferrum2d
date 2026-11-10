@@ -1711,8 +1711,11 @@ interpolation pose를 사용한다. 단일 point shadow 소유 광원은 기존�
 normal/combat motion과 함께 복원할 때 모든 history 입력을 먼저 검증하고 matching source/pose
 transaction이 성공한 뒤 이력을 설치한다. SpatialScene을 지우는 복원에는 빈 이력만 허용한다.
 별도 diagnostic v1은 source/packed-slot/reason/flags/score/weight의24-byte `repr(C)` 벌크 행이다.
-이 기반 단계에서는 public TypeScript 설정·frame reader·semantic JSON save/replay 연결은 아직
-진행 중이며, 기존 공개 v1..v7 경로를 유지한다. GPU ABI·target/pass 수는 바꾸지 않는다.
+public TypeScript는 `lighting.selection`, v8 frame reader와 borrowed diagnostic 검증·소유 복사,
+Data Scene state v11의 구조화된 history JSON을 연결한다. v9 spatial patch는 이전 버전의 새 필드 사용을 거절한다.
+구 core의 capability와 source/history preflight는 파괴적인 authoring apply 전에 수행하고 normal/combat 모두
+단일 native compound restore를 사용한다. 기존 v1..v7 source와 비활성 정책의 기존 save 버전은 유지한다.
+GPU ABI·target/pass 수는 바꾸지 않는다. 실제 양 backend 전환 픽셀과 profiler/report 연결은 M5 후속 검증이다.
 
 ## WebGPU 복구와 전체 맵 작성 경계
 
