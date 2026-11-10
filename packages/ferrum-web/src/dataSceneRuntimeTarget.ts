@@ -1,3 +1,5 @@
+import type { FlatLightingPreparer } from "./flatLit.js";
+import { MAX_SPRITE_LIGHTING_UPDATES } from "./spriteLighting.js";
 import { resolveSpriteNineSlice, MAX_SPRITE_NINE_SLICE_UPDATES, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
 import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd.js";
 import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
@@ -77,6 +79,8 @@ export interface ApplyDataSceneAuthoringDocumentOptions
   allowComponentTemplates?: boolean;
   /** Opt-in model GPU preparation before replacing the active scene; not serialized. */
   spatialModelPreparer?: SpatialModelPreparer;
+  /** Required for lit documents: verifies receiver assets before scene activation. */
+  flatLightingPreparer?: FlatLightingPreparer;
   /** Cold preview reapply only: retain compatible named animation phase and native LOD hysteresis. Default false. */
   preserveAnimationAndLod?: boolean;
 }
@@ -101,6 +105,7 @@ export interface DataSceneRuntimeSpawnRequest {
   color: readonly [number, number, number, number];
   textureId: number;
   normalTextureId?: number;
+  lighting?: import("./spriteLighting.js").SpriteLightingMaterialSpec;
   nineSlice?: SpriteNineSliceSpec;
   spriteWidth: number;
   spriteHeight: number;
@@ -130,6 +135,7 @@ export interface DataSceneRuntimeSpawnRequest {
 
 export interface DataSceneRuntimeEngineAdapter {
   supportsSpriteNormalMaterials?(): boolean;
+  supportsSpriteLightingMaterials?(): boolean;
   supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
   /** Optional cold capability; absence rejects render:false before scene activation. */
@@ -195,9 +201,10 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
         colorManagement,
       );
       if(request.normalTextureId!==undefined&&!adapter.supportsSpriteNormalMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite normal materials require native v1 support");
+      if(request.lighting!==undefined&&!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite lighting requires native v1 support");
       if(request.nineSlice!==undefined&&!adapter.supportsSpriteNineSlices?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"9-slice requires native v1 support");
       activateDataScene();
-      const {normalTextureId:_normal,nineSlice:_nineSlice,...unmapped}=request;
+      const {normalTextureId:_normal,nineSlice:_nineSlice,lighting:_lighting,...unmapped}=request;
       const handle = adapter.spawnDataSceneEntity(deferSpriteBindings?unmapped:request);
       if (handle === undefined) {
         throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "failed to spawn data-scene entity");
@@ -205,6 +212,24 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
       return handle;
     },
   };
+}
+
+/** Internal cold preflight, shared by authored apply and snapshot restore before mutation. */
+export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
+  // Existing documents take the same path without requiring the new optional Wasm ABI.
+  if(!document || typeof document!=="object" || (document as {lighting?:{profile?:string}}).lighting?.profile!=="lit")return;
+  const path=options.path??"dataSceneAuthoring",adapter=dataSceneRuntimeEngineAdapter(engine,`${path}.runtimeTarget.engine`);
+  if(!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.lighting.profile`,"lit requires native sprite lighting v1 support");
+  const preparer=options.flatLightingPreparer;
+  if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
+  const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+  const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
+  const textureId=options.textureId??(name=>adapter.textureId(name));
+  const assets=plan.instances.flatMap(instance=>{
+    const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path),sprite=component.sprite;
+    return sprite.lighting===undefined?[]:[{textureId:dataSceneTextureId(sprite,textureId),normalTextureId:sprite.normalTexture===undefined?undefined:normalTextureId(sprite.normalTexture,textureId),lighting:sprite.lighting}];
+  });
+  preparer.prepareFlatLighting(resolved.lighting!,assets);
 }
 
 export function applyDataSceneAuthoringDocument(
@@ -219,6 +244,7 @@ export function applyDataSceneAuthoringDocument(
     componentTemplates,
     textureId,
     spatialModelPreparer,
+    flatLightingPreparer,
     preserveAnimationAndLod=false,
     validateBindings = true,
     validateComponents = true,
@@ -273,13 +299,19 @@ export function applyDataSceneAuthoringDocument(
     const raw = instance.props.components;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
     const component = raw as Record<string, unknown>;
-    const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v));
+    const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v || "lighting" in v));
     if (!hasBinding && !(component.template !== undefined && componentTemplates !== undefined)) return [];
     const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, {allowTemplate:true,path}), componentTemplates, path);
     const sprite = components.sprite;
-    return [{id:instance.id, normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
+    return [{id:instance.id, lighting:sprite.lighting, normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
       nineSlice:scaledNineSlice(sprite.nineSlice, instance.scale, `${path}.instances.${instance.id}.nineSlice`)}];
   });
+  const lightingMaterials = spriteBindings.filter(b => b.lighting !== undefined);
+  if (lightingMaterials.length > MAX_SPRITE_LIGHTING_UPDATES)
+    throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
+  if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
+    throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
+  preflightDataSceneFlatLighting(engine, document, options);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
@@ -369,6 +401,8 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    if(lightingMaterials.length&&!engine.configureSpriteLightingMaterials(lightingMaterials.map(({id,lighting})=>({entity:result.entityHandles[id],lighting}))))
+      throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "runtime rejected sprite lighting material batch");
     if(normalMaterials.length&&!engine.configureSpriteNormalMaterials(normalMaterials.map(({id,normalTextureId})=>({entity:result.entityHandles[id],normalTextureId}))))
       throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"runtime rejected sprite normal material batch");
     if(nineSlices.length&&!engine.configureSpriteNineSlices(nineSlices.map(({id,nineSlice})=>({entity:result.entityHandles[id],nineSlice}))))
@@ -515,6 +549,7 @@ function inlineDataSceneRuntimeSpawnRequest(
     ...(groundShadow === undefined ? {} : { groundShadow }),
     color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
+    ...(sprite.lighting===undefined?{}:{lighting:sprite.lighting}),
     ...(sprite.normalTexture===undefined?{}:{normalTextureId:normalTextureId(sprite.normalTexture,textureId)}),
     ...(sprite.nineSlice===undefined?{}:{nineSlice:scaledNineSlice(sprite.nineSlice,scale,`instances.${instance.id}.nineSlice`)}),
     spriteWidth: sprite.width * scale,

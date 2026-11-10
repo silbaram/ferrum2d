@@ -43,9 +43,13 @@ export function snapshotRenderFrameBuffers(frame: RenderFrameState): RenderFrame
 }
 
 function snapshotRenderCommandBuffer(view: RenderCommandBufferView): RenderCommandBufferView {
+  const lightingWords = view.spriteLightingMaterials?.words.slice();
   return {
     ...view,
     buffer: view.buffer.slice(),
+    ...(view.spriteLightingMaterials === undefined || lightingWords === undefined ? {} : {
+      spriteLightingMaterials: { ...view.spriteLightingMaterials, words: lightingWords, values: new Float32Array(lightingWords.buffer) },
+    }),
     ...(view.groundShadowProjection === undefined ? {} : { groundShadowProjection: view.groundShadowProjection.slice() }),
     ...(view.groundShadowVolumes===undefined?{}:{groundShadowVolumes:{...view.groundShadowVolumes,buffer:view.groundShadowVolumes.buffer.slice()}}),
     ...(view.spriteNormalMaterials === undefined ? {} : {

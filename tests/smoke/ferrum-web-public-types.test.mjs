@@ -20,16 +20,23 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
     equal(tarballs.length, 1, 'expected one packed runtime package');
     await run('tar', ['-xzf', join(packed, tarballs[0]), '-C', installed, '--strip-components=1'], project, 'Packed package extraction');
     await writeFile(join(project, 'consumer.ts'), `
-      import type { PixelPerfectOptions, FerrumEngine, SpatialModelInstanceSpec, SpatialDirectionalLightSpec } from '@ferrum2d/ferrum-web/core';
+      import { createRenderer, restoreGameStateSnapshot,
+        type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
+        type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer,
+        type GameStateSnapshot,
+      } from '@ferrum2d/ferrum-web/core';
       import {
         createSceneInstanceHandleRegistry,
         type ApplySceneBehaviorRecipesOptions,
         type SceneInstanceHandleRegistry,
         type ScenePlacementViewer,
         type SceneSpatialPatch,
+        type FlatLightingAsset,
+        type FlatLightingPreparer as AuthoringFlatLightingPreparer,
+        applyDataSceneAuthoringDocument,
       } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
-      import '@ferrum2d/ferrum-web/labs';
+      import type { LightingScene2D } from '@ferrum2d/ferrum-web/labs';
       import '@ferrum2d/ferrum-web/quality';
       const config: PixelPerfectOptions = { width: 320, height: 180, snap: true };
       const disabled: PixelPerfectOptions = { ...config, snap: false };
@@ -37,6 +44,26 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const invalid: PixelPerfectOptions = { ...config, snap: 'on' };
       declare const engine: FerrumEngine;
       declare const viewer: ScenePlacementViewer;
+      declare const renderer: Awaited<ReturnType<typeof createRenderer>>;
+      declare const saved: GameStateSnapshot;
+      const receiver: SpriteLightingMaterialSpec = { mode: 'cutout', alphaCutoff: 0.5 };
+      const lighting: LightingScene2D = { profile: 'lit', ambientIrradiance: [0.2, 0.2, 0.2] };
+      const assets: FlatLightingAsset[] = [{ textureId: 1, lighting: receiver }];
+      const preparer: FlatLightingPreparer = renderer;
+      const authoredPreparer: AuthoringFlatLightingPreparer = preparer;
+      const words = new Uint32Array(2);
+      const sidecar: SpriteLightingBufferView = { version: 1, stride: 2, words, values: new Float32Array(words.buffer) };
+      engine.configureSpriteLightingMaterials([{ entity: { entityId: 1, entityGeneration: 1 }, lighting: receiver }]);
+      renderer.loadTexture(1, 'surface.png', { alphaMode: 'straight' });
+      renderer.prepareFlatLighting(lighting, assets);
+      renderer.setLighting(lighting);
+      applyDataSceneAuthoringDocument(engine, {}, { flatLightingPreparer: authoredPreparer });
+      restoreGameStateSnapshot(engine, saved, { dataSceneAuthoringApplyOptions: { flatLightingPreparer: preparer } });
+      // @ts-expect-error receiver modes are explicit
+      const invalidReceiver: SpriteLightingMaterialSpec = { mode: 'lit' };
+      // @ts-expect-error the alpha upload override accepts straight alpha only
+      renderer.loadTexture(1, 'surface.png', { alphaMode: 'premultiplied' });
+      void [sidecar, invalidReceiver];
       const sun: SpatialDirectionalLightSpec = { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
       engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
       // @ts-expect-error fixed sun center requires all three world coordinates

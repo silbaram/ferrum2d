@@ -1,3 +1,5 @@
+import { expandLitSpriteCommands } from "./spriteLighting.js";
+import { flatLitWgslFragment } from "./flatLitShaders.js";
 import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
 import { WebGpuSpritePalette } from "./webgpuSpritePalette.js";
 import { SPRITE_PALETTE_WGSL } from "./spritePaletteShaders.js";
@@ -47,6 +49,7 @@ export class WebGpuSpritePass {
     private readonly resolutionBindGroup: GPUBindGroup,
     private readonly normalMode=false,
     private readonly sunMaskMode=false,
+    private readonly litMode?: "color" | "data",
   ) {
     this.spritePipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout]:[uniformBindGroupLayout, textureBindGroupLayout],
@@ -58,6 +61,8 @@ export class WebGpuSpritePass {
     this.spritePipeline = this.createSpritePipeline("alpha");
     this.additiveSpritePipeline = normalMode?this.spritePipeline:this.createSpritePipeline("additive");
   }
+
+  private get stride(): number { return (this.litMode ? 17 : 15) * 4; }
 
   configurePalettes(palettes:ResolvedSpritePalettes|undefined):void {
     if(this.normalMode) return;
@@ -98,7 +103,7 @@ export class WebGpuSpritePass {
 
     const ranges = this.sunMaskMode?groundShadowRanges(commands,this.spriteRangeScratch,maskReceivers):spriteRanges(commands, this.spriteRangeScratch);
     const normalRanges=this.normalMode?this.normalRanges(commands):undefined;
-    const commandBytes = commands.commandCount * COMMAND_STRIDE_BYTES;
+    const commandBytes = commands.commandCount * this.stride;
     this.ensureSpriteInstanceCapacity(commandBytes * spriteMaterialPasses.length);
     for (let passIndex = 0; passIndex < spriteMaterialPasses.length; passIndex += 1) {
       this.uploadMaterialPass(
@@ -154,6 +159,7 @@ export class WebGpuSpritePass {
           @location(2) color: vec4f,
           @location(3) rotation: f32,
           @location(4) flags: f32,
+          ${this.litMode?"@location(5) lighting:vec2f,":""}
           @builtin(vertex_index) vertexIndex: u32,
         };
 
@@ -163,6 +169,7 @@ export class WebGpuSpritePass {
           @location(1) color: vec4f,
           @location(2) corner: vec2f,
           @location(3) @interpolate(flat) flags: f32,
+          ${this.litMode?"@location(6) @interpolate(flat) lighting:vec2f,":""}
           ${this.normalMode?"@location(4) @interpolate(flat) rotationCS:vec2f, @location(5) @interpolate(flat) uvSign:vec2f,":""}
         };
 
@@ -213,11 +220,12 @@ export class WebGpuSpritePass {
           output.color = input.color;
           output.corner = corner;
           output.flags = input.flags;
+          ${this.litMode?"output.lighting=input.lighting;":""}
           ${this.normalMode?"output.rotationCS=vec2f(rotationCos,rotationSin);output.uvSign=select(vec2f(1.),vec2f(-1.),input.uvRect.zw<input.uvRect.xy);":""}
           return output;
         }
 
-        ${this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
+        ${this.litMode?flatLitWgslFragment(this.litMode==="data"):this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
           if ((u32(input.flags) & 32u) != 0u) {
@@ -240,7 +248,7 @@ export class WebGpuSpritePass {
         module,
         entryPoint: "vs_main",
         buffers: [{
-          arrayStride: COMMAND_STRIDE_BYTES,
+          arrayStride: this.stride,
           stepMode: "instance",
           attributes: [
             { shaderLocation: 0, offset: 0, format: "float32x4" },
@@ -248,13 +256,14 @@ export class WebGpuSpritePass {
             { shaderLocation: 2, offset: 8 * BYTES_PER_F32, format: "float32x4" },
             { shaderLocation: 3, offset: 14 * BYTES_PER_F32, format: "float32" },
             { shaderLocation: 4, offset: 13 * BYTES_PER_F32, format: "float32" },
+            ...(this.litMode?[{shaderLocation:5,offset:60,format:"float32x2" as const}]:[]),
           ],
         }],
       },
       fragment: {
         module,
         entryPoint: "fs_main",
-        targets: this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
+        targets: this.litMode==="data"?[0,1,2].map(()=>({format:"rgba8unorm",blend:spriteBlendState("alpha")})):this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
           format: this.format,
           blend: this.sunMaskMode&&blendMode==="additive"?{color:{operation:"max",srcFactor:"one",dstFactor:"one"},alpha:{operation:"max",srcFactor:"one",dstFactor:"one"}}:spriteBlendState(blendMode),
         }],
@@ -281,8 +290,8 @@ export class WebGpuSpritePass {
     pass.setVertexBuffer(
       0,
       this.spriteInstanceBuffer,
-      passByteOffset + range.start * COMMAND_STRIDE_BYTES,
-      commandCount * COMMAND_STRIDE_BYTES,
+      passByteOffset + range.start * this.stride,
+      commandCount * this.stride,
     );
     pass.draw(6, commandCount, 0, 0);
     return 1;
@@ -295,8 +304,8 @@ export class WebGpuSpritePass {
   ): void {
     const uploadFloatCount = commands.commandCount * FLOATS_PER_COMMAND;
     const byteCount = uploadFloatCount * BYTES_PER_F32;
-    if (this.normalMode || commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
-      this.ensureMaterialStaging(uploadFloatCount);
+    if (this.litMode || this.normalMode || commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
+      this.ensureMaterialStaging(commands.commandCount * (this.litMode?17:15));
       const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
         0,
@@ -308,12 +317,13 @@ export class WebGpuSpritePass {
         const mapped=materialPass.kind==="base"&&(commands.spriteNormalMaterials?.buffer[i*2]??SPRITE_NORMAL_NONE)!==SPRITE_NORMAL_NONE;
         this.materialStaging[i*FLOATS_PER_COMMAND+13]=(this.materialStaging[i*FLOATS_PER_COMMAND+13]&~64)|(mapped?64:0);
       }
+      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,false);
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
         byteOffset,
         this.materialStaging.buffer,
         this.materialStaging.byteOffset,
-        materialFloatCount * BYTES_PER_F32,
+        this.litMode ? commands.commandCount * this.stride : materialFloatCount * BYTES_PER_F32,
       );
       return;
     }
@@ -330,8 +340,8 @@ export class WebGpuSpritePass {
   private normalRanges(commands:RenderCommandBufferView){
     const ranges=this.normalRangeScratch;let count=0;
     for(let start=0;start<commands.commandCount;){
-      const textureId=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]),normalTextureId=commands.spriteNormalMaterials!.buffer[start*2];let end=start+1;
-      while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===textureId&&commands.spriteNormalMaterials!.buffer[end*2]===normalTextureId)end++;
+      const textureId=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]),normalTextureId=commands.spriteNormalMaterials?.buffer[start*2]??SPRITE_NORMAL_NONE;let end=start+1;
+      while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===textureId&&(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normalTextureId)end++;
       const range=ranges[count]??(ranges[count]={textureId,normalTextureId,start,end});range.textureId=textureId;range.normalTextureId=normalTextureId;range.start=start;range.end=end;count++;start=end;
     }ranges.length=count;return ranges;
   }

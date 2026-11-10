@@ -1,5 +1,6 @@
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
 import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
+import { flatLitGlslFragment, FLAT_LIT_COMPOSITE_GLSL } from "./flatLitShaders.js";
 
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
@@ -37,7 +38,11 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
         v_color=a_color;v_corner=corner;v_flags=a_flags;
       }`;
 // Internal shader sources shared by synchronous construction and async preparation.
+const LIT_SPRITE_VERTEX = SPRITE_VERTEX_SOURCE.replace("void main(){", "layout(location=6) in vec2 a_lighting;flat out vec2 v_lighting;void main(){v_lighting=a_lighting;");
 export const WEBGL2_SHADER_SOURCES = {
+  spriteLitColor: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(false) },
+  spriteLitData: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(true) },
+  flatLitComposite: FLAT_LIT_COMPOSITE_GLSL,
   volumeShadow: { vertex: `#version 300 es
     precision highp float;
     layout(location=0) in vec3 a_vertex;
@@ -135,7 +140,7 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform float u_light_radius;
       uniform float u_light_y_scale;
       uniform float u_light_falloff;
-      uniform bool u_has_normals;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
+      uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
       float normalResponse(vec3 direction){
@@ -157,7 +162,7 @@ export const WEBGL2_SHADER_SOURCES = {
           vec3 transmission=vec3(1.);
           if(u_has_shadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
           float visibility=max(max(transmission.r,transmission.g),transmission.b);
-          outColor = visibility>0.?vec4(clamp(u_color.rgb,0.,1.)*transmission/visibility,alpha*visibility):vec4(0.);
+          outColor = visibility>0.?vec4((u_irradiance?u_color.rgb:clamp(u_color.rgb,0.,1.))*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
           float visibility=(u_mode==2&&u_has_shadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
           outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);

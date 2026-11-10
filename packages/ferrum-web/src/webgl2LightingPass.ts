@@ -27,6 +27,7 @@ const MODE_SOLID = 0;
 const MODE_POINT_LIGHT = 1;
 
 export class WebGL2LightingPass {
+  clearTargets(): void { this.releaseMask(); }
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
   private readonly shadowProgram: WebGLProgram;
@@ -36,6 +37,7 @@ export class WebGL2LightingPass {
   private readonly rectLocation: WebGLUniformLocation;
   private readonly colorLocation: WebGLUniformLocation;
   private readonly modeLocation: WebGLUniformLocation;
+  private readonly irradianceLocation: WebGLUniformLocation;
   private readonly lightCenterLocation: WebGLUniformLocation;
   private readonly lightYScaleLocation: WebGLUniformLocation;
   private readonly shadowLightYScaleLocation: WebGLUniformLocation;
@@ -58,7 +60,7 @@ export class WebGL2LightingPass {
   private readonly maskUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; tint: WebGLUniformLocation };
   private readonly normalUniforms:{has:WebGLUniformLocation;normal:WebGLUniformLocation;coverage:WebGLUniformLocation;height:WebGLUniformLocation;direction:WebGLUniformLocation};
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false, private readonly irradiance = false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
@@ -87,6 +89,9 @@ export class WebGL2LightingPass {
       const rectLocation = this.gl.getUniformLocation(this.program, "u_rect");
       const colorLocation = this.gl.getUniformLocation(this.program, "u_color");
       const modeLocation = this.gl.getUniformLocation(this.program, "u_mode");
+      const irradianceLocation = this.gl.getUniformLocation(this.program, "u_irradiance");
+      if (!irradianceLocation) throw Error("Missing irradiance uniform");
+      this.irradianceLocation = irradianceLocation;
       const lightCenterLocation = this.gl.getUniformLocation(this.program, "u_light_center");
       const lightRadiusLocation = this.gl.getUniformLocation(this.program, "u_light_radius");
       const lightFalloffLocation = this.gl.getUniformLocation(this.program, "u_light_falloff");
@@ -157,6 +162,7 @@ export class WebGL2LightingPass {
     this.gl.enable(this.gl.BLEND);
     this.gl.blendEquation(this.gl.FUNC_ADD);
     this.bindRectProgram(resolution);
+    this.gl.uniform1i(this.irradianceLocation, this.irradiance ? 1 : 0);
     this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
     this.gl.uniform1i(this.maskUniforms.has,0);this.gl.uniform1i(this.maskUniforms.texture,3);
     this.gl.uniform3f(this.maskUniforms.tint,scene.shadows.color[0],scene.shadows.color[1],scene.shadows.color[2]);
@@ -184,7 +190,8 @@ export class WebGL2LightingPass {
       if(sunMask){this.gl.uniform1i(this.maskUniforms.has,1);this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,sunMask);this.gl.activeTexture(this.gl.TEXTURE0);}
       const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
       this.gl.uniform3f(this.normalUniforms.direction,-sun.directionX*c,-sun.directionY*c,Math.sin(elevation));
-      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity],2);
+      const energy = this.irradiance ? sun.intensity : 1;
+      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0]*energy, sun.color[1]*energy, sun.color[2]*energy, this.irradiance ? 1 : sun.intensity],2);
       this.gl.uniform1i(this.maskUniforms.has,0);
     }
     const shadowsActive = scene.shadows.enabled && scene.shadows.color[3] > 0 &&

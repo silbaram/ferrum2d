@@ -81,6 +81,10 @@ export interface ShadowProjectionScratch {
 }
 
 export interface LightingScene2D {
+  /** Omit for the existing overlay. lit uses explicit sprite receiver metadata. */
+  profile?: "legacy" | "lit";
+  /** Linear ambient irradiance for lit, default white. Do not combine with ambient overlay. */
+  ambientIrradiance?: LightingColor3;
   enabled?: boolean;
   ambient?: LightingColor4;
   directionalLight?: DirectionalLight2D;
@@ -115,6 +119,8 @@ export interface ResolvedLightingShadowOptions {
 }
 
 export interface ResolvedLightingScene2D {
+  profile?: "legacy" | "lit";
+  ambientIrradiance?: LightingColor3;
   enabled: boolean;
   ambient: LightingColor4;
   directionalLight?: ResolvedDirectionalLight2D;

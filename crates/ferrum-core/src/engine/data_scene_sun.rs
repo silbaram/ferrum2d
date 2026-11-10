@@ -263,6 +263,7 @@ impl Engine {
         self.frame_buffers.render_items.push(SpriteRenderItem {
             command,
             normal_material: Default::default(),
+            lighting_material: Default::default(),
             sort_key: SpriteRenderSortKey {
                 floor_id: 0,
                 elevation: 0.0,

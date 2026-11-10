@@ -7,6 +7,7 @@ impl WorldComponentStorage {
         world.transforms.push(None);
         world.sprites.push(None);
         world.sprite_normal_materials.push(None);
+        world.sprite_lighting_materials.push(None);
         world.sprite_nine_slices.push(None);
         world.sprite_animations.push(None);
         world.sprite_playbacks.push(None);
@@ -52,6 +53,7 @@ impl WorldComponentStorage {
         world.transforms[index] = None;
         world.sprites[index] = None;
         world.sprite_normal_materials[index] = None;
+        world.sprite_lighting_materials[index] = None;
         world.sprite_nine_slices[index] = None;
         world.sprite_animations[index] = None;
         world.sprite_playbacks[index] = None;
@@ -134,6 +136,7 @@ mod tests {
         assert_eq!(world.transforms.len(), len);
         assert_eq!(world.sprites.len(), len);
         assert_eq!(world.sprite_normal_materials.len(), len);
+        assert_eq!(world.sprite_lighting_materials.len(), len);
         assert_eq!(world.sprite_nine_slices.len(), len);
         assert_eq!(world.sprite_animations.len(), len);
         assert_eq!(world.sprite_playbacks.len(), len);
@@ -179,6 +182,7 @@ mod tests {
         assert_eq!(world.transforms[index], None);
         assert_eq!(world.sprites[index], None);
         assert_eq!(world.sprite_normal_materials[index], None);
+        assert_eq!(world.sprite_lighting_materials[index], None);
         assert_eq!(world.sprite_nine_slices[index], None);
         assert_eq!(world.sprite_animations[index], None);
         assert_eq!(world.sprite_playbacks[index], None);

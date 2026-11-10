@@ -19,6 +19,7 @@ export interface WebGpuTextureResource {
   width: number;
   height: number;
   colorSpace: TextureColorSpace;
+  alphaMode: "straight";
   revision: number;
   source?: Blob;
 }
@@ -69,7 +70,7 @@ export class WebGpuTextureStore {
       }
       this.assertLoadActive(controller.signal);
       // Native WebGPU currently uses the ordinary image fallback even when ktx2Url is present.
-      const {bitmap,blob} = await this.loadImageBitmap(url, colorSpace, controller.signal);
+      const {bitmap,blob} = await this.loadImageBitmap(url, colorSpace, controller.signal, options.alphaMode);
       try {
         this.assertLoadActive(controller.signal);
         return this.createTextureFromSource(textureId, bitmap, colorSpace, blob, controller.signal);
@@ -161,6 +162,8 @@ export class WebGpuTextureStore {
 
   textureRevision(textureId: number): number | undefined { return this.texturesById.get(textureId)?.revision; }
 
+  textureInfo(textureId: number): WebGpuTextureResource { return this.resource(textureId); }
+
   resource(textureId: number): WebGpuTextureResource {
     this.assertAlive();
     const resource = this.texturesById.get(textureId);
@@ -185,7 +188,7 @@ export class WebGpuTextureStore {
     this.texturesById.clear();
   }
 
-  private async loadImageBitmap(url: string, colorSpace: TextureColorSpace, signal: AbortSignal): Promise<{bitmap:ImageBitmap;blob:Blob}> {
+  private async loadImageBitmap(url: string, colorSpace: TextureColorSpace, signal: AbortSignal, alphaMode?: "straight"): Promise<{bitmap:ImageBitmap;blob:Blob}> {
     const response = await fetch(url, { signal });
     if (!response.ok) {
       try { await response.body?.cancel(); }
@@ -196,7 +199,7 @@ export class WebGpuTextureStore {
     this.assertLoadActive(signal);
     const blob = await response.blob();
     this.assertLoadActive(signal);
-    const bitmap = colorSpace === "srgb" ? await createImageBitmap(blob)
+    const bitmap = colorSpace === "srgb" && alphaMode !== "straight" ? await createImageBitmap(blob)
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
     return {bitmap,blob};
   }
@@ -265,7 +268,7 @@ export class WebGpuTextureStore {
         { binding: 1, resource: view },
       ],
     });
-    return { texture, view, bindGroup, width, height, colorSpace, revision: 0 };
+    return { texture, view, bindGroup, width, height, colorSpace, alphaMode: "straight", revision: 0 };
   }
 
   private setTexture(textureId: number, resource: WebGpuTextureResource): void {

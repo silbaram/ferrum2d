@@ -1,3 +1,4 @@
+export type { SpriteLightingMaterialSpec, SpriteLightingBufferView } from "./spriteLighting.js";
 export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export * from "./public/workflowExports.js";
 export * from "./public/engineExports.js";
@@ -59,3 +60,5 @@ export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, D
 
 export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
+
+export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";

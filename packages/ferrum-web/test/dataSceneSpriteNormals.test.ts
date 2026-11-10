@@ -160,7 +160,7 @@ test("oversized normal batches reject before replacing the previous scene", () =
   })) } };
   throws(() => applyDataSceneAuthoringDocument(fixture.engine, source, { path: "largeScene" }),
     /largeScene\.components\.normalTexture.*at most 65536 sprite normal materials/);
-  deepEqual(fixture.events, []);
+  equal(fixture.events.length, 0);
   equal(fixture.requests.length, 0);
   equal(fixture.batches.length, 0);
 });

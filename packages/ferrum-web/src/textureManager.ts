@@ -38,7 +38,7 @@ export class TextureManager {
   private ownedTranscoder?: Ktx2Transcoder;
   private destroyed = false;
   private revision = 0;
-  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean }>();
+  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean; alphaMode?: "straight" | "premultiplied" }>();
   textureInfo(textureId: number) { return this.textureInfos.get(this.texture(textureId)); }
   contentRevision(): number { return this.revision; }
 
@@ -98,12 +98,12 @@ export class TextureManager {
           const transcoder = this.options.ktx2 || (this.ownedTranscoder ??= createKtx2Transcoder());
           const image = await transcoder.transcode(bytes, {
             format: format.format, srgb: colorSpace === "srgb",
-            allowAlpha: this.colorManagement === "linear-srgb",
+            allowAlpha: this.colorManagement === "linear-srgb" || options.alphaMode === "straight",
             maxDimension: Math.min(KTX2_MAX_DIMENSION, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)), signal,
           });
           this.assertLoadActive(signal);
           texture = this.createCompressedTexture(image, format);
-          this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace, compressed: true });
+          this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace, compressed: true, alphaMode: "straight" });
         } catch (reason) {
           this.assertLoadActive(signal);
           this.options.onKtx2Fallback?.({ url, ktx2Url, reason });
@@ -111,10 +111,10 @@ export class TextureManager {
       }
       if (texture === undefined) {
         this.assertLoadActive(signal);
-        const image = await this.loadImageBitmap(url, colorSpace, signal);
+        const image = await this.loadImageBitmap(url, colorSpace, signal, options.alphaMode);
         try {
           this.assertLoadActive(signal);
-          texture = this.createTextureFromSource(image, { colorSpace });
+          texture = this.createTextureFromSource(image, { colorSpace, ...(options.alphaMode === undefined ? {} : { alphaMode: options.alphaMode }) });
         } finally { image.close(); }
       }
       this.assertLoadActive(signal);
@@ -179,7 +179,7 @@ export class TextureManager {
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.colorManagement === "legacy" && colorSpace === "srgb" ? 1 : 0);
+      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.colorManagement === "legacy" && colorSpace === "srgb" && options?.alphaMode !== "straight" ? 1 : 0);
       this.gl.texImage2D(
         this.gl.TEXTURE_2D,
         0,
@@ -190,7 +190,7 @@ export class TextureManager {
       );
 
       this.adoptTexture(texture, sourceByteLength(source));
-      if (!("videoWidth" in source || "naturalWidth" in source || "displayWidth" in source)) this.textureInfos.set(texture, { width: source.width, height: source.height, colorSpace });
+      if (!("videoWidth" in source || "naturalWidth" in source || "displayWidth" in source)) this.textureInfos.set(texture, { width: source.width, height: source.height, colorSpace, alphaMode: this.colorManagement === "legacy" && colorSpace === "srgb" && options?.alphaMode !== "straight" ? "premultiplied" : "straight" });
     } catch (error) {
       this.gl.deleteTexture(texture);
       throw error;
@@ -468,7 +468,7 @@ export class TextureManager {
     }
   }
 
-  private async loadImageBitmap(url: string, colorSpace: "srgb" | "linear" | "none", signal: AbortSignal): Promise<ImageBitmap> {
+  private async loadImageBitmap(url: string, colorSpace: "srgb" | "linear" | "none", signal: AbortSignal, alphaMode?: "straight"): Promise<ImageBitmap> {
     let response: Response;
     try {
       response = await fetch(url, { signal });
@@ -505,7 +505,7 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_LOAD");
     }
     try {
-      if (this.colorManagement === "legacy" && colorSpace === "srgb") return await createImageBitmap(blob);
+      if (this.colorManagement === "legacy" && colorSpace === "srgb" && alphaMode !== "straight") return await createImageBitmap(blob);
       return await createImageBitmap(blob, {
         premultiplyAlpha: "none",
         colorSpaceConversion: colorSpace === "srgb" ? "default" : "none",

@@ -99,6 +99,15 @@ impl Default for SpriteNormalMaterial {
 }
 const _: () = assert!(core::mem::size_of::<SpriteNormalMaterial>() == 8);
 
+/// Optional flat receiver metadata. Mode 0 is unlit, 1 opaque, 2 alpha cutout.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpriteLightingMaterial {
+    pub mode: u32,
+    pub alpha_cutoff: f32,
+}
+const _: () = assert!(core::mem::size_of::<SpriteLightingMaterial>() == 8);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpriteRenderSortKey {
     pub floor_id: u32,
@@ -125,5 +134,6 @@ impl SpriteRenderSortKey {
 pub(crate) struct SpriteRenderItem {
     pub command: SpriteRenderCommand,
     pub normal_material: SpriteNormalMaterial,
+    pub lighting_material: SpriteLightingMaterial,
     pub sort_key: SpriteRenderSortKey,
 }

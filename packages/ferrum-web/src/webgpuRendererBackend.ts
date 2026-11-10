@@ -1,3 +1,5 @@
+import { WebGpuFlatLitPass } from "./webgpuFlatLitPass.js";
+import { validateFlatLitCommands, validateFlatLitMaterial, validateFlatLitAsset, type FlatLightingAsset } from "./flatLit.js";
 import { WebGpuSpriteNormals } from "./webgpuSpriteNormals.js";
 import { WebGpuPixelPerfect } from "./webgpuPixelPerfect.js";
 import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectOptions, type PixelPerfectPresentation } from "./pixelPerfect.js";
@@ -73,6 +75,8 @@ export class WebGpuRendererBackend implements Renderer {
   private readonly resolutionBindGroup: GPUBindGroup;
   private readonly spritePass: WebGpuSpritePass;
   private spriteNormals?:WebGpuSpriteNormals;
+  private flatLit?:WebGpuFlatLitPass;
+  private spriteMaterial=resolveSpriteMaterialPreset(undefined);
   private sunShadowMask?:WebGpuSunShadowMask;
   private sunShadowConfigured=false;
   private readonly debugLinePass: WebGpuDebugLinePass;
@@ -149,7 +153,8 @@ export class WebGpuRendererBackend implements Renderer {
     );
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.sunShadowConfigured=!!options.lighting&&options.lighting.directionalLight!==undefined;
-    this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
+    this.spriteMaterial=resolveSpriteMaterialPreset(options.spriteMaterial);if(this.lightingScene.profile==="lit")validateFlatLitMaterial(this.spriteMaterial);
+    this.spriteMaterialPasses = spriteMaterialPasses(this.spriteMaterial);
     this.spritePass.configurePalettes(this.spriteMaterialPasses[this.spriteMaterialPasses.length-1]?.paletteSwap);
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
     this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
@@ -300,15 +305,23 @@ export class WebGpuRendererBackend implements Renderer {
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
+    if(nextLightingScene.profile==="lit") validateFlatLitMaterial(this.spriteMaterial);
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
+    if(nextLightingScene.profile==="lit")this.lightingPass.clearTargets();
     this.sunShadowConfigured=!!scene&&scene.directionalLight!==undefined;
+    if(nextLightingScene.profile!=="lit"||!nextLightingScene.enabled)this.flatLit?.clearTargets();
   }
 
+  prepareFlatLighting(scene:LightingScene2D,assets:readonly FlatLightingAsset[]):void{
+    this.assertAlive();const resolved=resolveLightingSceneInto(createResolvedLightingScene(),scene);if(resolved.profile!=="lit")return;validateFlatLitMaterial(this.spriteMaterial);for(const asset of assets)validateFlatLitAsset(this.textureStore,asset);
+  }
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
     const resolved = resolveSpriteMaterialPreset(material);
+    if(this.lightingScene.profile==="lit")validateFlatLitMaterial(resolved);
     this.spritePass.configurePalettes(resolved.paletteSwap);
+    this.spriteMaterial=resolved;
     this.spriteMaterialPasses = spriteMaterialPasses(resolved);
   }
 
@@ -380,6 +393,8 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
+    const receivers=validateFlatLitCommands(commands,this.lightingScene,this.textureStore,this.spriteMaterial);const lit=this.lightingScene.profile==="lit";
+    if(lit){this.flatLit??=new WebGpuFlatLitPass(this.device,this.format,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout);this.flatLit.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled);}else this.flatLit?.clearTargets();
     const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     this.spritePass.validatePalettes(commands);
     if(commands.spatial && this.pixelPerfect)throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
@@ -396,20 +411,21 @@ export class WebGpuRendererBackend implements Renderer {
     if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
     const encoder = this.device.createCommandEncoder();
     const mapped=spriteNormalsActive(commands);
-    const groundCasters=deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
+    const groundCasters=(!lit||receivers)&&deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
     const sunMaskStats=groundCasters>0
       ?(this.sunShadowMask??=new WebGpuSunShadowMask(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height):undefined;
     if(!sunMaskStats)this.sunShadowMask?.clearTarget();
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
+    const normalStats=!lit&&mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
     const target = this.frameTexture().createView();
     const pass = this.beginRenderPass(encoder, "load", target);
 
-    const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);
-
-    if(!lightingStats.passEnded)pass.end();
+    const spriteStats = lit?this.flatLit!.drawColor(pass,commands,this.spriteMaterialPasses):this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
+    let flatStats;
+    let lightingStats;
+    if(lit){pass.end();if(receivers&&this.lightingScene.enabled)flatStats=this.flatLit!.drawLighting(encoder,target,commands,this.lightingScene,this.logicalWidth,this.logicalHeight,this.spriteMaterialPasses,sunMaskStats);lightingStats=flatStats?.lighting??{drawCalls:0,pointLightCount:0,tileOccluderCount:0,shadowDrawCalls:0,shadowCasterCount:0};}
+    else {lightingStats=this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);if(!lightingStats.passEnded)pass.end();}
     this.device.queue.submit([encoder.finish()]);
     if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
     writeRendererStatsForCommandsInto(
@@ -418,7 +434,8 @@ export class WebGpuRendererBackend implements Renderer {
       spriteStats.drawCalls,
       spriteStats.textureSwitchCount,
     );
-    this.currentStats.normalDrawCalls=normalStats?.drawCalls??0;
+    if(flatStats){this.currentStats.drawCalls+=flatStats.data.drawCalls;this.currentStats.batchCount+=flatStats.data.drawCalls;this.currentStats.textureBindCount+=flatStats.data.drawCalls*2+3;this.currentStats.textureSwitchCount+=flatStats.data.textureSwitchCount;}
+    this.currentStats.normalDrawCalls=flatStats?.data.drawCalls??normalStats?.drawCalls??0;
     if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     addLightingStatsInto(
       this.currentStats,
@@ -483,6 +500,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.lightingPass.destroy();
     this.spritePass.destroy();
     this.spriteNormals?.destroy();
+    this.flatLit?.destroy();
     this.sunShadowMask?.destroy();
     this.pixelPass?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);

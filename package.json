@@ -244,7 +244,8 @@
     "smoke:pixel-showcase": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/pixel-art build && node tests/smoke/pixel-showcase-smoke.mjs",
     "smoke:feature-examples": "pnpm validate:example-catalog && pnpm --filter @ferrum2d/starter-runtime --filter @ferrum2d/platformer --filter @ferrum2d/breakout --filter @ferrum2d/topdown-shooter lint && pnpm --filter @ferrum2d/starter-runtime --filter @ferrum2d/platformer --filter @ferrum2d/breakout --filter @ferrum2d/topdown-shooter build && node tests/smoke/feature-examples-smoke.mjs",
     "smoke:shadow-comparison": "pnpm validate:example-catalog && pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/feature-examples-smoke.mjs --shadow-proxy-only",
-    "smoke:engine-playground": "pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/engine-playground-smoke.mjs"
+    "smoke:engine-playground": "pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/engine-playground-smoke.mjs",
+    "smoke:flat-lit": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-lit-browser-smoke.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

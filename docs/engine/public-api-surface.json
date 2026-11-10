@@ -244,7 +244,11 @@
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW",
         "SpriteNineSliceSpec",
-        "SpriteNineSliceUpdate"
+        "SpriteNineSliceUpdate",
+        "SpriteLightingMaterialSpec",
+        "SpriteLightingBufferView",
+        "FlatLightingAsset",
+        "FlatLightingPreparer"
       ]
     },
     {
@@ -419,7 +423,11 @@
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED",
         "GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW",
         "SpriteNineSliceSpec",
-        "SpriteNineSliceUpdate"
+        "SpriteNineSliceUpdate",
+        "SpriteLightingMaterialSpec",
+        "SpriteLightingBufferView",
+        "FlatLightingAsset",
+        "FlatLightingPreparer"
       ]
     },
     {
@@ -560,7 +568,9 @@
         "resolveSceneDisplay",
         "DataSceneSpriteAnimationDirection",
         "SpriteNineSliceSpec",
-        "SpriteNineSliceUpdate"
+        "SpriteNineSliceUpdate",
+        "FlatLightingAsset",
+        "FlatLightingPreparer"
       ]
     },
     {

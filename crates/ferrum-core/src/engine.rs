@@ -59,6 +59,7 @@ mod scenes;
 mod shooter_authoring;
 mod snapshots;
 mod spatial_api;
+mod sprite_lighting_materials;
 mod sprite_nine_slices;
 mod sprite_normal_materials;
 mod telemetry;

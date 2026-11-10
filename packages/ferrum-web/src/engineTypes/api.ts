@@ -225,6 +225,7 @@ export interface FerrumSceneApi {
   /** Atomically configure flat-sprite borders, or detach with nineSlice omitted. */
   configureSpriteNineSlices(updates: readonly import("../spriteNineSlice.js").SpriteNineSliceUpdate[]): boolean;
   configureSpriteNormalMaterials(updates: readonly { entity: GameplayEntityHandle; normalTextureId?: number }[]): boolean;
+  configureSpriteLightingMaterials(updates: readonly { entity: GameplayEntityHandle; lighting?: import("../spriteLighting.js").SpriteLightingMaterialSpec }[]): boolean;
   /** Opt-in idle/walk and facing policy for the primary actor. false preserves playback and detaches. */
   configureDataSceneMovementAnimation(spec: DataSceneMovementAnimationSpec | false): boolean;
   /** Atomic batch. Duplicate/stale handles or unknown clip/frame reject the entire batch. */

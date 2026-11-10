@@ -5,6 +5,8 @@ export type ColorManagementMode = "legacy" | "linear-srgb";
 export type TextureColorSpace = "srgb" | "linear" | "none";
 
 export interface TextureLoadOptions {
+  /** Explicit straight-alpha decode/upload. Omit to retain backend legacy behavior. */
+  alphaMode?: "straight";
   /** Color images default to sRGB. Use none for masks/data or linear for linear RGB bytes. */
   colorSpace?: TextureColorSpace;
   /** Optional preferred Basis KTX2 URL. The normal URL remains the image fallback. */
@@ -22,6 +24,7 @@ export function resolveTextureColorSpace(options: TextureLoadOptions = {}): Text
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw new Error("Texture load options must be an object.");
   }
+  if (options.alphaMode !== undefined && options.alphaMode !== "straight") throw new Error("Texture alphaMode must be straight when specified.");
   if (options.ktx2Url !== undefined && (typeof options.ktx2Url !== "string" || options.ktx2Url.trim().length === 0)) {
     throw new Error("Texture ktx2Url must be a non-empty URL string.");
   }

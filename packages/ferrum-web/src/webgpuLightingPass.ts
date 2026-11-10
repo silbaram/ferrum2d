@@ -67,6 +67,7 @@ export class WebGpuLightingPass {
     private readonly format: GPUTextureFormat,
     private readonly pipelineLayout: GPUPipelineLayout,
     private readonly resolutionBindGroup: GPUBindGroup,
+    private readonly irradiance=false,
   ) {
     this.lightingInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: LIGHTING_INSTANCE_STRIDE_BYTES,
@@ -135,7 +136,8 @@ export class WebGpuLightingPass {
 
       if (sun !== undefined && sunCount > 0) {
         this.lightColorScratch[0] = sun.color[0]; this.lightColorScratch[1] = sun.color[1];
-        this.lightColorScratch[2] = sun.color[2]; this.lightColorScratch[3] = sun.intensity;
+        this.lightColorScratch[2] = sun.color[2]; this.lightColorScratch[3] = this.irradiance?1:sun.intensity;
+        if(this.irradiance){this.lightColorScratch[0]*=sun.intensity;this.lightColorScratch[1]*=sun.intensity;this.lightColorScratch[2]*=sun.intensity;}
         const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
         lightingOffset = writeLightingInstance(this.lightingStaging, lightingOffset, 0, 0, viewportWidth, viewportHeight,
           this.lightColorScratch,normals?-sun.directionX*c:0,normals?-sun.directionY*c:0,normals?Math.sin(elevation):1,normals?0:1,normals?-1:0);
@@ -271,6 +273,8 @@ export class WebGpuLightingPass {
     );
   }
 
+  clearTargets(): void { this.releaseMask(); }
+
   destroy(): void {
     if (this.destroyed) {
       return;
@@ -358,7 +362,7 @@ export class WebGpuLightingPass {
             ${maskLayout ? `let transmission=mix(vec3f(1.),shadowTint.rgb,textureLoad(shadowMask,vec2i(input.position.xy),0).r);
             let visibility=max(max(transmission.r,transmission.g),transmission.b);
             if(visibility<=0.){return vec4f(0.);}
-            return vec4f(clamp(input.color.rgb,vec3f(0.),vec3f(1.))*transmission/visibility,alpha*visibility);`
+            return vec4f(${this.irradiance?"input.color.rgb":"clamp(input.color.rgb,vec3f(0.),vec3f(1.))"}*transmission/visibility,alpha*visibility);`
             : "return vec4f(input.color.rgb,alpha);"}
           }
           var alpha=input.color.a;

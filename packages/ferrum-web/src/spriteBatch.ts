@@ -1,3 +1,4 @@
+import { expandLitSpriteCommands } from "./spriteLighting.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
@@ -34,7 +35,7 @@ export interface SpriteTextureSource {
   texture(textureId: number): WebGLTexture;
   /** Undefined means mutable/untracked; spatial shadow results must then be regenerated. */
   textureRevision?(textureId: number): number | undefined;
-  textureInfo?(textureId: number): { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean } | undefined;
+  textureInfo?(textureId: number): { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean; alphaMode?: "straight" | "premultiplied" } | undefined;
   /** Framebuffer textures need bottom-left storage mapped to top-left sprite UVs. */
   textureFlipY?(textureId: number): boolean;
 }
@@ -84,14 +85,20 @@ export class SpriteBatch {
   private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
   private paletteBatch?: SpriteBatch;
+  private readonly instanceFloats: number;
+  private readonly instanceStride: number;
+  private litSource?: SpriteTextureSource;
+  private litOutputLocation?: WebGLUniformLocation;
   private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data") {
+    this.instanceFloats = litMode ? 17 : 15;
+    this.instanceStride = this.instanceFloats * 4;
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
+      this.program = createWebGL2Program(this.gl, litMode ? (litMode === "data" ? "spriteLitData" : "spriteLitColor") : sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -115,21 +122,22 @@ export class SpriteBatch {
 
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
       this.gl.enableVertexAttribArray(1);
-      this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 0);
+      this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, this.instanceStride, 0);
       this.gl.vertexAttribDivisor(1, 1);
       this.gl.enableVertexAttribArray(2);
-      this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 4 * BYTES_PER_F32);
+      this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, this.instanceStride, 4 * BYTES_PER_F32);
       this.gl.vertexAttribDivisor(2, 1);
       this.gl.enableVertexAttribArray(3);
-      this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
+      this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, this.instanceStride, 8 * BYTES_PER_F32);
       this.gl.vertexAttribDivisor(3, 1);
       this.gl.enableVertexAttribArray(4);
-      this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 14 * BYTES_PER_F32);
+      this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, this.instanceStride, 14 * BYTES_PER_F32);
       this.gl.vertexAttribDivisor(4, 1);
       this.gl.enableVertexAttribArray(5);
-      this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 13 * BYTES_PER_F32);
+      this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, this.instanceStride, 13 * BYTES_PER_F32);
       this.gl.vertexAttribDivisor(5, 1);
 
+      if (litMode) { gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 2, gl.FLOAT, false, this.instanceStride, 15 * 4); gl.vertexAttribDivisor(6, 1); }
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
       this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
       this.gl.bindVertexArray(null);
@@ -163,7 +171,8 @@ export class SpriteBatch {
         if (!count || !from || !to || !srgb) throw new Error("Missing sprite palette uniforms");
         this.paletteUniforms={count,from,to,srgb};
       }
-      if(normalMode){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
+      if (litMode) { const location=gl.getUniformLocation(this.program,"u_output_srgb");if(!location)throw Error("Missing lit output uniform");this.litOutputLocation=location; }
+      if(normalMode || litMode === "data"){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
     } catch (error) {
       for (const buffer of buffers) gl.deleteBuffer(buffer);
       for (const vao of vaos) gl.deleteVertexArray(vao);
@@ -276,6 +285,15 @@ export class SpriteBatch {
     if (palette) { this.gl.uniform4fv(uniforms.from,palette.from); this.gl.uniform4fv(uniforms.to,palette.to); }
   }
 
+  drawLitBatches(source: SpriteTextureSource, commands: RenderCommandBufferView, resolution: [number,number], material: ResolvedSpriteMaterialPreset, screenOffset: readonly [number,number]): SpriteBatchStats {
+    if (!this.litMode) throw Error("Not a lit sprite batch");
+    this.litSource=source;
+    try {
+      if (this.litMode === "data") return this.drawNormalBatches(source,commands,resolution,material,screenOffset);
+      return this.drawBatches(source,commands,resolution,material,screenOffset);
+    } finally { this.litSource=undefined; }
+  }
+
   /** Same order/alpha as color, with an independent normal/coverage target. */
   drawNormalBatches(source:SpriteTextureSource,commands:RenderCommandBufferView,resolution:[number,number],material:ResolvedSpriteMaterialPreset,screenOffset:readonly[number,number]):SpriteBatchStats {
     const uniforms=this.normalUniforms;if(!uniforms)throw Error("Not a normal sprite batch");
@@ -310,12 +328,12 @@ export class SpriteBatch {
     if (commandCount === 0) return 0;
 
     const commandFloatOffset = startCommand * commands.floatsPerCommand;
-    const uploadFloatCount = commandCount * FLOATS_PER_COMMAND;
+    const uploadFloatCount = commandCount * this.instanceFloats;
     if (this.instanceCapacityFloats < uploadFloatCount) {
       this.instanceCapacityFloats = this.nextPowerOfTwo(uploadFloatCount);
       this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceCapacityFloats * BYTES_PER_F32, this.gl.DYNAMIC_DRAW);
     }
-    if (commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(pass)) {
+    if (this.litMode || commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(pass)) {
       this.ensureMaterialStaging(uploadFloatCount);
       const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
@@ -324,7 +342,8 @@ export class SpriteBatch {
         pass,
         this.materialStaging,
       );
-      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, materialFloatCount);
+      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.linearTarget);
+      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, this.litMode ? uploadFloatCount : materialFloatCount);
     } else {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);
     }
@@ -338,6 +357,7 @@ export class SpriteBatch {
   private bindForDraw(resolution: [number, number], screenOffset: readonly [number, number], commands: RenderCommandBufferView): void {
     const projection = groundShadowProjection(commands);
     this.gl.useProgram(this.program);
+    if (this.litOutputLocation) this.gl.uniform1i(this.litOutputLocation, this.linearTarget ? 0 : 1);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);

@@ -8,14 +8,14 @@ const encode = x => x <= .0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - .055;
 const packet = rows => ({ buffer: Float32Array.from(rows.flat()), commandCount: rows.length, floatsPerCommand: 15 });
 const sprite = (x, y, w, h, rgb, texture = 1, uv = [0, 0, 1, 1]) => [x, y, w, h, ...uv, ...rgb.map(x => x / 255), 1, texture, 0, 0];
 
-function texture(pixels) {
+export function texture(pixels) {
   const canvas = document.createElement("canvas"); canvas.width = pixels.length; canvas.height = 1;
   canvas.getContext("2d").putImageData(new ImageData(Uint8ClampedArray.from(pixels.flat()), pixels.length, 1), 0, 0);
   return canvas.toDataURL();
 }
 
 /** Return top-left RGBA bytes, normalizing actual GL origin and GPU channel order. */
-async function readPixels(renderer, canvas) {
+export async function readPixels(renderer, canvas) {
   const width = canvas.width, height = canvas.height;
   if (typeof renderer.gpuDevice !== "function") {
     const gl = canvas.getContext("webgl2"), raw = new Uint8Array(width * height * 4), result = new Uint8Array(raw.length);

@@ -30,6 +30,7 @@ interface MutableResolvedLightingDebugOptions extends ResolvedLightingDebugOptio
 }
 
 interface MutableResolvedLightingScene2D extends ResolvedLightingScene2D {
+  ambientIrradiance?: [number, number, number];
   ambient: MutableLightingColor4;
   pointLights: MutableResolvedPointLight2D[];
   tileOccluders: TileOccluder2D[];
@@ -67,7 +68,7 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || scene.enabled === false) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined)) {
     return DISABLED_LIGHTING_SCENE;
   }
 
@@ -105,7 +106,21 @@ export function resolveLightingSceneInto(
   cache?: LightingSceneResolveCache,
 ): ResolvedLightingScene2D {
   const mutableTarget = target as MutableResolvedLightingScene2D;
-  if (scene === undefined || scene === false || scene.enabled === false) {
+  if (scene && scene.profile !== undefined && scene.profile !== "legacy" && scene.profile !== "lit") throw Error("lighting.profile must be legacy or lit");
+  const lit = !!scene && scene.profile === "lit";
+  if (scene && !lit && scene.ambientIrradiance !== undefined) throw Error("ambientIrradiance requires the lit profile");
+  if (scene && lit && scene.ambient !== undefined && (scene.ambient.length !== 4 || scene.ambient.some(x => x !== 0))) throw Error("lit uses ambientIrradiance, not ambient overlay");
+  if (scene && scene.profile !== undefined) mutableTarget.profile = scene.profile;
+  else delete mutableTarget.profile;
+  if (lit && scene) {
+    const input = scene.ambientIrradiance ?? [1, 1, 1];
+    if (!Array.isArray(input) || input.length !== 3) throw Error("ambientIrradiance must contain three linear channels");
+    const output = mutableTarget.ambientIrradiance ?? (mutableTarget.ambientIrradiance = [0, 0, 0]);
+    for (let i = 0; i < 3; i++) output[i] = normalizedChannel(input[i]!, `ambientIrradiance[${i}]`);
+    if ((scene.pointLights?.length ?? 0) > 32 || scene.pointLights?.some(l => (l.intensity ?? 1) > 64) || (scene.directionalLight?.intensity ?? 0) > 64) throw Error("lit supports 32 point lights with intensities at most 64");
+    if (scene.debug?.tileOccluders) throw Error("lit does not support the legacy tile-occluder color overlay");
+  } else delete mutableTarget.ambientIrradiance;
+  if (scene === undefined || scene === false || (scene.enabled === false && !lit)) {
     mutableTarget.enabled = false;
     delete mutableTarget.directionalLight;
     writeColor4Into(mutableTarget.ambient, DEFAULT_DISABLED_AMBIENT);
@@ -117,10 +132,10 @@ export function resolveLightingSceneInto(
     return mutableTarget;
   }
 
-  mutableTarget.enabled = true;
+  mutableTarget.enabled = scene.enabled !== false;
   if (scene.directionalLight === undefined) delete mutableTarget.directionalLight;
   else mutableTarget.directionalLight = resolveDirectionalLight2D(scene.directionalLight);
-  writeNormalizedColor4Into(mutableTarget.ambient, scene.ambient ?? DEFAULT_AMBIENT, "ambient");
+  writeNormalizedColor4Into(mutableTarget.ambient, lit ? DEFAULT_DISABLED_AMBIENT : scene.ambient ?? DEFAULT_AMBIENT, "ambient");
 
   const pointLights = scene.pointLights ?? [];
   ensurePointLightCapacity(mutableTarget.pointLights, pointLights.length);

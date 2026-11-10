@@ -1,3 +1,4 @@
+import { preflightDataSceneFlatLighting } from "./dataSceneRuntimeTarget.js";
 import {
   captureDataSceneProgress,
   assertDataSceneCombatSaveSupported,
@@ -256,6 +257,7 @@ export function restoreGameStateSnapshot(
   if (snapshot.dataScene?.progress?.combat !== undefined && snapshot.physics !== undefined) {
     throw new Error("Data Scene combat checkpoints cannot combine a separate physics snapshot.");
   }
+  if(options.restoreDataSceneState!==false&&options.restoreDataSceneAuthoringDocument!==false&&snapshot.dataScene?.authoringDocument!==undefined)preflightDataSceneFlatLighting(engine,snapshot.dataScene.authoringDocument,options.dataSceneAuthoringApplyOptions);
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   const snapshotPath = options.path ?? "gameState.snapshot";
   preflightDataSceneActivation(snapshot, options, snapshotPath);

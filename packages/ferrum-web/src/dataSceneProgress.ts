@@ -792,6 +792,7 @@ function unsupportedOptions(
           "colorManagement",
           "instanceHandleRegistry",
           "spatialModelPreparer",
+          "flatLightingPreparer",
           "preserveAnimationAndLod",
         ].includes(key) &&
         !(
