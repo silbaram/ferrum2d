@@ -2,7 +2,7 @@
 
 기준일: 2026-11-10
 
-상태: M2-a flat lit 개발 소스 구현·회귀 검증 완료 · M0/M1 잔여 검증과 M3a 준비 · 실제 사용자 문제 장면의 픽셀 재현 대기
+상태: M2-a·M3a 개발 소스 구현·자동 회귀 완료 · M3b/M3c·M4/M5 잔여 개발 · 실게임·실기기 검증은 개발 완료 후 진행
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -96,21 +96,6 @@ texel 밀도·snapping·내부 경계 fade·지도 크기와 pan/zoom의 비용�
 
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
 [shadow 범위 판정](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts).
-
-### E01 · P1 · AO·발광·안개·DOF·Bloom 결합
-
-**구현 확인 / 합성 정책 개선.** Spatial geometry 단계에서 diffuse + emission에 fog를 적용한다.
-composite는 그 색에 DOF를 먼저 적용하고 AO를 곱한다. 따라서 직접광·발광·안개 색도 AO로 어두워진다.
-Bloom은 AO/DOF 결과가 아니라 원래 HDR color target을 읽는다. 밝은 물체 본체와 halo의 처리 경로가 달라진다.
-이는 현재 화면 공간 접촉 음영의 근사이며, 간접광만 가리는 물리적 AO와 동일하다고 설명하면 안 된다.
-
-**방향:** AO가 어느 조명 성분에 적용되는지와 Bloom의 입력 단계를 명시한다.
-권장 새 경로는 opaque depth/normal → AO → ambient/indirect 성분에 적용 → 직접광·specular·emission 합성 →
-fog → DOF → Bloom → exposure/tone map → 출력 변환이다. DOF와 Bloom의 세부 순서는 목표 연출 fixture로 확정한다.
-이를 위해 필요한 prepass/MRT/중간 target 비용을 비교한다. 비용상 기존 접촉 음영을 유지하는 profile도 구별한다.
-
-근거: [GL geometry/composite](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
-[GPU geometry/composite](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialEnvironment.ts).
 
 ### E02 · P1 · 색공간·HDR·효과 범위의 경계
 
@@ -258,7 +243,12 @@ M2-a의 opt-in opaque/cutout 표면 합성은 개발 소스 구현·양 backend 
 ABI·합성 구조는 [flat 합성 계약](../development/architecture/flat-lighting-composition.md)을 따른다.
 소프트웨어 GPU 검증을 실물 GPU 성능 검증이나 배포 완료로 해석하지 않는다.
 
-M0/M1의 잔여 검증은 진행 중이며 다음 신규 개발은 M3a다. M3 이후는 미착수이며 아래 표는 남은 범위다.
+M3a의 선택형 성분 분리·효과 순서는 개발 소스 구현과 자동 회귀를 완료했다.
+사용·비용 계약은 [공간 효과 합성](../engine/data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)과
+[합성 구조](../development/architecture/spatial-lighting-composition.md)에서 관리한다.
+이후 M3b/M3c, M4, M5를 각각 구현·리뷰·수정한다.
+사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
+M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 `lightingProfile`, `shadowCasterMode`, `lightMask` 같은 명칭은 설계 후보이지 새 공개 API가 아니다.
 
@@ -266,7 +256,6 @@ M0/M1의 잔여 검증은 진행 중이며 다음 신규 개발은 M3a다. M3 �
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M3a Spatial 효과 합성 | E01. AO 성분·emission·fog·DOF·Bloom 입력과 새 opt-in profile | M0의 합성 기대값. M2와 독립 | 발광·직접광 보존 정책, 조합 픽셀·비용·저장/복원, 기존 profile 보존 |
 | M3b flat HDR | E02의 flat float target·노출·톤매핑 | M0 색/호환 계약과 M2 새 lit 경로 | HDR 범위·encode 1회·HUD·fallback·복구 검증 |
 | M3c WebGPU 전역 색공간 | E02의 전역 linear-sRGB parity | M0 capability 계약. M3a/M3b와 별도 구현 | 지원/거절/fallback 선택, GL/GPU 출력·HUD·복구 동등성 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2 및 해당 기능에 필요한 M3 하위 단계 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
@@ -278,13 +267,12 @@ M0/M1의 잔여 검증은 진행 중이며 다음 신규 개발은 M3a다. M3 �
 1. **M0-a:** `hd2d-shadow-proxy`의 정원 캐릭터·나무 비교와 `hd2d-environment`의 효과 조합,
    기존 proxy/contact 회귀 fixture를 재사용해 실제 사용자 문제 장면의 발 접촉·벽·asset 조건을 축약한다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
-2. **M0-b의 Spatial 잔여:** Spatial legacy/new 효과 합성의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
-   이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
-   Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
+2. **M0-b의 실기기 잔여:** Spatial legacy/separated의 자동 픽셀 기대값은 공식 회귀로 관리한다.
+   실제 게임 장면·목표 GPU의 성능 예산과 품질 수용 기준은 개발 완료 후 검증에서 확정한다.
 3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-M3a의 Spatial 효과 합성은 완료한 M2-a의 flat 계약과 분리해 검증한다. M3b/M3c를 같은 PR에 묶지 않는다.
+M3b/M3c는 완료한 M2-a·M3a와 구분하며 같은 PR에 묶지 않는다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법

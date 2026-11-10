@@ -1387,6 +1387,34 @@ billboard 시각 offset에 `focusOffset`(world ±1M, 기본 0)을 더해 camera 
 진행 v7은 수동 fallback·target 정책·품질을 저장하며 파생 focus 값은 저장하지 않는다.
 fresh restore는 authored actor의 새 handle을 사용한다.
 
+### 선택형 조명 성분 분리 · 개발 소스
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  composition: "separated",
+  lighting: { ambient: [0.15, 0.15, 0.15], lights: [] },
+  ambientOcclusion: { strength: 0.6, radius: 12, bias: 0.2 },
+  bloom: { strength: 0.4, radius: 8, threshold: 1 },
+});
+```
+
+생략하면 기존 합성을 유지한다. `composition:"separated"`는 AO를 ambient·hemisphere 기여에만 적용한다.
+직접광·발광·unlit 색은 AO로 줄이지 않으며, 그 뒤 fog → DOF → Bloom → exposure/톤 매핑·색 보정 순서로 처리한다.
+Bloom threshold는 exposure 전의 선형 HDR 값이다. flat HUD는 기존처럼 Spatial 합성 뒤에 그린다.
+명시적인 `composition:"legacy"` 선택도 저장하며 기존 화면으로 돌아간다.
+
+환경 v6 numeric544를 사용한다. 0..527은 기존 prefix, 528은 legacy=0/separated=1,
+529..543은 reserved 0이다. v1..v5의 길이·의미를 유지하고 혼합 version/length는 거절한다.
+새 JS/Wasm을 함께 사용해야 하며 과거 core는 새 길이를 거절한다. JSON·patch·진행 저장과 fresh restore에 선택을 보존한다.
+
+선택형 AO에는 환경광 MRT와 AO/fog resolve용 RGBA16F target 두 개를 추가한다.
+DOF와 양수 Bloom을 함께 켜면 Bloom이 DOF 결과를 읽도록 RGBA16F target 하나를 추가한다.
+기본 HDR color+depth는 physical pixel당 12 bytes, AO 분리만 사용하면 28 bytes,
+AO 분리와 DOF/Bloom을 함께 사용하면 36 bytes다. shadow target은 별도다.
+추가 resolve는 AO 활성 시 1회, DOF/Bloom 동시 활성 시 1회다. 해당 strength가 0이면 추가 target/pass를 만들지 않는다.
+기존 표준/고품질 DOF의 단일 깊이 근사·반투명/숨은 배경 복원 한계는 유지한다.
+세부 수식과 검증 기준은 [합성 구조](../development/architecture/spatial-lighting-composition.md)를 따른다.
+
 ### 버퍼와 통계 호환
 
 기존 spatial render ABI v2/vertex 44 bytes/flat ABI는 유지한다. environment v1 numeric80도 읽고 쓴다.

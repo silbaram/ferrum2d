@@ -2,6 +2,10 @@
 
 Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeScript platform layer가 브라우저 API를 다루며, renderer가 Rust에서 만든 command buffer를 소비하는 2D 웹 게임 엔진이다.
 
+Spatial의 선택형 environment v6 합성은 [조명 성분·효과 합성 계약](spatial-lighting-composition.md)을 따른다.
+Rust는 profile과 환경 원본·camera/depth 기하를 소유하고, TS는 선택형 indirect MRT·AO/fog resolve·DOF/Bloom target과 pass를 관리한다.
+기존 환경 v1..v5와 renderer 기본값은 유지하며 entity별 Wasm 왕복을 추가하지 않는다.
+
 
 ## Rust와 TypeScript의 상태 소유권
 

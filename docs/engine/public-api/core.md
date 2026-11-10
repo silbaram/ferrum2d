@@ -1450,3 +1450,10 @@ callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예�
 짝수 word는 mode(0unlit/1opaque/2cutout), 홀수 float는 cutoff다. cutoff는 cutout에만 쓰며 다른 mode는0이다.
 다음 Wasm 호출/frame/memory growth 전에 소비하고, 장기 보관할 때 alias를 유지한 소유 복사본을 만든다.
 구 Wasm은 metadata 없는 기존 씬을 유지하며 lit/receiver 요청은 활성화 전에 거절한다.
+
+## Spatial 효과 합성 선택 · 개발 소스
+
+`SpatialEnvironmentSpec.composition: "legacy"|"separated"`를 선택한다. 생략은 기존 합성이다.
+`engine.setDataSceneSpatialEnvironment(...)`와 authoring/patch·진행 저장에서 같은 선택을 보존한다.
+새 environment v6/544-float는 AO를 환경광 성분에만 적용하고 직접광·발광을 보존하며,
+fog·DOF 뒤의 HDR 결과를 Bloom 입력으로 사용한다. 비용·지원 범위는 [공간 합성 계약](../data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)을 따른다.

@@ -2042,9 +2042,14 @@ physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 �
 
 Bloom 강도 0은 효과를 생략한 장면과 배경 픽셀이 같아야 한다. 객체/지형을 다시 선택하면 광원 도구를 해제하고, 광원 키보드 조작은 좌표·반경 한계에서 멈춰야 한다. 연결된 자식 객체는 상위 attachment의 위치·높이·yaw를 반영한 anchor로 광원을 표시하고 연결 변경 시 월드 위치를 보존한다.
 
-- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 56개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
+- `pnpm smoke:spatial-webgpu-offscreen`의 environment matrix는 70개 상태를 두 projection, 두 viewport, DPR 1/2, 두 backend로 검사한다.
   스포트라이트 방향 반전, HDR Bloom, 접촉 음영의 실제 pixel 변화와 HUD 불변, 16개 중 활성 2개 선택,
   warm GPU 할당/업로드 0, 새 engine 저장 복원, destroy를 검사한다. pixel parity 허용치를 효과 추가 때문에 늘리지 않는다.
+  separated profile의 발광·직접광·unlit AO 전후 색 오차는 3 byte 이하이고 환경광 접촉면은 실제로 어두워져야 한다.
+  안개 보존과 명시적 legacy의 픽셀 identity도 검사한다. 작은 HDR 점광원을 DOF로 threshold 아래로 낮춘 뒤 Bloom을 켜도
+  새 기여가 없어야 하며, threshold 0에서는 실제 기여가 있어야 한다. 이 검사는 DOF/Bloom 순서를 독립적으로 판정한다.
+  빠른 순서·zero identity·resize/DPR·WebGPU 복구 검증은 최신 build 뒤
+  `node tests/smoke/spatial-webgpu-browser-smoke.mjs --composition-only --offscreen-target`로 실행한다.
 - `pnpm smoke:placement-spatial-workspace`의 lighting 회귀는 분위기 4개, 품질, cone 작성,
   객체 연결/해제, 광원 드래그와 Undo/Redo, 높이/반경 Esc 취소 및 키보드 조절을 검사한다.
   focused save와 재열기에서는 v4 효과/연결/반구광/normalBias를 함께 보존한다.
