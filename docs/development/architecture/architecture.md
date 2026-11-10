@@ -4,7 +4,7 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 
 Spatial의 선택형 environment v6 합성은 [조명 성분·효과 합성 계약](spatial-lighting-composition.md)을 따른다.
 Rust는 profile과 환경 원본·camera/depth 기하를 소유하고, TS는 선택형 indirect MRT·AO/fog resolve·DOF/Bloom target과 pass를 관리한다.
-기존 환경 v1..v5와 renderer 기본값은 유지하며 entity별 Wasm 왕복을 추가하지 않는다.
+기존 환경 v1..v6와 renderer 기본값은 유지하며 entity별 Wasm 왕복을 추가하지 않는다.
 
 
 ## Rust와 TypeScript의 상태 소유권
@@ -60,7 +60,7 @@ Flat 조명의 현행 overlay 기준선과 새 opt-in lit의 선행 설계는
 [Flat 조명 합성 계약](flat-lighting-composition.md)에서 구분한다. 실제 legacy 양 backend/DPR 픽셀과
 reference-only 수치 벡터를 분리하며, 새 receiver 분류·sidecar와 lit 렌더 경로는 M2-a의 후속 구현이다.
 
-Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512)/v5(528) numeric buffer를
+Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512)/v5(528)/v6(544)/v7(576) numeric buffer를
 플랫폼이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
 command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
 그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
@@ -1053,7 +1053,7 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 v1/v2·shadow matrix를 960-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel을2,592-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
@@ -1970,18 +1970,26 @@ Flat Surface 재질은 별도40-byte native sidecar와 private24-float data stag
 플랫폼에서 수행한다. [Surface 구조와 수명](flat-lighting-composition.md#선택형-flat-surface)을 따른다.
 
 
-독립 light/shadow 수신 mask의 Flat SDK·GPU·authoring 경로를 구현했다. Spatial mask는 후속 개발 중이다.
+독립 light/shadow 수신 mask의 Flat·Spatial SDK·GPU·authoring 경로를 구현했다.
 별도 `SpriteLightMasks` v1은8-byte `repr(C)`의 `[lightMask:u32, shadowMask:u32]`이고 각 값은0..255,
 기본값은255/255다. custom mask가 없으면 정렬 sidecar 길이0이며 생성 command의 간격은 기본값으로 채운다.
 기존 sprite15/lighting8/Surface40 ABI는 유지한다. 내부 cold receiver setter v2는
 `[id,generation,mode,cutoffBits,lightMask,shadowMask]`를 전체 사전 검사 후 원자적으로 적용한다.
 custom mask는 opaque/cutout receiver만 허용한다. 기존 setter는 mask를 기본값으로 되돌리고,
 unlit 해제는 Surface도 함께 해제한다. World/prototype/snapshot과 despawn 재사용 수명은 Rust가 소유한다.
-Flat facade·authoring/저장과 GPU 합성은 [수신 mask 구조](flat-lighting-composition.md#독립-수신-mask)를 따른다. Spatial mask 구현은 남아 있다.
+Flat facade·authoring/저장과 GPU 합성은 [수신 mask 구조](flat-lighting-composition.md#독립-수신-mask)를 따른다.
 
-Spatial은 native 설정·출력 기반만 추가했다. 별도 v1 receiver stream은 같은8-byte light/shadow pair를 쓰며,
+Spatial은 원자적 native 설정·별도 출력 stream과 TS/schema·authoring/저장·양 backend shader를 연결한다. 별도 v1 receiver stream은 같은8-byte light/shadow pair를 쓰며,
 지형은 전체 surface 순서, billboard와 model은 실제 출력 순서에 맞춘다. 기본값만 있으면 stream 길이0이고,
 생성 glyph/particle 간격은255/255로 채운다. 기존 material8-byte·model80-byte ABI v1과 model reserved0은 유지한다.
 새 cold full-scene 설정은 receiver 배열까지 후보 Scene에서 검증한 뒤 원자적으로 교체한다.
 노출되지 않는 `render:false` surface에는 custom 수신 mask를 거절한다.
-광원 채널·환경 확장, TS reader/facade·authoring/저장·양 backend shader 연결은 아직 남아 있어 Spatial mask 기능 완료로 세지 않는다.
+광원 채널은 환경 v7 numeric576의544..564에 추가하고565..575는 예약0으로 유지한다.
+Rust의 source index로 선택된 point 채널을 함께 옮기고 OFF 원본과 표시 복사본을 분리한다.
+TS는 cold capability/strict reader/소유 복사·patch v8을 담당한다. WebGL2는 draw uniform,
+WebGPU는 기존 environment group의 동적 binding3으로 deduplicated256-byte receiver row를 선택한다.
+기본/OFF에는 테이블을 만들지 않으며 활성 이후에는 최대16 MiB까지 warm storage를 재사용한다.
+private channel tail 외에 native vertex/model/reserved를 재활용하지 않는다. shadow batch와 caster cache는 수신 mask로 나누지 않는다.
+환경 없는 GL draw의 cached depth는 pass 종료 시 detach하여 owner color target의 resize를 방해하지 않는다.
+[필드·수명·비용](../../engine/data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)과
+[자동 회귀](../quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.

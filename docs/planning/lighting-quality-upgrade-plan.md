@@ -256,8 +256,9 @@ M4a Spatial 정적 모델과 M4b Flat의 제한 재질은 개발 소스·자동 
 M4c Flat 수신 mask는 native8-byte sidecar·원자적 v2 설정·공개 facade·authoring·양 GPU backend와
 공식 viewer의 적용·자산 검사 경로를 구현했다. [수신 mask 계약](../engine/data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)을 따른다.
 Spatial light/shadow 수신 mask가 남아 있으므로 M4c 전체 완료로 세지 않는다.
-Spatial native에는 기존 material/model ABI를 보존하는 별도 receiver stream·원자적 설정 기반을 추가했다.
-광원 채널·환경 확장과 TS reader/facade·authoring/저장·양 backend shader는 남아 있다.
+Spatial에도 기존 material/model ABI를 보존하는 receiver stream·원자적 설정, 환경 v7 광원 채널,
+TS reader/facade·patch v8/저장·양 backend shader를 연결했다. 현재 전체 GPU 행렬과 기존 환경/재질 회귀·리뷰를 진행 중이다.
+[Spatial 수신 mask 계약](../engine/data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)이 개발 소스 기준이다.
 2D spot/cookie·polygon occluder와 M5도 남아 있다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.

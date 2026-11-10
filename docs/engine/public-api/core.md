@@ -1523,3 +1523,16 @@ float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 �
 `buffer:Uint32Array`는 command 순서의 `[lightMask,shadowMask]`를8-byte record로 담는다.
 전체 기본값이면 생략하며 생성 command 간격은255/255다. custom 값은 opaque/cutout receiver metadata와 정합해야 한다.
 다음 Wasm 호출·memory growth 전에 소비하며 deferred callback은 소유 복사한다. 기존 sprite15·lighting8·Surface40 ABI는 유지한다.
+
+## Spatial 독립 수신 mask · 개발 소스
+
+`SpatialTerrainSurface`, `SpatialBillboardSpec`, `SpatialModelInstanceSpec`와
+`SpatialPointLightSpec`·`SpatialDirectionalLightSpec`에 선택형 정수0..255의
+`lightMask`·`shadowMask`를 지정한다. 기본값은255이며0도 유효하다.
+직접광 수신과 그림자 감쇠를 별도로 고른다. [의미·버전·비용](../data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)을 따른다.
+
+`SpatialReceiverMaskBufferView`는 `/core` 및 기존 root aggregate에서 import한다.
+`SpatialRenderBufferView.receiverMasks`의 v1/stride2 view이며 세 Uint32Array
+`terrain`·`billboards`·`models`는 각각 전체 surface·출력 quad·ModelDraw 순서의 pair다.
+기본 stream은 비어 있고, deferred frame은 세 배열을 소유 복사한다. 기존 material/model ABI는 유지한다.
+새 요청에 필요한 native receiver/light capability가 없으면 자산 조회와 scene 변경 전에 실패한다.

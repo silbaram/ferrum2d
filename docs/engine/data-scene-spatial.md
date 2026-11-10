@@ -1953,3 +1953,46 @@ phase·body pose·camera를 함께 적용한다. 손상된 ID/phase는 scene 교
 `examples/data-scene-native/moving-platforms.mjs`의
 `startMovingPlatformScene(canvas)`은 승강 바닥과 이동 다리를 함께 체험하는
 예제다. 기존 spatial recipe의 `save()`/`restore()`도 사용할 수 있다.
+
+## Spatial 독립 수신 mask · 개발 소스
+
+`spatial.terrain[]`, `spatial.billboards[id]`, `spatial.models[id]`의 선택형
+`lightMask`·`shadowMask`는 정수0..255이며 생략하면255다. 점광원
+`environment.lighting.lights[]`와 태양 `lighting.directional`에도 같은 필드를 지정한다.
+수신면과 광원의 `lightMask` 교집합이0이면 해당 직접광의 diffuse·GGX 반사를 생략한다.
+`shadowMask` 교집합이0이면 그 광원의 그림자 감쇠만 생략한다. 환경광·반구광·발광은 유지한다.
+기존 `castShadow`·`receiveShadow`는 계속 독립적으로 작동하며 수신 mask로 caster를 제거하지 않는다.
+비표시 `render:false` 지형에는 기본255만 허용한다. 생성 glyph·particle·projectile은255/255를 사용한다.
+
+```json
+{
+  "lightMask": 1,
+  "shadowMask": 0
+}
+```
+
+이 설정은 채널1 직접광을 받고 그림자 감쇠를 건너뛴다. 광원 mask와 수신 mask를 함께 작성한다.
+공간 patch **v8**은 두 필드의 객체 변경과 mask가 포함된 `setEnvironment`를 저장한다.
+기존 v1..v7 patch 읽기는 유지하고 구 버전 patch의 새 필드는 거절한다.
+Undo/Redo·JSON 재적용·진행 복원은 명시적0을 보존한다. Authoring envelope는 기존 v1이다.
+
+광원 mask가 있는 환경은 **v7 numeric576**을 사용한다. 기존0..543 prefix와 v6 composition은 유지한다.
+544는 sun,545..548은 선택된4개,549..564는 작성된16개 광원의 채널이며 각 값은
+정확한 정수 `lightMask | (shadowMask << 8)`이다.565..575는 예약0이다.
+Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원본 광원·채널을 저장하되 표시 복사본의
+활성 광원·그림자를 비운다. raw capture를 decode하면 생략한 채널은255로 정규화될 수 있다.
+원본 JSON은 생략 여부도 보존한다. 기존 v1..v6 입력은 이전 길이와 동작을 유지한다.
+구 Wasm에서 새 mask를 요청하면 자산 조회·scene 변경 전에 거절한다. JS/Wasm을 함께 교체한다.
+
+`SpatialRenderBufferView.receiverMasks`는 `/core`의 선택형 `SpatialReceiverMaskBufferView`다.
+`{version:1,stride:2,terrain,billboards,models}`의 Uint32Array에8-byte pair를 담는다.
+지형은 비표시 proxy 슬롯을 포함한 전체 surface, billboard는 실제 출력 quad, model은 ModelDraw 순서다.
+전체 기본값인 stream은 빈 배열이며 모든 stream이 비었으면 view를 생략한다.
+다음 Wasm 호출·memory growth 전에 소비하고 deferred callback은 소유 복사한다.
+기존44-byte vertex·8-byte material·80-byte ModelDraw와 reserved0은 유지한다.
+
+WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
+기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
+최대65,536 pair/16 MiB다. 환경 uniform은2,592-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
+회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.

@@ -2862,3 +2862,20 @@ SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --masks-only`로 좁�
 실패한 preflight의 문서·handle·pixels 보존, 탭 복원과 Playing을 검사한다.
 `pnpm test:placement-flat-lighting`은 열린 Flat/Spatial 문서의 색/data 역할 충돌·숫자 ID를 검사하며,
 SDK build가 끝난 `smoke:placement-viewer` 단계에서 실행한다. 초기 scene discovery 검사는 SDK 산출물을 요구하지 않는다.
+
+### Spatial 독립 수신 mask 회귀
+
+SDK/Wasm build 후 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --receiver-masks-only --offscreen-target`로 실행한다.
+기존 `pnpm smoke:spatial-webgpu-offscreen` 기본 행렬과 CI validate에 같은35개 상태를 포함한다.
+양 backend·legacy/linear-sRGB·직교/원근·가로/세로·DPR1/2에서 terrain/billboard/model의
+light0/shadow0/default255/부분 채널과 점광원/태양 그림자 독립성을 픽셀 기준 참조와 비교한다.
+ambient/hemisphere·emission·GGX·unlit/cutout·separated AO/fog/Bloom·HUD 보존과
+수신 mask를 바꿔도 caster work가 유지되는지 확인한다. 같은 asset의 서로 다른 model mask는 color instancing을 나눈다.
+OFF 원본 설정의 표시 비활성, warm GPU allocation0·upload 예산, JSON fresh-handle 복원,
+resize 왕복과 WebGPU loss/recovery도 검사한다. 보고서는 기존 spatial GPU `run-*/report.json`의
+`environmentCases[].masks`와 `receiverChecks`에 기록한다. 소프트웨어 adapter 결과는 실기기 성능 검증으로 세지 않는다.
+
+SDK unit은 새 receiver ptr/count/align/range·부분 ABI·memory growth·소유 복사, 생성 billboard가 authored 한도를
+넘는 경우의 metadata 정렬, v7 source/selected 채널·OFF/invalid 원자성·구 Wasm의 cold 거절,
+v8 patch/Undo/Redo·실제 Native Playing·JSON 새 handle 복원, 동적 uniform 할당 실패/기기 한도/수명과
+color/shadow model batch 분리를 검사한다.
