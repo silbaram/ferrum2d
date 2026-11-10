@@ -5,6 +5,7 @@ import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { runReleaseCommand } from "./github-release-command.mjs";
 import { installSpatialGpuTarget } from "./spatial-webgpu-capture.mjs";
+import { auditSpatialSelectionPixels } from "./spatial-light-selection-report.mjs";
 const { chromium } = await import(process.env.FERRUM_PLAYWRIGHT_MODULE ?? "playwright-core");
 const root = resolve("."),
   parent = resolve(
@@ -26,6 +27,7 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
+const selectionOnly = process.argv.includes("--light-selection-only");
 const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
 const receiverShadowsOnly = process.argv.includes("--receiver-shadows-only");
 const flatShadowsOnly = process.argv.includes("--flat-shadows-only");
@@ -41,7 +43,7 @@ const compositionOnly = process.argv.includes("--composition-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;import{probeFlatShadowIsolation}from'/flat-shadows.mjs';window.probeFlatShadowIsolation=probeFlatShadowIsolation;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -52,11 +54,11 @@ const server = createServer((req, res) => {
     }
     if (path === "/") {
       res.setHeader("Content-Type", "text/html");
-      res.end(html + '<script type="module">import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;</script>');
+      res.end(html + '<script type="module">import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -101,7 +103,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -114,6 +116,7 @@ const report = {
   modelCases: [],
   environmentCases: [],
   compositionCases: [],
+  lightSelectionCases: [],
   shadowCases: [],
   flatShadowCases: [],
   proxyCases: [],
@@ -164,6 +167,29 @@ try {
         report.activeCase = { viewport, deviceScaleFactor };
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
+        // The default CI offscreen matrix includes native temporal selection; narrow mode shares it.
+        if (selectionOnly || ![compositionOnly,recoveryOnly,fallbackOnly,modelsOnly,environmentOnly,shadowsOnly,proxiesOnly,pointContactOnly,flatShadowsOnly,receiverShadowsOnly,gameAssetShadowsOnly].some(Boolean)) {
+          await page.waitForFunction(() => window.probeSpatialLightSelection);
+          for (const colorManagement of ["legacy", "linear-srgb"]) {
+            const result = await page.evaluate(mode => window.probeSpatialLightSelection(mode), colorManagement);
+            assert.equal(result.length, 4);
+            for (const entry of result) {
+              assert.equal(entry.comparisons.length, 19);
+              for (const backend of entry.backends) {
+                assert(backend.restored && backend.freshHandles && backend.errors.length === 0);
+                backend.fadeSignals = await auditSpatialSelectionPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
+                assert.equal(backend.rows.find(row => row.name === "in-0").stats.contributingLightCount, entry.pinned ? 1 : 0);
+                for (const row of backend.rows) {
+                  assert.equal(row.referenceDifference, 0);
+                  const file = `selection-${colorManagement}-${entry.projection}-${entry.pinned}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+                  await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64")); row.image=file;
+                }
+              }
+            }
+            report.lightSelectionCases.push({viewport,deviceScaleFactor,colorManagement,result});
+          }
+          assert.deepEqual(errors, []); if (selectionOnly) continue;
+        }
         if (compositionOnly) {
           await page.waitForFunction(() => window.probeSpatialCompositionOrder);
           for (const backend of ["webgl2", "webgpu"]) {

@@ -60,6 +60,16 @@ export interface RuntimeDiagnosticsFrameSample {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialAuthoredLightCount?: number;
+  spatialSelectedLightCount?: number;
+  spatialContributingLightCount?: number;
+  spatialPendingLightCount?: number;
+  spatialRetainedLightCount?: number;
+  spatialFadingLightCount?: number;
+  spatialCulledLightCount?: number;
+  spatialDroppedLightCount?: number;
+  spatialDisabledLightCount?: number;
+
 
   wasmLinearMemoryBytes?: number;
   gpuFrameTimeMs?: number;
@@ -229,7 +239,7 @@ export function runtimeDiagnosticsFrameSample(
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
   };
-  for(const field of ["rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls"] as const) {
+  for(const field of ["rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls","spatialAuthoredLightCount","spatialSelectedLightCount","spatialContributingLightCount","spatialPendingLightCount","spatialRetainedLightCount","spatialFadingLightCount","spatialCulledLightCount","spatialDroppedLightCount","spatialDisabledLightCount"] as const) {
     const value=metrics[field];if(value!==undefined)sample[field]=nonNegativeInteger(value,field);
   }
   if(metrics.frameIntervalMs!==undefined){const v=finiteNumber(metrics.frameIntervalMs,"frameIntervalMs");if(v<0)throw Error("frameIntervalMs must be non-negative");sample.frameIntervalMs=v;}

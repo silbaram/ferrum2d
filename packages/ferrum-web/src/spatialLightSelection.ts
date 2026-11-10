@@ -1,5 +1,6 @@
 import type { Engine } from "../pkg/ferrum_core.js";
-import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
+import type { SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
+import type { SpatialRendererStats } from "./renderer.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 
 /** Opt-in native temporal selection. Omit to preserve the legacy rank-only policy. */
@@ -42,6 +43,32 @@ export function supportsSpatialLightSelection(engine: unknown): engine is Native
 }
 export function requestsSpatialLightSelection(spec?: SpatialEnvironmentSpec | null): boolean {
   return spec?.lighting?.selection !== undefined;
+}
+
+/** Counts emitted rows/reasons only. Selection/scoring/temporal state remain native-owned. */
+type LightCounts = Pick<SpatialRendererStats, "authoredLightCount" | "lightCount" | "contributingLightCount" | "pendingLightCount" | "retainedLightCount" | "fadingLightCount" | "culledLightCount" | "droppedLightCount" | "disabledLightCount">;
+export function writeSpatialLightSelectionStats(stats: LightCounts, environment?: SpatialEnvironmentBufferView): void {
+  const v = environment?.values, diagnostics = environment?.lightSelection;
+  stats.authoredLightCount = v?.[137] ?? v?.[1] ?? 0;
+  stats.lightCount = v && v[0] & 1 ? v[1] : 0;
+  stats.contributingLightCount = 0;
+  for (let i = 0; i < stats.lightCount; i++) {
+    const p = 12 + i * 12;
+    if (v![p + 7] > 0 && (v![p + 4] > 0 || v![p + 5] > 0 || v![p + 6] > 0)
+        && (v!.length < 576 || (v![545 + i] & 255) !== 0)) stats.contributingLightCount++;
+  }
+  stats.pendingLightCount = stats.retainedLightCount = stats.fadingLightCount = stats.culledLightCount
+    = stats.droppedLightCount = stats.disabledLightCount = diagnostics ? 0 : undefined;
+  if (!diagnostics) return;
+  for (let at = 0; at < diagnostics.words.length; at += 6) {
+    const reason = diagnostics.words[at + 2], flags = diagnostics.words[at + 3];
+    if (flags & 8) stats.pendingLightCount!++;
+    if (flags & 2) stats.retainedLightCount!++;
+    if (reason === 2 || reason === 3) stats.fadingLightCount!++;
+    if (reason === 6 || reason === 7 || reason === 9) stats.culledLightCount!++;
+    if (reason === 5) stats.droppedLightCount!++;
+    if (reason === 8) stats.disabledLightCount!++;
+  }
 }
 export function resolveSpatialLightSelectionSpec(value: unknown, path: string): SpatialLightSelectionSpec {
   if (!value || typeof value !== "object" || Array.isArray(value))

@@ -15,6 +15,16 @@ export interface DebugOverlayMetrics {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialAuthoredLightCount?: number;
+  spatialSelectedLightCount?: number;
+  spatialContributingLightCount?: number;
+  spatialPendingLightCount?: number;
+  spatialRetainedLightCount?: number;
+  spatialFadingLightCount?: number;
+  spatialCulledLightCount?: number;
+  spatialDroppedLightCount?: number;
+  spatialDisabledLightCount?: number;
+
 
   wasmLinearMemoryBytes?: number;
   /** Completed GPU query time from a previous renderer frame. */

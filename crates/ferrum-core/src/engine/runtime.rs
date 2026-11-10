@@ -87,8 +87,6 @@ impl Engine {
     }
 
     fn advance_simulation(&mut self, delta: f64) {
-        // Seed before simulation moves any bound light. Render-only rebuilds cannot seed history.
-        self.spatial_scene.advance_light_selection(&self.world, 0.);
         self.elapsed_seconds += delta;
         self.impact_feedback.begin_frame();
         self.clear_physics_frame();
@@ -104,6 +102,9 @@ impl Engine {
             self.data_scene.gameplay.observe_input(self.input);
             return;
         }
+        // Seed before simulation moves any bound light, after the paused-state guard.
+        // Render-only or paused rebuilds must leave a reset history uninitialized.
+        self.spatial_scene.advance_light_selection(&self.world, 0.);
         self.data_scene.gameplay.combat.begin_frame();
         if self.fixed_timestep_enabled {
             let update = self.fixed_timestep.advance(delta as f32);

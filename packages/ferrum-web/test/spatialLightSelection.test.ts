@@ -3,11 +3,12 @@ import { test } from "node:test";
 import type { Engine } from "../pkg/ferrum_core.js";
 import { createSpatialApi } from "../src/dataSceneSpatial.js";
 import { compileSpatialEnvironment, decodeSpatialEnvironment, resolveSpatialEnvironmentSpec, validSpatialEnvironmentValues } from "../src/spatialEnvironment.js";
-import { readSpatialLightSelection, supportsSpatialLightSelection, validateSpatialLightSelectionBuffer, type SpatialLightSelectionBufferView } from "../src/spatialLightSelection.js";
+import { readSpatialLightSelection, supportsSpatialLightSelection, validateSpatialLightSelectionBuffer, writeSpatialLightSelectionStats, type SpatialLightSelectionBufferView } from "../src/spatialLightSelection.js";
 import { decodeSpatialLightSelectionProgress, resolveSpatialLightSelectionProgress, spatialLightSelectionProgressValues } from "../src/spatialLightSelectionProgress.js";
 import { applySceneSpatialPatch, sceneSpatialPatchVersion } from "../src/sceneSpatialPatch.js";
 import type { SpatialLightSelectionSpec } from "../src/core.js";
 import type { SpatialLightSelectionBufferView as AuthoringSelectionView } from "../src/authoring.js";
+import { createScenePlacementViewer, mergeScenePlacementPatch } from "../src/authoring.js";
 
 const lights = [
   { position: { x: -20, y: 0, elevation: 64 }, radius: 100, lightMask: 1, shadowMask: 0 },
@@ -24,6 +25,15 @@ test("public selection types and patch v9 preserve policy declarations and rejec
   const words = new Uint32Array(0);
   const exportedView: AuthoringSelectionView = { version: 1, stride: 6, words, values: new Float32Array(words.buffer) };
   equal(exportedView.stride, 6);
+  const document = { format: "ferrum2d.consumer.scene-authoring" as const, version: 1 as const,
+    sceneComposition: { initialFragment: "lab", prefabs: { blank: {} }, fragments: { lab: { instances: [] } } },
+    behaviorRecipes: { entities: {} }, spatial: scene };
+  const viewer = createScenePlacementViewer({ document, viewport: { cssWidth: 400, cssHeight: 300 } });
+  viewer.updateSpatial([operation]);
+  const patch = JSON.parse(JSON.stringify(viewer.exportPatch())); equal(patch.spatial.version, 9);
+  equal(mergeScenePlacementPatch(document, patch).document.spatial!.environment!.lighting!.selection!.enabled, false);
+  viewer.undo(); equal(viewer.state().spatial!.environment, undefined);
+  viewer.redo(); equal(viewer.state().spatial!.environment!.lighting!.selection!.enabled, false);
 });
 test("selection appends explicit v8 settings, preserves OFF source and keeps all legacy layouts", () => {
   for (const enabled of [true, false]) for (const policyEnabled of [true, false]) {
@@ -104,4 +114,22 @@ test("history JSON is an owned serialization of native phases and validates dupl
   }
   throws(() => resolveSpatialLightSelectionProgress({ ...progress, initialized: false }), /Uninitialized/);
   throws(() => resolveSpatialLightSelectionProgress({ ...progress, future: true }), /object/);
+});
+
+test("selection statistics count actual emitted rows and native reasons, omitting unavailable legacy diagnostics", () => {
+  const v = compileSpatialEnvironment({ lighting: { lights, maxActiveLights: 1, selection: {} } });
+  const words = new Uint32Array(12), values = new Float32Array(words.buffer);
+  words.set([0, 0, 3, 0, 0, 0, 1, 0xffffffff, 10, 8, 0, 0]); values[4] = 1; values[5] = .5; values[10] = 1;
+  v[19] = .5;
+  const env = { version: 8 as const, values: v, shadowMatrices: new Float32Array(), shadowCasters: new Float32Array(), shadowCasterVertexCount: 0,
+    lightSelection: { version: 1 as const, stride: 6 as const, words, values } };
+  const stats: Parameters<typeof writeSpatialLightSelectionStats>[0] = { lightCount: 0 };
+  writeSpatialLightSelectionStats(stats, env);
+  equal(stats.authoredLightCount, 2); equal(stats.lightCount, 1); equal(stats.contributingLightCount, 1);
+  equal(stats.pendingLightCount, 1); equal(stats.fadingLightCount, 1); equal(stats.droppedLightCount, 0);
+  words[8] = 6; writeSpatialLightSelectionStats(stats, env); equal(stats.culledLightCount, 1); equal(stats.pendingLightCount, 1);
+  v[545] = 0; writeSpatialLightSelectionStats(stats, env); equal(stats.contributingLightCount, 0);
+  v[545] = 1; v[19] = 0; writeSpatialLightSelectionStats(stats, env); equal(stats.contributingLightCount, 0);
+  writeSpatialLightSelectionStats(stats, { ...env, lightSelection: undefined });
+  equal(stats.pendingLightCount, undefined); equal(stats.culledLightCount, undefined); equal(stats.droppedLightCount, undefined);
 });

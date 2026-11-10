@@ -1,3 +1,4 @@
+import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
 import { spatialModelResource, type SpatialModelAsset, type SpatialModelPreparation } from "./spatialModel.js";
@@ -285,6 +286,7 @@ export class WebGL2SpatialPass {
       effectTextureBytes: 0,
       dofSampleBudget: environment?.values[0]! & 4 ? (environment!.values[96] === 1 ? 25 : 13) : 0,
     };
+    writeSpatialLightSelectionStats(stats, environment);
     try {
       if (!activeEnvironment) { this.ensureDepth(target, viewport[2], viewport[3]); stats.depthBufferBytes = this.depthBytes(); }
       if (activeEnvironment) {

@@ -274,6 +274,15 @@ fn native_selection_uses_simulation_steps_independent_of_render_rebuilds_zero_st
     assert!(a.pause_data_scene());
     a.update(0.5);
     assert_eq!(a.capture_spatial_light_selection_state(), before);
+    assert!(a.reset_spatial_light_selection());
+    let empty = a.capture_spatial_light_selection_state();
+    a.update(0.);
+    a.update(0.5);
+    assert_eq!(a.capture_spatial_light_selection_state(), empty);
+    assert_eq!(
+        a.spatial_scene.environment.light_selection_diagnostics()[0].flags & 4,
+        4
+    );
     assert!(a.resume_data_scene());
     assert!(a.reset_spatial_light_selection());
     assert_eq!(a.capture_spatial_light_selection_state()[2], 0.);

@@ -1,3 +1,4 @@
+import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
@@ -323,7 +324,7 @@ export class WebGpuSpatialPass {
       this.environment.textureBytes() + this.environment.shadows.textureBytes();
     stats.lightCount = frame.environment?.values[0]! & 1 ? frame.environment!.values[1] : 0;
     stats.directionalLightCount = frame.environment?.values[83] === 1 ? 1 : 0;
-    stats.authoredLightCount=frame.environment?.values[137]??frame.environment?.values[1]??0;
+    writeSpatialLightSelectionStats(stats, frame.environment);
     stats.bloomSampleBudget=frame.environment?.values[128]===1 && frame.environment.values[129]>0 ?32:0;
     stats.ambientOcclusionSampleBudget=frame.environment?.values[132]===1 && frame.environment.values[133]>0 ?16:0;
     stats.dofSampleBudget =

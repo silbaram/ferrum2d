@@ -47,6 +47,15 @@ export interface SpatialRendererStats {
   bloomSampleBudget?: number;
   ambientOcclusionSampleBudget?: number;
   authoredLightCount?: number;
+  /** Selected rows with nonzero intensity/color/direct mask; not a per-pixel visibility count. */
+  contributingLightCount?: number;
+  /** Native v8 diagnostics only. Omitted for legacy policy/cores. Pending may overlap culled. */
+  pendingLightCount?: number;
+  retainedLightCount?: number;
+  fadingLightCount?: number;
+  culledLightCount?: number;
+  droppedLightCount?: number;
+  disabledLightCount?: number;
 }
 export interface PhysicsDebugLineCamera {
   x: number;

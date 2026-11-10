@@ -36,7 +36,8 @@ function variant(bytes, edit) {
   new Uint8Array(out, 28 + padded).set(bin);
   return out;
 }
-function ownedSpatial(s) {
+export function ownedSpatial(s) {
+  const selectionWords = s.environment?.lightSelection?.words.slice();
   const m = s.models,
     values = m?.values.slice();
   return {
@@ -59,6 +60,7 @@ function ownedSpatial(s) {
       values: s.environment.values.slice(),
       shadowMatrices: s.environment.shadowMatrices.slice(),
       shadowCasters: s.environment.shadowCasters.slice(),
+      lightSelection: selectionWords && { version: 1, stride: 6, words: selectionWords, values: new Float32Array(selectionWords.buffer) },
       shadowSubmission: s.environment.shadowSubmission && {
         ...s.environment.shadowSubmission,
         ranges: s.environment.shadowSubmission.ranges.slice(),

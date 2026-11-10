@@ -250,6 +250,16 @@ function buildDebugMetrics(
       spatialShadowDrawCalls:rendererStats.spatial.shadowDrawCalls,spatialShadowPassCount:rendererStats.spatial.shadowPassCount,
       spatialShadowUploadBytes:rendererStats.spatial.shadowUploadBytes,spatialShadowCacheHit:rendererStats.spatial.shadowCacheHit,
       spatialEffectDrawCalls:rendererStats.spatial.effectDrawCalls,
+      spatialAuthoredLightCount: rendererStats.spatial.authoredLightCount,
+      spatialSelectedLightCount: rendererStats.spatial.lightCount,
+      spatialContributingLightCount: rendererStats.spatial.contributingLightCount,
+      spatialPendingLightCount: rendererStats.spatial.pendingLightCount,
+      spatialRetainedLightCount: rendererStats.spatial.retainedLightCount,
+      spatialFadingLightCount: rendererStats.spatial.fadingLightCount,
+      spatialCulledLightCount: rendererStats.spatial.culledLightCount,
+      spatialDroppedLightCount: rendererStats.spatial.droppedLightCount,
+      spatialDisabledLightCount: rendererStats.spatial.disabledLightCount,
+
     }),
     wasmLinearMemoryBytes: frame.wasmLinearMemoryBytes,
     ...(gpuTiming?.status === "ready" ? {
