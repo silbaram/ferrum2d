@@ -27,6 +27,8 @@ class Device {
   textures: Resource[] = [];
   groups = 0;
   failView = false;
+  failTextureAt = Infinity;
+  textureAttempts = 0;
   uniforms: Float32Array[] = [];
   queue = {
     writeBuffer: (_b: unknown, _o: number, v: Float32Array) => this.uniforms.push(v.slice()),
@@ -37,6 +39,7 @@ class Device {
     return r;
   }
   createTexture(d: GPUTextureDescriptor) {
+    if (++this.textureAttempts === this.failTextureAt) throw Error("texture allocation failed");
     const r = new Resource(d, () => {
       if (this.failView) throw Error("view failed");
     });
@@ -91,7 +94,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -111,6 +114,40 @@ function setup() {
     pass = new WebGpuSpatialEnvironment(device as unknown as GPUDevice, "rgba8unorm");
   return { device, pass };
 }
+test("separated composition allocates only active indirect/DOF stages and reuses views and groups", () => {
+  const { device, pass } = setup();
+  const base: SpatialEnvironmentSpec = { composition: "separated", lighting: { lights: [] } };
+  const plain = frame(base); validateSpatialExtensions(plain);
+  throws(() => validateSpatialExtensions({ ...plain, environment: { ...plain.environment!, version: 5 } }), /environment buffer/);
+  pass.prepare(plain, 160, 90);
+  const live = () => device.textures.filter(texture => texture.destroyed === 0).length;
+  const baseline = live();
+  const ao = frame({ ...base, ambientOcclusion: { strength: 1 } });
+  pass.prepare(ao, 160, 90); equal(live(), baseline + 2); equal(!!pass.scene()!.indirect, true);
+  const warm = [device.textures.length, device.groups]; pass.prepare(ao, 160, 90); pass.scene(); pass.scene();
+  deepEqual([device.textures.length, device.groups], warm);
+  const combined = frame({ ...base, ambientOcclusion: {}, bloom: {}, depthOfField: { focusDistance: 100 } });
+  pass.prepare(combined, 160, 90); equal(live(), baseline + 3);
+  equal(device.uniforms[device.uniforms.length - 1][519], 7);
+  pass.prepare(frame({ ...base, ambientOcclusion: { strength: 0 }, bloom: { strength: 0 } }), 160, 90);
+  equal(live(), baseline); equal(!!pass.scene()!.indirect, false);
+  pass.destroy(); equal(live(), 0);
+});
+test("failed optional indirect allocation preserves the previous target and releases partial scratch", () => {
+  const { device, pass } = setup();
+  const base: SpatialEnvironmentSpec = { lighting: { lights: [] } };
+  pass.prepare(frame(base), 160, 90);
+  const prior = pass.scene()!.color;
+  const live = () => device.textures.filter(texture => texture.destroyed === 0).length;
+  const count = live();
+  device.failTextureAt = device.textureAttempts + 4;
+  const separated = frame({ ...base, composition: "separated", ambientOcclusion: {} });
+  throws(() => pass.prepare(separated, 160, 90), /texture allocation failed/);
+  equal(pass.scene()!.color, prior); equal(live(), count);
+  device.failTextureAt = Infinity;
+  pass.prepare(separated, 160, 90); equal(live(), count + 2);
+  pass.destroy(); equal(live(), 0);
+});
 test("v5 center does not overwrite the GPU camera uniform or expand its allocation", () => {
   const { device, pass } = setup();
   const f = frame({ lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 100, y: 200, elevation: 300 } } } } });

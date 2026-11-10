@@ -494,7 +494,9 @@ impl Engine {
             })
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 512 {
+        if self.spatial_scene.environment.value_len > 528 {
+            6
+        } else if self.spatial_scene.environment.value_len > 512 {
             5
         } else if self.spatial_scene.environment.value_len > 128 {
             4

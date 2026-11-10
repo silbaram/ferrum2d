@@ -19,6 +19,7 @@ const MAX_VERTEX_BYTES = 64 * 1024 * 1024;
 export class WebGpuSpatialPass {
   private readonly pipelines: GPURenderPipeline[] = [];
   private readonly debugPipelines: GPURenderPipeline[] = [];
+  private readonly prepareSeparatedPipelines: () => void;
   private readonly shadowPipeline: GPURenderPipeline;
   private readonly shadowCache = new SpatialShadowCache();
   private readonly cameraGroups: GPUBindGroup[];
@@ -118,6 +119,25 @@ export class WebGpuSpatialPass {
           }),
         );
     }
+    this.prepareSeparatedPipelines = () => {
+      if (this.pipelines.length > 2) return;
+      const created: GPURenderPipeline[] = [];
+      try {
+        created.push(webGpuResources(device).createRenderPipeline({
+          label: "Spatial indirect MRT", layout, vertex,
+          fragment: { module, entryPoint: "fs_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          primitive: { topology: "triangle-list" },
+          depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less-equal" },
+        }));
+        for (const depthTest of [true, false]) created.push(webGpuResources(device).createRenderPipeline({
+          label: "Spatial indirect debug", layout, vertex,
+          fragment: { module, entryPoint: "fs_debug_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          primitive: { topology: "line-list" },
+          depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: depthTest ? "less-equal" : "always" },
+        }));
+      } catch (error) { created.forEach(pipeline => webGpuResources(device).releasePipeline(pipeline)); throw error; }
+      this.pipelines.push(created[0]); this.debugPipelines.push(...created.slice(1));
+    };
     const shadowModule = device.createShaderModule({
       label: "Spatial terrain/billboard shadow",
       code: spatialShadowGeometryWGSL,
@@ -374,6 +394,7 @@ export class WebGpuSpatialPass {
       this.shadowCasters = undefined;
       this.shadowCapacity = 0;
     }
+    if (hdr?.indirect) this.prepareSeparatedPipelines();
     const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial geometry",
       colorAttachments: [
@@ -383,6 +404,7 @@ export class WebGpuSpatialPass {
           storeOp: "store",
           clearValue: { r: 0, g: 0, b: 0, a: 0 },
         },
+        ...(hdr?.indirect ? [{ view: hdr.indirect, loadOp: "clear" as const, storeOp: "store" as const, clearValue: { r: 0, g: 0, b: 0, a: 0 } }] : []),
       ],
       depthStencilAttachment: {
         view: hdr?.depth ?? this.depthView!,
@@ -391,7 +413,7 @@ export class WebGpuSpatialPass {
         depthClearValue: 1,
       },
     });
-    pass.setPipeline(this.pipelines[hdr ? 1 : 0]);
+    pass.setPipeline(this.pipelines[hdr?.indirect ? 2 : hdr ? 1 : 0]);
     pass.setBindGroup(0, this.cameraGroup);
     pass.setBindGroup(2, this.environment.group);
     let previous: number | undefined;
@@ -472,7 +494,7 @@ export class WebGpuSpatialPass {
       this.cameraGroup,
       stats,
       this.environment.group,
-      !!hdr,
+      hdr?.indirect ? "separated" : !!hdr,
       0,
       this.environment.receiverGroup(false),
     );
@@ -490,7 +512,7 @@ export class WebGpuSpatialPass {
         this.debugCapacity = capacity;
       }
       this.device.queue.writeBuffer(this.debug, 0, debug.vertices);
-      pass.setPipeline(this.debugPipelines[(hdr ? 2 : 0) + (debug.depthTest ? 0 : 1)]);
+      pass.setPipeline(this.debugPipelines[(hdr?.indirect ? 4 : hdr ? 2 : 0) + (debug.depthTest ? 0 : 1)]);
       pass.setBindGroup(0, this.cameraGroup);
       pass.setBindGroup(1, this.whiteGroup);
       pass.setBindGroup(2, this.environment.group);
@@ -506,11 +528,11 @@ export class WebGpuSpatialPass {
     }
     pass.end();
     if (hdr) {
-      this.environment.composite(frame, encoder, target, width, height);
-      stats.effectDrawCalls = 1;
-      stats.drawCalls++;
-      stats.triangleCount++;
-      stats.textureBindCount += 2;
+      const passes = this.environment.composite(frame, encoder, target, width, height);
+      stats.effectDrawCalls = passes;
+      stats.drawCalls += passes;
+      stats.triangleCount += passes;
+      stats.textureBindCount += passes * 2 + Number(!!hdr.indirect);
     }
     return stats;
   }

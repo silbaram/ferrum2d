@@ -66,6 +66,9 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       void [sidecar, invalidReceiver];
       const sun: SpatialDirectionalLightSpec = { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
       engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
+      engine.setDataSceneSpatialEnvironment({ composition: 'separated', lighting: { lights: [] }, ambientOcclusion: { strength: 0 } });
+      // @ts-expect-error composition choices are explicit
+      engine.setDataSceneSpatialEnvironment({ composition: 'ambient-only' });
       // @ts-expect-error fixed sun center requires all three world coordinates
       const incompleteCenter: NonNullable<SpatialDirectionalLightSpec['shadows']> = { center: { x: 0, y: 0 } };
       const proxy: SpatialModelInstanceSpec = { asset: 'proxy', contentId: 'a'.repeat(64), shadowOnly: true };

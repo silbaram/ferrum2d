@@ -46,6 +46,7 @@ export class WebGpuSpatialModels {
   private loadingSources?: ReadonlySet<SpatialModelResource>;
   private readonly materialLayout: GPUBindGroupLayout;
   private readonly pipelines: GPURenderPipeline[] = [];
+  private readonly separatedDescriptors: GPURenderPipelineDescriptor[] = [];
   private readonly shadowPipelines: GPURenderPipeline[] = [];
   private readonly mipLayout: GPUBindGroupLayout;
   private readonly mipPipelines: GPURenderPipeline[];
@@ -85,11 +86,10 @@ export class WebGpuSpatialModels {
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [cameraLayout, this.materialLayout, environmentLayout],
     });
-    for (const outputFormat of [format, "rgba16float"])
+    for (const [outputIndex, outputFormat] of ([format, "rgba16float"] as const).entries())
       for (const mapped of [false, true])
-        for (const doubleSided of [false, true])
-          this.pipelines.push(
-            webGpuResources(device).createRenderPipeline({
+        for (const doubleSided of [false, true]) {
+          const descriptor: GPURenderPipelineDescriptor = {
               label: "Spatial indexed/instanced model",
               layout,
               vertex: {
@@ -133,8 +133,12 @@ export class WebGpuSpatialModels {
                 depthWriteEnabled: true,
                 depthCompare: "less-equal",
               },
-            }),
-          );
+          };
+          this.pipelines.push(webGpuResources(device).createRenderPipeline(descriptor));
+          if (outputIndex === 1) this.separatedDescriptors.push({ ...descriptor,
+            fragment: { ...descriptor.fragment!, entryPoint: "fs_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          });
+        }
     const shadowModule = device.createShaderModule({
       label: "Spatial model shadows",
       code: spatialShadowModelWGSL,
@@ -378,11 +382,17 @@ export class WebGpuSpatialModels {
     camera: GPUBindGroup,
     stats: SpatialRendererStats,
     environmentGroup: GPUBindGroup = {},
-    hdr = false,
+    hdr: boolean | "separated" = false,
     bit = 0,
     noReceiveGroup = environmentGroup,
   ): void {
     if (!frame) return;
+    if (bit === 0 && hdr === "separated" && this.pipelines.length === 8) {
+      const created: GPURenderPipeline[] = [];
+      try { for (const descriptor of this.separatedDescriptors) created.push(webGpuResources(this.device).createRenderPipeline(descriptor)); }
+      catch (error) { created.forEach(pipeline => webGpuResources(this.device).releasePipeline(pipeline)); throw error; }
+      this.pipelines.push(...created);
+    }
     for (let i = 0; i < frame.words.length; ) {
       const batch = bit * CAPACITY + i / 20,
         count = this.counts[batch];
@@ -397,7 +407,7 @@ export class WebGpuSpatialModels {
       for (const p of asset.primitives) {
         const variant = (p.source.normal ? 2 : 0) + Number(p.source.doubleSided);
         pass.setPipeline(
-          bit === 0 ? this.pipelines[(hdr ? 4 : 0) + variant] : this.shadowPipelines[variant],
+          bit === 0 ? this.pipelines[(hdr === "separated" ? 8 : hdr ? 4 : 0) + variant] : this.shadowPipelines[variant],
         );
         pass.setBindGroup(0, camera);
         pass.setBindGroup(1, p.group);

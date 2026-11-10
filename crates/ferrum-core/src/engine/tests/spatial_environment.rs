@@ -32,6 +32,43 @@ fn setup() -> (Engine, Entity) {
     (e, a)
 }
 #[test]
+fn spatial_environment_v6_composition_is_atomic_and_survives_progress_restore() {
+    let (mut engine, actor) = setup();
+    let mut v = values(false);
+    v.resize(544, 0.);
+    v[136] = 4.;
+    v[137] = 1.;
+    v[138] = -1.;
+    let light = v[12..20].to_vec();
+    v[192..200].copy_from_slice(&light);
+    v[528] = 1.;
+    assert!(engine.configure_spatial_environment(&v));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_environment_abi_version(), 6);
+    assert_eq!(engine.spatial_environment_len(), 544);
+    assert_eq!(engine.capture_spatial_environment(), v);
+    for (index, value) in [(528, 2.), (529, 1.), (543, f32::NAN)] {
+        let mut invalid = v.clone();
+        invalid[index] = value;
+        assert!(!engine.configure_spatial_environment(&invalid));
+        assert_eq!(engine.capture_spatial_environment(), v);
+    }
+    let epoch = engine.data_scene_epoch();
+    let handles = [actor.id, actor.generation];
+    let states = engine.capture_data_scene_progress(epoch, &handles);
+    let spatial = engine.capture_data_scene_spatial_progress(epoch, &handles);
+    assert!(engine.configure_spatial_environment(&values(false)));
+    assert!(engine.restore_data_scene_progress_with_spatial_environment(
+        epoch,
+        &handles,
+        &states,
+        &[],
+        &spatial,
+        &v
+    ));
+    assert_eq!(engine.capture_spatial_environment(), v);
+}
+#[test]
 fn spatial_environment_v3_hemisphere_and_receiver_offsets_are_owned_and_atomic() {
     let (mut e, actor) = setup();
     let mut v = values(true);

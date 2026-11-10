@@ -21,6 +21,25 @@ const spec: SpatialEnvironmentSpec = {
   colorGrading: { toneMapping: "aces" },
   fog: { start: 100, end: 300, color: [0.2, 0.3, 0.4] },
 };
+test("separated composition has an explicit v6 payload and retains disabled authored choices", () => {
+  const original = compileSpatialEnvironment(spec);
+  for (const composition of ["legacy", "separated"] as const) {
+    const input = { ...spec, composition, ambientOcclusion: { strength: 0 } };
+    const values = compileSpatialEnvironment(input);
+    equal(values.length, 544); equal(values[528], composition === "separated" ? 1 : 0);
+    ok(validSpatialEnvironmentValues(values));
+    deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(values)), values);
+    equal(resolveSpatialEnvironmentSpec({ ...input, lighting: { ...spec.lighting!, enabled: false } }).composition, composition);
+    for (const [index, invalid] of [[528, 2], [529, 1], [543, NaN]]) {
+      const bad = values.slice(); bad[index] = invalid; equal(validSpatialEnvironmentValues(bad), false);
+    }
+    const old = createSpatialApi({ configure_spatial_environment: (v: Float32Array) => v.length <= 528 } as unknown as Engine, () => {}, () => ({ width: 100, height: 100 }));
+    equal(old.setDataSceneSpatialEnvironment(input), false);
+  }
+  for (const composition of [null, false, 1, "ambient-only"])
+    throws(() => resolveSpatialEnvironmentSpec({ composition }), /composition/);
+  deepEqual(compileSpatialEnvironment(spec), original);
+});
 test("fixed sun center uses explicit v5 while legacy payloads stay unchanged", () => {
   const original: SpatialEnvironmentSpec = { lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 2 }, shadows: { normalBias: .1 } } } };
   const legacy = compileSpatialEnvironment(original);

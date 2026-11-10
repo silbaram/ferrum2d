@@ -1,6 +1,7 @@
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
+import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
@@ -12,10 +13,26 @@ struct Environment {
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 fn e(i:u32)->f32{return env.values[i/4u][i%4u];}
+// Private GPU camera layout v2: forward.w packs AO-resolve/profile/DOF-prepass bits.
+// This is separate from the native environment prefix and preserves legacy uniform allocation.
+fn compositionFlags()->u32{return u32(env.forward.w);}
 fn environmentEnabled()->bool{return e(0u)>0.;}
 fn linearize(c:vec3f)->vec3f{return select(c/12.92,pow((c+.055)/1.055,vec3f(2.4)),c>=vec3f(.04045));}
 fn encode(c:vec3f)->vec3f{return select(c*12.92,1.055*pow(max(c,vec3f(0.)),vec3f(1./2.4))-.055,c>=vec3f(.0031308));}
 ${spatialShadowSamplingWGSL}
+struct SpatialLightingOutput { @location(0) color:vec4f, @location(1) indirect:vec4f };
+fn indirectColor(albedo:vec3f,n:vec3f,unlit:bool)->vec3f{
+ if((u32(e(0u))&1u)==0u || unlit){return vec3f(0.);}
+ var illumination=vec3f(e(5u),e(6u),e(7u));
+ if(e(112u)>0. && e(119u)>0.){
+  let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
+  illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
+ }
+ return albedo*illumination;
+}
+fn lightingOutput(color:vec3f,indirect:vec3f)->SpatialLightingOutput{
+ var output:SpatialLightingOutput;output.color=vec4f(color,1.);output.indirect=vec4f(indirect,1.);return output;
+}
 fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool)->vec3f{
  var color=albedo;
  if((u32(e(0u))&1u)!=0u && !unlit){
@@ -41,7 +58,7 @@ fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:b
   color*=illumination;
  }
  color+=emission;
- if((u32(e(0u))&2u)!=0u){
+ if((u32(e(0u))&2u)!=0u && (compositionFlags()&1u)==0u){
   let z=max(dot(world-env.eye.xyz,env.forward.xyz),0.);
   color=mix(color,vec3f(e(73u),e(74u),e(75u)),clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.));
  }
@@ -52,6 +69,7 @@ const composite =
   `
 @group(1) @binding(0) var sceneColor:texture_2d<f32>;
 @group(1) @binding(1) var sceneDepth:texture_depth_2d;
+@group(1) @binding(2) var sceneIndirect:texture_2d<f32>;
 struct F { @builtin(position) p:vec4f,@location(0) uv:vec2f };
 @vertex fn vs_main(@builtin(vertex_index) i:u32)->F{
  let uv=vec2f(f32((i<<1u)&2u),f32(i&2u));var f:F;
@@ -66,11 +84,11 @@ fn viewDepth(d:f32)->f32{
 }
 fn aces(c:vec3f)->vec3f{return clamp(c*(2.51*c+.03)/(c*(2.43*c+.59)+.14),vec3f(0.),vec3f(1.));}
 fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=tan(env.eye.w*.5)*z;}return vec3f(vec2f(uv.x*2.-1.,1.-uv.y*2.)*vec2f(env.size.x/env.size.y,1.)*h,-z);}
-@fragment fn fs_main(f:F)->@location(0) vec4f{
- let center=colorAt(f.uv);if(center.a<=0. && (e(128u)<=0. || e(129u)<=0.)){discard;}
+fn compose(f:F,stage:u32)->vec4f{
+ let center=colorAt(f.uv);if(center.a<=0. && (stage>0u || e(128u)<=0. || e(129u)<=0.)){discard;}
  let z=viewDepth(depthAt(f.uv));var color=center.rgb;let flags=u32(e(0u));
  let focus=env.view.w;let focusRange=e(61u);let aperture=e(62u);let maxRadius=e(63u)*env.size.y/env.size.z;
- if((flags&4u)!=0u && e(96u)==1.){
+ if(stage!=1u && (flags&4u)!=0u && ((compositionFlags()&4u)==0u || stage==2u) && e(96u)==1.){
   let centerDelta=z-focus;let centerRadius=sign(centerDelta)*clamp(max(abs(centerDelta)-focusRange,0.)/max(z,.001)*aperture,0.,1.)*maxRadius;
   var farSum=color;var nearSum=vec3f(0.);var farWeight=1.;var nearWeight=0.;var kernelWeight=0.;
   for(var i=0u;i<24u;i++){
@@ -84,7 +102,7 @@ fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=ta
   }
   color=farSum/farWeight;
   if(nearWeight>.00001){var coverage=clamp(nearWeight/max(kernelWeight,.00001),0.,1.);if(centerRadius< -.05){coverage=1.;}color=mix(color,nearSum/nearWeight,coverage);}
- }else if((flags&4u)!=0u){
+ }else if(stage!=1u && (flags&4u)!=0u && ((compositionFlags()&4u)==0u || stage==2u)){
   let coc=clamp(max(abs(z-focus)-focusRange,0.)/max(z,.001)*aperture,0.,1.);let radius=coc*maxRadius;
   if(radius>.05){var sum=color*2.;var weight=2.;
    for(var i=0u;i<12u;i++){
@@ -96,7 +114,7 @@ fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=ta
   }
  }
  let position=viewPosition(f.uv,z);
- if(e(132u)>0. && e(133u)>0. && depthAt(f.uv)<1.){
+ if((stage==1u || (compositionFlags()&2u)==0u) && e(132u)>0. && e(133u)>0. && depthAt(f.uv)<1.){
   let dx=vec2f(2./env.size.x,0.);let dy=vec2f(0.,-2./env.size.y);
   let zl=viewDepth(depthAt(f.uv-dx));let zr=viewDepth(depthAt(f.uv+dx));let zd=viewDepth(depthAt(f.uv-dy));let zu=viewDepth(depthAt(f.uv+dy));
   let tangent=select(viewPosition(f.uv+dx,zr)-position,position-viewPosition(f.uv-dx,zl),abs(zl-z)<abs(zr-z));
@@ -112,8 +130,11 @@ fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=ta
    let delta=viewPosition(uv,viewDepth(d))-position;let distance=length(delta);
    if(distance>.0001){occlusion+=max((dot(normal,delta)-e(135u))/distance,0.)*max(1.-distance/e(134u),0.);}
   }
-  color*=1.-clamp(occlusion/12.*e(133u)*3.,0.,.9);
+  let visibility=1.-clamp(occlusion/12.*e(133u)*3.,0.,.9);
+  if(stage==1u){color-=textureLoad(sceneIndirect,pixel(f.uv),0).rgb*(1.-visibility);}else{color*=visibility;}
  }
+ if(stage==1u && (flags&2u)!=0u){color=mix(color,vec3f(e(73u),e(74u),e(75u)),clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.));}
+ if(stage>0u){return vec4f(max(color,vec3f(0.)),center.a);}
  if(e(128u)>0. && e(129u)>0.){
   var glow=vec3f(0.);var weight=0.;
   for(var i=0u;i<32u;i++){
@@ -133,7 +154,11 @@ fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=ta
   color=max((color-vec3f(.18))*e(65u)+vec3f(.18),vec3f(0.))*vec3f(e(68u),e(69u),e(70u));
  }
  return vec4f(encode(color),1.);
-}`;
+}
+@fragment fn fs_main(f:F)->@location(0)vec4f{return compose(f,0u);}
+@fragment fn fs_resolve(f:F)->@location(0)vec4f{return compose(f,1u);}
+@fragment fn fs_dof(f:F)->@location(0)vec4f{return compose(f,2u);}
+`;
 /** HDR platform targets and native environment uniforms. No game/scene state is owned here. */
 export class WebGpuSpatialEnvironment {
   readonly layout: GPUBindGroupLayout;
@@ -150,12 +175,23 @@ export class WebGpuSpatialEnvironment {
   private readonly uniform: GPUBuffer;
   private readonly values = new Float32Array((UNIFORM_STRIDE / 4) * 2);
   private readonly pipeline: GPURenderPipeline;
+  private readonly intermediatePipeline: (entry: "fs_resolve" | "fs_dof") => GPURenderPipeline;
+  private resolvePipeline?: GPURenderPipeline;
+  private dofPipeline?: GPURenderPipeline;
   private readonly imagesLayout: GPUBindGroupLayout;
   private color?: GPUTexture;
   private depth?: GPUTexture;
   private colorView?: GPUTextureView;
   private depthView?: GPUTextureView;
   private images?: GPUBindGroup;
+  private indirect?: GPUTexture;
+  private indirectView?: GPUTextureView;
+  private resolved?: GPUTexture;
+  private dof?: GPUTexture;
+  private resolvedView?: GPUTextureView;
+  private dofView?: GPUTextureView;
+  private resolvedImages?: GPUBindGroup;
+  private dofImages?: GPUBindGroup;
   private width = 0;
   private height = 0;
   private destroyed = false;
@@ -190,14 +226,22 @@ export class WebGpuSpatialEnvironment {
           texture: { sampleType: "unfilterable-float" },
         },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
       ],
     });
     const module = device.createShaderModule({
       label: "Spatial HDR/depth composite",
       code: composite,
     });
+    const layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.imagesLayout] });
+    this.intermediatePipeline = entry => webGpuResources(device).createRenderPipeline({
+      label: `Spatial composition ${entry}`, layout,
+      vertex: { module, entryPoint: "vs_main" },
+      fragment: { module, entryPoint: entry, targets: [{ format: "rgba16float" }] },
+      primitive: { topology: "triangle-list" },
+    });
     this.pipeline = webGpuResources(device).createRenderPipeline({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.imagesLayout] }),
+      layout,
       vertex: { module, entryPoint: "vs_main" },
       fragment: { module, entryPoint: "fs_main", targets: [{ format }] },
       primitive: { topology: "triangle-list" },
@@ -285,15 +329,19 @@ export class WebGpuSpatialEnvironment {
     if (env?.values[2]! >= 0) this.values.set(env!.shadowMatrices.subarray(0, 96), 528);
     if (env?.values[92]! > 0)
       this.values.set(env!.shadowMatrices.subarray(env!.shadowMatrices.length - 16), 624);
-    this.values.copyWithin(640, 0, 640);
-    this.values[1167] = 0;
+    const indirect = spatialIndirectPass(env?.values), dof = spatialDofPass(env?.values);
+    // Private GPU camera layout v2; no native reserved words or additional buffer bytes.
+    this.values[519] = Number(indirect) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
+    this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
+    this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
     if (!this.values[0]) {
       this.releaseTarget();
       return;
     }
-    if (this.width === width && this.height === height && this.images) return;
+    if (this.width === width && this.height === height && this.images && !!this.indirect === indirect && !!this.dof === dof) return;
     let color: GPUTexture | undefined, depth: GPUTexture | undefined;
+    const scratch: GPUTexture[] = [];
     this.device.pushErrorScope("validation");
     this.device.pushErrorScope("out-of-memory");
     try {
@@ -311,24 +359,47 @@ export class WebGpuSpatialEnvironment {
       });
       const colorView = color.createView(),
         depthView = depth.createView();
-      const images = this.device.createBindGroup({
+      const createScratch = () => {
+        const texture = webGpuResources(this.device).createTexture({
+          label: "Spatial composition HDR", size: [width, height, 1], format: "rgba16float",
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        scratch.push(texture); return texture;
+      };
+      const indirectTexture = indirect ? createScratch() : undefined;
+      const resolvedTexture = indirect ? createScratch() : undefined;
+      const dofTexture = dof ? createScratch() : undefined;
+      if (indirect) this.resolvePipeline ??= this.intermediatePipeline("fs_resolve");
+      if (dof) this.dofPipeline ??= this.intermediatePipeline("fs_dof");
+      const indirectView = indirectTexture?.createView() ?? colorView;
+      const imagesFor = (resource: GPUTextureView) => this.device.createBindGroup({
         layout: this.imagesLayout,
         entries: [
-          { binding: 0, resource: colorView },
+          { binding: 0, resource },
           { binding: 1, resource: depthView },
+          { binding: 2, resource: indirectView },
         ],
       });
+      const images = imagesFor(colorView);
+      const resolvedView = resolvedTexture?.createView(), dofView = dofTexture?.createView();
+      const resolvedImages = resolvedView ? imagesFor(resolvedView) : undefined;
+      const dofImages = dofView ? imagesFor(dofView) : undefined;
       this.releaseTarget();
       this.color = color;
       this.depth = depth;
       this.colorView = colorView;
       this.depthView = depthView;
       this.images = images;
+      this.indirect = indirectTexture; this.resolved = resolvedTexture; this.dof = dofTexture;
+      this.indirectView = indirectTexture ? indirectView : undefined;
+      this.resolvedView = resolvedView; this.dofView = dofView;
+      this.resolvedImages = resolvedImages; this.dofImages = dofImages;
       this.width = width;
       this.height = height;
     } catch (error) {
       webGpuResources(this.device).destroy(color);
       webGpuResources(this.device).destroy(depth);
+      scratch.forEach(texture => webGpuResources(this.device).destroy(texture));
       throw error;
     } finally {
       // Frame rendering is synchronous. Never retain an asynchronously invalid target as a warm hit.
@@ -357,9 +428,10 @@ export class WebGpuSpatialEnvironment {
     | {
         color: GPUTextureView;
         depth: GPUTextureView;
+        indirect?: GPUTextureView;
       }
     | undefined {
-    return this.images ? { color: this.colorView!, depth: this.depthView! } : undefined;
+    return this.images ? { color: this.colorView!, depth: this.depthView!, indirect: this.indirectView } : undefined;
   }
   composite(
     frame: SpatialRenderBufferView,
@@ -367,9 +439,24 @@ export class WebGpuSpatialEnvironment {
     target: GPUTextureView,
     width: number,
     height: number,
-  ): void {
+  ): number {
     if (this.destroyed) throw Error("Spatial environment destroyed");
     if (!this.images) throw Error("Spatial HDR target is not prepared");
+    let images = this.images, passes = 1;
+    for (const [view, pipeline, output] of [
+      [this.resolvedView, this.resolvePipeline, this.resolvedImages],
+      [this.dofView, this.dofPipeline, this.dofImages],
+    ] as const) {
+      if (!view) continue;
+      const intermediate = beginWebGpuRenderPass(this.device, encoder, {
+        label: "Spatial composition intermediate", colorAttachments: [{ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+      });
+      try {
+        intermediate.setPipeline(pipeline!); intermediate.setBindGroup(0, this.group);
+        intermediate.setBindGroup(1, images); intermediate.draw(3);
+      } finally { intermediate.end(); }
+      images = output!; passes++;
+    }
     const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial HDR composite",
       colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
@@ -385,9 +472,10 @@ export class WebGpuSpatialEnvironment {
     }
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.group);
-    pass.setBindGroup(1, this.images);
+    pass.setBindGroup(1, images);
     pass.draw(3);
     pass.end();
+    return passes;
   }
   private refreshGroups(): void {
     const v = this.shadows.views();
@@ -443,11 +531,15 @@ export class WebGpuSpatialEnvironment {
     }
   }
   textureBytes(): number {
-    return this.width * this.height * 12;
+    return this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof)));
   }
   private releaseTarget(): void {
     webGpuResources(this.device).destroy(this.color);
     webGpuResources(this.device).destroy(this.depth);
+    for (const texture of [this.indirect, this.resolved, this.dof]) webGpuResources(this.device).destroy(texture);
+    this.indirect = undefined; this.resolved = undefined; this.dof = undefined;
+    this.indirectView = undefined; this.resolvedView = undefined; this.dofView = undefined;
+    this.resolvedImages = undefined; this.dofImages = undefined;
     this.color = undefined;
     this.depth = undefined;
     this.images = undefined;
@@ -462,5 +554,8 @@ export class WebGpuSpatialEnvironment {
     this.releaseTarget();
     webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
+    webGpuResources(this.device).releasePipeline(this.pipeline);
+    if (this.resolvePipeline) webGpuResources(this.device).releasePipeline(this.resolvePipeline);
+    if (this.dofPipeline) webGpuResources(this.device).releasePipeline(this.dofPipeline);
   }
 }

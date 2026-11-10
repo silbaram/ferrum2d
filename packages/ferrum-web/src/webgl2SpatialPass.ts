@@ -92,6 +92,7 @@ export class WebGL2SpatialPass {
       };
       for (const name of [
         "environment",
+        "separated",
         "debug",
         "linearInput",
         "lighting",
@@ -313,6 +314,7 @@ export class WebGL2SpatialPass {
       gl.uniform1i(this.uniforms.hasNormal, 0);
       gl.uniform1i(this.uniforms.receiveShadow, 1);
       gl.uniform1i(this.uniforms.environment, 0);
+      gl.uniform1i(this.uniforms.separated, 0);
       gl.uniform1i(this.uniforms.linearInput,Number(this.linearInput));
       if (
         this.revision !== frame.terrainRevision ||
@@ -500,11 +502,11 @@ export class WebGL2SpatialPass {
           previous.colorMask[2],
           previous.colorMask[3],
         );
-        this.environmentPass!.compositeScene(frame, target, displayViewport);
-        stats.effectDrawCalls = 1;
-        stats.drawCalls++;
-        stats.triangleCount++;
-        stats.textureBindCount += 2;
+        const passes = this.environmentPass!.compositeScene(frame, target, displayViewport);
+        stats.effectDrawCalls = passes;
+        stats.drawCalls += passes;
+        stats.triangleCount += passes;
+        stats.textureBindCount += passes * 2 + Number(passes > 1);
       }
     } finally {
       this.models.finishDraws();

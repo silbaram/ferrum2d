@@ -1,8 +1,43 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { WebGL2SpatialEnvironmentPass } from "../src/webgl2SpatialEnvironmentPass.js";
 import { compileSpatialEnvironment } from "../src/spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "../src/dataSceneSpatial.js";
+
+test("optional indirect MRT releases partial allocations, retries, and frees scratch when disabled", () => {
+  const textures = new Set<object>(), targets = new Set<object>();
+  let attempts = 0, failAt = Infinity;
+  const constants = new Map<string, number>();
+  const methods: Record<string, unknown> = {
+    getExtension: () => ({}), createProgram: () => ({}), createShader: () => ({}), createVertexArray: () => ({}),
+    getShaderParameter: () => true, getProgramParameter: () => true, getUniformLocation: () => ({}),
+    createTexture: () => { if (++attempts === failAt) return null; const texture = {}; textures.add(texture); return texture; },
+    createFramebuffer: () => { const target = {}; targets.add(target); return target; },
+    deleteTexture: (texture: object) => textures.delete(texture), deleteFramebuffer: (target: object) => targets.delete(target),
+    checkFramebufferStatus: () => constants.get("FRAMEBUFFER_COMPLETE"),
+  };
+  const gl = new Proxy(methods, { get: (object, key: string) => {
+    if (key in object) return object[key];
+    if (/^[A-Z_0-9]+$/.test(key)) { if (!constants.has(key)) constants.set(key, constants.size + 1); return constants.get(key); }
+    return () => {};
+  } }) as unknown as WebGL2RenderingContext;
+  // Install the completion constant before the recorder is queried.
+  void gl.FRAMEBUFFER_COMPLETE;
+  const pass = new WebGL2SpatialEnvironmentPass(gl, false);
+  const values = compileSpatialEnvironment({ composition: "separated", lighting: { lights: [] }, ambientOcclusion: {} });
+  const frame = { environment: { values } } as SpatialRenderBufferView;
+  try {
+    failAt = 4;
+    throws(() => pass.prepare(frame, 160, 90), /texture allocation failed/);
+    equal(textures.size, 2); equal(targets.size, 1);
+    failAt = Infinity; pass.prepare(frame, 160, 90);
+    equal(textures.size, 4); equal(targets.size, 2);
+    const warmAttempts = attempts; pass.prepare(frame, 160, 90); equal(attempts, warmAttempts);
+    const disabled = { environment: { values: compileSpatialEnvironment({ lighting: { lights: [] } }) } } as SpatialRenderBufferView;
+    pass.prepare(disabled, 160, 90); equal(textures.size, 2); equal(targets.size, 1);
+  } finally { pass.destroy(); }
+  equal(textures.size, 0); equal(targets.size, 0);
+});
 
 test("v5 retains spotlight uniforms from v4 and clears them when returning to legacy", () => {
   let cones: number[] = [];

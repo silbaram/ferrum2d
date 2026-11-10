@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 528;
+pub(crate) const ENVIRONMENT_VALUES: usize = 544;
 #[path = "lighting_upgrade.rs"]
 mod lighting_upgrade;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
@@ -17,7 +17,7 @@ impl SpatialEnvironment {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![80, 112, 128, 512, ENVIRONMENT_VALUES].contains(&v.len()) {
+        if ![80, 112, 128, 512, 528, ENVIRONMENT_VALUES].contains(&v.len()) {
             return None;
         }
         let mut a = [0.; ENVIRONMENT_VALUES];
@@ -117,10 +117,14 @@ impl SpatialEnvironment {
         }
         // v5: optional fixed world-space sun center; the remaining extension is reserved.
         if ![0., 1.].contains(&a[512])
-            || a[516..].iter().any(|x| *x != 0.)
+            || a[516..528].iter().any(|x| *x != 0.)
             || (a[512] == 0. && a[513..516].iter().any(|x| *x != 0.))
             || (a[512] == 1. && (a[92] == 0. || a[513..516].iter().any(|x| x.abs() > 1e6)))
         {
+            return None;
+        }
+        // v6: explicit legacy/separated composition. No reserved prefix slots are reused.
+        if ![0., 1.].contains(&a[528]) || a[529..].iter().any(|x| *x != 0.) {
             return None;
         }
         let count = a[1] as usize;

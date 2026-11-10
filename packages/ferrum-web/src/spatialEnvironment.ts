@@ -78,6 +78,8 @@ export interface SpatialFogSpec {
   end: number;
 }
 export interface SpatialEnvironmentSpec {
+  /** Legacy is the default. Separated composition applies AO to ambient/hemisphere only. */
+  composition?: "legacy" | "separated";
   /** Fixed scene resolution; integer CSS upscale, centered bars; smaller windows downscale to fit. */
   pixelArt?: { width: number; height: number; snapCamera?: boolean };
   lighting?: SpatialLightingSpec;
@@ -89,9 +91,9 @@ export interface SpatialEnvironmentSpec {
   colorGrading?: SpatialColorGradingSpec;
   fog?: SpatialFogSpec;
 }
-/** Borrowed native environment v1..v5; acquire per frame, copy before deferred use. */
+/** Borrowed native environment v1..v6; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
@@ -102,7 +104,7 @@ export interface SpatialEnvironmentBufferView {
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528].includes(v.length) ||
+    ![80, 112, 128, 512, 528, 544].includes(v.length) ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -123,11 +125,12 @@ export function validSpatialEnvironmentValues(v: Float32Array): boolean {
     if (v.length >= 128 && !validLightingExtension(v)) return false;
   }
   if (v.length >= 512 && !validLightingV4(v)) return false;
-  if (v.length === 528 && (
-    ![0, 1].includes(v[512]) || v.subarray(516).some(x => x !== 0) ||
+  if (v.length >= 528 && (
+    ![0, 1].includes(v[512]) || v.subarray(516, 528).some(x => x !== 0) ||
     (v[512] === 0 && v.subarray(513, 516).some(x => x !== 0)) ||
     (v[512] === 1 && (!(v[92] > 0) || v.subarray(513, 516).some(x => Math.abs(x) > 1e6)))
   )) return false;
+  if (v.length === 544 && (![0, 1].includes(v[528]) || v.subarray(529).some(x => x !== 0))) return false;
   if (!(v[0] & 1) && (v[1] !== 0 || v[2] !== -1)) return false;
   const range = (start: number, end: number, min: number, max: number) => {
     for (let i = start; i < end; i++)
@@ -320,6 +323,7 @@ export function resolveSpatialEnvironmentSpec(
   path = "spatial.environment",
 ): SpatialEnvironmentSpec {
   const o = object(value, path, [
+    "composition",
     "lighting",
     "bloom",
     "ambientOcclusion",
@@ -329,6 +333,11 @@ export function resolveSpatialEnvironmentSpec(
     "fog",
   ]);
   const result: SpatialEnvironmentSpec = {};
+  if (o.composition !== undefined) {
+    if (o.composition !== "legacy" && o.composition !== "separated")
+      throw sceneCompositionDiagnosticError(`${path}.composition`, "must be legacy or separated");
+    result.composition = o.composition;
+  }
   for (const key of ["bloom", "ambientOcclusion"] as const) {
     if (o[key] === undefined) continue;
     const at = `${path}.${key}`, bloom = key === "bloom";
@@ -610,8 +619,8 @@ export function compileSpatialEnvironment(
   const spec = resolveSpatialEnvironmentSpec(input),
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
-    v4 = !!(fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v4 = !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
+    v = new Float32Array(spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);
@@ -687,6 +696,7 @@ export function compileSpatialEnvironment(
   }
   if (v4) compileLightingV4(spec,v);
   if (fixedSunCenter && spec.lighting?.enabled !== false) v.set([1, fixedSunCenter.x, fixedSunCenter.elevation, -fixedSunCenter.y], 512);
+  if (spec.composition) v[528] = spec.composition === "separated" ? 1 : 0;
   return v;
 }
 export function decodeSpatialEnvironment(
@@ -749,7 +759,8 @@ export function decodeSpatialEnvironment(
   if (flags & 2)
     spec.fog = { start: v[71], end: v[72], color: [v[73], v[74], v[75]] };
   if(v.length >= 512) decodeLightingV4(v,spec);
-  if(v.length === 528 && v[512] === 1 && spec.lighting?.directional?.shadows)
+  if(v.length >= 528 && v[512] === 1 && spec.lighting?.directional?.shadows)
     spec.lighting.directional.shadows.center = { x: v[513], elevation: v[514], y: -v[515] };
+  if (v.length === 544) spec.composition = v[528] ? "separated" : "legacy";
   return resolveSpatialEnvironmentSpec(spec);
 }
