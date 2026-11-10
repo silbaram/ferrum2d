@@ -1,4 +1,6 @@
 import { resolvePointLightCookie } from "./lightingCookie.js";
+import { polygonOccludersMatch, resolvePolygonOccluders, validatePolygonLightingBounds } from "./lightingPolygons.js";
+import type { PolygonOccluder2D } from "./lightingTypes.js";
 import {resolveLightingChannelMask} from "./lightingMasks.js";
 import { resolvePointLightSpot } from "./lightingSpot.js";
 import { resolveDirectionalLight2D, resolveLitDirectionalLight2D } from "./dataSceneSun.js";
@@ -43,6 +45,7 @@ interface MutableResolvedLightingScene2D extends ResolvedLightingScene2D {
 }
 
 export interface LightingSceneResolveCache {
+  polygonOccluders?: readonly PolygonOccluder2D[];
   tileOccludersInput?: readonly TileOccluder2D[];
   tileOccluders: TileOccluder2D[];
   tileOccluderStaging: TileOccluder2D[];
@@ -72,7 +75,7 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene) && !hasSpotLights(scene) && !hasCookies(scene))) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && scene.polygonOccluders === undefined && !hasLightMasks(scene) && !hasSpotLights(scene) && !hasCookies(scene))) {
     return DISABLED_LIGHTING_SCENE;
   }
 
@@ -122,6 +125,7 @@ export function resolveLightingSceneInto(
   if(scene&&!lit&&hasLightMasks(scene))throw Error("Light channel masks require the flat lit profile");
   if(scene&&!lit&&hasCookies(scene))throw Error("Point-light cookies require the flat lit profile");
   if(scene&&!lit&&hasSpotLights(scene))throw Error("Point-light cones require the flat lit profile");
+  if (scene && scene.polygonOccluders !== undefined && !lit) throw Error("Polygon occluders require the flat lit profile");
   if (scene && scene.hdr !== undefined) {
     if (!lit) throw Error("lighting.hdr requires the lit profile");
     mutableTarget.hdr = resolveFlatHdr(scene.hdr);
@@ -143,6 +147,7 @@ export function resolveLightingSceneInto(
     delete mutableTarget.directionalLight;
     writeColor4Into(mutableTarget.ambient, DEFAULT_DISABLED_AMBIENT);
     mutableTarget.pointLights.length = 0;
+    delete mutableTarget.polygonOccluders;
     writeEmptyTileOccludersInto(mutableTarget, cache);
     writeDisabledShadowsInto(mutableTarget.shadows);
     mutableTarget.debug.tileOccluders = false;
@@ -169,6 +174,15 @@ export function resolveLightingSceneInto(
   mutableTarget.debug.tileOccluders = scene.debug?.tileOccluders ?? false;
   writeNormalizedColor4Into(mutableTarget.debug.color, scene.debug?.color ?? DEFAULT_DEBUG_COLOR, "debug.color");
   mutableTarget.tileOccluders = resolvedTileOccluders;
+  if (scene.polygonOccluders === undefined) delete mutableTarget.polygonOccluders;
+  else {
+    const source = scene.polygonOccluders;
+    const polygons = cache?.polygonOccluders && polygonOccludersMatch(source, cache.polygonOccluders)
+      ? cache.polygonOccluders : resolvePolygonOccluders(source, "polygonOccluders");
+    mutableTarget.polygonOccluders = polygons;
+    validatePolygonLightingBounds(mutableTarget, scene.shadows);
+    if (cache) cache.polygonOccluders = polygons;
+  }
   return mutableTarget;
 }
 

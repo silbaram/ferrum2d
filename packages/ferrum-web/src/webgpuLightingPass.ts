@@ -638,7 +638,7 @@ export class WebGpuLightingPass {
     const ranges = this.shadowRanges;
     ranges.length = 0;
     const shadows = scene.shadows, occluders = scene.tileOccluders;
-    if (!shadows.enabled || shadows.color[3] <= 0 || occluders.length === 0 || lights.length === 0) {
+    if (!shadows.enabled || shadows.color[3] <= 0 || (occluders.length === 0 && !scene.polygonOccluders?.length) || lights.length === 0) {
       return ranges;
     }
 
@@ -646,7 +646,7 @@ export class WebGpuLightingPass {
     this.shadowClipRect.y = 0;
     this.shadowClipRect.width = viewportWidth;
     this.shadowClipRect.height = viewportHeight;
-    const occluderVersion = this.shadowGeometryCache.syncOccluders(occluders);
+    const occluderVersion = this.shadowGeometryCache.syncOccluders(occluders, scene.polygonOccluders);
     let offset = 0;
     for (let lightIndex = 0; lightIndex < lights.length; lightIndex += 1) {
       const light = lights[lightIndex];
@@ -657,6 +657,7 @@ export class WebGpuLightingPass {
         light,
         shadows,
         this.shadowClipRect,
+        scene.polygonOccluders,
       );
       if (shadowGeometry.floatCount === 0) {
         continue;

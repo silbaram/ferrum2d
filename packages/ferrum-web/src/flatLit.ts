@@ -16,6 +16,8 @@ export interface FlatLightingAsset {
 export interface FlatLightingPreparer {
   /** Optional v1 scalar cookie capability; required only by cookie documents. */
   flatLightingCookieVersion?(): number;
+  /** Optional v1 bounded convex point-shadow capability. */
+  flatLightingPolygonVersion?(): number;
   prepareFlatLighting(scene: LightingScene2D, assets: readonly FlatLightingAsset[]): void;
 }
 export interface FlatLitTextureSource {

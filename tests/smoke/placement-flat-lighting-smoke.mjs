@@ -68,6 +68,24 @@ export async function smokePlacementFlatLighting(parent, timeoutMs = 30000) {
     await page.locator(`[data-placement-document-key=${JSON.stringify(initial)}]`).click();
     await page.waitForFunction(key => window.ferrumPlacementWorkspaceActiveDocument === key, initial);
     const restored = await sample(); assert(restored[2] > 60 && restored[0] < 20, `tab restore preserves draft mask: ${restored}`);
+    const polygonScene = structuredClone(scene);
+    polygonScene.sceneComposition.fragments.main.instances[0].props.components.visual.lighting.shadowMask = 255;
+    polygonScene.lighting.pointLights = [{ ...scene.lighting.pointLights[0], x: 700 }];
+    polygonScene.lighting.shadows = { enabled: true, color: [0, 0, 0, 1], projectionLength: 512 };
+    polygonScene.lighting.polygonOccluders = [{ vertices: [{ x: 760, y: 440 }, { x: 780, y: 480 }, { x: 760, y: 520 }] }];
+    await page.locator("[data-placement-document-file]").setInputFiles({ name: "polygon-lit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(polygonScene)) });
+    await page.waitForFunction(key => window.ferrumPlacementWorkspaceActiveDocument !== key && !document.querySelector(".demo-shell").inert, initial);
+    const polygon = await sample(); assert(polygon[0] < 10 && polygon[2] < 10, `cold polygon must occlude direct light: ${polygon}`);
+    assert.deepEqual((await page.evaluate(() => window.ferrumPlacementSpatialExportDocument())).lighting.polygonOccluders, polygonScene.lighting.polygonOccluders);
+    const polygonBefore = await page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), entity: window.ferrumPlacementViewerState.instances[0].entity, history: window.ferrumPlacementViewerHistory }));
+    const invalidPolygon = structuredClone(polygonScene); invalidPolygon.lighting.polygonOccluders[0].vertices[1] = { x: 760, y: 480 };
+    await page.locator("[data-placement-document-file]").setInputFiles({ name: "invalid-polygon-lit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(invalidPolygon)) });
+    await page.waitForFunction(() => document.querySelector(".placement-workspace-message")?.textContent.includes("convex") && !document.querySelector(".demo-shell").inert);
+    assert.equal(await page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), entity: window.ferrumPlacementViewerState.instances[0].entity, history: window.ferrumPlacementViewerHistory })), polygonBefore);
+    assert.deepEqual(await sample(), polygon);
+    await page.locator(`[data-placement-document-key=${JSON.stringify(initial)}]`).click();
+    await page.waitForFunction(key => window.ferrumPlacementWorkspaceActiveDocument === key, initial);
+    assert.deepEqual(await sample(), restored, "polygon document switch must preserve the original cookie/mask draft");
     await page.locator('[data-placement-playback=play]').click();
     await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === "game");
     const playing = await sample(); assert(playing[2] > 60 && playing[0] < 20, `Playing preserves mask/material: ${playing}`);
@@ -84,7 +102,7 @@ export async function smokePlacementFlatLighting(parent, timeoutMs = 30000) {
     const translucent = await sample(7);
     assert(translucent.slice(0, 3).every(channel => channel >= 120 && channel <= 150), `legacy straight-alpha preview: ${translucent}`);
     assert.deepEqual(errors, []);
-    return { coldLitApply: true, straightAlphaAndDataMap: true, legacyTranslucentInput: true, cookieRawRedAlpha: true, cookieSourcePreserved: true, lateDataRole: true, failedPreflightPreservesScene: true, draftMask: true, tabRestore: true, playing: true, pixels: { red, blue, rawCookie, restored, playing, translucent } };
+    return { coldLitApply: true, straightAlphaAndDataMap: true, legacyTranslucentInput: true, cookieRawRedAlpha: true, cookieSourcePreserved: true, polygonColdApply: true, polygonSourcePreserved: true, polygonRejectedBeforeReplace: true, lateDataRole: true, failedPreflightPreservesScene: true, draftMask: true, tabRestore: true, playing: true, pixels: { red, blue, rawCookie, polygon, restored, playing, translucent } };
   } catch (error) { failure = error; throw error; }
   finally { await closeSmokePage(page, 10000, failure); }
 }

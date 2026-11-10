@@ -269,6 +269,8 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
     throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
+  if (resolved.lighting?.polygonOccluders?.length && preparer.flatLightingPolygonVersion?.() !== 1)
+    throw sceneCompositionDiagnosticError(`${path}.lighting`, "polygon occluders require renderer polygon v1 support");
   const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
   const textureId=options.textureId??(name=>adapter.textureId(name));
   const lighting = resolved.lighting!;

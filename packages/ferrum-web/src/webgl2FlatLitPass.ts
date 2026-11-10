@@ -68,6 +68,7 @@ export class WebGL2FlatLitPass {
       const effective = this.effective, ambient = effective.ambient as [number, number, number, number];
       ambient[0] = scene.ambientIrradiance![0]; ambient[1] = scene.ambientIrradiance![1]; ambient[2] = scene.ambientIrradiance![2]; ambient[3] = 1;
       effective.enabled = true; effective.pointLights = scene.pointLights; effective.tileOccluders = scene.tileOccluders;
+      effective.polygonOccluders = scene.polygonOccluders;
       effective.directionalLight = scene.directionalLight; effective.shadows = scene.shadows;
       this.lightTarget.width = this.width; this.lightTarget.height = this.height;
       const lighting = this.lights!.draw(effective, resolution, { normal: this.textures[0]!, coverage: this.textures[1]!,...(this.surface?{albedo:this.textures[2]!}:{}),...(this.masksActive?{receiverMasks:this.receiverMasks!.texture!}:{}) }, this.lightTarget, sunMask, source);

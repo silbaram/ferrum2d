@@ -38,7 +38,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
         applyDataSceneAuthoringDocument,
       } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
-      import type { LightingScene2D, PointLightSpot2D, PointLightCookie2D, ResolvedPointLightCookie2D } from '@ferrum2d/ferrum-web/labs';
+      import type { LightingScene2D, PointLightSpot2D, PointLightCookie2D, ResolvedPointLightCookie2D, PolygonOccluder2D } from '@ferrum2d/ferrum-web/labs';
       import '@ferrum2d/ferrum-web/quality';
       const config: PixelPerfectOptions = { width: 320, height: 180, snap: true };
       const disabled: PixelPerfectOptions = { ...config, snap: false };
@@ -65,7 +65,8 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       // @ts-expect-error cookie references must be unambiguous
       const ambiguousCookie: PointLightCookie2D = { texture: 'pattern', textureId: 7 };
       void [namedCookie, resolvedCookie, ambiguousCookie];
-      const lighting: LightingScene2D = { profile: 'lit', hdr, pointLights: [{ x: 10, y: 10, radius: 100, spot: cone, cookie }], ambientIrradiance: [0.2, 0.2, 0.2], directionalLight: { directionX: 1, directionY: 0, lightMask: 2, shadowMask: 4 } };
+      const polygon: PolygonOccluder2D = { vertices: [{ x: 0, y: 0 }, { x: 16, y: 0 }, { x: 16, y: 16 }] };
+      const lighting: LightingScene2D = { profile: 'lit', hdr, pointLights: [{ x: 10, y: 10, radius: 100, spot: cone, cookie }], polygonOccluders: [polygon], ambientIrradiance: [0.2, 0.2, 0.2], directionalLight: { directionX: 1, directionY: 0, lightMask: 2, shadowMask: 4 } };
       renderer.setLighting({ ...lighting, hdr: resolvedHdr });
       // @ts-expect-error tone mapping modes are explicit
       const invalidHdr: FlatHdrOptions = { toneMapping: 'filmic' };
@@ -73,6 +74,8 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const assets: FlatLightingAsset[] = [{ textureId: 1, lighting: receiver }];
       const preparer: FlatLightingPreparer = renderer;
       const cookieVersion: number | undefined = preparer.flatLightingCookieVersion?.();
+      const polygonVersion: number | undefined = preparer.flatLightingPolygonVersion?.();
+      void polygonVersion;
       void cookieVersion;
       const authoredPreparer: AuthoringFlatLightingPreparer = preparer;
       const words = new Uint32Array(2);

@@ -40,6 +40,12 @@ test("Data Scene view uses a common camera for CSS/device round trips and world 
     const mapped = view.lighting(source, snapshot);
     deepEqual(mapped.pointLights![0].cookie, { texture: 7, rotationRadians: .5, uv: [1, 0, 0, 1] });
     equal(mapped.pointLights![0].radiusY, 25 * groundYScale); equal(source.pointLights[0].cookie.texture, "pattern");
+    const polygon = { vertices: [{ ...world }, { x: world.x + 10, y: world.y }, { x: world.x, y: world.y + 10 }] };
+    const projected = view.lighting({ profile: "lit", polygonOccluders: [polygon] }, snapshot).polygonOccluders![0];
+    equal(projected.vertices[0].x, screen.x / zoom);
+    ok(Math.abs(projected.vertices[0].y - screen.y / zoom) < 1e-8);
+    ok(Math.abs(projected.vertices[2].y - projected.vertices[0].y - 10 * groundYScale) < 1e-8);
+    equal(polygon.vertices[0].y, world.y);
     throws(() => view.setGroundYScale(0), /groundYScale/);
     throws(() => view.setZoom(0), /zoom/);
   }

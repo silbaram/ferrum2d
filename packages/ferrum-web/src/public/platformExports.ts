@@ -242,6 +242,7 @@ export type {
   ShadowClipRect,
   ShadowProjectionOptions,
   TileOccluder2D,
+  PolygonOccluder2D,
   TileOccluderGridInput,
 } from "../lighting";
 export type { SpriteDrawOptions } from "../spriteBatch";

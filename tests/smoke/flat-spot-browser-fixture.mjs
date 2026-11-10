@@ -3,7 +3,7 @@ import { texture, readPixels } from './flat-lighting-contract-fixture.mjs';
 const check=(ok,label)=>{if(!ok)throw Error(label);};
 const near=(a,b,label,tolerance=3)=>check(b.every((v,i)=>Math.abs(v-a[i])<=tolerance),`${label}: ${a} != ${b}`);
 const points=[[104,48],[24,48],[64,8],[64,88],[98,35]];
-function packet({id=1,mode=1,surface,masks,rect=[0,0,128,96]}={}){
+export function packet({id=1,mode=1,surface,masks,rect=[0,0,128,96]}={}){
  const words=new Uint32Array([mode,0]),values=new Float32Array(words.buffer);if(mode===2)values[1]=.5;
  const result={commandCount:1,floatsPerCommand:15,buffer:new Float32Array([...rect,0,0,1,1,1,1,1,1,id,0,0]),spriteLightingMaterials:{version:1,stride:2,words,values}};
  if(masks)result.spriteLightMasks={version:1,stride:2,buffer:new Uint32Array(masks)};

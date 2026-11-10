@@ -225,15 +225,15 @@ export class WebGL2LightingPass {
       this.gl.uniform1i(this.maskUniforms.has,0);
     }
     const shadowsActive = scene.shadows.enabled && scene.shadows.color[3] > 0 &&
-      scene.tileOccluders.length > 0 && activePointLights.length > 0;
-    const occluderVersion = shadowsActive ? this.shadowGeometryCache.syncOccluders(scene.tileOccluders) : -1;
+      (scene.tileOccluders.length > 0 || !!scene.polygonOccluders?.length) && activePointLights.length > 0;
+    const occluderVersion = shadowsActive ? this.shadowGeometryCache.syncOccluders(scene.tileOccluders, scene.polygonOccluders) : -1;
     this.shadowClipRect.width = resolution[0];this.shadowClipRect.height = resolution[1];
     let shadowDrawCalls=0,shadowCasterCount=0;
     let maskState: MaskState | undefined;
     for (let index=0;index<activePointLights.length;index++) {
       const light=activePointLights[index];
       const geometry=shadowsActive
-        ? this.shadowGeometryCache.resolveLightGeometry(index,occluderVersion,scene.tileOccluders,light,scene.shadows,this.shadowClipRect):undefined;
+        ? this.shadowGeometryCache.resolveLightGeometry(index,occluderVersion,scene.tileOccluders,light,scene.shadows,this.shadowClipRect,scene.polygonOccluders):undefined;
       if(geometry && geometry.floatCount>0){
         if(!target)throw Error("Shadowed lighting requires a destination restore callback");
         // Capture caller state once, even when many lights reuse the mask.

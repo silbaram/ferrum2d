@@ -16,7 +16,7 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(Math.fround(value)) || value < min || value > max))
       throw sceneCompositionDiagnosticError(at, `must be a finite number in ${min}..${max}`);
   };
-  const scene = record(value, path, ["enabled", "profile", "hdr", "ambientIrradiance", "ambient", "directionalLight", "pointLights", "tileOccluders", "shadows", "debug"]);
+  const scene = record(value, path, ["enabled", "profile", "hdr", "ambientIrradiance", "ambient", "directionalLight", "pointLights", "tileOccluders", "polygonOccluders", "shadows", "debug"]);
   boolean(scene.enabled, `${path}.enabled`);
   for (const [name, maximum, keys] of [
     ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff", "lightMask", "shadowMask", "spot", "cookie"]],

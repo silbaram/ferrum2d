@@ -260,7 +260,8 @@
         "PointLightSpot2D",
         "ResolvedPointLightSpot2D",
         "PointLightCookie2D",
-        "ResolvedPointLightCookie2D"
+        "ResolvedPointLightCookie2D",
+        "PolygonOccluder2D"
       ]
     },
     {
@@ -621,7 +622,8 @@
         "PointLightSpot2D",
         "ResolvedPointLightSpot2D",
         "PointLightCookie2D",
-        "ResolvedPointLightCookie2D"
+        "ResolvedPointLightCookie2D",
+        "PolygonOccluder2D"
       ]
     },
     {

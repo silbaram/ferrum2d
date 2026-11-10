@@ -464,6 +464,7 @@ export class WebGL2Renderer implements Renderer {
     if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
   }
   flatLightingCookieVersion(): number { this.assertAlive(); return 1; }
+  flatLightingPolygonVersion(): number { this.assertAlive(); return 1; }
   prepareFlatLighting(scene: LightingScene2D, assets: readonly FlatLightingAsset[]): void {
     this.assertAlive(); const resolved = resolveLightingSceneInto(createResolvedLightingScene(), scene);
     if(resolved.profile!=="lit") return; requireWebGL2FlatLit(this.gl); validateFlatLitMaterial(this.spriteMaterial);

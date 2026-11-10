@@ -69,6 +69,11 @@ export interface TileOccluder2D {
   height: number;
 }
 
+/** Lit point-shadow caster, 3..8 ordered strictly convex vertices in either winding. */
+export interface PolygonOccluder2D {
+  vertices: readonly { x: number; y: number }[];
+}
+
 export interface LightingDebugOptions {
   tileOccluders?: boolean;
   color?: LightingColor4;
@@ -126,6 +131,8 @@ export interface LightingScene2D {
   directionalLight?: DirectionalLight2D;
   pointLights?: readonly PointLight2D[];
   tileOccluders?: readonly TileOccluder2D[];
+  /** At most 256 bounded convex polygons; point shadows only, requires lit. */
+  polygonOccluders?: readonly PolygonOccluder2D[];
   shadows?: boolean | LightingShadowOptions;
   debug?: LightingDebugOptions;
 }
@@ -167,6 +174,7 @@ export interface ResolvedLightingScene2D {
   directionalLight?: ResolvedDirectionalLight2D;
   pointLights: readonly ResolvedPointLight2D[];
   tileOccluders: readonly TileOccluder2D[];
+  polygonOccluders?: readonly PolygonOccluder2D[];
   shadows: ResolvedLightingShadowOptions;
   debug: ResolvedLightingDebugOptions;
 }

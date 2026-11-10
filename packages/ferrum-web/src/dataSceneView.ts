@@ -127,6 +127,7 @@ export function createDataSceneView(
         return { ...light, ...(spot ? { spot } : {}), x: light.x - view.worldMinX, y: (light.y - view.worldMinY) * view.groundYScale, radiusY: (light.radiusY ?? light.radius) * view.groundYScale };
       }),
       tileOccluders: scene.tileOccluders?.map((rect) => ({ ...rect, x: rect.x - view.worldMinX, y: (rect.y - view.worldMinY) * view.groundYScale, height: rect.height * view.groundYScale })),
+      polygonOccluders: scene.polygonOccluders?.map(polygon => ({ vertices: polygon.vertices.map(point => ({ x: point.x - view.worldMinX, y: (point.y - view.worldMinY) * view.groundYScale })) })),
     }),
   };
 }

@@ -3,6 +3,9 @@ import {
   MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS,
   writeTileOccluderShadowTrianglesInto,
 } from "./lightingShadows.js";
+import { polygonOccludersMatch } from "./lightingPolygons.js";
+import { createPolygonShadowScratch, MAX_POLYGON_SHADOW_FLOATS, polygonDistanceSquared, writePolygonShadowTrianglesInto } from "./lightingPolygonShadows.js";
+import type { PolygonOccluder2D } from "./lightingTypes.js";
 import type {
   ResolvedLightingShadowOptions,
   ResolvedPointLight2D,
@@ -35,15 +38,18 @@ interface MutableCachedLightingShadowGeometry extends CachedLightingShadowGeomet
   clipWidth: number;
   clipHeight: number;
 }
+const EMPTY_POLYGONS: readonly PolygonOccluder2D[] = [];
 
 export class LightingShadowGeometryCache {
   private readonly occluderSnapshot: TileOccluder2D[] = [];
   private occluderVersion = 0;
   private readonly lightEntries: MutableCachedLightingShadowGeometry[] = [];
   private readonly shadowProjectionScratch: ShadowProjectionScratch = createShadowProjectionScratch();
+  private polygonSnapshot: PolygonOccluder2D[] = [];
+  private polygonScratch?: ReturnType<typeof createPolygonShadowScratch>;
 
-  syncOccluders(occluders: readonly TileOccluder2D[]): number {
-    if (this.occludersMatchSnapshot(occluders)) {
+  syncOccluders(occluders: readonly TileOccluder2D[], polygons: readonly PolygonOccluder2D[] = EMPTY_POLYGONS): number {
+    if (this.occludersMatchSnapshot(occluders) && polygonOccludersMatch(polygons, this.polygonSnapshot)) {
       return this.occluderVersion;
     }
 
@@ -57,6 +63,7 @@ export class LightingShadowGeometryCache {
       target.height = source.height;
     }
     this.occluderSnapshot.length = occluders.length;
+    this.polygonSnapshot = polygons.map(polygon => ({ vertices: polygon.vertices.map(point => ({ ...point })) }));
     this.occluderVersion += 1;
     return this.occluderVersion;
   }
@@ -68,6 +75,7 @@ export class LightingShadowGeometryCache {
     light: ResolvedPointLight2D,
     shadows: ResolvedLightingShadowOptions,
     clipRect: ShadowClipRect,
+    polygons: readonly PolygonOccluder2D[] = EMPTY_POLYGONS,
   ): CachedLightingShadowGeometry {
     const maxDistance = shadows.maxDistance ?? light.radius;
     const projectionLength = Math.max(shadows.projectionLength, light.radius);
@@ -76,7 +84,8 @@ export class LightingShadowGeometryCache {
       return entry;
     }
 
-    ensurePositionCapacity(entry, occluders.length * MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS);
+    if (polygons.length > 256 || polygons.length && occluders.length > 1024) throw Error("Polygon shadow staging exceeds the caster budget");
+    ensurePositionCapacity(entry, occluders.length * MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS + polygons.length * MAX_POLYGON_SHADOW_FLOATS);
     const maxDistanceSquared = maxDistance * maxDistance;
     const scaleY = (light.radiusY ?? light.radius) / light.radius;
     let shadowFloatCount = 0;
@@ -103,6 +112,13 @@ export class LightingShadowGeometryCache {
       }
       shadowFloatCount += written;
       casterCount += 1;
+    }
+    for (const polygon of polygons) {
+      if (polygonDistanceSquared(polygon, light) > maxDistanceSquared) continue;
+      const written = writePolygonShadowTrianglesInto(entry.positions, shadowFloatCount, polygon, light, projectionLength,
+        this.polygonScratch ??= createPolygonShadowScratch(), clipRect);
+      if (!written) continue;
+      shadowFloatCount += written; casterCount++;
     }
 
     entry.floatCount = shadowFloatCount;

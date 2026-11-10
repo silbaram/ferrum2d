@@ -56,6 +56,7 @@ export type {
   TextureAtlasPackInput,
   TextureAtlasPackOptions,
   TileOccluder2D,
+  PolygonOccluder2D,
   WebGPURendererOptions,
 } from "./public/platformExports.js";
 export type {
