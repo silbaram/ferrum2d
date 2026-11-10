@@ -14,6 +14,7 @@ import { check, pixels, difference, png } from "/fixture.mjs";
 import { loadTextureTransformFixtures, probeTextureTransforms } from "/texture-transform.mjs";
 import { probeSeparatedComposition } from "/composition.mjs";
 import { probeSpatialCompositionOrder } from "/composition-order.mjs";
+import { loadSpecularFixtures, probeSpecularMaterials } from "/specular.mjs";
 
 function variant(bytes, edit) {
   const size = new DataView(bytes).getUint32(12, true),
@@ -63,7 +64,7 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection, colorManagement) {
+async function probe(canvas, backend, projection, colorManagement, specularOnly = false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
@@ -129,7 +130,7 @@ async function probe(canvas, backend, projection, colorManagement) {
   try {
     const source = await (await fetch("/tree-material.glb")).arrayBuffer(),
       assets = new Map();
-    for (const [id, bytes] of [
+    if (!specularOnly) for (const [id, bytes] of [
       ["mapped", variant(source, (m) => (m.emissiveFactor = [0, 0, 0]))],
       [
         "scale0",
@@ -150,7 +151,7 @@ async function probe(canvas, backend, projection, colorManagement) {
       })],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
-    const uvPicking = await loadTextureTransformFixtures(assets);
+    const uvPicking = specularOnly ? await loadSpecularFixtures(assets) : await loadTextureTransformFixtures(assets);
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -239,7 +240,7 @@ async function probe(canvas, backend, projection, colorManagement) {
         ],
         billboards: { actor: {} },
         actor: { instanceId: "actor", speed: 96 },
-        models: { tree: { asset: "scale0", contentId: assets.get("scale0").contentId } },
+        models: { tree: { asset: specularOnly ? "uv-spec-rough" : "scale0", contentId: assets.get(specularOnly ? "uv-spec-rough" : "scale0").contentId } },
       },
     };
     engine = await createEngine(
@@ -325,11 +326,12 @@ async function probe(canvas, backend, projection, colorManagement) {
       asset = "scale0",
       normal = false,
       debug = false,
+      modelChanges = undefined,
     ) => {
       console.log("environment state", backend, projection, name);
       const doc = structuredClone(base);
       if (environment) doc.spatial.environment = environment;
-      doc.spatial.models.tree = { asset, contentId: assets.get(asset).contentId };
+      doc.spatial.models.tree = { asset, contentId: assets.get(asset).contentId, ...modelChanges };
       if (normal) doc.spatial.billboards.actor.normalTextureId = 4;
       handles = applyDataSceneAuthoringDocument(engine, doc, apply).entityHandles;
       engine.pauseDataScene();
@@ -401,6 +403,11 @@ async function probe(canvas, backend, projection, colorManagement) {
       rows.push(evidence);
       return result;
     };
+    if (specularOnly) {
+      const specular = await probeSpecularMaterials(configure, () => lastPixels, read, engine, apply, registry, assets, renderer, errors);
+      check(!errors.length, "GPU specular material errors", errors);
+      return { backend, projection, restored: true, frames, errors, rows, specular };
+    }
     const neutral = await configure("neutral"),
       ambient = await configure("ambient", { lighting: { ambient: [0.1, 0.1, 0.1], lights: [] } });
     const hemisphere={skyColor:[0,0,1],groundColor:[1,0,0],intensity:.8},
@@ -640,15 +647,15 @@ async function decodePng(url) {
     bitmap.close();
   }
 }
-export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy") {
+export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy", specularOnly = false) {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) {
     const pair = [];
     for (const backend of ["webgl2", "webgpu"]) {
       const canvas = document.createElement("canvas");
       document.body.replaceChildren(canvas);
-      const checked = await probe(canvas, backend, projection, colorManagement);
-      if (projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
+      const checked = await probe(canvas, backend, projection, colorManagement, specularOnly);
+      if (!specularOnly && projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
       pair.push(checked);
     }
     const comparisons = [];

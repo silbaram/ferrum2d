@@ -54,6 +54,12 @@ ${spatialModelMaterialWGSL}
 @group(1) @binding(4) var normalTexture:texture_2d<f32>;
 @group(1) @binding(5) var emissionSampler:sampler;
 @group(1) @binding(6) var emissionTexture:texture_2d<f32>;
+@group(1) @binding(7) var roughnessSampler:sampler;
+@group(1) @binding(8) var roughnessTexture:texture_2d<f32>;
+@group(1) @binding(9) var specularSampler:sampler;
+@group(1) @binding(10) var specularTexture:texture_2d<f32>;
+@group(1) @binding(11) var specularColorSampler:sampler;
+@group(1) @binding(12) var specularColorTexture:texture_2d<f32>;
 struct Input{
  @location(0) position:vec3f,@location(1) uv:vec2f,@location(2) normal:vec3f,
  @location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f,
@@ -70,6 +76,13 @@ fn modelSurface(f:Fragment,front:bool)->SpatialLightingOutput{
  let c=textureSample(baseTexture,baseSampler,modelUv(f.uv,material.baseUv))*material.color;
  let sampled=textureSample(normalTexture,normalSampler,modelUv(f.uv,material.normalUv)).rgb*2.-1.;
  let emitted=textureSample(emissionTexture,emissionSampler,modelUv(f.uv,material.emissionUv)).rgb*material.emission.xyz;
+ // Uniform material branch, before discard/divergent lighting; diffuse adds no map samples.
+ var roughness=1.;var specularWeight=0.;var f0=vec3f(0.);
+ if(material.surface.y>.5 && material.specular.w>0.){
+  roughness=textureSample(roughnessTexture,roughnessSampler,modelUv(f.uv,material.roughnessUv)).g*material.surface.x;
+  specularWeight=textureSample(specularTexture,specularSampler,modelUv(f.uv,material.specularUv)).a*material.specular.w;
+  f0=.04*material.specular.rgb*textureSample(specularColorTexture,specularColorSampler,modelUv(f.uv,material.specularColorUv)).rgb;
+ }
  let geometric=cross(dpdx(f.world),-dpdy(f.world));var n=vec3f(0.,1.,0.);
  if(length(geometric)>.000001){n=normalize(geometric);}
  let geometricNormal=n;
@@ -84,7 +97,7 @@ fn modelSurface(f:Fragment,front:bool)->SpatialLightingOutput{
  if(c.a<material.params.x){discard;}
  let unlit=material.params.y>.5;var emission=emitted;if(unlit){emission=vec3f(0.);}
  if(!environmentEnabled()){return lightingOutput(${linearWorking ? "c.rgb+emission" : "encode(c.rgb+emission)"},vec3f(0.));}
- return lightingOutput(shade(c.rgb,emission,f.world,n,geometricNormal,unlit),indirectColor(c.rgb,n,unlit));
+ return lightingOutput(shadeSurface(c.rgb,emission,f.world,n,geometricNormal,unlit,f0,roughness,specularWeight),indirectColor(c.rgb,n,unlit));
 }
 @fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0)vec4f{return modelSurface(f,front).color;}
 @fragment fn fs_lighting(f:Fragment,@builtin(front_facing) front:bool)->SpatialLightingOutput{return modelSurface(f,front);}

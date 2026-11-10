@@ -19,7 +19,24 @@ export interface ModelMaterialUniforms {
     emissiveMap: WebGLUniformLocation;
     hasEmissive: WebGLUniformLocation;
     emissiveFactor: WebGLUniformLocation;
+    modelSpecularEnabled: WebGLUniformLocation;
+    modelSpecular: WebGLUniformLocation;
+    modelRoughness: WebGLUniformLocation;
+    roughnessMap: WebGLUniformLocation;
+    specularMap: WebGLUniformLocation;
+    specularColorMap: WebGLUniformLocation;
+    hasRoughness: WebGLUniformLocation;
+    hasSpecular: WebGLUniformLocation;
+    hasSpecularColor: WebGLUniformLocation;
+    modelRoughnessUvTransform: WebGLUniformLocation;
+    modelSpecularUvTransform: WebGLUniformLocation;
+    modelSpecularColorUvTransform: WebGLUniformLocation;
 }
+const SPECULAR_TEXTURE_SLOTS = [
+    ["roughnessTexture", 5, "hasRoughness", "roughnessMap", "modelRoughnessUvTransform", false],
+    ["texture", 6, "hasSpecular", "specularMap", "modelSpecularUvTransform", false],
+    ["colorTexture", 7, "hasSpecularColor", "specularColorMap", "modelSpecularColorUvTransform", true],
+] as const;
 interface GpuPrimitive {
     vertex: WebGLBuffer;
     index: WebGLBuffer;
@@ -155,6 +172,10 @@ export class WebGL2SpatialModels {
                 if (p.image !== undefined) uses.add(this.imageKey(p.image, true));
                 if (p.normal) uses.add(this.imageKey(p.normal.image, false));
                 if (p.emissive) uses.add(this.imageKey(p.emissive.image, true));
+                for (const [field, , , , , color] of SPECULAR_TEXTURE_SLOTS) {
+                    const texture = p.specular?.[field];
+                    if (texture) uses.add(this.imageKey(texture.image, color));
+                }
             }
             let textureUploadBytes = 0;
             for (const key of uses) {
@@ -191,7 +212,8 @@ export class WebGL2SpatialModels {
                 // WebGL distinguishes index buffers. Restore the caller VAO's element binding below.
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
                 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, primitive.indices, gl.STATIC_DRAW);
-                for (const descriptor of [primitive.sampler, primitive.normal?.sampler, primitive.emissive?.sampler]) {
+                for (const descriptor of [primitive.sampler, primitive.normal?.sampler, primitive.emissive?.sampler,
+                    primitive.specular?.roughnessTexture?.sampler, primitive.specular?.texture?.sampler, primitive.specular?.colorTexture?.sampler]) {
                     if (!descriptor) continue;
                     const sampler = gl.createSampler();
                     if (!sampler) throw Error("Model sampler allocation failed");
@@ -353,12 +375,27 @@ export class WebGL2SpatialModels {
                     gl.uniform3fv(material.emissiveFactor, p.source.emissiveFactor);
                     if (p.source.emissive) {
                         gl.activeTexture(gl.TEXTURE4);
-                        gl.bindSampler(4, p.samplers[samplerIndex]);
+                        gl.bindSampler(4, p.samplers[samplerIndex++]);
                         gl.bindTexture(gl.TEXTURE_2D, gpu.images.get(this.imageKey(p.source.emissive.image, true))!);
                         stats.textureBindCount++;
                     }
                     gl.uniform1i(material.emissiveMap, 4);
-
+                    const specular = p.source.specular;
+                    gl.uniform1i(material.modelSpecularEnabled, Number(!!specular));
+                    gl.uniform4f(material.modelSpecular, specular?.color[0] ?? 1, specular?.color[1] ?? 1, specular?.color[2] ?? 1, specular?.factor ?? 0);
+                    gl.uniform1f(material.modelRoughness, specular?.roughness ?? 1);
+                    for (const [field, unit, has, map, transform, color] of SPECULAR_TEXTURE_SLOTS) {
+                        const texture = specular?.[field];
+                        gl.uniform1i(material[has], Number(!!texture));
+                        gl.uniform1i(material[map], unit);
+                        gl.uniformMatrix3fv(material[transform], false, texture?.uvTransform ?? IDENTITY_SPATIAL_UV);
+                        if (texture) {
+                            gl.activeTexture(gl.TEXTURE0 + unit);
+                            gl.bindSampler(unit, p.samplers[samplerIndex++]);
+                            gl.bindTexture(gl.TEXTURE_2D, gpu.images.get(this.imageKey(texture.image, color))!);
+                            stats.textureBindCount++;
+                        }
+                    }
                 }
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindSampler(0, p.samplers[0]);
@@ -396,6 +433,7 @@ export class WebGL2SpatialModels {
             gl.uniform1i(material.hasNormal, 0);
             gl.uniform1i(material.hasEmissive, 0);
             gl.uniform3f(material.emissiveFactor, 0, 0, 0);
+            gl.uniform1i(material.modelSpecularEnabled, 0);
         }
         gl.disable(gl.CULL_FACE);
         gl.uniform1i(u.mesh, 0);

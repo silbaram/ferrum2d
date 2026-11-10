@@ -3,6 +3,7 @@ import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
+import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 const UNIFORM_BYTES = 2560,
@@ -20,6 +21,7 @@ fn environmentEnabled()->bool{return e(0u)>0.;}
 fn linearize(c:vec3f)->vec3f{return select(c/12.92,pow((c+.055)/1.055,vec3f(2.4)),c>=vec3f(.04045));}
 fn encode(c:vec3f)->vec3f{return select(c*12.92,1.055*pow(max(c,vec3f(0.)),vec3f(1./2.4))-.055,c>=vec3f(.0031308));}
 ${spatialShadowSamplingWGSL}
+${SPATIAL_SPECULAR_WGSL}
 struct SpatialLightingOutput { @location(0) color:vec4f, @location(1) indirect:vec4f };
 fn indirectColor(albedo:vec3f,n:vec3f,unlit:bool)->vec3f{
  if((u32(e(0u))&1u)==0u || unlit){return vec3f(0.);}
@@ -33,9 +35,11 @@ fn indirectColor(albedo:vec3f,n:vec3f,unlit:bool)->vec3f{
 fn lightingOutput(color:vec3f,indirect:vec3f)->SpatialLightingOutput{
  var output:SpatialLightingOutput;output.color=vec4f(color,1.);output.indirect=vec4f(indirect,1.);return output;
 }
-fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool)->vec3f{
+fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool,f0:vec3f,roughness:f32,specularWeight:f32)->vec3f{
  var color=albedo;
  if((u32(e(0u))&1u)!=0u && !unlit){
+  var reflection=vec3f(0.);var view=vec3f(0.);
+  if(specularWeight>0.){let eyeDelta=env.eye.xyz-world;if(length(eyeDelta)>.000001){view=normalize(eyeDelta);}}
   var illumination=vec3f(e(5u),e(6u),e(7u));
   if(e(112u)>0. && e(119u)>0.){
    let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
@@ -52,10 +56,12 @@ fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:b
    if(e(cone+5u)>0. && d>.000001){let angle=dot(-delta/d,vec3f(e(cone),e(cone+1u),e(cone+2u)));coneWeight=step(e(cone+3u),angle);if(e(cone+4u)>e(cone+3u)+.000001){coneWeight=smoothstep(e(cone+3u),e(cone+4u),angle);}}
    var visibility=1.;if(env.size.w>0. && f32(i)==e(2u)){let receiverDelta=delta-geometric*e(123u);visibility=pointVisibility(receiverDelta,length(receiverDelta),radius,geometric);}
    illumination+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*lambert*visibility*coneWeight;
+   if(specularWeight>0. && d>.000001){reflection+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*visibility*coneWeight*directSpecular(n,delta/d,view,f0,roughness);}
   }
   if(e(83u)>0.){let direction=normalize(vec3f(e(84u),e(85u),e(86u)));var visibility=1.;if(env.size.w>0. && e(92u)>0.){visibility=sunVisibility(world,geometric,direction);}
-   illumination+=vec3f(e(88u),e(89u),e(90u))*e(87u)*max(dot(n,direction),0.)*visibility;}
-  color*=illumination;
+   illumination+=vec3f(e(88u),e(89u),e(90u))*e(87u)*max(dot(n,direction),0.)*visibility;
+   if(specularWeight>0.){reflection+=vec3f(e(88u),e(89u),e(90u))*e(87u)*visibility*directSpecular(n,direction,view,f0,roughness);}}
+  color=color*illumination+reflection*specularWeight;
  }
  color+=emission;
  if((u32(e(0u))&2u)!=0u && (compositionFlags()&1u)==0u){
@@ -63,6 +69,9 @@ fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:b
   color=mix(color,vec3f(e(73u),e(74u),e(75u)),clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.));
  }
  return color;
+}
+fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool)->vec3f{
+ return shadeSurface(albedo,emission,world,n,geometric,unlit,vec3f(0.),1.,0.);
 }`;
 function composite(linearWorking: boolean): string { return spatialEnvironmentWGSL.split("@group(2)").join("@group(0)") +
   `

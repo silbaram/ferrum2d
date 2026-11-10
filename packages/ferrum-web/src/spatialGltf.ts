@@ -39,7 +39,7 @@ const align = (n: number) => Math.ceil(n / 4) * 4;
  * This is cold platform asset work; native scene state and GPU model caches are not modified.
  */
 export async function loadSpatialGltf(source: string, options: SpatialGltfOptions): Promise<SpatialModelAsset> {
-    if (options.materialProfile !== "diffuse") return fail("materialProfile must explicitly select diffuse");
+    if (options.materialProfile !== "diffuse" && options.materialProfile !== "specular") return fail("materialProfile must explicitly select diffuse or specular");
     options.signal?.throwIfAborted();
     const url = httpUrl(source);
     let transferred = 0;
@@ -94,7 +94,7 @@ export async function loadSpatialGltf(source: string, options: SpatialGltfOption
     const gltf = record(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(json)));
     const asset = record(gltf.asset);
     if (asset.version !== "2.0" || (asset.minVersion !== undefined && asset.minVersion !== "2.0")) return fail("requires glTF 2.0");
-    validateSpatialRequiredExtensions(gltf.extensionsRequired);
+    validateSpatialRequiredExtensions(gltf.extensionsRequired, options.materialProfile);
     if (array(gltf.animations ?? [], 4096).length || array(gltf.skins ?? [], 4096).length)
         return fail("animation/skin are unsupported");
     const buffers = array(gltf.buffers, 16).map(record);

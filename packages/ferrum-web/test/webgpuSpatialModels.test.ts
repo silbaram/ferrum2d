@@ -302,13 +302,24 @@ test("WebGPU model material keeps color/data texture identities, mipmaps, MASK a
   );
   const material = device.writes.find((w) => {
     const descriptor = (w.buffer as Resource).descriptor as GPUBufferDescriptor;
-    return descriptor.size === 144 && (descriptor.usage & GPUBufferUsage.UNIFORM) !== 0;
+    return descriptor.size === 272 && (descriptor.usage & GPUBufferUsage.UNIFORM) !== 0;
   })!.values;
   equal(material[8], 0.5);
   equal(material[11], 1);
   equal(device.pipelines[3].vertex.buffers![0].arrayStride, 48);
   equal(device.pipelines[3].primitive!.cullMode, "none");
   models.destroy();
+});
+test("WebGPU specular maps share color/data images while keeping six independent samplers and factors",async()=>{
+  const {device,models,draw}=setup(),s=source(true),p=s.primitives[0],texture={image:0,sampler:p.sampler};
+  const f=frame({...s,materialProfile:"specular",primitives:[{...p,specular:{factor:.75,color:[1,.5,.25],roughness:.3,texture,colorTexture:texture,roughnessTexture:texture}}]});
+  await models.preload([...f.assets.values()]);draw(f);
+  const images=device.textures.filter(t=>t.descriptor.label==="Spatial model image").map(t=>(t.descriptor as GPUTextureDescriptor).format);
+  deepEqual(images,["rgba8unorm-srgb","rgba8unorm"]);
+  const values=device.writes.find(w=>(w.buffer as Resource).descriptor.size===272)!.values;
+  deepEqual([...values.subarray(36,42)],[...Float32Array.from([1,.5,.25,.75,.3,1])]);
+  equal(device.samplers.length,7); // six material samplers plus the shared mip generator
+  models.destroy();equal(device.textures.every(t=>t.destroyed===1),true);
 });
 test("asynchronous WebGPU allocation errors preserve the previous scene and release invalid staging", async () => {
   const { device, models, draw } = setup(),

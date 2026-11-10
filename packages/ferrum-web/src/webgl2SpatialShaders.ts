@@ -1,3 +1,4 @@
+import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
 export const spatialVertexSource = `#version 300 es
 layout(location=0) in vec3 a_position;layout(location=1) in vec2 a_uv;
 layout(location=2) in vec4 a_color;layout(location=3) in float a_cutoff;layout(location=4) in vec3 a_normal;layout(location=5) in vec4 a_tangent;
@@ -9,6 +10,10 @@ export const spatialFragmentSource = `#version 300 es
 precision highp float;precision highp samplerCube;
 in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;in vec3 v_normal;in vec4 v_tangent;uniform bool u_mesh;
 uniform mat3 u_modelUvTransform,u_modelNormalUvTransform,u_modelEmissiveUvTransform;
+uniform mat3 u_modelRoughnessUvTransform,u_modelSpecularUvTransform,u_modelSpecularColorUvTransform;
+uniform sampler2D u_roughnessMap,u_specularMap,u_specularColorMap;
+uniform bool u_hasRoughness,u_hasSpecular,u_hasSpecularColor,u_modelSpecularEnabled;
+uniform vec4 u_modelSpecular;uniform float u_modelRoughness;
 uniform sampler2D u_emissiveMap;uniform bool u_hasEmissive,u_modelUnlit;uniform vec3 u_emissiveFactor;uniform float u_modelNormalScale;
 uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
@@ -21,6 +26,7 @@ layout(location=0) out vec4 outColor;
 layout(location=1) out vec4 outIndirect;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+${SPATIAL_SPECULAR_GLSL}
 float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
  // Quantize a canonical cube face before sampling. The center ray has a unique
  // major axis, including when the original PCF direction lies on a cube seam.
@@ -146,6 +152,13 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   illumination+=mix(u_hemisphereGround,u_hemisphereSky,weight)*u_hemisphereDirection.w;
  }
  outIndirect=vec4(albedo*illumination,1.);
+ vec3 reflection=vec3(0.),view=vec3(0.),f0=vec3(0.);float specularWeight=0.,roughness=1.;
+ if(u_mesh && u_modelSpecularEnabled && u_modelSpecular.a>0.){
+  specularWeight=u_modelSpecular.a*(u_hasSpecular?texture(u_specularMap,(u_modelSpecularUvTransform*vec3(v_uv,1.)).xy).a:1.);
+  f0=.04*u_modelSpecular.rgb*(u_hasSpecularColor?texture(u_specularColorMap,(u_modelSpecularColorUvTransform*vec3(v_uv,1.)).xy).rgb:vec3(1.));
+  roughness=u_modelRoughness*(u_hasRoughness?texture(u_roughnessMap,(u_modelRoughnessUvTransform*vec3(v_uv,1.)).xy).g:1.);
+  vec3 eyeDelta=u_eye-v_world;if(length(eyeDelta)>.000001)view=normalize(eyeDelta);
+ }
  for(int i=0;i<4;i++){if(i>=u_lightCount)break;
   vec3 delta=u_lightPosition[i].xyz-v_world;float d=length(delta),radius=u_lightPosition[i].w;
   float falloff=max(1.0-(d*d)/(radius*radius),0.0);falloff*=falloff;
@@ -158,13 +171,15 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
    visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
   }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
+  if(specularWeight>0. && d>.000001)reflection+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*visibility*directSpecular(n,delta/d,view,f0,roughness);
  }
  if(u_sunColor.a>0.){
   float lambert=max(dot(n,normalize(u_sunDirection)),0.),visibility=1.;
   if(u_sunShadow && u_receiveShadow)visibility=sunVisibility(v_world,geometricNormal);
   illumination+=u_sunColor.rgb*u_sunColor.a*lambert*visibility;
+  if(specularWeight>0.)reflection+=u_sunColor.rgb*u_sunColor.a*visibility*directSpecular(n,normalize(u_sunDirection),view,f0,roughness);
  }
- color=albedo*illumination;
+ color=albedo*illumination+reflection*specularWeight;
 }
 color+=emission;
 if(u_fog && !u_separated){float z=max(dot(v_world-u_eye,u_forward),0.0);float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);color=mix(color,u_fogColor,amount);}

@@ -61,13 +61,15 @@ export function validateSpatialModelFrame(frame?: SpatialModelFrame): void {
           p.emissiveFactor.length !== 3 ||
           p.emissiveFactor.some((x: number) => !Number.isFinite(x) || x < 0 || x > 64) ||
           (p.normal && (!Number.isFinite(p.normal.scale) || Math.abs(p.normal.scale) > 64)) ||
-          [p.image, p.normal?.image, p.emissive?.image].some(
+          [p.image, p.normal?.image, p.emissive?.image, p.specular?.roughnessTexture?.image, p.specular?.texture?.image, p.specular?.colorTexture?.image].some(
             (image) =>
               image !== undefined &&
               (!Number.isInteger(image) || image < 0 || image >= asset.images.length),
           )
         )
           throw Error("Invalid model normal/emissive material");
+        if (p.specular && (p.unlit || ![p.specular.factor, p.specular.roughness, ...p.specular.color].every(x => Number.isFinite(x) && x >= 0 && x <= 1) || p.specular.color.length !== 3))
+          throw Error("Invalid model specular material");
         triangles += p.indices.length / 3;
       }
       checked.set(asset, triangles);

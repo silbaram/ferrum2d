@@ -9,7 +9,7 @@ function fixture(copies = 1) {
     const json={asset:{version:"2.0"},scene:0,scenes:[{nodes:Array.from({length:copies},(_,i)=>i)}],nodes:Array.from({length:copies},()=>({mesh:0})),
         buffers:[{byteLength:78,uri:"scene.bin"}],bufferViews:[{buffer:0,byteOffset:0,byteLength:36},{buffer:0,byteOffset:36,byteLength:36},{buffer:0,byteOffset:72,byteLength:6}],
         accessors:[{bufferView:0,componentType:5126,count:3,type:"VEC3"},{bufferView:1,componentType:5126,count:3,type:"VEC3"},{bufferView:2,componentType:5123,count:3,type:"SCALAR"}],
-        meshes:[{primitives:[{attributes:{POSITION:0,NORMAL:1},indices:2}]}]};
+        materials:[{pbrMetallicRoughness:{metallicFactor:0}}],meshes:[{primitives:[{attributes:{POSITION:0,NORMAL:1},indices:2,material:0}]}]};
     const document=new TextEncoder().encode(JSON.stringify(json)),embedded={...json,buffers:[{byteLength:78}]};
     const encoded=new TextEncoder().encode(JSON.stringify(embedded)),padded=Math.ceil(encoded.length/4)*4;
     const glb=new Uint8Array(28+padded+80),header=new DataView(glb.buffer);
@@ -27,6 +27,16 @@ async function mock<T>(fetch:typeof globalThis.fetch,run:()=>Promise<T>):Promise
     try{return await run();}finally{globalThis.fetch=previous;}
 }
 const tick=()=>new Promise<void>(resolve=>setTimeout(resolve,0));
+test("same URL is cached independently by material profile, including expected content identity",async()=>{
+    const data=fixture(),cache=new SpatialModelAssetCache();let calls=0;
+    await mock(async()=>{calls++;return new Response(data.glb.slice().buffer);},async()=>{
+        const a=await cache.acquire(source()),b=await cache.acquire({...source(),materialProfile:"specular"});
+        ok(a.asset.contentId!==b.asset.contentId);equal(calls,2);equal(cache.stats().entryCount,2);
+        const c=await cache.acquire({...source(),materialProfile:"specular"});equal(c.asset,b.asset);equal(calls,2);
+        await rejects(cache.acquire({...source(),materialProfile:"specular",contentId:a.asset.contentId}),/contentId mismatch/);
+        equal(cache.stats().activeLeaseCount,3);a.release();b.release();c.release();
+    });cache.destroy();
+});
 
 test("model cache shares a single pending decode and opaque handle across leases",async()=>{
     const data=fixture(),gate=deferred<Response>(),cache=new SpatialModelAssetCache();let calls=0;

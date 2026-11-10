@@ -35,6 +35,38 @@ async function withImages(run: () => Promise<void>) {
   try { await run(); return closed; } finally { globalThis.createImageBitmap = bitmap; SpatialModelImageReader.prototype.read = read; }
 }
 
+test("specular maps keep independent data/color roles and UV matrices in the private GPU material", async () => {
+  await withImages(async () => {
+    const data = await fixture(j => {
+      const m=j.materials[0];Object.assign(m.pbrMetallicRoughness,{metallicFactor:0,roughnessFactor:.4,metallicRoughnessTexture:structuredClone(m.normalTexture)});
+      Object.assign(m,{extensions:{KHR_materials_specular:{specularFactor:.7,specularColorFactor:[1,.5,.25],specularTexture:structuredClone(m.emissiveTexture),specularColorTexture:structuredClone(m.pbrMetallicRoughness.baseColorTexture)}}});
+      j.extensionsRequired.push("KHR_materials_specular");
+    });
+    const asset=await loadSpatialGlb(data,{materialProfile:"specular"}),p=spatialModelResource(asset)!.primitives[0],s=p.specular!;
+    equal(s.roughness,.4);equal(s.factor,.7);equal(s.roughnessTexture!.image,p.normal!.image);equal(s.texture!.image,p.emissive!.image);equal(s.colorTexture!.image,p.image);
+    deepEqual(s.roughnessTexture!.uvTransform,p.normal!.uvTransform);deepEqual(s.texture!.uvTransform,p.emissive!.uvTransform);deepEqual(s.colorTexture!.uvTransform,p.uvTransform);
+    const packed=spatialModelMaterialValues(p);
+    deepEqual([...packed.subarray(36,42)],[...Float32Array.from([1,.5,.25,.7,.4,1])]);
+    equal(packed[46],s.roughnessTexture!.uvTransform![6]);equal(packed[54],s.texture!.uvTransform![6]);equal(packed[62],s.colorTexture!.uvTransform![6]);
+    await rejects(loadSpatialGlb(data,options),/required extensions/);
+  });
+});
+
+test("specular map UV errors reject before image decode",async()=>{
+  let decodes=0;const previous=globalThis.createImageBitmap;globalThis.createImageBitmap=(async()=>{decodes++;throw Error("unexpected decode");}) as typeof createImageBitmap;
+  try{
+    for(const slot of ["specularTexture","specularColorTexture","metallicRoughnessTexture"])
+      for(const bad of [{index:99},{index:0,texCoord:1},{index:0,extensions:{KHR_texture_transform:{scale:[1e40,1]}}}]) {
+        const data=await fixture(j=>{
+          Object.assign(j.materials[0].pbrMetallicRoughness,{metallicFactor:0,...(slot==="metallicRoughnessTexture"?{[slot]:bad}:{})});
+          Object.assign(j.materials[0],{extensions:{KHR_materials_specular:slot==="metallicRoughnessTexture"?{}:{[slot]:bad}}});
+        });
+        await rejects(loadSpatialGlb(data,{materialProfile:"specular"}),/Spatial/);
+      }
+    equal(decodes,0);
+  }finally{globalThis.createImageBitmap=previous;}
+});
+
 test("UV transform applies scale then counterclockwise rotation then offset and supports reflected/collapsed axes", () => {
   const m = resolveSpatialTextureTransform({ extensions: { KHR_texture_transform: { offset: [.25, .5], scale: [2, -1], rotation: Math.PI / 2 } } });
   const [x, y] = spatialTransformedUv(.25, .5, m);
@@ -73,7 +105,7 @@ test("real Blender Mapping export imports independent map transforms without cha
     ok(transformed.contentId !== plain.contentId);
     equal(transformed.byteLength, plain.byteLength + 3 * 9 * 4);
     const packed = spatialModelMaterialValues(p);
-    equal(packed.byteLength, 144);
+    equal(packed.byteLength, 272);
     equal(packed[14], p.uvTransform![6]); equal(packed[22], p.normal!.uvTransform![6]); equal(packed[30], p.emissive!.uvTransform![6]);
     ok(packed[14] !== packed[22] && packed[22] !== packed[30]);
   });

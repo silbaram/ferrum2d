@@ -111,6 +111,8 @@ export class WebGL2SpatialPass {
         "shadowMap",
         "normalMap",
         "hasNormal", "modelNormalScale", "modelNormalUvTransform", "modelEmissiveUvTransform", "emissiveMap", "hasEmissive", "emissiveFactor", "modelUnlit",
+        "modelSpecularEnabled", "modelSpecular", "modelRoughness", "roughnessMap", "specularMap", "specularColorMap",
+        "hasRoughness", "hasSpecular", "hasSpecularColor", "modelRoughnessUvTransform", "modelSpecularUvTransform", "modelSpecularColorUvTransform",
         "receiveShadow",
         "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
         "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
@@ -238,6 +240,11 @@ export class WebGL2SpatialPass {
     gl.activeTexture(gl.TEXTURE4);
     const texture4 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
     const sampler4 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    const materialSlots = [5, 6, 7].map(unit => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      return { unit, texture: gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null,
+        sampler: gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null };
+    });
     gl.activeTexture(gl.TEXTURE0);
     const stats: SpatialRendererStats = {
       modelCount:(frame.models?.words.length ?? 0)/20,visibleModelCount:0,modelDrawCalls:0,modelInstancedDrawCalls:0,modelInstanceUploadBytes:0,modelTriangleCount:0,modelUploadBytes:0,
@@ -312,6 +319,16 @@ export class WebGL2SpatialPass {
       gl.uniform1i(this.uniforms.emissiveMap, 4);
       gl.uniform1i(this.uniforms.normalMap, 2);
       gl.uniform1i(this.uniforms.hasNormal, 0);
+      gl.uniform1i(this.uniforms.modelSpecularEnabled, 0);
+      gl.uniform1i(this.uniforms.roughnessMap, 5);
+      gl.uniform1i(this.uniforms.specularMap, 6);
+      gl.uniform1i(this.uniforms.specularColorMap, 7);
+      for (const unit of [5, 6, 7]) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindSampler(unit, this.sampler);
+      }
+      gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(this.uniforms.receiveShadow, 1);
       gl.uniform1i(this.uniforms.environment, 0);
       gl.uniform1i(this.uniforms.separated, 0);
@@ -534,6 +551,11 @@ export class WebGL2SpatialPass {
         previous.clearColor[2],
         previous.clearColor[3],
       );
+      for (const slot of materialSlots) {
+        gl.activeTexture(gl.TEXTURE0 + slot.unit);
+        gl.bindSampler(slot.unit, slot.sampler);
+        gl.bindTexture(gl.TEXTURE_2D, slot.texture);
+      }
       gl.activeTexture(gl.TEXTURE4);
       gl.bindSampler(4, sampler4);
       gl.bindTexture(gl.TEXTURE_2D, texture4);

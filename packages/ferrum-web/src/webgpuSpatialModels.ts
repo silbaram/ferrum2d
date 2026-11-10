@@ -68,7 +68,7 @@ export class WebGpuSpatialModels {
     this.materialLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
-        ...[1, 3, 5].flatMap((binding) => [
+        ...[1, 3, 5, 7, 9, 11].flatMap((binding) => [
           { binding, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" as const } },
           {
             binding: binding + 1,
@@ -575,6 +575,9 @@ export class WebGpuSpatialModels {
             p.image === undefined ? undefined : { image: p.image, sampler: p.sampler },
             p.normal,
             p.emissive,
+            p.specular?.roughnessTexture,
+            p.specular?.texture,
+            p.specular?.colorTexture,
           ];
           const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: uniform } }];
           refs.forEach((r, i) => {
@@ -586,7 +589,7 @@ export class WebGpuSpatialModels {
               {
                 binding: 2 + i * 2,
                 resource: (r
-                  ? a.textures.get(r.image * 2 + Number(i !== 1))!
+                  ? a.textures.get(r.image * 2 + Number(i === 0 || i === 2 || i === 5))!
                   : this.white
                 ).createView(),
               },
@@ -651,6 +654,9 @@ function imageUses(s: SpatialModelResource): Set<number> {
     if (p.image !== undefined) result.add(p.image * 2 + 1);
     if (p.normal) result.add(p.normal.image * 2);
     if (p.emissive) result.add(p.emissive.image * 2 + 1);
+    if (p.specular?.roughnessTexture) result.add(p.specular.roughnessTexture.image*2);
+    if (p.specular?.texture) result.add(p.specular.texture.image*2);
+    if (p.specular?.colorTexture) result.add(p.specular.colorTexture.image*2+1);
   }
   return result;
 }
