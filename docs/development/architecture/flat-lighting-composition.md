@@ -220,3 +220,17 @@ GL은 unit5 및 두 채널 uniform, GPU는 normal group의 추가 view와 privat
 renderer는 기존 variant 사용 bitset과 별도의 mask 사용 bitset으로 여러 packet의 warm target을 재사용한다.
 프레임 종료에 사용하지 않은 identity target을 해제하고 프로그램/버퍼는 보존한다. 복구는 기존 backend/asset 재생성을 따른다.
 추가 texture4 bytes/pixel와 data draw·bind는 기존 resource/renderer 통계에 포함한다.
+
+## 선택형 Flat point cone
+
+선택형 `PointLight2D.spot`의 source 검증·정규화는 `lightingSpot`이 담당한다.
+`dataSceneView`는 투영 전에 방향을 정규화하고 Y축 압축을 적용한다. 렌더러는 타원 범위의 Y 비율을
+다시 반영하여 양 backend가 같은 방향·개구각·penumbra를 사용하게 한다. source 설정과 표시 파생값을 구분한다.
+행동 상태나 Native render/material ABI를 추가하지 않는다.
+
+WebGL2의 기존 point pass는 vec4 `[axisX,axisY,cosOuter,cosInner]`를 소비한다.
+WebGPU는 legacy14-float instance row를 보존하고 lit row만18 float로 확장한다.
+기존 rect/color/light/mode/channel prefix14는 유지하며 마지막4가 cone이다.
+cosOuter=-2는 미선택 또는360도 hard 원형의 명시적 sentinel이다. point 직접 성분의 alpha에
+원뿔 감쇠를 곱하므로 diffuse와 bounded reflection을 함께 제한한다. ambient/emission·수신 mask·광원별 shadow 합성은 유지한다.
+정점·sprite lighting·Surface·receiver mask의 Native ABI는 변경하지 않는다.

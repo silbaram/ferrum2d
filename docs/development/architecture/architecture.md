@@ -1993,3 +1993,8 @@ private channel tail 외에 native vertex/model/reserved를 재활용하지 않�
 환경 없는 GL draw의 cached depth는 pass 종료 시 detach하여 owner color target의 resize를 방해하지 않는다.
 [필드·수명·비용](../../engine/data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)과
 [자동 회귀](../quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
+
+Flat lit 점광원의 선택형 cone은 플랫폼의 cold source 검증·view 변환·GPU 직접 성분 감쇠로 구현한다.
+동작 상태·Wasm ABI는 추가하지 않는다. WebGPU는 기존 legacy14와 분리한 lit18-float private row를 사용한다.
+[원뿔의 좌표·비용·기본값](flat-lighting-composition.md#선택형-flat-point-cone)과
+[공개 사용법](../../engine/data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.

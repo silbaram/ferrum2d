@@ -533,3 +533,36 @@ custom receiver mask가 있는 packet은 별도 RGBA8 target(4 bytes/pixel)과 t
 Surface의4MRT와 분리해 WebGL2 최소 attachment 한도를 유지한다. 기본255/255 또는 조명 비활성은 추가 target/pass가 없다.
 여러 packet에서 target을 재사용하고 미사용 프레임에는 회수한다. draw/batch/bind 통계에 identity draw를 포함하며
 `normalDrawCalls`는 기존 normal/Surface MRT draw만 센다. [ABI·합성 구조](../development/architecture/flat-lighting-composition.md#독립-수신-mask)를 따른다.
+
+## Flat 2D spot 조명 · 개발 소스
+
+`profile:"lit"`의 점광원에 선택형 `spot`을 지정한다. 방향은 logical XY의
+finite float32 벡터이며 길이는 최소1e-6이다. 검증 시 정규화한다.
+`angleDegrees`는 전체 개구각0.1..360도, `penumbra`는 부드러운 경계가 차지하는 반개구각의
+비율0..1(기본0)이다.360도·penumbra0은 기존 원형 점광원과 정확히 같은 렌더 설정을 사용한다.
+
+```ts
+renderer.setLighting({
+  profile: "lit", ambientIrradiance: [0.1, 0.1, 0.1],
+  pointLights: [{ x: 200, y: 100, radius: 240, height: 120,
+    spot: { directionX: 1, directionY: 0, angleDegrees: 90, penumbra: 0.25 }
+  }]
+});
+```
+
+각도는 점광원 타원의 정규화 좌표에서 판정한다. `radiusY/radius`가1이 아니면 방향과
+수신점의 Y를 같은 비율로 보정한다. `view.lighting(...)`은 world 방향을 먼저 정규화한 뒤
+`groundYScale`을 적용하므로 작은 유효 벡터도 화면 압축 후 거절되지 않는다.
+기존 카메라 이동·zoom·DPR·스프라이트 atlas/normal/cutout 계약은 유지한다.
+
+원뿔 감쇠는 해당 점광원의 diffuse·GGX 직접 성분에만 적용하며 환경광·발광·HUD는 유지한다.
+기존 타일 차폐와 light/shadow 수신 mask를 함께 사용할 수 있다. 광원별 차폐가 다른 광원을 지우지 않는다.
+선택 해제 시 이전 방향·각도를 재사용하지 않는다. `enabled:false`에서도 작성 값과 잘못된 입력을 검증한다.
+legacy overlay에서 `spot` 요청은 오류다. Source JSON과 기존 scene-authoring v1 저장·복원은
+방향·각도·명시적 penumbra0 및 비활성 설정을 보존한다. Native command/material ABI는 바뀌지 않는다.
+
+`PointLightSpot2D`·`ResolvedPointLightSpot2D`는 `/labs`와 기존 root aggregate에서 import한다.
+WebGL2는 점광원마다 vec4 uniform을 갱신한다. WebGPU는 private lit row를14→18 float
+(56→72B)로 확장하며 legacy row는14 float를 유지한다. buffer capacity는 기존처럼2의 거듭제곱으로 증가한다.
+원뿔 때문에 새 texture·target·추가 합성 pass를 만들지 않는다. OFF에는 기존 lit target 해제 규칙을 따른다.
+이 기능은 cookie나 polygon occluder 지원을 뜻하지 않는다. 두 항목은 후속 개발이다.

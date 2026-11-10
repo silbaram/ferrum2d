@@ -256,7 +256,9 @@
         "DataSceneSpriteSurfaceSpec",
         "ResolvedDataSceneSpriteSurface",
         "SpriteLightMaskBufferView",
-        "SpatialReceiverMaskBufferView"
+        "SpatialReceiverMaskBufferView",
+        "PointLightSpot2D",
+        "ResolvedPointLightSpot2D"
       ]
     },
     {
@@ -613,7 +615,9 @@
         "WebGPURenderer",
         "resolveSpriteMaterialPreset",
         "ParticleVfxEmitter",
-        "createPixelMaskTerrain"
+        "createPixelMaskTerrain",
+        "PointLightSpot2D",
+        "ResolvedPointLightSpot2D"
       ]
     },
     {

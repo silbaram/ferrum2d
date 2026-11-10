@@ -190,3 +190,11 @@ callback 중 runtime을 해제하면 진행 중 sync는 오류로 중단하고 �
 생성 실패 시 이미 생성한 collider chunk를 회수한다. force sync가 도중에 실패한 경우에는 native mask가
 깨끗하더라도 다음 일반 sync에서 다시 전달한다. 교체 collider가 준비될 때까지 기존 collider는 유지한다.
 여러 chunk를 한 번에 교체하는 전체 transaction은 아니며, 성공한 앞 chunk는 유지하고 실패한 전달은 재시도한다.
+
+## Flat 점광원 원뿔 · 개발 소스
+
+`PointLight2D.spot?: PointLightSpot2D`의 `directionX`, `directionY`, `angleDegrees`와
+선택형 `penumbra`를 지정한다. `ResolvedPointLightSpot2D`는 정규화된 방향과 기본 penumbra0을 포함한다.
+범위·타원 좌표·비활성 검증·저장 및 private GPU 비용은
+[Flat 2D spot 조명](../data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.
+기존 legacy overlay는 새 원뿔 요청을 거절하고 선택형 lit profile에서 사용한다.

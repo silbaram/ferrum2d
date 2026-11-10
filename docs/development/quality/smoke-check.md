@@ -2879,3 +2879,15 @@ SDK unit은 새 receiver ptr/count/align/range·부분 ABI·memory growth·소�
 넘는 경우의 metadata 정렬, v7 source/selected 채널·OFF/invalid 원자성·구 Wasm의 cold 거절,
 v8 patch/Undo/Redo·실제 Native Playing·JSON 새 handle 복원, 동적 uniform 할당 실패/기기 한도/수명과
 color/shadow model batch 분리를 검사한다.
+
+### Flat 2D spot 회귀
+
+SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --spots-only`로 실행한다.
+기존 `pnpm smoke:flat-lit` 기본 행렬과 같은 수동 CI validate에도 포함한다.
+양 backend·두 색공간·DPR1/2·SDR/HDR에서 원형360도 identity, 방향 안/밖과 penumbra,
+타원 반경과 작은 방향의 world→ground projection, diffuse/GGX·emission·cutout/HUD 보존,
+광원별 차폐·독립 수신 mask·선택 해제·실패한 setter 상태 보존·OFF 추가 pass/target0,
+resize·WebGPU device recovery·destroy 자원0을 픽셀 비교한다.
+새 Spot 보고서는 `artifacts/lighting-remaining/m4d/gpu-*/verification.json`이다.
+SDK unit은 null/범위/벡터/float32 aspect·비활성 검증, JSON source와 실제 Native Playing·새 handle 복원,
+구 legacy14/lit18 row의 channel/cone slot 정합성과 view 투영을 검사한다. 실제 장치 성능은 이 software adapter 결과로 판단하지 않는다.
