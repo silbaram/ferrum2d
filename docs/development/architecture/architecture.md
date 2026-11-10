@@ -1715,7 +1715,12 @@ public TypeScript는 `lighting.selection`, v8 frame reader와 borrowed diagnosti
 Data Scene state v11의 구조화된 history JSON을 연결한다. v9 spatial patch는 이전 버전의 새 필드 사용을 거절한다.
 구 core의 capability와 source/history preflight는 파괴적인 authoring apply 전에 수행하고 normal/combat 모두
 단일 native compound restore를 사용한다. 기존 v1..v7 source와 비활성 정책의 기존 save 버전은 유지한다.
-GPU ABI·target/pass 수는 바꾸지 않는다. 실제 양 backend 전환 픽셀과 profiler/report 연결은 M5 후속 검증이다.
+GPU ABI·target/pass 수는 바꾸지 않는다. 실제 양 backend 전환 픽셀과 profiler/report 연결은 전용 선택 행렬로 검증한다.
+
+선택 통계는 `writeSpatialLightSelectionStats`가 실제 제출 행·진단 사유만 집계하며 JS에서 순위나 fade를 계산하지 않는다.
+양 backend가 같은 helper를 사용하고 `RuntimeFrameRenderer`가9개 count를 overlay/profiler·frame trace로 전달한다.
+구 policy의 없는 사유를0으로 채우지 않는다. paused update는 seed 전에 반환하여 reset history가 계속 uninitialized로 남고
+표시만 stateless preview를 사용한다. playing의 simulation 진입 때 현재 pose로 seed하므로 render build 횟수와 무관하다.
 
 ## WebGPU 복구와 전체 맵 작성 경계
 

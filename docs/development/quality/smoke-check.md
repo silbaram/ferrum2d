@@ -2943,4 +2943,17 @@ diagnostic pointer/길이/슬롯/가중치·동일 buffer alias와 memory grow �
 patch v9 guard·public 타입과 history JSON 소유 복사를 검사한다. 실제 Wasm에서 exploration/combat 중간 fade를
 v11 JSON으로 저장하고 fresh runtime에 복원해 native history·선택 채널·감쇠 값을 비교한다.
 signature/source/weight/누락/구 save version 거절 뒤 이전 progress 불변, pause 보존·정상 수렴·reset·clear도 확인한다.
-실제 양 backend 전환 픽셀·profiler/report 연결은 M5 후속 검증이다. 실게임·실기기는 개발 완료 후 진행한다.
+실제 양 backend 전환 픽셀·profiler/report 연결은 다음 전용 gate로 검증한다. 실게임·실기기는 개발 완료 후 진행한다.
+
+`pnpm smoke:spatial-light-selection`은 packed public API + 실제 Wasm의 controlled RAF clock으로
+두 backend·색공간·직교/원근·DPR1/2·가로/세로 viewport·일반/pinned shadow 정책을 검사한다.
+19상태의 initial/경계 왕복/각 fade leg/중간 저장·fresh handle 복원/pause/source edit/reset preview/OFF/
+16 source/4 slots/resize를 실행하며, 작성된 원본 광원·native weight로 다시 만든 v7 기준 화면과 픽셀을 비교한다.
+WebGPU는 동일 native history/packet의 장치 복구 픽셀도 비교한다. geometry upload0·pinned shadow warm pass0,
+source별 사유와 실제 counter·resource 해제를 검사한다. 이 행렬은 기존 기본 `smoke:spatial-webgpu-offscreen`과 CI에 포함된다.
+기본 viewport는640×360 CSS px 이내이며 DPR/viewport 행렬을 사용한다. 실물 장치의 실행 시간 예산을 뜻하지 않는다.
+
+Node의 `spatial-light-selection-report.mjs`는 PNG 증거에서 fade-out/in의 실제 변화가 각각64 pixel을 넘고,
+중간 복원·pause 그림이 정확히 일치하는지 추가 검사한다. 빈/변하지 않는 렌더가 상태·reference 비교만으로
+통과하지 않도록 별도 negative gate test를 실행한다. 단계별 수치와 원본 PNG는 보고서에 남긴다.
+실게임·실기기는 개발 완료 후 진행한다. shadow 작업 예산·넓은 Bloom과 preset 측정은 별도 M5 잔여다.
