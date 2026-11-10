@@ -522,7 +522,7 @@ GPU의 sRGB decode/출력 변환을 활성화하지 않는다.
 사용하며 `postProcessDrawCalls`와 전체 `drawCalls`에 포함한다. 후처리가 있으면 마지막
 pass에 변환을 합친다. managed 기본 출력에는 scene framebuffer 1개만 사용하고,
 여러 후처리 pass를 연결할 때 scratch framebuffer 2개를 추가한다. 크기 변경 외에는 재사용한다.
-현재는 8-bit LDR이며 HDR, tone mapping, Display-P3는 제공하지 않는다.
+전역 managed 경로의 target은 8-bit LDR이다. 별도 opt-in Flat lit HDR은 아래 계약을 따르며 Display-P3는 제공하지 않는다.
 
 WebGPU 직접 생성은 `linear-srgb`를 canvas 취득 전에 명시적으로 거절한다.
 `createRenderer`는 같은 색 공간 설정으로 WebGL2에 fallback하고 `onFallback`으로 이유를 알린다.
@@ -1457,3 +1457,14 @@ callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예�
 `engine.setDataSceneSpatialEnvironment(...)`와 authoring/patch·진행 저장에서 같은 선택을 보존한다.
 새 environment v6/544-float는 AO를 환경광 성분에만 적용하고 직접광·발광을 보존하며,
 fog·DOF 뒤의 HDR 결과를 Bloom 입력으로 사용한다. 비용·지원 범위는 [공간 합성 계약](../data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)을 따른다.
+
+
+## Flat HDR 출력 · 개발 소스
+
+`FlatHdrOptions`, `ResolvedFlatHdrOptions`는 `/core`의 공개 type이다.
+`renderer.setLighting({profile:"lit",hdr:{enabled:true,exposure:0,toneMapping:"reinhard"}})`로 선택한다.
+exposure는 유한 -10..10 stop, toneMapping은 `none|reinhard|aces`다. 기본값은 0과 reinhard다.
+HDR을 생략하거나 false/disabled로 두면 기존 SDR 경로를 유지한다. 비활성 설정도 검증·저장한다.
+양 backend float16 world에 여러 command를 누적한 뒤 `setLighting(false)` 또는 `renderPostProcess()`에서
+한 번 resolve한다. 이후 HUD는 노출·톤매핑을 받지 않는다. input/alpha·비용·실행 제한은
+[Flat HDR 계약](../data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.

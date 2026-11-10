@@ -1947,3 +1947,7 @@ preflight→commit 순서에 포함한다. v2~v9 reader는 유지한다.
 
 Flat 2D의 opt-in lit은 Rust의 command-aligned receiver sidecar와 TS의 조도/색 합성을 분리한다.
 기존 command ABI와 overlay는 유지한다. [구조·비용·호환 계약](flat-lighting-composition.md)을 따른다.
+
+선택형 Flat HDR은 같은 lit command를 float16 world/albedo target에 합성하고 HUD 경계 또는 최종 표시에서
+노출·톤매핑을 한 번 수행한다. Rust ABI는 유지하며 플랫폼별 HDR pass가 target과 출력 셰이더를 소유한다.
+[HDR 구조·비용](flat-lighting-composition.md#선택형-flat-hdr-출력)을 따른다.

@@ -418,9 +418,48 @@ renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
   선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
 - color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
   normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
-- 점광원 최대32개, 점광원/태양 intensity 최대64다. 누적 조도는 float16이나 최종 출력은 SDR로 clamp한다. HDR/톤매핑 지원을 뜻하지 않는다.
+- 점광원 최대32개, 점광원/태양 intensity 최대64다. HDR을 생략하면 기존 SDR clamp를 유지하며, 아래 선택형 HDR은 float 월드와 노출·톤매핑을 추가한다.
 - sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
 - `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
   HUD를 별도 제출할 때는 조명을 끄고 그린 뒤 한 번 `renderPostProcess()`로 마친다.
 
 공개 ABI·자원 비용과 회귀 기준은 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+
+
+## Flat HDR · 개발 소스
+
+`profile:"lit"`에서 `hdr:{exposure:0,toneMapping:"reinhard"}`를 선택하면 양 backend가
+월드를 RGBA16F/rgba16float에 선형으로 누적한다. HDR 생략 또는 `hdr:false`,
+`hdr:{enabled:false}`는 기존 SDR 경로다. `FlatHdrOptions`와 `ResolvedFlatHdrOptions`는 `/core`에서 import한다.
+
+```ts
+renderer.setLighting({profile:"lit", hdr:{exposure:0,toneMapping:"reinhard"},
+  ambientIrradiance:[0.1,0.1,0.1], directionalLight:{directionX:1,directionY:0,intensity:4}});
+renderer.render();
+renderer.renderCommands(worldCommands);
+renderer.renderCommands(worldForegroundCommands); // 같은 선형 HDR 월드에 추가
+renderer.setLighting(false); // 월드를 먼저 resolve하고 HUD 경계를 시작
+renderer.renderCommands(hudCommands);
+renderer.renderPostProcess();
+```
+
+- `exposure`는 -10..10 stop이며 기본0이다. `toneMapping`은 `none|reinhard|aces`, 기본`reinhard`다.
+  none도 마지막 SDR 출력에서 0..1로 제한한다. HDR canvas/display 출력이나 Display-P3 지원을 뜻하지 않는다.
+- color는 sRGB 입력을 한 번 decode하며 linear/none·normal·mask는 decode하지 않는다.
+  월드의 숫자 tint와 광원 색은 선형 값이다. textured unlit 전경을 포함해 월드의 모든 색 texture는
+  알려진 straight alpha가 필요하다. `loadTexture(...,{alphaMode:"straight"})`로 준비한다.
+  기존 premultiplied 입력·알 수 없는 RenderTexture 색 texture는 활성화/그리기 전에 거절한다.
+- unlit 월드 전경은 조도를 받지 않지만 HDR 합성과 출력 변환을 공유한다. HUD는 위 경계 뒤에 제출한다.
+  HDR 월드는 premultiplied linear로 누적하고, 출력 시 alpha를 풀어 노출·톤매핑을 적용한 뒤
+  표시 색공간에서 다시 premultiply한다. 수광 sprite의 opaque/cutout 제한은 유지한다.
+- 여러 월드 command를 제출해도 resolve는 한 번이다. 경계를 생략하면 `renderPostProcess()`에서 resolve한다.
+  SDR 그리기 이후 HDR을 켜거나 활성 월드 중 노출/톤매핑을 바꾸면 사전에 거절한다.
+  resize·zoom 변경은 `renderPostProcess()` 후 프레임 사이에 수행한다.
+- 전역 화면 효과는 HDR resolve 뒤 적용한다. 기존 전역 Bloom threshold는 SDR 화면 효과의 계약을 유지한다.
+  이 옵션은 별도 scene-linear Bloom을 추가하지 않는다. WebGPU 전역 `linear-srgb`는 별도 M3c 단계다.
+- HDR 월드는 pixel당8 bytes, 수광 scratch는 pixel당24 bytes(기존 SDR20)다.
+  광원 차폐·전역 후처리·pixel-perfect target 비용은 별도다. 활성 수광 장면은 합계32 bytes/pixel이다.
+  출력 draw1회는 `postProcessDrawCalls/postProcessPassCount`와 전체 draw·texture bind 통계에 포함한다.
+  HDR 비활성 시 추가 target/pass는 없으며 선택 설정은 authoring·patch·snapshot에서 보존한다.
+
+실제 GPU readback·복구·비용 검증은 `pnpm smoke:flat-lit`에 포함한다.

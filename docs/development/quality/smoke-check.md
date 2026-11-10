@@ -2775,3 +2775,16 @@ offscreen readback을 사용하므로 실물 GPU 성능·native canvas 표시 �
 Starter Runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --lighting-only`로 조명 학습 예제만 검사할 수 있다.
 양 backend에서 실제 normal 반응과 새 합성 선택의 픽셀 변화, legacy 복귀, 조명 OFF, 좁은 화면과 해제 후 자원을 확인한다.
 이 회귀는 기본 `pnpm smoke:feature-examples`에도 포함되며 좁은 실행의 보고서는 `artifacts/flat-lit-m2a/example/`에 남긴다.
+
+
+### Flat HDR 출력 회귀
+
+`pnpm smoke:flat-lit`은 기존 SDR fixture와 함께 Flat HDR fixture를 실행한다.
+좁은 재현은 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --hdr-only`다.
+실제 WebGL2/WebGPU legacy와 GL linear-sRGB × DPR1/2에서 float radiance2/4, 어두운 albedo,
+노출·세 toneMapping, 선형 source/data·tint·normal/cutout, alpha·다중 월드·HUD를 수치로 검사한다.
+잘못된 setter/sidecar와 활성 월드 resize는 framebuffer를 변경하기 전에 거절해야 한다.
+OFF identity·추가 pass/target0, float target bytes, warm plateau, resize·pixelPerfect·WebGPU recovery,
+destroy 후 자원0을 확인한다. HDR output pass는 HUD 이후에도 프레임 통계에 남아야 한다.
+전체 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`, 좁은 실행은 `artifacts/lighting-remaining/m3b/gpu-*/verification.json`이다.
+기존 CI workflow_dispatch validate job의 `smoke:flat-lit`에서 실행한다. 실게임·실기기 측정은 개발 완료 후 별도 진행한다.

@@ -1,6 +1,6 @@
 # Flat 2D 조명 합성
 
-상태: 개발 소스의 M2-a opt-in lit 구현. 기존 overlay는 기본값으로 유지한다.
+상태: 개발 소스의 M2-a opt-in lit 및 M3b Flat HDR 구현. 기존 overlay는 기본값으로 유지한다.
 SDK와 함께 빌드한 sprite lighting v1 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 현재 사용 계약은 [화면 표현](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 
@@ -134,5 +134,35 @@ OFF identity/비용, warm 자원 plateau, resize 복귀와 WebGPU device recover
 실패 단계·부분 상태·destroy 후 자원을 `artifacts/flat-lit-m2a/gpu-*/verification.json`에 남긴다.
 CPU 값은 submit+완료대기+readback 시간이며 실제 GPU timer나 FPS 보장이 아니다.
 
-Spatial AO/emission·fog·Bloom·DOF/HDR의 기대값과 예산은
-[조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 남은 M0-b/M3a 이후 범위다.
+Spatial의 선택형 성분 분리·효과 순서는 [별도 합성 계약](spatial-lighting-composition.md)을 따른다.
+실게임·실기기 예산은 [조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 개발 완료 후 검증 범위다.
+
+
+## 선택형 Flat HDR 출력
+
+`LightingScene2D.hdr`의 공개 필드·실행 순서는 [Flat HDR](../../engine/data-scene-presentation.md#flat-hdr-개발-소스)에 정의한다.
+공유 정규화와 전환 검사는 `flatHdr.ts`, 셰이더는 `flatHdrShaders.ts`, 자원은 backend별 HDR pass가 소유한다.
+Rust simulation, public15-float command와 sprite lighting v1 sidecar는 바꾸지 않는다.
+private17-float GPU staging의 bit2(값4)는 source 수동 sRGB decode, bit3(값8)는 HDR 선형 출력을 구별한다.
+기존의 크기 비교 대신 독립 bit 검사로 normal/data source에 잘못 decode하는 일을 막는다.
+
+원래 flat lit은 SDR target과 3×RGBA8 + RGBA16F scratch를 유지한다.
+HDR은 원래 색·normal/coverage pass 구조를 재사용하되 albedo도 float16으로 저장해 어두운 색의 양자화 손실을 막고,
+색·수광 기여를 별도 float16 월드 target에 합성한다. 월드는 여러 command 호출을 가로질러 유지한다.
+`setLighting(false)` 또는 최종 `renderPostProcess()`가 원래 표시/전역 후처리 target에 resolve한다.
+노출→톤매핑→표시 transfer는 한 번이며 GL 전역 linear 모드에서는 기존 최종 fullscreen이 transfer를 담당한다.
+HDR의 alpha는 선형 premultiplied 누적 후 straight RGB를 변환하고 다시 premultiply한다.
+
+설정/packet 검증은 월드 clear/resolve 전 수행한다. 활성 월드의 출력 설정 변경과 SDR 이후 HDR 활성화는 거절한다.
+HDR OFF는 target을 해제하고 program/buffer는 재사용한다. 새 프레임, resize, pixelPerfect와 device recovery는
+기존 renderer lifecycle을 따른다. 새 target 교체 실패는 이전 target을 유지하고 부분 할당을 회수한다.
+HDR output draw는 HUD 제출이 통계를 초기화해도 프레임별 별도 누적값으로 유지한다.
+
+추가 비용은 HDR world8 bytes/pixel, HDR albedo의 SDR 대비 증가4 bytes/pixel, 출력1 draw다.
+전체 수광 scratch는24 bytes/pixel이며 world와 합계32다. mask·후처리·presentation은 별도다.
+비활성 profile에서 HDR target/pass를 만들지 않는다. GPU format별 pipeline과 debug line pipeline은 선택 시 생성한다.
+
+`flat-hdr-browser-fixture.mjs`는 양 backend/GL linear × DPR1/2에서 radiance2/4,
+어두운 albedo, exposure, Reinhard/ACES/none, source/data·tint·normal/cutout, 반투명 전경·투명 canvas,
+여러 world 제출, HUD, invalid atomicity, OFF identity/자원, warm plateau, resize·pixelPerfect·복구·destroy를 검사한다.
+기존 `smoke:flat-lit`과 CI validate job이 이 fixture를 실행하며 software GPU를 실물 성능으로 주장하지 않는다.
