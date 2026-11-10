@@ -1,3 +1,4 @@
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { spatialShadowGeometryWGSL } from "./webgpuSpatialShadows.js";
@@ -289,6 +290,7 @@ export class WebGpuSpatialPass {
     const [sceneWidth, sceneHeight] = this.environment.validate(frame, width, height);
     const stats = spatialStats(frame, terrainVertices);
     this.models.prepare(frame.models);
+    const receiverMasks = frame.environment && (frame.environment.values[0] & 1) ? frame.receiverMasks : undefined;
     const env = frame.environment,
       hasShadows = !!env && (env.values[2] >= 0 || env.values[92] > 0);
     const matches = hasShadows && this.shadowCache.matches(frame, this.textures);
@@ -345,7 +347,7 @@ export class WebGpuSpatialPass {
       0,
       this.cameraValues.subarray(0, hasShadows && !cacheHit ? 512 : 24),
     );
-    this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats);
+    this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats, receiverMasks?.models);
     if (frame.terrain.byteLength) {
       const stale =
         !this.terrain ||
@@ -416,7 +418,7 @@ export class WebGpuSpatialPass {
     });
     pass.setPipeline(this.pipelines[hdr?.indirect ? 2 : hdr ? 1 : 0]);
     pass.setBindGroup(0, this.cameraGroup);
-    pass.setBindGroup(2, this.environment.group);
+    pass.setBindGroup(2, this.environment.group, [0]);
     let previous: number | undefined;
     const draw = (
       gpu: GPUBuffer,
@@ -425,26 +427,29 @@ export class WebGpuSpatialPass {
       count: number,
       materials: Uint32Array | undefined,
       objectStride: number,
+      masks?: Uint32Array,
     ) => {
       pass.setVertexBuffer(0, gpu);
       const limit = first + count;
       while (first < limit) {
         const id = data[first * 11 + 9],
           normalId = materials?.[Math.floor(first / objectStride) * 2] ?? NO_TEXTURE,
-          receive = !!((materials?.[Math.floor(first / objectStride) * 2 + 1] ?? 3) & 2);
+          receive = !!((materials?.[Math.floor(first / objectStride) * 2 + 1] ?? 3) & 2),
+          maskCode = spatialReceiverMaskCode(masks, Math.floor(first / objectStride));
         let end = first + 3;
         while (
           end < limit &&
           data[end * 11 + 9] === id &&
           (materials?.[Math.floor(end / objectStride) * 2] ?? NO_TEXTURE) === normalId &&
-          !!((materials?.[Math.floor(end / objectStride) * 2 + 1] ?? 3) & 2) === receive
+          !!((materials?.[Math.floor(end / objectStride) * 2 + 1] ?? 3) & 2) === receive &&
+          (!masks?.length || spatialReceiverMaskCode(masks, Math.floor(end / objectStride)) === maskCode)
         )
           end += 3;
         pass.setBindGroup(
           1,
           id === NO_TEXTURE ? this.whiteGroup : (this.linearWorking ? this.textures.resource(id).linearBindGroup ?? this.textures.resource(id).bindGroup : this.textures.resource(id).bindGroup),
         );
-        pass.setBindGroup(2, this.environment.receiverGroup(receive));
+        pass.setBindGroup(2, this.environment.receiverGroup(receive), [this.environment.receivers.offset(maskCode)]);
         pass.setBindGroup(
           3,
           normalId === NO_TEXTURE ? this.normalGroup : this.textures.resource(normalId).bindGroup,
@@ -466,6 +471,7 @@ export class WebGpuSpatialPass {
           frame.terrainVertexCount,
           frame.materials?.terrain,
           36,
+          receiverMasks?.terrain,
         );
       else
         for (let i = 0; i < frame.terrainDrawRanges.length; i += 2)
@@ -476,6 +482,7 @@ export class WebGpuSpatialPass {
             frame.terrainDrawRanges[i + 1],
             frame.materials?.terrain,
             36,
+            receiverMasks?.terrain,
           );
     }
     const before = stats.drawCalls;
@@ -487,6 +494,7 @@ export class WebGpuSpatialPass {
         frame.billboardVertexCount,
         frame.materials?.billboards,
         6,
+        receiverMasks?.billboards,
       );
     stats.billboardDrawCalls = stats.drawCalls - before;
     this.models.draw(
@@ -498,6 +506,7 @@ export class WebGpuSpatialPass {
       hdr?.indirect ? "separated" : !!hdr,
       0,
       this.environment.receiverGroup(false),
+      code => this.environment.receivers.offset(code),
     );
     if (frame.debug?.vertexCount) {
       const debug = frame.debug;
@@ -516,7 +525,7 @@ export class WebGpuSpatialPass {
       pass.setPipeline(this.debugPipelines[(hdr?.indirect ? 4 : hdr ? 2 : 0) + (debug.depthTest ? 0 : 1)]);
       pass.setBindGroup(0, this.cameraGroup);
       pass.setBindGroup(1, this.whiteGroup);
-      pass.setBindGroup(2, this.environment.group);
+      pass.setBindGroup(2, this.environment.group, [0]);
       pass.setBindGroup(3, this.normalGroup);
       pass.setVertexBuffer(0, this.debug);
       pass.draw(debug.vertexCount);

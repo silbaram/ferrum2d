@@ -19,6 +19,7 @@ uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_h
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
+uniform vec2 u_receiverMasks;uniform vec4 u_lightChannels;uniform float u_sunChannels;
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
 uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
 uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGround;uniform vec2 u_shadowNormalBias;
@@ -27,6 +28,8 @@ layout(location=1) out vec4 outIndirect;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
 ${SPATIAL_SPECULAR_GLSL}
+bool receivesLight(int channels){return (int(u_receiverMasks.x)&(channels&255))!=0;}
+bool receivesShadow(int channels){return (int(u_receiverMasks.y)&((channels>>8)&255))!=0;}
 float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
  // Quantize a canonical cube face before sampling. The center ray has a unique
  // major axis, including when the original PCF direction lies on a cube seam.
@@ -160,22 +163,23 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   vec3 eyeDelta=u_eye-v_world;if(length(eyeDelta)>.000001)view=normalize(eyeDelta);
  }
  for(int i=0;i<4;i++){if(i>=u_lightCount)break;
+  int channels=int(u_lightChannels[i]);if(!receivesLight(channels))continue;
   vec3 delta=u_lightPosition[i].xyz-v_world;float d=length(delta),radius=u_lightPosition[i].w;
   float falloff=max(1.0-(d*d)/(radius*radius),0.0);falloff*=falloff;
   float lambert=d>0.000001?max(dot(n,delta/d),0.0):1.0;
   vec4 cone=u_lightCone[i*2],coneParams=u_lightCone[i*2+1];
   if(coneParams.y>0. && d>.000001){float angle=dot(-delta/d,cone.xyz);falloff*=coneParams.x>cone.w+.000001?smoothstep(cone.w,coneParams.x,angle):step(cone.w,angle);}
   float visibility=1.0;
-  if(u_receiveShadow && i==u_shadowIndex){
+  if(u_receiveShadow && receivesShadow(channels) && i==u_shadowIndex){
    vec3 shadowDelta=delta-geometricNormal*u_shadowNormalBias.x;float shadowDistance=length(shadowDelta);
    visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
   }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
   if(specularWeight>0. && d>.000001)reflection+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*visibility*directSpecular(n,delta/d,view,f0,roughness);
  }
- if(u_sunColor.a>0.){
+ if(u_sunColor.a>0. && receivesLight(int(u_sunChannels))){
   float lambert=max(dot(n,normalize(u_sunDirection)),0.),visibility=1.;
-  if(u_sunShadow && u_receiveShadow)visibility=sunVisibility(v_world,geometricNormal);
+  if(u_sunShadow && u_receiveShadow && receivesShadow(int(u_sunChannels)))visibility=sunVisibility(v_world,geometricNormal);
   illumination+=u_sunColor.rgb*u_sunColor.a*lambert*visibility;
   if(specularWeight>0.)reflection+=u_sunColor.rgb*u_sunColor.a*visibility*directSpecular(n,normalize(u_sunDirection),view,f0,roughness);
  }

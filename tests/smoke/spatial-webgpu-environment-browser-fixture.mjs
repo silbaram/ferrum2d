@@ -14,6 +14,7 @@ import { check, pixels, difference, png } from "/fixture.mjs";
 import { loadTextureTransformFixtures, probeTextureTransforms } from "/texture-transform.mjs";
 import { probeSeparatedComposition } from "/composition.mjs";
 import { probeSpatialCompositionOrder } from "/composition-order.mjs";
+import { probeSpatialReceiverMasks } from "/receiver-masks.mjs";
 import { loadSpecularFixtures, probeSpecularMaterials } from "/specular.mjs";
 
 function variant(bytes, edit) {
@@ -45,6 +46,7 @@ function ownedSpatial(s) {
     terrain: s.terrain.slice(),
     terrainDrawRanges: s.terrainDrawRanges?.slice(),
     billboards: s.billboards.slice(),
+    receiverMasks: s.receiverMasks && { ...s.receiverMasks, terrain: s.receiverMasks.terrain.slice(), billboards: s.receiverMasks.billboards.slice(), models: s.receiverMasks.models.slice() },
     materials: s.materials && {
       ...s.materials,
       terrain: s.materials.terrain.slice(),
@@ -64,7 +66,7 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection, colorManagement, specularOnly = false) {
+async function probe(canvas, backend, projection, colorManagement, specularOnly = false, masksOnly = false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
@@ -151,7 +153,7 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
       })],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
-    const uvPicking = specularOnly ? await loadSpecularFixtures(assets) : await loadTextureTransformFixtures(assets);
+    const uvPicking = specularOnly || masksOnly ? await loadSpecularFixtures(assets, masksOnly ? ["rough", "emission"] : undefined) : await loadTextureTransformFixtures(assets);
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -327,12 +329,14 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
       normal = false,
       debug = false,
       modelChanges = undefined,
+      editDocument = undefined,
     ) => {
       console.log("environment state", backend, projection, name);
       const doc = structuredClone(base);
       if (environment) doc.spatial.environment = environment;
       doc.spatial.models.tree = { asset, contentId: assets.get(asset).contentId, ...modelChanges };
       if (normal) doc.spatial.billboards.actor.normalTextureId = 4;
+      editDocument?.(doc);
       handles = applyDataSceneAuthoringDocument(engine, doc, apply).entityHandles;
       engine.pauseDataScene();
       check(
@@ -369,10 +373,10 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
         hud,
       });
       check(
-        warm.stats.modelCount === 1 &&
-          warm.stats.visibleModelCount === 1 &&
-          warm.stats.modelDrawCalls === (asset.startsWith("uv-") ? 1 : 2) &&
-          warm.stats.modelTriangleCount === (asset.startsWith("uv-") ? 2 : 14),
+        warm.stats.modelCount === Object.keys(doc.spatial.models).length &&
+          warm.stats.visibleModelCount === Object.keys(doc.spatial.models).length &&
+          warm.stats.modelDrawCalls >= (asset.startsWith("uv-") ? 1 : 2) &&
+          warm.stats.modelTriangleCount === Object.keys(doc.spatial.models).length * (asset.startsWith("uv-") ? 2 : 14),
         "environment model pass missing",
         warm.stats,
       );
@@ -380,7 +384,7 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
       const indirectPass = separated && (environment.ambientOcclusion?.strength ?? (environment.ambientOcclusion ? 0.6 : 0)) > 0;
       const dofPass = separated && environment.depthOfField && (environment.depthOfField.aperture ?? 8) > 0 && (environment.depthOfField.maxBlurRadius ?? 8) > 0 && (environment.bloom?.strength ?? (environment.bloom ? 0.5 : 0)) > 0;
       check(
-        warm.stats.effectDrawCalls === (environment ? 1 + Number(indirectPass) + Number(!!dofPass) : 0),
+        warm.stats.effectDrawCalls === (environment && warm.spatial.environment.values[0] ? 1 + Number(indirectPass) + Number(!!dofPass) : 0),
         "missing or unexpected HDR composite",
         { name, stats: warm.stats },
       );
@@ -403,6 +407,11 @@ async function probe(canvas, backend, projection, colorManagement, specularOnly 
       rows.push(evidence);
       return result;
     };
+    if (masksOnly) {
+      const receiverChecks = await probeSpatialReceiverMasks(configure, () => lastPixels, read, engine, apply, registry, renderer, canvas, errors);
+      check(!errors.length, "GPU receiver errors", errors);
+      return { backend, projection, restored: true, frames, errors, rows, receiverChecks };
+    }
     if (specularOnly) {
       const specular = await probeSpecularMaterials(configure, () => lastPixels, read, engine, apply, registry, assets, renderer, errors);
       check(!errors.length, "GPU specular material errors", errors);
@@ -647,15 +656,15 @@ async function decodePng(url) {
     bitmap.close();
   }
 }
-export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy", specularOnly = false) {
+export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy", specularOnly = false, masksOnly = false) {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) {
     const pair = [];
     for (const backend of ["webgl2", "webgpu"]) {
       const canvas = document.createElement("canvas");
       document.body.replaceChildren(canvas);
-      const checked = await probe(canvas, backend, projection, colorManagement, specularOnly);
-      if (!specularOnly && projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
+      const checked = await probe(canvas, backend, projection, colorManagement, specularOnly, masksOnly);
+      if (!specularOnly && !masksOnly && projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
       pair.push(checked);
     }
     const comparisons = [];

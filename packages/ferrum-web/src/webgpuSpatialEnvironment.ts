@@ -3,19 +3,26 @@ import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
+import { WebGpuSpatialReceivers } from "./webgpuSpatialReceivers.js";
 import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
-const UNIFORM_BYTES = 2560,
-  UNIFORM_STRIDE = 2560;
+// v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
+const UNIFORM_BYTES = 2592,
+  UNIFORM_STRIDE = 2816;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
+@group(2) @binding(3) var<uniform> receiver:vec4u;
+fn channel(i:u32)->u32{return u32(env.channels[i/4u][i%4u]);}
+fn receiverMasks()->vec2u{if(env.channels[1].y>.5){return receiver.xy;}return vec2u(255u);}
+fn receivesLight(channels:u32)->bool{return (receiverMasks().x&(channels&255u))!=0u;}
+fn receivesShadow(channels:u32)->bool{return (receiverMasks().y&((channels>>8u)&255u))!=0u;}
 fn e(i:u32)->f32{return env.values[i/4u][i%4u];}
 // Private GPU camera layout v2: forward.w packs AO-resolve/profile/DOF-prepass bits.
-// This is separate from the native environment prefix and preserves legacy uniform allocation.
+// This remains separate from the native environment prefix and the appended channel tail.
 fn compositionFlags()->u32{return u32(env.forward.w);}
 fn environmentEnabled()->bool{return e(0u)>0.;}
 fn linearize(c:vec3f)->vec3f{return select(c/12.92,pow((c+.055)/1.055,vec3f(2.4)),c>=vec3f(.04045));}
@@ -47,6 +54,7 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
   }
   for(var i=0u;i<4u;i++){
    if(i>=u32(e(1u))){break;}
+   let channels=channel(i+1u);if(!receivesLight(channels)){continue;}
    let p=12u+i*12u;let delta=vec3f(e(p),e(p+1u),e(p+2u))-world;
    let d=length(delta);let radius=e(p+3u);var lambert=1.;
    if(d>.000001){lambert=max(dot(n,delta/d),0.);}
@@ -54,11 +62,11 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
    let cone=144u+i*8u;
    var coneWeight=1.;
    if(e(cone+5u)>0. && d>.000001){let angle=dot(-delta/d,vec3f(e(cone),e(cone+1u),e(cone+2u)));coneWeight=step(e(cone+3u),angle);if(e(cone+4u)>e(cone+3u)+.000001){coneWeight=smoothstep(e(cone+3u),e(cone+4u),angle);}}
-   var visibility=1.;if(env.size.w>0. && f32(i)==e(2u)){let receiverDelta=delta-geometric*e(123u);visibility=pointVisibility(receiverDelta,length(receiverDelta),radius,geometric);}
+   var visibility=1.;if(env.size.w>0. && receivesShadow(channels) && f32(i)==e(2u)){let receiverDelta=delta-geometric*e(123u);visibility=pointVisibility(receiverDelta,length(receiverDelta),radius,geometric);}
    illumination+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*lambert*visibility*coneWeight;
    if(specularWeight>0. && d>.000001){reflection+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*visibility*coneWeight*directSpecular(n,delta/d,view,f0,roughness);}
   }
-  if(e(83u)>0.){let direction=normalize(vec3f(e(84u),e(85u),e(86u)));var visibility=1.;if(env.size.w>0. && e(92u)>0.){visibility=sunVisibility(world,geometric,direction);}
+  if(e(83u)>0. && receivesLight(channel(0u))){let direction=normalize(vec3f(e(84u),e(85u),e(86u)));var visibility=1.;if(env.size.w>0. && receivesShadow(channel(0u)) && e(92u)>0.){visibility=sunVisibility(world,geometric,direction);}
    illumination+=vec3f(e(88u),e(89u),e(90u))*e(87u)*max(dot(n,direction),0.)*visibility;
    if(specularWeight>0.){reflection+=vec3f(e(88u),e(89u),e(90u))*e(87u)*visibility*directSpecular(n,direction,view,f0,roughness);}}
   color=color*illumination+reflection*specularWeight;
@@ -172,9 +180,11 @@ fn compose(f:F,stage:u32)->vec4f{
 export class WebGpuSpatialEnvironment {
   readonly layout: GPUBindGroupLayout;
   readonly shadows: WebGpuSpatialShadows;
+  readonly receivers: WebGpuSpatialReceivers;
   private groups: GPUBindGroup[] = [];
   private pointView?: GPUTextureView;
   private sunView?: GPUTextureView;
+  private receiverBuffer?: GPUBuffer;
   get group(): GPUBindGroup {
     return this.groups[0];
   }
@@ -211,6 +221,7 @@ export class WebGpuSpatialEnvironment {
     linearWorking = false,
   ) {
     this.shadows = new WebGpuSpatialShadows(device);
+    this.receivers = new WebGpuSpatialReceivers(device);
     this.layout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
@@ -220,6 +231,7 @@ export class WebGpuSpatialEnvironment {
           texture: { sampleType: "depth", viewDimension: "2d-array" },
         },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform", hasDynamicOffset: true, minBindingSize: 16 } },
       ],
     });
     this.uniform = webGpuResources(device).createBuffer({
@@ -306,6 +318,7 @@ export class WebGpuSpatialEnvironment {
   prepare(frame: SpatialRenderBufferView, width: number, height: number): void {
     if (this.destroyed) throw Error("Spatial environment destroyed");
     if (this.targetFailure) throw this.targetFailure;
+    this.receivers.prepare(frame);
     this.shadows.prepare(frame);
     this.refreshGroups();
     this.values.fill(0);
@@ -340,8 +353,10 @@ export class WebGpuSpatialEnvironment {
     if (env?.values[92]! > 0)
       this.values.set(env!.shadowMatrices.subarray(env!.shadowMatrices.length - 16), 624);
     const indirect = spatialIndirectPass(env?.values), dof = spatialDofPass(env?.values);
-    // Private GPU camera layout v2; no native reserved words or additional buffer bytes.
+    // Private GPU camera layout v2; native reserved words are never reused.
     this.values[519] = Number(indirect) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
+    for (let i = 0; i < 5; i++) this.values[640 + i] = env?.values.length === 576 ? env.values[544 + i] : 65535;
+    this.values[645] = Number(this.receivers.enabled());
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
@@ -462,7 +477,7 @@ export class WebGpuSpatialEnvironment {
         label: "Spatial composition intermediate", colorAttachments: [{ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
       try {
-        intermediate.setPipeline(pipeline!); intermediate.setBindGroup(0, this.group);
+        intermediate.setPipeline(pipeline!); intermediate.setBindGroup(0, this.group, [0]);
         intermediate.setBindGroup(1, images); intermediate.draw(3);
       } finally { intermediate.end(); }
       images = output!; passes++;
@@ -481,15 +496,15 @@ export class WebGpuSpatialEnvironment {
       pass.setScissorRect(x, y, Math.min(w, width - x), Math.min(h, height - y));
     }
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.group);
+    pass.setBindGroup(0, this.group, [0]);
     pass.setBindGroup(1, images);
     pass.draw(3);
     pass.end();
     return passes;
   }
   private refreshGroups(): void {
-    const v = this.shadows.views();
-    if (this.pointView === v.point && this.sunView === v.sun) return;
+    const v = this.shadows.views(), receiverBuffer = this.receivers.binding(this.uniform);
+    if (this.pointView === v.point && this.sunView === v.sun && this.receiverBuffer === receiverBuffer) return;
     // Initial groups participate in the renderer factory's pre-context validation scope.
     const capture = this.groups.length > 0;
     if (capture) {
@@ -508,12 +523,14 @@ export class WebGpuSpatialEnvironment {
             },
             { binding: 1, resource: v.point },
             { binding: 2, resource: v.sun },
+            { binding: 3, resource: { buffer: receiverBuffer, offset: 0, size: 16 } },
           ],
         }),
       );
       this.groups = replacement;
       this.pointView = v.point;
       this.sunView = v.sun;
+      this.receiverBuffer = receiverBuffer;
     } finally {
       if (capture) {
         const allocation = this.device.popErrorScope(),
@@ -564,6 +581,7 @@ export class WebGpuSpatialEnvironment {
     this.releaseTarget();
     webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
+    this.receivers.destroy();
     webGpuResources(this.device).releasePipeline(this.pipeline);
     if (this.resolvePipeline) webGpuResources(this.device).releasePipeline(this.resolvePipeline);
     if (this.dofPipeline) webGpuResources(this.device).releasePipeline(this.dofPipeline);

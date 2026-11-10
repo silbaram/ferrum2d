@@ -1,3 +1,5 @@
+import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
+import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
 import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
 import type {SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
 import type { FlatLightingPreparer } from "./flatLit.js";
@@ -147,6 +149,8 @@ export interface DataSceneRuntimeEngineAdapter {
   supportsSpatialSurfaceProxies?(): boolean;
   /** Optional cold capability; absence rejects X ramps before activation. */
   supportsSpatialRampAxis?(): boolean;
+  supportsSpatialReceiverMasks?(): boolean;
+  supportsSpatialLightChannels?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
   spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
   textureId(name: string): number;
@@ -222,12 +226,23 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
 }
 
 /** Internal cold preflight, shared by authored apply and snapshot restore before mutation. */
-export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
+function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSpatialSpec | undefined, path: string): void {
+  const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
+  if (!receivers && !channels) return;
+  const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  if (receivers && !adapter.supportsSpatialReceiverMasks?.())
+    throw sceneCompositionDiagnosticError(path, "receiver masks require native v1 support");
+  if (channels && !adapter.supportsSpatialLightChannels?.())
+    throw sceneCompositionDiagnosticError(`${path}.environment`, "light channels require native v1 support");
+}
+
+export function preflightDataSceneLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
   if(!document || typeof document!=="object")return;
   if((document as {lighting?:{profile?:string}}).lighting?.profile!=="lit"){
     // Validate a restored surface declaration before any saved native state is changed.
     const path=options.path??"dataSceneAuthoring";
     const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+    preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
     const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
     for(const instance of plan.instances){
       const raw=instance.props.components;
@@ -250,6 +265,7 @@ export function preflightDataSceneFlatLighting(engine: FerrumEngine, document: u
   const preparer=options.flatLightingPreparer;
   if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
   const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+    preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
   const textureId=options.textureId??(name=>adapter.textureId(name));
   const lighting = resolved.lighting!;
@@ -319,6 +335,7 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   // Resolve every normal reference before activation/spawn can replace the previous scene.
   const runtimeSpatial = resolved.spatial === undefined ? undefined : resolveSpatialNormalTextures(resolved.spatial, textureId ?? (name => runtimeAdapter.textureId(name)));
   if (
@@ -356,7 +373,7 @@ export function applyDataSceneAuthoringDocument(
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
   if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
-  preflightDataSceneFlatLighting(engine, document, options);
+  preflightDataSceneLighting(engine, document, options);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
@@ -641,6 +658,8 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (requestsSpatialLightChannels(environment) && !adapter.supportsSpatialLightChannels?.())
+    throw sceneCompositionDiagnosticError(environmentPath, "light channels require native v1 support");
   if (adapter.preflightSpatialEnvironment) {
     if (!adapter.preflightSpatialEnvironment(camera, environment))
       throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight rejected configuration");

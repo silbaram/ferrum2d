@@ -1,3 +1,4 @@
+import {readSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
 import { readGroundShadowVolumes } from "./groundShadowVolumes.js";
 import { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
@@ -201,7 +202,7 @@ export class WasmBridge {
         truncated: e.spatial_debug_truncated(),
       } : undefined;
       const materialVersion = typeof e.spatial_material_abi_version === "function" ? e.spatial_material_abi_version() : undefined;
-      if (materialVersion !== undefined && (materialVersion !== 1 || e.spatial_terrain_material_len() > 256 || e.spatial_billboard_material_len() > 10000)) throw new Error("Unsupported spatial material ABI");
+      if (materialVersion !== undefined && (materialVersion !== 1 || e.spatial_terrain_material_len() > 256 || e.spatial_billboard_material_len() > billboardVertexCount / 6)) throw new Error("Unsupported spatial material ABI");
       const materials = materialVersion ? { version: 1 as const,
         terrain: new Uint32Array(this.memory.buffer, e.spatial_terrain_material_ptr(), e.spatial_terrain_material_len() * 2),
         billboards: new Uint32Array(this.memory.buffer, e.spatial_billboard_material_ptr(), e.spatial_billboard_material_len() * 2),
@@ -211,14 +212,14 @@ export class WasmBridge {
       const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
       const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
       const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
-      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112) || (e.spatial_environment_abi_version() === 3 && environmentLength === 128) || (e.spatial_environment_abi_version() === 4 && environmentLength === 512) || (e.spatial_environment_abi_version() === 5 && environmentLength === 528) || (e.spatial_environment_abi_version() === 6 && environmentLength === 544))
+      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112) || (e.spatial_environment_abi_version() === 3 && environmentLength === 128) || (e.spatial_environment_abi_version() === 4 && environmentLength === 512) || (e.spatial_environment_abi_version() === 5 && environmentLength === 528) || (e.spatial_environment_abi_version() === 6 && environmentLength === 544) || (e.spatial_environment_abi_version() === 7 && environmentLength === 576))
           || casterCount % 6 !== 0 || casterCount > 1024 * 6 || ![0, 16, 96, 112].includes(matrixCount))) {
         throw new Error("Unsupported spatial environment ABI");
       }
       const shadowRangeCount = environmentLength && typeof e.spatial_shadow_range_len === "function" ? e.spatial_shadow_range_len() : undefined;
       if (shadowRangeCount !== undefined && (e.spatial_shadow_submission_version() !== 1 || shadowRangeCount > 8960)) throw new Error("Unsupported shadow submission ABI");
       const environment = environmentLength ? {
-        version: e.spatial_environment_abi_version() as 1 | 2 | 3 | 4 | 5 | 6,
+        version: e.spatial_environment_abi_version() as 1 | 2 | 3 | 4 | 5 | 6 | 7,
         values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
         shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
         shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),
@@ -228,17 +229,19 @@ export class WasmBridge {
           ranges: new Uint32Array(this.memory.buffer, e.spatial_shadow_range_ptr(), shadowRangeCount * 4),
         },
       } : undefined;
+      const receiverMasks = readSpatialReceiverMasks(e, this.memory, spatial);
       view.spatial = version === 2
         ? {
           ...spatial,
           presentation,
           materials,
+          receiverMasks,
           debug,
           environment,
           version: 2,
           terrainDrawRanges: new Uint32Array(this.memory.buffer, e.spatial_terrain_draw_range_ptr(), rangeCount * 2),
         }
-        : { ...spatial, presentation, materials, debug, environment, version: 1 };
+        : { ...spatial, presentation, materials, receiverMasks, debug, environment, version: 1 };
     }
     return view;
   }

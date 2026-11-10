@@ -544,7 +544,9 @@ impl Engine {
             })
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 528 {
+        if self.spatial_scene.environment.value_len > 544 {
+            7
+        } else if self.spatial_scene.environment.value_len > 528 {
             6
         } else if self.spatial_scene.environment.value_len > 512 {
             5
@@ -557,6 +559,10 @@ impl Engine {
         } else {
             1
         }
+    }
+    /// Cold capability for explicit environment v7 packed light/shadow channels.
+    pub fn spatial_light_channel_abi_version(&self) -> u32 {
+        1
     }
     pub fn spatial_environment_len(&self) -> u32 {
         if self.spatial_scene.frame_active && self.spatial_scene.environment.values.is_some() {

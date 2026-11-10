@@ -325,7 +325,7 @@ declare global {
 
   interface GPURenderPassEncoder {
     setPipeline(pipeline: GPURenderPipeline): void;
-    setBindGroup(index: number, bindGroup: GPUBindGroup): void;
+    setBindGroup(index: number, bindGroup: GPUBindGroup, dynamicOffsets?: Iterable<number>): void;
     setVertexBuffer(slot: number, buffer: GPUBuffer, offset?: number, size?: number): void;
     setIndexBuffer(buffer: GPUBuffer, indexFormat: "uint16" | "uint32", offset?: number, size?: number): void;
     drawIndexed(indexCount: number, instanceCount?: number, firstIndex?: number, baseVertex?: number, firstInstance?: number): void;

@@ -34,8 +34,9 @@ const shadowsOnly = process.argv.includes("--shadows-only");
 const proxiesOnly = process.argv.includes("--proxies-only");
 const pointContactOnly = process.argv.includes("--point-contact-only");
 const linearEnvironmentOnly = process.argv.includes("--linear-environment-only");
+const masksOnly = process.argv.includes("--receiver-masks-only");
 const specularOnly = process.argv.includes("--specular-only");
-const environmentOnly = specularOnly || linearEnvironmentOnly || process.argv.includes("--environment-only");
+const environmentOnly = masksOnly || specularOnly || linearEnvironmentOnly || process.argv.includes("--environment-only");
 const compositionOnly = process.argv.includes("--composition-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
@@ -55,7 +56,7 @@ const server = createServer((req, res) => {
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -100,7 +101,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -231,16 +232,20 @@ try {
         }
         if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
           for(const colorManagement of (linearEnvironmentOnly?["linear-srgb"]:["legacy","linear-srgb"])) {
-          for (const specular of (specularOnly ? [true] : environmentOnly ? [false] : [false, true])) {
-          const environment = await page.evaluate(({mode,specular}) => window.probeSpatialWebGpuEnvironment(mode,specular), {mode:colorManagement,specular});
+          for (const flavor of (masksOnly ? ["masks"] : specularOnly ? ["specular"] : environmentOnly ? ["base"] : ["base", "specular", "masks"])) {
+          const specular = flavor === "specular", masks = flavor === "masks";
+          const environment = await page.evaluate(({mode,specular,masks}) => window.probeSpatialWebGpuEnvironment(mode,specular,masks), {mode:colorManagement,specular,masks});
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of environment) {
-            assert.equal(entry.comparisons.length, specular ? 32 : 70);
+            assert.equal(entry.comparisons.length, masks ? 35 : specular ? 32 : 70);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, specular ? 32 : 70);
-              if (specular) {
+              assert.equal(backend.rows.length, masks ? 35 : specular ? 32 : 70);
+              if (masks) {
+                assert(backend.receiverChecks.independent && backend.receiverChecks.restored && backend.receiverChecks.freshHandles && backend.receiverChecks.resized);
+                if (backend.backend === "webgpu") assert.equal(backend.receiverChecks.recovery.differentPixels, 0);
+              } else if (specular) {
                 assert(backend.specular.zeroIdentity && backend.specular.restored && backend.specular.freshHandles && backend.specular.failedLoadPreserved);
                 assert.equal(backend.specular.assets,16);assert.equal(backend.specular.comparisons.length,6);
                 if(backend.backend==="webgpu")assert.equal(backend.specular.recovery.differentPixels,0);
@@ -268,7 +273,7 @@ try {
               }
             }
           }
-          report.environmentCases.push({ viewport, deviceScaleFactor, colorManagement, specular, result: environment });
+          report.environmentCases.push({ viewport, deviceScaleFactor, colorManagement, specular, masks, result: environment });
           }
           }
         }

@@ -17,8 +17,9 @@ class Resource {
 class Pass {
   draws: number[][] = [];
   offsets: number[] = [];
+  receivers: number[] = [];
   setPipeline() {}
-  setBindGroup() {}
+  setBindGroup(slot: number, _group: unknown, offsets?: number[]) { if (slot === 2) this.receivers.push(offsets?.[0] ?? -1); }
   setIndexBuffer() {}
   setVertexBuffer(slot: number, _buffer: unknown, offset = 0) {
     if (slot === 1) this.offsets.push(offset);
@@ -213,6 +214,22 @@ test("WebGPU indexed model batches preserve native culling gaps, matrix order an
     device.textures.every((t) => t.destroyed === 1),
     true,
   );
+});
+test("receiver masks split only color model batches without changing matrix stride, culling or shadow batches", async () => {
+  const { models } = setup(), f = frame(source(), 5);
+  for (let i = 0; i < 5; i++) f.words[i * 20 + 2] = i === 1 ? 0 : 3;
+  const masks = new Uint32Array([1, 2, 0, 0, 1, 2, 4, 8, 4, 8]), before = f.words.slice();
+  await models.preload([...f.assets.values()]); models.prepare(f);
+  const s = stats(); models.uploadInstances(f, true, s, masks);
+  // GPU staging owns the per-batch code; borrowed native views can be discarded immediately.
+  masks.fill(0);
+  const color = new Pass(), shadow = new Pass();
+  models.draw(f, color as unknown as GPURenderPassEncoder, {}, s, {}, false, 0, {}, code => code === 513 ? 256 : 512);
+  models.draw(f, shadow as unknown as GPURenderPassEncoder, {}, s, {}, false, 1);
+  deepEqual(color.draws, [[3, 2], [3, 2]]); deepEqual(color.receivers, [256, 512]);
+  deepEqual(color.offsets, [0, 128]); deepEqual(shadow.draws, [[3, 4]]); deepEqual(shadow.receivers, []);
+  equal(s.modelInstanceUploadBytes, 8 * 64); deepEqual(f.words, before);
+  models.destroy();
 });
 test("WebGPU model packet/resource limits reject before any GPU upload or allocation", () => {
   const { device, models } = setup(),

@@ -1,7 +1,7 @@
 //! Bounded light selection. Authored records stay immutable for save/restore.
 use super::{Entity, SpatialCamera, World};
 
-pub(super) fn valid(v: &[f32]) -> bool {
+pub(super) fn valid(v: &[f32], preserve_inactive: bool) -> bool {
     let range = |i: usize, a: f32, b: f32| (a..=b).contains(&v[i]);
     let zero = |a: usize, b: usize| v[a..b].iter().all(|x| *x == 0.);
     for p in [128, 132] {
@@ -44,10 +44,10 @@ pub(super) fn valid(v: &[f32]) -> bool {
     } else if !zero(139, 142) {
         return false;
     }
-    if flags & 1 == 0 && (v[137] != 0. || v[138] != -1.) {
+    if flags & 1 == 0 && !preserve_inactive && (v[137] != 0. || v[138] != -1.) {
         return false;
     }
-    if if v[138] >= 0. {
+    if if v[138] >= 0. && flags & 1 != 0 {
         v[2] != 0. || v[3] != v[139] || v[4] != v[140] || v[123] != v[141]
     } else {
         v[2] != -1.
@@ -111,7 +111,16 @@ pub(super) fn select(
     world: &World,
     bindings: &[Option<(Entity, f32)>; 16],
     actor: Option<(Entity, f32)>,
-) {
+) -> [Option<usize>; 4] {
+    let mut sources = [None; 4];
+    if v[0] as u32 & 1 == 0 {
+        v[1] = 0.;
+        v[2] = -1.;
+        v[3] = 0.;
+        v[12..60].fill(0.);
+        v[144..176].fill(0.);
+        return sources;
+    }
     let mut positions = [[0.; 3]; 16];
     let mut visible = [true; 16];
     let mut ranked = [(0usize, 0f32); 16];
@@ -172,6 +181,7 @@ pub(super) fn select(
     v[1] = active as f32;
     v[2] = if v[138] >= 0. { 0. } else { -1. };
     for (slot, (source, _)) in ranked[..active].iter().enumerate() {
+        sources[slot] = Some(*source);
         let p = 192 + source * 20;
         let to = 12 + slot * 12;
         v.copy_within(p..p + 8, to);
@@ -181,4 +191,5 @@ pub(super) fn select(
         }
         v.copy_within(p + 8..p + 14, 144 + slot * 8);
     }
+    sources
 }

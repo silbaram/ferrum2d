@@ -87,6 +87,16 @@ declare module "../pkg/ferrum_core.js" {
     restore_data_scene_progress_with_spatial_environment(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array): boolean;
     configure_spatial_scene_materials(camera:Float32Array,terrain:Float32Array,metadata:Uint32Array,handles:Uint32Array,styles:Float32Array,actor:Uint32Array,actorValues:Float32Array,connections:Uint32Array,environment:Float32Array,terrainMaterials:Uint32Array,billboardMaterials:Uint32Array): boolean;
     configure_spatial_scene_models(camera:Float32Array,terrain:Float32Array,metadata:Uint32Array,handles:Uint32Array,styles:Float32Array,actor:Uint32Array,actorValues:Float32Array,connections:Uint32Array,environment:Float32Array,terrainMaterials:Uint32Array,billboardMaterials:Uint32Array,modelMetadata:Uint32Array,modelStyles:Float32Array): boolean;
+    configure_spatial_scene_receiver_masks(camera:Float32Array,terrain:Float32Array,metadata:Uint32Array,handles:Uint32Array,styles:Float32Array,actor:Uint32Array,actorValues:Float32Array,connections:Uint32Array,environment:Float32Array,terrainMaterials:Uint32Array,billboardMaterials:Uint32Array,modelMetadata:Uint32Array,modelStyles:Float32Array,terrainMasks:Uint32Array,billboardMasks:Uint32Array,modelMasks:Uint32Array): boolean;
+    spatial_receiver_mask_abi_version(): number;
+    spatial_receiver_mask_size(): number;
+    spatial_terrain_receiver_mask_ptr(): number;
+    spatial_terrain_receiver_mask_len(): number;
+    spatial_billboard_receiver_mask_ptr(): number;
+    spatial_billboard_receiver_mask_len(): number;
+    spatial_model_receiver_mask_ptr(): number;
+    spatial_model_receiver_mask_len(): number;
+    spatial_light_channel_abi_version(): number;
     spatial_model_abi_version(): number;
     spatial_model_batch_abi_version(): number;
     spatial_model_stride(): number;

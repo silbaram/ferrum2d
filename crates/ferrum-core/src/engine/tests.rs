@@ -187,6 +187,7 @@ mod data_scene_authoring_continuity;
 mod spatial_connections;
 mod spatial_debug;
 mod spatial_environment;
+mod spatial_light_channels;
 mod spatial_navigation;
 mod spatial_physics_obstacles;
 mod spatial_progress;

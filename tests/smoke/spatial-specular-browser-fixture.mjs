@@ -50,11 +50,11 @@ function variant(source, kind, mode = "transformed") {
   header.setUint32(20+padded,binary.length,true);header.setUint32(24+padded,0x004e4942,true);new Uint8Array(out,28+padded).set(binary);
   return out;
 }
-export async function loadSpecularFixtures(assets) {
+export async function loadSpecularFixtures(assets, kinds) {
   const source = await (await fetch("/uv/mapping.glb")).arrayBuffer();
-  for(const kind of ["diffuse","zero","medium","smooth","rough","normal","emission"])
+  for(const kind of kinds ?? ["diffuse","zero","medium","smooth","rough","normal","emission"])
     assets.set(`uv-spec-${kind}`,await loadSpatialGlb(variant(source,kind),{materialProfile:kind==="diffuse"?"diffuse":"specular"}));
-  for(const kind of ["scalar","roughness","color"])for(const mode of ["transformed","baked","identity"])
+  if (!kinds) for(const kind of ["scalar","roughness","color"])for(const mode of ["transformed","baked","identity"])
     assets.set(`uv-spec-${kind}-${mode}`,await loadSpatialGlb(variant(source,kind,mode),{materialProfile:"specular"}));
   return {assets:assets.size};
 }

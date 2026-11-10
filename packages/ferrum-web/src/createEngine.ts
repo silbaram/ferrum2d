@@ -1,3 +1,5 @@
+import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
+import {requestsSpatialLightChannels,supportsSpatialLightChannels} from "./spatialLightChannels.js";
 import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
@@ -1019,6 +1021,8 @@ export async function createEngineWithFramePipeline(
         return entry.handle;
       }))];
     },
+    supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
+    supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
     supportsSpatialRampAxis: () => {
       requireAlive();
       return typeof rustEngine.spatial_ramp_axis_abi_version === "function" &&
@@ -1031,6 +1035,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialLightChannels(environment) && !supportsSpatialLightChannels(rustEngine)) return false;
       const values = compileSpatialEnvironment(environment);
       return typeof rustEngine.preflight_spatial_camera_environment === "function"
         ? rustEngine.preflight_spatial_camera_environment(

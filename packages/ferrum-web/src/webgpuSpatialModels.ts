@@ -1,3 +1,4 @@
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { SPATIAL_MODEL_MATERIAL_BYTES, spatialModelMaterialValues } from "./webgpuSpatialMaterial.js";
@@ -57,6 +58,7 @@ export class WebGpuSpatialModels {
   private readonly counts = new Uint32Array(CAPACITY * 8);
   private readonly ends = new Uint32Array(CAPACITY * 8);
   private readonly offsets = new Uint32Array(CAPACITY * 8);
+  private readonly receiverCodes = new Uint32Array(CAPACITY);
   private destroyed = false;
   constructor(
     private readonly device: GPUDevice,
@@ -337,6 +339,7 @@ export class WebGpuSpatialModels {
     frame: SpatialModelFrame | undefined,
     shadows: boolean,
     stats: SpatialRendererStats,
+    masks?: Uint32Array,
   ): void {
     this.counts.fill(0);
     if (!frame) return;
@@ -349,7 +352,8 @@ export class WebGpuSpatialModels {
         }
         const first = i,
           source = spatialModelResource(frame.assets.get(frame.words[i])!)!,
-          flags = frame.words[i + 1] & 2;
+          flags = frame.words[i + 1] & 2,
+          maskCode = spatialReceiverMaskCode(masks, i / 20);
         let count = 0;
         while (i < frame.words.length) {
           if (!(frame.words[i + 2] & (1 << bit))) {
@@ -358,7 +362,7 @@ export class WebGpuSpatialModels {
           }
           if (
             spatialModelResource(frame.assets.get(frame.words[i])!) !== source ||
-            (bit === 0 && (frame.words[i + 1] & 2) !== flags)
+            (bit === 0 && ((frame.words[i + 1] & 2) !== flags || masks?.length && spatialReceiverMaskCode(masks, i / 20) !== maskCode))
           )
             break;
           this.matrices.set(frame.values.subarray(i + 4, i + 20), floats + count * 16);
@@ -366,6 +370,7 @@ export class WebGpuSpatialModels {
           i += 20;
         }
         const batch = bit * CAPACITY + first / 20;
+        if (bit === 0) this.receiverCodes[first / 20] = maskCode;
         this.counts[batch] = count;
         this.ends[batch] = i;
         this.offsets[batch] = floats * 4;
@@ -386,6 +391,7 @@ export class WebGpuSpatialModels {
     hdr: boolean | "separated" = false,
     bit = 0,
     noReceiveGroup = environmentGroup,
+    receiverOffset?: (code: number) => number,
   ): void {
     if (!frame) return;
     if (bit === 0 && hdr === "separated" && this.pipelines.length === 8) {
@@ -402,7 +408,8 @@ export class WebGpuSpatialModels {
         continue;
       }
       const asset = this.assets.get(spatialModelResource(frame.assets.get(frame.words[i])!)!)!,
-        receive = !!(frame.words[i + 1] & 2);
+        receive = !!(frame.words[i + 1] & 2),
+        offset = receiverOffset?.(this.receiverCodes[i / 20]) ?? 0;
       i = this.ends[batch];
       if (bit === 0) stats.visibleModelCount += count;
       for (const p of asset.primitives) {
@@ -412,7 +419,7 @@ export class WebGpuSpatialModels {
         );
         pass.setBindGroup(0, camera);
         pass.setBindGroup(1, p.group);
-        if (bit === 0) pass.setBindGroup(2, receive ? environmentGroup : noReceiveGroup);
+        if (bit === 0) pass.setBindGroup(2, receive ? environmentGroup : noReceiveGroup, [offset]);
         pass.setVertexBuffer(0, p.vertex);
         pass.setVertexBuffer(1, this.instances, this.offsets[batch], count * 64);
         pass.setIndexBuffer(p.index, "uint32");

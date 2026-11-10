@@ -1,3 +1,4 @@
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { IDENTITY_SPATIAL_UV } from "./spatialTextureTransform.js";
 import { validateSpatialModelFrame } from "./spatialModelPacket.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
@@ -61,6 +62,7 @@ export class WebGL2SpatialModels {
     private readonly batchCounts = new Uint32Array(MODEL_CAPACITY * MODEL_PASS_COUNT);
     private readonly batchEnds = new Uint32Array(MODEL_CAPACITY * MODEL_PASS_COUNT);
     private readonly matrixOffsets = new Uint32Array(MODEL_CAPACITY * MODEL_PASS_COUNT);
+    private preparedMasks?: Uint32Array;
     private preparedFrame?: Frame;
     private preparedPasses = 0;
     constructor(private readonly gl: WebGL2RenderingContext) { }
@@ -261,9 +263,10 @@ export class WebGL2SpatialModels {
         for(let i=0;i<16 && this.gl.getError()!==this.gl.NO_ERROR;i++) { /* bounded cold failure cleanup */ }
     }
     /** Prepare only passes that will draw, then upload their packed matrices once before any draw. */
-    prepareDraws(frame: Frame | undefined, passes: number, instanceBuffer: WebGLBuffer, stats: SpatialRendererStats): void {
+    prepareDraws(frame: Frame | undefined, passes: number, instanceBuffer: WebGLBuffer, stats: SpatialRendererStats, masks?: Uint32Array): void {
         this.assertAlive();
         this.preparedFrame = undefined;
+        this.preparedMasks = masks;
         this.preparedPasses = 0;
         this.batchCounts.fill(0);
         if (!frame) return;
@@ -274,14 +277,14 @@ export class WebGL2SpatialModels {
             if (!(passes & (1 << bit))) continue;
             for (let i = 0; i < frame.words.length;) {
                 if (!(frame.words[i + 2] & (1 << bit))) { i += 20; continue; }
-                const first = i, flags = frame.words[i + 1] & 2;
+                const first = i, flags = frame.words[i + 1] & 2, maskCode = spatialReceiverMaskCode(masks, i / 20);
                 const gpu = this.assets.get(spatialModelResource(frame.assets.get(frame.words[i])!)!);
                 if (!gpu) throw Error("Model instance resource is not prepared");
                 let count = 0;
                 while (i < frame.words.length) {
                     if (!(frame.words[i + 2] & (1 << bit))) { i += 20; continue; }
                     const next = this.assets.get(spatialModelResource(frame.assets.get(frame.words[i])!)!);
-                    if (next !== gpu || (bit === 0 && (frame.words[i + 1] & 2) !== flags)) break;
+                    if (next !== gpu || (bit === 0 && ((frame.words[i + 1] & 2) !== flags || masks?.length && spatialReceiverMaskCode(masks, i / 20) !== maskCode))) break;
                     for (let j = 0; j < 16; j++) this.matrices[floats + count * 16 + j] = frame.values[i + 4 + j];
                     count++; i += 20;
                 }
@@ -303,8 +306,8 @@ export class WebGL2SpatialModels {
         this.preparedPasses = passes;
     }
     /** Do not retain borrowed Wasm views or scene asset handles after the frame. */
-    finishDraws(): void { this.preparedFrame = undefined; this.preparedPasses = 0; }
-    draw(frame: Frame | undefined, bit: number, u: SpatialGeometryUniforms, stats: SpatialRendererStats, instanceBuffer: WebGLBuffer, receive?: WebGLUniformLocation, material?: ModelMaterialUniforms): void {
+    finishDraws(): void { this.preparedMasks = undefined; this.preparedFrame = undefined; this.preparedPasses = 0; }
+    draw(frame: Frame | undefined, bit: number, u: SpatialGeometryUniforms, stats: SpatialRendererStats, instanceBuffer: WebGLBuffer, receive?: WebGLUniformLocation, material?: ModelMaterialUniforms, receiver?: WebGLUniformLocation): void {
         if (!frame) return;
         if (!Number.isInteger(bit) || bit < 0 || bit >= MODEL_PASS_COUNT || frame !== this.preparedFrame || !(this.preparedPasses & (1 << bit)))
             throw Error("Model instance pass is not prepared");
@@ -337,6 +340,7 @@ export class WebGL2SpatialModels {
                 }
             }
             if (receive) gl.uniform1i(receive, flags ? 1 : 0);
+            if (receiver) { const code = spatialReceiverMaskCode(this.preparedMasks, first / 20); gl.uniform2f(receiver, code & 255, code >>> 8); }
             if (bit === 0) stats.visibleModelCount += count;
             for (const p of gpu.primitives) {
                 gl.bindBuffer(gl.ARRAY_BUFFER, p.vertex);

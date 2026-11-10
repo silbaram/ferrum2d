@@ -81,6 +81,9 @@ function snapshotSpatial(view: SpatialRenderBufferView): SpatialRenderBufferView
     ...(view.materials === undefined ? {} : { materials: {
       ...view.materials, terrain: view.materials.terrain.slice(), billboards: view.materials.billboards.slice(),
     } }),
+    ...(view.receiverMasks === undefined ? {} : { receiverMasks: {
+      ...view.receiverMasks, terrain: view.receiverMasks.terrain.slice(), billboards: view.receiverMasks.billboards.slice(), models: view.receiverMasks.models.slice(),
+    } }),
     ...(view.debug === undefined ? {} : { debug: { ...view.debug, vertices: view.debug.vertices.slice() } }),
     ...(view.environment === undefined ? {} : { environment: {
       ...view.environment,

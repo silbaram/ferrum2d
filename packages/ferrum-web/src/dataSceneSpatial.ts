@@ -1,3 +1,5 @@
+import {requestsSpatialReceiverMasks,supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
+import {requestsSpatialLightChannels,resolveSpatialMaskFields,supportsSpatialLightChannels} from "./spatialLightChannels.js";
 import { resolveMovingPlatforms, compileMovingPlatforms, type SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";
 import { uint32Number } from "./particlePreset.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
@@ -29,6 +31,9 @@ export interface SpatialCameraSpec {
   far?: number;
 }
 export interface SpatialTerrainSurface {
+  /** Independent eight-channel reception; defaults255/255, explicit0 is preserved. */
+  lightMask?: number;
+  shadowMask?: number;
   /** false keeps native physics/picking/debug support without color/depth/shadow draws. Default true. */
   render?: boolean;
   id: string;
@@ -50,6 +55,9 @@ export interface SpatialTerrainSurface {
   receiveShadow?: boolean;
 }
 export interface SpatialBillboardSpec {
+  /** Independent eight-channel reception; defaults255/255, explicit0 is preserved. */
+  lightMask?: number;
+  shadowMask?: number;
   /** Stable project texture name. Resolved before native configuration; exclusive with normalTextureId. */
   normalTexture?: string;
   normalTextureId?: number;
@@ -126,6 +134,9 @@ export interface DataSceneSpatialSpec {
   };
 }
 export interface SpatialModelInstanceSpec {
+  /** Independent eight-channel reception; defaults255/255, explicit0 is preserved. */
+  lightMask?: number;
+  shadowMask?: number;
   chunk?: string;
   /** Up to three additional preloaded CPU assets; native distance selection has 10% hysteresis. */
   lods?: readonly {asset:string;contentId:string;minDistance:number}[];
@@ -167,6 +178,8 @@ export interface SpatialDebugBufferView {
 }
 /** Borrowed Wasm views; reacquire per frame or explicitly copy for deferred rendering/picking. */
 interface SpatialRenderBufferBase {
+  /** Independent optional receiver masks; material/model layouts stay v1. */
+  receiverMasks?: import("./spatialReceiverMasks.js").SpatialReceiverMaskBufferView;
   /** Independent v1: four u32 metadata words + sixteen f32 matrix words per native instance. */
   models?: { version: 1; stride: 20; words: Uint32Array; values: Float32Array; assets: ReadonlyMap<number, SpatialModelAsset> };
   vertexStride: 11;
@@ -384,6 +397,7 @@ export function resolveSpatialTerrainSurfaces(
           "walkable",
           "castShadow",
           "receiveShadow",
+          "lightMask", "shadowMask",
         ],
         at,
       );
@@ -404,7 +418,10 @@ export function resolveSpatialTerrainSurfaces(
         );
       if (s.rampAxis !== undefined && (kind !== "ramp" || (s.rampAxis !== "x" && s.rampAxis !== "y")))
         throw sceneCompositionDiagnosticError(`${at}.rampAxis`, "requires kind:ramp and x or y");
+      const maskFields = resolveSpatialMaskFields(s, at);
       const render = s.render === undefined ? true : bool(s.render, `${at}.render`);
+      if (!render && ((maskFields.lightMask ?? 255) !== 255 || (maskFields.shadowMask ?? 255) !== 255))
+        throw sceneCompositionDiagnosticError(at, "non-rendered surfaces cannot receive custom light/shadow masks");
       if (
         !render &&
         (s.textureId !== undefined || s.castShadow === true || s.receiveShadow === true)
@@ -446,6 +463,7 @@ export function resolveSpatialTerrainSurfaces(
           "terrain requires opaque alpha=1",
         );
       return {
+        ...maskFields,
         id: s.id,
         x,
         y,
@@ -516,10 +534,11 @@ export function resolveDataSceneSpatialSpec(
   for (const [id, v] of Object.entries(source)) {
     const at = `${path}.billboards.${id}`,
       b = record(v, at);
-    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTexture", "normalTextureId", "castShadow", "receiveShadow", "chunk", "lods"], at);
+    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTexture", "normalTextureId", "castShadow", "receiveShadow", "chunk", "lods", "lightMask", "shadowMask"], at);
     if (b.normalTexture !== undefined && (typeof b.normalTexture !== "string" || !b.normalTexture.trim() || b.normalTexture !== b.normalTexture.trim() || b.normalTexture.length > 256 || b.normalTextureId !== undefined))
       throw sceneCompositionDiagnosticError(`${at}.normalTexture`, "must be a nonempty project texture name of at most 256 characters, exclusive with normalTextureId");
     billboards[id] = {
+      ...resolveSpatialMaskFields(b, at),
       ...(b.normalTexture === undefined ? {} : { normalTexture: b.normalTexture as string }),
       ...(b.normalTextureId === undefined ? {} : { normalTextureId: integer(b.normalTextureId, `${at}.normalTextureId`, 16777214) }),
       ...(b.castShadow === undefined ? {} : { castShadow: bool(b.castShadow, `${at}.castShadow`) }),
@@ -569,7 +588,7 @@ export function resolveDataSceneSpatialSpec(
     if (entries.length > 1024) throw sceneCompositionDiagnosticError(`${path}.models`, "maximum 1024 instances");
     for (const [id, raw] of entries) {
       const at = `${path}.models.${id}`, m = record(raw, at);
-      keys(m, ["asset", "contentId", "elevation", "yawDegrees", "scale", "castShadow", "receiveShadow", "shadowOnly", "chunk", "lods"], at);
+      keys(m, ["asset", "contentId", "elevation", "yawDegrees", "scale", "castShadow", "receiveShadow", "shadowOnly", "chunk", "lods", "lightMask", "shadowMask"], at);
       if (!id || Object.prototype.hasOwnProperty.call(billboards,id) || typeof m.asset !== "string" || !m.asset || typeof m.contentId !== "string" || !/^[a-f0-9]{64}$/.test(m.contentId))
         throw sceneCompositionDiagnosticError(at, "requires unique model instance, asset ID and SHA-256 contentId");
       const lods:NonNullable<SpatialModelInstanceSpec['lods']>[number][]=[];
@@ -578,7 +597,7 @@ export function resolveDataSceneSpatialSpec(
           if(typeof l.asset!=='string'||!l.asset||typeof l.contentId!=='string'||!/^[a-f0-9]{64}$/.test(l.contentId))throw sceneCompositionDiagnosticError(p,'requires asset ID and SHA-256 contentId');
           const distance=num(l.minDistance,`${p}.minDistance`,0,1e6);if(Math.fround(distance)<=Math.fround(previous))throw sceneCompositionDiagnosticError(p,'distances must increase and remain positive in f32');previous=distance;lods.push({asset:l.asset,contentId:l.contentId,minDistance:distance});}}
       if(m.chunk!==undefined&&(typeof m.chunk!=='string'||!m.chunk))throw sceneCompositionDiagnosticError(`${at}.chunk`,'requires a chunk ID');
-      models[id] = { asset:m.asset, contentId:m.contentId,
+      models[id] = { ...resolveSpatialMaskFields(m, at), asset:m.asset, contentId:m.contentId,
         ...(m.chunk===undefined?{}:{chunk:m.chunk as string}),...(m.lods===undefined?{}:{lods}),
         elevation:num(m.elevation ?? 0,`${at}.elevation`), yawDegrees:num(m.yawDegrees ?? 0,`${at}.yawDegrees`,-360,360), scale:num(m.scale ?? 1,`${at}.scale`,0.0001,10000),
         ...(m.castShadow===undefined?{}:{castShadow:bool(m.castShadow,`${at}.castShadow`)}),
@@ -833,7 +852,9 @@ export function createSpatialApi(
     },
     preflightDataSceneSpatialModels(input, origins = {}) {
       requireAlive();
-      const spec=resolveDataSceneSpatialSpec(input), registry=spatialModelRegistry(rust);
+      const spec=resolveDataSceneSpatialSpec(input);
+      if (requestsSpatialReceiverMasks(spec) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(spec.environment) && !supportsSpatialLightChannels(rust)) return false;
+      const registry=spatialModelRegistry(rust);
       if(Object.keys(spec.lightBindings??{}).length&&typeof rust.configure_spatial_light_bindings!=="function")return false;
       if(Object.keys(spec.attachments??{}).length&&typeof rust.configure_spatial_attachments!=='function')return false;
       if((spec.modelChunks!==undefined||Object.values(spec.models??{}).some(m=>m.lods!==undefined))&&typeof rust.configure_spatial_model_streaming!=='function')return false;
@@ -854,6 +875,7 @@ export function createSpatialApi(
     setDataSceneSpatialEnvironment(options) {
       requireAlive();
       const values = compileSpatialEnvironment(options);
+      if (values.length === 576 && !supportsSpatialLightChannels(rust)) return false;
       return (
         typeof rust.configure_spatial_environment === "function" &&
         rust.configure_spatial_environment(values)
@@ -969,7 +991,9 @@ export function createSpatialApi(
     },
     configureDataSceneSpatial(input, handles) {
       requireAlive();
-      const spec = resolveSpatialNormalTextures(resolveDataSceneSpatialSpec(input), textureId);
+      const resolved = resolveDataSceneSpatialSpec(input);
+      if (requestsSpatialReceiverMasks(resolved) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(resolved.environment) && !supportsSpatialLightChannels(rust)) return false;
+      const spec = resolveSpatialNormalTextures(resolved, textureId);
       const lightMetadata:number[]=[], lightOffsets:number[]=[];
       for(const [id,indices] of Object.entries(spec.lightBindings??{})) {
         const h=handles[id];if(!h)throw sceneCompositionDiagnosticError(`spatial.lightBindings.${id}`,"must reference an applied instance");
@@ -1047,7 +1071,12 @@ export function createSpatialApi(
       if(attachmentMetadata.length&&(typeof rust.preflight_spatial_attachments!=='function'||!rust.preflight_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues),Uint32Array.from(modelMetadata),Float32Array.from(modelStyles))))return false;
       const platformValues = compileMovingPlatforms(spec);
       if (platformValues.length && (typeof rust.preflight_spatial_moving_platforms !== "function" || !rust.preflight_spatial_moving_platforms(terrain.values,terrain.metadata,connectionValues,platformValues))) return false;
-      const accepted = modelMetadata.length
+      const maskPairs = (items: readonly {lightMask?:number;shadowMask?:number}[]) => Uint32Array.from(items.flatMap(item => [item.lightMask ?? 255, item.shadowMask ?? 255]));
+      const accepted = requestsSpatialReceiverMasks(spec)
+        ? rust.configure_spatial_scene_receiver_masks(...args, connectionValues, compileSpatialEnvironment(spec.environment ?? null),
+            Uint32Array.from(spec.terrain.map(materialFlags)), Uint32Array.from(Object.values(spec.billboards).flatMap(b => [b.normalTextureId ?? 16777215, materialFlags(b)])),
+            Uint32Array.from(modelMetadata), Float32Array.from(modelStyles), maskPairs(spec.terrain), maskPairs(Object.values(spec.billboards)), maskPairs(Object.values(spec.models ?? {})))
+        : modelMetadata.length
         ? rust.configure_spatial_scene_models(...args, connectionValues, compileSpatialEnvironment(spec.environment ?? null),
             Uint32Array.from(spec.terrain.map(materialFlags)),Uint32Array.from(Object.values(spec.billboards).flatMap(b=>[b.normalTextureId ?? 16777215,materialFlags(b)])),
             Uint32Array.from(modelMetadata),Float32Array.from(modelStyles))

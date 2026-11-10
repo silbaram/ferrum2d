@@ -1,3 +1,4 @@
+import {validateSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import { validSpatialEnvironmentValues } from "./spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 /** Shared native geometry ABI validation. Renderer-specific material/resource checks follow. */
@@ -71,6 +72,7 @@ export function validateSpatialGeometryFrame(frame: SpatialRenderBufferView): nu
 }
 /** Validate independent native extensions before backend resources are touched. */
 export function validateSpatialExtensions(frame: SpatialRenderBufferView): void {
+  validateSpatialReceiverMasks(frame);
   const debug = frame.debug;
   if (
     debug !== undefined &&
@@ -92,9 +94,9 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
   if (
     environment !== undefined &&
     (!environment ||
-      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4 && environment.version !== 5 && environment.version !== 6) ||
+      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4 && environment.version !== 5 && environment.version !== 6 && environment.version !== 7) ||
       !(environment.values instanceof Float32Array) ||
-      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : environment.version === 4 ? 512 : environment.version === 5 ? 528 : 544) ||
+      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : environment.version === 4 ? 512 : environment.version === 5 ? 528 : environment.version === 6 ? 544 : 576) ||
       !validSpatialEnvironmentValues(environment.values) ||
       !(environment.shadowMatrices instanceof Float32Array) ||
       !(environment.shadowCasters instanceof Float32Array) ||

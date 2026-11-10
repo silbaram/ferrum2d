@@ -1,7 +1,9 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 544;
+pub(crate) const ENVIRONMENT_VALUES: usize = 576;
+#[path = "light_channels.rs"]
+mod light_channels;
 #[path = "lighting_upgrade.rs"]
 mod lighting_upgrade;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
@@ -17,7 +19,7 @@ impl SpatialEnvironment {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![80, 112, 128, 512, 528, ENVIRONMENT_VALUES].contains(&v.len()) {
+        if ![80, 112, 128, 512, 528, 544, ENVIRONMENT_VALUES].contains(&v.len()) {
             return None;
         }
         let mut a = [0.; ENVIRONMENT_VALUES];
@@ -33,6 +35,7 @@ impl SpatialEnvironment {
             return None;
         }
         let flags = a[0] as u32;
+        let preserve_inactive = v.len() == ENVIRONMENT_VALUES;
         if flags & 16 != 0 {
             if v.len() < 112
                 || a[80..82]
@@ -56,7 +59,7 @@ impl SpatialEnvironment {
             return None;
         }
         if a[83] == 1. {
-            if flags & 1 == 0
+            if (flags & 1 == 0 && !preserve_inactive)
                 || unit([a[84], a[85], a[86]]).is_none()
                 || a[84..87].iter().any(|x| x.abs() > 1.)
                 || !(0. ..=64.).contains(&a[87])
@@ -84,7 +87,7 @@ impl SpatialEnvironment {
         if a[97] == 0. && a[98] != 0. {
             return None;
         }
-        if flags & 1 == 0 && a[95] != 0. {
+        if flags & 1 == 0 && !preserve_inactive && a[95] != 0. {
             return None;
         }
         if ![0., 1.].contains(&a[112])
@@ -95,7 +98,7 @@ impl SpatialEnvironment {
             return None;
         }
         if a[112] == 1. {
-            if flags & 1 == 0
+            if (flags & 1 == 0 && !preserve_inactive)
                 || unit([a[113], a[114], a[115]]).is_none()
                 || a[113..116].iter().any(|x| x.abs() > 1.)
                 || a[116..119]
@@ -112,7 +115,7 @@ impl SpatialEnvironment {
         if (a[2] < 0. && a[123] != 0.) || (a[92] == 0. && a[124] != 0.) {
             return None;
         }
-        if v.len() >= 512 && !lighting_upgrade::valid(&a[..512]) {
+        if v.len() >= 512 && !lighting_upgrade::valid(&a[..512], preserve_inactive) {
             return None;
         }
         // v5: optional fixed world-space sun center; the remaining extension is reserved.
@@ -124,7 +127,10 @@ impl SpatialEnvironment {
             return None;
         }
         // v6: explicit legacy/separated composition. No reserved prefix slots are reused.
-        if ![0., 1.].contains(&a[528]) || a[529..].iter().any(|x| *x != 0.) {
+        if ![0., 1.].contains(&a[528]) || a[529..544].iter().any(|x| *x != 0.) {
+            return None;
+        }
+        if v.len() == ENVIRONMENT_VALUES && !light_channels::valid(&a) {
             return None;
         }
         let count = a[1] as usize;
@@ -224,7 +230,17 @@ impl SpatialEnvironment {
             return;
         };
         if self.value_len >= 512 {
-            lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor);
+            let sources = lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor);
+            if self.value_len == ENVIRONMENT_VALUES {
+                light_channels::remap(&mut v, sources);
+                if v[0] as u32 & 1 == 0 {
+                    // Inactive authoring remains in self.values; only the render
+                    // copy loses active sun/fill/maps and fixed-map presentation.
+                    v[83..96].fill(0.);
+                    v[112..125].fill(0.);
+                    v[512..528].fill(0.);
+                }
+            }
             self.shadow_matrices.clear();
             if v[2] >= 0. {
                 let p = 12 + v[2] as usize * 12;
@@ -292,7 +308,7 @@ impl SpatialEnvironment {
     pub fn shadows(&self) -> bool {
         self.values
             .as_ref()
-            .is_some_and(|v| v[2] >= 0. || v[92] > 0.)
+            .is_some_and(|v| v[0] as u32 & 1 != 0 && (v[2] >= 0. || v[92] > 0.))
     }
     fn sun_center(values: &[f32; ENVIRONMENT_VALUES], camera: &SpatialCamera) -> Point {
         if values[512] == 1. {

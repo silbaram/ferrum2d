@@ -1,3 +1,4 @@
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
 import { spatialModelResource, type SpatialModelAsset, type SpatialModelPreparation } from "./spatialModel.js";
 import { MODEL_INSTANCE_BUFFER_BYTES, WebGL2SpatialModels, type ModelMaterialUniforms } from "./webgl2SpatialModels.js";
@@ -113,7 +114,7 @@ export class WebGL2SpatialPass {
         "hasNormal", "modelNormalScale", "modelNormalUvTransform", "modelEmissiveUvTransform", "emissiveMap", "hasEmissive", "emissiveFactor", "modelUnlit",
         "modelSpecularEnabled", "modelSpecular", "modelRoughness", "roughnessMap", "specularMap", "specularColorMap",
         "hasRoughness", "hasSpecular", "hasSpecularColor", "modelRoughnessUvTransform", "modelSpecularUvTransform", "modelSpecularColorUvTransform",
-        "receiveShadow",
+        "receiveShadow", "receiverMasks", "lightChannels", "sunChannels",
         "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
         "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
       ])
@@ -168,6 +169,7 @@ export class WebGL2SpatialPass {
     validateSpatialExtensions(frame);
     const debug = frame.debug, environment = frame.environment;
     const activeEnvironment = environment !== undefined && environment.values[0] !== 0;
+    const receiverMasks = environment && (environment.values[0] & 1) ? frame.receiverMasks : undefined;
     const gl = this.gl,
       target = gl.getParameter(
         gl.DRAW_FRAMEBUFFER_BINDING,
@@ -177,7 +179,6 @@ export class WebGL2SpatialPass {
       viewport[0] + Math.round(viewport[2] * presentation[0]), viewport[1] + Math.round(viewport[3] * (1 - presentation[1] - presentation[3])),
       Math.max(1, Math.round(viewport[2] * presentation[2])), Math.max(1, Math.round(viewport[3] * presentation[3])),
     ]) : viewport;
-    if (!activeEnvironment) this.ensureDepth(target, viewport[2], viewport[3]);
     // Validate all textures before uploading or submitting any geometry.
     for (const buffer of [
       frame.terrain,
@@ -285,6 +286,7 @@ export class WebGL2SpatialPass {
       dofSampleBudget: environment?.values[0]! & 4 ? (environment!.values[96] === 1 ? 25 : 13) : 0,
     };
     try {
+      if (!activeEnvironment) { this.ensureDepth(target, viewport[2], viewport[3]); stats.depthBufferBytes = this.depthBytes(); }
       if (activeEnvironment) {
         gl.disable(gl.SCISSOR_TEST);
         gl.colorMask(true, true, true, true);
@@ -357,7 +359,7 @@ export class WebGL2SpatialPass {
         const cacheHit = shadowReady && cacheMatches;
         stats.shadowCacheHit = cacheHit;
         const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0));
-        this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats);
+        this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats, receiverMasks?.models);
         if (!cacheHit && hasShadows && casters.length) {
           if (!this.shadowBuffer) {
             const b = gl.createBuffer();
@@ -436,15 +438,15 @@ export class WebGL2SpatialPass {
         stats.depthBufferBytes = this.depthBytes() + effects.depthBytes();
         stats.effectTextureBytes = effects.resourceStats().textureBytes;
       }
-      if (!activeEnvironment) this.models.prepareDraws(frame.models, 1, this.modelInstanceBuffer, stats);
+      if (!activeEnvironment) this.models.prepareDraws(frame.models, 1, this.modelInstanceBuffer, stats, receiverMasks?.models);
       let lastTexture: number | undefined;
       const drawTerrain = (first: number, count: number) => {
-        lastTexture = this.drawBuffer(this.terrainBuffer, frame.terrain, textures, stats, lastTexture, first, count, this.uniforms, materials?.terrain, 36);
+        lastTexture = this.drawBuffer(this.terrainBuffer, frame.terrain, textures, stats, lastTexture, first, count, this.uniforms, materials?.terrain, 36, receiverMasks?.terrain);
       };
       if (ranges === undefined) drawTerrain(0, frame.terrainVertexCount);
       else for (let i = 0; i < ranges.length; i += 2) drawTerrain(ranges[i], ranges[i + 1]);
       gl.uniform1i(this.uniforms.hasNormal,0);
-      this.models.draw(frame.models,0,this.uniforms,stats,this.modelInstanceBuffer,this.uniforms.receiveShadow,this.uniforms as typeof this.uniforms & ModelMaterialUniforms);
+      this.models.draw(frame.models,0,this.uniforms,stats,this.modelInstanceBuffer,this.uniforms.receiveShadow,this.uniforms as typeof this.uniforms & ModelMaterialUniforms, this.uniforms.receiverMasks);
       gl.bindSampler(0,this.sampler);
       if (frame.billboards.length) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuffer);
@@ -464,7 +466,7 @@ export class WebGL2SpatialPass {
           frame.billboards,
           textures,
           stats,
-          lastTexture, 0, frame.billboardVertexCount, this.uniforms, materials?.billboards, 6,
+          lastTexture, 0, frame.billboardVertexCount, this.uniforms, materials?.billboards, 6, receiverMasks?.billboards,
         );
         stats.billboardDrawCalls = stats.drawCalls - terrainDrawCalls;
       }
@@ -543,6 +545,10 @@ export class WebGL2SpatialPass {
         previous.colorMask[3],
       );
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, target);
+      // Keep cached storage, but never leave our old-sized depth attached to an owner that
+      // can resize its color target between frames (including OFF -> lit transitions).
+      if (!activeEnvironment && target && this.targets.has(target))
+        gl.framebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previous.readFramebuffer);
       gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
       gl.clearColor(
@@ -604,6 +610,7 @@ export class WebGL2SpatialPass {
     uniforms: SpatialGeometryUniforms = this.uniforms,
     materials?: Uint32Array,
     materialStride = 6,
+    receiverMasks?: Uint32Array,
   ): number | undefined {
     const gl = this.gl;
     gl.uniform1i(uniforms.mesh,0);
@@ -615,12 +622,13 @@ export class WebGL2SpatialPass {
         stats.textureSwitchCount++;
       lastTexture = id;
       const material = (vertex: number, field: number) => materials?.[Math.floor(vertex / materialStride) * 2 + field] ?? (field === 0 ? 16777215 : 3);
-      const normal = material(first, 0), flags = material(first, 1);
+      const normal = material(first, 0), flags = material(first, 1), maskCode = spatialReceiverMaskCode(receiverMasks, Math.floor(first / materialStride));
       let end = first + 3;
-      while (end < vertices && buffer[end * 11 + 9] === id && material(end, 0) === normal && material(end, 1) === flags) end += 3;
+      while (end < vertices && buffer[end * 11 + 9] === id && material(end, 0) === normal && material(end, 1) === flags && (!receiverMasks?.length || spatialReceiverMaskCode(receiverMasks, Math.floor(end / materialStride)) === maskCode)) end += 3;
       if (uniforms === this.uniforms) {
         gl.uniform1i(this.uniforms.hasNormal, normal === 16777215 ? 0 : 1);
         gl.uniform1i(this.uniforms.receiveShadow, flags & 2 ? 1 : 0);
+        gl.uniform2f(this.uniforms.receiverMasks, maskCode & 255, maskCode >>> 8);
         if (normal !== 16777215) {
           gl.activeTexture(gl.TEXTURE2);
           gl.bindSampler(2, this.sampler);
@@ -685,20 +693,12 @@ export class WebGL2SpatialPass {
           width,
           height,
         );
-        gl.framebufferRenderbuffer(
-          gl.DRAW_FRAMEBUFFER,
-          gl.DEPTH_ATTACHMENT,
-          gl.RENDERBUFFER,
-          item.buffer,
-        );
-        if (
-          gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER) !==
-          gl.FRAMEBUFFER_COMPLETE
-        )
-          throw new Error("Spatial depth target incomplete");
-        item.width = width;
-        item.height = height;
       }
+      gl.framebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, item.buffer);
+      if (gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+        throw new Error("Spatial depth target incomplete");
+      item.width = width;
+      item.height = height;
     } finally {
       gl.bindRenderbuffer(gl.RENDERBUFFER, previous);
     }

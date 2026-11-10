@@ -23,7 +23,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       import { createRenderer, restoreGameStateSnapshot,
         type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
         type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer, type FlatHdrOptions, type ResolvedFlatHdrOptions,
-        type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView, type SpriteLightMaskBufferView,
+        type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView, type SpriteLightMaskBufferView, type SpatialReceiverMaskBufferView,
         type GameStateSnapshot,
       } from '@ferrum2d/ferrum-web/core';
       import {
@@ -88,7 +88,12 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       // @ts-expect-error the alpha upload override accepts straight alpha only
       renderer.loadTexture(1, 'surface.png', { alphaMode: 'premultiplied' });
       void [sidecar, invalidReceiver];
-      const sun: SpatialDirectionalLightSpec = { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
+      const spatialMasks: SpatialReceiverMaskBufferView = { version: 1, stride: 2, terrain: new Uint32Array([1, 0]), billboards: new Uint32Array(), models: new Uint32Array() };
+      const receiverPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 8, operations: [{ kind: 'updateModel', id: 'proxy', changes: { lightMask: 1, shadowMask: 0 } }] };
+      viewer.updateSpatial(receiverPatch.operations);
+      const maskedModel: SpatialModelInstanceSpec = { asset: 'tree', contentId: 'a'.repeat(64), lightMask: 0, shadowMask: 1 };
+      void [spatialMasks, maskedModel];
+      const sun: SpatialDirectionalLightSpec = { lightMask: 1, shadowMask: 0, direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
       engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
       engine.setDataSceneSpatialEnvironment({ composition: 'separated', lighting: { lights: [] }, ambientOcclusion: { strength: 0 } });
       // @ts-expect-error composition choices are explicit

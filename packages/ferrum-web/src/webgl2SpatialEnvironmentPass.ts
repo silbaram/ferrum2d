@@ -426,6 +426,8 @@ export class WebGL2SpatialEnvironmentPass {
         this.positionValues[i * 4 + j] = v[12 + i * 12 + j];
         this.colorValues[i * 4 + j] = v[16 + i * 12 + j];
       }
+    gl.uniform4f(u.lightChannels, v.length >= 576 ? v[545] : 65535, v.length >= 576 ? v[546] : 65535, v.length >= 576 ? v[547] : 65535, v.length >= 576 ? v[548] : 65535);
+    gl.uniform1f(u.sunChannels, v.length >= 576 ? v[544] : 65535);
     gl.uniform4fv(u.lightPosition, this.positionValues);
     gl.uniform4fv(u.lightColor, this.colorValues);
     this.coneValues.fill(0);

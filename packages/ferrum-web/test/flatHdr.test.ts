@@ -11,7 +11,7 @@ import { webGpuResources } from "../src/webgpuResources.js";
 import { createScenePlacementViewer, mergeScenePlacementPatch, resolveSceneAuthoringDocument } from "../src/authoring.js";
 import { validateFlatLitCommands } from "../src/flatLit.js";
 import { resolveSpriteMaterialPreset } from "../src/spriteMaterial.js";
-import { attachDataSceneRuntimeEngineAdapter, preflightDataSceneFlatLighting } from "../src/dataSceneRuntimeTarget.js";
+import { attachDataSceneRuntimeEngineAdapter, preflightDataSceneLighting } from "../src/dataSceneRuntimeTarget.js";
 import type { FerrumEngine } from "../src/engineTypes.js";
 
 test("HDR is explicit, validates inactive settings and round-trips authored disabled choices", () => {
@@ -74,7 +74,7 @@ test("HDR unlit sprites require known straight alpha and cold preflight includes
     sceneComposition: { prefabs: { item: { props: { components: { sprite: { texture: "color", width: 8, height: 8 }, collider: "none", layer: "wall" } } } },
       fragments: { main: { instances: [{ id: "item", prefab: "item" }] } } } };
   let checked = false;
-  preflightDataSceneFlatLighting(engine, document, { flatLightingPreparer: { prepareFlatLighting: (_scene, assets) => {
+  preflightDataSceneLighting(engine, document, { flatLightingPreparer: { prepareFlatLighting: (_scene, assets) => {
     deepEqual(assets, [{ textureId: 2, normalTextureId: undefined, lighting: { mode: "unlit" } }]); checked = true;
   } } });
   ok(checked);
