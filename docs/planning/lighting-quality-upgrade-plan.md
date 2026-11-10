@@ -2,7 +2,7 @@
 
 기준일: 2026-11-11
 
-상태: M2-a·M3a·M3b·M3c 개발 소스 구현·자동 회귀 완료 · M4/M5 잔여 개발 · 실게임·실기기 검증은 개발 완료 후 진행
+상태: M2-a·M3a·M3b·M3c·M4a Spatial 재질 개발 소스·자동 회귀 완료 · M4 잔여/M5 개발 중 · 실게임·실기기 검증은 개발 완료 후 진행
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -148,7 +148,7 @@ hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·
 
 **개발 소스 현황.** 기본 diffuse profile은 metallic/roughness texture를 계속 거절한다.
 M4a에서 Spatial 정적 모델용 명시적 비금속 `specular` profile과 raw A 세기·raw G roughness·sRGB 색 map을 추가했다.
-최종 자동 회귀와 리뷰를 진행 중이며, 전체 glTF PBR나 Flat 재질 지원으로 세지 않는다.
+양 backend·두 색공간·UV·복구 자동 회귀와 리뷰를 완료했다. 전체 glTF PBR나 Flat 재질 지원으로 세지 않는다.
 flat에는 specular/shininess map·전용 emission map·광원 texture/cookie·light/shadow 수신 mask가 없다.
 Spatial cast/receive bool은 존재하나 광원별 mask와 같지 않다. 반투명 BLEND 모델도 현재 계약 밖이다.
 
@@ -251,7 +251,8 @@ M3b Flat HDR은 양 backend float world/albedo·노출·톤매핑·HUD 경계와
 [Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스)에서 입력·출력 공간과 비용을 관리한다.
 M3c WebGPU 전역 선형 색공간은 실제 backend의 색·alpha·후처리·팔레트·노멀·복구와
 legacy/linear Spatial 행렬 검증을 완료했다. [색공간 계약](../engine/public-api/core.md#색-공간-관리)을 따른다.
-M4a Spatial 정적 모델의 제한 재질 profile을 구현하고 최종 자동 회귀·리뷰 중이다.
+M4a Spatial 정적 모델의 제한 재질 profile은 1,024개 GPU 상태와 기존 환경 2,240개 상태,
+SDK·패키지·문서 자동 회귀와 리뷰를 완료했다. 다음 M4b Flat 재질은 native 메타데이터부터 개발 중이다.
 Flat emission/specular/roughness 재질, 독립 light/shadow mask, 2D spot/cookie·polygon occluder와 M5는 남아 있다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
