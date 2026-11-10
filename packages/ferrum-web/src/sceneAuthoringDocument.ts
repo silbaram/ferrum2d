@@ -146,10 +146,11 @@ export function resolveSceneAuthoringDocument(
     : [];
   if (validateComponents) {
     instances.forEach((instance, index) => {
-      resolveDataSceneInstanceComponents(instance, {
+      const components=resolveDataSceneInstanceComponents(instance, {
         allowTemplate: allowComponentTemplates,
         path: `${path}.sceneComposition.instances.${index}`,
       });
+      if(components.mode==="inline"&&components.sprite.surface&&(lighting?.profile!=="lit"||spatial))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
     });
   }
 

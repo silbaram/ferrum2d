@@ -62,6 +62,7 @@ mod spatial_api;
 mod sprite_lighting_materials;
 mod sprite_nine_slices;
 mod sprite_normal_materials;
+mod sprite_surface_materials;
 mod telemetry;
 mod tilemap_api;
 mod viewport_controls;

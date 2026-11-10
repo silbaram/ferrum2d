@@ -36,7 +36,7 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const escape = (key: string) => key.replace(/~/g, "~0").replace(/\//g, "~1");
 // Raw authored references, including inactive fragments, variants and unused definitions.
 // These are evidence of a reference, not a claim that an instance is currently rendered.
-const component = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components\/(?:visual|sprite)\/(?:asset|texture|normalTexture)$/u;
+const component = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components\/(?:visual|sprite)\/(?:asset|texture|normalTexture|surface\/(?:emissionTexture|specularTexture|roughnessTexture))$/u;
 const template = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components\/template$/u;
 const components = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components$/u;
 function kindAt(pointer: string): UsageAsset["kind"] | undefined {

@@ -14,6 +14,7 @@ import { configureDataSceneSpriteAnimation, prepareDataSceneSpriteAnimation, upd
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
 import { configureSpriteNormals, supportsSpriteNormals } from "./spriteNormals.js";
 import { configureSpriteLighting, supportsSpriteLighting } from "./spriteLighting.js";
+import { configureSpriteSurface,supportsSpriteSurface } from "./spriteSurface.js";
 import { configureSpriteNineSlices, supportsSpriteNineSlices } from "./spriteNineSlice.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
@@ -684,6 +685,7 @@ export async function createEngineWithFramePipeline(
     configureSpriteNineSlices: updates => { requireAlive(); return configureSpriteNineSlices(rustEngine, updates); },
     configureSpriteNormalMaterials: updates => { requireAlive(); return configureSpriteNormals(rustEngine,updates); },
     configureSpriteLightingMaterials: updates => { requireAlive(); return configureSpriteLighting(rustEngine,updates); },
+    configureSpriteSurfaceMaterials: updates => {requireAlive();return configureSpriteSurface(rustEngine,updates);},
     updateDataSceneSpriteAnimations: (updates) => { requireAlive(); return updateDataSceneSpriteAnimations(rustEngine, updates); },
     dataSceneSpriteAnimationState: (entity) => { requireAlive(); return dataSceneSpriteAnimationState(rustEngine, entity); },
     setViewportSize: (width, height) => {
@@ -1003,6 +1005,7 @@ export async function createEngineWithFramePipeline(
     supportsSpriteNineSlices: () => { requireAlive(); return supportsSpriteNineSlices(rustEngine); },
     supportsSpriteNormalMaterials: () => { requireAlive(); return supportsSpriteNormals(rustEngine); },
     supportsSpriteLightingMaterials: () => { requireAlive(); return supportsSpriteLighting(rustEngine); },
+    supportsSpriteSurfaceMaterials:()=>{requireAlive();return supportsSpriteSurface(rustEngine);},
     useDataScene,
     spatialModelAssets: spec => {
       requireAlive();
@@ -1128,6 +1131,9 @@ export async function createEngineWithFramePipeline(
         rustEngine.despawn_physics_entity(entityId, entityGeneration); return undefined;
       }
       if (request.normalTextureId !== undefined && !configureSpriteNormals(rustEngine,[{entity:{entityId,entityGeneration},normalTextureId:request.normalTextureId}])) {
+        rustEngine.despawn_physics_entity(entityId,entityGeneration);return undefined;
+      }
+      if(request.surface!==undefined&&!configureSpriteSurface(rustEngine,[{entity:{entityId,entityGeneration},surface:request.surface}])){
         rustEngine.despawn_physics_entity(entityId,entityGeneration);return undefined;
       }
       return { entityId, entityGeneration };

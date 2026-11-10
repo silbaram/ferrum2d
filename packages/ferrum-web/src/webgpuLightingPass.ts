@@ -3,6 +3,7 @@ import type { WebGpuSunShadowBindings } from "./webgpuSunShadowMask.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
+import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 import type {
   ResolvedLightingScene2D,
   ResolvedPointLight2D,
@@ -48,6 +49,7 @@ export class WebGpuLightingPass {
   private readonly maskTint = new Float32Array(4);
   private readonly shadowRanges: ShadowRange[] = [];
   private normalAdditivePipeline?:GPURenderPipeline;
+  private surfaceAmbientPipeline?:GPURenderPipeline;
   private sunMaskedPipeline?:GPURenderPipeline;
   private sunMaskedNormalPipeline?:GPURenderPipeline;
   private lightingInstanceBuffer: GPUBuffer;
@@ -68,6 +70,8 @@ export class WebGpuLightingPass {
     private readonly pipelineLayout: GPUPipelineLayout,
     private readonly resolutionBindGroup: GPUBindGroup,
     private readonly irradiance=false,
+    private readonly surface=false,
+    private readonly surfaceAlbedoSrgb=false,
   ) {
     this.lightingInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: LIGHTING_INSTANCE_STRIDE_BYTES,
@@ -189,9 +193,10 @@ export class WebGpuLightingPass {
     if (ambientInstanceCount > 0) {
       drawCalls += this.drawLightingInstances(
         pass,
-        this.solidPipeline,
+        this.surface && normals ? (this.surfaceAmbientPipeline??=this.createLightingPipeline("normal",normals.layout)) : this.solidPipeline,
         ambientInstanceCount,
         0,
+        this.surface ? normals?.bindGroup : undefined,
       );
     }
 
@@ -291,6 +296,7 @@ export class WebGpuLightingPass {
   }
 
   private createLightingPipeline(blendMode: "normal" | "additive",normalLayout?:GPUBindGroupLayout,maskLayout?:GPUBindGroupLayout): GPURenderPipeline {
+    const surface=this.surface && !!normalLayout;
     const module = this.device.createShaderModule({
       code: `
         struct Resolution {
@@ -298,6 +304,8 @@ export class WebGpuLightingPass {
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
         ${normalLayout?"@group(1) @binding(0) var normalBuffer:texture_2d<f32>;@group(1) @binding(1) var normalCoverage:texture_2d<f32>;":""}
+        ${surface?"@group(1) @binding(2) var surfaceAlbedo:texture_2d<f32>;":""}
+        ${surface?SPATIAL_SPECULAR_WGSL:""}
 
         ${maskLayout ? `@group(${normalLayout ? 2 : 1}) @binding(0) var shadowMask:texture_2d<f32>;
         @group(${normalLayout ? 2 : 1}) @binding(1) var<uniform> shadowTint:vec4f;` : ""}
@@ -321,9 +329,19 @@ export class WebGpuLightingPass {
 
         ${normalLayout?`
         fn normalResponse(input:VertexOutput,direction:vec3f)->f32 {
-          let pixel=vec2i(input.position.xy);let coverage=clamp(textureLoad(normalCoverage,pixel,0).r,0.,1.);
+          let pixel=vec2i(input.position.xy);let coverage=clamp(${surface?"textureLoad(normalBuffer,pixel,0).a":"textureLoad(normalCoverage,pixel,0).r"},0.,1.);
           let raw=textureLoad(normalBuffer,pixel,0).rgb*2.-1.;var n=vec3f(0.,0.,1.);if(length(raw)>=0.02){n=normalize(raw);}
           return mix(1.,max(dot(n,direction),0.),coverage);
+        }`:""}
+        ${surface?`fn surfaceResponse(input:VertexOutput,direction:vec3f,direct:bool)->vec3f{
+          let pixel=vec2i(input.position.xy);let material=textureLoad(normalCoverage,pixel,0).rgb;
+          if(material.g<=.000001){return vec3f(0.);}
+          var albedo=textureLoad(surfaceAlbedo,pixel,0).rgb/material.g;
+          ${this.surfaceAlbedoSrgb?"albedo=select(albedo/12.92,pow((albedo+.055)/1.055,vec3f(2.4)),albedo>=vec3f(.04045));":""}
+          if(!direct){return albedo;}
+          let raw=textureLoad(normalBuffer,pixel,0).rgb*2.-1.;var n=vec3f(0.,0.,1.);if(length(raw)>=.02){n=normalize(raw);}
+          var reflection=vec3f(0.);if(material.r>0.){reflection=directSpecular(n,direction,vec3f(0.,0.,1.),vec3f(.04),material.b/material.g)*(material.r/material.g);}
+          return albedo*normalResponse(input,direction)+reflection;
         }`:""}
         fn cornerForVertex(vertexIndex: u32) -> vec2f {
           if (vertexIndex == 0u) { return vec2f(0.0, 0.0); }
@@ -358,17 +376,17 @@ export class WebGpuLightingPass {
             var alpha = pow(attenuation, input.light.w) * input.color.a;
             ${normalLayout?`let delta=vec3f(input.light.x-input.pixelPosition.x,(input.light.y-input.pixelPosition.y)/input.scaleY,max(input.mode-2.,0.));
             var direction=vec3f(0.,0.,1.);if(length(delta)>0.0001){direction=normalize(delta);}
-            alpha *= normalResponse(input,direction);`:""}
+            ${surface?"let response=surfaceResponse(input,direction,true);":"alpha *= normalResponse(input,direction);"}`:""}
             ${maskLayout ? `let transmission=mix(vec3f(1.),shadowTint.rgb,textureLoad(shadowMask,vec2i(input.position.xy),0).r);
             let visibility=max(max(transmission.r,transmission.g),transmission.b);
             if(visibility<=0.){return vec4f(0.);}
-            return vec4f(${this.irradiance?"input.color.rgb":"clamp(input.color.rgb,vec3f(0.),vec3f(1.))"}*transmission/visibility,alpha*visibility);`
-            : "return vec4f(input.color.rgb,alpha);"}
+            return vec4f(${this.irradiance?"input.color.rgb":"clamp(input.color.rgb,vec3f(0.),vec3f(1.))"}*${surface?"response*":""}transmission/visibility,alpha*visibility);`
+            : `return vec4f(input.color.rgb${surface?"*response":""},alpha);`}
           }
           var alpha=input.color.a;
-          ${normalLayout?"if(input.mode < -0.5){alpha*=normalResponse(input,input.light.xyz);}":""}
+          ${normalLayout&&!surface?"if(input.mode < -0.5){alpha*=normalResponse(input,input.light.xyz);}":""}
           ${maskLayout?"alpha*=1.-textureLoad(shadowMask,vec2i(input.position.xy),0).r;":""}
-          return vec4f(input.color.rgb,alpha);
+          return vec4f(input.color.rgb${surface?"*surfaceResponse(input,input.light.xyz,input.mode<-.5)":""},alpha);
         }
       `,
     });

@@ -12,6 +12,8 @@ export interface RenderCommandView {
 }
 
 export interface RenderCommandBufferView {
+  /** Optional v1 sorted flat surface metadata. */
+  spriteSurfaceMaterials?: import("./spriteSurface.js").SpriteSurfaceBufferView;
   /** Optional v1 sorted flat receiver metadata, borrowed from Rust for this frame. */
   spriteLightingMaterials?: import("./spriteLighting.js").SpriteLightingBufferView;
   /** Optional v1 command-aligned, borrowed 2-u32 normal material records. */

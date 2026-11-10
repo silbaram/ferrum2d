@@ -1,4 +1,5 @@
 export type { SpriteLightingMaterialSpec, SpriteLightingBufferView } from "./spriteLighting.js";
+export type {SpriteSurfaceMaterialSpec,SpriteSurfaceBufferView} from "./spriteSurface.js";
 export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export * from "./public/workflowExports.js";
 export * from "./public/engineExports.js";

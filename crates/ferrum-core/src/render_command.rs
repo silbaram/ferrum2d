@@ -108,6 +108,37 @@ pub struct SpriteLightingMaterial {
 }
 const _: () = assert!(core::mem::size_of::<SpriteLightingMaterial>() == 8);
 
+/// Optional flat surface profile, separate from the stable receiver and sprite ABIs.
+/// Textures use the exact integer sentinel shared by the platform asset table.
+pub const SPRITE_SURFACE_TEXTURE_NONE: u32 = 16_777_215;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpriteSurfaceMaterial {
+    pub emission_texture: u32,
+    pub specular_texture: u32,
+    pub roughness_texture: u32,
+    pub flags: u32,
+    pub emission: [f32; 3],
+    pub specular: f32,
+    pub roughness: f32,
+    pub reserved: u32,
+}
+impl Default for SpriteSurfaceMaterial {
+    fn default() -> Self {
+        Self {
+            emission_texture: SPRITE_SURFACE_TEXTURE_NONE,
+            specular_texture: SPRITE_SURFACE_TEXTURE_NONE,
+            roughness_texture: SPRITE_SURFACE_TEXTURE_NONE,
+            flags: 0,
+            emission: [0.; 3],
+            specular: 0.,
+            roughness: 1.,
+            reserved: 0,
+        }
+    }
+}
+const _: () = assert!(core::mem::size_of::<SpriteSurfaceMaterial>() == 40);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpriteRenderSortKey {
     pub floor_id: u32,
@@ -135,5 +166,6 @@ pub(crate) struct SpriteRenderItem {
     pub command: SpriteRenderCommand,
     pub normal_material: SpriteNormalMaterial,
     pub lighting_material: SpriteLightingMaterial,
+    pub surface_material: SpriteSurfaceMaterial,
     pub sort_key: SpriteRenderSortKey,
 }

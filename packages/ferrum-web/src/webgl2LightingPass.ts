@@ -59,8 +59,9 @@ export class WebGL2LightingPass {
   private readonly emptyMask = new Float32Array(4);
   private readonly maskUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; tint: WebGLUniformLocation };
   private readonly normalUniforms:{has:WebGLUniformLocation;normal:WebGLUniformLocation;coverage:WebGLUniformLocation;height:WebGLUniformLocation;direction:WebGLUniformLocation};
+  private readonly surfaceUniforms:{has:WebGLUniformLocation;albedo:WebGLUniformLocation;srgb:WebGLUniformLocation};
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false, private readonly irradiance = false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false, private readonly irradiance = false, private readonly surface=false, private readonly surfaceAlbedoSrgb=false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
@@ -133,6 +134,7 @@ export class WebGL2LightingPass {
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
       const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing lighting uniform "+name);return location;};
       this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
+      this.surfaceUniforms={has:uniform("u_surface"),albedo:uniform("u_surface_albedo"),srgb:uniform("u_surface_albedo_srgb")};
       this.maskUniforms={has:uniform("u_has_shadow"),texture:uniform("u_shadow_mask"),tint:uniform("u_shadow_tint")};
 
       this.gl.bindVertexArray(this.shadowVao);
@@ -150,8 +152,9 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets,target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
     this.assertAlive();
+    if(this.surface && !normals?.albedo)throw Error("Surface lighting requires receiver albedo");
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
       this.releaseMask();
       return { drawCalls: 0, pointLightCount: 0, tileOccluderCount: 0, shadowDrawCalls: 0, shadowCasterCount: 0 };
@@ -163,6 +166,8 @@ export class WebGL2LightingPass {
     this.gl.blendEquation(this.gl.FUNC_ADD);
     this.bindRectProgram(resolution);
     this.gl.uniform1i(this.irradianceLocation, this.irradiance ? 1 : 0);
+    this.gl.uniform1i(this.surfaceUniforms.has,Number(this.surface));this.gl.uniform1i(this.surfaceUniforms.albedo,4);this.gl.uniform1i(this.surfaceUniforms.srgb,Number(this.surfaceAlbedoSrgb));
+    if(this.surface){this.gl.activeTexture(this.gl.TEXTURE4);this.gl.bindTexture(this.gl.TEXTURE_2D,normals!.albedo!);this.gl.activeTexture(this.gl.TEXTURE0);}
     this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
     this.gl.uniform1i(this.maskUniforms.has,0);this.gl.uniform1i(this.maskUniforms.texture,3);
     this.gl.uniform3f(this.maskUniforms.tint,scene.shadows.color[0],scene.shadows.color[1],scene.shadows.color[2]);

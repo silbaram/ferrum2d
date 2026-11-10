@@ -2,6 +2,7 @@ import { FLAT_HDR_GLSL } from "./flatHdrShaders.js";
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
 import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
 import { flatLitGlslFragment, FLAT_LIT_COMPOSITE_GLSL } from "./flatLitShaders.js";
+import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
 
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
@@ -40,9 +41,11 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
       }`;
 // Internal shader sources shared by synchronous construction and async preparation.
 const LIT_SPRITE_VERTEX = SPRITE_VERTEX_SOURCE.replace("void main(){", "layout(location=6) in vec2 a_lighting;flat out vec2 v_lighting;void main(){v_lighting=a_lighting;");
+const SURFACE_SPRITE_VERTEX = LIT_SPRITE_VERTEX.replace("void main(){", "layout(location=7) in vec4 a_surface;layout(location=8) in vec2 a_surface_params;flat out vec4 v_surface;flat out vec2 v_surface_params;void main(){v_surface=a_surface;v_surface_params=a_surface_params;");
 export const WEBGL2_SHADER_SOURCES = {
   spriteLitColor: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(false) },
   spriteLitData: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(true) },
+  spriteLitSurfaceData: { vertex: SURFACE_SPRITE_VERTEX, fragment: flatLitGlslFragment(true,true) },
   flatLitComposite: FLAT_LIT_COMPOSITE_GLSL,
   flatHdr: FLAT_HDR_GLSL,
   volumeShadow: { vertex: `#version 300 es
@@ -145,13 +148,25 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
+      uniform bool u_surface,u_surface_albedo_srgb;uniform highp sampler2D u_surface_albedo;
+      ${SPATIAL_SPECULAR_GLSL}
       float normalResponse(vec3 direction){
         if(!u_has_normals)return 1.;
         vec2 uv=gl_FragCoord.xy/vec2(textureSize(u_normal_buffer,0));
-        float coverage=clamp(texture(u_normal_coverage,uv).r,0.,1.);
+        float coverage=clamp(u_surface?texture(u_normal_buffer,uv).a:texture(u_normal_coverage,uv).r,0.,1.);
         vec3 raw=texture(u_normal_buffer,uv).rgb*2.-1.;
         vec3 n=length(raw)<0.02?vec3(0.,0.,1.):normalize(raw);
         return mix(1.,max(dot(n,direction),0.),coverage);
+      }
+      vec3 surfaceResponse(vec3 direction,bool direct){
+        ivec2 pixel=ivec2(gl_FragCoord.xy);vec3 material=texelFetch(u_normal_coverage,pixel,0).rgb;
+        if(material.g<=.000001)return vec3(0.);
+        vec3 albedo=texelFetch(u_surface_albedo,pixel,0).rgb/material.g;
+        if(u_surface_albedo_srgb)albedo=mix(albedo/12.92,pow((albedo+.055)/1.055,vec3(2.4)),step(vec3(.04045),albedo));
+        if(!direct)return albedo;
+        vec3 raw=texelFetch(u_normal_buffer,pixel,0).rgb*2.-1.;vec3 n=length(raw)<.02?vec3(0.,0.,1.):normalize(raw);
+        vec3 reflection=vec3(0.);if(material.r>0.)reflection=directSpecular(n,direction,vec3(0.,0.,1.),vec3(.04),material.b/material.g)*(material.r/material.g);
+        return albedo*normalResponse(direction)+reflection;
       }
       out vec4 outColor;
       void main() {
@@ -160,14 +175,16 @@ export const WEBGL2_SHADER_SOURCES = {
           float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
           float alpha = pow(attenuation, u_light_falloff) * u_color.a;
           vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
-          alpha*=normalResponse(length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta));
+          vec3 direction=length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta);
+          vec3 response=vec3(1.);if(u_surface)response=surfaceResponse(direction,true);else alpha*=normalResponse(direction);
           vec3 transmission=vec3(1.);
           if(u_has_shadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
           float visibility=max(max(transmission.r,transmission.g),transmission.b);
-          outColor = visibility>0.?vec4((u_irradiance?u_color.rgb:clamp(u_color.rgb,0.,1.))*transmission/visibility,alpha*visibility):vec4(0.);
+          outColor = visibility>0.?vec4((u_irradiance?u_color.rgb:clamp(u_color.rgb,0.,1.))*response*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
           float visibility=(u_mode==2&&u_has_shadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
-          outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
+          if(u_surface)outColor=vec4(u_color.rgb*surfaceResponse(u_light_direction,u_mode==2),u_color.a*visibility);
+          else outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
         }
       }` },
   shadow: { vertex: `#version 300 es

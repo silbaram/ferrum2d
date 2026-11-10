@@ -2,6 +2,7 @@ import type { Engine } from "../pkg/ferrum_core.js";
 import type { GameplayEntityHandle } from "./gameplayAuthoring.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
+import { writeSpriteSurfaceStaging } from "./spriteSurface.js";
 
 export const MAX_SPRITE_LIGHTING_UPDATES = 65_536;
 
@@ -74,12 +75,14 @@ export function validateSpriteLighting(commands: Pick<RenderCommandBufferView, "
 
 /** Private GPU staging extension; the public command remains 15 floats. Expand backwards in-place. */
 export function expandLitSpriteCommands(data: Float32Array, commands: RenderCommandBufferView, first: number, count: number,
-  source: { textureInfo?(id: number): { colorSpace: "srgb" | "linear" | "none" } | undefined }, linearWorking: boolean, hdr = false): void {
+  source: { textureInfo?(id: number): { colorSpace: "srgb" | "linear" | "none" } | undefined; textureFlipY?(id: number): boolean }, linearWorking: boolean, hdr = false, surface = false,surfaceColorDecoded=false): void {
   const material = commands.spriteLightingMaterials;
+  const stride = surface ? 24 : 17;
   for (let i = count - 1; i >= 0; i--) {
-    data.copyWithin(i * 17, i * 15, i * 15 + 15);
+    data.copyWithin(i * stride, i * 15, i * 15 + 15);
     const index = first + i, mode = material?.words[index * 2] ?? 0;
-    const srgb = !linearWorking && source.textureInfo?.(Math.trunc(data[i * 17 + 12]!))?.colorSpace === "srgb";
-    data[i * 17 + 15] = mode + (srgb ? 4 : 0) + (hdr ? 8 : 0); data[i * 17 + 16] = material?.values[index * 2 + 1] ?? 0;
+    const srgb = !linearWorking && source.textureInfo?.(Math.trunc(data[i * stride + 12]!))?.colorSpace === "srgb";
+    data[i * stride + 15] = mode + (srgb ? 4 : 0) + (hdr ? 8 : 0); data[i * stride + 16] = material?.values[index * 2 + 1] ?? 0;
+    if (surface) writeSpriteSurfaceStaging(data, i * stride + 17, commands, index, source,surfaceColorDecoded);
   }
 }

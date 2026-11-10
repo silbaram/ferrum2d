@@ -81,6 +81,7 @@ pub struct World {
     pub(crate) sprite_normal_materials: Vec<Option<crate::render_command::SpriteNormalMaterial>>,
     pub(crate) sprite_lighting_materials:
         Vec<Option<crate::render_command::SpriteLightingMaterial>>,
+    pub(crate) sprite_surface_materials: Vec<Option<crate::render_command::SpriteSurfaceMaterial>>,
     pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
     pub(crate) ground_shadows: Vec<Option<ground_shadow::GroundShadowCaster>>,
     pub(crate) sprite_playbacks: Vec<Option<sprite_playback::SpritePlayback>>,

@@ -1,5 +1,7 @@
 import { expandLitSpriteCommands } from "./spriteLighting.js";
 import { flatLitWgslFragment } from "./flatLitShaders.js";
+import { spriteSurfaceTextureId } from "./spriteSurface.js";
+import { WebGpuSpriteSurfaceTextures } from "./webgpuSpriteSurface.js";
 import { SPRITE_NORMAL_NONE } from "./spriteNormals.js";
 import { WebGpuSpritePalette } from "./webgpuSpritePalette.js";
 import { SPRITE_PALETTE_WGSL } from "./spritePaletteShaders.js";
@@ -23,6 +25,7 @@ import type { WebGpuTextureStore } from "./webgpuTextureStore.js";
 const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const COMMAND_STRIDE_BYTES = FLOATS_PER_COMMAND * BYTES_PER_F32;
+interface NormalRange extends WebGpuSpriteRange {normalTextureId:number;emissionTextureId?:number;specularTextureId?:number;roughnessTextureId?:number;}
 
 export interface WebGpuSpritePassStats {
   drawCalls: number;
@@ -37,7 +40,8 @@ export class WebGpuSpritePass {
   private spriteInstanceCapacityBytes = COMMAND_STRIDE_BYTES;
   private materialStaging = new Float32Array(0);
   private readonly spriteRangeScratch: WebGpuSpriteRange[] = [];
-  private readonly normalRangeScratch: (WebGpuSpriteRange & {normalTextureId:number})[] = [];
+  private readonly normalRangeScratch: NormalRange[] = [];
+  private readonly surfaceTextures?:WebGpuSpriteSurfaceTextures;
   private palette?: { resources:WebGpuSpritePalette; alpha:GPURenderPipeline; additive:GPURenderPipeline };
 
   constructor(
@@ -52,9 +56,12 @@ export class WebGpuSpritePass {
     private readonly litMode?: "color" | "data",
     private readonly litHdr = false,
     private readonly linearWorking = false,
+    private readonly surfaceMode = false,
   ) {
+    if(surfaceMode && (!normalMode || litMode!=="data"))throw Error("Surface staging requires the lit data pass");
+    if(surfaceMode)this.surfaceTextures=new WebGpuSpriteSurfaceTextures(device);
     this.spritePipelineLayout = this.device.createPipelineLayout({
-      bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout]:[uniformBindGroupLayout, textureBindGroupLayout],
+      bindGroupLayouts: normalMode?[uniformBindGroupLayout,textureBindGroupLayout,textureBindGroupLayout,...(this.surfaceTextures?[this.surfaceTextures.layout]:[])]:[uniformBindGroupLayout, textureBindGroupLayout],
     });
     this.spriteInstanceBuffer = webGpuResources(this.device).createBuffer({
       size: COMMAND_STRIDE_BYTES,
@@ -64,7 +71,7 @@ export class WebGpuSpritePass {
     this.additiveSpritePipeline = normalMode?this.spritePipeline:this.createSpritePipeline("additive");
   }
 
-  private get stride(): number { return (this.litMode ? 17 : 15) * 4; }
+  private get stride(): number { return (this.surfaceMode ? 24 : this.litMode ? 17 : 15) * 4; }
 
   configurePalettes(palettes:ResolvedSpritePalettes|undefined):void {
     if(this.normalMode) return;
@@ -133,6 +140,7 @@ export class WebGpuSpritePass {
 
   destroy(): void {
     this.releasePalette();
+    this.surfaceTextures?.destroy();
     webGpuResources(this.device).destroy(this.spriteInstanceBuffer);
     this.materialStaging = new Float32Array(0);
     this.spriteRangeScratch.length = 0;
@@ -162,6 +170,7 @@ export class WebGpuSpritePass {
           @location(3) rotation: f32,
           @location(4) flags: f32,
           ${this.litMode?"@location(5) lighting:vec2f,":""}
+          ${this.surfaceMode?"@location(6) surface:vec4f,@location(7) surfaceParams:vec2f,":""}
           @builtin(vertex_index) vertexIndex: u32,
         };
 
@@ -172,6 +181,7 @@ export class WebGpuSpritePass {
           @location(2) corner: vec2f,
           @location(3) @interpolate(flat) flags: f32,
           ${this.litMode?"@location(6) @interpolate(flat) lighting:vec2f,":""}
+          ${this.surfaceMode?"@location(7) @interpolate(flat) surface:vec4f,@location(8) @interpolate(flat) surfaceParams:vec2f,":""}
           ${this.normalMode?"@location(4) @interpolate(flat) rotationCS:vec2f, @location(5) @interpolate(flat) uvSign:vec2f,":""}
         };
 
@@ -223,11 +233,12 @@ export class WebGpuSpritePass {
           output.corner = corner;
           output.flags = input.flags;
           ${this.litMode?"output.lighting=input.lighting;":""}
+          ${this.surfaceMode?"output.surface=input.surface;output.surfaceParams=input.surfaceParams;":""}
           ${this.normalMode?"output.rotationCS=vec2f(rotationCos,rotationSin);output.uvSign=select(vec2f(1.),vec2f(-1.),input.uvRect.zw<input.uvRect.xy);":""}
           return output;
         }
 
-        ${this.litMode?flatLitWgslFragment(this.litMode==="data",this.linearWorking):this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
+        ${this.litMode?flatLitWgslFragment(this.litMode==="data",this.linearWorking,this.surfaceMode):this.normalMode?NORMAL_FRAGMENT:this.sunMaskMode?SUN_MASK_FRAGMENT:`        @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
           if ((u32(input.flags) & 32u) != 0u) {
@@ -259,13 +270,14 @@ export class WebGpuSpritePass {
             { shaderLocation: 3, offset: 14 * BYTES_PER_F32, format: "float32" },
             { shaderLocation: 4, offset: 13 * BYTES_PER_F32, format: "float32" },
             ...(this.litMode?[{shaderLocation:5,offset:60,format:"float32x2" as const}]:[]),
+            ...(this.surfaceMode?[{shaderLocation:6,offset:68,format:"float32x4" as const},{shaderLocation:7,offset:84,format:"float32x2" as const}]:[]),
           ],
         }],
       },
       fragment: {
         module,
         entryPoint: "fs_main",
-        targets: this.litMode==="data"?[0,1,2].map(i=>({format:i===2?(this.litHdr?"rgba16float":this.linearWorking?"rgba8unorm-srgb":"rgba8unorm"):"rgba8unorm",blend:spriteBlendState("alpha")})):this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
+        targets: this.litMode==="data"?(this.surfaceMode?[0,1,2,3]:[0,1,2]).map(i=>({format:i===3?"rgba16float":i===2?(this.litHdr?"rgba16float":this.linearWorking?"rgba8unorm-srgb":"rgba8unorm"):"rgba8unorm",blend:spriteBlendState("alpha")})):this.normalMode?[{format:"rgba8unorm",blend:spriteBlendState("alpha")},{format:"rgba8unorm",blend:spriteBlendState("alpha")}]:[{
           format: this.format,
           blend: this.sunMaskMode&&blendMode==="additive"?{color:{operation:"max",srcFactor:"one",dstFactor:"one"},alpha:{operation:"max",srcFactor:"one",dstFactor:"one"}}:spriteBlendState(blendMode),
         }],
@@ -289,6 +301,14 @@ export class WebGpuSpritePass {
       if(mapped&&(normal.colorSpace==="srgb"||normal.width!==color.width||normal.height!==color.height))throw Error("Sprite normals require a same-size linear/data texture");
       pass.setBindGroup(2,normal.bindGroup);
     }
+    if(this.surfaceTextures){
+      const surface=range as NormalRange;
+      const emission=surface.emissionTextureId??SPRITE_NORMAL_NONE,specular=surface.specularTextureId??SPRITE_NORMAL_NONE,roughness=surface.roughnessTextureId??SPRITE_NORMAL_NONE;
+      pass.setBindGroup(3,this.surfaceTextures.group(
+        (emission===SPRITE_NORMAL_NONE?color:this.textureStore.resource(emission)).view,
+        (specular===SPRITE_NORMAL_NONE?color:this.textureStore.resource(specular)).view,
+        (roughness===SPRITE_NORMAL_NONE?color:this.textureStore.resource(roughness)).view));
+    }
     pass.setVertexBuffer(
       0,
       this.spriteInstanceBuffer,
@@ -307,7 +327,7 @@ export class WebGpuSpritePass {
     const uploadFloatCount = commands.commandCount * FLOATS_PER_COMMAND;
     const byteCount = uploadFloatCount * BYTES_PER_F32;
     if (this.litMode || this.normalMode || commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
-      this.ensureMaterialStaging(commands.commandCount * (this.litMode?17:15));
+      this.ensureMaterialStaging(commands.commandCount * (this.stride/4));
       const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
         0,
@@ -319,7 +339,7 @@ export class WebGpuSpritePass {
         const mapped=materialPass.kind==="base"&&(commands.spriteNormalMaterials?.buffer[i*2]??SPRITE_NORMAL_NONE)!==SPRITE_NORMAL_NONE;
         this.materialStaging[i*FLOATS_PER_COMMAND+13]=(this.materialStaging[i*FLOATS_PER_COMMAND+13]&~64)|(mapped?64:0);
       }
-      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,this.linearWorking,this.litHdr);
+      if(this.litMode) expandLitSpriteCommands(this.materialStaging,commands,0,commands.commandCount,this.textureStore,this.linearWorking,this.litHdr,this.surfaceMode);
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
         byteOffset,
@@ -343,7 +363,11 @@ export class WebGpuSpritePass {
     const ranges=this.normalRangeScratch;let count=0;
     for(let start=0;start<commands.commandCount;){
       const textureId=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]),normalTextureId=commands.spriteNormalMaterials?.buffer[start*2]??SPRITE_NORMAL_NONE;let end=start+1;
-      while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===textureId&&(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normalTextureId)end++;
+      while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===textureId&&(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normalTextureId){
+        let same=true;if(this.surfaceMode)for(let map=0;map<3;map++)if(spriteSurfaceTextureId(commands,start,map)!==spriteSurfaceTextureId(commands,end,map)){same=false;break;}
+        if(!same)break;end++;
+      }
+      if(this.surfaceMode){const range=ranges[count]??(ranges[count]={textureId,normalTextureId,start,end});range.emissionTextureId=spriteSurfaceTextureId(commands,start,0);range.specularTextureId=spriteSurfaceTextureId(commands,start,1);range.roughnessTextureId=spriteSurfaceTextureId(commands,start,2);}
       const range=ranges[count]??(ranges[count]={textureId,normalTextureId,start,end});range.textureId=textureId;range.normalTextureId=normalTextureId;range.start=start;range.end=end;count++;start=end;
     }ranges.length=count;return ranges;
   }

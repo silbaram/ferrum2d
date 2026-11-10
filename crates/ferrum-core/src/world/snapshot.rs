@@ -25,6 +25,7 @@ pub struct WorldSnapshot {
     sprite_nine_slices: Vec<Option<crate::components::SpriteNineSlice>>,
     sprite_normal_materials: Vec<Option<crate::render_command::SpriteNormalMaterial>>,
     sprite_lighting_materials: Vec<Option<crate::render_command::SpriteLightingMaterial>>,
+    sprite_surface_materials: Vec<Option<crate::render_command::SpriteSurfaceMaterial>>,
     sprite_animations: Vec<Option<SpriteAnimation>>,
     ground_shadows: Vec<Option<super::ground_shadow::GroundShadowCaster>>,
     sprite_playbacks: Vec<Option<super::sprite_playback::SpritePlayback>>,
@@ -143,6 +144,7 @@ impl World {
             sprite_nine_slices: self.sprite_nine_slices.clone(),
             sprite_normal_materials: self.sprite_normal_materials.clone(),
             sprite_lighting_materials: self.sprite_lighting_materials.clone(),
+            sprite_surface_materials: self.sprite_surface_materials.clone(),
             sprite_animations: self.sprite_animations.clone(),
             sprite_playbacks: self.sprite_playbacks.clone(),
             ground_shadows: self.ground_shadows.clone(),
@@ -231,6 +233,7 @@ impl World {
         self.sprite_nine_slices = snapshot.sprite_nine_slices.clone();
         self.sprite_normal_materials = snapshot.sprite_normal_materials.clone();
         self.sprite_lighting_materials = snapshot.sprite_lighting_materials.clone();
+        self.sprite_surface_materials = snapshot.sprite_surface_materials.clone();
         self.sprite_animations = snapshot.sprite_animations.clone();
         self.sprite_playbacks = snapshot.sprite_playbacks.clone();
         self.ground_shadows = snapshot.ground_shadows.clone();

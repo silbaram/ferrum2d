@@ -1,4 +1,5 @@
 import { expandLitSpriteCommands } from "./spriteLighting.js";
+import { spriteSurfaceTextureId } from "./spriteSurface.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
@@ -89,16 +90,18 @@ export class SpriteBatch {
   private readonly instanceStride: number;
   private litSource?: SpriteTextureSource;
   private litOutputLocation?: WebGLUniformLocation;
+  private surfaceUniforms?: WebGLUniformLocation[];
   private paletteUniforms?: { count: WebGLUniformLocation; from: WebGLUniformLocation; to: WebGLUniformLocation; srgb: WebGLUniformLocation };
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data", private readonly litHdr = false, private readonly litSourceLinear = linearTarget) {
-    this.instanceFloats = litMode ? 17 : 15;
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false,normalMode=false, private readonly paletteMode=false, private readonly sunMaskMode=false, private readonly litMode?: "color" | "data", private readonly litHdr = false, private readonly litSourceLinear = linearTarget, private readonly surfaceMode = false) {
+    if(surfaceMode && litMode!=="data")throw Error("Surface staging requires the lit data pass");
+    this.instanceFloats = surfaceMode ? 24 : litMode ? 17 : 15;
     this.instanceStride = this.instanceFloats * 4;
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
     try {
-      this.program = createWebGL2Program(this.gl, litMode ? (litMode === "data" ? "spriteLitData" : "spriteLitColor") : sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
+      this.program = createWebGL2Program(this.gl, litMode ? (litMode === "data" ? surfaceMode ? "spriteLitSurfaceData" : "spriteLitData" : "spriteLitColor") : sunMaskMode?"spriteSunShadow":normalMode?"spriteNormal":paletteMode?"spritePalette":"sprite");
       programs.push(this.program);
       const vao = this.gl.createVertexArray();
       if (vao) vaos.push(vao);
@@ -138,6 +141,10 @@ export class SpriteBatch {
       this.gl.vertexAttribDivisor(5, 1);
 
       if (litMode) { gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 2, gl.FLOAT, false, this.instanceStride, 15 * 4); gl.vertexAttribDivisor(6, 1); }
+      if (surfaceMode) {
+        gl.enableVertexAttribArray(7);gl.vertexAttribPointer(7,4,gl.FLOAT,false,this.instanceStride,17*4);gl.vertexAttribDivisor(7,1);
+        gl.enableVertexAttribArray(8);gl.vertexAttribPointer(8,2,gl.FLOAT,false,this.instanceStride,21*4);gl.vertexAttribDivisor(8,1);
+      }
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
       this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
       this.gl.bindVertexArray(null);
@@ -173,6 +180,7 @@ export class SpriteBatch {
       }
       if (litMode) { const location=gl.getUniformLocation(this.program,"u_output_srgb");if(!location)throw Error("Missing lit output uniform");this.litOutputLocation=location; }
       if(normalMode || litMode === "data"){const texture=gl.getUniformLocation(this.program,"u_normal_texture"),has=gl.getUniformLocation(this.program,"u_has_normal"),flip=gl.getUniformLocation(this.program,"u_normal_flip_y");if(!texture||!has||!flip)throw Error("Missing sprite normal uniforms");this.normalUniforms={texture,has,flip};}
+      if(surfaceMode)this.surfaceUniforms=["u_emission_map","u_specular_map","u_roughness_map"].map(name=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing surface map uniform");return location;});
     } catch (error) {
       for (const buffer of buffers) gl.deleteBuffer(buffer);
       for (const vao of vaos) gl.deleteVertexArray(vao);
@@ -298,6 +306,13 @@ export class SpriteBatch {
   drawNormalBatches(source:SpriteTextureSource,commands:RenderCommandBufferView,resolution:[number,number],material:ResolvedSpriteMaterialPreset,screenOffset:readonly[number,number]):SpriteBatchStats {
     const uniforms=this.normalUniforms;if(!uniforms)throw Error("Not a normal sprite batch");
     this.bindForDraw(resolution,screenOffset,commands);this.gl.uniform1i(uniforms.texture,1);
+    let previous2:WebGLTexture|null=null,previous3:WebGLTexture|null=null,previous4:WebGLTexture|null=null;
+    if(this.surfaceMode){
+      this.gl.activeTexture(this.gl.TEXTURE2);previous2=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;
+      this.gl.activeTexture(this.gl.TEXTURE3);previous3=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;
+      this.gl.activeTexture(this.gl.TEXTURE4);previous4=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;
+      this.gl.activeTexture(this.gl.TEXTURE0);
+    }
     let draws=0;
     try{for(const pass of this.materialPassesFor(material)){
       this.applyBlendMode("alpha");
@@ -305,14 +320,26 @@ export class SpriteBatch {
         const color=Math.trunc(commands.buffer[start*commands.floatsPerCommand+12]);
         const normal=pass.kind==="base"?(commands.spriteNormalMaterials?.buffer[start*2]??SPRITE_NORMAL_NONE):SPRITE_NORMAL_NONE;
         let end=start+1;
-        while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===color&&(pass.kind!=="base"||(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normal))end++;
+        while(end<commands.commandCount&&Math.trunc(commands.buffer[end*commands.floatsPerCommand+12])===color&&(pass.kind!=="base"||(commands.spriteNormalMaterials?.buffer[end*2]??SPRITE_NORMAL_NONE)===normal)){
+          let same=true;if(this.surfaceMode)for(let map=0;map<3;map++)if(spriteSurfaceTextureId(commands,start,map)!==spriteSurfaceTextureId(commands,end,map)){same=false;break;}
+          if(!same)break;end++;
+        }
         const mapped=normal!==SPRITE_NORMAL_NONE;
         if(mapped){const n=source.textureInfo?.(normal),c=source.textureInfo?.(color);if(!n||!c||n.colorSpace==="srgb"||n.width!==c.width||n.height!==c.height)throw Error("Sprite normals require a same-size linear/data texture");}
         this.gl.uniform1i(uniforms.has,mapped?1:0);this.gl.uniform1i(uniforms.flip,source.textureFlipY?.(normal)?1:0);
         this.gl.activeTexture(this.gl.TEXTURE1);this.gl.bindTexture(this.gl.TEXTURE_2D,mapped?source.texture(normal):source.texture(color));this.gl.activeTexture(this.gl.TEXTURE0);
+        if(this.surfaceUniforms)for(let map=0;map<3;map++){
+          const id=spriteSurfaceTextureId(commands,start,map);
+          this.gl.uniform1i(this.surfaceUniforms[map],map+2);this.gl.activeTexture(this.gl.TEXTURE0+map+2);
+          this.gl.bindTexture(this.gl.TEXTURE_2D,source.texture(id===SPRITE_NORMAL_NONE?color:id));
+        }
+        this.gl.activeTexture(this.gl.TEXTURE0);
         draws+=this.drawRange(source.texture(color),commands,start,end,pass,source.textureFlipY?.(color)??false);start=end;
       }
-    }}finally{this.gl.bindVertexArray(null);this.gl.activeTexture(this.gl.TEXTURE0);this.applyBlendMode("alpha");}
+    }}finally{
+      if(this.surfaceMode){this.gl.activeTexture(this.gl.TEXTURE2);this.gl.bindTexture(this.gl.TEXTURE_2D,previous2);this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,previous3);this.gl.activeTexture(this.gl.TEXTURE4);this.gl.bindTexture(this.gl.TEXTURE_2D,previous4);}
+      this.gl.bindVertexArray(null);this.gl.activeTexture(this.gl.TEXTURE0);this.applyBlendMode("alpha");
+    }
     return {drawCalls:draws,textureSwitchCount:Math.max(0,draws-1)};
   }
 
@@ -342,7 +369,7 @@ export class SpriteBatch {
         pass,
         this.materialStaging,
       );
-      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.litSourceLinear,this.litHdr);
+      if (this.litMode) expandLitSpriteCommands(this.materialStaging,commands,startCommand,commandCount,this.litSource!,this.litSourceLinear,this.litHdr,this.surfaceMode,this.litSourceLinear);
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, this.litMode ? uploadFloatCount : materialFloatCount);
     } else {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);
@@ -429,7 +456,7 @@ export class SpriteBatch {
   private applyBlendMode(blendMode: SpriteMaterialBlendMode): void {
     this.gl.enable(this.gl.BLEND);
     this.gl.blendEquation(this.gl.FUNC_ADD);
-    setSpriteBlend(this.gl, this.linearTarget, blendMode === "additive");
+    setSpriteBlend(this.gl, this.linearTarget || this.surfaceMode, blendMode === "additive");
   }
 
   /** Internal allocation summary; no GPU queries or per-command work. */

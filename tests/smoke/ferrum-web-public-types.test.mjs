@@ -23,6 +23,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       import { createRenderer, restoreGameStateSnapshot,
         type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
         type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer, type FlatHdrOptions, type ResolvedFlatHdrOptions,
+        type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView,
         type GameStateSnapshot,
       } from '@ferrum2d/ferrum-web/core';
       import {
@@ -31,6 +32,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
         type SceneInstanceHandleRegistry,
         type ScenePlacementViewer,
         type SceneSpatialPatch,
+        type DataSceneSpriteSurfaceSpec, type ResolvedDataSceneSpriteSurface, type DataSceneSpriteVisualSpec,
         type FlatLightingAsset,
         type FlatLightingPreparer as AuthoringFlatLightingPreparer,
         applyDataSceneAuthoringDocument,
@@ -60,6 +62,18 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const words = new Uint32Array(2);
       const sidecar: SpriteLightingBufferView = { version: 1, stride: 2, words, values: new Float32Array(words.buffer) };
       engine.configureSpriteLightingMaterials([{ entity: { entityId: 1, entityGeneration: 1 }, lighting: receiver }]);
+      const surface: SpriteSurfaceMaterialSpec = { emission: [4, 2, 1], emissionTextureId: 12, specular: 0.6, roughness: 0.5 };
+      engine.configureSpriteSurfaceMaterials([{ entity: { entityId: 1, entityGeneration: 1 }, surface }]);
+      const surfaceWords = new Uint32Array(10);
+      const surfaceSidecar: SpriteSurfaceBufferView = { version: 1, stride: 10, words: surfaceWords, values: new Float32Array(surfaceWords.buffer) };
+      const authoredSurface: DataSceneSpriteSurfaceSpec = { emission: [4, 2, 1], emissionTexture: 'glow', specularTexture: 10, roughness: 0 };
+      const visual: DataSceneSpriteVisualSpec = { kind: 'sprite', texture: 'base', width: 16, height: 16, lighting: receiver, surface: authoredSurface };
+      const resolvedSurface: ResolvedDataSceneSpriteSurface = { emissionTexture: { kind: 'asset', value: 'glow', name: 'glow' } };
+      // @ts-expect-error metallic is outside this bounded non-metallic profile
+      const metallicSurface: SpriteSurfaceMaterialSpec = { metallic: 1 };
+      // @ts-expect-error authored references use stable map fields rather than runtime ID aliases
+      const runtimeAuthoredSurface: DataSceneSpriteSurfaceSpec = { emissionTextureId: 12 };
+      void [surfaceSidecar, visual, resolvedSurface, metallicSurface, runtimeAuthoredSurface];
       renderer.loadTexture(1, 'surface.png', { alphaMode: 'straight' });
       renderer.prepareFlatLighting(lighting, assets);
       renderer.setLighting(lighting);

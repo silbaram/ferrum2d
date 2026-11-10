@@ -185,6 +185,8 @@ export type {
   DataSceneVariableValues,
   DataSceneSpriteAnimationSpec,
   DataSceneSpriteComponentSpec,
+  DataSceneSpriteSurfaceSpec,
+  ResolvedDataSceneSpriteSurface,
   DataSceneSpriteFrameSpec,
   DataSceneSpriteVisualSpec,
   DataSceneBodySpec,

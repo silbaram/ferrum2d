@@ -292,7 +292,14 @@ fn protect_numeric_textures(revisions: &mut [Revision], value: &Value, origin: &
     fn has_numeric_texture(value: &Value) -> bool {
         match value {
             Value::Object(object) => object.iter().any(|(key, value)| {
-                ((key == "texture" || key == "normalTexture") && value.is_number())
+                (matches!(
+                    key.as_str(),
+                    "texture"
+                        | "normalTexture"
+                        | "emissionTexture"
+                        | "specularTexture"
+                        | "roughnessTexture"
+                ) && value.is_number())
                     || has_numeric_texture(value)
             }),
             Value::Array(values) => values.iter().any(has_numeric_texture),

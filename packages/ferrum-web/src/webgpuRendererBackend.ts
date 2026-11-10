@@ -84,6 +84,10 @@ export class WebGpuRendererBackend implements Renderer {
   private spriteNormals?:WebGpuSpriteNormals;
   private flatLit?:WebGpuFlatLitPass;
   private flatLitHdr?:WebGpuFlatLitPass;
+  private flatLitSurface?:WebGpuFlatLitPass;
+  private flatLitHdrSurface?:WebGpuFlatLitPass;
+  private flatPassesUsed=0;
+  private readonly flatSurfaceState={active:false};
   private hdrPass?:WebGpuHdrPass;
   private hdrActive?:ResolvedFlatHdrOptions;
   private hdrDebugLines?:WebGpuDebugLinePass;
@@ -335,10 +339,15 @@ export class WebGpuRendererBackend implements Renderer {
     this.lightingScene = nextLightingScene;
     if(nextLightingScene.profile==="lit")this.lightingPass.clearTargets();
     this.sunShadowConfigured=!!scene&&scene.directionalLight!==undefined;
-    if(nextLightingScene.profile!=="lit"||!nextLightingScene.enabled){this.flatLit?.clearTargets();this.flatLitHdr?.clearTargets();}
-    if(!nextHdr){this.hdrPass?.release();this.flatLitHdr?.clearTargets();}
+    if(nextLightingScene.profile!=="lit"||!nextLightingScene.enabled){this.clearFlatTargets();}
+    if(!nextHdr){this.hdrPass?.release();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
   }
 
+  private clearFlatTargets():void{this.flatLit?.clearTargets();this.flatLitSurface?.clearTargets();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
+  private pruneFlatTargets():void{
+    if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
+    if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
+  }
   prepareFlatLighting(scene:LightingScene2D,assets:readonly FlatLightingAsset[]):void{
     this.assertAlive();const resolved=resolveLightingSceneInto(createResolvedLightingScene(),scene);if(resolved.profile!=="lit")return;validateFlatLitMaterial(this.spriteMaterial);for(const asset of assets)validateFlatLitAsset(this.textureStore,asset,flatHdrOptions(resolved)!==undefined);
   }
@@ -413,8 +422,9 @@ export class WebGpuRendererBackend implements Renderer {
 
   render(): void {
     this.assertAlive();
+    this.pruneFlatTargets();this.flatPassesUsed=0;
     this.hdrActive=undefined;this.hdrDrawCalls=0;this.managedDrawCalls=0;this.frameHasDrawnScene=false;
-    if(!flatHdrOptions(this.lightingScene)){this.hdrPass?.release();this.flatLitHdr?.clearTargets();}
+    if(!flatHdrOptions(this.lightingScene)){this.hdrPass?.release();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
     resetRendererStatsInto(this.currentStats);
     this.frameActive = true;
     const encoder = this.device.createCommandEncoder();
@@ -425,16 +435,20 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
-    const receivers=validateFlatLitCommands(commands,this.lightingScene,this.textureStore,this.spriteMaterial);const lit=this.lightingScene.profile==="lit";
+    const receivers=validateFlatLitCommands(commands,this.lightingScene,this.textureStore,this.spriteMaterial,this.flatSurfaceState);const lit=this.lightingScene.profile==="lit";
     const hdr=flatHdrOptions(this.lightingScene);
     if(hdr)validateFlatHdrTransition(hdr,this.hdrActive,this.frameHasDrawnScene);
     let flat:WebGpuFlatLitPass|undefined;
     if(lit){
-      flat=hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking))
+      const surface=this.flatSurfaceState.active&&this.lightingScene.enabled;
+      flat=surface ? (hdr ? (this.flatLitHdrSurface??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking,true))
+        : (this.flatLitSurface??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking,true)))
+        : hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking))
         :(this.flatLit??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking));
+      this.flatPassesUsed|=1<<((hdr?2:0)+(surface?1:0));
       flat.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled);
-      (hdr?this.flatLit:this.flatLitHdr)?.clearTargets();
-    }else{this.flatLit?.clearTargets();this.flatLitHdr?.clearTargets();}
+
+    }else{this.clearFlatTargets();}
     const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     this.spritePass.validatePalettes(commands);
     if(commands.spatial && this.pixelPerfect)throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
@@ -475,7 +489,7 @@ export class WebGpuRendererBackend implements Renderer {
       spriteStats.drawCalls,
       spriteStats.textureSwitchCount,
     );
-    if(flatStats){this.currentStats.drawCalls+=flatStats.data.drawCalls;this.currentStats.batchCount+=flatStats.data.drawCalls;this.currentStats.textureBindCount+=flatStats.data.drawCalls*2+3;this.currentStats.textureSwitchCount+=flatStats.data.textureSwitchCount;}
+    if(flatStats){this.currentStats.drawCalls+=flatStats.data.drawCalls;this.currentStats.batchCount+=flatStats.data.drawCalls;this.currentStats.textureBindCount+=flatStats.data.drawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.data.textureSwitchCount;}
     this.currentStats.normalDrawCalls=flatStats?.data.drawCalls??normalStats?.drawCalls??0;
     if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     addLightingStatsInto(
@@ -515,6 +529,7 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
     this.assertAlive();
+    this.pruneFlatTargets();
     if (postProcess !== undefined) {
       this.postProcessPass.setPostProcess(postProcess);
     }
@@ -551,7 +566,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.lightingPass.destroy();
     this.spritePass.destroy();
     this.spriteNormals?.destroy();
-    this.flatLit?.destroy();this.flatLitHdr?.destroy();this.hdrPass?.destroy();this.hdrDebugLines?.destroy();
+    this.flatLit?.destroy();this.flatLitHdr?.destroy();this.flatLitSurface?.destroy();this.flatLitHdrSurface?.destroy();this.hdrPass?.destroy();this.hdrDebugLines?.destroy();
     this.sunShadowMask?.destroy();
     this.pixelPass?.release();this.managedFrame?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);

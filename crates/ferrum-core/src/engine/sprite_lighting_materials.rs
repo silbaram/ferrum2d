@@ -39,6 +39,9 @@ impl Engine {
         }
         for (index, material) in changes {
             self.world.sprite_lighting_materials[index] = material;
+            if material.is_none() {
+                self.world.sprite_surface_materials[index] = None;
+            }
         }
         true
     }
