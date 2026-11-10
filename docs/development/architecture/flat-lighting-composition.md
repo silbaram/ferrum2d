@@ -257,3 +257,24 @@ OFF는 추가 draw/target이 없으며 warm 테이블의8 KiB는 destroy/recover
 동기 group/write 실패는 partial cache를 지워 재시도를 허용한다. 비동기 GPU allocation/validation 실패는
 버퍼를 회수하고 오류를 고정해 다음 preparation에 전달한다. destroy 뒤 scope 완료는 자원을 다시 건드리지 않는다.
 원본·좌표·비용 범위는 [공개 cookie 계약](../../engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+## 선택형 Flat convex polygon
+
+`lightingPolygons`는3..8 꼭짓점·최대256개 도형의 raw/f32 strict convex·shape·좌표/광원/투영 한도를 검사한다.
+각 edge에 대해 다른 모든 점의 반평면을 검사하므로 local turn만 같은 self-intersecting star도 거절한다.
+resolve cache의 warm match는 필드 형태도 검사한다. 반환 값과 geometry cache는 원본 꼭짓점과 분리된 소유 복사본이다.
+부분 검증 실패는 활성 renderer 씬을 교체하지 않으며 cold authoring에는 별도 polygon v1 capability를 요구한다.
+
+`lightingPolygonShadows`는 타원 거리로 가장 가까운 edge를 cull하고, 내부/경계 광원은 기존 사각형 정책처럼 제외한다.
+원본 body와 두 각도 접선을 유한 extrusion한 끝점의 convex hull은 최대10개 vertex다. 기존 rectangle clip helper가
+최대4개 교차점을 추가하므로 XY 출력은72 float로 제한한다. 기존 사각형 투영 함수와36-float 상한은 유지한다.
+`LightingShadowGeometryCache`는 두 도형의 deep snapshot·joint revision으로 광원별 위치/반경/투영/clip 캐시를 갱신한다.
+실제 Flat 합성용 effective scene에도 polygon 배열을 전달하고 생략할 때 해제해 이전 도형을 재사용하지 않는다.
+
+두 backend는 기존 광원별 union mask와 shadow staging을 사용한다. 새 target·shader·Native record는 없다.
+정적 CPU geometry는 재사용하지만 기존 GL `bufferSubData`와 GPU shadow `writeBuffer`/mask draw는 계속 수행한다.
+M5의 shadow 예산·정적 upload 최적화와 구분한다. 모든 한도를 함께 쓰면 광원별 XY cache는 최대55,296 float이며
+2의 거듭제곱 용량으로 최대256 KiB를 유지한다. GL은 한 shadow vertex 버퍼를 재사용하고, WebGPU의10-float shadow
+vertex staging은 광원별 구간을 한 버퍼로 합치므로32개 광원의 최악 용량은 CPU/GPU 각각64 MiB까지 증가할 수 있다.
+실제 bytes는 renderer resource 통계와 함께 검사하며 이를 실기기 성능 보장으로 해석하지 않는다.
+[공개 도형 계약](../../engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.

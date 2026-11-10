@@ -899,3 +899,7 @@ OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지
 `textureId` resolver로 해석한 뒤 `flatLightingPreparer`에 전달한다. cookie 문서는 renderer의
 `flatLightingCookieVersion?.() === 1`을 자산 조회·native 교체 전에 요구한다. 구 preparer에는 cookie 없는 문서를 계속 적용한다.
 [Cookie 범위와 자산 역할](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+선택형 `lighting.polygonOccluders`도 순서·좌표·OFF를 기존 source/patch/Undo/JSON 복원에서 보존한다.
+비어 있지 않은 요청은 renderer의 `flatLightingPolygonVersion?.() === 1`을 자산 조회/native 교체 전에 검사한다.
+잘못된 도형·지원 없는 preparer는 기존 씬을 보존한다. [다각형 원본 계약](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.

@@ -718,6 +718,8 @@ Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 �
 선택형 lit point의 `cookie`는 `texture` 이름/ID 또는 `textureId`와 `rotationRadians`·`uv`를 받는다.
 문서는 이름·비활성·명시적0/UV 반전을 보존하고 apply/restore는 cookie v1 renderer와 data 자산을 사전 검사한다.
 [Cookie 필드·좌표·원본 계약](data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+lit의 `polygonOccluders[].vertices`는 ordered convex XY를 보관하고 OFF·patch·Undo/Redo·새 handle 복원에서도 유지한다.
+적용 전 polygon v1 renderer가 필요하며 한도·유한 투영·내부 광원 정책은 [다각형 차폐 계약](data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
 `directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
 기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
 건물은 `visual.shadow.shape:"volume"`과 필수 `width/depth/height`, 선택형 `roofHeight/offsetX/offsetY`로

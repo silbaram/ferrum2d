@@ -2003,3 +2003,7 @@ Flat lit 점광원의 선택형 cone은 플랫폼의 cold source 검증·view �
 분리하며 cold capability·자산 검증 뒤 씬을 교체한다. Native ABI와 private legacy14/lit18 row는 유지한다.
 GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 target/pass는 없다.
 캐시·실패·복구와 추가 draw/8 KiB 테이블 비용은 [cookie 구조](flat-lighting-composition.md#선택형-flat-cookie)를 따른다.
+
+선택형 Flat polygon caster는 플랫폼의 bounded convex 도형이며 Native collider나 태양 caster와 별개다.
+기존 point max-union mask를 재사용하고 사각형 투영 경로·Native ABI·light row를 유지한다.
+정적 CPU geometry 재사용과 활성 shadow GPU upload/draw 비용은 [polygon 구조](flat-lighting-composition.md#선택형-flat-convex-polygon)에서 구분한다.

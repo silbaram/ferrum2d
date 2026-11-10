@@ -1469,6 +1469,9 @@ callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예�
 `view.lighting`에서 ID로 해석하고 renderer setter는 loaded numeric data 자산만 받는다.
 [자산·저장·좌표 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
 
+선택형 polygon이 있는 문서는 `FlatLightingPreparer.flatLightingPolygonVersion?.() === 1`도 요구한다.
+구 preparer는 polygon이 없는 문서를 계속 지원한다. [도형·원본·비용](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+
 ## Spatial 효과 합성 선택 · 개발 소스
 
 `SpatialEnvironmentSpec.composition: "legacy"|"separated"`를 선택한다. 생략은 기존 합성이다.

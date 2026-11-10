@@ -565,7 +565,7 @@ legacy overlay에서 `spot` 요청은 오류다. Source JSON과 기존 scene-aut
 WebGL2는 점광원마다 vec4 uniform을 갱신한다. WebGPU는 private lit row를14→18 float
 (56→72B)로 확장하며 legacy row는14 float를 유지한다. buffer capacity는 기존처럼2의 거듭제곱으로 증가한다.
 원뿔 때문에 새 texture·target·추가 합성 pass를 만들지 않는다. OFF에는 기존 lit target 해제 규칙을 따른다.
-cookie는 아래 계약으로 함께 사용할 수 있다. polygon occluder는 후속 개발이다.
+cookie와 볼록 다각형 차폐는 아래 계약으로 함께 사용할 수 있다.
 
 ## Flat 2D cookie 조명 · 개발 소스
 
@@ -610,3 +610,48 @@ texture/sampler binding을 복원한다. WebGPU는 lit pass variant마다 lazy8 
 재import된 view는 다시 바인딩한다. cookie 광원마다 direct draw를 분리하므로 추가 draw 비용이 있지만 target/pass는 추가하지 않는다.
 warm 테이블·shader는 유지할 수 있으나 기본/OFF 새 프레임은 cookie 자원을 만들지 않는다.
 기기 할당/검증 실패는 명시적 오류로 유지하고 backend 복구 때 재생성한다. 실제 기기 성능은 개발 완료 후 별도로 검증한다.
+
+## Flat 볼록 다각형 차폐 · 개발 소스
+
+`profile:"lit"`의 선택형 `polygonOccluders`는 점광원의 2D 그림자 도형이다. 꼭짓점3~8개를 외곽선 순서로
+작성하고 시계/반시계 방향을 모두 허용한다. 최대256개(총2,048개 꼭짓점)이며 좌표는 float32로 표현할 수 있는
+유한수 ±1,000,000,000 범위다. 원본 값과 float32 변환 결과가 모두 엄격한 볼록 도형이어야 한다.
+희소 배열·중복점·일직선·오목/교차 도형·알 수 없는 필드를 OFF 상태에서도 거절한다.
+
+```ts
+renderer.setLighting({
+  profile: "lit", ambientIrradiance: [0.1, 0.1, 0.1],
+  pointLights: [{ x: 12, y: 48, radius: 150 }],
+  polygonOccluders: [{ vertices: [
+    { x: 48, y: 24 }, { x: 72, y: 48 }, { x: 48, y: 72 }
+  ] }],
+  shadows: { color: [0, 0, 0, 1], projectionLength: 512 }
+});
+```
+
+도형이 하나 이상 있으면 함께 사용하는 기존 사각형은 최대1,024개, 점광원 위치는 ±1e9,
+두 반경은 양의 float32로1e6 이하이고 비율도 양의 유한 float32여야 한다.
+`projectionLength`·선택형 `maxDistance`는 양수1e6 이하이며 비활성 shadow 설정도 검사한다.
+도형을 사용하지 않는 기존 사각형·legacy overlay 계약은 바뀌지 않는다. 빈 배열도 lit profile 안에 작성한다.
+
+기존 점광원 타원의 거리 단위로 원본 도형과 두 각도 접선의 유한 돌출 끝점을 합친 convex hull을 만들고
+화면 사각형에 clip한다. `projectionLength`는 유한한 접선 돌출 길이이며 무한 그림자나 모든 방향에서
+같은 끝 거리를 보장하는 물리 투영이 아니다. 광원이 도형 내부나 경계에 있으면 기존 사각형과 같이 그 도형의 그림자는 만들지 않는다.
+`maxDistance`는 타원 거리로 도형의 가장 가까운 변까지 검사한다. `view.lighting(...)`은 꼭짓점에도
+카메라 이동과 `groundYScale`을 적용하며 원본 world 좌표는 유지한다.
+
+기존 광원별 max-union mask에 사각형과 함께 합성하므로 겹침이 투과율을 반복해서 줄이지 않는다.
+한 광원의 차폐가 다른 광원을 지우지 않으며 light/shadow 수신 mask·spot/cookie·diffuse/GGX와 함께 사용한다.
+환경광·발광·HUD를 유지한다. 태양광·Spatial·native 지면 caster로 해석하거나 collider/layer에서 자동 추론하지 않는다.
+
+`PolygonOccluder2D`는 `/labs`와 기존 root aggregate에 공개한다. 원본 JSON·기존 lighting patch/Undo/Redo·진행 저장은
+순서·좌표·OFF 설정을 보존한다. 적용/복원은 `FlatLightingPreparer.flatLightingPolygonVersion() === 1`을
+자산 조회와 native 씬 교체 전에 요구한다. 도형이 없는 문서에는 새 capability가 필요 없다.
+별도 도형 편집 UI나 dependency·Native ABI·light instance row는 추가하지 않는다.
+
+기존 point shadow mask target과 광원별 mask draw를 재사용한다. polygon만을 위한 새 target/pass는 없지만,
+사각형과 마찬가지로 활성 shadow 광원마다 기존 mask draw가 필요하다. `shadowCasterCount`에는 실제 그린 두 종류의
+도형을 모두 세고 `tileOccluderCount`는 기존 사각형 수만 센다. polygon 한 개의 clip 결과는 최대12개 삼각형(72 XY float)이다.
+도형 변경은 deep snapshot으로 geometry cache를 무효화하며 정적 CPU geometry를 재사용한다.
+현재 mask geometry의 GPU upload/draw는 기존 경로를 따른다. warm upload0·광원 수 무관 비용을 주장하지 않으며 M5에서 예산을 다룬다.
+OFF는 추가 draw/target이 없고, 활성 이후 CPU cache와 GPU staging 용량은 객체 수명 동안 유지할 수 있다.

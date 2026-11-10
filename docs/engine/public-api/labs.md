@@ -205,3 +205,9 @@ callback 중 runtime을 해제하면 진행 중 sync는 오류로 중단하고 �
 `rotationRadians`·`uv`를 받는다. `ResolvedPointLightCookie2D`는 기본 회전0과 전체 UV를 포함하며 이름을 보존한다.
 raw R*A·좌표·data 이미지 준비·원본 저장·renderer의 숫자 ID 요구·GPU 비용은
 [Flat cookie 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+## Flat 볼록 다각형 차폐 · 개발 소스
+
+`PolygonOccluder2D`의 `vertices`는 ordered XY 배열이다. lit의 `polygonOccluders`에서 사용하며 양 winding을 허용한다.
+3..8 꼭짓점·256개 도형 한도, raw/f32 strict convex 검증, 유한 접선 돌출과 내부 광원 정책,
+원본 저장·cold capability·캐시 및 비용은 [Polygon 계약](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.

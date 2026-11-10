@@ -149,12 +149,12 @@ hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·
 **개발 소스 현황.** 기본 diffuse profile은 metallic/roughness texture를 계속 거절한다.
 M4a에서 Spatial 정적 모델용 명시적 비금속 `specular` profile과 raw A 세기·raw G roughness·sRGB 색 map을 추가했다.
 양 backend·두 색공간·UV·복구 자동 회귀와 리뷰를 완료했다. 전체 glTF PBR나 Flat 재질 지원으로 세지 않는다.
-M4b Flat에는 선택형 emission/specular/roughness와 map, M4c Flat·Spatial에는 독립 light/shadow 수신 mask를 구현하고 자동 회귀를 완료했다. 2D spot과 cookie는 양 backend·저장/복원·자동 회귀를 완료했고 polygon occluder는 남아 있다.
+M4b Flat에는 선택형 emission/specular/roughness와 map, M4c Flat·Spatial에는 독립 light/shadow 수신 mask를 구현하고 자동 회귀를 완료했다. M4d의 2D spot·cookie·볼록 다각형 차폐도 양 backend·저장/복원·자동 회귀를 완료했다.
 Spatial cast/receive bool은 존재하나 광원별 mask와 같지 않다. 반투명 BLEND 모델도 현재 계약 밖이다.
 
-**방향:** 먼저 lit/unlit·emission·선택적 수신과 간단한 specular/roughness를 제한된 재질 profile로 설계한다.
+**유지 기준:** lit/unlit·emission·선택적 수신과 specular/roughness를 제한된 재질 profile로 관리한다.
 색/normal/추가 map의 UV·atlas·flip·sampler·색공간·재import 계약을 함께 유지한다.
-cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. glTF 전체 PBR를 받아 조용히 무시하는 방식은 금지한다.
+cookie/2D spot/다각형 occluder는 동일 lit 경로를 사용한다. glTF 전체 PBR를 받아 조용히 무시하는 방식은 금지한다.
 
 근거: [모델 importer](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialModel.ts),
 [sprite material](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts),
@@ -266,7 +266,13 @@ M4d의 선택형 2D point cone은 strict source/JSON·view 변환·양 backend�
 선택형 point cookie도 data 자산·원본 이름/현재 ID 재매핑·cold capability·양 backend를 연결하고
 544개 cookie 상태를 포함한 전체 Flat2,512개 GPU 상태, SDK1,498개와 공식 viewer 검증·리뷰를 완료했다.
 리뷰에서 발견한 sparse UV 검증 누락을 수정하고 실패·자원 수명 회귀를 추가했다.
-[Cookie 계약](../engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다. polygon occluder와 M5는 남아 있다.
+[Cookie 계약](../engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+M4d의 bounded convex polygon도 raw/f32 검증·기존 광원별 union mask·양 backend와 저장/복원을 연결했다.
+다각형576개 상태와 독립 ray/edge 픽셀 기준을 포함한 전체 Flat3,088개 상태, SDK1,505개,
+공식 viewer 전체 회귀·package/public types·문서/Pages를 검증하고 리뷰에서 접선 동률의 winding 의존을 수정했다.
+최종 SDK는 별도 컴파일의696개 JS/선언 파일과 일치한다. [다각형 계약](../engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+M4는 개발 소스·자동 회귀를 완료했다. M5의 광원 전환·shadow 예산·넓은 Bloom 개선은 남아 있으며,
+현재 Flat shadow의 정적 CPU geometry cache를 GPU upload/draw0으로 해석하지 않는다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
@@ -276,7 +282,6 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M4 제작 표현력 | M01 잔여. 2D polygon occluder (수신 mask·spot·cookie 완료) | M2 및 해당 기능에 필요한 M3 하위 단계 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
 | M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
 | M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
@@ -355,7 +360,7 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 ## 9. 범위 결정과 보류 조건
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
-- **다음:** 선택적 재질 반사·수신 제어·cookie/spot, 광원 선택 안정화, 비용이 검증된 Bloom 개선.
+- **다음:** M5 광원 전환 안정화·shadow 작업 예산·넓은 Bloom 개선과 비용 검증. 실게임·실기기는 개발 완료 후 진행한다.
 - **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.

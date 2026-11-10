@@ -2910,3 +2910,18 @@ GPU helper unit은32행 한도·동적 offset·warm 재사용·view 교체/퇴�
 role 충돌 뒤 문서/handle/pixels 보존, 탭·Playing·원본 export를 검사한다.
 `test:placement-flat-lighting`과 `test:placement-asset-usage`는 OFF/numeric cookie 역할과 정확한 asset pointer를 검사한다.
 실게임·실기기 성능 검증은 개발 완료 뒤 진행한다.
+
+### Flat 볼록 다각형 차폐 회귀
+
+SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --polygons-only`로 좁게 실행한다.
+기존 `pnpm smoke:flat-lit`과 수동 CI validate의 기본 행렬에도 포함한다. 전용 보고서는
+`artifacts/lighting-remaining/m4d/polygon/gpu-*/verification.json`이며 두 backend·색공간·DPR1/2·SDR/HDR에서 검사한다.
+독립 ray/edge 교차 기준으로 body·그림자/비차폐 영역의 픽셀을 비교하고 raster edge의 작은 경계는 제외한다.
+양 winding·max-union/부분 투과율·독립 광원/수신 mask·emission/GGX·spot/cookie·cutout/HUD,
+사각형 후방 참조·내부/먼 도형 제외·in-place edit/fresh 참조·잘못된 setter 원자성·OFF/warm bytes·world 투영·resize·복구·destroy0을 검사한다.
+
+SDK unit은 희소/교차/오목/중복/collinear/f32 퇴화·개수/좌표/투영 한도, warm shape match 검증 우회,
+소유 복사·static CPU geometry revision·최대72-float clip 상한, source JSON·patch/Undo/Redo·실제 Native Playing·새 handle 복원,
+구 capability 거절 후 asset lookup/native mutation0을 검사한다. 공식 viewer의 `--flat-lit`은 도형 cold apply pixels와
+source export·invalid import 뒤 씬/handle/history 보존·다중 문서 왕복을 함께 검사한다.
+현재 static geometry의 GPU upload0을 보장하는 검사가 아니다. mask upload/draw는 기존 경로이며 M5 비용 작업으로 남는다.
