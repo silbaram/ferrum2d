@@ -65,3 +65,6 @@ export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePref
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
 
 export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
+
+export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
+export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";

@@ -22,7 +22,8 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
     materials: { version: 1, terrain: words.subarray(0, 2), billboards: words.subarray(0, 2) },
     debug: { version: 1, vertexStride: 11, vertices: floats.subarray(0, 22), vertexCount: 2, depthTest: true, truncated: false },
     environment: { version: 1, values: floats, shadowMatrices: floats, shadowCasters: floats,
-      shadowCasterVertexCount: 0, shadowSubmission: { version: 1, revision: 1, ranges: range } },
+      shadowCasterVertexCount: 0, shadowSubmission: { version: 1, revision: 1, ranges: range },
+      lightSelection: { version: 1, stride: 6, words: words.subarray(0, 6), values: values.subarray(0, 6) } },
   };
   const frame = snapshotRenderFrameBuffers({
     renderCommandBuffer: { buffer: floats.subarray(0, 15), commandCount: 1, floatsPerCommand: 15,
@@ -47,6 +48,9 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   equal(captured.environment!.values[0], 0.5);
   equal(captured.environment!.shadowMatrices[0], 0.5);
   equal(captured.environment!.shadowCasters[0], 0.5);
+  equal(captured.environment!.lightSelection!.words[0], 7);
+  equal(captured.environment!.lightSelection!.values[4], 3.5);
+  equal(captured.environment!.lightSelection!.words.buffer, captured.environment!.lightSelection!.values.buffer);
   deepEqual([...captured.environment!.shadowSubmission!.ranges], [0, 3]);
   deepEqual([...captured.terrainDrawRanges!], [0, 3]);
 });

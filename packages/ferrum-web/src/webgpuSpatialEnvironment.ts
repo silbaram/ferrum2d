@@ -355,7 +355,7 @@ export class WebGpuSpatialEnvironment {
     const indirect = spatialIndirectPass(env?.values), dof = spatialDofPass(env?.values);
     // Private GPU camera layout v2; native reserved words are never reused.
     this.values[519] = Number(indirect) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
-    for (let i = 0; i < 5; i++) this.values[640 + i] = env?.values.length === 576 ? env.values[544 + i] : 65535;
+    for (let i = 0; i < 5; i++) this.values[640 + i] = env && env.values.length >= 576 ? env.values[544 + i] : 65535;
     this.values[645] = Number(this.receivers.enabled());
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;

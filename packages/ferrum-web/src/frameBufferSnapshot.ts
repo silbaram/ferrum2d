@@ -68,6 +68,7 @@ function snapshotSpatial(view: SpatialRenderBufferView): SpatialRenderBufferView
   const models = view.models;
   // Preserve the u32/f32 aliases over one owned model command packet.
   const modelWords = models?.words.slice();
+  const selectionWords = view.environment?.lightSelection?.words.slice();
   return {
     ...view,
     camera: view.camera.slice(),
@@ -89,6 +90,7 @@ function snapshotSpatial(view: SpatialRenderBufferView): SpatialRenderBufferView
       ...view.environment,
       values: view.environment.values.slice(), shadowMatrices: view.environment.shadowMatrices.slice(),
       shadowCasters: view.environment.shadowCasters.slice(),
+      ...(selectionWords === undefined ? {} : { lightSelection: { version: 1 as const, stride: 6 as const, words: selectionWords, values: new Float32Array(selectionWords.buffer) } }),
       ...(view.environment.shadowSubmission === undefined ? {} : { shadowSubmission: {
         ...view.environment.shadowSubmission, ranges: view.environment.shadowSubmission.ranges.slice(),
       } }),

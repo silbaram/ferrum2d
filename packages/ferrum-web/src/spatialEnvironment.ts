@@ -1,3 +1,4 @@
+import { resolveSpatialLightSelectionSpec, validSpatialLightSelectionValues, type SpatialLightSelectionSpec, type SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
 import {compileSpatialLightChannels,decodeSpatialLightChannels,requestsSpatialLightChannels,resolveSpatialMaskFields,validSpatialLightChannels} from "./spatialLightChannels.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { SpatialPoint } from "./dataSceneSpatial.js";
@@ -49,6 +50,8 @@ export interface SpatialLightingSpec {
   /** At most 16 authored lights; native selects at most maxActiveLights per frame. */
   lights: readonly SpatialPointLightSpec[];
   maxActiveLights?: 1 | 2 | 3 | 4;
+  /** Native hysteresis/fade; omitted retains legacy rank-only selection. */
+  selection?: SpatialLightSelectionSpec;
   /** A single omnidirectional depth cube. All authored terrain/cutout billboards cast shadows. */
   shadows?: {
     lightIndex: number;
@@ -97,20 +100,22 @@ export interface SpatialEnvironmentSpec {
   colorGrading?: SpatialColorGradingSpec;
   fog?: SpatialFogSpec;
 }
-/** Borrowed native environment v1..v7; acquire per frame, copy before deferred use. */
+/** Borrowed native environment v1..v8; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
   shadowCasterVertexCount: number;
   /** Optional independent submission extension v1. Four u32 fields: face, source, first, count. */
   shadowSubmission?: { version: 1; revision: number; ranges: Uint32Array };
+  /** Native authored-source diagnostic rows; selection history remains in Rust. */
+  lightSelection?: SpatialLightSelectionBufferView;
 }
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528, 544, 576].includes(v.length) ||
+    ![80, 112, 128, 512, 528, 544, 576, 580].includes(v.length) ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -137,7 +142,8 @@ export function validSpatialEnvironmentValues(v: Float32Array): boolean {
     (v[512] === 1 && (!(v[92] > 0) || v.subarray(513, 516).some(x => Math.abs(x) > 1e6)))
   )) return false;
   if (v.length >= 544 && (![0, 1].includes(v[528]) || v.subarray(529, 544).some(x => x !== 0))) return false;
-  if (v.length === 576 && !validSpatialLightChannels(v)) return false;
+  if (v.length >= 576 && !validSpatialLightChannels(v.subarray(0, 576))) return false;
+  if (v.length === 580 && !validSpatialLightSelectionValues(v)) return false;
   if (!(v[0] & 1) && (v[1] !== 0 || v[2] !== -1)) return false;
   const range = (start: number, end: number, min: number, max: number) => {
     for (let i = start; i < end; i++)
@@ -192,7 +198,7 @@ function validExtendedEnvironment(v: Float32Array): boolean {
     if (v[92]) { if (![128, 256, 512, 1024].includes(v[92]) || !range(91, 92, 1, 10000) || !range(93, 94, 0, 10) || !range(94, 95, 1, 10000)) return false; }
     else if (!zeros(91, 95)) return false;
   } else if (!zeros(84, 95)) return false;
-  return ((v[0] & 4) !== 0 || zeros(96, 100)) && (v[97] !== 0 || zeros(98, 100)) && ((v[0] & 1) !== 0 || v.length === 576 || v[95] === 0);
+  return ((v[0] & 4) !== 0 || zeros(96, 100)) && (v[97] !== 0 || zeros(98, 100)) && ((v[0] & 1) !== 0 || v.length >= 576 || v[95] === 0);
 }
 function validLightingExtension(v: Float32Array): boolean {
   const zeros = (a: number, b: number) => v.subarray(a,b).every(x=>x===0);
@@ -365,6 +371,7 @@ export function resolveSpatialEnvironmentSpec(
     const l = object(o.lighting, `${path}.lighting`, [
       "enabled",
       "maxActiveLights",
+      "selection",
       "ambient",
       "directional",
       "hemisphere",
@@ -512,7 +519,9 @@ export function resolveSpatialEnvironmentSpec(
       const normalBias=number(s.normalBias === undefined ? 0 : s.normalBias,`${path}.lighting.shadows.normalBias`,0,10);
       if(normalBias>0) shadows.normalBias=normalBias;
     }
+    const selection = l.selection === undefined ? undefined : resolveSpatialLightSelectionSpec(l.selection, `${path}.lighting.selection`);
     result.lighting = {
+      ...(selection === undefined ? {} : { selection }),
       ...(budget === undefined ? {} : { maxActiveLights: budget as 1 | 2 | 3 | 4 }),
       ...(l.enabled === false ? { enabled: false } : {}),
       ...(directional ? { directional } : {}),
@@ -626,11 +635,12 @@ export function compileSpatialEnvironment(
 ): Float32Array {
   if (input === null) return new Float32Array();
   const spec = resolveSpatialEnvironmentSpec(input),
-    lightChannels = requestsSpatialLightChannels(spec),
+    selection = spec.lighting?.selection,
+    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined,
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
     v4 = lightChannels || !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v = new Float32Array(selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);
@@ -708,6 +718,7 @@ export function compileSpatialEnvironment(
   if (fixedSunCenter && (spec.lighting?.enabled !== false || lightChannels)) v.set([1, fixedSunCenter.x, fixedSunCenter.elevation, -fixedSunCenter.y], 512);
   if (spec.composition) v[528] = spec.composition === "separated" ? 1 : 0;
   if (lightChannels) compileSpatialLightChannels(spec, v);
+  if (selection) v.set([selection.enabled === false ? 0 : 1, selection.hysteresis!, selection.fadeSeconds!, selection.resetDistance!], 576);
   return v;
 }
 export function decodeSpatialEnvironment(
@@ -719,7 +730,7 @@ export function decodeSpatialEnvironment(
   const flags = v[0],
     spec: SpatialEnvironmentSpec = {};
   if (flags & 16) spec.pixelArt = { width: v[80], height: v[81], snapCamera: v[82] === 1 };
-  if (flags & 1 || v.length === 576)
+  if (flags & 1 || v.length >= 576)
     spec.lighting = {
       ...(!(flags & 1) ? { enabled: false } : {}),
       ambient: [v[5], v[6], v[7]],
@@ -774,6 +785,7 @@ export function decodeSpatialEnvironment(
   if(v.length >= 528 && v[512] === 1 && spec.lighting?.directional?.shadows)
     spec.lighting.directional.shadows.center = { x: v[513], elevation: v[514], y: -v[515] };
   if (v.length >= 544) spec.composition = v[528] ? "separated" : "legacy";
-  if (v.length === 576) decodeSpatialLightChannels(v, spec);
+  if (v.length >= 576) decodeSpatialLightChannels(v, spec);
+  if (v.length === 580 && spec.lighting) spec.lighting.selection = { enabled: v[576] === 1, hysteresis: v[577], fadeSeconds: v[578], resetDistance: v[579] };
   return resolveSpatialEnvironmentSpec(spec);
 }

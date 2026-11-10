@@ -1,3 +1,4 @@
+import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
 import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
@@ -152,6 +153,7 @@ export interface DataSceneRuntimeEngineAdapter {
   supportsSpatialRampAxis?(): boolean;
   supportsSpatialReceiverMasks?(): boolean;
   supportsSpatialLightChannels?(): boolean;
+  supportsSpatialLightSelection?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
   spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
   textureId(name: string): number;
@@ -229,8 +231,11 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
 /** Internal cold preflight, shared by authored apply and snapshot restore before mutation. */
 function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSpatialSpec | undefined, path: string): void {
   const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
-  if (!receivers && !channels) return;
+  const selection = requestsSpatialLightSelection(spec?.environment);
+  if (!receivers && !channels && !selection) return;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  if (selection && !adapter.supportsSpatialLightSelection?.())
+    throw sceneCompositionDiagnosticError(`${path}.environment`, "light selection requires native v1 support");
   if (receivers && !adapter.supportsSpatialReceiverMasks?.())
     throw sceneCompositionDiagnosticError(path, "receiver masks require native v1 support");
   if (channels && !adapter.supportsSpatialLightChannels?.())
@@ -663,6 +668,8 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (requestsSpatialLightSelection(environment) && !adapter.supportsSpatialLightSelection?.())
+    throw sceneCompositionDiagnosticError(environmentPath, "light selection requires native v1 support");
   if (requestsSpatialLightChannels(environment) && !adapter.supportsSpatialLightChannels?.())
     throw sceneCompositionDiagnosticError(environmentPath, "light channels require native v1 support");
   if (adapter.preflightSpatialEnvironment) {

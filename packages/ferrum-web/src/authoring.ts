@@ -540,3 +540,6 @@ export type { SpatialMovingPlatformSpec } from "./spatialMovingPlatforms.js";
 export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
 
 export type { FlatHdrOptions, ResolvedFlatHdrOptions } from "./flatHdr.js";
+
+export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
+export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";

@@ -97,6 +97,16 @@ declare module "../pkg/ferrum_core.js" {
     spatial_model_receiver_mask_ptr(): number;
     spatial_model_receiver_mask_len(): number;
     spatial_light_channel_abi_version(): number;
+    spatial_light_selection_abi_version(): number;
+    spatial_light_selection_progress_abi_version(): number;
+    spatial_light_selection_diagnostic_size_bytes(): number;
+    spatial_light_selection_diagnostics_ptr(): number;
+    spatial_light_selection_diagnostics_len(): number;
+    capture_spatial_light_selection_state(): Float64Array;
+    preflight_spatial_light_selection_state(environment:Float32Array,selection:Float64Array):boolean;
+    restore_spatial_light_selection_state(values:Float64Array):boolean;
+    reset_spatial_light_selection():boolean;
+    restore_data_scene_progress_with_spatial_light_selection(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array,rotations:Float64Array,applyEnvironment:boolean,combat:Float64Array,selection:Float64Array):boolean;
     spatial_model_abi_version(): number;
     spatial_model_batch_abi_version(): number;
     spatial_model_stride(): number;

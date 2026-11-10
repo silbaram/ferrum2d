@@ -1,3 +1,4 @@
+import { decodeSpatialLightSelectionProgress, spatialLightSelectionProgressValues } from "./spatialLightSelectionProgress.js";
 import { decodeMovingPlatforms, compileMovingPlatforms } from "./spatialMovingPlatforms.js";
 import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
 import { combatSpawnPrefabNames } from "./dataSceneSpawnProgress.js";
@@ -87,6 +88,8 @@ export interface DataSceneProgressAdapter {
   spatial(epoch: number, handles: Uint32Array): Float64Array;
   rotations?(epoch:number,handles:Uint32Array):Float64Array|undefined;
   environment?(): Float32Array | undefined;
+  lightSelection?(): Float64Array | undefined;
+  preflightLightSelection?(environment: Float32Array, values: Float64Array): boolean;
   combat?(epoch: number, handles: Uint32Array): Float64Array | undefined;
   preflightCombat?(states: Uint32Array, values: Float64Array): boolean;
   preflightSpatial(
@@ -103,6 +106,7 @@ export interface DataSceneProgressAdapter {
     environment?: Float32Array,
     rotations?: Float64Array,
     combat?: Float64Array,
+    lightSelection?: Float64Array,
   ): boolean;
 }
 const ANIMATION_PROGRESS_STRIDE = 32;
@@ -228,6 +232,11 @@ export function captureDataSceneProgress(
     (spatialSpec?.environment !== undefined || environmentValues?.length)
       ? decodeSpatialEnvironment(environmentValues ?? new Float32Array())
       : undefined;
+  const selectionEnabled = environment?.lighting?.selection?.enabled !== false && environment?.lighting?.selection !== undefined;
+  const selectionValues = selectionEnabled ? adapter.lightSelection?.() : undefined;
+  if (selectionEnabled && (selectionValues === undefined || adapter.preflightLightSelection?.(environmentValues!, selectionValues) !== true))
+    throw Error("Spatial light selection progress requires a compatible native history codec");
+  const lightSelection = selectionValues === undefined ? undefined : decodeSpatialLightSelectionProgress(selectionValues);
   if (
     spatialValues !== undefined &&
     spatialValues.length !==
@@ -315,6 +324,7 @@ export function captureDataSceneProgress(
       : {
           spatial: {
             camera: decodeSpatialProgressCamera(spatialValues),
+            ...(lightSelection === undefined ? {} : { lightSelection }),
             ...(movingPlatforms === undefined ? {} : { movingPlatforms }),
             ...(environment === undefined ? {} : { environment }),
           },
@@ -456,6 +466,7 @@ export function restoreDataSceneProgress(
       environment,
       progress.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?Float64Array.from(progress.instances,i=>i.spatialPose?.rotationRadians??0):undefined,
       progress.combat === undefined ? undefined : combatProgressValues(progress.combat, ids, combatProjectilePrefabNames(JSON.parse(context!.document)), combatSpawnPrefabNames(JSON.parse(context!.document))),
+      progress.spatial?.lightSelection === undefined ? undefined : spatialLightSelectionProgressValues(progress.spatial.lightSelection),
     )
   ) {
     throw new Error("Data Scene progress restore rejected entity state.");
@@ -505,6 +516,10 @@ export function validateDataSceneProgress(
     throw new Error(
       "Data Scene spatial progress requires an authored spatial scene.",
     );
+  const effectiveEnvironment = spatial?.environment === undefined ? resolved.spatial?.environment : spatial.environment;
+  const needsSelection = spatial?.camera !== null && effectiveEnvironment?.lighting?.selection !== undefined && effectiveEnvironment.lighting.selection.enabled !== false;
+  if (needsSelection !== (spatial?.lightSelection !== undefined))
+    throw Error("Spatial light selection policy requires complete native history progress, and only that policy may contain history");
   if (resolved.spatial?.movingPlatforms?.length && spatial?.camera !== null && spatial?.movingPlatforms === undefined) throw new Error("moving platform scenes require complete platform progress");
   if (spatial?.movingPlatforms !== undefined && resolved.spatial !== undefined) compileMovingPlatforms(resolved.spatial, spatial.movingPlatforms);
   const interactions = new Map<string, boolean>();
@@ -682,6 +697,9 @@ function preflightEnvironmentProgress(
       ? resolved.spatial.environment
       : progress.spatial.environment;
   if (!environment) return;
+  if (progress.spatial.lightSelection !== undefined && requireAdapter(engine).preflightLightSelection?.(
+    compileSpatialEnvironment(environment), spatialLightSelectionProgressValues(progress.spatial.lightSelection),
+  ) !== true) throw Error("Spatial light selection source/history native preflight rejected progress");
   const plan = bindSceneBehaviorRecipes(
     resolved.sceneComposition,
     resolved.behaviorRecipes,

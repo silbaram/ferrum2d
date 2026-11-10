@@ -1,3 +1,4 @@
+import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
 import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import {requestsSpatialLightChannels,supportsSpatialLightChannels} from "./spatialLightChannels.js";
 import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
@@ -953,11 +954,17 @@ export async function createEngineWithFramePipeline(
         ? rustEngine.capture_spatial_environment()
         : undefined;
     },
+    lightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine) ? rustEngine.capture_spatial_light_selection_state() : undefined; },
+    preflightLightSelection: (environment, values) => { requireAlive(); return supportsSpatialLightSelection(rustEngine) && rustEngine.preflight_spatial_light_selection_state(environment, values); },
     combat: (epoch, handles) => { requireAlive(); return combatProgressRuntime.capture_data_scene_combat_progress?.(epoch, handles); },
     preflightCombat: (states, values) => { requireAlive(); return combatProgressRuntime.preflight_data_scene_combat_progress?.(states, values) === true; },
     preflightSpatial: (values, metadata, state) => { requireAlive(); return rustEngine.preflight_data_scene_spatial_progress(values, metadata, state); },
-    restore: (epoch, handles, states, animations, spatial, environment, rotations, combat) => {
+    restore: (epoch, handles, states, animations, spatial, environment, rotations, combat, lightSelection) => {
       requireAlive();
+      if (lightSelection !== undefined) return supportsSpatialLightSelection(rustEngine) && rustEngine.restore_data_scene_progress_with_spatial_light_selection(
+        epoch, handles, states, animations ?? new Float64Array(), spatial ?? new Float64Array(13 + states.length * 8),
+        environment ?? new Float32Array(), rotations ?? new Float64Array(states.length), environment !== undefined, combat ?? new Float64Array(), lightSelection,
+      );
       if (combat !== undefined) return combatProgressRuntime.restore_data_scene_progress_with_combat?.(
         epoch, handles, states, animations ?? new Float64Array(), spatial ?? new Float64Array(13 + states.length * 8), environment ?? new Float32Array(), rotations ?? new Float64Array(states.length), environment !== undefined, combat,
       ) === true;
@@ -1023,6 +1030,7 @@ export async function createEngineWithFramePipeline(
     },
     supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
     supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
+    supportsSpatialLightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine); },
     supportsSpatialRampAxis: () => {
       requireAlive();
       return typeof rustEngine.spatial_ramp_axis_abi_version === "function" &&
@@ -1035,6 +1043,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialLightSelection(environment) && !supportsSpatialLightSelection(rustEngine)) return false;
       if (requestsSpatialLightChannels(environment) && !supportsSpatialLightChannels(rustEngine)) return false;
       const values = compileSpatialEnvironment(environment);
       return typeof rustEngine.preflight_spatial_camera_environment === "function"
