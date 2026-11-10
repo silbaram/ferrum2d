@@ -14,7 +14,9 @@ mod environment;
 mod model_streaming;
 pub(crate) use model_streaming::ModelLodContinuity;
 mod models;
+mod receiver_masks;
 pub(crate) use models::preflight_model_poses;
+pub(crate) use receiver_masks::SpatialReceiverMasks;
 mod shadows;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
@@ -262,6 +264,7 @@ pub(crate) const SURFACE_RAMP_X_FLAG: u32 = 32;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Surface {
+    pub receiver_masks: SpatialReceiverMasks,
     pub id: u32,
     pub floor: u32,
     pub bounds: [f32; 4],
@@ -291,6 +294,7 @@ impl Default for SpatialMaterial {
 }
 #[derive(Clone, Copy)]
 pub(crate) struct Billboard {
+    pub receiver_masks: SpatialReceiverMasks,
     pub material: SpatialMaterial,
     pub units_per_pixel: f32,
     pub cutoff: f32,
@@ -318,6 +322,8 @@ pub(crate) struct SpatialScene {
     pub camera: Option<SpatialCamera>,
     pub surfaces: Vec<Surface>,
     pub terrain: Vec<SpatialVertex>,
+    pub terrain_receiver_masks: Vec<SpatialReceiverMasks>,
+    pub billboard_receiver_masks: Vec<SpatialReceiverMasks>,
     pub terrain_materials: Vec<SpatialMaterial>,
     pub billboard_materials: Vec<SpatialMaterial>,
     pub terrain_draw_ranges: Vec<SpatialTerrainDrawRange>,
@@ -365,6 +371,8 @@ impl SpatialScene {
         self.camera = None;
         self.surfaces.clear();
         self.terrain.clear();
+        self.terrain_receiver_masks.clear();
+        self.billboard_receiver_masks.clear();
         self.terrain_materials.clear();
         self.billboard_materials.clear();
         self.terrain_draw_ranges.clear();
@@ -417,6 +425,7 @@ impl SpatialScene {
                 return false;
             }
             let surface = Surface {
+                receiver_masks: Default::default(),
                 id: n[0],
                 floor: n[1],
                 bounds: [v[0], v[1], v[2], v[3]],
@@ -471,6 +480,7 @@ impl SpatialScene {
         self.terrain_draw_ranges = Vec::with_capacity(surfaces.len());
         self.navigation.cancel();
         self.connections.clear();
+        self.terrain_receiver_masks.clear();
         self.terrain_materials = surfaces
             .iter()
             .map(|s| SpatialMaterial {
@@ -589,6 +599,7 @@ impl SpatialScene {
         self.shadow_casters.clear();
         self.billboards.clear();
         self.billboard_materials.clear();
+        self.billboard_receiver_masks.clear();
         self.debug.clear_frame();
         self.terrain_draw_ranges.clear();
         self.frame_active = self.camera.is_some();
@@ -706,7 +717,13 @@ impl SpatialScene {
             }
             append_billboard(&mut self.billboards, &camera, t, s, elevation, style);
             if self.billboards.len() > first {
-                self.billboard_materials.push(style.material);
+                receiver_masks::push_billboard_material(
+                    &mut self.billboard_materials,
+                    &mut self.billboard_receiver_masks,
+                    self.billboards.len() / 6,
+                    style.material,
+                    style.receiver_masks,
+                );
             }
             self.debug.billboard(
                 &self.billboards[first..],

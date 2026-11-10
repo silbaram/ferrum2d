@@ -190,6 +190,7 @@ mod spatial_environment;
 mod spatial_navigation;
 mod spatial_physics_obstacles;
 mod spatial_progress;
+mod spatial_receiver_masks;
 mod spatial_scene;
 mod spatial_shadow_only;
 mod spatial_sun_stability;

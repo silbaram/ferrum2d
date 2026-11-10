@@ -325,6 +325,7 @@ impl DataSceneCombat {
                     .map(|(_, style)| *style)
             })
             .unwrap_or(Billboard {
+                receiver_masks: Default::default(),
                 material: SpatialMaterial {
                     normal_texture: 16_777_215,
                     flags: 0,
@@ -660,6 +661,7 @@ impl DataSceneCombat {
             spatial.runtime_billboards.push((
                 spawned,
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: SpatialMaterial {
                         normal_texture: 16_777_215,
                         flags: 0,

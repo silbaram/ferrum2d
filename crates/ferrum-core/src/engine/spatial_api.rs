@@ -280,6 +280,46 @@ impl Engine {
         model_metadata: &[u32],
         model_styles: &[f32],
     ) -> bool {
+        self.configure_spatial_scene_receiver_masks(
+            camera_values,
+            terrain_values,
+            terrain_metadata,
+            handles,
+            styles,
+            actor_handle,
+            actor_values,
+            connections,
+            environment,
+            terrain_materials,
+            billboard_materials,
+            model_metadata,
+            model_styles,
+            &[],
+            &[],
+            &[],
+        )
+    }
+    /// Atomic v1 receiver extension, leaving material8/model80 render layouts intact.
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_spatial_scene_receiver_masks(
+        &mut self,
+        camera_values: &[f32],
+        terrain_values: &[f32],
+        terrain_metadata: &[u32],
+        handles: &[u32],
+        styles: &[f32],
+        actor_handle: &[u32],
+        actor_values: &[f32],
+        connections: &[u32],
+        environment: &[f32],
+        terrain_materials: &[u32],
+        billboard_materials: &[u32],
+        model_metadata: &[u32],
+        model_styles: &[f32],
+        terrain_masks: &[u32],
+        billboard_masks: &[u32],
+        model_masks: &[u32],
+    ) -> bool {
         if self.scene_mode != SceneMode::Data
             || !handles.len().is_multiple_of(2)
             || styles.len() != handles.len() / 2 * 3
@@ -328,6 +368,7 @@ impl Engine {
             next.bindings.insert(
                 (h[0], h[1]),
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
@@ -413,6 +454,15 @@ impl Engine {
                 .keys()
                 .any(|h| next.bindings.contains_key(h))
         {
+            return false;
+        }
+        if !next.configure_receiver_masks(
+            terrain_masks,
+            billboard_masks,
+            model_masks,
+            handles,
+            model_metadata,
+        ) {
             return false;
         }
         self.data_scene.movement.cancel();
@@ -605,6 +655,7 @@ impl Engine {
             next.insert(
                 (h[0], h[1]),
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
@@ -840,6 +891,30 @@ impl Engine {
     }
     pub fn spatial_presentation_ptr(&self) -> *const f32 {
         self.spatial_scene.presentation.as_ptr()
+    }
+    pub fn spatial_receiver_mask_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_receiver_mask_size(&self) -> u32 {
+        std::mem::size_of::<crate::spatial_scene::SpatialReceiverMasks>() as u32
+    }
+    pub fn spatial_terrain_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.terrain_receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_terrain_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.terrain_receiver_masks.len() as u32
+    }
+    pub fn spatial_billboard_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.billboard_receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_billboard_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.billboard_receiver_masks.len() as u32
+    }
+    pub fn spatial_model_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.models.receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_model_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.models.receiver_masks.len() as u32
     }
     pub fn spatial_material_abi_version(&self) -> u32 {
         1

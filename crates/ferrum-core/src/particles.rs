@@ -272,6 +272,7 @@ impl ParticleSystem {
                 project_ground: false,
             };
             let style = crate::spatial_scene::Billboard {
+                receiver_masks: Default::default(),
                 material: crate::spatial_scene::SpatialMaterial {
                     normal_texture: 16_777_215,
                     flags: 0,
@@ -293,7 +294,7 @@ impl ParticleSystem {
                 style,
             );
             if scene.billboards.len() > first {
-                scene.billboard_materials.push(style.material);
+                scene.push_billboard_material(style.material, style.receiver_masks);
             }
         }
     }
