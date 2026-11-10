@@ -1,0 +1,118 @@
+# Flat 2D 조명 합성의 선행 계약
+
+상태: M0-b의 flat 설계 기준과 legacy GPU 회귀. **새 lit 렌더 경로는 아직 미구현**이다.
+이 문서의 receiver/profile 명칭은 구현 요구사항이며 현재 JSON에 넣을 수 있는 공개 필드가 아니다.
+현재 사용 계약은 [화면 표현](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
+
+## 현재와 다음 구현의 의미
+
+| 항목 | 현재 legacy overlay | 다음 M2-a의 수신 표면 합성 |
+| --- | --- | --- |
+| 표면색 | 기존 화면 위에 광원 RGB를 더함 | 표면의 선형 albedo에 조도를 곱함 |
+| ambient | RGBA 색 overlay. 검은색 alpha는 기존 화면을 어둡게 함 | 선형 RGB 조도. overlay alpha를 조도로 자동 재해석하지 않음 |
+| 차폐 | 해당 광원의 기여만 RGB transmission으로 감쇠 | 같은 광원별 visibility를 재사용. ambient·다른 광원 보존 |
+| 빈 배경·투명 구멍 | 전체 화면 조명에 반응 가능 | receiver coverage가 없는 곳은 장면 배경 유지 |
+| `unlit` 이름 | 기본 sprite 색/블렌드 프리셋. 후단 조명 제외를 뜻하지 않음 | 별도의 명시적 수광 제외가 필요. 이름으로 추측하지 않음 |
+| HUD | 호스트가 조명 이후 그리면 제외 가능 | 명시적 수광 제외 또는 별도 후단 pass로 보존 |
+| 기존 씬 | 현재 외관·저장 의미 유지 | 새 profile을 명시한 씬에서만 선택 |
+
+검은 표면이 밝아지는 현재 결과를 기존 계약의 버그로 처리하지 않는다. 새로운 합성의 필요성을 재현한 기준선이다.
+
+## M2-a의 수학과 색공간
+
+opaque 수신면의 초기 식은 다음과 같다. 연산은 채널별이며 최종 표시 변환 전 선형 공간에서 수행한다.
+
+```
+B = decode_sRGB(colorTexture.rgb) × linearTint.rgb
+I = ambientIrradiance + Σ(lightColor × intensity × attenuation × normalResponse × visibilityRGB)
+C = B × I
+```
+
+- 색 텍스처의 sRGB decode는 한 번만 한다. `linear` 자산은 재해석하지 않고 data/normal/mask에는 색 변환을 하지 않는다.
+- 새 lit의 색 자산은 straight-alpha 원본을 전제로 준비한다. 현재 WebGL2 legacy sRGB의 premultiplied 업로드 자산을
+  그대로 straight RGB로 해석하지 않는다. 자산 준비·검증·재등록 조건은 M2-a의 활성화 전에 확정하고 실패 시 이전 상태를 보존한다.
+- tint·광원·ambient의 조도 계수는 새 profile의 선형 값이다. 기존 legacy overlay 값을 무조건 이 식에 옮기지 않는다.
+- 점광원 color alpha는 기존처럼 해당 광원의 세기에 포함한다. 그림자 mask의 alpha와 receiver alpha를 혼동하지 않는다.
+- 노멀 미지정 수신면의 기준은 화면 앞쪽 `+Z`다. 광원 높이·방향과 내적하고 0 아래를 자른다.
+  현재 unmapped overlay의 응답 1과 다르므로 기존 모드에 소급하지 않는다. atlas·회전·flip 변환은 기존 normal 계약을 재사용한다.
+- RGB visibility는 해당 광원에만 곱한다. 같은 차폐물이 겹쳐도 union mask이며 반복해서 장면색을 어둡게 하지 않는다.
+- 최종 sRGB encode는 출력 경로에 맞춰 한 번만 한다. 초기 M2-a는 SDR 출력이며 밝기가 1을 넘는 에너지 보존은 M3b HDR 범위다.
+- WebGL2 전역 `linear-srgb`와 새 lit의 내부 선형 연산은 서로 다른 선택이다. 현재 WebGPU 전역 색공간 fallback을
+  새 lit WebGPU 구현의 성공으로 세지 않는다. M2-a 완료에는 실제 양 backend의 새 경로가 필요하다.
+
+수치 벡터는 `tests/smoke/flat-lighting-reference-vectors.json`에 둔다. 동일 sRGB 표면에 ambient 조도 0.5와
+백색 직접광 조도 0.125를 주면 목표 출력은 다음과 같다. 이 값은 현재 엔진의 새 lit 실행 결과가 아니다.
+
+| sRGB 표면 byte | 목표 선형 계산 | 목표 sRGB 출력 byte |
+| --- | --- | --- |
+| 0 | `decode(0) × 0.625` | 0 |
+| 96 | `decode(96/255) × 0.625` | 76 |
+| 255 | `1 × 0.625` | 207 |
+
+같은 입력의 **현재 legacy 색공간**에서 검은 ambient alpha 0.5 뒤 `white RGB 0.25 × intensity 0.5`를 더하면
+약 32/80/160이다. WebGL2의 현재 전역 linear 모드는 텍스처를 decode한 뒤 overlay를 합성하므로 별도 기준으로 검사한다.
+서로 다른 색공간 모드를 같은 픽셀값이어야 하는 backend parity로 취급하지 않는다.
+
+## Receiver·alpha·HUD 경계
+
+- 초기 lit 수신 대상은 명시한 opaque와 cutout이다. cutout은 작성한 alpha cutoff로 discard/opaque coverage를 결정한다.
+  discard된 픽셀은 빛을 더하지 않으며 그 아래 표면/배경을 보존한다.
+- 반투명 다중 layer의 정상적인 광학 합성과 additive 발광은 초기 수광 범위에서 제외한다.
+  해당 객체는 명시적 수광 제외 후 별도 pass로 표시한다. 지원하지 않는 receiver 조합은 장면 활성화 전에 진단으로 거절한다.
+- receiver 선택은 collider·layer 이름·normalTexture 존재 여부·프리셋의 `unlit` 문자열로 자동 추론하지 않는다.
+  caster 선택과 receiver 선택도 별개다. Rust의 정렬된 command와 정합하는 선택 sidecar가 필요하면 version/stride/길이·범위를 명시한다.
+- Rust가 동적 객체의 pose·정렬·수광 분류를 소유하고 TS는 cold 검증과 GPU 합성을 담당한다.
+  기존 15-float command를 무계약으로 확장하거나 entity별 frame Wasm 호출을 추가하지 않는다.
+- HUD/수광 제외 객체의 색과 alpha는 조명 ON/OFF에서 같아야 한다. 이미 합성한 장면을 다음 광원의 albedo로 재사용하면 안 된다.
+  후단 HUD 경계는 현재도 `setLighting(false)` 이후 별도 command 제출로 검증한다.
+  한 프레임 안에서 `장면 command → 조명 OFF → HUD command → renderPostProcess()` 순서를 지킨다.
+  최종 표시 변환이 끝난 뒤 HUD를 추가 제출하는 순서는 이 검증의 대상이 아니다.
+
+## 실행 가능한 기준선
+
+```bash
+pnpm smoke:flat-lighting-contract
+```
+
+이 명령은 SDK를 빌드하고 다음을 실제 readback으로 검사한다.
+
+- WebGL2/WebGPU의 legacy × DPR1/2, WebGL2 linear-sRGB × DPR1/2: 총 6조합.
+- 검은/회색/흰 실제 색 텍스처, 빈 배경, alpha 0/255/128 텍스처의 기존 출력.
+- 기본 unlit 프리셋에서도 후단 ambient/sun이 적용되는 현재 의미.
+- 빨간 광원 A만 차폐할 때 파란 B·ambient 보존, 반투명 mask의 중복 차폐 union.
+- 후단 HUD의 색 보존, OFF의 byte 단위 framebuffer 복귀, 비활성 추가 pass/target 없음과 warm 자원 plateau·destroy 회수.
+- 동일 legacy 조합의 고정 receiver RGB 오차 3 이하. GL linear는 독립적인 decode/blend/encode 수치와 비교.
+
+반투명 alpha128 샘플은 현행 backend별 호환 계약을 별도로 검사한다. WebGL2 legacy sRGB는 업로드된 RGB가
+premultiplied이며 WebGPU와 WebGL2 linear는 straight다([공개 설명](../../engine/public-api/labs.md)).
+따라서 같은 샘플의 기존 출력 차이를 오류로 바꾸거나 공통 parity의 성공으로 세지 않는다. 기준 clear `[16,24,32]`에
+blue/alpha128을 겹치면 legacy GL RGB는 약 `[8,12,80]`, GPU RGB는 `[8,12,144]`다.
+기준선은 이 샘플의 base/ambient/sun RGBA를 backend별 수식으로 검사한다. GL legacy의 alpha는 각각 약
+191/159/223이고, GPU·GL linear는 불투명 배경 위에서 255다. HUD 픽셀도 RGB와 alpha를 함께 검사한다.
+불투명·cutout/빈 배경의 나머지 6개 수신점은 원래 RGB 값으로 비교한다. 반투명 픽셀은 건너뛰지 않고
+모든 상태에서 업로드 차이를 보정한 별도 RGB 비교를 한다. 두 backend의 blue 차이는 조명 OFF 약 63.75byte,
+검정 ambient alpha0.5 이후 약 31.87byte다. 같은 additive 빛은 차이에서 상쇄된다. 차이를 보정하는 blue 채널의 포화 부재도 검사한다.
+보고서는 원래 RGB 비교와 보정 비교의 관측/예상 차이·오차를 분리한다.
+
+CPU submit 시간은 호출 구간만 기록하고 GPU 시간은 미측정 `null`이다. draw에는 최종 표시 pass도 포함한다.
+HUD의 두 command 제출은 각각의 통계를 보관하고 전체 draw를 합산한다. target/bytes도 실제 통계에서 수집하며
+소프트웨어 GPU 결과를 모바일 FPS나 실제 GPU 시간 보장으로 해석하지 않는다.
+보고서는 `artifacts/flat-lighting-contract/verification.json`과 고유 run 디렉터리에 저장한다.
+probe 실패 시에도 `ok:false`, 직전 제출 `failure.stage`, 원인, 완료된 상태·관측값과 cleanup 결과를 반환한다.
+호출자는 실패 결과를 먼저 보고서에 넣은 뒤 실행을 실패 처리한다. cleanup은 원래 오류를 보존하면서
+renderer·capture target·canvas의 해제를 각각 시도한다. renderer를 만들지 못한 경우 자원 수를 0으로 위장하지 않는다.
+검증용 GL readback 오류 4개는 정상 실행과 분리한다: 두 번째 읽기 실패, HUD alpha 손상, 반투명 sun RGB 손상,
+반투명 point RGB 손상이다. 앞의 세 오류는 probe에서, 마지막은 backend 보정 비교에서 거절해야 한다.
+오류 주입이 정확히 한 번 작동했는지, 부분 측정값이 남는지, 실패 후에도 자원이 회수되는지 검사한다.
+
+새 lit 수치 벡터는 `design-reference-only`, `renderedByEngine:false`로 별도 기록한다.
+참조 벡터 검산이 새 렌더 경로의 GPU 검증을 대신하지 않는다.
+
+CI의 수동 `workflow_dispatch` validate job에서 해당 명령을 실행한다. 일반 push/PR trigger를 새로 추가하지 않는다.
+
+## 이후 완료 조건
+
+M2-a는 새 profile의 공개 schema/원자적 적용·저장/복원과 실제 opaque/cutout receiver·HUD 경계를 구현해야 한다.
+위 기준선을 그대로 보존하면서 동일 벡터의 **실제 새 경로**를 추가하고 양 backend의 실제 pixels·resize/DPR·복구·비활성 비용을 검증한다.
+이 문서만으로 M2-a를 완료 처리하지 않는다. Spatial AO/emission·fog·Bloom·DOF의 기대값과 실물 GPU 예산은
+[조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 남은 M0-b/M3a 범위다.

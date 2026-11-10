@@ -275,7 +275,7 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
+| M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | [flat 합성 선행 계약](../development/architecture/flat-lighting-composition.md) | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture의 실제 새 렌더 경로 통과 |
 | M3a Spatial 효과 합성 | E01. AO 성분·emission·fog·DOF·Bloom 입력과 새 opt-in profile | M0의 합성 기대값. M2와 독립 | 발광·직접광 보존 정책, 조합 픽셀·비용·저장/복원, 기존 profile 보존 |
 | M3b flat HDR | E02의 flat float target·노출·톤매핑 | M0 색/호환 계약과 M2 새 lit 경로 | HDR 범위·encode 1회·HUD·fallback·복구 검증 |
 | M3c WebGPU 전역 색공간 | E02의 전역 linear-sRGB parity | M0 capability 계약. M3a/M3b와 별도 구현 | 지원/거절/fallback 선택, GL/GPU 출력·HUD·복구 동등성 |
@@ -288,13 +288,15 @@ M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위
 1. **M0-a:** `hd2d-shadow-proxy`의 정원 캐릭터·나무 비교와 `hd2d-environment`의 효과 조합,
    기존 proxy/contact 회귀 fixture를 재사용해 실제 사용자 문제 장면의 발 접촉·벽·asset 조건을 축약한다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
-2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
+2. **M0-b의 Spatial 잔여:** Spatial legacy/new 효과 합성의 기대값을 정한다. 기존 조합 비교는 효과 제거/복원과 저장 설정 일치를 검사한다.
    이를 발광 에너지 보존으로 해석하지 않는다. M3a에서는 같은 발광/직접광 표면의 AO 전후 수신 지점과
    Bloom 원본·DOF 전경 경계의 수치 허용 오차, 대상 GPU와 측정 예산을 별도로 확정한다.
 3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-4. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
+4. **M2-a:** [선행 계약과 legacy 기준선](../development/architecture/flat-lighting-composition.md)을 유지하며
+   opaque/cutout flat 장면의 실제 광원별 visibility + albedo 합성을 완성한다.
+   수광 제외·HUD·straight-alpha 자산 준비·capability 거절과 원자적 저장/복원을 동반한다.
    반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
 
 M1과 M2의 수학적 계약은 M0에서 함께 정하지만, 시각 검증과 리뷰는 별도 변경으로 수행한다.

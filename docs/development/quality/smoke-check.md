@@ -47,6 +47,32 @@ native LOD snapshot·camera visibility·generation 전달·owned matrix·구 Was
 
 Physics Lab의 `visibleBodyCount`는 기존 이름을 유지한 body 상태 조회 수이며 화면 culling 측정치가 아니다. UI에서는 `조회 물체`로 표시한다.
 
+## Flat 조명 합성 기준선
+
+`pnpm smoke:flat-lighting-contract`는 SDK 빌드 후 WebGL2/WebGPU legacy와 WebGL2 linear-sRGB를
+DPR1/2에서 실행한다. 실제 색 텍스처의 검정/회색/흰 표면, 빈 배경·cutout 구멍, 현재 unlit 프리셋의
+후단 조명, 광원 A만 차폐할 때 B·ambient 보존, 반투명 mask의 중복 union을 readback으로 검사한다.
+후단 HUD의 색·다른 수신점 보존, OFF의 framebuffer byte 일치, warm 할당 plateau·destroy 자원0도 요구한다.
+
+공통 legacy RGB 비교는 상태별 6개 불투명/cutout/빈 배경 수신점에서 오차3 이하다.
+alpha128 샘플은 문서화된 GL legacy premultiplied/GPU straight 업로드 차이를 보존한다.
+base/ambient/sun의 RGBA는 backend별 독립 식으로 검사한다. 모든 상태의 반투명 RGB도 업로드 차이와
+ambient 감쇠를 보정해 별도로 비교한다. 원래 RGB 6개 수신점과 보정 비교를 보고서에서 구분하며, 보정하는 blue 채널의 포화도 거절한다.
+HUD의 alpha를 검사하고 GL linear는 decode/blend/encode 기준식과 비교한다.
+CPU submit 구간·draw/target/bytes를 수집하고 미측정 GPU 시간은 null로 남긴다. software adapter의 실제 WebGPU
+offscreen 경로이며 compositor/실물 GPU 성능을 뜻하지 않는다.
+
+`artifacts/flat-lighting-contract/verification.json`은 실제 legacy GPU 결과와 새 lit의
+`design-reference-only`/`renderedByEngine:false` 수치 벡터를 분리한다. 참조 검산을 새 profile 구현 성공으로 세지 않는다.
+새 profile/receiver·alpha·색공간 요구는 [합성 선행 계약](../architecture/flat-lighting-composition.md)을 따른다.
+현재 수동 CI의 validate job에서 이 명령을 직접 실행한다.
+
+실패한 probe도 `ok:false`와 완료된 측정값·원인·직전 제출 stage·cleanup 결과를 반환하며,
+runner는 이를 기록한 뒤 실패 처리한다. 실패가 해제를 막지 않도록 renderer/capture target/canvas cleanup을 각각 시도한다.
+정상 6조합과 별도로 GL readback 오류 4개를 주입한다. 읽기 실패는 측정값 1상태를 남겨야 하고,
+HUD alpha·반투명 sun RGB 손상은 probe가, 반투명 point RGB 손상은 업로드 보정 비교가 탐지해야 한다.
+주입 횟수1·자원 회수·canvas 제거까지 검사하고 정상 GPU 결과와 오류 주입 결과를 분리해 저장한다.
+
 ## 일반 2D sprite normal 검증
 
 `pnpm smoke:sprite-normal-2d`는 빌드된 SDK/Wasm으로 WebGL2와 native WebGPU offscreen 경로를 DPR1/2에서 검사한다.

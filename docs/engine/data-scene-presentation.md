@@ -359,6 +359,11 @@ alpha 0은 차폐를 해제한다. 기존의 장면 전체에 색을 덧칠하�
 이 변경은 flat 표면색에 조도를 곱하는 albedo 모델을 추가하지 않는다. 기존 additive·노멀 반응,
 지면 silhouette와 반투명 layer의 근사도 유지한다.
 
+따라서 검은 sprite나 빈 배경·투명 구멍도 후단 광원으로 밝아질 수 있다. 기본 `unlit` sprite 프리셋은
+이 전체 조명의 개별 수신 제외를 뜻하지 않는다. HUD를 제외하려면 조명 합성 뒤 `setLighting(false)`로
+별도 command를 제출하고, 두 제출이 끝난 뒤 `renderPostProcess()`로 최종 표시한다. 기존 legacy WebGL2 sRGB 이미지의 premultiplied 업로드와 WebGPU의 straight-alpha
+업로드 차이도 유지한다. 새 lit 수신 합성은 아직 미구현이며 [선행 설계·기준선](../development/architecture/flat-lighting-composition.md)에서 구분한다.
+
 WebGL2/WebGPU는 renderer마다 물리 타깃 크기의 R8 마스크 **한 장**을 재사용한다.
 DPR을 적용한 canvas 크기이며, pixelPerfect에서는 가상 framebuffer 크기다.
 기본 mip의 추정 비용은 `width × height` byte다. 매 광원마다 clear와 geometry union 후

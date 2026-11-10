@@ -52,6 +52,10 @@ Wasm typed-array view는 native 메모리를 빌린 값이다. 기본 내장 GPU
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
+Flat 조명의 현행 overlay 기준선과 새 opt-in lit의 선행 설계는
+[Flat 조명 합성 계약](flat-lighting-composition.md)에서 구분한다. 실제 legacy 양 backend/DPR 픽셀과
+reference-only 수치 벡터를 분리하며, 새 receiver 분류·sidecar와 lit 렌더 경로는 M2-a의 후속 구현이다.
+
 Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512)/v5(528) numeric buffer를
 플랫폼이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
 command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
