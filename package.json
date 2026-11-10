@@ -148,6 +148,7 @@
     "smoke:content-runtime": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=content-runtime examples/minimal-game/dist",
     "smoke:lighting": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=lighting examples/minimal-game/dist",
     "smoke:lighting-webgpu": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=lighting-webgpu examples/minimal-game/dist",
+    "smoke:flat-lighting-contract": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-lighting-contract-smoke.mjs",
     "smoke:material": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=material examples/minimal-game/dist",
     "smoke:material-webgpu": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=material-webgpu examples/minimal-game/dist",
     "smoke:render-texture": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/render-texture-browser-smoke.mjs",

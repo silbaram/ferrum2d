@@ -210,6 +210,9 @@ jobs:
       - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
         run: pnpm smoke:sprite-normal-2d
 
+      - name: Flat lighting composition contracts on WebGL2 and WebGPU
+        run: pnpm smoke:flat-lighting-contract
+
       - name: Engine Playground movement, physics, lighting and camera
         run: pnpm smoke:engine-playground
 
