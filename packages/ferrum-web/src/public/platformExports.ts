@@ -231,6 +231,8 @@ export type {
   Hd2dTileOccluderGridInput,
   LightingScene2D,
   PointLight2D,
+  PointLightSpot2D,
+  ResolvedPointLightSpot2D,
   ResolvedLightingDebugOptions,
   ResolvedLightingShadowOptions,
   ResolvedLightingScene2D,

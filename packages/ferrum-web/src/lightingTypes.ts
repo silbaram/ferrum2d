@@ -20,7 +20,21 @@ export interface DirectionalLight2D {
 }
 export interface ResolvedDirectionalLight2D extends Required<Omit<DirectionalLight2D,"elevationRadians"|"lightMask"|"shadowMask">> { elevationRadians?: number; lightMask?:number;shadowMask?:number; }
 
+/** Point-light cone in the same logical XY/elliptical metric as the light's range. */
+export interface PointLightSpot2D {
+  /** Finite float32 XY vector, length at least1e-6; normalized during validation. */
+  directionX: number;
+  directionY: number;
+  /** Full opening, 0.1..360 degrees. 360 with penumbra0 preserves a radial point light. */
+  angleDegrees: number;
+  /** Fraction of the half-opening used by the smooth edge, 0..1; default0. */
+  penumbra?: number;
+}
+export interface ResolvedPointLightSpot2D extends Required<PointLightSpot2D> {}
+
 export interface PointLight2D {
+  /** Optional cone; requires profile lit. */
+  spot?: PointLightSpot2D;
   lightMask?: number;
   shadowMask?: number;
   /** Logical normal-light Z distance; defaults to radius*0.5. */
@@ -104,6 +118,7 @@ export interface LightingScene2D {
 }
 
 export interface ResolvedPointLight2D {
+  spot?: ResolvedPointLightSpot2D;
   lightMask?: number;
   shadowMask?: number;
   height?: number;

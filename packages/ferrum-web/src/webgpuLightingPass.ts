@@ -1,3 +1,4 @@
+import { writePointLightSpot } from "./lightingSpot.js";
 import type { WebGpuSpriteNormalBindings } from "./webgpuSpriteNormals.js";
 import type { WebGpuSunShadowBindings } from "./webgpuSunShadowMask.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
@@ -7,6 +8,7 @@ import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 import type {
   ResolvedLightingScene2D,
   ResolvedPointLight2D,
+  ResolvedPointLightSpot2D,
 } from "./lightingTypes.js";
 
 export interface WebGpuLightingPassStats {
@@ -34,6 +36,8 @@ const FLOATS_PER_SHADOW_VERTEX = 10;
 const SHADOW_VERTEX_STRIDE_BYTES = FLOATS_PER_SHADOW_VERTEX * BYTES_PER_F32;
 
 export class WebGpuLightingPass {
+  private readonly lightingInstanceFloats: number;
+  private readonly lightingInstanceStride: number;
   private readonly solidPipeline: GPURenderPipeline;
   private readonly additivePipeline: GPURenderPipeline;
   private shadowPipeline?: GPURenderPipeline;
@@ -74,8 +78,11 @@ export class WebGpuLightingPass {
     private readonly surfaceAlbedoSrgb=false,
     private readonly receiverMaskInput=false,
   ) {
+    this.lightingInstanceFloats = FLOATS_PER_LIGHTING_INSTANCE + (irradiance ? 4 : 0);
+    this.lightingInstanceStride = this.lightingInstanceFloats * BYTES_PER_F32;
+    this.lightingInstanceCapacityBytes = this.lightingInstanceStride;
     this.lightingInstanceBuffer = webGpuResources(this.device).createBuffer({
-      size: LIGHTING_INSTANCE_STRIDE_BYTES,
+      size: this.lightingInstanceStride,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     this.shadowVertexBuffer = webGpuResources(this.device).createBuffer({
@@ -121,11 +128,10 @@ export class WebGpuLightingPass {
     const pointLightFirstInstance = ambientInstanceCount;
     const debugFirstInstance = pointLightFirstInstance + activePointLights.length + sunCount;
     if (lightingInstanceCount > 0) {
-      this.ensureLightingStaging(lightingInstanceCount * FLOATS_PER_LIGHTING_INSTANCE);
+      this.ensureLightingStaging(lightingInstanceCount * this.lightingInstanceFloats);
       let lightingOffset = 0;
       if (ambientInstanceCount > 0) {
-        lightingOffset = writeLightingInstance(
-          this.lightingStaging,
+        lightingOffset = this.writeLightingInstance(
           lightingOffset,
           0,
           0,
@@ -145,7 +151,7 @@ export class WebGpuLightingPass {
         this.lightColorScratch[2] = sun.color[2]; this.lightColorScratch[3] = this.irradiance?1:sun.intensity;
         if(this.irradiance){this.lightColorScratch[0]*=sun.intensity;this.lightColorScratch[1]*=sun.intensity;this.lightColorScratch[2]*=sun.intensity;}
         const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
-        lightingOffset = writeLightingInstance(this.lightingStaging, lightingOffset, 0, 0, viewportWidth, viewportHeight,
+        lightingOffset = this.writeLightingInstance(lightingOffset, 0, 0, viewportWidth, viewportHeight,
           this.lightColorScratch,normals?-sun.directionX*c:0,normals?-sun.directionY*c:0,normals?Math.sin(elevation):1,normals?0:1,normals?-1:0,(sun.lightMask??255)+((sun.shadowMask??255)<<8)+receiverMaskBit);
       }
       for (const light of activePointLights) {
@@ -154,8 +160,7 @@ export class WebGpuLightingPass {
         this.lightColorScratch[1] = light.color[1] * light.intensity;
         this.lightColorScratch[2] = light.color[2] * light.intensity;
         this.lightColorScratch[3] = light.color[3];
-        lightingOffset = writeLightingInstance(
-          this.lightingStaging,
+        lightingOffset = this.writeLightingInstance(
           lightingOffset,
           light.x - radius,
           light.y - (light.radiusY ?? radius),
@@ -168,13 +173,13 @@ export class WebGpuLightingPass {
           light.falloff,
           normals?2+(light.height??light.radius*0.5):1,
           (light.lightMask??255)+((light.shadowMask??255)<<8)+receiverMaskBit,
+          light.spot,
         );
       }
 
       if (scene.debug.tileOccluders) {
         for (const occluder of scene.tileOccluders) {
-          lightingOffset = writeLightingInstance(
-            this.lightingStaging,
+          lightingOffset = this.writeLightingInstance(
             lightingOffset,
             occluder.x,
             occluder.y,
@@ -269,6 +274,40 @@ export class WebGpuLightingPass {
     };
   }
 
+  private writeLightingInstance(
+    offset: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: readonly [number, number, number, number],
+    lightX: number,
+    lightY: number,
+    lightRadius: number,
+    lightFalloff: number,
+    mode: number,
+    channels=65535,
+    spot?: ResolvedPointLightSpot2D,
+  ): number {
+    const buffer = this.lightingStaging;
+    buffer[offset] = x;
+    buffer[offset + 1] = y;
+    buffer[offset + 2] = width;
+    buffer[offset + 3] = height;
+    buffer[offset + 4] = color[0];
+    buffer[offset + 5] = color[1];
+    buffer[offset + 6] = color[2];
+    buffer[offset + 7] = color[3];
+    buffer[offset + 8] = lightX;
+    buffer[offset + 9] = lightY;
+    buffer[offset + 10] = lightRadius;
+    buffer[offset + 11] = lightFalloff;
+    buffer[offset + 12] = mode;
+    buffer[offset + 13] = channels;
+    if (this.irradiance) writePointLightSpot(buffer, offset + 14, spot, height / width);
+    return offset + this.lightingInstanceFloats;
+  }
+
   private uploadLightingInstances(floatCount: number): void {
     const byteCount = floatCount * BYTES_PER_F32;
     this.ensureLightingInstanceCapacity(byteCount);
@@ -321,6 +360,7 @@ export class WebGpuLightingPass {
           @location(2) light: vec4f,
           @location(3) mode: f32,
           @location(4) channels:f32,
+          ${this.irradiance ? "@location(5) spot:vec4f," : ""}
           @builtin(vertex_index) vertexIndex: u32,
         };
 
@@ -332,6 +372,7 @@ export class WebGpuLightingPass {
           @location(3) mode: f32,
           @location(4) scaleY: f32,
           @location(5) @interpolate(flat) channels:f32,
+          ${this.irradiance ? "@location(6) @interpolate(flat) spot:vec4f," : ""}
         };
 
         ${normalLayout?`
@@ -371,6 +412,7 @@ export class WebGpuLightingPass {
           output.color = input.color;
           output.light = input.light;
           output.mode = input.mode;output.channels=input.channels;
+          ${this.irradiance ? "output.spot=input.spot;" : ""}
           output.scaleY = input.rect.w / input.rect.z;
           return output;
         }
@@ -387,6 +429,10 @@ export class WebGpuLightingPass {
             let distanceToLight = length((input.pixelPosition-input.light.xy)/vec2f(1.0,input.scaleY));
             let attenuation = max(1.0 - (distanceToLight / input.light.z), 0.0);
             var alpha = pow(attenuation, input.light.w) * input.color.a;
+            ${this.irradiance ? `if(input.spot.z>=-1. && distanceToLight>.000001){
+              let angle=dot((input.pixelPosition-input.light.xy)/vec2f(1.,input.scaleY)/distanceToLight,input.spot.xy);
+              var cone=step(input.spot.z,angle);if(input.spot.w>input.spot.z+.0000001){cone=smoothstep(input.spot.z,input.spot.w,angle);}alpha*=cone;
+            }` : ""}
             ${normalLayout?`let delta=vec3f(input.light.x-input.pixelPosition.x,(input.light.y-input.pixelPosition.y)/input.scaleY,max(input.mode-2.,0.));
             var direction=vec3f(0.,0.,1.);if(length(delta)>0.0001){direction=normalize(delta);}
             ${surface?"let response=surfaceResponse(input,direction,true);":"alpha *= normalResponse(input,direction);"}`:""}
@@ -410,7 +456,7 @@ export class WebGpuLightingPass {
         module,
         entryPoint: "vs_main",
         buffers: [{
-          arrayStride: LIGHTING_INSTANCE_STRIDE_BYTES,
+          arrayStride: this.lightingInstanceStride,
           stepMode: "instance",
           attributes: [
             { shaderLocation: 0, offset: 0, format: "float32x4" },
@@ -418,6 +464,7 @@ export class WebGpuLightingPass {
             { shaderLocation: 2, offset: 8 * BYTES_PER_F32, format: "float32x4" },
             { shaderLocation: 3, offset: 12 * BYTES_PER_F32, format: "float32" },
             { shaderLocation: 4, offset: 13 * BYTES_PER_F32, format: "float32" },
+            ...(this.irradiance ? [{ shaderLocation: 5, offset: 14 * BYTES_PER_F32, format: "float32x4" as const }] : []),
           ],
         }],
       },
@@ -679,38 +726,6 @@ export class WebGpuLightingPass {
 
 function emptyStats(): WebGpuLightingPassStats {
   return { drawCalls: 0, pointLightCount: 0, tileOccluderCount: 0, shadowDrawCalls: 0, shadowCasterCount: 0 };
-}
-
-function writeLightingInstance(
-  buffer: Float32Array,
-  offset: number,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: readonly [number, number, number, number],
-  lightX: number,
-  lightY: number,
-  lightRadius: number,
-  lightFalloff: number,
-  mode: number,
-  channels=65535,
-): number {
-  buffer[offset] = x;
-  buffer[offset + 1] = y;
-  buffer[offset + 2] = width;
-  buffer[offset + 3] = height;
-  buffer[offset + 4] = color[0];
-  buffer[offset + 5] = color[1];
-  buffer[offset + 6] = color[2];
-  buffer[offset + 7] = color[3];
-  buffer[offset + 8] = lightX;
-  buffer[offset + 9] = lightY;
-  buffer[offset + 10] = lightRadius;
-  buffer[offset + 11] = lightFalloff;
-  buffer[offset + 12] = mode;
-  buffer[offset + 13] = channels;
-  return offset + FLOATS_PER_LIGHTING_INSTANCE;
 }
 
 function writeShadowVertex(

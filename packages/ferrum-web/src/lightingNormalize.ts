@@ -1,4 +1,5 @@
 import {resolveLightingChannelMask} from "./lightingMasks.js";
+import { resolvePointLightSpot } from "./lightingSpot.js";
 import { resolveDirectionalLight2D, resolveLitDirectionalLight2D } from "./dataSceneSun.js";
 import { resolveFlatHdr } from "./flatHdr.js";
 import type {
@@ -70,7 +71,7 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene))) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene) && !hasSpotLights(scene))) {
     return DISABLED_LIGHTING_SCENE;
   }
 
@@ -81,6 +82,7 @@ function hasLightMasks(scene: LightingScene2D): boolean {
   return scene.directionalLight?.lightMask !== undefined || scene.directionalLight?.shadowMask !== undefined
     || !!scene.pointLights?.some(light => light.lightMask !== undefined || light.shadowMask !== undefined);
 }
+function hasSpotLights(scene: LightingScene2D): boolean { return !!scene.pointLights?.some(light => light.spot !== undefined); }
 
 export function createResolvedLightingScene(): ResolvedLightingScene2D {
   return {
@@ -116,6 +118,7 @@ export function resolveLightingSceneInto(
   if (scene && scene.profile !== undefined && scene.profile !== "legacy" && scene.profile !== "lit") throw Error("lighting.profile must be legacy or lit");
   const lit = !!scene && scene.profile === "lit";
   if(scene&&!lit&&hasLightMasks(scene))throw Error("Light channel masks require the flat lit profile");
+  if(scene&&!lit&&hasSpotLights(scene))throw Error("Point-light cones require the flat lit profile");
   if (scene && scene.hdr !== undefined) {
     if (!lit) throw Error("lighting.hdr requires the lit profile");
     mutableTarget.hdr = resolveFlatHdr(scene.hdr);
@@ -227,6 +230,8 @@ function tileOccludersMatch(source: readonly TileOccluder2D[], cached: readonly 
 }
 
 function resolvePointLightInto(target: MutableResolvedPointLight2D, light: PointLight2D, index: number): void {
+  if (light.spot === undefined) delete target.spot;
+  else target.spot = resolvePointLightSpot(light.spot, `pointLights[${index}].spot`, target.spot);
   if(light.lightMask===undefined)delete target.lightMask;else target.lightMask=resolveLightingChannelMask(light.lightMask,`pointLights[${index}].lightMask`);
   if(light.shadowMask===undefined)delete target.shadowMask;else target.shadowMask=resolveLightingChannelMask(light.shadowMask,`pointLights[${index}].shadowMask`);
   if (light.height === undefined) delete target.height;
@@ -239,6 +244,8 @@ function resolvePointLightInto(target: MutableResolvedPointLight2D, light: Point
   target.radius = positiveIndexedNumber(light.radius, "pointLights", index, "radius");
   if (light.radiusY === undefined) delete target.radiusY;
   else target.radiusY = positiveIndexedNumber(light.radiusY, "pointLights", index, "radiusY");
+  if (target.spot && (![target.radius, target.radiusY ?? target.radius, (target.radiusY ?? target.radius) / target.radius].every(n => Number.isFinite(Math.fround(n)) && Math.fround(n) > 0)))
+    throw Error(`pointLights[${index}].spot requires positive finite float32 radii and aspect`);
   writeIndexedNormalizedColor4Into(target.color, light.color ?? DEFAULT_LIGHT_COLOR, "pointLights", index, "color");
   target.intensity = nonNegativeIndexedNumber(light.intensity ?? 1, "pointLights", index, "intensity");
   target.falloff = positiveIndexedNumber(light.falloff ?? 2, "pointLights", index, "falloff");

@@ -1,3 +1,4 @@
+import { writePointLightSpot } from "./lightingSpot.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type {
   ResolvedLightingScene2D,
@@ -42,6 +43,8 @@ export class WebGL2LightingPass {
   private readonly lightYScaleLocation: WebGLUniformLocation;
   private readonly shadowLightYScaleLocation: WebGLUniformLocation;
   private readonly lightRadiusLocation: WebGLUniformLocation;
+  private readonly lightSpotValues = new Float32Array(4);
+  private readonly lightSpotLocation: WebGLUniformLocation;
   private readonly lightFalloffLocation: WebGLUniformLocation;
   private readonly shadowResolutionLocation: WebGLUniformLocation;
   private readonly shadowColorLocation: WebGLUniformLocation;
@@ -134,6 +137,7 @@ export class WebGL2LightingPass {
       this.shadowLightCenterLocation = shadowLightCenterLocation;
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
       const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing lighting uniform "+name);return location;};
+      this.lightSpotLocation=uniform("u_light_spot");
       this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
       this.receiverUniforms={has:uniform("u_has_receiver_masks"),texture:uniform("u_receiver_masks"),channels:uniform("u_light_channels")};
       this.surfaceUniforms={has:uniform("u_surface"),albedo:uniform("u_surface_albedo"),srgb:uniform("u_surface_albedo_srgb")};
@@ -305,6 +309,8 @@ export class WebGL2LightingPass {
     this.gl.uniform1f(this.lightRadiusLocation, radius);
     this.gl.uniform1f(this.lightYScaleLocation, (light.radiusY ?? radius) / radius);
     this.gl.uniform1f(this.lightFalloffLocation, light.falloff);
+    writePointLightSpot(this.lightSpotValues, 0, light.spot, (light.radiusY ?? radius) / radius);
+    this.gl.uniform4f(this.lightSpotLocation, this.lightSpotValues[0], this.lightSpotValues[1], this.lightSpotValues[2], this.lightSpotValues[3]);
     this.gl.uniform1f(this.normalUniforms.height,light.height??light.radius*0.5);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     return 1;

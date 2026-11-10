@@ -1,6 +1,7 @@
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { createDataSceneView } from "../src/core.js";
+import { normalizeLightingScene } from "../src/lightingNormalize.js";
 import type { FerrumEngine } from "../src/engineTypes.js";
 
 test("Data Scene view uses a common camera for CSS/device round trips and world lights", () => {
@@ -24,12 +25,17 @@ test("Data Scene view uses a common camera for CSS/device round trips and world 
     const resetFrame = view.snapshot({ cameraX: 900, cameraY: 650, cameraGroundYScale: 1 });
     equal(resetFrame.groundYScale, 1);
     equal(resetFrame.worldHeight, height / zoom);
-    const light = view.lighting({ pointLights: [{ ...world, radius: 25 }], tileOccluders: [{ ...world, width: 8, height: 12 }] }, snapshot);
+    const light = view.lighting({ pointLights: [{ ...world, radius: 25, spot: { directionX: 3, directionY: 4, angleDegrees: 90 } }], tileOccluders: [{ ...world, width: 8, height: 12 }] }, snapshot);
     equal(light.pointLights![0].x, screen.x / zoom);
     equal(light.pointLights![0].radius, 25);
     ok(Math.abs(light.tileOccluders![0].y - screen.y / zoom) < 1e-8);
     equal(light.tileOccluders![0].height, 12 * groundYScale);
     equal(light.pointLights![0].radiusY, 25 * groundYScale);
+    equal(light.pointLights![0].spot!.directionX, .6);
+    equal(light.pointLights![0].spot!.directionY, .8 * groundYScale);
+    equal(light.pointLights![0].spot!.angleDegrees, 90);
+    const shortDirection = view.lighting({ profile: "lit", pointLights: [{ ...world, radius: 25, spot: { directionX: 0, directionY: 1e-6, angleDegrees: 90 } }] }, snapshot);
+    equal(normalizeLightingScene(shortDirection).pointLights[0].spot!.directionY, 1);
     throws(() => view.setGroundYScale(0), /groundYScale/);
     throws(() => view.setZoom(0), /zoom/);
   }

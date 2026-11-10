@@ -147,7 +147,7 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform vec2 u_light_center;
       uniform float u_light_radius;
       uniform float u_light_y_scale;
-      uniform float u_light_falloff;
+      uniform float u_light_falloff;uniform vec4 u_light_spot;
       uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
@@ -184,6 +184,10 @@ export const WEBGL2_SHADER_SOURCES = {
           float distanceToLight = length((v_position-u_light_center)/vec2(1.0,u_light_y_scale));
           float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
           float alpha = pow(attenuation, u_light_falloff) * u_color.a;
+          if(u_irradiance && u_light_spot.z>=-1. && distanceToLight>.000001){
+            float angle=dot((v_position-u_light_center)/vec2(1.,u_light_y_scale)/distanceToLight,u_light_spot.xy);
+            alpha*=u_light_spot.w>u_light_spot.z+.0000001?smoothstep(u_light_spot.z,u_light_spot.w,angle):step(u_light_spot.z,angle);
+          }
           vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
           vec3 direction=length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta);
           vec3 response=vec3(1.);if(u_surface)response=surfaceResponse(direction,true);else alpha*=normalResponse(direction);

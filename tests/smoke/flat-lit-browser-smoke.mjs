@@ -4,13 +4,14 @@ import { mkdir,mkdtemp,readFile,writeFile } from 'node:fs/promises';
 import {resolve,sep} from 'node:path';
 import {chromium} from 'playwright-core';
 import {installSpatialGpuTarget} from './spatial-webgpu-capture.mjs';
+const spotsOnly=process.argv.includes('--spots-only');
 const masksOnly=process.argv.includes('--masks-only');
 const surfaceOnly=process.argv.includes('--surface-only');
 const hdrOnly=process.argv.includes('--hdr-only'),managedOnly=process.argv.includes('--managed-only'),colorOnly=process.argv.includes('--color-only');
 const cases=managedOnly?[['webgl2','linear-srgb'],['webgpu','linear-srgb']]:[['webgl2','legacy'],['webgpu','legacy'],['webgl2','linear-srgb'],['webgpu','linear-srgb']];
-const root=resolve('.'),parent=resolve(masksOnly?'artifacts/lighting-remaining/m4c':surfaceOnly?'artifacts/lighting-remaining/m4b':managedOnly||colorOnly?'artifacts/lighting-remaining/m3c':hdrOnly?'artifacts/lighting-remaining/m3b':'artifacts/flat-lit-m2a');
+const root=resolve('.'),parent=resolve(spotsOnly?'artifacts/lighting-remaining/m4d':masksOnly?'artifacts/lighting-remaining/m4c':surfaceOnly?'artifacts/lighting-remaining/m4b':managedOnly||colorOnly?'artifacts/lighting-remaining/m3c':hdrOnly?'artifacts/lighting-remaining/m3b':'artifacts/flat-lit-m2a');
 await mkdir(parent,{recursive:true});const run=await mkdtemp(resolve(parent,'gpu-'));
-const html='<script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/packages/ferrum-web/dist/core.js","@ferrum2d/ferrum-web/labs":"/packages/ferrum-web/dist/labs.js","@ferrum2d/ferrum-web/authoring":"/packages/ferrum-web/dist/authoring.js"}}</script><script type="module">import{probeFlatLit}from"/tests/smoke/flat-lit-browser-fixture.mjs";window.probeFlatLit=probeFlatLit;import{probeFlatHdr}from"/tests/smoke/flat-hdr-browser-fixture.mjs";window.probeFlatHdr=probeFlatHdr;import{probeManagedColor}from"/tests/smoke/webgpu-linear-browser-fixture.mjs";window.probeManagedColor=probeManagedColor;import{probeFlatSurface}from"/tests/smoke/flat-surface-browser-fixture.mjs";window.probeFlatSurface=probeFlatSurface;import{probeFlatReceiverMasks}from"/tests/smoke/flat-receiver-masks-browser-fixture.mjs";window.probeFlatReceiverMasks=probeFlatReceiverMasks;</script>';
+const html='<script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/packages/ferrum-web/dist/core.js","@ferrum2d/ferrum-web/labs":"/packages/ferrum-web/dist/labs.js","@ferrum2d/ferrum-web/authoring":"/packages/ferrum-web/dist/authoring.js"}}</script><script type="module">import{probeFlatLit}from"/tests/smoke/flat-lit-browser-fixture.mjs";window.probeFlatLit=probeFlatLit;import{probeFlatHdr}from"/tests/smoke/flat-hdr-browser-fixture.mjs";window.probeFlatHdr=probeFlatHdr;import{probeManagedColor}from"/tests/smoke/webgpu-linear-browser-fixture.mjs";window.probeManagedColor=probeManagedColor;import{probeFlatSurface}from"/tests/smoke/flat-surface-browser-fixture.mjs";window.probeFlatSurface=probeFlatSurface;import{probeFlatReceiverMasks}from"/tests/smoke/flat-receiver-masks-browser-fixture.mjs";window.probeFlatReceiverMasks=probeFlatReceiverMasks;import{probeFlatSpot}from"/tests/smoke/flat-spot-browser-fixture.mjs";window.probeFlatSpot=probeFlatSpot;</script>';
 const server=createServer((req,res)=>void(async()=>{
  const url=new URL(req.url,'http://localhost');if(url.pathname==='/favicon.ico'){res.writeHead(204).end();return;}
  if(url.pathname==='/'){res.setHeader('Content-Type','text/html');res.end(html);return;}
@@ -26,11 +27,11 @@ try{
   const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:dpr});
   try{
    await page.addInitScript(installSpatialGpuTarget);page.on('pageerror',e=>errors.push(e.message));const bootFailure=new Promise((_,reject)=>page.once('pageerror',reject));
-   await page.goto('http://127.0.0.1:'+server.address().port);await Promise.race([page.waitForFunction(()=>window.probeFlatLit&&window.probeFlatHdr&&window.probeManagedColor&&window.probeFlatSurface&&window.probeFlatReceiverMasks),bootFailure]);
-   for(const fixture of (masksOnly?['masks']:surfaceOnly?['surface']:colorOnly?[]:hdrOnly?['hdr']:['sdr','hdr','surface','masks'])){
+   await page.goto('http://127.0.0.1:'+server.address().port);await Promise.race([page.waitForFunction(()=>window.probeFlatLit&&window.probeFlatHdr&&window.probeManagedColor&&window.probeFlatSurface&&window.probeFlatReceiverMasks&&window.probeFlatSpot),bootFailure]);
+   for(const fixture of (spotsOnly?['spots']:masksOnly?['masks']:surfaceOnly?['surface']:colorOnly?[]:hdrOnly?['hdr']:['sdr','hdr','surface','masks','spots'])){
     const measured=[];
     for(const [backend,mode]of cases){
-     const result=await page.evaluate(([backend,mode,fixture])=>(fixture==='masks'?window.probeFlatReceiverMasks:fixture==='surface'?window.probeFlatSurface:fixture==='hdr'?window.probeFlatHdr:window.probeFlatLit)(backend,mode),[backend,mode,fixture]);
+     const result=await page.evaluate(([backend,mode,fixture])=>(fixture==='spots'?window.probeFlatSpot:fixture==='masks'?window.probeFlatReceiverMasks:fixture==='surface'?window.probeFlatSurface:fixture==='hdr'?window.probeFlatHdr:window.probeFlatLit)(backend,mode),[backend,mode,fixture]);
      results.push({...result,fixture});measured.push(result);
      await writeFile(resolve(run,'partial.json'),JSON.stringify({results,errors},null,2));assert(result.ok,JSON.stringify(result.failure));
      for(const key of ['textureCount','bufferCount','programCount','renderTargetCount'])assert.equal(result.afterDestroy[key],0,key);
@@ -47,7 +48,7 @@ try{
      }
     }
    }
-   if(!hdrOnly&&!surfaceOnly&&!masksOnly){
+   if(!hdrOnly&&!surfaceOnly&&!masksOnly&&!spotsOnly){
     const measured=[];
     for(const backend of ['webgl2','webgpu']){
      const result=await page.evaluate(backend=>window.probeManagedColor(backend),backend);results.push({...result,fixture:'managed-color'});measured.push(result);

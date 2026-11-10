@@ -39,6 +39,8 @@ export type {
   PackedTextureAtlasDocument,
   PackedTextureAtlasFrame,
   PointLight2D,
+  PointLightSpot2D,
+  ResolvedPointLightSpot2D,
   ResolvedLightingScene2D,
   ResolvedSpriteMaterialPreset,
   ShadowProjectionOptions,

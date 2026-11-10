@@ -278,7 +278,8 @@ test("WebGPU mask replacement failure preserves previous resources and cleans st
 
 test("WebGPU light channels remain per-instance and distinguish receiver texture presence",()=>{
  installWebGpuGlobals();const device=new FakeGpuDevice(),pass=new WebGpuLightingPass(device as unknown as GPUDevice,"rgba16float",{} as GPUPipelineLayout,{} as GPUBindGroup,true,false,false,true);
- const scene=normalizeLightingScene({profile:"lit",ambientIrradiance:[0,0,0],directionalLight:{directionX:1,directionY:0,intensity:1,lightMask:1,shadowMask:8},pointLights:[{x:0,y:0,radius:10,lightMask:0,shadowMask:0},{x:1,y:1,radius:10}]});
+ const scene=normalizeLightingScene({profile:"lit",ambientIrradiance:[0,0,0],directionalLight:{directionX:1,directionY:0,intensity:1,lightMask:1,shadowMask:8},pointLights:[{x:0,y:0,radius:10,lightMask:0,shadowMask:0,spot:{directionX:1,directionY:0,angleDegrees:90}},{x:1,y:1,radius:10}]});
  pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder,scene,100,100,{layout:{} as GPUBindGroupLayout,bindGroup:{} as GPUBindGroup,hasReceiverMasks:true});
- const values=device.queue.writeBufferCalls[0].values;equal(values.length,42);deepEqual([values[13],values[27],values[41]],[65536+1+(8<<8),65536,131071]);pass.destroy();
+ const values=device.queue.writeBufferCalls[0].values;equal(values.length,54);deepEqual([values[13],values[31],values[49]],[65536+1+(8<<8),65536,131071]);
+ deepEqual(values.slice(14,18),[0,0,-2,-2]);deepEqual(values.slice(32,36),[1,0,Math.fround(Math.SQRT1_2),Math.fround(Math.SQRT1_2)]);deepEqual(values.slice(50,54),[0,0,-2,-2]);pass.destroy();
 });
