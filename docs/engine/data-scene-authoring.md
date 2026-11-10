@@ -715,6 +715,9 @@ Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 �
 한 번의 씬 적용에서 normal이 연결된 instance는 최대 65,536개다. 초과하면 기존 씬을 변경하기 전에 거절한다.
 
 2D `lighting.pointLights[].height`는 선택형 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`)이고 물리 높이와 무관하다.
+선택형 lit point의 `cookie`는 `texture` 이름/ID 또는 `textureId`와 `rotationRadians`·`uv`를 받는다.
+문서는 이름·비활성·명시적0/UV 반전을 보존하고 apply/restore는 cookie v1 renderer와 data 자산을 사전 검사한다.
+[Cookie 필드·좌표·원본 계약](data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
 `directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
 기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
 건물은 `visual.shadow.shape:"volume"`과 필수 `width/depth/height`, 선택형 `roofHeight/offsetX/offsetY`로

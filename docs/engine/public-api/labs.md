@@ -198,3 +198,10 @@ callback 중 runtime을 해제하면 진행 중 sync는 오류로 중단하고 �
 범위·타원 좌표·비활성 검증·저장 및 private GPU 비용은
 [Flat 2D spot 조명](../data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.
 기존 legacy overlay는 새 원뿔 요청을 거절하고 선택형 lit profile에서 사용한다.
+
+## Flat 점광원 cookie · 개발 소스
+
+`PointLight2D.cookie?: PointLightCookie2D`는 `texture`(이름/숫자) 또는 `textureId` 중 하나와 선택형
+`rotationRadians`·`uv`를 받는다. `ResolvedPointLightCookie2D`는 기본 회전0과 전체 UV를 포함하며 이름을 보존한다.
+raw R*A·좌표·data 이미지 준비·원본 저장·renderer의 숫자 ID 요구·GPU 비용은
+[Flat cookie 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.

@@ -234,3 +234,26 @@ WebGPU는 legacy14-float instance row를 보존하고 lit row만18 float로 확�
 cosOuter=-2는 미선택 또는360도 hard 원형의 명시적 sentinel이다. point 직접 성분의 alpha에
 원뿔 감쇠를 곱하므로 diffuse와 bounded reflection을 함께 제한한다. ambient/emission·수신 mask·광원별 shadow 합성은 유지한다.
 정점·sprite lighting·Surface·receiver mask의 Native ABI는 변경하지 않는다.
+
+## 선택형 Flat cookie
+
+cookie source의 strict 검증과 이름→ID 해석은 `lightingCookie`의 cold 경로다. 원본 문서는 이름·OFF·명시적0을
+보존하고 renderer는 loaded straight-alpha data 이미지와 cookie v1 capability를 확인한다. 프레임의
+`view.lighting`은 이름을 현재 registry에 해석한 뒤 기존 world→logical 타원 변환을 적용한다.
+시뮬레이션이나 entity별 Wasm 호출은 추가하지 않는다. 수신점의 타원 정규화 좌표를 역회전하고 atlas로 옮겨
+raw nearest R*A를 읽는다. 적용 위치는 해당 point의 직접광 alpha이며 diffuse/GGX를 함께 제한한다.
+
+GL은 unit6 texture/sampler를 저장·복원하고 cookie가 없을 때 sampler uniform은 unit0을 가리킨다.
+외부 unit6의 불완전 texture·mip sampler가 기본 draw의 validation을 깨지 않게 한다.
+GPU는 별도 group3 texture+dynamic uniform을 cookie shader variant에만 추가한다. private legacy14/lit18 row와
+기존 group0/normal1/shadow2는 유지하며, 미사용 group slot은 빈 layout이다.
+8 KiB 테이블에32개256-byte row를 먼저 업로드하고 direct draw의 동적 offset으로 서로 다른 UV/회전을 선택한다.
+동일 texture view는 한 bind group을 재사용하고 퇴역 view는 다음 preparation에서 cache에서 제거한다.
+plain 연속 광원은 계속 batch한다. cookie direct draw만 광원별로 나누며 shadow·ambient·composite pass 구조는 유지한다.
+`textureBindCount`는 기존 implied 통계에 활성 cookie 광원의 data binding을 각각1개 더한다. 실제 상태 복원 API 호출을 세는 값은 아니다.
+
+각 lit pass variant에 테이블1개와 normal/masked 조합별 lazy shader를 최대4개 보관한다.
+OFF는 추가 draw/target이 없으며 warm 테이블의8 KiB는 destroy/recovery까지 유지할 수 있다.
+동기 group/write 실패는 partial cache를 지워 재시도를 허용한다. 비동기 GPU allocation/validation 실패는
+버퍼를 회수하고 오류를 고정해 다음 preparation에 전달한다. destroy 뒤 scope 완료는 자원을 다시 건드리지 않는다.
+원본·좌표·비용 범위는 [공개 cookie 계약](../../engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.

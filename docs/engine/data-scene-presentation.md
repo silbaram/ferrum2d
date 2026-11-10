@@ -565,4 +565,48 @@ legacy overlay에서 `spot` 요청은 오류다. Source JSON과 기존 scene-aut
 WebGL2는 점광원마다 vec4 uniform을 갱신한다. WebGPU는 private lit row를14→18 float
 (56→72B)로 확장하며 legacy row는14 float를 유지한다. buffer capacity는 기존처럼2의 거듭제곱으로 증가한다.
 원뿔 때문에 새 texture·target·추가 합성 pass를 만들지 않는다. OFF에는 기존 lit target 해제 규칙을 따른다.
-이 기능은 cookie나 polygon occluder 지원을 뜻하지 않는다. 두 항목은 후속 개발이다.
+cookie는 아래 계약으로 함께 사용할 수 있다. polygon occluder는 후속 개발이다.
+
+## Flat 2D cookie 조명 · 개발 소스
+
+`profile:"lit"`의 `pointLights[].cookie`는 점광원의 diffuse·GGX 직접 성분에 데이터 이미지의
+**raw R × alpha**를 곱한다. 환경광·발광·HUD는 유지하고 spot·타일 차폐·독립 수신 mask와 함께 사용한다.
+이미지는 straight alpha와 `colorSpace:"none"|"linear"`로 미리 로드한다. sRGB·미등록 이미지·이름 미해석은
+씬 교체/조명 setter 전에 오류로 거절한다. 이미지의 크기를 albedo와 맞출 필요는 없다.
+
+```ts
+await renderer.loadTexture(7, "/assets/light-pattern.png", {
+  colorSpace: "none", alphaMode: "straight"
+});
+renderer.setLighting({
+  profile: "lit",
+  pointLights: [{ x: 200, y: 100, radius: 240,
+    cookie: { textureId: 7, rotationRadians: Math.PI / 4, uv: [0, 0, 0.5, 1] }
+  }]
+});
+```
+
+`cookie.texture`는 자산 이름 또는 숫자 ID, `cookie.textureId`는 숫자 ID 별칭이며 정확히 하나만 지정한다.
+ID는 정수0..16,777,214, 이름은 앞뒤 공백 없는1..256자다. `rotationRadians`는 유한수 ±1,000,000,
+기본0이다. `uv`는 기본 `[0,0,1,1]`이며 네 값은0..1이고 float32로 변환한 두 끝점이 축마다 달라야 한다.
+U/V 반전을 지원한다. `null`이나 알 수 없는 필드는 오류이며 비활성 조명에서도 검사한다.
+
+패턴 좌표는 `(수신점-광원중심)/(radius,radiusY)`의 타원 정규화 좌표다. 회전은 logical Y가 아래인
+화면에서 시계 방향이며 UV 원점은 왼쪽 위다. nearest texel을 raw로 읽고 선택한 atlas 사각형 끝으로 clamp한다.
+회전 후 패턴 사각형 밖은0이다. 카메라·zoom·DPR·ground 압축은 패턴과 점광원 범위에 같은 변환을 적용한다.
+
+문서는 `{texture:"pattern"}` 같은 안정적 이름을 보관한다. 작성 문서 사전 검사는 `options.textureId` 또는
+engine registry로 ID를 해석하고, 프레임의 `view.lighting(...)`도 현재 registry로 해석한다.
+`renderer.setLighting(...)`에는 숫자로 해석한 설정을 전달한다. 직접 named setter는 오류다.
+적용·복원은 `FlatLightingPreparer.flatLightingCookieVersion() === 1`을 자산 조회·native 교체 전에 요구한다.
+공식 viewer는 OFF 문서까지 cookie를 data로 로드하고 열린 문서의 color/data 충돌을 거절하며 원본 이름을 저장한다.
+기존 cookie 없는 문서에는 새 capability가 필요 없다. 새 source 필드는 기존 scene-authoring v1 안의 선택형 확장이며
+구 renderer의 cookie 문서 조용한 누락을 허용하지 않는다.
+
+`PointLightCookie2D`·`ResolvedPointLightCookie2D`는 `/labs`와 기존 root aggregate에 공개한다.
+Native ABI와 WebGPU legacy14/lit18 row는 유지한다. WebGL2는 점광원별 unit6 texture·UV/회전 uniform을 사용하고
+texture/sampler binding을 복원한다. WebGPU는 lit pass variant마다 lazy8 KiB 동적 uniform 테이블을 만들며
+최대32개 광원의 서로 다른 UV/회전을256-byte 간격으로 미리 업로드한다. 같은 view의 bind group은 재사용하고
+재import된 view는 다시 바인딩한다. cookie 광원마다 direct draw를 분리하므로 추가 draw 비용이 있지만 target/pass는 추가하지 않는다.
+warm 테이블·shader는 유지할 수 있으나 기본/OFF 새 프레임은 cookie 자원을 만들지 않는다.
+기기 할당/검증 실패는 명시적 오류로 유지하고 backend 복구 때 재생성한다. 실제 기기 성능은 개발 완료 후 별도로 검증한다.

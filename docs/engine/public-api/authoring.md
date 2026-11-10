@@ -891,3 +891,11 @@ native handle의 수명을 다시 확인한다. 복합 restore의 두 대상 중
 apply/restore의 `flatLightingPreparer`로 자산을 먼저 검사한다.
 작성 예제와 역할은 [Scene Authoring](../data-scene-authoring.md#flat-sprite-emissionspecularroughness-개발-소스),
 채널·UV·색공간·비용은 [표면 재질](../data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+## Flat point cookie 원본 · 개발 소스
+
+`lighting.pointLights[].cookie`는 안정적 `texture` 이름/숫자 또는 `textureId` 별칭과 회전·UV를 보관한다.
+OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지한다. 적용·새 handle 복원 시에는 현재
+`textureId` resolver로 해석한 뒤 `flatLightingPreparer`에 전달한다. cookie 문서는 renderer의
+`flatLightingCookieVersion?.() === 1`을 자산 조회·native 교체 전에 요구한다. 구 preparer에는 cookie 없는 문서를 계속 적용한다.
+[Cookie 범위와 자산 역할](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.

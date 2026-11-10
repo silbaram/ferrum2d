@@ -2891,3 +2891,22 @@ resize·WebGPU device recovery·destroy 자원0을 픽셀 비교한다.
 새 Spot 보고서는 `artifacts/lighting-remaining/m4d/gpu-*/verification.json`이다.
 SDK unit은 null/범위/벡터/float32 aspect·비활성 검증, JSON source와 실제 Native Playing·새 handle 복원,
 구 legacy14/lit18 row의 channel/cone slot 정합성과 view 투영을 검사한다. 실제 장치 성능은 이 software adapter 결과로 판단하지 않는다.
+
+### Flat 2D cookie 회귀
+
+SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --cookies-only`로 실행한다.
+기존 `pnpm smoke:flat-lit`과 수동 CI validate의 기본 행렬에도 포함한다. 보고서는
+`artifacts/lighting-remaining/m4d/cookie/gpu-*/verification.json`이며 양 backend·두 색공간·DPR1/2·SDR/HDR을 검사한다.
+raw R*A의 수치 기대값, white identity·black 직접광0, rotation·UV flip·atlas 경계,
+동일 이미지의 광원별 서로 다른 uniform offset, spot·수신 mask·광원별 그림자,
+ambient/emission/GGX 독립성, 실패 setter 원자성·다중 packet·OFF·warm bytes·재import·resize·복구·destroy0을 비교한다.
+GL은 불완전 외부 unit6 texture/mip sampler를 바인딩해 상태 복원과 기본 draw의 validation도 확인한다.
+
+SDK unit은 source JSON·OFF·범위/float32 UV·뷰 투영과 이름→ID, 실제 Native Playing·새 handle 복원 시 재매핑,
+구 capability 거절 후 자산 조회/native mutation0, invalid hash 보존을 검사한다.
+GPU helper unit은32행 한도·동적 offset·warm 재사용·view 교체/퇴역, 동기 group/write 실패 재시도,
+비동기 scope 실패의 자원 회수·오류 유지·destroy 수명을 검사한다.
+공식 viewer의 `--flat-lit` 검사는 named cookie의 cold/늦은 data 역할, raw straight R*A 픽셀,
+role 충돌 뒤 문서/handle/pixels 보존, 탭·Playing·원본 export를 검사한다.
+`test:placement-flat-lighting`과 `test:placement-asset-usage`는 OFF/numeric cookie 역할과 정확한 asset pointer를 검사한다.
+실게임·실기기 성능 검증은 개발 완료 뒤 진행한다.

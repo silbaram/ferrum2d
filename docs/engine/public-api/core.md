@@ -1464,6 +1464,11 @@ callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예�
 다음 Wasm 호출/frame/memory growth 전에 소비하고, 장기 보관할 때 alias를 유지한 소유 복사본을 만든다.
 구 Wasm은 metadata 없는 기존 씬을 유지하며 lit/receiver 요청은 활성화 전에 거절한다.
 
+선택형 point cookie 문서는 `FlatLightingPreparer.flatLightingCookieVersion?.()`의 결과1을 요구한다.
+기존 preparer 구현은 cookie 없는 문서에 계속 사용할 수 있다. named cookie는 authoring preflight와
+`view.lighting`에서 ID로 해석하고 renderer setter는 loaded numeric data 자산만 받는다.
+[자산·저장·좌표 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
 ## Spatial 효과 합성 선택 · 개발 소스
 
 `SpatialEnvironmentSpec.composition: "legacy"|"separated"`를 선택한다. 생략은 기존 합성이다.
