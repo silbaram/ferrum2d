@@ -1,3 +1,4 @@
+import { resolvePointLightCookie } from "./lightingCookie.js";
 import {resolveLightingChannelMask} from "./lightingMasks.js";
 import { resolvePointLightSpot } from "./lightingSpot.js";
 import { resolveDirectionalLight2D, resolveLitDirectionalLight2D } from "./dataSceneSun.js";
@@ -71,7 +72,7 @@ const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
 });
 
 export function normalizeLightingScene(scene: LightingScene2D | false | undefined): ResolvedLightingScene2D {
-  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene) && !hasSpotLights(scene))) {
+  if (scene === undefined || scene === false || (scene.enabled === false && scene.profile === undefined && scene.ambientIrradiance === undefined && scene.hdr === undefined && !hasLightMasks(scene) && !hasSpotLights(scene) && !hasCookies(scene))) {
     return DISABLED_LIGHTING_SCENE;
   }
 
@@ -82,6 +83,7 @@ function hasLightMasks(scene: LightingScene2D): boolean {
   return scene.directionalLight?.lightMask !== undefined || scene.directionalLight?.shadowMask !== undefined
     || !!scene.pointLights?.some(light => light.lightMask !== undefined || light.shadowMask !== undefined);
 }
+function hasCookies(scene: LightingScene2D): boolean { return !!scene.pointLights?.some(light => light.cookie !== undefined); }
 function hasSpotLights(scene: LightingScene2D): boolean { return !!scene.pointLights?.some(light => light.spot !== undefined); }
 
 export function createResolvedLightingScene(): ResolvedLightingScene2D {
@@ -118,6 +120,7 @@ export function resolveLightingSceneInto(
   if (scene && scene.profile !== undefined && scene.profile !== "legacy" && scene.profile !== "lit") throw Error("lighting.profile must be legacy or lit");
   const lit = !!scene && scene.profile === "lit";
   if(scene&&!lit&&hasLightMasks(scene))throw Error("Light channel masks require the flat lit profile");
+  if(scene&&!lit&&hasCookies(scene))throw Error("Point-light cookies require the flat lit profile");
   if(scene&&!lit&&hasSpotLights(scene))throw Error("Point-light cones require the flat lit profile");
   if (scene && scene.hdr !== undefined) {
     if (!lit) throw Error("lighting.hdr requires the lit profile");
@@ -230,6 +233,8 @@ function tileOccludersMatch(source: readonly TileOccluder2D[], cached: readonly 
 }
 
 function resolvePointLightInto(target: MutableResolvedPointLight2D, light: PointLight2D, index: number): void {
+  if (light.cookie === undefined) delete target.cookie;
+  else target.cookie = resolvePointLightCookie(light.cookie, `pointLights[${index}].cookie`, target.cookie);
   if (light.spot === undefined) delete target.spot;
   else target.spot = resolvePointLightSpot(light.spot, `pointLights[${index}].spot`, target.spot);
   if(light.lightMask===undefined)delete target.lightMask;else target.lightMask=resolveLightingChannelMask(light.lightMask,`pointLights[${index}].lightMask`);
@@ -244,8 +249,8 @@ function resolvePointLightInto(target: MutableResolvedPointLight2D, light: Point
   target.radius = positiveIndexedNumber(light.radius, "pointLights", index, "radius");
   if (light.radiusY === undefined) delete target.radiusY;
   else target.radiusY = positiveIndexedNumber(light.radiusY, "pointLights", index, "radiusY");
-  if (target.spot && (![target.radius, target.radiusY ?? target.radius, (target.radiusY ?? target.radius) / target.radius].every(n => Number.isFinite(Math.fround(n)) && Math.fround(n) > 0)))
-    throw Error(`pointLights[${index}].spot requires positive finite float32 radii and aspect`);
+  if ((target.spot || target.cookie) && (![target.radius, target.radiusY ?? target.radius, (target.radiusY ?? target.radius) / target.radius].every(n => Number.isFinite(Math.fround(n)) && Math.fround(n) > 0)))
+    throw Error(`pointLights[${index}].spot/cookie requires positive finite float32 radii and aspect`);
   writeIndexedNormalizedColor4Into(target.color, light.color ?? DEFAULT_LIGHT_COLOR, "pointLights", index, "color");
   target.intensity = nonNegativeIndexedNumber(light.intensity ?? 1, "pointLights", index, "intensity");
   target.falloff = positiveIndexedNumber(light.falloff ?? 2, "pointLights", index, "falloff");

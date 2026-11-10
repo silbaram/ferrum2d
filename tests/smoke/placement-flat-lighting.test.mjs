@@ -50,3 +50,15 @@ test("inactive legacy normal aliases remain editable without reinterpreting thei
   legacy.lighting = { enabled: true };
   assert.throws(() => placementFlatTextureRoles([legacy]), /both color and lighting data/);
 });
+test("OFF point cookies are data assets, including numeric IDs and cross-tab color conflicts", () => {
+  const document = source();
+  document.lighting.pointLights = [{ x: 0, y: 0, radius: 1, cookie: { texture: "pattern" } }];
+  const roles = placementFlatTextureRoles([document]);
+  assert.equal(roles.get("pattern"), "data");
+  assert.equal(placementFlatTextureOptions(["pattern"], roles).pattern.colorSpace, "none");
+  assert.throws(() => placementFlatTextureRoles([document, source({ emissionTexture: "pattern" })]), /both color and lighting data/);
+  document.lighting.pointLights[0].cookie = { textureId: 7 };
+  const numeric = placementFlatTextureRoles([document]);
+  assert.equal(placementFlatTextureOptions(["pattern"], numeric, undefined, () => 7).pattern.colorSpace, "none");
+  assert.throws(() => placementFlatTextureOptions(["color"], numeric, undefined, () => 7), /conflicting named\/numeric/);
+});

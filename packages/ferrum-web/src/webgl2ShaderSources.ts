@@ -148,6 +148,7 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform float u_light_radius;
       uniform float u_light_y_scale;
       uniform float u_light_falloff;uniform vec4 u_light_spot;
+      uniform bool u_has_cookie;uniform highp sampler2D u_cookie;uniform vec4 u_cookie_uv;uniform vec2 u_cookie_rotation;
       uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
@@ -187,6 +188,16 @@ export const WEBGL2_SHADER_SOURCES = {
           if(u_irradiance && u_light_spot.z>=-1. && distanceToLight>.000001){
             float angle=dot((v_position-u_light_center)/vec2(1.,u_light_y_scale)/distanceToLight,u_light_spot.xy);
             alpha*=u_light_spot.w>u_light_spot.z+.0000001?smoothstep(u_light_spot.z,u_light_spot.w,angle):step(u_light_spot.z,angle);
+          }
+          if(u_irradiance && u_has_cookie){
+            vec2 q=(v_position-u_light_center)/vec2(u_light_radius,u_light_radius*u_light_y_scale);
+            vec2 local=vec2(u_cookie_rotation.x*q.x+u_cookie_rotation.y*q.y,-u_cookie_rotation.y*q.x+u_cookie_rotation.x*q.y)*.5+.5;
+            float pattern=0.;
+            if(all(greaterThanEqual(local,vec2(0.)))&&all(lessThanEqual(local,vec2(1.)))){
+              ivec2 size=textureSize(u_cookie,0),lo=clamp(ivec2(floor(min(u_cookie_uv.xy,u_cookie_uv.zw)*vec2(size))),ivec2(0),size-1),hi=clamp(ivec2(ceil(max(u_cookie_uv.xy,u_cookie_uv.zw)*vec2(size)))-1,lo,size-1);
+              vec2 uv=mix(u_cookie_uv.xy,u_cookie_uv.zw,local);vec4 texel=texelFetch(u_cookie,clamp(ivec2(floor(uv*vec2(size))),lo,hi),0);pattern=texel.r*texel.a;
+            }
+            alpha*=pattern;
           }
           vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
           vec3 direction=length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta);

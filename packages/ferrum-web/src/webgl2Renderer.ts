@@ -1,3 +1,4 @@
+import { validateLightingCookies } from "./lightingCookie.js";
 import { flatHdrOptions, validateFlatHdrTransition, type ResolvedFlatHdrOptions } from "./flatHdr.js";
 import { WebGL2HdrPass } from "./webgl2HdrPass.js";
 import { srgbToLinear } from "./colorManagement.js";
@@ -443,6 +444,7 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
     if (nextLightingScene.profile === "lit") { requireWebGL2FlatLit(this.gl); validateFlatLitMaterial(this.spriteMaterial); }
+    validateLightingCookies(nextLightingScene, this.textureSource);
     const nextHdr = flatHdrOptions(nextLightingScene);
     if (this.frameStarted) validateFlatHdrTransition(nextHdr, this.hdrActive, this.frameHasDrawnScene);
     if (!nextHdr) this.resolveHdr();
@@ -461,9 +463,11 @@ export class WebGL2Renderer implements Renderer {
     if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
     if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
   }
+  flatLightingCookieVersion(): number { this.assertAlive(); return 1; }
   prepareFlatLighting(scene: LightingScene2D, assets: readonly FlatLightingAsset[]): void {
     this.assertAlive(); const resolved = resolveLightingSceneInto(createResolvedLightingScene(), scene);
     if(resolved.profile!=="lit") return; requireWebGL2FlatLit(this.gl); validateFlatLitMaterial(this.spriteMaterial);
+    validateLightingCookies(resolved, this.textureSource);
     for(const asset of assets) validateFlatLitAsset(this.textureSource, asset, flatHdrOptions(resolved) !== undefined);
   }
 
@@ -711,6 +715,8 @@ export class WebGL2Renderer implements Renderer {
     if(flatStats){this.currentStats.normalDrawCalls=flatStats.normalDrawCalls;this.currentStats.drawCalls+=flatStats.normalDrawCalls;this.currentStats.batchCount+=flatStats.normalDrawCalls;this.currentStats.textureBindCount+=flatStats.normalDrawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.normalSwitches;}
     if(flatStats?.receiverMasks){const mask=flatStats.receiverMasks;this.currentStats.drawCalls+=mask.drawCalls;this.currentStats.batchCount+=mask.drawCalls;this.currentStats.textureBindCount+=mask.drawCalls+1;this.currentStats.textureSwitchCount+=mask.textureSwitchCount;}
     const lightingStats = flatStats?.lighting ?? this.lightingPass.draw(lit?this.disabledLightingScene:this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget,sunMaskStats?.texture);
+    if (flatStats?.lighting.pointLightCount) for (const light of this.lightingScene.pointLights)
+      if (light.cookie && light.intensity > 0) this.currentStats.textureBindCount++;
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,

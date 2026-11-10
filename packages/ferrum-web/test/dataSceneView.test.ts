@@ -7,7 +7,7 @@ import type { FerrumEngine } from "../src/engineTypes.js";
 test("Data Scene view uses a common camera for CSS/device round trips and world lights", () => {
   for (const [width, height] of [[1280, 720], [390, 844]]) for (const dpr of [1, 2]) for (const zoom of [0.5, 1, 2]) for (const groundYScale of [1, 0.72]) {
     let viewport = { width, height };
-    const engine = { setDataSceneCamera: () => true, setDataSceneGroundYScale: () => true, setViewportSize: (w: number, h: number) => { viewport = { width: w, height: h }; }, cameraX: () => 800, cameraY: () => 600, cameraGroundYScale: () => groundYScale } as unknown as FerrumEngine;
+    const engine = { textureId: (name: string) => { equal(name, "pattern"); return 7; }, setDataSceneCamera: () => true, setDataSceneGroundYScale: () => true, setViewportSize: (w: number, h: number) => { viewport = { width: w, height: h }; }, cameraX: () => 800, cameraY: () => 600, cameraGroundYScale: () => groundYScale } as unknown as FerrumEngine;
     const renderer = { setGroundYScale: () => {}, viewportSize: () => viewport, setViewportZoom: (z: number) => { viewport = { width: width / z, height: height / z }; } };
     const canvas = { clientWidth: width, clientHeight: height, width: width * dpr, height: height * dpr,
       getBoundingClientRect: () => ({ left: 30, top: 40, width: width * 0.8, height: height * 0.8 }) } as unknown as HTMLCanvasElement;
@@ -36,6 +36,10 @@ test("Data Scene view uses a common camera for CSS/device round trips and world 
     equal(light.pointLights![0].spot!.angleDegrees, 90);
     const shortDirection = view.lighting({ profile: "lit", pointLights: [{ ...world, radius: 25, spot: { directionX: 0, directionY: 1e-6, angleDegrees: 90 } }] }, snapshot);
     equal(normalizeLightingScene(shortDirection).pointLights[0].spot!.directionY, 1);
+    const source = { profile: "lit" as const, pointLights: [{ ...world, radius: 25, cookie: { texture: "pattern", rotationRadians: .5, uv: [1, 0, 0, 1] as const } }] };
+    const mapped = view.lighting(source, snapshot);
+    deepEqual(mapped.pointLights![0].cookie, { texture: 7, rotationRadians: .5, uv: [1, 0, 0, 1] });
+    equal(mapped.pointLights![0].radiusY, 25 * groundYScale); equal(source.pointLights[0].cookie.texture, "pattern");
     throws(() => view.setGroundYScale(0), /groundYScale/);
     throws(() => view.setZoom(0), /zoom/);
   }

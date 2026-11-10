@@ -40,6 +40,8 @@ export type {
   PackedTextureAtlasFrame,
   PointLight2D,
   PointLightSpot2D,
+  PointLightCookie2D,
+  ResolvedPointLightCookie2D,
   ResolvedPointLightSpot2D,
   ResolvedLightingScene2D,
   ResolvedSpriteMaterialPreset,

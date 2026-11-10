@@ -258,7 +258,9 @@
         "SpriteLightMaskBufferView",
         "SpatialReceiverMaskBufferView",
         "PointLightSpot2D",
-        "ResolvedPointLightSpot2D"
+        "ResolvedPointLightSpot2D",
+        "PointLightCookie2D",
+        "ResolvedPointLightCookie2D"
       ]
     },
     {
@@ -617,7 +619,9 @@
         "ParticleVfxEmitter",
         "createPixelMaskTerrain",
         "PointLightSpot2D",
-        "ResolvedPointLightSpot2D"
+        "ResolvedPointLightSpot2D",
+        "PointLightCookie2D",
+        "ResolvedPointLightCookie2D"
       ]
     },
     {

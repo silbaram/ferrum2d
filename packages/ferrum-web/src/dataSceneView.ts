@@ -1,3 +1,4 @@
+import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import { resolvePointLightSpot } from "./lightingSpot.js";
 import { resolveDirectionalLight2D,resolveLitDirectionalLight2D } from "./dataSceneSun.js";
 import type { DirectionalLight2D } from "./lightingTypes.js";
@@ -119,7 +120,7 @@ export function createDataSceneView(
     },
     lighting: (scene, view = snapshot()) => ({ ...scene,
       ...(sun === undefined ? {} : { directionalLight: sun }),
-      pointLights: scene.pointLights?.map((light, index) => {
+      pointLights: resolveLightingCookieReferences(scene, name => engine.textureId(name)).pointLights?.map((light, index) => {
         const spot = light.spot === undefined ? undefined : resolvePointLightSpot(light.spot, `lighting.pointLights[${index}].spot`);
         // Normalize before projection: a valid short vector must not fall below the input epsilon.
         if (spot) spot.directionY *= view.groundYScale;

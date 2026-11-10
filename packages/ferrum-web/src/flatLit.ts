@@ -1,3 +1,4 @@
+import { validateLightingCookies } from "./lightingCookie.js";
 import {validateSpriteLightMasks} from "./spriteLightMasks.js";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lightingTypes.js";
 import type { SpriteLightingMaterialSpec } from "./spriteLighting.js";
@@ -13,6 +14,8 @@ export interface FlatLightingAsset {
 }
 /** Cold renderer capability and asset check, performed before replacing an authored scene. */
 export interface FlatLightingPreparer {
+  /** Optional v1 scalar cookie capability; required only by cookie documents. */
+  flatLightingCookieVersion?(): number;
   prepareFlatLighting(scene: LightingScene2D, assets: readonly FlatLightingAsset[]): void;
 }
 export interface FlatLitTextureSource {
@@ -56,6 +59,7 @@ export function validateFlatLitCommands(commands: RenderCommandBufferView, scene
   const masks=validateSpriteLightMasks(commands,scene.profile??"legacy");if(surfaceState)surfaceState.masksActive=masks;
   const surface=validateSpriteSurface(commands,scene.profile??"legacy");if(surfaceState)surfaceState.active=surface;
   if (scene.profile !== "lit") return false;
+  validateLightingCookies(scene, source);
   if (commands.spatial) throw Error("The flat lit profile cannot render a Spatial scene");
   validateFlatLitMaterial(material);
   const hdr = flatHdrOptions(scene) !== undefined;

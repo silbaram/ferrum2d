@@ -24,6 +24,8 @@ export function placementFlatTextureRoles(documents: readonly SceneAuthoringDocu
     const normalsActive = !!document.spatial || document.lighting?.profile === "lit"
       || document.lighting !== undefined && document.lighting.enabled !== false;
     const resolved = resolveSceneAuthoringDocument(document, { validateBindings: true, validateComponents: true, missingBehavior: "ignore" });
+    for (const light of resolved.lighting?.pointLights ?? [])
+      if (light.cookie) add({ value: light.cookie.texture ?? light.cookie.textureId! }, "data");
     for (const instance of resolved.bindingPlan?.instances ?? []) {
       const component = resolveDataSceneInstanceComponents(instance);
       if (component.mode !== "inline") continue;

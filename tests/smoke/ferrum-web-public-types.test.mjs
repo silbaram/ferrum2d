@@ -38,7 +38,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
         applyDataSceneAuthoringDocument,
       } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
-      import type { LightingScene2D, PointLightSpot2D } from '@ferrum2d/ferrum-web/labs';
+      import type { LightingScene2D, PointLightSpot2D, PointLightCookie2D, ResolvedPointLightCookie2D } from '@ferrum2d/ferrum-web/labs';
       import '@ferrum2d/ferrum-web/quality';
       const config: PixelPerfectOptions = { width: 320, height: 180, snap: true };
       const disabled: PixelPerfectOptions = { ...config, snap: false };
@@ -59,13 +59,21 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       // @ts-expect-error cone direction components are numeric
       const invalidCone: PointLightSpot2D = { ...cone, directionX: 'right' };
       void invalidCone;
-      const lighting: LightingScene2D = { profile: 'lit', hdr, pointLights: [{ x: 10, y: 10, radius: 100, spot: cone }], ambientIrradiance: [0.2, 0.2, 0.2], directionalLight: { directionX: 1, directionY: 0, lightMask: 2, shadowMask: 4 } };
+      const namedCookie: PointLightCookie2D = { texture: 'pattern', rotationRadians: 0, uv: [1, 0, 0, 1] };
+      const cookie: PointLightCookie2D = { textureId: 7 };
+      const resolvedCookie: ResolvedPointLightCookie2D = { texture: 'pattern', rotationRadians: 0, uv: [0, 0, 1, 1] };
+      // @ts-expect-error cookie references must be unambiguous
+      const ambiguousCookie: PointLightCookie2D = { texture: 'pattern', textureId: 7 };
+      void [namedCookie, resolvedCookie, ambiguousCookie];
+      const lighting: LightingScene2D = { profile: 'lit', hdr, pointLights: [{ x: 10, y: 10, radius: 100, spot: cone, cookie }], ambientIrradiance: [0.2, 0.2, 0.2], directionalLight: { directionX: 1, directionY: 0, lightMask: 2, shadowMask: 4 } };
       renderer.setLighting({ ...lighting, hdr: resolvedHdr });
       // @ts-expect-error tone mapping modes are explicit
       const invalidHdr: FlatHdrOptions = { toneMapping: 'filmic' };
       void invalidHdr;
       const assets: FlatLightingAsset[] = [{ textureId: 1, lighting: receiver }];
       const preparer: FlatLightingPreparer = renderer;
+      const cookieVersion: number | undefined = preparer.flatLightingCookieVersion?.();
+      void cookieVersion;
       const authoredPreparer: AuthoringFlatLightingPreparer = preparer;
       const words = new Uint32Array(2);
       const sidecar: SpriteLightingBufferView = { version: 1, stride: 2, words, values: new Float32Array(words.buffer) };

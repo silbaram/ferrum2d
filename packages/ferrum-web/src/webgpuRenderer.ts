@@ -247,6 +247,7 @@ export class WebGPURenderer implements Renderer {
             ...(stats.frameId === undefined ? {} : { frameId: stats.frameId + this.timingFrameOffset }) };
     }
     stats(): RendererStats { return this.status === "ready" ? this.backend.stats() : emptyRendererStats(); }
+    flatLightingCookieVersion(): number { this.ready(); return 1; }
     prepareFlatLighting(scene:LightingScene2D,assets:readonly FlatLightingAsset[]):void { this.ready(); this.backend.prepareFlatLighting(scene,assets); }
     setLighting(scene: LightingScene2D | false | undefined): void {
         this.ready();

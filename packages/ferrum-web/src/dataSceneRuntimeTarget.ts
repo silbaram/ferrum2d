@@ -1,3 +1,4 @@
+import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
 import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
@@ -266,6 +267,8 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
   if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
   const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
+  if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
+    throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
   const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
   const textureId=options.textureId??(name=>adapter.textureId(name));
   const lighting = resolved.lighting!;
@@ -283,7 +286,7 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
     const sprite=component.sprite;
     return sprite.lighting===undefined && (!hdr || component.visual.kind !== "sprite") ? [] : [{textureId:dataSceneTextureId(sprite,textureId),normalTextureId:sprite.normalTexture===undefined?undefined:normalTextureId(sprite.normalTexture,textureId),lighting:sprite.lighting ?? {mode:"unlit" as const},...(sprite.surface===undefined?{}:{surface:surfaceMaterial(sprite.surface,textureId)})}];
   });
-  preparer.prepareFlatLighting(resolved.lighting!,assets);
+  preparer.prepareFlatLighting(resolveLightingCookieReferences(resolved.lighting!, textureId),assets);
 }
 
 export function applyDataSceneAuthoringDocument(

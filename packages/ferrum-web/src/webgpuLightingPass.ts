@@ -1,3 +1,4 @@
+import { WebGpuLightingCookies, type WebGpuLightingCookieSource } from "./webgpuLightingCookies.js";
 import { writePointLightSpot } from "./lightingSpot.js";
 import type { WebGpuSpriteNormalBindings } from "./webgpuSpriteNormals.js";
 import type { WebGpuSunShadowBindings } from "./webgpuSunShadowMask.js";
@@ -66,6 +67,9 @@ export class WebGpuLightingPass {
   private readonly lightColorScratch: [number, number, number, number] = [0, 0, 0, 0];
   private readonly shadowGeometryCache = new LightingShadowGeometryCache();
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
+  private cookies?: WebGpuLightingCookies;
+  private emptyLayout?: GPUBindGroupLayout;
+  private readonly cookiePipelines = new Map<string, GPURenderPipeline>();
   private destroyed = false;
 
   constructor(
@@ -101,6 +105,7 @@ export class WebGpuLightingPass {
     normals?:WebGpuSpriteNormalBindings,
     target?: LightingTarget,
     sunMask?: WebGpuSunShadowBindings,
+    cookieSource?: WebGpuLightingCookieSource,
   ): WebGpuLightingPassStats {
     this.assertAlive();
     if (!scene.enabled || viewportWidth <= 0 || viewportHeight <= 0) {
@@ -118,6 +123,11 @@ export class WebGpuLightingPass {
       activePointLightCount += 1;
     }
     activePointLights.length = activePointLightCount;
+    const hasCookies = activePointLights.some(light => light.cookie !== undefined);
+    if (hasCookies) {
+      if (!cookieSource || !this.irradiance) throw Error("Cookie textures require a lit renderer texture source");
+      (this.cookies ??= new WebGpuLightingCookies(this.device)).prepare(activePointLights, cookieSource);
+    }
 
     const receiverMaskBit=normals?.hasReceiverMasks?65536:0;
     const ambientInstanceCount = scene.ambient[3] > 0 ? 1 : 0;
@@ -197,6 +207,24 @@ export class WebGpuLightingPass {
       this.uploadLightingInstances(lightingOffset);
     }
 
+    const drawAdditive = (drawPass: GPURenderPassEncoder, pipeline: GPURenderPipeline, count: number, start: number, mask?: GPUBindGroup) => {
+      if (!hasCookies) return this.drawLightingInstances(drawPass, pipeline, count, start, normals?.bindGroup, mask);
+      let draws = 0, first = start;
+      for (let instance = start; instance < start + count; instance++) {
+        const index = instance - ambientInstanceCount - sunCount;
+        if (index < 0 || !activePointLights[index]?.cookie) continue;
+        draws += this.drawLightingInstances(drawPass, pipeline, instance - first, first, normals?.bindGroup, mask);
+        const key = `${Number(!!normals)}:${Number(!!mask)}`;
+        let variant = this.cookiePipelines.get(key);
+        if (!variant) {
+          variant = this.createLightingPipeline("additive", normals?.layout, mask ? this.maskLayout : undefined, this.cookies!.layout);
+          this.cookiePipelines.set(key, variant);
+        }
+        draws += this.drawLightingInstances(drawPass, variant, 1, instance, normals?.bindGroup, mask, this.cookies!.binding(index));
+        first = instance + 1;
+      }
+      return draws + this.drawLightingInstances(drawPass, pipeline, start + count - first, first, normals?.bindGroup, mask);
+    };
     let drawCalls = 0;
     if (ambientInstanceCount > 0) {
       drawCalls += this.drawLightingInstances(
@@ -222,10 +250,10 @@ export class WebGpuLightingPass {
     }
     for (const range of ranges) {
       const next = pointLightFirstInstance + sunCount + range.lightIndex;
-      drawCalls += this.drawLightingInstances(pass, additive, next - first, first, normals?.bindGroup);
+      drawCalls += drawAdditive(pass, additive, next - first, first);
       first = next + 1;
     }
-    drawCalls += this.drawLightingInstances(pass, additive, debugFirstInstance - first, first, normals?.bindGroup);
+    drawCalls += drawAdditive(pass, additive, debugFirstInstance - first, first);
 
     let casterCount = 0;
     if (ranges.length) {
@@ -252,8 +280,8 @@ export class WebGpuLightingPass {
           colorAttachments: [{ view: target.view, loadOp: "load", storeOp: "store" }],
         });
         try {
-          drawCalls += this.drawLightingInstances(lightPass, masked, 1,
-            pointLightFirstInstance + sunCount + range.lightIndex, normals?.bindGroup, this.maskBindGroup);
+          drawCalls += drawAdditive(lightPass, masked, 1,
+            pointLightFirstInstance + sunCount + range.lightIndex, this.maskBindGroup);
           if (range === ranges[ranges.length - 1]) {
             drawCalls += this.drawLightingInstances(lightPass, this.solidPipeline, debugTileOccluderCount, debugFirstInstance);
           }
@@ -328,6 +356,9 @@ export class WebGpuLightingPass {
     }
     this.destroyed = true;
     this.releaseMask();
+    this.cookies?.destroy();
+    for (const pipeline of this.cookiePipelines.values()) webGpuResources(this.device).releasePipeline(pipeline);
+    this.cookiePipelines.clear();
     webGpuResources(this.device).destroy(this.lightingInstanceBuffer);
     webGpuResources(this.device).destroy(this.shadowVertexBuffer);
     this.lightingInstanceCapacityBytes = 0;
@@ -337,7 +368,7 @@ export class WebGpuLightingPass {
     this.activePointLightScratch.length = 0;
   }
 
-  private createLightingPipeline(blendMode: "normal" | "additive",normalLayout?:GPUBindGroupLayout,maskLayout?:GPUBindGroupLayout): GPURenderPipeline {
+  private createLightingPipeline(blendMode: "normal" | "additive",normalLayout?:GPUBindGroupLayout,maskLayout?:GPUBindGroupLayout,cookieLayout?:GPUBindGroupLayout): GPURenderPipeline {
     const surface=this.surface && !!normalLayout;
     const channels=this.receiverMaskInput&&!!normalLayout;
     const module = this.device.createShaderModule({
@@ -350,6 +381,18 @@ export class WebGpuLightingPass {
         ${surface?"@group(1) @binding(2) var surfaceAlbedo:texture_2d<f32>;":""}
         ${channels?`@group(1) @binding(${surface?3:2}) var receiverMasks:texture_2d<f32>;`:""}
         ${surface?SPATIAL_SPECULAR_WGSL:""}
+        ${cookieLayout ? `struct Cookie { uv:vec4f, rotation:vec4f };
+        @group(3) @binding(0) var cookieImage:texture_2d<f32>;
+        @group(3) @binding(1) var<uniform> cookie:Cookie;
+        fn cookieWeight(position:vec2f, light:vec4f, scale:f32)->f32{
+          let q=(position-light.xy)/vec2f(light.z,light.z*scale);
+          let cs=cookie.rotation.xy;let local=vec2f(cs.x*q.x+cs.y*q.y,-cs.y*q.x+cs.x*q.y)*.5+.5;
+          if(any(local<vec2f(0.))||any(local>vec2f(1.))){return 0.;}
+          let size=textureDimensions(cookieImage);let maximum=vec2i(size)-vec2i(1);
+          let lo=clamp(vec2i(floor(min(cookie.uv.xy,cookie.uv.zw)*vec2f(size))),vec2i(0),maximum);
+          let hi=clamp(vec2i(ceil(max(cookie.uv.xy,cookie.uv.zw)*vec2f(size)))-vec2i(1),lo,maximum);
+          let uv=mix(cookie.uv.xy,cookie.uv.zw,local);let value=textureLoad(cookieImage,clamp(vec2i(floor(uv*vec2f(size))),lo,hi),0);return value.r*value.a;
+        }` : ""}
 
         ${maskLayout ? `@group(${normalLayout ? 2 : 1}) @binding(0) var shadowMask:texture_2d<f32>;
         @group(${normalLayout ? 2 : 1}) @binding(1) var<uniform> shadowTint:vec4f;` : ""}
@@ -433,6 +476,7 @@ export class WebGpuLightingPass {
               let angle=dot((input.pixelPosition-input.light.xy)/vec2f(1.,input.scaleY)/distanceToLight,input.spot.xy);
               var cone=step(input.spot.z,angle);if(input.spot.w>input.spot.z+.0000001){cone=smoothstep(input.spot.z,input.spot.w,angle);}alpha*=cone;
             }` : ""}
+            ${cookieLayout ? "alpha*=cookieWeight(input.pixelPosition,input.light,input.scaleY);" : ""}
             ${normalLayout?`let delta=vec3f(input.light.x-input.pixelPosition.x,(input.light.y-input.pixelPosition.y)/input.scaleY,max(input.mode-2.,0.));
             var direction=vec3f(0.,0.,1.);if(length(delta)>0.0001){direction=normalize(delta);}
             ${surface?"let response=surfaceResponse(input,direction,true);":"alpha *= normalResponse(input,direction);"}`:""}
@@ -451,7 +495,7 @@ export class WebGpuLightingPass {
     });
 
     return webGpuResources(this.device).createRenderPipeline({
-      layout: normalLayout || maskLayout ? this.device.createPipelineLayout({bindGroupLayouts:[this.solidPipeline.getBindGroupLayout(0),...(normalLayout?[normalLayout]:[]),...(maskLayout?[maskLayout]:[])]}):this.pipelineLayout,
+      layout: cookieLayout ? this.device.createPipelineLayout({bindGroupLayouts:[this.solidPipeline.getBindGroupLayout(0),normalLayout??(this.emptyLayout??=this.device.createBindGroupLayout({entries:[]})),maskLayout??(this.emptyLayout??=this.device.createBindGroupLayout({entries:[]})),cookieLayout]}) : normalLayout || maskLayout ? this.device.createPipelineLayout({bindGroupLayouts:[this.solidPipeline.getBindGroupLayout(0),...(normalLayout?[normalLayout]:[]),...(maskLayout?[maskLayout]:[])]}):this.pipelineLayout,
       vertex: {
         module,
         entryPoint: "vs_main",
@@ -569,6 +613,7 @@ export class WebGpuLightingPass {
     firstInstance: number,
     normals?:GPUBindGroup,
     mask?:GPUBindGroup,
+    cookie?: {group:GPUBindGroup;offset:number},
   ): number {
     if (instanceCount <= 0) {
       return 0;
@@ -578,6 +623,7 @@ export class WebGpuLightingPass {
     pass.setBindGroup(0, this.resolutionBindGroup);
     if(normals)pass.setBindGroup(1,normals);
     if(mask)pass.setBindGroup(normals?2:1,mask);
+    if(cookie)pass.setBindGroup(3,cookie.group,[cookie.offset]);
     pass.setVertexBuffer(0, this.lightingInstanceBuffer);
     pass.draw(6, instanceCount, 0, firstInstance);
     return 1;

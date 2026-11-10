@@ -19,7 +19,7 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
   const scene = record(value, path, ["enabled", "profile", "hdr", "ambientIrradiance", "ambient", "directionalLight", "pointLights", "tileOccluders", "shadows", "debug"]);
   boolean(scene.enabled, `${path}.enabled`);
   for (const [name, maximum, keys] of [
-    ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff", "lightMask", "shadowMask", "spot"]],
+    ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff", "lightMask", "shadowMask", "spot", "cookie"]],
     ["tileOccluders", 1024, ["x", "y", "width", "height"]],
   ] as const) {
     const items = scene[name];

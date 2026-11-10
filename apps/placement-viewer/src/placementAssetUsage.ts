@@ -40,7 +40,7 @@ const component = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|
 const template = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components\/template$/u;
 const components = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components$/u;
 function kindAt(pointer: string): UsageAsset["kind"] | undefined {
-  if (component.test(pointer) || /^\/spatial\/billboards\/[^/]*\/(?:normalTexture|normalTextureId)$/u.test(pointer) ||
+  if (/^\/lighting\/pointLights\/\d+\/cookie\/(?:texture|textureId)$/u.test(pointer) || component.test(pointer) || /^\/spatial\/billboards\/[^/]*\/(?:normalTexture|normalTextureId)$/u.test(pointer) ||
       /^\/spatial\/terrain\/\d+\/textureId$/u.test(pointer)) return "sprite";
   if (/^\/spatial\/models\/[^/]*\/(?:asset|lods\/\d+\/asset)$/u.test(pointer)) return "model";
   return undefined;

@@ -58,7 +58,7 @@ export class WebGpuFlatLitPass {
     ambient[0]=scene.ambientIrradiance![0];ambient[1]=scene.ambientIrradiance![1];ambient[2]=scene.ambientIrradiance![2];ambient[3]=1;
     effective.enabled=true;effective.pointLights=scene.pointLights;effective.tileOccluders=scene.tileOccluders;effective.directionalLight=scene.directionalLight;effective.shadows=scene.shadows;
     const pass=beginWebGpuRenderPass(this.device,encoder,{colorAttachments:[{view:this.views[3]!,loadOp:"clear",storeOp:"store",clearValue:{r:0,g:0,b:0,a:0}}]});
-    const lighting=this.lights!.draw(pass,effective,logicalWidth,logicalHeight,{layout:this.normalLayout,bindGroup:this.masksActive?this.maskedNormals!:this.normals!,hasReceiverMasks:this.masksActive},{encoder,view:this.views[3]!,width:this.width,height:this.height},sunMask);
+    const lighting=this.lights!.draw(pass,effective,logicalWidth,logicalHeight,{layout:this.normalLayout,bindGroup:this.masksActive?this.maskedNormals!:this.normals!,hasReceiverMasks:this.masksActive},{encoder,view:this.views[3]!,width:this.width,height:this.height},sunMask,this.store);
     if(!lighting.passEnded)pass.end();
     const composite=beginWebGpuRenderPass(this.device,encoder,{colorAttachments:[{view:target,loadOp:"load",storeOp:"store"}]});
     try{composite.setBindGroup(0,this.composite!);composite.setPipeline(this.subtract!);composite.draw(3);composite.setPipeline(this.add!);composite.draw(3);}finally{composite.end();}

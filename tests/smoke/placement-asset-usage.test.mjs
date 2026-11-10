@@ -16,6 +16,13 @@ const camera={projection:"orthographic",position:{x:160,y:-240,elevation:220},ta
 const modelSpec=asset=>({asset,contentId:"a".repeat(64)});
 const entry=(path,document)=>({id:path,source:path,relativePath:path,mode:"2d",read:async()=>document,inspect:async(maxBytes=2*1024*1024)=>{const bytes=new TextEncoder().encode(JSON.stringify(document)).length;if(bytes>maxBytes)throw new PlacementSceneReadLimitError();return{document,bytes};}});
 const run=(scenes,extra={})=>collect({catalog:{label:"project",scenes,truncated:false},assets:[],open:[],current:()=>true,...extra});
+test("OFF cookie references protect named assets and expose unresolved numeric IDs with exact pointers", async () => {
+ const lighting = { profile: "lit", enabled: false, pointLights: [{ x: 0, y: 0, radius: 1, cookie: { texture: "pattern" } }, { x: 1, y: 1, radius: 1, cookie: { textureId: 7 } }] };
+ const result = await run([entry("cookies.json", doc({}, { lighting }))]);
+ const asset = result.assets.find(asset => asset.id === "pattern"); assert(asset); assert.equal(asset.kind, "sprite");
+ assert.equal(asset.references[0].pointer, "/lighting/pointLights/0/cookie/texture");
+ assert(result.issues.some(issue => issue.code === "unresolved" && issue.pointer === "/lighting/pointLights/1/cookie/textureId"));
+});
 test("surface maps in inactive prefabs and variants remain explicit asset references",async()=>{
  const surface={emissionTexture:"emission",specularTexture:"specular",roughnessTexture:"roughness"};
  const definition=visual("base");definition.props.components.visual.lighting={mode:"opaque"};definition.props.components.visual.surface=surface;

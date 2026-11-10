@@ -232,6 +232,8 @@ export type {
   LightingScene2D,
   PointLight2D,
   PointLightSpot2D,
+  PointLightCookie2D,
+  ResolvedPointLightCookie2D,
   ResolvedPointLightSpot2D,
   ResolvedLightingDebugOptions,
   ResolvedLightingShadowOptions,

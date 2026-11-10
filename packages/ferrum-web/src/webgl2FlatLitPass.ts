@@ -70,7 +70,7 @@ export class WebGL2FlatLitPass {
       effective.enabled = true; effective.pointLights = scene.pointLights; effective.tileOccluders = scene.tileOccluders;
       effective.directionalLight = scene.directionalLight; effective.shadows = scene.shadows;
       this.lightTarget.width = this.width; this.lightTarget.height = this.height;
-      const lighting = this.lights!.draw(effective, resolution, { normal: this.textures[0]!, coverage: this.textures[1]!,...(this.surface?{albedo:this.textures[2]!}:{}),...(this.masksActive?{receiverMasks:this.receiverMasks!.texture!}:{}) }, this.lightTarget, sunMask);
+      const lighting = this.lights!.draw(effective, resolution, { normal: this.textures[0]!, coverage: this.textures[1]!,...(this.surface?{albedo:this.textures[2]!}:{}),...(this.masksActive?{receiverMasks:this.receiverMasks!.texture!}:{}) }, this.lightTarget, sunMask, source);
       restore(); gl.colorMask(true, true, true, false); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.program!); gl.bindVertexArray(this.vao!);
       const u = this.uniforms!;

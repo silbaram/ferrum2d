@@ -32,7 +32,20 @@ export interface PointLightSpot2D {
 }
 export interface ResolvedPointLightSpot2D extends Required<PointLightSpot2D> {}
 
+/** Scalar raw R*A cookie; UV is [u0,v0,u1,v1], with optional axis flips. */
+export type PointLightCookie2D = ({ texture: string | number; textureId?: never } | { textureId: number; texture?: never }) & {
+  rotationRadians?: number;
+  uv?: readonly [number, number, number, number];
+};
+export interface ResolvedPointLightCookie2D {
+  texture: string | number;
+  rotationRadians: number;
+  uv: [number, number, number, number];
+}
+
 export interface PointLight2D {
+  /** Lit-only data texture. Named references are resolved by view.lighting()/authoring preflight. */
+  cookie?: PointLightCookie2D;
   /** Optional cone; requires profile lit. */
   spot?: PointLightSpot2D;
   lightMask?: number;
@@ -118,6 +131,7 @@ export interface LightingScene2D {
 }
 
 export interface ResolvedPointLight2D {
+  cookie?: ResolvedPointLightCookie2D;
   spot?: ResolvedPointLightSpot2D;
   lightMask?: number;
   shadowMask?: number;

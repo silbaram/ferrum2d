@@ -1,3 +1,5 @@
+import { pointLightCookieTextureId } from "./lightingCookie.js";
+import type { SpriteTextureSource } from "./spriteBatch.js";
 import { writePointLightSpot } from "./lightingSpot.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type {
@@ -43,6 +45,7 @@ export class WebGL2LightingPass {
   private readonly lightYScaleLocation: WebGLUniformLocation;
   private readonly shadowLightYScaleLocation: WebGLUniformLocation;
   private readonly lightRadiusLocation: WebGLUniformLocation;
+  private readonly cookieUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; uv: WebGLUniformLocation; rotation: WebGLUniformLocation };
   private readonly lightSpotValues = new Float32Array(4);
   private readonly lightSpotLocation: WebGLUniformLocation;
   private readonly lightFalloffLocation: WebGLUniformLocation;
@@ -137,6 +140,7 @@ export class WebGL2LightingPass {
       this.shadowLightCenterLocation = shadowLightCenterLocation;
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
       const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing lighting uniform "+name);return location;};
+      this.cookieUniforms={has:uniform("u_has_cookie"),texture:uniform("u_cookie"),uv:uniform("u_cookie_uv"),rotation:uniform("u_cookie_rotation")};
       this.lightSpotLocation=uniform("u_light_spot");
       this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
       this.receiverUniforms={has:uniform("u_has_receiver_masks"),texture:uniform("u_receiver_masks"),channels:uniform("u_light_channels")};
@@ -158,7 +162,7 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture;receiverMasks?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture;receiverMasks?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture,cookies?:SpriteTextureSource): WebGL2LightingPassStats {
     this.assertAlive();
     if(this.surface && !normals?.albedo)throw Error("Surface lighting requires receiver albedo");
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
@@ -166,6 +170,8 @@ export class WebGL2LightingPass {
       return { drawCalls: 0, pointLightCount: 0, tileOccluderCount: 0, shadowDrawCalls: 0, shadowCasterCount: 0 };
     }
 
+    const hasCookies = scene.pointLights.some(light => light.cookie !== undefined && light.intensity > 0);
+    if (hasCookies && !cookies) throw Error("Cookie textures require a renderer texture source");
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.CULL_FACE);
     this.gl.enable(this.gl.BLEND);
@@ -175,7 +181,15 @@ export class WebGL2LightingPass {
     this.gl.uniform1i(this.receiverUniforms.has,Number(!!normals?.receiverMasks));this.gl.uniform1i(this.receiverUniforms.texture,5);this.gl.uniform2i(this.receiverUniforms.channels,255,255);
     let previousReceiverTexture:WebGLTexture|null=null;
     if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);previousReceiverTexture=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;this.gl.bindTexture(this.gl.TEXTURE_2D,normals.receiverMasks);this.gl.activeTexture(this.gl.TEXTURE0);}
+    let previousCookieTexture: WebGLTexture | null = null, previousCookieSampler: WebGLSampler | null = null;
+    if (hasCookies) {
+      this.gl.activeTexture(this.gl.TEXTURE6);
+      previousCookieTexture = this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+      previousCookieSampler = this.gl.getParameter(this.gl.SAMPLER_BINDING) as WebGLSampler | null;
+      this.gl.bindSampler(6, null); this.gl.activeTexture(this.gl.TEXTURE0);
+    }
     try{
+    this.gl.uniform1i(this.cookieUniforms.has,0);this.gl.uniform1i(this.cookieUniforms.texture,0);
     this.gl.uniform1i(this.surfaceUniforms.has,Number(this.surface));this.gl.uniform1i(this.surfaceUniforms.albedo,4);this.gl.uniform1i(this.surfaceUniforms.srgb,Number(this.surfaceAlbedoSrgb));
     if(this.surface){this.gl.activeTexture(this.gl.TEXTURE4);this.gl.bindTexture(this.gl.TEXTURE_2D,normals!.albedo!);this.gl.activeTexture(this.gl.TEXTURE0);}
     this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
@@ -232,6 +246,13 @@ export class WebGL2LightingPass {
         shadowDrawCalls++;shadowCasterCount+=geometry.casterCount;
       }else this.gl.uniform1i(this.maskUniforms.has,0);
       this.gl.uniform2i(this.receiverUniforms.channels,light.lightMask??255,light.shadowMask??255);
+      this.gl.uniform1i(this.cookieUniforms.has,Number(!!light.cookie));
+      this.gl.uniform1i(this.cookieUniforms.texture,light.cookie ? 6 : 0);
+      if (light.cookie) {
+        const cookie=light.cookie, uv=cookie.uv, angle=cookie.rotationRadians % (2*Math.PI);
+        this.gl.activeTexture(this.gl.TEXTURE6);this.gl.bindTexture(this.gl.TEXTURE_2D,cookies!.texture(pointLightCookieTextureId(cookie)));this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.uniform4f(this.cookieUniforms.uv,uv[0],uv[1],uv[2],uv[3]);this.gl.uniform2f(this.cookieUniforms.rotation,Math.cos(angle),Math.sin(angle));
+      }
       drawCalls += this.drawPointLight(light);
     }
     if(!shadowDrawCalls)this.releaseMask();
@@ -256,7 +277,7 @@ export class WebGL2LightingPass {
       shadowDrawCalls,
       shadowCasterCount,
     };
-    }finally{if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);this.gl.bindTexture(this.gl.TEXTURE_2D,previousReceiverTexture);this.gl.activeTexture(this.gl.TEXTURE0);}}
+    }finally{if(hasCookies){this.gl.activeTexture(this.gl.TEXTURE6);this.gl.bindTexture(this.gl.TEXTURE_2D,previousCookieTexture);this.gl.bindSampler(6,previousCookieSampler);this.gl.activeTexture(this.gl.TEXTURE0);}if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);this.gl.bindTexture(this.gl.TEXTURE_2D,previousReceiverTexture);this.gl.activeTexture(this.gl.TEXTURE0);}}
   }
 
   /** Internal allocation summary; no GPU queries or per-command work. */
