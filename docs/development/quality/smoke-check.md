@@ -2596,6 +2596,18 @@ Bloom/AO만 제거하면 픽셀이 달라지고 같은 depth map을 재사용해
 일회성 렌더 오류로 제출이 중단된 뒤 초기화하면 기본 framebuffer까지 복구되어야 한다.
 atlas/GLB 로딩 중 종료와 GLB 실패 시 자원 정리도 검사한다. 보고서는 `artifacts/shadow-comparison/verification.json`이다.
 동일 검사는 전체 기능·주제·공간 aggregate에도 연결된다. software WebGPU를 실제 기기 성능 보장으로 해석하지 않는다.
+
+태양 범위 검사는 같은 focused/aggregate에서 세 asset을 고도 5/81.8/82/89.9/90°로 비교한다.
+고도 0°의 실제 ambient 지면과 OFF 지면의 직접광 차이를 측정해 차폐 판정을 정규화한다.
+지평선에서는 바닥의 직접광 그림자가 없고, 천정에서는 방위 0/90/180°를 바꿔도 같은 수신점이 유지돼야 한다.
+기존 기준축 전환 지점 전후의 수신점 90% 이상, 저고도 화면 밖 caster의 pan 후 수신점 95% 이상을 요구한다.
+기본 4개에 태양 sweep 15개·화면 밖 5° 3개를 합친 총 22개 scope에서 같은 GL/GPU 공통 수신점 95%·RGB 오차 3 기준을 적용한다.
+`sunShadowCoverage`의 실제 GPU 선·native finite vertices·fixed/추적 center·OFF 원상 복구·저장 제외도 확인한다.
+진단선은 새 target 없이 debug draw 1개를 쓰며, warm on/off에서 shadow pass 0·cache hit를 요구한다.
+cold miss는 Wasm memory 증가와 동일한 terrain offset/revision·caster revision·sun matrix가 직접 증명된 경우만 구분해서 기록한다.
+SUN 단독 native 예약이 공용 32,768 vertices를 요구하지 않는지, 실제 matrix/inner fade 경계·point+sun offset·빈/퇴화 교선을 native 회귀로 검사한다.
+주황 경계는 셰이더의 clip→UV 좌표에서 XY/depth edge와 fade 폭을 직접 대조한다. 짧은 깊이의 내부 부피 부재·지면과 일치하는 퇴화 평면,
+sun 제거 후 point-only/빈 환경에서 stale 선이 남지 않는 경우도 검사한다. 비교 카드의 범위 설명은 한 번만 표시한다.
 WebGPU는 소프트웨어 offscreen 검증이며 실물 GPU/compositor·모바일 터치 기기 검증을 뜻하지 않는다. 게임패드는 브라우저 polling 경계만 모사한다. 오디오는 실제 AudioContext/Analyser 출력 검사이며 스피커·헤드폰 청취 검증은 아니다.
 
 ### 통합 예제 Catalog와 공통 화면

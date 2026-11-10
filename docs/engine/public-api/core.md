@@ -1131,7 +1131,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 
 `DataSceneSpatialSpec`, `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`,
 `SpatialMoveOptions`, `SpatialMoveStats`, `SpatialBillboardSpec`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi`,
-`SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in WebGL2 첫 구현이며 세부 계약은
+`SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in이며 WebGL2/WebGPU가 같은 native packet을 소비한다. 세부 계약은
 [입체 지형·카메라·빌보드](../data-scene-spatial.md)를 따른다.
 
 `SpatialRendererStats.modelInstancedDrawCalls`는 main 모델 draw에 포함되는 실제 인스턴싱 호출 수다.
@@ -1143,7 +1143,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `configureDataSceneSpatial(spec, handles)` | terrain/camera/billboard/actor를 검증해 atomic configure. 잘못된 JSON은 diagnostic, native 거절은 false |
 | `setDataSceneSpatialCamera(camera, viewport)` | 낮은 빈도 camera 변경. 다음 frame snapshot에 반영 |
 | `setDataSceneSpatialEnvironment(spec \| null)` | 낮은 빈도 조명/그림자/DOF/색 보정/안개 변경. null은 해제, 다음 frame 반영. 물리·route·terrain revision 유지 |
-| `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 진단선, 기본 꺼짐. depthTest 기본 true, false는 가려진 선 표시. null은 해제 |
+| `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 및 `sunShadowCoverage`의 높이 0 태양 맵 외곽·fade 진단선. 기본 꺼짐, depthTest 기본 true. null은 해제 |
 | `clearDataSceneSpatial()` | 공간 설정 해제, 다음 frame부터 평면 출력 |
 | `moveDataSceneSpatialBody(handle, dx, dy, options?)` | native kinematic 이동·높이와 명시적 shared-edge 연결의 층 전환. true는 도착 보장이 아님 |
 | `moveDataSceneSpatialActorTo(options)` | x/y/floorId/speed 목적지. native bounded A*, cellSize 기본 8·arrivalRadius 0.5·cancelOnInput true. 실패 시 기존 경로 보존 |

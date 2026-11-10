@@ -1194,7 +1194,12 @@ TS는 world geometry를 재계산하지 않고 같은 camera로 기존 spatial s
 `LINES` 1 draw를 제출한다. depth test/가려진 선 표시 모드 모두 depth write는 false이며 상태를 복구한다.
 debugLineCount/debugDrawCalls/debugUploadBytes는 triangle/texture batch와 분리하고 전체 draw/upload에 합산한다.
 전체 configure/reset은 debug 설정을 초기화하며 skip-render/restore는 stale frame 선분을 제거한다.
-diagnostic 설정은 authoring/progress에 저장하지 않는다. collider footprint/contact 공간 gizmo는 별도 후속이다.
+
+선택 `sunShadowCoverage`는 `spatial_scene/debug/sun_coverage.rs`가 실제 선택된 sun matrix를 역변환하고
+유한 light volume/내부 fade box의 높이 0 평면 교선을 계산한다. TS는 기존 debug v1 선분을 양 GPU로 제출할 뿐
+그림자 범위를 재계산하거나 자동 확대하지 않는다. 단독 활성화는 최대 24 vertices를 예약하고 일반 physics 진단의
+32,768-vertex 예약을 요구하지 않는다. 진단은 저장·render ABI를 바꾸지 않는다.
+diagnostic 설정은 authoring/progress에 저장하지 않는다. collider/contact 확장은 아래 공간 physics debug 경계를 따른다.
 `spatial-debug-browser-fixture.mjs`는 실제 line/depth/upload 호출, occlusion/overlay 픽셀, camera/물리 높이
 anchor, 잘못된 extension의 draw 전 거절, disable 뒤 원래 화면과 GPU 자원 수명을 검사한다.
 

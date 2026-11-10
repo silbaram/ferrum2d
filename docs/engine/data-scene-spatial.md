@@ -1443,7 +1443,7 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 
 `SpatialDebugOptions`의 category는 각각 기본 false이며 `depthTest`만 기본 true다.
 옵션 객체의 알 수 없는 필드/잘못된 boolean은 diagnostic으로 거절한다. 공간 설정이 없거나
-이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 physics category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
+이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
 
 | 표시 | 색 | 원천과 범위 |
 | --- | --- | --- |
@@ -1453,6 +1453,22 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 | `colliders` | 초록, trigger는 주황 | native collider의 XY 선을 heightSpan bottom/top에 배치하고 세로 연결. visual 없는 body도 포함 |
 | `contacts` | 빨강 | 마지막 유효한 spatial 이동의 sweep hit marker/normal 및 사용 가능한 rigid solver impulse contact |
 | `floorIds` | 흰색 | 제출 지형과 visible collider entity의 camera-facing `F숫자` stroke label. heightSpan 없는 body는 `F-` |
+| `sunShadowCoverage` | 청록·주황 | 실제 finite sun matrix의 높이 0 평면 교선. 청록은 유한 맵 외곽, 주황은 내부 fade의 full-weight 경계 |
+
+`sunShadowCoverage`는 현재 프레임에서 선택한 태양 행렬을 사용한다. point+sun 조합에서도 cube face와 혼동하지 않는다.
+Rust가 affine 역변환과 12개 edge/지면 교차를 계산하며, 고도·방위·fixed center·texel snapping·extent·distance를 그대로 반영한다.
+천정/지평선·이전 reference-up 전환 지점 약 81.9°에서도 같은 계산을 사용한다. 태양 map이 없거나
+맵이 높이 0 평면과 만나지 않으면 선을 만들지 않는다. 극도로 좁은 깊이에서는 full-weight 내부가 없어 주황 선이 생략될 수 있다.
+fade 폭 `f = 8 × extent / resolution`에 대해 내부 clip 한계는 XY `1 − 8 / resolution`, Z `1 − 2f / distance`다.
+Z의 2배 계수는 셰이더의 `[-1, 1] → [0, 1]` 변환을 반영한다. `distance < 2f`이면 full-weight 내부가 없다.
+`distance = 2f`에서는 내부가 평면으로 줄며, 이 평면이 높이 0 지면과 일치하면 주황 외곽선을 그린다.
+이는 terrain의 실제 각 표면이나 최종 shadow 픽셀의 윤곽이 아니다. normalBias·PCF·caster 유무는 별도로 결과에 영향을 준다.
+
+단독 활성화는 두 다각형의 최대 24 vertices만 예약한다. 다른 진단 category와 조합하면 기존 공용 budget을 사용한다.
+별도 render target 없이 기존 debug pass를 재사용한다. 첫 활성화가 Wasm memory를 확장하면 기존 cache의 buffer-identity
+보호 조건 때문에 한 번 shadow miss가 날 수 있다. 같은 메모리·geometry에서 반복 on/off는 shadow map을 재사용한다.
+진단은 runtime-only이고 authored JSON·progress에 저장하지 않는다. 기존 debug v1/11-float vertex ABI를 유지하며,
+새 bit128을 모르는 Wasm은 선택을 거절한다.
 
 `heightSpans`는 entity 원점 높이 표시다. footprint는 별도 `colliders`로 확인한다.
 AABB·원·회전 박스·캡슐·edge·chain·convex polygon 및 compound child를 기존 native collider geometry에서 읽는다.
