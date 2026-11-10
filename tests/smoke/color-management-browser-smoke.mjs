@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
+import { installSpatialGpuTarget } from "./spatial-webgpu-capture.mjs";
 
 const root = resolve(".");
 const html = `<!doctype html><html><head><meta charset="utf-8">
@@ -34,7 +35,7 @@ try {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", done);
   });
-  const options = { headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] };
+  const options = { headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-webgpu", "--use-vulkan=swiftshader"] };
   if (process.env.FERRUM_BROWSER_EXECUTABLE) {
     browser = await chromium.launch({ ...options, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE });
   } else {
@@ -47,6 +48,7 @@ try {
   }
   for (const deviceScaleFactor of [1, 2]) {
     const page = await browser.newPage({ deviceScaleFactor });
+    await page.addInitScript(installSpatialGpuTarget);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });

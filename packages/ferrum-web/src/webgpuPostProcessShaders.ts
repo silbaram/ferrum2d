@@ -1,7 +1,7 @@
-import { PIXEL_POST_PROCESS_WGSL_FUNCTION } from "./pixelPostProcessShaders.js";
+import { pixelPostProcessWgsl } from "./pixelPostProcessShaders.js";
 
 /** Legacy encoded scene colors. Sampling uses GL-style bottom-origin UVs. */
-export const TEXTURE_POST_PROCESS_WGSL = `
+export function texturePostProcessWgsl(linearWorking = false): string { return `
 struct Settings { params: vec4f, color: vec4f, effect: vec4f };
 @group(0) @binding(0) var image: texture_2d<f32>;
 @group(0) @binding(1) var<uniform> settings: Settings;
@@ -23,7 +23,7 @@ fn bandNoise(band: u32, seed: f32) -> f32 {
   value = value ^ (value >> 16u);
   return f32(value >> 8u) / 16777216.0;
 }
-${PIXEL_POST_PROCESS_WGSL_FUNCTION}
+${pixelPostProcessWgsl(linearWorking)}
 @fragment fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let dimensions = vec2f(textureDimensions(image));
   let uv = vec2f(position.x / dimensions.x, 1.0 - position.y / dimensions.y);
@@ -65,7 +65,7 @@ ${PIXEL_POST_PROCESS_WGSL_FUNCTION}
       edge = step(params.y, distanceFromCenter);
       if (inner < params.y) { edge = smoothstep(inner, params.y, distanceFromCenter); }
     }
-    return vec4f(mix(scene.rgb, settings.color.rgb, edge * params.x * settings.color.a), scene.a);
+    return vec4f(mix(scene.rgb, settings.color.rgb${linearWorking ? " * scene.a" : ""}, edge * params.x * settings.color.a), scene.a);
   }
   let band = u32(floor((dimensions.y - position.y) * 48.0 / dimensions.y));
   let offset = (bandNoise(band,params.z) - 0.5) * params.x;
@@ -74,3 +74,5 @@ ${PIXEL_POST_PROCESS_WGSL_FUNCTION}
   let base = sampleScene(shifted);
   return vec4f(sampleScene(shifted + vec2f(chroma,0.0)).r,base.g,sampleScene(shifted - vec2f(chroma,0.0)).b,base.a);
 }`;
+}
+export const TEXTURE_POST_PROCESS_WGSL = texturePostProcessWgsl();

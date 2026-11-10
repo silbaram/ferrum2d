@@ -63,6 +63,7 @@ export class WebGpuSpatialModels {
     format: GPUTextureFormat,
     cameraLayout: GPUBindGroupLayout,
     environmentLayout: GPUBindGroupLayout = {},
+    linearWorking = false,
   ) {
     this.materialLayout = device.createBindGroupLayout({
       entries: [
@@ -80,7 +81,7 @@ export class WebGpuSpatialModels {
     const modules = [false, true].map((mapped) =>
       device.createShaderModule({
         label: "Spatial model materials",
-        code: spatialModelWGSL(mapped),
+        code: spatialModelWGSL(mapped, linearWorking),
       }),
     );
     const layout = device.createPipelineLayout({

@@ -55,7 +55,7 @@ const WGSL_TRANSFER = `
 fn decodeColor(c:vec3f)->vec3f{return select(pow(max((c+vec3f(.055))/1.055,vec3f(0.)),vec3f(2.4)),c/12.92,c<=vec3f(.04045));}
 fn encodeColor(value:vec3f)->vec3f{let c=clamp(value,vec3f(0.),vec3f(1.));return select(1.055*pow(c,vec3f(1./2.4))-vec3f(.055),c*12.92,c<=vec3f(.0031308));}
 `;
-export function flatLitWgslFragment(data: boolean): string {
+export function flatLitWgslFragment(data: boolean, linearWorking = false): string {
   return `${WGSL_TRANSFER}
 ${data ? "struct LitOutput{@location(0) normal:vec4f,@location(1) coverage:vec4f,@location(2) albedo:vec4f};" : ""}
 @fragment fn fs_main(input:VertexOutput)->${data ? "LitOutput" : "@location(0) vec4f"}{
@@ -67,7 +67,7 @@ ${data ? "struct LitOutput{@location(0) normal:vec4f,@location(1) coverage:vec4f
  else if((flags&24u)!=0u){let q=(input.corner-.5)*2.;if((flags&8u)!=0u&&dot(q,q)>1.){discard;}color=input.color;}
  if(mode!=0u){if(mode==2u&&color.a<input.lighting.y){discard;}
    let albedo=sampledLinear*input.color.rgb;
-   color=vec4f(select(encodeColor(albedo),albedo,hdr),1.);
+   color=vec4f(select(encodeColor(albedo),albedo,${linearWorking ? "true" : "hdr"}),1.);
  }
  ${data ? `var n=vec3f(0.);if(mode!=0u){n=vec3f(0.,0.,1.);if((flags&64u)!=0u){
  let size=textureDimensions(normalTexture);let uv=clamp(vec2i(floor((input.uv+vec2f(1./4194304.))*vec2f(size))),vec2i(0),vec2i(size)-vec2i(1));
@@ -79,7 +79,7 @@ ${data ? "struct LitOutput{@location(0) normal:vec4f,@location(1) coverage:vec4f
 }`;
 }
 
-export function flatLitCompositeWgsl(hdr = false): string { return `${WGSL_TRANSFER}
+export function flatLitCompositeWgsl(hdr = false, linearWorking = false): string { return `${WGSL_TRANSFER}
 @group(0) @binding(0) var albedo:texture_2d<f32>;
 @group(0) @binding(1) var coverage:texture_2d<f32>;
 @group(0) @binding(2) var irradiance:texture_2d<f32>;
@@ -90,7 +90,7 @@ export function flatLitCompositeWgsl(hdr = false): string { return `${WGSL_TRANS
 @fragment fn fs_add(@builtin(position)p:vec4f)->@location(0)vec4f{
  let at=vec2i(p.xy);let weight=textureLoad(coverage,at,0).g;
  let base=textureLoad(albedo,at,0).rgb/max(weight,.000001);
- return vec4f(${hdr ? "base*textureLoad(irradiance,at,0).rgb" : "encodeColor(decodeColor(base)*textureLoad(irradiance,at,0).rgb)"}*weight,0.);
+ return vec4f(${hdr ? "base*textureLoad(irradiance,at,0).rgb" : linearWorking ? "clamp(base*textureLoad(irradiance,at,0).rgb,vec3f(0.),vec3f(1.))" : "encodeColor(decodeColor(base)*textureLoad(irradiance,at,0).rgb)"}*weight,0.);
 }`;
 }
 export const FLAT_LIT_COMPOSITE_WGSL = flatLitCompositeWgsl();

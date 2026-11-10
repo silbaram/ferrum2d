@@ -51,7 +51,7 @@ import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.
 
 export interface WebGPURendererOptions {
   pixelPerfect?: PixelPerfectOptions | false;
-  /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
+  /** Opt-in linear RGB composition and sRGB presentation; legacy remains the default. */
   colorManagement?: ColorManagementMode;
   /** Opt-in asynchronous render-pass timing; unavailable adapters still render. */
   gpuTiming?: boolean;
@@ -71,6 +71,10 @@ export class WebGpuRendererBackend implements Renderer {
   readonly supportsGroundShadowVolumes = true;
   private readonly spatialPass: WebGpuSpatialPass;
   private context?: GPUCanvasContext;
+  private readonly linearWorking: boolean;
+  private readonly workingFormat: GPUTextureFormat;
+  private managedFrame?: WebGpuPixelPerfect;
+  private managedDrawCalls = 0;
   private readonly uniformBindGroupLayout: GPUBindGroupLayout;
   private readonly textureBindGroupLayout: GPUBindGroupLayout;
   private readonly uniformPipelineLayout: GPUPipelineLayout;
@@ -117,6 +121,8 @@ export class WebGpuRendererBackend implements Renderer {
     private readonly options: WebGPURendererOptions = {},
   ) {
     this.pixelPerfect = resolvePixelPerfectOptions(options.pixelPerfect);
+    this.linearWorking = resolveColorManagementMode(options.colorManagement) === "linear-srgb";
+    this.workingFormat = this.linearWorking ? "rgba8unorm-srgb" : this.format;
     this.timer = new WebGpuTimer(device, options.gpuTiming === true);
     const sampler = this.device.createSampler({
       magFilter: "nearest",
@@ -126,8 +132,8 @@ export class WebGpuRendererBackend implements Renderer {
     });
     this.uniformBindGroupLayout = this.createUniformBindGroupLayout();
     this.textureBindGroupLayout = this.createTextureBindGroupLayout();
-    this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout);
-    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.frameTexture(), this.format, options.postProcess);
+    this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout, this.linearWorking);
+    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.frameTexture(), this.workingFormat, options.postProcess, this.linearWorking);
     this.uniformPipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.uniformBindGroupLayout],
     });
@@ -141,22 +147,23 @@ export class WebGpuRendererBackend implements Renderer {
     });
     this.spritePass = new WebGpuSpritePass(
       this.device,
-      this.format,
+      this.workingFormat,
       this.uniformBindGroupLayout,
       this.textureBindGroupLayout,
       this.textureStore,
       this.resolutionBindGroup,
+      false, false, undefined, false, this.linearWorking,
     );
     this.debugLinePass = new WebGpuDebugLinePass(
       this.device,
       () => this.frameTexture(),
-      this.format,
+      this.workingFormat,
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
     );
     this.lightingPass = new WebGpuLightingPass(
       this.device,
-      this.format,
+      this.workingFormat,
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
     );
@@ -166,10 +173,14 @@ export class WebGpuRendererBackend implements Renderer {
     this.spriteMaterialPasses = spriteMaterialPasses(this.spriteMaterial);
     this.spritePass.configurePalettes(this.spriteMaterialPasses[this.spriteMaterialPasses.length-1]?.paletteSwap);
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
-    this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
+    this.spatialPass = new WebGpuSpatialPass(device, this.workingFormat, this.textureBindGroupLayout, this.textureStore, this.linearWorking);
     if(this.pixelPerfect) {
-      this.pixelPass=new WebGpuPixelPerfect(device,format);
+      this.pixelPass=new WebGpuPixelPerfect(device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(this.pixelPerfect.width,this.pixelPerfect.height);
+    } else if(this.linearWorking) {
+      // Validate the managed presentation pipeline before committing the canvas context.
+      this.managedFrame=new WebGpuPixelPerfect(device,this.workingFormat,this.format,true,false);
+      this.managedFrame.resize(1,1);
     }
   }
 
@@ -182,9 +193,7 @@ export class WebGpuRendererBackend implements Renderer {
     options: WebGPURendererOptions = {},
   ): Promise<WebGpuRendererBackend> {
     resolvePixelPerfectOptions(options.pixelPerfect);
-    if (resolveColorManagementMode(options.colorManagement) !== "legacy") {
-      throw new Error("WebGPU linear-srgb color management is not supported; use the WebGL2 fallback.");
-    }
+    resolveColorManagementMode(options.colorManagement);
     resolveWebGpuPostProcessPasses(options.postProcess);
     if (canvas === undefined) {
       throw new Error("WebGPURenderer.create(...) requires an HTMLCanvasElement.");
@@ -309,7 +318,8 @@ export class WebGpuRendererBackend implements Renderer {
 
   stats(): RendererStats {
     const stats = { ...this.currentStats };
-    stats.textureBindCount+=this.hdrDrawCalls;
+    stats.textureBindCount+=this.hdrDrawCalls+this.managedDrawCalls;
+    stats.drawCalls+=this.managedDrawCalls;stats.postProcessDrawCalls+=this.managedDrawCalls;
     stats.drawCalls+=this.hdrDrawCalls;stats.postProcessDrawCalls+=this.hdrDrawCalls;stats.postProcessPassCount+=this.hdrDrawCalls;
     return stats;
   }
@@ -377,9 +387,10 @@ export class WebGpuRendererBackend implements Renderer {
     }
     this.presentation = this.pixelPerfect ? resolvePixelPerfectPresentation(drawingBufferWidth,drawingBufferHeight,this.pixelPerfect) : undefined;
     if(this.pixelPerfect) {
-      this.pixelPass ??= new WebGpuPixelPerfect(this.device,this.format);
+      this.pixelPass ??= new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(this.pixelPerfect.width,this.pixelPerfect.height);
-    }
+      this.managedFrame?.release();
+    } else if(this.linearWorking) this.prepareManagedFrame();
     this.writeResolution();
   }
 
@@ -390,9 +401,10 @@ export class WebGpuRendererBackend implements Renderer {
     // Prepare before committing the configuration; a synchronous allocation
     // failure keeps the previous target and presentation usable.
     if(next) {
-      this.pixelPass??=new WebGpuPixelPerfect(this.device,this.format);
+      this.pixelPass??=new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(next.width,next.height);
     }
+    if(!next && this.linearWorking)this.prepareManagedFrame();
     this.pixelPerfect=next;
     if(!next)this.pixelPass?.release();
     this.resize();
@@ -401,7 +413,7 @@ export class WebGpuRendererBackend implements Renderer {
 
   render(): void {
     this.assertAlive();
-    this.hdrActive=undefined;this.hdrDrawCalls=0;this.frameHasDrawnScene=false;
+    this.hdrActive=undefined;this.hdrDrawCalls=0;this.managedDrawCalls=0;this.frameHasDrawnScene=false;
     if(!flatHdrOptions(this.lightingScene)){this.hdrPass?.release();this.flatLitHdr?.clearTargets();}
     resetRendererStatsInto(this.currentStats);
     this.frameActive = true;
@@ -418,8 +430,8 @@ export class WebGpuRendererBackend implements Renderer {
     if(hdr)validateFlatHdrTransition(hdr,this.hdrActive,this.frameHasDrawnScene);
     let flat:WebGpuFlatLitPass|undefined;
     if(lit){
-      flat=hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true))
-        :(this.flatLit??=new WebGpuFlatLitPass(this.device,this.format,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout));
+      flat=hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking))
+        :(this.flatLit??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking));
       flat.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled);
       (hdr?this.flatLit:this.flatLitHdr)?.clearTargets();
     }else{this.flatLit?.clearTargets();this.flatLitHdr?.clearTargets();}
@@ -446,7 +458,7 @@ export class WebGpuRendererBackend implements Renderer {
     if(!sunMaskStats)this.sunShadowMask?.clearTarget();
     const normalStats=!lit&&mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
-    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
+    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.baseFrameTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
     const target = this.frameTexture().createView();
     const pass = this.beginRenderPass(encoder, "load", target);
 
@@ -507,7 +519,7 @@ export class WebGpuRendererBackend implements Renderer {
       this.postProcessPass.setPostProcess(postProcess);
     }
     this.resolveHdr();
-    if (this.presentation && !this.frameActive) return this.stats();
+    if ((this.presentation || this.linearWorking) && !this.frameActive) return this.stats();
     const postProcessStats = this.postProcessPass.drawPasses();
     addPostProcessStatsInto(
       this.currentStats,
@@ -517,6 +529,10 @@ export class WebGpuRendererBackend implements Renderer {
     if(this.presentation && this.frameActive) {
       this.pixelPass!.present(this.requireContext().getCurrentTexture(),this.presentation,this.pixelPerfect!.background!);
       this.currentStats.drawCalls++;this.currentStats.presentationPassCount=1;
+    }
+    if(this.linearWorking && !this.presentation && this.frameActive){
+      this.managedFrame!.present(this.requireContext().getCurrentTexture(),{x:0,y:0,width:this.canvas.width,height:this.canvas.height},[0,0,0]);
+      this.managedDrawCalls++;
     }
     this.frameActive=false;
     return this.stats();
@@ -537,7 +553,7 @@ export class WebGpuRendererBackend implements Renderer {
     this.spriteNormals?.destroy();
     this.flatLit?.destroy();this.flatLitHdr?.destroy();this.hdrPass?.destroy();this.hdrDebugLines?.destroy();
     this.sunShadowMask?.destroy();
-    this.pixelPass?.release();
+    this.pixelPass?.release();this.managedFrame?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);
     webGpuResources(this.device).destroyAll();
   }
@@ -561,13 +577,13 @@ export class WebGpuRendererBackend implements Renderer {
     loadOp: GPULoadOp,
     view?: GPUTextureView,
   ): GPURenderPassEncoder {
-    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
+    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0], alphaScale=this.linearWorking?clear[3]:1;
     return beginWebGpuRenderPass(this.device, encoder, {
       colorAttachments: [{
         view: view ?? this.frameTexture().createView(),
         loadOp,
         storeOp: "store",
-        clearValue: { r: clear[0], g: clear[1], b: clear[2], a: clear[3] },
+        clearValue: { r: clear[0]*alphaScale, g: clear[1]*alphaScale, b: clear[2]*alphaScale, a: clear[3] },
       }],
     });
   }
@@ -582,14 +598,19 @@ export class WebGpuRendererBackend implements Renderer {
     });
   }
 
-  private baseFrameTexture(): GPUTexture { return this.pixelPerfect ? this.pixelPass!.texture() : this.requireContext().getCurrentTexture(); }
+  private baseFrameTexture(): GPUTexture { return this.pixelPerfect ? this.pixelPass!.texture() : this.linearWorking ? this.managedFrame!.texture() : this.requireContext().getCurrentTexture(); }
   private frameTexture(): GPUTexture { return this.hdrActive ? this.hdrPass!.texture() : this.baseFrameTexture(); }
+
+  private prepareManagedFrame():void {
+    this.managedFrame??=new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,true,false);
+    this.managedFrame.resize(Math.max(1,this.canvas.width),Math.max(1,this.canvas.height));
+  }
 
   private beginHdr(options:ResolvedFlatHdrOptions):void {
     if(this.hdrActive)return;
-    this.hdrPass??=new WebGpuHdrPass(this.device,this.format);
+    this.hdrPass??=new WebGpuHdrPass(this.device,this.workingFormat);
     this.hdrPass.prepare(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height);
-    const clear=this.options.clearColor??[.08,.1,.15,1],rgb=clear.slice(0,3).map(srgbToLinear);
+    const clear=this.options.clearColor??[.08,.1,.15,1],rgb=this.linearWorking?clear:clear.slice(0,3).map(srgbToLinear);
     const encoder=this.device.createCommandEncoder(),pass=beginWebGpuRenderPass(this.device,encoder,{colorAttachments:[{
       view:this.hdrPass.texture().createView(),loadOp:"clear",storeOp:"store",clearValue:{r:rgb[0]!*clear[3],g:rgb[1]!*clear[3],b:rgb[2]!*clear[3],a:clear[3]},
     }]});pass.end();this.device.queue.submit([encoder.finish()]);
@@ -598,7 +619,7 @@ export class WebGpuRendererBackend implements Renderer {
 
   private resolveHdr():void {
     if(!this.hdrActive)return;
-    this.hdrPass!.resolve(this.baseFrameTexture(),this.hdrActive,true);
+    this.hdrPass!.resolve(this.baseFrameTexture(),this.hdrActive,!this.linearWorking);
     this.hdrActive=undefined;this.hdrDrawCalls++;
   }
 

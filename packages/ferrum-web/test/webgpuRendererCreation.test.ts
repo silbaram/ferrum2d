@@ -62,7 +62,7 @@ class Device {
   }
   createRenderPipeline() {
     this.events.push("pipeline");
-    return {};
+    return {getBindGroupLayout:()=>({})};
   }
 }
 function install(device: Device | (()=>Device | Promise<Device>)) {
@@ -345,4 +345,18 @@ test("texture wrapper rejects invalid options before recording a recovery reques
   try {
     for (const options of [null, []]) await rejects(renderer.loadTexture(7, "invalid.png", options as unknown as TextureLoadOptions), /options must be an object/);
   } finally { renderer.destroy(); restore(); }
+});
+
+
+test("managed WebGPU output initializes and recovers before a successful canvas commit", async () => {
+  const first=new Device(),second=new Device();let requests=0;
+  const restore=install(()=>++requests===1?first:second);
+  try{
+    const renderer=await WebGPURenderer.create(canvas(first),{colorManagement:"linear-srgb"});
+    equal(renderer.deviceState().status,"ready");
+    equal(first.events.indexOf("webgpu")>first.events.lastIndexOf("pop"),true);
+    first.resolveLost({reason:"unknown",message:"managed reset"});await Promise.resolve();
+    equal(await renderer.recoverDevice(),true);equal(renderer.deviceState().generation,2);
+    renderer.destroy();equal(renderer.resourceStats().textureCount,0);
+  }finally{restore();}
 });

@@ -64,8 +64,7 @@ fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:b
  }
  return color;
 }`;
-const composite =
-  spatialEnvironmentWGSL.split("@group(2)").join("@group(0)") +
+function composite(linearWorking: boolean): string { return spatialEnvironmentWGSL.split("@group(2)").join("@group(0)") +
   `
 @group(1) @binding(0) var sceneColor:texture_2d<f32>;
 @group(1) @binding(1) var sceneDepth:texture_depth_2d;
@@ -153,12 +152,13 @@ fn compose(f:F,stage:u32)->vec4f{
   let l=dot(color,vec3f(.2126,.7152,.0722));color=mix(vec3f(l),color,e(66u));
   color=max((color-vec3f(.18))*e(65u)+vec3f(.18),vec3f(0.))*vec3f(e(68u),e(69u),e(70u));
  }
- return vec4f(encode(color),1.);
+ return vec4f(${linearWorking ? "color" : "encode(color)"},1.);
 }
 @fragment fn fs_main(f:F)->@location(0)vec4f{return compose(f,0u);}
 @fragment fn fs_resolve(f:F)->@location(0)vec4f{return compose(f,1u);}
 @fragment fn fs_dof(f:F)->@location(0)vec4f{return compose(f,2u);}
 `;
+}
 /** HDR platform targets and native environment uniforms. No game/scene state is owned here. */
 export class WebGpuSpatialEnvironment {
   readonly layout: GPUBindGroupLayout;
@@ -199,6 +199,7 @@ export class WebGpuSpatialEnvironment {
   constructor(
     private readonly device: GPUDevice,
     format: GPUTextureFormat,
+    linearWorking = false,
   ) {
     this.shadows = new WebGpuSpatialShadows(device);
     this.layout = device.createBindGroupLayout({
@@ -231,7 +232,7 @@ export class WebGpuSpatialEnvironment {
     });
     const module = device.createShaderModule({
       label: "Spatial HDR/depth composite",
-      code: composite,
+      code: composite(linearWorking),
     });
     const layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.imagesLayout] });
     this.intermediatePipeline = entry => webGpuResources(device).createRenderPipeline({

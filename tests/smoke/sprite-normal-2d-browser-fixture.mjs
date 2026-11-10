@@ -20,11 +20,11 @@ async function pixels(renderer,canvas){
 }
 function difference(a,b){let count=0;for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>6)count++;return count;}
 
-export async function probeSpriteNormals2D(preferred,linearFallback=false){
+export async function probeSpriteNormals2D(preferred,managed=false){
   const canvas=document.createElement('canvas');canvas.style.cssText='width:160px;height:128px;display:block';canvas.dataset.spatialGpuTarget='true';document.body.append(canvas);
   let fallbacks=0;
-  const renderer=await createRenderer(canvas,{preferred:linearFallback?"webgpu":preferred,...(linearFallback?{colorManagement:"linear-srgb"}:{}),onFallback:()=>fallbacks++,webgl2:{preserveDrawingBuffer:true},fallbackBehavior:'silent'}),errors=[];
-  const backend=typeof renderer.gpuDevice==='function'?'webgpu':'webgl2';if(linearFallback)check(fallbacks===1,'linear mode did not take supported WebGL2 fallback');check(backend===preferred,'requested renderer unavailable: '+preferred+' got '+backend);
+  const renderer=await createRenderer(canvas,{preferred,...(managed?{colorManagement:"linear-srgb"}:{}),onFallback:()=>fallbacks++,webgl2:{preserveDrawingBuffer:true},fallbackBehavior:'silent'}),errors=[];
+  const backend=typeof renderer.gpuDevice==='function'?'webgpu':'webgl2';check(fallbacks===0,'normal fixture used fallback');check(backend===preferred,'requested renderer unavailable: '+preferred+' got '+backend);
   let device=preferred==='webgpu'?renderer.gpuDevice():undefined;device?.addEventListener('uncapturederror',event=>errors.push(event.error.message));
   const light={enabled:true,ambient:[0,0,0,0],pointLights:[{x:145,y:64,radius:200,height:40,color:[1,1,1,1],intensity:.8,falloff:1}]};
   const draw=async(command=commands(),lighting=light)=>{renderer.setLighting(lighting);renderer.render();const stats=renderer.renderCommands(command);renderer.renderPostProcess();await device?.queue.onSubmittedWorkDone();check(!errors.length,errors.join('\n'));return {pixels:await pixels(renderer,canvas),stats,resources:renderer.resourceStats()};};
@@ -75,16 +75,16 @@ export async function probeSpriteNormals2D(preferred,linearFallback=false){
       recovery={cycles:2,pixelParity:true,allocationPlateau:true};
     }
     await draw(legacyCommand);check(!errors.length,errors.join('\n'));
-    return {backend,linearFallback,...(recovery?{recovery}:{}),frameDifference,normalDrawCalls:right.stats.normalDrawCalls,normalTargetBytes:160*128*devicePixelRatio**2*8,legacyPreserved:true,pointHeightAndSunElevation:true,flipRotation:true,foregroundCoverage:true,disabledCostZero:true,errors};
+    return {backend,colorManagement:managed?"linear-srgb":"legacy",...(recovery?{recovery}:{}),frameDifference,normalDrawCalls:right.stats.normalDrawCalls,normalTargetBytes:160*128*devicePixelRatio**2*8,legacyPreserved:true,pointHeightAndSunElevation:true,flipRotation:true,foregroundCoverage:true,disabledCostZero:true,errors};
   }finally{renderer.destroy();if(preferred==='webgl2'){const gl=canvas.getContext('webgl2');check(gl.getParameter(gl.CURRENT_PROGRAM)===null,'destroy left a deleted current program for the next renderer');check(gl.getError()===0,'destroy introduced GL errors');}after=renderer.resourceStats();check(after.textureCount===0&&after.bufferCount===0&&after.programCount===0,'renderer resources leaked on destroy '+JSON.stringify(after));window.disposeSpatialGpuTarget?.(canvas);canvas.remove();}
 }
 
 /** Real Wasm animation sidecar + common camera metric, independent of editor preview. */
-export async function probeSpriteNormalRuntime2D(preferred) {
+export async function probeSpriteNormalRuntime2D(preferred,managed=false) {
   const {createEngine,AssetLoader,createDataSceneView,decodeRenderCommands}=await import('@ferrum2d/ferrum-web/core');
   const {applyDataSceneAuthoringDocument}=await import('@ferrum2d/ferrum-web/authoring');
   const canvas=document.createElement('canvas');canvas.style.cssText='width:160px;height:128px';canvas.dataset.spatialGpuTarget='true';document.body.append(canvas);
-  const renderer=await createRenderer(canvas,{preferred,webgl2:{preserveDrawingBuffer:true},fallbackBehavior:'silent'}),loader=new AssetLoader(renderer);
+  const renderer=await createRenderer(canvas,{preferred,...(managed?{colorManagement:"linear-srgb"}:{}),webgl2:{preserveDrawingBuffer:true},fallbackBehavior:'silent'}),loader=new AssetLoader(renderer);
   const errors=[];const device=preferred==='webgpu'?renderer.gpuDevice():undefined;device?.addEventListener('uncapturederror',e=>errors.push(e.error.message));
   const raf=requestAnimationFrame,cancel=cancelAnimationFrame,pending=new Map();let token=0,engine,view,last,scene,time=0;
   globalThis.requestAnimationFrame=callback=>{pending.set(++token,callback);return token;};globalThis.cancelAnimationFrame=id=>pending.delete(id);
@@ -93,10 +93,10 @@ export async function probeSpriteNormalRuntime2D(preferred) {
   const base={format:'ferrum2d.consumer.scene-authoring',version:1,behaviorRecipes:{entities:{}},
     sceneComposition:{initialFragment:'main',prefabs:{object:{}},fragments:{main:{instances:[{id:'hero',prefab:'object',x:0,y:0,props:{components:{collider:'none',layer:'wall',visual:{kind:'sprite',texture:'color',normalTexture:'normal',width:64,height:64,originX:.5,originY:.5,animationSet:{initialClip:7,clips:[{id:7,fps:10,loop:false,frames}]}}}}}]}}},
     lighting:{ambient:[0,0,0,0],pointLights:[{x:80,y:0,radius:200,height:40,intensity:.8,color:[1,1,1,1],falloff:1}]}};
-  const apply=(document,options={})=>{scene=document;const result=applyDataSceneAuthoringDocument(engine,document);view=createDataSceneView(engine,renderer,canvas,{x:options.x??0,y:0,groundYScale:options.g??1,zoom:options.zoom??1});engine.pauseDataScene();return result.entityHandles.hero;};
+  const apply=(document,options={})=>{scene=document;const result=applyDataSceneAuthoringDocument(engine,document,{colorManagement:managed?"linear-srgb":"legacy"});view=createDataSceneView(engine,renderer,canvas,{x:options.x??0,y:0,groundYScale:options.g??1,zoom:options.zoom??1});engine.pauseDataScene();return result.entityHandles.hero;};
   try {
     await loader.loadAssets({textures:{color:image([[48,48,48,255],[48,48,48,255]]),normal:image([[255,128,128,255],[0,128,128,255]])},textureOptions:{normal:{colorSpace:'none'}}});
-    engine=await createEngine(frame=>{renderer.setLighting(view?view.lighting(scene.lighting,view.snapshot(frame)):false);renderer.render();renderer.renderCommands(frame.renderCommandBuffer);
+    engine=await createEngine(frame=>{renderer.setLighting(view?view.lighting(scene.lighting,view.snapshot(frame)):false);renderer.render();renderer.renderCommands(frame.renderCommandBuffer);renderer.renderPostProcess();
       const commands=decodeRenderCommands(frame.renderCommandBuffer),sidecar=frame.renderCommandBuffer.spriteNormalMaterials;
       last={state:frame.gameState,entities:frame.entityCount,uv:commands[0]?.uv,sidecar:sidecar?Array.from(sidecar.buffer):undefined,...renderer.stats()};
     },()=>({}),loader,()=>renderer.viewportSize(),{fixedTimestep:false});

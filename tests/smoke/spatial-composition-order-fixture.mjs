@@ -3,14 +3,14 @@ import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring"
 import { check, difference, pixels } from "/fixture.mjs";
 
 /** A one-pixel HDR source falls below Bloom threshold after a four-pixel DOF gather. */
-export async function probeSpatialCompositionOrder(backend) {
+export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy") {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:fixed;left:0;top:0;width:32px;height:32px";
   canvas.dataset.spatialGpuTarget = "true"; document.body.append(canvas);
   let renderer, engine, pending;
   const errors = [];
   try {
-    renderer = await createRenderer(canvas, { preferred: backend, fallbackBehavior: "silent", webgl2: { preserveDrawingBuffer: true } });
+    renderer = await createRenderer(canvas, { preferred: backend, colorManagement, fallbackBehavior: "silent", webgl2: { preserveDrawingBuffer: true } });
     check((typeof renderer.gpuDevice === "function") === (backend === "webgpu"), "composition reference fell back");
     const watch = () => renderer.gpuDevice?.().addEventListener("uncapturederror", event => errors.push(event.error.message));
     watch();

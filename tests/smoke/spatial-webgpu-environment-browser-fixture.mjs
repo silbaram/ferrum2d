@@ -63,11 +63,11 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection) {
+async function probe(canvas, backend, projection, colorManagement) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
-      preferred: backend,
+      preferred: backend, colorManagement,
       fallbackBehavior: "silent",
       onFallback: (i) => fallback.push(String(i.reason)),
       webgl2: { preserveDrawingBuffer: true },
@@ -79,7 +79,7 @@ async function probe(canvas, backend, projection) {
   );
   const errors = [],
     registry = createSceneInstanceHandleRegistry(),
-    apply = { instanceHandleRegistry: registry, spatialModelPreparer: renderer };
+    apply = { instanceHandleRegistry: registry, spatialModelPreparer: renderer, colorManagement };
   if (backend === "webgpu")
     renderer.gpuDevice().addEventListener("uncapturederror", (e) => errors.push(e.error.message));
   const allocationCounts = { textures: 0, buffers: 0, groups: 0 };
@@ -640,15 +640,15 @@ async function decodePng(url) {
     bitmap.close();
   }
 }
-export async function probeSpatialWebGpuEnvironment() {
+export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy") {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) {
     const pair = [];
     for (const backend of ["webgl2", "webgpu"]) {
       const canvas = document.createElement("canvas");
       document.body.replaceChildren(canvas);
-      const checked = await probe(canvas, backend, projection);
-      if (projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend);
+      const checked = await probe(canvas, backend, projection, colorManagement);
+      if (projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
       pair.push(checked);
     }
     const comparisons = [];
@@ -675,7 +675,7 @@ export async function probeSpatialWebGpuEnvironment() {
       );
       comparisons.push({ name: a.name, differentPixels: diff, pixelCount: count, allowedFraction });
     }
-    result.push({ projection, comparisons, backends: pair });
+    result.push({ projection, colorManagement, comparisons, backends: pair });
   }
   return result;
 }

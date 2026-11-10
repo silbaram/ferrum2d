@@ -1,5 +1,5 @@
 import type { ResolvedPostProcessPass } from "./cameraPostProcessing.js";
-import { TEXTURE_POST_PROCESS_WGSL } from "./webgpuPostProcessShaders.js";
+import { texturePostProcessWgsl } from "./webgpuPostProcessShaders.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 
@@ -12,12 +12,12 @@ export class WebGpuTexturePostProcess {
   private source?: GPUTexture;
   private group?: GPUBindGroup;
 
-  constructor(private readonly device: GPUDevice, private readonly format: GPUTextureFormat) {
+  constructor(private readonly device: GPUDevice, private readonly format: GPUTextureFormat, linearWorking = false) {
     const owner = webGpuResources(device);
     let pipeline: GPURenderPipeline | undefined;
     let uniform: GPUBuffer | undefined;
     try {
-      const module = device.createShaderModule({ code: TEXTURE_POST_PROCESS_WGSL });
+      const module = device.createShaderModule({ code: texturePostProcessWgsl(linearWorking) });
       pipeline = owner.createRenderPipeline({
         layout: "auto",
         vertex: { module, entryPoint: "vertex" },

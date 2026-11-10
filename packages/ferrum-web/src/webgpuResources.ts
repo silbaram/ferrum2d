@@ -20,7 +20,7 @@ class WebGpuResources {
     this.buffers.set(buffer, descriptor.size);
     return buffer;
   }
-  createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
+  createTexture(descriptor: GPUTextureDescriptor, renderTarget = (descriptor.usage & GPUTextureUsage.RENDER_ATTACHMENT) !== 0): GPUTexture {
     const texture = this.device.createTexture(descriptor);
     const size = descriptor.size;
     const width = "width" in size ? size.width : size[0];
@@ -34,7 +34,7 @@ class WebGpuResources {
         bytes += Math.max(1, Math.floor(width / 2 ** mip)) * Math.max(1, Math.floor(height / 2 ** mip)) * layers * bytesPerPixel;
       }
     }
-    this.textures.set(texture, { bytes, target: (descriptor.usage & GPUTextureUsage.RENDER_ATTACHMENT) !== 0 });
+    this.textures.set(texture, { bytes, target: renderTarget });
     return texture;
   }
   createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {

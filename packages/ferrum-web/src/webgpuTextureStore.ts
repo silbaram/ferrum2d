@@ -16,6 +16,7 @@ export interface WebGpuTextureResource {
   texture: GPUTexture;
   view: GPUTextureView;
   bindGroup: GPUBindGroup;
+  linearBindGroup?: GPUBindGroup;
   width: number;
   height: number;
   colorSpace: TextureColorSpace;
@@ -44,6 +45,7 @@ export class WebGpuTextureStore {
     private readonly device: GPUDevice,
     private readonly sampler: GPUSampler,
     private readonly textureBindGroupLayout: GPUBindGroupLayout,
+    private readonly linearWorking = false,
   ) {}
 
   async load(url: string, options?: TextureLoadOptions): Promise<GPUTexture> {
@@ -199,7 +201,7 @@ export class WebGpuTextureStore {
     this.assertLoadActive(signal);
     const blob = await response.blob();
     this.assertLoadActive(signal);
-    const bitmap = colorSpace === "srgb" && alphaMode !== "straight" ? await createImageBitmap(blob)
+    const bitmap = colorSpace === "srgb" && alphaMode !== "straight" && !this.linearWorking ? await createImageBitmap(blob)
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
     return {bitmap,blob};
   }
@@ -208,8 +210,9 @@ export class WebGpuTextureStore {
     const texture = webGpuResources(this.device).createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
+      ...(this.linearWorking ? { viewFormats: ["rgba8unorm-srgb"] } : {}),
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-    });
+    }, false);
     try {
       this.device.queue.copyExternalImageToTexture(
         { source },
@@ -242,8 +245,9 @@ export class WebGpuTextureStore {
     const texture = webGpuResources(this.device).createTexture({
       size: { width, height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
+      ...(this.linearWorking ? { viewFormats: ["rgba8unorm-srgb"] } : {}),
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-    });
+    }, false);
     try {
       this.device.queue.writeTexture(
         { texture },
@@ -251,7 +255,7 @@ export class WebGpuTextureStore {
         { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
         { width, height, depthOrArrayLayers: 1 },
       );
-      this.setTexture(textureId, this.createTextureResource(texture, width, height));
+      this.setTexture(textureId, this.createTextureResource(texture, width, height, this.linearWorking ? "srgb" : "none"));
       return texture;
     } catch (error) {
       webGpuResources(this.device).destroy(texture);
@@ -268,7 +272,11 @@ export class WebGpuTextureStore {
         { binding: 1, resource: view },
       ],
     });
-    return { texture, view, bindGroup, width, height, colorSpace, alphaMode: "straight", revision: 0 };
+    const linearBindGroup = this.linearWorking && colorSpace === "srgb" ? this.device.createBindGroup({
+      layout: this.textureBindGroupLayout, entries: [{ binding: 0, resource: this.sampler },
+        { binding: 1, resource: texture.createView({ format: "rgba8unorm-srgb" }) }],
+    }) : undefined;
+    return { texture, view, bindGroup, ...(linearBindGroup ? { linearBindGroup } : {}), width, height, colorSpace, alphaMode: "straight", revision: 0 };
   }
 
   private setTexture(textureId: number, resource: WebGpuTextureResource): void {

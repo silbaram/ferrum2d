@@ -2,7 +2,7 @@ import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { spatialShadowGeometryWGSL } from "./webgpuSpatialShadows.js";
 import { SpatialShadowCache } from "./spatialShadowCache.js";
-import { spatialGeometryWGSL } from "./webgpuSpatialShaders.js";
+import { spatialGeometryWgsl } from "./webgpuSpatialShaders.js";
 import { WebGpuSpatialEnvironment } from "./webgpuSpatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import type { SpatialRendererStats } from "./renderer.js";
@@ -55,6 +55,7 @@ export class WebGpuSpatialPass {
     format: GPUTextureFormat,
     private readonly textureLayout: GPUBindGroupLayout,
     private readonly textures: WebGpuTextureStore,
+    private readonly linearWorking = false,
   ) {
     const cameraLayout = device.createBindGroupLayout({
       entries: [
@@ -65,10 +66,10 @@ export class WebGpuSpatialPass {
         },
       ],
     });
-    this.environment = new WebGpuSpatialEnvironment(device, format);
+    this.environment = new WebGpuSpatialEnvironment(device, format, linearWorking);
     const module = device.createShaderModule({
       label: "Ferrum spatial geometry/environment",
-      code: spatialGeometryWGSL,
+      code: spatialGeometryWgsl(linearWorking),
     });
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [cameraLayout, textureLayout, this.environment.layout, textureLayout],
@@ -207,7 +208,7 @@ export class WebGpuSpatialPass {
         { binding: 1, resource: this.flatNormal.createView() },
       ],
     });
-    this.models = new WebGpuSpatialModels(device, format, cameraLayout, this.environment.layout);
+    this.models = new WebGpuSpatialModels(device, format, cameraLayout, this.environment.layout, linearWorking);
   }
   prepareModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
     return this.models.stage(assets);
@@ -441,7 +442,7 @@ export class WebGpuSpatialPass {
           end += 3;
         pass.setBindGroup(
           1,
-          id === NO_TEXTURE ? this.whiteGroup : this.textures.resource(id).bindGroup,
+          id === NO_TEXTURE ? this.whiteGroup : (this.linearWorking ? this.textures.resource(id).linearBindGroup ?? this.textures.resource(id).bindGroup : this.textures.resource(id).bindGroup),
         );
         pass.setBindGroup(2, this.environment.receiverGroup(receive));
         pass.setBindGroup(
@@ -575,7 +576,7 @@ export class WebGpuSpatialPass {
           while (end < limit && data[end * 11 + 9] === id) end += 3;
           pass.setBindGroup(
             1,
-            id === NO_TEXTURE ? this.whiteGroup : this.textures.resource(id).bindGroup,
+            id === NO_TEXTURE ? this.whiteGroup : (this.linearWorking ? this.textures.resource(id).linearBindGroup ?? this.textures.resource(id).bindGroup : this.textures.resource(id).bindGroup),
           );
           pass.draw(end - first, 1, first);
           stats.drawCalls++;

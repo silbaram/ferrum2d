@@ -1,7 +1,6 @@
 import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
 import { spatialEnvironmentWGSL } from "./webgpuSpatialEnvironment.js";
-export const spatialGeometryWGSL =
-  spatialEnvironmentWGSL +
+export function spatialGeometryWgsl(linearWorking = false): string { return spatialEnvironmentWGSL +
   `
 struct Camera{matrix:mat4x4f};
 @group(0) @binding(0) var<uniform> camera:Camera;
@@ -29,17 +28,19 @@ fn spatialSurface(f:Fragment)->SpatialLightingOutput{
  }
  if(color.a<f.cutoff){discard;}
  if(!environmentEnabled()){return lightingOutput(color.rgb,vec3f(0.));}
- let albedo=linearize(color.rgb);
+ let albedo=${linearWorking ? "color.rgb" : "linearize(color.rgb)"};
  return lightingOutput(shade(albedo,vec3f(0.),f.world,n,geometric,false),indirectColor(albedo,n,false));
 }
 @fragment fn fs_main(f:Fragment)->@location(0)vec4f{return spatialSurface(f).color;}
 @fragment fn fs_lighting(f:Fragment)->SpatialLightingOutput{return spatialSurface(f);}
 @fragment fn fs_debug(f:Fragment)->@location(0) vec4f{
- if(environmentEnabled()){return vec4f(linearize(f.color.rgb),1.);}return vec4f(f.color.rgb,1.);
+ if(environmentEnabled()){return vec4f(${linearWorking ? "f.color.rgb" : "linearize(f.color.rgb)"},1.);}return vec4f(f.color.rgb,1.);
 }
-@fragment fn fs_debug_lighting(f:Fragment)->SpatialLightingOutput{return lightingOutput(linearize(f.color.rgb),vec3f(0.));}
+@fragment fn fs_debug_lighting(f:Fragment)->SpatialLightingOutput{return lightingOutput(${linearWorking ? "f.color.rgb" : "linearize(f.color.rgb)"},vec3f(0.));}
 `;
-export function spatialModelWGSL(mapped: boolean): string {
+}
+export const spatialGeometryWGSL = spatialGeometryWgsl();
+export function spatialModelWGSL(mapped: boolean, linearWorking = false): string {
   return (
     spatialEnvironmentWGSL +
     `
@@ -82,7 +83,7 @@ fn modelSurface(f:Fragment,front:bool)->SpatialLightingOutput{
  }
  if(c.a<material.params.x){discard;}
  let unlit=material.params.y>.5;var emission=emitted;if(unlit){emission=vec3f(0.);}
- if(!environmentEnabled()){return lightingOutput(encode(c.rgb+emission),vec3f(0.));}
+ if(!environmentEnabled()){return lightingOutput(${linearWorking ? "c.rgb+emission" : "encode(c.rgb+emission)"},vec3f(0.));}
  return lightingOutput(shade(c.rgb,emission,f.world,n,geometricNormal,unlit),indirectColor(c.rgb,n,unlit));
 }
 @fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0)vec4f{return modelSurface(f,front).color;}

@@ -69,9 +69,9 @@ test("asset metadata is validated before loading and forwarded without changing 
   throws(() => resolveAssetPreloadPlan({ ...base, textureOptions: { missing: {} } }), /matching texture/);
 });
 
-test("WebGPU rejects managed output before acquiring a canvas context", async () => {
+test("WebGPU rejects invalid color modes before acquiring a canvas context", async () => {
   let acquired = false;
   const canvas = { getContext: () => { acquired = true; return null; } } as unknown as HTMLCanvasElement;
-  await rejects(WebGPURenderer.create(canvas, { colorManagement: "linear-srgb" }), /WebGPU linear-srgb/);
+  await rejects(WebGPURenderer.create(canvas, { colorManagement: "invalid" as never }), /colorManagement/);
   equal(acquired, false);
 });

@@ -230,11 +230,13 @@ declare global {
     format: GPUTextureFormat;
     usage: number;
     mipLevelCount?: number;
+    viewFormats?: GPUTextureFormat[];
   }
 
   interface GPUTextureView {}
 
   interface GPUTextureViewDescriptor {
+    format?: GPUTextureFormat;
     label?: string;
     dimension?: "2d" | "2d-array" | "cube";
     baseArrayLayer?: number;

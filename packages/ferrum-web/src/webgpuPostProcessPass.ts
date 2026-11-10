@@ -31,6 +31,7 @@ export class WebGpuPostProcessPass {
     private readonly currentTexture: () => GPUTexture,
     private readonly format: GPUTextureFormat,
     postProcess: PostProcessStackInput = undefined,
+    private readonly linearWorking = false,
   ) {
     this.bindGroupLayout = this.createBindGroupLayout();
     this.pipelineLayout = this.device.createPipelineLayout({
@@ -63,7 +64,7 @@ export class WebGpuPostProcessPass {
     this.assertAlive();
     const passes = resolveWebGpuPostProcessPasses(postProcess);
     if (passes.some(pass => pass.kind !== "fade")) {
-      this.texturePass ??= new WebGpuTexturePostProcess(this.device, this.format);
+      this.texturePass ??= new WebGpuTexturePostProcess(this.device, this.format, this.linearWorking);
     } else {
       this.texturePass?.destroy();
       this.texturePass = undefined;
@@ -163,7 +164,7 @@ export class WebGpuPostProcessPass {
 
         @fragment
         fn fs_main() -> @location(0) vec4f {
-          return fade.color;
+          return ${this.linearWorking ? "vec4f(fade.color.rgb*fade.color.a,fade.color.a)" : "fade.color"};
         }
       `,
     });
@@ -180,7 +181,7 @@ export class WebGpuPostProcessPass {
         targets: [{
           format: this.format,
           blend: {
-            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            color: { srcFactor: this.linearWorking ? "dst-alpha" : "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
             // Fade opacity is effect strength, not additional scene coverage.
             alpha: { srcFactor: "zero", dstFactor: "one", operation: "add" },
           },
