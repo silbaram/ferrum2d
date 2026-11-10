@@ -7,6 +7,13 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
 파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
 
+Flat `lighting.profile:"lit"` 문서는 수신 mask와 선택형 표면 재질을 preview/Playing에 적용한다.
+preview 이미지는 straight alpha로 로드해 반투명 색상이 alpha를 두 번 곱하지 않게 한다.
+노멀·specular·roughness map은 작성된 참조에 따라 data로 로드하고, 색상/emission map은 sRGB로 로드한다.
+열린 문서 사이에서 같은 자산 ID를 색상과 data로 동시에 쓰면 거절한다. 역할별 자산 ID를 분리한다.
+조명을 지정하지 않거나 끈 legacy 문서에 저장만 된 비활성 노멀 참조는 그대로 보존한다.
+자산 크기·역할·native capability 검사가 실패하면 현재 문서 preview를 복구한다.
+
 HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geometry를 다시 맞춘다. 카메라를 직접 조작한 뒤에는 해당 구도를 유지한다.
 **보기 → 게임 카메라 범위**에서 실제 게임 카메라의 앞뒤 경계·방향을 확인한다. 객체 옆 **평면 XY/X축/Y축**은 드래그 이동 축이며, 높이·회전 값도 함께 표시한다.
 **보기 → 충돌·높이 표시** 아래에는 접촉·층 번호·가려진 선 옵션이 있다. **실행 정보** 패널은 선택 바디/충돌체와 렌더링·자원 통계를 읽기 전용으로 보여준다.

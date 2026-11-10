@@ -196,3 +196,27 @@ renderer는 SDR/HDR × 기본/Surface의 네 lazy pass를 소유한다. 매 프�
 
 Surface의 `textureBindCount`는 기존 implied-batch 통계에 data batch당 map3개와 고정 albedo/emission2개를 더한다.
 실제 API state restore 호출을 전부 세는 GPU profiler가 아니며 target bytes·실제 draw·map sample 비용과 함께 판정한다.
+
+
+## 독립 수신 mask
+
+Rust는 별도 v1/8-byte `SpriteLightMasks` sidecar와 cold v2 combined receiver setter를 소유한다.
+기존 receiver8 및 Surface40의 예약 영역을 재사용하지 않는다. v2 요청은6-u32
+`[id,generation,mode,cutoffBits,lightMask,shadowMask]`이며 전체를 검사한 뒤 receiver/mask/Surface 상태를 바꾼다.
+기존4-word setter는 mask를255/255로 되돌리고 unlit 해제는 Surface도 함께 해제한다.
+world/prototype/snapshot·despawn 재사용·정렬과 shadow/text/tile/particle 간격은 native가 관리한다.
+
+TS는 header/size/ptr/count·byte 범위와 receiver/profile 정합성을 검증하고 u32 pair를 bulk로 읽는다.
+mask identity draw만 private19-float staging을 사용한다. 기존15-float geometry/17-float receiver prefix 뒤에 두 채널을 둔다.
+base alpha는 분기 전에 샘플링하고 cutout을 discard한다. unlit command는 identity를 바꾸지 않으며,
+기존 normal/coverage/albedo pass가 전경 alpha와 receiver coverage를 계산한다.
+
+RGBA8 raw identity target의 R/G를 반올림해8-bit 채널로 읽는다. 직접광의 light intersection과 shadow intersection을 따로 계산한다.
+GL은 unit5 및 두 채널 uniform, GPU는 normal group의 추가 view와 private14-float light instance를 사용한다.
+기존13-float light prefix 뒤의 추가 float에는 light8bits/shadow8bits/identity-view-presence1bit를 저장한다.
+기본 packet은 coverage view를 binding placeholder로 재사용하며 identity texture를 읽지 않는다.
+별도 target·draw는 custom receiver가 있을 때만 생성한다. Surface4MRT에 다섯 번째 attachment를 요구하지 않는다.
+
+renderer는 기존 variant 사용 bitset과 별도의 mask 사용 bitset으로 여러 packet의 warm target을 재사용한다.
+프레임 종료에 사용하지 않은 identity target을 해제하고 프로그램/버퍼는 보존한다. 복구는 기존 backend/asset 재생성을 따른다.
+추가 texture4 bytes/pixel와 data draw·bind는 기존 resource/renderer 통계에 포함한다.

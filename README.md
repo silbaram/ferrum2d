@@ -48,7 +48,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | --- | --- | --- |
 | 데이터 작성·행동 | Game/Scene/Physics Spec, prefab·ObjectDefinition, Behavior Recipe·FSM 실행, agent용 patch·handoff | [Authoring API](docs/engine/public-api/authoring.md) |
 | 런타임·씬 | Rust/Wasm 게임 상태·엔티티, 선언형 씬·prefab, 씬 전환·페이드, snapshot·진행 저장/복원 | [Core API](docs/engine/public-api/core.md) |
-| 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, Flat emission·specular·roughness 재질, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
+| 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, Flat emission·specular·roughness 재질과 light/shadow 수신 mask, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
 | 픽셀 표현 | 고정 해상도·정수 확대·레터박스·화면 픽셀 스냅, 아틀라스 가장자리 보호, 팔레트 스왑·양자화·디더·스캔라인 | [2D 표시](docs/engine/data-scene-authoring.md) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) |
 | HD-2D 공간 | 정적 GLB/glTF·선택 비금속 specular 재질, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
 | 조명·그림자 | sprite/model normal map, 점광원·스포트·태양광·반구광, 그림자 필터·표면 보정, 건물 입체 도형의 지면 그림자 | [조명·환경](docs/engine/data-scene-spatial.md#광원-작성과-씬-효과) · [지면 그림자](docs/engine/data-scene-presentation.md) |

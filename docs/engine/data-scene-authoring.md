@@ -1876,6 +1876,10 @@ renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
   선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
 - color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
   normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
+- 공식 placement viewer는 preview 이미지를 straight alpha로 로드하며, lit 문서의 초기 적용·교체·Playing 전에
+  같은 renderer 자산 검사를 수행한다. 노멀·specular·roughness map은 작성된 참조를 따라 `colorSpace:"none"`으로
+  로드한다. 색상과 data 양쪽에서 쓰는 자산 ID는 분리한다. 열린 다른 문서의 색상 자산을 data로 재해석하는 요청도 거절한다.
+  조명을 지정하지 않거나 끈 legacy 문서의 비활성 노멀 참조는 저장된 metadata로 보존한다.
 - 점광원 최대32개, 점광원/태양 intensity 최대64다. HDR을 생략하면 SDR로 clamp한다. 선택형 HDR과 재질은 [화면 표현](data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.
 - sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
 - `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
@@ -1910,3 +1914,9 @@ apply/restore에 `{flatLightingPreparer:renderer}`를 전달한다. 이름→ID,
 일시적인 runtime setter만 호출한 값은 authoring JSON으로 자동 역기록하지 않는다.
 배치 API·별도 ABI는 [Core API](public-api/core.md#flat-sprite-표면-재질-개발-소스),
 map의 채널·UV·색공간·비용은 [재질 계약](data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+
+Flat lit sprite의 `lighting`에는 `lightMask`·`shadowMask` 정수0..255를 저장할 수 있다. 기본255이며0을 생략하지 않는다.
+점광원·태양의 같은 필드와 독립적으로 비교하고 ambient·emission은 보존한다.
+새 native 지원·flat lit profile·opaque/cutout receiver를 적용 전에 확인한다.
+작성·저장·비용 계약은 [수신 mask](data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)를 따른다.

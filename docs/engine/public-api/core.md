@@ -1510,3 +1510,16 @@ float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 �
 정렬된 command와 개수·순서가 같고 전체 surface 미선택이면 sidecar를 생략한다. 기존15-float command와8-byte lighting ABI는 유지한다.
 구 Wasm/부분 export/mixed version은 surface 요청에서 거절하며 기존 재질 없는 씬은 유지한다.
 다음 Wasm 호출/frame/memory growth 전에 소비한다. deferred callback은 같은 buffer의 두 alias를 소유 복사한다.
+
+
+## Flat 독립 수신 mask · 개발 소스
+
+`SpriteLightingMaterialSpec`의 `lightMask`·`shadowMask`는 정수0..255, 기본255다.
+`configureSpriteLightingMaterials`의 기존 bulk 요청에서 두 값을 전달하면 native v2 설정으로 receiver·mask를 함께 원자적으로 적용한다.
+명시적 mask는 opaque/cutout에만 지정한다. 생략한 필드는255로 돌아가며, 구 Wasm에 mask를 요청하면 변경 없이 false다.
+각 광원의 같은 필드와 비교하고 환경광·발광은 유지한다. [의미·비용](../data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)을 따른다.
+
+`SpriteLightMaskBufferView`는 `/core`에서 import한다. `RenderCommandBufferView.spriteLightMasks`의 선택형 v1/stride2 metadata다.
+`buffer:Uint32Array`는 command 순서의 `[lightMask,shadowMask]`를8-byte record로 담는다.
+전체 기본값이면 생략하며 생성 command 간격은255/255다. custom 값은 opaque/cutout receiver metadata와 정합해야 한다.
+다음 Wasm 호출·memory growth 전에 소비하며 deferred callback은 소유 복사한다. 기존 sprite15·lighting8·Surface40 ABI는 유지한다.

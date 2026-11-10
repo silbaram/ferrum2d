@@ -505,3 +505,31 @@ HDR world8 bytes/pixel·광원 mask·전역 후처리·표시 target은 별도�
 각 variant의 target을 재사용하고 사용하지 않은 variant는 프레임 종료에 회수한다.
 같은 프레임에 기본/Surface packet이 함께 있으면 수광 scratch 합계는 SDR48/HDR56 bytes/pixel이며 HDR world는 별도다.
 검증은 `pnpm smoke:flat-lit`의 Surface fixture와 [Smoke Check](../development/quality/smoke-check.md#flat-sprite-surface-재질-회귀)를 따른다.
+
+
+## Flat light·shadow 수신 mask · 개발 소스
+
+`profile:"lit"`에서 opaque/cutout sprite의 `lighting.lightMask`와 `lighting.shadowMask`를 독립적으로 지정한다.
+점광원·태양의 같은 필드와 bit intersection을 비교한다. 각 값은 정수0..255이며 생략은 모든8채널(255)이다.
+채널은 광원 ID나 authored 광원 수가 아니므로 같은 채널을 여러 광원이 사용할 수 있다.
+
+```json
+{
+  "lighting": {"mode":"cutout", "alphaCutoff":0.5, "lightMask":3, "shadowMask":1}
+}
+```
+
+- 수신면과 광원의 `lightMask` 교집합이0이면 해당 직접광의 diffuse·specular를 모두 제외한다.
+- `shadowMask` 교집합이0이면 해당 광원의 visibility를1로 사용한다. 직접광을 끄는 설정이 아니다.
+- 환경광·Surface emission은 두 mask와 독립적이다. `lightMask:0`도 ambient와 emission을 유지한다.
+- 기존 caster 설정과 별개이며 collider/layer 이름에서 채널을 추론하지 않는다. 이 필드는 caster를 골라 내는 mask가 아니다.
+- cutout 구멍은 아래 receiver identity를 보존하고 unlit 전경은 alpha coverage로 가린다.
+  지원 범위는 기존 opaque/cutout이며 반투명 수광층의 별도 조명을 추가하지 않는다.
+- authoring·patch·Undo/Redo·JSON 저장·복원에서 명시적0과 `enabled:false` 설정을 보존한다.
+  apply/restore는 새로운 native 지원과 자산을 검사한 뒤 씬을 바꾼다. legacy profile·Spatial에는 이 flat receiver 필드를 지정하지 않는다.
+- 설정을 유지한 조명 OFF는 `{profile:"lit",enabled:false}`를 쓴다. 후단 HUD는 기존처럼 별도 unlit packet을 제출한다.
+
+custom receiver mask가 있는 packet은 별도 RGBA8 target(4 bytes/pixel)과 texture batch별 identity draw를 추가한다.
+Surface의4MRT와 분리해 WebGL2 최소 attachment 한도를 유지한다. 기본255/255 또는 조명 비활성은 추가 target/pass가 없다.
+여러 packet에서 target을 재사용하고 미사용 프레임에는 회수한다. draw/batch/bind 통계에 identity draw를 포함하며
+`normalDrawCalls`는 기존 normal/Surface MRT draw만 센다. [ABI·합성 구조](../development/architecture/flat-lighting-composition.md#독립-수신-mask)를 따른다.

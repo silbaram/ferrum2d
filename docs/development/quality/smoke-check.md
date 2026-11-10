@@ -2844,3 +2844,21 @@ placement 사용처·cleanup은 세 map 이름/숫자 참조를 보호하며 des
 Placement layer 브라우저 회귀는 개별 predicate뿐 아니라 root/child page의 locator action에도 기존 smoke timeout을 적용한다.
 별도 page 정리는 같은 시간 안에 종료하며 앞선 assertion 오류를 보존한다. `pnpm test:placement-layers`는
 닫기 거절·응답 없는 닫기와 기존 오류 보존을 함께 검사한다. 이 검사는 기존 수동 CI validate에 포함된다.
+
+
+### Flat 독립 수신 mask 회귀
+
+SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --masks-only`로 좁게 실행한다.
+`pnpm smoke:flat-lit`의 기본 행렬과 기존 수동 CI validate에도 포함된다.
+양 backend × 두 색공간 × DPR1/2, SDR/HDR에서 light0/shadow0/일부/모든 채널,
+점광원·태양 차폐 독립성, ambient/emission·bounded reflection, cutout/unlit 전경,
+다중 packet·기본/OFF 추가 target/pass0와4-byte identity target 비용, invalid 원자성을 검사한다.
+실제 Native Playing/sidecar와 JSON fresh-handle 복원 pixels, resize/pixelPerfect·device recovery·destroy도 확인한다.
+단독 보고서는 `artifacts/lighting-remaining/m4c/gpu-*/verification.json`이다. 실기기 성능 증거로 확대하지 않는다.
+
+공식 앱의 lit host 회귀는 `pnpm smoke:placement-viewer`에 포함된다. SDK/app build 후
+`node tests/smoke/placement-tool-ui-runner.mjs --flat-lit`로 좁게 실행할 수도 있다.
+실제 앱에서 lit 문서를 초기 적용하고 color/data 업로드, mask 편집 pixels, 늦은 map 역할 로딩,
+실패한 preflight의 문서·handle·pixels 보존, 탭 복원과 Playing을 검사한다.
+`pnpm test:placement-flat-lighting`은 열린 Flat/Spatial 문서의 색/data 역할 충돌·숫자 ID를 검사하며,
+SDK build가 끝난 `smoke:placement-viewer` 단계에서 실행한다. 초기 scene discovery 검사는 SDK 산출물을 요구하지 않는다.
