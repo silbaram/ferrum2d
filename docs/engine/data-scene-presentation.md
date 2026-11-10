@@ -158,7 +158,7 @@ Data Scene reapply는 ground scale을 유지하고 follow/bounds를 해제한다
 render buffer의 frame metadata를 따라간다. 사용자 renderer는 `setGroundYScale`과 ground flag를
 지원해야 한다. capability가 없는 renderer에 1 이외의 값을 설정하면 오류다.
 
-WebGL2와 WebGPU legacy에서 지원한다. WebGPU의 `linear-srgb`는 기존과 같이 미지원이며
+WebGL2와 WebGPU의 legacy/linear-sRGB에서 지원한다. WebGPU 초기화 실패 시에는
 `createRenderer`의 명시적 WebGL2 fallback을 사용한다. 3D perspective, camera tilt/yaw, CSS 회전/skew,
 sprite normal map 또는 여러 층 사이의 shadow receiver 판정은 제공하지 않는다.
 물리 `elevation`은 이 flat projection에서 sprite 위치를 자동으로 상승시키지 않는다.
@@ -241,7 +241,7 @@ atlas는 원래 asset 소유자가 공유한다. 다른 sprite도 사용할 수 
 alpha가 전부 0인 **texture 내용**은 CPU에서 검사하지 않으므로 visible caster budget을 소비한다.
 과도한 overdraw는 maxCasters와 caster 크기로 제한하고 여러 atlas의 배치 전환 비용도 고려한다.
 
-WebGL2 legacy/linear-sRGB, WebGPU legacy 모두 같은 윤곽을 지원한다. WebGPU linear-sRGB는
+양 backend의 legacy/linear-sRGB 모두 같은 윤곽을 지원한다. 실제 WebGPU 초기화 실패는
 기존 `createRenderer` 정책대로 WebGL2 fallback을 선택한다. custom renderer나 이전 패키지를
 위해서는 authoring에서 `shape: "ellipse"` 또는 `"box"`를 명시한다. 자동 contour 추출/자동 도형
 대체는 하지 않는다. alpha가 없는 이미지나 primitive의 불투명 texture는 사각 윤곽이 된다.
@@ -456,7 +456,7 @@ renderer.renderPostProcess();
   SDR 그리기 이후 HDR을 켜거나 활성 월드 중 노출/톤매핑을 바꾸면 사전에 거절한다.
   resize·zoom 변경은 `renderPostProcess()` 후 프레임 사이에 수행한다.
 - 전역 화면 효과는 HDR resolve 뒤 적용한다. 기존 전역 Bloom threshold는 SDR 화면 효과의 계약을 유지한다.
-  이 옵션은 별도 scene-linear Bloom을 추가하지 않는다. WebGPU 전역 `linear-srgb`는 별도 M3c 단계다.
+  이 옵션은 별도 scene-linear Bloom을 추가하지 않는다. WebGPU 전역 `linear-srgb`와 함께 사용할 때는 선형 장면에 resolve한 뒤 최종 표시에서 변환한다.
 - HDR 월드는 pixel당8 bytes, 수광 scratch는 pixel당24 bytes(기존 SDR20)다.
   광원 차폐·전역 후처리·pixel-perfect target 비용은 별도다. 활성 수광 장면은 합계32 bytes/pixel이다.
   출력 draw1회는 `postProcessDrawCalls/postProcessPassCount`와 전체 draw·texture bind 통계에 포함한다.

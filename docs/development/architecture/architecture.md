@@ -1951,3 +1951,8 @@ Flat 2D의 opt-in lit은 Rust의 command-aligned receiver sidecar와 TS의 조�
 선택형 Flat HDR은 같은 lit command를 float16 world/albedo target에 합성하고 HUD 경계 또는 최종 표시에서
 노출·톤매핑을 한 번 수행한다. Rust ABI는 유지하며 플랫폼별 HDR pass가 target과 출력 셰이더를 소유한다.
 [HDR 구조·비용](flat-lighting-composition.md#선택형-flat-hdr-출력)을 따른다.
+
+
+WebGPU 전역 linear-sRGB는 raw/data view와 sRGB color view를 분리하고 sRGB 저장 형식의 선형 합성 target을 사용한다.
+Spatial·Flat HDR·HUD·전역 효과를 선형 공간에서 연결한 뒤 최종 표시에서 alpha를 풀어 변환하고 다시 premultiply한다.
+pixelPerfect는 같은 표시 변환을 확대 pass에 합친다. [색공간·비용 계약](../../engine/public-api/core.md#색-공간-관리)을 따른다.

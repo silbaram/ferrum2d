@@ -37,8 +37,8 @@ C = B × I
   현재 unmapped overlay의 응답 1과 다르므로 기존 모드에 소급하지 않는다. atlas·회전·flip 변환은 기존 normal 계약을 재사용한다.
 - RGB visibility는 해당 광원에만 곱한다. 같은 차폐물이 겹쳐도 union mask이며 반복해서 장면색을 어둡게 하지 않는다.
 - 최종 sRGB encode는 출력 경로에 맞춰 한 번만 한다. 초기 M2-a는 SDR 출력이며 밝기가 1을 넘는 에너지 보존은 M3b HDR 범위다.
-- WebGL2 전역 `linear-srgb`와 새 lit의 내부 선형 연산은 서로 다른 선택이다. 현재 WebGPU 전역 색공간 fallback을
-  새 lit WebGPU 구현의 성공으로 세지 않는다. M2-a 완료에는 실제 양 backend의 새 경로가 필요하다.
+- 전역 `linear-srgb`와 lit 내부 선형 연산은 서로 다른 선택이다. 전역 모드도 양 backend를 지원하며
+  실제 GPU 경로의 성공을 확인한다. fallback을 필수 WebGPU 검증의 성공으로 세지 않는다.
 
 수치 벡터는 `tests/smoke/flat-lighting-reference-vectors.json`에 둔다. 동일 sRGB 표면에 ambient 조도 0.5와
 백색 직접광 조도 0.125를 주면 목표 출력은 다음과 같다. 실제 lit GPU smoke는 이 값에 대한 색 오차 3 이하를 검사한다.

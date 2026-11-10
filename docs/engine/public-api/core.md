@@ -94,7 +94,7 @@ custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
 `spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
 WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 지원하며,
-`linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+`linear-srgb`에서도 같은 WebGPU backend로 합성·최종 표시를 수행한다.
 
 최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
 가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
@@ -170,7 +170,7 @@ Glitch는 양쪽 backend에서 같은 float32 seed 비트와 32-bit 정수 hash�
 삼각함수 hash 기반 줄무늬와 무늬가 달라진다. 같은 seed의 반복과 seed 복귀는 동일한 결과를 낸다.
 WebGL2 fullscreen 계산은 WebGPU와 맞춰 highp를 사용한다. legacy 모드의 기존 sprite alpha 혼합은 유지하므로,
 반투명 sprite의 효과 적용 전 입력 alpha 자체가 backend마다 다를 수 있다. 후처리는 각 입력의 alpha 계약을 따른다.
-`linear-srgb`는 계속 WebGL2에서만 제공한다.
+`linear-srgb`는 WebGL2와 WebGPU 모두 제공한다.
 이 API는 게임 코드의 runtime 설정이며 Data Scene 저장 필드나 에디터 UI를 추가하지 않는다.
 Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므로 JSON 스키마에서 선택적 `pixelArt`를 허용한다.
 위 수치 범위의 기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
@@ -438,7 +438,9 @@ const resources = runtime.renderer.resourceStats?.();
 
 지원 여부는 실제 renderer 기준이다. WebGL2는 두 색 공간 모드에서 지원하고,
 native WebGPU도 소유 buffer·texture·pipeline·attachment texture 통계를 제공한다.
-WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 render attachment texture 수다.
+WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 렌더 패스에서 쓰는 attachment texture 수다.
+외부 이미지 업로드의 호환성 때문에 붙인 render-attachment usage만으로 색/데이터 asset을 target으로 세지 않는다.
+실제 mip 생성에 렌더 패스를 사용하는 모델 texture와 정적 shadow fallback attachment는 포함한다.
 texture 저장량은 알려진 형식의 mip·array layer를 포함한다. `depth24plus`처럼 저장 형식이 기기별로 달라지는 texture가 있으면
 `unmeasuredTextureCount`를 올리고 `textureBytes`/`estimatedBytes`는 생략한다. `bufferBytes`와 객체 수는 계속 제공한다.
 WebGPU canvas의 presentation texture와 외부에서 직접 만든 GPU 객체·pipeline code/driver 저장량은 집계하지 않는다.
@@ -461,7 +463,7 @@ DebugOverlay와 RuntimeProfiler에 같은 값을 전달한다. 이후 `onFrame`�
 ## 색 공간 관리
 
 기본 `colorManagement: "legacy"`는 기존 출력과 asset URL 문자열 계약을 유지한다.
-`"linear-srgb"`는 WebGL2의 opt-in 모드이며 texture 입력, 혼합·조명·후처리 계산,
+`"linear-srgb"`는 양 backend의 opt-in 모드이며 texture 입력, 혼합·조명·후처리 계산,
 canvas 출력을 구분한다. 실행 중 모드를 바꾸려면 renderer와 asset을 새로 만든다.
 
 ```ts
@@ -471,8 +473,9 @@ const gray = srgbToLinear(128 / 255);
 const runtime = await createFerrumRuntime({
   canvas,
   colorManagement: "linear-srgb",
-  rendererPreference: "webgpu", // 현재는 진단 후 WebGL2로 fallback
+  rendererPreference: "webgpu", // 사용 가능한 WebGPU에서 같은 모드로 실행
   webgl2: { clearColor: [gray, gray, gray, 1] },
+  webgpu: { clearColor: [gray, gray, gray, 1] },
 });
 await runtime.engine.loadAssets({
   textures: { sprite: "/sprite.png", mask: "/mask.png", lightMap: "/linear-light.png" },
@@ -486,16 +489,16 @@ await runtime.engine.loadAssets({
 
 `ColorManagementMode`, `TextureColorSpace`, `TextureLoadOptions`, `srgbToLinear`,
 `linearToSrgb`는 core/root entrypoint에서 제공한다. 변환 함수는 0..1의 유한한
-RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 `WebGL2Renderer`
+RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 `WebGL2Renderer`, `/labs`의 `WebGPURenderer`
 직접 생성에도 같은 option을 사용할 수 있다. runtime에 renderer를 직접 주입했다면
 색 공간은 그 renderer를 생성한 쪽에서 설정한다.
 
 | 입력/단계 | `linear-srgb` 계약 |
 | --- | --- |
-| 색상 이미지 | 기본 `srgb`. `SRGB8_ALPHA8` texture가 샘플을 linear RGB로 변환한다. |
+| 색상 이미지 | 기본 `srgb`. GL의 `SRGB8_ALPHA8`, GPU의 sRGB color view가 샘플을 linear RGB로 변환한다. |
 | linear 이미지/수치 데이터 | `linear`/`none`. RGB 전송함수 변환을 생략한다. data 이미지의 브라우저 색 보정도 끈다. |
 | 숫자 색상 | sprite command/tint, material, clear, light, shadow, fade/vignette, debug RGB는 **linear 값**이다. alpha는 선형 coverage 값이다. |
-| 중간 target/RenderTexture | `SRGB8_ALPHA8`에 저장한다. GPU가 저장·샘플·blend 경계의 변환을 담당하므로 계산은 linear이며 어두운 색의 8-bit 정밀도를 유지한다. |
+| 중간 target/RenderTexture | GL은 `SRGB8_ALPHA8`, GPU 장면은 `rgba8unorm-srgb`에 저장한다. 저장·샘플·blend의 변환으로 선형 계산과 어두운 색의 8-bit 정밀도를 유지한다. RenderTexture API는 기존 GL capability 범위다. |
 | 후처리 | 기본적으로 linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. `pixelArt`는 표시용 sRGB로 변환해 양자화한 뒤 linear로 복귀한다. |
 | 화면 | 마지막 fullscreen pass에서 sRGB로 변환한다. 투명 canvas는 linear premultiplied RGB를 풀어서 변환한 뒤 sRGB에서 다시 premultiply한다. |
 
@@ -519,13 +522,15 @@ GPU의 sRGB decode/출력 변환을 활성화하지 않는다.
 
 낮은 수준 API는 매 frame `render()` → `renderCommands(...)` → `renderPostProcess()`를
 호출해야 한다. 명시적 후처리가 없어도 managed 모드는 출력 변환에 fullscreen draw 1회를
-사용하며 `postProcessDrawCalls`와 전체 `drawCalls`에 포함한다. 후처리가 있으면 마지막
-pass에 변환을 합친다. managed 기본 출력에는 scene framebuffer 1개만 사용하고,
-여러 후처리 pass를 연결할 때 scratch framebuffer 2개를 추가한다. 크기 변경 외에는 재사용한다.
+사용하며 `postProcessDrawCalls`와 전체 `drawCalls`에 포함한다. GL은 후처리의 마지막 pass에
+변환을 합친다. GPU는 모든 효과 후 표시 draw1회를 별도로 수행하고 pixelPerfect에서는 최종 확대에 합친다.
+managed scene target은 pixel당4 bytes 1개다. GL은 여러 효과에 scratch2개, GPU는 sampled 효과에
+copy source1개를 재사용한다. backend의 기존 정적 자원은 별도이며 크기 변경 외에는 재사용한다.
 전역 managed 경로의 target은 8-bit LDR이다. 별도 opt-in Flat lit HDR은 아래 계약을 따르며 Display-P3는 제공하지 않는다.
 
-WebGPU 직접 생성은 `linear-srgb`를 canvas 취득 전에 명시적으로 거절한다.
-`createRenderer`는 같은 색 공간 설정으로 WebGL2에 fallback하고 `onFallback`으로 이유를 알린다.
+WebGPU 직접 생성은 같은 모드를 지원하고 초기 pipeline 검증을 canvas 취득 전에 수행한다.
+`createRenderer`는 실제 adapter/초기화 실패 때 같은 색 공간을 유지한 WebGL2 fallback과 `onFallback` 진단을 제공한다.
+canvas API가 이미 선택된 이후의 실패는 기존 `WebGpuCanvasCommitError` 경계를 유지한다.
 renderer별 option에 서로 다른 모드를 지정하면 오류다. 양쪽 renderer의 기본 legacy 동작은 유지한다.
 
 예제는 `examples/minimal-game`의 `?colorManagement=linear-srgb`로 확인한다.

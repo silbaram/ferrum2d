@@ -708,7 +708,7 @@ point light 6면과 directional sun의 그림자, hard/PCF3 필터, terrain/bill
 native face range·caster revision·모델 visibility/matrix를 사용하므로 카메라 밖 모델도 그림자를 드리운다.
 같은 terrain/caster/광원/matrix/색 atlas revision이면 깊이 map을 재사용하며 shadow draw/upload는0이다.
 카메라 이동으로 billboard caster 모양이 바뀌면 native revision에 따라 다시 그린다. normal atlas만 갱신하면 WebGPU 깊이 cache는 유지한다.
-`linear-srgb` renderer 색 관리는 WebGL2 fallback을 사용한다.
+`linear-srgb` renderer 색 관리는 양 backend에서 지원한다. Spatial 합성·flat HUD·전역 후처리 뒤 최종 표시 변환을 수행한다.
 전체 화면 후처리 Bloom과 Spatial 환경의 HDR Bloom은 WebGPU에서도 지원하며 서로 별도의 효과다.
 같은 평면 `LightingScene2D`를 공간 packet에 중복 적용할 수 없다.
 

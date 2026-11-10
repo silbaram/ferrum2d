@@ -20,7 +20,7 @@ pass bitfield(AO resolve=1, separated=2, DOF 선행=4)로 정의한다. native �
 
 각 추가 target/pass는 해당 효과 조합이 실제로 필요할 때만 만든다. profile 생략, 효과 strength 0,
 빈 환경과 비활성 조합에서 불필요한 추가 MRT/resolve/DOF target을 유지하지 않는다.
-Spatial 내부 HDR은 renderer 전역 linear-sRGB와 별개이며, 전역 WebGPU 색공간은 M3c에서 검증한다.
+Spatial 내부 HDR은 renderer 전역 linear-sRGB와 별개이며, 전역 WebGPU 색공간은 별도 managed target·최종 표시 경로를 사용한다. 환경 합성은 그 선형 target에 출력한다.
 
 ## 판정할 근거
 

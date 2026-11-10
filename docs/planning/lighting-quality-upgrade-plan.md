@@ -2,7 +2,7 @@
 
 기준일: 2026-11-10
 
-상태: M2-a·M3a·M3b 개발 소스 구현·자동 회귀 완료 · M3c·M4/M5 잔여 개발 · 실게임·실기기 검증은 개발 완료 후 진행
+상태: M2-a·M3a·M3b·M3c 개발 소스 구현·자동 회귀 완료 · M4/M5 잔여 개발 · 실게임·실기기 검증은 개발 완료 후 진행
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -37,7 +37,7 @@
 | 그림자 | 점광원 사각 tile occluder 투영, 태양 ellipse/box/alpha silhouette | point cube 1개 + sun map 1개, hard/PCF3, cast/receive | 존재. 광원별 차폐·접촉·동작 안정성 강화 |
 | 캐시·컬링 | tile shadow geometry cache, native ground cache | native caster/range revision, GPU shadow cache | 존재. 새 재질·proxy의 무효화 조건 연결 |
 | 재질 | tint/palette/flash/additive/outline, 별도 normal binding | base color/normal/emissive/unlit, OPAQUE/MASK | specular/roughness·light mask 확장 후보 |
-| HDR·색공간 | legacy 기본, WebGL2 전역 linear-sRGB 선택. opt-in lit HDR은 양 backend float16 world/albedo | 양 backend RGBA16F/rgba16float 장면 target, exposure | 전역 managed 색공간과 선택형 HDR을 구별 |
+| HDR·색공간 | legacy 기본, 양 backend 전역 linear-sRGB 선택. opt-in lit HDR은 양 backend float16 world/albedo | 양 backend RGBA16F/rgba16float 장면 target, exposure | 전역 managed 색공간과 선택형 HDR을 구별 |
 | Bloom | 전체 화면 25-tap, WebGL2/WebGPU 지원 | HDR 장면 32-tap, 양 backend 지원 | 존재. threshold·해상도·후처리 순서·비용 검증 |
 | AO | 전용 depth AO 없음 | depth 기반 접촉 음영, normal 재구성 4 + 주변 12 samples | 존재. 전체 합성 색을 어둡게 하는 의미 재정의 |
 | 안개 | 별도 물리적 공간 fog 없음 | camera view-depth 기반 색 혼합 | 존재. AO·발광·Bloom 결합 검증 |
@@ -59,8 +59,8 @@
 ### 재검토에서 바로잡은 판단
 
 - 노멀맵·스포트라이트·hemisphere·발광·HDR·Bloom·AO·톤매핑이 모두 없다는 평가는 현재 코드와 맞지 않는다.
-- WebGPU는 전체 화면 Bloom과 Spatial HDR Bloom을 지원한다. renderer 전역 `linear-srgb` 모드는
-  아직 WebGL2 fallback 대상이다. Spatial 내부 linear HDR 계산과 전역 renderer 옵션은 다른 계약이다.
+- WebGPU는 전체 화면 Bloom, Spatial HDR Bloom과 전역 `linear-srgb`를 지원한다.
+  Spatial 내부 HDR·Flat HDR과 전역 managed 색공간은 구별하며 마지막 표시 변환은 한 번 수행한다.
 - flat `elevationRadians`가 그림자 길이를 바꾸지 않는 것은 명시된 기존 계약이다.
   Godot DirectionalLight2D의 Height도 노멀 반응에 쓰이고 그림자 길이를 바꾸지 않는다.
   HD-2D에서 기대하는 고도 기반 길이를 flat 계약에 자동 소급하지 않는다.
@@ -99,13 +99,14 @@ texel 밀도·snapping·내부 경계 fade·지도 크기와 pan/zoom의 비용�
 
 ### E02 · P1 · 색공간·HDR·효과 범위의 경계
 
-**부분 완료 / 지원 범위의 차이.** 전역 managed flat target은 8-bit normalized다.
-별도 `profile:"lit",hdr:{...}`는 양 backend float16 world/albedo, 노출·톤매핑·한 번의 출력 변환을 구현했다.
-여러 월드 제출과 unlit 전경을 선형 누적하고 HUD 경계 뒤 전역 화면 효과를 적용한다.
-[Flat HDR 계약](../engine/data-scene-presentation.md#flat-hdr-개발-소스)과 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
-전역 WebGPU linear-sRGB는 아직 명시적으로 거절하고 `createRenderer`가 context 선택 전에 WebGL2로 fallback한다.
-**남은 방향:** M3c에서 전역 WebGPU linear parity를 별도 구현·검증한다. 기존 renderer 옵션의 기본값을 유지하고
-전역 화면 효과의 threshold와 HDR 내부 공간의 의미를 혼합하지 않는다.
+**개발 소스 구현·자동 회귀 완료.** 전역 managed flat target은 8-bit sRGB 저장 형식의 선형 합성 경로다.
+별도 `profile:"lit",hdr:{...}`는 양 backend float16 world/albedo, 노출·톤매핑·HUD 경계를 제공한다.
+WebGPU 전역 `linear-srgb`는 source color/data view를 구분하고 Spatial·Flat HDR·HUD·화면 효과 뒤
+최종 표시 변환을 수행한다. 실제 adapter/초기화 실패의 fallback과 canvas 선택 경계는 유지한다.
+팔레트·alpha·pixelArt·resize/pixelPerfect·복구와 Spatial 두 색공간 전체 행렬을 자동 검증했다.
+[색공간 계약](../engine/public-api/core.md#색-공간-관리), [Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스),
+[합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+전역 화면 효과의 threshold와 HDR 내부 공간의 의미를 구분한다. 실게임·실기기 예산은 개발 완료 후 검증한다.
 
 근거: [색 관리](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/colorManagement.ts),
 [flat target](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2RenderTarget.ts),
@@ -246,7 +247,9 @@ M3a의 선택형 성분 분리·효과 순서는 개발 소스 구현과 자동 
 [합성 구조](../development/architecture/spatial-lighting-composition.md)에서 관리한다.
 M3b Flat HDR은 양 backend float world/albedo·노출·톤매핑·HUD 경계와 자동 회귀를 완료했다.
 [Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스)에서 입력·출력 공간과 비용을 관리한다.
-이후 M3c, M4, M5를 각각 구현·리뷰·수정한다.
+M3c WebGPU 전역 선형 색공간은 실제 backend의 색·alpha·후처리·팔레트·노멀·복구와
+legacy/linear Spatial 행렬 검증을 완료했다. [색공간 계약](../engine/public-api/core.md#색-공간-관리)을 따른다.
+이후 M4, M5를 각각 구현·리뷰·수정한다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
@@ -256,7 +259,6 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M3c WebGPU 전역 색공간 | E02의 전역 linear-sRGB parity | M0 capability 계약. M3a/M3b와 별도 구현 | 지원/거절/fallback 선택, GL/GPU 출력·HUD·복구 동등성 |
 | M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2 및 해당 기능에 필요한 M3 하위 단계 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
 | M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
 | M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
@@ -271,7 +273,7 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-M3c는 완료한 M2-a·M3a·M3b와 구분하며 같은 PR에 묶지 않는다.
+완료한 M2-a·M3a·M3b·M3c는 각각 별도 논리적 변경으로 관리한다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법

@@ -57,7 +57,7 @@ renderer.setSpriteMaterial({
   `AssetLoader`는 `textureOptions: { hero: { colorSpace: "none" } }`을 지원한다.
   WebGL2 `linear-srgb`의 sRGB 이미지는 linear sample을 RGB8 키로 변환하고 교체색을 linear로 돌려 조명에 전달한다.
   WebGL2 legacy sRGB는 업로드 시 premultiply로 정보가 소실되어 진단 오류를 낸다.
-  WebGPU는 straight-alpha 이미지이므로 sRGB 입력도 지원한다. WebGPU의 `linear-srgb`는 기존 WebGL2 fallback을 따른다.
+  WebGPU는 straight-alpha 이미지이므로 sRGB 입력도 지원한다. `linear-srgb`에서는 양 backend가 표시용 RGB8 키를 비교하고 교체색을 선형으로 복귀시킨다.
 - 압축 KTX2·메타데이터 없는 texture·RenderTexture **입력**·HD-2D spatial packet은 지원하지 않고 오류를 낸다.
   KTX2 대상은 `ktx2Url` 없이 PNG를 로드한다. WebGL2 `renderToTexture` **출력**에는 팔레트를 적용할 수 있다.
   raw `renderCommands(texture, commands)` 대신 texture ID를 사용하는 `renderCommands(commands)`를 사용한다.

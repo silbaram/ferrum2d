@@ -76,6 +76,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 - **2D:** 노멀맵으로 표면 방향에 따른 빛을 표현하고, 점광원별 차폐와 태양광 지면 그림자를 계산합니다. 건물은 바닥·벽·지붕의 도형을 작성해 그림자를 만듭니다.
 - **2D 표면 조명 · 개발 소스:** `profile:"lit"`을 선택하면 opaque/cutout sprite의 선형 색에 조도를 곱합니다. 기존 overlay가 기본값이며, 자산 준비와 지원 범위는 [표면 조명 계약](docs/engine/data-scene-presentation.md#flat-2d-표면-조명-개발-소스)을 따릅니다.
+- **선형 색공간 · 개발 소스:** `colorManagement:"linear-srgb"`를 양 backend에서 지원합니다. 색·데이터 texture와 alpha를 구분하고 합성 후 한 번 표시 변환합니다. [계약](docs/engine/public-api/core.md#색-공간-관리)을 따릅니다.
 - **2D HDR · 개발 소스:** lit의 `hdr` 옵션은 양 backend float16 월드·노출·톤매핑을 지원하며 HUD 경계를 유지합니다. [사용법·비용](docs/engine/data-scene-presentation.md#flat-hdr-개발-소스)을 확인하세요.
 - **HD-2D:** 점광원·스포트·태양광·하늘/지면 반구광, hard/PCF 그림자와 bias 보정을 제공합니다. HDR·Bloom·AO·안개·DOF·색 보정을 함께 설정합니다.
 - **HD-2D 성분 분리 · 개발 소스:** [선택형 합성](docs/engine/data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)은 AO를 환경광에만 적용해 발광·직접광을 보존하고, 안개·DOF 뒤의 HDR 색을 Bloom 입력으로 사용합니다.

@@ -80,7 +80,7 @@ HUD alpha·반투명 sun RGB 손상은 probe가, 반투명 point RGB 손상은 �
 좌우/상하 반전·회전·opaque/반투명 전경·조명 OFF·camera pan/zoom/groundYScale의 실제 픽셀과 draw 비용을 assert한다.
 GL scissor/color mask 복원, point 높이·sun 고도, invalid data texture/flags 거절, target 해제·destroy 자원0도 검사한다.
 종료 시 삭제 예정인 current program 바인딩도 해제해 동일 canvas의 다음 renderer가 삭제된 프로그램을 복원하지 않도록 검사한다.
-WebGPU 장치를2회 재생성해 pixels/할당 plateau를 확인하고, linear-sRGB 요청의 WebGL2 fallback에서도 normal 조명을 검사한다.
+WebGPU 장치를2회 재생성해 pixels/할당 plateau를 확인하고, 양 backend의 legacy/linear-sRGB에서도 normal 조명을 검사한다.
 검증은 Chromium software adapter이며 native GUI나 실물 GPU 성능을 주장하지 않는다.
 CI validate job에서 직접 실행하며 결과는 `artifacts/pixel-normal-2d/runtime/verification.json`에 저장한다.
 
@@ -1247,7 +1247,7 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:hud-toolkit`은 public package build에서 HUD theme token과 meter/counter/prompt overlay state preset을 확인한다.
 - `pnpm smoke:audio-system`은 public package build에서 `AudioManager` BGM loop/fade와 master/bgm/sfx/ui bus state를 확인한다.
 - `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
-- `pnpm smoke:color-management`는 public Data Scene의 Playing 상태와 실제 Rust 15-float command buffer에서 출발한다. DPR 1/2에서 legacy/linear-srgb의 sRGB·linear·data texture, 숫자 RGB/material 혼합, 반투명 이미지/혼합, fade 체인, ambient/point light, bloom threshold, 어두운 grayscale ramp, RenderTexture 재사용·resize·clear, WebGPU 요청의 WebGL2 fallback, 투명 canvas의 premultiplied/additive 출력을 34개 시나리오로 검증한다. 1,024 commands의 sprite batch 1개와 texture switch 0을 유지하며 legacy draw 1회/managed draw 2회(출력 변환 포함)를 assert한다. 20회 warmup 뒤 60회 CPU submission median/P95를 기록하되 GPU 실행 시간이나 portable 성능 한계로 해석하지 않는다. managed 기본 출력의 framebuffer가 1개이며 반복 frame에서 texture/framebuffer 추가 할당이 없고 destroy 뒤 잔여 자원이 0인지 검사한다. metadata와 변환 함수/비지원 모드 거절은 `colorManagement.test.ts`로 검증한다.
+- `pnpm smoke:color-management`는 public Data Scene의 Playing 상태와 실제 Rust 15-float command buffer에서 출발한다. DPR 1/2에서 legacy/linear-srgb의 sRGB·linear·data texture, 숫자 RGB/material 혼합, 반투명 이미지/혼합, fade 체인, ambient/point light, bloom threshold, 어두운 grayscale ramp, RenderTexture 재사용·resize·clear, 실제 WebGPU 런타임의 authored 색·초기/reapply/transition 및 adapter 실패의 WebGL2 fallback, 투명 canvas의 premultiplied/additive 출력을 34개 시나리오로 검증한다. 1,024 commands의 sprite batch 1개와 texture switch 0을 유지하며 legacy draw 1회/managed draw 2회(출력 변환 포함)를 assert한다. 20회 warmup 뒤 60회 CPU submission median/P95를 기록하되 GPU 실행 시간이나 portable 성능 한계로 해석하지 않는다. managed 기본 출력의 framebuffer가 1개이며 반복 frame에서 texture/framebuffer 추가 할당이 없고 destroy 뒤 잔여 자원이 0인지 검사한다. metadata와 변환 함수/잘못된 모드 거절은 `colorManagement.test.ts`로 검증한다.
 - `pnpm smoke:render-texture`는 public core/authoring entrypoint의 `createEngine`, `applyDataSceneAuthoringDocument`, `WebGL2Renderer`를 실제 browser에서 실행한다. Playing Data Scene의 Rust가 생성한 1,024개 비대칭 사분면 sprite를 target에 그리고, 같은 authoring 경로로 생성한 main sprite와 fade로 합성해 1,025 commands, 2 sprite batches, 3 draw calls를 확인한다. stride는 실제 command view에서 읽으며 15-float 직접 upload와 명시적으로 padding한 호환 buffer의 staging upload, material staging을 각각 검증한다. DPR 1/2의 픽셀 방향, 부분 UV/asset 혼합/target 간 합성, 불투명 alpha, 빈 pass clear, framebuffer/viewport/color-mask/scissor 복구, draw 오류 복구, asset/pending-load id 충돌, feedback/누락 texture 사전 거절, resize 및 8회 destroy/recreate, 최종 live texture/framebuffer 0을 검사한다. `FERRUM_BROWSER_EXECUTABLE` 또는 `FERRUM_BROWSER_CHANNEL`로 브라우저를 선택할 수 있다. 크기/id/foreign handle 및 할당 실패 rollback은 `renderTexture.test.ts`가, batch별 방향 복구와 upload buffer 재사용은 `spriteBatch.test.ts`가 추가 검증한다.
 - 같은 RenderTexture smoke는 서로 다른 태양 설정의 엔진을 생성·파괴해 저장한 projection metadata의 독립성을 확인한다. DPR별 태양 방향 2개 × 직접/호환/material upload 3개의 alpha 그림자 픽셀 사례에서 투명 구멍·반투명·지면 압축·후처리 합성을 검사한다. 각 사례는 metadata 누락/잘못된 방향·길이·배열 크기를 거절한 뒤 기존 target 픽셀과 stats/framebuffer가 보존되는지도 확인한다.
 - `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook과 `LocalizationBundle` 기반 dialogue text 변환을 호출하는지 확인한다.
@@ -1891,7 +1891,7 @@ GPU 오류·fallback으로 교체된 필수 WebGPU·adapter 미지원은 실패�
 Linux CI validate와 smoke:check에 연결한다. test-only target adapter는 shader/queue/depth/texture/readback을
 대체하지 않으며 report.presentation은 offscreen이다. native canvas presentation 성공으로 해석하지 않는다.
 기본 명령의 report.presentation은 canvas이며 Windows 실제 GPU에서 별도 검증한다.
-`pnpm smoke:spatial-webgpu-fallback`은 선택 검사만 좁게 실행한다. bloom과 `linear-srgb` 요청을 context 전에 WebGL2로 연결하고 실제 bloom pass와 색 관리 모드가 유지되는지 검사한다.
+`pnpm smoke:spatial-webgpu-fallback`은 선택 검사만 좁게 실행한다. 잘못된 bloom 설정과 주입한 managed adapter 실패를 context 전에 WebGL2로 연결하고 실제 bloom pass와 색 관리 모드가 유지되는지 검사한다.
 지원 point/sun 그림자 요구사항과 runtime 초기 문서는 WebGPU를 유지하는지도 별도 검사한다.
 잘못된 packet·typed-view 이동·resource budget과 GPU async upload 실패/rollback/pin/destroy는 웹 단위 회귀로 보강한다.
 환경 fixture는 ambient/4 point/sun·billboard/model normal·unlit·fog·grade·표준/고품질 DOF·actor focus·pixelArt·debug·복합 효과의
@@ -2766,7 +2766,7 @@ terrain nested sync/destroy/constructor rollback/force retry 및 클래스형 ef
 
 ### Flat lit 표면 합성
 
-최신 Wasm을 `pnpm build:wasm`으로 생성한 뒤 `pnpm smoke:flat-lit`으로 실제 WebGL2/WebGPU/WebGL2 linear-sRGB × DPR1/2를 검증한다.
+최신 Wasm을 `pnpm build:wasm`으로 생성한 뒤 `pnpm smoke:flat-lit`으로 실제 양 backend의 legacy/linear-sRGB × DPR1/2를 검증한다.
 색 수치·receiver/cutout·unlit 전경/HUD·광원별 차폐·OFF 비용·resize·기기 복구·destroy를 확인한다.
 legacy 회귀는 `pnpm smoke:flat-lighting-contract`로 별도 유지한다. 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`이다.
 두 명령은 수동 CI validate job에서 실행하며 보고서를 artifact로 남긴다. 이 headless 검증은 소프트웨어 WebGPU의
@@ -2781,10 +2781,32 @@ Starter Runtime을 빌드한 뒤 `node tests/smoke/feature-examples-smoke.mjs --
 
 `pnpm smoke:flat-lit`은 기존 SDR fixture와 함께 Flat HDR fixture를 실행한다.
 좁은 재현은 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --hdr-only`다.
-실제 WebGL2/WebGPU legacy와 GL linear-sRGB × DPR1/2에서 float radiance2/4, 어두운 albedo,
+실제 양 backend의 legacy/linear-sRGB × DPR1/2에서 float radiance2/4, 어두운 albedo,
 노출·세 toneMapping, 선형 source/data·tint·normal/cutout, alpha·다중 월드·HUD를 수치로 검사한다.
 잘못된 setter/sidecar와 활성 월드 resize는 framebuffer를 변경하기 전에 거절해야 한다.
 OFF identity·추가 pass/target0, float target bytes, warm plateau, resize·pixelPerfect·WebGPU recovery,
 destroy 후 자원0을 확인한다. HDR output pass는 HUD 이후에도 프레임 통계에 남아야 한다.
 전체 보고서는 `artifacts/flat-lit-m2a/gpu-*/verification.json`, 좁은 실행은 `artifacts/lighting-remaining/m3b/gpu-*/verification.json`이다.
 기존 CI workflow_dispatch validate job의 `smoke:flat-lit`에서 실행한다. 실게임·실기기 측정은 개발 완료 후 별도 진행한다.
+
+
+### WebGPU 전역 선형 색공간 회귀
+
+`pnpm smoke:flat-lit`은 SDR/HDR 행렬과 `webgpu-linear-browser-fixture.mjs`를 함께 실행한다.
+일반 색·효과만 좁게 검사할 때는 SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --color-only`를 실행한다.
+양 backend × DPR1/2의 전체 RGBA readback을 비교하며 color/data/linear texture, 숫자 tint/material,
+팔레트의 sRGB RGB8 키·선형 교체값, source alpha·투명 fade/vignette, Bloom threshold,
+CRT/glitch/pixelArt와 효과 체인, PixelMaskTerrain 생성·patch·복구, pixelPerfect·resize·warm 자원을 검사한다.
+managed 모드는 같은 backend의 기본 자원 위에 scene target1개(4 bytes/pixel)와 표시 draw1회를 추가한다.
+기존 shadow fallback 같은 정적 attachment는 별도다. 이미지 업로드 texture는 target으로 집계하지 않는다.
+표시 draw는 `postProcessDrawCalls`/전체 draw·texture bind에 포함하고 pixelPerfect에서는 확대 pass에 합친다.
+
+`pnpm smoke:color-management`는 실제 WebGPU runtime의 authored 색을 Playing 상태와 native command로 검사하며
+잘못된 설정/실제 adapter 초기화 실패의 fallback과 canvas 선택 경계를 유지한다.
+`pnpm smoke:sprite-normal-2d`는 양 backend × 색공간 × DPR1/2에서 UV/flip/회전·가림·노멀 데이터·두 번의 장치 복구를 검사한다.
+
+Spatial environment 회귀는 legacy/linear-sRGB 각각70개 상태 × 두 투영 × 양 backend × 두 화면 × DPR1/2다.
+전체 `pnpm smoke:spatial-webgpu-offscreen`과 환경 전용 실행 모두 이 행렬을 유지한다.
+선형 환경만 재현하려면 빌드 후 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --linear-environment-only --offscreen-target`를 실행한다.
+normal/data texture, 모델 emissive/UV/reimport·저장/복원·그림자·AO/DOF/Bloom 성분 분리·HUD 뒤 최종 표시를 검사하며
+허용 오차를 줄이거나 fixture를 생략해 managed 경로의 성공으로 대체하지 않는다. 실기기 성능·native canvas 표시는 개발 완료 후 별도 검증한다.
