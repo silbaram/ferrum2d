@@ -18,7 +18,11 @@ export const shadowControls=`<label>그림자 원본<select data-control="shadow
   <label>카메라 거리 <output data-value="camera-distance">100%</output><input data-control="camera-distance" type="range" min="50" max="200" step="10" value="100"></label>
   <button data-control="shadow-offscreen">화면 밖 나무 그림자 보기</button>
   <p>위 버튼은 나무를 화면 밖에 두고 그림자만 봅니다. 영역 기준을 카메라 추적으로 바꿔 경계를 비교하세요. 고정 월드는 지정한 반경·깊이 안에서만 그림자를 유지합니다.</p>
-  <label>태양 고도 <output data-value="shadow-elevation">45°</output><input data-control="shadow-elevation" type="range" min="10" max="85" step="5" value="45"></label>
+  <label>태양 비교<select data-control="shadow-sun-preset"><option value="custom">직접 조절</option><option value="5">낮은 태양 · 5°</option><option value="45">기본 · 45°</option><option value="81.9">높은 태양 · 81.9°</option><option value="90">천정 · 90°</option></select></label>
+  <label>태양 고도 <output data-value="shadow-elevation">45°</output><input data-control="shadow-elevation" type="range" min="0" max="90" step="0.1" value="45"></label>
+  <label>태양 방위 <output data-value="shadow-azimuth">−135°</output><input data-control="shadow-azimuth" type="range" min="-180" max="180" step="5" value="-135"></label>
+  <label class="feature-check"><input data-control="shadow-coverage" type="checkbox"> 그림자 영역 표시</label>
+  <p>청록은 유한 맵 경계, 주황은 내부 fade 시작선입니다(높이 0 기준). 낮은 태양의 긴 그림자도 이 범위 밖에서는 사라집니다. 천정에서는 짧아지고 지평선에서는 바닥 직접광이 없어집니다.</p>
   <details><summary>캐릭터 자세 · 애니메이션</summary>
     <label>위치 X<input data-control="actor-x" type="range" min="-24" max="24" step="8" value="0"></label>
     <label>높이<input data-control="actor-height" type="range" min="0" max="32" step="8" value="0"></label>
@@ -33,7 +37,7 @@ export const shadowControls=`<label>그림자 원본<select data-control="shadow
 export function shadowComparisonSettings(root: HTMLElement){
   const input=(key:string)=>root.querySelector<HTMLInputElement>(`[data-control="${key}"]`)!;
   return {mode:input("shadow-mode").value,visible:input("proxy-visible").checked,elevation:Number(input("shadow-elevation").value),
-    center:input("shadow-center").value,extent:Number(input("shadow-extent").value),asset:input("shadow-asset").value,lod:input("shadow-lod").value,
+    center:input("shadow-center").value,extent:Number(input("shadow-extent").value),asset:input("shadow-asset").value,lod:input("shadow-lod").value,azimuth:Number(input("shadow-azimuth").value),coverage:input("shadow-coverage").checked,
     actorX:Number(input("actor-x").value),height:Number(input("actor-height").value),yaw:Number(input("actor-yaw").value),
     frame:Number(input("actor-frame").value),animate:input("actor-animate").checked,flipX:input("actor-flip-x").checked,flipY:input("actor-flip-y").checked};
 }
@@ -61,8 +65,8 @@ export function shadowComparisonScene(source:SceneAuthoringDocumentSpec,settings
   spatial.billboards=billboards;spatial.models=models;
   // Instance rotation is 2D sprite/collider rotation; the volume's world yaw is an attachment setting.
   spatial.attachments={...spatial.attachments,actor_shadow:{...spatial.attachments!.actor_shadow!,yawDegrees:settings.yaw}};
-  const angle=settings.elevation*Math.PI/180;
-  spatial.environment!.lighting!.directional!.direction={x:-Math.SQRT1_2*Math.cos(angle),y:-Math.SQRT1_2*Math.cos(angle),elevation:Math.sin(angle)};
+  const angle=settings.elevation*Math.PI/180,azimuth=settings.azimuth*Math.PI/180;
+  spatial.environment!.lighting!.directional!.direction={x:Math.cos(azimuth)*Math.cos(angle),y:Math.sin(azimuth)*Math.cos(angle),elevation:Math.sin(angle)};
   const shadows=spatial.environment!.lighting!.directional!.shadows!;
   shadows.extent=settings.extent;
   if(settings.center==="world")shadows.center={...source.spatial!.camera.target};

@@ -272,3 +272,102 @@ fn spatial_sun_fixed_center_rejects_invalid_extensions_atomically() {
     assert!(!engine.configure_spatial_environment(&orphan));
     assert_eq!(engine.capture_spatial_environment(), good);
 }
+
+#[test]
+fn spatial_sun_coverage_debug_uses_actual_finite_bounds_and_inner_fade_planes() {
+    let mut engine = setup();
+    assert!(engine.configure_spatial_debug(128));
+    assert!(
+        engine.spatial_scene.debug.vertices.capacity() < 64,
+        "sun-only diagnostics must not reserve the full 32768-vertex physics budget"
+    );
+    for elevation in [0., 0.01, 5., 45., 81.8, 81.9, 82., 89.99, 90.] {
+        for azimuth in [-135., 0., 45., 90.] {
+            let m = matrix(&mut engine, direction(elevation, azimuth));
+            let vertices = &engine.spatial_scene.debug.vertices;
+            assert!(
+                (16..=24).contains(&vertices.len()),
+                "missing ground-plane outlines at {elevation}/{azimuth}"
+            );
+            assert!(!engine.spatial_scene.debug.truncated);
+            for vertex in vertices {
+                assert_eq!(vertex.position[1], 0.);
+                let clip = project(&m, vertex.position);
+                let limits = if vertex.color[0] > 0.5 {
+                    [
+                        1. - 8. / RESOLUTION,
+                        1. - 8. / RESOLUTION,
+                        1. - 16. * EXTENT / RESOLUTION / 512.,
+                    ]
+                } else {
+                    [1.; 3]
+                };
+                assert!(clip
+                    .iter()
+                    .zip(limits)
+                    .all(|(v, limit)| v.abs() <= limit + 2e-5));
+                assert!(
+                    clip.iter()
+                        .zip(limits)
+                        .any(|(v, limit)| (v.abs() - limit).abs() < 2e-5),
+                    "outline vertex is not on the actual map/fade boundary"
+                );
+            }
+        }
+    }
+    let mut values = engine.capture_spatial_environment();
+    values[1] = 1.;
+    values[2] = 0.;
+    values[3] = 128.;
+    values[4] = 0.05;
+    values[12..20].copy_from_slice(&[0., 32., 0., 200., 1., 1., 1., 1.]);
+    assert!(engine.configure_spatial_environment(&values));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_scene.environment.shadow_matrices.len(), 112);
+    assert!(
+        engine.spatial_debug_len() >= 16,
+        "point+sun must use the final sun matrix, not a cube face"
+    );
+    let sun: [f32; 16] = engine.spatial_scene.environment.shadow_matrices[96..112]
+        .try_into()
+        .unwrap();
+    for vertex in &engine.spatial_scene.debug.vertices {
+        let limits = if vertex.color[0] > 0.5 {
+            [
+                1. - 8. / RESOLUTION,
+                1. - 8. / RESOLUTION,
+                1. - 16. * EXTENT / RESOLUTION / 512.,
+            ]
+        } else {
+            [1.; 3]
+        };
+        let clip = project(&sun, vertex.position);
+        assert!(clip
+            .iter()
+            .zip(limits)
+            .all(|(v, limit)| v.abs() <= limit + 2e-5));
+        assert!(
+            clip.iter()
+                .zip(limits)
+                .any(|(v, limit)| (v.abs() - limit).abs() < 2e-5),
+            "point+sun outline must lie on the sun boundary"
+        );
+    }
+    // A point-only frame must not reuse a stale sun outline or mistake a cube face for it.
+    let mut point_only = values.clone();
+    point_only[91..95].fill(0.);
+    assert!(engine.configure_spatial_environment(&point_only));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_scene.environment.shadow_matrices.len(), 96);
+    assert_eq!(engine.spatial_debug_len(), 0);
+    assert!(!engine.spatial_scene.debug.truncated);
+    assert!(engine.configure_spatial_environment(&[]));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_debug_len(), 0);
+    assert!(engine.configure_spatial_environment(&values));
+    engine.build_render_commands();
+    assert!(engine.spatial_debug_len() >= 16);
+    assert!(engine.configure_spatial_debug(0));
+    engine.build_render_commands();
+    assert_eq!(engine.spatial_debug_len(), 0);
+}

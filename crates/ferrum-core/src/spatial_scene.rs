@@ -624,6 +624,13 @@ impl SpatialScene {
             &self.preview_hidden_entities,
         );
         self.debug.begin_frame();
+        let values = &self.environment.frame_values;
+        if values.len() >= 96 && values[92] > 0. {
+            if let Some(matrix) = self.environment.shadow_matrices.chunks_exact(16).last() {
+                self.debug
+                    .sun_shadow_coverage(matrix, values[94], values[91], values[92]);
+            }
+        }
         for (index, surface) in self.surfaces.iter().enumerate() {
             if self.preview_hidden_surfaces.contains(&surface.id) {
                 continue;

@@ -880,6 +880,10 @@ test("public Wasm spatial packet binds physical elevation, terrain picking, came
     equal(diagnostic.vertices.length, diagnostic.vertexCount * 11);
     equal(diagnostic.depthTest, true);
     equal(diagnostic.truncated, false);
+    ok(engine.setDataSceneSpatialDebug({sunShadowCoverage:true,depthTest:false}));
+    // No sun shadow is configured in this fixture: no stale or invented coverage geometry.
+    const sunDebug=step().debug;
+    equal(sunDebug?.vertexCount??0,0);
     deepEqual(snapshot().dataScene!.progress, beforeDebug.dataScene!.progress);
     equal(JSON.stringify(snapshot()).includes("debug"), false);
     ok(

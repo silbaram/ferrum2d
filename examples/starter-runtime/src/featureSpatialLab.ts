@@ -106,7 +106,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     let handles: Readonly<Record<string, PhysicsEntityHandle>> = {};
     let physicalNames: string[] = [];
     let scene = source, appliedScene = source, mode = id === "ai-combat" ? "chase" : "ramp", linked = true;
-    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, visibleModels:0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0, renderedFrames: 0, sunMatrix: [] as number[] };
+    let frame = { nativeState: 0, entities: 0, commands: 0, drawCalls: 0, models: 0, visibleModels:0, billboards: 0, time: 0, shadowPasses: 0, shadowCacheHit: false, effectPasses: 0,debugDrawCalls:0, renderedFrames: 0, sunMatrix: [] as number[],coverageVertices:[] as number[],wasmMemoryBytes:0,terrainOffset:0,terrainRevision:0,casterRevision:0 };
     let lastUi = -Infinity, needsRender = true;
     let committedControls:Array<{element:HTMLInputElement|HTMLSelectElement;value:string;checked:boolean}>=[];
     const rememberControls=()=>{committedControls=[...panel.querySelectorAll<HTMLInputElement|HTMLSelectElement>("form input,form select")].map(element=>({element,value:element.value,checked:element instanceof HTMLInputElement&&element.checked}));};
@@ -124,8 +124,11 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         r.render(); const stats = r.renderCommands(state.renderCommandBuffer); r.renderPostProcess();
         frame = { renderedFrames: frame.renderedFrames + 1, nativeState: state.gameState, entities: state.entityCount,
           commands: stats.renderCommandCount + (stats.spatial?.billboardCount ?? 0) + (stats.spatial?.modelCount ?? 0),
-          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, visibleModels:stats.spatial?.visibleModelCount??0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, shadowCacheHit: stats.spatial?.shadowCacheHit ?? false, effectPasses: stats.spatial?.effectDrawCalls ?? 0,
-          sunMatrix: shadowComparison ? Array.from(state.renderCommandBuffer.spatial?.environment?.shadowMatrices ?? []) : [] };
+          drawCalls: stats.drawCalls, models: stats.spatial?.modelCount ?? 0, visibleModels:stats.spatial?.visibleModelCount??0, billboards: stats.spatial?.billboardCount ?? 0, time: state.timeSeconds, shadowPasses: stats.spatial?.shadowPassCount ?? 0, shadowCacheHit: stats.spatial?.shadowCacheHit ?? false, effectPasses: stats.spatial?.effectDrawCalls ?? 0,debugDrawCalls:stats.spatial?.debugDrawCalls??0,
+          sunMatrix: shadowComparison ? Array.from(state.renderCommandBuffer.spatial?.environment?.shadowMatrices ?? []) : [],
+          coverageVertices:shadowComparison?Array.from(state.renderCommandBuffer.spatial?.debug?.vertices??[]):[],
+          wasmMemoryBytes:state.renderCommandBuffer.spatial?.terrain.buffer.byteLength??0,terrainOffset:state.renderCommandBuffer.spatial?.terrain.byteOffset??0,
+          terrainRevision:state.renderCommandBuffer.spatial?.terrainRevision??0,casterRevision:state.renderCommandBuffer.spatial?.environment?.shadowSubmission?.revision??0 };
         if (id === "hd2d-environment" || (shadowComparison&&!shadowSettings?.animate) || performance.now() - lastUi > 200) {
           // Copy the displayed camera before native diagnostics can grow memory.
           if (state.renderCommandBuffer.spatial) project = lessonSpatialProjector(canvas, state.renderCommandBuffer.spatial);
@@ -233,6 +236,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       if(shadowComparison)shadowSettings=nextSettings;
       if(shadowComparison){
         if(!e.updateDataSceneSpriteAnimations([{entity:handles.actor!,flipX:shadowSettings!.flipX,flipY:shadowSettings!.flipY}]))throw Error("그림 반전을 적용하지 못했습니다.");
+        if(shadowSettings!.coverage&&!e.setDataSceneSpatialDebug({sunShadowCoverage:true,depthTest:false}))throw Error("태양 그림자 영역 표시는 새 엔진이 필요합니다.");
         const label=root.querySelector<HTMLElement>('.feature-role-labels [data-entity="tree"]');
         if(label)label.textContent=shadowAssets.subjects[shadowSettings!.asset as keyof typeof shadowAssets.subjects].label;
       }
@@ -246,7 +250,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         root.querySelector<HTMLFormElement>("form")!.reset(); updateEnvironment();
       }
       control("pause").textContent = paused?"계속하기":"일시정지";
-      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("camera-distance",`${control<HTMLInputElement>("camera-distance").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
+      if(shadowComparison){output("camera-angle",`${control<HTMLInputElement>("camera-angle").value}°`);output("camera-zoom",`${control<HTMLInputElement>("camera-zoom").value}%`);output("camera-distance",`${control<HTMLInputElement>("camera-distance").value}%`);output("shadow-extent",String(shadowSettings!.extent));output("shadow-elevation",`${shadowSettings!.elevation}°`);output("shadow-azimuth",`${shadowSettings!.azimuth}°`);control<HTMLInputElement>("actor-frame").disabled=shadowSettings!.animate;}
       if (id === "attachments") {
         control<HTMLInputElement>("attached").checked = true;
         control<HTMLInputElement>("position").value = control<HTMLInputElement>("rotation").value = "0";
@@ -301,8 +305,18 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
       for (const key of ["light-mode", "shadow-filter", "environment-lighting", "environment-shadows", "environment-fog", ...environmentEffects.map(effect => `environment-${effect}`)]) on(key, "change", updateEnvironment);
     }
     if(shadowComparison){
-      for(const key of ["actor-x","actor-height","actor-yaw","actor-frame","shadow-elevation","shadow-extent"])on(key,"input",()=>apply(false));
+      for(const key of ["actor-x","actor-height","actor-yaw","actor-frame","shadow-extent"])on(key,"input",()=>apply(false));
+      for(const key of ["shadow-elevation","shadow-azimuth"])on(key,"input",()=>{control<HTMLSelectElement>("shadow-sun-preset").value="custom";apply(false);});
       for(const key of ["shadow-mode","proxy-visible","actor-animate","shadow-center","shadow-asset","shadow-lod"])on(key,"change",()=>apply(false));
+      on("shadow-sun-preset","change",()=>{
+        const value=control<HTMLSelectElement>("shadow-sun-preset").value;
+        if(value!=="custom"){control<HTMLInputElement>("shadow-elevation").value=value;control<HTMLInputElement>("shadow-coverage").checked=true;apply(false);}
+      });
+      on("shadow-coverage","change",()=>{
+        const enabled=control<HTMLInputElement>("shadow-coverage").checked;
+        if(!e.setDataSceneSpatialDebug(enabled?{sunShadowCoverage:true,depthTest:false}:null))throw Error("태양 그림자 영역 표시는 새 엔진이 필요합니다.");
+        shadowSettings=shadowComparisonSettings(root);needsRender=true;
+      });
       for(const key of ["actor-flip-x","actor-flip-y"])on(key,"change",()=>{
         shadowSettings=shadowComparisonSettings(root);
         if(!e.updateDataSceneSpriteAnimations([{entity:handles.actor!,flipX:shadowSettings.flipX,flipY:shadowSettings.flipY}]))throw Error("그림 반전을 적용하지 못했습니다.");
@@ -317,8 +331,8 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         control<HTMLAnchorElement>("playback-download").href=playbackUrl;
       });
       on("shadow-offscreen","click",()=>{
-        for(const [key,value]of Object.entries({"shadow-mode":"proxy","shadow-asset":"tree","shadow-lod":"fixed","shadow-center":"world","shadow-extent":"128","camera-angle":"-30","camera-pan":"256","camera-zoom":"150","camera-distance":"100","shadow-elevation":"45","actor-x":"0","actor-height":"0","actor-yaw":"0","actor-frame":"0"}))control<HTMLInputElement>(key).value=value;
-        for(const key of ["proxy-visible","actor-animate","actor-flip-x","actor-flip-y"])control<HTMLInputElement>(key).checked=false;
+        for(const [key,value]of Object.entries({"shadow-mode":"proxy","shadow-asset":"tree","shadow-lod":"fixed","shadow-center":"world","shadow-extent":"128","camera-angle":"-30","camera-pan":"256","camera-zoom":"150","camera-distance":"100","shadow-elevation":"45","shadow-azimuth":"-135","shadow-sun-preset":"custom","actor-x":"0","actor-height":"0","actor-yaw":"0","actor-frame":"0"}))control<HTMLInputElement>(key).value=value;
+        for(const key of ["proxy-visible","actor-animate","actor-flip-x","actor-flip-y","shadow-coverage"])control<HTMLInputElement>(key).checked=false;
         apply(false);
       });
     }

@@ -150,6 +150,8 @@ export interface SpatialDebugOptions {
   contacts?: boolean;
   /** Camera-facing terrain/body floor IDs. F- denotes a body without heightSpan. */
   floorIds?: boolean;
+  /** Actual finite sun-map / elevation-zero intersections: cyan bounds, amber full-strength interior. */
+  sunShadowCoverage?: boolean;
   /** true: respect scene depth; false: show occluded lines too. Default true. */
   depthTest?: boolean;
 }
@@ -1115,6 +1117,7 @@ export function createSpatialApi(
             "colliders",
             "contacts",
             "floorIds",
+            "sunShadowCoverage",
             "depthTest",
           ],
           "spatial.debug",
@@ -1126,6 +1129,7 @@ export function createSpatialApi(
           ["colliders", 16],
           ["contacts", 32],
           ["floorIds", 64],
+          ["sunShadowCoverage", 128],
         ] as const)
           if (o[key] !== undefined && bool(o[key], `spatial.debug.${key}`))
             flags |= bit;
