@@ -1,0 +1,81 @@
+import assert from "node:assert/strict";
+import { encodePngRgba } from "../../scripts/tools/pack-textures.mjs";
+import { closeSmokePage } from "./browser-page-cleanup.mjs";
+
+/** Real official app host: cold apply, data upload, draft, tab restore and Playing. */
+export async function smokePlacementFlatLighting(parent, timeoutMs = 30000) {
+  const page = await parent.context().browser().newPage({ viewport: { width: 1440, height: 960 } });
+  let failure;
+  try {
+    page.setDefaultTimeout(15000);
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    page.on("console", message => { if(message.type() === "error") errors.push(message.text()); });
+    const visual = { kind: "sprite", texture: "floor", width: 96, height: 64, lighting: { mode: "opaque", lightMask: 1, shadowMask: 0 }, surface: { emission: [0.001, 0, 0], specular: 0.2, roughness: 0.7, specularTexture: "crate" } };
+    const scene = { format: "ferrum2d.consumer.scene-authoring", version: 1, lighting: { profile: "lit", ambientIrradiance: [0, 0, 0], pointLights: [
+      { x: 800, y: 480, radius: 10000, height: 100, color: [1, 0, 0], intensity: 1, lightMask: 1 },
+      { x: 800, y: 480, radius: 10000, height: 100, color: [0, 0, 1], intensity: 1, lightMask: 2 },
+    ] }, sceneComposition: { initialFragment: "main", prefabs: { object: {} }, fragments: { main: { instances: [{ id: "receiver", prefab: "object", x: 800, y: 480, props: { components: { visual, collider: "none", layer: "wall" } } }] } } }, behaviorRecipes: { entities: {} } };
+    await page.route("**/placement.scene-authoring.json", route => route.fulfill({ contentType: "application/json", body: JSON.stringify(scene) }));
+    // Identical dimensions make the separate source atlas a valid surface map.
+    const pixels = encodePngRgba(2, 2, new Uint8Array(Array(4).fill([255, 255, 255, 255]).flat()));
+    const translucentPng = encodePngRgba(2, 2, new Uint8Array(Array(4).fill([255, 255, 255, 128]).flat()));
+    // Built-in preview textures are data URLs and do not pass through routing.
+    // Keep their normal loader/decode/upload path, replacing just fixture bytes.
+    await page.addInitScript(({ opaque, translucent }) => {
+      const fetchSource = window.fetch.bind(window);
+      window.fetch = (input, options) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return fetchSource(url.startsWith("data:image/png;base64,")
+          ? location.search.includes("legacy-alpha") ? translucent : opaque : input, options);
+      };
+    }, { opaque: `data:image/png;base64,${pixels.toString("base64")}`, translucent: `data:image/png;base64,${translucentPng.toString("base64")}` });
+    await page.route("**/*.png", route => route.fulfill({ contentType: "image/png", body: pixels }));
+    await page.goto(new URL("/", parent.url()).href);
+    await page.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame?.entityCount === 1 && window.ferrumPlacementViewerState?.lighting?.profile === "lit", undefined, { timeout: timeoutMs });
+    const initial = await page.evaluate(() => window.ferrumPlacementWorkspaceActiveDocument);
+    const sample = (offset = 0) => page.evaluate(async offset => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const state = window.ferrumPlacementViewerState, canvas = document.querySelector("canvas.demo-canvas"), gl = canvas.getContext("webgl2"), viewport = state.viewport;
+      const instance = state.instances.find(i => i.instanceId === "receiver"), x = (instance.transform.x + offset - viewport.worldMinX) * viewport.zoom, y = (instance.transform.y + offset - viewport.worldMinY) * viewport.zoom;
+      const result = new Uint8Array(4);
+      gl.readPixels(Math.round(x * canvas.width / canvas.clientWidth), canvas.height - 1 - Math.round(y * canvas.height / canvas.clientHeight), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, result);
+      return [...result];
+    }, offset);
+    const red = await sample(); assert(red[0] > 60 && red[2] < 10, `initial masked red receiver: ${red}`);
+    await page.evaluate(visual => window.ferrumPlacementViewerUpdateComponents("receiver", { visual: { ...visual, lighting: { ...visual.lighting, lightMask: 2 } }, collider: "none", layer: "wall" }), visual);
+    const blue = await sample(); assert(blue[2] > 60 && blue[0] < 20, `draft mask must reach native preview: ${blue}`);
+    const beforeRejected = await page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), entity: window.ferrumPlacementViewerState.instances[0].entity, history: window.ferrumPlacementViewerHistory }));
+    const invalid = structuredClone(scene);
+    invalid.sceneComposition.fragments.main.instances[0].props.components.visual.surface.specularTexture = "floor";
+    await page.locator("[data-placement-document-file]").setInputFiles({ name: "conflicting-lit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(invalid)) });
+    await page.waitForFunction(() => document.querySelector(".placement-workspace-message")?.textContent.includes("both color and lighting data") && !document.querySelector(".demo-shell").inert);
+    assert.equal(await page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), entity: window.ferrumPlacementViewerState.instances[0].entity, history: window.ferrumPlacementViewerHistory })), beforeRejected);
+    assert.deepEqual(await sample(), blue, "Rejected asset roles preserve the current native scene and pixels");
+    // Reopen a second document, then return to the patched first document.
+    const second = structuredClone(scene); second.sceneComposition.fragments.main.instances[0].id = "second";
+    second.sceneComposition.fragments.main.instances[0].props.components.visual.surface.roughnessTexture = "turret";
+    await page.locator("[data-placement-document-file]").setInputFiles({ name: "other-lit.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(second)) });
+    await page.waitForFunction(key => window.ferrumPlacementWorkspaceActiveDocument !== key && !document.querySelector(".demo-shell").inert, initial);
+    await page.locator(`[data-placement-document-key=${JSON.stringify(initial)}]`).click();
+    await page.waitForFunction(key => window.ferrumPlacementWorkspaceActiveDocument === key, initial);
+    const restored = await sample(); assert(restored[2] > 60 && restored[0] < 20, `tab restore preserves draft mask: ${restored}`);
+    await page.locator('[data-placement-playback=play]').click();
+    await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === "game");
+    const playing = await sample(); assert(playing[2] > 60 && playing[0] < 20, `Playing preserves mask/material: ${playing}`);
+    // The same app upload policy must also preserve straight-alpha legacy input.
+    // A half-alpha white texel should be ~135 over the dark canvas, not ~71.
+    const legacy = structuredClone(scene); delete legacy.lighting;
+    delete legacy.sceneComposition.fragments.main.instances[0].props.components.visual.lighting;
+    delete legacy.sceneComposition.fragments.main.instances[0].props.components.visual.surface;
+    await page.route("**/placement.scene-authoring.json", route => route.fulfill({ contentType: "application/json", body: JSON.stringify(legacy) }));
+    await page.route("**/*.png", route => route.fulfill({ contentType: "image/png", body: translucentPng }));
+    await page.goto(new URL("/?legacy-alpha=true", parent.url()).href);
+    await page.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame?.renderCommandCount === 1 && !window.ferrumPlacementViewerState?.lighting);
+    const translucent = await sample(7);
+    assert(translucent.slice(0, 3).every(channel => channel >= 120 && channel <= 150), `legacy straight-alpha preview: ${translucent}`);
+    assert.deepEqual(errors, []);
+    return { coldLitApply: true, straightAlphaAndDataMap: true, legacyTranslucentInput: true, lateDataRole: true, failedPreflightPreservesScene: true, draftMask: true, tabRestore: true, playing: true, pixels: { red, blue, restored, playing, translucent } };
+  } catch (error) { failure = error; throw error; }
+  finally { await closeSmokePage(page, 10000, failure); }
+}

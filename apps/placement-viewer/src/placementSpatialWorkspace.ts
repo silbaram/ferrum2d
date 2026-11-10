@@ -1362,11 +1362,11 @@ export function installPlacementSpatialWorkspace(options: {
       signature = nextSignature;
       applying = true;
       try {
-        if (state.spatial || active.mode === "game" || appliedMode === "game") {
+        if (state.lighting?.profile === "lit" || state.spatial || active.mode === "game" || appliedMode === "game") {
           visibilitySignature = "";
           ghostSignature = "";
           options.apply(
-            active.mode === "2d" && !state.spatial
+            active.mode === "2d" && !state.spatial && state.lighting?.profile !== "lit"
               ? options.document()
               : authoredDocument(),
           );

@@ -74,7 +74,7 @@ test("cleanup skips an in-flight upload", async () => {
   finish(); await task; store.destroy();
 });
 
-const localeStub = 'data:text/javascript;base64,' + Buffer.from('export function setUiText() {}').toString('base64');
+const localeStub = 'data:text/javascript;base64,' + Buffer.from('export function setUiText() {} export function uiMessage(key, ...values) { return {key, values}; }').toString('base64');
 const { createPlacementImportDiagnostic } = await import(await moduleUrl("placementImportDiagnostics", { "./placementLocale": localeStub }));
 test("import diagnostic preserves source identity and exact escaped scene pointers", () => {
   const scene = { prefabs: { "a/b~c": { visual: { texture: "old" } } }, instances: [{ visual: { texture: "old" } }] };
@@ -113,7 +113,7 @@ test("failed cleanup reconstruction retains source bytes without leaking a stale
 test("import reports emitted before Problems mounts remain readable and clear without mutable aliases", async () => {
   const { installPlacementImportDiagnostics, readPlacementImportDiagnostics } = await import(await moduleUrl("placementImportDiagnostics", { "./placementLocale": localeStub }));
   const previousDocument = globalThis.document, previousWindow = globalThis.window;
-  globalThis.document = { createElement: () => ({ dataset: {}, append() {}, textContent: "" }) };
+  globalThis.document = { createElement: () => ({ dataset: {}, append() {}, setAttribute() {}, addEventListener() {}, replaceChildren() {}, textContent: "" }) };
   globalThis.window = new EventTarget();
   try {
     const panel = installPlacementImportDiagnostics({ append() {} }, "late-panel");

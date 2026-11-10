@@ -278,8 +278,8 @@ export function createPlacementNormalAssets(
         await engine.loadAssets({
           textures: asset.urls,
           textureOptions: {
-            [color]: { colorSpace: "srgb", signal },
-            [normal]: { colorSpace: "none", signal },
+            [color]: { colorSpace: "srgb", alphaMode: "straight", signal },
+            [normal]: { colorSpace: "none", alphaMode: "straight", signal },
           },
         });
         if (signal.aborted)

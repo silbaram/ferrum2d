@@ -24,6 +24,7 @@ import {
   villageTextureMetadata,
 } from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
+import { placementFlatTextureOptions, placementFlatTextureRoles } from "./placementFlatLighting";
 import { createPlacementPixelPresentation } from "./placementPixelPresentation";
 import { ensureGardenAssets, isGardenScene, gardenTextures, gardenAtlasFrames, gardenTextureMetadata, configureGardenActor, createGardenPreview } from "./placementGarden";
 import {
@@ -834,13 +835,22 @@ async function bootstrap(): Promise<void> {
       camera:()=>viewportNavigation?.snapshot()??{x:runtimeEngine.cameraX(),y:runtimeEngine.cameraY(),zoom:1},
       restore:camera=>viewportNavigation?.restorePresentation(camera)});
     const runtimeTextures = placementRuntimeTextureManifest();
+    let runtimeTextureRoles = placementFlatTextureRoles([document]);
+    const runtimeTextureOptions = placementFlatTextureOptions(Object.keys(runtimeTextures), runtimeTextureRoles);
     let runtimeAssetAttemptSignature =
       placementRuntimeAssetSignature(runtimeTextures);
     let runtimeAssetReadySignature = runtimeAssetAttemptSignature;
     let runtimeAssetReloadInFlight = false;
     let runtimeAssetReloadAbort: AbortController | undefined;
     const runtimeLoadedTextures = new Map(Object.entries(runtimeTextures));
-    await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({ textures: runtimeTextures, textureOptions: Object.fromEntries(Object.keys(runtimeTextures).map(id=>[id,{signal}])) },progress));
+    let runtimeTextureUpload = Promise.resolve();
+    function serializeRuntimeTextures(upload: () => Promise<void>): Promise<void> {
+      const pending = runtimeTextureUpload.then(upload);
+      runtimeTextureUpload = pending.catch(() => {});
+      return pending;
+    }
+    const initialRuntimeAssets = await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({ textures: runtimeTextures, textureOptions: Object.fromEntries(Object.entries(runtimeTextureOptions).map(([id,options])=>[id,{...options,signal}])) },progress));
+    await prepareFlatDocumentTextures([document]);
     asepriteAssets = createPlacementAsepriteAssets(
       runtimeEngine,
       (id) =>
@@ -929,7 +939,7 @@ async function bootstrap(): Promise<void> {
     const target = createDataSceneRuntimeTarget(runtime.engine);
     let appliedRuntimeVariables: DataSceneVariableStore | undefined;
     let runtimeApplyRevision = 0;
-    if (document.spatial || document.gameplay || document.variables?.length) {
+    if (document.lighting?.profile === "lit" || document.spatial || document.gameplay || document.variables?.length) {
       appliedRuntimeVariables = applyDataSceneAuthoringDocument(
         runtimeEngine,
         document.spatial ? placementSpatialRuntimeDocument(document) : document,
@@ -937,6 +947,7 @@ async function bootstrap(): Promise<void> {
           instanceHandleRegistry,
           missingBehavior: "ignore",
           spatialModelPreparer,
+          flatLightingPreparer: gridRenderer,
         },
       ).variables;
       configureVillageActor(runtimeEngine, document);
@@ -1258,29 +1269,32 @@ async function bootstrap(): Promise<void> {
           runtimeAssetReloadAbort = controller;
           publishPlacementRuntimeAssetStatus("loading");
           try {
-            if (Object.keys(changedTextures).length)
-              await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({
-                textures: changedTextures,
-                textureOptions: Object.fromEntries(
-                  Object.keys(changedTextures).map((id) => [
-                    id,
-                    { signal },
-                  ]),
-                ),
-              },progress),controller.signal);
-            if (
-              !controller.signal.aborted &&
-              nextRuntimeAssetSignature ===
-                placementRuntimeAssetSignature(
-                  placementRuntimeTextureManifest(),
-                )
-            ) {
-              for (const [id, url] of Object.entries(changedTextures))
-                runtimeLoadedTextures.set(id, url);
-              runtimeAssetReadySignature = nextRuntimeAssetSignature;
-              publishPlacementRuntimeAssets(nextRuntimeTextures, runtimeEngine);
-              publishPlacementRuntimeAssetStatus("ready");
-            }
+            await serializeRuntimeTextures(async () => {
+              // Reserve only new names before deciding numeric authored roles. The
+              // loader reuses these IDs; existing texture metadata stays unchanged.
+              for (const [name, url] of Object.entries(changedTextures))
+                if (initialRuntimeAssets.textures.tryTextureId(name) === undefined)
+                  initialRuntimeAssets.textures.reserve(name, url);
+              if (Object.keys(changedTextures).length)
+                await assetLoading.run("Loading Textures",(signal,progress)=>runtimeEngine.loadAssets({
+                  textures: changedTextures,
+                  textureOptions: placementFlatTextureOptions(Object.keys(changedTextures), runtimeTextureRoles, signal, name => runtimeEngine.textureId(name)),
+                },progress),controller.signal);
+              if (
+                !controller.signal.aborted &&
+                nextRuntimeAssetSignature ===
+                  placementRuntimeAssetSignature(
+                    placementRuntimeTextureManifest(),
+                  )
+              ) {
+                for (const [id, url] of Object.entries(changedTextures))
+                  runtimeLoadedTextures.set(id, url);
+                Object.assign(runtimeTextureOptions, placementFlatTextureOptions(Object.keys(changedTextures), runtimeTextureRoles, undefined, name => runtimeEngine.textureId(name)));
+                runtimeAssetReadySignature = nextRuntimeAssetSignature;
+                publishPlacementRuntimeAssets(nextRuntimeTextures, runtimeEngine);
+                publishPlacementRuntimeAssetStatus("ready");
+              }
+            });
           } catch (error: unknown) {
             if (
               !controller.signal.aborted &&
@@ -2747,7 +2761,7 @@ async function bootstrap(): Promise<void> {
     function applyDocumentPreview(entry: WorkspaceDocument) {
       const patch = entry.viewer.exportPatch();
       const next =
-        patch && entry.document.spatial
+        patch
           ? mergeScenePlacementPatch(entry.document, patch).document
           : entry.document;
       applyWorkspacePreview(next, entry.registry);
@@ -2758,13 +2772,27 @@ async function bootstrap(): Promise<void> {
     ) {
       workspacePreview.apply(next, registry);
     }
+    async function prepareFlatDocumentTextures(scenes: SceneAuthoringDocumentSpec[]) {
+      return serializeRuntimeTextures(async () => {
+        const roles = placementFlatTextureRoles(scenes);
+        const nextOptions = placementFlatTextureOptions([...runtimeLoadedTextures.keys()], roles, undefined, name => runtimeEngine.textureId(name));
+        const changed = Object.fromEntries([...runtimeLoadedTextures].filter(([name]) => nextOptions[name]?.colorSpace !== runtimeTextureOptions[name]?.colorSpace));
+        if (Object.keys(changed).length)
+          await assetLoading.run("Loading Lighting Textures", (signal, progress) => runtimeEngine.loadAssets({
+            textures: changed,
+            textureOptions: placementFlatTextureOptions(Object.keys(changed), roles, signal, name => runtimeEngine.textureId(name)),
+          }, progress));
+        Object.assign(runtimeTextureOptions, nextOptions);
+        runtimeTextureRoles = roles;
+      });
+    }
     function applyNativeWorkspacePreview(
       next: SceneAuthoringDocumentSpec,
       registry: ReturnType<typeof createSceneInstanceHandleRegistry>,
     ) {
       runtimeApplyRevision++;
       appliedRuntimeVariables = undefined;
-      if (next.spatial || next.gameplay || next.variables?.length) {
+      if (next.lighting?.profile === "lit" || next.spatial || next.gameplay || next.variables?.length) {
         appliedRuntimeVariables = applyDataSceneAuthoringDocument(
           runtimeEngine,
           next.spatial
@@ -2774,6 +2802,7 @@ async function bootstrap(): Promise<void> {
             instanceHandleRegistry: registry,
             missingBehavior: "ignore",
             spatialModelPreparer,
+            flatLightingPreparer: gridRenderer,
           },
         ).variables;
         configureVillageActor(runtimeEngine, next);
@@ -2925,6 +2954,13 @@ async function bootstrap(): Promise<void> {
         previewAssetProvider = createPlacementPreviewAssetProvider();
         previewAssetSignature = placementPreviewAssetSignature();
       }
+      await prepareFlatDocumentTextures([
+        ...[...documents.values()].map(entry => {
+          const patch = entry.viewer.exportPatch();
+          return patch ? mergeScenePlacementPatch(entry.document, patch).document : entry.document;
+        }),
+        value as SceneAuthoringDocumentSpec,
+      ]);
       await loadModels(
         value as SceneAuthoringDocumentSpec,
         desktop ? (desktop.assetFolderModels ?? []) : undefined,

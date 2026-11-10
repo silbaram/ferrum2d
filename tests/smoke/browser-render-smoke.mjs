@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { smokePlacementFlatLighting } from "./placement-flat-lighting-smoke.mjs";
 import { showPlacementInspector, showPlacementBottom, showPlacementDock, clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -2037,7 +2038,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     }
     return { pivot: true, rotation: true, scale: true, rotatedResize: true };
   });
-  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry, navigation, selection, transforms } };
+  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry, navigation, selection, transforms, flatLighting: await smokePlacementFlatLighting(page, timeoutMs) } };
 }
 
 async function assertPlacementGestureCancel(page, selector, point, timeoutMs) {

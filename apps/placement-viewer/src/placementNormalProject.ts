@@ -387,7 +387,7 @@ export function createPlacementNormalProjectAssets(
           textureOptions: Object.fromEntries(
             [...owned].map(([id]) => [
               id,
-              { colorSpace: next.textures.get(id)!.colorSpace, signal },
+              { colorSpace: next.textures.get(id)!.colorSpace, alphaMode: "straight", signal },
             ]),
           ),
         });

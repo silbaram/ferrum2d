@@ -1,3 +1,4 @@
+import { smokePlacementFlatLighting } from "./placement-flat-lighting-smoke.mjs";
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {smokeAuthoringUpgrades} from './placement-authoring-upgrades-smoke.mjs';
@@ -23,7 +24,8 @@ try{
  browser=await chromium.launch({headless:true,executablePath:process.env.FERRUM_BROWSER_EXECUTABLE,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  const parent=await browser.newPage();await parent.goto(`http://127.0.0.1:${server.address().port}/`,{waitUntil:'networkidle'});
  const results=[];
- if(process.argv.includes('--spatial-fields')){
+ if(process.argv.includes('--flat-lit')) results.push(await smokePlacementFlatLighting(parent));
+ else if(process.argv.includes('--spatial-fields')){
   await parent.setViewportSize({width:1440,height:960});
   const initialKey=await parent.evaluate(()=>window.ferrumPlacementWorkspaceActiveDocument);
   await showPlacementAssetPanel(parent,'model');
