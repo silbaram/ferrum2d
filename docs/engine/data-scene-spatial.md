@@ -1874,7 +1874,8 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
 기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
 기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
-WebGPU는 512 floats로 padding한 환경 + 카메라/7 shadow matrix를 2,560-byte uniform 슬롯 두 개에 담는다.
+WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom 설정을2,608-byte private uniform에 담는다.
+256-byte 정렬 간격은2,816 bytes이며 두 슬롯을 사용한다. native 환경 record와 별도 구조다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
 
 ### 선택형 native 광원 전환
@@ -2047,6 +2048,71 @@ Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원
 
 WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
 기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
-최대65,536 pair/16 MiB다. 환경 uniform은2,592-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+최대65,536 pair/16 MiB다. 환경 uniform은2,608-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
 수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
 회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
+
+
+### 선택형 넓은 HDR Bloom (개발 소스)
+
+기존 `bloom`은32-tap gather를 유지한다. 넓은 halo는 `composition: "separated"`에서 명시적으로 선택한다.
+
+```json
+{
+  "composition": "separated",
+  "bloom": { "mode": "wide", "quality": "balanced", "radius": 64, "threshold": 1, "strength": 0.5 }
+}
+```
+
+wide의 기본값은 quality `balanced`, radius48 CSS pixels, threshold1, strength0.5다.
+radius는0.1..96이며 기존 gather의0.1..24 범위는 그대로다. strength0..4와 threshold0..64를 사용한다.
+mode 생략은 gather이며 quality는 wide에서만 허용한다. wide를 legacy composition에 붙이면 거절한다.
+
+threshold는 **AO/fog/DOF 이후·노출 전 scene-linear HDR의 RGB 최대 채널**에 적용한다.
+각 source texel의 `color × max(peak-threshold,0)/max(peak,epsilon)`을 구한 뒤 평균하므로
+작은 밝은 물체를 먼저 평균해 threshold 아래로 없애지 않는다. 전체 밝기 기반이며 emission도 포함한다.
+노출·tone mapping·색 보정·최종 sRGB 변환과 HUD는 Bloom 뒤다. 별도 emissive-only 입력은 제공하지 않는다.
+
+low는4배, balanced/high는2배 box prefilter로 시작한다. 반경이 kernel 범위를 넘으면2배 downsample을
+추가해 큰 sample stride의 구멍을 피한다. 마지막 해상도에서 low/balanced9-tap, high17-tap의
+정규화된 가로·세로 Gaussian blur(tap당2-load 보간)와4-load bilinear 합성을 수행한다. source pixel grid를 보존해
+홀수 extent의 padding을 이미지 전체로 늘리지 않는다. 경계는 clamp-to-edge다.
+coarse prefilter·upsample 근사이므로 작은 물체와 경계의 halo는 품질에 따라 달라진다.
+pixelArt는 내부 해상도에서 계산하고 wide 합성 좌표도 해당 pixel 중심에 고정해 nearest 확대를 유지한다.
+
+strength0 또는 mode 생략은 **추가 wide target/pass0**이다. 사용했던 pipeline·uniform buffer는
+renderer destroy/recovery까지 재사용할 수 있다. 품질/해상도/OFF 변경은 불필요한 target을 회수한다.
+WebGPU는 첫 사용에4 KiB stage uniform buffer를 만들고 활성 합성마다 갱신하며, warm geometry/upload0과
+모든 uniform 업로드0을 같은 의미로 해석하지 않는다. 생성/쓰기 실패 재시도와 비동기 GPU 실패 후 복구를 검증한다.
+
+wide source는 **environment v9 numeric584**다. 기존0..579를 보존하고580mode,581기본 downsample,
+582kernel 반경,583selection 존재 bit를 추가한다. bit583은 생략과 disabled+모든 설정0을 구분한다.
+기존 v8의580 길이는 종전 selection 존재 의미를 유지한다. 광원 전환 이력·서명은 Bloom 품질 편집과 독립이다.
+구 core는 cold `spatial_wide_bloom_abi_version` capability 검사로 자산 조회/씬 변경 전에 거절한다.
+환경 patch는 **spatial patch10**, wide를 포함한 문서/진행 저장은 **Data Scene state12**다.
+구 patch/저장에 새 mode를 넣은 downgrade는 거절하며 기존 v1..v8 환경과 저장 버전은 유지한다.
+
+`SpatialRendererStats.bloomDrawCalls`, `bloomTextureBytes`, `bloomTexelFetchBudget`는 한 spatial 제출의
+추가 draw·알려진 target texel 저장량·texture-load 작업 상한이다. `bloomSampleBudget`은 최대 단일 pass의 pixel당 texture load 수이며
+다중 해상도 전체 비용은 texel budget과 함께 읽는다. gather는 별도 draw/target0·최대32 samples다.
+`RendererStats.spatialBloomDrawCalls`/`spatialBloomTexelFetchBudget`는 begun frame의 모든 packet을 합산하고,
+`spatialBloomTextureBytes`는 그 frame의 spatial 제출에서 관찰한 wide target bytes의 peak다. HUD 뒤에도 보존하고 다음 `render()`에 초기화한다.
+같은 이름의 DebugOverlay/profiler/frame trace와 선택형 max budget에 전달한다.
+frame/window에 미측정 값이 있으면 설정한 budget은 `missingMetric`이며0으로 채우지 않는다.
+이 상한은 실제 GPU 시간·VRAM·texture cache miss 측정값이 아니다.
+
+128×128 scene/output, radius64·threshold1·strength1의 자동 fixture에서 사용하는 예산은 다음과 같다.
+실게임·실기기의 ms/FPS 예산은 전체 개발 후 검증한다.
+
+| 품질 | DPR | 추가 draw | target bytes | texture-load budget |
+| --- | --- | --- | --- | --- |
+| low | 1 | 5 | 11,264 | 85,504 |
+| balanced | 1 | 6 | 44,032 | 89,600 |
+| high | 1 | 5 | 45,056 | 104,448 |
+| low | 2 | 6 | 44,032 | 335,360 |
+| balanced | 2 | 7 | 175,104 | 351,744 |
+| high | 2 | 6 | 176,128 | 366,592 |
+
+동일 fixture의 gather radius24는 별도 target/draw0·DPR1 texture-load budget524,288이다.
+넓은 halo는 추가 pass/target으로 품질을 높이면서 full-resolution gather보다 load 작업을 줄인다.
+반경·extent·DPR에 따라 chain 길이가 바뀌므로 품질 이름만으로 draw 수의 순서를 가정하지 않는다.

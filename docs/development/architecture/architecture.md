@@ -1053,7 +1053,7 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel을2,592-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid를2,608-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
@@ -2036,3 +2036,8 @@ GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 targ
 기존 point max-union mask를 재사용하고 사각형 투영 경로·Native ABI·light row를 유지한다.
 정적 CPU/GPU geometry 재사용과 계속 필요한 mask draw를 구분한다. bounded GL 결합 업로드·WebGPU revision 캐시,
 실패 재시도와 프레임별 실제 작업 예산은 [shadow 캐시 구조](flat-lighting-composition.md#정적-point-shadow-gpu-업로드와-작업-예산)를 따른다.
+
+
+Spatial의 선택형 넓은 Bloom은 v9/584 source와 patch10/state12를 사용하며 기존 v1..v8 source를 유지한다.
+광원 선택 존재 bit와 post effect 설정은 분리해 품질 편집이 native 전환 이력을 초기화하지 않는다.
+별도 low-resolution chain과 오류/복구·pixel grid·작업 상한은 [Spatial 합성 구조](spatial-lighting-composition.md#넓은-bloom의-별도-저해상도-chain)를 따른다.

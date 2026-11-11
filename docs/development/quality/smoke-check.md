@@ -2963,7 +2963,7 @@ source별 사유와 실제 counter·resource 해제를 검사한다. 이 행렬�
 Node의 `spatial-light-selection-report.mjs`는 PNG 증거에서 fade-out/in의 실제 변화가 각각64 pixel을 넘고,
 중간 복원·pause 그림이 정확히 일치하는지 추가 검사한다. 빈/변하지 않는 렌더가 상태·reference 비교만으로
 통과하지 않도록 별도 negative gate test를 실행한다. 단계별 수치와 원본 PNG는 보고서에 남긴다.
-실게임·실기기는 개발 완료 후 진행한다. shadow 작업 예산·넓은 Bloom과 preset 측정은 별도 M5 잔여다.
+실게임·실기기는 개발 완료 후 진행한다. shadow 작업 예산과 넓은 Bloom의 자동 검증은 각각 해당 회귀 절을 따른다.
 
 
 M5-b의 native contribution 회귀는 `smoke:spatial-light-selection` 기본 행렬에 RGB0/direct mask0/frustum 밖
@@ -2978,3 +2978,34 @@ frustum의 선택 불일치를 검사한다. native 실패 재현은 첫 render 
 
 Presentation PNG gate는 wide view의 빨간 edge receiver가64pixel보다 많이 실제로 비춰졌는지도 검사한다.
 빈/무변화 화면을 거절하는 negative unit은 기존 `test:spatial-light-selection-report`와 기본 offscreen CI에 포함된다.
+
+### Spatial 넓은 HDR Bloom 회귀
+
+`pnpm smoke:spatial-wide-bloom`은 패키지 public API와 실제 Wasm으로 선택형 `bloom.mode:"wide"`를 검사한다.
+기존 gather는 유지하며 입력·효과 순서·비용은 [넓은 HDR Bloom 계약](../../engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
+기본 `smoke:spatial-webgpu-offscreen`에도 같은 행렬과 `test:spatial-bloom-report`를 포함한다.
+현재 `workflow_dispatch` CI validate가 그 aggregate를 호출하며 일반 push/PR 자동 실행을 뜻하지 않는다.
+
+두 backend·두 색공간·직교/원근·DPR1/2·가로/세로 viewport에서 각28상태를 검사한다.
+작은 HDR source와 sharp/gather/low/balanced/high, warm 재사용, strength0/OFF, threshold 소거,
+exposure, 분수 반경37.5, 홀수127×95, resize 왕복, pixelArt 내부64×64 nearest 확대,
+동일 frame 재제출·HUD, fresh state12 복원·구 저장 downgrade 거절, WebGPU 복구·clear/재활성화를 포함한다.
+별도 합성 probe는 AO/fog/DOF 뒤 threshold와 HUD 경계·resize/복구를 검사한다.
+
+Node gate는 기록한 PNG를 다시 해독한다. 노출을 낮춰 캡처한 HDR 입력에서 색 변환을 역산하고,
+threshold를 각 source에 적용한 뒤 수직→수평 순으로 계산하는 독립 CPU 기준과 비교한다.
+GPU는 수평→수직 순이다. 양자화 오차3 이내 일치, gather 반경 밖 실제 halo64pixel 초과,
+입력의 비어 있지 않은 비포화 신호, OFF identity·저장/복원·복구 identity를 요구한다.
+원근 홀수 extent에서 원본 raster edge가 backend마다 다르면 각 입력에 대한 oracle 차이0을 별도로 요구한다.
+추가 binary-fraction source는 backend 입력 동일과 oracle 차이0을 모두 요구해 filter 오차를 이 분류로 숨기지 않는다.
+
+품질별 실제 dedicated draw/target 수·알려진 texel bytes·texture-load 작업 상한을 공개 stats와 비교하고,
+warm texture/buffer/pipeline/bind-group 할당0, OFF 추가 target/pass0, destroy 자원 해제를 검사한다.
+동일 frame 두 packet의 draw/fetch 합산·target footprint 최대값과 Flat HUD 뒤 metric 보존도 확인한다.
+빈 화면·halo 부재·누락 metric·warm 할당을 성공 flag만으로 통과시키지 않는 negative unit을 실행한다.
+보고서는 기존 spatial GPU `run-*/report.json`의 `wideBloomCases`와 PNG다.
+
+SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·raw/OFF 범위,
+구 core의 자산 조회 전 거절, patch10 Undo/Redo·downgrade, state12의 exploration/combat history 원자 복원을 검사한다.
+양 backend의 부분 target 할당 실패/쓰기 재시도·비동기 GPU 실패와 warm/OFF/destroy도 별도로 검사한다.
+소프트웨어 adapter의 픽셀·작업량 검증이며 실게임·실물 GPU의 ms/FPS·품질 수용 기준은 개발 완료 후 검증한다.

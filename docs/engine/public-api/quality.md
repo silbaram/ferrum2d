@@ -44,6 +44,13 @@ native v8 source 진단의 대기·유지·fade·missing/no-contribution/positio
 상세 값은 v8 진단이 없는 구/비활성 정책에서 undefined다. 서로 겹칠 수 있으며 per-pixel 가시성·GPU 실행 시간을 뜻하지 않는다.
 진단 수치는 frame trace에도 보존한다. 선택 상한은 packed4개이며 authored16개가 동시 조명 수를 뜻하지 않는다.
 
+Spatial wide Bloom의 `spatialBloomDrawCalls`, `spatialBloomTextureBytes`, `spatialBloomTexelFetchBudget`는
+renderer의 frame 합계·target peak·texture-load 작업 상한을 전달한다. 각각 선택형
+`maxSpatialBloomDrawCalls`, `maxSpatialBloomTextureBytes`, `maxSpatialBloomTexelFetchBudget`로 검사한다.
+HUD/반복 packet 뒤에도 보존하며 단일 frame/window 평가에 같은 필드를 사용한다.
+보관 window 중 하나라도 값이 없으면 snapshot 최대값은 undefined이고 설정 budget은 `missingMetric`이다.
+GPU 실행 시간·실제 VRAM 측정을 대체하지 않는다. [wide 계약과 fixture 예산](../data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
+
 ### GPU 시간과 Wasm 용량 예산
 
 `wasmLinearMemoryBytes`와 `gpuFrameTimeMs`는 실제 frame sample에서 읽는다.

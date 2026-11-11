@@ -1289,7 +1289,7 @@ authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 �
 거리별 정적 model 선택을 작성한다. 모든 LOD 자원을 먼저 등록하며 native가 거리·hysteresis·shadow
 필요 여부를 고른다. physics는 visual unload와 무관하다. 자동 네트워크 다운로드는 제공하지 않는다.
 `attachments`는 parent body 기준 child pose이며 native가 위치·높이·회전을 갱신한다.
-`DATA_SCENE_STATE_VERSION` 최신값은 8이다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
+`DATA_SCENE_STATE_VERSION` 최신값은12다. wide Bloom 문서/진행은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
 기존 문서는 v5/v6/v7 capture/hash를 유지한다. root yaw를 저장하고 child pose는 복원 시 재계산한다.
 [모델 고도화 계약](../data-scene-spatial.md#모델-고도화-재질-batch움직이는-묶음청크lod)을 따른다.
 
