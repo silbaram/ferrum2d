@@ -185,7 +185,7 @@ try {
             const entry = { viewport, deviceScaleFactor, colorManagement, result, status: "pixels-pending" };
             report.pointShadowCases.push(entry);
             for (const projection of result) for (const backend of projection.backends) {
-              assert(backend.restored && backend.snapshotVersion === 13 && backend.errors.length === 0);
+              assert(backend.restored && backend.coldPoseRetained && backend.snapshotVersion === 13 && backend.errors.length === 0);
               assert.equal(backend.rows.length, POINT_SHADOW_STATES.length + Number(backend.backend === "webgpu"));
               if (backend.backend === "webgpu") assert(backend.recovered);
               for (const row of backend.rows) {

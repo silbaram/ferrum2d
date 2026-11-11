@@ -849,7 +849,10 @@ export function createSpatialApi(
       const words=rust.spatial_model_draw_snapshot(id,generation);
       if (!words.length) return;
       const version = rust.spatial_model_abi_version?.() ?? 1;
-      if (![1, 2].includes(version) || words.length!==20 || words[3]!==0 || words[2]>(version === 2 ? 16383 : 255)) throw new Error("Invalid spatial model draw snapshot");
+      // Cold pose queries can still see the last v2 draw after environment downgrade,
+      // before the next frame rebuilds visibility. Only camera bit0 and the pose are consumed.
+      const maskLimit = version === 2 || words[2] > 255 && supportsSpatialPointShadows(rust) ? 16383 : 255;
+      if (![1, 2].includes(version) || words.length!==20 || words[3]!==0 || words[2]>maskLimit) throw new Error("Invalid spatial model draw snapshot");
       const asset=[...spatialModelRegistry(rust).values()].find(entry=>entry.id===words[0])?.handle;
       if (!asset) throw new Error("Unregistered spatial model draw snapshot");
       const transform=new Float32Array(words.buffer,words.byteOffset+16,16);

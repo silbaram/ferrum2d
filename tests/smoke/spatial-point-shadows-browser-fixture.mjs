@@ -39,7 +39,7 @@ async function probe(backend, projection, colorManagement) {
   let device = renderer.gpuDevice?.();
   const listen = () => device?.addEventListener("uncapturederror", event => errors.push(event.error.message)); listen();
   const originalRAF = window.requestAnimationFrame, originalCancel = window.cancelAnimationFrame, pending = new Map();
-  let serial = 1, clock = 0, packet, frame, engine;
+  let serial = 1, clock = 0, packet, frame, engine, registry;
   window.requestAnimationFrame = callback => { const id = serial++; pending.set(id, callback); return id; };
   window.cancelAnimationFrame = id => pending.delete(id);
   const step = () => { clock += 17; const callbacks = [...pending.values()]; pending.clear(); for (const cb of callbacks) cb(clock); };
@@ -52,7 +52,7 @@ async function probe(backend, projection, colorManagement) {
         spatial: state.renderCommandBuffer.spatial && ownedSpatial(state.renderCommandBuffer.spatial) };
     }, undefined, undefined, () => renderer.viewportSize());
     check(e.registerDataSceneSpatialModel("rock", asset), "point shadow model registration");
-    e.configureFixedTimestep(false); engines.push(e); return e;
+    e.configureFixedTimestep(false); engines.push(e); registry = createSceneInstanceHandleRegistry(); return e;
   };
   const lights = [
     { position: { x: 64, y: -40, elevation: 80 }, radius: 320, intensity: 2, color: [0, 0, 1], lightMask: 255, shadowMask: 2 },
@@ -111,7 +111,7 @@ async function probe(backend, projection, colorManagement) {
     await renderer.loadTexture(1, texture.toDataURL());
     if (backend === "webgpu") await renderer.preloadSpatialModels([asset]);
     engine = await makeEngine();
-    applyDataSceneAuthoringDocument(engine, doc, { instanceHandleRegistry: createSceneInstanceHandleRegistry(), spatialModelPreparer: renderer, colorManagement });
+    applyDataSceneAuthoringDocument(engine, doc, { instanceHandleRegistry: registry, spatialModelPreparer: renderer, colorManagement });
     engine.start(); step(); step();
     const oracles = [];
     for (const filter of ["hard", "pcf3"]) {
@@ -129,7 +129,7 @@ async function probe(backend, projection, colorManagement) {
     const saved = JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, options)));
     check(saved.dataScene.version === 13 && saved.dataScene.progress.spatial.environment.lighting.pointShadows.length === 2, "point shadow state13 serialization");
     engine.stop(); engine = await makeEngine();
-    check(restoreGameStateSnapshot(engine, saved, { dataSceneAuthoringApplyOptions: { colorManagement, spatialModelPreparer: renderer } }).dataSceneStateApplied, "point shadow fresh restore");
+    check(restoreGameStateSnapshot(engine, saved, { dataSceneAuthoringApplyOptions: { colorManagement, spatialModelPreparer: renderer, instanceHandleRegistry: registry } }).dataSceneStateApplied, "point shadow fresh restore");
     engine.start(); step(); step(); const restored = await row("fresh-restore", null, 12);
     check(difference(restored.data, images[7], 1) === 0, "point shadow restored pixels");
     const sun = environment("pcf3"); sun.lighting.directional = { direction: { x: .3, y: -.4, elevation: 1 }, intensity: .1,
@@ -153,6 +153,15 @@ async function probe(backend, projection, colorManagement) {
     const disabled = await row("off-preserved", off, 0);
     check(beforeOff - disabled.stats.effectTextureBytes === (128 ** 2 + 256 ** 2) * 24, "OFF point shadow targets retained", disabled.stats);
     await row("re-enabled", environment("hard"), 12);
+    // A cold source edit invalidates the frame but retains the last native draw metadata.
+    check(packet.spatial.models.words.some((word, i) => i % 20 === 2 && word > 255), "cold pose test needs v2 visibility");
+    const handles = ["rock", "rock-copy"].map(id => registry.require(id)), poses = handles.map(handle => engine.dataSceneSpatialModelDrawSnapshot(handle));
+    check(engine.setDataSceneSpatialEnvironment(environment("hard", "a")), "cold legacy downgrade rejected");
+    for (const [i, handle] of handles.entries()) {
+      const pose = engine.dataSceneSpatialModelDrawSnapshot(handle), before = poses[i];
+      check(pose && before && pose.asset === before.asset && pose.cameraVisible === before.cameraVisible &&
+        pose.transform.every((value, j) => value === before.transform[j]), "model pose changed before frame rebuild");
+    }
     const single = environment("hard"); single.lighting.pointShadows = [owners[0]];
     await row("array-single", single, 6);
     const legacy = environment("hard", "a"); await row("legacy-single", legacy, 6);
@@ -163,7 +172,7 @@ async function probe(backend, projection, colorManagement) {
     check(bloom.stats.bloomDrawCalls > 0 && bloom.stats.bloomTextureBytes > 0, "dual shadows with active wide Bloom/pixelArt", bloom.stats);
     check(!errors.length, "point shadow GPU validation errors", errors);
     renderer.destroy(); check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "point shadow resource leak", renderer.resourceStats());
-    return { backend, projection, colorManagement, rows, images, oracles, restored: true, recovered, snapshotVersion: saved.dataScene.version, errors };
+    return { backend, projection, colorManagement, rows, images, oracles, restored: true, coldPoseRetained: true, recovered, snapshotVersion: saved.dataScene.version, errors };
   } finally {
     for (const e of engines) e.destroy(); renderer.destroy(); device?.destroy(); window.disposeSpatialGpuTarget?.(canvas);
     window.requestAnimationFrame = originalRAF; window.cancelAnimationFrame = originalCancel;

@@ -77,6 +77,25 @@ test("cold model snapshots use native selected LOD, visibility, generation and o
   const old=createSpatialApi({} as Engine,()=>{},()=>({width:800,height:600}));equal(old.dataSceneSpatialModelDrawSnapshot(handle),undefined);
 });
 
+test("cold model pose survives a v2 environment downgrade before visibility is rebuilt", () => {
+  let version = 2, supported = true;
+  const words = new Uint32Array(20); words.set([1, 3, 16383, 0]);
+  new Float32Array(words.buffer).set([1,0,0,0,0,1,0,0,0,0,1,0,40,50,-60,1], 4);
+  const native = { configure_spatial_scene_models: () => true,
+    spatial_model_abi_version: () => version, spatial_point_shadows_abi_version: () => supported ? 1 : 0,
+    spatial_model_draw_snapshot: () => words.slice(), configure_spatial_environment: () => { version = 1; return true; } };
+  const api = createSpatialApi(native as unknown as Engine, () => {}, () => ({ width: 800, height: 600 }));
+  ok(api.registerDataSceneSpatialModel("base", asset()));
+  const handle = { entityId: 7, entityGeneration: 3 }, before = api.dataSceneSpatialModelDrawSnapshot(handle)!;
+  ok(api.setDataSceneSpatialEnvironment(null)); equal(version, 1);
+  deepEqual(api.dataSceneSpatialModelDrawSnapshot(handle), before);
+  supported = false;
+  // Old cores still reject undefined visibility bits.
+  throws(() => api.dataSceneSpatialModelDrawSnapshot(handle), /Invalid/);
+  supported = true; words[2] = 16384;
+  throws(() => api.dataSceneSpatialModelDrawSnapshot(handle), /Invalid/);
+});
+
 test("masked picking transforms UV before repeat/mirror/clamp while retaining triangle geometry", () => {
   const pixels = new Uint8ClampedArray([255,255,255,0, 255,255,255,255]);
   const ray = { origin: [-.5,-.5,2] as const, direction: [0,0,-1] as const };
