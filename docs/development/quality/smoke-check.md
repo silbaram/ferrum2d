@@ -3015,3 +3015,26 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 구 core의 자산 조회 전 거절, patch10 Undo/Redo·downgrade, state12의 exploration/combat history 원자 복원을 검사한다.
 양 backend의 부분 target 할당 실패/쓰기 재시도·비동기 GPU 실패와 warm/OFF/destroy도 별도로 검사한다.
 소프트웨어 adapter의 픽셀·작업량 검증이며 실게임·실물 GPU의 ms/FPS·품질 수용 기준은 개발 완료 후 검증한다.
+
+
+### Spatial 다중 점광원 그림자 회귀
+
+`pnpm smoke:spatial-point-shadows`는 public 패키지·실제 Wasm과 WebGL2/WebGPU로
+선택형 `lighting.pointShadows` 최대 2개를 검사한다. `test:spatial-point-shadows-report`의 독립 PNG 판정기
+음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
+기존 조건부 extended Spatial CI 실행 위치를 따른다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서592개 상태를 검사한다.
+빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
+PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모델2개, hard/PCF3, mask, 태양 그림자 동시13 pass,
+16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
+WebGPU 실제 장치 파괴 후 복구를 포함한다. 정적 warm frame의 shadow draw/upload0과 해제 후 자원0을 요구한다.
+
+보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.
+소프트웨어 adapter 실행은 실물 GPU 또는 제품 시간/FPS 수용 결과로 해석하지 않는다.
+기존 단일 점광원·태양 그림자 회귀는 `--offscreen-target --shadows-only`로 별도 실행할 수 있다.
+
+`pnpm test:placement-point-shadows`는 광원 삭제 후 인덱스와 설정 보존, 두 owner 상한·활성 예산,
+Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:placement-viewer`와 CI에 이 단위 검증을 포함한다.
+`pnpm smoke:placement-spatial-workspace`는 실제 Spatial 조명 패널 검증을 포함하며 기존 CI에서도 실행한다.
+실제 패널에서 독립 offset, 세 번째 제한, Low 품질, owner/nonowner 삭제·Undo/Redo와 native 환경v10/592를 확인한다.

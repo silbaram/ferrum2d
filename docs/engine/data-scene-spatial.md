@@ -713,7 +713,7 @@ bound world text 외의 일반 sprite/particle/text는 기존 평면 좌표로 s
 
 ## WebGPU 공간 경로
 
-WebGPU는 같은 native v1/v2 geometry와 모델 확장 v1을 소비한다.
+WebGPU는 같은 native v1/v2 geometry와 모델 확장 v1/v2를 소비한다. 모델 v2는 환경 v10의 두 번째 점광원 그림자 face bit를 추가한다.
 직교/원근 camera, terrain draw range, 발 피벗 billboard, alpha cutout, 정적 GLB/glTF 모델을
 같은 depth24plus attachment로 그린다. clip-depth 변환만 GPU에서 수행하며 물리·카메라·LOD·컬링은 Rust가 결정한다.
 모델은 indexed/instanced draw, 기본색·발광, MASK·양면, sRGB/data texture 분리와 glTF filter/wrap/mipmap을 지원한다.
@@ -855,7 +855,7 @@ PCF 폭 때문에 일반 수신면의 bias를 3배로 늘리지 않는다. 교�
 발생하는 표본화 한계는 남으므로, 필요한 경우 해상도·광원 범위와 authored bias를 함께 조절한다.
 태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
-bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
+bitmap world label은 caster에 포함하지 않는다. 선택형 두 점광원 그림자는 [다중 점광원 계약](#선택형-다중-점광원-그림자)을 따른다. PCSS는 후속이며 방향광·PCF와 normal atlas는 아래 계약을 따른다.
 
 효과가 켜지면 `EXT_color_buffer_float`가 필요한 RGBA16F color + depth24 target을 사용한다.
 미지원 환경은 명시적 오류를 내며 효과를 조용히 생략하지 않는다. linear 공간에서 조명→안개→DOF→
@@ -2116,3 +2116,53 @@ frame/window에 미측정 값이 있으면 설정한 budget은 `missingMetric`�
 동일 fixture의 gather radius24는 별도 target/draw0·DPR1 texture-load budget524,288이다.
 넓은 halo는 추가 pass/target으로 품질을 높이면서 full-resolution gather보다 load 작업을 줄인다.
 반경·extent·DPR에 따라 chain 길이가 바뀌므로 품질 이름만으로 draw 수의 순서를 가정하지 않는다.
+
+### 선택형 다중 점광원 그림자
+
+개발 소스의 `SpatialLightingSpec.pointShadows?: readonly SpatialPointShadowSpec[]`는
+1~2개 점광원의 독립적인 전방향 그림자를 지정한다. 기본 단일 `lighting.shadows`와 동시에 지정할 수 없다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({ lighting: {
+  lights: [
+    { position: { x: -64, y: 0, elevation: 80 }, radius: 320, color: [1, 0, 0] },
+    { position: { x: 64, y: 0, elevation: 80 }, radius: 320, color: [0, 0, 1] },
+  ],
+  pointShadows: [
+    { lightIndex: 0, resolution: 128, bias: 0.02 },
+    { lightIndex: 1, resolution: 256, bias: 0.03, normalBias: 0.1 },
+  ],
+  shadowFilter: "pcf3",
+} });
+```
+
+각 항목의 `lightIndex`는0~15의 유효한 authored light를 중복 없이 참조한다.
+`resolution`은128/256/512/1024(기본256), `bias`·`normalBias`는 world 단위0~10(기본0.05/0)이다.
+`maxActiveLights`는 그림자 광원 수 이상이어야 한다. 배열 순서대로 native render slot0/1을 먼저 점유하며,
+남은 슬롯은 기존 순위 또는 hysteresis/fade 정책을 따른다. authored16/active4 상한은 유지한다.
+두 owner 모두 기존 추적·light/shadow 수신 mask·hard/PCF3·cast/receive·cutout·모델을 사용한다.
+그림자는 해당 광원의 직접광·specular에만 적용하며 다른 광원·ambient·hemisphere·emission은 보존한다.
+방향광 그림자와도 함께 사용할 수 있다. 별도 설정이 없는 기존 단일 그림자 동작은 유지한다.
+
+새 source는 **environment v10/592 floats**, patch는 **spatial patch11**, 문서/진행 저장은 **Data Scene state13**이다.
+0~583 기존 prefix를 유지하고584~587에 두 번째 authored source/resolution/bias/normalBias,
+588에 두 번째 render slot, 589에 새 source mode 표식1을 둔다.590~591은 reserved0이다.
+wide Bloom이 없으면580~582는0이며583은 선택 정책의 존재를 보존한다.
+기존 source v1~v9·patch1~10·state2~12를 계속 읽는다. 새 기능을 구 core에 적용하면 OFF source나
+progress-only override도 자산 조회·씬 변경 전에 명시적으로 거절한다.
+
+첫 큐브의 face0~5와 sun face6을 유지하고 두 번째 큐브는 face7~12를 사용한다.
+행렬은 첫 큐브6개·두 번째 큐브6개·마지막 sun1개 순서로 압축한다.
+80-byte **model ABI v2**는 기존 metadata/matrix 크기를 유지하며 두 번째 큐브 가시성을 bits8~13으로 추가한다.
+기존 camera0/첫 큐브1~6/sun7과 model ABI v1은 유지한다. v2 모델은 환경 v10과 함께 읽어야 한다.
+
+광원당6면이므로 두 큐브가 갱신되면12 shadow pass, sun까지 갱신되면13 pass다.
+양 backend의 depth 저장을 보수적4-byte texel로 계측하며 최대1024 해상도 두 큐브는48 MiB다.
+HDR/태양 자원은 별도다. 정적 shadow set의 warm frame은 shadow draw/upload0을 유지한다.
+한 광원·caster·자산이 바뀌면 현재는 shadow set 전체를 갱신한다. 광원별 독립 cache를 제공하는 것은 아니다.
+단일 항목/legacy에서는 두 번째 cube target을 만들지 않으며 OFF/clear/destroy에서는 회수한다.
+`shadowPassCount`·draw/triangle/upload와 `effectTextureBytes`에 실제 비용을 포함한다. GPU ms/FPS 보장을 뜻하지 않는다.
+
+공식 배치 뷰어의 Point Shadows는 광원별로 켤 수 있다. 두 번째를 켜면 기존 설정을 보존해 `pointShadows`로 전환하고,
+세 번째는 선택을 제한한다. 광원 삭제 시 참조 인덱스를 보정하며 Undo/Redo로 복원한다.
+Low 품질도 지정된 그림자 광원 2개를 유지하고 두 큐브를128 해상도로 낮춘다.

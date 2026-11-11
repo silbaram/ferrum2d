@@ -1180,7 +1180,7 @@ shader는 같은 atlas UV로 tangent basis를 계산한다. normal 미지정 시
 
 고정 내부 해상도는 같은 native 표시 viewport로 nearest 정수 확대하고 최종 해상도 flat HUD 전에 합성한다.
 legacy는 effect pass의 색 변환, linear-srgb는 기존 최종 encode를 유지한다. `EXT_color_buffer_float`가
-필요하며 기능 제거를 조용히 적용하지 않는다. 상한은 point light 4개/point shadow 1개/sun 1개,
+필요하며 기능 제거를 조용히 적용하지 않는다. 상한은 point light 4개/point shadow 기존1개·선택형 최대2개/sun 1개,
 1,024 caster/면당 64 batch/HDR 8,388,608 pixel/내부 pixel target 1,048,576 pixel/blur 12 CSS px다.
 PCF는 receiver당 최대 9회 비교이며 pass 수를 늘리지 않는다. 고급 DOF는 같은 composite에서 전경/배경을
 분리 누적하고 기존 배경 위 전경 coverage를 확장한다. 중간 texture·반투명 다중 depth는 추가하지 않는다.
@@ -2041,3 +2041,16 @@ GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 targ
 Spatial의 선택형 넓은 Bloom은 v9/584 source와 patch10/state12를 사용하며 기존 v1..v8 source를 유지한다.
 광원 선택 존재 bit와 post effect 설정은 분리해 품질 편집이 native 전환 이력을 초기화하지 않는다.
 별도 low-resolution chain과 오류/복구·pixel grid·작업 상한은 [Spatial 합성 구조](spatial-lighting-composition.md#넓은-bloom의-별도-저해상도-chain)를 따른다.
+
+Spatial의 선택형 두 점광원 그림자는 environment v10/592 source·patch11/state13을 사용한다.
+Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·선택 이력·6+6+sun 행렬과 face0~12의
+정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
+model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
+WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은2624 bytes,
+stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
+shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
+각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
+이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
+두 번째 cube는 선택 시에만 만들고 OFF/clear/destroy 시 회수한다. shadow set cache와 자산 revision 무효화는 양 큐브에 함께 적용한다.
+입력·저장·비용은 [다중 점광원 계약](../../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)을 따른다.
