@@ -222,6 +222,10 @@ export async function smokeSpatialObjectPlacement(parent, source, timeoutMs) {
     await page.locator("canvas.demo-canvas").focus();
     await page.click("[data-placement-mode=spatial]");
     await paint();
+    // Release the previous sprite's transform target before the native asset drag.
+    // Its floating height handle can otherwise cover the ramp in a small viewport.
+    await page.locator("canvas.demo-canvas").click({ position: { x: 3, y: 3 } });
+    await paint();
     await showPlacementInspector(page, "placement");
     await page.selectOption("[data-placement-spatial-add-kind]", "model");
     await page.selectOption(
