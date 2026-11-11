@@ -8,6 +8,23 @@ import {
 } from "../src/runtimeProfiler.js";
 import type { DebugOverlayMetrics } from "../src/debugOverlay.js";
 
+test("point shadow work budgets retain measured zeros and require complete retained windows", () => {
+  const budget = { maxPointShadowGeometryUploadBytes: 0, maxPointShadowGeometryVertexCount: 128 };
+  const profiler = new RuntimeProfiler({ maxFrameSamples: 2, budget });
+  equal(profiler.snapshot().budgetReport!.passed, false);
+  profiler.recordFrame(metrics({ pointShadowGeometryUploadBytes: 4096, pointShadowGeometryVertexCount: 96, pointShadowGeometryCacheHit: false }));
+  profiler.recordFrame(metrics({ pointShadowGeometryUploadBytes: 0, pointShadowGeometryVertexCount: 96, pointShadowGeometryCacheHit: true }));
+  equal(profiler.snapshot().maxPointShadowGeometryUploadBytes, 4096); equal(profiler.snapshot().budgetReport!.passed, false);
+  profiler.recordFrame(metrics({ pointShadowGeometryUploadBytes: 0, pointShadowGeometryVertexCount: 96, pointShadowGeometryCacheHit: true }));
+  equal(profiler.snapshot().maxPointShadowGeometryUploadBytes, 0); equal(profiler.snapshot().budgetReport!.passed, true);
+  equal(profiler.snapshot().latestFrame!.pointShadowGeometryCacheHit, true);
+  profiler.recordFrame(metrics());
+  equal(profiler.snapshot().maxPointShadowGeometryUploadBytes, undefined);
+  equal(profiler.snapshot().budgetReport!.violations[0].reason, "missingMetric");
+  equal(evaluateRuntimeDiagnosticsSample(runtimeDiagnosticsFrameSample(metrics({ pointShadowGeometryUploadBytes: 1, pointShadowGeometryVertexCount: 129 })), budget).violations.length, 2);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ pointShadowGeometryUploadBytes: -1 })), /pointShadow/);
+});
+
 test("Wasm capacity requires complete samples and GPU aggregates count only measured queries", () => {
   const profiler = new RuntimeProfiler({ budget: { maxWasmLinearMemoryBytes: 65536, maxGpuFrameTimeMs: 3 } });
   equal(profiler.snapshot().budgetReport?.passed, false);

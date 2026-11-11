@@ -181,6 +181,8 @@ const BUDGET_FIELDS = Object.freeze([
   "maxJsHeapUsedBytes",
 ]);
 
+const OPTIONAL_BUDGET_FIELDS = Object.freeze(["maxPointShadowGeometryUploadBytes", "maxPointShadowGeometryVertexCount"]);
+
 export function runtimeBudgetProfile(profileId) {
   const profile = RUNTIME_BUDGET_PROFILES[profileId];
   if (profile === undefined) {
@@ -208,7 +210,8 @@ export function runtimeBudgetProfileIds() {
 export function validateRuntimeBudgetProfiles() {
   const errors = [];
   for (const [profileId, profile] of Object.entries(RUNTIME_BUDGET_PROFILES)) {
-    for (const field of BUDGET_FIELDS) {
+    for (const field of [...BUDGET_FIELDS, ...OPTIONAL_BUDGET_FIELDS]) {
+      if (profile[field] === undefined && OPTIONAL_BUDGET_FIELDS.includes(field)) continue;
       const value = profile[field];
       if (!Number.isFinite(value) || value < 0) {
         errors.push(`${profileId}.${field} must be a non-negative finite number.`);

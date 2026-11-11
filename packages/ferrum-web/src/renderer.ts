@@ -93,13 +93,17 @@ export interface RendererStats {
   shadowDrawCalls: number;
   /** Tile occluder shadow projections rendered by the lighting pass for the current frame. */
   shadowCasterCount: number;
+  /** Actual point-shadow geometry bytes written this frame; excludes masks/uniforms/sun sprites. */
+  pointShadowGeometryUploadBytes?: number;
+  pointShadowGeometryVertexCount?: number;
+  pointShadowGeometryCacheHit?: boolean;
   /** Fullscreen post-processing draw calls submitted for the current frame. */
   postProcessDrawCalls: number;
   /** Fullscreen post-processing passes consumed for the current frame. */
   postProcessPassCount: number;
 }
 
-export type RendererStatsUnit = "count";
+export type RendererStatsUnit = "count" | "bytes";
 
 export interface RendererStatsFieldContract {
   field: keyof RendererStats;
@@ -182,6 +186,8 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
     unit: "count",
     description: "Tile occluder shadow projections rendered by the lighting pass for the current frame.",
   },
+  { field: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", description: "Actual point-shadow geometry writes; zero on a warm cached batch, excluding masks/uniforms/sun." },
+  { field: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", description: "Actual point-shadow geometry vertices submitted across active lights." },
   {
     field: "postProcessDrawCalls",
     label: "post-process draw calls",
@@ -245,6 +251,9 @@ export function resetRendererStatsInto(stats: RendererStats): RendererStats {
   delete stats.presentationPassCount;
   delete stats.spatial;
   delete stats.normalDrawCalls;
+  delete stats.pointShadowGeometryUploadBytes;
+  delete stats.pointShadowGeometryVertexCount;
+  delete stats.pointShadowGeometryCacheHit;
   stats.drawCalls = 0;
   stats.batchCount = 0;
   stats.spriteCount = 0;

@@ -79,6 +79,8 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
     { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
     { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
+    { id: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", optional: true },
+    { id: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", optional: true },
     { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
     { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },
     { id: "shadowDrawCalls", label: "shadow draws", unit: "count", optional: true },

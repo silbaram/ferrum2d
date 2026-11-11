@@ -4,7 +4,7 @@ import type { WebGpuSpriteNormalBindings } from "./webgpuSpriteNormals.js";
 import type { WebGpuSunShadowBindings } from "./webgpuSunShadowMask.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
-import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
+import { LightingShadowGeometryCache, type CachedLightingShadowGeometry } from "./lightingShadowGeometryCache.js";
 import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 import type {
   ResolvedLightingScene2D,
@@ -18,6 +18,9 @@ export interface WebGpuLightingPassStats {
   tileOccluderCount: number;
   shadowDrawCalls: number;
   shadowCasterCount: number;
+  shadowGeometryUploadBytes?: number;
+  shadowGeometryVertexCount?: number;
+  shadowGeometryCacheHit?: boolean;
   /** The caller-owned base pass was ended to record per-light mask passes. */
   passEnded?: true;
 }
@@ -28,8 +31,9 @@ interface LightingTarget {
   width: number;
   height: number;
 }
-interface ShadowRange { firstVertex: number; vertexCount: number; lightIndex: number; casterCount: number; }
+interface ShadowRange { firstVertex: number; vertexCount: number; lightIndex: number; casterCount: number; geometry: CachedLightingShadowGeometry; }
 
+const MAX_CACHED_SHADOW_LIGHTS = 32;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const FLOATS_PER_LIGHTING_INSTANCE = 14;
 const LIGHTING_INSTANCE_STRIDE_BYTES = FLOATS_PER_LIGHTING_INSTANCE * BYTES_PER_F32;
@@ -67,6 +71,11 @@ export class WebGpuLightingPass {
   private readonly lightColorScratch: [number, number, number, number] = [0, 0, 0, 0];
   private readonly shadowGeometryCache = new LightingShadowGeometryCache();
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
+  private readonly uploadedShadowRevisions = new Float64Array(MAX_CACHED_SHADOW_LIGHTS);
+  private readonly nextShadowRevisions = new Float64Array(MAX_CACHED_SHADOW_LIGHTS);
+  private readonly uploadedShadowColor = new Float64Array(4);
+  private uploadedShadowLightCount = -1;
+  private shadowGeometryUploadBytes = 0;
   private cookies?: WebGpuLightingCookies;
   private emptyLayout?: GPUBindGroupLayout;
   private readonly cookiePipelines = new Map<string, GPURenderPipeline>();
@@ -298,6 +307,9 @@ export class WebGpuLightingPass {
       tileOccluderCount: debugTileOccluderCount,
       shadowDrawCalls: ranges.length,
       shadowCasterCount: casterCount,
+      shadowGeometryUploadBytes: this.shadowGeometryUploadBytes,
+      shadowGeometryVertexCount: ranges.reduce((sum, range) => sum + range.vertexCount, 0),
+      shadowGeometryCacheHit: ranges.length > 0 && this.shadowGeometryUploadBytes === 0,
       ...(ranges.length ? { passEnded: true as const } : {}),
     };
   }
@@ -637,6 +649,7 @@ export class WebGpuLightingPass {
   ): ShadowRange[] {
     const ranges = this.shadowRanges;
     ranges.length = 0;
+    this.shadowGeometryUploadBytes = 0;
     const shadows = scene.shadows, occluders = scene.tileOccluders;
     if (!shadows.enabled || shadows.color[3] <= 0 || (occluders.length === 0 && !scene.polygonOccluders?.length) || lights.length === 0) {
       return ranges;
@@ -648,6 +661,9 @@ export class WebGpuLightingPass {
     this.shadowClipRect.height = viewportHeight;
     const occluderVersion = this.shadowGeometryCache.syncOccluders(occluders, scene.polygonOccluders);
     let offset = 0;
+    const cacheable = lights.length <= this.uploadedShadowRevisions.length;
+    let dirty = !cacheable || lights.length !== this.uploadedShadowLightCount;
+    for (let i = 0; i < 4; i++) dirty ||= shadows.color[i] !== this.uploadedShadowColor[i];
     for (let lightIndex = 0; lightIndex < lights.length; lightIndex += 1) {
       const light = lights[lightIndex];
       const shadowGeometry = this.shadowGeometryCache.resolveLightGeometry(
@@ -659,27 +675,37 @@ export class WebGpuLightingPass {
         this.shadowClipRect,
         scene.polygonOccluders,
       );
+      if (cacheable) {
+        this.nextShadowRevisions[lightIndex] = shadowGeometry.revision;
+        dirty ||= this.uploadedShadowRevisions[lightIndex] !== shadowGeometry.revision;
+      }
       if (shadowGeometry.floatCount === 0) {
         continue;
       }
 
       const shadowVertexCount = shadowGeometry.floatCount / 2;
-      ranges.push({firstVertex:offset/FLOATS_PER_SHADOW_VERTEX,vertexCount:shadowVertexCount,lightIndex,casterCount:shadowGeometry.casterCount});
-      this.ensureShadowStaging(offset + shadowVertexCount * FLOATS_PER_SHADOW_VERTEX);
-      for (let index = 0; index < shadowGeometry.floatCount; index += 2) {
-        offset = writeShadowVertex(
+      ranges.push({firstVertex:offset/FLOATS_PER_SHADOW_VERTEX,vertexCount:shadowVertexCount,lightIndex,casterCount:shadowGeometry.casterCount,geometry:shadowGeometry});
+      offset += shadowVertexCount * FLOATS_PER_SHADOW_VERTEX;
+    }
+
+    if (ranges.length === 0 || !dirty) return ranges;
+    // Invalidate before allocation/replacement: if writing B fails after growing
+    // the buffer, a subsequent return to A must upload rather than reuse A's key.
+    this.uploadedShadowLightCount = -1;
+    this.ensureShadowStaging(offset);
+    for (const range of ranges) {
+      let at = range.firstVertex * FLOATS_PER_SHADOW_VERTEX;
+      const geometry = range.geometry, light = lights[range.lightIndex];
+      for (let index = 0; index < geometry.floatCount; index += 2) {
+        at = writeShadowVertex(
           this.shadowStaging,
-          offset,
-          shadowGeometry.positions[index],
-          shadowGeometry.positions[index + 1],
+          at,
+          geometry.positions[index],
+          geometry.positions[index + 1],
           shadows.color,
           light,
         );
       }
-    }
-
-    if (ranges.length === 0) {
-      return ranges;
     }
 
     const byteCount = offset * BYTES_PER_F32;
@@ -691,6 +717,11 @@ export class WebGpuLightingPass {
       this.shadowStaging.byteOffset,
       byteCount,
     );
+    this.shadowGeometryUploadBytes = byteCount;
+    // No cache publication before a successful write. Replacement devices own a fresh pass/key.
+    this.uploadedShadowLightCount = cacheable ? lights.length : -1;
+    if (cacheable) this.uploadedShadowRevisions.set(this.nextShadowRevisions);
+    this.uploadedShadowColor.set(shadows.color);
     return ranges;
   }
 

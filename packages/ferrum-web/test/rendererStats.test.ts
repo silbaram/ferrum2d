@@ -67,6 +67,8 @@ test("RendererStats field contract fixes labels and units", () => {
     { field: "tileOccluderCount", label: "tile occluders", unit: "count" },
     { field: "shadowDrawCalls", label: "shadow draw calls", unit: "count" },
     { field: "shadowCasterCount", label: "shadow casters", unit: "count" },
+    { field: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes" },
+    { field: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count" },
     { field: "postProcessDrawCalls", label: "post-process draw calls", unit: "count" },
     { field: "postProcessPassCount", label: "post-process passes", unit: "count" },
   ]);

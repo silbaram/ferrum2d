@@ -1,4 +1,5 @@
 import { createRenderer, createDataSceneView } from '@ferrum2d/ferrum-web/core';
+import { evaluateRuntimeDiagnosticsSample } from '@ferrum2d/ferrum-web/quality';
 import { texture, readPixels } from './flat-lighting-contract-fixture.mjs';
 import { packet } from './flat-spot-browser-fixture.mjs';
 const check=(ok,label)=>{if(!ok)throw Error(label);};
@@ -30,8 +31,8 @@ export async function probeFlatPolygon(preferred,colorManagement='legacy'){
   for(const [id,pixels]of [[1,[[255,255,255,255]]],[2,[[0,0,0,255]]],[3,[[255,255,255,0],[255,255,255,255]]],[4,[[0,0,255,255]]]])await renderer.loadTexture(id,texture(pixels),{alphaMode:'straight'});
   await renderer.loadTexture(7,texture([[255,0,0,255]]),{alphaMode:'straight',colorSpace:'none'});
   const sample=data=>points.map(([x,y])=>{const at=(Math.floor(y*devicePixelRatio)*canvas.width+Math.floor(x*devicePixelRatio))*4;return Array.from(data.subarray(at,at+4));});
-  const draw=async(name,scene,commands=packet(),hud=false)=>{
-   stage=name;if(scene!==undefined)renderer.setLighting(scene);renderer.render();renderer.renderCommands(commands);
+  const draw=async(name,scene,commands=packet(),hud=false,repeat=false)=>{
+   stage=name;if(scene!==undefined)renderer.setLighting(scene);renderer.render();renderer.renderCommands(commands);if(repeat)renderer.renderCommands(commands);
    if(hud){renderer.setLighting(false);renderer.renderCommands(packet({id:4,mode:0,rect:[100,44,12,8]}));}
    renderer.renderPostProcess();await device?.queue.onSubmittedWorkDone();const pixels=await readPixels(renderer,canvas);check(!errors.length,errors.join('\n'));
    const row={name,rgba:sample(pixels),stats:renderer.stats(),resources:renderer.resourceStats()};results.push(row);return {...row,pixels};
@@ -58,7 +59,16 @@ export async function probeFlatPolygon(preferred,colorManagement='legacy'){
    same(plain,await draw(prefix+'shadow-bypass',scene,packet({masks:[255,0]})),'polygon bypassed independent shadow mask');
    same(ambient,await draw(prefix+'light-zero',scene,packet({masks:[0,255]})),'polygon bypassed independent light mask');
    const red={...light,color:[1,0,0],shadowMask:1},blue={...light,x:104,color:[0,0,1],shadowMask:2},pair={...scene,pointLights:[red,blue]};
-   const two=await draw(prefix+'two-lights',pair),blueOnly=await draw(prefix+'blue-reference',{...base,pointLights:[blue]});near(two.rgba[0],blueOnly.rgba[0],'polygon A shadow removed B');
+   const two=await draw(prefix+'two-lights',pair),twoWarm=await draw(prefix+'two-lights-warm',pair);
+   same(two,twoWarm,'packed multi-light shadow cache changed pixels');
+   check(twoWarm.stats.shadowDrawCalls===2&&twoWarm.stats.pointShadowGeometryUploadBytes===0&&twoWarm.stats.pointShadowGeometryCacheHit===true&&twoWarm.stats.pointShadowGeometryVertexCount>0,'packed multi-light shadow cache work');
+   const workBudget={maxPointShadowGeometryUploadBytes:0,maxPointShadowGeometryVertexCount:128};
+   twoWarm.workBudget=evaluateRuntimeDiagnosticsSample(twoWarm.stats,workBudget);
+   check(twoWarm.workBudget.passed,'warm point shadow budget rejected actual renderer work');
+   check(evaluateRuntimeDiagnosticsSample(two.stats,workBudget).violations.some(v=>v.id==='maxPointShadowGeometryUploadBytes'&&v.actual>0),'cold geometry upload absent from actual work budget');
+   check(evaluateRuntimeDiagnosticsSample({...twoWarm.stats,pointShadowGeometryUploadBytes:undefined},workBudget).violations.some(v=>v.reason==='missingMetric'),'unmeasured shadow upload accepted as zero');
+   results[results.length-1].workBudget=twoWarm.workBudget;
+   const blueOnly=await draw(prefix+'blue-reference',{...base,pointLights:[blue]});near(two.rgba[0],blueOnly.rgba[0],'polygon A shadow removed B');
    const emissionCommands=packet({id:2,surface:{emission:[.2,.1,.05]}}),emission=await draw(prefix+'emission',scene,emissionCommands);same(emission,await draw(prefix+'emission-reference',{...base,pointLights:[]},emissionCommands),'polygon filtered emission');
    const specular=await draw(prefix+'specular',scene,packet({id:2,surface:{specular:1,roughness:.5}}));check(specular.rgba[0][0]===0&&specular.rgba[1][0]>5,'polygon specular visibility');
    same(cast,await draw(prefix+'spot-cookie',{...scene,pointLights:[{...light,spot:{directionX:1,directionY:0,angleDegrees:360},cookie:{texture:7}}]}),'polygon did not compose with spot/cookie');
@@ -73,10 +83,10 @@ export async function probeFlatPolygon(preferred,colorManagement='legacy'){
    const before=await draw(prefix+'before-invalid',scene);
    for(const bad of [{vertices:new Array(4)},{vertices:[{x:0,y:0},{x:1,y:1},{x:2,y:2}]}])for(const enabled of [true,false]){let failed=false;try{renderer.setLighting({...scene,enabled,polygonOccluders:[bad]});}catch{failed=true;}check(failed,'invalid polygon accepted');}
    same(before,await draw(prefix+'after-invalid',undefined),'invalid polygon setter changed active scene');
-   const warm=await draw(prefix+'warm',scene),warmer=await draw(prefix+'warmer',scene);same(warm,warmer,'warm polygon pixel drift');check(warm.resources.estimatedBytes===warmer.resources.estimatedBytes,'polygon warm allocation growth');
+   const warm=await draw(prefix+'warm',scene,packet(),false,true),warmer=await draw(prefix+'warmer',scene);same(warm,warmer,'warm polygon pixel drift');check(warm.resources.estimatedBytes===warmer.resources.estimatedBytes,'polygon warm allocation growth');check(warmer.stats.pointShadowGeometryUploadBytes===0&&warmer.stats.pointShadowGeometryCacheHit===true,'static polygon geometry uploaded again');check(warm.stats.pointShadowGeometryVertexCount===2*warmer.stats.pointShadowGeometryVertexCount,'multi-packet work counter lost earlier geometry');
    const off=await draw(prefix+'off',{...scene,enabled:false}),empty=await draw(prefix+'off-reference',{...scene,enabled:false,polygonOccluders:[]});same(off,empty,'OFF polygon changed output');check(off.stats.shadowDrawCalls===0&&off.stats.lightingDrawCalls===0&&off.resources.renderTargetCount===empty.resources.renderTargetCount,'OFF polygon cost');
    const cutout=await draw(prefix+'cutout',scene,packet({id:3,mode:2}));check(cutout.rgba[1][0]===0,'polygon cutout hole filled');
-   const hud=await draw(prefix+'hud',scene,packet(),true);near(hud.rgba[0],[0,0,255,255],'polygon affected HUD');saved=scene;
+   const hud=await draw(prefix+'hud',scene,packet(),true);near(hud.rgba[0],[0,0,255,255],'polygon affected HUD');check(hud.stats.pointShadowGeometryVertexCount>0,'HUD reset earlier point shadow work');saved=scene;
   }
   const view=createDataSceneView({setDataSceneCamera:()=>true,setDataSceneGroundYScale:()=>true,setViewportSize(){},cameraX:()=>64,cameraY:()=>96,cameraGroundYScale:()=>.5},
    {setViewportZoom(){},setGroundYScale(){},viewportSize:()=>renderer.viewportSize()},canvas,{x:64,y:96,groundYScale:.5});

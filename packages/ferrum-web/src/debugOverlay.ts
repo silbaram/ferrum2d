@@ -47,6 +47,9 @@ export interface DebugOverlayMetrics {
   lightingDrawCalls?: number;
   normalDrawCalls?: number;
   pointLightCount?: number;
+  pointShadowGeometryUploadBytes?: number;
+  pointShadowGeometryVertexCount?: number;
+  pointShadowGeometryCacheHit?: boolean;
   tileOccluderCount?: number;
   shadowDrawCalls?: number;
   shadowCasterCount?: number;
@@ -114,6 +117,8 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
   { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
   { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
+  { id: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", optional: true },
+  { id: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", optional: true },
   { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
   { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },
   { id: "shadowDrawCalls", label: "shadow draws", unit: "count", optional: true },
@@ -248,6 +253,8 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.lightingDrawCalls !== undefined) {
     lines.push(row("lightingDrawCalls", metrics.lightingDrawCalls));
   }
+  if (metrics.pointShadowGeometryUploadBytes !== undefined) lines.push(row("pointShadowGeometryUploadBytes", metrics.pointShadowGeometryUploadBytes));
+  if (metrics.pointShadowGeometryVertexCount !== undefined) lines.push(row("pointShadowGeometryVertexCount", metrics.pointShadowGeometryVertexCount));
   if (metrics.pointLightCount !== undefined) {
     lines.push(row("pointLightCount", metrics.pointLightCount));
   }

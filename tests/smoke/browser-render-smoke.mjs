@@ -139,6 +139,8 @@ const RUNTIME_BUDGET_FIELDS = Object.freeze([
   ["maxRustUpdateTimeMs", "rust update", "maxRustUpdateTimeMs", "ms"],
   ["maxRenderTimeMs", "render", "maxRenderTimeMs", "ms"],
   ["maxDrawCalls", "draw calls", "maxDrawCalls", "count"],
+  ["maxPointShadowGeometryUploadBytes", "point shadow geometry upload", "maxPointShadowGeometryUploadBytes", "bytes"],
+  ["maxPointShadowGeometryVertexCount", "point shadow vertices", "maxPointShadowGeometryVertexCount", "count"],
   ["maxRenderCommandCount", "render commands", "maxRenderCommandCount", "count"],
   ["maxTextureSwitchCount", "texture switches", "maxTextureSwitchCount", "count"],
   ["maxPhysicsFixedSteps", "fixed steps", "maxPhysicsFixedSteps", "count"],

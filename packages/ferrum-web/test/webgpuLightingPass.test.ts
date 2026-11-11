@@ -24,6 +24,8 @@ class FakeGpuBuffer {
 
 class FakeGpuQueue {
   readonly writeBufferCalls: CapturedWriteBufferCall[] = [];
+  failBuffer?: GPUBuffer;
+  failAtLeastBytes?: number;
   submitCount = 0;
 
   writeBuffer(
@@ -33,6 +35,8 @@ class FakeGpuQueue {
     dataOffset = 0,
     size?: number,
   ): void {
+    if (buffer === this.failBuffer) throw Error("injected shadow write failure");
+    if (this.failAtLeastBytes !== undefined && (size ?? 0) >= this.failAtLeastBytes) throw Error("injected grown shadow write failure");
     const sourceBuffer = ArrayBuffer.isView(data) ? data.buffer : data;
     const sourceByteOffset = ArrayBuffer.isView(data) ? data.byteOffset + dataOffset : dataOffset;
     const byteLength = size ?? sourceBuffer.byteLength - sourceByteOffset;
@@ -146,6 +150,9 @@ test("WebGpuLightingPass records lighting draws into the caller render pass with
     tileOccluderCount: 1,
     shadowDrawCalls: 1,
     shadowCasterCount: 1,
+    shadowGeometryUploadBytes: 240,
+    shadowGeometryVertexCount: 6,
+    shadowGeometryCacheHit: false,
     passEnded:true,
   });
   equal(device.commandEncoderCreated, false);
@@ -250,6 +257,45 @@ class FakeEncoder {
   beginRenderPass():GPURenderPassEncoder {const pass=new FakeRenderPass();this.passes.push(pass);return pass as unknown as GPURenderPassEncoder;}
 }
 function target(encoder=new FakeEncoder(),width=240,height=120){return {encoder:encoder as unknown as GPUCommandEncoder,view:{} as GPUTextureView,width,height};}
+
+test("WebGPU retains packed shadow writes across lights, invalidates encoded inputs and retries a failed write", () => {
+  installWebGpuGlobals(); const device = new FakeGpuDevice();
+  const pass = new WebGpuLightingPass(device as unknown as GPUDevice, "rgba8unorm", {} as GPUPipelineLayout, {} as GPUBindGroup);
+  const scene = normalizeLightingScene({ ambient: [0,0,0,0], pointLights: [{ x: 80, y: 48, radius: 120 }, { x: 160, y: 48, radius: 120 }],
+    tileOccluders: [{ x: 112, y: 24, width: 16, height: 16 }], shadows: true });
+  const draw = (s = scene) => pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder, s, 240, 120, undefined, target());
+  const first = draw(); equal(first.shadowDrawCalls, 2); equal(first.shadowGeometryCacheHit, false); equal(first.shadowGeometryVertexCount! > 0, true);
+  let shadow = device.queue.writeBufferCalls[1].buffer;
+  const warm = draw(); equal(warm.shadowGeometryUploadBytes, 0); equal(warm.shadowGeometryCacheHit, true);
+  equal(device.queue.writeBufferCalls.filter(call => call.buffer === shadow).length, 1);
+  const larger = normalizeLightingScene({ ...scene, pointLights: [...scene.pointLights, ...scene.pointLights] });
+  device.queue.failAtLeastBytes = first.shadowGeometryUploadBytes! + 1;
+  throws(() => draw(larger), /injected/); device.queue.failAtLeastBytes = undefined;
+  equal(draw().shadowGeometryUploadBytes! > 0, true);
+  shadow = device.queue.writeBufferCalls[device.queue.writeBufferCalls.length - 2].buffer;
+  equal(draw().shadowGeometryUploadBytes, 0);
+  const tint = normalizeLightingScene({ ...scene, shadows: { ...scene.shadows, color: [0, 0, 0, .25] } });
+  device.queue.failBuffer = shadow; throws(() => draw(tint), /injected/); device.queue.failBuffer = undefined;
+  equal(draw(tint).shadowGeometryUploadBytes! > 0, true); equal(draw(tint).shadowGeometryUploadBytes, 0);
+  const moved = normalizeLightingScene({ ...scene, pointLights: scene.pointLights.map((light, i) => ({ ...light, x: light.x + i + 1 })) });
+  equal(draw(moved).shadowGeometryUploadBytes! > 0, true); equal(draw(moved).shadowGeometryUploadBytes, 0);
+  const edited = normalizeLightingScene({ ...moved, tileOccluders: [{ ...scene.tileOccluders[0], x: 110 }] });
+  equal(draw(edited).shadowGeometryUploadBytes! > 0, true);
+  equal(draw(normalizeLightingScene({ ...edited, pointLights: [...edited.pointLights].reverse() })).shadowGeometryUploadBytes! > 0, true);
+  pass.destroy();
+});
+
+test("WebGPU leaves larger legacy light lists uncached and reuploads when returning to a bounded list", () => {
+  installWebGpuGlobals(); const device = new FakeGpuDevice();
+  const pass = new WebGpuLightingPass(device as unknown as GPUDevice, "rgba8unorm", {} as GPUPipelineLayout, {} as GPUBindGroup);
+  const scene = normalizeLightingScene({ pointLights: Array.from({ length: 33 }, () => ({ x: 80, y: 48, radius: 120 })),
+    tileOccluders: [{ x: 112, y: 24, width: 16, height: 16 }], shadows: true });
+  const draw = (s = scene) => pass.draw(new FakeRenderPass() as unknown as GPURenderPassEncoder, s, 240, 120, undefined, target());
+  draw(); const warm = draw(); equal(warm.shadowDrawCalls, 33); equal(warm.shadowGeometryCacheHit, false); equal(warm.shadowGeometryUploadBytes! > 0, true);
+  const small = normalizeLightingScene({ ...scene, pointLights: scene.pointLights.slice(0, 1) });
+  equal(draw(small).shadowGeometryUploadBytes! > 0, true); equal(draw(small).shadowGeometryUploadBytes, 0);
+  pass.destroy();
+});
 
 test("WebGPU reuses a single MAX mask and skips targets and passes when no geometry exists",()=>{
   installWebGpuGlobals();const device=new FakeGpuDevice();

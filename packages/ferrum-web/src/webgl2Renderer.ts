@@ -695,6 +695,8 @@ export class WebGL2Renderer implements Renderer {
         this.spriteMaterial,
         this.spriteScreenOffset,
       );
+    const previousPointShadowBytes = this.currentStats.pointShadowGeometryUploadBytes ?? 0;
+    const previousPointShadowVertices = this.currentStats.pointShadowGeometryVertexCount ?? 0;
     writeRendererStatsForCommandsInto(
       this.currentStats,
       commands,
@@ -726,6 +728,9 @@ export class WebGL2Renderer implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    this.currentStats.pointShadowGeometryUploadBytes = previousPointShadowBytes + (lightingStats.shadowGeometryUploadBytes ?? 0);
+    this.currentStats.pointShadowGeometryVertexCount = previousPointShadowVertices + (lightingStats.shadowGeometryVertexCount ?? 0);
+    this.currentStats.pointShadowGeometryCacheHit = this.currentStats.pointShadowGeometryVertexCount > 0 && this.currentStats.pointShadowGeometryUploadBytes === 0;
     if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     this.frameHasDrawnScene = true;
     return this.stats();

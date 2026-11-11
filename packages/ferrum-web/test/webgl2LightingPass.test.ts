@@ -27,6 +27,8 @@ class FakeWebGL2Context {
   readonly FRAMEBUFFER_COMPLETE=0x8cd5; readonly SCISSOR_TEST=0xc11; readonly COLOR_WRITEMASK=0xc23;
   readonly MAX_TEXTURE_SIZE=0xd33; readonly TEXTURE0=0x84c0; readonly TEXTURE3=0x84c3;
   textureCount=0; deletedTextures=0; framebufferCount=0; failFramebuffer=false;
+  failUpload = false;
+  failAllocation = false;
   readonly equations:number[]=[];
   blendEquation(value:number):void {this.equations.push(value);}
   uniform3f():void {}
@@ -100,6 +102,7 @@ class FakeWebGL2Context {
   bindBuffer(): void {}
 
   bufferData(_target: number, sizeOrData: number | ArrayBufferView, _usage: number): void {
+    if (this.failAllocation) throw Error("injected shadow allocation failure");
     const byteLength = typeof sizeOrData === "number" ? sizeOrData : sizeOrData.byteLength;
     this.bufferDataCalls.push({ byteLength });
   }
@@ -131,6 +134,7 @@ class FakeWebGL2Context {
     srcOffset = 0,
     length?: number,
   ): void {
+    if (this.failUpload) throw Error("injected shadow upload failure");
     const floatCount = length ?? srcData.length - srcOffset;
     this.bufferSubDataCalls.push({
       length: floatCount,
@@ -170,6 +174,9 @@ test("WebGL2LightingPass batches tile occluder shadows per light", () => {
     tileOccluderCount: 0,
     shadowDrawCalls: 1,
     shadowCasterCount: 2,
+    shadowGeometryUploadBytes: 120,
+    shadowGeometryVertexCount: 15,
+    shadowGeometryCacheHit: false,
   });
   equal(gl.bufferSubDataCalls.length, 1);
   equal(gl.drawArraysCalls.length, 2);
@@ -194,7 +201,60 @@ test("WebGL2LightingPass keeps shadow draw and caster counts distinct across lig
 
   equal(stats.shadowDrawCalls, 2);
   equal(stats.shadowCasterCount, 2);
-  equal(gl.bufferSubDataCalls.length, 2);
+  equal(gl.bufferSubDataCalls.length, 1);
+  equal(gl.drawArraysCalls[2].first, gl.drawArraysCalls[0].count);
+});
+
+test("packed WebGL shadow geometry stays uploaded across lights and uniform-only edits, invalidates on geometry, and retries failed writes", () => {
+  const gl = new FakeWebGL2Context(), pass = new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
+  const scene = normalizeLightingScene({ pointLights: [{ x: 80, y: 48, radius: 120 }, { x: 160, y: 48, radius: 120 }],
+    tileOccluders: [{ x: 112, y: 24, width: 16, height: 16 }], shadows: true });
+  const draw = (s = scene) => pass.draw(s, [240, 120], undefined, target());
+  const first = draw(); ok(first.shadowGeometryUploadBytes! > 0); equal(first.shadowDrawCalls, 2);
+  const warm = draw(); equal(warm.shadowGeometryUploadBytes, 0); equal(warm.shadowGeometryCacheHit, true);
+  equal(warm.shadowGeometryVertexCount, first.shadowGeometryVertexCount); equal(gl.bufferSubDataCalls.length, 1);
+  const larger = normalizeLightingScene({ ...scene, pointLights: [...scene.pointLights, ...scene.pointLights] });
+  gl.failUpload = true; throws(() => draw(larger), /injected/); gl.failUpload = false;
+  ok(draw().shadowGeometryUploadBytes! > 0); equal(draw().shadowGeometryUploadBytes, 0);
+  const tint = normalizeLightingScene({ ...scene, shadows: { ...scene.shadows, color: [.2, .1, .3, .25] } });
+  equal(draw(tint).shadowGeometryUploadBytes, 0);
+  const moved = normalizeLightingScene({ ...scene, pointLights: scene.pointLights.map((light, i) => ({ ...light, x: light.x + i + 1 })) });
+  gl.failUpload = true; throws(() => draw(moved), /injected/); gl.failUpload = false;
+  ok(draw(moved).shadowGeometryUploadBytes! > 0); equal(draw(moved).shadowGeometryUploadBytes, 0);
+  const edited = normalizeLightingScene({ ...moved, tileOccluders: [{ ...scene.tileOccluders[0], x: 110 }] });
+  ok(draw(edited).shadowGeometryUploadBytes! > 0);
+  ok(draw(normalizeLightingScene({ ...edited, pointLights: [...edited.pointLights].reverse() })).shadowGeometryUploadBytes! > 0);
+});
+
+test("WebGL shadow cache retries capacity growth after a failed GPU allocation", () => {
+  const gl = new FakeWebGL2Context(), pass = new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
+  const small = normalizeLightingScene({ pointLights: [{ x: 80, y: 48, radius: 120 }],
+    tileOccluders: [{ x: 112, y: 24, width: 16, height: 16 }], shadows: true });
+  const larger = normalizeLightingScene({ ...small, pointLights: Array.from({ length: 8 }, () => small.pointLights[0]) });
+  const draw = (scene = small) => pass.draw(scene, [240, 120], undefined, target());
+  draw();
+  const allocations = gl.bufferDataCalls.length;
+  gl.failAllocation = true; throws(() => draw(larger), /injected shadow allocation failure/); gl.failAllocation = false;
+  equal(gl.bufferDataCalls.length, allocations);
+  ok(draw(larger).shadowGeometryUploadBytes! > 0);
+  equal(gl.bufferDataCalls.length, allocations + 1);
+  equal(draw(larger).shadowGeometryUploadBytes, 0);
+});
+
+test("WebGL shadow cache falls back without losing lights above32 sources or2MiB packed coordinates", () => {
+  for (const [count, casters] of [[33, 1], [32, 2048]]) {
+    const gl = new FakeWebGL2Context(), pass = new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
+    const scene = normalizeLightingScene({ pointLights: Array.from({ length: count }, () => ({ x: 80, y: 48, radius: 200 })),
+      tileOccluders: Array.from({ length: casters }, () => ({ x: 24, y: 24, width: 16, height: 16 })), shadows: true });
+    const draw = () => pass.draw(scene, [240, 120], undefined, target());
+    draw(); const warm = draw(); equal(warm.shadowDrawCalls, count); equal(warm.shadowGeometryCacheHit, false);
+    ok(warm.shadowGeometryUploadBytes! > 0); equal(gl.bufferSubDataCalls.length, count * 2);
+    if (casters > 1) ok(warm.shadowGeometryUploadBytes! > 2 * 1024 * 1024);
+    ok(pass.resourceStats().bufferBytes <= 2 * 1024 * 1024);
+    const small = normalizeLightingScene({ ...scene, pointLights: scene.pointLights.slice(0, 1), tileOccluders: scene.tileOccluders.slice(0, 1) });
+    ok(pass.draw(small, [240, 120], undefined, target()).shadowGeometryUploadBytes! > 0);
+    equal(pass.draw(small, [240, 120], undefined, target()).shadowGeometryUploadBytes, 0);
+  }
 });
 
 test("WebGL2LightingPass skips culled shadow casters without uploads", () => {
