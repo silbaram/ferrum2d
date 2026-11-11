@@ -1,3 +1,4 @@
+import { spatialSunPcssScale } from "./spatialSunPcss.js";
 import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import type { SpatialRendererStats } from "./renderer.js";
 import { WebGpuSpatialBloom } from "./webgpuSpatialBloom.js";
@@ -12,11 +13,11 @@ import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 // v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
-const UNIFORM_BYTES = 2624,
+const UNIFORM_BYTES = 2640,
   UNIFORM_STRIDE = 2816;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 @group(2) @binding(3) var<uniform> receiver:vec4u;
@@ -382,6 +383,7 @@ export class WebGpuSpatialEnvironment {
     this.values[648] = Number(!!bloomView);
     this.values[649] = this.bloomPlan?.sampleWidth ?? 1; this.values[650] = this.bloomPlan?.sampleHeight ?? 1;
     this.values.set([secondSpatialShadowSlot(env?.values), env?.values[586] ?? 0, env?.values[587] ?? 0, 0], 652);
+    this.values.set([env?.values[592] ?? 0, spatialSunPcssScale(env?.values), env?.values[594] ?? 0, 0], 656);
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);

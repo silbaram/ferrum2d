@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 592;
+pub(crate) const ENVIRONMENT_VALUES: usize = 600;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -38,6 +38,7 @@ impl SpatialEnvironment {
             LIGHT_CHANNEL_VALUES,
             580,
             584,
+            592,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -168,9 +169,12 @@ impl SpatialEnvironment {
         {
             return None;
         }
-        if v.len() == 592
-            && (!point_shadows::valid(&a)
-                || ![0., 1.].contains(&a[583])
+        if v.len() >= 592
+            && (!(if v.len() > 592 && a[589] == 0. {
+                a[584..592].iter().all(|x| *x == 0.)
+            } else {
+                point_shadows::valid(&a)
+            }) || ![0., 1.].contains(&a[583])
                 || (a[583] == 0. && a[576..580].iter().any(|x| *x != 0.))
                 || if a[580] == 1. {
                     !(a[528] == 1.
@@ -181,6 +185,19 @@ impl SpatialEnvironment {
                     a[580..583].iter().any(|x| *x != 0.)
                 })
         {
+            return None;
+        }
+        // v11: optional sun PCSS, with a disabled render tail when lighting is off.
+        if !(if a[592] == 0. {
+            a[593..600].iter().all(|x| *x == 0.)
+        } else {
+            a[592] == 1.
+                && a[83] == 1.
+                && a[92] > 0.
+                && (0. ..=5.).contains(&a[593])
+                && (1. ..=32.).contains(&a[594])
+                && a[595..600].iter().all(|x| *x == 0.)
+        }) {
             return None;
         }
         let count = a[1] as usize;
@@ -331,10 +348,11 @@ impl SpatialEnvironment {
                     v[83..96].fill(0.);
                     v[112..125].fill(0.);
                     v[512..528].fill(0.);
+                    v[592..600].fill(0.);
                 }
             }
             self.shadow_matrices.clear();
-            if self.value_len == 592 {
+            if self.value_len >= 592 && v[589] == 1. {
                 v[588] = if v[0] as u32 & 1 != 0 && v[584] >= 0. {
                     1.
                 } else {

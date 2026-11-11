@@ -1,3 +1,4 @@
+import { auditSpatialSunPcssPixels, SUN_PCSS_PASSES } from "./spatial-sun-pcss-report.mjs";
 import { auditSpatialPointShadowPixels, POINT_SHADOW_STATES } from "./spatial-point-shadows-report.mjs";
 import { auditSpatialBloomPixels, WIDE_BLOOM_STATES } from "./spatial-bloom-report.mjs";
 import assert from "node:assert/strict";
@@ -29,6 +30,7 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
+const sunPcssOnly = process.argv.includes("--sun-pcss-only");
 const pointShadowsOnly = process.argv.includes("--point-shadows-only");
 const wideBloomFogOnly = process.argv.includes("--wide-bloom-fog-only");
 const wideBloomOnly = wideBloomFogOnly || process.argv.includes("--wide-bloom-only");
@@ -49,7 +51,7 @@ const compositionOnly = process.argv.includes("--composition-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([sunPcssOnly, pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;import{probeFlatShadowIsolation}from'/flat-shadows.mjs';window.probeFlatShadowIsolation=probeFlatShadowIsolation;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -60,11 +62,11 @@ const server = createServer((req, res) => {
     }
     if (path === "/") {
       res.setHeader("Content-Type", "text/html");
-      res.end(html + '<script type="module">import{probeSpatialPointShadows}from"/point-shadows.mjs";window.probeSpatialPointShadows=probeSpatialPointShadows;import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialWideBloom}from"/wide-bloom.mjs";window.probeSpatialWideBloom=probeSpatialWideBloom;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
+      res.end(html + '<script type="module">import{probeSpatialSunPcss}from"/sun-pcss.mjs";window.probeSpatialSunPcss=probeSpatialSunPcss;import{probeSpatialPointShadows}from"/point-shadows.mjs";window.probeSpatialPointShadows=probeSpatialPointShadows;import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialWideBloom}from"/wide-bloom.mjs";window.probeSpatialWideBloom=probeSpatialWideBloom;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/point-shadows.mjs" ? "tests/smoke/spatial-point-shadows-browser-fixture.mjs" : path === "/bloom-reference.mjs" ? "tests/smoke/spatial-bloom-reference.mjs" : path === "/wide-bloom.mjs" ? "tests/smoke/spatial-wide-bloom-browser-fixture.mjs" : path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/sun-pcss.mjs" ? "tests/smoke/spatial-sun-pcss-browser-fixture.mjs" : path === "/point-shadows.mjs" ? "tests/smoke/spatial-point-shadows-browser-fixture.mjs" : path === "/bloom-reference.mjs" ? "tests/smoke/spatial-bloom-reference.mjs" : path === "/wide-bloom.mjs" ? "tests/smoke/spatial-wide-bloom-browser-fixture.mjs" : path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -109,7 +111,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: pointShadowsOnly ? "point-shadows-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: sunPcssOnly ? "sun-pcss-only" : pointShadowsOnly ? "point-shadows-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -124,6 +126,7 @@ const report = {
   compositionCases: [],
   wideBloomCases: [],
   pointShadowCases: [],
+  sunPcssCases: [],
   lightSelectionCases: [],
   shadowCases: [],
   flatShadowCases: [],
@@ -175,6 +178,27 @@ try {
         report.activeCase = { viewport, deviceScaleFactor };
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
+        if (sunPcssOnly || ![pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, fallbackOnly, modelsOnly, environmentOnly, shadowsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].some(Boolean)) {
+          await page.waitForFunction(() => window.probeSpatialSunPcss);
+          for (const colorManagement of ["legacy", "linear-srgb"]) {
+            const result = await page.evaluate(mode => window.probeSpatialSunPcss(mode), colorManagement).catch(async error => {
+              report.sunPcssFailure = await page.evaluate(() => window.sunPcssState); throw error;
+            });
+            assert.equal(result.length, 2);
+            const entry = { viewport, deviceScaleFactor, colorManagement, result, status: "pixels-pending" }; report.sunPcssCases.push(entry);
+            for (const projection of result) for (const backend of projection.backends) {
+              assert.equal(backend.snapshotVersion, 14); assert.deepEqual(backend.errors, []);
+              assert.equal(backend.rows.length, Object.keys(SUN_PCSS_PASSES).length + Number(backend.backend === "webgpu"));
+              for (const row of backend.rows) {
+                const file = `sun-pcss-${colorManagement}-${projection.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+                await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64")); row.image = file;
+              }
+              backend.pixelAudit = await auditSpatialSunPcssPixels(backend.rows, file => readFile(resolve(output, file)));
+            }
+            entry.status = "passed";
+          }
+          assert.deepEqual(errors, []); if (sunPcssOnly) continue;
+        }
         if (pointShadowsOnly || ![wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, fallbackOnly, modelsOnly, environmentOnly, shadowsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].some(Boolean)) {
           await page.waitForFunction(() => window.probeSpatialPointShadows);
           for (const colorManagement of ["legacy", "linear-srgb"]) {

@@ -1,3 +1,4 @@
+import { requestsSpatialSunPcss, supportsSpatialSunPcss } from "./spatialSunPcss.js";
 import { requestsSpatialPointShadows, supportsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom, supportsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
@@ -1032,6 +1033,7 @@ export async function createEngineWithFramePipeline(
     },
     supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
     supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
+    supportsSpatialSunPcss: () => { requireAlive(); return supportsSpatialSunPcss(rustEngine); },
     supportsSpatialPointShadows: () => { requireAlive(); return supportsSpatialPointShadows(rustEngine); },
     supportsSpatialWideBloom: () => { requireAlive(); return supportsSpatialWideBloom(rustEngine); },
     supportsSpatialLightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine); },
@@ -1047,6 +1049,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialSunPcss(environment) && !supportsSpatialSunPcss(rustEngine)) return false;
       if (requestsSpatialPointShadows(environment) && !supportsSpatialPointShadows(rustEngine)) return false;
       if (requestsSpatialWideBloom(environment) && !supportsSpatialWideBloom(rustEngine)) return false;
       if (requestsSpatialLightSelection(environment) && !supportsSpatialLightSelection(rustEngine)) return false;

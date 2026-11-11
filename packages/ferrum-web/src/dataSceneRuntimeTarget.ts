@@ -1,3 +1,4 @@
+import { requestsSpatialSunPcss } from "./spatialSunPcss.js";
 import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
@@ -156,6 +157,7 @@ export interface DataSceneRuntimeEngineAdapter {
   supportsSpatialReceiverMasks?(): boolean;
   supportsSpatialLightChannels?(): boolean;
   supportsSpatialPointShadows?(): boolean;
+  supportsSpatialSunPcss?(): boolean;
   supportsSpatialWideBloom?(): boolean;
   supportsSpatialLightSelection?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
@@ -237,8 +239,10 @@ function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSp
   const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
   const selection = requestsSpatialLightSelection(spec?.environment);
   const wideBloom = requestsSpatialWideBloom(spec?.environment), pointShadows = requestsSpatialPointShadows(spec?.environment);
-  if (!receivers && !channels && !selection && !wideBloom && !pointShadows) return;
+  const sunPcss = requestsSpatialSunPcss(spec?.environment);
+  if (!receivers && !channels && !selection && !wideBloom && !pointShadows && !sunPcss) return;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  if (sunPcss && !adapter.supportsSpatialSunPcss?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Sun PCSS requires native v1 support");
   if (pointShadows && !adapter.supportsSpatialPointShadows?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "pointShadows requires native v1 support");
   if (wideBloom && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "wide Bloom requires native v1 support");
   if (selection && !adapter.supportsSpatialLightSelection?.())
@@ -675,6 +679,7 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (requestsSpatialSunPcss(environment) && !adapter.supportsSpatialSunPcss?.()) throw sceneCompositionDiagnosticError(environmentPath, "Sun PCSS requires native v1 support");
   if (requestsSpatialPointShadows(environment) && !adapter.supportsSpatialPointShadows?.()) throw sceneCompositionDiagnosticError(environmentPath, "pointShadows requires native v1 support");
   if (requestsSpatialWideBloom(environment) && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(environmentPath, "wide Bloom requires native v1 support");
   if (requestsSpatialLightSelection(environment) && !adapter.supportsSpatialLightSelection?.())

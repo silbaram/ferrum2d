@@ -1,3 +1,4 @@
+import { SUN_PCSS_WGSL } from "./spatialSunPcss.js";
 import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
@@ -65,6 +66,7 @@ fn sunCompare(pixel:vec2i,size:vec2u,q:vec3f,gradient:vec2f,bias:f32)->f32{
  if(expected<0. || expected>1.){return 1.;}
  return select(1.,0.,textureLoad(sunMap,vec2i(at.x,i32(size.y)-1-at.y),0)+bias<expected);
 }
+${SUN_PCSS_WGSL}
 fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  let clip=env.shadow[6]*vec4f(world+geometric*e(124u),1.);let q=clip.xyz/clip.w*.5+.5;
  if(any(q<vec3f(0.))||any(q>vec3f(1.))){return 1.;}
@@ -79,7 +81,11 @@ fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
   let up=vec3f(m[0][1],m[1][1],m[2][1])*extent;
   gradient=vec2f(dot(geometric,r),dot(geometric,up))*(2.*extent/(span*incidence));
   bias+=(abs(gradient.x)+abs(gradient.y))/(8.*f32(size.x));
- }else{bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered)/span;}
+ }else{
+  let footprint=select(select(1.,3.,filtered),select(1.,max(1.,env.sunPcss.z),env.sunPcss.y>0.),env.sunPcss.x>0.);
+  bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*footprint/span;
+ }
+ if(env.sunPcss.x>0.){return mix(1.,sunPcssVisibility(q,size,gradient,bias),weight);}
  // Choose canonical Y-up texels first; flip the integer row only for textureLoad.
  let pixel=vec2i(floor(q.xy*vec2f(size)));
  if(!filtered){return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);}

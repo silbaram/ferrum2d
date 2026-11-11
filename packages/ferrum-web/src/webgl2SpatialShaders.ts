@@ -1,3 +1,4 @@
+import { SUN_PCSS_GLSL } from "./spatialSunPcss.js";
 import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
 export const spatialVertexSource = `#version 300 es
 layout(location=0) in vec3 a_position;layout(location=1) in vec2 a_uv;
@@ -22,7 +23,7 @@ uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform vec2 u_receiverMasks;uniform vec4 u_lightChannels;uniform float u_sunChannels;
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
-uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
+uniform vec3 u_sunDirection,u_sunParams,u_sunPcss;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
 uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGround;uniform vec2 u_shadowNormalBias;
 layout(location=0) out vec4 outColor;
 layout(location=1) out vec4 outIndirect;
@@ -88,6 +89,7 @@ float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
  if(expected<0. || expected>1.)return 1.;
  return texelFetch(u_sunMap,ivec2(at),0).r+bias<expected?0.:1.;
 }
+${SUN_PCSS_GLSL}
 float sunVisibility(vec3 world,vec3 geometric){
  vec4 clip=u_sunMatrix*vec4(world+geometric*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
  if(any(lessThan(q,vec3(0.))) || any(greaterThan(q,vec3(1.))))return 1.;
@@ -111,8 +113,10 @@ float sunVisibility(vec3 world,vec3 geometric){
  }else{
   float angle=max(incidence,0.);
   float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
-  bias+=2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.)/u_sunParams.x;
+  float footprint=u_sunPcss.x>0.?(u_sunPcss.y>0.?max(1.,u_sunPcss.z):1.):(u_shadowFilter==1?3.:1.);
+  bias+=2.*u_sunParams.z*texel.x*slope*footprint/u_sunParams.x;
  }
+ if(u_sunPcss.x>0.)return mix(1.,sunPcssVisibility(q,size,gradient,bias),weight);
  vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);
  float visibility=0.;
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){

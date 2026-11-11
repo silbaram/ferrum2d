@@ -74,7 +74,7 @@ export function validateSpatialGeometryFrame(frame: SpatialRenderBufferView): nu
 }
 /** Validate independent native extensions before backend resources are touched. */
 export function validateSpatialExtensions(frame: SpatialRenderBufferView): void {
-  if (frame.models && frame.models.version !== (frame.environment?.version === 10 ? 2 : 1))
+  if (frame.models && frame.models.version !== ((frame.environment?.version ?? 0) >= 10 ? 2 : 1))
     throw Error("Mismatched model/environment ABI");
   validateSpatialReceiverMasks(frame);
   const debug = frame.debug;
@@ -98,9 +98,9 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
   if (
     environment !== undefined &&
     (!environment ||
-      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4 && environment.version !== 5 && environment.version !== 6 && environment.version !== 7 && environment.version !== 8 && environment.version !== 9 && environment.version !== 10) ||
+      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4 && environment.version !== 5 && environment.version !== 6 && environment.version !== 7 && environment.version !== 8 && environment.version !== 9 && environment.version !== 10 && environment.version !== 11) ||
       !(environment.values instanceof Float32Array) ||
-      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : environment.version === 4 ? 512 : environment.version === 5 ? 528 : environment.version === 6 ? 544 : environment.version === 7 ? 576 : environment.version === 8 ? 580 : environment.version === 9 ? 584 : 592) ||
+      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : environment.version === 4 ? 512 : environment.version === 5 ? 528 : environment.version === 6 ? 544 : environment.version === 7 ? 576 : environment.version === 8 ? 580 : environment.version === 9 ? 584 : environment.version === 10 ? 592 : 600) ||
       !validSpatialEnvironmentValues(environment.values) ||
       !(environment.shadowMatrices instanceof Float32Array) ||
       !(environment.shadowCasters instanceof Float32Array) ||
@@ -129,19 +129,19 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
       submission.revision > 0xffffffff ||
       !(submission.ranges instanceof Uint32Array) ||
       submission.ranges.length % 4 ||
-      submission.ranges.length > (environment!.version === 10 ? 66560 : 35840)
+      submission.ranges.length > (environment!.version >= 10 ? 66560 : 35840)
     )
       throw new Error("Invalid shadow submission buffer");
     let previousFace = -1,
       previousSource = -1,
       previousEnd = 0;
-    const batches = new Uint32Array(environment!.version === 10 ? 13 : 7);
+    const batches = new Uint32Array(environment!.version >= 10 ? 13 : 7);
     for (let i = 0; i < submission.ranges.length; i += 4) {
       const [face, source, first, count] = submission.ranges.subarray(i, i + 4);
       const stride = source === 0 ? 36 : 6;
       const vertices = source === 0 ? frame.terrain : environment!.shadowCasters;
       if (
-        face > (environment!.version === 10 ? 12 : 6) ||
+        face > (environment!.version >= 10 ? 12 : 6) ||
         (face >= 7 && secondSpatialShadowSlot(environment!.values) < 0) ||
         (face === 6 && !(environment!.values[92] > 0)) ||
         source > 1 ||

@@ -53,6 +53,95 @@ fn two_point_shadow_values() -> Vec<f32> {
     v
 }
 #[test]
+fn sun_pcss_v11_preserves_source_history_and_rejects_invalid_input_atomically() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(600, 0.);
+    v[83..95].copy_from_slice(&[1., 0., 1., 0., 1., 1., 1., 1., 300., 512., 0.05, 100.]);
+    v[592..595].copy_from_slice(&[1., 0.5, 16.]);
+    assert_eq!(e.spatial_sun_pcss_abi_version(), 1);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.01);
+    assert_eq!(e.spatial_environment_abi_version(), 11);
+    assert_eq!(e.spatial_environment_len(), 600);
+    assert_eq!(e.spatial_model_abi_version(), 2);
+    assert_eq!(e.spatial_shadow_matrix_len(), 208);
+    let matrices = e.spatial_scene.environment.shadow_matrices.clone();
+    let history = e.capture_spatial_light_selection_state();
+    for (at, value) in [
+        (592, 0.),
+        (592, 2.),
+        (593, -1.),
+        (593, 6.),
+        (594, 0.),
+        (594, 33.),
+        (595, 1.),
+        (599, f32::NAN),
+    ] {
+        let mut bad = v.clone();
+        bad[at] = value;
+        assert!(
+            !e.configure_spatial_environment(&bad),
+            "accepted {at}={value}"
+        );
+        assert_eq!(e.capture_spatial_environment(), v);
+        assert_eq!(e.capture_spatial_light_selection_state(), history);
+    }
+    // Sampling controls do not change the depth map or native selection history.
+    v[593] = 0.;
+    v[594] = 32.;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_scene.environment.shadow_matrices, matrices);
+    assert_eq!(e.capture_spatial_light_selection_state(), history);
+    v[0] = 0.;
+    v[1] = 0.;
+    v[2] = -1.;
+    v[3] = 0.;
+    v[4] = 0.05;
+    v[12..60].fill(0.);
+    v[545..549].fill(0.);
+    v[588] = -1.;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.capture_spatial_environment(), v);
+    assert!(e.spatial_scene.environment.frame_values[592..600]
+        .iter()
+        .all(|x| *x == 0.));
+    assert_eq!(e.spatial_shadow_matrix_len(), 0);
+}
+
+#[test]
+fn sun_pcss_v11_allows_no_point_shadow_and_legacy_point_shadow_without_fake_second_owner() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(600, 0.);
+    v[584..592].fill(0.);
+    v[83..95].copy_from_slice(&[1., 0., 1., 0., 1., 1., 1., 1., 300., 128., 0.05, 100.]);
+    v[592..595].copy_from_slice(&[1., 5., 32.]);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.01);
+    assert_eq!(e.spatial_shadow_matrix_len(), 112);
+    assert!(e
+        .spatial_scene
+        .shadow_draw_ranges
+        .iter()
+        .all(|r| r.face <= 6));
+    // Reuse the emitted active-prefix order when removing the legacy shadow owner.
+    v[2] = -1.;
+    v[3] = 0.;
+    v[138] = -1.;
+    v[139..142].fill(0.);
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_shadow_matrix_len(), 16);
+    assert!(e
+        .spatial_scene
+        .shadow_draw_ranges
+        .iter()
+        .all(|r| r.face == 6));
+}
+#[test]
 fn spatial_environment_v10_pins_two_owners_and_preserves_atomic_history_and_off_source() {
     let (mut e, actor) = setup();
     let v = two_point_shadow_values();

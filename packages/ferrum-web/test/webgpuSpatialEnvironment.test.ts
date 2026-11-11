@@ -98,9 +98,9 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
-            shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length === 592 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
+            shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length >= 592 && values[589] === 1 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
             shadowCasterVertexCount: 0,
           },
@@ -118,6 +118,22 @@ function setup() {
     pass = new WebGpuSpatialEnvironment(device as unknown as GPUDevice, "rgba8unorm");
   return { device, pass };
 }
+test("sun PCSS packs both camera records without new targets and clears on legacy frames", () => {
+  const { device, pass } = setup();
+  const sun = { direction: { x: 0, y: 0, elevation: 1 }, shadows: { resolution: 512 as const, extent: 100, distance: 300 } };
+  pass.prepare(frame({ lighting: { lights: [], directional: sun } }), 160, 90);
+  const resources = [device.buffers.length, device.textures.length];
+  const f = frame({ lighting: { lights: [], directional: { ...sun, shadows: { ...sun.shadows, pcss: {} } } } });
+  validateSpatialExtensions(f); pass.prepare(f, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  equal(packed[656], 1); equal(packed[658], 16);
+  ok(Math.abs(packed[657] - Math.tan(.5 * Math.PI / 180) * 300 * 512 / 100) < 1e-5);
+  deepEqual(packed.subarray(656, 660), packed.subarray(2816 / 4 + 656, 2816 / 4 + 660));
+  pass.prepare(frame({ lighting: { lights: [], directional: sun } }), 160, 90);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(656, 660)], [0, 0, 0, 0]);
+  pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
+});
 test("two point cubes use independent resolution/camera slots, warm reuse and OFF release", () => {
   const { device, pass } = setup();
   const spec: SpatialEnvironmentSpec = { lighting: { lights: [-40, 40].map(x => ({ position: { x, y: 0, elevation: 64 }, radius: 200 })),

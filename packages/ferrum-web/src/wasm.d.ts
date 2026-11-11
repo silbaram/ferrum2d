@@ -99,6 +99,7 @@ declare module "../pkg/ferrum_core.js" {
     spatial_light_channel_abi_version(): number;
     spatial_wide_bloom_abi_version(): number;
     spatial_point_shadows_abi_version(): number;
+    spatial_sun_pcss_abi_version(): number;
     spatial_light_selection_abi_version(): number;
     spatial_light_selection_progress_abi_version(): number;
     spatial_light_selection_diagnostic_size_bytes(): number;

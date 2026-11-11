@@ -18,7 +18,7 @@ impl SpatialScene {
             return;
         }
         let v = &self.environment.frame_values;
-        let second = v.len() == 592 && v[588] >= 0.;
+        let second = v.len() >= 592 && v[589] == 1. && v[588] >= 0.;
         let sun = v.get(92).is_some_and(|n| *n > 0.);
         for face in 0..if second { 13 } else { 7 } {
             if (face < 6 && v[2] < 0.) || (face == 6 && !sun) {

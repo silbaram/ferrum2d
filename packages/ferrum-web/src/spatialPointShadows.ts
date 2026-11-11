@@ -18,10 +18,10 @@ export function supportsSpatialPointShadows(engine: unknown): boolean {
   return typeof native?.spatial_point_shadows_abi_version === "function" && native.spatial_point_shadows_abi_version() === 1;
 }
 export function secondSpatialShadowSlot(v?: Float32Array): number {
-  return v?.length === 592 ? v[588] : -1;
+  return v && v.length >= 592 && v[589] === 1 ? v[588] : -1;
 }
 export function spatialShadowOwner(v: Float32Array, source: number): number {
-  return source === v[138] ? 0 : v.length === 592 && source === v[584] ? 1 : -1;
+  return source === v[138] ? 0 : v.length >= 592 && v[589] === 1 && source === v[584] ? 1 : -1;
 }
 export function validSpatialPointShadows(v: Float32Array): boolean {
   if (v[589] !== 1 || v[590] !== 0 || v[591] !== 0 || v[138] < 0 || !Number.isInteger(v[584])
