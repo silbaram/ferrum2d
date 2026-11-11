@@ -1660,7 +1660,8 @@ camera:null 저장은 pose를 포함하지 않으므로 복원되는 개체 위�
 
 바깥 GameStateSnapshot version은 2다. 공간 pose/camera capture는 Data Scene v6이며,
 authored 또는 runtime environment만 있는 공간 진행 capture는 **v7**이다. attachment·LOD·chunk 또는 model runtime yaw가 있으면 **v8**이다. 일반 capture는 v5를 유지한다.
-`DATA_SCENE_STATE_VERSION`은 최신 지원값 7이다. v2~v6을 기본값 주입이나 재해시 없이 계속 읽으며,
+`DATA_SCENE_STATE_VERSION`은 최신 지원값15다. 점광원 PCSS는v15, 태양 PCSS는v14를 사용한다.
+나머지 기능별 저장 버전은 [공간 API의 저장 계약](public-api/core.md#data-scene-공간-경로-개발-소스)을 따른다. v2~v14를 기본값 주입이나 재해시 없이 계속 읽으며,
 과거 공간 문서에 pose/camera 진행이 없으면 authored 기본값으로 복원한다.
 v5 이하에 새 공간 필드를 넣으면 거절한다. `includeDataSceneProgress` 생략 시에는 이전처럼 문서 설정만 복원한다.
 v7의 `progress.spatial.environment`는 현재 native 설정이며 null은 authored 효과의 명시적 해제다.
@@ -1853,7 +1854,7 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 
 - `spot.direction`은 광원에서 바깥으로 향하는 nonzero X/Y/elevation 벡터다. compiler가 정규화한다.
   `angle`은 조사 **반각** 1..89도(기본 45), `penumbra`는 0..1(기본 0.25)이며 0은 단단한 경계다.
-  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트 그림자도 기존 단일 cube budget을 사용한다.
+  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트도 선택한 shadow owner마다 cube 1개를 사용하며 최대 2개 owner 한도를 공유한다.
 - `lightBindings`는 씬의 instance ID → 광원 index 배열이다. 하나의 광원에는 하나의 target만 허용한다.
   position은 객체 위치·물리 elevation·시각 offset에 더하는 **월드 축 기준 offset**이다. 회전/scale은 상속하지 않는다.
   대상은 cold apply에서 generation handle로 연결하고 native가 추적한다. 씬을 새로 열 때 ID를 새 handle에 연결한다.
@@ -1876,7 +1877,7 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
 기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
 기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
-WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom 설정을2,608-byte private uniform에 담는다.
+WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom·두 번째 점광원·태양/점광원 PCSS 설정을2,672-byte private uniform에 담는다.
 256-byte 정렬 간격은2,816 bytes이며 두 슬롯을 사용한다. native 환경 record와 별도 구조다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
 
@@ -2050,7 +2051,7 @@ Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원
 
 WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
 기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
-최대65,536 pair/16 MiB다. 환경 uniform은2,608-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+최대65,536 pair/16 MiB다. 환경 uniform은2,672-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
 수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
 회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
 

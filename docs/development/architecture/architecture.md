@@ -1053,13 +1053,13 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid를2,608-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS 설정을2,672-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
 `webgpuSpatialShadows`는 depth32float point 6-layer array와 sun 2D target을 소유한다. native matrix로 face UV를 투영하고
 radial/projected depth·slope bias·hard/PCF를 공유하며 shadow pass에는 sampling group을 연결하지 않아 read/write alias를 피한다.
-camera8개 record와 model8개 pass의 matrix를 draw 전에 한 번씩 bulk upload하고 각 draw는 별도 offset을 사용한다.
+camera는 main+최대13개 shadow face의14개 record를 예약하고 model staging도 최대14 pass를 지원한다. dirty map의 matrix만 채워 main과 함께 draw 전에 bulk upload하고 각 draw는 별도 offset을 사용한다.
 receive flag는 같은 환경의 두 bind group으로 선택하며 per-draw queue overwrite를 하지 않는다.
 shared `SpatialShadowCache`는 native caster/terrain revision·light/matrix·모델 shadow mask/content/pose와 색 atlas revision을 비교한다.
 WebGPU texture store는 replace/alpha patch마다 해당 texture revision을 갱신한다. 정상 warm frame은 GPU object를 다시 만들지 않는다.
@@ -2088,7 +2088,7 @@ TS는 raw cube depth와 수신 평면 보정을 공유하는 point sample에서 
 16+32회로 제한된 필터를 실행한다. cube 면 선택과 texel 중심 보정은 hard/PCF3와 같으며
 광원별 PCSS override가 없는 query는 기존 경로를 유지한다. 고정 disk 좌표 생성은 태양과 공유한다.
 WebGPU private uniform의 660~663/664~667은 각각 첫/두 번째 point PCSS record다.
-record2672 bytes·stride2816·두 camera allocation5632 bytes이며 두 번째 record에도 새 tail을 복사한다.
+유효 record는2640에서2672 bytes로32 bytes 늘지만 stride2816·두 camera allocation5632 bytes는 유지하며 두 번째 record에도 새 tail을 복사한다.
 WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가면 두 backend 모두 tail을 0으로 쓴다.
 샘플링 설정은 depth cache key에 포함하지 않는다. GPU texture/target/instance staging 예산은 늘리지 않는다.
 구 core 사전 거절은 직접 설정, authoring preflight, progress-only 복원에서도 실행한다.

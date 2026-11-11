@@ -7,7 +7,7 @@ AO를 환경광·hemisphere 성분에만 적용하고 직접광·발광·unlit �
 명시적 `"legacy"` 선택도 저장한다. 선택 필드는 native environment v6/544-float의 528번 값이며
 529..543은 0이어야 한다. v1..v5의 길이와 의미는 유지하며 혼합 version/length를 거절한다.
 WebGPU 내부 camera uniform의 `forward.w`는 명시적인 pass bitfield(AO resolve=1, separated=2, DOF 선행=4)다.
-현재 mask·wide 확장을 포함한 record는2,608 bytes이며 아래 layout을 따른다. native 환경 prefix와 고정 sun center를 덮어쓰지 않는다.
+현재 mask·wide·두 번째 점광원·태양/점광원 PCSS 확장을 포함한 record는2,672 bytes다. native 환경 prefix와 고정 sun center를 덮어쓰지 않는다.
 
 ## 새 경로의 연산 순서
 
@@ -44,8 +44,9 @@ GL의 stage destination·source fetch를 top-left 논리 좌표로 계산한 뒤
 WebGPU/CPU 참조는 원래 top-left다. 홀수 target에서도 source texel phase를 유지한다.
 pixelArt의 마지막 wide 샘플은 scene pixel 중심에 고정한다. 기존 gather 수식은 보존한다.
 
-private GPU 환경은 기존512-float prefix·camera/matrix/channel tail 뒤에 wide enable/grid vec4를 추가한
-2,608 bytes, dynamic stride2,816의 두 슬롯이다. native584-float source와 같은 배열이 아니다.
+private GPU 환경은512-float prefix·camera/matrix/channel tail 뒤의648~651 words에 wide enable/grid vec4를 둔다.
+그 뒤 두 번째 점광원652~655, 태양 PCSS656~659, 두 점광원 PCSS660~667을 포함해 현재2,672 bytes다.
+dynamic stride2,816의 두 슬롯(총5,632 bytes)을 사용하며 native584-float wide Bloom source와 같은 배열이 아니다.
 별도 WebGPU stage uniform은16×256-byte, 각 stage는32-byte config/threshold를 참조한다.
 서로 다른 stage의 queue write가 앞선 stage의 설정을 덮지 않는다. helper는 한 composite/encoder에서 사용하며,
 renderer는 각 command packet을 제출한 뒤 다음 packet의 uniform을 쓴다.
