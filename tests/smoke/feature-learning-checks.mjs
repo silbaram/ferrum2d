@@ -1,5 +1,39 @@
 import assert from 'node:assert/strict';
 
+async function assertSettingsKeepPreview(page,id) {
+  const original=await page.evaluate(()=>({x:scrollX,y:scrollY,details:[...document.querySelectorAll('.feature-panel > details')].map(e=>e.open)}));
+  try {
+    await page.evaluate(()=>{
+      for(const details of document.querySelectorAll('.feature-panel > details'))details.open=true;
+      window.scrollTo(0,document.querySelector('.feature-preview').getBoundingClientRect().top+scrollY-12);
+    });
+    const before=await page.evaluate(()=>({y:scrollY}));
+    // Keyboard focus must reach the bottom of the inspector without losing the scene.
+    await page.locator('.feature-panel a').last().focus();
+    const result=await page.evaluate(()=>{
+      const canvas=document.querySelector('canvas').getBoundingClientRect(),preview=document.querySelector('.feature-preview').getBoundingClientRect(),panel=document.querySelector('.feature-panel'),r=panel.getBoundingClientRect(),target=document.activeElement.getBoundingClientRect();
+      return {y:scrollY,canvas:canvas.toJSON(),preview:preview.toJSON(),target:target.toJSON(),panel:r.toJSON(),height:innerHeight};
+    });
+    assert(result.preview.top>=-1&&result.preview.bottom<=result.height+1&&result.canvas.top<result.preview.bottom&&result.canvas.bottom>result.preview.top,`${id}: settings focus hid the preview: ${JSON.stringify(result)}`);
+    assert(Math.abs(result.y-before.y)<=1,`${id}: settings focus scrolled the page instead of the inspector`);
+    assert(result.target.top>=result.panel.top&&result.target.bottom<=result.panel.bottom,`${id}: lower settings must be reachable by keyboard`);
+    assert(result.panel.left>=result.preview.right-1||result.panel.top>=result.preview.bottom-1,`${id}: pinned preview covered the settings`);
+    // Scrolling past the end must not chain into a page scroll.
+    await page.locator('.feature-panel').evaluate(panel=>{panel.scrollTop=panel.scrollHeight;});
+    await page.mouse.move(result.panel.left+4,Math.min(result.height-20,Math.max(20,result.panel.top+result.panel.height/2)));
+    await page.mouse.wheel(0,500);
+    await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+    assert(Math.abs(await page.evaluate(()=>scrollY)-before.y)<=1,`${id}: inspector wheel moved the game view`);
+  } finally {
+    await page.evaluate(original=>{
+      document.activeElement?.blur();
+      document.querySelectorAll('.feature-panel > details').forEach((e,i)=>{e.open=original.details[i];});
+      document.querySelector('.feature-panel').scrollTop=0;
+      window.scrollTo(original.x,original.y);
+    },original);
+  }
+}
+
 async function assertSceneUiBounds(page, id) {
   const joystick=page.locator('[data-ferrum-virtual-joystick]');
   if(await joystick.count()) assert(await joystick.evaluate(element=>{
@@ -38,7 +72,9 @@ export async function checkLearningInitial(page,feature) {
   const visibleRoles=await assertRoleBounds(page,feature.id);
   await assertSceneUiBounds(page,feature.id);
   assert.equal(await page.locator('.feature-lesson-diagnostics').getAttribute('open'),null,'technical statistics should be secondary');
-  return {useCase:true,orderedSteps:true,legend:true,visibleRoles,primaryActions:feature.lesson.actions.length};
+  assert.equal(await page.locator('.feature-lesson-guide').getAttribute('open'),null,'long instructions should be folded before editing');
+  await assertSettingsKeepPreview(page,feature.id);
+  return {useCase:true,orderedSteps:true,legend:true,visibleRoles,primaryActions:feature.lesson.actions.length,settingsKeepPreview:true};
 }
 
 export async function checkLearningControls({page,id,control,snapshot}) {
@@ -95,4 +131,12 @@ export async function checkLearningNarrow(page,id) {
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await assertRoleBounds(page,id);await assertSceneUiBounds(page,id);
   assert(await page.locator('.feature-lesson-intro').evaluate(element=>{const r=element.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1;}),`${id}: lesson header overflow`);
+  await assertSettingsKeepPreview(page,id);
+  if(id==='nine-slice') {
+    const preview=page.locator('.feature-preview');
+    await preview.focus();await page.keyboard.press('End');
+    await page.waitForFunction(()=>document.querySelector('.feature-preview').scrollTop>0);
+    assert(await preview.evaluate(element=>document.querySelector('canvas').clientHeight>element.clientHeight),'tall lessons must retain their original canvas proportions');
+    await preview.evaluate(element=>{element.scrollTop=0;element.blur();});
+  }
 }

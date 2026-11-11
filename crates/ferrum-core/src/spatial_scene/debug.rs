@@ -5,6 +5,7 @@ use crate::components::{HeightSpan, Transform2D};
 use crate::entity::Entity;
 use crate::physics::KinematicDebugHit;
 mod physics;
+mod sun_coverage;
 
 pub(crate) const MAX_DEBUG_VERTICES: usize = 32_768;
 const TERRAIN: u32 = 1;
@@ -14,6 +15,7 @@ const DEPTH_TEST: u32 = 8;
 const COLLIDERS: u32 = 16;
 const CONTACTS: u32 = 32;
 const FLOOR_IDS: u32 = 64;
+const SUN_SHADOW_COVERAGE: u32 = 128;
 const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
 const MAGENTA: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
@@ -31,12 +33,17 @@ pub(crate) struct SpatialDebugGeometry {
 }
 impl SpatialDebugGeometry {
     pub fn configure(&mut self, flags: u32) -> bool {
-        if flags & !127 != 0 || (flags & !DEPTH_TEST == 0 && flags != 0) {
+        if flags & !255 != 0 || (flags & !DEPTH_TEST == 0 && flags != 0) {
             return false;
         }
-        if flags != 0 && self.vertices.capacity() < MAX_DEBUG_VERTICES {
-            self.vertices
-                .reserve(MAX_DEBUG_VERTICES - self.vertices.len());
+        // A cube/plane cut has at most six sides: two outlines need at most 24 vertices.
+        let reserve = if flags & !DEPTH_TEST == SUN_SHADOW_COVERAGE {
+            24
+        } else {
+            MAX_DEBUG_VERTICES
+        };
+        if flags != 0 && self.vertices.capacity() < reserve {
+            self.vertices.reserve(reserve - self.vertices.len());
         }
         self.flags = flags;
         if flags & (COLLIDERS | FLOOR_IDS) != 0 && self.shape_lines.capacity() < 33 {

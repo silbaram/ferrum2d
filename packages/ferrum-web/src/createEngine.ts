@@ -1,3 +1,8 @@
+import { requestsSpatialWideBloom, supportsSpatialWideBloom } from "./spatialBloom.js";
+import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
+import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
+import {requestsSpatialLightChannels,supportsSpatialLightChannels} from "./spatialLightChannels.js";
+import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
 import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
@@ -13,6 +18,8 @@ import { configureDataSceneSun } from "./dataSceneSun.js";
 import { configureDataSceneSpriteAnimation, prepareDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
 import { configureSpriteNormals, supportsSpriteNormals } from "./spriteNormals.js";
+import { configureSpriteLighting, supportsSpriteLighting } from "./spriteLighting.js";
+import { configureSpriteSurface,supportsSpriteSurface } from "./spriteSurface.js";
 import { configureSpriteNineSlices, supportsSpriteNineSlices } from "./spriteNineSlice.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
@@ -682,6 +689,8 @@ export async function createEngineWithFramePipeline(
     configureDataSceneSpriteAnimation: (entity, clips) => { requireAlive(); return configureDataSceneSpriteAnimation(rustEngine, entity, clips); },
     configureSpriteNineSlices: updates => { requireAlive(); return configureSpriteNineSlices(rustEngine, updates); },
     configureSpriteNormalMaterials: updates => { requireAlive(); return configureSpriteNormals(rustEngine,updates); },
+    configureSpriteLightingMaterials: updates => { requireAlive(); return configureSpriteLighting(rustEngine,updates); },
+    configureSpriteSurfaceMaterials: updates => {requireAlive();return configureSpriteSurface(rustEngine,updates);},
     updateDataSceneSpriteAnimations: (updates) => { requireAlive(); return updateDataSceneSpriteAnimations(rustEngine, updates); },
     dataSceneSpriteAnimationState: (entity) => { requireAlive(); return dataSceneSpriteAnimationState(rustEngine, entity); },
     setViewportSize: (width, height) => {
@@ -946,11 +955,17 @@ export async function createEngineWithFramePipeline(
         ? rustEngine.capture_spatial_environment()
         : undefined;
     },
+    lightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine) ? rustEngine.capture_spatial_light_selection_state() : undefined; },
+    preflightLightSelection: (environment, values) => { requireAlive(); return supportsSpatialLightSelection(rustEngine) && rustEngine.preflight_spatial_light_selection_state(environment, values); },
     combat: (epoch, handles) => { requireAlive(); return combatProgressRuntime.capture_data_scene_combat_progress?.(epoch, handles); },
     preflightCombat: (states, values) => { requireAlive(); return combatProgressRuntime.preflight_data_scene_combat_progress?.(states, values) === true; },
     preflightSpatial: (values, metadata, state) => { requireAlive(); return rustEngine.preflight_data_scene_spatial_progress(values, metadata, state); },
-    restore: (epoch, handles, states, animations, spatial, environment, rotations, combat) => {
+    restore: (epoch, handles, states, animations, spatial, environment, rotations, combat, lightSelection) => {
       requireAlive();
+      if (lightSelection !== undefined) return supportsSpatialLightSelection(rustEngine) && rustEngine.restore_data_scene_progress_with_spatial_light_selection(
+        epoch, handles, states, animations ?? new Float64Array(), spatial ?? new Float64Array(13 + states.length * 8),
+        environment ?? new Float32Array(), rotations ?? new Float64Array(states.length), environment !== undefined, combat ?? new Float64Array(), lightSelection,
+      );
       if (combat !== undefined) return combatProgressRuntime.restore_data_scene_progress_with_combat?.(
         epoch, handles, states, animations ?? new Float64Array(), spatial ?? new Float64Array(13 + states.length * 8), environment ?? new Float32Array(), rotations ?? new Float64Array(states.length), environment !== undefined, combat,
       ) === true;
@@ -993,8 +1008,16 @@ export async function createEngineWithFramePipeline(
     },
   });
   return attachDataSceneRuntimeEngineAdapter(engine, {
+    ...(typeof rustEngine.begin_data_scene_authoring_continuity==="function"&&typeof rustEngine.finish_data_scene_authoring_continuity==="function"&&typeof rustEngine.cancel_data_scene_authoring_continuity==="function"?{
+      beginAuthoringContinuity:(handles:Uint32Array,masks:Uint32Array)=>{requireAlive();return rustEngine.begin_data_scene_authoring_continuity(handles,masks);},
+      finishAuthoringContinuity:(token:number,handles:Uint32Array)=>{requireAlive();return rustEngine.finish_data_scene_authoring_continuity(token,handles);},
+      cancelAuthoringContinuity:(token:number)=>{requireAlive();rustEngine.cancel_data_scene_authoring_continuity(token);},
+    }:{}),
     supportsSpriteNineSlices: () => { requireAlive(); return supportsSpriteNineSlices(rustEngine); },
     supportsSpriteNormalMaterials: () => { requireAlive(); return supportsSpriteNormals(rustEngine); },
+    supportsSpriteLightingMaterials: () => { requireAlive(); return supportsSpriteLighting(rustEngine); },
+    supportsSpriteLightMasks:()=>{requireAlive();return supportsSpriteLightMasks(rustEngine);},
+    supportsSpriteSurfaceMaterials:()=>{requireAlive();return supportsSpriteSurface(rustEngine);},
     useDataScene,
     spatialModelAssets: spec => {
       requireAlive();
@@ -1006,6 +1029,10 @@ export async function createEngineWithFramePipeline(
         return entry.handle;
       }))];
     },
+    supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
+    supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
+    supportsSpatialWideBloom: () => { requireAlive(); return supportsSpatialWideBloom(rustEngine); },
+    supportsSpatialLightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine); },
     supportsSpatialRampAxis: () => {
       requireAlive();
       return typeof rustEngine.spatial_ramp_axis_abi_version === "function" &&
@@ -1018,6 +1045,9 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialWideBloom(environment) && !supportsSpatialWideBloom(rustEngine)) return false;
+      if (requestsSpatialLightSelection(environment) && !supportsSpatialLightSelection(rustEngine)) return false;
+      if (requestsSpatialLightChannels(environment) && !supportsSpatialLightChannels(rustEngine)) return false;
       const values = compileSpatialEnvironment(environment);
       return typeof rustEngine.preflight_spatial_camera_environment === "function"
         ? rustEngine.preflight_spatial_camera_environment(
@@ -1116,7 +1146,13 @@ export async function createEngineWithFramePipeline(
       if (request.nineSlice !== undefined && !configureSpriteNineSlices(rustEngine, [{ entity: {entityId, entityGeneration}, nineSlice: request.nineSlice }])) {
         rustEngine.despawn_physics_entity(entityId, entityGeneration); return undefined;
       }
+      if (request.lighting !== undefined && !configureSpriteLighting(rustEngine,[{entity:{entityId,entityGeneration},lighting:request.lighting}])) {
+        rustEngine.despawn_physics_entity(entityId, entityGeneration); return undefined;
+      }
       if (request.normalTextureId !== undefined && !configureSpriteNormals(rustEngine,[{entity:{entityId,entityGeneration},normalTextureId:request.normalTextureId}])) {
+        rustEngine.despawn_physics_entity(entityId,entityGeneration);return undefined;
+      }
+      if(request.surface!==undefined&&!configureSpriteSurface(rustEngine,[{entity:{entityId,entityGeneration},surface:request.surface}])){
         rustEngine.despawn_physics_entity(entityId,entityGeneration);return undefined;
       }
       return { entityId, entityGeneration };

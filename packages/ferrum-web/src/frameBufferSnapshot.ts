@@ -43,9 +43,18 @@ export function snapshotRenderFrameBuffers(frame: RenderFrameState): RenderFrame
 }
 
 function snapshotRenderCommandBuffer(view: RenderCommandBufferView): RenderCommandBufferView {
+  const lightingWords = view.spriteLightingMaterials?.words.slice();
+  const surfaceWords = view.spriteSurfaceMaterials?.words.slice();
   return {
     ...view,
     buffer: view.buffer.slice(),
+    ...(view.spriteLightMasks === undefined ? {} : {spriteLightMasks:{...view.spriteLightMasks,buffer:view.spriteLightMasks.buffer.slice()}}),
+    ...(view.spriteSurfaceMaterials === undefined || surfaceWords === undefined ? {} : {
+      spriteSurfaceMaterials: { ...view.spriteSurfaceMaterials, words: surfaceWords, values: new Float32Array(surfaceWords.buffer) },
+    }),
+    ...(view.spriteLightingMaterials === undefined || lightingWords === undefined ? {} : {
+      spriteLightingMaterials: { ...view.spriteLightingMaterials, words: lightingWords, values: new Float32Array(lightingWords.buffer) },
+    }),
     ...(view.groundShadowProjection === undefined ? {} : { groundShadowProjection: view.groundShadowProjection.slice() }),
     ...(view.groundShadowVolumes===undefined?{}:{groundShadowVolumes:{...view.groundShadowVolumes,buffer:view.groundShadowVolumes.buffer.slice()}}),
     ...(view.spriteNormalMaterials === undefined ? {} : {
@@ -59,6 +68,7 @@ function snapshotSpatial(view: SpatialRenderBufferView): SpatialRenderBufferView
   const models = view.models;
   // Preserve the u32/f32 aliases over one owned model command packet.
   const modelWords = models?.words.slice();
+  const selectionWords = view.environment?.lightSelection?.words.slice();
   return {
     ...view,
     camera: view.camera.slice(),
@@ -72,11 +82,15 @@ function snapshotSpatial(view: SpatialRenderBufferView): SpatialRenderBufferView
     ...(view.materials === undefined ? {} : { materials: {
       ...view.materials, terrain: view.materials.terrain.slice(), billboards: view.materials.billboards.slice(),
     } }),
+    ...(view.receiverMasks === undefined ? {} : { receiverMasks: {
+      ...view.receiverMasks, terrain: view.receiverMasks.terrain.slice(), billboards: view.receiverMasks.billboards.slice(), models: view.receiverMasks.models.slice(),
+    } }),
     ...(view.debug === undefined ? {} : { debug: { ...view.debug, vertices: view.debug.vertices.slice() } }),
     ...(view.environment === undefined ? {} : { environment: {
       ...view.environment,
       values: view.environment.values.slice(), shadowMatrices: view.environment.shadowMatrices.slice(),
       shadowCasters: view.environment.shadowCasters.slice(),
+      ...(selectionWords === undefined ? {} : { lightSelection: { version: 1 as const, stride: 6 as const, words: selectionWords, values: new Float32Array(selectionWords.buffer) } }),
       ...(view.environment.shadowSubmission === undefined ? {} : { shadowSubmission: {
         ...view.environment.shadowSubmission, ranges: view.environment.shadowSubmission.ranges.slice(),
       } }),

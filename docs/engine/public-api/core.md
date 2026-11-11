@@ -94,7 +94,7 @@ custom renderer는 `setPixelPerfect`와 `pixelPerfectPresentation` capability를
 저수준 `applyDataSceneAuthoringDocument`는 renderer를 소유하지 않으므로 표시를 자동 변경하지 않는다.
 `spatial`과 flat pixel-perfect를 동시에 활성화할 수 없다. HD-2D는 기존 `spatial.environment.pixelArt`를 사용한다.
 WebGPU는 `fade`·`bloom`·`crt`·`vignette`·`glitch`·`pixelArt` 후처리를 지원하며,
-`linear-srgb` 요청은 WebGL2 fallback을 유지한다.
+`linear-srgb`에서도 같은 WebGPU backend로 합성·최종 표시를 수행한다.
 
 최종 확대 비용은 `RendererStats.presentationPassCount: 1`과 `drawCalls`에 포함한다.
 가상 타깃의 GPU 메모리는 `resourceStats().textureBytes`에 포함하며 CSS/DPR resize만으로 커지지 않는다.
@@ -170,7 +170,7 @@ Glitch는 양쪽 backend에서 같은 float32 seed 비트와 32-bit 정수 hash�
 삼각함수 hash 기반 줄무늬와 무늬가 달라진다. 같은 seed의 반복과 seed 복귀는 동일한 결과를 낸다.
 WebGL2 fullscreen 계산은 WebGPU와 맞춰 highp를 사용한다. legacy 모드의 기존 sprite alpha 혼합은 유지하므로,
 반투명 sprite의 효과 적용 전 입력 alpha 자체가 backend마다 다를 수 있다. 후처리는 각 입력의 alpha 계약을 따른다.
-`linear-srgb`는 계속 WebGL2에서만 제공한다.
+`linear-srgb`는 WebGL2와 WebGPU 모두 제공한다.
 이 API는 게임 코드의 runtime 설정이며 Data Scene 저장 필드나 에디터 UI를 추가하지 않는다.
 Top-down Shooter의 기존 `postProcessing`도 같은 resolver를 사용하므로 JSON 스키마에서 선택적 `pixelArt`를 허용한다.
 위 수치 범위의 기존 설정은 그대로 유효하며 생략하면 동작이 바뀌지 않는다.
@@ -438,7 +438,9 @@ const resources = runtime.renderer.resourceStats?.();
 
 지원 여부는 실제 renderer 기준이다. WebGL2는 두 색 공간 모드에서 지원하고,
 native WebGPU도 소유 buffer·texture·pipeline·attachment texture 통계를 제공한다.
-WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 render attachment texture 수다.
+WebGPU의 `programCount`는 보유한 render pipeline 수, `renderTargetCount`는 렌더 패스에서 쓰는 attachment texture 수다.
+외부 이미지 업로드의 호환성 때문에 붙인 render-attachment usage만으로 색/데이터 asset을 target으로 세지 않는다.
+실제 mip 생성에 렌더 패스를 사용하는 모델 texture와 정적 shadow fallback attachment는 포함한다.
 texture 저장량은 알려진 형식의 mip·array layer를 포함한다. `depth24plus`처럼 저장 형식이 기기별로 달라지는 texture가 있으면
 `unmeasuredTextureCount`를 올리고 `textureBytes`/`estimatedBytes`는 생략한다. `bufferBytes`와 객체 수는 계속 제공한다.
 WebGPU canvas의 presentation texture와 외부에서 직접 만든 GPU 객체·pipeline code/driver 저장량은 집계하지 않는다.
@@ -457,11 +459,16 @@ raw `loadTexture(url)` 자원은 renderer destroy까지 소유한다. 등록된 
 DebugOverlay와 RuntimeProfiler에 같은 값을 전달한다. 이후 `onFrame`에서 직접 실행한
 추가 offscreen 작업은 즉시 `resourceStats()`로 조회하거나 다음 runtime frame에서 관찰한다.
 자세한 예산 필드는 [Quality API](quality.md#gpu-자원-예산)를 따른다.
+Flat point-shadow의 실제 geometry 업로드·vertex 제출은 `RendererStats.pointShadowGeometryUploadBytes`,
+`pointShadowGeometryVertexCount`, `pointShadowGeometryCacheHit`로 조회한다. 같은 frame의 여러 command packet을
+누적하며 다음 `render()`에서 초기화한다. [작업 예산](quality.md#runtime-profiler)과
+[캐시 범위](../../development/architecture/flat-lighting-composition.md#정적-point-shadow-gpu-업로드와-작업-예산)를 따른다.
+
 
 ## 색 공간 관리
 
 기본 `colorManagement: "legacy"`는 기존 출력과 asset URL 문자열 계약을 유지한다.
-`"linear-srgb"`는 WebGL2의 opt-in 모드이며 texture 입력, 혼합·조명·후처리 계산,
+`"linear-srgb"`는 양 backend의 opt-in 모드이며 texture 입력, 혼합·조명·후처리 계산,
 canvas 출력을 구분한다. 실행 중 모드를 바꾸려면 renderer와 asset을 새로 만든다.
 
 ```ts
@@ -471,8 +478,9 @@ const gray = srgbToLinear(128 / 255);
 const runtime = await createFerrumRuntime({
   canvas,
   colorManagement: "linear-srgb",
-  rendererPreference: "webgpu", // 현재는 진단 후 WebGL2로 fallback
+  rendererPreference: "webgpu", // 사용 가능한 WebGPU에서 같은 모드로 실행
   webgl2: { clearColor: [gray, gray, gray, 1] },
+  webgpu: { clearColor: [gray, gray, gray, 1] },
 });
 await runtime.engine.loadAssets({
   textures: { sprite: "/sprite.png", mask: "/mask.png", lightMap: "/linear-light.png" },
@@ -486,16 +494,16 @@ await runtime.engine.loadAssets({
 
 `ColorManagementMode`, `TextureColorSpace`, `TextureLoadOptions`, `srgbToLinear`,
 `linearToSrgb`는 core/root entrypoint에서 제공한다. 변환 함수는 0..1의 유한한
-RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 `WebGL2Renderer`
+RGB 채널을 받으며 alpha에는 적용하지 않는다. `createRenderer`와 `WebGL2Renderer`, `/labs`의 `WebGPURenderer`
 직접 생성에도 같은 option을 사용할 수 있다. runtime에 renderer를 직접 주입했다면
 색 공간은 그 renderer를 생성한 쪽에서 설정한다.
 
 | 입력/단계 | `linear-srgb` 계약 |
 | --- | --- |
-| 색상 이미지 | 기본 `srgb`. `SRGB8_ALPHA8` texture가 샘플을 linear RGB로 변환한다. |
+| 색상 이미지 | 기본 `srgb`. GL의 `SRGB8_ALPHA8`, GPU의 sRGB color view가 샘플을 linear RGB로 변환한다. |
 | linear 이미지/수치 데이터 | `linear`/`none`. RGB 전송함수 변환을 생략한다. data 이미지의 브라우저 색 보정도 끈다. |
 | 숫자 색상 | sprite command/tint, material, clear, light, shadow, fade/vignette, debug RGB는 **linear 값**이다. alpha는 선형 coverage 값이다. |
-| 중간 target/RenderTexture | `SRGB8_ALPHA8`에 저장한다. GPU가 저장·샘플·blend 경계의 변환을 담당하므로 계산은 linear이며 어두운 색의 8-bit 정밀도를 유지한다. |
+| 중간 target/RenderTexture | GL은 `SRGB8_ALPHA8`, GPU 장면은 `rgba8unorm-srgb`에 저장한다. 저장·샘플·blend의 변환으로 선형 계산과 어두운 색의 8-bit 정밀도를 유지한다. RenderTexture API는 기존 GL capability 범위다. |
 | 후처리 | 기본적으로 linear 샘플에 적용한다. bloom threshold와 intensity도 linear 기준이다. `pixelArt`는 표시용 sRGB로 변환해 양자화한 뒤 linear로 복귀한다. |
 | 화면 | 마지막 fullscreen pass에서 sRGB로 변환한다. 투명 canvas는 linear premultiplied RGB를 풀어서 변환한 뒤 sRGB에서 다시 premultiply한다. |
 
@@ -519,13 +527,15 @@ GPU의 sRGB decode/출력 변환을 활성화하지 않는다.
 
 낮은 수준 API는 매 frame `render()` → `renderCommands(...)` → `renderPostProcess()`를
 호출해야 한다. 명시적 후처리가 없어도 managed 모드는 출력 변환에 fullscreen draw 1회를
-사용하며 `postProcessDrawCalls`와 전체 `drawCalls`에 포함한다. 후처리가 있으면 마지막
-pass에 변환을 합친다. managed 기본 출력에는 scene framebuffer 1개만 사용하고,
-여러 후처리 pass를 연결할 때 scratch framebuffer 2개를 추가한다. 크기 변경 외에는 재사용한다.
-현재는 8-bit LDR이며 HDR, tone mapping, Display-P3는 제공하지 않는다.
+사용하며 `postProcessDrawCalls`와 전체 `drawCalls`에 포함한다. GL은 후처리의 마지막 pass에
+변환을 합친다. GPU는 모든 효과 후 표시 draw1회를 별도로 수행하고 pixelPerfect에서는 최종 확대에 합친다.
+managed scene target은 pixel당4 bytes 1개다. GL은 여러 효과에 scratch2개, GPU는 sampled 효과에
+copy source1개를 재사용한다. backend의 기존 정적 자원은 별도이며 크기 변경 외에는 재사용한다.
+전역 managed 경로의 target은 8-bit LDR이다. 별도 opt-in Flat lit HDR은 아래 계약을 따르며 Display-P3는 제공하지 않는다.
 
-WebGPU 직접 생성은 `linear-srgb`를 canvas 취득 전에 명시적으로 거절한다.
-`createRenderer`는 같은 색 공간 설정으로 WebGL2에 fallback하고 `onFallback`으로 이유를 알린다.
+WebGPU 직접 생성은 같은 모드를 지원하고 초기 pipeline 검증을 canvas 취득 전에 수행한다.
+`createRenderer`는 실제 adapter/초기화 실패 때 같은 색 공간을 유지한 WebGL2 fallback과 `onFallback` 진단을 제공한다.
+canvas API가 이미 선택된 이후의 실패는 기존 `WebGpuCanvasCommitError` 경계를 유지한다.
 renderer별 option에 서로 다른 모드를 지정하면 오류다. 양쪽 renderer의 기본 legacy 동작은 유지한다.
 
 예제는 `examples/minimal-game`의 `?colorManagement=linear-srgb`로 확인한다.
@@ -1131,7 +1141,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 
 `DataSceneSpatialSpec`, `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`,
 `SpatialMoveOptions`, `SpatialMoveStats`, `SpatialBillboardSpec`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi`,
-`SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in WebGL2 첫 구현이며 세부 계약은
+`SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in이며 WebGL2/WebGPU가 같은 native packet을 소비한다. 세부 계약은
 [입체 지형·카메라·빌보드](../data-scene-spatial.md)를 따른다.
 
 `SpatialRendererStats.modelInstancedDrawCalls`는 main 모델 draw에 포함되는 실제 인스턴싱 호출 수다.
@@ -1143,7 +1153,8 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `configureDataSceneSpatial(spec, handles)` | terrain/camera/billboard/actor를 검증해 atomic configure. 잘못된 JSON은 diagnostic, native 거절은 false |
 | `setDataSceneSpatialCamera(camera, viewport)` | 낮은 빈도 camera 변경. 다음 frame snapshot에 반영 |
 | `setDataSceneSpatialEnvironment(spec \| null)` | 낮은 빈도 조명/그림자/DOF/색 보정/안개 변경. null은 해제, 다음 frame 반영. 물리·route·terrain revision 유지 |
-| `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 진단선, 기본 꺼짐. depthTest 기본 true, false는 가려진 선 표시. null은 해제 |
+| `resetDataSceneSpatialLightSelection()` | opt-in native 선택 이력 초기화. 다음 simulation step은 현재 순위로 시작하며 구 core/정책 비활성은 false |
+| `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 및 `sunShadowCoverage`의 높이 0 태양 맵 외곽·fade 진단선. 기본 꺼짐, depthTest 기본 true. null은 해제 |
 | `clearDataSceneSpatial()` | 공간 설정 해제, 다음 frame부터 평면 출력 |
 | `moveDataSceneSpatialBody(handle, dx, dy, options?)` | native kinematic 이동·높이와 명시적 shared-edge 연결의 층 전환. true는 도착 보장이 아님 |
 | `moveDataSceneSpatialActorTo(options)` | x/y/floorId/speed 목적지. native bounded A*, cellSize 기본 8·arrivalRadius 0.5·cancelOnInput true. 실패 시 기존 경로 보존 |
@@ -1153,7 +1164,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
 | `dataSceneSpatialModelDrawSnapshot(handle)` | 마지막 native 렌더의 실제 LOD asset·world XYZ 변환·cameraVisible을 복사한 cold 조회. 미렌더/미등록 handle·구 Wasm은 undefined |
 
-`loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
+`loadSpatialGlb(source, { materialProfile: "diffuse" | "specular", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
 `SpatialGlbOptions`, `SpatialModelAsset`, `SpatialModelPrimitive`, `SpatialModelInstanceSpec` 타입을 제공한다.
 `raycastSpatialModel(asset, ray: SpatialModelRay): SpatialModelRayHit | undefined`는 작성 도구의 시각 선택용
 CPU 삼각형 검사다. ray는 asset-local glTF XYZ의 `origin`/`direction` 3개 좌표이며 방향은 내부에서 정규화한다.
@@ -1165,7 +1176,7 @@ GPU 보간/mipmap 경계와 완전히 같은 픽셀 판정은 아니다. 전달�
 `SpatialModelDrawSnapshot`의 `asset`은 마지막 렌더에서 native가 선택한 LOD이며 `transform`은 소유한 16개 f32의
 column-major glTF local XYZ → world XYZ 행렬이다. `cameraVisible`이 false인 shadow-only/culled draw는 클릭 대상에서 제외한다.
 snapshot은 카메라/문서 변경을 예측하지 않고 다음 렌더 전까지 표시된 pose를 유지한다. frame loop에서 entity별로 호출하지 않는다.
-`loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
+`loadSpatialGltf(source, { materialProfile: "diffuse" | "specular", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
 같은 document origin의 최대 16 binary/16 image, document 2 MiB·전체 입력/정규화 bundle 32 MiB와 취소를 검사한다.
 기존 GLB decoder를 재사용하며 contentId는 종속 bytes를 포함한 정규화 bundle hash다. redirect/data URI는 지원하지 않는다.
 자세한 계약은 [분리형 glTF](../data-scene-spatial.md#분리형-gltf-배경-모델)를 따른다.
@@ -1184,12 +1195,20 @@ OPAQUE/MASK·단면/양면 base color·normal map·emissive·PNG/JPEG·sampler·
 `SpatialModelPrimitive.alphaCutoff`는 OPAQUE에서 0, MASK에서 GLB의 cutoff(기본 0.5)이며
 `doubleSided`는 GLB material의 양면 설정이다. alpha 비교는 color/depth와 그림자 pass에 동일하게 적용한다.
 `SpatialModelPrimitive.normal`은 image/sampler/scale, `emissive`는 image/sampler 참조이며 선택 값이다.
+개발 소스의 `specular` profile은 명시적 metallicFactor=0, roughness 0..1과 제한된
+`KHR_materials_specular` 계수/세 map을 지원한다. `SpatialModelPrimitive.specular`에는
+factor/color/roughness와 선택 texture(A raw)/colorTexture(RGB sRGB)/roughnessTexture(G raw)가 있다.
+각 참조의 image/sampler/uvTransform은 독립적이며 profile은 contentId와 CPU cache key에 포함된다.
+`SpatialModelAsset.materialProfile`은 specular 선택 시에만 존재한다. factor 0은 diffuse와 같고,
+비금속 직접광 GGX lobe만 더한다. 전체 glTF PBR·금속·IBL은 지원하지 않는다.
+[계수 범위·호환성](../data-scene-spatial.md#정적-glb-배경-모델)을 따른다.
 `uvTransform`과 `normal.uvTransform`/`emissive.uvTransform`은 선택 column-major 3×3 Float32Array이며
 생략은 identity다. loader가 `KHR_texture_transform`을 각 textureInfo에서 해석하며 UV0만 지원한다.
 변환은 각 텍스처 샘플과 base alpha 그림자/CPU picking에 적용하고 원본 geometry·tangent를 유지한다.
 음수/0 scale을 허용하며 잘못된 값·유효 UV set 1 이상·GPU 중간 계산의 overflow는 준비 오류다.
 [정적 모델 지원 범위](../data-scene-spatial.md#정적-glb-배경-모델)를 따른다.
-`emissiveFactor`는 linear RGB 0..1(기본 0)이다. CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
+원본 glTF `emissiveFactor`는 linear RGB 0..1(기본 0)이며 선택 emissiveStrength와 곱한 CPU 값은 0..64다.
+CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
 없으면 기존 8 floats다. 정상적인 GLB normal map은 UV0와 exported TANGENT VEC4를 요구한다.
 normal scale은 -64..64(기본 1), emissive texture는 sRGB·alpha 무시다. 발광도 기존 HDR/fog를 따른다.
 모델 base/emissive texture는 renderer 색상 모드와 무관하게 sRGB GPU format을 사용해 보간 전에 해석한다.
@@ -1270,7 +1289,7 @@ authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 �
 거리별 정적 model 선택을 작성한다. 모든 LOD 자원을 먼저 등록하며 native가 거리·hysteresis·shadow
 필요 여부를 고른다. physics는 visual unload와 무관하다. 자동 네트워크 다운로드는 제공하지 않는다.
 `attachments`는 parent body 기준 child pose이며 native가 위치·높이·회전을 갱신한다.
-`DATA_SCENE_STATE_VERSION` 최신값은 8이다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
+`DATA_SCENE_STATE_VERSION` 최신값은12다. wide Bloom 문서/진행은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
 기존 문서는 v5/v6/v7 capture/hash를 유지한다. root yaw를 저장하고 child pose는 복원 시 재계산한다.
 [모델 고도화 계약](../data-scene-spatial.md#모델-고도화-재질-batch움직이는-묶음청크lod)을 따른다.
 
@@ -1293,6 +1312,12 @@ preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.
 제외하며 collider/simulation은 유지한다. `null` 또는 빈 목록은 필터를 해제한다.
 호출 budget/세대 검증과 render command ABI는 기존과 같으며 entity별 frame 호출용 API가 아니다.
 
+
+HD-2D 환경 v5의 선택형 `lighting.directional.shadows.center: SpatialPoint`는 유한 shadow map의 월드 기준점을 고정한다.
+생략하면 기존 camera target 추적이다. 지정하면 카메라 pan/zoom/orbit만으로 map이 이동하지 않으며 extent/distance를 자동 확대하지 않는다.
+좌표 x/y/elevation은 모두 필수이며 각각 finite ±1M이다. v5 numeric528은 v4 prefix와 center를 전달한다.
+기존 v1~v4 reader 호환을 유지하는 새 JS/Wasm을 함께 사용하며 과거 core는 새 길이를 거절한다.
+진행 environment JSON과 기존 scene-wide 환경 patch로 저장/복원한다. renderer uniform·vertex/model ABI는 유지한다.
 
 HD-2D 환경 v4는 최대 16개 작성 광원과 `maxActiveLights: 1|2|3|4`, `spot`, `followActor`,
 씬 전용 `bloom`/`ambientOcclusion`을 지원한다. `DataSceneSpatialSpec.lightBindings`는 instance ID를 광원 index에 연결하며
@@ -1431,3 +1456,97 @@ cooldown 시간이 진행되지 않는다. 같은 게임 reset은 profile을 유
 runtime의 provider·renderer callback에서 runtime을 해제하면 남은 GPU 제출·UI 소비를 중단한다.
 callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예약된다.
 효과 target은 객체와 클래스 인스턴스를 모두 받을 수 있고, 등록한 메서드는 원래 receiver를 유지한다.
+
+## Flat lighting receivers · 개발 소스
+
+`SpriteLightingMaterialSpec`, `SpriteLightingBufferView`, `FlatLightingAsset`, `FlatLightingPreparer`를 `/core`에서 import한다.
+`engine.configureSpriteLightingMaterials([{entity,lighting}])`는 cold bulk API다. 최대65,536개이며 lighting 생략은 해제다.
+중복 ID/stale handle/잘못된 mode·cutoff는 전체 batch를 false로 거절한다. authoring 필드와 자산 사전 검증은
+[표면 조명](../data-scene-presentation.md#flat-2d-표면-조명-개발-소스)을 따른다.
+
+선택형 `RenderCommandBufferView.spriteLightingMaterials`는 `{version:1,stride:2,words,values}`다.
+`words:Uint32Array`와 `values:Float32Array`는 같은 offset/buffer의 8-byte record를 공유한다.
+짝수 word는 mode(0unlit/1opaque/2cutout), 홀수 float는 cutoff다. cutoff는 cutout에만 쓰며 다른 mode는0이다.
+다음 Wasm 호출/frame/memory growth 전에 소비하고, 장기 보관할 때 alias를 유지한 소유 복사본을 만든다.
+구 Wasm은 metadata 없는 기존 씬을 유지하며 lit/receiver 요청은 활성화 전에 거절한다.
+
+선택형 point cookie 문서는 `FlatLightingPreparer.flatLightingCookieVersion?.()`의 결과1을 요구한다.
+기존 preparer 구현은 cookie 없는 문서에 계속 사용할 수 있다. named cookie는 authoring preflight와
+`view.lighting`에서 ID로 해석하고 renderer setter는 loaded numeric data 자산만 받는다.
+[자산·저장·좌표 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+선택형 polygon이 있는 문서는 `FlatLightingPreparer.flatLightingPolygonVersion?.() === 1`도 요구한다.
+구 preparer는 polygon이 없는 문서를 계속 지원한다. [도형·원본·비용](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+
+## Spatial 효과 합성 선택 · 개발 소스
+
+`SpatialEnvironmentSpec.composition: "legacy"|"separated"`를 선택한다. 생략은 기존 합성이다.
+`engine.setDataSceneSpatialEnvironment(...)`와 authoring/patch·진행 저장에서 같은 선택을 보존한다.
+새 environment v6/544-float는 AO를 환경광 성분에만 적용하고 직접광·발광을 보존하며,
+fog·DOF 뒤의 HDR 결과를 Bloom 입력으로 사용한다. 비용·지원 범위는 [공간 합성 계약](../data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)을 따른다.
+
+
+## Flat HDR 출력 · 개발 소스
+
+`FlatHdrOptions`, `ResolvedFlatHdrOptions`는 `/core`의 공개 type이다.
+`renderer.setLighting({profile:"lit",hdr:{enabled:true,exposure:0,toneMapping:"reinhard"}})`로 선택한다.
+exposure는 유한 -10..10 stop, toneMapping은 `none|reinhard|aces`다. 기본값은 0과 reinhard다.
+HDR을 생략하거나 false/disabled로 두면 기존 SDR 경로를 유지한다. 비활성 설정도 검증·저장한다.
+양 backend float16 world에 여러 command를 누적한 뒤 `setLighting(false)` 또는 `renderPostProcess()`에서
+한 번 resolve한다. 이후 HUD는 노출·톤매핑을 받지 않는다. input/alpha·비용·실행 제한은
+[Flat HDR 계약](../data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.
+
+
+## Flat sprite 표면 재질 · 개발 소스
+
+`SpriteSurfaceMaterialSpec`와 `SpriteSurfaceBufferView`는 `/core`에서 import한다.
+`engine.configureSpriteSurfaceMaterials([{entity,surface}])`는 최대65,536개 cold bulk API다.
+`surface` 생략은 해제이며, 중복 ID·stale handle·잘못된 계수/ID·수광 mode는 전체 batch를 false로 거절한다.
+lighting receiver를 해제하거나 unlit으로 바꾸면 해당 surface도 함께 해제한다.
+
+```ts
+engine.configureSpriteSurfaceMaterials([{entity:hero, surface:{
+  emission:[4,2,1], emissionTextureId:12,
+  specular:0.6, specularTextureId:10, roughness:0.5, roughnessTextureId:11
+}}]);
+```
+
+`emission`은 선형 RGB0..64(기본0), `specular`는0..1(기본0), `roughness`는0..1(기본1)이다.
+map ID는 정수0..16,777,214이며 생략하면 map을 쓰지 않는다. opaque/cutout receiver를 먼저 설정한다.
+선택한 재질은 renderer의 flat lit profile에서만 지원한다. `enabled:false`는 설정을 유지하고 조명 비용을 끈다.
+자산 조건·제한된 비금속 GGX·색공간·alpha·비용은 [재질 계약](../data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+선택형 `RenderCommandBufferView.spriteSurfaceMaterials`는 `{version:1,stride:10,words,values}`다.
+40-byte `repr(C)` record의 같은 offset/buffer를 Uint32Array와 Float32Array가 공유한다.
+word0/1/2는 emission/specular/roughness texture ID, word3은 flags(0없음/1선택),
+float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 예약0이다.
+미연결 ID는16,777,215다. flags0 record는 미연결 ID3개·계수0/0/0/0/1·예약0인 canonical 값만 허용한다.
+정렬된 command와 개수·순서가 같고 전체 surface 미선택이면 sidecar를 생략한다. 기존15-float command와8-byte lighting ABI는 유지한다.
+구 Wasm/부분 export/mixed version은 surface 요청에서 거절하며 기존 재질 없는 씬은 유지한다.
+다음 Wasm 호출/frame/memory growth 전에 소비한다. deferred callback은 같은 buffer의 두 alias를 소유 복사한다.
+
+
+## Flat 독립 수신 mask · 개발 소스
+
+`SpriteLightingMaterialSpec`의 `lightMask`·`shadowMask`는 정수0..255, 기본255다.
+`configureSpriteLightingMaterials`의 기존 bulk 요청에서 두 값을 전달하면 native v2 설정으로 receiver·mask를 함께 원자적으로 적용한다.
+명시적 mask는 opaque/cutout에만 지정한다. 생략한 필드는255로 돌아가며, 구 Wasm에 mask를 요청하면 변경 없이 false다.
+각 광원의 같은 필드와 비교하고 환경광·발광은 유지한다. [의미·비용](../data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)을 따른다.
+
+`SpriteLightMaskBufferView`는 `/core`에서 import한다. `RenderCommandBufferView.spriteLightMasks`의 선택형 v1/stride2 metadata다.
+`buffer:Uint32Array`는 command 순서의 `[lightMask,shadowMask]`를8-byte record로 담는다.
+전체 기본값이면 생략하며 생성 command 간격은255/255다. custom 값은 opaque/cutout receiver metadata와 정합해야 한다.
+다음 Wasm 호출·memory growth 전에 소비하며 deferred callback은 소유 복사한다. 기존 sprite15·lighting8·Surface40 ABI는 유지한다.
+
+## Spatial 독립 수신 mask · 개발 소스
+
+`SpatialTerrainSurface`, `SpatialBillboardSpec`, `SpatialModelInstanceSpec`와
+`SpatialPointLightSpec`·`SpatialDirectionalLightSpec`에 선택형 정수0..255의
+`lightMask`·`shadowMask`를 지정한다. 기본값은255이며0도 유효하다.
+직접광 수신과 그림자 감쇠를 별도로 고른다. [의미·버전·비용](../data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)을 따른다.
+
+`SpatialReceiverMaskBufferView`는 `/core` 및 기존 root aggregate에서 import한다.
+`SpatialRenderBufferView.receiverMasks`의 v1/stride2 view이며 세 Uint32Array
+`terrain`·`billboards`·`models`는 각각 전체 surface·출력 quad·ModelDraw 순서의 pair다.
+기본 stream은 비어 있고, deferred frame은 세 배열을 소유 복사한다. 기존 material/model ABI는 유지한다.
+새 요청에 필요한 native receiver/light capability가 없으면 자산 조회와 scene 변경 전에 실패한다.

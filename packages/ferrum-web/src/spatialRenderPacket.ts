@@ -1,3 +1,5 @@
+import { validateSpatialLightSelectionBuffer } from "./spatialLightSelection.js";
+import {validateSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import { validSpatialEnvironmentValues } from "./spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 /** Shared native geometry ABI validation. Renderer-specific material/resource checks follow. */
@@ -71,6 +73,7 @@ export function validateSpatialGeometryFrame(frame: SpatialRenderBufferView): nu
 }
 /** Validate independent native extensions before backend resources are touched. */
 export function validateSpatialExtensions(frame: SpatialRenderBufferView): void {
+  validateSpatialReceiverMasks(frame);
   const debug = frame.debug;
   if (
     debug !== undefined &&
@@ -92,9 +95,9 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
   if (
     environment !== undefined &&
     (!environment ||
-      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4) ||
+      (environment.version !== 1 && environment.version !== 2 && environment.version !== 3 && environment.version !== 4 && environment.version !== 5 && environment.version !== 6 && environment.version !== 7 && environment.version !== 8 && environment.version !== 9) ||
       !(environment.values instanceof Float32Array) ||
-      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : 512) ||
+      environment.values.length !== (environment.version === 1 ? 80 : environment.version === 2 ? 112 : environment.version === 3 ? 128 : environment.version === 4 ? 512 : environment.version === 5 ? 528 : environment.version === 6 ? 544 : environment.version === 7 ? 576 : environment.version === 8 ? 580 : 584) ||
       !validSpatialEnvironmentValues(environment.values) ||
       !(environment.shadowMatrices instanceof Float32Array) ||
       !(environment.shadowCasters instanceof Float32Array) ||
@@ -113,6 +116,7 @@ export function validateSpatialExtensions(frame: SpatialRenderBufferView): void 
         environment.shadowCasterVertexCount !== 0))
   )
     throw new Error("Invalid spatial environment buffer");
+  if (environment) validateSpatialLightSelectionBuffer(environment.values, environment.lightSelection);
   const submission = environment?.shadowSubmission;
   if (submission) {
     if (

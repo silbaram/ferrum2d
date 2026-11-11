@@ -1,7 +1,6 @@
 import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { createWebGL2Program, prepareWebGL2Renderer } from "../src/webgl2ShaderPrograms.js";
-import { WEBGL2_SHADER_SOURCES } from "../src/webgl2ShaderSources.js";
 import type { ShaderPreparationProgress } from "../src/shaderPreparation.js";
 
 function fixture(parallel = true) {
@@ -34,10 +33,11 @@ function fixture(parallel = true) {
   return { gl, programs, shaders, submitted, queried, setLost: () => { lost = true; }, failLink: () => { linked = false; } };
 }
 
-const baseShaderNames = Object.keys(WEBGL2_SHADER_SOURCES).filter(name=>name!=="spriteNormal"&&name!=="spritePalette"&&name!=="spriteSunShadow"&&name!=="volumeShadow");
+// Color-only readiness must not eagerly compile optional material/lighting passes.
+const baseShaderNames = ["sprite", "debug", "lighting", "shadow", "fullscreen"] as const;
 
 function construct(gl: WebGL2RenderingContext) {
-  const programs = baseShaderNames.map((name) => createWebGL2Program(gl, name as keyof typeof WEBGL2_SHADER_SOURCES));
+  const programs = baseShaderNames.map((name) => createWebGL2Program(gl, name));
   return { destroy: () => { for (const program of programs) gl.deleteProgram(program); } };
 }
 
@@ -108,12 +108,16 @@ test("synchronous shader failure and partial allocation failure release intermed
 });
 
 
-test("color-only readiness leaves optional normal, palette and sun mask shaders lazy until requested", async () => {
+test("color-only readiness leaves normal, palette, shadow and lit shaders lazy until requested", async () => {
   const f=fixture(false),renderer=await prepareWebGL2Renderer(f.gl,{},()=>construct(f.gl));
   equal(f.submitted.length,5);equal(f.programs.size,5);
   const normal=createWebGL2Program(f.gl,"spriteNormal");equal(f.submitted.length,6);equal(f.programs.size,6);
   const palette=createWebGL2Program(f.gl,"spritePalette");equal(f.submitted.length,7);equal(f.programs.size,7);
   const sun=createWebGL2Program(f.gl,"spriteSunShadow");equal(f.submitted.length,8);equal(f.programs.size,8);
   const volume=createWebGL2Program(f.gl,"volumeShadow");equal(f.submitted.length,9);equal(f.programs.size,9);
-  f.gl.deleteProgram(normal);f.gl.deleteProgram(palette);f.gl.deleteProgram(sun);f.gl.deleteProgram(volume);renderer.destroy();equal(f.programs.size+f.shaders.size,0);
+  const litColor=createWebGL2Program(f.gl,"spriteLitColor");equal(f.submitted.length,10);equal(f.programs.size,10);
+  const litData=createWebGL2Program(f.gl,"spriteLitData");equal(f.submitted.length,11);equal(f.programs.size,11);
+  const litComposite=createWebGL2Program(f.gl,"flatLitComposite");equal(f.submitted.length,12);equal(f.programs.size,12);
+  for(const program of [normal,palette,sun,volume,litColor,litData,litComposite])f.gl.deleteProgram(program);
+  renderer.destroy();equal(f.programs.size+f.shaders.size,0);
 });

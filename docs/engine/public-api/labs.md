@@ -57,7 +57,7 @@ renderer.setSpriteMaterial({
   `AssetLoader`는 `textureOptions: { hero: { colorSpace: "none" } }`을 지원한다.
   WebGL2 `linear-srgb`의 sRGB 이미지는 linear sample을 RGB8 키로 변환하고 교체색을 linear로 돌려 조명에 전달한다.
   WebGL2 legacy sRGB는 업로드 시 premultiply로 정보가 소실되어 진단 오류를 낸다.
-  WebGPU는 straight-alpha 이미지이므로 sRGB 입력도 지원한다. WebGPU의 `linear-srgb`는 기존 WebGL2 fallback을 따른다.
+  WebGPU는 straight-alpha 이미지이므로 sRGB 입력도 지원한다. `linear-srgb`에서는 양 backend가 표시용 RGB8 키를 비교하고 교체색을 선형으로 복귀시킨다.
 - 압축 KTX2·메타데이터 없는 texture·RenderTexture **입력**·HD-2D spatial packet은 지원하지 않고 오류를 낸다.
   KTX2 대상은 `ktx2Url` 없이 PNG를 로드한다. WebGL2 `renderToTexture` **출력**에는 팔레트를 적용할 수 있다.
   raw `renderCommands(texture, commands)` 대신 texture ID를 사용하는 `renderCommands(commands)`를 사용한다.
@@ -190,3 +190,24 @@ callback 중 runtime을 해제하면 진행 중 sync는 오류로 중단하고 �
 생성 실패 시 이미 생성한 collider chunk를 회수한다. force sync가 도중에 실패한 경우에는 native mask가
 깨끗하더라도 다음 일반 sync에서 다시 전달한다. 교체 collider가 준비될 때까지 기존 collider는 유지한다.
 여러 chunk를 한 번에 교체하는 전체 transaction은 아니며, 성공한 앞 chunk는 유지하고 실패한 전달은 재시도한다.
+
+## Flat 점광원 원뿔 · 개발 소스
+
+`PointLight2D.spot?: PointLightSpot2D`의 `directionX`, `directionY`, `angleDegrees`와
+선택형 `penumbra`를 지정한다. `ResolvedPointLightSpot2D`는 정규화된 방향과 기본 penumbra0을 포함한다.
+범위·타원 좌표·비활성 검증·저장 및 private GPU 비용은
+[Flat 2D spot 조명](../data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.
+기존 legacy overlay는 새 원뿔 요청을 거절하고 선택형 lit profile에서 사용한다.
+
+## Flat 점광원 cookie · 개발 소스
+
+`PointLight2D.cookie?: PointLightCookie2D`는 `texture`(이름/숫자) 또는 `textureId` 중 하나와 선택형
+`rotationRadians`·`uv`를 받는다. `ResolvedPointLightCookie2D`는 기본 회전0과 전체 UV를 포함하며 이름을 보존한다.
+raw R*A·좌표·data 이미지 준비·원본 저장·renderer의 숫자 ID 요구·GPU 비용은
+[Flat cookie 계약](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+## Flat 볼록 다각형 차폐 · 개발 소스
+
+`PolygonOccluder2D`의 `vertices`는 ordered XY 배열이다. lit의 `polygonOccluders`에서 사용하며 양 winding을 허용한다.
+3..8 꼭짓점·256개 도형 한도, raw/f32 strict convex 검증, 유한 접선 돌출과 내부 광원 정책,
+원본 저장·cold capability·캐시 및 비용은 [Polygon 계약](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.

@@ -300,6 +300,8 @@ export type {
   DataScenePrimitiveVisualSpec,
   DataSceneSpriteAnimationSpec,
   DataSceneSpriteComponentSpec,
+  DataSceneSpriteSurfaceSpec,
+  ResolvedDataSceneSpriteSurface,
   DataSceneSpriteFrameSpec,
   DataSceneSpriteVisualSpec,
   DataSceneBodySpec,

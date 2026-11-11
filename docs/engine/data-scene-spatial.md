@@ -52,7 +52,7 @@ camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약
 
 ## 정적 GLB 배경 모델
 
-`/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`로 URL 또는 ArrayBuffer를
+`/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse" | "specular", signal? })`로 URL 또는 ArrayBuffer를
 먼저 준비하고 `engine.registerDataSceneSpatialModel(id, asset)`로 등록한다. 반환 `SpatialModelAsset`은
 불변 contentId(SHA-256)·bounds·primitiveCount·triangleCount·byteLength·diagnostics이며 geometry나 GPU handle을 노출하지 않는다.
 `spatial.models`는 applied instance ID를 key로 사용하며 같은 instance를 billboard와 중복 연결할 수 없다.
@@ -81,6 +81,25 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   재질 값은 GLB에 저장되며 instance마다 별도 레이어를 바꾸거나 정점을 양면 복제하지 않는다.
   base color texture는 sRGB, factor와 normal은 linear다. `diffuse`는 기존 조명으로 변환하는 명시적 프로파일이며
   metallic/roughness scalar를 PBR로 렌더링하지 않는다는 diagnostics를 반환한다.
+- 개발 소스의 `materialProfile:"specular"`는 비금속 직접광 반사를 선택한다. lit 재질의
+  `pbrMetallicRoughness.metallicFactor`를 명시적으로 0으로 내보내야 하며, 기본값 1이나 금속 입력은 거절한다.
+  `roughnessFactor`는 0..1(기본 1), `metallicRoughnessTexture`의 **G**는 raw roughness이며 곱한 뒤
+  shader에서 최소 0.12로 제한한다. `diffuse`의 기존 roughness texture 거절은 유지한다.
+  `KHR_materials_specular`의 `specularFactor`는 0..1(기본 1), `specularTexture`의 **A**는 raw 세기다.
+  `specularColorFactor`는 linear RGB 0..1(기본 흰색), `specularColorTexture`의 RGB는 **sRGB**다.
+  map이 없으면 각 채널은 1이며 세 map은 UV0·`KHR_texture_transform`·sampler를 독립적으로 사용한다.
+  [Khronos 채널·색공간 정의](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_specular)를 따른다.
+  고정 F0=0.04×색, Schlick Fresnel/Smith-GGX의 제한 lobe를 기존 Lambert 직접광에 더하는 표현용 profile이다.
+  lobe의 채널별 상한은 16이며 factor 0은 diffuse와 일치한다. point/spot/sun의 falloff·차폐를 공유하고,
+  ambient/hemisphere에는 반사를 추가하지 않는다. separated AO는 반사를 어둡게 하지 않는다.
+  emission·fog·DOF·Bloom·exposure/톤매핑은 기존 순서를 사용한다. 금속·IBL·에너지 보존형 전체 glTF PBR·
+  transmission·BLEND와 1 초과 specular 색 계수는 지원하지 않는다. 지원하지 않는 확장이나 unlit/specular 조합은 준비 오류다.
+  기존 base OPAQUE/MASK·양면·normal/emission 계약은 동일하다. 추가 map은 shadow alpha를 바꾸지 않는다.
+  반환 handle은 이 profile에서만 선택 `materialProfile:"specular"`를 포함한다. contentId는
+  `ferrum2d.specular.v1`+NUL+입력 GLB bytes의 SHA-256으로 구분하며 diffuse의 기존 hash는 유지한다.
+  분리형 glTF는 종속 bytes를 포함한 정규화 GLB에 같은 규칙을 적용한다. CPU 공유 캐시 key에도 profile이 들어간다.
+  재import는 새 contentId로 준비한 뒤 기존 `replaceModelAsset` patch/문서 적용을 사용한다. 저장·Undo·복원에는
+  asset ID/contentId만 남기며 opaque handle/GPU 자원은 넣지 않는다. 실패한 준비는 현재 자산을 유지한다.
 - `normalTexture`는 linear RGB tangent-space normal이다. UV0와 f32 `TANGENT VEC4`가 필수이며
   자동 tangent 생성은 하지 않는다. Blender export에서 Tangents를 켜고 tangent가 없는 입력은 준비 전에 거절한다.
   tangent XYZ는 unit/normal과 직교, W는 ±1이며 한 triangle의 W가 섞인 입력도 거절한다.
@@ -181,6 +200,36 @@ spatial.attachments = {
 옵션은 cold configuration flag로 전달하고 기존 80-byte model output ABI에는 추가 bit를 내보내지 않는다.
 이 flag를 모르는 이전 Wasm은 해당 설정을 거절한다. 사용 시 TS와 Wasm을 함께 갱신한다.
 
+실제 정원 캐릭터·나무의 표시 평면/부피 그림자를 비교하는 예제는
+[기능 실험실의 HD-2D 그림자 비교](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy)다.
+로컬 실행과 에셋 재생성 방법은 저장소의 `examples/starter-runtime/README.md`를 따른다.
+간소화 모델 표시와 카메라·높이·회전·애니메이션을 전환한다. 고정 volume은 프레임별 실루엣의 근사이며
+원본 표시 그림과 다른 shadow caster를 사용하는 선택이다.
+
+표시 애니메이션의 `flipX`/`flipY`는 UV만 반전한다. 부모의 월드 pose와 attachment 부피는 반전하지 않는다.
+반전 방향에 맞춰 비대칭 부피도 바꾸려면 별도 asset/yaw를 명시해야 한다. 자동 실루엣 추출이나 프레임별 proxy 전환은 없다.
+비교 예제의 `부피 정밀도`는 기본 단일 LOD를 유지하며, 거리 LOD를 켜면 기존 `models.lods`를 사용한다.
+기준은 카메라 eye에서 각 모델 원점까지의 3D 거리다. `minDistance:600`의 진입은 660 이상, 복귀는 540 미만이다.
+직교 카메라의 eye 거리는 확대율과 독립이다. LOD 교체는 caster geometry와 그림자 cache를 갱신하며,
+같은 LOD에서 고정 월드 영역의 camera-only 변경은 cache를 재사용한다. 원래 부피로 돌아오면 같은 지면의 차폐를 복구한다.
+정원 비교는 `applyDataSceneAuthoringDocument`의 선택 `preserveAnimationAndLod`를 사용한다.
+부피 표시·원본·태양·attachment yaw를 바꿔도 호환되는 재생 단계와 LOD 선택 이력을 유지하며,
+사물을 바꾸면 해당 모델의 policy만 새로 시작한다. 명시한 초기 프레임/클립 변경과 실험 초기화는 새 값을 적용한다.
+
+| 비교 asset | 표시 크기 / originY | 부피 바닥·높이 | 근사 범위 |
+| --- | --- | --- | --- |
+| 나무 | 64×96 / 1 | 0·96 | 기존 baseline 유지. 원본의 투명 발 여백 3px 포함 |
+| 가로등 | 32×96 / 1 | 0·90 | 원본 16×48을 2배 표시. 가는 기둥·머리를 상자로 근사 |
+| 상자 | 64×64 / 30÷32 | 0·56 | 원본의 아래 투명 여백 2px를 피벗에서 제외 |
+
+이는 수동 측정한 근사다. 자동 생성이나 픽셀 단위 실루엣 일치를 보장하지 않는다.
+GLB의 임의 `extras`는 collision/navigation 입력으로 해석하지 않는다. `addSpatialModelAssembly`도
+명시한 `colliders`/`terrain`/`connections`만 생성한다. `shadowOnly`·LOD 변경은 이 입력들을 바꾸지 않으며,
+생략한 정적 proxy에는 body·충돌·보행면을 자동으로 추가하지 않는다.
+예제의 재생 상태 JSON은 공개 `captureGameStateSnapshot`의 authored document와 progress를 담는다.
+일반 설정 JSON과 달리 runtime flip·경과 시간을 포함한다. 복원은 asset 선등록 후 기존
+`restoreGameStateSnapshot`의 authoring/progress 계약을 따른다.
+
 ### 분리형 glTF 배경 모델
 
 `loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`를 `/core`에서 제공한다.
@@ -266,7 +315,7 @@ cache.evictUnused(); // 사용하지 않는 ready 항목만 제거한다.
   원본·decoder 임시 사본, 캐시 밖 handle/engine 등록, GPU 자원은 이 CPU 캐시 예산에 포함하지 않는다.
   pendingLoadCount는 취소 후 정리 중인 작업도 포함하므로 destroy 직후에도 0보다 클 수 있다.
 - URL 내용 변경을 자동 감지하지 않는다. versioned URL/새 contentId revision을 사용하거나 release 후 unused 항목을 제거해 다시 읽는다.
-  contentId를 지정하면 실제 loader 결과와 일치해야 한다. format/revision이 다른 요청과 다른 URL은 별도 key다.
+  contentId를 지정하면 실제 loader 결과와 일치해야 한다. format/profile/revision이 다른 요청과 다른 URL은 별도 key다.
 
 캐시는 native 씬을 교체하거나 engine 등록·GPU 자원을 해제하지 않는다. 모델을 사용하는 동안 lease를 보관하고,
 씬/engine/GPU 수명은 기존 authoring·registration·preparer 계약으로 관리한다. 저장에는 캐시/lease를 넣지 않는다.
@@ -678,7 +727,7 @@ point light 6면과 directional sun의 그림자, hard/PCF3 필터, terrain/bill
 native face range·caster revision·모델 visibility/matrix를 사용하므로 카메라 밖 모델도 그림자를 드리운다.
 같은 terrain/caster/광원/matrix/색 atlas revision이면 깊이 map을 재사용하며 shadow draw/upload는0이다.
 카메라 이동으로 billboard caster 모양이 바뀌면 native revision에 따라 다시 그린다. normal atlas만 갱신하면 WebGPU 깊이 cache는 유지한다.
-`linear-srgb` renderer 색 관리는 WebGL2 fallback을 사용한다.
+`linear-srgb` renderer 색 관리는 양 backend에서 지원한다. Spatial 합성·flat HUD·전역 후처리 뒤 최종 표시 변환을 수행한다.
 전체 화면 후처리 Bloom과 Spatial 환경의 HDR Bloom은 WebGPU에서도 지원하며 서로 별도의 효과다.
 같은 평면 `LightingScene2D`를 공간 packet에 중복 적용할 수 없다.
 
@@ -1228,11 +1277,30 @@ compiler가 정규화하며 color/intensity의 범위와 기본값은 point ligh
 이미 정규화된 f32 방향은 저장·복원 때 다시 정규화하지 않아 numeric buffer를 그대로 보존한다.
 `resolution`은 128/256/512/1024(기본 512), `extent`는 직교 맵 반폭 1..10,000(기본 256),
 `distance`는 target 중심 앞/뒤 깊이의 반폭 1..10,000(기본 512), `bias`는 world 0..10(기본 0.05)다.
-카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
+기본적으로 카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
 적용하며 무한 거리 그림자나 cascade를 제공하지 않는다.
 범위 안쪽의 경계 구간에서는 차폐를 smoothstep으로 줄여 직접 조명으로 이어진다.
 구간 폭은 XY shadow texel 4개에 해당하는 world 거리(`8 × extent / resolution`)이며 같은 거리를 깊이 경계에도 적용한다.
 영역 밖으로 그림자를 늘리거나 다른 광원·환경광을 감쇠하지 않는다. target이 움직일 때의 texel snapping은 유지한다.
+
+`directional.shadows.center?: { x, y, elevation }`는 그림자 영역의 **고정 월드 기준점**이다.
+세 좌표는 모두 필수 finite world 값(각 ±1,000,000)이며 `null`·불완전한 좌표는 거절한다.
+생략하면 기존 camera target 추적을 그대로 유지한다. 지정하면 카메라 pan·zoom·orbit가 map의
+중심·해상도·extent·distance를 바꾸지 않는다. 태양·caster의 월드 형상이 같으면 카메라만 바꿀 때 depth map을 재사용할 수 있다.
+예를 들어 마을 중심에 `center: { x: 0, y: 10, elevation: 0 }`를 작성해 해당 지역의 그림자를 고정한다.
+이 설정은 카메라를 움직이거나 광원의 방향을 고정하는 설정과 별개다. `extent`·`distance`는 그대로 유한하며
+범위를 자동 확대하거나 모든 화면 밖 물체를 포함하지 않는다. 카메라에 보이지 않는 caster도 light volume 안에 있으면
+그림자 제출에 남지만, light volume 밖 geometry·빈 shadow texel·영역 밖 수신점의 그림자를 보장하지 않는다.
+
+고정 기준점은 environment **v5 numeric528**을 사용한다. 0..511은 기존 v4 prefix,
+512는 center 존재 flag(0/1), 513..515는 native XYZ(`x`, `elevation`, `-y`), 516..527은 reserved 0이다.
+flag가 0이면 center 좌표는 모두 0이어야 하며 flag가 1이면 활성 sun shadow가 있어야 한다.
+native capture는 컴파일한 numeric 설정을 보존한다. 활성 sun shadow의 center는 기존 progress의
+environment JSON·patch/저장/복원 경로에서 유지한다. 조명을 끈 작성 문서에는 center가 남지만,
+native 출력은 기존 조명 설정처럼 비활성 표현을 사용하므로 작성 원본을 별도로 유지한다.
+새 JS/Wasm을 함께 사용해야 한다. 과거 Wasm은 길이 528을 거절하며 새 reader는 기존 v1~v4를 계속 수용한다.
+기존 vertex/model ABI와 GPU uniform 배치는 유지한다. TS는 v5 center를 GPU 카메라 슬롯으로 복사하지 않으며
+Rust가 만든 기존 16-float sun matrix를 양 renderer가 사용한다.
 
 그림자 맵의 기준축은 월드 +elevation에서 태양 방향으로 최소 회전한 고정 프레임으로 계산한다.
 고도 약 81.9°에서 reference-up을 교체하지 않으므로 천정과 지평선 통과 때 격자가 갑자기 회전하지 않는다.
@@ -1338,6 +1406,34 @@ billboard 시각 offset에 `focusOffset`(world ±1M, 기본 0)을 더해 camera 
 진행 v7은 수동 fallback·target 정책·품질을 저장하며 파생 focus 값은 저장하지 않는다.
 fresh restore는 authored actor의 새 handle을 사용한다.
 
+### 선택형 조명 성분 분리 · 개발 소스
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  composition: "separated",
+  lighting: { ambient: [0.15, 0.15, 0.15], lights: [] },
+  ambientOcclusion: { strength: 0.6, radius: 12, bias: 0.2 },
+  bloom: { strength: 0.4, radius: 8, threshold: 1 },
+});
+```
+
+생략하면 기존 합성을 유지한다. `composition:"separated"`는 AO를 ambient·hemisphere 기여에만 적용한다.
+직접광·발광·unlit 색은 AO로 줄이지 않으며, 그 뒤 fog → DOF → Bloom → exposure/톤 매핑·색 보정 순서로 처리한다.
+Bloom threshold는 exposure 전의 선형 HDR 값이다. flat HUD는 기존처럼 Spatial 합성 뒤에 그린다.
+명시적인 `composition:"legacy"` 선택도 저장하며 기존 화면으로 돌아간다.
+
+환경 v6 numeric544를 사용한다. 0..527은 기존 prefix, 528은 legacy=0/separated=1,
+529..543은 reserved 0이다. v1..v5의 길이·의미를 유지하고 혼합 version/length는 거절한다.
+새 JS/Wasm을 함께 사용해야 하며 과거 core는 새 길이를 거절한다. JSON·patch·진행 저장과 fresh restore에 선택을 보존한다.
+
+선택형 AO에는 환경광 MRT와 AO/fog resolve용 RGBA16F target 두 개를 추가한다.
+DOF와 양수 Bloom을 함께 켜면 Bloom이 DOF 결과를 읽도록 RGBA16F target 하나를 추가한다.
+기본 HDR color+depth는 physical pixel당 12 bytes, AO 분리만 사용하면 28 bytes,
+AO 분리와 DOF/Bloom을 함께 사용하면 36 bytes다. shadow target은 별도다.
+추가 resolve는 AO 활성 시 1회, DOF/Bloom 동시 활성 시 1회다. 해당 strength가 0이면 추가 target/pass를 만들지 않는다.
+기존 표준/고품질 DOF의 단일 깊이 근사·반투명/숨은 배경 복원 한계는 유지한다.
+세부 수식과 검증 기준은 [합성 구조](../development/architecture/spatial-lighting-composition.md)를 따른다.
+
 ### 버퍼와 통계 호환
 
 기존 spatial render ABI v2/vertex 44 bytes/flat ABI는 유지한다. environment v1 numeric80도 읽고 쓴다.
@@ -1394,7 +1490,7 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 
 `SpatialDebugOptions`의 category는 각각 기본 false이며 `depthTest`만 기본 true다.
 옵션 객체의 알 수 없는 필드/잘못된 boolean은 diagnostic으로 거절한다. 공간 설정이 없거나
-이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 physics category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
+이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
 
 | 표시 | 색 | 원천과 범위 |
 | --- | --- | --- |
@@ -1404,6 +1500,22 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 | `colliders` | 초록, trigger는 주황 | native collider의 XY 선을 heightSpan bottom/top에 배치하고 세로 연결. visual 없는 body도 포함 |
 | `contacts` | 빨강 | 마지막 유효한 spatial 이동의 sweep hit marker/normal 및 사용 가능한 rigid solver impulse contact |
 | `floorIds` | 흰색 | 제출 지형과 visible collider entity의 camera-facing `F숫자` stroke label. heightSpan 없는 body는 `F-` |
+| `sunShadowCoverage` | 청록·주황 | 실제 finite sun matrix의 높이 0 평면 교선. 청록은 유한 맵 외곽, 주황은 내부 fade의 full-weight 경계 |
+
+`sunShadowCoverage`는 현재 프레임에서 선택한 태양 행렬을 사용한다. point+sun 조합에서도 cube face와 혼동하지 않는다.
+Rust가 affine 역변환과 12개 edge/지면 교차를 계산하며, 고도·방위·fixed center·texel snapping·extent·distance를 그대로 반영한다.
+천정/지평선·이전 reference-up 전환 지점 약 81.9°에서도 같은 계산을 사용한다. 태양 map이 없거나
+맵이 높이 0 평면과 만나지 않으면 선을 만들지 않는다. 극도로 좁은 깊이에서는 full-weight 내부가 없어 주황 선이 생략될 수 있다.
+fade 폭 `f = 8 × extent / resolution`에 대해 내부 clip 한계는 XY `1 − 8 / resolution`, Z `1 − 2f / distance`다.
+Z의 2배 계수는 셰이더의 `[-1, 1] → [0, 1]` 변환을 반영한다. `distance < 2f`이면 full-weight 내부가 없다.
+`distance = 2f`에서는 내부가 평면으로 줄며, 이 평면이 높이 0 지면과 일치하면 주황 외곽선을 그린다.
+이는 terrain의 실제 각 표면이나 최종 shadow 픽셀의 윤곽이 아니다. normalBias·PCF·caster 유무는 별도로 결과에 영향을 준다.
+
+단독 활성화는 두 다각형의 최대 24 vertices만 예약한다. 다른 진단 category와 조합하면 기존 공용 budget을 사용한다.
+별도 render target 없이 기존 debug pass를 재사용한다. 첫 활성화가 Wasm memory를 확장하면 기존 cache의 buffer-identity
+보호 조건 때문에 한 번 shadow miss가 날 수 있다. 같은 메모리·geometry에서 반복 on/off는 shadow map을 재사용한다.
+진단은 runtime-only이고 authored JSON·progress에 저장하지 않는다. 기존 debug v1/11-float vertex ABI를 유지하며,
+새 bit128을 모르는 Wasm은 선택을 거절한다.
 
 `heightSpans`는 entity 원점 높이 표시다. footprint는 별도 `colliders`로 확인한다.
 AABB·원·회전 박스·캡슐·edge·chain·convex polygon 및 compound child를 기존 native collider geometry에서 읽는다.
@@ -1762,8 +1874,63 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
 기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
 기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
-WebGPU는 512 floats로 padding한 환경 + 카메라/7 shadow matrix를 2,560-byte uniform 슬롯 두 개에 담는다.
+WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom 설정을2,608-byte private uniform에 담는다.
+256-byte 정렬 간격은2,816 bytes이며 두 슬롯을 사용한다. native 환경 record와 별도 구조다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
+
+### 선택형 native 광원 전환
+
+`lighting.selection`을 생략하면 기존 순위 교체 정책을 유지한다. 다음 객체를 명시하면 Rust가
+simulation step마다 최대4개 슬롯의 선택·fade 이력을 소유한다. shadow owner는 첫 슬롯에 고정한다.
+
+```json
+"selection": { "enabled": true, "hysteresis": 0.15, "fadeSeconds": 0.15, "resetDistance": 0 }
+```
+
+- `enabled`: 기본 true. false도 작성 값을 보존하며 legacy 선택을 사용한다.
+- `hysteresis`: 0..1, 기본0.15. 기존 슬롯의 점수에 `1 + hysteresis`를 곱해 경계 왕복을 완화한다.
+- `fadeSeconds`: 0..5초, 기본0.15. 기존 광원 fade-out → 같은 슬롯에서 교체 → 새 광원 fade-in의
+  **각 leg** 길이다. 전체 교체는 최대2배 길이며0은 즉시 교체한다. 활성 슬롯 상한을 늘리지 않는다.
+- `resetDistance`: camera target의 update당 이동 거리0..1,000,000, 기본0. 0은 자동 cut 감지를 끈다.
+  양수 임계값을 넘으면 현재 순위로 즉시 초기화한다. `resetDataSceneSpatialLightSelection()`도 명시적으로 이력을 지운다.
+
+활성 정책은 `intensity × max(R,G,B) / (1 + distance²/radius²)`로 순위를 계산한다. 거리는 camera target 기준이다.
+RGB가 모두0이거나 direct `lightMask`가0인 광원, 광원 반경의 AABB가 camera frustum과 전혀 교차하지 않는
+광원은 일반 슬롯에서 제외한다. frustum은 pixelArt의 표시 비율·camera snap까지 반영해 simulation seed 전 계산한다.
+경계·near/eye plane을 보수적으로 포함하며 구·cone·수신면의
+정확한 가시성 판정은 아니다. shadow owner는 기여가 없어도 첫 슬롯 예약을 유지하고 제출 intensity를0으로 한다.
+`selection` 생략/disabled의 종전 intensity·거리 순위는 그대로 유지한다.
+
+선택은 simulation pose, 최종 광원 위치는 render interpolation pose를 사용한다. render preview와 반복 build,
+pause/zero step은 전환 시간을 진행하지 않는다. point 선택 입력(config·광원·채널·상한·shadow owner)/실제 binding 변경·씬 재시작/해제는 초기화하고,
+동일 source·노출/후처리 편집은 전환을 보존한다. global lighting OFF는 이력을 초기화하고 작성 설정을 보존한다.
+GPU 장치 복구는 native history를 소유하거나 초기화하지 않는다.
+
+정책을 명시한 source는 **environment v8 numeric580**을 사용한다. 기존0..575와 예약565..575의0을
+유지하고576..579에 enabled/hysteresis/fadeSeconds/resetDistance를 추가한다. 구/부분 Wasm은 자산 조회나
+씬 변경 전에 거절한다. 환경 수정 patch는 **spatial patch v9**이며 v1..v8 읽기는 유지한다.
+
+활성 정책의 진행 저장은 **Data Scene state v11**의 `progress.spatial.lightSelection`에 native source 서명,
+initialized/step/anchor와4개 source/pending/weight/phase 슬롯을 저장한다. global OFF도 초기화된 codec을 저장한다.
+정책 disabled/생략과 legacy 문서는 종전 저장 버전을 유지한다. source와 history의 native preflight는 handle 교체 전에
+수행하며 normal/combat motion을 단일 native transaction으로 복원한다. 서명을 JS에서 재계산하지 않는다.
+
+`SpatialEnvironmentBufferView.lightSelection`은 optional borrowed v1/stride6이며 authored source당24-byte 행이다.
+`words`와 `values`는 같은 메모리다. source/slot/reason/flags는 u32이며 slot 없음은0xffffffff,
+score/weight는 마지막2개 f32다. reason은 active1/in2/out3/retained4/budget5/missing6/no-contribution7/OFF8/position9/pending10,
+사유7은 intensity0·RGB0·direct mask0·frustum 밖을 포함한다.
+flags는 pinned1/retained2/preview4/pending8이다. retained는 pause 등으로 유지된 집합도 포함한다.
+매 frame 다시 읽고 지연 소비 전에 소유 복사한다. 정책 disabled/작성 광원0개는 행을 생략할 수 있다.
+GPU target/pass·shader loop 상한은 늘지 않는다. 실제 양 backend 전환 픽셀·버퍼·복구와 통계는 전용 smoke로 검증하며,
+실게임·실기기는 전체 개발 완료 뒤 진행한다.
+
+`SpatialRendererStats`는 `authoredLightCount`와 packed `lightCount` 외에
+`contributingLightCount`를 기록한다. 이는 선택된 행의 intensity·색·direct mask가 모두 nonzero라는 뜻이며
+각 수신면이나 화면 pixel의 실제 가시성을 뜻하지 않는다. v8 진단이 있을 때만 `pendingLightCount`,
+`retainedLightCount`, `fadingLightCount`, `culledLightCount`, `droppedLightCount`, `disabledLightCount`를 기록한다.
+culled는 missing/no-contribution/position 사유6/7/9, dropped는 budget 사유5, disabled는 OFF 사유8이다.
+pending/retained는 flags8/2, fading은 사유2/3을 세므로 서로 겹칠 수 있으며, 이 값들은 source의 partition이 아니다.
+구 policy/core의 상세 값은 undefined이며0으로 추정하지 않는다.
 
 뷰어는 **보기 → 조명**에서 분위기(낮/노을/밤/실내), 품질(낮음/균형/높음), 활성 광원 수와
 효과를 조절한다. 품질은 활성 1/2/4개, 그림자 128/512/1024, hard/PCF3를 적용하며 낮음은 추가 효과를 끈다.
@@ -1841,3 +2008,111 @@ phase·body pose·camera를 함께 적용한다. 손상된 ID/phase는 scene 교
 `examples/data-scene-native/moving-platforms.mjs`의
 `startMovingPlatformScene(canvas)`은 승강 바닥과 이동 다리를 함께 체험하는
 예제다. 기존 spatial recipe의 `save()`/`restore()`도 사용할 수 있다.
+
+## Spatial 독립 수신 mask · 개발 소스
+
+`spatial.terrain[]`, `spatial.billboards[id]`, `spatial.models[id]`의 선택형
+`lightMask`·`shadowMask`는 정수0..255이며 생략하면255다. 점광원
+`environment.lighting.lights[]`와 태양 `lighting.directional`에도 같은 필드를 지정한다.
+수신면과 광원의 `lightMask` 교집합이0이면 해당 직접광의 diffuse·GGX 반사를 생략한다.
+`shadowMask` 교집합이0이면 그 광원의 그림자 감쇠만 생략한다. 환경광·반구광·발광은 유지한다.
+기존 `castShadow`·`receiveShadow`는 계속 독립적으로 작동하며 수신 mask로 caster를 제거하지 않는다.
+비표시 `render:false` 지형에는 기본255만 허용한다. 생성 glyph·particle·projectile은255/255를 사용한다.
+
+```json
+{
+  "lightMask": 1,
+  "shadowMask": 0
+}
+```
+
+이 설정은 채널1 직접광을 받고 그림자 감쇠를 건너뛴다. 광원 mask와 수신 mask를 함께 작성한다.
+공간 patch **v8**은 두 필드의 객체 변경과 mask가 포함된 `setEnvironment`를 저장한다.
+기존 v1..v7 patch 읽기는 유지하고 구 버전 patch의 새 필드는 거절한다.
+Undo/Redo·JSON 재적용·진행 복원은 명시적0을 보존한다. Authoring envelope는 기존 v1이다.
+
+광원 mask가 있는 환경은 **v7 numeric576**을 사용한다. 기존0..543 prefix와 v6 composition은 유지한다.
+544는 sun,545..548은 선택된4개,549..564는 작성된16개 광원의 채널이며 각 값은
+정확한 정수 `lightMask | (shadowMask << 8)`이다.565..575는 예약0이다.
+Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원본 광원·채널을 저장하되 표시 복사본의
+활성 광원·그림자를 비운다. raw capture를 decode하면 생략한 채널은255로 정규화될 수 있다.
+원본 JSON은 생략 여부도 보존한다. 기존 v1..v6 입력은 이전 길이와 동작을 유지한다.
+구 Wasm에서 새 mask를 요청하면 자산 조회·scene 변경 전에 거절한다. JS/Wasm을 함께 교체한다.
+
+`SpatialRenderBufferView.receiverMasks`는 `/core`의 선택형 `SpatialReceiverMaskBufferView`다.
+`{version:1,stride:2,terrain,billboards,models}`의 Uint32Array에8-byte pair를 담는다.
+지형은 비표시 proxy 슬롯을 포함한 전체 surface, billboard는 실제 출력 quad, model은 ModelDraw 순서다.
+전체 기본값인 stream은 빈 배열이며 모든 stream이 비었으면 view를 생략한다.
+다음 Wasm 호출·memory growth 전에 소비하고 deferred callback은 소유 복사한다.
+기존44-byte vertex·8-byte material·80-byte ModelDraw와 reserved0은 유지한다.
+
+WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
+기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
+최대65,536 pair/16 MiB다. 환경 uniform은2,608-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
+회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
+
+
+### 선택형 넓은 HDR Bloom (개발 소스)
+
+기존 `bloom`은32-tap gather를 유지한다. 넓은 halo는 `composition: "separated"`에서 명시적으로 선택한다.
+
+```json
+{
+  "composition": "separated",
+  "bloom": { "mode": "wide", "quality": "balanced", "radius": 64, "threshold": 1, "strength": 0.5 }
+}
+```
+
+wide의 기본값은 quality `balanced`, radius48 CSS pixels, threshold1, strength0.5다.
+radius는0.1..96이며 기존 gather의0.1..24 범위는 그대로다. strength0..4와 threshold0..64를 사용한다.
+mode 생략은 gather이며 quality는 wide에서만 허용한다. wide를 legacy composition에 붙이면 거절한다.
+
+threshold는 **AO/fog/DOF 이후·노출 전 scene-linear HDR의 RGB 최대 채널**에 적용한다.
+각 source texel의 `color × max(peak-threshold,0)/max(peak,epsilon)`을 구한 뒤 평균하므로
+작은 밝은 물체를 먼저 평균해 threshold 아래로 없애지 않는다. 전체 밝기 기반이며 emission도 포함한다.
+노출·tone mapping·색 보정·최종 sRGB 변환과 HUD는 Bloom 뒤다. 별도 emissive-only 입력은 제공하지 않는다.
+
+low는4배, balanced/high는2배 box prefilter로 시작한다. 반경이 kernel 범위를 넘으면2배 downsample을
+추가해 큰 sample stride의 구멍을 피한다. 마지막 해상도에서 low/balanced9-tap, high17-tap의
+정규화된 가로·세로 Gaussian blur(tap당2-load 보간)와4-load bilinear 합성을 수행한다. source pixel grid를 보존해
+홀수 extent의 padding을 이미지 전체로 늘리지 않는다. 경계는 clamp-to-edge다.
+coarse prefilter·upsample 근사이므로 작은 물체와 경계의 halo는 품질에 따라 달라진다.
+pixelArt는 내부 해상도에서 계산하고 wide 합성 좌표도 해당 pixel 중심에 고정해 nearest 확대를 유지한다.
+
+strength0 또는 mode 생략은 **추가 wide target/pass0**이다. 사용했던 pipeline·uniform buffer는
+renderer destroy/recovery까지 재사용할 수 있다. 품질/해상도/OFF 변경은 불필요한 target을 회수한다.
+WebGPU는 첫 사용에4 KiB stage uniform buffer를 만들고 활성 합성마다 갱신하며, warm geometry/upload0과
+모든 uniform 업로드0을 같은 의미로 해석하지 않는다. 생성/쓰기 실패 재시도와 비동기 GPU 실패 후 복구를 검증한다.
+
+wide source는 **environment v9 numeric584**다. 기존0..579를 보존하고580mode,581기본 downsample,
+582kernel 반경,583selection 존재 bit를 추가한다. bit583은 생략과 disabled+모든 설정0을 구분한다.
+기존 v8의580 길이는 종전 selection 존재 의미를 유지한다. 광원 전환 이력·서명은 Bloom 품질 편집과 독립이다.
+구 core는 cold `spatial_wide_bloom_abi_version` capability 검사로 자산 조회/씬 변경 전에 거절한다.
+환경 patch는 **spatial patch10**, wide를 포함한 문서/진행 저장은 **Data Scene state12**다.
+구 patch/저장에 새 mode를 넣은 downgrade는 거절하며 기존 v1..v8 환경과 저장 버전은 유지한다.
+
+`SpatialRendererStats.bloomDrawCalls`, `bloomTextureBytes`, `bloomTexelFetchBudget`는 한 spatial 제출의
+추가 draw·알려진 target texel 저장량·texture-load 작업 상한이다. `bloomSampleBudget`은 최대 단일 pass의 pixel당 texture load 수이며
+다중 해상도 전체 비용은 texel budget과 함께 읽는다. gather는 별도 draw/target0·최대32 samples다.
+`RendererStats.spatialBloomDrawCalls`/`spatialBloomTexelFetchBudget`는 begun frame의 모든 packet을 합산하고,
+`spatialBloomTextureBytes`는 그 frame의 spatial 제출에서 관찰한 wide target bytes의 peak다. HUD 뒤에도 보존하고 다음 `render()`에 초기화한다.
+같은 이름의 DebugOverlay/profiler/frame trace와 선택형 max budget에 전달한다.
+frame/window에 미측정 값이 있으면 설정한 budget은 `missingMetric`이며0으로 채우지 않는다.
+이 상한은 실제 GPU 시간·VRAM·texture cache miss 측정값이 아니다.
+
+128×128 scene/output, radius64·threshold1·strength1의 자동 fixture에서 사용하는 예산은 다음과 같다.
+실게임·실기기의 ms/FPS 예산은 전체 개발 후 검증한다.
+
+| 품질 | DPR | 추가 draw | target bytes | texture-load budget |
+| --- | --- | --- | --- | --- |
+| low | 1 | 5 | 11,264 | 85,504 |
+| balanced | 1 | 6 | 44,032 | 89,600 |
+| high | 1 | 5 | 45,056 | 104,448 |
+| low | 2 | 6 | 44,032 | 335,360 |
+| balanced | 2 | 7 | 175,104 | 351,744 |
+| high | 2 | 6 | 176,128 | 366,592 |
+
+동일 fixture의 gather radius24는 별도 target/draw0·DPR1 texture-load budget524,288이다.
+넓은 halo는 추가 pass/target으로 품질을 높이면서 full-resolution gather보다 load 작업을 줄인다.
+반경·extent·DPR에 따라 chain 길이가 바뀌므로 품질 이름만으로 draw 수의 순서를 가정하지 않는다.

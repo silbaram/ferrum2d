@@ -16,10 +16,10 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(Math.fround(value)) || value < min || value > max))
       throw sceneCompositionDiagnosticError(at, `must be a finite number in ${min}..${max}`);
   };
-  const scene = record(value, path, ["enabled", "ambient", "directionalLight", "pointLights", "tileOccluders", "shadows", "debug"]);
+  const scene = record(value, path, ["enabled", "profile", "hdr", "ambientIrradiance", "ambient", "directionalLight", "pointLights", "tileOccluders", "polygonOccluders", "shadows", "debug"]);
   boolean(scene.enabled, `${path}.enabled`);
   for (const [name, maximum, keys] of [
-    ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff"]],
+    ["pointLights", 32, ["x", "y", "radius", "radiusY", "height", "color", "intensity", "falloff", "lightMask", "shadowMask", "spot", "cookie"]],
     ["tileOccluders", 1024, ["x", "y", "width", "height"]],
   ] as const) {
     const items = scene[name];
@@ -35,7 +35,7 @@ export function resolveSceneLighting(value: unknown, path = "sceneAuthoring.ligh
     });
   }
   if (scene.directionalLight !== undefined)
-    record(scene.directionalLight, `${path}.directionalLight`, ["directionX", "directionY", "intensity", "color", "shadowOpacity", "shadowLengthScale", "maxCasters", "elevationRadians"]);
+    record(scene.directionalLight, `${path}.directionalLight`, ["directionX", "directionY", "intensity", "color", "shadowOpacity", "shadowLengthScale", "maxCasters", "elevationRadians", "lightMask", "shadowMask"]);
   let shadows = scene.shadows;
   if (shadows !== undefined && typeof shadows !== "boolean") {
     const shadow = record(shadows, `${path}.shadows`, ["enabled", "color", "projectionLength", "maxDistance"]);

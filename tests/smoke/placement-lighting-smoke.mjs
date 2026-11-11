@@ -1,4 +1,6 @@
 import { smokeLightingUpgrade } from "./placement-lighting-upgrade-smoke.mjs";
+import { smokePlacementSunDirection } from "./placement-sun-direction-smoke.mjs";
+import { smokePlacementSunGizmo } from "./placement-sun-gizmo-smoke.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu, openPlacementLightingAdvanced } from "./placement-panel-navigation.mjs";
@@ -45,6 +47,8 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     if(!await enabled.isChecked())await enabled.check();
     if(await page.locator('[data-placement-lighting-action="add-sun"]').isVisible())
       await page.locator('[data-placement-lighting-action="add-sun"]').click();
+    const sunDirection = await smokePlacementSunDirection({ page, mode, open, edit, source, paint });
+    const sunGizmo = await smokePlacementSunGizmo({ page, mode, open, edit, source, history, paint, pixels });
     await edit("sun-intensity",mode==="spatial"?0.9:0.2);
     await page.locator('[data-placement-lighting-action="add-point"]').click();
     await edit("point-intensity",1.25); await edit("point-radius",180);
@@ -115,6 +119,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     await page.locator('[data-placement-action="redo"]').click();await paint();
     assert.deepEqual(await source(),good);
     await page.locator('[data-placement-playback="play"]').click();await paint();
+    assert(await page.locator('[data-placement-sun-gizmo]').isHidden(),"Editor sun must not appear in the game preview");
     await open(); assert(await enabled.isDisabled());
     await page.locator('[data-placement-playback="stop"]').click();await paint();
     assert.deepEqual(await source(),good);
@@ -154,6 +159,8 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     await page.screenshot({path:`${output}/${mode}-compact.png`,fullPage:true});
     assert.deepEqual(errors,[]);
     const result={ok:true,mode,advanced,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
+    result.sunDirection = sunDirection;
+    result.sunGizmo = sunGizmo;
     if(mode==="2d")result.saving=await smokePlacementLightingSave(parent,timeoutMs);
     await writeFile(`${output}/${mode}.json`,JSON.stringify(result,null,2)+"\n");
     return result;
@@ -173,7 +180,7 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
       directional:{direction:{x:-1,y:-1,elevation:2},shadows:{normalBias:.35}},
       hemisphere:{direction:{x:1,y:2,elevation:3},skyColor:[.2,.4,1],groundColor:[.4,.2,.1],intensity:.4},
     }};
-    else fixture.lighting={ambient:[0.05,0.08,0.12,0.5],pointLights:[]};
+    else fixture.lighting={ambient:[0.05,0.08,0.12,0.5],pointLights:[],directionalLight:{directionX:2,directionY:-3,intensity:.2,shadowLengthScale:1.5}};
     if(mode==="spatial"){
       fixture.spatial.environment.bloom={strength:.7,radius:10,threshold:.8};fixture.spatial.environment.ambientOcclusion={strength:.6,radius:16,bias:.3};
       fixture.spatial.environment.lighting.lights[0].spot={direction:{x:0,y:0,elevation:-1},angle:55,penumbra:.4};
@@ -219,17 +226,49 @@ export async function smokePlacementLightingSave(parent,timeoutMs=30000){
         assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerExportPatch()),undefined);
       }
       await field.press("Escape");
+      if(mode==="2d"){
+        const normal=page.locator('[data-placement-lighting-field="sun-normal-elevation"]');
+        await openPlacementLightingAdvanced(normal);await normal.fill("30");await normal.press("Enter");
+        const length=page.locator('[data-placement-lighting-field="sun-shadow-length"]');
+        await length.fill("2");await length.press("Enter");
+      }
+      const direction = page.locator('[data-placement-lighting-field="sun-direction"]');
+      await direction.fill("90");
+      assert.equal((await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft())).saved,true);
+      saved=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
+      const sun=mode==="spatial"?saved.spatial.environment.lighting.directional.direction:saved.lighting.directionalLight;
+      assert(Math.abs(mode==="spatial"?sun.x:sun.directionX)<1e-8);
+      assert(Math.abs((mode==="spatial"?sun.y:sun.directionY)-(mode==="spatial"?Math.SQRT2:1))<1e-8);
+      if(mode==="2d"){
+        assert(Math.abs(sun.elevationRadians-Math.PI/6)<1e-8);
+        assert.equal(sun.shadowLengthScale,2);
+      }
+      assert.deepEqual(saved.spatial?.camera,fixture.spatial?.camera);
       if(mode==="spatial"){
+        await showPlacementMenu(page,"lighting");
         await page.locator('[data-placement-lighting-toggle="hemisphere"]').uncheck();
         assert.equal((await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft())).saved,true);
         const disabled=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
         assert.deepEqual(disabled.spatial.environment.lighting.hemisphere,{...saved.spatial.environment.lighting.hemisphere,enabled:false});
         saved=disabled;
       }
+      const marker=page.locator('[data-placement-sun-handle="both"]');
+      await marker.click();
+      const box=await marker.boundingBox(),requests=await page.evaluate(()=>window.__lightingSaveRequests.length);
+      const x=box.x+box.width/2,y=box.y+box.height/2;
+      await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+24,y-10,{steps:3});
+      assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft()),undefined,"An active sun drag must block SaveDraft");
+      assert.equal(await page.evaluate(()=>window.__lightingSaveRequests.length),requests);
+      await page.mouse.up();
+      const gizmoDraft=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument());
+      assert.notDeepEqual(gizmoDraft,saved,"Sun gizmo must author a real lighting patch before save");
+      assert.equal((await page.evaluate(()=>window.ferrumPlacementViewerSaveDraft())).saved,true);
+      saved=await page.evaluate(()=>window.__lightingSaveRequests.at(-1).document);
+      assert.deepEqual(saved,gizmoDraft,"The exact gizmo-authored direction must reach the save bridge");
       await page.reload({waitUntil:"networkidle"});await ready();
       const reopened=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument());
       assert.deepEqual(reopened,saved);
-      results.push({mode,focusedSave:true,invalidInputBlocksSave:true,reopen:true,...(mode==="spatial"?{v4LightingPreserved:true,bindingsAndEffectsPreserved:true,disabledHemisphereRetained:true}:{}),desktopHost:"simulated public bridge"});
+      results.push({mode,focusedSave:true,invalidInputBlocksSave:true,gizmoSaveReopen:true,gizmoDragBlocksSave:true,reopen:true,...(mode==="spatial"?{v4LightingPreserved:true,bindingsAndEffectsPreserved:true,disabledHemisphereRetained:true}:{}),desktopHost:"simulated public bridge"});
     }catch(error){await page.screenshot({path:`artifacts/viewer-lighting/${mode}-save-failure.png`,fullPage:true});throw error;}
     finally{await page.close();}
   }

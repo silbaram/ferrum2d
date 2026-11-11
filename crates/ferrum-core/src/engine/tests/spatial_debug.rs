@@ -71,7 +71,7 @@ fn spatial_debug_flags_and_frame_lifecycle_never_retain_stale_lines() {
     e.build_render_commands();
     assert_eq!(e.spatial_debug_len(), 24);
     assert!(!e.spatial_debug_depth_test());
-    assert!(!e.configure_spatial_debug(128));
+    assert!(!e.configure_spatial_debug(256));
     assert!(!e.configure_spatial_debug(8));
     assert_eq!(e.spatial_debug_len(), 24, "invalid options are atomic");
     e.update_frame(0., false, false, false);

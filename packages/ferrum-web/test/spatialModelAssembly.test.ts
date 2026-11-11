@@ -18,6 +18,23 @@ const source = (): SpatialModelAssemblySpec => ({
   ], connections: [{ from: "ramp", to: "upper" }],
 });
 
+test("shadow-only and distance LOD leave explicit collider and walk proxies independent", () => {
+  const original=source(), baseline=addSpatialModelAssembly(base(),original);
+  const input={...original,model:{...original.model,shadowOnly:true,lods:[{asset:"shadow-low",contentId:"b".repeat(64),minDistance:600}]}};
+  const shadow=addSpatialModelAssembly(base(),input);
+  deepEqual(instantiateSceneFragment(shadow.sceneComposition),instantiateSceneFragment(baseline.sceneComposition));
+  deepEqual(shadow.spatial!.terrain,baseline.spatial!.terrain);
+  deepEqual(shadow.spatial!.connections,baseline.spatial!.connections);
+  equal(shadow.spatial!.models!.house.shadowOnly,true);
+  deepEqual(shadow.spatial!.models!.house.lods,input.model.lods);
+  const isolated=addSpatialModelAssembly(base(),{id:"shadow",x:0,y:0,model:input.model});
+  const instances=instantiateSceneFragment(isolated.sceneComposition);
+  equal(instances.length,1);
+  const components=instances[0].props.components as Record<string,unknown>;
+  equal(components.collider,"none");equal(components.body,undefined);
+  equal(isolated.spatial!.terrain.length,0);
+});
+
 test("moving assembly declares native derived proxies and child models without double elevation",()=>{
   const assembly=source();delete assembly.terrain;delete assembly.connections;assembly.motion='kinematic';
   assembly.children=[{id:'weapon',x:5,y:0,elevation:3,model:{asset:'weapon',contentId:'b'.repeat(64)},colliders:[{id:'mount',x:0,y:0,elevation:0,halfWidth:1,halfDepth:1,height:1}]}];

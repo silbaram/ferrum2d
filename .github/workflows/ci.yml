@@ -210,6 +210,22 @@ jobs:
       - name: Ordinary 2D sprite normals on WebGL2 and WebGPU
         run: pnpm smoke:sprite-normal-2d
 
+      - name: Flat lighting composition contracts on WebGL2 and WebGPU
+        run: pnpm smoke:flat-lighting-contract
+
+      - name: Flat lit receivers on WebGL2 and WebGPU
+        run: pnpm smoke:flat-lit
+
+      - name: Upload flat lighting verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flat-lighting
+          path: |
+            artifacts/flat-lighting-contract
+            artifacts/flat-lit-m2a
+          if-no-files-found: ignore
+
       - name: Engine Playground movement, physics, lighting and camera
         run: pnpm smoke:engine-playground
 

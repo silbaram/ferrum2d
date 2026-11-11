@@ -17,7 +17,7 @@ For a game project, check the types, release notes, and documentation for its in
 | Create and validate a game project | [Developer Quickstart](engine/developer-quickstart.md) |
 | Choose supported imports and understand compatibility | [Public API](engine/public-api.md) |
 
-The [public demo site](https://silbaram.github.io/ferrum2d/) contains 30 independent feature experiments,
+The [public demo site](https://silbaram.github.io/ferrum2d/) contains 31 independent feature experiments,
 integrated games, and the placement viewer. Demo controls may be in Korean; the placement viewer has its own English/Korean language setting.
 Changing documentation language does not change the language of a running demo.
 

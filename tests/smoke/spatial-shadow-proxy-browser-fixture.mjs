@@ -45,7 +45,7 @@ async function probe(canvas, backend, projection) {
     const camera = { projection, position: { x: 120, y: -160, elevation: projection === "perspective" ? 600 : 240 },
       target: { x: 0, y: 0, elevation: 0 }, height: Math.max(240,240*canvas.clientHeight/canvas.clientWidth), fovDegrees: 70, near: .1, far: 2000 };
     const sun = { lighting: { ambient: [.03,.03,.03], lights: [], directional: { direction: { x: -1, y: -1, elevation: 2 },
-      intensity: 2, shadows: { resolution: 512, extent: 128, distance: 512, bias: .05 } } } };
+      intensity: 2, shadows: { resolution: 512, extent: 128, distance: 512, bias: .05, center: { x: 0, y: 0, elevation: 0 } } } } };
     const point = { lighting: { ambient: [.03,.03,.03], lights: [{ position: { x: 80, y: -80, elevation: 100 }, radius: 400, intensity: 3 }],
       shadows: { lightIndex: 0, resolution: 512, bias: .05 } } };
     const makeDoc = (shadowOnly, castShadow, environment = sun) => ({
@@ -91,6 +91,7 @@ async function probe(canvas, backend, projection) {
       "shadow-only model still drew visible geometry", off.stats);
     check(body()===physical, "render-only selection changed parent physics");
     const doc = makeDoc(true,true), on = await configure("sun-proxy",doc);
+    check(on.frame.environment.version===5 && on.frame.environment.values.length===528,"fixed proxy requires the actual v5 native packet");
     const candidates = new Map();
     for(let x= -4;x<=28;x+=2)for(let y= -4;y<=28;y+=2){
       const at={x,y,elevation:0}, lit=sample(off,at), shaded=sample(on,at);
@@ -114,6 +115,8 @@ async function probe(canvas, backend, projection) {
     check(engine.setPhysicsBodyRotation(handles.actor,Math.PI/6),"proxy parent yaw rejected");
     const rotated=record("sun-proxy-rotated",await read());
     const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:doc})));
+    const savedCenter=saved.dataScene.progress.spatial.environment.lighting.directional.shadows.center;
+    check(savedCenter?.x===0 && savedCenter.y===0 && savedCenter.elevation===0,"fixed proxy center missing from progress");
     const yaw=saved.dataScene.progress.instances.find(i=>i.id==="actor").spatialPose.rotationRadians;
     check(Math.abs(yaw-Math.PI/6)<1e-6,"billboard parent yaw missing from progress",yaw);
     restoreGameStateSnapshot(engine,saved,{dataSceneAuthoringApplyOptions:applyOptions});
@@ -125,10 +128,32 @@ async function probe(canvas, backend, projection) {
     check(Math.abs(moved.model.transform[12]-restored.model.transform[12]-8)<.001 &&
       Math.abs(moved.model.transform[14]-restored.model.transform[14]+4)<.001,"native proxy did not follow its parent",{before:Array.from(restored.model.transform),after:Array.from(moved.model.transform)});
     const pointOff=await configure("point-proxy-no-cast",makeDoc(true,false,point));
-    const pointOn=await configure("point-proxy",makeDoc(true,true,point));
+    const pointDoc=makeDoc(true,true,point),pointOn=await configure("point-proxy",pointDoc);
     check(difference(pointOff.data,pointOn.data,3)>50 && pointOn.stats.modelDrawCalls===0,"shadow-only point caster missing",pointOn.stats);
+    // Exercise the v4 prefix with a v5 center at runtime, including both depth maps.
+    const mixed={lighting:{...point.lighting,maxActiveLights:2,hemisphere:{intensity:.2},
+      lights:[{...point.lighting.lights[0],spot:{direction:{x:-1,y:1,elevation:-2},angle:70,penumbra:.25}},
+        {position:{x:-80,y:40,elevation:60},radius:300,intensity:1,color:[.4,.6,1]}],
+      directional:{...sun.lighting.directional,shadows:{...sun.lighting.directional.shadows,center:{x:16,y:-12,elevation:8}}}},
+      bloom:{strength:.7,radius:4,threshold:.3},ambientOcclusion:{strength:.5,radius:12,bias:.1}};
+    check(engine.setDataSceneSpatialEnvironment(mixed),"runtime mixed v5 environment rejected");
+    const mixedOn=record("mixed-v5-runtime",await read()),env=mixedOn.frame.environment;
+    check(env.version===5 && env.values.length===528 && env.shadowMatrices.length===112 && env.values[1]===2 && env.values[2]>=0 &&
+      env.values[112]===1 && env.values[128]===1 && env.values[132]===1 && env.values[149]===1,"mixed v5 native prefix or both shadow maps missing",{version:env.version,values:Array.from(env.values)});
+    const mixedSaved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:pointDoc})));
+    const center=mixedSaved.dataScene.progress.spatial.environment.lighting.directional.shadows.center;
+    check(center?.x===16 && center.y===-12 && center.elevation===8,"runtime mixed center missing from progress",center);
+    restoreGameStateSnapshot(engine,mixedSaved,{dataSceneAuthoringApplyOptions:applyOptions});
+    handles=Object.fromEntries(registry.entries().map(e=>[e.instanceId,e.handle]));
+    const mixedRestored=record("mixed-v5-restored",await read());
+    check(difference(mixedOn.data,mixedRestored.data)===0,"mixed v5 restore changed the actual framebuffer");
+    const clean=structuredClone(mixed);delete clean.bloom;delete clean.ambientOcclusion;
+    check(engine.setDataSceneSpatialEnvironment(clean),"runtime mixed effects removal rejected");
+    const mixedClean=record("mixed-v5-no-effects",await read());
+    check(mixedClean.stats.shadowCacheHit && mixedClean.stats.shadowDrawCalls===0 && difference(mixedRestored.data,mixedClean.data,3)>50,
+      "v5 effects did not change pixels or unnecessarily rebuilt shadow depth",mixedClean.stats);
     check(!errors.length,"proxy GPU errors",errors);
-    return {backend,projection,rows,core:core.length,common:common.length,restored:true,moved:true,errors};
+    return {backend,projection,rows,core:core.length,common:common.length,restored:true,moved:true,mixedV5:true,errors};
   } finally { engine?.destroy(); renderer.destroy(); window.disposeSpatialGpuTarget?.(canvas); device?.destroy(); }
 }
 

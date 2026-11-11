@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-export const topicFeatureIds = new Set(['lighting','hd2d-environment','postprocess','camera','physics-queries','pixel-perfect','sprite-materials','rendering']);
-export async function checkTopicFeature({page,id,control,snapshot,pixelHash}) {
+import { checkLightingQuality } from './feature-lighting-quality-checks.mjs';
+export const topicFeatureIds = new Set(['lighting','hd2d-environment','hd2d-shadow-proxy','postprocess','camera','physics-queries','pixel-perfect','sprite-materials','rendering']);
+export async function checkTopicFeature({page,id,control,snapshot,pixelHash,artifactDir}) {
   const rendered = async () => { await page.waitForTimeout(260); return page.evaluate(pixelHash); };
   if(id === 'physics-queries') {
     await control('query-center').click(); await page.waitForFunction(()=>window.ferrumFeatureLab.snapshot().query.hits.length===1);
@@ -70,17 +71,6 @@ export async function checkTopicFeature({page,id,control,snapshot,pixelHash}) {
     await control('reset').click();
   }
   if(id === 'hd2d-environment') {
-    await control('light-mode').selectOption('sun'); const before=await rendered(); assert((await snapshot()).shadowPasses>0);
-    await control('sun-azimuth').fill('90'); await control('sun-azimuth').dispatchEvent('input'); const after=await rendered();
-    assert.notEqual(after.hash,before.hash,'sun direction changes actual lighting and shadows');
-    assert.equal((await snapshot()).environment.environment.lighting.lights.length,0);
-    await control('light-mode').selectOption('mixed'); await rendered();
-    assert.equal((await snapshot()).environment.environment.lighting.lights.length,1);
-    for(const effect of ['bloom','ao','dof','aces']) {
-      await control('environment-effect').selectOption('clean'); const clean=await rendered();
-      await control('environment-effect').selectOption(effect); const changed=await rendered();
-      assert.notEqual(changed.hash,clean.hash,`${effect} must change spatial output`);
-    }
-    await control('reset').click();
+    return checkLightingQuality({page,control,snapshot,pixelHash,artifactDir});
   }
 }

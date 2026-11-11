@@ -1,3 +1,6 @@
+import { requestsSpatialWideBloom } from "./spatialBloom.js";
+import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
+import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
 import {
   resolveDataSceneSpatialSpec,
   resolveSpatialCameraSpec,
@@ -51,7 +54,7 @@ export type SceneSpatialPatchOperation =
       id: string;
       changes: Pick<
         SpatialBillboardSpec,
-        "elevation" | "unitsPerPixel" | "castShadow" | "receiveShadow"
+        "elevation" | "unitsPerPixel" | "castShadow" | "receiveShadow" | "lightMask" | "shadowMask"
       >;
     }
   | {
@@ -66,6 +69,7 @@ export type SceneSpatialPatchOperation =
         | "scale"
         | "castShadow"
         | "receiveShadow"
+        | "lightMask" | "shadowMask"
         | "shadowOnly"
       >;
     }
@@ -83,6 +87,7 @@ export type SceneSpatialPatchOperation =
           | "endElevation"
           | "baseElevation"
           | "floorId"
+          | "lightMask" | "shadowMask"
         >
       >;
     }
@@ -92,7 +97,7 @@ export type SceneSpatialPatchOperation =
       changes: Partial<
         Pick<
           SpatialBillboardSpec,
-          "elevation" | "unitsPerPixel" | "castShadow" | "receiveShadow"
+          "elevation" | "unitsPerPixel" | "castShadow" | "receiveShadow" | "lightMask" | "shadowMask"
         >
       >;
     }
@@ -102,14 +107,14 @@ export type SceneSpatialPatchOperation =
       changes: Partial<
         Pick<
           SpatialModelInstanceSpec,
-          "elevation" | "yawDegrees" | "scale" | "castShadow" | "receiveShadow" | "shadowOnly"
+          "elevation" | "yawDegrees" | "scale" | "castShadow" | "receiveShadow" | "lightMask" | "shadowMask" | "shadowOnly"
         >
       >;
     };
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
@@ -123,7 +128,7 @@ const fields = {
   renameReference: ["target", "nextId"],
   removeReference: ["target"],
   copyReference: ["target", "sourceId"],
-  addBillboard: ["elevation", "unitsPerPixel", "castShadow", "receiveShadow"],
+  addBillboard: ["elevation", "unitsPerPixel", "castShadow", "receiveShadow", "lightMask", "shadowMask"],
   addModel: [
     "asset",
     "contentId",
@@ -133,6 +138,7 @@ const fields = {
     "castShadow",
     "receiveShadow",
     "shadowOnly",
+    "lightMask", "shadowMask",
   ],
   updateTerrainSurface: [
     "x",
@@ -143,12 +149,14 @@ const fields = {
     "endElevation",
     "baseElevation",
     "floorId",
+    "lightMask", "shadowMask",
   ],
   updateBillboard: [
     "elevation",
     "unitsPerPixel",
     "castShadow",
     "receiveShadow",
+    "lightMask", "shadowMask",
   ],
   updateModel: [
     "elevation",
@@ -157,6 +165,7 @@ const fields = {
     "castShadow",
     "receiveShadow",
     "shadowOnly",
+    "lightMask", "shadowMask",
   ],
 } as const;
 
@@ -176,11 +185,13 @@ export function applySceneSpatialPatch(
       patch.version !== 4 &&
       patch.version !== 5 &&
       patch.version !== 6 &&
-      patch.version !== 7) ||
+      patch.version !== 7 &&
+      patch.version !== 8 &&
+      patch.version !== 9 && patch.version !== 10) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6 or 7 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6, 7, 8, 9 or 10 operations",
     );
   if (
     Object.keys(patch).some(
@@ -206,6 +217,12 @@ export function applySceneSpatialPatch(
       )
     )
       throw new Error("Invalid spatial patch operation");
+    if (operation.kind === "setEnvironment" && requestsSpatialWideBloom(operation.changes.environment) && patch.version < 10) throw new Error("Wide Bloom requires spatial patch version 10");
+    if (operation.kind === "setEnvironment" && requestsSpatialLightSelection(operation.changes.environment) && patch.version < 9)
+      throw new Error("Light selection requires spatial patch version 9");
+    if ((hasOwn(operation.changes, "lightMask") || hasOwn(operation.changes, "shadowMask") ||
+        operation.kind === "setEnvironment" && requestsSpatialLightChannels(operation.changes.environment)) && patch.version < 8)
+      throw new Error("Receiver/light channels require spatial patch version 8");
     if (operation.kind === "setEnvironment") {
       if (patch.version < 6 || Object.keys(operation.changes).some(key=>!["environment","lightBindings"].includes(key)) ||
           !hasOwn(operation.changes, "environment"))
@@ -593,24 +610,7 @@ export function diffSceneSpatialPatch(
       throw new Error("Spatial draft contains unsupported metadata changes");
     return undefined;
   }
-  const version = operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
-    (op) => op.kind === "setBillboardNormalTexture",
-  )
-    ? 4
-    : operations.some((op) =>
-          [
-            "renameReference",
-            "removeReference",
-            "copyReference",
-            "replaceModelAsset",
-          ].includes(op.kind),
-        )
-      ? 3
-      : operations.some(
-            (op) => op.kind === "addBillboard" || op.kind === "addModel",
-          )
-        ? 2
-        : 1;
+  const version = sceneSpatialPatchVersion(operations);
   const patch: SceneSpatialPatch = {
     format: "ferrum2d.scene-spatial.patch",
     version,
@@ -636,4 +636,28 @@ export function sceneSpatialReferencesInstance(
       (attachment) => attachment.parent === id,
     )
   );
+}
+
+export function sceneSpatialPatchVersion(operations: readonly SceneSpatialPatchOperation[]): SceneSpatialPatch["version"] {
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialWideBloom(op.changes.environment))) return 10;
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightSelection(op.changes.environment))) return 9;
+  return operations.some(op => hasOwn(op.changes, "lightMask") || hasOwn(op.changes, "shadowMask") ||
+    op.kind === "setEnvironment" && requestsSpatialLightChannels(op.changes.environment)) ? 8 : operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+    (op) => op.kind === "setBillboardNormalTexture",
+  )
+    ? 4
+    : operations.some((op) =>
+          [
+            "renameReference",
+            "removeReference",
+            "copyReference",
+            "replaceModelAsset",
+          ].includes(op.kind),
+        )
+      ? 3
+      : operations.some(
+            (op) => op.kind === "addBillboard" || op.kind === "addModel",
+          )
+        ? 2
+        : 1;
 }

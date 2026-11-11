@@ -8,8 +8,8 @@
 도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 같은 Chromium에서 캡처했다.
 Shooter 세트는 2026-11-08에 `9dc5319` 이후 `feat/topdown-shooter-refresh` 작업 트리의 Neon Outpost production 빌드로 갱신했다.
 기능 실험실 이미지는 2026-11-08에 `9dc5319` 이후 작업 트리의 9-slice 대화창 비교 production 빌드로 갱신했다.
-홈·기능 실험실 세트는 2026-11-09에 `3e8eae9` 기준 `feat/topic-based-examples` 작업 트리의 production 빌드로 갱신했다.
-홈은 10개 주제·37개 진입점, 기능 실험실은 같은 주제 탐색과 9-slice 비교를 보여준다.
+기능 실험실 이미지는 2026-11-09에 `3e8eae9` 기준 `feat/topic-based-examples` 작업 트리의 production 빌드로 갱신했다.
+해당 시점의 주제 탐색과 9-slice 비교를 보여준다.
 캡처 환경·실행 상태·SHA-256은 `artifacts/readme-refresh/capture-feature-lab.json`에 기록한다.
 
 Breakout·Platformer·Physics Lab 세트는 2026-11-08에 같은 작업 트리의 production 빌드를 UI로 일시정지한 뒤 캡처했다.
@@ -28,7 +28,6 @@ Breakout·Platformer·Physics Lab 세트는 2026-11-08에 같은 작업 트리�
 | [platformer-demo.png](platformer-demo.png) | 점프·발판 예제, 색상 안내와 재생 조작 |
 | [physics-lab.png](physics-lab.png) | 카메라를 맞춘 8개 물체와 native 충돌 선·재질·단일 스텝 UI |
 | [engine-feature-lab.png](engine-feature-lab.png) | 기능 실험실: 같은 대화창의 일반 확대·9-slice 비교와 원본 9분할 |
-| [example-hub.png](example-hub.png) | 기능 학습·게임 응용·제작 도구로 재편한 통합 홈과 검색·분류 |
 | [pixel-art-demo.png](pixel-art-demo.png) | 공통 UI 테마와 탐색을 사용하는 도트 자산 응용 예제 |
 
 캡처 기준은 `1440 × 1000`, DPR 1, 뷰어 한국어 UI다. 전체 작업공간은 body를,
@@ -48,7 +47,7 @@ node scripts/tools/capture-readme-screenshots.mjs
 node scripts/tools/capture-readme-screenshots.mjs --only=topdown-shooter
 # 충돌/발판/물리 실험실 세 장만 갱신할 때
 node scripts/tools/capture-readme-screenshots.mjs --only=guided-examples
-# 공통 UI와 통합 홈·기능 실험실·게임 예제 여덟 장 갱신
+# 공통 UI와 기능 실험실·게임 예제 일곱 장 갱신
 pnpm build:pages
 node scripts/tools/capture-readme-screenshots.mjs --only=example-suite
 ```
@@ -74,7 +73,7 @@ pnpm smoke:pixel-showcase
 소프트웨어 WebGPU 검증은 offscreen readback을 사용하며 README 이미지는 WebGL2 canvas 캡처다.
 
 갱신 후 모든 이미지를 열어 비어 있거나 잘린 영역과 오류 안내가 없는지 확인한다.
-공통 UI 재편 뒤 기능 실험실·정원·통합 홈도 `--only=example-suite`로 직접 캡처한다.
+공통 UI 재편 뒤 기능 실험실·정원도 `--only=example-suite`로 직접 캡처한다.
 WebGL2·1440×1000·DPR 1이며 기능 실험실은 9-slice 대화창 기본 설정을 보여준다.
 전체 예제 캡처의 출처·native 상태·SHA-256은 `artifacts/readme-refresh/capture-suite.json`에 남긴다.
 9-slice 설명 보강 후 `engine-feature-lab.png`는 별도 검증의 `nine-slice.png`로 갱신했다.

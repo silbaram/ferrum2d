@@ -1,4 +1,6 @@
-import { resolveDirectionalLight2D } from "./dataSceneSun.js";
+import { resolveLightingCookieReferences } from "./lightingCookie.js";
+import { resolvePointLightSpot } from "./lightingSpot.js";
+import { resolveDirectionalLight2D,resolveLitDirectionalLight2D } from "./dataSceneSun.js";
 import type { DirectionalLight2D } from "./lightingTypes.js";
 import type { FerrumEngine, FrameState } from "./engineTypes.js";
 import type { DataSceneCameraOptions } from "./dataSceneCamera.js";
@@ -48,7 +50,7 @@ export function createDataSceneView(
     throw Error("Renderer does not support pixelPerfect presentation");
   let sun: DirectionalLight2D | undefined;
   const setSun = (light: DirectionalLight2D | false): void => {
-    const next = light === false ? undefined : resolveDirectionalLight2D(light);
+    const next = light === false ? undefined : (light.lightMask!==undefined||light.shadowMask!==undefined?resolveLitDirectionalLight2D:resolveDirectionalLight2D)(light);
     if (!engine.setDataSceneSun(next ?? false)) throw new Error("Sun requires an active Data Scene");
     sun = next;
   };
@@ -118,8 +120,14 @@ export function createDataSceneView(
     },
     lighting: (scene, view = snapshot()) => ({ ...scene,
       ...(sun === undefined ? {} : { directionalLight: sun }),
-      pointLights: scene.pointLights?.map((light) => ({ ...light, x: light.x - view.worldMinX, y: (light.y - view.worldMinY) * view.groundYScale, radiusY: (light.radiusY ?? light.radius) * view.groundYScale })),
+      pointLights: resolveLightingCookieReferences(scene, name => engine.textureId(name)).pointLights?.map((light, index) => {
+        const spot = light.spot === undefined ? undefined : resolvePointLightSpot(light.spot, `lighting.pointLights[${index}].spot`);
+        // Normalize before projection: a valid short vector must not fall below the input epsilon.
+        if (spot) spot.directionY *= view.groundYScale;
+        return { ...light, ...(spot ? { spot } : {}), x: light.x - view.worldMinX, y: (light.y - view.worldMinY) * view.groundYScale, radiusY: (light.radiusY ?? light.radius) * view.groundYScale };
+      }),
       tileOccluders: scene.tileOccluders?.map((rect) => ({ ...rect, x: rect.x - view.worldMinX, y: (rect.y - view.worldMinY) * view.groundYScale, height: rect.height * view.groundYScale })),
+      polygonOccluders: scene.polygonOccluders?.map(polygon => ({ vertices: polygon.vertices.map(point => ({ x: point.x - view.worldMinX, y: (point.y - view.worldMinY) * view.groundYScale })) })),
     }),
   };
 }

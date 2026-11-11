@@ -4,7 +4,7 @@ import { loadSpatialGltf } from "./spatialGltf.js";
 export interface SpatialModelAssetSource {
     url: string;
     format: "glb" | "gltf";
-    materialProfile: "diffuse";
+    materialProfile: "diffuse" | "specular";
     /** Expected normalized loader identity. Change this revision or evict unused entries to reload. */
     contentId?: string;
 }
@@ -86,14 +86,14 @@ export class SpatialModelAssetCache {
         options.signal?.throwIfAborted();
         // Snapshot caller input before the first asynchronous step.
         const { format, materialProfile, contentId } = source;
-        if (!["glb", "gltf"].includes(format) || materialProfile !== "diffuse"
+        if (!["glb", "gltf"].includes(format) || (materialProfile !== "diffuse" && materialProfile !== "specular")
             || (contentId !== undefined && (typeof contentId !== "string" || !/^[a-f0-9]{64}$/.test(contentId))))
             return fail("invalid source/profile/contentId");
         if (typeof source.url !== "string" || !source.url.length || source.url.length > 16384) return fail("invalid URL");
         const url = new URL(source.url, globalThis.location?.href);
         if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash)
             return fail("requires HTTP(S) without credentials or fragments");
-        const key = JSON.stringify([format, url.href, contentId ?? null]);
+        const key = JSON.stringify([format, url.href, materialProfile, contentId ?? null]);
         let entry = this.entries.get(key);
         if (!entry) {
             if (this.loads >= this.maxPendingLoads) return fail("pending load limit");

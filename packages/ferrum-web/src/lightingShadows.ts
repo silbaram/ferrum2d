@@ -156,7 +156,7 @@ function extrudePointInto(
   return true;
 }
 
-function clipPolygonToRectInto(
+export function clipPolygonToRectInto(
   points: readonly ShadowProjectionPoint[],
   pointCount: number,
   rect: ShadowClipRect,
@@ -285,7 +285,7 @@ function sameCoordinates(point: ShadowProjectionPoint, x: number, y: number): bo
   return Math.abs(point.x - x) <= SHADOW_EPSILON && Math.abs(point.y - y) <= SHADOW_EPSILON;
 }
 
-function writeTriangulatedPolygonInto(
+export function writeTriangulatedPolygonInto(
   points: readonly ShadowProjectionPoint[],
   pointCount: number,
   target: number[] | Float32Array,

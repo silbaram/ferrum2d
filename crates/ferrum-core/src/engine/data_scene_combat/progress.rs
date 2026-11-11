@@ -613,6 +613,7 @@ impl Engine {
             } else {
                 // No spatial style is consumed in 2D; its canonical defaults still persist.
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: SpatialMaterial {
                         normal_texture: 16_777_215,
                         flags: 0,
@@ -1110,6 +1111,7 @@ impl Engine {
                 self.spatial_scene.runtime_billboards.push((
                     shot,
                     Billboard {
+                        receiver_masks: Default::default(),
                         material: SpatialMaterial {
                             normal_texture: 16_777_215,
                             flags: 0,

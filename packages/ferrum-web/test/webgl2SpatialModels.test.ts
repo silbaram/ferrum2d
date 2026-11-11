@@ -104,6 +104,17 @@ test("multi-map sampler failures release previously staged images/buffers/sample
     b.fail("");pass.prepare(packet,stats);equal(b.samplers.size,3);pass.destroy();equal(b.buffers.size+b.textures.size+b.samplers.size,0);
   }
 });
+test("specular map staging shares sRGB color resources, isolates raw channels and rolls back every added sampler",()=>{
+  const source=asset(),base=source.primitives[0],sampler=base.sampler,texture={image:0,sampler};
+  const resource={...source,materialProfile:"specular" as const,primitives:[{...base,normal:{...texture,scale:1},emissive:texture,specular:{factor:1,color:[1,1,1],roughness:.5,texture,colorTexture:texture,roughnessTexture:texture}}]};
+  for(const phase of ["","sampler2","sampler3","sampler4","sampler5","sampler6"]) {
+    const b=backend(),pass=new WebGL2SpatialModels(b.gl),stats=counters(),packet=frame(resource);
+    if(phase){b.fail(phase);throws(()=>pass.prepare(packet,stats),/sampler allocation failed/);equal(b.buffers.size+b.textures.size+b.samplers.size,0);deepEqual(b.state,b.original);b.fail("");}
+    pass.prepare(packet,stats);equal(b.samplers.size,6);equal(pass.resources().textureBytes,8);
+    deepEqual(b.formats.slice(-2),[b.gl.SRGB8_ALPHA8,b.gl.RGBA8]);
+    pass.destroy();equal(b.buffers.size+b.textures.size+b.samplers.size,0);
+  }
+});
 
 
 function multiFrame(sources: SpatialModelResource[]): Frame {

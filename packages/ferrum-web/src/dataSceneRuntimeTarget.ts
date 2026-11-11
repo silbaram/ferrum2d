@@ -1,9 +1,19 @@
+import { requestsSpatialWideBloom } from "./spatialBloom.js";
+import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
+import { resolveLightingCookieReferences } from "./lightingCookie.js";
+import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
+import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
+import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
+import type {SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
+import type { FlatLightingPreparer } from "./flatLit.js";
+import { MAX_SPRITE_LIGHTING_UPDATES } from "./spriteLighting.js";
 import { resolveSpriteNineSlice, MAX_SPRITE_NINE_SLICE_UPDATES, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
 import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd.js";
 import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
 import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
 import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
+import {prepareDataSceneAuthoringContinuity} from "./dataSceneAuthoringContinuity.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
@@ -76,6 +86,10 @@ export interface ApplyDataSceneAuthoringDocumentOptions
   allowComponentTemplates?: boolean;
   /** Opt-in model GPU preparation before replacing the active scene; not serialized. */
   spatialModelPreparer?: SpatialModelPreparer;
+  /** Required for lit documents: verifies receiver assets before scene activation. */
+  flatLightingPreparer?: FlatLightingPreparer;
+  /** Cold preview reapply only: retain compatible named animation phase and native LOD hysteresis. Default false. */
+  preserveAnimationAndLod?: boolean;
 }
 
 export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
@@ -98,6 +112,8 @@ export interface DataSceneRuntimeSpawnRequest {
   color: readonly [number, number, number, number];
   textureId: number;
   normalTextureId?: number;
+  lighting?: import("./spriteLighting.js").SpriteLightingMaterialSpec;
+  surface?:import("./spriteSurface.js").SpriteSurfaceMaterialSpec;
   nineSlice?: SpriteNineSliceSpec;
   spriteWidth: number;
   spriteHeight: number;
@@ -127,18 +143,29 @@ export interface DataSceneRuntimeSpawnRequest {
 
 export interface DataSceneRuntimeEngineAdapter {
   supportsSpriteNormalMaterials?(): boolean;
+  supportsSpriteLightingMaterials?(): boolean;
+  supportsSpriteLightMasks?():boolean;
+  supportsSpriteSurfaceMaterials?():boolean;
   supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
   /** Optional cold capability; absence rejects render:false before scene activation. */
   supportsSpatialSurfaceProxies?(): boolean;
   /** Optional cold capability; absence rejects X ramps before activation. */
   supportsSpatialRampAxis?(): boolean;
+  supportsSpatialReceiverMasks?(): boolean;
+  supportsSpatialLightChannels?(): boolean;
+  supportsSpatialWideBloom?(): boolean;
+  supportsSpatialLightSelection?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
   spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
   textureId(name: string): number;
   spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): GameplayEntityHandle | undefined;
   /** Cold native camera/environment validation before destructive authoring activation. */
   preflightSpatialEnvironment?(camera: SpatialCameraSpec, environment: SpatialEnvironmentSpec): boolean;
+  /** Internal native-owned, single-use cold authoring handoff. */
+  beginAuthoringContinuity?(handles:Uint32Array,masks:Uint32Array):number;
+  finishAuthoringContinuity?(token:number,handles:Uint32Array):boolean;
+  cancelAuthoringContinuity?(token:number):void;
 }
 
 interface DataSceneRuntimeEngine {
@@ -188,9 +215,12 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
         colorManagement,
       );
       if(request.normalTextureId!==undefined&&!adapter.supportsSpriteNormalMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite normal materials require native v1 support");
+      if(request.surface!==undefined&&!adapter.supportsSpriteSurfaceMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite surfaces require native v1 support");
+      if(request.lighting!==undefined&&!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite lighting requires native v1 support");
       if(request.nineSlice!==undefined&&!adapter.supportsSpriteNineSlices?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"9-slice requires native v1 support");
+      if(requestsSpriteLightMasks(request.lighting)&&!adapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.lighting`,"light masks require native support");
       activateDataScene();
-      const {normalTextureId:_normal,nineSlice:_nineSlice,...unmapped}=request;
+      const {normalTextureId:_normal,nineSlice:_nineSlice,lighting:_lighting,surface:_surface,...unmapped}=request;
       const handle = adapter.spawnDataSceneEntity(deferSpriteBindings?unmapped:request);
       if (handle === undefined) {
         throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "failed to spawn data-scene entity");
@@ -198,6 +228,76 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
       return handle;
     },
   };
+}
+
+/** Internal cold preflight, shared by authored apply and snapshot restore before mutation. */
+function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSpatialSpec | undefined, path: string): void {
+  const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
+  const selection = requestsSpatialLightSelection(spec?.environment);
+  const wideBloom = requestsSpatialWideBloom(spec?.environment);
+  if (!receivers && !channels && !selection && !wideBloom) return;
+  const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  if (wideBloom && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "wide Bloom requires native v1 support");
+  if (selection && !adapter.supportsSpatialLightSelection?.())
+    throw sceneCompositionDiagnosticError(`${path}.environment`, "light selection requires native v1 support");
+  if (receivers && !adapter.supportsSpatialReceiverMasks?.())
+    throw sceneCompositionDiagnosticError(path, "receiver masks require native v1 support");
+  if (channels && !adapter.supportsSpatialLightChannels?.())
+    throw sceneCompositionDiagnosticError(`${path}.environment`, "light channels require native v1 support");
+}
+
+export function preflightDataSceneLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
+  if(!document || typeof document!=="object")return;
+  if((document as {lighting?:{profile?:string}}).lighting?.profile!=="lit"){
+    // Validate a restored surface declaration before any saved native state is changed.
+    const path=options.path??"dataSceneAuthoring";
+    const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+    preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
+    const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
+    for(const instance of plan.instances){
+      const raw=instance.props.components;
+      if(!raw||typeof raw!=="object"||Array.isArray(raw))continue;
+      const components=raw as Record<string,unknown>;
+      const declared=[components.visual,components.sprite].some(v=>v&&typeof v==="object"&&"surface" in v&&(v as {surface?:unknown}).surface!==undefined);
+      const masks=[components.visual,components.sprite].some(v=>v&&typeof v==="object"&&requestsSpriteLightMasks((v as {lighting?:import("./spriteLighting.js").SpriteLightingMaterialSpec}).lighting));
+      if(masks)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+      if(declared)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
+      if(components.template!==undefined&&options.componentTemplates){
+        const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path);
+        if(requestsSpriteLightMasks(component.sprite.lighting))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+        if(component.sprite.surface)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
+      }
+    }
+    return;
+  }
+  const path=options.path??"dataSceneAuthoring",adapter=dataSceneRuntimeEngineAdapter(engine,`${path}.runtimeTarget.engine`);
+  if(!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.lighting.profile`,"lit requires native sprite lighting v1 support");
+  const preparer=options.flatLightingPreparer;
+  if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
+  const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+    preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
+  if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
+    throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
+  if (resolved.lighting?.polygonOccluders?.length && preparer.flatLightingPolygonVersion?.() !== 1)
+    throw sceneCompositionDiagnosticError(`${path}.lighting`, "polygon occluders require renderer polygon v1 support");
+  const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
+  const textureId=options.textureId??(name=>adapter.textureId(name));
+  const lighting = resolved.lighting!;
+  const hdr = lighting.enabled !== false && lighting.hdr !== undefined && lighting.hdr !== false && lighting.hdr.enabled !== false;
+  const components=plan.instances.map(instance=>dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path));
+  const maskCount=components.filter(component=>requestsSpriteLightMasks(component.sprite.lighting)).length;
+  if(maskCount>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"supports at most65536 light mask bindings");
+  if(maskCount&&resolved.spatial)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+  if(maskCount&&!adapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require native support");
+  const surfaceCount=components.filter(component=>component.sprite.surface!==undefined).length;
+  if(surfaceCount>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"supports at most 65536 surface materials");
+  if(surfaceCount&&resolved.spatial)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
+  if(surfaceCount&&(!adapter.supportsSpriteSurfaceMaterials?.()||typeof engine.configureSpriteSurfaceMaterials!=="function"))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"sprite surfaces require native v1 support");
+  const assets=components.flatMap(component=>{
+    const sprite=component.sprite;
+    return sprite.lighting===undefined && (!hdr || component.visual.kind !== "sprite") ? [] : [{textureId:dataSceneTextureId(sprite,textureId),normalTextureId:sprite.normalTexture===undefined?undefined:normalTextureId(sprite.normalTexture,textureId),lighting:sprite.lighting ?? {mode:"unlit" as const},...(sprite.surface===undefined?{}:{surface:surfaceMaterial(sprite.surface,textureId)})}];
+  });
+  preparer.prepareFlatLighting(resolveLightingCookieReferences(resolved.lighting!, textureId),assets);
 }
 
 export function applyDataSceneAuthoringDocument(
@@ -212,6 +312,8 @@ export function applyDataSceneAuthoringDocument(
     componentTemplates,
     textureId,
     spatialModelPreparer,
+    flatLightingPreparer,
+    preserveAnimationAndLod=false,
     validateBindings = true,
     validateComponents = true,
     allowComponentTemplates = componentTemplates !== undefined,
@@ -223,6 +325,8 @@ export function applyDataSceneAuthoringDocument(
     ...bindingOptions
   } = applyOptions;
   const path = optionPath ?? "dataSceneAuthoring";
+  if(typeof preserveAnimationAndLod!=="boolean"||preserveAnimationAndLod&&activateDataScene===false)
+    throw sceneCompositionDiagnosticError(`${path}.preserveAnimationAndLod`,"requires a boolean and full scene activation");
   resolveColorManagementMode(colorManagement);
   const resolved = resolveSceneAuthoringDocument(document, {
     ...bindingOptions,
@@ -245,6 +349,7 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   // Resolve every normal reference before activation/spawn can replace the previous scene.
   const runtimeSpatial = resolved.spatial === undefined ? undefined : resolveSpatialNormalTextures(resolved.spatial, textureId ?? (name => runtimeAdapter.textureId(name)));
   if (
@@ -263,13 +368,26 @@ export function applyDataSceneAuthoringDocument(
     const raw = instance.props.components;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
     const component = raw as Record<string, unknown>;
-    const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v));
+    const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v || "lighting" in v || "surface" in v));
     if (!hasBinding && !(component.template !== undefined && componentTemplates !== undefined)) return [];
     const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, {allowTemplate:true,path}), componentTemplates, path);
     const sprite = components.sprite;
-    return [{id:instance.id, normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
+    return [{id:instance.id, lighting:sprite.lighting,surface:sprite.surface===undefined?undefined:surfaceMaterial(sprite.surface,textureId??(name=>runtimeAdapter.textureId(name))), normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
       nineSlice:scaledNineSlice(sprite.nineSlice, instance.scale, `${path}.instances.${instance.id}.nineSlice`)}];
   });
+  const surfaceMaterials=spriteBindings.filter(b=>b.surface!==undefined);
+  if(surfaceMaterials.length>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"supports at most 65536 surface materials");
+  if(surfaceMaterials.length&&(resolved.lighting?.profile!=="lit"||resolved.spatial))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
+  if(surfaceMaterials.length&&(!runtimeAdapter.supportsSpriteSurfaceMaterials?.()||typeof engine.configureSpriteSurfaceMaterials!=="function"))throw sceneCompositionDiagnosticError(`${path}.components.surface`,"sprite surfaces require native v1 support");
+  const maskBindings=spriteBindings.filter(binding=>requestsSpriteLightMasks(binding.lighting));
+  if(maskBindings.length&&(resolved.lighting?.profile!=="lit"||resolved.spatial))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
+  if(maskBindings.length&&!runtimeAdapter.supportsSpriteLightMasks?.())throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require native support");
+  const lightingMaterials = spriteBindings.filter(b => b.lighting !== undefined);
+  if (lightingMaterials.length > MAX_SPRITE_LIGHTING_UPDATES)
+    throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
+  if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
+    throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
+  preflightDataSceneLighting(engine, document, options);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
@@ -317,7 +435,9 @@ export function applyDataSceneAuthoringDocument(
       }
     }
   }
+  let continuity:ReturnType<typeof prepareDataSceneAuthoringContinuity>|undefined;
   try {
+    if(preserveAnimationAndLod)continuity=prepareDataSceneAuthoringContinuity(engine,resolved,bindingPlan.instances,runtimeAdapter,`${path}.preserveAnimationAndLod`);
     forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
       runtimeAdapter.useDataScene();
@@ -357,6 +477,10 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    if(lightingMaterials.length&&!engine.configureSpriteLightingMaterials(lightingMaterials.map(({id,lighting})=>({entity:result.entityHandles[id],lighting}))))
+      throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "runtime rejected sprite lighting material batch");
+    if(surfaceMaterials.length&&!engine.configureSpriteSurfaceMaterials(surfaceMaterials.map(({id,surface})=>({entity:result.entityHandles[id],surface}))))
+      throw sceneCompositionDiagnosticError(`${path}.components.surface`,"runtime rejected surface material batch");
     if(normalMaterials.length&&!engine.configureSpriteNormalMaterials(normalMaterials.map(({id,normalTextureId})=>({entity:result.entityHandles[id],normalTextureId}))))
       throw sceneCompositionDiagnosticError(`${path}.components.normalTexture`,"runtime rejected sprite normal material batch");
     if(nineSlices.length&&!engine.configureSpriteNineSlices(nineSlices.map(({id,nineSlice})=>({entity:result.entityHandles[id],nineSlice}))))
@@ -377,6 +501,7 @@ export function applyDataSceneAuthoringDocument(
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
     if (spawnCatalog === undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    continuity?.restore(result.entityHandles);
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
@@ -392,7 +517,8 @@ export function applyDataSceneAuthoringDocument(
     );
     throw error;
   } finally {
-    preparation?.dispose();
+    try { continuity?.dispose(); }
+    finally { preparation?.dispose(); }
   }
 }
 
@@ -501,6 +627,8 @@ function inlineDataSceneRuntimeSpawnRequest(
     ...(groundShadow === undefined ? {} : { groundShadow }),
     color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
+    ...(sprite.lighting===undefined?{}:{lighting:sprite.lighting}),
+    ...(sprite.surface===undefined?{}:{surface:surfaceMaterial(sprite.surface,textureId)}),
     ...(sprite.normalTexture===undefined?{}:{normalTextureId:normalTextureId(sprite.normalTexture,textureId)}),
     ...(sprite.nineSlice===undefined?{}:{nineSlice:scaledNineSlice(sprite.nineSlice,scale,`instances.${instance.id}.nineSlice`)}),
     spriteWidth: sprite.width * scale,
@@ -544,6 +672,11 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (requestsSpatialWideBloom(environment) && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(environmentPath, "wide Bloom requires native v1 support");
+  if (requestsSpatialLightSelection(environment) && !adapter.supportsSpatialLightSelection?.())
+    throw sceneCompositionDiagnosticError(environmentPath, "light selection requires native v1 support");
+  if (requestsSpatialLightChannels(environment) && !adapter.supportsSpatialLightChannels?.())
+    throw sceneCompositionDiagnosticError(environmentPath, "light channels require native v1 support");
   if (adapter.preflightSpatialEnvironment) {
     if (!adapter.preflightSpatialEnvironment(camera, environment))
       throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight rejected configuration");
@@ -581,6 +714,18 @@ export function preflightDataSceneSpatialEnvironment(
   }
 }
 
+function surfaceMaterial(surface:NonNullable<ResolvedDataSceneSpriteComponent["surface"]>,resolve:DataSceneRuntimeTextureIdResolver):SpriteSurfaceMaterialSpec{
+  const {emissionTexture,specularTexture,roughnessTexture,...factors}=surface;
+  return {...factors,
+    ...(emissionTexture===undefined?{}:{emissionTextureId:surfaceTextureId(emissionTexture,resolve,"emissionTexture")}),
+    ...(specularTexture===undefined?{}:{specularTextureId:surfaceTextureId(specularTexture,resolve,"specularTexture")}),
+    ...(roughnessTexture===undefined?{}:{roughnessTextureId:surfaceTextureId(roughnessTexture,resolve,"roughnessTexture")})};
+}
+function surfaceTextureId(ref:ResolvedDataSceneSpriteComponent["texture"],resolve:DataSceneRuntimeTextureIdResolver,map:string):number{
+  let id:number;try{id=ref.kind==="id"?(ref.id??Number(ref.value)):resolve(ref.name??String(ref.value));}catch{throw sceneCompositionDiagnosticError(`components.surface.${map}`,"texture is not registered");}
+  if(!Number.isInteger(id)||id<0||id>=16777215)throw sceneCompositionDiagnosticError(`components.surface.${map}`,"requires a registered texture ID below16777215");
+  return id;
+}
 function normalTextureId(ref:ResolvedDataSceneSpriteComponent["texture"],resolve:DataSceneRuntimeTextureIdResolver):number {
   const id=ref.kind==="id"?(ref.id??Number(ref.value)):resolve(ref.name??String(ref.value));
   if(!Number.isInteger(id)||id<0||id>=16777215)throw sceneCompositionDiagnosticError("components.normalTexture","must resolve to a registered texture ID below 16777215");

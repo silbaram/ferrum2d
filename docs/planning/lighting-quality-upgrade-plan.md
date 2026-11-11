@@ -1,8 +1,8 @@
 # 조명·그림자·화면 효과 품질 고도화 계획
 
-기준일: 2026-11-09
+기준일: 2026-11-11
 
-상태: 개발 진행 중 · 태양광 안정화부터 구현 · 실제 사용자 문제 장면의 픽셀 재현 대기
+상태: M2-a·M3·M4·M5 필수 개발·리뷰 및 기준 PC 실제 GPU 회귀/기준 씬 시간 측정 완료 · 실제 문제 게임/목표 환경 수용 검증 입력 대기
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -37,11 +37,11 @@
 | 그림자 | 점광원 사각 tile occluder 투영, 태양 ellipse/box/alpha silhouette | point cube 1개 + sun map 1개, hard/PCF3, cast/receive | 존재. 광원별 차폐·접촉·동작 안정성 강화 |
 | 캐시·컬링 | tile shadow geometry cache, native ground cache | native caster/range revision, GPU shadow cache | 존재. 새 재질·proxy의 무효화 조건 연결 |
 | 재질 | tint/palette/flash/additive/outline, 별도 normal binding | base color/normal/emissive/unlit, OPAQUE/MASK | specular/roughness·light mask 확장 후보 |
-| HDR·색공간 | legacy 기본, WebGL2 linear-sRGB 선택. 중간 target은 8-bit normalized | 양 backend RGBA16F/rgba16float 장면 target, exposure | flat linear 지원과 HDR 지원을 구별 |
-| Bloom | 전체 화면 25-tap, WebGL2/WebGPU 지원 | HDR 장면 32-tap, 양 backend 지원 | 존재. threshold·해상도·후처리 순서·비용 검증 |
+| HDR·색공간 | legacy 기본, 양 backend 전역 linear-sRGB 선택. opt-in lit HDR은 양 backend float16 world/albedo | 양 backend RGBA16F/rgba16float 장면 target, exposure | 전역 managed 색공간과 선택형 HDR을 구별 |
+| Bloom | 전체 화면 25-tap, WebGL2/WebGPU 지원 | HDR 32-tap 유지, 선택형 wide 저해상도 chain | wide 구현·독립 픽셀/작업 예산·전체 회귀 완료 |
 | AO | 전용 depth AO 없음 | depth 기반 접촉 음영, normal 재구성 4 + 주변 12 samples | 존재. 전체 합성 색을 어둡게 하는 의미 재정의 |
 | 안개 | 별도 물리적 공간 fog 없음 | camera view-depth 기반 색 혼합 | 존재. AO·발광·Bloom 결합 검증 |
-| 톤매핑·색보정 | 전용 Spatial 환경과 별도 | exposure, none/Reinhard/ACES 근사, contrast/saturation/tint | 존재. 입력 단위·출력 변환을 명확히 유지 |
+| 톤매핑·색보정 | lit HDR의 exposure·none/Reinhard/ACES | exposure, none/Reinhard/ACES 근사, contrast/saturation/tint | 존재. 입력 단위·출력 변환을 명확히 유지 |
 | DOF | 별도 spatial depth 없음 | 표준 13/고품질 25 samples, actor focus | 존재. AO·발광·Bloom과의 순서 검토 |
 | 기타 화면 효과 | fade/CRT/vignette/glitch/pixelArt, 가상 해상도 | Spatial 합성 뒤 flat HUD 및 전역 후처리 | 장면 효과와 HUD까지 포함하는 효과의 범위를 구분 |
 | 간접광·반사 | baked art 활용 | ambient/hemisphere 근사 | IBL/lightmap/probe/GI/SSR은 별도 후보 |
@@ -59,8 +59,8 @@
 ### 재검토에서 바로잡은 판단
 
 - 노멀맵·스포트라이트·hemisphere·발광·HDR·Bloom·AO·톤매핑이 모두 없다는 평가는 현재 코드와 맞지 않는다.
-- WebGPU는 전체 화면 Bloom과 Spatial HDR Bloom을 지원한다. renderer 전역 `linear-srgb` 모드는
-  아직 WebGL2 fallback 대상이다. Spatial 내부 linear HDR 계산과 전역 renderer 옵션은 다른 계약이다.
+- WebGPU는 전체 화면 Bloom, Spatial HDR Bloom과 전역 `linear-srgb`를 지원한다.
+  Spatial 내부 HDR·Flat HDR과 전역 managed 색공간은 구별하며 마지막 표시 변환은 한 번 수행한다.
 - flat `elevationRadians`가 그림자 길이를 바꾸지 않는 것은 명시된 기존 계약이다.
   Godot DirectionalLight2D의 Height도 노멀 반응에 쓰이고 그림자 길이를 바꾸지 않는다.
   HD-2D에서 기대하는 고도 기반 길이를 flat 계약에 자동 소급하지 않는다.
@@ -70,34 +70,6 @@
 
 우선순위 P1은 시각적 일관성과 기존 효과의 결합, P2는 제작 표현력·규모, P3는 추가 제품 범위다.
 아래 우선순위는 보안/크래시 심각도가 아니다.
-
-### L01 · P1 · flat 조명과 표면색의 관계
-
-**구현 확인 / 기존 계약의 한계.** `WebGL2LightingPass`와 `WebGpuLightingPass`는 장면 위에
-광원 RGB × alpha를 더한다. normal response는 alpha에 반영하지만 광원 pass가 albedo를 읽지 않는다.
-검은 표면과 밝은 표면에 같은 빛 기여가 더해지고, 빈 배경도 밝아질 수 있다.
-현재 `unlit` sprite preset도 후단 전체 조명을 피하는 개별 수신 mask를 뜻하지 않는다.
-
-**방향:** 기존 overlay 경로를 보존하고, 표면색·ambient·광원별 visibility를 계산하는 opt-in lit 경로를 설계한다.
-장식용 additive sprite는 계속 별도 효과로 둔다. 기본 노멀, 광원 높이, receiver와 투명 픽셀의 의미를 먼저 확정한다.
-
-근거: [2D GLSL](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2ShaderSources.ts),
-[GL pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2LightingPass.ts),
-[GPU pass](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuLightingPass.ts),
-[sprite preset](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts).
-
-### S01 · P1 · billboard shadow proxy 제작·동작 범위 검증
-
-기본 billboard caster는 표시 평면과 함께 카메라를 따른다. 일정한 형상이 필요한 경우의
-`shadowOnly` 모델 attachment 계약은 [공간 모델 문서](../engine/data-scene-spatial.md)를 따른다.
-
-**남은 작업:** 실제 캐릭터·나무 asset에서 표시 애니메이션 UV/flip·높이 변화·화면 밖 caster를 포함해
-적절한 volume 크기와 피벗을 검증한다. 카메라 거리별 LOD 교체가 shadow silhouette에 미치는 영향과
-proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 명시적 동작을 확인한다.
-자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
-
-근거: [native billboard/caster](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene.rs),
-[현재 revision 테스트](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/engine/tests/spatial_environment.rs).
 
 ### S02 · P2 · 곡면 수신면·실기기 접촉 품질 후속
 
@@ -113,56 +85,28 @@ proxy GLB의 collision/navigation metadata를 사용하는 authoring helper의 �
 
 ### S03 · P1 · 태양 그림자 coverage와 화면 밖 caster 여유
 
-현재 한 장의 고정 extent map이 camera target을 따라간다.
-고정 지점이 camera pan만으로 범위 안팎에 드는 것이 확인된다. 기준축·내부 경계 fade의 현재 동작과
-극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
+기본은 한 장의 고정 extent map이 camera target을 따라간다. 선택형 고정 월드 center와
+기준축·내부 경계 fade·극점 제한은 [태양 방향광 계약](../engine/data-scene-spatial.md#태양-방향광과-pcf)을 따른다.
+고정 center도 유한 범위이며, target 추적 모드에서는 고정 지점이 pan으로 범위 안팎에 들 수 있다.
 
-**방향:** texel snapping과 내부 경계 fade를 유지하면서 receiver 범위·화면 밖 caster 여유를 설계한다.
-기준축·경계 전환 회귀를 유지하면서 pan/zoom에 따른 유효 coverage의 급변을 줄인다.
+**남은 작업:** 정원의 기존 저고도/천정·고정 center/target 추적 회귀와 범위 진단을 유지하면서,
+실제 게임의 더 큰 맵·원근 카메라·실물 GPU에서 충분한 receiver 범위와 caster 여유를 확인한다. target 추적 영역의 자동 맞춤이 필요하면
+texel 밀도·snapping·내부 경계 fade·지도 크기와 pan/zoom의 비용을 함께 설계한다.
 큰 맵/원근 카메라에서 단일 map으로 목표를 만족하지 못할 때만 cascade를 별도 단계로 검토한다.
 
 근거: [native sun matrix](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/environment.rs),
 [shadow 범위 판정](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialShadows.ts).
 
-### S04 · P1 · 방향·고도·그림자 옵션의 작성 의미
-
-**구현 확인 / 작성 UX 불일치.** flat `directionX/Y`는 그림자가 뻗는 방향,
-Spatial `direction`은 표면에서 태양을 향하는 방향이다. 뷰어는 같은 `Direction (°)` 라벨로 각각의 값을 표시한다.
-flat 노멀용 고도와 별도 길이 배율, Spatial 고도·coverage·bias도 서로 다른 의미다.
-
-**방향:** 저장 좌표계를 강제로 뒤집지 않고 UI/agent 설명을 구체화한다.
-‘태양 방위/그림자 방향/노멀 입사각/그림자 길이 배율’을 구별하고, 변환 예와 미리보기의 실제 backend를 제공한다.
-별도 preview 카메라와 저장된 게임 카메라 양쪽에서 같은 태양 설정을 확인한다.
-
-근거: [flat sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/dataSceneSun.ts),
-[Spatial sun](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
-[뷰어 조명 입력](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/apps/placement-viewer/src/placementLighting.ts).
-
-### E01 · P1 · AO·발광·안개·DOF·Bloom 결합
-
-**구현 확인 / 합성 정책 개선.** Spatial geometry 단계에서 diffuse + emission에 fog를 적용한다.
-composite는 그 색에 DOF를 먼저 적용하고 AO를 곱한다. 따라서 직접광·발광·안개 색도 AO로 어두워진다.
-Bloom은 AO/DOF 결과가 아니라 원래 HDR color target을 읽는다. 밝은 물체 본체와 halo의 처리 경로가 달라진다.
-이는 현재 화면 공간 접촉 음영의 근사이며, 간접광만 가리는 물리적 AO와 동일하다고 설명하면 안 된다.
-
-**방향:** AO가 어느 조명 성분에 적용되는지와 Bloom의 입력 단계를 명시한다.
-권장 새 경로는 opaque depth/normal → AO → ambient/indirect 성분에 적용 → 직접광·specular·emission 합성 →
-fog → DOF → Bloom → exposure/tone map → 출력 변환이다. DOF와 Bloom의 세부 순서는 목표 연출 fixture로 확정한다.
-이를 위해 필요한 prepass/MRT/중간 target 비용을 비교한다. 비용상 기존 접촉 음영을 유지하는 profile도 구별한다.
-
-근거: [GL geometry/composite](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
-[GPU geometry/composite](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgpuSpatialEnvironment.ts).
-
 ### E02 · P1 · 색공간·HDR·효과 범위의 경계
 
-**구현 확인 / 지원 범위의 차이.** flat linear-sRGB는 선형 계산이지만 8-bit normalized target이라 HDR radiance를
-그대로 저장하지 못한다. Spatial은 HDR target을 갖는다. 전역 WebGPU linear-sRGB는 명시적으로 거절하고
-`createRenderer`가 context 선택 전에 WebGL2로 fallback한다. legacy와 linear 옵션을 혼합하면 threshold·색 반응도 달라진다.
-
-**방향:** 새 lit/HDR profile은 입력 색 공간, 연산 공간, 저장 형식, 출력 변환을 하나의 계약으로 정의한다.
-색 텍스처는 sRGB decode 1회, normal/roughness/mask는 data, alpha는 linear로 유지한다.
-HDR → tone map → sRGB encode는 1회이며 HUD와 전역 화면 효과가 어느 단계에 들어가는지 고정한다.
-기존 renderer 옵션의 기본값은 유지한다. WebGPU 전역 linear parity는 별도 완료 조건으로 다룬다.
+**개발 소스 구현·자동 회귀 완료.** 전역 managed flat target은 8-bit sRGB 저장 형식의 선형 합성 경로다.
+별도 `profile:"lit",hdr:{...}`는 양 backend float16 world/albedo, 노출·톤매핑·HUD 경계를 제공한다.
+WebGPU 전역 `linear-srgb`는 source color/data view를 구분하고 Spatial·Flat HDR·HUD·화면 효과 뒤
+최종 표시 변환을 수행한다. 실제 adapter/초기화 실패의 fallback과 canvas 선택 경계는 유지한다.
+팔레트·alpha·pixelArt·resize/pixelPerfect·복구와 Spatial 두 색공간 전체 행렬을 자동 검증했다.
+[색공간 계약](../engine/public-api/core.md#색-공간-관리), [Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스),
+[합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+전역 화면 효과의 threshold와 HDR 내부 공간의 의미를 구분한다. 실게임·실기기 예산은 개발 완료 후 검증한다.
 
 근거: [색 관리](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/colorManagement.ts),
 [flat target](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2RenderTarget.ts),
@@ -172,13 +116,15 @@ HDR → tone map → sRGB encode는 1회이며 HUD와 전역 화면 효과가 �
 
 ### E03 · P2 · Bloom·AO·DOF의 품질/비용 확장
 
-**기존 계약의 한계.** flat Bloom은 25 samples, Spatial Bloom은 32 samples의 제한된 반경 gather다.
-AO와 DOF까지 함께 켜면 한 composite draw여도 pixel당 sampling 비용은 커진다.
-현재 draw count가 작다는 사실만으로 효과가 싸다고 판정할 수 없다.
+**개발 소스 구현·자동 회귀·리뷰 완료.** flat25-tap과 Spatial32-tap gather를 보존하고,
+Spatial separated HDR에 low/balanced/high의 선택형 wide chain을 추가했다. threshold는 AO/fog/DOF 이후·
+exposure 전 전체 밝기에 적용한다. emission도 포함하며 별도 emissive-only 입력은 제공하지 않는다.
+입력·근사·자원 수명·구 source 호환성은 [넓은 HDR Bloom 계약](../engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
 
-**방향:** 작은 반경 경로를 보존하고, 넓은 halo가 필요한 경우에만 저해상도 bright-pass/분리 blur 또는 mip chain을 비교한다.
-threshold를 exposure 전/후 어느 값으로 해석할지 정하고, emissive-only와 전체 밝기 기반 Bloom의 필요를 구분한다.
-AO는 depth 경계 halo·얇은 geometry·카메라 이동, DOF는 foreground 누출·발광체·HUD 제외를 검증한다.
+추가 draw/target bytes/texture-load 상한을 실제 renderer·profiler·report에 연결하고 독립 HDR 픽셀 기준으로 검증했다.
+작업량은 GPU 실행 시간이 아니다. 현재 Radeon8060S 기준 씬의 AO/Bloom ON/OFF 시간 대조는 개발 후 검증에서 수행했다.
+실제 문제 게임의 AO 경계 halo·얇은 geometry·카메라 이동·DOF foreground 누출과 목표 환경의 수용 기준은
+대상 프로젝트/씬을 확보한 뒤 검증한다.
 temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추가하지 않는다.
 
 근거: [전체 화면 GLSL](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2ShaderSources.ts),
@@ -191,10 +137,11 @@ temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추�
 shadow owner는 우선 고정하고, 다른 광원은 순위로 교체한다. 점수의 연속성은 선택 집합의 연속성을 보장하지 않는다.
 점광원 shadow는 1개다. ‘광원 16개 지원’은 16개가 동시에 모든 수신면을 비춘다는 뜻이 아니다.
 
-**방향:** 우선 현재 상한 안에서 기여도·범위·화면 수신면을 고려한 선택과 전환 완화를 비교한다.
-hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·teleport/reset 의미를 결정한다.
+**개발 소스·자동 회귀 완료:** 선택형 native hysteresis/fade와 저장/복원·pause·cut/reset을 구현했다.
+RGB·direct mask·보수적 표시 frustum을 기준으로 기존 상한 안에서 기여도를 비교하고 authored/active/culled/dropped
+사유를 report에 남긴다. 정확한 수신면 가시성·차폐 판정이나 receiver 후보 가속까지 완료했다는 뜻은 아니다.
+정적 Flat shadow GPU 업로드 재사용과 실제 frame 작업 예산도 검증했다.
 동시 shadow owner 증가는 atlas/face 비용·캐시 정책을 측정한 뒤 별도 예산 단계에서 결정한다.
-화면에 중요한 빛이 빠졌을 때 authored/active/culled/dropped 이유를 report에 남긴다.
 
 근거: [Rust 선택](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/lighting_upgrade.rs),
 [현재 상한](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
@@ -202,13 +149,15 @@ hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·
 
 ### M01 · P2 · 재질과 빛 수신 제어
 
-**기존 계약의 한계.** 모델은 명시적 diffuse profile이고 metallic/roughness texture를 거절한다.
-flat에는 specular/shininess map·전용 emission map·광원 texture/cookie·light/shadow 수신 mask가 없다.
+**개발 소스 현황.** 기본 diffuse profile은 metallic/roughness texture를 계속 거절한다.
+M4a에서 Spatial 정적 모델용 명시적 비금속 `specular` profile과 raw A 세기·raw G roughness·sRGB 색 map을 추가했다.
+양 backend·두 색공간·UV·복구 자동 회귀와 리뷰를 완료했다. 전체 glTF PBR나 Flat 재질 지원으로 세지 않는다.
+M4b Flat에는 선택형 emission/specular/roughness와 map, M4c Flat·Spatial에는 독립 light/shadow 수신 mask를 구현하고 자동 회귀를 완료했다. M4d의 2D spot·cookie·볼록 다각형 차폐도 양 backend·저장/복원·자동 회귀를 완료했다.
 Spatial cast/receive bool은 존재하나 광원별 mask와 같지 않다. 반투명 BLEND 모델도 현재 계약 밖이다.
 
-**방향:** 먼저 lit/unlit·emission·선택적 수신과 간단한 specular/roughness를 제한된 재질 profile로 설계한다.
+**유지 기준:** lit/unlit·emission·선택적 수신과 specular/roughness를 제한된 재질 profile로 관리한다.
 색/normal/추가 map의 UV·atlas·flip·sampler·색공간·재import 계약을 함께 유지한다.
-cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. glTF 전체 PBR를 받아 조용히 무시하는 방식은 금지한다.
+cookie/2D spot/다각형 occluder는 동일 lit 경로를 사용한다. glTF 전체 PBR를 받아 조용히 무시하는 방식은 금지한다.
 
 근거: [모델 importer](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialModel.ts),
 [sprite material](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spriteMaterial.ts),
@@ -222,6 +171,8 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 
 `ci.yml`은 현재 `workflow_dispatch` 전용이다. validate job에는 Spatial 양 backend·color management·normal 등의
 검증이 있지만, 전용 `smoke:lighting`/`smoke:lighting-webgpu`는 조건부 extended matrix에 있다.
+기본 validate의 `smoke:spatial-webgpu-offscreen`에는 점광원 contact/depth, 태양·수신면 bias,
+shadow proxy와 flat 광원별 차폐 격리가 이미 포함되어 있다. 이 검사를 새 구현 목록으로 다시 세지 않는다.
 일반 push/PR에서 자동 검증된다고 기술하지 않는다. workflow trigger 정책 변경은 이 계획의 자동 실행 범위가 아니다.
 
 근거: [CI 정의](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/.github/workflows/ci.yml),
@@ -261,11 +212,11 @@ cookie/2D spot/다각형 occluder는 동일 lit 경로 위에서 추가한다. g
 | [three.js LightShadow](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/lights/LightShadow.js) | depth bias·normalBias·filter radius·map 크기를 분리 | 기존 world 단위 bias 계약을 유지하면서 필터 때문에 생기는 접촉 손실을 별도로 해결 |
 | [Unity URP bias](https://github.com/Unity-Technologies/Graphics/blob/0efc28ea742b1966b9dd9cc4489e58b986a13faf/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl) | light 방향 offset과 입사각에 따른 normal offset을 구분 | caster/receiver 보정을 혼동하지 않으며 기존 normalBias 의미를 조용히 변경하지 않음 |
 | [Microsoft 수신 평면 깊이 보정](https://learn.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps) | PCF 이웃 texel에서 수신 평면의 깊이를 계산해 큰 공통 bias로 인한 분리를 줄임 | 현재 태양 경로는 이 원칙을 기하 노멀·직교 basis로 구현. 실제 사용·허용 오차는 공식 태양 계약과 Smoke Check에서 관리 |
-| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy를 사용. S01은 실제 asset·애니메이션·LOD 범위 검증을 이어감 |
+| [Godot shadow-only geometry](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/scene/3d/visual_instance_3d.h)와 [three.js 별도 depth/distance 재질](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | 표시와 그림자 작성 역할을 분리할 수 있음 | 명시적 shadowOnly volume proxy와 [현재 검증 범위](../engine/data-scene-spatial.md)를 재사용 |
 | [three.js PCF/VSM](https://github.com/mrdoob/three.js/blob/a75739a7ae5f2c08d1d9f3e2e4ac27fdceee83de/src/renderers/webgl/WebGLShadowMap.js) | hardware 비교 필터와 VSM의 별도 target/blur, point VSM 제한 | 현재 deterministic hard/PCF3는 유지. 큰 soft shadow는 대역폭·메모리·light bleeding·pixel-art 기준을 정한 뒤 선택 |
-| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 L01에서 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
+| [Godot Canvas 광원별 shadow 합성](https://github.com/godotengine/godot/blob/b47a795aa585d7bdb589f465e6ffcf15ebb31b9b/drivers/gles3/shaders/canvas.glsl) | 해당 light_color에 shadow를 적용하고 다른 광원과 합산 | 현재 [flat 차폐 합성](../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 lit에서도 재사용. Ferrum2D의 RGB 투과 필터 계약을 유지 |
 
-후속 검증은 S01의 실제 asset·애니메이션·LOD, S03의 coverage 확장에 집중한다.
+후속 검증은 S03의 실게임 큰 맵·원근 카메라·실물 GPU 범위 측정에 집중한다.
 S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대상 환경을 정한 뒤 별도로 착수한다.
 기존 그림자 픽셀·자원 회귀와 근사 한계는 공식 공간 계약과 Smoke Check를 기준으로 유지한다.
 
@@ -291,36 +242,110 @@ S02의 곡률 인지 필터·실물 GPU 측정과 cascade는 필요·비용·대
 
 ## 6. 단계별 실행 계획
 
-M0/M1을 진행 중이며 M2 이후는 미착수다. 아래 표는 남은 범위다.
+M2-a의 opt-in opaque/cutout 표면 합성은 개발 소스 구현·양 backend 회귀 검증을 완료했다.
+사용법과 제한은 [표면 조명](../engine/data-scene-presentation.md#flat-2d-표면-조명-개발-소스),
+ABI·합성 구조는 [flat 합성 계약](../development/architecture/flat-lighting-composition.md)을 따른다.
+소프트웨어 GPU 검증을 실물 GPU 성능 검증이나 배포 완료로 해석하지 않는다.
+
+M3a의 선택형 성분 분리·효과 순서는 개발 소스 구현과 자동 회귀를 완료했다.
+사용·비용 계약은 [공간 효과 합성](../engine/data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)과
+[합성 구조](../development/architecture/spatial-lighting-composition.md)에서 관리한다.
+M3b Flat HDR은 양 backend float world/albedo·노출·톤매핑·HUD 경계와 자동 회귀를 완료했다.
+[Flat HDR](../engine/data-scene-presentation.md#flat-hdr-개발-소스)에서 입력·출력 공간과 비용을 관리한다.
+M3c WebGPU 전역 선형 색공간은 실제 backend의 색·alpha·후처리·팔레트·노멀·복구와
+legacy/linear Spatial 행렬 검증을 완료했다. [색공간 계약](../engine/public-api/core.md#색-공간-관리)을 따른다.
+M4a Spatial 정적 모델과 M4b Flat의 제한 재질은 개발 소스·자동 회귀를 완료했다.
+[Spatial 재질](../engine/data-scene-spatial.md)과 [Flat 재질](../engine/data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)이 현재 계약이다.
+M4c Flat 수신 mask는 native8-byte sidecar·원자적 v2 설정·공개 facade·authoring·양 GPU backend와
+공식 viewer의 적용·자산 검사 경로를 구현했다. [수신 mask 계약](../engine/data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)을 따른다.
+Spatial light/shadow 수신 mask까지 개발 소스·자동 회귀·리뷰를 완료했다.
+Spatial에도 기존 material/model ABI를 보존하는 receiver stream·원자적 설정, 환경 v7 광원 채널,
+TS reader/facade·patch v8/저장·양 backend shader를 연결했다.
+마스크1,120개 상태와 기존 환경2,240개·재질1,024개 상태를 양 backend·색공간·투영·DPR 조합에서 검증했다.
+최종 마스크 package는17a308a 격리 빌드의686개 JS/선언 파일과 byte 단위로 일치한다. 실물 GPU 성능 검증은 포함하지 않는다.
+[Spatial 수신 mask 계약](../engine/data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)이 개발 소스 기준이다.
+M4d의 선택형 2D point cone은 strict source/JSON·view 변환·양 backend와 자동 회귀를 완료했다.
+[Spot 계약](../engine/data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.
+선택형 point cookie도 data 자산·원본 이름/현재 ID 재매핑·cold capability·양 backend를 연결하고
+544개 cookie 상태를 포함한 전체 Flat2,512개 GPU 상태, SDK1,498개와 공식 viewer 검증·리뷰를 완료했다.
+리뷰에서 발견한 sparse UV 검증 누락을 수정하고 실패·자원 수명 회귀를 추가했다.
+[Cookie 계약](../engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+M4d의 bounded convex polygon도 raw/f32 검증·기존 광원별 union mask·양 backend와 저장/복원을 연결했다.
+다각형576개 상태와 독립 ray/edge 픽셀 기준을 포함한 전체 Flat3,088개 상태, SDK1,505개,
+공식 viewer 전체 회귀·package/public types·문서/Pages를 검증하고 리뷰에서 접선 동률의 winding 의존을 수정했다.
+최종 SDK는 별도 컴파일의696개 JS/선언 파일과 일치한다. [다각형 계약](../engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+M4와 M5-a 광원 전환·진단은 개발 소스·자동 회귀를 완료했다. M5-a는 native/public 저장 이력,
+양 backend 전환1,216개 상태·실제 fade 이미지64조합·기존 환경2,240개 상태와 profiler 전달을 검증했다.
+M5-b의 Flat 정적 GPU geometry 업로드 재사용·실제 작업 예산을 구현하고 SDK1,518개, 전체 Flat3,104개 및
+최종 polygon592개 상태의 cold/warm 예산·다중 packet/HUD 보존을 검증했다. mask draw는 계속 필요하다.
+M5-b native 기여도 기반 슬롯 점유는 native1,681개+integration1·SDK1,518개, 광원 선택1,408개와
+pixelArt 표시 비율/snap256개 상태·실제 edge 조명 PNG64조합을 검증했다. 기존 linear 환경1,120개도 통과했다.
+리뷰에서 simulation/display 카메라 불일치를 실패 재현 후 수정했다.
+M5-c 넓은 Spatial HDR Bloom은 environment v9/patch10/state12·양 GPU backend와 품질별 작업 예산을 구현했다.
+Native1,682개+integration1·SDK1,528개, wide 기본/안개/안개+AO2,688개 상태+합성 순서16맥락·기존 Flat3,104개 상태와
+공식 viewer·전체 package/public types·문서/Pages를 검증했다. 별도 소스 컴파일708개 JS/선언 파일도 최종 SDK와 일치한다.
+홀수 extent의 padding/Y 위상·분수 반경 tap 보간과 progress-only wide의 구 core/model 사전 검사 순서를 수정하고 자원·metrics/CI·계획 범위 리뷰에서 추가 필수 개발 누락은 찾지 못했다.
+최종 전체 Spatial 행렬의 환경2,240개·재질1,024개·수신 mask1,120개·광원 선택1,664개·그림자3,744개 상태도 통과했다.
+최종 패키지에서 복원 사전 검사 모듈만 추가 수정했고, 전체 행렬 패키지와 모든 renderer/shader/Wasm bytes는 동일하다.
+수정 후 SDK 전체와 wide 전체2,688개 상태를 다시 검증했다. 원본 보고서·실행 명령·리뷰 근거는 로컬
+`artifacts/lighting-remaining/m5/bloom/verification.json`과 `artifacts/lighting-remaining/completion-audit.json`에 기록했다.
+사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
+개발 완료 후 현재 PC의 Radeon8060S/driver32.0.32015.7029·Windows Chrome156.0.8078.80에서
+WebGL2 D3D11과 WebGPU AMD non-fallback을 확인하고 wide2,688개 상태를 실제 GPU offscreen 경로에서도 검증했다.
+원본은 로컬 `artifacts/lighting-remaining/post-development/hardware-wide/run-Hya0zT/report.json`과
+`artifacts/lighting-remaining/post-development/hardware-browser.json`이다.
+같은 기기의 native canvas 전체 Spatial 행렬도 네 viewport/DPR 조합 모두 통과했다. 환경2,240개·재질1,024개·
+mask1,120개·광원 선택1,664개·그림자3,744개 상태와 wide2,688개 상태를 포함하며, 각 page의 실제 AMD
+WebGL renderer/WebGPU non-fallback adapter도 검사했다. 원본은
+`artifacts/lighting-remaining/post-development/hardware-spatial-canvas/run-kHGIBQ/report.json`과 `artifacts/lighting-remaining/post-development/hardware-spatial-adapters.json`이다.
+이는 현재 PC의 잠정 fixture 기준이며, 실제 문제 게임/씬·사용자가 정한 목표 환경·시간 예산·품질 수용 기준의
+검증 완료를 뜻하지 않는다.
+
+같은 PC에서 원본 `hd2d-environment.json`을 public SDK로 실행해 AO·gather·wide low/balanced/high·AO+wide의
+OFF→ON을 측정했다. 1280×720/DPR1과 세로390×844/DPR2, 양 backend에서 조건당24 warmup+96 측정 frame,
+총24쌍·4,608개 GPU sample을 발행/완료 frame ID로 연결했으며 누락은0이다. 세로/DPR2도 같은 desktop GPU의
+viewport emulation이며 실물 모바일 측정이 아니다. CPU render/Rust update·target bytes·GPU 시간 원본은
+`artifacts/lighting-remaining/post-development/effect-timing.json`과 `artifacts/lighting-remaining/post-development/effect-timing-summary.json`이다.
+모든 측정 frame은 정적 shadow cache hit이며 추가 shadow pass는0이다. 동적 caster의 shadow 갱신 비용은 이 시간 표에 포함하지 않는다.
+
+아래는 해당 기준 씬의 global legacy/separated·1280×720/DPR1 평균 GPU 시간이다. GL은 frame 구간
+TIME_ELAPSED, WebGPU는 render-pass 구간 합이므로 backend 간 절대값을 동등한 frame 시간으로 비교하지 않는다.
+고정 OFF→ON 순서·desktop 부하와 관찰된 timestamp 양자화의 영향을 포함하며 제품 ms/FPS 합격선을 설정한 표가 아니다.
+
+| Backend | Bloom | 반경 CSS px | OFF mean ms | ON mean ms | 차이 ms |
+| --- | --- | --- | --- | --- | --- |
+| WebGL2 | gather | 24 | 0.964 | 1.173 | +0.209 |
+| WebGL2 | wide balanced | 64 | 0.941 | 1.289 | +0.349 |
+| WebGPU | gather | 24 | 0.165 | 0.603 | +0.438 |
+| WebGPU | wide balanced | 64 | 0.166 | 0.318 | +0.152 |
+
+반경·halo 품질이 다른 비교이며, texture-load 상한이나 low/balanced/high 이름만으로 GPU 시간의 단조 순서를
+보장하지 않는다. 실제 문제 게임의 큰 맵·접촉/곡면·품질 수용 및 목표 기기별 절대 예산은 여전히 입력 대기다.
+M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
-`lightingProfile`, `shadowCasterMode`, `lightMask` 같은 명칭은 설계 후보이지 새 공개 API가 아니다.
+남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
 
 | 단계 | 작업·주요 책임 경로 | 선행 조건 | 완료 기준 |
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
-| M1 태양광 안정화 | S01 proxy asset/LOD·애니메이션 검증, S03 coverage/caster 여유, S04 작성 설명. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader + viewer | M0 | 태양/카메라 sweep·접촉·범위 경계 fixture 통과, 기존 mode 저장/복원 유지 |
-| M2 flat lit 합성 | L01. 기존 광원별 visibility를 재사용해 표면색·수신 제어 결합, opaque/cutout 우선. lighting pass + native sidecar가 필요하면 동반 | M0의 색/호환 계약 | 검은/흰 표면, red/blue 두 빛, 중복 차폐물, unlit/HUD, alpha fixture 통과 |
-| M3 효과·색공간 정합 | E01/E02. AO 성분·emission·fog·DOF·Bloom 입력, flat HDR 선택, 전역 WebGPU linear parity | M0 계약. flat HDR 연결은 M2 새 lit 경로에 의존 | 조합 순서·HDR 범위·encode 1회·HUD·fallback·복구 검증, 기존 profile 보존 |
-| M4 제작 표현력 | M01. emission/specular/roughness의 제한 profile, light/shadow mask, 2D spot/cookie·polygon occluder | M2/M3 | 자산 fixture·atlas/flip·mask 독립성·저장/재import·양 backend 결과 검증 |
-| M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
+| M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
+| M5 규모·성능 | L03/E03 필수 개발·자동 회귀·리뷰 완료. 실제 장면 시간/품질 수용 기준은 후속 검증 | 앞 단계 대표 장면·측정 | 자동 픽셀/작업 예산·복구를 검증하고 실게임·실기기 시간/수용 기준과 구분 |
 | M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
 ### 먼저 실행할 작업 단위
 
-1. **M0-a:** 고정 태양 + billboard/mesh/지형 + orbit/pan, 발 접촉·창문·벽이 있는 최소 재현 씬을 만든다.
+1. **M0-a:** `hd2d-shadow-proxy`의 정원 캐릭터·나무 비교와 `hd2d-environment`의 효과 조합,
+   기존 proxy/contact 회귀 fixture를 재사용해 실제 사용자 문제 장면의 발 접촉·벽·asset 조건을 축약한다.
    문제 장면이 확보되면 같은 fixture에 축약하고, 원본 asset·설정·backend·GPU·DPR를 함께 보관한다.
-2. **M0-b:** legacy/new profile의 기대값을 정한다. 기존 smoke를 늘리는 것과 바꿔야 하는 기대값을 구별한다.
-3. **M1-a:** 캐릭터/나무 billboard에 작성한 shadowOnly volume proxy를 실제 asset에서 비교한다.
-   회전 카메라, 애니메이션 UV/flip, 물체 회전, 높이 변화, offscreen caster를 포함한다.
-4. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
+2. **M0-b의 실기기 잔여:** Spatial legacy/separated의 자동 픽셀 기대값은 공식 회귀로 관리한다.
+   실제 게임 장면·목표 GPU의 성능 예산과 품질 수용 기준은 개발 완료 후 검증에서 확정한다.
+3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
-5. **M1-c:** 기존 기준축·경계 전환 회귀를 유지하면서 태양 고도 pole 근방·낮은 고도·카메라 pan/zoom에서 coverage와 외부 caster 여유를 검증한다.
-6. **M2-a:** opaque/cutout flat 장면에서 광원별 visibility + albedo 합성을 먼저 완성한다.
-   반투명 다중 layer의 완전한 광학 합성은 별도 범위로 남긴다.
-
-M1과 M2의 수학적 계약은 M0에서 함께 정하지만, 시각 검증과 리뷰는 별도 변경으로 수행한다.
-M3의 Spatial 효과 결합 검증은 M2의 flat renderer 구현을 기다리지 않고 진행할 수 있다.
+4. **개발 후 효과/비용 검증:** 실제 씬·GPU/driver·브라우저·해상도/DPR를 정하고 AO 경계/얇은 geometry/카메라 이동,
+   DOF foreground·발광체·HUD를 확인한다. AO/Bloom ON/OFF의 warmup·측정 frame 수와 CPU/GPU 시간·bytes를 함께 기록한다.
+   timer 미지원·미측정 값은0으로 채우지 않는다. 현재 자동 work 예산을 제품 ms/FPS 보장으로 사용하지 않는다.
+완료한 M2-a·M3a·M3b·M3c는 각각 별도 논리적 변경으로 관리한다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 ## 7. 회귀 장면과 판정 방법
@@ -330,7 +355,7 @@ M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
 | fixture | 핵심 판정 |
 | --- | --- |
-| 검은/회색/흰 표면 + 한 빛 | 새 lit의 반사 성분은 albedo에 비례. 검은 표면에 emission이 없으면 diffuse가 생기지 않음 |
+| 검은/회색/흰 표면 + 한 빛 | diffuse는 albedo에 비례. 검은 표면에는 diffuse가 생기지 않으며, 선택 specular는 별도 계수·roughness로 하이라이트를 검증 |
 | 빨강 A + 파랑 B + A만 차폐 | B 기여 유지. A를 완전히 가린 결과를 A 비활성 결과와 비교. ambient도 보존 |
 | 한 광원 + 겹치는 두 occluder | 겹침 횟수로 차폐율이 반복 감쇠하지 않음 |
 | 태양 + 고정 billboard + orbit | stable proxy mode의 world-space shadow footprint가 camera yaw에 독립. 현재 mode는 기존 결과 유지 |
@@ -368,7 +393,7 @@ software adapter 결과와 실제 모바일/desktop GPU의 품질·성능 결과
 
 | 변경 표면 | 적용할 기존 검증 |
 | --- | --- |
-| native 선택/caster/matrix/ABI | `cargo fmt`, `cargo clippy`, `cargo test --manifest-path crates/ferrum-core/Cargo.toml`, `pnpm build:wasm`, `pnpm build` |
+| native 선택/caster/matrix/ABI | `cargo fmt --manifest-path crates/ferrum-core/Cargo.toml`, `cargo clippy --manifest-path crates/ferrum-core/Cargo.toml`, `cargo test --manifest-path crates/ferrum-core/Cargo.toml`, `pnpm build:wasm`, `pnpm build` |
 | TS renderer·공통 계약 | `pnpm --filter @ferrum2d/ferrum-web test`, 관련 lint/build, `pnpm validate:public-api-surface` |
 | 2D light/normal/ground shadow | `pnpm smoke:lighting`, `pnpm smoke:lighting-webgpu`, `pnpm smoke:sprite-normal-2d`, `pnpm smoke:data-scene-presentation` |
 | Spatial light/shadow/effects | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen` |
@@ -385,9 +410,10 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 ## 9. 범위 결정과 보류 조건
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
-- **다음:** 선택적 재질 반사·수신 제어·cookie/spot, 광원 선택 안정화, 비용이 검증된 Bloom 개선.
+- **개발 완료 후 잔여 검증:** 실제 문제 게임의 품질과 목표 환경의 성능 수용 기준을 확인한다. M5-c 개발과 기준 PC의 실제 GPU 회귀·기준 씬 비용 대조는 완료했다.
 - **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
+- 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,
   반투명 다중 depth의 완전한 합성, physical bokeh, 전체 게임 루프 Worker/threads, visual shader editor.
 - 새 production 의존성은 계획에 없다. 외부 코드를 직접 가져오는 후속 작업은 해당 라이선스와 attribution을 유지한다.

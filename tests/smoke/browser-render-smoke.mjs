@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { smokePlacementFlatLighting } from "./placement-flat-lighting-smoke.mjs";
 import { showPlacementInspector, showPlacementBottom, showPlacementDock, clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -132,12 +133,17 @@ const STARTER_RUNTIME_WEAPON_PROFILE_VISUALS = Object.freeze({
   bounce: { label: "Large amber orb", textureId: 23, width: 18, height: 18, cooldownSeconds: 0.42 },
 });
 const RUNTIME_BUDGET_FIELDS = Object.freeze([
+  ["maxSpatialBloomDrawCalls", "Bloom draws", "maxSpatialBloomDrawCalls", "count"],
+  ["maxSpatialBloomTextureBytes", "Bloom targets", "maxSpatialBloomTextureBytes", "bytes"],
+  ["maxSpatialBloomTexelFetchBudget", "Bloom texture load budget", "maxSpatialBloomTexelFetchBudget", "count"],
   ["maxWasmLinearMemoryBytes", "Wasm capacity", "maxWasmLinearMemoryBytes", "bytes"],
   ["maxGpuFrameTimeMs", "GPU elapsed", "maxGpuFrameTimeMs", "ms"],
   ["maxFrameTimeMs", "frame time", "maxFrameTimeMs", "ms"],
   ["maxRustUpdateTimeMs", "rust update", "maxRustUpdateTimeMs", "ms"],
   ["maxRenderTimeMs", "render", "maxRenderTimeMs", "ms"],
   ["maxDrawCalls", "draw calls", "maxDrawCalls", "count"],
+  ["maxPointShadowGeometryUploadBytes", "point shadow geometry upload", "maxPointShadowGeometryUploadBytes", "bytes"],
+  ["maxPointShadowGeometryVertexCount", "point shadow vertices", "maxPointShadowGeometryVertexCount", "count"],
   ["maxRenderCommandCount", "render commands", "maxRenderCommandCount", "count"],
   ["maxTextureSwitchCount", "texture switches", "maxTextureSwitchCount", "count"],
   ["maxPhysicsFixedSteps", "fixed steps", "maxPhysicsFixedSteps", "count"],
@@ -359,6 +365,7 @@ try {
     finally { await new Promise(resolve => productionServer.close(resolve)); }
   }
   const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
+  page.setDefaultTimeout(timeoutMs);
   page.on("pageerror", (error) => {
     browserErrors.push(error.message);
   });
@@ -2036,7 +2043,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     }
     return { pivot: true, rotation: true, scale: true, rotatedResize: true };
   });
-  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry, navigation, selection, transforms } };
+  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry, navigation, selection, transforms, flatLighting: await smokePlacementFlatLighting(page, timeoutMs) } };
 }
 
 async function assertPlacementGestureCancel(page, selector, point, timeoutMs) {

@@ -1,5 +1,9 @@
+import {FLAT_RECEIVER_MASK_GLSL} from "./flatReceiverMaskShaders.js";
+import { FLAT_HDR_GLSL } from "./flatHdrShaders.js";
 import { SPRITE_PALETTE_GLSL } from "./spritePaletteShaders.js";
 import { PIXEL_POST_PROCESS_GLSL } from "./pixelPostProcessShaders.js";
+import { flatLitGlslFragment, FLAT_LIT_COMPOSITE_GLSL } from "./flatLitShaders.js";
+import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
 
 const SPRITE_VERTEX_SOURCE = `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
@@ -37,7 +41,16 @@ const SPRITE_VERTEX_SOURCE = `#version 300 es
         v_color=a_color;v_corner=corner;v_flags=a_flags;
       }`;
 // Internal shader sources shared by synchronous construction and async preparation.
+const LIT_SPRITE_VERTEX = SPRITE_VERTEX_SOURCE.replace("void main(){", "layout(location=6) in vec2 a_lighting;flat out vec2 v_lighting;void main(){v_lighting=a_lighting;");
+const SURFACE_SPRITE_VERTEX = LIT_SPRITE_VERTEX.replace("void main(){", "layout(location=7) in vec4 a_surface;layout(location=8) in vec2 a_surface_params;flat out vec4 v_surface;flat out vec2 v_surface_params;void main(){v_surface=a_surface;v_surface_params=a_surface_params;");
+const MASKED_SPRITE_VERTEX=LIT_SPRITE_VERTEX.replace("void main(){", "layout(location=7) in vec2 a_receiver_masks;flat out vec2 v_receiver_masks;void main(){v_receiver_masks=a_receiver_masks;");
 export const WEBGL2_SHADER_SOURCES = {
+  spriteLitMasks:{vertex:MASKED_SPRITE_VERTEX,fragment:FLAT_RECEIVER_MASK_GLSL},
+  spriteLitColor: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(false) },
+  spriteLitData: { vertex: LIT_SPRITE_VERTEX, fragment: flatLitGlslFragment(true) },
+  spriteLitSurfaceData: { vertex: SURFACE_SPRITE_VERTEX, fragment: flatLitGlslFragment(true,true) },
+  flatLitComposite: FLAT_LIT_COMPOSITE_GLSL,
+  flatHdr: FLAT_HDR_GLSL,
   volumeShadow: { vertex: `#version 300 es
     precision highp float;
     layout(location=0) in vec3 a_vertex;
@@ -134,33 +147,69 @@ export const WEBGL2_SHADER_SOURCES = {
       uniform vec2 u_light_center;
       uniform float u_light_radius;
       uniform float u_light_y_scale;
-      uniform float u_light_falloff;
-      uniform bool u_has_normals;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
+      uniform float u_light_falloff;uniform vec4 u_light_spot;
+      uniform bool u_has_cookie;uniform highp sampler2D u_cookie;uniform vec4 u_cookie_uv;uniform vec2 u_cookie_rotation;
+      uniform bool u_has_normals,u_irradiance;uniform highp sampler2D u_normal_buffer,u_normal_coverage;
       uniform bool u_has_shadow;uniform highp sampler2D u_shadow_mask;uniform vec3 u_shadow_tint;
       uniform float u_light_height;uniform vec3 u_light_direction;
+      uniform bool u_has_receiver_masks;uniform highp sampler2D u_receiver_masks;uniform ivec2 u_light_channels;
+      uniform bool u_surface,u_surface_albedo_srgb;uniform highp sampler2D u_surface_albedo;
+      ${SPATIAL_SPECULAR_GLSL}
       float normalResponse(vec3 direction){
         if(!u_has_normals)return 1.;
         vec2 uv=gl_FragCoord.xy/vec2(textureSize(u_normal_buffer,0));
-        float coverage=clamp(texture(u_normal_coverage,uv).r,0.,1.);
+        float coverage=clamp(u_surface?texture(u_normal_buffer,uv).a:texture(u_normal_coverage,uv).r,0.,1.);
         vec3 raw=texture(u_normal_buffer,uv).rgb*2.-1.;
         vec3 n=length(raw)<0.02?vec3(0.,0.,1.):normalize(raw);
         return mix(1.,max(dot(n,direction),0.),coverage);
       }
+      vec3 surfaceResponse(vec3 direction,bool direct){
+        ivec2 pixel=ivec2(gl_FragCoord.xy);vec3 material=texelFetch(u_normal_coverage,pixel,0).rgb;
+        if(material.g<=.000001)return vec3(0.);
+        vec3 albedo=texelFetch(u_surface_albedo,pixel,0).rgb/material.g;
+        if(u_surface_albedo_srgb)albedo=mix(albedo/12.92,pow((albedo+.055)/1.055,vec3(2.4)),step(vec3(.04045),albedo));
+        if(!direct)return albedo;
+        vec3 raw=texelFetch(u_normal_buffer,pixel,0).rgb*2.-1.;vec3 n=length(raw)<.02?vec3(0.,0.,1.):normalize(raw);
+        vec3 reflection=vec3(0.);if(material.r>0.)reflection=directSpecular(n,direction,vec3(0.,0.,1.),vec3(.04),material.b/material.g)*(material.r/material.g);
+        return albedo*normalResponse(direction)+reflection;
+      }
       out vec4 outColor;
       void main() {
+        bool receiveShadow=true;
+        if(u_irradiance&&(u_mode==1||u_mode==2)){
+          ivec2 receiver=ivec2(255);if(u_has_receiver_masks)receiver=ivec2(round(texelFetch(u_receiver_masks,ivec2(gl_FragCoord.xy),0).rg*255.));
+          if((receiver.x&u_light_channels.x)==0){outColor=vec4(0.);return;}
+          receiveShadow=(receiver.y&u_light_channels.y)!=0;
+        }
         if (u_mode == 1) {
           float distanceToLight = length((v_position-u_light_center)/vec2(1.0,u_light_y_scale));
           float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
           float alpha = pow(attenuation, u_light_falloff) * u_color.a;
+          if(u_irradiance && u_light_spot.z>=-1. && distanceToLight>.000001){
+            float angle=dot((v_position-u_light_center)/vec2(1.,u_light_y_scale)/distanceToLight,u_light_spot.xy);
+            alpha*=u_light_spot.w>u_light_spot.z+.0000001?smoothstep(u_light_spot.z,u_light_spot.w,angle):step(u_light_spot.z,angle);
+          }
+          if(u_irradiance && u_has_cookie){
+            vec2 q=(v_position-u_light_center)/vec2(u_light_radius,u_light_radius*u_light_y_scale);
+            vec2 local=vec2(u_cookie_rotation.x*q.x+u_cookie_rotation.y*q.y,-u_cookie_rotation.y*q.x+u_cookie_rotation.x*q.y)*.5+.5;
+            float pattern=0.;
+            if(all(greaterThanEqual(local,vec2(0.)))&&all(lessThanEqual(local,vec2(1.)))){
+              ivec2 size=textureSize(u_cookie,0),lo=clamp(ivec2(floor(min(u_cookie_uv.xy,u_cookie_uv.zw)*vec2(size))),ivec2(0),size-1),hi=clamp(ivec2(ceil(max(u_cookie_uv.xy,u_cookie_uv.zw)*vec2(size)))-1,lo,size-1);
+              vec2 uv=mix(u_cookie_uv.xy,u_cookie_uv.zw,local);vec4 texel=texelFetch(u_cookie,clamp(ivec2(floor(uv*vec2(size))),lo,hi),0);pattern=texel.r*texel.a;
+            }
+            alpha*=pattern;
+          }
           vec3 delta=vec3(u_light_center.x-v_position.x,(u_light_center.y-v_position.y)/u_light_y_scale,u_light_height);
-          alpha*=normalResponse(length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta));
+          vec3 direction=length(delta)<0.0001?vec3(0.,0.,1.):normalize(delta);
+          vec3 response=vec3(1.);if(u_surface)response=surfaceResponse(direction,true);else alpha*=normalResponse(direction);
           vec3 transmission=vec3(1.);
-          if(u_has_shadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
+          if(u_has_shadow&&receiveShadow)transmission=mix(vec3(1.),u_shadow_tint,texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r);
           float visibility=max(max(transmission.r,transmission.g),transmission.b);
-          outColor = visibility>0.?vec4(clamp(u_color.rgb,0.,1.)*transmission/visibility,alpha*visibility):vec4(0.);
+          outColor = visibility>0.?vec4((u_irradiance?u_color.rgb:clamp(u_color.rgb,0.,1.))*response*transmission/visibility,alpha*visibility):vec4(0.);
         } else {
-          float visibility=(u_mode==2&&u_has_shadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
-          outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
+          float visibility=(u_mode==2&&u_has_shadow&&receiveShadow)?1.-texelFetch(u_shadow_mask,ivec2(gl_FragCoord.xy),0).r:1.;
+          if(u_surface)outColor=vec4(u_color.rgb*surfaceResponse(u_light_direction,u_mode==2),u_color.a*visibility);
+          else outColor = vec4(u_color.rgb,u_color.a*(u_mode==2?normalResponse(u_light_direction):1.)*visibility);
         }
       }` },
   shadow: { vertex: `#version 300 es

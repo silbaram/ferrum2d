@@ -121,7 +121,7 @@ export function protectCleanupDocuments(report: CleanupReport, documents: Iterab
     const source = JSON.stringify(document.document);
     if (typeof source !== "string" || (bytes += new TextEncoder().encode(source).byteLength) > 16 * 1024 * 1024)
       throw Error("Open document snapshot exceeds cleanup budget");
-    const numericTexture = /"(?:texture|normalTexture)"\s*:\s*-?\d/.test(source);
+    const numericTexture = /"(?:texture|normalTexture|emissionTexture|specularTexture|roughnessTexture)"\s*:\s*-?\d/.test(source);
     for (const revision of report.revisions)
       if (numericTexture || source.includes(revision.id) || revision.assets.some(id => source.includes(id)) || revision.files.some(file => source.includes(file.name))) {
         protectedKeys.add(revision.key);

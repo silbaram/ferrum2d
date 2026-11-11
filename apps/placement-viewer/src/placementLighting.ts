@@ -2,6 +2,8 @@ import type { SpatialEnvironmentSpec, SpatialLightingSpec, SpatialRgb, FerrumRun
 import type { LightingScene2D } from "@ferrum2d/ferrum-web/labs";
 import type { ScenePlacementViewer, ScenePlacementViewerState } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementLightGizmos } from "./placementLightGizmos";
+import { createPlacementSunDirection } from "./placementSunDirection";
+import { createPlacementSunGizmo, type SunGizmoPose } from "./placementSunGizmo";
 import { placementLightAnchor } from "./placementSpatialPose";
 import { lightingMood, lightingQuality, type LightingMood, type LightingQuality } from "./placementLightingPresets";
 import { createPlacementControlMenu } from "./placementControlMenu";
@@ -24,6 +26,7 @@ export function createPlacementLighting(options: {
   finishEdit(): void;
   clearSelection():void;
   hasObjectSelection():boolean;
+  inspectSun():void;
   onChange(state: ScenePlacementViewerState): unknown;
   /** The active document inspector owns the visible lighting tab. */
   mount(): HTMLElement | null;
@@ -90,7 +93,7 @@ export function createPlacementLighting(options: {
   let feedbackDocument = options.key();
   const selectedPoints = new Map<string, number>();
   const selectedIndex = () => selectedPoints.get(options.key()) ?? 0;
-  pointIndex.addEventListener("change", () => { selectedPoints.set(options.key(), Number(pointIndex.value)); gizmos.select(); options.clearSelection(); sync(options.viewer.state()); });
+  pointIndex.addEventListener("change", () => { selectedPoints.set(options.key(), Number(pointIndex.value)); sunGizmo.deselect(); gizmos.select(); options.clearSelection(); sync(options.viewer.state()); });
 
   number(ambient, "Ambient Strength", "ambient", 0, 4, 0.05, d => d.spatial ? Math.max(...(d.light.ambient ?? [0.15, 0.15, 0.15])) : 1 - (d.light.ambient?.[3] ?? 0.45), (d, value) => {
     if (d.spatial) {
@@ -125,7 +128,7 @@ export function createPlacementLighting(options: {
     if (d.spatial && d.light.directional) d.light.directional.color = rgb;
     else if (!d.spatial && d.light.directionalLight) d.light.directionalLight.color = rgb;
   });
-  number(sunForm, "Direction (°)", "sun-direction", -180, 180, 1, d => {
+  const sunDirection = number(sunForm, "Sun Azimuth (°)", "sun-direction", -180, 180, 1, d => {
     const v = d.spatial ? d.light.directional?.direction : undefined;
     return Math.atan2(v?.y ?? (!d.spatial ? d.light.directionalLight?.directionY ?? 1 : 0), v?.x ?? (!d.spatial ? d.light.directionalLight?.directionX ?? 1 : 1)) * 180 / Math.PI;
   }, (d, value) => {
@@ -137,7 +140,10 @@ export function createPlacementLighting(options: {
       d.light.directionalLight.directionX = Math.cos(angle); d.light.directionalLight.directionY = Math.sin(angle);
     }
   });
-  number(sunForm, "Sun Height (°)", "sun-height", -90, 90, 1, d => {
+  setUiAttribute(sunDirection, "title", "World XY · 0° = +X · 90° = +Y");
+  const sunBearing = createPlacementSunDirection();
+  sunForm.append(sunBearing.element);
+  number(sunForm, "Sun Elevation (°)", "sun-height", -90, 90, 1, d => {
     if (!d.spatial || !d.light.directional) return 45;
     const v = d.light.directional.direction; return Math.atan2(v.elevation, Math.hypot(v.x, v.y)) * 180 / Math.PI;
   }, (d, value) => {
@@ -145,6 +151,14 @@ export function createPlacementLighting(options: {
     const v = d.light.directional.direction, yaw = Math.atan2(v.y, v.x), pitch = value * Math.PI / 180;
     d.light.directional.direction = { x: Math.cos(yaw) * Math.cos(pitch), y: Math.sin(yaw) * Math.cos(pitch), elevation: Math.sin(pitch) };
   }, d => d.spatial);
+  const flatElevation = number(sunForm, "Normal Light Elevation (°)", "sun-normal-elevation", 0, 90, 1,
+    d => !d.spatial ? (d.light.directionalLight?.elevationRadians ?? Math.PI / 4) * 180 / Math.PI : 45,
+    (d, value) => { if (!d.spatial && d.light.directionalLight) d.light.directionalLight.elevationRadians = value * Math.PI / 180; }, d => !d.spatial);
+  setUiAttribute(flatElevation, "title", "Normals only; shadow length uses its own scale.");
+  const flatLength = number(sunForm, "Shadow Length Scale", "sun-shadow-length", .01, 100, .05,
+    d => !d.spatial ? d.light.directionalLight?.shadowLengthScale ?? .8 : .8,
+    (d, value) => { if (!d.spatial && d.light.directionalLight) d.light.directionalLight.shadowLengthScale = value; }, d => !d.spatial);
+  setUiAttribute(flatLength, "title", "Ground shadow length; independent of normal lighting.");
   const sunShadows = checkbox("Sun Shadows", "sun-shadows", value => change(d => {
     if (d.spatial && d.light.directional) {
       if (value) d.light.directional.shadows = { resolution: 512 };
@@ -223,7 +237,7 @@ export function createPlacementLighting(options: {
   // with their original owners; expanding a group never changes the scene.
   for (const [id, parent, names] of [
     ["atmosphere", atmosphere, ["light-budget", "bloom-strength", "bloom-radius", "bloom-threshold", "ao-strength", "ao-radius", "ao-bias"]],
-    ["sun", sunForm, ["sun-normal-bias", "shadow-coverage"]],
+    ["sun", sunForm, ["sun-normal-bias", "shadow-coverage", "sun-normal-elevation", "sun-shadow-length"]],
     ["point", pointForm, ["point-normal-bias", "spot-x", "spot-y", "spot-elevation", "spot-angle", "spot-penumbra"]],
   ] as const) {
     const details = document.createElement("details"), summary = document.createElement("summary");
@@ -248,10 +262,10 @@ export function createPlacementLighting(options: {
   }
   function count(d: Draft) { return d.spatial ? d.light.lights.length : d.light.pointLights?.length ?? 0; }
   function point(d: Draft) { return d.spatial ? d.light.lights[selectedIndex()] : d.light.pointLights?.[selectedIndex()]; }
-  function change(edit: (d: Draft) => void) {
-    if ((!scrubbing && options.busy()) || options.mode() === "game" || (state.spatial && options.mode() !== "spatial")) return false;
+  function change(edit: (d: Draft) => void, gesture = false) {
+    if ((!scrubbing && !gesture && options.busy()) || options.mode() === "game" || (state.spatial && options.mode() !== "spatial")) return false;
     try {
-      if (!scrubbing) options.finishEdit();
+      if (!scrubbing && !gesture) options.finishEdit();
       const next = draft(); edit(next);
       const changed = next.spatial
         ? options.viewer.updateSpatial([{ kind: "setEnvironment", changes: { environment: { ...next.environment, lighting: next.light }, lightBindings: next.bindings } }])
@@ -350,6 +364,7 @@ export function createPlacementLighting(options: {
     if (documentChanged) { feedbackDocument = options.key(); message.hidden = true; }
     state = next;
     gizmos.sync(next);
+    sunGizmo.sync();
     const light = state.lighting, sun = !state.spatial && light?.enabled !== false ? light?.directionalLight : undefined;
     const signature = JSON.stringify([options.runtimeRevision(), sun ?? false]);
     if (signature !== nativeSunSignature) {
@@ -370,12 +385,18 @@ export function createPlacementLighting(options: {
       for(const id of bindingIds){const o=document.createElement("option");o.value=id;o.textContent=id;bindingSelect.append(o);}bindingSelect.dataset.ids=JSON.stringify(bindingIds);
     }
     bindingSelect.value=d.spatial?Object.entries(d.bindings).find(([,indices])=>indices.includes(index))?.[0]??(d.light.lights[index]?.followActor?state.spatial?.actor?.instanceId:undefined)??"":"";
-    helpers.row.hidden=!d.spatial;
+    helpers.row.hidden=false;
     hemisphere.hidden=!d.spatial;
     hemisphereEnabled.input.checked=d.spatial && !!d.light.hemisphere && d.light.hemisphere.enabled!==false;
     hemisphereForm.hidden=!hemisphereEnabled.input.checked;
     const sunlight = d.spatial ? d.light.directional : d.light.directionalLight;
     sunForm.hidden = !sunlight; sunAdd.hidden = !!sunlight;
+    const directionLabel = d.spatial ? "Sun Azimuth (°)" : "Shadow Direction (°)";
+    setUiText(sunDirection.closest("label")!.firstElementChild!, directionLabel);
+    setUiAttribute(sunDirection, "aria-label", directionLabel);
+    sunBearing.sync(d.spatial
+      ? d.light.directional?.direction ?? { x: 0, y: 0 }
+      : { x: d.light.directionalLight?.directionX ?? 1, y: d.light.directionalLight?.directionY ?? 1 }, d.spatial);
     sunShadows.input.checked = d.spatial ? !!d.light.directional?.shadows : (d.light.directionalLight?.shadowOpacity ?? 0.35) > 0;
     if (pointIndex.options.length !== total) pointIndex.replaceChildren(...Array.from({ length: total }, (_, i) => {
       const option = document.createElement("option"); option.value = String(i); return option;
@@ -392,12 +413,42 @@ export function createPlacementLighting(options: {
     for (const group of advancedGroups) group.hidden = ![...group.children].some(child => child.localName !== "summary" && !(child as HTMLElement).hidden);
     shadows.input.checked = d.spatial ? d.light.shadows?.lightIndex === index : typeof d.light.shadows === "object" ? d.light.shadows.enabled !== false : d.light.shadows === true;
   }
-  const helpers=checkbox("Light Helpers","helpers",()=>{});helpers.input.checked=true;points.prepend(helpers.row);
+  const helpers=checkbox("Light Helpers","helpers",()=>{});helpers.input.checked=true;form.insertBefore(helpers.row,atmosphere);
   const gizmos=createPlacementLightGizmos({...options,enabled:()=>options.mode()==="spatial"&&helpers.input.checked,
-    selected: selectedIndex,select(index){selectedPoints.set(options.key(),index);options.clearSelection();sync(options.viewer.state());}});
-  return { element: menu.element, sync, ownsGesture:()=>scrubbing||gizmos.ownsGesture(), frame(update:Parameters<typeof gizmos.frame>[0]){gizmos.frame(update);const spatial=update.frame.renderCommandBuffer.spatial?.environment?.values;setUiText(budgetStatus,uiMessage("Active {0} / Authored {1}",spatial?.[1]??0,state.spatial?.environment?.lighting?.lights.length??0));}, flatLighting: () => state.spatial ? undefined : state.lighting,
+    selected: selectedIndex,select(index){sunGizmo.deselect();selectedPoints.set(options.key(),index);options.clearSelection();sync(options.viewer.state());}});
+  function readSun(): SunGizmoPose | undefined {
+    const d=draft(), v=d.spatial?d.light.directional?.direction:undefined, flat=!d.spatial?d.light.directionalLight:undefined;
+    if(!v&&!flat)return;
+    const x=v?.x??flat!.directionX,y=v?.y??flat!.directionY,horizontalLength=Math.hypot(x,y);
+    const angle=Math.atan2(y,x)*180/Math.PI+(d.spatial?0:180);
+    return { azimuth: ((angle+180)%360+360)%360-180,
+      elevation:v?Math.atan2(v.elevation,horizontalLength)*180/Math.PI:(flat!.elevationRadians??Math.PI/4)*180/Math.PI,
+      length:v?Math.hypot(x,y,v.elevation):horizontalLength,horizontalLength,spatial:d.spatial,enabled:d.light.enabled!==false };
+  }
+  const sunGizmo=createPlacementSunGizmo({...options,read:readSun,
+    hasObjectSelection:()=>options.hasObjectSelection()||(!state.spatial&&state.selectedInstanceIds.length>0),
+    enabled:()=>helpers.input.checked&&options.mode()!=="game"&&(!state.spatial||options.mode()==="spatial"),
+    select(inspect){gizmos.deselect();options.clearSelection();if(inspect){options.inspectSun();sun.scrollIntoView({block:"start"});}},
+    write(base,yaw,pitch,axis,gesture){return change(d=>{
+      const angle=yaw*Math.PI/180,elevation=pitch*Math.PI/180;
+      if(d.spatial&&d.light.directional){
+        const v=d.light.directional.direction;
+        d.light.directional.direction=axis==="azimuth"
+          ? {x:Math.cos(angle)*base.horizontalLength,y:Math.sin(angle)*base.horizontalLength,elevation:v.elevation}
+          : {x:Math.cos(angle)*Math.cos(elevation)*base.length,y:Math.sin(angle)*Math.cos(elevation)*base.length,elevation:Math.sin(elevation)*base.length};
+      }else if(!d.spatial&&d.light.directionalLight){
+        const sun=d.light.directionalLight;
+        const currentYaw=Math.atan2(sun.directionY,sun.directionX)*180/Math.PI+180;
+        const yawDelta=((yaw-currentYaw+180)%360+360)%360-180;
+        if(axis!=="elevation"&&Math.abs(yawDelta)>1e-10){sun.directionX=-Math.cos(angle)*base.horizontalLength;sun.directionY=-Math.sin(angle)*base.horizontalLength;}
+        if(axis!=="azimuth"&&Math.abs(elevation-(sun.elevationRadians??Math.PI/4))>1e-12)sun.elevationRadians=elevation;
+      }
+    },gesture);},
+  });
+  return { element: menu.element, sync, ownsGesture:()=>scrubbing||gizmos.ownsGesture()||sunGizmo.ownsGesture(), frame(update:Parameters<typeof gizmos.frame>[0]){gizmos.frame(update);sunGizmo.frame(update);const spatial=update.frame.renderCommandBuffer.spatial?.environment?.values;setUiText(budgetStatus,uiMessage("Active {0} / Authored {1}",spatial?.[1]??0,state.spatial?.environment?.lighting?.lights.length??0));}, flatLighting: () => state.spatial ? undefined : state.lighting,
     flushInput() {
       gizmos.cancel();
+      sunGizmo.cancel();
       const field = fields.find(field => field.input === document.activeElement);
       return field?.apply() ?? true;
     },

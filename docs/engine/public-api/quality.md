@@ -25,7 +25,31 @@ import {
 DebugOverlay → RuntimeFrameRenderer → RuntimeProfiler로 실제 renderer 값을 전달한다.
 전체 비용은 기존 `drawCalls`/`maxDrawCalls`와 GPU 자원 예산에도 포함한다.
 
+Flat point-shadow의 선택형 `pointShadowGeometryUploadBytes`/`pointShadowGeometryVertexCount`는
+같은 renderer frame에서 실제로 쓴 geometry bytes와 제출한 shadow vertex 합이다. HUD를 포함한 여러 command
+packet 뒤에도 보존하며 sun·Spatial·mask target·uniform 업로드는 제외한다. `pointShadowGeometryCacheHit`은
+vertex가 있고 업로드 합이0인 frame이다. 정적 캐시에서도 mask draw는 계속 필요하다.
+DebugOverlay·profiler·frame trace에 전달하며 `maxPointShadowGeometryUploadBytes`와
+`maxPointShadowGeometryVertexCount`로 단일 frame/window 최대값을 검사한다. window의 sample 하나라도
+빠지면 최대값은 undefined이고 설정된 budget은 `missingMetric`이다. custom renderer의 미측정을0으로 채우지 않는다.
+`RendererStatsUnit`은 `count | bytes`이며 catalog의 upload 항목은 bytes다.
+
 budget field를 추가하면 smoke runner가 실제 sample에 값을 기록하는지 같이 확인한다.
+
+Spatial 광원 통계는 양 renderer에서 `RuntimeFrameRenderer` → `DebugOverlayMetrics` → profiler sample로 전달한다.
+`spatialAuthoredLightCount`, `spatialSelectedLightCount`, `spatialContributingLightCount`는 작성 수·packed 슬롯 수·
+nonzero intensity/color/direct-mask 슬롯 수다. `spatialPendingLightCount`, `spatialRetainedLightCount`,
+`spatialFadingLightCount`, `spatialCulledLightCount`, `spatialDroppedLightCount`, `spatialDisabledLightCount`는
+native v8 source 진단의 대기·유지·fade·missing/no-contribution/position 제외·budget 탈락·OFF 수다.
+상세 값은 v8 진단이 없는 구/비활성 정책에서 undefined다. 서로 겹칠 수 있으며 per-pixel 가시성·GPU 실행 시간을 뜻하지 않는다.
+진단 수치는 frame trace에도 보존한다. 선택 상한은 packed4개이며 authored16개가 동시 조명 수를 뜻하지 않는다.
+
+Spatial wide Bloom의 `spatialBloomDrawCalls`, `spatialBloomTextureBytes`, `spatialBloomTexelFetchBudget`는
+renderer의 frame 합계·target peak·texture-load 작업 상한을 전달한다. 각각 선택형
+`maxSpatialBloomDrawCalls`, `maxSpatialBloomTextureBytes`, `maxSpatialBloomTexelFetchBudget`로 검사한다.
+HUD/반복 packet 뒤에도 보존하며 단일 frame/window 평가에 같은 필드를 사용한다.
+보관 window 중 하나라도 값이 없으면 snapshot 최대값은 undefined이고 설정 budget은 `missingMetric`이다.
+GPU 실행 시간·실제 VRAM 측정을 대체하지 않는다. [wide 계약과 fixture 예산](../data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
 
 ### GPU 시간과 Wasm 용량 예산
 

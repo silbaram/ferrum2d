@@ -39,7 +39,7 @@ Run `pnpm build` before the first launch or after modifying Rust. Use the addres
 
 | Example | Command | What to inspect |
 | --- | --- | --- |
-| Engine Feature Lab | `pnpm dev:starter-runtime` | 30 independent experiments with controls, observations, and API names |
+| Engine Feature Lab | `pnpm dev:starter-runtime` | 31 independent experiments with controls, observations, and API names |
 | 2D garden and HD-2D village | `pnpm dev:placement-viewer` | Use `?scene=garden` or `?scene=village` for placement and game preview |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | Seven focused scenarios and collision/solver diagnostics |
 | Top-down Shooter | `pnpm dev:topdown` | Movement, aiming, projectiles, waves, scoring, and Game Spec |
@@ -47,8 +47,8 @@ Run `pnpm build` before the first launch or after modifying Rust. Use the addres
 | Platformer | `pnpm dev:platformer` | Jumping, one-way platforms, and moving platforms |
 | Little Garden of Light | `pnpm dev:pixel-art` | Editable pixel sources, collection, lighting, palettes, and effects |
 
-Follow **topic-based experiments → game applications**. Authoring tools have a separate section.
-The hub provides feature search and categories. Game and lab examples share navigation, instructions, observations, and related experiments.
+Follow **topic-based experiments → game applications**. The site entry opens the Feature Lab directly.
+Use the example switcher to open games, advanced physics, or authoring tools, and the topic menu to select individual experiments. Each screen provides instructions, observations, and related experiments.
 Run `pnpm build && pnpm build:pages && pnpm preview:examples` to browse the whole suite locally.
 A standalone Vite server explains how to launch the suite rather than linking to apps it cannot serve.
 Minimal and the legacy `?mode=playground`/`?mode=starter` routes remain reference/test fixtures, outside the main catalog.

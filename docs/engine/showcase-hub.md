@@ -10,14 +10,14 @@ Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engi
 
 엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
 상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
-30개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
+31개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
 카메라 영역·애니메이션 원본·로딩 상태처럼 비교할 대상을 별도로 보여준다. 대화·HUD는 실제 UI를 게임 화면 안에서 조작한다.
-세부 수치는 ‘엔진 실행 정보’를 펼쳐 확인한다. 통합 홈의 각 기능 카드에도 실제 사용 상황을 표시한다.
-[GitHub Pages 홈](https://silbaram.github.io/ferrum2d/)도 같은 기능 목록에서 직접 진입한다.
+세부 수치는 ‘엔진 실행 정보’를 펼쳐 확인한다.
+[GitHub Pages](https://silbaram.github.io/ferrum2d/)는 기능 실험실로 바로 연결한다.
 웹에서 설치 없이 체험한 뒤 로컬 실행·프로젝트 생성으로 이어갈 수 있다.
 
 예제의 기준 목록은 `examples/shared/exampleCatalog.json`, 독립 실험의 기준은 `featureCatalog.json`이다.
-통합 홈은 **조명·물리·카메라·스프라이트·맵·VFX·게임 로직·UI·오디오·에셋** 10개 주제로 탐색한다. 2D·HD-2D는 별도 태그이며 물리 심화 7개 시나리오를 합쳐 37개 진입점을 제공한다. **주제별 기능 실험 → 게임 응용** 순서를 제공한다. 게임·실험 예제는 같은 탐색·글꼴·색상과
+기능 실험실은 **조명·물리·카메라·스프라이트·맵·VFX·게임 로직·UI·오디오·에셋** 10개 주제로 탐색한다. 물리 심화 7개 시나리오도 물리·충돌 메뉴에 표시한다. 상단의 **예제 이동**으로 게임 응용과 제작 도구를 연다. 게임·실험 예제는 같은 탐색·글꼴·색상과
 직접 해보기·관찰할 결과·관련 실험 안내를 공유한다. 제작 도구는 게임 예제와 구분한다.
 Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 검증만 유지하고 기본 목록에서 제외한다.
 
@@ -74,7 +74,7 @@ Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 �
 
 | Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
 | --- | --- | --- |
-| 기능 실험실 / Engine Playground | 기본 진입은 위의 30개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
+| 기능 실험실 / Engine Playground | 기본 진입은 위의 31개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
 | Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
 | Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
 | Placement Viewer | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |

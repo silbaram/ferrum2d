@@ -1,3 +1,4 @@
+import { resolveSpatialLightSelectionProgress, type SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";
 import { compileMovingPlatforms, resolveMovingPlatformPhases } from "./spatialMovingPlatforms.js";
 import {
   resolveSpatialCameraSpec,
@@ -23,9 +24,11 @@ export interface DataSceneSpatialPoseSnapshot {
 }
 
 export interface DataSceneSpatialProgressSnapshot {
-  /** v10 only. Present while spatial mode is enabled; omitted after clearDataSceneSpatial(). */
+  /** v11 only. Native temporal slots; required when the effective selection policy is enabled. */
+  readonly lightSelection?: SpatialLightSelectionProgressSnapshot;
+  /** v10+. Present while spatial mode is enabled; omitted after clearDataSceneSpatial(). */
   readonly movingPlatforms?: Readonly<Record<string, number>>;
-  /** v7 only. Null disables authored effects; absent preserves authored defaults. */
+  /** v7+. Null disables authored effects; absent preserves authored defaults. */
   readonly environment?: SpatialEnvironmentSpec | null;
   /** null explicitly restores spatial mode as disabled. No matrix, viewport or DPR is saved. */
   readonly camera: SpatialCameraSpec | null;
@@ -139,7 +142,7 @@ export function resolveSpatialProgress(
   if (
     !record(value) ||
     Object.keys(value).some(
-      (key) => key !== "camera" && key !== "environment" && key !== "movingPlatforms",
+      (key) => key !== "camera" && key !== "environment" && key !== "movingPlatforms" && key !== "lightSelection",
     ) ||
     value.camera === undefined
   ) {
@@ -153,12 +156,15 @@ export function resolveSpatialProgress(
     value.environment !== null
   )
     throw new Error("Disabled spatial progress cannot contain an environment");
+  const lightSelection = value.lightSelection === undefined ? undefined : resolveSpatialLightSelectionProgress(value.lightSelection);
+  if (value.camera === null && lightSelection !== undefined) throw Error("Disabled spatial progress cannot contain light selection history");
   const movingPlatforms = value.movingPlatforms === undefined
     ? undefined
     : resolveMovingPlatformPhases(value.movingPlatforms);
   if (value.camera === null && movingPlatforms !== undefined)
     throw new Error("Disabled spatial progress cannot contain moving platforms");
   return {
+    ...(lightSelection === undefined ? {} : { lightSelection }),
     ...(movingPlatforms === undefined ? {} : { movingPlatforms }),
     ...(value.environment === undefined
       ? {}

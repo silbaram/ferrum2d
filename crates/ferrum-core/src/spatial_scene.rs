@@ -12,8 +12,11 @@ pub(crate) use attachments::{AttachmentPose, SpatialAttachments};
 mod connections;
 mod environment;
 mod model_streaming;
+pub(crate) use model_streaming::ModelLodContinuity;
 mod models;
+mod receiver_masks;
 pub(crate) use models::preflight_model_poses;
+pub(crate) use receiver_masks::SpatialReceiverMasks;
 mod shadows;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
@@ -261,6 +264,7 @@ pub(crate) const SURFACE_RAMP_X_FLAG: u32 = 32;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Surface {
+    pub receiver_masks: SpatialReceiverMasks,
     pub id: u32,
     pub floor: u32,
     pub bounds: [f32; 4],
@@ -290,6 +294,7 @@ impl Default for SpatialMaterial {
 }
 #[derive(Clone, Copy)]
 pub(crate) struct Billboard {
+    pub receiver_masks: SpatialReceiverMasks,
     pub material: SpatialMaterial,
     pub units_per_pixel: f32,
     pub cutoff: f32,
@@ -317,6 +322,8 @@ pub(crate) struct SpatialScene {
     pub camera: Option<SpatialCamera>,
     pub surfaces: Vec<Surface>,
     pub terrain: Vec<SpatialVertex>,
+    pub terrain_receiver_masks: Vec<SpatialReceiverMasks>,
+    pub billboard_receiver_masks: Vec<SpatialReceiverMasks>,
     pub terrain_materials: Vec<SpatialMaterial>,
     pub billboard_materials: Vec<SpatialMaterial>,
     pub terrain_draw_ranges: Vec<SpatialTerrainDrawRange>,
@@ -339,6 +346,29 @@ pub(crate) struct SpatialScene {
     pub navigation_revision: u32,
 }
 impl SpatialScene {
+    pub(crate) fn advance_light_selection(&mut self, world: &World, dt: f32) {
+        if !self.environment.light_selection_enabled() {
+            return;
+        }
+        let Some(base) = self.camera else {
+            return;
+        };
+        // Use the same aspect/snap as emission, even before the first render.
+        let Some((camera, _)) = self.presented_camera([base.parameters[10], base.parameters[11]])
+        else {
+            return;
+        };
+        let actor = self.actor.map(|a| {
+            (
+                a.0,
+                self.bindings
+                    .get(&(a.0.id, a.0.generation))
+                    .map_or(0., |b| b.elevation),
+            )
+        });
+        self.environment
+            .advance_light_selection(&camera, world, &self.light_bindings, actor, dt);
+    }
     pub(crate) fn runtime_sprite_rotation(&self, entity: Entity) -> f32 {
         self.runtime_sprite_rotations
             .binary_search_by_key(&(entity.id, entity.generation), |(e, _)| {
@@ -364,6 +394,8 @@ impl SpatialScene {
         self.camera = None;
         self.surfaces.clear();
         self.terrain.clear();
+        self.terrain_receiver_masks.clear();
+        self.billboard_receiver_masks.clear();
         self.terrain_materials.clear();
         self.billboard_materials.clear();
         self.terrain_draw_ranges.clear();
@@ -416,6 +448,7 @@ impl SpatialScene {
                 return false;
             }
             let surface = Surface {
+                receiver_masks: Default::default(),
                 id: n[0],
                 floor: n[1],
                 bounds: [v[0], v[1], v[2], v[3]],
@@ -470,6 +503,7 @@ impl SpatialScene {
         self.terrain_draw_ranges = Vec::with_capacity(surfaces.len());
         self.navigation.cancel();
         self.connections.clear();
+        self.terrain_receiver_masks.clear();
         self.terrain_materials = surfaces
             .iter()
             .map(|s| SpatialMaterial {
@@ -588,6 +622,7 @@ impl SpatialScene {
         self.shadow_casters.clear();
         self.billboards.clear();
         self.billboard_materials.clear();
+        self.billboard_receiver_masks.clear();
         self.debug.clear_frame();
         self.terrain_draw_ranges.clear();
         self.frame_active = self.camera.is_some();
@@ -623,6 +658,13 @@ impl SpatialScene {
             &self.preview_hidden_entities,
         );
         self.debug.begin_frame();
+        let values = &self.environment.frame_values;
+        if values.len() >= 96 && values[92] > 0. {
+            if let Some(matrix) = self.environment.shadow_matrices.chunks_exact(16).last() {
+                self.debug
+                    .sun_shadow_coverage(matrix, values[94], values[91], values[92]);
+            }
+        }
         for (index, surface) in self.surfaces.iter().enumerate() {
             if self.preview_hidden_surfaces.contains(&surface.id) {
                 continue;
@@ -698,7 +740,13 @@ impl SpatialScene {
             }
             append_billboard(&mut self.billboards, &camera, t, s, elevation, style);
             if self.billboards.len() > first {
-                self.billboard_materials.push(style.material);
+                receiver_masks::push_billboard_material(
+                    &mut self.billboard_materials,
+                    &mut self.billboard_receiver_masks,
+                    self.billboards.len() / 6,
+                    style.material,
+                    style.receiver_masks,
+                );
             }
             self.debug.billboard(
                 &self.billboards[first..],

@@ -14,6 +14,7 @@ export class WebGL2RenderTarget implements WebGL2FullscreenRenderTarget {
     height: number,
     filter: "nearest" | "linear" = "linear",
     private readonly srgbStorage = false,
+    private readonly floatStorage = false,
   ) {
     validateRenderTargetSize(gl, width, height);
     const texture = gl.createTexture();
@@ -53,8 +54,8 @@ export class WebGL2RenderTarget implements WebGL2FullscreenRenderTarget {
     const previousTexture = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
     try {
       gl.bindTexture(gl.TEXTURE_2D, this.texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, this.srgbStorage ? gl.SRGB8_ALPHA8 : gl.RGBA8,
-        width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, this.floatStorage ? gl.RGBA16F : this.srgbStorage ? gl.SRGB8_ALPHA8 : gl.RGBA8,
+        width, height, 0, gl.RGBA, this.floatStorage ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, null);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.framebuffer);
       gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
       const status = gl.checkFramebufferStatus(gl.DRAW_FRAMEBUFFER);
@@ -70,7 +71,7 @@ export class WebGL2RenderTarget implements WebGL2FullscreenRenderTarget {
   }
 
   get allocatedTextureBytes(): number {
-    return this.destroyed ? 0 : this.width * this.height * 4;
+    return this.destroyed ? 0 : this.width * this.height * (this.floatStorage ? 8 : 4);
   }
 
   destroy(): void {

@@ -752,6 +752,12 @@ null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기�
 [모델 GPU 준비 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)에 따라 실패 시 기존 씬을 보존한다.
 옵션은 문서/저장 JSON에 직렬화하지 않는다.
 
+`ApplyDataSceneAuthoringDocumentOptions.preserveAnimationAndLod`는 기본 false인 cold preview reapply 옵션이다.
+이전의 완전한 기본 apply 문맥과 compatible Wasm이 있을 때 같은 authored ID의 호환 애니메이션 재생 단계와
+native LOD 선택을 유지한다. 초기 clip/asset/LOD policy 변경은 새 설정을 우선하며, physics/FSM/경로·scene pause는
+보존하지 않는다. runtime 값은 Rust에만 머물며 기존 game-state 저장 형식을 바꾸지 않는다.
+`activateDataScene: false`와 함께 사용할 수 없다. [상세 조건](../data-scene-authoring.md)을 따른다.
+
 `addSpatialModelAssembly(document, assembly)`와 `SpatialModelAssemblySpec`, `SpatialModelColliderProxy`는
 정적 모델의 로컬 AABB·보행면·층 연결을 한 번의 위치/높이/90도 yaw/균일 scale로 생성한다.
 결과는 기존 authoring JSON이며 입력을 변경하지 않는다. 생성 ID·지원 변환·전역 floorId·최대 개수와
@@ -876,3 +882,24 @@ Scene Authoring v1의 선택 `display.pixelPerfect`는 `SceneDisplaySpec`/`resol
 저장 데이터나 update의 getter가 wrapper를 해제할 수도 있으므로, packet encoding을 끝낸 뒤
 native handle의 수명을 다시 확인한다. 복합 restore의 두 대상 중 하나라도 해제되면 어느 쪽에도
 복원 값을 commit하지 않고 lifecycle 오류를 낸다. getter가 직접 만든 외부 부작용 자체는 rollback하지 않는다.
+
+
+## Flat sprite surface · 개발 소스
+
+`DataSceneSpriteSurfaceSpec`, `ResolvedDataSceneSpriteSurface`는 안정적인 emission/specular/roughness map 참조와 계수를 표현한다.
+기존 visual/sprite components·patch·Undo/Redo·JSON 복원에서 보존하며 명시적 flat lit opaque/cutout receiver가 필요하다.
+apply/restore의 `flatLightingPreparer`로 자산을 먼저 검사한다.
+작성 예제와 역할은 [Scene Authoring](../data-scene-authoring.md#flat-sprite-emissionspecularroughness-개발-소스),
+채널·UV·색공간·비용은 [표면 재질](../data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+## Flat point cookie 원본 · 개발 소스
+
+`lighting.pointLights[].cookie`는 안정적 `texture` 이름/숫자 또는 `textureId` 별칭과 회전·UV를 보관한다.
+OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지한다. 적용·새 handle 복원 시에는 현재
+`textureId` resolver로 해석한 뒤 `flatLightingPreparer`에 전달한다. cookie 문서는 renderer의
+`flatLightingCookieVersion?.() === 1`을 자산 조회·native 교체 전에 요구한다. 구 preparer에는 cookie 없는 문서를 계속 적용한다.
+[Cookie 범위와 자산 역할](../data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+
+선택형 `lighting.polygonOccluders`도 순서·좌표·OFF를 기존 source/patch/Undo/JSON 복원에서 보존한다.
+비어 있지 않은 요청은 renderer의 `flatLightingPolygonVersion?.() === 1`을 자산 조회/native 교체 전에 검사한다.
+잘못된 도형·지원 없는 preparer는 기존 씬을 보존한다. [다각형 원본 계약](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.

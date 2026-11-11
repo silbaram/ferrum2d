@@ -1,4 +1,8 @@
+import type { SpatialRendererStats } from "./renderer.js";
+import { WebGL2SpatialBloom } from "./webgl2SpatialBloom.js";
+import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from "./spatialBloomKernel.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
+import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
 import {
   createSpatialProgram,
   spatialUniform,
@@ -15,12 +19,18 @@ export interface SpatialEnvironmentGpuStats {
   textureBytes: number;
 }
 export class WebGL2SpatialEnvironmentPass {
+  private bloomPass?: WebGL2SpatialBloom;
+  private bloomPlan?: SpatialBloomPlan;
   private composite?: WebGLProgram;
   private shadow?: WebGLProgram;
   private vao?: WebGLVertexArrayObject;
   private color?: WebGLTexture;
   private depth?: WebGLTexture;
   private target?: WebGLFramebuffer;
+  private indirect?: WebGLTexture;
+  private resolved?: { texture: WebGLTexture; target: WebGLFramebuffer };
+  private dof?: { texture: WebGLTexture; target: WebGLFramebuffer };
+  private readonly clearValue = new Float32Array(4);
   private cube?: WebGLTexture;
   private cubeTarget?: WebGLFramebuffer;
   private width = 0;
@@ -68,7 +78,7 @@ export class WebGL2SpatialEnvironmentPass {
         "encode",
         "focus",
         "gradeValues",
-        "tint", "bloom", "ao", "projectionSize",
+        "tint", "bloom", "ao", "projectionSize", "indirect", "separated", "dofApplied", "stage", "wideBloom", "bloomImage", "bloomGrid", "bloomSnap", "fog", "fogRange", "fogColor",
       ])
         this.compositeUniforms[name] = spatialUniform(
           gl,
@@ -167,6 +177,10 @@ export class WebGL2SpatialEnvironmentPass {
       }
     }
     const values = frame.environment!.values;
+    this.prepareComposition(values);
+    this.bloomPlan = spatialBloomPlan(frame.environment?.values, width, height, frame.camera?.[27] ?? height);
+    if (this.bloomPlan) (this.bloomPass ??= new WebGL2SpatialBloom(gl)).prepare(this.bloomPlan);
+    else this.bloomPass?.prepare();
     if (values[2] >= 0) this.prepareShadow(values[3]);
     else this.releaseShadow();
     if (values.length > 80 && values[92] > 0) this.prepareSun(values[92]);
@@ -181,6 +195,56 @@ export class WebGL2SpatialEnvironmentPass {
     gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     if (target === gl.TEXTURE_CUBE_MAP)
       gl.texParameteri(target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  }
+  private prepareComposition(values: Float32Array): void {
+    const indirect = spatialIndirectPass(values), dof = spatialDofPass(values), gl = this.gl;
+    if (!!this.indirect === indirect && !!this.dof === dof) return;
+    this.releaseComposition();
+    try {
+      if (indirect) {
+        const target = this.createCompositionTarget();
+        this.resolved = target;
+        // The independent ambient attachment shares the geometry depth test and ordering.
+        this.indirect = this.createHdrTexture();
+      }
+      if (dof) this.dof = this.createCompositionTarget();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.target!);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.indirect ?? null, 0);
+      gl.drawBuffers(this.indirect ? [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1] : [gl.COLOR_ATTACHMENT0]);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw Error("Spatial indirect MRT incomplete");
+    } catch (error) {
+      this.releaseComposition();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.target!);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      throw error;
+    }
+  }
+  private createHdrTexture(): WebGLTexture {
+    const gl = this.gl, texture = gl.createTexture();
+    if (!texture) throw Error("Spatial composition texture allocation failed");
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, texture); this.parameters(gl.TEXTURE_2D);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, this.width, this.height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+      return texture;
+    } catch (error) { gl.deleteTexture(texture); throw error; }
+  }
+  private createCompositionTarget(): { texture: WebGLTexture; target: WebGLFramebuffer } {
+    const gl = this.gl, texture = this.createHdrTexture(), target = gl.createFramebuffer();
+    try {
+      if (!target) throw Error("Spatial composition framebuffer allocation failed");
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw Error("Spatial composition framebuffer incomplete");
+      return { texture, target };
+    } catch (error) { gl.deleteTexture(texture); if (target) gl.deleteFramebuffer(target); throw error; }
+  }
+  private releaseComposition(): void {
+    if (this.indirect) this.gl.deleteTexture(this.indirect);
+    for (const target of [this.resolved, this.dof]) if (target) {
+      this.gl.deleteTexture(target.texture); this.gl.deleteFramebuffer(target.target);
+    }
+    this.indirect = undefined; this.resolved = undefined; this.dof = undefined;
   }
   private prepareShadowProgram(): void {
     if (this.shadow) return;
@@ -354,6 +418,7 @@ export class WebGL2SpatialEnvironmentPass {
       v = frame.environment!.values,
       flags = v[0];
     gl.uniform1i(u.environment, 1);
+    gl.uniform1i(u.separated, this.indirect ? 1 : 0);
     gl.uniform1i(u.linearInput, this.linearInput ? 1 : 0);
     gl.uniform1i(u.lighting, flags & 1 ? 1 : 0);
     gl.uniform1i(u.fog, flags & 2 ? 1 : 0);
@@ -369,10 +434,12 @@ export class WebGL2SpatialEnvironmentPass {
         this.positionValues[i * 4 + j] = v[12 + i * 12 + j];
         this.colorValues[i * 4 + j] = v[16 + i * 12 + j];
       }
+    gl.uniform4f(u.lightChannels, v.length >= 576 ? v[545] : 65535, v.length >= 576 ? v[546] : 65535, v.length >= 576 ? v[547] : 65535, v.length >= 576 ? v[548] : 65535);
+    gl.uniform1f(u.sunChannels, v.length >= 576 ? v[544] : 65535);
     gl.uniform4fv(u.lightPosition, this.positionValues);
     gl.uniform4fv(u.lightColor, this.colorValues);
     this.coneValues.fill(0);
-    if(v.length===512)this.coneValues.set(v.subarray(144,176));
+    if(v.length>=512)this.coneValues.set(v.subarray(144,176));
     gl.uniform4fv(u.lightCone, this.coneValues);
     gl.uniform1i(u.shadowIndex, v[2]);
     gl.uniform1f(u.shadowBias, v[4]);
@@ -401,7 +468,7 @@ export class WebGL2SpatialEnvironmentPass {
     frame: SpatialRenderBufferView,
     target: WebGLFramebuffer | null,
     viewport: Int32Array,
-  ): void {
+  ): number {
     const gl = this.gl,
       u = this.compositeUniforms,
       v = frame.environment!.values;
@@ -440,26 +507,63 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform1f(u.projectionSize,frame.camera[23]);
     gl.uniform4f(u.bloom,v[128]??0,v[129]??0,(v[130]??0)*this.height/frame.camera[27],v[131]??0);
     gl.uniform4f(u.ao,v[132]??0,v[133]??0,v[134]??0,v[135]??0);
+    gl.uniform1i(u.separated, spatialSeparated(v) ? 1 : 0);
+    gl.uniform1i(u.dofApplied, this.dof ? 1 : 0);
+    gl.uniform1i(u.fog, v[0] & 2 ? 1 : 0);
+    gl.uniform2f(u.fogRange, v[71], v[72]); gl.uniform3fv(u.fogColor, v.subarray(73, 76));
+    gl.activeTexture(gl.TEXTURE2); gl.bindSampler(2, null);
+    gl.bindTexture(gl.TEXTURE_2D, this.indirect ?? this.color!); gl.uniform1i(u.indirect, 2);
+    let source = this.color!, passes = 1;
+    let bloomImage: WebGLTexture | undefined;
+    const mask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
+    const scissor = gl.isEnabled(gl.SCISSOR_TEST);
+    try {
+      gl.colorMask(true, true, true, true); gl.disable(gl.SCISSOR_TEST);
+      for (const [stage, destination] of [[1, this.resolved], [2, this.dof]] as const) {
+        if (!destination) continue;
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, destination.target); gl.viewport(0, 0, this.width, this.height);
+        gl.clearBufferfv(gl.COLOR, 0, this.clearValue);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source);
+        gl.uniform1i(u.stage, stage); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        source = destination.texture; passes++;
+      }
+      if (this.bloomPlan) { bloomImage = this.bloomPass!.draw(source, this.bloomPlan, v[131]); passes += this.bloomPlan.drawCalls; }
+    } finally {
+      gl.colorMask(mask[0]!, mask[1]!, mask[2]!, mask[3]!);
+      if (scissor) gl.enable(gl.SCISSOR_TEST);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, target); gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    }
+    gl.useProgram(this.composite!); gl.bindVertexArray(this.vao!);
+    if (bloomImage) { gl.activeTexture(gl.TEXTURE3); gl.bindSampler(3, null); gl.bindTexture(gl.TEXTURE_2D, bloomImage); }
+    gl.uniform1i(u.bloomSnap, Number(!!(v[0] & 16)));
+    gl.uniform2f(u.bloomGrid, this.bloomPlan?.sampleWidth ?? 1, this.bloomPlan?.sampleHeight ?? 1);
+    gl.uniform1i(u.bloomImage, bloomImage ? 3 : 0); gl.uniform1i(u.wideBloom, Number(!!bloomImage));
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source); gl.uniform1i(u.stage, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return passes;
   }
   resourceStats(): SpatialEnvironmentGpuStats {
     return {
-      textureCount: (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0),
-      renderTargetCount: (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0),
+      textureCount: (this.bloomPass?.targetCount() ?? 0) + (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0) + Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof),
+      renderTargetCount: (this.bloomPass?.targetCount() ?? 0) + (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0) + Number(!!this.resolved) + Number(!!this.dof),
       textureBytes:
-        this.width * this.height * 12 +
+        (this.bloomPass?.textureBytes() ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof))) +
         (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4,
     };
   }
   programCount(): number {
-    return (this.composite ? 1 : 0) + (this.shadow ? 1 : 0);
+    return Number(!!this.bloomPass) + (this.composite ? 1 : 0) + (this.shadow ? 1 : 0);
   }
   depthBytes(): number {
     return (
       this.width * this.height * 4 + (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4
     );
   }
+  writeBloomStats(stats: SpatialRendererStats, values: Float32Array | undefined, outputWidth: number, outputHeight: number): void {
+    writeSpatialBloomStats(stats, values, this.bloomPlan, outputWidth, outputHeight);
+  }
   private releaseTarget(): void {
+    this.releaseComposition();
     const gl = this.gl;
     if (this.color) gl.deleteTexture(this.color);
     if (this.depth) gl.deleteTexture(this.depth);
@@ -488,6 +592,7 @@ export class WebGL2SpatialEnvironmentPass {
     this.shadow = undefined; this.shadowUniforms = undefined;
   }
   destroy(): void {
+    this.bloomPass?.destroy(); this.bloomPass = undefined;
     this.releaseTarget();
     this.releaseShadow();
     this.releaseSun();

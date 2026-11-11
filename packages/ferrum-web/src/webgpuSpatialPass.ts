@@ -1,8 +1,10 @@
+import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { spatialShadowGeometryWGSL } from "./webgpuSpatialShadows.js";
 import { SpatialShadowCache } from "./spatialShadowCache.js";
-import { spatialGeometryWGSL } from "./webgpuSpatialShaders.js";
+import { spatialGeometryWgsl } from "./webgpuSpatialShaders.js";
 import { WebGpuSpatialEnvironment } from "./webgpuSpatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import type { SpatialRendererStats } from "./renderer.js";
@@ -19,6 +21,7 @@ const MAX_VERTEX_BYTES = 64 * 1024 * 1024;
 export class WebGpuSpatialPass {
   private readonly pipelines: GPURenderPipeline[] = [];
   private readonly debugPipelines: GPURenderPipeline[] = [];
+  private readonly prepareSeparatedPipelines: () => void;
   private readonly shadowPipeline: GPURenderPipeline;
   private readonly shadowCache = new SpatialShadowCache();
   private readonly cameraGroups: GPUBindGroup[];
@@ -54,6 +57,7 @@ export class WebGpuSpatialPass {
     format: GPUTextureFormat,
     private readonly textureLayout: GPUBindGroupLayout,
     private readonly textures: WebGpuTextureStore,
+    private readonly linearWorking = false,
   ) {
     const cameraLayout = device.createBindGroupLayout({
       entries: [
@@ -64,10 +68,10 @@ export class WebGpuSpatialPass {
         },
       ],
     });
-    this.environment = new WebGpuSpatialEnvironment(device, format);
+    this.environment = new WebGpuSpatialEnvironment(device, format, linearWorking);
     const module = device.createShaderModule({
       label: "Ferrum spatial geometry/environment",
-      code: spatialGeometryWGSL,
+      code: spatialGeometryWgsl(linearWorking),
     });
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [cameraLayout, textureLayout, this.environment.layout, textureLayout],
@@ -118,6 +122,25 @@ export class WebGpuSpatialPass {
           }),
         );
     }
+    this.prepareSeparatedPipelines = () => {
+      if (this.pipelines.length > 2) return;
+      const created: GPURenderPipeline[] = [];
+      try {
+        created.push(webGpuResources(device).createRenderPipeline({
+          label: "Spatial indirect MRT", layout, vertex,
+          fragment: { module, entryPoint: "fs_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          primitive: { topology: "triangle-list" },
+          depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less-equal" },
+        }));
+        for (const depthTest of [true, false]) created.push(webGpuResources(device).createRenderPipeline({
+          label: "Spatial indirect debug", layout, vertex,
+          fragment: { module, entryPoint: "fs_debug_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          primitive: { topology: "line-list" },
+          depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: depthTest ? "less-equal" : "always" },
+        }));
+      } catch (error) { created.forEach(pipeline => webGpuResources(device).releasePipeline(pipeline)); throw error; }
+      this.pipelines.push(created[0]); this.debugPipelines.push(...created.slice(1));
+    };
     const shadowModule = device.createShaderModule({
       label: "Spatial terrain/billboard shadow",
       code: spatialShadowGeometryWGSL,
@@ -187,7 +210,7 @@ export class WebGpuSpatialPass {
         { binding: 1, resource: this.flatNormal.createView() },
       ],
     });
-    this.models = new WebGpuSpatialModels(device, format, cameraLayout, this.environment.layout);
+    this.models = new WebGpuSpatialModels(device, format, cameraLayout, this.environment.layout, linearWorking);
   }
   prepareModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
     return this.models.stage(assets);
@@ -268,6 +291,7 @@ export class WebGpuSpatialPass {
     const [sceneWidth, sceneHeight] = this.environment.validate(frame, width, height);
     const stats = spatialStats(frame, terrainVertices);
     this.models.prepare(frame.models);
+    const receiverMasks = frame.environment && (frame.environment.values[0] & 1) ? frame.receiverMasks : undefined;
     const env = frame.environment,
       hasShadows = !!env && (env.values[2] >= 0 || env.values[92] > 0);
     const matches = hasShadows && this.shadowCache.matches(frame, this.textures);
@@ -300,7 +324,7 @@ export class WebGpuSpatialPass {
       this.environment.textureBytes() + this.environment.shadows.textureBytes();
     stats.lightCount = frame.environment?.values[0]! & 1 ? frame.environment!.values[1] : 0;
     stats.directionalLightCount = frame.environment?.values[83] === 1 ? 1 : 0;
-    stats.authoredLightCount=frame.environment?.values[137]??frame.environment?.values[1]??0;
+    writeSpatialLightSelectionStats(stats, frame.environment);
     stats.bloomSampleBudget=frame.environment?.values[128]===1 && frame.environment.values[129]>0 ?32:0;
     stats.ambientOcclusionSampleBudget=frame.environment?.values[132]===1 && frame.environment.values[133]>0 ?16:0;
     stats.dofSampleBudget =
@@ -324,7 +348,7 @@ export class WebGpuSpatialPass {
       0,
       this.cameraValues.subarray(0, hasShadows && !cacheHit ? 512 : 24),
     );
-    this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats);
+    this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats, receiverMasks?.models);
     if (frame.terrain.byteLength) {
       const stale =
         !this.terrain ||
@@ -374,6 +398,7 @@ export class WebGpuSpatialPass {
       this.shadowCasters = undefined;
       this.shadowCapacity = 0;
     }
+    if (hdr?.indirect) this.prepareSeparatedPipelines();
     const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial geometry",
       colorAttachments: [
@@ -383,6 +408,7 @@ export class WebGpuSpatialPass {
           storeOp: "store",
           clearValue: { r: 0, g: 0, b: 0, a: 0 },
         },
+        ...(hdr?.indirect ? [{ view: hdr.indirect, loadOp: "clear" as const, storeOp: "store" as const, clearValue: { r: 0, g: 0, b: 0, a: 0 } }] : []),
       ],
       depthStencilAttachment: {
         view: hdr?.depth ?? this.depthView!,
@@ -391,9 +417,9 @@ export class WebGpuSpatialPass {
         depthClearValue: 1,
       },
     });
-    pass.setPipeline(this.pipelines[hdr ? 1 : 0]);
+    pass.setPipeline(this.pipelines[hdr?.indirect ? 2 : hdr ? 1 : 0]);
     pass.setBindGroup(0, this.cameraGroup);
-    pass.setBindGroup(2, this.environment.group);
+    pass.setBindGroup(2, this.environment.group, [0]);
     let previous: number | undefined;
     const draw = (
       gpu: GPUBuffer,
@@ -402,26 +428,29 @@ export class WebGpuSpatialPass {
       count: number,
       materials: Uint32Array | undefined,
       objectStride: number,
+      masks?: Uint32Array,
     ) => {
       pass.setVertexBuffer(0, gpu);
       const limit = first + count;
       while (first < limit) {
         const id = data[first * 11 + 9],
           normalId = materials?.[Math.floor(first / objectStride) * 2] ?? NO_TEXTURE,
-          receive = !!((materials?.[Math.floor(first / objectStride) * 2 + 1] ?? 3) & 2);
+          receive = !!((materials?.[Math.floor(first / objectStride) * 2 + 1] ?? 3) & 2),
+          maskCode = spatialReceiverMaskCode(masks, Math.floor(first / objectStride));
         let end = first + 3;
         while (
           end < limit &&
           data[end * 11 + 9] === id &&
           (materials?.[Math.floor(end / objectStride) * 2] ?? NO_TEXTURE) === normalId &&
-          !!((materials?.[Math.floor(end / objectStride) * 2 + 1] ?? 3) & 2) === receive
+          !!((materials?.[Math.floor(end / objectStride) * 2 + 1] ?? 3) & 2) === receive &&
+          (!masks?.length || spatialReceiverMaskCode(masks, Math.floor(end / objectStride)) === maskCode)
         )
           end += 3;
         pass.setBindGroup(
           1,
-          id === NO_TEXTURE ? this.whiteGroup : this.textures.resource(id).bindGroup,
+          id === NO_TEXTURE ? this.whiteGroup : (this.linearWorking ? this.textures.resource(id).linearBindGroup ?? this.textures.resource(id).bindGroup : this.textures.resource(id).bindGroup),
         );
-        pass.setBindGroup(2, this.environment.receiverGroup(receive));
+        pass.setBindGroup(2, this.environment.receiverGroup(receive), [this.environment.receivers.offset(maskCode)]);
         pass.setBindGroup(
           3,
           normalId === NO_TEXTURE ? this.normalGroup : this.textures.resource(normalId).bindGroup,
@@ -443,6 +472,7 @@ export class WebGpuSpatialPass {
           frame.terrainVertexCount,
           frame.materials?.terrain,
           36,
+          receiverMasks?.terrain,
         );
       else
         for (let i = 0; i < frame.terrainDrawRanges.length; i += 2)
@@ -453,6 +483,7 @@ export class WebGpuSpatialPass {
             frame.terrainDrawRanges[i + 1],
             frame.materials?.terrain,
             36,
+            receiverMasks?.terrain,
           );
     }
     const before = stats.drawCalls;
@@ -464,6 +495,7 @@ export class WebGpuSpatialPass {
         frame.billboardVertexCount,
         frame.materials?.billboards,
         6,
+        receiverMasks?.billboards,
       );
     stats.billboardDrawCalls = stats.drawCalls - before;
     this.models.draw(
@@ -472,9 +504,10 @@ export class WebGpuSpatialPass {
       this.cameraGroup,
       stats,
       this.environment.group,
-      !!hdr,
+      hdr?.indirect ? "separated" : !!hdr,
       0,
       this.environment.receiverGroup(false),
+      code => this.environment.receivers.offset(code),
     );
     if (frame.debug?.vertexCount) {
       const debug = frame.debug;
@@ -490,10 +523,10 @@ export class WebGpuSpatialPass {
         this.debugCapacity = capacity;
       }
       this.device.queue.writeBuffer(this.debug, 0, debug.vertices);
-      pass.setPipeline(this.debugPipelines[(hdr ? 2 : 0) + (debug.depthTest ? 0 : 1)]);
+      pass.setPipeline(this.debugPipelines[(hdr?.indirect ? 4 : hdr ? 2 : 0) + (debug.depthTest ? 0 : 1)]);
       pass.setBindGroup(0, this.cameraGroup);
       pass.setBindGroup(1, this.whiteGroup);
-      pass.setBindGroup(2, this.environment.group);
+      pass.setBindGroup(2, this.environment.group, [0]);
       pass.setBindGroup(3, this.normalGroup);
       pass.setVertexBuffer(0, this.debug);
       pass.draw(debug.vertexCount);
@@ -506,11 +539,16 @@ export class WebGpuSpatialPass {
     }
     pass.end();
     if (hdr) {
-      this.environment.composite(frame, encoder, target, width, height);
-      stats.effectDrawCalls = 1;
-      stats.drawCalls++;
-      stats.triangleCount++;
-      stats.textureBindCount += 2;
+      const passes = this.environment.composite(frame, encoder, target, width, height);
+      stats.effectDrawCalls = passes;
+      const p = frame.presentation;
+      this.environment.writeBloomStats(stats, frame.environment?.values,
+        p && p[4] > 0 ? Math.max(1, Math.round(p[2] * width)) : width,
+        p && p[4] > 0 ? Math.max(1, Math.round(p[3] * height)) : height);
+      stats.drawCalls += passes;
+      stats.triangleCount += passes;
+      const bloomPasses = stats.bloomDrawCalls ?? 0, mainPasses = passes - bloomPasses;
+      stats.textureBindCount += mainPasses * 2 + Number(!!hdr.indirect) + bloomPasses + Number(bloomPasses > 0);
     }
     return stats;
   }
@@ -553,7 +591,7 @@ export class WebGpuSpatialPass {
           while (end < limit && data[end * 11 + 9] === id) end += 3;
           pass.setBindGroup(
             1,
-            id === NO_TEXTURE ? this.whiteGroup : this.textures.resource(id).bindGroup,
+            id === NO_TEXTURE ? this.whiteGroup : (this.linearWorking ? this.textures.resource(id).linearBindGroup ?? this.textures.resource(id).bindGroup : this.textures.resource(id).bindGroup),
           );
           pass.draw(end - first, 1, first);
           stats.drawCalls++;
@@ -673,6 +711,7 @@ function spatialStats(
     shadowCacheHit: false,
     shadowCulledTriangleCount: 0,
     effectDrawCalls: 0,
+    bloomDrawCalls: 0, bloomTextureBytes: 0, bloomTexelFetchBudget: 0,
     effectTextureBytes: 0,
     dofSampleBudget: 0,
   };

@@ -194,6 +194,7 @@ export function createPlacementLightGizmos(options: {
         sync(next: ScenePlacementViewerState) { state = next; positions = positionsFor(next); },
         ownsGesture: () => drag !== undefined,
         select() { selected = true; },
+        deselect() { selected = false; },
         cancel() { finish(true); },
         frame(update: FerrumRuntimeFrame) {
             if (options.hasObjectSelection()) selected = false;

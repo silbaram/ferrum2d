@@ -1,3 +1,7 @@
+export type {SpriteLightMaskBufferView} from "./spriteLightMasks.js";
+export type {SpatialReceiverMaskBufferView} from "./spatialReceiverMasks.js";
+export type { SpriteLightingMaterialSpec, SpriteLightingBufferView } from "./spriteLighting.js";
+export type {SpriteSurfaceMaterialSpec,SpriteSurfaceBufferView} from "./spriteSurface.js";
 export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export * from "./public/workflowExports.js";
 export * from "./public/engineExports.js";
@@ -14,7 +18,7 @@ export type { DataSceneSpriteAnimationDirection, DataSceneSpriteClipSpec, DataSc
 
 export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
 export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
-export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
+export type { FlatHdrOptions, ResolvedFlatHdrOptions, DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
 
 export type { DataSceneGameplayOptions, DataSceneGameplaySpec, DataSceneCombatStats } from "./dataSceneGameplay.js";
 export type { DataSceneCombatLegacyProgressSnapshot, DataSceneCombatProgressSnapshot, DataSceneCombatActorSnapshot, DataSceneCombatProjectileSnapshot } from "./dataSceneCombatProgress.js";
@@ -59,3 +63,8 @@ export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, D
 
 export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
+
+export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
+
+export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
+export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";

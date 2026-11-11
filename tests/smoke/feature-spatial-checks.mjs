@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 
-export const spatialFeatureIds = new Set(["hd2d-movement", "ai-combat", "attachments", "hd2d-environment"]);
+export const spatialFeatureIds = new Set(["hd2d-movement", "ai-combat", "attachments", "hd2d-environment", "hd2d-shadow-proxy"]);
 export async function checkSpatialFeature(page, id) {
-  if (!spatialFeatureIds.has(id) || id === "hd2d-environment") return;
+  if (!spatialFeatureIds.has(id) || id === "hd2d-environment" || id === "hd2d-shadow-proxy") return;
   const control = name => page.locator(`[data-control="${name}"]`);
   const snapshot = () => page.evaluate(() => window.ferrumFeatureLab.snapshot());
   const frozen = async () => {

@@ -715,6 +715,11 @@ Data Scene texture와 같은 문자열/숫자 참조를 허용하지만 도트 �
 한 번의 씬 적용에서 normal이 연결된 instance는 최대 65,536개다. 초과하면 기존 씬을 변경하기 전에 거절한다.
 
 2D `lighting.pointLights[].height`는 선택형 조명 Z 거리(0..1,000,000, 기본 `radius*0.5`)이고 물리 높이와 무관하다.
+선택형 lit point의 `cookie`는 `texture` 이름/ID 또는 `textureId`와 `rotationRadians`·`uv`를 받는다.
+문서는 이름·비활성·명시적0/UV 반전을 보존하고 apply/restore는 cookie v1 renderer와 data 자산을 사전 검사한다.
+[Cookie 필드·좌표·원본 계약](data-scene-presentation.md#flat-2d-cookie-조명-개발-소스)을 따른다.
+lit의 `polygonOccluders[].vertices`는 ordered convex XY를 보관하고 OFF·patch·Undo/Redo·새 handle 복원에서도 유지한다.
+적용 전 polygon v1 renderer가 필요하며 한도·유한 투영·내부 광원 정책은 [다각형 차폐 계약](data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
 `directionalLight.elevationRadians`는 선택형 태양 고도(0..π/2, 기본 π/4)이며 XY 입사 방향은 기존 그림자 방향의 반대다.
 기존 ambient/additive light·tile shadow 의미는 유지하고 normal이 있는 픽셀에만 Lambert 응답을 적용한다.
 건물은 `visual.shadow.shape:"volume"`과 필수 `width/depth/height`, 선택형 `roofHeight/offsetX/offsetY`로
@@ -972,6 +977,22 @@ package-facing full document apply helper는 `applyDataSceneAuthoringDocument(en
 built-in/data scene state를 reset하지 않는다.
 
 package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. full `applyDataSceneAuthoringDocument(...)`는 spawn 결과가 0개여도 validation 성공 뒤 `useDataScene()`을 호출하므로 빈 문서도 실제 cleanup/reset 전환이다. full apply는 Rust variable slot을 guarded recipe보다 먼저 구성하며, 이후 spawn/recipe apply가 실패하면 이전 변수 declaration/slot/current value를 복원한다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
+
+비교 preview에서 문서를 다시 적용하면서 같은 객체의 재생 단계와 거리 LOD를 유지하려면
+`{ preserveAnimationAndLod: true }`를 선택한다. 기본값은 false이며 첫 적용·일반 씬 전환은 기존처럼 초기화한다.
+이 옵션은 이전에 완전한 기본 binding 옵션으로 적용한 문맥과 새 Wasm의 cold handoff 기능이 필요하고,
+`activateDataScene: false`와 함께 사용할 수 없다. 지원하지 않는 Wasm이나 문맥은 activation 전에 거절한다.
+
+- TS는 stable authored ID를 맞추고 정규화한 animationSet(초기 clip 포함)과 asset/contentId·LOD 목록을 비교한다.
+  실제 elapsed time·flip·pause·선택 LOD는 JS로 전달하지 않고 Rust가 한 번 사용할 token 안에 보관한다.
+- 같은 animationSet은 clip·elapsed time·flip·개별 pause를 그대로 유지한다. 명시적으로 초기 clip/프레임이나
+  clip 구성을 바꾸면 새 설정이 우선한다. 다른 객체의 sprite/GLB 교체는 유지 가능한 애니메이션에 영향을 주지 않는다.
+- 같은 모델과 LOD policy는 선택 이력을 유지하고 새 카메라·배치에서 native hysteresis를 다시 평가한다.
+  바뀐 asset/거리 policy는 새 설정으로 시작한다. chunk residency 상태는 보존하지 않는다.
+- source handle이 제거됐거나 구성이 호환되지 않으면 해당 값은 넘기지 않는다. 문서 적용은 여전히 entity를 재구성하며
+  physics·FSM·경로·씬 lifecycle 전체를 보존하는 옵션이 아니다. 씬 일시정지는 caller가 별도로 유지한다.
+- handoff는 최대 10,000개 instance의 bulk handle/mask로 처리하고 성공·실패 후 임시 참조를 해제한다.
+  기존 render ABI와 game-state JSON 저장 형식은 바뀌지 않는다. LOD 이력은 여전히 영속 저장 데이터가 아니다.
 
 `createFerrumRuntime({ dataScene })`은 같은 document apply helper를 startup 단계에 연결한다.
 `dataScene` 값은 문서 자체이거나 `{ document, ...applyOptions }` object일 수 있다.
@@ -1837,3 +1858,70 @@ width/height를 변경해도 모서리와 테두리 폭을 보존한다. sourceW
 현재 flat2D용이며 spatial billboard/model 및 alpha silhouette shadow 조합은 diagnostic으로 거절한다.
 Aseprite Slice 도구의 center는 여전히 가져오기 metadata이며 자동으로 이 설정으로 변환하지 않는다.
 [공개 API 계약](public-api/core.md#2d-9-slice-렌더링-개발-소스)과 `pnpm smoke:sprite-nine-slice`를 참고한다.
+
+
+## Flat 2D 표면 조명 · 개발 소스
+
+기존 `LightingScene2D`는 전체 화면에 빛을 더하는 overlay다. `profile:"lit"`을 명시하면
+수광 sprite의 선형 원본 색에 조도를 곱한다. `ambientIrradiance`는 0..1의 선형 RGB이고 기본값은 `[1,1,1]`이다.
+기존 `ambient` RGBA overlay와 동시에 지정할 수 없다(정규화 저장값 `[0,0,0,0]`은 허용).
+
+```ts
+await renderer.loadTexture(1, "hero.png", { colorSpace: "srgb", alphaMode: "straight" });
+engine.configureSpriteLightingMaterials([{entity: hero, lighting:{mode:"cutout", alphaCutoff:0.5}}]);
+renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
+  pointLights:[{x:200,y:100,radius:240,height:120,color:[1,0.8,0.6,1],intensity:1}]});
+```
+
+- `components.visual`의 sprite 또는 `components.sprite`에 `lighting:{mode:"unlit"|"opaque"|"cutout",alphaCutoff?}`를 저장한다.
+  생략/unlit은 수광 제외, opaque는 source alpha를 1로 처리, cutout은 texture×tint alpha가 cutoff 미만이면 버린다. cutoff 기본0.5, 유한0..1 f32다.
+- normal은 선택이다. 생략하면 +Z 표면, 연결하면 기존 UV·flip·회전을 공유한 normal로 Lambert 응답을 계산한다.
+- `applyDataSceneAuthoringDocument(engine, document, {flatLightingPreparer:renderer})`로 사전 자산 검증을 전달한다.
+  lit snapshot restore에도 `dataSceneAuthoringApplyOptions.flatLightingPreparer`를 전달한다. 함수/renderer는 JSON에 저장하지 않는다.
+  선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
+- color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
+  normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
+- 공식 placement viewer는 preview 이미지를 straight alpha로 로드하며, lit 문서의 초기 적용·교체·Playing 전에
+  같은 renderer 자산 검사를 수행한다. 노멀·specular·roughness map은 작성된 참조를 따라 `colorSpace:"none"`으로
+  로드한다. 색상과 data 양쪽에서 쓰는 자산 ID는 분리한다. 열린 다른 문서의 색상 자산을 data로 재해석하는 요청도 거절한다.
+  조명을 지정하지 않거나 끈 legacy 문서의 비활성 노멀 참조는 저장된 metadata로 보존한다.
+- 점광원 최대32개, 점광원/태양 intensity 최대64다. HDR을 생략하면 SDR로 clamp한다. 선택형 HDR과 재질은 [화면 표현](data-scene-presentation.md#flat-hdr-개발-소스)을 따른다.
+- sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
+- `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
+  HUD를 별도 제출할 때는 조명을 끄고 그린 뒤 한 번 `renderPostProcess()`로 마친다.
+
+공개 ABI·자원 비용과 회귀 기준은 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+
+
+## Flat sprite emission·specular·roughness · 개발 소스
+
+`DataSceneSpriteSurfaceSpec`과 `ResolvedDataSceneSpriteSurface`는 `/authoring`의 공개 type이다.
+`lighting.profile:"lit"`인 flat 씬의 sprite visual 또는 sprite shorthand에 다음 값을 저장한다.
+
+```json
+{
+  "lighting": {"mode":"cutout", "alphaCutoff":0.5},
+  "surface": {
+    "emission":[4,2,1], "emissionTexture":"hero.glow",
+    "specular":0.6, "specularTexture":"hero.specular",
+    "roughness":0.5, "roughnessTexture":"hero.roughness"
+  }
+}
+```
+
+수광 mode는 명시적 opaque/cutout이어야 하며 primitive·unlit·Spatial에는 지정하지 않는다.
+발광은 선형 RGB0..64(기본 검정), specular는0..1(기본0), roughness는0..1(기본1)이다.
+명시적0과 OFF 값, 안정적인 map asset 이름 또는 숫자 ID를 JSON·patch·Undo/Redo·진행 저장에 유지한다.
+map은 선택 사항이며 `emissionTextureId` 같은 runtime용 필드명은 authoring에서 거절한다.
+
+apply/restore에 `{flatLightingPreparer:renderer}`를 전달한다. 이름→ID, 색/데이터 역할, 크기와 straight alpha를
+기존 씬 교체 전에 검사한다. snapshot 복원은 원문 문서를 다시 적용하고 fresh handle을 사용한다.
+일시적인 runtime setter만 호출한 값은 authoring JSON으로 자동 역기록하지 않는다.
+배치 API·별도 ABI는 [Core API](public-api/core.md#flat-sprite-표면-재질-개발-소스),
+map의 채널·UV·색공간·비용은 [재질 계약](data-scene-presentation.md#flat-sprite-표면-재질-개발-소스)을 따른다.
+
+
+Flat lit sprite의 `lighting`에는 `lightMask`·`shadowMask` 정수0..255를 저장할 수 있다. 기본255이며0을 생략하지 않는다.
+점광원·태양의 같은 필드와 독립적으로 비교하고 ambient·emission은 보존한다.
+새 native 지원·flat lit profile·opaque/cutout receiver를 적용 전에 확인한다.
+작성·저장·비용 계약은 [수신 mask](data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)를 따른다.

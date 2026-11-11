@@ -29,6 +29,10 @@
                     "v0": 0,
                     "u1": 0.25,
                     "v1": 1
+                  },
+                  "lighting": {
+                    "mode": "cutout",
+                    "alphaCutoff": 0.5
                   }
                 },
                 "collider": "none",
@@ -47,7 +51,11 @@
                   "kind": "sprite",
                   "texture": "ball",
                   "width": 128,
-                  "height": 128
+                  "height": 128,
+                  "lighting": {
+                    "mode": "cutout",
+                    "alphaCutoff": 0.5
+                  }
                 },
                 "collider": "none",
                 "layer": "wall"

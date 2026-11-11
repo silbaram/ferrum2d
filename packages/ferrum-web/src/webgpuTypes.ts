@@ -230,11 +230,13 @@ declare global {
     format: GPUTextureFormat;
     usage: number;
     mipLevelCount?: number;
+    viewFormats?: GPUTextureFormat[];
   }
 
   interface GPUTextureView {}
 
   interface GPUTextureViewDescriptor {
+    format?: GPUTextureFormat;
     label?: string;
     dimension?: "2d" | "2d-array" | "cube";
     baseArrayLayer?: number;
@@ -323,7 +325,7 @@ declare global {
 
   interface GPURenderPassEncoder {
     setPipeline(pipeline: GPURenderPipeline): void;
-    setBindGroup(index: number, bindGroup: GPUBindGroup): void;
+    setBindGroup(index: number, bindGroup: GPUBindGroup, dynamicOffsets?: Iterable<number>): void;
     setVertexBuffer(slot: number, buffer: GPUBuffer, offset?: number, size?: number): void;
     setIndexBuffer(buffer: GPUBuffer, indexFormat: "uint16" | "uint32", offset?: number, size?: number): void;
     drawIndexed(indexCount: number, instanceCount?: number, firstIndex?: number, baseVertex?: number, firstInstance?: number): void;

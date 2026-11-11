@@ -4,13 +4,13 @@
 
 Use the [public demo site](https://silbaram.github.io/ferrum2d/) to try engine features without installing tools.
 The Feature Lab separates each topic into a small scene with controls, observations, and implementation API names.
-All 30 experiments explain a game use case, ordered steps, object roles, and a visual legend. Primary actions sit next to the scene.
+All 31 experiments explain a game use case, ordered steps, object roles, and a visual legend. Primary actions sit next to the scene.
 Frame strips, camera bounds, and loading dashboards expose the comparison; dialogue and HUD use the actual engine UI inside the game view.
-Technical statistics are available under a collapsed details section. The hub cards also show practical use cases.
+Technical statistics are available under a collapsed details section.
 To run it from the engine source, use `pnpm dev:starter-runtime`.
 
-The hub follows **topic-based experiments → game applications**, with authoring tools in a separate section.
-Ten topics cover lighting, physics, cameras, sprites, world movement, VFX, gameplay, UI/input, audio, and runtime assets. 2D/HD-2D tags are independent filters. The hub includes all seven physics scenarios, providing 37 direct experiment links. Search and topic filters help locate experiments. Game and lab examples share navigation, typography, colors, instructions, observations, and related experiments.
+The site entry opens the Feature Lab directly. Use its topic menu for **individual features** and the example switcher for **games, advanced physics, and authoring tools**.
+Ten topics cover lighting, physics, cameras, sprites, world movement, VFX, gameplay, UI/input, audio, and runtime assets. The physics topic also links to all seven advanced scenarios. Game and lab examples share navigation, typography, colors, instructions, observations, and related experiments.
 `examples/shared/exampleCatalog.json` defines example roles; `featureCatalog.json` defines individual experiments.
 Minimal, the original shooter starter, and Engine Playground remain reference/test routes outside the main catalog.
 
@@ -61,7 +61,7 @@ WebGPU is optional; the default renderer is WebGL2.
 
 | Example | What it demonstrates | Local command |
 | --- | --- | --- |
-| [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) | Start with the 26 focused experiments above | `pnpm dev:starter-runtime` |
+| [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) | Start with the 31 focused experiments | `pnpm dev:starter-runtime` |
 | [Placement Viewer](https://silbaram.github.io/ferrum2d/placement-viewer/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:placement-viewer` |
 | [Physics Sandbox](https://silbaram.github.io/ferrum2d/physics-sandbox/) | Seven focused Physics Spec scenarios and native diagnostics | `pnpm dev:physics-sandbox` |
 | [Top-down Shooter](https://silbaram.github.io/ferrum2d/topdown-shooter/) | Neon Outpost pixel arena, three enemy waves, native HUD, pause/restart, lighting settings, and mobile controls | `pnpm dev:topdown` |

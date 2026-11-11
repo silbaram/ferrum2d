@@ -782,7 +782,7 @@ test('automatic profiler trace uses the issuing renderer ID and records spatial 
  renderer.renderPostProcess=()=>lastStats;
  renderer.beginGpuTiming=()=>{id++;};
  renderer.gpuTimingStats=()=>id===41?{status:'pending',currentFrameId:id,pendingQueryCount:1}:{status:'ready',currentFrameId:id,frameId:id-1,elapsedMs:id===43?39:5,pendingQueryCount:1};
- renderer.renderCommands=()=>{now+=2;return lastStats={...emptyRendererStats(),spatial:{modelCount:216,visibleModelCount:200,modelDrawCalls:196,modelInstancedDrawCalls:4,modelTriangleCount:8000,modelUploadBytes:id===42?69360:0,modelInstanceUploadBytes:16000,shadowDrawCalls:400,shadowPassCount:7,shadowUploadBytes:1000,shadowCacheHit:false,effectDrawCalls:1}} as RendererStats;};
+ renderer.renderCommands=()=>{now+=2;return lastStats={...emptyRendererStats(),spatialBloomDrawCalls:id===42?12:undefined,spatialBloomTextureBytes:id===42?44032:undefined,spatialBloomTexelFetchBudget:id===42?179200:undefined,pointShadowGeometryUploadBytes:id===42?8192:0,pointShadowGeometryVertexCount:96,pointShadowGeometryCacheHit:id!==42,spatial:{modelCount:216,visibleModelCount:200,modelDrawCalls:196,modelInstancedDrawCalls:4,modelTriangleCount:8000,modelUploadBytes:id===42?69360:0,modelInstanceUploadBytes:16000,shadowDrawCalls:400,shadowPassCount:7,shadowUploadBytes:1000,shadowCacheHit:false,effectDrawCalls:7,bloomDrawCalls:6,bloomTextureBytes:44032,bloomTexelFetchBudget:89600,authoredLightCount:16,lightCount:4,contributingLightCount:3,pendingLightCount:2,retainedLightCount:1,fadingLightCount:2,culledLightCount:3,droppedLightCount:7,disabledLightCount:0}} as RendererStats;};
  const r=new RuntimeFrameRenderer({renderer,profiler,shouldRenderPhysicsDebugLines:false,needsRuntimeFrame:true,now:()=>now});
  r.renderFrame(renderFrameState({frameState:frameState()}));now=40;
  r.renderFrame(renderFrameState({frameState:frameState()}));now=56;
@@ -790,6 +790,12 @@ test('automatic profiler trace uses the issuing renderer ID and records spatial 
  const capture=profiler.snapshot().frameTrace!.captures[0];equal(capture.triggerFrameId,42);
  deepEqual(capture.frames.map(f=>f.rendererFrameId),[41,42,43]);equal(capture.frames[1].frameIntervalMs,40);
  equal(capture.frames[1].gpuFrameTimeMs,39);equal(capture.frames[1].modelUploadBytes,69360);equal(capture.frames[1].spatialShadowDrawCalls,400);
+ equal(capture.frames[0].spatialBloomDrawCalls,6); equal(capture.frames[1].spatialBloomDrawCalls,12); equal(capture.frames[1].spatialBloomTextureBytes,44032); equal(capture.frames[1].spatialBloomTexelFetchBudget,179200);
+ equal(capture.frames[1].pointShadowGeometryUploadBytes,8192); equal(capture.frames[1].pointShadowGeometryVertexCount,96); equal(capture.frames[1].pointShadowGeometryCacheHit,false);
+ equal(capture.frames[1].spatialAuthoredLightCount,16); equal(capture.frames[1].spatialSelectedLightCount,4);
+ equal(capture.frames[1].spatialContributingLightCount,3); equal(capture.frames[1].spatialPendingLightCount,2);
+ equal(capture.frames[1].spatialRetainedLightCount,1); equal(capture.frames[1].spatialFadingLightCount,2);
+ equal(capture.frames[1].spatialCulledLightCount,3); equal(capture.frames[1].spatialDroppedLightCount,7); equal(capture.frames[1].spatialDisabledLightCount,0);
  equal(capture.frames[1].spatialShadowCacheHit,false);equal(capture.frames[2].gpuFrameTimeMs,undefined);
 });
 

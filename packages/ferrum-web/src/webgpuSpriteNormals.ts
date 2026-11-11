@@ -5,7 +5,7 @@ import type { WebGpuTextureStore } from "./webgpuTextureStore.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder.js";
 import type { SpriteMaterialPass } from "./spriteMaterial.js";
 
-export interface WebGpuSpriteNormalBindings {layout:GPUBindGroupLayout;bindGroup:GPUBindGroup;}
+export interface WebGpuSpriteNormalBindings {layout:GPUBindGroupLayout;bindGroup:GPUBindGroup;hasReceiverMasks?:boolean;}
 /** Data MRTs share the exact color geometry/order, including unmapped foreground alpha. */
 export class WebGpuSpriteNormals {
   private readonly batch:WebGpuSpritePass;

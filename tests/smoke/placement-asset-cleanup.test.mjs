@@ -47,6 +47,12 @@ test('unresolved numeric texture references protect open snapshots',()=>{
  assert(value.revisions[0].references.some(reference=>reference.includes('unresolved numeric texture')));
  const unrelated=read(fixture());assert.deepEqual(protect(unrelated,[{scene:'data',document:{score:7}}]),[]);
 });
+test('numeric surface maps protect open scene revisions from cleanup',()=>{
+ for(const map of ['emissionTexture','specularTexture','roughnessTexture']){
+  const value=read(fixture());assert.deepEqual(protect(value,[{scene:'surface.json',document:{visual:{surface:{[map]:7}}}}]),[key]);
+  assert(value.revisions[0].references.some(reference=>reference.includes('unresolved numeric texture')));
+ }
+});
 test('backup-only recovery replies are detached and reject duplicate operation IDs',()=>{
  const values=[{id:hash,kind:'pixel',selected:[id],createdAt:0,restored:false,problem:null}];
  const copy=readBackups(values);copy[0].selected.push('other');assert.deepEqual(values[0].selected,[id]);

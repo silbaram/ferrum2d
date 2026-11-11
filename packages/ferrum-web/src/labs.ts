@@ -39,6 +39,10 @@ export type {
   PackedTextureAtlasDocument,
   PackedTextureAtlasFrame,
   PointLight2D,
+  PointLightSpot2D,
+  PointLightCookie2D,
+  ResolvedPointLightCookie2D,
+  ResolvedPointLightSpot2D,
   ResolvedLightingScene2D,
   ResolvedSpriteMaterialPreset,
   ShadowProjectionOptions,
@@ -52,6 +56,7 @@ export type {
   TextureAtlasPackInput,
   TextureAtlasPackOptions,
   TileOccluder2D,
+  PolygonOccluder2D,
   WebGPURendererOptions,
 } from "./public/platformExports.js";
 export type {

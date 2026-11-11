@@ -102,6 +102,9 @@ impl Engine {
             self.data_scene.gameplay.observe_input(self.input);
             return;
         }
+        // Seed before simulation moves any bound light, after the paused-state guard.
+        // Render-only or paused rebuilds must leave a reset history uninitialized.
+        self.spatial_scene.advance_light_selection(&self.world, 0.);
         self.data_scene.gameplay.combat.begin_frame();
         if self.fixed_timestep_enabled {
             let update = self.fixed_timestep.advance(delta as f32);
@@ -127,6 +130,8 @@ impl Engine {
                 }
                 self.record_collision_lifecycle_events();
                 self.update_data_scene_gameplay(input, latched_presses, step_seconds);
+                self.spatial_scene
+                    .advance_light_selection(&self.world, step_seconds);
                 if self.render_interpolation_enabled {
                     self.world.end_render_interpolation_step();
                 }
@@ -149,6 +154,8 @@ impl Engine {
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
             self.update_data_scene_gameplay(self.input, InputState::default(), delta as f32);
+            self.spatial_scene
+                .advance_light_selection(&self.world, delta as f32);
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
                     &mut self.world,

@@ -1,3 +1,4 @@
+import {readPixels} from "./flat-lighting-contract-fixture.mjs";
 import { AssetLoader, createFerrumRuntime, createRenderer, linearToSrgb, WebGL2Renderer } from "@ferrum2d/ferrum-web/core";
 import { sceneCommands } from "./data-scene-render-fixture.mjs";
 
@@ -16,8 +17,9 @@ async function checkRuntimeDataSceneColor() {
     } } } }, fragments: { main: { instances: [{ id: "gray", prefab: "gray", x: 100, y: 100 }] } } },
     behaviorRecipes: { entities: {} } };
   const samples = [];
-  for (const source of ["default", "top-level", "webgl2", "webgpu-fallback", "injected"]) {
+  for (const source of ["default", "top-level", "webgl2", "webgpu", "injected"]) {
     const canvas = document.createElement("canvas");
+    canvas.dataset.spatialGpuTarget="true";
     document.body.append(canvas);
     const mode = source === "default" ? "legacy" : "linear-srgb";
     const injected = source === "injected"
@@ -28,27 +30,28 @@ async function checkRuntimeDataSceneColor() {
       runtime = await createFerrumRuntime({
         canvas, ui: false, debug: false, autostart: false,
         ...(source === "top-level" ? { colorManagement: mode } : {}),
-        ...(source === "webgpu-fallback" ? { rendererPreference: "webgpu", webgpu: { colorManagement: mode } } : {}),
+        ...(source === "webgpu" ? { rendererPreference: "webgpu", webgpu: { colorManagement: mode } } : {}),
         ...(injected ? { renderer: injected } : {}),
         webgl2: { preserveDrawingBuffer: true, ...(source === "webgl2" ? { colorManagement: mode } : {}) },
         dataScene: injected ? { document: documentSpec, colorManagement: mode } : documentSpec,
         onFrame: ({ frame }) => {
           if (!receiveFrame) return;
-          const gl = canvas.getContext("webgl2");
-          const pixel = new Uint8Array(4);
-          gl.readPixels(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-          const receive = receiveFrame;
-          receiveFrame = undefined;
-          receive({ pixel: [...pixel], rgb: [...frame.renderCommandBuffer.buffer.slice(8, 11)], state: runtime.dataScene.state() });
+          const receive = receiveFrame; receiveFrame = undefined;
+          const rgb = [...frame.renderCommandBuffer.buffer.slice(8, 11)], state = runtime.dataScene.state();
+          readPixels(runtime.renderer,canvas).then(pixels=>{
+            const at=(Math.floor(canvas.height/2)*canvas.width+Math.floor(canvas.width/2))*4;
+            receive.resolve({pixel:Array.from(pixels.slice(at,at+4)),rgb,state});
+          },receive.reject);
         },
       });
+      if(source==="webgpu")assert(typeof runtime.renderer.gpuDevice==="function","runtime managed WebGPU fell back");
       await runtime.renderer.loadTexture(71, imageUrl([[255, 255, 255, 255]]));
       for (const operation of ["initial", "reapply", "transition"]) {
         if (operation !== "initial") runtime.dataScene[operation](documentSpec);
         runtime.engine.setDataSceneCamera({ x: 100, y: 100 });
         const frame = new Promise((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error(`${source} ${operation}: no frame`)), 5000);
-          receiveFrame = (value) => { clearTimeout(timer); resolve(value); };
+          receiveFrame = {resolve:(value)=>{clearTimeout(timer);resolve(value);},reject:(error)=>{clearTimeout(timer);reject(error);}};
         });
         if (operation === "initial") runtime.start();
         const sample = await frame;
@@ -218,16 +221,21 @@ async function run() {
     assert(liveTextures.size === 0 && liveFramebuffers.size === 0, "GPU texture/framebuffer leak");
     canvas.remove();
   }
-  // Verify fallback before WebGPU claims the canvas and prevents obtaining WebGL2.
+  // Verify actual adapter-failure fallback before WebGPU claims the canvas and prevents obtaining WebGL2.
   const canvas = document.createElement("canvas");
   canvas.style.width = canvas.style.height = "128px";
   document.body.append(canvas);
   let fallback;
-  const renderer = await createRenderer(canvas, { preferred: "webgpu", colorManagement: "linear-srgb",
-    fallbackBehavior: "silent", onFallback: (info) => { fallback = info; },
-    webgl2: { preserveDrawingBuffer: true, clearColor: [0.25, 0.25, 0.25, 1] } });
+  const gpu=navigator.gpu, requestAdapter=gpu.requestAdapter;
+  let renderer;
+  try {
+    gpu.requestAdapter=async()=>{throw Error("injected managed adapter failure");};
+    renderer = await createRenderer(canvas, { preferred: "webgpu", colorManagement: "linear-srgb",
+      fallbackBehavior: "silent", onFallback: (info) => { fallback = info; },
+      webgl2: { preserveDrawingBuffer: true, clearColor: [0.25, 0.25, 0.25, 1] } });
+  } finally { gpu.requestAdapter=requestAdapter; }
   assert(renderer instanceof WebGL2Renderer && renderer.colorManagement === "linear-srgb", "managed WebGL2 fallback");
-  assert(String(fallback?.reason).includes("WebGPU linear-srgb"), "explicit fallback diagnostic");
+  assert(String(fallback?.reason).includes("injected managed adapter failure"), "explicit fallback diagnostic");
   renderer.render();
   renderer.renderCommands(empty);
   renderer.renderPostProcess();

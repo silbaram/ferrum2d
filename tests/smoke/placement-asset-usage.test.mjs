@@ -16,6 +16,22 @@ const camera={projection:"orthographic",position:{x:160,y:-240,elevation:220},ta
 const modelSpec=asset=>({asset,contentId:"a".repeat(64)});
 const entry=(path,document)=>({id:path,source:path,relativePath:path,mode:"2d",read:async()=>document,inspect:async(maxBytes=2*1024*1024)=>{const bytes=new TextEncoder().encode(JSON.stringify(document)).length;if(bytes>maxBytes)throw new PlacementSceneReadLimitError();return{document,bytes};}});
 const run=(scenes,extra={})=>collect({catalog:{label:"project",scenes,truncated:false},assets:[],open:[],current:()=>true,...extra});
+test("OFF cookie references protect named assets and expose unresolved numeric IDs with exact pointers", async () => {
+ const lighting = { profile: "lit", enabled: false, pointLights: [{ x: 0, y: 0, radius: 1, cookie: { texture: "pattern" } }, { x: 1, y: 1, radius: 1, cookie: { textureId: 7 } }] };
+ const result = await run([entry("cookies.json", doc({}, { lighting }))]);
+ const asset = result.assets.find(asset => asset.id === "pattern"); assert(asset); assert.equal(asset.kind, "sprite");
+ assert.equal(asset.references[0].pointer, "/lighting/pointLights/0/cookie/texture");
+ assert(result.issues.some(issue => issue.code === "unresolved" && issue.pointer === "/lighting/pointLights/1/cookie/textureId"));
+});
+test("surface maps in inactive prefabs and variants remain explicit asset references",async()=>{
+ const surface={emissionTexture:"emission",specularTexture:"specular",roughnessTexture:"roughness"};
+ const definition=visual("base");definition.props.components.visual.lighting={mode:"opaque"};definition.props.components.visual.surface=surface;
+ const result=await run([entry("surface.json",doc({hero:definition}))]);
+ for(const [map,id]of Object.entries(surface)){
+  const asset=result.assets.find(asset=>asset.id===id);assert(asset);assert.equal(asset.kind,"sprite");
+  assert.equal(asset.references[0].pointer,`/sceneComposition/prefabs/hero/props/components/visual/surface/${map}`);
+ }
+});
 test("closed scenes include definitions, variants, includes, explicit instances and HD models/LODs with exact pointers",async()=>{
  const a=doc({"tree/~":{...visual("shared"),variants:{night:visual("normal")}}},{sceneComposition:{prefabs:{"tree/~":{...visual("shared"),variants:{night:visual("normal")}}},fragments:{room:{include:[{fragment:"other",...visual("include")}],instances:[{id:"hero",prefab:"tree/~",...visual("shared")}]},other:{}}},spatial:{camera,terrain:[],billboards:{},models:{tree:{...modelSpec("shared"),lods:[{...modelSpec("low"),minDistance:100}]}}}});
  const before=JSON.stringify(a),result=await run([entry("closed.json",a),entry("other.json",doc({wall:visual("shared")}))]);

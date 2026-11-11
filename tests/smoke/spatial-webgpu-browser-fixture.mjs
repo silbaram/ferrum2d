@@ -450,7 +450,7 @@ export async function probeSpatialWebGpu() {
 
 export async function probeSpatialFallbacks() {
   const results = [];
-  for (const kind of ["postprocess", "linear-srgb"]) {
+  for (const kind of ["postprocess", "adapter"]) {
     const canvas = document.createElement("canvas");
     document.body.replaceChildren(canvas);
     const calls = [];
@@ -461,12 +461,12 @@ export async function probeSpatialFallbacks() {
             webgl2: { postProcess: [{ kind: "bloom" }] },
           }
         : { colorManagement: "linear-srgb" };
-    const renderer = await createRenderer(canvas, {
-      preferred: "webgpu",
-      fallbackBehavior: "silent",
-      onFallback: (info) => calls.push(String(info.reason)),
-      ...options,
-    });
+    const gpu=navigator.gpu, original=gpu.requestAdapter;
+    let renderer;
+    try {
+      if(kind==="adapter")gpu.requestAdapter=async()=>{throw Error("injected managed adapter failure");};
+      renderer=await createRenderer(canvas, {preferred:"webgpu",fallbackBehavior:"silent",onFallback:info=>calls.push(String(info.reason)),...options});
+    } finally { gpu.requestAdapter=original; }
     try {
       check(
         typeof renderer.gpuDevice !== "function" && calls.length === 1,

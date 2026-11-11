@@ -18,7 +18,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 ## 기능을 먼저 체험하기
 
-[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **30개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
+[**엔진 기능 실험실**](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 **31개 기능을 각각 독립된 씬**으로 체험할 수 있습니다.
 10개 기능 주제로 탐색하고 2D·HD-2D를 따로 필터링합니다. 물리 심화 7종도 같은 주제에서 바로 엽니다.
 게임에서 쓰는 상황·조작 순서·객체 이름표·화면 범례를 따라 결과를 비교합니다.
 원본 애니메이션, 카메라 영역, 로딩 상태와 화면 안 대화·HUD를 확인하고 상세 패널에서 설정·구현 API를 읽을 수 있습니다.
@@ -27,7 +27,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 
 | 기능 주제 | 실험 내용 | 바로 체험 |
 | --- | --- | --- |
-| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양 방위·고도·그림자 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) |
+| 조명·그림자 | 2D 노멀·점광원, HD-2D 태양, 실제 캐릭터·나무와 화면 밖 그림자·고정 영역 비교 | [환경](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) · [그림자](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) |
 | 물리·충돌 | 재질·충돌체·관절·CCD·공간 질의·지형 파괴 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) |
 | 카메라·화면 효과 | 추적·확대·흔들림·월드 경계, 후처리·픽셀 정렬 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) |
 | 스프라이트·애니메이션 | 시트·프레임 이벤트·레이어·팔레트·외곽선 | [실험 열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) |
@@ -48,9 +48,9 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | --- | --- | --- |
 | 데이터 작성·행동 | Game/Scene/Physics Spec, prefab·ObjectDefinition, Behavior Recipe·FSM 실행, agent용 patch·handoff | [Authoring API](docs/engine/public-api/authoring.md) |
 | 런타임·씬 | Rust/Wasm 게임 상태·엔티티, 선언형 씬·prefab, 씬 전환·페이드, snapshot·진행 저장/복원 | [Core API](docs/engine/public-api/core.md) |
-| 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
+| 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, Flat emission·specular·roughness 재질과 light/shadow 수신 mask, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
 | 픽셀 표현 | 고정 해상도·정수 확대·레터박스·화면 픽셀 스냅, 아틀라스 가장자리 보호, 팔레트 스왑·양자화·디더·스캔라인 | [2D 표시](docs/engine/data-scene-authoring.md) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) |
-| HD-2D 공간 | 정적 GLB/glTF, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
+| HD-2D 공간 | 정적 GLB/glTF·선택 비금속 specular 재질, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
 | 조명·그림자 | sprite/model normal map, 점광원·스포트·태양광·반구광, 그림자 필터·표면 보정, 건물 입체 도형의 지면 그림자 | [조명·환경](docs/engine/data-scene-spatial.md#광원-작성과-씬-효과) · [지면 그림자](docs/engine/data-scene-presentation.md) |
 | 화면 효과 | Bloom·CRT·vignette·fade/glitch, Spatial HDR·AO·안개·피사계심도·노출/톤매핑·색 보정 | [Core API](docs/engine/public-api/core.md) · [Spatial 환경](docs/engine/data-scene-spatial.md) |
 | 게임플레이 | actor 이동·길 찾기, 상호작용·트리거, 대화·퀘스트, projectile·weapon·전투 AI·생성 prefab, 부모/자식 연결, 컷신 | [AI 기능 안내](docs/engine/ai-feature-guide.md) · [Scene Authoring](docs/engine/data-scene-authoring.md) |
@@ -75,7 +75,14 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 ### 조명과 카메라
 
 - **2D:** 노멀맵으로 표면 방향에 따른 빛을 표현하고, 점광원별 차폐와 태양광 지면 그림자를 계산합니다. 건물은 바닥·벽·지붕의 도형을 작성해 그림자를 만듭니다.
+- **2D 표면 조명 · 개발 소스:** `profile:"lit"`을 선택하면 opaque/cutout sprite의 선형 색에 조도를 곱합니다. 기존 overlay가 기본값이며, 자산 준비와 지원 범위는 [표면 조명 계약](docs/engine/data-scene-presentation.md#flat-2d-표면-조명-개발-소스)을 따릅니다.
+- **선형 색공간 · 개발 소스:** `colorManagement:"linear-srgb"`를 양 backend에서 지원합니다. 색·데이터 texture와 alpha를 구분하고 합성 후 한 번 표시 변환합니다. [계약](docs/engine/public-api/core.md#색-공간-관리)을 따릅니다.
+- **2D HDR · 개발 소스:** lit의 `hdr` 옵션은 양 backend float16 월드·노출·톤매핑을 지원하며 HUD 경계를 유지합니다. [사용법·비용](docs/engine/data-scene-presentation.md#flat-hdr-개발-소스)을 확인하세요.
+- **2D 빛 패턴 · 개발 소스:** lit 점광원에 [cookie](docs/engine/data-scene-presentation.md#flat-2d-cookie-조명-개발-소스) 데이터 이미지를 연결하고 UV·회전을 지정합니다. 원본 자산 이름은 저장하고 실행 시 현재 ID로 해석합니다.
+- **2D 다각형 차폐 · 개발 소스:** lit 점광원의 [볼록 다각형](docs/engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스) 도형을 기존 광원별 그림자 마스크에 합성합니다. 도형·투영 한도와 활성 shadow 비용을 확인하세요.
 - **HD-2D:** 점광원·스포트·태양광·하늘/지면 반구광, hard/PCF 그림자와 bias 보정을 제공합니다. HDR·Bloom·AO·안개·DOF·색 보정을 함께 설정합니다.
+- **HD-2D 성분 분리 · 개발 소스:** [선택형 합성](docs/engine/data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)은 AO를 환경광에만 적용해 발광·직접광을 보존하고, 안개·DOF 뒤의 HDR 색을 Bloom 입력으로 사용합니다.
+- **넓은 HDR Bloom · 개발 소스:** [선택형 wide 모드](docs/engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)는 low/balanced/high 품질과 추가 draw·target bytes·texture-load 예산을 제공합니다.
 - **게임 구도:** 편집용 카메라로 작업 화면을 탐색하고, 별도의 게임 카메라에 위치·시선·각도·확대/촬영 범위를 작성해 미리보기와 저장에 반영합니다.
 
 WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따라 선택합니다.
@@ -104,8 +111,8 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 
 ## 예제 갤러리
 
-예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [통합 홈](https://silbaram.github.io/ferrum2d/)에서 기능을 검색·분류하고,
-게임·실험 예제의 공통 메뉴에서 이동하며 조작·관찰 결과·관련 실험을 확인합니다. 제작 도구는 별도 영역에 있습니다.
+예제는 **주제별 기능 실험 → 게임 응용** 순서로 구성합니다. [기능 실험실](https://silbaram.github.io/ferrum2d/)에서 주제를 고르고,
+상단의 **예제 이동**으로 게임·물리 심화·제작 도구를 엽니다. 조작·관찰 결과·관련 실험은 각 화면에서 확인합니다.
 Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제외합니다. [예제 역할과 로컬 통합 실행](examples/README.md).
 
 | 2D 등불 정원 | HD-2D 중세 마을 |
@@ -143,7 +150,7 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 | 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
 | HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
-| 기능별 실험실 · 독립 실험 30종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
+| 기능별 실험실 · 독립 실험 31종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
 | Breakout | `pnpm dev:breakout` | [examples/breakout](examples/breakout/) |
 | Platformer | `pnpm dev:platformer` | [examples/platformer](examples/platformer/) |

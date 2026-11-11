@@ -280,6 +280,46 @@ impl Engine {
         model_metadata: &[u32],
         model_styles: &[f32],
     ) -> bool {
+        self.configure_spatial_scene_receiver_masks(
+            camera_values,
+            terrain_values,
+            terrain_metadata,
+            handles,
+            styles,
+            actor_handle,
+            actor_values,
+            connections,
+            environment,
+            terrain_materials,
+            billboard_materials,
+            model_metadata,
+            model_styles,
+            &[],
+            &[],
+            &[],
+        )
+    }
+    /// Atomic v1 receiver extension, leaving material8/model80 render layouts intact.
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_spatial_scene_receiver_masks(
+        &mut self,
+        camera_values: &[f32],
+        terrain_values: &[f32],
+        terrain_metadata: &[u32],
+        handles: &[u32],
+        styles: &[f32],
+        actor_handle: &[u32],
+        actor_values: &[f32],
+        connections: &[u32],
+        environment: &[f32],
+        terrain_materials: &[u32],
+        billboard_materials: &[u32],
+        model_metadata: &[u32],
+        model_styles: &[f32],
+        terrain_masks: &[u32],
+        billboard_masks: &[u32],
+        model_masks: &[u32],
+    ) -> bool {
         if self.scene_mode != SceneMode::Data
             || !handles.len().is_multiple_of(2)
             || styles.len() != handles.len() / 2 * 3
@@ -328,6 +368,7 @@ impl Engine {
             next.bindings.insert(
                 (h[0], h[1]),
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
@@ -415,6 +456,15 @@ impl Engine {
         {
             return false;
         }
+        if !next.configure_receiver_masks(
+            terrain_masks,
+            billboard_masks,
+            model_masks,
+            handles,
+            model_metadata,
+        ) {
+            return false;
+        }
         self.data_scene.movement.cancel();
         next.revision = self.spatial_scene.revision.wrapping_add(1);
         self.spatial_scene = next;
@@ -458,6 +508,9 @@ impl Engine {
             }
             bindings[index] = Some((entity, *offset));
         }
+        if self.spatial_scene.light_bindings != bindings {
+            self.spatial_scene.environment.reset_light_selection();
+        }
         self.spatial_scene.light_bindings = bindings;
         self.spatial_scene.frame_active = false;
         true
@@ -466,7 +519,7 @@ impl Engine {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
             return false;
         }
-        let Some(next) = crate::spatial_scene::SpatialEnvironment::new(values) else {
+        let Some(mut next) = crate::spatial_scene::SpatialEnvironment::new(values) else {
             return false;
         };
         if self
@@ -477,6 +530,7 @@ impl Engine {
         {
             return false;
         }
+        next.retain_compatible_light_selection(&self.spatial_scene.environment);
         let previous = std::mem::replace(&mut self.spatial_scene.environment, next);
         if !self.spatial_scene.shadow_budget_valid(&self.world) {
             self.spatial_scene.environment = previous;
@@ -493,8 +547,22 @@ impl Engine {
                 v[..self.spatial_scene.environment.value_len].to_vec()
             })
     }
+    /// Cold capability for the opt-in v9 low-resolution HDR Bloom source.
+    pub fn spatial_wide_bloom_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 128 {
+        if self.spatial_scene.environment.value_len > 580 {
+            9
+        } else if self.spatial_scene.environment.value_len > 576 {
+            8
+        } else if self.spatial_scene.environment.value_len > 544 {
+            7
+        } else if self.spatial_scene.environment.value_len > 528 {
+            6
+        } else if self.spatial_scene.environment.value_len > 512 {
+            5
+        } else if self.spatial_scene.environment.value_len > 128 {
             4
         } else if self.spatial_scene.environment.value_len > 112 {
             3
@@ -503,6 +571,68 @@ impl Engine {
         } else {
             1
         }
+    }
+    /// Cold capability for explicit environment v7 packed light/shadow channels.
+    pub fn spatial_light_channel_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold capability for explicit v8 source config and native temporal selection v1.
+    pub fn spatial_light_selection_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_light_selection_progress_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold validation before semantic authoring restore replaces entities or assets.
+    pub fn preflight_spatial_light_selection_state(
+        &self,
+        environment: &[f32],
+        selection: &[f64],
+    ) -> bool {
+        crate::spatial_scene::SpatialEnvironment::new(environment)
+            .is_some_and(|next| next.prepare_light_selection(selection).is_some())
+    }
+    /// Borrowed diagnostic record v1 contains six4-byte fields; acquire again each frame.
+    pub fn spatial_light_selection_diagnostic_size_bytes(&self) -> u32 {
+        24
+    }
+    pub fn spatial_light_selection_diagnostics_ptr(&self) -> *const u8 {
+        self.spatial_scene
+            .environment
+            .light_selection_diagnostics()
+            .as_ptr()
+            .cast()
+    }
+    pub fn spatial_light_selection_diagnostics_len(&self) -> u32 {
+        if self.spatial_scene.frame_active {
+            self.spatial_scene
+                .environment
+                .light_selection_diagnostics()
+                .len() as u32
+        } else {
+            0
+        }
+    }
+    pub fn capture_spatial_light_selection_state(&self) -> Vec<f64> {
+        self.spatial_scene.environment.capture_light_selection()
+    }
+    /// Cold standalone state restore; compound semantic progress integration uses this validated state.
+    pub fn restore_spatial_light_selection_state(&mut self, values: &[f64]) -> bool {
+        let restored = self
+            .spatial_scene
+            .environment
+            .restore_light_selection(values);
+        if restored {
+            self.spatial_scene.frame_active = false;
+        }
+        restored
+    }
+    pub fn reset_spatial_light_selection(&mut self) -> bool {
+        let reset = self.spatial_scene.environment.reset_light_selection();
+        if reset {
+            self.spatial_scene.frame_active = false;
+        }
+        reset
     }
     pub fn spatial_environment_len(&self) -> u32 {
         if self.spatial_scene.frame_active && self.spatial_scene.environment.values.is_some() {
@@ -601,6 +731,7 @@ impl Engine {
             next.insert(
                 (h[0], h[1]),
                 Billboard {
+                    receiver_masks: Default::default(),
                     material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
@@ -836,6 +967,30 @@ impl Engine {
     }
     pub fn spatial_presentation_ptr(&self) -> *const f32 {
         self.spatial_scene.presentation.as_ptr()
+    }
+    pub fn spatial_receiver_mask_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_receiver_mask_size(&self) -> u32 {
+        std::mem::size_of::<crate::spatial_scene::SpatialReceiverMasks>() as u32
+    }
+    pub fn spatial_terrain_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.terrain_receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_terrain_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.terrain_receiver_masks.len() as u32
+    }
+    pub fn spatial_billboard_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.billboard_receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_billboard_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.billboard_receiver_masks.len() as u32
+    }
+    pub fn spatial_model_receiver_mask_ptr(&self) -> *const u32 {
+        self.spatial_scene.models.receiver_masks.as_ptr().cast()
+    }
+    pub fn spatial_model_receiver_mask_len(&self) -> u32 {
+        self.spatial_scene.models.receiver_masks.len() as u32
     }
     pub fn spatial_material_abi_version(&self) -> u32 {
         1

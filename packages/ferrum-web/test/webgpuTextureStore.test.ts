@@ -18,8 +18,8 @@ interface CapturedWriteTextureCall {
 class FakeGpuTexture {
   destroyed = false;
 
-  createView(): unknown {
-    return { texture: this };
+  createView(descriptor?: GPUTextureViewDescriptor): unknown {
+    return { texture: this, format: descriptor?.format };
   }
 
   destroy(): void {
@@ -188,7 +188,7 @@ function throwsWithMessage(run: () => void, expected: RegExp): void {
   throw new Error(`Expected callback to throw ${expected}.`);
 }
 
-function createTextureStore(): { device: FakeGpuDevice; store: WebGpuTextureStore } {
+function createTextureStore(linearWorking = false): { device: FakeGpuDevice; store: WebGpuTextureStore } {
   installWebGpuGlobals();
   const device = new FakeGpuDevice();
   return {
@@ -197,6 +197,7 @@ function createTextureStore(): { device: FakeGpuDevice; store: WebGpuTextureStor
       device as unknown as GPUDevice,
       {} as GPUSampler,
       {} as GPUBindGroupLayout,
+      linearWorking,
     ),
   };
 }
@@ -252,4 +253,26 @@ test("WebGPU shadow texture revisions change on replace and alpha patch but fail
  throwsWithMessage(()=>store.updatePixelMaskTerrainTexture(7,{rect:{x:2,y:0,width:1,height:1},alpha:new Uint8Array([0])}),/bounds/);equal(store.textureRevision(7),patched);
  store.createPixelMaskTerrainTexture(7,terrain);const replaced=store.textureRevision(7)!;ok(replaced>patched);store.evictTexture(7);equal(store.textureRevision(7),undefined);
  store.createPixelMaskTerrainTexture(7,terrain);ok(store.textureRevision(7)!>replaced);store.destroy();equal(store.textureRevision(7),undefined);
+});
+
+
+test("managed color views decode only sRGB and asset upload attachments are not render targets", async () => {
+  const {device,store}=createTextureStore(true),original=globalThis.createImageBitmap;
+  const options: ImageBitmapOptions[]=[];let closed=0;
+  globalThis.createImageBitmap=async (_input,settings)=>{if(!settings||typeof settings!=="object")throw Error("Expected explicit decode options");options.push(settings);return {width:1,height:1,close(){closed++;}} as ImageBitmap;};
+  try{
+    for(const [id,colorSpace]of [[1,"srgb"],[2,"none"],[3,"linear"]] as const)await store.loadTexture(id,"data:image/png;base64,AA==",{colorSpace});
+    ok(store.resource(1).linearBindGroup);equal(store.resource(2).linearBindGroup,undefined);equal(store.resource(3).linearBindGroup,undefined);
+    equal(options.length,3);ok(options.every(option=>option.colorSpaceConversion==="none"&&option.premultiplyAlpha==="none"));equal(closed,3);
+    const stats=webGpuResources(device as unknown as GPUDevice).stats();equal(stats.textureCount,3);equal(stats.textureBytes,12);equal(stats.renderTargetCount,0);
+    const previous=store.resource(1),create=device.createBindGroup.bind(device);
+    device.createBindGroup=(descriptor: unknown)=>{
+      const value=descriptor as {entries:{resource?:{format?:string}}[]};
+      if(value.entries.some(entry=>entry.resource?.format==="rgba8unorm-srgb"))throw Error("managed view binding failed");
+      return create(descriptor);
+    };
+    await rejects(store.loadTexture(1,"data:image/png;base64,AA=="),/managed view binding failed/);
+    equal(store.resource(1),previous);equal(device.textures[0].destroyed,false);equal(device.textures[3].destroyed,true);equal(closed,4);
+  }finally{globalThis.createImageBitmap=original;store.destroy();}
+  equal(webGpuResources(device as unknown as GPUDevice).stats().textureCount,0);
 });

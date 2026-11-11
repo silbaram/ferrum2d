@@ -1,3 +1,5 @@
+import { requestsSpatialWideBloom } from "./spatialBloom.js";
+import { preflightDataSceneLighting } from "./dataSceneRuntimeTarget.js";
 import {
   captureDataSceneProgress,
   assertDataSceneCombatSaveSupported,
@@ -44,7 +46,11 @@ export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
 /** Latest nested version; non-spatial exploration captures retain v5 and their legacy hashes. */
-export const DATA_SCENE_STATE_VERSION = 10;
+export const DATA_SCENE_STATE_VERSION = 12;
+function hasWideBloomDocument(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.spatial) && isRecord(value.spatial.environment)
+    && isRecord(value.spatial.environment.bloom) && value.spatial.environment.bloom.mode === "wide";
+}
 function hasCombatDocument(value: unknown): boolean {
   return isRecord(value) && isRecord(value.gameplay) && value.gameplay.combat === true;
 }
@@ -73,7 +79,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -256,6 +262,7 @@ export function restoreGameStateSnapshot(
   if (snapshot.dataScene?.progress?.combat !== undefined && snapshot.physics !== undefined) {
     throw new Error("Data Scene combat checkpoints cannot combine a separate physics snapshot.");
   }
+  if(options.restoreDataSceneState!==false&&options.restoreDataSceneAuthoringDocument!==false&&snapshot.dataScene?.authoringDocument!==undefined)preflightDataSceneLighting(engine,snapshot.dataScene.authoringDocument,options.dataSceneAuthoringApplyOptions);
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   const snapshotPath = options.path ?? "gameState.snapshot";
   preflightDataSceneActivation(snapshot, options, snapshotPath);
@@ -600,12 +607,15 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 7 &&
     snapshot.version !== 8 &&
     snapshot.version !== 9 &&
+    snapshot.version !== 10 &&
+    snapshot.version !== 11 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 or ${DATA_SCENE_STATE_VERSION}.`,
     );
   }
+  if (snapshot.version < 12 && hasWideBloomDocument(snapshot.authoringDocument)) throw Error(`${path} wide Bloom requires data scene state version 12`);
   if (hasCombatDocument(snapshot.authoringDocument) && (snapshot.version < 9 || !isRecord(snapshot.progress) || snapshot.progress.combat === undefined)) {
     throw new Error(`${path} combat requires data scene state version 9 and complete combat progress.`);
   }
@@ -615,6 +625,8 @@ export function validateDataSceneStateSnapshot(
         `${path}.progress requires data scene state version 3 or newer.`,
       );
     validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
+    if (snapshot.version < 12 && requestsSpatialWideBloom(snapshot.progress.spatial?.environment)) throw Error(`${path} wide Bloom requires data scene state version 12`);
+    if (snapshot.version < 11 && snapshot.progress.spatial?.lightSelection !== undefined) throw Error(`${path} light selection history requires version 11`);
     if (snapshot.version < 10 && snapshot.progress.spatial?.movingPlatforms !== undefined) throw new Error(`${path} moving platforms require version 10`);
     if(snapshot.version<8 && (hasSpatialAttachments(snapshot.authoringDocument)||snapshot.progress.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)))throw new Error(`${path}.progress model motion requires data scene state version 8.`);
     if (
@@ -723,6 +735,8 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasWideBloomDocument(authoringDocument) || requestsSpatialWideBloom(progress?.spatial?.environment) ? 12 :
+      progress?.spatial?.lightSelection !== undefined ? 11 :
       progress?.spatial?.movingPlatforms !== undefined ? 10 :
       hasCombatDocument(authoringDocument) ? 9 :
       hasSpatialAttachments(authoringDocument)||progress?.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?8:

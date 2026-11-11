@@ -43,6 +43,21 @@ impl Engine {
         self.frame_buffers
             .sprite_normal_materials
             .resize(self.frame_buffers.render_commands.len(), Default::default());
+        if !self.frame_buffers.sprite_lighting_materials.is_empty() {
+            self.frame_buffers
+                .sprite_lighting_materials
+                .resize(self.frame_buffers.render_commands.len(), Default::default());
+        }
+        if !self.frame_buffers.sprite_surface_materials.is_empty() {
+            self.frame_buffers
+                .sprite_surface_materials
+                .resize(self.frame_buffers.render_commands.len(), Default::default());
+        }
+        if !self.frame_buffers.sprite_light_masks.is_empty() {
+            self.frame_buffers
+                .sprite_light_masks
+                .resize(self.frame_buffers.render_commands.len(), Default::default());
+        }
     }
 
     fn build_layered_render_commands(&mut self, visible_bounds: AabbBounds) {
@@ -73,6 +88,21 @@ impl Engine {
             self.frame_buffers
                 .sprite_normal_materials
                 .push(item.normal_material);
+            append_lighting_material(
+                &mut self.frame_buffers.sprite_lighting_materials,
+                self.frame_buffers.render_commands.len(),
+                item.lighting_material,
+            );
+            append_surface_material(
+                &mut self.frame_buffers.sprite_surface_materials,
+                self.frame_buffers.render_commands.len(),
+                item.surface_material,
+            );
+            append_light_masks(
+                &mut self.frame_buffers.sprite_light_masks,
+                self.frame_buffers.render_commands.len(),
+                item.light_masks,
+            );
         }
     }
 
@@ -112,6 +142,21 @@ impl Engine {
             self.frame_buffers
                 .sprite_normal_materials
                 .push(item.normal_material);
+            append_lighting_material(
+                &mut self.frame_buffers.sprite_lighting_materials,
+                self.frame_buffers.render_commands.len(),
+                item.lighting_material,
+            );
+            append_surface_material(
+                &mut self.frame_buffers.sprite_surface_materials,
+                self.frame_buffers.render_commands.len(),
+                item.surface_material,
+            );
+            append_light_masks(
+                &mut self.frame_buffers.sprite_light_masks,
+                self.frame_buffers.render_commands.len(),
+                item.light_masks,
+            );
         }
         self.frame_buffers.render_items.clear();
     }
@@ -185,6 +230,9 @@ impl Engine {
             }
             let item = SpriteRenderItem {
                 normal_material: self.world.sprite_normal_materials[i].unwrap_or_default(),
+                lighting_material: self.world.sprite_lighting_materials[i].unwrap_or_default(),
+                surface_material: self.world.sprite_surface_materials[i].unwrap_or_default(),
+                light_masks: self.world.sprite_light_masks[i].unwrap_or_default(),
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
                     if self.scene_mode != SceneMode::Data || s.depth_sort {
@@ -340,5 +388,38 @@ fn sprite_center(transform: Transform2D, sprite: Sprite) -> Transform2D {
     Transform2D {
         x: transform.x + x * cos - y * sin,
         y: transform.y + x * sin + y * cos,
+    }
+}
+
+fn append_lighting_material(
+    materials: &mut Vec<crate::render_command::SpriteLightingMaterial>,
+    command_count: usize,
+    material: crate::render_command::SpriteLightingMaterial,
+) {
+    if !materials.is_empty() || material.mode != 0 {
+        materials.resize(command_count - 1, Default::default());
+        materials.push(material);
+    }
+}
+
+fn append_surface_material(
+    materials: &mut Vec<crate::render_command::SpriteSurfaceMaterial>,
+    command_count: usize,
+    material: crate::render_command::SpriteSurfaceMaterial,
+) {
+    if !materials.is_empty() || material.flags != 0 {
+        materials.resize(command_count - 1, Default::default());
+        materials.push(material);
+    }
+}
+
+fn append_light_masks(
+    materials: &mut Vec<crate::render_command::SpriteLightMasks>,
+    command_count: usize,
+    material: crate::render_command::SpriteLightMasks,
+) {
+    if !materials.is_empty() || material != Default::default() {
+        materials.resize(command_count - 1, Default::default());
+        materials.push(material);
     }
 }

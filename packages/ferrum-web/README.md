@@ -95,3 +95,8 @@ Scene Authoring JSON의 `display.pixelPerfect: {width: 320, height: 180}`으로 
 같은 객체에 `snap: true`를 추가하면 카메라 변환 후의 타일·스프라이트를 가상 픽셀에 맞춘다.
 생략·false는 기존 출력이며 게임 상태·명령 ABI는 바꾸지 않는다. 회전된 객체는 원점 이동만 정렬한다.
 작은 창의 축소, 포인터 변환과 opt-in 사용법은 [표시 계약](../../docs/engine/public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
+
+
+개발 소스의 `colorManagement:"linear-srgb"`는 WebGL2와 WebGPU 모두 지원한다.
+색 texture는 sRGB, normal/mask는 linear/data로 표시하고 숫자 RGB는 선형 값을 사용한다.
+합성 후 최종 표시 변환을 수행하며 기본 legacy 동작은 유지한다. 설치된 과거 배포 버전의 지원을 뜻하지 않는다.

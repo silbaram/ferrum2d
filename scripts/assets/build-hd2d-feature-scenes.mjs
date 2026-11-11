@@ -1,5 +1,7 @@
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { lightingQualityModel } from "./lighting-quality-model.mjs";
+import { buildShadowComparison } from "./build-shadow-comparison.mjs";
 
 // Deterministic example authoring data; runtime simulation remains in Rust.
 const output = new URL("../../examples/starter-runtime/public/features/", import.meta.url);
@@ -10,6 +12,9 @@ for (const name of ["cart", "lamp"]) {
   contentIds[name] = createHash("sha256").update(await readFile(source)).digest("hex");
   await copyFile(source, new URL(`spatial/${name}.glb`, output));
 }
+const emissionModel = lightingQualityModel();
+contentIds.emitter = createHash("sha256").update(emissionModel).digest("hex");
+await writeFile(new URL("spatial/emitter.glb", output), emissionModel);
 const camera = { projection: "orthographic", position: { x: 240, y: -320, elevation: 420 },
   target: { x: 0, y: 0, elevation: 16 }, height: 250, near: 0.1, far: 2000 };
 const body = (layer, texture = "robot", type = "kinematic", elevation = 0, height = 24) => ({
@@ -65,15 +70,17 @@ const attachments = scene([
 const environment = scene([
   instance("actor", 48, -32, body("player", "robot", "static")),
   instance("light", -90, -60, { ...body("wall", "energy", "kinematic", 100, 4), collider: { type: "circle", radius: 1, isTrigger: true }, visual: { kind: "sprite", texture: "energy", width: 12, height: 12 } }),
+  instance("emitter", 38, 20, { ...body("wall", "wall", "static", 0, 40), visual: { ...body("wall", "wall").visual, color: "#ffffff00" } }),
 ], {
   terrain: [
     { id: "ground", x: -120, y: -90, width: 240, depth: 180, elevation: 0, color: [.45, .49, .5, 1] },
     { id: "column", x: -20, y: -12, width: 40, depth: 30, elevation: 64, baseElevation: 0, floorId: 1, walkable: false, color: [.65, .65, .68, 1] },
     { id: "rear", x: -90, y: 50, width: 35, depth: 25, elevation: 36, baseElevation: 0, floorId: 1, walkable: false, color: [.5, .6, .65, 1] },
-  ], billboards: { actor: {}, light: {} },
+  ], billboards: { actor: {}, light: {} }, models: { emitter: { asset: "emitter", contentId: contentIds.emitter } },
   environment: { lighting: { ambient: [.18, .18, .2], lights: [{ position: { x: -90, y: -60, elevation: 100 }, radius: 420, color: [1, .85, .65], intensity: 2 }], shadows: { lightIndex: 0, resolution: 256, bias: .1 } } },
 });
 for (const [id, document] of Object.entries({ "hd2d-movement": movement, "ai-combat": combat, "attachments": attachments, "hd2d-environment": environment })) {
   await writeFile(new URL(`${id}.json`, output), JSON.stringify(document, null, 2) + "\n");
 }
-console.log("HD-2D feature scenes generated (4 documents, 2 existing village models).");
+await buildShadowComparison(output);
+console.log("HD-2D feature scenes generated (5 documents, village models, emissive fixture and garden shadow comparison).");

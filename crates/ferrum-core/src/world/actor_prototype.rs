@@ -11,6 +11,9 @@ pub(crate) struct ActorPrototype {
     origin: Transform2D,
     sprite: Option<Sprite>,
     normal_material: Option<crate::render_command::SpriteNormalMaterial>,
+    lighting_material: Option<crate::render_command::SpriteLightingMaterial>,
+    surface_material: Option<crate::render_command::SpriteSurfaceMaterial>,
+    light_masks: Option<crate::render_command::SpriteLightMasks>,
     nine_slice: Option<crate::components::SpriteNineSlice>,
     animation: Option<SpriteAnimation>,
     playback: Option<sprite_playback::SpritePlayback>,
@@ -74,6 +77,9 @@ impl World {
             origin: self.transforms[i]?,
             sprite: self.sprites[i],
             normal_material: self.sprite_normal_materials[i],
+            lighting_material: self.sprite_lighting_materials[i],
+            surface_material: self.sprite_surface_materials[i],
+            light_masks: self.sprite_light_masks[i],
             nine_slice: self.sprite_nine_slices[i],
             animation: self.sprite_animations[i],
             playback: self.sprite_playbacks[i].clone(),
@@ -134,6 +140,9 @@ impl World {
         self.transforms[i] = Some(at);
         self.sprites[i] = prototype.sprite;
         self.sprite_normal_materials[i] = prototype.normal_material;
+        self.sprite_lighting_materials[i] = prototype.lighting_material;
+        self.sprite_surface_materials[i] = prototype.surface_material;
+        self.sprite_light_masks[i] = prototype.light_masks;
         self.sprite_nine_slices[i] = prototype.nine_slice;
         self.sprite_animations[i] = prototype.animation;
         self.sprite_playbacks[i] = prototype.playback.clone();

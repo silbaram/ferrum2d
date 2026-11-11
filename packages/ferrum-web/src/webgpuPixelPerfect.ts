@@ -9,7 +9,7 @@ export class WebGpuPixelPerfect {
     private group?: GPUBindGroup;
     private width = 0;
     private height = 0;
-    constructor(private readonly device: GPUDevice, private readonly format: GPUTextureFormat) {
+    constructor(private readonly device: GPUDevice, private readonly format: GPUTextureFormat, outputFormat = format, encodeSrgb = false, opaque = true) {
         this.sampler = device.createSampler({ minFilter: "nearest", magFilter: "nearest" });
         const module = device.createShaderModule({ code: `
       struct Vertex { @builtin(position) position: vec4f, @location(0) uv: vec2f };
@@ -21,15 +21,18 @@ export class WebGpuPixelPerfect {
       }
       @fragment fn fragment(v: Vertex) -> @location(0) vec4f {
         let color = textureSample(image,nearest,v.uv);
-        return vec4f(color.rgb, 1.0);
+        var rgb=color.rgb;
+        ${encodeSrgb ? `if(color.a>0.){let c=clamp(rgb/color.a,vec3f(0.),vec3f(1.));rgb=select(1.055*pow(c,vec3f(1./2.4))-vec3f(.055),c*12.92,c<=vec3f(.0031308))*color.a;}else{rgb=vec3f(0.);}` : ""}
+        return vec4f(rgb, ${opaque ? "1.0" : "color.a"});
       }
     ` });
         this.pipeline = webGpuResources(device).createRenderPipeline({ layout: "auto", vertex: { module, entryPoint: "vertex" },
-            fragment: { module, entryPoint: "fragment", targets: [{ format }] }, primitive: { topology: "triangle-list" } });
+            fragment: { module, entryPoint: "fragment", targets: [{ format: outputFormat }] }, primitive: { topology: "triangle-list" } });
     }
     resize(width: number, height: number): void {
         if (this.target && width === this.width && height === this.height)
             return;
+        if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width>this.device.limits.maxTextureDimension2D||height>this.device.limits.maxTextureDimension2D)throw Error("Invalid presentation target dimensions");
         const target = webGpuResources(this.device).createTexture({ size: { width, height }, format: this.format,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
         let group: GPUBindGroup;
@@ -50,7 +53,7 @@ export class WebGpuPixelPerfect {
     }
     texture(): GPUTexture { if (!this.target)
         throw Error("Pixel-perfect target is not configured"); return this.target; }
-    present(destination: GPUTexture, p: PixelPerfectPresentation, color: readonly number[]): void {
+    present(destination: GPUTexture, p: Pick<PixelPerfectPresentation, "x" | "y" | "width" | "height">, color: readonly number[]): void {
         const encoder = this.device.createCommandEncoder();
         const pass = beginWebGpuRenderPass(this.device, encoder, { colorAttachments: [{ view: destination.createView(), loadOp: "clear", storeOp: "store",
                     clearValue: { r: color[0], g: color[1], b: color[2], a: 1 } }] });

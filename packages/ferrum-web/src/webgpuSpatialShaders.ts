@@ -1,7 +1,6 @@
 import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
 import { spatialEnvironmentWGSL } from "./webgpuSpatialEnvironment.js";
-export const spatialGeometryWGSL =
-  spatialEnvironmentWGSL +
+export function spatialGeometryWgsl(linearWorking = false): string { return spatialEnvironmentWGSL +
   `
 struct Camera{matrix:mat4x4f};
 @group(0) @binding(0) var<uniform> camera:Camera;
@@ -15,7 +14,7 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) uv:vec2f,@locatio
  var f:Fragment;var clip=camera.matrix*vec4f(v.position,1.);clip.z=(clip.z+clip.w)*.5;
  f.position=clip;f.uv=v.uv;f.color=v.color;f.cutoff=v.cutoff;f.world=v.position;return f;
 }
-@fragment fn fs_main(f:Fragment)->@location(0) vec4f{
+fn spatialSurface(f:Fragment)->SpatialLightingOutput{
  let color=textureSample(colorTexture,colorSampler,f.uv)*f.color;
  // WebGPU framebuffer Y points down; GLSL dFdy points up.
  let dx=dpdx(f.world);let dy= -dpdy(f.world);let crossNormal=cross(dx,dy);
@@ -28,13 +27,20 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) uv:vec2f,@locatio
   if(length(t)>.000001&&length(bt)>.000001&&length(sampled)>.000001){n=normalize(normalize(t)*sampled.x+normalize(bt)*sampled.y+n*sampled.z);}
  }
  if(color.a<f.cutoff){discard;}
- if(!environmentEnabled()){return vec4f(color.rgb,1.);}
- return vec4f(shade(linearize(color.rgb),vec3f(0.),f.world,n,geometric,false),1.);
+ if(!environmentEnabled()){return lightingOutput(color.rgb,vec3f(0.));}
+ let albedo=${linearWorking ? "color.rgb" : "linearize(color.rgb)"};
+ return lightingOutput(shade(albedo,vec3f(0.),f.world,n,geometric,false),indirectColor(albedo,n,false));
 }
+@fragment fn fs_main(f:Fragment)->@location(0)vec4f{return spatialSurface(f).color;}
+@fragment fn fs_lighting(f:Fragment)->SpatialLightingOutput{return spatialSurface(f);}
 @fragment fn fs_debug(f:Fragment)->@location(0) vec4f{
- if(environmentEnabled()){return vec4f(linearize(f.color.rgb),1.);}return vec4f(f.color.rgb,1.);
-}`;
-export function spatialModelWGSL(mapped: boolean): string {
+ if(environmentEnabled()){return vec4f(${linearWorking ? "f.color.rgb" : "linearize(f.color.rgb)"},1.);}return vec4f(f.color.rgb,1.);
+}
+@fragment fn fs_debug_lighting(f:Fragment)->SpatialLightingOutput{return lightingOutput(${linearWorking ? "f.color.rgb" : "linearize(f.color.rgb)"},vec3f(0.));}
+`;
+}
+export const spatialGeometryWGSL = spatialGeometryWgsl();
+export function spatialModelWGSL(mapped: boolean, linearWorking = false): string {
   return (
     spatialEnvironmentWGSL +
     `
@@ -48,6 +54,12 @@ ${spatialModelMaterialWGSL}
 @group(1) @binding(4) var normalTexture:texture_2d<f32>;
 @group(1) @binding(5) var emissionSampler:sampler;
 @group(1) @binding(6) var emissionTexture:texture_2d<f32>;
+@group(1) @binding(7) var roughnessSampler:sampler;
+@group(1) @binding(8) var roughnessTexture:texture_2d<f32>;
+@group(1) @binding(9) var specularSampler:sampler;
+@group(1) @binding(10) var specularTexture:texture_2d<f32>;
+@group(1) @binding(11) var specularColorSampler:sampler;
+@group(1) @binding(12) var specularColorTexture:texture_2d<f32>;
 struct Input{
  @location(0) position:vec3f,@location(1) uv:vec2f,@location(2) normal:vec3f,
  @location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f,
@@ -60,10 +72,17 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) uv:vec2f,@locatio
  let basis=mat3x3f(v.m0.xyz,v.m1.xyz,v.m2.xyz);f.normal=basis*v.normal;
  let tangent=${mapped ? "v.tangent" : "vec4f(0.)"};f.tangent=vec4f(basis*tangent.xyz,tangent.w);return f;
 }
-@fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0) vec4f{
+fn modelSurface(f:Fragment,front:bool)->SpatialLightingOutput{
  let c=textureSample(baseTexture,baseSampler,modelUv(f.uv,material.baseUv))*material.color;
  let sampled=textureSample(normalTexture,normalSampler,modelUv(f.uv,material.normalUv)).rgb*2.-1.;
  let emitted=textureSample(emissionTexture,emissionSampler,modelUv(f.uv,material.emissionUv)).rgb*material.emission.xyz;
+ // Uniform material branch, before discard/divergent lighting; diffuse adds no map samples.
+ var roughness=1.;var specularWeight=0.;var f0=vec3f(0.);
+ if(material.surface.y>.5 && material.specular.w>0.){
+  roughness=textureSample(roughnessTexture,roughnessSampler,modelUv(f.uv,material.roughnessUv)).g*material.surface.x;
+  specularWeight=textureSample(specularTexture,specularSampler,modelUv(f.uv,material.specularUv)).a*material.specular.w;
+  f0=.04*material.specular.rgb*textureSample(specularColorTexture,specularColorSampler,modelUv(f.uv,material.specularColorUv)).rgb;
+ }
  let geometric=cross(dpdx(f.world),-dpdy(f.world));var n=vec3f(0.,1.,0.);
  if(length(geometric)>.000001){n=normalize(geometric);}
  let geometricNormal=n;
@@ -77,8 +96,11 @@ struct Fragment{@builtin(position) position:vec4f,@location(0) uv:vec2f,@locatio
  }
  if(c.a<material.params.x){discard;}
  let unlit=material.params.y>.5;var emission=emitted;if(unlit){emission=vec3f(0.);}
- if(!environmentEnabled()){return vec4f(encode(c.rgb+emission),1.);}
- return vec4f(shade(c.rgb,emission,f.world,n,geometricNormal,unlit),1.);
-}`
+ if(!environmentEnabled()){return lightingOutput(${linearWorking ? "c.rgb+emission" : "encode(c.rgb+emission)"},vec3f(0.));}
+ return lightingOutput(shadeSurface(c.rgb,emission,f.world,n,geometricNormal,unlit,f0,roughness,specularWeight),indirectColor(c.rgb,n,unlit));
+}
+@fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0)vec4f{return modelSurface(f,front).color;}
+@fragment fn fs_lighting(f:Fragment,@builtin(front_facing) front:bool)->SpatialLightingOutput{return modelSurface(f,front);}
+`
   );
 }

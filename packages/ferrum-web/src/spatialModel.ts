@@ -1,7 +1,22 @@
 import { resolveSpatialTextureTransform, validateSpatialRequiredExtensions, validateSpatialTransformedUvs } from "./spatialTextureTransform.js";
 import { SpatialModelImageReader } from "./spatialModelImage.js";
-/** Bounded static GLB input. This is a diffuse conversion profile, not a glTF PBR renderer. */
+/** Bounded static GLB input. Explicit diffuse conversion or limited non-metallic direct specular. */
+export interface SpatialModelTexture {
+    readonly image: number;
+    readonly sampler: readonly [number, number, number, number];
+    readonly uvTransform?: Float32Array;
+}
+export interface SpatialModelSpecular {
+    readonly factor: number;
+    readonly color: readonly number[];
+    readonly roughness: number;
+    /** Alpha/green are raw data; color RGB decodes sRGB. Each map has independent glTF UVs. */
+    readonly texture?: SpatialModelTexture;
+    readonly colorTexture?: SpatialModelTexture;
+    readonly roughnessTexture?: SpatialModelTexture;
+}
 export interface SpatialModelPrimitive {
+    readonly specular?: SpatialModelSpecular;
     /** Interleaved asset-local XYZ, UV, normal; 8 floats, or 12 with tangent XYZW for normal maps. */
     readonly vertices: Float32Array;
     readonly indices: Uint32Array;
@@ -26,6 +41,7 @@ export interface SpatialModelPrimitive {
     ];
 }
 export interface SpatialModelResource {
+    readonly materialProfile?: "diffuse" | "specular";
     readonly contentId: string;
     readonly bounds: readonly number[];
     readonly primitives: readonly SpatialModelPrimitive[];
@@ -38,6 +54,7 @@ export interface SpatialModelResource {
 }
 /** Opaque immutable resource identity. Mutable geometry and decoded pixels stay private. */
 export interface SpatialModelAsset {
+    readonly materialProfile?: "diffuse" | "specular";
     readonly contentId: string;
     readonly bounds: readonly number[];
     readonly primitiveCount: number;
@@ -61,11 +78,13 @@ export function spatialModelResource(asset: SpatialModelAsset): SpatialModelReso
 export function createSpatialModelAsset(resource: SpatialModelResource): SpatialModelAsset {
     const handle = Object.freeze({
         contentId: resource.contentId,
+        ...(resource.materialProfile === "specular" ? { materialProfile: "specular" as const } : {}),
         bounds: Object.freeze([...resource.bounds]),
         primitiveCount: resource.primitives.length,
         triangleCount: resource.primitives.reduce((n, p) => n + p.indices.length / 3, 0),
         byteLength: resource.primitives.reduce((n, p) => n + p.vertices.byteLength + p.indices.byteLength
-            + (p.uvTransform?.byteLength ?? 0) + (p.normal?.uvTransform?.byteLength ?? 0) + (p.emissive?.uvTransform?.byteLength ?? 0), 0)
+            + (p.uvTransform?.byteLength ?? 0) + (p.normal?.uvTransform?.byteLength ?? 0) + (p.emissive?.uvTransform?.byteLength ?? 0) + (p.specular?.texture?.uvTransform?.byteLength ?? 0)
+            + (p.specular?.colorTexture?.uvTransform?.byteLength ?? 0) + (p.specular?.roughnessTexture?.uvTransform?.byteLength ?? 0), 0)
             + resource.images.reduce((n, i) => n + i.pixels.byteLength, 0),
         diagnostics: Object.freeze([...resource.diagnostics]),
     });
@@ -73,8 +92,8 @@ export function createSpatialModelAsset(resource: SpatialModelResource): Spatial
     return handle;
 }
 export interface SpatialGlbOptions {
-    /** Explicitly accepts conversion of metallic/roughness to existing diffuse lighting. */
-    materialProfile: "diffuse";
+    /** Explicit diffuse conversion, or bounded non-metallic direct GGX (metallicFactor must be 0). */
+    materialProfile: "diffuse" | "specular";
     signal?: AbortSignal;
 }
 const MAX_GLB_BYTES = 32 * 1024 * 1024;
@@ -121,8 +140,9 @@ function nodeMatrix(n: Obj): number[] {
 }
 /** Fetches/decodes a self-contained GLB before scene activation. No production parser dependency. */
 export async function loadSpatialGlb(source: string | ArrayBuffer, options: SpatialGlbOptions): Promise<SpatialModelAsset> {
-    if (options.materialProfile !== "diffuse")
-        return fail("materialProfile must explicitly select diffuse");
+    if (options.materialProfile !== "diffuse" && options.materialProfile !== "specular")
+        return fail("materialProfile must explicitly select diffuse or specular");
+    const specularProfile = options.materialProfile === "specular";
     options.signal?.throwIfAborted();
     let bytes: ArrayBuffer;
     if (typeof source === "string") {
@@ -197,7 +217,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
     const gltf = obj(json), asset = obj(gltf.asset);
     if (asset.version !== "2.0" || (asset.minVersion !== undefined && asset.minVersion !== "2.0"))
         return fail("requires glTF 2.0");
-    validateSpatialRequiredExtensions(gltf.extensionsRequired);
+    validateSpatialRequiredExtensions(gltf.extensionsRequired, options.materialProfile);
     if (list(gltf.animations ?? []).length || list(gltf.skins ?? []).length)
         return fail("animation/skin is unsupported");
     const buffers = list(gltf.buffers, 1);
@@ -290,7 +310,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                 const material = p.material === undefined ? {} : obj(materials[integer(p.material, materials.length - 1)]);
                 const alphaMode = material.alphaMode === undefined ? "OPAQUE" : material.alphaMode;
                 const extensions=material.extensions===undefined?{}:obj(material.extensions);
-                const unknownExtensions=Object.keys(extensions).filter(k=>!['KHR_materials_unlit','KHR_materials_emissive_strength'].includes(k));
+                const unknownExtensions=Object.keys(extensions).filter(k=>!['KHR_materials_unlit','KHR_materials_emissive_strength',...(specularProfile?['KHR_materials_specular']:[])].includes(k));
                 if(unknownExtensions.length) return fail(`material ${String(material.name??p.material??'default')}: unsupported extensions ${unknownExtensions.join(', ')}`);
                 const unlit=extensions.KHR_materials_unlit!==undefined;
                 if(unlit) obj(extensions.KHR_materials_unlit);
@@ -307,8 +327,12 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                 const alphaCutoff = alphaMode === "MASK" ? Math.max(cutoff > 1 ? 1 + 2 ** -23 : 0, Math.fround(cutoff)) : 0;
                 const doubleSided = material.doubleSided === true;
                 const pbr = material.pbrMetallicRoughness === undefined ? {} : obj(material.pbrMetallicRoughness);
-                if (pbr.metallicRoughnessTexture !== undefined)
-                    return fail("metallic/roughness texture is unsupported");
+                if (pbr.metallicRoughnessTexture !== undefined && !specularProfile)
+                    return fail("metallic/roughness texture is unsupported by diffuse profile");
+                if (pbr.metallicRoughnessTexture !== undefined && unlit) return fail("unlit metallic/roughness texture is unsupported");
+                if (specularProfile && !unlit && pbr.metallicFactor !== 0)
+                    return fail("specular profile requires explicit metallicFactor: 0; metallic rendering is unsupported");
+                if (unlit && extensions.KHR_materials_specular !== undefined) return fail("unlit cannot be combined with KHR_materials_specular");
                 const color = numbers(pbr.baseColorFactor ?? [1, 1, 1, 1], 4);
                 if (color.some(x => x < 0 || x > 1))
                     return fail("base color outside [0,1]");
@@ -348,6 +372,22 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                     for (let i = 0; i < idx.length; i += 3)
                         if (idx.slice(i,i+3).some(v=>tangents[v*4+3] !== tangents[idx[i]*4+3])) return fail("mixed triangle tangent handedness");
                 }
+                let specular: SpatialModelSpecular | undefined;
+                if (specularProfile && !unlit) {
+                    const extension = extensions.KHR_materials_specular === undefined ? {} : obj(extensions.KHR_materials_specular);
+                    for (const key of Object.keys(extension)) if (!["specularFactor","specularColorFactor","specularTexture","specularColorTexture"].includes(key)) return fail(`unsupported specular property ${key}`);
+                    const scalar = (value: unknown, name: string) => {
+                        if (typeof value !== "number" || !Number.isFinite(Math.fround(value)) || value < 0 || value > 1) return fail(`${name} must be in [0,1]`);
+                        return value;
+                    };
+                    const factor = scalar(extension.specularFactor === undefined ? 1 : extension.specularFactor, "specularFactor");
+                    const specularColor = numbers(extension.specularColorFactor === undefined ? [1,1,1] : extension.specularColorFactor,3);
+                    specularColor.forEach(value=>scalar(value,"specularColorFactor"));
+                    specular = { factor, color: specularColor, roughness: scalar(pbr.roughnessFactor === undefined ? 1 : pbr.roughnessFactor,"roughnessFactor"),
+                        ...(extension.specularTexture === undefined ? {} : {texture:textureRef(extension.specularTexture)}),
+                        ...(extension.specularColorTexture === undefined ? {} : {colorTexture:textureRef(extension.specularColorTexture)}),
+                        ...(pbr.metallicRoughnessTexture === undefined ? {} : {roughnessTexture:textureRef(pbr.metallicRoughnessTexture)}) };
+                }
                 const stride = normal ? 12 : 8;
                 const vertices = new Float32Array(count * stride);
                 for (let i = 0; i < count; i++) {
@@ -368,7 +408,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
                     }
                     at.forEach((x, k) => { bounds[k] = Math.min(bounds[k], Math.fround(x)); bounds[k + 3] = Math.max(bounds[k + 3], Math.fround(x)); });
                 }
-                primitives.push({ vertices, indices: Uint32Array.from(idx), color, sampler: base?.sampler ?? [9729,9729,10497,10497], alphaCutoff, doubleSided, emissiveFactor, unlit, ...(base ? { image: base.image, ...(base.uvTransform ? { uvTransform: base.uvTransform } : {}) } : {}), ...(normal ? { normal } : {}), ...(emissive ? { emissive } : {}) });
+                primitives.push({ ...(specular ? {specular} : {}), vertices, indices: Uint32Array.from(idx), color, sampler: base?.sampler ?? [9729,9729,10497,10497], alphaCutoff, doubleSided, emissiveFactor, unlit, ...(base ? { image: base.image, ...(base.uvTransform ? { uvTransform: base.uvTransform } : {}) } : {}), ...(normal ? { normal } : {}), ...(emissive ? { emissive } : {}) });
             }
         for (const child of list(n.children ?? [], 128))
             visit(child, m, depth + 1);
@@ -385,7 +425,7 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
         const groups = new Map<string, SpatialModelPrimitive[]>();
         let lastKey = "", adjacentGroup = 0;
         for (const p of primitives) {
-            const key = JSON.stringify([p.color,p.image,p.uvTransform,p.normal,p.emissive,p.emissiveFactor,p.unlit,p.alphaCutoff,p.doubleSided,p.sampler]);
+            const key = JSON.stringify([p.color,p.image,p.uvTransform,p.normal,p.emissive,p.emissiveFactor,p.unlit,p.specular,p.alphaCutoff,p.doubleSided,p.sampler]);
             if (sourcePrimitiveCount <= 32 && key !== lastKey) adjacentGroup++;
             lastKey = key;
             const groupKey = sourcePrimitiveCount <= 32 ? String(adjacentGroup) : key;
@@ -451,12 +491,14 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
     }
     options.signal?.throwIfAborted();
     if(!globalThis.crypto?.subtle) return fail("SHA-256 requires a secure browser context");
-    const hash = await crypto.subtle.digest("SHA-256", bytes);
+    const identityBytes = specularProfile ? new Uint8Array(new TextEncoder().encode("ferrum2d.specular.v1\0").length + bytes.byteLength) : new Uint8Array(bytes);
+    if (specularProfile) { const domain = new TextEncoder().encode("ferrum2d.specular.v1\0"); identityBytes.set(domain); identityBytes.set(new Uint8Array(bytes),domain.length); }
+    const hash = await crypto.subtle.digest("SHA-256", identityBytes);
     options.signal?.throwIfAborted();
     const contentId = Array.from(new Uint8Array(hash), x => x.toString(16).padStart(2, "0")).join("");
-    const diagnostics = Object.freeze(["diffuse profile: metallic/roughness scalars are not rendered as PBR",...(sourcePrimitiveCount>32?[`merged ${sourcePrimitiveCount} static source primitives into ${primitives.length} material batches`]:[])]);
+    const diagnostics = Object.freeze([specularProfile ? "bounded non-metallic direct GGX: effective roughness >=0.12, lobe <=16; no IBL/transmission/BLEND" : "diffuse profile: metallic/roughness scalars are not rendered as PBR",...(sourcePrimitiveCount>32?[`merged ${sourcePrimitiveCount} static source primitives into ${primitives.length} material batches`]:[])]);
     const frozenBounds = Object.freeze(bounds);
-    return createSpatialModelAsset({ contentId, bounds: frozenBounds, primitives, images, diagnostics });
+    return createSpatialModelAsset({ materialProfile: options.materialProfile, contentId, bounds: frozenBounds, primitives, images, diagnostics });
 }
 function imageDimensions(data: Uint8Array, mime: string): [
     number,

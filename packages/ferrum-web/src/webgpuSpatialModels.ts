@@ -1,3 +1,4 @@
+import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { SPATIAL_MODEL_MATERIAL_BYTES, spatialModelMaterialValues } from "./webgpuSpatialMaterial.js";
@@ -46,6 +47,7 @@ export class WebGpuSpatialModels {
   private loadingSources?: ReadonlySet<SpatialModelResource>;
   private readonly materialLayout: GPUBindGroupLayout;
   private readonly pipelines: GPURenderPipeline[] = [];
+  private readonly separatedDescriptors: GPURenderPipelineDescriptor[] = [];
   private readonly shadowPipelines: GPURenderPipeline[] = [];
   private readonly mipLayout: GPUBindGroupLayout;
   private readonly mipPipelines: GPURenderPipeline[];
@@ -56,17 +58,19 @@ export class WebGpuSpatialModels {
   private readonly counts = new Uint32Array(CAPACITY * 8);
   private readonly ends = new Uint32Array(CAPACITY * 8);
   private readonly offsets = new Uint32Array(CAPACITY * 8);
+  private readonly receiverCodes = new Uint32Array(CAPACITY);
   private destroyed = false;
   constructor(
     private readonly device: GPUDevice,
     format: GPUTextureFormat,
     cameraLayout: GPUBindGroupLayout,
     environmentLayout: GPUBindGroupLayout = {},
+    linearWorking = false,
   ) {
     this.materialLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
-        ...[1, 3, 5].flatMap((binding) => [
+        ...[1, 3, 5, 7, 9, 11].flatMap((binding) => [
           { binding, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" as const } },
           {
             binding: binding + 1,
@@ -79,17 +83,16 @@ export class WebGpuSpatialModels {
     const modules = [false, true].map((mapped) =>
       device.createShaderModule({
         label: "Spatial model materials",
-        code: spatialModelWGSL(mapped),
+        code: spatialModelWGSL(mapped, linearWorking),
       }),
     );
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [cameraLayout, this.materialLayout, environmentLayout],
     });
-    for (const outputFormat of [format, "rgba16float"])
+    for (const [outputIndex, outputFormat] of ([format, "rgba16float"] as const).entries())
       for (const mapped of [false, true])
-        for (const doubleSided of [false, true])
-          this.pipelines.push(
-            webGpuResources(device).createRenderPipeline({
+        for (const doubleSided of [false, true]) {
+          const descriptor: GPURenderPipelineDescriptor = {
               label: "Spatial indexed/instanced model",
               layout,
               vertex: {
@@ -133,8 +136,12 @@ export class WebGpuSpatialModels {
                 depthWriteEnabled: true,
                 depthCompare: "less-equal",
               },
-            }),
-          );
+          };
+          this.pipelines.push(webGpuResources(device).createRenderPipeline(descriptor));
+          if (outputIndex === 1) this.separatedDescriptors.push({ ...descriptor,
+            fragment: { ...descriptor.fragment!, entryPoint: "fs_lighting", targets: [{ format: "rgba16float" }, { format: "rgba16float" }] },
+          });
+        }
     const shadowModule = device.createShaderModule({
       label: "Spatial model shadows",
       code: spatialShadowModelWGSL,
@@ -332,6 +339,7 @@ export class WebGpuSpatialModels {
     frame: SpatialModelFrame | undefined,
     shadows: boolean,
     stats: SpatialRendererStats,
+    masks?: Uint32Array,
   ): void {
     this.counts.fill(0);
     if (!frame) return;
@@ -344,7 +352,8 @@ export class WebGpuSpatialModels {
         }
         const first = i,
           source = spatialModelResource(frame.assets.get(frame.words[i])!)!,
-          flags = frame.words[i + 1] & 2;
+          flags = frame.words[i + 1] & 2,
+          maskCode = spatialReceiverMaskCode(masks, i / 20);
         let count = 0;
         while (i < frame.words.length) {
           if (!(frame.words[i + 2] & (1 << bit))) {
@@ -353,7 +362,7 @@ export class WebGpuSpatialModels {
           }
           if (
             spatialModelResource(frame.assets.get(frame.words[i])!) !== source ||
-            (bit === 0 && (frame.words[i + 1] & 2) !== flags)
+            (bit === 0 && ((frame.words[i + 1] & 2) !== flags || masks?.length && spatialReceiverMaskCode(masks, i / 20) !== maskCode))
           )
             break;
           this.matrices.set(frame.values.subarray(i + 4, i + 20), floats + count * 16);
@@ -361,6 +370,7 @@ export class WebGpuSpatialModels {
           i += 20;
         }
         const batch = bit * CAPACITY + first / 20;
+        if (bit === 0) this.receiverCodes[first / 20] = maskCode;
         this.counts[batch] = count;
         this.ends[batch] = i;
         this.offsets[batch] = floats * 4;
@@ -378,11 +388,18 @@ export class WebGpuSpatialModels {
     camera: GPUBindGroup,
     stats: SpatialRendererStats,
     environmentGroup: GPUBindGroup = {},
-    hdr = false,
+    hdr: boolean | "separated" = false,
     bit = 0,
     noReceiveGroup = environmentGroup,
+    receiverOffset?: (code: number) => number,
   ): void {
     if (!frame) return;
+    if (bit === 0 && hdr === "separated" && this.pipelines.length === 8) {
+      const created: GPURenderPipeline[] = [];
+      try { for (const descriptor of this.separatedDescriptors) created.push(webGpuResources(this.device).createRenderPipeline(descriptor)); }
+      catch (error) { created.forEach(pipeline => webGpuResources(this.device).releasePipeline(pipeline)); throw error; }
+      this.pipelines.push(...created);
+    }
     for (let i = 0; i < frame.words.length; ) {
       const batch = bit * CAPACITY + i / 20,
         count = this.counts[batch];
@@ -391,17 +408,18 @@ export class WebGpuSpatialModels {
         continue;
       }
       const asset = this.assets.get(spatialModelResource(frame.assets.get(frame.words[i])!)!)!,
-        receive = !!(frame.words[i + 1] & 2);
+        receive = !!(frame.words[i + 1] & 2),
+        offset = receiverOffset?.(this.receiverCodes[i / 20]) ?? 0;
       i = this.ends[batch];
       if (bit === 0) stats.visibleModelCount += count;
       for (const p of asset.primitives) {
         const variant = (p.source.normal ? 2 : 0) + Number(p.source.doubleSided);
         pass.setPipeline(
-          bit === 0 ? this.pipelines[(hdr ? 4 : 0) + variant] : this.shadowPipelines[variant],
+          bit === 0 ? this.pipelines[(hdr === "separated" ? 8 : hdr ? 4 : 0) + variant] : this.shadowPipelines[variant],
         );
         pass.setBindGroup(0, camera);
         pass.setBindGroup(1, p.group);
-        if (bit === 0) pass.setBindGroup(2, receive ? environmentGroup : noReceiveGroup);
+        if (bit === 0) pass.setBindGroup(2, receive ? environmentGroup : noReceiveGroup, [offset]);
         pass.setVertexBuffer(0, p.vertex);
         pass.setVertexBuffer(1, this.instances, this.offsets[batch], count * 64);
         pass.setIndexBuffer(p.index, "uint32");
@@ -564,6 +582,9 @@ export class WebGpuSpatialModels {
             p.image === undefined ? undefined : { image: p.image, sampler: p.sampler },
             p.normal,
             p.emissive,
+            p.specular?.roughnessTexture,
+            p.specular?.texture,
+            p.specular?.colorTexture,
           ];
           const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: uniform } }];
           refs.forEach((r, i) => {
@@ -575,7 +596,7 @@ export class WebGpuSpatialModels {
               {
                 binding: 2 + i * 2,
                 resource: (r
-                  ? a.textures.get(r.image * 2 + Number(i !== 1))!
+                  ? a.textures.get(r.image * 2 + Number(i === 0 || i === 2 || i === 5))!
                   : this.white
                 ).createView(),
               },
@@ -640,6 +661,9 @@ function imageUses(s: SpatialModelResource): Set<number> {
     if (p.image !== undefined) result.add(p.image * 2 + 1);
     if (p.normal) result.add(p.normal.image * 2);
     if (p.emissive) result.add(p.emissive.image * 2 + 1);
+    if (p.specular?.roughnessTexture) result.add(p.specular.roughnessTexture.image*2);
+    if (p.specular?.texture) result.add(p.specular.texture.image*2);
+    if (p.specular?.colorTexture) result.add(p.specular.colorTexture.image*2+1);
   }
   return result;
 }

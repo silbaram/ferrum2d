@@ -12,6 +12,10 @@ import {
 } from "@ferrum2d/ferrum-web/authoring";
 import { check, pixels, difference, png } from "/fixture.mjs";
 import { loadTextureTransformFixtures, probeTextureTransforms } from "/texture-transform.mjs";
+import { probeSeparatedComposition } from "/composition.mjs";
+import { probeSpatialCompositionOrder } from "/composition-order.mjs";
+import { probeSpatialReceiverMasks } from "/receiver-masks.mjs";
+import { loadSpecularFixtures, probeSpecularMaterials } from "/specular.mjs";
 
 function variant(bytes, edit) {
   const size = new DataView(bytes).getUint32(12, true),
@@ -32,7 +36,8 @@ function variant(bytes, edit) {
   new Uint8Array(out, 28 + padded).set(bin);
   return out;
 }
-function ownedSpatial(s) {
+export function ownedSpatial(s) {
+  const selectionWords = s.environment?.lightSelection?.words.slice();
   const m = s.models,
     values = m?.values.slice();
   return {
@@ -42,6 +47,7 @@ function ownedSpatial(s) {
     terrain: s.terrain.slice(),
     terrainDrawRanges: s.terrainDrawRanges?.slice(),
     billboards: s.billboards.slice(),
+    receiverMasks: s.receiverMasks && { ...s.receiverMasks, terrain: s.receiverMasks.terrain.slice(), billboards: s.receiverMasks.billboards.slice(), models: s.receiverMasks.models.slice() },
     materials: s.materials && {
       ...s.materials,
       terrain: s.materials.terrain.slice(),
@@ -54,6 +60,7 @@ function ownedSpatial(s) {
       values: s.environment.values.slice(),
       shadowMatrices: s.environment.shadowMatrices.slice(),
       shadowCasters: s.environment.shadowCasters.slice(),
+      lightSelection: selectionWords && { version: 1, stride: 6, words: selectionWords, values: new Float32Array(selectionWords.buffer) },
       shadowSubmission: s.environment.shadowSubmission && {
         ...s.environment.shadowSubmission,
         ranges: s.environment.shadowSubmission.ranges.slice(),
@@ -61,11 +68,11 @@ function ownedSpatial(s) {
     },
   };
 }
-async function probe(canvas, backend, projection) {
+async function probe(canvas, backend, projection, colorManagement, specularOnly = false, masksOnly = false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallback = [],
     renderer = await createRenderer(canvas, {
-      preferred: backend,
+      preferred: backend, colorManagement,
       fallbackBehavior: "silent",
       onFallback: (i) => fallback.push(String(i.reason)),
       webgl2: { preserveDrawingBuffer: true },
@@ -77,7 +84,7 @@ async function probe(canvas, backend, projection) {
   );
   const errors = [],
     registry = createSceneInstanceHandleRegistry(),
-    apply = { instanceHandleRegistry: registry, spatialModelPreparer: renderer };
+    apply = { instanceHandleRegistry: registry, spatialModelPreparer: renderer, colorManagement };
   if (backend === "webgpu")
     renderer.gpuDevice().addEventListener("uncapturederror", (e) => errors.push(e.error.message));
   const allocationCounts = { textures: 0, buffers: 0, groups: 0 };
@@ -127,7 +134,7 @@ async function probe(canvas, backend, projection) {
   try {
     const source = await (await fetch("/tree-material.glb")).arrayBuffer(),
       assets = new Map();
-    for (const [id, bytes] of [
+    if (!specularOnly) for (const [id, bytes] of [
       ["mapped", variant(source, (m) => (m.emissiveFactor = [0, 0, 0]))],
       [
         "scale0",
@@ -142,9 +149,13 @@ async function probe(canvas, backend, projection) {
           m.extensions = { KHR_materials_unlit: {} };
         }),
       ],
+      ["emission-only", variant(source, m => {
+        m.pbrMetallicRoughness.baseColorFactor = [0, 0, 0, 1];
+        m.emissiveFactor = [0.5, 0.25, 0.125];
+      })],
     ])
       assets.set(id, await loadSpatialGlb(bytes, { materialProfile: "diffuse" }));
-    const uvPicking = await loadTextureTransformFixtures(assets);
+    const uvPicking = specularOnly || masksOnly ? await loadSpecularFixtures(assets, masksOnly ? ["rough", "emission"] : undefined) : await loadTextureTransformFixtures(assets);
     if (backend === "webgpu") await renderer.preloadSpatialModels([...assets.values()]);
     const image = document.createElement("canvas");
     image.width = image.height = 32;
@@ -233,7 +244,7 @@ async function probe(canvas, backend, projection) {
         ],
         billboards: { actor: {} },
         actor: { instanceId: "actor", speed: 96 },
-        models: { tree: { asset: "scale0", contentId: assets.get("scale0").contentId } },
+        models: { tree: { asset: specularOnly ? "uv-spec-rough" : "scale0", contentId: assets.get(specularOnly ? "uv-spec-rough" : "scale0").contentId } },
       },
     };
     engine = await createEngine(
@@ -319,12 +330,15 @@ async function probe(canvas, backend, projection) {
       asset = "scale0",
       normal = false,
       debug = false,
+      modelChanges = undefined,
+      editDocument = undefined,
     ) => {
       console.log("environment state", backend, projection, name);
       const doc = structuredClone(base);
       if (environment) doc.spatial.environment = environment;
-      doc.spatial.models.tree = { asset, contentId: assets.get(asset).contentId };
+      doc.spatial.models.tree = { asset, contentId: assets.get(asset).contentId, ...modelChanges };
       if (normal) doc.spatial.billboards.actor.normalTextureId = 4;
+      editDocument?.(doc);
       handles = applyDataSceneAuthoringDocument(engine, doc, apply).entityHandles;
       engine.pauseDataScene();
       check(
@@ -361,15 +375,18 @@ async function probe(canvas, backend, projection) {
         hud,
       });
       check(
-        warm.stats.modelCount === 1 &&
-          warm.stats.visibleModelCount === 1 &&
-          warm.stats.modelDrawCalls === (asset.startsWith("uv-") ? 1 : 2) &&
-          warm.stats.modelTriangleCount === (asset.startsWith("uv-") ? 2 : 14),
+        warm.stats.modelCount === Object.keys(doc.spatial.models).length &&
+          warm.stats.visibleModelCount === Object.keys(doc.spatial.models).length &&
+          warm.stats.modelDrawCalls >= (asset.startsWith("uv-") ? 1 : 2) &&
+          warm.stats.modelTriangleCount === Object.keys(doc.spatial.models).length * (asset.startsWith("uv-") ? 2 : 14),
         "environment model pass missing",
         warm.stats,
       );
+      const separated = environment?.composition === "separated";
+      const indirectPass = separated && (environment.ambientOcclusion?.strength ?? (environment.ambientOcclusion ? 0.6 : 0)) > 0;
+      const dofPass = separated && environment.depthOfField && (environment.depthOfField.aperture ?? 8) > 0 && (environment.depthOfField.maxBlurRadius ?? 8) > 0 && (environment.bloom?.strength ?? (environment.bloom ? 0.5 : 0)) > 0;
       check(
-        warm.stats.effectDrawCalls === (environment ? 1 : 0),
+        warm.stats.effectDrawCalls === (environment && warm.spatial.environment.values[0] ? 1 + Number(indirectPass) + Number(!!dofPass) : 0),
         "missing or unexpected HDR composite",
         { name, stats: warm.stats },
       );
@@ -392,6 +409,16 @@ async function probe(canvas, backend, projection) {
       rows.push(evidence);
       return result;
     };
+    if (masksOnly) {
+      const receiverChecks = await probeSpatialReceiverMasks(configure, () => lastPixels, read, engine, apply, registry, renderer, canvas, errors);
+      check(!errors.length, "GPU receiver errors", errors);
+      return { backend, projection, restored: true, frames, errors, rows, receiverChecks };
+    }
+    if (specularOnly) {
+      const specular = await probeSpecularMaterials(configure, () => lastPixels, read, engine, apply, registry, assets, renderer, errors);
+      check(!errors.length, "GPU specular material errors", errors);
+      return { backend, projection, restored: true, frames, errors, rows, specular };
+    }
     const neutral = await configure("neutral"),
       ambient = await configure("ambient", { lighting: { ambient: [0.1, 0.1, 0.1], lights: [] } });
     const hemisphere={skyColor:[0,0,1],groundColor:[1,0,0],intensity:.8},
@@ -559,12 +586,14 @@ async function probe(canvas, backend, projection) {
     await configure("ao-baseline",{lighting:{ambient:[.5,.5,.5],lights:[]}});const noAo=lastPixels.slice();
     await configure("ao",{lighting:{ambient:[.5,.5,.5],lights:[]},ambientOcclusion:{strength:1,radius:40,bias:.1}});
     check(difference(noAo,lastPixels,3)>20,"contact occlusion did not change contact pixels");
+    const compositionChecks = await probeSeparatedComposition(configure, () => lastPixels);
     const many=await configure("budget-many",{lighting:{ambient:[.05,.05,.05],maxActiveLights:2,lights:Array.from({length:16},(_,i)=>({...brightPoint,position:{x:i*10-80,y:0,elevation:80},intensity:i/4}))}});
     check(many.spatial.environment.values[1]===2 && many.spatial.environment.values[137]===16,"native light budget ignored");
     const uvChecks = await probeTextureTransforms(configure, () => lastPixels, sunEnvironment, read);
     const combined = await configure(
       "combined",
       {
+        composition: "separated",
         ...sunEnvironment,
         lighting:{...sunEnvironment.lighting,lights:[{...brightPoint,position:{x:0,y:0,elevation:80},followActor:true,spot:{direction:{x:0,y:0,elevation:-1},angle:70,penumbra:.3}}],maxActiveLights:2,hemisphere:{skyColor:[.5,.65,1],groundColor:[.2,.15,.1],intensity:.2}},
         bloom:{strength:.4,radius:8,threshold:1},ambientOcclusion:{strength:.4,radius:16,bias:.3},
@@ -606,7 +635,7 @@ async function probe(canvas, backend, projection) {
       "environment fresh restore changed frame",
     );
     check(!errors.length, "GPU environment errors", errors);
-    return { backend, projection, restored: true, frames, errors, rows, uvPicking, uvComparisons: uvChecks.comparisons, uvFailurePreserved: uvChecks.failedLoadPreserved };
+    return { backend, projection, restored: true, frames, errors, rows, compositionChecks, uvPicking, uvComparisons: uvChecks.comparisons, uvFailurePreserved: uvChecks.failedLoadPreserved };
   } finally {
     const device = backend === "webgpu" ? renderer.gpuDevice() : undefined;
     engine?.destroy();
@@ -629,14 +658,16 @@ async function decodePng(url) {
     bitmap.close();
   }
 }
-export async function probeSpatialWebGpuEnvironment() {
+export async function probeSpatialWebGpuEnvironment(colorManagement = "legacy", specularOnly = false, masksOnly = false) {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) {
     const pair = [];
     for (const backend of ["webgl2", "webgpu"]) {
       const canvas = document.createElement("canvas");
       document.body.replaceChildren(canvas);
-      pair.push(await probe(canvas, backend, projection));
+      const checked = await probe(canvas, backend, projection, colorManagement, specularOnly, masksOnly);
+      if (!specularOnly && !masksOnly && projection === "orthographic") checked.compositionOrder = await probeSpatialCompositionOrder(backend, colorManagement);
+      pair.push(checked);
     }
     const comparisons = [];
     for (let i = 0; i < pair[0].rows.length; i++) {
@@ -662,7 +693,7 @@ export async function probeSpatialWebGpuEnvironment() {
       );
       comparisons.push({ name: a.name, differentPixels: diff, pixelCount: count, allowedFraction });
     }
-    result.push({ projection, comparisons, backends: pair });
+    result.push({ projection, colorManagement, comparisons, backends: pair });
   }
   return result;
 }

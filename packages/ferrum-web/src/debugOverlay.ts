@@ -15,6 +15,19 @@ export interface DebugOverlayMetrics {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialBloomDrawCalls?: number;
+  spatialBloomTextureBytes?: number;
+  spatialBloomTexelFetchBudget?: number;
+  spatialAuthoredLightCount?: number;
+  spatialSelectedLightCount?: number;
+  spatialContributingLightCount?: number;
+  spatialPendingLightCount?: number;
+  spatialRetainedLightCount?: number;
+  spatialFadingLightCount?: number;
+  spatialCulledLightCount?: number;
+  spatialDroppedLightCount?: number;
+  spatialDisabledLightCount?: number;
+
 
   wasmLinearMemoryBytes?: number;
   /** Completed GPU query time from a previous renderer frame. */
@@ -37,6 +50,9 @@ export interface DebugOverlayMetrics {
   lightingDrawCalls?: number;
   normalDrawCalls?: number;
   pointLightCount?: number;
+  pointShadowGeometryUploadBytes?: number;
+  pointShadowGeometryVertexCount?: number;
+  pointShadowGeometryCacheHit?: boolean;
   tileOccluderCount?: number;
   shadowDrawCalls?: number;
   shadowCasterCount?: number;
@@ -102,8 +118,13 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count", optional: true },
+  { id: "spatialBloomTextureBytes", label: "Bloom targets", unit: "bytes", optional: true },
+  { id: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count", optional: true },
   { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
   { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
+  { id: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", optional: true },
+  { id: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", optional: true },
   { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
   { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },
   { id: "shadowDrawCalls", label: "shadow draws", unit: "count", optional: true },
@@ -234,10 +255,15 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.textureSwitchCount !== undefined) {
     lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
   }
+  if (metrics.spatialBloomDrawCalls !== undefined) lines.push(row("spatialBloomDrawCalls", metrics.spatialBloomDrawCalls));
+  if (metrics.spatialBloomTextureBytes !== undefined) lines.push(row("spatialBloomTextureBytes", metrics.spatialBloomTextureBytes));
+  if (metrics.spatialBloomTexelFetchBudget !== undefined) lines.push(row("spatialBloomTexelFetchBudget", metrics.spatialBloomTexelFetchBudget));
   if (metrics.normalDrawCalls !== undefined) lines.push(row("normalDrawCalls", metrics.normalDrawCalls));
   if (metrics.lightingDrawCalls !== undefined) {
     lines.push(row("lightingDrawCalls", metrics.lightingDrawCalls));
   }
+  if (metrics.pointShadowGeometryUploadBytes !== undefined) lines.push(row("pointShadowGeometryUploadBytes", metrics.pointShadowGeometryUploadBytes));
+  if (metrics.pointShadowGeometryVertexCount !== undefined) lines.push(row("pointShadowGeometryVertexCount", metrics.pointShadowGeometryVertexCount));
   if (metrics.pointLightCount !== undefined) {
     lines.push(row("pointLightCount", metrics.pointLightCount));
   }

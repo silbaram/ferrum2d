@@ -1,3 +1,10 @@
+import { validateLightingCookies } from "./lightingCookie.js";
+import { flatHdrOptions, validateFlatHdrTransition, type ResolvedFlatHdrOptions } from "./flatHdr.js";
+import { WebGL2HdrPass } from "./webgl2HdrPass.js";
+import { srgbToLinear } from "./colorManagement.js";
+import { setSpriteBlend } from "./webgl2Blend.js";
+import { WebGL2FlatLitPass, requireWebGL2FlatLit } from "./webgl2FlatLitPass.js";
+import { validateFlatLitCommands, validateFlatLitMaterial, validateFlatLitAsset, type FlatLightingAsset } from "./flatLit.js";
 import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
 import { WebGL2SpatialPass } from "./webgl2SpatialPass.js";
 import { prepareWebGL2Renderer } from "./webgl2ShaderPrograms";
@@ -79,6 +86,17 @@ export class WebGL2Renderer implements Renderer {
   readonly supportsSpatialScene = true;
   readonly supportsGroundShadowVolumes = true;
   private spatialPass?: WebGL2SpatialPass;
+  private flatLit?: WebGL2FlatLitPass;
+  private flatLitHdr?: WebGL2FlatLitPass;
+  private flatLitSurface?:WebGL2FlatLitPass;
+  private flatLitHdrSurface?:WebGL2FlatLitPass;
+  private flatPassesUsed=0;
+  private flatMasksUsed=0;
+  private readonly flatSurfaceState={active:false,masksActive:false};
+  private hdrPass?: WebGL2HdrPass;
+  private hdrActive?: ResolvedFlatHdrOptions;
+  private hdrDrawCalls = 0;
+  private hdrDebugLines?: PhysicsDebugLineBatch;
   private frameHasSpatial = false;
   private modelPreparationRevision = 0;
   private frameModelPreparationRevision = 0;
@@ -103,6 +121,7 @@ export class WebGL2Renderer implements Renderer {
   private spriteNormals?:WebGL2SpriteNormals;
   private readonly fullscreenPass: WebGL2FullscreenPass;
   private currentStats: RendererStats = emptyRendererStats();
+  private readonly disabledLightingScene=createResolvedLightingScene();
   private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
   private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
   private readonly lightingResolveCache = createLightingSceneResolveCache();
@@ -138,6 +157,7 @@ export class WebGL2Renderer implements Renderer {
     this.sunShadowConfigured=!!options.lighting&&options.lighting.directionalLight!==undefined;
     this.spriteMaterial = resolveSpriteMaterialPreset(options.spriteMaterial);
     this.postProcessPasses = resolvePostProcessPasses(options.postProcess);
+    if (this.lightingScene.profile === "lit") { requireWebGL2FlatLit(gl); validateFlatLitMaterial(this.spriteMaterial); }
     const cleanup: Array<() => void> = [];
     try {
       this.textureManager = new TextureManager(gl, this.colorManagement, options);
@@ -376,6 +396,7 @@ export class WebGL2Renderer implements Renderer {
     const spatialEffects=this.spatialPass?.environmentResourceStats()??{textureCount:0,renderTargetCount:0,textureBytes:0};
     renderTargetCount+=spatialEffects.renderTargetCount;
     targetBytes+=spatialEffects.textureBytes;
+    for (const owner of [this.flatLit, this.flatLitHdr,this.flatLitSurface,this.flatLitHdrSurface, this.hdrPass]) { const flat=owner?.resourceStats(); renderTargetCount+=flat?.renderTargetCount??0; targetBytes+=flat?.textureBytes??0; }
     const normals=this.spriteNormals?.resourceStats();renderTargetCount+=normals?.renderTargetCount??0;targetBytes+=normals?.textureBytes??0;
     const sunlight=this.sunShadowMask?.resourceStats();renderTargetCount+=sunlight?.renderTargetCount??0;targetBytes+=sunlight?.textureBytes??0;
     for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB, this.presentationTarget]) {
@@ -389,7 +410,7 @@ export class WebGL2Renderer implements Renderer {
     let bufferCount = 0;
     let programCount = 0;
     let bufferBytes = 0;
-    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass,this.spriteNormals,this.sunShadowMask]) {
+    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass,this.spriteNormals,this.sunShadowMask,this.flatLit,this.flatLitHdr,this.flatLitSurface,this.flatLitHdrSurface,this.hdrPass,this.hdrDebugLines]) {
       if (!owner) continue;
       const stats = owner.resourceStats();
       bufferCount += stats.bufferCount;
@@ -408,6 +429,8 @@ export class WebGL2Renderer implements Renderer {
 
   stats(): RendererStats {
     const stats = { ...this.currentStats };
+    stats.textureBindCount += this.hdrDrawCalls;
+    stats.drawCalls += this.hdrDrawCalls; stats.postProcessDrawCalls += this.hdrDrawCalls; stats.postProcessPassCount += this.hdrDrawCalls;
     stats.drawCalls += this.offscreenStats.drawCalls;
     stats.batchCount += this.offscreenStats.batchCount;
     stats.spriteCount += this.offscreenStats.spriteCount;
@@ -420,14 +443,39 @@ export class WebGL2Renderer implements Renderer {
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
+    if (nextLightingScene.profile === "lit") { requireWebGL2FlatLit(this.gl); validateFlatLitMaterial(this.spriteMaterial); }
+    validateLightingCookies(nextLightingScene, this.textureSource);
+    const nextHdr = flatHdrOptions(nextLightingScene);
+    if (this.frameStarted) validateFlatHdrTransition(nextHdr, this.hdrActive, this.frameHasDrawnScene);
+    if (!nextHdr) this.resolveHdr();
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
+    if(nextLightingScene.profile==="lit")this.lightingPass.clearTargets();
     this.sunShadowConfigured = !!scene && scene.directionalLight !== undefined;
+    if (nextLightingScene.profile !== "lit" || !nextLightingScene.enabled) { this.clearFlatTargets(); }
+    if (!nextHdr) { this.hdrPass?.release(); this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets(); }
+  }
+
+  private clearFlatTargets():void{this.flatLit?.clearTargets();this.flatLitSurface?.clearTargets();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
+  private pruneFlatTargets():void{
+    if(!(this.flatMasksUsed&1))this.flatLit?.clearReceiverMasks();if(!(this.flatMasksUsed&2))this.flatLitSurface?.clearReceiverMasks();
+    if(!(this.flatMasksUsed&4))this.flatLitHdr?.clearReceiverMasks();if(!(this.flatMasksUsed&8))this.flatLitHdrSurface?.clearReceiverMasks();
+    if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
+    if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
+  }
+  flatLightingCookieVersion(): number { this.assertAlive(); return 1; }
+  flatLightingPolygonVersion(): number { this.assertAlive(); return 1; }
+  prepareFlatLighting(scene: LightingScene2D, assets: readonly FlatLightingAsset[]): void {
+    this.assertAlive(); const resolved = resolveLightingSceneInto(createResolvedLightingScene(), scene);
+    if(resolved.profile!=="lit") return; requireWebGL2FlatLit(this.gl); validateFlatLitMaterial(this.spriteMaterial);
+    validateLightingCookies(resolved, this.textureSource);
+    for(const asset of assets) validateFlatLitAsset(this.textureSource, asset, flatHdrOptions(resolved) !== undefined);
   }
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
     const resolved = resolveSpriteMaterialPreset(material);
+    if(this.lightingScene.profile==="lit") validateFlatLitMaterial(resolved);
     this.spriteBatch.prepareMaterial(resolved);
     this.spriteMaterial = resolved;
   }
@@ -460,6 +508,7 @@ export class WebGL2Renderer implements Renderer {
   setViewportZoom(zoom: number): void {
     this.assertAlive();
     if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
+    if (this.hdrActive) throw Error("Finish the Flat HDR world before changing viewport zoom");
     this.viewportZoom = zoom;
     this.resize();
   }
@@ -516,6 +565,7 @@ export class WebGL2Renderer implements Renderer {
 
   resize(): void {
     this.assertAlive();
+    if (this.hdrActive) throw Error("Finish the Flat HDR world before resizing");
     const dpr = window.devicePixelRatio || 1;
     this.logicalWidth = (this.pixelPerfect?.width ?? this.canvas.clientWidth) / this.viewportZoom;
     this.logicalHeight = (this.pixelPerfect?.height ?? this.canvas.clientHeight) / this.viewportZoom;
@@ -549,6 +599,7 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
+    this.pruneFlatTargets();this.flatPassesUsed=0;this.flatMasksUsed=0;
     if (!this.frameHasSpatial) {
       this.spatialPass?.releaseEnvironment();
       // A cold commit between frames belongs to the upcoming packet, not the old flat frame.
@@ -556,6 +607,8 @@ export class WebGL2Renderer implements Renderer {
     }
     this.frameModelPreparationRevision = this.modelPreparationRevision;
     this.frameHasSpatial = false;
+    this.hdrActive = undefined; this.hdrDrawCalls = 0;
+    if (!flatHdrOptions(this.lightingScene)) { this.hdrPass?.release(); this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets(); }
     resetRendererStatsInto(this.currentStats);
     resetRendererStatsInto(this.offscreenStats);
     this.frameStarted = true;
@@ -586,10 +639,29 @@ export class WebGL2Renderer implements Renderer {
   ): RendererStats {
     this.assertAlive();
     const commands = second ?? (first as RenderCommandBufferView);
+    const receivers=validateFlatLitCommands(commands,this.lightingScene,this.textureSource,this.spriteMaterial,this.flatSurfaceState);
+    const lit=this.lightingScene.profile==="lit";
+    if(second&&lit)throw Error("Lit composition requires texture-id batch rendering");
     const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     if (second && this.spriteMaterial.paletteSwap) throw new Error("paletteSwap requires texture-id renderCommands.");
     this.spriteBatch.validateMaterialTextures(this.textureSource,this.spriteMaterial,commands);
+    // Validate the entire packet before starting the optional HDR world.
+    if (commands.spatial && this.lightingScene.enabled) throw Error("Flat lighting cannot be combined with a spatial scene");
+    const hdr = flatHdrOptions(this.lightingScene);
+    if (hdr) validateFlatHdrTransition(hdr, this.hdrActive, this.frameHasDrawnScene);
+    let flat: WebGL2FlatLitPass | undefined;
+    if (lit) {
+      const surface=this.flatSurfaceState.active&&this.lightingScene.enabled;
+      flat = surface ? (hdr ? (this.flatLitHdrSurface??=new WebGL2FlatLitPass(this.gl,this.colorManagement==="linear-srgb",true,true)) : (this.flatLitSurface??=new WebGL2FlatLitPass(this.gl,this.colorManagement==="linear-srgb",false,true)))
+        : hdr ? (this.flatLitHdr ??= new WebGL2FlatLitPass(this.gl, this.colorManagement === "linear-srgb", true))
+        : (this.flatLit ??= new WebGL2FlatLitPass(this.gl, this.colorManagement === "linear-srgb"));
+      this.flatPassesUsed|=1<<((hdr?2:0)+(surface?1:0));
+      const masks=this.flatSurfaceState.masksActive&&this.lightingScene.enabled;if(masks)this.flatMasksUsed|=1<<((hdr?2:0)+(surface?1:0));
+      flat.prepareFrame(this.renderWidth(), this.renderHeight(), receivers && this.lightingScene.enabled,masks);
+
+    } else { this.clearFlatTargets(); }
     this.ensureCurrentFrameTarget();
+    if (hdr) this.beginHdr(hdr);
     if (commands.spatial && this.pixelPerfect) throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
     const mapped=spriteNormalsActive(commands);
     if(second&&mapped)throw Error("Sprite normal materials require texture-id batch rendering");
@@ -599,16 +671,16 @@ export class WebGL2Renderer implements Renderer {
     this.spriteBatch.pixelSnap = pixelSnap;
     const deferredSun = !commands.spatial && this.sunShadowConfigured;
     this.spriteBatch.skipGroundShadows = deferredSun;
-    const groundCasters=deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
+    const groundCasters=(!lit||receivers)&&deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
     const sunMaskStats=groundCasters>0
       ?(this.sunShadowMask??=new WebGL2SunShadowMask(this.gl)).draw(second?{texture:()=>first as WebGLTexture}:this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale):undefined;
     if(!sunMaskStats)this.sunShadowMask?.clearTarget();
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale,deferredSun):undefined;
+    const normalStats=!lit&&mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGL2SpriteNormals(this.gl)).draw(this.textureSource,commands,this.renderWidth(),this.renderHeight(),this.logicalResolution,this.spriteMaterial,this.spriteScreenOffset,()=>this.bindFrameStartTarget(),pixelSnap,this.groundYScale,deferredSun):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
     const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
     if (commands.spatial) this.frameHasSpatial = true;
     const resolution = this.logicalResolution;
-    const batchStats = second
+    const batchStats = lit ? flat!.drawColor(this.textureSource,commands,resolution,this.spriteMaterial,this.spriteScreenOffset,pixelSnap,this.groundYScale,deferredSun) : second
       ? this.spriteBatch.drawBatch(
         first as WebGLTexture,
         second,
@@ -623,6 +695,11 @@ export class WebGL2Renderer implements Renderer {
         this.spriteMaterial,
         this.spriteScreenOffset,
       );
+    const previousBloom0 = this.currentStats.spatialBloomDrawCalls ?? 0;
+    const previousBloom1 = this.currentStats.spatialBloomTextureBytes ?? 0;
+    const previousBloom2 = this.currentStats.spatialBloomTexelFetchBudget ?? 0;
+    const previousPointShadowBytes = this.currentStats.pointShadowGeometryUploadBytes ?? 0;
+    const previousPointShadowVertices = this.currentStats.pointShadowGeometryVertexCount ?? 0;
     writeRendererStatsForCommandsInto(
       this.currentStats,
       commands,
@@ -640,7 +717,12 @@ export class WebGL2Renderer implements Renderer {
       this.currentStats.spatial = spatialStats;
     }
     this.lightingTarget.width=this.renderWidth();this.lightingTarget.height=this.renderHeight();
-    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget,sunMaskStats?.texture);
+    const flatStats=lit&&receivers&&this.lightingScene.enabled ? flat!.drawLighting(this.textureSource,commands,this.lightingScene,resolution,this.spriteMaterial,this.spriteScreenOffset,pixelSnap,this.groundYScale,deferredSun,()=>this.bindFrameStartTarget(),sunMaskStats?.texture):undefined;
+    if(flatStats){this.currentStats.normalDrawCalls=flatStats.normalDrawCalls;this.currentStats.drawCalls+=flatStats.normalDrawCalls;this.currentStats.batchCount+=flatStats.normalDrawCalls;this.currentStats.textureBindCount+=flatStats.normalDrawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.normalSwitches;}
+    if(flatStats?.receiverMasks){const mask=flatStats.receiverMasks;this.currentStats.drawCalls+=mask.drawCalls;this.currentStats.batchCount+=mask.drawCalls;this.currentStats.textureBindCount+=mask.drawCalls+1;this.currentStats.textureSwitchCount+=mask.textureSwitchCount;}
+    const lightingStats = flatStats?.lighting ?? this.lightingPass.draw(lit?this.disabledLightingScene:this.lightingScene, resolution,normalStats?this.spriteNormals!.buffers:undefined,this.lightingTarget,sunMaskStats?.texture);
+    if (flatStats?.lighting.pointLightCount) for (const light of this.lightingScene.pointLights)
+      if (light.cookie && light.intensity > 0) this.currentStats.textureBindCount++;
     addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,
@@ -649,6 +731,12 @@ export class WebGL2Renderer implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    this.currentStats.pointShadowGeometryUploadBytes = previousPointShadowBytes + (lightingStats.shadowGeometryUploadBytes ?? 0);
+    this.currentStats.pointShadowGeometryVertexCount = previousPointShadowVertices + (lightingStats.shadowGeometryVertexCount ?? 0);
+    this.currentStats.pointShadowGeometryCacheHit = this.currentStats.pointShadowGeometryVertexCount > 0 && this.currentStats.pointShadowGeometryUploadBytes === 0;
+    this.currentStats.spatialBloomDrawCalls = previousBloom0 + (spatialStats?.bloomDrawCalls ?? 0);
+    this.currentStats.spatialBloomTextureBytes = Math.max(previousBloom1, spatialStats?.bloomTextureBytes ?? 0);
+    this.currentStats.spatialBloomTexelFetchBudget = previousBloom2 + (spatialStats?.bloomTexelFetchBudget ?? 0);
     if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     this.frameHasDrawnScene = true;
     return this.stats();
@@ -660,7 +748,10 @@ export class WebGL2Renderer implements Renderer {
   ): RendererStats {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
-    const drawCalls = this.physicsDebugLineBatch.draw(
+    const hdr = flatHdrOptions(this.lightingScene);
+    if (hdr && lines.lineCount > 0) { validateFlatHdrTransition(hdr, this.hdrActive, this.frameHasDrawnScene); this.beginHdr(hdr); }
+    const batch = this.hdrActive ? (this.hdrDebugLines ??= new PhysicsDebugLineBatch(this.gl, true)) : this.physicsDebugLineBatch;
+    const drawCalls = batch.draw(
       lines,
       this.logicalResolution,
       { ...camera, groundYScale: this.groundYScale },
@@ -678,6 +769,7 @@ export class WebGL2Renderer implements Renderer {
 
   renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
     this.assertAlive();
+    this.pruneFlatTargets();
     if (!this.frameHasSpatial) {
       this.spatialPass?.releaseEnvironment();
       if (this.frameModelPreparationRevision === this.modelPreparationRevision) this.spatialPass?.releaseModels();
@@ -685,6 +777,7 @@ export class WebGL2Renderer implements Renderer {
     if (postProcess !== undefined) {
       this.setPostProcess(postProcess);
     }
+    this.resolveHdr();
     if (this.pixelPerfect) return this.presentPixelPerfect();
     if (this.postProcessPasses.length === 0) {
       let copyDrawCalls = 0;
@@ -736,6 +829,7 @@ export class WebGL2Renderer implements Renderer {
     }
     this.destroyed = true;
     this.spatialPass?.destroy();
+    this.flatLit?.destroy(); this.flatLitHdr?.destroy();this.flatLitSurface?.destroy();this.flatLitHdrSurface?.destroy(); this.hdrPass?.destroy(); this.hdrDebugLines?.destroy();
     this.gpuTimer?.destroy();
     this.spriteBatch.destroy();
     this.sunShadowMask?.destroy();
@@ -756,6 +850,11 @@ export class WebGL2Renderer implements Renderer {
   }
 
   private bindFrameStartTarget(): void {
+    if (this.hdrActive) { this.hdrPass!.bind(); return; }
+    this.bindBaseFrameTarget();
+  }
+
+  private bindBaseFrameTarget(): void {
     if (!this.pixelPerfect && this.postProcessPasses.length === 0 && this.colorManagement === "legacy") {
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -766,6 +865,26 @@ export class WebGL2Renderer implements Renderer {
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target.framebuffer);
     this.gl.viewport(0, 0, this.renderWidth(), this.renderHeight());
     this.frameTargetMode = "postProcess";
+  }
+
+  private beginHdr(options: ResolvedFlatHdrOptions): void {
+    if (this.hdrActive) { this.hdrPass!.bind(); return; }
+    this.hdrPass ??= new WebGL2HdrPass(this.gl);
+    this.hdrPass.prepare(this.renderWidth(), this.renderHeight());
+    this.hdrActive = { ...options }; this.hdrPass.bind();
+    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1];
+    const rgb = this.colorManagement === "legacy" ? clear.slice(0, 3).map(srgbToLinear) : clear;
+    this.gl.clearColor(rgb[0]! * clear[3], rgb[1]! * clear[3], rgb[2]! * clear[3], clear[3]);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT); setSpriteBlend(this.gl, true);
+  }
+
+  private resolveHdr(): void {
+    if (!this.hdrActive) return;
+    const options = this.hdrActive;
+    this.bindBaseFrameTarget();
+    this.hdrPass!.resolve(options, this.colorManagement === "legacy");
+    this.hdrActive = undefined; this.hdrDrawCalls++;
+    setSpriteBlend(this.gl, this.colorManagement === "linear-srgb");
   }
 
   private ensureCurrentFrameTarget(): void {

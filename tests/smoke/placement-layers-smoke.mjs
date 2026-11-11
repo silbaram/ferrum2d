@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { showPlacementDock, showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { closeSmokePage } from "./browser-page-cleanup.mjs";
 
 /** Runs on a separate page so the standard viewer/save fixtures retain their baseline. */
 export async function smokePlacementLayers(parent, timeoutMs) {
@@ -8,6 +9,7 @@ export async function smokePlacementLayers(parent, timeoutMs) {
   await mkdir(output, { recursive: true });
   const dpr = await parent.evaluate(() => devicePixelRatio);
   const page = await parent.context().browser().newPage({ viewport: parent.viewportSize() ?? { width: 1280, height: 900 }, deviceScaleFactor: dpr }), errors = [];
+  page.setDefaultTimeout(timeoutMs);
   page.on("pageerror", error => errors.push(error.message));
   const wait = (predicate, arg) => page.waitForFunction(predicate, arg, { timeout: timeoutMs });
   const paint = () => page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
@@ -19,6 +21,7 @@ export async function smokePlacementLayers(parent, timeoutMs) {
     patch: window.ferrumPlacementViewerExportPatch() ?? null,
     commands: window.ferrumPlacementViewerRuntimeFrame.renderCommandCount,
   }));
+  let failure;
   try {
     await page.goto(new URL("?scene=garden", parent.url()).href, { waitUntil: "networkidle" });
     await wait(() => window.ferrumPlacementViewerRuntimeFrame?.entityCount === 465);
@@ -187,5 +190,6 @@ export async function smokePlacementLayers(parent, timeoutMs) {
     assert.deepEqual(errors, []);
     await writeFile(`${output}/checks.json`, JSON.stringify({ ok: true, dpr, nativeCommands: baseline.commands,
       hiddenCommands: hidden.commands, checks: ["effective layers", "failed policy restores selection and visibility", "real framebuffer changes", "hidden picking", "game restores rendering", "solo restores visibility", "solo follows layer edits, undo and playback", "removed solo layer restores visibility", "2D/HD-2D filter restoration", "individual locks survive", "local alias", "move and drag order undo", "sorting preserves components", "document isolation and restore", "Korean labels", "alias reload"] }, null, 2));
-  } finally { await page.close(); }
+  } catch (error) { failure = error; throw error; }
+  finally { await closeSmokePage(page, timeoutMs, failure); }
 }

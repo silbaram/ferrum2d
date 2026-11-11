@@ -236,6 +236,21 @@ fn normal_revision_identity_is_protected_without_a_texture_or_file_reference() {
 }
 
 #[test]
+fn surface_numeric_maps_protect_cleanup_candidates() {
+    for map in ["emissionTexture", "specularTexture", "roughnessTexture"] {
+        let project = Project::new();
+        project.pixel(19);
+        let path = project.root.join("public/surface.json");
+        fs::write(path, format!(r#"{{"surface":{{"{map}":7}}}}"#)).unwrap();
+        let report = inspect(&project.root, &project.writes).unwrap();
+        assert!(report.revisions.iter().all(|revision| revision
+            .references
+            .iter()
+            .any(|reference| reference.contains("unresolved numeric texture"))));
+    }
+}
+
+#[test]
 fn reducing_a_large_compact_catalog_never_publishes_an_unreadable_pretty_catalog() {
     let project = Project::new();
     let id = project.pixel(23);

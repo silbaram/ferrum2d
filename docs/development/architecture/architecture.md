@@ -2,6 +2,10 @@
 
 Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeScript platform layer가 브라우저 API를 다루며, renderer가 Rust에서 만든 command buffer를 소비하는 2D 웹 게임 엔진이다.
 
+Spatial의 선택형 environment v6 합성은 [조명 성분·효과 합성 계약](spatial-lighting-composition.md)을 따른다.
+Rust는 profile과 환경 원본·camera/depth 기하를 소유하고, TS는 선택형 indirect MRT·AO/fog resolve·DOF/Bloom target과 pass를 관리한다.
+기존 환경 v1..v6와 renderer 기본값은 유지하며 entity별 Wasm 왕복을 추가하지 않는다.
+
 
 ## Rust와 TypeScript의 상태 소유권
 
@@ -52,16 +56,25 @@ Wasm typed-array view는 native 메모리를 빌린 값이다. 기본 내장 GPU
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
-Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512) numeric buffer를
-GLSL/WGSL이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
+Flat 조명의 현행 overlay 기준선과 새 opt-in lit의 선행 설계는
+[Flat 조명 합성 계약](flat-lighting-composition.md)에서 구분한다. 실제 legacy 양 backend/DPR 픽셀과
+reference-only 수치 벡터를 분리하며, 새 receiver 분류·sidecar와 lit 렌더 경로는 M2-a의 후속 구현이다.
+
+Spatial 조명은 Rust가 검증·저장하는 environment v1(80)/v2(112)/v3(128)/v4(512)/v5(528)/v6(544)/v7(576) numeric buffer를
+플랫폼이 소비한다. v3는 선택형 반구광과 point/sun receiver normal bias를 추가하며 기존 render
 command/vertex/model ABI와 레거시 buffer는 유지한다. shading normal은 반구광에, geometric normal은
 그림자 조회 보정에 사용한다. 물리·caster geometry·shadow depth cache identity는 변경하지 않는다.
-WebGPU는 기존 1,024-byte uniform stride 안의 padding을 사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+WebGPU는 기존 환경 uniform 배치를 재사용하며 반구광 때문에 GPU texture/pass를 늘리지 않는다.
+
+v5는 선택형 `directional.shadows.center`를 512..515의 flag/native XYZ로 명시적으로 전달한다.
+Rust는 고정 월드 기준점 또는 기존 camera target으로 sun matrix를 계산한다. TS는 GPU uniform에
+공통 prefix 512개만 복사하며 이후 카메라 슬롯과 matrix 배치를 보존한다. 고정 기준점은 pan/zoom/orbit에
+독립적이고 기존 유한 extent/distance·texel snapping·light culling·캐시를 사용한다. 추가 target/pass나 entity별 Wasm 호출은 없다.
 
 태양 shadow matrix의 기준축과 texel snapping은 Rust가 계산하고 양 backend가 같은 bulk matrix를 소비한다.
 기준축은 +elevation에서 태양 방향으로의 최소 회전으로 정하며, 고도 임계값에 따른 reference-up 교체나
 이전 frame의 축 상태를 두지 않는다. 정확한 반대 극점은 고정축을 사용한다. camera orbit과 고도 변화의
-native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. render/environment ABI와 GPU pass 수는 바뀌지 않는다.
+native 회귀 및 WebGL2/WebGPU 수신면 픽셀 검사를 함께 유지한다. 기준축 안정화 자체는 render/environment ABI와 GPU pass 수를 바꾸지 않는다.
 
 태양 shadow sampling은 기하 노멀과 native 직교 basis로 수신 평면의 light-UV 깊이 기울기를 구한다.
 각 샘플 texel 중심으로 비교 깊이를 옮겨 PCF의 넓은 footprint 때문에 접촉 그림자가 지워지는 것을 줄인다.
@@ -737,6 +750,7 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 | 영역 | 코드 기준 |
 | --- | --- |
 | Data Scene runtime target과 document apply | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
+| 선택형 animation/LOD authoring handoff | `packages/ferrum-web/src/dataSceneAuthoringContinuity.ts`, `crates/ferrum-core/src/engine/data_scene_authoring_continuity.rs` |
 | Behavior binding·preflight·낮은 빈도 command apply | `packages/ferrum-web/src/gameplayAuthoring.ts` |
 | Instance handle registry·역방향 조회·stale 제거 | `packages/ferrum-web/src/sceneInstanceHandles.ts` |
 | Authoring 타입·기본 검증·runtime ID 해석 | `packages/ferrum-web/src/gameplayAuthoringTypes.ts`, `gameplayAuthoringValidation.ts`, `gameplayRuntimeIds.ts` |
@@ -746,6 +760,13 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 `gameplayAuthoring.ts`는 기존 공개 이름을 재수출한다. registry는 command 실행에 의존하지 않으며 타입 모듈과의 참조는 type-only다. action·prefab·timer의 명시 ID 우선순위와 오류 경로는 `gameplayRuntimeIds.ts`에서 공통 처리한다. action·prefab·timer ID는 namespace와 직접 command 모두에서 양의 uint32, entity handle의 index/generation은 0을 포함한 uint32로 검증해 Wasm 변환 시 다른 ID로 wrapping되는 입력을 차단한다. 이름 기반 ID와 record형 entity handle은 own property만 조회하며 `__proto__`를 포함한 명시 이름은 일반 data property로 보존한다. 새 내부 모듈을 public subpath로 추가하지 않는다.
 
 `applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope와 optional variable declaration을 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. binding/component/variable runtime preflight는 runtime activation 전에 끝내고, activation 뒤 Rust variable slot을 먼저 동기화한 다음 guarded recipe/FSM command를 설치한다. variable 동기화 이후 spawn 또는 recipe apply가 실패하면 이전 declaration/slot/current value를 복원하므로 변수 저장소의 트랜잭션 경계를 유지한다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행하고, full apply는 zero-instance 문서도 validation 성공 뒤 실제 Data Scene 전환으로 활성화한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
+
+비교 preview의 선택 `preserveAnimationAndLod`는 같은 authored ID와 호환 구성만 TS에서 맞춘다.
+Rust는 generation-safe source handles의 playback/LOD 상태를 bounded single-use token에 보관하고,
+새 epoch의 target handles를 모두 검증한 뒤 호환되는 clip·LOD policy에만 적용한다.
+elapsed/flip/선택 LOD를 JS 시뮬레이션 상태로 복제하거나 per-entity frame 호출을 추가하지 않는다.
+임시 Arc/LOD 참조는 실패·성공 후 해제하며 기본 full apply·영속 game-state 형식·render ABI는 유지한다.
+이는 physics/FSM/경로 또는 scene pause 전체의 보존이 아니다. 상세 조건은 [authoring 계약](../../engine/data-scene-authoring.md)을 따른다.
 
 Data Scene flow는 임의 상태 graph 대신 Rust-owned `GameState`의 stable numeric code를 사용한다.
 `Playing(1)`, `Paused(3)`, `LevelComplete(4)`가 Data Scene 유효 상태이며 `Paused`와
@@ -1032,7 +1053,7 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 v1/v2·shadow matrix를 960-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid를2,608-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
@@ -1118,7 +1139,7 @@ material은 불변 asset/contentId에 속하므로 native pose ABI·instance별 
 `KHR_texture_transform`을 검사한다. 이미지 decode 전 f32 행렬/UV 중간 overflow를 검증하고 identity는 생략한다.
 base/normal/emissive별 행렬은 CPU primitive에 보관하며 asset.byteLength와 재질 batch identity에 포함한다.
 WebGL2는 main/shadow draw에 공통 base 행렬과 main 전용 normal/emissive 행렬을 전달한다.
-WebGPU는 `webgpuSpatialMaterial.ts`의 144-byte material uniform(기존 48-byte 색/옵션 + 3×32-byte UV affine rows)을
+WebGPU는 `webgpuSpatialMaterial.ts`의 272-byte private material uniform(기존 144-byte prefix + 32-byte specular 계수 + 3×32-byte 추가 UV rows)을
 color/shadow WGSL에서 공유한다. upload는 cold resource 준비에만 발생하고 warm frame 할당은 추가하지 않는다.
 CPU alpha picking도 UV 보간 후 base 행렬을 적용한다. 정점의 UV0·exported tangent와 native ABI는 그대로다.
 GLB의 image 준비는 `spatialModelImage.ts`의 격리된 임시 WebGL2 readback을 사용한다. Canvas 2D의
@@ -1132,9 +1153,16 @@ cold metadata bit 4와 native capability v1을 사용하고 TS authoring은 씬 
 frame v2·44-byte 정점·80-byte model instance 및 저장 버전은 유지한다. GLB 계층은 static bake,
 assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명시적 world-unit 데이터다.
 모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
-OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
+기본은 OPAQUE/MASK diffuse 변환이며 선택 `specular` profile은 비금속 직접광 GGX만 추가한다.
+TS cold loader가 계수·map 채널·UV·금속 거절을 검사하고 profile별 hash/cache key를 구분한다.
+Rust의 model pose/visibility·80-byte model instance·15-float sprite ABI와 저장 버전은 유지한다.
+WebGL2의 roughness/specular/specularColor는 unit 5/6/7이며 원래 texture/sampler binding을 복구한다.
+WebGPU는 같은 이미지의 color/data role별 자원을 공유하고 6개 material sampler를 독립적으로 유지한다.
+map upload·uniform은 cold 준비에만 발생한다. diffuse는 추가 map fetch/BRDF를 건너뛰며 새 pass/target이 없다.
+직접광 반사와 diffuse를 합친 뒤 emission/fog를 적용하고, separated AO의 indirect MRT에는 diffuse 환경광만 기록한다.
+BLEND·전체 glTF PBR·IBL, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
-선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512를 사용한다.
+선택 environment는 기존 v1 numeric80을 보존하고 품질 설정에 v2 numeric112, 반구광·normalBias에 v3 numeric128, 광원 선택/cone/Bloom/AO에 v4 numeric512, 선택형 고정 sun center에 v5 numeric528을 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
 소유한다. source camera/physics pose는 보존하고 직교 표시 camera만 opt-in pixel snap을 적용한다.
 `spatial_scene/shadows.rs`의 repr(C) 16-byte 범위는 point cube face 0..5와 sun face 6을 구분한다.
@@ -1181,7 +1209,12 @@ TS는 world geometry를 재계산하지 않고 같은 camera로 기존 spatial s
 `LINES` 1 draw를 제출한다. depth test/가려진 선 표시 모드 모두 depth write는 false이며 상태를 복구한다.
 debugLineCount/debugDrawCalls/debugUploadBytes는 triangle/texture batch와 분리하고 전체 draw/upload에 합산한다.
 전체 configure/reset은 debug 설정을 초기화하며 skip-render/restore는 stale frame 선분을 제거한다.
-diagnostic 설정은 authoring/progress에 저장하지 않는다. collider footprint/contact 공간 gizmo는 별도 후속이다.
+
+선택 `sunShadowCoverage`는 `spatial_scene/debug/sun_coverage.rs`가 실제 선택된 sun matrix를 역변환하고
+유한 light volume/내부 fade box의 높이 0 평면 교선을 계산한다. TS는 기존 debug v1 선분을 양 GPU로 제출할 뿐
+그림자 범위를 재계산하거나 자동 확대하지 않는다. 단독 활성화는 최대 24 vertices를 예약하고 일반 physics 진단의
+32,768-vertex 예약을 요구하지 않는다. 진단은 저장·render ABI를 바꾸지 않는다.
+diagnostic 설정은 authoring/progress에 저장하지 않는다. collider/contact 확장은 아래 공간 physics debug 경계를 따른다.
 `spatial-debug-browser-fixture.mjs`는 실제 line/depth/upload 호출, occlusion/overlay 픽셀, camera/물리 높이
 anchor, 잘못된 extension의 draw 전 거절, disable 뒤 원래 화면과 GPU 자원 수명을 검사한다.
 
@@ -1666,6 +1699,34 @@ Authoring 뷰어의 광원 gizmo는 위치 작성 전용 DOM overlay이며 nativ
 광원 연결의 정수 handle/generation은 cold configure에서 씬 교체 전에 확인하여 stale handle 실패가 기존 씬을 바꾸지 않게 한다.
 `lightBindings`와 환경은 scene-wide patch/Undo/저장 경로를 공유하고 기존 v1/v2/v3 환경 입력을 유지한다.
 
+M5의 native 광원 전환 기반은 내부 environment v8 numeric580을 사용한다. 기존 v7의565..575
+예약0을 유지하고576..579에 opt-in enabled/hysteresis/fadeSeconds/resetDistance를 추가한다.
+Rust가 simulation step마다 최대4개의 source/pending/weight/phase 슬롯을 갱신하며 render-only
+재생성은 이력을 진행하거나 초기화하지 않는다. 선택은 simulation pose, 최종 제출 위치는 render
+interpolation pose를 사용한다. 단일 point shadow 소유 광원은 기존처럼 첫 슬롯에 고정한다.
+활성 v8 정책만 RGB 최대 채널로 intensity 점수를 가중하고 RGB0/direct mask0/반경 AABB frustum 밖을
+일반 후보에서 제외한다. 기존 conservative camera clip-plane 검사를 재사용하므로 경계/near/eye 교차를 유지한다.
+simulation은 첫 render 전에도 `presented_camera`를 계산하여 pixelArt 비율·snap을 emission과 맞춘다.
+제외 사유는 기존 diagnostic7이며 pinned shadow owner는 예약을 유지한 채 intensity0으로 제출한다.
+legacy/disabled의 거리 순위와 source/cold history/ABI는 바꾸지 않는다. 정확한 receiver/spot 가시성은 추정하지 않는다.
+카메라 target 이동 임계값·명시적 reset·선택 입력/실제 binding 변경은 이력을 초기화하고,
+같은 source나 노출/후처리 변경은 전환을 보존한다. fadeSeconds는 교체 전후 각 leg의 길이다.
+
+내부 cold history v1은23개 f64이며 source 서명·step·camera anchor·4개 슬롯을 저장한다.
+normal/combat motion과 함께 복원할 때 모든 history 입력을 먼저 검증하고 matching source/pose
+transaction이 성공한 뒤 이력을 설치한다. SpatialScene을 지우는 복원에는 빈 이력만 허용한다.
+별도 diagnostic v1은 source/packed-slot/reason/flags/score/weight의24-byte `repr(C)` 벌크 행이다.
+public TypeScript는 `lighting.selection`, v8 frame reader와 borrowed diagnostic 검증·소유 복사,
+Data Scene state v11의 구조화된 history JSON을 연결한다. v9 spatial patch는 이전 버전의 새 필드 사용을 거절한다.
+구 core의 capability와 source/history preflight는 파괴적인 authoring apply 전에 수행하고 normal/combat 모두
+단일 native compound restore를 사용한다. 기존 v1..v7 source와 비활성 정책의 기존 save 버전은 유지한다.
+GPU ABI·target/pass 수는 바꾸지 않는다. 실제 양 backend 전환 픽셀과 profiler/report 연결은 전용 선택 행렬로 검증한다.
+
+선택 통계는 `writeSpatialLightSelectionStats`가 실제 제출 행·진단 사유만 집계하며 JS에서 순위나 fade를 계산하지 않는다.
+양 backend가 같은 helper를 사용하고 `RuntimeFrameRenderer`가9개 count를 overlay/profiler·frame trace로 전달한다.
+구 policy의 없는 사유를0으로 채우지 않는다. paused update는 seed 전에 반환하여 reset history가 계속 uninitialized로 남고
+표시만 stateless preview를 사용한다. playing의 simulation 진입 때 현재 pose로 seed하므로 render build 횟수와 무관하다.
+
 ## WebGPU 복구와 전체 맵 작성 경계
 
 `webgpuRenderer.ts`는 stable renderer facade와 장치 수명·cold 복구를 소유하고,
@@ -1918,3 +1979,65 @@ Rust가 상태와 발생 조건을 소유한다. TS는 authoring validation·bul
 Runtime 지형 이동 revision은 렌더/탐색에 반영하고 authoring configuration
 revision과 분리한다. 이동 중 저장, 비시각 탑승자, combat 상태를 기존
 preflight→commit 순서에 포함한다. v2~v9 reader는 유지한다.
+
+Flat 2D의 opt-in lit은 Rust의 command-aligned receiver sidecar와 TS의 조도/색 합성을 분리한다.
+기존 command ABI와 overlay는 유지한다. [구조·비용·호환 계약](flat-lighting-composition.md)을 따른다.
+
+선택형 Flat HDR은 같은 lit command를 float16 world/albedo target에 합성하고 HUD 경계 또는 최종 표시에서
+노출·톤매핑을 한 번 수행한다. Rust ABI는 유지하며 플랫폼별 HDR pass가 target과 출력 셰이더를 소유한다.
+[HDR 구조·비용](flat-lighting-composition.md#선택형-flat-hdr-출력)을 따른다.
+
+
+WebGPU 전역 linear-sRGB는 raw/data view와 sRGB color view를 분리하고 sRGB 저장 형식의 선형 합성 target을 사용한다.
+Spatial·Flat HDR·HUD·전역 효과를 선형 공간에서 연결한 뒤 최종 표시에서 alpha를 풀어 변환하고 다시 premultiply한다.
+pixelPerfect는 같은 표시 변환을 확대 pass에 합친다. [색공간·비용 계약](../../engine/public-api/core.md#색-공간-관리)을 따른다.
+
+
+Flat Surface 재질은 별도40-byte native sidecar와 private24-float data staging으로 emission/specular/roughness를 전달한다.
+기존 sprite15/lighting8 ABI·world pose/정렬의 소유권을 유지하고 map별 batch·4MRT·bounded GGX·float emission 합성을
+플랫폼에서 수행한다. [Surface 구조와 수명](flat-lighting-composition.md#선택형-flat-surface)을 따른다.
+
+
+독립 light/shadow 수신 mask의 Flat·Spatial SDK·GPU·authoring 경로를 구현했다.
+별도 `SpriteLightMasks` v1은8-byte `repr(C)`의 `[lightMask:u32, shadowMask:u32]`이고 각 값은0..255,
+기본값은255/255다. custom mask가 없으면 정렬 sidecar 길이0이며 생성 command의 간격은 기본값으로 채운다.
+기존 sprite15/lighting8/Surface40 ABI는 유지한다. 내부 cold receiver setter v2는
+`[id,generation,mode,cutoffBits,lightMask,shadowMask]`를 전체 사전 검사 후 원자적으로 적용한다.
+custom mask는 opaque/cutout receiver만 허용한다. 기존 setter는 mask를 기본값으로 되돌리고,
+unlit 해제는 Surface도 함께 해제한다. World/prototype/snapshot과 despawn 재사용 수명은 Rust가 소유한다.
+Flat facade·authoring/저장과 GPU 합성은 [수신 mask 구조](flat-lighting-composition.md#독립-수신-mask)를 따른다.
+
+Spatial은 원자적 native 설정·별도 출력 stream과 TS/schema·authoring/저장·양 backend shader를 연결한다. 별도 v1 receiver stream은 같은8-byte light/shadow pair를 쓰며,
+지형은 전체 surface 순서, billboard와 model은 실제 출력 순서에 맞춘다. 기본값만 있으면 stream 길이0이고,
+생성 glyph/particle 간격은255/255로 채운다. 기존 material8-byte·model80-byte ABI v1과 model reserved0은 유지한다.
+새 cold full-scene 설정은 receiver 배열까지 후보 Scene에서 검증한 뒤 원자적으로 교체한다.
+노출되지 않는 `render:false` surface에는 custom 수신 mask를 거절한다.
+광원 채널은 환경 v7 numeric576의544..564에 추가하고565..575는 예약0으로 유지한다.
+Rust의 source index로 선택된 point 채널을 함께 옮기고 OFF 원본과 표시 복사본을 분리한다.
+TS는 cold capability/strict reader/소유 복사·patch v8을 담당한다. WebGL2는 draw uniform,
+WebGPU는 기존 environment group의 동적 binding3으로 deduplicated256-byte receiver row를 선택한다.
+기본/OFF에는 테이블을 만들지 않으며 활성 이후에는 최대16 MiB까지 warm storage를 재사용한다.
+private channel tail 외에 native vertex/model/reserved를 재활용하지 않는다. shadow batch와 caster cache는 수신 mask로 나누지 않는다.
+환경 없는 GL draw의 cached depth는 pass 종료 시 detach하여 owner color target의 resize를 방해하지 않는다.
+[필드·수명·비용](../../engine/data-scene-spatial.md#spatial-독립-수신-mask-개발-소스)과
+[자동 회귀](../quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
+
+Flat lit 점광원의 선택형 cone은 플랫폼의 cold source 검증·view 변환·GPU 직접 성분 감쇠로 구현한다.
+동작 상태·Wasm ABI는 추가하지 않는다. WebGPU는 기존 legacy14와 분리한 lit18-float private row를 사용한다.
+[원뿔의 좌표·비용·기본값](flat-lighting-composition.md#선택형-flat-point-cone)과
+[공개 사용법](../../engine/data-scene-presentation.md#flat-2d-spot-조명-개발-소스)을 따른다.
+
+선택형 Flat cookie는 플랫폼의 명시적 data 자산과 점광원 직접 성분 샘플이다. 원본 이름과 표시용 숫자 ID를
+분리하며 cold capability·자산 검증 뒤 씬을 교체한다. Native ABI와 private legacy14/lit18 row는 유지한다.
+GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 target/pass는 없다.
+캐시·실패·복구와 추가 draw/8 KiB 테이블 비용은 [cookie 구조](flat-lighting-composition.md#선택형-flat-cookie)를 따른다.
+
+선택형 Flat polygon caster는 플랫폼의 bounded convex 도형이며 Native collider나 태양 caster와 별개다.
+기존 point max-union mask를 재사용하고 사각형 투영 경로·Native ABI·light row를 유지한다.
+정적 CPU/GPU geometry 재사용과 계속 필요한 mask draw를 구분한다. bounded GL 결합 업로드·WebGPU revision 캐시,
+실패 재시도와 프레임별 실제 작업 예산은 [shadow 캐시 구조](flat-lighting-composition.md#정적-point-shadow-gpu-업로드와-작업-예산)를 따른다.
+
+
+Spatial의 선택형 넓은 Bloom은 v9/584 source와 patch10/state12를 사용하며 기존 v1..v8 source를 유지한다.
+광원 선택 존재 bit와 post effect 설정은 분리해 품질 편집이 native 전환 이력을 초기화하지 않는다.
+별도 low-resolution chain과 오류/복구·pixel grid·작업 상한은 [Spatial 합성 구조](spatial-lighting-composition.md#넓은-bloom의-별도-저해상도-chain)를 따른다.

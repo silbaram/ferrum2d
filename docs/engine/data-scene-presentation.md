@@ -158,7 +158,7 @@ Data Scene reapply는 ground scale을 유지하고 follow/bounds를 해제한다
 render buffer의 frame metadata를 따라간다. 사용자 renderer는 `setGroundYScale`과 ground flag를
 지원해야 한다. capability가 없는 renderer에 1 이외의 값을 설정하면 오류다.
 
-WebGL2와 WebGPU legacy에서 지원한다. WebGPU의 `linear-srgb`는 기존과 같이 미지원이며
+WebGL2와 WebGPU의 legacy/linear-sRGB에서 지원한다. WebGPU 초기화 실패 시에는
 `createRenderer`의 명시적 WebGL2 fallback을 사용한다. 3D perspective, camera tilt/yaw, CSS 회전/skew,
 sprite normal map 또는 여러 층 사이의 shadow receiver 판정은 제공하지 않는다.
 물리 `elevation`은 이 flat projection에서 sprite 위치를 자동으로 상승시키지 않는다.
@@ -241,7 +241,7 @@ atlas는 원래 asset 소유자가 공유한다. 다른 sprite도 사용할 수 
 alpha가 전부 0인 **texture 내용**은 CPU에서 검사하지 않으므로 visible caster budget을 소비한다.
 과도한 overdraw는 maxCasters와 caster 크기로 제한하고 여러 atlas의 배치 전환 비용도 고려한다.
 
-WebGL2 legacy/linear-sRGB, WebGPU legacy 모두 같은 윤곽을 지원한다. WebGPU linear-sRGB는
+양 backend의 legacy/linear-sRGB 모두 같은 윤곽을 지원한다. 실제 WebGPU 초기화 실패는
 기존 `createRenderer` 정책대로 WebGL2 fallback을 선택한다. custom renderer나 이전 패키지를
 위해서는 authoring에서 `shape: "ellipse"` 또는 `"box"`를 명시한다. 자동 contour 추출/자동 도형
 대체는 하지 않는다. alpha가 없는 이미지나 primitive의 불투명 texture는 사각 윤곽이 된다.
@@ -359,6 +359,11 @@ alpha 0은 차폐를 해제한다. 기존의 장면 전체에 색을 덧칠하�
 이 변경은 flat 표면색에 조도를 곱하는 albedo 모델을 추가하지 않는다. 기존 additive·노멀 반응,
 지면 silhouette와 반투명 layer의 근사도 유지한다.
 
+따라서 검은 sprite나 빈 배경·투명 구멍도 후단 광원으로 밝아질 수 있다. 기본 `unlit` sprite 프리셋은
+이 전체 조명의 개별 수신 제외를 뜻하지 않는다. HUD를 제외하려면 조명 합성 뒤 `setLighting(false)`로
+별도 command를 제출하고, 두 제출이 끝난 뒤 `renderPostProcess()`로 최종 표시한다. 기존 legacy WebGL2 sRGB 이미지의 premultiplied 업로드와 WebGPU의 straight-alpha
+업로드 차이도 유지한다. 새 lit 수신 합성은 아직 미구현이며 [선행 설계·기준선](../development/architecture/flat-lighting-composition.md)에서 구분한다.
+
 WebGL2/WebGPU는 renderer마다 물리 타깃 크기의 R8 마스크 **한 장**을 재사용한다.
 DPR을 적용한 canvas 크기이며, pixelPerfect에서는 가상 framebuffer 크기다.
 기본 mip의 추정 비용은 `width × height` byte다. 매 광원마다 clear와 geometry union 후
@@ -390,3 +395,263 @@ GPU texture/buffer 생존 수, frame 중 upload/readback 부재, maxCasters와 d
 픽셀과 validation error를 검사한다. headless canvas swapchain과 분리한 offscreen target을 사용하며
 `--webgpu-only`는 이 두 사례만 실행한다. WebGL2 fallback을 성공으로 집계하지 않는다.
 소프트웨어 adapter의 수치는 실제 GPU 성능이나 native canvas presentation 검증을 대체하지 않는다.
+
+
+## Flat 2D 표면 조명 · 개발 소스
+
+기존 `LightingScene2D`는 전체 화면에 빛을 더하는 overlay다. `profile:"lit"`을 명시하면
+수광 sprite의 선형 원본 색에 조도를 곱한다. `ambientIrradiance`는 0..1의 선형 RGB이고 기본값은 `[1,1,1]`이다.
+기존 `ambient` RGBA overlay와 동시에 지정할 수 없다(정규화 저장값 `[0,0,0,0]`은 허용).
+
+```ts
+await renderer.loadTexture(1, "hero.png", { colorSpace: "srgb", alphaMode: "straight" });
+engine.configureSpriteLightingMaterials([{entity: hero, lighting:{mode:"cutout", alphaCutoff:0.5}}]);
+renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
+  pointLights:[{x:200,y:100,radius:240,height:120,color:[1,0.8,0.6,1],intensity:1}]});
+```
+
+- `components.visual`의 sprite 또는 `components.sprite`에 `lighting:{mode:"unlit"|"opaque"|"cutout",alphaCutoff?}`를 저장한다.
+  생략/unlit은 수광 제외, opaque는 source alpha를 1로 처리, cutout은 texture×tint alpha가 cutoff 미만이면 버린다. cutoff 기본0.5, 유한0..1 f32다.
+- normal은 선택이다. 생략하면 +Z 표면, 연결하면 기존 UV·flip·회전을 공유한 normal로 Lambert 응답을 계산한다.
+- `applyDataSceneAuthoringDocument(engine, document, {flatLightingPreparer:renderer})`로 사전 자산 검증을 전달한다.
+  lit snapshot restore에도 `dataSceneAuthoringApplyOptions.flatLightingPreparer`를 전달한다. 함수/renderer는 JSON에 저장하지 않는다.
+  선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
+- color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
+  normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
+- 점광원 최대32개, 점광원/태양 intensity 최대64다. HDR을 생략하면 기존 SDR clamp를 유지하며, 아래 선택형 HDR은 float 월드와 노출·톤매핑을 추가한다.
+- sprite base alpha material만 지원한다. primitive 수광·Spatial·outline/palette/colorMix/additive 결합은 거절한다.
+- `enabled:false`는 profile/재질을 유지하며 조명 추가 비용을 없앤다. `setLighting(false)`는 기존 비활성 경로로 돌아간다.
+  HUD를 별도 제출할 때는 조명을 끄고 그린 뒤 한 번 `renderPostProcess()`로 마친다.
+
+공개 ABI·자원 비용과 회귀 기준은 [합성 구조](../development/architecture/flat-lighting-composition.md)를 따른다.
+
+
+## Flat HDR · 개발 소스
+
+`profile:"lit"`에서 `hdr:{exposure:0,toneMapping:"reinhard"}`를 선택하면 양 backend가
+월드를 RGBA16F/rgba16float에 선형으로 누적한다. HDR 생략 또는 `hdr:false`,
+`hdr:{enabled:false}`는 기존 SDR 경로다. `FlatHdrOptions`와 `ResolvedFlatHdrOptions`는 `/core`에서 import한다.
+
+```ts
+renderer.setLighting({profile:"lit", hdr:{exposure:0,toneMapping:"reinhard"},
+  ambientIrradiance:[0.1,0.1,0.1], directionalLight:{directionX:1,directionY:0,intensity:4}});
+renderer.render();
+renderer.renderCommands(worldCommands);
+renderer.renderCommands(worldForegroundCommands); // 같은 선형 HDR 월드에 추가
+renderer.setLighting(false); // 월드를 먼저 resolve하고 HUD 경계를 시작
+renderer.renderCommands(hudCommands);
+renderer.renderPostProcess();
+```
+
+- `exposure`는 -10..10 stop이며 기본0이다. `toneMapping`은 `none|reinhard|aces`, 기본`reinhard`다.
+  none도 마지막 SDR 출력에서 0..1로 제한한다. HDR canvas/display 출력이나 Display-P3 지원을 뜻하지 않는다.
+- color는 sRGB 입력을 한 번 decode하며 linear/none·normal·mask는 decode하지 않는다.
+  월드의 숫자 tint와 광원 색은 선형 값이다. textured unlit 전경을 포함해 월드의 모든 색 texture는
+  알려진 straight alpha가 필요하다. `loadTexture(...,{alphaMode:"straight"})`로 준비한다.
+  기존 premultiplied 입력·알 수 없는 RenderTexture 색 texture는 활성화/그리기 전에 거절한다.
+- unlit 월드 전경은 조도를 받지 않지만 HDR 합성과 출력 변환을 공유한다. HUD는 위 경계 뒤에 제출한다.
+  HDR 월드는 premultiplied linear로 누적하고, 출력 시 alpha를 풀어 노출·톤매핑을 적용한 뒤
+  표시 색공간에서 다시 premultiply한다. 수광 sprite의 opaque/cutout 제한은 유지한다.
+- 여러 월드 command를 제출해도 resolve는 한 번이다. 경계를 생략하면 `renderPostProcess()`에서 resolve한다.
+  SDR 그리기 이후 HDR을 켜거나 활성 월드 중 노출/톤매핑을 바꾸면 사전에 거절한다.
+  resize·zoom 변경은 `renderPostProcess()` 후 프레임 사이에 수행한다.
+- 전역 화면 효과는 HDR resolve 뒤 적용한다. 기존 전역 Bloom threshold는 SDR 화면 효과의 계약을 유지한다.
+  이 옵션은 별도 scene-linear Bloom을 추가하지 않는다. WebGPU 전역 `linear-srgb`와 함께 사용할 때는 선형 장면에 resolve한 뒤 최종 표시에서 변환한다.
+- HDR 월드는 pixel당8 bytes, 수광 scratch는 pixel당24 bytes(기존 SDR20)다.
+  광원 차폐·전역 후처리·pixel-perfect target 비용은 별도다. 활성 수광 장면은 합계32 bytes/pixel이다.
+  출력 draw1회는 `postProcessDrawCalls/postProcessPassCount`와 전체 draw·texture bind 통계에 포함한다.
+  HDR 비활성 시 추가 target/pass는 없으며 선택 설정은 authoring·patch·snapshot에서 보존한다.
+
+실제 GPU readback·복구·비용 검증은 `pnpm smoke:flat-lit`에 포함한다.
+
+
+## Flat sprite 표면 재질 · 개발 소스
+
+명시적 flat lit opaque/cutout sprite에 `surface`를 연결하면 선형 발광과 제한된 비금속 직접 반사를 추가한다.
+normal이 없으면 +Z, 관찰 방향은 화면 앞쪽 +Z다. ambient는 diffuse만 비추며 반사나 emission을 만들지 않는다.
+전체 glTF PBR·금속·IBL·transmission·반투명 수광층은 이 profile의 범위가 아니다.
+
+| 필드 | 범위·기본값 | map 채널 |
+| --- | --- | --- |
+| `emission` | 선형 RGB0..64, 기본 검정 | `emissionTexture`의 RGB와 곱함. sRGB는 한 번만 decode |
+| `specular` | 0..1, 기본0 | `specularTexture`의 raw A와 곱함. RGB 미사용 |
+| `roughness` | 0..1, 기본1 | `roughnessTexture`의 raw G와 곱함. 나머지 채널 미사용 |
+
+map 생략은 해당 계수에1을 곱하는 것과 같다. emission은 base albedo·tint RGB와 독립적이며 수광 coverage로 가려진다.
+cutout discard는 모든 성분을 함께 버리고, opaque는 source alpha를1로 취급한다.
+반투명 unlit 전경은 아래 기여를 source-over로 가린다. map의 alpha는 coverage를 새로 만들지 않는다.
+
+map3개는 base texture와 같은 크기의 알려진 straight-alpha 자산이어야 한다.
+발광 map은 `srgb|linear|none`, specular/roughness map은 `linear|none`이며 sRGB data map은 거절한다.
+base와 같은 atlas UV·프레임 애니메이션·flip·회전을 사용한다. 추가 map은 clamp·nearest의 level0 texel load이며
+독립 UV transform/filter/mipmap은 없다. 각 자산의 upload Y flip은 따로 적용한다.
+같은 ID를 재import하면 다음 제출부터 새 GPU view와 pixels를 사용한다.
+
+직접광은 기존 attenuation·RGB shadow visibility 뒤에 `albedo×Lambert + specular`를 합산한다.
+반사는 Spatial과 같은 bounded GGX이며 F0는0.04, roughness 최소0.12, lobe 최대16이다.
+세기 계수는 Fresnel 전체에 곱하므로0이면 정확히 반사가 없다. 에너지 보존형 전체 PBR를 보장하지 않는다.
+재질 세기·roughness는 data attachment의8-bit 정밀도로 양자화하며 emission은 float16으로 보관한다.
+SDR은 최종0..1 clamp, HDR은 발광1초과를 월드에 보존한 뒤 노출·톤매핑·표시 변환을 한 번 수행한다.
+
+작성·저장 예제는 [Scene Authoring](data-scene-authoring.md#flat-sprite-emissionspecularroughness-개발-소스),
+numeric ID bulk API는 [Core API](public-api/core.md#flat-sprite-표면-재질-개발-소스)를 따른다.
+비활성 값·patch·Undo/Redo·JSON 복원에서 stable map 참조를 유지하며 apply/restore 전에 renderer 자산 검증이 필요하다.
+활성 emission/specular 계수가 없는 packet은 기존 경로를 사용한다. `enabled:false`는 추가 pass/target이 없다.
+선택한 Surface metadata는 lit profile을 요구하므로 HUD는 별도 unlit packet으로 제출한다.
+
+활성 재질 packet은 기존 수광 scratch에 RGBA16F emission target1개(8 bytes/pixel)를 추가하고 같은 data pass의 MRT를4개로 늘린다.
+반사는 기존 조도 target에 계산하므로 별도 반사 target/pass는 없다. SDR scratch28, HDR scratch32 bytes/pixel이며
+HDR world8 bytes/pixel·광원 mask·전역 후처리·표시 target은 별도다. 재질 유무가 다른 여러 packet은 프레임 안에서
+각 variant의 target을 재사용하고 사용하지 않은 variant는 프레임 종료에 회수한다.
+같은 프레임에 기본/Surface packet이 함께 있으면 수광 scratch 합계는 SDR48/HDR56 bytes/pixel이며 HDR world는 별도다.
+검증은 `pnpm smoke:flat-lit`의 Surface fixture와 [Smoke Check](../development/quality/smoke-check.md#flat-sprite-surface-재질-회귀)를 따른다.
+
+
+## Flat light·shadow 수신 mask · 개발 소스
+
+`profile:"lit"`에서 opaque/cutout sprite의 `lighting.lightMask`와 `lighting.shadowMask`를 독립적으로 지정한다.
+점광원·태양의 같은 필드와 bit intersection을 비교한다. 각 값은 정수0..255이며 생략은 모든8채널(255)이다.
+채널은 광원 ID나 authored 광원 수가 아니므로 같은 채널을 여러 광원이 사용할 수 있다.
+
+```json
+{
+  "lighting": {"mode":"cutout", "alphaCutoff":0.5, "lightMask":3, "shadowMask":1}
+}
+```
+
+- 수신면과 광원의 `lightMask` 교집합이0이면 해당 직접광의 diffuse·specular를 모두 제외한다.
+- `shadowMask` 교집합이0이면 해당 광원의 visibility를1로 사용한다. 직접광을 끄는 설정이 아니다.
+- 환경광·Surface emission은 두 mask와 독립적이다. `lightMask:0`도 ambient와 emission을 유지한다.
+- 기존 caster 설정과 별개이며 collider/layer 이름에서 채널을 추론하지 않는다. 이 필드는 caster를 골라 내는 mask가 아니다.
+- cutout 구멍은 아래 receiver identity를 보존하고 unlit 전경은 alpha coverage로 가린다.
+  지원 범위는 기존 opaque/cutout이며 반투명 수광층의 별도 조명을 추가하지 않는다.
+- authoring·patch·Undo/Redo·JSON 저장·복원에서 명시적0과 `enabled:false` 설정을 보존한다.
+  apply/restore는 새로운 native 지원과 자산을 검사한 뒤 씬을 바꾼다. legacy profile·Spatial에는 이 flat receiver 필드를 지정하지 않는다.
+- 설정을 유지한 조명 OFF는 `{profile:"lit",enabled:false}`를 쓴다. 후단 HUD는 기존처럼 별도 unlit packet을 제출한다.
+
+custom receiver mask가 있는 packet은 별도 RGBA8 target(4 bytes/pixel)과 texture batch별 identity draw를 추가한다.
+Surface의4MRT와 분리해 WebGL2 최소 attachment 한도를 유지한다. 기본255/255 또는 조명 비활성은 추가 target/pass가 없다.
+여러 packet에서 target을 재사용하고 미사용 프레임에는 회수한다. draw/batch/bind 통계에 identity draw를 포함하며
+`normalDrawCalls`는 기존 normal/Surface MRT draw만 센다. [ABI·합성 구조](../development/architecture/flat-lighting-composition.md#독립-수신-mask)를 따른다.
+
+## Flat 2D spot 조명 · 개발 소스
+
+`profile:"lit"`의 점광원에 선택형 `spot`을 지정한다. 방향은 logical XY의
+finite float32 벡터이며 길이는 최소1e-6이다. 검증 시 정규화한다.
+`angleDegrees`는 전체 개구각0.1..360도, `penumbra`는 부드러운 경계가 차지하는 반개구각의
+비율0..1(기본0)이다.360도·penumbra0은 기존 원형 점광원과 정확히 같은 렌더 설정을 사용한다.
+
+```ts
+renderer.setLighting({
+  profile: "lit", ambientIrradiance: [0.1, 0.1, 0.1],
+  pointLights: [{ x: 200, y: 100, radius: 240, height: 120,
+    spot: { directionX: 1, directionY: 0, angleDegrees: 90, penumbra: 0.25 }
+  }]
+});
+```
+
+각도는 점광원 타원의 정규화 좌표에서 판정한다. `radiusY/radius`가1이 아니면 방향과
+수신점의 Y를 같은 비율로 보정한다. `view.lighting(...)`은 world 방향을 먼저 정규화한 뒤
+`groundYScale`을 적용하므로 작은 유효 벡터도 화면 압축 후 거절되지 않는다.
+기존 카메라 이동·zoom·DPR·스프라이트 atlas/normal/cutout 계약은 유지한다.
+
+원뿔 감쇠는 해당 점광원의 diffuse·GGX 직접 성분에만 적용하며 환경광·발광·HUD는 유지한다.
+기존 타일 차폐와 light/shadow 수신 mask를 함께 사용할 수 있다. 광원별 차폐가 다른 광원을 지우지 않는다.
+선택 해제 시 이전 방향·각도를 재사용하지 않는다. `enabled:false`에서도 작성 값과 잘못된 입력을 검증한다.
+legacy overlay에서 `spot` 요청은 오류다. Source JSON과 기존 scene-authoring v1 저장·복원은
+방향·각도·명시적 penumbra0 및 비활성 설정을 보존한다. Native command/material ABI는 바뀌지 않는다.
+
+`PointLightSpot2D`·`ResolvedPointLightSpot2D`는 `/labs`와 기존 root aggregate에서 import한다.
+WebGL2는 점광원마다 vec4 uniform을 갱신한다. WebGPU는 private lit row를14→18 float
+(56→72B)로 확장하며 legacy row는14 float를 유지한다. buffer capacity는 기존처럼2의 거듭제곱으로 증가한다.
+원뿔 때문에 새 texture·target·추가 합성 pass를 만들지 않는다. OFF에는 기존 lit target 해제 규칙을 따른다.
+cookie와 볼록 다각형 차폐는 아래 계약으로 함께 사용할 수 있다.
+
+## Flat 2D cookie 조명 · 개발 소스
+
+`profile:"lit"`의 `pointLights[].cookie`는 점광원의 diffuse·GGX 직접 성분에 데이터 이미지의
+**raw R × alpha**를 곱한다. 환경광·발광·HUD는 유지하고 spot·타일 차폐·독립 수신 mask와 함께 사용한다.
+이미지는 straight alpha와 `colorSpace:"none"|"linear"`로 미리 로드한다. sRGB·미등록 이미지·이름 미해석은
+씬 교체/조명 setter 전에 오류로 거절한다. 이미지의 크기를 albedo와 맞출 필요는 없다.
+
+```ts
+await renderer.loadTexture(7, "/assets/light-pattern.png", {
+  colorSpace: "none", alphaMode: "straight"
+});
+renderer.setLighting({
+  profile: "lit",
+  pointLights: [{ x: 200, y: 100, radius: 240,
+    cookie: { textureId: 7, rotationRadians: Math.PI / 4, uv: [0, 0, 0.5, 1] }
+  }]
+});
+```
+
+`cookie.texture`는 자산 이름 또는 숫자 ID, `cookie.textureId`는 숫자 ID 별칭이며 정확히 하나만 지정한다.
+ID는 정수0..16,777,214, 이름은 앞뒤 공백 없는1..256자다. `rotationRadians`는 유한수 ±1,000,000,
+기본0이다. `uv`는 기본 `[0,0,1,1]`이며 네 값은0..1이고 float32로 변환한 두 끝점이 축마다 달라야 한다.
+U/V 반전을 지원한다. `null`이나 알 수 없는 필드는 오류이며 비활성 조명에서도 검사한다.
+
+패턴 좌표는 `(수신점-광원중심)/(radius,radiusY)`의 타원 정규화 좌표다. 회전은 logical Y가 아래인
+화면에서 시계 방향이며 UV 원점은 왼쪽 위다. nearest texel을 raw로 읽고 선택한 atlas 사각형 끝으로 clamp한다.
+회전 후 패턴 사각형 밖은0이다. 카메라·zoom·DPR·ground 압축은 패턴과 점광원 범위에 같은 변환을 적용한다.
+
+문서는 `{texture:"pattern"}` 같은 안정적 이름을 보관한다. 작성 문서 사전 검사는 `options.textureId` 또는
+engine registry로 ID를 해석하고, 프레임의 `view.lighting(...)`도 현재 registry로 해석한다.
+`renderer.setLighting(...)`에는 숫자로 해석한 설정을 전달한다. 직접 named setter는 오류다.
+적용·복원은 `FlatLightingPreparer.flatLightingCookieVersion() === 1`을 자산 조회·native 교체 전에 요구한다.
+공식 viewer는 OFF 문서까지 cookie를 data로 로드하고 열린 문서의 color/data 충돌을 거절하며 원본 이름을 저장한다.
+기존 cookie 없는 문서에는 새 capability가 필요 없다. 새 source 필드는 기존 scene-authoring v1 안의 선택형 확장이며
+구 renderer의 cookie 문서 조용한 누락을 허용하지 않는다.
+
+`PointLightCookie2D`·`ResolvedPointLightCookie2D`는 `/labs`와 기존 root aggregate에 공개한다.
+Native ABI와 WebGPU legacy14/lit18 row는 유지한다. WebGL2는 점광원별 unit6 texture·UV/회전 uniform을 사용하고
+texture/sampler binding을 복원한다. WebGPU는 lit pass variant마다 lazy8 KiB 동적 uniform 테이블을 만들며
+최대32개 광원의 서로 다른 UV/회전을256-byte 간격으로 미리 업로드한다. 같은 view의 bind group은 재사용하고
+재import된 view는 다시 바인딩한다. cookie 광원마다 direct draw를 분리하므로 추가 draw 비용이 있지만 target/pass는 추가하지 않는다.
+warm 테이블·shader는 유지할 수 있으나 기본/OFF 새 프레임은 cookie 자원을 만들지 않는다.
+기기 할당/검증 실패는 명시적 오류로 유지하고 backend 복구 때 재생성한다. 실제 기기 성능은 개발 완료 후 별도로 검증한다.
+
+## Flat 볼록 다각형 차폐 · 개발 소스
+
+`profile:"lit"`의 선택형 `polygonOccluders`는 점광원의 2D 그림자 도형이다. 꼭짓점3~8개를 외곽선 순서로
+작성하고 시계/반시계 방향을 모두 허용한다. 최대256개(총2,048개 꼭짓점)이며 좌표는 float32로 표현할 수 있는
+유한수 ±1,000,000,000 범위다. 원본 값과 float32 변환 결과가 모두 엄격한 볼록 도형이어야 한다.
+희소 배열·중복점·일직선·오목/교차 도형·알 수 없는 필드를 OFF 상태에서도 거절한다.
+
+```ts
+renderer.setLighting({
+  profile: "lit", ambientIrradiance: [0.1, 0.1, 0.1],
+  pointLights: [{ x: 12, y: 48, radius: 150 }],
+  polygonOccluders: [{ vertices: [
+    { x: 48, y: 24 }, { x: 72, y: 48 }, { x: 48, y: 72 }
+  ] }],
+  shadows: { color: [0, 0, 0, 1], projectionLength: 512 }
+});
+```
+
+도형이 하나 이상 있으면 함께 사용하는 기존 사각형은 최대1,024개, 점광원 위치는 ±1e9,
+두 반경은 양의 float32로1e6 이하이고 비율도 양의 유한 float32여야 한다.
+`projectionLength`·선택형 `maxDistance`는 양수1e6 이하이며 비활성 shadow 설정도 검사한다.
+도형을 사용하지 않는 기존 사각형·legacy overlay 계약은 바뀌지 않는다. 빈 배열도 lit profile 안에 작성한다.
+
+기존 점광원 타원의 거리 단위로 원본 도형과 두 각도 접선의 유한 돌출 끝점을 합친 convex hull을 만들고
+화면 사각형에 clip한다. `projectionLength`는 유한한 접선 돌출 길이이며 무한 그림자나 모든 방향에서
+같은 끝 거리를 보장하는 물리 투영이 아니다. 광원이 도형 내부나 경계에 있으면 기존 사각형과 같이 그 도형의 그림자는 만들지 않는다.
+`maxDistance`는 타원 거리로 도형의 가장 가까운 변까지 검사한다. `view.lighting(...)`은 꼭짓점에도
+카메라 이동과 `groundYScale`을 적용하며 원본 world 좌표는 유지한다.
+
+기존 광원별 max-union mask에 사각형과 함께 합성하므로 겹침이 투과율을 반복해서 줄이지 않는다.
+한 광원의 차폐가 다른 광원을 지우지 않으며 light/shadow 수신 mask·spot/cookie·diffuse/GGX와 함께 사용한다.
+환경광·발광·HUD를 유지한다. 태양광·Spatial·native 지면 caster로 해석하거나 collider/layer에서 자동 추론하지 않는다.
+
+`PolygonOccluder2D`는 `/labs`와 기존 root aggregate에 공개한다. 원본 JSON·기존 lighting patch/Undo/Redo·진행 저장은
+순서·좌표·OFF 설정을 보존한다. 적용/복원은 `FlatLightingPreparer.flatLightingPolygonVersion() === 1`을
+자산 조회와 native 씬 교체 전에 요구한다. 도형이 없는 문서에는 새 capability가 필요 없다.
+별도 도형 편집 UI나 dependency·Native ABI·light instance row는 추가하지 않는다.
+
+기존 point shadow mask target과 광원별 mask draw를 재사용한다. polygon만을 위한 새 target/pass는 없지만,
+사각형과 마찬가지로 활성 shadow 광원마다 기존 mask draw가 필요하다. `shadowCasterCount`에는 실제 그린 두 종류의
+도형을 모두 세고 `tileOccluderCount`는 기존 사각형 수만 센다. polygon 한 개의 clip 결과는 최대12개 삼각형(72 XY float)이다.
+도형 변경은 deep snapshot으로 geometry cache를 무효화하며 정적 CPU geometry를 재사용한다.
+현재 mask geometry의 GPU upload/draw는 기존 경로를 따른다. warm upload0·광원 수 무관 비용을 주장하지 않으며 M5에서 예산을 다룬다.
+OFF는 추가 draw/target이 없고, 활성 이후 CPU cache와 GPU staging 용량은 객체 수명 동안 유지할 수 있다.

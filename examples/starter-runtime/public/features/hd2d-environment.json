@@ -76,6 +76,39 @@
                 }
               }
             }
+          },
+          {
+            "id": "emitter",
+            "prefab": "object",
+            "x": 38,
+            "y": 20,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "texture": "wall",
+                  "width": 24,
+                  "height": 32,
+                  "originY": 1,
+                  "color": "#ffffff00"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 40
+                  }
+                }
+              }
+            }
           }
         ]
       }
@@ -155,6 +188,12 @@
     "billboards": {
       "actor": {},
       "light": {}
+    },
+    "models": {
+      "emitter": {
+        "asset": "emitter",
+        "contentId": "0b883d46f55d77b7fd488c8ad15eebca126ff3edc4ca52bebc18ba374398d654"
+      }
     },
     "environment": {
       "lighting": {

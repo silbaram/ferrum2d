@@ -16,8 +16,6 @@ const onlyShooter = process.argv.includes("--only=topdown-shooter");
 const onlyGuided = process.argv.includes("--only=guided-examples");
 const onlySuite = process.argv.includes("--only=example-suite");
 const onlyLab = process.argv.includes("--only=feature-lab");
-const featureCount = JSON.parse(await readFile(resolve(root,"examples/shared/featureCatalog.json"),"utf8")).length;
-const physicsCount = JSON.parse(await readFile(resolve(root,"examples/shared/physicsExamples.json"),"utf8")).length;
 const suiteBuild = onlySuite || onlyLab;
 const guidedExamples = ["breakout", "platformer", "physics-sandbox"];
 const routes = new Map([
@@ -80,9 +78,6 @@ try {
     console.log(`Captured ${name} (${bytes.length} bytes)`);
   };
   if (suiteBuild) {
-    await page.goto(`${origin}/examples/`);
-    await page.waitForFunction(total => document.querySelector('[data-feature-count]')?.textContent.includes(`${total} / ${total}`),featureCount+physicsCount);
-    await capture("example-hub.png", page, { mode: "example-hub", features: featureCount, physics: physicsCount, experiments: featureCount+physicsCount });
     await page.goto(`${origin}/examples/starter-runtime/?feature=nine-slice`);
     await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().commands > 0);
     await page.locator('[data-control=pause]').click();

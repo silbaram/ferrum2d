@@ -37,7 +37,7 @@ const controls: Record<string, string> = {
     <label class="feature-check"><input data-control="impact-feedback" type="checkbox" checked> 충돌 소리·입자</label>
     <button data-control="break-joint">왼쪽 벽에 파손 관절 연결</button>
     <button data-control="launch">같은 힘으로 던지기</button>`,
-  lighting: `<label>조명<select data-control="lighting"><option value="lit">점광원</option><option value="off">원본 색상</option></select></label>
+  lighting: `<label>합성<select data-control="composition"><option value="legacy">기존 · 빛 더하기</option><option value="lit">표면 조명 · 원본 색 × 빛</option></select></label><label>조명<select data-control="lighting"><option value="lit">점광원</option><option value="off">원본 색상</option></select></label>
     <label class="feature-check"><input data-control="normal" type="checkbox" checked> 노멀맵 적용</label>
     <div class="feature-buttons"><button data-light="160">왼쪽 광원</button><button data-light="480">오른쪽 광원</button><button data-light="432" data-light-y="64">위쪽 광원</button><button data-light="432" data-light-y="320">아래쪽 광원</button></div>`,
   postprocess: postProcessControls,
@@ -68,6 +68,7 @@ export async function startFeatureLab(): Promise<void> {
   canvas.tabIndex = 0;
   canvas.setAttribute("aria-label", `${feature.title} 실험 화면`);
   const toolbar = root.querySelector(".demo-toolbar")!;
+  toolbar.querySelector("h1")!.textContent = feature.title;
   const top = document.createElement("div");
   top.className = "feature-top-actions";
   top.innerHTML = `<label>렌더러 <select data-control="renderer"><option value="webgl2">WebGL2</option><option value="webgpu">WebGPU</option></select></label>
@@ -78,9 +79,7 @@ export async function startFeatureLab(): Promise<void> {
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
-  panel.innerHTML = `<p class="feature-kicker">한 번에 한 기능</p><h2>${feature.title}</h2><p>${feature.summary}</p>
-    <h3>직접 해보기</h3><p>${feature.action}</p><form class="feature-controls">${controls[id]}</form>
-    <h3>관찰할 결과</h3><p>${feature.observe}</p>
+  panel.innerHTML = `<h2>설정</h2><form class="feature-controls">${controls[id]}</form>
     <output class="feature-observation" data-value="observation">엔진 준비 중…</output>
     <details><summary>구현 위치 · 씬 파일</summary><code>${feature.api}</code>
     <a href="./features/${id}.json" download>이 실험의 씬 JSON</a>
@@ -104,7 +103,7 @@ export async function startFeatureLab(): Promise<void> {
   const input = (key: string) => control<HTMLInputElement>(key);
   const output = (key: string, text: string) => { root.querySelector(`[data-value="${key}"]`)!.textContent = text; };
   const lifetime = new AbortController(), { signal } = lifetime;
-  const lesson = createFeatureLesson(root, canvas, id, feature.lesson);
+  const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const requested = params.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   control<HTMLSelectElement>("renderer").value = requested;
   let extra: FeatureExtra | undefined, shooterPaused = false;
@@ -152,7 +151,7 @@ export async function startFeatureLab(): Promise<void> {
     resources = () => renderer.resourceStats?.();
     if (destroyed) return;
     const backend = "gpuDevice" in renderer ? "webgpu" : "webgl2";
-    output("backend", `${backend}${backend === requested ? "" : " · 호환 렌더러"}`);
+    output("backend", backend === requested ? "" : `${backend} · 호환 렌더러`);
     const loader = id === "physics" ? new BrowserPlatformHost(renderer) : new AssetLoader(renderer);
     if (loader instanceof BrowserPlatformHost) own(() => loader.destroy());
     const virtual = id === "input" ? new VirtualControls(lesson.controlsHost, { className: "feature-virtual-controls", joystick: { label: "캐릭터 이동" }, buttons: [] }) : undefined;
@@ -174,7 +173,7 @@ export async function startFeatureLab(): Promise<void> {
     if (id === "particles") Object.assign(textures, { particleSpark: "particle-spark", particleDust: "particle-dust", particleTrail: "particle-trail" });
     if (id === "lighting") Object.assign(textures, { robotNormal: "robot-normal", ballNormal: "ball-normal" });
     await loader.loadAssets({ ...(id === "physics" ? {sounds:{impact:new URL("./features/beacon.wav",document.baseURI).href}} : {}), textures: Object.fromEntries(Object.entries(textures).map(([key, file]) => [key, new URL(`./playground/${file}.png`, document.baseURI).href])),
-      textureOptions: Object.fromEntries(Object.keys(textures).map(key => [key, { colorSpace: "none" as const }])) }, undefined, { signal });
+      textureOptions: Object.fromEntries(Object.keys(textures).map(key => [key, { colorSpace: id === "lighting" && !key.endsWith("Normal") ? "srgb" as const : "none" as const, ...(id === "lighting" ? {alphaMode:"straight" as const}: {}) }])) }, undefined, { signal });
     const physicsBallTexture = id === "physics" ? loader.textureId("ball") : undefined;
     const handles = () => runtime!.dataScene?.result.entityHandles ?? {};
     runtime = await createFerrumRuntime({ canvas, renderer, assetHost: loader, dataScene: scene, autostart: false,
@@ -184,7 +183,7 @@ export async function startFeatureLab(): Promise<void> {
       inputTransform: snapshot => shooter ? shell.inputTransform(id === "projectiles" ? extra?.input?.(snapshot) ?? snapshot : { ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
       engine: { includeCollisionEvents: true, includeGameplayEvents: true },
       lighting: frame => id !== "lighting" || choice("lighting") === "off" || !view ? false : view.lighting({
-        enabled: true, ambient: [.3, .35, .4, .55],
+        enabled: true, ...(choice("composition")==="lit" ? {profile:"lit" as const,ambientIrradiance:[.18,.18,.18] as const}:{ambient:[.3,.35,.4,.55] as const}),
         pointLights: [{ ...light, radius: 420, height: 60, intensity: .8, falloff: 1.2, color: [1, .86, .65, 1] }],
       }, view.snapshot(frame)),
       postProcess: () => id === "postprocess" ? displayPostProcess(root) : extra?.postProcess?.() ?? false,

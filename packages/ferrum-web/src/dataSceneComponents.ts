@@ -1,3 +1,5 @@
+import { resolveSpriteLightingMaterial, type SpriteLightingMaterialSpec } from "./spriteLighting.js";
+import {resolveSpriteSurfaceMaterial,SPRITE_SURFACE_TEXTURE_NONE,type SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
 import { resolveSpriteNineSlice, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
 import { resolveDataSceneGroundShadow, type DataSceneGroundShadowSpec, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import { resolveDataSceneSpriteAnimationSet, type DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
@@ -36,6 +38,16 @@ const DATA_SCENE_COLLISION_LAYER_NAMES = Object.freeze([
 export type DataSceneCollisionLayerName = keyof typeof DATA_SCENE_COLLISION_LAYER_CODES;
 export type DataSceneCollisionLayerSpec = DataSceneCollisionLayerName | number;
 export type DataSceneTextureRefSpec = string | number;
+export interface DataSceneSpriteSurfaceSpec extends Pick<SpriteSurfaceMaterialSpec,"emission"|"specular"|"roughness"> {
+  emissionTexture?:DataSceneTextureRefSpec;
+  specularTexture?:DataSceneTextureRefSpec;
+  roughnessTexture?:DataSceneTextureRefSpec;
+}
+export interface ResolvedDataSceneSpriteSurface extends Pick<SpriteSurfaceMaterialSpec,"emission"|"specular"|"roughness"> {
+  emissionTexture?:ResolvedDataSceneTextureRef;
+  specularTexture?:ResolvedDataSceneTextureRef;
+  roughnessTexture?:ResolvedDataSceneTextureRef;
+}
 export type DataScenePrimitiveVisualShape = keyof typeof DATA_SCENE_PRIMITIVE_TEXTURES;
 
 export interface DataSceneSpriteFrameSpec {
@@ -53,6 +65,8 @@ export interface DataSceneSpriteAnimationSpec {
 export interface DataSceneSpriteComponentSpec {
   texture: DataSceneTextureRefSpec;
   normalTexture?: DataSceneTextureRefSpec;
+  lighting?: SpriteLightingMaterialSpec;
+  surface?:DataSceneSpriteSurfaceSpec;
   nineSlice?: SpriteNineSliceSpec;
   width: number;
   height: number;
@@ -78,6 +92,8 @@ export interface DataSceneSpriteVisualSpec {
   shadow?: DataSceneGroundShadowSpec;
   texture?: DataSceneTextureRefSpec;
   normalTexture?: DataSceneTextureRefSpec;
+  lighting?: SpriteLightingMaterialSpec;
+  surface?:DataSceneSpriteSurfaceSpec;
   nineSlice?: SpriteNineSliceSpec;
   asset?: DataSceneTextureRefSpec;
   width: number;
@@ -203,6 +219,8 @@ export interface ResolvedDataSceneSpriteAnimation {
 export interface ResolvedDataSceneSpriteComponent {
   texture: ResolvedDataSceneTextureRef;
   normalTexture?: ResolvedDataSceneTextureRef;
+  lighting?: SpriteLightingMaterialSpec;
+  surface?:ResolvedDataSceneSpriteSurface;
   nineSlice?: SpriteNineSliceSpec;
   width: number;
   height: number;
@@ -234,6 +252,8 @@ export type ResolvedDataSceneObjectVisual =
       shadow?: ResolvedDataSceneGroundShadow;
       texture: ResolvedDataSceneTextureRef;
       normalTexture?: ResolvedDataSceneTextureRef;
+  lighting?: SpriteLightingMaterialSpec;
+      surface?:ResolvedDataSceneSpriteSurface;
       nineSlice?: SpriteNineSliceSpec;
       width: number;
       height: number;
@@ -436,6 +456,8 @@ function resolvePrimitiveVisual(
   visual: Readonly<Record<string, unknown>>,
   path: string,
 ): Extract<ResolvedDataSceneObjectVisual, { kind: "primitive" }> {
+  if (visual.lighting !== undefined) throw sceneCompositionDiagnosticError(`${path}.lighting`, "flat lighting receivers currently require a sprite visual");
+  if(visual.surface!==undefined)throw sceneCompositionDiagnosticError(`${path}.surface`,"surface materials require a sprite visual");
   const shape = requiredPrimitiveVisualShape(visual.shape, `${path}.shape`);
   const color = optionalString(visual.color, `${path}.color`);
   dataSceneVisualColor(color, `${path}.color`);
@@ -483,6 +505,8 @@ function resolveSpriteVisual(
   const sprite = resolveSpriteComponent({
     texture: textureValue,
     ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
+    ...(visual.lighting === undefined ? {} : {lighting:visual.lighting}),
+    ...(visual.surface === undefined ? {} : {surface:visual.surface}),
     ...(visual.nineSlice === undefined ? {} : {nineSlice:visual.nineSlice}),
     width: visual.width,
     height: visual.height,
@@ -515,6 +539,8 @@ function resolveSpriteVisual(
     kind: "sprite",
     texture: sprite.texture,
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
+    ...(sprite.lighting === undefined ? {} : {lighting:sprite.lighting}),
+    ...(sprite.surface === undefined ? {} : {surface:sprite.surface}),
     ...(sprite.nineSlice === undefined ? {} : {nineSlice:sprite.nineSlice}),
     width: sprite.width,
     height: sprite.height,
@@ -537,6 +563,8 @@ function runtimeSpriteForVisual(visual: ResolvedDataSceneObjectVisual): Resolved
     return {
       texture: visual.texture,
       ...(visual.normalTexture === undefined ? {} : {normalTexture:visual.normalTexture}),
+      ...(visual.lighting === undefined ? {} : {lighting:visual.lighting}),
+      ...(visual.surface === undefined ? {} : {surface:visual.surface}),
       ...(visual.nineSlice === undefined ? {} : {nineSlice:visual.nineSlice}),
       width: visual.width,
       height: visual.height,
@@ -564,6 +592,8 @@ function spriteVisualFromResolvedSprite(
     kind: "sprite",
     texture: sprite.texture,
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:sprite.normalTexture}),
+    ...(sprite.lighting === undefined ? {} : {lighting:sprite.lighting}),
+    ...(sprite.surface === undefined ? {} : {surface:sprite.surface}),
     ...(sprite.nineSlice === undefined ? {} : {nineSlice:sprite.nineSlice}),
     width: sprite.width,
     height: sprite.height,
@@ -578,6 +608,8 @@ function spriteVisualFromResolvedSprite(
 
 function resolveSpriteComponent(value: unknown, path: string): ResolvedDataSceneSpriteComponent {
   const sprite = requiredRecord(value, path);
+  const lighting=sprite.lighting===undefined?undefined:resolveSpriteLightingMaterial(sprite.lighting,`${path}.lighting`);
+  if(sprite.surface!==undefined&&lighting?.mode!=="opaque"&&lighting?.mode!=="cutout")throw sceneCompositionDiagnosticError(`${path}.surface`,"requires an explicit opaque/cutout receiver");
   const animationValue = sprite.animation;
   if (animationValue !== undefined && sprite.animationSet !== undefined) {
     throw sceneCompositionDiagnosticError(path, "animation and animationSet are mutually exclusive");
@@ -585,6 +617,8 @@ function resolveSpriteComponent(value: unknown, path: string): ResolvedDataScene
   return {
     texture: resolveTextureRef(requiredProperty(sprite, "texture", path), `${path}.texture`),
     ...(sprite.normalTexture === undefined ? {} : {normalTexture:resolveTextureRef(sprite.normalTexture,`${path}.normalTexture`)}),
+    ...(lighting===undefined?{}:{lighting}),
+    ...(sprite.surface===undefined?{}:{surface:resolveSpriteSurface(sprite.surface,`${path}.surface`)}),
     ...(sprite.nineSlice === undefined ? {} : {nineSlice:resolveSpriteNineSlice(sprite.nineSlice, `${path}.nineSlice`)}),
     width: positiveNumber(requiredProperty(sprite, "width", path), `${path}.width`),
     height: positiveNumber(requiredProperty(sprite, "height", path), `${path}.height`),
@@ -596,6 +630,20 @@ function resolveSpriteComponent(value: unknown, path: string): ResolvedDataScene
   };
 }
 
+function resolveSpriteSurface(value:unknown,path:string):ResolvedDataSceneSpriteSurface{
+  const input=requiredRecord(value,path);
+  for(const key of Object.keys(input))if(!["emission","specular","roughness","emissionTexture","specularTexture","roughnessTexture"].includes(key))throw sceneCompositionDiagnosticError(`${path}.${key}`,"is not supported");
+  const {emissionTexture,specularTexture,roughnessTexture,...factors}=input;
+  return {...resolveSpriteSurfaceMaterial(factors,path),
+    ...(emissionTexture===undefined?{}:{emissionTexture:resolveSurfaceTextureRef(emissionTexture,`${path}.emissionTexture`)}),
+    ...(specularTexture===undefined?{}:{specularTexture:resolveSurfaceTextureRef(specularTexture,`${path}.specularTexture`)}),
+    ...(roughnessTexture===undefined?{}:{roughnessTexture:resolveSurfaceTextureRef(roughnessTexture,`${path}.roughnessTexture`)})};
+}
+function resolveSurfaceTextureRef(value:unknown,path:string):ResolvedDataSceneTextureRef{
+  const ref=resolveTextureRef(value,path);
+  if(ref.kind==="id"&&(ref.id??Number(ref.value))>=SPRITE_SURFACE_TEXTURE_NONE)throw sceneCompositionDiagnosticError(path,"requires a texture ID below16777215");
+  return ref;
+}
 function resolveTextureRef(value: unknown, path: string): ResolvedDataSceneTextureRef {
   if (typeof value === "string" && value.length > 0) {
     return {

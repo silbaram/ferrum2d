@@ -1,3 +1,6 @@
+import { pointLightCookieTextureId } from "./lightingCookie.js";
+import type { SpriteTextureSource } from "./spriteBatch.js";
+import { writePointLightSpot } from "./lightingSpot.js";
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type {
   ResolvedLightingScene2D,
@@ -5,7 +8,7 @@ import type {
   ResolvedPointLight2D,
   TileOccluder2D,
 } from "./lightingTypes.js";
-import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
+import { LightingShadowGeometryCache, type CachedLightingShadowGeometry } from "./lightingShadowGeometryCache.js";
 import { setSpriteBlend } from "./webgl2Blend.js";
 import type { WebGL2SpriteNormalTargets } from "./webgl2SpriteNormals.js";
 
@@ -15,6 +18,9 @@ export interface WebGL2LightingPassStats {
   tileOccluderCount: number;
   shadowDrawCalls: number;
   shadowCasterCount: number;
+  shadowGeometryUploadBytes?: number;
+  shadowGeometryVertexCount?: number;
+  shadowGeometryCacheHit?: boolean;
 }
 interface LightingTarget {
   width: number;
@@ -23,10 +29,13 @@ interface LightingTarget {
 }
 interface MaskState { scissor: boolean; colorMask: boolean[]; }
 
+const MAX_CACHED_SHADOW_LIGHTS = 32;
+const MAX_CACHED_SHADOW_FLOATS = 2 * 1024 * 1024 / Float32Array.BYTES_PER_ELEMENT;
 const MODE_SOLID = 0;
 const MODE_POINT_LIGHT = 1;
 
 export class WebGL2LightingPass {
+  clearTargets(): void { this.releaseMask(); }
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
   private readonly shadowProgram: WebGLProgram;
@@ -36,10 +45,14 @@ export class WebGL2LightingPass {
   private readonly rectLocation: WebGLUniformLocation;
   private readonly colorLocation: WebGLUniformLocation;
   private readonly modeLocation: WebGLUniformLocation;
+  private readonly irradianceLocation: WebGLUniformLocation;
   private readonly lightCenterLocation: WebGLUniformLocation;
   private readonly lightYScaleLocation: WebGLUniformLocation;
   private readonly shadowLightYScaleLocation: WebGLUniformLocation;
   private readonly lightRadiusLocation: WebGLUniformLocation;
+  private readonly cookieUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; uv: WebGLUniformLocation; rotation: WebGLUniformLocation };
+  private readonly lightSpotValues = new Float32Array(4);
+  private readonly lightSpotLocation: WebGLUniformLocation;
   private readonly lightFalloffLocation: WebGLUniformLocation;
   private readonly shadowResolutionLocation: WebGLUniformLocation;
   private readonly shadowColorLocation: WebGLUniformLocation;
@@ -49,6 +62,11 @@ export class WebGL2LightingPass {
   private readonly activePointLightScratch: ResolvedPointLight2D[] = [];
   private readonly shadowGeometryCache = new LightingShadowGeometryCache();
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
+  private readonly batchGeometry: CachedLightingShadowGeometry[] = [];
+  private readonly batchOffsets = new Uint32Array(MAX_CACHED_SHADOW_LIGHTS);
+  private readonly uploadedRevisions = new Float64Array(MAX_CACHED_SHADOW_LIGHTS);
+  private uploadedLightCount = -1;
+  private shadowGeometryUploadBytes = 0;
   private destroyed = false;
   private maskTexture?: WebGLTexture;
   private maskFramebuffer?: WebGLFramebuffer;
@@ -57,8 +75,10 @@ export class WebGL2LightingPass {
   private readonly emptyMask = new Float32Array(4);
   private readonly maskUniforms: { has: WebGLUniformLocation; texture: WebGLUniformLocation; tint: WebGLUniformLocation };
   private readonly normalUniforms:{has:WebGLUniformLocation;normal:WebGLUniformLocation;coverage:WebGLUniformLocation;height:WebGLUniformLocation;direction:WebGLUniformLocation};
+  private readonly receiverUniforms:{has:WebGLUniformLocation;texture:WebGLUniformLocation;channels:WebGLUniformLocation};
+  private readonly surfaceUniforms:{has:WebGLUniformLocation;albedo:WebGLUniformLocation;srgb:WebGLUniformLocation};
 
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false, private readonly irradiance = false, private readonly surface=false, private readonly surfaceAlbedoSrgb=false) {
     const programs: WebGLProgram[] = [];
     const vaos: WebGLVertexArrayObject[] = [];
     const buffers: WebGLBuffer[] = [];
@@ -87,6 +107,9 @@ export class WebGL2LightingPass {
       const rectLocation = this.gl.getUniformLocation(this.program, "u_rect");
       const colorLocation = this.gl.getUniformLocation(this.program, "u_color");
       const modeLocation = this.gl.getUniformLocation(this.program, "u_mode");
+      const irradianceLocation = this.gl.getUniformLocation(this.program, "u_irradiance");
+      if (!irradianceLocation) throw Error("Missing irradiance uniform");
+      this.irradianceLocation = irradianceLocation;
       const lightCenterLocation = this.gl.getUniformLocation(this.program, "u_light_center");
       const lightRadiusLocation = this.gl.getUniformLocation(this.program, "u_light_radius");
       const lightFalloffLocation = this.gl.getUniformLocation(this.program, "u_light_falloff");
@@ -127,7 +150,11 @@ export class WebGL2LightingPass {
       this.shadowLightCenterLocation = shadowLightCenterLocation;
       this.shadowLightRadiusLocation = shadowLightRadiusLocation;
       const uniform=(name:string)=>{const location=gl.getUniformLocation(this.program,name);if(!location)throw Error("Missing lighting uniform "+name);return location;};
+      this.cookieUniforms={has:uniform("u_has_cookie"),texture:uniform("u_cookie"),uv:uniform("u_cookie_uv"),rotation:uniform("u_cookie_rotation")};
+      this.lightSpotLocation=uniform("u_light_spot");
       this.normalUniforms={has:uniform("u_has_normals"),normal:uniform("u_normal_buffer"),coverage:uniform("u_normal_coverage"),height:uniform("u_light_height"),direction:uniform("u_light_direction")};
+      this.receiverUniforms={has:uniform("u_has_receiver_masks"),texture:uniform("u_receiver_masks"),channels:uniform("u_light_channels")};
+      this.surfaceUniforms={has:uniform("u_surface"),albedo:uniform("u_surface_albedo"),srgb:uniform("u_surface_albedo_srgb")};
       this.maskUniforms={has:uniform("u_has_shadow"),texture:uniform("u_shadow_mask"),tint:uniform("u_shadow_tint")};
 
       this.gl.bindVertexArray(this.shadowVao);
@@ -145,18 +172,36 @@ export class WebGL2LightingPass {
     }
   }
 
-  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets,target?:LightingTarget,sunMask?:WebGLTexture): WebGL2LightingPassStats {
+  draw(scene: ResolvedLightingScene2D, resolution: [number, number],normals?:WebGL2SpriteNormalTargets & {albedo?:WebGLTexture;receiverMasks?:WebGLTexture},target?:LightingTarget,sunMask?:WebGLTexture,cookies?:SpriteTextureSource): WebGL2LightingPassStats {
     this.assertAlive();
+    if(this.surface && !normals?.albedo)throw Error("Surface lighting requires receiver albedo");
     if (!scene.enabled || resolution[0] <= 0 || resolution[1] <= 0) {
       this.releaseMask();
       return { drawCalls: 0, pointLightCount: 0, tileOccluderCount: 0, shadowDrawCalls: 0, shadowCasterCount: 0 };
     }
 
+    const hasCookies = scene.pointLights.some(light => light.cookie !== undefined && light.intensity > 0);
+    if (hasCookies && !cookies) throw Error("Cookie textures require a renderer texture source");
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.CULL_FACE);
     this.gl.enable(this.gl.BLEND);
     this.gl.blendEquation(this.gl.FUNC_ADD);
     this.bindRectProgram(resolution);
+    this.gl.uniform1i(this.irradianceLocation, this.irradiance ? 1 : 0);
+    this.gl.uniform1i(this.receiverUniforms.has,Number(!!normals?.receiverMasks));this.gl.uniform1i(this.receiverUniforms.texture,5);this.gl.uniform2i(this.receiverUniforms.channels,255,255);
+    let previousReceiverTexture:WebGLTexture|null=null;
+    if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);previousReceiverTexture=this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture|null;this.gl.bindTexture(this.gl.TEXTURE_2D,normals.receiverMasks);this.gl.activeTexture(this.gl.TEXTURE0);}
+    let previousCookieTexture: WebGLTexture | null = null, previousCookieSampler: WebGLSampler | null = null;
+    if (hasCookies) {
+      this.gl.activeTexture(this.gl.TEXTURE6);
+      previousCookieTexture = this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+      previousCookieSampler = this.gl.getParameter(this.gl.SAMPLER_BINDING) as WebGLSampler | null;
+      this.gl.bindSampler(6, null); this.gl.activeTexture(this.gl.TEXTURE0);
+    }
+    try{
+    this.gl.uniform1i(this.cookieUniforms.has,0);this.gl.uniform1i(this.cookieUniforms.texture,0);
+    this.gl.uniform1i(this.surfaceUniforms.has,Number(this.surface));this.gl.uniform1i(this.surfaceUniforms.albedo,4);this.gl.uniform1i(this.surfaceUniforms.srgb,Number(this.surfaceAlbedoSrgb));
+    if(this.surface){this.gl.activeTexture(this.gl.TEXTURE4);this.gl.bindTexture(this.gl.TEXTURE_2D,normals!.albedo!);this.gl.activeTexture(this.gl.TEXTURE0);}
     this.gl.uniform1i(this.normalUniforms.has,normals?1:0);this.gl.uniform1i(this.normalUniforms.normal,1);this.gl.uniform1i(this.normalUniforms.coverage,2);
     this.gl.uniform1i(this.maskUniforms.has,0);this.gl.uniform1i(this.maskUniforms.texture,3);
     this.gl.uniform3f(this.maskUniforms.tint,scene.shadows.color[0],scene.shadows.color[1],scene.shadows.color[2]);
@@ -182,32 +227,46 @@ export class WebGL2LightingPass {
     const sun = scene.directionalLight;
     if (sun !== undefined && sun.intensity > 0) {
       if(sunMask){this.gl.uniform1i(this.maskUniforms.has,1);this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,sunMask);this.gl.activeTexture(this.gl.TEXTURE0);}
+      this.gl.uniform2i(this.receiverUniforms.channels,sun.lightMask??255,sun.shadowMask??255);
       const elevation=sun.elevationRadians??Math.PI/4,c=Math.cos(elevation);
       this.gl.uniform3f(this.normalUniforms.direction,-sun.directionX*c,-sun.directionY*c,Math.sin(elevation));
-      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity],2);
+      const energy = this.irradiance ? sun.intensity : 1;
+      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0]*energy, sun.color[1]*energy, sun.color[2]*energy, this.irradiance ? 1 : sun.intensity],2);
       this.gl.uniform1i(this.maskUniforms.has,0);
     }
     const shadowsActive = scene.shadows.enabled && scene.shadows.color[3] > 0 &&
-      scene.tileOccluders.length > 0 && activePointLights.length > 0;
-    const occluderVersion = shadowsActive ? this.shadowGeometryCache.syncOccluders(scene.tileOccluders) : -1;
+      (scene.tileOccluders.length > 0 || !!scene.polygonOccluders?.length) && activePointLights.length > 0;
+    const occluderVersion = shadowsActive ? this.shadowGeometryCache.syncOccluders(scene.tileOccluders, scene.polygonOccluders) : -1;
     this.shadowClipRect.width = resolution[0];this.shadowClipRect.height = resolution[1];
+    this.shadowGeometryUploadBytes = 0;
+    const packed = shadowsActive && this.prepareShadowBatch(scene, activePointLights, occluderVersion);
     let shadowDrawCalls=0,shadowCasterCount=0;
+    let shadowGeometryVertexCount = 0;
     let maskState: MaskState | undefined;
     for (let index=0;index<activePointLights.length;index++) {
       const light=activePointLights[index];
-      const geometry=shadowsActive
-        ? this.shadowGeometryCache.resolveLightGeometry(index,occluderVersion,scene.tileOccluders,light,scene.shadows,this.shadowClipRect):undefined;
+      const geometry=packed ? this.batchGeometry[index] : shadowsActive
+        ? this.shadowGeometryCache.resolveLightGeometry(index,occluderVersion,scene.tileOccluders,light,scene.shadows,this.shadowClipRect,scene.polygonOccluders):undefined;
       if(geometry && geometry.floatCount>0){
         if(!target)throw Error("Shadowed lighting requires a destination restore callback");
         // Capture caller state once, even when many lights reuse the mask.
         maskState ??= {scissor:this.gl.isEnabled(this.gl.SCISSOR_TEST),colorMask:this.gl.getParameter(this.gl.COLOR_WRITEMASK) as boolean[]};
-        this.drawMask(geometry.positions,geometry.floatCount,light,scene.shadows,resolution,target,maskState);
+        this.drawMask(geometry.positions,geometry.floatCount,light,scene.shadows,resolution,target,maskState,packed ? this.batchOffsets[index] : undefined);
+        shadowGeometryVertexCount += geometry.floatCount / 2;
         this.bindRectProgram(resolution);
         this.gl.uniform1i(this.maskUniforms.has,1);
         this.gl.activeTexture(this.gl.TEXTURE3);this.gl.bindTexture(this.gl.TEXTURE_2D,this.maskTexture!);this.gl.activeTexture(this.gl.TEXTURE0);
         setSpriteBlend(this.gl,this.linearTarget,true);
         shadowDrawCalls++;shadowCasterCount+=geometry.casterCount;
       }else this.gl.uniform1i(this.maskUniforms.has,0);
+      this.gl.uniform2i(this.receiverUniforms.channels,light.lightMask??255,light.shadowMask??255);
+      this.gl.uniform1i(this.cookieUniforms.has,Number(!!light.cookie));
+      this.gl.uniform1i(this.cookieUniforms.texture,light.cookie ? 6 : 0);
+      if (light.cookie) {
+        const cookie=light.cookie, uv=cookie.uv, angle=cookie.rotationRadians % (2*Math.PI);
+        this.gl.activeTexture(this.gl.TEXTURE6);this.gl.bindTexture(this.gl.TEXTURE_2D,cookies!.texture(pointLightCookieTextureId(cookie)));this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.uniform4f(this.cookieUniforms.uv,uv[0],uv[1],uv[2],uv[3]);this.gl.uniform2f(this.cookieUniforms.rotation,Math.cos(angle),Math.sin(angle));
+      }
       drawCalls += this.drawPointLight(light);
     }
     if(!shadowDrawCalls)this.releaseMask();
@@ -231,7 +290,11 @@ export class WebGL2LightingPass {
       tileOccluderCount,
       shadowDrawCalls,
       shadowCasterCount,
+      shadowGeometryUploadBytes: this.shadowGeometryUploadBytes,
+      shadowGeometryVertexCount,
+      shadowGeometryCacheHit: !!shadowDrawCalls && packed && this.shadowGeometryUploadBytes === 0,
     };
+    }finally{if(hasCookies){this.gl.activeTexture(this.gl.TEXTURE6);this.gl.bindTexture(this.gl.TEXTURE_2D,previousCookieTexture);this.gl.bindSampler(6,previousCookieSampler);this.gl.activeTexture(this.gl.TEXTURE0);}if(normals?.receiverMasks){this.gl.activeTexture(this.gl.TEXTURE5);this.gl.bindTexture(this.gl.TEXTURE_2D,previousReceiverTexture);this.gl.activeTexture(this.gl.TEXTURE0);}}
   }
 
   /** Internal allocation summary; no GPU queries or per-command work. */
@@ -284,6 +347,8 @@ export class WebGL2LightingPass {
     this.gl.uniform1f(this.lightRadiusLocation, radius);
     this.gl.uniform1f(this.lightYScaleLocation, (light.radiusY ?? radius) / radius);
     this.gl.uniform1f(this.lightFalloffLocation, light.falloff);
+    writePointLightSpot(this.lightSpotValues, 0, light.spot, (light.radiusY ?? radius) / radius);
+    this.gl.uniform4f(this.lightSpotLocation, this.lightSpotValues[0], this.lightSpotValues[1], this.lightSpotValues[2], this.lightSpotValues[3]);
     this.gl.uniform1f(this.normalUniforms.height,light.height??light.radius*0.5);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     return 1;
@@ -293,7 +358,39 @@ export class WebGL2LightingPass {
     return this.drawSolidRect(occluder.x, occluder.y, occluder.width, occluder.height, color);
   }
 
-  private drawMask(positions:Float32Array,floatCount:number,light:ResolvedPointLight2D,shadows:ResolvedLightingShadowOptions,resolution:[number,number],target:LightingTarget,state:MaskState):void {
+  /** At most32 lights/2MiB XY staging. Larger legacy scenes retain the existing streamed path. */
+  private prepareShadowBatch(scene: ResolvedLightingScene2D, lights: readonly ResolvedPointLight2D[], occluderVersion: number): boolean {
+    if (lights.length > this.uploadedRevisions.length) { this.uploadedLightCount = -1; return false; }
+    let floatCount = 0, dirty = this.uploadedLightCount !== lights.length;
+    for (let i = 0; i < lights.length; i++) {
+      const geometry = this.shadowGeometryCache.resolveLightGeometry(i, occluderVersion, scene.tileOccluders, lights[i], scene.shadows, this.shadowClipRect, scene.polygonOccluders);
+      this.batchGeometry[i] = geometry; this.batchOffsets[i] = floatCount / 2;
+      floatCount += geometry.floatCount;
+      dirty ||= this.uploadedRevisions[i] !== geometry.revision;
+      if (floatCount > MAX_CACHED_SHADOW_FLOATS) { this.uploadedLightCount = -1; return false; }
+    }
+    this.batchGeometry.length = lights.length;
+    if (!floatCount || !dirty) return true;
+    // Growth discards the previous GPU contents. A failed larger upload must not
+    // let a later return to the old scene reuse that old key with an empty buffer.
+    this.uploadedLightCount = -1;
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowBuffer);
+    this.ensureShadowVertexDataCapacity(floatCount);
+    let offset = 0;
+    for (const geometry of this.batchGeometry) {
+      this.shadowVertexData.set(geometry.positions.subarray(0, geometry.floatCount), offset);
+      offset += geometry.floatCount;
+    }
+    // Publish the key only after a successful upload; failed writes must retry.
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.shadowVertexData, 0, floatCount);
+    this.shadowGeometryUploadBytes += floatCount * 4;
+    for (let i = 0; i < lights.length; i++) this.uploadedRevisions[i] = this.batchGeometry[i].revision;
+    this.uploadedLightCount = lights.length;
+    return true;
+  }
+
+  private drawMask(positions:Float32Array,floatCount:number,light:ResolvedPointLight2D,shadows:ResolvedLightingShadowOptions,resolution:[number,number],target:LightingTarget,state:MaskState,firstVertex?:number):void {
     const gl=this.gl,{scissor,colorMask}=state;
     try {
       this.ensureMask(target.width,target.height);
@@ -306,8 +403,12 @@ export class WebGL2LightingPass {
       gl.uniform2f(this.shadowLightCenterLocation,light.x,light.y);gl.uniform1f(this.shadowLightRadiusLocation,light.radius);
       gl.uniform1f(this.shadowLightYScaleLocation,(light.radiusY??light.radius)/light.radius);
       gl.blendEquation(gl.MAX);gl.blendFunc(gl.ONE,gl.ONE);
-      this.ensureShadowVertexDataCapacity(floatCount);
-      gl.bufferSubData(gl.ARRAY_BUFFER,0,positions,0,floatCount);gl.drawArrays(gl.TRIANGLES,0,floatCount/2);
+      if (firstVertex === undefined) {
+        this.ensureShadowVertexDataCapacity(floatCount);
+        gl.bufferSubData(gl.ARRAY_BUFFER,0,positions,0,floatCount);
+        this.shadowGeometryUploadBytes += floatCount * 4;
+      }
+      gl.drawArrays(gl.TRIANGLES,firstVertex ?? 0,floatCount/2);
     } finally {
       target.restore();gl.blendEquation(gl.FUNC_ADD);
       if(scissor)gl.enable(gl.SCISSOR_TEST);else gl.disable(gl.SCISSOR_TEST);
@@ -340,8 +441,9 @@ export class WebGL2LightingPass {
     if (this.shadowVertexData.length >= floatCount) {
       return;
     }
-    this.shadowVertexData = new Float32Array(nextPowerOfTwo(floatCount));
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, this.shadowVertexData.byteLength, this.gl.DYNAMIC_DRAW);
+    const next = new Float32Array(nextPowerOfTwo(floatCount));
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, next.byteLength, this.gl.DYNAMIC_DRAW);
+    this.shadowVertexData = next;
   }
 
   private drawSolidRect(

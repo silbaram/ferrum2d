@@ -7,6 +7,7 @@ import { SpatialModelImageReader } from "../src/spatialModelImage.js";
 import { spatialModelResource } from "../src/spatialModel.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 interface Fixture {
+    extras?: Record<string,unknown>;
     extensionsRequired?: string[];
     nodes: {
         children?: number[];
@@ -30,6 +31,8 @@ interface Fixture {
         alphaCutoff?: number;
         doubleSided?: boolean;
         pbrMetallicRoughness: {
+            metallicFactor?: number;
+            roughnessFactor?: unknown;
             baseColorTexture?: unknown;
             baseColorFactor?: number[];
         };
@@ -46,6 +49,41 @@ interface Fixture {
     }[];
     images: unknown[];
 }
+test("explicit non-metallic specular profile has a separate stable identity and retains bounded factors", async () => {
+    const bytes = await fixture(j => {j.materials[0].pbrMetallicRoughness.metallicFactor=0;});
+    const diffuse = await loadSpatialGlb(bytes,{materialProfile:"diffuse"}), specular=await loadSpatialGlb(bytes,{materialProfile:"specular"});
+    ok(diffuse.contentId!==specular.contentId);equal(diffuse.materialProfile,undefined);equal(specular.materialProfile,"specular");
+    equal((await loadSpatialGlb(bytes,{materialProfile:"specular"})).contentId,specular.contentId);
+    deepEqual(spatialModelResource(specular)!.primitives[0].specular,{factor:1,color:[1,1,1],roughness:1});
+    const custom=await loadSpatialGlb(await fixture(j=>{
+        j.materials[0].pbrMetallicRoughness.metallicFactor=0;j.materials[0].pbrMetallicRoughness.roughnessFactor=0;
+        j.extensionsRequired=["KHR_materials_specular"];
+        j.materials[0].extensions={KHR_materials_specular:{specularFactor:0,specularColorFactor:[.2,.5,1]}};
+    }),{materialProfile:"specular"});
+    deepEqual(spatialModelResource(custom)!.primitives[0].specular,{factor:0,color:[.2,.5,1],roughness:0});
+});
+test("specular rejects metals, incompatible extensions and malformed factors before active resources change",async()=>{
+    const valid=await loadSpatialGlb(await fixture(j=>{j.materials[0].pbrMetallicRoughness.metallicFactor=0;}),{materialProfile:"specular"});
+    const id=valid.contentId;
+    const edits:((j:Fixture)=>void)[]=[j=>{delete j.materials[0].pbrMetallicRoughness.metallicFactor;},j=>{j.materials[0].pbrMetallicRoughness.metallicFactor=.1;},
+        j=>{j.materials[0].extensions={KHR_materials_unlit:{},KHR_materials_specular:{}};},j=>{j.materials[0].extensions={KHR_materials_ior:{ior:1.5}};}];
+    for(const field of ["specularFactor","specularColorFactor"])
+      for(const value of [null,-1,2,"1",[1,1],[1,null,1]]) edits.push(j=>{j.materials[0].extensions={KHR_materials_specular:{[field]:value}};});
+    for(const value of [null,-.1,1.1,"1"])edits.push(j=>{j.materials[0].pbrMetallicRoughness.roughnessFactor=value;});
+    for(const edit of edits)await rejects(loadSpatialGlb(await fixture(j=>{j.materials[0].pbrMetallicRoughness.metallicFactor=0;edit(j);}),{materialProfile:"specular"}),/Spatial/);
+    equal(valid.contentId,id);
+    await rejects(loadSpatialGlb(await fixture(j=>{j.materials[0].extensions={KHR_materials_specular:{}};}),{materialProfile:"diffuse"}),/unsupported extensions/);
+});
+
+test("GLB application extras do not implicitly create collision or navigation proxies", async () => {
+    const original=await loadSpatialGlb(await fixture(),{materialProfile:"diffuse"});
+    const tagged=await loadSpatialGlb(await fixture(json=>{
+        json.extras={collision:{shape:"box",size:[100,100,100]},navigation:{walkable:true}};
+    }),{materialProfile:"diffuse"});
+    deepEqual(tagged.bounds,original.bounds);equal(tagged.triangleCount,original.triangleCount);
+    deepEqual(Object.keys(tagged).sort(),Object.keys(original).sort());
+    ok(!("collision" in tagged)&&!("navigation" in tagged));
+});
 async function fixture(edit: (json: Fixture) => void = () => { }, name = "rock", preserveTextures = false): Promise<ArrayBuffer> {
     const file = await readFile(new URL(`../../../../examples/data-scene-native/assets/${name}.glb`, import.meta.url));
     const v = new DataView(file.buffer, file.byteOffset, file.byteLength), n = v.getUint32(12, true);

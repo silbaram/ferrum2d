@@ -51,6 +51,64 @@ struct Saved {
     rotations: Vec<f64>,
     combat: Vec<f64>,
 }
+
+#[test]
+fn compound_light_history_and_combat_motion_restore_are_atomic_and_remap_fresh_handles() {
+    let mut source = Engine::new();
+    let (actor, _, handles) = setup(&mut source, 700);
+    let environment = super::spatial_light_selection::values();
+    assert!(source.configure_spatial_environment(&environment));
+    source.update(0.);
+    let saved = capture(&source, &handles);
+    let selection = source.capture_spatial_light_selection_state();
+    let mut dest = Engine::new();
+    dest.use_data_scene();
+    sprite(&mut dest, 1, 0., 0., 0);
+    let (fresh, _, fresh_handles) = setup(&mut dest, 700);
+    assert_ne!(fresh, actor);
+    assert!(dest.configure_spatial_environment(&environment));
+    dest.update(0.1);
+    let before = dest.capture_spatial_light_selection_state();
+    let before_pose = dest.world.transform(fresh);
+    let mut bad = selection.clone();
+    bad[1] = -1.;
+    assert!(
+        !dest.restore_data_scene_progress_with_spatial_light_selection(
+            dest.data_scene_epoch(),
+            &fresh_handles,
+            &saved.flags,
+            &saved.animations,
+            &saved.spatial,
+            &environment,
+            &saved.rotations,
+            true,
+            &saved.combat,
+            &bad
+        )
+    );
+    assert_eq!(dest.capture_spatial_light_selection_state(), before);
+    assert_eq!(dest.world.transform(fresh), before_pose);
+    assert!(
+        dest.restore_data_scene_progress_with_spatial_light_selection(
+            dest.data_scene_epoch(),
+            &fresh_handles,
+            &saved.flags,
+            &saved.animations,
+            &saved.spatial,
+            &environment,
+            &saved.rotations,
+            true,
+            &saved.combat,
+            &selection
+        )
+    );
+    assert_eq!(dest.capture_spatial_light_selection_state(), selection);
+    assert_eq!(dest.world.transform(fresh), source.world.transform(actor));
+    assert_eq!(
+        dest.capture_data_scene_combat_progress(dest.data_scene_epoch(), &fresh_handles),
+        saved.combat
+    );
+}
 fn capture(engine: &Engine, handles: &[u32]) -> Saved {
     let epoch = engine.data_scene_epoch();
     let saved = Saved {

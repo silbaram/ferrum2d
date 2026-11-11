@@ -1,3 +1,4 @@
+import type { FlatLightingAsset } from "./flatLit.js";
 import "./webgpuTypes.js";
 import { WebGpuRendererBackend, type WebGPURendererOptions } from "./webgpuRendererBackend.js";
 export { WebGpuCanvasCommitError } from "./webgpuRendererBackend.js";
@@ -182,10 +183,11 @@ export class WebGPURenderer implements Renderer {
         resolveTextureColorSpace(options);
         // Snapshot the primitive settings before loading. The original signal is
         // request-scoped; recovery supplies its own signal for the captured Blob.
-        const { signal, colorSpace, ktx2Url } = options;
+        const { signal, colorSpace, ktx2Url, alphaMode } = options;
         const settings: TextureLoadOptions = {
             ...(colorSpace === undefined ? {} : { colorSpace }),
             ...(ktx2Url === undefined ? {} : { ktx2Url }),
+            ...(alphaMode === undefined ? {} : { alphaMode }),
         };
         this.textureRequests.set(first, token);
         try {
@@ -245,6 +247,9 @@ export class WebGPURenderer implements Renderer {
             ...(stats.frameId === undefined ? {} : { frameId: stats.frameId + this.timingFrameOffset }) };
     }
     stats(): RendererStats { return this.status === "ready" ? this.backend.stats() : emptyRendererStats(); }
+    flatLightingCookieVersion(): number { this.ready(); return 1; }
+  flatLightingPolygonVersion(): number { this.ready(); return 1; }
+    prepareFlatLighting(scene:LightingScene2D,assets:readonly FlatLightingAsset[]):void { this.ready(); this.backend.prepareFlatLighting(scene,assets); }
     setLighting(scene: LightingScene2D | false | undefined): void {
         this.ready();
         const snapshot = structuredClone(scene);

@@ -17,8 +17,9 @@ class Resource {
 class Pass {
   draws: number[][] = [];
   offsets: number[] = [];
+  receivers: number[] = [];
   setPipeline() {}
-  setBindGroup() {}
+  setBindGroup(slot: number, _group: unknown, offsets?: number[]) { if (slot === 2) this.receivers.push(offsets?.[0] ?? -1); }
   setIndexBuffer() {}
   setVertexBuffer(slot: number, _buffer: unknown, offset = 0) {
     if (slot === 1) this.offsets.push(offset);
@@ -214,6 +215,22 @@ test("WebGPU indexed model batches preserve native culling gaps, matrix order an
     true,
   );
 });
+test("receiver masks split only color model batches without changing matrix stride, culling or shadow batches", async () => {
+  const { models } = setup(), f = frame(source(), 5);
+  for (let i = 0; i < 5; i++) f.words[i * 20 + 2] = i === 1 ? 0 : 3;
+  const masks = new Uint32Array([1, 2, 0, 0, 1, 2, 4, 8, 4, 8]), before = f.words.slice();
+  await models.preload([...f.assets.values()]); models.prepare(f);
+  const s = stats(); models.uploadInstances(f, true, s, masks);
+  // GPU staging owns the per-batch code; borrowed native views can be discarded immediately.
+  masks.fill(0);
+  const color = new Pass(), shadow = new Pass();
+  models.draw(f, color as unknown as GPURenderPassEncoder, {}, s, {}, false, 0, {}, code => code === 513 ? 256 : 512);
+  models.draw(f, shadow as unknown as GPURenderPassEncoder, {}, s, {}, false, 1);
+  deepEqual(color.draws, [[3, 2], [3, 2]]); deepEqual(color.receivers, [256, 512]);
+  deepEqual(color.offsets, [0, 128]); deepEqual(shadow.draws, [[3, 4]]); deepEqual(shadow.receivers, []);
+  equal(s.modelInstanceUploadBytes, 8 * 64); deepEqual(f.words, before);
+  models.destroy();
+});
 test("WebGPU model packet/resource limits reject before any GPU upload or allocation", () => {
   const { device, models } = setup(),
     f = frame(),
@@ -302,13 +319,24 @@ test("WebGPU model material keeps color/data texture identities, mipmaps, MASK a
   );
   const material = device.writes.find((w) => {
     const descriptor = (w.buffer as Resource).descriptor as GPUBufferDescriptor;
-    return descriptor.size === 144 && (descriptor.usage & GPUBufferUsage.UNIFORM) !== 0;
+    return descriptor.size === 272 && (descriptor.usage & GPUBufferUsage.UNIFORM) !== 0;
   })!.values;
   equal(material[8], 0.5);
   equal(material[11], 1);
   equal(device.pipelines[3].vertex.buffers![0].arrayStride, 48);
   equal(device.pipelines[3].primitive!.cullMode, "none");
   models.destroy();
+});
+test("WebGPU specular maps share color/data images while keeping six independent samplers and factors",async()=>{
+  const {device,models,draw}=setup(),s=source(true),p=s.primitives[0],texture={image:0,sampler:p.sampler};
+  const f=frame({...s,materialProfile:"specular",primitives:[{...p,specular:{factor:.75,color:[1,.5,.25],roughness:.3,texture,colorTexture:texture,roughnessTexture:texture}}]});
+  await models.preload([...f.assets.values()]);draw(f);
+  const images=device.textures.filter(t=>t.descriptor.label==="Spatial model image").map(t=>(t.descriptor as GPUTextureDescriptor).format);
+  deepEqual(images,["rgba8unorm-srgb","rgba8unorm"]);
+  const values=device.writes.find(w=>(w.buffer as Resource).descriptor.size===272)!.values;
+  deepEqual([...values.subarray(36,42)],[...Float32Array.from([1,.5,.25,.75,.3,1])]);
+  equal(device.samplers.length,7); // six material samplers plus the shared mip generator
+  models.destroy();equal(device.textures.every(t=>t.destroyed===1),true);
 });
 test("asynchronous WebGPU allocation errors preserve the previous scene and release invalid staging", async () => {
   const { device, models, draw } = setup(),

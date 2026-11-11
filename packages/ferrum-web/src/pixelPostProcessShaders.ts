@@ -26,13 +26,19 @@ highp vec4 applyPixelArt() {
   return vec4(rgb, scene.a);
 }`;
 
-export const PIXEL_POST_PROCESS_WGSL_FUNCTION = `
+export function pixelPostProcessWgsl(linearWorking = false): string { return `
+${linearWorking ? `fn pixelLinearToSrgb(value:vec3f)->vec3f{let c=clamp(value,vec3f(0.),vec3f(1.));return select(1.055*pow(c,vec3f(1./2.4))-vec3f(.055),c*12.92,c<=vec3f(.0031308));}
+fn pixelSrgbToLinear(c:vec3f)->vec3f{return select(pow((c+vec3f(.055))/1.055,vec3f(2.4)),c/12.92,c<=vec3f(.04045));}` : ""}
 fn applyPixelArt(position: vec4f, scene: vec4f, params: vec4f) -> vec4f {
   let bayer = array<u32, 16>(${BAYER_4.map(value => value + "u").join(",")});
   let pixel = vec2u(position.xy);
   let threshold = (f32(bayer[(pixel.y % 4u) * 4u + pixel.x % 4u]) + 0.5) / 16.0 - 0.5;
   let steps = params.x - 1.0;
-  var rgb = clamp(floor(clamp(scene.rgb, vec3f(0), vec3f(1)) * steps + 0.5 + threshold * params.y), vec3f(0), vec3f(steps)) / steps;
+  var rgb=${linearWorking ? "select(vec3f(0.),pixelLinearToSrgb(scene.rgb/max(scene.a,.000001)),scene.a>0.)" : "scene.rgb"};
+  rgb = clamp(floor(clamp(rgb, vec3f(0), vec3f(1)) * steps + 0.5 + threshold * params.y), vec3f(0), vec3f(steps)) / steps;
   rgb *= 1.0 - f32(pixel.y % 2u) * params.z;
+  ${linearWorking ? "rgb=pixelSrgbToLinear(rgb)*scene.a;" : ""}
   return vec4f(rgb, scene.a);
 }`;
+}
+export const PIXEL_POST_PROCESS_WGSL_FUNCTION = pixelPostProcessWgsl();

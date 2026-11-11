@@ -1,3 +1,9 @@
+import { validateLightingCookies } from "./lightingCookie.js";
+import { flatHdrOptions, validateFlatHdrTransition, type ResolvedFlatHdrOptions } from "./flatHdr.js";
+import { WebGpuHdrPass } from "./webgpuHdrPass.js";
+import { srgbToLinear } from "./colorManagement.js";
+import { WebGpuFlatLitPass } from "./webgpuFlatLitPass.js";
+import { validateFlatLitCommands, validateFlatLitMaterial, validateFlatLitAsset, type FlatLightingAsset } from "./flatLit.js";
 import { WebGpuSpriteNormals } from "./webgpuSpriteNormals.js";
 import { WebGpuPixelPerfect } from "./webgpuPixelPerfect.js";
 import { resolvePixelPerfectOptions, resolvePixelPerfectPresentation, type PixelPerfectOptions, type PixelPerfectPresentation } from "./pixelPerfect.js";
@@ -46,7 +52,7 @@ import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.
 
 export interface WebGPURendererOptions {
   pixelPerfect?: PixelPerfectOptions | false;
-  /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
+  /** Opt-in linear RGB composition and sRGB presentation; legacy remains the default. */
   colorManagement?: ColorManagementMode;
   /** Opt-in asynchronous render-pass timing; unavailable adapters still render. */
   gpuTiming?: boolean;
@@ -66,6 +72,10 @@ export class WebGpuRendererBackend implements Renderer {
   readonly supportsGroundShadowVolumes = true;
   private readonly spatialPass: WebGpuSpatialPass;
   private context?: GPUCanvasContext;
+  private readonly linearWorking: boolean;
+  private readonly workingFormat: GPUTextureFormat;
+  private managedFrame?: WebGpuPixelPerfect;
+  private managedDrawCalls = 0;
   private readonly uniformBindGroupLayout: GPUBindGroupLayout;
   private readonly textureBindGroupLayout: GPUBindGroupLayout;
   private readonly uniformPipelineLayout: GPUPipelineLayout;
@@ -73,6 +83,19 @@ export class WebGpuRendererBackend implements Renderer {
   private readonly resolutionBindGroup: GPUBindGroup;
   private readonly spritePass: WebGpuSpritePass;
   private spriteNormals?:WebGpuSpriteNormals;
+  private flatLit?:WebGpuFlatLitPass;
+  private flatLitHdr?:WebGpuFlatLitPass;
+  private flatLitSurface?:WebGpuFlatLitPass;
+  private flatLitHdrSurface?:WebGpuFlatLitPass;
+  private flatPassesUsed=0;
+  private flatMasksUsed=0;
+  private readonly flatSurfaceState={active:false,masksActive:false};
+  private hdrPass?:WebGpuHdrPass;
+  private hdrActive?:ResolvedFlatHdrOptions;
+  private hdrDebugLines?:WebGpuDebugLinePass;
+  private hdrDrawCalls=0;
+  private frameHasDrawnScene=false;
+  private spriteMaterial=resolveSpriteMaterialPreset(undefined);
   private sunShadowMask?:WebGpuSunShadowMask;
   private sunShadowConfigured=false;
   private readonly debugLinePass: WebGpuDebugLinePass;
@@ -104,6 +127,8 @@ export class WebGpuRendererBackend implements Renderer {
     private readonly options: WebGPURendererOptions = {},
   ) {
     this.pixelPerfect = resolvePixelPerfectOptions(options.pixelPerfect);
+    this.linearWorking = resolveColorManagementMode(options.colorManagement) === "linear-srgb";
+    this.workingFormat = this.linearWorking ? "rgba8unorm-srgb" : this.format;
     this.timer = new WebGpuTimer(device, options.gpuTiming === true);
     const sampler = this.device.createSampler({
       magFilter: "nearest",
@@ -113,8 +138,8 @@ export class WebGpuRendererBackend implements Renderer {
     });
     this.uniformBindGroupLayout = this.createUniformBindGroupLayout();
     this.textureBindGroupLayout = this.createTextureBindGroupLayout();
-    this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout);
-    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.frameTexture(), this.format, options.postProcess);
+    this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout, this.linearWorking);
+    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.frameTexture(), this.workingFormat, options.postProcess, this.linearWorking);
     this.uniformPipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.uniformBindGroupLayout],
     });
@@ -128,34 +153,40 @@ export class WebGpuRendererBackend implements Renderer {
     });
     this.spritePass = new WebGpuSpritePass(
       this.device,
-      this.format,
+      this.workingFormat,
       this.uniformBindGroupLayout,
       this.textureBindGroupLayout,
       this.textureStore,
       this.resolutionBindGroup,
+      false, false, undefined, false, this.linearWorking,
     );
     this.debugLinePass = new WebGpuDebugLinePass(
       this.device,
       () => this.frameTexture(),
-      this.format,
+      this.workingFormat,
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
     );
     this.lightingPass = new WebGpuLightingPass(
       this.device,
-      this.format,
+      this.workingFormat,
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
     );
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.sunShadowConfigured=!!options.lighting&&options.lighting.directionalLight!==undefined;
-    this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
+    this.spriteMaterial=resolveSpriteMaterialPreset(options.spriteMaterial);if(this.lightingScene.profile==="lit")validateFlatLitMaterial(this.spriteMaterial);
+    this.spriteMaterialPasses = spriteMaterialPasses(this.spriteMaterial);
     this.spritePass.configurePalettes(this.spriteMaterialPasses[this.spriteMaterialPasses.length-1]?.paletteSwap);
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
-    this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
+    this.spatialPass = new WebGpuSpatialPass(device, this.workingFormat, this.textureBindGroupLayout, this.textureStore, this.linearWorking);
     if(this.pixelPerfect) {
-      this.pixelPass=new WebGpuPixelPerfect(device,format);
+      this.pixelPass=new WebGpuPixelPerfect(device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(this.pixelPerfect.width,this.pixelPerfect.height);
+    } else if(this.linearWorking) {
+      // Validate the managed presentation pipeline before committing the canvas context.
+      this.managedFrame=new WebGpuPixelPerfect(device,this.workingFormat,this.format,true,false);
+      this.managedFrame.resize(1,1);
     }
   }
 
@@ -168,9 +199,7 @@ export class WebGpuRendererBackend implements Renderer {
     options: WebGPURendererOptions = {},
   ): Promise<WebGpuRendererBackend> {
     resolvePixelPerfectOptions(options.pixelPerfect);
-    if (resolveColorManagementMode(options.colorManagement) !== "legacy") {
-      throw new Error("WebGPU linear-srgb color management is not supported; use the WebGL2 fallback.");
-    }
+    resolveColorManagementMode(options.colorManagement);
     resolveWebGpuPostProcessPasses(options.postProcess);
     if (canvas === undefined) {
       throw new Error("WebGPURenderer.create(...) requires an HTMLCanvasElement.");
@@ -294,21 +323,45 @@ export class WebGpuRendererBackend implements Renderer {
   gpuTimingStats() { return this.timer.stats(); }
 
   stats(): RendererStats {
-    return { ...this.currentStats };
+    const stats = { ...this.currentStats };
+    stats.textureBindCount+=this.hdrDrawCalls+this.managedDrawCalls;
+    stats.drawCalls+=this.managedDrawCalls;stats.postProcessDrawCalls+=this.managedDrawCalls;
+    stats.drawCalls+=this.hdrDrawCalls;stats.postProcessDrawCalls+=this.hdrDrawCalls;stats.postProcessPassCount+=this.hdrDrawCalls;
+    return stats;
   }
 
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
     const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
+    if(nextLightingScene.profile==="lit") validateFlatLitMaterial(this.spriteMaterial);
+    validateLightingCookies(nextLightingScene, this.textureStore);
+    const nextHdr=flatHdrOptions(nextLightingScene);
+    if(this.frameActive)validateFlatHdrTransition(nextHdr,this.hdrActive,this.frameHasDrawnScene);
+    if(!nextHdr)this.resolveHdr();
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
+    if(nextLightingScene.profile==="lit")this.lightingPass.clearTargets();
     this.sunShadowConfigured=!!scene&&scene.directionalLight!==undefined;
+    if(nextLightingScene.profile!=="lit"||!nextLightingScene.enabled){this.clearFlatTargets();}
+    if(!nextHdr){this.hdrPass?.release();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
   }
 
+  private clearFlatTargets():void{this.flatLit?.clearTargets();this.flatLitSurface?.clearTargets();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
+  private pruneFlatTargets():void{
+    if(!(this.flatMasksUsed&1))this.flatLit?.clearReceiverMasks();if(!(this.flatMasksUsed&2))this.flatLitSurface?.clearReceiverMasks();
+    if(!(this.flatMasksUsed&4))this.flatLitHdr?.clearReceiverMasks();if(!(this.flatMasksUsed&8))this.flatLitHdrSurface?.clearReceiverMasks();
+    if(!(this.flatPassesUsed&1))this.flatLit?.clearTargets();if(!(this.flatPassesUsed&2))this.flatLitSurface?.clearTargets();
+    if(!(this.flatPassesUsed&4))this.flatLitHdr?.clearTargets();if(!(this.flatPassesUsed&8))this.flatLitHdrSurface?.clearTargets();
+  }
+  prepareFlatLighting(scene:LightingScene2D,assets:readonly FlatLightingAsset[]):void{
+    this.assertAlive();const resolved=resolveLightingSceneInto(createResolvedLightingScene(),scene);if(resolved.profile!=="lit")return;validateFlatLitMaterial(this.spriteMaterial);validateLightingCookies(resolved, this.textureStore);for(const asset of assets)validateFlatLitAsset(this.textureStore,asset,flatHdrOptions(resolved)!==undefined);
+  }
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
     this.assertAlive();
     const resolved = resolveSpriteMaterialPreset(material);
+    if(this.lightingScene.profile==="lit")validateFlatLitMaterial(resolved);
     this.spritePass.configurePalettes(resolved.paletteSwap);
+    this.spriteMaterial=resolved;
     this.spriteMaterialPasses = spriteMaterialPasses(resolved);
   }
 
@@ -328,12 +381,14 @@ export class WebGpuRendererBackend implements Renderer {
   setViewportZoom(zoom: number): void {
     this.assertAlive();
     if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
+    if (this.hdrActive) throw Error("Finish the Flat HDR world before changing viewport zoom");
     this.viewportZoom = zoom;
     this.resize();
   }
 
   resize(): void {
     this.assertAlive();
+    if (this.hdrActive) throw Error("Finish the Flat HDR world before resizing");
     const dpr = window.devicePixelRatio || 1;
     this.logicalWidth = (this.pixelPerfect?.width ?? this.canvas.clientWidth) / this.viewportZoom;
     this.logicalHeight = (this.pixelPerfect?.height ?? this.canvas.clientHeight) / this.viewportZoom;
@@ -346,9 +401,10 @@ export class WebGpuRendererBackend implements Renderer {
     }
     this.presentation = this.pixelPerfect ? resolvePixelPerfectPresentation(drawingBufferWidth,drawingBufferHeight,this.pixelPerfect) : undefined;
     if(this.pixelPerfect) {
-      this.pixelPass ??= new WebGpuPixelPerfect(this.device,this.format);
+      this.pixelPass ??= new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(this.pixelPerfect.width,this.pixelPerfect.height);
-    }
+      this.managedFrame?.release();
+    } else if(this.linearWorking) this.prepareManagedFrame();
     this.writeResolution();
   }
 
@@ -359,9 +415,10 @@ export class WebGpuRendererBackend implements Renderer {
     // Prepare before committing the configuration; a synchronous allocation
     // failure keeps the previous target and presentation usable.
     if(next) {
-      this.pixelPass??=new WebGpuPixelPerfect(this.device,this.format);
+      this.pixelPass??=new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,this.linearWorking);
       this.pixelPass.resize(next.width,next.height);
     }
+    if(!next && this.linearWorking)this.prepareManagedFrame();
     this.pixelPerfect=next;
     if(!next)this.pixelPass?.release();
     this.resize();
@@ -370,6 +427,9 @@ export class WebGpuRendererBackend implements Renderer {
 
   render(): void {
     this.assertAlive();
+    this.pruneFlatTargets();this.flatPassesUsed=0;this.flatMasksUsed=0;
+    this.hdrActive=undefined;this.hdrDrawCalls=0;this.managedDrawCalls=0;this.frameHasDrawnScene=false;
+    if(!flatHdrOptions(this.lightingScene)){this.hdrPass?.release();this.flatLitHdr?.clearTargets();this.flatLitHdrSurface?.clearTargets();}
     resetRendererStatsInto(this.currentStats);
     this.frameActive = true;
     const encoder = this.device.createCommandEncoder();
@@ -380,6 +440,21 @@ export class WebGpuRendererBackend implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
+    const receivers=validateFlatLitCommands(commands,this.lightingScene,this.textureStore,this.spriteMaterial,this.flatSurfaceState);const lit=this.lightingScene.profile==="lit";
+    const hdr=flatHdrOptions(this.lightingScene);
+    if(hdr)validateFlatHdrTransition(hdr,this.hdrActive,this.frameHasDrawnScene);
+    let flat:WebGpuFlatLitPass|undefined;
+    if(lit){
+      const surface=this.flatSurfaceState.active&&this.lightingScene.enabled;
+      flat=surface ? (hdr ? (this.flatLitHdrSurface??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking,true))
+        : (this.flatLitSurface??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking,true)))
+        : hdr?(this.flatLitHdr??=new WebGpuFlatLitPass(this.device,"rgba16float",this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,true,this.linearWorking))
+        :(this.flatLit??=new WebGpuFlatLitPass(this.device,this.workingFormat,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup,this.uniformPipelineLayout,false,this.linearWorking));
+      this.flatPassesUsed|=1<<((hdr?2:0)+(surface?1:0));
+      const masks=this.flatSurfaceState.masksActive&&this.lightingScene.enabled;if(masks)this.flatMasksUsed|=1<<((hdr?2:0)+(surface?1:0));
+      flat.prepareFrame(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,receivers&&this.lightingScene.enabled,masks);
+
+    }else{this.clearFlatTargets();}
     const volumeCasters=validateGroundShadowVolumes(commands,!commands.spatial&&this.sunShadowConfigured);
     this.spritePass.validatePalettes(commands);
     if(commands.spatial && this.pixelPerfect)throw Error("Flat pixelPerfect cannot render spatial scenes; use spatial.environment.pixelArt");
@@ -394,31 +469,42 @@ export class WebGpuRendererBackend implements Renderer {
       this.writeResolution();
     }
     if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
+    if(hdr)this.beginHdr(hdr);
     const encoder = this.device.createCommandEncoder();
     const mapped=spriteNormalsActive(commands);
-    const groundCasters=deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
+    const groundCasters=(!lit||receivers)&&deferredSun&&this.lightingScene.enabled&&(this.lightingScene.directionalLight?.intensity??0)>0?groundShadowCount(commands)+volumeCasters:0;
     const sunMaskStats=groundCasters>0
       ?(this.sunShadowMask??=new WebGpuSunShadowMask(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height):undefined;
     if(!sunMaskStats)this.sunShadowMask?.clearTarget();
-    const normalStats=mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
+    const normalStats=!lit&&mapped&&this.lightingScene.enabled?(this.spriteNormals??=new WebGpuSpriteNormals(this.device,this.uniformBindGroupLayout,this.textureBindGroupLayout,this.textureStore,this.resolutionBindGroup)).draw(encoder,commands,this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height,this.spriteMaterialPasses):undefined;
     if(!normalStats)this.spriteNormals?.clearTargets();
-    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
+    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.baseFrameTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
     const target = this.frameTexture().createView();
     const pass = this.beginRenderPass(encoder, "load", target);
 
-    const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
-    const lightingStats = this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);
-
-    if(!lightingStats.passEnded)pass.end();
+    const spriteStats = lit?flat!.drawColor(pass,commands,this.spriteMaterialPasses):this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
+    let flatStats;
+    let lightingStats;
+    if(lit){pass.end();if(receivers&&this.lightingScene.enabled)flatStats=flat!.drawLighting(encoder,target,commands,this.lightingScene,this.logicalWidth,this.logicalHeight,this.spriteMaterialPasses,sunMaskStats);lightingStats=flatStats?.lighting??{drawCalls:0,pointLightCount:0,tileOccluderCount:0,shadowDrawCalls:0,shadowCasterCount:0};}
+    else {lightingStats=this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);if(!lightingStats.passEnded)pass.end();}
     this.device.queue.submit([encoder.finish()]);
     if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
+    const previousBloom0 = this.currentStats.spatialBloomDrawCalls ?? 0;
+    const previousBloom1 = this.currentStats.spatialBloomTextureBytes ?? 0;
+    const previousBloom2 = this.currentStats.spatialBloomTexelFetchBudget ?? 0;
+    const previousPointShadowBytes = this.currentStats.pointShadowGeometryUploadBytes ?? 0;
+    const previousPointShadowVertices = this.currentStats.pointShadowGeometryVertexCount ?? 0;
     writeRendererStatsForCommandsInto(
       this.currentStats,
       commands,
       spriteStats.drawCalls,
       spriteStats.textureSwitchCount,
     );
-    this.currentStats.normalDrawCalls=normalStats?.drawCalls??0;
+    if(flatStats){this.currentStats.drawCalls+=flatStats.data.drawCalls;this.currentStats.batchCount+=flatStats.data.drawCalls;this.currentStats.textureBindCount+=flatStats.data.drawCalls*(this.flatSurfaceState.active?5:2)+(this.flatSurfaceState.active?5:3);this.currentStats.textureSwitchCount+=flatStats.data.textureSwitchCount;}
+    if (flatStats?.lighting.pointLightCount) for (const light of this.lightingScene.pointLights)
+      if (light.cookie && light.intensity > 0) this.currentStats.textureBindCount++;
+    if(flatStats?.receiverMasks){const mask=flatStats.receiverMasks;this.currentStats.drawCalls+=mask.drawCalls;this.currentStats.batchCount+=mask.drawCalls;this.currentStats.textureBindCount+=mask.drawCalls+1;this.currentStats.textureSwitchCount+=mask.textureSwitchCount;}
+    this.currentStats.normalDrawCalls=flatStats?.data.drawCalls??normalStats?.drawCalls??0;
     if(normalStats){this.currentStats.drawCalls+=normalStats.drawCalls;this.currentStats.batchCount+=normalStats.drawCalls;this.currentStats.textureBindCount+=normalStats.drawCalls*2+2;this.currentStats.textureSwitchCount+=normalStats.textureSwitchCount;}
     addLightingStatsInto(
       this.currentStats,
@@ -428,11 +514,18 @@ export class WebGpuRendererBackend implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    this.currentStats.pointShadowGeometryUploadBytes = previousPointShadowBytes + (lightingStats.shadowGeometryUploadBytes ?? 0);
+    this.currentStats.pointShadowGeometryVertexCount = previousPointShadowVertices + (lightingStats.shadowGeometryVertexCount ?? 0);
+    this.currentStats.pointShadowGeometryCacheHit = this.currentStats.pointShadowGeometryVertexCount > 0 && this.currentStats.pointShadowGeometryUploadBytes === 0;
+    this.currentStats.spatialBloomDrawCalls = previousBloom0 + (spatial?.bloomDrawCalls ?? 0);
+    this.currentStats.spatialBloomTextureBytes = Math.max(previousBloom1, spatial?.bloomTextureBytes ?? 0);
+    this.currentStats.spatialBloomTexelFetchBudget = previousBloom2 + (spatial?.bloomTexelFetchBudget ?? 0);
     if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     if (spatial) {
       this.currentStats.spatial = spatial; this.currentStats.drawCalls += spatial.drawCalls; this.currentStats.batchCount += spatial.drawCalls;
       this.currentStats.spriteCount += spatial.billboardCount; this.currentStats.textureBindCount += spatial.textureBindCount; this.currentStats.textureSwitchCount += spatial.textureSwitchCount;
     }
+    this.frameHasDrawnScene=true;
     return this.stats();
   }
 
@@ -445,17 +538,23 @@ export class WebGpuRendererBackend implements Renderer {
       return this.stats();
     }
 
-    const drawCalls = this.debugLinePass.draw(lines, { ...camera, groundYScale: this.groundYScale }, this.logicalWidth, this.logicalHeight);
+    const hdr=flatHdrOptions(this.lightingScene);
+    if(hdr){validateFlatHdrTransition(hdr,this.hdrActive,this.frameHasDrawnScene);this.beginHdr(hdr);}
+    const debug=this.hdrActive?(this.hdrDebugLines??=new WebGpuDebugLinePass(this.device,()=>this.frameTexture(),"rgba16float",this.uniformPipelineLayout,this.resolutionBindGroup)):this.debugLinePass;
+    const drawCalls = debug.draw(lines, { ...camera, groundYScale: this.groundYScale }, this.logicalWidth, this.logicalHeight);
     addPhysicsDebugLineStatsInto(this.currentStats, lines.lineCount, drawCalls);
+    this.frameHasDrawnScene=true;
     return this.stats();
   }
 
   renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
     this.assertAlive();
+    this.pruneFlatTargets();
     if (postProcess !== undefined) {
       this.postProcessPass.setPostProcess(postProcess);
     }
-    if (this.presentation && !this.frameActive) return this.stats();
+    this.resolveHdr();
+    if ((this.presentation || this.linearWorking) && !this.frameActive) return this.stats();
     const postProcessStats = this.postProcessPass.drawPasses();
     addPostProcessStatsInto(
       this.currentStats,
@@ -465,6 +564,10 @@ export class WebGpuRendererBackend implements Renderer {
     if(this.presentation && this.frameActive) {
       this.pixelPass!.present(this.requireContext().getCurrentTexture(),this.presentation,this.pixelPerfect!.background!);
       this.currentStats.drawCalls++;this.currentStats.presentationPassCount=1;
+    }
+    if(this.linearWorking && !this.presentation && this.frameActive){
+      this.managedFrame!.present(this.requireContext().getCurrentTexture(),{x:0,y:0,width:this.canvas.width,height:this.canvas.height},[0,0,0]);
+      this.managedDrawCalls++;
     }
     this.frameActive=false;
     return this.stats();
@@ -483,8 +586,9 @@ export class WebGpuRendererBackend implements Renderer {
     this.lightingPass.destroy();
     this.spritePass.destroy();
     this.spriteNormals?.destroy();
+    this.flatLit?.destroy();this.flatLitHdr?.destroy();this.flatLitSurface?.destroy();this.flatLitHdrSurface?.destroy();this.hdrPass?.destroy();this.hdrDebugLines?.destroy();
     this.sunShadowMask?.destroy();
-    this.pixelPass?.release();
+    this.pixelPass?.release();this.managedFrame?.release();
     webGpuResources(this.device).destroy(this.resolutionBuffer);
     webGpuResources(this.device).destroyAll();
   }
@@ -508,13 +612,13 @@ export class WebGpuRendererBackend implements Renderer {
     loadOp: GPULoadOp,
     view?: GPUTextureView,
   ): GPURenderPassEncoder {
-    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
+    const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0], alphaScale=this.linearWorking?clear[3]:1;
     return beginWebGpuRenderPass(this.device, encoder, {
       colorAttachments: [{
         view: view ?? this.frameTexture().createView(),
         loadOp,
         storeOp: "store",
-        clearValue: { r: clear[0], g: clear[1], b: clear[2], a: clear[3] },
+        clearValue: { r: clear[0]*alphaScale, g: clear[1]*alphaScale, b: clear[2]*alphaScale, a: clear[3] },
       }],
     });
   }
@@ -529,7 +633,30 @@ export class WebGpuRendererBackend implements Renderer {
     });
   }
 
-  private frameTexture(): GPUTexture { return this.pixelPerfect ? this.pixelPass!.texture() : this.requireContext().getCurrentTexture(); }
+  private baseFrameTexture(): GPUTexture { return this.pixelPerfect ? this.pixelPass!.texture() : this.linearWorking ? this.managedFrame!.texture() : this.requireContext().getCurrentTexture(); }
+  private frameTexture(): GPUTexture { return this.hdrActive ? this.hdrPass!.texture() : this.baseFrameTexture(); }
+
+  private prepareManagedFrame():void {
+    this.managedFrame??=new WebGpuPixelPerfect(this.device,this.workingFormat,this.format,true,false);
+    this.managedFrame.resize(Math.max(1,this.canvas.width),Math.max(1,this.canvas.height));
+  }
+
+  private beginHdr(options:ResolvedFlatHdrOptions):void {
+    if(this.hdrActive)return;
+    this.hdrPass??=new WebGpuHdrPass(this.device,this.workingFormat);
+    this.hdrPass.prepare(this.pixelPerfect?.width??this.canvas.width,this.pixelPerfect?.height??this.canvas.height);
+    const clear=this.options.clearColor??[.08,.1,.15,1],rgb=this.linearWorking?clear:clear.slice(0,3).map(srgbToLinear);
+    const encoder=this.device.createCommandEncoder(),pass=beginWebGpuRenderPass(this.device,encoder,{colorAttachments:[{
+      view:this.hdrPass.texture().createView(),loadOp:"clear",storeOp:"store",clearValue:{r:rgb[0]!*clear[3],g:rgb[1]!*clear[3],b:rgb[2]!*clear[3],a:clear[3]},
+    }]});pass.end();this.device.queue.submit([encoder.finish()]);
+    this.hdrActive={...options};
+  }
+
+  private resolveHdr():void {
+    if(!this.hdrActive)return;
+    this.hdrPass!.resolve(this.baseFrameTexture(),this.hdrActive,!this.linearWorking);
+    this.hdrActive=undefined;this.hdrDrawCalls++;
+  }
 
   private createTextureBindGroupLayout(): GPUBindGroupLayout {
     return this.device.createBindGroupLayout({

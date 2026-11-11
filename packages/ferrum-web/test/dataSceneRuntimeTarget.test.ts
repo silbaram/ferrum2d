@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 
 import {
@@ -8,6 +8,7 @@ import {
   createDataSceneRuntimeTarget,
   DATA_SCENE_PRIMITIVE_TEXTURES,
   resolveSceneAuthoringDocument,
+  type SceneAuthoringDocumentSpec,
 } from "../src/authoring.js";
 import { createEngine, createDataSceneView, captureGameStateSnapshot, restoreGameStateSnapshot } from "../src/core.js";
 import {
@@ -21,6 +22,7 @@ import {
   synchronizeDataSceneVariableStore,
 } from "../src/dataSceneVariables.js";
 import type { GameplayEntityHandle } from "../src/gameplayAuthoring.js";
+import {attachDataSceneProgressAdapter} from "../src/dataSceneProgress.js";
 
 test("createDataSceneRuntimeTarget spawns resolved inline components through the engine adapter", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
@@ -467,6 +469,69 @@ test("applyDataSceneAuthoringDocument spawns the minimum data scene authoring sa
       engine.destroy();
     }
   });
+});
+
+test("cold authoring reapply preserves compatible native playback by authored ID and honors explicit new clips", async () => {
+  await withNodeWasmFileFetch(async()=>{
+    const engine=await createEngine();
+    const document:SceneAuthoringDocumentSpec={format:"ferrum2d.consumer.scene-authoring",version:1,behaviorRecipes:{entities:{}},
+      sceneComposition:{initialFragment:"main",prefabs:{object:{}},fragments:{main:{instances:["hero","friend"].map((id,i)=>({id,prefab:"object",x:i*50,y:0,props:{components:{layer:"wall",collider:"none",visual:{kind:"sprite",texture:1,width:16,height:24,
+        animationSet:{initialClip:0,clips:[{id:0,fps:4,loop:true,frames:[{u0:0,v0:0,u1:.5,v1:1},{u0:.5,v0:0,u1:1,v1:1}]},{id:1,fps:1,loop:true,frames:[{u0:0,v0:0,u1:.5,v1:1}]}]}}}}}))}}}};
+    try{
+      throws(()=>applyDataSceneAuthoringDocument(engine,document,{preserveAnimationAndLod:true}),/previous complete default authoring/);
+      const first=applyDataSceneAuthoringDocument(engine,document);
+      ok(engine.updateDataSceneSpriteAnimations([{entity:first.entityHandles.hero,frame:1,paused:true,flipX:true},{entity:first.entityHandles.friend,frame:0,paused:true,flipY:true}]));
+      const hero=engine.dataSceneSpriteAnimationState(first.entityHandles.hero),friend=engine.dataSceneSpriteAnimationState(first.entityHandles.friend);
+      const edited=structuredClone(document);const fragment=edited.sceneComposition.fragments!.main!;fragment.instances=[...fragment.instances!].reverse();fragment.instances[0].x=150;
+      const result=applyDataSceneAuthoringDocument(engine,edited,{preserveAnimationAndLod:true});
+      deepEqual(engine.dataSceneSpriteAnimationState(result.entityHandles.hero),hero);
+      deepEqual(engine.dataSceneSpriteAnimationState(result.entityHandles.friend),friend);
+      const saved=captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(edited))});
+      equal(saved.dataScene!.progress!.instances.find(i=>i.id==="hero")!.animation!.elapsedSeconds,.25);
+      const changed=structuredClone(edited);
+      const visual=changed.sceneComposition.fragments!.main!.instances!.find(i=>i.id==="hero")!.props!.components as {visual:{animationSet:{initialClip:number}}};
+      visual.visual.animationSet.initialClip=1;
+      const next=applyDataSceneAuthoringDocument(engine,changed,{preserveAnimationAndLod:true});
+      equal(engine.dataSceneSpriteAnimationState(next.entityHandles.hero)!.clip,1);
+      equal(engine.dataSceneSpriteAnimationState(next.entityHandles.hero)!.elapsedSeconds,0);
+      deepEqual(engine.dataSceneSpriteAnimationState(next.entityHandles.friend),friend);
+      const reset=applyDataSceneAuthoringDocument(engine,edited);
+      equal(engine.dataSceneSpriteAnimationState(reset.entityHandles.hero)!.elapsedSeconds,0);
+      throws(()=>applyDataSceneAuthoringDocument(engine,edited,{activateDataScene:false,preserveAnimationAndLod:true}),/full scene activation/);
+    }finally{engine.destroy();}
+  });
+});
+
+test("authoring continuity capability rejection keeps the previous scene before activation",()=>{
+  const adapter=new MockDataSceneRuntimeAdapter();
+  const engine=attachMemoryDataSceneVariableRuntime(attachDataSceneRuntimeEngineAdapter({} as FerrumEngine,adapter));
+  const document={format:"ferrum2d.consumer.scene-authoring",version:1,sceneComposition:sampleComposition(),behaviorRecipes:{entities:{}}};
+  applyDataSceneAuthoringDocument(engine,document);
+  const calls=adapter.useDataSceneCalls;
+  throws(()=>applyDataSceneAuthoringDocument(engine,document,{preserveAnimationAndLod:true}),/compatible Wasm/);
+  equal(adapter.useDataSceneCalls,calls);
+});
+
+test("authoring continuity releases a pending native token when spawning fails",()=>{
+  const calls:string[]=[];
+  const adapter=Object.assign(new MockDataSceneRuntimeAdapter(),{
+    beginAuthoringContinuity:()=>{calls.push("begin");return 17;},
+    finishAuthoringContinuity:()=>{calls.push("finish");return true;},
+    cancelAuthoringContinuity:(token:number)=>{calls.push(`cancel:${token}`);},
+  });
+  const engine=attachMemoryDataSceneVariableRuntime(attachDataSceneRuntimeEngineAdapter({} as FerrumEngine,adapter));
+  // Only metadata is consulted by the handoff; these diagnostics must not be used.
+  const unexpected=():never=>{throw Error("unexpected progress read during metadata-only continuity setup");};
+  attachDataSceneProgressAdapter(engine,{epoch:()=>1,spatialRevision:()=>0,capture:unexpected,navigation:unexpected,obstacles:unexpected,animations:unexpected,
+    viewport:unexpected,spatial:unexpected,preflightSpatial:unexpected,restore:unexpected});
+  const document={format:"ferrum2d.consumer.scene-authoring",version:1,sceneComposition:sampleComposition(),behaviorRecipes:{entities:{}}};
+  applyDataSceneAuthoringDocument(engine,document);
+  adapter.failNext=true;
+  throws(()=>applyDataSceneAuthoringDocument(engine,document,{preserveAnimationAndLod:true}),/failed to spawn/);
+  deepEqual(calls,["begin","cancel:17"]);
+  applyDataSceneAuthoringDocument(engine,document);
+  applyDataSceneAuthoringDocument(engine,document,{preserveAnimationAndLod:true});
+  deepEqual(calls,["begin","cancel:17","begin","finish","cancel:17"]);
 });
 
 test("applyDataSceneAuthoringDocument configures Rust variables before guarded recipes", async () => {

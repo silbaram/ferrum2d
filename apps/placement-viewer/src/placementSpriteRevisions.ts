@@ -88,7 +88,7 @@ export function createPlacementSpriteRevisions<
         try {
           await engine.loadAssets({
             textures: { [asset.id]: uploadUrl },
-            textureOptions: { [asset.id]: { colorSpace: "srgb", signal } },
+            textureOptions: { [asset.id]: { colorSpace: "srgb", alphaMode: "straight", signal } },
           });
           signal.throwIfAborted();
           if (disposed || entries.get(asset.id) !== asset)
@@ -127,7 +127,7 @@ export function createPlacementSpriteRevisions<
               if (disposed || entries.get(a.id) !== a || !a.url) continue;
               const url = a.url;
               try {
-                await engine.loadAssets({ textures: { [a.id]: url }, textureOptions: { [a.id]: { colorSpace: "srgb" } } });
+                await engine.loadAssets({ textures: { [a.id]: url }, textureOptions: { [a.id]: { colorSpace: "srgb", alphaMode: "straight" } } });
                 if (disposed || entries.get(a.id) !== a) {
                   const textures = [{ kind: "texture" as const, name: a.id, url }];
                   engine.releaseAssets({ entries: textures, textures, sounds: [], json: [], total: 1 });

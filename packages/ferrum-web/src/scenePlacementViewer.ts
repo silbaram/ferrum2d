@@ -6,6 +6,7 @@ import {
 import {
   applySceneSpatialPatch,
   diffSceneSpatialPatch,
+  sceneSpatialPatchVersion,
   sceneSpatialReferencesInstance,
   type SceneSpatialPatch,
   type SceneSpatialPatchOperation,
@@ -381,7 +382,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     const needle = JSON.stringify(assetId);
     // Match complete numeric property values, never unrelated dimensions or an ID prefix.
     const numeric = textureId === undefined ? undefined :
-      new RegExp(`"(?:texture|textureId|normalTexture|normalTextureId|asset)":${textureId}(?=[,}])`);
+      new RegExp(`"(?:texture|textureId|normalTexture|normalTextureId|emissionTexture|specularTexture|roughnessTexture|asset)":${textureId}(?=[,}])`);
     const contains = (value: unknown) => {
       const serialized = JSON.stringify(value);
       return serialized !== undefined && (serialized.includes(needle) || numeric?.test(serialized) === true);
@@ -553,26 +554,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         }
       this.spatial = applySceneSpatialPatch(this.spatial, {
         format: "ferrum2d.scene-spatial.patch",
-        version: operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && Object.prototype.hasOwnProperty.call(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
-          (op) => op.kind === "setBillboardNormalTexture",
-        )
-          ? 4
-          : operations.some((op) =>
-                [
-                  "renameReference",
-                  "removeReference",
-                  "copyReference",
-                  "replaceModelAsset",
-                ].includes(op.kind),
-              )
-            ? 3
-            : operations.some(
-                  (operation) =>
-                    operation.kind === "addBillboard" ||
-                    operation.kind === "addModel",
-                )
-              ? 2
-              : 1,
+        version: sceneSpatialPatchVersion(operations),
         operations,
       });
       return this.state();

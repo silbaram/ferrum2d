@@ -652,6 +652,9 @@ impl BitmapTextSystem {
                 items.push(SpriteRenderItem {
                     command,
                     normal_material: Default::default(),
+                    lighting_material: Default::default(),
+                    surface_material: Default::default(),
+                    light_masks: Default::default(),
                     sort_key: SpriteRenderSortKey {
                         floor_id: text.spec.floor_id,
                         elevation: text.spec.elevation,
@@ -691,6 +694,7 @@ impl BitmapTextSystem {
                     .bindings
                     .get(&key)
                     .map(|model| crate::spatial_scene::Billboard {
+                        receiver_masks: Default::default(),
                         material: Default::default(),
                         units_per_pixel: 1.,
                         cutoff: 0.5,
@@ -739,6 +743,7 @@ impl BitmapTextSystem {
                     elevation - (text.spec.y + c.y + c.height) * style.units_per_pixel,
                     style,
                 );
+                scene.pad_billboard_receiver_masks();
             }
         }
     }

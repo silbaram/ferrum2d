@@ -1,3 +1,4 @@
+import { auditSpatialBloomPixels, WIDE_BLOOM_STATES } from "./spatial-bloom-report.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, readdir, writeFile, cp } from "node:fs/promises";
@@ -5,6 +6,7 @@ import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { runReleaseCommand } from "./github-release-command.mjs";
 import { installSpatialGpuTarget } from "./spatial-webgpu-capture.mjs";
+import { auditSpatialSelectionPixels, auditSpatialSelectionPresentationPixels } from "./spatial-light-selection-report.mjs";
 const { chromium } = await import(process.env.FERRUM_PLAYWRIGHT_MODULE ?? "playwright-core");
 const root = resolve("."),
   parent = resolve(
@@ -26,6 +28,10 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
+const wideBloomFogOnly = process.argv.includes("--wide-bloom-fog-only");
+const wideBloomOnly = wideBloomFogOnly || process.argv.includes("--wide-bloom-only");
+const selectionPresentationOnly = process.argv.includes("--light-selection-presentation-only");
+const selectionOnly = selectionPresentationOnly || process.argv.includes("--light-selection-only");
 const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
 const receiverShadowsOnly = process.argv.includes("--receiver-shadows-only");
 const flatShadowsOnly = process.argv.includes("--flat-shadows-only");
@@ -33,11 +39,15 @@ const recoveryOnly = process.argv.includes("--recovery-only");
 const shadowsOnly = process.argv.includes("--shadows-only");
 const proxiesOnly = process.argv.includes("--proxies-only");
 const pointContactOnly = process.argv.includes("--point-contact-only");
-const environmentOnly = process.argv.includes("--environment-only");
+const linearEnvironmentOnly = process.argv.includes("--linear-environment-only");
+const masksOnly = process.argv.includes("--receiver-masks-only");
+const specularOnly = process.argv.includes("--specular-only");
+const environmentOnly = masksOnly || specularOnly || linearEnvironmentOnly || process.argv.includes("--environment-only");
+const compositionOnly = process.argv.includes("--composition-only");
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;import{probeFlatShadowIsolation}from'/flat-shadows.mjs';window.probeFlatShadowIsolation=probeFlatShadowIsolation;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -48,11 +58,11 @@ const server = createServer((req, res) => {
     }
     if (path === "/") {
       res.setHeader("Content-Type", "text/html");
-      res.end(html);
+      res.end(html + '<script type="module">import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialWideBloom}from"/wide-bloom.mjs";window.probeSpatialWideBloom=probeSpatialWideBloom;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/bloom-reference.mjs" ? "tests/smoke/spatial-bloom-reference.mjs" : path === "/wide-bloom.mjs" ? "tests/smoke/spatial-wide-bloom-browser-fixture.mjs" : path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -97,7 +107,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -109,6 +119,9 @@ const report = {
   cases: [],
   modelCases: [],
   environmentCases: [],
+  compositionCases: [],
+  wideBloomCases: [],
+  lightSelectionCases: [],
   shadowCases: [],
   flatShadowCases: [],
   proxyCases: [],
@@ -159,6 +172,63 @@ try {
         report.activeCase = { viewport, deviceScaleFactor };
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
+        if (wideBloomOnly || ![selectionOnly,compositionOnly,recoveryOnly,fallbackOnly,modelsOnly,environmentOnly,shadowsOnly,proxiesOnly,pointContactOnly,flatShadowsOnly,receiverShadowsOnly,gameAssetShadowsOnly].some(Boolean)) {
+          await page.waitForFunction(() => window.probeSpatialWideBloom);
+          for (const colorManagement of ["legacy", "linear-srgb"]) for (const variant of wideBloomFogOnly ? ["fog", "fog-ao"] : ["plain", "fog", "fog-ao"]) {
+            const result = await page.evaluate(({mode,variant}) => window.probeSpatialWideBloom(mode,variant), {mode:colorManagement,variant});
+            assert.equal(result.length, 2);
+            for (const entry of result) for (const backend of entry.backends) for (const row of backend.rows) {
+              const file = `bloom-${variant}-${colorManagement}-${entry.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+              await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64")); row.image=file;
+            }
+            report.wideBloomCases.push({viewport,deviceScaleFactor,colorManagement,variant,result,status:"pixels-pending"});
+            for (const entry of result) for (const backend of entry.backends) {
+              assert(backend.restored && backend.snapshotVersion === 12 && backend.pixelArtNearest && backend.errors.length === 0);
+              assert.equal(backend.rows.length, WIDE_BLOOM_STATES.length);
+              backend.pixelAudit = await auditSpatialBloomPixels(backend.rows, file => readFile(resolve(output,file)), deviceScaleFactor);
+            }
+            for (const entry of result) assert(entry.comparisons.every(row => row.passed), `Wide Bloom backend parity: ${JSON.stringify(entry.comparisons.filter(row => !row.passed))}`);
+            const order = [];
+            if (variant === "plain") for (const backend of ["webgl2", "webgpu"]) order.push(await page.evaluate(({backend,mode}) => window.probeSpatialCompositionOrder(backend,mode,true), {backend,mode:colorManagement}));
+            report.wideBloomCases.at(-1).order = order; report.wideBloomCases.at(-1).status = "passed";
+          }
+          assert.deepEqual(errors, []); if (wideBloomOnly) continue;
+        }
+        // The default CI offscreen matrix includes native temporal selection; narrow mode shares it.
+        if (selectionOnly || ![wideBloomOnly,compositionOnly,recoveryOnly,fallbackOnly,modelsOnly,environmentOnly,shadowsOnly,proxiesOnly,pointContactOnly,flatShadowsOnly,receiverShadowsOnly,gameAssetShadowsOnly].some(Boolean)) {
+          await page.waitForFunction(() => window.probeSpatialLightSelection);
+          for (const colorManagement of ["legacy", "linear-srgb"]) for (const presentationOnly of selectionPresentationOnly ? [true] : [false, true]) {
+            const result = await page.evaluate(({mode,presentationOnly}) => window.probeSpatialLightSelection(mode,presentationOnly), {mode:colorManagement,presentationOnly});
+            assert.equal(result.length, 4);
+            for (const entry of result) {
+              assert.equal(entry.comparisons.length, presentationOnly ? 4 : 22);
+              for (const backend of entry.backends) {
+                assert(backend.errors.length === 0);
+                if (!presentationOnly) assert(backend.restored && backend.freshHandles);
+                if (!presentationOnly) backend.fadeSignals = await auditSpatialSelectionPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
+                else backend.presentationSignals = await auditSpatialSelectionPresentationPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
+                if (!presentationOnly) assert.equal(backend.rows.find(row => row.name === "in-0").stats.contributingLightCount, entry.pinned ? 1 : 0);
+                for (const row of backend.rows) {
+                  assert.equal(row.referenceDifference, 0);
+                  const file = `selection-${presentationOnly?"presentation-":""}${colorManagement}-${entry.projection}-${entry.pinned}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+                  await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64")); row.image=file;
+                }
+              }
+            }
+            report.lightSelectionCases.push({viewport,deviceScaleFactor,colorManagement,presentationOnly,result});
+          }
+          assert.deepEqual(errors, []); if (selectionOnly) continue;
+        }
+        if (compositionOnly) {
+          await page.waitForFunction(() => window.probeSpatialCompositionOrder);
+          for (const backend of ["webgl2", "webgpu"]) {
+            const checked = await page.evaluate(backend => window.probeSpatialCompositionOrder(backend), backend);
+            assert(checked.bloomAfterDof && checked.zeroIdentity && checked.resize);
+            if (backend === "webgpu") assert.equal(checked.recovery.differentPixels, 0);
+            report.compositionCases.push({ viewport, deviceScaleFactor, ...checked });
+          }
+          assert.deepEqual(errors, []); continue;
+        }
         if(recoveryOnly){
           const recovered=await page.evaluate(()=>window.probeSpatialRecovery());
           assert.equal(recovered.recovery.status,"ready");assert.equal(recovered.recovery.differentPixels,0);assert.deepEqual(errors,[]);
@@ -216,21 +286,40 @@ try {
           report.modelCases.push({ viewport, deviceScaleFactor, result: models });
         }
         if (!fallbackOnly && !modelsOnly && !shadowsOnly && !proxiesOnly && !pointContactOnly && !flatShadowsOnly && !receiverShadowsOnly && !gameAssetShadowsOnly) {
-          const environment = await page.evaluate(() => window.probeSpatialWebGpuEnvironment());
+          for(const colorManagement of (linearEnvironmentOnly?["linear-srgb"]:["legacy","linear-srgb"])) {
+          for (const flavor of (masksOnly ? ["masks"] : specularOnly ? ["specular"] : environmentOnly ? ["base"] : ["base", "specular", "masks"])) {
+          const specular = flavor === "specular", masks = flavor === "masks";
+          const environment = await page.evaluate(({mode,specular,masks}) => window.probeSpatialWebGpuEnvironment(mode,specular,masks), {mode:colorManagement,specular,masks});
           assert.equal(environment.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of environment) {
-            assert.equal(entry.comparisons.length, 56);
+            assert.equal(entry.comparisons.length, masks ? 35 : specular ? 32 : 70);
             for (const backend of entry.backends) {
               assert(backend.restored && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 56);
+              assert.equal(backend.rows.length, masks ? 35 : specular ? 32 : 70);
+              if (masks) {
+                assert(backend.receiverChecks.independent && backend.receiverChecks.restored && backend.receiverChecks.freshHandles && backend.receiverChecks.resized);
+                if (backend.backend === "webgpu") assert.equal(backend.receiverChecks.recovery.differentPixels, 0);
+              } else if (specular) {
+                assert(backend.specular.zeroIdentity && backend.specular.restored && backend.specular.freshHandles && backend.specular.failedLoadPreserved);
+                assert.equal(backend.specular.assets,16);assert.equal(backend.specular.comparisons.length,6);
+                if(backend.backend==="webgpu")assert.equal(backend.specular.recovery.differentPixels,0);
+              } else {
+              assert.equal(backend.compositionChecks.preserved.length, 3);
+              assert(backend.compositionChecks.preserved.every(item => item.channelError <= 3));
+              assert(backend.compositionChecks.ambientContact && backend.compositionChecks.fogPreserved && backend.compositionChecks.legacyIdentity);
+              if (entry.projection === "orthographic") {
+                assert(backend.compositionOrder.bloomAfterDof && backend.compositionOrder.zeroIdentity && backend.compositionOrder.resize);
+                if (backend.backend === "webgpu") assert.equal(backend.compositionOrder.recovery.differentPixels, 0);
+              }
               assert.equal(backend.uvComparisons.length, 5);
               assert.equal(backend.uvFailurePreserved, true);
               assert(backend.uvPicking.hits > 0 && backend.uvPicking.misses > 0);
               for(const name of ["advanced-point","spot-down","spot-up","bloom-zero","bloom","ao-baseline","ao","budget-many","hemisphere-sky","hemisphere-ground","hemisphere-facing","hemisphere-normal","hemisphere-disabled","unlit-hemisphere","point-offset-zero","point-offset","sun-offset-zero","sun-offset","point-pcf-offset-zero","point-pcf-offset","sun-pcf-offset-zero","sun-pcf-offset"])
                 assert(backend.rows.some(row=>row.name===name),`Missing lighting regression ${name}`);
+              }
               for (const row of backend.rows) {
-                const file = `environment-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+                const file = `environment-${colorManagement}-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(
                   resolve(output, file),
                   Buffer.from(row.image.split(",")[1], "base64"),
@@ -239,7 +328,9 @@ try {
               }
             }
           }
-          report.environmentCases.push({ viewport, deviceScaleFactor, result: environment });
+          report.environmentCases.push({ viewport, deviceScaleFactor, colorManagement, specular, masks, result: environment });
+          }
+          }
         }
         if (!fallbackOnly && !modelsOnly && !environmentOnly && !proxiesOnly && !flatShadowsOnly) {
           const shadows = await page.evaluate(options => window.probeSpatialWebGpuShadows(options), { pointContactOnly, receiverShadowsOnly, gameAssetShadowsOnly }).catch(async error=>{
@@ -282,10 +373,10 @@ try {
           assert.equal(proxies.length, 2);
           assert.deepEqual(errors, []);
           for (const entry of proxies) {
-            assert.equal(entry.comparisons.length, 10);
+            assert.equal(entry.comparisons.length, 13);
             for (const backend of entry.backends) {
-              assert(backend.restored && backend.moved && backend.core >= 3 && backend.common >= 3 && backend.errors.length === 0);
-              assert.equal(backend.rows.length, 10);
+              assert(backend.restored && backend.moved && backend.mixedV5 && backend.core >= 3 && backend.common >= 3 && backend.errors.length === 0);
+              assert.equal(backend.rows.length, 13);
               for (const row of backend.rows) {
                 const file = `proxy-${row.name}-${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64"));

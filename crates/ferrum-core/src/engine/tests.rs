@@ -61,8 +61,11 @@ mod runtime_outputs;
 mod scene_switching;
 mod shooter_authoring;
 mod shooter_snapshots;
+mod sprite_light_masks;
+mod sprite_lighting_materials;
 mod sprite_nine_slices;
 mod sprite_normal_materials;
+mod sprite_surface_materials;
 
 fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {
     engine
@@ -180,12 +183,16 @@ fn spawn_test_body_with_trigger(
     entity
 }
 
+mod data_scene_authoring_continuity;
 mod spatial_connections;
 mod spatial_debug;
 mod spatial_environment;
+mod spatial_light_channels;
+mod spatial_light_selection;
 mod spatial_navigation;
 mod spatial_physics_obstacles;
 mod spatial_progress;
+mod spatial_receiver_masks;
 mod spatial_scene;
 mod spatial_shadow_only;
 mod spatial_sun_stability;

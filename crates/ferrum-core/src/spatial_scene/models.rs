@@ -1,5 +1,5 @@
 //! Immutable asset bounds + native entity poses. Geometry/GPU resources belong to the platform.
-use super::{Point, SpatialCamera};
+use super::{Point, SpatialCamera, SpatialReceiverMasks};
 use crate::{entity::Entity, world::World};
 use std::collections::BTreeMap;
 
@@ -8,6 +8,7 @@ const SHADOW_ONLY: u32 = 4;
 
 #[derive(Debug)]
 pub(crate) struct ModelBinding {
+    pub receiver_masks: SpatialReceiverMasks,
     draw_index: Option<usize>,
     pub asset: u32,
     pub flags: u32,
@@ -36,6 +37,7 @@ pub(crate) struct SpatialModels {
     pub(super) streaming: super::model_streaming::ModelStreaming,
     pub bindings: BTreeMap<(u32, u32), ModelBinding>,
     pub draws: Vec<ModelDraw>,
+    pub receiver_masks: Vec<SpatialReceiverMasks>,
 }
 impl SpatialModels {
     /// Metadata: entity ID/generation, asset ID, flags, primitive count, triangle count.
@@ -75,6 +77,7 @@ impl SpatialModels {
                 return false;
             }
             let binding = ModelBinding {
+                receiver_masks: Default::default(),
                 draw_index: None,
                 asset: m[2],
                 flags: m[3],
@@ -92,6 +95,7 @@ impl SpatialModels {
         self.streaming = Default::default();
         self.bindings = next;
         self.draws.clear();
+        self.receiver_masks.clear();
         // Reserve during cold configuration rather than growing the Wasm bulk output in a frame.
         self.draws.reserve(self.bindings.len());
         true
@@ -105,6 +109,7 @@ impl SpatialModels {
         hidden: &std::collections::BTreeSet<(u32, u32)>,
     ) {
         self.draws.clear();
+        self.receiver_masks.clear();
         self.streaming.update_chunks(camera);
         for (&(id, generation), binding) in &mut self.bindings {
             binding.draw_index = None;
@@ -144,6 +149,13 @@ impl SpatialModels {
             }
             // Resident references retain resources even when camera-culled.
             binding.draw_index = Some(self.draws.len());
+            if binding.receiver_masks != SpatialReceiverMasks::default()
+                || !self.receiver_masks.is_empty()
+            {
+                self.receiver_masks
+                    .resize(self.draws.len(), SpatialReceiverMasks::default());
+                self.receiver_masks.push(binding.receiver_masks);
+            }
             self.draws.push(ModelDraw {
                 asset,
                 flags: binding.flags & 3,
@@ -276,6 +288,7 @@ pub(crate) fn preflight_model_poses(styles: &[f32], origins: &[f32]) -> bool {
                 return false;
             }
             ModelBinding {
+                receiver_masks: Default::default(),
                 draw_index: None,
                 asset: 1,
                 flags: 3,
@@ -296,6 +309,7 @@ mod tests {
     #[test]
     fn cardinal_model_matrices_match_aabb_proxy_axes_without_snapping_nearby_yaw() {
         let mut binding = ModelBinding {
+            receiver_masks: Default::default(),
             draw_index: None,
             asset: 1,
             flags: 3,

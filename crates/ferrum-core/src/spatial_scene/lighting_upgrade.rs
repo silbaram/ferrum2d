@@ -1,7 +1,7 @@
 //! Bounded light selection. Authored records stay immutable for save/restore.
 use super::{Entity, SpatialCamera, World};
 
-pub(super) fn valid(v: &[f32; 512]) -> bool {
+pub(super) fn valid(v: &[f32], preserve_inactive: bool) -> bool {
     let range = |i: usize, a: f32, b: f32| (a..=b).contains(&v[i]);
     let zero = |a: usize, b: usize| v[a..b].iter().all(|x| *x == 0.);
     for p in [128, 132] {
@@ -15,7 +15,19 @@ pub(super) fn valid(v: &[f32; 512]) -> bool {
             continue;
         }
         if !range(p + 1, 0., if p == 128 { 4. } else { 1. })
-            || !range(p + 2, 0.1, if p == 128 { 24. } else { 1000. })
+            || !range(
+                p + 2,
+                0.1,
+                if p == 128 {
+                    if v.len() >= 584 && v[580] == 1. {
+                        96.
+                    } else {
+                        24.
+                    }
+                } else {
+                    1000.
+                },
+            )
             || !range(p + 3, 0., if p == 128 { 64. } else { 100. })
         {
             return false;
@@ -44,10 +56,10 @@ pub(super) fn valid(v: &[f32; 512]) -> bool {
     } else if !zero(139, 142) {
         return false;
     }
-    if flags & 1 == 0 && (v[137] != 0. || v[138] != -1.) {
+    if flags & 1 == 0 && !preserve_inactive && (v[137] != 0. || v[138] != -1.) {
         return false;
     }
-    if if v[138] >= 0. {
+    if if v[138] >= 0. && flags & 1 != 0 {
         v[2] != 0. || v[3] != v[139] || v[4] != v[140] || v[123] != v[141]
     } else {
         v[2] != -1.
@@ -106,16 +118,81 @@ pub(super) fn valid(v: &[f32; 512]) -> bool {
 }
 
 pub(super) fn select(
-    v: &mut [f32; 512],
+    v: &mut [f32],
     camera: &SpatialCamera,
     world: &World,
     bindings: &[Option<(Entity, f32)>; 16],
     actor: Option<(Entity, f32)>,
-) {
+) -> [Option<usize>; 4] {
+    let mut sources = [None; 4];
+    if v[0] as u32 & 1 == 0 {
+        v[1] = 0.;
+        v[2] = -1.;
+        v[3] = 0.;
+        v[12..60].fill(0.);
+        v[144..176].fill(0.);
+        return sources;
+    }
+    let candidates = candidates(v, camera, world, bindings, actor, true);
+    let positions = candidates.positions;
+    let visible = candidates.visible;
+    let count = candidates.count;
+    let mut ranked = std::array::from_fn::<_, 16, _>(|i| {
+        (
+            i,
+            if i as f32 == v[138] {
+                f32::MAX
+            } else {
+                candidates.scores[i]
+            },
+        )
+    });
+    ranked[..count].sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    let active = count.min(v[136] as usize);
+    v[12..60].fill(0.);
+    v[144..176].fill(0.);
+    v[1] = active as f32;
+    v[2] = if v[138] >= 0. { 0. } else { -1. };
+    for (slot, (source, _)) in ranked[..active].iter().enumerate() {
+        sources[slot] = Some(*source);
+        let p = 192 + source * 20;
+        let to = 12 + slot * 12;
+        v.copy_within(p..p + 8, to);
+        v[to..to + 3].copy_from_slice(&positions[*source]);
+        if !visible[*source] {
+            v[to + 7] = 0.;
+        }
+        v.copy_within(p + 8..p + 14, 144 + slot * 8);
+    }
+    sources
+}
+
+#[derive(Debug)]
+pub(super) struct Candidates {
+    pub positions: [[f32; 3]; 16],
+    pub visible: [bool; 16],
+    pub scores: [f32; 16],
+    pub unavailable: [u32; 16],
+    pub count: usize,
+}
+
+/// Simulation scoring reads authoritative poses; only emission uses render interpolation.
+pub(super) fn candidates(
+    v: &[f32],
+    camera: &SpatialCamera,
+    world: &World,
+    bindings: &[Option<(Entity, f32)>; 16],
+    actor: Option<(Entity, f32)>,
+    render: bool,
+) -> Candidates {
     let mut positions = [[0.; 3]; 16];
     let mut visible = [true; 16];
-    let mut ranked = [(0usize, 0f32); 16];
+    let mut scores = [-1.; 16];
+    let mut unavailable = [0u32; 16];
     let count = v[137] as usize;
+    // Contribution-aware occupancy belongs to the opt-in temporal policy only.
+    // Older source layouts and disabled policies keep their exact distance ranking.
+    let contribution_aware = v.len() >= 580 && v[576] == 1.;
     let target = [
         camera.parameters[4],
         camera.parameters[5],
@@ -132,53 +209,62 @@ pub(super) fn select(
                 })
             {
                 visible[i] = false;
+                unavailable[i] = 6;
             }
             if let Some((entity, offset)) = binding.filter(|(a, _)| world.is_current_entity(*a)) {
-                if let Some(t) = world.render_transform_at_index(entity.id as usize) {
+                if let Some(t) = if render {
+                    world.render_transform_at_index(entity.id as usize)
+                } else {
+                    world.transform(entity)
+                } {
                     position[0] += t.x;
-                    position[1] += world
-                        .render_height_span_at(entity.id as usize)
-                        .map_or(0., |s| s.elevation)
-                        + offset;
+                    position[1] += if render {
+                        world
+                            .render_height_span_at(entity.id as usize)
+                            .map_or(0., |s| s.elevation)
+                    } else {
+                        world.height_span(entity).map_or(0., |s| s.elevation)
+                    } + offset;
                     position[2] -= t.y;
                 }
             }
         }
         if position.iter().any(|x| !x.is_finite() || x.abs() > 1e6) {
             visible[i] = false;
+            unavailable[i] = 9;
             position = [v[p], v[p + 1], v[p + 2]];
         }
         positions[i] = position;
+        let energy = v[p + 4..p + 7].iter().copied().fold(0., f32::max);
+        if contribution_aware && visible[i] {
+            let radius = v[p + 3];
+            if energy == 0.
+                || v[549 + i] as u32 & 255 == 0
+                || !camera.intersects_bounds(
+                    position.map(|axis| axis - radius),
+                    position.map(|axis| axis + radius),
+                )
+            {
+                visible[i] = false;
+                unavailable[i] = 7;
+            }
+        }
         let distance = super::dot(
             super::super::sub(position, target),
             super::super::sub(position, target),
         );
-        // Score is continuous; deterministic source order breaks ties. Shadow owner is pinned.
-        let score = if i as f32 == v[138] {
-            f32::MAX
+        scores[i] = if visible[i] {
+            v[p + 7] * if contribution_aware { energy } else { 1. }
+                / (1. + distance / (v[p + 3] * v[p + 3]))
         } else {
-            if visible[i] {
-                v[p + 7] / (1. + distance / (v[p + 3] * v[p + 3]))
-            } else {
-                -1.
-            }
+            -1.
         };
-        ranked[i] = (i, score);
     }
-    ranked[..count].sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-    let active = count.min(v[136] as usize);
-    v[12..60].fill(0.);
-    v[144..176].fill(0.);
-    v[1] = active as f32;
-    v[2] = if v[138] >= 0. { 0. } else { -1. };
-    for (slot, (source, _)) in ranked[..active].iter().enumerate() {
-        let p = 192 + source * 20;
-        let to = 12 + slot * 12;
-        v.copy_within(p..p + 8, to);
-        v[to..to + 3].copy_from_slice(&positions[*source]);
-        if !visible[*source] {
-            v[to + 7] = 0.;
-        }
-        v.copy_within(p + 8..p + 14, 144 + slot * 8);
+    Candidates {
+        positions,
+        visible,
+        scores,
+        unavailable,
+        count,
     }
 }

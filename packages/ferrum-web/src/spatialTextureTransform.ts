@@ -2,8 +2,8 @@
 export const IDENTITY_SPATIAL_UV = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 const supportedExtensions = new Set(["KHR_materials_unlit", "KHR_materials_emissive_strength", "KHR_texture_transform"]);
 
-export function validateSpatialRequiredExtensions(value: unknown = []): void {
-  if (!Array.isArray(value) || value.length > 4096 || value.some(v => typeof v !== "string" || !supportedExtensions.has(v))) {
+export function validateSpatialRequiredExtensions(value: unknown = [], profile: "diffuse" | "specular" = "diffuse"): void {
+  if (!Array.isArray(value) || value.length > 4096 || value.some(v => typeof v !== "string" || (!supportedExtensions.has(v) && !(profile === "specular" && v === "KHR_materials_specular")))) {
     throw new Error("Spatial glTF: required extensions are unsupported");
   }
 }

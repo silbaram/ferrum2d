@@ -27,6 +27,16 @@ async function server<T>(files:Record<string,Uint8Array>, run:(calls:string[])=>
 }
 const encode=(json:unknown)=>new TextEncoder().encode(JSON.stringify(json));
 const options={materialProfile:"diffuse"} as const;
+test("external glTF specular profile normalizes dependencies while preserving required extensions and profile identity",async()=>{
+    const f=fixture();Object.assign(f.json.materials[0].pbrMetallicRoughness,{metallicFactor:0,roughnessFactor:.25});
+    Object.assign(f.json.materials[0],{extensions:{KHR_materials_specular:{specularFactor:.5}}});f.json.extensionsRequired=["KHR_materials_specular"];
+    await server({"/scene.gltf":encode(f.json),"/scene.bin":f.bin},async calls=>{
+        const a=await loadSpatialGltf("https://a.test/scene.gltf",{materialProfile:"specular"});equal(a.materialProfile,"specular");
+        deepEqual(spatialModelResource(a)!.primitives[0].specular,{factor:.5,color:[1,1,1],roughness:.25});
+        equal((await loadSpatialGltf("https://a.test/scene.gltf",{materialProfile:"specular"})).contentId,a.contentId);
+        await rejects(loadSpatialGltf("https://a.test/scene.gltf",options),/required extensions/);equal(calls.length,5);
+    });
+});
 
 test("separate glTF preserves geometry/opaque ownership and hashes dependency content",async()=>{
     const f=fixture(),files={"/models/scene.gltf":encode(f.json),"/models/scene.bin":f.bin};

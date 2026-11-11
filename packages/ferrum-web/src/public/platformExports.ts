@@ -231,6 +231,10 @@ export type {
   Hd2dTileOccluderGridInput,
   LightingScene2D,
   PointLight2D,
+  PointLightSpot2D,
+  PointLightCookie2D,
+  ResolvedPointLightCookie2D,
+  ResolvedPointLightSpot2D,
   ResolvedLightingDebugOptions,
   ResolvedLightingShadowOptions,
   ResolvedLightingScene2D,
@@ -238,6 +242,7 @@ export type {
   ShadowClipRect,
   ShadowProjectionOptions,
   TileOccluder2D,
+  PolygonOccluder2D,
   TileOccluderGridInput,
 } from "../lighting";
 export type { SpriteDrawOptions } from "../spriteBatch";

@@ -1,4 +1,6 @@
-import { deepEqual, equal, throws } from "node:assert/strict";
+import { WebGpuSpatialBloom } from "../src/webgpuSpatialBloom.js";
+import { spatialBloomPlan } from "../src/spatialBloomKernel.js";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { WebGpuSpatialEnvironment } from "../src/webgpuSpatialEnvironment.js";
 import {
@@ -6,6 +8,7 @@ import {
   type SpatialEnvironmentSpec,
 } from "../src/spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "../src/dataSceneSpatial.js";
+import { validateSpatialExtensions } from "../src/spatialRenderPacket.js";
 class Resource {
   destroyed = 0;
   constructor(
@@ -26,16 +29,21 @@ class Device {
   textures: Resource[] = [];
   groups = 0;
   failView = false;
+  failBuffer = false;
+  failTextureAt = Infinity;
+  textureAttempts = 0;
   uniforms: Float32Array[] = [];
   queue = {
     writeBuffer: (_b: unknown, _o: number, v: Float32Array) => this.uniforms.push(v.slice()),
   };
   createBuffer(d: GPUBufferDescriptor) {
+    if (this.failBuffer) throw Error("buffer allocation failed");
     const r = new Resource(d);
     this.buffers.push(r);
     return r;
   }
   createTexture(d: GPUTextureDescriptor) {
+    if (++this.textureAttempts === this.failTextureAt) throw Error("texture allocation failed");
     const r = new Resource(d, () => {
       if (this.failView) throw Error("view failed");
     });
@@ -90,7 +98,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -110,6 +118,102 @@ function setup() {
     pass = new WebGpuSpatialEnvironment(device as unknown as GPUDevice, "rgba8unorm");
   return { device, pass };
 }
+test("separated composition allocates only active indirect/DOF stages and reuses views and groups", () => {
+  const { device, pass } = setup();
+  const base: SpatialEnvironmentSpec = { composition: "separated", lighting: { lights: [{ position: { x: 0, y: 0, elevation: 100 }, radius: 200, lightMask: 1 }] } };
+  const plain = frame(base); validateSpatialExtensions(plain);
+  throws(() => validateSpatialExtensions({ ...plain, environment: { ...plain.environment!, version: 5 } }), /environment buffer/);
+  pass.prepare(plain, 160, 90);
+  const live = () => device.textures.filter(texture => texture.destroyed === 0).length;
+  const baseline = live();
+  const ao = frame({ ...base, ambientOcclusion: { strength: 1 } });
+  pass.prepare(ao, 160, 90); equal(live(), baseline + 2); equal(!!pass.scene()!.indirect, true);
+  const warm = [device.textures.length, device.groups]; pass.prepare(ao, 160, 90); pass.scene(); pass.scene();
+  deepEqual([device.textures.length, device.groups], warm);
+  const combined = frame({ ...base, ambientOcclusion: {}, bloom: {}, depthOfField: { focusDistance: 100 } });
+  pass.prepare(combined, 160, 90); equal(live(), baseline + 3);
+  equal(device.uniforms[device.uniforms.length - 1][519], 7);
+  pass.prepare(frame({ ...base, ambientOcclusion: { strength: 0 }, bloom: { strength: 0 } }), 160, 90);
+  equal(live(), baseline); equal(!!pass.scene()!.indirect, false);
+  pass.destroy(); equal(live(), 0);
+});
+test("v7 channels occupy private tail words and receiver tables are lazy, reused, disabled and released", () => {
+  const { device, pass } = setup();
+  const f = frame({ lighting: { ambient: [0, 0, 0], lights: [{ position: { x: 0, y: 0, elevation: 100 }, radius: 200, lightMask: 1, shadowMask: 2 }], directional: { direction: { x: 1, y: 0, elevation: 1 }, lightMask: 4, shadowMask: 8 } } });
+  const before = device.buffers.length;
+  pass.prepare(f, 160, 90);
+  equal(device.buffers.length, before);
+  f.terrainVertexCount = 72;
+  f.receiverMasks = { version: 1, stride: 2, terrain: new Uint32Array([1, 2, 4, 8]), billboards: new Uint32Array(), models: new Uint32Array() };
+  pass.prepare(f, 160, 90);
+  equal(device.buffers.length, before + 1);
+  const u = device.uniforms[device.uniforms.length - 1];
+  deepEqual(Array.from(u.subarray(640, 646)), [2052, 513, 0, 0, 0, 1]);
+  deepEqual(u.subarray(640, 648), u.subarray(1344, 1352));
+  equal(pass.receivers.offset(65535), 0); equal(pass.receivers.offset(513), 256); equal(pass.receivers.offset(2052), 512);
+  const writes = device.uniforms.length, groups = device.groups;
+  pass.prepare(f, 160, 90);
+  equal(device.uniforms.length, writes + 1); equal(device.groups, groups); equal(device.buffers.length, before + 1);
+  pass.prepare(frame(), 160, 90);
+  equal(pass.receivers.offset(513), 0); equal(device.uniforms[device.uniforms.length - 1][645], 0);
+  pass.prepare(f, 160, 90);
+  equal(device.buffers.length, before + 1); equal(device.groups, groups + 1); // Only the released HDR image group is recreated.
+  pass.destroy(); equal(device.buffers.every(buffer => buffer.destroyed === 1), true);
+});
+test("receiver table failures preserve prior mappings, enforce device limits and surface asynchronous errors", async () => {
+  const { device, pass } = setup(), f = frame({ lighting: { lights: [] } });
+  f.terrainVertexCount = 36;
+  f.receiverMasks = { version: 1, stride: 2, terrain: new Uint32Array([1, 2]), billboards: new Uint32Array(), models: new Uint32Array() };
+  pass.prepare(f, 160, 90);
+  const live = device.buffers.filter(buffer => !buffer.destroyed).length;
+  f.terrainVertexCount = 144; f.receiverMasks.terrain = new Uint32Array([1, 2, 2, 2, 3, 2, 4, 2]);
+  device.limits.maxBufferSize = 512;
+  throws(() => pass.prepare(f, 160, 90), /receiver uniform table/);
+  equal(pass.receivers.offset(513), 256);
+  device.limits.maxBufferSize = 268435456; device.failBuffer = true;
+  throws(() => pass.prepare(f, 160, 90), /buffer allocation failed/);
+  equal(pass.receivers.offset(513), 256); equal(device.buffers.filter(buffer => !buffer.destroyed).length, live);
+  device.failBuffer = false; device.gpuError = "receiver memory exhausted";
+  pass.prepare(f, 160, 90);
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+  throws(() => pass.prepare(f, 160, 90), /receiver GPU allocation failed/);
+  equal(device.scopes, 0);
+  pass.destroy(); equal(device.buffers.every(buffer => buffer.destroyed === 1), true);
+});
+test("failed optional indirect allocation preserves the previous target and releases partial scratch", () => {
+  const { device, pass } = setup();
+  const base: SpatialEnvironmentSpec = { lighting: { lights: [] } };
+  pass.prepare(frame(base), 160, 90);
+  const prior = pass.scene()!.color;
+  const live = () => device.textures.filter(texture => texture.destroyed === 0).length;
+  const count = live();
+  device.failTextureAt = device.textureAttempts + 4;
+  const separated = frame({ ...base, composition: "separated", ambientOcclusion: {} });
+  throws(() => pass.prepare(separated, 160, 90), /texture allocation failed/);
+  equal(pass.scene()!.color, prior); equal(live(), count);
+  device.failTextureAt = Infinity;
+  pass.prepare(separated, 160, 90); equal(live(), count + 2);
+  pass.destroy(); equal(live(), 0);
+});
+test("v5 center stays separate from the private v7 channel/camera uniform", () => {
+  const { device, pass } = setup();
+  const f = frame({ lighting: { lights: [], directional: { direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 100, y: 200, elevation: 300 } } } } });
+  equal(f.environment!.version, 5);
+  validateSpatialExtensions(f);
+  const wrongVersion = { ...f, environment: { ...f.environment!, version: 4 as const } };
+  throws(() => validateSpatialExtensions(wrongVersion), /environment buffer/);
+  pass.prepare(f, 320, 240);
+  const u = device.uniforms[device.uniforms.length - 1];
+  equal(u.length, 1408);
+  deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
+  deepEqual(u.subarray(0, 527), u.subarray(704, 1231));
+  const count = [device.textures.length, device.buffers.length];
+  pass.prepare(f, 320, 240);
+  deepEqual([device.textures.length, device.buffers.length], count);
+  pass.destroy();
+  equal(device.textures.every(t => t.destroyed === 1), true);
+  equal(device.buffers.every(b => b.destroyed === 1), true);
+});
 test("spatial HDR targets reuse warm resources, retain old target on failed resize, and release on disable", () => {
   const { device, pass } = setup(),
     f = frame({ fog: { color: [0, 0, 1], start: 100, end: 500 } });
@@ -163,9 +267,9 @@ test("native environment/camera packing preserves actor focus and resets v2 fiel
   deepEqual(pass.validate(f, 320, 240), [160, 90]);
   pass.prepare(f, 160, 90);
   const u = device.uniforms[device.uniforms.length - 1];
-  equal(u.length, 1280);
-  equal(u[1167], 0);
-  deepEqual(u.subarray(0, 527), u.subarray(640, 1167));
+  equal(u.length, 1408);
+  equal(u[1231], 0);
+  deepEqual(u.subarray(0, 527), u.subarray(704, 1231));
   deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
   deepEqual(Array.from(u.subarray(520, 528)), [Math.fround(0.1), 2000, 1, 333, 160, 90, 240, 1]);
   equal(u[96], 1);
@@ -180,7 +284,7 @@ test("v3 lighting fits the existing uniform allocation and clears when switching
   pass.prepare(advanced,320,240);const a=device.uniforms[device.uniforms.length-1];
   equal(a[112],1);equal(a[114],1);equal(a[118],1);equal(a[120],1);
   deepEqual(Array.from(a.subarray(512,515)),[120,240,160]);
-  equal(a[1167],0);deepEqual(a.subarray(0,527),a.subarray(640,1167));
+  equal(a[1231],0);deepEqual(a.subarray(0,527),a.subarray(704,1231));
   const allocated=device.buffers.length;
   pass.prepare(frame({lighting:{lights:[]}}),320,240);const b=device.uniforms[device.uniforms.length-1];
   equal(device.buffers.length,allocated);deepEqual(Array.from(b.subarray(112,128)),Array(16).fill(0));
@@ -282,4 +386,48 @@ test("shadow view bind-group validation failure cannot remain an invalid warm en
     device.textures.every((t) => t.destroyed === 1),
     true,
   );
+});
+
+
+test("wide Bloom target allocation failures preserve old targets, retry, release on OFF and destroy", async () => {
+  const { device, pass } = setup();
+  const base = frame({ composition: "separated", lighting: { lights: [] } });
+  pass.prepare(base, 128, 128); await Promise.resolve();
+  const live = () => device.textures.filter(t => t.destroyed === 0).length;
+  const baseline = live();
+  const wide = frame({ composition: "separated", bloom: { mode: "wide", radius: 64 } });
+  device.failTextureAt = device.textureAttempts + 2;
+  throws(() => pass.prepare(wide, 128, 128), /allocation failed/);
+  equal(live(), baseline);
+  device.failTextureAt = Infinity; pass.prepare(wide, 128, 128);
+  const warm = device.textures.length; ok(live() > baseline);
+  pass.prepare(wide, 128, 128); equal(device.textures.length, warm);
+  pass.prepare(base, 128, 128); equal(live(), baseline);
+  pass.destroy(); equal(live(), 0); equal(device.scopes, 0);
+});
+
+test("wide Bloom uses immutable stage parameters, retries writes and latches async binding failures until recovery", async () => {
+  const { device, pass: unrelated } = setup(); unrelated.destroy();
+  const pass = new WebGpuSpatialBloom(device as unknown as GPUDevice);
+  const values = compileSpatialEnvironment({ composition: "separated", bloom: { mode: "wide", radius: 64 } });
+  const plan = spatialBloomPlan(values, 128, 128, 128)!;
+  pass.prepare(plan); await Promise.resolve(); await Promise.resolve();
+  let draws = 0;
+  const encoder = { beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() { draws++; }, end() {} }) } as unknown as GPUCommandEncoder;
+  const source = {} as GPUTextureView;
+  const write = device.queue.writeBuffer;
+  device.queue.writeBuffer = () => { throw Error("injected Bloom upload"); };
+  throws(() => pass.draw(encoder, source, plan, 1), /injected/);
+  device.queue.writeBuffer = write;
+  pass.draw(encoder, source, plan, 1); equal(draws, plan.drawCalls);
+  const uploaded = device.uniforms[device.uniforms.length - 1];
+  equal(uploaded[2], 0); equal(uploaded[64 + 2], 3);
+  equal(uploaded[(plan.drawCalls - 2) * 64 + 2], 1); equal(uploaded[(plan.drawCalls - 1) * 64 + 2], 2);
+  const groups = device.groups; pass.draw(encoder, source, plan, 1); equal(device.groups, groups);
+  device.bindingError = true; pass.draw(encoder, {} as GPUTextureView, plan, 1);
+  await Promise.resolve(); await Promise.resolve();
+  throws(() => pass.prepare(plan), /binding allocation/);
+  pass.destroy(); equal(device.scopes, 0);
+  equal(device.textures.filter(t => t.destroyed === 0).length, 0);
+  equal(device.buffers.filter(b => b.destroyed === 0).length, 0);
 });

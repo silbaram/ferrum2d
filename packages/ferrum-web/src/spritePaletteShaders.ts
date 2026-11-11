@@ -26,12 +26,15 @@ vec4 paletteColor(vec4 sampled) {
 export const SPRITE_PALETTE_WGSL = `
 struct Palette { sourceColors: array<vec4f,32>, targetColors: array<vec4f,32>, count: vec4u };
 @group(2) @binding(0) var<uniform> palette: Palette;
+fn paletteEncode(c:vec3f)->vec3f{return select(1.055*pow(max(c,vec3f(0.)),vec3f(1./2.4))-vec3f(.055),c*12.92,c<=vec3f(.0031308));}
+fn paletteDecode(c:vec3f)->vec3f{return select(pow((c+vec3f(.055))/1.055,vec3f(2.4)),c/12.92,c<=vec3f(.04045));}
 fn paletteColor(sampled: vec4f) -> vec4f {
   if (sampled.a == 0.) { return sampled; }
-  let key = floor(sampled.rgb*255.+vec3f(.5));
+  let decoded=palette.count.y!=0u;
+  let key = floor(select(sampled.rgb,paletteEncode(sampled.rgb),decoded)*255.+vec3f(.5));
   for (var i=0u; i<32u; i++) {
     if (i>=palette.count.x) { break; }
-    if (all(key==palette.sourceColors[i].rgb)) { return vec4f(palette.targetColors[i].rgb,sampled.a); }
+    if (all(key==palette.sourceColors[i].rgb)) { let rgb=palette.targetColors[i].rgb;return vec4f(select(rgb,paletteDecode(rgb),decoded),sampled.a); }
   }
   return sampled;
 }`;
