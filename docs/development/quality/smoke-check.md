@@ -3022,7 +3022,8 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 `pnpm smoke:spatial-point-shadows`는 public 패키지·실제 Wasm과 WebGL2/WebGPU로
 선택형 `lighting.pointShadows` 최대 2개를 검사한다. `test:spatial-point-shadows-report`의 독립 PNG 판정기
 음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
-기존 조건부 extended Spatial CI 실행 위치를 따른다.
+수동 실행 CI(`workflow_dispatch`)의 `validate` job이 해당 aggregate를 실행한다.
+`extended_browser_smoke` 입력과 무관하며 일반 push/PR에서 자동 실행되지는 않는다.
 
 가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서976개 상태를 검사한다.
 빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
@@ -3054,7 +3055,8 @@ Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:placement-viewer`�
 
 `pnpm smoke:spatial-sun-pcss`는 `test:spatial-sun-pcss-report`의 PNG 판정기 음성 테스트 뒤
 public tarball·실제 Wasm·WebGL2/WebGPU를 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도
-같은 테스트와 PCSS 행렬이 포함된다. CI는 기존 `workflow_dispatch`와 조건부 extended browser job을 따른다.
+같은 테스트와 PCSS 행렬이 포함된다. 수동 실행 CI(`workflow_dispatch`)의 `validate` job이
+해당 aggregate를 실행하며 `extended_browser_smoke` 입력과 무관하다.
 브랜치 push만으로 해당 GPU 회귀가 자동 실행된다는 의미는 아니다.
 
 가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의32 context에서1,040개 상태를 확인한다.
