@@ -1,3 +1,4 @@
+import { requestsSpatialWideBloom, supportsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
 import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import {requestsSpatialLightChannels,supportsSpatialLightChannels} from "./spatialLightChannels.js";
@@ -1030,6 +1031,7 @@ export async function createEngineWithFramePipeline(
     },
     supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
     supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
+    supportsSpatialWideBloom: () => { requireAlive(); return supportsSpatialWideBloom(rustEngine); },
     supportsSpatialLightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine); },
     supportsSpatialRampAxis: () => {
       requireAlive();
@@ -1043,6 +1045,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialWideBloom(environment) && !supportsSpatialWideBloom(rustEngine)) return false;
       if (requestsSpatialLightSelection(environment) && !supportsSpatialLightSelection(rustEngine)) return false;
       if (requestsSpatialLightChannels(environment) && !supportsSpatialLightChannels(rustEngine)) return false;
       const values = compileSpatialEnvironment(environment);

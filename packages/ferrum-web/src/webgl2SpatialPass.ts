@@ -283,6 +283,7 @@ export class WebGL2SpatialPass {
       shadowCacheHit: false,
       shadowCulledTriangleCount: 0,
       effectDrawCalls: 0,
+      bloomDrawCalls: 0, bloomTextureBytes: 0, bloomTexelFetchBudget: 0,
       effectTextureBytes: 0,
       dofSampleBudget: environment?.values[0]! & 4 ? (environment!.values[96] === 1 ? 25 : 13) : 0,
     };
@@ -525,9 +526,11 @@ export class WebGL2SpatialPass {
         );
         const passes = this.environmentPass!.compositeScene(frame, target, displayViewport);
         stats.effectDrawCalls = passes;
+        this.environmentPass!.writeBloomStats(stats, environment?.values, displayViewport[2], displayViewport[3]);
         stats.drawCalls += passes;
         stats.triangleCount += passes;
-        stats.textureBindCount += passes * 2 + Number(passes > 1);
+        const bloomPasses = stats.bloomDrawCalls ?? 0, mainPasses = passes - bloomPasses;
+        stats.textureBindCount += mainPasses * 2 + Number(mainPasses > 1) + bloomPasses + Number(bloomPasses > 0);
       }
     } finally {
       this.models.finishDraws();

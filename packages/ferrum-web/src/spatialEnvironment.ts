@@ -1,3 +1,4 @@
+import { hasSpatialSelectionSource, requestsSpatialWideBloom, validSpatialWideBloom } from "./spatialBloom.js";
 import { resolveSpatialLightSelectionSpec, validSpatialLightSelectionValues, type SpatialLightSelectionSpec, type SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
 import {compileSpatialLightChannels,decodeSpatialLightChannels,requestsSpatialLightChannels,resolveSpatialMaskFields,validSpatialLightChannels} from "./spatialLightChannels.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
@@ -92,17 +93,17 @@ export interface SpatialEnvironmentSpec {
   /** Fixed scene resolution; integer CSS upscale, centered bars; smaller windows downscale to fit. */
   pixelArt?: { width: number; height: number; snapCamera?: boolean };
   lighting?: SpatialLightingSpec;
-  /** Scene HDR glow, before grading and HUD. Radius is in CSS pixels (max 24). */
-  bloom?: { strength?: number; radius?: number; threshold?: number };
+  /** Scene HDR glow, before grading and HUD. Gather radius max24; wide max96 CSS pixels. */
+  bloom?: { strength?: number; radius?: number; threshold?: number; mode?: "wide"; quality?: "low" | "balanced" | "high" };
   /** Screen-space contact occlusion. Radius and bias are view-space world units. */
   ambientOcclusion?: { strength?: number; radius?: number; bias?: number };
   depthOfField?: SpatialDepthOfFieldSpec;
   colorGrading?: SpatialColorGradingSpec;
   fog?: SpatialFogSpec;
 }
-/** Borrowed native environment v1..v8; acquire per frame, copy before deferred use. */
+/** Borrowed native environment v1..v9; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
@@ -115,7 +116,7 @@ export interface SpatialEnvironmentBufferView {
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528, 544, 576, 580].includes(v.length) ||
+    ![80, 112, 128, 512, 528, 544, 576, 580, 584].includes(v.length) ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -143,7 +144,8 @@ export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   )) return false;
   if (v.length >= 544 && (![0, 1].includes(v[528]) || v.subarray(529, 544).some(x => x !== 0))) return false;
   if (v.length >= 576 && !validSpatialLightChannels(v.subarray(0, 576))) return false;
-  if (v.length === 580 && !validSpatialLightSelectionValues(v)) return false;
+  if (v.length >= 580 && !validSpatialLightSelectionValues(v)) return false;
+  if (v.length === 584 && !validSpatialWideBloom(v)) return false;
   if (!(v[0] & 1) && (v[1] !== 0 || v[2] !== -1)) return false;
   const range = (start: number, end: number, min: number, max: number) => {
     for (let i = start; i < end; i++)
@@ -218,7 +220,7 @@ function validLightingV4(v: Float32Array): boolean {
   for(const p of [128,132]) {
     if(![0,1].includes(v[p]))return false;
     if(!v[p]) {if(!zero(p+1,p+4))return false;continue;}
-    if(!range(p+1,0,p===128?4:1) || !range(p+2,.1,p===128?24:1000) || !range(p+3,0,p===128?64:100))return false;
+    if(!range(p+1,0,p===128?4:1) || !range(p+2,.1,p===128?(v.length===584 && v[580]===1?96:24):1000) || !range(p+3,0,p===128?64:100))return false;
   }
   if(((v[0]&32)!==0)!==(v[128]===1) || ((v[0]&64)!==0)!==(v[132]===1))return false;
   if(![1,2,3,4].includes(v[136]) || !Number.isInteger(v[137]) || !range(137,0,16) ||
@@ -355,10 +357,14 @@ export function resolveSpatialEnvironmentSpec(
   for (const key of ["bloom", "ambientOcclusion"] as const) {
     if (o[key] === undefined) continue;
     const at = `${path}.${key}`, bloom = key === "bloom";
-    const effect = object(o[key], at, bloom ? ["strength", "radius", "threshold"] : ["strength", "radius", "bias"]);
+    const effect = object(o[key], at, bloom ? ["strength", "radius", "threshold", "mode", "quality"] : ["strength", "radius", "bias"]);
+    const wide = bloom && effect.mode === "wide";
+    if (bloom && ((effect.mode !== undefined && !wide) || effect.quality !== undefined && !wide || wide && ![undefined,"low","balanced","high"].includes(effect.quality as string | undefined)))
+      throw sceneCompositionDiagnosticError(at, "wide mode requires low, balanced or high quality");
+    if (wide && result.composition !== "separated") throw sceneCompositionDiagnosticError(at, "wide Bloom requires separated composition");
     const strength = number(effect.strength === undefined ? (bloom ? .5 : .6) : effect.strength, `${at}.strength`, 0, bloom ? 4 : 1);
-    const radius = number(effect.radius === undefined ? (bloom ? 8 : 12) : effect.radius, `${at}.radius`, .1, bloom ? 24 : 1000);
-    if (bloom) result.bloom = { strength, radius, threshold: number(effect.threshold === undefined ? 1 : effect.threshold, `${at}.threshold`, 0, 64) };
+    const radius = number(effect.radius === undefined ? (bloom ? (wide ? 48 : 8) : 12) : effect.radius, `${at}.radius`, .1, bloom ? (wide ? 96 : 24) : 1000);
+    if (bloom) result.bloom = { ...(wide ? { mode: "wide" as const, quality: (effect.quality ?? "balanced") as "low" | "balanced" | "high" } : {}), strength, radius, threshold: number(effect.threshold === undefined ? 1 : effect.threshold, `${at}.threshold`, 0, 64) };
     else result.ambientOcclusion = { strength, radius, bias: number(effect.bias === undefined ? .2 : effect.bias, `${at}.bias`, 0, 100) };
   }
   if (o.pixelArt !== undefined) {
@@ -636,11 +642,11 @@ export function compileSpatialEnvironment(
   if (input === null) return new Float32Array();
   const spec = resolveSpatialEnvironmentSpec(input),
     selection = spec.lighting?.selection,
-    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined,
+    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec),
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
     v4 = lightChannels || !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v = new Float32Array(requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);
@@ -719,6 +725,7 @@ export function compileSpatialEnvironment(
   if (spec.composition) v[528] = spec.composition === "separated" ? 1 : 0;
   if (lightChannels) compileSpatialLightChannels(spec, v);
   if (selection) v.set([selection.enabled === false ? 0 : 1, selection.hysteresis!, selection.fadeSeconds!, selection.resetDistance!], 576);
+  if (v.length === 584) v.set([1, spec.bloom!.quality === "low" ? 4 : 2, spec.bloom!.quality === "high" ? 8 : 4, Number(selection !== undefined)], 580);
   return v;
 }
 export function decodeSpatialEnvironment(
@@ -786,6 +793,7 @@ export function decodeSpatialEnvironment(
     spec.lighting.directional.shadows.center = { x: v[513], elevation: v[514], y: -v[515] };
   if (v.length >= 544) spec.composition = v[528] ? "separated" : "legacy";
   if (v.length >= 576) decodeSpatialLightChannels(v, spec);
-  if (v.length === 580 && spec.lighting) spec.lighting.selection = { enabled: v[576] === 1, hysteresis: v[577], fadeSeconds: v[578], resetDistance: v[579] };
+  if (v.length === 584 && spec.bloom) { spec.bloom.mode = "wide"; spec.bloom.quality = v[581] === 4 ? "low" : v[582] === 8 ? "high" : "balanced"; }
+  if (hasSpatialSelectionSource(v) && spec.lighting) spec.lighting.selection = { enabled: v[576] === 1, hysteresis: v[577], fadeSeconds: v[578], resetDistance: v[579] };
   return resolveSpatialEnvironmentSpec(spec);
 }

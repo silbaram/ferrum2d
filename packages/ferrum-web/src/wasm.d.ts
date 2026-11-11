@@ -97,6 +97,7 @@ declare module "../pkg/ferrum_core.js" {
     spatial_model_receiver_mask_ptr(): number;
     spatial_model_receiver_mask_len(): number;
     spatial_light_channel_abi_version(): number;
+    spatial_wide_bloom_abi_version(): number;
     spatial_light_selection_abi_version(): number;
     spatial_light_selection_progress_abi_version(): number;
     spatial_light_selection_diagnostic_size_bytes(): number;

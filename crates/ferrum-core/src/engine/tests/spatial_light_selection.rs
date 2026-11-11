@@ -484,3 +484,43 @@ fn native_bound_light_selection_scores_simulation_pose_and_emits_interpolated_po
     assert_eq!(e.spatial_scene.environment.frame_values[16], 1.);
     assert_eq!(e.capture_spatial_light_selection_state()[2], 0.);
 }
+
+#[test]
+fn native_wide_bloom_v9_is_atomic_and_preserves_selection_history_across_quality_edits() {
+    let mut e = setup();
+    let mut v = values();
+    v.resize(584, 0.);
+    v[0] = 33.;
+    v[128..132].copy_from_slice(&[1., 0.5, 64., 1.]);
+    v[528] = 1.;
+    v[580..584].copy_from_slice(&[1., 2., 4., 1.]);
+    assert_eq!(e.spatial_wide_bloom_abi_version(), 1);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.);
+    assert_eq!(e.spatial_environment_abi_version(), 9);
+    let history = e.capture_spatial_light_selection_state();
+    for (at, value) in [
+        (580, 0.),
+        (581, 3.),
+        (582, 2.),
+        (583, 2.),
+        (528, 0.),
+        (130, 97.),
+    ] {
+        let mut bad = v.clone();
+        bad[at] = value;
+        assert!(!e.configure_spatial_environment(&bad));
+        assert_eq!(e.capture_spatial_environment(), v);
+        assert_eq!(e.capture_spatial_light_selection_state(), history);
+    }
+    v[581] = 4.;
+    assert!(e.configure_spatial_environment(&v));
+    assert_eq!(e.capture_spatial_light_selection_state(), history);
+    assert!(!e.configure_spatial_environment(&v[..580]));
+    v[583] = 0.;
+    assert!(!e.configure_spatial_environment(&v));
+    v[576..580].fill(0.);
+    assert!(e.configure_spatial_environment(&v));
+    assert!(e.capture_spatial_light_selection_state().is_empty());
+    assert_eq!(e.capture_spatial_environment(), v);
+}

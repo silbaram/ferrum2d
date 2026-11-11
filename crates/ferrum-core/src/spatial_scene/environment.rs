@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 580;
+pub(crate) const ENVIRONMENT_VALUES: usize = 584;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -34,6 +34,7 @@ impl SpatialEnvironment {
             528,
             544,
             LIGHT_CHANNEL_VALUES,
+            580,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -133,7 +134,7 @@ impl SpatialEnvironment {
         if (a[2] < 0. && a[123] != 0.) || (a[92] == 0. && a[124] != 0.) {
             return None;
         }
-        if v.len() >= 512 && !lighting_upgrade::valid(&a[..512], preserve_inactive) {
+        if v.len() >= 512 && !lighting_upgrade::valid(&a, preserve_inactive) {
             return None;
         }
         // v5: optional fixed world-space sun center; the remaining extension is reserved.
@@ -151,7 +152,17 @@ impl SpatialEnvironment {
         if v.len() >= LIGHT_CHANNEL_VALUES && !light_channels::valid(&a[..LIGHT_CHANNEL_VALUES]) {
             return None;
         }
-        if v.len() == ENVIRONMENT_VALUES && !light_selection::valid(&a) {
+        if v.len() >= 580 && !light_selection::valid(&a) {
+            return None;
+        }
+        if v.len() == 584
+            && !(a[580] == 1.
+                && a[528] == 1.
+                && a[128] == 1.
+                && ((a[581] == 4. && a[582] == 4.) || (a[581] == 2. && [4., 8.].contains(&a[582])))
+                && [0., 1.].contains(&a[583])
+                && (a[583] == 1. || a[576..580].iter().all(|x| *x == 0.)))
+        {
             return None;
         }
         let count = a[1] as usize;

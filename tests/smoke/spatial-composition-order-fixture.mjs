@@ -3,7 +3,7 @@ import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring"
 import { check, difference, pixels } from "/fixture.mjs";
 
 /** A one-pixel HDR source falls below Bloom threshold after a four-pixel DOF gather. */
-export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy") {
+export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy", wide = false) {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:fixed;left:0;top:0;width:32px;height:32px";
   canvas.dataset.spatialGpuTarget = "true"; document.body.append(canvas);
@@ -47,7 +47,7 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
     });
     const base = { composition: "separated", lighting: { ambient: [4, 4, 4], lights: [] } };
     const depthOfField = { focusDistance: 1, focusRange: 0, aperture: 32, maxBlurRadius: 4 };
-    const bloom = { strength: 1, radius: 8, threshold: 1 };
+    const bloom = { strength: 1, radius: 8, threshold: 1, ...(wide ? { mode: "wide" } : {}) };
     const sharp = await draw(base);
     const blurred = await draw({ ...base, depthOfField });
     const peak = data => { let result = 0; for (let i = 0; i < data.length; i += 4) result = Math.max(result, data[i], data[i + 1], data[i + 2]); return result; };
@@ -55,10 +55,12 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
       "reference must contain HDR source and sub-threshold blurred radiance", { sharp: peak(sharp.data), blurred: peak(blurred.data) });
     const filtered = await draw({ ...base, depthOfField, bloom });
     check(difference(blurred.data, filtered.data, 2) === 0, "Bloom did not read the post-DOF sub-threshold radiance");
-    check(filtered.stats.effectDrawCalls === 2 && filtered.stats.effectTextureBytes * 12 === blurred.stats.effectTextureBytes * 20,
+    check(filtered.stats.effectDrawCalls === 2 + filtered.stats.bloomDrawCalls && (filtered.stats.effectTextureBytes - filtered.stats.bloomTextureBytes) * 12 === blurred.stats.effectTextureBytes * 20,
       "DOF/Bloom intermediate cost missing", { before: blurred.stats, after: filtered.stats });
+    if (!wide) {
     const legacy = await draw({ ...base, composition: "legacy", depthOfField, bloom });
     check(difference(legacy.data, filtered.data, 3) > 5, "reference did not distinguish legacy pre-DOF Bloom");
+    }
     const zero = await draw({ ...base, depthOfField, bloom: { ...bloom, strength: 0 } });
     check(difference(zero.data, blurred.data, 1) === 0 && zero.stats.effectTextureBytes === blurred.stats.effectTextureBytes,
       "zero Bloom changed image or retained intermediate target");

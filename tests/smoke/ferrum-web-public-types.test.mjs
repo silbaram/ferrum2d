@@ -39,7 +39,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       } from '@ferrum2d/ferrum-web/authoring';
       import '@ferrum2d/ferrum-web/starter-scenes';
       import type { LightingScene2D, PointLightSpot2D, PointLightCookie2D, ResolvedPointLightCookie2D, PolygonOccluder2D } from '@ferrum2d/ferrum-web/labs';
-      import '@ferrum2d/ferrum-web/quality';
+      import type { RuntimeDiagnosticsBudget } from '@ferrum2d/ferrum-web/quality';
       const config: PixelPerfectOptions = { width: 320, height: 180, snap: true };
       const disabled: PixelPerfectOptions = { ...config, snap: false };
       // @ts-expect-error snap is strictly boolean
@@ -111,6 +111,15 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       const sun: SpatialDirectionalLightSpec = { lightMask: 1, shadowMask: 0, direction: { x: -1, y: -1, elevation: 1 }, shadows: { center: { x: 0, y: 10, elevation: 12 } } };
       engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
       engine.setDataSceneSpatialEnvironment({ composition: 'separated', lighting: { lights: [] }, ambientOcclusion: { strength: 0 } });
+      engine.setDataSceneSpatialEnvironment({ composition: 'separated', bloom: { mode: 'wide', quality: 'high', radius: 64 } });
+      const bloomPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 10,
+        operations: [{ kind: 'setEnvironment', changes: { environment: { composition: 'separated', bloom: { mode: 'wide', quality: 'low' } } } }] };
+      viewer.updateSpatial(bloomPatch.operations);
+      const bloomBudget: RuntimeDiagnosticsBudget = { maxSpatialBloomDrawCalls: 6, maxSpatialBloomTextureBytes: 44032, maxSpatialBloomTexelFetchBudget: 89600 };
+      const bloomWork: number | undefined = renderer.stats().spatialBloomTexelFetchBudget;
+      // @ts-expect-error wide quality choices are explicit
+      engine.setDataSceneSpatialEnvironment({ composition: 'separated', bloom: { mode: 'wide', quality: 'ultra' } });
+      void [bloomBudget, bloomWork];
       // @ts-expect-error composition choices are explicit
       engine.setDataSceneSpatialEnvironment({ composition: 'ambient-only' });
       // @ts-expect-error fixed sun center requires all three world coordinates

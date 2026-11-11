@@ -1,6 +1,6 @@
 /** Private pass selection from the validated native v6..v8 environment. */
 export function spatialSeparated(values: Float32Array | undefined): boolean {
-  return (values?.length === 544 || values?.length === 576 || values?.length === 580) && values[528] === 1;
+  return (values?.length === 544 || values?.length === 576 || values?.length === 580 || values?.length === 584) && values[528] === 1;
 }
 
 export function spatialIndirectPass(values: Float32Array | undefined): boolean {

@@ -15,7 +15,19 @@ pub(super) fn valid(v: &[f32], preserve_inactive: bool) -> bool {
             continue;
         }
         if !range(p + 1, 0., if p == 128 { 4. } else { 1. })
-            || !range(p + 2, 0.1, if p == 128 { 24. } else { 1000. })
+            || !range(
+                p + 2,
+                0.1,
+                if p == 128 {
+                    if v.len() >= 584 && v[580] == 1. {
+                        96.
+                    } else {
+                        24.
+                    }
+                } else {
+                    1000.
+                },
+            )
             || !range(p + 3, 0., if p == 128 { 64. } else { 100. })
         {
             return false;

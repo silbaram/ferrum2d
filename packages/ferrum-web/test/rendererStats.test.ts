@@ -69,6 +69,9 @@ test("RendererStats field contract fixes labels and units", () => {
     { field: "shadowCasterCount", label: "shadow casters", unit: "count" },
     { field: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes" },
     { field: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count" },
+    { field: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count" },
+    { field: "spatialBloomTextureBytes", label: "Bloom target peak", unit: "bytes" },
+    { field: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count" },
     { field: "postProcessDrawCalls", label: "post-process draw calls", unit: "count" },
     { field: "postProcessPassCount", label: "post-process passes", unit: "count" },
   ]);

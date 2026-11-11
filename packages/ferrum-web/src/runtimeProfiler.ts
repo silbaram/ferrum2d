@@ -13,6 +13,9 @@ export interface RuntimeDiagnosticsBudget {
   maxGpuRenderTargetCount?: number;
   maxGpuEstimatedBytes?: number;
   maxPointShadowGeometryUploadBytes?: number;
+  maxSpatialBloomDrawCalls?: number;
+  maxSpatialBloomTextureBytes?: number;
+  maxSpatialBloomTexelFetchBudget?: number;
   maxPointShadowGeometryVertexCount?: number;
 
   maxFrameTimeMs?: number;
@@ -62,6 +65,9 @@ export interface RuntimeDiagnosticsFrameSample {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialBloomDrawCalls?: number;
+  spatialBloomTextureBytes?: number;
+  spatialBloomTexelFetchBudget?: number;
   pointShadowGeometryUploadBytes?: number;
   pointShadowGeometryVertexCount?: number;
   pointShadowGeometryCacheHit?: boolean;
@@ -142,6 +148,9 @@ export interface RuntimeProfilerSnapshot {
   maxGpuRenderTargetCount?: number;
   maxGpuEstimatedBytes?: number;
   maxPointShadowGeometryUploadBytes?: number;
+  maxSpatialBloomDrawCalls?: number;
+  maxSpatialBloomTextureBytes?: number;
+  maxSpatialBloomTexelFetchBudget?: number;
   maxPointShadowGeometryVertexCount?: number;
 
   frameSampleCount: number;
@@ -246,7 +255,7 @@ export function runtimeDiagnosticsFrameSample(
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
   };
-  for(const field of ["rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls","spatialAuthoredLightCount","spatialSelectedLightCount","spatialContributingLightCount","spatialPendingLightCount","spatialRetainedLightCount","spatialFadingLightCount","spatialCulledLightCount","spatialDroppedLightCount","spatialDisabledLightCount","pointShadowGeometryUploadBytes","pointShadowGeometryVertexCount"] as const) {
+  for(const field of ["spatialBloomDrawCalls","spatialBloomTextureBytes","spatialBloomTexelFetchBudget","rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls","spatialAuthoredLightCount","spatialSelectedLightCount","spatialContributingLightCount","spatialPendingLightCount","spatialRetainedLightCount","spatialFadingLightCount","spatialCulledLightCount","spatialDroppedLightCount","spatialDisabledLightCount","pointShadowGeometryUploadBytes","pointShadowGeometryVertexCount"] as const) {
     const value=metrics[field];if(value!==undefined)sample[field]=nonNegativeInteger(value,field);
   }
   if(metrics.frameIntervalMs!==undefined){const v=finiteNumber(metrics.frameIntervalMs,"frameIntervalMs");if(v<0)throw Error("frameIntervalMs must be non-negative");sample.frameIntervalMs=v;}
@@ -330,6 +339,9 @@ export function evaluateRuntimeDiagnosticsSample(
   addViolation(violations, "maxGpuProgramCount", "GPU programs", sample.gpuProgramCount, budget.maxGpuProgramCount, "count");
   addViolation(violations, "maxGpuRenderTargetCount", "GPU targets", sample.gpuRenderTargetCount, budget.maxGpuRenderTargetCount, "count");
   addViolation(violations, "maxGpuEstimatedBytes", "GPU storage estimate", sample.gpuEstimatedBytes, budget.maxGpuEstimatedBytes, "bytes");
+  addViolation(violations, "maxSpatialBloomDrawCalls", "Bloom draws", sample.spatialBloomDrawCalls, budget.maxSpatialBloomDrawCalls, "count");
+  addViolation(violations, "maxSpatialBloomTextureBytes", "Bloom targets", sample.spatialBloomTextureBytes, budget.maxSpatialBloomTextureBytes, "bytes");
+  addViolation(violations, "maxSpatialBloomTexelFetchBudget", "Bloom texture load budget", sample.spatialBloomTexelFetchBudget, budget.maxSpatialBloomTexelFetchBudget, "count");
   addViolation(violations, "maxPointShadowGeometryUploadBytes", "point shadow geometry upload", sample.pointShadowGeometryUploadBytes, budget.maxPointShadowGeometryUploadBytes, "bytes");
   addViolation(violations, "maxPointShadowGeometryVertexCount", "point shadow vertices", sample.pointShadowGeometryVertexCount, budget.maxPointShadowGeometryVertexCount, "count");
 
@@ -431,6 +443,9 @@ export function evaluateRuntimeProfilerBudget(
   addViolation(violations, "maxGpuProgramCount", "GPU programs", snapshot.maxGpuProgramCount, budget.maxGpuProgramCount, "count");
   addViolation(violations, "maxGpuRenderTargetCount", "GPU targets", snapshot.maxGpuRenderTargetCount, budget.maxGpuRenderTargetCount, "count");
   addViolation(violations, "maxGpuEstimatedBytes", "GPU storage estimate", snapshot.maxGpuEstimatedBytes, budget.maxGpuEstimatedBytes, "bytes");
+  addViolation(violations, "maxSpatialBloomDrawCalls", "Bloom draws", snapshot.maxSpatialBloomDrawCalls, budget.maxSpatialBloomDrawCalls, "count");
+  addViolation(violations, "maxSpatialBloomTextureBytes", "Bloom targets", snapshot.maxSpatialBloomTextureBytes, budget.maxSpatialBloomTextureBytes, "bytes");
+  addViolation(violations, "maxSpatialBloomTexelFetchBudget", "Bloom texture load budget", snapshot.maxSpatialBloomTexelFetchBudget, budget.maxSpatialBloomTexelFetchBudget, "count");
   addViolation(violations, "maxPointShadowGeometryUploadBytes", "point shadow geometry upload", snapshot.maxPointShadowGeometryUploadBytes, budget.maxPointShadowGeometryUploadBytes, "bytes");
   addViolation(violations, "maxPointShadowGeometryVertexCount", "point shadow vertices", snapshot.maxPointShadowGeometryVertexCount, budget.maxPointShadowGeometryVertexCount, "count");
 
@@ -654,6 +669,9 @@ function summarizeRuntimeProfiler(
   }
   snapshot.maxCollisionPairCount = maxCollisionPairCount;
   snapshot.maxAssetLoadElapsedMs = maxAssetLoadElapsedMs;
+  snapshot.maxSpatialBloomDrawCalls = completeWindowMaximum(frames, "spatialBloomDrawCalls");
+  snapshot.maxSpatialBloomTextureBytes = completeWindowMaximum(frames, "spatialBloomTextureBytes");
+  snapshot.maxSpatialBloomTexelFetchBudget = completeWindowMaximum(frames, "spatialBloomTexelFetchBudget");
   snapshot.maxPointShadowGeometryUploadBytes = completeWindowMaximum(frames, "pointShadowGeometryUploadBytes");
   snapshot.maxPointShadowGeometryVertexCount = completeWindowMaximum(frames, "pointShadowGeometryVertexCount");
   snapshot.maxGpuTextureCount = completeWindowMaximum(frames, "gpuTextureCount");
@@ -764,7 +782,7 @@ function finiteNumber(value: unknown, name: string): number {
 // A missing measurement anywhere in the retained window cannot pass a resource/work budget.
 function completeWindowMaximum(
   frames: readonly RuntimeDiagnosticsFrameSample[],
-  field: "gpuTextureCount" | "gpuBufferCount" | "gpuProgramCount" | "gpuRenderTargetCount" | "gpuEstimatedBytes" | "wasmLinearMemoryBytes" | "pointShadowGeometryUploadBytes" | "pointShadowGeometryVertexCount",
+  field: "spatialBloomDrawCalls" | "spatialBloomTextureBytes" | "spatialBloomTexelFetchBudget" | "gpuTextureCount" | "gpuBufferCount" | "gpuProgramCount" | "gpuRenderTargetCount" | "gpuEstimatedBytes" | "wasmLinearMemoryBytes" | "pointShadowGeometryUploadBytes" | "pointShadowGeometryVertexCount",
 ): number | undefined {
   if (frames.length === 0) return undefined;
   let maximum = 0;

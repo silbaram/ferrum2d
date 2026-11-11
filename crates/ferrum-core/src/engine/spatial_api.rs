@@ -547,8 +547,14 @@ impl Engine {
                 v[..self.spatial_scene.environment.value_len].to_vec()
             })
     }
+    /// Cold capability for the opt-in v9 low-resolution HDR Bloom source.
+    pub fn spatial_wide_bloom_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 576 {
+        if self.spatial_scene.environment.value_len > 580 {
+            9
+        } else if self.spatial_scene.environment.value_len > 576 {
             8
         } else if self.spatial_scene.environment.value_len > 544 {
             7

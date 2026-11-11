@@ -181,7 +181,7 @@ const BUDGET_FIELDS = Object.freeze([
   "maxJsHeapUsedBytes",
 ]);
 
-const OPTIONAL_BUDGET_FIELDS = Object.freeze(["maxPointShadowGeometryUploadBytes", "maxPointShadowGeometryVertexCount"]);
+const OPTIONAL_BUDGET_FIELDS = Object.freeze(["maxSpatialBloomDrawCalls","maxSpatialBloomTextureBytes","maxSpatialBloomTexelFetchBudget","maxPointShadowGeometryUploadBytes", "maxPointShadowGeometryVertexCount"]);
 
 export function runtimeBudgetProfile(profileId) {
   const profile = RUNTIME_BUDGET_PROFILES[profileId];

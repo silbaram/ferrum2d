@@ -1,3 +1,4 @@
+import { requestsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
 import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
 import {
@@ -113,7 +114,7 @@ export type SceneSpatialPatchOperation =
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
@@ -186,11 +187,11 @@ export function applySceneSpatialPatch(
       patch.version !== 6 &&
       patch.version !== 7 &&
       patch.version !== 8 &&
-      patch.version !== 9) ||
+      patch.version !== 9 && patch.version !== 10) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6, 7, 8 or 9 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6, 7, 8, 9 or 10 operations",
     );
   if (
     Object.keys(patch).some(
@@ -216,6 +217,7 @@ export function applySceneSpatialPatch(
       )
     )
       throw new Error("Invalid spatial patch operation");
+    if (operation.kind === "setEnvironment" && requestsSpatialWideBloom(operation.changes.environment) && patch.version < 10) throw new Error("Wide Bloom requires spatial patch version 10");
     if (operation.kind === "setEnvironment" && requestsSpatialLightSelection(operation.changes.environment) && patch.version < 9)
       throw new Error("Light selection requires spatial patch version 9");
     if ((hasOwn(operation.changes, "lightMask") || hasOwn(operation.changes, "shadowMask") ||
@@ -637,6 +639,7 @@ export function sceneSpatialReferencesInstance(
 }
 
 export function sceneSpatialPatchVersion(operations: readonly SceneSpatialPatchOperation[]): SceneSpatialPatch["version"] {
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialWideBloom(op.changes.environment))) return 10;
   if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightSelection(op.changes.environment))) return 9;
   return operations.some(op => hasOwn(op.changes, "lightMask") || hasOwn(op.changes, "shadowMask") ||
     op.kind === "setEnvironment" && requestsSpatialLightChannels(op.changes.environment)) ? 8 : operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(

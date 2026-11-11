@@ -133,6 +133,9 @@ const STARTER_RUNTIME_WEAPON_PROFILE_VISUALS = Object.freeze({
   bounce: { label: "Large amber orb", textureId: 23, width: 18, height: 18, cooldownSeconds: 0.42 },
 });
 const RUNTIME_BUDGET_FIELDS = Object.freeze([
+  ["maxSpatialBloomDrawCalls", "Bloom draws", "maxSpatialBloomDrawCalls", "count"],
+  ["maxSpatialBloomTextureBytes", "Bloom targets", "maxSpatialBloomTextureBytes", "bytes"],
+  ["maxSpatialBloomTexelFetchBudget", "Bloom texture load budget", "maxSpatialBloomTexelFetchBudget", "count"],
   ["maxWasmLinearMemoryBytes", "Wasm capacity", "maxWasmLinearMemoryBytes", "bytes"],
   ["maxGpuFrameTimeMs", "GPU elapsed", "maxGpuFrameTimeMs", "ms"],
   ["maxFrameTimeMs", "frame time", "maxFrameTimeMs", "ms"],

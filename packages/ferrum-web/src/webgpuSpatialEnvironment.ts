@@ -1,3 +1,6 @@
+import type { SpatialRendererStats } from "./renderer.js";
+import { WebGpuSpatialBloom } from "./webgpuSpatialBloom.js";
+import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from "./spatialBloomKernel.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
@@ -8,11 +11,11 @@ import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 // v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
-const UNIFORM_BYTES = 2592,
+const UNIFORM_BYTES = 2608,
   UNIFORM_STRIDE = 2816;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 @group(2) @binding(3) var<uniform> receiver:vec4u;
@@ -86,6 +89,11 @@ function composite(linearWorking: boolean): string { return spatialEnvironmentWG
 @group(1) @binding(0) var sceneColor:texture_2d<f32>;
 @group(1) @binding(1) var sceneDepth:texture_depth_2d;
 @group(1) @binding(2) var sceneIndirect:texture_2d<f32>;
+@group(1) @binding(3) var sceneBloom:texture_2d<f32>;
+fn wideBloom(uv:vec2f)->vec3f{
+ let p=uv*env.wideBloom.yz-vec2f(.5);let a=vec2i(floor(p));let hi=vec2i(textureDimensions(sceneBloom))-vec2i(1);let w=fract(p);
+ return mix(mix(textureLoad(sceneBloom,clamp(a,vec2i(0),hi),0).rgb,textureLoad(sceneBloom,clamp(a+vec2i(1,0),vec2i(0),hi),0).rgb,w.x),mix(textureLoad(sceneBloom,clamp(a+vec2i(0,1),vec2i(0),hi),0).rgb,textureLoad(sceneBloom,clamp(a+vec2i(1,1),vec2i(0),hi),0).rgb,w.x),w.y);
+}
 struct F { @builtin(position) p:vec4f,@location(0) uv:vec2f };
 @vertex fn vs_main(@builtin(vertex_index) i:u32)->F{
  let uv=vec2f(f32((i<<1u)&2u),f32(i&2u));var f:F;
@@ -153,6 +161,7 @@ fn compose(f:F,stage:u32)->vec4f{
  if(stage>0u){return vec4f(max(color,vec3f(0.)),center.a);}
  if(e(128u)>0. && e(129u)>0.){
   var glow=vec3f(0.);var weight=0.;
+  if(env.wideBloom.x>0.){glow=wideBloom(select(f.uv,(vec2f(pixel(f.uv))+vec2f(.5))/env.size.xy,(flags&16u)!=0u))*e(129u);}else{
   for(var i=0u;i<32u;i++){
    let angle=f32(i)*2.39996323;let r=sqrt((f32(i)+.5)/32.);let w=exp(-r*r*4.);
    let uv=f.uv+vec2f(cos(angle),-sin(angle))*r*e(130u)*env.size.y/env.size.z/env.size.xy;
@@ -161,6 +170,7 @@ fn compose(f:F,stage:u32)->vec4f{
    glow+=sampleColor*(max(peak-e(131u),0.)/max(peak,.00001))*w;
   }
   glow*=e(129u)/max(weight,.00001);
+  }
   if(center.a<=0. && max(glow.r,max(glow.g,glow.b))<.00001){discard;}
   color+=glow;
  }
@@ -198,6 +208,9 @@ export class WebGpuSpatialEnvironment {
   private resolvePipeline?: GPURenderPipeline;
   private dofPipeline?: GPURenderPipeline;
   private readonly imagesLayout: GPUBindGroupLayout;
+  private bloomPass?: WebGpuSpatialBloom;
+  private bloomPlan?: SpatialBloomPlan;
+  private boundBloomView?: GPUTextureView;
   private color?: GPUTexture;
   private depth?: GPUTexture;
   private colorView?: GPUTextureView;
@@ -249,6 +262,7 @@ export class WebGpuSpatialEnvironment {
         },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
       ],
     });
     const module = device.createShaderModule({
@@ -357,6 +371,10 @@ export class WebGpuSpatialEnvironment {
     this.values[519] = Number(indirect) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
     for (let i = 0; i < 5; i++) this.values[640 + i] = env && env.values.length >= 576 ? env.values[544 + i] : 65535;
     this.values[645] = Number(this.receivers.enabled());
+    this.bloomPlan = spatialBloomPlan(env?.values, width, height, c[27]);
+    const bloomView = this.bloomPlan ? (this.bloomPass ??= new WebGpuSpatialBloom(this.device)).prepare(this.bloomPlan) : this.bloomPass?.prepare();
+    this.values[648] = Number(!!bloomView);
+    this.values[649] = this.bloomPlan?.sampleWidth ?? 1; this.values[650] = this.bloomPlan?.sampleHeight ?? 1;
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
@@ -364,7 +382,7 @@ export class WebGpuSpatialEnvironment {
       this.releaseTarget();
       return;
     }
-    if (this.width === width && this.height === height && this.images && !!this.indirect === indirect && !!this.dof === dof) return;
+    if (this.width === width && this.height === height && this.images && !!this.indirect === indirect && !!this.dof === dof && this.boundBloomView === bloomView) return;
     let color: GPUTexture | undefined, depth: GPUTexture | undefined;
     const scratch: GPUTexture[] = [];
     this.device.pushErrorScope("validation");
@@ -403,6 +421,7 @@ export class WebGpuSpatialEnvironment {
           { binding: 0, resource },
           { binding: 1, resource: depthView },
           { binding: 2, resource: indirectView },
+          { binding: 3, resource: bloomView ?? colorView },
         ],
       });
       const images = imagesFor(colorView);
@@ -411,6 +430,7 @@ export class WebGpuSpatialEnvironment {
       const dofImages = dofView ? imagesFor(dofView) : undefined;
       this.releaseTarget();
       this.color = color;
+      this.boundBloomView = bloomView;
       this.depth = depth;
       this.colorView = colorView;
       this.depthView = depthView;
@@ -468,6 +488,7 @@ export class WebGpuSpatialEnvironment {
     if (this.destroyed) throw Error("Spatial environment destroyed");
     if (!this.images) throw Error("Spatial HDR target is not prepared");
     let images = this.images, passes = 1;
+    let bloomSource = this.colorView!;
     for (const [view, pipeline, output] of [
       [this.resolvedView, this.resolvePipeline, this.resolvedImages],
       [this.dofView, this.dofPipeline, this.dofImages],
@@ -480,8 +501,9 @@ export class WebGpuSpatialEnvironment {
         intermediate.setPipeline(pipeline!); intermediate.setBindGroup(0, this.group, [0]);
         intermediate.setBindGroup(1, images); intermediate.draw(3);
       } finally { intermediate.end(); }
-      images = output!; passes++;
+      images = output!; bloomSource = view; passes++;
     }
+    if (this.bloomPlan) { this.bloomPass!.draw(encoder, bloomSource, this.bloomPlan, frame.environment!.values[131]); passes += this.bloomPlan.drawCalls; }
     const pass = beginWebGpuRenderPass(this.device, encoder, {
       label: "Spatial HDR composite",
       colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
@@ -558,7 +580,10 @@ export class WebGpuSpatialEnvironment {
     }
   }
   textureBytes(): number {
-    return this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof)));
+    return (this.bloomPlan?.textureBytes ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof)));
+  }
+  writeBloomStats(stats: SpatialRendererStats, values: Float32Array | undefined, outputWidth: number, outputHeight: number): void {
+    writeSpatialBloomStats(stats, values, this.bloomPlan, outputWidth, outputHeight);
   }
   private releaseTarget(): void {
     webGpuResources(this.device).destroy(this.color);
@@ -579,6 +604,7 @@ export class WebGpuSpatialEnvironment {
     if (this.destroyed) return;
     this.destroyed = true;
     this.releaseTarget();
+    this.bloomPass?.destroy();
     webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
     this.receivers.destroy();

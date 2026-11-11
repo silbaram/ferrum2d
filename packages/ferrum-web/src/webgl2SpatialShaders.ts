@@ -208,7 +208,10 @@ void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;g
 export const spatialCompositeFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;out vec4 outColor;
 uniform highp sampler2D u_color,u_depth;uniform vec2 u_size,u_nearFar;uniform bool u_perspective,u_dof,u_grade,u_encode,u_highDof;
-uniform vec4 u_focus,u_gradeValues,u_bloom,u_ao;uniform vec3 u_tint;uniform float u_projectionSize;
+uniform vec4 u_focus,u_gradeValues,u_bloom,u_ao;uniform bool u_wideBloom,u_bloomSnap;uniform sampler2D u_bloomImage;uniform vec2 u_bloomGrid;
+vec3 bloomAt(ivec2 p){ivec2 size=textureSize(u_bloomImage,0);p=clamp(p,ivec2(0),size-1);return texelFetch(u_bloomImage,ivec2(p.x,size.y-1-p.y),0).rgb;}
+vec3 wideBloom(vec2 uv){vec2 p=vec2(uv.x,1.-uv.y)*u_bloomGrid-.5;ivec2 a=ivec2(floor(p));vec2 w=fract(p);return mix(mix(bloomAt(a),bloomAt(a+ivec2(1,0)),w.x),mix(bloomAt(a+ivec2(0,1)),bloomAt(a+ivec2(1,1)),w.x),w.y);}
+uniform vec3 u_tint;uniform float u_projectionSize;
 uniform sampler2D u_indirect;uniform bool u_separated,u_dofApplied,u_fog;uniform int u_stage;
 uniform vec2 u_fogRange;uniform vec3 u_fogColor;
 float viewDepth(float d){float n=u_nearFar.x,f=u_nearFar.y;return u_perspective?(2.0*n*f)/(f+n-(d*2.0-1.0)*(f-n)):mix(n,f,d);}
@@ -272,6 +275,7 @@ if(u_stage==1 && u_fog)color=mix(color,u_fogColor,clamp((z-u_fogRange.x)/(u_fogR
 if(u_stage>0){outColor=vec4(max(color,vec3(0.)),center.a);return;}
 if(u_bloom.x>0. && u_bloom.y>0.) {
  vec3 glow=vec3(0.);float weight=0.;
+ if(u_wideBloom){glow=wideBloom(u_bloomSnap?(floor(v_uv*u_size)+.5)/u_size:v_uv)*u_bloom.y;}else{
  for(int i=0;i<32;i++) {
   float angle=float(i)*2.39996323,r=sqrt((float(i)+.5)/32.),w=exp(-r*r*4.);
   vec2 uv=v_uv+vec2(cos(angle),sin(angle))*r*u_bloom.z/u_size;
@@ -280,6 +284,7 @@ if(u_bloom.x>0. && u_bloom.y>0.) {
   glow+=sampleColor*(max(peak-u_bloom.w,0.)/max(peak,.00001))*w;
  }
  glow*=u_bloom.y/max(weight,.00001);
+ }
  if(center.a<=0. && max(glow.r,max(glow.g,glow.b))<.00001)discard;
  color+=glow;
 }

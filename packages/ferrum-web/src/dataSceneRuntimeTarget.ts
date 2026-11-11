@@ -1,3 +1,4 @@
+import { requestsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
 import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
@@ -153,6 +154,7 @@ export interface DataSceneRuntimeEngineAdapter {
   supportsSpatialRampAxis?(): boolean;
   supportsSpatialReceiverMasks?(): boolean;
   supportsSpatialLightChannels?(): boolean;
+  supportsSpatialWideBloom?(): boolean;
   supportsSpatialLightSelection?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
   spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
@@ -232,8 +234,10 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
 function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSpatialSpec | undefined, path: string): void {
   const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
   const selection = requestsSpatialLightSelection(spec?.environment);
-  if (!receivers && !channels && !selection) return;
+  const wideBloom = requestsSpatialWideBloom(spec?.environment);
+  if (!receivers && !channels && !selection && !wideBloom) return;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  if (wideBloom && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "wide Bloom requires native v1 support");
   if (selection && !adapter.supportsSpatialLightSelection?.())
     throw sceneCompositionDiagnosticError(`${path}.environment`, "light selection requires native v1 support");
   if (receivers && !adapter.supportsSpatialReceiverMasks?.())
@@ -668,6 +672,7 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (requestsSpatialWideBloom(environment) && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(environmentPath, "wide Bloom requires native v1 support");
   if (requestsSpatialLightSelection(environment) && !adapter.supportsSpatialLightSelection?.())
     throw sceneCompositionDiagnosticError(environmentPath, "light selection requires native v1 support");
   if (requestsSpatialLightChannels(environment) && !adapter.supportsSpatialLightChannels?.())

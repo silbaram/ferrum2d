@@ -1,3 +1,5 @@
+import { WebGL2SpatialBloom } from "../src/webgl2SpatialBloom.js";
+import { spatialBloomPlan } from "../src/spatialBloomKernel.js";
 import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { WebGL2SpatialEnvironmentPass } from "../src/webgl2SpatialEnvironmentPass.js";
@@ -80,4 +82,35 @@ test("v5 retains spotlight uniforms from v4 and clears them when returning to le
     pass.bindGeometry(frame(legacy), uniforms);
     deepEqual(cones, Array(32).fill(0), "legacy frames must not inherit the previous spotlight");
   } finally { pass.destroy(); }
+});
+
+
+test("wide GL chain preserves old targets on partial allocation failure, retries and releases on OFF", () => {
+  const textures = new Set<object>(), targets = new Set<object>(), constants = new Map<string, number>();
+  let attempts = 0, failAt = Infinity, draws = 0;
+  const methods: Record<string, unknown> = {
+    createProgram: () => ({}), createShader: () => ({}), createVertexArray: () => ({}),
+    getShaderParameter: () => true, getProgramParameter: () => true, getUniformLocation: () => ({}),
+    createTexture: () => { if (++attempts === failAt) return null; const texture = {}; textures.add(texture); return texture; },
+    createFramebuffer: () => { const target = {}; targets.add(target); return target; },
+    deleteTexture: (t: object) => textures.delete(t), deleteFramebuffer: (t: object) => targets.delete(t),
+    drawArrays: () => { draws++; }, checkFramebufferStatus: () => constants.get("FRAMEBUFFER_COMPLETE"),
+  };
+  const gl = new Proxy(methods, { get: (o, key: string) => {
+    if (key in o) return o[key];
+    if (/^[A-Z_0-9]+$/.test(key)) { if (!constants.has(key)) constants.set(key, constants.size + 1); return constants.get(key); }
+    return () => {};
+  } }) as unknown as WebGL2RenderingContext;
+  void gl.FRAMEBUFFER_COMPLETE;
+  const pass = new WebGL2SpatialBloom(gl);
+  const v = compileSpatialEnvironment({ composition: "separated", bloom: { mode: "wide", radius: 64 } });
+  const plan = spatialBloomPlan(v, 128, 128, 128)!;
+  pass.prepare(plan); equal(pass.targetCount(), plan.levels.length + 1); equal(pass.textureBytes(), plan.textureBytes);
+  const warm = attempts; pass.prepare(plan); equal(attempts, warm);
+  pass.draw({} as WebGLTexture, plan, 1); equal(draws, plan.drawCalls);
+  const larger = spatialBloomPlan(v, 256, 192, 192)!; failAt = attempts + 2;
+  throws(() => pass.prepare(larger), /allocation failed/);
+  equal(textures.size, plan.levels.length + 1); equal(pass.textureBytes(), plan.textureBytes);
+  failAt = Infinity; pass.prepare(larger); equal(pass.textureBytes(), larger.textureBytes);
+  pass.prepare(); equal(textures.size, 0); equal(targets.size, 0); pass.destroy();
 });

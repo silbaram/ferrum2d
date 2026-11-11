@@ -21,7 +21,7 @@ test("actual Wasm restores mid-fade semantic history atomically in exploration/c
     for (let i = 0; i < count; i++) { const callbacks = [...pending.values()]; pending.clear(); time += 17; for (const cb of callbacks) cb(time); }
   };
   try {
-    for (const combat of [false, true]) {
+    for (const combat of [false, true]) for (const wide of [false, true]) {
       let frame: SpatialEnvironmentBufferView | undefined;
       const source = await createEngine(() => {}, undefined, undefined, () => ({ width: 400, height: 300 }));
       const destination = await createEngine(value => {
@@ -35,7 +35,7 @@ test("actual Wasm restores mid-fade semantic history atomically in exploration/c
           props: { components: { visual: { kind: "sprite", texture: 0, width: 8, height: 16 }, collider: { type: "aabb", halfWidth: 2, halfHeight: 2, isTrigger: false },
             layer: "player", body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 16 } } } } }] } } },
         behaviorRecipes: { entities: {} }, spatial: { camera, terrain: [], billboards: { hero: {} },
-          environment: { composition: "separated" as const, lighting: { maxActiveLights: 1 as const, selection: { hysteresis: .1, fadeSeconds: .2 }, lights: [
+          environment: { ...(wide ? { bloom: { mode: "wide" as const, quality: "high" as const, radius: 64 } } : {}), composition: "separated" as const, lighting: { maxActiveLights: 1 as const, selection: { hysteresis: .1, fadeSeconds: .2 }, lights: [
             { position: { x: -20, y: 0, elevation: 64 }, radius: 100, color: [1, 0, 0], lightMask: 1, shadowMask: 0 },
             { position: { x: 20, y: 0, elevation: 64 }, radius: 100, color: [0, 1, 0], lightMask: 2, shadowMask: 4 },
           ] } } } };
@@ -45,7 +45,7 @@ test("actual Wasm restores mid-fade semantic history atomically in exploration/c
       tick(1); ok(source.pauseDataScene());
       const options = { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: document } as const;
       const saved = captureGameStateSnapshot(source, options);
-      equal(saved.dataScene!.version, 11);
+      equal(saved.dataScene!.version, wide ? 12 : 11);
       const history = saved.dataScene!.progress!.spatial!.lightSelection!;
       equal(history.slots[0].phase, "fading-out"); equal(history.slots[0].sourceIndex, 0); equal(history.slots[0].pendingSourceIndex, 1);
       ok(history.slots[0].weight > 0 && history.slots[0].weight < 1);
@@ -54,7 +54,7 @@ test("actual Wasm restores mid-fade semantic history atomically in exploration/c
       const restored = captureGameStateSnapshot(destination, options);
       deepEqual(restored.dataScene!.progress, saved.dataScene!.progress);
       destination.start(); tick(3);
-      equal(frame!.version, 8); equal(frame!.values.length, 580);
+      equal(frame!.version, wide ? 9 : 8); equal(frame!.values.length, wide ? 584 : 580);
       equal(frame!.lightSelection!.words[0], 0); equal(frame!.lightSelection!.words[2], 3);
       equal(frame!.lightSelection!.values[5], history.slots[0].weight);
       equal(frame!.values[19], Math.fround(history.slots[0].weight));
@@ -68,7 +68,7 @@ test("actual Wasm restores mid-fade semantic history atomically in exploration/c
         if (kind === "version") bad.dataScene.version = 10;
         if (kind === "source") { bad.dataScene.progress.spatial.environment.lighting.lights[0].position.x *= -1; bad.dataScene.progress.spatial.environment.lighting.lights[0].position.elevation *= -1; }
         bad.snapshotHash = hashGameStateSnapshot(bad);
-        throws(() => restoreGameStateSnapshot(destination, bad as GameStateSnapshot), /selection|Selection|version 11/);
+        throws(() => restoreGameStateSnapshot(destination, bad as GameStateSnapshot), /selection|Selection|version 11|version 12/);
         deepEqual(captureGameStateSnapshot(destination, options).dataScene!.progress, restored.dataScene!.progress);
       }
       ok(destination.resumeDataScene()); tick(30); ok(destination.pauseDataScene());

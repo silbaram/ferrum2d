@@ -220,7 +220,7 @@
     "engine:local": "node scripts/package/install-local-engine.mjs",
     "smoke:local-engine-install": "node --test tests/smoke/local-engine-install.test.mjs",
     "smoke:spatial-webgpu": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs",
-    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-light-selection-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
+    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-light-selection-report && pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
     "test:spatial-light-selection-report": "node --test tests/smoke/spatial-light-selection-report.test.mjs",
     "smoke:spatial-light-selection": "pnpm test:spatial-light-selection-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-selection-only",
     "smoke:spatial-webgpu-fallback": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --fallback-only",
@@ -248,7 +248,9 @@
     "smoke:feature-examples": "pnpm validate:example-catalog && pnpm --filter @ferrum2d/starter-runtime --filter @ferrum2d/platformer --filter @ferrum2d/breakout --filter @ferrum2d/topdown-shooter lint && pnpm --filter @ferrum2d/starter-runtime --filter @ferrum2d/platformer --filter @ferrum2d/breakout --filter @ferrum2d/topdown-shooter build && node tests/smoke/feature-examples-smoke.mjs",
     "smoke:shadow-comparison": "pnpm validate:example-catalog && pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/feature-examples-smoke.mjs --shadow-proxy-only",
     "smoke:engine-playground": "pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/engine-playground-smoke.mjs",
-    "smoke:flat-lit": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-lit-browser-smoke.mjs"
+    "smoke:flat-lit": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-lit-browser-smoke.mjs",
+    "test:spatial-bloom-report": "node --test tests/smoke/spatial-bloom-report.test.mjs",
+    "smoke:spatial-wide-bloom": "pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --wide-bloom-only"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

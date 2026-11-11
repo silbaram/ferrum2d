@@ -1,3 +1,4 @@
+import { hasSpatialSelectionSource } from "./spatialBloom.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 import type { SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 import type { SpatialRendererStats } from "./renderer.js";
@@ -94,7 +95,7 @@ export function validSpatialLightSelectionValues(v: Float32Array): boolean {
 
 /** Validates native diagnostics without recomputing simulation scores or advancing history in JS. */
 export function validateSpatialLightSelectionBuffer(environment: Float32Array, view?: SpatialLightSelectionBufferView): void {
-  const required = environment.length === 580 && environment[576] === 1;
+  const required = hasSpatialSelectionSource(environment) && environment[576] === 1;
   const count = required ? environment[137] : 0;
   if (!view) {
     if (count) throw Error("Missing native Spatial light selection diagnostics");
@@ -137,7 +138,7 @@ export function validateSpatialLightSelectionBuffer(environment: Float32Array, v
 
 export function readSpatialLightSelection(engine: unknown, memory: WebAssembly.Memory, environment: Float32Array): SpatialLightSelectionBufferView | undefined {
   const native = engine as Partial<NativeSelection>;
-  const required = environment.length === 580;
+  const required = hasSpatialSelectionSource(environment);
   if (nativeNames.every(name => native[name] === undefined) && !required) return undefined;
   if (!supportsSpatialLightSelection(native)) throw Error("Unsupported Spatial light selection ABI");
   const count = native.spatial_light_selection_diagnostics_len();

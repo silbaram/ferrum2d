@@ -1,3 +1,6 @@
+import type { SpatialRendererStats } from "./renderer.js";
+import { WebGL2SpatialBloom } from "./webgl2SpatialBloom.js";
+import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from "./spatialBloomKernel.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
 import {
@@ -16,6 +19,8 @@ export interface SpatialEnvironmentGpuStats {
   textureBytes: number;
 }
 export class WebGL2SpatialEnvironmentPass {
+  private bloomPass?: WebGL2SpatialBloom;
+  private bloomPlan?: SpatialBloomPlan;
   private composite?: WebGLProgram;
   private shadow?: WebGLProgram;
   private vao?: WebGLVertexArrayObject;
@@ -73,7 +78,7 @@ export class WebGL2SpatialEnvironmentPass {
         "encode",
         "focus",
         "gradeValues",
-        "tint", "bloom", "ao", "projectionSize", "indirect", "separated", "dofApplied", "stage", "fog", "fogRange", "fogColor",
+        "tint", "bloom", "ao", "projectionSize", "indirect", "separated", "dofApplied", "stage", "wideBloom", "bloomImage", "bloomGrid", "bloomSnap", "fog", "fogRange", "fogColor",
       ])
         this.compositeUniforms[name] = spatialUniform(
           gl,
@@ -173,6 +178,9 @@ export class WebGL2SpatialEnvironmentPass {
     }
     const values = frame.environment!.values;
     this.prepareComposition(values);
+    this.bloomPlan = spatialBloomPlan(frame.environment?.values, width, height, frame.camera?.[27] ?? height);
+    if (this.bloomPlan) (this.bloomPass ??= new WebGL2SpatialBloom(gl)).prepare(this.bloomPlan);
+    else this.bloomPass?.prepare();
     if (values[2] >= 0) this.prepareShadow(values[3]);
     else this.releaseShadow();
     if (values.length > 80 && values[92] > 0) this.prepareSun(values[92]);
@@ -506,6 +514,7 @@ export class WebGL2SpatialEnvironmentPass {
     gl.activeTexture(gl.TEXTURE2); gl.bindSampler(2, null);
     gl.bindTexture(gl.TEXTURE_2D, this.indirect ?? this.color!); gl.uniform1i(u.indirect, 2);
     let source = this.color!, passes = 1;
+    let bloomImage: WebGLTexture | undefined;
     const mask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
     const scissor = gl.isEnabled(gl.SCISSOR_TEST);
     try {
@@ -518,31 +527,40 @@ export class WebGL2SpatialEnvironmentPass {
         gl.uniform1i(u.stage, stage); gl.drawArrays(gl.TRIANGLES, 0, 3);
         source = destination.texture; passes++;
       }
+      if (this.bloomPlan) { bloomImage = this.bloomPass!.draw(source, this.bloomPlan, v[131]); passes += this.bloomPlan.drawCalls; }
     } finally {
       gl.colorMask(mask[0]!, mask[1]!, mask[2]!, mask[3]!);
       if (scissor) gl.enable(gl.SCISSOR_TEST);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, target); gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     }
+    gl.useProgram(this.composite!); gl.bindVertexArray(this.vao!);
+    if (bloomImage) { gl.activeTexture(gl.TEXTURE3); gl.bindSampler(3, null); gl.bindTexture(gl.TEXTURE_2D, bloomImage); }
+    gl.uniform1i(u.bloomSnap, Number(!!(v[0] & 16)));
+    gl.uniform2f(u.bloomGrid, this.bloomPlan?.sampleWidth ?? 1, this.bloomPlan?.sampleHeight ?? 1);
+    gl.uniform1i(u.bloomImage, bloomImage ? 3 : 0); gl.uniform1i(u.wideBloom, Number(!!bloomImage));
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source); gl.uniform1i(u.stage, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return passes;
   }
   resourceStats(): SpatialEnvironmentGpuStats {
     return {
-      textureCount: (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0) + Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof),
-      renderTargetCount: (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0) + Number(!!this.resolved) + Number(!!this.dof),
+      textureCount: (this.bloomPass?.targetCount() ?? 0) + (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0) + Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof),
+      renderTargetCount: (this.bloomPass?.targetCount() ?? 0) + (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0) + Number(!!this.resolved) + Number(!!this.dof),
       textureBytes:
-        this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof))) +
+        (this.bloomPass?.textureBytes() ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof))) +
         (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4,
     };
   }
   programCount(): number {
-    return (this.composite ? 1 : 0) + (this.shadow ? 1 : 0);
+    return Number(!!this.bloomPass) + (this.composite ? 1 : 0) + (this.shadow ? 1 : 0);
   }
   depthBytes(): number {
     return (
       this.width * this.height * 4 + (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4
     );
+  }
+  writeBloomStats(stats: SpatialRendererStats, values: Float32Array | undefined, outputWidth: number, outputHeight: number): void {
+    writeSpatialBloomStats(stats, values, this.bloomPlan, outputWidth, outputHeight);
   }
   private releaseTarget(): void {
     this.releaseComposition();
@@ -574,6 +592,7 @@ export class WebGL2SpatialEnvironmentPass {
     this.shadow = undefined; this.shadowUniforms = undefined;
   }
   destroy(): void {
+    this.bloomPass?.destroy(); this.bloomPass = undefined;
     this.releaseTarget();
     this.releaseShadow();
     this.releaseSun();

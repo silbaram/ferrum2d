@@ -278,3 +278,20 @@ test("GPU budgets reject absent measurements and retain complete-window maxima",
   equal(evaluateRuntimeDiagnosticsSample({ ...sample, gpuEstimatedBytes: NaN }, budget)
     .violations[0].reason, "nonFiniteMetric");
 });
+
+
+test("Bloom work bounds retain measured zeros and reject missing values in any retained frame", () => {
+  const budget = { maxSpatialBloomDrawCalls: 6, maxSpatialBloomTextureBytes: 44032, maxSpatialBloomTexelFetchBudget: 88448 };
+  const profiler = new RuntimeProfiler({ maxFrameSamples: 2, budget });
+  equal(profiler.snapshot().budgetReport!.passed, false);
+  profiler.recordFrame(metrics({ spatialBloomDrawCalls: 6, spatialBloomTextureBytes: 44032, spatialBloomTexelFetchBudget: 88448 }));
+  equal(profiler.snapshot().budgetReport!.passed, true);
+  profiler.recordFrame(metrics());
+  equal(profiler.snapshot().maxSpatialBloomTextureBytes, undefined);
+  equal(profiler.snapshot().budgetReport!.violations.filter(v => v.reason === "missingMetric").length, 3);
+  for (let i = 0; i < 2; i++) profiler.recordFrame(metrics({ spatialBloomDrawCalls: 0, spatialBloomTextureBytes: 0, spatialBloomTexelFetchBudget: 0 }));
+  equal(profiler.snapshot().budgetReport!.passed, true);
+  const sample = runtimeDiagnosticsFrameSample(metrics({ spatialBloomDrawCalls: 7, spatialBloomTextureBytes: 44033, spatialBloomTexelFetchBudget: 88449 }));
+  equal(evaluateRuntimeDiagnosticsSample(sample, budget).violations.length, 3);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ spatialBloomTexelFetchBudget: -1 })), /spatialBloom/);
+});

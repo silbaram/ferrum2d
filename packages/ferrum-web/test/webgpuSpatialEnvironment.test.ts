@@ -1,4 +1,6 @@
-import { deepEqual, equal, throws } from "node:assert/strict";
+import { WebGpuSpatialBloom } from "../src/webgpuSpatialBloom.js";
+import { spatialBloomPlan } from "../src/spatialBloomKernel.js";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { WebGpuSpatialEnvironment } from "../src/webgpuSpatialEnvironment.js";
 import {
@@ -96,7 +98,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -384,4 +386,48 @@ test("shadow view bind-group validation failure cannot remain an invalid warm en
     device.textures.every((t) => t.destroyed === 1),
     true,
   );
+});
+
+
+test("wide Bloom target allocation failures preserve old targets, retry, release on OFF and destroy", async () => {
+  const { device, pass } = setup();
+  const base = frame({ composition: "separated", lighting: { lights: [] } });
+  pass.prepare(base, 128, 128); await Promise.resolve();
+  const live = () => device.textures.filter(t => t.destroyed === 0).length;
+  const baseline = live();
+  const wide = frame({ composition: "separated", bloom: { mode: "wide", radius: 64 } });
+  device.failTextureAt = device.textureAttempts + 2;
+  throws(() => pass.prepare(wide, 128, 128), /allocation failed/);
+  equal(live(), baseline);
+  device.failTextureAt = Infinity; pass.prepare(wide, 128, 128);
+  const warm = device.textures.length; ok(live() > baseline);
+  pass.prepare(wide, 128, 128); equal(device.textures.length, warm);
+  pass.prepare(base, 128, 128); equal(live(), baseline);
+  pass.destroy(); equal(live(), 0); equal(device.scopes, 0);
+});
+
+test("wide Bloom uses immutable stage parameters, retries writes and latches async binding failures until recovery", async () => {
+  const { device, pass: unrelated } = setup(); unrelated.destroy();
+  const pass = new WebGpuSpatialBloom(device as unknown as GPUDevice);
+  const values = compileSpatialEnvironment({ composition: "separated", bloom: { mode: "wide", radius: 64 } });
+  const plan = spatialBloomPlan(values, 128, 128, 128)!;
+  pass.prepare(plan); await Promise.resolve(); await Promise.resolve();
+  let draws = 0;
+  const encoder = { beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() { draws++; }, end() {} }) } as unknown as GPUCommandEncoder;
+  const source = {} as GPUTextureView;
+  const write = device.queue.writeBuffer;
+  device.queue.writeBuffer = () => { throw Error("injected Bloom upload"); };
+  throws(() => pass.draw(encoder, source, plan, 1), /injected/);
+  device.queue.writeBuffer = write;
+  pass.draw(encoder, source, plan, 1); equal(draws, plan.drawCalls);
+  const uploaded = device.uniforms[device.uniforms.length - 1];
+  equal(uploaded[2], 0); equal(uploaded[64 + 2], 3);
+  equal(uploaded[(plan.drawCalls - 2) * 64 + 2], 1); equal(uploaded[(plan.drawCalls - 1) * 64 + 2], 2);
+  const groups = device.groups; pass.draw(encoder, source, plan, 1); equal(device.groups, groups);
+  device.bindingError = true; pass.draw(encoder, {} as GPUTextureView, plan, 1);
+  await Promise.resolve(); await Promise.resolve();
+  throws(() => pass.prepare(plan), /binding allocation/);
+  pass.destroy(); equal(device.scopes, 0);
+  equal(device.textures.filter(t => t.destroyed === 0).length, 0);
+  equal(device.buffers.filter(b => b.destroyed === 0).length, 0);
 });

@@ -15,6 +15,9 @@ export interface DebugOverlayMetrics {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialBloomDrawCalls?: number;
+  spatialBloomTextureBytes?: number;
+  spatialBloomTexelFetchBudget?: number;
   spatialAuthoredLightCount?: number;
   spatialSelectedLightCount?: number;
   spatialContributingLightCount?: number;
@@ -115,6 +118,9 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count", optional: true },
+  { id: "spatialBloomTextureBytes", label: "Bloom targets", unit: "bytes", optional: true },
+  { id: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count", optional: true },
   { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
   { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
   { id: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", optional: true },
@@ -249,6 +255,9 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.textureSwitchCount !== undefined) {
     lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
   }
+  if (metrics.spatialBloomDrawCalls !== undefined) lines.push(row("spatialBloomDrawCalls", metrics.spatialBloomDrawCalls));
+  if (metrics.spatialBloomTextureBytes !== undefined) lines.push(row("spatialBloomTextureBytes", metrics.spatialBloomTextureBytes));
+  if (metrics.spatialBloomTexelFetchBudget !== undefined) lines.push(row("spatialBloomTexelFetchBudget", metrics.spatialBloomTexelFetchBudget));
   if (metrics.normalDrawCalls !== undefined) lines.push(row("normalDrawCalls", metrics.normalDrawCalls));
   if (metrics.lightingDrawCalls !== undefined) {
     lines.push(row("lightingDrawCalls", metrics.lightingDrawCalls));

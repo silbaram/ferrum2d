@@ -45,6 +45,11 @@ export interface SpatialRendererStats {
   dofSampleBudget: number;
   /** Bounded scene-effect taps per shaded pixel; 0 when disabled. */
   bloomSampleBudget?: number;
+  /** Additional dedicated Bloom draws; gather remains fused in the composite. */
+  bloomDrawCalls?: number;
+  bloomTextureBytes?: number;
+  /** Texture-load work bound for the configured chain and output viewport, not a GPU timer. */
+  bloomTexelFetchBudget?: number;
   ambientOcclusionSampleBudget?: number;
   authoredLightCount?: number;
   /** Selected rows with nonzero intensity/color/direct mask; not a per-pixel visibility count. */
@@ -97,6 +102,9 @@ export interface RendererStats {
   pointShadowGeometryUploadBytes?: number;
   pointShadowGeometryVertexCount?: number;
   pointShadowGeometryCacheHit?: boolean;
+  spatialBloomDrawCalls?: number;
+  spatialBloomTextureBytes?: number;
+  spatialBloomTexelFetchBudget?: number;
   /** Fullscreen post-processing draw calls submitted for the current frame. */
   postProcessDrawCalls: number;
   /** Fullscreen post-processing passes consumed for the current frame. */
@@ -188,6 +196,9 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
   },
   { field: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", description: "Actual point-shadow geometry writes; zero on a warm cached batch, excluding masks/uniforms/sun." },
   { field: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", description: "Actual point-shadow geometry vertices submitted across active lights." },
+  { field: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count", description: "Dedicated Spatial Bloom draws accumulated across this begun frame." },
+  { field: "spatialBloomTextureBytes", label: "Bloom target peak", unit: "bytes", description: "Peak Spatial Bloom target texel bytes across this begun frame." },
+  { field: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count", description: "Spatial Bloom texture-load work bound accumulated across this begun frame." },
   {
     field: "postProcessDrawCalls",
     label: "post-process draw calls",
@@ -254,6 +265,9 @@ export function resetRendererStatsInto(stats: RendererStats): RendererStats {
   delete stats.pointShadowGeometryUploadBytes;
   delete stats.pointShadowGeometryVertexCount;
   delete stats.pointShadowGeometryCacheHit;
+  delete stats.spatialBloomDrawCalls;
+  delete stats.spatialBloomTextureBytes;
+  delete stats.spatialBloomTexelFetchBudget;
   stats.drawCalls = 0;
   stats.batchCount = 0;
   stats.spriteCount = 0;

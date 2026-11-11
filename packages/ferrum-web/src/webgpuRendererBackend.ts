@@ -489,6 +489,9 @@ export class WebGpuRendererBackend implements Renderer {
     else {lightingStats=this.lightingPass.draw(pass, this.lightingScene, this.logicalWidth, this.logicalHeight,normalStats?this.spriteNormals!.buffers:undefined,{encoder,view:target,width:this.pixelPerfect?.width??this.canvas.width,height:this.pixelPerfect?.height??this.canvas.height},sunMaskStats);if(!lightingStats.passEnded)pass.end();}
     this.device.queue.submit([encoder.finish()]);
     if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
+    const previousBloom0 = this.currentStats.spatialBloomDrawCalls ?? 0;
+    const previousBloom1 = this.currentStats.spatialBloomTextureBytes ?? 0;
+    const previousBloom2 = this.currentStats.spatialBloomTexelFetchBudget ?? 0;
     const previousPointShadowBytes = this.currentStats.pointShadowGeometryUploadBytes ?? 0;
     const previousPointShadowVertices = this.currentStats.pointShadowGeometryVertexCount ?? 0;
     writeRendererStatsForCommandsInto(
@@ -514,6 +517,9 @@ export class WebGpuRendererBackend implements Renderer {
     this.currentStats.pointShadowGeometryUploadBytes = previousPointShadowBytes + (lightingStats.shadowGeometryUploadBytes ?? 0);
     this.currentStats.pointShadowGeometryVertexCount = previousPointShadowVertices + (lightingStats.shadowGeometryVertexCount ?? 0);
     this.currentStats.pointShadowGeometryCacheHit = this.currentStats.pointShadowGeometryVertexCount > 0 && this.currentStats.pointShadowGeometryUploadBytes === 0;
+    this.currentStats.spatialBloomDrawCalls = previousBloom0 + (spatial?.bloomDrawCalls ?? 0);
+    this.currentStats.spatialBloomTextureBytes = Math.max(previousBloom1, spatial?.bloomTextureBytes ?? 0);
+    this.currentStats.spatialBloomTexelFetchBudget = previousBloom2 + (spatial?.bloomTexelFetchBudget ?? 0);
     if(sunMaskStats){this.currentStats.drawCalls+=sunMaskStats.drawCalls;this.currentStats.lightingDrawCalls+=sunMaskStats.drawCalls;this.currentStats.batchCount+=sunMaskStats.drawCalls;this.currentStats.shadowDrawCalls+=sunMaskStats.drawCalls;this.currentStats.shadowCasterCount+=groundCasters;this.currentStats.textureBindCount+=sunMaskStats.drawCalls+1;this.currentStats.textureSwitchCount+=sunMaskStats.textureSwitchCount;}
     if (spatial) {
       this.currentStats.spatial = spatial; this.currentStats.drawCalls += spatial.drawCalls; this.currentStats.batchCount += spatial.drawCalls;
