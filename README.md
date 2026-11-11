@@ -83,7 +83,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 - **HD-2D:** 점광원·스포트·태양광·하늘/지면 반구광, hard/PCF 그림자와 bias 보정을 제공합니다. HDR·Bloom·AO·안개·DOF·색 보정을 함께 설정합니다.
 - **HD-2D 성분 분리 · 개발 소스:** [선택형 합성](docs/engine/data-scene-spatial.md#선택형-조명-성분-분리-개발-소스)은 AO를 환경광에만 적용해 발광·직접광을 보존하고, 안개·DOF 뒤의 HDR 색을 Bloom 입력으로 사용합니다.
 - **넓은 HDR Bloom · 개발 소스:** [선택형 wide 모드](docs/engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)는 low/balanced/high 품질과 추가 draw·target bytes·texture-load 예산을 제공합니다.
-- **다중 점광원 그림자 · 개발 소스:** [선택형 `pointShadows`](docs/engine/data-scene-spatial.md#선택형-다중-점광원-그림자)로 최대2개 점광원의 독립 그림자와 태양 그림자를 함께 사용합니다. 기존 단일 그림자 설정도 유지합니다.
+- **다중 점광원 그림자 · 개발 소스:** [선택형 `pointShadows`](docs/engine/data-scene-spatial.md#선택형-다중-점광원-그림자)로 최대2개 점광원의 독립 그림자와 태양 그림자를 함께 사용합니다. 광원별 캐시로 변경된 그림자만 갱신하며 기존 단일 설정도 유지합니다.
 - **게임 구도:** 편집용 카메라로 작업 화면을 탐색하고, 별도의 게임 카메라에 위치·시선·각도·확대/촬영 범위를 작성해 미리보기와 저장에 반영합니다.
 
 WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따라 선택합니다.

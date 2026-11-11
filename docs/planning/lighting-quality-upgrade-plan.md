@@ -141,7 +141,7 @@ shadow owner는 우선 고정하고, 다른 광원은 순위로 교체한다. �
 RGB·direct mask·보수적 표시 frustum을 기준으로 기존 상한 안에서 기여도를 비교하고 authored/active/culled/dropped
 사유를 report에 남긴다. 정확한 수신면 가시성·차폐 판정이나 receiver 후보 가속까지 완료했다는 뜻은 아니다.
 정적 Flat shadow GPU 업로드 재사용과 실제 frame 작업 예산도 검증했다.
-두 그림자 광원은 배열 순서로 우선 고정한다. 현재 계약·자원 상한은 [다중 점광원 그림자](../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)를 따른다. 3개 이상 확대·광원별 개별 캐시는 후속 비용 설계가 필요하다.
+두 그림자 광원은 배열 순서로 우선 고정한다. 현재 계약·자원 상한은 [다중 점광원 그림자](../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)를 따른다. 광원별 개별 GPU cache는 첫/둘째 cube·sun 단위로 구현했다. 공통 geometry/alpha 변경은 전체 갱신하고 광원/해상도만 바뀌면 해당 map만 갱신한다. 3개 이상 확대는 후속 비용 설계가 필요하다.
 
 근거: [Rust 선택](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/lighting_upgrade.rs),
 [현재 상한](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
@@ -321,7 +321,7 @@ TIME_ELAPSED, WebGPU는 render-pass 구간 합이므로 backend 간 절대값을
 
 반경·halo 품질이 다른 비교이며, texture-load 상한이나 low/balanced/high 이름만으로 GPU 시간의 단조 순서를
 보장하지 않는다. 실제 문제 게임의 큰 맵·접촉/곡면·품질 수용 및 목표 기기별 절대 예산은 여전히 입력 대기다.
-M6-a 다중 점광원 그림자는 사용자 선택에 따라 최대 2개로 구현했다. 나머지 M6 후보는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수한다. 아래 표는 후속 검증과 완료 경계다.
+M6-a 다중 점광원 그림자는 사용자 선택에 따라 최대 2개로 구현했고, 후속 광원별 GPU cache 분리를 추가했다. 나머지 M6 후보는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
 
@@ -411,7 +411,7 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
 - **개발 완료 후 잔여 검증:** 실제 문제 게임의 품질과 목표 환경의 성능 수용 기준을 확인한다. M5-c 개발과 기준 PC의 실제 GPU 회귀·기준 씬 비용 대조는 완료했다.
-- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상·개별 캐시, cascade/PCSS, height fog/light shaft.
+- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,

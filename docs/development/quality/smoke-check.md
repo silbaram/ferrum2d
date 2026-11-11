@@ -3024,14 +3024,20 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
 기존 조건부 extended Spatial CI 실행 위치를 따른다.
 
-가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서592개 상태를 검사한다.
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서944개 상태를 검사한다.
 빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
 PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모델2개, hard/PCF3, mask, 태양 그림자 동시13 pass,
 16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
 다중→단일 설정 직후 프레임 재생성 전 모델 위치 조회,
 WebGPU 실제 장치 파괴 후 복구를 포함한다. 정적 warm frame의 shadow draw/upload0과 해제 후 자원0을 요구한다.
-WebGL2는 두 번째 cube 크기를 바꾼 직후 렌더 실패를 주입하고, 같은 프레임의 재시도가12면을 다시 그리는지 검사한다.
-SDK 회귀는 첫 cube·두 번째 cube·sun 타깃 각각에 대해 실패 후 재시도와 성공 후 warm cache 재사용을 확인한다.
+WebGL2는 두 번째 cube 크기를 바꾼 직후 렌더 실패를 주입하고, 같은 프레임의 재시도가 해당6면을 다시 그리는지 검사한다.
+SDK 회귀는 첫 cube·두 번째 cube·sun 타깃 각각의 실패 후 재시도, WebGPU abandoned encoder와 성공 후 warm 재사용을 확인한다.
+실제 Wasm frame의 terrain stream을 native pointer/길이/revision이 같은 동안만 유지해 광원별 cache를 검사한다.
+점광원 이동/개별 해상도6면, sun 이동/추가1면, sun 제거·sampling-only0면, owner 교환12면,
+공통 caster revision/alpha texture 교체13면을 요구한다. 매 상태마다 동일 geometry의 terrain stream만 새로 만들어
+강제 cold 전체12/13면 기준을 얻고 부분 갱신 PNG와 RGBA 전 채널을 비교한다.
+Node 판정기는 cold PNG 누락·불완전 전체 갱신·stale pixels·잘못된 cache flag·초과 갱신도 거절한다.
+model staging 단위 검사는 camera+선택 owner pass만 업로드하는 실제 byte 수를 확인한다.
 
 보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.
 소프트웨어 adapter 실행은 실물 GPU 또는 제품 시간/FPS 수용 결과로 해석하지 않는다.

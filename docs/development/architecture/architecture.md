@@ -2052,7 +2052,14 @@ stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias
 shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
 이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
-두 번째 cube는 선택 시에만 만들고 OFF/clear/destroy 시 회수한다. shadow set cache와 자산 revision 무효화는 양 큐브에 함께 적용한다.
-WebGL2는 타깃 교체 준비 전에 기존 cache commit을 무효화하고 모든 shadow face 제출이 끝난 뒤 확정한다.
-부분 렌더 실패 후 같은 프레임에서 재시도해도 이전 commit을 사용하지 않는다.
+두 번째 cube는 선택 시에만 만들고 OFF/clear/destroy 시 회수한다.
+`SpatialShadowCache`는 공통 terrain/caster/alpha texture revision을 한 번 검사하고 첫 cube·둘째 cube·sun의
+행렬/점광원 radial depth/model face mask·pose·LOD/contentId를 map별로 비교한다. 점광원6면·sun1면 단위 dirty mask를
+양 renderer에 전달한다. 공통 geometry/texture 변경은 활성 map 모두, 광원/해상도/해당 model 변경은 영향을 받는 map만 갱신한다.
+filter/bias/normalBias 같은 수신 sampling 변경은 depth cache를 무효화하지 않는다.
+model snapshot은 map당1024×18 u32로 backend당221,184 bytes(+144 KiB CPU)며 borrowed Wasm view를 보관하지 않는다.
+GPU target/instance scratch 상한은 그대로다. WebGPU model staging은 camera와 dirty map의 native pass bits만 채운다.
+WebGL2는 타깃 준비 전에 dirty map을 무효화하고 선택된 map의 face 제출 전체 성공 뒤 확정한다.
+WebGPU는 해당 map만 unready로 표시하고 실제 queue.submit 성공 뒤 확정한다. 중단/실패한 map은 재시도하고 다른 정상 map은 유지한다.
+`shadowCacheHit`은 모든 활성 map이 warm일 때만 true이며 부분 갱신 비용은 실제 pass/draw/triangle/upload에 기록한다.
 입력·저장·비용은 [다중 점광원 계약](../../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)을 따른다.

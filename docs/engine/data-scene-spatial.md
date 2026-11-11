@@ -2161,7 +2161,16 @@ progress-only override도 자산 조회·씬 변경 전에 명시적으로 거�
 광원당6면이므로 두 큐브가 갱신되면12 shadow pass, sun까지 갱신되면13 pass다.
 양 backend의 depth 저장을 보수적4-byte texel로 계측하며 최대1024 해상도 두 큐브는48 MiB다.
 HDR/태양 자원은 별도다. 정적 shadow set의 warm frame은 shadow draw/upload0을 유지한다.
-한 광원·caster·자산이 바뀌면 현재는 shadow set 전체를 갱신한다. 광원별 독립 cache를 제공하는 것은 아니다.
+첫 큐브·두 번째 큐브·sun은 독립 GPU 결과 cache를 사용한다. 점광원 위치/반경·행렬·해상도가 바뀌면 해당6면,
+태양 행렬·해상도가 바뀌면 해당1면만 갱신한다. sun 추가/제거도 다른 큐브를 다시 그리지 않는다.
+model의 face membership·pose·LOD/contentId는 그 model을 제출하는 map을 무효화한다.
+공통 terrain stream/길이/revision·caster revision·alpha texture 변경은 활성 map 전체를 보수적으로 갱신한다.
+bias/normalBias/filter는 저장된 depth를 바꾸지 않아 sampling 설정만 갱신한다.
+`shadowCacheHit`은 활성 map 모두가 재사용됐을 때만 true다. 부분 재사용은 false이며 실제 갱신 면 수를 `shadowPassCount`로 확인한다.
+준비 전에 갱신할 map을 무효화하고 선택된 map 전체가 성공한 뒤만 cache를 확정한다.
+WebGPU는 queue 제출 뒤에 확정하며, 실패/미제출 시 다른 정상 map의 cache는 유지한다.
+map별 model metadata는 backend당 고정221,184 bytes로 이전보다144 KiB CPU 메모리가 늘어난다.
+GPU target/instance scratch 상한과 공개 source·ABI·저장 형식은 바꾸지 않는다.
 단일 항목/legacy에서는 두 번째 cube target을 만들지 않으며 OFF/clear/destroy에서는 회수한다.
 `shadowPassCount`·draw/triangle/upload와 `effectTextureBytes`에 실제 비용을 포함한다. GPU ms/FPS 보장을 뜻하지 않는다.
 
