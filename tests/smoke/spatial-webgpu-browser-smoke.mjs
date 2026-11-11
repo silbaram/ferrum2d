@@ -5,7 +5,7 @@ import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { runReleaseCommand } from "./github-release-command.mjs";
 import { installSpatialGpuTarget } from "./spatial-webgpu-capture.mjs";
-import { auditSpatialSelectionPixels } from "./spatial-light-selection-report.mjs";
+import { auditSpatialSelectionPixels, auditSpatialSelectionPresentationPixels } from "./spatial-light-selection-report.mjs";
 const { chromium } = await import(process.env.FERRUM_PLAYWRIGHT_MODULE ?? "playwright-core");
 const root = resolve("."),
   parent = resolve(
@@ -27,7 +27,8 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
-const selectionOnly = process.argv.includes("--light-selection-only");
+const selectionPresentationOnly = process.argv.includes("--light-selection-presentation-only");
+const selectionOnly = selectionPresentationOnly || process.argv.includes("--light-selection-only");
 const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
 const receiverShadowsOnly = process.argv.includes("--receiver-shadows-only");
 const flatShadowsOnly = process.argv.includes("--flat-shadows-only");
@@ -170,23 +171,25 @@ try {
         // The default CI offscreen matrix includes native temporal selection; narrow mode shares it.
         if (selectionOnly || ![compositionOnly,recoveryOnly,fallbackOnly,modelsOnly,environmentOnly,shadowsOnly,proxiesOnly,pointContactOnly,flatShadowsOnly,receiverShadowsOnly,gameAssetShadowsOnly].some(Boolean)) {
           await page.waitForFunction(() => window.probeSpatialLightSelection);
-          for (const colorManagement of ["legacy", "linear-srgb"]) {
-            const result = await page.evaluate(mode => window.probeSpatialLightSelection(mode), colorManagement);
+          for (const colorManagement of ["legacy", "linear-srgb"]) for (const presentationOnly of selectionPresentationOnly ? [true] : [false, true]) {
+            const result = await page.evaluate(({mode,presentationOnly}) => window.probeSpatialLightSelection(mode,presentationOnly), {mode:colorManagement,presentationOnly});
             assert.equal(result.length, 4);
             for (const entry of result) {
-              assert.equal(entry.comparisons.length, 19);
+              assert.equal(entry.comparisons.length, presentationOnly ? 4 : 22);
               for (const backend of entry.backends) {
-                assert(backend.restored && backend.freshHandles && backend.errors.length === 0);
-                backend.fadeSignals = await auditSpatialSelectionPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
-                assert.equal(backend.rows.find(row => row.name === "in-0").stats.contributingLightCount, entry.pinned ? 1 : 0);
+                assert(backend.errors.length === 0);
+                if (!presentationOnly) assert(backend.restored && backend.freshHandles);
+                if (!presentationOnly) backend.fadeSignals = await auditSpatialSelectionPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
+                else backend.presentationSignals = await auditSpatialSelectionPresentationPixels(backend.rows, image => Buffer.from(image.split(",")[1], "base64"));
+                if (!presentationOnly) assert.equal(backend.rows.find(row => row.name === "in-0").stats.contributingLightCount, entry.pinned ? 1 : 0);
                 for (const row of backend.rows) {
                   assert.equal(row.referenceDifference, 0);
-                  const file = `selection-${colorManagement}-${entry.projection}-${entry.pinned}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+                  const file = `selection-${presentationOnly?"presentation-":""}${colorManagement}-${entry.projection}-${entry.pinned}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                   await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64")); row.image=file;
                 }
               }
             }
-            report.lightSelectionCases.push({viewport,deviceScaleFactor,colorManagement,result});
+            report.lightSelectionCases.push({viewport,deviceScaleFactor,colorManagement,presentationOnly,result});
           }
           assert.deepEqual(errors, []); if (selectionOnly) continue;
         }

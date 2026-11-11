@@ -203,6 +203,114 @@ fn pan(e: &mut Engine, x: f32) {
 }
 
 #[test]
+fn temporal_selection_excludes_zero_energy_masked_and_outside_lights_without_changing_legacy_ranking(
+) {
+    for case in 0..4 {
+        let mut source = values();
+        source[199] = 64.;
+        match case {
+            0 => source[196..199].fill(0.),
+            1 => source[549] = 65280., // Shadow channels alone do not create direct light.
+            2 => {
+                source[192] = 700.;
+                source[195] = 500.;
+            }
+            _ => source[196..199].fill(0.001),
+        }
+        let mut e = setup();
+        assert!(e.configure_spatial_environment(&source));
+        e.update(0.);
+        let frame = &e.spatial_scene.environment.frame_values;
+        assert_eq!(frame[1], 1., "case {case}");
+        assert_eq!(&frame[12..15], &source[212..215], "case {case}");
+        assert_eq!(e.capture_spatial_environment(), source);
+        if case < 3 {
+            assert_eq!(
+                e.spatial_scene.environment.light_selection_diagnostics()[0].reason,
+                7
+            );
+        }
+        // Disabled v8 and exact v7 preserve the previous intensity/distance policy.
+        source[576] = 0.;
+        for size in [580, 576] {
+            assert!(e.configure_spatial_environment(&source[..size]));
+            e.update(0.);
+            assert_eq!(
+                &e.spatial_scene.environment.frame_values[12..15],
+                &source[192..195],
+                "legacy case {case}/{size}"
+            );
+        }
+    }
+}
+
+#[test]
+fn temporal_light_bounds_keep_frustum_edges_near_plane_crossings_and_large_ranges() {
+    for (projection, span, position, radius, expected) in [
+        (0., 10., [7.5, 0., 0.], 1., 1.),
+        (0., 10., [8., 0., 0.], 1., 0.),
+        (0., 10., [7.6666665, 0., 0.], 1., 1.),
+        (1., std::f32::consts::FRAC_PI_2, [0., 0., 10.], 2., 1.),
+        (1., std::f32::consts::FRAC_PI_2, [0., 0., 13.], 1., 0.),
+        (1., std::f32::consts::FRAC_PI_2, [1e6, 0., 0.], 1e6, 1.),
+    ] {
+        let mut e = setup();
+        assert!(e.configure_spatial_camera(&[
+            projection, 0., 0., 10., 0., 0., 0., span, 1., 20., 400., 300.
+        ]));
+        let mut source = values();
+        source[192..195].copy_from_slice(&position);
+        source[195] = radius;
+        source[219] = 0.; // Only source0 can contribute.
+        assert!(e.configure_spatial_environment(&source));
+        e.update(0.);
+        assert_eq!(
+            e.spatial_scene.environment.frame_values[1], expected,
+            "{projection}/{position:?}/{radius}"
+        );
+    }
+}
+
+#[test]
+fn temporal_culling_preserves_explicit_shadow_owner_reservation_and_source_history() {
+    let mut e = setup();
+    let mut source = values();
+    source[196..199].fill(0.);
+    source[138] = 0.;
+    source[139] = 128.;
+    source[2] = 0.;
+    source[3] = 128.;
+    assert!(e.configure_spatial_environment(&source));
+    e.update(0.);
+    let frame = &e.spatial_scene.environment.frame_values;
+    assert_eq!((frame[1], frame[2], frame[19]), (1., 0., 0.));
+    let diagnostic = &e.spatial_scene.environment.light_selection_diagnostics()[0];
+    assert_eq!(
+        (diagnostic.slot, diagnostic.reason, diagnostic.flags & 1),
+        (0, 7, 1)
+    );
+    let history = e.capture_spatial_light_selection_state();
+    assert_eq!(history[7], 0.);
+    assert!(e.restore_spatial_light_selection_state(&history));
+    assert_eq!(e.capture_spatial_environment(), source);
+}
+
+#[test]
+fn temporal_selection_uses_presented_pixel_art_frustum_before_rendering() {
+    let mut e = setup();
+    let mut source = values();
+    source[0] = 17.;
+    source[80..83].copy_from_slice(&[400., 200., 0.]);
+    source[192] = 260.;
+    source[199] = 64.;
+    assert!(e.configure_spatial_environment(&source));
+    e.update(0.);
+    // Source0 is outside the base4:3 frustum but intersects the displayed2:1 view.
+    assert_eq!(e.capture_spatial_light_selection_state()[7], 0.);
+    assert_eq!(e.spatial_scene.environment.frame_values[12], 260.);
+}
+
+#[test]
 fn native_v8_configuration_and_cold_history_are_owned_atomic_and_leave_v7_reserved_fields_intact() {
     let mut e = setup();
     assert_eq!(e.spatial_environment_abi_version(), 8);

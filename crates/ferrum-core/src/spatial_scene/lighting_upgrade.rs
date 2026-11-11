@@ -178,6 +178,9 @@ pub(super) fn candidates(
     let mut scores = [-1.; 16];
     let mut unavailable = [0u32; 16];
     let count = v[137] as usize;
+    // Contribution-aware occupancy belongs to the opt-in temporal policy only.
+    // Older source layouts and disabled policies keep their exact distance ranking.
+    let contribution_aware = v.len() >= 580 && v[576] == 1.;
     let target = [
         camera.parameters[4],
         camera.parameters[5],
@@ -220,12 +223,27 @@ pub(super) fn candidates(
             position = [v[p], v[p + 1], v[p + 2]];
         }
         positions[i] = position;
+        let energy = v[p + 4..p + 7].iter().copied().fold(0., f32::max);
+        if contribution_aware && visible[i] {
+            let radius = v[p + 3];
+            if energy == 0.
+                || v[549 + i] as u32 & 255 == 0
+                || !camera.intersects_bounds(
+                    position.map(|axis| axis - radius),
+                    position.map(|axis| axis + radius),
+                )
+            {
+                visible[i] = false;
+                unavailable[i] = 7;
+            }
+        }
         let distance = super::dot(
             super::super::sub(position, target),
             super::super::sub(position, target),
         );
         scores[i] = if visible[i] {
-            v[p + 7] / (1. + distance / (v[p + 3] * v[p + 3]))
+            v[p + 7] * if contribution_aware { energy } else { 1. }
+                / (1. + distance / (v[p + 3] * v[p + 3]))
         } else {
             -1.
         };

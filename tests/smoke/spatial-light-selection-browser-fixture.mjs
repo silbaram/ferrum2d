@@ -4,7 +4,7 @@ import { check, pixels, difference, png } from "/fixture.mjs";
 import { ownedSpatial } from "/environment.mjs";
 
 // Only the RAF clock is controlled. Public Engine updates, selection, fades and progress are actual Wasm.
-async function probe(backend, projection, colorManagement, pinned) {
+async function probe(backend, projection, colorManagement, pinned, presentationOnly = false) {
   const canvas = document.createElement("canvas");
   canvas.style.width = "min(100vw, 640px)"; canvas.style.height = "min(100vh, 360px)";
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
@@ -51,6 +51,17 @@ async function probe(backend, projection, colorManagement, pinned) {
       { id: "back", x: -128, y: 120, width: 256, depth: 40, elevation: 0, baseElevation: -8, color: [.5, .5, .5, 1] },
       { id: "caster", x: -12, y: 40, width: 24, depth: 20, floorId: 1, elevation: 32, baseElevation: 0, color: [.4, .4, .4, 1] },
     ], billboards: { hero: {} }, environment } };
+  if (presentationOnly) {
+    doc.spatial.camera = { ...camera(0), height: 200 };
+    doc.spatial.environment = { ...structuredClone(environment), pixelArt: { width: 512, height: 64, snapCamera: false } };
+    doc.spatial.environment.lighting.selection = { hysteresis: 0, fadeSeconds: 0, resetDistance: 0 };
+    doc.spatial.environment.lighting.lights = [
+      { position: { x: 600, y: 0, elevation: 64 }, radius: 150, intensity: 64, color: [1, 0, 0] },
+      { position: { x: 0, y: 0, elevation: 64 }, radius: 150, intensity: 1, color: [0, 1, 0] },
+      lights[2],
+    ];
+    doc.spatial.terrain.push({ id: 'edge-receiver', x: 480, y: -30, width: 240, depth: 60, elevation: 0, baseElevation: -8, color: [.5,.5,.5,1] });
+  }
   const saveOptions = { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: doc };
   const save = () => JSON.parse(JSON.stringify(captureGameStateSnapshot(engine, saveOptions)));
   const history = () => save().dataScene.progress.spatial.lightSelection;
@@ -69,14 +80,14 @@ async function probe(backend, projection, colorManagement, pinned) {
         if (slot === 0xffffffff) continue;
         const from = 192 + source * 20, to = 12 + slot * 12;
         v.set(env.values.subarray(from, from + 8), to); v[to + 7] = Math.fround(env.values[from + 7] * diagnostics.values[i + 5]);
-        if ([6, 9].includes(diagnostics.words[i + 2])) v[to + 7] = 0;
+        if ([6, 7, 9].includes(diagnostics.words[i + 2])) v[to + 7] = 0;
         v.set(env.values.subarray(from + 8, from + 14), 144 + slot * 8); v[545 + slot] = env.values[549 + source];
       }
     }
     return { ...packet, spatial: { ...s, environment: { ...env, version: 7, values: v, lightSelection: undefined } } };
   };
   const row = async name => {
-    const advancing = name === "initial" || name === "settled" || name.startsWith("jitter-") || name.startsWith("out-") || name.startsWith("in-");
+    const advancing = name === "initial" || name === "settled" || name.startsWith("jitter-") || name.startsWith("out-") || name.startsWith("in-") || name.startsWith("presentation-");
     check(frame.gameState === GAME_STATE_CODE[advancing ? "playing" : "paused"], "selector lifecycle state", { name, state: frame.gameState });
     const first = await draw(), warm = await draw();
     check(difference(first.data, warm.data) === 0, "selector render-only rebuild changes pixels", name);
@@ -97,6 +108,19 @@ async function probe(backend, projection, colorManagement, pinned) {
     engine = await makeEngine(); const registry = createSceneInstanceHandleRegistry();
     const initialHandle = applyDataSceneAuthoringDocument(engine, doc, { instanceHandleRegistry: registry }).entityHandles.hero;
     engine.start(); step(0); step();
+    if (presentationOnly) {
+      const active=()=>history().slots[pinned?1:0].sourceIndex;
+      check(active()===0,'presented wide frustum lost visible source before render',history());
+      await row('presentation-wide');
+      for(const [name,pixelArt,expected] of [
+        ['presentation-tall',{width:64,height:512,snapCamera:false},1],
+        ['presentation-wide-snapped',{width:512,height:64,snapCamera:true},0],
+      ]){
+        check(engine.setDataSceneSpatialEnvironment({...doc.spatial.environment,pixelArt}), 'presentation source edit');step();
+        check(active()===expected,'simulation and presented frustum disagree',{name,history:history()});await row(name);
+      }
+      engine.pauseDataScene();
+    } else {
     const initial = history(); check(initial.slots[pinned ? 1 : 0].sourceIndex === 0, "selector initial source", initial);
     await row("initial");
     for (const x of [1, -1]) { check(engine.setDataSceneSpatialCamera(camera(x), renderer.viewportSize()), "selector jitter camera"); step(); await row(`jitter-${x}`); }
@@ -140,14 +164,34 @@ async function probe(backend, projection, colorManagement, pinned) {
     const legacy = structuredClone(environment); legacy.lighting.selection.enabled = false;
     check(engine.setDataSceneSpatialEnvironment(legacy), "selector policy OFF rejected"); step(0); await row("policy-off");
     check(rows.at(-1).stats.pendingLightCount === undefined && packet.spatial.environment.lightSelection === undefined, "selector policy OFF invents diagnostics");
+    const contribution = structuredClone(environment);
+    contribution.lighting.lights = [
+      { position: { x: 40, y: 0, elevation: 64 }, radius: 150, intensity: 64, color: [0, 0, 0] },
+      { position: { x: 40, y: 0, elevation: 64 }, radius: 150, intensity: 64, lightMask: 0 },
+      { position: { x: 1e5, y: 0, elevation: 64 }, radius: 150, intensity: 64 },
+      { position: { x: 40, y: 0, elevation: 64 }, radius: 150, intensity: 1, color: [.01, 1, .03] },
+    ];
+    if (pinned) contribution.lighting.shadows.lightIndex = 0;
+    check(engine.setDataSceneSpatialEnvironment(contribution), 'contribution policy request rejected'); step(0);
+    const contributing = await row('contribution-only');
+    check(contributing.stats.culledLightCount === 3 && contributing.stats.lightCount === (pinned ? 2 : 1), 'zero/mask/frustum occupied regular slots', contributing.stats);
+    check(rows.at(-1).diagnostics.slice(0,3).every(d=>d.reason===7) && rows.at(-1).diagnostics[3].slot===(pinned?1:0), 'contribution reasons/source selection', rows.at(-1).diagnostics);
+    const oldContribution=structuredClone(contribution);oldContribution.lighting.selection.enabled=false;
+    check(engine.setDataSceneSpatialEnvironment(oldContribution), 'legacy contribution policy request rejected');step(0);
+    const noncontributing=await row('contribution-policy-off');
+    check(difference(contributing.data,noncontributing.data)>64, 'contribution exclusion did not improve actual visible illumination');
+    const energy=structuredClone(contribution);energy.lighting.lights[0].color=[.001,.001,.001];
+    check(engine.setDataSceneSpatialEnvironment(energy), 'energy-weighted selection rejected');step(0);await row('contribution-energy');
+    check(rows.at(-1).diagnostics[3].slot===(pinned?1:0), 'dim high-intensity source displaced visible energy');
     const many = structuredClone(environment); many.lighting.maxActiveLights = 4;
     while (many.lighting.lights.length < 16) many.lighting.lights.push({ position: { x: many.lighting.lights.length * 4, y: 0, elevation: 64 }, radius: 100, intensity: .01 });
     check(engine.setDataSceneSpatialEnvironment(many), "selector sixteen source request rejected"); step(0); await row("sixteen-budget");
     check(rows.at(-1).stats.authoredLightCount === 16 && rows.at(-1).stats.lightCount === 4 && rows.at(-1).stats.droppedLightCount > 0 && rows.at(-1).stats.culledLightCount === 2, "selector diagnostic scale/budget", rows.at(-1));
+    }
     canvas.style.width = "300px"; canvas.style.height = "220px"; renderer.resize(); step(0); await row("resize");
     check(!errors.length, "selector GPU errors", errors);
     const result = { backend, projection, colorManagement, pinned, width: images[0].length / 4 / Math.round(Math.min(window.innerHeight, 360) * devicePixelRatio),
-      freshHandles: true, restored: true, recovered: backend === "webgpu", errors, rows, images };
+      freshHandles: !presentationOnly, restored: !presentationOnly, recovered: !presentationOnly && backend === "webgpu", errors, rows, images };
     renderer.destroy();
     check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "selector resource leak", renderer.resourceStats());
     return result;
@@ -157,11 +201,11 @@ async function probe(backend, projection, colorManagement, pinned) {
   }
 }
 
-export async function probeSpatialLightSelection(colorManagement) {
+export async function probeSpatialLightSelection(colorManagement, presentationOnly = false) {
   const result = [];
   for (const projection of ["orthographic", "perspective"]) for (const pinned of [false, true]) {
     const pair = [];
-    for (const backend of ["webgl2", "webgpu"]) pair.push(await probe(backend, projection, colorManagement, pinned));
+    for (const backend of ["webgl2", "webgpu"]) pair.push(await probe(backend, projection, colorManagement, pinned, presentationOnly));
     const comparisons = pair[0].images.map((image, i) => {
       const other = pair[1].images[i], differentPixels = difference(image, other, 3);
       check(differentPixels <= image.length / 4 * .01, "selector backend pixel parity", { name: pair[0].rows[i].name, differentPixels, pixels: image.length / 4 });

@@ -1,13 +1,20 @@
 import { test } from "node:test";
 import { rejects, equal } from "node:assert/strict";
 import { encodePngRgba } from "../../scripts/tools/pack-textures.mjs";
-import { auditSpatialSelectionPixels } from "./spatial-light-selection-report.mjs";
+import { auditSpatialSelectionPixels, auditSpatialSelectionPresentationPixels } from "./spatial-light-selection-report.mjs";
 
 const image = red => encodePngRgba(16, 16, Buffer.from(Array.from({ length: 256 }, () => [red, 0, 0, 255]).flat()));
 const rows = () => [
   ["out-75", 192], ["out-50", 128], ["out-25", 64], ["in-25", 64], ["settled", 255],
   ["restored-out-50", 128], ["paused-out-50", 128],
 ].map(([name, red]) => ({ name, image: image(red) }));
+
+test("presentation report gate rejects a blank wide world despite selected-light metadata", async () => {
+  const read = async bytes => bytes;
+  await rejects(auditSpatialSelectionPresentationPixels([{ name: "presentation-wide", image: image(0) }], read), /edge receiver/);
+  const result = await auditSpatialSelectionPresentationPixels([{ name: "presentation-wide", image: image(128) }], read);
+  equal(result.redReceiverPixels, 256);
+});
 
 test("selection report gate rejects blank/unchanged renders and visually different restored or paused worlds", async () => {
   const read = async bytes => bytes;

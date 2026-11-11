@@ -350,7 +350,12 @@ impl SpatialScene {
         if !self.environment.light_selection_enabled() {
             return;
         }
-        let Some(camera) = self.camera else {
+        let Some(base) = self.camera else {
+            return;
+        };
+        // Use the same aspect/snap as emission, even before the first render.
+        let Some((camera, _)) = self.presented_camera([base.parameters[10], base.parameters[11]])
+        else {
             return;
         };
         let actor = self.actor.map(|a| {
