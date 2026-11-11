@@ -188,6 +188,7 @@ try {
               assert(backend.restored && backend.coldPoseRetained && backend.snapshotVersion === 13 && backend.errors.length === 0);
               assert.equal(backend.rows.length, POINT_SHADOW_STATES.length + Number(backend.backend === "webgpu"));
               if (backend.backend === "webgpu") assert(backend.recovered);
+              if (backend.backend === "webgl2") assert(backend.shadowRetryInjected);
               for (const row of backend.rows) {
                 const file = `point-shadow-${colorManagement}-${projection.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64")); row.image = file;

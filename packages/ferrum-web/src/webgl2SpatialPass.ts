@@ -362,12 +362,15 @@ export class WebGL2SpatialPass {
         const effects = (this.environmentPass ??=
           new WebGL2SpatialEnvironmentPass(gl, this.linearInput));
         const shadowReady = effects.shadowReady(environment!.values);
-        effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         const casters = environment!.shadowCasters;
         const hasShadows = environment!.values[2] >= 0 || environment!.values[92] > 0;
         // Collect texture revisions even for a new target so its first successful render can be cached.
         const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
         const cacheHit = shadowReady && cacheMatches;
+        // Resource replacement or a partial redraw must never inherit a prior cache commit.
+        // Invalidate before preparation too: later allocation/upload failures can leave new targets alive.
+        if (!cacheHit) this.shadowCache.invalidate();
+        effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         stats.shadowCacheHit = cacheHit;
         const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0) | (secondSpatialShadowSlot(environment!.values) >= 0 ? 16128 : 0));
         this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats, receiverMasks?.models);

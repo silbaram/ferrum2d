@@ -20,6 +20,8 @@ test("shadow cache invalidates native geometry, light, atlas/alpha texture and s
   const textures = { texture: () => ({}), textureRevision: () => revision };
   equal(cache.matches(frame, textures), false); cache.commit(frame);
   equal(cache.matches(frame, textures), true);
+  cache.invalidate(); cache.commit(frame);
+  equal(cache.matches(frame, textures), true, "invalidating a redraw retains the texture revisions prepared for its commit");
   frame.environment!.values[60] += 50;
   equal(cache.matches(frame, textures), true, "focus does not change the shadow map");
   frame.environment!.values[12] += 5;

@@ -20,6 +20,10 @@ export class SpatialShadowCache {
     private readonly pointLight2 = new Float32Array(4);
     private readonly textureRevisions = new Map<number, number>();
     private readonly pendingTextures = new Map<number, number>();
+    /** A replacement target is invalid until the entire shadow set renders successfully. */
+    invalidate(): void {
+        this.memory = undefined;
+    }
     matches(frame: SpatialRenderBufferView, textures: ShadowTextures): boolean {
         const env = frame.environment!;
         this.pendingTextures.clear();

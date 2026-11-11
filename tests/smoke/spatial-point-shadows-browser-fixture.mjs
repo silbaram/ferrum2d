@@ -79,17 +79,18 @@ async function probe(backend, projection, colorManagement) {
         "rock-copy": { asset: "rock", contentId: asset.contentId, scale: .7 } }, environment: environment("hard") } };
   const options = { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: doc };
   const history = () => captureGameStateSnapshot(engine, options).dataScene.progress.spatial.lightSelection;
-  const draw = async () => {
+  const draw = async (beginFrame = true) => {
     check(frame.gameState === GAME_STATE_CODE.playing && frame.entityCount >= 3, "point shadow live scene state", frame.gameState);
-    renderer.render(); const stats = renderer.renderCommands(packet); renderer.renderPostProcess();
+    if (beginFrame) renderer.render();
+    const stats = renderer.renderCommands(packet); renderer.renderPostProcess();
     check(stats.spatial.modelCount === 2 && stats.spatial.modelDrawCalls > 0 && stats.spatial.modelInstancedDrawCalls > 0 && stats.spatial.triangleCount > 0 && !errors.length,
       "point shadow geometry or GPU error", { stats, errors });
     return { data: await pixels(renderer, canvas), stats: { ...stats.spatial }, resources: renderer.resourceStats() };
   };
-  const row = async (name, env, expectedPasses) => {
+  const row = async (name, env, expectedPasses, retryCurrentFrame = false) => {
     window.pointShadowState = { backend, projection, colorManagement, name };
     if (env) { check(engine.setDataSceneSpatialEnvironment(env), "point shadow source rejected", name); step(); }
-    const first = await draw(), warm = await draw();
+    const first = await draw(!retryCurrentFrame), warm = await draw();
     check(difference(first.data, warm.data) === 0, "point shadow warm pixels changed", name);
     check(first.stats.shadowPassCount === expectedPasses && warm.stats.shadowPassCount === 0 && warm.stats.shadowUploadBytes === 0,
       "point shadow face/cache budget", { name, first: first.stats, warm: warm.stats });
@@ -165,14 +166,30 @@ async function probe(backend, projection, colorManagement) {
     const single = environment("hard"); single.lighting.pointShadows = [owners[0]];
     await row("array-single", single, 6);
     const legacy = environment("hard", "a"); await row("legacy-single", legacy, 6);
-    const resize = environment("hard"); canvas.style.width = "300px"; canvas.style.height = "220px"; renderer.resize();
-    await row("resize", resize, 12);
+    const resize = structuredClone(environment("hard")); canvas.style.width = "300px"; canvas.style.height = "220px"; renderer.resize();
+    check(engine.setDataSceneSpatialEnvironment(resize), "shadow retry baseline rejected"); step();
+    await draw(); check((await draw()).stats.shadowCacheHit, "shadow retry baseline cache not primed");
+    // Resize only the owned packet's GPU target. Keep geometry/matrices and their
+    // buffer identity fixed so an unrelated native frame change cannot hide a stale cache.
+    packet.spatial.environment.values[585] = 512;
+    let shadowRetryInjected = false;
+    if (backend === "webgl2") {
+      const gl = canvas.getContext("webgl2"), clear = gl.clear;
+      gl.clear = function (...args) {
+        if (gl.getParameter(gl.VIEWPORT)[2] === 512) { shadowRetryInjected = true; throw Error("injected secondary shadow redraw failure"); }
+        return clear.apply(this, args);
+      };
+      try { await draw(); } catch (error) { check(String(error).includes("injected secondary shadow redraw failure"), "unexpected shadow retry error", String(error)); }
+      finally { gl.clear = clear; }
+      check(shadowRetryInjected, "secondary shadow redraw was not interrupted");
+    }
+    await row("resize", null, 12, shadowRetryInjected);
     const pixel = { ...environment("hard"), pixelArt: { width: 160, height: 120, snapCamera: true }, bloom: { mode: "wide", strength: .3, threshold: .2 } };
     const bloom = await row("pixel-art-wide", pixel, 12);
     check(bloom.stats.bloomDrawCalls > 0 && bloom.stats.bloomTextureBytes > 0, "dual shadows with active wide Bloom/pixelArt", bloom.stats);
     check(!errors.length, "point shadow GPU validation errors", errors);
     renderer.destroy(); check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "point shadow resource leak", renderer.resourceStats());
-    return { backend, projection, colorManagement, rows, images, oracles, restored: true, coldPoseRetained: true, recovered, snapshotVersion: saved.dataScene.version, errors };
+    return { backend, projection, colorManagement, rows, images, oracles, restored: true, coldPoseRetained: true, shadowRetryInjected, recovered, snapshotVersion: saved.dataScene.version, errors };
   } finally {
     for (const e of engines) e.destroy(); renderer.destroy(); device?.destroy(); window.disposeSpatialGpuTarget?.(canvas);
     window.requestAnimationFrame = originalRAF; window.cancelAnimationFrame = originalCancel;
