@@ -912,3 +912,7 @@ OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지
 점광원별 소프트 그림자 설정이다. 환경v12/608·patch13/state15를 사용하며 legacy 단일 owner와
 최대 두 owner, 태양 PCSS, Undo/Redo·진행 override·OFF source를 지원한다.
 [점광원 PCSS 계약](../data-scene-spatial.md#선택형-점광원-pcss)을 따른다.
+
+`SpatialHeightFogSpec`는 선택형 `environment.fog.height`의 기준 높이·밀도·감쇠율 설정이다.
+환경v13/616·patch14/state16을 사용하며 저장/복원·Undo/Redo에 포함된다.
+기본값·적분 구간과 호환성은 [높이 안개 계약](../data-scene-spatial.md#선택형-높이-안개)을 따른다.

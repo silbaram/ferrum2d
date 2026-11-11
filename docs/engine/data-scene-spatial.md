@@ -1877,7 +1877,7 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
 기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
 기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
-WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom·두 번째 점광원·태양/점광원 PCSS 설정을2,672-byte private uniform에 담는다.
+WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom·두 번째 점광원·태양/점광원 PCSS·높이 안개 설정을2,704-byte private uniform에 담는다.
 256-byte 정렬 간격은2,816 bytes이며 두 슬롯을 사용한다. native 환경 record와 별도 구조다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
 
@@ -2051,7 +2051,7 @@ Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원
 
 WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
 기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
-최대65,536 pair/16 MiB다. 환경 uniform은2,672-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+최대65,536 pair/16 MiB다. 환경 uniform은2,704-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
 수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
 회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
 
@@ -2308,3 +2308,54 @@ OFF render copy는 두 record를 0으로 만들고 authored source는 유지한�
 기존 environment v1~v11·patch1~12·state2~14를 계속 읽는다. 새 문서 또는 진행 값에 PCSS가 있을 때만
 state15를 생성하며 outer snapshot은 계속 v2다. cold capability `spatial_point_pcss_abi_version() === 1`이
 없는 core에서는 OFF/progress-only 입력도 자산 준비와 native mutation 전에 거절한다.
+
+## 선택형 높이 안개
+
+`environment.fog.height`는 낮은 곳에 짙고 높은 곳에 옅은 안개를 만든다.
+`height`를 생략하면 기존 `start`~`end` 선형 거리 안개를 그대로 사용한다.
+공개 타입 `SpatialHeightFogSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  composition: "separated",
+  fog: {
+    color: [0.55, 0.65, 0.75],
+    start: 20,
+    end: 500,
+    height: { baseHeight: 0, density: 0.01, falloff: 0.02 },
+  },
+});
+```
+
+| 필드 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `height` | 선택 object | `{}`도 기본값으로 활성. 제거하면 선형 거리 안개로 복귀 |
+| `baseHeight` | world elevation -1,000,000~1,000,000, 기본 0 | 이 높이 이하는 일정한 밀도 |
+| `density` | world 단위당 0~10, 기본 0.01 | 기준 높이의 소광 계수. 0이면 안개 혼합 없음 |
+| `falloff` | world 단위당 0~10, 기본 0.02 | 기준 높이 위의 지수 감쇠율. 0이면 모든 높이에서 같은 밀도 |
+
+밀도는 `density × exp(-falloff × max(elevation - baseHeight, 0))`다.
+시선 구간의 밀도 적분값을 `τ`라 할 때 안개 혼합률은 `1 - exp(-τ)`다.
+원근 카메라는 눈에서 수신면까지, 직교 카메라는 각 픽셀의 카메라 평면에서 수신면까지 적분한다.
+기준 높이를 가로지르는 시선과 수평 시선도 처리한다. 빈 object와 명시적 기본값의 결과는 같다.
+
+높이 모드에서 **`start`/`end`는 카메라 view-depth로 제한한 적분 구간**이다.
+`start` 앞에는 안개가 없고 `end` 이후에는 추가로 적분하지 않는다.
+기존 선형 모드와 달리 `end`에서 반드시 완전히 불투명해지지는 않는다.
+수신면까지의 실제 시선 길이를 사용하므로 원근 화면 가장자리와 중앙은 같은 depth에서도 다를 수 있다.
+`color`는 기존 안개와 같은 선형 RGB이며, 최종 표시 변환 전에 합성한다.
+`lighting.enabled: false`에서도 안개는 독립적으로 적용된다.
+
+WebGL2/WebGPU는 같은 해석적 적분을 사용한다. ray march, 추가 texture fetch, 별도 안개 target/pass는 없다.
+기존 거리 안개의 HDR 합성 경로를 재사용하므로 효과 전체를 끈 화면과는 target·MSAA 처리에 따른
+경계 픽셀 차이가 있을 수 있다. separated AO를 쓰면 AO resolve 뒤에 한 번 적용하고 DOF/Bloom보다 앞에 둔다.
+pixelArt의 표시 카메라·가상 해상도를 사용하며 HUD와 전역 후처리의 기존 적용 범위는 유지한다.
+광원에 반응하는 산란, 그림자 진 안개, light shaft, 지역 volume/noise, volumetric froxel은 포함하지 않는다.
+
+높이 안개 source는 **environment v13/616 floats**, **spatial patch14**, **Data Scene state16**이다.
+기존 0~607 prefix는 보존하고 608~611은 `[활성, baseHeight, density, falloff]`, 612~615는 reserved 0이다.
+비활성 tail은 모두 0이며 활성 tail에는 기존 fog flag가 필요하다. 조명 OFF render copy도 안개 tail은 보존한다.
+기존 environment v1~v12·patch1~13·state2~15를 계속 읽는다. 높이 설정이 문서 또는 진행 값에 있을 때만
+state16을 생성하며 outer snapshot은 v2다. 저장/복원·Undo/Redo는 선택 여부와 값을 보존한다.
+cold capability `spatial_height_fog_abi_version() === 1`이 없는 core는 밀도 0·progress-only 입력도
+자산 준비와 native mutation 전에 거절한다.

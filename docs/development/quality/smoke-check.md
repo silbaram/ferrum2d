@@ -3113,3 +3113,35 @@ owner 값·legacy 전환 초기화·추가 target 없음, sampling-only depth ca
 작성/활성화 사전 검사로 거절한다. 이 회귀는 두 누락 경로를 실패 재현한 뒤 추가했다.
 query당 최대 48 depth fetch는 정적 상한이며 GPU 시간 측정값으로 해석하지 않는다.
 보고서는 Spatial GPU `run-*/report.json`의 `pointPcssCases`와 PNG다. 실제 게임/목표 기기의 수용 검증은 별도다.
+
+### Spatial 높이 안개 회귀
+
+`pnpm smoke:spatial-height-fog`는 report negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
+기존 `pnpm smoke:spatial-webgpu-offscreen`에도 같은 높이 안개 행렬·DOF 순서 검사와 높이 안개/Bloom 조합이 포함된다.
+현재 수동 CI(`workflow_dispatch`)의 `validate` job이 이 aggregate 명령을 실행한다.
+좁은 재검증은 runner의 `--height-fog-only`, `--height-fog-composition-only`,
+`--wide-bloom-height-fog-only`를 사용한다.
+
+두 backend × 원근/직교 × legacy/linear-srgb × desktop/모바일 크기 × DPR1/2를 검사한다.
+새 안개를 geometry에 적용하는 legacy/separated 경로와 separated AO resolve 경로에서
+기본값·밀도0·감쇠0/미소값/큰 값·기준 높이 위/아래/교차·수평/상향 시선·시작/종료 구간을 변경한다.
+별도 Node oracle은 알려진 terrain에 카메라 ray를 교차시킨 뒤 **4096구간 수치 적분**으로
+PNG 혼합률을 검사한다. 셰이더의 해석적 식을 복제하지 않으며 단순 backend 일치만으로 통과시키지 않는다.
+기존 선형 안개도 같은 계산으로 검사한다. 효과 target/MSAA 차이를 배제하도록 안개가 닿지 않는
+선형 모드를 기준 이미지로 사용한다. 화면 안의 알려진 재질과 최소 수신점 수를 요구한다.
+
+pixelArt의 가상 해상도·정수 확대·여백·표시 카메라를 반영한다. 두 점광원+태양 PCSS와 함께
+높이 안개만 바꾸면 13개 깊이 면이 재생성되지 않아야 한다. 기존 거리 안개보다 target/buffer/pass가 늘지 않는다.
+progress-only state16을 새 엔진에서 복원하고 안개 제거/재활성·WebGPU 장치 파괴/복구·destroy 자원0을 검사한다.
+높이 안개/Bloom은 기존 독립 CPU Bloom reference로 gather·wide, AO, odd viewport, pixelArt,
+HDR 노출·HUD·저장/복원·장치 복구를 검사한다. 작은 HDR source의 DOF 후 광도가 Bloom threshold 아래로
+내려가는 별도 fixture로 높이 안개→DOF→Bloom 순서와 효과가 실제 적용된 신호를 확인한다.
+
+`pnpm test:spatial-height-fog-report`는 빈 이미지, 무시한 밀도/감쇠/구간,
+직교 시선 대신 중앙 eye ray 사용, 잘못 복원한 이미지, 빠진 상태, warm shadow redraw,
+누락된 native v13과 추가 target/pass를 거절해야 한다.
+SDK/Rust 검증은 유한 범위·reserved tail·lighting OFF source 보존, 구 core의 자산 준비 전 거절,
+patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기화·두 번째 camera record를 포함한다.
+
+현재 호스트 GPU fixture 통과는 사용자 실게임·목표 기기의 FPS 수용 검증과 구분한다.
+실게임·실기기 수용 검증은 사용자 방침에 따라 개발 완료 후 진행한다.

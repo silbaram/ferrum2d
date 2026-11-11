@@ -100,3 +100,7 @@ Scene Authoring JSON의 `display.pixelPerfect: {width: 320, height: 180}`으로 
 개발 소스의 `colorManagement:"linear-srgb"`는 WebGL2와 WebGPU 모두 지원한다.
 색 texture는 sRGB, normal/mask는 linear/data로 표시하고 숫자 RGB는 선형 값을 사용한다.
 합성 후 최종 표시 변환을 수행하며 기본 legacy 동작은 유지한다. 설치된 과거 배포 버전의 지원을 뜻하지 않는다.
+
+개발 소스의 Spatial `fog.height`는 기준 높이·밀도·감쇠율로 낮은 곳에 짙은 안개를 만듭니다.
+`height` 생략 시 기존 선형 거리 안개를 유지하며 WebGL2/WebGPU를 지원합니다.
+설정과 적분 구간의 의미는 [높이 안개 계약](../../docs/engine/data-scene-spatial.md#선택형-높이-안개)을 따릅니다.

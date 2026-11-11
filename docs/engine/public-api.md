@@ -76,6 +76,9 @@ preview API는 1.0 전 breaking change가 가능하다. 그래도 `public-api-su
 | `@ferrum2d/ferrum-web/labs` | preview | `packages/ferrum-web/src/labs.ts` | [Labs](public-api/labs.md) |
 | `@ferrum2d/ferrum-web/quality` | preview | `packages/ferrum-web/src/quality.ts` | [Quality](public-api/quality.md) |
 
+Spatial `fog.height`의 공개 설정 타입 `SpatialHeightFogSpec`은 root/core/authoring에서 제공합니다.
+기본값·거리 구간·저장 호환성은 [높이 안개 계약](data-scene-spatial.md#선택형-높이-안개)을 따릅니다.
+
 ## Reference Map
 
 | 문서 | 목적 |

@@ -1558,3 +1558,7 @@ float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 �
 `terrain`·`billboards`·`models`는 각각 전체 surface·출력 quad·ModelDraw 순서의 pair다.
 기본 stream은 비어 있고, deferred frame은 세 배열을 소유 복사한다. 기존 material/model ABI는 유지한다.
 새 요청에 필요한 native receiver/light capability가 없으면 자산 조회와 scene 변경 전에 실패한다.
+
+`SpatialHeightFogSpec`는 선택형 `environment.fog.height` 설정이다.
+기준 높이·밀도·감쇠율과 원근/직교 시선 적분을 제공하며 environment v13/616·patch14/state16을 사용한다.
+구간 의미와 기존 선형 안개 호환성은 [높이 안개 계약](../data-scene-spatial.md#선택형-높이-안개)을 따른다.
