@@ -2,7 +2,7 @@
 
 기준일: 2026-11-11
 
-상태: M2-a·M3·M4 개발 소스·자동 회귀 완료 · M5 native·public 광원 전환/저장 기반 완료, GPU·비용 검증 진행 중 · 실게임·실기기 검증은 개발 완료 후 진행
+상태: M2-a·M3·M4 및 M5-a 광원 전환·진단 자동 회귀 완료 · M5-b shadow 작업 예산·M5-c 넓은 Bloom/비용 검증 진행 중 · 실게임·실기기 검증은 개발 완료 후 진행
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -271,8 +271,11 @@ M4d의 bounded convex polygon도 raw/f32 검증·기존 광원별 union mask·�
 다각형576개 상태와 독립 ray/edge 픽셀 기준을 포함한 전체 Flat3,088개 상태, SDK1,505개,
 공식 viewer 전체 회귀·package/public types·문서/Pages를 검증하고 리뷰에서 접선 동률의 winding 의존을 수정했다.
 최종 SDK는 별도 컴파일의696개 JS/선언 파일과 일치한다. [다각형 계약](../engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
-M4는 개발 소스·자동 회귀를 완료했다. M5의 광원 전환·shadow 예산·넓은 Bloom 개선은 남아 있으며,
-현재 Flat shadow의 정적 CPU geometry cache를 GPU upload/draw0으로 해석하지 않는다.
+M4와 M5-a 광원 전환·진단은 개발 소스·자동 회귀를 완료했다. M5-a는 native/public 저장 이력,
+양 backend 전환1,216개 상태·실제 fade 이미지64조합·기존 환경2,240개 상태와 profiler 전달을 검증했다.
+M5-b의 Flat 정적 GPU geometry 업로드 재사용·실제 작업 예산을 구현하고 SDK1,518개, 전체 Flat3,104개 및
+최종 polygon592개 상태의 cold/warm 예산·다중 packet/HUD 보존을 검증했다. mask draw는 계속 필요하다.
+M5-b의 native 기여도 기반 슬롯 점유와 M5-c 넓은 Bloom·측정 preset은 남아 있다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
@@ -360,7 +363,7 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 ## 9. 범위 결정과 보류 조건
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
-- **다음:** M5 광원 전환 안정화·shadow 작업 예산·넓은 Bloom 개선과 비용 검증. 실게임·실기기는 개발 완료 후 진행한다.
+- **다음:** M5-b native 기여도 기반 슬롯 점유와 M5-c 넓은 Bloom·비용/preset 검증. 실게임·실기기는 개발 완료 후 진행한다.
 - **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.

@@ -2029,4 +2029,5 @@ GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 targ
 
 선택형 Flat polygon caster는 플랫폼의 bounded convex 도형이며 Native collider나 태양 caster와 별개다.
 기존 point max-union mask를 재사용하고 사각형 투영 경로·Native ABI·light row를 유지한다.
-정적 CPU geometry 재사용과 활성 shadow GPU upload/draw 비용은 [polygon 구조](flat-lighting-composition.md#선택형-flat-convex-polygon)에서 구분한다.
+정적 CPU/GPU geometry 재사용과 계속 필요한 mask draw를 구분한다. bounded GL 결합 업로드·WebGPU revision 캐시,
+실패 재시도와 프레임별 실제 작업 예산은 [shadow 캐시 구조](flat-lighting-composition.md#정적-point-shadow-gpu-업로드와-작업-예산)를 따른다.

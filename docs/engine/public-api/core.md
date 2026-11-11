@@ -459,6 +459,11 @@ raw `loadTexture(url)` 자원은 renderer destroy까지 소유한다. 등록된 
 DebugOverlay와 RuntimeProfiler에 같은 값을 전달한다. 이후 `onFrame`에서 직접 실행한
 추가 offscreen 작업은 즉시 `resourceStats()`로 조회하거나 다음 runtime frame에서 관찰한다.
 자세한 예산 필드는 [Quality API](quality.md#gpu-자원-예산)를 따른다.
+Flat point-shadow의 실제 geometry 업로드·vertex 제출은 `RendererStats.pointShadowGeometryUploadBytes`,
+`pointShadowGeometryVertexCount`, `pointShadowGeometryCacheHit`로 조회한다. 같은 frame의 여러 command packet을
+누적하며 다음 `render()`에서 초기화한다. [작업 예산](quality.md#runtime-profiler)과
+[캐시 범위](../../development/architecture/flat-lighting-composition.md#정적-point-shadow-gpu-업로드와-작업-예산)를 따른다.
+
 
 ## 색 공간 관리
 

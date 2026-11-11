@@ -272,9 +272,34 @@ resolve cache의 warm match는 필드 형태도 검사한다. 반환 값과 geom
 실제 Flat 합성용 effective scene에도 polygon 배열을 전달하고 생략할 때 해제해 이전 도형을 재사용하지 않는다.
 
 두 backend는 기존 광원별 union mask와 shadow staging을 사용한다. 새 target·shader·Native record는 없다.
-정적 CPU geometry는 재사용하지만 기존 GL `bufferSubData`와 GPU shadow `writeBuffer`/mask draw는 계속 수행한다.
-M5의 shadow 예산·정적 upload 최적화와 구분한다. 모든 한도를 함께 쓰면 광원별 XY cache는 최대55,296 float이며
-2의 거듭제곱 용량으로 최대256 KiB를 유지한다. GL은 한 shadow vertex 버퍼를 재사용하고, WebGPU의10-float shadow
-vertex staging은 광원별 구간을 한 버퍼로 합치므로32개 광원의 최악 용량은 CPU/GPU 각각64 MiB까지 증가할 수 있다.
-실제 bytes는 renderer resource 통계와 함께 검사하며 이를 실기기 성능 보장으로 해석하지 않는다.
+정적 CPU geometry와 GPU vertex 데이터를 함께 재사용한다. 광원별 XY cache는 모든 authoring 한도를 함께 쓰면
+최대55,296 float이며 2의 거듭제곱 용량으로 최대256 KiB를 유지한다.
+[정적 GPU 업로드와 작업 예산](#정적-point-shadow-gpu-업로드와-작업-예산)을 함께 따른다.
 [공개 도형 계약](../../engine/data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+
+
+### 정적 point-shadow GPU 업로드와 작업 예산
+
+`LightingShadowGeometryCache`의 geometry revision과 활성 광원 순서가 유지되면 양 backend의
+point-shadow vertex buffer를 다시 쓰지 않는다. GL은 하나의 XY VBO에 광원 구간을 모으고 각 draw의
+first/count를 바꾼다.32개 이하·합계2 MiB 이하의 좌표를 한 번에 업로드한다. 한도를 넘긴 기존 legacy 씬은
+기존 광원별 streaming으로 돌아가며 광원·caster를 자르지 않는다. WebGPU는 기존10-float vertex 구간을
+그대로 유지하고32개 이하의 revision·색을 비교한다. WebGPU의 shadow 색은 vertex에 있으므로 색 변경도
+업로드를 무효화한다. GL의 같은 변경은 uniform만 갱신한다. legacy32개 초과는 기존 결합 업로드를 유지한다.
+
+geometry·광원 순서·clip 변경은 재업로드한다. 캐시 키는 할당/쓰기 성공 뒤 공개하며,
+버퍼 교체·쓰기 실패 후 이전 씬으로 돌아가도 재업로드한다. GL CPU capacity도 GPU 할당 성공 뒤 확정한다.
+WebGPU 복구는 새 pass의 빈 캐시에서 시작한다. 새 buffer·shader·target·native ABI는 추가하지 않는다.
+GPU staging의 기존 최대 용량 정책은 유지한다. WebGPU의32개 최악 도형은 CPU/GPU 각각64 MiB까지
+증가할 수 있으므로 `resourceStats()`의 실제 용량도 함께 확인한다.
+
+이 캐시는 vertex 업로드를 생략한다. 광원별 max-union mask는 공유 target을 다시 그리므로 mask draw·
+uniform/instance 업로드는 계속 필요하다. warm geometry upload0을 shadow draw0이나 GPU 실행 시간0으로 해석하지 않는다.
+
+`pointShadowGeometryUploadBytes`, `pointShadowGeometryVertexCount`, `pointShadowGeometryCacheHit`는
+`RendererStats`에서 같은 begun frame의 모든 command packet을 누적한다. HUD가 뒤에 제출되어도 보존하고
+다음 `render()`에서 초기화한다. 업로드 bytes는 실제 geometry buffer 쓰기만, vertex 수는 실제 shadow draw의
+vertex 합만 센다. mask target·sun·Spatial·uniform은 제외한다. cache hit은 vertex 합이 양수이고 업로드 합이0인
+frame이다. DebugOverlay·RuntimeFrameRenderer·RuntimeProfiler·frame trace에 같은 값을 전달한다.
+선택형 `maxPointShadowGeometryUploadBytes`/`maxPointShadowGeometryVertexCount`는 보관한 frame 전체의 최대값을
+검사하며 누락 sample은 `missingMetric`이다. cold/warm 구간을 구분해 예산을 적용한다.

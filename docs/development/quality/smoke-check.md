@@ -2924,7 +2924,14 @@ SDK unit은 희소/교차/오목/중복/collinear/f32 퇴화·개수/좌표/투�
 소유 복사·static CPU geometry revision·최대72-float clip 상한, source JSON·patch/Undo/Redo·실제 Native Playing·새 handle 복원,
 구 capability 거절 후 asset lookup/native mutation0을 검사한다. 공식 viewer의 `--flat-lit`은 도형 cold apply pixels와
 source export·invalid import 뒤 씬/handle/history 보존·다중 문서 왕복을 함께 검사한다.
-현재 static geometry의 GPU upload0을 보장하는 검사가 아니다. mask upload/draw는 기존 경로이며 M5 비용 작업으로 남는다.
+M5-b의 정적 GPU geometry 캐시 회귀도 같은 fixture에 포함한다. 두 광원의 warm 업로드0·vertex 양수·실제
+픽셀 동등성을 검사하고, 실제 renderer 통계를 budget evaluator에 넣어 cold 업로드와 미측정을 거절한다.
+여러 command packet의 vertex 합·HUD 뒤 보존·OFF·복구·destroy0을 함께 확인한다. mask draw는 계속 수행한다.
+SDK unit은 GL32-source/2 MiB 한도 밖 fallback의 광원 보존·bounded 재진입, WebGPU32-source 밖 fallback,
+geometry/색 무효화와 할당·쓰기 실패 후 이전 씬/재시도를 검사한다.
+`FERRUM_FLAT_LIT_ARTIFACT_PARENT`로 보고서 상위를 지정할 수 있다. 선택형 `FERRUM_FLAT_LIT_PREPARED_PACKAGE`는
+검증할 `dist/pkg` package snapshot을 고정한다. 보고서 `runtimePackageRoot`를 source 증거와 함께 기록하며,
+미지정 시 workspace package를 읽으므로 실행 중 SDK를 다시 빌드하지 않는다.
 
 ### M5 native 광원 전환 기반 회귀
 

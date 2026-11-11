@@ -25,6 +25,15 @@ import {
 DebugOverlay → RuntimeFrameRenderer → RuntimeProfiler로 실제 renderer 값을 전달한다.
 전체 비용은 기존 `drawCalls`/`maxDrawCalls`와 GPU 자원 예산에도 포함한다.
 
+Flat point-shadow의 선택형 `pointShadowGeometryUploadBytes`/`pointShadowGeometryVertexCount`는
+같은 renderer frame에서 실제로 쓴 geometry bytes와 제출한 shadow vertex 합이다. HUD를 포함한 여러 command
+packet 뒤에도 보존하며 sun·Spatial·mask target·uniform 업로드는 제외한다. `pointShadowGeometryCacheHit`은
+vertex가 있고 업로드 합이0인 frame이다. 정적 캐시에서도 mask draw는 계속 필요하다.
+DebugOverlay·profiler·frame trace에 전달하며 `maxPointShadowGeometryUploadBytes`와
+`maxPointShadowGeometryVertexCount`로 단일 frame/window 최대값을 검사한다. window의 sample 하나라도
+빠지면 최대값은 undefined이고 설정된 budget은 `missingMetric`이다. custom renderer의 미측정을0으로 채우지 않는다.
+`RendererStatsUnit`은 `count | bytes`이며 catalog의 upload 항목은 bytes다.
+
 budget field를 추가하면 smoke runner가 실제 sample에 값을 기록하는지 같이 확인한다.
 
 Spatial 광원 통계는 양 renderer에서 `RuntimeFrameRenderer` → `DebugOverlayMetrics` → profiler sample로 전달한다.
