@@ -2103,7 +2103,11 @@ WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가�
 
 적분은 TS 플랫폼의 GLSL/WGSL에서 수행한다. 기준 높이 아래의 일정 밀도와 위의 지수 밀도를
 시선 구간별로 해석적으로 적분한다. 높이 차이가 작은 경우 Taylor 분기로 상쇄 오차를 피하며
-지수의 음수 인자는 최대 80으로 제한한다. 원근은 eye ray, 직교는 픽셀별 camera-plane ray를 사용한다.
+지수의 음수 인자는 최대 80으로 제한한다. 높이는 fog base를 뺀 상대 좌표로 전달하고,
+적분 길이는 view-depth 차이를 먼저 구해 정규화한다. 잘린 구간의 높이는 기준 높이 교차점 또는
+낮은 양수 endpoint를 기준으로 계산하며, 기준 높이 아래/위의 기여는 양수 길이의 합으로 결합한다.
+이는 큰 좌표·얇은 원거리 구간에서 두 큰 수를 빼며 기여가 사라지는 오차를 피한다.
+원근은 eye ray, 직교는 픽셀별 camera-plane ray를 사용한다.
 기존 geometry fog 또는 separated AO resolve 위치에 한 번 합성하고 DOF/Bloom 순서는 유지한다.
 추가 texture fetch·target·pass는 없다. 카메라는 native의 world-up 기준이며 표시용 pixelArt camera를 사용한다.
 

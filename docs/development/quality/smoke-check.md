@@ -3119,10 +3119,12 @@ query당 최대 48 depth fetch는 정적 상한이며 GPU 시간 측정값으로
 `pnpm smoke:spatial-height-fog`는 report negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
 기존 `pnpm smoke:spatial-webgpu-offscreen`에도 같은 높이 안개 행렬·DOF 순서 검사와 높이 안개/Bloom 조합이 포함된다.
 현재 수동 CI(`workflow_dispatch`)의 `validate` job이 이 aggregate 명령을 실행한다.
-좁은 재검증은 runner의 `--height-fog-only`, `--height-fog-composition-only`,
-`--wide-bloom-height-fog-only`를 사용한다.
+좁은 재검증은 runner의 `--height-fog-only`, `--height-fog-precision-only`,
+`--height-fog-composition-only`, `--wide-bloom-height-fog-only`를 사용한다.
 
 두 backend × 원근/직교 × legacy/linear-srgb × desktop/모바일 크기 × DPR1/2를 검사한다.
+AO fixture에는 실제 환경광을 켜고 접촉면이 어두워지는 픽셀을 요구한다. unlit 표면의 0인
+indirect MRT를 합성 경로 검증으로 대신하지 않는다.
 새 안개를 geometry에 적용하는 legacy/separated 경로와 separated AO resolve 경로에서
 기본값·밀도0·감쇠0/미소값/큰 값·기준 높이 위/아래/교차·수평/상향 시선·시작/종료 구간을 변경한다.
 별도 Node oracle은 알려진 terrain에 카메라 ray를 교차시킨 뒤 **4096구간 수치 적분**으로
@@ -3140,6 +3142,9 @@ HDR 노출·HUD·저장/복원·장치 복구를 검사한다. 작은 HDR source
 `pnpm test:spatial-height-fog-report`는 빈 이미지, 무시한 밀도/감쇠/구간,
 직교 시선 대신 중앙 eye ray 사용, 잘못 복원한 이미지, 빠진 상태, warm shadow redraw,
 누락된 native v13과 추가 target/pass를 거절해야 한다.
+같은 gate의 별도 float32 shader probe는 패키지에 실린 GLSL/WGSL helper를 직접 실행한다.
+큰 기준 높이의 평행 이동, 원거리의 인접 float32 시작/종료 깊이, 얇은 아래쪽 기여, 잘린 구간의
+기준 높이 교차를 독립 adaptive Simpson 적분과 비교한다. 양쪽 backend가 같은 오차를 내도 실패한다.
 SDK/Rust 검증은 유한 범위·reserved tail·lighting OFF source 보존, 구 core의 자산 준비 전 거절,
 patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기화·두 번째 camera record를 포함한다.
 
