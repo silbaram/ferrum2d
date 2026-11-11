@@ -4,7 +4,7 @@ import { createEngine, createRenderer, captureGameStateSnapshot, restoreGameStat
 import { applyDataSceneAuthoringDocument } from '@ferrum2d/ferrum-web/authoring';
 import { check, difference, pixels, png } from '/fixture.mjs';
 
-async function probe(backend, projection, colorManagement){
+async function probe(backend, projection, colorManagement, variant){
  const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;left:0;top:0;width:128px;height:128px';canvas.dataset.spatialGpuTarget='true';document.body.append(canvas);
  let renderer,engine,pending;const errors=[],rows=[],images=[],allocations={textures:0,buffers:0,groups:0,pipelines:0};
  try{
@@ -37,7 +37,9 @@ async function probe(backend, projection, colorManagement){
    const timeout=setTimeout(()=>reject(Error('wide Bloom frame timeout')),15000);
    pending={...options,resolve:row=>{clearTimeout(timeout);try{check(row.stats.terrainTriangleCount>=10&&row.stats.drawCalls<32,'wide Bloom runtime/work shape',row.stats);rows.push({name,width:canvas.width,height:canvas.height,stats:row.stats,frameWork:row.frameWork,allocated:row.allocated,resources:row.resources});images.push(row.data);resolve(row);}catch(error){reject(error);}},reject:e=>{clearTimeout(timeout);reject(e);}};engine.start();
   });
-  const base={composition:'separated',lighting:{ambient:[4,4,4],lights:[]}};
+  const base={composition:'separated',lighting:{ambient:[4,4,4],lights:[]},
+   ...(variant==='plain'?{}:{fog:{color:[0,0,0],start:0,end:200}}),
+   ...(variant==='fog-ao'?{ambientOcclusion:{strength:1,radius:4,bias:.1}}:{})};
   const sharp=await draw('sharp',base);
   const hdr=await draw('hdr-reference',{...base,colorGrading:{exposure:-4,toneMapping:'none'}});
   const off=await draw('wide-zero',{...base,bloom:{mode:'wide',radius:64,strength:0}});
@@ -124,10 +126,11 @@ async function probe(backend, projection, colorManagement){
  }finally{engine?.destroy();renderer?.destroy();window.disposeSpatialGpuTarget?.(canvas);canvas.remove();
   if(renderer)for(const key of ['textureCount','bufferCount','programCount','renderTargetCount'])check(renderer.resourceStats()[key]===0,'wide Bloom resource leak',{key,resources:renderer.resourceStats()});}
 }
-export async function probeSpatialWideBloom(colorManagement){
+export async function probeSpatialWideBloom(colorManagement, variant='plain'){
+ check(['plain','fog','fog-ao'].includes(variant),'Unknown wide Bloom composition variant');
  const result=[];
  for(const projection of ['orthographic','perspective']){
-  const pair=[];for(const backend of ['webgl2','webgpu'])pair.push(await probe(backend,projection,colorManagement));
+  const pair=[];for(const backend of ['webgl2','webgpu'])pair.push(await probe(backend,projection,colorManagement,variant));
   const inputIndex=pair[0].rows.findIndex(r=>r.name==='odd-hdr-reference');
   const sourceRasterDifferentPixels=difference(pair[0].images[inputIndex],pair[1].images[inputIndex],0);
   const stableIndex=pair[0].rows.findIndex(r=>r.name==='odd-stable-hdr-reference');

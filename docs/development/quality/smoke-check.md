@@ -2986,7 +2986,9 @@ Presentation PNG gate는 wide view의 빨간 edge receiver가64pixel보다 많�
 기본 `smoke:spatial-webgpu-offscreen`에도 같은 행렬과 `test:spatial-bloom-report`를 포함한다.
 현재 `workflow_dispatch` CI validate가 그 aggregate를 호출하며 일반 push/PR 자동 실행을 뜻하지 않는다.
 
-두 backend·두 색공간·직교/원근·DPR1/2·가로/세로 viewport에서 각28상태를 검사한다.
+두 backend·두 색공간·직교/원근·DPR1/2·가로/세로 viewport에서 기본/안개/안개+AO의 각28상태를 검사한다.
+안개 variant도 노출을 낮춘 post-fog HDR source를 독립 기준으로 사용하므로 geometry fog와 AO resolve fog 뒤의
+Bloom 입력을 각각 검증한다. 안개만 좁게 검사하려면 빌드 후 `--offscreen-target --wide-bloom-fog-only`를 사용한다.
 작은 HDR source와 sharp/gather/low/balanced/high, warm 재사용, strength0/OFF, threshold 소거,
 exposure, 분수 반경37.5, 홀수127×95, resize 왕복, pixelArt 내부64×64 nearest 확대,
 동일 frame 재제출·HUD, fresh state12 복원·구 저장 downgrade 거절, WebGPU 복구·clear/재활성화를 포함한다.

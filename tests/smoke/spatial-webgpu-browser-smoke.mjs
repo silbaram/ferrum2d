@@ -28,7 +28,8 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
-const wideBloomOnly = process.argv.includes("--wide-bloom-only");
+const wideBloomFogOnly = process.argv.includes("--wide-bloom-fog-only");
+const wideBloomOnly = wideBloomFogOnly || process.argv.includes("--wide-bloom-only");
 const selectionPresentationOnly = process.argv.includes("--light-selection-presentation-only");
 const selectionOnly = selectionPresentationOnly || process.argv.includes("--light-selection-only");
 const gameAssetShadowsOnly = process.argv.includes("--game-asset-shadows-only");
@@ -106,7 +107,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -173,14 +174,14 @@ try {
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
         if (wideBloomOnly || ![selectionOnly,compositionOnly,recoveryOnly,fallbackOnly,modelsOnly,environmentOnly,shadowsOnly,proxiesOnly,pointContactOnly,flatShadowsOnly,receiverShadowsOnly,gameAssetShadowsOnly].some(Boolean)) {
           await page.waitForFunction(() => window.probeSpatialWideBloom);
-          for (const colorManagement of ["legacy", "linear-srgb"]) {
-            const result = await page.evaluate(mode => window.probeSpatialWideBloom(mode), colorManagement);
+          for (const colorManagement of ["legacy", "linear-srgb"]) for (const variant of wideBloomFogOnly ? ["fog", "fog-ao"] : ["plain", "fog", "fog-ao"]) {
+            const result = await page.evaluate(({mode,variant}) => window.probeSpatialWideBloom(mode,variant), {mode:colorManagement,variant});
             assert.equal(result.length, 2);
             for (const entry of result) for (const backend of entry.backends) for (const row of backend.rows) {
-              const file = `bloom-${colorManagement}-${entry.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+              const file = `bloom-${variant}-${colorManagement}-${entry.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
               await writeFile(resolve(output,file),Buffer.from(row.image.split(",")[1],"base64")); row.image=file;
             }
-            report.wideBloomCases.push({viewport,deviceScaleFactor,colorManagement,result,status:"pixels-pending"});
+            report.wideBloomCases.push({viewport,deviceScaleFactor,colorManagement,variant,result,status:"pixels-pending"});
             for (const entry of result) for (const backend of entry.backends) {
               assert(backend.restored && backend.snapshotVersion === 12 && backend.pixelArtNearest && backend.errors.length === 0);
               assert.equal(backend.rows.length, WIDE_BLOOM_STATES.length);
@@ -188,7 +189,7 @@ try {
             }
             for (const entry of result) assert(entry.comparisons.every(row => row.passed), `Wide Bloom backend parity: ${JSON.stringify(entry.comparisons.filter(row => !row.passed))}`);
             const order = [];
-            for (const backend of ["webgl2", "webgpu"]) order.push(await page.evaluate(({backend,mode}) => window.probeSpatialCompositionOrder(backend,mode,true), {backend,mode:colorManagement}));
+            if (variant === "plain") for (const backend of ["webgl2", "webgpu"]) order.push(await page.evaluate(({backend,mode}) => window.probeSpatialCompositionOrder(backend,mode,true), {backend,mode:colorManagement}));
             report.wideBloomCases.at(-1).order = order; report.wideBloomCases.at(-1).status = "passed";
           }
           assert.deepEqual(errors, []); if (wideBloomOnly) continue;
