@@ -3028,6 +3028,7 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
 PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모델2개, hard/PCF3, mask, 태양 그림자 동시13 pass,
 16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
+다중→단일 설정 직후 프레임 재생성 전 모델 위치 조회,
 WebGPU 실제 장치 파괴 후 복구를 포함한다. 정적 warm frame의 shadow draw/upload0과 해제 후 자원0을 요구한다.
 
 보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.

@@ -2155,6 +2155,8 @@ progress-only override도 자산 조회·씬 변경 전에 명시적으로 거�
 행렬은 첫 큐브6개·두 번째 큐브6개·마지막 sun1개 순서로 압축한다.
 80-byte **model ABI v2**는 기존 metadata/matrix 크기를 유지하며 두 번째 큐브 가시성을 bits8~13으로 추가한다.
 기존 camera0/첫 큐브1~6/sun7과 model ABI v1은 유지한다. v2 모델은 환경 v10과 함께 읽어야 한다.
+`dataSceneSpatialModelDrawSnapshot`은 마지막 프레임의 owned 변환·camera 가시성을 반환하며,
+다중 그림자를 해제한 직후 다음 프레임이 재생성되기 전에도 조회할 수 있다.
 
 광원당6면이므로 두 큐브가 갱신되면12 shadow pass, sun까지 갱신되면13 pass다.
 양 backend의 depth 저장을 보수적4-byte texel로 계측하며 최대1024 해상도 두 큐브는48 MiB다.
