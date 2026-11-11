@@ -289,6 +289,12 @@ Native1,682개+integration1·SDK1,528개, wide 기본/안개/안개+AO2,688개 �
 수정 후 SDK 전체와 wide 전체2,688개 상태를 다시 검증했다. 원본 보고서·실행 명령·리뷰 근거는 로컬
 `artifacts/lighting-remaining/m5/bloom/verification.json`과 `artifacts/lighting-remaining/completion-audit.json`에 기록했다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
+개발 완료 후 현재 PC의 Radeon8060S/driver32.0.32015.7029·Windows Chrome156.0.8078.80에서
+WebGL2 D3D11과 WebGPU AMD non-fallback을 확인하고 wide2,688개 상태를 실제 GPU offscreen 경로에서도 검증했다.
+원본은 로컬 `artifacts/lighting-remaining/post-development/hardware-wide/run-Hya0zT/report.json`과
+`artifacts/lighting-remaining/post-development/hardware-browser.json`이다.
+같은 기기의 native canvas 전체 Spatial 회귀는 진행 중이다. 이는 현재 PC의 잠정 fixture 기준이며,
+실제 문제 게임/씬·사용자가 정한 목표 환경·시간 예산·품질 수용 기준의 검증 완료를 뜻하지 않는다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
