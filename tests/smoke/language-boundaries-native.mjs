@@ -11,6 +11,8 @@ import { resolvePhysicsSpec } from "../../packages/ferrum-web/dist/physicsSpec.j
 import { resolvePresentationEffectRegistry } from "../../packages/ferrum-web/dist/presentationEffects.js";
 import { QuestLog, DialogueSession } from "../../packages/ferrum-web/dist/dialogueQuest.js";
 import { PixelMaskTerrain } from "../../packages/ferrum-web/dist/pixelMaskTerrain.js";
+import { configureSpriteLighting } from "../../packages/ferrum-web/dist/spriteLighting.js";
+import { configureSpriteSurface } from "../../packages/ferrum-web/dist/spriteSurface.js";
 
 // Run only after building the current Rust pkg and SDK dist. This intentionally
 // uses internal modules: the assertions concern the engine's own frame boundary.
@@ -48,6 +50,7 @@ try {
   report.status = "passed";
 } catch (error) {
   report.status = "failed";
+  for (const result of report.cases) if (result.status === "running") result.status = "failed";
   report.error = error instanceof Error ? { message: error.message, stack: error.stack } : String(error);
   process.exitCode = 1;
 } finally {
@@ -164,20 +167,42 @@ function checkConstantFrameCalls() {
   const baseBudget = 21;
   const volumeReads = ["ground_shadow_volume_abi_version", "ground_shadow_volume_vertex_stride",
     "ground_shadow_volume_ptr", "ground_shadow_volume_len", "ground_shadow_volume_caster_count"];
-  const volumeExports = new Set([...volumeReads, "configure_data_scene_ground_shadow_volume"]);
+  const groups = [
+    { key: "volumes", reads: volumeReads, writes: ["configure_data_scene_ground_shadow_volume"] },
+    { key: "lighting", reads: ["sprite_lighting_material_abi_version", "sprite_lighting_material_size",
+      "sprite_lighting_material_len", "sprite_lighting_material_ptr"], writes: ["configure_sprite_lighting_materials"] },
+    { key: "surface", reads: ["sprite_surface_material_abi_version", "sprite_surface_material_size",
+      "sprite_surface_material_len", "sprite_surface_material_ptr"], writes: ["configure_sprite_surface_materials"] },
+    { key: "masks", reads: ["sprite_light_mask_abi_version", "sprite_light_mask_size",
+      "sprite_light_mask_len", "sprite_light_mask_ptr"], writes: ["configure_sprite_lighting_materials_v2"] },
+  ];
+  const bulkReads = new Set(groups.flatMap(group => group.reads));
+  const lightingSidecars = { lighting: true, surface: true, masks: true };
   const cases = [];
+  const result = { name: "constant-native-frame-dispatch", status: "running", cases };
+  // Retain method counts even when a new dispatch violates the budget.
+  report.cases.push(result);
   for (const scenario of [
     { name: "legacy-exports", volumes: false, cast: false },
     { name: "empty-volume-sidecar", volumes: true, cast: false },
     { name: "active-volume-sidecar", volumes: true, cast: true },
+    { name: "active-lighting-only", lighting: true, active: true },
+    { name: "active-lighting-surface", lighting: true, surface: true, active: true },
+    { name: "active-lighting-masks", lighting: true, masks: true, active: true },
+    { name: "empty-lighting-sidecars", ...lightingSidecars },
+    { name: "active-lighting-sidecars", ...lightingSidecars, active: true },
+    { name: "empty-current-sidecars", ...lightingSidecars, volumes: true },
+    { name: "active-current-sidecars", ...lightingSidecars, volumes: true, cast: true, active: true },
   ]) {
     const scenarioCases = [];
+    const hiddenExports = new Set(groups.filter(group => !scenario[group.key])
+      .flatMap(group => [...group.reads, ...group.writes]));
     for (const entities of [1, 128, 1024]) {
       const native = new Engine();
       const calls = new Map();
       const engine = new Proxy(native, { get(target, key) {
         // Exercise the optional-export fallback using the actual native engine.
-        if (!scenario.volumes && volumeExports.has(key)) return undefined;
+        if (hiddenExports.has(key)) return undefined;
         const value = Reflect.get(target, key);
         return typeof value === "function" ? (...args) => {
           calls.set(String(key), (calls.get(String(key)) ?? 0) + 1);
@@ -187,11 +212,20 @@ function checkConstantFrameCalls() {
       try {
         configure(engine);
         if (scenario.cast) assert.ok(engine.configure_data_scene_sun(1, 0, 0.6, 1, 10000));
+        const handles = [];
         for (let i = 0; i < entities; i++) {
           spawn(engine);
+          const entity = { entityId: engine.data_scene_entity_id(), entityGeneration: engine.data_scene_entity_generation() };
+          handles.push(entity);
           if (scenario.cast) assert.ok(engine.configure_data_scene_ground_shadow_volume(
-            engine.data_scene_entity_id(), engine.data_scene_entity_generation(),
+            entity.entityId, entity.entityGeneration,
             16, 8, 8, 4, 0, -4, 1, false, 0));
+        }
+        if (scenario.active) {
+          assert.ok(configureSpriteLighting(engine, handles.map(entity => ({ entity,
+            lighting: { mode: "opaque", ...(scenario.masks ? { lightMask: 1, shadowMask: 2 } : {}) } }))));
+          if (scenario.surface) assert.ok(configureSpriteSurface(engine, handles.map(entity => ({ entity,
+            surface: { emission: [1, 0.5, 0.25], specular: 0.25, roughness: 0.5 } }))));
         }
         const bridge = new WasmBridge(engine, wasm_memory());
         // Setup/ABI calls are outside the measured frame, while all reads and
@@ -205,6 +239,24 @@ function checkConstantFrameCalls() {
             assert.equal(frame.renderCommandBuffer.commandCount, entities);
             assert.equal(frame.renderCommandBuffer.buffer.length, entities * 15);
             assert.ok(frame.renderCommandBuffer.buffer.every(Number.isFinite));
+            const { spriteLightingMaterials: lighting, spriteSurfaceMaterials: surface,
+              spriteLightMasks: masks } = frame.renderCommandBuffer;
+            if (scenario.active) {
+              assert.equal(lighting.words.length, entities * 2);
+              for (let i = 0; i < entities; i++) assert.equal(lighting.words[i * 2], 1);
+            } else assert.equal(lighting, undefined);
+            if (scenario.active && scenario.surface) {
+              assert.equal(surface.words.length, entities * 10);
+              for (let i = 0; i < entities; i++) {
+                assert.equal(surface.words[i * 10 + 3], 1);
+                assert.deepEqual(Array.from(surface.values.subarray(i * 10 + 4, i * 10 + 9)),
+                  [1, 0.5, 0.25, 0.25, 0.5]);
+              }
+            } else assert.equal(surface, undefined);
+            if (scenario.active && scenario.masks) {
+              assert.equal(masks.buffer.length, entities * 2);
+              for (let i = 0; i < entities; i++) assert.deepEqual(Array.from(masks.buffer.subarray(i * 2, i * 2 + 2)), [1, 2]);
+            } else assert.equal(masks, undefined);
             const volumes = frame.renderCommandBuffer.groundShadowVolumes;
             if (scenario.cast) {
               assert.ok(volumes, "active volume geometry must reach the renderer");
@@ -221,16 +273,18 @@ function checkConstantFrameCalls() {
         assert.equal(calls.get("update_frame"), 1);
         const counts = Object.fromEntries([...calls].sort(([a], [b]) => a.localeCompare(b)));
         const total = [...calls.values()].reduce((a, b) => a + b, 0);
-        const volumeBudget = scenario.volumes ? volumeReads.length : 0;
-        // Only the five named bulk metadata reads receive the extension allowance.
-        // Keep the original 21-call budget for every other native method.
-        for (const name of volumeReads) assert.equal(calls.get(name) ?? 0, scenario.volumes ? 1 : 0,
-          `${name} must be read once per frame, independently of entity/caster count`);
-        const baseCalls = [...calls].filter(([name]) => !volumeReads.includes(name)).reduce((sum, [, n]) => sum + n, 0);
-        const budget = baseBudget + volumeBudget;
+        const expectedBulkCalls = Object.fromEntries(groups.flatMap(group => group.reads.map(name => [name,
+          scenario[group.key] && (group.key === "volumes" || !name.endsWith("_ptr") || scenario.active) ? 1 : 0])));
+        // Only named bulk getters receive an allowance. Empty lighting sidecars
+        // read version/size/length; active ones also read one pointer, never one per entity.
+        const extensionBudget = Object.values(expectedBulkCalls).reduce((sum, n) => sum + n, 0);
+        const baseCalls = [...calls].filter(([name]) => !bulkReads.has(name)).reduce((sum, [, n]) => sum + n, 0);
+        const budget = baseBudget + extensionBudget;
         const row = { scenario: scenario.name, entities, totalNativeMethodCalls: total, baseNativeMethodCalls: baseCalls,
-          budget, volumeCasterCount, volumeVertexCount, counts };
+          budget, extensionBudget, expectedBulkCalls, volumeCasterCount, volumeVertexCount, counts };
         cases.push(row); scenarioCases.push(row);
+        for (const [name, expected] of Object.entries(expectedBulkCalls)) assert.equal(calls.get(name) ?? 0, expected,
+          `${name} must use fixed bulk reads, independently of entity/caster count (${scenario.name})`);
         assert.ok(baseCalls <= baseBudget, `base frame dispatch budget exceeded: ${baseCalls} > ${baseBudget} (${entities} entities)`);
         assert.ok(total <= budget, `frame dispatch budget exceeded: ${total} > ${budget} (${entities} entities)`);
       } finally { native.free(); }
@@ -242,7 +296,7 @@ function checkConstantFrameCalls() {
     cases.find(row => row.scenario === "active-volume-sidecar" && row.entities === entities).counts,
     cases.find(row => row.scenario === "empty-volume-sidecar" && row.entities === entities).counts,
     "active volume casters must not add per-caster native calls");
-  report.cases.push({ name: "constant-native-frame-dispatch", status: "passed", cases });
+  result.status = "passed";
 }
 
 function checkEffectCallbackLifetime() {

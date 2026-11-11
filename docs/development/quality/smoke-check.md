@@ -2754,10 +2754,14 @@ cargo test --release --manifest-path crates/ferrum-core/Cargo.toml static_proxy_
   세 facade의 scoped regression gate이며 전체 TS 코드의 gameplay 부재를 증명하는 정적 분석기는 아니다.
 - 현재 `pnpm build:wasm` 및 SDK build 후 `pnpm smoke:language-boundaries`:
   실제 Wasm ABI, 1/128/1024 엔티티에서 동일한 frame 호출 분포와 기본 21회 예산을 검사한다.
-  volume export가 있으면 version/stride/ptr/vertex count/caster count의 고정 bulk 읽기 5회를 별도 허용해 총 26회다.
-  이 5개 getter는 각각 프레임당 정확히 한 번이어야 하며, 나머지 native 호출은 기존 21회 이하를 유지한다.
-  선택형 export가 없는 호환 경로·빈 sidecar·엔티티 전체가 volume caster인 경로를 같은 규모에서 비교하고,
-  실제 triangle buffer가 renderer에 전달되며 caster 증가가 호출 분포를 바꾸지 않는지 확인한다.
+  선택형 volume은 version/stride/ptr/vertex count/caster count의 명시한 bulk getter 5회를 별도 허용한다.
+  Flat lighting/surface/light-mask sidecar는 각각 빈 경우 version/size/length 3회, 활성 경우 pointer를 더한 4회다.
+  명시한 getter는 필요한 경우 프레임당 정확히 한 번, 해당 export가 없거나 빈 sidecar의 pointer이면 0회여야 한다.
+  나머지 native 호출은 기존 21회 이하를 유지한다. 현재 export가 모두 있으면 빈 sidecar 경로는 총 35회,
+  세 lighting sidecar와 volume이 활성인 경로는 총 38회이며 엔티티 수와 무관하다.
+  선택형 export가 없는 호환 경로·lighting 단독·surface/mask 조합·빈/활성 volume 등 10개 경로를 같은 규모에서 비교한다.
+  실제 재질·수신 mask 값과 triangle buffer가 renderer에 전달되며 엔티티/caster 증가가 호출 분포를 바꾸지 않는지 확인한다.
+  실패 시에도 그 frame의 getter별 실제 호출 수와 허용 횟수를 보고서에 남긴다.
   render→effect summary 순서·memory.grow 뒤 frame snapshot 유지,
   native quest/dialogue/terrain 위임·공유 상태·owned snapshot을 검사한다.
 - `pnpm test:web`: callback 재진입, provider/custom renderer/audio getter의 native 성장,
