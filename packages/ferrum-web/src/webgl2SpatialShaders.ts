@@ -15,7 +15,8 @@ uniform sampler2D u_roughnessMap,u_specularMap,u_specularColorMap;
 uniform bool u_hasRoughness,u_hasSpecular,u_hasSpecularColor,u_modelSpecularEnabled;
 uniform vec4 u_modelSpecular;uniform float u_modelRoughness;
 uniform sampler2D u_emissiveMap;uniform bool u_hasEmissive,u_modelUnlit;uniform vec3 u_emissiveFactor;uniform float u_modelNormalScale;
-uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
+uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap,u_shadowMap2;
+uniform int u_shadowIndex2;uniform vec2 u_shadowParams2;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
@@ -30,7 +31,7 @@ vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.
 ${SPATIAL_SPECULAR_GLSL}
 bool receivesLight(int channels){return (int(u_receiverMasks.x)&(channels&255))!=0;}
 bool receivesShadow(int channels){return (int(u_receiverMasks.y)&((channels>>8)&255))!=0;}
-float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
+float pointCompare(samplerCube shadowMap,float authoredBias,vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
  // Quantize a canonical cube face before sampling. The center ray has a unique
  // major axis, including when the original PCF direction lies on a cube seam.
  vec3 a=abs(direction);int face;vec2 st;float major;
@@ -41,7 +42,7 @@ float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometri
  }else{
   face=direction.z>=0.?4:5;major=a.z;st=vec2(direction.z>=0.?direction.x:-direction.x,-direction.y);
  }
- float size=float(textureSize(u_shadowMap,0).x);
+ float size=float(textureSize(shadowMap,0).x);
  vec2 pixel=clamp(floor((st/major*.5+.5)*size),vec2(0.),vec2(size-1.));
  vec2 uv=(pixel+.5)*2./size-1.;vec3 ray;
  if(face==0)ray=vec3(1.,-uv.y,-uv.x);
@@ -59,25 +60,25 @@ float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometri
    // Subpixel rasterization also perturbs a grazing plane's stored depth.
    // Reserve 1/16 texel in each raster axis, independent of the PCF kernel.
    float slope=sqrt(max(1.-denominator*denominator,0.))/abs(denominator);
-   bias=u_shadowBias+expected/size*.1767766953*slope;
+   bias=authoredBias+expected/size*.1767766953*slope;
   }
  }
  // One DEPTH_COMPONENT24 step plus relative f32 arithmetic tolerance.
  bias+=radius/16777216.+max(expected,d)*.000001;
- return textureLod(u_shadowMap,ray,0.).r*radius+bias<expected?0.:1.;
+ return textureLod(shadowMap,ray,0.).r*radius+bias<expected?0.:1.;
 }
-float pointVisibility(vec3 delta,float d,float radius,vec3 geometric){
- if(d<=max(u_shadowBias,.000001))return 1.;
- float size=float(textureSize(u_shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
+float pointVisibility(samplerCube shadowMap,float authoredBias,vec3 delta,float d,float radius,vec3 geometric){
+ if(d<=max(authoredBias,.000001))return 1.;
+ float size=float(textureSize(shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
  float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
- float fallbackBias=u_shadowBias+2.*d/size*slope*(u_shadowFilter==1?3.:1.);
+ float fallbackBias=authoredBias+2.*d/size*slope*(u_shadowFilter==1?3.:1.);
  vec3 axis=-delta/d;float plane=dot(geometric,axis)*d;
- if(u_shadowFilter!=1)return pointCompare(axis,plane,d,radius,geometric,fallbackBias);
+ if(u_shadowFilter!=1)return pointCompare(shadowMap,authoredBias,axis,plane,d,radius,geometric,fallbackBias);
  vec3 up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
  vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float visibility=0.;
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
   vec3 direction=axis+(tangent*float(x)+bitangent*float(y))*2./size;
-  visibility+=pointCompare(direction,plane,d,radius,geometric,fallbackBias);
+  visibility+=pointCompare(shadowMap,authoredBias,direction,plane,d,radius,geometric,fallbackBias);
  }
  return visibility/9.;
 }
@@ -172,7 +173,11 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   float visibility=1.0;
   if(u_receiveShadow && receivesShadow(channels) && i==u_shadowIndex){
    vec3 shadowDelta=delta-geometricNormal*u_shadowNormalBias.x;float shadowDistance=length(shadowDelta);
-   visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
+   visibility=pointVisibility(u_shadowMap,u_shadowBias,shadowDelta,shadowDistance,radius,geometricNormal);
+  }
+  if(u_receiveShadow && receivesShadow(channels) && i==u_shadowIndex2){
+   vec3 shadowDelta=delta-geometricNormal*u_shadowParams2.y;
+   visibility=pointVisibility(u_shadowMap2,u_shadowParams2.x,shadowDelta,length(shadowDelta),radius,geometricNormal);
   }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
   if(specularWeight>0. && d>.000001)reflection+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*visibility*directSpecular(n,delta/d,view,f0,roughness);

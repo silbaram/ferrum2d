@@ -25,7 +25,7 @@ pub(crate) struct ModelBinding {
 pub(crate) struct ModelDraw {
     asset: u32,
     flags: u32,
-    /// Camera bit 0; point faces bits 1..6; sun bit 7.
+    /// Camera0, first point faces1..6, sun7; model ABI v2 adds second point faces8..13.
     mask: u32,
     reserved: u32,
     matrix: [f32; 16],
@@ -128,11 +128,15 @@ impl SpatialModels {
             if binding.flags & 1 != 0 {
                 for (index, m) in shadow_matrices.chunks_exact(16).enumerate() {
                     if super::shadows::intersects_bounds(m, min, max) {
-                        let bit = if !point_shadow || index == 6 {
-                            7
-                        } else {
-                            index + 1
-                        };
+                        let sun = shadow_matrices.len() / 16 % 6 == 1;
+                        let bit =
+                            if !point_shadow || (sun && index + 1 == shadow_matrices.len() / 16) {
+                                7
+                            } else if index >= 6 {
+                                index + 2
+                            } else {
+                                index + 1
+                            };
                         mask |= 1 << bit;
                     }
                 }

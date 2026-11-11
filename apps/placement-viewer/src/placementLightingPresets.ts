@@ -22,11 +22,13 @@ export function lightingMood(environment: SpatialEnvironmentSpec, mood: Lighting
 export function lightingQuality(environment: SpatialEnvironmentSpec, quality: LightingQuality): SpatialEnvironmentSpec {
     const next = structuredClone(environment), low = quality === "Low", high = quality === "High";
     next.lighting ??= { lights: [] };
-    next.lighting.maxActiveLights = low ? 1 : high ? 4 : 2;
+    next.lighting.maxActiveLights = low ? next.lighting.pointShadows?.length === 2 ? 2 : 1 : high ? 4 : 2;
     next.lighting.shadowFilter = low ? "hard" : "pcf3";
     const resolution = low ? 128 : high ? 1024 : 512;
     if (next.lighting.shadows)
         next.lighting.shadows.resolution = resolution;
+    if (next.lighting.pointShadows)
+        next.lighting.pointShadows = next.lighting.pointShadows.map(shadow => ({ ...shadow, resolution }));
     if (next.lighting.directional?.shadows)
         next.lighting.directional.shadows.resolution = resolution;
     if (low) {

@@ -1,3 +1,4 @@
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
@@ -25,7 +26,7 @@ export class WebGpuSpatialPass {
   private readonly shadowPipeline: GPURenderPipeline;
   private readonly shadowCache = new SpatialShadowCache();
   private readonly cameraGroups: GPUBindGroup[];
-  private readonly cameraValues = new Float32Array(8 * 64);
+  private readonly cameraValues = new Float32Array(14 * 64);
   private shadowCasters?: GPUBuffer;
   private shadowCapacity = 0;
   private pendingShadowCommit = false;
@@ -155,10 +156,10 @@ export class WebGpuSpatialPass {
     });
     this.uniform = webGpuResources(device).createBuffer({
       label: "Spatial camera",
-      size: 8 * 256,
+      size: 14 * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.cameraGroups = Array.from({ length: 8 }, (_, i) =>
+    this.cameraGroups = Array.from({ length: 14 }, (_, i) =>
       device.createBindGroup({
         layout: cameraLayout,
         entries: [{ binding: 0, resource: { buffer: this.uniform, offset: i * 256, size: 96 } }],
@@ -332,21 +333,21 @@ export class WebGpuSpatialPass {
     this.cameraValues.fill(0);
     this.cameraValues.set(frame.camera.subarray(0, 16));
     if (hasShadows && !cacheHit)
-      for (let face = 0; face < 7; face++) {
-        if ((face < 6 && env!.values[2] < 0) || (face === 6 && !(env!.values[92] > 0))) continue;
+      for (let face = 0; face < 13; face++) {
+        if ((face < 6 && env!.values[2] < 0) || (face === 6 && !(env!.values[92] > 0)) || (face >= 7 && secondSpatialShadowSlot(env!.values) < 0)) continue;
         const offset = (face + 1) * 64,
-          matrix = face < 6 ? face * 16 : env!.shadowMatrices.length - 16;
+          matrix = face < 6 ? face * 16 : face === 6 ? env!.shadowMatrices.length - 16 : (face - 1) * 16;
         this.cameraValues.set(env!.shadowMatrices.subarray(matrix, matrix + 16), offset);
-        if (face < 6) {
-          const light = 12 + env!.values[2] * 12;
+        if (face !== 6) {
+          const light = 12 + (face < 6 ? env!.values[2] : secondSpatialShadowSlot(env!.values)) * 12;
           this.cameraValues.set(env!.values.subarray(light, light + 4), offset + 16);
-          this.cameraValues[offset + 21] = 1 / env!.values[3];
+          this.cameraValues[offset + 21] = 1 / env!.values[face < 6 ? 3 : 585];
         } else this.cameraValues[offset + 20] = 1;
       }
     this.device.queue.writeBuffer(
       this.uniform,
       0,
-      this.cameraValues.subarray(0, hasShadows && !cacheHit ? 512 : 24),
+      this.cameraValues.subarray(0, hasShadows && !cacheHit ? 896 : 24),
     );
     this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats, receiverMasks?.models);
     if (frame.terrain.byteLength) {

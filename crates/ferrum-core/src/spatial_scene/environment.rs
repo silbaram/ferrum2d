@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 584;
+pub(crate) const ENVIRONMENT_VALUES: usize = 592;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -9,6 +9,8 @@ mod light_channels;
 mod light_selection;
 #[path = "lighting_upgrade.rs"]
 mod lighting_upgrade;
+#[path = "point_shadows.rs"]
+pub(super) mod point_shadows;
 pub(crate) use light_selection::LightSelectionDiagnostic;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
 /// Validated cold history, installed only after the matching source/pose transaction commits.
@@ -35,6 +37,7 @@ impl SpatialEnvironment {
             544,
             LIGHT_CHANNEL_VALUES,
             580,
+            584,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -165,6 +168,21 @@ impl SpatialEnvironment {
         {
             return None;
         }
+        if v.len() == 592
+            && (!point_shadows::valid(&a)
+                || ![0., 1.].contains(&a[583])
+                || (a[583] == 0. && a[576..580].iter().any(|x| *x != 0.))
+                || if a[580] == 1. {
+                    !(a[528] == 1.
+                        && a[128] == 1.
+                        && ((a[581] == 4. && a[582] == 4.)
+                            || (a[581] == 2. && [4., 8.].contains(&a[582]))))
+                } else {
+                    a[580..583].iter().any(|x| *x != 0.)
+                })
+        {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -218,8 +236,14 @@ impl SpatialEnvironment {
             frame_values: v.to_vec(),
             selection: light_selection::LightSelection::new(v),
         };
-        if a[2] >= 0. {
-            let p = 12 + a[2] as usize * 12;
+        for slot in [
+            (a[2] >= 0.).then_some(a[2] as usize),
+            point_shadows::second_slot(&a),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let p = 12 + slot * 12;
             let eye = [a[p], a[p + 1], a[p + 2]];
             let far = a[p + 3];
             let near = (far * 0.0001).clamp(0.001, 0.1);
@@ -297,7 +321,7 @@ impl SpatialEnvironment {
                 }
                 sources
             } else {
-                lighting_upgrade::select(&mut v[..512], camera, world, bindings, actor)
+                lighting_upgrade::select(&mut v, camera, world, bindings, actor)
             };
             if self.value_len >= LIGHT_CHANNEL_VALUES {
                 light_channels::remap(&mut v[..LIGHT_CHANNEL_VALUES], sources);
@@ -310,8 +334,21 @@ impl SpatialEnvironment {
                 }
             }
             self.shadow_matrices.clear();
-            if v[2] >= 0. {
-                let p = 12 + v[2] as usize * 12;
+            if self.value_len == 592 {
+                v[588] = if v[0] as u32 & 1 != 0 && v[584] >= 0. {
+                    1.
+                } else {
+                    -1.
+                };
+            }
+            for slot in [
+                (v[2] >= 0.).then_some(v[2] as usize),
+                point_shadows::second_slot(&v),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let p = 12 + slot * 12;
                 let eye = [v[p], v[p + 1], v[p + 2]];
                 let far = v[p + 3];
                 let near = (far * 0.0001).clamp(0.001, 0.1);
@@ -360,7 +397,12 @@ impl SpatialEnvironment {
                 .unwrap_or(v[60]);
             self.frame_values[99] = focus;
         }
-        let base = if v[2] >= 0. { 96 } else { 0 };
+        let base = if v[2] >= 0. { 96 } else { 0 }
+            + if point_shadows::second_slot(&v).is_some() {
+                96
+            } else {
+                0
+            };
         self.shadow_matrices.truncate(base);
         if v[92] > 0. {
             let target = Self::sun_center(&v, camera);

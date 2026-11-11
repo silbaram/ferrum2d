@@ -1,3 +1,4 @@
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import type { SpatialRendererStats } from "./renderer.js";
 import { WebGL2SpatialBloom } from "./webgl2SpatialBloom.js";
 import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from "./spatialBloomKernel.js";
@@ -32,6 +33,9 @@ export class WebGL2SpatialEnvironmentPass {
   private dof?: { texture: WebGLTexture; target: WebGLFramebuffer };
   private readonly clearValue = new Float32Array(4);
   private cube?: WebGLTexture;
+  private cube2?: WebGLTexture;
+  private cubeTarget2?: WebGLFramebuffer;
+  private resolution2 = 0;
   private cubeTarget?: WebGLFramebuffer;
   private width = 0;
   private height = 0;
@@ -92,6 +96,7 @@ export class WebGL2SpatialEnvironmentPass {
   }
   shadowReady(v: Float32Array): boolean {
     return (v[2] < 0 || (this.cube !== undefined && this.resolution === v[3])) &&
+      (secondSpatialShadowSlot(v) < 0 || (this.cube2 !== undefined && this.resolution2 === v[585])) &&
       (!(v.length > 80 && v[92] > 0) || (this.sun !== undefined && this.sunResolution === v[92]));
   }
   prepare(frame: SpatialRenderBufferView, width: number, height: number): void {
@@ -185,7 +190,9 @@ export class WebGL2SpatialEnvironmentPass {
     else this.releaseShadow();
     if (values.length > 80 && values[92] > 0) this.prepareSun(values[92]);
     else this.releaseSun();
-    if (!this.cube && !this.sun) this.releaseShadowProgram();
+    if (secondSpatialShadowSlot(values) >= 0) this.prepareShadow(values[585], true);
+    else this.releaseShadow(true);
+    if (!this.cube && !this.cube2 && !this.sun) this.releaseShadowProgram();
   }
   private parameters(target: number): void {
     const gl = this.gl;
@@ -290,106 +297,60 @@ export class WebGL2SpatialEnvironmentPass {
       this.sunResolution = resolution;
     } catch (error) { this.releaseSun(); throw error; }
   }
-  private prepareShadow(resolution: number): void {
-    if (this.resolution === resolution) return;
-    this.releaseShadow();
+  private prepareShadow(resolution: number, second = false): void {
+    if ((second ? this.resolution2 : this.resolution) === resolution) return;
+    this.releaseShadow(second);
     const gl = this.gl;
+    let cube: WebGLTexture | null = null, target: WebGLFramebuffer | null = null;
     try {
       this.prepareShadowProgram();
-      const cube = gl.createTexture(),
-        target = gl.createFramebuffer();
-      if (!cube || !target) {
-        if (cube) gl.deleteTexture(cube);
-        if (target) gl.deleteFramebuffer(target);
-        throw new Error("Spatial shadow cube allocation failed");
-      }
-      this.cube = cube;
-      this.cubeTarget = target;
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_CUBE_MAP, cube);
-      this.parameters(gl.TEXTURE_CUBE_MAP);
+      cube = gl.createTexture(); target = gl.createFramebuffer();
+      if (!cube || !target) throw Error("Spatial shadow cube allocation failed");
+      gl.activeTexture(gl.TEXTURE0 + (second ? 8 : 1));
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, cube); this.parameters(gl.TEXTURE_CUBE_MAP);
       for (let face = 0; face < 6; face++)
-        gl.texImage2D(
-          gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
-          0,
-          gl.DEPTH_COMPONENT24,
-          resolution,
-          resolution,
-          0,
-          gl.DEPTH_COMPONENT,
-          gl.UNSIGNED_INT,
-          null,
-        );
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target);
-      gl.drawBuffers([gl.NONE]);
-      gl.readBuffer(gl.NONE);
-      // Validate every face before caching the resolution; a transient allocation failure must be retryable.
+        gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.DEPTH_COMPONENT24,
+          resolution, resolution, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target); gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
       for (let face = 0; face < 6; face++) {
-        gl.framebufferTexture2D(
-          gl.FRAMEBUFFER,
-          gl.DEPTH_ATTACHMENT,
-          gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
-          cube,
-          0,
-        );
-        if (
-          gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE
-        ) {
-          throw new Error("Spatial shadow cube target incomplete");
-        }
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+          throw Error("Spatial shadow cube target incomplete");
       }
-      this.resolution = resolution;
+      if (second) { this.cube2 = cube; this.cubeTarget2 = target; this.resolution2 = resolution; }
+      else { this.cube = cube; this.cubeTarget = target; this.resolution = resolution; }
     } catch (error) {
-      this.releaseShadow();
+      if (cube) gl.deleteTexture(cube);
+      if (target) gl.deleteFramebuffer(target);
       throw error;
     }
   }
-  drawShadows(
-    frame: SpatialRenderBufferView,
-    draw: (uniforms: SpatialGeometryUniforms, face: number) => void,
-  ): number {
-    if (!this.cube || !this.shadow || !this.shadowUniforms) return 0;
-    const gl = this.gl,
-      env = frame.environment!,
-      v = env.values,
-      u = this.shadowUniforms,
-      p = 12 + v[2] * 12;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.cubeTarget!);
-    gl.viewport(0, 0, this.resolution, this.resolution);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LESS);
-    gl.depthMask(true);
-    gl.clearDepth(1);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.CULL_FACE);
-    gl.useProgram(this.shadow);
-    gl.uniform1i(u.texture, 0);
-    gl.uniform1i(u.directional, 0);
-    gl.uniform1f(u.texel,1/this.resolution);
-    gl.uniform4fv(u.light, v.subarray(p, p + 4));
-    for (let face = 0; face < 6; face++) {
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER,
-        gl.DEPTH_ATTACHMENT,
-        gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
-        this.cube!,
-        0,
-      );
-      if (
-        gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE
-      ) {
-        this.releaseShadow();
-        throw new Error("Spatial shadow cube target incomplete");
+  drawShadows(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void): number {
+    if (!this.shadow || !this.shadowUniforms) return 0;
+    const gl = this.gl, env = frame.environment!, v = env.values, u = this.shadowUniforms;
+    let count = 0;
+    for (const [cube, target, resolution, slot, faceBase, matrixBase, second] of [
+      [this.cube, this.cubeTarget, this.resolution, v[2], 0, 0, false],
+      [this.cube2, this.cubeTarget2, this.resolution2, secondSpatialShadowSlot(v), 7, 6, true],
+    ] as const) {
+      if (!cube || slot < 0) continue;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target!); gl.viewport(0, 0, resolution, resolution);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.clearDepth(1);
+      gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.useProgram(this.shadow);
+      gl.uniform1i(u.texture, 0); gl.uniform1i(u.directional, 0); gl.uniform1f(u.texel, 1 / resolution);
+      gl.uniform4fv(u.light, v.subarray(12 + slot * 12, 16 + slot * 12));
+      for (let face = 0; face < 6; face++) {
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+          this.releaseShadow(second); throw Error("Spatial shadow cube target incomplete");
+        }
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+        const matrix = (matrixBase + face) * 16;
+        gl.uniformMatrix4fv(u.camera, false, env.shadowMatrices.subarray(matrix, matrix + 16));
+        draw(u, faceBase + face); count++;
       }
-      gl.clear(gl.DEPTH_BUFFER_BIT);
-      gl.uniformMatrix4fv(
-        u.camera,
-        false,
-        env.shadowMatrices.subarray(face * 16, face * 16 + 16),
-      );
-      draw(u, face);
     }
-    return 6;
+    return count;
   }
   drawSunShadow(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void): number {
     if (!this.sun || !this.shadow || !this.shadowUniforms) return 0;
@@ -442,6 +403,10 @@ export class WebGL2SpatialEnvironmentPass {
     if(v.length>=512)this.coneValues.set(v.subarray(144,176));
     gl.uniform4fv(u.lightCone, this.coneValues);
     gl.uniform1i(u.shadowIndex, v[2]);
+    gl.uniform1i(u.shadowIndex2, secondSpatialShadowSlot(v));
+    gl.uniform2f(u.shadowParams2, v[586] ?? 0, v[587] ?? 0);
+    gl.activeTexture(gl.TEXTURE8); gl.bindSampler(8, null); gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.cube2 ?? this.cube ?? null);
+    gl.uniform1i(u.shadowMap2, 8);
     gl.uniform1f(u.shadowBias, v[4]);
     gl.uniform1i(u.shadowFilter, v.length > 80 ? v[95] : 0);
     gl.uniform3fv(u.sunDirection, v.length > 80 ? v.subarray(84, 87) : this.emptyMatrix.subarray(0, 3));
@@ -544,11 +509,11 @@ export class WebGL2SpatialEnvironmentPass {
   }
   resourceStats(): SpatialEnvironmentGpuStats {
     return {
-      textureCount: (this.bloomPass?.targetCount() ?? 0) + (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0) + Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof),
-      renderTargetCount: (this.bloomPass?.targetCount() ?? 0) + (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0) + Number(!!this.resolved) + Number(!!this.dof),
+      textureCount: (this.bloomPass?.targetCount() ?? 0) + (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.cube2 ? 1 : 0) + (this.sun ? 1 : 0) + Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof),
+      renderTargetCount: (this.bloomPass?.targetCount() ?? 0) + (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.cubeTarget2 ? 1 : 0) + (this.sunTarget ? 1 : 0) + Number(!!this.resolved) + Number(!!this.dof),
       textureBytes:
         (this.bloomPass?.textureBytes() ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof))) +
-        (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4,
+        ((this.resolution ** 2 + this.resolution2 ** 2) * 6 + this.sunResolution * this.sunResolution) * 4,
     };
   }
   programCount(): number {
@@ -556,7 +521,7 @@ export class WebGL2SpatialEnvironmentPass {
   }
   depthBytes(): number {
     return (
-      this.width * this.height * 4 + (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4
+      this.width * this.height * 4 + ((this.resolution ** 2 + this.resolution2 ** 2) * 6 + this.sunResolution * this.sunResolution) * 4
     );
   }
   writeBloomStats(stats: SpatialRendererStats, values: Float32Array | undefined, outputWidth: number, outputHeight: number): void {
@@ -574,8 +539,13 @@ export class WebGL2SpatialEnvironmentPass {
     this.width = 0;
     this.height = 0;
   }
-  private releaseShadow(): void {
+  private releaseShadow(second = false): void {
     const gl = this.gl;
+    if (second) {
+      if (this.cube2) gl.deleteTexture(this.cube2);
+      if (this.cubeTarget2) gl.deleteFramebuffer(this.cubeTarget2);
+      this.cube2 = undefined; this.cubeTarget2 = undefined; this.resolution2 = 0; return;
+    }
     if (this.cube) gl.deleteTexture(this.cube);
     if (this.cubeTarget) gl.deleteFramebuffer(this.cubeTarget);
     this.cube = undefined;
@@ -595,6 +565,7 @@ export class WebGL2SpatialEnvironmentPass {
     this.bloomPass?.destroy(); this.bloomPass = undefined;
     this.releaseTarget();
     this.releaseShadow();
+    this.releaseShadow(true);
     this.releaseSun();
     this.releaseShadowProgram();
     if (this.composite) this.gl.deleteProgram(this.composite);

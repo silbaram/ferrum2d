@@ -1,4 +1,5 @@
 import { smokeLightingUpgrade } from "./placement-lighting-upgrade-smoke.mjs";
+import { smokePlacementPointShadows } from "./placement-point-shadows-smoke.mjs";
 import { smokePlacementSunDirection } from "./placement-sun-direction-smoke.mjs";
 import { smokePlacementSunGizmo } from "./placement-sun-gizmo-smoke.mjs";
 import assert from "node:assert/strict";
@@ -130,6 +131,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     await page.locator(`[data-placement-document-key=${JSON.stringify(originalKey)}]`).click();await paint();
     assert.deepEqual(await source(),good,"Returning to the tab must restore its light draft");
     const advanced=mode==="spatial"?await smokeLightingUpgrade(page):undefined;
+    const pointShadows=mode==="spatial"?await smokePlacementPointShadows(page):undefined;
     for(const locale of ["ko","en"]){
       await page.locator('[data-placement-language]').selectOption(locale);await open();
       if(mode==="spatial")await page.locator('[data-placement-lighting-toggle="hemisphere"]').scrollIntoViewIfNeeded();
@@ -158,7 +160,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     const end=await last.boundingBox();assert(end.y+end.height<=scroller.y+scroller.height+1,"Scrolling must reach the end of lighting");
     await page.screenshot({path:`${output}/${mode}-compact.png`,fullPage:true});
     assert.deepEqual(errors,[]);
-    const result={ok:true,mode,advanced,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
+    const result={ok:true,mode,advanced,pointShadows,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
     result.sunDirection = sunDirection;
     result.sunGizmo = sunGizmo;
     if(mode==="2d")result.saving=await smokePlacementLightingSave(parent,timeoutMs);

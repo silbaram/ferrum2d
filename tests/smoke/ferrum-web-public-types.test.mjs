@@ -21,7 +21,7 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
     await run('tar', ['-xzf', join(packed, tarballs[0]), '-C', installed, '--strip-components=1'], project, 'Packed package extraction');
     await writeFile(join(project, 'consumer.ts'), `
       import { createRenderer, restoreGameStateSnapshot,
-        type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec,
+        type PixelPerfectOptions, type FerrumEngine, type SpatialModelInstanceSpec, type SpatialDirectionalLightSpec, type SpatialPointShadowSpec,
         type SpriteLightingMaterialSpec, type SpriteLightingBufferView, type FlatLightingPreparer, type FlatHdrOptions, type ResolvedFlatHdrOptions,
         type SpriteSurfaceMaterialSpec, type SpriteSurfaceBufferView, type SpriteLightMaskBufferView, type SpatialReceiverMaskBufferView,
         type GameStateSnapshot,
@@ -112,6 +112,16 @@ test('packed public declarations compile in an ES2022 consumer without skipping 
       engine.setDataSceneSpatialEnvironment({ lighting: { lights: [], directional: sun } });
       engine.setDataSceneSpatialEnvironment({ composition: 'separated', lighting: { lights: [] }, ambientOcclusion: { strength: 0 } });
       engine.setDataSceneSpatialEnvironment({ composition: 'separated', bloom: { mode: 'wide', quality: 'high', radius: 64 } });
+      const shadowOwners: readonly SpatialPointShadowSpec[] = [{ lightIndex: 0, resolution: 128 }, { lightIndex: 1, normalBias: 0.1 }];
+      const pointEnvironment = { lighting: { lights: [{ position: { x: -40, y: 0, elevation: 64 }, radius: 200 }, { position: { x: 40, y: 0, elevation: 64 }, radius: 200 }], pointShadows: shadowOwners } };
+      engine.setDataSceneSpatialEnvironment(pointEnvironment);
+      const pointPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 11,
+        operations: [{ kind: 'setEnvironment', changes: { environment: pointEnvironment } }] };
+      viewer.updateSpatial(pointPatch.operations);
+      // @ts-expect-error point cube resolutions remain bounded
+      const invalidShadowOwner: SpatialPointShadowSpec = { lightIndex: 0, resolution: 2048 };
+      void invalidShadowOwner;
+
       const bloomPatch: SceneSpatialPatch = { format: 'ferrum2d.scene-spatial.patch', version: 10,
         operations: [{ kind: 'setEnvironment', changes: { environment: { composition: 'separated', bloom: { mode: 'wide', quality: 'low' } } } }] };
       viewer.updateSpatial(bloomPatch.operations);

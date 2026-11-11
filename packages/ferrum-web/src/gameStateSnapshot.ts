@@ -1,3 +1,4 @@
+import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom } from "./spatialBloom.js";
 import { preflightDataSceneLighting } from "./dataSceneRuntimeTarget.js";
 import {
@@ -46,7 +47,11 @@ export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
 /** Latest nested version; non-spatial exploration captures retain v5 and their legacy hashes. */
-export const DATA_SCENE_STATE_VERSION = 12;
+export const DATA_SCENE_STATE_VERSION = 13;
+function hasPointShadowsDocument(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.spatial) && isRecord(value.spatial.environment)
+    && isRecord(value.spatial.environment.lighting) && value.spatial.environment.lighting.pointShadows !== undefined;
+}
 function hasWideBloomDocument(value: unknown): boolean {
   return isRecord(value) && isRecord(value.spatial) && isRecord(value.spatial.environment)
     && isRecord(value.spatial.environment.bloom) && value.spatial.environment.bloom.mode === "wide";
@@ -79,7 +84,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -609,12 +614,14 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 9 &&
     snapshot.version !== 10 &&
     snapshot.version !== 11 &&
+    snapshot.version !== 12 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 or ${DATA_SCENE_STATE_VERSION}.`,
     );
   }
+  if (snapshot.version < 13 && hasPointShadowsDocument(snapshot.authoringDocument)) throw Error(`${path} pointShadows requires data scene state version 13`);
   if (snapshot.version < 12 && hasWideBloomDocument(snapshot.authoringDocument)) throw Error(`${path} wide Bloom requires data scene state version 12`);
   if (hasCombatDocument(snapshot.authoringDocument) && (snapshot.version < 9 || !isRecord(snapshot.progress) || snapshot.progress.combat === undefined)) {
     throw new Error(`${path} combat requires data scene state version 9 and complete combat progress.`);
@@ -625,6 +632,7 @@ export function validateDataSceneStateSnapshot(
         `${path}.progress requires data scene state version 3 or newer.`,
       );
     validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
+    if (snapshot.version < 13 && requestsSpatialPointShadows(snapshot.progress.spatial?.environment)) throw Error(`${path} pointShadows requires data scene state version 13`);
     if (snapshot.version < 12 && requestsSpatialWideBloom(snapshot.progress.spatial?.environment)) throw Error(`${path} wide Bloom requires data scene state version 12`);
     if (snapshot.version < 11 && snapshot.progress.spatial?.lightSelection !== undefined) throw Error(`${path} light selection history requires version 11`);
     if (snapshot.version < 10 && snapshot.progress.spatial?.movingPlatforms !== undefined) throw new Error(`${path} moving platforms require version 10`);
@@ -735,6 +743,7 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasPointShadowsDocument(authoringDocument) || requestsSpatialPointShadows(progress?.spatial?.environment) ? 13 :
       hasWideBloomDocument(authoringDocument) || requestsSpatialWideBloom(progress?.spatial?.environment) ? 12 :
       progress?.spatial?.lightSelection !== undefined ? 11 :
       progress?.spatial?.movingPlatforms !== undefined ? 10 :

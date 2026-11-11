@@ -1,3 +1,4 @@
+export type { SpatialPointShadowSpec } from "./spatialPointShadows.js";
 export type { SpriteNineSliceSpec, SpriteNineSliceUpdate } from "./spriteNineSlice.js";
 export type { SceneSpatialPatch, SceneSpatialPatchOperation } from "./sceneSpatialPatch.js";
 export {createSpriteNormalWorkerClient,SpriteNormalWorkerError,SPRITE_NORMAL_WORKER_LIMITS} from "./spriteNormalWorker.js";

@@ -468,6 +468,28 @@ test("all native shadow masks pack into disjoint instance ranges before any pass
   equal(s.shadowTriangleCount, 4);
   models.destroy();
 });
+
+test("v2 packs 1024 instances for all fourteen passes without overwriting ranges or exceeding the GPU buffer", async () => {
+  const { models, device } = setup(), f = frame(source(), 1024);
+  f.version = 2;
+  for (let i = 0; i < 1024; i++) f.words[i * 20 + 2] = 16383;
+  await models.preload([...f.assets.values()]); models.validate(f); models.prepare(f);
+  const s = stats(); s.shadowTriangleCount = 0;
+  models.uploadInstances(f, true, s);
+  const writes = device.writes.filter(w => (w.buffer as Resource).descriptor.label === "Spatial model matrices");
+  equal(writes.length, 1);
+  equal(writes[0].values.byteLength, 14 * 1024 * 64);
+  equal(writes[0].values.byteLength <= ((writes[0].buffer as Resource).descriptor as GPUBufferDescriptor).size, true);
+  for (let bit = 0; bit < 14; bit++) {
+    const pass = new Pass();
+    models.draw(f, pass as unknown as GPURenderPassEncoder, {}, s, {}, false, bit, {});
+    deepEqual(pass.offsets, [bit * 1024 * 64]);
+    equal(pass.draws[0][1], 1024);
+    equal(writes[0].values[(bit * 1024 + 1023) * 16 + 12], 10230);
+  }
+  equal(s.shadowTriangleCount, 13 * 1024);
+  models.destroy();
+});
 test("shadow instancing ignores receive-only differences while camera draws preserve receiver batches", async () => {
   const { models } = setup(),
     f = frame(source(), 3);

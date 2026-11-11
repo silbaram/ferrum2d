@@ -36,6 +36,26 @@ test("shadow cache invalidates native geometry, light, atlas/alpha texture and s
   equal(cache.matches(frame, textures), false, "legacy/deferred packets cannot reuse untracked geometry");
 });
 
+test("second point-light radial depth invalidates even when supplied matrices and caster revisions match", () => {
+  const frame: SpatialRenderBufferView = {
+    version: 2, vertexStride: 11, terrainRevision: 1, camera: new Float32Array(28),
+    terrain: new Float32Array(), terrainVertexCount: 0, terrainDrawRanges: new Uint32Array(),
+    billboards: new Float32Array(), billboardVertexCount: 0,
+    environment: { version: 10, values: compileSpatialEnvironment({ lighting: {
+      lights: [0, 1].map(x => ({ position: { x, y: 0, elevation: 20 }, radius: 100 })), pointShadows: [{ lightIndex: 0 }, { lightIndex: 1 }],
+    } }), shadowMatrices: new Float32Array(192), shadowCasters: new Float32Array(), shadowCasterVertexCount: 0,
+      shadowSubmission: { version: 1, revision: 1, ranges: new Uint32Array() } },
+  };
+  const cache = new SpatialShadowCache(), textures = { texture: () => ({}) };
+  equal(cache.matches(frame, textures), false); cache.commit(frame);
+  equal(cache.matches(frame, textures), true);
+  for (const offset of [24, 25, 26, 27]) {
+    frame.environment!.values[offset]++;
+    equal(cache.matches(frame, textures), false, `second light field ${offset} must invalidate radial depth`);
+    cache.commit(frame); equal(cache.matches(frame, textures), true);
+  }
+});
+
 test("model shadow cache ignores camera/receive state and unused assets but tracks shadow geometry and LOD", async()=>{
   const {createSpatialModelAsset}=await import('../src/spatialModel.js');
   const makeAsset=(id:string)=>createSpatialModelAsset({contentId:id.repeat(64),bounds:[-1,0,-1,1,2,1],primitives:[],images:[],diagnostics:[]});

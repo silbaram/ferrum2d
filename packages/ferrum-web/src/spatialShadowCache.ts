@@ -1,5 +1,6 @@
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import type { SpriteTextureSource } from "./spriteBatch.js";
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 type ShadowTextures = SpriteTextureSource | {
     textureRevision(id: number): number | undefined;
 };
@@ -14,8 +15,9 @@ export class SpatialShadowCache {
     private memory?: ArrayBufferLike;
     private offset = -1;
     private matrixLength = 0;
-    private readonly matrices = new Float32Array(112);
+    private readonly matrices = new Float32Array(208);
     private readonly pointLight = new Float32Array(4);
+    private readonly pointLight2 = new Float32Array(4);
     private readonly textureRevisions = new Map<number, number>();
     private readonly pendingTextures = new Map<number, number>();
     matches(frame: SpatialRenderBufferView, textures: ShadowTextures): boolean {
@@ -35,6 +37,8 @@ export class SpatialShadowCache {
             }
         }
         const light = env.values[2] >= 0 ? env.values.subarray(12 + env.values[2] * 12, 16 + env.values[2] * 12) : undefined;
+        const second = secondSpatialShadowSlot(env.values);
+        const light2 = second >= 0 ? env.values.subarray(12 + second * 12, 16 + second * 12) : undefined;
         let sameTextures = this.textureRevisions.size === this.pendingTextures.size;
         for (const [id, revision] of this.pendingTextures)
             if (this.textureRevisions.get(id) !== revision)
@@ -44,6 +48,7 @@ export class SpatialShadowCache {
             this.terrainRevision === frame.terrainRevision &&
             this.casterRevision === env.shadowSubmission.revision &&
             (light === undefined || light.every((v, i) => v === this.pointLight[i])) &&
+            (light2 === undefined || light2.every((v, i) => v === this.pointLight2[i])) &&
             this.matrixLength === env.shadowMatrices.length && env.shadowMatrices.every((v, i) => v === this.matrices[i]) &&
             sameTextures;
     }
@@ -52,7 +57,7 @@ export class SpatialShadowCache {
         const packet = frame.models;
         if (packet)
             for (let i = 0; i < packet.words.length; i += 20) {
-                const mask = packet.words[i + 2] & 254;
+                const mask = packet.words[i + 2] & 16382;
                 if (!mask)
                     continue;
                 if (offset + 18 > this.modelWordCount || this.models[offset++] !== packet.words[i]
@@ -71,7 +76,7 @@ export class SpatialShadowCache {
         const packet = frame.models;
         if (packet)
             for (let i = 0; i < packet.words.length; i += 20) {
-                const mask = packet.words[i + 2] & 254;
+                const mask = packet.words[i + 2] & 16382;
                 if (!mask)
                     continue;
                 this.models[offset++] = packet.words[i];
@@ -87,6 +92,8 @@ export class SpatialShadowCache {
         this.casterRevision = env.shadowSubmission?.revision ?? -1;
         if (env.values[2] >= 0)
             this.pointLight.set(env.values.subarray(12 + env.values[2] * 12, 16 + env.values[2] * 12));
+        const second = secondSpatialShadowSlot(env.values);
+        if (second >= 0) this.pointLight2.set(env.values.subarray(12 + second * 12, 16 + second * 12));
         this.matrixLength = env.shadowMatrices.length;
         this.matrices.set(env.shadowMatrices);
         this.textureRevisions.clear();

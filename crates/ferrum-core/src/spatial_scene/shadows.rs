@@ -17,13 +17,21 @@ impl SpatialScene {
         if !self.environment.shadows() {
             return;
         }
-        for index in 0..self.environment.shadow_matrices.len() / 16 {
-            let matrix = &self.environment.shadow_matrices[index * 16..index * 16 + 16];
-            let face = if self.environment.values.is_some_and(|v| v[2] < 0.) {
-                6
+        let v = &self.environment.frame_values;
+        let second = v.len() == 592 && v[588] >= 0.;
+        let sun = v.get(92).is_some_and(|n| *n > 0.);
+        for face in 0..if second { 13 } else { 7 } {
+            if (face < 6 && v[2] < 0.) || (face == 6 && !sun) {
+                continue;
+            }
+            let index = if face == 6 {
+                self.environment.shadow_matrices.len() / 16 - 1
+            } else if face >= 7 {
+                face - 1
             } else {
-                index
+                face
             };
+            let matrix = &self.environment.shadow_matrices[index * 16..index * 16 + 16];
             let start = self.shadow_draw_ranges.len();
             for (source, vertices, stride) in [
                 (0, self.terrain.as_slice(), 36),

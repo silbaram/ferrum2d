@@ -1,3 +1,4 @@
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
@@ -109,6 +110,9 @@ export class WebGL2SpatialPass {
         "lightCone",
         "lightCount",
         "shadowIndex",
+        "shadowIndex2",
+        "shadowParams2",
+        "shadowMap2",
         "shadowBias",
         "shadowMap",
         "normalMap",
@@ -242,6 +246,9 @@ export class WebGL2SpatialPass {
     gl.activeTexture(gl.TEXTURE4);
     const texture4 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
     const sampler4 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    gl.activeTexture(gl.TEXTURE8);
+    const cube8 = gl.getParameter(gl.TEXTURE_BINDING_CUBE_MAP) as WebGLTexture | null;
+    const sampler8 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
     const materialSlots = [5, 6, 7].map(unit => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       return { unit, texture: gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null,
@@ -317,6 +324,7 @@ export class WebGL2SpatialPass {
       );
       gl.uniform1i(this.uniforms.texture, 0);
       gl.uniform1i(this.uniforms.shadowMap, 1);
+      gl.uniform1i(this.uniforms.shadowMap2, 8);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindSampler(2, this.sampler);
       gl.bindTexture(gl.TEXTURE_2D, null);
@@ -361,7 +369,7 @@ export class WebGL2SpatialPass {
         const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
         const cacheHit = shadowReady && cacheMatches;
         stats.shadowCacheHit = cacheHit;
-        const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0));
+        const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0) | (secondSpatialShadowSlot(environment!.values) >= 0 ? 16128 : 0));
         this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats, receiverMasks?.models);
         if (!cacheHit && hasShadows && casters.length) {
           if (!this.shadowBuffer) {
@@ -567,6 +575,9 @@ export class WebGL2SpatialPass {
         gl.bindSampler(slot.unit, slot.sampler);
         gl.bindTexture(gl.TEXTURE_2D, slot.texture);
       }
+      gl.activeTexture(gl.TEXTURE8);
+      gl.bindSampler(8, sampler8);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, cube8);
       gl.activeTexture(gl.TEXTURE4);
       gl.bindSampler(4, sampler4);
       gl.bindTexture(gl.TEXTURE_2D, texture4);
