@@ -8,6 +8,9 @@ import { compileSpatialEnvironment, decodeSpatialEnvironment, resolveSpatialEnvi
 import { hasSpatialSelectionSource, supportsSpatialWideBloom } from "../src/spatialBloom.js";
 import { spatialBloomPlan, spatialBloomFetchBudget } from "../src/spatialBloomKernel.js";
 import { applySceneSpatialPatch, sceneSpatialPatchVersion } from "../src/sceneSpatialPatch.js";
+import { attachDataSceneProgressAdapter, preflightDataSceneProgressRestore } from "../src/dataSceneProgress.js";
+import { attachDataSceneRuntimeEngineAdapter } from "../src/dataSceneRuntimeTarget.js";
+import type { FerrumEngine } from "../src/engineTypes.js";
 
 test("wide Bloom v9 preserves explicit policy absence, disabled settings, and legacy reserved words", () => {
   for (const quality of ["low", "balanced", "high"] as const) for (const selection of [undefined, {}, { enabled: false, hysteresis: 0, fadeSeconds: 0, resetDistance: 0 }]) {
@@ -77,4 +80,35 @@ test("old cores reject wide source including OFF before native mutation or asset
     equal(api.configureDataSceneSpatial(scene, {}), false); equal(api.preflightDataSceneSpatialModels(scene), false);
   }
   equal(calls, 0);
+});
+
+test("progress-only wide source rejects old cores before authored model resource lookup", () => {
+  let modelLookups = 0, mutations = 0;
+  const engine = attachDataSceneRuntimeEngineAdapter({
+    preflightDataSceneSpatialModels: () => { modelLookups++; return false; },
+  } as unknown as FerrumEngine, {
+    supportsSpatialWideBloom: () => false,
+    textureId: () => { throw Error("unexpected texture lookup"); },
+    spawnDataSceneEntity: () => { mutations++; return undefined; },
+    useDataScene: () => { mutations++; },
+  });
+  attachDataSceneProgressAdapter(engine, {
+    epoch: () => 1, capture: () => new Uint32Array(), navigation: () => new Float64Array(),
+    obstacles: () => new Uint32Array(), animations: () => new Float64Array(),
+    spatialRevision: () => 1, viewport: () => ({ width: 400, height: 300 }),
+    spatial: () => new Float64Array(), preflightSpatial: () => true,
+    restore: () => { mutations++; return true; },
+  });
+  const camera = { projection: "orthographic" as const, position: { x: 0, y: -200, elevation: 100 }, target: { x: 0, y: 0, elevation: 0 }, height: 200 };
+  const document = { format: "ferrum2d.consumer.scene-authoring", version: 1,
+    sceneComposition: { prefabs: { tree: { props: { components: { visual: { kind: "sprite", texture: 0, width: 8, height: 8 }, collider: "none", layer: "wall" } } } },
+      fragments: { main: { instances: [{ id: "tree", prefab: "tree", x: 0, y: 0 }] } } },
+    behaviorRecipes: { entities: {} }, spatial: { camera, terrain: [], billboards: {},
+      models: { tree: { asset: "unloaded", contentId: "a".repeat(64) } }, environment: { composition: "separated", bloom: { strength: 0 } } } };
+  for (const strength of [0, 1]) {
+    const progress = { navigation: null, instances: [{ id: "tree", removed: false, interactionConsumed: false, spatialPose: { x: 0, y: 0, heightSpan: null } }],
+      spatial: { camera, environment: { composition: "separated" as const, bloom: { mode: "wide" as const, strength } } } };
+    throws(() => preflightDataSceneProgressRestore(engine, {}, progress, document), /wide Bloom requires native/);
+  }
+  equal(modelLookups, 0); equal(mutations, 0);
 });

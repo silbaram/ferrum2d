@@ -374,10 +374,11 @@ export function preflightDataSceneProgressRestore(
       const values = combatProgressValues(progress.combat, progress.instances.map(instance => instance.id), combatProjectilePrefabNames(document), combatSpawnPrefabNames(document));
       if (requireAdapter(engine).preflightCombat?.(states, values) !== true) throw new Error("Data Scene combat progress restore rejected native checkpoint state.");
     }
+    // Saved effects can override the authored source; reject unsupported effects before model asset lookup.
+    preflightEnvironmentProgress(engine, progress, document, options);
     const spec=resolveSceneAuthoringDocument(document).spatial;
     if(spec?.models && !engine.preflightDataSceneSpatialModels(spec,Object.fromEntries(progress.instances.filter(i=>i.spatialPose).map(i=>[i.id,{x:i.spatialPose!.x,y:i.spatialPose!.y,elevation:i.spatialPose!.heightSpan?.elevation ?? 0}]))))
       throw new Error("Spatial model resources/content must be prepared before restoring progress.");
-    preflightEnvironmentProgress(engine, progress, document, options);
     preflightSpatialProgress(
       requireAdapter(engine),
       progress,
