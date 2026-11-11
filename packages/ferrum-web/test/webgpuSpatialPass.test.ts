@@ -135,6 +135,37 @@ function vertices(count: number, id = 0xffffff) {
   for (let i = 0; i < count; i++) data.set([i % 2, i % 3, 0, 0, 0, 1, 1, 1, 1, id, 0.2], i * 11);
   return data;
 }
+
+test("owner caches preserve unrelated maps through partial draws, resize and abandoned encoders", () => {
+  const { pass, draw } = setup(), f = frame();
+  f.camera.set([0, 120, -160, 240, 0, 40, 24, 0, .1, 2000, 320, 240], 16);
+  f.environment = { version: 10, values: compileSpatialEnvironment({ lighting: {
+    lights: [0, 1].map(x => ({ position: { x, y: 0, elevation: 100 }, radius: 300 })),
+    pointShadows: [{ lightIndex: 0, resolution: 128 }, { lightIndex: 1, resolution: 256 }],
+    directional: { direction: { x: -1, y: -1, elevation: 2 }, shadows: { resolution: 128 } },
+  } }), shadowMatrices: new Float32Array(208), shadowCasters: vertices(6, 1), shadowCasterVertexCount: 6,
+    shadowSubmission: { version: 1, revision: 1, ranges: new Uint32Array() } };
+  equal(draw(f).stats.shadowPassCount, 13); equal(draw(f).stats.shadowPassCount, 0);
+  f.environment.values[12]++;
+  equal(draw(f).stats.shadowPassCount, 6); equal(draw(f).stats.shadowPassCount, 0);
+  f.environment.values[24]++;
+  const aborted = { beginRenderPass(d: GPURenderPassDescriptor) {
+    if (d.label === "Spatial geometry") throw Error("main encode failed");
+    return new Pass();
+  } } as unknown as GPUCommandEncoder;
+  throws(() => pass.draw(f, aborted, {}, 320, 240), /main encode failed/);
+  equal(draw(f).stats.shadowPassCount, 6, "retry retains submitted primary/sun");
+  f.environment.shadowMatrices[192]++;
+  equal(draw(f).stats.shadowPassCount, 1);
+  f.environment.values[585] = 512;
+  const encoder = { beginRenderPass: () => new Pass() } as unknown as GPUCommandEncoder;
+  equal(pass.draw(f, encoder, {}, 320, 240).shadowPassCount, 6);
+  equal(draw(f).stats.shadowPassCount, 6, "an abandoned secondary resize cannot publish a cache hit");
+  equal(draw(f).stats.shadowPassCount, 0);
+  f.environment.shadowSubmission!.revision++;
+  equal(draw(f).stats.shadowPassCount, 13, "common geometry updates every map");
+  pass.destroy();
+});
 function frame(): Extract<
   SpatialRenderBufferView,
   {

@@ -1,4 +1,3 @@
-import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
@@ -13,7 +12,7 @@ import {
   spatialFragmentSource,
   type SpatialGeometryUniforms,
 } from "./webgl2SpatialShaders.js";
-import { SpatialShadowCache } from "./spatialShadowCache.js";
+import { SpatialShadowCache, spatialShadowMaps, spatialShadowModelPasses } from "./spatialShadowCache.js";
 import type { SpatialRendererStats } from "./renderer.js";
 export type { SpatialRendererStats } from "./renderer.js";
 export class WebGL2SpatialPass {
@@ -361,20 +360,15 @@ export class WebGL2SpatialPass {
       if (activeEnvironment) {
         const effects = (this.environmentPass ??=
           new WebGL2SpatialEnvironmentPass(gl, this.linearInput));
-        const shadowReady = effects.shadowReady(environment!.values);
         const casters = environment!.shadowCasters;
-        const hasShadows = environment!.values[2] >= 0 || environment!.values[92] > 0;
-        // Collect texture revisions even for a new target so its first successful render can be cached.
-        const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
-        const cacheHit = shadowReady && cacheMatches;
-        // Resource replacement or a partial redraw must never inherit a prior cache commit.
-        // Invalidate before preparation too: later allocation/upload failures can leave new targets alive.
-        if (!cacheHit) this.shadowCache.invalidate();
+        const activeMaps = spatialShadowMaps(frame), hasShadows = activeMaps !== 0;
+        const dirtyMaps = this.shadowCache.prepare(frame, textures, effects.shadowReadyMaps(environment!.values));
+        const cacheHit = hasShadows && dirtyMaps === 0;
         effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         stats.shadowCacheHit = cacheHit;
-        const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0) | (secondSpatialShadowSlot(environment!.values) >= 0 ? 16128 : 0));
+        const modelPasses = spatialShadowModelPasses(dirtyMaps);
         this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats, receiverMasks?.models);
-        if (!cacheHit && hasShadows && casters.length) {
+        if (dirtyMaps && casters.length) {
           if (!this.shadowBuffer) {
             const b = gl.createBuffer();
             if (!b)
@@ -398,7 +392,7 @@ export class WebGL2SpatialPass {
           this.shadowBytes = 0;
         }
         const before = stats.drawCalls;
-        if (!cacheHit) {
+        if (dirtyMaps) {
           const submit = (u: SpatialGeometryUniforms, face: number) => {
             const ranges = environment!.shadowSubmission?.ranges;
             gl.activeTexture(gl.TEXTURE0);
@@ -426,11 +420,11 @@ export class WebGL2SpatialPass {
             }
             this.models.draw(frame.models,face===6?7:face+1,u,stats,this.modelInstanceBuffer);
           };
-          stats.shadowPassCount = effects.drawShadows(frame, submit) + effects.drawSunShadow(frame, submit);
-          if (stats.shadowPassCount) this.shadowCache.commit(frame);
+          stats.shadowPassCount = effects.drawShadows(frame, submit, dirtyMaps) + effects.drawSunShadow(frame, submit, dirtyMaps);
+          if (stats.shadowPassCount) this.shadowCache.commit(frame, dirtyMaps);
         }
         stats.shadowDrawCalls = stats.drawCalls - before;
-        if (environment!.shadowSubmission && !cacheHit) {
+        if (environment!.shadowSubmission && dirtyMaps) {
           const modelTriangles=frame.models ? Array.from(frame.models.words).reduce((n,_,i)=>i%20===0 ? n+frame.models!.assets.get(frame.models!.words[i])!.triangleCount : n,0) : 0;
           stats.shadowCulledTriangleCount = stats.shadowPassCount * ((frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 + modelTriangles) - stats.shadowTriangleCount;
         }

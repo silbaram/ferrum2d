@@ -51,7 +51,7 @@ for (const target of ["primary", "secondary", "sun"] as const) {
       if (target === "primary") values[3] = values[139] = 512;
       else values[target === "secondary" ? 585 : 92] = 512;
       fail = true; throws(draw, /injected shadow draw failure/);
-      equal(draw().shadowPassCount, count, "the retry must redraw every shadow face");
+      equal(draw().shadowPassCount, target === "sun" ? 1 : 6, "the retry redraws the changed map and preserves other cached maps");
       equal(draw().shadowPassCount, 0, "a completed retry may be cached");
     } finally { pass.destroy(); }
     equal(textures.size, 0); equal(targets.size, 0);

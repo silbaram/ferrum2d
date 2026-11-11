@@ -192,6 +192,10 @@ try {
               for (const row of backend.rows) {
                 const file = `point-shadow-${colorManagement}-${projection.projection}-${backend.backend}-${row.name}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
                 await writeFile(resolve(output, file), Buffer.from(row.image.split(",")[1], "base64")); row.image = file;
+                if (row.cold) {
+                  const coldFile = file.replace(/\.png$/, "-cold.png");
+                  await writeFile(resolve(output, coldFile), Buffer.from(row.cold.image.split(",")[1], "base64")); row.cold.image = coldFile;
+                }
               }
               backend.pixelAudit = await auditSpatialPointShadowPixels(backend.rows, file => readFile(resolve(output, file)));
             }

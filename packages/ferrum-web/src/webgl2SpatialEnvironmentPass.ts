@@ -94,10 +94,10 @@ export class WebGL2SpatialEnvironmentPass {
       throw error;
     }
   }
-  shadowReady(v: Float32Array): boolean {
-    return (v[2] < 0 || (this.cube !== undefined && this.resolution === v[3])) &&
-      (secondSpatialShadowSlot(v) < 0 || (this.cube2 !== undefined && this.resolution2 === v[585])) &&
-      (!(v.length > 80 && v[92] > 0) || (this.sun !== undefined && this.sunResolution === v[92]));
+  shadowReadyMaps(v: Float32Array): number {
+    return Number(this.cube !== undefined && this.resolution === v[3]) |
+      (this.cube2 !== undefined && this.resolution2 === v[585] ? 2 : 0) |
+      (this.sun !== undefined && this.sunResolution === v[92] ? 4 : 0);
   }
   prepare(frame: SpatialRenderBufferView, width: number, height: number): void {
     if (
@@ -325,7 +325,7 @@ export class WebGL2SpatialEnvironmentPass {
       throw error;
     }
   }
-  drawShadows(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void): number {
+  drawShadows(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void, maps = 7): number {
     if (!this.shadow || !this.shadowUniforms) return 0;
     const gl = this.gl, env = frame.environment!, v = env.values, u = this.shadowUniforms;
     let count = 0;
@@ -333,7 +333,7 @@ export class WebGL2SpatialEnvironmentPass {
       [this.cube, this.cubeTarget, this.resolution, v[2], 0, 0, false],
       [this.cube2, this.cubeTarget2, this.resolution2, secondSpatialShadowSlot(v), 7, 6, true],
     ] as const) {
-      if (!cube || slot < 0) continue;
+      if (!cube || slot < 0 || !(maps & (second ? 2 : 1))) continue;
       gl.bindFramebuffer(gl.FRAMEBUFFER, target!); gl.viewport(0, 0, resolution, resolution);
       gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.clearDepth(1);
       gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.useProgram(this.shadow);
@@ -352,8 +352,8 @@ export class WebGL2SpatialEnvironmentPass {
     }
     return count;
   }
-  drawSunShadow(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void): number {
-    if (!this.sun || !this.shadow || !this.shadowUniforms) return 0;
+  drawSunShadow(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void, maps = 7): number {
+    if (!(maps & 4) || !this.sun || !this.shadow || !this.shadowUniforms) return 0;
     const gl = this.gl, u = this.shadowUniforms, matrices = frame.environment!.shadowMatrices;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.sunTarget!); gl.viewport(0, 0, this.sunResolution, this.sunResolution);
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.clearDepth(1);

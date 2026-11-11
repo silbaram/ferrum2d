@@ -171,12 +171,15 @@ export class WebGpuSpatialShadows {
         throw Error("Spatial shadow target exceeds device texture limit");
   }
   ready(frame: SpatialRenderBufferView): boolean {
+    const v = frame.environment?.values, mask = this.readyMaps(frame);
+    return (!v || v[2] < 0 || !!(mask & 1)) &&
+      (secondSpatialShadowSlot(v) < 0 || !!(mask & 2)) && (!v || !(v[92] > 0) || !!(mask & 4));
+  }
+  readyMaps(frame: SpatialRenderBufferView): number {
     const v = frame.environment?.values;
-    return (
-      (!v || v[2] < 0 || (this.point?.resolution === v[3] && this.point.rendered)) &&
-      (secondSpatialShadowSlot(v) < 0 || (this.point2?.resolution === v![585] && this.point2.rendered)) &&
-      (!v || !(v[92] > 0) || (this.sun?.resolution === v[92] && this.sun.rendered))
-    );
+    return Number(!!this.point?.rendered && this.point.resolution === v?.[3]) |
+      (this.point2?.rendered && this.point2.resolution === v?.[585] ? 2 : 0) |
+      (this.sun?.rendered && this.sun.resolution === v?.[92] ? 4 : 0);
   }
   prepare(frame: SpatialRenderBufferView): void {
     this.validate(frame);
@@ -249,18 +252,19 @@ export class WebGpuSpatialShadows {
   draw(
     encoder: GPUCommandEncoder,
     submit: (pass: GPURenderPassEncoder, face: number) => void,
+    maps = 7,
   ): number {
     this.assertAlive();
     let count = 0;
-    if (this.point) this.point.rendered = false;
-    if (this.point2) this.point2.rendered = false;
-    if (this.sun) this.sun.rendered = false;
+    if (maps & 1 && this.point) this.point.rendered = false;
+    if (maps & 2 && this.point2) this.point2.rendered = false;
+    if (maps & 4 && this.sun) this.sun.rendered = false;
     for (const [target, base] of [
       [this.point, 0],
       [this.sun, 6],
       [this.point2, 7],
     ] as const)
-      if (target)
+      if (target && (maps & (base === 0 ? 1 : base === 7 ? 2 : 4)))
         for (let i = 0; i < target.faces.length; i++) {
           const pass = beginWebGpuRenderPass(this.device, encoder, {
             label: `Spatial shadow face ${base + i}`,
@@ -278,10 +282,10 @@ export class WebGpuSpatialShadows {
         }
     return count;
   }
-  commitSubmission(): void {
-    if (this.point) this.point.rendered = true;
-    if (this.point2) this.point2.rendered = true;
-    if (this.sun) this.sun.rendered = true;
+  commitSubmission(maps = 7): void {
+    if (maps & 1 && this.point) this.point.rendered = true;
+    if (maps & 2 && this.point2) this.point2.rendered = true;
+    if (maps & 4 && this.sun) this.sun.rendered = true;
   }
   textureBytes(): number {
     return (

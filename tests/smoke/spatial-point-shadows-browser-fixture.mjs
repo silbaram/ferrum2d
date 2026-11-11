@@ -39,7 +39,7 @@ async function probe(backend, projection, colorManagement) {
   let device = renderer.gpuDevice?.();
   const listen = () => device?.addEventListener("uncapturederror", event => errors.push(event.error.message)); listen();
   const originalRAF = window.requestAnimationFrame, originalCancel = window.cancelAnimationFrame, pending = new Map();
-  let serial = 1, clock = 0, packet, frame, engine, registry;
+  let serial = 1, clock = 0, packet, frame, engine, registry, retainTerrain = false, nativeTerrain;
   window.requestAnimationFrame = callback => { const id = serial++; pending.set(id, callback); return id; };
   window.cancelAnimationFrame = id => pending.delete(id);
   const step = () => { clock += 17; const callbacks = [...pending.values()]; pending.clear(); for (const cb of callbacks) cb(clock); };
@@ -48,8 +48,14 @@ async function probe(backend, projection, colorManagement) {
   const makeEngine = async () => {
     const e = await createEngine(state => {
       frame = state;
+      const previous = packet?.spatial, source = state.renderCommandBuffer.spatial;
       packet = { ...state.renderCommandBuffer, buffer: state.renderCommandBuffer.buffer.slice(),
-        spatial: state.renderCommandBuffer.spatial && ownedSpatial(state.renderCommandBuffer.spatial) };
+        spatial: source && ownedSpatial(source) };
+      if (retainTerrain && previous && source && nativeTerrain?.memory === source.terrain.buffer &&
+          nativeTerrain.offset === source.terrain.byteOffset && nativeTerrain.length === source.terrain.length &&
+          nativeTerrain.revision === source.terrainRevision) packet.spatial.terrain = previous.terrain;
+      nativeTerrain = source && { memory: source.terrain.buffer, offset: source.terrain.byteOffset,
+        length: source.terrain.length, revision: source.terrainRevision };
     }, undefined, undefined, () => renderer.viewportSize());
     check(e.registerDataSceneSpatialModel("rock", asset), "point shadow model registration");
     e.configureFixedTimestep(false); engines.push(e); registry = createSceneInstanceHandleRegistry(); return e;
@@ -87,7 +93,7 @@ async function probe(backend, projection, colorManagement) {
       "point shadow geometry or GPU error", { stats, errors });
     return { data: await pixels(renderer, canvas), stats: { ...stats.spatial }, resources: renderer.resourceStats() };
   };
-  const row = async (name, env, expectedPasses, retryCurrentFrame = false) => {
+  const row = async (name, env, expectedPasses, retryCurrentFrame = false, coldReference = false) => {
     window.pointShadowState = { backend, projection, colorManagement, name };
     if (env) { check(engine.setDataSceneSpatialEnvironment(env), "point shadow source rejected", name); step(); }
     const first = await draw(!retryCurrentFrame), warm = await draw();
@@ -97,13 +103,22 @@ async function probe(backend, projection, colorManagement) {
     const envValues = packet.spatial.environment?.values;
     if (envValues?.length === 592 && envValues[0] & 1) {
       const d = packet.spatial.environment.lightSelection;
-      check(d.words[2 * 6 + 1] === 0 && (d.words[2 * 6 + 3] & 1), "first shadow owner diagnostics");
+      check(d.words[envValues[138] * 6 + 1] === 0 && (d.words[envValues[138] * 6 + 3] & 1), "first shadow owner diagnostics");
       if (envValues[584] >= 0) {
-        check(d.words[1] === 1 && (d.words[3] & 1), "second shadow owner diagnostics");
+        check(d.words[envValues[584] * 6 + 1] === 1 && (d.words[envValues[584] * 6 + 3] & 1), "second shadow owner diagnostics");
         check(packet.spatial.models.version === 2 && packet.spatial.models.words.some((word, i) => i % 20 === 2 && (word & 0x3f00) !== 0), "second cube model mask missing");
       }
     }
-    rows.push({ name, stats: first.stats, warm: warm.stats, resources: warm.resources, width: canvas.width, height: canvas.height,
+    let cold;
+    if (coldReference) {
+      // Force all maps cold through the public packet stream boundary, preserving identical geometry.
+      packet.spatial.terrain = packet.spatial.terrain.slice();
+      const reference = await draw(), expected = packet.spatial.environment.values[92] > 0 ? 13 : 12;
+      check(reference.stats.shadowPassCount === expected && difference(reference.data, warm.data) === 0,
+        "partial shadow pixels differ from a full cold redraw", { name, stats: reference.stats });
+      cold = { stats: reference.stats, image: png(reference.data, canvas.width, canvas.height) };
+    }
+    rows.push({ name, cold, stats: first.stats, warm: warm.stats, resources: warm.resources, width: canvas.width, height: canvas.height,
       environmentVersion: packet.spatial.environment?.version, modelVersion: packet.spatial.models.version, image: png(warm.data, canvas.width, canvas.height) });
     images.push(warm.data); return warm;
   };
@@ -183,10 +198,40 @@ async function probe(backend, projection, colorManagement) {
       finally { gl.clear = clear; }
       check(shadowRetryInjected, "secondary shadow redraw was not interrupted");
     }
-    await row("resize", null, 12, shadowRetryInjected);
+    await row("resize", null, 6, shadowRetryInjected);
     const pixel = { ...environment("hard"), pixelArt: { width: 160, height: 120, snapCamera: true }, bloom: { mode: "wide", strength: .3, threshold: .2 } };
     const bloom = await row("pixel-art-wide", pixel, 12);
     check(bloom.stats.bloomDrawCalls > 0 && bloom.stats.bloomTextureBytes > 0, "dual shadows with active wide Bloom/pixelArt", bloom.stats);
+    // Keep the owned terrain stream stable exactly while its native pointer/revision stays stable.
+    // Light edits and native face-membership changes now exercise per-map cache reuse across real frames.
+    const ownerEnv = structuredClone(sun);
+    await row("owner-cache-baseline", ownerEnv, 13, false, true); retainTerrain = true;
+    ownerEnv.lighting.lights[2].position.x -= 24;
+    await row("primary-moved", ownerEnv, 6, false, true);
+    ownerEnv.lighting.lights[0].position.x += 24;
+    await row("secondary-moved", ownerEnv, 6, false, true);
+    ownerEnv.lighting.directional.direction.x += .2;
+    await row("sun-moved", ownerEnv, 1, false, true);
+    ownerEnv.lighting.pointShadows[1].resolution = 512;
+    await row("secondary-resolution", ownerEnv, 6, false, true);
+    ownerEnv.lighting.pointShadows[0].bias += .01;
+    ownerEnv.lighting.pointShadows[1].normalBias += .01;
+    ownerEnv.lighting.shadowFilter = "hard";
+    await row("sampling-only", ownerEnv, 0, false, true);
+    const directional = ownerEnv.lighting.directional; delete ownerEnv.lighting.directional;
+    await row("sun-disabled", ownerEnv, 0, false, true);
+    ownerEnv.lighting.directional = directional;
+    await row("sun-enabled", ownerEnv, 1, false, true);
+    ownerEnv.lighting.pointShadows.reverse();
+    await row("owners-swapped", ownerEnv, 12, false, true);
+    // An owned packet is also a supported input. Update its common caster geometry and revision together.
+    for (let i = 0; i < packet.spatial.environment.shadowCasters.length; i += 11)
+      packet.spatial.environment.shadowCasters[i] += 12;
+    packet.spatial.environment.shadowSubmission.revision++;
+    await row("shared-caster-changed", null, 13, false, true);
+    c.fillStyle = "white"; c.fillRect(0, 0, 8, 16); c.clearRect(0, 0, 4, 8);
+    await renderer.loadTexture(1, texture.toDataURL());
+    await row("alpha-replaced", null, 13, false, true);
     check(!errors.length, "point shadow GPU validation errors", errors);
     renderer.destroy(); check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "point shadow resource leak", renderer.resourceStats());
     return { backend, projection, colorManagement, rows, images, oracles, restored: true, coldPoseRetained: true, shadowRetryInjected, recovered, snapshotVersion: saved.dataScene.version, errors };
