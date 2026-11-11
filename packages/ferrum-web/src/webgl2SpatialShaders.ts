@@ -209,8 +209,9 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
 color+=emission;
 if(u_fog && !u_separated){
  float z=max(dot(v_world-u_eye,u_forward),0.0),amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);
- if(u_heightFog.x>0.){float origin=u_fogCamera.w>0.?u_eye.y:v_world.y-u_forward.y*z;
-  amount=heightFogAmount(z,u_fogCamera.w>0.?length(v_world-u_eye):z,origin,v_world.y,u_heightFog,u_fogRange);}
+ if(u_heightFog.x>0.){float receiver=v_world.y-u_heightFog.y;
+  float origin=u_fogCamera.w>0.?u_eye.y-u_heightFog.y:receiver-u_forward.y*z;
+  amount=heightFogAmount(z,u_fogCamera.w>0.?length(v_world-u_eye):z,origin,receiver,u_heightFog,u_fogRange);}
  color=mix(color,u_fogColor,amount);
 }
 outColor=vec4(color,1.0);}`;
@@ -300,8 +301,9 @@ if((u_stage==1 || !u_separated) && u_ao.x>0. && u_ao.y>0. && depth<1.) {
 }
 if(u_stage==1 && u_fog){
  float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.);
- if(u_heightFog.x>0.){float origin=u_fogCamera.x+(u_perspective?0.:u_fogCamera.y*position.y);
-  float receiver=u_fogCamera.x+u_fogCamera.y*position.y+u_fogCamera.z*z;
+ if(u_heightFog.x>0.){float eyeOffset=u_fogCamera.x-u_heightFog.y;
+  float origin=eyeOffset+(u_perspective?0.:u_fogCamera.y*position.y);
+  float receiver=eyeOffset+u_fogCamera.y*position.y+u_fogCamera.z*z;
   amount=heightFogAmount(z,u_perspective?length(position):z,origin,receiver,u_heightFog,u_fogRange);}
  color=mix(color,u_fogColor,amount);
 }

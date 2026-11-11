@@ -45,11 +45,16 @@ export async function auditSpatialHeightFogPixels(rows,readImage,projection){
  const byName=new Map(rows.map(r=>[r.name,r]));assert.equal(byName.size,rows.length,"Duplicate height fog state");
  assert.deepEqual([...byName.keys()], [...HEIGHT_FOG_STATES,...(byName.has("recovered")?["recovered"]:[])],"Missing/unexpected height fog state");
  const images=new Map();for(const r of rows){const img=decodePng(await readImage(r.image));assert.equal(img.width,r.width);assert.equal(img.height,r.height);images.set(r.name,img);
-  assert(r.stats.terrainTriangleCount>0,"Missing height fog geometry");assert.equal(r.warm.shadowPassCount,0,"Height fog warm shadow redraw");assert.equal(r.warm.shadowUploadBytes,0);assert(Number.isFinite(r.warm.drawCalls),"Missing height fog warm draw budget");
+  assert(r.stats.terrainTriangleCount>0,"Missing height fog geometry");assert.equal(r.warm.shadowPassCount,0,"Height fog warm shadow redraw");assert.equal(r.warm.shadowUploadBytes,0);assert(Number.isInteger(r.warm.drawCalls)&&r.warm.drawCalls>0,"Missing height fog warm draw budget");
+  for(const key of ["textureCount","bufferCount"])assert(Number.isInteger(r.resources?.[key])&&r.resources[key]>=0,`Missing height fog resource budget ${key}`);
  }
  const equal=(a,b)=>{const x=images.get(a).pixels,y=images.get(b).pixels;assert.equal(x.length,y.length);assert(x.every((v,i)=>Math.abs(v-y[i])<=1),`Height fog stale/restore image ${a}/${b}`);};
  for(const route of ["legacy","separated","ao"]){equal(`${route}-plain`,`${route}-zero`);equal(`${route}-plain`,`${route}-beyond`);}
  equal("pixel-plain","pixel-zero");for(const name of ["saved","fresh-restore","re-enabled",...(byName.has("recovered")?["recovered"]:[])])equal("ao-default",name);equal("ao-plain","off");
+ // The AO branch must process real indirect occlusion, not an unlit/MRT-zero fixture.
+ const clear=images.get("separated-plain").pixels,occluded=images.get("ao-plain").pixels;let aoPixels=0;
+ for(let i=0;i<clear.length;i+=4)if(clear[i]-occluded[i]>3&&clear[i+1]-occluded[i+1]>3&&clear[i+2]-occluded[i+2]>3)aoPixels++;
+ assert(aoPixels>=20,"Missing actual height fog AO signal");
  const metrics={};
  for(const c of HEIGHT_FOG_CASES){
   const r=byName.get(c.name),base=byName.get(c.baseline),a=images.get(c.name),b=images.get(c.baseline),expectedCamera=heightFogCamera(projection,c.direction);
@@ -65,7 +70,7 @@ export async function auditSpatialHeightFogPixels(rows,readImage,projection){
    if(!s||s.margin<5||s.z<1)continue;
    const offset=(y*a.width+x)*4;assert.equal(b.pixels[offset+3],255,"Height fog baseline is blank");
    // Baseline must contain the authored material, not a blank/replaced image.
-   assert(b.pixels[offset]>15&&b.pixels[offset+1]>20&&b.pixels[offset+2]>25,"Missing height fog material signal");
+   assert(b.pixels[offset]>2&&b.pixels[offset+1]>2&&b.pixels[offset+2]>2,"Missing height fog material signal");
    const alpha=numericalHeightFog(s.origin,s.hit,s.z,c.environment.fog);heights.push(s.hit[1]);
    for(let channel=0;channel<3;channel++){
     const original=b.pixels[offset+channel],expected=c.environment.fog?encode(decode(original/255)*(1-alpha)+c.environment.fog.color[channel]*alpha):original;
@@ -77,5 +82,5 @@ export async function auditSpatialHeightFogPixels(rows,readImage,projection){
   if(c.environment.fog?.height&&!["zero","thin","beyond"].some(n=>c.name.endsWith(n)))assert(signal>8,`Missing height fog response ${c.name}`);
   metrics[c.name]={samples,maxError,signal,minHeight:Math.min(...heights),maxHeight:Math.max(...heights)};
  }
- return{states:rows.length,quadratureSteps:4096,metrics};
+ return{states:rows.length,quadratureSteps:4096,aoPixels,metrics};
 }

@@ -258,7 +258,7 @@
     "smoke:spatial-point-shadows": "pnpm test:spatial-point-shadows-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --point-shadows-only",
     "test:spatial-bloom-report": "node --test tests/smoke/spatial-bloom-report.test.mjs",
     "smoke:spatial-wide-bloom": "pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --wide-bloom-only",
-    "test:spatial-height-fog-report": "node --test tests/smoke/spatial-height-fog-report.test.mjs",
+    "test:spatial-height-fog-report": "node --test tests/smoke/spatial-height-fog-report.test.mjs tests/smoke/spatial-height-fog-precision-report.test.mjs",
     "smoke:spatial-height-fog": "pnpm test:spatial-height-fog-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --height-fog-only"
   },
   "devDependencies": {

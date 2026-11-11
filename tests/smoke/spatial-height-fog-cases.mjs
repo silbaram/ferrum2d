@@ -8,19 +8,20 @@ export function heightFogCamera(projection, direction="down") {
   return {projection,position:{x:0,y:-150,elevation:direction==="down"?100:20},target:{x:0,y:0,elevation:direction==="up"?65:20},
     ...(projection==="orthographic"?{height:160}:{fovDegrees:50}),near:.1,far:1000};
 }
+const indirect={ambient:[1,1,1],lights:[]};
 const fog=(height={},start=0,end=500)=>({color:[.7,.5,.2],start,end,height});
 export const HEIGHT_FOG_CASES=[];
 for(const route of ["legacy","separated","ao"]){
-  const base={composition:route==="legacy"?"legacy":"separated",...(route==="ao"?{ambientOcclusion:{strength:1,radius:4,bias:.1}}:{})};
+  const base={composition:route==="legacy"?"legacy":"separated",...(route==="ao"?{lighting:indirect,ambientOcclusion:{strength:1,radius:16,bias:.1}}:{})};
   for(const [name,value]of Object.entries({plain:{color:[.7,.5,.2],start:600,end:800},default:fog(),zero:fog({density:0}),uniform:fog({falloff:0}),thin:fog({falloff:1e-7,density:.00001}),steep:fog({baseHeight:25,falloff:10}),below:fog({baseHeight:200,density:.003}),clipped:fog({baseHeight:30,density:.02},100,140),beyond:fog({},600,800),linear:{color:[.7,.5,.2],start:100,end:300}}))
     HEIGHT_FOG_CASES.push({name:`${route}-${name}`,direction:"down",baseline:`${route}-plain`,environment:{...base,...(value?{fog:value}:{})}});
 }
 for(const direction of ["horizontal","up"]){
   for(const [name,value]of Object.entries({plain:{color:[.7,.5,.2],start:600,end:800},default:fog({baseHeight:25,density:.007}),uniform:fog({falloff:0}),steep:fog({baseHeight:25,falloff:10}),clipped:fog({baseHeight:25},40,120)}))
-    HEIGHT_FOG_CASES.push({name:`${direction}-${name}`,direction,baseline:`${direction}-plain`,environment:{composition:"separated",ambientOcclusion:{strength:1,radius:4,bias:.1},...(value?{fog:value}:{})}});
+    HEIGHT_FOG_CASES.push({name:`${direction}-${name}`,direction,baseline:`${direction}-plain`,environment:{composition:"separated",lighting:indirect,ambientOcclusion:{strength:1,radius:16,bias:.1},...(value?{fog:value}:{})}});
 }
 for(const [name,value]of Object.entries({plain:{color:[.7,.5,.2],start:600,end:800},default:fog(),zero:fog({density:0})}))
-  HEIGHT_FOG_CASES.push({name:`pixel-${name}`,direction:"down",baseline:"pixel-plain",environment:{composition:"separated",ambientOcclusion:{strength:1,radius:4,bias:.1},pixelArt:{width:160,height:120,snapCamera:true},...(value?{fog:value}:{})}});
+  HEIGHT_FOG_CASES.push({name:`pixel-${name}`,direction:"down",baseline:"pixel-plain",environment:{composition:"separated",lighting:indirect,ambientOcclusion:{strength:1,radius:16,bias:.1},pixelArt:{width:160,height:120,snapCamera:true},...(value?{fog:value}:{})}});
 for(const [name,value]of Object.entries({plain:{color:[.7,.5,.2],start:600,end:800},default:fog(),clipped:fog({baseHeight:30,density:.02},100,140)}))
   HEIGHT_FOG_CASES.push({name:`lit-${name}`,direction:"down",baseline:"lit-plain",environment:{composition:"separated",fog:value,
     lighting:{ambient:[.2,.2,.2],lights:[-50,50].map(x=>({position:{x,y:0,elevation:100},radius:300,intensity:1})),

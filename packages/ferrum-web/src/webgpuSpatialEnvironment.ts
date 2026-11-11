@@ -85,9 +85,9 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
  if((u32(e(0u))&2u)!=0u && (compositionFlags()&1u)==0u){
   let z=max(dot(world-env.eye.xyz,env.forward.xyz),0.);
   var amount=clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.);
-  if(env.heightFog.x>0.){var origin=world.y-env.forward.y*z;var rayLength=z;
-   if(env.view.z>0.){origin=env.eye.y;rayLength=length(world-env.eye.xyz);}
-   amount=heightFogAmount(z,rayLength,origin,world.y,env.heightFog,vec2f(e(71u),e(72u)));}
+  if(env.heightFog.x>0.){let receiver=world.y-env.heightFog.y;var origin=receiver-env.forward.y*z;var rayLength=z;
+   if(env.view.z>0.){origin=env.eye.y-env.heightFog.y;rayLength=length(world-env.eye.xyz);}
+   amount=heightFogAmount(z,rayLength,origin,receiver,env.heightFog,vec2f(e(71u),e(72u)));}
   color=mix(color,vec3f(e(73u),e(74u),e(75u)),amount);
  }
  return color;
@@ -170,9 +170,9 @@ fn compose(f:F,stage:u32)->vec4f{
  }
  if(stage==1u && (flags&2u)!=0u){
   var amount=clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.);
-  if(env.heightFog.x>0.){var origin=env.fogCamera.x+env.fogCamera.y*position.y;var rayLength=z;
-   if(env.view.z>0.){origin=env.fogCamera.x;rayLength=length(position);}
-   let receiver=env.fogCamera.x+env.fogCamera.y*position.y+env.fogCamera.z*z;
+  if(env.heightFog.x>0.){let eyeOffset=env.fogCamera.x-env.heightFog.y;var origin=eyeOffset+env.fogCamera.y*position.y;var rayLength=z;
+   if(env.view.z>0.){origin=eyeOffset;rayLength=length(position);}
+   let receiver=eyeOffset+env.fogCamera.y*position.y+env.fogCamera.z*z;
    amount=heightFogAmount(z,rayLength,origin,receiver,env.heightFog,vec2f(e(71u),e(72u)));}
   color=mix(color,vec3f(e(73u),e(74u),e(75u)),amount);
  }
