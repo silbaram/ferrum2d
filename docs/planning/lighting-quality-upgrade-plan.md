@@ -2,7 +2,7 @@
 
 기준일: 2026-11-11
 
-상태: M2-a·M3·M4·M5 필수 개발·자동 회귀·리뷰 완료 · 다음 단계는 실게임·실기기 품질/시간 검증
+상태: M2-a·M3·M4·M5 필수 개발·리뷰 및 기준 PC 실제 GPU 회귀/기준 씬 시간 측정 완료 · 실제 문제 게임/목표 환경 수용 검증 입력 대기
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -122,8 +122,9 @@ exposure 전 전체 밝기에 적용한다. emission도 포함하며 별도 emis
 입력·근사·자원 수명·구 source 호환성은 [넓은 HDR Bloom 계약](../engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
 
 추가 draw/target bytes/texture-load 상한을 실제 renderer·profiler·report에 연결하고 독립 HDR 픽셀 기준으로 검증했다.
-작업량은 GPU 실행 시간이 아니다. AO/Bloom ON/OFF 시간 대조와 실제 장면의 AO 경계 halo·얇은 geometry·
-카메라 이동·DOF foreground 누출 수용 기준은 개발 후 실게임·실기기 검증에 남긴다.
+작업량은 GPU 실행 시간이 아니다. 현재 Radeon8060S 기준 씬의 AO/Bloom ON/OFF 시간 대조는 개발 후 검증에서 수행했다.
+실제 문제 게임의 AO 경계 halo·얇은 geometry·카메라 이동·DOF foreground 누출과 목표 환경의 수용 기준은
+대상 프로젝트/씬을 확보한 뒤 검증한다.
 temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추가하지 않는다.
 
 근거: [전체 화면 GLSL](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2ShaderSources.ts),
@@ -293,8 +294,33 @@ Native1,682개+integration1·SDK1,528개, wide 기본/안개/안개+AO2,688개 �
 WebGL2 D3D11과 WebGPU AMD non-fallback을 확인하고 wide2,688개 상태를 실제 GPU offscreen 경로에서도 검증했다.
 원본은 로컬 `artifacts/lighting-remaining/post-development/hardware-wide/run-Hya0zT/report.json`과
 `artifacts/lighting-remaining/post-development/hardware-browser.json`이다.
-같은 기기의 native canvas 전체 Spatial 회귀는 진행 중이다. 이는 현재 PC의 잠정 fixture 기준이며,
-실제 문제 게임/씬·사용자가 정한 목표 환경·시간 예산·품질 수용 기준의 검증 완료를 뜻하지 않는다.
+같은 기기의 native canvas 전체 Spatial 행렬도 네 viewport/DPR 조합 모두 통과했다. 환경2,240개·재질1,024개·
+mask1,120개·광원 선택1,664개·그림자3,744개 상태와 wide2,688개 상태를 포함하며, 각 page의 실제 AMD
+WebGL renderer/WebGPU non-fallback adapter도 검사했다. 원본은
+`artifacts/lighting-remaining/post-development/hardware-spatial-canvas/run-kHGIBQ/report.json`과 `artifacts/lighting-remaining/post-development/hardware-spatial-adapters.json`이다.
+이는 현재 PC의 잠정 fixture 기준이며, 실제 문제 게임/씬·사용자가 정한 목표 환경·시간 예산·품질 수용 기준의
+검증 완료를 뜻하지 않는다.
+
+같은 PC에서 원본 `hd2d-environment.json`을 public SDK로 실행해 AO·gather·wide low/balanced/high·AO+wide의
+OFF→ON을 측정했다. 1280×720/DPR1과 세로390×844/DPR2, 양 backend에서 조건당24 warmup+96 측정 frame,
+총24쌍·4,608개 GPU sample을 발행/완료 frame ID로 연결했으며 누락은0이다. 세로/DPR2도 같은 desktop GPU의
+viewport emulation이며 실물 모바일 측정이 아니다. CPU render/Rust update·target bytes·GPU 시간 원본은
+`artifacts/lighting-remaining/post-development/effect-timing.json`과 `artifacts/lighting-remaining/post-development/effect-timing-summary.json`이다.
+모든 측정 frame은 정적 shadow cache hit이며 추가 shadow pass는0이다. 동적 caster의 shadow 갱신 비용은 이 시간 표에 포함하지 않는다.
+
+아래는 해당 기준 씬의 global legacy/separated·1280×720/DPR1 평균 GPU 시간이다. GL은 frame 구간
+TIME_ELAPSED, WebGPU는 render-pass 구간 합이므로 backend 간 절대값을 동등한 frame 시간으로 비교하지 않는다.
+고정 OFF→ON 순서·desktop 부하와 관찰된 timestamp 양자화의 영향을 포함하며 제품 ms/FPS 합격선을 설정한 표가 아니다.
+
+| Backend | Bloom | 반경 CSS px | OFF mean ms | ON mean ms | 차이 ms |
+| --- | --- | --- | --- | --- | --- |
+| WebGL2 | gather | 24 | 0.964 | 1.173 | +0.209 |
+| WebGL2 | wide balanced | 64 | 0.941 | 1.289 | +0.349 |
+| WebGPU | gather | 24 | 0.165 | 0.603 | +0.438 |
+| WebGPU | wide balanced | 64 | 0.166 | 0.318 | +0.152 |
+
+반경·halo 품질이 다른 비교이며, texture-load 상한이나 low/balanced/high 이름만으로 GPU 시간의 단조 순서를
+보장하지 않는다. 실제 문제 게임의 큰 맵·접촉/곡면·품질 수용 및 목표 기기별 절대 예산은 여전히 입력 대기다.
 M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
@@ -384,7 +410,7 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 ## 9. 범위 결정과 보류 조건
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
-- **다음:** M5-c 넓은 Bloom·비용/preset 검증. 실게임·실기기는 개발 완료 후 진행한다.
+- **개발 완료 후 잔여 검증:** 실제 문제 게임의 품질과 목표 환경의 성능 수용 기준을 확인한다. M5-c 개발과 기준 PC의 실제 GPU 회귀·기준 씬 비용 대조는 완료했다.
 - **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
