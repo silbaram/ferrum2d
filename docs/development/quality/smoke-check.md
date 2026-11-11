@@ -3079,3 +3079,37 @@ SDK/native 회귀는 환경v11 prefix·reserved tail·선택 정책·legacy/두 
 OFF 보존·입력 거절의 원자성·구 core의 자산 조회 전 거절·patch12/state14 downgrade를 확인한다.
 WebGPU 두 uniform record의 PCSS tail·기존 frame 전환 시 초기화·추가 target 없음과 depth cache 재사용도 검사한다.
 보고서는 Spatial GPU `run-*/report.json`의 `sunPcssCases`와 PNG다. 실게임/목표 GPU·브라우저의 FPS·품질 수용 검증은 별도다.
+
+### Spatial 점광원 PCSS 회귀
+
+`pnpm smoke:spatial-point-pcss`는 `test:spatial-point-pcss-report`의 독립 PNG 판정기 음성 테스트를
+실행한 뒤 public tarball·실제 Wasm·WebGL2/WebGPU를 검증한다. 전체
+`smoke:spatial-webgpu-offscreen`에도 포함하며 수동 CI(`workflow_dispatch`)의 `validate` job에서 실행한다.
+`extended_browser_smoke` 입력과 무관하고 일반 push/PR 자동 실행을 뜻하지 않는다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의 32 context에서 1,264개 상태를 확인한다.
+이 fixture의 canvas는 CSS 최대 640×480이며 세로 viewport에서는 390×480으로 좁아진다.
+실제 drawing buffer는 DPR을 반영한다. 물체 높이 0.25/16/64, 광원 반지름 0/2/8,
+기준 texel cap 2/16/32, cube 해상도 128/256/512/1024를 교차하고 width/height와 world profile을 기록한다.
+
+PNG 판정기는 577개 world-space 수신점에서 각 위치의 no-shadow/ambient 기준으로 조명을 정규화한다.
+접촉보다 분리된 그림자가 넓고, hard/PCF3와 구별되며 광원 반지름·cap이 실제 픽셀에 반영되어야 한다.
+반지름 0은 hard와 같고, 해상도 변경과 subtexel camera 이동의 폭 변화는 허용 범위 이내여야 한다.
+2-unit caster를 보존하며 녹색 모델 재질로 수신 영역을 구분해 경사/곡면 acne를 제한한다.
+큐브 edge와 세 면 corner를 가로지르는 그림자는 중앙 누출 없이 번짐이 나타나야 한다.
+
+빨강·초록 점광원에 PCSS를 각각 적용한 PNG와 둘 다 적용한 PNG를 대조한다.
+다른 점광원과 파랑 태양 PCSS 성분이 보존되고, 두 owner의 필터가 실제로 작동해야 한다.
+sampling-only 변경은 0 shadow pass, 단일 cube의 cold frame은 6, 두 cube+sun은 13을 요구한다.
+매 상태의 warm frame은 shadow pass/upload 0과 동일 pixels, receiver/caster geometry 통계를 확인한다.
+progress-only PCSS의 state15를 새 엔진에서 복원하고 OFF/재활성·WebGPU 실제 장치 파괴/복구·자원 0을 검증한다.
+음성 테스트는 빈 신호·고정 blur·효과 없는 반지름/cap·owner 결합·두 번째 필터 무시·seam 누출·acne·warm redraw를 거절한다.
+
+SDK/native 검증은 v12/608의 prefix·reserved tail·실제 owner 필요 조건, legacy 단일/배열 단일/두 owner,
+태양 PCSS·선택·Bloom의 독립 조합, OFF source 보존과 입력 거절 원자성, 구 core의 자산 준비 전 거절,
+patch13/state15 및 progress-only downgrade를 검사한다. GL uniform과 WebGPU 두 camera record의
+owner 값·legacy 전환 초기화·추가 target 없음, sampling-only depth cache 재사용도 확인한다.
+배열형 shadow owner의 1025개 authored billboard와 65개 terrain texture batch는 PCSS 유무 모두에서
+작성/활성화 사전 검사로 거절한다. 이 회귀는 두 누락 경로를 실패 재현한 뒤 추가했다.
+query당 최대 48 depth fetch는 정적 상한이며 GPU 시간 측정값으로 해석하지 않는다.
+보고서는 Spatial GPU `run-*/report.json`의 `pointPcssCases`와 PNG다. 실제 게임/목표 기기의 수용 검증은 별도다.

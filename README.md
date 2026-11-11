@@ -85,6 +85,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 - **넓은 HDR Bloom · 개발 소스:** [선택형 wide 모드](docs/engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)는 low/balanced/high 품질과 추가 draw·target bytes·texture-load 예산을 제공합니다.
 - **다중 점광원 그림자 · 개발 소스:** [선택형 `pointShadows`](docs/engine/data-scene-spatial.md#선택형-다중-점광원-그림자)로 최대2개 점광원의 독립 그림자와 태양 그림자를 함께 사용합니다. 광원별 캐시로 변경된 그림자만 갱신하며 기존 단일 설정도 유지합니다.
 - **태양광 소프트 그림자 · 개발 소스:** [선택형 PCSS](docs/engine/data-scene-spatial.md#선택형-태양광-pcss)는 물체와 수신면의 거리에 따라 경계를 넓힙니다. 각반경·최대 번짐 반경과48회 depth sample 상한을 제공합니다.
+- **점광원 소프트 그림자 · 개발 소스:** [점광원별 PCSS](docs/engine/data-scene-spatial.md#선택형-점광원-pcss)는 최대 두 광원에 독립적인 광원 반지름·번짐 상한을 제공하며 기존 깊이 맵과 캐시를 재사용합니다.
 - **게임 구도:** 편집용 카메라로 작업 화면을 탐색하고, 별도의 게임 카메라에 위치·시선·각도·확대/촬영 범위를 작성해 미리보기와 저장에 반영합니다.
 
 WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따라 선택합니다.

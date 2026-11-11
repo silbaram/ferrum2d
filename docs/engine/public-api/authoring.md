@@ -906,3 +906,9 @@ OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지
 선택형 `lighting.polygonOccluders`도 순서·좌표·OFF를 기존 source/patch/Undo/JSON 복원에서 보존한다.
 비어 있지 않은 요청은 renderer의 `flatLightingPolygonVersion?.() === 1`을 자산 조회/native 교체 전에 검사한다.
 잘못된 도형·지원 없는 preparer는 기존 씬을 보존한다. [다각형 원본 계약](../data-scene-presentation.md#flat-볼록-다각형-차폐-개발-소스)을 따른다.
+
+
+`SpatialPointPcssSpec`은 `spatial.environment.lighting.shadows.pcss` 또는 `pointShadows[i].pcss`의
+점광원별 소프트 그림자 설정이다. 환경v12/608·patch13/state15를 사용하며 legacy 단일 owner와
+최대 두 owner, 태양 PCSS, Undo/Redo·진행 override·OFF source를 지원한다.
+[점광원 PCSS 계약](../data-scene-spatial.md#선택형-점광원-pcss)을 따른다.

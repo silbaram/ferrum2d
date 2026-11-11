@@ -2047,7 +2047,7 @@ Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·�
 정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
 model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
 WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
-WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 PCSS 확장을 포함해2640 bytes,
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS 확장을 포함해2672 bytes,
 stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
 shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
@@ -2080,3 +2080,16 @@ uniform 유효 크기는16 bytes 늘지만 stride2816과 두 record5632-byte all
 반경이 작은 경우 hard 비교로 단축하고, camera/frame 기반 noise나 추가 GPU 자원/그림자 pass를 사용하지 않는다.
 기존 receiver-plane 보정·유한 coverage fade와 per-map cache를 공유한다. 각도/반경 변경은 sampling-only다.
 비용 상한·근사 한계는 [태양 PCSS 계약](../../engine/data-scene-spatial.md#선택형-태양광-pcss)을 따른다.
+
+
+선택형 점광원 PCSS는 environment v12/608·patch13/state15를 사용한다. Rust는 600~607의 두 owner
+record를 검증·보존하고 OFF frame에서만 비운다. 선택·소유권·행렬·model80-byte v2는 유지한다.
+TS는 raw cube depth와 수신 평면 보정을 공유하는 point sample에서 blocker 비율을 구하고
+16+32회로 제한된 필터를 실행한다. cube 면 선택과 texel 중심 보정은 hard/PCF3와 같으며
+광원별 PCSS override가 없는 query는 기존 경로를 유지한다. 고정 disk 좌표 생성은 태양과 공유한다.
+WebGPU private uniform의 660~663/664~667은 각각 첫/두 번째 point PCSS record다.
+record2672 bytes·stride2816·두 camera allocation5632 bytes이며 두 번째 record에도 새 tail을 복사한다.
+WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가면 두 backend 모두 tail을 0으로 쓴다.
+샘플링 설정은 depth cache key에 포함하지 않는다. GPU texture/target/instance staging 예산은 늘리지 않는다.
+구 core 사전 거절은 직접 설정, authoring preflight, progress-only 복원에서도 실행한다.
+[점광원 PCSS 계약](../../engine/data-scene-spatial.md#선택형-점광원-pcss)이 사용법과 근사 상한을 정의한다.

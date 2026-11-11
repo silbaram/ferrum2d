@@ -1261,6 +1261,9 @@ route는 저장하지 않으며 v6 pose 복원 뒤 idle이다. 세부 제한과 
 각반경0~5도(기본0.5), 탐색/필터 반경1~32 texel(기본16)이며 최대16+32 depth fetch다.
 기존 hard/PCF3·점광원은 유지한다. 환경v11/600·patch12/state14와 구 core 거절 조건은
 [태양 PCSS 계약](../data-scene-spatial.md#선택형-태양광-pcss)을 따른다.
+선택 `shadows.pcss` 또는 `pointShadows[i].pcss: SpatialPointPcssSpec`은 각 점광원에 독립적인 접촉 경화를 적용한다.
+광원 반지름·기준 texel cap, 환경v12/608·patch13/state15와 비용 상한은
+[점광원 PCSS 계약](../data-scene-spatial.md#선택형-점광원-pcss)을 따른다.
 기본/고급 DOF는 최대 13/25 sample 위치이며 선택 actor 초점은 native view-axis depth를 사용한다.
 HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surface normal·world view depth를
 사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
@@ -1294,7 +1297,7 @@ authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 �
 거리별 정적 model 선택을 작성한다. 모든 LOD 자원을 먼저 등록하며 native가 거리·hysteresis·shadow
 필요 여부를 고른다. physics는 visual unload와 무관하다. 자동 네트워크 다운로드는 제공하지 않는다.
 `attachments`는 parent body 기준 child pose이며 native가 위치·높이·회전을 갱신한다.
-`DATA_SCENE_STATE_VERSION` 최신값은14다. 태양 PCSS 문서/진행은v14, `pointShadows`는v13, wide Bloom은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
+`DATA_SCENE_STATE_VERSION` 최신값은15다. 점광원 PCSS 문서/진행은v15, 태양 PCSS 문서/진행은v14, `pointShadows`는v13, wide Bloom은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
 기존 문서는 v5/v6/v7 capture/hash를 유지한다. root yaw를 저장하고 child pose는 복원 시 재계산한다.
 [모델 고도화 계약](../data-scene-spatial.md#모델-고도화-재질-batch움직이는-묶음청크lod)을 따른다.
 

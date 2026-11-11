@@ -2184,7 +2184,7 @@ Low 품질도 지정된 그림자 광원 2개를 유지하고 두 큐브를128 �
 
 `lighting.directional.shadows.pcss`를 지정하면 태양광에 거리별 반그림자를 적용한다.
 물체와 수신면이 가까우면 경계가 선명하고 떨어질수록 넓어진다. 생략하면 기존
-`lighting.shadowFilter`의 hard/PCF3를 사용한다. 점광원은 계속 해당 공통 필터를 사용한다.
+`lighting.shadowFilter`의 hard/PCF3를 사용한다. 점광원도 별도 PCSS override가 없으면 해당 공통 필터를 사용한다.
 공개 타입 `SpatialSunPcssSpec`은 root/core/authoring에서 제공한다.
 
 ```ts
@@ -2226,7 +2226,7 @@ WebGL2·WebGPU 모두 기존 태양 depth map을 사용한다. blocker 탐색16�
 최대 반경 제한 때문에 큰 각도/높은 해상도에서는 기대한 world-space 번짐보다 좁아질 수 있다.
 고정된 적은 샘플은 매우 얇거나 복잡한 겹침에서 모든 blocker를 찾는 것을 보장하지 않는다.
 넓은 그림자의 품질은 실제 씬에서 확인해야 하며 GPU ms/FPS는 별도 측정 대상이다.
-점광원 PCSS, cascade, 무한 태양 범위, temporal accumulation은 포함하지 않는다.
+이 태양 옵션은 점광원 필터를 바꾸지 않으며 cascade, 무한 태양 범위, temporal accumulation은 포함하지 않는다.
 알고리즘의 탐색·반경 추정·필터 단계는 [NVIDIA PCSS 설명](https://developer.download.nvidia.com/shaderlibrary/docs/shadow_PCSS.pdf)을 참고하고,
 이 구현은 엔진의 orthographic 태양 맵에 맞춰 각반경과 고정 비용 상한을 사용한다.
 
@@ -2239,3 +2239,71 @@ v11의 model ABI는 기존80-byte v2이며 태양 face6·마지막 행렬 위치
 기존 환경v1~v10·patch1~11·state2~13은 계속 읽는다. 새 기능은 cold capability
 `spatial_sun_pcss_abi_version() === 1`로 확인하며 구 core에서는 OFF/progress-only 입력도
 자산 준비와 씬 변경 전에 거절한다.
+
+## 선택형 점광원 PCSS
+
+`lighting.shadows.pcss` 또는 `lighting.pointShadows[i].pcss`는 각 점광원 그림자에
+접촉 경화 필터를 적용한다. 물체와 수신면이 가까우면 선명하고 떨어지면 번짐이 넓어진다.
+최대 두 owner에 서로 다른 값을 쓸 수 있으며 태양 PCSS와도 함께 사용한다.
+생략한 owner는 기존 공통 `shadowFilter`의 hard/PCF3를 그대로 사용한다.
+공개 타입 `SpatialPointPcssSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  lighting: {
+    lights: [
+      { position: { x: -40, y: 0, elevation: 100 }, radius: 300 },
+      { position: { x: 40, y: 0, elevation: 80 }, radius: 240 },
+    ],
+    shadowFilter: "pcf3",
+    pointShadows: [
+      { lightIndex: 0, resolution: 512, pcss: { sourceRadius: 4, maxRadiusTexels: 16 } },
+      { lightIndex: 1, resolution: 256, pcss: { sourceRadius: 2, maxRadiusTexels: 8 } },
+    ],
+  },
+});
+```
+
+| 필드 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `pcss` | 선택 object | 빈 object도 기본값으로 활성. 제거하면 공통 필터로 복귀 |
+| `sourceRadius` | world 단위 0~1000, 기본 1 | 그림자 필터의 광원 반지름. 0은 hard 그림자 |
+| `maxRadiusTexels` | 1~32, 기본 16 | 탐색·필터 tangent disk의 반경 상한. 분수 허용 |
+
+반경 단위는 큐브 면 중심의 texel을 기준으로 하며 방향 공간의 기울기는 `2 × 반경 / 해상도`다.
+큐브 가장자리에서는 투영 때문에 실제 면 texel 간격과 다르다. 각 tap은 방향에서 면과 texel 중심을
+다시 선택하므로 면을 넘는 필터도 같은 radial depth 계약으로 비교한다.
+`sourceRadius`는 기존 점광원의 조도·감쇠·영향 반경·spot cone이나 발광 mesh를 변경하지 않는다.
+모든 숫자는 유한 범위로 검증한다. 기존 `shadows`와 `pointShadows`의 동시 작성은 계속 거절한다.
+
+WebGL2/WebGPU 모두 기존 depth cube를 사용한다. 탐색 16회 뒤 receiver-plane으로 보정한
+blocker/receiver 거리 비율을 평균하고, `sourceRadius × (수신 거리 - blocker 거리) / blocker 거리`를
+방향 공간으로 환산해 최대 32회 PCF 비교를 수행한다. 탐색은 기존 cube near plane과 최대 반경으로
+제한한다. 두 backend는 같은 고정 disk와 면 선택 규칙을 사용하며 프레임별 noise는 없다.
+기존 geometric-normal receiver-plane 보정·bias·normalBias를 탐색과 필터 모두에 적용한다.
+알고리즘의 단계와 거리 비율은 [NVIDIA PCSS 설명](https://developer.download.nvidia.com/assets/gamedev/docs/PCSS_Integration.pdf)을
+참고하며 이 구현은 radial cube depth와 제한된 샘플 수를 사용한다.
+
+점광원 query당 최대 48 depth fetch다. 반지름 0은 1회, blocker가 없으면 16회,
+필터 반경이 기준 0.5 texel 미만이면 탐색과 hard 비교를 합쳐 17회다.
+두 점광원과 태양이 모두 PCSS이면 모두를 수신하는 fragment에서 총 최대 144회다.
+이는 샘플 수 상한이며 GPU ms/FPS 예산이 아니다. 추가 target·depth pass·texture를 만들지 않고,
+필터 존재·광원 반지름·상한만 바꾸면 기존 깊이 맵을 재사용한다. 광원 위치·영향 반경·해상도·caster 변경은
+기존 map별 무효화 규칙을 따른다.
+
+큰 광원·얇거나 복잡한 blocker·가까운 광원·곡면에서는 고정 샘플과 단일 수신 평면의 근사 한계가 있다.
+cap이 걸리면 기대한 world-space 번짐보다 좁을 수 있다. 해상도·반경 설정과 실제 게임에서의 품질·성능을
+함께 확인한다. area-light 조도 적분, temporal accumulation, 3개 이상 shadow owner는 포함하지 않는다.
+작성은 JSON/API로 하며 전용 UI는 추가하지 않는다. 저장/복원·Undo/Redo와 조명 OFF에서도 설정을 보존한다.
+배열형 `pointShadows`도 legacy 단일 설정과 같은 authored billboard 1024개 및 보수적 face texture batch
+64개 예산을 작성/활성화 전에 검사한다. PCSS 생략 여부와 무관하며 한도 초과를 native 설정 실패까지 미루지 않는다.
+
+점광원 PCSS source는 **environment v12/608 floats**, **spatial patch13**, **Data Scene state15**다.
+0~599 prefix는 유지한다. 600~603은 첫 owner, 604~607은 두 번째 owner의
+`[활성, sourceRadius, maxRadiusTexels, reserved0]`다. 생략한 record는 모두 0이다.
+OFF render copy는 두 record를 0으로 만들고 authored source는 유지한다. 첫 owner는 legacy 단일
+`shadows` 또는 `pointShadows[0]`이며 두 번째 record는 실제 두 번째 owner가 있을 때만 활성화한다.
+태양 PCSS가 없는 v12도 592~599는 0이다. 기존 model80-byte v2, face ID, 깊이 행렬 순서는 그대로다.
+기존 environment v1~v11·patch1~12·state2~14를 계속 읽는다. 새 문서 또는 진행 값에 PCSS가 있을 때만
+state15를 생성하며 outer snapshot은 계속 v2다. cold capability `spatial_point_pcss_abi_version() === 1`이
+없는 core에서는 OFF/progress-only 입력도 자산 준비와 native mutation 전에 거절한다.
