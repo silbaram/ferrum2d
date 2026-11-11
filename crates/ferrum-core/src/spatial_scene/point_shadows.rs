@@ -35,3 +35,19 @@ pub(super) fn owner(v: &[f32], source: usize) -> Option<usize> {
 pub(super) fn second_slot(v: &[f32]) -> Option<usize> {
     (v.len() >= 592 && v[589] == 1. && v[588] >= 0.).then(|| v[588] as usize)
 }
+
+/// v12 appends two four-float owner records; inactive records are entirely zero.
+pub(super) fn valid_pcss(v: &[f32]) -> bool {
+    v[600..608].chunks_exact(4).enumerate().all(|(owner, row)| {
+        if row[0] == 0. {
+            row[1..].iter().all(|x| *x == 0.)
+        } else {
+            row[0] == 1.
+                && v[138] >= 0.
+                && (owner == 0 || (v[589] == 1. && v[584] >= 0.))
+                && (0. ..=1000.).contains(&row[1])
+                && (1. ..=32.).contains(&row[2])
+                && row[3] == 0.
+        }
+    })
+}

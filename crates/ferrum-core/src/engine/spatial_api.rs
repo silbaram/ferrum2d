@@ -563,8 +563,14 @@ impl Engine {
     pub fn spatial_sun_pcss_abi_version(&self) -> u32 {
         1
     }
+    /// Cold capability for environment v12 bounded point-light PCSS sampling.
+    pub fn spatial_point_pcss_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 592 {
+        if self.spatial_scene.environment.value_len > 600 {
+            12
+        } else if self.spatial_scene.environment.value_len > 592 {
             11
         } else if self.spatial_scene.environment.value_len > 584 {
             10

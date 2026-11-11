@@ -44,6 +44,7 @@ test("optional indirect MRT releases partial allocations, retries, and frees scr
 test("v5 spotlight and v11 PCSS uniforms upload and clear when returning to legacy", () => {
   let cones: number[] = [];
   let pcss: number[] = [];
+  const pointPcss = new Map<string, number[]>();
   const noop = () => {};
   // Only record data binding here; the browser fixture covers real shader compilation and pixels.
   const gl = {
@@ -53,7 +54,7 @@ test("v5 spotlight and v11 PCSS uniforms upload and clear when returning to lega
     shaderSource: noop, compileShader: noop, attachShader: noop, linkProgram: noop,
     deleteShader: noop, deleteProgram: noop, deleteVertexArray: noop,
     uniform1i: noop, uniform1f: noop, uniform2f: noop, uniform4f: noop,
-    uniform3f: (name: unknown, ...values: number[]) => { if (name === "sunPcss") pcss = values; },
+    uniform3f: (name: unknown, ...values: number[]) => { if (name === "sunPcss") pcss = values; else if (name === "pointPcss" || name === "pointPcss2") pointPcss.set(name, values); },
     uniform3fv: noop, uniformMatrix4fv: noop, activeTexture: noop, bindSampler: noop, bindTexture: noop,
     uniform4fv: (name: unknown, value: Float32Array) => { if (name === "lightCone") cones = Array.from(value); },
   } as unknown as WebGL2RenderingContext;
@@ -65,7 +66,7 @@ test("v5 spotlight and v11 PCSS uniforms upload and clear when returning to lega
   const frame = (values: Float32Array): SpatialRenderBufferView => ({
     version: 1, vertexStride: 11, camera, terrain: new Float32Array(), terrainVertexCount: 0,
     terrainRevision: 1, billboards: new Float32Array(), billboardVertexCount: 0,
-    environment: { version: values.length === 600 ? 11 : values.length === 528 ? 5 : values.length === 512 ? 4 : 2, values,
+    environment: { version: values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 528 ? 5 : values.length === 512 ? 4 : 2, values,
       shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)), shadowCasters: new Float32Array(), shadowCasterVertexCount: 0 },
   });
   const light = { position: { x: 80, y: -80, elevation: 100 }, radius: 400,
@@ -84,9 +85,15 @@ test("v5 spotlight and v11 PCSS uniforms upload and clear when returning to lega
       shadows: { distance: 300, extent: 100, resolution: 512, pcss: {} } } } });
     pass.bindGeometry(frame(soft), uniforms);
     deepEqual(pcss, [1, Math.tan(.5 * Math.PI / 180) * 300 * 512 / 100, 16]);
+    const points = compileSpatialEnvironment({ lighting: { lights: [light, light], pointShadows: [
+      { lightIndex: 1, pcss: { sourceRadius: 0, maxRadiusTexels: 32 } }, { lightIndex: 0, pcss: {} },
+    ] } });
+    pass.bindGeometry(frame(points), uniforms);
+    deepEqual(pointPcss.get("pointPcss"), [1, 0, 32]); deepEqual(pointPcss.get("pointPcss2"), [1, 1, 16]);
     const legacy = compileSpatialEnvironment({ lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 } } } });
     pass.bindGeometry(frame(legacy), uniforms);
     deepEqual(cones, Array(32).fill(0), "legacy frames must not inherit the previous spotlight");
+    deepEqual(pointPcss.get("pointPcss"), [0, 0, 0]); deepEqual(pointPcss.get("pointPcss2"), [0, 0, 0]);
     deepEqual(pcss, [0, 0, 0], "legacy frames must not inherit the previous PCSS filter");
   } finally { pass.destroy(); }
 });

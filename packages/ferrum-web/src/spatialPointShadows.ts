@@ -1,9 +1,12 @@
+import { resolveSpatialPointPcss, type SpatialPointPcssSpec } from "./spatialPointPcss.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 
 /** One authored omnidirectional depth cube. Radius comes from the referenced light. */
 export interface SpatialPointShadowSpec {
   lightIndex: number;
+  /** Optional override of lighting.shadowFilter for this owner. */
+  pcss?: SpatialPointPcssSpec;
   resolution?: 128 | 256 | 512 | 1024;
   bias?: number;
   /** World units along the geometric normal for shadow queries only. Default0. */
@@ -39,7 +42,7 @@ export function resolveSpatialPointShadows(value: unknown, lightCount: number, b
     const at = `${path}[${i}]`;
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return fail(at, "must be a shadow object");
     const input = entry as Record<string, unknown>;
-    for (const key of Object.keys(input)) if (!["lightIndex", "resolution", "bias", "normalBias"].includes(key)) fail(`${at}.${key}`, "is not supported");
+    for (const key of Object.keys(input)) if (!["lightIndex", "resolution", "bias", "normalBias", "pcss"].includes(key)) fail(`${at}.${key}`, "is not supported");
     const lightIndex = input.lightIndex;
     if (typeof lightIndex !== "number" || !Number.isInteger(lightIndex) || lightIndex < 0 || lightIndex >= lightCount || seen.has(lightIndex))
       return fail(`${at}.lightIndex`, "must reference a unique authored light");
@@ -52,6 +55,6 @@ export function resolveSpatialPointShadows(value: unknown, lightCount: number, b
       return n;
     };
     const normalBias = scalar("normalBias", 0);
-    return { lightIndex, resolution: resolution as SpatialPointShadowSpec["resolution"], bias: scalar("bias", 0.05), ...(normalBias > 0 ? { normalBias } : {}) };
+    return { ...(input.pcss === undefined ? {} : { pcss: resolveSpatialPointPcss(input.pcss, `${at}.pcss`) }), lightIndex, resolution: resolution as SpatialPointShadowSpec["resolution"], bias: scalar("bias", 0.05), ...(normalBias > 0 ? { normalBias } : {}) };
   });
 }

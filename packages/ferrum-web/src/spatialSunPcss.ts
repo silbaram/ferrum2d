@@ -1,3 +1,4 @@
+import { spatialPcssDisk } from "./spatialPcssKernel.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 
@@ -40,11 +41,7 @@ export function spatialSunPcssScale(v?: Float32Array): number {
 
 // A fixed disk with a center tap. Generated once; no screen/frame-dependent noise or textures.
 // Both shader languages consume exactly the same coordinates and bounded loop counts.
-const disk = (count: number): string[] => Array.from({ length: count }, (_, i) => {
-  const radius = Math.sqrt(i / (count - 1)), angle = i * 2.399963229728653;
-  return `${(Math.cos(angle) * radius).toFixed(8)},${(Math.sin(angle) * radius).toFixed(8)}`;
-});
-const blockers = disk(16), filters = disk(32);
+const blockers = spatialPcssDisk(16), filters = spatialPcssDisk(32);
 export const SUN_PCSS_DISKS_GLSL = `
 const vec2 SUN_BLOCKERS[16]=vec2[16](${blockers.map(p => `vec2(${p})`).join(",")});
 const vec2 SUN_FILTER[32]=vec2[32](${filters.map(p => `vec2(${p})`).join(",")});`;

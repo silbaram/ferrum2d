@@ -60,6 +60,19 @@ test("sun PCSS enable, angle and cap changes reuse every depth map", () => {
   values.fill(0, 592); equal(c.prepare(f, t, 7), 0);
 });
 
+test("point PCSS owner controls never dirty depth maps", () => {
+  const f = dualWithSun(), c = new SpatialShadowCache(), t = { textureRevision: () => 1 };
+  c.prepare(f, t, 0); c.commit(f, 7);
+  const values = new Float32Array(608); values.set(f.environment!.values);
+  f.environment!.version = 12; f.environment!.values = values;
+  for (const at of [600, 604]) {
+    values.set([1, 1, 16, 0], at); equal(c.prepare(f, t, 7), 0);
+    values[at + 1] = 1000; values[at + 2] = 32; equal(c.prepare(f, t, 7), 0);
+    values[at + 1] = 0; equal(c.prepare(f, t, 7), 0);
+    values.fill(0, at, at + 4); equal(c.prepare(f, t, 7), 0);
+  }
+});
+
 test("model face membership and poses invalidate only the maps using that model", async () => {
   const { createSpatialModelAsset } = await import('../src/spatialModel.js');
   const asset = createSpatialModelAsset({contentId:'a'.repeat(64),bounds:[-1,0,-1,1,2,1],primitives:[],images:[],diagnostics:[]});

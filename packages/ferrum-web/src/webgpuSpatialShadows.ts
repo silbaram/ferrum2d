@@ -1,3 +1,4 @@
+import { POINT_PCSS_WGSL } from "./spatialPointPcssShaders.js";
 import { SUN_PCSS_WGSL } from "./spatialSunPcss.js";
 import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
@@ -12,7 +13,7 @@ fn slopeBias(n:vec3f,direction:vec3f)->f32{
  let incidence=max(dot(n,direction),0.);
  return min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
 }
-fn pointCompare(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->f32{
+fn pointSample(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->vec2f{
  let a=abs(direction);var face=0;var st=vec2f(0.);var major=0.;
  if(a.x>=a.y && a.x>=a.z){
   face=select(1,0,direction.x>=0.);major=a.x;st=vec2f(select(direction.z,-direction.z,direction.x>=0.),-direction.y);
@@ -45,13 +46,21 @@ fn pointCompare(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,rad
  bias+=radius/16777216.+max(expected,d)*.000001;
  var depth=0.;if(second){depth=textureLoad(pointMap2,vec2i(pixel.x,i32(size.y)-1-pixel.y),face,0);}
  else{depth=textureLoad(pointMap,vec2i(pixel.x,i32(size.y)-1-pixel.y),face,0);}
- return select(1.,0.,depth*radius+bias<expected);
+ return vec2f(depth*radius+bias,expected);
 }
+fn pointCompare(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->f32{
+ let depths=pointSample(second,authoredBias,direction,plane,d,radius,geometric,fallbackBias);
+ return select(1.,0.,depths.x<depths.y);
+}
+${POINT_PCSS_WGSL}
 fn pointVisibility(second:bool,authoredBias:f32,delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
  if(d<=max(authoredBias,.000001)){return 1.;}
  var size=f32(textureDimensions(pointMap).x);if(second){size=f32(textureDimensions(pointMap2).x);}let filtered=e(95u)==1.;
- let bias=authoredBias+2.*d/size*slopeBias(geometric,delta/d)*select(1.,3.,filtered);
+ let pcss=select(env.pointPcss.xyz,env.pointPcss2.xyz,second);
+ let footprint=select(select(1.,3.,filtered),select(1.,max(1.,pcss.z),pcss.y>0.),pcss.x>0.);
+ let bias=authoredBias+2.*d/size*slopeBias(geometric,delta/d)*footprint;
  let axis= -delta/d;let plane=dot(geometric,axis)*d;
+ if(pcss.x>0.){return pointPcssVisibility(second,authoredBias,axis,plane,d,radius,geometric,bias,pcss,size);}
  if(!filtered){return pointCompare(second,authoredBias,axis,plane,d,radius,geometric,bias);}
  var up=vec3f(0.,1.,0.);if(abs(axis.y)>.99){up=vec3f(0.,0.,1.);}
  let tangent=normalize(cross(axis,up));let bitangent=cross(axis,tangent);var visibility=0.;

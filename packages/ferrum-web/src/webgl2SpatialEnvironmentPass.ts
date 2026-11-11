@@ -414,6 +414,8 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform4f(u.sunColor, v[83] ? v[88] : 0, v[83] ? v[89] : 0, v[83] ? v[90] : 0, v[83] ? v[87] : 0);
     gl.uniform1i(u.sunShadow, v.length > 80 && v[92] > 0 ? 1 : 0);
     gl.uniform3f(u.sunParams, v[91] ? v[91] * 2 : 1, v[93] ?? 0, v[94] ?? 1);
+    gl.uniform3f(u.pointPcss, v[600] ?? 0, v[601] ?? 0, v[602] ?? 0);
+    gl.uniform3f(u.pointPcss2, v[604] ?? 0, v[605] ?? 0, v[606] ?? 0);
     gl.uniform3f(u.sunPcss, v[592] ?? 0, spatialSunPcssScale(v), v[594] ?? 0);
     const matrices = frame.environment!.shadowMatrices;
     gl.uniformMatrix4fv(u.sunMatrix, false, v.length > 80 && v[92] > 0 ? matrices.subarray(matrices.length - 16) : this.emptyMatrix);

@@ -53,6 +53,90 @@ fn two_point_shadow_values() -> Vec<f32> {
     v
 }
 #[test]
+fn point_pcss_v12_preserves_both_owners_and_rejects_bad_records_atomically() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(608, 0.);
+    v[83..95].copy_from_slice(&[1., 0., 1., 0., 1., 1., 1., 1., 300., 512., 0.05, 100.]);
+    v[592..595].copy_from_slice(&[1., 0.5, 16.]);
+    v[600..608].copy_from_slice(&[1., 1., 16., 0., 1., 8., 32., 0.]);
+    assert_eq!(e.spatial_point_pcss_abi_version(), 1);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.01);
+    assert_eq!(e.spatial_environment_abi_version(), 12);
+    assert_eq!(e.spatial_model_abi_version(), 2);
+    assert_eq!(e.spatial_shadow_matrix_len(), 208);
+    let matrices = e.spatial_scene.environment.shadow_matrices.clone();
+    let history = e.capture_spatial_light_selection_state();
+    for (at, value) in [
+        (600, 0.),
+        (600, 2.),
+        (601, -1.),
+        (601, 1001.),
+        (602, 0.),
+        (602, 33.),
+        (603, 1.),
+        (604, 2.),
+        (605, f32::NAN),
+        (606, 0.),
+        (607, 1.),
+        (595, 1.),
+    ] {
+        let mut bad = v.clone();
+        bad[at] = value;
+        assert!(
+            !e.configure_spatial_environment(&bad),
+            "accepted {at}={value}"
+        );
+        assert_eq!(e.capture_spatial_environment(), v);
+        assert_eq!(e.capture_spatial_light_selection_state(), history);
+    }
+    v[601] = 0.;
+    v[602] = 1.5;
+    v[605] = 1000.;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_scene.environment.shadow_matrices, matrices);
+    assert_eq!(e.capture_spatial_light_selection_state(), history);
+    v[0] = 0.;
+    v[1] = 0.;
+    v[2] = -1.;
+    v[3] = 0.;
+    v[4] = 0.05;
+    v[12..60].fill(0.);
+    v[545..549].fill(0.);
+    v[588] = -1.;
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.capture_spatial_environment(), v);
+    assert!(e.spatial_scene.environment.frame_values[592..608]
+        .iter()
+        .all(|x| *x == 0.));
+    assert_eq!(e.spatial_shadow_matrix_len(), 0);
+}
+
+#[test]
+fn point_pcss_v12_legacy_owner_does_not_imply_a_second_cube_or_sun() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(608, 0.);
+    v[584..592].fill(0.);
+    v[600..604].copy_from_slice(&[1., 1., 16., 0.]);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.01);
+    assert_eq!(e.spatial_shadow_matrix_len(), 96);
+    assert!(e
+        .spatial_scene
+        .shadow_draw_ranges
+        .iter()
+        .all(|r| r.face < 6));
+    let saved = e.capture_spatial_environment();
+    v[604..608].copy_from_slice(&[1., 1., 16., 0.]);
+    assert!(!e.configure_spatial_environment(&v));
+    assert_eq!(e.capture_spatial_environment(), saved);
+}
+
+#[test]
 fn sun_pcss_v11_preserves_source_history_and_rejects_invalid_input_atomically() {
     let (mut e, _) = setup();
     let mut v = two_point_shadow_values();

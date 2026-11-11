@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 600;
+pub(crate) const ENVIRONMENT_VALUES: usize = 608;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -39,6 +39,7 @@ impl SpatialEnvironment {
             580,
             584,
             592,
+            600,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -200,6 +201,10 @@ impl SpatialEnvironment {
         }) {
             return None;
         }
+        // v12: independent point PCSS controls, without changing depth-map ownership.
+        if !point_shadows::valid_pcss(&a) {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -348,7 +353,7 @@ impl SpatialEnvironment {
                     v[83..96].fill(0.);
                     v[112..125].fill(0.);
                     v[512..528].fill(0.);
-                    v[592..600].fill(0.);
+                    v[592..608].fill(0.);
                 }
             }
             self.shadow_matrices.clear();

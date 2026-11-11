@@ -1,3 +1,4 @@
+import { requestsSpatialPointPcss } from "./spatialPointPcss.js";
 import { requestsSpatialSunPcss } from "./spatialSunPcss.js";
 import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom } from "./spatialBloom.js";
@@ -48,7 +49,13 @@ export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
 /** Latest nested version; non-spatial exploration captures retain v5 and their legacy hashes. */
-export const DATA_SCENE_STATE_VERSION = 14;
+export const DATA_SCENE_STATE_VERSION = 15;
+function hasPointPcssDocument(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.spatial) || !isRecord(value.spatial.environment) || !isRecord(value.spatial.environment.lighting)) return false;
+  const lighting = value.spatial.environment.lighting;
+  return isRecord(lighting.shadows) && lighting.shadows.pcss !== undefined
+    || Array.isArray(lighting.pointShadows) && lighting.pointShadows.some(s => isRecord(s) && s.pcss !== undefined);
+}
 function hasSunPcssDocument(value: unknown): boolean {
   if (!isRecord(value) || !isRecord(value.spatial) || !isRecord(value.spatial.environment) || !isRecord(value.spatial.environment.lighting)) return false;
   const sun = value.spatial.environment.lighting.directional;
@@ -90,7 +97,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -622,12 +629,14 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 11 &&
     snapshot.version !== 12 &&
     snapshot.version !== 13 &&
+    snapshot.version !== 14 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 or ${DATA_SCENE_STATE_VERSION}.`,
     );
   }
+  if (snapshot.version < 15 && hasPointPcssDocument(snapshot.authoringDocument)) throw Error(`${path} Point PCSS requires data scene state version 15`);
   if (snapshot.version < 14 && hasSunPcssDocument(snapshot.authoringDocument)) throw Error(`${path} Sun PCSS requires data scene state version 14`);
   if (snapshot.version < 13 && hasPointShadowsDocument(snapshot.authoringDocument)) throw Error(`${path} pointShadows requires data scene state version 13`);
   if (snapshot.version < 12 && hasWideBloomDocument(snapshot.authoringDocument)) throw Error(`${path} wide Bloom requires data scene state version 12`);
@@ -640,6 +649,7 @@ export function validateDataSceneStateSnapshot(
         `${path}.progress requires data scene state version 3 or newer.`,
       );
     validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
+    if (snapshot.version < 15 && requestsSpatialPointPcss(snapshot.progress.spatial?.environment)) throw Error(`${path} Point PCSS requires data scene state version 15`);
     if (snapshot.version < 14 && requestsSpatialSunPcss(snapshot.progress.spatial?.environment)) throw Error(`${path} Sun PCSS requires data scene state version 14`);
     if (snapshot.version < 13 && requestsSpatialPointShadows(snapshot.progress.spatial?.environment)) throw Error(`${path} pointShadows requires data scene state version 13`);
     if (snapshot.version < 12 && requestsSpatialWideBloom(snapshot.progress.spatial?.environment)) throw Error(`${path} wide Bloom requires data scene state version 12`);
@@ -752,6 +762,7 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasPointPcssDocument(authoringDocument) || requestsSpatialPointPcss(progress?.spatial?.environment) ? 15 :
       hasSunPcssDocument(authoringDocument) || requestsSpatialSunPcss(progress?.spatial?.environment) ? 14 :
       hasPointShadowsDocument(authoringDocument) || requestsSpatialPointShadows(progress?.spatial?.environment) ? 13 :
       hasWideBloomDocument(authoringDocument) || requestsSpatialWideBloom(progress?.spatial?.environment) ? 12 :
