@@ -2,7 +2,7 @@
 
 기준일: 2026-11-11
 
-상태: M2-a·M3·M4 및 M5-a 광원 전환·진단과 M5-b 정적 업로드·작업 예산·기여도 선택 자동 회귀 완료 · M5-c 넓은 Bloom/비용 검증 잔여 · 실게임·실기기 검증은 개발 완료 후 진행
+상태: M2-a·M3·M4·M5 필수 개발·자동 회귀·리뷰 완료 · 다음 단계는 실게임·실기기 품질/시간 검증
 
 목표는 flat 2D와 HD-2D에서 광원·재질·그림자·발광·화면 효과가 예측 가능하게 결합하도록 만드는 것이다.
 태양광 그림자의 안정화와 여러 광원의 올바른 합성을 먼저 다룬다. HDR, 노멀맵, Bloom, AO, 안개,
@@ -38,7 +38,7 @@
 | 캐시·컬링 | tile shadow geometry cache, native ground cache | native caster/range revision, GPU shadow cache | 존재. 새 재질·proxy의 무효화 조건 연결 |
 | 재질 | tint/palette/flash/additive/outline, 별도 normal binding | base color/normal/emissive/unlit, OPAQUE/MASK | specular/roughness·light mask 확장 후보 |
 | HDR·색공간 | legacy 기본, 양 backend 전역 linear-sRGB 선택. opt-in lit HDR은 양 backend float16 world/albedo | 양 backend RGBA16F/rgba16float 장면 target, exposure | 전역 managed 색공간과 선택형 HDR을 구별 |
-| Bloom | 전체 화면 25-tap, WebGL2/WebGPU 지원 | HDR 장면 32-tap, 양 backend 지원 | 존재. threshold·해상도·후처리 순서·비용 검증 |
+| Bloom | 전체 화면 25-tap, WebGL2/WebGPU 지원 | HDR 32-tap 유지, 선택형 wide 저해상도 chain | wide 구현·독립 픽셀/작업 예산·전체 회귀 완료 |
 | AO | 전용 depth AO 없음 | depth 기반 접촉 음영, normal 재구성 4 + 주변 12 samples | 존재. 전체 합성 색을 어둡게 하는 의미 재정의 |
 | 안개 | 별도 물리적 공간 fog 없음 | camera view-depth 기반 색 혼합 | 존재. AO·발광·Bloom 결합 검증 |
 | 톤매핑·색보정 | lit HDR의 exposure·none/Reinhard/ACES | exposure, none/Reinhard/ACES 근사, contrast/saturation/tint | 존재. 입력 단위·출력 변환을 명확히 유지 |
@@ -116,13 +116,14 @@ WebGPU 전역 `linear-srgb`는 source color/data view를 구분하고 Spatial·F
 
 ### E03 · P2 · Bloom·AO·DOF의 품질/비용 확장
 
-**기존 계약의 한계.** flat Bloom은 25 samples, Spatial Bloom은 32 samples의 제한된 반경 gather다.
-AO와 DOF까지 함께 켜면 한 composite draw여도 pixel당 sampling 비용은 커진다.
-현재 draw count가 작다는 사실만으로 효과가 싸다고 판정할 수 없다.
+**개발 소스 구현·자동 회귀·리뷰 완료.** flat25-tap과 Spatial32-tap gather를 보존하고,
+Spatial separated HDR에 low/balanced/high의 선택형 wide chain을 추가했다. threshold는 AO/fog/DOF 이후·
+exposure 전 전체 밝기에 적용한다. emission도 포함하며 별도 emissive-only 입력은 제공하지 않는다.
+입력·근사·자원 수명·구 source 호환성은 [넓은 HDR Bloom 계약](../engine/data-scene-spatial.md#선택형-넓은-hdr-bloom-개발-소스)을 따른다.
 
-**방향:** 작은 반경 경로를 보존하고, 넓은 halo가 필요한 경우에만 저해상도 bright-pass/분리 blur 또는 mip chain을 비교한다.
-threshold를 exposure 전/후 어느 값으로 해석할지 정하고, emissive-only와 전체 밝기 기반 Bloom의 필요를 구분한다.
-AO는 depth 경계 halo·얇은 geometry·카메라 이동, DOF는 foreground 누출·발광체·HUD 제외를 검증한다.
+추가 draw/target bytes/texture-load 상한을 실제 renderer·profiler·report에 연결하고 독립 HDR 픽셀 기준으로 검증했다.
+작업량은 GPU 실행 시간이 아니다. AO/Bloom ON/OFF 시간 대조와 실제 장면의 AO 경계 halo·얇은 geometry·
+카메라 이동·DOF foreground 누출 수용 기준은 개발 후 실게임·실기기 검증에 남긴다.
 temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추가하지 않는다.
 
 근거: [전체 화면 GLSL](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2ShaderSources.ts),
@@ -135,10 +136,11 @@ temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추�
 shadow owner는 우선 고정하고, 다른 광원은 순위로 교체한다. 점수의 연속성은 선택 집합의 연속성을 보장하지 않는다.
 점광원 shadow는 1개다. ‘광원 16개 지원’은 16개가 동시에 모든 수신면을 비춘다는 뜻이 아니다.
 
-**방향:** 우선 현재 상한 안에서 기여도·범위·화면 수신면을 고려한 선택과 전환 완화를 비교한다.
-hysteresis/fade에 상태가 필요하면 Rust가 소유하고 snapshot/replay·teleport/reset 의미를 결정한다.
+**개발 소스·자동 회귀 완료:** 선택형 native hysteresis/fade와 저장/복원·pause·cut/reset을 구현했다.
+RGB·direct mask·보수적 표시 frustum을 기준으로 기존 상한 안에서 기여도를 비교하고 authored/active/culled/dropped
+사유를 report에 남긴다. 정확한 수신면 가시성·차폐 판정이나 receiver 후보 가속까지 완료했다는 뜻은 아니다.
+정적 Flat shadow GPU 업로드 재사용과 실제 frame 작업 예산도 검증했다.
 동시 shadow owner 증가는 atlas/face 비용·캐시 정책을 측정한 뒤 별도 예산 단계에서 결정한다.
-화면에 중요한 빛이 빠졌을 때 authored/active/culled/dropped 이유를 report에 남긴다.
 
 근거: [Rust 선택](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/lighting_upgrade.rs),
 [현재 상한](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
@@ -277,9 +279,17 @@ M5-b의 Flat 정적 GPU geometry 업로드 재사용·실제 작업 예산을 �
 최종 polygon592개 상태의 cold/warm 예산·다중 packet/HUD 보존을 검증했다. mask draw는 계속 필요하다.
 M5-b native 기여도 기반 슬롯 점유는 native1,681개+integration1·SDK1,518개, 광원 선택1,408개와
 pixelArt 표시 비율/snap256개 상태·실제 edge 조명 PNG64조합을 검증했다. 기존 linear 환경1,120개도 통과했다.
-리뷰에서 simulation/display 카메라 불일치를 실패 재현 후 수정했다. M5-c 넓은 Bloom·측정 preset은 남아 있다.
+리뷰에서 simulation/display 카메라 불일치를 실패 재현 후 수정했다.
+M5-c 넓은 Spatial HDR Bloom은 environment v9/patch10/state12·양 GPU backend와 품질별 작업 예산을 구현했다.
+Native1,682개+integration1·SDK1,528개, wide 기본/안개/안개+AO2,688개 상태+합성 순서16맥락·기존 Flat3,104개 상태와
+공식 viewer·전체 package/public types·문서/Pages를 검증했다. 별도 소스 컴파일708개 JS/선언 파일도 최종 SDK와 일치한다.
+홀수 extent의 padding/Y 위상·분수 반경 tap 보간과 progress-only wide의 구 core/model 사전 검사 순서를 수정하고 자원·metrics/CI·계획 범위 리뷰에서 추가 필수 개발 누락은 찾지 못했다.
+최종 전체 Spatial 행렬의 환경2,240개·재질1,024개·수신 mask1,120개·광원 선택1,664개·그림자3,744개 상태도 통과했다.
+최종 패키지에서 복원 사전 검사 모듈만 추가 수정했고, 전체 행렬 패키지와 모든 renderer/shader/Wasm bytes는 동일하다.
+수정 후 SDK 전체와 wide 전체2,688개 상태를 다시 검증했다. 원본 보고서·실행 명령·리뷰 근거는 로컬
+`artifacts/lighting-remaining/m5/bloom/verification.json`과 `artifacts/lighting-remaining/completion-audit.json`에 기록했다.
 사용자 지시에 따라 M0/M1의 실게임·실기기 검증은 개발 완료 후 진행한다. 자동 fixture와 회귀 검증은 개발 중에도 유지한다.
-M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 남은 범위다.
+M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
 
@@ -287,7 +297,7 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 | --- | --- | --- | --- |
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
-| M5 규모·성능 | L03/E03. 광원 전환 안정화, 다중 shadow 예산, 넓은 Bloom, 필요 시 light 수신 후보 가속 | 앞 단계 대표 장면·측정 | 선택 경계 왕복 안정성, 실제 비용 개선 또는 명시적 품질 증가, preset별 예산·복구 검증 |
+| M5 규모·성능 | L03/E03 필수 개발·자동 회귀·리뷰 완료. 실제 장면 시간/품질 수용 기준은 후속 검증 | 앞 단계 대표 장면·측정 | 자동 픽셀/작업 예산·복구를 검증하고 실게임·실기기 시간/수용 기준과 구분 |
 | M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
 ### 먼저 실행할 작업 단위
@@ -300,6 +310,9 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 3. **M1-b:** M0에서 새로 확보한 실제 문제 장면을 기존 접촉·bias 회귀와 비교한다.
    설정 문제·문서화한 근사 한계·새 결함을 분류하고, 새 결함이면 effective bias·해상도를 기록한 fixture로 고친다.
    곡면 필터 확장이 필요하면 S02의 대상 장면·비용 조건을 먼저 확정한다.
+4. **개발 후 효과/비용 검증:** 실제 씬·GPU/driver·브라우저·해상도/DPR를 정하고 AO 경계/얇은 geometry/카메라 이동,
+   DOF foreground·발광체·HUD를 확인한다. AO/Bloom ON/OFF의 warmup·측정 frame 수와 CPU/GPU 시간·bytes를 함께 기록한다.
+   timer 미지원·미측정 값은0으로 채우지 않는다. 현재 자동 work 예산을 제품 ms/FPS 보장으로 사용하지 않는다.
 완료한 M2-a·M3a·M3b·M3c는 각각 별도 논리적 변경으로 관리한다.
 M4/M5를 시작하기 위해 모든 M6 기능을 기다리지 않는다.
 
