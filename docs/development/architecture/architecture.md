@@ -2062,4 +2062,8 @@ GPU target/instance scratch 상한은 그대로다. WebGPU model staging은 came
 WebGL2는 타깃 준비 전에 dirty map을 무효화하고 선택된 map의 face 제출 전체 성공 뒤 확정한다.
 WebGPU는 해당 map만 unready로 표시하고 실제 queue.submit 성공 뒤 확정한다. 중단/실패한 map은 재시도하고 다른 정상 map은 유지한다.
 `shadowCacheHit`은 모든 활성 map이 warm일 때만 true이며 부분 갱신 비용은 실제 pass/draw/triangle/upload에 기록한다.
+WebGL2 terrain 업로드도 cache와 같이 buffer identity·byteOffset·length·revision을 비교한다.
+같은 memory의 다른 view 구간을 제출해도 새 geometry가 GPU에 반영된다. 효과 해제는 고정 cache 배열을 재사용해
+관찰값만 비우며, 효과 없는 Spatial frame마다 model metadata 용량을 재할당하지 않는다.
+그림자 triangle 통계는 model words의 직접 순회로 집계하고 전체 words를 JS 배열로 복사하지 않는다.
 입력·저장·비용은 [다중 점광원 계약](../../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)을 따른다.

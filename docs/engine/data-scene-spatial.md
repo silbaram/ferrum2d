@@ -883,6 +883,8 @@ caster upload가 0이다. texture 등록/교체/제거와 pixel-mask patch는 ca
 RenderTexture 또는 revision을 제공하지 않는 외부 texture source는 재계산한다. 캐시는 GPU 결과만
 보관하며 JS가 entity pose를 소유하지 않는다. CPU의 native geometry 생성·packet 검증까지 생략하는 기능은 아니다.
 구 packet에 제출 extension이 없으면 전체 재계산 경로를 유지한다.
+지형 stream identity는 backing buffer·byteOffset·length·revision을 함께 사용한다. 같은 backing memory에서
+다른 구간의 typed-array view를 제출하면 GPU geometry와 그림자 cache를 모두 갱신한다.
 
 HDR target은 최대 8,388,608 pixel·각 축 8,192이며, 추정 attachment 저장량은
 `width×height×12 + pointResolution²×6×4 + sunResolution²×4` bytes다. normal atlas는 별도로 집계한다.

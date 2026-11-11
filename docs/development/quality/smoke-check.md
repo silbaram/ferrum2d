@@ -3024,7 +3024,7 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
 기존 조건부 extended Spatial CI 실행 위치를 따른다.
 
-가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서944개 상태를 검사한다.
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서976개 상태를 검사한다.
 빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
 PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모델2개, hard/PCF3, mask, 태양 그림자 동시13 pass,
 16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
@@ -3038,6 +3038,8 @@ SDK 회귀는 첫 cube·두 번째 cube·sun 타깃 각각의 실패 후 재시�
 강제 cold 전체12/13면 기준을 얻고 부분 갱신 PNG와 RGBA 전 채널을 비교한다.
 Node 판정기는 cold PNG 누락·불완전 전체 갱신·stale pixels·잘못된 cache flag·초과 갱신도 거절한다.
 model staging 단위 검사는 camera+선택 owner pass만 업로드하는 실제 byte 수를 확인한다.
+같은 terrain buffer/revision에서 byteOffset만 다른 view를 제출해 GPU 업로드와 전체 cold PNG 일치를 검사한다.
+SDK 회귀는 길이만 바뀌는 view도 확인하며, 효과 없는 Spatial frame의 고정 model cache 배열 할당은0이어야 한다.
 
 보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.
 소프트웨어 adapter 실행은 실물 GPU 또는 제품 시간/FPS 수용 결과로 해석하지 않는다.
