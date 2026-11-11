@@ -232,6 +232,17 @@ async function probe(backend, projection, colorManagement) {
     c.fillStyle = "white"; c.fillRect(0, 0, 8, 16); c.clearRect(0, 0, 4, 8);
     await renderer.loadTexture(1, texture.toDataURL());
     await row("alpha-replaced", null, 13, false, true);
+    // A different typed-array stream can share Wasm/owned memory and a revision.
+    // Prime the first range, then submit translated terrain from a second range.
+    const terrain = packet.spatial.terrain, streams = new Float32Array(terrain.length * 2);
+    streams.set(terrain); streams.set(terrain, terrain.length);
+    for (let i = terrain.length; i < streams.length; i += 11) streams[i] += 24;
+    packet.spatial.terrain = streams.subarray(0, terrain.length);
+    await draw(); check((await draw()).stats.shadowCacheHit, "terrain stream baseline not warm");
+    packet.spatial.terrain = streams.subarray(terrain.length);
+    await row("terrain-subview", null, 13, false, true);
+    check(rows[rows.length - 1].stats.terrainUploadBytes === terrain.byteLength,
+      "terrain subview was not uploaded", rows[rows.length - 1].stats);
     check(!errors.length, "point shadow GPU validation errors", errors);
     renderer.destroy(); check(renderer.resourceStats().textureCount === 0 && renderer.resourceStats().bufferCount === 0, "point shadow resource leak", renderer.resourceStats());
     return { backend, projection, colorManagement, rows, images, oracles, restored: true, coldPoseRetained: true, shadowRetryInjected, recovered, snapshotVersion: saved.dataScene.version, errors };

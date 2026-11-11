@@ -23,6 +23,7 @@ class ShadowMapCache {
         this.matrices = new Float32Array(owner === 2 ? 16 : 96);
     }
     invalidate(): void { this.modelWordCount = -1; }
+    clear(): void { this.invalidate(); this.modelAssets.clear(); }
     private matrixOffset(frame: SpatialRenderBufferView): number {
         return this.owner === 2 ? frame.environment!.shadowMatrices.length - 16 : this.owner * 96;
     }
@@ -82,12 +83,16 @@ export class SpatialShadowCache {
     private terrainLength = -1;
     private readonly textureRevisions = new Map<number, number>();
     private readonly pendingTextures = new Map<number, number>();
+    /** Discard cached results without reallocating fixed model/matrix capacity. */
+    clear(): void {
+        for (const cache of this.maps) cache.clear();
+        this.memory = undefined; this.textureRevisions.clear(); this.pendingTextures.clear();
+    }
     /** Dirty map bits are invalidated before resource preparation or drawing can fail. */
     prepare(frame: SpatialRenderBufferView, textures: ShadowTextures, readyMaps: number): number {
         const active = spatialShadowMaps(frame), env = frame.environment;
         if (!active) {
-            for (const cache of this.maps) cache.invalidate();
-            this.memory = undefined; this.textureRevisions.clear(); this.pendingTextures.clear();
+            this.clear();
             return 0;
         }
         this.pendingTextures.clear();

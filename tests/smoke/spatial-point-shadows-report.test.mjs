@@ -18,9 +18,10 @@ function fixture() {
     const single = name.endsWith("-a") || name.endsWith("-b") || name === "array-single" || name === "legacy-single";
     const passes = OWNER_SHADOW_PASSES[name] ?? (plain ? 0 : single || name === "resize" ? 6 : name === "dual-plus-sun" ? 13 : 12);
     return { name, width: 8, height: 8, stats: { shadowPassCount: passes, shadowCacheHit: passes === 0, shadowDrawCalls: passes, shadowTriangleCount: passes * 2,
+      terrainUploadBytes: name === "terrain-subview" ? 1584 : 0,
       modelCount: 2, modelDrawCalls: 1, modelInstancedDrawCalls: 1, triangleCount: 12,
       bloomDrawCalls: name === "pixel-art-wide" ? 2 : 0, bloomTextureBytes: name === "pixel-art-wide" ? 1024 : 0 }, warm: { shadowPassCount: 0, shadowUploadBytes: 0, shadowCacheHit: true },
-      ...(name in OWNER_SHADOW_PASSES ? { cold: { stats: { shadowPassCount: name === "sun-disabled" ? 12 : 13 }, image: dual } } : {}),
+      ...(name in OWNER_SHADOW_PASSES ? { cold: { stats: { shadowPassCount: name === "sun-disabled" ? 12 : 13, terrainUploadBytes: 1584 }, image: dual } } : {}),
       image: plain ? rgba("plain") : name.endsWith("-b") ? rgba("b") : single ? a : dual };
   });
   return { rows, a, dual };
@@ -61,4 +62,6 @@ test("owner cache audit rejects missing cold references, stale pixels and incorr
   await rejects(auditSpatialPointShadowPixels(work.rows, read), /face count/);
   const flag = fixture(); flag.rows.find(r => r.name === "secondary-moved").stats.shadowCacheHit = true;
   await rejects(auditSpatialPointShadowPixels(flag.rows, read), /cache flag/);
+  const upload = fixture(); upload.rows.find(r => r.name === "terrain-subview").stats.terrainUploadBytes = 0;
+  await rejects(auditSpatialPointShadowPixels(upload.rows, read), /terrain subview upload/);
 });

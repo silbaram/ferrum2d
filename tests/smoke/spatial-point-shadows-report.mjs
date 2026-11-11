@@ -4,7 +4,7 @@ import { decodePng } from "../../scripts/tools/pack-textures.mjs";
 export const OWNER_SHADOW_PASSES = Object.freeze({
   "owner-cache-baseline": 13, "primary-moved": 6, "secondary-moved": 6, "sun-moved": 1,
   "secondary-resolution": 6, "sampling-only": 0, "sun-disabled": 0, "sun-enabled": 1,
-  "owners-swapped": 12, "shared-caster-changed": 13, "alpha-replaced": 13,
+  "owners-swapped": 12, "shared-caster-changed": 13, "alpha-replaced": 13, "terrain-subview": 13,
 });
 
 export const POINT_SHADOW_STATES = Object.freeze([
@@ -56,6 +56,10 @@ export async function auditSpatialPointShadowPixels(rows, readImage) {
     assert.equal(row.cold.stats.shadowPassCount, name === "sun-disabled" ? 12 : 13, `Incomplete cold reference: ${name}`);
     assert.equal(row.stats.shadowCacheHit, OWNER_SHADOW_PASSES[name] === 0, `Wrong partial cache flag: ${name}`);
     assert.equal(row.warm.shadowCacheHit, true);
+    if (name === "terrain-subview") {
+      assert(row.stats.terrainUploadBytes > 0, "Missing terrain subview upload");
+      assert.equal(row.stats.terrainUploadBytes, row.cold.stats.terrainUploadBytes, "Terrain subview upload size differs from cold reference");
+    }
     const actual = await get(name), cold = decodePng(await readImage(row.cold.image));
     for (const c of [0, 1, 2, 3]) assert.equal(channel(actual, cold, c), 0, `Partial/cold pixels changed: ${name}`);
   }

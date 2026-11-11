@@ -26,6 +26,8 @@ export class WebGL2SpatialPass {
     Record<string, WebGLUniformLocation>;
   private revision = -1;
   private memory?: ArrayBufferLike;
+  private terrainOffset = -1;
+  private terrainLength = -1;
   private terrainBytes = 0;
   private spriteBytes = 0;
   private debugBuffer?: WebGLBuffer;
@@ -37,7 +39,7 @@ export class WebGL2SpatialPass {
   private environmentPass?: WebGL2SpatialEnvironmentPass;
   private shadowBuffer?: WebGLBuffer;
   private shadowBytes = 0;
-  private shadowCache = new SpatialShadowCache();
+  private readonly shadowCache = new SpatialShadowCache();
   private destroyed = false;
   private readonly models: WebGL2SpatialModels;
   constructor(
@@ -347,13 +349,17 @@ export class WebGL2SpatialPass {
       gl.uniform1i(this.uniforms.linearInput,Number(this.linearInput));
       if (
         this.revision !== frame.terrainRevision ||
-        this.memory !== frame.terrain.buffer
+        this.memory !== frame.terrain.buffer ||
+        this.terrainOffset !== frame.terrain.byteOffset ||
+        this.terrainLength !== frame.terrain.length
       ) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.terrainBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, frame.terrain, gl.STATIC_DRAW);
         this.terrainBytes = frame.terrain.byteLength;
         this.revision = frame.terrainRevision;
         this.memory = frame.terrain.buffer;
+        this.terrainOffset = frame.terrain.byteOffset;
+        this.terrainLength = frame.terrain.length;
         stats.terrainUploadBytes = this.terrainBytes;
         stats.uploadBytes += this.terrainBytes;
       }
@@ -425,7 +431,9 @@ export class WebGL2SpatialPass {
         }
         stats.shadowDrawCalls = stats.drawCalls - before;
         if (environment!.shadowSubmission && dirtyMaps) {
-          const modelTriangles=frame.models ? Array.from(frame.models.words).reduce((n,_,i)=>i%20===0 ? n+frame.models!.assets.get(frame.models!.words[i])!.triangleCount : n,0) : 0;
+          let modelTriangles = 0;
+          if (frame.models) for (let i = 0; i < frame.models.words.length; i += 20)
+            modelTriangles += frame.models.assets.get(frame.models.words[i])!.triangleCount;
           stats.shadowCulledTriangleCount = stats.shadowPassCount * ((frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 + modelTriangles) - stats.shadowTriangleCount;
         }
         stats.triangleCount += stats.shadowTriangleCount;
@@ -742,7 +750,7 @@ export class WebGL2SpatialPass {
     };
   }
   releaseEnvironment(): void {
-    this.shadowCache = new SpatialShadowCache();
+    this.shadowCache.clear();
     this.environmentPass?.destroy();
     this.environmentPass = undefined;
     if (this.shadowBuffer) this.gl.deleteBuffer(this.shadowBuffer);
