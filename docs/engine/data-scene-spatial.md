@@ -855,7 +855,7 @@ PCF 폭 때문에 일반 수신면의 bias를 3배로 늘리지 않는다. 교�
 발생하는 표본화 한계는 남으므로, 필요한 경우 해상도·광원 범위와 authored bias를 함께 조절한다.
 태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
-bitmap world label은 caster에 포함하지 않는다. 선택형 두 점광원 그림자는 [다중 점광원 계약](#선택형-다중-점광원-그림자)을 따른다. PCSS는 후속이며 방향광·PCF와 normal atlas는 아래 계약을 따른다.
+bitmap world label은 caster에 포함하지 않는다. 선택형 두 점광원 그림자는 [다중 점광원 계약](#선택형-다중-점광원-그림자)을 따른다. 태양광 가변 반그림자는 [선택형 PCSS](#선택형-태양광-pcss)를 따른다.
 
 효과가 켜지면 `EXT_color_buffer_float`가 필요한 RGBA16F color + depth24 target을 사용한다.
 미지원 환경은 명시적 오류를 내며 효과를 조용히 생략하지 않는다. linear 공간에서 조명→안개→DOF→
@@ -2156,7 +2156,7 @@ progress-only override도 자산 조회·씬 변경 전에 명시적으로 거�
 첫 큐브의 face0~5와 sun face6을 유지하고 두 번째 큐브는 face7~12를 사용한다.
 행렬은 첫 큐브6개·두 번째 큐브6개·마지막 sun1개 순서로 압축한다.
 80-byte **model ABI v2**는 기존 metadata/matrix 크기를 유지하며 두 번째 큐브 가시성을 bits8~13으로 추가한다.
-기존 camera0/첫 큐브1~6/sun7과 model ABI v1은 유지한다. v2 모델은 환경 v10과 함께 읽어야 한다.
+기존 camera0/첫 큐브1~6/sun7과 model ABI v1은 유지한다. v2 모델은 환경 v10 또는 v11과 함께 읽어야 한다.
 `dataSceneSpatialModelDrawSnapshot`은 마지막 프레임의 owned 변환·camera 가시성을 반환하며,
 다중 그림자를 해제한 직후 다음 프레임이 재생성되기 전에도 조회할 수 있다.
 
@@ -2179,3 +2179,63 @@ GPU target/instance scratch 상한과 공개 source·ABI·저장 형식은 바�
 공식 배치 뷰어의 Point Shadows는 광원별로 켤 수 있다. 두 번째를 켜면 기존 설정을 보존해 `pointShadows`로 전환하고,
 세 번째는 선택을 제한한다. 광원 삭제 시 참조 인덱스를 보정하며 Undo/Redo로 복원한다.
 Low 품질도 지정된 그림자 광원 2개를 유지하고 두 큐브를128 해상도로 낮춘다.
+
+## 선택형 태양광 PCSS
+
+`lighting.directional.shadows.pcss`를 지정하면 태양광에 거리별 반그림자를 적용한다.
+물체와 수신면이 가까우면 경계가 선명하고 떨어질수록 넓어진다. 생략하면 기존
+`lighting.shadowFilter`의 hard/PCF3를 사용한다. 점광원은 계속 해당 공통 필터를 사용한다.
+공개 타입 `SpatialSunPcssSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  lighting: {
+    lights: [],
+    shadowFilter: "pcf3",
+    directional: {
+      direction: { x: 0.3, y: -0.4, elevation: 1 },
+      shadows: {
+        resolution: 512, extent: 192, distance: 400,
+        pcss: { angularRadius: 0.5, maxRadiusTexels: 16 },
+      },
+    },
+  },
+});
+```
+
+| 설정 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `pcss` | 선택 object | 존재하면 태양 PCSS 활성. 빈 object도 기본값으로 활성 |
+| `angularRadius` | 도 단위0~5, 기본0.5 | 광원의 각반경.0은 hard 태양 그림자 |
+| `maxRadiusTexels` | shadow-map texel 단위1~32, 기본16 | 탐색·필터 반경의 공통 상한 |
+
+각도/반경은 유한한 수만 허용한다. 공통 `shadowFilter: "pcss"`는 지원하지 않는다.
+조명 OFF 상태도 작성한 PCSS 값을 보존한다. 필터 활성/각도/반경만 바꾸면 깊이 맵을 다시 그리지 않는다.
+해상도·태양 방향·고정 중심/카메라 추적·caster가 바뀌면 기존 cache 규칙에 따라 갱신한다.
+작성 JSON/API로 설정하며 전용 UI는 추가하지 않는다. 기존 배치 뷰어의 품질 preset은 태양 해상도를 바꾸고,
+명시적으로 작성한 PCSS override는 보존한다. hard/PCF3로 되돌리려면 `pcss`를 제거한다.
+
+WebGL2·WebGPU 모두 기존 태양 depth map을 사용한다. blocker 탐색16회 뒤 평균 깊이 차이로
+반경을 구하고 최대32회 PCF 비교를 수행한다. 수신 query당 최대48 depth fetch이며,
+각도0은1회, blocker가 없으면16회, 반경0.5 texel 미만이면 탐색+hard 비교17회다.
+추가 target/pass/texture나 프레임별 noise는 없다. CPU 샘플 배열은 모듈 초기화 때 한 번 만들고
+두 shader 언어에 같은 좌표를 제공한다. 기존 geometric-normal receiver-plane 보정과 bias/normalBias를
+탐색·필터 모두에 적용한다. 유한 맵 밖 샘플은 lit로 처리하며 기존 map-edge fade를 유지한다.
+
+반경은 `평균 깊이 차이 × tan(각반경)`을 world→texel로 변환한 근삿값이다.
+최대 반경 제한 때문에 큰 각도/높은 해상도에서는 기대한 world-space 번짐보다 좁아질 수 있다.
+고정된 적은 샘플은 매우 얇거나 복잡한 겹침에서 모든 blocker를 찾는 것을 보장하지 않는다.
+넓은 그림자의 품질은 실제 씬에서 확인해야 하며 GPU ms/FPS는 별도 측정 대상이다.
+점광원 PCSS, cascade, 무한 태양 범위, temporal accumulation은 포함하지 않는다.
+알고리즘의 탐색·반경 추정·필터 단계는 [NVIDIA PCSS 설명](https://developer.download.nvidia.com/shaderlibrary/docs/shadow_PCSS.pdf)을 참고하고,
+이 구현은 엔진의 orthographic 태양 맵에 맞춰 각반경과 고정 비용 상한을 사용한다.
+
+PCSS source는 **environment v11/600 floats**, **spatial patch12**, **Data Scene state14**를 사용한다.
+0~591 prefix는 유지한다.592는 활성1,593은 각반경,594는 최대 texel 반경,595~599는 reserved0이다.
+v11에서 `pointShadows`가 없으면584~591은 모두0이며 legacy `shadows`와도 함께 쓸 수 있다.
+명시적 `pointShadows`가 있으면 기존589=1 표식과 두 owner 계약을 유지한다.583은 선택 정책 존재를 나타낸다.
+OFF render copy는592~599를0으로 만들고 authored source는 보존한다.
+v11의 model ABI는 기존80-byte v2이며 태양 face6·마지막 행렬 위치는 같다.
+기존 환경v1~v10·patch1~11·state2~13은 계속 읽는다. 새 기능은 cold capability
+`spatial_sun_pcss_abi_version() === 1`로 확인하며 구 core에서는 OFF/progress-only 입력도
+자산 준비와 씬 변경 전에 거절한다.

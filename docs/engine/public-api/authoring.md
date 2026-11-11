@@ -739,6 +739,9 @@ route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 �
 선택 `spatial.environment`는 `SpatialEnvironmentSpec`이며 `resolveSpatialEnvironmentSpec`으로 검증한다.
 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialHemisphereLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
 `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
+`SpatialSunPcssSpec`은 `spatial.environment.lighting.directional.shadows.pcss`의 선택형 태양 소프트 그림자 설정이다.
+환경v11/600·patch12/state14를 사용하며 Undo/Redo·진행 override·OFF source를 보존한다.
+필드와 비용 상한은 [태양 PCSS 계약](../data-scene-spatial.md#선택형-태양광-pcss)을 따른다.
 최대 4개 점광원과 1개 태양 방향광·하늘/지면 반구광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
 개체별 cast/receive, 실제 view depth DOF·actor 초점·HDR 색 보정·안개를 작성한다.
 품질 설정은 환경 v2 numeric112이며 반구광·normalBias를 함께 사용하면 v3 numeric128이다. 기존 v1 numeric80과 저장 v7 계약을 유지한다.

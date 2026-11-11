@@ -3049,3 +3049,31 @@ SDK 회귀는 길이만 바뀌는 view도 확인하며, 효과 없는 Spatial fr
 Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:placement-viewer`와 CI에 이 단위 검증을 포함한다.
 `pnpm smoke:placement-spatial-workspace`는 실제 Spatial 조명 패널 검증을 포함하며 기존 CI에서도 실행한다.
 실제 패널에서 독립 offset, 세 번째 제한, Low 품질, owner/nonowner 삭제·Undo/Redo와 native 환경v10/592를 확인한다.
+
+### Spatial 태양 PCSS 회귀
+
+`pnpm smoke:spatial-sun-pcss`는 `test:spatial-sun-pcss-report`의 PNG 판정기 음성 테스트 뒤
+public tarball·실제 Wasm·WebGL2/WebGPU를 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도
+같은 테스트와 PCSS 행렬이 포함된다. CI는 기존 `workflow_dispatch`와 조건부 extended browser job을 따른다.
+브랜치 push만으로 해당 GPU 회귀가 자동 실행된다는 의미는 아니다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의32 context에서1,040개 상태를 확인한다.
+수평 shadow-only 모델의 접촉0.25/중간16/분리64 world 높이, 얇은2-unit caster,
+각도0/1/5·반경 제한2/16/32·해상도128/256/512/1024를 사용한다.
+Node 판정기가 저장 PNG의577개 world-space 수신점 profile을 다시 읽어 접촉보다 분리 그림자가 넓고,
+고정 PCF3와 구별되며 각도·반경 제한이 실제 픽셀에 반영되는지 요구한다.
+각도0은 hard와 같은 PNG여야 한다. 노이즈 없는 고정 kernel의 warm frame과 카메라 복귀는 픽셀이 같아야 한다.
+고정 sun center와 기본 camera-target 추적 모두 subtexel 카메라 이동은 depth map을 다시 그리지 않으며 같은 world profile의 폭을 유지한다.
+경사/곡면 모델은 녹색 재질로 수신 영역을 구분해 독립 no-shadow PNG와 비교하고 self-shadow acne를 제한한다.
+
+태양의 빨강 성분만 PCSS로 바꿔도 두 점광원의 초록/파랑은 그대로여야 한다.
+sampling-only는0 shadow pass, 태양 해상도 변경은1, 두 점광원과 태양의 cold frame은13을 요구한다.
+state14의 새 엔진 복원, 조명 OFF/재활성, WebGPU 장치 파괴·복구, 종료 후 자원0을 확인한다.
+매 상태의 warm frame은 shadow pass/upload0이며 검사 대상의 receiver/caster geometry 통계가 양수여야 한다.
+PNG 판정기는 상태 누락·빈 이미지·고정 blur·효과 없는 각도/반경·다른 색 성분 변경·warm redraw·model acne를 거절한다.
+최대48 depth fetch는 shader loop의 정적 상한이며 실제 fragment 수나 GPU 시간 측정값이 아니다.
+
+SDK/native 회귀는 환경v11 prefix·reserved tail·선택 정책·legacy/두 owner 동시 설정,
+OFF 보존·입력 거절의 원자성·구 core의 자산 조회 전 거절·patch12/state14 downgrade를 확인한다.
+WebGPU 두 uniform record의 PCSS tail·기존 frame 전환 시 초기화·추가 target 없음과 depth cache 재사용도 검사한다.
+보고서는 Spatial GPU `run-*/report.json`의 `sunPcssCases`와 PNG다. 실게임/목표 GPU·브라우저의 FPS·품질 수용 검증은 별도다.

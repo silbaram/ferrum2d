@@ -411,7 +411,9 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
 - **개발 완료 후 잔여 검증:** 실제 문제 게임의 품질과 목표 환경의 성능 수용 기준을 확인한다. M5-c 개발과 기준 PC의 실제 GPU 회귀·기준 씬 비용 대조는 완료했다.
-- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상, cascade/PCSS, height fog/light shaft.
+- **M6-b 개발·자동 검증 완료:** 선택형 태양 PCSS와 기존 필터 회귀를 완료했다.
+  사용법·비용 상한·근사 한계는 [태양 PCSS](../engine/data-scene-spatial.md#선택형-태양광-pcss)를 따른다.
+- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상·점광원 PCSS, cascade, height fog/light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,
