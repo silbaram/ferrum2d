@@ -98,7 +98,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length >= 592 && values[589] === 1 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -134,6 +134,22 @@ test("sun PCSS packs both camera records without new targets and clears on legac
   deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(656, 660)], [0, 0, 0, 0]);
   pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
 });
+test("height fog uniforms reuse targets, pack both camera records and clear on legacy", () => {
+  const { device, pass } = setup();
+  const fog = { color: [.2, .3, .4] as const, start: 10, end: 400 };
+  const base = frame({ fog }); pass.prepare(base, 160, 90);
+  const resources = [device.buffers.length, device.textures.length];
+  const height = frame({ fog: { ...fog, height: { baseHeight: -20, density: .5, falloff: 2 } } });
+  validateSpatialExtensions(height); pass.prepare(height, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  deepEqual([...packed.subarray(668, 672)], [1, -20, .5, 2]);
+  deepEqual(packed.subarray(668, 676), packed.subarray(2816 / 4 + 668, 2816 / 4 + 676));
+  pass.prepare(base, 160, 90);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(668, 672)], [0, 0, 0, 0]);
+  pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
+});
+
 test("point PCSS uniforms preserve both owners, duplicate camera records and clear on legacy", () => {
   const { device, pass } = setup();
   const lights = [0, 1].map(x => ({ position: { x, y: 0, elevation: 64 }, radius: 200 }));

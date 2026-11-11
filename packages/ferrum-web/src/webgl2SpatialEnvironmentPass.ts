@@ -83,7 +83,7 @@ export class WebGL2SpatialEnvironmentPass {
         "encode",
         "focus",
         "gradeValues",
-        "tint", "bloom", "ao", "projectionSize", "indirect", "separated", "dofApplied", "stage", "wideBloom", "bloomImage", "bloomGrid", "bloomSnap", "fog", "fogRange", "fogColor",
+        "tint", "bloom", "ao", "projectionSize", "indirect", "separated", "dofApplied", "stage", "wideBloom", "bloomImage", "bloomGrid", "bloomSnap", "fog", "fogRange", "fogColor", "heightFog", "fogCamera",
       ])
         this.compositeUniforms[name] = spatialUniform(
           gl,
@@ -426,6 +426,8 @@ export class WebGL2SpatialEnvironmentPass {
       z = frame.camera[22] - frame.camera[19],
       length = Math.hypot(x, y, z);
     gl.uniform3f(u.forward, x / length, y / length, z / length);
+    gl.uniform4f(u.heightFog, v[608] ?? 0, v[609] ?? 0, v[610] ?? 0, v[611] ?? 0);
+    gl.uniform4f(u.fogCamera, frame.camera[18], Math.hypot(x, z) / length, y / length, frame.camera[16]);
     gl.uniform2f(u.fogRange, v[71], v[72]);
     gl.uniform3fv(u.fogColor, v.subarray(73, 76));
     gl.activeTexture(gl.TEXTURE1);
@@ -479,6 +481,10 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform1i(u.separated, spatialSeparated(v) ? 1 : 0);
     gl.uniform1i(u.dofApplied, this.dof ? 1 : 0);
     gl.uniform1i(u.fog, v[0] & 2 ? 1 : 0);
+    const c = frame.camera, dx = c[20] - c[17], dy = c[21] - c[18], dz = c[22] - c[19];
+    const length = Math.hypot(dx, dy, dz) || 1;
+    gl.uniform4f(u.heightFog, v[608] ?? 0, v[609] ?? 0, v[610] ?? 0, v[611] ?? 0);
+    gl.uniform4f(u.fogCamera, c[18], Math.hypot(dx, dz) / length, dy / length, c[16]);
     gl.uniform2f(u.fogRange, v[71], v[72]); gl.uniform3fv(u.fogColor, v.subarray(73, 76));
     gl.activeTexture(gl.TEXTURE2); gl.bindSampler(2, null);
     gl.bindTexture(gl.TEXTURE_2D, this.indirect ?? this.color!); gl.uniform1i(u.indirect, 2);

@@ -5,6 +5,7 @@ import { applyDataSceneAuthoringDocument } from '@ferrum2d/ferrum-web/authoring'
 import { check, difference, pixels, png } from '/fixture.mjs';
 
 async function probe(backend, projection, colorManagement, variant){
+ const heightFog=variant.startsWith('height-fog'),snapshotVersion=heightFog?16:12;
  const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;left:0;top:0;width:128px;height:128px';canvas.dataset.spatialGpuTarget='true';document.body.append(canvas);
  let renderer,engine,pending;const errors=[],rows=[],images=[],allocations={textures:0,buffers:0,groups:0,pipelines:0};
  try{
@@ -38,8 +39,8 @@ async function probe(backend, projection, colorManagement, variant){
    pending={...options,resolve:row=>{clearTimeout(timeout);try{check(row.stats.terrainTriangleCount>=10&&row.stats.drawCalls<32,'wide Bloom runtime/work shape',row.stats);rows.push({name,width:canvas.width,height:canvas.height,stats:row.stats,frameWork:row.frameWork,allocated:row.allocated,resources:row.resources});images.push(row.data);resolve(row);}catch(error){reject(error);}},reject:e=>{clearTimeout(timeout);reject(e);}};engine.start();
   });
   const base={composition:'separated',lighting:{ambient:[4,4,4],lights:[]},
-   ...(variant==='plain'?{}:{fog:{color:[0,0,0],start:0,end:200}}),
-   ...(variant==='fog-ao'?{ambientOcclusion:{strength:1,radius:4,bias:.1}}:{})};
+   ...(variant==='plain'?{}:{fog:{color:[0,0,0],start:0,end:200,...(heightFog?{height:{baseHeight:20,density:.01,falloff:.02}}:{})}}),
+   ...(variant.endsWith('fog-ao')?{ambientOcclusion:{strength:1,radius:4,bias:.1}}:{})};
   const sharp=await draw('sharp',base);
   const hdr=await draw('hdr-reference',{...base,colorGrading:{exposure:-4,toneMapping:'none'}});
   const off=await draw('wide-zero',{...base,bloom:{mode:'wide',radius:64,strength:0}});
@@ -109,25 +110,25 @@ async function probe(backend, projection, colorManagement, variant){
   check(hud.data[center]===0&&hud.data[center+1]===0&&hud.data[center+2]===255,'wide Bloom affected HUD');
   check(hud.frameWork.spatialBloomDrawCalls===beforeRestore.stats.bloomDrawCalls&&hud.frameWork.spatialBloomTextureBytes===beforeRestore.stats.bloomTextureBytes,'HUD erased frame Bloom work',hud.frameWork);
   const options={includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document};
-  const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,options)));check(saved.dataScene.version===12&&saved.dataScene.progress.spatial.lightSelection===undefined,'wide state version/policy presence');
+  const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,options)));check(saved.dataScene.version===snapshotVersion&&saved.dataScene.progress.spatial.lightSelection===undefined,'wide state version/policy presence');
   engine.destroy();engine=await makeEngine();engine.setViewportSize(size.width,size.height);
   check(restoreGameStateSnapshot(engine,saved).dataSceneStateApplied,'fresh wide restoration rejected');
   const restored=await draw('fresh-restore',undefined);check(difference(beforeRestore.data,restored.data)===0,'fresh wide pixels changed');
   const beforeReject=captureGameStateSnapshot(engine,options).dataScene.progress;
   const bad=JSON.parse(JSON.stringify(saved));bad.dataScene.version=11;bad.snapshotHash=hashGameStateSnapshot(bad);
-  let rejected=false;try{restoreGameStateSnapshot(engine,bad);}catch(error){rejected=/version 12/.test(error.message);}check(rejected,'wide snapshot downgrade accepted');
+  let rejected=false;try{restoreGameStateSnapshot(engine,bad);}catch(error){rejected=error.message.includes(`version ${snapshotVersion}`);}check(rejected,'wide snapshot downgrade accepted');
   check(JSON.stringify(captureGameStateSnapshot(engine,options).dataScene.progress)===JSON.stringify(beforeReject),'invalid wide snapshot mutated progress');
   if(renderer.gpuDevice){const device=renderer.gpuDevice();device.destroy();await device.lost;check(await renderer.recoverDevice(),'wide device recovery rejected');watch();}
   const recovered=await draw('recovered-wide',undefined);check(difference(restored.data,recovered.data)===0,'wide recovery pixels changed');
   const cleared=await draw('environment-cleared',null);check(cleared.frameWork.spatialBloomDrawCalls===0&&cleared.frameWork.spatialBloomTextureBytes===0&&cleared.frameWork.spatialBloomTexelFetchBudget===0,'cleared environment retained Bloom work',cleared.frameWork);
   const returned=await draw('after-clear-wide',wide);check(difference(beforeRestore.data,returned.data)===0,'wide return after OFF changed pixels');
   check(errors.length===0,'wide Bloom GPU errors',errors);
-  return {backend,projection,colorManagement,rows,images,errors,restored:true,recovered:backend==='webgpu',snapshotVersion:12,pixelArtNearest:true,gpuTimeMs:null,width:canvas.width,height:canvas.height};
+  return {backend,projection,colorManagement,rows,images,errors,restored:true,recovered:backend==='webgpu',snapshotVersion,pixelArtNearest:true,gpuTimeMs:null,width:canvas.width,height:canvas.height};
  }finally{engine?.destroy();renderer?.destroy();window.disposeSpatialGpuTarget?.(canvas);canvas.remove();
   if(renderer)for(const key of ['textureCount','bufferCount','programCount','renderTargetCount'])check(renderer.resourceStats()[key]===0,'wide Bloom resource leak',{key,resources:renderer.resourceStats()});}
 }
 export async function probeSpatialWideBloom(colorManagement, variant='plain'){
- check(['plain','fog','fog-ao'].includes(variant),'Unknown wide Bloom composition variant');
+ check(['plain','fog','fog-ao','height-fog','height-fog-ao'].includes(variant),'Unknown wide Bloom composition variant');
  const result=[];
  for(const projection of ['orthographic','perspective']){
   const pair=[];for(const backend of ['webgl2','webgpu'])pair.push(await probe(backend,projection,colorManagement,variant));

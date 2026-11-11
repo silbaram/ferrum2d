@@ -567,8 +567,14 @@ impl Engine {
     pub fn spatial_point_pcss_abi_version(&self) -> u32 {
         1
     }
+    /// Cold capability for environment v13 analytic height fog.
+    pub fn spatial_height_fog_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 600 {
+        if self.spatial_scene.environment.value_len > 608 {
+            13
+        } else if self.spatial_scene.environment.value_len > 600 {
             12
         } else if self.spatial_scene.environment.value_len > 592 {
             11

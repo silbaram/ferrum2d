@@ -1,3 +1,4 @@
+import { requestsSpatialHeightFog, resolveSpatialHeightFog, validSpatialHeightFog, type SpatialHeightFogSpec } from "./spatialHeightFog.js";
 import { requestsSpatialPointPcss, resolveSpatialPointPcss, validSpatialPointPcss } from "./spatialPointPcss.js";
 import { hasSpatialSelectionSource, requestsSpatialWideBloom, validSpatialWideBloom } from "./spatialBloom.js";
 import { resolveSpatialLightSelectionSpec, validSpatialLightSelectionValues, type SpatialLightSelectionSpec, type SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
@@ -84,6 +85,8 @@ export interface SpatialColorGradingSpec {
   toneMapping?: "none" | "reinhard" | "aces";
 }
 export interface SpatialFogSpec {
+  /** Optional analytic height fog; start/end bound its view-depth integration interval. */
+  height?: SpatialHeightFogSpec;
   color: SpatialRgb;
   start: number;
   end: number;
@@ -102,9 +105,9 @@ export interface SpatialEnvironmentSpec {
   colorGrading?: SpatialColorGradingSpec;
   fog?: SpatialFogSpec;
 }
-/** Borrowed native environment v1..v12; acquire per frame, copy before deferred use. */
+/** Borrowed native environment v1..v13; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
@@ -117,7 +120,7 @@ export interface SpatialEnvironmentBufferView {
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608].includes(v.length) ||
+    ![80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616].includes(v.length) ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -151,7 +154,8 @@ export function validSpatialEnvironmentValues(v: Float32Array): boolean {
       (v[580] === 1 ? !validSpatialWideBloom(v) : v.subarray(580, 583).some(x => x !== 0)) ||
       ![0, 1].includes(v[583]) || v[583] === 0 && v.subarray(576, 580).some(x => x !== 0))) return false;
   if (v.length >= 600 && !validSpatialSunPcss(v)) return false;
-  if (v.length === 608 && !validSpatialPointPcss(v)) return false;
+  if (v.length >= 608 && !validSpatialPointPcss(v)) return false;
+  if (v.length === 616 && !validSpatialHeightFog(v)) return false;
   if (!(v[0] & 1) && (v[1] !== 0 || v[2] !== -1)) return false;
   const range = (start: number, end: number, min: number, max: number) => {
     for (let i = start; i < end; i++)
@@ -640,7 +644,7 @@ export function resolveSpatialEnvironmentSpec(
     };
   }
   if (o.fog !== undefined) {
-    const f = object(o.fog, `${path}.fog`, ["color", "start", "end"]),
+    const f = object(o.fog, `${path}.fog`, ["color", "start", "end", "height"]),
       start = number(f.start, `${path}.fog.start`, 0, 1e6),
       end = number(f.end, `${path}.fog.end`, 0.001, 1e6);
     if (Math.fround(end) <= Math.fround(start))
@@ -648,7 +652,8 @@ export function resolveSpatialEnvironmentSpec(
         `${path}.fog.end`,
         "must exceed start",
       );
-    result.fog = { color: rgb(f.color, `${path}.fog.color`, 1), start, end };
+    result.fog = { color: rgb(f.color, `${path}.fog.color`, 1), start, end,
+      ...(f.height === undefined ? {} : { height: resolveSpatialHeightFog(f.height, `${path}.fog.height`) }) };
   }
   return result;
 }
@@ -658,11 +663,11 @@ export function compileSpatialEnvironment(
   if (input === null) return new Float32Array();
   const spec = resolveSpatialEnvironmentSpec(input),
     selection = spec.lighting?.selection,
-    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec) || requestsSpatialPointShadows(spec) || requestsSpatialSunPcss(spec) || requestsSpatialPointPcss(spec),
+    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec) || requestsSpatialPointShadows(spec) || requestsSpatialSunPcss(spec) || requestsSpatialPointPcss(spec) || requestsSpatialHeightFog(spec),
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
     v4 = lightChannels || !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(requestsSpatialPointPcss(spec) ? 608 : requestsSpatialSunPcss(spec) ? 600 : requestsSpatialPointShadows(spec) ? 592 : requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v = new Float32Array(requestsSpatialHeightFog(spec) ? 616 : requestsSpatialPointPcss(spec) ? 608 : requestsSpatialSunPcss(spec) ? 600 : requestsSpatialPointShadows(spec) ? 592 : requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);
@@ -754,6 +759,8 @@ export function compileSpatialEnvironment(
   if (pcss) v.set([1, pcss.angularRadius!, pcss.maxRadiusTexels!], 592);
   const owners = spec.lighting?.pointShadows ?? (spec.lighting?.shadows ? [spec.lighting.shadows] : []);
   owners.forEach((owner, i) => { if (owner.pcss) v.set([1, owner.pcss.sourceRadius!, owner.pcss.maxRadiusTexels!, 0], 600 + i * 4); });
+  const heightFog = spec.fog?.height;
+  if (heightFog) v.set([1, heightFog.baseHeight!, heightFog.density!, heightFog.falloff!], 608);
   return v;
 }
 export function decodeSpatialEnvironment(
@@ -828,10 +835,12 @@ export function decodeSpatialEnvironment(
   }
   if (v.length >= 600 && v[592] === 1 && spec.lighting?.directional?.shadows)
     spec.lighting.directional.shadows.pcss = { angularRadius: v[593], maxRadiusTexels: v[594] };
-  if (v.length === 608 && spec.lighting) {
+  if (v.length >= 608 && spec.lighting) {
     const owners = spec.lighting.pointShadows ?? (spec.lighting.shadows ? [spec.lighting.shadows] : []);
     owners.forEach((owner, i) => { const at = 600 + i * 4; if (v[at] === 1) owner.pcss = { sourceRadius: v[at + 1], maxRadiusTexels: v[at + 2] }; });
   }
+  if (v.length === 616 && v[608] === 1 && spec.fog)
+    spec.fog.height = { baseHeight: v[609], density: v[610], falloff: v[611] };
   if (hasSpatialSelectionSource(v) && spec.lighting) spec.lighting.selection = { enabled: v[576] === 1, hysteresis: v[577], fadeSeconds: v[578], resetDistance: v[579] };
   return resolveSpatialEnvironmentSpec(spec);
 }

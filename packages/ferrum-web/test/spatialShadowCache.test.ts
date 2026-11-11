@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { equal } from "node:assert/strict";
 import { SpatialShadowCache } from "../src/spatialShadowCache.js";
-import { compileSpatialEnvironment } from "../src/spatialEnvironment.js";
+import { compileSpatialEnvironment, decodeSpatialEnvironment } from "../src/spatialEnvironment.js";
 import type { SpatialRenderBufferView } from "../src/dataSceneSpatial.js";
 
 function dualWithSun(): SpatialRenderBufferView {
@@ -34,6 +34,17 @@ test("each owner tracks its light, native matrices and readiness independently, 
   // Sampling-only changes do not alter stored depth.
   for (const offset of [4, 5, 95, 586, 587, 124]) f.environment!.values[offset]++;
   equal(c.prepare(f, t, 7), 0);
+});
+
+test("height fog edits preserve both point maps and the sun map", () => {
+  const f = dualWithSun(), c = new SpatialShadowCache(), t = { textureRevision: () => 1 };
+  const values = compileSpatialEnvironment({ ...decodeSpatialEnvironment(f.environment!.values), fog: { color: [1, 1, 1], start: 0, end: 300, height: {} } }); f.environment!.values = values; f.environment!.version = 13;
+  equal(c.prepare(f, t, 0), 7); c.commit(f, 7);
+  for (const offset of [609, 610, 611]) {
+    values[offset] += .01;
+    equal(c.prepare(f, t, 7), 0, `height fog field ${offset} cannot invalidate depth`);
+  }
+  values.fill(0, 608); equal(c.prepare(f, t, 7), 0, "removing height fog preserves depth");
 });
 
 test("shared geometry/alpha revisions invalidate every map, even if a prior redraw was abandoned", () => {

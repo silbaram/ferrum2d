@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 608;
+pub(crate) const ENVIRONMENT_VALUES: usize = 616;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -40,6 +40,7 @@ impl SpatialEnvironment {
             584,
             592,
             600,
+            608,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -203,6 +204,19 @@ impl SpatialEnvironment {
         }
         // v12: independent point PCSS controls, without changing depth-map ownership.
         if !point_shadows::valid_pcss(&a) {
+            return None;
+        }
+        // v13: analytic height fog, independent of lighting's enabled state.
+        if !(if a[608] == 0. {
+            a[609..616].iter().all(|x| *x == 0.)
+        } else {
+            a[608] == 1.
+                && flags & 2 != 0
+                && a[609].abs() <= 1e6
+                && (0. ..=10.).contains(&a[610])
+                && (0. ..=10.).contains(&a[611])
+                && a[612..616].iter().all(|x| *x == 0.)
+        }) {
             return None;
         }
         let count = a[1] as usize;

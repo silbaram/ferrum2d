@@ -1,3 +1,4 @@
+import { HEIGHT_FOG_GLSL } from "./spatialHeightFogShaders.js";
 import { POINT_PCSS_GLSL } from "./spatialPointPcssShaders.js";
 import { SUN_PCSS_GLSL } from "./spatialSunPcss.js";
 import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
@@ -21,6 +22,7 @@ uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_h
 uniform int u_shadowIndex2;uniform vec2 u_shadowParams2;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
+uniform vec4 u_heightFog,u_fogCamera;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform vec2 u_receiverMasks;uniform vec4 u_lightChannels;uniform float u_sunChannels;
 uniform vec3 u_pointPcss,u_pointPcss2;
@@ -31,6 +33,7 @@ layout(location=0) out vec4 outColor;
 layout(location=1) out vec4 outIndirect;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+${HEIGHT_FOG_GLSL}
 ${SPATIAL_SPECULAR_GLSL}
 bool receivesLight(int channels){return (int(u_receiverMasks.x)&(channels&255))!=0;}
 bool receivesShadow(int channels){return (int(u_receiverMasks.y)&((channels>>8)&255))!=0;}
@@ -204,7 +207,12 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
  color=albedo*illumination+reflection*specularWeight;
 }
 color+=emission;
-if(u_fog && !u_separated){float z=max(dot(v_world-u_eye,u_forward),0.0);float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);color=mix(color,u_fogColor,amount);}
+if(u_fog && !u_separated){
+ float z=max(dot(v_world-u_eye,u_forward),0.0),amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);
+ if(u_heightFog.x>0.){float origin=u_fogCamera.w>0.?u_eye.y:v_world.y-u_forward.y*z;
+  amount=heightFogAmount(z,u_fogCamera.w>0.?length(v_world-u_eye):z,origin,v_world.y,u_heightFog,u_fogRange);}
+ color=mix(color,u_fogColor,amount);
+}
 outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
@@ -231,7 +239,8 @@ vec3 bloomAt(ivec2 p){ivec2 size=textureSize(u_bloomImage,0);p=clamp(p,ivec2(0),
 vec3 wideBloom(vec2 uv){vec2 p=vec2(uv.x,1.-uv.y)*u_bloomGrid-.5;ivec2 a=ivec2(floor(p));vec2 w=fract(p);return mix(mix(bloomAt(a),bloomAt(a+ivec2(1,0)),w.x),mix(bloomAt(a+ivec2(0,1)),bloomAt(a+ivec2(1,1)),w.x),w.y);}
 uniform vec3 u_tint;uniform float u_projectionSize;
 uniform sampler2D u_indirect;uniform bool u_separated,u_dofApplied,u_fog;uniform int u_stage;
-uniform vec2 u_fogRange;uniform vec3 u_fogColor;
+uniform vec2 u_fogRange;uniform vec3 u_fogColor;uniform vec4 u_heightFog,u_fogCamera;
+${HEIGHT_FOG_GLSL}
 float viewDepth(float d){float n=u_nearFar.x,f=u_nearFar.y;return u_perspective?(2.0*n*f)/(f+n-(d*2.0-1.0)*(f-n)):mix(n,f,d);}
 vec3 encode(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
@@ -289,7 +298,13 @@ if((u_stage==1 || !u_separated) && u_ao.x>0. && u_ao.y>0. && depth<1.) {
  float visibility=1.-clamp(occlusion/12.*u_ao.y*3.,0.,.9);
  if(u_stage==1)color-=texture(u_indirect,v_uv).rgb*(1.-visibility);else color*=visibility;
 }
-if(u_stage==1 && u_fog)color=mix(color,u_fogColor,clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.));
+if(u_stage==1 && u_fog){
+ float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.);
+ if(u_heightFog.x>0.){float origin=u_fogCamera.x+(u_perspective?0.:u_fogCamera.y*position.y);
+  float receiver=u_fogCamera.x+u_fogCamera.y*position.y+u_fogCamera.z*z;
+  amount=heightFogAmount(z,u_perspective?length(position):z,origin,receiver,u_heightFog,u_fogRange);}
+ color=mix(color,u_fogColor,amount);
+}
 if(u_stage>0){outColor=vec4(max(color,vec3(0.)),center.a);return;}
 if(u_bloom.x>0. && u_bloom.y>0.) {
  vec3 glow=vec3(0.);float weight=0.;
