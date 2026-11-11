@@ -2964,3 +2964,17 @@ Node의 `spatial-light-selection-report.mjs`는 PNG 증거에서 fade-out/in의 
 중간 복원·pause 그림이 정확히 일치하는지 추가 검사한다. 빈/변하지 않는 렌더가 상태·reference 비교만으로
 통과하지 않도록 별도 negative gate test를 실행한다. 단계별 수치와 원본 PNG는 보고서에 남긴다.
 실게임·실기기는 개발 완료 후 진행한다. shadow 작업 예산·넓은 Bloom과 preset 측정은 별도 M5 잔여다.
+
+
+M5-b의 native contribution 회귀는 `smoke:spatial-light-selection` 기본 행렬에 RGB0/direct mask0/frustum 밖
+제외·실제 화면 조명 개선·dim high-intensity와 bright source 순위 대조를 추가한다. pinned owner 보존과
+policy OFF의 구 순위를 같은 public source로 비교한다. authored/weight 기반 v7 픽셀 참조도 유지한다.
+Native unit은 disabled v8/정확한 v7 순위, 보수적 frustum 경계·near/eye 교차·큰 반경과 pinned history 복원을 검사한다.
+
+같은 행렬은 pixelArt512×64/64×512·snap 전환을 simulation update로 진행하여 base frustum과 실제 표시
+frustum의 선택 불일치를 검사한다. native 실패 재현은 첫 render 이전 seed부터 검증한다.
+좁은 재현은 SDK/Wasm build 후 `node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-selection-presentation-only`다.
+이 좁은 경로는 저장/복구를 수행했다고 보고하지 않으며, 해당 증거는 원래 전환 행렬에서 유지한다.
+
+Presentation PNG gate는 wide view의 빨간 edge receiver가64pixel보다 많이 실제로 비춰졌는지도 검사한다.
+빈/무변화 화면을 거절하는 negative unit은 기존 `test:spatial-light-selection-report`와 기본 offscreen CI에 포함된다.

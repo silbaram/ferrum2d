@@ -1704,6 +1704,11 @@ M5의 native 광원 전환 기반은 내부 environment v8 numeric580을 사용�
 Rust가 simulation step마다 최대4개의 source/pending/weight/phase 슬롯을 갱신하며 render-only
 재생성은 이력을 진행하거나 초기화하지 않는다. 선택은 simulation pose, 최종 제출 위치는 render
 interpolation pose를 사용한다. 단일 point shadow 소유 광원은 기존처럼 첫 슬롯에 고정한다.
+활성 v8 정책만 RGB 최대 채널로 intensity 점수를 가중하고 RGB0/direct mask0/반경 AABB frustum 밖을
+일반 후보에서 제외한다. 기존 conservative camera clip-plane 검사를 재사용하므로 경계/near/eye 교차를 유지한다.
+simulation은 첫 render 전에도 `presented_camera`를 계산하여 pixelArt 비율·snap을 emission과 맞춘다.
+제외 사유는 기존 diagnostic7이며 pinned shadow owner는 예약을 유지한 채 intensity0으로 제출한다.
+legacy/disabled의 거리 순위와 source/cold history/ABI는 바꾸지 않는다. 정확한 receiver/spot 가시성은 추정하지 않는다.
 카메라 target 이동 임계값·명시적 reset·선택 입력/실제 binding 변경은 이력을 초기화하고,
 같은 source나 노출/후처리 변경은 전환을 보존한다. fadeSeconds는 교체 전후 각 leg의 길이다.
 

@@ -40,7 +40,7 @@ Spatial 광원 통계는 양 renderer에서 `RuntimeFrameRenderer` → `DebugOve
 `spatialAuthoredLightCount`, `spatialSelectedLightCount`, `spatialContributingLightCount`는 작성 수·packed 슬롯 수·
 nonzero intensity/color/direct-mask 슬롯 수다. `spatialPendingLightCount`, `spatialRetainedLightCount`,
 `spatialFadingLightCount`, `spatialCulledLightCount`, `spatialDroppedLightCount`, `spatialDisabledLightCount`는
-native v8 source 진단의 대기·유지·fade·missing/zero/position 제외·budget 탈락·OFF 수다.
+native v8 source 진단의 대기·유지·fade·missing/no-contribution/position 제외·budget 탈락·OFF 수다.
 상세 값은 v8 진단이 없는 구/비활성 정책에서 undefined다. 서로 겹칠 수 있으며 per-pixel 가시성·GPU 실행 시간을 뜻하지 않는다.
 진단 수치는 frame trace에도 보존한다. 선택 상한은 packed4개이며 authored16개가 동시 조명 수를 뜻하지 않는다.
 

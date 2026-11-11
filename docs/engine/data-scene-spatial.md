@@ -1893,6 +1893,13 @@ simulation step마다 최대4개 슬롯의 선택·fade 이력을 소유한다. 
 - `resetDistance`: camera target의 update당 이동 거리0..1,000,000, 기본0. 0은 자동 cut 감지를 끈다.
   양수 임계값을 넘으면 현재 순위로 즉시 초기화한다. `resetDataSceneSpatialLightSelection()`도 명시적으로 이력을 지운다.
 
+활성 정책은 `intensity × max(R,G,B) / (1 + distance²/radius²)`로 순위를 계산한다. 거리는 camera target 기준이다.
+RGB가 모두0이거나 direct `lightMask`가0인 광원, 광원 반경의 AABB가 camera frustum과 전혀 교차하지 않는
+광원은 일반 슬롯에서 제외한다. frustum은 pixelArt의 표시 비율·camera snap까지 반영해 simulation seed 전 계산한다.
+경계·near/eye plane을 보수적으로 포함하며 구·cone·수신면의
+정확한 가시성 판정은 아니다. shadow owner는 기여가 없어도 첫 슬롯 예약을 유지하고 제출 intensity를0으로 한다.
+`selection` 생략/disabled의 종전 intensity·거리 순위는 그대로 유지한다.
+
 선택은 simulation pose, 최종 광원 위치는 render interpolation pose를 사용한다. render preview와 반복 build,
 pause/zero step은 전환 시간을 진행하지 않는다. point 선택 입력(config·광원·채널·상한·shadow owner)/실제 binding 변경·씬 재시작/해제는 초기화하고,
 동일 source·노출/후처리 편집은 전환을 보존한다. global lighting OFF는 이력을 초기화하고 작성 설정을 보존한다.
@@ -1909,7 +1916,8 @@ initialized/step/anchor와4개 source/pending/weight/phase 슬롯을 저장한�
 
 `SpatialEnvironmentBufferView.lightSelection`은 optional borrowed v1/stride6이며 authored source당24-byte 행이다.
 `words`와 `values`는 같은 메모리다. source/slot/reason/flags는 u32이며 slot 없음은0xffffffff,
-score/weight는 마지막2개 f32다. reason은 active1/in2/out3/retained4/budget5/missing6/zero7/OFF8/position9/pending10,
+score/weight는 마지막2개 f32다. reason은 active1/in2/out3/retained4/budget5/missing6/no-contribution7/OFF8/position9/pending10,
+사유7은 intensity0·RGB0·direct mask0·frustum 밖을 포함한다.
 flags는 pinned1/retained2/preview4/pending8이다. retained는 pause 등으로 유지된 집합도 포함한다.
 매 frame 다시 읽고 지연 소비 전에 소유 복사한다. 정책 disabled/작성 광원0개는 행을 생략할 수 있다.
 GPU target/pass·shader loop 상한은 늘지 않는다. 실제 양 backend 전환 픽셀·버퍼·복구와 통계는 전용 smoke로 검증하며,
@@ -1919,7 +1927,7 @@ GPU target/pass·shader loop 상한은 늘지 않는다. 실제 양 backend 전�
 `contributingLightCount`를 기록한다. 이는 선택된 행의 intensity·색·direct mask가 모두 nonzero라는 뜻이며
 각 수신면이나 화면 pixel의 실제 가시성을 뜻하지 않는다. v8 진단이 있을 때만 `pendingLightCount`,
 `retainedLightCount`, `fadingLightCount`, `culledLightCount`, `droppedLightCount`, `disabledLightCount`를 기록한다.
-culled는 missing/zero/position 사유6/7/9, dropped는 budget 사유5, disabled는 OFF 사유8이다.
+culled는 missing/no-contribution/position 사유6/7/9, dropped는 budget 사유5, disabled는 OFF 사유8이다.
 pending/retained는 flags8/2, fading은 사유2/3을 세므로 서로 겹칠 수 있으며, 이 값들은 source의 partition이 아니다.
 구 policy/core의 상세 값은 undefined이며0으로 추정하지 않는다.
 
