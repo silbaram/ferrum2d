@@ -2053,4 +2053,6 @@ shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance s
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
 이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
 두 번째 cube는 선택 시에만 만들고 OFF/clear/destroy 시 회수한다. shadow set cache와 자산 revision 무효화는 양 큐브에 함께 적용한다.
+WebGL2는 타깃 교체 준비 전에 기존 cache commit을 무효화하고 모든 shadow face 제출이 끝난 뒤 확정한다.
+부분 렌더 실패 후 같은 프레임에서 재시도해도 이전 commit을 사용하지 않는다.
 입력·저장·비용은 [다중 점광원 계약](../../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)을 따른다.

@@ -3030,6 +3030,8 @@ PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모�
 16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
 다중→단일 설정 직후 프레임 재생성 전 모델 위치 조회,
 WebGPU 실제 장치 파괴 후 복구를 포함한다. 정적 warm frame의 shadow draw/upload0과 해제 후 자원0을 요구한다.
+WebGL2는 두 번째 cube 크기를 바꾼 직후 렌더 실패를 주입하고, 같은 프레임의 재시도가12면을 다시 그리는지 검사한다.
+SDK 회귀는 첫 cube·두 번째 cube·sun 타깃 각각에 대해 실패 후 재시도와 성공 후 warm cache 재사용을 확인한다.
 
 보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.
 소프트웨어 adapter 실행은 실물 GPU 또는 제품 시간/FPS 수용 결과로 해석하지 않는다.
