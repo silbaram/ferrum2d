@@ -23,6 +23,7 @@ try {
   await assertPassedCatalogMissingRequestedTemplateFails();
   await assertPassedTemplateMatrixMismatchFails();
   await assertPassedDeploymentEvidenceMissingFails();
+  await assertDevelopmentBrowserEvidence();
   await assertPassedPlacementViewerEvidenceMissingFails();
   await assertPassedDeploymentSamplingEvidenceInvalidFails();
   await assertPassedDeploymentReadbackEvidenceInvalidFails();
@@ -32,6 +33,38 @@ try {
   console.log("consumer smoke report validation smoke ok");
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
+}
+
+async function assertDevelopmentBrowserEvidence() {
+  const artifactDir = path.join(tempRoot, "development-browser-evidence");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  const template = report.templates[0];
+  template.checks.devBrowserSmoke = true;
+  template.reports.developmentBrowser = {
+    ...structuredClone(template.reports.deploymentBrowser),
+    basePath: "/",
+  };
+  const args = ["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"];
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  await runValidatorExpecting(0, args, "passed development browser evidence");
+  template.reports.developmentBrowser.wasmMimeValid = false;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  let result = await runValidator(args);
+  assert(result.code !== 0 && result.stdout.includes("reports.developmentBrowser.wasmMimeValid must be true"),
+    "development browser must reject non-Wasm responses");
+  delete template.reports.developmentBrowser;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  result = await runValidator(args);
+  assert(result.code !== 0 && result.stdout.includes("reports.developmentBrowser must be an object"),
+    "development browser success must include evidence");
+  template.reports.developmentBrowser = { ...template.reports.deploymentBrowser, basePath: "/" };
+  delete template.checks;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  result = await runValidator(args);
+  assert(result.code !== 0 && result.stdout.includes("checks must be an object") &&
+    result.stdout.includes("checks.devBrowserSmoke must be true"),
+    "development browser without checks must produce diagnostics rather than throw");
 }
 
 async function assertEarlyFailedReportPasses() {

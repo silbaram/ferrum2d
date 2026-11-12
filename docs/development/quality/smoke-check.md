@@ -241,6 +241,8 @@ pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke/consume
   consumer project와 consumer-smoke report는 Studio Kit 필드를 사용하는 version 2다.
 - 실제 Playing 상태·entity·command·배경과 다른 픽셀을 확인한다. 12개 완료 render frame과 bounded readback 재시도를 기록하며,
   재시도 frame의 최대 draw도 예산에 포함한다. 잘못된 WebGL context·readback 실패를 성공으로 처리하지 않는다.
+- 생성 프로젝트의 Vite 개발 서버와 배포 빌드를 각각 브라우저에서 확인한다. 개발 서버도 Wasm MIME·실제 프레임 기준을 적용하며,
+  `developmentBrowser`에 기록한다. 공통 Vite 설정은 Wasm 상대 경로를 유지하도록 엔진 패키지를 사전 번들링에서 제외한다.
 - deploy HTTP·Wasm MIME과 report artifact 검증을 수행한다. snapshot에 node_modules/dist를 포함하지 않는다.
 
 릴리스의 SDK 네 tarball·Studio installer·checksum·서명/update metadata와 실제 native GUI 검증은

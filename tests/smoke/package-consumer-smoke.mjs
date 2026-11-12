@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 import { installDeploymentFrameProbe } from "./consumer-deployment-frame-probe.mjs";
 import {
@@ -617,7 +617,9 @@ async function runGeneratedGameConsumer({
   assertConsumerDeployReadinessReport(deploymentReport, templateName);
   templateSummary.checks.deployReport = true;
   templateSummary.reports.deployment = summarizeConsumerDeployReadinessReport(deploymentReport);
-  templateSummary.reports.deploymentBrowser = await smokeGeneratedGameDeployment(generatedGameRoot, templateName);
+  templateSummary.reports.developmentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName, { development: true });
+  templateSummary.checks.devBrowserSmoke = true;
+  templateSummary.reports.deploymentBrowser = await smokeGeneratedGameRuntime(generatedGameRoot, templateName);
   templateSummary.checks.deployBrowserSmoke = true;
   templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
   templateSummary.checks.placementViewerSmoke = true;
@@ -628,13 +630,28 @@ async function runGeneratedGameConsumer({
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
 }
 
-async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
+async function smokeGeneratedGameRuntime(generatedGameRoot, templateName, { development = false } = {}) {
   const distRoot = path.join(generatedGameRoot, "dist");
   const budgetProfile = runtimeBudgetProfile(templateName);
+  const basePath = development ? "/" : GENERATED_DEPLOYMENT_BASE_PATH;
   let server;
+  let devServer;
   let browser;
   try {
-    server = await serveStaticDirectory(distRoot, { mountPath: GENERATED_DEPLOYMENT_BASE_PATH });
+    if (development) {
+      const { createServer: createViteServer } = await import(pathToFileURL(
+        path.join(generatedGameRoot, "node_modules/vite/dist/node/index.js"),
+      ).href);
+      devServer = await createViteServer({
+        root: generatedGameRoot,
+        server: { host: BROWSER_SMOKE_HOST, port: 0 },
+        logLevel: "error",
+      });
+      await devServer.listen();
+      server = devServer.httpServer;
+    } else {
+      server = await serveStaticDirectory(distRoot, { mountPath: basePath });
+    }
     const address = server.address();
     assert(address && typeof address !== "string", `${templateName} deployment smoke server must bind to a TCP port`);
     browser = await launchConsumerSmokeBrowser();
@@ -666,7 +683,7 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
       }
     });
 
-    const pageUrl = `http://${BROWSER_SMOKE_HOST}:${address.port}${GENERATED_DEPLOYMENT_BASE_PATH}index.html`;
+    const pageUrl = `http://${BROWSER_SMOKE_HOST}:${address.port}${basePath}index.html`;
     const mainResponse = await page.goto(pageUrl, {
       waitUntil: "networkidle",
       timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS,
@@ -746,7 +763,7 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     return {
       status: "validated",
       url: pageUrl,
-      basePath: GENERATED_DEPLOYMENT_BASE_PATH,
+      basePath,
       indexStatus: mainResponse.status(),
       canvas,
       runtime,
@@ -760,9 +777,12 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
       wasmResponseCount: wasmResponses.length,
       browserErrors: 0,
     };
+  } catch (error) {
+    throw new Error(`${templateName} ${development ? "development" : "deployment"} browser smoke failed: ${errorMessage(error)}`, { cause: error });
   } finally {
     await browser?.close().catch(() => undefined);
-    await closeServer(server).catch(() => undefined);
+    if (devServer) await devServer.close().catch(() => undefined);
+    else await closeServer(server).catch(() => undefined);
   }
 }
 
@@ -1287,6 +1307,7 @@ function createTemplateSummary(templateName) {
       smoke: false,
       build: false,
       deployReport: false,
+      devBrowserSmoke: false,
       deployBrowserSmoke: false,
       placementViewerSmoke: false,
     },

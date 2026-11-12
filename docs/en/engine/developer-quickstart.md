@@ -80,6 +80,20 @@ Tell me how to run the game and what to check myself.
 The full check is `npm run ferrum:check`. Gameplay changes can differ from old replay expectations;
 the agent should inspect the cause and compare it with the intended change.
 
+## If Wasm fails to load
+
+If the development server cannot start the game and the browser console shows `WebAssembly.instantiate()` with
+`expected magic word`, check that `defineConfig({ ... })` in `vite.config.ts` includes the following. Keep the existing `build` settings.
+
+```ts
+optimizeDeps: {
+  exclude: ["@ferrum2d/ferrum-web"],
+},
+```
+
+Save, stop the development server, and restart it with `npm run dev -- --force`.
+The generator in the current source already includes this setting.
+
 ## Next steps
 
 | Goal | Action |

@@ -82,6 +82,20 @@ AI가 프로젝트 폴더와 [AI 게임 개발 안내](ai-game-development.md)�
 전체 검증은 `npm run ferrum:check`입니다. 게임 동작을 바꾸면 이전 리플레이 기대값과 달라질 수 있습니다.
 AI가 원인을 확인하고 변경 의도와 대조하도록 하세요.
 
+## Wasm 로딩 오류가 날 때
+
+개발 서버에서 게임이 시작되지 않고 브라우저 콘솔에 `WebAssembly.instantiate()`와 `expected magic word` 오류가 나오면,
+`vite.config.ts`의 `defineConfig({ ... })` 안에 아래 설정이 있는지 확인하세요. 기존 `build` 설정은 유지합니다.
+
+```ts
+optimizeDeps: {
+  exclude: ["@ferrum2d/ferrum-web"],
+},
+```
+
+저장한 뒤 개발 서버를 종료하고 `npm run dev -- --force`로 다시 실행하세요.
+현재 소스의 생성기에는 이 설정이 포함돼 있습니다.
+
 ## 다음에 할 일
 
 | 하고 싶은 일 | 방법 |

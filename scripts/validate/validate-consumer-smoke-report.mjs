@@ -301,6 +301,19 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     reportErrors,
     template.template,
   );
+  // Earlier v2 reports predate development-server coverage. When present, require full evidence.
+  if (template.checks?.devBrowserSmoke !== undefined || template.reports.developmentBrowser !== undefined) {
+    if (template.checks?.devBrowserSmoke !== true) {
+      reportErrors.push(`${label}.checks.devBrowserSmoke must be true`);
+    }
+    validateDeploymentBrowserSummary(
+      template.reports.developmentBrowser,
+      `${label}.reports.developmentBrowser`,
+      reportErrors,
+      template.template,
+      "/",
+    );
+  }
   validatePlacementViewerSummary(
     template.reports.placementViewer,
     `${label}.reports.placementViewer`,
@@ -516,14 +529,14 @@ function validateDeploymentSummary(value, label, reportErrors) {
   if (value.errors !== 0) reportErrors.push(`${label}.errors must be 0`);
 }
 
-function validateDeploymentBrowserSummary(value, label, reportErrors, templateName) {
+function validateDeploymentBrowserSummary(value, label, reportErrors, templateName, basePath = "/__ferrum2d_consumer_smoke__/") {
   if (!isRecord(value)) {
     reportErrors.push(`${label} must be an object`);
     return;
   }
   if (value.status !== "validated") reportErrors.push(`${label}.status must be validated`);
-  if (value.basePath !== "/__ferrum2d_consumer_smoke__/") {
-    reportErrors.push(`${label}.basePath must be /__ferrum2d_consumer_smoke__/`);
+  if (value.basePath !== basePath) {
+    reportErrors.push(`${label}.basePath must be ${basePath}`);
   }
   if (value.indexStatus !== 200) reportErrors.push(`${label}.indexStatus must be 200`);
   if (!isRecord(value.canvas)) {
