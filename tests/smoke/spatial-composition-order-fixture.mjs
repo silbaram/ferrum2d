@@ -3,7 +3,7 @@ import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring"
 import { check, difference, pixels } from "/fixture.mjs";
 
 /** A one-pixel HDR source falls below Bloom threshold after a four-pixel DOF gather. */
-export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy", wide = false) {
+export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy", wide = false, heightFog = false) {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:fixed;left:0;top:0;width:32px;height:32px";
   canvas.dataset.spatialGpuTarget = "true"; document.body.append(canvas);
@@ -45,7 +45,7 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
       pending = { resolve: result => { clearTimeout(timeout); resolve(result); }, reject: error => { clearTimeout(timeout); reject(error); } };
       engine.start();
     });
-    const base = { composition: "separated", lighting: { ambient: [4, 4, 4], lights: [] } };
+    const base = { composition: "separated", lighting: { ambient: [4, 4, 4], lights: [] }, ...(heightFog ? {fog: {color: [0, 0, 0], start: 0, end: 200, height: {baseHeight: 20, density: .01, falloff: .02}}} : {}) };
     const depthOfField = { focusDistance: 1, focusRange: 0, aperture: 32, maxBlurRadius: 4 };
     const bloom = { strength: 1, radius: 8, threshold: 1, ...(wide ? { mode: "wide" } : {}) };
     const sharp = await draw(base);
@@ -53,6 +53,10 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
     const peak = data => { let result = 0; for (let i = 0; i < data.length; i += 4) result = Math.max(result, data[i], data[i + 1], data[i + 2]); return result; };
     check(peak(sharp.data) === 255 && peak(blurred.data) > 10 && peak(blurred.data) < 250,
       "reference must contain HDR source and sub-threshold blurred radiance", { sharp: peak(sharp.data), blurred: peak(blurred.data) });
+    if (heightFog) {
+      const withoutFog = await draw({ ...base, fog: undefined, depthOfField });
+      check(difference(blurred.data, withoutFog.data, 3) > 5, "height fog missing before DOF");
+    }
     const filtered = await draw({ ...base, depthOfField, bloom });
     check(difference(blurred.data, filtered.data, 2) === 0, "Bloom did not read the post-DOF sub-threshold radiance");
     check(filtered.stats.effectDrawCalls === 2 + filtered.stats.bloomDrawCalls && (filtered.stats.effectTextureBytes - filtered.stats.bloomTextureBytes) * 12 === blurred.stats.effectTextureBytes * 20,
@@ -83,7 +87,7 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
     size = renderer.viewportSize(); engine.setViewportSize(size.width, size.height);
     const resized = await draw(all); check(difference(before.data, resized.data, 2) === 0, "composition resize/DPR restoration changed pixels");
     check(errors.length === 0, "composition reference GPU errors", errors);
-    return { backend, sharpPeak: peak(sharp.data), blurredPeak: peak(blurred.data), bloomAfterDof: true, zeroIdentity: true, resize: true, recovery };
+    return { backend, colorManagement, wide, heightFog, sharpPeak: peak(sharp.data), blurredPeak: peak(blurred.data), bloomAfterDof: true, zeroIdentity: true, resize: true, recovery };
   } finally {
     engine?.destroy(); renderer?.destroy(); window.disposeSpatialGpuTarget?.(canvas); canvas.remove();
     const resources = renderer?.resourceStats();

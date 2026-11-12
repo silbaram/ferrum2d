@@ -1,3 +1,7 @@
+import { requestsSpatialHeightFog } from "./spatialHeightFog.js";
+import { requestsSpatialPointPcss } from "./spatialPointPcss.js";
+import { requestsSpatialSunPcss } from "./spatialSunPcss.js";
+import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom } from "./spatialBloom.js";
 import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
 import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
@@ -114,7 +118,7 @@ export type SceneSpatialPatchOperation =
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
@@ -187,11 +191,11 @@ export function applySceneSpatialPatch(
       patch.version !== 6 &&
       patch.version !== 7 &&
       patch.version !== 8 &&
-      patch.version !== 9 && patch.version !== 10) ||
+      patch.version !== 9 && patch.version !== 10 && patch.version !== 11 && patch.version !== 12 && patch.version !== 13 && patch.version !== 14) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6, 7, 8, 9 or 10 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 or 14 operations",
     );
   if (
     Object.keys(patch).some(
@@ -217,6 +221,10 @@ export function applySceneSpatialPatch(
       )
     )
       throw new Error("Invalid spatial patch operation");
+    if (operation.kind === "setEnvironment" && requestsSpatialHeightFog(operation.changes.environment) && patch.version < 14) throw new Error("Height fog requires spatial patch version 14");
+    if (operation.kind === "setEnvironment" && requestsSpatialPointPcss(operation.changes.environment) && patch.version < 13) throw new Error("Point PCSS requires spatial patch version 13");
+    if (operation.kind === "setEnvironment" && requestsSpatialSunPcss(operation.changes.environment) && patch.version < 12) throw new Error("Sun PCSS requires spatial patch version 12");
+    if (operation.kind === "setEnvironment" && requestsSpatialPointShadows(operation.changes.environment) && patch.version < 11) throw new Error("Point shadows require spatial patch version 11");
     if (operation.kind === "setEnvironment" && requestsSpatialWideBloom(operation.changes.environment) && patch.version < 10) throw new Error("Wide Bloom requires spatial patch version 10");
     if (operation.kind === "setEnvironment" && requestsSpatialLightSelection(operation.changes.environment) && patch.version < 9)
       throw new Error("Light selection requires spatial patch version 9");
@@ -639,6 +647,10 @@ export function sceneSpatialReferencesInstance(
 }
 
 export function sceneSpatialPatchVersion(operations: readonly SceneSpatialPatchOperation[]): SceneSpatialPatch["version"] {
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialHeightFog(op.changes.environment))) return 14;
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialPointPcss(op.changes.environment))) return 13;
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialSunPcss(op.changes.environment))) return 12;
+  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialPointShadows(op.changes.environment))) return 11;
   if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialWideBloom(op.changes.environment))) return 10;
   if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightSelection(op.changes.environment))) return 9;
   return operations.some(op => hasOwn(op.changes, "lightMask") || hasOwn(op.changes, "shadowMask") ||

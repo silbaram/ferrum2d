@@ -68,6 +68,7 @@
     "test:placement-asset-cleanup": "node --test tests/smoke/placement-asset-cleanup.test.mjs",
     "smoke:placement-asset-cleanup": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/aseprite-project-smoke.mjs --cleanup",
     "smoke:placement-asset-usage": "pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/placement-asset-usage-runner.mjs",
+    "test:placement-point-shadows": "node --test tests/smoke/placement-point-shadows.test.mjs",
     "test:placement-flat-lighting": "node --test tests/smoke/placement-flat-lighting.test.mjs",
     "test:placement-scenes": "node --test tests/smoke/placement-scene-catalog.test.mjs tests/smoke/placement-project-assets.test.mjs tests/smoke/placement-asset-loading.test.mjs",
     "test:updates": "node --test tests/smoke/engine-updates.test.mjs tests/smoke/placement-updates.test.mjs",
@@ -137,7 +138,7 @@
     "smoke:starter-runtime": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/browser-render-smoke.mjs examples/starter-runtime/dist",
     "smoke:starter-runtime-budget": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/browser-render-smoke.mjs --budget examples/starter-runtime/dist",
     "smoke:placement-document-store": "node --test tests/smoke/placement-document-store.test.mjs",
-    "smoke:placement-viewer": "pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm test:placement-asset-usage && pnpm test:placement-flat-lighting && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist",
+    "smoke:placement-viewer": "pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm test:placement-asset-usage && pnpm test:placement-flat-lighting && pnpm test:placement-point-shadows && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist",
     "smoke:placement-viewer-save": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-save apps/placement-viewer/dist",
     "smoke:placement-viewer-mass-authoring": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-mass-authoring apps/placement-viewer/dist",
     "smoke:placement-viewer-desktop-assets": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-desktop-assets apps/placement-viewer/dist",
@@ -220,7 +221,7 @@
     "engine:local": "node scripts/package/install-local-engine.mjs",
     "smoke:local-engine-install": "node --test tests/smoke/local-engine-install.test.mjs",
     "smoke:spatial-webgpu": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs",
-    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-light-selection-report && pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
+    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-height-fog-report && pnpm test:spatial-point-pcss-report && pnpm test:spatial-sun-pcss-report && pnpm test:spatial-point-shadows-report && pnpm test:spatial-light-selection-report && pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
     "test:spatial-light-selection-report": "node --test tests/smoke/spatial-light-selection-report.test.mjs",
     "smoke:spatial-light-selection": "pnpm test:spatial-light-selection-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-selection-only",
     "smoke:spatial-webgpu-fallback": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --fallback-only",
@@ -249,8 +250,16 @@
     "smoke:shadow-comparison": "pnpm validate:example-catalog && pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/feature-examples-smoke.mjs --shadow-proxy-only",
     "smoke:engine-playground": "pnpm --filter @ferrum2d/starter-runtime lint && pnpm --filter @ferrum2d/starter-runtime build && node tests/smoke/engine-playground-smoke.mjs",
     "smoke:flat-lit": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/flat-lit-browser-smoke.mjs",
+    "test:spatial-point-pcss-report": "node --test tests/smoke/spatial-point-pcss-report.test.mjs",
+    "smoke:spatial-point-pcss": "pnpm test:spatial-point-pcss-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --point-pcss-only",
+    "test:spatial-sun-pcss-report": "node --test tests/smoke/spatial-sun-pcss-report.test.mjs",
+    "smoke:spatial-sun-pcss": "pnpm test:spatial-sun-pcss-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --sun-pcss-only",
+    "test:spatial-point-shadows-report": "node --test tests/smoke/spatial-point-shadows-report.test.mjs",
+    "smoke:spatial-point-shadows": "pnpm test:spatial-point-shadows-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --point-shadows-only",
     "test:spatial-bloom-report": "node --test tests/smoke/spatial-bloom-report.test.mjs",
-    "smoke:spatial-wide-bloom": "pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --wide-bloom-only"
+    "smoke:spatial-wide-bloom": "pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --wide-bloom-only",
+    "test:spatial-height-fog-report": "node --test tests/smoke/spatial-height-fog-report.test.mjs tests/smoke/spatial-height-fog-precision-report.test.mjs",
+    "smoke:spatial-height-fog": "pnpm test:spatial-height-fog-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --height-fog-only"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

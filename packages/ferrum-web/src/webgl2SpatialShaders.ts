@@ -1,3 +1,6 @@
+import { HEIGHT_FOG_GLSL } from "./spatialHeightFogShaders.js";
+import { POINT_PCSS_GLSL } from "./spatialPointPcssShaders.js";
+import { SUN_PCSS_GLSL } from "./spatialSunPcss.js";
 import { SPATIAL_SPECULAR_GLSL } from "./spatialSpecular.js";
 export const spatialVertexSource = `#version 300 es
 layout(location=0) in vec3 a_position;layout(location=1) in vec2 a_uv;
@@ -15,22 +18,26 @@ uniform sampler2D u_roughnessMap,u_specularMap,u_specularColorMap;
 uniform bool u_hasRoughness,u_hasSpecular,u_hasSpecularColor,u_modelSpecularEnabled;
 uniform vec4 u_modelSpecular;uniform float u_modelRoughness;
 uniform sampler2D u_emissiveMap;uniform bool u_hasEmissive,u_modelUnlit;uniform vec3 u_emissiveFactor;uniform float u_modelNormalScale;
-uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
+uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap,u_shadowMap2;
+uniform int u_shadowIndex2;uniform vec2 u_shadowParams2;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
+uniform vec4 u_heightFog,u_fogCamera;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform vec2 u_receiverMasks;uniform vec4 u_lightChannels;uniform float u_sunChannels;
+uniform vec3 u_pointPcss,u_pointPcss2;
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
-uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
+uniform vec3 u_sunDirection,u_sunParams,u_sunPcss;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform highp sampler2D u_sunMap;
 uniform vec4 u_hemisphereDirection;uniform vec3 u_hemisphereSky,u_hemisphereGround;uniform vec2 u_shadowNormalBias;
 layout(location=0) out vec4 outColor;
 layout(location=1) out vec4 outIndirect;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
+${HEIGHT_FOG_GLSL}
 ${SPATIAL_SPECULAR_GLSL}
 bool receivesLight(int channels){return (int(u_receiverMasks.x)&(channels&255))!=0;}
 bool receivesShadow(int channels){return (int(u_receiverMasks.y)&((channels>>8)&255))!=0;}
-float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
+vec2 pointSample(samplerCube shadowMap,float authoredBias,vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
  // Quantize a canonical cube face before sampling. The center ray has a unique
  // major axis, including when the original PCF direction lies on a cube seam.
  vec3 a=abs(direction);int face;vec2 st;float major;
@@ -41,7 +48,7 @@ float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometri
  }else{
   face=direction.z>=0.?4:5;major=a.z;st=vec2(direction.z>=0.?direction.x:-direction.x,-direction.y);
  }
- float size=float(textureSize(u_shadowMap,0).x);
+ float size=float(textureSize(shadowMap,0).x);
  vec2 pixel=clamp(floor((st/major*.5+.5)*size),vec2(0.),vec2(size-1.));
  vec2 uv=(pixel+.5)*2./size-1.;vec3 ray;
  if(face==0)ray=vec3(1.,-uv.y,-uv.x);
@@ -59,25 +66,32 @@ float pointCompare(vec3 direction,float plane,float d,float radius,vec3 geometri
    // Subpixel rasterization also perturbs a grazing plane's stored depth.
    // Reserve 1/16 texel in each raster axis, independent of the PCF kernel.
    float slope=sqrt(max(1.-denominator*denominator,0.))/abs(denominator);
-   bias=u_shadowBias+expected/size*.1767766953*slope;
+   bias=authoredBias+expected/size*.1767766953*slope;
   }
  }
  // One DEPTH_COMPONENT24 step plus relative f32 arithmetic tolerance.
  bias+=radius/16777216.+max(expected,d)*.000001;
- return textureLod(u_shadowMap,ray,0.).r*radius+bias<expected?0.:1.;
+ return vec2(textureLod(shadowMap,ray,0.).r*radius+bias,expected);
 }
-float pointVisibility(vec3 delta,float d,float radius,vec3 geometric){
- if(d<=max(u_shadowBias,.000001))return 1.;
- float size=float(textureSize(u_shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
+float pointCompare(samplerCube shadowMap,float authoredBias,vec3 direction,float plane,float d,float radius,vec3 geometric,float fallbackBias){
+ vec2 depths=pointSample(shadowMap,authoredBias,direction,plane,d,radius,geometric,fallbackBias);
+ return depths.x<depths.y?0.:1.;
+}
+${POINT_PCSS_GLSL}
+float pointVisibility(samplerCube shadowMap,float authoredBias,vec3 delta,float d,float radius,vec3 geometric,vec3 pcss){
+ if(d<=max(authoredBias,.000001))return 1.;
+ float size=float(textureSize(shadowMap,0).x),incidence=max(dot(geometric,delta/d),0.);
  float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
- float fallbackBias=u_shadowBias+2.*d/size*slope*(u_shadowFilter==1?3.:1.);
+ float footprint=pcss.x>0.?(pcss.y>0.?max(1.,pcss.z):1.):(u_shadowFilter==1?3.:1.);
+ float fallbackBias=authoredBias+2.*d/size*slope*footprint;
  vec3 axis=-delta/d;float plane=dot(geometric,axis)*d;
- if(u_shadowFilter!=1)return pointCompare(axis,plane,d,radius,geometric,fallbackBias);
+ if(pcss.x>0.)return pointPcssVisibility(shadowMap,authoredBias,axis,plane,d,radius,geometric,fallbackBias,pcss,size);
+ if(u_shadowFilter!=1)return pointCompare(shadowMap,authoredBias,axis,plane,d,radius,geometric,fallbackBias);
  vec3 up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
  vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float visibility=0.;
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
   vec3 direction=axis+(tangent*float(x)+bitangent*float(y))*2./size;
-  visibility+=pointCompare(direction,plane,d,radius,geometric,fallbackBias);
+  visibility+=pointCompare(shadowMap,authoredBias,direction,plane,d,radius,geometric,fallbackBias);
  }
  return visibility/9.;
 }
@@ -87,6 +101,7 @@ float sunCompare(vec2 pixel,vec2 size,vec3 q,vec2 gradient,float bias){
  if(expected<0. || expected>1.)return 1.;
  return texelFetch(u_sunMap,ivec2(at),0).r+bias<expected?0.:1.;
 }
+${SUN_PCSS_GLSL}
 float sunVisibility(vec3 world,vec3 geometric){
  vec4 clip=u_sunMatrix*vec4(world+geometric*u_shadowNormalBias.y,1.);vec3 q=clip.xyz/clip.w*.5+.5;
  if(any(lessThan(q,vec3(0.))) || any(greaterThan(q,vec3(1.))))return 1.;
@@ -110,8 +125,10 @@ float sunVisibility(vec3 world,vec3 geometric){
  }else{
   float angle=max(incidence,0.);
   float slope=min(sqrt(max(1.-angle*angle,0.))/max(angle,.2),2.);
-  bias+=2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.)/u_sunParams.x;
+  float footprint=u_sunPcss.x>0.?(u_sunPcss.y>0.?max(1.,u_sunPcss.z):1.):(u_shadowFilter==1?3.:1.);
+  bias+=2.*u_sunParams.z*texel.x*slope*footprint/u_sunParams.x;
  }
+ if(u_sunPcss.x>0.)return mix(1.,sunPcssVisibility(q,size,gradient,bias),weight);
  vec2 pixel=floor(q.xy*size);if(u_shadowFilter!=1)return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);
  float visibility=0.;
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
@@ -172,7 +189,11 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   float visibility=1.0;
   if(u_receiveShadow && receivesShadow(channels) && i==u_shadowIndex){
    vec3 shadowDelta=delta-geometricNormal*u_shadowNormalBias.x;float shadowDistance=length(shadowDelta);
-   visibility=pointVisibility(shadowDelta,shadowDistance,radius,geometricNormal);
+   visibility=pointVisibility(u_shadowMap,u_shadowBias,shadowDelta,shadowDistance,radius,geometricNormal,u_pointPcss);
+  }
+  if(u_receiveShadow && receivesShadow(channels) && i==u_shadowIndex2){
+   vec3 shadowDelta=delta-geometricNormal*u_shadowParams2.y;
+   visibility=pointVisibility(u_shadowMap2,u_shadowParams2.x,shadowDelta,length(shadowDelta),radius,geometricNormal,u_pointPcss2);
   }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
   if(specularWeight>0. && d>.000001)reflection+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*visibility*directSpecular(n,delta/d,view,f0,roughness);
@@ -186,7 +207,13 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
  color=albedo*illumination+reflection*specularWeight;
 }
 color+=emission;
-if(u_fog && !u_separated){float z=max(dot(v_world-u_eye,u_forward),0.0);float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);color=mix(color,u_fogColor,amount);}
+if(u_fog && !u_separated){
+ float z=max(dot(v_world-u_eye,u_forward),0.0),amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);
+ if(u_heightFog.x>0.){float receiver=v_world.y-u_heightFog.y;
+  float origin=u_fogCamera.w>0.?u_eye.y-u_heightFog.y:receiver-u_forward.y*z;
+  amount=heightFogAmount(z,u_fogCamera.w>0.?length(v_world-u_eye):z,origin,receiver,u_heightFog,u_fogRange);}
+ color=mix(color,u_fogColor,amount);
+}
 outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
@@ -213,7 +240,8 @@ vec3 bloomAt(ivec2 p){ivec2 size=textureSize(u_bloomImage,0);p=clamp(p,ivec2(0),
 vec3 wideBloom(vec2 uv){vec2 p=vec2(uv.x,1.-uv.y)*u_bloomGrid-.5;ivec2 a=ivec2(floor(p));vec2 w=fract(p);return mix(mix(bloomAt(a),bloomAt(a+ivec2(1,0)),w.x),mix(bloomAt(a+ivec2(0,1)),bloomAt(a+ivec2(1,1)),w.x),w.y);}
 uniform vec3 u_tint;uniform float u_projectionSize;
 uniform sampler2D u_indirect;uniform bool u_separated,u_dofApplied,u_fog;uniform int u_stage;
-uniform vec2 u_fogRange;uniform vec3 u_fogColor;
+uniform vec2 u_fogRange;uniform vec3 u_fogColor;uniform vec4 u_heightFog,u_fogCamera;
+${HEIGHT_FOG_GLSL}
 float viewDepth(float d){float n=u_nearFar.x,f=u_nearFar.y;return u_perspective?(2.0*n*f)/(f+n-(d*2.0-1.0)*(f-n)):mix(n,f,d);}
 vec3 encode(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
@@ -271,7 +299,14 @@ if((u_stage==1 || !u_separated) && u_ao.x>0. && u_ao.y>0. && depth<1.) {
  float visibility=1.-clamp(occlusion/12.*u_ao.y*3.,0.,.9);
  if(u_stage==1)color-=texture(u_indirect,v_uv).rgb*(1.-visibility);else color*=visibility;
 }
-if(u_stage==1 && u_fog)color=mix(color,u_fogColor,clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.));
+if(u_stage==1 && u_fog){
+ float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.);
+ if(u_heightFog.x>0.){float eyeOffset=u_fogCamera.x-u_heightFog.y;
+  float origin=eyeOffset+(u_perspective?0.:u_fogCamera.y*position.y);
+  float receiver=eyeOffset+u_fogCamera.y*position.y+u_fogCamera.z*z;
+  amount=heightFogAmount(z,u_perspective?length(position):z,origin,receiver,u_heightFog,u_fogRange);}
+ color=mix(color,u_fogColor,amount);
+}
 if(u_stage>0){outColor=vec4(max(color,vec3(0.)),center.a);return;}
 if(u_bloom.x>0. && u_bloom.y>0.) {
  vec3 glow=vec3(0.);float weight=0.;

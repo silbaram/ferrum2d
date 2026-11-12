@@ -98,9 +98,9 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
-            shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
+            shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length >= 592 && values[589] === 1 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
             shadowCasterVertexCount: 0,
           },
@@ -118,6 +118,88 @@ function setup() {
     pass = new WebGpuSpatialEnvironment(device as unknown as GPUDevice, "rgba8unorm");
   return { device, pass };
 }
+test("sun PCSS packs both camera records without new targets and clears on legacy frames", () => {
+  const { device, pass } = setup();
+  const sun = { direction: { x: 0, y: 0, elevation: 1 }, shadows: { resolution: 512 as const, extent: 100, distance: 300 } };
+  pass.prepare(frame({ lighting: { lights: [], directional: sun } }), 160, 90);
+  const resources = [device.buffers.length, device.textures.length];
+  const f = frame({ lighting: { lights: [], directional: { ...sun, shadows: { ...sun.shadows, pcss: {} } } } });
+  validateSpatialExtensions(f); pass.prepare(f, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  equal(packed[656], 1); equal(packed[658], 16);
+  ok(Math.abs(packed[657] - Math.tan(.5 * Math.PI / 180) * 300 * 512 / 100) < 1e-5);
+  deepEqual(packed.subarray(656, 660), packed.subarray(2816 / 4 + 656, 2816 / 4 + 660));
+  pass.prepare(frame({ lighting: { lights: [], directional: sun } }), 160, 90);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(656, 660)], [0, 0, 0, 0]);
+  pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
+});
+test("height fog uniforms reuse targets, pack both camera records and clear on legacy", () => {
+  const { device, pass } = setup();
+  const fog = { color: [.2, .3, .4] as const, start: 10, end: 400 };
+  const base = frame({ fog }); pass.prepare(base, 160, 90);
+  const resources = [device.buffers.length, device.textures.length];
+  const height = frame({ fog: { ...fog, height: { baseHeight: -20, density: .5, falloff: 2 } } });
+  validateSpatialExtensions(height); pass.prepare(height, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  deepEqual([...packed.subarray(668, 672)], [1, -20, .5, 2]);
+  deepEqual(packed.subarray(668, 676), packed.subarray(2816 / 4 + 668, 2816 / 4 + 676));
+  pass.prepare(base, 160, 90);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(668, 672)], [0, 0, 0, 0]);
+  pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
+});
+
+test("point PCSS uniforms preserve both owners, duplicate camera records and clear on legacy", () => {
+  const { device, pass } = setup();
+  const lights = [0, 1].map(x => ({ position: { x, y: 0, elevation: 64 }, radius: 200 }));
+  const hard = frame({ lighting: { lights, pointShadows: [{ lightIndex: 0 }, { lightIndex: 1 }] } });
+  pass.prepare(hard, 160, 90); const resources = [device.buffers.length, device.textures.length];
+  const soft = frame({ lighting: { lights, pointShadows: [{ lightIndex: 0, pcss: {} }, { lightIndex: 1, pcss: { sourceRadius: 0, maxRadiusTexels: 32 } }] } });
+  validateSpatialExtensions(soft); pass.prepare(soft, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  deepEqual([...packed.subarray(660, 668)], [1, 1, 16, 0, 1, 0, 32, 0]);
+  deepEqual(packed.subarray(660, 668), packed.subarray(2816 / 4 + 660, 2816 / 4 + 668));
+  pass.prepare(hard, 160, 90);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(660, 668)], Array(8).fill(0));
+  pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
+});
+test("two point cubes use independent resolution/camera slots, warm reuse and OFF release", () => {
+  const { device, pass } = setup();
+  const spec: SpatialEnvironmentSpec = { lighting: { lights: [-40, 40].map(x => ({ position: { x, y: 0, elevation: 64 }, radius: 200 })),
+    pointShadows: [{ lightIndex: 1, resolution: 128 }, { lightIndex: 0, resolution: 256, bias: 0.25, normalBias: 0.5 }] } };
+  const f = frame(spec); validateSpatialExtensions(f); pass.prepare(f, 160, 90);
+  const cubes = () => device.textures.filter(r => r.destroyed === 0 && ["Spatial point shadow", "Spatial point2 shadow"].includes(r.d.label ?? ""));
+  deepEqual(cubes().map(r => (r.d as GPUTextureDescriptor).size), [[128, 128, 6], [256, 256, 6]]);
+  deepEqual(Array.from(device.uniforms[device.uniforms.length - 1].subarray(652, 656)), [1, 0.25, 0.5, 0]);
+  const faces: number[] = [];
+  const encoder = { beginRenderPass: () => ({ end() {} }) } as unknown as GPUCommandEncoder;
+  equal(pass.shadows.draw(encoder, (_pass, face) => { faces.push(face); }), 12);
+  deepEqual(faces, [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12]);
+  pass.shadows.commitSubmission(); equal(pass.shadows.ready(f), true);
+  equal(pass.shadows.textureBytes(), (128 ** 2 + 256 ** 2) * 24);
+  const warm = [device.textures.length, device.groups]; pass.prepare(f, 160, 90);
+  deepEqual([device.textures.length, device.groups], warm);
+  pass.prepare(frame({ lighting: { ...spec.lighting!, enabled: false } }), 160, 90);
+  equal(cubes().length, 0); equal(pass.shadows.textureBytes(), 0);
+  pass.prepare(frame({ lighting: { lights: spec.lighting!.lights, shadows: { lightIndex: 0, resolution: 128 } } }), 160, 90);
+  equal(cubes().length, 1);
+  pass.destroy(); equal(device.textures.filter(r => r.destroyed === 0).length, 0);
+});
+test("second cube allocation failure rejects prepare and permits a complete retry", () => {
+  const { device, pass } = setup();
+  const f = frame({ lighting: { lights: [0, 32].map(x => ({ position: { x, y: 0, elevation: 64 }, radius: 200 })),
+    pointShadows: [{ lightIndex: 0 }, { lightIndex: 1 }] } });
+  device.failTextureAt = device.textureAttempts + 2;
+  throws(() => pass.prepare(f, 160, 90), /allocation/);
+  equal(pass.shadows.ready(f), false);
+  device.failTextureAt = Infinity; pass.prepare(f, 160, 90);
+  const encoder = { beginRenderPass: () => ({ end() {} }) } as unknown as GPUCommandEncoder;
+  equal(pass.shadows.draw(encoder, () => {}), 12); pass.shadows.commitSubmission();
+  equal(pass.shadows.ready(f), true); pass.destroy();
+  equal(device.textures.filter(r => r.destroyed === 0).length, 0);
+});
 test("separated composition allocates only active indirect/DOF stages and reuses views and groups", () => {
   const { device, pass } = setup();
   const base: SpatialEnvironmentSpec = { composition: "separated", lighting: { lights: [{ position: { x: 0, y: 0, elevation: 100 }, radius: 200, lightMask: 1 }] } };

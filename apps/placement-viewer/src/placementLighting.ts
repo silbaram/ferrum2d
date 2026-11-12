@@ -10,6 +10,7 @@ import { createPlacementControlMenu } from "./placementControlMenu";
 import { installPlacementNumberStepper, numberStepScale } from "./placementNumberStepper";
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { createPlacementFieldFeedback } from "./placementToolPanel";
+import { placementPointShadow, removePlacementPointShadowSource, setPlacementPointShadow } from "./placementPointShadows";
 
 type Draft = { spatial: true; environment: SpatialEnvironmentSpec; light: SpatialLightingSpec; bindings: Record<string,readonly number[]> }
   | { spatial: false; light: LightingScene2D };
@@ -79,8 +80,7 @@ export function createPlacementLighting(options: {
         if(next.length)d.bindings[id]=next;else delete d.bindings[id];
       }
       d.light.lights = d.light.lights.filter((_, i) => i !== index);
-      if (d.light.shadows?.lightIndex === index) delete d.light.shadows;
-      else if (d.light.shadows && d.light.shadows.lightIndex > index) d.light.shadows.lightIndex--;
+      removePlacementPointShadowSource(d.light, index);
     } else d.light.pointLights = d.light.pointLights?.filter((_, i) => i !== index);
   }));
   const pointActions = document.createElement("div"); pointActions.className = "placement-lighting-actions";
@@ -181,13 +181,14 @@ export function createPlacementLighting(options: {
     const p = point(d); if (p) p.color = "position" in p ? rgb : [...rgb, p.color?.[3] ?? 1];
   });
   const shadows = checkbox("Point Shadows", "point-shadows", value => change(d => {
-    if (d.spatial) { if (value) d.light.shadows = { ...(d.light.shadows ?? {}), lightIndex: selectedIndex() }; else delete d.light.shadows; }
+    if (d.spatial) setPlacementPointShadow(d.light, selectedIndex(), value);
     else d.light.shadows = { ...(typeof d.light.shadows === "object" ? d.light.shadows : {}), enabled: value };
   }));
   pointForm.append(shadows.row);
-  const pointNormalOffset=number(pointForm,"Shadow Surface Offset","point-normal-bias",0,10,.05,d=>d.spatial?d.light.shadows?.normalBias ?? 0:0,(d,value)=>{
-    if(d.spatial && d.light.shadows)d.light.shadows.normalBias=value;
-  },d=>d.spatial && d.light.shadows?.lightIndex===selectedIndex());
+  const pointNormalOffset=number(pointForm,"Shadow Surface Offset","point-normal-bias",0,10,.05,d=>d.spatial?placementPointShadow(d.light,selectedIndex())?.normalBias ?? 0:0,(d,value)=>{
+    const owner=d.spatial?placementPointShadow(d.light,selectedIndex()):undefined;
+    if(owner)owner.normalBias=value;
+  },d=>d.spatial && !!placementPointShadow(d.light,selectedIndex()));
   setUiAttribute(pointNormalOffset,"title","Reduce shadow speckles; large values detach shadows.");
 
   const atmosphere=section("Atmosphere"), moodSelect=document.createElement("select"), qualitySelect=document.createElement("select");
@@ -411,7 +412,10 @@ export function createPlacementLighting(options: {
     }
     // Some groups are HD-2D only; an empty disclosure must not be offered in 2D.
     for (const group of advancedGroups) group.hidden = ![...group.children].some(child => child.localName !== "summary" && !(child as HTMLElement).hidden);
-    shadows.input.checked = d.spatial ? d.light.shadows?.lightIndex === index : typeof d.light.shadows === "object" ? d.light.shadows.enabled !== false : d.light.shadows === true;
+    shadows.input.checked = d.spatial ? !!placementPointShadow(d.light,index) : typeof d.light.shadows === "object" ? d.light.shadows.enabled !== false : d.light.shadows === true;
+    shadows.input.disabled = d.spatial && !shadows.input.checked && (d.light.pointShadows?.length ?? 0) >= 2;
+    if (shadows.input.disabled) setUiAttribute(shadows.row,"title","At most two point-shadow lights.");
+    else setUiAttribute(shadows.row,"title","");
   }
   const helpers=checkbox("Light Helpers","helpers",()=>{});helpers.input.checked=true;form.insertBefore(helpers.row,atmosphere);
   const gizmos=createPlacementLightGizmos({...options,enabled:()=>options.mode()==="spatial"&&helpers.input.checked,

@@ -107,9 +107,13 @@ impl Engine {
         1
     }
     pub fn spatial_model_abi_version(&self) -> u32 {
-        1
+        if self.spatial_scene.environment.value_len >= 592 {
+            2
+        } else {
+            1
+        }
     }
-    /// Cold capability for 1024 instances / 4096 primitives; render ABI stays v1.
+    /// Cold batch capacity for 1024 instances / 4096 primitives; model stride stays 80 bytes.
     pub fn spatial_model_batch_abi_version(&self) -> u32 {
         1
     }
@@ -551,8 +555,32 @@ impl Engine {
     pub fn spatial_wide_bloom_abi_version(&self) -> u32 {
         1
     }
+    /// Cold capability for environment v10 with at most two point-shadow owners.
+    pub fn spatial_point_shadows_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold capability for environment v11 sun-only bounded PCSS sampling.
+    pub fn spatial_sun_pcss_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold capability for environment v12 bounded point-light PCSS sampling.
+    pub fn spatial_point_pcss_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold capability for environment v13 analytic height fog.
+    pub fn spatial_height_fog_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 580 {
+        if self.spatial_scene.environment.value_len > 608 {
+            13
+        } else if self.spatial_scene.environment.value_len > 600 {
+            12
+        } else if self.spatial_scene.environment.value_len > 592 {
+            11
+        } else if self.spatial_scene.environment.value_len > 584 {
+            10
+        } else if self.spatial_scene.environment.value_len > 580 {
             9
         } else if self.spatial_scene.environment.value_len > 576 {
             8

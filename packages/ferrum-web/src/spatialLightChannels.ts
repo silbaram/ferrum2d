@@ -39,6 +39,8 @@ export function compileSpatialLightChannels(spec: SpatialEnvironmentSpec, v: Flo
   for (let i = 0; i < count; i++) v[549 + i] = packed(source[i]);
   const indices = Array.from({ length: count }, (_, i) => i);
   if (v[138] >= 0) indices.unshift(...indices.splice(v[138], 1));
+  const second = spec.lighting?.pointShadows?.[1];
+  if (second) indices.splice(1, 0, ...indices.splice(indices.indexOf(second.lightIndex), 1));
   for (let slot = 0; slot < v[1]; slot++) v[545 + slot] = v[549 + indices[slot]];
 }
 export function decodeSpatialLightChannels(v: Float32Array, spec: SpatialEnvironmentSpec): void {

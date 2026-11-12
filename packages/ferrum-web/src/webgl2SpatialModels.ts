@@ -7,7 +7,7 @@ import type { SpatialGeometryUniforms } from "./webgl2SpatialShaders.js";
 import type { SpatialRendererStats } from "./renderer.js";
 type Frame = NonNullable<SpatialRenderBufferView["models"]>;
 const MODEL_CAPACITY = 1024;
-const MODEL_PASS_COUNT = 8;
+const MODEL_PASS_COUNT = 14;
 /** Main camera, six point faces and sun each own non-overlapping matrix ranges. */
 export const MODEL_INSTANCE_BUFFER_BYTES = MODEL_CAPACITY * MODEL_PASS_COUNT * 64;
 export interface ModelMaterialUniforms {
@@ -270,7 +270,7 @@ export class WebGL2SpatialModels {
         this.preparedPasses = 0;
         this.batchCounts.fill(0);
         if (!frame) return;
-        if (!Number.isInteger(passes) || passes < 0 || passes > 255 || frame.words.length % 20 || frame.words.length > MODEL_CAPACITY * 20)
+        if (!Number.isInteger(passes) || passes < 0 || passes > 16383 || frame.words.length % 20 || frame.words.length > MODEL_CAPACITY * 20)
             throw Error("Invalid model instance preparation");
         let floats = 0;
         for (let bit = 0; bit < MODEL_PASS_COUNT; bit++) {

@@ -1,3 +1,6 @@
+import { POINT_PCSS_WGSL } from "./spatialPointPcssShaders.js";
+import { SUN_PCSS_WGSL } from "./spatialSunPcss.js";
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { spatialModelMaterialWGSL } from "./webgpuSpatialMaterial.js";
@@ -5,11 +8,12 @@ import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 export const spatialShadowSamplingWGSL = `
 @group(2) @binding(1) var pointMap:texture_depth_2d_array;
 @group(2) @binding(2) var sunMap:texture_depth_2d;
+@group(2) @binding(4) var pointMap2:texture_depth_2d_array;
 fn slopeBias(n:vec3f,direction:vec3f)->f32{
  let incidence=max(dot(n,direction),0.);
  return min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
 }
-fn pointCompare(direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->f32{
+fn pointSample(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->vec2f{
  let a=abs(direction);var face=0;var st=vec2f(0.);var major=0.;
  if(a.x>=a.y && a.x>=a.z){
   face=select(1,0,direction.x>=0.);major=a.x;st=vec2f(select(direction.z,-direction.z,direction.x>=0.),-direction.y);
@@ -18,7 +22,7 @@ fn pointCompare(direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallb
  }else{
   face=select(5,4,direction.z>=0.);major=a.z;st=vec2f(select(-direction.x,direction.x,direction.z>=0.),-direction.y);
  }
- let size=textureDimensions(pointMap);
+ var size=textureDimensions(pointMap);if(second){size=textureDimensions(pointMap2);}
  let pixel=vec2i(clamp(floor((st/major*.5+.5)*vec2f(size)),vec2f(0.),vec2f(size)-1.));
  let uv=(vec2f(pixel)+.5)*2./vec2f(size)-1.;var ray=vec3f(0.);
  switch face{
@@ -36,24 +40,33 @@ fn pointCompare(direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallb
   if(distance>0. && distance<radius){
    expected=distance;
    let slope=sqrt(max(1.-denominator*denominator,0.))/abs(denominator);
-   bias=e(4u)+expected/f32(size.x)*.1767766953*slope;
+   bias=authoredBias+expected/f32(size.x)*.1767766953*slope;
   }
  }
  bias+=radius/16777216.+max(expected,d)*.000001;
- let depth=textureLoad(pointMap,vec2i(pixel.x,i32(size.y)-1-pixel.y),face,0);
- return select(1.,0.,depth*radius+bias<expected);
+ var depth=0.;if(second){depth=textureLoad(pointMap2,vec2i(pixel.x,i32(size.y)-1-pixel.y),face,0);}
+ else{depth=textureLoad(pointMap,vec2i(pixel.x,i32(size.y)-1-pixel.y),face,0);}
+ return vec2f(depth*radius+bias,expected);
 }
-fn pointVisibility(delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
- if(d<=max(e(4u),.000001)){return 1.;}
- let size=f32(textureDimensions(pointMap).x);let filtered=e(95u)==1.;
- let bias=e(4u)+2.*d/size*slopeBias(geometric,delta/d)*select(1.,3.,filtered);
+fn pointCompare(second:bool,authoredBias:f32,direction:vec3f,plane:f32,d:f32,radius:f32,geometric:vec3f,fallbackBias:f32)->f32{
+ let depths=pointSample(second,authoredBias,direction,plane,d,radius,geometric,fallbackBias);
+ return select(1.,0.,depths.x<depths.y);
+}
+${POINT_PCSS_WGSL}
+fn pointVisibility(second:bool,authoredBias:f32,delta:vec3f,d:f32,radius:f32,geometric:vec3f)->f32{
+ if(d<=max(authoredBias,.000001)){return 1.;}
+ var size=f32(textureDimensions(pointMap).x);if(second){size=f32(textureDimensions(pointMap2).x);}let filtered=e(95u)==1.;
+ let pcss=select(env.pointPcss.xyz,env.pointPcss2.xyz,second);
+ let footprint=select(select(1.,3.,filtered),select(1.,max(1.,pcss.z),pcss.y>0.),pcss.x>0.);
+ let bias=authoredBias+2.*d/size*slopeBias(geometric,delta/d)*footprint;
  let axis= -delta/d;let plane=dot(geometric,axis)*d;
- if(!filtered){return pointCompare(axis,plane,d,radius,geometric,bias);}
+ if(pcss.x>0.){return pointPcssVisibility(second,authoredBias,axis,plane,d,radius,geometric,bias,pcss,size);}
+ if(!filtered){return pointCompare(second,authoredBias,axis,plane,d,radius,geometric,bias);}
  var up=vec3f(0.,1.,0.);if(abs(axis.y)>.99){up=vec3f(0.,0.,1.);}
  let tangent=normalize(cross(axis,up));let bitangent=cross(axis,tangent);var visibility=0.;
  for(var y= -1;y<=1;y++){for(var x= -1;x<=1;x++){
   let direction=axis+(tangent*f32(x)+bitangent*f32(y))*2./size;
-  visibility+=pointCompare(direction,plane,d,radius,geometric,bias);
+  visibility+=pointCompare(second,authoredBias,direction,plane,d,radius,geometric,bias);
  }}return visibility/9.;
 }
 fn sunCompare(pixel:vec2i,size:vec2u,q:vec3f,gradient:vec2f,bias:f32)->f32{
@@ -62,6 +75,7 @@ fn sunCompare(pixel:vec2i,size:vec2u,q:vec3f,gradient:vec2f,bias:f32)->f32{
  if(expected<0. || expected>1.){return 1.;}
  return select(1.,0.,textureLoad(sunMap,vec2i(at.x,i32(size.y)-1-at.y),0)+bias<expected);
 }
+${SUN_PCSS_WGSL}
 fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
  let clip=env.shadow[6]*vec4f(world+geometric*e(124u),1.);let q=clip.xyz/clip.w*.5+.5;
  if(any(q<vec3f(0.))||any(q>vec3f(1.))){return 1.;}
@@ -76,7 +90,11 @@ fn sunVisibility(world:vec3f,geometric:vec3f,direction:vec3f)->f32{
   let up=vec3f(m[0][1],m[1][1],m[2][1])*extent;
   gradient=vec2f(dot(geometric,r),dot(geometric,up))*(2.*extent/(span*incidence));
   bias+=(abs(gradient.x)+abs(gradient.y))/(8.*f32(size.x));
- }else{bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*select(1.,3.,filtered)/span;}
+ }else{
+  let footprint=select(select(1.,3.,filtered),select(1.,max(1.,env.sunPcss.z),env.sunPcss.y>0.),env.sunPcss.x>0.);
+  bias+=2.*extent/f32(size.x)*slopeBias(geometric,direction)*footprint/span;
+ }
+ if(env.sunPcss.x>0.){return mix(1.,sunPcssVisibility(q,size,gradient,bias),weight);}
  // Choose canonical Y-up texels first; flip the integer row only for textureLoad.
  let pixel=vec2i(floor(q.xy*vec2f(size)));
  if(!filtered){return mix(1.,sunCompare(pixel,size,q,gradient,bias),weight);}
@@ -140,6 +158,7 @@ export class WebGpuSpatialShadows {
   private readonly defaultPoint: GPUTextureView;
   private readonly defaultSun: GPUTextureView;
   private point?: Target;
+  private point2?: Target;
   private sun?: Target;
   private failure?: Error;
   private destroyed = false;
@@ -162,30 +181,36 @@ export class WebGpuSpatialShadows {
   validate(frame: SpatialRenderBufferView): void {
     this.assertAlive();
     const v = frame.environment?.values;
-    for (const r of [v && v[2] >= 0 ? v[3] : 0, v?.[92] ?? 0])
+    for (const r of [v && v[2] >= 0 ? v[3] : 0, v?.[92] ?? 0, secondSpatialShadowSlot(v) >= 0 ? v![585] : 0])
       if (r > this.device.limits.maxTextureDimension2D)
         throw Error("Spatial shadow target exceeds device texture limit");
   }
   ready(frame: SpatialRenderBufferView): boolean {
+    const v = frame.environment?.values, mask = this.readyMaps(frame);
+    return (!v || v[2] < 0 || !!(mask & 1)) &&
+      (secondSpatialShadowSlot(v) < 0 || !!(mask & 2)) && (!v || !(v[92] > 0) || !!(mask & 4));
+  }
+  readyMaps(frame: SpatialRenderBufferView): number {
     const v = frame.environment?.values;
-    return (
-      (!v || v[2] < 0 || (this.point?.resolution === v[3] && this.point.rendered)) &&
-      (!v || !(v[92] > 0) || (this.sun?.resolution === v[92] && this.sun.rendered))
-    );
+    return Number(!!this.point?.rendered && this.point.resolution === v?.[3]) |
+      (this.point2?.rendered && this.point2.resolution === v?.[585] ? 2 : 0) |
+      (this.sun?.rendered && this.sun.resolution === v?.[92] ? 4 : 0);
   }
   prepare(frame: SpatialRenderBufferView): void {
     this.validate(frame);
     const v = frame.environment?.values;
     this.replace("point", v && v[2] >= 0 ? v[3] : 0, 6);
     this.replace("sun", v?.[92] ?? 0, 1);
+    this.replace("point2", secondSpatialShadowSlot(v) >= 0 ? v![585] : 0, 6);
   }
   views(): {
     point: GPUTextureView;
+    point2: GPUTextureView;
     sun: GPUTextureView;
   } {
-    return { point: this.point?.view ?? this.defaultPoint, sun: this.sun?.view ?? this.defaultSun };
+    return { point: this.point?.view ?? this.defaultPoint, point2: this.point2?.view ?? this.defaultPoint, sun: this.sun?.view ?? this.defaultSun };
   }
-  private replace(key: "point" | "sun", resolution: number, layers: number): void {
+  private replace(key: "point" | "point2" | "sun", resolution: number, layers: number): void {
     const old = this[key];
     if (!resolution) {
       webGpuResources(this.device).destroy(old?.texture);
@@ -242,16 +267,19 @@ export class WebGpuSpatialShadows {
   draw(
     encoder: GPUCommandEncoder,
     submit: (pass: GPURenderPassEncoder, face: number) => void,
+    maps = 7,
   ): number {
     this.assertAlive();
     let count = 0;
-    if (this.point) this.point.rendered = false;
-    if (this.sun) this.sun.rendered = false;
+    if (maps & 1 && this.point) this.point.rendered = false;
+    if (maps & 2 && this.point2) this.point2.rendered = false;
+    if (maps & 4 && this.sun) this.sun.rendered = false;
     for (const [target, base] of [
       [this.point, 0],
       [this.sun, 6],
+      [this.point2, 7],
     ] as const)
-      if (target)
+      if (target && (maps & (base === 0 ? 1 : base === 7 ? 2 : 4)))
         for (let i = 0; i < target.faces.length; i++) {
           const pass = beginWebGpuRenderPass(this.device, encoder, {
             label: `Spatial shadow face ${base + i}`,
@@ -269,13 +297,14 @@ export class WebGpuSpatialShadows {
         }
     return count;
   }
-  commitSubmission(): void {
-    if (this.point) this.point.rendered = true;
-    if (this.sun) this.sun.rendered = true;
+  commitSubmission(maps = 7): void {
+    if (maps & 1 && this.point) this.point.rendered = true;
+    if (maps & 2 && this.point2) this.point2.rendered = true;
+    if (maps & 4 && this.sun) this.sun.rendered = true;
   }
   textureBytes(): number {
     return (
-      (this.point ? this.point.resolution ** 2 * 24 : 0) +
+      (this.point ? this.point.resolution ** 2 * 24 : 0) + (this.point2 ? this.point2.resolution ** 2 * 24 : 0) +
       (this.sun ? this.sun.resolution ** 2 * 4 : 0)
     );
   }
@@ -283,8 +312,10 @@ export class WebGpuSpatialShadows {
     if (this.destroyed) return;
     this.destroyed = true;
     webGpuResources(this.device).destroy(this.point?.texture);
+    webGpuResources(this.device).destroy(this.point2?.texture);
     webGpuResources(this.device).destroy(this.sun?.texture);
     this.point = undefined;
+    this.point2 = undefined;
     this.sun = undefined;
     webGpuResources(this.device).destroy(this.dummyPoint);
     webGpuResources(this.device).destroy(this.dummySun);

@@ -1,3 +1,7 @@
+import { requestsSpatialHeightFog, supportsSpatialHeightFog } from "./spatialHeightFog.js";
+import { requestsSpatialPointPcss, supportsSpatialPointPcss } from "./spatialPointPcss.js";
+import { requestsSpatialSunPcss, supportsSpatialSunPcss } from "./spatialSunPcss.js";
+import { requestsSpatialPointShadows, supportsSpatialPointShadows } from "./spatialPointShadows.js";
 import { requestsSpatialWideBloom, supportsSpatialWideBloom, hasSpatialSelectionSource } from "./spatialBloom.js";
 import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
 import {requestsSpatialReceiverMasks,supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
@@ -180,10 +184,10 @@ export interface SpatialDebugBufferView {
 }
 /** Borrowed Wasm views; reacquire per frame or explicitly copy for deferred rendering/picking. */
 interface SpatialRenderBufferBase {
-  /** Independent optional receiver masks; material/model layouts stay v1. */
+  /** Independent optional receiver masks; material/model strides stay unchanged. */
   receiverMasks?: import("./spatialReceiverMasks.js").SpatialReceiverMaskBufferView;
-  /** Independent v1: four u32 metadata words + sixteen f32 matrix words per native instance. */
-  models?: { version: 1; stride: 20; words: Uint32Array; values: Float32Array; assets: ReadonlyMap<number, SpatialModelAsset> };
+  /** Model v1/v2: 80 bytes. v2 additionally defines second point-cube visibility bits8..13. */
+  models?: { version: 1 | 2; stride: 20; words: Uint32Array; values: Float32Array; assets: ReadonlyMap<number, SpatialModelAsset> };
   vertexStride: 11;
   camera: Float32Array;
   terrain: Float32Array;
@@ -617,7 +621,7 @@ export function resolveDataSceneSpatialSpec(
       if(!id||min.x>max.x||min.y>max.y||min.elevation>max.elevation||Math.fround(unloadDistance)<=Math.fround(loadDistance))throw sceneCompositionDiagnosticError(at,'ordered bounds and unloadDistance > loadDistance required');
       (modelChunks as Record<string,typeof modelChunks[string]>)[id]={min,max,loadDistance,unloadDistance};}}
   for(const[id,m]of Object.entries(models))if(m.chunk!==undefined&&!Object.prototype.hasOwnProperty.call(modelChunks,m.chunk))throw sceneCompositionDiagnosticError(`${path}.models.${id}.chunk`,'unknown model chunk');
-  if ((environment?.lighting?.shadows || environment?.lighting?.directional?.shadows) && Object.keys(billboards).length > 1024)
+  if ((environment?.lighting?.shadows || environment?.lighting?.pointShadows || environment?.lighting?.directional?.shadows) && Object.keys(billboards).length > 1024)
     throw sceneCompositionDiagnosticError(
       `${path}.billboards`,
       "shadow casting supports at most 1024 authored billboards",
@@ -847,7 +851,11 @@ export function createSpatialApi(
       if (typeof rust.spatial_model_draw_snapshot !== "function") return;
       const words=rust.spatial_model_draw_snapshot(id,generation);
       if (!words.length) return;
-      if (words.length!==20 || words[3]!==0 || words[2]>255) throw new Error("Invalid spatial model draw snapshot");
+      const version = rust.spatial_model_abi_version?.() ?? 1;
+      // Cold pose queries can still see the last v2 draw after environment downgrade,
+      // before the next frame rebuilds visibility. Only camera bit0 and the pose are consumed.
+      const maskLimit = version === 2 || words[2] > 255 && supportsSpatialPointShadows(rust) ? 16383 : 255;
+      if (![1, 2].includes(version) || words.length!==20 || words[3]!==0 || words[2]>maskLimit) throw new Error("Invalid spatial model draw snapshot");
       const asset=[...spatialModelRegistry(rust).values()].find(entry=>entry.id===words[0])?.handle;
       if (!asset) throw new Error("Unregistered spatial model draw snapshot");
       const transform=new Float32Array(words.buffer,words.byteOffset+16,16);
@@ -857,7 +865,7 @@ export function createSpatialApi(
     preflightDataSceneSpatialModels(input, origins = {}) {
       requireAlive();
       const spec=resolveDataSceneSpatialSpec(input);
-      if (requestsSpatialWideBloom(spec.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(spec.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(spec) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(spec.environment) && !supportsSpatialLightChannels(rust)) return false;
+      if (requestsSpatialHeightFog(spec.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(spec.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(spec.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(spec.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(spec.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(spec.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(spec) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(spec.environment) && !supportsSpatialLightChannels(rust)) return false;
       const registry=spatialModelRegistry(rust);
       if(Object.keys(spec.lightBindings??{}).length&&typeof rust.configure_spatial_light_bindings!=="function")return false;
       if(Object.keys(spec.attachments??{}).length&&typeof rust.configure_spatial_attachments!=='function')return false;
@@ -879,7 +887,7 @@ export function createSpatialApi(
     setDataSceneSpatialEnvironment(options) {
       requireAlive();
       const values = compileSpatialEnvironment(options);
-      if (values.length >= 576 && !supportsSpatialLightChannels(rust) || hasSpatialSelectionSource(values) && !supportsSpatialLightSelection(rust) || values.length === 584 && !supportsSpatialWideBloom(rust)) return false;
+      if (values.length === 616 && !supportsSpatialHeightFog(rust) || values.length >= 608 && (values[600] === 1 || values[604] === 1) && !supportsSpatialPointPcss(rust) || values.length >= 600 && values[592] === 1 && !supportsSpatialSunPcss(rust) || values.length >= 592 && values[589] === 1 && !supportsSpatialPointShadows(rust) || values.length >= 576 && !supportsSpatialLightChannels(rust) || hasSpatialSelectionSource(values) && !supportsSpatialLightSelection(rust) || values.length >= 584 && values[580] === 1 && !supportsSpatialWideBloom(rust)) return false;
       return (
         typeof rust.configure_spatial_environment === "function" &&
         rust.configure_spatial_environment(values)
@@ -1000,7 +1008,7 @@ export function createSpatialApi(
     configureDataSceneSpatial(input, handles) {
       requireAlive();
       const resolved = resolveDataSceneSpatialSpec(input);
-      if (requestsSpatialWideBloom(resolved.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(resolved.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(resolved) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(resolved.environment) && !supportsSpatialLightChannels(rust)) return false;
+      if (requestsSpatialHeightFog(resolved.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(resolved.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(resolved.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(resolved.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(resolved.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(resolved.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(resolved) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(resolved.environment) && !supportsSpatialLightChannels(rust)) return false;
       const spec = resolveSpatialNormalTextures(resolved, textureId);
       const lightMetadata:number[]=[], lightOffsets:number[]=[];
       for(const [id,indices] of Object.entries(spec.lightBindings??{})) {

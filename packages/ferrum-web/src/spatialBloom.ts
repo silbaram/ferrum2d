@@ -9,7 +9,7 @@ export function requestsSpatialWideBloom(spec?: SpatialEnvironmentSpec | null): 
   return spec?.bloom?.mode === "wide";
 }
 export function hasSpatialSelectionSource(v: Float32Array): boolean {
-  return v.length === 580 || v.length === 584 && v[583] === 1;
+  return v.length === 580 || v.length >= 584 && v[583] === 1;
 }
 export function validSpatialWideBloom(v: Float32Array): boolean {
   return v[580] === 1 && v[528] === 1 && v[128] === 1
@@ -18,5 +18,5 @@ export function validSpatialWideBloom(v: Float32Array): boolean {
 }
 /** GPU work configuration only; simulation and selection remain native-owned. */
 export function spatialWideBloom(v: Float32Array | undefined): boolean {
-  return v?.length === 584 && v[580] === 1 && v[128] === 1 && v[129] > 0;
+  return v !== undefined && v.length >= 584 && v[580] === 1 && v[128] === 1 && v[129] > 0;
 }

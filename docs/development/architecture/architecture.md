@@ -1053,13 +1053,13 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid를2,608-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS·높이 안개 설정을2,704-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
 `webgpuSpatialShadows`는 depth32float point 6-layer array와 sun 2D target을 소유한다. native matrix로 face UV를 투영하고
 radial/projected depth·slope bias·hard/PCF를 공유하며 shadow pass에는 sampling group을 연결하지 않아 read/write alias를 피한다.
-camera8개 record와 model8개 pass의 matrix를 draw 전에 한 번씩 bulk upload하고 각 draw는 별도 offset을 사용한다.
+camera는 main+최대13개 shadow face의14개 record를 예약하고 model staging도 최대14 pass를 지원한다. dirty map의 matrix만 채워 main과 함께 draw 전에 bulk upload하고 각 draw는 별도 offset을 사용한다.
 receive flag는 같은 환경의 두 bind group으로 선택하며 per-draw queue overwrite를 하지 않는다.
 shared `SpatialShadowCache`는 native caster/terrain revision·light/matrix·모델 shadow mask/content/pose와 색 atlas revision을 비교한다.
 WebGPU texture store는 replace/alpha patch마다 해당 texture revision을 갱신한다. 정상 warm frame은 GPU object를 다시 만들지 않는다.
@@ -1180,7 +1180,7 @@ shader는 같은 atlas UV로 tangent basis를 계산한다. normal 미지정 시
 
 고정 내부 해상도는 같은 native 표시 viewport로 nearest 정수 확대하고 최종 해상도 flat HUD 전에 합성한다.
 legacy는 effect pass의 색 변환, linear-srgb는 기존 최종 encode를 유지한다. `EXT_color_buffer_float`가
-필요하며 기능 제거를 조용히 적용하지 않는다. 상한은 point light 4개/point shadow 1개/sun 1개,
+필요하며 기능 제거를 조용히 적용하지 않는다. 상한은 point light 4개/point shadow 기존1개·선택형 최대2개/sun 1개,
 1,024 caster/면당 64 batch/HDR 8,388,608 pixel/내부 pixel target 1,048,576 pixel/blur 12 CSS px다.
 PCF는 receiver당 최대 9회 비교이며 pass 수를 늘리지 않는다. 고급 DOF는 같은 composite에서 전경/배경을
 분리 누적하고 기존 배경 위 전경 coverage를 확장한다. 중간 texture·반투명 다중 depth는 추가하지 않는다.
@@ -2041,3 +2041,78 @@ GL unit6과 GPU group3/광원별256-byte uniform offset을 사용하며 새 targ
 Spatial의 선택형 넓은 Bloom은 v9/584 source와 patch10/state12를 사용하며 기존 v1..v8 source를 유지한다.
 광원 선택 존재 bit와 post effect 설정은 분리해 품질 편집이 native 전환 이력을 초기화하지 않는다.
 별도 low-resolution chain과 오류/복구·pixel grid·작업 상한은 [Spatial 합성 구조](spatial-lighting-composition.md#넓은-bloom의-별도-저해상도-chain)를 따른다.
+
+Spatial의 선택형 두 점광원 그림자는 environment v10/592 source·patch11/state13을 사용한다.
+Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·선택 이력·6+6+sun 행렬과 face0~12의
+정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
+model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
+WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개 확장을 포함해2704 bytes,
+stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
+shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
+각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
+이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
+두 번째 cube는 선택 시에만 만들고 OFF/clear/destroy 시 회수한다.
+`SpatialShadowCache`는 공통 terrain/caster/alpha texture revision을 한 번 검사하고 첫 cube·둘째 cube·sun의
+행렬/점광원 radial depth/model face mask·pose·LOD/contentId를 map별로 비교한다. 점광원6면·sun1면 단위 dirty mask를
+양 renderer에 전달한다. 공통 geometry/texture 변경은 활성 map 모두, 광원/해상도/해당 model 변경은 영향을 받는 map만 갱신한다.
+filter/bias/normalBias 같은 수신 sampling 변경은 depth cache를 무효화하지 않는다.
+model snapshot은 map당1024×18 u32로 backend당221,184 bytes(+144 KiB CPU)며 borrowed Wasm view를 보관하지 않는다.
+GPU target/instance scratch 상한은 그대로다. WebGPU model staging은 camera와 dirty map의 native pass bits만 채운다.
+WebGL2는 타깃 준비 전에 dirty map을 무효화하고 선택된 map의 face 제출 전체 성공 뒤 확정한다.
+WebGPU는 해당 map만 unready로 표시하고 실제 queue.submit 성공 뒤 확정한다. 중단/실패한 map은 재시도하고 다른 정상 map은 유지한다.
+`shadowCacheHit`은 모든 활성 map이 warm일 때만 true이며 부분 갱신 비용은 실제 pass/draw/triangle/upload에 기록한다.
+WebGL2 terrain 업로드도 cache와 같이 buffer identity·byteOffset·length·revision을 비교한다.
+같은 memory의 다른 view 구간을 제출해도 새 geometry가 GPU에 반영된다. 효과 해제는 고정 cache 배열을 재사용해
+관찰값만 비우며, 효과 없는 Spatial frame마다 model metadata 용량을 재할당하지 않는다.
+그림자 triangle 통계는 model words의 직접 순회로 집계하고 전체 words를 JS 배열로 복사하지 않는다.
+입력·저장·비용은 [다중 점광원 계약](../../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)을 따른다.
+
+선택형 태양 PCSS는 native environment v11/600·patch12/state14를 사용한다.
+Rust가 설정 검증·저장·OFF source 보존·기존 태양 행렬을 소유하고 TS는 깊이 샘플링만 담당한다.
+592~594는 활성/각반경/최대 texel 반경이며595~599는 reserved0이다. 이전 prefix를 재해석하지 않는다.
+v11의 비활성 pointShadows tail584~591은0이며589=1인 경우만 두 owner 포맷이다.
+기존80-byte model ABI v2, shadow submission ABI v1과 face·행렬 순서는 유지한다.
+새 cold capability로 구 core의 OFF·progress-only PCSS도 자산/씬 mutation 전에 거절한다.
+WebGL2 `u_sunPcss`와 WebGPU private words656~659에 활성·depth→texel 배율·반경 상한을 전달한다.
+uniform 유효 크기는16 bytes 늘지만 stride2816과 두 record5632-byte allocation은 유지한다.
+양 shader는 공통 고정 disk 좌표로 최대16 blocker+32 filter depth fetch를 수행한다.
+반경이 작은 경우 hard 비교로 단축하고, camera/frame 기반 noise나 추가 GPU 자원/그림자 pass를 사용하지 않는다.
+기존 receiver-plane 보정·유한 coverage fade와 per-map cache를 공유한다. 각도/반경 변경은 sampling-only다.
+비용 상한·근사 한계는 [태양 PCSS 계약](../../engine/data-scene-spatial.md#선택형-태양광-pcss)을 따른다.
+
+
+선택형 점광원 PCSS는 environment v12/608·patch13/state15를 사용한다. Rust는 600~607의 두 owner
+record를 검증·보존하고 OFF frame에서만 비운다. 선택·소유권·행렬·model80-byte v2는 유지한다.
+TS는 raw cube depth와 수신 평면 보정을 공유하는 point sample에서 blocker 비율을 구하고
+16+32회로 제한된 필터를 실행한다. cube 면 선택과 texel 중심 보정은 hard/PCF3와 같으며
+광원별 PCSS override가 없는 query는 기존 경로를 유지한다. 고정 disk 좌표 생성은 태양과 공유한다.
+WebGPU private uniform의 660~663/664~667은 각각 첫/두 번째 point PCSS record다.
+점광원 PCSS 단계의 유효 record는2640에서2672 bytes로32 bytes 늘었으며 stride2816·두 camera allocation5632 bytes는 유지하며 두 번째 record에도 새 tail을 복사한다.
+WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가면 두 backend 모두 tail을 0으로 쓴다.
+샘플링 설정은 depth cache key에 포함하지 않는다. GPU texture/target/instance staging 예산은 늘리지 않는다.
+구 core 사전 거절은 직접 설정, authoring preflight, progress-only 복원에서도 실행한다.
+[점광원 PCSS 계약](../../engine/data-scene-spatial.md#선택형-점광원-pcss)이 사용법과 근사 상한을 정의한다.
+
+### Spatial 높이 안개
+
+선택형 `fog.height`는 native environment v13/616·patch14/state16을 사용한다.
+608~611의 `[enabled, baseHeight, density, falloff]`와 612~615의 reserved 0을 Rust/TS 양쪽에서 검사한다.
+조명 OFF는 PCSS render metadata만 지우며 독립적인 안개 tail과 authored source는 보존한다.
+기존 prefix·render command·model ABI는 그대로이며 cold capability로 구 core의 입력을 mutation 전에 거절한다.
+
+적분은 TS 플랫폼의 GLSL/WGSL에서 수행한다. 기준 높이 아래의 일정 밀도와 위의 지수 밀도를
+시선 구간별로 해석적으로 적분한다. 높이 차이가 작은 경우 Taylor 분기로 상쇄 오차를 피하며
+지수의 음수 인자는 최대 80으로 제한한다. 높이는 fog base를 뺀 상대 좌표로 전달하고,
+적분 길이는 view-depth 차이를 먼저 구해 정규화한다. 잘린 구간의 높이는 기준 높이 교차점 또는
+낮은 양수 endpoint를 기준으로 계산하며, 기준 높이 아래/위의 기여는 양수 길이의 합으로 결합한다.
+이는 큰 좌표·얇은 원거리 구간에서 두 큰 수를 빼며 기여가 사라지는 오차를 피한다.
+원근은 eye ray, 직교는 픽셀별 camera-plane ray를 사용한다.
+기존 geometry fog 또는 separated AO resolve 위치에 한 번 합성하고 DOF/Bloom 순서는 유지한다.
+추가 texture fetch·target·pass는 없다. 카메라는 native의 world-up 기준이며 표시용 pixelArt camera를 사용한다.
+
+WebGPU private uniform의 668~671은 높이 안개, 672~675는
+`[eyeHeight, upY, forwardY, projection]`다. 현재 유효 record는 **2704 bytes**, 간격2816·두 record allocation5632 bytes다.
+두 camera record 모두 tail을 채우고 기존 frame으로 바뀌면 안개 설정을 0으로 초기화한다.
+WebGL2도 geometry/composite 두 경로에 같은 설정과 카메라 basis를 전달한다.
+[높이 안개 계약](../../engine/data-scene-spatial.md#선택형-높이-안개)이 구간 의미·기본값·범위와 제한을 정의한다.

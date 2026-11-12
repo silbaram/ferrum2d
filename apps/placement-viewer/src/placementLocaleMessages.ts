@@ -1671,6 +1671,7 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   "Remove Light": "광원 제거",
   "Light Color": "광원 색상",
   "Point Shadows": "점광원 그림자",
+  "At most two point-shadow lights.": "점광원 그림자는 최대 2개까지 사용할 수 있습니다.",
   "Light {0}": "광원 {0}",
   Intensity: "밝기",
   Radius: "반경",

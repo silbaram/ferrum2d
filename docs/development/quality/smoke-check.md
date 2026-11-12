@@ -3015,3 +3015,138 @@ SDK unit은 environment v9 numeric584의 selection 존재 bit·예약 영역·ra
 구 core의 자산 조회 전 거절, patch10 Undo/Redo·downgrade, state12의 exploration/combat history 원자 복원을 검사한다.
 양 backend의 부분 target 할당 실패/쓰기 재시도·비동기 GPU 실패와 warm/OFF/destroy도 별도로 검사한다.
 소프트웨어 adapter의 픽셀·작업량 검증이며 실게임·실물 GPU의 ms/FPS·품질 수용 기준은 개발 완료 후 검증한다.
+
+
+### Spatial 다중 점광원 그림자 회귀
+
+`pnpm smoke:spatial-point-shadows`는 public 패키지·실제 Wasm과 WebGL2/WebGPU로
+선택형 `lighting.pointShadows` 최대 2개를 검사한다. `test:spatial-point-shadows-report`의 독립 PNG 판정기
+음성 테스트를 먼저 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도 같은 회귀와 판정기를 포함하며,
+수동 실행 CI(`workflow_dispatch`)의 `validate` job이 해당 aggregate를 실행한다.
+`extended_browser_smoke` 입력과 무관하며 일반 push/PR에서 자동 실행되지는 않는다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근을 교차한32 backend context에서976개 상태를 검사한다.
+빨강·파랑 광원을 각각 차폐한 기준과 두 그림자 결과를 비교하고, 다른 광원·ambient·초록 발광 재질이 보존되는지
+PNG를 다시 읽어 판정한다. terrain·cutout billboard·인스턴싱 모델2개, hard/PCF3, mask, 태양 그림자 동시13 pass,
+16개 작성 광원의 owner 고정, legacy 단일/배열 단일, OFF 설정·state13 복원, resize/pixelArt,
+다중→단일 설정 직후 프레임 재생성 전 모델 위치 조회,
+WebGPU 실제 장치 파괴 후 복구를 포함한다. 정적 warm frame의 shadow draw/upload0과 해제 후 자원0을 요구한다.
+WebGL2는 두 번째 cube 크기를 바꾼 직후 렌더 실패를 주입하고, 같은 프레임의 재시도가 해당6면을 다시 그리는지 검사한다.
+SDK 회귀는 첫 cube·두 번째 cube·sun 타깃 각각의 실패 후 재시도, WebGPU abandoned encoder와 성공 후 warm 재사용을 확인한다.
+실제 Wasm frame의 terrain stream을 native pointer/길이/revision이 같은 동안만 유지해 광원별 cache를 검사한다.
+점광원 이동/개별 해상도6면, sun 이동/추가1면, sun 제거·sampling-only0면, owner 교환12면,
+공통 caster revision/alpha texture 교체13면을 요구한다. 매 상태마다 동일 geometry의 terrain stream만 새로 만들어
+강제 cold 전체12/13면 기준을 얻고 부분 갱신 PNG와 RGBA 전 채널을 비교한다.
+Node 판정기는 cold PNG 누락·불완전 전체 갱신·stale pixels·잘못된 cache flag·초과 갱신도 거절한다.
+model staging 단위 검사는 camera+선택 owner pass만 업로드하는 실제 byte 수를 확인한다.
+같은 terrain buffer/revision에서 byteOffset만 다른 view를 제출해 GPU 업로드와 전체 cold PNG 일치를 검사한다.
+SDK 회귀는 길이만 바뀌는 view도 확인하며, 효과 없는 Spatial frame의 고정 model cache 배열 할당은0이어야 한다.
+
+보고서는 spatial GPU `run-*/report.json`의 `pointShadowCases`와 PNG다.
+소프트웨어 adapter 실행은 실물 GPU 또는 제품 시간/FPS 수용 결과로 해석하지 않는다.
+기존 단일 점광원·태양 그림자 회귀는 `--offscreen-target --shadows-only`로 별도 실행할 수 있다.
+
+`pnpm test:placement-point-shadows`는 광원 삭제 후 인덱스와 설정 보존, 두 owner 상한·활성 예산,
+Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:placement-viewer`와 CI에 이 단위 검증을 포함한다.
+`pnpm smoke:placement-spatial-workspace`는 실제 Spatial 조명 패널 검증을 포함하며 기존 CI에서도 실행한다.
+실제 패널에서 독립 offset, 세 번째 제한, Low 품질, owner/nonowner 삭제·Undo/Redo와 native 환경v10/592를 확인한다.
+
+### Spatial 태양 PCSS 회귀
+
+`pnpm smoke:spatial-sun-pcss`는 `test:spatial-sun-pcss-report`의 PNG 판정기 음성 테스트 뒤
+public tarball·실제 Wasm·WebGL2/WebGPU를 실행한다. 전체 `smoke:spatial-webgpu-offscreen`에도
+같은 테스트와 PCSS 행렬이 포함된다. 수동 실행 CI(`workflow_dispatch`)의 `validate` job이
+해당 aggregate를 실행하며 `extended_browser_smoke` 입력과 무관하다.
+브랜치 push만으로 해당 GPU 회귀가 자동 실행된다는 의미는 아니다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의32 context에서1,040개 상태를 확인한다.
+수평 shadow-only 모델의 접촉0.25/중간16/분리64 world 높이, 얇은2-unit caster,
+각도0/1/5·반경 제한2/16/32·해상도128/256/512/1024를 사용한다.
+Node 판정기가 저장 PNG의577개 world-space 수신점 profile을 다시 읽어 접촉보다 분리 그림자가 넓고,
+고정 PCF3와 구별되며 각도·반경 제한이 실제 픽셀에 반영되는지 요구한다.
+각도0은 hard와 같은 PNG여야 한다. 노이즈 없는 고정 kernel의 warm frame과 카메라 복귀는 픽셀이 같아야 한다.
+고정 sun center와 기본 camera-target 추적 모두 subtexel 카메라 이동은 depth map을 다시 그리지 않으며 같은 world profile의 폭을 유지한다.
+경사/곡면 모델은 녹색 재질로 수신 영역을 구분해 독립 no-shadow PNG와 비교하고 self-shadow acne를 제한한다.
+
+태양의 빨강 성분만 PCSS로 바꿔도 두 점광원의 초록/파랑은 그대로여야 한다.
+sampling-only는0 shadow pass, 태양 해상도 변경은1, 두 점광원과 태양의 cold frame은13을 요구한다.
+state14의 새 엔진 복원, 조명 OFF/재활성, WebGPU 장치 파괴·복구, 종료 후 자원0을 확인한다.
+매 상태의 warm frame은 shadow pass/upload0이며 검사 대상의 receiver/caster geometry 통계가 양수여야 한다.
+PNG 판정기는 상태 누락·빈 이미지·고정 blur·효과 없는 각도/반경·다른 색 성분 변경·warm redraw·model acne를 거절한다.
+최대48 depth fetch는 shader loop의 정적 상한이며 실제 fragment 수나 GPU 시간 측정값이 아니다.
+
+SDK/native 회귀는 환경v11 prefix·reserved tail·선택 정책·legacy/두 owner 동시 설정,
+OFF 보존·입력 거절의 원자성·구 core의 자산 조회 전 거절·patch12/state14 downgrade를 확인한다.
+WebGPU 두 uniform record의 PCSS tail·기존 frame 전환 시 초기화·추가 target 없음과 depth cache 재사용도 검사한다.
+보고서는 Spatial GPU `run-*/report.json`의 `sunPcssCases`와 PNG다. 실게임/목표 GPU·브라우저의 FPS·품질 수용 검증은 별도다.
+
+### Spatial 점광원 PCSS 회귀
+
+`pnpm smoke:spatial-point-pcss`는 `test:spatial-point-pcss-report`의 독립 PNG 판정기 음성 테스트를
+실행한 뒤 public tarball·실제 Wasm·WebGL2/WebGPU를 검증한다. 전체
+`smoke:spatial-webgpu-offscreen`에도 포함하며 수동 CI(`workflow_dispatch`)의 `validate` job에서 실행한다.
+`extended_browser_smoke` 입력과 무관하고 일반 push/PR 자동 실행을 뜻하지 않는다.
+
+가로/세로 viewport·DPR1/2·두 색공간·직교/원근·두 backend의 32 context에서 1,264개 상태를 확인한다.
+이 fixture의 canvas는 CSS 최대 640×480이며 세로 viewport에서는 390×480으로 좁아진다.
+실제 drawing buffer는 DPR을 반영한다. 물체 높이 0.25/16/64, 광원 반지름 0/2/8,
+기준 texel cap 2/16/32, cube 해상도 128/256/512/1024를 교차하고 width/height와 world profile을 기록한다.
+
+PNG 판정기는 577개 world-space 수신점에서 각 위치의 no-shadow/ambient 기준으로 조명을 정규화한다.
+접촉보다 분리된 그림자가 넓고, hard/PCF3와 구별되며 광원 반지름·cap이 실제 픽셀에 반영되어야 한다.
+반지름 0은 hard와 같고, 해상도 변경과 subtexel camera 이동의 폭 변화는 허용 범위 이내여야 한다.
+2-unit caster를 보존하며 녹색 모델 재질로 수신 영역을 구분해 경사/곡면 acne를 제한한다.
+큐브 edge와 세 면 corner를 가로지르는 그림자는 중앙 누출 없이 번짐이 나타나야 한다.
+
+빨강·초록 점광원에 PCSS를 각각 적용한 PNG와 둘 다 적용한 PNG를 대조한다.
+다른 점광원과 파랑 태양 PCSS 성분이 보존되고, 두 owner의 필터가 실제로 작동해야 한다.
+sampling-only 변경은 0 shadow pass, 단일 cube의 cold frame은 6, 두 cube+sun은 13을 요구한다.
+매 상태의 warm frame은 shadow pass/upload 0과 동일 pixels, receiver/caster geometry 통계를 확인한다.
+progress-only PCSS의 state15를 새 엔진에서 복원하고 OFF/재활성·WebGPU 실제 장치 파괴/복구·자원 0을 검증한다.
+음성 테스트는 빈 신호·고정 blur·효과 없는 반지름/cap·owner 결합·두 번째 필터 무시·seam 누출·acne·warm redraw를 거절한다.
+
+SDK/native 검증은 v12/608의 prefix·reserved tail·실제 owner 필요 조건, legacy 단일/배열 단일/두 owner,
+태양 PCSS·선택·Bloom의 독립 조합, OFF source 보존과 입력 거절 원자성, 구 core의 자산 준비 전 거절,
+patch13/state15 및 progress-only downgrade를 검사한다. GL uniform과 WebGPU 두 camera record의
+owner 값·legacy 전환 초기화·추가 target 없음, sampling-only depth cache 재사용도 확인한다.
+배열형 shadow owner의 1025개 authored billboard와 65개 terrain texture batch는 PCSS 유무 모두에서
+작성/활성화 사전 검사로 거절한다. 이 회귀는 두 누락 경로를 실패 재현한 뒤 추가했다.
+query당 최대 48 depth fetch는 정적 상한이며 GPU 시간 측정값으로 해석하지 않는다.
+보고서는 Spatial GPU `run-*/report.json`의 `pointPcssCases`와 PNG다. 실제 게임/목표 기기의 수용 검증은 별도다.
+
+### Spatial 높이 안개 회귀
+
+`pnpm smoke:spatial-height-fog`는 report negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
+기존 `pnpm smoke:spatial-webgpu-offscreen`에도 같은 높이 안개 행렬·DOF 순서 검사와 높이 안개/Bloom 조합이 포함된다.
+현재 수동 CI(`workflow_dispatch`)의 `validate` job이 이 aggregate 명령을 실행한다.
+좁은 재검증은 runner의 `--height-fog-only`, `--height-fog-precision-only`,
+`--height-fog-composition-only`, `--wide-bloom-height-fog-only`를 사용한다.
+
+두 backend × 원근/직교 × legacy/linear-srgb × desktop/모바일 크기 × DPR1/2를 검사한다.
+AO fixture에는 실제 환경광을 켜고 접촉면이 어두워지는 픽셀을 요구한다. unlit 표면의 0인
+indirect MRT를 합성 경로 검증으로 대신하지 않는다.
+새 안개를 geometry에 적용하는 legacy/separated 경로와 separated AO resolve 경로에서
+기본값·밀도0·감쇠0/미소값/큰 값·기준 높이 위/아래/교차·수평/상향 시선·시작/종료 구간을 변경한다.
+별도 Node oracle은 알려진 terrain에 카메라 ray를 교차시킨 뒤 **4096구간 수치 적분**으로
+PNG 혼합률을 검사한다. 셰이더의 해석적 식을 복제하지 않으며 단순 backend 일치만으로 통과시키지 않는다.
+기존 선형 안개도 같은 계산으로 검사한다. 효과 target/MSAA 차이를 배제하도록 안개가 닿지 않는
+선형 모드를 기준 이미지로 사용한다. 화면 안의 알려진 재질과 최소 수신점 수를 요구한다.
+
+pixelArt의 가상 해상도·정수 확대·여백·표시 카메라를 반영한다. 두 점광원+태양 PCSS와 함께
+높이 안개만 바꾸면 13개 깊이 면이 재생성되지 않아야 한다. 기존 거리 안개보다 target/buffer/pass가 늘지 않는다.
+progress-only state16을 새 엔진에서 복원하고 안개 제거/재활성·WebGPU 장치 파괴/복구·destroy 자원0을 검사한다.
+높이 안개/Bloom은 기존 독립 CPU Bloom reference로 gather·wide, AO, odd viewport, pixelArt,
+HDR 노출·HUD·저장/복원·장치 복구를 검사한다. 작은 HDR source의 DOF 후 광도가 Bloom threshold 아래로
+내려가는 별도 fixture로 높이 안개→DOF→Bloom 순서와 효과가 실제 적용된 신호를 확인한다.
+
+`pnpm test:spatial-height-fog-report`는 빈 이미지, 무시한 밀도/감쇠/구간,
+직교 시선 대신 중앙 eye ray 사용, 잘못 복원한 이미지, 빠진 상태, warm shadow redraw,
+누락된 native v13과 추가 target/pass를 거절해야 한다.
+같은 gate의 별도 float32 shader probe는 패키지에 실린 GLSL/WGSL helper를 직접 실행한다.
+큰 기준 높이의 평행 이동, 원거리의 인접 float32 시작/종료 깊이, 얇은 아래쪽 기여, 잘린 구간의
+기준 높이 교차를 독립 adaptive Simpson 적분과 비교한다. 양쪽 backend가 같은 오차를 내도 실패한다.
+SDK/Rust 검증은 유한 범위·reserved tail·lighting OFF source 보존, 구 core의 자산 준비 전 거절,
+patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기화·두 번째 camera record를 포함한다.
+
+현재 호스트 GPU fixture 통과는 사용자 실게임·목표 기기의 FPS 수용 검증과 구분한다.
+실게임·실기기 수용 검증은 사용자 방침에 따라 개발 완료 후 진행한다.

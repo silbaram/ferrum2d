@@ -72,7 +72,7 @@ impl Default for LightSelection {
 }
 impl LightSelection {
     pub fn new(v: &[f32]) -> Self {
-        if ![580, 584].contains(&v.len()) || v[576] == 0. {
+        if ![580, 584, 592, 600, 608, 616].contains(&v.len()) || v[576] == 0. {
             return Self::default();
         }
         let mut hash = 2166136261u32;
@@ -118,10 +118,10 @@ impl LightSelection {
 
     fn desired(&self, v: &[f32], data: &Candidates, hysteresis: bool) -> [Option<u8>; 4] {
         let mut ranked = std::array::from_fn::<_, 16, _>(|i| {
-            let pinned = i as f32 == v[138];
+            let owner = super::point_shadows::owner(v, i);
             let incumbent = self.slots.iter().any(|s| s.source == Some(i as u8));
-            let score = if pinned {
-                f32::MAX
+            let score = if let Some(owner) = owner {
+                f32::MAX / (owner + 1) as f32
             } else if data.visible[i] && data.scores[i] > 0. {
                 data.scores[i]
                     * if hysteresis && incumbent {
@@ -289,7 +289,7 @@ impl LightSelection {
                     .position(|s| *s == Some(i))
                     .map_or(-1, |s| s as i32),
                 reason,
-                flags: u32::from(i as f32 == v[138])
+                flags: u32::from(super::point_shadows::owner(v, i).is_some())
                     | (u32::from(held) << 1)
                     | (u32::from(!self.initialized) << 2)
                     | (u32::from(queued) << 3),
@@ -409,9 +409,12 @@ impl LightSelection {
                     || slots.iter().any(|s| *s != Slot::default())))
             || (v[2] == 1.
                 && (source[0] as u32 & 1 == 0
-                    || (source[138] >= 0.
-                        && (slots[0].source != Some(source[138] as u8)
-                            || slots[0].phase != Phase::Steady))))
+                    || (0..source[137] as usize).any(|i| {
+                        super::point_shadows::owner(source, i).is_some_and(|owner| {
+                            slots[owner].source != Some(i as u8)
+                                || slots[owner].phase != Phase::Steady
+                        })
+                    })))
         {
             return false;
         }
@@ -429,6 +432,7 @@ fn inputs(v: &[f32]) -> impl Iterator<Item = f32> + '_ {
         .chain(v[192..512].iter().copied())
         .chain(v[549..565].iter().copied())
         .chain(v[576..580].iter().copied())
+        .chain((v.len() >= 592 && v[589] == 1.).then(|| v[584]))
 }
 
 fn pack(slots: &[Slot; 4]) -> ([Option<usize>; 4], [f32; 4]) {

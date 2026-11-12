@@ -12,7 +12,7 @@ import {
   spatialFragmentSource,
   type SpatialGeometryUniforms,
 } from "./webgl2SpatialShaders.js";
-import { SpatialShadowCache } from "./spatialShadowCache.js";
+import { SpatialShadowCache, spatialShadowMaps, spatialShadowModelPasses } from "./spatialShadowCache.js";
 import type { SpatialRendererStats } from "./renderer.js";
 export type { SpatialRendererStats } from "./renderer.js";
 export class WebGL2SpatialPass {
@@ -26,6 +26,8 @@ export class WebGL2SpatialPass {
     Record<string, WebGLUniformLocation>;
   private revision = -1;
   private memory?: ArrayBufferLike;
+  private terrainOffset = -1;
+  private terrainLength = -1;
   private terrainBytes = 0;
   private spriteBytes = 0;
   private debugBuffer?: WebGLBuffer;
@@ -37,7 +39,7 @@ export class WebGL2SpatialPass {
   private environmentPass?: WebGL2SpatialEnvironmentPass;
   private shadowBuffer?: WebGLBuffer;
   private shadowBytes = 0;
-  private shadowCache = new SpatialShadowCache();
+  private readonly shadowCache = new SpatialShadowCache();
   private destroyed = false;
   private readonly models: WebGL2SpatialModels;
   constructor(
@@ -109,6 +111,9 @@ export class WebGL2SpatialPass {
         "lightCone",
         "lightCount",
         "shadowIndex",
+        "shadowIndex2",
+        "shadowParams2",
+        "shadowMap2",
         "shadowBias",
         "shadowMap",
         "normalMap",
@@ -116,7 +121,7 @@ export class WebGL2SpatialPass {
         "modelSpecularEnabled", "modelSpecular", "modelRoughness", "roughnessMap", "specularMap", "specularColorMap",
         "hasRoughness", "hasSpecular", "hasSpecularColor", "modelRoughnessUvTransform", "modelSpecularUvTransform", "modelSpecularColorUvTransform",
         "receiveShadow", "receiverMasks", "lightChannels", "sunChannels",
-        "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
+        "heightFog", "fogCamera", "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunPcss", "pointPcss", "pointPcss2", "sunMatrix", "sunMap",
         "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
       ])
         this.uniforms[name] = uniform(`u_${name}`);
@@ -242,6 +247,9 @@ export class WebGL2SpatialPass {
     gl.activeTexture(gl.TEXTURE4);
     const texture4 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
     const sampler4 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    gl.activeTexture(gl.TEXTURE8);
+    const cube8 = gl.getParameter(gl.TEXTURE_BINDING_CUBE_MAP) as WebGLTexture | null;
+    const sampler8 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
     const materialSlots = [5, 6, 7].map(unit => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       return { unit, texture: gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null,
@@ -317,6 +325,7 @@ export class WebGL2SpatialPass {
       );
       gl.uniform1i(this.uniforms.texture, 0);
       gl.uniform1i(this.uniforms.shadowMap, 1);
+      gl.uniform1i(this.uniforms.shadowMap2, 8);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindSampler(2, this.sampler);
       gl.bindTexture(gl.TEXTURE_2D, null);
@@ -340,30 +349,32 @@ export class WebGL2SpatialPass {
       gl.uniform1i(this.uniforms.linearInput,Number(this.linearInput));
       if (
         this.revision !== frame.terrainRevision ||
-        this.memory !== frame.terrain.buffer
+        this.memory !== frame.terrain.buffer ||
+        this.terrainOffset !== frame.terrain.byteOffset ||
+        this.terrainLength !== frame.terrain.length
       ) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.terrainBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, frame.terrain, gl.STATIC_DRAW);
         this.terrainBytes = frame.terrain.byteLength;
         this.revision = frame.terrainRevision;
         this.memory = frame.terrain.buffer;
+        this.terrainOffset = frame.terrain.byteOffset;
+        this.terrainLength = frame.terrain.length;
         stats.terrainUploadBytes = this.terrainBytes;
         stats.uploadBytes += this.terrainBytes;
       }
       if (activeEnvironment) {
         const effects = (this.environmentPass ??=
           new WebGL2SpatialEnvironmentPass(gl, this.linearInput));
-        const shadowReady = effects.shadowReady(environment!.values);
-        effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         const casters = environment!.shadowCasters;
-        const hasShadows = environment!.values[2] >= 0 || environment!.values[92] > 0;
-        // Collect texture revisions even for a new target so its first successful render can be cached.
-        const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
-        const cacheHit = shadowReady && cacheMatches;
+        const activeMaps = spatialShadowMaps(frame), hasShadows = activeMaps !== 0;
+        const dirtyMaps = this.shadowCache.prepare(frame, textures, effects.shadowReadyMaps(environment!.values));
+        const cacheHit = hasShadows && dirtyMaps === 0;
+        effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         stats.shadowCacheHit = cacheHit;
-        const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0));
+        const modelPasses = spatialShadowModelPasses(dirtyMaps);
         this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats, receiverMasks?.models);
-        if (!cacheHit && hasShadows && casters.length) {
+        if (dirtyMaps && casters.length) {
           if (!this.shadowBuffer) {
             const b = gl.createBuffer();
             if (!b)
@@ -387,7 +398,7 @@ export class WebGL2SpatialPass {
           this.shadowBytes = 0;
         }
         const before = stats.drawCalls;
-        if (!cacheHit) {
+        if (dirtyMaps) {
           const submit = (u: SpatialGeometryUniforms, face: number) => {
             const ranges = environment!.shadowSubmission?.ranges;
             gl.activeTexture(gl.TEXTURE0);
@@ -415,12 +426,14 @@ export class WebGL2SpatialPass {
             }
             this.models.draw(frame.models,face===6?7:face+1,u,stats,this.modelInstanceBuffer);
           };
-          stats.shadowPassCount = effects.drawShadows(frame, submit) + effects.drawSunShadow(frame, submit);
-          if (stats.shadowPassCount) this.shadowCache.commit(frame);
+          stats.shadowPassCount = effects.drawShadows(frame, submit, dirtyMaps) + effects.drawSunShadow(frame, submit, dirtyMaps);
+          if (stats.shadowPassCount) this.shadowCache.commit(frame, dirtyMaps);
         }
         stats.shadowDrawCalls = stats.drawCalls - before;
-        if (environment!.shadowSubmission && !cacheHit) {
-          const modelTriangles=frame.models ? Array.from(frame.models.words).reduce((n,_,i)=>i%20===0 ? n+frame.models!.assets.get(frame.models!.words[i])!.triangleCount : n,0) : 0;
+        if (environment!.shadowSubmission && dirtyMaps) {
+          let modelTriangles = 0;
+          if (frame.models) for (let i = 0; i < frame.models.words.length; i += 20)
+            modelTriangles += frame.models.assets.get(frame.models.words[i])!.triangleCount;
           stats.shadowCulledTriangleCount = stats.shadowPassCount * ((frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 + modelTriangles) - stats.shadowTriangleCount;
         }
         stats.triangleCount += stats.shadowTriangleCount;
@@ -567,6 +580,9 @@ export class WebGL2SpatialPass {
         gl.bindSampler(slot.unit, slot.sampler);
         gl.bindTexture(gl.TEXTURE_2D, slot.texture);
       }
+      gl.activeTexture(gl.TEXTURE8);
+      gl.bindSampler(8, sampler8);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, cube8);
       gl.activeTexture(gl.TEXTURE4);
       gl.bindSampler(4, sampler4);
       gl.bindTexture(gl.TEXTURE_2D, texture4);
@@ -734,7 +750,7 @@ export class WebGL2SpatialPass {
     };
   }
   releaseEnvironment(): void {
-    this.shadowCache = new SpatialShadowCache();
+    this.shadowCache.clear();
     this.environmentPass?.destroy();
     this.environmentPass = undefined;
     if (this.shadowBuffer) this.gl.deleteBuffer(this.shadowBuffer);

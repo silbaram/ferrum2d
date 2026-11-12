@@ -1,3 +1,6 @@
+import { HEIGHT_FOG_WGSL } from "./spatialHeightFogShaders.js";
+import { spatialSunPcssScale } from "./spatialSunPcss.js";
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import type { SpatialRendererStats } from "./renderer.js";
 import { WebGpuSpatialBloom } from "./webgpuSpatialBloom.js";
 import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from "./spatialBloomKernel.js";
@@ -11,13 +14,14 @@ import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 // v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
-const UNIFORM_BYTES = 2608,
+const UNIFORM_BYTES = 2704,
   UNIFORM_STRIDE = 2816;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f, pointPcss:vec4f, pointPcss2:vec4f, heightFog:vec4f, fogCamera:vec4f,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
+${HEIGHT_FOG_WGSL}
 @group(2) @binding(3) var<uniform> receiver:vec4u;
 fn channel(i:u32)->u32{return u32(env.channels[i/4u][i%4u]);}
 fn receiverMasks()->vec2u{if(env.channels[1].y>.5){return receiver.xy;}return vec2u(255u);}
@@ -65,7 +69,10 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
    let cone=144u+i*8u;
    var coneWeight=1.;
    if(e(cone+5u)>0. && d>.000001){let angle=dot(-delta/d,vec3f(e(cone),e(cone+1u),e(cone+2u)));coneWeight=step(e(cone+3u),angle);if(e(cone+4u)>e(cone+3u)+.000001){coneWeight=smoothstep(e(cone+3u),e(cone+4u),angle);}}
-   var visibility=1.;if(env.size.w>0. && receivesShadow(channels) && f32(i)==e(2u)){let receiverDelta=delta-geometric*e(123u);visibility=pointVisibility(receiverDelta,length(receiverDelta),radius,geometric);}
+   var visibility=1.;if(env.size.w>0. && receivesShadow(channels) && (f32(i)==e(2u) || f32(i)==env.pointShadow2.x)){
+    let second=f32(i)==env.pointShadow2.x;let receiverDelta=delta-geometric*select(e(123u),env.pointShadow2.z,second);
+    visibility=pointVisibility(second,select(e(4u),env.pointShadow2.y,second),receiverDelta,length(receiverDelta),radius,geometric);
+   }
    illumination+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*lambert*visibility*coneWeight;
    if(specularWeight>0. && d>.000001){reflection+=vec3f(e(p+4u),e(p+5u),e(p+6u))*e(p+7u)*falloff*falloff*visibility*coneWeight*directSpecular(n,delta/d,view,f0,roughness);}
   }
@@ -77,7 +84,11 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
  color+=emission;
  if((u32(e(0u))&2u)!=0u && (compositionFlags()&1u)==0u){
   let z=max(dot(world-env.eye.xyz,env.forward.xyz),0.);
-  color=mix(color,vec3f(e(73u),e(74u),e(75u)),clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.));
+  var amount=clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.);
+  if(env.heightFog.x>0.){let receiver=world.y-env.heightFog.y;var origin=receiver-env.forward.y*z;var rayLength=z;
+   if(env.view.z>0.){origin=env.eye.y-env.heightFog.y;rayLength=length(world-env.eye.xyz);}
+   amount=heightFogAmount(z,rayLength,origin,receiver,env.heightFog,vec2f(e(71u),e(72u)));}
+  color=mix(color,vec3f(e(73u),e(74u),e(75u)),amount);
  }
  return color;
 }
@@ -157,7 +168,14 @@ fn compose(f:F,stage:u32)->vec4f{
   let visibility=1.-clamp(occlusion/12.*e(133u)*3.,0.,.9);
   if(stage==1u){color-=textureLoad(sceneIndirect,pixel(f.uv),0).rgb*(1.-visibility);}else{color*=visibility;}
  }
- if(stage==1u && (flags&2u)!=0u){color=mix(color,vec3f(e(73u),e(74u),e(75u)),clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.));}
+ if(stage==1u && (flags&2u)!=0u){
+  var amount=clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.);
+  if(env.heightFog.x>0.){let eyeOffset=env.fogCamera.x-env.heightFog.y;var origin=eyeOffset+env.fogCamera.y*position.y;var rayLength=z;
+   if(env.view.z>0.){origin=eyeOffset;rayLength=length(position);}
+   let receiver=eyeOffset+env.fogCamera.y*position.y+env.fogCamera.z*z;
+   amount=heightFogAmount(z,rayLength,origin,receiver,env.heightFog,vec2f(e(71u),e(72u)));}
+  color=mix(color,vec3f(e(73u),e(74u),e(75u)),amount);
+ }
  if(stage>0u){return vec4f(max(color,vec3f(0.)),center.a);}
  if(e(128u)>0. && e(129u)>0.){
   var glow=vec3f(0.);var weight=0.;
@@ -193,6 +211,7 @@ export class WebGpuSpatialEnvironment {
   readonly receivers: WebGpuSpatialReceivers;
   private groups: GPUBindGroup[] = [];
   private pointView?: GPUTextureView;
+  private pointView2?: GPUTextureView;
   private sunView?: GPUTextureView;
   private receiverBuffer?: GPUBuffer;
   get group(): GPUBindGroup {
@@ -245,6 +264,7 @@ export class WebGpuSpatialEnvironment {
         },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform", hasDynamicOffset: true, minBindingSize: 16 } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth", viewDimension: "2d-array" } },
       ],
     });
     this.uniform = webGpuResources(device).createBuffer({
@@ -375,6 +395,14 @@ export class WebGpuSpatialEnvironment {
     const bloomView = this.bloomPlan ? (this.bloomPass ??= new WebGpuSpatialBloom(this.device)).prepare(this.bloomPlan) : this.bloomPass?.prepare();
     this.values[648] = Number(!!bloomView);
     this.values[649] = this.bloomPlan?.sampleWidth ?? 1; this.values[650] = this.bloomPlan?.sampleHeight ?? 1;
+    this.values.set([secondSpatialShadowSlot(env?.values), env?.values[586] ?? 0, env?.values[587] ?? 0, 0], 652);
+    this.values.set([env?.values[592] ?? 0, spatialSunPcssScale(env?.values), env?.values[594] ?? 0, 0], 656);
+    this.values.set([env?.values[600] ?? 0, env?.values[601] ?? 0, env?.values[602] ?? 0, 0,
+      env?.values[604] ?? 0, env?.values[605] ?? 0, env?.values[606] ?? 0, 0], 660);
+    this.values[668] = env?.values[608] ?? 0; this.values[669] = env?.values[609] ?? 0;
+    this.values[670] = env?.values[610] ?? 0; this.values[671] = env?.values[611] ?? 0;
+    this.values[672] = c[18]; this.values[673] = Math.hypot(x, z) / length;
+    this.values[674] = y / length; this.values[675] = c[16];
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
@@ -526,7 +554,7 @@ export class WebGpuSpatialEnvironment {
   }
   private refreshGroups(): void {
     const v = this.shadows.views(), receiverBuffer = this.receivers.binding(this.uniform);
-    if (this.pointView === v.point && this.sunView === v.sun && this.receiverBuffer === receiverBuffer) return;
+    if (this.pointView === v.point && this.pointView2 === v.point2 && this.sunView === v.sun && this.receiverBuffer === receiverBuffer) return;
     // Initial groups participate in the renderer factory's pre-context validation scope.
     const capture = this.groups.length > 0;
     if (capture) {
@@ -545,12 +573,14 @@ export class WebGpuSpatialEnvironment {
             },
             { binding: 1, resource: v.point },
             { binding: 2, resource: v.sun },
+            { binding: 4, resource: v.point2 },
             { binding: 3, resource: { buffer: receiverBuffer, offset: 0, size: 16 } },
           ],
         }),
       );
       this.groups = replacement;
       this.pointView = v.point;
+      this.pointView2 = v.point2;
       this.sunView = v.sun;
       this.receiverBuffer = receiverBuffer;
     } finally {

@@ -142,7 +142,9 @@ jobs:
         run: pnpm build
 
       - name: Placement workspace browser smoke
-        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist
+        run: |
+          pnpm test:placement-point-shadows
+          node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist
 
       - name: Placement save and layer state browser smoke
         env:

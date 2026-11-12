@@ -34,7 +34,7 @@
 | 태양광 | 화면 additive + 별도 ground silhouette | 방향광 + 단일 직교 depth map | 존재. 방향 의미·caster·bias·범위 안정화 우선 |
 | 환경광 | 색/alpha overlay | ambient + 하늘/지면 hemisphere | 존재. 새 lit 경로에서는 표면색에 곱하는 조도와 구분 |
 | 노멀맵 | normal/coverage MRT, atlas/flip/회전 | billboard normal atlas, 모델 tangent normal | 존재. 반투명 근사·카메라 의존성 검증 |
-| 그림자 | 점광원 사각 tile occluder 투영, 태양 ellipse/box/alpha silhouette | point cube 1개 + sun map 1개, hard/PCF3, cast/receive | 존재. 광원별 차폐·접촉·동작 안정성 강화 |
+| 그림자 | 점광원 사각 tile occluder 투영, 태양 ellipse/box/alpha silhouette | point cube 최대 2개 + sun map 1개, hard/PCF3·광원별 선택형 PCSS, cast/receive | 다중 광원·필터 구현 완료. 실게임 품질·성능 수용 검증은 후속 |
 | 캐시·컬링 | tile shadow geometry cache, native ground cache | native caster/range revision, GPU shadow cache | 존재. 새 재질·proxy의 무효화 조건 연결 |
 | 재질 | tint/palette/flash/additive/outline, 별도 normal binding | base color/normal/emissive/unlit, OPAQUE/MASK | specular/roughness·light mask 확장 후보 |
 | HDR·색공간 | legacy 기본, 양 backend 전역 linear-sRGB 선택. opt-in lit HDR은 양 backend float16 world/albedo | 양 backend RGBA16F/rgba16float 장면 target, exposure | 전역 managed 색공간과 선택형 HDR을 구별 |
@@ -46,7 +46,7 @@
 | 기타 화면 효과 | fade/CRT/vignette/glitch/pixelArt, 가상 해상도 | Spatial 합성 뒤 flat HUD 및 전역 후처리 | 장면 효과와 HUD까지 포함하는 효과의 범위를 구분 |
 | 간접광·반사 | baked art 활용 | ambient/hemisphere 근사 | IBL/lightmap/probe/GI/SSR은 별도 후보 |
 
-기능 지도의 코드 근거:
+초기 기능 지도의 코드 근거는 아래 고정 commit이며, 이후 추가한 다중 점광원·PCSS 계약은 [공간 계약](../engine/data-scene-spatial.md)을 따른다.
 [2D 조명 타입](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/lightingTypes.ts),
 [Spatial 환경 타입·검증](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
 [GLSL 조명/효과](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/webgl2SpatialShaders.ts),
@@ -135,13 +135,13 @@ temporal history는 ghosting/카메라 cut/reset 계약을 설계하기 전 추�
 
 **구현 확인 / 상한과 전환 한계.** Spatial은 authored 16개 중 최대 4개를 camera target 기반 점수로 선택한다.
 shadow owner는 우선 고정하고, 다른 광원은 순위로 교체한다. 점수의 연속성은 선택 집합의 연속성을 보장하지 않는다.
-점광원 shadow는 1개다. ‘광원 16개 지원’은 16개가 동시에 모든 수신면을 비춘다는 뜻이 아니다.
+기존 단일 점광원 shadow와 선택형 `pointShadows` 최대 2개를 지원한다. ‘광원 16개 지원’은 16개가 동시에 모든 수신면을 비춘다는 뜻이 아니다.
 
 **개발 소스·자동 회귀 완료:** 선택형 native hysteresis/fade와 저장/복원·pause·cut/reset을 구현했다.
 RGB·direct mask·보수적 표시 frustum을 기준으로 기존 상한 안에서 기여도를 비교하고 authored/active/culled/dropped
 사유를 report에 남긴다. 정확한 수신면 가시성·차폐 판정이나 receiver 후보 가속까지 완료했다는 뜻은 아니다.
 정적 Flat shadow GPU 업로드 재사용과 실제 frame 작업 예산도 검증했다.
-동시 shadow owner 증가는 atlas/face 비용·캐시 정책을 측정한 뒤 별도 예산 단계에서 결정한다.
+두 그림자 광원은 배열 순서로 우선 고정한다. 현재 계약·자원 상한은 [다중 점광원 그림자](../engine/data-scene-spatial.md#선택형-다중-점광원-그림자)를 따른다. 광원별 개별 GPU cache는 첫/둘째 cube·sun 단위로 구현했다. 공통 geometry/alpha 변경은 전체 갱신하고 광원/해상도만 바뀌면 해당 map만 갱신한다. 3개 이상 확대는 후속 비용 설계가 필요하다.
 
 근거: [Rust 선택](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/crates/ferrum-core/src/spatial_scene/lighting_upgrade.rs),
 [현재 상한](https://github.com/silbaram/ferrum2d/blob/d2200d832bddb720d849c35d94aa791118bb51b5/packages/ferrum-web/src/spatialEnvironment.ts),
@@ -321,7 +321,7 @@ TIME_ELAPSED, WebGPU는 render-pass 구간 합이므로 backend 간 절대값을
 
 반경·halo 품질이 다른 비교이며, texture-load 상한이나 low/balanced/high 이름만으로 GPU 시간의 단조 순서를
 보장하지 않는다. 실제 문제 게임의 큰 맵·접촉/곡면·품질 수용 및 목표 기기별 절대 예산은 여전히 입력 대기다.
-M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하는 조건부 후보로 유지한다. 아래 표는 후속 검증과 완료 경계다.
+M6-a 다중 점광원 그림자 최대 2개와 광원별 GPU cache, M6-b 태양 PCSS, M6-c 점광원별 PCSS, M6-d 높이 안개의 개발·자동 검증을 완료했다. 나머지 M6 후보는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
 
@@ -330,7 +330,7 @@ M6는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수하�
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
 | M5 규모·성능 | L03/E03 필수 개발·자동 회귀·리뷰 완료. 실제 장면 시간/품질 수용 기준은 후속 검증 | 앞 단계 대표 장면·측정 | 자동 픽셀/작업 예산·복구를 검증하고 실게임·실기기 시간/수용 기준과 구분 |
-| M6 선택 확장 | baked lightmap/probe, 제한 IBL, height fog/light shaft, PCSS/cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
+| M6 선택 확장 | baked lightmap/probe, 제한 IBL, light shaft, cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
 ### 먼저 실행할 작업 단위
 
@@ -411,7 +411,13 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
 
 - **최우선:** 태양광 안정화, flat 광원별 합성, AO/발광 등 효과 결합, 재현 가능한 픽셀 검증.
 - **개발 완료 후 잔여 검증:** 실제 문제 게임의 품질과 목표 환경의 성능 수용 기준을 확인한다. M5-c 개발과 기준 PC의 실제 GPU 회귀·기준 씬 비용 대조는 완료했다.
-- **별도 설계 후보:** 제한 IBL/lightmap/probe, 다중 point shadow, cascade/PCSS, height fog/light shaft.
+- **M6-b 개발·자동 검증 완료:** 선택형 태양 PCSS와 기존 필터 회귀를 완료했다.
+  사용법·비용 상한·근사 한계는 [태양 PCSS](../engine/data-scene-spatial.md#선택형-태양광-pcss)를 따른다.
+- **M6-c 개발·자동 검증 완료:** 최대 2개 점광원의 독립 PCSS와 기존 태양/점광원 필터 회귀를 완료했다.
+  사용법·비용 상한·근사 한계는 [점광원 PCSS](../engine/data-scene-spatial.md#선택형-점광원-pcss)를 따른다.
+- **M6-d 개발·자동 검증 완료:** 선택형 높이 안개와 기존 선형 안개, AO·DOF·Bloom 결합을 검증했다.
+  사용법·적분 구간·비용과 한계는 [높이 안개](../engine/data-scene-spatial.md#선택형-높이-안개)를 따른다.
+- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상, cascade, light shaft.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,

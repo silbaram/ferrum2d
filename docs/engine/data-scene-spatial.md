@@ -713,7 +713,7 @@ bound world text 외의 일반 sprite/particle/text는 기존 평면 좌표로 s
 
 ## WebGPU 공간 경로
 
-WebGPU는 같은 native v1/v2 geometry와 모델 확장 v1을 소비한다.
+WebGPU는 같은 native v1/v2 geometry와 모델 확장 v1/v2를 소비한다. 모델 v2는 환경 v10의 두 번째 점광원 그림자 face bit를 추가한다.
 직교/원근 camera, terrain draw range, 발 피벗 billboard, alpha cutout, 정적 GLB/glTF 모델을
 같은 depth24plus attachment로 그린다. clip-depth 변환만 GPU에서 수행하며 물리·카메라·LOD·컬링은 Rust가 결정한다.
 모델은 indexed/instanced draw, 기본색·발광, MASK·양면, sRGB/data texture 분리와 glTF filter/wrap/mipmap을 지원한다.
@@ -855,7 +855,7 @@ PCF 폭 때문에 일반 수신면의 bias를 3배로 늘리지 않는다. 교�
 발생하는 표본화 한계는 남으므로, 필요한 경우 해상도·광원 범위와 authored bias를 함께 조절한다.
 태양의 수신 평면 보정은 아래 [태양 방향광과 PCF](#태양-방향광과-pcf)를 따른다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
-bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
+bitmap world label은 caster에 포함하지 않는다. 선택형 두 점광원 그림자는 [다중 점광원 계약](#선택형-다중-점광원-그림자)을 따른다. 태양광 가변 반그림자는 [선택형 PCSS](#선택형-태양광-pcss)를 따른다.
 
 효과가 켜지면 `EXT_color_buffer_float`가 필요한 RGBA16F color + depth24 target을 사용한다.
 미지원 환경은 명시적 오류를 내며 효과를 조용히 생략하지 않는다. linear 공간에서 조명→안개→DOF→
@@ -883,6 +883,8 @@ caster upload가 0이다. texture 등록/교체/제거와 pixel-mask patch는 ca
 RenderTexture 또는 revision을 제공하지 않는 외부 texture source는 재계산한다. 캐시는 GPU 결과만
 보관하며 JS가 entity pose를 소유하지 않는다. CPU의 native geometry 생성·packet 검증까지 생략하는 기능은 아니다.
 구 packet에 제출 extension이 없으면 전체 재계산 경로를 유지한다.
+지형 stream identity는 backing buffer·byteOffset·length·revision을 함께 사용한다. 같은 backing memory에서
+다른 구간의 typed-array view를 제출하면 GPU geometry와 그림자 cache를 모두 갱신한다.
 
 HDR target은 최대 8,388,608 pixel·각 축 8,192이며, 추정 attachment 저장량은
 `width×height×12 + pointResolution²×6×4 + sunResolution²×4` bytes다. normal atlas는 별도로 집계한다.
@@ -1658,7 +1660,8 @@ camera:null 저장은 pose를 포함하지 않으므로 복원되는 개체 위�
 
 바깥 GameStateSnapshot version은 2다. 공간 pose/camera capture는 Data Scene v6이며,
 authored 또는 runtime environment만 있는 공간 진행 capture는 **v7**이다. attachment·LOD·chunk 또는 model runtime yaw가 있으면 **v8**이다. 일반 capture는 v5를 유지한다.
-`DATA_SCENE_STATE_VERSION`은 최신 지원값 7이다. v2~v6을 기본값 주입이나 재해시 없이 계속 읽으며,
+`DATA_SCENE_STATE_VERSION`은 최신 지원값15다. 점광원 PCSS는v15, 태양 PCSS는v14를 사용한다.
+나머지 기능별 저장 버전은 [공간 API의 저장 계약](public-api/core.md#data-scene-공간-경로-개발-소스)을 따른다. v2~v14를 기본값 주입이나 재해시 없이 계속 읽으며,
 과거 공간 문서에 pose/camera 진행이 없으면 authored 기본값으로 복원한다.
 v5 이하에 새 공간 필드를 넣으면 거절한다. `includeDataSceneProgress` 생략 시에는 이전처럼 문서 설정만 복원한다.
 v7의 `progress.spatial.environment`는 현재 native 설정이며 null은 authored 효과의 명시적 해제다.
@@ -1851,7 +1854,7 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 
 - `spot.direction`은 광원에서 바깥으로 향하는 nonzero X/Y/elevation 벡터다. compiler가 정규화한다.
   `angle`은 조사 **반각** 1..89도(기본 45), `penumbra`는 0..1(기본 0.25)이며 0은 단단한 경계다.
-  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트 그림자도 기존 단일 cube budget을 사용한다.
+  기존 감쇠/그림자를 공유하고 반경 밖에서는 0이다. 스포트라이트도 선택한 shadow owner마다 cube 1개를 사용하며 최대 2개 owner 한도를 공유한다.
 - `lightBindings`는 씬의 instance ID → 광원 index 배열이다. 하나의 광원에는 하나의 target만 허용한다.
   position은 객체 위치·물리 elevation·시각 offset에 더하는 **월드 축 기준 offset**이다. 회전/scale은 상속하지 않는다.
   대상은 cold apply에서 generation handle로 연결하고 native가 추적한다. 씬을 새로 열 때 ID를 새 handle에 연결한다.
@@ -1874,7 +1877,7 @@ revision은 계속 비교한다. cache는 CPU model handle이나 borrowed Wasm v
 192..511은 16×20 원본 light record다. 142..143과 176..191은 reserved 0이다.
 기존 12..59는 선택된 최대 4개 light, 2는 remapped shadow slot이다. capture는 원본 값, frame buffer는 파생 값을 반환한다.
 기존 v1(80)/v2(112)/v3(128)도 그대로 허용한다. 새 입력은 v4 지원 JS/Wasm을 함께 사용한다.
-WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom 설정을2,608-byte private uniform에 담는다.
+WebGPU는512-float prefix + 카메라/7 shadow matrix·channel tail·wide Bloom·두 번째 점광원·태양/점광원 PCSS·높이 안개 설정을2,704-byte private uniform에 담는다.
 256-byte 정렬 간격은2,816 bytes이며 두 슬롯을 사용한다. native 환경 record와 별도 구조다.
 render vertex/flat command ABI와 기존 진행 저장 버전은 변경하지 않는다.
 
@@ -2048,7 +2051,7 @@ Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원
 
 WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
 기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
-최대65,536 pair/16 MiB다. 환경 uniform은2,608-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+최대65,536 pair/16 MiB다. 환경 uniform은2,704-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
 수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
 회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
 
@@ -2116,3 +2119,243 @@ frame/window에 미측정 값이 있으면 설정한 budget은 `missingMetric`�
 동일 fixture의 gather radius24는 별도 target/draw0·DPR1 texture-load budget524,288이다.
 넓은 halo는 추가 pass/target으로 품질을 높이면서 full-resolution gather보다 load 작업을 줄인다.
 반경·extent·DPR에 따라 chain 길이가 바뀌므로 품질 이름만으로 draw 수의 순서를 가정하지 않는다.
+
+### 선택형 다중 점광원 그림자
+
+개발 소스의 `SpatialLightingSpec.pointShadows?: readonly SpatialPointShadowSpec[]`는
+1~2개 점광원의 독립적인 전방향 그림자를 지정한다. 기본 단일 `lighting.shadows`와 동시에 지정할 수 없다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({ lighting: {
+  lights: [
+    { position: { x: -64, y: 0, elevation: 80 }, radius: 320, color: [1, 0, 0] },
+    { position: { x: 64, y: 0, elevation: 80 }, radius: 320, color: [0, 0, 1] },
+  ],
+  pointShadows: [
+    { lightIndex: 0, resolution: 128, bias: 0.02 },
+    { lightIndex: 1, resolution: 256, bias: 0.03, normalBias: 0.1 },
+  ],
+  shadowFilter: "pcf3",
+} });
+```
+
+각 항목의 `lightIndex`는0~15의 유효한 authored light를 중복 없이 참조한다.
+`resolution`은128/256/512/1024(기본256), `bias`·`normalBias`는 world 단위0~10(기본0.05/0)이다.
+`maxActiveLights`는 그림자 광원 수 이상이어야 한다. 배열 순서대로 native render slot0/1을 먼저 점유하며,
+남은 슬롯은 기존 순위 또는 hysteresis/fade 정책을 따른다. authored16/active4 상한은 유지한다.
+두 owner 모두 기존 추적·light/shadow 수신 mask·hard/PCF3·cast/receive·cutout·모델을 사용한다.
+그림자는 해당 광원의 직접광·specular에만 적용하며 다른 광원·ambient·hemisphere·emission은 보존한다.
+방향광 그림자와도 함께 사용할 수 있다. 별도 설정이 없는 기존 단일 그림자 동작은 유지한다.
+
+새 source는 **environment v10/592 floats**, patch는 **spatial patch11**, 문서/진행 저장은 **Data Scene state13**이다.
+0~583 기존 prefix를 유지하고584~587에 두 번째 authored source/resolution/bias/normalBias,
+588에 두 번째 render slot, 589에 새 source mode 표식1을 둔다.590~591은 reserved0이다.
+wide Bloom이 없으면580~582는0이며583은 선택 정책의 존재를 보존한다.
+기존 source v1~v9·patch1~10·state2~12를 계속 읽는다. 새 기능을 구 core에 적용하면 OFF source나
+progress-only override도 자산 조회·씬 변경 전에 명시적으로 거절한다.
+
+첫 큐브의 face0~5와 sun face6을 유지하고 두 번째 큐브는 face7~12를 사용한다.
+행렬은 첫 큐브6개·두 번째 큐브6개·마지막 sun1개 순서로 압축한다.
+80-byte **model ABI v2**는 기존 metadata/matrix 크기를 유지하며 두 번째 큐브 가시성을 bits8~13으로 추가한다.
+기존 camera0/첫 큐브1~6/sun7과 model ABI v1은 유지한다. v2 모델은 환경 v10 또는 v11과 함께 읽어야 한다.
+`dataSceneSpatialModelDrawSnapshot`은 마지막 프레임의 owned 변환·camera 가시성을 반환하며,
+다중 그림자를 해제한 직후 다음 프레임이 재생성되기 전에도 조회할 수 있다.
+
+광원당6면이므로 두 큐브가 갱신되면12 shadow pass, sun까지 갱신되면13 pass다.
+양 backend의 depth 저장을 보수적4-byte texel로 계측하며 최대1024 해상도 두 큐브는48 MiB다.
+HDR/태양 자원은 별도다. 정적 shadow set의 warm frame은 shadow draw/upload0을 유지한다.
+첫 큐브·두 번째 큐브·sun은 독립 GPU 결과 cache를 사용한다. 점광원 위치/반경·행렬·해상도가 바뀌면 해당6면,
+태양 행렬·해상도가 바뀌면 해당1면만 갱신한다. sun 추가/제거도 다른 큐브를 다시 그리지 않는다.
+model의 face membership·pose·LOD/contentId는 그 model을 제출하는 map을 무효화한다.
+공통 terrain stream/길이/revision·caster revision·alpha texture 변경은 활성 map 전체를 보수적으로 갱신한다.
+bias/normalBias/filter는 저장된 depth를 바꾸지 않아 sampling 설정만 갱신한다.
+`shadowCacheHit`은 활성 map 모두가 재사용됐을 때만 true다. 부분 재사용은 false이며 실제 갱신 면 수를 `shadowPassCount`로 확인한다.
+준비 전에 갱신할 map을 무효화하고 선택된 map 전체가 성공한 뒤만 cache를 확정한다.
+WebGPU는 queue 제출 뒤에 확정하며, 실패/미제출 시 다른 정상 map의 cache는 유지한다.
+map별 model metadata는 backend당 고정221,184 bytes로 이전보다144 KiB CPU 메모리가 늘어난다.
+GPU target/instance scratch 상한과 공개 source·ABI·저장 형식은 바꾸지 않는다.
+단일 항목/legacy에서는 두 번째 cube target을 만들지 않으며 OFF/clear/destroy에서는 회수한다.
+`shadowPassCount`·draw/triangle/upload와 `effectTextureBytes`에 실제 비용을 포함한다. GPU ms/FPS 보장을 뜻하지 않는다.
+
+공식 배치 뷰어의 Point Shadows는 광원별로 켤 수 있다. 두 번째를 켜면 기존 설정을 보존해 `pointShadows`로 전환하고,
+세 번째는 선택을 제한한다. 광원 삭제 시 참조 인덱스를 보정하며 Undo/Redo로 복원한다.
+Low 품질도 지정된 그림자 광원 2개를 유지하고 두 큐브를128 해상도로 낮춘다.
+
+## 선택형 태양광 PCSS
+
+`lighting.directional.shadows.pcss`를 지정하면 태양광에 거리별 반그림자를 적용한다.
+물체와 수신면이 가까우면 경계가 선명하고 떨어질수록 넓어진다. 생략하면 기존
+`lighting.shadowFilter`의 hard/PCF3를 사용한다. 점광원도 별도 PCSS override가 없으면 해당 공통 필터를 사용한다.
+공개 타입 `SpatialSunPcssSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  lighting: {
+    lights: [],
+    shadowFilter: "pcf3",
+    directional: {
+      direction: { x: 0.3, y: -0.4, elevation: 1 },
+      shadows: {
+        resolution: 512, extent: 192, distance: 400,
+        pcss: { angularRadius: 0.5, maxRadiusTexels: 16 },
+      },
+    },
+  },
+});
+```
+
+| 설정 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `pcss` | 선택 object | 존재하면 태양 PCSS 활성. 빈 object도 기본값으로 활성 |
+| `angularRadius` | 도 단위0~5, 기본0.5 | 광원의 각반경.0은 hard 태양 그림자 |
+| `maxRadiusTexels` | shadow-map texel 단위1~32, 기본16 | 탐색·필터 반경의 공통 상한 |
+
+각도/반경은 유한한 수만 허용한다. 공통 `shadowFilter: "pcss"`는 지원하지 않는다.
+조명 OFF 상태도 작성한 PCSS 값을 보존한다. 필터 활성/각도/반경만 바꾸면 깊이 맵을 다시 그리지 않는다.
+해상도·태양 방향·고정 중심/카메라 추적·caster가 바뀌면 기존 cache 규칙에 따라 갱신한다.
+작성 JSON/API로 설정하며 전용 UI는 추가하지 않는다. 기존 배치 뷰어의 품질 preset은 태양 해상도를 바꾸고,
+명시적으로 작성한 PCSS override는 보존한다. hard/PCF3로 되돌리려면 `pcss`를 제거한다.
+
+WebGL2·WebGPU 모두 기존 태양 depth map을 사용한다. blocker 탐색16회 뒤 평균 깊이 차이로
+반경을 구하고 최대32회 PCF 비교를 수행한다. 수신 query당 최대48 depth fetch이며,
+각도0은1회, blocker가 없으면16회, 반경0.5 texel 미만이면 탐색+hard 비교17회다.
+추가 target/pass/texture나 프레임별 noise는 없다. CPU 샘플 배열은 모듈 초기화 때 한 번 만들고
+두 shader 언어에 같은 좌표를 제공한다. 기존 geometric-normal receiver-plane 보정과 bias/normalBias를
+탐색·필터 모두에 적용한다. 유한 맵 밖 샘플은 lit로 처리하며 기존 map-edge fade를 유지한다.
+
+반경은 `평균 깊이 차이 × tan(각반경)`을 world→texel로 변환한 근삿값이다.
+최대 반경 제한 때문에 큰 각도/높은 해상도에서는 기대한 world-space 번짐보다 좁아질 수 있다.
+고정된 적은 샘플은 매우 얇거나 복잡한 겹침에서 모든 blocker를 찾는 것을 보장하지 않는다.
+넓은 그림자의 품질은 실제 씬에서 확인해야 하며 GPU ms/FPS는 별도 측정 대상이다.
+이 태양 옵션은 점광원 필터를 바꾸지 않으며 cascade, 무한 태양 범위, temporal accumulation은 포함하지 않는다.
+알고리즘의 탐색·반경 추정·필터 단계는 [NVIDIA PCSS 설명](https://developer.download.nvidia.com/shaderlibrary/docs/shadow_PCSS.pdf)을 참고하고,
+이 구현은 엔진의 orthographic 태양 맵에 맞춰 각반경과 고정 비용 상한을 사용한다.
+
+PCSS source는 **environment v11/600 floats**, **spatial patch12**, **Data Scene state14**를 사용한다.
+0~591 prefix는 유지한다.592는 활성1,593은 각반경,594는 최대 texel 반경,595~599는 reserved0이다.
+v11에서 `pointShadows`가 없으면584~591은 모두0이며 legacy `shadows`와도 함께 쓸 수 있다.
+명시적 `pointShadows`가 있으면 기존589=1 표식과 두 owner 계약을 유지한다.583은 선택 정책 존재를 나타낸다.
+OFF render copy는592~599를0으로 만들고 authored source는 보존한다.
+v11의 model ABI는 기존80-byte v2이며 태양 face6·마지막 행렬 위치는 같다.
+기존 환경v1~v10·patch1~11·state2~13은 계속 읽는다. 새 기능은 cold capability
+`spatial_sun_pcss_abi_version() === 1`로 확인하며 구 core에서는 OFF/progress-only 입력도
+자산 준비와 씬 변경 전에 거절한다.
+
+## 선택형 점광원 PCSS
+
+`lighting.shadows.pcss` 또는 `lighting.pointShadows[i].pcss`는 각 점광원 그림자에
+접촉 경화 필터를 적용한다. 물체와 수신면이 가까우면 선명하고 떨어지면 번짐이 넓어진다.
+최대 두 owner에 서로 다른 값을 쓸 수 있으며 태양 PCSS와도 함께 사용한다.
+생략한 owner는 기존 공통 `shadowFilter`의 hard/PCF3를 그대로 사용한다.
+공개 타입 `SpatialPointPcssSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  lighting: {
+    lights: [
+      { position: { x: -40, y: 0, elevation: 100 }, radius: 300 },
+      { position: { x: 40, y: 0, elevation: 80 }, radius: 240 },
+    ],
+    shadowFilter: "pcf3",
+    pointShadows: [
+      { lightIndex: 0, resolution: 512, pcss: { sourceRadius: 4, maxRadiusTexels: 16 } },
+      { lightIndex: 1, resolution: 256, pcss: { sourceRadius: 2, maxRadiusTexels: 8 } },
+    ],
+  },
+});
+```
+
+| 필드 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `pcss` | 선택 object | 빈 object도 기본값으로 활성. 제거하면 공통 필터로 복귀 |
+| `sourceRadius` | world 단위 0~1000, 기본 1 | 그림자 필터의 광원 반지름. 0은 hard 그림자 |
+| `maxRadiusTexels` | 1~32, 기본 16 | 탐색·필터 tangent disk의 반경 상한. 분수 허용 |
+
+반경 단위는 큐브 면 중심의 texel을 기준으로 하며 방향 공간의 기울기는 `2 × 반경 / 해상도`다.
+큐브 가장자리에서는 투영 때문에 실제 면 texel 간격과 다르다. 각 tap은 방향에서 면과 texel 중심을
+다시 선택하므로 면을 넘는 필터도 같은 radial depth 계약으로 비교한다.
+`sourceRadius`는 기존 점광원의 조도·감쇠·영향 반경·spot cone이나 발광 mesh를 변경하지 않는다.
+모든 숫자는 유한 범위로 검증한다. 기존 `shadows`와 `pointShadows`의 동시 작성은 계속 거절한다.
+
+WebGL2/WebGPU 모두 기존 depth cube를 사용한다. 탐색 16회 뒤 receiver-plane으로 보정한
+blocker/receiver 거리 비율을 평균하고, `sourceRadius × (수신 거리 - blocker 거리) / blocker 거리`를
+방향 공간으로 환산해 최대 32회 PCF 비교를 수행한다. 탐색은 기존 cube near plane과 최대 반경으로
+제한한다. 두 backend는 같은 고정 disk와 면 선택 규칙을 사용하며 프레임별 noise는 없다.
+기존 geometric-normal receiver-plane 보정·bias·normalBias를 탐색과 필터 모두에 적용한다.
+알고리즘의 단계와 거리 비율은 [NVIDIA PCSS 설명](https://developer.download.nvidia.com/assets/gamedev/docs/PCSS_Integration.pdf)을
+참고하며 이 구현은 radial cube depth와 제한된 샘플 수를 사용한다.
+
+점광원 query당 최대 48 depth fetch다. 반지름 0은 1회, blocker가 없으면 16회,
+필터 반경이 기준 0.5 texel 미만이면 탐색과 hard 비교를 합쳐 17회다.
+두 점광원과 태양이 모두 PCSS이면 모두를 수신하는 fragment에서 총 최대 144회다.
+이는 샘플 수 상한이며 GPU ms/FPS 예산이 아니다. 추가 target·depth pass·texture를 만들지 않고,
+필터 존재·광원 반지름·상한만 바꾸면 기존 깊이 맵을 재사용한다. 광원 위치·영향 반경·해상도·caster 변경은
+기존 map별 무효화 규칙을 따른다.
+
+큰 광원·얇거나 복잡한 blocker·가까운 광원·곡면에서는 고정 샘플과 단일 수신 평면의 근사 한계가 있다.
+cap이 걸리면 기대한 world-space 번짐보다 좁을 수 있다. 해상도·반경 설정과 실제 게임에서의 품질·성능을
+함께 확인한다. area-light 조도 적분, temporal accumulation, 3개 이상 shadow owner는 포함하지 않는다.
+작성은 JSON/API로 하며 전용 UI는 추가하지 않는다. 저장/복원·Undo/Redo와 조명 OFF에서도 설정을 보존한다.
+배열형 `pointShadows`도 legacy 단일 설정과 같은 authored billboard 1024개 및 보수적 face texture batch
+64개 예산을 작성/활성화 전에 검사한다. PCSS 생략 여부와 무관하며 한도 초과를 native 설정 실패까지 미루지 않는다.
+
+점광원 PCSS source는 **environment v12/608 floats**, **spatial patch13**, **Data Scene state15**다.
+0~599 prefix는 유지한다. 600~603은 첫 owner, 604~607은 두 번째 owner의
+`[활성, sourceRadius, maxRadiusTexels, reserved0]`다. 생략한 record는 모두 0이다.
+OFF render copy는 두 record를 0으로 만들고 authored source는 유지한다. 첫 owner는 legacy 단일
+`shadows` 또는 `pointShadows[0]`이며 두 번째 record는 실제 두 번째 owner가 있을 때만 활성화한다.
+태양 PCSS가 없는 v12도 592~599는 0이다. 기존 model80-byte v2, face ID, 깊이 행렬 순서는 그대로다.
+기존 environment v1~v11·patch1~12·state2~14를 계속 읽는다. 새 문서 또는 진행 값에 PCSS가 있을 때만
+state15를 생성하며 outer snapshot은 계속 v2다. cold capability `spatial_point_pcss_abi_version() === 1`이
+없는 core에서는 OFF/progress-only 입력도 자산 준비와 native mutation 전에 거절한다.
+
+## 선택형 높이 안개
+
+`environment.fog.height`는 낮은 곳에 짙고 높은 곳에 옅은 안개를 만든다.
+`height`를 생략하면 기존 `start`~`end` 선형 거리 안개를 그대로 사용한다.
+공개 타입 `SpatialHeightFogSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  composition: "separated",
+  fog: {
+    color: [0.55, 0.65, 0.75],
+    start: 20,
+    end: 500,
+    height: { baseHeight: 0, density: 0.01, falloff: 0.02 },
+  },
+});
+```
+
+| 필드 | 범위·기본값 | 의미 |
+| --- | --- | --- |
+| `height` | 선택 object | `{}`도 기본값으로 활성. 제거하면 선형 거리 안개로 복귀 |
+| `baseHeight` | world elevation -1,000,000~1,000,000, 기본 0 | 이 높이 이하는 일정한 밀도 |
+| `density` | world 단위당 0~10, 기본 0.01 | 기준 높이의 소광 계수. 0이면 안개 혼합 없음 |
+| `falloff` | world 단위당 0~10, 기본 0.02 | 기준 높이 위의 지수 감쇠율. 0이면 모든 높이에서 같은 밀도 |
+
+밀도는 `density × exp(-falloff × max(elevation - baseHeight, 0))`다.
+시선 구간의 밀도 적분값을 `τ`라 할 때 안개 혼합률은 `1 - exp(-τ)`다.
+원근 카메라는 눈에서 수신면까지, 직교 카메라는 각 픽셀의 카메라 평면에서 수신면까지 적분한다.
+기준 높이를 가로지르는 시선과 수평 시선도 처리한다. 빈 object와 명시적 기본값의 결과는 같다.
+
+높이 모드에서 **`start`/`end`는 카메라 view-depth로 제한한 적분 구간**이다.
+`start` 앞에는 안개가 없고 `end` 이후에는 추가로 적분하지 않는다.
+기존 선형 모드와 달리 `end`에서 반드시 완전히 불투명해지지는 않는다.
+수신면까지의 실제 시선 길이를 사용하므로 원근 화면 가장자리와 중앙은 같은 depth에서도 다를 수 있다.
+`color`는 기존 안개와 같은 선형 RGB이며, 최종 표시 변환 전에 합성한다.
+`lighting.enabled: false`에서도 안개는 독립적으로 적용된다.
+
+WebGL2/WebGPU는 같은 해석적 적분을 사용한다. ray march, 추가 texture fetch, 별도 안개 target/pass는 없다.
+기존 거리 안개의 HDR 합성 경로를 재사용하므로 효과 전체를 끈 화면과는 target·MSAA 처리에 따른
+경계 픽셀 차이가 있을 수 있다. separated AO를 쓰면 AO resolve 뒤에 한 번 적용하고 DOF/Bloom보다 앞에 둔다.
+pixelArt의 표시 카메라·가상 해상도를 사용하며 HUD와 전역 후처리의 기존 적용 범위는 유지한다.
+광원에 반응하는 산란, 그림자 진 안개, light shaft, 지역 volume/noise, volumetric froxel은 포함하지 않는다.
+
+높이 안개 source는 **environment v13/616 floats**, **spatial patch14**, **Data Scene state16**이다.
+기존 0~607 prefix는 보존하고 608~611은 `[활성, baseHeight, density, falloff]`, 612~615는 reserved 0이다.
+비활성 tail은 모두 0이며 활성 tail에는 기존 fog flag가 필요하다. 조명 OFF render copy도 안개 tail은 보존한다.
+기존 environment v1~v12·patch1~13·state2~15를 계속 읽는다. 높이 설정이 문서 또는 진행 값에 있을 때만
+state16을 생성하며 outer snapshot은 v2다. 저장/복원·Undo/Redo는 선택 여부와 값을 보존한다.
+cold capability `spatial_height_fog_abi_version() === 1`이 없는 core는 밀도 0·progress-only 입력도
+자산 준비와 native mutation 전에 거절한다.

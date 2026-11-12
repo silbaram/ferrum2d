@@ -8,7 +8,7 @@ export type SpatialModelFrame = NonNullable<SpatialRenderBufferView["models"]>;
 export function validateSpatialModelFrame(frame?: SpatialModelFrame): void {
   if (!frame) return;
   if (
-    frame.version !== 1 ||
+    (frame.version !== 1 && frame.version !== 2) ||
     frame.stride !== 20 ||
     !(frame.words instanceof Uint32Array) ||
     !(frame.values instanceof Float32Array) ||
@@ -28,7 +28,7 @@ export function validateSpatialModelFrame(frame?: SpatialModelFrame): void {
     if (
       !frame.assets.has(frame.words[i]) ||
       frame.words[i + 1] > 3 ||
-      frame.words[i + 2] > 255 ||
+      frame.words[i + 2] > (frame.version === 2 ? 16383 : 255) ||
       frame.words[i + 3] !== 0
     )
       throw Error("Invalid model instance/resource");

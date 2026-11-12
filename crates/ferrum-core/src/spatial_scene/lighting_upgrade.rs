@@ -140,8 +140,8 @@ pub(super) fn select(
     let mut ranked = std::array::from_fn::<_, 16, _>(|i| {
         (
             i,
-            if i as f32 == v[138] {
-                f32::MAX
+            if let Some(owner) = super::point_shadows::owner(v, i) {
+                f32::MAX / (owner + 1) as f32
             } else {
                 candidates.scores[i]
             },

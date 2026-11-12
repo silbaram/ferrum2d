@@ -290,19 +290,24 @@ test("one packed upload keeps main/point/sun batches in independent ranges and n
   pass.destroy();
 });
 
-test("maximum packet fits the fixed eight-pass capacity and singletons require no upload",()=>{
+test("maximum legacy/v2 packet fits its eight/fourteen passes and singletons require no upload",()=>{
+ for (const version of [1, 2] as const) {
   const b=drawingBackend(),pass=new WebGL2SpatialModels(b.gl),packet=frame(asset(),1024),stats=drawCounters();
-  for(let i=0;i<1024;i++){packet.words[i*20+2]=255;packet.values[i*20+16]=i;}
-  pass.validate(packet);pass.prepare(packet,stats);pass.prepareDraws(packet,255,{} as WebGLBuffer,stats);
-  equal(stats.modelInstanceUploadBytes,MODEL_INSTANCE_BUFFER_BYTES);
-  deepEqual(b.uploads,[{offset:0,bytes:MODEL_INSTANCE_BUFFER_BYTES}]);
-  for(let bit=0;bit<8;bit++)pass.draw(packet,bit,drawUniforms,stats,{} as WebGLBuffer);
-  deepEqual(b.pointers,Array.from({length:8},(_,i)=>i*1024*64));
+  packet.version = version;
+  const passes = version === 1 ? 8 : 14, mask = (1 << passes) - 1, bytes = 1024 * passes * 64;
+  for(let i=0;i<1024;i++){packet.words[i*20+2]=mask;packet.values[i*20+16]=i;}
+  pass.validate(packet);pass.prepare(packet,stats);pass.prepareDraws(packet,mask,{} as WebGLBuffer,stats);
+  equal(stats.modelInstanceUploadBytes,bytes);
+  equal(bytes <= MODEL_INSTANCE_BUFFER_BYTES, true);
+  deepEqual(b.uploads,[{offset:0,bytes}]);
+  for(let bit=0;bit<passes;bit++)pass.draw(packet,bit,drawUniforms,stats,{} as WebGLBuffer);
+  deepEqual(b.pointers,Array.from({length:passes},(_,i)=>i*1024*64));
   for(const call of b.calls){equal(call.count,1024);equal(call.matrices.length,1024*16);equal(call.matrices[1023*16+12],1023);}
   const single=frame(asset()),warm=drawCounters();pass.prepare(single,warm);b.uploads.length=0;b.calls.length=0;
   pass.prepareDraws(single,1,{} as WebGLBuffer,warm);pass.draw(single,0,drawUniforms,warm,{} as WebGLBuffer);
   equal(b.uploads.length,0);equal(warm.modelInstanceUploadBytes,0);equal(b.calls[0].instanced,false);
   pass.destroy();
+ }
 });
 
 test("shared validation checks materials once per resource but budgets and matrices for every row",()=>{

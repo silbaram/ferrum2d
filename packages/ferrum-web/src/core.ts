@@ -1,3 +1,7 @@
+export type { SpatialHeightFogSpec } from "./spatialHeightFog.js";
+export type { SpatialPointPcssSpec } from "./spatialPointPcss.js";
+export type { SpatialSunPcssSpec } from "./spatialSunPcss.js";
+export type { SpatialPointShadowSpec } from "./spatialPointShadows.js";
 export type {SpriteLightMaskBufferView} from "./spriteLightMasks.js";
 export type {SpatialReceiverMaskBufferView} from "./spatialReceiverMasks.js";
 export type { SpriteLightingMaterialSpec, SpriteLightingBufferView } from "./spriteLighting.js";

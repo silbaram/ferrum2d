@@ -1,9 +1,10 @@
+import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { spatialShadowGeometryWGSL } from "./webgpuSpatialShadows.js";
-import { SpatialShadowCache } from "./spatialShadowCache.js";
+import { SpatialShadowCache, spatialShadowMaps, spatialShadowModelPasses } from "./spatialShadowCache.js";
 import { spatialGeometryWgsl } from "./webgpuSpatialShaders.js";
 import { WebGpuSpatialEnvironment } from "./webgpuSpatialEnvironment.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
@@ -25,10 +26,10 @@ export class WebGpuSpatialPass {
   private readonly shadowPipeline: GPURenderPipeline;
   private readonly shadowCache = new SpatialShadowCache();
   private readonly cameraGroups: GPUBindGroup[];
-  private readonly cameraValues = new Float32Array(8 * 64);
+  private readonly cameraValues = new Float32Array(14 * 64);
   private shadowCasters?: GPUBuffer;
   private shadowCapacity = 0;
-  private pendingShadowCommit = false;
+  private pendingShadowCommit = 0;
   private readonly environment: WebGpuSpatialEnvironment;
   private readonly flatNormal: GPUTexture;
   private readonly normalGroup: GPUBindGroup;
@@ -155,10 +156,10 @@ export class WebGpuSpatialPass {
     });
     this.uniform = webGpuResources(device).createBuffer({
       label: "Spatial camera",
-      size: 8 * 256,
+      size: 14 * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.cameraGroups = Array.from({ length: 8 }, (_, i) =>
+    this.cameraGroups = Array.from({ length: 14 }, (_, i) =>
       device.createBindGroup({
         layout: cameraLayout,
         entries: [{ binding: 0, resource: { buffer: this.uniform, offset: i * 256, size: 96 } }],
@@ -286,16 +287,15 @@ export class WebGpuSpatialPass {
     width: number,
     height: number,
   ): SpatialRendererStats {
-    this.pendingShadowCommit = false;
+    this.pendingShadowCommit = 0;
     const terrainVertices = this.validate(frame);
     const [sceneWidth, sceneHeight] = this.environment.validate(frame, width, height);
     const stats = spatialStats(frame, terrainVertices);
     this.models.prepare(frame.models);
     const receiverMasks = frame.environment && (frame.environment.values[0] & 1) ? frame.receiverMasks : undefined;
-    const env = frame.environment,
-      hasShadows = !!env && (env.values[2] >= 0 || env.values[92] > 0);
-    const matches = hasShadows && this.shadowCache.matches(frame, this.textures);
-    const cacheHit = hasShadows && this.environment.shadows.ready(frame) && matches;
+    const env = frame.environment, activeMaps = spatialShadowMaps(frame), hasShadows = activeMaps !== 0;
+    const dirtyMaps = this.shadowCache.prepare(frame, this.textures, this.environment.shadows.readyMaps(frame));
+    const cacheHit = hasShadows && dirtyMaps === 0;
     stats.shadowCacheHit = cacheHit;
     this.environment.prepare(frame, sceneWidth, sceneHeight);
     const hdr = this.environment.scene();
@@ -331,24 +331,24 @@ export class WebGpuSpatialPass {
       frame.environment?.values[0]! & 4 ? (frame.environment!.values[96] === 1 ? 25 : 13) : 0;
     this.cameraValues.fill(0);
     this.cameraValues.set(frame.camera.subarray(0, 16));
-    if (hasShadows && !cacheHit)
-      for (let face = 0; face < 7; face++) {
-        if ((face < 6 && env!.values[2] < 0) || (face === 6 && !(env!.values[92] > 0))) continue;
+    if (dirtyMaps)
+      for (let face = 0; face < 13; face++) {
+        if (!(dirtyMaps & (face < 6 ? 1 : face === 6 ? 4 : 2))) continue;
         const offset = (face + 1) * 64,
-          matrix = face < 6 ? face * 16 : env!.shadowMatrices.length - 16;
+          matrix = face < 6 ? face * 16 : face === 6 ? env!.shadowMatrices.length - 16 : (face - 1) * 16;
         this.cameraValues.set(env!.shadowMatrices.subarray(matrix, matrix + 16), offset);
-        if (face < 6) {
-          const light = 12 + env!.values[2] * 12;
+        if (face !== 6) {
+          const light = 12 + (face < 6 ? env!.values[2] : secondSpatialShadowSlot(env!.values)) * 12;
           this.cameraValues.set(env!.values.subarray(light, light + 4), offset + 16);
-          this.cameraValues[offset + 21] = 1 / env!.values[3];
+          this.cameraValues[offset + 21] = 1 / env!.values[face < 6 ? 3 : 585];
         } else this.cameraValues[offset + 20] = 1;
       }
     this.device.queue.writeBuffer(
       this.uniform,
       0,
-      this.cameraValues.subarray(0, hasShadows && !cacheHit ? 512 : 24),
+      this.cameraValues.subarray(0, dirtyMaps ? 896 : 24),
     );
-    this.models.uploadInstances(frame.models, hasShadows && !cacheHit, stats, receiverMasks?.models);
+    this.models.uploadInstances(frame.models, spatialShadowModelPasses(dirtyMaps), stats, receiverMasks?.models);
     if (frame.terrain.byteLength) {
       const stale =
         !this.terrain ||
@@ -392,7 +392,7 @@ export class WebGpuSpatialPass {
       this.device.queue.writeBuffer(this.billboards, 0, frame.billboards);
       stats.uploadBytes += frame.billboards.byteLength;
     }
-    if (hasShadows && !cacheHit) this.submitShadows(frame, encoder, stats);
+    if (dirtyMaps) this.submitShadows(frame, encoder, stats, dirtyMaps);
     else if (!hasShadows) {
       webGpuResources(this.device).destroy(this.shadowCasters);
       this.shadowCasters = undefined;
@@ -556,6 +556,7 @@ export class WebGpuSpatialPass {
     frame: SpatialRenderBufferView,
     encoder: GPUCommandEncoder,
     stats: SpatialRendererStats,
+    maps: number,
   ): void {
     const env = frame.environment!,
       casters = env.shadowCasters;
@@ -628,7 +629,7 @@ export class WebGpuSpatialPass {
         false,
         face === 6 ? 7 : face + 1,
       );
-    });
+    }, maps);
     stats.shadowDrawCalls = stats.drawCalls - before;
     stats.triangleCount += stats.shadowTriangleCount;
     if (env.shadowSubmission) {
@@ -642,14 +643,15 @@ export class WebGpuSpatialPass {
           ((frame.terrainVertexCount + env.shadowCasterVertexCount) / 3 + triangles) -
         stats.shadowTriangleCount;
     }
-    this.pendingShadowCommit = stats.shadowPassCount > 0;
+    this.pendingShadowCommit = stats.shadowPassCount > 0 ? maps : 0;
   }
   /** A deferred command buffer is a reusable map only after the owning renderer submits it. */
   commitSubmission(frame: SpatialRenderBufferView): void {
     if (!this.pendingShadowCommit) return;
-    this.pendingShadowCommit = false;
-    this.environment.shadows.commitSubmission();
-    this.shadowCache.commit(frame);
+    const maps = this.pendingShadowCommit;
+    this.pendingShadowCommit = 0;
+    this.environment.shadows.commitSubmission(maps);
+    this.shadowCache.commit(frame, maps);
   }
   destroy(): void {
     if (this.destroyed) return;

@@ -54,10 +54,10 @@ export class WebGpuSpatialModels {
   private readonly mipSampler: GPUSampler;
   private readonly white: GPUTexture;
   private readonly instances: GPUBuffer;
-  private readonly matrices = new Float32Array(CAPACITY * 16 * 8);
-  private readonly counts = new Uint32Array(CAPACITY * 8);
-  private readonly ends = new Uint32Array(CAPACITY * 8);
-  private readonly offsets = new Uint32Array(CAPACITY * 8);
+  private readonly matrices = new Float32Array(CAPACITY * 16 * 14);
+  private readonly counts = new Uint32Array(CAPACITY * 14);
+  private readonly ends = new Uint32Array(CAPACITY * 14);
+  private readonly offsets = new Uint32Array(CAPACITY * 14);
   private readonly receiverCodes = new Uint32Array(CAPACITY);
   private destroyed = false;
   constructor(
@@ -188,7 +188,7 @@ export class WebGpuSpatialModels {
         );
     this.instances = webGpuResources(device).createBuffer({
       label: "Spatial model matrices",
-      size: CAPACITY * 64 * 8,
+      size: CAPACITY * 64 * 14,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     this.white = webGpuResources(device).createTexture({
@@ -337,14 +337,15 @@ export class WebGpuSpatialModels {
   /** Pack all requested passes once before encoding; queue writes cannot vary between encoded draws. */
   uploadInstances(
     frame: SpatialModelFrame | undefined,
-    shadows: boolean,
+    passes: number,
     stats: SpatialRendererStats,
     masks?: Uint32Array,
   ): void {
     this.counts.fill(0);
     if (!frame) return;
     let floats = 0;
-    for (let bit = 0; bit < (shadows ? 8 : 1); bit++)
+    for (let bit = 0; bit < (frame.version === 2 ? 14 : 8); bit++) {
+      if (!(passes & (1 << bit))) continue;
       for (let i = 0; i < frame.words.length; ) {
         if (!(frame.words[i + 2] & (1 << bit))) {
           i += 20;
@@ -376,6 +377,7 @@ export class WebGpuSpatialModels {
         this.offsets[batch] = floats * 4;
         floats += count * 16;
       }
+    }
     if (floats) {
       this.device.queue.writeBuffer(this.instances, 0, this.matrices.subarray(0, floats));
       stats.modelInstanceUploadBytes += floats * 4;

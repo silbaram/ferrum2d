@@ -1,4 +1,5 @@
 import { hasSpatialSelectionSource } from "./spatialBloom.js";
+import { spatialShadowOwner } from "./spatialPointShadows.js";
 import type { Engine } from "../pkg/ferrum_core.js";
 import type { SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 import type { SpatialRendererStats } from "./renderer.js";
@@ -112,7 +113,7 @@ export function validateSpatialLightSelectionBuffer(environment: Float32Array, v
     if (source !== i || (slot !== 0xffffffff && (slot >= environment[1] || occupied & 1 << slot))
         || reason < 1 || reason > 10 || flags > 15 || !Number.isFinite(score) || (score < 0 && score !== -1) || score > 64
         || !Number.isFinite(weight) || weight < 0 || weight > 1 || (slot === 0xffffffff && weight !== 0)
-        || !!(flags & 1) !== (source === environment[138])
+        || !!(flags & 1) !== (spatialShadowOwner(environment, source) >= 0)
         || (reason <= 4 && slot === 0xffffffff) || ((reason === 1 || reason === 4) && weight !== 1)
         || (reason === 2 && weight >= 1) || (reason === 3 && weight <= 0)
         || (reason === 5 && slot !== 0xffffffff) || (reason === 10 && (!(flags & 8) || slot !== 0xffffffff))
