@@ -3192,14 +3192,19 @@ legacy/linear-srgb × 1280×720/390×844 × DPR1/2를 검사한다.
 
 - 최대8개·단일·검정·겹침·역순·중복·위치 변경·영역 밖·hemisphere·조명OFF·legacy/separated·AO.
 - 실제 Playing/1 entity·지형 제출, warm pixels 동일, 추가 draw/target0 및 shadow redraw/upload0.
+  프로브 없이 조명 OFF·AO 경로를 먼저 준비해 WebGL2의 깊이 버퍼와 WebGPU의 지연 생성 MRT 파이프라인까지 기준 비용에 포함한다.
+  texture/target/buffer/program 개수와 buffer bytes는 누락을 거절하고 복원·재활성화·device recovery까지 비교한다.
+  device recovery로 AO 파이프라인 캐시가 줄어드는 것은 허용하되 추가 생성은 거절한다.
 - authored 문서에는 프로브 없이 live progress만 state18로 저장한 뒤 fresh engine 복원, OFF/ON,
   WebGPU device recovery 후 픽셀 동일 및 destroy 후 texture/buffer0.
 - Node의 독립 double-precision ray/box·구형 보간 oracle이 각 일반 상태에서 최소50개 위치의
   예상 RGB를 검사한다. native 지형 측면의65% vertex color와 색공간 변환도 반영한다.
 - 별도 실제 모델 fixture는 diffuse 기준색, 법선 방향 독립성, unlit identity, emission·직접 diffuse·
   직접 specular 분리와 실제 model triangle 제출을 검사한다.
-- negative controls는 효과 누락·색 변경·stale restore·blank·AO 누락·상태 누락·cost 누락·추가 pass/target·
-  shadow redraw·잘못된 count/version이 실패하는지 검사한다.
+- 간접광만 있는 AO fixture는 접촉부가 어두워지는지와 선형 광량의10~100% 범위를 함께 검사한다.
+  AO 이미지만 검게 지우거나 밝게 만드는 오류도 실패해야 한다.
+- negative controls는 효과 누락·색 변경·stale restore·blank·AO 누락/검정/증광·상태 누락·cost 누락·
+  전체 상태의 자원 지표 누락·추가 pass/target/buffer·shadow redraw·잘못된 count/version이 실패하는지 검사한다.
 
 SDK/Rust는 environment v15/700·patch16/state18, bounds/reserved/unused, invalid transaction 불변,
 OFF source 보존, 빈 배열, 이전 reader, 구형 core의 자원 준비 전 거절 및 GL/WebGPU uniform reset을 검사한다.
