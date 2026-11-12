@@ -1,3 +1,4 @@
+import { LIGHT_PROBES_WGSL } from "./spatialLightProbeShaders.js";
 import { WebGpuSpatialLightShafts } from "./webgpuSpatialLightShafts.js";
 import { spatialLightShaftPlan, writeSpatialLightShaftStats, type SpatialLightShaftPlan } from "./spatialLightShaftKernel.js";
 import { HEIGHT_FOG_WGSL } from "./spatialHeightFogShaders.js";
@@ -16,11 +17,11 @@ import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 // v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
-const UNIFORM_BYTES = 2720,
-  UNIFORM_STRIDE = 2816;
+const UNIFORM_BYTES = 2992,
+  UNIFORM_STRIDE = 3072;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f, pointPcss:vec4f, pointPcss2:vec4f, heightFog:vec4f, fogCamera:vec4f, shafts:vec4f,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f, pointPcss:vec4f, pointPcss2:vec4f, heightFog:vec4f, fogCamera:vec4f, shafts:vec4f, probes:vec4f, probeValues:array<vec4f,16>,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 ${HEIGHT_FOG_WGSL}
@@ -38,29 +39,26 @@ fn linearize(c:vec3f)->vec3f{return select(c/12.92,pow((c+.055)/1.055,vec3f(2.4)
 fn encode(c:vec3f)->vec3f{return select(c*12.92,1.055*pow(max(c,vec3f(0.)),vec3f(1./2.4))-.055,c>=vec3f(.0031308));}
 ${spatialShadowSamplingWGSL}
 ${SPATIAL_SPECULAR_WGSL}
+${LIGHT_PROBES_WGSL}
 struct SpatialLightingOutput { @location(0) color:vec4f, @location(1) indirect:vec4f };
-fn indirectColor(albedo:vec3f,n:vec3f,unlit:bool)->vec3f{
+fn indirectIllumination(world:vec3f,n:vec3f,unlit:bool)->vec3f{
  if((u32(e(0u))&1u)==0u || unlit){return vec3f(0.);}
  var illumination=vec3f(e(5u),e(6u),e(7u));
  if(e(112u)>0. && e(119u)>0.){
   let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
   illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
  }
- return albedo*illumination;
+ return probeFill(world,illumination);
 }
 fn lightingOutput(color:vec3f,indirect:vec3f)->SpatialLightingOutput{
  var output:SpatialLightingOutput;output.color=vec4f(color,1.);output.indirect=vec4f(indirect,1.);return output;
 }
-fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool,f0:vec3f,roughness:f32,specularWeight:f32)->vec3f{
+fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool,f0:vec3f,roughness:f32,specularWeight:f32,fill:vec3f)->vec3f{
  var color=albedo;
  if((u32(e(0u))&1u)!=0u && !unlit){
   var reflection=vec3f(0.);var view=vec3f(0.);
   if(specularWeight>0.){let eyeDelta=env.eye.xyz-world;if(length(eyeDelta)>.000001){view=normalize(eyeDelta);}}
-  var illumination=vec3f(e(5u),e(6u),e(7u));
-  if(e(112u)>0. && e(119u)>0.){
-   let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
-   illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
-  }
+  var illumination=fill;
   for(var i=0u;i<4u;i++){
    if(i>=u32(e(1u))){break;}
    let channels=channel(i+1u);if(!receivesLight(channels)){continue;}
@@ -94,9 +92,7 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
  }
  return color;
 }
-fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool)->vec3f{
- return shadeSurface(albedo,emission,world,n,geometric,unlit,vec3f(0.),1.,0.);
-}`;
+`;
 function composite(linearWorking: boolean): string { return spatialEnvironmentWGSL.split("@group(2)").join("@group(0)") +
   `
 @group(1) @binding(0) var sceneColor:texture_2d<f32>;
@@ -419,6 +415,7 @@ export class WebGpuSpatialEnvironment {
     this.shaftPlan = spatialLightShaftPlan(env?.values, width, height);
     const shaftView = this.shaftPlan ? (this.shaftPass ??= new WebGpuSpatialLightShafts(this.device)).prepare(this.shaftPlan) : this.shaftPass?.prepare();
     this.values[676] = Number(!!shaftView);
+    if (env && env.values.length >= 700 && (env.values[0] & 1) !== 0) this.values.set(env.values.subarray(632, 700), 680);
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);

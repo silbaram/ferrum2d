@@ -100,7 +100,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 632 ? 14 : values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 700 ? 15 : values.length === 632 ? 14 : values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length >= 592 && values[589] === 1 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -131,7 +131,7 @@ test("sun PCSS packs both camera records without new targets and clears on legac
   const packed = device.uniforms[device.uniforms.length - 1];
   equal(packed[656], 1); equal(packed[658], 16);
   ok(Math.abs(packed[657] - Math.tan(.5 * Math.PI / 180) * 300 * 512 / 100) < 1e-5);
-  deepEqual(packed.subarray(656, 660), packed.subarray(2816 / 4 + 656, 2816 / 4 + 660));
+  deepEqual(packed.subarray(656, 660), packed.subarray(3072 / 4 + 656, 3072 / 4 + 660));
   pass.prepare(frame({ lighting: { lights: [], directional: sun } }), 160, 90);
   deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(656, 660)], [0, 0, 0, 0]);
   pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
@@ -146,7 +146,7 @@ test("height fog uniforms reuse targets, pack both camera records and clear on l
   deepEqual([device.buffers.length, device.textures.length], resources);
   const packed = device.uniforms[device.uniforms.length - 1];
   deepEqual([...packed.subarray(668, 672)], [1, -20, .5, 2]);
-  deepEqual(packed.subarray(668, 676), packed.subarray(2816 / 4 + 668, 2816 / 4 + 676));
+  deepEqual(packed.subarray(668, 676), packed.subarray(3072 / 4 + 668, 3072 / 4 + 676));
   pass.prepare(base, 160, 90);
   deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(668, 672)], [0, 0, 0, 0]);
   pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
@@ -162,7 +162,7 @@ test("point PCSS uniforms preserve both owners, duplicate camera records and cle
   deepEqual([device.buffers.length, device.textures.length], resources);
   const packed = device.uniforms[device.uniforms.length - 1];
   deepEqual([...packed.subarray(660, 668)], [1, 1, 16, 0, 1, 0, 32, 0]);
-  deepEqual(packed.subarray(660, 668), packed.subarray(2816 / 4 + 660, 2816 / 4 + 668));
+  deepEqual(packed.subarray(660, 668), packed.subarray(3072 / 4 + 660, 3072 / 4 + 668));
   pass.prepare(hard, 160, 90);
   deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(660, 668)], Array(8).fill(0));
   pass.destroy(); equal(device.textures.filter(r => !r.destroyed).length, 0);
@@ -233,7 +233,7 @@ test("v7 channels occupy private tail words and receiver tables are lazy, reused
   equal(device.buffers.length, before + 1);
   const u = device.uniforms[device.uniforms.length - 1];
   deepEqual(Array.from(u.subarray(640, 646)), [2052, 513, 0, 0, 0, 1]);
-  deepEqual(u.subarray(640, 648), u.subarray(1344, 1352));
+  deepEqual(u.subarray(640, 648), u.subarray(1408, 1416));
   equal(pass.receivers.offset(65535), 0); equal(pass.receivers.offset(513), 256); equal(pass.receivers.offset(2052), 512);
   const writes = device.uniforms.length, groups = device.groups;
   pass.prepare(f, 160, 90);
@@ -288,9 +288,9 @@ test("v5 center stays separate from the private v7 channel/camera uniform", () =
   throws(() => validateSpatialExtensions(wrongVersion), /environment buffer/);
   pass.prepare(f, 320, 240);
   const u = device.uniforms[device.uniforms.length - 1];
-  equal(u.length, 1408);
+  equal(u.length, 1536);
   deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
-  deepEqual(u.subarray(0, 527), u.subarray(704, 1231));
+  deepEqual(u.subarray(0, 527), u.subarray(768, 1295));
   const count = [device.textures.length, device.buffers.length];
   pass.prepare(f, 320, 240);
   deepEqual([device.textures.length, device.buffers.length], count);
@@ -351,9 +351,9 @@ test("native environment/camera packing preserves actor focus and resets v2 fiel
   deepEqual(pass.validate(f, 320, 240), [160, 90]);
   pass.prepare(f, 160, 90);
   const u = device.uniforms[device.uniforms.length - 1];
-  equal(u.length, 1408);
-  equal(u[1231], 0);
-  deepEqual(u.subarray(0, 527), u.subarray(704, 1231));
+  equal(u.length, 1536);
+  equal(u[1295], 0);
+  deepEqual(u.subarray(0, 527), u.subarray(768, 1295));
   deepEqual(Array.from(u.subarray(512, 515)), [120, 240, 160]);
   deepEqual(Array.from(u.subarray(520, 528)), [Math.fround(0.1), 2000, 1, 333, 160, 90, 240, 1]);
   equal(u[96], 1);
@@ -368,7 +368,7 @@ test("v3 lighting fits the existing uniform allocation and clears when switching
   pass.prepare(advanced,320,240);const a=device.uniforms[device.uniforms.length-1];
   equal(a[112],1);equal(a[114],1);equal(a[118],1);equal(a[120],1);
   deepEqual(Array.from(a.subarray(512,515)),[120,240,160]);
-  equal(a[1231],0);deepEqual(a.subarray(0,527),a.subarray(704,1231));
+  equal(a[1295],0);deepEqual(a.subarray(0,527),a.subarray(768,1295));
   const allocated=device.buffers.length;
   pass.prepare(frame({lighting:{lights:[]}}),320,240);const b=device.uniforms[device.uniforms.length-1];
   equal(device.buffers.length,allocated);deepEqual(Array.from(b.subarray(112,128)),Array(16).fill(0));
@@ -529,7 +529,7 @@ test("light shafts reuse the sun map, allocate no indirect MRT, share AO resolve
   equal(live().length, baseline + 2); equal(!!pass.scene()!.indirect, false);
   const packed = device.uniforms[device.uniforms.length - 1];
   equal(packed[676], 1);
-  deepEqual(packed.subarray(676, 680), packed.subarray(2816 / 4 + 676, 2816 / 4 + 680));
+  deepEqual(packed.subarray(676, 680), packed.subarray(3072 / 4 + 676, 3072 / 4 + 680));
   const warm = [device.textures.length, device.groups]; pass.prepare(shafts, 160, 90);
   deepEqual([device.textures.length, device.groups], warm);
   pass.prepare(frame({ ...shaftBase, lightShafts: {}, ambientOcclusion: {} }), 160, 90);
@@ -614,4 +614,21 @@ test("obsolete shaft binding errors do not invalidate a replacement group", asyn
   for (let i = 0; i < 4; i++) await Promise.resolve();
   pass.prepare(plan); pass.draw(encoder, f, plan, depth, shadow, 160, 90);
   pass.destroy(); equal(device.scopes, 0); equal(device.textures.filter(t => !t.destroyed).length, 0);
+});
+
+test("probes pack bounded source into both camera records with no additional GPU allocations", () => {
+  const { device, pass } = setup();
+  const base = frame({ lighting: { lights: [] } }); pass.prepare(base, 160, 90);
+  const resources = [device.buffers.length, device.textures.length];
+  const probes = Array.from({ length: 8 }, (_, i) => ({ position: { x: i, y: -i, elevation: 16 }, radius: 32, color: [.2, .4, .8] as const, intensity: i / 2 }));
+  const f = frame({ lighting: { lights: [], probes } }); validateSpatialExtensions(f); pass.prepare(f, 160, 90);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  equal(packed.length * 4, 6144); deepEqual(packed.subarray(680, 748), f.environment!.values.subarray(632, 700));
+  deepEqual(packed.subarray(680, 748), packed.subarray(768 + 680, 768 + 748));
+  for (const next of [frame({ lighting: { enabled: false, lights: [], probes } }), base]) {
+    pass.prepare(next, 160, 90);
+    deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(680, 748)], Array(68).fill(0));
+  }
+  pass.destroy(); equal(device.buffers.every(b => b.destroyed === 1), true); equal(device.textures.every(t => t.destroyed === 1), true);
 });

@@ -72,7 +72,7 @@ impl Default for LightSelection {
 }
 impl LightSelection {
     pub fn new(v: &[f32]) -> Self {
-        if ![580, 584, 592, 600, 608, 616, 632].contains(&v.len()) || v[576] == 0. {
+        if ![580, 584, 592, 600, 608, 616, 632, 700].contains(&v.len()) || v[576] == 0. {
             return Self::default();
         }
         let mut hash = 2166136261u32;

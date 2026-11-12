@@ -1,3 +1,4 @@
+import { requestsSpatialLightProbes } from "./spatialLightProbes.js";
 import { requestsSpatialLightShafts } from "./spatialLightShafts.js";
 import { requestsSpatialHeightFog } from "./spatialHeightFog.js";
 import { requestsSpatialPointPcss } from "./spatialPointPcss.js";
@@ -51,7 +52,11 @@ export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
 /** Latest nested version; non-spatial exploration captures retain v5 and their legacy hashes. */
-export const DATA_SCENE_STATE_VERSION = 17;
+export const DATA_SCENE_STATE_VERSION = 18;
+function hasLightProbesDocument(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.spatial) && isRecord(value.spatial.environment)
+    && isRecord(value.spatial.environment.lighting) && value.spatial.environment.lighting.probes !== undefined;
+}
 function hasLightShaftsDocument(value: unknown): boolean {
   return isRecord(value) && isRecord(value.spatial) && isRecord(value.spatial.environment) && value.spatial.environment.lightShafts !== undefined;
 }
@@ -106,7 +111,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -641,12 +646,14 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 14 &&
     snapshot.version !== 15 &&
     snapshot.version !== 16 &&
+    snapshot.version !== 17 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 or ${DATA_SCENE_STATE_VERSION}.`,
     );
   }
+  if (snapshot.version < 18 && hasLightProbesDocument(snapshot.authoringDocument)) throw Error(`${path} Light probes requires data scene state version 18`);
   if (snapshot.version < 17 && hasLightShaftsDocument(snapshot.authoringDocument)) throw Error(`${path} Light shafts requires data scene state version 17`);
   if (snapshot.version < 16 && hasHeightFogDocument(snapshot.authoringDocument)) throw Error(`${path} Height fog requires data scene state version 16`);
   if (snapshot.version < 15 && hasPointPcssDocument(snapshot.authoringDocument)) throw Error(`${path} Point PCSS requires data scene state version 15`);
@@ -662,6 +669,7 @@ export function validateDataSceneStateSnapshot(
         `${path}.progress requires data scene state version 3 or newer.`,
       );
     validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
+    if (snapshot.version < 18 && requestsSpatialLightProbes(snapshot.progress.spatial?.environment)) throw Error(`${path} Light probes requires data scene state version 18`);
     if (snapshot.version < 17 && requestsSpatialLightShafts(snapshot.progress.spatial?.environment)) throw Error(`${path} Light shafts requires data scene state version 17`);
     if (snapshot.version < 16 && requestsSpatialHeightFog(snapshot.progress.spatial?.environment)) throw Error(`${path} Height fog requires data scene state version 16`);
     if (snapshot.version < 15 && requestsSpatialPointPcss(snapshot.progress.spatial?.environment)) throw Error(`${path} Point PCSS requires data scene state version 15`);
@@ -777,6 +785,7 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasLightProbesDocument(authoringDocument) || requestsSpatialLightProbes(progress?.spatial?.environment) ? 18 :
       hasLightShaftsDocument(authoringDocument) || requestsSpatialLightShafts(progress?.spatial?.environment) ? 17 :
       hasHeightFogDocument(authoringDocument) || requestsSpatialHeightFog(progress?.spatial?.environment) ? 16 :
       hasPointPcssDocument(authoringDocument) || requestsSpatialPointPcss(progress?.spatial?.environment) ? 15 :

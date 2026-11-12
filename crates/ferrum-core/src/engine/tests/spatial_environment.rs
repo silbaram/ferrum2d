@@ -1080,3 +1080,77 @@ fn spatial_billboard_and_actor_focus_share_interpolated_height_and_position() {
     );
     assert_eq!(e.world.height_span(actor).unwrap().elevation, 36.);
 }
+
+#[test]
+fn light_probes_v15_validate_transactionally_and_preserve_disabled_source() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(700, 0.);
+    v[632] = 1.;
+    v[633] = 8.;
+    for (i, p) in v[636..700].chunks_exact_mut(8).enumerate() {
+        p.copy_from_slice(&[i as f32 * 10., 32., -16., 80., 0.2, 0.4, 0.8, i as f32 / 2.]);
+    }
+    assert_eq!(e.spatial_light_probes_abi_version(), 1);
+    assert!(e.configure_spatial_environment(&v));
+    e.update(0.01);
+    assert_eq!(e.spatial_environment_abi_version(), 15);
+    assert_eq!(&e.spatial_scene.environment.frame_values[632..], &v[632..]);
+    let history = e.capture_spatial_light_selection_state();
+    for (at, value) in [
+        (632, 0.),
+        (632, 2.),
+        (633, -1.),
+        (633, 9.),
+        (633, 1.5),
+        (633, 7.),
+        (634, 1.),
+        (635, 1.),
+        (636, f32::NAN),
+        (637, 1e7),
+        (639, 0.),
+        (639, 10001.),
+        (640, -0.1),
+        (641, 1.1),
+        (643, 4.1),
+        (699, -1.),
+    ] {
+        let mut bad = v.clone();
+        bad[at] = value;
+        assert!(
+            !e.configure_spatial_environment(&bad),
+            "accepted {at}={value}"
+        );
+        assert_eq!(e.capture_spatial_environment(), v);
+        assert_eq!(e.capture_spatial_light_selection_state(), history);
+    }
+    let mut off = v.clone();
+    off[0] = 0.;
+    off[1] = 0.;
+    off[2] = -1.;
+    off[3] = 0.;
+    off[12..60].fill(0.);
+    off[545..549].fill(0.);
+    off[588] = -1.;
+    assert!(e.configure_spatial_environment(&off));
+    e.build_render_commands();
+    assert!(e.spatial_scene.environment.frame_values[632..700]
+        .iter()
+        .all(|x| *x == 0.));
+    assert_eq!(e.capture_spatial_environment(), off);
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(&e.spatial_scene.environment.frame_values[632..], &v[632..]);
+    v[633..700].fill(0.);
+    assert!(e.configure_spatial_environment(&v));
+    assert_eq!(
+        e.capture_spatial_environment()[632],
+        1.,
+        "explicit empty source is retained"
+    );
+    let old = values(false);
+    assert!(e.configure_spatial_environment(&old));
+    e.build_render_commands();
+    assert_eq!(e.spatial_environment_abi_version(), 1);
+    assert_eq!(e.spatial_scene.environment.frame_values.len(), 80);
+}

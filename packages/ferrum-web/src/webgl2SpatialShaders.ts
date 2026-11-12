@@ -1,3 +1,4 @@
+import { LIGHT_PROBES_GLSL } from "./spatialLightProbeShaders.js";
 import { HEIGHT_FOG_GLSL } from "./spatialHeightFogShaders.js";
 import { POINT_PCSS_GLSL } from "./spatialPointPcssShaders.js";
 import { SUN_PCSS_GLSL } from "./spatialSunPcss.js";
@@ -22,6 +23,7 @@ uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_h
 uniform int u_shadowIndex2;uniform vec2 u_shadowParams2;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug,u_separated;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
+${LIGHT_PROBES_GLSL}
 uniform vec4 u_heightFog,u_fogCamera;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4],u_lightCone[8];
 uniform vec2 u_receiverMasks;uniform vec4 u_lightChannels;uniform float u_sunChannels;
@@ -171,6 +173,7 @@ if(u_lighting && !(u_mesh && u_modelUnlit)){
   float weight=clamp(dot(n,normalize(u_hemisphereDirection.xyz))*.5+.5,0.,1.);
   illumination+=mix(u_hemisphereGround,u_hemisphereSky,weight)*u_hemisphereDirection.w;
  }
+ illumination=probeFill(v_world,illumination);
  outIndirect=vec4(albedo*illumination,1.);
  vec3 reflection=vec3(0.),view=vec3(0.),f0=vec3(0.);float specularWeight=0.,roughness=1.;
  if(u_mesh && u_modelSpecularEnabled && u_modelSpecular.a>0.){

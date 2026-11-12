@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 632;
+pub(crate) const ENVIRONMENT_VALUES: usize = 700;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -42,6 +42,7 @@ impl SpatialEnvironment {
             600,
             608,
             616,
+            632,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -239,6 +240,10 @@ impl SpatialEnvironment {
         }) {
             return None;
         }
+        // v15: bounded authored regional indirect light. OFF preserves the source.
+        if !valid_light_probes(&a) {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -388,7 +393,7 @@ impl SpatialEnvironment {
                     v[112..125].fill(0.);
                     v[512..528].fill(0.);
                     v[592..608].fill(0.);
-                    v[616..632].fill(0.);
+                    v[616..700].fill(0.);
                 }
             }
             self.shadow_matrices.clear();
@@ -662,4 +667,26 @@ fn sun_matrix(
     p[14] = -1. - 0.001 / distance;
     p[15] = 1.;
     std::array::from_fn(|i| (0..4).map(|k| p[k * 4 + i % 4] * view[i / 4 * 4 + k]).sum())
+}
+
+/// Input is already finite. The source marker retains an explicitly empty probe array.
+fn valid_light_probes(v: &[f32; ENVIRONMENT_VALUES]) -> bool {
+    if v[632] == 0. {
+        return v[633..700].iter().all(|x| *x == 0.);
+    }
+    if v[632] != 1.
+        || v[633].fract() != 0.
+        || !(0. ..=8.).contains(&v[633])
+        || v[634] != 0.
+        || v[635] != 0.
+    {
+        return false;
+    }
+    let count = v[633] as usize;
+    v[636..636 + count * 8].chunks_exact(8).all(|p| {
+        p[..3].iter().all(|x| x.abs() <= 1e6)
+            && (0.1..=10000.).contains(&p[3])
+            && p[4..7].iter().all(|x| (0. ..=1.).contains(x))
+            && (0. ..=4.).contains(&p[7])
+    }) && v[636 + count * 8..700].iter().all(|x| *x == 0.)
 }

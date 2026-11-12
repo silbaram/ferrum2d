@@ -575,8 +575,14 @@ impl Engine {
     pub fn spatial_light_shafts_abi_version(&self) -> u32 {
         1
     }
+    /// Cold capability for environment v15 authored regional indirect light probes.
+    pub fn spatial_light_probes_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 616 {
+        if self.spatial_scene.environment.value_len > 632 {
+            15
+        } else if self.spatial_scene.environment.value_len > 616 {
             14
         } else if self.spatial_scene.environment.value_len > 608 {
             13

@@ -1,3 +1,4 @@
+import { requestsSpatialLightProbes, supportsSpatialLightProbes } from "./spatialLightProbes.js";
 import { requestsSpatialLightShafts, supportsSpatialLightShafts } from "./spatialLightShafts.js";
 import { requestsSpatialHeightFog, supportsSpatialHeightFog } from "./spatialHeightFog.js";
 import { requestsSpatialPointPcss, supportsSpatialPointPcss } from "./spatialPointPcss.js";
@@ -866,7 +867,7 @@ export function createSpatialApi(
     preflightDataSceneSpatialModels(input, origins = {}) {
       requireAlive();
       const spec=resolveDataSceneSpatialSpec(input);
-      if (requestsSpatialLightShafts(spec.environment) && !supportsSpatialLightShafts(rust) || requestsSpatialHeightFog(spec.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(spec.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(spec.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(spec.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(spec.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(spec.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(spec) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(spec.environment) && !supportsSpatialLightChannels(rust)) return false;
+      if (requestsSpatialLightProbes(spec.environment) && !supportsSpatialLightProbes(rust) || requestsSpatialLightShafts(spec.environment) && !supportsSpatialLightShafts(rust) || requestsSpatialHeightFog(spec.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(spec.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(spec.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(spec.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(spec.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(spec.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(spec) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(spec.environment) && !supportsSpatialLightChannels(rust)) return false;
       const registry=spatialModelRegistry(rust);
       if(Object.keys(spec.lightBindings??{}).length&&typeof rust.configure_spatial_light_bindings!=="function")return false;
       if(Object.keys(spec.attachments??{}).length&&typeof rust.configure_spatial_attachments!=='function')return false;
@@ -888,7 +889,7 @@ export function createSpatialApi(
     setDataSceneSpatialEnvironment(options) {
       requireAlive();
       const values = compileSpatialEnvironment(options);
-      if (values.length >= 632 && !supportsSpatialLightShafts(rust) || values.length >= 616 && values[608] === 1 && !supportsSpatialHeightFog(rust) || values.length >= 608 && (values[600] === 1 || values[604] === 1) && !supportsSpatialPointPcss(rust) || values.length >= 600 && values[592] === 1 && !supportsSpatialSunPcss(rust) || values.length >= 592 && values[589] === 1 && !supportsSpatialPointShadows(rust) || values.length >= 576 && !supportsSpatialLightChannels(rust) || hasSpatialSelectionSource(values) && !supportsSpatialLightSelection(rust) || values.length >= 584 && values[580] === 1 && !supportsSpatialWideBloom(rust)) return false;
+      if (values.length >= 700 && !supportsSpatialLightProbes(rust) || values.length >= 632 && values[616] === 1 && !supportsSpatialLightShafts(rust) || values.length >= 616 && values[608] === 1 && !supportsSpatialHeightFog(rust) || values.length >= 608 && (values[600] === 1 || values[604] === 1) && !supportsSpatialPointPcss(rust) || values.length >= 600 && values[592] === 1 && !supportsSpatialSunPcss(rust) || values.length >= 592 && values[589] === 1 && !supportsSpatialPointShadows(rust) || values.length >= 576 && !supportsSpatialLightChannels(rust) || hasSpatialSelectionSource(values) && !supportsSpatialLightSelection(rust) || values.length >= 584 && values[580] === 1 && !supportsSpatialWideBloom(rust)) return false;
       return (
         typeof rust.configure_spatial_environment === "function" &&
         rust.configure_spatial_environment(values)
@@ -1009,7 +1010,7 @@ export function createSpatialApi(
     configureDataSceneSpatial(input, handles) {
       requireAlive();
       const resolved = resolveDataSceneSpatialSpec(input);
-      if (requestsSpatialLightShafts(resolved.environment) && !supportsSpatialLightShafts(rust) || requestsSpatialHeightFog(resolved.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(resolved.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(resolved.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(resolved.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(resolved.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(resolved.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(resolved) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(resolved.environment) && !supportsSpatialLightChannels(rust)) return false;
+      if (requestsSpatialLightProbes(resolved.environment) && !supportsSpatialLightProbes(rust) || requestsSpatialLightShafts(resolved.environment) && !supportsSpatialLightShafts(rust) || requestsSpatialHeightFog(resolved.environment) && !supportsSpatialHeightFog(rust) || requestsSpatialPointPcss(resolved.environment) && !supportsSpatialPointPcss(rust) || requestsSpatialSunPcss(resolved.environment) && !supportsSpatialSunPcss(rust) || requestsSpatialPointShadows(resolved.environment) && !supportsSpatialPointShadows(rust) || requestsSpatialWideBloom(resolved.environment) && !supportsSpatialWideBloom(rust) || requestsSpatialLightSelection(resolved.environment) && !supportsSpatialLightSelection(rust) || requestsSpatialReceiverMasks(resolved) && !supportsSpatialReceiverMasks(rust) || requestsSpatialLightChannels(resolved.environment) && !supportsSpatialLightChannels(rust)) return false;
       const spec = resolveSpatialNormalTextures(resolved, textureId);
       const lightMetadata:number[]=[], lightOffsets:number[]=[];
       for(const [id,indices] of Object.entries(spec.lightBindings??{})) {

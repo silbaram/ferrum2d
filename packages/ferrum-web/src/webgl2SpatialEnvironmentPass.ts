@@ -49,6 +49,8 @@ export class WebGL2SpatialEnvironmentPass {
   private sunTarget?: WebGLFramebuffer;
   private sunResolution = 0;
   private readonly emptyMatrix = new Float32Array(16);
+  private readonly probePositions = new Float32Array(32);
+  private readonly probeColors = new Float32Array(32);
   private readonly positionValues = new Float32Array(16);
   private readonly colorValues = new Float32Array(16);
   private readonly coneValues = new Float32Array(32);
@@ -391,6 +393,15 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform1i(u.lighting, flags & 1 ? 1 : 0);
     gl.uniform1i(u.fog, flags & 2 ? 1 : 0);
     gl.uniform3fv(u.ambient, v.subarray(5, 8));
+    const probeCount = (v[0] & 1) !== 0 && v.length >= 700 && v[632] === 1 ? v[633] : 0;
+    this.probePositions.fill(0); this.probeColors.fill(0);
+    for (let i = 0; i < probeCount; i++) {
+      this.probePositions.set(v.subarray(636 + i * 8, 640 + i * 8), i * 4);
+      this.probeColors.set(v.subarray(640 + i * 8, 644 + i * 8), i * 4);
+    }
+    gl.uniform1i(u.probeCount, probeCount);
+    gl.uniform4fv(u.probePosition, this.probePositions);
+    gl.uniform4fv(u.probeColor, this.probeColors);
     const hemisphere=v.length>=128 && v[112]===1;
     gl.uniform4f(u.hemisphereDirection,hemisphere?v[113]:0,hemisphere?v[114]:1,hemisphere?v[115]:0,hemisphere?v[119]:0);
     gl.uniform3fv(u.hemisphereSky,hemisphere?v.subarray(116,119):this.emptyMatrix.subarray(0,3));

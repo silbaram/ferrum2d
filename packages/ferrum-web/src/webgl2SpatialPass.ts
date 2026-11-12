@@ -122,7 +122,7 @@ export class WebGL2SpatialPass {
         "hasRoughness", "hasSpecular", "hasSpecularColor", "modelRoughnessUvTransform", "modelSpecularUvTransform", "modelSpecularColorUvTransform",
         "receiveShadow", "receiverMasks", "lightChannels", "sunChannels",
         "heightFog", "fogCamera", "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunPcss", "pointPcss", "pointPcss2", "sunMatrix", "sunMap",
-        "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
+        "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias", "probeCount", "probePosition", "probeColor",
       ])
         this.uniforms[name] = uniform(`u_${name}`);
       for (const name of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER])

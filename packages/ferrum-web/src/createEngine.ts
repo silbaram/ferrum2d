@@ -1,3 +1,4 @@
+import { requestsSpatialLightProbes, supportsSpatialLightProbes } from "./spatialLightProbes.js";
 import { requestsSpatialLightShafts, supportsSpatialLightShafts } from "./spatialLightShafts.js";
 import { requestsSpatialHeightFog, supportsSpatialHeightFog } from "./spatialHeightFog.js";
 import { requestsSpatialPointPcss, supportsSpatialPointPcss } from "./spatialPointPcss.js";
@@ -1036,6 +1037,7 @@ export async function createEngineWithFramePipeline(
     },
     supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
     supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
+    supportsSpatialLightProbes: () => { requireAlive(); return supportsSpatialLightProbes(rustEngine); },
     supportsSpatialLightShafts: () => { requireAlive(); return supportsSpatialLightShafts(rustEngine); },
     supportsSpatialHeightFog: () => { requireAlive(); return supportsSpatialHeightFog(rustEngine); },
     supportsSpatialPointPcss: () => { requireAlive(); return supportsSpatialPointPcss(rustEngine); },
@@ -1055,6 +1057,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
+      if (requestsSpatialLightProbes(environment) && !supportsSpatialLightProbes(rustEngine)) return false;
       if (requestsSpatialLightShafts(environment) && !supportsSpatialLightShafts(rustEngine)) return false;
       if (requestsSpatialHeightFog(environment) && !supportsSpatialHeightFog(rustEngine)) return false;
       if (requestsSpatialPointPcss(environment) && !supportsSpatialPointPcss(rustEngine)) return false;
