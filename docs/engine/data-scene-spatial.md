@@ -1419,8 +1419,8 @@ engine.setDataSceneSpatialEnvironment({
 });
 ```
 
-생략하면 기존 합성을 유지한다. `composition:"separated"`는 AO를 ambient·hemisphere 기여에만 적용한다.
-직접광·발광·unlit 색은 AO로 줄이지 않으며, 그 뒤 fog → DOF → Bloom → exposure/톤 매핑·색 보정 순서로 처리한다.
+생략하면 기존 합성을 유지한다. `composition:"separated"`는 AO를 ambient·hemisphere·프로브 간접광 기여에만 적용한다.
+직접광·발광·unlit 색은 AO로 줄이지 않으며, 그 뒤 fog → 선택형 빛줄기 → DOF → Bloom → exposure/톤 매핑·색 보정 순서로 처리한다.
 Bloom threshold는 exposure 전의 선형 HDR 값이다. flat HUD는 기존처럼 Spatial 합성 뒤에 그린다.
 명시적인 `composition:"legacy"` 선택도 저장하며 기존 화면으로 돌아간다.
 
@@ -1660,8 +1660,8 @@ camera:null 저장은 pose를 포함하지 않으므로 복원되는 개체 위�
 
 바깥 GameStateSnapshot version은 2다. 공간 pose/camera capture는 Data Scene v6이며,
 authored 또는 runtime environment만 있는 공간 진행 capture는 **v7**이다. attachment·LOD·chunk 또는 model runtime yaw가 있으면 **v8**이다. 일반 capture는 v5를 유지한다.
-`DATA_SCENE_STATE_VERSION`은 최신 지원값15다. 점광원 PCSS는v15, 태양 PCSS는v14를 사용한다.
-나머지 기능별 저장 버전은 [공간 API의 저장 계약](public-api/core.md#data-scene-공간-경로-개발-소스)을 따른다. v2~v14를 기본값 주입이나 재해시 없이 계속 읽으며,
+`DATA_SCENE_STATE_VERSION`은 최신 지원값18이다. 프로브는v18, 빛줄기는v17, 높이 안개는v16, 점광원 PCSS는v15, 태양 PCSS는v14를 사용한다.
+나머지 기능별 저장 버전은 [공간 API의 저장 계약](public-api/core.md#data-scene-공간-경로-개발-소스)을 따른다. v2~v17을 기본값 주입이나 재해시 없이 계속 읽으며,
 과거 공간 문서에 pose/camera 진행이 없으면 authored 기본값으로 복원한다.
 v5 이하에 새 공간 필드를 넣으면 거절한다. `includeDataSceneProgress` 생략 시에는 이전처럼 문서 설정만 복원한다.
 v7의 `progress.spatial.environment`는 현재 native 설정이며 null은 authored 효과의 명시적 해제다.
@@ -2051,7 +2051,7 @@ Rust가 실제 선택 순서에 따라 채널을 함께 옮긴다. v7 OFF는 원
 
 WebGL2는 draw uniform을 사용하고 WebGPU는 고유한 수신 pair를256-byte 간격의 동적 uniform 테이블로 공유한다.
 기본/OFF에는 새 테이블을 만들지 않는다. 테이블은 따뜻한 재사용을 위해 비활성 뒤에도 유지하며
-최대65,536 pair/16 MiB다. 환경 uniform은2,704-byte record2개를2,816-byte 간격(총5,632B)으로 둔다.
+최대65,536 pair/16 MiB다. 환경 uniform은2,992-byte record2개를3,072-byte 간격(총6,144B)으로 둔다.
 수신 mask만으로 target·합성 pass·shadow pass를 추가하지 않는다. 서로 다른 mask는 color batch/instancing을 나눌 수 있다.
 회귀 범위와 실기기 검증의 구분은 [품질 검사](../development/quality/smoke-check.md#spatial-독립-수신-mask-회귀)를 따른다.
 
@@ -2435,3 +2435,56 @@ source는 **environment v14/632 floats**, **spatial patch15**, **Data Scene stat
 이 효과는 고정 샘플·저해상도 근사다. 얇은 차폐물, 깊이 불연속의 bilinear 경계, 긴 시선의 띠 현상,
 단일 태양 map 밖은 한계이며 temporal 누적, froxel, 다중 산란, 지역 volume/noise, GI는 포함하지 않는다.
 실게임·목표 기기의 품질/FPS 수용 검증은 해당 게임 장면과 기기에서 별도로 진행한다.
+
+## 지역별 간접광 프로브
+
+선택형 `environment.lighting.probes`는 최대 **8개**의 고정 구형 영역에 등방성 diffuse 간접광을
+지정한다. 움직이는 모델·빌보드와 지형 모두 표면의 월드 위치에서 보간한다.
+공개 타입 `SpatialLightProbeSpec`은 root/core/authoring에서 제공한다.
+
+```ts
+const environment = {
+  composition: "separated",
+  lighting: {
+    ambient: [0.15, 0.15, 0.15],
+    lights: [],
+    probes: [
+      { position: { x: 0, y: 20, elevation: 24 }, radius: 120, color: [1, 0.65, 0.3], intensity: 0.8 },
+      { position: { x: 160, y: 20, elevation: 24 }, radius: 100, color: [0.2, 0.35, 1], intensity: 0.25 },
+    ],
+  },
+} satisfies SpatialEnvironmentSpec;
+```
+
+| 필드 | 범위·기본값 |
+| --- | --- |
+| `position` | 필수 X/Y/elevation, 각 -1e6~1e6 월드 단위 |
+| `radius` | 필수 0.1~10000 월드 단위 |
+| `color` | 선형 RGB, 각 0~1, 기본 `[1,1,1]` |
+| `intensity` | 0~4, 기본 1. **0은 검정 간접광 영역**이며 프로브 제거와 다르다. |
+
+프로브마다 중심까지의 거리 `d`로 `t=clamp(1-d/radius,0,1)`, `w=t²(3-2t)`를 구한다.
+겹친 프로브의 `color*intensity`를 `w`로 가중 평균하고, 최대 `w`를 사용해 기존
+`ambient + hemisphere`와 섞는다. 중심에서는 프로브 색, 경계·영역 밖에서는 기존 간접광이다.
+배열 순서는 결과를 바꾸지 않으며 동일 프로브의 중복 배치는 영향 범위를 더 강하게 만들지 않는다.
+다른 색의 여러 프로브가 중심에서 겹치면 그 가중 평균을 사용한다.
+
+프로브는 표면 법선과 무관한 등방성 fill이다. fallback hemisphere는 기존대로 최종 shading normal을
+사용한다. `lightMask`/`shadowMask`는 직접광/그림자 수신에만 적용되므로 프로브에는 적용되지 않는다.
+직접 diffuse·직접 specular·발광·unlit은 유지하며, separated AO는 프로브를 포함한 간접광에만 작용한다.
+legacy 합성에서는 기존 전체 색 AO 정책을 유지한다. 안개·빛줄기·DOF·Bloom·색보정·HUD 순서는 바뀌지 않는다.
+
+프로브 전용 texture·render target·draw pass는 없다. 조명 적용 fragment당 최대 8개를 평가하며,
+WebGPU에서도 color와 indirect MRT가 같은 계산 결과를 공유한다. 프로브가 없는 경우 반복 본문은 실행하지 않는다.
+WebGPU 환경 uniform은 고정 2,992-byte record, 3,072-byte 간격, 두 record 총 6,144 bytes다.
+이는 이전 allocation보다 512 bytes 증가한다. 실제 fragment 수·overdraw에 비례하는 ALU 비용은 남는다.
+
+배열 생략은 기존 동작, `[]`는 명시적으로 비어 있는 소스다. `lighting.enabled:false`는 렌더 프로브를
+비활성화하지만 작성한 위치·색·밝기를 저장한다. 잘못된 수치·개수·알 수 없는 필드는 변경 전에 거절한다.
+source는 **environment v15/700 floats**, **spatial patch16**, **Data Scene state18**이며
+이전 environment v1~v14·patch1~15·state2~17을 계속 읽는다. 외부 game snapshot은 version2 그대로다.
+구형 core는 capability 확인으로 거절하고, 새 설정을 숨긴 낮은 patch/state 버전도 자원·엔티티 변경 전에 거절한다.
+
+이 기능은 작성한 간접광의 근사다. 자동 베이킹, 방향성 SH, 반사 IBL, 실시간 GI, 벽·층에 의한 차폐는
+포함하지 않는다. 구가 벽을 가로지르면 반대쪽 표면에도 영향을 주므로 반경과 배치를 직접 제한해야 한다.
+실제 게임·목표 기기의 인수 및 FPS 검증은 개발 이후 별도로 진행한다.

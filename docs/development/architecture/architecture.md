@@ -1053,7 +1053,7 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS·높이 안개 설정을2,704-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS·높이 안개·빛줄기·프로브 설정을2,992-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은3,072B이며 두 record의 총 저장량은6,144B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
@@ -2047,8 +2047,8 @@ Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·�
 정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
 model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
 WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
-WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개·빛줄기 확장을 포함해2720 bytes,
-stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개·빛줄기·프로브 확장을 포함해2992 bytes,
+stride3072·두 record6144-byte allocation을 사용한다. 두 번째 slot/bias/normalBias는652~655 words다.
 shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
 이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
@@ -2112,7 +2112,7 @@ WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가�
 추가 texture fetch·target·pass는 없다. 카메라는 native의 world-up 기준이며 표시용 pixelArt camera를 사용한다.
 
 WebGPU private uniform의 668~671은 높이 안개, 672~675는
-`[eyeHeight, upY, forwardY, projection]`다. 빛줄기 확장을 포함한 현재 유효 record는 **2720 bytes**, 간격2816·두 record allocation5632 bytes다.
+`[eyeHeight, upY, forwardY, projection]`다. 프로브 확장을 포함한 현재 유효 record는 **2992 bytes**, 간격3072·두 record allocation6144 bytes다.
 두 camera record 모두 tail을 채우고 기존 frame으로 바뀌면 안개 설정을 0으로 초기화한다.
 WebGL2도 geometry/composite 두 경로에 같은 설정과 카메라 basis를 전달한다.
 [높이 안개 계약](../../engine/data-scene-spatial.md#선택형-높이-안개)이 구간 의미·기본값·범위와 제한을 정의한다.
@@ -2140,6 +2140,23 @@ DOF·Bloom·최종 grading과 HUD 경계는 기존 순서를 유지한다. 비�
 비동기 오류는 아직 현재 target/group인 경우에만 적용하고 사용할 수 없는 target을 즉시 해제한다.
 resize·OFF·binding 교체 후 도착한 이전 자원의 오류는 새 자원을 무효화하지 않는다.
 
-WebGPU 기존 private camera record에676..679의 shaft-enable vec4를 추가한다. 유효2720 bytes,
-stride2816/두 record5632 bytes는 유지한다. 별도 raymarch uniform은208 bytes이며 새 native ABI의 reserved를 재사용하지 않는다.
+WebGPU private camera record의676..679는 shaft-enable vec4다. 빛줄기 도입 시 유효2720 bytes/stride2816/두 record5632 bytes였으며, 이후 프로브 확장에서2992/3072/6144 bytes로 늘었다. 별도 raymarch uniform은208 bytes이며 새 native ABI의 reserved를 재사용하지 않는다.
 texture/target bytes와 실제 제출 draw, texture-load 상한을 renderer→frame metrics→profiler→smoke에 연결한다.
+
+### 지역별 간접광 프로브 v15
+
+`lighting.probes`의 최대8개 소스는 Rust 환경 상태가 소유하고 기존 bulk buffer로 전달한다.
+v15는700 floats다.0..631은 이전 계약,632는 소스 존재(명시적 빈 배열 보존),633은 count,
+634..635는 reserved0,636..699는8개의 `[renderX,renderY,renderZ,radius,R,G,B,intensity]`다.
+검증은 count/범위/미사용·reserved0을 먼저 확인하며 실패 시 source·선택 이력을 바꾸지 않는다.
+lighting OFF에서는 source를 보존하고 render copy의632..699를0으로 만든다.
+`spatial_light_probes_abi_version()=1`, patch16/state18의 문서·progress-only preflight가 구형 core와
+낮춰진 저장 버전을 mutation 전에 거절한다. render geometry ABI와 엔티티별 FFI는 추가되지 않는다.
+
+GL은 count+position/color vec4 배열8개를 업로드한다. WebGPU는 private uniform680..747에
+source tail을 복사하고, 유효2992 bytes/stride3072/두 record6144 bytes로 확장한다.
+이 tail은 native reserved나 camera/shadow 공간을 재사용하지 않는다. `spatialLightProbeShaders`의
+구형 거리 smoothstep·가중 평균·최대 coverage 보간을 두 backend가 구현한다.
+WGSL은 indirect fill을 표면당 한 번 구해 color와 AO MRT에 공유한다. source·old-format·OFF 전환 시
+uniform을 지워 이전 프로브가 다음 packet에 남지 않는다. 추가 target/pass/texture fetch는 없으며
+최대8개 거리 평가의 fragment ALU 비용과 고정 uniform 크기 증가만 있다.

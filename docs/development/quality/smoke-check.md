@@ -3177,3 +3177,30 @@ threshold0의 실제 반응·Bloom0 identity·AO 추가·resize/DPR 복원·devi
 실제 draw/target bytes/샘플/texture-load 상한이 report와 renderer/profiler에 전달되는지 확인한다.
 source632/native v14·capability1·patch15/state17, 구 버전 reader와 downgrade 거절·Undo/Redo는 Rust/SDK 검사 대상이다.
 실제 사용자 게임·목표 기기 품질/FPS 수용 검증은 개발 fixture 결과와 별도로 기록한다.
+
+### 지역별 간접광 프로브 smoke
+
+```bash
+pnpm test:spatial-light-probes-report
+pnpm smoke:spatial-light-probes
+```
+
+동일 검사는 `smoke:spatial-webgpu-offscreen` aggregate에도 연결된다. 이 aggregate를 호출하는
+수동 GitHub Actions 경로가 gate이며, 모든 PR에서 실행된다고 주장하지 않는다.
+실제 packed package를 사용하는 fixture는 WebGL2/WebGPU × orthographic/perspective ×
+legacy/linear-srgb × 1280×720/390×844 × DPR1/2를 검사한다.
+
+- 최대8개·단일·검정·겹침·역순·중복·위치 변경·영역 밖·hemisphere·조명OFF·legacy/separated·AO.
+- 실제 Playing/1 entity·지형 제출, warm pixels 동일, 추가 draw/target0 및 shadow redraw/upload0.
+- authored 문서에는 프로브 없이 live progress만 state18로 저장한 뒤 fresh engine 복원, OFF/ON,
+  WebGPU device recovery 후 픽셀 동일 및 destroy 후 texture/buffer0.
+- Node의 독립 double-precision ray/box·구형 보간 oracle이 각 일반 상태에서 최소50개 위치의
+  예상 RGB를 검사한다. native 지형 측면의65% vertex color와 색공간 변환도 반영한다.
+- 별도 실제 모델 fixture는 diffuse 기준색, 법선 방향 독립성, unlit identity, emission·직접 diffuse·
+  직접 specular 분리와 실제 model triangle 제출을 검사한다.
+- negative controls는 효과 누락·색 변경·stale restore·blank·AO 누락·상태 누락·cost 누락·추가 pass/target·
+  shadow redraw·잘못된 count/version이 실패하는지 검사한다.
+
+SDK/Rust는 environment v15/700·patch16/state18, bounds/reserved/unused, invalid transaction 불변,
+OFF source 보존, 빈 배열, 이전 reader, 구형 core의 자원 준비 전 거절 및 GL/WebGPU uniform reset을 검사한다.
+실제 문제 게임·목표 기기의 성능 인수는 이 fixture와 별도다.

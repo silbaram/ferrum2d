@@ -72,7 +72,8 @@ PNG extrusion의 현재 계약과 검증 명령은
 
 독립 평면 shadow receiver, 반투명 다중 depth, 물리적 bokeh, 점광원 그림자 3개 이상은
 제품 필요와 비용·fallback·HUD/alpha 경계를 먼저 정할 후보다.
-태양·점광원 PCSS, 최대 2개 점광원 그림자, 높이 안개, 제한형 태양광 빛줄기는 개발·자동 검증을 완료했다.
+태양·점광원 PCSS, 최대 2개 점광원 그림자, 높이 안개, 제한형 태양광 빛줄기, 최대8개 authored 간접광 프로브는 개발·자동 검증을 완료했다.
+프로브 자동 베이킹·방향성 SH·벽 차폐는 이 완료 범위에 포함되지 않는다.
 현재 높이 기반 그림자·normal lighting·view-depth DOF와 함께 신규 미구현 기능으로 세지 않는다.
 
 three.js 비교의 고정 기준은 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`다.

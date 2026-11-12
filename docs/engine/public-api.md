@@ -82,6 +82,9 @@ Spatial `fog.height`의 공개 설정 타입 `SpatialHeightFogSpec`은 root/core
 Spatial `lightShafts`의 공개 설정 타입 `SpatialLightShaftSpec`도 root/core/authoring에서 제공합니다.
 필수 태양 그림자 설정·품질 상한·저장 호환성은 [빛줄기 계약](data-scene-spatial.md#선택형-태양광-빛줄기)을 따릅니다.
 
+Spatial `lighting.probes`의 공개 설정 타입 `SpatialLightProbeSpec`도 root/core/authoring에서 제공합니다.
+[지역별 간접광 계약](data-scene-spatial.md#지역별-간접광-프로브)의 개수·보간·저장 호환성을 따릅니다.
+
 ## Reference Map
 
 | 문서 | 목적 |

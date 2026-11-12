@@ -916,3 +916,9 @@ OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지
 `SpatialHeightFogSpec`는 선택형 `environment.fog.height`의 기준 높이·밀도·감쇠율 설정이다.
 환경v13/616·patch14/state16을 사용하며 저장/복원·Undo/Redo에 포함된다.
 기본값·적분 구간과 호환성은 [높이 안개 계약](../data-scene-spatial.md#선택형-높이-안개)을 따른다.
+
+### 지역별 간접광 프로브
+
+`SpatialLightProbeSpec`는 `environment.lighting.probes`의 최대8개 정적 간접광 영역 설정이다.
+위치·반경·선형 RGB·밝기를 지정하며 source는 environment v15/700·patch16/state18이다.
+[보간·AO·비용·호환성·차폐 한계](../data-scene-spatial.md#지역별-간접광-프로브)를 따른다.
