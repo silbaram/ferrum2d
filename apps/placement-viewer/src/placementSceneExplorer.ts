@@ -102,7 +102,7 @@ export function createPlacementSceneExplorer(options: {
       });
       list.append(row);
     }
-    setUiText(hint, catalog?.folderSnapshot ? "Folder files are read-only snapshots. Refresh reselects the folder. Assets must already be available to the viewer." :
+    setUiText(hint, catalog?.folderSnapshot ? "Folder files are read-only snapshots. Refresh reselects the folder. Assets must already be available in Studio." :
       "Double-click or Enter to open. Run scene plays the selected Scene Authoring document.");
     controls();
   }

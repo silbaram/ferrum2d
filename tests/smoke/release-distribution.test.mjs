@@ -11,6 +11,12 @@ import { resolvePackageCommand } from "../../scripts/package/release-command.mjs
 import { updaterSettings } from "../../scripts/package/viewer-updater.mjs";
 
 const version = "0.1.0-beta.1", release = githubRelease(version), commit = "a".repeat(40);
+test("Studio retains the previous desktop identity and MSI upgrade family", async () => {
+  const config = await readJson(new URL("../../apps/placement-viewer-desktop/src-tauri/tauri.conf.json", import.meta.url));
+  assert.equal(config.identifier, "com.ferrum2d.placement-viewer.desktop");
+  // Recorded with `tauri inspect wix-upgrade-code` before renaming the product.
+  assert.equal(config.bundle.windows.wix.upgradeCode, "b220af84-f62a-5b63-8f6e-c193a58ee033");
+});
 async function temporary(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ferrum distribution & "));
   t.after(() => rm(root, { recursive: true, force: true })); return root;
@@ -21,14 +27,15 @@ async function put(root, name, value) {
 }
 
 // Simulated tool output tests artifact contracts; it is not native installer/GUI evidence.
-async function nativeFixture(t, { platform = "linux", arch = "x64", stale = false, wrongWasm = false, missingPrerequisite = false } = {}) {
+async function nativeFixture(t, { platform = "linux", arch = "x64", stale = false, wrongWasm = false, missingPrerequisite = false,
+  productName = "Ferrum2D Studio", cachedLegacy = false, ambiguousFresh = false } = {}) {
   const root = await temporary(t), calls = [], output = path.join(root, "candidate");
   const names = { linux: "linux", win32: "windows", darwin: "macos" }, bundles = { linux: "deb", win32: "nsis", darwin: "dmg" }, extensions = { linux: "deb", win32: "exe", darwin: "dmg" };
   const target = platform === "linux" ? "x86_64-unknown-linux-gnu" : platform === "win32" ? "x86_64-pc-windows-msvc" : arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
-  const installer = path.join(root, "target", target, "release/bundle", bundles[platform], `Ferrum2D Placement Viewer_${version}_${arch}.${extensions[platform]}`);
+  const installer = path.join(root, "target", target, "release/bundle", bundles[platform], `${productName}_${version}_${arch}.${extensions[platform]}`);
   await put(root, "packages/ferrum-web/package.json", { name: "@ferrum2d/ferrum-web", version: "0.1.0", private: true });
   await put(root, "apps/placement-viewer-desktop/package.json", { name: "@ferrum2d/placement-viewer-desktop", version: "0.1.0", private: true });
-  await put(root, "apps/placement-viewer-desktop/src-tauri/tauri.conf.json", { version: "0.1.0" });
+  await put(root, "apps/placement-viewer-desktop/src-tauri/tauri.conf.json", { version: "0.1.0", productName });
   await put(root, "apps/placement-viewer-desktop/src-tauri/Cargo.toml", '[package]\nversion = "0.1.0"\n');
   await put(root, "apps/placement-viewer-desktop/app-icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"/>');
   const wasm = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
@@ -36,6 +43,8 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
   await put(root, "apps/placement-viewer/dist/index.html", "<canvas></canvas>");
   await put(root, "apps/placement-viewer/dist/assets/core.wasm", wrongWasm ? "old wasm" : wasm);
   if (stale) { await put(root, path.relative(root, installer), "old installer"); await utimes(installer, 0, 0); }
+  const legacyInstaller = installer.replace(productName, "Ferrum2D Placement Viewer");
+  if (cachedLegacy) await put(root, path.relative(root, legacyInstaller), "cached legacy installer");
   const run = async (command, args) => {
     calls.push({ command, args }); let stdout = "";
     if (command === "pkg-config" && missingPrerequisite) throw new Error("spawn pkg-config ENOENT");
@@ -48,13 +57,14 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
     }
     if (command === "pnpm" && args.includes("tauri") && args.includes("build") && !stale) {
       await put(root, path.relative(root, installer), `fixture installer ${names[platform]}`);
+      if (ambiguousFresh) await put(root, path.relative(root, installer).replace(productName, "Unexpected Product"), "ambiguous fresh installer");
       // A cached beta.10 must not be selected for beta.1.
       await put(root, path.relative(root, installer).replace(version, "0.1.0-beta.10"), "unrelated cached installer");
       await put(root, path.relative(root, installer).replace(version, "10.1.0-beta.1"), "unrelated major version");
     }
     return { stdout, stderr: "" };
   };
-  return { root, output, calls, context: { root, platform, arch, run }, options: { version, repository: release.repository, output, quiet: true, noSign: true } };
+  return { root, output, calls, legacyInstaller, context: { root, platform, arch, run }, options: { version, repository: release.repository, output, quiet: true, noSign: true } };
 }
 
 async function engineFixture(root) {
@@ -112,6 +122,31 @@ test("plan mode writes nothing and runs no tools", async t => {
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
   await assert.rejects(prepareDistribution({ ...fixture.options, component: "all", withUpdater: true }, fixture.context), /combined/);
   assert.equal(fixture.calls.length, 0);
+});
+
+test("Studio transition rejects the legacy automatic update channel before tools or output", async t => {
+  const fixture = await nativeFixture(t);
+  for (const component of ["viewer", "all"]) for (const plan of [true, false]) {
+    await assert.rejects(prepareDistribution({ ...fixture.options, component, plan, noSign: false, withUpdater: true }, fixture.context), /product-name transition/);
+  }
+  await assert.rejects(prepareViewerRelease({ ...fixture.options, noSign: false, withUpdater: true }, fixture.context), /product-name transition/);
+  assert.equal(fixture.calls.length, 0);
+  await assert.rejects(stat(fixture.output), { code: "ENOENT" });
+});
+
+for (const platform of ["linux", "win32", "darwin"]) test(`cached legacy installer does not block fresh Studio staging on ${platform}`, async t => {
+  const fixture = await nativeFixture(t, { platform, cachedLegacy: true });
+  const before = (await stat(fixture.legacyInstaller)).mtimeMs;
+  const { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
+  assert.equal(await readFile(fixture.legacyInstaller, "utf8"), "cached legacy installer");
+  assert.equal((await stat(fixture.legacyInstaller)).mtimeMs, before);
+  assert.equal(await readFile(path.join(fixture.output, manifest.assets[0].file), "utf8"), `fixture installer ${manifest.platform.os}`);
+});
+
+test("ambiguous fresh installers are rejected without staging", async t => {
+  const fixture = await nativeFixture(t, { ambiguousFresh: true });
+  await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), /exactly one.*installer/);
+  await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
 
 for (const [options, pattern] of [[{ stale: true }, /stale output/], [{ wrongWasm: true }, /current engine Wasm/], [{ missingPrerequisite: true }, /prerequisites.*missing/]]) {
@@ -214,8 +249,10 @@ test("updater signing is explicit, requires keys, and cannot silently use --no-s
   assert.throws(() => parseDistributionArgs(["prepare", "--version", version, "--no-sign", "--with-updater"]), /combined/);
 });
 
-for (const platform of ["linux", "win32", "darwin"]) test(`signed updater metadata survives ${platform} staging/assembly and rejects mismatches`, async t => {
-  const fixture = await nativeFixture(t, { platform }), run = fixture.context.run;
+for (const platform of ["linux", "win32", "darwin"]) test(`legacy signed updater metadata survives ${platform} staging/assembly and rejects mismatches`, async t => {
+  // This is the pre-rename update channel contract, not permission to update old apps to Studio.
+  const productName = "Ferrum2D Placement Viewer";
+  const fixture = await nativeFixture(t, { platform, productName }), run = fixture.context.run;
   const previous = { public: process.env.FERRUM_UPDATER_PUBLIC_KEY, private: process.env.TAURI_SIGNING_PRIVATE_KEY };
   // Tool-output contract fixture only; these are not real signing keys or native signature evidence.
   process.env.FERRUM_UPDATER_PUBLIC_KEY = Buffer.from("untrusted comment: fixture public key\nRWRmaXh0dXJl\n").toString("base64");
@@ -230,7 +267,7 @@ for (const platform of ["linux", "win32", "darwin"]) test(`signed updater metada
     if (args.includes("tauri") && args.includes("build")) {
       const target = args[args.indexOf("--target") + 1], os = { linux: "linux", win32: "windows", darwin: "macos" }[platform];
       const subdir = { linux: "appimage", win32: "nsis", darwin: "macos" }[platform], extension = { linux: "AppImage", win32: "exe", darwin: "app.tar.gz" }[platform];
-      const name = `Ferrum2D Placement Viewer_${version}_x64.${extension}`;
+      const name = `${productName}_${version}_x64.${extension}`;
       const root = path.join(fixture.root, "target", target, "release/bundle", subdir);
       // Windows updater and installer are the same emitted file.
       await put(root, name, `fixture installer ${os}`); await put(root, name + ".sig", Buffer.from("fixture-signature").toString("base64"));

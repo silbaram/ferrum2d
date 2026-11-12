@@ -117,7 +117,6 @@ import {
 } from "@ferrum2d/ferrum-web/core";
 import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 import {
-  FERRUM_AUTHORING_VIEWER_TITLE,
   appendAuthoringViewerCheckboxControl,
   appendAuthoringViewerKeyValueRow as appendRawRow,
   appendAuthoringViewerNumberControl,
@@ -571,9 +570,11 @@ type PlacementJsonValue =
   | { readonly [key: string]: PlacementJsonValue };
 type PlacementJsonObject = { readonly [key: string]: PlacementJsonValue };
 
+const STUDIO_TITLE = "Ferrum2D Studio";
+
 async function bootstrap(): Promise<void> {
   const shell = createRuntimeDemoShell({
-    title: FERRUM_AUTHORING_VIEWER_TITLE,
+    title: STUDIO_TITLE,
     frameProperty: "ferrumPlacementViewerFrame",
     gameStateLabel: placementGameStateLabel,
     controls: false,
@@ -3026,7 +3027,7 @@ async function bootstrap(): Promise<void> {
     shell.destroy();
     gridRenderer?.destroy();
     renderRuntimeDemoError(error, {
-      title: FERRUM_AUTHORING_VIEWER_TITLE,
+      title: STUDIO_TITLE,
       diagnosticReport,
     });
   }
@@ -3884,7 +3885,7 @@ function createPlacementAppChrome(
   const chrome = createAuthoringViewerAppChrome({
     root,
     toolbar,
-    title: "Ferrum2D Placement",
+    title: STUDIO_TITLE,
     insertBefore: toolbar.querySelector(".demo-actions"),
     classNames: {
       fileStrip: "placement-file-strip",

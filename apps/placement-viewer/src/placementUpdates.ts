@@ -40,7 +40,7 @@ export function createPlacementUpdates(options: {
     element.append(label, scope, target, versions, status, recovery, actions); dialog.append(element);
     return { element, target, versions, status, recovery, action, link };
   }
-  const editor = section("Editor app", "viewer"), project = section("Project engine", "project");
+  const editor = section("Ferrum2D Studio", "viewer"), project = section("Project engine", "project");
   const note = document.createElement("p"); note.className = "placement-update-note";
   setUiText(note, "Updates install published releases. A Git push is not a new release. Project checks and game migrations remain separate.");
   dialog.append(note); document.body.append(dialog); registerUiRoot(dialog);

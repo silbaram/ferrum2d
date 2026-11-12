@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ferrum2D Placement Viewer",
+  "productName": "Ferrum2D Studio",
   "version": "0.1.0",
   "identifier": "com.ferrum2d.placement-viewer.desktop",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Ferrum2D Placement Viewer",
+        "title": "Ferrum2D Studio",
         "dragDropEnabled": false,
         "width": 1280,
         "height": 840,
@@ -44,6 +44,11 @@
     "active": true,
     "targets": "all",
     "icon": [],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "wix": {
+        "upgradeCode": "b220af84-f62a-5b63-8f6e-c193a58ee033"
+      }
+    }
   }
 }

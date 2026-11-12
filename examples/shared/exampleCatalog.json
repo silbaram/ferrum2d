@@ -36,7 +36,7 @@
     "features": ["animation", "navigation", "lighting", "postprocess"]
   },
   {
-    "id": "placement-viewer", "kind": "tool", "title": "씬·에셋 제작 도구", "path": "placement-viewer/", "source": "apps/placement-viewer/dist", "command": "pnpm dev:placement-viewer",
+    "id": "placement-viewer", "kind": "tool", "title": "Ferrum2D Studio", "path": "placement-viewer/", "source": "apps/placement-viewer/dist", "command": "pnpm dev:placement-viewer",
     "summary": "2D 정원·HD-2D 마을에서 배치·변형·레이어·게임 카메라·도트 편집을 확인합니다.",
     "action": "예제 씬을 열어 오브젝트를 선택하고 배치와 게임 카메라를 조절하세요.", "observe": "게임 미리보기로 실제 구도를 비교합니다. 웹 내장 예제는 내보내기 전용입니다.",
     "features": ["layers", "camera", "hd2d-environment"]
