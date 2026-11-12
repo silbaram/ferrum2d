@@ -23,6 +23,16 @@ warm frame에는 추가 upload/allocation이 없어야 하며 새 재질 때문�
 `node tests/smoke/placement-village-smoke.mjs --lighting-only`로 HD-2D 조명 조작만 실행하며 반구광 OFF/ON의 색·세기 보존도 확인한다.
 같은 명령의 저장 회귀는 2D/HD-2D 모두에서 초점을 둔 값의 저장·잘못된 입력 차단·재열기를 확인한다. HD-2D는 반구광과 두 normalBias, 꺼진 반구광의 색·방향·밝기 보존도 검사한다. 파일 호스트만 public bridge로 모사하며 작성·렌더·페이지 재로딩은 실제 경로를 실행한다.
 
+`placement-lighting-advanced-smoke.mjs`는 위 HD-2D 조명 smoke와 `smoke:placement-spatial-workspace`에 포함되며,
+CI의 기존 spatial workspace gate에서도 실행한다. UI로 태양/두 점광원 PCSS·넓은 Bloom·높이 안개·빛줄기·프로브·광원 선택·채널을
+작성하고 실제 native environment 확장 값, entity 수, 효과 draw와 전체 draw 상한을 확인한다. 프로브 8개 제한·밝기 0,
+지형/빌보드 수신 채널, 잘못된 값/native 거절 복원, 태양 삭제/그림자 해제/실내 프리셋의 빛줄기 의존성,
+Undo·Play/Stop·반경 80의 초점 저장/재열기·KO/EN/390px을 검사한다. 원본은 `artifacts/viewer-lighting/advanced.json`과 PNG다.
+전체 spatial workspace smoke는 모델의 두 수신 채널 작성과 Undo 시 pose·다른 필드 보존도 검사한다.
+수신 채널 저장은 포커스를 유지한 단독 입력/기존 draft, 저장 payload와 재열기, unchanged/저장 후 blur의 no-op을 검사한다.
+소수·범위 밖·빈 채널 입력과 native 거절은 추가 저장 요청 없이 기존 draft/history를 보존해야 한다.
+`pnpm test:placement-point-shadows`는 분위기 프리셋의 넓은 Bloom/채널 보존과 PCSS/빛줄기 품질 변경도 검증한다.
+
 로컬 `artifacts/`는 현재 작업의 검토·검증과 설치 복구에 필요한 동안만 보관한다. 종료된 작업의
 결과는 확정 문서에 요약하고 중간 로그·반복 실행·임시 설치 사본은 삭제한다. 문서에 출력 경로가
 있다는 이유로 해당 디렉터리를 영구 보존하지 않는다. 과거 보고서가 필요하면 생성 명령부터 다시

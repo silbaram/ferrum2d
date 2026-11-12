@@ -120,6 +120,10 @@ Rust/Wasm camera ABI·렌더 명령 형식은 변경하지 않는다.
 `lighting.enabled: false`는 작성 설정을 보존하며 TS 환경 컴파일러가 기존 native buffer의 조명 플래그를 끈다.
 native buffer에는 비활성 광원 값이 전달되지 않으므로 runtime 환경 readback은 비활성 설정 원본의 저장소가 아니다.
 작성 JSON을 광원 설정의 기준으로 유지하며 Rust 환경 ABI와 렌더러 pass 계약은 변경하지 않는다.
+공식 앱의 `placementLightingAdvanced.ts`는 PCSS·안개·빛줄기·프로브·Bloom·광원 선택·채널 입력을 구성하고,
+`placementLighting.ts`의 검증·focus flush·단일 environment transaction을 재사용한다. 프로브 선택 인덱스만
+탭별 UI 상태이며 값은 기존 scene JSON에 둔다. 빛줄기의 태양/그림자 의존성 변경은 같은 patch와 Undo로 처리한다.
+수신 채널은 `placementSpatialWorkspace.ts`의 기존 terrain/model/billboard patch 경로를 따른다.
 flat 2D는 선택 `SceneAuthoringDocumentSpec.lighting`과 placement patch v4의 전체 lighting envelope를 사용한다.
 작성 resolver는 world 광원과 OFF 상태의 설정을 검증·보존한다. 뷰어 host가 기존 `DataSceneView.lighting`
 투영과 native `setDataSceneSun`을 연결하며, 시뮬레이션 상태와 renderer 소유권은 변경하지 않는다.

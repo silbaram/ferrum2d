@@ -10,6 +10,11 @@
 
 ## 최소 문서 형식
 
+공식 Placement Viewer의 HD-2D 조명 탭은 PCSS·높이 안개·빛줄기·간접광 프로브·넓은 Bloom·광원 전환과
+채널을 기존 `spatial.environment`로 작성한다. 수신 채널은 지형·모델·빌보드의 기존 필드를 사용한다.
+조작·의존 효과 해제·프리셋·저장 정책은 [앱 조명 안내](../../apps/placement-viewer/README.md)를 따른다.
+새 문서 형식이나 runtime API를 추가하지 않는다.
+
 Data Scene authoring 문서는 다음 envelope를 사용한다.
 
 | 필드 | 필수 | 역할 |
