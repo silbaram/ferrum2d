@@ -48,13 +48,19 @@ export function resolveSpatialLightProbes(value: unknown, path: string): Spatial
 }
 /** Called after finite-value and length validation; unused records/reserved fields must be zero. */
 export function validSpatialLightProbes(v: Float32Array): boolean {
-  if (v[632] === 0) return v.subarray(633, 700).every(x => x === 0);
+  if (v[632] === 0) {
+    for (let i = 633; i < 700; i++) if (v[i] !== 0) return false;
+    return true;
+  }
   const count = v[633];
   if (v[632] !== 1 || !Number.isInteger(count) || count < 0 || count > 8 || v[634] !== 0 || v[635] !== 0) return false;
   for (let i = 0; i < count; i++) {
     const p = 636 + i * 8;
-    if (v.subarray(p, p + 3).some(x => Math.abs(x) > 1e6) || v[p + 3] < Math.fround(.1) || v[p + 3] > 10000
-      || v.subarray(p + 4, p + 7).some(x => x < 0 || x > 1) || v[p + 7] < 0 || v[p + 7] > 4) return false;
+    for (let channel = 0; channel < 3; channel++) {
+      if (Math.abs(v[p + channel]) > 1e6 || v[p + 4 + channel] < 0 || v[p + 4 + channel] > 1) return false;
+    }
+    if (v[p + 3] < Math.fround(.1) || v[p + 3] > 10000 || v[p + 7] < 0 || v[p + 7] > 4) return false;
   }
-  return v.subarray(636 + count * 8, 700).every(x => x === 0);
+  for (let i = 636 + count * 8; i < 700; i++) if (v[i] !== 0) return false;
+  return true;
 }

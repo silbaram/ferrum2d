@@ -395,9 +395,9 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform3fv(u.ambient, v.subarray(5, 8));
     const probeCount = (v[0] & 1) !== 0 && v.length >= 700 && v[632] === 1 ? v[633] : 0;
     this.probePositions.fill(0); this.probeColors.fill(0);
-    for (let i = 0; i < probeCount; i++) {
-      this.probePositions.set(v.subarray(636 + i * 8, 640 + i * 8), i * 4);
-      this.probeColors.set(v.subarray(640 + i * 8, 644 + i * 8), i * 4);
+    for (let i = 0; i < probeCount; i++) for (let channel = 0; channel < 4; channel++) {
+      this.probePositions[i * 4 + channel] = v[636 + i * 8 + channel];
+      this.probeColors[i * 4 + channel] = v[640 + i * 8 + channel];
     }
     gl.uniform1i(u.probeCount, probeCount);
     gl.uniform4fv(u.probePosition, this.probePositions);
