@@ -1,14 +1,6 @@
-import { requestsSpatialLightProbes } from "./spatialLightProbes.js";
-import { requestsSpatialLightShafts } from "./spatialLightShafts.js";
-import { requestsSpatialHeightFog } from "./spatialHeightFog.js";
-import { requestsSpatialPointPcss } from "./spatialPointPcss.js";
-import { requestsSpatialSunPcss } from "./spatialSunPcss.js";
-import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
-import { requestsSpatialWideBloom } from "./spatialBloom.js";
-import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
+import { spatialEnvironmentFeature, unsupportedSpatialEnvironmentFeature, type SpatialEnvironmentCapabilities } from "./spatialEnvironmentFeatures.js";
 import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
-import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
 import {requestsSpriteLightMasks} from "./spriteLightMasks.js";
 import type {SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
 import type { FlatLightingPreparer } from "./flatLit.js";
@@ -147,7 +139,7 @@ export interface DataSceneRuntimeSpawnRequest {
   colliderVertices: Float32Array;
 }
 
-export interface DataSceneRuntimeEngineAdapter {
+export interface DataSceneRuntimeEngineAdapter extends SpatialEnvironmentCapabilities {
   supportsSpriteNormalMaterials?(): boolean;
   supportsSpriteLightingMaterials?(): boolean;
   supportsSpriteLightMasks?():boolean;
@@ -159,15 +151,6 @@ export interface DataSceneRuntimeEngineAdapter {
   /** Optional cold capability; absence rejects X ramps before activation. */
   supportsSpatialRampAxis?(): boolean;
   supportsSpatialReceiverMasks?(): boolean;
-  supportsSpatialLightChannels?(): boolean;
-  supportsSpatialPointShadows?(): boolean;
-  supportsSpatialSunPcss?(): boolean;
-  supportsSpatialPointPcss?(): boolean;
-  supportsSpatialLightProbes?(): boolean;
-  supportsSpatialLightShafts?(): boolean;
-  supportsSpatialHeightFog?(): boolean;
-  supportsSpatialWideBloom?(): boolean;
-  supportsSpatialLightSelection?(): boolean;
   /** Opaque registered handles only; available after model/content preflight. */
   spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
   textureId(name: string): number;
@@ -244,28 +227,13 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
 
 /** Internal cold preflight, shared by authored apply and snapshot restore before mutation. */
 function preflightSpatialLightingSupport(engine: FerrumEngine, spec: DataSceneSpatialSpec | undefined, path: string): void {
-  const receivers = requestsSpatialReceiverMasks(spec), channels = requestsSpatialLightChannels(spec?.environment);
-  const selection = requestsSpatialLightSelection(spec?.environment);
-  const wideBloom = requestsSpatialWideBloom(spec?.environment), pointShadows = requestsSpatialPointShadows(spec?.environment);
-  const sunPcss = requestsSpatialSunPcss(spec?.environment), pointPcss = requestsSpatialPointPcss(spec?.environment);
-  const probes = requestsSpatialLightProbes(spec?.environment);
-  const lightShafts = requestsSpatialLightShafts(spec?.environment);
-  const heightFog = requestsSpatialHeightFog(spec?.environment);
-  if (!receivers && !channels && !selection && !wideBloom && !pointShadows && !sunPcss && !pointPcss && !heightFog && !lightShafts && !probes) return;
+  const receivers = requestsSpatialReceiverMasks(spec);
+  if (!receivers && !spatialEnvironmentFeature(spec?.environment)) return;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
-  if (probes && !adapter.supportsSpatialLightProbes?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Light probes requires native v1 support");
-  if (lightShafts && !adapter.supportsSpatialLightShafts?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Light shafts requires native v1 support");
-  if (heightFog && !adapter.supportsSpatialHeightFog?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Height fog requires native v1 support");
-  if (pointPcss && !adapter.supportsSpatialPointPcss?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Point PCSS requires native v1 support");
-  if (sunPcss && !adapter.supportsSpatialSunPcss?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "Sun PCSS requires native v1 support");
-  if (pointShadows && !adapter.supportsSpatialPointShadows?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "pointShadows requires native v1 support");
-  if (wideBloom && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(`${path}.environment`, "wide Bloom requires native v1 support");
-  if (selection && !adapter.supportsSpatialLightSelection?.())
-    throw sceneCompositionDiagnosticError(`${path}.environment`, "light selection requires native v1 support");
+  const unsupported = unsupportedSpatialEnvironmentFeature(spec?.environment, adapter);
+  if (unsupported) throw sceneCompositionDiagnosticError(`${path}.environment`, `${unsupported} requires native v1 support`);
   if (receivers && !adapter.supportsSpatialReceiverMasks?.())
     throw sceneCompositionDiagnosticError(path, "receiver masks require native v1 support");
-  if (channels && !adapter.supportsSpatialLightChannels?.())
-    throw sceneCompositionDiagnosticError(`${path}.environment`, "light channels require native v1 support");
 }
 
 export function preflightDataSceneLighting(engine: FerrumEngine, document: unknown, options: ApplyDataSceneAuthoringDocumentOptions = {}): void {
@@ -694,17 +662,8 @@ export function preflightDataSceneSpatialEnvironment(
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
-  if (requestsSpatialLightProbes(environment) && !adapter.supportsSpatialLightProbes?.()) throw sceneCompositionDiagnosticError(environmentPath, "Light probes requires native v1 support");
-  if (requestsSpatialLightShafts(environment) && !adapter.supportsSpatialLightShafts?.()) throw sceneCompositionDiagnosticError(environmentPath, "Light shafts requires native v1 support");
-  if (requestsSpatialHeightFog(environment) && !adapter.supportsSpatialHeightFog?.()) throw sceneCompositionDiagnosticError(environmentPath, "Height fog requires native v1 support");
-  if (requestsSpatialPointPcss(environment) && !adapter.supportsSpatialPointPcss?.()) throw sceneCompositionDiagnosticError(environmentPath, "Point PCSS requires native v1 support");
-  if (requestsSpatialSunPcss(environment) && !adapter.supportsSpatialSunPcss?.()) throw sceneCompositionDiagnosticError(environmentPath, "Sun PCSS requires native v1 support");
-  if (requestsSpatialPointShadows(environment) && !adapter.supportsSpatialPointShadows?.()) throw sceneCompositionDiagnosticError(environmentPath, "pointShadows requires native v1 support");
-  if (requestsSpatialWideBloom(environment) && !adapter.supportsSpatialWideBloom?.()) throw sceneCompositionDiagnosticError(environmentPath, "wide Bloom requires native v1 support");
-  if (requestsSpatialLightSelection(environment) && !adapter.supportsSpatialLightSelection?.())
-    throw sceneCompositionDiagnosticError(environmentPath, "light selection requires native v1 support");
-  if (requestsSpatialLightChannels(environment) && !adapter.supportsSpatialLightChannels?.())
-    throw sceneCompositionDiagnosticError(environmentPath, "light channels require native v1 support");
+  const unsupported = unsupportedSpatialEnvironmentFeature(environment, adapter);
+  if (unsupported) throw sceneCompositionDiagnosticError(environmentPath, `${unsupported} requires native v1 support`);
   if (adapter.preflightSpatialEnvironment) {
     if (!adapter.preflightSpatialEnvironment(camera, environment))
       throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight rejected configuration");

@@ -1,14 +1,16 @@
-import { requestsSpatialLightProbes, resolveSpatialLightProbes, validSpatialLightProbes, type SpatialLightProbeSpec } from "./spatialLightProbes.js";
-import { requestsSpatialLightShafts, resolveSpatialLightShafts, validSpatialLightShafts, type SpatialLightShaftSpec } from "./spatialLightShafts.js";
-import { requestsSpatialHeightFog, resolveSpatialHeightFog, validSpatialHeightFog, type SpatialHeightFogSpec } from "./spatialHeightFog.js";
-import { requestsSpatialPointPcss, resolveSpatialPointPcss, validSpatialPointPcss } from "./spatialPointPcss.js";
+import { spatialEnvironmentFeature } from "./spatialEnvironmentFeatures.js";
+import { spatialEnvironmentLength, spatialEnvironmentVersion, type SpatialEnvironmentVersion } from "./spatialEnvironmentAbi.js";
+import { resolveSpatialLightProbes, validSpatialLightProbes, type SpatialLightProbeSpec } from "./spatialLightProbes.js";
+import { resolveSpatialLightShafts, validSpatialLightShafts, type SpatialLightShaftSpec } from "./spatialLightShafts.js";
+import { resolveSpatialHeightFog, validSpatialHeightFog, type SpatialHeightFogSpec } from "./spatialHeightFog.js";
+import { resolveSpatialPointPcss, validSpatialPointPcss } from "./spatialPointPcss.js";
 import { hasSpatialSelectionSource, requestsSpatialWideBloom, validSpatialWideBloom } from "./spatialBloom.js";
 import { resolveSpatialLightSelectionSpec, validSpatialLightSelectionValues, type SpatialLightSelectionSpec, type SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
-import {compileSpatialLightChannels,decodeSpatialLightChannels,requestsSpatialLightChannels,resolveSpatialMaskFields,validSpatialLightChannels} from "./spatialLightChannels.js";
+import {compileSpatialLightChannels,decodeSpatialLightChannels,resolveSpatialMaskFields,validSpatialLightChannels} from "./spatialLightChannels.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import { resolveSpatialPointShadows, requestsSpatialPointShadows, validSpatialPointShadows, type SpatialPointShadowSpec } from "./spatialPointShadows.js";
 import type { SpatialPoint } from "./dataSceneSpatial.js";
-import { requestsSpatialSunPcss, resolveSpatialSunPcss, validSpatialSunPcss, type SpatialSunPcssSpec } from "./spatialSunPcss.js";
+import { resolveSpatialSunPcss, validSpatialSunPcss, type SpatialSunPcssSpec } from "./spatialSunPcss.js";
 
 export type SpatialRgb = readonly [number, number, number];
 export interface SpatialHemisphereLightSpec {
@@ -113,7 +115,7 @@ export interface SpatialEnvironmentSpec {
 }
 /** Borrowed native environment v1..v15; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+  version: SpatialEnvironmentVersion;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
@@ -126,7 +128,7 @@ export interface SpatialEnvironmentBufferView {
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616, 632, 700].includes(v.length) ||
+    spatialEnvironmentVersion(v.length) === undefined ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -678,11 +680,12 @@ export function compileSpatialEnvironment(
   if (input === null) return new Float32Array();
   const spec = resolveSpatialEnvironmentSpec(input),
     selection = spec.lighting?.selection,
-    lightChannels = requestsSpatialLightProbes(spec) || requestsSpatialLightShafts(spec) || requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec) || requestsSpatialPointShadows(spec) || requestsSpatialSunPcss(spec) || requestsSpatialPointPcss(spec) || requestsSpatialHeightFog(spec),
+    feature = spatialEnvironmentFeature(spec),
+    lightChannels = feature !== undefined,
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
     v4 = lightChannels || !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(requestsSpatialLightProbes(spec) ? 700 : requestsSpatialLightShafts(spec) ? 632 : requestsSpatialHeightFog(spec) ? 616 : requestsSpatialPointPcss(spec) ? 608 : requestsSpatialSunPcss(spec) ? 600 : requestsSpatialPointShadows(spec) ? 592 : requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v = new Float32Array(spatialEnvironmentLength(feature?.wireVersion ?? (spec.composition ? 6 : fixedSunCenter ? 5 : v4 ? 4 : advancedLighting ? 3 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 2 : 1)));
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);

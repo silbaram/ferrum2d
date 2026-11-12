@@ -580,37 +580,7 @@ impl Engine {
         1
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 632 {
-            15
-        } else if self.spatial_scene.environment.value_len > 616 {
-            14
-        } else if self.spatial_scene.environment.value_len > 608 {
-            13
-        } else if self.spatial_scene.environment.value_len > 600 {
-            12
-        } else if self.spatial_scene.environment.value_len > 592 {
-            11
-        } else if self.spatial_scene.environment.value_len > 584 {
-            10
-        } else if self.spatial_scene.environment.value_len > 580 {
-            9
-        } else if self.spatial_scene.environment.value_len > 576 {
-            8
-        } else if self.spatial_scene.environment.value_len > 544 {
-            7
-        } else if self.spatial_scene.environment.value_len > 528 {
-            6
-        } else if self.spatial_scene.environment.value_len > 512 {
-            5
-        } else if self.spatial_scene.environment.value_len > 128 {
-            4
-        } else if self.spatial_scene.environment.value_len > 112 {
-            3
-        } else if self.spatial_scene.environment.value_len > 80 {
-            2
-        } else {
-            1
-        }
+        self.spatial_scene.environment.abi_version()
     }
     /// Cold capability for explicit environment v7 packed light/shadow channels.
     pub fn spatial_light_channel_abi_version(&self) -> u32 {

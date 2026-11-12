@@ -1,13 +1,6 @@
-import { requestsSpatialLightProbes, supportsSpatialLightProbes } from "./spatialLightProbes.js";
-import { requestsSpatialLightShafts, supportsSpatialLightShafts } from "./spatialLightShafts.js";
-import { requestsSpatialHeightFog, supportsSpatialHeightFog } from "./spatialHeightFog.js";
-import { requestsSpatialPointPcss, supportsSpatialPointPcss } from "./spatialPointPcss.js";
-import { requestsSpatialSunPcss, supportsSpatialSunPcss } from "./spatialSunPcss.js";
-import { requestsSpatialPointShadows, supportsSpatialPointShadows } from "./spatialPointShadows.js";
-import { requestsSpatialWideBloom, supportsSpatialWideBloom } from "./spatialBloom.js";
-import { requestsSpatialLightSelection, supportsSpatialLightSelection } from "./spatialLightSelection.js";
+import { spatialEnvironmentCapabilities, supportsSpatialEnvironment } from "./spatialEnvironmentFeatures.js";
+import { supportsSpatialLightSelection } from "./spatialLightSelection.js";
 import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
-import {requestsSpatialLightChannels,supportsSpatialLightChannels} from "./spatialLightChannels.js";
 import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
@@ -1036,15 +1029,7 @@ export async function createEngineWithFramePipeline(
       }))];
     },
     supportsSpatialReceiverMasks: () => { requireAlive(); return supportsSpatialReceiverMasks(rustEngine); },
-    supportsSpatialLightChannels: () => { requireAlive(); return supportsSpatialLightChannels(rustEngine); },
-    supportsSpatialLightProbes: () => { requireAlive(); return supportsSpatialLightProbes(rustEngine); },
-    supportsSpatialLightShafts: () => { requireAlive(); return supportsSpatialLightShafts(rustEngine); },
-    supportsSpatialHeightFog: () => { requireAlive(); return supportsSpatialHeightFog(rustEngine); },
-    supportsSpatialPointPcss: () => { requireAlive(); return supportsSpatialPointPcss(rustEngine); },
-    supportsSpatialSunPcss: () => { requireAlive(); return supportsSpatialSunPcss(rustEngine); },
-    supportsSpatialPointShadows: () => { requireAlive(); return supportsSpatialPointShadows(rustEngine); },
-    supportsSpatialWideBloom: () => { requireAlive(); return supportsSpatialWideBloom(rustEngine); },
-    supportsSpatialLightSelection: () => { requireAlive(); return supportsSpatialLightSelection(rustEngine); },
+    ...spatialEnvironmentCapabilities(rustEngine, requireAlive),
     supportsSpatialRampAxis: () => {
       requireAlive();
       return typeof rustEngine.spatial_ramp_axis_abi_version === "function" &&
@@ -1057,15 +1042,7 @@ export async function createEngineWithFramePipeline(
     },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
-      if (requestsSpatialLightProbes(environment) && !supportsSpatialLightProbes(rustEngine)) return false;
-      if (requestsSpatialLightShafts(environment) && !supportsSpatialLightShafts(rustEngine)) return false;
-      if (requestsSpatialHeightFog(environment) && !supportsSpatialHeightFog(rustEngine)) return false;
-      if (requestsSpatialPointPcss(environment) && !supportsSpatialPointPcss(rustEngine)) return false;
-      if (requestsSpatialSunPcss(environment) && !supportsSpatialSunPcss(rustEngine)) return false;
-      if (requestsSpatialPointShadows(environment) && !supportsSpatialPointShadows(rustEngine)) return false;
-      if (requestsSpatialWideBloom(environment) && !supportsSpatialWideBloom(rustEngine)) return false;
-      if (requestsSpatialLightSelection(environment) && !supportsSpatialLightSelection(rustEngine)) return false;
-      if (requestsSpatialLightChannels(environment) && !supportsSpatialLightChannels(rustEngine)) return false;
+      if (!supportsSpatialEnvironment(rustEngine, environment)) return false;
       const values = compileSpatialEnvironment(environment);
       return typeof rustEngine.preflight_spatial_camera_environment === "function"
         ? rustEngine.preflight_spatial_camera_environment(

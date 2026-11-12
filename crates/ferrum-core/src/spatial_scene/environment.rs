@@ -1,7 +1,18 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 700;
+/// Append-only wire layouts, indexed by ABI version minus one.
+const ENVIRONMENT_LAYOUT_LENGTHS: [usize; 15] = [
+    80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616, 632, 700,
+];
+pub(crate) const ENVIRONMENT_VALUES: usize =
+    ENVIRONMENT_LAYOUT_LENGTHS[ENVIRONMENT_LAYOUT_LENGTHS.len() - 1];
+fn environment_version(length: usize) -> Option<u32> {
+    ENVIRONMENT_LAYOUT_LENGTHS
+        .iter()
+        .position(|&size| size == length)
+        .map(|index| index as u32 + 1)
+}
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -24,31 +35,16 @@ pub(crate) struct SpatialEnvironment {
     selection: light_selection::LightSelection,
 }
 impl SpatialEnvironment {
+    pub(crate) fn abi_version(&self) -> u32 {
+        // The absent/default environment has historically reported version 1.
+        environment_version(self.value_len).unwrap_or(1)
+    }
+
     pub fn new(v: &[f32]) -> Option<Self> {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![
-            80,
-            112,
-            128,
-            512,
-            528,
-            544,
-            LIGHT_CHANNEL_VALUES,
-            580,
-            584,
-            592,
-            600,
-            608,
-            616,
-            632,
-            ENVIRONMENT_VALUES,
-        ]
-        .contains(&v.len())
-        {
-            return None;
-        }
+        environment_version(v.len())?;
         let mut a = [0.; ENVIRONMENT_VALUES];
         a[..v.len()].copy_from_slice(v);
         if a.iter().any(|x| !x.is_finite())

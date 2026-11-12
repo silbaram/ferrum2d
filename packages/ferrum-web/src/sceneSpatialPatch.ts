@@ -1,12 +1,4 @@
-import { requestsSpatialLightProbes } from "./spatialLightProbes.js";
-import { requestsSpatialLightShafts } from "./spatialLightShafts.js";
-import { requestsSpatialHeightFog } from "./spatialHeightFog.js";
-import { requestsSpatialPointPcss } from "./spatialPointPcss.js";
-import { requestsSpatialSunPcss } from "./spatialSunPcss.js";
-import { requestsSpatialPointShadows } from "./spatialPointShadows.js";
-import { requestsSpatialWideBloom } from "./spatialBloom.js";
-import { requestsSpatialLightSelection } from "./spatialLightSelection.js";
-import {requestsSpatialLightChannels} from "./spatialLightChannels.js";
+import { spatialEnvironmentFeature } from "./spatialEnvironmentFeatures.js";
 import {
   resolveDataSceneSpatialSpec,
   resolveSpatialCameraSpec,
@@ -223,17 +215,12 @@ export function applySceneSpatialPatch(
       )
     )
       throw new Error("Invalid spatial patch operation");
-    if (operation.kind === "setEnvironment" && requestsSpatialLightProbes(operation.changes.environment) && patch.version < 16) throw new Error("Light probes requires spatial patch version 16");
-    if (operation.kind === "setEnvironment" && requestsSpatialLightShafts(operation.changes.environment) && patch.version < 15) throw new Error("Light shafts requires spatial patch version 15");
-    if (operation.kind === "setEnvironment" && requestsSpatialHeightFog(operation.changes.environment) && patch.version < 14) throw new Error("Height fog requires spatial patch version 14");
-    if (operation.kind === "setEnvironment" && requestsSpatialPointPcss(operation.changes.environment) && patch.version < 13) throw new Error("Point PCSS requires spatial patch version 13");
-    if (operation.kind === "setEnvironment" && requestsSpatialSunPcss(operation.changes.environment) && patch.version < 12) throw new Error("Sun PCSS requires spatial patch version 12");
-    if (operation.kind === "setEnvironment" && requestsSpatialPointShadows(operation.changes.environment) && patch.version < 11) throw new Error("Point shadows require spatial patch version 11");
-    if (operation.kind === "setEnvironment" && requestsSpatialWideBloom(operation.changes.environment) && patch.version < 10) throw new Error("Wide Bloom requires spatial patch version 10");
-    if (operation.kind === "setEnvironment" && requestsSpatialLightSelection(operation.changes.environment) && patch.version < 9)
-      throw new Error("Light selection requires spatial patch version 9");
-    if ((hasOwn(operation.changes, "lightMask") || hasOwn(operation.changes, "shadowMask") ||
-        operation.kind === "setEnvironment" && requestsSpatialLightChannels(operation.changes.environment)) && patch.version < 8)
+    if (operation.kind === "setEnvironment") {
+      const feature = spatialEnvironmentFeature(operation.changes.environment);
+      if (feature && patch.version < feature.patchVersion)
+        throw new Error(`${feature.patchMessage} spatial patch version ${feature.patchVersion}`);
+    }
+    if ((hasOwn(operation.changes, "lightMask") || hasOwn(operation.changes, "shadowMask")) && patch.version < 8)
       throw new Error("Receiver/light channels require spatial patch version 8");
     if (operation.kind === "setEnvironment") {
       if (patch.version < 6 || Object.keys(operation.changes).some(key=>!["environment","lightBindings"].includes(key)) ||
@@ -651,16 +638,14 @@ export function sceneSpatialReferencesInstance(
 }
 
 export function sceneSpatialPatchVersion(operations: readonly SceneSpatialPatchOperation[]): SceneSpatialPatch["version"] {
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightProbes(op.changes.environment))) return 16;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightShafts(op.changes.environment))) return 15;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialHeightFog(op.changes.environment))) return 14;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialPointPcss(op.changes.environment))) return 13;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialSunPcss(op.changes.environment))) return 12;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialPointShadows(op.changes.environment))) return 11;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialWideBloom(op.changes.environment))) return 10;
-  if (operations.some(op => op.kind === "setEnvironment" && requestsSpatialLightSelection(op.changes.environment))) return 9;
-  return operations.some(op => hasOwn(op.changes, "lightMask") || hasOwn(op.changes, "shadowMask") ||
-    op.kind === "setEnvironment" && requestsSpatialLightChannels(op.changes.environment)) ? 8 : operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+  let environmentVersion: SceneSpatialPatch["version"] = 1;
+  for (const operation of operations) {
+    if (operation.kind !== "setEnvironment") continue;
+    const feature = spatialEnvironmentFeature(operation.changes.environment);
+    if (feature && feature.patchVersion > environmentVersion) environmentVersion = feature.patchVersion;
+  }
+  if (environmentVersion > 1) return environmentVersion;
+  return operations.some(op => hasOwn(op.changes, "lightMask") || hasOwn(op.changes, "shadowMask")) ? 8 : operations.some(op => (op.kind === "addModel" || op.kind === "updateModel") && hasOwn(op.changes, "shadowOnly")) ? 7 : operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
     (op) => op.kind === "setBillboardNormalTexture",
   )
     ? 4
