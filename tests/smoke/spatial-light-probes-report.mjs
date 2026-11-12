@@ -7,6 +7,8 @@ const cross = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]
 const add = (a,b,s=1) => a.map((v,i) => v + s*b[i]);
 const dot = (a,b) => a.reduce((s,x,i) => s+x*b[i],0);
 const encode = x => Math.min(255,255*(x<=.0031308 ? 12.92*x : 1.055*x**(1/2.4)-.055));
+const decode = x => x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4;
+const resourceFields = ["textureCount", "renderTargetCount", "bufferCount", "programCount", "bufferBytes"];
 const boxes = PROBE_TERRAIN.map(t => ({lo:[t.x,t.baseElevation,-t.y-t.depth],hi:[t.x+t.width,t.elevation,-t.y]}));
 
 // Independent double-precision CPU reference from authored world-space spheres.
@@ -61,6 +63,7 @@ export async function auditLightProbePixels(rows,readImage){
   for(const row of rows){const image=decodePng(await readImage(row.image));assert.equal(image.width,row.width);assert.equal(image.height,row.height);images.set(row.name,image);
     assert(row.warm.terrainTriangleCount>0);assert.equal(row.warm.shadowPassCount,0);assert.equal(row.warm.shadowUploadBytes,0);
     for(const field of ["drawCalls","effectDrawCalls","effectTextureBytes"])assert(Number.isInteger(row.warm[field])&&row.warm[field]>=0,`Missing probe cost ${field}`);
+    for (const field of resourceFields) assert(Number.isInteger(row.resources?.[field]) && row.resources[field] >= 0, `Missing/invalid probe resource ${field}`);
     assert(row.camera.length===28&&row.camera.every(Number.isFinite));
   }
   const identity=(a,b)=>{const x=images.get(a).pixels,y=images.get(b).pixels;assert.equal(x.length,y.length);assert(x.every((v,i)=>Math.abs(v-y[i])<=1),`Probe identity ${a}/${b}`);};
@@ -68,14 +71,24 @@ export async function auditLightProbePixels(rows,readImage){
   for(const name of ["reverse","legacy","ao-zero","saved","fresh-restore","re-enabled",...(names.includes("recovered")?["recovered"]:[])])identity("overlap",name);
   identity("single","duplicate");identity("lighting-off-plain","lighting-off");
   const baseline=byName.get("plain"),metrics={};
+  for (const row of rows) {
+    const costBase = row.name.startsWith("lighting-off") ? byName.get("lighting-off-plain") : baseline;
+    // AO may allocate its indirect target, but not extra geometry/uniform buffers.
+    const fields = row.name === "ao" ? ["bufferCount", "programCount", "bufferBytes"] : resourceFields;
+    for (const field of fields) {
+      // Device recovery clears the lazily cached AO pipelines; no growth is allowed.
+      if (row.name === "recovered" && field === "programCount")
+        assert(row.resources[field] > 0 && row.resources[field] <= costBase.resources[field], `Probe resource growth ${row.name}/${field}`);
+      else assert.equal(row.resources[field], costBase.resources[field], `Probe resource growth ${row.name}/${field}`);
+    }
+    if (row.name !== "ao") for (const field of ["drawCalls", "effectDrawCalls", "effectTextureBytes"])
+      assert.equal(row.warm[field], costBase.warm[field], `Probe added work ${row.name}/${field}`);
+  }
   for(const c of PROBE_CASES){const row=byName.get(c.name),image=images.get(c.name);
     if(c.environment.lighting.probes!==undefined)assert.equal(row.environmentVersion,15);
     const active=c.environment.lighting.enabled!==false;
     if(row.environmentVersion===15){assert.equal(row.environment[633],active?c.environment.lighting.probes.length:0);assert.equal(row.environment[632],active?1:0);}
     if(!c.ao){
-      const costBase=active?baseline:byName.get("lighting-off-plain");
-      for(const field of ["drawCalls","effectDrawCalls","effectTextureBytes"])assert.equal(row.warm[field],costBase.warm[field],`Probe added work ${c.name}/${field}`);
-      assert.equal(row.resources.textureCount,costBase.resources.textureCount);assert.equal(row.resources.renderTargetCount,costBase.resources.renderTargetCount);
       let samples=0,maxError=0;
       for(let gy=2;gy<=18;gy++)for(let gx=2;gx<=18;gx++){
         const x=Math.floor(row.width*gx/20),y=Math.floor(row.height*gy/20),expected=probePixelReference(row,c.environment,x,y);if(!expected)continue;
@@ -86,7 +99,16 @@ export async function auditLightProbePixels(rows,readImage){
     }
   }
   const a=images.get("overlap").pixels,b=images.get("ao").pixels;
-  let darkened=0;for(let i=0;i<a.length;i+=4)if(a[i]+a[i+1]+a[i+2]>b[i]+b[i+1]+b[i+2]+8)darkened++;
+  // This fixture contains only indirect diffuse. AO visibility is bounded to 0.1..1;
+  // requiring both bounds rejects clears/black output as well as accidental brightening.
+  let darkened=0;
+  for(let i=0;i<a.length;i+=4){
+    for(let k=0;k<3;k++){
+      const minimum=encode(decode(a[i+k]/255)*.1);
+      assert(b[i+k]>=minimum-2.5 && b[i+k]<=a[i+k]+2.5, `Probe AO radiance bounds at pixel ${i/4}, channel ${k}`);
+    }
+    if(a[i]+a[i+1]+a[i+2]>b[i]+b[i+1]+b[i+2]+8)darkened++;
+  }
   assert(darkened>20,"AO must darken probe indirect light near contacts");
   return {states:rows.length,metrics,aoDarkened:darkened};
 }

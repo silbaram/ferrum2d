@@ -27,16 +27,24 @@ async function probe(backend,projection,colorManagement){
   engine=await makeEngine();applyDataSceneAuthoringDocument(engine,doc,{colorManagement});engine.start();step();step();
   const draw=async()=>{check(frame.gameState===GAME_STATE_CODE.playing&&frame.entityCount===1,"Light probes live state");renderer.render();const stats={...renderer.renderCommands(packet).spatial};renderer.renderPostProcess();
    check(stats.terrainTriangleCount>0&&!errors.length,"Light probes geometry/GPU validation",{stats,errors});return{data:await pixels(renderer,canvas),stats,resources:renderer.resourceStats()};};
-  const row=async(name,environment,direction="down")=>{
+  const row=async(name,environment)=>{
    window.lightProbeState={backend,projection,colorManagement,name};
    if(name.endsWith("-plain")||name==="recovered")console.debug("environment state light probes",backend,projection,colorManagement,name);
-   if(environment!==undefined){check(engine.setDataSceneSpatialEnvironment(environment),"Light probes environment rejected",name);check(engine.setDataSceneSpatialCamera(probeCamera(projection,direction),renderer.viewportSize()),"Light probes camera rejected");step();}
+   if(environment!==undefined){check(engine.setDataSceneSpatialEnvironment(environment),"Light probes environment rejected",name);check(engine.setDataSceneSpatialCamera(probeCamera(projection),renderer.viewportSize()),"Light probes camera rejected");step();}
    const first=await draw(),warm=await draw();
    check(difference(first.data,warm.data)===0,"Light probes warm pixels changed",name);
    check(warm.stats.shadowPassCount===0&&warm.stats.shadowUploadBytes===0,"Light probes warm shadow budget",name);
    rows.push({name,colorManagement,width:canvas.width,height:canvas.height,stats:first.stats,warm:warm.stats,resources:warm.resources,camera:Array.from(packet.spatial.camera),environment:Array.from(packet.spatial.environment.values),presentation:Array.from(packet.spatial.presentation??[0,0,1,1,0,0]),environmentVersion:packet.spatial.environment?.version,image:png(warm.data,canvas.width,canvas.height)});images.push(warm.data);
   };
-  for(const c of PROBE_CASES)await row(c.name,c.environment,c.direction);
+  // Warm the unlit path before taking resource baselines. In linear-sRGB WebGL2
+  // this lazily allocates the scene target's depth renderbuffer, independently of probes.
+  await draw();await draw();
+  // WebGPU retains additional MRT pipelines after first use of AO. Prepare them
+  // without probes so later comparisons measure only resources added by probes.
+  check(engine.setDataSceneSpatialEnvironment({...PROBE_CASES.find(c=>c.name==="plain").environment,
+   ambientOcclusion:PROBE_CASES.find(c=>c.name==="ao").environment.ambientOcclusion}),"Light probes AO baseline rejected");
+  step();await draw();await draw();
+  for(const c of PROBE_CASES)await row(c.name,c.environment);
   const savedEnvironment=PROBE_CASES.find(c=>c.name==="overlap").environment;
   await row("saved",savedEnvironment);
   // Authored document has no probes: only the live progress carries v18.
