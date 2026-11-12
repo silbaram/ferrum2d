@@ -194,7 +194,8 @@ npm run ferrum:check
 ```
 
 The generator pins package URLs from the selected release. Use `npm run ferrum:agents` to install the project's agent instructions explicitly.
-The [Developer Quickstart](docs/en/engine/developer-quickstart.md) covers templates, project files, and deployment checks.
+[Run Your First Game](docs/en/engine/developer-quickstart.md) walks through installation, play, and a movement-speed change.
+Agents implementing features should start with [AI Game Development](docs/en/engine/ai-game-development.md).
 For setup without generating a game, see the [AI installation guide (Korean)](docs/engine/ai-agent-install.md).
 
 | Package | Responsibility |
@@ -257,8 +258,9 @@ Full `CI` and `Pages` deployment are manually dispatched. Build the local site w
 | `examples/` | Feature Lab, focused physics scenarios, and genre examples |
 | `docs/`, `scripts/` | Usage contracts, architecture, validation, planning, and build tools |
 
-Start with the [English documentation index](docs/en/README.md), [User Guide](docs/en/engine/user-guide.md),
-[Feature Guide](docs/en/engine/showcase-hub.md), or [Public API](docs/en/engine/public-api.md).
+For simple instructions, start with the [User Guide](docs/en/engine/user-guide.md) and [First Game](docs/en/engine/developer-quickstart.md).
+For agent implementation, start with [AI Game Development](docs/en/engine/ai-game-development.md).
+Both paths share [Public API](docs/en/engine/public-api.md); the [English index](docs/en/README.md) maps the full documentation.
 The English index identifies detailed references that are still in Korean. Release history is in [CHANGELOG](CHANGELOG.md).
 
 ## License

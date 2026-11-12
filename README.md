@@ -7,7 +7,7 @@
 Rust / WebAssembly로 게임을 실행하고, TypeScript와 WebGL2로 브라우저에 그립니다.
 AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·에셋을 편집하고 실행 결과를 확인합니다.
 
-[브라우저에서 체험하기](https://silbaram.github.io/ferrum2d/) · [시작하기](#시작하기) · [기능](#어떤-기능이-있나요) · [예제](#예제-갤러리) · [기능 안내](docs/engine/ai-feature-guide.md) · [문서](docs/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
+[브라우저에서 체험하기](https://silbaram.github.io/ferrum2d/) · [시작하기](#시작하기) · [기능](#어떤-기능이-있나요) · [예제](#예제-갤러리) · [AI 개발 안내](docs/engine/ai-game-development.md) · [문서](docs/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
 
 ![Ferrum2D HD-2D 마을: Ferrum2D Studio](docs/development/quality/screenshots/placement-village.png)
 
@@ -311,8 +311,8 @@ scripts/                       빌드 · 검증 · 배포 준비 도구
 
 | 목적 | 문서 |
 | --- | --- |
-| 처음 시작 | [개발자 퀵스타트](docs/engine/developer-quickstart.md) · [사용자 가이드](docs/engine/user-guide.md) |
-| AI로 게임 개발 | [설치 지침](docs/engine/ai-agent-install.md) · [기능 안내](docs/engine/ai-feature-guide.md) |
+| 사람이 간단히 사용 | [간단 사용법](docs/engine/user-guide.md) · [첫 게임 실행하기](docs/engine/developer-quickstart.md) |
+| AI가 게임 개발 | [AI 게임 개발 안내](docs/engine/ai-game-development.md) · [설치 지침](docs/engine/ai-agent-install.md) · [기능 찾기](docs/engine/ai-feature-guide.md) |
 | 기능과 예제 둘러보기 | [Showcase Hub](docs/engine/showcase-hub.md) |
 | 씬·오브젝트·카메라 | [Data Scene Authoring](docs/engine/data-scene-authoring.md) · [HD-2D](docs/engine/data-scene-spatial.md) · [Studio 안내](apps/studio/README.md) |
 | API·호환성 | [Public API](docs/engine/public-api.md) · [Migration Guide](docs/engine/public-api/migration-guide.md) |

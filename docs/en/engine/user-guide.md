@@ -1,137 +1,79 @@
-# Ferrum2D User Guide
+# Ferrum2D Simple User Guide
 
 [한국어](../../engine/user-guide.md) · English
 
-Ferrum2D is an **AI agent-first 2D and HD-2D web game engine**. Rust/Wasm owns game state, collision,
-scene progression, and render command generation. TypeScript handles browser input, asset loading, audio,
-and WebGL2 or optional WebGPU rendering. Agents edit specifications and code, and people inspect the result in Ferrum2D Studio.
+Ferrum2D makes **2D and HD-2D games that run in a browser**.
+You can build pixel games or combine 2D characters with terrain and static models.
+An AI agent can implement game features while you review the result in the browser and adjust scenes in **Ferrum2D Studio**.
 
-This guide describes the development source. When using a released package, check its installed types and the documentation for that release.
+## Try it without installing
 
-## Choose a starting point
-
-| Goal | Start with |
-| --- | --- |
-| Try features without installing anything | [Feature and Example Guide](showcase-hub.md) and the [demo site](https://silbaram.github.io/ferrum2d/) |
-| Create a game project | [Developer Quickstart](developer-quickstart.md) |
-| Select a public API | [Public API](public-api.md) |
-| Edit scenes, assets, or cameras | [Scene Authoring (Korean)](../../engine/data-scene-authoring.md) |
-| Ask an agent to set up tools without creating game code | [AI Installation (Korean)](../../engine/ai-agent-install.md) |
-
-## Current capabilities
-
-| Area | Features | Detailed reference |
-| --- | --- | --- |
-| 2D rendering | Sprites, animation, tilemaps, layers, 9-slice, pixel-perfect presentation, palettes, and post-processing | [Presentation (Korean)](../../engine/data-scene-presentation.md), [Core API (Korean)](../../engine/public-api/core.md) |
-| HD-2D | Terrain, slopes, floors, static models, billboards, cameras, lights, and shadows | [Spatial Scenes (Korean)](../../engine/data-scene-spatial.md) |
-| Gameplay | Movement, navigation, triggers, dialogue, quests, saving, combat, and scene transitions | [Native Runtime (Korean)](../../engine/data-scene-native-runtime.md) |
-| Physics | Bodies, colliders, materials, joints, CCD, queries, controllers, and destructible terrain | [Physics Spec (Korean)](../../engine/physics-spec.md) |
-| Authoring tools | Scene browsing, placement, transforms, layers, game cameras, pixel editing, PNG import, and normal generation | [Scene Authoring (Korean)](../../engine/data-scene-authoring.md) |
-| Asset integration | Atlases, Tiled/LDtk and Aseprite data, loading, caching, and resource lifetime management | [Core API (Korean)](../../engine/public-api/core.md), [Authoring API (Korean)](../../engine/public-api/authoring.md) |
-
-Each reference defines its supported inputs and limits. TypeScript connects content and platform services;
-Rust remains the source of truth for gameplay progression and physics.
-
-## Run the repository examples
-
-Prepare the source environment in the [Developer Quickstart](developer-quickstart.md#work-on-the-engine-source), then run commands from the repository root.
-Run `pnpm build` before the first launch or after modifying Rust. Use the address and port printed by Vite.
-
-| Example | Command | What to inspect |
-| --- | --- | --- |
-| Engine Feature Lab | `pnpm dev:starter-runtime` | 31 independent experiments with controls, observations, and API names |
-| 2D garden and HD-2D village | `pnpm dev:studio` | Use `?scene=garden` or `?scene=village` for placement and game preview |
-| Physics Sandbox | `pnpm dev:physics-sandbox` | Seven focused scenarios and collision/solver diagnostics |
-| Top-down Shooter | `pnpm dev:topdown` | Movement, aiming, projectiles, waves, scoring, and Game Spec |
-| Breakout | `pnpm dev:breakout` | Reflection, collision events, brick removal, and particles |
-| Platformer | `pnpm dev:platformer` | Jumping, one-way platforms, and moving platforms |
-| Little Garden of Light | `pnpm dev:pixel-art` | Editable pixel sources, collection, lighting, palettes, and effects |
-
-Follow **topic-based experiments → game applications**. The site entry opens the Feature Lab directly.
-Use the example switcher to open games, advanced physics, or authoring tools, and the topic menu to select individual experiments. Each screen provides instructions, observations, and related experiments.
-Run `pnpm build && pnpm build:pages && pnpm preview:examples` to browse the whole suite locally.
-A standalone Vite server explains how to launch the suite rather than linking to apps it cannot serve.
-Minimal and the legacy `?mode=playground`/`?mode=starter` routes remain reference/test fixtures, outside the main catalog.
-The [feature guide](showcase-hub.md) lists all experiments.
+[Open the Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/).
+Choose lighting, physics, cameras, or animation. Follow the on-screen actions and compare the result as you change settings.
+Use the example switcher to try the shooter, platformer, or Breakout.
+[Explore Features and Examples](showcase-hub.md) provides direct links. Some demo controls are in Korean.
 
 ## Edit and play in Studio
 
-1. Open the garden or village through **File → Examples**, or open a project's Scene Authoring JSON.
-2. Select objects and change placement, transforms, layers, or assets. Use **My Changes** to compare against the original document.
-3. Use **Game Preview** to inspect the authored game camera and **Play** to run the supported scene behavior.
-4. **Stop** restores authored placement, drafts, and the editor camera. A character's runtime position is not saved as its authored placement.
-5. Save or export according to the storage mode shown for the current document.
+Studio lets you arrange objects, adjust their size and lighting, work with assets, and preview a scene.
+Start by [opening the HD-2D village](https://silbaram.github.io/ferrum2d/studio/?scene=village).
 
-The editor camera navigates the workspace. The game camera defines the view saved for gameplay.
-Game Preview runs the Scene Authoring runtime; it does not automatically execute an external project's arbitrary TypeScript entrypoint or custom HUD.
+![The HD-2D village in Ferrum2D Studio](../../development/quality/screenshots/placement-village.png)
 
-| Environment | Saving and project access |
+Objects are listed on the left, the scene is in the middle, and the selected object's settings are on the right.
+This is a saved capture of the real example with Korean UI. Layout and labels can vary by version.
+Studio has its own Korean/English language selector.
+
+1. Select a tree, character, or other object in the list or scene. Its settings appear on the right.
+2. Drag the selected object to move it. Use the undo button if needed.
+3. Open **Game Preview** to see the scene through the game camera.
+4. Press **Play** to run the scene. **Stop** returns to your editing state.
+5. Review **My Changes**, then save or export the scene.
+
+Open other examples from **File → Examples**. Compare the 2D garden with the HD-2D village.
+Use the game camera settings to change the game's view; moving the editing camera is a separate action.
+
+### Where are changes saved?
+
+| Environment | Saving |
 | --- | --- |
-| GitHub Pages and built-in browser examples | Export only. They do not overwrite the example source or a local project automatically. |
-| Local development server | Saving is disabled by default. An explicitly enabled adapter/endpoint can save within its permitted scope. |
-| Desktop application | Saving uses the project, document, and asset paths authorized by the host. |
+| Examples on the website | Export a file. The website's original example is not overwritten. |
+| Local development server | Direct saving is available only when enabled for the project. Check the displayed save status. |
+| Desktop Studio | Save supported documents and assets in the project you opened. |
 
-Scene and pixel-source saving are separate from `.ferrum-placement-handoff.json`.
-The handoff communicates selection, drafts, and asset references to an agent; it is not a replacement for saving the scene.
-The [Studio guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md) covers storage permissions,
-English/Korean UI, and `Ctrl+K` command search.
+Keep exported files somewhere you can find them. A **handoff** contains editing context for an agent; it is separate from saving the scene itself.
+Studio previews scene behavior. Run the game project to check its custom game screen and menus.
 
-## Files to edit in a game project
+## Start your own game
 
-| Input | Generated project path | Reference |
-| --- | --- | --- |
-| Shooter balance, waves, weapons, and camera | `public/game.json` in the `topdown` template | [Game Spec (Korean)](../../examples/topdown-shooter/game-spec.md) |
-| Scenes, prefabs, placement, and asset references | `public/scene-authoring.json` | [Scene Authoring (Korean)](../../engine/data-scene-authoring.md) |
-| Images, audio, and tile sources | `public/assets/` and asset metadata | [Authoring API (Korean)](../../engine/public-api/authoring.md) |
-| Runtime bootstrap, HUD, and platform integration | `src/main.ts`, `src/styles.css` | [Core API (Korean)](../../engine/public-api/core.md) |
-| Physics authoring | The project's Physics Spec input | [Physics Spec (Korean)](../../engine/physics-spec.md) |
+Follow [Run Your First Game](developer-quickstart.md), or give an agent your project folder and
+[AI Game Development](ai-game-development.md), along with a request such as:
 
-How a scene file affects gameplay depends on the template and bootstrap. Opening it in Studio does not wire it into another entrypoint.
-Check `project.runtimeInputs` in `npm run ferrum:report`.
-
-## Make and verify a change
-
-1. Check the installed package's public types and the relevant feature contract.
-2. Edit the specification, assets, or code. Use Studio drafts and handoff data when useful.
-3. Run the generated project's standard check:
-
-```bash
-npm run ferrum:check
+```text
+Create a small Ferrum2D top-down shooter in this folder.
+Use keyboard movement and mouse aiming.
+When finished, tell me how to run it and which controls to check.
 ```
 
-This runs validation, authoring/replay checks, and a production build in sequence.
-If it fails, read the JSON report's failed step and suggested next command.
-Then use `npm run dev` to check actual controls, gameplay, camera behavior, and audio.
-Before static deployment, run `npm run ferrum:deploy-report` and `npm run preview`.
-Install the generated project's agent instructions explicitly with `npm run ferrum:agents`.
+For an existing game, describe the result you want:
 
-## Change the Top-down Shooter example
-
-In the engine repository, edit `examples/topdown-shooter/public/game.json`.
-See [Game Spec (Korean)](../../examples/topdown-shooter/game-spec.md) for fields, defaults, constraints, and presets.
-
-```bash
-pnpm validate:game-spec
-pnpm dev:topdown
+```text
+Make the character move a little faster and increase the time between early enemy spawns.
+Validate the change and tell me which settings changed.
 ```
 
-| Input | Action |
+Play the result and review movement, difficulty, lighting, and sound before choosing the next change.
+Use the [shared references](../README.md#shared-detailed-references) when you want exact settings or APIs.
+
+## Common problems
+
+| Situation | First check |
 | --- | --- |
-| Enter or Space | Start from the title screen |
-| W/A/S/D | Move |
-| Mouse movement | Aim |
-| Left mouse button or Space | Fire |
-| Space after game over | Restart |
+| The game does not open | Keep the development server running and open the URL printed in its terminal. |
+| No audio | Click the game or press Start, then check volume. |
+| Studio cannot save | Check whether the document is export only. |
+| A Studio edit does not appear in the game | Save/export the scene and ask the agent to verify that the game actually loads that file. |
+| A documented menu is missing | Check your release's instructions; the website and development source may be newer. |
 
-Append `?debug=true` to show the debug overlay. Touch, gamepad, virtual controls, and input contexts are described in
-[Input Actions (Korean)](../../engine/input-actions.md).
-
-## Support boundaries
-
-WebGL2 is the default renderer. WebGPU is optional and depends on browser support and feature-specific contracts.
-HD-2D combines 2D gameplay with static models and terrain.
-General-purpose visual editing of Behavior Recipe bodies or FSM/action graphs, multiplayer, Wasm threads,
-and skeletal animation require separate design and approval.
-
-Continue with the [Public API](public-api.md), [architecture (Korean)](../../development/architecture/architecture.md),
-or [regression checks (Korean)](../../development/quality/smoke-check.md).
+Studio supports scene and asset editing and preview. Agents implement game rules through settings and code.
+For more controls, see the [detailed Studio guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md).

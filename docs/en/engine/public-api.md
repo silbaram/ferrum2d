@@ -7,6 +7,10 @@ The engine's `ScenePlacementViewer` API remains a scene placement capability und
 
 [한국어](../../engine/public-api.md) · English
 
+This reference is shared by people and agents. Start with the [Simple User Guide](user-guide.md)
+for everyday use or [AI Game Development](ai-game-development.md) for implementation and validation.
+
+
 Use the package's public subpaths in game projects. They separate runtime, authoring, starters, optional features, and quality tooling.
 This English overview describes import policy and support levels. Detailed symbol contracts are linked below and are currently in Korean.
 The installed package's exported types and its release documentation determine what is available.

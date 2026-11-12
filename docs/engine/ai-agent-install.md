@@ -1,5 +1,8 @@
 # AI 에이전트용 Ferrum2D 초기 설치 지침
 
+이 문서는 AI의 **환경 설치 전용** 지침이다. 게임 생성·기능 구현 요청은 [AI 게임 개발 안내](ai-game-development.md)에서 시작한다.
+
+
 이 문서는 사용자의 게임 프로젝트에 **엔진 패키지, 개발 도구, AI 지침만 설치하는 절차**다. 설치가 끝나면 게임 요구사항을 기다린다. 초기 설치 요청만으로 예제 게임, `src/`, `public/`, HTML 화면, 배치 뷰어, replay fixture를 만들거나 개발 서버를 시작하지 않는다.
 
 `0.1.0-beta.7`의 `create-game`은 실행 가능한 예제 생성기다. `minimal`에도 슈팅 동작, HUD, authoring/replay 데이터와 viewer 코드가 들어 있다. **초기 설정에서는 어떤 `create-game` 템플릿도 실행하지 않고 엔진 tarball을 직접 설치한다.** 사용자가 예제 게임을 명시적으로 요청한 경우에만 [템플릿 퀵스타트](developer-quickstart.md)를 따른다.

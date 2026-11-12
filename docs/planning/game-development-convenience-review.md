@@ -1,6 +1,6 @@
 # 게임 개발 편의성 후보
 
-기준일: 2026-11-09
+기준일: 2026-11-12
 상태: 설계 후보·미착수. Agent Workflow 추가 공개는 제품 결정 대기다. 개별 항목의 필요성과 완료 조건을 정한 뒤 개발 계획으로 구체화한다.
 
 현재 제작 흐름은 [개발자 퀵스타트](../engine/developer-quickstart.md),
@@ -18,12 +18,13 @@ Ferrum2D Studio의 읽기 전용 [에셋 사용처 조회](../engine/data-scene-
 
 | 후보 | 착수 시 완료 조건 |
 | --- | --- |
-| 외부 맵 지원 범위 확대 | [현재 전체 맵](../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스) 이후 실제 필요를 확인해 다중 PNG·2,048개 초과·flip/animation·TSX·외부 level·IntGrid 어댑터를 각각 설계. 좌표/게임 상태·실패 원자성·원본 저장을 검증 |
+| 외부 맵 지원 범위 확대 | [현재 전체 맵](../engine/data-scene-authoring.md#tiledldtk-전체-맵-적용-개발-소스) 이후 실제 필요를 확인해 다중 PNG·2,048개 초과·flip/회전·TSX·외부 level·IntGrid 어댑터를 각각 설계. 좌표/게임 상태·실패 원자성·원본 저장을 검증 |
 | Data Scene 대규모 타일 맵 | 기존 sprite instance 기반 맵의 규모·CPU/draw 비용을 먼저 측정하고 native 타일 렌더 연결 필요성을 판단. 슈터용 오토타일·애니메이션을 다시 구현하는 항목으로 취급하지 않으며 navigation·충돌·저장·메모리 상한을 함께 검증 |
 | 외부 원본 변경의 자동 적용 | 기존 감지·명시적 재가져오기를 기준으로 자동 적용의 필요성 판단. 미저장 편집·Undo·clip ID·원본/catalog 관계·실패 복원과 오래된 결과 차단부터 설계 |
 | 추가 문서의 host 저장 | 기본 문서 밖 저장 대상과 project-root allowlist·동시 수정·원본/catalog 관계를 정함. browser-only export 경계 유지 |
 | Generated game 개발 reload | runtime 교체 시 asset/handle/input/오디오 수명과 stale 결과 차단을 정하고 실제 게임에서 재로딩 검증 |
 
+작성 시점 오토타일, Tiled/이름별 타일 애니메이션, 명시적 외부 TSJ 선택과 단일 tileset 선택은 이미 지원한다.
 전체 map import는 타일 프레임을 자동으로 gameplay/충돌로 해석하는 기능이 아니다.
 새 source 형식을 추가하기 전에 기존 authoring/patch와 agent handoff의 변환 계약을 확정한다.
 공식 desktop의 폴더 감지·texture/GLB 명시적 reimport와 기본 문서 저장은 다시 구현할 후보가 아니다.

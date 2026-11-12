@@ -9,7 +9,7 @@ Ferrum2D 패키지 구성은 엔진 런타임, 프로젝트 생성기, AI 개발
 | package | 역할 | 사용자 |
 | --- | --- | --- |
 | `@ferrum2d/ferrum-web` | 브라우저 런타임 엔진, WebGL2 platform layer, generated Wasm artifact, public API | Ferrum2D 게임 앱 |
-| `@ferrum2d/studio-kit` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | generated placement viewer와 Ferrum2D Studio host |
+| `@ferrum2d/studio-kit` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | 생성 프로젝트의 경량 Studio와 Ferrum2D Studio host |
 | `@ferrum2d/create-game` | 새 게임 프로젝트 생성 CLI. 템플릿과 `@ferrum2d/ferrum-web`, `@ferrum2d/studio-kit` dependency를 생성 프로젝트에 배치 | 새 프로젝트를 시작하는 개발자/AI agent |
 | `@ferrum2d/agents` | Ferrum2D consumer game development용 Codex/Claude agent, shared skill, Gemini command 설치 CLI | AI로 게임을 개발하는 사용자 |
 
@@ -52,7 +52,7 @@ npm run preview
 
 `ferrum:check`는 validation, asset, authoring, gameplay/runtime replay, production build를 순서대로 실행하고 첫 실패 단계와 다음 명령을 `ferrum2d.consumer.check.report`로 요약한다. `ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, generated file, internal import, root aggregate import, template별 `runtimeInputs`와 `project.deployment` 정적 웹 배포 계약을 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build를 실행하는 기본 소비자 검증 gate다. `ferrum:deploy-report`는 build 뒤 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 Wasm `application/wasm` 응답을 확인하는 별도 배포 gate다. 이 계약은 HTML `<base>`를 거부하고, 상대 literal `fetch(...)`가 있는 다중 HTML 디렉터리 산출물을 base ambiguity로 거부한다. 로컬 production 확인은 `file://` 대신 `preview`를 사용한다.
 
-Consumer smoke report는 internal QA artifact 계약이다. Studio Kit 명칭 전환으로 `tarballs.studioKit`과 project 요약의 `studioKit` 필드가 바뀌어 `ferrum2d.package.consumer-smoke.report`는 version 2를 사용한다. 생성 프로젝트의 `ferrum2d.consumer.project.report`도 version 2이며 `project.studioKit`과 `checks.hasStudioKitDependency`를 사용한다. 다른 report는 각자 선언한 version을 따른다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 v1 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
+Consumer smoke report는 internal QA artifact 계약이다. Studio Kit 명칭 전환으로 `tarballs.studioKit`과 project 요약의 `studioKit` 필드가 바뀌어 `ferrum2d.package.consumer-smoke.report`는 version 2를 사용한다. 생성 프로젝트의 `ferrum2d.consumer.project.report`도 version 2이며 `project.studioKit`과 `checks.hasStudioKitDependency`를 사용한다. 다른 report는 각자 선언한 version을 따른다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 report version 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
 
 기존 npm/pnpm 게임 프로젝트의 SDK 갱신은 create-game tarball의 `ferrum-update-game` bin과
 데스크톱의 **도움말 → 버전 및 업데이트**를 사용한다. Ferrum dependency를 동일 exact GitHub release로
@@ -88,7 +88,7 @@ Codex는 공식 subagent 파일인 `.codex/agents/*.toml`과 repo skill 위치�
 ## 배포 단계
 
 1. `@ferrum2d/ferrum-web`: 런타임 package 안정화와 beta publish guard를 먼저 유지한다.
-2. `@ferrum2d/studio-kit`: generated placement viewer와 Ferrum2D Studio host가 공유하는 lightweight helper package로 분리 배포한다.
+2. `@ferrum2d/studio-kit`: 생성 프로젝트의 경량 Studio와 Ferrum2D Studio host가 공유하는 lightweight helper package로 분리 배포한다.
 3. `@ferrum2d/create-game`: 런타임/Studio Kit dependency를 포함한 starter project generator로 분리 배포한다.
 4. `@ferrum2d/agents`: AI consumer 개발 환경을 명시적 `init` 명령으로 설치하는 도구로 분리 배포한다.
 
