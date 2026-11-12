@@ -19,9 +19,10 @@ export function writeLightShaftUniforms(out: Float32Array, frame: SpatialRenderB
   out.fill(0); out.set(e.shadowMatrices.subarray(e.shadowMatrices.length - 16), 0);
   const dx = c[20] - c[17], dy = c[21] - c[18], dz = c[22] - c[19], length = Math.hypot(dx, dy, dz);
   const fx = dx / length, fy = dy / length, fz = dz / length, horizontal = Math.hypot(fx, fz), rx = -fz / horizontal, rz = fx / horizontal;
+  const sunLength = Math.hypot(v[84], v[85], v[86]);
   out.set([c[17], c[18], c[19], c[16], fx, fy, fz, c[16] ? Math.tan(c[23] / 2) : c[23] / 2,
     rx, 0, rz, width / height, -rz * fy, rz * fx - rx * fz, rx * fy, c[24],
-    v[84], v[85], v[86], c[25], v[88] * v[620] * v[87] * v[617], v[89] * v[621] * v[87] * v[617], v[90] * v[622] * v[87] * v[617], v[618],
+    v[84] / sunLength, v[85] / sunLength, v[86] / sunLength, c[25], v[88] * v[620] * v[87] * v[617], v[89] * v[621] * v[87] * v[617], v[90] * v[622] * v[87] * v[617], v[618],
     v[619], v[623], v[93] / (2 * v[91]) + .000001, plan.samples, width, height, plan.width, plan.height,
     v[94], 2 * v[91], v[92], 0], 16);
 }
@@ -41,7 +42,8 @@ float visibility(vec3 world){
 void main(){
  vec2 uv=vec2(gl_FragCoord.x,u_p[11].w-gl_FragCoord.y)/u_p[11].zw;
  float d=depthAt(uv),near=u_p[7].w,far=u_p[8].w;
- bool perspective=u_p[4].w>0.;float z=perspective?2.*near*far/(far+near-(d*2.-1.)*(far-near)):mix(near,far,d);
+ // Avoid subtracting nearly equal far-plane values during perspective inversion.
+ bool perspective=u_p[4].w>0.;float z=mix(near,far,d);if(perspective && d<1.)z=near/((1.-d)+d*(near/far));
  vec3 offset=(u_p[6].xyz*((uv.x*2.-1.)*u_p[6].w)+u_p[7].xyz*(1.-uv.y*2.))*u_p[5].w;
  vec3 origin=u_p[4].xyz+(perspective?vec3(0.):offset),ray=perspective?normalize(u_p[5].xyz+offset):u_p[5].xyz;
  float cosine=dot(ray,u_p[5].xyz),start=near/cosine,stop=min(z/cosine,u_p[10].x),dt=max(stop-start,0.)/u_p[10].w;
@@ -67,7 +69,7 @@ fn visibility(world:vec3f)->f32{
 }
 @fragment fn fs_main(@builtin(position) position:vec4f)->@location(0)vec4f{
  let uv=position.xy/u.p[11].zw;let size=vec2i(textureDimensions(depth));let d=textureLoad(depth,clamp(vec2i(uv*vec2f(size)),vec2i(0),size-vec2i(1)),0);
- let near=u.p[7].w;let far=u.p[8].w;let perspective=u.p[4].w>0.;var z=mix(near,far,d);if(perspective){z=2.*near*far/(far+near-(d*2.-1.)*(far-near));}
+ let near=u.p[7].w;let far=u.p[8].w;let perspective=u.p[4].w>0.;var z=mix(near,far,d);if(perspective && d<1.){z=near/((1.-d)+d*(near/far));}
  let offset=(u.p[6].xyz*((uv.x*2.-1.)*u.p[6].w)+u.p[7].xyz*(1.-uv.y*2.))*u.p[5].w;
  var origin=u.p[4].xyz+offset;var ray=u.p[5].xyz;if(perspective){origin=u.p[4].xyz;ray=normalize(ray+offset);}
  let cosine=dot(ray,u.p[5].xyz);let start=near/cosine;let stop=min(z/cosine,u.p[10].x);let dt=max(stop-start,0.)/u.p[10].w;

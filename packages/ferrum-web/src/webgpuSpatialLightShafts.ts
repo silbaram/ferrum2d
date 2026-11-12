@@ -34,15 +34,24 @@ export class WebGpuSpatialLightShafts {
     });
     this.layout = resources.layout; this.pipeline = resources.pipeline; this.uniform = resources.uniform;
   }
-  private checked<T>(work: () => T): T {
+  private checked<T>(work: () => T, current: (resource: T) => boolean = () => true): T {
     this.device.pushErrorScope("validation"); this.device.pushErrorScope("out-of-memory");
-    try { return work(); }
+    let resource: T;
+    let completed = false;
+    const fail = (message: string): void => {
+      // An error scope may resolve after resize, OFF, or a replacement binding.
+      // Synchronous failures already rolled back their allocation in work().
+      if (completed && !this.destroyed && current(resource)) {
+        this.clearTarget(); this.failure = Error(message);
+      }
+    };
+    try { resource = work(); completed = true; return resource; }
     finally {
       const allocation = this.device.popErrorScope(), validation = this.device.popErrorScope();
       void Promise.all([allocation, validation]).then(errors => {
         const error = errors.find(Boolean);
-        if (error && !this.destroyed) this.failure = Error(`Light shafts GPU allocation failed: ${error.message}`);
-      }, error => { if (!this.destroyed) this.failure = Error(`Light shafts GPU validation failed: ${String(error)}`); });
+        if (error) fail(`Light shafts GPU allocation failed: ${error.message}`);
+      }, error => { fail(`Light shafts GPU validation failed: ${String(error)}`); });
     }
   }
   prepare(plan?: SpatialLightShaftPlan): GPUTextureView | undefined {
@@ -55,7 +64,7 @@ export class WebGpuSpatialLightShafts {
         const view = texture.createView(); this.clearTarget(); this.texture = texture; this.view = view;
         this.width = plan.width; this.height = plan.height; return view;
       } catch (error) { webGpuResources(this.device).destroy(texture); throw error; }
-    });
+    }, view => view === this.view);
   }
   draw(encoder: GPUCommandEncoder, frame: SpatialRenderBufferView, plan: SpatialLightShaftPlan, depth: GPUTextureView, shadow: GPUTextureView, width: number, height: number): void {
     if (this.failure) throw this.failure; if (!this.view) throw Error("Light shafts target is not prepared");
@@ -63,7 +72,7 @@ export class WebGpuSpatialLightShafts {
     if (!this.group || this.depth !== depth || this.shadow !== shadow) {
       this.group = this.checked(() => this.device.createBindGroup({ layout: this.layout, entries: [
         { binding: 0, resource: depth }, { binding: 1, resource: shadow }, { binding: 2, resource: { buffer: this.uniform } },
-      ] })); this.depth = depth; this.shadow = shadow;
+      ] }), group => group === this.group); this.depth = depth; this.shadow = shadow;
     }
     const pass = beginWebGpuRenderPass(this.device, encoder, { label: "Spatial sun light shafts", colorAttachments: [{ view: this.view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
     try { pass.setPipeline(this.pipeline); pass.setBindGroup(0, this.group); pass.draw(3); } finally { pass.end(); }

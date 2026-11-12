@@ -3,7 +3,8 @@ import { test } from "node:test";
 import type { Engine } from "../pkg/ferrum_core.js";
 import { createSpatialApi } from "../src/dataSceneSpatial.js";
 import { compileSpatialEnvironment, decodeSpatialEnvironment, resolveSpatialEnvironmentSpec, validSpatialEnvironmentValues, type SpatialEnvironmentSpec } from "../src/spatialEnvironment.js";
-import { spatialLightShaftPlan } from "../src/spatialLightShaftKernel.js";
+import { spatialLightShaftPlan, writeLightShaftUniforms } from "../src/spatialLightShaftKernel.js";
+import type { SpatialRenderBufferView } from "../src/dataSceneSpatial.js";
 import { spatialLightShaftsActive } from "../src/spatialLightShafts.js";
 import { createScenePlacementViewer, mergeScenePlacementPatch } from "../src/authoring.js";
 import { applySceneSpatialPatch, sceneSpatialPatchVersion } from "../src/sceneSpatialPatch.js";
@@ -16,6 +17,16 @@ const base: SpatialEnvironmentSpec = { composition: "separated", lighting: { lig
 const camera = { projection: "orthographic" as const, position: { x: 0, y: -200, elevation: 100 }, target: { x: 0, y: 0, elevation: 0 }, height: 200 };
 const document = { format: "ferrum2d.consumer.scene-authoring" as const, version: 1 as const,
   sceneComposition: { prefabs: {}, fragments: { main: { instances: [] } } }, behaviorRecipes: { entities: {} }, spatial: { camera, terrain: [], billboards: {} } };
+
+test("shaft phase normalizes all valid native sun direction magnitudes", () => {
+  const values = compileSpatialEnvironment({ ...base, lightShafts: { anisotropy: .8 } });
+  values.set([0, 0, -.25], 84); ok(validSpatialEnvironmentValues(values));
+  const c = new Float32Array(28); c.set([1, 0, 0, 0, 0, 0, -1, 1, .1, 800, 160, 90], 16);
+  const uniforms = new Float32Array(52);
+  writeLightShaftUniforms(uniforms, { camera: c, environment: { values, shadowMatrices: new Float32Array(16) } } as SpatialRenderBufferView,
+    spatialLightShaftPlan(values, 160, 90)!, 160, 90);
+  deepEqual([...uniforms.subarray(32, 35)], [0, 0, -1]);
+});
 
 test("light shafts v14 preserves source across quality, lighting OFF, height fog and wide Bloom", () => {
   for (const quality of ["low", "balanced", "high"] as const) for (const enabled of [false, true]) for (const density of [0, 1]) {

@@ -1,3 +1,4 @@
+import { SHAFT_PRECISION_CASES, shaftPrecisionReference, auditShaftPrecision } from "./spatial-light-shafts-precision-report.mjs";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {encodePngRgba,decodePng} from "../../scripts/tools/pack-textures.mjs";
@@ -42,4 +43,14 @@ test("light shafts oracle rejects overwriting an empty scene background",async()
  }
  assert(changed,"Fixture must cover empty background");row.image=encodePngRgba(row.width,row.height,image.pixels);
  await assert.rejects(auditLightShaftPixels(rows,read),/integral thin/);
+});
+
+const controlledPrecision = () => Object.fromEntries(["webgl2","webgpu"].map(backend => [backend,SHAFT_PRECISION_CASES.map(c=>({name:c.name,amount:shaftPrecisionReference(c)}))]));
+test("packed shaft precision oracle accepts the closed integral and rejects cancellation, missing thin scattering and non-unit sun phase",()=>{
+ assert.equal(auditShaftPrecision(controlledPrecision()).webgl2.cases,30);
+ for(const [name,amount] of [["distant-16",.4947322],["thin-16",0],["sun-normalization-16",.00053914]]){
+  const result=controlledPrecision();result.webgpu.find(r=>r.name===name).amount=amount;assert.throws(()=>auditShaftPrecision(result),/Light shaft precision/);
+ }
+ const missing=controlledPrecision();missing.webgl2.pop();assert.throws(()=>auditShaftPrecision(missing));
+ const invalid=controlledPrecision();invalid.webgl2[0].amount=NaN;assert.throws(()=>auditShaftPrecision(invalid),/Light shaft precision/);
 });

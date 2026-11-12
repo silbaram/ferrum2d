@@ -1,3 +1,4 @@
+import { SHAFT_PRECISION_CASES, auditShaftPrecision } from "./spatial-light-shafts-precision-report.mjs";
 import { auditLightShaftPixels, SHAFT_STATES } from "./spatial-light-shafts-report.mjs";
 import { HEIGHT_FOG_PRECISION_CASES, auditHeightFogPrecision } from "./spatial-height-fog-precision-report.mjs";
 import { auditSpatialHeightFogPixels, HEIGHT_FOG_STATES } from "./spatial-height-fog-report.mjs";
@@ -34,7 +35,8 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   assert(tgz);
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
-const lightShaftsOnly = process.argv.includes("--light-shafts-only");
+const lightShaftPrecisionOnly = process.argv.includes("--light-shafts-precision-only");
+const lightShaftsOnly = lightShaftPrecisionOnly || process.argv.includes("--light-shafts-only");
 const heightFogPrecisionOnly = process.argv.includes("--height-fog-precision-only");
 const heightFogOnly = process.argv.includes("--height-fog-only");
 const pointPcssOnly = process.argv.includes("--point-pcss-only");
@@ -72,11 +74,11 @@ const server = createServer((req, res) => {
     }
     if (path === "/") {
       res.setHeader("Content-Type", "text/html");
-      res.end(html + '<script type="module">import{probeSpatialLightShafts}from"/light-shafts.mjs";window.probeSpatialLightShafts=probeSpatialLightShafts;</script>' + '<script type="module">import{probeHeightFogPrecision}from"/height-fog-precision.mjs";window.probeHeightFogPrecision=probeHeightFogPrecision;</script>' + '<script type="module">import{probeSpatialHeightFog}from"/height-fog.mjs";window.probeSpatialHeightFog=probeSpatialHeightFog;import{probeSpatialPointPcss}from"/point-pcss.mjs";window.probeSpatialPointPcss=probeSpatialPointPcss;import{probeSpatialSunPcss}from"/sun-pcss.mjs";window.probeSpatialSunPcss=probeSpatialSunPcss;import{probeSpatialPointShadows}from"/point-shadows.mjs";window.probeSpatialPointShadows=probeSpatialPointShadows;import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialWideBloom}from"/wide-bloom.mjs";window.probeSpatialWideBloom=probeSpatialWideBloom;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
+      res.end(html + '<script type="module">import{probeShaftPrecision}from"/light-shafts-precision.mjs";window.probeShaftPrecision=probeShaftPrecision;import{probeSpatialLightShafts}from"/light-shafts.mjs";window.probeSpatialLightShafts=probeSpatialLightShafts;</script>' + '<script type="module">import{probeHeightFogPrecision}from"/height-fog-precision.mjs";window.probeHeightFogPrecision=probeHeightFogPrecision;</script>' + '<script type="module">import{probeSpatialHeightFog}from"/height-fog.mjs";window.probeSpatialHeightFog=probeSpatialHeightFog;import{probeSpatialPointPcss}from"/point-pcss.mjs";window.probeSpatialPointPcss=probeSpatialPointPcss;import{probeSpatialSunPcss}from"/sun-pcss.mjs";window.probeSpatialSunPcss=probeSpatialSunPcss;import{probeSpatialPointShadows}from"/point-shadows.mjs";window.probeSpatialPointShadows=probeSpatialPointShadows;import{probeSpatialCompositionOrder}from"/composition-order.mjs";window.probeSpatialCompositionOrder=probeSpatialCompositionOrder;import{probeSpatialWideBloom}from"/wide-bloom.mjs";window.probeSpatialWideBloom=probeSpatialWideBloom;import{probeSpatialLightSelection}from"/light-selection.mjs";window.probeSpatialLightSelection=probeSpatialLightSelection;</script>');
       return;
     }
     const uvFiles = ["mapping.glb", "mapping.gltf", "mapping.bin", "base.png", "normal.png", "emissive.png"];
-    const fixture = path === "/light-shafts.mjs" ? "tests/smoke/spatial-light-shafts-browser-fixture.mjs" : path === "/light-shafts-cases.mjs" ? "tests/smoke/spatial-light-shafts-cases.mjs" : path === "/height-fog-precision.mjs" ? "tests/smoke/spatial-height-fog-precision-fixture.mjs" : path === "/height-fog-cases.mjs" ? "tests/smoke/spatial-height-fog-cases.mjs" : path === "/height-fog.mjs" ? "tests/smoke/spatial-height-fog-browser-fixture.mjs" : path === "/point-pcss.mjs" ? "tests/smoke/spatial-point-pcss-browser-fixture.mjs" : path === "/sun-pcss.mjs" ? "tests/smoke/spatial-sun-pcss-browser-fixture.mjs" : path === "/point-shadows.mjs" ? "tests/smoke/spatial-point-shadows-browser-fixture.mjs" : path === "/bloom-reference.mjs" ? "tests/smoke/spatial-bloom-reference.mjs" : path === "/wide-bloom.mjs" ? "tests/smoke/spatial-wide-bloom-browser-fixture.mjs" : path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
+    const fixture = path === "/light-shafts-precision.mjs" ? "tests/smoke/spatial-light-shafts-precision-fixture.mjs" : path === "/light-shafts.mjs" ? "tests/smoke/spatial-light-shafts-browser-fixture.mjs" : path === "/light-shafts-cases.mjs" ? "tests/smoke/spatial-light-shafts-cases.mjs" : path === "/height-fog-precision.mjs" ? "tests/smoke/spatial-height-fog-precision-fixture.mjs" : path === "/height-fog-cases.mjs" ? "tests/smoke/spatial-height-fog-cases.mjs" : path === "/height-fog.mjs" ? "tests/smoke/spatial-height-fog-browser-fixture.mjs" : path === "/point-pcss.mjs" ? "tests/smoke/spatial-point-pcss-browser-fixture.mjs" : path === "/sun-pcss.mjs" ? "tests/smoke/spatial-sun-pcss-browser-fixture.mjs" : path === "/point-shadows.mjs" ? "tests/smoke/spatial-point-shadows-browser-fixture.mjs" : path === "/bloom-reference.mjs" ? "tests/smoke/spatial-bloom-reference.mjs" : path === "/wide-bloom.mjs" ? "tests/smoke/spatial-wide-bloom-browser-fixture.mjs" : path === "/light-selection.mjs" ? "tests/smoke/spatial-light-selection-browser-fixture.mjs" : path === "/receiver-masks.mjs" ? "tests/smoke/spatial-receiver-masks-browser-fixture.mjs" : path === "/specular.mjs" ? "tests/smoke/spatial-specular-browser-fixture.mjs" : path === "/composition-order.mjs" ? "tests/smoke/spatial-composition-order-fixture.mjs" : path === "/composition.mjs" ? "tests/smoke/spatial-composition-checks.mjs" : path === "/volume-shadows.mjs" ? "tests/smoke/flat-volume-shadow-browser-fixture.mjs" : path === "/shadow-receivers.mjs" ? "tests/smoke/spatial-shadow-receivers.mjs" : path === "/flat-shadows.mjs" ? "tests/smoke/flat-shadow-isolation-browser-fixture.mjs" : path === "/texture-transform.mjs"
       ? "tests/smoke/spatial-texture-transform-browser-fixture.mjs"
       : uvFiles.some(name => path === `/uv/${name}`)
         ? `tests/fixtures/spatial-texture-transform/${path.slice(4)}`
@@ -121,7 +123,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: lightShaftsOnly ? "light-shafts-only" : heightFogPrecisionOnly ? "height-fog-precision-only" : heightFogOnly ? "height-fog-only" : pointPcssOnly ? "point-pcss-only" : sunPcssOnly ? "sun-pcss-only" : pointShadowsOnly ? "point-shadows-only" : wideBloomHeightFogOnly ? "wide-bloom-height-fog-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : heightFogCompositionOnly ? "height-fog-composition-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: lightShaftPrecisionOnly ? "light-shafts-precision-only" : lightShaftsOnly ? "light-shafts-only" : heightFogPrecisionOnly ? "height-fog-precision-only" : heightFogOnly ? "height-fog-only" : pointPcssOnly ? "point-pcss-only" : sunPcssOnly ? "sun-pcss-only" : pointShadowsOnly ? "point-shadows-only" : wideBloomHeightFogOnly ? "wide-bloom-height-fog-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : heightFogCompositionOnly ? "height-fog-composition-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -137,6 +139,7 @@ const report = {
   wideBloomCases: [],
   pointShadowCases: [],
   lightShaftCases: [],
+  lightShaftPrecisionCases: [],
   heightFogPrecisionCases: [],
   heightFogCases: [],
   pointPcssCases: [],
@@ -193,6 +196,11 @@ try {
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
         if (lightShaftsOnly || ![heightFogPrecisionOnly, heightFogOnly, pointPcssOnly, sunPcssOnly, pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, fallbackOnly, modelsOnly, environmentOnly, shadowsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].some(Boolean)) {
+          await page.waitForFunction(() => window.probeShaftPrecision);
+          const precision = await page.evaluate(cases => window.probeShaftPrecision(cases), SHAFT_PRECISION_CASES);
+          const precisionEntry = {viewport,deviceScaleFactor,result:precision,status:"pending"};report.lightShaftPrecisionCases.push(precisionEntry);
+          precisionEntry.audit = auditShaftPrecision(precision);precisionEntry.status="passed";
+          assert.deepEqual(errors,[]);if(lightShaftPrecisionOnly)continue;
           await page.waitForFunction(() => window.probeSpatialLightShafts);
           for (const colorManagement of ["legacy", "linear-srgb"]) {
             const result = await page.evaluate(mode => window.probeSpatialLightShafts(mode), colorManagement).catch(async error => {

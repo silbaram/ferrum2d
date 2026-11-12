@@ -571,3 +571,47 @@ test("light shafts preserve the previous target on allocation failure and latch 
   equal(device.textures.filter(t => !t.destroyed).length, 0);
   equal(device.buffers.filter(t => !t.destroyed).length, 0);
 });
+
+test("obsolete light shafts allocation errors cannot poison replacement or disabled targets", async () => {
+  for (const action of ["resize", "disable", "destroy"]) {
+    const { device, pass: unrelated } = setup(); unrelated.destroy();
+    const pass = new WebGpuSpatialLightShafts(device as unknown as GPUDevice);
+    const values = compileSpatialEnvironment({ ...shaftBase, lightShafts: {} });
+    const plan = spatialLightShaftPlan(values, 160, 90)!;
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    device.gpuError = "obsolete shaft allocation"; pass.prepare(plan);
+    const next = spatialLightShaftPlan(values, 320, 180)!;
+    if (action === "resize") pass.prepare(next);
+    else if (action === "disable") pass.prepare();
+    else pass.destroy();
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    if (action !== "destroy") pass.prepare(action === "resize" ? next : plan);
+    pass.destroy(); equal(device.scopes, 0);
+    equal(device.textures.every(t => t.destroyed === 1), true);
+    equal(device.buffers.every(t => t.destroyed === 1), true);
+  }
+});
+test("current asynchronous shaft target errors release unusable textures before rejecting reuse", async () => {
+  const { device, pass: unrelated } = setup(); unrelated.destroy();
+  const pass = new WebGpuSpatialLightShafts(device as unknown as GPUDevice);
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+  device.gpuError = "current shaft allocation";
+  const plan = spatialLightShaftPlan(compileSpatialEnvironment({ ...shaftBase, lightShafts: {} }), 160, 90)!;
+  pass.prepare(plan);for (let i = 0; i < 4; i++) await Promise.resolve();
+  equal(pass.textureBytes(), 0);equal(device.textures.filter(t => !t.destroyed).length, 0);
+  throws(() => pass.prepare(plan), /current shaft allocation/);pass.destroy();
+});
+test("obsolete shaft binding errors do not invalidate a replacement group", async () => {
+  const { device, pass: unrelated } = setup(); unrelated.destroy();
+  const pass = new WebGpuSpatialLightShafts(device as unknown as GPUDevice);
+  const f = frame({ ...shaftBase, lightShafts: {} }), plan = spatialLightShaftPlan(f.environment!.values, 160, 90)!;
+  pass.prepare(plan); for (let i = 0; i < 4; i++) await Promise.resolve();
+  const encoder = { beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() {}, end() {} }) } as unknown as GPUCommandEncoder;
+  const shadow = {} as GPUTextureView;
+  device.bindingError = true; pass.draw(encoder, f, plan, {} as GPUTextureView, shadow, 160, 90);
+  device.bindingError = false; const depth = {} as GPUTextureView;
+  pass.draw(encoder, f, plan, depth, shadow, 160, 90);
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+  pass.prepare(plan); pass.draw(encoder, f, plan, depth, shadow, 160, 90);
+  pass.destroy(); equal(device.scopes, 0); equal(device.textures.filter(t => !t.destroyed).length, 0);
+});
