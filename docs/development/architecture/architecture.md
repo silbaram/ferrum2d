@@ -2047,7 +2047,7 @@ Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·�
 정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
 model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
 WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
-WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개 확장을 포함해2704 bytes,
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개·빛줄기 확장을 포함해2720 bytes,
 stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
 shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
@@ -2112,7 +2112,30 @@ WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가�
 추가 texture fetch·target·pass는 없다. 카메라는 native의 world-up 기준이며 표시용 pixelArt camera를 사용한다.
 
 WebGPU private uniform의 668~671은 높이 안개, 672~675는
-`[eyeHeight, upY, forwardY, projection]`다. 현재 유효 record는 **2704 bytes**, 간격2816·두 record allocation5632 bytes다.
+`[eyeHeight, upY, forwardY, projection]`다. 빛줄기 확장을 포함한 현재 유효 record는 **2720 bytes**, 간격2816·두 record allocation5632 bytes다.
 두 camera record 모두 tail을 채우고 기존 frame으로 바뀌면 안개 설정을 0으로 초기화한다.
 WebGL2도 geometry/composite 두 경로에 같은 설정과 카메라 basis를 전달한다.
 [높이 안개 계약](../../engine/data-scene-spatial.md#선택형-높이-안개)이 구간 의미·기본값·범위와 제한을 정의한다.
+
+### 태양광 빛줄기 v14
+
+`lightShafts`는 native-owned source를 기존 environment bulk buffer로 전달한다. environment v14는
+632 floats이며0..615는 이전 계약 그대로다.616..625는 enable/intensity/density/maxDistance/R/G/B/
+anisotropy/resolutionScale/sampleCount,626..631은 reserved0이다. native와 TS는 같은 범위·품질 조합과
+separated/sun-shadow 의존성을 검증한다. lighting OFF는 render copy의616..631만0으로 지우며 source는 보존한다.
+추가 hot-path FFI 호출이나 엔티티별 왕복은 없다. patch15/state17과 cold capability1을 함께 사용한다.
+
+`spatialLightShaftKernel`은 GPU 작업 계획과 GLSL/WGSL을 관리하고 각 backend 클래스가 자원 수명을 소유한다.
+플랫폼은 native camera/태양 방향/그림자 matrix를 읽어 저해상도 시선을 생성한다. scene depth에서 시선 길이를
+제한하고 기존 sun depth의 hard 비교로 고정16/32/48구간을 적분한다. 구간 감쇠는 작은 optical depth의
+Taylor 분기로 정밀도를 유지하며 양의 exponential overflow를 만들지 않는다.
+
+AO resolve와 빛줄기 resolve 선택을 분리한다. 빛줄기만 켜면 불필요한 indirect MRT를 만들지 않고
+resolve만 추가한다. geometry의 fog는 resolve가 있으면 유예하고 resolve에서 안개 뒤 빛줄기를 합성한다.
+Spatial coverage가 없는 pixel은 합성에서 제외해 투명 배경을 유지한다.
+DOF·Bloom·최종 grading과 HUD 경계는 기존 순서를 유지한다. 비활성 시 추가 target/pass가 없고 warm frame에는
+동일 크기 target/bind group을 재사용한다. 할당 실패는 호출자에게 알리고 WebGPU 비동기 validation 오류는 다음 prepare에서 거절한다.
+
+WebGPU 기존 private camera record에676..679의 shaft-enable vec4를 추가한다. 유효2720 bytes,
+stride2816/두 record5632 bytes는 유지한다. 별도 raymarch uniform은208 bytes이며 새 native ABI의 reserved를 재사용하지 않는다.
+texture/target bytes와 실제 제출 draw, texture-load 상한을 renderer→frame metrics→profiler→smoke에 연결한다.

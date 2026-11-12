@@ -321,7 +321,7 @@ TIME_ELAPSED, WebGPU는 render-pass 구간 합이므로 backend 간 절대값을
 
 반경·halo 품질이 다른 비교이며, texture-load 상한이나 low/balanced/high 이름만으로 GPU 시간의 단조 순서를
 보장하지 않는다. 실제 문제 게임의 큰 맵·접촉/곡면·품질 수용 및 목표 기기별 절대 예산은 여전히 입력 대기다.
-M6-a 다중 점광원 그림자 최대 2개와 광원별 GPU cache, M6-b 태양 PCSS, M6-c 점광원별 PCSS, M6-d 높이 안개의 개발·자동 검증을 완료했다. 나머지 M6 후보는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수한다. 아래 표는 후속 검증과 완료 경계다.
+M6-a 다중 점광원 그림자 최대 2개와 광원별 GPU cache, M6-b 태양 PCSS, M6-c 점광원별 PCSS, M6-d 높이 안개, M6-e 태양광 빛줄기의 개발·자동 검증을 완료했다. 나머지 M6 후보는 실제 요구·별도 비용/범위 설계가 충족될 때만 착수한다. 아래 표는 후속 검증과 완료 경계다.
 각 단계는 아래 하위 작업별로 작은 논리적 변경으로 나누며, 전체 단계를 한 PR로 묶지 않는다.
 남은 기능의 필드 명칭은 설계 후보이며, 공개된 Flat `lightMask`/`shadowMask` 계약과 구분한다.
 
@@ -330,7 +330,7 @@ M6-a 다중 점광원 그림자 최대 2개와 광원별 GPU cache, M6-b 태양 
 | M0 재현과 계약 | 문제 장면 최소화, 검증 행렬, 색/단위/profile 초안. `tests/smoke`, `docs/engine` 계약 설계 | 없음 | legacy baseline, 실패 재현 또는 한계 분류, backend/capability·허용 오차·성능 측정 환경 확정 |
 | M1 태양광 안정화 | S03 실게임 큰 맵·원근 범위와 실물 GPU 측정. S02는 실제 장면의 필요·비용 판단 후 별도 확장. Rust spatial + 양 shader | M0 | 실제 접촉·추가 범위 fixture 통과, 기존 sweep/mode 저장·복원 유지 |
 | M5 규모·성능 | L03/E03 필수 개발·자동 회귀·리뷰 완료. 실제 장면 시간/품질 수용 기준은 후속 검증 | 앞 단계 대표 장면·측정 | 자동 픽셀/작업 예산·복구를 검증하고 실게임·실기기 시간/수용 기준과 구분 |
-| M6 선택 확장 | baked lightmap/probe, 제한 IBL, light shaft, cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
+| M6 선택 확장 | baked lightmap/probe, 제한 IBL, cascade 등 | 실제 게임 요구·별도 비용/범위 설계 | 후보별 별도 완료 조건. 앞 단계 완료에 필수 아님 |
 
 ### 먼저 실행할 작업 단위
 
@@ -417,7 +417,9 @@ public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서
   사용법·비용 상한·근사 한계는 [점광원 PCSS](../engine/data-scene-spatial.md#선택형-점광원-pcss)를 따른다.
 - **M6-d 개발·자동 검증 완료:** 선택형 높이 안개와 기존 선형 안개, AO·DOF·Bloom 결합을 검증했다.
   사용법·적분 구간·비용과 한계는 [높이 안개](../engine/data-scene-spatial.md#선택형-높이-안개)를 따른다.
-- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상, cascade, light shaft.
+- **M6-e 개발·자동 검증 완료:** 기존 태양 그림자 맵을 재사용하는 제한형 빛줄기와 안개·AO·DOF·Bloom 결합을 검증했다.
+  품질 preset·배경 경계·비용과 한계는 [태양광 빛줄기](../engine/data-scene-spatial.md#선택형-태양광-빛줄기)를 따른다.
+- **별도 설계 후보:** 제한 IBL/lightmap/probe, 점광원 그림자 3개 이상, cascade.
   필요 장면·메모리·shader 비용·WebGL2 fallback이 정해져야 착수한다.
 - 자동 proxy 생성·애니메이션별 proxy 전환은 별도 요구와 비용이 있을 때만 설계한다.
 - **현재 계획 밖:** 범용 3D 전환, 전체 glTF PBR, ray tracing/GI 시스템, volumetric froxel renderer,

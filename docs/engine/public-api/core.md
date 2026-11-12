@@ -1562,3 +1562,10 @@ float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 �
 `SpatialHeightFogSpec`는 선택형 `environment.fog.height` 설정이다.
 기준 높이·밀도·감쇠율과 원근/직교 시선 적분을 제공하며 environment v13/616·patch14/state16을 사용한다.
 구간 의미와 기존 선형 안개 호환성은 [높이 안개 계약](../data-scene-spatial.md#선택형-높이-안개)을 따른다.
+
+### 태양광 빛줄기
+
+`SpatialLightShaftSpec`는 선택형 `environment.lightShafts` 설정이다. root/core/authoring에서 타입을 제공한다.
+separated 합성 및 그림자를 가진 태양광을 요구하며, 강도·색상·밀도·거리·전방 산란·품질을 설정한다.
+source는 environment v14/632·patch15/state17이고 이전 저장 버전은 계속 읽는다.
+[설정·비용·근사 한계](../data-scene-spatial.md#선택형-태양광-빛줄기)를 따른다.

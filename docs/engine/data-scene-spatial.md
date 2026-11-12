@@ -2359,3 +2359,79 @@ pixelArt의 표시 카메라·가상 해상도를 사용하며 HUD와 전역 후
 state16을 생성하며 outer snapshot은 v2다. 저장/복원·Undo/Redo는 선택 여부와 값을 보존한다.
 cold capability `spatial_height_fog_abi_version() === 1`이 없는 core는 밀도 0·progress-only 입력도
 자산 준비와 native mutation 전에 거절한다.
+
+## 선택형 태양광 빛줄기
+
+`environment.lightShafts`는 화면의 시선을 따라 태양광이 보이는 구간의 산란을 적분하는 선택 효과다.
+`composition:"separated"`와 `lighting.directional.shadows`가 필요하다. 원근·직교 카메라,
+WebGL2·WebGPU에서 같은 계약을 사용한다. 공개 `SpatialLightShaftSpec`는 root/core/authoring에서 제공한다.
+
+```ts
+const environment = {
+  composition: "separated",
+  lighting: {
+    lights: [],
+    directional: {
+      direction: { x: 0.5, y: -1, elevation: 2 },
+      color: [1, 0.9, 0.7], intensity: 1,
+      shadows: { resolution: 512, extent: 300, distance: 500 },
+    },
+  },
+  lightShafts: {
+    intensity: 0.5, color: [1, 1, 1], density: 0.01,
+    maxDistance: 200, anisotropy: 0, quality: "balanced",
+  },
+} satisfies SpatialEnvironmentSpec;
+```
+
+| 필드 | 기본값 | 범위·의미 |
+| --- | --- | --- |
+| `intensity` | 0.5 | 0..4. 산란 밝기 배율. 0은 효과 비활성 |
+| `color` | [1,1,1] | 채널0..1의 선형 RGB. 태양광 색에 곱하는 tint |
+| `density` | 0.01 | world unit당0..1. 0은 효과 비활성 |
+| `maxDistance` | 200 | 0.1..10000 world units. 카메라에서의 최대 적분 거리 |
+| `anisotropy` | 0 | 0..0.9. 0은 방향에 독립적, 큰 값은 태양을 향한 시선에 집중 |
+| `quality` | balanced | low/balanced/high. 아래 고정 작업 상한을 선택 |
+
+적분 시작은 camera near plane이며 종료는 화면의 첫 depth 또는 `maxDistance` 중 가까운 위치다.
+기존 태양 depth map을 각 구간 중점에서 hard 비교한다. 태양의 PCSS·표면 `normalBias`는 빛줄기에
+적용하지 않고, world 단위 `bias`는 기존 map 깊이 단위로 변환한다. map 밖의 산란 기여는0이며
+내부 네 texel 폭의 경계 fade를 적용한다. 따라서 작성한 태양 map 범위가 빛줄기 범위도 제한한다.
+
+각 구간은 Beer–Lambert 가중치 `exp(-density*a)-exp(-density*b)`를 사용한다.
+전방 분포는 `((1-g)^2/(1+g*g-2*g*cosine))^1.5`이며 최대1이다. 태양 색·강도와 효과 tint·intensity를
+곱한 결과를 HDR 장면에 더한다. 원래 표면색을 별도로 감쇠하지 않는 단일 산란 근사이며,
+`fog.height` 밀도를 자동으로 공유하지 않는다. 별도 높이 안개의 밀도와 빛줄기 밀도는 독립 설정이다.
+
+합성은 **AO → 안개 → 빛줄기 → DOF → Bloom → exposure/톤매핑/색보정 → HUD** 순서다.
+빛줄기는 Spatial 표면까지의 공간에만 합성한다. 빈 투명 배경·장면 밖 letterbox·뒤에 그리는 HUD는
+대상이 아니며 기존 배경색을 덮지 않는다. 하늘·별도 skybox의 산란은 이 기능에 포함하지 않는다.
+
+| 품질 | 저해상도 크기 | 시선당 태양 depth 샘플 상한 |
+| --- | --- | --- |
+| low | ceil(W/4) × ceil(H/4) | 16 |
+| balanced | ceil(W/2) × ceil(H/2) | 32 |
+| high | ceil(W/2) × ceil(H/2) | 48 |
+
+활성 상태는 저해상도 RGBA16F target1과 raymarch draw1을 추가한다. AO resolve가 없으면
+full-resolution RGBA16F resolve target1/draw1도 추가한다. 각 저해상도 pixel은 화면 depth1회와
+최대16/32/48회의 shadow depth를 읽고, full-resolution resolve는 bilinear 복원에4회 읽는다.
+추가 resolve가 생기면 color/depth2회도 비용에 포함한다. `pixelArt`에서는 가상 해상도를 W/H로 사용한다.
+
+`SpatialRendererStats.lightShaftDrawCalls`, `lightShaftTextureBytes`, `lightShaftTexelFetchBudget`,
+`lightShaftSampleBudget`가 효과의 추가 비용을 제공한다. `RendererStats.spatialLightShaft*`의 draws/fetch는
+begun frame의 packet 합, target bytes는 peak다. 같은 지표가 `DebugOverlayMetrics`, RuntimeProfiler의
+`maxSpatialLightShaftDrawCalls`/`maxSpatialLightShaftTextureBytes`/`maxSpatialLightShaftTexelFetchBudget`에 연결된다.
+이는 작업량 상한이며 GPU 시간이나 목표 FPS 보장이 아니다.
+
+intensity0/density0/태양 강도0/lighting OFF에서는 추가 target·pass가0이다. 기존 태양 그림자 맵과
+다른 효과의 자원은 각각의 설정을 따른다. 활성화 후의 program/uniform은 재사용할 수 있다.
+작성값은 OFF에서도 보존하고 Undo/Redo·저장/재열기·장치 복구에 포함한다.
+
+source는 **environment v14/632 floats**, **spatial patch15**, **Data Scene state17**이다.
+기존 v1..v13 환경, patch1..14, state2..16은 계속 지원한다. 신규 설정을 낮은 저장 버전에 숨기면 거절한다.
+구 core에서는 `spatial_light_shafts_abi_version()->1` cold capability 확인 후 에셋 준비·native 변경 전에 거절한다.
+
+이 효과는 고정 샘플·저해상도 근사다. 얇은 차폐물, 깊이 불연속의 bilinear 경계, 긴 시선의 띠 현상,
+단일 태양 map 밖은 한계이며 temporal 누적, froxel, 다중 산란, 지역 volume/noise, GI는 포함하지 않는다.
+실게임·목표 기기의 품질/FPS 수용 검증은 해당 게임 장면과 기기에서 별도로 진행한다.

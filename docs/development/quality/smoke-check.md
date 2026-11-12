@@ -3150,3 +3150,24 @@ patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기
 
 현재 호스트 GPU fixture 통과는 사용자 실게임·목표 기기의 FPS 수용 검증과 구분한다.
 실게임·실기기 수용 검증은 사용자 방침에 따라 개발 완료 후 진행한다.
+
+### 태양광 빛줄기 smoke
+
+`pnpm smoke:spatial-light-shafts`는 독립 이미지 oracle의 negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
+같은 행렬은 `pnpm smoke:spatial-webgpu-offscreen`과 현재 수동 CI(`workflow_dispatch`) validate job에 포함된다.
+이미 준비된 패키지는 runner의 `--light-shafts-only`로 좁게 재검증할 수 있다.
+
+WebGL2/WebGPU × 원근/직교 × legacy/linear-srgb × desktop/모바일 viewport × DPR1/2에서 검증한다.
+low/balanced/high, 강도·색·밀도·거리·전방 분포, 강도0/밀도0/lighting OFF,
+높이 안개·실제 ambient AO·pixelArt, progress-only 새 엔진 restore, OFF→ON 및 WebGPU device recovery가 포함된다.
+
+Node oracle은 native camera로 시선을 구성하고, fixture의 box와 독립 ray 교차를 계산해 태양 차폐를 판정한다.
+그림자 raster 경계의 불확실한 표본은 제외하고 최소 표본 수와 빛줄기의 실제 색 변화량을 요구한다.
+시선 구간별 지수 적분과 저해상도 복원으로 계산한 색을 PNG와 비교하며 backend parity만으로 통과하지 않는다.
+빈 결과·효과 무시·잘못된 tint·빈 배경 덮어쓰기·stale restore·빠진 상태·누락된 metric·추가 pass·warm shadow redraw를 negative audit에서 거절한다.
+
+별도 HDR fixture는 높이 안개+빛줄기+DOF 뒤의 sub-threshold 입력을 gather/wide Bloom이 읽는지 확인하고,
+threshold0의 실제 반응·Bloom0 identity·AO 추가·resize/DPR 복원·device recovery를 검사한다.
+실제 draw/target bytes/샘플/texture-load 상한이 report와 renderer/profiler에 전달되는지 확인한다.
+source632/native v14·capability1·patch15/state17, 구 버전 reader와 downgrade 거절·Undo/Redo는 Rust/SDK 검사 대상이다.
+실제 사용자 게임·목표 기기 품질/FPS 수용 검증은 개발 fixture 결과와 별도로 기록한다.

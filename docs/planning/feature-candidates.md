@@ -70,9 +70,10 @@ PNG extrusion의 현재 계약과 검증 명령은
 [조명 고도화 계획](lighting-quality-upgrade-plan.md)에서 관리한다.
 아래 추가 효과는 해당 계획의 선택 확장 후보이며 기존 효과의 재구현 목록이 아니다.
 
-독립 평면 shadow receiver, 화면 공간 광선 mask, 반투명 다중 depth, 물리적 bokeh,
-PCSS·다중 point shadow light는 제품 필요와 비용·fallback·HUD/alpha 경계를 먼저 정할 후보다.
-현재 높이 기반 그림자·normal lighting·view-depth DOF를 신규 미구현 기능으로 세지 않는다.
+독립 평면 shadow receiver, 반투명 다중 depth, 물리적 bokeh, 점광원 그림자 3개 이상은
+제품 필요와 비용·fallback·HUD/alpha 경계를 먼저 정할 후보다.
+태양·점광원 PCSS, 최대 2개 점광원 그림자, 높이 안개, 제한형 태양광 빛줄기는 개발·자동 검증을 완료했다.
+현재 높이 기반 그림자·normal lighting·view-depth DOF와 함께 신규 미구현 기능으로 세지 않는다.
 
 three.js 비교의 고정 기준은 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`다.
 [반복 모델 제출](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/objects/InstancedMesh.js),
