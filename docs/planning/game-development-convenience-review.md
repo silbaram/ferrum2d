@@ -10,7 +10,7 @@
 
 ## Asset 반복 작업
 
-공식 뷰어의 읽기 전용 [에셋 사용처 조회](../engine/data-scene-authoring.md)는 씬 파일과 열린 작업공간 원본/draft의 근거를 제공한다.
+Ferrum2D Studio의 읽기 전용 [에셋 사용처 조회](../engine/data-scene-authoring.md)는 씬 파일과 열린 작업공간 원본/draft의 근거를 제공한다.
 코드·외부 매니페스트·GLB 내부·Undo 이력과 전체 디스크 검증은 포함하지 않는다.
 데스크톱의 복구 가능한 관리 Catalog 정리는 [Scene Authoring](../engine/data-scene-authoring.md)의 현재 지원 범위를 따른다.
 

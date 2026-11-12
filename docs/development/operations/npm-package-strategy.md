@@ -9,7 +9,7 @@ Ferrum2D 패키지 구성은 엔진 런타임, 프로젝트 생성기, AI 개발
 | package | 역할 | 사용자 |
 | --- | --- | --- |
 | `@ferrum2d/ferrum-web` | 브라우저 런타임 엔진, WebGL2 platform layer, generated Wasm artifact, public API | Ferrum2D 게임 앱 |
-| `@ferrum2d/authoring-viewer` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | generated placement viewer와 공식 viewer host |
+| `@ferrum2d/authoring-viewer` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | generated placement viewer와 Ferrum2D Studio host |
 | `@ferrum2d/create-game` | 새 게임 프로젝트 생성 CLI. 템플릿과 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer` dependency를 생성 프로젝트에 배치 | 새 프로젝트를 시작하는 개발자/AI agent |
 | `@ferrum2d/agents` | Ferrum2D consumer game development용 Codex/Claude agent, shared skill, Gemini command 설치 CLI | AI로 게임을 개발하는 사용자 |
 
@@ -88,7 +88,7 @@ Codex는 공식 subagent 파일인 `.codex/agents/*.toml`과 repo skill 위치�
 ## 배포 단계
 
 1. `@ferrum2d/ferrum-web`: 런타임 package 안정화와 beta publish guard를 먼저 유지한다.
-2. `@ferrum2d/authoring-viewer`: generated placement viewer와 공식 viewer host가 공유하는 lightweight helper package로 분리 배포한다.
+2. `@ferrum2d/authoring-viewer`: generated placement viewer와 Ferrum2D Studio host가 공유하는 lightweight helper package로 분리 배포한다.
 3. `@ferrum2d/create-game`: 런타임/authoring viewer dependency를 포함한 starter project generator로 분리 배포한다.
 4. `@ferrum2d/agents`: AI consumer 개발 환경을 명시적 `init` 명령으로 설치하는 도구로 분리 배포한다.
 

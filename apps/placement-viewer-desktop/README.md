@@ -1,4 +1,13 @@
-# Ferrum2D Placement Viewer Desktop
+# Ferrum2D Studio
+
+Ferrum2D Studio의 데스크톱 앱이다. 제품 설명은 **2D 게임 씬·에셋 편집 도구**이며, 웹과 같은 작성 UI를 사용한다.
+앱 표시명과 창 제목은 Studio로 통일한다. `com.ferrum2d.placement-viewer.desktop` 식별자, 실행 파일·Cargo/package 이름,
+업데이트 파일명과 command는 기존 계약을 유지한다. Windows MSI의 `upgradeCode`는 기존 제품명에서 계산한 값으로 고정했다.
+
+구 Placement Viewer 설치본은 씬·에셋을 저장·백업한 뒤 제거하고 Studio를 새로 설치한다. NSIS와 Linux deb는
+제품명이 설치 등록에 영향을 주므로 이름 전환을 자동 업데이트 호환으로 취급하지 않는다. macOS의 이전 `.app`도 정리한다.
+실제 설치·제거·설정 보존·재열기 확인은 각 OS 릴리스 검증에서 수행한다. [배포 절차](../../docs/development/operations/github-release.md)를 따른다.
+
 
 Desktop asset inspection은 image와 `public/assets/*.glb` model catalog를 분리한다.
 각 파일의 optional `contentRevision`은 경로와 실제 bytes에서 만든 host session cache fingerprint다.
@@ -7,7 +16,7 @@ Protocol의 revision query는 폴더가 다른 동일 ID를 분리하며, 재검
 기존 revision URL은 탭 복원을 위해 세션에 보관하며 registry는 16,384개 항목으로 제한한다.
 공식 app은 metadata 검사와 texture decode 취소, 문서 revision 검사로 오래된 비동기 결과를 폐기한다.
 
-Tauri 기반 placement viewer desktop wrapper다. 이 app은 `apps/placement-viewer` production/dev frontend를 재사용하고, desktop shell은 consumer project의 `scene-authoring` JSON을 로컬 파일로 읽고 저장하며 agent handoff JSON을 프로젝트 루트에 남기는 command를 제공한다.
+Tauri 기반 Studio desktop host다. 이 app은 `apps/placement-viewer` production/dev frontend를 재사용하고, desktop shell은 consumer project의 `scene-authoring` JSON을 로컬 파일로 읽고 저장하며 agent handoff JSON을 프로젝트 루트에 남기는 command를 제공한다.
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 여전히 agent/spec 소유다.
 
@@ -48,17 +57,18 @@ Linux는 AppImage 실행에 한해 자동 교체를 허용한다. `.deb` 설치�
 host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데이트에만 재시작을 허용한다.
 릴리스 안내는 URL을 검증한 host command와 공식 opener plugin으로 시스템 브라우저에서 연다.
 
-`--with-updater`는 공개키를 임시 빌드 config에 주입하고 서명 파일/OS별 metadata를 준비한다.
-`--no-sign`과 함께 쓸 수 없다. 키 설정, 최초 설치와 공개 전 실제 OS 검증은
+현재 Studio 소스는 `--with-updater`를 plan 단계부터 거절한다. 구 앱이 새 버전의 `viewer-updater-*`도 조회하므로
+Studio 업데이트는 별도 채널과 실제 OS 전환 검증이 필요하다. 구 제품명 빌드에서만 이 옵션으로 공개키를
+임시 config에 주입하고 서명 파일/OS별 metadata를 준비하며, `--no-sign`과 함께 쓸 수 없다. 상세 조건은
 [업데이트 배포 절차](../../docs/development/operations/github-release.md#버전-확인과-업데이트)를 따른다.
 
 ## 설치 파일 준비
 
-저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS 뷰어를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
+저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS Studio를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
 
-Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node/pnpm/Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. 뷰어에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
+Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node/pnpm/Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. Studio에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
 
-준비 성공과 실제 설치/GUI/서명 확인은 별개다. OS별 조건, checksum·통합 manifest와 수동 CI의 `include_viewer` 사용법은 [엔진·뷰어 분리 배포 절차](../../docs/development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비)를 따른다.
+준비 성공과 실제 설치/GUI/서명 확인은 별개다. OS별 조건, checksum·통합 manifest와 수동 CI의 `include_viewer` 사용법은 [엔진·Studio 분리 배포 절차](../../docs/development/operations/github-release.md#엔진과-studio-앱-분리-준비)를 따른다.
 
 ## 실행
 
@@ -161,7 +171,7 @@ package smoke는 명시적 CSP도 먼저 검사한다. 정책은 로컬 번들, 
 `pnpm smoke:placement-viewer-desktop-assets`는 `tauri.conf.json`의 CSP를 HTML 응답에 그대로 적용한
 Chromium에서 texture load, nonblank canvas, asset folder reload, Add Sprite와 handoff metadata를 검증한다.
 같은 이름/URL의 이미지를 가진 폴더 전환과 같은 폴더 재검사에서도 실제 canvas 픽셀이 갱신되는지,
-늦게 끝난 이전 upload가 최신 폴더 이미지를 덮어쓰지 않는지 확인한다. Viewer는 native content revision이
+늦게 끝난 이전 upload가 최신 폴더 이미지를 덮어쓰지 않는지 확인한다. Studio는 native content revision이
 달라진 texture만 순차 재로딩하고 취소된 decode/upload를 폐기한다. Revision을 제공하지 않는 구 host는
 명시적 재검사 시 전체 texture를 갱신한다.
 report의 `desktopCsp`는 적용한 정책과 설정 경로를 기록한다. 이 browser smoke는 fake Tauri bridge를
@@ -183,5 +193,5 @@ live Catalog와 공유되지 않는 파일을 정리한다. 씬·미저장 도�
 복구는 before/after Catalog hash가 그대로인 경우만 허용한다. 새로운 Catalog와 외부 파일은 덮어쓰지 않는다.
 닫힌 JSON이 손상돼 정리 분석이 실패해도 복구 백업은 별도로 조회할 수 있다. 숫자 텍스처 참조는 모든 정리 후보를 보호한다.
 이 기능은 백업을 영구 삭제하거나 프로젝트 밖 파일을 분석하지 않으며, 전체 디스크 공간은 늘 수 있다.
-한도·참조 검사 범위·사용 순서는 [뷰어 안내](../placement-viewer/README.md#프로젝트-디스크-catalog-정리)를 따른다.
+한도·참조 검사 범위·사용 순서는 [Studio 안내](../placement-viewer/README.md#프로젝트-디스크-catalog-정리)를 따른다.
 `pnpm smoke:placement-asset-cleanup`은 실제 Rust 저장소와 브라우저를 stdio transport로 연결해 분석/정리/재열기/복구를 검증한다.

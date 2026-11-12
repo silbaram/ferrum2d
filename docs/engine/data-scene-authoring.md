@@ -10,9 +10,9 @@
 
 ## 최소 문서 형식
 
-공식 Placement Viewer의 HD-2D 조명 탭은 PCSS·높이 안개·빛줄기·간접광 프로브·넓은 Bloom·광원 전환과
+공식 Ferrum2D Studio의 HD-2D 조명 탭은 PCSS·높이 안개·빛줄기·간접광 프로브·넓은 Bloom·광원 전환과
 채널을 기존 `spatial.environment`로 작성한다. 수신 채널은 지형·모델·빌보드의 기존 필드를 사용한다.
-조작·의존 효과 해제·프리셋·저장 정책은 [앱 조명 안내](../../apps/placement-viewer/README.md)를 따른다.
+조작·의존 효과 해제·프리셋·저장 정책은 [Studio 조명 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
 새 문서 형식이나 runtime API를 추가하지 않는다.
 
 Data Scene authoring 문서는 다음 envelope를 사용한다.
@@ -58,7 +58,7 @@ scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined pa
 광원·물리 debug·포인터/world 변환은 연속 좌표를 사용한다. 정렬 경계와 작은 객체의 처리 등은
 [Core 표시 계약](public-api/core.md#기본-2d-픽셀-퍼펙트-표시)을 따른다.
 
-공식 뷰어에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
+Ferrum2D Studio에서 JSON을 열고 **게임 미리보기** 또는 **실행**을 누르면 표시 설정을 적용한다.
 2D 편집 화면에서는 넓은 편집 viewport를 유지하며 돌아오면 편집 카메라 위치·zoom과 객체 선택 좌표계를 함께 복원한다.
 flat 미리보기의 기본 카메라 중심과 zoom 1을 사용한다. 게임 코드가 별도로 설치하는 카메라 follow/스크립트는
 프로젝트 런타임에서 설정해야 한다. 표시 설정을 바꾸는 전용 Inspector UI는 아직 없으며 JSON으로 작성한다.
@@ -76,11 +76,11 @@ Ferrum2D authoring 문서에서 `sceneComposition.prefabs`는 재사용 가능�
 
 `sceneComposition.fragments[].instances[]`의 각 항목은 `ObjectInstance`다. instance는 안정적인
 `instance.id`, 참조할 `prefab`, transform, optional `variant`, 제한된 `props.components` override를 가진다.
-공식 placement viewer가 저장하는 patch는 UI-owned transform, add/remove/rename, `props.components`
+Ferrum2D Studio가 저장하는 patch는 UI-owned transform, add/remove/rename, `props.components`
 전체 교체만 수행한다. behavior recipe 본문, FSM command, gameplay sequence는 agent-owned 영역으로 남기고,
 rename/remove 시에는 binding migration preview 또는 conflict diagnostic을 먼저 노출한다.
 
-공식 뷰어의 선택·화면 이동은 2D/HD-2D 뷰포트 왼쪽 도구 모음에 둔다.
+Ferrum2D Studio의 선택·화면 이동은 2D/HD-2D 뷰포트 왼쪽 도구 모음에 둔다.
 **Ctrl+K(Mac `⌘K`)·F3 / 명령 검색**은 한국어·영문 이름으로 기존 도구·보기·패널·도트 동작을 찾는 앱 UI다.
 현재 문서/모드와 버튼의 사용 가능 상태를 실행 직전에 확인하며, 저장·gesture·미확정 도트 편집·다른 modal을 우회하지 않는다.
 검색/취소는 원본과 Undo를 바꾸지 않고, 명령 실행은 기존 authoring/패널 동작에 위임한다. 별도 JSON 필드를 추가하지 않는다.
@@ -178,13 +178,13 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 `components.template`은 catalog reference mode이고, `components.visual` 또는 legacy `components.sprite`/`collider`/`layer`는 inline descriptor mode다. 두 mode를 섞으면 resolver가 diagnostic error를 낸다.
 `createDataSceneRuntimeTarget(engine, { componentTemplates })`는 catalog template id를 inline component spec으로 해소해 spawn할 수 있다. catalog entry는 `visual` 또는 legacy `sprite`, `collider`, `layer`를 가진 inline descriptor여야 하며, nested `components.template` reference는 runtime target에서 거절된다. `componentTemplates`를 제공하지 않으면 runtime spawn 검증(`resolveSceneAuthoringDocument(..., { validateComponents: true })` 기본값 포함)에서는 `allowComponentTemplates: true`를 명시하지 않는 한 template mode를 거절한다.
 
-`props.components`는 prefab/variant/instance merge와 placement `updateComponents` patch에서 하나의 component set으로 취급한다. 일반 `props` 값은 기존처럼 JSON object merge를 사용할 수 있지만, `components` 내부만 부분 deep merge하지 않고 전체 교체한다. 이 정책은 legacy `components.sprite`와 신규 `components.visual`이 동시에 남거나 collider/layer 일부만 stale 값으로 유지되는 authoring 충돌을 막기 위한 것이다. 공식 placement viewer의 Visual/Collider/Layer inspector도 이 계약에 맞춰 selected instance의 `props.components` 전체를 낮은 빈도 draft patch로 교체하고, runtime entity를 직접 수정하지 않는다.
+`props.components`는 prefab/variant/instance merge와 placement `updateComponents` patch에서 하나의 component set으로 취급한다. 일반 `props` 값은 기존처럼 JSON object merge를 사용할 수 있지만, `components` 내부만 부분 deep merge하지 않고 전체 교체한다. 이 정책은 legacy `components.sprite`와 신규 `components.visual`이 동시에 남거나 collider/layer 일부만 stale 값으로 유지되는 authoring 충돌을 막기 위한 것이다. Ferrum2D Studio의 Visual/Collider/Layer inspector도 이 계약에 맞춰 selected instance의 `props.components` 전체를 낮은 빈도 draft patch로 교체하고, runtime entity를 직접 수정하지 않는다.
 
 `SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. render layer는 `visual.layer ?? instance.layer`를 사용하고 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
 ### 2D 레이어 관리
 
-공식 뷰어의 씬 도크 **그리기 레이어**는 실제 `visual.layer ?? instance.layer`를 기준으로 객체 수와 선택 상태를 표시한다. 위쪽 행이 앞 레이어이며 숫자가 클수록 앞에 그린다. 행을 선택하면 씬 목록을 필터링하고, **레이어 선택**은 그 레이어 객체들을 선택한다. **선택 객체 이동**은 선택 객체를 해당 레이어로 옮긴다. 앞/뒤 버튼과 행 드래그는 두 레이어의 객체들을 서로의 숫자 레이어로 교환하며 한 번의 Undo로 되돌린다. 개별 잠금 객체가 섞였거나 숨김·잠금 레이어를 대상으로 하면 전체 변경을 거부한다.
+Ferrum2D Studio의 씬 도크 **그리기 레이어**는 실제 `visual.layer ?? instance.layer`를 기준으로 객체 수와 선택 상태를 표시한다. 위쪽 행이 앞 레이어이며 숫자가 클수록 앞에 그린다. 행을 선택하면 씬 목록을 필터링하고, **레이어 선택**은 그 레이어 객체들을 선택한다. **선택 객체 이동**은 선택 객체를 해당 레이어로 옮긴다. 앞/뒤 버튼과 행 드래그는 두 레이어의 객체들을 서로의 숫자 레이어로 교환하며 한 번의 Undo로 되돌린다. 개별 잠금 객체가 섞였거나 숨김·잠금 레이어를 대상으로 하면 전체 변경을 거부한다.
 
 레이어 값은 정수 `[-2147483648, 2147482647]`이다. 이동은 기존 transform/components patch를 사용하며 명시적 `visual.layer` override가 있으면 함께 바꾼다. Collider·충돌 그룹·body·animation·shadow 설정은 유지한다. **속성 → 변형**의 **그리기 레이어**도 같은 기준으로 동작한다. 스프라이트의 **레이어 내 순서**는 `sortOrder`, **발 위치 정렬**은 `depthSort`를 편집한다. 발 위치 정렬이 켜지면 같은 레이어 안에서 floor/elevation/발 위치가 먼저 적용되고 같은 깊이에서 `sortOrder`로 순서를 정한다.
 
@@ -530,7 +530,7 @@ HEX는 한 줄에 `RRGGBB` 또는 `RRGGBBAA` 하나와 선택적 `#` 접두사, 
 접기·탭 비활성·창 blur·종료 시 canvas/예약 RAF를 해제하며 포커스 복귀 후 다시 표시한다.
 이 보기의 조작은 원본/이력을 바꾸지 않는다. 게임 카메라와 객체 크기는 기존 **게임 미리보기**로 확인한다.
 
-공식 Placement Viewer의 Assets에서 **가져오기 → 도트 제작 → 새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
+공식 Ferrum2D Studio의 Assets에서 **가져오기 → 도트 제작 → 새 도트 만들기**를 선택하면 에셋 편집 탭을 연다.
 기본 32×32이며 1~256의 정수 크기를 선택할 수 있다. 원본 문서나 PNG로 시작하려면 **도트 원본 / PNG 열기**,
 기존 sprite 자산은 **도트 편집**을 사용한다. 이미지 레이어 1~8개·프레임 1~16개를 지원한다.
 
@@ -775,7 +775,7 @@ bundle은 prefab/variant/fragment/include의 실제 sprite texture와 billboard 
 
 ## Aseprite Assets 가져오기·재import
 
-공식 Placement Viewer는 Aseprite JSON+PNG를 검증하고 Assets catalog에 연결한다.
+공식 Ferrum2D Studio는 Aseprite JSON+PNG를 검증하고 Assets catalog에 연결한다.
 `Inspect`는 PNG 서명·실제 decode 크기·SHA-256과 metadata/frame rect를 확인하며 씬을 바꾸지 않는다.
 `Register`는 문서 세션에 atlas/frame을 등록한다. `Apply Frame`과 `Reimport`는 기존 `updateComponents` patch를
 한 번의 Undo transaction으로 적용하며, 작성한 size/pivot/transform/collider/body/behavior는 유지한다.
@@ -1886,7 +1886,7 @@ renderer.setLighting({profile:"lit", ambientIrradiance:[0.15,0.15,0.15],
   선택한 fragment·인스턴스 override의 자산을 검사하며, 한 번에 65,536개를 넘는 수광 binding은 자산 조회·씬 활성화 전에 거절한다.
 - color texture는 알려진 straight alpha여야 한다. 기본 legacy GL premultiplied 자산은 명시적으로 다시 로드한다.
   normal/data texture에는 색 변환을 적용하지 않는다. 기존 업로드 기본값과 overlay 외관은 유지한다.
-- 공식 placement viewer는 preview 이미지를 straight alpha로 로드하며, lit 문서의 초기 적용·교체·Playing 전에
+- Ferrum2D Studio는 preview 이미지를 straight alpha로 로드하며, lit 문서의 초기 적용·교체·Playing 전에
   같은 renderer 자산 검사를 수행한다. 노멀·specular·roughness map은 작성된 참조를 따라 `colorSpace:"none"`으로
   로드한다. 색상과 data 양쪽에서 쓰는 자산 ID는 분리한다. 열린 다른 문서의 색상 자산을 data로 재해석하는 요청도 거절한다.
   조명을 지정하지 않거나 끈 legacy 문서의 비활성 노멀 참조는 저장된 metadata로 보존한다.

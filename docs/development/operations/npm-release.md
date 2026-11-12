@@ -15,7 +15,7 @@
 
 ## 패키지 구성 기준
 
-`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/authoring-viewer`는 generated placement viewer와 공식 viewer host가 공유하는 authoring viewer helper package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
+`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/authoring-viewer`는 generated placement viewer와 Ferrum2D Studio host가 공유하는 authoring viewer helper package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
 
 `@ferrum2d/ferrum-web` package artifact에는 다음 파일만 포함한다.
 

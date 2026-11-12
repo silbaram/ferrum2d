@@ -274,10 +274,10 @@ nested component 변경은 기존 flat-target 제한을 그대로 적용한다.
 일괄 변경은 객체마다 전체 pick bounds를 재생성하지 않고 편집 완료 시 한 번 갱신한다.
 2D 피킹은 render layer 우선이며 같은 레이어의 `hd2d` 스프라이트는 floor/elevation/발 위치/`sortOrder` 순서를 따른다.
 비교 키는 native f32 정밀도와 부호 있는 0의 순서를 따른다. 키가 모두 같으면 삽입 순서를 유지해 마지막으로 그린 객체를 먼저 선택한다.
-정책 변경은 열린 transaction 중 거부한다. [공식 뷰어 사용법](../data-scene-authoring.md#2d-레이어-관리)을 참고한다.
+정책 변경은 열린 transaction 중 거부한다. [Ferrum2D Studio 사용법](../data-scene-authoring.md#2d-레이어-관리)을 참고한다.
 
 `scenePlacementVisualGeometry(visual, transform)`는 같은 visual 사각형의 world 중심 `x/y`,
-scale 적용 `width/height`, `rotationRadians`를 반환한다. 공식 viewer와 생성 프로젝트의
+scale 적용 `width/height`, `rotationRadians`를 반환한다. Ferrum2D Studio와 생성 프로젝트의
 selection/draft 표시는 이 helper를 사용한다. picking은 회전 사각형 내부를 검사하며
 collider 형태나 텍스처 투명도는 검사하지 않는다.
 
@@ -445,7 +445,7 @@ instance/ObjectDefinition의 `props.behaviorRecipes` 참조만 바꾸고 `behavi
 `previewScenePlacementBindingMigration(document, patch)`는 `renameInstance`와 `removeInstance`가
 `behaviorRecipes` 내부 string value 또는 object key와 정확히 일치하는 경우를 agent-owned migration
 후보로 보고한다. viewer/save helper가 behavior recipe 본문을 직접 수정하지 않도록 분리한 preview이며,
-공식 placement viewer host는 이 reference report를 inspector에 표시하고 reference가 남아 있는 동안
+Ferrum2D Studio host는 이 reference report를 inspector에 표시하고 reference가 남아 있는 동안
 Save를 비활성화한다. agent는 이 결과를 보고 필요한 behavior target/profile rename을 별도 patch로 처리한다.
 
 `saveScenePlacementPatch(document, patch, options)`는 engine package가 직접 파일 시스템 권한을 갖는 API가
@@ -469,7 +469,7 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`다. 기존 문서는 조명 없이 유지된다.
 공간 문서와 함께 사용하면 거절하며 HD-2D는 `spatial.environment.lighting`을 사용한다.
 HD-2D의 반구광과 point/sun `shadows.normalBias`도 기존 environment 교체 patch와 문서 이력에 포함한다.
-공식 viewer의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
+Ferrum2D Studio의 **보기 → 조명**은 하늘색·지면색·세기와 그림자 표면 보정을 제공하며 추가 toolbar를 만들지 않는다.
 점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
 점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 renderer 계약을 따른다.
 flat `shadows.color`는 해당 점광원의 RGB 투과 필터와 alpha 차폐율이다. 겹침은 MAX union이며
@@ -696,7 +696,7 @@ ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부�
 
 ## 공간 지형·카메라·빌보드 (개발 소스)
 
-공식 뷰어의 기본 HD-2D 편집 구도와 `Fit Scene`은 창/패널 크기가 바뀌면 보이는 geometry를 다시 맞춘다.
+Ferrum2D Studio의 기본 HD-2D 편집 구도와 `Fit Scene`은 창/패널 크기가 바뀌면 보이는 geometry를 다시 맞춘다.
 직접 카메라를 이동·회전·확대하거나 선택 객체만 맞추면 그 구도를 유지한다. `Reset Camera`/`Fit Scene`은 자동 맞춤을 재개한다.
 이 편집 카메라는 작성된 게임 카메라와 Undo 이력을 바꾸지 않는다. `View → Game Camera Guide`는 작성 카메라의
 near/far 경계와 방향을 편집 화면에 표시한다. pixel-art 출력은 해당 가로세로 비율을 사용하며 게임 실행 중에는 가이드를 숨긴다.

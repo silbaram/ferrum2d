@@ -5,11 +5,11 @@
 **AI agent-first 2D · HD-2D 웹 게임 엔진**
 
 Rust / WebAssembly로 게임을 실행하고, TypeScript와 WebGL2로 브라우저에 그립니다.
-AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer에서 배치와 실행 결과를 확인합니다.
+AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·에셋을 편집하고 실행 결과를 확인합니다.
 
 [브라우저에서 체험하기](https://silbaram.github.io/ferrum2d/) · [시작하기](#시작하기) · [기능](#어떤-기능이-있나요) · [예제](#예제-갤러리) · [기능 안내](docs/engine/ai-feature-guide.md) · [문서](docs/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
 
-![Ferrum2D HD-2D 마을: Scene/Object Placement Viewer](docs/development/quality/screenshots/placement-village.png)
+![Ferrum2D HD-2D 마을: Ferrum2D Studio](docs/development/quality/screenshots/placement-village.png)
 
 *정적 3D 마을과 2D 캐릭터를 함께 배치하는 HD-2D 작업공간. 아래 이미지는 현재 개발 소스를 실제 브라우저에서 실행한 화면입니다.*
 
@@ -57,7 +57,7 @@ AI agent가 데이터와 코드를 수정하고, Scene/Object Placement Viewer�
 | 물리·충돌 | 강체·재질·센서·복합 충돌체, 8종 joint, CCD·raycast/shape cast, controller·발판, 층/높이 필터·파괴 지형 | [물리 기능 맵](docs/development/architecture/physics-engine.md) · [Physics Spec](docs/engine/physics-spec.md) |
 | 입력·오디오 | action binding·context, 키보드·포인터·gamepad·가상 조작부, 오디오 정책·공간 오디오 | [입력](docs/engine/input-actions.md) · [공간 오디오](docs/engine/public-api/core.md#공간-오디오) |
 | 에셋·로딩 | atlas, Aseprite/Tiled/LDtk 데이터 가져오기, trim 복원, 병렬 로딩·취소·재시도·캐시, 선택 KTX2, 모델 캐시·레벨 스트리밍 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
-| 씬 작업공간 | 프로젝트 씬 탐색·다중 문서, drag/drop·변형·Undo/Redo, 레이어·잠금, 게임 카메라·조명 작성, 내 변경·handoff, 에셋 사용처·Catalog 정리 | [뷰어 안내](apps/placement-viewer/README.md) |
+| 씬 작업공간 | 프로젝트 씬 탐색·다중 문서, drag/drop·변형·Undo/Redo, 레이어·잠금, 게임 카메라·조명 작성, 내 변경·handoff, 에셋 사용처·Catalog 정리 | [Studio 안내](apps/placement-viewer/README.md) |
 | 타일 작성 | 외부 타일셋·맵 가져오기, 작성 시점 오토타일, 타일 애니메이션·고정 충돌·시간별 맵 미리보기 | [타일 작성](docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기) |
 | 내장 도트 제작 | RGBA/인덱스 팔레트, 선택·자유 변형, 레이어 합성·불투명도·병합, 애니메이션·어니언, PNG 변환·노멀 생성·GIF/APNG 내보내기 | [도트 편집](apps/placement-viewer/README.md#내장-도트-제작) |
 | 진단·검증 | profiler·프레임 기록, GPU 자원 통계·WebGL2 GPU 시간·Wasm 메모리, spec validation·replay/hash·browser smoke·runtime budget·consumer smoke | [검증 기준](docs/development/quality/smoke-check.md) · [Quality API](docs/engine/public-api/quality.md) |
@@ -103,7 +103,7 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 - **도움말 → 버전 및 업데이트**에서 공개 릴리스를 확인합니다. 지원하는 데스크톱 환경은 프로젝트 엔진 갱신과 서명된 앱 업데이트를 구분해 처리합니다.
 
 웹 내장 예제는 **내보내기 전용**입니다. 파일 저장은 활성 host가 허용한 범위에서 실행하며,
-게임 미리보기는 Scene Authoring 런타임을 사용합니다. 상세 사용법은 [뷰어 안내](apps/placement-viewer/README.md)를 따릅니다.
+게임 미리보기는 Scene Authoring 런타임을 사용합니다. 상세 사용법은 [Studio 안내](apps/placement-viewer/README.md)를 따릅니다.
 
 ### 내장 도트 편집
 
@@ -154,7 +154,7 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 | 예제 | 실행 명령 / 열기 | 소스 위치 |
 | --- | --- | --- |
 | 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
-| HD-2D 마을 | 같은 뷰어 → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
+| HD-2D 마을 | 같은 Studio → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
 | 기능별 실험실 · 독립 실험 31종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
@@ -167,17 +167,17 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 - **Shooter:** 출격하기 / Enter로 시작, WASD 이동, 마우스 조준, 클릭 / Space 발사. P / Esc로 일시정지하고, 다시 출격 / 처음부터 다시 시작으로 재도전합니다.
 - **도트 쇼케이스:** 바닥을 클릭하거나 씨앗 버튼으로 이동합니다. 조명·캐릭터 팔레트·후처리를 바꿔 보고, 편집 가능한 도트 원본도 내려받을 수 있습니다.
 
-뷰어의 게임 미리보기는 Scene Authoring 런타임을 실행합니다. 외부 게임 프로젝트의 임의 TypeScript 진입점이나 자체 HUD까지 자동으로 실행하지는 않습니다.
+Studio의 게임 미리보기는 Scene Authoring 런타임을 실행합니다. 외부 게임 프로젝트의 임의 TypeScript 진입점이나 자체 HUD까지 자동으로 실행하지는 않습니다.
 전체 예제와 기능의 연결은 [Showcase Hub](docs/engine/showcase-hub.md)에 정리되어 있습니다.
 
 ## 개발 흐름과 구조
 
-기본 개발 흐름은 **AI agent가 spec·코드를 수정하고 검증하는 방식**입니다. 뷰어는 씬 배치·에셋·실행 결과를 확인하는 보조 도구입니다.
+기본 개발 흐름은 **AI agent가 spec·코드를 수정하고 검증하는 방식**입니다. Ferrum2D Studio는 사람이 씬·에셋을 편집하고 실행 결과를 확인하는 도구입니다.
 
 ```mermaid
 flowchart LR
     Agent["AI Agent / 게임 코드"] --> Spec["Game · Scene · Physics Spec"]
-    Viewer["Scene / Object Placement Viewer"] -->|"배치 · 에셋 · 변경 패치"| Spec
+    Viewer["Ferrum2D Studio"] -->|"배치 · 에셋 · 변경 패치"| Spec
     Spec --> Core["Rust / Wasm Core"]
     Core -->|"렌더 명령 버퍼"| Platform["TypeScript Platform"]
     Platform --> GPU["WebGL2 / 선택 WebGPU"]
@@ -191,7 +191,7 @@ flowchart LR
 
 독립 대화·지형 도구를 엔진보다 먼저 생성할 때는 `await initializeFerrumWasm()`으로 초기화합니다. [초기화·수명 계약](docs/engine/public-api/core.md)을 확인하세요.
 
-[사용자 설명서](docs/engine/user-guide.md)에서 기능·예제·뷰어 저장 범위를,
+[사용자 설명서](docs/engine/user-guide.md)에서 기능·예제·Studio 저장 범위를,
 [아키텍처](docs/development/architecture/architecture.md)에서 책임 경계와 실행 흐름을 설명합니다.
 Behavior Recipe 본문·FSM/action graph를 UI에서 작성하는 범용 visual editor, 멀티플레이어,
 전체 게임 루프 Worker 이전·Wasm threads·복잡한 물리는 별도 설계와 승인 범위입니다.
@@ -239,9 +239,9 @@ GitHub Release의 패키지 설치가 기준이며, npm registry에 같은 버�
 | `@ferrum2d/create-game` | 게임 프로젝트 생성 CLI |
 | `@ferrum2d/agents` | 게임 프로젝트용 agent·skill·command 설치 CLI |
 
-전체 Placement Viewer 데스크톱 앱은 helper `.tgz`와 별개입니다. 설치 파일에는 미리보기 엔진이 포함됩니다.
+전체 Ferrum2D Studio 데스크톱 앱은 helper `.tgz`와 별개입니다. 설치 파일에는 미리보기 엔진이 포함됩니다.
 OS별 설치 파일의 제공 여부는 선택한 릴리스의 첨부 파일을 확인하세요.
-[엔진·뷰어 분리 배포](docs/development/operations/github-release.md)를 참고하세요.
+[엔진·Studio 분리 배포](docs/development/operations/github-release.md)를 참고하세요.
 
 ### 소스 개발환경
 
@@ -285,7 +285,7 @@ pnpm validate:docs-links
 pnpm validate:public-api-surface
 ```
 
-배치/뷰어를 변경했다면 `pnpm smoke:placement-viewer`, 평면 픽셀 표시를 변경했다면 `pnpm smoke:flat-pixel-perfect`를 실행합니다.
+배치/Studio를 변경했다면 `pnpm smoke:placement-viewer`, 평면 픽셀 표시를 변경했다면 `pnpm smoke:flat-pixel-perfect`를 실행합니다.
 패키지 변경은 `pnpm package:check`, 생성 프로젝트 변경은 `pnpm package:consumer-smoke`로 검증합니다.
 전체 회귀 묶음은 `pnpm smoke:check`이며, 기능별 명령과 통과 조건은 [Smoke Check](docs/development/quality/smoke-check.md)를 따릅니다.
 
@@ -302,7 +302,7 @@ packages/ferrum-web/            TypeScript 브라우저 런타임
 packages/ferrum-authoring-viewer/ 공유 authoring helper
 packages/create-game/          게임 프로젝트 생성 CLI
 packages/agents/               게임 개발용 AI 지침
-apps/placement-viewer/         웹 Scene/Object Placement Viewer
+apps/placement-viewer/         웹 Ferrum2D Studio
 apps/placement-viewer-desktop/ 데스크톱 앱
 examples/                      기능 실험실 · 물리 심화 · 장르별 예제
 docs/                          사용법 · 설계 · 검증 · 개발계획
@@ -314,7 +314,7 @@ scripts/                       빌드 · 검증 · 배포 준비 도구
 | 처음 시작 | [개발자 퀵스타트](docs/engine/developer-quickstart.md) · [사용자 가이드](docs/engine/user-guide.md) |
 | AI로 게임 개발 | [설치 지침](docs/engine/ai-agent-install.md) · [기능 안내](docs/engine/ai-feature-guide.md) |
 | 기능과 예제 둘러보기 | [Showcase Hub](docs/engine/showcase-hub.md) |
-| 씬·오브젝트·카메라 | [Data Scene Authoring](docs/engine/data-scene-authoring.md) · [HD-2D](docs/engine/data-scene-spatial.md) · [뷰어 안내](apps/placement-viewer/README.md) |
+| 씬·오브젝트·카메라 | [Data Scene Authoring](docs/engine/data-scene-authoring.md) · [HD-2D](docs/engine/data-scene-spatial.md) · [Studio 안내](apps/placement-viewer/README.md) |
 | API·호환성 | [Public API](docs/engine/public-api.md) · [Migration Guide](docs/engine/public-api/migration-guide.md) |
 | English guides | [English documentation](docs/en/README.md) · [English README](README.en.md) |
 | 전체 문서·변경 이력 | [문서 목차](docs/README.md) · [CHANGELOG](CHANGELOG.md) |

@@ -99,7 +99,7 @@ WGSL은 기존 camera record의 padding field를 사용하며 CPU bulk upload �
 단일 태양 map은 XY texel 4개의 world 폭으로 내부 경계의 visibility를 직접 조명에 혼합한다.
 XY·깊이 경계의 최소 거리를 사용하며 영역 밖 visibility 1, native coverage·snapping·shadow cache는 유지한다.
 
-공식 Placement Viewer의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
+공식 Ferrum2D Studio의 카메라 맞춤/가이드·이동 축/yaw 조작·GLB 삼각형 선택은 TS의 cold authoring 경로다.
 `raycastSpatialModel`은 전달한 불변 CPU 모델의 삼각형만 검사하며 Rust collider/시뮬레이션과 별개다.
 포인터 선택 시 cold `dataSceneSpatialModelDrawSnapshot`으로 마지막 native 렌더의 LOD·pose·가시성을 읽는다.
 native binding은 마지막 draw의 index만 보관하며 render command ABI와 frame별 entity 왕복 호출은 추가하지 않는다.
@@ -109,7 +109,7 @@ native binding은 마지막 draw의 index만 보관하며 render command ABI와 
 선택 physics 진단은 최대 32 collider를 4 Hz로 읽고, 렌더/자원 통계는 보이는 패널에서만 2 Hz로 읽는다.
 게임 상태를 TS로 복제하거나 frame마다 entity별 Wasm 호출을 추가하지 않는다. GPU 시간의 발행 frame과 할당 추정/미측정을 구분한다.
 
-공식 Placement Viewer의 편집용 탐색 카메라는 문서/이력과 분리한 탭별 UI 상태다. 저장되는 게임 카메라는
+공식 Ferrum2D Studio의 편집용 탐색 카메라는 문서/이력과 분리한 탭별 UI 상태다. 저장되는 게임 카메라는
 `spatial.camera`이며 spatial patch v5의 씬 수준 `setCamera`로 기존 diff/merge/Undo/저장 경로를 따른다.
 `placementGameCamera.ts`는 설정 UI·씬 구도 작성용 수학·native presentation의 화면 범위 표시를 담당하고,
 `placementSpatialWorkspace.ts`가 변경 transaction·native 적용/취소와 모드 전환을 소유한다.
@@ -989,7 +989,7 @@ render layer와 Data Scene visual/collider component는 현재 built-in scene �
 collision-despawn처럼 built-in scene 소유 entity 수명을 끊는 behavior command도 같은 preflight 경계에서
 차단한다.
 
-Placement Viewer Desktop host는 browser frontend와 Rust file authority를 분리한다. Tauri의 load command가
+Ferrum2D Studio 데스크톱 host는 browser frontend와 Rust file authority를 분리한다. Tauri의 load command가
 성공한 scene document canonical path와 inferred/selected project root만 process-local write registry에
 등록하고, scene save와 `.ferrum-placement-handoff.json` save는 이 allowlist를 다시 확인한다. handoff의
 고정 저장 파일이 심볼릭 링크이면 쓰기를 거부한다. 따라서 frontend가 열지 않은 sibling 또는 임의

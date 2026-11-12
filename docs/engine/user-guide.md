@@ -4,7 +4,7 @@
 
 Ferrum2D는 **AI agent-first 2D · HD-2D 웹 게임 엔진**이다. Rust/Wasm이 게임 상태·충돌·씬 진행과
 렌더 명령을 만들고, TypeScript가 브라우저 입력·에셋·오디오와 WebGL2/선택 WebGPU 렌더링을 담당한다.
-AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 결과를 확인한다.
+AI agent가 spec과 코드를 수정하고, Studio에서 씬과 실행 결과를 확인한다.
 
 이 문서는 현재 개발 소스의 사용 흐름을 안내한다. 설치한 릴리스와 개발 소스의 기능은 다를 수 있으므로,
 게임 프로젝트에서는 설치 버전의 타입과 해당 tag의 문서를 함께 확인한다.
@@ -16,7 +16,7 @@ AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 �
 | 설치 없이 기능을 체험하기 | [GitHub Pages](https://silbaram.github.io/ferrum2d/)의 기능 실험실 | [31개 기능과 예제 지도](showcase-hub.md) |
 | 새 게임 프로젝트 만들기 | GitHub Release의 create-game 패키지로 템플릿 생성 | [개발자 퀵스타트](developer-quickstart.md) |
 | AI에게 개발 환경 설정 맡기기 | 엔진·개발 도구·consumer 지침 설치 | [AI 설치 지침](ai-agent-install.md) |
-| 씬·에셋·카메라 작성하기 | Placement Viewer에서 Scene Authoring 문서 열기 | [Scene Authoring](data-scene-authoring.md) |
+| 씬·에셋·카메라 작성하기 | Ferrum2D Studio에서 Scene Authoring 문서 열기 | [Scene Authoring](data-scene-authoring.md) |
 | 게임 요구사항에 맞는 API 찾기 | 기능별 공개 API와 입력 데이터 확인 | [AI 기능 안내](ai-feature-guide.md), [Public API](public-api.md) |
 
 ## 현재 할 수 있는 일
@@ -55,7 +55,7 @@ AI agent가 spec과 코드를 수정하고, 배치 뷰어에서 씬과 실행 �
 Minimal과 이전 `?mode=playground`/`?mode=starter`는 참고·검증용으로 유지하며 기본 목록에서 제외한다.
 전체 목록과 조작법은 [Showcase Hub](showcase-hub.md)를 따른다.
 
-## 뷰어에서 작성하고 실행하기
+## Studio에서 작성하고 실행하기
 
 1. **파일 → 예제**에서 정원이나 마을을 열거나, 프로젝트의 Scene Authoring JSON을 연다.
 2. 오브젝트를 선택하고 배치·변형·레이어·에셋을 수정한다. **내 변경**에서 원본 대비 변경을 검토한다.
@@ -63,7 +63,7 @@ Minimal과 이전 `?mode=playground`/`?mode=starter`는 참고·검증용으로 
 4. **정지**하면 작성 위치·초안·편집 카메라로 돌아온다. 실행 중 캐릭터 위치를 배치 원본으로 저장하지 않는다.
 5. 현재 문서에 표시된 저장 방식에 따라 저장하거나 JSON/patch를 내보낸다.
 
-편집 카메라는 작업 화면을 탐색하는 도구다. 실제 게임 구도는 뷰어의 게임 카메라 설정으로 작성한다.
+편집 카메라는 작업 화면을 탐색하는 도구다. 실제 게임 구도는 Studio의 게임 카메라 설정으로 작성한다.
 게임 미리보기는 Scene Authoring 런타임을 실행하며, 외부 프로젝트의 임의 TypeScript 진입점이나 자체 HUD를 자동으로 실행하지 않는다.
 
 | 실행 환경 | 저장과 프로젝트 접근 |
@@ -74,7 +74,7 @@ Minimal과 이전 `?mode=playground`/`?mode=starter`는 참고·검증용으로 
 
 씬·도트 원본의 실제 저장과 agent용 `.ferrum-placement-handoff.json`은 별도다.
 Handoff는 선택·초안·에셋 참조를 전달하는 자료이며 씬 저장을 대체하지 않는다.
-상세 조작·저장 권한·한영 UI·`Ctrl+K` 명령 검색은 [뷰어 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
+상세 조작·저장 권한·한영 UI·`Ctrl+K` 명령 검색은 [Studio 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
 
 ## 게임 프로젝트에서 수정할 파일
 
@@ -90,13 +90,13 @@ Handoff는 선택·초안·에셋 참조를 전달하는 자료이며 씬 저장
 | 물리 authoring 데이터 | 프로젝트의 Physics Spec 입력 | [Physics Spec](physics-spec.md) |
 
 씬 파일이 실제 게임 실행에 어떻게 연결되는지는 템플릿과 bootstrap에 따른다.
-뷰어에서 문서를 열었다는 사실만으로 별도의 게임 진입점에 자동 연결되지는 않는다.
+Studio에서 문서를 열었다는 사실만으로 별도의 게임 진입점에 자동 연결되지는 않는다.
 `npm run ferrum:report`의 `project.runtimeInputs`와 [Native Runtime](data-scene-native-runtime.md)을 확인한다.
 
 ## 수정하고 검증하는 흐름
 
 1. 원하는 기능을 [AI 기능 안내](ai-feature-guide.md)에서 찾아 설치 버전의 공개 API와 상세 계약을 확인한다.
-2. spec·에셋·코드를 수정한다. 필요하면 뷰어의 배치 초안과 handoff를 함께 참고한다.
+2. spec·에셋·코드를 수정한다. 필요하면 Studio의 배치 초안과 handoff를 함께 참고한다.
 3. 생성 프로젝트에서 기본 검증을 실행한다.
 
 ```bash

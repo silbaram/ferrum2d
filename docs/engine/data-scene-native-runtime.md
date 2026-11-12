@@ -98,7 +98,7 @@ body rotation은 초기 instance 회전에 더해진다. AABB/circle/capsule의 
 `despawnPhysicsEntity`, Data Scene reset/reapply는 sprite와 body를 함께 제거한다.
 장면 초기화는 슬롯 generation을 보존·증가시키므로 이전 handle을 새 객체에 사용할 수 없다.
 재적용 결과의 `entityHandles`를 다시 받으며, 카메라/라벨의 anchor도 새 handle로 연결한다.
-Placement Viewer의 visual/collider 편집과 ObjectDefinition 생성은 기존 body, dynamic tuning/material, heightSpan, depthSort와
+Ferrum2D Studio의 visual/collider 편집과 ObjectDefinition 생성은 기존 body, dynamic tuning/material, heightSpan, depthSort와
 변경하지 않은 tint/alpha를 보존한다. body 자체의 작성과 수정은 agent/spec에서 수행한다.
 
 ## 정렬, 원점, 색조

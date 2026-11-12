@@ -4,7 +4,7 @@
 
 Ferrum2D is an **AI agent-first 2D and HD-2D web game engine**. Rust/Wasm owns game state, collision,
 scene progression, and render command generation. TypeScript handles browser input, asset loading, audio,
-and WebGL2 or optional WebGPU rendering. Agents edit specifications and code, and people inspect the result in the placement viewer.
+and WebGL2 or optional WebGPU rendering. Agents edit specifications and code, and people inspect the result in Ferrum2D Studio.
 
 This guide describes the development source. When using a released package, check its installed types and the documentation for that release.
 
@@ -54,7 +54,7 @@ A standalone Vite server explains how to launch the suite rather than linking to
 Minimal and the legacy `?mode=playground`/`?mode=starter` routes remain reference/test fixtures, outside the main catalog.
 The [feature guide](showcase-hub.md) lists all experiments.
 
-## Edit and play in the viewer
+## Edit and play in Studio
 
 1. Open the garden or village through **File → Examples**, or open a project's Scene Authoring JSON.
 2. Select objects and change placement, transforms, layers, or assets. Use **My Changes** to compare against the original document.
@@ -73,7 +73,7 @@ Game Preview runs the Scene Authoring runtime; it does not automatically execute
 
 Scene and pixel-source saving are separate from `.ferrum-placement-handoff.json`.
 The handoff communicates selection, drafts, and asset references to an agent; it is not a replacement for saving the scene.
-The [viewer guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md) covers storage permissions,
+The [Studio guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md) covers storage permissions,
 English/Korean UI, and `Ctrl+K` command search.
 
 ## Files to edit in a game project
@@ -86,13 +86,13 @@ English/Korean UI, and `Ctrl+K` command search.
 | Runtime bootstrap, HUD, and platform integration | `src/main.ts`, `src/styles.css` | [Core API (Korean)](../../engine/public-api/core.md) |
 | Physics authoring | The project's Physics Spec input | [Physics Spec (Korean)](../../engine/physics-spec.md) |
 
-How a scene file affects gameplay depends on the template and bootstrap. Opening it in the viewer does not wire it into another entrypoint.
+How a scene file affects gameplay depends on the template and bootstrap. Opening it in Studio does not wire it into another entrypoint.
 Check `project.runtimeInputs` in `npm run ferrum:report`.
 
 ## Make and verify a change
 
 1. Check the installed package's public types and the relevant feature contract.
-2. Edit the specification, assets, or code. Use viewer drafts and handoff data when useful.
+2. Edit the specification, assets, or code. Use Studio drafts and handoff data when useful.
 3. Run the generated project's standard check:
 
 ```bash

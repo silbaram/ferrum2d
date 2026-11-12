@@ -2,7 +2,7 @@
 
 `@ferrum2d/authoring-viewer`는 Ferrum2D의 agent-first object authoring viewer를 위한 공유 패키지다.
 
-현재 범위는 공식 placement viewer와 후속 consumer viewer가 공통으로 써야 하는 운영 계약, 표시 헬퍼, app chrome, DOM control/shell/panel primitive 헬퍼다.
+현재 범위는 Ferrum2D Studio와 후속 consumer viewer가 공통으로 써야 하는 운영 계약, 표시 헬퍼, app chrome, DOM control/shell/panel primitive 헬퍼다.
 
 - viewer 제목과 권장 npm script 이름
 - placement/behavior 소유권 문자열

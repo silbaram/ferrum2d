@@ -1312,7 +1312,7 @@ frame이다. 두 값을 구분해 `RuntimeProfilerOptions.frameTrace`가 느린 
 `undefined`를 반환한다. `stateId`(선택), `health`(선택), `timer`(선택), `actions`(최대 16개)를
 지원한다. FSM 없음은 state 0과 구분한다. 숫자 packet version/길이/유한 값을 검사하고 상태는 변경하지 않는다.
 선택 객체 Inspector 같은 저빈도 조회에 사용하며 entity별 프레임 루프에서 호출하지 않는다.
-공식 viewer는 펼친 동안 최대 4 Hz로 읽는다. 변수·event UI 계약은 [Authoring API](authoring.md)를 따른다.
+Ferrum2D Studio는 펼친 동안 최대 4 Hz로 읽는다. 변수·event UI 계약은 [Authoring API](authoring.md)를 따른다.
 
 `createSpatialModelThumbnailSvg(asset, size?)`와 `engine.setDataSceneSpatialPreviewFilter(...)`의
 preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.

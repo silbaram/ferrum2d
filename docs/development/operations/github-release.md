@@ -74,9 +74,23 @@ pnpm release:github:prepare -- --version 0.1.0-beta.0
 
 자동 제공되는 GitHub Source code.zip/tar.gz는 설치용 패키지가 아니다. 위 네 `.tgz`를 릴리스 Assets로 제공해야 한다.
 
-## 엔진과 전체 뷰어 앱 분리 준비
+## 엔진과 Studio 앱 분리 준비
 
-`@ferrum2d/authoring-viewer` tarball은 공통 helper다. 독립 실행하는 전체 UI는 `apps/placement-viewer-desktop`의 Tauri 설치 파일로 제공한다. 엔진 SDK는 게임 프로젝트에 설치하고, 전체 뷰어 앱은 OS에 설치한다. 뷰어는 같은 릴리스의 미리보기 엔진을 내장한다.
+`@ferrum2d/authoring-viewer` tarball은 공통 helper다. 독립 실행하는 전체 UI는 `apps/placement-viewer-desktop`의 Tauri 설치 파일로 제공한다. 엔진 SDK는 게임 프로젝트에 설치하고, Studio 앱은 OS에 설치한다. Studio는 같은 릴리스의 미리보기 엔진을 내장한다.
+
+제품명은 **Ferrum2D Studio**다. `--component viewer`, `--viewer`, 패키지/실행 파일명과
+`ferrum2d-placement-viewer-*`, `viewer-updater-*` 배포 파일명은 기존 설치 도구와 URL 호환을 위해 유지한다.
+Tauri bundle identifier도 유지하며, MSI `upgradeCode`는 구 제품명으로 생성했던 `b220af84-f62a-5b63-8f6e-c193a58ee033`을 고정한다.
+이는 [Tauri의 제품명 변경 시 MSI 지침](https://v2.tauri.app/reference/config/#upgradecode)을 따른다.
+
+**이름 전환 릴리스는 구 앱에서 자동 업데이트로 배포하지 않는다.** NSIS uninstall 등록과 Linux deb 패키지명은
+`productName`의 영향을 받는다. 구 Placement Viewer 사용자는 씬·에셋을 저장·백업하고 앱을 제거한 뒤 Studio를 설치한다.
+macOS는 이전 이름의 `.app`도 정리한다. 설치 식별자와 업데이트 URL 보존만으로 OS 전환 호환이 검증된 것은 아니다.
+각 OS에서 제거/설치·설정 보존·프로젝트 열기/저장/재열기를 확인한 후 수동 설치용 릴리스를 공개하고,
+현재 `--with-updater`는 `productName`이 구 제품명과 다르면 plan 단계부터 거절하며, 수동 workflow도
+서명 업데이트 요청을 native 도구 설치·빌드 전에 검사한다. Studio 간 자동 업데이트는 후속 개발에서
+구 앱이 조회하지 않는 별도 업데이트 채널과 실제 OS 설치 전환을 검증한 뒤 제공한다.
+기존 `viewer-updater-*` 채널은 구 앱도 모든 새 버전에서 조회하므로 Studio용으로 재사용하지 않는다.
 
 아래 버전은 예시다. 실제 공개할 때는 새 beta 버전을 선택한다.
 
@@ -87,7 +101,7 @@ pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --plan
 # SDK와 동반 도구 네 tgz: 기존 release:github:prepare 계약 유지
 pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component engine
 
-# 현재 OS의 전체 뷰어 설치 파일
+# 현재 OS의 Studio 설치 파일
 pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign
 
 # SDK + 현재 OS 설치 파일 + 통합 manifest/체크섬/안내
@@ -130,11 +144,11 @@ sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev liba
 
 `--skip-engine-build`, `--skip-engine-package-check`는 이미 같은 소스에서 수행한 엔진 검사를 재사용할 때만 사용한다. 생략 사실은 기존 엔진 manifest에 기록되며 viewer native build는 생략하지 않는다. dirty source도 준비는 가능하지만 통합 manifest에 보존한다. 공개 후보는 커밋한 깨끗한 소스에서 다시 준비한다.
 
-설치한 뷰어에서 **속성 → 문서 → 프로젝트 열기**로 게임 폴더를 선택하면 `public/scene-authoring.json`과 `public/assets`를 사용한다. SDK/Node/Rust는 뷰어 실행을 위해 따로 설치하지 않아도 된다. 게임의 임의 `main.ts`/HUD를 자동 실행하는 기능은 아니며, 실제 게임 실행은 해당 게임 프로젝트의 실행 명령을 사용한다.
+설치한 Studio에서 **파일 → 프로젝트 열기**로 게임 폴더를 선택하면 `public/scene-authoring.json`과 `public/assets`를 사용한다. SDK/Node/Rust는 Studio 실행을 위해 따로 설치하지 않아도 된다. 게임의 임의 `main.ts`/HUD를 자동 실행하는 기능은 아니며, 실제 게임 실행은 해당 게임 프로젝트의 실행 명령을 사용한다.
 
 ## 버전 확인과 업데이트
 
-전체 뷰어의 **도움말 → 버전 및 업데이트**는 앱/내장 엔진과 게임 프로젝트 SDK를 따로 표시한다.
+Studio의 **도움말 → 버전 및 업데이트**는 앱/내장 엔진과 게임 프로젝트 SDK를 따로 표시한다.
 GitHub `/releases/latest`는 beta를 제외하므로 공개 release 목록을 최대 5페이지 조회하고 exact beta를 숫자로 비교한다.
 draft·source archive·단순 Git push는 새 버전으로 선택하지 않는다. API 제한/오프라인은 오류를 표시하며 설치를 시작하지 않는다.
 
@@ -149,7 +163,10 @@ custom command·혼합 lock·workspace/file/git 의존성은 수동 처리를 �
 package manager 설치 hook을 생략하므로 실제 게임 검증과 migration은 갱신 후 별도로 수행한다.
 같은 프로젝트에서 npm/pnpm을 동시에 실행하지 않는다. 비정상 종료로 `active.lock`이 남으면 백업과 설치 상태를 먼저 확인한다.
 
-앱 자동 업데이트를 준비할 때는 **운영자가 별도로 관리하는** Tauri updater 키를 사용한다.
+아래는 구 제품명 `Ferrum2D Placement Viewer`의 자동 업데이트 계약이다. 현재 Studio 소스에서는
+`--with-updater` 및 workflow의 `signed_updates=true`를 거절한다. 수동 설치 파일은 기존처럼 준비할 수 있다.
+
+구 앱 자동 업데이트를 준비할 때는 **운영자가 별도로 관리하는** Tauri updater 키를 사용한다.
 키 생성·원격 secret 등록·릴리스 공개는 준비 스크립트가 수행하지 않는다.
 
 ```bash
@@ -158,7 +175,7 @@ package manager 설치 hook을 생략하므로 실제 게임 검증과 migration
 pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --with-updater
 ```
 
-위 버전은 예시이며 실제 새 버전을 사용한다. `--with-updater`는 필수 키가 없으면 빌드 전에 실패한다.
+위 버전은 예시이며 실제 새 버전을 사용한다. `--with-updater`는 제품명 호환 검사를 먼저 수행하고, 허용된 구 앱 빌드도 필수 키가 없으면 빌드 전에 실패한다.
 앱 updater는 공식 `silbaram/ferrum2d` 저장소를 사용한다. fork의 signed updater 준비는 거절하며 별도의 앱 배포 설정이 필요하다.
 Tauri의 `--no-sign`은 updater 서명도 생략하므로 두 옵션의 조합은 거부한다.
 현재 OS의 installer에 더해 Linux `.AppImage`, macOS `.app.tar.gz`, Windows installer `.exe`와 `.sig`,
@@ -169,8 +186,8 @@ metadata는 정확한 version·Tauri platform key·고정 GitHub release artifac
 키와 맞지 않거나 변조된 파일은 설치 시 공식 updater에서 거절한다.
 업데이트 서명은 Windows/macOS code-signing/notarization을 대신하지 않으며 기존 native release gate도 유지한다.
 
-수동 workflow의 `include_viewer`와 `signed_updates`를 함께 켜면 위 환경변수와 같은 이름의
-repository secrets를 읽어 OS별 자료를 준비한다. unsigned 후보는 기존처럼 `signed_updates=false`를 사용한다.
+구 제품명 소스의 수동 workflow에서 `include_viewer`와 `signed_updates`를 함께 켜면 위 환경변수와 같은 이름의
+repository secrets를 읽어 OS별 자료를 준비한다. 현재 Studio 후보는 `signed_updates=false`를 사용한다.
 워크플로는 준비 artifact만 만들며 Release에 자동 첨부/공개하지 않는다.
 
 최초에는 이 기능과 올바른 공개키가 들어간 앱을 직접 설치해야 한다. 그 이후 더 높은 버전의 signed artifact로
@@ -195,6 +212,6 @@ HTTP 설치 smoke는 SHA-256을 확인하고 localhost에서 네 패키지의 �
 
 ## 실제 공개와 업데이트
 
-준비 결과, 검사 보고서, source commit/dirty 상태를 검토하고 공개할 소스를 커밋한 뒤 같은 소스로 최종 묶음을 다시 만든다. 명시적 사용자 승인 후 `ferrum-web-v<버전>` tag의 GitHub prerelease에 네 tarball과 manifest/checksum/설치 안내를 올린다. 전체 뷰어도 제공하는 릴리스는 통합 묶음의 OS별 설치 파일과 개별/통합 manifest·체크섬·안내를 함께 첨부한다. tag는 manifest의 source commit과 일치해야 한다. GitHub 전용 배포에는 npm publish용 `private: false` 전환이나 `release:publish-check`가 필요 없다.
+준비 결과, 검사 보고서, source commit/dirty 상태를 검토하고 공개할 소스를 커밋한 뒤 같은 소스로 최종 묶음을 다시 만든다. 명시적 사용자 승인 후 `ferrum-web-v<버전>` tag의 GitHub prerelease에 네 tarball과 manifest/checksum/설치 안내를 올린다. Studio도 제공하는 릴리스는 통합 묶음의 OS별 설치 파일과 개별/통합 manifest·체크섬·안내를 함께 첨부한다. tag는 manifest의 source commit과 일치해야 한다. GitHub 전용 배포에는 npm publish용 `private: false` 전환이나 `release:publish-check`가 필요 없다.
 
 공개 후에는 `INSTALL.md`의 실제 URL을 빈 디렉터리에서 실행해 프로젝트 생성·설치·게임 검증을 다시 확인한다. 공개한 버전의 파일을 교체하는 대신 새 beta 버전을 만든다. 업데이트 시 게임 `package.json`의 engine/viewer URL, `ferrum:agents` URL, 출처 metadata를 같은 릴리스로 함께 변경한 뒤 `npm install`과 `ferrum:check`를 실행한다.

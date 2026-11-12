@@ -1,11 +1,14 @@
 # Ferrum2D 스크린샷
 
 루트 README와 Pages에서 사용하는 실제 실행 화면을 이 디렉터리에 둔다.
-현재 이미지는 개발 소스의 production 빌드를 Chromium의 WebGL2/SwiftShader에서 실행해 캡처했다.
+현재 이미지는 개발 소스의 production 빌드를 실제 브라우저에서 실행해 캡처했다. 캡처별 환경은 아래 기록을 따른다.
 합성 이미지나 제품 UI 시안이 아니며, 공개 beta에 같은 기능이 포함되었다는 의미는 아니다.
 
-정원·마을 세트는 2026-11-02에 엔진 소스 커밋 `7bc6504`의 빌드를 Chromium `148.0.7778.96`에서 캡처했다.
-도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 같은 Chromium에서 캡처했다.
+정원·마을 게임 미리보기는 2026-11-02에 엔진 소스 커밋 `7bc6504`의 빌드를 Chromium `148.0.7778.96`의 WebGL2/SwiftShader에서 캡처했다.
+Studio 전체 작업공간(`placement-village.png`)은 2026-11-12에 `3eee9cc` 기준 `chore/studio-branding` 작업 트리의 production 빌드로 갱신했다.
+Windows Chrome `157.0.8103.39`, AMD Radeon 8060S의 WebGL2/ANGLE에서 한국어 UI를 직접 캡처했다.
+환경·실행 상태는 `artifacts/studio-branding-review/browser-report.json`, 소스·이미지 SHA-256은 같은 디렉터리의 `review-report.json`에 기록한다.
+도트 쇼케이스는 2026-11-03에 `1b99e4f` 이후 작업 트리의 production 빌드를 Chromium `148.0.7778.96`에서 캡처했다.
 Shooter 세트는 2026-11-08에 `9dc5319` 이후 `feat/topdown-shooter-refresh` 작업 트리의 Neon Outpost production 빌드로 갱신했다.
 기능 실험실 이미지는 2026-11-08에 `9dc5319` 이후 작업 트리의 9-slice 대화창 비교 production 빌드로 갱신했다.
 기능 실험실 이미지는 2026-11-09에 `3e8eae9` 기준 `feat/topic-based-examples` 작업 트리의 production 빌드로 갱신했다.
@@ -18,7 +21,7 @@ Breakout·Platformer·Physics Lab 세트는 2026-11-08에 같은 작업 트리�
 
 | 파일 | 내용 |
 | --- | --- |
-| [placement-village.png](placement-village.png) | HD-2D 마을 Scene/Object Placement Viewer 전체 작업공간 |
+| [placement-village.png](placement-village.png) | HD-2D 마을 Ferrum2D Studio 전체 작업공간 |
 | [garden-game-preview.png](garden-game-preview.png) | 2D 등불 정원 게임 미리보기, 실행 후 일시정지 |
 | [village-game-preview.png](village-game-preview.png) | 씬에 저장된 게임 카메라를 적용한 HD-2D 마을, 실행 후 일시정지 |
 | [topdown-shooter-title.png](topdown-shooter-title.png) | Neon Outpost 시작 안내·HUD·화면 설정 |
@@ -30,10 +33,10 @@ Breakout·Platformer·Physics Lab 세트는 2026-11-08에 같은 작업 트리�
 | [engine-feature-lab.png](engine-feature-lab.png) | 기능 실험실: 같은 대화창의 일반 확대·9-slice 비교와 원본 9분할 |
 | [pixel-art-demo.png](pixel-art-demo.png) | 공통 UI 테마와 탐색을 사용하는 도트 자산 응용 예제 |
 
-캡처 기준은 `1440 × 1000`, DPR 1, 뷰어 한국어 UI다. 전체 작업공간은 body를,
+캡처 기준은 `1440 × 1000`, DPR 1, Studio 한국어 UI다. 전체 작업공간은 body를,
 정원·마을 게임 미리보기는 실제 canvas를 캡처하므로 이미지의 최종 크기는 서로 다르다.
 Shooter는 시작·플레이 모두 body를 캡처해 게임 화면과 조작·설정을 함께 보여준다.
-소프트웨어 렌더러의 캡처이며 성능 측정 자료로 사용하지 않는다.
+실행 화면을 보여주는 캡처이며 성능 측정 자료로 사용하지 않는다.
 
 ## 재생성
 
