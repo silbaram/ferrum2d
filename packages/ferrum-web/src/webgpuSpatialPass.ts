@@ -548,7 +548,7 @@ export class WebGpuSpatialPass {
       stats.drawCalls += passes;
       stats.triangleCount += passes;
       const bloomPasses = stats.bloomDrawCalls ?? 0, mainPasses = passes - bloomPasses;
-      stats.textureBindCount += mainPasses * 2 + Number(!!hdr.indirect) + bloomPasses + Number(bloomPasses > 0);
+      stats.textureBindCount += mainPasses * 2 + Number(!!hdr.indirect) + bloomPasses + Number(bloomPasses > 0) + Number((stats.lightShaftDrawCalls ?? 0) > 0);
     }
     return stats;
   }
@@ -714,6 +714,7 @@ function spatialStats(
     shadowCulledTriangleCount: 0,
     effectDrawCalls: 0,
     bloomDrawCalls: 0, bloomTextureBytes: 0, bloomTexelFetchBudget: 0,
+      lightShaftDrawCalls: 0, lightShaftTextureBytes: 0, lightShaftTexelFetchBudget: 0, lightShaftSampleBudget: 0,
     effectTextureBytes: 0,
     dofSampleBudget: 0,
   };

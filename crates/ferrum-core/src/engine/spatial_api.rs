@@ -571,8 +571,14 @@ impl Engine {
     pub fn spatial_height_fog_abi_version(&self) -> u32 {
         1
     }
+    /// Cold capability for environment v14 bounded sun light shafts.
+    pub fn spatial_light_shafts_abi_version(&self) -> u32 {
+        1
+    }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        if self.spatial_scene.environment.value_len > 608 {
+        if self.spatial_scene.environment.value_len > 616 {
+            14
+        } else if self.spatial_scene.environment.value_len > 608 {
             13
         } else if self.spatial_scene.environment.value_len > 600 {
             12

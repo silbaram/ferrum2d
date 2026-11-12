@@ -53,6 +53,71 @@ fn two_point_shadow_values() -> Vec<f32> {
     v
 }
 #[test]
+fn light_shafts_v14_preserves_inactive_source_and_rejects_invalid_transactions() {
+    let (mut e, _) = setup();
+    let mut v = two_point_shadow_values();
+    v.resize(632, 0.);
+    v[83..95].copy_from_slice(&[1., 0., 1., 0., 2., 1., 1., 1., 200., 128., 0.05, 128.]);
+    v[528] = 1.;
+    v[616..626].copy_from_slice(&[1., 0.5, 0.01, 200., 1., 1., 1., 0.9, 2., 32.]);
+    assert_eq!(e.spatial_light_shafts_abi_version(), 1);
+    for (scale, samples) in [(4., 16.), (2., 32.), (2., 48.)] {
+        v[624] = scale;
+        v[625] = samples;
+        assert!(e.configure_spatial_environment(&v));
+        e.update(0.01);
+        assert_eq!(e.spatial_environment_abi_version(), 14);
+        let history = e.capture_spatial_light_selection_state();
+        for (at, value) in [
+            (616, 0.),
+            (616, 2.),
+            (617, 5.),
+            (618, -1.),
+            (619, 0.),
+            (620, f32::NAN),
+            (623, 1.),
+            (624, 3.),
+            (625, 64.),
+            (626, 1.),
+            (631, 1.),
+            (528, 0.),
+        ] {
+            let mut bad = v.clone();
+            bad[at] = value;
+            assert!(
+                !e.configure_spatial_environment(&bad),
+                "accepted {at}={value}"
+            );
+            assert_eq!(e.capture_spatial_environment(), v);
+            assert_eq!(e.capture_spatial_light_selection_state(), history);
+        }
+    }
+    let mut off = v.clone();
+    off[0] = 0.;
+    off[1] = 0.;
+    off[2] = -1.;
+    off[3] = 0.;
+    off[12..60].fill(0.);
+    off[138] = 2.;
+    off[545..549].fill(0.);
+    off[588] = -1.;
+    assert!(e.configure_spatial_environment(&off));
+    e.build_render_commands();
+    assert_eq!(e.capture_spatial_environment(), off);
+    assert!(e.spatial_scene.environment.frame_values[616..632]
+        .iter()
+        .all(|x| *x == 0.));
+    assert!(e.spatial_scene.environment.shadow_matrices.is_empty());
+    assert!(e.configure_spatial_environment(&v));
+    e.build_render_commands();
+    assert_eq!(e.spatial_scene.environment.frame_values[616], 1.);
+    let mut legacy = v[..616].to_vec();
+    legacy[608..616].fill(0.);
+    assert!(e.configure_spatial_environment(&legacy));
+    assert_eq!(e.spatial_environment_abi_version(), 13);
+}
+
+#[test]
 fn height_fog_v13_preserves_source_and_lighting_history_and_rejects_bad_records() {
     let (mut e, _) = setup();
     let mut v = two_point_shadow_values();

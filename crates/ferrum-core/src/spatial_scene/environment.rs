@@ -1,7 +1,7 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 616;
+pub(crate) const ENVIRONMENT_VALUES: usize = 632;
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -41,6 +41,7 @@ impl SpatialEnvironment {
             592,
             600,
             608,
+            616,
             ENVIRONMENT_VALUES,
         ]
         .contains(&v.len())
@@ -219,6 +220,25 @@ impl SpatialEnvironment {
         }) {
             return None;
         }
+        // v14: bounded sun shafts; disabled authored lighting keeps its source config.
+        if !(if a[616] == 0. {
+            a[617..632].iter().all(|x| *x == 0.)
+        } else {
+            a[616] == 1.
+                && a[528] == 1.
+                && a[83] == 1.
+                && a[92] > 0.
+                && (0. ..=4.).contains(&a[617])
+                && (0. ..=1.).contains(&a[618])
+                && (0.1..=10000.).contains(&a[619])
+                && a[620..623].iter().all(|x| (0. ..=1.).contains(x))
+                && (0. ..=0.9).contains(&a[623])
+                && ((a[624] == 4. && a[625] == 16.)
+                    || (a[624] == 2. && [32., 48.].contains(&a[625])))
+                && a[626..632].iter().all(|x| *x == 0.)
+        }) {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -368,6 +388,7 @@ impl SpatialEnvironment {
                     v[112..125].fill(0.);
                     v[512..528].fill(0.);
                     v[592..608].fill(0.);
+                    v[616..632].fill(0.);
                 }
             }
             self.shadow_matrices.clear();

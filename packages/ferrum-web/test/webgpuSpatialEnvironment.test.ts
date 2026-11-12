@@ -1,4 +1,6 @@
 import { WebGpuSpatialBloom } from "../src/webgpuSpatialBloom.js";
+import { WebGpuSpatialLightShafts } from "../src/webgpuSpatialLightShafts.js";
+import { spatialLightShaftPlan } from "../src/spatialLightShaftKernel.js";
 import { spatialBloomPlan } from "../src/spatialBloomKernel.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
@@ -98,7 +100,7 @@ function frame(spec?: SpatialEnvironmentSpec): SpatialRenderBufferView {
     ...(values
       ? {
           environment: {
-            version: values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
+            version: values.length === 632 ? 14 : values.length === 616 ? 13 : values.length === 608 ? 12 : values.length === 600 ? 11 : values.length === 592 ? 10 : values.length === 584 ? 9 : values.length === 580 ? 8 : values.length === 576 ? 7 : values.length === 544 ? 6 : values.length === 528 ? 5 : values.length === 512 ? 4 : values.length === 128 ? 3 : values.length === 112 ? 2 : 1,
             values,
             shadowMatrices: new Float32Array((values[2] >= 0 ? 96 : 0) + (values.length >= 592 && values[589] === 1 && values[588] >= 0 ? 96 : 0) + (values[92] > 0 ? 16 : 0)),
             shadowCasters: new Float32Array(),
@@ -512,4 +514,60 @@ test("wide Bloom uses immutable stage parameters, retries writes and latches asy
   pass.destroy(); equal(device.scopes, 0);
   equal(device.textures.filter(t => t.destroyed === 0).length, 0);
   equal(device.buffers.filter(b => b.destroyed === 0).length, 0);
+});
+
+const shaftBase: SpatialEnvironmentSpec = {
+  composition: "separated",
+  lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: {} } },
+};
+test("light shafts reuse the sun map, allocate no indirect MRT, share AO resolve and release inactive targets", () => {
+  const { device, pass } = setup();
+  pass.prepare(frame(shaftBase), 160, 90);
+  const live = () => device.textures.filter(t => !t.destroyed);
+  const baseline = live().length, shafts = frame({ ...shaftBase, lightShafts: {} });
+  validateSpatialExtensions(shafts); pass.prepare(shafts, 160, 90);
+  equal(live().length, baseline + 2); equal(!!pass.scene()!.indirect, false);
+  const packed = device.uniforms[device.uniforms.length - 1];
+  equal(packed[676], 1);
+  deepEqual(packed.subarray(676, 680), packed.subarray(2816 / 4 + 676, 2816 / 4 + 680));
+  const warm = [device.textures.length, device.groups]; pass.prepare(shafts, 160, 90);
+  deepEqual([device.textures.length, device.groups], warm);
+  pass.prepare(frame({ ...shaftBase, lightShafts: {}, ambientOcclusion: {} }), 160, 90);
+  equal(live().length, baseline + 3); equal(!!pass.scene()!.indirect, true);
+  pass.prepare(frame({ ...shaftBase, lightShafts: { intensity: 0 } }), 160, 90);
+  equal(live().length, baseline);
+  deepEqual([...device.uniforms[device.uniforms.length - 1].subarray(676, 680)], [0, 0, 0, 0]);
+  pass.prepare(shafts, 321, 181);
+  deepEqual((live().find(t => t.d.label === "Spatial light shafts HDR")!.d as GPUTextureDescriptor).size, [161, 91, 1]);
+  pass.prepare(frame(shaftBase), 321, 181); equal(live().length, baseline);
+  pass.destroy(); equal(live().length, 0); equal(device.scopes, 0);
+});
+test("light shafts preserve the previous target on allocation failure and latch asynchronous GPU errors", async () => {
+  const { device, pass: unrelated } = setup(); unrelated.destroy();
+  const pass = new WebGpuSpatialLightShafts(device as unknown as GPUDevice);
+  const f = frame({ ...shaftBase, lightShafts: {} }), v = f.environment!.values;
+  const plan = spatialLightShaftPlan(v, 160, 90)!;
+  pass.prepare(plan); const bytes = pass.textureBytes();
+  device.failView = true;
+  throws(() => pass.prepare(spatialLightShaftPlan(v, 320, 180)), /view failed/);
+  equal(pass.textureBytes(), bytes); equal(device.textures.filter(t => !t.destroyed).length, 1);
+  device.failView = false; pass.prepare(plan);
+  let draws = 0;
+  const encoder = { beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() { draws++; }, end() {} }) } as unknown as GPUCommandEncoder;
+  const depth = {} as GPUTextureView, shadow = {} as GPUTextureView;
+  const write = device.queue.writeBuffer;
+  device.queue.writeBuffer = () => { throw Error("injected shaft upload"); };
+  throws(() => pass.draw(encoder, f, plan, depth, shadow, 160, 90), /injected/);
+  device.queue.writeBuffer = write;
+  pass.draw(encoder, f, plan, depth, shadow, 160, 90); equal(draws, 1);
+  const groups = device.groups;
+  pass.draw(encoder, f, plan, depth, shadow, 160, 90); equal(device.groups, groups);
+  const uniform = device.uniforms[device.uniforms.length - 1];
+  equal(uniform.length, 52); deepEqual([...uniform.subarray(44, 48)], [160, 90, 80, 45]);
+  device.bindingError = true; pass.draw(encoder, f, plan, {} as GPUTextureView, shadow, 160, 90);
+  await Promise.resolve(); await Promise.resolve();
+  throws(() => pass.prepare(plan), /Light shafts GPU allocation failed/);
+  pass.destroy(); pass.destroy(); equal(device.scopes, 0);
+  equal(device.textures.filter(t => !t.destroyed).length, 0);
+  equal(device.buffers.filter(t => !t.destroyed).length, 0);
 });

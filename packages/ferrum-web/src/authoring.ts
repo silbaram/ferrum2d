@@ -1,3 +1,4 @@
+export type { SpatialLightShaftSpec } from "./spatialLightShafts.js";
 export type { SpatialHeightFogSpec } from "./spatialHeightFog.js";
 export type { SpatialPointPcssSpec } from "./spatialPointPcss.js";
 export type { SpatialSunPcssSpec } from "./spatialSunPcss.js";

@@ -239,6 +239,9 @@ uniform vec4 u_focus,u_gradeValues,u_bloom,u_ao;uniform bool u_wideBloom,u_bloom
 vec3 bloomAt(ivec2 p){ivec2 size=textureSize(u_bloomImage,0);p=clamp(p,ivec2(0),size-1);return texelFetch(u_bloomImage,ivec2(p.x,size.y-1-p.y),0).rgb;}
 vec3 wideBloom(vec2 uv){vec2 p=vec2(uv.x,1.-uv.y)*u_bloomGrid-.5;ivec2 a=ivec2(floor(p));vec2 w=fract(p);return mix(mix(bloomAt(a),bloomAt(a+ivec2(1,0)),w.x),mix(bloomAt(a+ivec2(0,1)),bloomAt(a+ivec2(1,1)),w.x),w.y);}
 uniform vec3 u_tint;uniform float u_projectionSize;
+uniform bool u_lightShafts;uniform sampler2D u_shaftImage;
+vec3 shaftAt(ivec2 p){ivec2 size=textureSize(u_shaftImage,0);p=clamp(p,ivec2(0),size-1);return texelFetch(u_shaftImage,ivec2(p.x,size.y-1-p.y),0).rgb;}
+vec3 lightShaftsAt(vec2 uv){vec2 p=vec2(uv.x,1.-uv.y)*vec2(textureSize(u_shaftImage,0))-.5;ivec2 a=ivec2(floor(p));vec2 w=fract(p);return mix(mix(shaftAt(a),shaftAt(a+ivec2(1,0)),w.x),mix(shaftAt(a+ivec2(0,1)),shaftAt(a+ivec2(1,1)),w.x),w.y);}
 uniform sampler2D u_indirect;uniform bool u_separated,u_dofApplied,u_fog;uniform int u_stage;
 uniform vec2 u_fogRange;uniform vec3 u_fogColor;uniform vec4 u_heightFog,u_fogCamera;
 ${HEIGHT_FOG_GLSL}
@@ -246,7 +249,7 @@ float viewDepth(float d){float n=u_nearFar.x,f=u_nearFar.y;return u_perspective?
 vec3 encode(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
 vec3 viewPosition(vec2 uv,float z){float h=u_perspective?tan(u_projectionSize*.5)*z:u_projectionSize*.5;return vec3((uv*2.-1.)*vec2(u_size.x/u_size.y,1.)*h,-z);}
-void main(){float depth=texture(u_depth,v_uv).r;vec4 center=texture(u_color,v_uv);if(center.a<=0.0 && (u_stage>0 || u_bloom.x<=0. || u_bloom.y<=0.))discard;
+void main(){float depth=texture(u_depth,v_uv).r;vec4 center=texture(u_color,v_uv);vec3 shaft=u_stage==1 && u_lightShafts && center.a>0.?lightShaftsAt((floor(v_uv*u_size)+.5)/u_size):vec3(0.);if(center.a<=0.0 && (u_stage>0 || u_bloom.x<=0. || u_bloom.y<=0.))discard;
 float z=viewDepth(depth);vec3 color=center.rgb;
 if(u_stage!=1 && u_dof && (!u_dofApplied || u_stage==2) && u_highDof){
  float centerDelta=z-u_focus.x;
@@ -299,7 +302,7 @@ if((u_stage==1 || !u_separated) && u_ao.x>0. && u_ao.y>0. && depth<1.) {
  float visibility=1.-clamp(occlusion/12.*u_ao.y*3.,0.,.9);
  if(u_stage==1)color-=texture(u_indirect,v_uv).rgb*(1.-visibility);else color*=visibility;
 }
-if(u_stage==1 && u_fog){
+if(u_stage==1 && u_fog && center.a>0.){
  float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.,1.);
  if(u_heightFog.x>0.){float eyeOffset=u_fogCamera.x-u_heightFog.y;
   float origin=eyeOffset+(u_perspective?0.:u_fogCamera.y*position.y);
@@ -307,6 +310,7 @@ if(u_stage==1 && u_fog){
   amount=heightFogAmount(z,u_perspective?length(position):z,origin,receiver,u_heightFog,u_fogRange);}
  color=mix(color,u_fogColor,amount);
 }
+color+=shaft;
 if(u_stage>0){outColor=vec4(max(color,vec3(0.)),center.a);return;}
 if(u_bloom.x>0. && u_bloom.y>0.) {
  vec3 glow=vec3(0.);float weight=0.;

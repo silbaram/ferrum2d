@@ -1,3 +1,4 @@
+import { requestsSpatialLightShafts, resolveSpatialLightShafts, validSpatialLightShafts, type SpatialLightShaftSpec } from "./spatialLightShafts.js";
 import { requestsSpatialHeightFog, resolveSpatialHeightFog, validSpatialHeightFog, type SpatialHeightFogSpec } from "./spatialHeightFog.js";
 import { requestsSpatialPointPcss, resolveSpatialPointPcss, validSpatialPointPcss } from "./spatialPointPcss.js";
 import { hasSpatialSelectionSource, requestsSpatialWideBloom, validSpatialWideBloom } from "./spatialBloom.js";
@@ -92,6 +93,8 @@ export interface SpatialFogSpec {
   end: number;
 }
 export interface SpatialEnvironmentSpec {
+  /** Requires separated composition and a directional light with shadows. */
+  lightShafts?: SpatialLightShaftSpec;
   /** Legacy is the default. Separated composition applies AO to ambient/hemisphere only. */
   composition?: "legacy" | "separated";
   /** Fixed scene resolution; integer CSS upscale, centered bars; smaller windows downscale to fit. */
@@ -105,9 +108,9 @@ export interface SpatialEnvironmentSpec {
   colorGrading?: SpatialColorGradingSpec;
   fog?: SpatialFogSpec;
 }
-/** Borrowed native environment v1..v13; acquire per frame, copy before deferred use. */
+/** Borrowed native environment v1..v14; acquire per frame, copy before deferred use. */
 export interface SpatialEnvironmentBufferView {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   values: Float32Array;
   shadowMatrices: Float32Array;
   shadowCasters: Float32Array;
@@ -120,7 +123,7 @@ export interface SpatialEnvironmentBufferView {
 export const SPATIAL_ENVIRONMENT_VALUES = 80;
 export function validSpatialEnvironmentValues(v: Float32Array): boolean {
   if (
-    ![80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616].includes(v.length) ||
+    ![80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616, 632].includes(v.length) ||
     v.some((x) => !Number.isFinite(x)) ||
     !Number.isInteger(v[0]) ||
     v[0] < 0 ||
@@ -155,7 +158,8 @@ export function validSpatialEnvironmentValues(v: Float32Array): boolean {
       ![0, 1].includes(v[583]) || v[583] === 0 && v.subarray(576, 580).some(x => x !== 0))) return false;
   if (v.length >= 600 && !validSpatialSunPcss(v)) return false;
   if (v.length >= 608 && !validSpatialPointPcss(v)) return false;
-  if (v.length === 616 && !validSpatialHeightFog(v)) return false;
+  if (v.length >= 616 && !validSpatialHeightFog(v)) return false;
+  if (v.length >= 632 && !validSpatialLightShafts(v)) return false;
   if (!(v[0] & 1) && (v[1] !== 0 || v[2] !== -1)) return false;
   const range = (start: number, end: number, min: number, max: number) => {
     for (let i = start; i < end; i++)
@@ -353,6 +357,7 @@ export function resolveSpatialEnvironmentSpec(
 ): SpatialEnvironmentSpec {
   const o = object(value, path, [
     "composition",
+    "lightShafts",
     "lighting",
     "bloom",
     "ambientOcclusion",
@@ -655,6 +660,10 @@ export function resolveSpatialEnvironmentSpec(
     result.fog = { color: rgb(f.color, `${path}.fog.color`, 1), start, end,
       ...(f.height === undefined ? {} : { height: resolveSpatialHeightFog(f.height, `${path}.fog.height`) }) };
   }
+  if (o.lightShafts !== undefined) {
+    result.lightShafts = resolveSpatialLightShafts(o.lightShafts, `${path}.lightShafts`);
+    if (result.composition !== "separated" || !result.lighting?.directional?.shadows) throw sceneCompositionDiagnosticError(`${path}.lightShafts`, "requires separated composition and a directional light with shadows");
+  }
   return result;
 }
 export function compileSpatialEnvironment(
@@ -663,11 +672,11 @@ export function compileSpatialEnvironment(
   if (input === null) return new Float32Array();
   const spec = resolveSpatialEnvironmentSpec(input),
     selection = spec.lighting?.selection,
-    lightChannels = requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec) || requestsSpatialPointShadows(spec) || requestsSpatialSunPcss(spec) || requestsSpatialPointPcss(spec) || requestsSpatialHeightFog(spec),
+    lightChannels = requestsSpatialLightShafts(spec) || requestsSpatialLightChannels(spec) || selection !== undefined || requestsSpatialWideBloom(spec) || requestsSpatialPointShadows(spec) || requestsSpatialSunPcss(spec) || requestsSpatialPointPcss(spec) || requestsSpatialHeightFog(spec),
     fixedSunCenter = spec.lighting?.directional?.shadows?.center,
     advancedLighting = !!(spec.lighting?.hemisphere || spec.lighting?.shadows?.normalBias || spec.lighting?.directional?.shadows?.normalBias),
     v4 = lightChannels || !!(spec.composition || fixedSunCenter || spec.bloom || spec.ambientOcclusion || spec.lighting?.maxActiveLights || (spec.lighting?.lights.length ?? 0)>4 || spec.lighting?.lights.some(l=>l.spot || l.followActor)),
-    v = new Float32Array(requestsSpatialHeightFog(spec) ? 616 : requestsSpatialPointPcss(spec) ? 608 : requestsSpatialSunPcss(spec) ? 600 : requestsSpatialPointShadows(spec) ? 592 : requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
+    v = new Float32Array(requestsSpatialLightShafts(spec) ? 632 : requestsSpatialHeightFog(spec) ? 616 : requestsSpatialPointPcss(spec) ? 608 : requestsSpatialSunPcss(spec) ? 600 : requestsSpatialPointShadows(spec) ? 592 : requestsSpatialWideBloom(spec) ? 584 : selection ? 580 : lightChannels ? 576 : spec.composition ? 544 : fixedSunCenter ? 528 : v4 ? 512 : advancedLighting ? 128 : spec.pixelArt || spec.lighting?.directional || spec.lighting?.shadowFilter === "pcf3" || spec.depthOfField?.quality === "high" || spec.depthOfField?.focusTarget ? 112 : 80);
   v[2] = -1;
   v[4] = 0.05;
   v.set([0.15, 0.15, 0.15], 5);
@@ -759,6 +768,8 @@ export function compileSpatialEnvironment(
   if (pcss) v.set([1, pcss.angularRadius!, pcss.maxRadiusTexels!], 592);
   const owners = spec.lighting?.pointShadows ?? (spec.lighting?.shadows ? [spec.lighting.shadows] : []);
   owners.forEach((owner, i) => { if (owner.pcss) v.set([1, owner.pcss.sourceRadius!, owner.pcss.maxRadiusTexels!, 0], 600 + i * 4); });
+  const shafts = spec.lightShafts;
+  if (shafts) v.set([1, shafts.intensity!, shafts.density!, shafts.maxDistance!, ...shafts.color!, shafts.anisotropy!, shafts.quality === "low" ? 4 : 2, shafts.quality === "low" ? 16 : shafts.quality === "high" ? 48 : 32], 616);
   const heightFog = spec.fog?.height;
   if (heightFog) v.set([1, heightFog.baseHeight!, heightFog.density!, heightFog.falloff!], 608);
   return v;
@@ -839,8 +850,9 @@ export function decodeSpatialEnvironment(
     const owners = spec.lighting.pointShadows ?? (spec.lighting.shadows ? [spec.lighting.shadows] : []);
     owners.forEach((owner, i) => { const at = 600 + i * 4; if (v[at] === 1) owner.pcss = { sourceRadius: v[at + 1], maxRadiusTexels: v[at + 2] }; });
   }
-  if (v.length === 616 && v[608] === 1 && spec.fog)
+  if (v.length >= 616 && v[608] === 1 && spec.fog)
     spec.fog.height = { baseHeight: v[609], density: v[610], falloff: v[611] };
+  if (v.length >= 632 && v[616] === 1) spec.lightShafts = { intensity: v[617], density: v[618], maxDistance: v[619], color: [v[620], v[621], v[622]], anisotropy: v[623], quality: v[624] === 4 ? "low" : v[625] === 48 ? "high" : "balanced" };
   if (hasSpatialSelectionSource(v) && spec.lighting) spec.lighting.selection = { enabled: v[576] === 1, hysteresis: v[577], fadeSeconds: v[578], resetDistance: v[579] };
   return resolveSpatialEnvironmentSpec(spec);
 }
