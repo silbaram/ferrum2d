@@ -1,3 +1,4 @@
+import { matchesSpatialEnvironmentLayout, type SpatialEnvironmentVersion } from "./spatialEnvironmentAbi.js";
 import type { SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 import { readSpatialLightSelection } from "./spatialLightSelection.js";
 import {readSpatialReceiverMasks} from "./spatialReceiverMasks.js";
@@ -215,14 +216,16 @@ export class WasmBridge {
       const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
       const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
       const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
-      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112) || (e.spatial_environment_abi_version() === 3 && environmentLength === 128) || (e.spatial_environment_abi_version() === 4 && environmentLength === 512) || (e.spatial_environment_abi_version() === 5 && environmentLength === 528) || (e.spatial_environment_abi_version() === 6 && environmentLength === 544) || (e.spatial_environment_abi_version() === 7 && environmentLength === 576) || (e.spatial_environment_abi_version() === 8 && environmentLength === 580) || (e.spatial_environment_abi_version() === 9 && environmentLength === 584) || (e.spatial_environment_abi_version() === 10 && environmentLength === 592) || (e.spatial_environment_abi_version() === 11 && environmentLength === 600) || (e.spatial_environment_abi_version() === 12 && environmentLength === 608) || (e.spatial_environment_abi_version() === 13 && environmentLength === 616))
+      const environmentVersion = environmentLength ? e.spatial_environment_abi_version() : undefined;
+      if (environmentLength && (!matchesSpatialEnvironmentLayout(environmentVersion, environmentLength)
           || casterCount % 6 !== 0 || casterCount > 1024 * 6 || ![0, 16, 96, 112, 192, 208].includes(matrixCount))) {
         throw new Error("Unsupported spatial environment ABI");
       }
       const shadowRangeCount = environmentLength && typeof e.spatial_shadow_range_len === "function" ? e.spatial_shadow_range_len() : undefined;
       if (shadowRangeCount !== undefined && (e.spatial_shadow_submission_version() !== 1 || shadowRangeCount > (environmentLength >= 592 ? 16640 : 8960))) throw new Error("Unsupported shadow submission ABI");
       const environment: SpatialEnvironmentBufferView | undefined = environmentLength ? {
-        version: e.spatial_environment_abi_version() as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13,
+        // The non-empty packet was checked against the wire layout above.
+        version: environmentVersion as SpatialEnvironmentVersion,
         values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
         shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
         shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),

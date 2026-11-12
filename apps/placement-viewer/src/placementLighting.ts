@@ -1,5 +1,6 @@
-import type { SpatialEnvironmentSpec, SpatialLightingSpec, SpatialRgb, FerrumRuntime } from "@ferrum2d/ferrum-web/core";
-import type { LightingScene2D } from "@ferrum2d/ferrum-web/labs";
+import type { SpatialRgb, FerrumRuntime } from "@ferrum2d/ferrum-web/core";
+import type { PlacementLightingDraft as Draft } from "./placementLightingControls";
+import { createPlacementLightingAdvanced } from "./placementLightingAdvanced";
 import type { ScenePlacementViewer, ScenePlacementViewerState } from "@ferrum2d/ferrum-web/authoring";
 import { createPlacementLightGizmos } from "./placementLightGizmos";
 import { createPlacementSunDirection } from "./placementSunDirection";
@@ -11,9 +12,6 @@ import { installPlacementNumberStepper, numberStepScale } from "./placementNumbe
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { createPlacementFieldFeedback } from "./placementToolPanel";
 import { placementPointShadow, removePlacementPointShadowSource, setPlacementPointShadow } from "./placementPointShadows";
-
-type Draft = { spatial: true; environment: SpatialEnvironmentSpec; light: SpatialLightingSpec; bindings: Record<string,readonly number[]> }
-  | { spatial: false; light: LightingScene2D };
 
 /** Scene settings use the viewer's existing draft/history/native validation boundary. */
 export function createPlacementLighting(options: {
@@ -59,7 +57,7 @@ export function createPlacementLighting(options: {
     else d.light.directionalLight = { directionX: 0.6, directionY: 0.8, intensity: 0.15 };
   }));
   const sunRemove = action("Remove Sunlight", "remove-sun", () => change(d => {
-    if (d.spatial) delete d.light.directional; else delete d.light.directionalLight;
+    if (d.spatial) { delete d.light.directional; delete d.environment.lightShafts; } else delete d.light.directionalLight;
   }));
   sun.append(sunAdd, sunForm);
   const points = section("Point Lights"), pointIndex = document.createElement("select"), pointForm = document.createElement("div");
@@ -162,7 +160,7 @@ export function createPlacementLighting(options: {
   const sunShadows = checkbox("Sun Shadows", "sun-shadows", value => change(d => {
     if (d.spatial && d.light.directional) {
       if (value) d.light.directional.shadows = { resolution: 512 };
-      else delete d.light.directional.shadows;
+      else { delete d.light.directional.shadows; delete d.environment.lightShafts; }
     } else if (!d.spatial && d.light.directionalLight) d.light.directionalLight.shadowOpacity = value ? 0.35 : 0;
   }));
   sunForm.append(sunShadows.row);
@@ -254,6 +252,12 @@ export function createPlacementLighting(options: {
     advancedGroups.push(details);
   }
 
+  const advanced = createPlacementLightingAdvanced({
+    form, atmosphere: advancedGroups[0], sun: advancedGroups[1], point: advancedGroups[2],
+    number, color, checkbox, action, change, key: options.key, pointIndex: selectedIndex,
+    refresh: () => sync(options.viewer.state()),
+  });
+
   function draft(): Draft {
     if (state.spatial) {
       const environment = structuredClone(state.spatial.environment ?? {});
@@ -314,8 +318,8 @@ export function createPlacementLighting(options: {
     });
     return input;
   }
-  function number(parent: HTMLElement, label: string, name: string, min: number, max: number, step: number, read: (d: Draft) => number, write: (d: Draft, value: number) => void, visible?: (d: Draft) => boolean) {
-    const input = field(parent, label, name, "number", d => Number(read(d).toFixed(4)), (d, value) => write(d, Number(value)), visible);
+  function number(parent: HTMLElement, label: string, name: string, min: number, max: number, step: number, read: (d: Draft) => number, write: (d: Draft, value: number) => void, visible?: (d: Draft) => boolean, decimals = 4) {
+    const input = field(parent, label, name, "number", d => Number(read(d).toFixed(decimals)), (d, value) => write(d, Number(value)), visible);
     input.min = String(min); input.max = String(max); input.step = "any";
     const commit = () => { input.dispatchEvent(new Event("change")); };
     installPlacementNumberStepper(input, step, commit);
@@ -353,11 +357,11 @@ export function createPlacementLighting(options: {
     handle.addEventListener("click", event => { if (suppressClick) event.preventDefault(); suppressClick = false; });
     return input;
   }
-  function color(parent: HTMLElement, label: string, name: string, read: (d: Draft) => readonly number[], write: (d: Draft, rgb: [number, number, number]) => void) {
-    field(parent, label, name, "color", d => {
+  function color(parent: HTMLElement, label: string, name: string, read: (d: Draft) => readonly number[], write: (d: Draft, rgb: [number, number, number]) => void, visible?: (d: Draft) => boolean) {
+    return field(parent, label, name, "color", d => {
       const rgb = read(d), divisor = d.spatial && name === "ambient-color" ? Math.max(...rgb.slice(0, 3)) || 1 : Math.max(1, ...rgb.slice(0, 3));
       return "#" + rgb.slice(0, 3).map(c => Math.round(c / divisor * 255).toString(16).padStart(2, "0")).join("");
-    }, (d, hex) => write(d, [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255) as [number, number, number]));
+    }, (d, hex) => write(d, [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255) as [number, number, number]), visible);
   }
   function sync(next: ScenePlacementViewerState) {
     const home = options.mount(); if (home && menu.panel.parentElement !== home) home.append(menu.panel);
@@ -399,16 +403,20 @@ export function createPlacementLighting(options: {
       ? d.light.directional?.direction ?? { x: 0, y: 0 }
       : { x: d.light.directionalLight?.directionX ?? 1, y: d.light.directionalLight?.directionY ?? 1 }, d.spatial);
     sunShadows.input.checked = d.spatial ? !!d.light.directional?.shadows : (d.light.directionalLight?.shadowOpacity ?? 0.35) > 0;
+    setUiAttribute(sunRemove, "title", d.spatial ? "Removing sunlight also removes light shafts." : "");
+    setUiAttribute(sunShadows.input, "title", d.spatial ? "Disabling sun shadows also removes light shafts." : "");
     if (pointIndex.options.length !== total) pointIndex.replaceChildren(...Array.from({ length: total }, (_, i) => {
       const option = document.createElement("option"); option.value = String(i); return option;
     }));
     for (const [i, option] of [...pointIndex.options].entries()) setUiText(option, uiMessage("Light {0}", i + 1));
     pointIndex.value = String(index); pointIndex.hidden = !total; pointForm.hidden = !total; removePoint.disabled = !total;
     addPoint.disabled = total >= (d.spatial ? 16 : 32);
+    advanced.sync(d);
     for (const f of fields) {
       f.row.hidden = f.visible ? !f.visible(d) : false;
       if (documentChanged || document.activeElement !== f.input) { f.input.value = String(f.read(d)); f.feedback.set(); }
       if (f.input.dataset.placementLightingField === "ambient" || f.input.dataset.placementLightingField === "sun-intensity") f.input.max = String(d.spatial ? f.input.dataset.placementLightingField === "ambient" ? 4 : 64 : 1);
+      if (f.input.dataset.placementLightingField === "bloom-radius") f.input.max = d.spatial && d.environment.bloom?.mode === "wide" ? "96" : "24";
     }
     // Some groups are HD-2D only; an empty disclosure must not be offered in 2D.
     for (const group of advancedGroups) group.hidden = ![...group.children].some(child => child.localName !== "summary" && !(child as HTMLElement).hidden);

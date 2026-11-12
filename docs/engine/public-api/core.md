@@ -1297,7 +1297,7 @@ authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 �
 거리별 정적 model 선택을 작성한다. 모든 LOD 자원을 먼저 등록하며 native가 거리·hysteresis·shadow
 필요 여부를 고른다. physics는 visual unload와 무관하다. 자동 네트워크 다운로드는 제공하지 않는다.
 `attachments`는 parent body 기준 child pose이며 native가 위치·높이·회전을 갱신한다.
-`DATA_SCENE_STATE_VERSION` 최신값은15다. 점광원 PCSS 문서/진행은v15, 태양 PCSS 문서/진행은v14, `pointShadows`는v13, wide Bloom은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
+`DATA_SCENE_STATE_VERSION` 최신값은18이다. 프로브 문서/진행은v18, 빛줄기는v17, 높이 안개는v16, 점광원 PCSS 문서/진행은v15, 태양 PCSS 문서/진행은v14, `pointShadows`는v13, wide Bloom은v12, 선택 이력은v11을 사용한다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
 기존 문서는 v5/v6/v7 capture/hash를 유지한다. root yaw를 저장하고 child pose는 복원 시 재계산한다.
 [모델 고도화 계약](../data-scene-spatial.md#모델-고도화-재질-batch움직이는-묶음청크lod)을 따른다.
 
@@ -1562,3 +1562,16 @@ float4/5/6은 emission RGB, float7은 specular, float8은 roughness, word9는 �
 `SpatialHeightFogSpec`는 선택형 `environment.fog.height` 설정이다.
 기준 높이·밀도·감쇠율과 원근/직교 시선 적분을 제공하며 environment v13/616·patch14/state16을 사용한다.
 구간 의미와 기존 선형 안개 호환성은 [높이 안개 계약](../data-scene-spatial.md#선택형-높이-안개)을 따른다.
+
+### 태양광 빛줄기
+
+`SpatialLightShaftSpec`는 선택형 `environment.lightShafts` 설정이다. root/core/authoring에서 타입을 제공한다.
+separated 합성 및 그림자를 가진 태양광을 요구하며, 강도·색상·밀도·거리·전방 산란·품질을 설정한다.
+source는 environment v14/632·patch15/state17이고 이전 저장 버전은 계속 읽는다.
+[설정·비용·근사 한계](../data-scene-spatial.md#선택형-태양광-빛줄기)를 따른다.
+
+### 지역별 간접광 프로브
+
+`SpatialLightProbeSpec`는 `environment.lighting.probes`의 최대8개 정적 간접광 영역 설정이다.
+위치·반경·선형 RGB·밝기를 지정하며 source는 environment v15/700·patch16/state18이다.
+[보간·AO·비용·호환성·차폐 한계](../data-scene-spatial.md#지역별-간접광-프로브)를 따른다.

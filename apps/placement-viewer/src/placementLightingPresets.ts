@@ -12,10 +12,14 @@ export function lightingMood(environment: SpatialEnvironmentSpec, mood: Lighting
     } as const;
     const c = configs[mood];
     next.lighting = { ...next.lighting, enabled: true, lights, ambient: c.ambient, hemisphere: { skyColor: c.sky, groundColor: c.ground, intensity: c.fill },
-        directional: { direction: { x: -1, y: -1, elevation: c.elevation }, color: c.sun, intensity: c.strength,
+        directional: { ...next.lighting?.directional, direction: { x: -1, y: -1, elevation: c.elevation }, color: c.sun, intensity: c.strength,
             ...(mood === "Interior" ? {} : { shadows: next.lighting?.directional?.shadows ?? { resolution: 512, extent: 430, distance: 1400, bias: .07, normalBias: .35 } }) }, shadowFilter: "pcf3", ...(shadows ? { shadows } : {}) };
     next.colorGrading = { ...next.colorGrading, exposure: c.exposure, toneMapping: "aces", saturation: mood === "Night" ? .85 : 1 };
-    next.bloom = { strength: mood === "Night" || mood === "Interior" ? .65 : .25, radius: 8, threshold: .8 };
+    if (mood === "Interior") {
+        delete next.lighting.directional!.shadows;
+        delete next.lightShafts;
+    }
+    next.bloom = { ...next.bloom, strength: mood === "Night" || mood === "Interior" ? .65 : .25, radius: next.bloom?.mode === "wide" ? next.bloom.radius ?? 48 : 8, threshold: .8 };
     next.ambientOcclusion ??= { strength: .55, radius: 16, bias: .3 };
     return next;
 }
@@ -31,6 +35,11 @@ export function lightingQuality(environment: SpatialEnvironmentSpec, quality: Li
         next.lighting.pointShadows = next.lighting.pointShadows.map(shadow => ({ ...shadow, resolution }));
     if (next.lighting.directional?.shadows)
         next.lighting.directional.shadows.resolution = resolution;
+    for (const shadow of [next.lighting.directional?.shadows, next.lighting.shadows, ...(next.lighting.pointShadows ?? [])]) {
+        if (shadow?.pcss) shadow.pcss.maxRadiusTexels = Math.min(shadow.pcss.maxRadiusTexels ?? 16, low ? 8 : high ? 32 : 16);
+    }
+    if (next.lightShafts) next.lightShafts.quality = low ? "low" : high ? "high" : "balanced";
+    if (next.bloom?.mode === "wide") next.bloom.quality = low ? "low" : high ? "high" : "balanced";
     if (low) {
         delete next.bloom;
         delete next.ambientOcclusion;

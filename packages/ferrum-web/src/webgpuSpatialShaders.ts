@@ -29,7 +29,8 @@ fn spatialSurface(f:Fragment)->SpatialLightingOutput{
  if(color.a<f.cutoff){discard;}
  if(!environmentEnabled()){return lightingOutput(color.rgb,vec3f(0.));}
  let albedo=${linearWorking ? "color.rgb" : "linearize(color.rgb)"};
- return lightingOutput(shade(albedo,vec3f(0.),f.world,n,geometric,false),indirectColor(albedo,n,false));
+ let fill=indirectIllumination(f.world,n,false);
+ return lightingOutput(shadeSurface(albedo,vec3f(0.),f.world,n,geometric,false,vec3f(0.),1.,0.,fill),albedo*fill);
 }
 @fragment fn fs_main(f:Fragment)->@location(0)vec4f{return spatialSurface(f).color;}
 @fragment fn fs_lighting(f:Fragment)->SpatialLightingOutput{return spatialSurface(f);}
@@ -97,7 +98,8 @@ fn modelSurface(f:Fragment,front:bool)->SpatialLightingOutput{
  if(c.a<material.params.x){discard;}
  let unlit=material.params.y>.5;var emission=emitted;if(unlit){emission=vec3f(0.);}
  if(!environmentEnabled()){return lightingOutput(${linearWorking ? "c.rgb+emission" : "encode(c.rgb+emission)"},vec3f(0.));}
- return lightingOutput(shadeSurface(c.rgb,emission,f.world,n,geometricNormal,unlit,f0,roughness,specularWeight),indirectColor(c.rgb,n,unlit));
+ let fill=indirectIllumination(f.world,n,unlit);
+ return lightingOutput(shadeSurface(c.rgb,emission,f.world,n,geometricNormal,unlit,f0,roughness,specularWeight,fill),c.rgb*fill);
 }
 @fragment fn fs_main(f:Fragment,@builtin(front_facing) front:bool)->@location(0)vec4f{return modelSurface(f,front).color;}
 @fragment fn fs_lighting(f:Fragment,@builtin(front_facing) front:bool)->SpatialLightingOutput{return modelSurface(f,front);}

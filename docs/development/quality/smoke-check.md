@@ -23,6 +23,16 @@ warm frame에는 추가 upload/allocation이 없어야 하며 새 재질 때문�
 `node tests/smoke/placement-village-smoke.mjs --lighting-only`로 HD-2D 조명 조작만 실행하며 반구광 OFF/ON의 색·세기 보존도 확인한다.
 같은 명령의 저장 회귀는 2D/HD-2D 모두에서 초점을 둔 값의 저장·잘못된 입력 차단·재열기를 확인한다. HD-2D는 반구광과 두 normalBias, 꺼진 반구광의 색·방향·밝기 보존도 검사한다. 파일 호스트만 public bridge로 모사하며 작성·렌더·페이지 재로딩은 실제 경로를 실행한다.
 
+`placement-lighting-advanced-smoke.mjs`는 위 HD-2D 조명 smoke와 `smoke:placement-spatial-workspace`에 포함되며,
+CI의 기존 spatial workspace gate에서도 실행한다. UI로 태양/두 점광원 PCSS·넓은 Bloom·높이 안개·빛줄기·프로브·광원 선택·채널을
+작성하고 실제 native environment 확장 값, entity 수, 효과 draw와 전체 draw 상한을 확인한다. 프로브 8개 제한·밝기 0,
+지형/빌보드 수신 채널, 잘못된 값/native 거절 복원, 태양 삭제/그림자 해제/실내 프리셋의 빛줄기 의존성,
+Undo·Play/Stop·반경 80의 초점 저장/재열기·KO/EN/390px을 검사한다. 원본은 `artifacts/viewer-lighting/advanced.json`과 PNG다.
+전체 spatial workspace smoke는 모델의 두 수신 채널 작성과 Undo 시 pose·다른 필드 보존도 검사한다.
+수신 채널 저장은 포커스를 유지한 단독 입력/기존 draft, 저장 payload와 재열기, unchanged/저장 후 blur의 no-op을 검사한다.
+소수·범위 밖·빈 채널 입력과 native 거절은 추가 저장 요청 없이 기존 draft/history를 보존해야 한다.
+`pnpm test:placement-point-shadows`는 분위기 프리셋의 넓은 Bloom/채널 보존과 PCSS/빛줄기 품질 변경도 검증한다.
+
 로컬 `artifacts/`는 현재 작업의 검토·검증과 설치 복구에 필요한 동안만 보관한다. 종료된 작업의
 결과는 확정 문서에 요약하고 중간 로그·반복 실행·임시 설치 사본은 삭제한다. 문서에 출력 경로가
 있다는 이유로 해당 디렉터리를 영구 보존하지 않는다. 과거 보고서가 필요하면 생성 명령부터 다시
@@ -3150,3 +3160,73 @@ patch14/state16의 downgrade 거절과 Undo/Redo, 양쪽 GPU uniform tail 초기
 
 현재 호스트 GPU fixture 통과는 사용자 실게임·목표 기기의 FPS 수용 검증과 구분한다.
 실게임·실기기 수용 검증은 사용자 방침에 따라 개발 완료 후 진행한다.
+
+### 태양광 빛줄기 smoke
+
+`pnpm smoke:spatial-light-shafts`는 독립 이미지 oracle의 negative audit, Wasm/SDK build와 packed browser matrix를 실행한다.
+같은 행렬은 `pnpm smoke:spatial-webgpu-offscreen`과 현재 수동 CI(`workflow_dispatch`) validate job에 포함된다.
+이미 준비된 패키지는 runner의 `--light-shafts-only`로 좁게 재검증할 수 있다.
+
+WebGL2/WebGPU × 원근/직교 × legacy/linear-srgb × desktop/모바일 viewport × DPR1/2에서 검증한다.
+low/balanced/high, 강도·색·밀도·거리·전방 분포, 강도0/밀도0/lighting OFF,
+높이 안개·실제 ambient AO·pixelArt, progress-only 새 엔진 restore, OFF→ON 및 WebGPU device recovery가 포함된다.
+
+Node oracle은 native camera로 시선을 구성하고, fixture의 box와 독립 ray 교차를 계산해 태양 차폐를 판정한다.
+그림자 raster 경계의 불확실한 표본은 제외하고 최소 표본 수와 빛줄기의 실제 색 변화량을 요구한다.
+시선 구간별 지수 적분과 저해상도 복원으로 계산한 색을 PNG와 비교하며 backend parity만으로 통과하지 않는다.
+빈 결과·효과 무시·잘못된 tint·빈 배경 덮어쓰기·stale restore·빠진 상태·누락된 metric·추가 pass·warm shadow redraw를 negative audit에서 거절한다.
+
+같은 gate는 packed GLSL/WGSL raymarch shader 전체에 통제된 depth/shadow texture를 입력하는 정밀도 검사도 실행한다.
+작은 near와 원거리 depth, far plane, 거리 clamp, near 이전 종료, 매우 얇은/짙은 밀도, 직교 카메라,
+비단위 native 태양 방향을 16/32/48 샘플별로 검사한다. 차폐가 없는 구간의 독립 지수 적분과 비교하며
+`--light-shafts-precision-only`로 따로 실행할 수 있다. 기존 상쇄 오차·희미한 산란 누락·방향 길이에 따른 밝기 변화는
+negative audit에서 거절한다. SDK 자원 테스트는 현재 오류의 target 해제와 교체·OFF 후 도착한 이전 오류의 격리를 검사한다.
+
+별도 HDR fixture는 높이 안개+빛줄기+DOF 뒤의 sub-threshold 입력을 gather/wide Bloom이 읽는지 확인하고,
+threshold0의 실제 반응·Bloom0 identity·AO 추가·resize/DPR 복원·device recovery를 검사한다.
+실제 draw/target bytes/샘플/texture-load 상한이 report와 renderer/profiler에 전달되는지 확인한다.
+source632/native v14·capability1·patch15/state17, 구 버전 reader와 downgrade 거절·Undo/Redo는 Rust/SDK 검사 대상이다.
+실제 사용자 게임·목표 기기 품질/FPS 수용 검증은 개발 fixture 결과와 별도로 기록한다.
+
+### 지역별 간접광 프로브 smoke
+
+```bash
+pnpm test:spatial-light-probes-report
+pnpm smoke:spatial-light-probes
+```
+
+동일 검사는 `smoke:spatial-webgpu-offscreen` aggregate에도 연결된다. 이 aggregate를 호출하는
+수동 GitHub Actions 경로가 gate이며, 모든 PR에서 실행된다고 주장하지 않는다.
+실제 packed package를 사용하는 fixture는 WebGL2/WebGPU × orthographic/perspective ×
+legacy/linear-srgb × 1280×720/390×844 × DPR1/2를 검사한다.
+
+- 최대8개·단일·검정·겹침·역순·중복·위치 변경·영역 밖·hemisphere·조명OFF·legacy/separated·AO.
+- 실제 Playing/1 entity·지형 제출, warm pixels 동일, 추가 draw/target0 및 shadow redraw/upload0.
+  프로브 없이 조명 OFF·AO 경로를 먼저 준비해 WebGL2의 깊이 버퍼와 WebGPU의 지연 생성 MRT 파이프라인까지 기준 비용에 포함한다.
+  texture/target/buffer/program 개수와 buffer bytes는 누락을 거절하고 복원·재활성화·device recovery까지 비교한다.
+  device recovery로 AO 파이프라인 캐시가 줄어드는 것은 허용하되 추가 생성은 거절한다.
+- authored 문서에는 프로브 없이 live progress만 state18로 저장한 뒤 fresh engine 복원, OFF/ON,
+  WebGPU device recovery 후 픽셀 동일 및 destroy 후 texture/buffer0.
+- Node의 독립 double-precision ray/box·구형 보간 oracle이 각 일반 상태에서 최소50개 위치의
+  예상 RGB를 검사한다. native 지형 측면의65% vertex color와 색공간 변환도 반영한다.
+- 별도 실제 모델 fixture는 diffuse 기준색, 법선 방향 독립성, unlit identity, emission·직접 diffuse·
+  직접 specular 분리와 실제 model triangle 제출을 검사한다.
+- 간접광만 있는 AO fixture는 접촉부가 어두워지는지와 선형 광량의10~100% 범위를 함께 검사한다.
+  AO 이미지만 검게 지우거나 밝게 만드는 오류도 실패해야 한다.
+- negative controls는 효과 누락·색 변경·stale restore·blank·AO 누락/검정/증광·상태 누락·cost 누락·
+  전체 상태의 자원 지표 누락·추가 pass/target/buffer·shadow redraw·잘못된 count/version이 실패하는지 검사한다.
+
+SDK/Rust는 environment v15/700·patch16/state18, bounds/reserved/unused, invalid transaction 불변,
+OFF source 보존, 빈 배열, 이전 reader, 구형 core의 자원 준비 전 거절 및 GL/WebGPU uniform reset을 검사한다.
+실제 문제 게임·목표 기기의 성능 인수는 이 fixture와 별도다.
+
+
+### Spatial 환경 호환성 교차 검증
+
+`pnpm --filter @ferrum2d/ferrum-web test`의 `spatialEnvironmentAbi.test.ts`는 실제 빌드된 Wasm과
+독립적인15개 v1~v15 fixture를 사용한다. compiler→native→WasmBridge→renderer packet의 길이/버전
+일치, 알 수 없는 버전/불일치 거절, 매 프레임 ABI getter1회와 v15→v1 전환을 확인한다.
+`spatialEnvironmentFeatures.test.ts`는9개 기능의 개별 capability와 공통 채널 capability 누락을
+ON/OFF 소스에서 검사한다. authoring preflight·setter·configure·progress 복원이 자산 조회나 mutation 전에
+거절하는지, 지원 코어의 성공 경로·destroy 후 facade 거절·복합 patch/source/progress의 최대 저장 버전도 확인한다.
+이 검사는 GPU 픽셀 회귀를 대체하지 않으며, native/renderer 경계 수정 시 기존 Spatial aggregate도 유지한다.

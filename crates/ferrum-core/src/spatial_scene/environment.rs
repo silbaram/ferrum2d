@@ -1,7 +1,18 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
 use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
 use crate::{entity::Entity, world::World};
-pub(crate) const ENVIRONMENT_VALUES: usize = 616;
+/// Append-only wire layouts, indexed by ABI version minus one.
+const ENVIRONMENT_LAYOUT_LENGTHS: [usize; 15] = [
+    80, 112, 128, 512, 528, 544, 576, 580, 584, 592, 600, 608, 616, 632, 700,
+];
+pub(crate) const ENVIRONMENT_VALUES: usize =
+    ENVIRONMENT_LAYOUT_LENGTHS[ENVIRONMENT_LAYOUT_LENGTHS.len() - 1];
+fn environment_version(length: usize) -> Option<u32> {
+    ENVIRONMENT_LAYOUT_LENGTHS
+        .iter()
+        .position(|&size| size == length)
+        .map(|index| index as u32 + 1)
+}
 const LIGHT_CHANNEL_VALUES: usize = 576;
 #[path = "light_channels.rs"]
 mod light_channels;
@@ -24,29 +35,16 @@ pub(crate) struct SpatialEnvironment {
     selection: light_selection::LightSelection,
 }
 impl SpatialEnvironment {
+    pub(crate) fn abi_version(&self) -> u32 {
+        // The absent/default environment has historically reported version 1.
+        environment_version(self.value_len).unwrap_or(1)
+    }
+
     pub fn new(v: &[f32]) -> Option<Self> {
         if v.is_empty() {
             return Some(Self::default());
         }
-        if ![
-            80,
-            112,
-            128,
-            512,
-            528,
-            544,
-            LIGHT_CHANNEL_VALUES,
-            580,
-            584,
-            592,
-            600,
-            608,
-            ENVIRONMENT_VALUES,
-        ]
-        .contains(&v.len())
-        {
-            return None;
-        }
+        environment_version(v.len())?;
         let mut a = [0.; ENVIRONMENT_VALUES];
         a[..v.len()].copy_from_slice(v);
         if a.iter().any(|x| !x.is_finite())
@@ -219,6 +217,29 @@ impl SpatialEnvironment {
         }) {
             return None;
         }
+        // v14: bounded sun shafts; disabled authored lighting keeps its source config.
+        if !(if a[616] == 0. {
+            a[617..632].iter().all(|x| *x == 0.)
+        } else {
+            a[616] == 1.
+                && a[528] == 1.
+                && a[83] == 1.
+                && a[92] > 0.
+                && (0. ..=4.).contains(&a[617])
+                && (0. ..=1.).contains(&a[618])
+                && (0.1..=10000.).contains(&a[619])
+                && a[620..623].iter().all(|x| (0. ..=1.).contains(x))
+                && (0. ..=0.9).contains(&a[623])
+                && ((a[624] == 4. && a[625] == 16.)
+                    || (a[624] == 2. && [32., 48.].contains(&a[625])))
+                && a[626..632].iter().all(|x| *x == 0.)
+        }) {
+            return None;
+        }
+        // v15: bounded authored regional indirect light. OFF preserves the source.
+        if !valid_light_probes(&a) {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -368,6 +389,7 @@ impl SpatialEnvironment {
                     v[112..125].fill(0.);
                     v[512..528].fill(0.);
                     v[592..608].fill(0.);
+                    v[616..700].fill(0.);
                 }
             }
             self.shadow_matrices.clear();
@@ -641,4 +663,26 @@ fn sun_matrix(
     p[14] = -1. - 0.001 / distance;
     p[15] = 1.;
     std::array::from_fn(|i| (0..4).map(|k| p[k * 4 + i % 4] * view[i / 4 * 4 + k]).sum())
+}
+
+/// Input is already finite. The source marker retains an explicitly empty probe array.
+fn valid_light_probes(v: &[f32; ENVIRONMENT_VALUES]) -> bool {
+    if v[632] == 0. {
+        return v[633..700].iter().all(|x| *x == 0.);
+    }
+    if v[632] != 1.
+        || v[633].fract() != 0.
+        || !(0. ..=8.).contains(&v[633])
+        || v[634] != 0.
+        || v[635] != 0.
+    {
+        return false;
+    }
+    let count = v[633] as usize;
+    v[636..636 + count * 8].chunks_exact(8).all(|p| {
+        p[..3].iter().all(|x| x.abs() <= 1e6)
+            && (0.1..=10000.).contains(&p[3])
+            && p[4..7].iter().all(|x| (0. ..=1.).contains(x))
+            && (0. ..=4.).contains(&p[7])
+    }) && v[636 + count * 8..700].iter().all(|x| *x == 0.)
 }

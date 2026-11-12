@@ -3,7 +3,7 @@ import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring"
 import { check, difference, pixels } from "/fixture.mjs";
 
 /** A one-pixel HDR source falls below Bloom threshold after a four-pixel DOF gather. */
-export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy", wide = false, heightFog = false) {
+export async function probeSpatialCompositionOrder(backend, colorManagement = "legacy", wide = false, heightFog = false, lightShafts = false) {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:fixed;left:0;top:0;width:32px;height:32px";
   canvas.dataset.spatialGpuTarget = "true"; document.body.append(canvas);
@@ -46,6 +46,10 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
       engine.start();
     });
     const base = { composition: "separated", lighting: { ambient: [4, 4, 4], lights: [] }, ...(heightFog ? {fog: {color: [0, 0, 0], start: 0, end: 200, height: {baseHeight: 20, density: .01, falloff: .02}}} : {}) };
+    if (lightShafts) {
+      base.lighting.directional = {direction:{x:0,y:0,elevation:1},intensity:.1,shadows:{resolution:128,extent:64,distance:200}};
+      base.lightShafts = {intensity:.5,density:.01,maxDistance:150};
+    }
     const depthOfField = { focusDistance: 1, focusRange: 0, aperture: 32, maxBlurRadius: 4 };
     const bloom = { strength: 1, radius: 8, threshold: 1, ...(wide ? { mode: "wide" } : {}) };
     const sharp = await draw(base);
@@ -57,11 +61,15 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
       const withoutFog = await draw({ ...base, fog: undefined, depthOfField });
       check(difference(blurred.data, withoutFog.data, 3) > 5, "height fog missing before DOF");
     }
+    if (lightShafts) {
+      const withoutShafts = await draw({...base,lightShafts:undefined,depthOfField});
+      check(difference(blurred.data,withoutShafts.data,3)>5,"light shafts missing before post-processing");
+    }
     const filtered = await draw({ ...base, depthOfField, bloom });
     check(difference(blurred.data, filtered.data, 2) === 0, "Bloom did not read the post-DOF sub-threshold radiance");
-    check(filtered.stats.effectDrawCalls === 2 + filtered.stats.bloomDrawCalls && (filtered.stats.effectTextureBytes - filtered.stats.bloomTextureBytes) * 12 === blurred.stats.effectTextureBytes * 20,
+    check(filtered.stats.effectDrawCalls === 2 + filtered.stats.bloomDrawCalls + (lightShafts ? 2 : 0) && (lightShafts ? filtered.stats.effectTextureBytes - blurred.stats.effectTextureBytes - filtered.stats.bloomTextureBytes === canvas.width * canvas.height * 8 : (filtered.stats.effectTextureBytes - filtered.stats.bloomTextureBytes) * 12 === blurred.stats.effectTextureBytes * 20),
       "DOF/Bloom intermediate cost missing", { before: blurred.stats, after: filtered.stats });
-    if (!wide) {
+    if (!wide && !lightShafts) {
     const legacy = await draw({ ...base, composition: "legacy", depthOfField, bloom });
     check(difference(legacy.data, filtered.data, 3) > 5, "reference did not distinguish legacy pre-DOF Bloom");
     }
@@ -87,7 +95,7 @@ export async function probeSpatialCompositionOrder(backend, colorManagement = "l
     size = renderer.viewportSize(); engine.setViewportSize(size.width, size.height);
     const resized = await draw(all); check(difference(before.data, resized.data, 2) === 0, "composition resize/DPR restoration changed pixels");
     check(errors.length === 0, "composition reference GPU errors", errors);
-    return { backend, colorManagement, wide, heightFog, sharpPeak: peak(sharp.data), blurredPeak: peak(blurred.data), bloomAfterDof: true, zeroIdentity: true, resize: true, recovery };
+    return { backend, colorManagement, wide, heightFog, lightShafts, sharpPeak: peak(sharp.data), blurredPeak: peak(blurred.data), bloomAfterDof: true, zeroIdentity: true, resize: true, recovery };
   } finally {
     engine?.destroy(); renderer?.destroy(); window.disposeSpatialGpuTarget?.(canvas); canvas.remove();
     const resources = renderer?.resourceStats();

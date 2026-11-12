@@ -114,7 +114,7 @@ test("point shadow arrays enforce the authored billboard budget with and without
 test("point shadow arrays preflight terrain batch budgets before texture lookup or mutation", () => {
   let calls = 0;
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, {
-    supportsSpatialPointPcss: () => true, supportsSpatialPointShadows: () => true, preflightSpatialEnvironment: () => true,
+    supportsSpatialLightChannels: () => true, supportsSpatialPointPcss: () => true, supportsSpatialPointShadows: () => true, preflightSpatialEnvironment: () => true,
     textureId: () => { calls++; return 0; }, spawnDataSceneEntity: () => { calls++; return undefined; }, useDataScene: () => { calls++; },
   });
   const terrain = Array.from({ length: 65 }, (_, i) => ({ id: `t${i}`, x: i * 2, y: 0, width: 1, depth: 1, elevation: 0, textureId: i % 2 }));

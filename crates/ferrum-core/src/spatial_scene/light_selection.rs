@@ -72,7 +72,7 @@ impl Default for LightSelection {
 }
 impl LightSelection {
     pub fn new(v: &[f32]) -> Self {
-        if ![580, 584, 592, 600, 608, 616].contains(&v.len()) || v[576] == 0. {
+        if super::environment_version(v.len()).is_none_or(|version| version < 8) || v[576] == 0. {
             return Self::default();
         }
         let mut hash = 2166136261u32;

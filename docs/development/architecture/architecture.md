@@ -120,6 +120,10 @@ Rust/Wasm camera ABI·렌더 명령 형식은 변경하지 않는다.
 `lighting.enabled: false`는 작성 설정을 보존하며 TS 환경 컴파일러가 기존 native buffer의 조명 플래그를 끈다.
 native buffer에는 비활성 광원 값이 전달되지 않으므로 runtime 환경 readback은 비활성 설정 원본의 저장소가 아니다.
 작성 JSON을 광원 설정의 기준으로 유지하며 Rust 환경 ABI와 렌더러 pass 계약은 변경하지 않는다.
+공식 앱의 `placementLightingAdvanced.ts`는 PCSS·안개·빛줄기·프로브·Bloom·광원 선택·채널 입력을 구성하고,
+`placementLighting.ts`의 검증·focus flush·단일 environment transaction을 재사용한다. 프로브 선택 인덱스만
+탭별 UI 상태이며 값은 기존 scene JSON에 둔다. 빛줄기의 태양/그림자 의존성 변경은 같은 patch와 Undo로 처리한다.
+수신 채널은 `placementSpatialWorkspace.ts`의 기존 terrain/model/billboard patch 경로를 따른다.
 flat 2D는 선택 `SceneAuthoringDocumentSpec.lighting`과 placement patch v4의 전체 lighting envelope를 사용한다.
 작성 resolver는 world 광원과 OFF 상태의 설정을 검증·보존한다. 뷰어 host가 기존 `DataSceneView.lighting`
 투영과 native `setDataSceneSun`을 연결하며, 시뮬레이션 상태와 renderer 소유권은 변경하지 않는다.
@@ -1053,7 +1057,7 @@ WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 
 GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
 동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
 않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
-`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS·높이 안개 설정을2,704-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은2,816B이며 두 record의 총 저장량은5,632B다.
+`webgpuSpatialEnvironment`는 native 환경 prefix·camera·shadow matrix·v7 channel·wide grid·두 번째 점광원·PCSS·높이 안개·빛줄기·프로브 설정을2,992-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다. record 간격은3,072B이며 두 record의 총 저장량은6,144B다.
 조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
 native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
 비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
@@ -2047,8 +2051,8 @@ Rust `point_shadows.rs`가 source를 검증하고 두 owner의 고정 슬롯·�
 정렬된 제출 범위를 소유한다. TypeScript는 숫자 버퍼만 소비하며 entity별 native 호출을 추가하지 않는다.
 model ABI v2는80-byte record를 보존하고 두 번째 큐브 가시성 bits8~13을 정의한다. 기존 source와 model ABI v1도 유지한다.
 WebGL2는 두 번째 depth cube를 texture unit8에 바인딩하고 호출 전 cube/sampler 상태를 복원한다.
-WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개 확장을 포함해2704 bytes,
-stride2816·두 record5632-byte allocation을 유지한다. 두 번째 slot/bias/normalBias는652~655 words다.
+WebGPU는 두 번째6-layer depth array를 binding4에 둔다. private environment uniform은 태양·점광원 PCSS와 높이 안개·빛줄기·프로브 확장을 포함해2992 bytes,
+stride3072·두 record6144-byte allocation을 사용한다. 두 번째 slot/bias/normalBias는652~655 words다.
 shadow camera는 main+13개의256-byte record를 사용하며, 모델 instance scratch는 최대14 pass×1024개×64-byte로
 각 backend917,504 bytes다. 단일 그림자의 이전8-pass 전송 범위는 유지하지만 고정 GPU scratch capacity는384 KiB 늘어난다.
 이 사전 할당은 encode 도중 instance buffer를 교체하지 않고 모든 pass의 행렬을 한 번에 제출하기 위한 상한이다.
@@ -2112,7 +2116,66 @@ WebGL2는 owner별 vec3 uniform을 사용한다. 이전 환경으로 돌아가�
 추가 texture fetch·target·pass는 없다. 카메라는 native의 world-up 기준이며 표시용 pixelArt camera를 사용한다.
 
 WebGPU private uniform의 668~671은 높이 안개, 672~675는
-`[eyeHeight, upY, forwardY, projection]`다. 현재 유효 record는 **2704 bytes**, 간격2816·두 record allocation5632 bytes다.
+`[eyeHeight, upY, forwardY, projection]`다. 프로브 확장을 포함한 현재 유효 record는 **2992 bytes**, 간격3072·두 record allocation6144 bytes다.
 두 camera record 모두 tail을 채우고 기존 frame으로 바뀌면 안개 설정을 0으로 초기화한다.
 WebGL2도 geometry/composite 두 경로에 같은 설정과 카메라 basis를 전달한다.
 [높이 안개 계약](../../engine/data-scene-spatial.md#선택형-높이-안개)이 구간 의미·기본값·범위와 제한을 정의한다.
+
+### 태양광 빛줄기 v14
+
+`lightShafts`는 native-owned source를 기존 environment bulk buffer로 전달한다. environment v14는
+632 floats이며0..615는 이전 계약 그대로다.616..625는 enable/intensity/density/maxDistance/R/G/B/
+anisotropy/resolutionScale/sampleCount,626..631은 reserved0이다. native와 TS는 같은 범위·품질 조합과
+separated/sun-shadow 의존성을 검증한다. lighting OFF는 render copy의616..631만0으로 지우며 source는 보존한다.
+추가 hot-path FFI 호출이나 엔티티별 왕복은 없다. patch15/state17과 cold capability1을 함께 사용한다.
+
+`spatialLightShaftKernel`은 GPU 작업 계획과 GLSL/WGSL을 관리하고 각 backend 클래스가 자원 수명을 소유한다.
+플랫폼은 native camera/태양 방향/그림자 matrix를 읽어 저해상도 시선을 생성한다. scene depth에서 시선 길이를
+제한하고 기존 sun depth의 hard 비교로 고정16/32/48구간을 적분한다. 구간 감쇠는 작은 optical depth의
+Taylor 분기로 정밀도를 유지하며 양의 exponential overflow를 만들지 않는다.
+원근 depth는 `near / ((1-depth) + depth*(near/far))`로 복원해 far-plane 항의 상쇄를 피한다.
+native가 허용하는 비단위 태양 방향도 uniform 작성 시 정규화해 표면 조명과 산란 방향을 일치시킨다.
+
+AO resolve와 빛줄기 resolve 선택을 분리한다. 빛줄기만 켜면 불필요한 indirect MRT를 만들지 않고
+resolve만 추가한다. geometry의 fog는 resolve가 있으면 유예하고 resolve에서 안개 뒤 빛줄기를 합성한다.
+Spatial coverage가 없는 pixel은 합성에서 제외해 투명 배경을 유지한다.
+DOF·Bloom·최종 grading과 HUD 경계는 기존 순서를 유지한다. 비활성 시 추가 target/pass가 없고 warm frame에는
+동일 크기 target/bind group을 재사용한다. 할당 실패는 호출자에게 알리고 WebGPU 비동기 validation 오류는 다음 prepare에서 거절한다.
+비동기 오류는 아직 현재 target/group인 경우에만 적용하고 사용할 수 없는 target을 즉시 해제한다.
+resize·OFF·binding 교체 후 도착한 이전 자원의 오류는 새 자원을 무효화하지 않는다.
+
+WebGPU private camera record의676..679는 shaft-enable vec4다. 빛줄기 도입 시 유효2720 bytes/stride2816/두 record5632 bytes였으며, 이후 프로브 확장에서2992/3072/6144 bytes로 늘었다. 별도 raymarch uniform은208 bytes이며 새 native ABI의 reserved를 재사용하지 않는다.
+texture/target bytes와 실제 제출 draw, texture-load 상한을 renderer→frame metrics→profiler→smoke에 연결한다.
+
+### 지역별 간접광 프로브 v15
+
+`lighting.probes`의 최대8개 소스는 Rust 환경 상태가 소유하고 기존 bulk buffer로 전달한다.
+v15는700 floats다.0..631은 이전 계약,632는 소스 존재(명시적 빈 배열 보존),633은 count,
+634..635는 reserved0,636..699는8개의 `[renderX,renderY,renderZ,radius,R,G,B,intensity]`다.
+검증은 count/범위/미사용·reserved0을 먼저 확인하며 실패 시 source·선택 이력을 바꾸지 않는다.
+lighting OFF에서는 source를 보존하고 render copy의632..699를0으로 만든다.
+`spatial_light_probes_abi_version()=1`, patch16/state18의 문서·progress-only preflight가 구형 core와
+낮춰진 저장 버전을 mutation 전에 거절한다. render geometry ABI와 엔티티별 FFI는 추가되지 않는다.
+
+GL은 count+position/color vec4 배열8개를 업로드한다. WebGPU는 private uniform680..747에
+source tail을 복사하고, 유효2992 bytes/stride3072/두 record6144 bytes로 확장한다.
+이 tail은 native reserved나 camera/shadow 공간을 재사용하지 않는다. `spatialLightProbeShaders`의
+구형 거리 smoothstep·가중 평균·최대 coverage 보간을 두 backend가 구현한다.
+WGSL은 indirect fill을 표면당 한 번 구해 color와 AO MRT에 공유한다. source·old-format·OFF 전환 시
+uniform을 지워 이전 프로브가 다음 packet에 남지 않는다. 추가 target/pass/texture fetch는 없으며
+최대8개 거리 평가의 fragment ALU 비용과 고정 uniform 크기 증가만 있다.
+
+
+### Spatial 환경 버전·지원 조건의 책임
+
+`spatialEnvironmentAbi.ts`가 TS의 v1~v15 길이/버전 대응을 관리한다. compiler·WasmBridge·render packet
+validator·합성 선택은 같은 계약을 사용한다. Rust의 대응 표는 `spatial_scene/environment.rs`가 소유하며,
+실제 Wasm을 사용하는 통합 테스트가15개 이전 형식과 교차 검증한다. 프레임 reader는 환경이 있을 때
+native ABI getter를 한 번만 호출하고, 다음 프레임의 버전 변경은 다시 확인한다.
+
+`spatialEnvironmentFeatures.ts`는 선택형 환경 기능의 wire/patch/save 버전과 cold capability 의존성만 관리한다.
+개별 기능 모듈은 값 검증·기본값·수학을, snapshot/patch 모듈은 저장·적용 순서를 계속 담당한다.
+공개 facade·authoring·progress 복원·native setter의 지원 조건을 공유하고, v8 이상도 포함된 v7 채널
+layout 지원을 자산 준비/씬 교체 전에 확인한다. OFF·빈 프로브 배열 같은 명시적 소스도 검사한다.
+광원 선택 선언만으로 state11을 요구하지 않으며, 기존처럼 저장된 선택 이력이 있을 때만 요구한다.
+public API·wire offset·길이·저장 버전과 이전 snapshot hash 계약은 변경하지 않는다.

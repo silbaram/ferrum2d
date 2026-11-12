@@ -15,8 +15,11 @@ export interface DebugOverlayMetrics {
   spatialShadowUploadBytes?: number;
   spatialShadowCacheHit?: boolean;
   spatialEffectDrawCalls?: number;
+  spatialLightShaftDrawCalls?: number;
   spatialBloomDrawCalls?: number;
+  spatialLightShaftTextureBytes?: number;
   spatialBloomTextureBytes?: number;
+  spatialLightShaftTexelFetchBudget?: number;
   spatialBloomTexelFetchBudget?: number;
   spatialAuthoredLightCount?: number;
   spatialSelectedLightCount?: number;
@@ -118,8 +121,11 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "spatialLightShaftDrawCalls", label: "Light shafts draws", unit: "count", optional: true },
   { id: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count", optional: true },
+  { id: "spatialLightShaftTextureBytes", label: "Light shafts targets", unit: "bytes", optional: true },
   { id: "spatialBloomTextureBytes", label: "Bloom targets", unit: "bytes", optional: true },
+  { id: "spatialLightShaftTexelFetchBudget", label: "Light shafts texture load budget", unit: "count", optional: true },
   { id: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count", optional: true },
   { id: "normalDrawCalls", label: "normal draws", unit: "count", optional: true },
   { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
@@ -255,8 +261,11 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.textureSwitchCount !== undefined) {
     lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
   }
+  if (metrics.spatialLightShaftDrawCalls !== undefined) lines.push(row("spatialLightShaftDrawCalls", metrics.spatialLightShaftDrawCalls));
   if (metrics.spatialBloomDrawCalls !== undefined) lines.push(row("spatialBloomDrawCalls", metrics.spatialBloomDrawCalls));
+  if (metrics.spatialLightShaftTextureBytes !== undefined) lines.push(row("spatialLightShaftTextureBytes", metrics.spatialLightShaftTextureBytes));
   if (metrics.spatialBloomTextureBytes !== undefined) lines.push(row("spatialBloomTextureBytes", metrics.spatialBloomTextureBytes));
+  if (metrics.spatialLightShaftTexelFetchBudget !== undefined) lines.push(row("spatialLightShaftTexelFetchBudget", metrics.spatialLightShaftTexelFetchBudget));
   if (metrics.spatialBloomTexelFetchBudget !== undefined) lines.push(row("spatialBloomTexelFetchBudget", metrics.spatialBloomTexelFetchBudget));
   if (metrics.normalDrawCalls !== undefined) lines.push(row("normalDrawCalls", metrics.normalDrawCalls));
   if (metrics.lightingDrawCalls !== undefined) {

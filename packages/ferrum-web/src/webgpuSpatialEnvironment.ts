@@ -1,3 +1,6 @@
+import { LIGHT_PROBES_WGSL } from "./spatialLightProbeShaders.js";
+import { WebGpuSpatialLightShafts } from "./webgpuSpatialLightShafts.js";
+import { spatialLightShaftPlan, writeSpatialLightShaftStats, type SpatialLightShaftPlan } from "./spatialLightShaftKernel.js";
 import { HEIGHT_FOG_WGSL } from "./spatialHeightFogShaders.js";
 import { spatialSunPcssScale } from "./spatialSunPcss.js";
 import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
@@ -7,18 +10,18 @@ import { spatialBloomPlan, writeSpatialBloomStats, type SpatialBloomPlan } from 
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
-import { spatialDofPass, spatialIndirectPass, spatialSeparated } from "./spatialComposition.js";
+import { spatialDofPass, spatialIndirectPass, spatialResolvePass, spatialSeparated } from "./spatialComposition.js";
 import { WebGpuSpatialShadows, spatialShadowSamplingWGSL } from "./webgpuSpatialShadows.js";
 import { WebGpuSpatialReceivers } from "./webgpuSpatialReceivers.js";
 import { SPATIAL_SPECULAR_WGSL } from "./spatialSpecular.js";
 // Native environment's shared v1..v4 prefix padded to 512 floats, followed by eye/forward/view/size.
 // v5's fixed sun center is consumed by Rust in its shadow matrices, not by the GPU uniform layout.
 // v7 channels follow the private camera/matrices; dynamic receiver rows have a separate binding.
-const UNIFORM_BYTES = 2704,
-  UNIFORM_STRIDE = 2816;
+const UNIFORM_BYTES = 2992,
+  UNIFORM_STRIDE = 3072;
 export const spatialEnvironmentWGSL = `
 struct Environment {
- values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f, pointPcss:vec4f, pointPcss2:vec4f, heightFog:vec4f, fogCamera:vec4f,
+ values: array<vec4f,128>, eye:vec4f, forward:vec4f, view:vec4f, size:vec4f, shadow:array<mat4x4f,7>, channels:array<vec4f,2>, wideBloom:vec4f, pointShadow2:vec4f, sunPcss:vec4f, pointPcss:vec4f, pointPcss2:vec4f, heightFog:vec4f, fogCamera:vec4f, shafts:vec4f, probes:vec4f, probeValues:array<vec4f,16>,
 };
 @group(2) @binding(0) var<uniform> env:Environment;
 ${HEIGHT_FOG_WGSL}
@@ -36,29 +39,26 @@ fn linearize(c:vec3f)->vec3f{return select(c/12.92,pow((c+.055)/1.055,vec3f(2.4)
 fn encode(c:vec3f)->vec3f{return select(c*12.92,1.055*pow(max(c,vec3f(0.)),vec3f(1./2.4))-.055,c>=vec3f(.0031308));}
 ${spatialShadowSamplingWGSL}
 ${SPATIAL_SPECULAR_WGSL}
+${LIGHT_PROBES_WGSL}
 struct SpatialLightingOutput { @location(0) color:vec4f, @location(1) indirect:vec4f };
-fn indirectColor(albedo:vec3f,n:vec3f,unlit:bool)->vec3f{
+fn indirectIllumination(world:vec3f,n:vec3f,unlit:bool)->vec3f{
  if((u32(e(0u))&1u)==0u || unlit){return vec3f(0.);}
  var illumination=vec3f(e(5u),e(6u),e(7u));
  if(e(112u)>0. && e(119u)>0.){
   let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
   illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
  }
- return albedo*illumination;
+ return probeFill(world,illumination);
 }
 fn lightingOutput(color:vec3f,indirect:vec3f)->SpatialLightingOutput{
  var output:SpatialLightingOutput;output.color=vec4f(color,1.);output.indirect=vec4f(indirect,1.);return output;
 }
-fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool,f0:vec3f,roughness:f32,specularWeight:f32)->vec3f{
+fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool,f0:vec3f,roughness:f32,specularWeight:f32,fill:vec3f)->vec3f{
  var color=albedo;
  if((u32(e(0u))&1u)!=0u && !unlit){
   var reflection=vec3f(0.);var view=vec3f(0.);
   if(specularWeight>0.){let eyeDelta=env.eye.xyz-world;if(length(eyeDelta)>.000001){view=normalize(eyeDelta);}}
-  var illumination=vec3f(e(5u),e(6u),e(7u));
-  if(e(112u)>0. && e(119u)>0.){
-   let weight=clamp(dot(n,normalize(vec3f(e(113u),e(114u),e(115u))))*.5+.5,0.,1.);
-   illumination+=mix(vec3f(e(120u),e(121u),e(122u)),vec3f(e(116u),e(117u),e(118u)),weight)*e(119u);
-  }
+  var illumination=fill;
   for(var i=0u;i<4u;i++){
    if(i>=u32(e(1u))){break;}
    let channels=channel(i+1u);if(!receivesLight(channels)){continue;}
@@ -92,15 +92,18 @@ fn shadeSurface(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,
  }
  return color;
 }
-fn shade(albedo:vec3f,emission:vec3f,world:vec3f,n:vec3f,geometric:vec3f,unlit:bool)->vec3f{
- return shadeSurface(albedo,emission,world,n,geometric,unlit,vec3f(0.),1.,0.);
-}`;
+`;
 function composite(linearWorking: boolean): string { return spatialEnvironmentWGSL.split("@group(2)").join("@group(0)") +
   `
 @group(1) @binding(0) var sceneColor:texture_2d<f32>;
 @group(1) @binding(1) var sceneDepth:texture_depth_2d;
 @group(1) @binding(2) var sceneIndirect:texture_2d<f32>;
 @group(1) @binding(3) var sceneBloom:texture_2d<f32>;
+@group(1) @binding(4) var sceneShafts:texture_2d<f32>;
+fn shaftsAt(uv:vec2f)->vec3f{
+ let size=vec2i(textureDimensions(sceneShafts));let p=uv*vec2f(size)-vec2f(.5);let a=vec2i(floor(p));let hi=size-vec2i(1);let w=fract(p);
+ return mix(mix(textureLoad(sceneShafts,clamp(a,vec2i(0),hi),0).rgb,textureLoad(sceneShafts,clamp(a+vec2i(1,0),vec2i(0),hi),0).rgb,w.x),mix(textureLoad(sceneShafts,clamp(a+vec2i(0,1),vec2i(0),hi),0).rgb,textureLoad(sceneShafts,clamp(a+vec2i(1,1),vec2i(0),hi),0).rgb,w.x),w.y);
+}
 fn wideBloom(uv:vec2f)->vec3f{
  let p=uv*env.wideBloom.yz-vec2f(.5);let a=vec2i(floor(p));let hi=vec2i(textureDimensions(sceneBloom))-vec2i(1);let w=fract(p);
  return mix(mix(textureLoad(sceneBloom,clamp(a,vec2i(0),hi),0).rgb,textureLoad(sceneBloom,clamp(a+vec2i(1,0),vec2i(0),hi),0).rgb,w.x),mix(textureLoad(sceneBloom,clamp(a+vec2i(0,1),vec2i(0),hi),0).rgb,textureLoad(sceneBloom,clamp(a+vec2i(1,1),vec2i(0),hi),0).rgb,w.x),w.y);
@@ -120,7 +123,8 @@ fn viewDepth(d:f32)->f32{
 fn aces(c:vec3f)->vec3f{return clamp(c*(2.51*c+.03)/(c*(2.43*c+.59)+.14),vec3f(0.),vec3f(1.));}
 fn viewPosition(uv:vec2f,z:f32)->vec3f{var h=env.eye.w*.5;if(env.view.z>0.){h=tan(env.eye.w*.5)*z;}return vec3f(vec2f(uv.x*2.-1.,1.-uv.y*2.)*vec2f(env.size.x/env.size.y,1.)*h,-z);}
 fn compose(f:F,stage:u32)->vec4f{
- let center=colorAt(f.uv);if(center.a<=0. && (stage>0u || e(128u)<=0. || e(129u)<=0.)){discard;}
+ let center=colorAt(f.uv);var shaft=vec3f(0.);if(stage==1u && env.shafts.x>0. && center.a>0.){shaft=shaftsAt((vec2f(pixel(f.uv))+vec2f(.5))/env.size.xy);}
+ if(center.a<=0. && (stage>0u || e(128u)<=0. || e(129u)<=0.)){discard;}
  let z=viewDepth(depthAt(f.uv));var color=center.rgb;let flags=u32(e(0u));
  let focus=env.view.w;let focusRange=e(61u);let aperture=e(62u);let maxRadius=e(63u)*env.size.y/env.size.z;
  if(stage!=1u && (flags&4u)!=0u && ((compositionFlags()&4u)==0u || stage==2u) && e(96u)==1.){
@@ -168,7 +172,7 @@ fn compose(f:F,stage:u32)->vec4f{
   let visibility=1.-clamp(occlusion/12.*e(133u)*3.,0.,.9);
   if(stage==1u){color-=textureLoad(sceneIndirect,pixel(f.uv),0).rgb*(1.-visibility);}else{color*=visibility;}
  }
- if(stage==1u && (flags&2u)!=0u){
+ if(stage==1u && (flags&2u)!=0u && center.a>0.){
   var amount=clamp((z-e(71u))/(e(72u)-e(71u)),0.,1.);
   if(env.heightFog.x>0.){let eyeOffset=env.fogCamera.x-env.heightFog.y;var origin=eyeOffset+env.fogCamera.y*position.y;var rayLength=z;
    if(env.view.z>0.){origin=eyeOffset;rayLength=length(position);}
@@ -176,6 +180,7 @@ fn compose(f:F,stage:u32)->vec4f{
    amount=heightFogAmount(z,rayLength,origin,receiver,env.heightFog,vec2f(e(71u),e(72u)));}
   color=mix(color,vec3f(e(73u),e(74u),e(75u)),amount);
  }
+ color+=shaft;
  if(stage>0u){return vec4f(max(color,vec3f(0.)),center.a);}
  if(e(128u)>0. && e(129u)>0.){
   var glow=vec3f(0.);var weight=0.;
@@ -227,6 +232,9 @@ export class WebGpuSpatialEnvironment {
   private resolvePipeline?: GPURenderPipeline;
   private dofPipeline?: GPURenderPipeline;
   private readonly imagesLayout: GPUBindGroupLayout;
+  private shaftPass?: WebGpuSpatialLightShafts;
+  private shaftPlan?: SpatialLightShaftPlan;
+  private boundShaftView?: GPUTextureView;
   private bloomPass?: WebGpuSpatialBloom;
   private bloomPlan?: SpatialBloomPlan;
   private boundBloomView?: GPUTextureView;
@@ -283,6 +291,7 @@ export class WebGpuSpatialEnvironment {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
       ],
     });
     const module = device.createShaderModule({
@@ -386,9 +395,9 @@ export class WebGpuSpatialEnvironment {
     if (env?.values[2]! >= 0) this.values.set(env!.shadowMatrices.subarray(0, 96), 528);
     if (env?.values[92]! > 0)
       this.values.set(env!.shadowMatrices.subarray(env!.shadowMatrices.length - 16), 624);
-    const indirect = spatialIndirectPass(env?.values), dof = spatialDofPass(env?.values);
+    const indirect = spatialIndirectPass(env?.values), resolve = spatialResolvePass(env?.values), dof = spatialDofPass(env?.values);
     // Private GPU camera layout v2; native reserved words are never reused.
-    this.values[519] = Number(indirect) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
+    this.values[519] = Number(resolve) | (Number(spatialSeparated(env?.values)) << 1) | (Number(dof) << 2);
     for (let i = 0; i < 5; i++) this.values[640 + i] = env && env.values.length >= 576 ? env.values[544 + i] : 65535;
     this.values[645] = Number(this.receivers.enabled());
     this.bloomPlan = spatialBloomPlan(env?.values, width, height, c[27]);
@@ -403,6 +412,10 @@ export class WebGpuSpatialEnvironment {
     this.values[670] = env?.values[610] ?? 0; this.values[671] = env?.values[611] ?? 0;
     this.values[672] = c[18]; this.values[673] = Math.hypot(x, z) / length;
     this.values[674] = y / length; this.values[675] = c[16];
+    this.shaftPlan = spatialLightShaftPlan(env?.values, width, height);
+    const shaftView = this.shaftPlan ? (this.shaftPass ??= new WebGpuSpatialLightShafts(this.device)).prepare(this.shaftPlan) : this.shaftPass?.prepare();
+    this.values[676] = Number(!!shaftView);
+    if (env && env.values.length >= 700 && (env.values[0] & 1) !== 0) this.values.set(env.values.subarray(632, 700), 680);
     this.values.copyWithin(UNIFORM_STRIDE / 4, 0, UNIFORM_BYTES / 4);
     this.values[UNIFORM_STRIDE / 4 + 527] = 0;
     this.device.queue.writeBuffer(this.uniform, 0, this.values);
@@ -410,7 +423,7 @@ export class WebGpuSpatialEnvironment {
       this.releaseTarget();
       return;
     }
-    if (this.width === width && this.height === height && this.images && !!this.indirect === indirect && !!this.dof === dof && this.boundBloomView === bloomView) return;
+    if (this.width === width && this.height === height && this.images && !!this.indirect === indirect && !!this.dof === dof && !!this.resolved === resolve && this.boundShaftView === shaftView && this.boundBloomView === bloomView) return;
     let color: GPUTexture | undefined, depth: GPUTexture | undefined;
     const scratch: GPUTexture[] = [];
     this.device.pushErrorScope("validation");
@@ -438,9 +451,9 @@ export class WebGpuSpatialEnvironment {
         scratch.push(texture); return texture;
       };
       const indirectTexture = indirect ? createScratch() : undefined;
-      const resolvedTexture = indirect ? createScratch() : undefined;
+      const resolvedTexture = resolve ? createScratch() : undefined;
       const dofTexture = dof ? createScratch() : undefined;
-      if (indirect) this.resolvePipeline ??= this.intermediatePipeline("fs_resolve");
+      if (resolve) this.resolvePipeline ??= this.intermediatePipeline("fs_resolve");
       if (dof) this.dofPipeline ??= this.intermediatePipeline("fs_dof");
       const indirectView = indirectTexture?.createView() ?? colorView;
       const imagesFor = (resource: GPUTextureView) => this.device.createBindGroup({
@@ -450,6 +463,7 @@ export class WebGpuSpatialEnvironment {
           { binding: 1, resource: depthView },
           { binding: 2, resource: indirectView },
           { binding: 3, resource: bloomView ?? colorView },
+          { binding: 4, resource: shaftView ?? colorView },
         ],
       });
       const images = imagesFor(colorView);
@@ -458,7 +472,7 @@ export class WebGpuSpatialEnvironment {
       const dofImages = dofView ? imagesFor(dofView) : undefined;
       this.releaseTarget();
       this.color = color;
-      this.boundBloomView = bloomView;
+      this.boundBloomView = bloomView; this.boundShaftView = shaftView;
       this.depth = depth;
       this.colorView = colorView;
       this.depthView = depthView;
@@ -517,6 +531,7 @@ export class WebGpuSpatialEnvironment {
     if (!this.images) throw Error("Spatial HDR target is not prepared");
     let images = this.images, passes = 1;
     let bloomSource = this.colorView!;
+    if (this.shaftPlan) { this.shaftPass!.draw(encoder, frame, this.shaftPlan, this.depthView!, this.shadows.views().sun, this.width, this.height); passes++; }
     for (const [view, pipeline, output] of [
       [this.resolvedView, this.resolvePipeline, this.resolvedImages],
       [this.dofView, this.dofPipeline, this.dofImages],
@@ -610,10 +625,11 @@ export class WebGpuSpatialEnvironment {
     }
   }
   textureBytes(): number {
-    return (this.bloomPlan?.textureBytes ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof)));
+    return (this.shaftPass?.textureBytes() ?? 0) + (this.bloomPlan?.textureBytes ?? 0) + this.width * this.height * (12 + 8 * (Number(!!this.indirect) + Number(!!this.resolved) + Number(!!this.dof)));
   }
   writeBloomStats(stats: SpatialRendererStats, values: Float32Array | undefined, outputWidth: number, outputHeight: number): void {
     writeSpatialBloomStats(stats, values, this.bloomPlan, outputWidth, outputHeight);
+    writeSpatialLightShaftStats(stats, this.shaftPlan);
   }
   private releaseTarget(): void {
     webGpuResources(this.device).destroy(this.color);
@@ -634,7 +650,7 @@ export class WebGpuSpatialEnvironment {
     if (this.destroyed) return;
     this.destroyed = true;
     this.releaseTarget();
-    this.bloomPass?.destroy();
+    this.bloomPass?.destroy(); this.shaftPass?.destroy();
     webGpuResources(this.device).destroy(this.uniform);
     this.shadows.destroy();
     this.receivers.destroy();

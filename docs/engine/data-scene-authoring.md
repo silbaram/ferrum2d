@@ -10,6 +10,11 @@
 
 ## 최소 문서 형식
 
+공식 Placement Viewer의 HD-2D 조명 탭은 PCSS·높이 안개·빛줄기·간접광 프로브·넓은 Bloom·광원 전환과
+채널을 기존 `spatial.environment`로 작성한다. 수신 채널은 지형·모델·빌보드의 기존 필드를 사용한다.
+조작·의존 효과 해제·프리셋·저장 정책은 [앱 조명 안내](../../apps/placement-viewer/README.md)를 따른다.
+새 문서 형식이나 runtime API를 추가하지 않는다.
+
 Data Scene authoring 문서는 다음 envelope를 사용한다.
 
 | 필드 | 필수 | 역할 |
@@ -1925,3 +1930,10 @@ Flat lit sprite의 `lighting`에는 `lightMask`·`shadowMask` 정수0..255를 �
 점광원·태양의 같은 필드와 독립적으로 비교하고 ambient·emission은 보존한다.
 새 native 지원·flat lit profile·opaque/cutout receiver를 적용 전에 확인한다.
 작성·저장·비용 계약은 [수신 mask](data-scene-presentation.md#flat-lightshadow-수신-mask-개발-소스)를 따른다.
+
+### Spatial 지역별 간접광 작성
+
+`spatial.environment.lighting.probes`는 최대8개의 위치·반경·선형 RGB·밝기를 지정한다.
+AI agent가 JSON이나 `setEnvironment` patch로 작성하며 별도 UI 편집기는 추가하지 않는다.
+프로브를 포함한 patch는16, Data Scene state는18을 사용하고 progress-only 설정도 보존한다.
+기본값·구형 core 거절·벽 차폐 한계는 [프로브 계약](data-scene-spatial.md#지역별-간접광-프로브)을 따른다.

@@ -1,4 +1,6 @@
 import { WebGL2SpatialBloom } from "../src/webgl2SpatialBloom.js";
+import { WebGL2SpatialLightShafts } from "../src/webgl2SpatialLightShafts.js";
+import { spatialLightShaftPlan } from "../src/spatialLightShaftKernel.js";
 import { spatialBloomPlan } from "../src/spatialBloomKernel.js";
 import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
@@ -131,4 +133,63 @@ test("wide GL chain preserves old targets on partial allocation failure, retries
   equal(textures.size, plan.levels.length + 1); equal(pass.textureBytes(), plan.textureBytes);
   failAt = Infinity; pass.prepare(larger); equal(pass.textureBytes(), larger.textureBytes);
   pass.prepare(); equal(textures.size, 0); equal(targets.size, 0); pass.destroy();
+});
+
+test("light shafts GL target survives failed resize, reuses warm allocations and releases on OFF", () => {
+  const textures = new Set<object>(), targets = new Set<object>(), constants = new Map<string, number>();
+  let attempts = 0, complete = true, draws = 0;
+  const methods: Record<string, unknown> = {
+    createProgram: () => ({}), createShader: () => ({}), createVertexArray: () => ({}),
+    getShaderParameter: () => true, getProgramParameter: () => true, getUniformLocation: () => ({}),
+    createTexture: () => { attempts++; const texture = {}; textures.add(texture); return texture; },
+    createFramebuffer: () => { const target = {}; targets.add(target); return target; },
+    deleteTexture: (t: object) => textures.delete(t), deleteFramebuffer: (t: object) => targets.delete(t),
+    drawArrays: () => { draws++; }, checkFramebufferStatus: () => complete ? constants.get("FRAMEBUFFER_COMPLETE") : -1,
+  };
+  const gl = new Proxy(methods, { get: (o, key: string) => {
+    if (key in o) return o[key];
+    if (/^[A-Z_0-9]+$/.test(key)) { if (!constants.has(key)) constants.set(key, constants.size + 1); return constants.get(key); }
+    return () => {};
+  } }) as unknown as WebGL2RenderingContext;
+  void gl.FRAMEBUFFER_COMPLETE;
+  const pass = new WebGL2SpatialLightShafts(gl);
+  const v = compileSpatialEnvironment({ composition: "separated", lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: {} } }, lightShafts: {} });
+  const plan = spatialLightShaftPlan(v, 160, 90)!;
+  pass.prepare(plan); equal(pass.targetCount(), 1); equal(pass.textureBytes(), 80 * 45 * 8);
+  const warm = attempts; pass.prepare(plan); equal(attempts, warm);
+  complete = false;
+  throws(() => pass.prepare(spatialLightShaftPlan(v, 321, 181)), /target incomplete/);
+  equal(textures.size, 1); equal(targets.size, 1); equal(pass.textureBytes(), 80 * 45 * 8);
+  complete = true;
+  const camera = new Float32Array(28); camera.set([0, 0, 80, 100, 0, 0, 0, 150, .1, 800, 160, 90], 16);
+  pass.draw({ camera, environment: { values: v, shadowMatrices: new Float32Array(16) } } as SpatialRenderBufferView, plan, {} as WebGLTexture, {} as WebGLTexture, 160, 90);
+  equal(draws, 1);
+  pass.prepare(spatialLightShaftPlan(v, 321, 181)); equal(pass.textureBytes(), 161 * 91 * 8);
+  pass.prepare(); equal(textures.size, 0); equal(targets.size, 0); pass.destroy();
+});
+
+test("probe uniforms upload all eight rows and clear on OFF/legacy packets", () => {
+  const values = new Map<string, number[]>(), constants = new Map<string, number>();
+  const methods: Record<string, unknown> = {
+    getExtension: () => ({}), createProgram: () => ({}), createShader: () => ({}), createVertexArray: () => ({}),
+    getShaderParameter: () => true, getProgramParameter: () => true, getUniformLocation: (_p: unknown, key: string) => key,
+    uniform1i: (key: string, v: number) => values.set(key, [v]), uniform4fv: (key: string, v: Float32Array) => values.set(key, [...v]),
+  };
+  const gl = new Proxy(methods, { get: (object, key: string) => {
+    if (key in object) return object[key];
+    if (/^[A-Z_0-9]+$/.test(key)) { if (!constants.has(key)) constants.set(key, constants.size + 1); return constants.get(key); }
+    return () => {};
+  } }) as unknown as WebGL2RenderingContext;
+  const pass = new WebGL2SpatialEnvironmentPass(gl, false);
+  const u = new Proxy({} as Record<string, WebGLUniformLocation>, { get: (_t, key) => key });
+  const camera = new Float32Array(28); camera.set([0, 100, 100, 100, 0, 0, 0, 200, .1, 1000, 640, 480], 16);
+  const probes = Array.from({ length: 8 }, (_, i) => ({ position: { x: i, y: -i, elevation: 16 }, radius: 32, intensity: i / 2 }));
+  for (const active of [true, false, undefined]) {
+    const v = compileSpatialEnvironment({ lighting: { lights: [], ...(active === undefined ? {} : { enabled: active, probes }) } });
+    pass.bindGeometry({ camera, environment: { values: v } } as SpatialRenderBufferView, u);
+    equal(values.get("probeCount")![0], active ? 8 : 0);
+    deepEqual(values.get("probePosition")!.slice(-4), active ? [7, 16, 7, 32] : [0, 0, 0, 0]);
+    deepEqual(values.get("probeColor")!.slice(-4), active ? [1, 1, 1, 3.5] : [0, 0, 0, 0]);
+  }
+  pass.destroy();
 });

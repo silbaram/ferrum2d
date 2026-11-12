@@ -295,3 +295,19 @@ test("Bloom work bounds retain measured zeros and reject missing values in any r
   equal(evaluateRuntimeDiagnosticsSample(sample, budget).violations.length, 3);
   throws(() => runtimeDiagnosticsFrameSample(metrics({ spatialBloomTexelFetchBudget: -1 })), /spatialBloom/);
 });
+
+test("Light shafts work bounds retain measured zeros and reject missing values in any retained frame", () => {
+  const budget = { maxSpatialLightShaftDrawCalls: 6, maxSpatialLightShaftTextureBytes: 44032, maxSpatialLightShaftTexelFetchBudget: 88448 };
+  const profiler = new RuntimeProfiler({ maxFrameSamples: 2, budget });
+  equal(profiler.snapshot().budgetReport!.passed, false);
+  profiler.recordFrame(metrics({ spatialLightShaftDrawCalls: 6, spatialLightShaftTextureBytes: 44032, spatialLightShaftTexelFetchBudget: 88448 }));
+  equal(profiler.snapshot().budgetReport!.passed, true);
+  profiler.recordFrame(metrics());
+  equal(profiler.snapshot().maxSpatialLightShaftTextureBytes, undefined);
+  equal(profiler.snapshot().budgetReport!.violations.filter(v => v.reason === "missingMetric").length, 3);
+  for (let i = 0; i < 2; i++) profiler.recordFrame(metrics({ spatialLightShaftDrawCalls: 0, spatialLightShaftTextureBytes: 0, spatialLightShaftTexelFetchBudget: 0 }));
+  equal(profiler.snapshot().budgetReport!.passed, true);
+  const sample = runtimeDiagnosticsFrameSample(metrics({ spatialLightShaftDrawCalls: 7, spatialLightShaftTextureBytes: 44033, spatialLightShaftTexelFetchBudget: 88449 }));
+  equal(evaluateRuntimeDiagnosticsSample(sample, budget).violations.length, 3);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ spatialLightShaftTexelFetchBudget: -1 })), /spatialLightShaft/);
+});

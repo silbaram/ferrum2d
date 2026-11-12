@@ -2,6 +2,7 @@ import { placementSpatialPose } from "./placementSpatialPose";
 import {
   setUiAttribute,
   setUiText,
+  translateUi,
   uiMessage,
   uiText,
 } from "./placementLocale";
@@ -236,6 +237,8 @@ export function installPlacementSpatialWorkspace(options: {
     ["offset", "Visual Elevation"],
     ["yaw", "Model Yaw"],
     ["scale", "Model Scale"],
+    ["lightMask", "Light Channels"],
+    ["shadowMask", "Shadow Channels"],
   ]) {
     const row = document.createElement("label"),
       caption = document.createElement("span");
@@ -243,36 +246,51 @@ export function installPlacementSpatialWorkspace(options: {
     const input = document.createElement("input");
     input.type = "number";
     input.step = name === "floorId" ? "1" : "any";
+    if (name === "lightMask" || name === "shadowMask") {
+      input.step = "1"; input.min = "0"; input.max = "255";
+      setUiAttribute(input, "title", "Bit mask: 0 none, 255 all channels.");
+    }
     input.dataset.placementSpatialField = name;
     row.append(caption, input);
     form.append(row);
     fields.set(name, input);
     fieldLabels.set(name, caption);
-    input.addEventListener("change", () => {
-      const value = input.valueAsNumber;
-      if (!Number.isFinite(value)) return;
-      if (!cancel()) return;
-      options.finishEdit();
-      viewer.beginEdit("Spatial Input");
-      try {
-        editField(name, value);
-        options.onChange(viewer.commitEdit());
-        report();
-      } catch (error) {
-        // A schema-valid edit can still fail native/GPU preparation. Retain neither
-        // its draft nor its history entry, then restore the authored preview.
-        const restored = viewer.cancelEdit();
-        try {
-          options.onChange(restored);
-          sync(viewer.state(), true);
-        } catch (restoreError) {
-          report(restoreError);
-          return;
-        }
-        report(error);
-      }
-    });
+    input.addEventListener("change", () => applyPropertyInput(name, input));
   }
+  function applyPropertyInput(name: string, input: HTMLInputElement): boolean {
+    if (input.disabled || suspended || active.mode !== "spatial" || stage.closest<HTMLElement>(".demo-shell")?.inert)
+      return false;
+    const value = input.valueAsNumber;
+    if (!input.validity.valid || !Number.isFinite(value)) {
+      report(new Error(input.validationMessage || translateUi(uiMessage("Enter a valid value ({0}–{1})", input.min || "−∞", input.max || "∞"))));
+      return false;
+    }
+    // Saving a focused field and its later blur must not create duplicate edits.
+    if (value === propertyState().values[name]) { report(); return true; }
+    if (!cancel()) return false;
+    options.finishEdit();
+    viewer.beginEdit("Spatial Input");
+    try {
+      editField(name, value);
+      options.onChange(viewer.commitEdit());
+      report();
+      return true;
+    } catch (error) {
+      // A schema-valid edit can still fail native/GPU preparation. Retain neither
+      // its draft nor its history entry, then restore the authored preview.
+      const restored = viewer.cancelEdit();
+      try {
+        options.onChange(restored);
+        sync(viewer.state(), true);
+      } catch (restoreError) {
+        report(restoreError);
+        return false;
+      }
+      report(error);
+      return false;
+    }
+  }
+
   const info = document.createElement("p");
   setUiText(
     info,
@@ -1157,6 +1175,37 @@ export function installPlacementSpatialWorkspace(options: {
   function selectedInstance(origin = state) {
     return origin.instances.find((i) => i.instanceId === active.target?.id);
   }
+  function propertyState() {
+    const selected = active.target, spatial = state.spatial;
+    const instance = selectedInstance(),
+      surface = spatial?.terrain.find(
+        (s) => selected?.kind === "surface" && s.id === selected.id,
+      );
+    const model =
+        selected?.kind === "model" ? spatial?.models?.[selected.id] : undefined,
+      billboard =
+        selected?.kind === "billboard"
+          ? spatial?.billboards[selected.id]
+          : undefined;
+    const receiver = model ?? billboard ?? (surface?.render !== false ? surface : undefined);
+    const values: Record<string, number | undefined> = {
+      x: surface?.x ?? instance?.transform.x,
+      y: surface?.y ?? instance?.transform.y,
+      elevation: surface?.elevation ?? instance?.body?.heightSpan?.elevation,
+      floorId: surface?.floorId ?? instance?.body?.heightSpan?.floorId,
+      offset: model || billboard
+        ? (model?.elevation ?? billboard?.elevation ?? 0)
+        : undefined,
+      yaw: model ? (model.yawDegrees ?? 0)
+        : billboard && instance ? instance.transform.rotationRadians * 180 / Math.PI
+          : undefined,
+      scale: model ? (model.scale ?? 1)
+        : billboard && instance ? instance.transform.scale : undefined,
+      lightMask: receiver ? receiver.lightMask ?? 255 : undefined,
+      shadowMask: receiver ? receiver.shadowMask ?? 255 : undefined,
+    };
+    return { instance, model, billboard, values };
+  }
   function editField(name: string, value: number, origin = viewer.state()) {
     const target = active.target,
       spatial = origin.spatial;
@@ -1183,7 +1232,7 @@ export function installPlacementSpatialWorkspace(options: {
           changes.endElevation = surface.endElevation + delta;
         if (surface.baseElevation !== undefined)
           changes.baseElevation = surface.baseElevation + delta;
-      } else if (name === "x" || name === "y" || name === "floorId")
+      } else if (name === "x" || name === "y" || name === "floorId" || name === "lightMask" || name === "shadowMask")
         changes[name] = value;
       else return;
       options.onChange(
@@ -1195,6 +1244,12 @@ export function installPlacementSpatialWorkspace(options: {
       const instance = selectedInstance(origin);
       if (!instance) return;
       if (origin.lockedInstanceIds.includes(target.id)) return;
+      if (name === "lightMask" || name === "shadowMask") {
+        options.onChange(viewer.updateSpatial([{
+          kind: target.kind === "model" ? "updateModel" : "updateBillboard", id: target.id, changes: { [name]: value },
+        }]));
+        return;
+      }
       if (target.kind === "billboard" && name === "yaw" && spatial.actor?.instanceId === target.id)
         throw new Error("Player rotation requires an unrotated AABB collider. Change facing through animation.");
       if (name === "x" || name === "y")
@@ -1433,30 +1488,7 @@ export function installPlacementSpatialWorkspace(options: {
       targetSelect.dataset.signature = targetSignature;
     }
     targetSelect.value = selected ? selected.kind + ":" + selected.id : "";
-    const instance = selectedInstance(),
-      surface = spatial?.terrain.find(
-        (s) => selected?.kind === "surface" && s.id === selected.id,
-      );
-    const model =
-        selected?.kind === "model" ? spatial?.models?.[selected.id] : undefined,
-      billboard =
-        selected?.kind === "billboard"
-          ? spatial?.billboards[selected.id]
-          : undefined;
-    const values: Record<string, number | undefined> = {
-      x: surface?.x ?? instance?.transform.x,
-      y: surface?.y ?? instance?.transform.y,
-      elevation: surface?.elevation ?? instance?.body?.heightSpan?.elevation,
-      floorId: surface?.floorId ?? instance?.body?.heightSpan?.floorId,
-      offset: model || billboard
-        ? (model?.elevation ?? billboard?.elevation ?? 0)
-        : undefined,
-      yaw: model ? (model.yawDegrees ?? 0)
-        : billboard && instance ? instance.transform.rotationRadians * 180 / Math.PI
-          : undefined,
-      scale: model ? (model.scale ?? 1)
-        : billboard && instance ? instance.transform.scale : undefined,
-    };
+    const { instance, model, billboard, values } = propertyState();
     setUiText(fieldLabels.get("yaw")!, model ? "Model Yaw (°)" : "Sprite Rotation (°)");
     setUiText(fieldLabels.get("scale")!, model ? "Model Scale" : "Sprite Scale");
     const locked =
@@ -2260,6 +2292,11 @@ export function installPlacementSpatialWorkspace(options: {
     mode: () => active.mode,
     ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag() || gameCamera.ownsGesture(),
     flushCameraInput: () => gameCamera.flushInput(),
+    flushPropertyInput() {
+      for (const [name, input] of fields)
+        if (input === document.activeElement) return applyPropertyInput(name, input);
+      return true;
+    },
     target: () => (active.target ? { ...active.target } : undefined),
     clearSelection() { choose(); },
     selectSurface(id: string) {

@@ -44,6 +44,10 @@ export interface SpatialRendererStats {
   effectTextureBytes: number;
   dofSampleBudget: number;
   /** Bounded scene-effect taps per shaded pixel; 0 when disabled. */
+  lightShaftSampleBudget?: number;
+  lightShaftDrawCalls?: number;
+  lightShaftTextureBytes?: number;
+  lightShaftTexelFetchBudget?: number;
   bloomSampleBudget?: number;
   /** Additional dedicated Bloom draws; gather remains fused in the composite. */
   bloomDrawCalls?: number;
@@ -102,8 +106,11 @@ export interface RendererStats {
   pointShadowGeometryUploadBytes?: number;
   pointShadowGeometryVertexCount?: number;
   pointShadowGeometryCacheHit?: boolean;
+  spatialLightShaftDrawCalls?: number;
   spatialBloomDrawCalls?: number;
+  spatialLightShaftTextureBytes?: number;
   spatialBloomTextureBytes?: number;
+  spatialLightShaftTexelFetchBudget?: number;
   spatialBloomTexelFetchBudget?: number;
   /** Fullscreen post-processing draw calls submitted for the current frame. */
   postProcessDrawCalls: number;
@@ -196,8 +203,11 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
   },
   { field: "pointShadowGeometryUploadBytes", label: "point shadow geometry upload", unit: "bytes", description: "Actual point-shadow geometry writes; zero on a warm cached batch, excluding masks/uniforms/sun." },
   { field: "pointShadowGeometryVertexCount", label: "point shadow vertices", unit: "count", description: "Actual point-shadow geometry vertices submitted across active lights." },
+  { field: "spatialLightShaftDrawCalls", label: "Light shafts draws", unit: "count", description: "Dedicated Spatial Light shafts draws accumulated across this begun frame." },
   { field: "spatialBloomDrawCalls", label: "Bloom draws", unit: "count", description: "Dedicated Spatial Bloom draws accumulated across this begun frame." },
+  { field: "spatialLightShaftTextureBytes", label: "Light shafts target peak", unit: "bytes", description: "Peak Spatial Light shafts target texel bytes across this begun frame." },
   { field: "spatialBloomTextureBytes", label: "Bloom target peak", unit: "bytes", description: "Peak Spatial Bloom target texel bytes across this begun frame." },
+  { field: "spatialLightShaftTexelFetchBudget", label: "Light shafts texture load budget", unit: "count", description: "Spatial Light shafts texture-load work bound accumulated across this begun frame." },
   { field: "spatialBloomTexelFetchBudget", label: "Bloom texture load budget", unit: "count", description: "Spatial Bloom texture-load work bound accumulated across this begun frame." },
   {
     field: "postProcessDrawCalls",
@@ -265,8 +275,11 @@ export function resetRendererStatsInto(stats: RendererStats): RendererStats {
   delete stats.pointShadowGeometryUploadBytes;
   delete stats.pointShadowGeometryVertexCount;
   delete stats.pointShadowGeometryCacheHit;
+  delete stats.spatialLightShaftDrawCalls;
   delete stats.spatialBloomDrawCalls;
+  delete stats.spatialLightShaftTextureBytes;
   delete stats.spatialBloomTextureBytes;
+  delete stats.spatialLightShaftTexelFetchBudget;
   delete stats.spatialBloomTexelFetchBudget;
   stats.drawCalls = 0;
   stats.batchCount = 0;

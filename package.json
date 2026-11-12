@@ -221,7 +221,7 @@
     "engine:local": "node scripts/package/install-local-engine.mjs",
     "smoke:local-engine-install": "node --test tests/smoke/local-engine-install.test.mjs",
     "smoke:spatial-webgpu": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs",
-    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-height-fog-report && pnpm test:spatial-point-pcss-report && pnpm test:spatial-sun-pcss-report && pnpm test:spatial-point-shadows-report && pnpm test:spatial-light-selection-report && pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
+    "smoke:spatial-webgpu-offscreen": "pnpm test:spatial-light-probes-report && pnpm test:spatial-light-shafts-report && pnpm test:spatial-height-fog-report && pnpm test:spatial-point-pcss-report && pnpm test:spatial-sun-pcss-report && pnpm test:spatial-point-shadows-report && pnpm test:spatial-light-selection-report && pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target",
     "test:spatial-light-selection-report": "node --test tests/smoke/spatial-light-selection-report.test.mjs",
     "smoke:spatial-light-selection": "pnpm test:spatial-light-selection-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-selection-only",
     "smoke:spatial-webgpu-fallback": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --fallback-only",
@@ -259,6 +259,10 @@
     "test:spatial-bloom-report": "node --test tests/smoke/spatial-bloom-report.test.mjs",
     "smoke:spatial-wide-bloom": "pnpm test:spatial-bloom-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --wide-bloom-only",
     "test:spatial-height-fog-report": "node --test tests/smoke/spatial-height-fog-report.test.mjs tests/smoke/spatial-height-fog-precision-report.test.mjs",
+    "test:spatial-light-probes-report": "node --test tests/smoke/spatial-light-probes-report.test.mjs",
+    "smoke:spatial-light-probes": "pnpm test:spatial-light-probes-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-probes-only",
+    "test:spatial-light-shafts-report": "node --test tests/smoke/spatial-light-shafts-report.test.mjs",
+    "smoke:spatial-light-shafts": "pnpm test:spatial-light-shafts-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-shafts-only",
     "smoke:spatial-height-fog": "pnpm test:spatial-height-fog-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --height-fog-only"
   },
   "devDependencies": {

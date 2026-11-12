@@ -122,7 +122,7 @@ export class WebGL2SpatialPass {
         "hasRoughness", "hasSpecular", "hasSpecularColor", "modelRoughnessUvTransform", "modelSpecularUvTransform", "modelSpecularColorUvTransform",
         "receiveShadow", "receiverMasks", "lightChannels", "sunChannels",
         "heightFog", "fogCamera", "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunPcss", "pointPcss", "pointPcss2", "sunMatrix", "sunMap",
-        "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias",
+        "hemisphereDirection", "hemisphereSky", "hemisphereGround", "shadowNormalBias", "probeCount", "probePosition", "probeColor",
       ])
         this.uniforms[name] = uniform(`u_${name}`);
       for (const name of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER])
@@ -292,6 +292,7 @@ export class WebGL2SpatialPass {
       shadowCulledTriangleCount: 0,
       effectDrawCalls: 0,
       bloomDrawCalls: 0, bloomTextureBytes: 0, bloomTexelFetchBudget: 0,
+      lightShaftDrawCalls: 0, lightShaftTextureBytes: 0, lightShaftTexelFetchBudget: 0, lightShaftSampleBudget: 0,
       effectTextureBytes: 0,
       dofSampleBudget: environment?.values[0]! & 4 ? (environment!.values[96] === 1 ? 25 : 13) : 0,
     };
@@ -543,7 +544,7 @@ export class WebGL2SpatialPass {
         stats.drawCalls += passes;
         stats.triangleCount += passes;
         const bloomPasses = stats.bloomDrawCalls ?? 0, mainPasses = passes - bloomPasses;
-        stats.textureBindCount += mainPasses * 2 + Number(mainPasses > 1) + bloomPasses + Number(bloomPasses > 0);
+        stats.textureBindCount += mainPasses * 2 + Number(mainPasses > 1) + bloomPasses + Number(bloomPasses > 0) + Number((stats.lightShaftDrawCalls ?? 0) > 0);
       }
     } finally {
       this.models.finishDraws();
