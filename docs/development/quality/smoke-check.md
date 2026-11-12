@@ -3209,3 +3209,14 @@ legacy/linear-srgb × 1280×720/390×844 × DPR1/2를 검사한다.
 SDK/Rust는 environment v15/700·patch16/state18, bounds/reserved/unused, invalid transaction 불변,
 OFF source 보존, 빈 배열, 이전 reader, 구형 core의 자원 준비 전 거절 및 GL/WebGPU uniform reset을 검사한다.
 실제 문제 게임·목표 기기의 성능 인수는 이 fixture와 별도다.
+
+
+### Spatial 환경 호환성 교차 검증
+
+`pnpm --filter @ferrum2d/ferrum-web test`의 `spatialEnvironmentAbi.test.ts`는 실제 빌드된 Wasm과
+독립적인15개 v1~v15 fixture를 사용한다. compiler→native→WasmBridge→renderer packet의 길이/버전
+일치, 알 수 없는 버전/불일치 거절, 매 프레임 ABI getter1회와 v15→v1 전환을 확인한다.
+`spatialEnvironmentFeatures.test.ts`는9개 기능의 개별 capability와 공통 채널 capability 누락을
+ON/OFF 소스에서 검사한다. authoring preflight·setter·configure·progress 복원이 자산 조회나 mutation 전에
+거절하는지, 지원 코어의 성공 경로·destroy 후 facade 거절·복합 patch/source/progress의 최대 저장 버전도 확인한다.
+이 검사는 GPU 픽셀 회귀를 대체하지 않으며, native/renderer 경계 수정 시 기존 Spatial aggregate도 유지한다.

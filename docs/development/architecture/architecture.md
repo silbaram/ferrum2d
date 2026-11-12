@@ -2160,3 +2160,18 @@ source tail을 복사하고, 유효2992 bytes/stride3072/두 record6144 bytes로
 WGSL은 indirect fill을 표면당 한 번 구해 color와 AO MRT에 공유한다. source·old-format·OFF 전환 시
 uniform을 지워 이전 프로브가 다음 packet에 남지 않는다. 추가 target/pass/texture fetch는 없으며
 최대8개 거리 평가의 fragment ALU 비용과 고정 uniform 크기 증가만 있다.
+
+
+### Spatial 환경 버전·지원 조건의 책임
+
+`spatialEnvironmentAbi.ts`가 TS의 v1~v15 길이/버전 대응을 관리한다. compiler·WasmBridge·render packet
+validator·합성 선택은 같은 계약을 사용한다. Rust의 대응 표는 `spatial_scene/environment.rs`가 소유하며,
+실제 Wasm을 사용하는 통합 테스트가15개 이전 형식과 교차 검증한다. 프레임 reader는 환경이 있을 때
+native ABI getter를 한 번만 호출하고, 다음 프레임의 버전 변경은 다시 확인한다.
+
+`spatialEnvironmentFeatures.ts`는 선택형 환경 기능의 wire/patch/save 버전과 cold capability 의존성만 관리한다.
+개별 기능 모듈은 값 검증·기본값·수학을, snapshot/patch 모듈은 저장·적용 순서를 계속 담당한다.
+공개 facade·authoring·progress 복원·native setter의 지원 조건을 공유하고, v8 이상도 포함된 v7 채널
+layout 지원을 자산 준비/씬 교체 전에 확인한다. OFF·빈 프로브 배열 같은 명시적 소스도 검사한다.
+광원 선택 선언만으로 state11을 요구하지 않으며, 기존처럼 저장된 선택 이력이 있을 때만 요구한다.
+public API·wire offset·길이·저장 버전과 이전 snapshot hash 계약은 변경하지 않는다.
