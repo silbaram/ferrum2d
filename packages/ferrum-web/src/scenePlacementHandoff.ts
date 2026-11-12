@@ -16,7 +16,7 @@ import {
 } from "./spriteNormalBinding.js";
 
 export const SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT =
-  "ferrum2d.placement-viewer.agent-handoff" as const;
+  "ferrum2d.studio.agent-handoff" as const;
 export const SCENE_PLACEMENT_AGENT_HANDOFF_VERSION = 1 as const;
 
 export interface CreateScenePlacementAgentHandoffOptions {

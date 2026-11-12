@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
 const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, panSpatialCamera, orbitSpatialCamera, zoomSpatialCamera, fitSpatialCamera, spatialCameraBasis, spatialCameraRay, spatialFrameRay, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
   "data:text/javascript;base64," + Buffer.from(ts.transpileModule(
-    await readFile("apps/placement-viewer/src/placementSpatialCamera.ts", "utf8"),
+    await readFile("apps/studio/src/placementSpatialCamera.ts", "utf8"),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
   ).outputText).toString("base64")
 );

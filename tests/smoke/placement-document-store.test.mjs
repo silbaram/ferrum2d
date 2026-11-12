@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { savePlacementDocument } from "../../apps/placement-viewer/server/sceneDocumentStore.mjs";
+import { savePlacementDocument } from "../../apps/studio/server/sceneDocumentStore.mjs";
 
 const source = { format: "ferrum2d.consumer.scene-authoring", version: 1, sceneComposition: { initialFragment: "main", fragments: { main: { instances: [] } } } };
 

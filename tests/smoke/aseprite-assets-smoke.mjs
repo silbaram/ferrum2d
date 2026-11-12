@@ -18,7 +18,7 @@ import {
   showPlacementInspector,
 } from "./placement-panel-navigation.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
-import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
+import { placementNormalGeneratorPlugin } from "../../apps/studio/server/normalGenerator.mjs";
 import { smokeAsepriteNormals } from "./aseprite-normals-smoke.mjs";
 import { smokeAsepriteAnimation } from "./aseprite-animation-smoke.mjs";
 import { smokeAsepritePaired } from "./aseprite-paired-smoke.mjs";
@@ -58,7 +58,7 @@ if (normalMode || pixelMode || trimNormalMode)
   });
 await mkdir(artifact, { recursive: true });
 const run = await mkdtemp(resolve(artifact, "run-")),
-  app = await preparePlacementTestBuild(resolve("apps/placement-viewer/dist"), { save: true });
+  app = await preparePlacementTestBuild(resolve("apps/studio/dist"), { save: true });
 const source = {
   format: "ferrum2d.consumer.scene-authoring",
   version: 1,

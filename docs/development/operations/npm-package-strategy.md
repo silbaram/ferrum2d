@@ -9,11 +9,11 @@ Ferrum2D 패키지 구성은 엔진 런타임, 프로젝트 생성기, AI 개발
 | package | 역할 | 사용자 |
 | --- | --- | --- |
 | `@ferrum2d/ferrum-web` | 브라우저 런타임 엔진, WebGL2 platform layer, generated Wasm artifact, public API | Ferrum2D 게임 앱 |
-| `@ferrum2d/authoring-viewer` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | generated placement viewer와 Ferrum2D Studio host |
-| `@ferrum2d/create-game` | 새 게임 프로젝트 생성 CLI. 템플릿과 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer` dependency를 생성 프로젝트에 배치 | 새 프로젝트를 시작하는 개발자/AI agent |
+| `@ferrum2d/studio-kit` | placement viewer title/workflow/behavior binding evidence, app chrome, disclosure section, DOM control/shell/panel primitive helper 같은 agent-first authoring viewer 공통 계약 | 생성 프로젝트의 경량 Studio와 Ferrum2D Studio host |
+| `@ferrum2d/create-game` | 새 게임 프로젝트 생성 CLI. 템플릿과 `@ferrum2d/ferrum-web`, `@ferrum2d/studio-kit` dependency를 생성 프로젝트에 배치 | 새 프로젝트를 시작하는 개발자/AI agent |
 | `@ferrum2d/agents` | Ferrum2D consumer game development용 Codex/Claude agent, shared skill, Gemini command 설치 CLI | AI로 게임을 개발하는 사용자 |
 
-`@ferrum2d/ferrum-web`은 실행에 필요한 엔진 본체다. `@ferrum2d/authoring-viewer`는 placement viewer의 공통 계약과 반복 app chrome, disclosure section, DOM control/shell/panel primitive 생성을 담는 작은 helper package다. `@ferrum2d/create-game`과 `@ferrum2d/agents`는 개발 도구이며, 엔진 런타임 artifact에 포함하지 않는다.
+`@ferrum2d/ferrum-web`은 실행에 필요한 엔진 본체다. `@ferrum2d/studio-kit`는 placement viewer의 공통 계약과 반복 app chrome, disclosure section, DOM control/shell/panel primitive 생성을 담는 작은 helper package다. `@ferrum2d/create-game`과 `@ferrum2d/agents`는 개발 도구이며, 엔진 런타임 artifact에 포함하지 않는다.
 
 ## 사용 흐름
 
@@ -27,9 +27,9 @@ npm install
 npm run dev
 ```
 
-릴리스 생성기는 같은 버전의 engine/viewer/agents 다운로드 URL을 고정한다. 소스 CLI의 기본 npm 범위와 명시적 로컬 파일 옵션은 호환성을 위해 유지한다.
+릴리스 생성기는 같은 버전의 engine/studio-kit/agents 다운로드 URL을 고정한다. 소스 CLI의 기본 npm 범위와 명시적 로컬 파일 옵션은 호환성을 위해 유지한다.
 
-생성된 프로젝트의 `package.json`에는 `@ferrum2d/ferrum-web`과 `@ferrum2d/authoring-viewer` dependency가 들어간다. 엔진 소스 코드는 복사하지 않는다.
+생성된 프로젝트의 `package.json`에는 `@ferrum2d/ferrum-web`과 `@ferrum2d/studio-kit` dependency가 들어간다. 엔진 소스 코드는 복사하지 않는다.
 
 AI agent/skill 설치:
 
@@ -52,7 +52,7 @@ npm run preview
 
 `ferrum:check`는 validation, asset, authoring, gameplay/runtime replay, production build를 순서대로 실행하고 첫 실패 단계와 다음 명령을 `ferrum2d.consumer.check.report`로 요약한다. `ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, generated file, internal import, root aggregate import, template별 `runtimeInputs`와 `project.deployment` 정적 웹 배포 계약을 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build를 실행하는 기본 소비자 검증 gate다. `ferrum:deploy-report`는 build 뒤 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 Wasm `application/wasm` 응답을 확인하는 별도 배포 gate다. 이 계약은 HTML `<base>`를 거부하고, 상대 literal `fetch(...)`가 있는 다중 HTML 디렉터리 산출물을 base ambiguity로 거부한다. 로컬 production 확인은 `file://` 대신 `preview`를 사용한다.
 
-Consumer smoke 계열 report의 `version: 1`은 internal QA artifact 계약이다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 v1 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
+Consumer smoke report는 internal QA artifact 계약이다. Studio Kit 명칭 전환으로 `tarballs.studioKit`과 project 요약의 `studioKit` 필드가 바뀌어 `ferrum2d.package.consumer-smoke.report`는 version 2를 사용한다. 생성 프로젝트의 `ferrum2d.consumer.project.report`도 version 2이며 `project.studioKit`과 `checks.hasStudioKitDependency`를 사용한다. 다른 report는 각자 선언한 version을 따른다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 report version 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
 
 기존 npm/pnpm 게임 프로젝트의 SDK 갱신은 create-game tarball의 `ferrum-update-game` bin과
 데스크톱의 **도움말 → 버전 및 업데이트**를 사용한다. Ferrum dependency를 동일 exact GitHub release로
@@ -88,8 +88,8 @@ Codex는 공식 subagent 파일인 `.codex/agents/*.toml`과 repo skill 위치�
 ## 배포 단계
 
 1. `@ferrum2d/ferrum-web`: 런타임 package 안정화와 beta publish guard를 먼저 유지한다.
-2. `@ferrum2d/authoring-viewer`: generated placement viewer와 Ferrum2D Studio host가 공유하는 lightweight helper package로 분리 배포한다.
-3. `@ferrum2d/create-game`: 런타임/authoring viewer dependency를 포함한 starter project generator로 분리 배포한다.
+2. `@ferrum2d/studio-kit`: 생성 프로젝트의 경량 Studio와 Ferrum2D Studio host가 공유하는 lightweight helper package로 분리 배포한다.
+3. `@ferrum2d/create-game`: 런타임/Studio Kit dependency를 포함한 starter project generator로 분리 배포한다.
 4. `@ferrum2d/agents`: AI consumer 개발 환경을 명시적 `init` 명령으로 설치하는 도구로 분리 배포한다.
 
 현재 저장소에서는 accidental publish 방지를 위해 네 package 모두 `private: true`를 유지한다. 실제 publish는 package별 release checklist가 통과하고 사용자 승인이 있을 때만 진행한다. 첫 public beta 후보는 네 package가 같은 base version을 공유하는 lockstep 후보로 다룬다. 예를 들어 root와 네 package가 모두 `0.1.0` base이면 release 후보는 `0.1.0-beta.N` 계열로 검증한다. package별 독립 versioning은 별도 release policy가 생기기 전까지 사용하지 않는다.
@@ -122,7 +122,7 @@ pnpm release:local-check
 
 ```bash
 pnpm package:check:ferrum-web
-pnpm package:check:authoring-viewer
+pnpm package:check:studio-kit
 pnpm package:check:create-game
 pnpm package:check:agents
 ```
@@ -131,7 +131,7 @@ publish 후보 검증은 대상 package의 `private: false` 전환과 beta semve
 
 ```bash
 pnpm package:publish-check:ferrum-web
-pnpm package:publish-check:authoring-viewer
+pnpm package:publish-check:studio-kit
 pnpm package:publish-check:create-game
 pnpm package:publish-check:agents
 ```
@@ -140,4 +140,4 @@ pnpm package:publish-check:agents
 
 Consumer browser smoke는 설치된 Chrome을 우선 사용하고, 없으면 전체 Chromium의 `channel: "chromium"` headless 모드를 사용한다. 별도 headless shell로 자동 전환하지 않는다. 로컬 브라우저가 없으면 `pnpm exec playwright-core install chromium`으로 전체 Chromium을 설치한다(`--only-shell` 제외). `FERRUM_BROWSER_CHANNEL` 또는 `FERRUM_BROWSER_EXECUTABLE`로 지정할 수도 있다. 두 headless 구현의 차이는 [Playwright 브라우저 문서](https://playwright.dev/docs/browsers#chromium-new-headless-mode)에 설명되어 있다.
 
-`pnpm package:consumer-smoke`는 네 package를 로컬 tarball로 pack한 뒤 임시 consumer 환경에서 `@ferrum2d/create-game`과 `@ferrum2d/agents` bin을 설치해 실행한다. 설치된 `@ferrum2d/create-game`의 `--list-templates --json`도 먼저 실행해 tarball 내부 template catalog를 `consumer-smoke-report.json`의 `createGameCatalog` summary로 남긴다. 기본값은 `packages/create-game/templates/*` 전체를 생성하고, 특정 범위만 보려면 `--templates minimal,topdown`처럼 지정한다. 생성된 게임 프로젝트는 `@ferrum2d/ferrum-web`과 `@ferrum2d/authoring-viewer` tarball을 dependency로 설치하고 목적별 public subpath import, root aggregate import 0개, 내부 `dist/*` import 차단, `ferrum:report`, `ferrum:validate`, authoring/replay/runtime replay report, generated placement viewer smoke, `ferrum:smoke`, production build를 확인한다. 이어서 `ferrum:deploy-report`가 실제 `preview` 명령의 HTTP/Wasm MIME을 확인하는지 파싱하고, Chromium의 가상 하위 경로에서 실제 `dist/index.html`을 열어 Wasm 응답, Playing 상태, 양수인 엔티티·sprite·render command와 배경과 다른 WebGL2 픽셀을 확인한다. 완료된 renderer frame 12개의 최종 stats를 연속 샘플링하고 최대 draw call을 template별 `runtime-budget-profiles.mjs` 상한과 비교하므로 physics debug와 post-process 비용도 budget evidence에 포함된다. pixel readback은 production 템플릿에 `preserveDrawingBuffer`를 노출하지 않고, smoke에서 `renderPostProcess` 호출을 감싸 마지막 렌더 패스 직후 같은 호출 스택에서 실행한다. 별도 RAF 콜백으로 이미 버려진 drawing buffer를 읽거나 정지한 루프의 이전 stats를 중복 집계하지 않는다. 실제 완료된 12프레임을 확인한 뒤 픽셀이 비어 있으면 다음 완료 프레임에서 최대 8회까지만 읽으며, 재시도 중 draw call 최대값도 budget에 포함한다. WebGL context loss/readback 오류는 별도 실패 원인으로 기록하고, 빈 픽셀 실패 메시지에는 canvas/runtime 측정값을 남긴다. CI validator는 12프레임, 등록된 template budget profile, 1~8 범위의 `readbackAttempts`를 정확히 요구한다. 의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 성공/실패 원인과 소비자 프로젝트 상태를 보존해야 할 때는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. 이 경로에는 `consumer-smoke-report.json` machine-readable summary, tarball, `node_modules`/`dist`를 제외한 가벼운 consumer project snapshot이 남는다. CI는 smoke 직후 `pnpm validate:consumer-smoke-report`로 report format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 실제 template report matrix의 일치, 템플릿별 checks/reports/deployment browser summary, placement viewer check/report와 `dist/placement-viewer.html`, tarball 존재, snapshot 정리 상태를 검증하고 성공/실패 모두 artifact를 업로드한다. `pnpm smoke:consumer-smoke-report`는 완료된 렌더 패스 기반 샘플링, invalid frame 초기화, bounded readback, 재시도 draw budget, WebGL 오류 진단의 회귀 테스트와 함께 초기 실패 report, 템플릿 중간 실패 report, passed report의 catalog 누락/불일치, 12프레임/등록 profile/readback retry deployment evidence, placement viewer evidence 누락, snapshot 오염 실패를 synthetic artifact로 검증해 failed report path와 passed report schema가 CI에서 유지되도록 한다.
+`pnpm package:consumer-smoke`는 네 package를 로컬 tarball로 pack한 뒤 임시 consumer 환경에서 `@ferrum2d/create-game`과 `@ferrum2d/agents` bin을 설치해 실행한다. 설치된 `@ferrum2d/create-game`의 `--list-templates --json`도 먼저 실행해 tarball 내부 template catalog를 `consumer-smoke-report.json`의 `createGameCatalog` summary로 남긴다. 기본값은 `packages/create-game/templates/*` 전체를 생성하고, 특정 범위만 보려면 `--templates minimal,topdown`처럼 지정한다. 생성된 게임 프로젝트는 `@ferrum2d/ferrum-web`과 `@ferrum2d/studio-kit` tarball을 dependency로 설치하고 목적별 public subpath import, root aggregate import 0개, 내부 `dist/*` import 차단, `ferrum:report`, `ferrum:validate`, authoring/replay/runtime replay report, generated placement viewer smoke, `ferrum:smoke`, production build를 확인한다. 이어서 `ferrum:deploy-report`가 실제 `preview` 명령의 HTTP/Wasm MIME을 확인하는지 파싱하고, Chromium의 가상 하위 경로에서 실제 `dist/index.html`을 열어 Wasm 응답, Playing 상태, 양수인 엔티티·sprite·render command와 배경과 다른 WebGL2 픽셀을 확인한다. 완료된 renderer frame 12개의 최종 stats를 연속 샘플링하고 최대 draw call을 template별 `runtime-budget-profiles.mjs` 상한과 비교하므로 physics debug와 post-process 비용도 budget evidence에 포함된다. pixel readback은 production 템플릿에 `preserveDrawingBuffer`를 노출하지 않고, smoke에서 `renderPostProcess` 호출을 감싸 마지막 렌더 패스 직후 같은 호출 스택에서 실행한다. 별도 RAF 콜백으로 이미 버려진 drawing buffer를 읽거나 정지한 루프의 이전 stats를 중복 집계하지 않는다. 실제 완료된 12프레임을 확인한 뒤 픽셀이 비어 있으면 다음 완료 프레임에서 최대 8회까지만 읽으며, 재시도 중 draw call 최대값도 budget에 포함한다. WebGL context loss/readback 오류는 별도 실패 원인으로 기록하고, 빈 픽셀 실패 메시지에는 canvas/runtime 측정값을 남긴다. CI validator는 12프레임, 등록된 template budget profile, 1~8 범위의 `readbackAttempts`를 정확히 요구한다. 의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 성공/실패 원인과 소비자 프로젝트 상태를 보존해야 할 때는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. 이 경로에는 `consumer-smoke-report.json` machine-readable summary, tarball, `node_modules`/`dist`를 제외한 가벼운 consumer project snapshot이 남는다. CI는 smoke 직후 `pnpm validate:consumer-smoke-report`로 report format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 실제 template report matrix의 일치, 템플릿별 checks/reports/deployment browser summary, placement viewer check/report와 `dist/studio.html`, tarball 존재, snapshot 정리 상태를 검증하고 성공/실패 모두 artifact를 업로드한다. `pnpm smoke:consumer-smoke-report`는 완료된 렌더 패스 기반 샘플링, invalid frame 초기화, bounded readback, 재시도 draw budget, WebGL 오류 진단의 회귀 테스트와 함께 초기 실패 report, 템플릿 중간 실패 report, passed report의 catalog 누락/불일치, 12프레임/등록 profile/readback retry deployment evidence, placement viewer evidence 누락, snapshot 오염 실패를 synthetic artifact로 검증해 failed report path와 passed report schema가 CI에서 유지되도록 한다.

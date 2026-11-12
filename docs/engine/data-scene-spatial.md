@@ -43,7 +43,7 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 공식 Ferrum2D Studio의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
 `spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
-설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)을 참고한다.
+설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md)을 참고한다.
 
 Ferrum2D Studio의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
 명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
@@ -759,14 +759,16 @@ HDR 저장량은 내부 해상도당 색8+깊이4 byte로 추정한다. warm fra
 동기 target 생성 실패는 이전 target을 유지한다. 비동기 GPU allocation/validation 실패는 해당 target을 폐기하고
 다음 렌더 호출에 오류를 전달한다. 그림자 target과 그 view를 참조하는 bind group도 같은 실패 계약을 따른다.
 이는 cold 모델 활성화의 rollback 계약과 구분하며 HDR/그림자 resize의 원자적 복구를 보장하지 않는다.
-그림자 저장량 추정은 point 해상도²×6면×4 byte와 sun 해상도²×4 byte이며 최대 해상도는 각각1024다.
+그림자 저장량 추정은 point 한 개당 해상도²×6면×4 byte와 sun 해상도²×4 byte이며 최대 해상도는 각각1024다.
 
 `pnpm smoke:spatial-webgpu`는 packed public API의 실제 WebGPU와 WebGL2 픽셀을 비교한다.
 미지원 adapter나 GPU 오류를 skip하지 않는다. Linux CI에는 `pnpm smoke:spatial-webgpu-offscreen`을 연결해
 실제 WebGPU의 별도 GPU target에서 같은 전체 픽셀 조건과 context 전 fallback을 검증한다.
 CI target adapter는 canvas presentation 성공으로 해석하지 않는다. 브라우저별 검증 범위와
 Linux Chromium readback 제약은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
-WebGPU GPU 시간·자원 통계와 context-loss 복구는 아직 제공하지 않는다.
+WebGPU도 GPU 시간·자원 통계와 명시적 장치 손실 복구를 제공한다. 시간 측정은
+`gpuTiming` opt-in과 adapter의 `timestamp-query` 지원이 필요하다.
+[Core 통계](public-api/core.md)와 [WebGPU 복구 계약](public-api/labs.md)을 따른다.
 fade 등 기존 fullscreen 후처리는 사용할 수 있으며 scene FBO에 depth attachment를 설치한다.
 기존 `LightingScene2D`는 높이/표면을 계산하지 않으므로 spatial과 함께 활성화하면 거절한다.
 공간 효과는 아래 `environment`를 사용한다. 공간 물리 진단의 범위는 아래 계약을 따른다.
@@ -1231,7 +1233,7 @@ source는 세션 전체 64 MiB, 생성 pair는 8건/64 MiB/8,388,608 pixel 한�
 지켜 파일/이름/색 공간을 project catalog에 함께 등록한다. 반환된 durable URL의 bytes/hash·크기를 다시 검사한 뒤
 저장 완료로 인정한다. 미저장 생성 에셋을 참조하는 Scene Save는 막는다.
 host의 catalog 반영·재개방과 filesystem transaction은 host 책임이다. 기본 desktop/browser 쓰기 권한을 넓히지 않는다.
-준비/adapter/상세 UI 사용법은 저장소의 `apps/placement-viewer/README.md`를 따른다.
+준비/adapter/상세 UI 사용법은 저장소의 `apps/studio/README.md`를 따른다.
 
 Settings/Preview 탭은 방향키·Home/End로 전환하며 숨은 패널의 입력은 Tab 순서에서 제외된다.
 Cancel은 일반 버튼처럼 Enter/Space로 실행한다. 한도 초과는 기존 씬과 생성 pair를 유지한 채 거절하며,

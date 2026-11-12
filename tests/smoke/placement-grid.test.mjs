@@ -3,13 +3,13 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(
-    new URL("../../apps/placement-viewer/package.json", import.meta.url),
+    new URL("../../apps/studio/package.json", import.meta.url),
   ),
   ts = require("typescript");
 const code = ts.transpileModule(
   await readFile(
     new URL(
-      "../../apps/placement-viewer/src/placementGridGeometry.ts",
+      "../../apps/studio/src/placementGridGeometry.ts",
       import.meta.url,
     ),
     "utf8",

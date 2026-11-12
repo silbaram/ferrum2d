@@ -57,8 +57,8 @@ const SURFACES = [
     reason: "the direct renderer/platform bootstrap and debug panel are part of the showcase contract",
   },
   {
-    id: "placement-viewer",
-    file: "apps/placement-viewer/src/main.ts",
+    id: "studio",
+    file: "apps/studio/src/main.ts",
     mode: "shared-shell",
     style: "pixelforge-authoring-theme",
     reason: "the authoring viewer keeps its Pixelforge IDE CSS while sharing shell behavior",

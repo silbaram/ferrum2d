@@ -1,6 +1,6 @@
 # HD-2D 후속 기능·검증 후보
 
-기준일: 2026-11-09
+기준일: 2026-11-12
 상태: 기능 확장은 설계 후보·미착수, 실물 GPU·장시간 항목은 후속 검증 대기, 추가 예제 노출은 제품 결정 대기다.
 기능 개발은 대상 장면과 완료 조건을, 환경 검증은 기기·실행 조건을 정한 뒤 시작한다.
 
@@ -64,17 +64,34 @@ PNG extrusion의 현재 계약과 검증 명령은
 | --- | --- |
 | 대형 경로·물리 진단 | 기존 bounded joint/CCD 진단·batch cast 이후의 대형 scene 비용을 측정하고, 추가 broadphase/query 가속이 필요한 경우 착수 |
 
+## 조명 수용 검증
+
+계획된 조명 고도화는 구현과 자동 회귀를 완료했다. 현재 기능과 한도는
+[공간 조명](../engine/data-scene-spatial.md), [Flat 화면 표현](../engine/data-scene-presentation.md),
+[Flat 합성](../development/architecture/flat-lighting-composition.md),
+[Spatial 합성](../development/architecture/spatial-lighting-composition.md)을 따른다.
+
+남은 것은 실제 문제가 발생한 게임 씬과 목표 GPU·브라우저에서의 수용 검증이다.
+사용자 방침에 따라 개발 완료 후 수행하며, 대상 프로젝트·기기·실행 조건을 확보해야 한다.
+
+- 같은 씬·카메라·광원으로 그림자 안정성, 여러 광원의 합성, 재질·노멀·Bloom/AO·색공간을 비교한다.
+- 효과별 ON/OFF와 작업 preset의 프레임 분포·GPU 시간·draw/target/bytes를 같은 환경에서 기록한다.
+- 저장/복원·카메라 이동·resize·장시간 실행의 외형과 자원 회수를 확인한다.
+- 자동/offscreen 검증이나 기준 PC 결과를 목표 기기 전체의 수용 완료로 해석하지 않는다.
+
 ## 추가 시각 효과와 제품 경계
 
-조명·태양광 그림자·재질·Bloom/AO/색공간의 구체적인 개선 순서와 검증 조건은
-[조명 고도화 계획](lighting-quality-upgrade-plan.md)에서 관리한다.
-아래 추가 효과는 해당 계획의 선택 확장 후보이며 기존 효과의 재구현 목록이 아니다.
+아래는 별도 확장 후보이며 기존 조명 개발의 필수 잔여 작업이 아니다.
 
-독립 평면 shadow receiver, 반투명 다중 depth, 물리적 bokeh, 점광원 그림자 3개 이상은
-제품 필요와 비용·fallback·HUD/alpha 경계를 먼저 정할 후보다.
-태양·점광원 PCSS, 최대 2개 점광원 그림자, 높이 안개, 제한형 태양광 빛줄기, 최대8개 authored 간접광 프로브는 개발·자동 검증을 완료했다.
-프로브 자동 베이킹·방향성 SH·벽 차폐는 이 완료 범위에 포함되지 않는다.
-현재 높이 기반 그림자·normal lighting·view-depth DOF와 함께 신규 미구현 기능으로 세지 않는다.
+| 후보 | 검토할 조건 |
+| --- | --- |
+| 자동 라이트맵·간접광 프로브 베이크 | 현재 authored 간접광 프로브로 해결되지 않는 제작 비용이 확인될 때. 정적/동적 구분·베이크 입력과 재생성·저장 형식부터 설계 |
+| IBL | 환경 이미지 기반 반사·간접광이 필요한 실제 재질/장면이 있을 때. 현재 제한 재질·반구광과의 차이, 메모리·fallback 비용 확인 |
+| 캐스케이드 그림자 | 넓은 장면에서 현재 유한 태양 그림자 범위와 고정 중심으로 품질을 맞추기 어려울 때. 분할 경계·안정성·추가 shadow pass 예산 측정 |
+| 그 밖의 표현 | 독립 평면 shadow receiver, 반투명 다중 depth, 물리적 bokeh, 점광원 그림자 3개 이상. 필요성과 비용·fallback·HUD/alpha 경계를 먼저 결정 |
+
+태양·점광원 PCSS, 최대 2개 점광원 그림자, 높이 안개, 제한형 태양광 빛줄기,
+최대 8개 authored 간접광 프로브는 현재 제공한다. 프로브 자동 베이킹·방향성 SH·벽 차폐는 포함하지 않는다.
 
 three.js 비교의 고정 기준은 `83f6bd095356c68334df7d9b7ec03a0abebff3fc`다.
 [반복 모델 제출](https://github.com/mrdoob/three.js/blob/83f6bd095356c68334df7d9b7ec03a0abebff3fc/src/objects/InstancedMesh.js),

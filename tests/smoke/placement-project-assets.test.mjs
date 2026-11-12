@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
 async function moduleUrl(name, imports = {}) {
-  let code = ts.transpileModule(await readFile(new URL(`../../apps/placement-viewer/src/${name}.ts`, import.meta.url), "utf8"), {
+  let code = ts.transpileModule(await readFile(new URL(`../../apps/studio/src/${name}.ts`, import.meta.url), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText;
   for (const [from, url] of Object.entries(imports)) code = code.replaceAll(JSON.stringify(from), JSON.stringify(url));

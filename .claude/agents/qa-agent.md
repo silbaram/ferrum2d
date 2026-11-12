@@ -26,7 +26,7 @@ Release candidates normally require:
 - `pnpm release:check`
 
 Authoring/create-game scaffold changes may also require:
-- `pnpm smoke:placement-viewer`
+- `pnpm smoke:studio`
 - `pnpm smoke:create-game-template-reports`
 - `pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal`
 - `pnpm validate:consumer-smoke-report -- --report <report-path> --artifact-dir <artifact-dir>`

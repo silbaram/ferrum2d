@@ -8,8 +8,8 @@ import { githubRelease } from "../../packages/create-game/bin/github-release.mjs
 import { run } from "./package-check-helpers.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const packages = ["ferrum-web", "ferrum-authoring-viewer", "create-game", "agents"];
-const packageNames = ["@ferrum2d/ferrum-web", "@ferrum2d/authoring-viewer", "@ferrum2d/create-game", "@ferrum2d/agents"];
+const packages = ["ferrum-web", "ferrum-studio-kit", "create-game", "agents"];
+const packageNames = ["@ferrum2d/ferrum-web", "@ferrum2d/studio-kit", "@ferrum2d/create-game", "@ferrum2d/agents"];
 
 export async function prepareGithubRelease(options) {
   const release = githubRelease(options.version, options.repository);
@@ -32,7 +32,7 @@ export async function prepareGithubRelease(options) {
   if (!options.skipBuild) {
     await required(pnpm, ["build:wasm"], repoRoot);
     await required(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
-    await required(pnpm, ["--filter", "@ferrum2d/authoring-viewer", "build"], repoRoot);
+    await required(pnpm, ["--filter", "@ferrum2d/studio-kit", "build"], repoRoot);
   }
   if (!options.skipPackageCheck) await required(pnpm, ["package:check"], repoRoot);
 
@@ -98,12 +98,12 @@ function installGuide(release) {
     `엔진·개발 도구·AI 지침만 설치하며 게임 제작 요청 전에는 예제, src/, public/, 화면, viewer, replay fixture를 생성하거나 개발 서버를 실행하지 않는다.\n\n` +
     `## 예제 게임 생성(선택)\n\n실행 가능한 예제를 요청한 경우에만 아래 명령을 사용한다. minimal도 빈 프로젝트가 아니다.\n\n` +
     `\`\`\`bash\nnpx --yes --allow-remote=root ${release.generator} my-game --template topdown\ncd my-game\nnpm install\nnpm run dev\n\`\`\`\n\n` +
-    `템플릿: minimal, topdown, platformer, breakout. 엔진과 viewer는 같은 릴리스 URL에 고정된다.\n` +
+    `템플릿: minimal, topdown, platformer, breakout. 엔진과 Studio Kit는 같은 릴리스 URL에 고정된다.\n` +
     `일반 개발 도구(Vite/TypeScript)는 npm 레지스트리에서 설치한다. package-lock.json을 커밋하고 재설치는 npm ci를 사용한다.\n\n` +
     `npm 12의 외부 URL 설치 정책에 맞춰 생성 프로젝트 .npmrc에 allow-remote=root를 기록한다. 기존 .npmrc는 덮어쓰지 않는다.\n\n` +
     `## 예제 게임의 AI 개발 지침 설치(선택)\n\n\`\`\`bash\nnpm run ferrum:agents\n\`\`\`\n\n` +
     `## 예제 게임 검증과 빌드\n\n초기 환경만 설치한 프로젝트는 초기 설치 지침의 ferrum:setup-check까지만 실행한다. 아래 명령은 예제 게임을 생성한 경우에만 사용한다.\n\n\`\`\`bash\nnpm run ferrum:check\nnpm run ferrum:deploy-report\nnpm run preview\n\`\`\`\n\n` +
-    `이전 버전 게임을 업데이트할 때는 package.json의 엔진/viewer URL과 ferrum:agents URL을 같은 릴리스로 함께 변경하고 npm install 및 ferrum:check를 실행한다.\n` +
+    `이전 버전 게임을 업데이트할 때는 package.json의 엔진/Studio Kit URL과 ferrum:agents URL을 같은 릴리스로 함께 변경하고 npm install 및 ferrum:check를 실행한다.\n` +
     `기존 AI 지침은 init 재실행으로 교체되지 않는다. 같은 도구 선택으로 빈 디렉터리에 설치한 뒤 새 harness, skill/agent/command, 루트 managed block을 비교·병합한다. 사용자 수정 내용에 --force를 무조건 적용하지 않는다.\n` +
     `GitHub에서 자동 생성하는 Source code.zip은 설치용 패키지가 아니다.\n`;
 }

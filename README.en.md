@@ -56,9 +56,9 @@ This table describes the **current development source**. Detailed contracts defi
 | Physics | Bodies/materials/sensors, compound colliders, eight joint types, CCD, raycasts/shape casts, controllers/platforms, floor/height filters and destructible terrain | [Physics Map (Korean)](docs/development/architecture/physics-engine.md) |
 | Input and audio | Action bindings/contexts, keyboard, pointer, gamepad, virtual controls, audio policy and spatial audio | [Input (Korean)](docs/engine/input-actions.md) |
 | Assets and loading | Atlases, Aseprite/Tiled/LDtk data, trimmed sprite restoration, parallel loading/cancellation/retry/cache, optional KTX2, model caching and level streaming | [Core API (Korean)](docs/engine/public-api/core.md) |
-| Scene workspace | Project scene browsing, multiple documents, drag/drop, transforms, Undo/Redo, layers/locks, game cameras, lights, My Changes, handoff and asset usage/catalog cleanup | [Studio guide (Korean)](apps/placement-viewer/README.md) |
+| Scene workspace | Project scene browsing, multiple documents, drag/drop, transforms, Undo/Redo, layers/locks, game cameras, lights, My Changes, handoff and asset usage/catalog cleanup | [Studio guide (Korean)](apps/studio/README.md) |
 | Tile authoring | Tileset/map imports, author-time autotiling, tile animation with fixed collision, and time-based map previews | [Tile authoring (Korean)](docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기) |
-| Pixel authoring | RGBA/indexed palettes, selections/transforms, layer opacity/blending/merge, animation/onion skinning, PNG conversion, normals and GIF/APNG export | [Pixel editor (Korean)](apps/placement-viewer/README.md#내장-도트-제작) |
+| Pixel authoring | RGBA/indexed palettes, selections/transforms, layer opacity/blending/merge, animation/onion skinning, PNG conversion, normals and GIF/APNG export | [Pixel editor (Korean)](apps/studio/README.md#내장-도트-제작) |
 | Diagnostics and checks | Profiling/frame traces, GPU resource statistics, WebGL2 GPU timing, Wasm memory, spec validation, replay/hash, browser smoke tests, runtime budgets and consumer checks | [Quality API (Korean)](docs/engine/public-api/quality.md) |
 
 ### Physics and spatial gameplay
@@ -90,7 +90,7 @@ Consult [Spatial Scenes (Korean)](docs/engine/data-scene-spatial.md) for light/s
 - Use **Help → Versions and updates** to check public releases. Supported desktop environments handle project engine updates separately from signed application updates.
 
 Built-in browser examples are **export only**. File saving uses permissions provided by the active host.
-Game Preview runs the Scene Authoring runtime. See the [Studio guide (Korean)](apps/placement-viewer/README.md).
+Game Preview runs the Scene Authoring runtime. See the [Studio guide (Korean)](apps/studio/README.md).
 
 ### Built-in pixel editor
 
@@ -100,7 +100,7 @@ Game Preview runs the Scene Authoring runtime. See the [Studio guide (Korean)](a
 - Import an external PNG through drag/drop or the clipboard, crop/resize it, reduce colors or apply a palette, and open it as a document or layer.
 - Export editable sources, PNG sheets, GIF, or APNG. Supported hosts provide project saving and recovery. Install the optional normal generator to create color/normal pairs and apply them to scenes.
 
-See [pixel editing and saving conditions (Korean)](apps/placement-viewer/README.md#내장-도트-제작).
+See [pixel editing and saving conditions (Korean)](apps/studio/README.md#내장-도트-제작).
 
 ## Example gallery
 
@@ -138,7 +138,7 @@ After [building the source](#build-the-engine-source), run a command from the re
 | Example | Command | Source |
 | --- | --- | --- |
 | Feature Lab, 31 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
-| 2D garden / HD-2D village | `pnpm dev:placement-viewer`, then `?scene=garden` / `?scene=village` | [Ferrum2D Studio](apps/placement-viewer/) |
+| 2D garden / HD-2D village | `pnpm dev:studio`, then `?scene=garden` / `?scene=village` | [Ferrum2D Studio](apps/studio/) |
 | Top-down Shooter | `pnpm dev:topdown` | [topdown-shooter](examples/topdown-shooter/) |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | [physics-sandbox](examples/physics-sandbox/) |
 | Breakout | `pnpm dev:breakout` | [breakout](examples/breakout/) |
@@ -194,13 +194,14 @@ npm run ferrum:check
 ```
 
 The generator pins package URLs from the selected release. Use `npm run ferrum:agents` to install the project's agent instructions explicitly.
-The [Developer Quickstart](docs/en/engine/developer-quickstart.md) covers templates, project files, and deployment checks.
+[Run Your First Game](docs/en/engine/developer-quickstart.md) walks through installation, play, and a movement-speed change.
+Agents implementing features should start with [AI Game Development](docs/en/engine/ai-game-development.md).
 For setup without generating a game, see the [AI installation guide (Korean)](docs/engine/ai-agent-install.md).
 
 | Package | Responsibility |
 | --- | --- |
 | `@ferrum2d/ferrum-web` | Rust/Wasm engine and browser runtime |
-| `@ferrum2d/authoring-viewer` | Shared placement, asset, and handoff helpers |
+| `@ferrum2d/studio-kit` | Shared placement, asset, and handoff helpers |
 | `@ferrum2d/create-game` | Game project generator |
 | `@ferrum2d/agents` | Consumer agent/skill/command installer |
 
@@ -224,7 +225,7 @@ pnpm build
 pnpm dev:starter-runtime
 ```
 
-Use `pnpm dev:placement-viewer` for scene and pixel authoring.
+Use `pnpm dev:studio` for scene and pixel authoring.
 For an external npm game project, `pnpm engine:local --project /path/to/my-game` builds, packages, installs, and validates the local engine.
 Read the [installation and recovery contract (Korean)](docs/development/operations/local-engine-install.md) before using that workflow.
 
@@ -251,14 +252,15 @@ Full `CI` and `Pages` deployment are manually dispatched. Build the local site w
 | --- | --- |
 | `crates/ferrum-core/` | Rust simulation and Wasm bridge |
 | `packages/ferrum-web/` | TypeScript browser runtime |
-| `packages/ferrum-authoring-viewer/` | Shared authoring helpers |
+| `packages/ferrum-studio-kit/` | Shared authoring helpers |
 | `packages/create-game/`, `packages/agents/` | Project generation and consumer AI instructions |
-| `apps/placement-viewer/`, `apps/placement-viewer-desktop/` | Ferrum2D Studio web and desktop apps |
+| `apps/studio/`, `apps/studio-desktop/` | Ferrum2D Studio web and desktop apps |
 | `examples/` | Feature Lab, focused physics scenarios, and genre examples |
 | `docs/`, `scripts/` | Usage contracts, architecture, validation, planning, and build tools |
 
-Start with the [English documentation index](docs/en/README.md), [User Guide](docs/en/engine/user-guide.md),
-[Feature Guide](docs/en/engine/showcase-hub.md), or [Public API](docs/en/engine/public-api.md).
+For simple instructions, start with the [User Guide](docs/en/engine/user-guide.md) and [First Game](docs/en/engine/developer-quickstart.md).
+For agent implementation, start with [AI Game Development](docs/en/engine/ai-game-development.md).
+Both paths share [Public API](docs/en/engine/public-api.md); the [English index](docs/en/README.md) maps the full documentation.
 The English index identifies detailed references that are still in Korean. Release history is in [CHANGELOG](CHANGELOG.md).
 
 ## License

@@ -1,25 +1,18 @@
-# Ferrum2D Feature and Example Guide
+# Explore Features and Examples
 
 [한국어](../../engine/showcase-hub.md) · English
 
-Use the [public demo site](https://silbaram.github.io/ferrum2d/) to try engine features without installing tools.
-The Feature Lab separates each topic into a small scene with controls, observations, and implementation API names.
-All 31 experiments explain a game use case, ordered steps, object roles, and a visual legend. Primary actions sit next to the scene.
-Frame strips, camera bounds, and loading dashboards expose the comparison; dialogue and HUD use the actual engine UI inside the game view.
-Technical statistics are available under a collapsed details section.
-To run it from the engine source, use `pnpm dev:starter-runtime`.
+Try engine features without installing tools. Follow the actions and expected results shown in each demo.
+Open the [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) to choose a topic, or use the direct links below.
+Some controls are in Korean. For audio, click the screen or press Play first.
 
-The site entry opens the Feature Lab directly. Use its topic menu for **individual features** and the example switcher for **games, advanced physics, and authoring tools**.
-Ten topics cover lighting, physics, cameras, sprites, world movement, VFX, gameplay, UI/input, audio, and runtime assets. The physics topic also links to all seven advanced scenarios. Game and lab examples share navigation, typography, colors, instructions, observations, and related experiments.
-`examples/shared/exampleCatalog.json` defines example roles; `featureCatalog.json` defines individual experiments.
-Minimal, the original shooter starter, and Engine Playground remain reference/test routes outside the main catalog.
+## Three experiments to try first
 
-These descriptions cover the development source. Demo controls may be in Korean; changing documentation language does not translate the demo UI.
-Ferrum2D Studio provides its own English/Korean setting.
+1. **Normal lighting:** move the light and toggle normals to compare depth on the same image.
+2. **Navigation:** click beyond a wall and watch the character walk around it.
+3. **9-slice:** resize a dialogue box and compare ordinary stretching with preserved corners.
 
-## Independent feature experiments
-
-Each link opens the corresponding experiment in Starter Runtime. Reset restores its baseline scene and settings.
+## Feature map
 
 | Experiment | What to try and observe |
 | --- | --- |
@@ -48,43 +41,31 @@ Each link opens the corresponding experiment in Starter Runtime. Reset restores 
 | [AI pursuit and combat](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=ai-combat) | Observe obstacle avoidance, melee damage, and ranged projectiles. |
 | [Parent/child attachments](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=attachments) | Move or rotate a cart and detach/reattach a child object. |
 | [HD-2D lights, shadows, and fog](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) | Compare point/sun/mixed lighting, sun direction, hard/PCF shadows, fog, bloom, AO, DOF, and ACES. |
+| [HD-2D shadow comparison](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) | Change camera, character height, and sun angle to compare shadow placement. |
 | [Destructible terrain](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=destructible-terrain) | Erase a mask, drop a ball through the opening, and observe collider chunk updates. |
-
-Audio may require a click or key press before the browser permits playback.
-WebGPU is optional; the default renderer is WebGL2.
 | [Area queries and shape casts](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) | Compare circle/AABB overlap and moving-circle casts using native hits. |
 | [Pixel resolution and snapping](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=pixel-perfect) | Compare virtual resolution and fractional positions with display snapping. |
 | [Sprite appearance](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) | Compare palette replacement, hit flash, and outline on the same source images. |
 | [Rendering and GPU resources](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=rendering) | Compare command/draw counts and texture allocation/release; memory values are estimates. |
 
-## Integrated examples and authoring tools
+Reset each experiment to compare again. For exact options, see the [shared references](../README.md#shared-detailed-references).
+Give an agent [AI Game Development](ai-game-development.md) when you want a feature implemented in your game.
 
-| Example | What it demonstrates | Local command |
+## Games and Studio
+
+| Example | Open | What to try |
 | --- | --- | --- |
-| [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) | Start with the 31 focused experiments | `pnpm dev:starter-runtime` |
-| [Ferrum2D Studio](https://silbaram.github.io/ferrum2d/placement-viewer/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:placement-viewer` |
-| [Physics Sandbox](https://silbaram.github.io/ferrum2d/physics-sandbox/) | Seven focused Physics Spec scenarios and native diagnostics | `pnpm dev:physics-sandbox` |
-| [Top-down Shooter](https://silbaram.github.io/ferrum2d/topdown-shooter/) | Neon Outpost pixel arena, three enemy waves, native HUD, pause/restart, lighting settings, and mobile controls | `pnpm dev:topdown` |
-| [Breakout](https://silbaram.github.io/ferrum2d/breakout/) | Reflection, collision events, scoring, and particles | `pnpm dev:breakout` |
-| [Platformer](https://silbaram.github.io/ferrum2d/platformer/) | Jumping, one-way platforms, and moving platforms | `pnpm dev:platformer` |
-| [Little Garden of Light](https://silbaram.github.io/ferrum2d/pixel-art/) | Pixel sources, movement/collection, normal lighting, palette swaps, and post-processing | `pnpm dev:pixel-art` |
+| Top-down Shooter | [Play](https://silbaram.github.io/ferrum2d/topdown-shooter/) | Move, aim, fire, and survive enemy waves. |
+| Platformer | [Play](https://silbaram.github.io/ferrum2d/platformer/) | Jump and ride one-way/moving platforms. |
+| Breakout | [Play](https://silbaram.github.io/ferrum2d/breakout/) | Reflect the ball and remove bricks. |
+| Physics Lab | [Open](https://silbaram.github.io/ferrum2d/physics-sandbox/) | Choose a scenario and compare collisions, materials, and joints. |
+| Little Garden of Light | [Play](https://silbaram.github.io/ferrum2d/pixel-art/) | Click to move, collect seeds, and compare pixel sources, normal lighting, and palettes. |
+| 2D Lantern Garden | [Open Studio](https://silbaram.github.io/ferrum2d/studio/?scene=garden) | Compare editing, game preview, and play. |
+| HD-2D Village | [Open Studio](https://silbaram.github.io/ferrum2d/studio/?scene=village) | Adjust a spatial scene, its camera, and lighting. |
 
-The built-in examples in the browser version of Studio are export only. See the [User Guide](user-guide.md#edit-and-play-in-studio)
-for saving boundaries and the distinction between the editor camera and game camera.
+See the [Simple User Guide](user-guide.md#edit-and-play-in-studio) for Studio controls and saving.
 
-## Develop with an agent
+## Continue in your own project
 
-1. Use the [Developer Quickstart](developer-quickstart.md) to create a project from a selected GitHub Release.
-2. Run `npm run ferrum:agents` in the generated project to install its agent instructions.
-3. Run `npm run ferrum:check` and inspect `npm run ferrum:report` for the project's runtime inputs.
-4. Edit specifications, assets, or bootstrap code through [public APIs](public-api.md).
-5. Validate and inspect the actual browser result. Use `npm run ferrum:placement-viewer` when placement review is useful.
-
-For engine-source regression coverage, use the [Smoke Check reference (Korean)](../../development/quality/smoke-check.md).
-The Feature Lab's maintained browser check is `pnpm smoke:feature-examples`.
-
-## Documentation and release versions
-
-Pages contains the documentation and demos from the deployed development commit.
-It is updated separately from downloadable release packages. Check the installed release's types and contracts before using a feature.
-Advanced reference pages are currently in Korean; the [English documentation index](../README.md) identifies those links.
+[Run Your First Game](developer-quickstart.md) covers installation, play, and a small setting change.
+Web examples use deployed development source and may differ from your installed release.

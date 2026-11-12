@@ -1,4 +1,4 @@
-@font-face { font-family:"Ferrum Korean UI"; src:url("../../../apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2") format("woff2"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+1100-11FF,U+3130-318F,U+A960-A97F,U+AC00-D7FF; }
+@font-face { font-family:"Ferrum Korean UI"; src:url("../../../apps/studio/src/fonts/NotoSansKR-UI.woff2") format("woff2"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+1100-11FF,U+3130-318F,U+A960-A97F,U+AC00-D7FF; }
 .engine-playground { font-family:"Ferrum Korean UI",ui-sans-serif,system-ui,sans-serif; }
 .engine-playground { background:radial-gradient(ellipse at 20% 0%,#213b4a 0%,#101e2a 65%); color:#e2e9e5; padding:24px; }
 .engine-playground .demo-toolbar { max-width:1280px; align-items:center; margin-bottom:24px; }

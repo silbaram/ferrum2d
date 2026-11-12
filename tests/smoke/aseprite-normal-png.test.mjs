@@ -8,12 +8,12 @@ import {
 } from "../../scripts/tools/pack-textures.mjs";
 
 const require = createRequire(
-  new URL("../../apps/placement-viewer/package.json", import.meta.url),
+  new URL("../../apps/studio/package.json", import.meta.url),
 );
 const ts = require("typescript");
 const source = await readFile(
   new URL(
-    "../../apps/placement-viewer/src/placementAsepriteNormalPng.ts",
+    "../../apps/studio/src/placementAsepriteNormalPng.ts",
     import.meta.url,
   ),
   "utf8",

@@ -62,7 +62,7 @@ for (const template of ["minimal", "topdown", "platformer", "breakout"]) {
     const manifest = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
     const base = "https://github.com/example/ferrum-fork/releases/download/ferrum-web-v0.1.0-beta.7";
     assert.equal(manifest.dependencies["@ferrum2d/ferrum-web"], `${base}/ferrum2d-ferrum-web-0.1.0-beta.7.tgz`);
-    assert.equal(manifest.dependencies["@ferrum2d/authoring-viewer"], `${base}/ferrum2d-authoring-viewer-0.1.0-beta.7.tgz`);
+    assert.equal(manifest.dependencies["@ferrum2d/studio-kit"], `${base}/ferrum2d-studio-kit-0.1.0-beta.7.tgz`);
     assert.match(manifest.scripts["ferrum:agents"], /--package=https:\/\/github.com\/example\/ferrum-fork\/releases\/download\/ferrum-web-v0.1.0-beta.7\/ferrum2d-agents-0.1.0-beta.7.tgz/);
     assert.equal(manifest.scripts.postinstall, undefined);
     assert.equal(manifest.ferrumGithubRelease.version, "0.1.0-beta.7");
@@ -89,7 +89,7 @@ test("invalid release options fail before creating a game directory", async () =
     ["--github-release="],
     ["--github-repository", "someone/repo"],
     ["--github-release", "0.1.0-beta.7", "--ferrum-version", "file:engine.tgz"],
-    ["--github-release", "0.1.0-beta.7", "--authoring-viewer-version", "^0.1.0"],
+    ["--github-release", "0.1.0-beta.7", "--studio-kit-version", "^0.1.0"],
     ["--github-release", "0.1.0-beta.7", "--github-repository", "o/r;whoami"],
   ];
   for (const [index, args] of cases.entries()) {
@@ -132,7 +132,7 @@ for (const failure of ["invalid JSON", "missing asset", "corrupt asset"]) {
     const bundle = await mkdtemp(path.join(temp, "bad-bundle-"));
     const release = githubRelease("0.1.0-beta.7");
     const assets = [];
-    for (const url of [release.generator, release.runtime, release.viewer, release.agents]) {
+    for (const url of [release.generator, release.runtime, release.studioKit, release.agents]) {
       const file = path.basename(new URL(url).pathname);
       const bytes = Buffer.from(`fixture for ${file}`);
       await writeFile(path.join(bundle, file), bytes);

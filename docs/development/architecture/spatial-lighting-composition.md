@@ -1,15 +1,15 @@
 # Spatial 조명 성분과 화면 효과 합성
 
-상태: M3a 개발 소스 구현·자동 회귀 검증 완료. 설치한 배포 버전의 지원 여부는 해당 버전의 공개 타입을 확인한다.
+현재 개발 소스의 합성 계약이다. 설치한 배포 버전의 지원 여부는 해당 버전의 공개 타입을 확인한다.
 
-기존 `composition` 생략 경로는 기존 픽셀·자원 비용을 보존한다. 새 `composition:"separated"`는
+기존 `composition` 생략 경로는 기존 픽셀·자원 비용을 보존한다. 선택형 `composition:"separated"`는
 AO를 환경광·hemisphere 성분에만 적용하고 직접광·발광·unlit 색을 보존한다.
 명시적 `"legacy"` 선택도 저장한다. 선택 필드는 native environment v6/544-float의 528번 값이며
 529..543은 0이어야 한다. v1..v5의 길이와 의미는 유지하며 혼합 version/length를 거절한다.
 WebGPU 내부 camera uniform의 `forward.w`는 명시적인 pass bitfield(AO resolve=1, separated=2, DOF 선행=4)다.
 현재 mask·wide·두 번째 점광원·태양/점광원 PCSS·높이 안개 확장을 포함한 record는2,704 bytes다. native 환경 prefix와 고정 sun center를 덮어쓰지 않는다.
 
-## 새 경로의 연산 순서
+## 성분 분리 경로의 연산 순서
 
 1. geometry는 기존 HDR 색과 별도 선형 환경광 기여를 같은 depth 테스트의 MRT에 기록한다.
    `total = indirect + direct + emission`이며 unlit/debug 표면의 indirect는 0이다.

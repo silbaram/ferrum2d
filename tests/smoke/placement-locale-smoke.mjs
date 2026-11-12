@@ -8,7 +8,7 @@ import { showPlacementAssetPanel, showPlacementBottom, showPlacementInspector, s
 const artifact = resolve("artifacts/viewer-localization");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url"),
-  base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/placement-viewer/dist")) : resolve("apps/placement-viewer/dist");
+  base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/studio/dist")) : resolve("apps/studio/dist");
 let server;
 if (arg < 0) {
   server = createServer(async (req, res) => {

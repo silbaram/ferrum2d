@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { githubRelease, DEFAULT_GITHUB_REPOSITORY } from "./github-release.mjs";
 import { packageFileHashes, sha256, verifyInstalledPackage } from "./update-integrity.mjs";
 
-export const FAMILY = ["ferrum-web", "authoring-viewer", "create-game", "agents"];
+export const FAMILY = ["ferrum-web", "studio-kit", "create-game", "agents"];
 const NAMES = FAMILY.map(name => "@ferrum2d/" + name);
 const MAX_JSON = 2 * 1024 * 1024;
 
@@ -122,7 +122,7 @@ export async function checkProject(project, options = {}) {
 }
 
 export function updateManifest(manifest, release) {
-  const next = structuredClone(manifest), urls = [release.runtime, release.viewer, release.generator, release.agents];
+  const next = structuredClone(manifest), urls = [release.runtime, release.studioKit, release.generator, release.agents];
   for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
     for (let index = 0; index < NAMES.length; index++) if (next[section]?.[NAMES[index]] !== undefined) next[section][NAMES[index]] = urls[index];
   }

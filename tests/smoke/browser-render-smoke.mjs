@@ -6,7 +6,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
-import { savePlacementDocument } from "../../apps/placement-viewer/server/sceneDocumentStore.mjs";
+import { savePlacementDocument } from "../../apps/studio/server/sceneDocumentStore.mjs";
 import { smokePlacementWorkspace, preparePlacementWorkspaceSave, assertPlacementWorkspaceSave, smokePlacementDesktopWorkspace, smokePlacementSavePointerBoundary } from "./placement-workspace-smoke.mjs";
 import { smokePlacementNavigation, smokePlacementNavigationMass } from "./placement-navigation-smoke.mjs";
 import { smokePlacementSelection, smokePlacementSelectionMass } from "./placement-selection-smoke.mjs";
@@ -81,12 +81,12 @@ const BREAKOUT_EFFECTS_MODE = "breakout-effects";
 const PLATFORMER_EFFECTS_MODE = "platformer-effects";
 const PHYSICS_SANDBOX_MODE = "physics-sandbox";
 const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
-const PLACEMENT_VIEWER_MODE = "placement-viewer";
+const PLACEMENT_VIEWER_MODE = "studio";
 const PLACEMENT_SPATIAL_WORKSPACE_MODE = "placement-spatial-workspace";
-const PLACEMENT_VIEWER_SAVE_MODE = "placement-viewer-save";
-const PLACEMENT_VIEWER_MASS_AUTHORING_MODE = "placement-viewer-mass-authoring";
-const PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE = "placement-viewer-desktop-assets";
-const PLACEMENT_VIEWER_DESKTOP_CONFIG = "apps/placement-viewer-desktop/src-tauri/tauri.conf.json";
+const PLACEMENT_VIEWER_SAVE_MODE = "studio-save";
+const PLACEMENT_VIEWER_MASS_AUTHORING_MODE = "studio-mass-authoring";
+const PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE = "studio-desktop-assets";
+const PLACEMENT_VIEWER_DESKTOP_CONFIG = "apps/studio-desktop/src-tauri/tauri.conf.json";
 const PLACEMENT_VIEWER_BASE_INSTANCE_COUNT = 6;
 const PLACEMENT_VIEWER_MASS_AUTHORING_COUNT = 1024;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT =
@@ -105,7 +105,7 @@ const PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL = `data:image/png;base64,${(
 ).toString("base64")}`;
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID = "local_asteroid";
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER =
-  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/alternate-assets";
+  "/tmp/ferrum-studio-desktop-assets-smoke/alternate-assets";
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_WIDTH = 16;
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT = 16;
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = `data:image/png;base64,${(
@@ -113,9 +113,9 @@ const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = `data:image/png;base64,${
 ).toString("base64")}`;
 const PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL = "/__ferrum-desktop-assets/local_ship.png";
 const PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER =
-  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/shared-assets";
+  "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets";
 const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
-  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/shared-assets-alternate";
+  "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
 const PHYSICS_DEMO_SUITE = [
@@ -658,7 +658,7 @@ function browserSmokeUrl(port, options) {
     params.set("massAuthoring", "true");
   }
   if (mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE) {
-    params.set("projectPath", "/tmp/ferrum-placement-viewer-desktop-assets-smoke");
+    params.set("projectPath", "/tmp/ferrum-studio-desktop-assets-smoke");
   }
   return `http://${DEFAULT_HOST}:${port}/?${params.toString()}`;
 }
@@ -1523,7 +1523,7 @@ async function smokePlacementViewer(page, timeoutMs) {
         && visual.asset === "turret"
         && visual.frame?.u0 === 0.5
         && document.querySelector(".placement-collider-overlay[data-visible='true'][data-collider-type='aabb']")
-        && handoff?.format === "ferrum2d.placement-viewer.agent-handoff"
+        && handoff?.format === "ferrum2d.studio.agent-handoff"
         && handoff.workflow === "human-placement-agent-behavior"
         && handoff.placementOwner === "sceneComposition.fragments[].instances[]"
         && handoff.behaviorOwner === "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities"
@@ -2551,7 +2551,7 @@ function createPlacementViewerDesktopAssetSmokeDocument() {
 }
 
 async function installPlacementViewerDesktopAssetSmokeBridge(page) {
-  const projectPath = "/tmp/ferrum-placement-viewer-desktop-assets-smoke";
+  const projectPath = "/tmp/ferrum-studio-desktop-assets-smoke";
   const sceneDocumentPath = `${projectPath}/public/scene-authoring.json`;
   const handoffPath = `${projectPath}/.ferrum-placement-handoff.json`;
   const assetFolderPath = `${projectPath}/public/assets`;

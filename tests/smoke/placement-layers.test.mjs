@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
-const code = ts.transpileModule(await readFile(new URL("../../apps/placement-viewer/src/placementLayerState.ts", import.meta.url), "utf8"), {
+const code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementLayerState.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText;
 const { placementLayerGroups, placementSoloPolicy } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));

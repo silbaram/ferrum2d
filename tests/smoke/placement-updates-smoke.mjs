@@ -14,7 +14,7 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
   let offline = false, signedMetadata = true;
   try {
     await mkdir(output, { recursive: true });
-    await page.route("https://api.github.com/**", route => offline ? route.fulfill({ status: 403, body: "rate limited" }) : route.fulfill({ json: [{ draft: false, tag_name: "ferrum-web-v0.1.0-beta.10", assets: ["ferrum2d-placement-viewer-0.1.0-beta.10-linux-x64.deb", ...(signedMetadata ? ["viewer-updater-linux-x64.json"] : [])].map(name => ({ name, state: "uploaded" })) }] }));
+    await page.route("https://api.github.com/**", route => offline ? route.fulfill({ status: 403, body: "rate limited" }) : route.fulfill({ json: [{ draft: false, tag_name: "ferrum-web-v0.1.0-beta.10", assets: ["ferrum2d-studio-0.1.0-beta.10-linux-x64.deb", ...(signedMetadata ? ["studio-updater-linux-x64.json"] : [])].map(name => ({ name, state: "uploaded" })) }] }));
     await page.addInitScript(({ projectPath, document }) => {
       window.__updateCalls = []; window.__updateDelay = false; window.__updateConfigured = false;
       const folder = path => ({ assetFolderPath: path, exists: true, imageCount: 0, images: [], models: [], diagnostics: [] });
@@ -34,10 +34,10 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
           if (window.__updateDelay) { window.__updateDelay = false; return new Promise(resolve => { window.__resolveUpdateCheck = () => resolve({ ...reply, latestVersion: "0.1.0-beta.99" }); }); }
           return reply;
         }
-        if (command === "check_placement_viewer_update") return { available: true, version: "0.1.0-beta.10", token: "fixture-token" };
+        if (command === "check_studio_update") return { available: true, version: "0.1.0-beta.10", token: "fixture-token" };
         if (command === "apply_placement_project_update") return { ok: true, version: "0.1.0-beta.10", backup: projectPath + "/.ferrum-updates/fixture" };
-        if (command === "apply_placement_viewer_update") return new Promise(resolve => { window.__finishViewerUpdate = () => resolve({ installed: true, restartRequired: true }); });
-        if (command === "restart_placement_viewer_after_update") return;
+        if (command === "apply_studio_update") return new Promise(resolve => { window.__finishViewerUpdate = () => resolve({ installed: true, restartRequired: true }); });
+        if (command === "restart_studio_after_update") return;
         if (command === "open_placement_release_page") return;
         if (command === "save_placement_agent_handoff") return { path: projectPath + "/.ferrum-placement-handoff.json", handoff: args.handoff };
         throw Error("Unexpected command: " + command);
@@ -72,7 +72,7 @@ export async function smokePlacementUpdates(parent, timeoutMs) {
     await page.evaluate(() => window.__updateProgress({ payload: { phase: "download", received: 1024, total: 2048 } }));
     assert.match(await status("viewer").textContent(), /Downloading 1 \/ 2 KiB/);
     await page.evaluate(() => window.__finishViewerUpdate()); await wait(() => document.querySelector('[data-update-action=viewer]').textContent === "Restart");
-    await action("viewer").click(); await wait(() => window.__updateCalls.some(c => c.command === "restart_placement_viewer_after_update"));
+    await action("viewer").click(); await wait(() => window.__updateCalls.some(c => c.command === "restart_studio_after_update"));
     await action("close").click(); assert.equal(await page.locator(".demo-shell").evaluate(root => root.inert), false);
     // Running scenes and drafts in any tab prevent package installation/restart.
     await page.locator("[data-placement-playback=play]").click(); await open(); await wait(() => !document.querySelector('[data-update-action=project]').disabled);

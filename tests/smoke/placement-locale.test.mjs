@@ -5,13 +5,13 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 
 const require = createRequire(
-  new URL("../../apps/placement-viewer/package.json", import.meta.url),
+  new URL("../../apps/studio/package.json", import.meta.url),
 );
 const ts = require("typescript");
 async function moduleSource(name) {
   return ts.transpileModule(
     await readFile(
-      new URL(`../../apps/placement-viewer/src/${name}.ts`, import.meta.url),
+      new URL(`../../apps/studio/src/${name}.ts`, import.meta.url),
       "utf8",
     ),
     {
@@ -105,14 +105,14 @@ test("missing or invalid preferences use supported browser language with English
 test("bundled Hangul font matches its provenance and carries the redistribution license", async () => {
   const font = await readFile(
     new URL(
-      "../../apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2",
+      "../../apps/studio/src/fonts/NotoSansKR-UI.woff2",
       import.meta.url,
     ),
   );
   const source = JSON.parse(
     await readFile(
       new URL(
-        "../../apps/placement-viewer/public/fonts/NotoSansKR.source.json",
+        "../../apps/studio/public/fonts/NotoSansKR.source.json",
         import.meta.url,
       ),
       "utf8",
@@ -120,7 +120,7 @@ test("bundled Hangul font matches its provenance and carries the redistribution 
   );
   const license = await readFile(
     new URL(
-      "../../apps/placement-viewer/public/fonts/NotoSansKR-OFL.txt",
+      "../../apps/studio/public/fonts/NotoSansKR-OFL.txt",
       import.meta.url,
     ),
     "utf8",

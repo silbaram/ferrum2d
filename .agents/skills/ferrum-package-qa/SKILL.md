@@ -12,9 +12,9 @@ Use this skill to verify Ferrum2D npm packages without leaking source/test files
 - npm package strategy: `docs/development/operations/npm-package-strategy.md`
 - npm package procedure: `docs/development/operations/npm-release.md`
 - Runtime package metadata: `packages/ferrum-web/package.json`
-- Authoring viewer package metadata: `packages/ferrum-authoring-viewer/package.json`
+- Authoring viewer package metadata: `packages/ferrum-studio-kit/package.json`
 - CLI package metadata: `packages/create-game/package.json`, `packages/agents/package.json`
-- Package check scripts: `scripts/package/check-package-files.mjs`, `scripts/package/check-authoring-viewer-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`
+- Package check scripts: `scripts/package/check-package-files.mjs`, `scripts/package/check-studio-kit-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`
 - Consumer smoke script: `tests/smoke/package-consumer-smoke.mjs`
 - Release readiness script: `scripts/package/check-release-readiness.mjs`
 - Public API contract: `docs/engine/public-api.md`
@@ -47,7 +47,7 @@ The artifact must not include:
 1. Read `docs/development/operations/npm-package-strategy.md`.
 2. For runtime package changes, read `docs/development/operations/npm-release.md` and `docs/engine/public-api.md`.
 3. Inspect the changed package `files`, `bin`, `exports`, `main`, and `types` fields as applicable.
-4. For `create-game` template changes, verify generated scaffold files, shared template allowlists, and browser smoke coverage for generated surfaces such as `placement-viewer.html`.
+4. For `create-game` template changes, verify generated scaffold files, shared template allowlists, and browser smoke coverage for generated surfaces such as `studio.html`.
 5. Run the narrow package check for the changed package, or `pnpm package:check` before merging package-surface changes.
 6. If preparing an actual publish candidate, run the package-specific `pnpm package:publish-check:*` command only after publish approval and `private: false`.
 7. For high-risk runtime or scaffold changes, install the generated tarball in a clean temporary consumer project and import the purpose-specific public subpaths.
@@ -70,7 +70,7 @@ Narrow package QA:
 
 ```bash
 pnpm package:check:ferrum-web
-pnpm package:check:authoring-viewer
+pnpm package:check:studio-kit
 pnpm package:check:create-game
 pnpm package:check:agents
 ```
@@ -79,7 +79,7 @@ Publish candidate package QA:
 
 ```bash
 pnpm package:publish-check:ferrum-web
-pnpm package:publish-check:authoring-viewer
+pnpm package:publish-check:studio-kit
 pnpm package:publish-check:create-game
 pnpm package:publish-check:agents
 ```

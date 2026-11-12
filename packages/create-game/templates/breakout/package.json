@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "ferrum:placement-viewer": "vite --host 127.0.0.1 --open /placement-viewer.html",
+    "ferrum:studio": "vite --host 127.0.0.1 --open /studio.html",
     "build": "vite build --base=./",
     "preview": "vite preview",
     "pack:textures": "node scripts/ferrum-assets.mjs pack-textures",
@@ -24,7 +24,7 @@
     "ferrum:update-runtime-replay-fixture": "node scripts/ferrum-runtime-replay.mjs update-fixture"
   },
   "dependencies": {
-    "@ferrum2d/authoring-viewer": "__FERRUM_AUTHORING_VIEWER_VERSION__",
+    "@ferrum2d/studio-kit": "__FERRUM_STUDIO_KIT_VERSION__",
     "@ferrum2d/ferrum-web": "__FERRUM_WEB_VERSION__"
   },
   "devDependencies": {

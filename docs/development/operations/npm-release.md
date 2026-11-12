@@ -1,6 +1,6 @@
 # npm 베타 패키징 절차
 
-이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 동시에 `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 같은 base version 후보로 로컬 tarball install 검증하는 기준을 포함한다. 현재 저장소는 accidental publish를 막기 위해 네 package 모두 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
+이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 동시에 `@ferrum2d/studio-kit`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 같은 base version 후보로 로컬 tarball install 검증하는 기준을 포함한다. 현재 저장소는 accidental publish를 막기 위해 네 package 모두 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
 
 현재 기본 배포 경로는 [GitHub Release 설치용 패키지](github-release.md)다. GitHub 경로는 `private: true`를 유지하고 로컬 staging 복사본만 beta 버전으로 포장한다. 아래 npm publish 절차는 npm 레지스트리 공개를 별도로 선택했을 때 적용한다.
 
@@ -8,14 +8,14 @@
 
 - 사용자가 `pnpm add @ferrum2d/ferrum-web@beta`로 browser runtime을 설치할 수 있는 패키지 형태를 만든다.
 - Rust/Wasm generated package와 TypeScript dist가 같은 npm artifact 안에 들어가는지 검증한다.
-- authoring-viewer, create-game, agents package가 같은 release 후보 세트로 pack/install/smoke를 통과하는지 검증한다.
+- studio-kit, create-game, agents package가 같은 release 후보 세트로 pack/install/smoke를 통과하는지 검증한다.
 - `beta` dist-tag와 prerelease semver를 사용해 안정 버전인 `latest`와 분리한다.
 - GitHub Release 본문은 [릴리스 노트 템플릿](release-notes-template.md)을 기준으로 작성한다.
 - 실제 `npm publish`는 별도 승인과 npm 권한 확인 이후에만 수행한다.
 
 ## 패키지 구성 기준
 
-`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/authoring-viewer`는 generated placement viewer와 Ferrum2D Studio host가 공유하는 authoring viewer helper package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
+`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/studio-kit`는 generated placement viewer와 Ferrum2D Studio host가 공유하는 Studio Kit helper package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
 
 `@ferrum2d/ferrum-web` package artifact에는 다음 파일만 포함한다.
 
@@ -52,7 +52,7 @@
 
 배포 tag는 `beta`만 사용한다. `latest`는 안정화 기준을 별도로 충족하기 전까지 사용하지 않는다.
 
-첫 public beta 후보는 root package와 네 package가 같은 base version을 공유하는 lockstep 후보로 검증한다. 예를 들어 root, `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`가 모두 `0.1.0` base이면 release 후보는 `0.1.0-beta.N` 계열이다. package별 독립 versioning은 별도 release policy가 생기기 전까지 사용하지 않는다.
+첫 public beta 후보는 root package와 네 package가 같은 base version을 공유하는 lockstep 후보로 검증한다. 예를 들어 root, `@ferrum2d/ferrum-web`, `@ferrum2d/studio-kit`, `@ferrum2d/create-game`, `@ferrum2d/agents`가 모두 `0.1.0` base이면 release 후보는 `0.1.0-beta.N` 계열이다. package별 독립 versioning은 별도 release policy가 생기기 전까지 사용하지 않는다.
 
 ```bash
 npm publish --access public --tag beta
@@ -155,7 +155,7 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 pnpm package:consumer-smoke
 ```
 
-이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime/authoring-viewer tarball install, 목적별 public subpath import smoke, production build와 deploy-readiness report, generated game/placement viewer browser smoke를 한 번에 확인한다. deploy-readiness report는 생성 프로젝트의 실제 `preview` 명령을 실행해 Wasm `application/wasm` 응답을 확인한다. generated game은 가상 하위 경로에서 Wasm MIME과 Playing 상태를 확인한 뒤 완료된 renderer frame을 정확히 12개 연속 샘플링한다. draw call은 `runtime-budget-profiles.mjs`에 등록된 template별 상한과 비교하며 sprite command 뒤의 physics debug와 post-process까지 포함한 최종 renderer stats를 사용한다. WebGL2 pixel evidence는 production `preserveDrawingBuffer` 설정 없이 12번째 frame 렌더 후 같은 RAF에서 수집을 시작하고, 비어 있으면 같은 순서의 RAF에서 최대 8회까지만 재시도한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
+이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/studio-kit`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime/studio-kit tarball install, 목적별 public subpath import smoke, production build와 deploy-readiness report, generated game/placement viewer browser smoke를 한 번에 확인한다. deploy-readiness report는 생성 프로젝트의 실제 `preview` 명령을 실행해 Wasm `application/wasm` 응답을 확인한다. generated game은 가상 하위 경로에서 Wasm MIME과 Playing 상태를 확인한 뒤 완료된 renderer frame을 정확히 12개 연속 샘플링한다. draw call은 `runtime-budget-profiles.mjs`에 등록된 template별 상한과 비교하며 sprite command 뒤의 physics debug와 post-process까지 포함한 최종 renderer stats를 사용한다. WebGL2 pixel evidence는 production `preserveDrawingBuffer` 설정 없이 12번째 frame 렌더 후 같은 RAF에서 수집을 시작하고, 비어 있으면 같은 순서의 RAF에서 최대 8회까지만 재시도한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
 
 CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 generated template matrix, 템플릿별 checks/reports, deployment preview/subpath/runtime sampling/budget/readback evidence, tarball 존재, snapshot 정리 상태를 검증한다. passed deployment evidence는 정확히 12개 frame, 등록된 template budget profile, 1~8 범위의 `readbackAttempts`를 반드시 제공해야 한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot과 passed report의 catalog 누락/불일치, 8프레임처럼 부족한 sampling, 등록되지 않은 budget profile, 범위를 벗어난 readback evidence를 synthetic artifact로 거부하는지 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
 
@@ -184,7 +184,7 @@ pnpm release:local-check
 pnpm release:publish-check
 ```
 
-이 명령은 `@ferrum2d/ferrum-web` 기준 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다. `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents` publish 후보는 각각 `pnpm package:publish-check:authoring-viewer`, `pnpm package:publish-check:create-game`, `pnpm package:publish-check:agents`로 별도 확인한다. companion package의 `private: false` 전환과 npm publish도 package별 명시 승인이 있어야만 진행한다.
+이 명령은 `@ferrum2d/ferrum-web` 기준 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다. `@ferrum2d/studio-kit`, `@ferrum2d/create-game`, `@ferrum2d/agents` publish 후보는 각각 `pnpm package:publish-check:studio-kit`, `pnpm package:publish-check:create-game`, `pnpm package:publish-check:agents`로 별도 확인한다. companion package의 `private: false` 전환과 npm publish도 package별 명시 승인이 있어야만 진행한다.
 
 이후 절차:
 

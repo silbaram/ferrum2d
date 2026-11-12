@@ -196,7 +196,7 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
   // A native app update must also protect pixel-only edits, with a clean scene.
   const releaseRoute = route => route.fulfill({ json: [{
     draft: false, tag_name: "ferrum-web-v0.1.0-beta.10",
-    assets: [{ name: "viewer-updater-linux-x64.json", state: "uploaded" }],
+    assets: [{ name: "studio-updater-linux-x64.json", state: "uploaded" }],
   }] });
   await page.route("https://api.github.com/**", releaseRoute);
   await page.evaluate(() => {
@@ -208,8 +208,8 @@ export async function smokePixelAuthoring({ page, mode, active, native, snapshot
         viewerVersion: "0.1.0-beta.9", bundledEngineVersion: "0.1.0-beta.9", repository: "silbaram/ferrum2d",
         os: "linux", arch: "x64", configured: true, canInstall: true,
       };
-      if (command === "check_placement_viewer_update") return { available: true, version: "0.1.0-beta.10", token: "pixel-fixture" };
-      if (command === "apply_placement_viewer_update") return { installed: true, restartRequired: true };
+      if (command === "check_studio_update") return { available: true, version: "0.1.0-beta.10", token: "pixel-fixture" };
+      if (command === "apply_studio_update") return { installed: true, restartRequired: true };
       throw Error("Unexpected pixel update command: " + command);
     } } };
   });

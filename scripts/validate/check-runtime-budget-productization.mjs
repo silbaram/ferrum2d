@@ -82,7 +82,7 @@ const pagesReadinessSnippets = [
   "dist-pages/",
   "/starter-runtime/",
   "/topdown-shooter/",
-  "/placement-viewer/",
+  "/studio/",
   "/physics-sandbox/",
   "/breakout/",
   "/platformer/",

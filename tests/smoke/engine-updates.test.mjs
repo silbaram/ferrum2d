@@ -34,7 +34,7 @@ export function archive(files) {
   return gzipSync(Buffer.concat([...records, Buffer.alloc(1024)]));
 }
 function releaseRow(release) {
-  return { draft: false, tag_name: release.tag, assets: ["ferrum-web", "authoring-viewer", "create-game", "agents"].map(name => ({ state: "uploaded", name: `ferrum2d-${name}-${release.version}.tgz` })).concat({ state: "uploaded", name: "release-manifest.json" }) };
+  return { draft: false, tag_name: release.tag, assets: ["ferrum-web", "studio-kit", "create-game", "agents"].map(name => ({ state: "uploaded", name: `ferrum2d-${name}-${release.version}.tgz` })).concat({ state: "uploaded", name: "release-manifest.json" }) };
 }
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ferrum-update & ")); t.after(() => rm(root, { recursive: true, force: true }));
@@ -81,8 +81,13 @@ test("checks scan later pages, remain read-only, and reject source/workspace/cus
   }
 });
 test("manifest update keeps unrelated scripts and all Ferrum companions aligned; custom hooks require manual action", () => {
-  const value = updateManifest({ dependencies: { [packageName]: old.runtime, other: "1.2.3" }, devDependencies: { "@ferrum2d/authoring-viewer": old.viewer }, scripts: { test: "custom" } }, latest);
-  assert.equal(value.dependencies.other, "1.2.3"); assert.equal(value.devDependencies["@ferrum2d/authoring-viewer"], latest.viewer); assert.equal(value.scripts.test, "custom");
+  assert.equal(typeof old.studioKit, "string");
+  assert.equal(typeof latest.studioKit, "string");
+  const value = updateManifest({ dependencies: { [packageName]: old.runtime, other: "1.2.3" }, devDependencies: { "@ferrum2d/studio-kit": old.studioKit }, scripts: { test: "custom" } }, latest);
+  assert.equal(value.dependencies.other, "1.2.3");
+  assert.equal(value.devDependencies["@ferrum2d/studio-kit"], latest.studioKit);
+  assert.notEqual(value.devDependencies["@ferrum2d/studio-kit"], old.studioKit);
+  assert.equal(value.scripts.test, "custom");
   assert.throws(() => updateManifest({ scripts: { "ferrum:agents": "echo customized" } }, latest), /manual update/);
 });
 test("direct official SDK URL installs work without generator metadata; local shorthand remains untouched", async t => {

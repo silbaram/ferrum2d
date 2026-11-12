@@ -1,6 +1,7 @@
-# AI 게임 개발 기능 안내
+# AI 기능 찾기
 
-AI가 게임 요구사항을 Ferrum2D의 기존 기능과 연결하도록 만든 진입 문서다.
+AI가 게임 요구사항을 Ferrum2D의 기존 기능과 연결할 때 읽는 문서다.
+작업 시작·수정·검증의 전체 순서는 [AI 게임 개발 안내](ai-game-development.md)를 따른다.
 게임 프로젝트에서는 **`.agents/harness/ferrum-feature-guide.md`를 먼저 읽는다.**
 이 파일은 기능별 목적, 공개 API, 사용 조건, 상세 reference와 검증 절차를 제공한다.
 

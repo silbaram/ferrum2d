@@ -15,7 +15,7 @@ import struct
 import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "apps/placement-viewer/public/assets/lantern-garden"
+OUT = ROOT / "apps/studio/public/assets/lantern-garden"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--check", action="store_true", help="Check reproducibility without writing files")
 args = parser.parse_args()

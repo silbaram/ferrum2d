@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtemp, writeFile, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
+import { placementNormalGeneratorPlugin } from "../../apps/studio/server/normalGenerator.mjs";
 
 function host(validate) {
   let handler;

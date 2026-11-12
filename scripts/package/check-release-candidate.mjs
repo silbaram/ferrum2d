@@ -8,8 +8,8 @@ const releasePackages = [
     path: "packages/ferrum-web/package.json",
   },
   {
-    name: "@ferrum2d/authoring-viewer",
-    path: "packages/ferrum-authoring-viewer/package.json",
+    name: "@ferrum2d/studio-kit",
+    path: "packages/ferrum-studio-kit/package.json",
   },
   {
     name: "@ferrum2d/create-game",
@@ -162,7 +162,7 @@ function checkDocsAndScripts() {
     "pnpm release:local-check",
     "pnpm release:candidate-check",
     "pnpm release:publish-check",
-    "@ferrum2d/authoring-viewer",
+    "@ferrum2d/studio-kit",
     "artifacts/consumer-smoke-release-local",
     "private: true",
     "private: false",
@@ -201,7 +201,7 @@ function checkDocsAndScripts() {
   }
   for (const scriptName of [
     "package:publish-check:ferrum-web",
-    "package:publish-check:authoring-viewer",
+    "package:publish-check:studio-kit",
     "package:publish-check:create-game",
     "package:publish-check:agents",
   ]) {

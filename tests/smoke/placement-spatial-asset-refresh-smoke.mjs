@@ -8,8 +8,8 @@ export async function smokePlacementSpatialAssetRefresh(parent, source, timeoutM
   await mkdir(directory, { recursive: true });
   const page = await parent.context().browser().newPage({ viewport: { width: 1440, height: 960 } });
   const images = await Promise.all([
-    readFile("apps/placement-viewer/public/assets/rpg-village/grass.png"),
-    readFile("apps/placement-viewer/public/assets/rpg-village/hero.png"),
+    readFile("apps/studio/public/assets/rpg-village/grass.png"),
+    readFile("apps/studio/public/assets/rpg-village/hero.png"),
   ]);
   const document = structuredClone(source);
   delete document.spatial.models;

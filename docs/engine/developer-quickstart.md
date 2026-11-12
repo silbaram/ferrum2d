@@ -1,291 +1,112 @@
-# Ferrum2D 개발자 퀵스타트
+# 첫 게임 실행하기
 
 한국어 · [English](../en/engine/developer-quickstart.md)
 
-Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer로 구성된 2D 웹 게임 엔진이다. Ferrum2D의 개발 흐름은 비주얼 에디터 중심이 아니라 **Game Spec, Physics Spec, 생성 템플릿, AI agent, 검증 스크립트**를 중심으로 한다.
+이 안내에서는 **탑다운 슈팅 게임을 만들고, 실행한 뒤, 캐릭터 이동 속도를 바꿔봅니다.**
+AI에게 작업 전체를 맡기려면 [AI 게임 개발 안내](ai-game-development.md)를 전달하세요.
 
-이 페이지는 Ferrum2D를 처음 보는 개발자가 엔진의 방향과 구조를 이해하고, 첫 게임 프로젝트를 실행한 뒤, 어떤 파일을 수정해야 하는지 빠르게 판단하도록 돕는 시작 문서다.
+## 1. 설치 파일 준비
 
-초기 설정만 AI에게 맡길 때는 [AI 에이전트용 설치 지침](ai-agent-install.md)을 전달한다. 엔진·개발 도구·AI 지침만 설치하며 `src/`나 예제를 생성하지 않는다. 아래 퀵스타트는 실행 가능한 예제 게임을 명시적으로 선택한 경우의 절차다.
+Node.js 22와 npm이 필요합니다. 게임 프로젝트에는 Rust나 wasm-pack을 따로 설치하지 않아도 됩니다.
+[GitHub Releases](https://github.com/silbaram/ferrum2d/releases)에서 사용할 버전을 선택하고,
+Assets의 **`ferrum2d-create-game-<버전>.tgz`** 다운로드 링크를 복사하세요.
+설치 방법은 선택한 릴리스의 안내를 기준으로 합니다.
 
-## 이 페이지에서 얻는 것
-
-| 질문 | 답 |
-| --- | --- |
-| Ferrum2D는 어떤 엔진인가? | Rust/Wasm core와 TypeScript browser runtime을 분리한 AI agent-first 2D web game engine |
-| 어떻게 시작하나? | `@ferrum2d/create-game` 템플릿으로 새 프로젝트 생성 |
-| 어디를 수정하나? | 먼저 Game Spec, Scene Authoring, asset metadata를 수정하고 필요할 때만 runtime code 수정 |
-| 어떻게 검증하나? | 기본은 `ferrum:check`, 상세 진단은 개별 report, 배포 확인은 `ferrum:deploy-report` 사용 |
-| 어디까지 지원하나? | Core runtime, data-driven authoring primitive, 검증된 starter scene/template. WebGPU와 일부 visual/asset helper는 optional/lab 성격 |
-
-## 지원 수준 먼저 보기
-
-Ferrum2D의 public package에는 core runtime, starter scene, helper, smoke/report 도구가 함께 들어 있다. 새 게임을 만들 때는 이 구분과 import 경로를 먼저 본다.
-
-| 수준 | 권장 import | 어떻게 쓰나 |
-| --- | --- | --- |
-| Core runtime | `@ferrum2d/ferrum-web/core` | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API를 게임 실행의 기본으로 사용한다. |
-| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | Scene Composition, Behavior Recipe, projectile/weapon authoring, replay/snapshot을 template이나 agent-generated adapter에서 조합한다. |
-| Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | `minimal`, `topdown`, `platformer`, `breakout`은 검증된 시작점이다. 특정 장르 전체를 자동으로 완성하는 범용 모드는 아니다. |
-| Optional/lab/helper | `@ferrum2d/ferrum-web/labs` | WebGPU, HD-2D helper, PixelMaskTerrain, deterministic texture atlas JSON helper는 제약을 확인하고 opt-in으로 사용한다. |
-| Quality infrastructure | `@ferrum2d/ferrum-web/quality` | `ferrum:*` report, replay, smoke, runtime budget은 게임 기능이 아니라 변경 결과를 검증하는 도구다. |
-
-## 예제 게임으로 시작하는 경로
-
-### 1. 프로젝트 생성
-
-Node.js 22를 권장한다. 공개된 GitHub Release에서 설치용 `ferrum2d-create-game-<버전>.tgz` 링크를 복사한다. Source code.zip은 사용하지 않는다. 릴리스가 아직 공개되지 않았다면 [로컬 패키지 준비 절차](../development/operations/github-release.md)를 먼저 따른다.
+아래 명령은 Bash·WSL·macOS 터미널 예시입니다. PowerShell에서는 URL을 `npx` 명령에 직접 넣어도 됩니다.
 
 ```bash
-ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"
-npx --yes --allow-remote=root "$ferrum_cli_url" my-game
+ferrum_cli_url="<복사한 create-game .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game --template topdown
 cd my-game
 npm install
 ```
 
-생성기는 같은 릴리스의 엔진과 viewer URL을 `package.json`에 고정하고 `FERRUM_INSTALL.md`를 남긴다. 새 `.npmrc`의 `allow-remote=root`는 npm 12의 직접 URL 의존성 설치를 허용한다. Rust/wasm-pack은 게임 개발자에게 필요 없으며 일반 개발 도구는 npm 레지스트리에서 설치한다.
+성공하면 `my-game` 폴더에 게임 코드와 설정이 생성됩니다. 설치 출처와 재설치 방법은 폴더 안의 `FERRUM_INSTALL.md`에 있습니다.
 
-### 2. 브라우저 실행
+## 2. 게임 실행
 
 ```bash
 npm run dev
 ```
 
-### 3. 프로젝트와 build 검증
+터미널에 표시된 로컬 주소를 브라우저에서 여세요. 현재 템플릿은 게임이 자동으로 시작됩니다.
+시작 화면이 표시되는 버전에서는 **Start**를 누르세요.
 
-```bash
-npm run ferrum:check
+| 조작 | 결과 |
+| --- | --- |
+| W/A/S/D | 캐릭터 이동 |
+| 마우스 이동 | 조준 방향 변경 |
+| 마우스 왼쪽 버튼 또는 Space | 발사 |
+
+이 템플릿은 기능을 추가하며 시작할 수 있는 작은 게임입니다. 웹사이트의 꾸며진 슈터 예제와 화면이 다를 수 있습니다.
+서버는 터미널의 `Ctrl+C`로 종료합니다.
+
+## 3. 이동 속도 바꾸기
+
+`my-game/public/game.json`을 열고 `player` 안의 `speed` 값을 찾아 `280`으로 바꿉니다.
+아래는 바꿀 부분만 보여줍니다. 파일의 다른 설정은 유지하세요.
+
+```json
+"player": {
+  "speed": 280
+}
 ```
 
-실패하면 JSON report의 `failedStep`, diagnostic code, `nextCommand`를 확인한다.
-
-### 4. 상세 설정 확인
+저장한 뒤 브라우저를 새로고침하세요. 시작 화면이 나타나면 **Start**를 누르세요.
+기본 템플릿의 `210`보다 빠르게 이동하는지 확인합니다.
+설정을 확인하려면 새 터미널에서 `my-game` 폴더로 이동해 실행합니다.
 
 ```bash
-npm run ferrum:report
 npm run ferrum:validate
 ```
 
-### 5. 배포 산출물 확인
+다른 설정을 바꾸고 싶으면 AI에게 원하는 플레이를 설명하거나 [슈터 설정 참조](../examples/topdown-shooter/game-spec.md)를 확인하세요.
 
-```bash
-npm run ferrum:deploy-report
-npm run preview
-```
+## 4. AI에게 이어서 맡기기
 
-`ferrum:deploy-report`가 `status: "ready"`를 반환하면 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS asset 경로가 상대 경로이고, 생성 프로젝트의 실제 `preview` 명령이 localhost에서 정상 응답하며 Wasm을 `application/wasm`으로 제공한다는 뜻이다. 이 단순 정적 배포 계약은 HTML `<base>` 요소를 허용하지 않고, 상대 literal `fetch(...)`를 사용하는 경우 HTML entry가 모두 같은 디렉터리에 있어야 한다. 실제 호스팅 서비스의 MIME과 브라우저 실행은 별도로 확인하며, 로컬 확인은 `file://`가 아니라 출력된 preview URL을 사용한다.
-
-### 6. AI agent 템플릿 설치
+GitHub Release로 생성한 프로젝트에서 AI 지침을 설치합니다.
 
 ```bash
 npm run ferrum:agents
 ```
 
-## 엔진 모델
-
-Ferrum2D는 한 프레임을 다음처럼 처리한다.
+AI가 프로젝트 폴더와 [AI 게임 개발 안내](ai-game-development.md)를 읽게 한 뒤 요청하세요.
 
 ```text
-Browser input
--> TypeScript input snapshot
--> Wasm Engine.update(delta)
--> Rust simulation / collision / scene logic
--> Rust render command buffer
--> TypeScript renderer / audio / UI
--> browser frame
+이 프로젝트의 이동 속도를 280으로 바꿨어.
+원하는 변경이 맞는지 확인하고 전체 검증을 진행해줘.
+리플레이 기준이 달라졌다면 차이를 확인한 뒤 필요한 기준만 갱신해줘.
+실행 방법과 직접 확인할 내용을 알려줘.
 ```
 
-역할 경계는 명확하다.
+전체 검증은 `npm run ferrum:check`입니다. 게임 동작을 바꾸면 이전 리플레이 기대값과 달라질 수 있습니다.
+AI가 원인을 확인하고 변경 의도와 대조하도록 하세요.
 
-| 영역 | 책임 | 직접 하지 않는 것 |
-| --- | --- | --- |
-| Rust core | 게임 상태, entity/component, collision, physics, scene update, render command 생성 | DOM, Canvas, WebGL, Web Audio 호출 |
-| Wasm boundary | 낮은 빈도 API와 frame bulk buffer 연결 | entity별 JS/Wasm hot-path 왕복 |
-| TypeScript platform | canvas, renderer, input, audio, asset loading, UI/debug overlay | 게임 시뮬레이션 source of truth 소유 |
-| Consumer project | Game Spec, Scene Authoring, runtime bootstrap, asset metadata | `dist/*`, `pkg/*`, `src/*` 내부 import |
+## Wasm 로딩 오류가 날 때
 
-이 구조 때문에 Ferrum2D에서 좋은 변경은 대부분 다음 중 하나다.
+개발 서버에서 게임이 시작되지 않고 브라우저 콘솔에 `WebAssembly.instantiate()`와 `expected magic word` 오류가 나오면,
+`vite.config.ts`의 `defineConfig({ ... })` 안에 아래 설정이 있는지 확인하세요. 기존 `build` 설정은 유지합니다.
 
-- JSON spec으로 표현할 수 있는 변경
-- public API를 통해 낮은 빈도로 적용되는 변경
-- replay/smoke로 검증할 수 있는 변경
-- frame hot path에 새 JS callback을 만들지 않는 변경
-
-## 템플릿 선택
-
-템플릿 목록은 위에서 선택한 같은 GitHub Release의 CLI로 확인한다. `$ferrum_cli_url`은 프로젝트 생성 단계에서 지정한 URL이다.
-
-```bash
-npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates
-npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
+```ts
+optimizeDeps: {
+  exclude: ["@ferrum2d/ferrum-web"],
+},
 ```
 
-| 템플릿 | 시작점 | 적합한 작업 |
-| --- | --- | --- |
-| `minimal` | 가장 작은 runtime starter | public API 연결, HUD/debug metric, projectile/weapon authoring 실험 |
-| `topdown` | Game Spec 기반 shooter | world 크기, enemy wave, weapon, prefab, camera 튜닝 |
-| `platformer` | built-in platformer starter scene | jump, movement, platform collision, side-scroller starter. 범용 platformer editor는 아님 |
-| `breakout` | built-in Breakout starter scene | paddle, ball, brick/session 흐름의 arcade starter. 범용 arcade editor는 아님 |
+저장한 뒤 개발 서버를 종료하고 `npm run dev -- --force`로 다시 실행하세요.
+현재 소스의 생성기에는 이 설정이 포함돼 있습니다.
 
-특정 템플릿으로 시작하려면 다음처럼 만든다.
+## 다음에 할 일
 
-```bash
-npx --yes --allow-remote=root "$ferrum_cli_url" my-shooter --template topdown
-npx --yes --allow-remote=root "$ferrum_cli_url" my-platformer --template platformer
-npx --yes --allow-remote=root "$ferrum_cli_url" my-breakout --template breakout
-```
-
-## 생성 프로젝트 구조
-
-생성 직후 먼저 볼 파일은 다음이다.
-
-| 파일 | 역할 |
+| 하고 싶은 일 | 방법 |
 | --- | --- |
-| `src/main.ts` | browser runtime bootstrap. canvas, input, renderer, HUD, built-in scene 연결 |
-| `src/styles.css` | starter layout과 canvas 주변 UI |
-| `public/game.json` | `topdown` 템플릿의 Game Spec |
-| `public/scene-authoring.json` | [Data Scene Authoring](data-scene-authoring.md) envelope를 사용하는 Scene Composition과 Behavior Recipe fixture |
-| `public/gameplay-replay.fixture.json` | template surface replay fixture |
-| `public/gameplay-runtime-replay.fixture.json` | generated project runtime replay fixture |
-| `scripts/ferrum-harness.mjs` | report, validate, smoke, authoring/replay command harness |
-| `scripts/ferrum-runtime-replay.mjs` | runtime replay report/update harness |
-| `scripts/ferrum-check.mjs` | validation, authoring/replay, production build를 묶은 기본 check harness |
-| `scripts/ferrum-deploy.mjs` | production build와 정적 웹 배포 준비 상태 report harness |
+| 씬과 에셋을 눈으로 확인 | [Studio 간단 사용법](user-guide.md#studio에서-씬을-바꿔보기) |
+| 다른 장르로 시작 | 생성 명령의 `--template topdown`을 `platformer`, `breakout`, `minimal`로 변경 |
+| 배포용 결과 확인 | `npm run ferrum:deploy-report` 후 `npm run preview`로 표시된 주소 열기 |
+| 기능 찾아보기 | [기능과 예제](showcase-hub.md) |
 
-`ferrum:report`의 `project.runtimeInputs`를 먼저 확인한다. 이 필드는 local gameplay 구성 source와
-`@ferrum2d/ferrum-web/starter-scenes` runtime 구현을 구분한다. Top-down의 `public/game.json`은 실제
-gameplay 구성 입력이고, starter의 `public/scene-authoring.json`은 Placement Viewer·validation·patch/handoff와
-built-in 위치·Behavior Recipe runtime 적용을 함께 담당한다. 생성된 `src/ferrum-built-in-scene-authoring.ts`가
-첫 Playing 전환과 reset 뒤에 scene-specific compatibility adapter를 호출한다. `src/main.ts`는 브라우저 runtime
-조립 코드이며 Data Scene visual/collider는 generic Data Scene adapter 계약을 사용한다.
+`minimal`도 실행 가능한 예제입니다. 게임 코드를 만들지 않고 환경만 준비하려면 [AI 설치 지침](ai-agent-install.md)을 사용하세요.
 
-## 무엇을 어디서 바꾸나
-
-| 바꾸고 싶은 것 | 우선 수정 위치 | 검증 |
-| --- | --- | --- |
-| Top-down world 크기 | `public/game.json.world` | `npm run ferrum:validate` |
-| 적 속도, spawn 간격, wave | `public/game.json.enemies` | `npm run ferrum:replay-report` |
-| 무기 속도, cooldown, damage | `public/game.json.weapons` 또는 behavior recipe | `npm run ferrum:authoring-report` |
-| prefab 크기와 collider | `public/game.json.prefabs` | `npm run ferrum:validate` |
-| scene composition, behavior recipe, runtime entity binding | `public/scene-authoring.json` | `npm run ferrum:authoring-report` |
-| HUD, input, runtime bootstrap | `src/main.ts` | `npm run ferrum:smoke` |
-| sprite/audio/localization scaffold | `public/assets/**` | `npm run ferrum:asset-report` |
-| replay baseline | `public/gameplay-replay.fixture.json` | `npm run ferrum:replay-report` |
-
-새 기능이 spec이나 public API로 표현되지 않는다면 바로 내부 파일을 import하지 말고, 먼저 public API 승격이 필요한지 판단한다.
-
-## 개발 명령
-
-생성 프로젝트에서 자주 쓰는 명령은 다음이다.
-
-| 명령 | 용도 |
-| --- | --- |
-| `npm run dev` | Vite dev server로 게임 실행 |
-| `npm run ferrum:check` | validation, asset, authoring, replay와 production build를 순서대로 실행하고 첫 실패 요약 |
-| `npm run ferrum:report` | 프로젝트 구조, package dependency, internal import, authoring surface 요약 |
-| `npm run ferrum:validate` | Game Spec과 generated project 기본 계약 검증 |
-| `npm run ferrum:asset-report` | asset scaffold와 atlas/audio/localization manifest 요약 |
-| `npm run ferrum:asset-validate` | public package helper로 asset metadata 검증 |
-| `npm run ferrum:authoring-report` | Scene Authoring과 Behavior Recipe 연결 검증 |
-| `npm run ferrum:replay-report` | template gameplay replay fixture 검증 |
-| `npm run ferrum:runtime-replay-report` | generated runtime replay fixture 검증 |
-| `npm run ferrum:smoke` | validate와 production build를 함께 실행 |
-| `npm run ferrum:deploy-report` | production build, 정적 판별 가능한 상대 asset 경로, 참조 파일, 실제 preview HTTP와 Wasm MIME을 검증 |
-| `npm run preview` | production `dist/`를 localhost HTTP로 미리 보기 |
-
-변경 후 기본 루프는 다음이면 충분하다.
-
-```bash
-npm run ferrum:check
-npm run ferrum:deploy-report
-```
-
-## AI agent와 함께 개발하기
-
-Ferrum2D는 AI agent가 안전하게 수정할 수 있는 파일과 검증 명령을 제공한다. agent를 설치하면 Codex, Claude, Gemini용 consumer 개발 지침과 command가 생성된다.
-
-```bash
-npm run ferrum:agents
-```
-
-권장 작업 흐름은 다음이다.
-
-1. 사람이 원하는 플레이 변경을 설명한다.
-2. agent가 `ferrum:report`와 관련 spec을 읽는다.
-3. agent가 Game Spec, Scene Authoring, asset metadata, template source 중 필요한 파일만 수정한다.
-4. agent가 validate, authoring report, replay report, smoke를 실행한다.
-5. 사람이 브라우저에서 결과를 확인하고 다음 피드백을 준다.
-
-agent에게 요청할 때는 파일명보다 의도를 먼저 말하는 편이 좋다.
-
-```text
-topdown 초반 난이도를 낮춰줘.
-초반 20초 동안 적 spawn 간격을 늘리고, enemy wave 수를 줄인 뒤 replay report까지 확인해줘.
-```
-
-## 엔진 저장소 개발
-
-Ferrum2D 엔진 자체를 수정하려면 다음 순서로 읽는다.
-
-| 순서 | 파일 또는 문서 | 확인할 것 |
-| --- | --- | --- |
-| 1 | [아키텍처](../development/architecture/architecture.md) | Rust core, Wasm boundary, TypeScript platform 책임 경계 |
-| 2 | [Public API](public-api.md) | consumer project가 import해도 되는 API |
-| 3 | `packages/ferrum-web/src/index.ts` | 실제 package public entrypoint |
-| 4 | `packages/ferrum-web/src/createFerrumRuntime.ts` | browser runtime 조립 |
-| 5 | `packages/ferrum-web/src/createEngine.ts` | Wasm engine wrapper와 frame callback |
-| 6 | `crates/ferrum-core/src/engine.rs` | Rust `Engine` facade |
-| 7 | `crates/ferrum-core/src/world.rs` | entity/component storage |
-| 8 | `crates/ferrum-core/src/render_command.rs` | Rust to TypeScript render command ABI |
-
-엔진 저장소의 기본 검증 명령은 다음이다.
-
-```bash
-pnpm lint
-pnpm test
-pnpm build
-```
-
-package와 template 표면을 바꿨다면 다음을 추가한다.
-
-```bash
-pnpm smoke:create-game-template-catalog
-pnpm smoke:create-game-template-reports
-pnpm package:check
-```
-
-renderer나 browser runtime 표면을 바꿨다면 관련 browser smoke를 실행한다.
-
-```bash
-pnpm smoke:browser
-pnpm smoke:topdown
-pnpm smoke:platformer-effects
-pnpm smoke:breakout-effects
-```
-
-## 설계 경계
-
-Ferrum2D가 기본 제품 범위로 열지 않는 항목도 명확히 둔다.
-
-| 범위 밖 항목 | 이유 |
-| --- | --- |
-| full visual editor | Ferrum2D의 기본 authoring surface는 spec, template, validation, replay |
-| drag-and-drop object placement editor | AI agent-first 개발 흐름과 별도 승인 필요 |
-| multiplayer | runtime/network architecture 별도 설계 필요 |
-| 3D rendering | 현재 renderer와 runtime은 2D command buffer 기준 |
-| Wasm threads 기반 전체 game loop | SharedArrayBuffer, worker lifecycle, ABI 설계 별도 필요 |
-| user scripting/plugin runtime | 보안, sandbox, API 안정성 설계 필요 |
-| skeletal animation | 현재 animation surface는 sprite timeline 중심 |
-| soft body, cloth, fluid | 현재 physics core 범위를 넘어서는 complex physics |
-
-## 다음 문서
-
-| 목적 | 문서 |
-| --- | --- |
-| 예제를 실행하고 Game Spec을 바꾸고 싶다 | [사용자 설명서](user-guide.md) |
-| public import 계약을 확인하고 싶다 | [Public API](public-api.md) |
-| projectile, behavior recipe, event action을 이해하고 싶다 | [Runtime Extensibility](runtime-extensibility.md) |
-| physics authoring을 이해하고 싶다 | [Physics Spec](physics-spec.md) |
-| Top-down Shooter 설정을 깊게 보고 싶다 | [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md) |
-| 엔진 내부 경계를 보고 싶다 | [아키텍처](../development/architecture/architecture.md) |
-| 어떤 검증을 돌릴지 고르고 싶다 | [Smoke Check](../development/quality/smoke-check.md) |
+생성 프로젝트의 경량 Studio는 현재 소스에서 `npm run ferrum:studio`로 엽니다.
+공개 beta.9 이하에서는 `ferrum:placement-viewer` 이름을 사용하므로, 설치한 프로젝트의 `package.json`과 안내를 따르세요.
+독립 Studio 앱과 경량 페이지는 제공하는 기능이 다릅니다.

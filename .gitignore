@@ -7,7 +7,7 @@ apps/*/dist/
 apps/*/src-tauri/gen/
 apps/*/src-tauri/target/
 examples/*/dist/
-apps/placement-viewer/.ferrum-placement-handoff.json
+apps/studio/.ferrum-placement-handoff.json
 .antigravitycli/
 dist-pages/
 artifacts/
@@ -19,5 +19,4 @@ docs/planning/*
 !docs/planning/deployment-roadmap.md
 !docs/planning/game-development-convenience-review.md
 !docs/planning/feature-candidates.md
-!docs/planning/lighting-quality-upgrade-plan.md
 !docs/planning/vfx-resource-system-plan.md

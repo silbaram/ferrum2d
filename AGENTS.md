@@ -15,8 +15,12 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - Scene Placement/Object Authoring viewer는 허용된 authoring 보조 도구다. 범위는 위치, visual/collider/layer, ObjectDefinition catalog, asset reference, handoff/report evidence, 기존 Behavior Recipe id reference attach/detach까지이며 recipe 본문/FSM/action graph를 UI에서 편집하는 제품은 아니다.
 
 씬·에셋 작성 앱의 제품 명칭은 **Ferrum2D Studio**이며, 설명은 **2D 게임 씬·에셋 편집 도구**다.
-`apps/placement-viewer`, `placement-viewer` 명령·패키지·배포 경로와 `ScenePlacementViewer` API는 호환 식별자로 유지한다.
-create-game의 경량 placement viewer helper와 읽기 전용 viewer는 별도 도구이며, 명칭 변경이 편집 범위를 확장하지 않는다.
+현재 출시 전이며 이 엔진으로 진행 중인 사용자 게임 프로젝트는 없다. 이전 제품명과의 호환성을 이유로
+새 패키지·명령·배포 이름에 `viewer`를 남기지 않는다. 앱은 `apps/studio`, 데스크톱은
+`apps/studio-desktop`, 공유 보조 라이브러리는 `packages/ferrum-studio-kit` / `@ferrum2d/studio-kit`을 사용한다.
+`ScenePlacementViewer`처럼 씬 배치 기능을 가리키는 엔진 API와 읽기 전용 viewer는 기능명이다.
+create-game의 경량 Studio 페이지와 독립 Studio 앱의 기능 범위를 구분하며, 명칭 변경이 편집 범위를 확장하지 않는다.
+이미 공개한 과거 릴리스의 파일명과 URL은 그 릴리스의 실제 기록을 따른다.
 
 아키텍처 원칙:
 
@@ -31,11 +35,11 @@ create-game의 경량 placement viewer helper와 읽기 전용 viewer는 별도 
 
 - `crates/ferrum-core`
 - `packages/ferrum-web`
-- `packages/ferrum-authoring-viewer`
+- `packages/ferrum-studio-kit`
 - `packages/create-game`
 - `packages/agents`
-- `apps/placement-viewer`
-- `apps/placement-viewer-desktop`
+- `apps/studio`
+- `apps/studio-desktop`
 - `examples/topdown-shooter`
 - `docs`
 - `scripts`
@@ -192,7 +196,7 @@ Wasm 브리지 변경 후 추가:
 
 Authoring/create-game/agents 변경 후 추가:
 
-- `pnpm smoke:placement-viewer` (공식 placement viewer behavior가 바뀐 경우)
+- `pnpm smoke:studio` (공식 placement viewer behavior가 바뀐 경우)
 - `pnpm smoke:create-game-template-reports` (generated harness/report가 바뀐 경우)
 - `pnpm package:check:create-game` (create-game CLI/template/package surface가 바뀐 경우)
 - `pnpm package:check:agents` (consumer agent/skill/template가 바뀐 경우)

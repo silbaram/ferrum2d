@@ -1,55 +1,40 @@
 # 개발 계획과 개선 후보
 
-기준일: 2026-11-11
+기준일: 2026-11-12
 
-`docs/planning/`은 진행 중인 작업, 미착수 후보, 제품 결정이 필요한 항목만 관리한다.
-완료된 계획·단계별 결과 기록은 삭제하고 아카이브로 옮기지 않는다.
-현재 사용법과 검증 계약은 `docs/engine/`, `docs/development/`를 기준으로 한다.
-
-에디터의 현재 사용법은 [Scene Authoring](../engine/data-scene-authoring.md),
-회귀 검증은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
-아래 문서는 진행 중인 개발, 미착수 설계, 환경 검증 대기 또는 제품 결정 대기를 관리한다.
-완료된 도트 개발계획과 리뷰 결과는 새 미완료 작업으로 등록하지 않는다.
-
-도트 제작의 현재 계약은
-[Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)과
-앱 안내(`apps/placement-viewer/README.md`)를 따른다.
+`docs/planning/`은 미착수 개발, 환경 검증 대기와 제품 결정만 관리한다.
+완료한 계획은 삭제하며, 사용 계약은 [엔진 문서](../README.md), 재현 명령은
+[Smoke Check](../development/quality/smoke-check.md)에 남긴다.
 
 ## 다음 개선 추천
 
-아래는 다음 작업의 우선순위다. 개발 계획과 설계 후보를 구분하며, 순서 자체가 구현 착수나 완료를 뜻하지 않는다.
+조명 고도화의 계획된 기능 구현은 완료했다. 실제 문제 게임·목표 기기의 수용 검증은 남아 있으며,
+[조명 수용 검증](feature-candidates.md#조명-수용-검증)에서 관리한다. 이를 기능 미구현으로 세지 않는다.
+다음 후보는 실제 게임 요구와 완료 조건을 정한 뒤 선택한다. 아래 나열 순서는 착수 승인이 아니다.
 
-| 순서 | 개선 | 추천 이유 | 범위와 완료 조건 |
-| --- | --- | --- | --- |
-| 1 | 조명·태양광 그림자 품질 | 카메라에 따른 그림자 변화와 여러 광원·화면 효과의 결합을 재현하고 개선한다. | [조명 고도화 계획](lighting-quality-upgrade-plan.md)의 M2-a flat lit, M3a 성분 분리, M3b flat HDR, M3c WebGPU 선형 색공간, M4 재질·Flat/Spatial 수신 mask·2D spot/cookie·볼록 다각형 차폐는 개발 소스 구현·자동 회귀를 완료했다. M5-a 광원 전환·진단과 M5-b 정적 GPU 업로드·작업 예산·기여도 선택/GPU 회귀도 완료했으며 M5-c 넓은 Spatial HDR Bloom/작업 preset과 전체 Spatial 회귀·리뷰도 완료했다. 개발 후 기준 PC의 실제 GPU 전체 회귀와 기준 씬 시간 대조까지 수행했다. 선택 확장 M6-a 다중 점광원 그림자 최대 2개와 광원별 GPU cache, M6-b 태양 PCSS, M6-c 점광원별 PCSS, M6-d 높이 안개, M6-e 태양광 빛줄기와 M6-f authored 간접광 프로브의 개발·자동 검증을 완료했다. 실제 문제 게임/목표 환경 수용 검증은 대상 입력 대기다. |
-| 2 | 게임 개발 연동 편의성 | 실제 프로젝트에서 반복되는 가져오기·진단 비용을 줄인다. | [외부 맵·실행 진단 후보](game-development-convenience-review.md)의 필요성과 저장 경계를 먼저 정한다. 도트 제작과 9-slice 지원 여부는 공식 사용법을 따른다. |
-| 3 | 공용 VFX 리소스·게임 연동 | 예제 효과와 독립 Studio 출력물을 게임에서 재사용하게 한다. | [VFX 개발 계획](vfx-resource-system-plan.md)의 VX-00 실게임 검증 → VX-01 공용 리소스화 순서다. Studio 검토 사항과 엔진의 책임·합성·출력 계약을 함께 관리한다. |
-
-AI 생성 서비스 직접 연결은 [보류 후보](game-development-convenience-review.md#도트-제작-후보)다. 현재는 웹에서 생성한 PNG의 도트 변환·편집을 우선한다.
-
-[실물 GPU·장시간·LOD 외형](feature-candidates.md#실게임-품질-후속-검증)과 [실제 설치·GUI·서명](deployment-roadmap.md#남은-검증-후보)은 후속 검증이다.
-필요한 기기·설치 자료·실행 조건을 먼저 확보하며, 기능 구현을 다시 시작하는 항목으로 취급하지 않는다.
-
-## 문서별 관리 범위
-
-| 문서 | 구분·상태 | 다음 판단 또는 작업 |
+| 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
-| [조명·그림자·화면 효과 고도화](lighting-quality-upgrade-plan.md) | M4·M5 필수 개발·기준 PC 검증 완료, M6-a 다중 점광원 그림자 최대 2개·광원별 cache, M6-b 태양 PCSS·M6-c 점광원별 PCSS·M6-d 높이 안개·M6-e 태양광 빛줄기·M6-f authored 간접광 프로브 지원 | 실제 문제 게임·목표 환경 수용 검증 입력 대기 |
-| [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 단계 미착수 / 독립 Studio는 첨부 문서상 진행 중 | VX-00 최소 출력·실게임 검증부터 시작. Studio의 실제 구현 재검증과 공용 리소스·이벤트 연결, 후속 표현 확장 구분 |
-| [HD-2D 후속 기능·검증 후보](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·측정 환경·완료 조건을 정한 뒤 필요한 최적화 선택. 추가 GPU 계측·복구 학습 예제의 필요성 판단 |
-| [게임 개발 편의성 후보](game-development-convenience-review.md) | 설계 후보 · 미착수 / 제품 결정 대기 | 보류한 생성/호환 후보·외부 맵·reload의 실제 필요와 저장 경계 확정. Agent Workflow 추가 공개의 필요성 판단 |
-| [배포 후속 검증 후보](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 검증 |
+| [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
+| [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |
+| [HD-2D 후속 기능·검증](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·GPU·브라우저·성능/외형 수용 조건 확보 후 검증 또는 확장 선택 |
+| [배포 후속 검증](deployment-roadmap.md) | 설치 환경 검증 / 운영 정책 결정 대기 | 실제 앱·기기·서명 자료를 확보한 뒤 설치·GUI·업데이트 검증 |
 
-현재 엔진 기능은 [Core API](../engine/public-api/core.md)와 [공간 계약](../engine/data-scene-spatial.md),
-자산 제작·가져오기·정리는 [Scene Authoring](../engine/data-scene-authoring.md)를 따른다.
-이미 제공하는 기능을 미완료 후보로 다시 등록하지 않는다.
+자동 라이트맵 베이크·IBL·캐스케이드 그림자는 별도 확장 후보다. 기존 조명 계획의 미완료 항목이나
+현재 제품의 필수 기능으로 취급하지 않는다. AI 이미지 생성 서비스 직접 연결도
+[보류 후보](game-development-convenience-review.md#도트-제작-후보)이며, 현재는 외부 PNG의 도트 변환·편집을 사용한다.
+
+## 현재 기능의 기준 문서
+
+- 씬·에셋 제작과 Studio 저장: [Scene Authoring](../engine/data-scene-authoring.md)
+- 조명·그림자·HD-2D: [공간 계약](../engine/data-scene-spatial.md), [화면 표현](../engine/data-scene-presentation.md)
+- 공개 API와 지원 수준: [Public API](../engine/public-api.md)
+- 실물 GPU·장시간·LOD 외형: [후속 검증](feature-candidates.md#실게임-품질-후속-검증)
 
 ## 관리 규칙
 
-- 후보마다 사용자 가치, 현재 한계, 착수 시 검증 조건을 기록한다.
-- 개발 계획, 설계 후보, 환경 검증 대기, 제품 결정 대기를 구분한다. 후보의 나열 순서를 구현 착수나 완료로 해석하지 않는다.
-- 완료한 단계의 로그·테스트 개수·임시 경로를 계획에 누적하지 않는다. 현재 검증 명령은 [Smoke Check](../development/quality/smoke-check.md)에 둔다.
-- 일부 후보가 남은 문서는 남은 범위만 유지한다. 전체가 끝나면 삭제하고 문서 지도와 Pages 메뉴의 참조도 정리한다.
-- 실제 구현·저장/API 계약과 제안은 구분한다. 원격 이슈·배포 상태는 확인 없이 완료로 바꾸지 않는다.
-- 문서 삭제·경로·Pages 메뉴 변경은 `pnpm validate:docs-links`, `pnpm build:pages`, `pnpm validate:pages-artifact`로 확인한다.
+- 후보마다 사용자 가치, 현재 한계, 착수 조건과 검증 기준을 기록한다.
+- 기능 개발, 환경 검증, 제품 결정을 구분한다. 이미 제공하는 기능을 새 후보로 등록하지 않는다.
+- 완료 단계의 로그·테스트 개수·임시 경로를 누적하지 않는다. 일부가 남으면 남은 범위만 유지하고, 전체가 끝나면 문서를 삭제한다.
+- 배포·원격 이슈 상태는 확인 없이 완료로 바꾸지 않는다. 개발 소스 지원과 설치 버전 지원을 구분한다.
+- 경로·메뉴 변경은 `pnpm validate:docs-links`, `pnpm build:pages`, `pnpm validate:pages-artifact`로 확인한다.
 - Wasm threads, full visual editor, multiplayer, scripting/plugin runtime, skeletal animation, complex physics, 범용 3D는 별도 설계/승인 범위다.

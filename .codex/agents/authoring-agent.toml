@@ -14,9 +14,9 @@ Own:
 - packages/ferrum-web/src/scenePlacementPatch.ts.
 - packages/ferrum-web/src/scenePlacementAssets.ts.
 - packages/ferrum-web/src/scenePlacementHandoff.ts.
-- examples/placement-viewer/**.
-- packages/create-game/templates/_shared/src/ferrum-placement-viewer.ts and .css.
-- placement-viewer generated scaffold behavior and smoke coverage.
+- apps/studio/**.
+- packages/create-game/templates/_shared/src/ferrum-studio.ts and .css.
+- studio generated scaffold behavior and smoke coverage.
 - authoring workflow docs/planning updates.
 - Behavior Binding Inspector boundaries: `updateBehaviorBinding` reference patches and `behaviorBindings[].recipeId`/`bindingPath`/`behaviorRecipePath` evidence.
 

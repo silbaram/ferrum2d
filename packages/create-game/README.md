@@ -13,7 +13,7 @@ npm run dev
 생성된 프로젝트는 `@ferrum2d/ferrum-web`을 dependency로 사용한다. 엔진 소스 코드를 복사하지 않고, npm package entrypoint만 import한다.
 
 
-GitHub Release 전용 패키지는 `package.json.ferrumGithubRelease`에 기록된 버전/저장소를 사용한다. 생성 프로젝트의 엔진과 authoring viewer dependency, 선택형 `ferrum:agents` 명령이 같은 릴리스 URL을 사용한다. `FERRUM_INSTALL.md`에 출처를 남기며 `.npmrc`에 `allow-remote=root`를 생성해 npm 12 설치를 지원한다. 기존 `.npmrc`는 `--force`에서도 보존한다. `npm install`은 agent 파일을 만들지 않는다.
+GitHub Release 전용 패키지는 `package.json.ferrumGithubRelease`에 기록된 버전/저장소를 사용한다. 생성 프로젝트의 엔진과 Studio Kit dependency, 선택형 `ferrum:agents` 명령이 같은 릴리스 URL을 사용한다. `FERRUM_INSTALL.md`에 출처를 남기며 `.npmrc`에 `allow-remote=root`를 생성해 npm 12 설치를 지원한다. 기존 `.npmrc`는 `--force`에서도 보존한다. `npm install`은 agent 파일을 만들지 않는다.
 
 저장소의 CLI를 직접 실행할 때도 릴리스를 선택할 수 있다.
 
@@ -21,9 +21,9 @@ GitHub Release 전용 패키지는 `package.json.ferrumGithubRelease`에 기록�
 node packages/create-game/bin/create-game.mjs ../my-game --github-release 0.1.0-beta.0
 ```
 
-위 버전은 예시다. `--github-release`는 정확한 `x.y.z-beta.N` 또는 `ferrum-web-vx.y.z-beta.N`만 받는다. `--github-repository owner/repo`로 fork를 선택할 수 있다. 릴리스 모드와 `--ferrum-version`/`--authoring-viewer-version`의 혼용은 거부한다. `latest` 자동 선택은 하지 않는다.
+위 버전은 예시다. `--github-release`는 정확한 `x.y.z-beta.N` 또는 `ferrum-web-vx.y.z-beta.N`만 받는다. `--github-repository owner/repo`로 fork를 선택할 수 있다. 릴리스 모드와 `--ferrum-version`/`--studio-kit-version`의 혼용은 거부한다. `latest` 자동 선택은 하지 않는다.
 
-기존 source/local CLI의 `--ferrum-version` 및 `--authoring-viewer-version`은 유지한다. 릴리스 metadata나 옵션이 없는 source CLI는 기존 npm 범위 기본값을 사용하므로 공개 npm 패키지가 없는 동안에는 로컬 tarball 두 개를 명시해야 한다.
+기존 source/local CLI의 `--ferrum-version` 및 `--studio-kit-version`은 유지한다. 릴리스 metadata나 옵션이 없는 source CLI는 기존 npm 범위 기본값을 사용하므로 공개 npm 패키지가 없는 동안에는 로컬 tarball 두 개를 명시해야 한다.
 
 생성 후 출력되는 폴더 이동 명령은 공백·따옴표 등 경로 문자를 보존한다. Windows에서는 PowerShell용 `Set-Location -LiteralPath`를 안내한다.
 
@@ -80,7 +80,7 @@ npm run ferrum:asset-report
 npm run ferrum:asset-validate
 npm run ferrum:report
 npm run ferrum:validate
-npm run ferrum:placement-viewer
+npm run ferrum:studio
 npm run ferrum:authoring-report
 npm run ferrum:replay-report
 npm run ferrum:runtime-replay-report
@@ -91,7 +91,7 @@ npm run ferrum:deploy-report
 npm run preview
 ```
 
-`npm run ferrum:check`는 project/spec validation, asset validation, Scene Authoring report, gameplay/runtime replay와 production build를 순서대로 실행하는 기본 진입점이다. `ferrum2d.consumer.check.report` JSON의 `failedStep`, diagnostic code, `nextCommand`로 첫 실패를 요약하며, 상세 진단 명령은 그대로 유지한다. `npm run ferrum:report`는 `format: "ferrum2d.consumer.project.report"`, `version`, `ok`, `project`, `recommendedCommands`, `reports`, `errors`를 가진 JSON envelope를 출력한다. `project`에는 package name, `@ferrum2d/ferrum-web` dependency, `@ferrum2d/authoring-viewer` dependency, template file 존재 여부, internal import 검사, `project.deployment` 정적 웹 배포 계약과 template별 `runtimeInputs`가 들어간다. `runtimeInputs`는 gameplay 구성 source와 `starter-scenes` 구현, Scene Authoring source와 적용 여부, browser bootstrap source를 구분한다. `npm run ferrum:smoke`는 생성 프로젝트에서 `ferrum:validate`와 production build를 함께 실행하는 기본 gate다. `npm run ferrum:deploy-report`는 production build를 실행한 뒤 `dist/index.html`, HTML 및 정적으로 판별 가능한 `fetch`/module URL/CSS의 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사한다. `<base>` 요소는 지원하지 않으며, 상대 literal `fetch(...)`가 있는 빌드는 HTML entry가 모두 같은 디렉터리에 있어야 한다. 이어서 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 index 응답과 Wasm `application/wasm` MIME을 확인한다. 생성된 `README.md`는 build/preview/정적 호스팅 절차와 `file://` 비지원 사유를 함께 안내한다.
+`npm run ferrum:check`는 project/spec validation, asset validation, Scene Authoring report, gameplay/runtime replay와 production build를 순서대로 실행하는 기본 진입점이다. `ferrum2d.consumer.check.report` JSON의 `failedStep`, diagnostic code, `nextCommand`로 첫 실패를 요약하며, 상세 진단 명령은 그대로 유지한다. `npm run ferrum:report`는 `format: "ferrum2d.consumer.project.report"`, `version`, `ok`, `project`, `recommendedCommands`, `reports`, `errors`를 가진 JSON envelope를 출력한다. `project`에는 package name, `@ferrum2d/ferrum-web` dependency, `@ferrum2d/studio-kit` dependency, template file 존재 여부, internal import 검사, `project.deployment` 정적 웹 배포 계약과 template별 `runtimeInputs`가 들어간다. `runtimeInputs`는 gameplay 구성 source와 `starter-scenes` 구현, Scene Authoring source와 적용 여부, browser bootstrap source를 구분한다. `npm run ferrum:smoke`는 생성 프로젝트에서 `ferrum:validate`와 production build를 함께 실행하는 기본 gate다. `npm run ferrum:deploy-report`는 production build를 실행한 뒤 `dist/index.html`, HTML 및 정적으로 판별 가능한 `fetch`/module URL/CSS의 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사한다. `<base>` 요소는 지원하지 않으며, 상대 literal `fetch(...)`가 있는 빌드는 HTML entry가 모두 같은 디렉터리에 있어야 한다. 이어서 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 index 응답과 Wasm `application/wasm` MIME을 확인한다. 생성된 `README.md`는 build/preview/정적 호스팅 절차와 `file://` 비지원 사유를 함께 안내한다.
 
 모든 템플릿은 공통 asset scaffold를 포함한다. `public/assets/texture-atlas.input.json`은 raw sprite dimension metadata를 기록하는 시작점이고, `public/assets/audio.manifest.json`과 `public/assets/localization.manifest.json`은 sound manifest와 Game Spec localization 연결 상태를 agent가 읽는 시작점이다. `npm run pack:textures`는 public subpath entrypoint의 `packTextureAtlas(...)`, `textureAtlasDocumentToShooterAtlas(...)`, `resolveShooterGameSpec(...)` helper로 deterministic atlas JSON인 `public/assets/atlas.json`을 생성하며 `public/game.json`이 있으면 `atlas.frames`에 병합한다. 이 helper는 frame 위치와 UV metadata를 만드는 authoring 단계 도구이고, 실제 PNG 합성/trimming/rotation pipeline은 아직 템플릿에 포함하지 않는다. `npm run ferrum:asset-report`는 dependency import 없이 현재 asset scaffold, atlas metadata, Game Spec 존재 여부를 machine-readable JSON으로 출력한다. `npm run ferrum:asset-validate`는 `@ferrum2d/ferrum-web/core`, `@ferrum2d/ferrum-web/authoring`, `@ferrum2d/ferrum-web/starter-scenes`, `@ferrum2d/ferrum-web/labs`에서 필요한 helper를 import해 audio/localization/Game Spec asset metadata를 검증한다.
 

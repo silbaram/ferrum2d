@@ -16,19 +16,23 @@ const outputDir = "dist-pages";
 const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
 const examples = loadExampleCatalog().filter(item => item.kind !== "reference");
-const gettingStartedDocs = new Set([
+const userGuideDocs = new Set([
   "README.md",
-  "engine/ai-agent-install.md",
-  "engine/ai-feature-guide.md",
   "engine/showcase-hub.md",
   "engine/developer-quickstart.md",
   "engine/user-guide.md",
 ]);
+const agentGuideDocs = new Set([
+  "engine/ai-game-development.md",
+  "engine/ai-agent-install.md",
+  "engine/ai-feature-guide.md",
+]);
 const documentationGroups = [
-  { title: "시작하기", titleEn: "Getting started", matches: (file) => gettingStartedDocs.has(file) },
-  { title: "공개 API", titleEn: "Public API", matches: (file) => file === "engine/public-api.md" || file.startsWith("engine/public-api/") },
-  { title: "게임 제작", titleEn: "Making games", matches: (file) => file.startsWith("engine/") },
-  { title: "공식 예제", titleEn: "Examples", matches: (file) => file.startsWith("examples/") },
+  { title: "간단 사용법", titleEn: "Simple guides", matches: (file) => userGuideDocs.has(file) },
+  { title: "AI 게임 개발", titleEn: "AI game development", matches: (file) => agentGuideDocs.has(file) },
+  { title: "공통 API 참조", titleEn: "Shared API reference", matches: (file) => file === "engine/public-api.md" || file.startsWith("engine/public-api/") },
+  { title: "공통 데이터·기능 참조", titleEn: "Shared data and feature reference", matches: (file) => file.startsWith("engine/") },
+  { title: "예제 계약", titleEn: "Example specifications", matches: (file) => file.startsWith("examples/") },
   { title: "엔진 개발·검증", titleEn: "Engine development and quality", matches: (file) => file.startsWith("development/architecture/") || file.startsWith("development/quality/") },
   { title: "배포·운영", titleEn: "Deployment and operations", matches: (file) => file.startsWith("development/operations/") },
   { title: "개발 계획·후보", titleEn: "Plans and proposals", matches: (file) => file.startsWith("planning/") },
@@ -48,8 +52,8 @@ const exampleBuilds = examples.map(example => {
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
-cpSync("apps/placement-viewer/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
-cpSync("apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
+cpSync("apps/studio/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
+cpSync("apps/studio/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
 
 for (const { example, source, html } of exampleBuilds) {
   cpSync(source, path.join(outputDir, example.id), { recursive: true });
@@ -111,11 +115,12 @@ function collectFiles(directory) {
 function compareDocs(a, b) {
   const priority = [
     "README.md",
+    "engine/user-guide.md",
+    "engine/developer-quickstart.md",
+    "engine/showcase-hub.md",
+    "engine/ai-game-development.md",
     "engine/ai-agent-install.md",
     "engine/ai-feature-guide.md",
-    "engine/showcase-hub.md",
-    "engine/developer-quickstart.md",
-    "engine/user-guide.md",
     "engine/public-api.md",
     "engine/public-api/core.md",
     "engine/public-api/authoring.md",
@@ -229,13 +234,14 @@ function docPageHtml(page, pages) {
     <style>${siteCss(relativeHref(path.posix.join("docs", currentDir), "fonts/NotoSansKR-UI.woff2"))}</style>
   </head>
   <body>
+    <a class="skip-link" href="#doc-content">${isEnglish ? "Skip to content" : "본문으로 바로 가기"}</a>
     <div class="docs-layout">
       <aside class="docs-nav" aria-label="${isEnglish ? "Documentation navigation" : "문서 탐색"}">
         <a class="brand" href="${escapeAttribute(rootHref)}">Ferrum2D Docs</a>
         <nav>${nav}
         </nav>
       </aside>
-      <main class="docs-content">
+      <main class="docs-content" id="doc-content" tabindex="-1">
         <div class="docs-topbar">
           <a href="${escapeAttribute(siteRootHref)}">${isEnglish ? "Open examples" : "예제 실행"}</a>
           <a href="${escapeAttribute(rootHref)}">${isEnglish ? "Documentation index" : "문서 지도"}</a>
@@ -434,6 +440,8 @@ function siteCss(fontHref = "./fonts/NotoSansKR-UI.woff2") {
 * { box-sizing: border-box; }
 body { margin: 0; background: #f6f8fb; }
 a { color: #0f6f72; text-decoration-thickness: 0.08em; text-underline-offset: 0.18em; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 10; padding: 10px 14px; border: 2px solid #0f6f72; border-radius: 6px; background: #ffffff; transform: translateY(-160%); }
+.skip-link:focus { transform: none; }
 h1 { margin: 0 0 12px; color: #14212b; font-size: clamp(2.3rem, 6vw, 5rem); line-height: 0.95; letter-spacing: 0; }
 h2 { margin: 0; color: #14212b; font-size: 1.35rem; letter-spacing: 0; }
 .docs-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
@@ -464,6 +472,7 @@ th { background: #edf3f7; color: #14212b; }
 blockquote { margin: 18px 0; padding: 10px 16px; border-left: 4px solid #c2541a; background: #fff7f0; color: #394b59; }
 article img { max-width: 100%; height: auto; border-radius: 8px; }
 @media (max-width: 780px) {
+  .skip-link { position: static; display: block; width: fit-content; margin: 12px 16px; transform: none; }
   .docs-layout { display: block; }
   .docs-nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid #d9e2ec; }
   .docs-content { padding: 18px 16px 48px; }

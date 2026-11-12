@@ -7,13 +7,13 @@ import { showPlacementMenu } from "./placement-panel-navigation.mjs";
 export async function smokePlacementGarden(parent, timeoutMs = 30000) {
   const output = "artifacts/2d-showcase";
   await mkdir(output, { recursive: true });
-  const assets = "apps/placement-viewer/public/assets/lantern-garden/";
+  const assets = "apps/studio/public/assets/lantern-garden/";
   const manifest = JSON.parse(await readFile(assets + "manifest.json", "utf8"));
   const png = await readFile(assets + "atlas.png");
   assert.equal(createHash("sha256").update(png).digest("hex"), manifest.texture.sha256);
   assert.equal(png.readUInt32BE(16), 512); assert.equal(png.readUInt32BE(20), 512);
   assert.equal(Object.keys(manifest.frames).length, 43);
-  const source = JSON.parse(await readFile("apps/placement-viewer/public/placement.garden.scene-authoring.json", "utf8"));
+  const source = JSON.parse(await readFile("apps/studio/public/placement.garden.scene-authoring.json", "utf8"));
   const nav = source.navigation;
   assert.equal(nav.costs.length, 432); assert.equal(nav.obstacles.length, 28);
   assert.equal(nav.costs[8 * 24 + 18], 0, "Canal must be blocked");

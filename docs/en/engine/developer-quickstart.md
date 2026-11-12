@@ -1,152 +1,110 @@
-# Ferrum2D Developer Quickstart
+# Run Your First Game
 
 [한국어](../../engine/developer-quickstart.md) · English
 
-Ferrum2D combines a Rust/Wasm core with a TypeScript browser platform layer and a WebGL2 renderer.
-The main development workflow uses specifications, project templates, AI agents, and validation scripts.
-The viewer supports scene and asset authoring alongside that workflow.
+Create a **top-down shooter, run it, and change the character's movement speed**.
+To delegate the work, give your agent [AI Game Development](ai-game-development.md).
 
-This guide creates a runnable starter game. If you only want an agent to install the engine and tools without generating game code,
-use the [AI installation guide (Korean)](../../engine/ai-agent-install.md).
+## 1. Get the installer
 
-## Create a game from a release
+Use Node.js 22 and npm. Game projects do not need a separate Rust or wasm-pack installation.
+Choose a version from [GitHub Releases](https://github.com/silbaram/ferrum2d/releases) and copy the download URL of
+**`ferrum2d-create-game-<version>.tgz`** from its Assets. Follow that release's installation instructions.
 
-Node.js 22 is recommended. Choose a [GitHub Release](https://github.com/silbaram/ferrum2d/releases) and copy the download URL for
-its `ferrum2d-create-game-<version>.tgz` asset. Use the installable package rather than GitHub's automatically generated source archive.
-If the intended release is not published, follow the [local package procedure (Korean)](../../development/operations/github-release.md).
+These commands use Bash, WSL, or a macOS terminal. In PowerShell, you can put the URL directly into the `npx` command.
 
 ```bash
-ferrum_cli_url="<create-game .tgz download URL from the selected GitHub Release>"
-npx --yes --allow-remote=root "$ferrum_cli_url" my-game
+ferrum_cli_url="<create-game .tgz download URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game --template topdown
 cd my-game
 npm install
+```
+
+The `my-game` folder now contains the game's code and settings. `FERRUM_INSTALL.md` records its installation source and reinstall instructions.
+
+## 2. Run the game
+
+```bash
 npm run dev
 ```
 
-The generator pins engine and viewer package URLs from the same release and writes `FERRUM_INSTALL.md`.
-Its `.npmrc` allows direct URL dependencies with npm 12. Ordinary development tools are installed from the npm registry.
-Game projects using the distributed engine do not need Rust or wasm-pack.
+Open the local URL printed in the terminal. The current template starts automatically.
+If your version shows a title screen, press **Start**.
 
-## Validate the project
+| Control | Result |
+| --- | --- |
+| W/A/S/D | Move the character |
+| Move the mouse | Aim |
+| Left mouse button or Space | Fire |
 
-```bash
-npm run ferrum:check
+This template is a small starting game. It may look different from the decorated shooter example on the website.
+Press `Ctrl+C` in the terminal to stop the server.
+
+## 3. Change movement speed
+
+Open `my-game/public/game.json` and change `speed` inside `player` to `280`.
+This is only the part to edit; keep the rest of the file.
+
+```json
+"player": {
+  "speed": 280
+}
 ```
 
-This runs validation, asset and authoring checks, gameplay/runtime replay checks, and a production build.
-If it fails, inspect the JSON report's `failedStep`, diagnostic code, and `nextCommand`.
-
-For more detail:
+Save and refresh the browser. Press **Start** if a title screen appears. Movement should be faster than the template's default `210`.
+To check the settings, open another terminal in `my-game` and run:
 
 ```bash
-npm run ferrum:report
 npm run ferrum:validate
 ```
 
-Before deploying a static build:
+Ask your agent for further gameplay changes, or consult the [Shooter settings reference (Korean)](../../examples/topdown-shooter/game-spec.md).
 
-```bash
-npm run ferrum:deploy-report
-npm run preview
-```
+## 4. Continue with an agent
 
-A `ready` report means that the generated static output passes the supported relative-path checks,
-the project's preview command responds locally, and Wasm is served as `application/wasm`.
-It does not prove that another hosting service uses the same MIME settings or that every gameplay path works.
-Use the preview URL rather than opening `dist/index.html` through `file://`.
-
-Install the project's agent instructions explicitly:
+In a project generated from a GitHub Release, install its agent instructions:
 
 ```bash
 npm run ferrum:agents
 ```
 
-## Choose a template
-
-Use the CLI URL from the same release selected above:
-
-```bash
-npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates
-npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
-```
-
-| Template | Starting point | Typical changes |
-| --- | --- | --- |
-| `minimal` | Small runtime starter | Public API integration, HUD/debug metrics, projectile and weapon authoring |
-| `topdown` | Game Spec-based shooter | World size, enemy waves, weapons, prefabs, and camera |
-| `platformer` | Built-in platformer starter | Jumping, movement, and platform collision |
-| `breakout` | Built-in Breakout starter | Paddle, ball, bricks, and session flow |
-
-To choose a template when creating a project:
-
-```bash
-npx --yes --allow-remote=root "$ferrum_cli_url" my-shooter --template topdown
-```
-
-Templates are starting points, not complete genre editors. `minimal` is a runnable example, not an empty project.
-
-## Understand the runtime boundary
+Give the agent the project folder and [AI Game Development](ai-game-development.md), then ask:
 
 ```text
-Browser input
--> TypeScript input snapshot
--> Wasm engine update
--> Rust simulation, collision, and scene logic
--> Rust render command buffer
--> TypeScript rendering, audio, and UI
--> Browser frame
+I changed movement speed to 280.
+Check that the change behaves as intended and run the full project checks.
+If replay expectations changed, inspect the differences before updating the affected baseline.
+Tell me how to run the game and what to check myself.
 ```
 
-| Layer | Responsibility |
-| --- | --- |
-| Rust core | Game state, entities, physics, scene progression, and render command generation |
-| Wasm boundary | Bulk frame buffers and low-frequency configuration APIs |
-| TypeScript platform | Canvas, GPU APIs, input, audio, assets, Wasm loading, and presentation |
-| Game project | Specifications, content, bootstrap code, and integration through public exports |
+The full check is `npm run ferrum:check`. Gameplay changes can differ from old replay expectations;
+the agent should inspect the cause and compare it with the intended change.
 
-Keep the game simulation authoritative in Rust. Avoid per-entity JS/Wasm round trips in frame loops.
-Use [public package subpaths](public-api.md) instead of importing engine source files or generated Wasm bindings.
+## If Wasm fails to load
 
-## Find the right project file
+If the development server cannot start the game and the browser console shows `WebAssembly.instantiate()` with
+`expected magic word`, check that `defineConfig({ ... })` in `vite.config.ts` includes the following. Keep the existing `build` settings.
 
-| File | Purpose |
-| --- | --- |
-| `src/main.ts` | Canvas, runtime bootstrap, HUD, input, and starter integration |
-| `src/styles.css` | Starter layout and surrounding UI |
-| `public/game.json` | Shooter Game Spec in the `topdown` template |
-| `public/scene-authoring.json` | Scene composition and behavior references |
-| `public/gameplay-replay.fixture.json` | Authoring replay fixture |
-| `public/gameplay-runtime-replay.fixture.json` | Runtime replay fixture |
-| `scripts/ferrum-harness.mjs` | Reports, validation, and authoring/replay commands |
-| `scripts/ferrum-check.mjs` | Standard project check sequence |
-| `scripts/ferrum-deploy.mjs` | Static deployment readiness checks |
-
-Read `project.runtimeInputs` in `ferrum:report` before changing a template.
-Built-in starter adapters apply scene-specific position and behavior references; they do not behave like arbitrary Data Scene spawning.
-See [Scene Authoring (Korean)](../../engine/data-scene-authoring.md) and [Native Runtime (Korean)](../../engine/data-scene-native-runtime.md).
-
-## Work on the engine source
-
-Building the engine repository requires Rust stable, the Wasm target, wasm-pack, Node.js, and pnpm.
-Node.js 22 and pnpm 10.8.0 are recommended.
-
-```bash
-git clone https://github.com/silbaram/ferrum2d.git
-cd ferrum2d
-rustup default stable
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack
-corepack enable
-corepack prepare pnpm@10.8.0 --activate
-pnpm install
-pnpm build
-pnpm dev:starter-runtime
+```ts
+optimizeDeps: {
+  exclude: ["@ferrum2d/ferrum-web"],
+},
 ```
 
-Try `pnpm dev:placement-viewer` for scene placement and pixel editing.
-The [feature guide](showcase-hub.md) lists example commands and browser experiments.
+Save, stop the development server, and restart it with `npm run dev -- --force`.
+The generator in the current source already includes this setting.
 
-Engine changes require checks appropriate to their scope; the [Smoke Check guide (Korean)](../../development/quality/smoke-check.md)
-defines the maintained regression commands. Game projects use their own generated `npm run ferrum:check` workflow.
+## Next steps
 
-Continue with the [User Guide](user-guide.md) and [Public API](public-api.md).
+| Goal | Action |
+| --- | --- |
+| Inspect scenes and assets visually | [Studio basics](user-guide.md#edit-and-play-in-studio) |
+| Try another genre | Replace `--template topdown` with `platformer`, `breakout`, or `minimal` when generating a project. |
+| Check a deployment build | Run `npm run ferrum:deploy-report`, then open the URL from `npm run preview`. |
+| Explore features | [Features and Examples](showcase-hub.md) |
+
+`minimal` is also a runnable example. For setup without game code, use [AI Installation (Korean)](../../engine/ai-agent-install.md).
+
+The current source opens the generated project's lightweight Studio with `npm run ferrum:studio`.
+Published beta.9 and earlier use `ferrum:placement-viewer`; follow the installed project's `package.json` and instructions.
+The standalone Studio app and lightweight project page offer different feature sets.

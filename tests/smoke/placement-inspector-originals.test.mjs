@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
-async function entry(name,path){const root=new URL('../../apps/placement-viewer/node_modules/'+name+'/',import.meta.url),pkg=JSON.parse(await readFile(new URL('package.json',root)));return new URL(path?pkg.exports[path].import:pkg.exports['.'].import,root).href;}
-const authoring=await entry('@ferrum2d/ferrum-web','./authoring'),viewerUi=await entry('@ferrum2d/authoring-viewer');
+const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
+async function entry(name,path){const root=new URL('../../apps/studio/node_modules/'+name+'/',import.meta.url),pkg=JSON.parse(await readFile(new URL('package.json',root)));return new URL(path?pkg.exports[path].import:pkg.exports['.'].import,root).href;}
+const authoring=await entry('@ferrum2d/ferrum-web','./authoring'),viewerUi=await entry('@ferrum2d/studio-kit');
 const {createScenePlacementViewer,resolveSceneAuthoringDocument,mergeScenePlacementPatch}=await import(authoring);
-const code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementInspectorOriginals.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText.replaceAll(JSON.stringify('@ferrum2d/ferrum-web/authoring'),JSON.stringify(authoring)).replaceAll(JSON.stringify('@ferrum2d/authoring-viewer'),JSON.stringify(viewerUi));
+const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementInspectorOriginals.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText.replaceAll(JSON.stringify('@ferrum2d/ferrum-web/authoring'),JSON.stringify(authoring)).replaceAll(JSON.stringify('@ferrum2d/studio-kit'),JSON.stringify(viewerUi));
 const {createPlacementInspectorOriginals:create}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const colors={normalize:value=>value,primitive:'#ffffff',point:'#ffffff'};
 const components={visual:{kind:'sprite',asset:'hero',width:16,height:24,normalTexture:'hero-normal',shadow:{shape:'ellipse'}},collider:{type:'aabb',halfWidth:8,halfHeight:12},layer:'wall',body:{type:'static',heightSpan:{floorId:0,elevation:0,height:24}}};

@@ -6,12 +6,12 @@
 현재 운영 계약은 [정적 웹 배포](../development/operations/demo-deploy.md),
 [엔진·Studio 분리 준비](../development/operations/github-release.md#엔진과-studio-앱-분리-준비),
 [버전 확인과 업데이트](../development/operations/github-release.md#버전-확인과-업데이트)가 기준이다.
-OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer-desktop/README.md)를 따른다.
+OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/silbaram/ferrum2d/blob/main/apps/studio-desktop/README.md)를 따른다.
 
 ## 기존 준비 경로와 남은 검증 구분
 
 - Production build·preview·deploy report와 Pages artifact 생성은 기존 경로를 사용한다.
-- `github-release-prepare.yml`의 `include_viewer`는 Windows/Linux/macOS 준비 matrix를 제공한다.
+- `github-release-prepare.yml`의 `include_studio`는 Windows/Linux/macOS 준비 matrix를 제공한다.
   CI 경로를 새로 만드는 작업으로 등록하지 않는다. unsigned 빌드 성공과 실제 GUI/서명 검증은 구분한다.
 - 프로젝트 SDK와 앱/내장 엔진의 버전 확인·업데이트, signed updater 준비도 제공한다.
   업데이트를 신규 미구현 기능으로 등록하지 않는다. 배포 키·실제 자료 공개·설치 검증은 별개다.
@@ -26,7 +26,7 @@ OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/
 | 플랫폼 서명·notarization | Windows/macOS 대상과 키 관리·서명 검증·배포 정책을 별도 결정. updater 서명으로 대체하지 않음 |
 | Native GUI 검증의 CI 편입 | 로컬 package smoke/headless transport와 GUI 상호작용을 구분하고 runner·권한·실패 artifact·실행 비용을 정한 뒤 선택 |
 
-`pnpm smoke:placement-viewer-desktop-package`의 artifact/startup 확인과 Rust headless transport는
+`pnpm smoke:studio-desktop-package`의 artifact/startup 확인과 Rust headless transport는
 실제 packaged GUI/IPC 검증을 대신하지 않는다. 자동 검증의 범위를 늘리더라도 기존 native release gate를 유지한다.
 원격 배포·Release 공개·키 설정은 해당 작업을 요청받았을 때 운영 절차에 따라 수행한다.
 

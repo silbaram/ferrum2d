@@ -5,7 +5,7 @@ import {resolve,extname,sep} from 'node:path';
 import {chromium} from 'playwright-core';
 import {preparePlacementTestBuild} from './placement-test-build.mjs';
 import {smokePlacementAssetUsage} from './placement-asset-usage-smoke.mjs';
-const base=await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
+const base=await preparePlacementTestBuild(resolve('apps/studio/dist'));
 const server=createServer(async(request,response)=>{
  try{const path=new URL(request.url,'http://localhost').pathname,file=resolve(base,'.'+(path==='/'?'/index.html':decodeURIComponent(path)));assert(file.startsWith(base+sep));response.setHeader('content-type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.png':'image/png','.woff2':'font/woff2'})[extname(file)]??'application/octet-stream');response.end(await readFile(file));}
  catch{response.writeHead(404);response.end();}

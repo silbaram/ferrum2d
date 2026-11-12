@@ -44,7 +44,7 @@ test("createScenePlacementAgentHandoff exposes selected object, draft patch, mig
     }],
   });
 
-  equal(handoff.format, "ferrum2d.placement-viewer.agent-handoff");
+  equal(handoff.format, "ferrum2d.studio.agent-handoff");
   equal(handoff.version, 1);
   equal(handoff.sourceDocument, "scene-authoring.json");
   equal(handoff.selectedInstanceId, "crate_renamed");

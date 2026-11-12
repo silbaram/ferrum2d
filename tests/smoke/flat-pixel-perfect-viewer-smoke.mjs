@@ -5,7 +5,7 @@ import { resolve, extname, sep } from 'node:path';
 import { chromium } from 'playwright-core';
 import { preparePlacementTestBuild } from './placement-test-build.mjs';
 import { showPlacementMenu } from './placement-panel-navigation.mjs';
-const base = await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
+const base = await preparePlacementTestBuild(resolve('apps/studio/dist'));
 const scene = JSON.parse(await readFile(resolve(base, 'placement.scene-authoring.json'), 'utf8'));
 scene.display = { pixelPerfect: { width: 320, height: 180, snap: true, background: [.03, .06, .09] } };
 const server = createServer(async (req, res) => { try {

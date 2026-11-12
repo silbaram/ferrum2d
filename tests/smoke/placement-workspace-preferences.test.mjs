@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
-const source=await readFile(new URL('../../apps/placement-viewer/src/placementWorkspacePreferences.ts',import.meta.url),'utf8');
+const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
+const source=await readFile(new URL('../../apps/studio/src/placementWorkspacePreferences.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 let api;
 try{api=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));}

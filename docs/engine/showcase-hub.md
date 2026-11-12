@@ -1,131 +1,71 @@
-# Ferrum2D Showcase Hub
+# 기능과 예제 둘러보기
 
 한국어 · [English](../en/engine/showcase-hub.md)
 
-이 문서는 Ferrum2D가 현재 제공하는 제품 기능을 demo, 기준 문서, 검증 명령 기준으로 묶은 기능 지도다. 목적은 새 사용자가 "무엇을 어디서 볼 수 있고, agent가 어떤 파일과 report를 기준으로 작업해야 하는지"를 빠르게 파악하게 하는 것이다.
+설치 없이 엔진 기능을 체험하는 안내입니다. 링크를 열고 화면의 **직접 해보기**와 **관찰할 결과**를 따라 해보세요.
+[기능 실험실](https://silbaram.github.io/ferrum2d/starter-runtime/)에서 주제를 선택하거나 아래에서 바로 열 수 있습니다.
+소리가 필요한 실험은 화면을 클릭하거나 재생 버튼을 먼저 누르세요.
 
-Ferrum2D는 visual editor 중심 제품이 아니라 AI agent-first 2D game engine이다. 따라서 showcase의 기준도 화면 효과만이 아니라 public API, spec, authoring data, replay, smoke report가 함께 있는지로 판단한다.
+## 먼저 해볼 세 가지
+
+1. **노멀 조명:** 광원을 움직이고 노멀 적용을 바꿔 같은 그림이 어떻게 입체적으로 보이는지 비교합니다.
+2. **길 찾기:** 벽 반대편을 클릭하고 캐릭터가 장애물을 돌아가는지 봅니다.
+3. **9-slice:** 대화창을 늘려 일반 확대와 모서리 보존의 차이를 비교합니다.
 
 ## 기능 지도
 
-엔진 기능을 하나씩 체험하려면 `pnpm dev:starter-runtime`으로 **기능 실험실**을 연다.
-상단에서 주제를 고르면 그 기능만 있는 씬과 조작·관찰·구현 API를 함께 확인한다.
-31개 화면은 사용 상황·직접 해보기·화면 범례를 공유한다. 실행 버튼과 객체 이름표를 화면 가까이에 배치하고,
-카메라 영역·애니메이션 원본·로딩 상태처럼 비교할 대상을 별도로 보여준다. 대화·HUD는 실제 UI를 게임 화면 안에서 조작한다.
-세부 수치는 ‘엔진 실행 정보’를 펼쳐 확인한다.
-[GitHub Pages](https://silbaram.github.io/ferrum2d/)는 기능 실험실로 바로 연결한다.
-웹에서 설치 없이 체험한 뒤 로컬 실행·프로젝트 생성으로 이어갈 수 있다.
-
-예제의 기준 목록은 `examples/shared/exampleCatalog.json`, 독립 실험의 기준은 `featureCatalog.json`이다.
-기능 실험실은 **조명·물리·카메라·스프라이트·맵·VFX·게임 로직·UI·오디오·에셋** 10개 주제로 탐색한다. 물리 심화 7개 시나리오도 물리·충돌 메뉴에 표시한다. 상단의 **예제 이동**으로 게임 응용과 제작 도구를 연다. 게임·실험 예제는 같은 탐색·글꼴·색상과
-직접 해보기·관찰할 결과·관련 실험 안내를 공유한다. 제작 도구는 게임 예제와 구분한다.
-Minimal과 이전 Starter 프로필·Engine Playground는 기존 URL과 회귀 검증만 유지하고 기본 목록에서 제외한다.
-
-| 실험 | Starter Runtime query | 바꿔볼 설정 |
+| 실험 | 바로 열기 | 바꿔볼 설정 |
 | --- | --- | --- |
-| 스프라이트 애니메이션 | `?feature=animation` | 재생 설정, 이동/대기, 프레임 소리·표식, 단발 완료 |
-| 길 찾기 | `?feature=navigation` | 벽 반대편 목적지, 포인터·키보드 이동 |
-| 물리 재질 | `?feature=physics` | 고무/점토, 동일한 초기 힘 |
-| 노멀 조명 | `?feature=lighting` | 노멀 적용, 광원 위치, 원본 색상 |
-| 후처리 | `?feature=postprocess` | 원본, Bloom·CRT·vignette·glitch·pixelArt·fade와 강도 |
-| 카메라 | `?feature=camera` | 고정/추적, 확대, 화면 흔들림·정지 중 차단, 월드 경계 제한, 이동 목적지 |
-| 게임 UI 테두리 · 9-slice | `?feature=nine-slice` | 대화창·가방의 너비/높이 변경, 일반 확대와 모서리 비교, 원본 분할선·테두리 배율 |
-| 타일맵·충돌 | `?feature=tilemap` | 벽/바닥 브러시, 통로, native 통과 여부 |
-| 그리기 레이어 | `?feature=layers` | 같은 위치에서 로봇의 앞뒤 순서 |
-| 파티클·VFX | `?feature=particles` | 불꽃/먼지 나란히·효과별 이미지와 기본값·방출/정지·잔상 |
-| 공간 오디오 | `?feature=audio` | 음원 좌우·거리·볼륨, 재생/정지 |
-| 입력 전환 | `?feature=input` | 키보드/게임패드/가상 조이스틱, 모달 입력 차단 |
-| 씬 전환과 페이드 | `?feature=scenes` | A/B 왕복·씬/전역 카운터·전환 중 pause |
-| 상호작용과 트리거 | `?feature=interaction` | 거리·스위치 조건·문 사용·구역 출입 |
-| 저장과 불러오기 | `?feature=save-load` | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
-| 대화와 퀘스트 | `?feature=dialogue` | 수락/거절·소포 조건·목표 완료 |
-| HUD·다국어·접근성 | `?feature=hud` | 체력·한국어/영어·글자 크기·대비 |
-| 사격과 벽 충돌 | `?feature=projectiles` | 동일 속도 일반·벽 관통·반사 |
-| 컷신과 동작 감소 | `?feature=cutscene` | 재생·건너뛰기·자막·효과음·동작 감소 |
-| 에셋 로딩과 캐시 | `?feature=asset-loading` | fetch·세션 메모리 캐시·취소·실패 후 재시도 |
-| 레벨 스트리밍 | `?feature=streaming` | 구역 변경·고유 텍스처 해제·공통 바닥 유지 |
-| HD-2D 공간 이동 | `?feature=hd2d-movement` | 경사로·층 전환·승강/수평 발판 탑승 |
-| AI 추적과 전투 | `?feature=ai-combat` | 장애물 우회·근접 피해·원거리 발사체 |
-| 부모·자식 연결 | `?feature=attachments` | 수레 위치/회전·자식 연결 해제/복귀 |
-| HD-2D 조명·그림자·안개 | `?feature=hd2d-environment` | 점광원·태양·혼합, 태양 방위/고도, hard/PCF, 안개·Bloom·AO·DOF·ACES |
-| 지형 파괴와 충돌 갱신 | `?feature=destructible-terrain` | 마스크 깎기·공 낙하·충돌 청크 갱신·초기화 |
+| 스프라이트 애니메이션 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=animation) | 재생 설정, 이동/대기, 프레임 소리·표식, 단발 완료 |
+| 길 찾기 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=navigation) | 벽 반대편 목적지, 포인터·키보드 이동 |
+| 물리 재질 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics) | 고무/점토, 동일한 초기 힘 |
+| 노멀 조명 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=lighting) | 노멀 적용, 광원 위치, 원본 색상 |
+| 후처리 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=postprocess) | 원본, Bloom·CRT·vignette·glitch·pixelArt·fade와 강도 |
+| 카메라 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=camera) | 고정/추적, 확대, 화면 흔들림·정지 중 차단, 월드 경계 제한, 이동 목적지 |
+| 게임 UI 테두리 · 9-slice | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=nine-slice) | 대화창·가방의 너비/높이 변경, 일반 확대와 모서리 비교, 원본 분할선·테두리 배율 |
+| 타일맵·충돌 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=tilemap) | 벽/바닥 브러시, 통로, native 통과 여부 |
+| 그리기 레이어 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=layers) | 같은 위치에서 로봇의 앞뒤 순서 |
+| 파티클·VFX | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=particles) | 불꽃/먼지 나란히·효과별 이미지와 기본값·방출/정지·잔상 |
+| 공간 오디오 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=audio) | 음원 좌우·거리·볼륨, 재생/정지 |
+| 입력 전환 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=input) | 키보드/게임패드/가상 조이스틱, 모달 입력 차단 |
+| 씬 전환과 페이드 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=scenes) | A/B 왕복·씬/전역 카운터·전환 중 pause |
+| 상호작용과 트리거 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=interaction) | 거리·스위치 조건·문 사용·구역 출입 |
+| 저장과 불러오기 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=save-load) | 위치·수집 진행 저장/복원·전용 슬롯 삭제 |
+| 대화와 퀘스트 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=dialogue) | 수락/거절·소포 조건·목표 완료 |
+| HUD·다국어·접근성 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hud) | 체력·한국어/영어·글자 크기·대비 |
+| 사격과 벽 충돌 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=projectiles) | 동일 속도 일반·벽 관통·반사 |
+| 컷신과 동작 감소 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=cutscene) | 재생·건너뛰기·자막·효과음·동작 감소 |
+| 에셋 로딩과 캐시 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=asset-loading) | fetch·세션 메모리 캐시·취소·실패 후 재시도 |
+| 레벨 스트리밍 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=streaming) | 구역 변경·고유 텍스처 해제·공통 바닥 유지 |
+| HD-2D 공간 이동 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-movement) | 경사로·층 전환·승강/수평 발판 탑승 |
+| AI 추적과 전투 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=ai-combat) | 장애물 우회·근접 피해·원거리 발사체 |
+| 부모·자식 연결 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=attachments) | 수레 위치/회전·자식 연결 해제/복귀 |
+| HD-2D 조명·그림자·안개 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-environment) | 점광원·태양·혼합, 태양 방위/고도, hard/PCF, 안개·Bloom·AO·DOF·ACES |
+| HD-2D 그림자 비교 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=hd2d-shadow-proxy) | 카메라·캐릭터 높이·태양 각도를 바꾸며 그림자 위치 비교 |
+| 지형 파괴와 충돌 갱신 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=destructible-terrain) | 마스크 깎기·공 낙하·충돌 청크 갱신·초기화 |
+| 영역 검색·형상 이동 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=physics-queries) | 원·사각형 영역과 이동 원의 실제 충돌 대상 |
+| 픽셀 해상도·좌표 정렬 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=pixel-perfect) | 가상 해상도, 소수 이동, 화면 좌표 정렬 |
+| 스프라이트 표현 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=sprite-materials) | 원본·팔레트 교체·피격 색상·외곽선 |
+| 렌더링·GPU 자원 | [열기](https://silbaram.github.io/ferrum2d/starter-runtime/?feature=rendering) | 오브젝트 수·명령/드로우 수, 텍스처 준비·해제·추정 메모리 |
 
-| 영역 검색·형상 이동 | `?feature=physics-queries` | 원·사각형 영역과 이동 원의 실제 충돌 대상 |
-| 픽셀 해상도·좌표 정렬 | `?feature=pixel-perfect` | 가상 해상도, 소수 이동, 화면 좌표 정렬 |
-| 스프라이트 표현 | `?feature=sprite-materials` | 원본·팔레트 교체·피격 색상·외곽선 |
-| 렌더링·GPU 자원 | `?feature=rendering` | 오브젝트 수·명령/드로우 수, 텍스처 준비·해제·추정 메모리 |
+각 실험은 초기화해 다시 비교할 수 있습니다. API와 설정값이 필요하면
+[공통 상세 참조](../README.md#공통-상세-참조)를, AI에게 기능 구현을 맡기려면 [AI 게임 개발 안내](ai-game-development.md)를 사용하세요.
 
-각 실험은 기본 설정과 씬으로 초기화할 수 있다. 물리 심화는 `physics-sandbox`의 7개 시나리오,
-여러 기능을 조합한 게임은 아래 통합 예제로 이어진다. 기능 실험실 검증은 `pnpm smoke:feature-examples`다. 주제별 보강만 확인하려면 `pnpm smoke:feature-examples -- --topics-only`를 쓴다. 현재 실험은 기존 API를 사용하며 재사용 VFX 리소스 시스템은 별도 개발 계획이다.
+## 게임과 Studio
 
-| 기능군 | 대표 demo 또는 경로 | 기준 문서 | 검증 명령 |
-| --- | --- | --- | --- |
-| Runtime baseline | Starter Runtime, Platformer, Breakout | [User Guide](user-guide.md), [Public API](public-api.md) | `pnpm build`, `pnpm smoke:starter-runtime`, `pnpm smoke:platformer`, `pnpm smoke:breakout` |
-| 도트 게임 제작 | 작은 빛의 정원 · Pixel Art | [도트 제작](data-scene-authoring.md#에디터-내장-도트-제작), [도트 후처리](public-api/core.md#도트-후처리) | `pnpm dev:pixel-art`, `pnpm smoke:pixel-showcase` |
-| Game Spec authoring | Neon Outpost · Top-down Shooter | [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md) | `pnpm validate:game-spec`, `pnpm smoke:headless`, `pnpm smoke:topdown-authored-behavior-runtime` |
-| Scene/Object authoring | Ferrum2D Studio, generated placement viewer | [Data Scene Authoring](data-scene-authoring.md), [Authoring API](public-api/authoring.md) | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets` |
-| Physics authoring | Physics Sandbox | [Physics Spec](physics-spec.md), [2D Physics Map](../development/architecture/physics-engine.md) | `pnpm validate:physics-authoring`, `pnpm smoke:physics`, `pnpm smoke:physics-demo-suite` |
-| Runtime extensibility | projectile, weapon, behavior, VFX, replay helpers | [Runtime Extensibility](runtime-extensibility.md), [Public API](public-api.md) | `pnpm validate:gameplay-authoring:report`, `pnpm smoke:gameplay-replay:report` |
-| HD-2D 공간·전투 (개발 소스) | 기능 실험실의 공간 이동·AI 전투·부모/자식 연결 및 packed 공간 browser fixture | [공간 지형·모델·WebGPU](data-scene-spatial.md), [전투 authoring](data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스) | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen`, `pnpm smoke:hd2d-combat` |
-| Consumer project workflow | create-game templates, consumer agents | [Developer Quickstart](developer-quickstart.md), [npm Package Strategy](../development/operations/npm-package-strategy.md) | `pnpm smoke:create-game-template-catalog`, `pnpm smoke:create-game-template-reports`, `pnpm package:consumer-smoke` |
-| Package/release readiness | local tarball install and release rehearsal | [npm Release Procedure](../development/operations/npm-release.md) | `pnpm package:check`, `pnpm package:consumer-smoke`, `pnpm release:local-check` |
-
-## Demo Gallery 기준
-
-| Demo | 사용자가 확인하는 것 | Agent가 읽는 기준 |
+| 예제 | 바로 열기 | 해볼 일 |
 | --- | --- | --- |
-| 기능 실험실 / Engine Playground | 기본 진입은 위의 31개 독립 실험. 통합 게임은 `?mode=playground`, 사격 프로필·리플레이는 `?mode=starter` | `createFerrumRuntime(...)`, Data Scene, `pnpm smoke:feature-examples`, `pnpm smoke:engine-playground` |
-| Pixel Art · 작은 빛의 정원 | 실제 이동·씨앗 수집, 노멀 조명·팔레트·후처리 비교 | `examples/pixel-art/public/scene.json`, 편집 가능한 `.pixel.json` 원본, pixel-art profile, showcase smoke |
-| Top-down Shooter | Game Spec 기반 shooter, asset/audio/tilemap/gameplay authoring | `examples/topdown-shooter/public/game.json`, Game Spec 문서, replay fixture |
-| Ferrum2D Studio | instance 선택, transform patch, ObjectDefinition 생성, behavior binding reference | `scene-authoring.json`, placement handoff state, authoring report |
-| Physics Sandbox | Physics Spec apply, debug line, solver fixture catalog | Physics Spec sample, physics smoke suite, demo-suite browser smoke |
-| Platformer | 점프·단방향/이동 발판의 기능 안내와 해당 위치 바로 이동 | create-game `platformer` template, runtime replay fixture |
-| Breakout | 반사·충돌 이벤트·파티클 관찰 안내와 충돌 영역 표시 | create-game `breakout` template, scene authoring report |
+| 탑다운 슈터 | [게임 열기](https://silbaram.github.io/ferrum2d/topdown-shooter/) | 이동·조준·발사와 적 웨이브 플레이 |
+| 플랫포머 | [게임 열기](https://silbaram.github.io/ferrum2d/platformer/) | 점프하고 단방향·이동 발판 타기 |
+| 벽돌깨기 | [게임 열기](https://silbaram.github.io/ferrum2d/breakout/) | 패들로 공을 반사하고 벽돌 없애기 |
+| 물리 실험실 | [실험 열기](https://silbaram.github.io/ferrum2d/physics-sandbox/) | 시나리오를 선택해 충돌·재질·조인트 비교 |
+| 작은 빛의 정원 | [게임 열기](https://silbaram.github.io/ferrum2d/pixel-art/) | 클릭 이동·씨앗 수집, 도트 원본·노멀 조명·팔레트 비교 |
+| 2D 등불 정원 | [Studio 열기](https://silbaram.github.io/ferrum2d/studio/?scene=garden) | 씬 배치, 게임 미리보기, 실행 비교 |
+| HD-2D 마을 | [Studio 열기](https://silbaram.github.io/ferrum2d/studio/?scene=village) | 입체 장면·카메라·빛을 조정하며 확인 |
 
-## Agent-first 작업 흐름
+Studio 조작과 저장 방식은 [간단 사용법](user-guide.md#studio에서-씬을-바꿔보기)에 있습니다.
 
-새 consumer game에서 Ferrum2D의 기본 작업 단위는 source file 하나가 아니라 report와 검증 명령까지 포함한 작은 루프다.
+## 내 프로젝트로 이어가기
 
-1. [개발자 퀵스타트](developer-quickstart.md)에 따라 GitHub Release의 create-game `.tgz`로 `minimal` 프로젝트를 생성하고 `npm install`을 실행한다.
-2. 생성 프로젝트에서 `npm run ferrum:agents`로 같은 버전의 consumer 지침을 설치한다.
-3. `npm run ferrum:check`로 기본 검증을 실행하고, 상세 입력은 `npm run ferrum:report`로 확인한다.
-4. `npm run ferrum:validate`
-5. `npm run ferrum:smoke`
-6. 필요한 경우 `npm run ferrum:placement-viewer`
-
-Agent는 `ferrum:report`, authoring report, replay report, runtime replay report를 읽고 Game Spec, scene authoring, template source를 수정한다. 사람이 확인하는 viewer는 위치, visual/collider/layer, ObjectDefinition, behavior recipe id reference 같은 authoring 보조 범위에 머문다.
-
-## Pages에서 보는 순서
-
-로컬 Pages artifact를 만들면 브라우저에서 home, docs, demo route를 함께 확인할 수 있다.
-
-```bash
-pnpm build
-pnpm build:pages
-pnpm validate:pages-artifact
-```
-
-Pages home은 runtime, authoring, physics demo route와 핵심 문서 카드를 제공한다. 현재 Pages artifact의 demo route는 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer`, `pixel-art`다. 새 route의 원격 공개 여부는 실제 배포 상태를 별도로 확인한다. Pages의 문서와 예제는 배포한 개발 소스 기준이며, GitHub Release 설치 파일의 버전과는 별개다.
-Studio 웹 버전의 내장 예제는 내보내기 전용이다. 파일 저장·프로젝트 접근 조건은 [사용자 설명서](user-guide.md#studio에서-작성하고-실행하기)를 따른다.
-
-## 보류 범위
-
-다음 항목은 showcase에 포함하지 않는다. 별도 승인과 설계가 있기 전에는 제품 기능처럼 소개하지 않는다.
-
-- full visual editor
-- Behavior Recipe Body Editor
-- FSM/action graph/timeline visual editor
-- multiplayer
-- full game loop Worker migration 또는 Wasm threads
-- complex physics 확장
-
-## 다음에 볼 문서
-
-| 목적 | 문서 |
-| --- | --- |
-| 새 프로젝트 시작 | [Developer Quickstart](developer-quickstart.md) |
-| public import 확인 | [Public API](public-api.md) |
-| data-driven scene authoring | [Data Scene Authoring](data-scene-authoring.md) |
-| runtime primitive와 확장성 | [Runtime Extensibility](runtime-extensibility.md) |
-| 품질 검증 기준 | [Smoke Check](../development/quality/smoke-check.md) |
-| 패키지/릴리스 준비 | [npm Release Procedure](../development/operations/npm-release.md) |
+[첫 게임 실행하기](developer-quickstart.md)에서 설치·실행·간단한 설정 변경을 따라 해보세요.
+웹 예제는 배포된 개발 소스를 사용하므로 설치한 릴리스의 기능과 다를 수 있습니다.

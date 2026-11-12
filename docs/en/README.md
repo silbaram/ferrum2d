@@ -2,51 +2,55 @@
 
 [한국어](../README.md) · English
 
-Ferrum2D is an **AI agent-first 2D and HD-2D web game engine** built with Rust, WebAssembly, and TypeScript.
-Agents edit specifications and code; Ferrum2D Studio lets people edit scenes and assets and preview runtime results.
+Choose a path: **simple instructions for people using the engine**, or **a workflow for AI agents building games with it**.
+Both paths use the same detailed API and data references.
 
-These guides describe the current development source. Released packages can provide a different feature set.
-For a game project, check the types, release notes, and documentation for its installed version.
-
-## Start here
+## Simple guides for people
 
 | Goal | Guide |
 | --- | --- |
-| Understand the engine, run examples, and learn what Studio saves | [User Guide](engine/user-guide.md) |
-| Try individual engine features in a browser | [Feature and Example Guide](engine/showcase-hub.md) |
-| Create and validate a game project | [Developer Quickstart](engine/developer-quickstart.md) |
-| Choose supported imports and understand compatibility | [Public API](engine/public-api.md) |
+| Understand the engine and try Studio | [Simple User Guide](engine/user-guide.md) |
+| Run a first game and change one setting | [Run Your First Game](engine/developer-quickstart.md) |
+| Try lighting, physics, animation, and other features without installing tools | [Explore Features and Examples](engine/showcase-hub.md) |
 
-The [public demo site](https://silbaram.github.io/ferrum2d/) contains 31 independent feature experiments,
-integrated games, and Ferrum2D Studio. Demo controls may be in Korean; Ferrum2D Studio has its own English/Korean language setting.
-Changing documentation language does not change the language of a running demo.
+Start with the user guide, then run your first game. To delegate development, give your agent the guide below.
 
-![Ferrum2D HD-2D scene placement workspace](../development/quality/screenshots/placement-village.png)
+## AI game development
 
-This is a real browser capture of Studio. It shows example content built on the engine APIs.
+Start with **[AI Game Development](engine/ai-game-development.md)**.
+It covers checking the request and installed version, finding the files the game actually uses, implementing changes, and validating results.
 
-## English coverage and detailed references
+| Task | Reference |
+| --- | --- |
+| Install tools without generating game code | [AI Installation (Korean)](../engine/ai-agent-install.md) |
+| Match a requirement to supported features | [AI Feature Lookup (Korean)](../engine/ai-feature-guide.md) |
+| Choose files and validation commands | [AI Game Development](engine/ai-game-development.md) |
 
-The English set currently covers the documentation index, user guide, quickstart, feature guide, and public API overview.
-Detailed references below are in Korean and are labeled accordingly. Use them for precise field limits, storage formats, and capability requirements.
+Read the game's installed agent instructions and public types. Engine-repository CI and release commands are separate from consumer game checks.
+
+## Shared detailed references
+
+These references are for lookup when you need exact behavior, options, or limits. Korean-only references are marked.
 
 | Topic | Reference |
 | --- | --- |
-| AI setup without generating a game | [AI Agent Installation (Korean)](../engine/ai-agent-install.md) |
-| Scene composition, placement, pixel editing, and asset workflows | [Scene Authoring (Korean)](../engine/data-scene-authoring.md) |
-| Terrain, floors, static models, cameras, lighting, and shadows | [HD-2D Spatial Scenes (Korean)](../engine/data-scene-spatial.md) |
-| Animation and presentation | [Presentation (Korean)](../engine/data-scene-presentation.md) |
-| Movement, navigation, and native gameplay | [Native Runtime (Korean)](../engine/data-scene-native-runtime.md) |
-| Physics configuration and solver contracts | [Physics Spec (Korean)](../engine/physics-spec.md) |
-| Rust/TypeScript ownership and Wasm boundaries | [Architecture (Korean)](../development/architecture/architecture.md) |
-| Regression checks, browser tests, and runtime budgets | [Smoke Check (Korean)](../development/quality/smoke-check.md) |
-| Building and publishing this site | [Pages Operations (Korean)](../development/operations/demo-deploy.md) |
-| Work in progress and proposals | [Planning (Korean)](../planning/README.md) |
+| Public imports and compatibility | [Public API](engine/public-api.md), [Migration (Korean)](../engine/public-api/migration-guide.md) |
+| Scenes, objects, assets, and pixel sources | [Scene Authoring (Korean)](../engine/data-scene-authoring.md) |
+| Animation, 2D materials, and lighting | [Presentation (Korean)](../engine/data-scene-presentation.md) |
+| HD-2D terrain, models, cameras, and shadows | [Spatial Scenes (Korean)](../engine/data-scene-spatial.md) |
+| Movement, gameplay, and extensions | [Native Runtime (Korean)](../engine/data-scene-native-runtime.md), [Runtime Extensibility (Korean)](../engine/runtime-extensibility.md) |
+| Input, coordinates, and physics | [Input (Korean)](../engine/input-actions.md), [Coordinates (Korean)](../engine/coordinate-system.md), [Physics (Korean)](../engine/physics-spec.md) |
+| Shooter settings and diagnostics | [Game Spec (Korean)](../examples/topdown-shooter/game-spec.md), [Quality API (Korean)](../engine/public-api/quality.md) |
 
-## How the documentation is maintained
+## Engine development and operations
 
-- Korean documents remain at their existing paths; English guides use `docs/en/` with matching filenames.
-- Paired pages link to each other on GitHub and in the Pages language switcher.
-- A page without an English counterpart links to the English documentation index; it does not imply that the page has been translated.
-- Both languages describe verified behavior. Proposals belong in planning documents and are not presented as supported features.
-- `dist-pages/` is generated output. Edit the Markdown sources and rebuild the site.
+For work on the engine itself, use [Architecture](../development/architecture/architecture.md),
+[Regression Checks](../development/quality/smoke-check.md), [Releases](../development/operations/github-release.md),
+[Pages Operations](../development/operations/demo-deploy.md), and [Planning](../planning/README.md). These references are in Korean.
+
+## Versions and maintenance
+
+- Development source and released packages may have different features. Check the installed version's instructions, types, and documentation.
+- Simple guides explain actions and expected results. AI guides explain implementation and validation. Shared references define API contracts.
+- English and Korean starting guides follow the same flow. Untranslated pages are labeled and link back to the English index when switching language.
+- Internal development and pending plans remain separate. `dist-pages/` is generated from Markdown and is not an editing source.

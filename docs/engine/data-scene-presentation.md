@@ -1,9 +1,9 @@
 # Data Scene 애니메이션·지면 투영·태양 그림자
 
-#68~#70에서 추가한 공개 API이며 `0.1.0-beta.3`부터 제공한다.
-아래 `shape: "alpha"`는 #73 B2 후속 구현이며 **`0.1.0-beta.5`부터 제공한다**.
+애니메이션·지면 투영·태양 그림자의 기본 API는 `0.1.0-beta.3`부터 제공한다.
+아래 `shape: "alpha"`는 **`0.1.0-beta.5`부터 제공한다**.
 beta.4 이하에서는 ellipse/box를 사용하거나 패키지를 업그레이드한다.
-프레임별 시간·재생 방향·256프레임·재생 이벤트(PX-04)는 현재 개발 소스의 확장이다.
+프레임별 시간·재생 방향·256프레임·재생 이벤트는 현재 개발 소스의 확장이다.
 SDK와 함께 빌드한 v2 configure 지원 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 [native actor 조립](data-scene-native-runtime.md)에
 이어 적용한다. 초기 설치용 템플릿은 예제 게임이나 아래 recipe를 자동 생성하지 않는다.
@@ -356,13 +356,14 @@ A의 그림자가 주변광, 태양 additive, B 광원이나 기존 sprite 색�
 mask를 `m`이라 하면 해당 빛의 RGB 기여에 `mix([1,1,1], color.rgb, m)`을 곱한다.
 검정은 차폐, 흰색은 투과, 빨강은 빨간 성분의 투과를 뜻하며 새로운 빛을 방출하지 않는다.
 alpha 0은 차폐를 해제한다. 기존의 장면 전체에 색을 덧칠하던 결과와 달라지는 버그 수정이다.
-이 변경은 flat 표면색에 조도를 곱하는 albedo 모델을 추가하지 않는다. 기존 additive·노멀 반응,
+기본 overlay는 flat 표면색에 조도를 곱하는 albedo 모델이 아니다. 기존 additive·노멀 반응,
 지면 silhouette와 반투명 layer의 근사도 유지한다.
 
 따라서 검은 sprite나 빈 배경·투명 구멍도 후단 광원으로 밝아질 수 있다. 기본 `unlit` sprite 프리셋은
 이 전체 조명의 개별 수신 제외를 뜻하지 않는다. HUD를 제외하려면 조명 합성 뒤 `setLighting(false)`로
 별도 command를 제출하고, 두 제출이 끝난 뒤 `renderPostProcess()`로 최종 표시한다. 기존 legacy WebGL2 sRGB 이미지의 premultiplied 업로드와 WebGPU의 straight-alpha
-업로드 차이도 유지한다. 새 lit 수신 합성은 아직 미구현이며 [선행 설계·기준선](../development/architecture/flat-lighting-composition.md)에서 구분한다.
+업로드 차이도 유지한다. 개발 소스는 별도 opt-in lit 수신 합성과 HDR·Surface 재질도 지원한다.
+opaque/cutout receiver·선형 albedo·지원 조합은 [Flat 합성 계약](../development/architecture/flat-lighting-composition.md)을 따른다.
 
 WebGL2/WebGPU는 renderer마다 물리 타깃 크기의 R8 마스크 **한 장**을 재사용한다.
 DPR을 적용한 canvas 크기이며, pixelPerfect에서는 가상 framebuffer 크기다.

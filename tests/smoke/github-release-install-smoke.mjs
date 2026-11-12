@@ -30,7 +30,7 @@ try {
   assert.equal(manifest.release.tag, release.tag);
   report.release = { repository: release.repository, version: release.version, tag: release.tag };
   assert.equal(manifest.assets.length, 4);
-  const expectedUrls = new Set([release.generator, release.runtime, release.viewer, release.agents]);
+  const expectedUrls = new Set([release.generator, release.runtime, release.studioKit, release.agents]);
   const files = new Map();
   for (const asset of manifest.assets) {
     assert(expectedUrls.delete(asset.url), `Unexpected or duplicate asset URL: ${asset.url}`);
@@ -76,7 +76,7 @@ try {
   const packagePath = path.join(game, "package.json");
   const gamePackage = JSON.parse(await readFile(packagePath, "utf8"));
   assert.equal(gamePackage.dependencies["@ferrum2d/ferrum-web"], release.runtime);
-  assert.equal(gamePackage.dependencies["@ferrum2d/authoring-viewer"], release.viewer);
+  assert.equal(gamePackage.dependencies["@ferrum2d/studio-kit"], release.studioKit);
   assert.deepEqual(gamePackage.ferrumGithubRelease, manifest.release);
   assert(gamePackage.scripts["ferrum:agents"].includes(release.agents));
   report.checks.releaseDefaults = true;
@@ -85,18 +85,18 @@ try {
   // The exact generated GitHub URLs above are verified BEFORE replacing their
   // origin with the local fixture. This test never claims a live GitHub release.
   gamePackage.dependencies["@ferrum2d/ferrum-web"] = mirror(release.runtime);
-  gamePackage.dependencies["@ferrum2d/authoring-viewer"] = mirror(release.viewer);
+  gamePackage.dependencies["@ferrum2d/studio-kit"] = mirror(release.studioKit);
   gamePackage.scripts["ferrum:agents"] = gamePackage.scripts["ferrum:agents"].replace(release.agents, mirror(release.agents));
   await writeFile(packagePath, JSON.stringify(gamePackage, null, 2));
   await command(npm, ["install", "--no-audit", "--no-fund"], game);
   report.checks.install = true;
-  for (const name of ["ferrum-web", "authoring-viewer"]) {
+  for (const name of ["ferrum-web", "studio-kit"]) {
     const installed = JSON.parse(await readFile(path.join(game, "node_modules/@ferrum2d", name, "package.json"), "utf8"));
     assert.equal(installed.version, release.version);
   }
   await assert.rejects(stat(path.join(game, ".agents")), { code: "ENOENT" });
   const lock = JSON.parse(await readFile(path.join(game, "package-lock.json"), "utf8"));
-  for (const name of ["ferrum-web", "authoring-viewer"]) {
+  for (const name of ["ferrum-web", "studio-kit"]) {
     assert.match(lock.packages[`node_modules/@ferrum2d/${name}`].integrity, /^sha512-/);
   }
   report.checks.lockIntegrity = true;

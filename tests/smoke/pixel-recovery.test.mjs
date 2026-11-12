@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-const require=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url)),ts=require('typescript');
+const require=createRequire(new URL('../../apps/studio/package.json',import.meta.url)),ts=require('typescript');
 async function checkedImport(url) {
   try {return await import(url);} catch(error){process.exitCode=1;console.error('Pixel recovery test bootstrap failed:',String(error?.message??error).slice(0,160));throw error;}
 }
 async function moduleUrl(name,imports={}) {
-  let code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/'+name+'.ts',import.meta.url),'utf8'),{
+  let code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/'+name+'.ts',import.meta.url),'utf8'),{
     compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext},
   }).outputText;
   for(const [from,to]of Object.entries(imports))code=code.replaceAll(JSON.stringify(from),JSON.stringify(to));

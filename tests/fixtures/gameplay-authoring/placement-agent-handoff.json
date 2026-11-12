@@ -1,5 +1,5 @@
 {
-  "format": "ferrum2d.placement-viewer.agent-handoff",
+  "format": "ferrum2d.studio.agent-handoff",
   "version": 1,
   "workflow": "human-placement-agent-behavior",
   "placementOwner": "sceneComposition.fragments[].instances[]",

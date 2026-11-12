@@ -1,6 +1,6 @@
 # Flat 2D 조명 합성
 
-상태: 개발 소스의 M2-a opt-in lit 및 M3b Flat HDR·M4b Surface 구현. 기존 overlay는 기본값으로 유지한다.
+현재 개발 소스는 opt-in lit, Flat HDR와 Surface 재질을 지원한다. 기존 overlay는 기본값으로 유지한다.
 SDK와 함께 빌드한 sprite lighting v1 Wasm이 필요하며 기존 배포 버전의 지원으로 간주하지 않는다.
 현재 사용 계약은 [화면 표현](../../engine/data-scene-presentation.md#flat-점광원의-차폐-합성)을 따른다.
 
@@ -18,9 +18,9 @@ SDK와 함께 빌드한 sprite lighting v1 Wasm이 필요하며 기존 배포 �
 
 검은 표면이 밝아지는 현재 결과를 기존 계약의 버그로 처리하지 않는다. 새로운 합성의 필요성을 재현한 기준선이다.
 
-## M2-a의 수학과 색공간
+## lit의 수학과 색공간
 
-opaque 수신면의 초기 식은 다음과 같다. 연산은 채널별이며 최종 표시 변환 전 선형 공간에서 수행한다.
+opaque 수신면의 기본 식은 다음과 같다. 연산은 채널별이며 최종 표시 변환 전 선형 공간에서 수행한다.
 
 ```
 B = decode_sRGB(colorTexture.rgb) × linearTint.rgb
@@ -29,14 +29,14 @@ C = B × I
 ```
 
 - 색 텍스처의 sRGB decode는 한 번만 한다. `linear` 자산은 재해석하지 않고 data/normal/mask에는 색 변환을 하지 않는다.
-- 새 lit의 색 자산은 `loadTexture(..., {alphaMode:"straight"})`로 준비한다. 현재 WebGL2 legacy sRGB의 premultiplied 업로드 자산을
+- lit의 색 자산은 `loadTexture(..., {alphaMode:"straight"})`로 준비한다. 현재 WebGL2 legacy sRGB의 premultiplied 업로드 자산을
   그대로 straight RGB로 해석하지 않는다. renderer의 `prepareFlatLighting`을 authoring의 `flatLightingPreparer`로 전달하며, apply/restore는 활성화 전에 자산과 capability를 검사한다.
-- tint·광원·ambient의 조도 계수는 새 profile의 선형 값이다. 기존 legacy overlay 값을 무조건 이 식에 옮기지 않는다.
+- tint·광원·ambient의 조도 계수는 lit profile의 선형 값이다. 기존 legacy overlay 값을 무조건 이 식에 옮기지 않는다.
 - 점광원 color alpha는 기존처럼 해당 광원의 세기에 포함한다. 그림자 mask의 alpha와 receiver alpha를 혼동하지 않는다.
 - 노멀 미지정 수신면의 기준은 화면 앞쪽 `+Z`다. 광원 높이·방향과 내적하고 0 아래를 자른다.
   현재 unmapped overlay의 응답 1과 다르므로 기존 모드에 소급하지 않는다. atlas·회전·flip 변환은 기존 normal 계약을 재사용한다.
 - RGB visibility는 해당 광원에만 곱한다. 같은 차폐물이 겹쳐도 union mask이며 반복해서 장면색을 어둡게 하지 않는다.
-- 최종 sRGB encode는 출력 경로에 맞춰 한 번만 한다. 초기 M2-a는 SDR 출력이며 밝기가 1을 넘는 에너지 보존은 M3b HDR 범위다.
+- 최종 sRGB encode는 출력 경로에 맞춰 한 번만 한다. SDR 출력과 HDR 출력을 구분하며, 밝기가 1을 넘는 에너지 보존은 아래 Flat HDR 경로를 따른다.
 - 전역 `linear-srgb`와 lit 내부 선형 연산은 서로 다른 선택이다. 전역 모드도 양 backend를 지원하며
   실제 GPU 경로의 성공을 확인한다. fallback을 필수 WebGPU 검증의 성공으로 세지 않는다.
 
@@ -55,9 +55,9 @@ C = B × I
 
 ## Receiver·alpha·HUD 경계
 
-- 초기 lit 수신 대상은 명시한 opaque와 cutout이다. cutout은 작성한 alpha cutoff로 discard/opaque coverage를 결정한다.
+- lit 수신 대상은 명시한 opaque와 cutout이다. cutout은 작성한 alpha cutoff로 discard/opaque coverage를 결정한다.
   discard된 픽셀은 빛을 더하지 않으며 그 아래 표면/배경을 보존한다.
-- 반투명 다중 layer의 정상적인 광학 합성과 additive 발광은 초기 수광 범위에서 제외한다.
+- 반투명 다중 layer의 정상적인 광학 합성과 additive 발광은 현재 수광 범위에서 제외한다.
   해당 객체는 명시적 수광 제외 후 별도 pass로 표시한다. 지원하지 않는 receiver 조합은 장면 활성화 전에 진단으로 거절한다.
 - receiver 선택은 collider·layer 이름·normalTexture 존재 여부·프리셋의 `unlit` 문자열로 자동 추론하지 않는다.
   caster 선택과 receiver 선택도 별개다. Rust의 정렬된 command와 정합하는 선택 sidecar가 필요하면 version/stride/길이·범위를 명시한다.
@@ -120,7 +120,7 @@ Rust는 명시적 수광 metadata를 world/snapshot/prototype에 보관하고 sp
 TS는 원래 색상 draw, normal/coverage/weighted-albedo의 3 MRT, RGBA16F 조도 누적,
 기존 수광 색 제거와 새 기여 추가의 2 fullscreen pass를 소유한다. 합성은 RGB만 쓰므로 원래 목적지 alpha는 유지한다.
 명시적 unlit 전경은 아래 수광 기여를 source-over alpha로 가린다. 임의의 여러 반투명 수광층을 정확히 따로 조명하는 경로는 아니다.
-receiver는 opaque/cutout만 지원한다. primitive/tile/particle/text는 초기 수광 대상이 아니다.
+receiver는 opaque/cutout만 지원한다. primitive/tile/particle/text는 현재 수광 대상이 아니다.
 
 활성 scratch는 physical pixel당20 bytes(3×RGBA8 + RGBA16F)이며 광원별/태양 차폐 mask는 별도다.
 활성 receiver가 없거나 `{profile:"lit", enabled:false}`이면 추가 data/lighting/composite pass와 scratch target은 없다.
@@ -135,7 +135,7 @@ OFF identity/비용, warm 자원 plateau, resize 복귀와 WebGPU device recover
 CPU 값은 submit+완료대기+readback 시간이며 실제 GPU timer나 FPS 보장이 아니다.
 
 Spatial의 선택형 성분 분리·효과 순서는 [별도 합성 계약](spatial-lighting-composition.md)을 따른다.
-실게임·실기기 예산은 [조명 품질 계획](../../planning/lighting-quality-upgrade-plan.md)의 개발 완료 후 검증 범위다.
+실게임·실기기 예산은 [조명 수용 검증](../../planning/feature-candidates.md#조명-수용-검증)에서 관리한다.
 
 
 ## 선택형 Flat HDR 출력

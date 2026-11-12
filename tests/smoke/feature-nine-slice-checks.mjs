@@ -11,8 +11,8 @@ export async function checkNineSliceFixtureGeneration() {
   try {
     for (const file of ['scripts/assets/build-feature-examples.mjs', 'scripts/assets/build-hd2d-feature-scenes.mjs', 'scripts/assets/lighting-quality-model.mjs', 'scripts/assets/build-shadow-comparison.mjs', 'scripts/assets/shadow-comparison-models.mjs', 'scripts/tools/pack-textures.mjs',
       'examples/starter-runtime/public/playground/floor.png',
-      'apps/placement-viewer/public/assets/lantern-garden/atlas.png', 'apps/placement-viewer/public/assets/lantern-garden/manifest.json',
-      'apps/placement-viewer/public/assets/rpg-village/cart.glb', 'apps/placement-viewer/public/assets/rpg-village/lamp.glb']) {
+      'apps/studio/public/assets/lantern-garden/atlas.png', 'apps/studio/public/assets/lantern-garden/manifest.json',
+      'apps/studio/public/assets/rpg-village/cart.glb', 'apps/studio/public/assets/rpg-village/lamp.glb']) {
       await mkdir(dirname(join(root, file)), {recursive:true}); await copyFile(resolve(file), join(root, file));
     }
     execFileSync(process.execPath, [join(root, 'scripts/assets/build-feature-examples.mjs')], {cwd:root,timeout:15000,stdio:'pipe'});

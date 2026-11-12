@@ -40,7 +40,7 @@ Use the checks that match the changed contract:
 pnpm validate:game-spec
 pnpm test:web
 pnpm --filter @ferrum2d/ferrum-web test
-pnpm smoke:placement-viewer
+pnpm smoke:studio
 pnpm validate:public-api-surface
 ```
 

@@ -3,10 +3,10 @@ import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {encodePngRgba} from '../../scripts/tools/pack-textures.mjs';
-const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
-const code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementPixelImport.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
+const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementPixelImport.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {convertPixelImport:convert,inspectPixelImportPng:inspect,fitPixelImportSize:fit,PIXEL_IMPORT_LIMITS:limits}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
-const transferCode=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementPixelImportTransfer.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const transferCode=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementPixelImportTransfer.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {pixelImportTransferFile:transferFile}=await import('data:text/javascript;base64,'+Buffer.from(transferCode).toString('base64'));
 test('paste/drop accepts exactly one PNG and preserves its bytes for importer validation',()=>{
   for(const file of [new File(['image bytes'],'clipboard',{type:'image/png'}),new File(['image bytes'],'art.PNG')]) assert.equal(transferFile([file]),file);

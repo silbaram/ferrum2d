@@ -15,13 +15,13 @@ import {
   tileMapFixture,
 } from "./tile-import-fixtures.mjs";
 const require = createRequire(
-    new URL("../../apps/placement-viewer/package.json", import.meta.url),
+    new URL("../../apps/studio/package.json", import.meta.url),
   ),
   ts = require("typescript");
 async function source(file, replacements = []) {
   let code = ts.transpileModule(
     await readFile(
-      new URL("../../apps/placement-viewer/src/" + file, import.meta.url),
+      new URL("../../apps/studio/src/" + file, import.meta.url),
       "utf8",
     ),
     {
