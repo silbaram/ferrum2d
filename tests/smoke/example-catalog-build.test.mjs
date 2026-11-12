@@ -23,8 +23,8 @@ async function fixture() {
   }
   for (const entry of publicEntries) await put(join(entry.source,'index.html'), '<!doctype html><html><head><title>Fixture</title></head><body></body></html>');
   await put('docs/README.md', '# Fixture docs\n');
-  await put('apps/placement-viewer/public/fonts/notice.txt', 'Fixture notice');
-  await put('apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2', 'Fixture font');
+  await put('apps/studio/public/fonts/notice.txt', 'Fixture notice');
+  await put('apps/studio/src/fonts/NotoSansKR-UI.woff2', 'Fixture font');
   await put('dist-pages/previous-build.txt', 'last successful build');
   return root;
 }

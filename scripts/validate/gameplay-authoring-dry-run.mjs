@@ -23,7 +23,7 @@ import {
 
 const REPORT_FORMAT = "ferrum2d.gameplay-authoring.dry-run-report";
 const REPORT_VERSION = 1;
-const PLACEMENT_HANDOFF_FORMAT = "ferrum2d.placement-viewer.agent-handoff";
+const PLACEMENT_HANDOFF_FORMAT = "ferrum2d.studio.agent-handoff";
 const PLACEMENT_HANDOFF_VERSION = 1;
 const VARIANT_FORMAT = "ferrum2d.topdown-shooter.authored-behavior-variant";
 const VARIANT_VERSION = 1;

@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  FERRUM_AUTHORING_VIEWER_OWNERSHIP,
-  createAuthoringViewerBehaviorBindingEvidence,
-} from "@ferrum2d/authoring-viewer";
+  FERRUM_STUDIO_KIT_OWNERSHIP,
+  createStudioKitBehaviorBindingEvidence,
+} from "@ferrum2d/studio-kit";
 import {
   assertCoverageTagDefinitions,
   assertCoverageTagGroups,
@@ -171,11 +171,11 @@ async function printReport(config) {
   const reports = diagnostics.map((entry) => reportFromDiagnostic(config, entry));
   const report = {
     format: "ferrum2d.consumer.project.report",
-    version: 1,
+    version: 2,
     ok: diagnostics.length === 0,
     project: {
       packageName: result.packageName,
-      authoringViewer: result.packageJson.dependencies?.["@ferrum2d/authoring-viewer"] ?? null,
+      studioKit: result.packageJson.dependencies?.["@ferrum2d/studio-kit"] ?? null,
       ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
       scripts: result.packageJson.scripts ?? {},
       files: {
@@ -188,7 +188,7 @@ async function printReport(config) {
       runtimeInputs: config.runtimeInputs,
       deployment: deploymentSurface(result.packageJson),
       checks: {
-        hasAuthoringViewerDependency: result.hasAuthoringViewerDependency,
+        hasStudioKitDependency: result.hasStudioKitDependency,
         hasFerrumDependency: result.hasFerrumDependency,
         internalImports: result.internalImports,
         rootAggregateImports: result.rootAggregateImports,
@@ -347,7 +347,7 @@ async function inspectProject(config) {
   const result = {
     packageName: packageJson.name,
     packageJson,
-    hasAuthoringViewerDependency: packageJson.dependencies?.["@ferrum2d/authoring-viewer"] !== undefined,
+    hasStudioKitDependency: packageJson.dependencies?.["@ferrum2d/studio-kit"] !== undefined,
     hasFerrumDependency: packageJson.dependencies?.["@ferrum2d/ferrum-web"] !== undefined,
     hasMainSource,
     internalImports: [...mainSource.matchAll(/from\s+["'](@ferrum2d\/ferrum-web\/(?:dist|pkg|src)\/[^"']*)["']/g)]
@@ -439,8 +439,8 @@ function validationDiagnostics(config, result, { requireGameSpec }) {
   if (!result.hasFerrumDependency) {
     diagnostics.push(diagnostic("package.json.dependencies.@ferrum2d/ferrum-web", "package.json must depend on @ferrum2d/ferrum-web", config));
   }
-  if (!result.hasAuthoringViewerDependency) {
-    diagnostics.push(diagnostic("package.json.dependencies.@ferrum2d/authoring-viewer", "package.json must depend on @ferrum2d/authoring-viewer", config));
+  if (!result.hasStudioKitDependency) {
+    diagnostics.push(diagnostic("package.json.dependencies.@ferrum2d/studio-kit", "package.json must depend on @ferrum2d/studio-kit", config));
   }
   if (!result.hasMainSource) {
     diagnostics.push(diagnostic("src/main.ts", "src/main.ts is required", config));
@@ -606,7 +606,7 @@ function recommendedCommands() {
     "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
-    "npm run ferrum:placement-viewer",
+    "npm run ferrum:studio",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
@@ -656,7 +656,7 @@ function scenePlacementAuthoringSummary(applied, classifySceneInstance) {
   }
 
   return {
-    ...FERRUM_AUTHORING_VIEWER_OWNERSHIP,
+    ...FERRUM_STUDIO_KIT_OWNERSHIP,
     fragment: applied.plan.fragment,
     instanceCount: applied.plan.instances.length,
     instances: applied.plan.instances.map((instance) => {
@@ -676,7 +676,7 @@ function scenePlacementAuthoringSummary(applied, classifySceneInstance) {
         behaviorBindings: classification.behaviorProfiles.map((recipeId) => {
           const recipeBindings = bindings.filter((binding) => binding.behaviorEntity === recipeId);
           return {
-            ...createAuthoringViewerBehaviorBindingEvidence({
+            ...createStudioKitBehaviorBindingEvidence({
               instanceId: instance.id,
               recipeId,
               commandCount: recipeBindings.length,

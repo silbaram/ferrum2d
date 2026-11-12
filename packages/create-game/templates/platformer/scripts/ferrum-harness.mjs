@@ -101,7 +101,7 @@ function templateSummary(result) {
     hasFerrumDependency: result.hasFerrumDependency,
     hasMainSource: result.hasMainSource,
     authoringSurface: result.authoringSurface,
-    scripts: ["ferrum:placement-viewer", "ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
+    scripts: ["ferrum:studio", "ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
   };
 }
 

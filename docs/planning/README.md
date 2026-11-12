@@ -13,7 +13,7 @@
 
 도트 제작의 현재 계약은
 [Scene Authoring](../engine/data-scene-authoring.md#에디터-내장-도트-제작)과
-앱 안내(`apps/placement-viewer/README.md`)를 따른다.
+앱 안내(`apps/studio/README.md`)를 따른다.
 
 ## 다음 개선 추천
 

@@ -1,5 +1,10 @@
 # Ferrum2D Public API
 
+Shared Studio UI helpers live in the separate `@ferrum2d/studio-kit` package. Its public helper/type names
+use `StudioKit`, and constants use `FERRUM_STUDIO_KIT`. This package contains neither the standalone
+Studio app nor the engine runtime. See the [Studio Kit contract (Korean)](../../development/operations/npm-package-strategy.md).
+The engine's `ScenePlacementViewer` API remains a scene placement capability under `/authoring`.
+
 [한국어](../../engine/public-api.md) · English
 
 Use the package's public subpaths in game projects. They separate runtime, authoring, starters, optional features, and quality tooling.

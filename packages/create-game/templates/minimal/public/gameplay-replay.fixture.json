@@ -89,7 +89,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
-                  "ferrum:placement-viewer",
+                  "ferrum:studio",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -98,9 +98,9 @@
               }
             }
           },
-          "snapshotHash": "8939c0eb"
+          "snapshotHash": "0ade3741"
         },
-        "replayHash": "8939c0eb"
+        "replayHash": "0ade3741"
       },
       {
         "frame": 1,
@@ -178,7 +178,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
-                  "ferrum:placement-viewer",
+                  "ferrum:studio",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -187,11 +187,11 @@
               }
             }
           },
-          "snapshotHash": "922eeba7"
+          "snapshotHash": "41a455b1"
         },
-        "replayHash": "922eeba7"
+        "replayHash": "41a455b1"
       }
     ],
-    "replayHash": "a102336f"
+    "replayHash": "233c5bc9"
   }
 }

@@ -9,7 +9,7 @@ import {
   decodePng,
 } from "../../scripts/tools/pack-textures.mjs";
 import { sha256 } from "../../scripts/tools/sprite-normals-tool.mjs";
-import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
+import { placementNormalGeneratorPlugin } from "../../apps/studio/server/normalGenerator.mjs";
 import { showPlacementBottom, showPlacementAssetPanel, clickPlacementToolAction, inspectPlacementAsset } from "./placement-panel-navigation.mjs";
 import { animatedGif, animatedApng } from "./sprite-normal-media-fixtures.mjs";
 import { mergeScenePlacementPatch } from "../../packages/ferrum-web/dist/authoring.js";
@@ -20,7 +20,7 @@ const artifact = resolve(
 );
 await mkdir(artifact, { recursive: true });
 const run = await mkdtemp(resolve(artifact, "run-")),
-  app = await preparePlacementTestBuild(resolve("apps/placement-viewer/dist"), { save: true });
+  app = await preparePlacementTestBuild(resolve("apps/studio/dist"), { save: true });
 const source = {
   format: "ferrum2d.consumer.scene-authoring",
   version: 1,

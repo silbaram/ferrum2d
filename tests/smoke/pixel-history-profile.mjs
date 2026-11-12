@@ -8,8 +8,8 @@ if(!/^[a-z0-9-]+$/.test(label))throw Error('Invalid profile label');
 const directory='artifacts/pixel-history';await mkdir(directory,{recursive:true});
 const report={ok:false,label,environment:{node:process.version,platform:process.platform,gc:!!globalThis.gc},
   allocationScope:'Uint8Array explicit new allocations and slice copies during synchronous model operations; excludes strings, metadata, other typed arrays and VM allocations. Memory samples are process observations, not total allocation or browser performance.',
-  sourceSha256:createHash('sha256').update(await readFile('apps/placement-viewer/src/placementPixelDocument.ts')).digest('hex'),cases:[]};
-try { report.historySha256=createHash('sha256').update(await readFile('apps/placement-viewer/src/placementPixelHistory.ts')).digest('hex'); } catch(error) { if(error.code!=='ENOENT')throw error; }
+  sourceSha256:createHash('sha256').update(await readFile('apps/studio/src/placementPixelDocument.ts')).digest('hex'),cases:[]};
+try { report.historySha256=createHash('sha256').update(await readFile('apps/studio/src/placementPixelHistory.ts')).digest('hex'); } catch(error) { if(error.code!=='ENOENT')throw error; }
 const save=()=>writeFile(directory+'/'+label+'.json',JSON.stringify(report,null,2)+'\n');await save();
 const Native=Uint8Array,slice=Native.prototype.slice;let allocated=0;
 function measure(run){

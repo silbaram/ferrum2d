@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Ferrum Example UI";
-  src: url("../../apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2") format("woff2");
+  src: url("../../apps/studio/src/fonts/NotoSansKR-UI.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }

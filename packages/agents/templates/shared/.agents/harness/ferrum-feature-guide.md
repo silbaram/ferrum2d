@@ -91,7 +91,7 @@
 | 픽셀 지형 일부 지우기 | `/labs` `createPixelMaskTerrain`, `createPixelMaskTerrainRuntime` | alpha patch와 collider 갱신 보조 기능. 대규모 파괴 지형은 별도 범위/성능 검증 필요 | [Labs][labs] |
 | 오류·성능·replay 확인 | `/quality` `RuntimeProfiler`, `diagnosticReport`, `createGameplayReplayRun`, `compareGameplayReplayRuns` | 실제 metric·시드·입력·snapshot을 기록. report 생성과 플레이 경험 검수 구분 | [Quality][quality] |
 
-오브젝트 배치를 눈으로 확인할 때는 프로젝트에 준비된 `ferrum:placement-viewer`와 authoring report를
+오브젝트 배치를 눈으로 확인할 때는 프로젝트에 준비된 `ferrum:studio`와 authoring report를
 사용한다. 위치·visual/collider/layer·ObjectDefinition·기존 recipe 참조를 다루는 보조 도구이며,
 행동/FSM 본문을 편집하는 전체 visual editor는 아니다. 설치만 요청받았을 때 추가하지 않는다.
 

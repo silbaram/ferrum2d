@@ -62,7 +62,7 @@ WebGPU is optional; the default renderer is WebGL2.
 | Example | What it demonstrates | Local command |
 | --- | --- | --- |
 | [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) | Start with the 31 focused experiments | `pnpm dev:starter-runtime` |
-| [Ferrum2D Studio](https://silbaram.github.io/ferrum2d/placement-viewer/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:placement-viewer` |
+| [Ferrum2D Studio](https://silbaram.github.io/ferrum2d/studio/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:studio` |
 | [Physics Sandbox](https://silbaram.github.io/ferrum2d/physics-sandbox/) | Seven focused Physics Spec scenarios and native diagnostics | `pnpm dev:physics-sandbox` |
 | [Top-down Shooter](https://silbaram.github.io/ferrum2d/topdown-shooter/) | Neon Outpost pixel arena, three enemy waves, native HUD, pause/restart, lighting settings, and mobile controls | `pnpm dev:topdown` |
 | [Breakout](https://silbaram.github.io/ferrum2d/breakout/) | Reflection, collision events, scoring, and particles | `pnpm dev:breakout` |
@@ -78,7 +78,7 @@ for saving boundaries and the distinction between the editor camera and game cam
 2. Run `npm run ferrum:agents` in the generated project to install its agent instructions.
 3. Run `npm run ferrum:check` and inspect `npm run ferrum:report` for the project's runtime inputs.
 4. Edit specifications, assets, or bootstrap code through [public APIs](public-api.md).
-5. Validate and inspect the actual browser result. Use `npm run ferrum:placement-viewer` when placement review is useful.
+5. Validate and inspect the actual browser result. Use `npm run ferrum:studio` when placement review is useful.
 
 For engine-source regression coverage, use the [Smoke Check reference (Korean)](../../development/quality/smoke-check.md).
 The Feature Lab's maintained browser check is `pnpm smoke:feature-examples`.

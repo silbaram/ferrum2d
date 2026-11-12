@@ -1,0 +1,2072 @@
+mod aseprite_assets;
+mod aseprite_trim;
+mod asset_cleanup;
+mod asset_files;
+mod checked_save;
+mod normal_assets;
+mod pixel_assets;
+mod png_layout;
+mod scene_catalog;
+mod sprite_assets;
+mod tile_assets;
+pub mod updates;
+
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
+    fmt, fs,
+    hash::Hasher,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
+
+use serde::{Serialize, Serializer};
+use serde_json::Value;
+#[cfg(feature = "desktop")]
+use tauri::{Manager, State};
+
+type CommandResult<T> = Result<T, PlacementDesktopError>;
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn inspect_placement_asset_cleanup(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupReport> {
+    asset_cleanup::inspect(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn apply_placement_asset_cleanup(
+    project_path: String,
+    request: asset_cleanup::CleanupRequest,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupResult> {
+    asset_cleanup::apply(Path::new(&project_path), request, &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn list_placement_asset_cleanup_backups(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Vec<asset_cleanup::BackupSummary>> {
+    asset_cleanup::list_backups(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn restore_placement_asset_cleanup(
+    project_path: String,
+    backup_id: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<asset_cleanup::CleanupResult> {
+    asset_cleanup::restore(Path::new(&project_path), &backup_id, &write_registry)
+}
+
+const AGENT_HANDOFF_FORMAT: &str = "ferrum2d.studio.agent-handoff";
+const PROJECT_ASSET_FOLDER: &str = "public/assets";
+const PROJECT_HANDOFF_FILE: &str = ".ferrum-placement-handoff.json";
+const PROJECT_SCENE_DOCUMENT_CANDIDATES: &[&str] = &[
+    "public/scene-authoring.json",
+    "public/placement.scene-authoring.json",
+];
+const ACCESS_CONTROL_ALLOW_ORIGIN_VALUE: &str = "*";
+const RUNTIME_ASSET_PROTOCOL: &str = "ferrum-asset";
+const SCENE_AUTHORING_FORMAT: &str = "ferrum2d.consumer.scene-authoring";
+const MAX_SCENE_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024;
+const SCENE_DOCUMENT_ENV_VAR: &str = "FERRUM_PLACEMENT_SCENE_DOCUMENT";
+const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["gif", "jpeg", "jpg", "png", "webp"];
+const TEXTURE_ATLAS_INPUT_FILE: &str = "texture-atlas.input.json";
+const MAX_REGISTERED_ASSET_REVISIONS: usize = 16_384;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementSceneDocumentResponse {
+    path: String,
+    document: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementProjectDocumentResponse {
+    project_path: String,
+    scene_document_path: String,
+    handoff_path: String,
+    asset_folder: PlacementAssetFolderResponse,
+    document: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAgentHandoffResponse {
+    path: String,
+    handoff: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderResponse {
+    asset_folder_path: String,
+    exists: bool,
+    image_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    texture_atlas_input_path: Option<String>,
+    images: Vec<PlacementAssetFolderImage>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    models: Vec<PlacementAssetFolderImage>,
+    diagnostics: Vec<PlacementAssetFolderDiagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderImage {
+    id: String,
+    file_name: String,
+    path: String,
+    runtime_url: String,
+    content_revision: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderDiagnostic {
+    severity: &'static str,
+    code: &'static str,
+    path: String,
+    message: String,
+}
+
+#[derive(Debug)]
+pub enum PlacementDesktopError {
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Json {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
+    InvalidDocumentPath(String),
+    InvalidDocument(String),
+    SceneReadLimit,
+    InvalidAssetFolderPath(String),
+    InvalidProjectPath(String),
+    InvalidHandoff(String),
+    WriteRegistryUnavailable,
+}
+
+#[derive(Debug, Default)]
+pub struct PlacementAssetRegistry {
+    assets: Mutex<HashMap<String, RegisteredPlacementAsset>>,
+}
+
+#[derive(Debug, Default)]
+pub struct PlacementWriteRegistry {
+    scene_save_lock: Mutex<()>,
+    scene_documents: Mutex<HashSet<PathBuf>>,
+    projects: Mutex<HashSet<PathBuf>>,
+    asset_projects: Mutex<HashSet<PathBuf>>,
+}
+
+#[derive(Debug, Clone)]
+struct RegisteredPlacementAsset {
+    asset_root: PathBuf,
+    path: PathBuf,
+    mime_type: &'static str,
+    content_revision: Option<String>,
+}
+
+impl fmt::Display for PlacementDesktopError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { path, source } => write!(formatter, "{}: {}", path.display(), source),
+            Self::Json { path, source } => {
+                write!(formatter, "{}: invalid JSON: {}", path.display(), source)
+            }
+            Self::InvalidDocumentPath(detail) => {
+                write!(formatter, "invalid placement scene document path: {detail}")
+            }
+            Self::InvalidDocument(detail) => {
+                write!(formatter, "invalid placement scene document: {detail}")
+            }
+            Self::SceneReadLimit => write!(formatter, "placement scene read limit exceeded"),
+            Self::InvalidAssetFolderPath(detail) => {
+                write!(formatter, "invalid placement asset folder path: {detail}")
+            }
+            Self::InvalidProjectPath(detail) => {
+                write!(formatter, "invalid placement project folder: {detail}")
+            }
+            Self::InvalidHandoff(detail) => {
+                write!(formatter, "invalid placement agent handoff: {detail}")
+            }
+            Self::WriteRegistryUnavailable => {
+                write!(formatter, "placement write allowlist is unavailable")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PlacementDesktopError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io { source, .. } => Some(source),
+            Self::Json { source, .. } => Some(source),
+            Self::InvalidDocumentPath(_) => None,
+            Self::InvalidDocument(_) => None,
+            Self::SceneReadLimit => None,
+            Self::InvalidAssetFolderPath(_) => None,
+            Self::InvalidProjectPath(_) => None,
+            Self::InvalidHandoff(_) => None,
+            Self::WriteRegistryUnavailable => None,
+        }
+    }
+}
+
+impl Serialize for PlacementDesktopError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_project_folder(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementProjectDocumentResponse> {
+    load_placement_project_folder_inner(project_path, Some(&asset_registry), Some(&write_registry))
+}
+
+fn load_placement_project_folder_inner(
+    project_path: String,
+    asset_registry: Option<&PlacementAssetRegistry>,
+    write_registry: Option<&PlacementWriteRegistry>,
+) -> CommandResult<PlacementProjectDocumentResponse> {
+    let project_path = canonical_write_path(&parse_project_path(&project_path)?)?;
+    let scene_document_path = canonical_write_path(&project_scene_document_path(&project_path)?)?;
+    let document = read_scene_document(&scene_document_path)?;
+    let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
+    let asset_folder =
+        inspect_asset_folder_path(&project_asset_folder_path(&project_path), asset_registry)?;
+    if let Some(write_registry) = write_registry {
+        write_registry.authorize_project(&project_path)?;
+        write_registry.authorize_scene_document(&scene_document_path)?;
+    }
+    Ok(PlacementProjectDocumentResponse {
+        project_path: project_path.display().to_string(),
+        scene_document_path: scene_document_path.display().to_string(),
+        handoff_path: handoff_path.display().to_string(),
+        asset_folder,
+        document,
+    })
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn inspect_placement_asset_folder(
+    asset_folder_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+) -> CommandResult<PlacementAssetFolderResponse> {
+    let path = parse_asset_folder_path(&asset_folder_path)?;
+    inspect_asset_folder_path(&path, Some(&asset_registry))
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_scene_document(
+    scene_document_path: Option<String>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    load_placement_scene_document_inner(scene_document_path, Some(&write_registry))
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn list_placement_project_scenes(
+    project_path: String,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<scene_catalog::SceneCatalog> {
+    scene_catalog::list_project_scenes(Path::new(&project_path), &write_registry)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn inspect_placement_project_scene(
+    project_path: String,
+    scene_document_path: String,
+    max_bytes: Option<usize>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<scene_catalog::SceneRead> {
+    scene_catalog::inspect_project_scene(
+        Path::new(&project_path),
+        Path::new(&scene_document_path),
+        &write_registry,
+        max_bytes,
+    )
+}
+
+fn load_placement_scene_document_inner(
+    scene_document_path: Option<String>,
+    write_registry: Option<&PlacementWriteRegistry>,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    let path = canonical_write_path(&resolve_scene_document_path(
+        scene_document_path.as_deref(),
+    )?)?;
+    let document = read_scene_document(&path)?;
+    if let Some(write_registry) = write_registry {
+        write_registry.authorize_scene_document(&path)?;
+    }
+    Ok(PlacementSceneDocumentResponse {
+        path: path.display().to_string(),
+        document,
+    })
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_agent_handoff(
+    project_path: Option<String>,
+    scene_document_path: Option<String>,
+    handoff: Value,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    save_placement_agent_handoff_inner(project_path, scene_document_path, handoff, &write_registry)
+}
+
+fn save_placement_agent_handoff_inner(
+    project_path: Option<String>,
+    scene_document_path: Option<String>,
+    handoff: Value,
+    write_registry: &PlacementWriteRegistry,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    validate_agent_handoff(&handoff)?;
+    let project_path =
+        resolve_handoff_project_path(project_path.as_deref(), scene_document_path.as_deref())?;
+    let project_path = write_registry.require_project(&project_path)?;
+    let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
+    write_agent_handoff(&handoff_path, handoff)
+}
+
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_scene_document(
+    scene_document_path: Option<String>,
+    document: Value,
+    expected_document: Value,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    save_placement_scene_document_inner(
+        scene_document_path,
+        document,
+        expected_document,
+        &write_registry,
+    )
+}
+
+fn save_placement_scene_document_inner(
+    scene_document_path: Option<String>,
+    document: Value,
+    expected_document: Value,
+    write_registry: &PlacementWriteRegistry,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    let path = resolve_scene_document_path(scene_document_path.as_deref())?;
+    let path = write_registry.require_scene_document(&path)?;
+    let _save = write_registry
+        .scene_save_lock
+        .lock()
+        .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+    let document = checked_save::save_checked(&path, document, &expected_document)?;
+    Ok(PlacementSceneDocumentResponse {
+        path: path.display().to_string(),
+        document,
+    })
+}
+
+/// Restore editable pixel sources from a project opened by this host.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_pixel_assets(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    pixel_assets::load_inner(Path::new(&project_path), &asset_registry, &write_registry)
+}
+
+/// Save editable pixel sources before persisting scene references.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_pixel_assets(
+    project_path: String,
+    bundle: Value,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    pixel_assets::save_inner(
+        Path::new(&project_path),
+        &bundle,
+        &asset_registry,
+        &write_registry,
+    )
+}
+
+/// Restore immutable Aseprite sources from a project opened by this host.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_aseprite_assets(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    aseprite_assets::load_inner(Path::new(&project_path), &asset_registry, &write_registry)
+}
+
+/// Persist atlas sources and catalog before the caller saves scene references.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_aseprite_assets(
+    project_path: String,
+    bundle: Value,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    aseprite_assets::save_inner(
+        Path::new(&project_path),
+        &bundle,
+        &asset_registry,
+        &write_registry,
+    )
+}
+
+/// Restore original tile sources from an explicitly opened project.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_tile_assets(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    tile_assets::load_inner(Path::new(&project_path), &asset_registry, &write_registry)
+}
+/// Persist immutable tile sources before scene references.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_tile_assets(
+    project_path: String,
+    bundle: Value,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    tile_assets::save_inner(
+        Path::new(&project_path),
+        &bundle,
+        &asset_registry,
+        &write_registry,
+    )
+}
+
+/// Load verified generated normal pairs from an explicitly opened project.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn load_placement_normal_assets(
+    project_path: String,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    normal_assets::load_inner(Path::new(&project_path), &asset_registry, &write_registry)
+}
+
+/// Persist ordered provenance and immutable PNGs before scene references are saved.
+#[cfg(feature = "desktop")]
+#[tauri::command]
+pub fn save_placement_normal_assets(
+    project_path: String,
+    metadata_json: String,
+    files: Vec<Value>,
+    asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<Value> {
+    normal_assets::save_inner(
+        Path::new(&project_path),
+        &metadata_json,
+        &files,
+        &asset_registry,
+        &write_registry,
+    )
+}
+
+#[cfg(feature = "desktop")]
+pub fn placement_asset_protocol_response<R: tauri::Runtime>(
+    context: tauri::UriSchemeContext<'_, R>,
+    request: http::Request<Vec<u8>>,
+) -> http::Response<Vec<u8>> {
+    if request.method() == http::Method::OPTIONS {
+        return placement_asset_options_response();
+    }
+    if request.method() != http::Method::GET && request.method() != http::Method::HEAD {
+        return placement_asset_error_response(http::StatusCode::METHOD_NOT_ALLOWED);
+    }
+    let registry = context.app_handle().state::<PlacementAssetRegistry>();
+    match registry.asset_for_request(request.uri()) {
+        Ok(asset) => asset_response(&asset, request.method() == http::Method::GET),
+        Err(status) => placement_asset_error_response(status),
+    }
+}
+
+fn write_agent_handoff(
+    path: &Path,
+    handoff: Value,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(PlacementDesktopError::InvalidHandoff(format!(
+                "{} must not be a symbolic link",
+                path.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => {
+            return Err(PlacementDesktopError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    }
+    let json =
+        serde_json::to_string_pretty(&handoff).map_err(|source| PlacementDesktopError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    fs::write(path, format!("{json}\n")).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(PlacementAgentHandoffResponse {
+        path: path.display().to_string(),
+        handoff,
+    })
+}
+
+fn read_scene_document(path: &Path) -> CommandResult<Value> {
+    match read_scene_document_snapshot(path, MAX_SCENE_DOCUMENT_BYTES as usize) {
+        Ok((document, _)) => Ok(document),
+        Err(PlacementDesktopError::SceneReadLimit) => Err(PlacementDesktopError::InvalidDocument(
+            "Document exceeds 2 MiB".into(),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_scene_document_snapshot(path: &Path, max_bytes: usize) -> CommandResult<(Value, usize)> {
+    let file = fs::File::open(path).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let mut source = Vec::new();
+    file.take(max_bytes as u64 + 1)
+        .read_to_end(&mut source)
+        .map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if source.len() > max_bytes {
+        return Err(PlacementDesktopError::SceneReadLimit);
+    }
+    let document =
+        serde_json::from_slice::<Value>(&source).map_err(|source| PlacementDesktopError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    validate_scene_document(&document)?;
+    Ok((document, source.len()))
+}
+
+#[cfg(test)]
+fn write_scene_document(path: &Path, document: Value) -> CommandResult<Value> {
+    validate_scene_document(&document)?;
+    let json =
+        serde_json::to_string_pretty(&document).map_err(|source| PlacementDesktopError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    fs::write(path, format!("{json}\n")).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(document)
+}
+
+fn validate_agent_handoff(handoff: &Value) -> CommandResult<()> {
+    if handoff.get("format").and_then(Value::as_str) != Some(AGENT_HANDOFF_FORMAT) {
+        return Err(PlacementDesktopError::InvalidHandoff(
+            "format must be ferrum2d.studio.agent-handoff".to_string(),
+        ));
+    }
+    if handoff.get("version").and_then(Value::as_i64) != Some(1) {
+        return Err(PlacementDesktopError::InvalidHandoff(
+            "version must be 1".to_string(),
+        ));
+    }
+    if handoff.get("assetDiagnostics").is_some_and(Value::is_array) {
+        return Ok(());
+    }
+    Err(PlacementDesktopError::InvalidHandoff(
+        "assetDiagnostics must be an array".to_string(),
+    ))
+}
+
+fn validate_scene_document(document: &Value) -> CommandResult<()> {
+    let format = document.get("format").and_then(Value::as_str);
+    if format != Some(SCENE_AUTHORING_FORMAT) {
+        return Err(PlacementDesktopError::InvalidDocument(
+            "format must be ferrum2d.consumer.scene-authoring".to_string(),
+        ));
+    }
+    if document.get("version").and_then(Value::as_i64) != Some(1) {
+        return Err(PlacementDesktopError::InvalidDocument(
+            "version must be 1".to_string(),
+        ));
+    }
+    if !document
+        .get("sceneComposition")
+        .is_some_and(Value::is_object)
+    {
+        return Err(PlacementDesktopError::InvalidDocument(
+            "sceneComposition must be an object".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_handoff_project_path(
+    project_path: Option<&str>,
+    scene_document_path: Option<&str>,
+) -> CommandResult<PathBuf> {
+    if let Some(project_path) = project_path {
+        return parse_project_path(project_path);
+    }
+    let scene_document_path = match scene_document_path {
+        Some(path) => parse_scene_document_path(path)?,
+        None => sample_scene_document_path(),
+    };
+    Ok(infer_project_path_from_scene_document(&scene_document_path))
+}
+
+fn resolve_scene_document_path(path: Option<&str>) -> CommandResult<PathBuf> {
+    let env_path = std::env::var(SCENE_DOCUMENT_ENV_VAR).ok();
+    resolve_scene_document_path_with_env(path, env_path.as_deref())
+}
+
+fn resolve_scene_document_path_with_env(
+    path: Option<&str>,
+    env_path: Option<&str>,
+) -> CommandResult<PathBuf> {
+    if let Some(path) = path {
+        return parse_scene_document_path(path);
+    }
+    if let Some(path) = env_path {
+        return parse_scene_document_path(path);
+    }
+    Ok(sample_scene_document_path())
+}
+
+fn parse_scene_document_path(path: &str) -> CommandResult<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(PlacementDesktopError::InvalidDocumentPath(
+            "path must not be empty".to_string(),
+        ));
+    }
+    Ok(PathBuf::from(path))
+}
+
+fn parse_project_path(path: &str) -> CommandResult<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(PlacementDesktopError::InvalidProjectPath(
+            "path must not be empty".to_string(),
+        ));
+    }
+    let path = PathBuf::from(path);
+    let metadata = fs::metadata(&path).map_err(|source| PlacementDesktopError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    if !metadata.is_dir() {
+        return Err(PlacementDesktopError::InvalidProjectPath(format!(
+            "{} is not a directory",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+fn parse_asset_folder_path(path: &str) -> CommandResult<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(PlacementDesktopError::InvalidAssetFolderPath(
+            "path must not be empty".to_string(),
+        ));
+    }
+    Ok(PathBuf::from(path))
+}
+
+fn project_scene_document_path(project_path: &Path) -> CommandResult<PathBuf> {
+    for candidate in PROJECT_SCENE_DOCUMENT_CANDIDATES {
+        let path = project_path.join(candidate);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    Err(PlacementDesktopError::InvalidProjectPath(format!(
+        "{} must contain public/scene-authoring.json",
+        project_path.display()
+    )))
+}
+
+fn project_asset_folder_path(project_path: &Path) -> PathBuf {
+    project_path.join(PROJECT_ASSET_FOLDER)
+}
+
+fn inspect_asset_folder_path(
+    path: &Path,
+    asset_registry: Option<&PlacementAssetRegistry>,
+) -> CommandResult<PlacementAssetFolderResponse> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            asset_registry.map(PlacementAssetRegistry::clear);
+            return Ok(PlacementAssetFolderResponse {
+                asset_folder_path: path.display().to_string(),
+                exists: false,
+                image_count: 0,
+                texture_atlas_input_path: None,
+                images: Vec::new(),
+                models: Vec::new(),
+                diagnostics: vec![PlacementAssetFolderDiagnostic {
+                    severity: "error",
+                    code: "missingAssetFolder",
+                    path: "assetFolder".to_string(),
+                    message: format!("{} does not exist", path.display()),
+                }],
+            });
+        }
+        Err(source) => {
+            asset_registry.map(PlacementAssetRegistry::clear);
+            return Err(PlacementDesktopError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    if !metadata.is_dir() {
+        asset_registry.map(PlacementAssetRegistry::clear);
+        return Ok(PlacementAssetFolderResponse {
+            asset_folder_path: path.display().to_string(),
+            exists: false,
+            image_count: 0,
+            texture_atlas_input_path: None,
+            images: Vec::new(),
+            models: Vec::new(),
+            diagnostics: vec![PlacementAssetFolderDiagnostic {
+                severity: "error",
+                code: "notDirectoryAssetFolder",
+                path: "assetFolder".to_string(),
+                message: format!("{} is not a directory", path.display()),
+            }],
+        });
+    }
+    let canonical_asset_root = path
+        .canonicalize()
+        .map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(path).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let entry_path = entry.path();
+        let is_model = entry_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"));
+        if !entry_path.is_file() || (!is_supported_image_path(&entry_path) && !is_model) {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let base_id = entry_path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| file_name.clone());
+        let canonical_path =
+            entry_path
+                .canonicalize()
+                .map_err(|source| PlacementDesktopError::Io {
+                    path: entry_path.clone(),
+                    source,
+                })?;
+        if !canonical_path.starts_with(&canonical_asset_root) {
+            continue;
+        }
+        let mime_type = if is_model {
+            "model/gltf-binary"
+        } else {
+            image_mime_type(&entry_path).unwrap_or("application/octet-stream")
+        };
+        candidates.push((file_name, base_id, canonical_path, mime_type, is_model));
+    }
+    candidates.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut used_ids = HashSet::new();
+    let mut registry_assets = HashMap::new();
+    let mut images = Vec::new();
+    let mut models = Vec::new();
+    for (file_name, base_id, canonical_path, mime_type, is_model) in candidates {
+        let id = unique_asset_id(&base_id, &mut used_ids);
+        let runtime_url = placement_runtime_asset_url(&id);
+        let content_revision = placement_asset_revision(&canonical_path)?;
+        let registered = RegisteredPlacementAsset {
+            asset_root: canonical_asset_root.clone(),
+            path: canonical_path.clone(),
+            mime_type,
+            content_revision: Some(content_revision.clone()),
+        };
+        registry_assets.insert(format!("@{content_revision}/{id}"), registered.clone());
+        let registered = RegisteredPlacementAsset {
+            content_revision: None,
+            ..registered
+        };
+        registry_assets.insert(id.clone(), registered);
+        let asset = PlacementAssetFolderImage {
+            id,
+            file_name,
+            path: canonical_path.display().to_string(),
+            runtime_url,
+            content_revision,
+        };
+        if is_model {
+            models.push(asset);
+        } else {
+            images.push(asset);
+        }
+    }
+    if let Some(asset_registry) = asset_registry {
+        asset_registry.replace(registry_assets)?;
+    }
+    let texture_atlas_input_path = path.join(TEXTURE_ATLAS_INPUT_FILE);
+    Ok(PlacementAssetFolderResponse {
+        asset_folder_path: path.display().to_string(),
+        exists: true,
+        image_count: images.len(),
+        texture_atlas_input_path: texture_atlas_input_path
+            .is_file()
+            .then(|| texture_atlas_input_path.display().to_string()),
+        images,
+        models,
+        diagnostics: Vec::new(),
+    })
+}
+
+impl PlacementAssetRegistry {
+    fn replace(&self, assets: HashMap<String, RegisteredPlacementAsset>) -> CommandResult<()> {
+        let mut current = self
+            .assets
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+        let retained = current
+            .keys()
+            .filter(|id| id.starts_with('@') && !assets.contains_key(*id))
+            .count();
+        if retained + assets.len() > MAX_REGISTERED_ASSET_REVISIONS {
+            return Err(PlacementDesktopError::InvalidAssetFolderPath(
+                "asset revision budget exhausted; reopen the desktop host".to_string(),
+            ));
+        }
+        current.retain(|id, _| id.starts_with('@'));
+        current.extend(assets);
+        Ok(())
+    }
+
+    fn clear(&self) {
+        if let Ok(mut current) = self.assets.lock() {
+            current.retain(|id, _| id.starts_with('@'));
+        }
+    }
+
+    fn asset_for_request(
+        &self,
+        uri: &http::Uri,
+    ) -> Result<RegisteredPlacementAsset, http::StatusCode> {
+        let Some(mut asset_id) = placement_asset_id_from_uri(uri) else {
+            return Err(http::StatusCode::BAD_REQUEST);
+        };
+        if let Some(revision) = uri.query().and_then(|query| {
+            query
+                .split('&')
+                .find_map(|part| part.strip_prefix("revision="))
+        }) {
+            if revision.len() != 16 || !revision.bytes().all(|value| value.is_ascii_hexdigit()) {
+                return Err(http::StatusCode::BAD_REQUEST);
+            }
+            asset_id = format!("@{revision}/{asset_id}");
+        }
+        let assets = self
+            .assets
+            .lock()
+            .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+        assets
+            .get(&asset_id)
+            .cloned()
+            .ok_or(http::StatusCode::NOT_FOUND)
+    }
+}
+
+/// Session cache fingerprint, including source path. This is not a security digest or model contentId.
+fn placement_asset_revision(path: &Path) -> CommandResult<String> {
+    let read_error = |source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    };
+    let mut file = fs::File::open(path).map_err(read_error)?;
+    let mut hash = DefaultHasher::new();
+    hash.write(path.to_string_lossy().as_bytes());
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = file.read(&mut buffer).map_err(read_error)?;
+        if count == 0 {
+            break;
+        }
+        hash.write(&buffer[..count]);
+    }
+    Ok(format!("{:016x}", hash.finish()))
+}
+
+impl PlacementWriteRegistry {
+    fn authorize_scene_document(&self, path: &Path) -> CommandResult<()> {
+        let canonical_path = canonical_write_path(path)?;
+        let canonical_project_path =
+            canonical_write_path(&infer_project_path_from_scene_document(&canonical_path))?;
+        let mut scene_documents = self
+            .scene_documents
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+        let mut projects = self
+            .projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+        scene_documents.insert(canonical_path);
+        projects.insert(canonical_project_path);
+        Ok(())
+    }
+
+    fn authorize_project(&self, path: &Path) -> CommandResult<()> {
+        let canonical_path = canonical_write_path(path)?;
+        self.projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .insert(canonical_path.clone());
+        self.asset_projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .insert(canonical_path);
+        Ok(())
+    }
+
+    fn require_asset_project(&self, path: &Path) -> CommandResult<PathBuf> {
+        let canonical = self.require_project(path)?;
+        if !self
+            .asset_projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .contains(&canonical)
+        {
+            return Err(PlacementDesktopError::InvalidProjectPath(
+                "Open Project before accessing project assets or scenes".to_owned(),
+            ));
+        }
+        Ok(canonical)
+    }
+
+    fn require_scene_document(&self, path: &Path) -> CommandResult<PathBuf> {
+        let canonical_path = canonical_write_path(path)?;
+        let authorized = self
+            .scene_documents
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .contains(&canonical_path);
+        if !authorized {
+            return Err(PlacementDesktopError::InvalidDocumentPath(format!(
+                "{} was not opened by the desktop host",
+                path.display()
+            )));
+        }
+        Ok(canonical_path)
+    }
+
+    fn require_project(&self, path: &Path) -> CommandResult<PathBuf> {
+        let canonical_path = canonical_write_path(path)?;
+        let authorized = self
+            .projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .contains(&canonical_path);
+        if !authorized {
+            return Err(PlacementDesktopError::InvalidProjectPath(format!(
+                "{} was not opened by the desktop host",
+                path.display()
+            )));
+        }
+        Ok(canonical_path)
+    }
+}
+
+fn canonical_write_path(path: &Path) -> CommandResult<PathBuf> {
+    path.canonicalize()
+        .map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
+fn asset_response(asset: &RegisteredPlacementAsset, include_body: bool) -> http::Response<Vec<u8>> {
+    let canonical_path = match asset.path.canonicalize() {
+        Ok(path) if path == asset.path && path.starts_with(&asset.asset_root) => path,
+        _ => return placement_asset_error_response(http::StatusCode::NOT_FOUND),
+    };
+    let body = if include_body {
+        fs::read(&canonical_path)
+    } else {
+        fs::metadata(&canonical_path).map(|_| Vec::new())
+    };
+    match body {
+        Ok(bytes) => {
+            if let Some(expected) = &asset.content_revision {
+                let actual = if include_body {
+                    let mut hash = DefaultHasher::new();
+                    hash.write(canonical_path.to_string_lossy().as_bytes());
+                    for chunk in bytes.chunks(8192) {
+                        hash.write(chunk);
+                    }
+                    Ok(format!("{:016x}", hash.finish()))
+                } else {
+                    placement_asset_revision(&canonical_path)
+                };
+                if actual.as_ref().ok() != Some(expected) {
+                    return placement_asset_error_response(http::StatusCode::CONFLICT);
+                }
+            }
+            placement_asset_response_builder(http::StatusCode::OK)
+                .header(http::header::CONTENT_TYPE, asset.mime_type)
+                .header(http::header::CACHE_CONTROL, "no-store")
+                .body(bytes)
+                .expect("placement asset response should build")
+        }
+        Err(_) => placement_asset_error_response(http::StatusCode::NOT_FOUND),
+    }
+}
+
+fn placement_asset_options_response() -> http::Response<Vec<u8>> {
+    placement_asset_response_builder(http::StatusCode::NO_CONTENT)
+        .body(Vec::new())
+        .expect("empty placement asset options response should build")
+}
+
+fn placement_asset_error_response(status: http::StatusCode) -> http::Response<Vec<u8>> {
+    placement_asset_response_builder(status)
+        .header(http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(Vec::new())
+        .expect("empty placement asset error response should build")
+}
+
+fn placement_asset_response_builder(status: http::StatusCode) -> http::response::Builder {
+    http::Response::builder()
+        .status(status)
+        .header(
+            http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            ACCESS_CONTROL_ALLOW_ORIGIN_VALUE,
+        )
+        .header(
+            http::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, HEAD, OPTIONS",
+        )
+        .header(http::header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
+}
+
+fn placement_asset_id_from_uri(uri: &http::Uri) -> Option<String> {
+    let path = uri.path().trim_start_matches('/');
+    let scheme = uri.scheme_str();
+    let host = uri.host();
+    let raw_id = if scheme == Some(RUNTIME_ASSET_PROTOCOL) && host == Some("project") {
+        path
+    } else if (scheme == Some(RUNTIME_ASSET_PROTOCOL) && host == Some("localhost"))
+        || (matches!(scheme, Some("http" | "https")) && host == Some("ferrum-asset.localhost"))
+    {
+        path.strip_prefix("project/")?
+    } else {
+        return None;
+    };
+    percent_decode(raw_id)
+}
+
+fn unique_asset_id(base_id: &str, used_ids: &mut HashSet<String>) -> String {
+    let trimmed = base_id.trim();
+    let base = if trimmed.is_empty() { "asset" } else { trimmed };
+    if used_ids.insert(base.to_string()) {
+        return base.to_string();
+    }
+    for index in 2..10_000 {
+        let candidate = format!("{base}_{index}");
+        if used_ids.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    format!("{base}_{}", used_ids.len() + 1)
+}
+
+fn placement_runtime_asset_url(asset_id: &str) -> String {
+    format!(
+        "{RUNTIME_ASSET_PROTOCOL}://localhost/project/{}",
+        percent_encode_path_segment(asset_id)
+    )
+}
+
+fn image_mime_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_str()?;
+    if extension.eq_ignore_ascii_case("gif") {
+        return Some("image/gif");
+    }
+    if extension.eq_ignore_ascii_case("jpeg") || extension.eq_ignore_ascii_case("jpg") {
+        return Some("image/jpeg");
+    }
+    if extension.eq_ignore_ascii_case("png") {
+        return Some("image/png");
+    }
+    if extension.eq_ignore_ascii_case("webp") {
+        return Some("image/webp");
+    }
+    None
+}
+
+fn percent_encode_path_segment(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    let mut bytes = Vec::new();
+    let mut index = 0;
+    let source = value.as_bytes();
+    while index < source.len() {
+        if source[index] != b'%' {
+            bytes.push(source[index]);
+            index += 1;
+            continue;
+        }
+        if index + 2 >= source.len() {
+            return None;
+        }
+        let hex = std::str::from_utf8(&source[index + 1..index + 3]).ok()?;
+        let byte = u8::from_str_radix(hex, 16).ok()?;
+        bytes.push(byte);
+        index += 3;
+    }
+    String::from_utf8(bytes).ok()
+}
+
+fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            SUPPORTED_IMAGE_EXTENSIONS
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+}
+
+fn infer_project_path_from_scene_document(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if parent.file_name().and_then(|name| name.to_str()) == Some("public") {
+        return parent
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| parent.to_path_buf());
+    }
+    parent.to_path_buf()
+}
+
+fn sample_scene_document_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../studio/public/placement.garden.scene-authoring.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn regression_scene_document_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/placement.scene-authoring.json")
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ferrum-studio-desktop-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    fn create_project_fixture(name: &str) -> (PathBuf, Value) {
+        let project_path = unique_temp_dir(name);
+        let public_path = project_path.join("public");
+        fs::create_dir_all(&public_path).expect("project public directory should be created");
+        let document = read_scene_document(&regression_scene_document_path())
+            .expect("sample scene document should load");
+        write_scene_document(&public_path.join("scene-authoring.json"), document.clone())
+            .expect("project scene document should be written");
+        (project_path, document)
+    }
+
+    #[test]
+    fn project_alias_returns_canonical_document_identity() {
+        let (root, _) = create_project_fixture("canonical-project-identity");
+        let registry = PlacementWriteRegistry::default();
+        let response = load_placement_project_folder_inner(
+            root.join(".").to_string_lossy().into_owned(),
+            None,
+            Some(&registry),
+        )
+        .unwrap();
+        let canonical = root.canonicalize().unwrap();
+        assert_eq!(response.project_path, canonical.to_string_lossy());
+        assert_eq!(
+            response.scene_document_path,
+            canonical
+                .join("public/scene-authoring.json")
+                .to_string_lossy()
+        );
+        #[cfg(unix)]
+        {
+            let alias = root.with_extension("alias");
+            std::os::unix::fs::symlink(&root, &alias).unwrap();
+            let linked = load_placement_project_folder_inner(
+                alias.to_string_lossy().into_owned(),
+                None,
+                Some(&registry),
+            )
+            .unwrap();
+            assert_eq!(linked.scene_document_path, response.scene_document_path);
+            fs::remove_file(alias).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn create_project_asset_fixture(name: &str) -> PathBuf {
+        let project_path = unique_temp_dir(name);
+        let asset_path = project_path.join(PROJECT_ASSET_FOLDER);
+        fs::create_dir_all(&asset_path).expect("project asset directory should be created");
+        fs::write(asset_path.join("atlas.png"), b"png").expect("png fixture should be written");
+        fs::write(asset_path.join("ship.WEBP"), b"webp").expect("webp fixture should be written");
+        fs::write(asset_path.join("notes.txt"), b"ignore").expect("text fixture should be written");
+        fs::write(asset_path.join(TEXTURE_ATLAS_INPUT_FILE), b"{}")
+            .expect("atlas input fixture should be written");
+        project_path
+    }
+
+    fn assert_placement_asset_cors_headers(response: &http::Response<Vec<u8>>) {
+        assert_eq!(
+            response
+                .headers()
+                .get(http::header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            Some(&http::HeaderValue::from_static(
+                ACCESS_CONTROL_ALLOW_ORIGIN_VALUE
+            ))
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(http::header::ACCESS_CONTROL_ALLOW_METHODS),
+            Some(&http::HeaderValue::from_static("GET, HEAD, OPTIONS"))
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(http::header::ACCESS_CONTROL_ALLOW_HEADERS),
+            Some(&http::HeaderValue::from_static("*"))
+        );
+    }
+
+    fn sample_handoff() -> Value {
+        json!({
+            "format": AGENT_HANDOFF_FORMAT,
+            "version": 1,
+            "workflow": "human-placement-agent-behavior",
+            "placementOwner": "sceneComposition.fragments[].instances[]",
+            "behaviorOwner": "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+            "selectedInstanceId": "crate_left",
+            "assetDiagnostics": []
+        })
+    }
+
+    fn registry_asset_ids(registry: &PlacementAssetRegistry) -> Vec<String> {
+        let assets = registry.assets.lock().expect("registry should lock");
+        let mut ids = assets
+            .keys()
+            .filter(|id| !id.starts_with('@'))
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn loads_sample_scene_document() {
+        let response = load_placement_scene_document_inner(None, None)
+            .expect("sample scene document should load");
+        assert!(response
+            .path
+            .ends_with("placement.garden.scene-authoring.json"));
+        assert_eq!(
+            response.document.get("format").and_then(Value::as_str),
+            Some(SCENE_AUTHORING_FORMAT)
+        );
+    }
+
+    #[test]
+    fn loads_scene_document_from_explicit_path() {
+        let source = read_scene_document(&regression_scene_document_path())
+            .expect("sample scene document should load");
+        let path = std::env::temp_dir().join(format!(
+            "ferrum-studio-desktop-load-test-{}.json",
+            std::process::id()
+        ));
+        write_scene_document(&path, source.clone()).expect("scene document fixture should save");
+
+        let response = load_placement_scene_document_inner(Some(path.display().to_string()), None)
+            .expect("explicit scene document should load");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(response.path, path.display().to_string());
+        assert_eq!(response.document, source);
+    }
+
+    #[test]
+    fn rejects_empty_scene_document_path() {
+        let error = resolve_scene_document_path_with_env(Some("  "), None)
+            .expect_err("empty scene document path should be rejected");
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidDocumentPath(_)
+        ));
+    }
+
+    #[test]
+    fn explicit_path_wins_over_environment_path() {
+        let explicit_path = PathBuf::from("/tmp/ferrum-explicit.scene-authoring.json");
+        let env_path = PathBuf::from("/tmp/ferrum-env.scene-authoring.json");
+
+        let resolved = resolve_scene_document_path_with_env(
+            Some(explicit_path.to_str().expect("path should be valid utf-8")),
+            Some(env_path.to_str().expect("path should be valid utf-8")),
+        )
+        .expect("explicit path should resolve");
+
+        assert_eq!(resolved, explicit_path);
+    }
+
+    #[test]
+    fn environment_path_is_used_before_sample_fallback() {
+        let env_path = PathBuf::from("/tmp/ferrum-env.scene-authoring.json");
+
+        let resolved = resolve_scene_document_path_with_env(
+            None,
+            Some(env_path.to_str().expect("path should be valid utf-8")),
+        )
+        .expect("environment path should resolve");
+
+        assert_eq!(resolved, env_path);
+    }
+
+    #[test]
+    fn writes_scene_document_to_path() {
+        let source = load_placement_scene_document_inner(None, None)
+            .expect("sample scene document should load")
+            .document;
+        let path = std::env::temp_dir().join(format!(
+            "ferrum-studio-desktop-save-test-{}.json",
+            std::process::id()
+        ));
+        let written =
+            write_scene_document(&path, source.clone()).expect("scene document should save");
+        let loaded = read_scene_document(&path).expect("saved scene document should reload");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(written, source);
+        assert_eq!(loaded, source);
+    }
+
+    #[test]
+    fn save_command_writes_explicit_scene_document_path() {
+        let source = read_scene_document(&regression_scene_document_path())
+            .expect("sample scene document should load");
+        let path = std::env::temp_dir().join(format!(
+            "ferrum-studio-desktop-command-save-test-{}.json",
+            std::process::id()
+        ));
+
+        write_scene_document(&path, source.clone()).expect("scene document fixture should save");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(path.display().to_string()),
+            Some(&write_registry),
+        )
+        .expect("explicit scene document should be authorized by loading it");
+        let response = save_placement_scene_document_inner(
+            Some(path.display().to_string()),
+            source.clone(),
+            source.clone(),
+            &write_registry,
+        )
+        .expect("explicit scene document should save");
+        let loaded = read_scene_document(&path).expect("saved scene document should reload");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(response.path, path.display().to_string());
+        assert_eq!(response.document, source);
+        assert_eq!(loaded, source);
+    }
+
+    #[test]
+    fn checked_save_preserves_external_edit_and_rejects_stale_baseline() {
+        let (project, source) = create_project_fixture("save-conflict");
+        let path = project.join("public/scene-authoring.json");
+        let mut external = source.clone();
+        external["metadata"] = json!({ "writer": "agent" });
+        let bytes = serde_json::to_string_pretty(&external).expect("fixture serializes");
+        fs::write(&path, &bytes).expect("external edit writes");
+        let error = checked_save::save_checked(&path, source.clone(), &source)
+            .expect_err("stale baseline must fail");
+        assert!(error.to_string().contains("changed on disk"));
+        assert_eq!(fs::read_to_string(&path).expect("file reads"), bytes);
+        assert_eq!(
+            fs::read_dir(path.parent().expect("parent"))
+                .expect("directory reads")
+                .count(),
+            1
+        );
+        fs::remove_dir_all(project).expect("fixture cleans up");
+    }
+
+    #[test]
+    fn checked_save_accepts_semantic_baseline_and_rejects_a_second_stale_save() {
+        let (project, source) = create_project_fixture("save-baseline");
+        let path = project.join("public/scene-authoring.json");
+        fs::write(
+            &path,
+            serde_json::to_string(&source).expect("fixture serializes"),
+        )
+        .expect("compact file writes");
+        let mut changed = source.clone();
+        changed["metadata"] = json!({ "writer": "editor" });
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+                .expect("fixture permissions set");
+        }
+        checked_save::save_checked(&path, changed.clone(), &source)
+            .expect("matching baseline saves");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path)
+                    .expect("metadata reads")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        assert_eq!(
+            read_scene_document(&path).expect("saved file reads"),
+            changed
+        );
+        checked_save::save_checked(&path, source.clone(), &source)
+            .expect_err("old baseline is stale");
+        checked_save::save_checked(&path, source.clone(), &changed).expect("fresh baseline saves");
+        assert_eq!(
+            read_scene_document(&path).expect("saved file reads"),
+            source
+        );
+        assert_eq!(
+            fs::read_dir(path.parent().expect("parent"))
+                .expect("directory reads")
+                .count(),
+            1
+        );
+        fs::remove_dir_all(project).expect("fixture cleans up");
+    }
+
+    #[test]
+    fn checked_save_accepts_browser_number_normalization_without_hiding_integer_changes() {
+        let (project, mut source) = create_project_fixture("save-numeric-baseline");
+        let path = project.join("public/scene-authoring.json");
+        source["metadata"] = json!({ "numbers": [1.0, -0.0] });
+        write_scene_document(&path, source.clone()).expect("float fixture writes");
+        let mut browser = source.clone();
+        browser["metadata"] = json!({ "numbers": [1, 0] });
+        checked_save::save_checked(&path, browser.clone(), &browser)
+            .expect("JSON.stringify number normalization must not cause a conflict");
+
+        source["metadata"] = json!({ "numbers": [9_007_199_254_740_993_u64] });
+        write_scene_document(&path, source).expect("large integer fixture writes");
+        browser["metadata"] = json!({ "numbers": [9_007_199_254_740_992.0] });
+        checked_save::save_checked(&path, browser.clone(), &browser)
+            .expect_err("rounding must not hide a different large integer");
+        fs::remove_dir_all(project).expect("fixture cleans up");
+    }
+
+    #[test]
+    fn checked_save_rejects_invalid_input_without_changing_file() {
+        let (project, source) = create_project_fixture("save-invalid");
+        let path = project.join("public/scene-authoring.json");
+        let bytes = fs::read(&path).expect("fixture reads");
+        checked_save::save_checked(&path, json!({}), &source)
+            .expect_err("invalid document rejected");
+        checked_save::save_checked(&path, source, &Value::Null)
+            .expect_err("missing baseline rejected");
+        assert_eq!(fs::read(&path).expect("file reads"), bytes);
+        fs::remove_dir_all(project).expect("fixture cleans up");
+    }
+
+    #[test]
+    fn checked_save_rejects_pretty_json_above_read_limit_and_preserves_original() {
+        let (project, mut source) = create_project_fixture("save-size");
+        let path = project.join("public/scene-authoring.json");
+        source["behaviorRecipes"] = json!({"entities":{}});
+        source["sceneComposition"]["fragments"]["main"]["instances"] = Value::Array((0..6000).map(|i| json!({
+            "id":format!("crate_{i}"), "prefab":"crate", "x":i % 100, "y":i / 100,
+            "props":{"components":{"visual":{"kind":"primitive","shape":"rect","width":32,"height":32,"color":"#aa8833"},"collider":"none","layer":"wall"}}
+        })).collect());
+        let compact = serde_json::to_vec(&source).unwrap();
+        assert!(compact.len() < MAX_SCENE_DOCUMENT_BYTES as usize);
+        assert!(
+            serde_json::to_vec_pretty(&source).unwrap().len() > MAX_SCENE_DOCUMENT_BYTES as usize
+        );
+        fs::write(&path, &compact).unwrap();
+        let mut edited = source.clone();
+        edited["sceneComposition"]["fragments"]["main"]["instances"][0]["x"] = json!(1);
+        let error = checked_save::save_checked(&path, edited, &source).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Serialized scene document exceeds 2 MiB"));
+        assert_eq!(fs::read(&path).unwrap(), compact);
+        assert_eq!(read_scene_document(&path).unwrap(), source);
+        assert!(fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".ferrum-scene-save-")));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn save_command_rejects_scene_document_that_was_not_opened() {
+        let (project_path, source) = create_project_fixture("unauthorized-scene-save");
+        let unauthorized_path = project_path.join("public/other.scene-authoring.json");
+        write_scene_document(&unauthorized_path, source.clone())
+            .expect("unauthorized scene fixture should save");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(
+                project_path
+                    .join("public/scene-authoring.json")
+                    .display()
+                    .to_string(),
+            ),
+            Some(&write_registry),
+        )
+        .expect("primary scene document should be authorized");
+
+        let error = save_placement_scene_document_inner(
+            Some(unauthorized_path.display().to_string()),
+            source.clone(),
+            source,
+            &write_registry,
+        )
+        .expect_err("a sibling scene document must not inherit write access");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidDocumentPath(_)
+        ));
+    }
+
+    #[test]
+    fn loads_scene_document_from_project_folder() {
+        let (project_path, source) = create_project_fixture("project-load");
+
+        let response =
+            load_placement_project_folder_inner(project_path.display().to_string(), None, None)
+                .expect("project folder should load");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(response.project_path, project_path.display().to_string());
+        assert_eq!(
+            response.scene_document_path,
+            project_path
+                .join("public/scene-authoring.json")
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            response.handoff_path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            response.asset_folder.asset_folder_path,
+            project_path
+                .join(PROJECT_ASSET_FOLDER)
+                .display()
+                .to_string()
+        );
+        assert!(!response.asset_folder.exists);
+        let serialized = serde_json::to_value(&response).expect("project response serializes");
+        assert!(serialized["assetFolder"]
+            .get("textureAtlasInputPath")
+            .is_none());
+        assert_eq!(response.document, source);
+    }
+
+    #[test]
+    fn inspects_project_asset_folder() {
+        let project_path = create_project_asset_fixture("asset-folder");
+
+        let registry = PlacementAssetRegistry::default();
+        let response =
+            inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER), Some(&registry))
+                .expect("asset folder should inspect");
+
+        assert!(response.exists);
+        assert_eq!(response.image_count, 2);
+        assert_eq!(
+            response
+                .texture_atlas_input_path
+                .as_deref()
+                .expect("atlas input path should be returned"),
+            project_path
+                .join(PROJECT_ASSET_FOLDER)
+                .join(TEXTURE_ATLAS_INPUT_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            response
+                .images
+                .iter()
+                .map(|image| image.file_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["atlas.png", "ship.WEBP"]
+        );
+        assert_eq!(
+            response
+                .images
+                .iter()
+                .map(|image| image.runtime_url.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "ferrum-asset://localhost/project/atlas",
+                "ferrum-asset://localhost/project/ship"
+            ]
+        );
+        assert_eq!(registry_asset_ids(&registry), vec!["atlas", "ship"]);
+        let asset = registry
+            .asset_for_request(
+                &"ferrum-asset://project/ship"
+                    .parse::<http::Uri>()
+                    .expect("asset uri should parse"),
+            )
+            .expect("registered asset should resolve");
+        let get_response = asset_response(&asset, true);
+        assert_eq!(get_response.status(), http::StatusCode::OK);
+        assert_placement_asset_cors_headers(&get_response);
+        assert_eq!(
+            get_response.headers().get(http::header::CONTENT_TYPE),
+            Some(&http::HeaderValue::from_static("image/webp"))
+        );
+        assert_eq!(get_response.body(), b"webp");
+        let head_response = asset_response(&asset, false);
+        assert_eq!(head_response.status(), http::StatusCode::OK);
+        assert!(head_response.body().is_empty());
+        let _ = fs::remove_dir_all(&project_path);
+    }
+
+    #[test]
+    fn asset_revisions_keep_source_folders_isolated_and_reject_changed_bytes() {
+        let first = create_project_asset_fixture("revision-first");
+        let second = create_project_asset_fixture("revision-second");
+        let registry = PlacementAssetRegistry::default();
+        let before = inspect_asset_folder_path(&first.join(PROJECT_ASSET_FOLDER), Some(&registry))
+            .expect("first folder");
+        let image = &before.images[0];
+        let uri = format!("{}?revision={}", image.runtime_url, image.content_revision)
+            .parse::<http::Uri>()
+            .expect("revision URI");
+        let initial = registry.asset_for_request(&uri).expect("first source");
+        assert_eq!(
+            asset_response(&initial, true).status(),
+            http::StatusCode::OK
+        );
+        let unchanged =
+            inspect_asset_folder_path(&first.join(PROJECT_ASSET_FOLDER), Some(&registry))
+                .expect("same folder");
+        assert_eq!(unchanged.images[0].content_revision, image.content_revision);
+        inspect_asset_folder_path(&second.join(PROJECT_ASSET_FOLDER), Some(&registry))
+            .expect("second folder");
+        assert_eq!(
+            registry
+                .asset_for_request(&uri)
+                .expect("retained first source")
+                .path,
+            initial.path
+        );
+        fs::write(&initial.path, b"changed").expect("change asset bytes");
+        assert_eq!(
+            asset_response(&initial, true).status(),
+            http::StatusCode::CONFLICT
+        );
+        let changed = inspect_asset_folder_path(&first.join(PROJECT_ASSET_FOLDER), Some(&registry))
+            .expect("changed folder");
+        assert_ne!(changed.images[0].content_revision, image.content_revision);
+        fs::write(first.join(PROJECT_ASSET_FOLDER).join("rock.glb"), b"glb")
+            .expect("model fixture");
+        let with_model =
+            inspect_asset_folder_path(&first.join(PROJECT_ASSET_FOLDER), Some(&registry))
+                .expect("model folder");
+        assert_eq!(with_model.models.len(), 1);
+        assert_eq!(with_model.models[0].id, "rock");
+        assert_eq!(with_model.image_count, before.image_count);
+        let model_uri = with_model.models[0]
+            .runtime_url
+            .parse::<http::Uri>()
+            .expect("model uri");
+        let model = registry
+            .asset_for_request(&model_uri)
+            .expect("model resource");
+        assert_eq!(model.mime_type, "model/gltf-binary");
+        let _ = fs::remove_dir_all(first);
+        let _ = fs::remove_dir_all(second);
+    }
+
+    #[test]
+    fn placement_asset_protocol_supports_fetch_cors_preflight_and_errors() {
+        let options_response = placement_asset_options_response();
+        assert_eq!(options_response.status(), http::StatusCode::NO_CONTENT);
+        assert_placement_asset_cors_headers(&options_response);
+
+        let error_response = placement_asset_error_response(http::StatusCode::NOT_FOUND);
+        assert_eq!(error_response.status(), http::StatusCode::NOT_FOUND);
+        assert_placement_asset_cors_headers(&error_response);
+        assert_eq!(
+            error_response.headers().get(http::header::CONTENT_TYPE),
+            Some(&http::HeaderValue::from_static("text/plain; charset=utf-8"))
+        );
+    }
+
+    #[test]
+    fn placement_asset_id_accepts_native_protocol_url_shapes() {
+        let direct_uri = "ferrum-asset://localhost/project/ship%20one"
+            .parse::<http::Uri>()
+            .expect("direct asset uri should parse");
+        assert_eq!(
+            placement_asset_id_from_uri(&direct_uri).as_deref(),
+            Some("ship one")
+        );
+
+        let legacy_direct_uri = "ferrum-asset://project/ship%20one"
+            .parse::<http::Uri>()
+            .expect("legacy direct asset uri should parse");
+        assert_eq!(
+            placement_asset_id_from_uri(&legacy_direct_uri).as_deref(),
+            Some("ship one")
+        );
+
+        let localhost_proxy_uri = "http://ferrum-asset.localhost/project/ship%20one"
+            .parse::<http::Uri>()
+            .expect("localhost proxy asset uri should parse");
+        assert_eq!(
+            placement_asset_id_from_uri(&localhost_proxy_uri).as_deref(),
+            Some("ship one")
+        );
+
+        let unrelated_uri = "https://example.com/project/ship%20one"
+            .parse::<http::Uri>()
+            .expect("unrelated uri should parse");
+        assert_eq!(placement_asset_id_from_uri(&unrelated_uri), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn registered_asset_rejects_path_replaced_by_external_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let project_path = create_project_asset_fixture("asset-symlink-swap");
+        let asset_path = project_path.join(PROJECT_ASSET_FOLDER).join("atlas.png");
+        let external_path = unique_temp_dir("external-asset").with_extension("png");
+        fs::write(&external_path, b"external").expect("external asset fixture should be written");
+        let registry = PlacementAssetRegistry::default();
+        inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER), Some(&registry))
+            .expect("asset folder should inspect");
+        fs::remove_file(&asset_path).expect("registered asset should be removed");
+        symlink(&external_path, &asset_path).expect("external asset symlink should be created");
+
+        let asset = registry
+            .asset_for_request(
+                &"ferrum-asset://localhost/project/atlas"
+                    .parse::<http::Uri>()
+                    .expect("asset uri should parse"),
+            )
+            .expect("registered asset id should still resolve");
+        let response = asset_response(&asset, true);
+
+        let _ = fs::remove_dir_all(&project_path);
+        let _ = fs::remove_file(&external_path);
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+        assert!(response.body().is_empty());
+    }
+
+    #[test]
+    fn inspects_duplicate_asset_ids_with_stable_suffixes() {
+        let project_path = unique_temp_dir("duplicate-asset-ids");
+        let asset_path = project_path.join(PROJECT_ASSET_FOLDER);
+        fs::create_dir_all(&asset_path).expect("project asset directory should be created");
+        fs::write(asset_path.join("ship.png"), b"png").expect("first image should be written");
+        fs::write(asset_path.join("ship.webp"), b"webp").expect("second image should be written");
+
+        let response =
+            inspect_asset_folder_path(&asset_path, None).expect("asset folder should inspect");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(
+            response
+                .images
+                .iter()
+                .map(|image| image.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ship", "ship_2"]
+        );
+        assert_eq!(
+            response
+                .images
+                .iter()
+                .map(|image| image.runtime_url.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "ferrum-asset://localhost/project/ship",
+                "ferrum-asset://localhost/project/ship_2"
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_missing_asset_folder_as_diagnostic() {
+        let project_path = unique_temp_dir("missing-asset-folder");
+
+        let response = inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER), None)
+            .expect("missing asset folder should return diagnostics");
+
+        assert!(!response.exists);
+        assert_eq!(response.image_count, 0);
+        assert_eq!(response.diagnostics.len(), 1);
+        assert_eq!(response.diagnostics[0].code, "missingAssetFolder");
+    }
+
+    #[test]
+    fn rejects_project_folder_without_scene_document() {
+        let project_path = unique_temp_dir("project-missing-scene");
+        fs::create_dir_all(&project_path).expect("project directory should be created");
+
+        let error =
+            load_placement_project_folder_inner(project_path.display().to_string(), None, None)
+                .expect_err("project folder without scene-authoring should be rejected");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidProjectPath(_)
+        ));
+    }
+
+    #[test]
+    fn writes_handoff_to_project_folder() {
+        let (project_path, _) = create_project_fixture("project-handoff");
+        let handoff = sample_handoff();
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_project_folder_inner(
+            project_path.display().to_string(),
+            None,
+            Some(&write_registry),
+        )
+        .expect("project folder should be authorized by loading it");
+
+        let response = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            handoff.clone(),
+            &write_registry,
+        )
+        .expect("handoff should save to project folder");
+        let loaded = fs::read_to_string(project_path.join(PROJECT_HANDOFF_FILE))
+            .expect("handoff file should be written");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(
+            response.path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(response.handoff, handoff);
+        assert_eq!(
+            serde_json::from_str::<Value>(&loaded).expect("handoff json should parse"),
+            handoff
+        );
+    }
+
+    #[test]
+    fn handoff_command_rejects_project_that_was_not_opened() {
+        let (project_path, _) = create_project_fixture("unauthorized-handoff");
+        let write_registry = PlacementWriteRegistry::default();
+
+        let error = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            sample_handoff(),
+            &write_registry,
+        )
+        .expect_err("an unopened project must not receive a handoff");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidProjectPath(_)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn handoff_command_rejects_symbolic_link_destination() {
+        use std::os::unix::fs::symlink;
+
+        let (project_path, _) = create_project_fixture("symlink-handoff");
+        let external_path = std::env::temp_dir().join(format!(
+            "ferrum-placement-external-handoff-{}.json",
+            std::process::id()
+        ));
+        fs::write(&external_path, "preserve").expect("external handoff fixture should be written");
+        symlink(&external_path, project_path.join(PROJECT_HANDOFF_FILE))
+            .expect("handoff symlink fixture should be created");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_project_folder_inner(
+            project_path.display().to_string(),
+            None,
+            Some(&write_registry),
+        )
+        .expect("project folder should be authorized by loading it");
+
+        let error = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            sample_handoff(),
+            &write_registry,
+        )
+        .expect_err("handoff must not follow a symbolic link destination");
+        let external_source =
+            fs::read_to_string(&external_path).expect("external fixture should remain readable");
+        let _ = fs::remove_dir_all(&project_path);
+        let _ = fs::remove_file(&external_path);
+
+        assert!(matches!(error, PlacementDesktopError::InvalidHandoff(_)));
+        assert_eq!(external_source, "preserve");
+    }
+
+    #[test]
+    fn writes_handoff_to_project_inferred_from_scene_document() {
+        let (project_path, _) = create_project_fixture("scene-inferred-handoff");
+        let scene_document_path = project_path.join("public/scene-authoring.json");
+        let handoff = sample_handoff();
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(scene_document_path.display().to_string()),
+            Some(&write_registry),
+        )
+        .expect("scene document should authorize its inferred project");
+
+        let response = save_placement_agent_handoff_inner(
+            None,
+            Some(scene_document_path.display().to_string()),
+            handoff.clone(),
+            &write_registry,
+        )
+        .expect("handoff should save to inferred project folder");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(
+            response.path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_handoff() {
+        let (project_path, _) = create_project_fixture("invalid-handoff");
+        let write_registry = PlacementWriteRegistry::default();
+
+        let error = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            json!({ "format": "not-ferrum" }),
+            &write_registry,
+        )
+        .expect_err("invalid handoff should be rejected");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(error, PlacementDesktopError::InvalidHandoff(_)));
+    }
+}

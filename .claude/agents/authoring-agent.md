@@ -21,8 +21,8 @@ Own:
 - `packages/ferrum-web/src/scenePlacementPatch.ts`
 - `packages/ferrum-web/src/scenePlacementAssets.ts`
 - `packages/ferrum-web/src/scenePlacementHandoff.ts`
-- `examples/placement-viewer/**`
-- `packages/create-game/templates/_shared/src/ferrum-placement-viewer.ts`
-- generated `placement-viewer.html` behavior and smoke coverage
+- `apps/studio/**`
+- `packages/create-game/templates/_shared/src/ferrum-studio.ts`
+- generated `studio.html` behavior and smoke coverage
 
 Keep authoring output deterministic and spec-patch based. Treat `updateBehaviorBinding` and `behaviorBindings[].recipeId`/`bindingPath`/`behaviorRecipePath` as Behavior Binding reference evidence, not behavior recipe body editing. Do not implement a general visual editor, modify `behaviorRecipes.entities` through placement-only UI output, move simulation state into TypeScript UI code, or add consumer imports from internal package paths.

@@ -45,13 +45,13 @@ jobs:
         run: cargo clippy --manifest-path crates/ferrum-core/Cargo.toml --all-targets -- -D warnings
 
       - name: Check Studio desktop Rust formatting
-        run: cargo fmt --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all -- --check
+        run: cargo fmt --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --all -- --check
 
       - name: Lint Studio desktop Rust
-        run: cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Test Studio desktop save contracts
-        run: cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml
+        run: cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
@@ -129,6 +129,9 @@ jobs:
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg
 
+      - name: Build Studio Kit declarations for type checking
+        run: pnpm --filter @ferrum2d/studio-kit build
+
       - name: Lint TypeScript packages
         run: pnpm lint
 
@@ -144,17 +147,17 @@ jobs:
       - name: Placement workspace browser smoke
         run: |
           pnpm test:placement-point-shadows
-          node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist
+          node tests/smoke/browser-render-smoke.mjs --mode=studio apps/studio/dist
 
       - name: Placement save and layer state browser smoke
         env:
-          VITE_FERRUM_PLACEMENT_VIEWER_SAVE: "true"
+          VITE_FERRUM_STUDIO_SAVE: "true"
         run: |
-          pnpm --filter @ferrum2d/placement-viewer exec vite build --base=./ --outDir "$RUNNER_TEMP/placement-viewer-save"
-          node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-save "$RUNNER_TEMP/placement-viewer-save"
+          pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir "$RUNNER_TEMP/studio-save"
+          node tests/smoke/browser-render-smoke.mjs --mode=studio-save "$RUNNER_TEMP/studio-save"
 
       - name: HD-2D authoring workspace browser smoke
-        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/placement-viewer/dist
+        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/studio/dist
 
       - name: Blender HD-2D village browser smoke
         # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
@@ -354,7 +357,7 @@ jobs:
 
       - name: Native tile map source storage and fresh game roundtrip
         run: |
-          cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
+          cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --no-run --locked
           pnpm smoke:tile-project
 
       - name: Upload native tile map evidence

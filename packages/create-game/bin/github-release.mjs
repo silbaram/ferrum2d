@@ -14,7 +14,7 @@ export function githubRelease(versionOrTag, repository = DEFAULT_GITHUB_REPOSITO
   return {
     repository, version, tag, baseUrl,
     runtime: assetUrl("ferrum-web"),
-    viewer: assetUrl("authoring-viewer"),
+    studioKit: assetUrl("studio-kit"),
     generator: assetUrl("create-game"),
     agents: assetUrl("agents"),
   };
@@ -36,8 +36,8 @@ export function resolveGithubRelease(options, packageJson) {
     throw new Error("--github-repository requires --github-release or a GitHub Release generator package.");
   }
   if (version === undefined) return undefined;
-  if (options.ferrumVersion !== undefined || options.authoringViewerVersion !== undefined) {
-    throw new Error("GitHub release mode cannot be combined with --ferrum-version or --authoring-viewer-version.");
+  if (options.ferrumVersion !== undefined || options.studioKitVersion !== undefined) {
+    throw new Error("GitHub release mode cannot be combined with --ferrum-version or --studio-kit-version.");
   }
   return githubRelease(version, options.githubRepository ?? embedded?.repository);
 }

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const sharedTemplateRoot = path.join(repoRoot, "packages/create-game/templates/_shared");
 const templateRoot = path.join(repoRoot, "packages/create-game/templates/topdown");
-const authoringViewerRoot = path.join(repoRoot, "packages/ferrum-authoring-viewer");
+const studioKitRoot = path.join(repoRoot, "packages/ferrum-studio-kit");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const expectedCoverageTags = ["template-game-spec", "topdown-scene-composition-authoring"];
 const expectedCoverageTagDefinitions = {
@@ -33,8 +33,8 @@ try {
   await mkdir(path.join(projectRoot, "node_modules/@ferrum2d"), { recursive: true });
   const linkType = process.platform === "win32" ? "junction" : "dir";
   await symlink(
-    authoringViewerRoot,
-    path.join(projectRoot, "node_modules/@ferrum2d/authoring-viewer"),
+    studioKitRoot,
+    path.join(projectRoot, "node_modules/@ferrum2d/studio-kit"),
     linkType,
   );
   await symlink(ferrumWebRoot, path.join(projectRoot, "node_modules/@ferrum2d/ferrum-web"), linkType);

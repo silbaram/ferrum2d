@@ -4,10 +4,10 @@ import { mkdtemp, mkdir, writeFile, symlink, rm, readFile, chmod } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import { scanPlacementScenes } from "../../apps/placement-viewer/server/sceneCatalog.mjs";
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
+import { scanPlacementScenes } from "../../apps/studio/server/sceneCatalog.mjs";
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
-const code = ts.transpileModule(await readFile(new URL("../../apps/placement-viewer/src/placementSceneCatalog.ts", import.meta.url), "utf8"), {
+const code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementSceneCatalog.ts", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText;
 const { folderSceneCatalog, safeSceneRelativePath, hostedSceneCatalog } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));

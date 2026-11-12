@@ -12,7 +12,7 @@
 
 공식 Ferrum2D Studio의 HD-2D 조명 탭은 PCSS·높이 안개·빛줄기·간접광 프로브·넓은 Bloom·광원 전환과
 채널을 기존 `spatial.environment`로 작성한다. 수신 채널은 지형·모델·빌보드의 기존 필드를 사용한다.
-조작·의존 효과 해제·프리셋·저장 정책은 [Studio 조명 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
+조작·의존 효과 해제·프리셋·저장 정책은 [Studio 조명 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md)를 따른다.
 새 문서 형식이나 runtime API를 추가하지 않는다.
 
 Data Scene authoring 문서는 다음 envelope를 사용한다.
@@ -258,7 +258,7 @@ texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·�
 결과는 조회 당시 근거이며 코드·외부 manifest·GLB 내부·Undo 이력이나 전체 디스크를 검증하지 않는다.
 등록되지 않은 참조도 표시하지만 참조 미발견은 삭제 허가가 아니다. 별도 SDK/schema/GC API가 아니라 앱 전용 조회다.
 보고서는 `ferrum2d.asset-usage` v1과 `deletionAllowed:false`를 사용한다.
-상한·폴더 snapshot·검색/내보내기 사용법은 `apps/placement-viewer/README.md`의 에셋 사용처 조회 절을 따른다.
+상한·폴더 snapshot·검색/내보내기 사용법은 `apps/studio/README.md`의 에셋 사용처 조회 절을 따른다.
 
 데스크톱의 **Assets → Manage → Catalog Cleanup**은 별도의 관리 원본 정리 흐름이다.
 명시적으로 연 프로젝트의 pixel/Aseprite/tile/normal Catalog를 기존 parser로 검증하고,
@@ -272,7 +272,7 @@ live Catalog와 다른 revision이 공유하지 않는 파일을 정리한다. �
 백업 목록은 현재 JSON 분석과 독립적으로 조회하므로 닫힌 JSON의 손상에도 복구에 진입할 수 있다.
 리비전 ID도 참조로 보호하며 숫자 `texture`/`normalTexture`는 이름을 확정할 수 없어 모든 후보를 보호한다.
 참조/용량 한도와 백업 비용은 [호스트 구조](../development/architecture/architecture.md#프로젝트-관리-catalog의-복구-가능한-정리)를 따른다.
-메뉴별 복구 절차는 앱 안내(`apps/placement-viewer/README.md`)의 프로젝트 디스크 Catalog 정리 절을 따른다.
+메뉴별 복구 절차는 앱 안내(`apps/studio/README.md`)의 프로젝트 디스크 Catalog 정리 절을 따른다.
 
 실제 참조 frame 누락은 **Import Diagnostics**와 **Problems**에 원본 JSON 파일·collection pointer·frame ID와
 현재 씬의 정확한 JSON pointer를 표시한다. prefab 상속은 해당 prefab의 원본 경로를 표시하며 경로는 최대 64개다.
@@ -809,7 +809,7 @@ optional `revisions[].sourcePng: {sha256,width,height}`는 원본 PNG를 가리�
 파일별 base64/SHA-256을 검증하고 프로젝트 안에 `overwrite:false`로 설치한 뒤, manifest의 stable 이름과 `srgb`를 catalog에 등록한다.
 동반 Copy Patch/handoff를 씬에 반영하고 새 세션에서 catalog를 먼저 로드해 다시 연다. bundle 자체에는 씬 JSON이 없다.
 설치 전 imported reference의 scene-only Save와 문서 간 복사를 막으며, export를 실제 저장 완료로 간주하지 않는다.
-세부 UI 절차는 저장소의 `apps/placement-viewer/README.md`를 따른다. browser-only 파일 쓰기와 백그라운드 normal 자동 재생성은 제공하지 않는다.
+세부 UI 절차는 저장소의 `apps/studio/README.md`를 따른다. browser-only 파일 쓰기와 백그라운드 normal 자동 재생성은 제공하지 않는다.
 
 노멀 pair는 기존 `public/assets/.ferrum-normals/`에 불변 저장한다. **프로젝트 저장**은 color/source 저장·재읽기 검증 → 현재 미리보기/씬 참조 normal pair 저장·검증 → 씬 저장 순서다.
 앞 단계가 실패하면 씬을 저장하지 않고 기존 파일/씬을 보존한다. 취소가 디스크 commit 뒤 도착한 경우에는 파일 저장 가능성을 안내하고 재열기를 요구한다.

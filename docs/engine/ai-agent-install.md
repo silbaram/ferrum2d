@@ -34,7 +34,7 @@ Node.js 22를 권장한다. npm/npx와 GitHub·npm 레지스트리 네트워크 
 
 ## 2. 프로젝트 설정 작성
 
-새 프로젝트에서는 아래 `package.json`을 작성한다. `name`은 실제 디렉터리에 맞는 npm package name으로 바꾼다. 기존 프로젝트에는 필요한 dependency와 script만 병합한다. `authoring-viewer`와 `create-game`은 초기 설치에 추가하지 않는다.
+새 프로젝트에서는 아래 `package.json`을 작성한다. `name`은 실제 디렉터리에 맞는 npm package name으로 바꾼다. 기존 프로젝트에는 필요한 dependency와 script만 병합한다. `studio-kit`와 `create-game`은 초기 설치에 추가하지 않는다.
 
 ```json
 {
@@ -137,7 +137,7 @@ game-project/
   node_modules/
 ```
 
-프로젝트 루트에 `src/`, `public/`, `scripts/`, `index.html`, `placement-viewer.html`, `dist/`가 없어도 정상이다. `node_modules/` 안의 설치 패키지 파일은 게임 프로젝트에 예제를 생성한 것으로 간주하지 않는다.
+프로젝트 루트에 `src/`, `public/`, `scripts/`, `index.html`, `studio.html`, `dist/`가 없어도 정상이다. `node_modules/` 안의 설치 패키지 파일은 게임 프로젝트에 예제를 생성한 것으로 간주하지 않는다.
 
 완료 보고에는 프로젝트 경로, 설치 버전, AI 지침 설치 여부, 실행한 검증 결과를 적는다. **초기 설정 완료·게임 코드는 아직 생성하지 않음**을 명시하고 여기서 종료한다. 개발 서버 주소나 게임 배포 준비 완료를 보고하지 않는다. 이후 게임 개발 요청을 받으면 [Public API](public-api.md)와 설치된 consumer 지침을 읽고 필요한 코드부터 작성한다.
 

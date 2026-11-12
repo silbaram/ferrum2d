@@ -9,7 +9,7 @@ const templatesRoot = path.join(packageRoot, "templates");
 const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const defaultTemplate = "minimal";
 const defaultFerrumVersion = "^0.1.0";
-const defaultAuthoringViewerVersion = "^0.1.0";
+const defaultStudioKitVersion = "^0.1.0";
 const SCENE_AUTHORING_FORMAT = "ferrum2d.consumer.scene-authoring";
 
 try {
@@ -45,7 +45,7 @@ try {
 
 function parseArgs(args) {
   const parsed = {
-    authoringViewerVersion: undefined,
+    studioKitVersion: undefined,
     ferrumVersion: undefined,
     githubRelease: undefined,
     githubRepository: undefined,
@@ -103,13 +103,13 @@ function parseArgs(args) {
       parsed.ferrumVersion = arg.slice("--ferrum-version=".length);
       continue;
     }
-    if (arg === "--authoring-viewer-version") {
-      parsed.authoringViewerVersion = requireValue(args, index, arg);
+    if (arg === "--studio-kit-version") {
+      parsed.studioKitVersion = requireValue(args, index, arg);
       index += 1;
       continue;
     }
-    if (arg.startsWith("--authoring-viewer-version=")) {
-      parsed.authoringViewerVersion = arg.slice("--authoring-viewer-version=".length);
+    if (arg.startsWith("--studio-kit-version=")) {
+      parsed.studioKitVersion = arg.slice("--studio-kit-version=".length);
       continue;
     }
     if (arg.startsWith("-")) {
@@ -132,7 +132,7 @@ function requireValue(args, index, optionName) {
   return value;
 }
 
-async function createGameProject({ authoringViewerVersion, ferrumVersion, force, projectDir, template, release }) {
+async function createGameProject({ studioKitVersion, ferrumVersion, force, projectDir, template, release }) {
   const catalog = await loadTemplateCatalog();
   const templateIds = catalog.templates.map((entry) => entry.id);
   const templateEntry = catalog.templates.find((entry) => entry.id === template);
@@ -161,7 +161,7 @@ async function createGameProject({ authoringViewerVersion, ferrumVersion, force,
     "Shared create-game template scaffold is missing.",
   );
   const replacements = {
-    __FERRUM_AUTHORING_VIEWER_VERSION__: release?.viewer ?? authoringViewerVersion ?? defaultAuthoringViewerVersion,
+    __FERRUM_STUDIO_KIT_VERSION__: release?.studioKit ?? studioKitVersion ?? defaultStudioKitVersion,
     __FERRUM_WEB_VERSION__: release?.runtime ?? ferrumVersion ?? defaultFerrumVersion,
     __PROJECT_NAME__: packageName,
     __PROJECT_TITLE__: projectTitle,
@@ -184,7 +184,7 @@ async function createGameProject({ authoringViewerVersion, ferrumVersion, force,
     }
     await writeFile(path.join(targetRoot, "FERRUM_INSTALL.md"), `# Ferrum2D 설치 정보\n\n` +
       `GitHub Release: https://github.com/${release.repository}/releases/tag/${release.tag}\n\n` +
-      `엔진과 authoring viewer는 ${release.version} 릴리스 URL에 고정되어 있다.\n` +
+      `엔진과 Studio Kit는 ${release.version} 릴리스 URL에 고정되어 있다.\n` +
       `Node.js 22 권장. npm install 후 npm run dev로 개발한다. Rust 빌드는 필요 없다.\n\n` +
       `AI 개발 도구 지침 설치(선택): npm run ferrum:agents\n` +
       `이 명령은 명시적으로 실행했을 때만 agent/skill 파일을 생성한다.\n\n` +
@@ -483,8 +483,8 @@ Options:
   --list-templates           Print available templates
   --json                     With --list-templates, print a machine-readable template catalog
   --ferrum-version <range>   @ferrum2d/ferrum-web dependency range. Default: ^0.1.0
-  --authoring-viewer-version <range>
-                             @ferrum2d/authoring-viewer dependency range. Default: ^0.1.0
+  --studio-kit-version <range>
+                             @ferrum2d/studio-kit dependency range. Default: ^0.1.0
   --force                    Allow writing into a non-empty target directory
   -h, --help                 Show this help
 

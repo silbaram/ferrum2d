@@ -130,7 +130,7 @@ function templateSummary(result) {
     hasMainSource: result.hasMainSource,
     authoringSurface: result.authoringSurface,
     publicAssets: result.publicAssets,
-    scripts: ["ferrum:placement-viewer", "ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
+    scripts: ["ferrum:studio", "ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
   };
 }
 

@@ -12,7 +12,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const templatesRoot = path.join(repoRoot, "packages/create-game/templates");
 const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const templateManifestPath = path.join(templatesRoot, "manifest.json");
-const authoringViewerRoot = path.join(repoRoot, "packages/ferrum-authoring-viewer");
+const studioKitRoot = path.join(repoRoot, "packages/ferrum-studio-kit");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const configuredCommandTimeoutMs = Number(process.env.FERRUM_TEMPLATE_REPORT_TIMEOUT_MS ?? 60000);
 const commandTimeoutMs = Number.isFinite(configuredCommandTimeoutMs) && configuredCommandTimeoutMs > 0
@@ -428,7 +428,7 @@ async function normalizePackageJson(projectRoot, templateName) {
   packageJson.name = templateName;
   packageJson.dependencies = {
     ...(packageJson.dependencies ?? {}),
-    "@ferrum2d/authoring-viewer": "0.0.0-smoke",
+    "@ferrum2d/studio-kit": "0.0.0-smoke",
     "@ferrum2d/ferrum-web": "0.0.0-smoke",
   };
   await writeFile(file, `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -471,7 +471,7 @@ async function linkFerrumWeb(projectRoot) {
   const scopeRoot = path.join(projectRoot, "node_modules/@ferrum2d");
   await mkdir(scopeRoot, { recursive: true });
   const linkType = process.platform === "win32" ? "junction" : "dir";
-  await symlink(authoringViewerRoot, path.join(scopeRoot, "authoring-viewer"), linkType);
+  await symlink(studioKitRoot, path.join(scopeRoot, "studio-kit"), linkType);
   await symlink(ferrumWebRoot, path.join(scopeRoot, "ferrum-web"), linkType);
 }
 
@@ -626,10 +626,10 @@ function assertConsumerAssetPipelineBase(report, template) {
 function assertConsumerProjectReport(report, template) {
   const templateName = template.id;
   assert.equal(report.format, "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
-  assert.equal(report.version, 1, `${templateName} project report version is invalid`);
+  assert.equal(report.version, 2, `${templateName} project report version is invalid`);
   assert.equal(report.ok, true, `${templateName} project report must be ok for generated templates`);
   assert.equal(report.project?.packageName, templateName, `${templateName} project report packageName is invalid`);
-  assert(report.project?.authoringViewer !== undefined && report.project.authoringViewer !== null, `${templateName} project report must include authoring-viewer dependency`);
+  assert(report.project?.studioKit !== undefined && report.project.studioKit !== null, `${templateName} project report must include studio-kit dependency`);
   assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
   assert.equal(report.project?.files?.main, true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
@@ -656,7 +656,7 @@ function assertConsumerProjectReport(report, template) {
     "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
-    "npm run ferrum:placement-viewer",
+    "npm run ferrum:studio",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",

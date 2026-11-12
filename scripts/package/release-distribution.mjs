@@ -3,16 +3,16 @@ import { createReadStream, constants } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
-import { validateViewerUpdater } from "./viewer-updater.mjs";
+import { validateStudioUpdater } from "./studio-updater.mjs";
 
-export const viewerPlatforms = {
+export const studioPlatforms = {
   linux: { name: "linux", bundle: "deb", extension: "deb" },
   win32: { name: "windows", bundle: "nsis", extension: "exe" },
   darwin: { name: "macos", bundle: "dmg", extension: "dmg" },
 };
-export const viewerManifestName = (os, arch) => `viewer-manifest-${os}-${arch}.json`;
+export const studioManifestName = (os, arch) => `studio-manifest-${os}-${arch}.json`;
 export const nativeChecks = ["native project/file picker", "scene save within selected project", "ferrum-asset image rendering", "handoff synchronization", "nonblank interactive canvas evidence"];
-const enginePackages = ["ferrum-web", "authoring-viewer", "create-game", "agents"];
+const enginePackages = ["ferrum-web", "studio-kit", "create-game", "agents"];
 const canonicalRelease = value => {
   const release = githubRelease(value?.version, value?.repository);
   if (value?.tag !== release.tag) throw new Error("Release tag/version mismatch");
@@ -80,50 +80,50 @@ export async function validateEngineBundle(root) {
   await fileRecord(path.join(root, "INSTALL.md"));
   return manifest;
 }
-export async function validateViewerBundle(root, manifestFile) {
+export async function validateStudioBundle(root, manifestFile) {
   const manifest = await readJson(path.join(root, safeLeaf(manifestFile)));
-  if (manifest.format !== "ferrum2d.viewer-release.bundle" || manifest.version !== 1 || manifest.published !== false)
-    throw new Error("Expected an unpublished viewer release bundle v1");
+  if (manifest.format !== "ferrum2d.studio-release.bundle" || manifest.version !== 1 || manifest.published !== false)
+    throw new Error("Expected an unpublished studio release bundle v1");
   const release = canonicalRelease(manifest.release); requireSource(manifest.source);
-  const platform = Object.values(viewerPlatforms).find(item => item.name === manifest.platform?.os);
+  const platform = Object.values(studioPlatforms).find(item => item.name === manifest.platform?.os);
   if (!platform || !["x64", "arm64"].includes(manifest.platform.arch) || manifest.platform.bundle !== platform.bundle ||
-      manifestFile !== viewerManifestName(platform.name, manifest.platform.arch)) throw new Error("Invalid viewer platform identity");
+      manifestFile !== studioManifestName(platform.name, manifest.platform.arch)) throw new Error("Invalid studio platform identity");
   const expectedTarget = { "linux-x64": "x86_64-unknown-linux-gnu", "linux-arm64": "aarch64-unknown-linux-gnu", "windows-x64": "x86_64-pc-windows-msvc", "windows-arm64": "aarch64-pc-windows-msvc", "macos-x64": "x86_64-apple-darwin", "macos-arm64": "aarch64-apple-darwin" };
-  if (manifest.platform.target !== expectedTarget[`${platform.name}-${manifest.platform.arch}`]) throw new Error("Viewer Rust target/platform mismatch");
+  if (manifest.platform.target !== expectedTarget[`${platform.name}-${manifest.platform.arch}`]) throw new Error("Studio Rust target/platform mismatch");
   if (manifest.checks?.nativeBuild !== true || manifest.checks?.frontendWasm !== true || manifest.checks?.iconGeneration !== true ||
       manifest.checks?.nativeGui !== "not-run" || manifest.checks?.signing !== "not-verified" || manifest.manualReleaseGate?.required !== true ||
-      JSON.stringify(manifest.manualReleaseGate.checks) !== JSON.stringify(nativeChecks)) throw new Error("Viewer build evidence and manual native release gate are required");
+      JSON.stringify(manifest.manualReleaseGate.checks) !== JSON.stringify(nativeChecks)) throw new Error("Studio build evidence and manual native release gate are required");
   if (manifest.runtime?.releaseVersion !== release.version || manifest.runtime?.package !== "@ferrum2d/ferrum-web" || !/^[a-f0-9]{64}$/.test(manifest.runtime?.wasmSha256))
-    throw new Error("Viewer embedded runtime identity is required");
+    throw new Error("Studio embedded runtime identity is required");
   const asset = manifest.assets?.[0];
-  if (manifest.assets?.length !== 1 || asset.file !== `ferrum2d-placement-viewer-${release.version}-${platform.name}-${manifest.platform.arch}.${platform.extension}` ||
-      asset.url !== `${githubRelease(release.version, release.repository).baseUrl}/${asset.file}`) throw new Error("Unexpected viewer installer asset");
+  if (manifest.assets?.length !== 1 || asset.file !== `ferrum2d-studio-${release.version}-${platform.name}-${manifest.platform.arch}.${platform.extension}` ||
+      asset.url !== `${githubRelease(release.version, release.repository).baseUrl}/${asset.file}`) throw new Error("Unexpected studio installer asset");
   await verifyAsset(root, asset);
-  const install = `VIEWER_INSTALL-${platform.name}-${manifest.platform.arch}.md`;
-  const sums = `VIEWER_SHA256SUMS-${platform.name}-${manifest.platform.arch}`;
-  if (await readFile(path.join(root, sums), "utf8") !== `${asset.sha256}  ${asset.file}\n`) throw new Error("Viewer checksum file mismatch");
+  const install = `STUDIO_INSTALL-${platform.name}-${manifest.platform.arch}.md`;
+  const sums = `STUDIO_SHA256SUMS-${platform.name}-${manifest.platform.arch}`;
+  if (await readFile(path.join(root, sums), "utf8") !== `${asset.sha256}  ${asset.file}\n`) throw new Error("Studio checksum file mismatch");
   await fileRecord(path.join(root, install));
-  const updates = await validateViewerUpdater(root, manifest, verifyAsset);
+  const updates = await validateStudioUpdater(root, manifest, verifyAsset);
   return { manifest, files: [...new Set([asset.file, manifestFile, install, sums, ...updates])] };
 }
 
-export async function assembleDistribution({ engine, viewers, output }) {
-  if (!engine || !Array.isArray(viewers) || viewers.length === 0) throw new Error("Assembly requires an engine bundle and at least one viewer bundle");
+export async function assembleDistribution({ engine, studios, output }) {
+  if (!engine || !Array.isArray(studios) || studios.length === 0) throw new Error("Assembly requires an engine bundle and at least one studio bundle");
   await requireNewOutput(output);
   const engineManifest = await validateEngineBundle(engine);
   const release = canonicalRelease(engineManifest.release);
   const inputs = engineManifest.assets.map(asset => ({ root: engine, file: asset.file }));
   inputs.push(...["release-manifest.json", "SHA256SUMS", "INSTALL.md"].map(file => ({ root: engine, file })));
-  const platforms = new Set(), viewerManifests = [];
-  for (const root of viewers) {
-    const names = (await readdir(root)).filter(name => /^viewer-manifest-[a-z]+-(?:x64|arm64)\.json$/.test(name));
-    if (names.length !== 1) throw new Error(`Expected one viewer manifest in ${root}`);
-    const { manifest, files } = await validateViewerBundle(root, names[0]);
+  const platforms = new Set(), studioManifests = [];
+  for (const root of studios) {
+    const names = (await readdir(root)).filter(name => /^studio-manifest-[a-z]+-(?:x64|arm64)\.json$/.test(name));
+    if (names.length !== 1) throw new Error(`Expected one studio manifest in ${root}`);
+    const { manifest, files } = await validateStudioBundle(root, names[0]);
     if (JSON.stringify(canonicalRelease(manifest.release)) !== JSON.stringify(release) || manifest.source.commit !== engineManifest.source.commit)
-      throw new Error("Engine and viewer release/version/source commit must match");
+      throw new Error("Engine and studio release/version/source commit must match");
     const key = `${manifest.platform.os}-${manifest.platform.arch}`;
-    if (platforms.has(key)) throw new Error(`Duplicate viewer platform: ${key}`);
-    platforms.add(key); viewerManifests.push({ manifest, file: names[0] });
+    if (platforms.has(key)) throw new Error(`Duplicate studio platform: ${key}`);
+    platforms.add(key); studioManifests.push({ manifest, file: names[0] });
     inputs.push(...files.map(file => ({ root, file })));
   }
   // All validation happens before reserving the output, preserving previous candidates.
@@ -135,12 +135,12 @@ export async function assembleDistribution({ engine, viewers, output }) {
     await verifyAsset(output, record); records.push(record);
   }
   const install = "DISTRIBUTION_INSTALL.md";
-  await writeFile(path.join(output, install), distributionGuide(release, viewerManifests.map(item => item.manifest)), { flag: "wx" });
+  await writeFile(path.join(output, install), distributionGuide(release, studioManifests.map(item => item.manifest)), { flag: "wx" });
   records.push(await fileRecord(path.join(output, install)));
   const manifest = {
-    format: "ferrum2d.release.distribution", version: 1, release,
-    source: { commit: engineManifest.source.commit, dirty: engineManifest.source.dirty || viewerManifests.some(item => item.manifest.source.dirty) },
-    published: false, engineManifest: "release-manifest.json", viewerManifests: viewerManifests.map(item => item.file),
+    format: "ferrum2d.release.distribution", version: 2, release,
+    source: { commit: engineManifest.source.commit, dirty: engineManifest.source.dirty || studioManifests.some(item => item.manifest.source.dirty) },
+    published: false, engineManifest: "release-manifest.json", studioManifests: studioManifests.map(item => item.file),
     manualReleaseGate: { required: true, checks: nativeChecks }, files: records,
   };
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -154,21 +154,21 @@ export async function assembleDistribution({ engine, viewers, output }) {
 
 export async function verifyDistribution(root) {
   const manifest = await readJson(path.join(root, "distribution-manifest.json"));
-  if (manifest.format !== "ferrum2d.release.distribution" || manifest.version !== 1 || manifest.published !== false || manifest.engineManifest !== "release-manifest.json" ||
-      !Array.isArray(manifest.viewerManifests) || !manifest.viewerManifests.length || !Array.isArray(manifest.files)) throw new Error("Invalid distribution manifest");
+  if (manifest.format !== "ferrum2d.release.distribution" || manifest.version !== 2 || manifest.published !== false || manifest.engineManifest !== "release-manifest.json" ||
+      !Array.isArray(manifest.studioManifests) || !manifest.studioManifests.length || !Array.isArray(manifest.files)) throw new Error("Invalid distribution manifest");
   const release = canonicalRelease(manifest.release); requireSource(manifest.source);
-  const engine = await validateEngineBundle(root), viewers = [], platforms = new Set();
+  const engine = await validateEngineBundle(root), studios = [], platforms = new Set();
   if (JSON.stringify(canonicalRelease(engine.release)) !== JSON.stringify(release) || engine.source.commit !== manifest.source.commit)
     throw new Error("Distribution engine identity mismatch");
   const expected = new Set([...engine.assets.map(item => item.file), "release-manifest.json", "SHA256SUMS", "INSTALL.md", "DISTRIBUTION_INSTALL.md"]);
-  for (const file of manifest.viewerManifests) {
-    const { manifest: viewer, files } = await validateViewerBundle(root, file);
-    const key = `${viewer.platform.os}-${viewer.platform.arch}`;
-    if (platforms.has(key) || JSON.stringify(canonicalRelease(viewer.release)) !== JSON.stringify(release) || viewer.source.commit !== manifest.source.commit)
-      throw new Error("Distribution viewer identity mismatch or duplicate platform");
-    platforms.add(key); viewers.push(viewer); files.forEach(name => expected.add(name));
+  for (const file of manifest.studioManifests) {
+    const { manifest: studio, files } = await validateStudioBundle(root, file);
+    const key = `${studio.platform.os}-${studio.platform.arch}`;
+    if (platforms.has(key) || JSON.stringify(canonicalRelease(studio.release)) !== JSON.stringify(release) || studio.source.commit !== manifest.source.commit)
+      throw new Error("Distribution studio identity mismatch or duplicate platform");
+    platforms.add(key); studios.push(studio); files.forEach(name => expected.add(name));
   }
-  if (manifest.source.dirty !== (engine.source.dirty || viewers.some(viewer => viewer.source.dirty)) ||
+  if (manifest.source.dirty !== (engine.source.dirty || studios.some(studio => studio.source.dirty)) ||
       manifest.manualReleaseGate?.required !== true || JSON.stringify(manifest.manualReleaseGate.checks) !== JSON.stringify(nativeChecks)) throw new Error("Distribution provenance/gate mismatch");
   for (const asset of manifest.files) {
     if (!expected.delete(asset.file)) throw new Error("Unexpected or duplicate distribution file");
@@ -181,15 +181,15 @@ export async function verifyDistribution(root) {
   return manifest;
 }
 
-function distributionGuide(release, viewers) {
+function distributionGuide(release, studios) {
   const runtime = githubRelease(release.version, release.repository).runtime;
   return `# Ferrum2D ${release.version} 엔진·Studio 배포\n\n로컬 준비 결과이며 아직 공개하지 않았다.\n\n` +
     `## 엔진 SDK\n\nGitHub Release 공개 후 게임 프로젝트에서 실행한다.\n\n\`\`\`bash\npnpm add "${runtime}"\n\`\`\`\n\n` +
-    `## Ferrum2D Studio\n\n` + viewers.map(viewer => `- ${viewer.platform.os}/${viewer.platform.arch}: ${viewer.assets[0].file}`).join("\n") +
+    `## Ferrum2D Studio\n\n` + studios.map(studio => `- ${studio.platform.os}/${studio.platform.arch}: ${studio.assets[0].file}`).join("\n") +
     `\n\nOS에 맞는 설치 파일을 사용한 뒤 파일 → 프로젝트 열기로 public/scene-authoring.json과 public/assets를 연다.\n` +
     `Studio에는 같은 릴리스의 미리보기용 엔진이 포함된다. SDK/Node/Rust를 별도로 설치할 필요가 없다.\n` +
-    `authoring-viewer.tgz는 공통 helper이며 Studio 설치 앱이 아니다. 게임의 임의 main.ts/HUD는 해당 프로젝트에서 실행한다.\n\n` +
-    `구 Placement Viewer 설치본은 씬/에셋을 저장·백업한 뒤 제거하고 Studio를 설치한다. NSIS·deb의 제품명 기반 설치 구분이 달라지므로 이름 전환은 자동 업데이트로 배포하지 않는다.\n\n` +
+    `studio-kit.tgz는 공통 helper이며 Studio 설치 앱이 아니다. 게임의 임의 main.ts/HUD는 해당 프로젝트에서 실행한다.\n\n` +
+    `Studio는 com.ferrum2d.studio 설치 식별자와 studio-updater 채널을 사용한다. OS별 설치 검증은 별도다.\n\n` +
     `## 공개 전 확인\n\n원본 커밋·버전·체크섬과 각 OS의 실제 설치/프로젝트 열기/저장/재열기 및 서명 상태를 확인한다.\n` +
     `준비 스크립트는 OS GUI 검증·서명을 증명하지 않으며 Git tag/Release/npm 공개도 수행하지 않는다.\n`;
 }

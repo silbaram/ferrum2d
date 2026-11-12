@@ -3,12 +3,12 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../apps/placement-viewer/package.json", import.meta.url),
+  new URL("../../apps/studio/package.json", import.meta.url),
 );
 const ts = require("typescript");
 const source = await readFile(
   new URL(
-    "../../apps/placement-viewer/src/placementAsepriteAnimation.ts",
+    "../../apps/studio/src/placementAsepriteAnimation.ts",
     import.meta.url,
   ),
   "utf8",

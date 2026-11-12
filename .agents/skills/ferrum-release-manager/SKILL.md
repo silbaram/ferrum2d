@@ -11,7 +11,7 @@ Use this skill for Ferrum2D release work. It coordinates release metadata, packa
 
 - npm procedure: `docs/development/operations/npm-release.md`
 - Release notes template: `docs/development/operations/release-notes-template.md`
-- Package metadata: `packages/ferrum-web/package.json`, `packages/ferrum-authoring-viewer/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`
+- Package metadata: `packages/ferrum-web/package.json`, `packages/ferrum-studio-kit/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`
 - Changelog: `CHANGELOG.md`
 - Release readiness script: `scripts/package/check-release-readiness.mjs`
 - Package artifact script: `scripts/package/check-package-files.mjs`
@@ -19,7 +19,7 @@ Use this skill for Ferrum2D release work. It coordinates release metadata, packa
 
 ## Release Scope
 
-This skill covers npm beta releases and GitHub Release preparation for `@ferrum2d/ferrum-web`, plus local release rehearsal for the companion package set `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, and `@ferrum2d/agents`.
+This skill covers npm beta releases and GitHub Release preparation for `@ferrum2d/ferrum-web`, plus local release rehearsal for the companion package set `@ferrum2d/studio-kit`, `@ferrum2d/create-game`, and `@ferrum2d/agents`.
 
 - Allowed npm tag: `beta`
 - Allowed release version format: `x.y.z-beta.N`

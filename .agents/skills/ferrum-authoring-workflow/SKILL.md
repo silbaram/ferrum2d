@@ -1,6 +1,6 @@
 ---
 name: ferrum-authoring-workflow
-description: Use when designing, implementing, reviewing, or validating Ferrum2D Scene Placement and Object Authoring workflows, including placement viewer UI, placement patch generation, asset providers, handoff summaries, Data Scene component props, create-game placement-viewer scaffolds, or generated placement viewer browser smoke checks.
+description: Use when designing, implementing, reviewing, or validating Ferrum2D Scene Placement and Object Authoring workflows, including placement viewer UI, placement patch generation, asset providers, handoff summaries, Data Scene component props, create-game studio scaffolds, or generated placement viewer browser smoke checks.
 ---
 
 # Ferrum Authoring Workflow
@@ -19,9 +19,9 @@ Use this skill for Ferrum2D agent-first authoring surfaces. Keep the workflow sp
 
 - Core APIs: `packages/ferrum-web/src/scenePlacementViewer.ts`, `scenePlacementPatch.ts`, `scenePlacementAssets.ts`, `scenePlacementHandoff.ts`
 - Data Scene integration: `packages/ferrum-web/src/dataSceneComponents.ts`, `sceneComposition.ts`, `authoring.ts`
-- Official app host: `apps/placement-viewer/**`
-- Desktop spike host: `apps/placement-viewer-desktop/**`
-- Create-game viewer: `packages/create-game/templates/_shared/src/ferrum-placement-viewer.ts`, `.css`
+- Official app host: `apps/studio/**`
+- Desktop spike host: `apps/studio-desktop/**`
+- Create-game viewer: `packages/create-game/templates/_shared/src/ferrum-studio.ts`, `.css`
 - Template authoring docs/data: `packages/create-game/templates/*/public/scene-authoring.json`
 - Smoke checks: `tests/smoke/package-consumer-smoke.mjs`, `tests/smoke/browser-render-smoke.mjs`
 
@@ -50,8 +50,8 @@ Use the narrowest set that covers the changed surface:
 
 ```bash
 pnpm --filter @ferrum2d/ferrum-web test
-pnpm --filter @ferrum2d/placement-viewer build
-pnpm smoke:placement-viewer
+pnpm --filter @ferrum2d/studio build
+pnpm smoke:studio
 pnpm smoke:create-game-template-reports
 pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal
 pnpm validate:consumer-smoke-report -- --report <report-path> --artifact-dir <artifact-dir>

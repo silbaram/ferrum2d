@@ -57,9 +57,9 @@ AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·
 | 물리·충돌 | 강체·재질·센서·복합 충돌체, 8종 joint, CCD·raycast/shape cast, controller·발판, 층/높이 필터·파괴 지형 | [물리 기능 맵](docs/development/architecture/physics-engine.md) · [Physics Spec](docs/engine/physics-spec.md) |
 | 입력·오디오 | action binding·context, 키보드·포인터·gamepad·가상 조작부, 오디오 정책·공간 오디오 | [입력](docs/engine/input-actions.md) · [공간 오디오](docs/engine/public-api/core.md#공간-오디오) |
 | 에셋·로딩 | atlas, Aseprite/Tiled/LDtk 데이터 가져오기, trim 복원, 병렬 로딩·취소·재시도·캐시, 선택 KTX2, 모델 캐시·레벨 스트리밍 | [에셋·플랫폼 API](docs/engine/public-api/core.md) |
-| 씬 작업공간 | 프로젝트 씬 탐색·다중 문서, drag/drop·변형·Undo/Redo, 레이어·잠금, 게임 카메라·조명 작성, 내 변경·handoff, 에셋 사용처·Catalog 정리 | [Studio 안내](apps/placement-viewer/README.md) |
+| 씬 작업공간 | 프로젝트 씬 탐색·다중 문서, drag/drop·변형·Undo/Redo, 레이어·잠금, 게임 카메라·조명 작성, 내 변경·handoff, 에셋 사용처·Catalog 정리 | [Studio 안내](apps/studio/README.md) |
 | 타일 작성 | 외부 타일셋·맵 가져오기, 작성 시점 오토타일, 타일 애니메이션·고정 충돌·시간별 맵 미리보기 | [타일 작성](docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기) |
-| 내장 도트 제작 | RGBA/인덱스 팔레트, 선택·자유 변형, 레이어 합성·불투명도·병합, 애니메이션·어니언, PNG 변환·노멀 생성·GIF/APNG 내보내기 | [도트 편집](apps/placement-viewer/README.md#내장-도트-제작) |
+| 내장 도트 제작 | RGBA/인덱스 팔레트, 선택·자유 변형, 레이어 합성·불투명도·병합, 애니메이션·어니언, PNG 변환·노멀 생성·GIF/APNG 내보내기 | [도트 편집](apps/studio/README.md#내장-도트-제작) |
 | 진단·검증 | profiler·프레임 기록, GPU 자원 통계·WebGL2 GPU 시간·Wasm 메모리, spec validation·replay/hash·browser smoke·runtime budget·consumer smoke | [검증 기준](docs/development/quality/smoke-check.md) · [Quality API](docs/engine/public-api/quality.md) |
 
 ### 물리와 HD-2D 게임플레이
@@ -103,7 +103,7 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 - **도움말 → 버전 및 업데이트**에서 공개 릴리스를 확인합니다. 지원하는 데스크톱 환경은 프로젝트 엔진 갱신과 서명된 앱 업데이트를 구분해 처리합니다.
 
 웹 내장 예제는 **내보내기 전용**입니다. 파일 저장은 활성 host가 허용한 범위에서 실행하며,
-게임 미리보기는 Scene Authoring 런타임을 사용합니다. 상세 사용법은 [Studio 안내](apps/placement-viewer/README.md)를 따릅니다.
+게임 미리보기는 Scene Authoring 런타임을 사용합니다. 상세 사용법은 [Studio 안내](apps/studio/README.md)를 따릅니다.
 
 ### 내장 도트 편집
 
@@ -113,7 +113,7 @@ WebGL2가 기본 렌더러이며 WebGPU는 지원 환경과 기능 조건에 따
 - 외부 PNG를 drag/drop·클립보드로 가져와 자르기·축소·색상 수/팔레트 변환 후 새 문서나 레이어로 편집합니다.
 - 편집 원본·PNG 시트·GIF/APNG를 내보내고, 지원 host에서 프로젝트 저장·복구를 사용합니다. 선택 노멀 생성기를 설치하면 color/normal pair를 생성하고 씬에 적용할 수 있습니다.
 
-[도트 제작과 저장 조건](apps/placement-viewer/README.md#내장-도트-제작) · [원본 형식·에셋 계약](docs/engine/data-scene-authoring.md#에디터-내장-도트-제작)
+[도트 제작과 저장 조건](apps/studio/README.md#내장-도트-제작) · [원본 형식·에셋 계약](docs/engine/data-scene-authoring.md#에디터-내장-도트-제작)
 
 ## 예제 갤러리
 
@@ -153,8 +153,8 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 
 | 예제 | 실행 명령 / 열기 | 소스 위치 |
 | --- | --- | --- |
-| 2D 등불 정원 | `pnpm dev:placement-viewer` → `?scene=garden` | [앱](apps/placement-viewer/) · [씬 JSON](apps/placement-viewer/public/placement.garden.scene-authoring.json) |
-| HD-2D 마을 | 같은 Studio → `?scene=village` | [씬 JSON](apps/placement-viewer/public/placement.village.scene-authoring.json) · [에셋](apps/placement-viewer/public/assets/rpg-village/) |
+| 2D 등불 정원 | `pnpm dev:studio` → `?scene=garden` | [앱](apps/studio/) · [씬 JSON](apps/studio/public/placement.garden.scene-authoring.json) |
+| HD-2D 마을 | 같은 Studio → `?scene=village` | [씬 JSON](apps/studio/public/placement.village.scene-authoring.json) · [에셋](apps/studio/public/assets/rpg-village/) |
 | Top-down Shooter | `pnpm dev:topdown` | [examples/topdown-shooter](examples/topdown-shooter/) |
 | 기능별 실험실 · 독립 실험 31종 | `pnpm dev:starter-runtime` | [예제 안내](examples/README.md) · [소스](examples/starter-runtime/) |
 | 작은 빛의 정원 · 도트 쇼케이스 | `pnpm dev:pixel-art` | [examples/pixel-art](examples/pixel-art/) |
@@ -235,7 +235,7 @@ GitHub Release의 패키지 설치가 기준이며, npm registry에 같은 버�
 | 배포 패키지 | 역할 |
 | --- | --- |
 | `@ferrum2d/ferrum-web` | Rust/Wasm 엔진과 브라우저 런타임 |
-| `@ferrum2d/authoring-viewer` | 배치·에셋·handoff를 위한 공유 authoring helper |
+| `@ferrum2d/studio-kit` | 배치·에셋·handoff를 위한 공유 authoring helper |
 | `@ferrum2d/create-game` | 게임 프로젝트 생성 CLI |
 | `@ferrum2d/agents` | 게임 프로젝트용 agent·skill·command 설치 CLI |
 
@@ -260,7 +260,7 @@ corepack prepare pnpm@10.8.0 --activate
 pnpm install
 pnpm build
 
-pnpm dev:placement-viewer
+pnpm dev:studio
 # 터미널에 표시된 주소에 ?scene=garden 또는 ?scene=village 추가
 ```
 
@@ -285,7 +285,7 @@ pnpm validate:docs-links
 pnpm validate:public-api-surface
 ```
 
-배치/Studio를 변경했다면 `pnpm smoke:placement-viewer`, 평면 픽셀 표시를 변경했다면 `pnpm smoke:flat-pixel-perfect`를 실행합니다.
+배치/Studio를 변경했다면 `pnpm smoke:studio`, 평면 픽셀 표시를 변경했다면 `pnpm smoke:flat-pixel-perfect`를 실행합니다.
 패키지 변경은 `pnpm package:check`, 생성 프로젝트 변경은 `pnpm package:consumer-smoke`로 검증합니다.
 전체 회귀 묶음은 `pnpm smoke:check`이며, 기능별 명령과 통과 조건은 [Smoke Check](docs/development/quality/smoke-check.md)를 따릅니다.
 
@@ -299,11 +299,11 @@ pnpm validate:public-api-surface
 ```text
 crates/ferrum-core/             Rust 게임 시뮬레이션 · Wasm
 packages/ferrum-web/            TypeScript 브라우저 런타임
-packages/ferrum-authoring-viewer/ 공유 authoring helper
+packages/ferrum-studio-kit/ 공유 authoring helper
 packages/create-game/          게임 프로젝트 생성 CLI
 packages/agents/               게임 개발용 AI 지침
-apps/placement-viewer/         웹 Ferrum2D Studio
-apps/placement-viewer-desktop/ 데스크톱 앱
+apps/studio/         웹 Ferrum2D Studio
+apps/studio-desktop/ 데스크톱 앱
 examples/                      기능 실험실 · 물리 심화 · 장르별 예제
 docs/                          사용법 · 설계 · 검증 · 개발계획
 scripts/                       빌드 · 검증 · 배포 준비 도구
@@ -314,7 +314,7 @@ scripts/                       빌드 · 검증 · 배포 준비 도구
 | 처음 시작 | [개발자 퀵스타트](docs/engine/developer-quickstart.md) · [사용자 가이드](docs/engine/user-guide.md) |
 | AI로 게임 개발 | [설치 지침](docs/engine/ai-agent-install.md) · [기능 안내](docs/engine/ai-feature-guide.md) |
 | 기능과 예제 둘러보기 | [Showcase Hub](docs/engine/showcase-hub.md) |
-| 씬·오브젝트·카메라 | [Data Scene Authoring](docs/engine/data-scene-authoring.md) · [HD-2D](docs/engine/data-scene-spatial.md) · [Studio 안내](apps/placement-viewer/README.md) |
+| 씬·오브젝트·카메라 | [Data Scene Authoring](docs/engine/data-scene-authoring.md) · [HD-2D](docs/engine/data-scene-spatial.md) · [Studio 안내](apps/studio/README.md) |
 | API·호환성 | [Public API](docs/engine/public-api.md) · [Migration Guide](docs/engine/public-api/migration-guide.md) |
 | English guides | [English documentation](docs/en/README.md) · [English README](README.en.md) |
 | 전체 문서·변경 이력 | [문서 목차](docs/README.md) · [CHANGELOG](CHANGELOG.md) |

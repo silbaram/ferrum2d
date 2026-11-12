@@ -41,7 +41,7 @@ AI agent가 spec과 코드를 수정하고, Studio에서 씬과 실행 결과를
 | 예제 | 실행 명령 | 관찰할 내용 |
 | --- | --- | --- |
 | 엔진 기능 실험실 | `pnpm dev:starter-runtime` | 31개 독립 실험의 설정·조작·관찰 결과·구현 API |
-| 2D 정원·HD-2D 마을 | `pnpm dev:placement-viewer` | `?scene=garden` / `?scene=village`로 배치·게임 미리보기 |
+| 2D 정원·HD-2D 마을 | `pnpm dev:studio` | `?scene=garden` / `?scene=village`로 배치·게임 미리보기 |
 | 물리 실험실 | `pnpm dev:physics-sandbox` | 7개 심화 시나리오와 충돌·solver 진단 |
 | Top-down Shooter | `pnpm dev:topdown` | 이동·조준·발사·wave·점수와 Game Spec |
 | Breakout | `pnpm dev:breakout` | 반사·충돌 이벤트·벽돌 제거·파티클 |
@@ -74,7 +74,7 @@ Minimal과 이전 `?mode=playground`/`?mode=starter`는 참고·검증용으로 
 
 씬·도트 원본의 실제 저장과 agent용 `.ferrum-placement-handoff.json`은 별도다.
 Handoff는 선택·초안·에셋 참조를 전달하는 자료이며 씬 저장을 대체하지 않는다.
-상세 조작·저장 권한·한영 UI·`Ctrl+K` 명령 검색은 [Studio 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)를 따른다.
+상세 조작·저장 권한·한영 UI·`Ctrl+K` 명령 검색은 [Studio 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md)를 따른다.
 
 ## 게임 프로젝트에서 수정할 파일
 

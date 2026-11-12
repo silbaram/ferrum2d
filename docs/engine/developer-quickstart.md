@@ -1,5 +1,10 @@
 # Ferrum2D 개발자 퀵스타트
 
+개발 소스의 작성 도구는 `@ferrum2d/studio-kit`, `studio.html`, `ferrum:studio`를 사용한다.
+이미 공개한 beta.9 이하를 설치하면 그 릴리스의 `@ferrum2d/authoring-viewer`, `placement-viewer.html`,
+`ferrum:placement-viewer` 이름을 따른다. 설치한 릴리스의 생성 파일과 안내를 기준으로 실행한다.
+
+
 한국어 · [English](../en/engine/developer-quickstart.md)
 
 Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer로 구성된 2D 웹 게임 엔진이다. Ferrum2D의 개발 흐름은 비주얼 에디터 중심이 아니라 **Game Spec, Physics Spec, 생성 템플릿, AI agent, 검증 스크립트**를 중심으로 한다.
@@ -43,7 +48,7 @@ cd my-game
 npm install
 ```
 
-생성기는 같은 릴리스의 엔진과 viewer URL을 `package.json`에 고정하고 `FERRUM_INSTALL.md`를 남긴다. 새 `.npmrc`의 `allow-remote=root`는 npm 12의 직접 URL 의존성 설치를 허용한다. Rust/wasm-pack은 게임 개발자에게 필요 없으며 일반 개발 도구는 npm 레지스트리에서 설치한다.
+생성기는 같은 릴리스의 엔진과 Studio Kit URL을 `package.json`에 고정하고 `FERRUM_INSTALL.md`를 남긴다. 새 `.npmrc`의 `allow-remote=root`는 npm 12의 직접 URL 의존성 설치를 허용한다. Rust/wasm-pack은 게임 개발자에게 필요 없으며 일반 개발 도구는 npm 레지스트리에서 설치한다.
 
 ### 2. 브라우저 실행
 

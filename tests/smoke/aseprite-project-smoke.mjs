@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 import { encodePngRgba } from "../../scripts/tools/pack-textures.mjs";
 import { sha256 } from "../../scripts/tools/sprite-normals-tool.mjs";
 import { showPlacementAssetPanel, showPlacementBottom } from "./placement-panel-navigation.mjs";
-import { placementNormalGeneratorPlugin } from "../../apps/placement-viewer/server/normalGenerator.mjs";
+import { placementNormalGeneratorPlugin } from "../../apps/studio/server/normalGenerator.mjs";
 import { smokeNativeTiles } from "./native-tile-project-smoke.mjs";
 import { smokeNativeNormals } from "./native-normal-project-smoke.mjs";
 import { smokeNativeTrim } from "./aseprite-trim-native-smoke.mjs";
@@ -53,13 +53,13 @@ const artifact = resolve(
 );
 await mkdir(artifact, { recursive: true });
 const run = await mkdtemp(join(artifact, "run-")),
-  app = resolve("apps/placement-viewer/dist");
+  app = resolve("apps/studio/dist");
 const compiled = spawnSync(
   "cargo",
   [
     "test",
     "--manifest-path",
-    "apps/placement-viewer-desktop/src-tauri/Cargo.toml",
+    "apps/studio-desktop/src-tauri/Cargo.toml",
     "--no-default-features",
     "--offline",
     "--no-run",
@@ -81,7 +81,7 @@ const executable = compiled.stdout
   .find(
     (item) =>
       item.reason === "compiler-artifact" &&
-      item.target?.name === "ferrum_placement_viewer_desktop_lib" &&
+      item.target?.name === "ferrum_studio_desktop_lib" &&
       item.profile?.test &&
       item.executable,
   )?.executable;

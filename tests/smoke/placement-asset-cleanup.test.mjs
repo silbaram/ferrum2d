@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
-const code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementAssetCleanup.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
+const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementAssetCleanup.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {readCleanupReport:read,readCleanupBackups:readBackups,readCleanupResult:result,protectCleanupDocuments:protect,cleanupSelection:selection}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const hash='a'.repeat(64),id='pixel.'+'a'.repeat(24),key='.ferrum-pixels:'+id;
 function fixture(){return {format:'ferrum2d.asset-cleanup',version:1,snapshot:hash,deletionAllowed:false,jsonFiles:1,jsonBytes:100,revisions:[{key,kind:'pixel',id,assets:[id],files:[{name:id+'.json',bytes:10,sha256:hash},{name:id+'.png',bytes:20,sha256:hash}],references:[]}],catalogs:[{kind:'pixel',revisions:1,backupBytes:100}],backups:[]};}

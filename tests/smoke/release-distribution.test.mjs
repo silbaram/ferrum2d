@@ -5,17 +5,17 @@ import os from "node:os";
 import path from "node:path";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
 import { parseDistributionArgs, prepareDistribution } from "../../scripts/package/prepare-distribution.mjs";
-import { prepareViewerRelease } from "../../scripts/package/prepare-viewer-release.mjs";
+import { prepareStudioRelease } from "../../scripts/package/prepare-studio-release.mjs";
 import { assembleDistribution, fileRecord, nativeChecks, readJson, releaseIdentity, validateEngineBundle, verifyDistribution } from "../../scripts/package/release-distribution.mjs";
 import { resolvePackageCommand } from "../../scripts/package/release-command.mjs";
-import { updaterSettings } from "../../scripts/package/viewer-updater.mjs";
+import { updaterSettings } from "../../scripts/package/studio-updater.mjs";
 
 const version = "0.1.0-beta.1", release = githubRelease(version), commit = "a".repeat(40);
-test("Studio retains the previous desktop identity and MSI upgrade family", async () => {
-  const config = await readJson(new URL("../../apps/placement-viewer-desktop/src-tauri/tauri.conf.json", import.meta.url));
-  assert.equal(config.identifier, "com.ferrum2d.placement-viewer.desktop");
-  // Recorded with `tauri inspect wix-upgrade-code` before renaming the product.
-  assert.equal(config.bundle.windows.wix.upgradeCode, "b220af84-f62a-5b63-8f6e-c193a58ee033");
+test("Studio uses its own desktop installation identity", async () => {
+  const config = await readJson(new URL("../../apps/studio-desktop/src-tauri/tauri.conf.json", import.meta.url));
+  assert.equal(config.productName, "Ferrum2D Studio");
+  assert.equal(config.identifier, "com.ferrum2d.studio");
+  assert.equal(config.bundle.windows?.wix?.upgradeCode, undefined);
 });
 async function temporary(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ferrum distribution & "));
@@ -34,16 +34,16 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
   const target = platform === "linux" ? "x86_64-unknown-linux-gnu" : platform === "win32" ? "x86_64-pc-windows-msvc" : arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   const installer = path.join(root, "target", target, "release/bundle", bundles[platform], `${productName}_${version}_${arch}.${extensions[platform]}`);
   await put(root, "packages/ferrum-web/package.json", { name: "@ferrum2d/ferrum-web", version: "0.1.0", private: true });
-  await put(root, "apps/placement-viewer-desktop/package.json", { name: "@ferrum2d/placement-viewer-desktop", version: "0.1.0", private: true });
-  await put(root, "apps/placement-viewer-desktop/src-tauri/tauri.conf.json", { version: "0.1.0", productName });
-  await put(root, "apps/placement-viewer-desktop/src-tauri/Cargo.toml", '[package]\nversion = "0.1.0"\n');
-  await put(root, "apps/placement-viewer-desktop/app-icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"/>');
+  await put(root, "apps/studio-desktop/package.json", { name: "@ferrum2d/studio-desktop", version: "0.1.0", private: true });
+  await put(root, "apps/studio-desktop/src-tauri/tauri.conf.json", { version: "0.1.0", productName, identifier: "com.ferrum2d.studio" });
+  await put(root, "apps/studio-desktop/src-tauri/Cargo.toml", '[package]\nversion = "0.1.0"\n');
+  await put(root, "apps/studio-desktop/app-icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"/>');
   const wasm = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
   await put(root, "packages/ferrum-web/pkg/ferrum_core_bg.wasm", wasm);
-  await put(root, "apps/placement-viewer/dist/index.html", "<canvas></canvas>");
-  await put(root, "apps/placement-viewer/dist/assets/core.wasm", wrongWasm ? "old wasm" : wasm);
+  await put(root, "apps/studio/dist/index.html", "<canvas></canvas>");
+  await put(root, "apps/studio/dist/assets/core.wasm", wrongWasm ? "old wasm" : wasm);
   if (stale) { await put(root, path.relative(root, installer), "old installer"); await utimes(installer, 0, 0); }
-  const legacyInstaller = installer.replace(productName, "Ferrum2D Placement Viewer");
+  const legacyInstaller = installer.replace(productName, "Cached Other Product");
   if (cachedLegacy) await put(root, path.relative(root, legacyInstaller), "cached legacy installer");
   const run = async (command, args) => {
     calls.push({ command, args }); let stdout = "";
@@ -69,7 +69,7 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
 
 async function engineFixture(root) {
   await mkdir(root, { recursive: true }); const assets = [];
-  for (const name of ["ferrum-web", "authoring-viewer", "create-game", "agents"]) {
+  for (const name of ["ferrum-web", "studio-kit", "create-game", "agents"]) {
     const file = `ferrum2d-${name}-${version}.tgz`; await put(root, file, `fixture package ${name}`);
     assets.push({ ...await fileRecord(path.join(root, file)), package: `@ferrum2d/${name}`, version, url: `${release.baseUrl}/${file}` });
   }
@@ -82,12 +82,12 @@ async function engineFixture(root) {
 test("CLI rejects ambiguous, incomplete or unsupported release requests", () => {
   for (const args of [[], ["prepare"], ["prepare", "--version", "latest"], ["prepare", "--version", version, "--component", "web"],
     ["prepare", "--version", version, "--version", version], ["prepare", "--version", "--plan"],
-    ["prepare", "--version", version, "--component", "viewer", "--skip-engine-build"],
+    ["prepare", "--version", version, "--component", "studio", "--skip-engine-build"],
     ["assemble", "--engine", "a", "--output", "b"], ["verify"], ["publish"], ["verify", "--bundle", "x", "--upload"]]) {
     assert.throws(() => parseDistributionArgs(args), Error, args.join(" "));
   }
   assert.equal(parseDistributionArgs(["prepare", "--", "--version", version]).component, "all");
-  assert.deepEqual(parseDistributionArgs(["assemble", "--engine", "e", "--viewer", "a", "--viewer", "b", "--output", "o"]).viewers, ["a", "b"]);
+  assert.deepEqual(parseDistributionArgs(["assemble", "--engine", "e", "--studio", "a", "--studio", "b", "--output", "o"]).studios, ["a", "b"]);
 });
 
 test("Windows pnpm uses its JS entry without shell interpolation", () => {
@@ -100,8 +100,8 @@ test("Windows pnpm uses its JS entry without shell interpolation", () => {
 for (const [platform, arch] of [["linux", "x64"], ["win32", "x64"], ["darwin", "arm64"]]) {
   test(`native builder stages ${platform}/${arch}, embeds matching Wasm and preserves source versions`, async t => {
     const fixture = await nativeFixture(t, { platform, arch });
-    const sourcePath = path.join(fixture.root, "apps/placement-viewer-desktop/src-tauri/tauri.conf.json"), before = await readFile(sourcePath, "utf8");
-    const { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
+    const sourcePath = path.join(fixture.root, "apps/studio-desktop/src-tauri/tauri.conf.json"), before = await readFile(sourcePath, "utf8");
+    const { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
     assert.equal(manifest.platform.arch, arch); assert.equal(manifest.release.version, version);
     assert.equal(manifest.checks.nativeGui, "not-run"); assert.equal(manifest.checks.signing, "not-verified");
     assert.deepEqual(manifest.manualReleaseGate.checks, nativeChecks); assert.equal(manifest.published, false);
@@ -124,12 +124,12 @@ test("plan mode writes nothing and runs no tools", async t => {
   assert.equal(fixture.calls.length, 0);
 });
 
-test("Studio transition rejects the legacy automatic update channel before tools or output", async t => {
-  const fixture = await nativeFixture(t);
-  for (const component of ["viewer", "all"]) for (const plan of [true, false]) {
-    await assert.rejects(prepareDistribution({ ...fixture.options, component, plan, noSign: false, withUpdater: true }, fixture.context), /product-name transition/);
+test("release preparation rejects an incorrect Studio identity before tools or output", async t => {
+  const fixture = await nativeFixture(t, { productName: "Unexpected Product" });
+  for (const component of ["studio", "all"]) for (const plan of [true, false]) {
+    await assert.rejects(prepareDistribution({ ...fixture.options, component, plan, noSign: false, withUpdater: true }, fixture.context), /Studio releases require/);
   }
-  await assert.rejects(prepareViewerRelease({ ...fixture.options, noSign: false, withUpdater: true }, fixture.context), /product-name transition/);
+  await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), /Studio releases require/);
   assert.equal(fixture.calls.length, 0);
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
@@ -137,7 +137,7 @@ test("Studio transition rejects the legacy automatic update channel before tools
 for (const platform of ["linux", "win32", "darwin"]) test(`cached legacy installer does not block fresh Studio staging on ${platform}`, async t => {
   const fixture = await nativeFixture(t, { platform, cachedLegacy: true });
   const before = (await stat(fixture.legacyInstaller)).mtimeMs;
-  const { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
+  const { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
   assert.equal(await readFile(fixture.legacyInstaller, "utf8"), "cached legacy installer");
   assert.equal((await stat(fixture.legacyInstaller)).mtimeMs, before);
   assert.equal(await readFile(path.join(fixture.output, manifest.assets[0].file), "utf8"), `fixture installer ${manifest.platform.os}`);
@@ -145,14 +145,14 @@ for (const platform of ["linux", "win32", "darwin"]) test(`cached legacy install
 
 test("ambiguous fresh installers are rejected without staging", async t => {
   const fixture = await nativeFixture(t, { ambiguousFresh: true });
-  await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), /exactly one.*installer/);
+  await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), /exactly one.*installer/);
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
 
 for (const [options, pattern] of [[{ stale: true }, /stale output/], [{ wrongWasm: true }, /current engine Wasm/], [{ missingPrerequisite: true }, /prerequisites.*missing/]]) {
   test(`native preparation refuses invalid build: ${Object.keys(options)[0]}`, async t => {
     const fixture = await nativeFixture(t, options);
-    await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), pattern);
+    await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), pattern);
     await assert.rejects(stat(fixture.output), { code: "ENOENT" });
     if (options.missingPrerequisite) assert.equal(fixture.calls.length, 1);
   });
@@ -166,7 +166,7 @@ test("all mode checks native prerequisites before expensive engine builds", asyn
 
 test("existing output is preserved and no commands are executed", async t => {
   const fixture = await nativeFixture(t); await put(fixture.output, "keep.txt", "existing work");
-  await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), /already exists/);
+  await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), /already exists/);
   assert.equal(await readFile(path.join(fixture.output, "keep.txt"), "utf8"), "existing work"); assert.equal(fixture.calls.length, 0);
 });
 
@@ -176,26 +176,26 @@ test("a failed native command cannot stage a successful candidate", async t => {
     if (args.includes("tauri") && args.includes("build")) throw new Error("native compiler failed");
     return original(command, args);
   };
-  await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), /native compiler failed/);
+  await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), /native compiler failed/);
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
 
 test("a Rust target for a different OS is rejected before building", async t => {
   const fixture = await nativeFixture(t), original = fixture.context.run;
   fixture.context.run = (command, args) => command === "rustc" ? { stdout: "host: x86_64-pc-windows-msvc\n" } : original(command, args);
-  await assert.rejects(prepareViewerRelease(fixture.options, fixture.context), /cross compilation/);
+  await assert.rejects(prepareStudioRelease(fixture.options, fixture.context), /cross compilation/);
   assert(!fixture.calls.some(call => call.command === "pnpm"));
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
 
 test("assembly preserves engine v1 contract, verifies all files, and rejects tampering", async t => {
   const root = await temporary(t), engine = path.join(root, "engine"), output = path.join(root, "distribution");
-  const original = await engineFixture(engine), viewers = [];
+  const original = await engineFixture(engine), studios = [];
   for (const platform of ["linux", "win32", "darwin"]) {
-    const fixture = await nativeFixture(t, { platform }); await prepareViewerRelease(fixture.options, fixture.context); viewers.push(fixture.output);
+    const fixture = await nativeFixture(t, { platform }); await prepareStudioRelease(fixture.options, fixture.context); studios.push(fixture.output);
   }
-  const { manifest } = await assembleDistribution({ engine, viewers, output });
-  assert.equal(manifest.viewerManifests.length, 3); assert.equal(manifest.published, false);
+  const { manifest } = await assembleDistribution({ engine, studios, output });
+  assert.equal(manifest.studioManifests.length, 3); assert.equal(manifest.published, false);
   assert.deepEqual(await validateEngineBundle(output), original);
   assert.deepEqual(await verifyDistribution(output), manifest);
   const checksum = await readFile(path.join(output, "DISTRIBUTION_SHA256SUMS"), "utf8");
@@ -206,26 +206,26 @@ test("assembly preserves engine v1 contract, verifies all files, and rejects tam
 
 test("mismatched commit/version, duplicate platform and corrupted input fail before reserving output", async t => {
   const root = await temporary(t), engine = path.join(root, "engine"), output = path.join(root, "distribution"); await engineFixture(engine);
-  const fixture = await nativeFixture(t), { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
-  const manifestName = (await readdir(fixture.output)).find(name => name.startsWith("viewer-manifest"));
+  const fixture = await nativeFixture(t), { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
+  const manifestName = (await readdir(fixture.output)).find(name => name.startsWith("studio-manifest"));
   for (const modify of [m => { m.source.commit = "b".repeat(40); }, m => { m.release.version = "0.1.0-beta.2"; }, m => { m.assets[0].file = "../escape.deb"; }]) {
     const changed = structuredClone(manifest); modify(changed); await put(fixture.output, manifestName, changed);
-    await assert.rejects(assembleDistribution({ engine, viewers: [fixture.output], output }));
+    await assert.rejects(assembleDistribution({ engine, studios: [fixture.output], output }));
     await assert.rejects(stat(output), { code: "ENOENT" });
   }
   await put(fixture.output, manifestName, manifest);
-  await assert.rejects(assembleDistribution({ engine, viewers: [fixture.output, fixture.output], output }), /Duplicate viewer/);
+  await assert.rejects(assembleDistribution({ engine, studios: [fixture.output, fixture.output], output }), /Duplicate studio/);
   await assert.rejects(stat(output), { code: "ENOENT" });
   await put(fixture.output, manifest.assets[0].file, "corrupt installer");
-  await assert.rejects(assembleDistribution({ engine, viewers: [fixture.output], output }), /Corrupt/);
+  await assert.rejects(assembleDistribution({ engine, studios: [fixture.output], output }), /Corrupt/);
 });
 
 test("regular files are required, and manifest native GUI claims cannot bypass the manual gate", async t => {
-  const fixture = await nativeFixture(t), { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
+  const fixture = await nativeFixture(t), { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
   const engine = path.join(fixture.root, "engine"), output = path.join(fixture.root, "distribution"); await engineFixture(engine);
-  const name = (await readdir(fixture.output)).find(name => name.startsWith("viewer-manifest"));
+  const name = (await readdir(fixture.output)).find(name => name.startsWith("studio-manifest"));
   manifest.checks.nativeGui = "passed"; await put(fixture.output, name, manifest);
-  await assert.rejects(assembleDistribution({ engine, viewers: [fixture.output], output }), /manual native release gate/);
+  await assert.rejects(assembleDistribution({ engine, studios: [fixture.output], output }), /manual native release gate/);
   if (process.platform !== "win32") {
     const file = await put(fixture.root, "original", "contents"); await symlink(file, path.join(fixture.root, "link"));
     await assert.rejects(fileRecord(path.join(fixture.root, "link")), /regular file/);
@@ -233,11 +233,11 @@ test("regular files are required, and manifest native GUI claims cannot bypass t
 });
 
 test("dirty source remains visible in the combined manifest", async t => {
-  const fixture = await nativeFixture(t), { manifest } = await prepareViewerRelease(fixture.options, fixture.context);
-  const name = (await readdir(fixture.output)).find(name => name.startsWith("viewer-manifest"));
+  const fixture = await nativeFixture(t), { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
+  const name = (await readdir(fixture.output)).find(name => name.startsWith("studio-manifest"));
   manifest.source.dirty = true; await put(fixture.output, name, manifest);
   const engine = path.join(fixture.root, "engine"), output = path.join(fixture.root, "distribution"); await engineFixture(engine);
-  await assembleDistribution({ engine, viewers: [fixture.output], output });
+  await assembleDistribution({ engine, studios: [fixture.output], output });
   assert.equal((await readJson(path.join(output, "distribution-manifest.json"))).source.dirty, true);
   assert.equal((await verifyDistribution(output)).source.dirty, true);
 });
@@ -249,9 +249,9 @@ test("updater signing is explicit, requires keys, and cannot silently use --no-s
   assert.throws(() => parseDistributionArgs(["prepare", "--version", version, "--no-sign", "--with-updater"]), /combined/);
 });
 
-for (const platform of ["linux", "win32", "darwin"]) test(`legacy signed updater metadata survives ${platform} staging/assembly and rejects mismatches`, async t => {
-  // This is the pre-rename update channel contract, not permission to update old apps to Studio.
-  const productName = "Ferrum2D Placement Viewer";
+for (const platform of ["linux", "win32", "darwin"]) test(`Studio signed updater metadata survives ${platform} staging/assembly and rejects mismatches`, async t => {
+  // Studio signs and discovers the same studio-updater channel on every OS.
+  const productName = "Ferrum2D Studio";
   const fixture = await nativeFixture(t, { platform, productName }), run = fixture.context.run;
   const previous = { public: process.env.FERRUM_UPDATER_PUBLIC_KEY, private: process.env.TAURI_SIGNING_PRIVATE_KEY };
   // Tool-output contract fixture only; these are not real signing keys or native signature evidence.
@@ -274,10 +274,10 @@ for (const platform of ["linux", "win32", "darwin"]) test(`legacy signed updater
     }
     return result;
   };
-  const { manifest } = await prepareViewerRelease({ ...fixture.options, noSign: false, withUpdater: true }, fixture.context);
-  assert(manifest.updater); assert(manifest.updater.metadata.file.endsWith("-x64.json"));
+  const { manifest } = await prepareStudioRelease({ ...fixture.options, noSign: false, withUpdater: true }, fixture.context);
+  assert(manifest.updater); assert.match(manifest.updater.metadata.file, /^studio-updater-(linux|windows|macos)-x64\.json$/);
   const engine = path.join(fixture.root, "engine"), output = path.join(fixture.root, "assembled"); await engineFixture(engine);
-  await assembleDistribution({ engine, viewers: [fixture.output], output }); await verifyDistribution(output);
+  await assembleDistribution({ engine, studios: [fixture.output], output }); await verifyDistribution(output);
   assert.equal((await validateEngineBundle(output)).assets.length, 4);
   await put(output, manifest.updater.metadata.file, { version: "0.1.0-beta.99", platforms: {} });
   await assert.rejects(verifyDistribution(output), /Corrupt/);

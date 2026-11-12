@@ -16,7 +16,7 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoots = {
-  authoringViewer: path.join(repoRoot, "packages/ferrum-authoring-viewer"),
+  studioKit: path.join(repoRoot, "packages/ferrum-studio-kit"),
   ferrumWeb: path.join(repoRoot, "packages/ferrum-web"),
   createGame: path.join(repoRoot, "packages/create-game"),
   agents: path.join(repoRoot, "packages/agents"),
@@ -29,7 +29,7 @@ const GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS = 15_000;
 const GENERATED_DEPLOYMENT_TIMEOUT_MS = 20_000;
 const GENERATED_DEPLOYMENT_BASE_PATH = "/__ferrum2d_consumer_smoke__/";
 const CONSUMER_SMOKE_REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
-const CONSUMER_SMOKE_REPORT_VERSION = 1;
+const CONSUMER_SMOKE_REPORT_VERSION = 2;
 const STATIC_MIME_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -98,7 +98,7 @@ const installArgs = [
 ];
 
 let tempRoot;
-let authoringViewerTarball;
+let studioKitTarball;
 let ferrumWebTarball;
 let createGameTarball;
 let agentsTarball;
@@ -121,13 +121,13 @@ try {
 
   if (!options.skipBuild) {
     await runRequired(pnpm, ["build:wasm"], repoRoot);
-    await runRequired(pnpm, ["--filter", "@ferrum2d/authoring-viewer", "build"], repoRoot);
+    await runRequired(pnpm, ["--filter", "@ferrum2d/studio-kit", "build"], repoRoot);
     await runRequired(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
   }
 
   if (!options.skipPackageCheck) {
     await runRequired(process.execPath, [
-      path.join(repoRoot, "scripts/package/check-authoring-viewer-package.mjs"),
+      path.join(repoRoot, "scripts/package/check-studio-kit-package.mjs"),
       "--verify-pack",
     ], repoRoot);
     await runRequired(process.execPath, [
@@ -146,7 +146,7 @@ try {
   }
 
   await mkdir(tarballRoot, { recursive: true });
-  authoringViewerTarball = await packPackage(packageRoots.authoringViewer, tarballRoot);
+  studioKitTarball = await packPackage(packageRoots.studioKit, tarballRoot);
   ferrumWebTarball = await packPackage(packageRoots.ferrumWeb, tarballRoot);
   createGameTarball = await packPackage(packageRoots.createGame, tarballRoot);
   agentsTarball = await packPackage(packageRoots.agents, tarballRoot);
@@ -163,7 +163,7 @@ try {
     templateSummaries.push(templateSummary);
     try {
       await runGeneratedGameConsumer({
-        authoringViewerTarball,
+        studioKitTarball,
         ferrumWebTarball,
         generatedGamesRoot,
         templateName,
@@ -347,7 +347,7 @@ async function listCreateGameTemplateDirectories() {
 }
 
 async function runGeneratedGameConsumer({
-  authoringViewerTarball,
+  studioKitTarball,
   ferrumWebTarball,
   generatedGamesRoot,
   templateName,
@@ -364,8 +364,8 @@ async function runGeneratedGameConsumer({
     templateName,
     "--ferrum-version",
     fileDependency(ferrumWebTarball),
-    "--authoring-viewer-version",
-    fileDependency(authoringViewerTarball),
+    "--studio-kit-version",
+    fileDependency(studioKitTarball),
   ], toolConsumerRoot);
   templateSummary.checks.createGame = true;
   await pinGeneratedPackageManager(generatedGameRoot);
@@ -605,8 +605,8 @@ async function runGeneratedGameConsumer({
     `generated ${templateName} game build must emit dist/index.html`,
   );
   await requireFile(
-    path.join(generatedGameRoot, "dist/placement-viewer.html"),
-    `generated ${templateName} game build must emit dist/placement-viewer.html`,
+    path.join(generatedGameRoot, "dist/studio.html"),
+    `generated ${templateName} game build must emit dist/studio.html`,
   );
   const deploymentReport = await runJsonReport(
     pnpm,
@@ -622,7 +622,7 @@ async function runGeneratedGameConsumer({
   templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
   templateSummary.checks.placementViewerSmoke = true;
   templateSummary.buildOutput.distIndexHtml = path.join(templateSummary.generatedProject, "dist/index.html");
-  templateSummary.buildOutput.distPlacementViewerHtml = path.join(templateSummary.generatedProject, "dist/placement-viewer.html");
+  templateSummary.buildOutput.distPlacementViewerHtml = path.join(templateSummary.generatedProject, "dist/studio.html");
   templateSummary.buildOutput.deployReady = true;
   templateSummary.buildOutput.browserSmoke = true;
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
@@ -789,7 +789,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
       }
     });
 
-    await page.goto(`http://${BROWSER_SMOKE_HOST}:${address.port}/placement-viewer.html`, {
+    await page.goto(`http://${BROWSER_SMOKE_HOST}:${address.port}/studio.html`, {
       waitUntil: "networkidle",
       timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
     });
@@ -2569,10 +2569,10 @@ function assertPlacementAuthoringBehaviorBindings(value, label) {
 
 function assertConsumerProjectReport(report, templateName) {
   assert(report.format === "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
-  assert(report.version === 1, `${templateName} project report version is invalid`);
+  assert(report.version === 2, `${templateName} project report version is invalid`);
   assert(report.ok === true, `${templateName} project report must be ok for a generated template`);
   assert(report.project?.packageName === templateName, `${templateName} project report packageName is invalid`);
-  assert(report.project?.authoringViewer !== undefined && report.project.authoringViewer !== null, `${templateName} project report must include authoring-viewer dependency`);
+  assert(report.project?.studioKit !== undefined && report.project.studioKit !== null, `${templateName} project report must include studio-kit dependency`);
   assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
   assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
@@ -3269,7 +3269,7 @@ function summarizeConsumerProjectReport(report) {
   return {
     status: report.ok === true ? "validated" : "invalid",
     packageName: report.project?.packageName,
-    authoringViewer: report.project?.authoringViewer,
+    studioKit: report.project?.studioKit,
     ferrumWeb: report.project?.ferrumWeb,
     files: {
       main: report.project?.files?.main,
@@ -3504,7 +3504,7 @@ function buildConsumerSmokeReport({ status, error }) {
       commandTimeoutMs: options.commandTimeoutMs,
     },
     tarballs: {
-      authoringViewer: authoringViewerTarball === undefined ? undefined : path.basename(authoringViewerTarball),
+      studioKit: studioKitTarball === undefined ? undefined : path.basename(studioKitTarball),
       ferrumWeb: ferrumWebTarball === undefined ? undefined : path.basename(ferrumWebTarball),
       createGame: createGameTarball === undefined ? undefined : path.basename(createGameTarball),
       agents: agentsTarball === undefined ? undefined : path.basename(agentsTarball),

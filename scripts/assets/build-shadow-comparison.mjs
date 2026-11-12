@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {shadowComparisonModel} from "./shadow-comparison-models.mjs";
 
 export async function buildShadowComparison(output){
-  const source=new URL("../../apps/placement-viewer/public/assets/lantern-garden/",import.meta.url);
+  const source=new URL("../../apps/studio/public/assets/lantern-garden/",import.meta.url);
   const manifest=JSON.parse(await readFile(new URL("manifest.json",source),"utf8"));
   const atlas=await readFile(new URL("atlas.png",source)),sha=bytes=>createHash("sha256").update(bytes).digest("hex");
   if(sha(atlas)!==manifest.texture.sha256)throw Error("Garden atlas differs from its manifest");
@@ -37,5 +37,5 @@ export async function buildShadowComparison(output){
   const subjects={tree:{label:"정원 나무",frame:frame("oak"),width:64,height:96,originY:1,volumeHeight:96},
     lantern:{label:"정원 가로등",frame:frame("lantern"),width:32,height:96,originY:1,volumeHeight:90},
     crate:{label:"정원 상자",frame:frame("crate"),width:64,height:64,originY:30/32,volumeHeight:56}};
-  await writeFile(new URL("spatial/shadow-assets.json",output),JSON.stringify({source:"apps/placement-viewer/public/assets/lantern-garden",atlasSha256:sha(atlas),frames:manifest.frames,models,subjects},null,2)+"\n");
+  await writeFile(new URL("spatial/shadow-assets.json",output),JSON.stringify({source:"apps/studio/public/assets/lantern-garden",atlasSha256:sha(atlas),frames:manifest.frames,models,subjects},null,2)+"\n");
 }

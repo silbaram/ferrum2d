@@ -1,0 +1,21 @@
+{
+  "name": "@ferrum2d/studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/studio-kit build && vite",
+    "dev:desktop-host": "pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/studio-kit build && vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "pnpm --filter @ferrum2d/studio-kit build && vite build --base=./",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ferrum2d/studio-kit": "workspace:*",
+    "@ferrum2d/ferrum-web": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19"
+  }
+}

@@ -5,7 +5,7 @@ import { pixelCapacitySource } from "./pixel-capacity-fixture.mjs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { decodePng } from "../../scripts/tools/pack-textures.mjs";
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
 async function checkedImport(url) {
   try { return await import(url); }
@@ -18,7 +18,7 @@ async function checkedImport(url) {
   }
 }
 async function moduleUrl(name, imports = {}) {
-  let code = ts.transpileModule(await readFile(new URL("../../apps/placement-viewer/src/" + name + ".ts", import.meta.url), "utf8"), {
+  let code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/" + name + ".ts", import.meta.url), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText;
   for (const [from, to] of Object.entries(imports)) code = code.replaceAll(JSON.stringify(from), JSON.stringify(to));

@@ -27,7 +27,7 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 | 게임 응용 | [platformer](platformer/README.md) | 이동 컨트롤러 → 점프·착지·단방향/이동 발판 | `pnpm dev:platformer` |
 | 게임 응용 | [topdown-shooter](topdown-shooter/README.md) | Game Spec → 이동·사격·적 웨이브·HUD·조명·오디오 | `pnpm dev:topdown` |
 | 게임 응용 | [pixel-art](pixel-art/README.md) | 도트 원본 → 애니메이션·팔레트・노멀 조명·후처리 | `pnpm dev:pixel-art` |
-| 제작 도구 | [Ferrum2D Studio](../apps/placement-viewer/README.md) | 씬·에셋 작성, 오브젝트 배치·카메라·도트 편집 | `pnpm dev:placement-viewer` |
+| 제작 도구 | [Ferrum2D Studio](../apps/studio/README.md) | 씬·에셋 작성, 오브젝트 배치·카메라·도트 편집 | `pnpm dev:studio` |
 
 단독 개발 명령은 개별 Vite 서버다. 실행한 터미널 주소를 열며, 다른 예제 탐색은 통합 미리보기에서 한다.
 게임·실험 앱 6종은 목적, 직접 해보기, 관찰할 결과, 관련 기능 실험을 같은 형식으로 안내한다. 제작 도구는 자체 작업공간을 사용한다.

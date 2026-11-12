@@ -1,5 +1,13 @@
 # Ferrum2D Smoke Check
 
+Studio 명칭 전환 검증은 `pnpm package:check:studio-kit`, `pnpm test:github-release`,
+`pnpm smoke:create-game-template-reports`, 전체 `pnpm package:consumer-smoke`와 report validator를 사용한다.
+생성 프로젝트는 `@ferrum2d/studio-kit`, `studio.html`, `ferrum:studio`를 포함해야 한다.
+consumer-smoke report와 consumer project report는 Studio Kit 필드명을 사용하는 version 2다.
+`pnpm smoke:studio`는 독립 Studio 앱을 검사하며 생성 프로젝트의 경량 Studio와 기능 범위를 구분한다.
+CI는 `pnpm lint` 전에 `pnpm --filter @ferrum2d/studio-kit build`로 helper 타입 선언을 생성한다.
+`pnpm test:updates`는 Studio Kit의 이전·새 릴리스 URL이 문자열이고 실제 새 URL로 갱신되는지 확인한다.
+
 이 문서는 릴리스 후보나 큰 변경 후 실행할 smoke check 기준을 고정한다. 자동 검증은 빠른 회귀 확인을 담당하고, WebGL2 실제 렌더링/입력/오디오는 browser smoke와 수동 확인으로 보완한다.
 
 광원 v3 회귀는 기존 `smoke:spatial-webgpu-offscreen`의 environment fixture에 연결한다.
@@ -190,12 +198,12 @@ class private 상태를 포함한 타입 단언 없이 custom renderer와 최소
 | Rust-side 대량 오브젝트 budget | `pnpm smoke:mass-objects` | CI 기본 gate, `smoke:check` | `ferrum2d.mass-object-stress.smoke-report` JSON과 scenario replay hash |
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
-| Ferrum2D Studio browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | viewer/save는 CI validate와 `smoke:check`, 나머지 browser 항목은 `smoke:check`. Linux debug deb/GUI launch는 로컬 수동 후보 | Ferrum2D Studio production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux debug deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
-| 프로젝트 씬 탐색 | `pnpm test:placement-scenes`, `pnpm smoke:placement-viewer` | Node 계약과 viewer browser 검증은 CI validate, native 계약은 desktop Rust tests | bounded 탐색·symlink/경로 거절·문서 오류, 중복 탭/초안 보존, 선택 씬 열기·실행 실패 격리, 한영/compact/키보드/폴더 Export Only, fake native의 최신 자산 문맥과 활성 씬 저장 |
-| 엔진·에디터 업데이트 | `pnpm test:updates`, `pnpm smoke:placement-viewer`, `pnpm test:github-release` | CI Node/Ferrum2D Studio gate, native authority는 desktop Rust tests | beta 숫자 비교·draft/불완전 release 제외·페이지 탐색·오프라인·변조 차단, 실제 npm/pnpm 임시 consumer 설치와 hook 미실행, metadata/lock 복원 및 실패 보고. 화면은 fake native로 진행·재시작·미저장/실행 중 차단·늦은 응답·한영/compact를 검사. 서명 자료 staging/assembly는 모의 tool output이며 실제 OS 설치·서명 검증 evidence는 native release gate에서 확인 |
-| 엔진·Studio 분리 배포 | `pnpm test:github-release`, `pnpm release:distribution:prepare`, `pnpm release:distribution:verify` | release 계약 테스트는 CI validate, native release build는 수동 release workflow의 `include_viewer` | SDK v1 네 tarball 계약 보존, native OS installer/내장 Wasm 검사, 새 출력 보존, 버전·커밋·플랫폼 일치와 통합 SHA-256. Studio의 구 자동 업데이트 채널 준비는 도구 실행 전에 거절한다. 동일 버전의 구 제품명 캐시는 보존하고 이번 빌드의 단일 새 installer만 선택하며, 새 파일이 여러 개면 거절한다. 모의 산출물 테스트와 실제 OS build/GUI 증거를 구분. [배포 절차](../operations/github-release.md#엔진과-studio-앱-분리-준비) 참고 |
-| 2D 레이어 authoring | `pnpm test:placement-layers`, `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, SDK `scenePlacementLayers`/`sceneSpatialPatch` tests, Rust `flat_preview_filter` test | CI layer contracts·viewer/save browser smoke와 SDK/Rust gate | canvas/command 감소, 숨김 피킹·공간 API 편집 차단, 단독 보기·Undo·모드/필터 복원, 저장 후 단독 보기·활성 레이어·개별 잠금 보존, preview 오류 후 선택 복원, 이동·순서 Undo·animation·별칭·한글을 확인. SDK는 f32/signed-zero 정렬과 batch bounds 1회 갱신, layer contracts는 512개 그룹의 1회 분류를 검증. 캡처·checks: `artifacts/placement-layers/` |
-| Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
+| Ferrum2D Studio browser/desktop smoke | `pnpm smoke:studio`, `pnpm smoke:studio-save`, `pnpm smoke:studio-mass-authoring`, `pnpm smoke:studio-desktop-assets`, `pnpm smoke:studio-desktop-package` | viewer/save는 CI validate와 `smoke:check`, 나머지 browser 항목은 `smoke:check`. Linux debug deb/GUI launch는 로컬 수동 후보 | Ferrum2D Studio production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux debug deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
+| 프로젝트 씬 탐색 | `pnpm test:placement-scenes`, `pnpm smoke:studio` | Node 계약과 viewer browser 검증은 CI validate, native 계약은 desktop Rust tests | bounded 탐색·symlink/경로 거절·문서 오류, 중복 탭/초안 보존, 선택 씬 열기·실행 실패 격리, 한영/compact/키보드/폴더 Export Only, fake native의 최신 자산 문맥과 활성 씬 저장 |
+| 엔진·에디터 업데이트 | `pnpm test:updates`, `pnpm smoke:studio`, `pnpm test:github-release` | CI Node/Ferrum2D Studio gate, native authority는 desktop Rust tests | beta 숫자 비교·draft/불완전 release 제외·페이지 탐색·오프라인·변조 차단, 실제 npm/pnpm 임시 consumer 설치와 hook 미실행, metadata/lock 복원 및 실패 보고. 화면은 fake native로 진행·재시작·미저장/실행 중 차단·늦은 응답·한영/compact를 검사. 서명 자료 staging/assembly는 모의 tool output이며 실제 OS 설치·서명 검증 evidence는 native release gate에서 확인 |
+| 엔진·Studio 분리 배포 | `pnpm test:github-release`, `pnpm release:distribution:prepare`, `pnpm release:distribution:verify` | release 계약 테스트는 CI validate, native release build는 수동 release workflow의 `include_studio` | SDK v1 네 tarball 계약 보존, native OS installer/내장 Wasm 검사, 새 출력 보존, 버전·커밋·플랫폼 일치와 통합 SHA-256. Studio 제품명·설치 식별자를 검사하고 `studio-updater-*` 서명 채널을 사용한다. 동일 버전의 다른 제품명 캐시는 보존하고 이번 빌드의 단일 새 installer만 선택하며, 새 파일이 여러 개면 거절한다. 모의 산출물 테스트와 실제 OS build/GUI 증거를 구분. [배포 절차](../operations/github-release.md#엔진과-studio-앱-분리-준비) 참고 |
+| 2D 레이어 authoring | `pnpm test:placement-layers`, `pnpm smoke:studio`, `pnpm smoke:studio-save`, SDK `scenePlacementLayers`/`sceneSpatialPatch` tests, Rust `flat_preview_filter` test | CI layer contracts·viewer/save browser smoke와 SDK/Rust gate | canvas/command 감소, 숨김 피킹·공간 API 편집 차단, 단독 보기·Undo·모드/필터 복원, 저장 후 단독 보기·활성 레이어·개별 잠금 보존, preview 오류 후 선택 복원, 이동·순서 Undo·animation·별칭·한글을 확인. SDK는 f32/signed-zero 정렬과 batch bounds 1회 갱신, layer contracts는 512개 그룹의 1회 분류를 검증. 캡처·checks: `artifacts/placement-layers/` |
+| Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
 | Top-down Shooter browser budget | `pnpm smoke:topdown-mass-objects`, `pnpm smoke:topdown-tilemap-budget`, `pnpm smoke:topdown-budget` | mass/tilemap은 CI 기본 gate, full topdown budget은 tag/manual opt-in | Playing state, entity/render command 규모, draw/texture/collision budget |
 | Breakout/Platformer browser budget | `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget` | tag/manual opt-in | 장르별 production build render/runtime budget artifact |
 | Physics Sandbox browser budget | `pnpm smoke:physics-sandbox-budget` | tag/manual opt-in | Physics demo browser render path와 debug line/runtime budget artifact |
@@ -228,7 +236,7 @@ live 카메라 값을 Enter로 확정한 뒤에도 같은 입력칸에서 키보
 공유 프로젝트 에셋의 두 번째 씬 열기·저장·원본 탭 닫기 후 실제 픽셀과 URL 수명, 임의 문서 참조 거절을 검사한다.
 `project-assets.json`이 해당 브라우저 결과이며 Node 계약에는 scope/lifetime 및 기존 native normal/tile 계약도 함께 확인한다.
 native 항목의 `fakeBridge`는 실제 Tauri GUI 검증을 대체하지 않는다. headless native 계약은
-`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features`로도 실행할 수 있다.
+`cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features`로도 실행할 수 있다.
 
 ## 로컬 자동 sanity check
 
@@ -352,7 +360,7 @@ WebGL2와 동일한 pixel을 요구한다. 각 HD-2D pose의 normal/flat 조명 
 export bundle과 동반 patch로 만든 씬은 별도 새 페이지에서 PNG hash/색 공간·provenance를 검증하고 다른 texture ID로
 실제 엔진에 재로딩해 normal 조명을 확인한다. filesystem 설치 transaction은 전용 host/agent 책임이다.
 근거는 `artifacts/sprite-normal-authoring/phase-6/renderer-verification.json`, `ui-verification.json`, `checks.json`과 run별 PNG/JSON이다.
-명령은 테스트용 save-enabled app을 남기므로 이후 `pnpm --filter @ferrum2d/placement-viewer build`로 기본 app을 복원한다.
+명령은 테스트용 save-enabled app을 남기므로 이후 `pnpm --filter @ferrum2d/studio build`로 기본 app을 복원한다.
 
 `pnpm smoke:aseprite-assets`는 빌드한 ferrum-web/엔진 Wasm과 Chromium을 준비한 뒤 실행한다.
 optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 별도 HTTP host에서 실행하며
@@ -373,7 +381,7 @@ optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 �
 세션 8 revision/원본 64 MiB 한도를 사용한다. resource 개수 검사는 JS heap·실제 기기 성능 검증을 대체하지 않는다.
 이 명령은 generated create-game viewer와 프로젝트 filesystem 설치를 검사하지 않는다. 프로젝트 저장은 아래 별도 smoke로 검증한다.
 명령이 남긴 테스트용 save-enabled app은
-`pnpm --filter @ferrum2d/placement-viewer build` 또는 `pnpm build`로 기본 설정에 복원한다.
+`pnpm --filter @ferrum2d/studio build` 또는 `pnpm build`로 기본 설정에 복원한다.
 공식 작업공간 smoke의 입력·크기·focus 대상은 `canvas.demo-canvas`로 지정해 Assets의 frame preview canvas와 구분한다.
 workspace 전환의 native readback은 최대 16 RAF 안에 CSS/DPR와 drawing buffer 크기가 일치하고
 세 프레임 연속 크기가 안정될 때만 읽는다. 실패 전후 PNG의 완전 동일성 조건은 유지한다.
@@ -444,7 +452,7 @@ headless Cargo test는 동일 PNG를 쓰는 두 선택의 독립 저장과 잘�
 파일 충돌 보존·잘못된 응답·native 완료 후 Cancel의 scene 저장 차단, source-only catalog, Rust/browser 재시작 2회,
 프레임 복원·unchanged identity·reimport Undo/Redo·외부 scene CAS 충돌·원본 export·저장 manifest로 별도 game 픽셀 복원·파일 변조 거절과 URL/texture 해제를 검사한다.
 `pnpm test:tile-assets`에는 native catalog 원본 재검증·취소·canonical identity 복원 테스트가 포함된다.
-`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --offline`은 native tile 원본/권한/충돌/rollback/변조와 공유 Aseprite 저장 회귀를 검사한다.
+`cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --offline`은 native tile 원본/권한/충돌/rollback/변조와 공유 Aseprite 저장 회귀를 검사한다.
 이 gate는 native GUI IPC 대신 stdio test transport를 사용하며 Tauri GUI 실행이나 CI 기본 gate 편입을 주장하지 않는다.
 
 `pnpm test:tile-assets`는 Tiled/LDtk 실제 PNG decode/hash·immutable ID·원본/변환 map export, stable frame UV migration,
@@ -462,7 +470,7 @@ CI에는 편입하지 않은 opt-in gate다. 실행 뒤 기본 app build를 복�
 기본 native host adapter, source color 공유·복원 evidence/export·문서 소유권/닫기 해제를 검사한다.
 desktop headless Cargo test는 normal pair 저장/동일 bytes 재시도·ordered metadata/색 공간, 잘못된 입력의 파일 생성 전 거절,
 열지 않은 project 권한·8 pair 한도·실제 PNG 변조·부분 설치 rollback·디렉터리/catalog/PNG symlink 거절을 확인한다.
-`cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --offline --all-targets -- -D warnings`도 실행한다.
+`cargo clippy --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --offline --all-targets -- -D warnings`도 실행한다.
 
 `pnpm smoke:native-normal-project`는 실제 optional Worker/Wasm 생성 → 기본 desktop normal host 저장 → 새 Rust/browser 실행을 검사한다.
 stdio transport만 대체하고 실제 프로젝트 파일 저장/protocol 함수를 사용한다. HD-2D DPR 2에서 Aseprite normal pair의
@@ -496,8 +504,8 @@ native 저장/프로토콜 단위 검증은 아래 명령을 사용한다. defau
 full Cargo test/GUI 검증에는 기존 Linux GTK/WebKit 개발 라이브러리가 필요하다.
 
 ```bash
-cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features
-cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
+cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features
+cargo clippy --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
 ```
 
 headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. `smoke:aseprite-project`가 해당 test를 실제 실행하고
@@ -505,7 +513,7 @@ headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. 
 외부 catalog 변경, 외부 writer가 같은 inode의 bytes를 바꾼 경우까지 원본을 보존해야 한다.
 실패 정리는 inode와 bytes 소유권을 입증한 새 파일에만 적용하며, 입증할 수 없으면 미참조 파일을 남겨 재시도에 사용한다.
 
-2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:placement-viewer`와
+2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:studio`와
 `pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
 두 gate의 `placement-lighting-smoke.mjs`는 실제 Wasm/WebGL2 조명 ON/OFF와 framebuffer 차이·복원을 확인한다.
 2D 점광원과 HD-2D 환경 buffer의 조명/태양/그림자 flag, bounded draw cost, 설정 보존·카메라 불변,
@@ -538,7 +546,7 @@ CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mj
 건물 충돌·일시정지·정지 후 초안 복원, 다리 높이 2와 양안 이동·다리 밖 강 건너기 차단을 확인한다.
 실제 `renderer.stats()`의 draw call 1–160, model triangle 5,001–60,000과 warm model upload 0을 요구한다.
 마을을 열기 전 기본 2D 문서가 마을 에셋을 요청하지 않는지, JSON 파일 열기 시 지연 로드·주인공 선택이 되는지도 검사한다.
-production 검증은 `/placement-viewer/` 하위 경로에서 실행하여 상대 에셋 URL을 확인한다.
+production 검증은 `/studio/` 하위 경로에서 실행하여 상대 에셋 URL을 확인한다.
 같은 gate의 `placement-village-height-grid-smoke.mjs`는 DPR 1/2에서 지형 높이 격자를 켰을 때
 높이 24 정원 단·경사길 영역에 청록색 격자·외곽선이 보이는지 실제 framebuffer로 검사한다.
 격자 증가·512선/1 draw·깊이 가림, 문서·patch·history·카메라 보존, native 주인공의
@@ -571,7 +579,7 @@ My Changes를 열어 추가된 오브젝트 한 행을 이름과 함께 보여 �
 `placement-change-labels.test.mjs`는 인스턴스 id 짝짓기(중간 삭제가 한 건), index 비교 fallback, 오브젝트·항목 이름 해석을 검사한다.
 `pnpm test:placement-commands`는 한영·키워드·NFKC 검색, 안정적 결과 순서, 검색 중 실행 금지와 현재 모드의 기존 버튼 위임을 검사한다.
 `placement-key-hints.test.mjs`는 2D/HD-2D·선택·잠금별 단축키 안내, 한국어 문구 누락, Ctrl+K/⌘K 판정을 검사한다.
-이 단위 검사는 `smoke:placement-viewer`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는
+이 단위 검사는 `smoke:studio`와 CI의 뷰어 단위 검사에 연결된다. 같은 toolbar gate의 `placement-command-palette-smoke.mjs`는
 실제 2D/HD-2D 세로 도구 클릭·위/아래 focus, Ctrl+K 열기와 상태 바 안내·이동 도구 전환 시 숨김, F3 검색·실행·취소·focus 복귀, 동적 비활성 재검사와 IME Enter/Escape를 확인한다.
 320~1125px에서는 실제 hit-test로 선택/이동 버튼이 입력을 받는지, 선택 팝업이 도구 모음과 겹치거나 canvas 오른쪽을 넘지 않는지 검사한다.
 두 번째 문서를 열고 속성 명령을 실행해 현재 문서의 탭만 바뀌며, 숨겨 둔 이전 문서의 컨트롤은 바꾸지 않는지 검사한다.
@@ -593,14 +601,14 @@ My Changes를 열어 추가된 오브젝트 한 행을 이름과 함께 보여 �
 압축 응답의 encoded Content-Length/decoded 본문 구분, 선언된 owner와 게임 `props.id` 구분,
 빈 dictionary key의 JSON pointer·긴 식별자 한도도 검사한다.
 이 단위 명령은 빌드된 public SDK를 사용하므로 최초에는 `pnpm build`로 준비한다. Ferrum2D Studio smoke는 Wasm/SDK 빌드 뒤 이 명령을 실행하며 CI 단위 gate도 전체 빌드 이후에 실행한다.
-CI 단위 gate와 공식 `smoke:placement-viewer`에 연결한다. `pnpm smoke:placement-asset-usage`와 양쪽 toolbar gate는
+CI 단위 gate와 공식 `smoke:studio`에 연결한다. `pnpm smoke:placement-asset-usage`와 양쪽 toolbar gate는
 별도 브라우저 context에서 동일한 사용처 helper를 실행한다. 실제 조회/검색/JSON 다운로드와 source/patch/Undo/선택/모드/탭 불변,
 편집본 근거, 부분 실패, 한영·compact, 읽기 중 문서 교체, 선택 폴더 snapshot을 확인한다.
 문서 교체 시 목록/본문 fetch signal의 실제 abort, Open JSON 완료 후 재조회,
 독립적인 native 재조회 뒤 이전 explorer entry의 저장 문맥 보존과 저장 완료 후 재조회도 검사한다.
 2D DPR 1·HD-2D DPR 2에서 native frame entity ≥3·drawCalls 1..32·pageerror 0을 요구한다.
 native 브라우저 검증은 IPC emulation임을 보고서에 명시하고 inspect command만 사용하며 scene open/save를 호출하지 않는지 검사한다.
-`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features`는 실제 native 파일 조회·경로/symlink·2 MiB·저장 allowlist 불변을 검사한다.
+`cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features`는 실제 native 파일 조회·경로/symlink·2 MiB·저장 allowlist 불변을 검사한다.
 설치형 GUI 검증은 별도이며 결과는 `artifacts/project-asset-usage/`에 남긴다.
 
 `pnpm test:placement-inspector`는 선택 없음·게임·잠금·2D 그룹·spatial target 안내와 한영/단위 표시를 검사하며 CI/Ferrum2D Studio 단위 gate에 연결된다.
@@ -762,10 +770,10 @@ pnpm smoke:check
 26. `pnpm smoke:topdown-mass-objects`
 27. `pnpm smoke:topdown-tilemap-budget`
 28. `pnpm smoke:starter-runtime`
-29. `pnpm smoke:placement-viewer`
-30. `pnpm smoke:placement-viewer-save`
-31. `pnpm smoke:placement-viewer-mass-authoring`
-32. `pnpm smoke:placement-viewer-desktop-assets`
+29. `pnpm smoke:studio`
+30. `pnpm smoke:studio-save`
+31. `pnpm smoke:studio-mass-authoring`
+32. `pnpm smoke:studio-desktop-assets`
 33. `pnpm smoke:content-runtime`
 34. `pnpm smoke:headless`
 35. `pnpm build`
@@ -808,20 +816,20 @@ pnpm smoke:browser
 Scene Placement Authoring Viewer의 공식 host와 screen-coordinate picking 회귀를 확인하려면 다음을 실행한다.
 
 ```bash
-pnpm --filter @ferrum2d/placement-viewer lint
-pnpm smoke:placement-viewer
-pnpm smoke:placement-viewer-save
-pnpm smoke:placement-viewer-mass-authoring
-pnpm smoke:placement-viewer-desktop-assets
+pnpm --filter @ferrum2d/studio lint
+pnpm smoke:studio
+pnpm smoke:studio-save
+pnpm smoke:studio-mass-authoring
+pnpm smoke:studio-desktop-assets
 ```
 
 Ferrum2D Studio의 `lint`는 app `src`와 참조하는 shared runtime shell을 strict TypeScript로 검사하며
 workspace `pnpm lint`에도 포함된다. Vite build의 transpile 성공과 타입 검사 성공을 별도로 확인한다.
 
-`pnpm smoke:placement-viewer`는 `apps/placement-viewer` production build를 정적 서버로 열고, Data Scene preview가 6개 entity와 6개 이상 render command를 만들었는지, canvas readback이 nonblank인지, 실제 pointer move/click이 `crate_left` hover/selection과 inspector state로 반영되는지 확인한다. 또한 `crate_left` draft transform update가 `ScenePlacementPatch` export와 갱신된 picking bounds에 반영되는지, Handoff 섹션이 draft/reference/asset diagnostic count와 Copy Patch/Copy Handoff/Save Draft action 상태를 표시하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` patch로 내보내고 recipe 본문을 건드리지 않는지, 다른 instance를 선택해도 moved draft marker가 유지되는지, Add Rect/Circle/Point/Sprite/Prefab palette가 렌더되는지, Add Sprite frame picker가 UV frame patch를 만드는지, generated `ScenePlacementAgentHandoff`가 selected instance, draft patch, ownership fields, asset diagnostics array를 포함하는지, collider overlay가 선택 collider를 표시하는지, Add Rect pending mode와 hover preview marker가 표시되는지, canvas click이 `props.components.visual.kind: "primitive"` add patch를 만드는지, 선택 overlay resize handle이 rect visual/aabb collider size patch를 만드는지, collider offset handle drag와 Visual/Collider/Layer inspector edit이 added instance의 component patch export로 접히는지, capsule/orientedBox/convexPolygon collider inspector edit이 같은 component patch export로 접히는지, selected instance 기반 ObjectDefinition 생성 action이 `addObjectDefinition` patch와 prefab option으로 반영되는지, 기본 실행에서 save hook이 opt-in 없이 동작하지 않는지도 확인한다. `pnpm smoke:placement-viewer-save`는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true` opt-in build와 smoke host save endpoint를 사용해 primitive/sprite/prefab/ObjectDefinition add patch를 저장하고 reload 뒤 visual/collider offset/layer/prefab reference와 ObjectDefinition 기반 instance가 draft 없이 유지되는지 확인한다.
-`pnpm smoke:placement-viewer-mass-authoring`은 같은 production build를 `massAuthoring=true` fixture mode로 열고 기본 6개 instance에 1,024개 crate instance를 추가한 authoring document를 낮은 빈도 load path에서 생성한다. smoke는 `ScenePlacementViewerState.instances`와 Rust runtime `entityCount`가 1,030개 이상인지, responsive viewport culling 뒤에도 visible `renderCommandCount`가 518개 이상이고 전체 entity 수를 넘지 않는지, draw call이 16 이하인지 확인한다. 또한 `mass_crate_0512` 선택과 transform draft patch가 각각 500ms 이하에서 끝나는지, draft marker가 선택된 1개 object에만 생기는지, agent handoff selected/draft summary가 같은 object를 가리키는지 확인한다.
-`pnpm smoke:placement-viewer-desktop-assets`는 같은 production build에 fake Tauri bridge를 주입해 desktop project open과 asset folder switch를 재현한다. smoke는 local asset `runtimeUrl`이 initial runtime texture manifest에 포함되고 `engine.textureId(...)`가 0보다 큰 값을 반환하는지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, 다른 asset folder 선택 후 runtime asset snapshot/handoff/Inspector status가 새 image manifest로 reload되는지 확인한다. 또한 실제 32x32/16x16 PNG metadata가 provider와 handoff `assetFolder.images[].width/height`에 남고, Add Sprite pending/draft marker와 visual/AABB collider가 같은 thumbnail/size/id를 사용하는지 검증한다.
-이 mode의 HTML 응답에는 `apps/placement-viewer-desktop/src-tauri/tauri.conf.json`의 CSP를 적용하고
+`pnpm smoke:studio`는 `apps/studio` production build를 정적 서버로 열고, Data Scene preview가 6개 entity와 6개 이상 render command를 만들었는지, canvas readback이 nonblank인지, 실제 pointer move/click이 `crate_left` hover/selection과 inspector state로 반영되는지 확인한다. 또한 `crate_left` draft transform update가 `ScenePlacementPatch` export와 갱신된 picking bounds에 반영되는지, Handoff 섹션이 draft/reference/asset diagnostic count와 Copy Patch/Copy Handoff/Save Draft action 상태를 표시하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` patch로 내보내고 recipe 본문을 건드리지 않는지, 다른 instance를 선택해도 moved draft marker가 유지되는지, Add Rect/Circle/Point/Sprite/Prefab palette가 렌더되는지, Add Sprite frame picker가 UV frame patch를 만드는지, generated `ScenePlacementAgentHandoff`가 selected instance, draft patch, ownership fields, asset diagnostics array를 포함하는지, collider overlay가 선택 collider를 표시하는지, Add Rect pending mode와 hover preview marker가 표시되는지, canvas click이 `props.components.visual.kind: "primitive"` add patch를 만드는지, 선택 overlay resize handle이 rect visual/aabb collider size patch를 만드는지, collider offset handle drag와 Visual/Collider/Layer inspector edit이 added instance의 component patch export로 접히는지, capsule/orientedBox/convexPolygon collider inspector edit이 같은 component patch export로 접히는지, selected instance 기반 ObjectDefinition 생성 action이 `addObjectDefinition` patch와 prefab option으로 반영되는지, 기본 실행에서 save hook이 opt-in 없이 동작하지 않는지도 확인한다. `pnpm smoke:studio-save`는 `VITE_FERRUM_STUDIO_SAVE=true` opt-in build와 smoke host save endpoint를 사용해 primitive/sprite/prefab/ObjectDefinition add patch를 저장하고 reload 뒤 visual/collider offset/layer/prefab reference와 ObjectDefinition 기반 instance가 draft 없이 유지되는지 확인한다.
+`pnpm smoke:studio-mass-authoring`은 같은 production build를 `massAuthoring=true` fixture mode로 열고 기본 6개 instance에 1,024개 crate instance를 추가한 authoring document를 낮은 빈도 load path에서 생성한다. smoke는 `ScenePlacementViewerState.instances`와 Rust runtime `entityCount`가 1,030개 이상인지, responsive viewport culling 뒤에도 visible `renderCommandCount`가 518개 이상이고 전체 entity 수를 넘지 않는지, draw call이 16 이하인지 확인한다. 또한 `mass_crate_0512` 선택과 transform draft patch가 각각 500ms 이하에서 끝나는지, draft marker가 선택된 1개 object에만 생기는지, agent handoff selected/draft summary가 같은 object를 가리키는지 확인한다.
+`pnpm smoke:studio-desktop-assets`는 같은 production build에 fake Tauri bridge를 주입해 desktop project open과 asset folder switch를 재현한다. smoke는 local asset `runtimeUrl`이 initial runtime texture manifest에 포함되고 `engine.textureId(...)`가 0보다 큰 값을 반환하는지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, 다른 asset folder 선택 후 runtime asset snapshot/handoff/Inspector status가 새 image manifest로 reload되는지 확인한다. 또한 실제 32x32/16x16 PNG metadata가 provider와 handoff `assetFolder.images[].width/height`에 남고, Add Sprite pending/draft marker와 visual/AABB collider가 같은 thumbnail/size/id를 사용하는지 검증한다.
+이 mode의 HTML 응답에는 `apps/studio-desktop/src-tauri/tauri.conf.json`의 CSP를 적용하고
 navigation 응답의 정책 일치도 검사한다. `desktopCsp` report에 설정 경로와 적용한 정책을 남긴다.
 기본 `data:` 텍스처의 fetch/decode, 초기화 또는 canvas 렌더링이 차단되면 실패하므로 `img-src`에만
 `data:`를 허용하고 `connect-src`에서 빠뜨린 회귀도 검출한다. 실제 native custom protocol은 fake bridge
@@ -831,9 +839,9 @@ navigation 응답의 정책 일치도 검사한다. `desktopCsp` report에 설�
 검증한다. 이전 runtime upload를 의도적으로 지연한 뒤 최신 폴더를 선택하는 경우도 검사하며,
 최종 픽셀이 최신 이미지와 같아야 한다. 빈 drawing buffer나 context loss는 성공 evidence로 인정하지 않는다.
 
-`pnpm smoke:placement-viewer-desktop-package`는 production frontend를 포함한 Tauri debug Linux deb를 만들고
+`pnpm smoke:studio-desktop-package`는 production frontend를 포함한 Tauri debug Linux deb를 만들고
 명시적 CSP, 실행 파일, deb 내부 실행 파일, `index.html`, Wasm artifact를 검증해 JSON report를 출력한다.
-같은 frontend에 `placement-viewer-desktop-assets` browser smoke도 실행해 실제 CSP 아래에서 texture와
+같은 frontend에 `studio-desktop-assets` browser smoke도 실행해 실제 CSP 아래에서 texture와
 canvas가 정상인지 확인하고 report의 `frontend.browserSmokeMode`에 검증 mode를 남긴다.
 `--launch`를 붙이면 `xvfb-run` 아래에서 process가 지정 시간 동안 조기 종료하지 않는지도 확인한다.
 현재 GitHub Actions에는 편입하지 않았다. CI/release gate 변경은 별도 승인 뒤 결정한다. 로컬 자동
@@ -845,7 +853,7 @@ fragment hierarchy 회귀는 ferrum-web `sceneComposition`, `scenePlacementViewe
 `scenePlacementPatch` 테스트가 담당한다. 같은 fragment의 반복 include 중 한 occurrence를 world 좌표로
 이동했을 때 patch v2가 parent-local `instanceTransforms`로 round-trip되고 sibling occurrence가 유지되는지,
 patch v1 flat 문서를 계속 merge하는지 확인한다.
-Tauri desktop wrapper의 Rust command 계약은 `pnpm --filter @ferrum2d/placement-viewer-desktop check`와 `pnpm --filter @ferrum2d/placement-viewer-desktop test`로 확인한다. 이 테스트는 기본/명시 scene-authoring JSON load/save, project folder의 `public/scene-authoring.json` 자동 탐색, 성공적으로 연 canonical scene/project만 쓰는 write allowlist, 미승인 sibling 경로와 handoff 심볼릭 링크 대상 거부, 기본/명시 asset folder inspect, local image의 `ferrum-asset://...` preview URL 생성과 protocol MIME/CORS 응답, `.ferrum-placement-handoff.json` 저장, 잘못된 프로젝트 폴더와 handoff envelope 거부를 검증한다. 실제 GUI window, project 직접 경로 입력, asset folder picker, Add Sprite local thumbnail preview, handoff 자동 sync 상태, native dialog 조작, `.app` 실행은 수동 검증 범위다.
+Tauri desktop wrapper의 Rust command 계약은 `pnpm --filter @ferrum2d/studio-desktop check`와 `pnpm --filter @ferrum2d/studio-desktop test`로 확인한다. 이 테스트는 기본/명시 scene-authoring JSON load/save, project folder의 `public/scene-authoring.json` 자동 탐색, 성공적으로 연 canonical scene/project만 쓰는 write allowlist, 미승인 sibling 경로와 handoff 심볼릭 링크 대상 거부, 기본/명시 asset folder inspect, local image의 `ferrum-asset://...` preview URL 생성과 protocol MIME/CORS 응답, `.ferrum-placement-handoff.json` 저장, 잘못된 프로젝트 폴더와 handoff envelope 거부를 검증한다. 실제 GUI window, project 직접 경로 입력, asset folder picker, Add Sprite local thumbnail preview, handoff 자동 sync 상태, native dialog 조작, `.app` 실행은 수동 검증 범위다.
 
 Starter Runtime의 실제 browser runtime에서 profiler frame/render/asset budget 회귀까지 확인하려면 다음을 실행한다.
 
@@ -1197,7 +1205,7 @@ Top-down, Ferrum2D Studio의 전용 UI는 범용 shell option으로 흡수하지
 
 ## Browser render smoke check
 
-`pnpm smoke:browser`는 `examples/starter-runtime` production build를, `pnpm smoke:placement-viewer`는 `apps/placement-viewer` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-mass-objects`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
+`pnpm smoke:browser`는 `examples/starter-runtime` production build를, `pnpm smoke:studio`는 `apps/studio` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-mass-objects`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
 
 - `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
@@ -1206,9 +1214,9 @@ Top-down, Ferrum2D Studio의 전용 UI는 범용 shell option으로 흡수하지
 - `pnpm smoke:runtime-budgets`는 `tests/smoke/runtime-budget-profiles.mjs`의 per-example profile과 browser smoke mode mapping을 CI-safe 방식으로 검증한다.
 - `pnpm smoke:browser-budget`은 Starter Runtime에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget을 구조화된 report로 검증한다.
 - `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
-- `pnpm smoke:placement-viewer`는 Ferrum2D Studio의 `window.__ferrumPlacementViewer` hook, 6개 placed instance/entity, render command와 draw call, canvas readback, `crate_left` hover/click selection, draft transform patch export, Handoff copy/save action state, moved draft marker persistence, sprite frame add patch, ObjectDefinition add patch, collider overlay, rect/circle resize handle patch, collider offset input/drag component patch, capsule/orientedBox/convexPolygon collider component patch, save opt-in disabled gate, inspector selected/hovered/draft row를 확인한다.
-- `pnpm smoke:placement-viewer-mass-authoring`은 Ferrum2D Studio의 mass authoring fixture mode에서 1,030개 이상 instance/entity, responsive viewport에 남는 518개 이상 visible render command, draw call 상한, 단일 object 선택/patch latency, 단일 draft marker, handoff selected/draft summary를 확인한다.
-- `pnpm smoke:placement-viewer`는 여러 pointer move를 한 이력으로 묶기, 단축키·버튼 Undo/Redo, 아직 RAF에 남은 move의 Escape 취소, 숫자 input의 한 건 확정을 추가 검증한다. Web 단위 테스트는 삭제·rename·component·binding·ObjectDefinition·revert 복원, 실패 transaction rollback, no-op/redo 분기와 100건/8 MiB 예산을 검사한다.
+- `pnpm smoke:studio`는 Ferrum2D Studio의 `window.__ferrumPlacementViewer` hook, 6개 placed instance/entity, render command와 draw call, canvas readback, `crate_left` hover/click selection, draft transform patch export, Handoff copy/save action state, moved draft marker persistence, sprite frame add patch, ObjectDefinition add patch, collider overlay, rect/circle resize handle patch, collider offset input/drag component patch, capsule/orientedBox/convexPolygon collider component patch, save opt-in disabled gate, inspector selected/hovered/draft row를 확인한다.
+- `pnpm smoke:studio-mass-authoring`은 Ferrum2D Studio의 mass authoring fixture mode에서 1,030개 이상 instance/entity, responsive viewport에 남는 518개 이상 visible render command, draw call 상한, 단일 object 선택/patch latency, 단일 draft marker, handoff selected/draft summary를 확인한다.
+- `pnpm smoke:studio`는 여러 pointer move를 한 이력으로 묶기, 단축키·버튼 Undo/Redo, 아직 RAF에 남은 move의 Escape 취소, 숫자 input의 한 건 확정을 추가 검증한다. Web 단위 테스트는 삭제·rename·component·binding·ObjectDefinition·revert 복원, 실패 transaction rollback, no-op/redo 분기와 100건/8 MiB 예산을 검사한다.
 - 같은 2D gate는 중간 move 이벤트 없이 pointerup으로 전달된 마지막 좌표가 그룹 이동과 한 건 Undo에 반영되는지 검사한다. Web 단위 테스트는 취소/실패 Revert의 transient lock 보존, host 거절 시 편집·Undo/Redo·열린 gesture의 초안/cursor 복원, 복구도 거절될 때 실패 candidate 재적용 방지와 callback 재진입 차단을 검사한다.
 - 저장 gate는 실제 pointer drag의 RAF를 보류해 활성 drag·pointerup 뒤 마지막 반영 대기 중 SaveDraft가 요청을 보내거나 transaction을 닫지 않는지 검사한다. RAF를 해제한 뒤 실제 저장 문서에 최종 좌표가 들어가고 초안/이력이 비워지는지도 확인한다.
 - 같은 경계에서 키보드로 다른 탭을 활성화해도 마지막 입력을 반영하기 전에는 현재 탭·초안·이력을 유지해야 한다.
@@ -1222,8 +1230,8 @@ Top-down, Ferrum2D Studio의 전용 UI는 범용 shell option으로 흡수하지
 - 같은 mass 명령은 1,030개 객체의 전체 선택·그룹 이동·집합 잠금에 각각 동기 작업 500ms 상한을 적용한다. 선택/잠금 수와 전체 patch operation 수, Undo가 한 건만 늘고 이전 patch를 정확히 복원하는지 확인하며 기존 1,030 commands·draw 1–16회 조건도 유지한다. selection metadata만 바꾸고 실제 batch 편집을 생략하는 pass는 허용하지 않는다.
 - save smoke는 저장해도 다른 탭의 초안/이력이 남고 활성 탭만 기준 문서로 초기화되는지, 현재 탭과 다른 탭의 배율/카메라가 보존되는지 검사한다. desktop asset smoke의 fake bridge는 탭별 native save 대상 경로와 expectedDocument, 이전 asset 문맥 복원과 실패한 문서 열기를 추가 확인한다. 실제 Tauri GUI 검증은 별도다.
 - save/desktop 검사에는 활성 탭 저장 rebase의 편집 잠금과 다른 탭의 선택 집합/잠금 유지도 포함한다. web 단위 테스트는 mixed source/added 삭제, 포함 인스턴스와 flat 객체를 섞은 삭제의 전체 거부, invalid/duplicate/locked batch의 부분 변경 방지, source/추가 객체 rename Undo의 잠금 identity와 1,024건 단일 batch 이력을 확인한다.
-- `pnpm smoke:placement-viewer-save`는 새 객체를 저장하고 재개방한 뒤 외부 writer의 JSON 변경을 만든다. 저장 중 inert UI와 중복 요청 차단, HTTP 409, 기존 초안·이력·외부 문서 보존을 assert한다. 예상한 save endpoint의 단일 409 console 메시지만 허용하며 다른 console/page error는 계속 실패한다. 이 검사는 독립 외부 writer와의 완전한 transaction 또는 실제 Tauri GUI 검증을 대신하지 않는다.
-- `pnpm smoke:placement-viewer-desktop-assets`는 fake Tauri bridge로 desktop project open을 재현하고, asset folder image의 `runtimeUrl`이 initial `runtime.engine.loadAssets(...)` texture manifest에 포함되는지, local texture id가 0보다 큰지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, asset folder switch 이후 runtime asset snapshot/handoff/Inspector status가 새 manifest로 reload되는지 확인한다. 실제 PNG의 width/height가 provider와 handoff evidence에 유지되는지, Add Sprite pending/draft marker, draft visual size, AABB collider half-size가 같은 local asset metadata를 사용하는지도 검증한다.
+- `pnpm smoke:studio-save`는 새 객체를 저장하고 재개방한 뒤 외부 writer의 JSON 변경을 만든다. 저장 중 inert UI와 중복 요청 차단, HTTP 409, 기존 초안·이력·외부 문서 보존을 assert한다. 예상한 save endpoint의 단일 409 console 메시지만 허용하며 다른 console/page error는 계속 실패한다. 이 검사는 독립 외부 writer와의 완전한 transaction 또는 실제 Tauri GUI 검증을 대신하지 않는다.
+- `pnpm smoke:studio-desktop-assets`는 fake Tauri bridge로 desktop project open을 재현하고, asset folder image의 `runtimeUrl`이 initial `runtime.engine.loadAssets(...)` texture manifest에 포함되는지, local texture id가 0보다 큰지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, asset folder switch 이후 runtime asset snapshot/handoff/Inspector status가 새 manifest로 reload되는지 확인한다. 실제 PNG의 width/height가 provider와 handoff evidence에 유지되는지, Add Sprite pending/draft marker, draft visual size, AABB collider half-size가 같은 local asset metadata를 사용하는지도 검증한다.
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
 - Minimal Game의 `visual-runtime-lab`과 `input-ui-lab`은 같은 production build와 smoke-only query flag를 공유한다. 별도 app/package 분리는 public portfolio 승격이 필요할 때만 검토한다.
@@ -1298,7 +1306,7 @@ Top-down, Ferrum2D Studio의 전용 UI는 범용 shell option으로 흡수하지
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:browser
 FERRUM_BROWSER_EXECUTABLE=/path/to/browser pnpm smoke:browser
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:browser-budget
-FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:placement-viewer
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:studio
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown-budget
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:physics-sandbox-budget
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:preload
@@ -1336,11 +1344,11 @@ pnpm package:consumer-smoke
 이 명령은 네 package의 allowlist/pack 검증을 먼저 실행한 뒤 임시 consumer 환경에서 다음을 확인한다.
 
 - `@ferrum2d/create-game` tarball의 bin으로 starter project를 생성한다.
-- 생성 프로젝트가 `@ferrum2d/ferrum-web`과 `@ferrum2d/authoring-viewer` tarball을 dependency로 설치한다.
+- 생성 프로젝트가 `@ferrum2d/ferrum-web`과 `@ferrum2d/studio-kit` tarball을 dependency로 설치한다.
 - 목적별 public subpath import가 성공하고 `@ferrum2d/ferrum-web` root aggregate import와 `@ferrum2d/ferrum-web/dist/*` 내부 import가 generated template report/package exports에서 차단된다. gameplay authoring/replay helper와 `gameplayActionDiagnosticReports(...)` 같은 agent-facing diagnostic helper도 generated project import/type smoke에서 확인한다.
 - `@ferrum2d/agents` tarball의 bin이 생성 프로젝트에 대해 dry-run으로 파일을 쓰지 않는다.
 - 설치된 consumer agent/skill/command는 projectile/weapon authoring helper와 함께 Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`, `createShooterContentRuntimeOptions(...)` 기반 content runtime authoring 루프를 문서화해야 한다.
-- 생성 프로젝트의 `ferrum:check`, `ferrum:report`, `ferrum:validate`, `ferrum:authoring-report`, `ferrum:replay-report`, `ferrum:runtime-replay-report`, `ferrum:runtime-replay-recipe`, `ferrum:smoke`, `ferrum:deploy-report`, production build가 통과한다. `ferrum:check`는 `ferrum2d.consumer.check.report`로 각 하위 단계와 첫 실패/다음 명령을 요약해야 한다. deploy report는 `ferrum2d.consumer.deploy-readiness.report` envelope로 `dist/index.html`, HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령이 index HTTP와 Wasm `application/wasm` 응답을 제공하는지 확인해 `status: "ready"`를 반환해야 한다. HTML `<base>` 요소는 `FERRUM_DEPLOY_HTML_BASE_UNSUPPORTED`로 거부하고, 여러 디렉터리의 HTML entry와 상대 literal `fetch(...)`가 함께 있어 document base가 모호하면 `FERRUM_DEPLOY_FETCH_BASE_AMBIGUOUS`로 거부한다. 이어서 generated `dist/index.html`을 별도 가상 하위 경로로 열어 `.wasm`이 `application/wasm`으로 응답하고 runtime이 Playing 상태이며 엔티티·sprite·render command·draw call이 양수인지, 완료된 renderer frame 정확히 12개에서 최종 `renderer.stats()`로 집계한 최대 draw call이 등록된 template runtime budget profile(`minimal` 8, `topdown`/`platformer`/`breakout` 16) 이하인지 확인한다. WebGL2 framebuffer는 production `preserveDrawingBuffer` 설정 없이 12번째 renderer frame 뒤 같은 RAF에서 읽기 시작하고, 빈 경우 최대 8회까지만 같은 순서의 RAF에서 재시도한 뒤 배경색과 다른 픽셀이 있어야 한다. production build 뒤에는 generated `dist/placement-viewer.html`도 정적 서버로 열고 `Project Assets`의 `atlas` Add 버튼이 `object` prefab + `props.components.visual.kind: "sprite"` + 기본 aabb collider `addInstance` draft patch를 만들고 해당 instance를 선택하는지, grouped Selected Inspector가 `Identity`/`Visual`/`Collider`/`Behavior` 값을 현재 선택 상태와 동기화하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` reference patch로 처리한 뒤 draft를 비울 수 있는지, 선택 instance에서 `addObjectDefinition` draft를 만든 뒤 새 ObjectDefinition/Prefab을 참조하는 `addInstance` draft와 resolved state가 이어지는지 Playwright로 확인한다. `Apply Memory`는 viewer session만 갱신하고 `public/scene-authoring.json`을 쓰지 않으며 smoke hook의 `saveMode: "memory"`로 구분한다. consumer smoke는 `ferrum:report`의 `ferrum2d.consumer.project.report` JSON envelope를 파싱해 `format`, `version`, `ok`, project dependency/file/internal-import/root-aggregate-import/deployment summary, template별 `runtimeInputs`와 최상위 `recommendedCommands`를 확인한다. 모든 template의 authoring report는 configured `public/scene-authoring.json` 또는 `public/game.json`을 검증해 `validated`를 반환해야 한다. 모든 template의 gameplay replay report는 `public/gameplay-replay.fixture.json`과 현재 template contract를 비교해 `validated`를 반환하고, `public/gameplay-replay.coverage-tags.json`의 `coverageTagDefinitions`/`coverageTagGroups`/`deprecatedCoverageTags` registry metadata도 report에 포함해야 한다. Runtime replay configured template(`minimal`/`topdown`/`platformer`/`breakout`)은 `public/gameplay-runtime-replay.fixture.json`과 `public/gameplay-runtime-replay.coverage-tags.json`을 포함하며, public `createEngine(...)` + deterministic `requestAnimationFrame` shim + `captureGameStateSnapshot(...)` 기반 headless runtime replay report가 `validated`를 반환해야 한다. `topdown`은 `resolveShooterGameSpec(...)`와 `captureGameStateSnapshot(..., { includeBuiltInShooterState: true })`로 `public/game.json`과 built-in shooter state를 포함한다. `platformer`는 public `usePlatformerGame()`으로 built-in platformer scene을 boot하고, platformer 전용 built-in snapshot이 없으므로 canonical scene/runtime state를 `custom.platformer` JSON에 포함한다. `breakout`은 public `useBreakoutGame()`으로 built-in Breakout scene을 boot하고, Breakout 전용 built-in snapshot이 없으므로 canonical scene/runtime state를 `custom.breakout` JSON에 포함한다. `breakout` authoring report는 `public/scene-authoring.json`의 built-in paddle/ball runtime entity handle과 Behavior Recipe binding summary를 포함해야 한다. `ferrum:update-replay-fixture`와 `ferrum:update-runtime-replay-fixture`는 runtime replay configured template에서 fixture update report로 성공해야 한다. `ferrum:runtime-replay-recipe`는 `ferrum2d.consumer.runtime-gameplay-replay.recipe` envelope로 fixed timestep, seed/input sequence, capture frame, canonical/excluded state 목록을 반환해야 한다. `topdown` smoke는 fixture hash를 의도적으로 stale 값으로 바꿔 `ferrum:replay-report`가 non-zero와 `FERRUM_CONSUMER_REPLAY_FIXTURE_INVALID` machine-actionable fixture path report를 반환하는지 확인한다. 이어서 `public/game.json`의 player speed를 임시 변경해 유효한 fixture와 현재 Game Spec이 갈라진 drift case가 `FERRUM_CONSUMER_REPLAY_MISMATCH`와 changed JSON path를 반환하는지도 확인한다. 두 실패 경로 모두 `ferrum:update-replay-fixture`와 재실행 replay report로 복구 경로까지 검증한다. `minimal`/`platformer`/`breakout`은 생성 시 바뀌지 않는 template surface contract replay를 기본 제공한다.
+- 생성 프로젝트의 `ferrum:check`, `ferrum:report`, `ferrum:validate`, `ferrum:authoring-report`, `ferrum:replay-report`, `ferrum:runtime-replay-report`, `ferrum:runtime-replay-recipe`, `ferrum:smoke`, `ferrum:deploy-report`, production build가 통과한다. `ferrum:check`는 `ferrum2d.consumer.check.report`로 각 하위 단계와 첫 실패/다음 명령을 요약해야 한다. deploy report는 `ferrum2d.consumer.deploy-readiness.report` envelope로 `dist/index.html`, HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령이 index HTTP와 Wasm `application/wasm` 응답을 제공하는지 확인해 `status: "ready"`를 반환해야 한다. HTML `<base>` 요소는 `FERRUM_DEPLOY_HTML_BASE_UNSUPPORTED`로 거부하고, 여러 디렉터리의 HTML entry와 상대 literal `fetch(...)`가 함께 있어 document base가 모호하면 `FERRUM_DEPLOY_FETCH_BASE_AMBIGUOUS`로 거부한다. 이어서 generated `dist/index.html`을 별도 가상 하위 경로로 열어 `.wasm`이 `application/wasm`으로 응답하고 runtime이 Playing 상태이며 엔티티·sprite·render command·draw call이 양수인지, 완료된 renderer frame 정확히 12개에서 최종 `renderer.stats()`로 집계한 최대 draw call이 등록된 template runtime budget profile(`minimal` 8, `topdown`/`platformer`/`breakout` 16) 이하인지 확인한다. WebGL2 framebuffer는 production `preserveDrawingBuffer` 설정 없이 12번째 renderer frame 뒤 같은 RAF에서 읽기 시작하고, 빈 경우 최대 8회까지만 같은 순서의 RAF에서 재시도한 뒤 배경색과 다른 픽셀이 있어야 한다. production build 뒤에는 generated `dist/studio.html`도 정적 서버로 열고 `Project Assets`의 `atlas` Add 버튼이 `object` prefab + `props.components.visual.kind: "sprite"` + 기본 aabb collider `addInstance` draft patch를 만들고 해당 instance를 선택하는지, grouped Selected Inspector가 `Identity`/`Visual`/`Collider`/`Behavior` 값을 현재 선택 상태와 동기화하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` reference patch로 처리한 뒤 draft를 비울 수 있는지, 선택 instance에서 `addObjectDefinition` draft를 만든 뒤 새 ObjectDefinition/Prefab을 참조하는 `addInstance` draft와 resolved state가 이어지는지 Playwright로 확인한다. `Apply Memory`는 viewer session만 갱신하고 `public/scene-authoring.json`을 쓰지 않으며 smoke hook의 `saveMode: "memory"`로 구분한다. consumer smoke는 `ferrum:report`의 `ferrum2d.consumer.project.report` JSON envelope를 파싱해 `format`, `version`, `ok`, project dependency/file/internal-import/root-aggregate-import/deployment summary, template별 `runtimeInputs`와 최상위 `recommendedCommands`를 확인한다. 모든 template의 authoring report는 configured `public/scene-authoring.json` 또는 `public/game.json`을 검증해 `validated`를 반환해야 한다. 모든 template의 gameplay replay report는 `public/gameplay-replay.fixture.json`과 현재 template contract를 비교해 `validated`를 반환하고, `public/gameplay-replay.coverage-tags.json`의 `coverageTagDefinitions`/`coverageTagGroups`/`deprecatedCoverageTags` registry metadata도 report에 포함해야 한다. Runtime replay configured template(`minimal`/`topdown`/`platformer`/`breakout`)은 `public/gameplay-runtime-replay.fixture.json`과 `public/gameplay-runtime-replay.coverage-tags.json`을 포함하며, public `createEngine(...)` + deterministic `requestAnimationFrame` shim + `captureGameStateSnapshot(...)` 기반 headless runtime replay report가 `validated`를 반환해야 한다. `topdown`은 `resolveShooterGameSpec(...)`와 `captureGameStateSnapshot(..., { includeBuiltInShooterState: true })`로 `public/game.json`과 built-in shooter state를 포함한다. `platformer`는 public `usePlatformerGame()`으로 built-in platformer scene을 boot하고, platformer 전용 built-in snapshot이 없으므로 canonical scene/runtime state를 `custom.platformer` JSON에 포함한다. `breakout`은 public `useBreakoutGame()`으로 built-in Breakout scene을 boot하고, Breakout 전용 built-in snapshot이 없으므로 canonical scene/runtime state를 `custom.breakout` JSON에 포함한다. `breakout` authoring report는 `public/scene-authoring.json`의 built-in paddle/ball runtime entity handle과 Behavior Recipe binding summary를 포함해야 한다. `ferrum:update-replay-fixture`와 `ferrum:update-runtime-replay-fixture`는 runtime replay configured template에서 fixture update report로 성공해야 한다. `ferrum:runtime-replay-recipe`는 `ferrum2d.consumer.runtime-gameplay-replay.recipe` envelope로 fixed timestep, seed/input sequence, capture frame, canonical/excluded state 목록을 반환해야 한다. `topdown` smoke는 fixture hash를 의도적으로 stale 값으로 바꿔 `ferrum:replay-report`가 non-zero와 `FERRUM_CONSUMER_REPLAY_FIXTURE_INVALID` machine-actionable fixture path report를 반환하는지 확인한다. 이어서 `public/game.json`의 player speed를 임시 변경해 유효한 fixture와 현재 Game Spec이 갈라진 drift case가 `FERRUM_CONSUMER_REPLAY_MISMATCH`와 changed JSON path를 반환하는지도 확인한다. 두 실패 경로 모두 `ferrum:update-replay-fixture`와 재실행 replay report로 복구 경로까지 검증한다. `minimal`/`platformer`/`breakout`은 생성 시 바뀌지 않는 template surface contract replay를 기본 제공한다.
 
 Top-down template replay report 계약만 빠르게 확인하려면 `pnpm smoke:topdown-template-replay-report`를 사용한다. 이 smoke는 template을 임시 폴더에 복사하고 workspace `@ferrum2d/ferrum-web` package를 symlink해, install/registry 접근 없이 `replay-report -> drift patch candidate -> update-replay-fixture -> replay-report` 흐름을 검증한다. full tarball install, public subpath import/type smoke, generated production build는 계속 `pnpm package:consumer-smoke`의 책임이다.
 
@@ -1348,7 +1356,7 @@ create-game template catalog 계약만 빠르게 확인하려면 `pnpm smoke:cre
 
 전체 create-game template이 consumer agent가 읽을 수 있는 report envelope를 내는지만 빠르게 확인하려면 `pnpm smoke:create-game-template-reports`를 사용한다. 이 smoke는 `packages/create-game/templates/manifest.json`의 모든 template을 임시 폴더에 복사하고, `_shared` asset scaffold를 template overlay 전에 합친 뒤 `package.json` placeholder만 temp copy에서 정규화한다. 이후 `ferrum-assets.mjs report`, `ferrum-assets.mjs validate`, `ferrum-harness.mjs report`, `ferrum-harness.mjs authoring-report`와 `replay-report`, `update-replay-fixture`, `ferrum-runtime-replay.mjs report`, `ferrum-runtime-replay.mjs recipe`, `ferrum-runtime-replay.mjs update-fixture`를 직접 실행한다. 별도 deploy synthetic output과 실제 preview fixture server로 상대 `fetch`/module URL 및 preview HTTP/MIME 정상 경로, 잘못된 preview Wasm MIME, 절대 `fetch`, HTML `<base>`, 다중 HTML 디렉터리의 상대 `fetch` 경로를 실행해 deploy diagnostic의 성공·실패 동작을 고정한다. `ferrum-harness.mjs report`는 `ferrum2d.consumer.project.report` envelope로 project status, package dependency, generated files, internal/root aggregate import count, 최상위 recommended command를 확인한다. `ferrum-harness.mjs authoring-report`는 `placementAuthoring.instances[].behaviorBindings[]`의 `recipeId`, `bindingPath`, `behaviorRecipePath`, target instance, command count/type까지 확인해 Behavior Binding inspector가 만든 reference patch를 agent가 report evidence로 추적할 수 있는지도 검증한다. manifest의 `sceneAuthoring`, `gameplayReplay`, `runtimeGameplayReplay` entry는 template별 deterministic fixture 제공 여부를 catalog로 고정하며, smoke는 각 harness의 configured 값이 catalog와 일치하는지도 확인한다. Workspace `@ferrum2d/ferrum-web` package를 symlink해 asset public subpath validate와 authoring/gameplay/runtime replay fixture를 검증한다. `topdown`은 Game Spec contract replay를, `minimal`/`platformer`/`breakout`은 template surface contract replay를 검증한다. runtime replay는 configured template의 headless runtime fixture/report/update path를 확인한다. 이 명령은 install, tarball pack, create-game CLI token replacement, 실제 template production build를 검증하지 않는다.
 
-의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 `renderPostProcess` 직후 같은 호출 스택에서 픽셀을 읽는다. 별도 RAF 등록 순서에 의존하지 않고 실제 완료된 12프레임만 집계하며, 빈 readback은 이후 완료된 프레임에서 최대 8회까지만 읽은 뒤 계속 비어 있으면 실패한다. 재시도 중 draw call도 최대 예산값에 포함한다. context loss/readback 오류는 별도 원인을 남기고, 빈 화면 실패 메시지에도 runtime/canvas 측정값을 보존한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/placement-viewer.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 렌더 완료 시점/연속 프레임/bounded retry/draw budget/WebGL 오류 진단 회귀 테스트와 report validator를 함께 실행한다. validator는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
+의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 `renderPostProcess` 직후 같은 호출 스택에서 픽셀을 읽는다. 별도 RAF 등록 순서에 의존하지 않고 실제 완료된 12프레임만 집계하며, 빈 readback은 이후 완료된 프레임에서 최대 8회까지만 읽은 뒤 계속 비어 있으면 실패한다. 재시도 중 draw call도 최대 예산값에 포함한다. context loss/readback 오류는 별도 원인을 남기고, 빈 화면 실패 메시지에도 runtime/canvas 측정값을 보존한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/studio.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 렌더 완료 시점/연속 프레임/bounded retry/draw budget/WebGL 오류 진단 회귀 테스트와 report validator를 함께 실행한다. validator는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
 
 Consumer agents 지침 변경은 `pnpm package:check:agents`에서 공통 `.agents/harness/ferrum-game-presentation.md`와 기능 탐색용 `.agents/harness/ferrum-feature-guide.md`의 참조·tarball 포함 여부, 설치 결과의 원본 일치, 설치 전용 파일/루트 디렉터리 allowlist를 확인한다. 기능 안내서는 root 지침과 development/presentation harness에서 연결하며 tarball consumer 설치에서도 내용과 참조를 검사한다. 재설치와 기존 프로젝트 dry-run에서는 사용자 지침·게임 소스·데이터·package 설정을 보존하고, 구형 지침을 건너뛸 때 비교·병합 안내가 나오는지도 검사한다. `package:consumer-smoke`는 tarball로 설치된 공유 기준과 도구별 참조도 검사한다. 게임의 화면 품질은 이 자동 검증과 별도로 공통 기준에 따라 실제 브라우저에서 첫 화면·가독성·이동/카메라·조사/수집·HUD 입력·resize를 검수하고 스크린샷/조작 순서와 미검수 항목을 기록한다. 설치-only 검증 과정에 게임 생성이나 서버 실행을 추가하지 않는다. [consumer 화면 제작 기준](https://github.com/silbaram/ferrum2d/blob/main/packages/agents/templates/shared/.agents/harness/ferrum-game-presentation.md)을 따른다.
 
@@ -1409,8 +1417,8 @@ extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smok
 - `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다. budget browser smoke는 frame/render/Rust update 지표를 report artifact로 남기고, Chromium이 heap API를 제공하면 heap sample도 함께 기록한다.
 - `pnpm smoke:mass-objects`로 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀를 확인한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 7개가 browser selector, Physics Spec apply, engine debug primitive와 bitmap world text render path를 통과하는지 확인한다.
-- `pnpm package:check`로 runtime package entrypoint, authoring-viewer contract/DOM shell/panel primitive helper package, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
-- `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Handoff copy/save action state, Project Assets Add Sprite browser smoke, authoring-viewer dependency, agents dry-run을 임시 consumer project에서 확인한다.
+- `pnpm package:check`로 runtime package entrypoint, studio-kit contract/DOM shell/panel primitive helper package, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
+- `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Handoff copy/save action state, Project Assets Add Sprite browser smoke, studio-kit dependency, agents dry-run을 임시 consumer project에서 확인한다.
 - `pnpm release:local-check`로 네 package release 후보 metadata, tarball allowlist, local consumer smoke report validation을 배포 없이 한 번에 확인한다.
 - `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
@@ -1569,7 +1577,7 @@ test-only canvas context adapter는 offscreen target만 제공하며 shader/queu
 headless 환경에서 native canvas clear만으로 device가 종료되는 경로와 분리했으므로 native 화면
 presentation 성공으로 해석하지 않는다. adapter가 없거나 validation/pixel 검증에 실패하면 smoke도 실패한다.
 
-`smoke:placement-viewer`는 bottom-origin sprite의 회전·scale을 반영한 selection/draft overlay와 picking, 회전된 primitive resize를 검증한다. `smoke:color-management`는 기본·최상위·WebGL2·WebGPU fallback·주입 renderer의 Data Scene hex 색을 초기 적용/reapply/transition마다 실제 Wasm command와 픽셀로 확인한다. renderer와 다른 색 공간으로 재적용하는 요청은 거부해야 한다.
+`smoke:studio`는 bottom-origin sprite의 회전·scale을 반영한 selection/draft overlay와 picking, 회전된 primitive resize를 검증한다. `smoke:color-management`는 기본·최상위·WebGL2·WebGPU fallback·주입 renderer의 Data Scene hex 색을 초기 적용/reapply/transition마다 실제 Wasm command와 픽셀로 확인한다. renderer와 다른 색 공간으로 재적용하는 요청은 거부해야 한다.
 
 
 ## 입력 context packed consumer 검증 (#73 B1)
@@ -2294,9 +2302,9 @@ Tiled/LDtk whole-map 적용·그룹 교체·단일 Undo/Redo를 추가한다. �
 
 ```bash
 pnpm test:placement-asset-cleanup
-cargo fmt --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
-cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features
+cargo fmt --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
+cargo test --manifest-path apps/studio-desktop/src-tauri/Cargo.toml --no-default-features
 pnpm smoke:placement-asset-cleanup
 ```
 
@@ -2599,7 +2607,7 @@ HD-2D 환경 실험은 동일 장면의 그림자 켬/끔·광원 위치·안개
 반바퀴·한 바퀴 경계에서도 고도 ±90°를 유지하고, 역방향 이동·원점 복귀·Escape·캡처 해제·단일 Undo/Redo가 동작하는지 검사한다.
 HD-2D 드래그는 실제 native framebuffer 변화도 확인하며 2D 고도 변경은 방향·그림자 길이 배율을 보존한다.
 집중 검증은 앱 빌드 후 `node tests/smoke/placement-village-smoke.mjs --lighting-only`로 공간 조명과
-두 모드의 저장/재열기를 검사한다. 2D 기즈모는 `pnpm smoke:placement-viewer`에 포함된다.
+두 모드의 저장/재열기를 검사한다. 2D 기즈모는 `pnpm smoke:studio`에 포함된다.
 `node tests/smoke/feature-examples-smoke.mjs --next-only`는 애니메이션/공간 환경/지형 3종과 관련 검사를 선택해 `artifacts/feature-examples-next/browser/verification.json`에 기록한다.
 탐색은 분류 버튼의 키보드 조작, 390px에서 메뉴 높이 80px 미만, 모바일 주제 전환과 렌더러 유지까지 확인한다.
 증거는 `artifacts/feature-examples/verification.json`과 고유 run의 주제별 screenshot이다.
@@ -2685,7 +2693,7 @@ WebGL의 실제 Texture/Buffer/Program/Shader/Framebuffer/Renderbuffer/VAO 생�
 Minimal은 공개 탐색 메뉴에 재노출하지 않고 별도의 단독 빌드 테스트 경로로 검사한다.
 물리 씬 전환은 늦은 이전 응답 무시, 최신 선택 유지, 실패 시 기존 월드 유지·오류 표시와 정상 요청으로 복구까지 검증한다.
 공통 shell의 `controls:false`는 기본 재생 버튼만 숨긴다. 뷰어가 사용하는 `.demo-actions` 확장 영역을 유지해야 하며,
-공식 `smoke:placement-viewer`의 production 파일/예제 메뉴와 실행·중지 검사로 이 계약도 확인한다.
+공식 `smoke:studio`의 production 파일/예제 메뉴와 실행·중지 검사로 이 계약도 확인한다.
 native 객체와 명령이 실제로 존재하고 entity≤2,500·command≤3,000·draw≤64여야 한다. 이는 UI 회귀용 상한이며 성능 보증 수치는 아니다.
 결과는 `artifacts/example-suite/verification.json` 및 고유 run에 저장한다. 기존 `smoke:check`와 수동 CI에서 실행하고 artifact를 업로드한다.
 뷰어 제작 도구는 메뉴·발행 경로를 제공하며 viewer 자체 편집 동작은 기존 viewer gate를 따른다.
@@ -2870,12 +2878,12 @@ SDK build 후 `node tests/smoke/flat-lit-browser-smoke.mjs --masks-only`로 좁�
 실제 Native Playing/sidecar와 JSON fresh-handle 복원 pixels, resize/pixelPerfect·device recovery·destroy도 확인한다.
 단독 보고서는 `artifacts/lighting-remaining/m4c/gpu-*/verification.json`이다. 실기기 성능 증거로 확대하지 않는다.
 
-공식 앱의 lit host 회귀는 `pnpm smoke:placement-viewer`에 포함된다. SDK/app build 후
+공식 앱의 lit host 회귀는 `pnpm smoke:studio`에 포함된다. SDK/app build 후
 `node tests/smoke/placement-tool-ui-runner.mjs --flat-lit`로 좁게 실행할 수도 있다.
 실제 앱에서 lit 문서를 초기 적용하고 color/data 업로드, mask 편집 pixels, 늦은 map 역할 로딩,
 실패한 preflight의 문서·handle·pixels 보존, 탭 복원과 Playing을 검사한다.
 `pnpm test:placement-flat-lighting`은 열린 Flat/Spatial 문서의 색/data 역할 충돌·숫자 ID를 검사하며,
-SDK build가 끝난 `smoke:placement-viewer` 단계에서 실행한다. 초기 scene discovery 검사는 SDK 산출물을 요구하지 않는다.
+SDK build가 끝난 `smoke:studio` 단계에서 실행한다. 초기 scene discovery 검사는 SDK 산출물을 요구하지 않는다.
 
 ### Spatial 독립 수신 mask 회귀
 
@@ -3057,7 +3065,7 @@ SDK 회귀는 길이만 바뀌는 view도 확인하며, 효과 없는 Spatial fr
 기존 단일 점광원·태양 그림자 회귀는 `--offscreen-target --shadows-only`로 별도 실행할 수 있다.
 
 `pnpm test:placement-point-shadows`는 광원 삭제 후 인덱스와 설정 보존, 두 owner 상한·활성 예산,
-Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:placement-viewer`와 CI에 이 단위 검증을 포함한다.
+Low/Balanced/High 품질 전환을 검사한다. `pnpm smoke:studio`와 CI에 이 단위 검증을 포함한다.
 `pnpm smoke:placement-spatial-workspace`는 실제 Spatial 조명 패널 검증을 포함하며 기존 CI에서도 실행한다.
 실제 패널에서 독립 offset, 세 번째 제한, Low 품질, owner/nonowner 삭제·Undo/Redo와 native 환경v10/592를 확인한다.
 

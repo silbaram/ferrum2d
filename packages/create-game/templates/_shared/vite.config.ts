@@ -7,7 +7,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("index.html", import.meta.url)),
-        placementViewer: fileURLToPath(new URL("placement-viewer.html", import.meta.url)),
+        placementViewer: fileURLToPath(new URL("studio.html", import.meta.url)),
       },
     },
   },

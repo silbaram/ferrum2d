@@ -7,13 +7,13 @@ on:
         description: 'Exact beta version (for example 0.1.0-beta.0)'
         required: true
         type: string
-      include_viewer:
+      include_studio:
         description: 'Build Windows/Linux/macOS Studio installers and combine with the SDK'
         required: false
         default: false
         type: boolean
       signed_updates:
-        description: 'Include signed app updater artifacts (blocked during the Studio name transition)'
+        description: 'Include signed Studio updater artifacts (requires signing keys)'
         required: false
         default: false
         type: boolean
@@ -28,17 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate updater request
-        if: ${{ inputs.signed_updates && !inputs.include_viewer }}
+        if: ${{ inputs.signed_updates && !inputs.include_studio }}
         run: exit 1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check automatic update compatibility before release builds
+      - name: Check Studio release identity before release builds
         if: ${{ inputs.signed_updates }}
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: node scripts/package/prepare-distribution.mjs prepare --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
+        run: node scripts/package/prepare-distribution.mjs prepare --component studio --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -57,12 +57,12 @@ jobs:
         run: pnpm release:github:prepare -- --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --output artifacts/github-release-candidate
       - name: HTTP package install and game setup
         run: pnpm smoke:github-release-install -- --bundle-dir artifacts/github-release-candidate
-      - name: Full generated game and placement viewer matrix
+      - name: Full generated game and Studio matrix
         run: pnpm package:consumer-smoke -- --skip-build --skip-package-check --artifact-dir artifacts/consumer-smoke-github-release
       - name: Validate consumer report
         run: pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-github-release/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-github-release --expect-status passed
       - uses: actions/upload-artifact@v4
-        if: ${{ inputs.include_viewer }}
+        if: ${{ inputs.include_studio }}
         with:
           name: engine-release-bundle
           path: artifacts/github-release-candidate/
@@ -76,8 +76,8 @@ jobs:
             artifacts/consumer-smoke-github-release
           if-no-files-found: ignore
 
-  viewer:
-    if: ${{ inputs.include_viewer }}
+  studio:
+    if: ${{ inputs.include_studio }}
     strategy:
       fail-fast: false
       matrix:
@@ -95,13 +95,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check automatic update compatibility before native setup
+      - name: Check Studio release identity before native setup
         if: ${{ inputs.signed_updates }}
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: node scripts/package/prepare-distribution.mjs prepare --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
+        run: node scripts/package/prepare-distribution.mjs prepare --component studio --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
       - name: Install Linux native libraries
         if: runner.os == 'Linux'
         run: |
@@ -131,16 +131,16 @@ jobs:
           if [ "$SIGNED_UPDATES" = "true" ]; then
             updater_args=(--with-updater)
           fi
-          pnpm release:distribution:prepare -- --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/viewer-release
+          pnpm release:distribution:prepare -- --component studio --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/studio-release
       - uses: actions/upload-artifact@v4
         with:
-          name: viewer-release-${{ matrix.platform }}
-          path: artifacts/viewer-release/
+          name: studio-release-${{ matrix.platform }}
+          path: artifacts/studio-release/
           if-no-files-found: error
 
   assemble:
-    if: ${{ inputs.include_viewer }}
-    needs: [prepare, viewer]
+    if: ${{ inputs.include_studio }}
+    needs: [prepare, studio]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -154,15 +154,15 @@ jobs:
           path: artifacts/inputs/engine
       - uses: actions/download-artifact@v4
         with:
-          pattern: viewer-release-*
-          path: artifacts/inputs/viewers
+          pattern: studio-release-*
+          path: artifacts/inputs/studios
       - name: Assemble and verify SDK plus native installers
         run: >-
           node scripts/package/prepare-distribution.mjs assemble
           --engine artifacts/inputs/engine
-          --viewer artifacts/inputs/viewers/viewer-release-linux
-          --viewer artifacts/inputs/viewers/viewer-release-windows
-          --viewer artifacts/inputs/viewers/viewer-release-macos
+          --studio artifacts/inputs/studios/studio-release-linux
+          --studio artifacts/inputs/studios/studio-release-windows
+          --studio artifacts/inputs/studios/studio-release-macos
           --output artifacts/distribution-candidate
       - run: node scripts/package/prepare-distribution.mjs verify --bundle artifacts/distribution-candidate
       - uses: actions/upload-artifact@v4

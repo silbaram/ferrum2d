@@ -2,6 +2,15 @@
 
 Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeScript platform layer가 브라우저 API를 다루며, renderer가 Rust에서 만든 command buffer를 소비하는 2D 웹 게임 엔진이다.
 
+## Studio 패키지와 앱 경계
+
+출시 전 명칭을 정리해 공유 UI 라이브러리는 `packages/ferrum-studio-kit`의 `@ferrum2d/studio-kit`,
+웹 앱은 `apps/studio`의 `@ferrum2d/studio`, 데스크톱 host는 `apps/studio-desktop`의 `@ferrum2d/studio-desktop`을 사용한다.
+Studio Kit는 runtime 의존성이나 CLI가 없는 공통 UI/authoring helper이며 독립 앱 설치 파일이 아니다.
+생성 프로젝트의 경량 작성 페이지는 `studio.html` / `ferrum:studio`다. 엔진의 `ScenePlacementViewer`는 씬 배치 기능 API다.
+이 명칭 정리는 Rust 게임 상태와 Wasm ABI, TS 플랫폼 계층의 책임을 바꾸지 않는다.
+
+
 Spatial의 선택형 environment v6 합성은 [조명 성분·효과 합성 계약](spatial-lighting-composition.md)을 따른다.
 Rust는 profile과 환경 원본·camera/depth 기하를 소유하고, TS는 선택형 indirect MRT·AO/fog resolve·DOF/Bloom target과 pass를 관리한다.
 기존 환경 v1..v6와 renderer 기본값은 유지하며 entity별 Wasm 왕복을 추가하지 않는다.
@@ -273,7 +282,7 @@ consumer의 기능 탐색은 `@ferrum2d/agents`가 설치하는 `.agents/harness
 같은 릴리즈의 reference로 지원 여부를 확인한다. 안내서는 runtime 지원 여부를 자동 판정하는 API가
 아니다. 내용과 배포 범위는 [AI 기능 안내](../../engine/ai-feature-guide.md)를 따른다.
 
-GitHub Releases에는 런타임, authoring viewer, create-game, agents를 개별 npm tarball로 제공한다. `scripts/package/prepare-github-release.mjs`는 기존 package allowlist의 빌드 산출물만 임시 staging으로 복사하고 동일한 beta 버전으로 포장한다. 저장소 package version과 `private: true`는 바꾸지 않는다. 생성기 tarball의 `ferrumGithubRelease` metadata가 같은 릴리스의 dependency URL과 명시적 AI 지침 설치 명령을 결정한다. 새 프로젝트 `.npmrc`는 npm 12에서 직접 URL 의존성만 허용하도록 `allow-remote=root`를 기록하며 기존 설정은 보존한다.
+GitHub Releases에는 런타임, Studio Kit, create-game, agents를 개별 npm tarball로 제공한다. `scripts/package/prepare-github-release.mjs`는 기존 package allowlist의 빌드 산출물만 임시 staging으로 복사하고 동일한 beta 버전으로 포장한다. 저장소 package version과 `private: true`는 바꾸지 않는다. 생성기 tarball의 `ferrumGithubRelease` metadata가 같은 릴리스의 dependency URL과 명시적 AI 지침 설치 명령을 결정한다. 새 프로젝트 `.npmrc`는 npm 12에서 직접 URL 의존성만 허용하도록 `allow-remote=root`를 기록하며 기존 설정은 보존한다.
 
 이 경로는 게임 시뮬레이션, Rust/Wasm ABI, public runtime export를 변경하지 않는다. 게임 개발자는 Node/npm만 준비하고 엔진의 JS/Wasm은 패키지에서 받는다. 버전·파일·SHA-256은 `release-manifest.json`과 `SHA256SUMS`에 기록한다. 준비 명령과 수동 workflow는 로컬/Actions artifact만 만들며 GitHub Release 공개는 별도 실행이다. 상세 계약은 [GitHub Release 배포 절차](../operations/github-release.md)를 따른다.
 

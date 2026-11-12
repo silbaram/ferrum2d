@@ -8,7 +8,7 @@ import {
   decodePng,
 } from "../../scripts/tools/pack-textures.mjs";
 const require = createRequire(
-    new URL("../../apps/placement-viewer/package.json", import.meta.url),
+    new URL("../../apps/studio/package.json", import.meta.url),
   ),
   ts = require("typescript");
 const authoring = new URL(
@@ -20,7 +20,7 @@ async function moduleSource(file, replacements = []) {
   let output = ts
     .transpileModule(
       await readFile(
-        new URL("../../apps/placement-viewer/src/" + file, import.meta.url),
+        new URL("../../apps/studio/src/" + file, import.meta.url),
         "utf8",
       ),
       {

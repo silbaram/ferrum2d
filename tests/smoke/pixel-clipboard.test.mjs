@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/placement-viewer/package.json',import.meta.url))('typescript');
-const code=ts.transpileModule(await readFile(new URL('../../apps/placement-viewer/src/placementPixelClipboard.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
+const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementPixelClipboard.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {copyPixelPng:copy,pixelClipboardUnavailable:unavailable}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 function environment(run,{secure=true,item=true,support=true,write}={}) {
   const saved=new Map(['isSecureContext','ClipboardItem','navigator'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));

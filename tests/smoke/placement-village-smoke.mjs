@@ -18,14 +18,14 @@ import { smokePlacementLighting, smokePlacementLightingSave } from "./placement-
 const artifact = resolve("artifacts/rpg-village");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url");
-const base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/placement-viewer/dist")) : resolve("apps/placement-viewer/dist");
+const base = arg < 0 ? await preparePlacementTestBuild(resolve("apps/studio/dist")) : resolve("apps/studio/dist");
 let server;
 if (arg < 0) {
   server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
-      assert(path.startsWith("/placement-viewer/"));
-      const relative = path.slice("/placement-viewer".length);
+      assert(path.startsWith("/studio/"));
+      const relative = path.slice("/studio".length);
       const file = resolve(base, "." + (relative === "/" ? "/index.html" : decodeURIComponent(relative)));
       assert(file.startsWith(base + sep));
       res.setHeader("content-type", { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm", ".png": "image/png" }[extname(file)] ?? "application/octet-stream");
@@ -38,7 +38,7 @@ if (arg < 0) {
   });
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
 }
-const origin = arg < 0 ? `http://127.0.0.1:${server.address().port}/placement-viewer` : process.argv[arg + 1];
+const origin = arg < 0 ? `http://127.0.0.1:${server.address().port}/studio` : process.argv[arg + 1];
 const browser = await chromium.launch({ headless: true, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }), errors = [];
 page.on("pageerror", e => errors.push(e.message));
@@ -54,9 +54,9 @@ const draft = () => page.evaluate(() => JSON.stringify({ document: window.ferrum
 const play = async () => { await page.getByRole("button", { name: "Play", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "game"); await page.locator("canvas.demo-canvas").focus(); };
 const stop = async () => { await page.getByRole("button", { name: "Stop", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "spatial"); };
 try {
-  const manifest = JSON.parse(await readFile("apps/placement-viewer/public/assets/rpg-village/manifest.json", "utf8"));
+  const manifest = JSON.parse(await readFile("apps/studio/public/assets/rpg-village/manifest.json", "utf8"));
   for (const [id, a] of Object.entries({ ...manifest.models, ...manifest.textures })) {
-    const b = await readFile(`apps/placement-viewer/public/assets/rpg-village/${a.file}`);
+    const b = await readFile(`apps/studio/public/assets/rpg-village/${a.file}`);
     assert.equal(createHash("sha256").update(b).digest("hex"), a.sha256, id);
   }
   assert.equal(Object.keys(manifest.models).length, 14);
@@ -206,7 +206,7 @@ try {
   assert.equal(villageRequests.length, 0, "Ordinary 2D workspaces loaded village assets eagerly");
   await cold.locator("input[data-placement-document-file]").setInputFiles({
     name: "village.json", mimeType: "application/json",
-    buffer: await readFile("apps/placement-viewer/public/placement.village.scene-authoring.json"),
+    buffer: await readFile("apps/studio/public/placement.village.scene-authoring.json"),
   });
   await cold.waitForFunction(() =>
     window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42 &&

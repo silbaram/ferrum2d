@@ -399,7 +399,7 @@ software adapter 결과와 실제 모바일/desktop GPU의 품질·성능 결과
 | Spatial light/shadow/effects | `pnpm smoke:spatial-scene`, `pnpm smoke:spatial-webgpu-offscreen` |
 | 색공간·전역 후처리·pixel 출력 | `pnpm smoke:color-management`, `pnpm smoke:camera-postprocess`, `pnpm smoke:pixel-postprocess`, `pnpm smoke:flat-pixel-perfect` |
 | 자원·복구 | `pnpm smoke:gpu-resources`, `pnpm smoke:webgpu-recovery` |
-| authoring·저장·템플릿 | `pnpm smoke:placement-viewer`, 변경 시 generated/template/package/consumer smoke 및 report validation |
+| authoring·저장·템플릿 | `pnpm smoke:studio`, 변경 시 generated/template/package/consumer smoke 및 report validation |
 | 문서·Pages | `pnpm validate:docs-links`, 문서 경로/사이트 변경 시 `pnpm build:pages`, `pnpm validate:pages-artifact` |
 
 public API/아키텍처/회귀 기준이 실제로 바뀌는 구현 단계에서 `docs/engine/**`,

@@ -145,7 +145,7 @@ async function assertPassedDeploymentEvidenceMissingFails() {
 }
 
 async function assertPassedPlacementViewerEvidenceMissingFails() {
-  const artifactDir = path.join(tempRoot, "passed-placement-viewer-evidence-missing");
+  const artifactDir = path.join(tempRoot, "passed-studio-evidence-missing");
   await mkdir(artifactDir, { recursive: true });
   const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
   delete report.templates[0].checks.placementViewerSmoke;
@@ -157,7 +157,7 @@ async function assertPassedPlacementViewerEvidenceMissingFails() {
   assert(
     result.stdout.includes("checks.placementViewerSmoke must be a boolean")
       && result.stdout.includes("reports.placementViewer must be an object")
-      && result.stdout.includes("buildOutput.distPlacementViewerHtml must point to dist/placement-viewer.html"),
+      && result.stdout.includes("buildOutput.distPlacementViewerHtml must point to dist/studio.html"),
     `missing placement viewer evidence validation must be reported\n${result.stdout}\n${result.stderr}`,
   );
 }
@@ -250,7 +250,7 @@ async function writePartialFailedArtifact(artifactDir, { includeForbiddenSnapsho
   await mkdir(path.join(artifactDir, "tarballs"), { recursive: true });
   await mkdir(path.join(artifactDir, "tool-consumer"), { recursive: true });
   await mkdir(path.join(artifactDir, "sample-games/topdown"), { recursive: true });
-  await writeFile(path.join(artifactDir, "tarballs/ferrum2d-authoring-viewer-0.1.0.tgz"), "");
+  await writeFile(path.join(artifactDir, "tarballs/ferrum2d-studio-kit-0.1.0.tgz"), "");
   await writeFile(path.join(artifactDir, "tarballs/ferrum2d-ferrum-web-0.1.0.tgz"), "");
   await writeFile(path.join(artifactDir, "tarballs/ferrum2d-create-game-0.1.0.tgz"), "");
   await writeFile(path.join(artifactDir, "tarballs/ferrum2d-agents-0.1.0.tgz"), "");
@@ -269,7 +269,7 @@ async function writePartialFailedArtifact(artifactDir, { includeForbiddenSnapsho
     errorMessage: "simulated template failure after generated project install",
     requestedTemplates: ["topdown", "platformer"],
     tarballs: {
-      authoringViewer: "ferrum2d-authoring-viewer-0.1.0.tgz",
+      studioKit: "ferrum2d-studio-kit-0.1.0.tgz",
       ferrumWeb: "ferrum2d-ferrum-web-0.1.0.tgz",
       createGame: "ferrum2d-create-game-0.1.0.tgz",
       agents: "ferrum2d-agents-0.1.0.tgz",
@@ -320,7 +320,7 @@ function createFailedReport({
 }) {
   return {
     format: "ferrum2d.package.consumer-smoke.report",
-    version: 1,
+    version: 2,
     status: "failed",
     startedAt: "2026-06-06T00:00:00.000Z",
     completedAt: "2026-06-06T00:00:01.000Z",
@@ -348,7 +348,7 @@ function createFailedReport({
 function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
   return {
     format: "ferrum2d.package.consumer-smoke.report",
-    version: 1,
+    version: 2,
     status: "passed",
     startedAt: "2026-06-06T00:00:00.000Z",
     completedAt: "2026-06-06T00:00:01.000Z",
@@ -363,7 +363,7 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
       commandTimeoutMs: 300000,
     },
     tarballs: {
-      authoringViewer: "ferrum2d-authoring-viewer-0.1.0.tgz",
+      studioKit: "ferrum2d-studio-kit-0.1.0.tgz",
       ferrumWeb: "ferrum2d-ferrum-web-0.1.0.tgz",
       createGame: "ferrum2d-create-game-0.1.0.tgz",
       agents: "ferrum2d-agents-0.1.0.tgz",
@@ -454,7 +454,7 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
         mutationChecks: {},
         buildOutput: {
           distIndexHtml: "sample-games/minimal/dist/index.html",
-          distPlacementViewerHtml: "sample-games/minimal/dist/placement-viewer.html",
+          distPlacementViewerHtml: "sample-games/minimal/dist/studio.html",
           deployReady: true,
           browserSmoke: true,
           preservedInArtifactSnapshot: false,
@@ -544,7 +544,7 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
     mutationChecks: {},
     buildOutput: {
       distIndexHtml: `sample-games/${templateName}/dist/index.html`,
-      distPlacementViewerHtml: `sample-games/${templateName}/dist/placement-viewer.html`,
+      distPlacementViewerHtml: `sample-games/${templateName}/dist/studio.html`,
       deployReady: true,
       browserSmoke: true,
       preservedInArtifactSnapshot: false,
@@ -557,7 +557,7 @@ function projectReportSummary(templateName) {
   return {
     status: "validated",
     packageName: templateName,
-    authoringViewer: "file:../tarballs/ferrum2d-authoring-viewer-0.1.0.tgz",
+    studioKit: "file:../tarballs/ferrum2d-studio-kit-0.1.0.tgz",
     ferrumWeb: "file:../tarballs/ferrum2d-ferrum-web-0.1.0.tgz",
     files: {
       main: true,

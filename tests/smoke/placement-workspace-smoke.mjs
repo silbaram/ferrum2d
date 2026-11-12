@@ -762,7 +762,7 @@ export async function smokePlacementDesktopWorkspace(page, timeoutMs) {
     locks: globalThis.ferrumPlacementViewerState.lockedInstanceIds,
   }));
   const nextPath =
-    "/tmp/ferrum-placement-viewer-desktop-assets-smoke/public/second.scene.json";
+    "/tmp/ferrum-studio-desktop-assets-smoke/public/second.scene.json";
   await page.evaluate(
     (path) => globalThis.ferrumPlacementViewerOpenSceneDocument(path),
     nextPath,

@@ -39,7 +39,7 @@ const requiredDistPages = [
   "starter-runtime/index.html",
   "pixel-art/index.html",
   "topdown-shooter/index.html",
-  "placement-viewer/index.html",
+  "studio/index.html",
   "physics-sandbox/index.html",
   "breakout/index.html",
   "platformer/index.html",

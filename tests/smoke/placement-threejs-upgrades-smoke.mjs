@@ -16,7 +16,7 @@ export async function smokeThreejsViewerUpgrades(parent, timeoutMs = 30000) {
   const pose=id=>page.evaluate(id=>window.ferrumPlacementViewerState.instances.find(i=>i.instanceId===id).transform,id);
   let failures=0;
   // Fail exactly one model fetch; retry must continue the original bootstrap, not merely clear an error.
-  const manifest=JSON.parse(await readFile("apps/placement-viewer/public/assets/rpg-village/manifest.json","utf8"));
+  const manifest=JSON.parse(await readFile("apps/studio/public/assets/rpg-village/manifest.json","utf8"));
   const modelPath=manifest.models.village_tower.file;
   await page.route("**/"+modelPath,route=>{
     if(failures++===0)return route.fulfill({status:503,body:"fixture unavailable"});

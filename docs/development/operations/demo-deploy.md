@@ -12,7 +12,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
 | `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 31종 |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
-| `/placement-viewer/` | `apps/placement-viewer/dist` |
+| `/studio/` | `apps/studio/dist` |
 | `/physics-sandbox/` | `examples/physics-sandbox/dist` |
 | `/breakout/` | `examples/breakout/dist` |
 | `/platformer/` | `examples/platformer/dist` |
@@ -84,12 +84,12 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
 | Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 31종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
 | Top-down route | `/topdown-shooter/`가 공식 Game Spec 기반 demo를 제공한다. | `dist-pages/topdown-shooter/index.html` |
-| Ferrum2D Studio route | `/placement-viewer/`가 Ferrum2D Studio 씬·에셋 편집 도구를 제공한다. | `dist-pages/placement-viewer/index.html` |
+| Ferrum2D Studio route | `/studio/`가 Ferrum2D Studio 씬·에셋 편집 도구를 제공한다. | `dist-pages/studio/index.html` |
 | Physics Sandbox route | `/physics-sandbox/`가 Physics Spec scenario catalog와 debug overlay를 제공한다. | `dist-pages/physics-sandbox/index.html` |
 | Breakout route | `/breakout/`가 두 번째 장르 runtime/render path를 제공한다. | `dist-pages/breakout/index.html` |
 | Platformer route | `/platformer/`가 platformer controller demo를 제공한다. | `dist-pages/platformer/index.html` |
 | Pixel Art route | `/pixel-art/`가 도트 원본·native 이동/수집·조명/팔레트/효과 비교를 제공한다. | `dist-pages/pixel-art/index.html`, `pnpm smoke:pixel-showcase` |
-| rendering-sensitive change | renderer/input/assets/audio/example behavior가 바뀐 경우 관련 browser smoke를 실행한다. | `pnpm smoke:browser`, `pnpm smoke:topdown`, `pnpm smoke:placement-viewer`, `pnpm smoke:physics-sandbox`, `pnpm smoke:breakout`, `pnpm smoke:platformer` 중 변경 표면에 맞게 선택 |
+| rendering-sensitive change | renderer/input/assets/audio/example behavior가 바뀐 경우 관련 browser smoke를 실행한다. | `pnpm smoke:browser`, `pnpm smoke:topdown`, `pnpm smoke:studio`, `pnpm smoke:physics-sandbox`, `pnpm smoke:breakout`, `pnpm smoke:platformer` 중 변경 표면에 맞게 선택 |
 
 ## GitHub Actions
 
@@ -106,7 +106,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 3. `pnpm build`로 Wasm package와 모든 예제를 빌드한다.
 4. `pnpm build:pages`로 demo dist와 docs HTML을 포함한 `dist-pages/` artifact를 만든다.
 5. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
-6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
+6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/studio/`, `/physics-sandbox/`, `/breakout/`, `/platformer/`, `/pixel-art/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 build·artifact 검증·배포·공개 route 확인을 담당한다.
 PR 자동 검증은 `Language boundaries`, 전체 검증은 수동 `CI`와 [Smoke Check](../quality/smoke-check.md)를 기준으로 한다.

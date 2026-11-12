@@ -5,9 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
 import { prepareGithubRelease } from "./prepare-github-release.mjs";
-import { checkViewerPrerequisites, prepareViewerRelease, repositoryRoot, viewerReleasePlan } from "./prepare-viewer-release.mjs";
+import { checkStudioPrerequisites, prepareStudioRelease, repositoryRoot, studioReleasePlan } from "./prepare-studio-release.mjs";
 import { assembleDistribution, releaseIdentity, requireNewOutput, verifyDistribution } from "./release-distribution.mjs";
-import { updaterSettings } from "./viewer-updater.mjs";
+import { updaterSettings } from "./studio-updater.mjs";
 
 export function parseDistributionArgs(argv) {
   const args = argv.filter(arg => arg !== "--"), command = args.shift() ?? "prepare";
@@ -15,31 +15,31 @@ export function parseDistributionArgs(argv) {
   if (!["prepare", "assemble", "verify"].includes(command)) throw new Error(`Unknown command: ${command}`);
   const options = { command }, allowed = {
     prepare: ["version", "repository", "output", "component", "plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"],
-    assemble: ["engine", "viewer", "output"], verify: ["bundle"],
+    assemble: ["engine", "studio", "output"], verify: ["bundle"],
   }[command];
   const flags = new Set(["plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"]), seen = new Set();
   while (args.length) {
     const arg = args.shift();
     if (["--help", "-h"].includes(arg)) return { help: true };
     const key = arg.startsWith("--") ? arg.slice(2) : "";
-    if (!allowed.includes(key) || (seen.has(key) && key !== "viewer")) throw new Error(`Unknown or duplicate option: ${arg}`);
+    if (!allowed.includes(key) || (seen.has(key) && key !== "studio")) throw new Error(`Unknown or duplicate option: ${arg}`);
     seen.add(key);
     const value = flags.has(key) ? true : args.shift();
     if (value === undefined || value === "" || (typeof value === "string" && value.startsWith("--"))) throw new Error(`Missing value for ${arg}`);
     const name = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    if (key === "viewer") (options.viewers ??= []).push(value); else options[name] = value;
+    if (key === "studio") (options.studios ??= []).push(value); else options[name] = value;
   }
   if (command === "prepare") {
     if (!options.version) throw new Error("--version x.y.z-beta.N is required");
     githubRelease(options.version, options.repository);
     options.component ??= "all";
-    if (!["engine", "viewer", "all"].includes(options.component)) throw new Error("--component must be engine, viewer or all");
-    if (options.component === "viewer" && (options.skipEngineBuild || options.skipEnginePackageCheck)) throw new Error("Engine skip options require component engine or all");
-    if (options.component === "engine" && options.noSign) throw new Error("--no-sign requires component viewer or all");
-    if (options.component === "engine" && options.withUpdater) throw new Error("--with-updater requires component viewer or all");
+    if (!["engine", "studio", "all"].includes(options.component)) throw new Error("--component must be engine, studio or all");
+    if (options.component === "studio" && (options.skipEngineBuild || options.skipEnginePackageCheck)) throw new Error("Engine skip options require component engine or all");
+    if (options.component === "engine" && options.noSign) throw new Error("--no-sign requires component studio or all");
+    if (options.component === "engine" && options.withUpdater) throw new Error("--with-updater requires component studio or all");
     if (options.withUpdater && options.noSign) throw new Error("--with-updater cannot be combined with --no-sign");
-  } else if (command === "assemble" && (!options.engine || !options.viewers?.length || !options.output)) {
-    throw new Error("assemble requires --engine, one or more --viewer, and --output");
+  } else if (command === "assemble" && (!options.engine || !options.studios?.length || !options.output)) {
+    throw new Error("assemble requires --engine, one or more --studio, and --output");
   } else if (command === "verify" && !options.bundle) throw new Error("verify requires --bundle");
   return options;
 }
@@ -47,40 +47,39 @@ export function parseDistributionArgs(argv) {
 export async function prepareDistribution(options, context = {}) {
   const root = context.root ?? repositoryRoot, release = githubRelease(options.version, options.repository);
   const component = options.component ?? "all";
-  if (!["engine", "viewer", "all"].includes(component)) throw new Error("Invalid distribution component");
-  const viewer = component !== "engine" ? await viewerReleasePlan(options, context) : undefined;
+  if (!["engine", "studio", "all"].includes(component)) throw new Error("Invalid distribution component");
+  const studio = component !== "engine" ? await studioReleasePlan(options, context) : undefined;
   const output = path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag,
-    component === "viewer" ? `viewer-${viewer.platform}-${viewer.arch}` : component));
+    component === "studio" ? `studio-${studio.platform}-${studio.arch}` : component));
   if (options.plan) return { release: releaseIdentity(release), component, output, published: false,
-    engine: component !== "viewer" ? { build: !options.skipEngineBuild, packageCheck: !options.skipEnginePackageCheck, packages: 4 } : undefined,
-    viewer };
-  if (viewer?.updater) updaterSettings(true);
+    engine: component !== "studio" ? { build: !options.skipEngineBuild, packageCheck: !options.skipEnginePackageCheck, packages: 4 } : undefined,
+    studio };
+  if (studio?.updater) updaterSettings(true);
   await requireNewOutput(output);
-  if (component === "viewer") return prepareViewerRelease({ ...options, output }, context);
-  if (component === "all") await checkViewerPrerequisites(context);
+  if (component === "studio") return prepareStudioRelease({ ...options, output }, context);
+  if (component === "all") await checkStudioPrerequisites(context);
   const engineOptions = { version: release.version, repository: release.repository,
     skipBuild: Boolean(options.skipEngineBuild), skipPackageCheck: Boolean(options.skipEnginePackageCheck) };
   if (component === "engine") return prepareGithubRelease({ ...engineOptions, output });
   const stage = await mkdtemp(path.join(os.tmpdir(), "ferrum-distribution-"));
   try {
-    const engine = path.join(stage, "engine"), native = path.join(stage, "viewer");
+    const engine = path.join(stage, "engine"), native = path.join(stage, "studio");
     await prepareGithubRelease({ ...engineOptions, output: engine });
-    await prepareViewerRelease({ ...options, output: native, reuseRuntimeBuild: !engineOptions.skipBuild }, context);
-    return await assembleDistribution({ engine, viewers: [native], output });
+    await prepareStudioRelease({ ...options, output: native, reuseRuntimeBuild: !engineOptions.skipBuild }, context);
+    return await assembleDistribution({ engine, studios: [native], output });
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
 
 export const distributionHelp = `Ferrum2D engine SDK / Studio release preparation (no publishing)
 
-prepare --version x.y.z-beta.N [--component engine|viewer|all] [--repository owner/repo]
+prepare --version x.y.z-beta.N [--component engine|studio|all] [--repository owner/repo]
         [--output NEW_DIR] [--plan] [--no-sign] [--with-updater]
         [--skip-engine-build] [--skip-engine-package-check]
-assemble --engine ENGINE_DIR --viewer VIEWER_DIR [--viewer OTHER_OS_DIR] --output NEW_DIR
+assemble --engine ENGINE_DIR --studio STUDIO_DIR [--studio OTHER_OS_DIR] --output NEW_DIR
 verify --bundle DISTRIBUTION_DIR
 
 Studio installers are built on the native OS: Windows .exe, Linux .deb, macOS .dmg.
---with-updater is blocked during the Studio product-name transition; use manual installers.
-The legacy product's update channel builds signed updater artifacts and per-platform metadata.
+--with-updater builds signed Studio updater artifacts and studio-updater metadata.
 Requires FERRUM_UPDATER_PUBLIC_KEY and TAURI_SIGNING_PRIVATE_KEY; OS code-signing is separate.
 --plan only prints the plan. Existing outputs are never overwritten.
 Engine skip flags record omitted checks. Native GUI/signing require separate review.

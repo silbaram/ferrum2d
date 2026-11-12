@@ -1,6 +1,6 @@
 ---
 name: ferrum-authoring-workflow
-description: Use when designing, implementing, reviewing, or validating Ferrum2D Scene Placement and Object Authoring workflows, including placement viewer UI, placement patch generation, asset providers, handoff summaries, Data Scene component props, create-game placement-viewer scaffolds, or generated placement viewer browser smoke checks.
+description: Use when designing, implementing, reviewing, or validating Ferrum2D Scene Placement and Object Authoring workflows, including placement viewer UI, placement patch generation, asset providers, handoff summaries, Data Scene component props, create-game studio scaffolds, or generated placement viewer browser smoke checks.
 ---
 
 # Ferrum Authoring Workflow

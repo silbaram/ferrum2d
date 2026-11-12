@@ -90,10 +90,10 @@ try {
     }
   }
   for (const scene of onlyShooter || onlyGuided || suiteBuild ? [] : ["village", "garden"]) {
-    const source = JSON.parse(await readFile(resolve(routes.get("placement-viewer"), `placement.${scene}.scene-authoring.json`), "utf8"));
+    const source = JSON.parse(await readFile(resolve(routes.get("studio"), `placement.${scene}.scene-authoring.json`), "utf8"));
     const count = Object.values(source.sceneComposition.fragments).reduce((sum, fragment) => sum + fragment.instances.length, 0);
     console.log(`Opening ${scene}: ${count} authored objects`);
-    await page.goto(`${origin}/placement-viewer/?scene=${scene}`);
+    await page.goto(`${origin}/studio/?scene=${scene}`);
     await page.waitForFunction(expected => window.ferrumPlacementViewerState?.instances.length === expected &&
       window.ferrumPlacementViewerRuntimeFrame?.entityCount > 0, count, { timeout: 60000 });
     await page.locator("[data-placement-language]").selectOption("ko");

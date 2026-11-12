@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url)), ts = require("typescript");
-const code = ts.transpileModule(await readFile(new URL("../../apps/placement-viewer/src/placementReleaseVersions.ts", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url)), ts = require("typescript");
+const code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementReleaseVersions.ts", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const { compareUpdateVersions, fetchUpdateReleases, safeReleasePage, updateReleases } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
-const row = n => ({ draft: false, tag_name: `ferrum-web-v0.1.0-beta.${n}`, assets: [{ name: "viewer-updater-linux-x64.json", state: "uploaded" }] });
+const row = n => ({ draft: false, tag_name: `ferrum-web-v0.1.0-beta.${n}`, assets: [{ name: "studio-updater-linux-x64.json", state: "uploaded" }] });
 test("viewer release comparison matches semantic beta order and filters malformed/draft releases", () => {
   assert(compareUpdateVersions("0.1.0-beta.10", "0.1.0-beta.9") > 0);
   assert(compareUpdateVersions("0.1.0-beta.10", "0.1.0") < 0);

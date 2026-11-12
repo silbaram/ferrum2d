@@ -1,5 +1,10 @@
 # Ferrum2D Developer Quickstart
 
+The current source uses `@ferrum2d/studio-kit`, `studio.html`, and `ferrum:studio`.
+Published beta.9 and earlier retain `@ferrum2d/authoring-viewer`, `placement-viewer.html`, and
+`ferrum:placement-viewer`. Follow the generated files and installation guide for the release you install.
+
+
 [한국어](../../engine/developer-quickstart.md) · English
 
 Ferrum2D combines a Rust/Wasm core with a TypeScript browser platform layer and a WebGL2 renderer.
@@ -143,7 +148,7 @@ pnpm build
 pnpm dev:starter-runtime
 ```
 
-Try `pnpm dev:placement-viewer` for scene placement and pixel editing.
+Try `pnpm dev:studio` for scene placement and pixel editing.
 The [feature guide](showcase-hub.md) lists example commands and browser experiments.
 
 Engine changes require checks appropriate to their scope; the [Smoke Check guide (Korean)](../../development/quality/smoke-check.md)

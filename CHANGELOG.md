@@ -8,20 +8,28 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Changed
 
-- 공식 Placement Viewer의 하단 패널을 기본 서랍으로 바꿨다. 탭 줄만 표시해 viewport를 넓히고,
+- 출시 전 Studio 명칭을 패키지·명령·소스 경로·배포 파일에 적용했다. 보조 라이브러리는
+  `@ferrum2d/studio-kit`, 앱은 `@ferrum2d/studio` / `@ferrum2d/studio-desktop`,
+  생성 프로젝트는 `studio.html` / `ferrum:studio`를 사용한다. 이전 이름의 별칭은 제공하지 않는다.
+- Studio 설치 식별자는 `com.ferrum2d.studio`, 업데이트 채널은 `studio-updater-*`다.
+  설치 파일은 `ferrum2d-studio-*`, helper tarball은 `ferrum2d-studio-kit-*`로 생성한다.
+  서명 키와 OS별 설치 검증은 계속 필요하다. 이미 공개한 beta.9 이하의 Assets/URL은 당시 이름 그대로다.
+- dependency 필드명 변경에 맞춰 consumer project/consumer smoke report와 통합 distribution manifest를
+  version 2로 올렸다. Studio Kit public helper 이름은 `StudioKit` / `FERRUM_STUDIO_KIT` 접두사를 사용한다.
+- Ferrum2D Studio의 하단 패널을 기본 서랍으로 바꿨다. 탭 줄만 표시해 viewport를 넓히고,
   탭을 누르면 canvas 크기를 바꾸지 않고 펼친다. 핀 버튼으로 기존처럼 고정할 수 있다.
   Assets 탭은 에셋 격자만 표시하고 도구는 `Import`/`Manage` 메뉴에서 한 번에 하나씩 연다.
-- 공식 Placement Viewer에서 변경이나 문제가 있으면 상단에 `변경 N` 버튼을 표시하고, 누르면 My Changes(내 변경)를 연다.
+- Ferrum2D Studio에서 변경이나 문제가 있으면 상단에 `변경 N` 버튼을 표시하고, 누르면 My Changes(내 변경)를 연다.
   하단 탭 이름 Agent Changes(에이전트 변경)를 My Changes(내 변경)로 바꿨다. 에이전트에게 넘길 사용자 편집 내역이다.
   My Changes는 JSON 경로 대신 오브젝트·항목·이전/이후 값으로 보여 주며, 행을 누르면 그 오브젝트를 선택한다.
 - Handoff `authoringEvidence`의 변경 목록이 씬 인스턴스를 id로 짝지어 비교한다. 중간 오브젝트를 지우면
   뒤 오브젝트가 모두 바뀐 것처럼 기록되던 문제가 없어지고, 삭제 한 건으로 기록된다.
-- 공식 Placement Viewer의 명령 검색을 `Ctrl+K`(Mac은 `⌘K`)로도 연다. `F3`도 그대로 동작한다.
+- Ferrum2D Studio의 명령 검색을 `Ctrl+K`(Mac은 `⌘K`)로도 연다. `F3`도 그대로 동작한다.
   하단 상태 바에 현재 모드와 선택 상태에서 실제로 동작하는 단축키를 표시한다.
-- 공식 Placement Viewer 상단에 `File`/`Edit`/`View`/`Window`/`Tools`/`Run`/`Help` 메뉴바를 추가했다. 메뉴는 기존 명령을 호출만 하며, 860px 이하 좁은 화면은 기존 구성을 유지한다.
-- 공식 Placement Viewer 인스펙터의 회전 입력을 도 단위로 통일했다. 저장 형식은 `rotationRadians` 그대로다. 오브젝트 목록의 잠금은 아이콘으로 바꿔 평소에는 조용히 표시하고, 입력 컨트롤의 글꼴·높이 기본값을 맞췄다.
-- 공식 Placement Viewer의 도트 편집기 탭에서는 씬·인스펙터 패널이 탭 줄로 자동으로 접혀 캔버스가 넓어진다. 씬 탭으로 돌아가면 복원되며 저장된 레이아웃은 바뀌지 않는다.
-- 공식 Placement Viewer의 조명 설정을 보기 드롭다운에서 오른쪽 패널의 `Lighting` 탭으로 옮겼다. 좌·우·아래 패널은 접을 수 있고, 접으면 가장자리에 탭 줄이 남아 누르면 해당 탭이 열린다.
+- Ferrum2D Studio 상단에 `File`/`Edit`/`View`/`Window`/`Tools`/`Run`/`Help` 메뉴바를 추가했다. 메뉴는 기존 명령을 호출만 하며, 860px 이하 좁은 화면은 기존 구성을 유지한다.
+- Ferrum2D Studio 인스펙터의 회전 입력을 도 단위로 통일했다. 저장 형식은 `rotationRadians` 그대로다. 오브젝트 목록의 잠금은 아이콘으로 바꿔 평소에는 조용히 표시하고, 입력 컨트롤의 글꼴·높이 기본값을 맞췄다.
+- Ferrum2D Studio의 도트 편집기 탭에서는 씬·인스펙터 패널이 탭 줄로 자동으로 접혀 캔버스가 넓어진다. 씬 탭으로 돌아가면 복원되며 저장된 레이아웃은 바뀌지 않는다.
+- Ferrum2D Studio의 조명 설정을 보기 드롭다운에서 오른쪽 패널의 `Lighting` 탭으로 옮겼다. 좌·우·아래 패널은 접을 수 있고, 접으면 가장자리에 탭 줄이 남아 누르면 해당 탭이 열린다.
 - `FerrumRuntimeRenderer`를 WebGL2/WebGPU 구체 클래스 교차 타입에서 구조적 렌더러 계약으로 분리했다.
   평면 custom renderer는 private GPU 상태나 모델·픽셀 마스크 기능 없이 주입할 수 있다.
   기존 `runtime.renderer`에서 백엔드 기능을 직접 호출하던 TypeScript 코드는 capability 확인이 필요하다.

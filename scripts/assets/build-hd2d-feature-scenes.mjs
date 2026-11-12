@@ -8,7 +8,7 @@ const output = new URL("../../examples/starter-runtime/public/features/", import
 await mkdir(new URL("spatial/", output), { recursive: true });
 const contentIds = {};
 for (const name of ["cart", "lamp"]) {
-  const source = new URL(`../../apps/placement-viewer/public/assets/rpg-village/${name}.glb`, import.meta.url);
+  const source = new URL(`../../apps/studio/public/assets/rpg-village/${name}.glb`, import.meta.url);
   contentIds[name] = createHash("sha256").update(await readFile(source)).digest("hex");
   await copyFile(source, new URL(`spatial/${name}.glb`, output));
 }

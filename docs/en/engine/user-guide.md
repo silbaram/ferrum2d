@@ -40,7 +40,7 @@ Run `pnpm build` before the first launch or after modifying Rust. Use the addres
 | Example | Command | What to inspect |
 | --- | --- | --- |
 | Engine Feature Lab | `pnpm dev:starter-runtime` | 31 independent experiments with controls, observations, and API names |
-| 2D garden and HD-2D village | `pnpm dev:placement-viewer` | Use `?scene=garden` or `?scene=village` for placement and game preview |
+| 2D garden and HD-2D village | `pnpm dev:studio` | Use `?scene=garden` or `?scene=village` for placement and game preview |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | Seven focused scenarios and collision/solver diagnostics |
 | Top-down Shooter | `pnpm dev:topdown` | Movement, aiming, projectiles, waves, scoring, and Game Spec |
 | Breakout | `pnpm dev:breakout` | Reflection, collision events, brick removal, and particles |
@@ -73,7 +73,7 @@ Game Preview runs the Scene Authoring runtime; it does not automatically execute
 
 Scene and pixel-source saving are separate from `.ferrum-placement-handoff.json`.
 The handoff communicates selection, drafts, and asset references to an agent; it is not a replacement for saving the scene.
-The [Studio guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md) covers storage permissions,
+The [Studio guide (Korean)](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md) covers storage permissions,
 English/Korean UI, and `Ctrl+K` command search.
 
 ## Files to edit in a game project

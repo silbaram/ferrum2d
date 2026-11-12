@@ -39,18 +39,18 @@ const commonRequiredTemplateFiles = [
   "src/styles.css",
 ];
 const sharedGeneratedPlacementViewerFiles = [
-  "_shared/src/ferrum-placement-viewer.css",
-  "_shared/src/ferrum-placement-viewer-assets.ts",
-  "_shared/src/ferrum-placement-viewer-object-panels.ts",
-  "_shared/src/ferrum-placement-viewer-publish.ts",
-  "_shared/src/ferrum-placement-viewer-stage-session.ts",
-  "_shared/src/ferrum-placement-viewer-startup-error.ts",
-  "_shared/src/ferrum-placement-viewer-transform-panel.ts",
-  "_shared/src/ferrum-placement-viewer.ts",
+  "_shared/src/ferrum-studio.css",
+  "_shared/src/ferrum-studio-assets.ts",
+  "_shared/src/ferrum-studio-object-panels.ts",
+  "_shared/src/ferrum-studio-publish.ts",
+  "_shared/src/ferrum-studio-stage-session.ts",
+  "_shared/src/ferrum-studio-startup-error.ts",
+  "_shared/src/ferrum-studio-transform-panel.ts",
+  "_shared/src/ferrum-studio.ts",
 ];
 const sharedTemplateFiles = [
   "_shared/README.md",
-  "_shared/placement-viewer.html",
+  "_shared/studio.html",
   "_shared/vite.config.ts",
   "_shared/public/assets/audio.manifest.json",
   "_shared/public/assets/localization.manifest.json",
@@ -341,8 +341,8 @@ async function assertCreateGameCliManifestValidation(cliPath) {
     source.includes("sharedTemplateRoot") &&
       source.includes("Shared create-game template scaffold is missing.") &&
       source.includes("await copyTemplate(sharedTemplateRoot") &&
-      source.includes("__FERRUM_AUTHORING_VIEWER_VERSION__") &&
-      source.includes("--authoring-viewer-version"),
+      source.includes("__FERRUM_STUDIO_KIT_VERSION__") &&
+      source.includes("--studio-kit-version"),
     "create-game CLI must apply the shared template scaffold before copying a genre template",
   );
 }
@@ -421,15 +421,15 @@ async function assertCreateGameCliDefaultDependencies(cliPath) {
     const generatedPackage = await readJson(path.join(targetRoot, "package.json"));
     const serializedPackage = JSON.stringify(generatedPackage);
     assert(
-      generatedPackage.dependencies?.["@ferrum2d/authoring-viewer"] === "^0.1.0",
-      "generated game default authoring-viewer dependency must be ^0.1.0",
+      generatedPackage.dependencies?.["@ferrum2d/studio-kit"] === "^0.1.0",
+      "generated game default studio-kit dependency must be ^0.1.0",
     );
     assert(
       generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "^0.1.0",
       "generated game default ferrum-web dependency must be ^0.1.0",
     );
     assert(
-      !serializedPackage.includes("__FERRUM_AUTHORING_VIEWER_VERSION__") &&
+      !serializedPackage.includes("__FERRUM_STUDIO_KIT_VERSION__") &&
         !serializedPackage.includes("__FERRUM_WEB_VERSION__"),
       "generated game package.json must not leak dependency placeholders",
     );
@@ -510,8 +510,8 @@ async function assertSharedGeneratedPlacementViewerTemplateFiles() {
   const sharedSourceRoot = path.join(packageRoot, "templates/_shared/src");
   const actualFiles = (await readdir(sharedSourceRoot))
     .filter((entry) => (
-      entry === "ferrum-placement-viewer.css" ||
-      /^ferrum-placement-viewer(?:-[a-z-]+)?\.ts$/.test(entry)
+      entry === "ferrum-studio.css" ||
+      /^ferrum-studio(?:-[a-z-]+)?\.ts$/.test(entry)
     ))
     .map((entry) => `_shared/src/${entry}`)
     .sort();
@@ -530,7 +530,7 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
   const sharedSourceRoot = path.join(packageRoot, "templates/_shared/src");
   const moduleContracts = [
     {
-      file: "ferrum-placement-viewer-assets.ts",
+      file: "ferrum-studio-assets.ts",
       exports: [
         "export interface PlacementViewerAssetUrls",
         "export interface PlacementViewerAssets",
@@ -538,7 +538,7 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
       ],
     },
     {
-      file: "ferrum-placement-viewer-object-panels.ts",
+      file: "ferrum-studio-object-panels.ts",
       exports: [
         "export interface PlacementObjectPanelOptions",
         "export function renderPlacementDetails",
@@ -547,7 +547,7 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
       ],
     },
     {
-      file: "ferrum-placement-viewer-publish.ts",
+      file: "ferrum-studio-publish.ts",
       exports: [
         "export interface PlacementHandoffControls",
         "export interface RenderPlacementAgentOutputsOptions",
@@ -559,7 +559,7 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
       ],
     },
     {
-      file: "ferrum-placement-viewer-stage-session.ts",
+      file: "ferrum-studio-stage-session.ts",
       exports: [
         "export interface PlacementStageSessionSettings",
         "export interface PlacementSession",
@@ -571,13 +571,13 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
       ],
     },
     {
-      file: "ferrum-placement-viewer-startup-error.ts",
+      file: "ferrum-studio-startup-error.ts",
       exports: [
         "export function renderPlacementStartupError",
       ],
     },
     {
-      file: "ferrum-placement-viewer-transform-panel.ts",
+      file: "ferrum-studio-transform-panel.ts",
       exports: [
         "export interface PlacementTransformPanelSettings",
         "export interface PlacementTransformPanelSession",
@@ -601,19 +601,19 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
     assertNoFerrumWebInternalImports(source, `create-game shared placement viewer module ${contract.file}`);
   }
 
-  const mainSource = await readFile(path.join(sharedSourceRoot, "ferrum-placement-viewer.ts"), "utf8");
+  const mainSource = await readFile(path.join(sharedSourceRoot, "ferrum-studio.ts"), "utf8");
   const mainLineCount = mainSource.split(/\r?\n/u).length;
   assert(
     mainLineCount <= 260,
     `create-game shared placement viewer main module must stay thin after split, got ${mainLineCount} lines`,
   );
   assertHasModuleSpecifiers(mainSource, "create-game shared placement viewer main module", [
-    "./ferrum-placement-viewer-assets",
-    "./ferrum-placement-viewer-object-panels",
-    "./ferrum-placement-viewer-publish",
-    "./ferrum-placement-viewer-stage-session",
-    "./ferrum-placement-viewer-startup-error",
-    "./ferrum-placement-viewer-transform-panel",
+    "./ferrum-studio-assets",
+    "./ferrum-studio-object-panels",
+    "./ferrum-studio-publish",
+    "./ferrum-studio-stage-session",
+    "./ferrum-studio-startup-error",
+    "./ferrum-studio-transform-panel",
   ]);
 }
 
@@ -630,8 +630,8 @@ async function checkGeneratedProject(template) {
       templateName,
       "--ferrum-version",
       "0.0.0-test",
-      "--authoring-viewer-version",
-      "0.0.0-authoring-viewer-test",
+      "--studio-kit-version",
+      "0.0.0-studio-kit-test",
     ], repoRoot);
     assert(
       result.code === 0,
@@ -644,10 +644,10 @@ async function checkGeneratedProject(template) {
       "generated package name must be derived from target directory",
     );
     assert(generatedPackage.private === true, "generated game project must be private by default");
-    assert(generatedPackage.dependencies?.["@ferrum2d/authoring-viewer"] === "0.0.0-authoring-viewer-test", "generated game must depend on @ferrum2d/authoring-viewer");
+    assert(generatedPackage.dependencies?.["@ferrum2d/studio-kit"] === "0.0.0-studio-kit-test", "generated game must depend on @ferrum2d/studio-kit");
     assert(generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "0.0.0-test", "generated game must depend on @ferrum2d/ferrum-web");
     assert(generatedPackage.scripts?.dev === "vite", "generated game must include dev script");
-    assert(generatedPackage.scripts?.["ferrum:placement-viewer"] === "vite --host 127.0.0.1 --open /placement-viewer.html", "generated game must include ferrum:placement-viewer script");
+    assert(generatedPackage.scripts?.["ferrum:studio"] === "vite --host 127.0.0.1 --open /studio.html", "generated game must include ferrum:studio script");
     assert(generatedPackage.scripts?.build === "vite build --base=./", "generated game must include static-safe build script");
     assert(generatedPackage.scripts?.["pack:textures"] === "node scripts/ferrum-assets.mjs pack-textures", "generated game must include pack:textures script");
     assert(generatedPackage.scripts?.["ferrum:check"] === "node scripts/ferrum-check.mjs", "generated game must include ferrum:check script");
@@ -741,7 +741,7 @@ async function checkGeneratedProject(template) {
           combinedHarnessSource.includes("placementAuthoring") &&
           combinedHarnessSource.includes("behaviorBindings") &&
           (combinedHarnessSource.includes("behaviorRecipePath") ||
-            combinedHarnessSource.includes("createAuthoringViewerBehaviorBindingEvidence")) &&
+            combinedHarnessSource.includes("createStudioKitBehaviorBindingEvidence")) &&
           combinedHarnessSource.includes("public/scene-authoring.json"),
         `${templateName} template harness must validate SceneComposition behavior authoring through public APIs`,
       );
@@ -815,10 +815,10 @@ async function assertProjectReport(projectRoot, templateName, template) {
   );
   const report = parseJsonReport(result.stdout, `${templateName} project report`);
   assert(report.format === "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
-  assert(report.version === 1, `${templateName} project report version must be 1`);
+  assert(report.version === 2, `${templateName} project report version must be 2`);
   assert(report.ok === true, `${templateName} project report must be ok`);
   assert(report.project?.packageName === `sample-${templateName}-game`, `${templateName} project report packageName is invalid`);
-  assert(report.project?.authoringViewer === "0.0.0-authoring-viewer-test", `${templateName} project report authoring-viewer dependency is invalid`);
+  assert(report.project?.studioKit === "0.0.0-studio-kit-test", `${templateName} project report studio-kit dependency is invalid`);
   assert(report.project?.ferrumWeb === "0.0.0-test", `${templateName} project report ferrum-web dependency is invalid`);
   assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
@@ -845,7 +845,7 @@ async function assertProjectReport(projectRoot, templateName, template) {
     "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
-    "npm run ferrum:placement-viewer",
+    "npm run ferrum:studio",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
@@ -946,32 +946,32 @@ function assertMinimalTemplateWeaponAuthoring(mainSource) {
 }
 
 async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName) {
-  await requireFile(path.join(projectRoot, "placement-viewer.html"), repoRoot);
+  await requireFile(path.join(projectRoot, "studio.html"), repoRoot);
   const viteConfigPath = path.join(projectRoot, "vite.config.ts");
   await requireFile(viteConfigPath, repoRoot);
   const viteConfigSource = await readFile(viteConfigPath, "utf8");
   assert(
-    viteConfigSource.includes("placement-viewer.html") &&
+    viteConfigSource.includes("studio.html") &&
       viteConfigSource.includes("rollupOptions") &&
       viteConfigSource.includes("input"),
     `${templateName} generated game must build the placement viewer page through Vite`,
   );
 
-  const viewerSourcePath = path.join(projectRoot, "src/ferrum-placement-viewer.ts");
+  const viewerSourcePath = path.join(projectRoot, "src/ferrum-studio.ts");
   await requireFile(viewerSourcePath, repoRoot);
-  const viewerAssetsPath = path.join(projectRoot, "src/ferrum-placement-viewer-assets.ts");
+  const viewerAssetsPath = path.join(projectRoot, "src/ferrum-studio-assets.ts");
   await requireFile(viewerAssetsPath, repoRoot);
-  const viewerObjectPanelsPath = path.join(projectRoot, "src/ferrum-placement-viewer-object-panels.ts");
+  const viewerObjectPanelsPath = path.join(projectRoot, "src/ferrum-studio-object-panels.ts");
   await requireFile(viewerObjectPanelsPath, repoRoot);
-  const viewerPublishPath = path.join(projectRoot, "src/ferrum-placement-viewer-publish.ts");
+  const viewerPublishPath = path.join(projectRoot, "src/ferrum-studio-publish.ts");
   await requireFile(viewerPublishPath, repoRoot);
-  const viewerStageSessionPath = path.join(projectRoot, "src/ferrum-placement-viewer-stage-session.ts");
+  const viewerStageSessionPath = path.join(projectRoot, "src/ferrum-studio-stage-session.ts");
   await requireFile(viewerStageSessionPath, repoRoot);
-  const viewerStartupErrorPath = path.join(projectRoot, "src/ferrum-placement-viewer-startup-error.ts");
+  const viewerStartupErrorPath = path.join(projectRoot, "src/ferrum-studio-startup-error.ts");
   await requireFile(viewerStartupErrorPath, repoRoot);
-  const viewerTransformPanelPath = path.join(projectRoot, "src/ferrum-placement-viewer-transform-panel.ts");
+  const viewerTransformPanelPath = path.join(projectRoot, "src/ferrum-studio-transform-panel.ts");
   await requireFile(viewerTransformPanelPath, repoRoot);
-  await requireFile(path.join(projectRoot, "src/ferrum-placement-viewer.css"), repoRoot);
+  await requireFile(path.join(projectRoot, "src/ferrum-studio.css"), repoRoot);
   const viewerSource = await readFile(viewerSourcePath, "utf8");
   const viewerAssetsSource = await readFile(viewerAssetsPath, "utf8");
   const viewerObjectPanelsSource = await readFile(viewerObjectPanelsPath, "utf8");
@@ -979,36 +979,36 @@ async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName)
   const viewerStageSessionSource = await readFile(viewerStageSessionPath, "utf8");
   const viewerStartupErrorSource = await readFile(viewerStartupErrorPath, "utf8");
   const viewerTransformPanelSource = await readFile(viewerTransformPanelPath, "utf8");
-  const viewerCssSource = await readFile(path.join(projectRoot, "src/ferrum-placement-viewer.css"), "utf8");
+  const viewerCssSource = await readFile(path.join(projectRoot, "src/ferrum-studio.css"), "utf8");
   assertHasModuleSpecifiers(viewerSource, `${templateName} placement viewer scaffold`, [
-    "@ferrum2d/authoring-viewer",
-    "./ferrum-placement-viewer-assets",
-    "./ferrum-placement-viewer-object-panels",
-    "./ferrum-placement-viewer-publish",
-    "./ferrum-placement-viewer-stage-session",
-    "./ferrum-placement-viewer-startup-error",
-    "./ferrum-placement-viewer-transform-panel",
+    "@ferrum2d/studio-kit",
+    "./ferrum-studio-assets",
+    "./ferrum-studio-object-panels",
+    "./ferrum-studio-publish",
+    "./ferrum-studio-stage-session",
+    "./ferrum-studio-startup-error",
+    "./ferrum-studio-transform-panel",
   ]);
   assertHasModuleSpecifiers(viewerAssetsSource, `${templateName} placement viewer assets scaffold`, [
     "@ferrum2d/ferrum-web/authoring",
   ]);
   assertHasModuleSpecifiers(viewerObjectPanelsSource, `${templateName} placement viewer object panels scaffold`, [
-    "@ferrum2d/authoring-viewer",
+    "@ferrum2d/studio-kit",
     "@ferrum2d/ferrum-web/authoring",
   ]);
   assertHasModuleSpecifiers(viewerPublishSource, `${templateName} placement viewer publish scaffold`, [
     "@ferrum2d/ferrum-web/authoring",
-    "./ferrum-placement-viewer-stage-session",
+    "./ferrum-studio-stage-session",
   ]);
   assertHasModuleSpecifiers(viewerStageSessionSource, `${templateName} placement viewer stage/session scaffold`, [
     "@ferrum2d/ferrum-web/authoring",
   ]);
   assertHasModuleSpecifiers(viewerStartupErrorSource, `${templateName} placement viewer startup error scaffold`, [
-    "@ferrum2d/authoring-viewer",
+    "@ferrum2d/studio-kit",
     "@ferrum2d/ferrum-web/quality",
   ]);
   assertHasModuleSpecifiers(viewerTransformPanelSource, `${templateName} placement viewer transform panel scaffold`, [
-    "@ferrum2d/authoring-viewer",
+    "@ferrum2d/studio-kit",
     "@ferrum2d/ferrum-web/authoring",
   ]);
   assertNoFerrumRootAggregateImport(viewerSource, `${templateName} placement viewer scaffold`);
@@ -1095,7 +1095,7 @@ async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) 
 
 function assertHarnessScaffold(source, templateName) {
   assertHasModuleSpecifiers(source, `${templateName} template harness`, [
-    "@ferrum2d/authoring-viewer",
+    "@ferrum2d/studio-kit",
     "@ferrum2d/ferrum-web/authoring",
     "@ferrum2d/ferrum-web/quality",
   ]);
@@ -1243,7 +1243,7 @@ async function linkWorkspaceFerrumWeb(projectRoot) {
   await buildFerrumWebPublicEntrypoint();
   const packageScope = path.join(projectRoot, "node_modules/@ferrum2d");
   await mkdir(packageScope, { recursive: true });
-  await symlinkWorkspacePackage(path.join(repoRoot, "packages/ferrum-authoring-viewer"), path.join(packageScope, "authoring-viewer"));
+  await symlinkWorkspacePackage(path.join(repoRoot, "packages/ferrum-studio-kit"), path.join(packageScope, "studio-kit"));
   await symlinkWorkspacePackage(path.join(repoRoot, "packages/ferrum-web"), path.join(packageScope, "ferrum-web"));
 }
 
@@ -1270,13 +1270,13 @@ async function buildFerrumWebPublicEntrypoint() {
     result.code === 0,
     `create-game package check must build @ferrum2d/ferrum-web before symlinked public-entrypoint validation\n${result.stdout}\n${result.stderr}`.trim(),
   );
-  const authoringViewerResult = await run(pnpm, ["--filter", "@ferrum2d/authoring-viewer", "build"], repoRoot);
+  const studioKitResult = await run(pnpm, ["--filter", "@ferrum2d/studio-kit", "build"], repoRoot);
   assert(
-    authoringViewerResult.code === 0,
-    `create-game package check must build @ferrum2d/authoring-viewer before symlinked viewer validation\n${authoringViewerResult.stdout}\n${authoringViewerResult.stderr}`.trim(),
+    studioKitResult.code === 0,
+    `create-game package check must build @ferrum2d/studio-kit before symlinked viewer validation\n${studioKitResult.stdout}\n${studioKitResult.stderr}`.trim(),
   );
-  await requireFile(path.join(repoRoot, "packages/ferrum-authoring-viewer/dist/index.js"), repoRoot);
-  await requireFile(path.join(repoRoot, "packages/ferrum-authoring-viewer/dist/index.d.ts"), repoRoot);
+  await requireFile(path.join(repoRoot, "packages/ferrum-studio-kit/dist/index.js"), repoRoot);
+  await requireFile(path.join(repoRoot, "packages/ferrum-studio-kit/dist/index.d.ts"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core.js"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core_bg.wasm"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/dist/index.js"), repoRoot);

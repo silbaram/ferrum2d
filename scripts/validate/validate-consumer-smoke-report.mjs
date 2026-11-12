@@ -11,7 +11,7 @@ import {
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_ARTIFACT_DIR = "artifacts/consumer-smoke";
 const REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
-const REPORT_VERSION = 1;
+const REPORT_VERSION = 2;
 const EXPECTED_AGENT_FILES_CHECKED = 43;
 const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "createGame",
@@ -95,7 +95,7 @@ function validateTopLevelReport(value, reportErrors) {
   if (!isRecord(value.tarballs)) {
     reportErrors.push("tarballs must be an object");
   } else if (value.status === "passed") {
-    validateTarballName(value.tarballs.authoringViewer, "tarballs.authoringViewer", reportErrors);
+    validateTarballName(value.tarballs.studioKit, "tarballs.studioKit", reportErrors);
     validateTarballName(value.tarballs.ferrumWeb, "tarballs.ferrumWeb", reportErrors);
     validateTarballName(value.tarballs.createGame, "tarballs.createGame", reportErrors);
     validateTarballName(value.tarballs.agents, "tarballs.agents", reportErrors);
@@ -314,9 +314,9 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     }
     if (
       typeof template.buildOutput.distPlacementViewerHtml !== "string" ||
-      !template.buildOutput.distPlacementViewerHtml.endsWith("/dist/placement-viewer.html")
+      !template.buildOutput.distPlacementViewerHtml.endsWith("/dist/studio.html")
     ) {
-      reportErrors.push(`${label}.buildOutput.distPlacementViewerHtml must point to dist/placement-viewer.html`);
+      reportErrors.push(`${label}.buildOutput.distPlacementViewerHtml must point to dist/studio.html`);
     }
     if (template.buildOutput.preservedInArtifactSnapshot !== false) {
       reportErrors.push(`${label}.buildOutput.preservedInArtifactSnapshot must be false`);
@@ -431,8 +431,8 @@ function validateProjectSummary(value, label, reportErrors) {
   if (typeof value.packageName !== "string" || value.packageName.length === 0) {
     reportErrors.push(`${label}.packageName must be a non-empty string`);
   }
-  if (typeof value.authoringViewer !== "string" || value.authoringViewer.length === 0) {
-    reportErrors.push(`${label}.authoringViewer must be a non-empty string`);
+  if (typeof value.studioKit !== "string" || value.studioKit.length === 0) {
+    reportErrors.push(`${label}.studioKit must be a non-empty string`);
   }
   if (typeof value.ferrumWeb !== "string" || value.ferrumWeb.length === 0) {
     reportErrors.push(`${label}.ferrumWeb must be a non-empty string`);
@@ -760,7 +760,7 @@ async function validateArtifacts(value, reportErrors) {
   await requireDirectory(options.artifactDir, reportErrors);
   await requireFile(options.reportPath, reportErrors);
   if (isRecord(value.tarballs)) {
-    await requireTarball(value.tarballs.authoringViewer, reportErrors);
+    await requireTarball(value.tarballs.studioKit, reportErrors);
     await requireTarball(value.tarballs.ferrumWeb, reportErrors);
     await requireTarball(value.tarballs.createGame, reportErrors);
     await requireTarball(value.tarballs.agents, reportErrors);

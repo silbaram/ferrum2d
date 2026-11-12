@@ -13,7 +13,7 @@ Own verification for:
 - npm tarball contents.
 - generated Wasm package artifacts under packages/ferrum-web/pkg.
 - purpose-specific public subpath import smoke checks.
-- generated create-game scaffold smoke checks, including placement-viewer.html when changed.
+- generated create-game scaffold smoke checks, including studio.html when changed.
 
 Workflow:
 1. Read docs/development/operations/npm-release.md package sections.

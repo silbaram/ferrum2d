@@ -48,8 +48,8 @@ const exampleBuilds = examples.map(example => {
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
-cpSync("apps/placement-viewer/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
-cpSync("apps/placement-viewer/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
+cpSync("apps/studio/public/fonts", path.join(outputDir, "fonts"), { recursive: true });
+cpSync("apps/studio/src/fonts/NotoSansKR-UI.woff2", path.join(outputDir, "fonts/NotoSansKR-UI.woff2"));
 
 for (const { example, source, html } of exampleBuilds) {
   cpSync(source, path.join(outputDir, example.id), { recursive: true });

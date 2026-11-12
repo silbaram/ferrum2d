@@ -43,7 +43,7 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 공식 Ferrum2D Studio의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
 `spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
-설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)을 참고한다.
+설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/studio/README.md)을 참고한다.
 
 Ferrum2D Studio의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
 명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
@@ -1231,7 +1231,7 @@ source는 세션 전체 64 MiB, 생성 pair는 8건/64 MiB/8,388,608 pixel 한�
 지켜 파일/이름/색 공간을 project catalog에 함께 등록한다. 반환된 durable URL의 bytes/hash·크기를 다시 검사한 뒤
 저장 완료로 인정한다. 미저장 생성 에셋을 참조하는 Scene Save는 막는다.
 host의 catalog 반영·재개방과 filesystem transaction은 host 책임이다. 기본 desktop/browser 쓰기 권한을 넓히지 않는다.
-준비/adapter/상세 UI 사용법은 저장소의 `apps/placement-viewer/README.md`를 따른다.
+준비/adapter/상세 UI 사용법은 저장소의 `apps/studio/README.md`를 따른다.
 
 Settings/Preview 탭은 방향키·Home/End로 전환하며 숨은 패널의 입력은 Tab 순서에서 제외된다.
 Cancel은 일반 버튼처럼 Enter/Space로 실행한다. 한도 초과는 기존 씬과 생성 pair를 유지한 채 거절하며,

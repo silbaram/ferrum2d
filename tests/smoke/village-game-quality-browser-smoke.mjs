@@ -13,7 +13,7 @@ const html=`<!doctype html><style>body{margin:0}canvas{width:960px;height:640px}
 const fixtures={
  '/village-game-quality-fixture.mjs':'tests/smoke/village-game-quality-fixture.mjs',
  '/hd2d-combat-browser-fixture.mjs':'tests/smoke/hd2d-combat-browser-fixture.mjs',
- '/village.scene.json':'apps/placement-viewer/public/placement.village.scene-authoring.json',
+ '/village.scene.json':'apps/studio/public/placement.village.scene-authoring.json',
  '/rock.glb':'examples/data-scene-native/assets/rock.glb',
  '/audio/water.wav':'examples/data-scene-native/assets/audio/water.wav',
  '/audio/fire.wav':'examples/data-scene-native/assets/audio/fire.wav',
@@ -24,16 +24,16 @@ const server=createServer((req,res)=>{void(async()=>{
  const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
  if(path==='/'){res.setHeader('content-type','text/html');res.end(html);return;}
  if(path==='/favicon.ico'){res.writeHead(204).end();return;}
- const root=path.startsWith('/village/')?resolve('apps/placement-viewer/public/assets/rpg-village'):path.startsWith('/lod/')?resolve('tests/fixtures/village-lod'):resolve(out,'package');
+ const root=path.startsWith('/village/')?resolve('apps/studio/public/assets/rpg-village'):path.startsWith('/lod/')?resolve('tests/fixtures/village-lod'):resolve(out,'package');
  const file=fixtures[path]?resolve(fixtures[path]):resolve(root,'.'+(path.startsWith('/lod/')?path.slice(4):path.slice(8)));
  if(!fixtures[path]&&(!file.startsWith(root+sep)||!path.startsWith('/village/')&&!path.startsWith('/lod/')&&!path.startsWith('/package/'))){res.writeHead(403).end();return;}
  res.setHeader('content-type',({'.js':'application/javascript','.mjs':'application/javascript','.wasm':'application/wasm','.json':'application/json','.png':'image/png','.glb':'model/gltf-binary','.wav':'audio/wav'})[extname(file)]??'application/octet-stream');res.end(fixtureBytes.get(path)??await readFile(file));
 })().catch(e=>{res.writeHead(404).end();});});
 const report={status:'running',cases:[],sourceHashes:{},wasmSha256:createHash('sha256').update(await readFile(resolve(out,'package/pkg/ferrum_core_bg.wasm'))).digest('hex'),modelLoaderSha256:createHash('sha256').update(await readFile(resolve(out,'package/dist/spatialModel.js'))).digest('hex')};
-for(const file of Object.values(fixtures).concat(['apps/placement-viewer/public/assets/rpg-village/manifest.json','tests/fixtures/village-lod/manifest.json','tests/fixtures/village-lod/tree.glb','tests/fixtures/village-lod/pine.glb']))report.sourceHashes[file]=createHash('sha256').update(await readFile(file)).digest('hex');
-const villageManifest=JSON.parse(await readFile('apps/placement-viewer/public/assets/rpg-village/manifest.json','utf8'));
+for(const file of Object.values(fixtures).concat(['apps/studio/public/assets/rpg-village/manifest.json','tests/fixtures/village-lod/manifest.json','tests/fixtures/village-lod/tree.glb','tests/fixtures/village-lod/pine.glb']))report.sourceHashes[file]=createHash('sha256').update(await readFile(file)).digest('hex');
+const villageManifest=JSON.parse(await readFile('apps/studio/public/assets/rpg-village/manifest.json','utf8'));
 for(const entry of [...Object.values(villageManifest.models),...Object.values(villageManifest.textures)]){
- const file='apps/placement-viewer/public/assets/rpg-village/'+entry.file;
+ const file='apps/studio/public/assets/rpg-village/'+entry.file;
  const actual=createHash('sha256').update(await readFile(file)).digest('hex');
  assert.equal(actual,entry.sha256,'village manifest hash mismatch: '+file);report.sourceHashes[file]=actual;
 }

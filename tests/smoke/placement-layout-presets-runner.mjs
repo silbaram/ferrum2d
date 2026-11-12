@@ -6,7 +6,7 @@ import {chromium} from 'playwright-core';
 import {preparePlacementTestBuild} from './placement-test-build.mjs';
 import {smokePlacementLayoutPresets} from './placement-layout-presets-smoke.mjs';
 
-const base=await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
+const base=await preparePlacementTestBuild(resolve('apps/studio/dist'));
 const server=createServer(async(request,response)=>{
   try{
     const path=new URL(request.url,'http://localhost').pathname;

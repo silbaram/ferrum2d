@@ -14,7 +14,7 @@ import {smokePlacementToolUi} from './placement-tool-ui-smoke.mjs';
 import {smokePlacementUpdates} from './placement-updates-smoke.mjs';
 import {smokePlacementGameCamera} from './placement-game-camera-smoke.mjs';
 import {showPlacementAssetPanel,showPlacementBottom,showPlacementInspector} from './placement-panel-navigation.mjs';
-const base=await preparePlacementTestBuild(resolve('apps/placement-viewer/dist'));
+const base=await preparePlacementTestBuild(resolve('apps/studio/dist'));
 const server=createServer(async(request,response)=>{
  try{const path=new URL(request.url,'http://localhost').pathname,file=resolve(base,'.'+(path==='/'?'/index.html':decodeURIComponent(path)));assert(file.startsWith(base+sep));response.setHeader('content-type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.png':'image/png','.woff2':'font/woff2'})[extname(file)]??'application/octet-stream');response.end(await readFile(file));}
  catch{response.writeHead(404);response.end();}

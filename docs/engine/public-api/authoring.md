@@ -342,7 +342,7 @@ id를 자동 생성하지 않으며, 공식 host가 사용자 입력이 비어 �
 그 transaction의 Undo 단위를 따른다. 명시 ID·prefab·삭제된 ID 예약 규칙은 단건 추가와 같다.
 초기 입력/용량 검사도 같은 실패 원복 경로를 거치므로 열린 transaction의 이전 편집을 남기지 않는다.
 공간 문서는 별도 billboard/model 연결이 필요하므로 이 batch API를 거절한다.
-`apps/placement-viewer`는 primitive/prefab/sprite prefix 기반 id를 만들고, generated create-game
+`apps/studio`는 primitive/prefab/sprite prefix 기반 id를 만들고, generated create-game
 viewer는 `sprite-*`/`object-*` prefix helper를 사용한다. `renameInstance(...)`와
 `removeInstance(...)`는 behavior recipe 본문을 직접 갱신하지 않고 draft patch만 만든다. 저장 host는
 `previewScenePlacementBindingMigration(...)` reference report를 표시하고, agent-owned reference가 남아
@@ -395,7 +395,7 @@ compatibility aggregate에서 명시 export되며, consumer는 내부 `src/*` �
 | `ScenePlacementAgentHandoff`, `CreateScenePlacementAgentHandoffOptions` | 선택/draft/migration/asset diagnostic을 agent용 envelope로 만드는 계약이다. |
 | `ScenePlacementAgentHandoffAssetFolder`, `ScenePlacementAgentHandoffAssetFile`, `ScenePlacementAgentHandoffAssetFolderDiagnostic` | desktop/local host가 선택한 asset folder 상태와 이미지 파일의 runtime URL·pixel size evidence를 handoff에 전달하는 계약이다. |
 
-공식 `apps/placement-viewer` host는 이 public surface 위에 numeric x/y/scale/rotation/layer input,
+공식 `apps/studio` host는 이 public surface 위에 numeric x/y/scale/rotation/layer input,
 snap toggle/grid, arrow-key nudge, pointer drag, draft revert, Add Rect/Circle/Point/Sprite/Prefab
 palette, asset provider 기반 sprite/frame select/thumbnail, Behavior Binding inspector,
 Visual/Collider/Layer inspector control,
@@ -451,7 +451,7 @@ Save를 비활성화한다. agent는 이 결과를 보고 필요한 behavior tar
 `saveScenePlacementPatch(document, patch, options)`는 engine package가 직접 파일 시스템 권한을 갖는 API가
 아니다. 저장은 `allowSave: true`, host-owned `ScenePlacementSaveAdapter`, optional
 `allowedAdapterIds` allowlist가 모두 통과한 낮은 빈도 authoring 경로에서만 실행된다. 공식 placement
-viewer host는 dev server 또는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true` opt-in build에서만 host-owned save
+viewer host는 dev server 또는 `VITE_FERRUM_STUDIO_SAVE=true` opt-in build에서만 host-owned save
 endpoint를 호출하며, 기본 production 실행은 patch export와 disabled save gate만 제공한다.
 공식 app chrome은 이 상태를 `Export Only`로 표시하며 Clean/Changes 초안 상태와 구분한다.
 공유 viewer의 기존 `labels.readOnly` override와 `data-status="readonly"`는 호환성을 위해 유지한다.

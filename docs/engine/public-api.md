@@ -9,6 +9,12 @@
 게임 요구사항에 맞는 기능을 찾을 때는 [AI 게임 개발 기능 안내](ai-feature-guide.md)부터 읽는다.
 기능 선택 후 이 문서와 설치 버전의 공개 타입으로 정확한 계약을 확인한다.
 
+Studio 공통 UI helper는 별도 패키지 `@ferrum2d/studio-kit`의 루트 entrypoint에서 import한다.
+공개 helper/type은 `StudioKit`, 상수는 `FERRUM_STUDIO_KIT` 이름을 사용한다.
+이 패키지는 독립 Studio 앱이나 엔진 runtime을 포함하지 않는다. 자세한 범위는
+[Studio Kit 패키지 계약](../development/operations/npm-package-strategy.md)을 따른다.
+엔진의 `ScenePlacementViewer` API는 씬 배치 기능 이름이며 기존 엔진 `/authoring` 경로에 둔다.
+
 Public API surface manifest는 `docs/engine/public-api-surface.json`이다. 이
 manifest는 package export path, source entrypoint, stable/preview/compatibility
 tier, forbidden internal import allowlist를 기계적으로 검증하는 기준이다.
