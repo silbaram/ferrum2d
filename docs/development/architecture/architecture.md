@@ -2129,12 +2129,16 @@ separated/sun-shadow 의존성을 검증한다. lighting OFF는 render copy의61
 플랫폼은 native camera/태양 방향/그림자 matrix를 읽어 저해상도 시선을 생성한다. scene depth에서 시선 길이를
 제한하고 기존 sun depth의 hard 비교로 고정16/32/48구간을 적분한다. 구간 감쇠는 작은 optical depth의
 Taylor 분기로 정밀도를 유지하며 양의 exponential overflow를 만들지 않는다.
+원근 depth는 `near / ((1-depth) + depth*(near/far))`로 복원해 far-plane 항의 상쇄를 피한다.
+native가 허용하는 비단위 태양 방향도 uniform 작성 시 정규화해 표면 조명과 산란 방향을 일치시킨다.
 
 AO resolve와 빛줄기 resolve 선택을 분리한다. 빛줄기만 켜면 불필요한 indirect MRT를 만들지 않고
 resolve만 추가한다. geometry의 fog는 resolve가 있으면 유예하고 resolve에서 안개 뒤 빛줄기를 합성한다.
 Spatial coverage가 없는 pixel은 합성에서 제외해 투명 배경을 유지한다.
 DOF·Bloom·최종 grading과 HUD 경계는 기존 순서를 유지한다. 비활성 시 추가 target/pass가 없고 warm frame에는
 동일 크기 target/bind group을 재사용한다. 할당 실패는 호출자에게 알리고 WebGPU 비동기 validation 오류는 다음 prepare에서 거절한다.
+비동기 오류는 아직 현재 target/group인 경우에만 적용하고 사용할 수 없는 target을 즉시 해제한다.
+resize·OFF·binding 교체 후 도착한 이전 자원의 오류는 새 자원을 무효화하지 않는다.
 
 WebGPU 기존 private camera record에676..679의 shaft-enable vec4를 추가한다. 유효2720 bytes,
 stride2816/두 record5632 bytes는 유지한다. 별도 raymarch uniform은208 bytes이며 새 native ABI의 reserved를 재사용하지 않는다.

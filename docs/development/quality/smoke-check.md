@@ -3166,6 +3166,12 @@ Node oracle은 native camera로 시선을 구성하고, fixture의 box와 독립
 시선 구간별 지수 적분과 저해상도 복원으로 계산한 색을 PNG와 비교하며 backend parity만으로 통과하지 않는다.
 빈 결과·효과 무시·잘못된 tint·빈 배경 덮어쓰기·stale restore·빠진 상태·누락된 metric·추가 pass·warm shadow redraw를 negative audit에서 거절한다.
 
+같은 gate는 packed GLSL/WGSL raymarch shader 전체에 통제된 depth/shadow texture를 입력하는 정밀도 검사도 실행한다.
+작은 near와 원거리 depth, far plane, 거리 clamp, near 이전 종료, 매우 얇은/짙은 밀도, 직교 카메라,
+비단위 native 태양 방향을 16/32/48 샘플별로 검사한다. 차폐가 없는 구간의 독립 지수 적분과 비교하며
+`--light-shafts-precision-only`로 따로 실행할 수 있다. 기존 상쇄 오차·희미한 산란 누락·방향 길이에 따른 밝기 변화는
+negative audit에서 거절한다. SDK 자원 테스트는 현재 오류의 target 해제와 교체·OFF 후 도착한 이전 오류의 격리를 검사한다.
+
 별도 HDR fixture는 높이 안개+빛줄기+DOF 뒤의 sub-threshold 입력을 gather/wide Bloom이 읽는지 확인하고,
 threshold0의 실제 반응·Bloom0 identity·AO 추가·resize/DPR 복원·device recovery를 검사한다.
 실제 draw/target bytes/샘플/texture-load 상한이 report와 renderer/profiler에 전달되는지 확인한다.
