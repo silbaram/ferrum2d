@@ -2,6 +2,7 @@ import { smokeLightingUpgrade } from "./placement-lighting-upgrade-smoke.mjs";
 import { smokePlacementPointShadows } from "./placement-point-shadows-smoke.mjs";
 import { smokePlacementSunDirection } from "./placement-sun-direction-smoke.mjs";
 import { smokePlacementSunGizmo } from "./placement-sun-gizmo-smoke.mjs";
+import { smokePlacementLightingAdvanced } from "./placement-lighting-advanced-smoke.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { showPlacementMenu, openPlacementLightingAdvanced } from "./placement-panel-navigation.mjs";
@@ -163,6 +164,7 @@ export async function smokePlacementLighting(parent, timeoutMs = 30000, mode = "
     const result={ok:true,mode,advanced,pointShadows,onPixels,offPixels,onProbe,offProbe,panel,checks:["native renderer lighting state","spatial point/sun shadow configuration","ambient hue preserves strength","framebuffer ON/OFF and restoration","draw and entity bounds","authored settings retained","camera unchanged","invalid input rollback","native rejection rollback","undo redo","Play/Stop","tab isolation","both locales","compact bounds"]};
     result.sunDirection = sunDirection;
     result.sunGizmo = sunGizmo;
+    if(mode==="spatial")result.advancedEffects=await smokePlacementLightingAdvanced(parent,timeoutMs);
     if(mode==="2d")result.saving=await smokePlacementLightingSave(parent,timeoutMs);
     await writeFile(`${output}/${mode}.json`,JSON.stringify(result,null,2)+"\n");
     return result;

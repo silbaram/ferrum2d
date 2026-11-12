@@ -37,10 +37,13 @@ test('reopening a saved document establishes a new baseline rather than the orig
 });
 test('spatial baselines retain authored model values across rename and do not invent optional restores',async()=>{
  const document=JSON.parse(await readFile(new URL('../fixtures/placement.hd2d.scene-authoring.json',import.meta.url),'utf8'));
- document.spatial.models={crate_ground:{asset:'tree',contentId:'a'.repeat(64),yawDegrees:17,elevation:8,scale:1.5}};delete document.spatial.billboards.crate_ground;
+ document.spatial.models={crate_ground:{asset:'tree',contentId:'a'.repeat(64),yawDegrees:17,elevation:8,scale:1.5,lightMask:3,shadowMask:5}};delete document.spatial.billboards.crate_ground;
  const viewer=createScenePlacementViewer({document,viewport:{cssWidth:640,cssHeight:480}}),original=create(resolveSceneAuthoringDocument(document),colors,document.spatial);
  viewer.selectInstance('crate_ground');assert.deepEqual(original.read('spatial:yaw',viewer.state(),{kind:'model',id:'crate_ground'}),{value:'17',canRestore:true});
  viewer.renameInstance('crate_ground','renamed');assert.deepEqual(original.read('spatial:offset',viewer.state(),{kind:'model',id:'renamed'}),{value:'8',canRestore:true});
+ assert.deepEqual(original.read('spatial:lightMask',viewer.state(),{kind:'model',id:'renamed'}),{value:'3',canRestore:true});
+ assert.deepEqual(original.read('spatial:shadowMask',viewer.state(),{kind:'model',id:'renamed'}),{value:'5',canRestore:true});
+ assert.deepEqual(original.read('spatial:lightMask',viewer.state(),{kind:'billboard',id:'agent_ground'}),{value:'255',canRestore:false});
  assert.deepEqual(original.read('spatial:floorId',viewer.state(),{kind:'surface',id:'ground'}),{value:'0',canRestore:false});
  assert.deepEqual(original.read('spatial:elevation',viewer.state(),{kind:'surface',id:'bridge'}),{value:'40',canRestore:true});
  assert.deepEqual(original.read('spatial:offset',viewer.state(),{kind:'billboard',id:'agent_ground'}),{value:'0',canRestore:false});

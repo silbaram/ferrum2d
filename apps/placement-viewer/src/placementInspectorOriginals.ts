@@ -133,6 +133,12 @@ export function createPlacementInspectorOriginals(source: ResolvedSceneAuthoring
     function spatialValue(state: ScenePlacementViewerState, target: Target, field: string) {
         if (!target)
             return undefined;
+        if (field === 'lightMask' || field === 'shadowMask') {
+            const id = target.kind === 'surface' ? target.id : original(state, target.id)?.id ?? target.id;
+            const receiver = target.kind === 'surface' ? authoredSpatial?.terrain?.find(s => s.id === target.id)
+                : target.kind === 'model' ? authoredSpatial?.models?.[id] : authoredSpatial?.billboards?.[id];
+            return receiver ? { value: String(receiver[field] ?? 255), canRestore: receiver[field] !== undefined } : undefined;
+        }
         if (target.kind === 'surface') {
             const terrain = authoredSpatial?.terrain?.find(s => s.id === target.id), value = terrain && Reflect.get(terrain, field);
             return { value: scalar(value ?? (field === 'floorId' ? 0 : undefined)), canRestore: value !== undefined };

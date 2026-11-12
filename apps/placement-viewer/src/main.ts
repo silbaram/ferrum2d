@@ -1341,6 +1341,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         documentSession?.finishEdit();
         if (spatialWorkspace?.flushCameraInput() === false) return undefined;
+        if (spatialWorkspace?.flushPropertyInput() === false) return undefined;
         if (lightingControls?.flushInput() === false) return undefined;
         const patch = viewer.exportPatch();
         if (patch === undefined) {

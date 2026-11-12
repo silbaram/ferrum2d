@@ -274,6 +274,15 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
   await numeric("yaw", 30);
   await numeric("scale", 1.5);
   await numeric("offset", 2);
+  const beforeModelChannels = await page.evaluate(() => globalThis.ferrumPlacementSpatialExportDocument());
+  await numeric("lightMask", 3);
+  await numeric("shadowMask", 5);
+  const modelChannels = await page.evaluate(() => globalThis.ferrumPlacementSpatialExportDocument().spatial.models.rock);
+  if (modelChannels.lightMask !== 3 || modelChannels.shadowMask !== 5)
+    throw new Error("Model light/shadow channels must reach the authored spatial patch");
+  await page.evaluate(() => { globalThis.ferrumPlacementViewerUndo(); globalThis.ferrumPlacementViewerUndo(); });
+  if (JSON.stringify(await page.evaluate(() => globalThis.ferrumPlacementSpatialExportDocument())) !== JSON.stringify(beforeModelChannels))
+    throw new Error("Model channel undo must preserve model pose and unrelated source fields");
   await wait(
     () => globalThis.ferrumPlacementSpatialSelection?.target?.kind === "model",
   );
