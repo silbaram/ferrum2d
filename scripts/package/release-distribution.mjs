@@ -183,12 +183,13 @@ export async function verifyDistribution(root) {
 
 function distributionGuide(release, viewers) {
   const runtime = githubRelease(release.version, release.repository).runtime;
-  return `# Ferrum2D ${release.version} 엔진·뷰어 배포\n\n로컬 준비 결과이며 아직 공개하지 않았다.\n\n` +
+  return `# Ferrum2D ${release.version} 엔진·Studio 배포\n\n로컬 준비 결과이며 아직 공개하지 않았다.\n\n` +
     `## 엔진 SDK\n\nGitHub Release 공개 후 게임 프로젝트에서 실행한다.\n\n\`\`\`bash\npnpm add "${runtime}"\n\`\`\`\n\n` +
-    `## 전체 뷰어 앱\n\n` + viewers.map(viewer => `- ${viewer.platform.os}/${viewer.platform.arch}: ${viewer.assets[0].file}`).join("\n") +
-    `\n\nOS에 맞는 설치 파일을 사용한 뒤 속성 → 문서 → 프로젝트 열기로 public/scene-authoring.json과 public/assets를 연다.\n` +
-    `뷰어에는 같은 릴리스의 미리보기용 엔진이 포함된다. SDK/Node/Rust를 별도로 설치할 필요가 없다.\n` +
-    `authoring-viewer.tgz는 공통 helper이며 전체 뷰어 앱이 아니다. 게임의 임의 main.ts/HUD는 해당 프로젝트에서 실행한다.\n\n` +
+    `## Ferrum2D Studio\n\n` + viewers.map(viewer => `- ${viewer.platform.os}/${viewer.platform.arch}: ${viewer.assets[0].file}`).join("\n") +
+    `\n\nOS에 맞는 설치 파일을 사용한 뒤 파일 → 프로젝트 열기로 public/scene-authoring.json과 public/assets를 연다.\n` +
+    `Studio에는 같은 릴리스의 미리보기용 엔진이 포함된다. SDK/Node/Rust를 별도로 설치할 필요가 없다.\n` +
+    `authoring-viewer.tgz는 공통 helper이며 Studio 설치 앱이 아니다. 게임의 임의 main.ts/HUD는 해당 프로젝트에서 실행한다.\n\n` +
+    `구 Placement Viewer 설치본은 씬/에셋을 저장·백업한 뒤 제거하고 Studio를 설치한다. NSIS·deb의 제품명 기반 설치 구분이 달라지므로 이름 전환은 자동 업데이트로 배포하지 않는다.\n\n` +
     `## 공개 전 확인\n\n원본 커밋·버전·체크섬과 각 OS의 실제 설치/프로젝트 열기/저장/재열기 및 서명 상태를 확인한다.\n` +
     `준비 스크립트는 OS GUI 검증·서명을 증명하지 않으며 Git tag/Release/npm 공개도 수행하지 않는다.\n`;
 }

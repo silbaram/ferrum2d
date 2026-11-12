@@ -3,7 +3,7 @@
 [한국어](../README.md) · English
 
 Ferrum2D is an **AI agent-first 2D and HD-2D web game engine** built with Rust, WebAssembly, and TypeScript.
-Agents edit specifications and code; the Scene/Object Placement Viewer helps people inspect assets, placement, and runtime results.
+Agents edit specifications and code; Ferrum2D Studio lets people edit scenes and assets and preview runtime results.
 
 These guides describe the current development source. Released packages can provide a different feature set.
 For a game project, check the types, release notes, and documentation for its installed version.
@@ -12,18 +12,18 @@ For a game project, check the types, release notes, and documentation for its in
 
 | Goal | Guide |
 | --- | --- |
-| Understand the engine, run examples, and learn what the viewer saves | [User Guide](engine/user-guide.md) |
+| Understand the engine, run examples, and learn what Studio saves | [User Guide](engine/user-guide.md) |
 | Try individual engine features in a browser | [Feature and Example Guide](engine/showcase-hub.md) |
 | Create and validate a game project | [Developer Quickstart](engine/developer-quickstart.md) |
 | Choose supported imports and understand compatibility | [Public API](engine/public-api.md) |
 
 The [public demo site](https://silbaram.github.io/ferrum2d/) contains 31 independent feature experiments,
-integrated games, and the placement viewer. Demo controls may be in Korean; the placement viewer has its own English/Korean language setting.
+integrated games, and Ferrum2D Studio. Demo controls may be in Korean; Ferrum2D Studio has its own English/Korean language setting.
 Changing documentation language does not change the language of a running demo.
 
 ![Ferrum2D HD-2D scene placement workspace](../development/quality/screenshots/placement-village.png)
 
-This is a real browser capture of the viewer. It shows example content built on the engine APIs.
+This is a real browser capture of Studio. It shows example content built on the engine APIs.
 
 ## English coverage and detailed references
 

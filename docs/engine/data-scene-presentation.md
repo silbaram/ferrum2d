@@ -599,7 +599,7 @@ U/V 반전을 지원한다. `null`이나 알 수 없는 필드는 오류이며 �
 engine registry로 ID를 해석하고, 프레임의 `view.lighting(...)`도 현재 registry로 해석한다.
 `renderer.setLighting(...)`에는 숫자로 해석한 설정을 전달한다. 직접 named setter는 오류다.
 적용·복원은 `FlatLightingPreparer.flatLightingCookieVersion() === 1`을 자산 조회·native 교체 전에 요구한다.
-공식 viewer는 OFF 문서까지 cookie를 data로 로드하고 열린 문서의 color/data 충돌을 거절하며 원본 이름을 저장한다.
+Ferrum2D Studio는 OFF 문서까지 cookie를 data로 로드하고 열린 문서의 color/data 충돌을 거절하며 원본 이름을 저장한다.
 기존 cookie 없는 문서에는 새 capability가 필요 없다. 새 source 필드는 기존 scene-authoring v1 안의 선택형 확장이며
 구 renderer의 cookie 문서 조용한 누락을 허용하지 않는다.
 

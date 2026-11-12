@@ -59,5 +59,5 @@ pub fn run() {
             placement_document::save_placement_scene_document,
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Ferrum2D placement viewer desktop app");
+        .expect("failed to run Ferrum2D Studio desktop app");
 }

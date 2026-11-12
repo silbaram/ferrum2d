@@ -4,7 +4,7 @@
 상태: 실제 native 설치·GUI·서명 증거와 추가 host 필요성 검토. 원격 공개 상태를 뜻하지 않는다.
 
 현재 운영 계약은 [정적 웹 배포](../development/operations/demo-deploy.md),
-[엔진·뷰어 분리 준비](../development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비),
+[엔진·Studio 분리 준비](../development/operations/github-release.md#엔진과-studio-앱-분리-준비),
 [버전 확인과 업데이트](../development/operations/github-release.md#버전-확인과-업데이트)가 기준이다.
 OS별 설치 조건과 수동 GUI 점검은 [desktop README](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer-desktop/README.md)를 따른다.
 

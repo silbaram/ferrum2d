@@ -18,7 +18,7 @@ Pages 메뉴는 현재 언어의 문서만 표시하며, 번역이 없는 문서
 
 | 순서 | 문서 | 알 수 있는 것 |
 | --- | --- | --- |
-| 1 | [사용자 설명서](engine/user-guide.md) | 엔진의 현재 기능, 예제 실행, 뷰어 편집·실행·저장 범위 |
+| 1 | [사용자 설명서](engine/user-guide.md) | 엔진의 현재 기능, 예제 실행, Studio 편집·실행·저장 범위 |
 | 2 | [기능·예제 지도](engine/showcase-hub.md) | 설치 없이 체험하는 31개 기능 실험과 통합 예제 |
 | 3 | [개발자 퀵스타트](engine/developer-quickstart.md) | GitHub Release 패키지로 새 게임을 만들고 실행·검증하는 방법 |
 | 4 | [AI 기능 안내](engine/ai-feature-guide.md) · [Public API](engine/public-api.md) | 요구사항을 실제 공개 API와 상세 계약에 연결하는 방법 |
@@ -45,7 +45,7 @@ GitHub Release의 설치 파일과 별도로 갱신되므로 사용 중인 패�
 | 위치에 따른 소리 연결 | [공간 오디오](engine/public-api/core.md#공간-오디오) |
 | 입력·모달 충돌 해결 | [입력 액션](engine/input-actions.md) |
 | 느린 프레임·자원 비용 확인 | [Profiler와 프레임 기록](engine/public-api/quality.md), [Smoke Check](development/quality/smoke-check.md) |
-| 엔진·뷰어 설치 파일과 업데이트 준비 | [GitHub Release 운영](development/operations/github-release.md), [로컬 엔진 설치](development/operations/local-engine-install.md) |
+| 엔진·Studio 설치 파일과 업데이트 준비 | [GitHub Release 운영](development/operations/github-release.md), [로컬 엔진 설치](development/operations/local-engine-install.md) |
 | 다음 개발 범위 선택 | [추천 우선순위](planning/README.md#다음-개선-추천), [HD-2D 후보](planning/feature-candidates.md) |
 
 개발 소스의 기능과 설치된 릴리스의 기능은 구분한다. 게임 프로젝트에서는 설치 버전의 타입과 해당 tag의 문서를 확인한다.
@@ -57,7 +57,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 | 진입점 | 기준 문서 | 목적 |
 | --- | --- | --- |
-| 엔진 사용 안내 | [사용자 설명서](engine/user-guide.md) | 현재 기능·예제·뷰어·저장 범위의 첫 진입점 |
+| 엔진 사용 안내 | [사용자 설명서](engine/user-guide.md) | 현재 기능·예제·Studio·저장 범위의 첫 진입점 |
 | AI Agent Setup | [AI 에이전트용 설치 지침](engine/ai-agent-install.md) | 엔진·개발 도구·consumer 지침 설치와 의존성 검증 |
 | AI Feature Guide | [AI 게임 개발 기능 안내](engine/ai-feature-guide.md) | 게임 요구사항을 설치 버전의 공개 API와 상세 reference에 연결 |
 | Showcase | [Showcase Hub](engine/showcase-hub.md) | demo, 기능군, agent workflow, 검증 명령을 한 화면에서 확인 |

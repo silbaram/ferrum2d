@@ -35,6 +35,11 @@ export async function viewerReleasePlan(options, { root = repositoryRoot, platfo
   const cargo = await readFile(path.join(desktop, "src-tauri/Cargo.toml"), "utf8");
   if (config.version.split("-")[0] !== base || cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1].split("-")[0] !== base)
     throw new Error("Desktop Tauri/Cargo base version must match the engine");
+  // Old clients discover viewer-updater-* for every newer version. The Studio
+  // rename needs a separate update channel and native migration verification;
+  // publishing signed Studio artifacts on the old channel is not safe.
+  if (options.withUpdater && config.productName !== "Ferrum2D Placement Viewer")
+    throw new Error("Automatic updates are disabled for the Studio product-name transition. Use a manual installer; Studio updates require a separate update channel and native migration verification.");
   return { release: releaseIdentity(release), platform: native.name, arch, bundle: native.bundle,
     output: path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag, `viewer-${native.name}-${arch}`)),
     prerequisites: platform === "linux" ? ["Rust native toolchain", "pkg-config", "GTK 3", "WebKitGTK 4.1", "Tauri Linux build libraries"] : ["Rust native toolchain", "Tauri platform build prerequisites"],
@@ -95,10 +100,13 @@ export async function prepareViewerRelease(options, { root = repositoryRoot, pla
       "--bundles", updater && platform === "linux" ? "deb,appimage" : updater && platform === "darwin" ? "dmg,app" : native.bundle,
       "--ci", "--config", JSON.stringify(config), ...(options.noSign ? ["--no-sign"] : []), "--", "--locked"],
       { env: { ...process.env, VITE_FERRUM_RELEASE_VERSION: plan.release.version } });
-    const installers = await installerFiles(bundleRoot, native.extension, plan.release.version);
-    if (installers.length !== 1) throw new Error(`Expected exactly one ${plan.release.version} ${native.bundle} installer, found ${installers.length}`);
-    const stamp = await lstat(installers[0]);
-    if (stamp.mtimeMs < started - 1000 || previous.get(installers[0]) === stamp.mtimeMs) throw new Error("Installer was not produced by this build; refusing stale output");
+    const installers = [];
+    for (const file of await installerFiles(bundleRoot, native.extension, plan.release.version)) {
+      const stamp = await lstat(file);
+      if (stamp.mtimeMs >= started - 1000 && previous.get(file) !== stamp.mtimeMs) installers.push(file);
+    }
+    if (installers.length === 0) throw new Error("Installer was not produced by this build; refusing stale output");
+    if (installers.length !== 1) throw new Error(`Expected exactly one fresh ${plan.release.version} ${native.bundle} installer, found ${installers.length}`);
     const frontend = path.join(root, "apps/placement-viewer/dist");
     await fileRecord(path.join(frontend, "index.html"));
     const wasm = await filesWithExtension(frontend, "wasm");
@@ -124,8 +132,9 @@ export async function prepareViewerRelease(options, { root = repositoryRoot, pla
     await writeFile(path.join(stage, manifestName), `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(path.join(stage, `VIEWER_SHA256SUMS-${identity.os}-${identity.arch}`), `${asset.sha256}  ${file}\n`);
     await writeFile(path.join(stage, `VIEWER_INSTALL-${identity.os}-${identity.arch}.md`),
-      `# Ferrum2D Viewer ${plan.release.version}\n\n${file}\n\n${identity.os}/${identity.arch}용 설치 파일이다. 속성 → 문서 → 프로젝트 열기로 게임 폴더를 연다.\n` +
+      `# Ferrum2D Studio ${plan.release.version}\n\n${file}\n\n${identity.os}/${identity.arch}용 설치 파일이다. 파일 → 프로젝트 열기로 게임 폴더를 연다.\n` +
       `public/scene-authoring.json과 public/assets를 사용한다. 미리보기 엔진을 내장하며 SDK/Node/Rust 별도 설치가 필요하지 않다.\n` +
+      `구 Placement Viewer 설치본은 씬/에셋을 저장·백업한 뒤 제거하고 Studio를 설치한다. 이름 전환은 자동 업데이트로 배포하지 않는다.\n` +
       `실제 설치·파일 선택·저장/재열기·렌더링 및 서명 상태는 공개 전에 확인해야 한다. 이 묶음은 아직 공개되지 않았다.\n`);
     await writeNewBundle(stage, plan.output, manifestName);
     return { output: plan.output, manifest };

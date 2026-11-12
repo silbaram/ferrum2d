@@ -40,12 +40,12 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 사용하며 Rust 입력 업데이트, 지형 이동, bitmap label과 DOM HUD를 연결한다.
 걷기 atlas를 함께 사용하려면 기존 `gameplay.primaryActor`와 이동 애니메이션 설정을 같은 actor에 연결한다.
 
-공식 Placement Viewer의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
+공식 Ferrum2D Studio의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
 `spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
 설정 방법은 [뷰어 사용법](https://github.com/silbaram/ferrum2d/blob/main/apps/placement-viewer/README.md)을 참고한다.
 
-공식 뷰어의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
+Ferrum2D Studio의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
 명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
 `setCamera`로 저장한다. 게임 구도 확인은 실제 viewport/pixelArt를 사용하는 일시정지 미리보기이며,
 camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약을 따른다.
@@ -1209,7 +1209,7 @@ cache bytes는 보관한 PNG/직렬화 payload 기준이다. 메모리 증가가
 
 #### Assets 생성·비교 화면
 
-공식 Placement Viewer의 Assets에서 `Generate Normal` 또는 sprite의 `Normal` 버튼을 연다.
+공식 Ferrum2D Studio의 Assets에서 `Generate Normal` 또는 sprite의 `Normal` 버튼을 연다.
 Settings는 파일/원본 asset·7개 설정·preset·PNG grid와 animation/loop를, Preview는 color/normal·Flat/Normal과
 고정/이동 광원 비교를 제공한다. Expand/Restore는 도구 영역만 임시로 넓힌다.
 생성·비교는 원래 씬을 수정하지 않으며, Apply는 선택한 unlocked HD-2D sprite billboard에 한 번의 Undo로 적용한다.
@@ -2177,7 +2177,7 @@ GPU target/instance scratch 상한과 공개 source·ABI·저장 형식은 바�
 단일 항목/legacy에서는 두 번째 cube target을 만들지 않으며 OFF/clear/destroy에서는 회수한다.
 `shadowPassCount`·draw/triangle/upload와 `effectTextureBytes`에 실제 비용을 포함한다. GPU ms/FPS 보장을 뜻하지 않는다.
 
-공식 배치 뷰어의 Point Shadows는 광원별로 켤 수 있다. 두 번째를 켜면 기존 설정을 보존해 `pointShadows`로 전환하고,
+Ferrum2D Studio의 Point Shadows는 광원별로 켤 수 있다. 두 번째를 켜면 기존 설정을 보존해 `pointShadows`로 전환하고,
 세 번째는 선택을 제한한다. 광원 삭제 시 참조 인덱스를 보정하며 Undo/Redo로 복원한다.
 Low 품질도 지정된 그림자 광원 2개를 유지하고 두 큐브를128 해상도로 낮춘다.
 
@@ -2213,7 +2213,7 @@ engine.setDataSceneSpatialEnvironment({
 각도/반경은 유한한 수만 허용한다. 공통 `shadowFilter: "pcss"`는 지원하지 않는다.
 조명 OFF 상태도 작성한 PCSS 값을 보존한다. 필터 활성/각도/반경만 바꾸면 깊이 맵을 다시 그리지 않는다.
 해상도·태양 방향·고정 중심/카메라 추적·caster가 바뀌면 기존 cache 규칙에 따라 갱신한다.
-작성 JSON/API로 설정하며 전용 UI는 추가하지 않는다. 기존 배치 뷰어의 품질 preset은 태양 해상도를 바꾸고,
+작성 JSON/API로 설정하며 전용 UI는 추가하지 않는다. Studio의 품질 preset은 태양 해상도를 바꾸고,
 명시적으로 작성한 PCSS override는 보존한다. hard/PCF3로 되돌리려면 `pcss`를 제거한다.
 
 WebGL2·WebGPU 모두 기존 태양 depth map을 사용한다. blocker 탐색16회 뒤 평균 깊이 차이로

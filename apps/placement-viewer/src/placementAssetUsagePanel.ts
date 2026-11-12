@@ -54,7 +54,7 @@ export function createPlacementAssetUsagePanel(options: {
       const row = document.createElement("details"), title = document.createElement("summary"), refs = document.createElement("ul");
       row.dataset.placementUsageAsset = asset.kind + ":" + asset.id;
       setUiText(title, uiMessage("{0} · {1} · {2} references{3}", asset.id, uiMessage(asset.kind === "model" ? "Model" : "Texture"), asset.references.length,
-        asset.registered ? "" : uiMessage(" · Not in viewer")));
+        asset.registered ? "" : uiMessage(" · Not in Studio")));
       row.append(title, refs);
       if (!asset.references.length) {
         const note = document.createElement("p"); setUiText(note, "No references found in this snapshot"); row.append(note);

@@ -14,6 +14,10 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - Visual editor는 기본 제품 목표가 아니며, 필요하더라도 별도 승인된 보조 도구로만 검토한다.
 - Scene Placement/Object Authoring viewer는 허용된 authoring 보조 도구다. 범위는 위치, visual/collider/layer, ObjectDefinition catalog, asset reference, handoff/report evidence, 기존 Behavior Recipe id reference attach/detach까지이며 recipe 본문/FSM/action graph를 UI에서 편집하는 제품은 아니다.
 
+씬·에셋 작성 앱의 제품 명칭은 **Ferrum2D Studio**이며, 설명은 **2D 게임 씬·에셋 편집 도구**다.
+`apps/placement-viewer`, `placement-viewer` 명령·패키지·배포 경로와 `ScenePlacementViewer` API는 호환 식별자로 유지한다.
+create-game의 경량 placement viewer helper와 읽기 전용 viewer는 별도 도구이며, 명칭 변경이 편집 범위를 확장하지 않는다.
+
 아키텍처 원칙:
 
 - Rust core: 게임 상태, 엔티티 저장, 수학/충돌, 씬 로직, 렌더 커맨드 생성 담당

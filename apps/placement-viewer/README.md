@@ -1,8 +1,12 @@
-# Ferrum2D Placement Viewer
+# Ferrum2D Studio
 
-Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식 authoring app이다. 목적은 사람이 위치, visual, collider, layer, ObjectDefinition, 기존 behavior recipe id reference를 확인/수정하고, agent가 같은 scene-authoring JSON과 handoff report를 기준으로 후속 작업을 이어가는 흐름을 제공하는 것이다.
+Ferrum2D Studio는 2D 게임 씬·에셋을 편집하는 공식 authoring 앱이다. 사람은 씬 배치, 객체·충돌체·레이어,
+카메라·조명, 도트·에셋을 편집하고, AI agent는 같은 Scene Authoring JSON과 patch·handoff를 바탕으로
+게임 코드와 Spec 작업을 이어간다. 게임 미리보기는 작성한 씬의 실행 결과를 확인한다.
 
-이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
+게임 로직·Behavior Recipe 본문, FSM/action graph, 범용 animation timeline, tile painting은 편집 범위에 포함하지 않는다.
+제품명은 **Ferrum2D Studio**, 설명은 **2D 게임 씬·에셋 편집 도구**다. `placement-viewer` 경로·명령·패키지,
+`ScenePlacementViewer` API와 저장 형식은 호환성을 위해 유지한다. create-game의 경량 placement viewer는 별도 helper다.
 
 기본 화면(`/`, `?scene=default`, `?scene=2d`)은 `public/placement.garden.scene-authoring.json`의 2D 정원이다.
 파일 → 예제와 프로젝트 씬에는 **2D Lantern Garden**과 **HD-2D Village**를 제공한다. 기존 기본 2D·HD-2D 기초 예제는 배포에서 제거했다.
@@ -37,8 +41,8 @@ HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geom
 각 영역에 에디터 설치 또는 열린 프로젝트 경로와 영향 범위를 표시한다. 실패 시 표시된 원인을 해결한 뒤 **업데이트 확인**으로 다시 조회한다.
 
 - **프로젝트 엔진**: 데스크톱에서 **프로젝트 열기**로 연 npm/pnpm 게임의 Ferrum2D 패키지를 동일 릴리스로 갱신한다. Node와 해당 패키지 관리자가 필요하다. 단독 JSON/폴더 사본·엔진 monorepo·workspace/file/link 의존성은 자동 변경하지 않는다.
-- **에디터 앱**: 공개키가 포함된 설치 앱에서 해당 OS의 서명 업데이트 파일을 확인·설치하고 재시작한다. 내장 미리보기 엔진도 함께 바뀐다. Linux 자동 교체는 AppImage에서 지원하며 `.deb`는 수동 재설치한다.
-- **웹 뷰어**: 릴리스 정보와 데스크톱 사용 안내를 보여준다. 웹 앱 자체는 사이트 재배포로 바뀐다.
+- **Ferrum2D Studio**: 공개키가 포함된 설치 앱에서 해당 OS의 서명 업데이트 파일을 확인·설치하고 재시작한다. 내장 미리보기 엔진도 함께 바뀐다. Linux 자동 교체는 AppImage에서 지원하며 `.deb`는 수동 재설치한다.
+- **웹 Studio**: 릴리스 정보와 데스크톱 사용 안내를 보여준다. 웹 앱 자체는 사이트 재배포로 바뀐다.
 
 미저장 씬이 어느 탭에든 있거나 씬 실행/저장/편집 중이면 설치를 막는다. 설치 중에는 패널/앱을 닫지 않는다.
 프로젝트 갱신은 `.ferrum-updates/<시각-id>/`에 원본 `package.json`·잠금 파일과 결과를 남긴다.
@@ -71,7 +75,7 @@ HD-2D 기본 보기와 **전체 씬 맞춤**은 패널/창 크기에 맞춰 geom
   개발 중 `public/**/*.json` 변경은 HMR reload를 일으키지 않는다. 목록은 새로고침하고, 이미 열린 문서는 초안을 유지한다.
 - 브라우저 **폴더 선택**: 사용자가 선택한 파일 사본에서 문서를 찾고 Export Only로 연다.
   새로고침은 폴더를 다시 선택한다. 에셋 폴더 전체를 자동 업로드하거나 게임 코드를 실행하지 않으므로,
-  문서가 참조하는 에셋은 이미 뷰어에서 사용할 수 있어야 한다. 같은 폴더를 다시 선택하면 새 사본으로 취급한다.
+  문서가 참조하는 에셋은 이미 Studio에서 사용할 수 있어야 한다. 같은 폴더를 다시 선택하면 새 사본으로 취급한다.
 
 탐색은 일반 `.json`도 format/version으로 식별한다. 알려진 `*.scene-authoring.json`의 오류는 목록에 표시하며,
 실제 열기에서 기존 전체 문서 검증을 수행한다. `assets`, `node_modules`, `dist`, `target`, 숨김 디렉터리는 탐색하지 않는다.
@@ -785,8 +789,8 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 - 에셋을 펼치면 씬 파일·열린 문서의 저장 원본·편집본, 객체/정의 ID와 정확한 JSON pointer를 표시한다.
   prefab 참조는 정의의 원본 경로로 남기며 모든 상속 객체를 펼쳐 계산하지 않는다. 검색은 에셋·씬·객체·pointer를 대상으로 한다.
   객체/정의 ID는 해당 선언에서만 읽으므로 게임 데이터의 `props.id`와 섞지 않는다. 빈 dictionary key도 원본 JSON pointer로 보존한다.
-- 현재 뷰어에 등록되지 않은 참조도 표시한다. 같은 이름의 texture와 model은 구분한다.
-  뷰어에 등록된 에셋만 기본 목록에 포함하므로 디스크 전체 파일 목록이나 manifest 내부 의존성 목록은 아니다.
+- 현재 Studio에 등록되지 않은 참조도 표시한다. 같은 이름의 texture와 model은 구분한다.
+  Studio에 등록된 에셋만 기본 목록에 포함하므로 디스크 전체 파일 목록이나 manifest 내부 의존성 목록은 아니다.
 - 파일 읽기 실패·지원하지 않는 문서·숫자 texture·외부 component template·한도 초과는 조회 문제로 표시한다.
   참조 영역의 composition/components/spatial 형식은 기존 SDK parser로 검사한다. 잘못된 필드가 있어도 수집한 원본 참조는 보존한다.
   include를 펼치거나 Behavior Recipe·실행 상태를 검증하는 기능은 아니다.

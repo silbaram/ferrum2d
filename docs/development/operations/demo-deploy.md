@@ -84,7 +84,7 @@ Pages 배포 전에는 source 문서와 production demo artifact가 같은 기�
 | artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
 | Starter Runtime route | `/starter-runtime/`의 `?feature=`가 독립 실험 31종을 제공한다. 이전 통합 게임은 `?mode=playground`, 사격 예제는 `?mode=starter`다. | `dist-pages/starter-runtime/index.html`, `pnpm smoke:feature-examples` |
 | Top-down route | `/topdown-shooter/`가 공식 Game Spec 기반 demo를 제공한다. | `dist-pages/topdown-shooter/index.html` |
-| Placement Viewer route | `/placement-viewer/`가 Data Scene placement/object authoring viewer를 제공한다. | `dist-pages/placement-viewer/index.html` |
+| Ferrum2D Studio route | `/placement-viewer/`가 Ferrum2D Studio 씬·에셋 편집 도구를 제공한다. | `dist-pages/placement-viewer/index.html` |
 | Physics Sandbox route | `/physics-sandbox/`가 Physics Spec scenario catalog와 debug overlay를 제공한다. | `dist-pages/physics-sandbox/index.html` |
 | Breakout route | `/breakout/`가 두 번째 장르 runtime/render path를 제공한다. | `dist-pages/breakout/index.html` |
 | Platformer route | `/platformer/`가 platformer controller demo를 제공한다. | `dist-pages/platformer/index.html` |

@@ -70,7 +70,7 @@ export async function prepareDistribution(options, context = {}) {
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
 
-export const distributionHelp = `Ferrum2D engine SDK / desktop viewer release preparation (no publishing)
+export const distributionHelp = `Ferrum2D engine SDK / Studio release preparation (no publishing)
 
 prepare --version x.y.z-beta.N [--component engine|viewer|all] [--repository owner/repo]
         [--output NEW_DIR] [--plan] [--no-sign] [--with-updater]
@@ -78,8 +78,9 @@ prepare --version x.y.z-beta.N [--component engine|viewer|all] [--repository own
 assemble --engine ENGINE_DIR --viewer VIEWER_DIR [--viewer OTHER_OS_DIR] --output NEW_DIR
 verify --bundle DISTRIBUTION_DIR
 
-Viewer installers are built on the native OS: Windows .exe, Linux .deb, macOS .dmg.
---with-updater also builds signed updater artifacts (Linux AppImage) and per-platform metadata.
+Studio installers are built on the native OS: Windows .exe, Linux .deb, macOS .dmg.
+--with-updater is blocked during the Studio product-name transition; use manual installers.
+The legacy product's update channel builds signed updater artifacts and per-platform metadata.
 Requires FERRUM_UPDATER_PUBLIC_KEY and TAURI_SIGNING_PRIVATE_KEY; OS code-signing is separate.
 --plan only prints the plan. Existing outputs are never overwritten.
 Engine skip flags record omitted checks. Native GUI/signing require separate review.

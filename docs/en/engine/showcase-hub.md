@@ -15,7 +15,7 @@ Ten topics cover lighting, physics, cameras, sprites, world movement, VFX, gamep
 Minimal, the original shooter starter, and Engine Playground remain reference/test routes outside the main catalog.
 
 These descriptions cover the development source. Demo controls may be in Korean; changing documentation language does not translate the demo UI.
-The placement viewer provides its own English/Korean setting.
+Ferrum2D Studio provides its own English/Korean setting.
 
 ## Independent feature experiments
 
@@ -62,14 +62,14 @@ WebGPU is optional; the default renderer is WebGL2.
 | Example | What it demonstrates | Local command |
 | --- | --- | --- |
 | [Feature Lab](https://silbaram.github.io/ferrum2d/starter-runtime/) | Start with the 31 focused experiments | `pnpm dev:starter-runtime` |
-| [Placement Viewer](https://silbaram.github.io/ferrum2d/placement-viewer/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:placement-viewer` |
+| [Ferrum2D Studio](https://silbaram.github.io/ferrum2d/placement-viewer/) | Garden/village placement, transforms, layers, game cameras, pixel editing, and change review | `pnpm dev:placement-viewer` |
 | [Physics Sandbox](https://silbaram.github.io/ferrum2d/physics-sandbox/) | Seven focused Physics Spec scenarios and native diagnostics | `pnpm dev:physics-sandbox` |
 | [Top-down Shooter](https://silbaram.github.io/ferrum2d/topdown-shooter/) | Neon Outpost pixel arena, three enemy waves, native HUD, pause/restart, lighting settings, and mobile controls | `pnpm dev:topdown` |
 | [Breakout](https://silbaram.github.io/ferrum2d/breakout/) | Reflection, collision events, scoring, and particles | `pnpm dev:breakout` |
 | [Platformer](https://silbaram.github.io/ferrum2d/platformer/) | Jumping, one-way platforms, and moving platforms | `pnpm dev:platformer` |
 | [Little Garden of Light](https://silbaram.github.io/ferrum2d/pixel-art/) | Pixel sources, movement/collection, normal lighting, palette swaps, and post-processing | `pnpm dev:pixel-art` |
 
-The browser viewer's built-in examples are export only. See the [User Guide](user-guide.md#edit-and-play-in-the-viewer)
+The built-in examples in the browser version of Studio are export only. See the [User Guide](user-guide.md#edit-and-play-in-studio)
 for saving boundaries and the distinction between the editor camera and game camera.
 
 ## Develop with an agent

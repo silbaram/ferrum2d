@@ -5,13 +5,13 @@
 **An AI agent-first 2D and HD-2D web game engine.**
 
 Rust and WebAssembly run the game simulation. TypeScript connects browser APIs, assets, input, audio, and GPU rendering.
-Agents edit specifications and code; the Scene/Object Placement Viewer helps people inspect placement and runtime results.
+Agents edit specifications and code; **Ferrum2D Studio** lets people edit scenes and assets and preview runtime results.
 
 [Try the demos](https://silbaram.github.io/ferrum2d/) · [Features](#engine-capabilities) · [Examples](#example-gallery) · [Quickstart](docs/en/engine/developer-quickstart.md) · [English docs](docs/en/README.md) · [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)
 
-![Ferrum2D HD-2D scene placement viewer](docs/development/quality/screenshots/placement-village.png)
+![Ferrum2D Studio HD-2D workspace](docs/development/quality/screenshots/placement-village.png)
 
-This is a real browser capture of the viewer with example village content.
+This is a real browser capture of Studio with example village content.
 
 > **Status:** The MVP baseline is complete; commercial product features are in development.
 > Source packages use version `0.1.0`. Development-source capabilities can differ from released beta packages.
@@ -56,7 +56,7 @@ This table describes the **current development source**. Detailed contracts defi
 | Physics | Bodies/materials/sensors, compound colliders, eight joint types, CCD, raycasts/shape casts, controllers/platforms, floor/height filters and destructible terrain | [Physics Map (Korean)](docs/development/architecture/physics-engine.md) |
 | Input and audio | Action bindings/contexts, keyboard, pointer, gamepad, virtual controls, audio policy and spatial audio | [Input (Korean)](docs/engine/input-actions.md) |
 | Assets and loading | Atlases, Aseprite/Tiled/LDtk data, trimmed sprite restoration, parallel loading/cancellation/retry/cache, optional KTX2, model caching and level streaming | [Core API (Korean)](docs/engine/public-api/core.md) |
-| Scene workspace | Project scene browsing, multiple documents, drag/drop, transforms, Undo/Redo, layers/locks, game cameras, lights, My Changes, handoff and asset usage/catalog cleanup | [Viewer guide (Korean)](apps/placement-viewer/README.md) |
+| Scene workspace | Project scene browsing, multiple documents, drag/drop, transforms, Undo/Redo, layers/locks, game cameras, lights, My Changes, handoff and asset usage/catalog cleanup | [Studio guide (Korean)](apps/placement-viewer/README.md) |
 | Tile authoring | Tileset/map imports, author-time autotiling, tile animation with fixed collision, and time-based map previews | [Tile authoring (Korean)](docs/engine/data-scene-authoring.md#작성-시점-오토타일과-맵-미리보기) |
 | Pixel authoring | RGBA/indexed palettes, selections/transforms, layer opacity/blending/merge, animation/onion skinning, PNG conversion, normals and GIF/APNG export | [Pixel editor (Korean)](apps/placement-viewer/README.md#내장-도트-제작) |
 | Diagnostics and checks | Profiling/frame traces, GPU resource statistics, WebGL2 GPU timing, Wasm memory, spec validation, replay/hash, browser smoke tests, runtime budgets and consumer checks | [Quality API (Korean)](docs/engine/public-api/quality.md) |
@@ -90,7 +90,7 @@ Consult [Spatial Scenes (Korean)](docs/engine/data-scene-spatial.md) for light/s
 - Use **Help → Versions and updates** to check public releases. Supported desktop environments handle project engine updates separately from signed application updates.
 
 Built-in browser examples are **export only**. File saving uses permissions provided by the active host.
-Game Preview runs the Scene Authoring runtime. See the [viewer guide (Korean)](apps/placement-viewer/README.md).
+Game Preview runs the Scene Authoring runtime. See the [Studio guide (Korean)](apps/placement-viewer/README.md).
 
 ### Built-in pixel editor
 
@@ -138,7 +138,7 @@ After [building the source](#build-the-engine-source), run a command from the re
 | Example | Command | Source |
 | --- | --- | --- |
 | Feature Lab, 31 independent experiments | `pnpm dev:starter-runtime` | [starter-runtime](examples/starter-runtime/) |
-| 2D garden / HD-2D village | `pnpm dev:placement-viewer`, then `?scene=garden` / `?scene=village` | [placement-viewer](apps/placement-viewer/) |
+| 2D garden / HD-2D village | `pnpm dev:placement-viewer`, then `?scene=garden` / `?scene=village` | [Ferrum2D Studio](apps/placement-viewer/) |
 | Top-down Shooter | `pnpm dev:topdown` | [topdown-shooter](examples/topdown-shooter/) |
 | Physics Sandbox | `pnpm dev:physics-sandbox` | [physics-sandbox](examples/physics-sandbox/) |
 | Breakout | `pnpm dev:breakout` | [breakout](examples/breakout/) |
@@ -153,7 +153,7 @@ The [English feature guide](docs/en/engine/showcase-hub.md) connects all example
 ```mermaid
 flowchart LR
     Agent["AI Agent / Game code"] --> Spec["Game / Scene / Physics Spec"]
-    Viewer["Scene / Object Placement Viewer"] -->|"Placement / Assets / Patches"| Spec
+    Viewer["Ferrum2D Studio"] -->|"Placement / Assets / Patches"| Spec
     Spec --> Core["Rust / Wasm Core"]
     Core -->|"Render command buffers"| Platform["TypeScript Platform"]
     Platform --> GPU["WebGL2 / Optional WebGPU"]
@@ -204,7 +204,7 @@ For setup without generating a game, see the [AI installation guide (Korean)](do
 | `@ferrum2d/create-game` | Game project generator |
 | `@ferrum2d/agents` | Consumer agent/skill/command installer |
 
-The full desktop Placement Viewer is distributed separately from the helper package and includes its preview engine.
+The Ferrum2D Studio desktop app is distributed separately from the helper package and includes its preview engine.
 Check the selected release's actual attachments for available OS installers. [Distribution procedure (Korean)](docs/development/operations/github-release.md).
 
 ## Build the engine source
@@ -253,7 +253,7 @@ Full `CI` and `Pages` deployment are manually dispatched. Build the local site w
 | `packages/ferrum-web/` | TypeScript browser runtime |
 | `packages/ferrum-authoring-viewer/` | Shared authoring helpers |
 | `packages/create-game/`, `packages/agents/` | Project generation and consumer AI instructions |
-| `apps/placement-viewer/`, `apps/placement-viewer-desktop/` | Web and desktop authoring tools |
+| `apps/placement-viewer/`, `apps/placement-viewer-desktop/` | Ferrum2D Studio web and desktop apps |
 | `examples/` | Feature Lab, focused physics scenarios, and genre examples |
 | `docs/`, `scripts/` | Usage contracts, architecture, validation, planning, and build tools |
 

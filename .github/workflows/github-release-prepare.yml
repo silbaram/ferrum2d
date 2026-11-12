@@ -8,12 +8,12 @@ on:
         required: true
         type: string
       include_viewer:
-        description: 'Build Windows/Linux/macOS viewer installers and combine with the SDK'
+        description: 'Build Windows/Linux/macOS Studio installers and combine with the SDK'
         required: false
         default: false
         type: boolean
       signed_updates:
-        description: 'Include signed app updater artifacts (requires updater key secrets and include_viewer)'
+        description: 'Include signed app updater artifacts (blocked during the Studio name transition)'
         required: false
         default: false
         type: boolean
@@ -30,12 +30,18 @@ jobs:
       - name: Validate updater request
         if: ${{ inputs.signed_updates && !inputs.include_viewer }}
         run: exit 1
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Check automatic update compatibility before release builds
+        if: ${{ inputs.signed_updates }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: node scripts/package/prepare-distribution.mjs prepare --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: pnpm/action-setup@v4
         with:
           version: 10.8.0
@@ -86,6 +92,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check automatic update compatibility before native setup
+        if: ${{ inputs.signed_updates }}
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: node scripts/package/prepare-distribution.mjs prepare --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --with-updater --plan
       - name: Install Linux native libraries
         if: runner.os == 'Linux'
         run: |
@@ -94,9 +110,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - uses: pnpm/action-setup@v4
         with:
           version: 10.8.0
@@ -104,7 +117,7 @@ jobs:
       - run: cargo install wasm-pack --locked
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:github-release
-      - name: Build native viewer candidate
+      - name: Build native Studio candidate
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.version }}
