@@ -24,6 +24,11 @@ replay fixture와 production build를 순서대로 확인한다. 결과는
 `npm run ferrum:authoring-report`, `npm run ferrum:replay-report`,
 `npm run ferrum:runtime-replay-report`를 개별 실행한다.
 
+네 템플릿의 headless runtime replay도 브라우저 게임과 같은 기본 Native backend를 사용한다.
+지정 frame마다 잠시 멈춰 공개 Native 파일 API로 전체 실행 상태를 저장하고,
+그 SHA256과 byteLength를 `custom.nativeRuntime`에 넣어 scene·프로젝트 상태와 함께 비교한다.
+파일의 동일 빌드 식별자도 비교 대상이므로 SDK 변경 뒤에는 의도한 변경과 설치 버전을 확인하고 fixture를 갱신한다.
+
 ## Runtime 입력과 Scene Authoring
 
 `npm run ferrum:report`의 `project.runtimeInputs`가 이 템플릿의 gameplay 구성 source와

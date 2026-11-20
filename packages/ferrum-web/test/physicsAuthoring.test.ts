@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import type {
   FerrumEngine,
@@ -24,6 +24,12 @@ import { resolvePhysicsSpec } from "../src/physicsSpec.js";
 import type { ResolvedPhysicsSpec } from "../src/physicsSpec.js";
 
 class FakePhysicsEngine {
+  validatePhysicsRuntime(_spec: ResolvedPhysicsSpec): void {}
+  configuredSpec: ResolvedPhysicsSpec | undefined;
+  configuredBodyCount = 0;
+  configurePhysicsRuntime(spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec {
+    this.configuredSpec = spec; this.configuredBodyCount = this.bodies.length; return spec;
+  }
   bodies: PhysicsRigidBodySpawnOptions[] = [];
   compoundColliders: Array<{ handle: PhysicsEntityHandle; options: PhysicsBodyColliderOptions }> = [];
   compoundColliderMaterials: Array<{ handle: PhysicsEntityHandle; index: number; material: PhysicsRigidBodyMaterial }> = [];
@@ -196,8 +202,8 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   equal(fake.bodies.length, 3);
   equal(fake.joints.length, 3);
   equal(world.stepSeconds, 1 / 120);
-  ok(fake.fixedTimestep);
-  ok(fake.debugLines);
+  equal(fake.configuredSpec?.mode, "rigid");
+  equal(fake.configuredSpec?.solver.stepSeconds, 1 / 120);
 
   const ground = fake.bodies[0];
   equal(ground.bodyType, "static");
@@ -939,3 +945,134 @@ function expectThrow(action: () => void, pattern: RegExp): unknown {
   ok(pattern.test(report.message));
   return error;
 }
+
+test("rigid Physics Spec configures native runtime after every authored body is staged", () => {
+  const fake = new FakePhysicsEngine();
+  createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, { mode:"rigid", bodies:{
+    first:{type:"dynamic",collider:{shape:"circle",radius:1}},
+    second:{type:"static",collider:{shape:"box",size:[4,1]}},
+  }});
+  equal(fake.configuredBodyCount,2);
+  equal(fake.bodies[0].canSleep,true);
+});
+
+test("Physics Spec refuses a canonical replacement owned by another Engine before either world changes", () => {
+  const a = new FakePhysicsEngine(), b = new FakePhysicsEngine();
+  const previous = createPhysicsWorldFromSpec(a as unknown as FerrumEngine, {
+    mode: "rigid", bodies: { old: { collider: { shape: "circle", radius: 1 } } },
+  });
+  for (const solver of [{ fixedTimestep: true }, { fixedTimestep: false }]) {
+    throws(() => createPhysicsWorldFromSpec(b as unknown as FerrumEngine, {
+      mode: "arcade", solver, bodies: { next: { collider: { shape: "circle", radius: 1 } } },
+    }, { replace: previous }), /same Engine/);
+  }
+  equal(a.despawnedBodies.length, 0); equal(b.bodySpawnAttempts, 0);
+  previous.clear(); equal(a.despawnedBodies.length, 1);
+});
+
+test("authored controller cannot be silently ignored by configureRuntime false", () => {
+  const fake = new FakePhysicsEngine();
+  let cleared = false;
+  throws(() => createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {
+    mode: "rigid", bodies: { actor: { type: "kinematic", collider: { shape: "circle", radius: 1 }, kinematicController: {} } },
+  }, { configureRuntime: false, replace: { clear() { cleared = true; } } as never }), /requires runtime configuration/);
+  equal(cleared, false); equal(fake.bodySpawnAttempts, 0);
+});
+test("rigid Physics Spec native setup rejection clears staged bodies", () => {
+  const fake = new FakePhysicsEngine();
+  fake.configurePhysicsRuntime=()=>{throw new Error("native batch rejected");};
+  throws(()=>createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {mode:"rigid",bodies:{
+    first:{type:"dynamic",collider:{shape:"circle",radius:1}},
+    second:{type:"static",collider:{shape:"box",size:[4,1]}},
+  }}),/native batch rejected/);
+  equal(fake.despawnedBodies.length,2);
+});
+test("rigid Physics Spec missing native runtime support rejects before replacement or spawn", () => {
+  const fake = new FakePhysicsEngine();
+  (fake as unknown as {configurePhysicsRuntime?:unknown}).configurePhysicsRuntime=undefined;
+  let cleared=false;
+  throws(()=>createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {mode:"rigid",bodies:{
+    first:{type:"dynamic",collider:{shape:"circle",radius:1}},
+  }},{replace:{clear(){cleared=true;}} as never}),/native backend configuration/);
+  equal(fake.bodies.length,0);equal(cleared,false);
+});
+test("Physics Spec global sleep disable overrides per-body permission", () => {
+  const fake = new FakePhysicsEngine();
+  createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {mode:"rigid",solver:{sleep:false},bodies:{
+    first:{type:"dynamic",canSleep:true,collider:{shape:"circle",radius:1}},
+  }});
+  equal(fake.bodies[0].canSleep,false);
+});
+
+test("default fixed arcade authoring configures the complete native group without changing defaults", () => {
+  const fake = new FakePhysicsEngine();
+  const world = createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, { bodies: {
+    actor: { position: [2, 3], velocity: [4, 5], collider: { shape: "circle", radius: 1 } },
+  } });
+  equal(world.spec.mode, "arcade"); equal(fake.configuredSpec?.mode, "arcade"); equal(fake.configuredBodyCount, 1);
+  equal(world.spec.gravityX, 0); equal(world.spec.gravityY, 0); equal(world.spec.continuous, false);
+  equal(world.stepOptions.velocityIterations, 1); equal(world.stepOptions.positionIterations, 1);
+  equal(fake.bodies[0].bodyType, "dynamic"); equal(fake.bodies[0].velocityX, 4); equal(fake.bodies[0].velocityY, 5);
+  equal(fake.bodies[0].canSleep, false);
+});
+
+test("fixed arcade requires runtime validation and setup before clearing a previous world", () => {
+  for (const missing of ["configurePhysicsRuntime", "validatePhysicsRuntime"] as const) {
+    const fake = new FakePhysicsEngine();
+    const engine = fake as unknown as FerrumEngine;
+    const previous = createPhysicsWorldFromSpec(engine, { mode: "rigid", bodies: {
+      old: { collider: { shape: "circle", radius: 1 } },
+    } });
+    const attempts = fake.bodySpawnAttempts;
+    (fake as unknown as Record<string, unknown>)[missing] = undefined;
+    throws(() => createPhysicsWorldFromSpec(engine, { mode: "arcade", bodies: {
+      next: { collider: { shape: "circle", radius: 1 } },
+    } }, { replace: previous }), /arcade Physics Spec requires a runtime with native backend configuration/);
+    equal(fake.bodySpawnAttempts, attempts); equal(fake.despawnedBodies.length, 0);
+  }
+});
+
+test("variable arcade requires native runtime while none retains the non-native facade", () => {
+  for (const mode of ["arcade", "none"] as const) {
+    const fake = new FakePhysicsEngine();
+    (fake as unknown as { configurePhysicsRuntime?: unknown }).configurePhysicsRuntime = undefined;
+    (fake as unknown as { validatePhysicsRuntime?: unknown }).validatePhysicsRuntime = undefined;
+    const input = { mode, solver: { fixedTimestep: false },
+      ...(mode === "arcade" ? { bodies: { actor: { collider: { shape: "circle" as const, radius: 1 } } } } : {}) };
+    if (mode === "arcade") {
+      throws(() => createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, input), /requires a runtime with native backend configuration/);
+      equal(fake.bodySpawnAttempts, 0);
+    } else {
+      const world = createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, input);
+      equal(world.spec.mode, "none"); equal(world.spec.solver.fixedTimestep, false);
+      equal(world.bodyCount, 0); equal(fake.fixedTimestep, false);
+    }
+  }
+});
+
+test("native range failures reject before replacing a world, spawning, or invoking runtime configuration", () => {
+  for (const mode of ["arcade", "rigid"] as const) {
+    const fake = new FakePhysicsEngine();
+    const engine = fake as unknown as FerrumEngine;
+    const previous = createPhysicsWorldFromSpec(engine, { mode: "rigid", bodies: {
+      old: { collider: { shape: "circle", radius: 1 } },
+    } });
+    const initialAttempts = fake.bodySpawnAttempts;
+    let validated = 0, configured = 0;
+    fake.validatePhysicsRuntime = () => { validated++; };
+    fake.configurePhysicsRuntime = spec => { configured++; return spec; };
+    const changes: Array<(spec: ResolvedPhysicsSpec) => void> = [
+      spec => { spec.solver.velocityIterations = 0; },
+      spec => { spec.solver.positionIterations = 33; },
+      spec => { spec.solver.stepSeconds = 0.2; },
+      spec => { spec.gravityX = 1_000_001; },
+    ];
+    for (const change of changes) {
+      const spec = resolvePhysicsSpec({ mode, bodies: { next: { collider: { shape: "circle", radius: 1 } } } });
+      change(spec);
+      throws(() => createPhysicsWorldFromSpec(engine, spec, { replace: previous }), /native solver iterations|finite f32/);
+      equal(fake.bodySpawnAttempts, initialAttempts); equal(fake.despawnedBodies.length, 0);
+      equal(validated, 0); equal(configured, 0);
+    }
+  }
+});

@@ -387,6 +387,28 @@ test("HDR lighting, normal atlases and debug keep bounded warm resources and val
     true,
   );
 });
+
+test("empty truncated debug packets preserve diagnostics without allocating or drawing and clear when disabled", () => {
+  const { device, draw, pass } = setup(), f = frame();
+  const baseline = draw(f);
+  const resources = [device.buffers.length, device.textures.length];
+  f.debug = { version: 1, vertexStride: 11, vertices: new Float32Array(), vertexCount: 0, depthTest: true, truncated: true };
+  const truncated = draw(f);
+  equal(truncated.stats.debugTruncated, true);
+  equal(truncated.stats.debugLineCount, 0);
+  equal(truncated.stats.debugDrawCalls, 0);
+  equal(truncated.stats.debugUploadBytes, 0);
+  equal(truncated.stats.drawCalls, baseline.stats.drawCalls);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  equal(device.buffers.some(buffer => (buffer.descriptor as { label?: string }).label === "Spatial debug vertices"), false);
+  f.debug = undefined;
+  const disabled = draw(f);
+  equal(disabled.stats.debugTruncated, false);
+  equal(disabled.stats.debugDrawCalls, 0);
+  equal(disabled.stats.debugUploadBytes, 0);
+  deepEqual([device.buffers.length, device.textures.length], resources);
+  pass.destroy();
+});
 test("native shadow face ranges include camera-culled terrain and warm cache tracks atlas and caster revisions", () => {
   const { device, draw, pass, textures } = setup(),
     f = frame();

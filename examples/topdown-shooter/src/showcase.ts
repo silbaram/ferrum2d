@@ -23,6 +23,7 @@ export interface ShowcaseFrame {
 }
 
 export function createShooterShowcase(canvas: HTMLCanvasElement) {
+  let activeCanvas = canvas;
   const root = document.createElement('main');
   root.className = 'shooter-shell';
   root.innerHTML = `
@@ -78,6 +79,7 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   let actions: ShowcaseActions | undefined;
   let state = 0;
   let paused = false;
+  let busy = false;
   let score = 0;
   const setting = (key: string) => get<HTMLInputElement>(`[data-setting=${key}]`).checked;
   get<HTMLInputElement>('[data-setting=motion]').checked = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -89,33 +91,33 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
     stage.dataset.state = paused ? 'paused' : state === 1 ? 'playing' : state === 2 ? 'gameover' : 'title';
     status.textContent = paused ? '일시정지' : state === 1 ? '방어 진행 중' : state === 2 ? '방어 종료' : '출격 준비';
     overlay.hidden = state === 1 && !paused;
-    pause.disabled = !actions || state !== 1;
+    pause.disabled = busy || !actions || state !== 1;
     pause.textContent = paused ? '계속하기 (P)' : '일시정지 (P)';
     set('dialog-title', paused ? '잠시 작전을 멈췄습니다' : state === 2 ? '다시 도전할 준비가 됐나요?' : '전초기지를 지켜주세요');
     set('dialog-body', paused ? '계속하기를 누르면 같은 위치와 웨이브에서 이어집니다.' : state === 2 ? `최종 점수 ${score}. 엄폐물을 돌아 이동하며 붉은 드론과 거리를 유지하세요.` : '엄폐물을 활용해 추적 드론을 피하고 에너지 탄환으로 격추하세요. 적과 접촉하면 방어가 종료됩니다.');
     start.textContent = paused ? '작전 계속하기' : state === 2 ? '다시 출격' : '출격하기';
   };
   const togglePause = () => {
-    if (!actions || state !== 1) return;
+    if (busy || !actions || state !== 1) return;
     paused = !paused;
     actions.pause(paused);
     updatePhase();
-    if (!paused) canvas.focus({ preventScroll: true });
+    if (!paused) activeCanvas.focus({ preventScroll: true });
   };
   pause.addEventListener('click', togglePause, { signal: signal.signal });
   start.addEventListener('click', () => {
-    if (!actions) return;
+    if (busy || !actions) return;
     if (paused) togglePause(); else actions.start();
-    canvas.focus({ preventScroll: true });
+    activeCanvas.focus({ preventScroll: true });
   }, { signal: signal.signal });
   restart.addEventListener('click', () => {
-    if (!actions) return;
+    if (busy || !actions) return;
     if (paused) { paused = false; actions.pause(false); }
     actions.restart();
     updatePhase();
-    canvas.focus({ preventScroll: true });
+    activeCanvas.focus({ preventScroll: true });
   }, { signal: signal.signal });
-  root.querySelectorAll<HTMLInputElement>('[data-setting]').forEach(input => input.addEventListener('change', () => actions?.settings(), { signal: signal.signal }));
+  root.querySelectorAll<HTMLInputElement>('[data-setting]').forEach(input => input.addEventListener('change', () => { if (!busy) actions?.settings(); }, { signal: signal.signal }));
   window.addEventListener('keydown', event => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
     if (event.target instanceof HTMLElement && event.target.closest('input,select,textarea,[contenteditable=true]')) return;
@@ -124,6 +126,9 @@ export function createShooterShowcase(canvas: HTMLCanvasElement) {
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === 1 && !paused) togglePause(); }, { signal: signal.signal });
   return {
     root, stage, guideMount: get<HTMLDivElement>('.shooter-guide-mount'), hint,
+    setCanvas(next: HTMLCanvasElement) { activeCanvas = next; },
+    setPaused(value: boolean) { paused = value; updatePhase(); },
+    setBusy(value: boolean) { busy = value; start.disabled = busy || !actions; restart.disabled = busy || !actions; updatePhase(); },
     settings: () => ({ lighting: setting('lighting'), effects: setting('effects'), reducedMotion: setting('motion'), mute: setting('mute') }),
     connect(next: ShowcaseActions) { actions = next; start.disabled = false; restart.disabled = false; updatePhase(); },
     update(frame: ShowcaseFrame, wave?: ShowcaseWave) {

@@ -37,6 +37,7 @@ if (process.env.FERRUM_SPATIAL_WEBGPU_PREPARED_PACKAGE) {
   await runReleaseCommand("tar", ["-xzf", resolve(output, tgz), "-C", output]);
 }
 const lightProbesOnly = process.argv.includes("--light-probes-only");
+const nativeDebugOnly = process.argv.includes("--native-debug-only");
 const lightShaftPrecisionOnly = process.argv.includes("--light-shafts-precision-only");
 const lightShaftsOnly = lightShaftPrecisionOnly || process.argv.includes("--light-shafts-only");
 const heightFogPrecisionOnly = process.argv.includes("--height-fog-precision-only");
@@ -65,7 +66,7 @@ const compositionOnly = heightFogCompositionOnly || process.argv.includes("--com
 const fallbackOnly = process.argv.includes("--fallback-only"),
   modelsOnly = process.argv.includes("--models-only"),
   offscreen = process.argv.includes("--offscreen-target");
-assert([lightProbesOnly, lightShaftsOnly, heightFogPrecisionOnly, heightFogOnly, pointPcssOnly, sunPcssOnly, pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
+assert([nativeDebugOnly, lightProbesOnly, lightShaftsOnly, heightFogPrecisionOnly, heightFogOnly, pointPcssOnly, sunPcssOnly, pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, shadowsOnly, environmentOnly, fallbackOnly, modelsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].filter(Boolean).length <= 1, "Select one spatial smoke mode");
 const html = `<!doctype html><style>html,body,canvas{margin:0;display:block;width:100%;height:100%}</style><script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/labs":"/package/dist/labs.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script><script type="module">import{probeSpatialWebGpu,probeSpatialFallbacks,probeSpatialRecovery}from'/fixture.mjs';import{probeSpatialWebGpuModels,probeModelRecovery}from'/models.mjs';window.probeModelRecovery=probeModelRecovery;window.probeSpatialWebGpu=probeSpatialWebGpu;window.probeSpatialRecovery=probeSpatialRecovery;window.probeSpatialFallbacks=probeSpatialFallbacks;window.probeSpatialWebGpuModels=probeSpatialWebGpuModels;import{probeSpatialWebGpuEnvironment}from'/environment.mjs';window.probeSpatialWebGpuEnvironment=probeSpatialWebGpuEnvironment;import{probeSpatialWebGpuShadows}from'/shadows.mjs';window.probeSpatialWebGpuShadows=probeSpatialWebGpuShadows;import{probeSpatialShadowProxy}from'/shadow-proxy.mjs';window.probeSpatialShadowProxy=probeSpatialShadowProxy;import{probeFlatShadowIsolation}from'/flat-shadows.mjs';window.probeFlatShadowIsolation=probeFlatShadowIsolation;</script>`;
 const server = createServer((req, res) => {
   void (async () => {
@@ -125,7 +126,7 @@ const report = {
   version: 1,
   status: "running",
   presentation: offscreen ? "offscreen" : "canvas",
-  mode: lightProbesOnly ? "light-probes-only" : lightShaftPrecisionOnly ? "light-shafts-precision-only" : lightShaftsOnly ? "light-shafts-only" : heightFogPrecisionOnly ? "height-fog-precision-only" : heightFogOnly ? "height-fog-only" : pointPcssOnly ? "point-pcss-only" : sunPcssOnly ? "sun-pcss-only" : pointShadowsOnly ? "point-shadows-only" : wideBloomHeightFogOnly ? "wide-bloom-height-fog-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : heightFogCompositionOnly ? "height-fog-composition-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
+  mode: nativeDebugOnly ? "native-debug-only" : lightProbesOnly ? "light-probes-only" : lightShaftPrecisionOnly ? "light-shafts-precision-only" : lightShaftsOnly ? "light-shafts-only" : heightFogPrecisionOnly ? "height-fog-precision-only" : heightFogOnly ? "height-fog-only" : pointPcssOnly ? "point-pcss-only" : sunPcssOnly ? "sun-pcss-only" : pointShadowsOnly ? "point-shadows-only" : wideBloomHeightFogOnly ? "wide-bloom-height-fog-only" : wideBloomFogOnly ? "wide-bloom-fog-only" : wideBloomOnly ? "wide-bloom-only" : selectionOnly ? "light-selection-only" : masksOnly ? "receiver-masks-only" : specularOnly ? "specular-only" : linearEnvironmentOnly ? "linear-environment-only" : heightFogCompositionOnly ? "height-fog-composition-only" : compositionOnly ? "composition-only" : gameAssetShadowsOnly ? "game-asset-shadows-only" : receiverShadowsOnly ? "receiver-shadows-only" : flatShadowsOnly ? "flat-shadows-only" : recoveryOnly ? "recovery-only" : pointContactOnly ? "point-contact-only" : proxiesOnly ? "proxies-only" : shadowsOnly
     ? "shadows-only"
     : environmentOnly
       ? "environment-only"
@@ -198,6 +199,29 @@ try {
         report.activeCase = { viewport, deviceScaleFactor };
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         await Promise.race([page.waitForFunction(() => window.probeSpatialWebGpu), bootFailure]);
+        if (nativeDebugOnly) {
+          const result = await page.evaluate(() => window.probeSpatialWebGpu());
+          assert.deepEqual(result.map(entry => entry.projection), ["orthographic", "perspective"]);
+          assert.deepEqual(errors, []);
+          for (const entry of result) {
+            assert.deepEqual(entry.backends.map(backend => backend.backend), ["webgl2", "webgpu"]);
+            for (const backend of entry.backends) {
+              assert(backend.restored && backend.reversed && backend.picked === "bridge" && backend.warmTerrainUpload === 0 && backend.errors.length === 0);
+              const native = backend.nativeDebug;
+              assert(native?.anchorSegment && native.emptyTruncatedPreserved && native.disabledMatches && native.renderedPixelsChanged > 8);
+              assert(native.cappedVertices > 0 && native.cappedVertices <= 32768);
+              assert(native.nativeWork?.truncated && !native.nativeWork.rejected && native.nativeWork.workUnits <= 65536
+                && native.nativeWork.unsupportedShapes === 0 && native.nativeWork.projection === "xyz");
+              const file = `${backend.backend}-${entry.projection}-${viewport.width}x${viewport.height}-dpr${deviceScaleFactor}.png`;
+              await writeFile(resolve(output, file), Buffer.from(backend.image.split(",")[1], "base64"));
+              backend.image = file;
+            }
+          }
+          report.cases.push({ viewport, deviceScaleFactor, result });
+          delete report.activeCase;
+          console.log(JSON.stringify({ viewport, deviceScaleFactor, mode: "native-debug-only", comparisons: result.length }));
+          continue;
+        }
         if (lightProbesOnly || ![lightShaftsOnly, heightFogPrecisionOnly, heightFogOnly, pointPcssOnly, sunPcssOnly, pointShadowsOnly, wideBloomOnly, selectionOnly, compositionOnly, recoveryOnly, fallbackOnly, modelsOnly, environmentOnly, shadowsOnly, proxiesOnly, pointContactOnly, flatShadowsOnly, receiverShadowsOnly, gameAssetShadowsOnly].some(Boolean)) {
           await page.waitForFunction(() => window.probeSpatialLightProbes);
           for (const colorManagement of ["legacy", "linear-srgb"]) {
@@ -615,6 +639,7 @@ try {
         await page.close();
       }
     }
+  if (nativeDebugOnly) assert.equal(report.cases.length, 4, "Native debug must cover both viewports and both DPR values");
   report.status = "passed";
 } catch (error) {
   report.status = "failed";

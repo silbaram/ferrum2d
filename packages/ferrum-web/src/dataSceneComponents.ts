@@ -1,3 +1,5 @@
+import type { DataSceneRuntimeComponentTemplates } from "./dataSceneRuntimeTarget.js";
+import { resolveDataScenePhysicsBody, type DataScenePhysicsBodySpec } from "./dataScenePhysics.js";
 import { resolveSpriteLightingMaterial, type SpriteLightingMaterialSpec } from "./spriteLighting.js";
 import {resolveSpriteSurfaceMaterial,SPRITE_SURFACE_TEXTURE_NONE,type SpriteSurfaceMaterialSpec} from "./spriteSurface.js";
 import { resolveSpriteNineSlice, type SpriteNineSliceSpec } from "./spriteNineSlice.js";
@@ -5,7 +7,8 @@ import { resolveDataSceneGroundShadow, type DataSceneGroundShadowSpec, type Reso
 import { resolveDataSceneSpriteAnimationSet, type DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
-import type { PhysicsBodyHeightSpan } from "./engineTypes/physicsBodies.js";
+import type { PhysicsBodyHeightSpan, PhysicsKinematicControllerOptions } from "./engineTypes/physicsBodies.js";
+import { resolveDataSceneKinematicControllerOptions } from "./dataSceneKinematicController.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 
 export const DATA_SCENE_COMPONENTS_PROP = "components" as const;
@@ -173,9 +176,14 @@ export type DataSceneColliderComponentSpec =
   | DataSceneConvexPolygonColliderSpec;
 
 /** Optional body on the same entity; omitting it preserves collider-only authoring. */
-export type DataSceneBodySpec = {
-  type: "static" | "kinematic";
+export type DataSceneBodySpec = DataScenePhysicsBodySpec | {
+  type: "static";
   heightSpan?: PhysicsBodyHeightSpan;
+} | {
+  type: "kinematic";
+  heightSpan?: PhysicsBodyHeightSpan;
+  /** Automatic planar controller overrides; omission restores defaults when the body is recreated. */
+  kinematicController?: PhysicsKinematicControllerOptions;
 } | {
   type: "dynamic";
   heightSpan?: PhysicsBodyHeightSpan;
@@ -326,11 +334,14 @@ export type ResolvedDataSceneComponents =
     };
 
 export interface ResolveDataSceneComponentsOptions {
+  /** Cold catalog lookup for tools that need resolved components instead of raw references. */
+  componentTemplates?: DataSceneRuntimeComponentTemplates;
   path?: string;
   allowTemplate?: boolean;
 }
 
 export interface ResolveDataSceneInstanceComponentsOptions {
+  componentTemplates?: DataSceneRuntimeComponentTemplates;
   path?: string;
   allowTemplate?: boolean;
 }
@@ -351,6 +362,12 @@ export function resolveDataSceneComponentsSpec(
         "is not supported here; provide inline sprite, collider, and layer components",
       );
     }
+    if (options.componentTemplates !== undefined) {
+      const catalog = options.componentTemplates;
+      const value = typeof catalog === "function" ? catalog(template) : Object.prototype.hasOwnProperty.call(catalog, template) ? catalog[template] : undefined;
+      if (value === undefined) throw sceneCompositionDiagnosticError(`${path}.template`, `missing component template: ${template}`);
+      return resolveDataSceneComponentsSpec(value, { allowTemplate: false, path: `${path}.template(${template})` });
+    }
     return {
       mode: "template",
       template,
@@ -358,13 +375,18 @@ export function resolveDataSceneComponentsSpec(
   }
 
   const collider = resolveColliderComponent(requiredProperty(components, "collider", path), `${path}.collider`);
-  if (components.body !== undefined && collider.type === "none") {
+  const body = components.body === undefined ? undefined : resolveBody(components.body, `${path}.body`);
+  if (body?.type !== undefined && collider.type === "none") {
     throw sceneCompositionDiagnosticError(`${path}.body`, "requires a collider; omit body for a visual-only object");
+  }
+  if (body?.type === "kinematic" && body.kinematicController !== undefined
+    && (collider.type === "none" || !collider.enabled || collider.isTrigger)) {
+    throw sceneCompositionDiagnosticError(`${path}.body.kinematicController`, "requires an enabled solid convex collider");
   }
   return {
     mode: "inline",
     ...resolveInlineVisualComponents(components, path),
-    ...(components.body === undefined ? {} : { body: resolveBody(components.body, `${path}.body`) }),
+    ...(body === undefined ? {} : { body }),
     collider,
     layer: resolveCollisionLayer(requiredProperty(components, "layer", path), `${path}.layer`),
   };
@@ -386,6 +408,7 @@ export function resolveDataSceneInstanceComponents(
   const path = options.path ?? `sceneComposition.instances.${instance.id}`;
   return resolveDataSceneComponentsSpec(instance.props[DATA_SCENE_COMPONENTS_PROP], {
     allowTemplate: options.allowTemplate,
+    componentTemplates: options.componentTemplates,
     path: `${path}.props.${DATA_SCENE_COMPONENTS_PROP}`,
   });
 }
@@ -885,15 +908,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function resolveBody(value: unknown, path: string): DataSceneBodySpec {
   const body = requiredRecord(value, path);
+  if (body.type === undefined) return resolveDataScenePhysicsBody(body, path);
   if (body.type !== "static" && body.type !== "kinematic" && body.type !== "dynamic") {
     throw sceneCompositionDiagnosticError(`${path}.type`, "must be static, kinematic, or dynamic");
   }
   const dynamicKeys = ["mass", "canSleep", "gravityScale", "linearDamping", "angularDamping", "material"];
   for (const key of Object.keys(body)) if (key !== "type" && key !== "heightSpan" &&
+    !(body.type === "kinematic" && key === "kinematicController") &&
     !(body.type === "dynamic" && dynamicKeys.includes(key))) {
     throw sceneCompositionDiagnosticError(`${path}.${key}`, "is not supported by Data Scene body authoring");
   }
-  const result: DataSceneBodySpec = { type: body.type };
+  const result: Exclude<DataSceneBodySpec, DataScenePhysicsBodySpec> = { type: body.type };
+  if (result.type === "kinematic" && body.kinematicController !== undefined) {
+    result.kinematicController = resolveDataSceneKinematicControllerOptions(
+      body.kinematicController, `${path}.kinematicController`, sceneCompositionDiagnosticError,
+    );
+  }
   if (result.type === "dynamic") {
     for (const key of ["mass", "gravityScale", "linearDamping", "angularDamping"] as const) {
       if (body[key] === undefined) continue;

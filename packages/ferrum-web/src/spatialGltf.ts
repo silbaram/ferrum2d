@@ -1,3 +1,4 @@
+import { retainModelFileOriginals } from "./nativeFileResourceModels.js";
 import { validateSpatialRequiredExtensions } from "./spatialTextureTransform.js";
 import { loadSpatialGlb, type SpatialGlbOptions, type SpatialModelAsset } from "./spatialModel.js";
 
@@ -163,5 +164,7 @@ export async function loadSpatialGltf(source: string, options: SpatialGltfOption
     const content = new Uint8Array(bundle); content.fill(32, 20, 20 + paddedJson); content.set(encoded, 20);
     header.setUint32(20 + paddedJson, paddedBin, true); header.setUint32(24 + paddedJson, 0x004e4942, true);
     for (const chunk of chunks) content.set(chunk.bytes, 28 + paddedJson + chunk.offset);
-    return loadSpatialGlb(bundle, options);
+    const handle = await loadSpatialGlb(bundle, options);
+    retainModelFileOriginals(handle, [...fetched].map(([url, bytes]) => ({ url, blob: new Blob([bytes.slice()]) })));
+    return handle;
 }

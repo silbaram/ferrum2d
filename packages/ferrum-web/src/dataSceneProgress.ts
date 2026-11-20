@@ -1,3 +1,4 @@
+import {nativeFileEngineOwner} from "./nativeFileEngineOwner.js";
 import { decodeSpatialLightSelectionProgress, spatialLightSelectionProgressValues } from "./spatialLightSelectionProgress.js";
 import { decodeMovingPlatforms, compileMovingPlatforms } from "./spatialMovingPlatforms.js";
 import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
@@ -25,6 +26,7 @@ import {
   type DataSceneMovementAnimationSpec,
 } from "./dataSceneMovementAnimation.js";
 import { resolveDataSceneInstanceComponents } from "./dataSceneComponents.js";
+import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import {
   compileSpatialTerrain,
   type DataSceneSpatialSpec,
@@ -111,34 +113,113 @@ export interface DataSceneProgressAdapter {
 }
 const ANIMATION_PROGRESS_STRIDE = 32;
 const adapters = new WeakMap<FerrumEngine, DataSceneProgressAdapter>();
-const contexts = new WeakMap<
-  FerrumEngine,
-  {
-    epoch: number;
-    document: string;
-    handles: Readonly<Record<string, GameplayEntityHandle>>;
-    spatialRevision: number;
-    textureId?: ApplyDataSceneAuthoringDocumentOptions["textureId"];
+/** @internal Cold metadata; no playback, physics or progress values. */
+export interface DataSceneProgressContextMetadata {
+  epoch: number;
+  document: string;
+  handles: Readonly<Record<string, GameplayEntityHandle>>;
+  spatialRevision: number;
+  textureId?: ApplyDataSceneAuthoringDocumentOptions["textureId"];
+}
+const contexts = new WeakMap<FerrumEngine, DataSceneProgressContextMetadata>();
+
+/** Cold authored metadata only. Native playback and LOD state stay in Rust. */
+export interface DataSceneAuthoringContinuityMetadata {
+  animations: Readonly<Record<string, DataSceneSpriteAnimationSetSpec>>;
+  models?: DataSceneSpatialSpec["models"];
+}
+export interface DataSceneContinuityContextMetadata {
+  epoch: number;
+  metadata: DataSceneAuthoringContinuityMetadata;
+  handles: Readonly<Record<string, GameplayEntityHandle>>;
+}
+const continuityContexts = new WeakMap<FerrumEngine, DataSceneContinuityContextMetadata>();
+const metadataRevisions = new WeakMap<FerrumEngine, object>();
+function changedMetadata(engine: FerrumEngine): void {
+  metadataRevisions.set(engine, Object.freeze({}));
+}
+
+/** @internal A revision guard for metadata-only staging on an unpublished engine.
+ * Adapter epoch/revision methods must be the canonical read-only native readers.
+ * A session capture fence and native roster admission remain caller obligations. */
+export function inspectDataSceneAuthoringMetadata(engine: FerrumEngine) {
+  const adapter = adapters.get(engine);
+  return {
+    adapter, revision: metadataRevisions.get(engine),
+    progress: contexts.get(engine), continuity: continuityContexts.get(engine),
+    epoch: adapter?.epoch(), spatialRevision: adapter?.spatialRevision(),
+  };
+}
+
+const canonicalFileAuthoringAdapters = new WeakMap<FerrumEngine, {
+    readonly adapter: DataSceneProgressAdapter;
+    readonly native: object;
+}>();
+/** SDK factory-only identity mark after the actual native owner exists. */
+export function markNativeFileCanonicalAuthoringAdapter(engine: FerrumEngine): void {
+    const owner = nativeFileEngineOwner(engine), adapter = adapters.get(engine);
+    if (!adapter || canonicalFileAuthoringAdapters.has(engine))
+        throw new Error("Native-file canonical authoring adapter missing/already marked");
+    canonicalFileAuthoringAdapters.set(engine, { adapter, native: owner.native });
+}
+/** Only post-install actual facades. Canonical readers are called here, never
+ * while admitting metadata against a private candidate facts packet. */
+export function inspectNativeFileCanonicalAuthoringMetadata(engine: FerrumEngine, owner: object) {
+    const actual = nativeFileEngineOwner(engine), mark = canonicalFileAuthoringAdapters.get(engine);
+    if (actual.native !== owner || mark?.native !== owner || mark?.adapter !== adapters.get(engine))
+        throw new Error("Native-file canonical authoring target identity mismatch");
+    return inspectDataSceneAuthoringMetadata(engine);
+}
+
+/** @internal One guarded metadata publication; never reapplies native state. */
+export function attachDataSceneAuthoringMetadata(
+  engine: FerrumEngine,
+  expected: ReturnType<typeof inspectDataSceneAuthoringMetadata>,
+  progress: DataSceneProgressContextMetadata | undefined,
+  continuity: DataSceneContinuityContextMetadata | undefined,
+): void {
+  const actual = inspectDataSceneAuthoringMetadata(engine);
+  if (actual.adapter !== expected.adapter || actual.revision !== expected.revision
+    || actual.progress !== expected.progress || actual.continuity !== expected.continuity
+    || actual.epoch !== expected.epoch || actual.spatialRevision !== expected.spatialRevision) {
+    throw new Error("Native-file authoring metadata is stale.");
   }
->();
+  if (progress) contexts.set(engine, progress); else contexts.delete(engine);
+  if (continuity) continuityContexts.set(engine, continuity); else continuityContexts.delete(engine);
+  changedMetadata(engine);
+}
 
 export function attachDataSceneProgressAdapter(
   engine: FerrumEngine,
   adapter: DataSceneProgressAdapter,
 ): void {
   adapters.set(engine, adapter);
+  changedMetadata(engine);
 }
 
 // Metadata only: retain original handles even after entities are removed from the world/registry.
 export function forgetDataSceneProgressContext(engine: FerrumEngine): void {
   contexts.delete(engine);
+  continuityContexts.delete(engine);
+  changedMetadata(engine);
+}
+
+/** Internal metadata rollback for a synchronous authored-scene transaction. */
+export function preserveDataSceneProgressContext(engine: FerrumEngine): () => void {
+  const previous = contexts.get(engine);
+  const previousContinuity = continuityContexts.get(engine);
+  return () => {
+    if (previous) contexts.set(engine, previous); else contexts.delete(engine);
+    if (previousContinuity) continuityContexts.set(engine, previousContinuity); else continuityContexts.delete(engine);
+    changedMetadata(engine);
+  };
 }
 
 /** Internal cold authoring metadata; native transient values never enter this context. */
 export function dataSceneAuthoringContinuityContext(engine: FerrumEngine) {
-  const context=contexts.get(engine),adapter=adapters.get(engine);
+  const context=continuityContexts.get(engine),adapter=adapters.get(engine);
   if(!context||!adapter||context.epoch!==adapter.epoch())throw new Error("Preserving animation/LOD requires a previous complete default authoring apply.");
-  return {document:JSON.parse(context.document) as unknown,handles:context.handles};
+  return {metadata:context.metadata,handles:context.handles};
 }
 
 export function rememberDataSceneProgressContext(
@@ -146,9 +227,18 @@ export function rememberDataSceneProgressContext(
   document: unknown,
   handles: Readonly<Record<string, GameplayEntityHandle>>,
   options: ApplyDataSceneAuthoringDocumentOptions,
+  continuity?: DataSceneAuthoringContinuityMetadata,
 ): void {
   const adapter = adapters.get(engine);
-  if (adapter === undefined || unsupportedOptions(options).length > 0) return;
+  if (adapter === undefined) return;
+  changedMetadata(engine);
+  // Catalog references remain unsupported by JSON progress/snapshots. Preview
+  // continuity gets its own detached metadata and the same native epoch guard.
+  if (continuity !== undefined && options.activateDataScene !== false) continuityContexts.set(engine, {
+    epoch: adapter.epoch(), metadata: structuredClone(continuity),
+    handles: Object.fromEntries(Object.entries(handles).map(([id, handle]) => [id, { ...handle }])),
+  });
+  if (unsupportedOptions(options).length > 0) return;
   contexts.set(engine, {
     epoch: adapter.epoch(),
     document: canonicalDocument(document),
@@ -164,6 +254,7 @@ export function captureDataSceneProgress(
   engine: FerrumEngine,
   document: unknown,
 ): DataSceneProgressSnapshot {
+  assertDataScenePhysicsProgressSupported(document, engine);
   assertDataSceneCombatSaveSupported(engine, document);
   const adapter = requireAdapter(engine);
   const context = contexts.get(engine);
@@ -357,6 +448,7 @@ export function preflightDataSceneProgressRestore(
   progress?: DataSceneProgressSnapshot,
   document?: unknown,
 ): void {
+  assertDataScenePhysicsProgressSupported(document, engine);
   assertDataSceneCombatSaveSupported(engine, document);
   requireAdapter(engine);
   const unsupported = unsupportedOptions(options);
@@ -824,6 +916,12 @@ function unsupportedOptions(
     )
     .map(([key]) => key);
 }
+/** @internal Reuse the existing document baseline's JSON semantics only.
+ * General file resource/host graphs retain their separate undefined/-0 policy. */
+export function nativeFileAuthoringDocumentBaseline(value: unknown): unknown {
+  return JSON.parse(canonicalDocument(value)) as unknown;
+}
+
 function canonicalDocument(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) =>
     isRecord(item)
@@ -856,4 +954,10 @@ export function assertDataSceneCombatSaveSupported(engine: FerrumEngine, documen
   if (engine.dataSceneCombatEnabled?.() === true || (document !== null && typeof document === "object" && (document as { gameplay?: { combat?: unknown } }).gameplay?.combat === true)) {
     if (engine.supportsDataSceneCombatProgress?.() !== true) throw new Error("Data Scene combat capture/restore requires a compatible checkpoint Wasm build.");
   }
+}
+
+/** Do not publish a partial checkpoint while native solver snapshot/replay is unfinished. */
+function assertDataScenePhysicsProgressSupported(document: unknown, engine: FerrumEngine): void {
+  if (engine.physicsBackend?.() === "unified-3d" || (document && typeof document === "object" && "physics" in document && document.physics !== undefined))
+    throw new Error("Data Scene physics capture/restore requires native physics snapshots, which are not yet supported.");
 }

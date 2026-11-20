@@ -1,18 +1,18 @@
-import { dataSceneAuthoringContinuityContext } from "./dataSceneProgress.js";
-import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
-import { bindSceneBehaviorRecipes } from "./gameplayAuthoring.js";
-import { resolveDataSceneInstanceComponents } from "./dataSceneComponents.js";
+import { dataSceneAuthoringContinuityContext, type DataSceneAuthoringContinuityMetadata } from "./dataSceneProgress.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { FerrumEngine } from "./engineTypes.js";
 import type { GameplayEntityHandle } from "./gameplayAuthoring.js";
-import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 import type { DataSceneRuntimeEngineAdapter } from "./dataSceneRuntimeTarget.js";
+
+function entry<T>(values: Readonly<Record<string, T>> | undefined, id: string): T | undefined {
+  return values && Object.prototype.hasOwnProperty.call(values, id) ? values[id] : undefined;
+}
 
 /** Match authored IDs/configuration only. Rust retains and restores all actual playback/LOD values. */
 export function prepareDataSceneAuthoringContinuity(
   engine: FerrumEngine,
-  document: ResolvedSceneAuthoringDocument,
+  metadata: DataSceneAuthoringContinuityMetadata,
   instances: readonly ResolvedSceneCompositionInstance[],
   adapter: DataSceneRuntimeEngineAdapter,
   path: string,
@@ -23,20 +23,14 @@ export function prepareDataSceneAuthoringContinuity(
   if (!begin || !finish || !cancel)
     throw sceneCompositionDiagnosticError(path, "preserving animation/LOD requires compatible Wasm");
   const previous = dataSceneAuthoringContinuityContext(engine);
-  const oldDocument = resolveSceneAuthoringDocument(previous.document, { validateComponents: true, validateBindings: true });
-  const oldInstances = new Map(bindSceneBehaviorRecipes(oldDocument.sceneComposition, oldDocument.behaviorRecipes).instances.map(instance => [instance.id, instance]));
   const ids: string[] = [], handles: number[] = [], masks: number[] = [];
-  const animation = (instance: ResolvedSceneCompositionInstance) => {
-    const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: true });
-    return components.mode === "inline" ? components.sprite.animationSet : undefined;
-  };
   for (const instance of instances) {
-    const old = oldInstances.get(instance.id), handle = previous.handles[instance.id];
-    if (!old || !handle) continue;
+    const handle = entry(previous.handles, instance.id);
+    if (!handle) continue;
     let mask = 0;
-    const before = animation(old), after = animation(instance);
+    const before = entry(previous.metadata.animations, instance.id), after = entry(metadata.animations, instance.id);
     if (before && after && JSON.stringify(before) === JSON.stringify(after)) mask |= 1;
-    const oldModel = oldDocument.spatial?.models?.[instance.id], model = document.spatial?.models?.[instance.id];
+    const oldModel = entry(previous.metadata.models, instance.id), model = entry(metadata.models, instance.id);
     if (oldModel && model && oldModel.asset === model.asset && oldModel.contentId === model.contentId && JSON.stringify(oldModel.lods) === JSON.stringify(model.lods)) mask |= 2;
     if (mask) {
       ids.push(instance.id);

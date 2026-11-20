@@ -257,6 +257,28 @@ class FakeBridge {
   }
 }
 
+test("runFrame prefers the checked frame entry and propagates rejection before consuming output", () => {
+  for (const measure of [false, true]) {
+    const order: string[] = [];
+    const failure = new Error("actual motion rejected");
+    const engine = Object.assign(new FakeEngine(order), {
+      update_frame_checked(this: FakeEngine, delta: number, render: boolean, telemetry: boolean, debug: boolean): never {
+        equal(this, engine);
+        deepEqual([delta, render, telemetry, debug], [0.016, measure, measure, false]);
+        order.push("checked_update");
+        throw failure;
+      },
+    });
+    engine.update_frame = () => { throw new Error("unchecked update must not run"); };
+    const context = framePipelineContext({ bridge: new FakeBridge(order), engine, order });
+    context.needsFrameState = measure;
+    context.onFrame = () => { throw new Error("failed frame must not be delivered"); };
+    throws(() => runFrame(context, 0.016), error => error === failure);
+    equal(order.includes("checked_update"), true);
+    equal(order.some(phase => phase.includes("audio") || phase.includes("render") || phase.includes("telemetry")), false);
+  }
+});
+
 test("runFrame preserves input, viewport, update, audio, buffer, callback order", () => {
   const order: string[] = [];
   const bridge = new FakeBridge(order);

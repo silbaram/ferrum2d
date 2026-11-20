@@ -4,6 +4,9 @@ import os from "node:os";
 import { encodePngRgba } from "../tools/pack-textures.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateWasmBindingsFactory } from "../build/generate-wasm-bindings-factory.mjs";
+import { generateNativeFileSdkBuild } from "../build/generate-native-file-sdk-build.mjs";
+import { assertNativeWasmSourceIdentity } from "./native-wasm-source-identity.mjs";
 
 import {
   assert,
@@ -28,6 +31,7 @@ const packageJson = await readJson(path.join(packageRoot, "package.json"));
 const rootPackageJson = await readJson(path.join(repoRoot, "package.json"));
 const expectPublishable = process.argv.includes("--expect-publishable");
 const verifyPack = process.argv.includes("--verify-pack");
+const skipBuild = process.argv.includes("--skip-build");
 const packageLabel = "@ferrum2d/create-game";
 const expectedFiles = ["LICENSE", "README.md", "bin", "templates"];
 const commonRequiredTemplateFiles = [
@@ -1259,28 +1263,35 @@ async function symlinkWorkspacePackage(sourcePath, linkPath) {
 
 async function buildFerrumWebPublicEntrypoint() {
   if (ferrumWebPublicEntrypointBuilt) return;
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const wasmResult = await run(pnpm, ["build:wasm"], repoRoot);
-  assert(
-    wasmResult.code === 0,
-    `create-game package check must build @ferrum2d/ferrum-web Wasm artifacts before runtime replay validation\n${wasmResult.stdout}\n${wasmResult.stderr}`.trim(),
-  );
-  const result = await run(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
-  assert(
-    result.code === 0,
-    `create-game package check must build @ferrum2d/ferrum-web before symlinked public-entrypoint validation\n${result.stdout}\n${result.stderr}`.trim(),
-  );
-  const studioKitResult = await run(pnpm, ["--filter", "@ferrum2d/studio-kit", "build"], repoRoot);
-  assert(
-    studioKitResult.code === 0,
-    `create-game package check must build @ferrum2d/studio-kit before symlinked viewer validation\n${studioKitResult.stdout}\n${studioKitResult.stderr}`.trim(),
-  );
+  if (!skipBuild) {
+    const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+    const wasmResult = await run(pnpm, ["build:wasm"], repoRoot);
+    assert(
+      wasmResult.code === 0,
+      `create-game package check must build @ferrum2d/ferrum-web Wasm artifacts before runtime replay validation\n${wasmResult.stdout}\n${wasmResult.stderr}`.trim(),
+    );
+    const result = await run(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
+    assert(
+      result.code === 0,
+      `create-game package check must build @ferrum2d/ferrum-web before symlinked public-entrypoint validation\n${result.stdout}\n${result.stderr}`.trim(),
+    );
+    const studioKitResult = await run(pnpm, ["--filter", "@ferrum2d/studio-kit", "build"], repoRoot);
+    assert(
+      studioKitResult.code === 0,
+      `create-game package check must build @ferrum2d/studio-kit before symlinked viewer validation\n${studioKitResult.stdout}\n${studioKitResult.stderr}`.trim(),
+    );
+  }
   await requireFile(path.join(repoRoot, "packages/ferrum-studio-kit/dist/index.js"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-studio-kit/dist/index.d.ts"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core.js"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core_bg.wasm"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/dist/index.js"), repoRoot);
   await requireFile(path.join(repoRoot, "packages/ferrum-web/dist/index.d.ts"), repoRoot);
+  if (skipBuild) {
+    await generateWasmBindingsFactory(path.join(repoRoot, "packages/ferrum-web/pkg"), { check: true });
+    await assertNativeWasmSourceIdentity(repoRoot);
+    await generateNativeFileSdkBuild(repoRoot, { check: true, checkDist: true });
+  }
   ferrumWebPublicEntrypointBuilt = true;
 }
 
@@ -1408,6 +1419,7 @@ async function assertRuntimeReplayRecipe(projectRoot, templateName) {
     previousFrame = frame;
   }
   assertStringArray(recipe.canonicalState?.required, `${templateName} runtime replay recipe canonicalState.required`);
+  assert(recipe.canonicalState.required.includes("custom.nativeRuntime.sha256"), `${templateName} runtime replay must include the complete Native file hash`);
   assertStringArray(recipe.canonicalState?.excluded, `${templateName} runtime replay recipe canonicalState.excluded`);
   assertStringArray(recipe.implementationSteps, `${templateName} runtime replay recipe implementationSteps`);
   assert(
@@ -1625,6 +1637,13 @@ async function checkRuntimeReplayCoverageRegistry(projectRoot, template) {
     `${template.id} runtime replay fixture coverageTags`,
   );
   assertReplayRun(fixture.replay, `${template.id} runtime replay fixture replay`);
+  for (const [index, row] of fixture.replay.snapshots.entries()) {
+    const native = row.snapshot.custom?.nativeRuntime;
+    assert(native?.format === "ferrum2d.native-game-file.sha256", `${template.id} runtime replay frame ${index} must capture the Native file`);
+    assert(Number.isSafeInteger(native.byteLength) && native.byteLength > 0, `${template.id} runtime replay frame ${index} Native byteLength is invalid`);
+    assert(typeof native.sha256 === "string" && /^[0-9a-f]{64}$/.test(native.sha256), `${template.id} runtime replay frame ${index} Native hash is invalid`);
+    assert(row.snapshot.builtInShooter === undefined, `${template.id} runtime replay must use the default Native backend rather than the legacy Shooter JSON snapshot`);
+  }
 }
 
 function assertReplayFixtureEnvelope(fixture, template) {

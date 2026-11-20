@@ -775,6 +775,46 @@ test("RuntimeFrameRenderer carries real resource statistics to overlay and profi
   frameRenderer.renderFrame(renderFrameState({ frameState: frameState() }));
 });
 
+test("RuntimeFrameRenderer combines flat and spatial debug costs without inventing missing measurements", () => {
+  for (const [flat, spatial, expected] of [
+    [undefined, undefined, undefined], [undefined, 4, 4], [2, 3, 5], [0, 0, 0], [2, undefined, 2],
+  ]) {
+    const stats = emptyRendererStats();
+    if (flat === undefined) delete (stats as Partial<RendererStats>).physicsDebugLineCount;
+    else stats.physicsDebugLineCount = flat;
+    if (spatial !== undefined) stats.spatial = { debugLineCount: spatial } as NonNullable<RendererStats["spatial"]>;
+    let observed: number | undefined;
+    const runtime = new RuntimeFrameRenderer({
+      renderer: { render() {}, renderCommands: () => stats },
+      needsRuntimeFrame: true, shouldRenderPhysicsDebugLines: false,
+      onFrame: ({ debugMetrics }) => { observed = debugMetrics.physicsDebugLineCount; },
+    });
+    runtime.renderFrame(renderFrameState({ frameState: frameState() }));
+    equal(observed, expected);
+  }
+});
+
+test("spatial-only debug draw costs reach profiler samples maxima and the existing line budget", async () => {
+  const { RuntimeProfiler } = await import("../src/runtimeProfiler.js");
+  const profiler = new RuntimeProfiler({ budget: { maxPhysicsDebugLineCount: 2 } });
+  const stats = emptyRendererStats();
+  stats.spatial = { debugLineCount: 3 } as NonNullable<RendererStats["spatial"]>;
+  let overlayCount: number | undefined;
+  const runtime = new RuntimeFrameRenderer({
+    renderer: { render() {}, renderCommands: () => stats },
+    needsRuntimeFrame: true, shouldRenderPhysicsDebugLines: false, profiler,
+    debugOverlay: { update: (metrics: { physicsDebugLineCount?: number }) => { overlayCount = metrics.physicsDebugLineCount; } } as never,
+  });
+  runtime.renderFrame(renderFrameState({ frameState: frameState() }));
+  const snapshot = profiler.snapshot();
+  equal(overlayCount, 3);
+  equal(snapshot.latestFrame?.physicsDebugLineCount, 3);
+  equal(snapshot.maxPhysicsDebugLineCount, 3);
+  deepEqual(snapshot.budgetReport?.violations.map(({ id, actual, limit }) => ({ id, actual, limit })), [
+    { id: "maxPhysicsDebugLineCount", actual: 3, limit: 2 },
+  ]);
+});
+
 test('automatic profiler trace uses the issuing renderer ID and records spatial costs with unclamped intervals',async()=>{
  const {RuntimeProfiler}=await import('../src/runtimeProfiler.js');
  const order:string[]=[],renderer=fakeRuntimeRenderer(order),profiler=new RuntimeProfiler({frameTrace:{beforeFrames:1,afterFrames:1}});
@@ -860,3 +900,34 @@ for (const phase of ["gpuTimingStats", "resourceStats"] as const) {
     equal(alive, false);
   });
 }
+
+test("native frame measurements reach overlay, profiler maxima and immutable trace samples without legacy substitutes", async () => {
+  const {RuntimeProfiler} = await import("../src/runtimeProfiler.js");
+  const {UNIFIED_PHYSICS_COUNTER_LAYOUT} = await import("../src/unifiedPhysicsObservations.js");
+  const {formatDebugOverlayMetrics} = await import("../src/debugOverlay.js");
+  const counters = Object.fromEntries(Object.keys(UNIFIED_PHYSICS_COUNTER_LAYOUT).map(k => [k,0])) as Record<keyof typeof UNIFIED_PHYSICS_COUNTER_LAYOUT,number>;
+  counters.backendSteps=3;counters.solverContacts=12;counters.solverConstraints=4;counters.dynamicBodies=8;
+  const native = {backend:"rapier3d" as const,legacySolverRowMetricsAvailable:false as const,fixedSteps:3,
+    authoredJointBreaks:0,ccdObservationsDropped:0,solvedContacts:4,impulsesDropped:0,step:{...counters,backendSteps:1},frame:counters};
+  const profiler = new RuntimeProfiler({maxFrameSamples:2,frameTrace:{frameBudgetMs:1,beforeFrames:0,afterFrames:0}});
+  let overlayText:string[]=[];
+  const renderer = new RuntimeFrameRenderer({renderer:fakeRuntimeRenderer([]),profiler,
+    shouldRenderPhysicsDebugLines:false,needsRuntimeFrame:true,
+    debugOverlay:{update:(metrics: import("../src/debugOverlay.js").DebugOverlayMetrics)=>{overlayText=formatDebugOverlayMetrics(metrics);}} as never});
+  const frame=frameState();frame.unifiedPhysics=native;
+  renderer.renderFrame(renderFrameState({frameState:frame}));
+  equal(profiler.snapshot().latestFrame?.unifiedPhysics?.frame.solverContacts,12);
+  equal(profiler.snapshot().maxNativeFrameCounters?.backendSteps,3);
+  equal(profiler.snapshot().nativePhysicsSampleCount,1);
+  equal(overlayText.some(line=>line.includes("native solver contacts")&&line.includes("12")),true);
+  counters.solverContacts=0;
+  equal(profiler.snapshot().latestFrame?.unifiedPhysics?.frame.solverContacts,12);
+  equal(profiler.snapshot().frameTrace?.captures[0].frames[0].unifiedPhysics?.frame.solverContacts,12);
+  renderer.renderFrame(renderFrameState({frameState:frame}));
+  equal(profiler.snapshot().maxNativeFrameCounters?.solverContacts,12);
+  renderer.renderFrame(renderFrameState({frameState:frameState()}));
+  equal(profiler.snapshot().nativePhysicsSampleCount,1);equal(profiler.snapshot().maxNativeFrameCounters?.solverContacts,0);
+  renderer.renderFrame(renderFrameState({frameState:frameState()}));
+  equal(profiler.snapshot().maxNativeFrameCounters,undefined);equal(profiler.snapshot().latestFrame?.unifiedPhysics,undefined);
+  throws(()=>profiler.recordFrame({...profiler.snapshot().latestFrame!,unifiedPhysics:{...native,frame:{...counters,solverContacts:-1}}}),/solverContacts/);
+});

@@ -1,4 +1,4 @@
-import { placementSpatialPose } from "./placementSpatialPose";
+import { placementBodyElevation, placementSpatialPose, placementSpatialModelBounds } from "./placementSpatialPose";
 import {
   setUiAttribute,
   setUiText,
@@ -135,6 +135,8 @@ export function installPlacementSpatialWorkspace(options: {
     applying = false,
     suspended = false,
     appliedMode: Mode = "2d";
+  let modelGeometryState: ScenePlacementViewerState | undefined, modelGeometrySpace: string | undefined;
+  const modelGeometry = new Map<string, SpatialPoint[]>();
   let frame: SpatialRenderBufferView | undefined;
   let inspector: HTMLElement | undefined;
   let navigationTool: "select" | "pan" = "select";
@@ -1191,7 +1193,7 @@ export function installPlacementSpatialWorkspace(options: {
     const values: Record<string, number | undefined> = {
       x: surface?.x ?? instance?.transform.x,
       y: surface?.y ?? instance?.transform.y,
-      elevation: surface?.elevation ?? instance?.body?.heightSpan?.elevation,
+      elevation: surface?.elevation ?? placementBodyElevation(instance),
       floorId: surface?.floorId ?? instance?.body?.heightSpan?.floorId,
       offset: model || billboard
         ? (model?.elevation ?? billboard?.elevation ?? 0)
@@ -1257,7 +1259,11 @@ export function installPlacementSpatialWorkspace(options: {
           viewer.updateInstanceTransform(target.id, { [name]: value }),
         );
       else if (name === "elevation" || name === "floorId") {
-        if (!instance.body?.heightSpan)
+        if (instance.componentTemplate !== undefined)
+          throw new Error("Shared component template body is read-only; edit componentTemplates with an agent.");
+        const shapeBody = instance.body && instance.body.type === undefined;
+        if (shapeBody && name === "floorId") throw new Error("3D physics uses XYZ collision geometry instead of a floor ID");
+        if (!shapeBody && !instance.body?.heightSpan)
           throw new Error(
             "Body heightSpan must be authored before editing physical height",
           );
@@ -1274,9 +1280,12 @@ export function installPlacementSpatialWorkspace(options: {
         if (!raw || typeof raw !== "object" || Array.isArray(raw))
           throw new Error("Inline component source required");
         const components = structuredClone(raw);
-        const body = {
-          ...instance.body,
-          heightSpan: { ...instance.body.heightSpan, [name]: value },
+        const sourceBody = "body" in components ? components.body : undefined;
+        if (!sourceBody || typeof sourceBody !== "object" || Array.isArray(sourceBody))
+          throw new Error("Inline body source required");
+        const body = shapeBody ? { ...sourceBody, elevation: value } : {
+          ...sourceBody,
+          heightSpan: { ...instance.body?.heightSpan, [name]: value },
         };
         options.onChange(
           viewer.updateInstanceComponents(target.id, { ...components, body }),
@@ -1417,18 +1426,19 @@ export function installPlacementSpatialWorkspace(options: {
       signature = nextSignature;
       applying = true;
       try {
-        if (state.lighting?.profile === "lit" || state.spatial || active.mode === "game" || appliedMode === "game") {
+        const physics = options.document().physics;
+        if (physics || state.lighting?.profile === "lit" || state.spatial || active.mode === "game" || appliedMode === "game") {
           visibilitySignature = "";
           ghostSignature = "";
           options.apply(
-            active.mode === "2d" && !state.spatial && state.lighting?.profile !== "lit"
+            active.mode === "2d" && !physics && !state.spatial && state.lighting?.profile !== "lit"
               ? options.document()
               : authoredDocument(),
           );
           state = viewer.state();
         }
-        if (active.mode === "2d" && state.spatial) {
-          runtime.engine.clearDataSceneSpatial();
+        if (active.mode === "2d" && (state.spatial || physics)) {
+          if (state.spatial) runtime.engine.clearDataSceneSpatial();
           runtime.engine.pauseDataScene();
         } else if (active.mode === "spatial") {
           runtime.engine.pauseDataScene();
@@ -1512,6 +1522,7 @@ export function installPlacementSpatialWorkspace(options: {
       input.disabled =
         values[name] === undefined ||
         !!locked ||
+        (instance?.componentTemplate !== undefined && ["elevation", "floorId"].includes(name)) ||
         (name === "yaw" && actorRotation) ||
         !!(
           selected &&
@@ -1525,7 +1536,9 @@ export function installPlacementSpatialWorkspace(options: {
     publish();
     setUiText(
       support,
-      values.floorId === undefined
+      instance?.body && instance.body.type === undefined
+        ? "3D physics body"
+        : values.floorId === undefined
         ? "Visual Only"
         : uiMessage("Selected Floor {0}", values.floorId),
     );
@@ -1611,6 +1624,12 @@ export function installPlacementSpatialWorkspace(options: {
       if (!instance) return [];
       const base = pose(target.id);
       if (target.kind === "model") {
+        const physics = options.document().physics;
+        if (modelGeometryState !== state || modelGeometrySpace !== physics?.space) {
+          modelGeometry.clear(); modelGeometryState = state; modelGeometrySpace = physics?.space;
+        }
+        const cached = modelGeometry.get(target.id);
+        if (cached) return cached;
         const model = state.spatial.models?.[target.id],
           asset = model ? models.get(model.contentId) : undefined;
         if (!model || !asset) return [];
@@ -1624,17 +1643,11 @@ export function installPlacementSpatialWorkspace(options: {
             (i < 3 ? Math.min : Math.max)(
               ...levels.map((level) => level!.bounds[i]),
             ),
-          ),
-          s = model.scale ?? 1,
-          a = base.yaw + ((model.yawDegrees ?? 0) * Math.PI) / 180;
-        for (const x of [b[0], b[3]])
-          for (const y of [b[1], b[4]])
-            for (const z of [b[2], b[5]])
-              points.push({
-                x: base.x + s * (x * Math.cos(a) + z * Math.sin(a)),
-                y: base.y + s * (x * Math.sin(a) - z * Math.cos(a)),
-                elevation: base.elevation + (model.elevation ?? 0) + s * y,
-              });
+          );
+        // Cold authored geometry shared by selection, framing and ghosts.
+        // Runtime model rendering continues to consume the Rust-generated matrix.
+        points = placementSpatialModelBounds(state, target.id, b, physics);
+        modelGeometry.set(target.id, points);
       } else {
         const visual = instance.visual,
           b = state.spatial.billboards[target.id];
@@ -1898,6 +1911,8 @@ export function installPlacementSpatialWorkspace(options: {
       return "Unlock the object to edit its placement.";
     if (kind === "height" && target.kind !== "surface" && state.spatial?.attachments?.[target.id])
       return "Position and physical height are owned by the attachment source.";
+    if (kind === "height" && target.kind !== "surface" && selectedInstance(state)?.componentTemplate !== undefined && placementBodyElevation(selectedInstance(state)) !== undefined)
+      return "Shared component template body is read-only; edit componentTemplates with an agent.";
     if (kind === "rotate" && target.kind === "surface")
       return "Terrain surfaces cannot rotate";
     if (kind === "rotate" && target.kind === "billboard" && state.spatial?.actor?.instanceId === target.id)
@@ -1917,8 +1932,9 @@ export function installPlacementSpatialWorkspace(options: {
       if (surface) editField("elevation", quantize(surface.elevation + delta), origin);
     } else {
       const instance = selectedInstance(origin);
-      if (instance?.body?.heightSpan)
-        editField("elevation", quantize(instance.body.heightSpan.elevation + delta), origin);
+      const elevation = placementBodyElevation(instance);
+      if (elevation !== undefined)
+        editField("elevation", quantize(elevation + delta), origin);
       else {
         const visual = target.kind === "model"
           ? origin.spatial?.models?.[target.id]
@@ -2480,6 +2496,7 @@ export function installPlacementSpatialWorkspace(options: {
       Object.assign(window, {
         ferrumPlacementSpatialSelection: {
           target,
+          geometrySource: "authoring",
           bounds: points.map((p) => ({ ...p })),
           canvas: {
             left: rect.left,

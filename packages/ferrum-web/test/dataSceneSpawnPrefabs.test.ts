@@ -6,6 +6,7 @@ import { resolveSceneAuthoringDocument } from "../src/sceneAuthoringDocument.js"
 import {
   configureDataSceneGameplay,
   supportsDataSceneSpawnPrefabs,
+  supportsDataSceneSpawnPrefabPhysics,
   supportsDataSceneProjectilePrefabs,
   supportsDataSceneCombatProgress,
 } from "../src/dataSceneGameplay.js";
@@ -252,6 +253,34 @@ test("spawn registration preserves sparse u32 IDs and probes additive capability
       } as unknown as Engine),
       false,
     );
+});
+
+test("native prefab physics negotiates exact capability before any direct catalog replacement", () => {
+  const prototype={entityId:3,entityGeneration:7};
+  for(const version of [undefined,0,2,NaN,1]) {
+    let catalogs=0,textureReads=0;
+    const native={
+      data_scene_spawn_prefabs_version:()=>1,data_scene_combat_progress_version:()=>4,data_scene_projectile_prefabs_version:()=>1,
+      data_scene_projectile_visuals_version:()=>1,physics_spec_backend_active:()=>true,
+      configure_data_scene_gameplay_v3:()=>true,
+      configure_data_scene_gameplay_v7:()=>{catalogs++;return true;},
+      configure_data_scene_gameplay_v8:()=>{catalogs++;return true;},
+      ...(version===undefined?{}:{data_scene_spawn_prefab_physics_version:()=>version}),
+    } as unknown as Engine;
+    equal(supportsDataSceneSpawnPrefabs(native),true);
+    equal(supportsDataSceneSpawnPrefabPhysics(native),version===1);
+    const basic={combat:true,primaryActor:prototype,spawnPrefabs:[{prefabId:1,prototype}]};
+    const visual={...basic,projectilePrefabs:{spark:{sprite:{texture:"spark",width:1,height:1,animation:{frames:[{u0:0,v0:0,u1:0.5,v1:1},{u0:0.5,v0:0,u1:1,v1:1}],fps:3}},collider:{halfWidth:0.1,halfHeight:0.1}}}};
+    const visualOnly={combat:true,primaryActor:prototype,projectilePrefabs:visual.projectilePrefabs};
+    for(const options of [basic,visual,{...basic,spawnPrefabs:[]},visualOnly]) {
+      if(version===1) equal(configureDataSceneGameplay(native,options,()=>{textureReads++;return 1;}),true);
+      else throws(()=>configureDataSceneGameplay(native,options,()=>{textureReads++;return 1;}),/spawn-prefab physics capability version 1/);
+    }
+    equal(catalogs,version===1?4:0);equal(textureReads,version===1?2:0);
+    const legacy={...native,physics_spec_backend_active:()=>false} as unknown as Engine;
+    equal(configureDataSceneGameplay(legacy,basic),true);
+    equal(catalogs,version===1?5:1);
+  }
 });
 
 test("spawn codec3 preserves removed sources, sparse IDs, contacts, flags and last issued serial", () => {

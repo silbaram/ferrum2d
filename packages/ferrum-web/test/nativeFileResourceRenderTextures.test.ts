@@ -1,0 +1,8 @@
+import { test } from "node:test";
+import { deepEqual, throws } from "node:assert/strict";
+import { ResourceBudget } from "../src/nativeFileResourceBudget.js";
+import { copyFileRenderTextures, type ResourceRenderTextureData } from "../src/nativeFileResourceRenderTextures.js";
+const data: ResourceRenderTextureData = { generation: 8, srgb: false, entries: [{ id: 17, width: 2, height: 1, filter: "nearest", pixels: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]) }] };
+test("render texture typed admission preserves current bytes and exact cumulative quota", () => { const before = data.entries[0].pixels.slice(), b = new ResourceBudget(), copy = copyFileRenderTextures(data, b), u = b.usage(), limits = { maxWork: u.work, maxResources: u.resources, maxMetadataBytes: u.metadataBytes, maxSourceBytes: u.sourceBytes, maxDecodedBytes: u.decodedBytes, maxGpuBytes: u.gpuBytes }; deepEqual(copy, data); deepEqual(data.entries[0].pixels, before); const exact = new ResourceBudget(limits); copyFileRenderTextures(data, exact); deepEqual(exact.usage(), u); throws(() => copyFileRenderTextures(data, new ResourceBudget({ ...limits, maxDecodedBytes: u.decodedBytes - 1 })), /LIMIT/); });
+test("render texture duplicate IDs, dimensions, filters and byte spans reject without GPU consumption", () => { for (const bad of [{ ...data, entries: [data.entries[0], data.entries[0]] }, { ...data, entries: [{ ...data.entries[0], width: Infinity }] }, { ...data, entries: [{ ...data.entries[0], pixels: new Uint8Array(3) }] }, { ...data, entries: [{ ...data.entries[0], filter: "mips" }] }])
+    throws(() => copyFileRenderTextures(bad as ResourceRenderTextureData, new ResourceBudget()), /DATA/); });

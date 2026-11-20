@@ -39,6 +39,7 @@ const TEMPLATE_RUNTIME_REPLAY_RECIPE = Object.freeze({
       "scene.cameraY",
       "custom.template",
       "custom.runtime",
+      "custom.nativeRuntime.sha256",
     ],
     optional: [
       "physics",

@@ -22,6 +22,8 @@ export interface AssetHost {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback, options?: AssetLoadOptions): Promise<LoadedAssets>;
   releaseAssets?(assets: AssetReleasePayload): void;
   textureId(name: string): number;
+  /** Current retained JSON value; undefined when not loaded or released. */
+  getJsonAsset?(name: string): unknown;
   soundId?(name: string): number;
   hasSound?(soundId: number): boolean;
   playAudioEventBuffer?(events: AudioEventBufferView): void;
@@ -72,6 +74,8 @@ export interface FrameState {
   spawnDiagnostics: SpawnFrameDiagnostics;
   audioEventCount: number;
   audioEvents: readonly AudioEventView[];
+  /** Owned native step/frame measurements; absent for legacy physics. */
+  unifiedPhysics?: import("../unifiedPhysicsObservations.js").UnifiedPhysicsDiagnostics;
   physicsDiagnostics?: import("../physicsDiagnostics.js").PhysicsDiagnostics;
   physics: PhysicsFrameStats;
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
@@ -116,9 +120,13 @@ export interface SpawnFrameDiagnostics {
 export interface FixedTimestepOptions {
   /** Interpolate native rigid-body render poses between fixed steps; adds one step of display latency. */
   interpolate?: boolean;
+  /** false selects actual variable-duration native intervals, not a legacy fallback. */
   enabled?: boolean;
+  /** Nominal step. Live native setup requires its existing nominal value; omitted preserves that value. */
   stepSeconds?: number;
+  /** Native frame budget: finite f32 in 0.0001..102.4 seconds. Excess requested time is reported as dropped. */
   maxFrameSeconds?: number;
+  /** Native frame interval budget: integer in 1..1024. Variable intervals are at most 0.1 seconds each. */
   maxStepsPerUpdate?: number;
 }
 
@@ -129,9 +137,12 @@ export interface PhysicsFrameStats {
   continuous: boolean;
   fixedTimestepEnabled: boolean;
   fixedStepSeconds: number;
+  /** Executed native intervals, including variable-duration frames. */
   fixedSteps: number;
   fixedAlpha: number;
+  /** Accepted simulation time for the frame; includes native variable mode. */
   fixedConsumedSeconds: number;
+  /** Requested time excluded by the frame/work budget. */
   fixedDroppedSeconds: number;
   kinematicMoves: number;
   kinematicHits: number;

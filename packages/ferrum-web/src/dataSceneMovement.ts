@@ -2,7 +2,9 @@ import type { Engine } from "../pkg/ferrum_core";
 import type { FerrumSceneApi } from "./engineTypes.js";
 import { uint32Number } from "./particlePreset.js";
 
-/** World-space destination for the Data Scene primary actor (one enabled, solid kinematic AABB). */
+/** Simulation XY destination for the Data Scene primary actor. Supports a legacy
+ * kinematic AABB or an enabled native velocity-kinematic convex source. Native
+ * body rotation/local collider offsets are used; renderOffset is not geometry. */
 export interface DataSceneMoveOptions {
   x: number;
   y: number;

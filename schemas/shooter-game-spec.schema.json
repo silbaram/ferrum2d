@@ -802,6 +802,9 @@
     "physics": {
       "type": "object",
       "additionalProperties": false,
+      "allOf": [{
+        "$ref": "#/$defs/physicsKinematicControllerMode"
+      }],
       "properties": {
         "mode": { "enum": ["none", "arcade", "rigid"] },
         "gravity": { "$ref": "#/$defs/vector2" },
@@ -903,9 +906,60 @@
         "angularDamping": { "type": "number", "minimum": 0 },
         "enabled": { "type": "boolean" },
         "canSleep": { "type": "boolean" },
-        "fixedRotation": { "type": "boolean", "default": false }
+        "fixedRotation": { "type": "boolean", "default": false },
+        "kinematicController": { "$ref": "#/$defs/physicsKinematicController" }
       },
+      "allOf": [{ "$ref": "#/$defs/physicsKinematicControllerBody" }],
       "not": { "required": ["collider", "colliders"] }
+    },
+    "physicsKinematicController": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "native 물리 interval의 활성 solid convex kinematic body에 적용하는 자동 planar controller 옵션. 고정·가변 clock을 지원하며 생략하고 body를 재생성하면 기본값을 사용한다.",
+      "properties": {
+        "solidMaskBits": { "type": "integer", "minimum": 0, "maximum": 4294967295, "default": 4294967295 },
+        "maxIterations": { "type": "integer", "minimum": 1, "maximum": 8, "default": 4 },
+        "maxStepHeight": { "type": "number", "minimum": 0, "maximum": 65536, "default": 0 },
+        "maxDropHeight": { "type": "number", "minimum": 0, "maximum": 65536, "default": 0 },
+        "allowLedgeDrop": { "type": "boolean", "default": false }
+      }
+    },
+    "physicsKinematicControllerMode": {
+      "if": { "required": ["mode"], "properties": { "mode": { "const": "none" } } },
+      "then": { "properties": { "bodies": { "additionalProperties": { "not": { "required": ["kinematicController"] } } } } }
+    },
+    "physicsKinematicControllerBody": {
+      "if": { "required": ["kinematicController"] },
+      "then": {
+        "required": ["type"],
+        "properties": {
+          "type": { "const": "kinematic" },
+          "enabled": { "const": true },
+          "collider": { "$ref": "#/$defs/physicsKinematicControllerSolidSource" },
+          "colliders": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "anyOf": [
+                { "required": ["enabled"], "properties": { "enabled": { "const": false } } },
+                { "required": ["trigger"], "properties": { "trigger": { "const": true } } },
+                { "$ref": "#/$defs/physicsKinematicControllerSolidSource" }
+              ]
+            },
+            "not": { "items": { "not": { "$ref": "#/$defs/physicsKinematicControllerSolidSource" } } }
+          }
+        },
+        "oneOf": [{ "required": ["collider"] }, { "required": ["colliders"] }]
+      }
+    },
+    "physicsKinematicControllerSolidSource": {
+      "type": "object",
+      "required": ["shape"],
+      "properties": {
+        "shape": { "enum": ["aabb", "box", "circle", "capsule", "orientedBox", "convexPolygon"] },
+        "enabled": { "const": true },
+        "trigger": { "const": false }
+      }
     },
     "physicsCollider": {
       "oneOf": [

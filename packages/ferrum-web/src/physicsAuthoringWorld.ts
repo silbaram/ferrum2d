@@ -30,6 +30,8 @@ import type {
 } from "./physicsAuthoringTypes.js";
 import { isObject } from "./physicsAuthoringValidation.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
+import { usesNativePhysicsSpec, validateNativePhysicsSpec } from "./physicsSpecNativeRuntime.js";
+import { supportsNativePhysicsAuthoring, withNativePhysicsAuthoring } from "./nativePhysicsAuthoring.js";
 import { createHd2dFloorIds } from "./physicsHd2dFloorIds.js";
 import type {
   PhysicsSpec,
@@ -42,8 +44,31 @@ import type {
 
 const DEFAULT_APPLY_PATH = "physics";
 const DEFAULT_UNSAFE_UNIT_SCALE_THRESHOLD = 5000;
+const clearStates = new WeakMap<object, { owner: FerrumEngine; cleared: boolean }>();
 
 function applyPhysicsWorldFromSpec(
+  engine: FerrumEngine,
+  input: PhysicsSpec | ResolvedPhysicsSpec,
+  options: PhysicsWorldApplyOptions = {},
+  configureRuntime = true,
+): PhysicsWorldApplyResult {
+  const spec = isResolvedPhysicsSpec(input) ? input : resolvePhysicsSpec(input, { path: options.path ?? DEFAULT_APPLY_PATH });
+  const apply = () => applyPhysicsWorldFromSpecUnchecked(engine, spec, options, configureRuntime);
+  const state = options.replace && clearStates.get(options.replace);
+  if (state && state.owner !== engine)
+    throw physicsSpecDiagnosticError(`${options.path ?? DEFAULT_APPLY_PATH}.replace`, "must belong to the same Engine");
+  if (!configureRuntime || !usesNativePhysicsSpec(spec)) return apply();
+  const wasCleared = state?.cleared;
+  const transactional = supportsNativePhysicsAuthoring(engine);
+  try {
+    return withNativePhysicsAuthoring(engine, apply);
+  } catch (error) {
+    if (state && transactional) state.cleared = wasCleared!;
+    throw error;
+  }
+}
+
+function applyPhysicsWorldFromSpecUnchecked(
   engine: FerrumEngine,
   input: PhysicsSpec | ResolvedPhysicsSpec,
   options: PhysicsWorldApplyOptions = {},
@@ -53,12 +78,21 @@ function applyPhysicsWorldFromSpec(
   const spec = isResolvedPhysicsSpec(input) ? input : resolvePhysicsSpec(input, { path });
   const bodies = Object.values(spec.bodies);
   const joints = Object.values(spec.joints);
+  if (!configureRuntime && bodies.some(body => body.kinematicController !== undefined))
+    throw physicsSpecDiagnosticError(`${path}.bodies`, "authored kinematicController requires runtime configuration");
   if (spec.mode === "none" && (bodies.length > 0 || joints.length > 0)) {
     throw physicsSpecDiagnosticError(`${path}.mode`, "cannot apply bodies or joints when physics mode is none");
   }
 
+  if (configureRuntime) {
+    validateNativePhysicsSpec(spec, path);
+    if (usesNativePhysicsSpec(spec) && (typeof engine.configurePhysicsRuntime !== "function"
+      || typeof engine.validatePhysicsRuntime !== "function")) {
+      throw physicsSpecDiagnosticError(`${path}.mode`, `${spec.mode} Physics Spec requires a runtime with native backend configuration`);
+    }
+    engine.validatePhysicsRuntime?.(spec);
+  }
   options.replace?.clear();
-  if (configureRuntime) configureAppliedPhysicsRuntime(engine, spec);
 
   const warnings = physicsApplyWarnings(spec, path, options.unsafeUnitScaleThreshold);
   for (const warning of warnings) {
@@ -86,16 +120,27 @@ function applyPhysicsWorldFromSpec(
         `${path}.joints.${joint.id}`,
       );
     }
+    // Import the complete authored group, so native body and joint identities
+    // are available before this function returns, without consuming a tick.
+    if (configureRuntime) {
+      configureAppliedPhysicsRuntime(engine, spec);
+      for (const body of bodies) if (body.kinematicController !== undefined) {
+        if (typeof engine.configureDataSceneKinematicController !== "function"
+          || !engine.configureDataSceneKinematicController(bodyHandles[body.id], body.kinematicController)) {
+          throw physicsSpecDiagnosticError(`${path}.bodies.${body.id}.kinematicController`, "native controller admission rejected");
+        }
+      }
+    }
   } catch (error) {
     clearAppliedPhysicsWorld(engine, bodyHandles, jointHandles, worldAnchors);
     throw error;
   }
 
-  let cleared = false;
+  const state = { owner: engine, cleared: false };
   const publicBodies = frozenEntityHandleRecord(bodyHandles);
   const publicJoints = frozenJointHandleRecord(jointHandles);
   const publicWorldAnchors = Object.freeze(worldAnchors.map(frozenEntityHandle));
-  return {
+  const result: PhysicsWorldApplyResult = {
     spec,
     bodies: publicBodies,
     joints: publicJoints,
@@ -113,13 +158,15 @@ function applyPhysicsWorldFromSpec(
       positionIterations: spec.solver.positionIterations,
     },
     clear: () => {
-      if (cleared) {
+      if (state.cleared) {
         return;
       }
-      cleared = true;
+      state.cleared = true;
       clearAppliedPhysicsWorld(engine, bodyHandles, jointHandles, worldAnchors);
     },
   };
+  clearStates.set(result, state);
+  return result;
 }
 
 export function clearPhysicsWorld(_engine: FerrumEngine, world: PhysicsWorldApplyResult): void {
@@ -190,7 +237,7 @@ function spawnResolvedBody(
     isTrigger: collider.trigger,
     colliderEnabled: collider.enabled,
     bodyEnabled: body.enabled,
-    canSleep: body.canSleep,
+    canSleep: body.canSleep && spec.solver.sleep,
     fixedRotation: body.fixedRotation,
     velocityX: body.velocityX,
     velocityY: body.velocityY,
@@ -355,7 +402,7 @@ function isResolvedPhysicsSpec(input: PhysicsSpec | ResolvedPhysicsSpec): input 
 }
 
 export function createPhysicsWorldFromSpec(engine: FerrumEngine, input: PhysicsSpec | ResolvedPhysicsSpec, options: PhysicsWorldApplyOptions = {}): PhysicsWorldApplyResult {
-  return applyPhysicsWorldFromSpec(engine, input, options);
+  return applyPhysicsWorldFromSpec(engine, input, options, options.configureRuntime !== false);
 }
 
 // Snapshot restore stages entities without changing the live runtime or clearing
@@ -371,6 +418,9 @@ export function configureAppliedPhysicsRuntime(engine: FerrumEngine, spec: Resol
   if (typeof runtimeConfigurable.configurePhysicsRuntime === "function") {
     runtimeConfigurable.configurePhysicsRuntime(spec);
   } else {
+    if (usesNativePhysicsSpec(spec)) {
+      throw physicsSpecDiagnosticError("physics.mode", `${spec.mode} Physics Spec requires a runtime with native backend configuration`);
+    }
     applyPhysicsRuntimeOptions(engine, spec);
   }
 

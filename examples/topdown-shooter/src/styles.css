@@ -61,6 +61,9 @@ kbd { font: 11px "Ferrum Example UI", ui-monospace, monospace; color: var(--exam
 .shooter-guide-mount .example-guide { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px 0 0; border: 0; background: transparent; }
 .shooter-guide-mount .example-guide p { margin: 4px 0; }
 .shooter-debug-panel { margin-top: 18px; }
+.shooter-native-files > div { display: flex; gap: 8px; }
+.shooter-native-files > div button { margin: 0; }
+.shooter-native-staging { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
 .shooter-stage [data-ferrum-virtual-controls] { display: none; }
 /* VirtualControls supplies an inline system font; retain the local Korean glyphs. */
 .shooter-stage [data-ferrum-virtual-button] { font-family: "Ferrum Example UI", system-ui, sans-serif !important; }

@@ -1,9 +1,10 @@
-import { combatChaseCommands, validateChaseStopDistance } from "./dataSceneCombatCrowd.js";
+import { combatChaseCommands, supportsDataSceneCombatCrowd, validateChaseStopDistance } from "./dataSceneCombatCrowd.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import { resolveDataSceneInstanceComponents } from "./dataSceneComponents.js";
 import type { BehaviorRecipeCommand } from "./behaviorRecipes.js";
 import type { SceneBehaviorBindingPlan } from "./gameplayAuthoring.js";
+import type { DataScenePhysicsSpec } from "./dataScenePhysics.js";
 import type { DataSceneSpatialSpec } from "./dataSceneSpatial.js";
 
 /** Opt-in native Chase routing over spatial walkable surfaces and authored connections. */
@@ -105,8 +106,12 @@ export function validateCombatNavigationBindings(
   spatial: DataSceneSpatialSpec | undefined,
   plan: SceneBehaviorBindingPlan,
   path: string,
+  physics?: DataScenePhysicsSpec,
 ): void {
   const resolved = resolveCombatNavigation(config, path);
+  const native = physics?.space === "spatial";
+  if (native && (resolved.maxStepHeight > 10000 || resolved.maxDropHeight > 10000))
+    throw gameplayAuthoringDiagnosticError(path, "native controller step/drop limits must not exceed 10000 world units");
   if (!spatial || spatial.terrain.length === 0)
     throw gameplayAuthoringDiagnosticError(path, "requires spatial terrain and camera");
   for (const command of plan.commands)
@@ -136,7 +141,7 @@ export function validateCombatNavigationBindings(
     resolved.movementPatterns === "all"
       ? effective
       : new Map(combatChaseCommands(plan).map((c) => [c.entity, c]));
-  const sources = [...commands.keys()].filter((id) => id !== primaryActor);
+  const sources = [...commands.keys()].filter((id) => id !== primaryActor && (!native || id !== spatial.actor?.instanceId));
   if (sources.length > resolved.maxAgents)
     throw gameplayAuthoringDiagnosticError(
       `${path}.maxAgents`,
@@ -152,6 +157,13 @@ export function validateCombatNavigationBindings(
   };
   for (const id of sources) {
     const c = components(id);
+    if (native) {
+      if (c.mode !== "inline" || !c.body || c.body.type !== undefined || c.body.kind !== "kinematic-position" ||
+        !c.body.character || c.body.collider.shape.type !== "capsule" || c.body.collider.sensor ||
+        (c.body.character.up ?? [0, 1, 0]).some((n, i) => n !== (i === 1 ? 1 : 0)) || spatial.attachments?.[id])
+        throw gameplayAuthoringDiagnosticError(`${path}.${id}`, "requires an unattached spatial Y-up position-kinematic capsule controller");
+      continue;
+    }
     if (
       c.mode !== "inline" ||
       c.body?.type !== "kinematic" ||
@@ -168,7 +180,7 @@ export function validateCombatNavigationBindings(
   const targets = new Set(
     [
       primaryActor,
-      ...[...commands.values()].map((c) =>
+      ...[...commands.values()].filter(c => !native || sources.includes(c.entity)).map((c) =>
         (c.type === "configureChase" || c.type === "configureSeekTarget") &&
         plan.instances.some((i) => i.id === c.target)
           ? c.target
@@ -178,6 +190,11 @@ export function validateCombatNavigationBindings(
   );
   for (const id of targets) {
     const c = components(id);
+    if (native) {
+      if (c.mode !== "inline" || !c.body || c.body.type !== undefined)
+        throw gameplayAuthoringDiagnosticError(`${path}.${id}`, "native navigation target requires an inline shape body");
+      continue;
+    }
     if (c.mode !== "inline" || !c.body?.heightSpan)
       throw gameplayAuthoringDiagnosticError(
         `${path}.${id}`,
@@ -233,6 +250,27 @@ export function supportsDataSceneCombatNavigation(
     engine.data_scene_combat_navigation_version?.() === 1 &&
     typeof engine.configure_data_scene_gameplay_v4 === "function"
   );
+}
+/** Additive capability; older general navigation builds cannot author native capsule routes. */
+export function supportsDataSceneNativeCombatNavigation(
+  engine: Engine & CombatNavigationRuntime & { data_scene_native_combat_navigation_version?(): number },
+): boolean {
+  return engine.data_scene_native_combat_navigation_version?.() === 1 &&
+    supportsDataSceneCombatNavigation(engine) && typeof engine.configure_data_scene_gameplay_v5 === "function";
+}
+/** Native capsule forecasts/terrain-safe steering require their own additive capability. */
+export function supportsDataSceneNativeCombatCrowd(
+  engine: Engine & CombatNavigationRuntime & { data_scene_native_combat_crowd_version?(): number },
+): boolean {
+  return engine.data_scene_native_combat_crowd_version?.() === 1 &&
+    supportsDataSceneNativeCombatNavigation(engine) && supportsDataSceneCombatCrowd(engine);
+}
+/** Native all-pattern route/momentum ownership is independent of legacy v6 support. */
+export function supportsDataSceneNativeCombatMovement(
+  engine: Engine & CombatNavigationRuntime & CombatMovementRuntime & {data_scene_native_combat_movement_version?():number},
+): boolean {
+  return engine.data_scene_native_combat_movement_version?.() === 1 &&
+    supportsDataSceneNativeCombatNavigation(engine) && supportsDataSceneCombatMovement(engine);
 }
 export function dataSceneCombatNavigationStats(
   engine: Engine & CombatNavigationRuntime,

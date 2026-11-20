@@ -8,25 +8,31 @@ const TEST_ROOT = resolve(REPO_ROOT, "crates/ferrum-core/src");
 const FORBIDDEN_WORLD_STORAGE =
   /\b(?:[A-Za-z_][A-Za-z0-9_]*\.)*world\.(sprites|transforms|velocities|rotations|angular_velocities|colliders|circle_colliders|oriented_box_colliders|capsule_colliders|convex_polygon_colliders|collision_filters|alive)\b/g;
 
-const files = await collectExternalRustTestFiles(TEST_ROOT);
-const violations = [];
-for (const filePath of files) {
-  const source = await readFile(filePath, "utf8");
-  violations.push(...findForbiddenStorageAccess(filePath, source));
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }
 
-if (violations.length > 0) {
-  console.error(
-    "[rust test harness] direct World storage access is forbidden in external Rust tests; use World accessors instead.",
-  );
-  for (const violation of violations) {
-    console.error(
-      `${relative(REPO_ROOT, violation.filePath)}:${violation.line}:${violation.column}: ${violation.match}`,
-    );
+async function main() {
+  const files = await collectExternalRustTestFiles(TEST_ROOT);
+  const violations = [];
+  for (const filePath of files) {
+    const source = await readFile(filePath, "utf8");
+    violations.push(...findForbiddenStorageAccess(filePath, source));
   }
-  process.exitCode = 1;
-} else {
-  console.log("rust test harness guard ok");
+
+  if (violations.length > 0) {
+    console.error(
+      "[rust test harness] direct World storage access is forbidden in external Rust tests; use World accessors instead.",
+    );
+    for (const violation of violations) {
+      console.error(
+        `${relative(REPO_ROOT, violation.filePath)}:${violation.line}:${violation.column}: ${violation.match}`,
+      );
+    }
+    process.exitCode = 1;
+  } else {
+    console.log("rust test harness guard ok");
+  }
 }
 
 async function collectExternalRustTestFiles(directory) {
@@ -46,11 +52,15 @@ async function collectExternalRustTestFiles(directory) {
   return files.sort();
 }
 
-function isExternalRustTestFile(relativePath) {
-  return relativePath.endsWith("/tests.rs") || relativePath.includes("/tests/");
+export function isExternalRustTestFile(relativePath) {
+  const path = relativePath.replaceAll("\\", "/");
+  // World-owned unit tests must inspect/corrupt private storage for admission
+  // and capacity boundaries. Callers outside that module still use accessors.
+  return !path.startsWith("crates/ferrum-core/src/world/")
+    && (path.endsWith("/tests.rs") || path.includes("/tests/"));
 }
 
-function findForbiddenStorageAccess(filePath, source) {
+export function findForbiddenStorageAccess(filePath, source) {
   const violations = [];
   const lines = source.split("\n");
   for (const [lineIndex, line] of lines.entries()) {

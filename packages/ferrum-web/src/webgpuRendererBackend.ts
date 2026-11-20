@@ -1,3 +1,6 @@
+import {registerResourceModelCacheOwner,chargeFileModelGpu} from "./nativeFileResourceModelCaches.js";
+import {spatialModelResource} from "./spatialModel.js";
+import { registerTextureFileOwner, textureFileOwner } from "./nativeFileResourceOwners.js";
 import { validateLightingCookies } from "./lightingCookie.js";
 import { flatHdrOptions, validateFlatHdrTransition, type ResolvedFlatHdrOptions } from "./flatHdr.js";
 import { WebGpuHdrPass } from "./webgpuHdrPass.js";
@@ -139,6 +142,8 @@ export class WebGpuRendererBackend implements Renderer {
     this.uniformBindGroupLayout = this.createUniformBindGroupLayout();
     this.textureBindGroupLayout = this.createTextureBindGroupLayout();
     this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout, this.linearWorking);
+    registerTextureFileOwner(this, textureFileOwner(this.textureStore));
+    registerResourceModelCacheOwner(this,{capture:b=>{this.assertAlive();const roots=this.spatialPass.fileModelRoots(b);return {...roots,backend:"webgpu",prepared:[]};},prepare:async(data,b)=>{this.assertAlive();chargeFileModelGpu(data.all.map(a=>spatialModelResource(a)!),b);await this.spatialPass.fileRestoreModels(data.all,data.active,data.warmed);}});
     this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.frameTexture(), this.workingFormat, options.postProcess, this.linearWorking);
     this.uniformPipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.uniformBindGroupLayout],

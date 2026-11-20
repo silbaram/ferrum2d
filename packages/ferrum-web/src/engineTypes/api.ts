@@ -1,4 +1,7 @@
 /// <reference lib="esnext.disposable" preserve="true" />
+import type { FerrumUnifiedPhysicsApi } from "../unifiedPhysics.js";
+import type { FerrumRuntimeCheckpointApi } from "../runtimeCheckpoint.js";
+import type { FerrumGameplayObservationApi } from "../gameplayObservation.js";
 
 import type { PhysicsSolverStateBuffer } from "./physicsBodies.js";
 
@@ -10,6 +13,7 @@ import type { DataSceneMoveOptions, DataSceneMoveStatus } from "../dataSceneMove
 import type { DataSceneMovementAnimationSpec } from "../dataSceneMovementAnimation.js";
 import type { DataSceneGameplayOptions, DataSceneCombatStats } from "../dataSceneGameplay.js";
 import type { DataSceneNavigationSpec } from "../dataSceneNavigation.js";
+import type { DataSceneCollisionTilemapOptions } from "../dataSceneCollisionTilemap.js";
 import type { DirectionalLight2D } from "../lightingTypes.js";
 import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "../dataSceneSpriteAnimation.js";
@@ -84,6 +88,7 @@ import type {
   PhysicsBodyHeightSpan,
   PhysicsHd2dKinematicMoveOptions,
   PhysicsHd2dKinematicMoveResult,
+  PhysicsKinematicControllerOptions,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsRigidBodyMassProperties,
@@ -165,8 +170,15 @@ export interface CreateEngineOptions {
   physicsDebugOptions?: PhysicsDebugOptions;
   /** FrameState에 decoded physics debug line object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
   includePhysicsDebugLines?: boolean;
-  /** Optional fixed timestep simulation mode. 기본값은 disabled variable-delta update입니다. */
+  /** Simulation clock. 무옵션 생성은 native variable/automatic입니다.
+   * 명시 unified 정책은 기존 fixed 기본값을 유지하며 enabled=false도 native로 실행합니다. */
   fixedTimestep?: boolean | FixedTimestepOptions;
+  /** Engine-owned default selection across scenes. Omitted selects native planar
+   * variable/automatic physics. legacy explicitly selects the compatibility path.
+   * unified retains its fixed/automatic default; fixedTimestep overrides its clock.
+   * Native none is rejected. Scene-local physics remains until the next different scene.
+   */
+  physicsBackend?: "legacy" | "unified";
   /** Runtime physics mode override. 지정하면 Game Spec의 physics.mode보다 우선합니다. */
   physicsMode?: PhysicsMode;
   /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
@@ -262,12 +274,20 @@ export interface FerrumSceneApi {
   /** Native melee/dash input and timer actions with checkpoint state. */
   supportsDataSceneCombatActions(): boolean;
   supportsDataSceneSpawnPrefabs(): boolean;
+  /** Exact native body/controller inheritance capability, independent of the legacy prefab packet. */
+  supportsDataSceneSpawnPrefabPhysics(): boolean;
   supportsDataSceneProjectileVisuals(): boolean;
   /** Whether the native build supports complete Data Scene combat checkpoint capture/restore. */
   supportsDataSceneCombatProgress(): boolean;
   /** Named static projectile presentation with checkpoint v2 support. */
   supportsDataSceneProjectilePrefabs(): boolean;
   supportsDataSceneCombatNavigation(): boolean;
+  /** Native Y-up capsule Chase authoring and stop-distance bindings. */
+  supportsDataSceneNativeCombatNavigation(): boolean;
+  /** Native capsule peer forecasts and terrain-safe local steering. */
+  supportsDataSceneNativeCombatCrowd(): boolean;
+  /** Native SeekTarget/Accelerate with shared route/crowd budgets. */
+  supportsDataSceneNativeCombatMovement(): boolean;
   supportsDataSceneCombatMovement(): boolean;
   supportsDataSceneCombatNavigationScheduler(): boolean;
   dataSceneCombatNavigationSchedulerStats(): DataSceneCombatNavigationSchedulerStats | undefined;
@@ -276,6 +296,7 @@ export interface FerrumSceneApi {
   dataSceneCombatNavigationStats(): DataSceneCombatNavigationStats | undefined;
   configureDataSceneGameplay(options: DataSceneGameplayOptions): boolean;
   configureDataSceneNavigation(spec: DataSceneNavigationSpec, entityHandles?: Readonly<Record<string, GameplayEntityHandle>>): boolean;
+  configureDataSceneCollisionTilemap(options: DataSceneCollisionTilemapOptions | false): boolean;
   setDataSceneNavigationCost(column: number, row: number, cost: number): boolean;
   clearDataSceneNavigation(): boolean;
   /** Request a Rust-owned route for the primary actor; rejection preserves any active route. */
@@ -326,6 +347,12 @@ export interface FerrumParticleApi {
 
 export interface FerrumPhysicsRuntimeApi {
   configurePhysicsRuntime(spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec;
+  /** Cold mode/clock/capability preflight. Does not allocate native bodies or step simulation. */
+  validatePhysicsRuntime(spec: ResolvedPhysicsSpec): void;
+  /** Reads the authoritative backend. Native component views are not JSON solver saves. */
+  physicsBackend(): "legacy" | "unified-3d";
+  /** Native boolean/omitted-step changes preserve the world's nominal step.
+   * Rejected native changes preserve clock, render interpolation and diagnostic metadata. */
   configureFixedTimestep(options: boolean | FixedTimestepOptions): void;
   configureAutoRigidBodyStep(options: boolean | PhysicsRigidBodyStepOptions): void;
   setPhysicsDebugLinesEnabled(enabled: boolean | PhysicsDebugOptions): void;
@@ -364,6 +391,11 @@ export interface FerrumPhysicsBodyApi {
     handle: PhysicsEntityHandle,
     options: PhysicsHd2dKinematicMoveOptions,
   ): PhysicsHd2dKinematicMoveResult | undefined;
+  /** Replaces native planar component-controller settings; false restores defaults. */
+  configureDataSceneKinematicController(
+    handle: PhysicsEntityHandle,
+    options: PhysicsKinematicControllerOptions | false,
+  ): boolean;
   setPhysicsBodyEnabled(handle: PhysicsEntityHandle, enabled: boolean): boolean;
   setPhysicsColliderOffset(handle: PhysicsEntityHandle, offsetX: number, offsetY: number): boolean;
   setPhysicsColliderEnabled(handle: PhysicsEntityHandle, enabled: boolean): boolean;
@@ -436,6 +468,7 @@ export interface FerrumPhysicsQueryApi {
 
 export interface FerrumPhysicsApi
   extends FerrumPhysicsRuntimeApi,
+    FerrumUnifiedPhysicsApi,
     FerrumPhysicsBodyApi,
     FerrumPhysicsJointApi,
     FerrumPhysicsQueryApi {}
@@ -498,7 +531,9 @@ export interface FerrumInputActionApi {
 }
 
 export interface FerrumEngine
-  extends FerrumSpatialApi,
+  extends FerrumRuntimeCheckpointApi,
+    FerrumGameplayObservationApi,
+    FerrumSpatialApi,
     FerrumLifecycleApi,
     FerrumBufferAccessorApi,
     FerrumSceneApi,

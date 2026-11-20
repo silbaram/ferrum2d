@@ -1,10 +1,14 @@
+import "./placement-template-authoring.test.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../../apps/studio/package.json", import.meta.url));
 const ts = require("typescript");
+const textureCode = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementDocumentTextures.ts", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+const textureModule = "data:text/javascript;base64," + Buffer.from(textureCode).toString("base64");
 let code = ts.transpileModule(await readFile(new URL("../../apps/studio/src/placementFlatLighting.ts", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+code = code.replace('"./placementDocumentTextures"', JSON.stringify(textureModule));
 code = code.replace('"@ferrum2d/ferrum-web/authoring"', JSON.stringify(new URL("../../packages/ferrum-web/dist/authoring.js", import.meta.url).href));
 const { placementFlatTextureRoles, placementFlatTextureOptions } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
 const source = (surface = {}) => ({ format: "ferrum2d.consumer.scene-authoring", version: 1, lighting: { profile: "lit", enabled: false }, sceneComposition: { initialFragment: "main", prefabs: { object: { props: { components: { visual: { kind: "sprite", texture: "color", width: 16, height: 16, lighting: { mode: "opaque", lightMask: 0 }, surface }, collider: "none", layer: "wall" } } } }, fragments: { main: { instances: [{ id: "sprite", prefab: "object" }] } } }, behaviorRecipes: { entities: {} } });

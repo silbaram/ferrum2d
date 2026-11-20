@@ -1,3 +1,4 @@
+import {ResourceBudget} from "./nativeFileResourceBudget.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { validateSpatialGeometryFrame, validateSpatialExtensions } from "./spatialRenderPacket.js";
@@ -134,6 +135,7 @@ export class WebGL2SpatialPass {
       throw e;
     }
   }
+  fileModelRoots(b:ResourceBudget){return this.models.fileRoots(b);}
   prepareModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
     if (this.destroyed) throw Error("Spatial pass destroyed");
     if (!Array.isArray(assets) || assets.length > 16)
@@ -349,7 +351,7 @@ export class WebGL2SpatialPass {
       gl.uniform1i(this.uniforms.separated, 0);
       gl.uniform1i(this.uniforms.linearInput,Number(this.linearInput));
       if (
-        this.revision !== frame.terrainRevision ||
+        this.revision !== (frame.terrainRenderRevision ?? frame.terrainRevision) ||
         this.memory !== frame.terrain.buffer ||
         this.terrainOffset !== frame.terrain.byteOffset ||
         this.terrainLength !== frame.terrain.length
@@ -357,7 +359,7 @@ export class WebGL2SpatialPass {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.terrainBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, frame.terrain, gl.STATIC_DRAW);
         this.terrainBytes = frame.terrain.byteLength;
-        this.revision = frame.terrainRevision;
+        this.revision = (frame.terrainRenderRevision ?? frame.terrainRevision);
         this.memory = frame.terrain.buffer;
         this.terrainOffset = frame.terrain.byteOffset;
         this.terrainLength = frame.terrain.length;

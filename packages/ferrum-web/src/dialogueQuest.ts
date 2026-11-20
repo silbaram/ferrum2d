@@ -1,5 +1,7 @@
 import { dialogueQuestDiagnosticError } from "./diagnostics.js";
 import type { UiOverlayState } from "./uiOverlay.js";
+import type { WasmNamespace } from "./wasmNamespace.js";
+import { guardWasmNamespaceObject, nativeWasmNamespaceObject } from "./wasmNamespaceObject.js";
 import {
   NativeDialogueSession, NativeQuestLog, decodeDialogueSnapshot, decodeQuestSnapshot,
   dialogueQuestNativeCall, encodeDialogueGraph, encodeDialogueSnapshot, encodeQuestConfig,
@@ -207,6 +209,12 @@ export function resolveDialogueGraph(
 const questNativeHandles = new WeakMap<QuestLog, NativeQuestLog>();
 const dialogueNativeHandles = new WeakMap<DialogueSession, NativeDialogueSession>();
 const destroyedDialogueQuestResources = new WeakSet<object>();
+// Constructor-authenticated immutable metadata, never a shadow progress store.
+interface FileQuestOwner { readonly kind: "quest"; readonly token: object; readonly content: ResolvedQuestDocument; readonly savedOrigin?: readonly [number, number]; destroyed: boolean }
+interface FileDialogueOwner { readonly kind: "dialogue"; readonly token: object; readonly content: ResolvedDialogueGraph; readonly savedOrigin?: readonly [number, number]; destroyed: boolean; quest?: FileQuestOwner }
+export type NativeFileDialogueQuestOwner = FileQuestOwner | FileDialogueOwner;
+const fileOwners = new WeakMap<object, NativeFileDialogueQuestOwner>();
+
 
 export class QuestLog {
   private readonly document: ResolvedQuestDocument;
@@ -217,6 +225,7 @@ export class QuestLog {
     requireDialogueQuestWasm();
     this.native = dialogueQuestNativeCall(() => new NativeQuestLog(encodeQuestConfig(this.document)));
     questNativeHandles.set(this, this.native);
+    fileOwners.set(this, { kind: "quest", token: Object.freeze({}), content: this.document, destroyed: false });
   }
 
   static create(document: QuestDocumentSpec | ResolvedQuestDocument): QuestLog {
@@ -250,6 +259,7 @@ export class QuestLog {
     if (destroyedDialogueQuestResources.has(this)) return;
     destroyedDialogueQuestResources.add(this);
     questNativeHandles.delete(this);
+    fileOwners.get(this)!.destroyed = true;
     this.native.free();
   }
 }
@@ -267,6 +277,8 @@ export class DialogueSession {
       ? new NativeDialogueSession(packet)
       : NativeDialogueSession.with_quests(packet, quests!));
     dialogueNativeHandles.set(this, this.native);
+    fileOwners.set(this, { kind: "dialogue", token: Object.freeze({}), content: this.graph, destroyed: false,
+      ...(questLog === undefined ? {} : { quest: fileOwners.get(questLog) as FileQuestOwner }) });
   }
 
   static create(graph: DialogueGraphSpec | ResolvedDialogueGraph, questLog?: QuestLog): DialogueSession {
@@ -311,8 +323,70 @@ export class DialogueSession {
     if (destroyedDialogueQuestResources.has(this)) return;
     destroyedDialogueQuestResources.add(this);
     dialogueNativeHandles.delete(this);
+    const owner = fileOwners.get(this)! as FileDialogueOwner;
+    owner.destroyed = true; owner.quest = undefined;
     this.native.free();
   }
+}
+
+/** @internal Constructor proof only; this export is absent from public barrels.
+ * Borrowed records are module-owned and are never supplied by file metadata. */
+export function nativeFileDialogueQuestOwner(value: object): Readonly<NativeFileDialogueQuestOwner> | undefined {
+  const record = fileOwners.get(value);
+  if (!record) return undefined;
+  return Object.freeze({ ...record, ...(record.kind === "dialogue" && record.quest ? { quest: Object.freeze({ ...record.quest }) } : {}) });
+}
+
+/** @internal The actual wrapper must be alive. Linked quest progress comes from
+ * the dialogue's Rust Rc, even after the public QuestLog wrapper was destroyed. */
+export function nativeFileDialogueQuestPacket(value: object, expected: Uint8Array): Uint8Array {
+  const owner = fileOwners.get(value);
+  if (!owner || owner.destroyed) throw invalid("dialogueQuest.file", "native owner is absent");
+  return owner.kind === "quest"
+    ? requireDialogueQuestHandle(value as QuestLog, questNativeHandles).file_state_packet(expected)
+    : requireDialogueQuestHandle(value as DialogueSession, dialogueNativeHandles).file_state_packet(expected);
+}
+
+/** @internal A new detached graph owns its own native objects. Packets/content
+ * have already passed the bounded file owner validation, never caller snapshots.
+ * Dead wrappers are metadata-only; no default native progress is invented. */
+export function nativeFileCreateQuest(content: ResolvedQuestDocument, config: Uint8Array | undefined, progress: Uint8Array | undefined, savedOrigin?: readonly [number, number], targetNamespace?: WasmNamespace): QuestLog {
+  const native = config === undefined ? undefined : targetNamespace !== undefined
+    ? targetNamespace.call(bindings => guardWasmNamespaceObject(targetNamespace, new bindings.NativeQuestLog(config)))
+    : new NativeQuestLog(config);
+  try {
+    if (native && progress) native.restore(progress);
+    const value = Object.create(QuestLog.prototype) as QuestLog;
+    Object.defineProperties(value, { document: { value: content }, native: { value: native } });
+    fileOwners.set(value, { kind: "quest", token: Object.freeze({}), content, savedOrigin, destroyed: native === undefined });
+    if (native) questNativeHandles.set(value, native); else destroyedDialogueQuestResources.add(value);
+    return value;
+  } catch (error) { native?.free(); throw error; }
+}
+
+/** @internal No initial quest updates are replayed by the cold linked constructor. */
+export function nativeFileCreateDialogue(content: ResolvedDialogueGraph, config: Uint8Array | undefined, progress: Uint8Array | undefined, quest?: QuestLog, savedOrigin?: readonly [number, number], targetNamespace?: WasmNamespace): DialogueSession {
+  let native: NativeDialogueSession | undefined;
+  try {
+    if (config) {
+      if (targetNamespace !== undefined) {
+        // Cold linked construction requires a live raw object from this exact
+        // namespace. Generated prototypes or same-value progress are not proof.
+        const quests = quest === undefined ? undefined : nativeWasmNamespaceObject(targetNamespace, requireDialogueQuestHandle(quest, questNativeHandles));
+        native = targetNamespace.call(bindings => guardWasmNamespaceObject(targetNamespace,
+          quests === undefined ? new bindings.NativeDialogueSession(config)
+            : bindings.NativeDialogueSession.file_with_quests(config, progress!, quests)));
+        if (quests === undefined) native.restore(progress!);
+      } else if (quest) native = NativeDialogueSession.file_with_quests(config, progress!, requireDialogueQuestHandle(quest, questNativeHandles));
+      else { native = new NativeDialogueSession(config); native.restore(progress!); }
+    }
+    const value = Object.create(DialogueSession.prototype) as DialogueSession;
+    Object.defineProperties(value, { graph: { value: content }, native: { value: native } });
+    fileOwners.set(value, { kind: "dialogue", token: Object.freeze({}), content, savedOrigin, destroyed: native === undefined,
+      ...(quest === undefined || native === undefined ? {} : { quest: fileOwners.get(quest) as FileQuestOwner }) });
+    if (native) dialogueNativeHandles.set(value, native); else destroyedDialogueQuestResources.add(value);
+    return value;
+  } catch (error) { native?.free(); throw error; }
 }
 
 function requireLiveDialogueQuestResource(resource: object): void {

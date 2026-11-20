@@ -6,6 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzip } from "node:zlib";
 import { promisify } from "node:util";
+import { buildWasmLicenseNotices, WASM_NOTICE_FILE } from "./wasm-license-notices.mjs";
+import { generateWasmBindingsFactory } from "../build/generate-wasm-bindings-factory.mjs";
+import { generateNativeFileSdkBuild } from "../build/generate-native-file-sdk-build.mjs";
+import { assertNativeWasmSourceIdentity } from "./native-wasm-source-identity.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoot = path.join(repoRoot, "packages/ferrum-web");
@@ -20,6 +24,8 @@ const warnings = [];
 const requiredWasmArtifacts = [
   "pkg/ferrum_core.js",
   "pkg/ferrum_core.d.ts",
+  "pkg/ferrum_core_factory.js",
+  "pkg/ferrum_core_factory.d.ts",
   "pkg/ferrum_core_bg.wasm",
   "pkg/ferrum_core_bg.wasm.d.ts",
   "pkg/package.json",
@@ -42,6 +48,7 @@ const spriteNormalWorkerModules = [
 const requiredPackedFiles = [
   "package/package.json",
   "package/LICENSE",
+  `package/${WASM_NOTICE_FILE}`,
   "package/README.md",
   "package/dist/ktx2Worker.js",
   ...spriteNormalWorkerModules.flatMap((name) => [
@@ -93,6 +100,7 @@ assert(packageJson.publishConfig?.access === "public", "publishConfig.access mus
 assert(packageJson.publishConfig?.tag === "beta", "publishConfig.tag must be beta so prereleases do not land on latest");
 assert(Array.isArray(packageJson.files), "package files must be an array");
 assert(packageJson.files.includes("LICENSE"), "package files must include LICENSE");
+assert(packageJson.files.includes(WASM_NOTICE_FILE), `package files must include ${WASM_NOTICE_FILE}`);
 assert(packageJson.files.includes("README.md"), "package files must include README.md");
 assert(packageJson.files.includes("dist"), "package files must include dist");
 for (const artifact of requiredWasmArtifacts) {
@@ -101,6 +109,10 @@ for (const artifact of requiredWasmArtifacts) {
 
 await requireFile("README.md");
 await requireFile("LICENSE");
+await requireFile(WASM_NOTICE_FILE);
+const expectedWasmNotices = await buildWasmLicenseNotices(repoRoot);
+assert((await readFile(path.join(packageRoot, WASM_NOTICE_FILE))).equals(expectedWasmNotices),
+  `${WASM_NOTICE_FILE} is stale; run node scripts/package/wasm-license-notices.mjs`);
 for (const [, distName] of publicEntrypoints) {
   await requireFile(`src/${distName}.ts`);
   await requireFile(`dist/${distName}.js`);
@@ -158,6 +170,9 @@ async function checkWasmPkgArtifacts() {
   }
 
   if (missing.length === 0) {
+    await generateWasmBindingsFactory(path.join(packageRoot,"pkg"),{check:true});
+    await assertNativeWasmSourceIdentity(repoRoot);
+    await generateNativeFileSdkBuild(repoRoot, { check: true, checkDist: true });
     await checkWasmExportDeclarations();
     return;
   }
@@ -251,10 +266,17 @@ async function checkPackedTarball() {
     assert(tarballs.length === 1, `expected exactly one packed tarball, found ${tarballs.length}`);
 
     const tarballPath = path.join(tempDir, tarballs[0]);
-    const packedFiles = new Set(await listTarGzEntries(tarballPath));
+    const packedEntries = await readTarGzEntries(tarballPath);
+    const packedFiles = new Set(packedEntries.keys());
     for (const requiredFile of requiredPackedFiles) {
       assert(packedFiles.has(requiredFile), `packed tarball is missing ${requiredFile}`);
     }
+    for (const artifact of requiredWasmArtifacts) {
+      assert(packedEntries.get(`package/${artifact}`)?.equals(await readFile(path.join(packageRoot, artifact))),
+        `packed ${artifact} must match the verified local Native artifacts`);
+    }
+    assert(packedEntries.get(`package/${WASM_NOTICE_FILE}`)?.equals(expectedWasmNotices),
+      `packed ${WASM_NOTICE_FILE} must contain the current locked upstream license documents`);
     for (const packedFile of packedFiles) {
       for (const forbiddenPrefix of forbiddenPackedPrefixes) {
         assert(!packedFile.startsWith(forbiddenPrefix), `packed tarball must not include ${packedFile}`);
@@ -300,9 +322,9 @@ function run(command, args, cwd) {
   });
 }
 
-async function listTarGzEntries(tarballPath) {
+async function readTarGzEntries(tarballPath) {
   const archive = await gunzipAsync(await readFile(tarballPath));
-  const entries = [];
+  const entries = new Map();
   let offset = 0;
   while (offset + 512 <= archive.length) {
     const header = archive.subarray(offset, offset + 512);
@@ -314,9 +336,12 @@ async function listTarGzEntries(tarballPath) {
     const prefix = readTarString(header, 345, 155);
     const sizeText = readTarString(header, 124, 12).trim();
     const size = sizeText.length > 0 ? Number.parseInt(sizeText, 8) : 0;
+    assert(Number.isSafeInteger(size) && size >= 0 && offset + 512 + size <= archive.length,
+      "invalid packed tar entry size");
     const entryPath = prefix ? `${prefix}/${name}` : name;
     if (entryPath) {
-      entries.push(entryPath);
+      assert(!entries.has(entryPath), `duplicate packed tar entry ${entryPath}`);
+      entries.set(entryPath, archive.subarray(offset + 512, offset + 512 + size));
     }
 
     offset += 512 + Math.ceil(size / 512) * 512;

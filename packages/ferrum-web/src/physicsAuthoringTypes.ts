@@ -30,6 +30,8 @@ export interface PhysicsLayerMapOptions {
 }
 
 export interface PhysicsWorldApplyOptions {
+  /** false appends component geometry under an already-owned runtime; does not choose a backend. */
+  configureRuntime?: boolean;
   path?: string;
   replace?: PhysicsWorldApplyResult;
   unsafeUnitScaleThreshold?: number;

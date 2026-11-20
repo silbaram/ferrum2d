@@ -8,6 +8,7 @@ import type {
 } from "./engineTypes.js";
 import { finiteNumber, uint32Number } from "./particlePreset";
 import type { PhysicsDebugSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
+import { applyNativePhysicsClock, requireNativePhysicsClock, resolveNativePhysicsClockOptions } from "./physicsNativeClock.js";
 
 const DEFAULT_RIGID_BODY_GRAVITY_X = 0;
 const DEFAULT_RIGID_BODY_GRAVITY_Y = 980;
@@ -32,6 +33,14 @@ export function configureAutoRigidBodyStepOptions(
   rustEngine: Engine,
   autoStep: boolean | PhysicsRigidBodyStepOptions,
 ): void {
+  if (typeof autoStep === "boolean" && typeof rustEngine.physics_spec_backend_active === "function"
+    && rustEngine.physics_spec_backend_active()) {
+    if (typeof rustEngine.set_auto_rigid_body_step_enabled !== "function") {
+      throw new Error("This Wasm core cannot toggle native physics without changing solver settings.");
+    }
+    rustEngine.set_auto_rigid_body_step_enabled(autoStep);
+    return;
+  }
   const options = typeof autoStep === "object" ? autoStep : undefined;
   rustEngine.configure_auto_rigid_body_step(
     autoStep !== false,
@@ -77,10 +86,16 @@ export function stepRigidBodiesWithStats(
 ): PhysicsRigidBodyStepStats {
   const resolvedDeltaSeconds = finiteNumber(deltaSeconds, "rigid body step deltaSeconds");
   if (options === undefined) {
-    rustEngine.step_rigid_bodies(resolvedDeltaSeconds);
+    const step = (rustEngine as Engine & { step_rigid_bodies_checked?: Engine["step_rigid_bodies"] })
+      .step_rigid_bodies_checked ?? rustEngine.step_rigid_bodies;
+    step.call(rustEngine, resolvedDeltaSeconds);
     return readRigidBodyStepStats(rustEngine);
   }
-  rustEngine.step_rigid_bodies_with_config(
+  const step = (rustEngine as Engine & {
+    step_rigid_bodies_with_config_checked?: Engine["step_rigid_bodies_with_config"];
+  }).step_rigid_bodies_with_config_checked ?? rustEngine.step_rigid_bodies_with_config;
+  step.call(
+    rustEngine,
     resolvedDeltaSeconds,
     finiteNumber(options.gravityX ?? DEFAULT_RIGID_BODY_GRAVITY_X, "rigid body gravityX"),
     finiteNumber(options.gravityY ?? DEFAULT_RIGID_BODY_GRAVITY_Y, "rigid body gravityY"),
@@ -203,22 +218,28 @@ export function applyPhysicsRuntimeOptions(
 export function applyFixedTimestepOptions(
   rustEngine: Engine,
   fixedTimestep: boolean | FixedTimestepOptions | undefined,
-): void {
+): { enabled: boolean; stepSeconds: number } | undefined {
   if (fixedTimestep === undefined) {
     return;
+  }
+  if (typeof rustEngine.physics_spec_backend_active === "function" && rustEngine.physics_spec_backend_active()) {
+    requireNativePhysicsClock(rustEngine);
+    const clock = resolveNativePhysicsClockOptions(fixedTimestep, rustEngine.unified_physics_clock_step_seconds());
+    return applyNativePhysicsClock(rustEngine, clock);
   }
   if (typeof fixedTimestep === "boolean") {
     rustEngine.configure_fixed_timestep(fixedTimestep, 1 / 60, 0.25, 8);
     rustEngine.configure_physics_render_interpolation(false);
-    return;
+    return { enabled: fixedTimestep, stepSeconds: 1 / 60 };
   }
-  rustEngine.configure_physics_render_interpolation(fixedTimestep.interpolate ?? false);
   rustEngine.configure_fixed_timestep(
     fixedTimestep.enabled ?? true,
     fixedTimestep.stepSeconds ?? 1 / 60,
     fixedTimestep.maxFrameSeconds ?? 0.25,
     fixedTimestep.maxStepsPerUpdate ?? 8,
   );
+  rustEngine.configure_physics_render_interpolation(fixedTimestep.interpolate ?? false);
+  return { enabled: fixedTimestep.enabled ?? true, stepSeconds: fixedTimestep.stepSeconds ?? 1 / 60 };
 }
 
 function physicsDebugCategoryFlags(options: PhysicsDebugOptions): number {

@@ -1,3 +1,4 @@
+import {ResourceBudget,NativeFileResourceError} from "./nativeFileResourceBudget.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { IDENTITY_SPATIAL_UV } from "./spatialTextureTransform.js";
 import { validateSpatialModelFrame } from "./spatialModelPacket.js";
@@ -66,6 +67,13 @@ export class WebGL2SpatialModels {
     private preparedFrame?: Frame;
     private preparedPasses = 0;
     constructor(private readonly gl: WebGL2RenderingContext) { }
+    fileRoots(b:ResourceBudget){
+        this.assertAlive();if(this.pending)throw new NativeFileResourceError("BUSY","model cache preparation");
+        b.work(this.assets.size+this.active.size);b.charge("metadataBytes",(this.assets.size+this.active.size)*8);
+        const roots=[...this.assets.keys()],active=[...this.active],values=[...this.assets.values()];
+        const assertCurrent=()=>{this.assertAlive();if(this.pending||this.assets.size!==roots.length||this.active.size!==active.length||roots.some((r,i)=>this.assets.get(r)!==values[i])||active.some(r=>!this.active.has(r)))throw new NativeFileResourceError("STALE","model cache roots");};
+        return {roots,active,warmed:[] as SpatialModelAsset[],assertCurrent};
+    }
     validate(frame?: Frame): void { validateSpatialModelFrame(frame); }
     prepare(frame: Frame | undefined, stats: SpatialRendererStats): void {
         this.assertAlive();

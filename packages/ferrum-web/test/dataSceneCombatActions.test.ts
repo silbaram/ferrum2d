@@ -338,3 +338,57 @@ test("melee/dash cooldown JSON remains lossless through the existing combat code
       /cooldown/i,
     );
 });
+
+test("native melee authoring uses a shape body in either space and bounds queries before activation", () => {
+  for (const space of ["planar-xy", "spatial"]) {
+    const document = {
+      format: "ferrum2d.consumer.scene-authoring", version: 1,
+      physics: { space, gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: 0.01 },
+      gameplay: { primaryActor: "actor", combat: true },
+      ids: { actions: { hit: 7 } },
+      sceneComposition: { initialFragment: "main", prefabs: { actor: { props: {
+        components: { visual: { kind: "primitive", shape: "circle", radius: 0.5 }, collider: "none", layer: "player",
+          body: { kind: "fixed", collider: { shape: { type: "sphere", radius: 0.5 }, sensor: true, category: 1 } } },
+        behaviorRecipes: ["actions"],
+      } } }, fragments: { main: { instances: [{ id: "actor", prefab: "actor", x: 0, y: 0 }] } } },
+      behaviorRecipes: { entities: { actions: { recipes: [melee] } } },
+    };
+    preflight(resolveSceneAuthoringDocument(document));
+    const over = structuredClone(document);
+    over.behaviorRecipes.entities.actions.recipes[0] = { ...melee, range: 1_000_001 };
+    throws(() => preflight(resolveSceneAuthoringDocument(over)), /native melee range/);
+    const noBody = structuredClone(document);
+    Reflect.deleteProperty(noBody.sceneComposition.prefabs.actor.props.components, "body");
+    throws(() => preflight(resolveSceneAuthoringDocument(noBody)), /melee requires an enabled/);
+  }
+});
+
+test("native dash authoring admits kinematic shape bodies and rejects unsupported kinds and tick speeds", () => {
+  for (const space of ["planar-xy", "spatial"]) {
+    const document = {
+      format: "ferrum2d.consumer.scene-authoring", version: 1,
+      physics: { space, gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: 0.01 },
+      gameplay: { primaryActor: "actor", combat: true }, ids: { actions: { dash: 8 } },
+      sceneComposition: { initialFragment: "main", prefabs: { actor: { props: {
+        components: { visual: { kind: "primitive", shape: "circle", radius: 0.5 }, collider: "none", layer: "player",
+          body: { kind: "kinematic-velocity", collider: { shape: { type: "sphere", radius: 0.5 }, sensor: true } } },
+        behaviorRecipes: ["actions"],
+      } } }, fragments: { main: { instances: [{ id: "actor", prefab: "actor", x: 0, y: 0, rotationRadians: 0.2 }] } } },
+      behaviorRecipes: { entities: { actions: { recipes: [dash] } } },
+    };
+    for (const kind of ["kinematic-position", "kinematic-velocity"]) {
+      document.sceneComposition.prefabs.actor.props.components.body.kind = kind;
+      preflight(resolveSceneAuthoringDocument(document));
+    }
+    for (const kind of ["dynamic", "fixed"]) {
+      document.sceneComposition.prefabs.actor.props.components.body.kind = kind;
+      throws(() => preflight(resolveSceneAuthoringDocument(document)), /native dash requires a kinematic body/);
+    }
+    document.sceneComposition.prefabs.actor.props.components.body.kind = "kinematic-velocity";
+    const spinning = structuredClone(document);
+    Object.assign(spinning.sceneComposition.prefabs.actor.props.components.body, { angularVelocity: [0,0,1000] });
+    throws(() => preflight(resolveSceneAuthoringDocument(spinning)), /native dash rotation/);
+    document.behaviorRecipes.entities.actions.recipes[0] = { ...dash, distance: 10001 };
+    throws(() => preflight(resolveSceneAuthoringDocument(document)), /native dash speed/);
+  }
+});

@@ -473,7 +473,8 @@ test("applyDataSceneAuthoringDocument spawns the minimum data scene authoring sa
 
 test("cold authoring reapply preserves compatible native playback by authored ID and honors explicit new clips", async () => {
   await withNodeWasmFileFetch(async()=>{
-    const engine=await createEngine();
+    // Sprite playback stays native; this case also captures legacy JSON progress.
+    const engine=await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
     const document:SceneAuthoringDocumentSpec={format:"ferrum2d.consumer.scene-authoring",version:1,behaviorRecipes:{entities:{}},
       sceneComposition:{initialFragment:"main",prefabs:{object:{}},fragments:{main:{instances:["hero","friend"].map((id,i)=>({id,prefab:"object",x:i*50,y:0,props:{components:{layer:"wall",collider:"none",visual:{kind:"sprite",texture:1,width:16,height:24,
         animationSet:{initialClip:0,clips:[{id:0,fps:4,loop:true,frames:[{u0:0,v0:0,u1:.5,v1:1},{u0:.5,v0:0,u1:1,v1:1}]},{id:1,fps:1,loop:true,frames:[{u0:0,v0:0,u1:.5,v1:1}]}]}}}}}))}}}};
@@ -1074,7 +1075,8 @@ test("volume shadow dimensions and footprint offsets follow instance scale witho
 
 test("Data Scene body shares the sprite handle and stays generation safe through reapply", async () => {
   await withNodeWasmFileFetch(async () => {
-    const engine = await createEngine();
+    // This fixture exercises the legacy body.type/HD-2D component movement path.
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
     const document = {
       format: "ferrum2d.consumer.scene-authoring", version: 1,
       sceneComposition: { initialFragment: "main", prefabs: { actor: { props: { components: {
@@ -1102,7 +1104,8 @@ test("Data Scene body shares the sprite handle and stays generation safe through
 
 test("authored dynamic box owns its native obstacle identity and progress without a proxy", async () => {
   await withNodeWasmFileFetch(async () => {
-    const engine = await createEngine();
+    // This case restores the existing JSON/body snapshot, rather than a native file.
+    const engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
     const document = {
       format: "ferrum2d.consumer.scene-authoring", version: 1,
       sceneComposition: { initialFragment: "main", prefabs: { box: { props: { components: {

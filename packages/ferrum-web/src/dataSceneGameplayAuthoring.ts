@@ -58,6 +58,11 @@ export function preflightDataSceneGameplay(
       `${path}.gameplay.spawnPrefabs`,
       "requires a compatible spawn-prefab Wasm build",
     );
+  if (document.physics !== undefined && (config?.spawnPrefabs !== undefined || projectileVisualsRequired(config?.projectilePrefabs)) && engine.supportsDataSceneSpawnPrefabPhysics?.() !== true)
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.gameplay.spawnPrefabs`,
+      "native physics requires spawn-prefab physics capability version 1",
+    );
   if (config !== undefined) {
     if (typeof engine.configureDataSceneGameplay !== "function")
       throw gameplayAuthoringDiagnosticError(
@@ -155,12 +160,21 @@ export function preflightDataSceneGameplay(
         `${path}.gameplay.combatNavigation`,
         "requires a compatible combat-navigation Wasm build",
       );
+    if (document.physics?.space === "spatial" && engine.supportsDataSceneNativeCombatNavigation?.() !== true)
+      throw gameplayAuthoringDiagnosticError(`${path}.gameplay.combatNavigation`, "requires a compatible native capsule navigation Wasm build");
+    if (document.physics?.space === "spatial" && config.combatNavigation.movementPatterns === "all" &&
+      engine.supportsDataSceneNativeCombatMovement?.() !== true)
+      throw gameplayAuthoringDiagnosticError(`${path}.gameplay.combatNavigation.movementPatterns`, "requires a compatible native capsule movement Wasm build");
+    if (document.physics?.space === "spatial" && config.combatNavigation.crowdAvoidance !== undefined &&
+      engine.supportsDataSceneNativeCombatCrowd?.() !== true)
+      throw gameplayAuthoringDiagnosticError(`${path}.gameplay.combatNavigation.crowdAvoidance`, "requires a compatible native capsule crowd Wasm build");
     validateCombatNavigationBindings(
       config.combatNavigation,
       config.primaryActor,
       document.spatial,
       plan,
       `${path}.gameplay.combatNavigation`,
+      document.physics,
     );
   }
   if (
@@ -204,6 +218,18 @@ export function preflightDataSceneGameplay(
         );
     }
     if (config !== undefined) {
+      if (config.combat && document.physics !== undefined &&
+        (command.type === "configureChase" || command.type === "configureSeekTarget" || command.type === "configureAccelerate")) {
+        const instance = plan.instances.find((instance) => instance.id === command.entity)!;
+        const component = resolveDataSceneInstanceComponents(instance);
+        if (component.mode === "inline" && component.body !== undefined && component.body.type === undefined) {
+          if (component.body.kind === "fixed")
+            throw gameplayAuthoringDiagnosticError(commandPath, "native combat movement requires a dynamic or kinematic body");
+          const speed = command.type === "configureAccelerate" ? command.maxSpeed : command.speed;
+          if (speed > 1_000_000)
+            throw gameplayAuthoringDiagnosticError(commandPath, "native combat movement speed must not exceed 1000000 world units/s");
+        }
+      }
       const key = validateDataSceneGameplayCommand(
         config.combatNavigation && command.type === "configureChase"
           ? { ...command, stopDistance: 0 }
@@ -222,16 +248,21 @@ export function preflightDataSceneGameplay(
         if (command.type === "configureMeleeAction") {
           const instance = plan.instances.find((instance) => instance.id === command.entity)!;
           const component = resolveDataSceneInstanceComponents(instance);
-          if (
+          const nativeBody = document.physics !== undefined && component.mode === "inline" &&
+            component.body !== undefined && component.body.type === undefined;
+          if (nativeBody && command.range > 1_000_000)
+            throw gameplayAuthoringDiagnosticError(`${commandPath}.range`, "native melee range must not exceed 1000000 world units");
+          if (!nativeBody && (
             component.mode !== "inline" ||
             component.collider.type === "none" ||
             component.collider.enabled === false
-          )
+          ))
             throw gameplayAuthoringDiagnosticError(
               commandPath,
               "melee requires an enabled inline collider for its mutual collision filter",
             );
-          if (document.spatial !== undefined && component.body?.heightSpan === undefined)
+          if (!nativeBody && document.spatial !== undefined &&
+            (component.mode !== "inline" || component.body?.heightSpan === undefined))
             throw gameplayAuthoringDiagnosticError(
               commandPath,
               "spatial melee requires an authored body heightSpan",
@@ -240,20 +271,33 @@ export function preflightDataSceneGameplay(
         if (command.type === "configureDashAction") {
           const instance = plan.instances.find((instance) => instance.id === command.entity)!;
           const component = resolveDataSceneInstanceComponents(instance);
-          if (
+          const nativeBody = document.physics !== undefined && component.mode === "inline" &&
+            component.body !== undefined && component.body.type === undefined;
+          if (nativeBody && component.mode === "inline" && component.body?.type === undefined) {
+            if (component.body?.kind !== "kinematic-position" && component.body?.kind !== "kinematic-velocity")
+              throw gameplayAuthoringDiagnosticError(commandPath, "native dash requires a kinematic body");
+            if (component.body.kind === "kinematic-velocity" && Math.hypot(...(component.body.angularVelocity ?? [0,0,0])) * Math.fround(document.physics!.stepSeconds ?? 1 / 60) > Math.fround(Math.PI * 2))
+              throw gameplayAuthoringDiagnosticError(commandPath, "native dash rotation must not exceed one turn per tick");
+            if (command.distance / Math.fround(document.physics!.stepSeconds ?? 1 / 60) > 1_000_000)
+              throw gameplayAuthoringDiagnosticError(`${commandPath}.distance`, "native dash speed must not exceed 1000000 world units per second");
+          }
+          if (!nativeBody && (
             component.mode !== "inline" ||
             component.body?.type !== "kinematic" ||
             component.collider?.type !== "aabb" ||
             component.collider.enabled === false ||
             instance.rotationRadians !== 0 ||
             document.spatial?.attachments?.[command.entity] !== undefined
-          ) {
+          )) {
             throw gameplayAuthoringDiagnosticError(
               commandPath,
               "dash requires an enabled unattached inline kinematic AABB body with zero instance rotation",
             );
           }
-          if (document.spatial !== undefined && component.body.heightSpan === undefined)
+          if (nativeBody && document.spatial?.attachments?.[command.entity] !== undefined)
+            throw gameplayAuthoringDiagnosticError(commandPath, "native dash does not support attached bodies");
+          if (!nativeBody && document.spatial !== undefined &&
+            (component.mode !== "inline" || component.body?.type === undefined || component.body.heightSpan === undefined))
             throw gameplayAuthoringDiagnosticError(
               commandPath,
               "spatial dash requires an authored body heightSpan",

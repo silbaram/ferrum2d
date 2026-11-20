@@ -1,0 +1,1082 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferrum2d.dev/schemas/data-scene-physics.schema.json",
+  "title": "Ferrum2D Scene Physics World",
+  "$comment": "Root validates Scene Authoring physics; #/$defs/body validates props.components.body. Native preflight additionally validates f32 limits, unit quaternions, topology, planar locks, body/shape compatibility and combined capacities.",
+  "$ref": "#/$defs/world",
+  "$defs": {
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "quaternion": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number"
+      }
+    },
+    "pose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/vector3"
+        },
+        "rotation": {
+          "$ref": "#/$defs/quaternion"
+        }
+      }
+    },
+    "convexShape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "box"
+            },
+            "halfExtents": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "required": [
+            "type",
+            "halfExtents"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "sphere"
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "type",
+            "radius"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "capsule"
+            },
+            "halfHeight": {
+              "type": "number",
+              "minimum": 0
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "type",
+            "halfHeight",
+            "radius"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "convexHull"
+            },
+            "points": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 256,
+              "items": {
+                "$ref": "#/$defs/vector3"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "points"
+          ]
+        }
+      ]
+    },
+    "shape": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/convexShape"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "triangleMesh"
+            },
+            "vertices": {
+              "type": "array",
+              "minItems": 9,
+              "maxItems": 196608,
+              "items": {
+                "type": "number"
+              }
+            },
+            "triangles": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 393216,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            }
+          },
+          "required": [
+            "type",
+            "vertices",
+            "triangles"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "heightfield"
+            },
+            "rows": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 32768
+            },
+            "columns": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 32768
+            },
+            "heights": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 65536,
+              "items": {
+                "type": "number"
+              }
+            },
+            "size": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "required": [
+            "type",
+            "rows",
+            "columns",
+            "heights",
+            "size"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "compound"
+            },
+            "parts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "pose": {
+                    "$ref": "#/$defs/pose"
+                  },
+                  "shape": {
+                    "$ref": "#/$defs/convexShape"
+                  }
+                },
+                "required": [
+                  "shape"
+                ]
+              }
+            }
+          },
+          "required": [
+            "type",
+            "parts"
+          ]
+        }
+      ]
+    },
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "velocityRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxVelocity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "positionRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "positionSlop": {
+          "type": "number",
+          "minimum": 0
+        },
+        "velocitySlop": {
+          "type": "number",
+          "minimum": 0
+        },
+        "splitImpulse": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "velocityRate",
+        "maxVelocity",
+        "positionRate",
+        "positionSlop",
+        "velocitySlop"
+      ]
+    },
+    "collider": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shape": {
+          "$ref": "#/$defs/shape"
+        },
+        "pose": {
+          "$ref": "#/$defs/pose"
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "friction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "restitution": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "surfaceVelocity": {
+          "$ref": "#/$defs/vector3"
+        },
+        "contactCorrection": {
+          "$ref": "#/$defs/correction"
+        },
+        "sensor": {
+          "type": "boolean"
+        },
+        "category": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "mask": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "shape"
+      ]
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "fixed",
+            "dynamic",
+            "kinematic-position",
+            "kinematic-velocity"
+          ]
+        },
+        "elevation": {
+          "type": "number"
+        },
+        "rotation": {
+          "$ref": "#/$defs/quaternion"
+        },
+        "linearVelocity": {
+          "$ref": "#/$defs/vector3"
+        },
+        "angularVelocity": {
+          "$ref": "#/$defs/vector3"
+        },
+        "gravityScale": {
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 1000
+        },
+        "linearDamping": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "angularDamping": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "ccd": {
+          "type": "boolean"
+        },
+        "canSleep": {
+          "type": "boolean"
+        },
+        "collider": {
+          "$ref": "#/$defs/collider"
+        },
+        "renderOffset": {
+          "$ref": "#/$defs/vector3"
+        },
+        "character": {
+          "$ref": "#/$defs/character"
+        }
+      },
+      "required": [
+        "collider"
+      ]
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "space": {
+          "enum": [
+            "planar-xy",
+            "spatial"
+          ]
+        },
+        "gravity": {
+          "$ref": "#/$defs/vector3"
+        },
+        "lengthUnit": {
+          "type": "number",
+          "minimum": 0.0001,
+          "maximum": 10000
+        },
+        "stepSeconds": {
+          "type": "number",
+          "minimum": 0.0001,
+          "maximum": 0.1
+        },
+        "continuous": {
+          "type": "boolean"
+        },
+        "restitutionVelocityThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000.0
+        },
+        "velocityIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "positionIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "maxBodies": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "maxColliders": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072
+        },
+        "maxEvents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "maxCharacters": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "maxJoints": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072
+        },
+        "joints": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "\\S"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/joint"
+          }
+        },
+        "collisionTilemap": {
+          "$ref": "#/$defs/collisionTilemap"
+        }
+      },
+      "required": [
+        "space",
+        "gravity",
+        "lengthUnit"
+      ],
+      "if": {
+        "required": [
+          "collisionTilemap"
+        ]
+      },
+      "then": {
+        "properties": {
+          "space": {
+            "const": "planar-xy"
+          }
+        }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "up": {
+          "$ref": "#/$defs/vector3"
+        },
+        "skinWidth": {
+          "type": "number"
+        },
+        "maxSlopeAngle": {
+          "type": "number"
+        },
+        "slideAngle": {
+          "type": "number"
+        },
+        "stepHeight": {
+          "type": "number"
+        },
+        "stepMinWidth": {
+          "type": "number"
+        },
+        "snapDistance": {
+          "type": "number"
+        },
+        "maxVerticalSpeed": {
+          "type": "number"
+        },
+        "pushMass": {
+          "description": "0 keeps prescribed controller motion; positive virtual mass enables dynamic coupling and external forces.",
+          "oneOf": [
+            { "const": 0 },
+            { "type": "number", "minimum": 0.0001, "maximum": 10000 }
+          ]
+        }
+      }
+    },
+    "jointMotor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetPosition": {
+          "type": "number"
+        },
+        "targetVelocity": {
+          "type": "number"
+        },
+        "stiffness": {
+          "type": "number"
+        },
+        "damping": {
+          "type": "number"
+        },
+        "maxForce": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "targetPosition",
+        "targetVelocity",
+        "stiffness",
+        "damping",
+        "maxForce"
+      ]
+    },
+    "jointSpring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stiffness": {
+          "type": "number"
+        },
+        "damping": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "stiffness",
+        "damping"
+      ]
+    },
+    "jointKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "fixed"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "spherical"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "revolute"
+            },
+            "limits": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "motor": {
+              "$ref": "#/$defs/jointMotor"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "prismatic"
+            },
+            "limits": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "motor": {
+              "$ref": "#/$defs/jointMotor"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "continuousRevolute"
+            },
+            "limits": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "motor": {
+              "$ref": "#/$defs/jointMotor"
+            }
+          },
+          "required": [
+            "type",
+            "limits"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "distance"
+            },
+            "length": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "length"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "rope"
+            },
+            "maxLength": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "maxLength"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "frequencySpring"
+            },
+            "restLength": {
+              "type": "number"
+            },
+            "frequencyHz": {
+              "type": "number"
+            },
+            "dampingRatio": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "restLength",
+            "frequencyHz",
+            "dampingRatio"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "accelerationSpring"
+            },
+            "restLength": {
+              "type": "number"
+            },
+            "stiffness": {
+              "type": "number"
+            },
+            "damping": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "restLength",
+            "stiffness",
+            "damping"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "spring"
+            },
+            "restLength": {
+              "type": "number"
+            },
+            "stiffness": {
+              "type": "number"
+            },
+            "damping": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "restLength",
+            "stiffness",
+            "damping"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "elasticRope"
+            },
+            "maxLength": {
+              "type": "number"
+            },
+            "spring": {
+              "$ref": "#/$defs/jointSpring"
+            }
+          },
+          "required": [
+            "type",
+            "maxLength",
+            "spring"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "gear"
+            },
+            "ratio": {
+              "type": "number"
+            },
+            "referenceAngle": {
+              "type": "number"
+            },
+            "spring": {
+              "$ref": "#/$defs/jointSpring"
+            }
+          },
+          "required": [
+            "type",
+            "ratio",
+            "referenceAngle"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "pulley"
+            },
+            "groundA": {
+              "$ref": "#/$defs/vector3"
+            },
+            "groundB": {
+              "$ref": "#/$defs/vector3"
+            },
+            "length": {
+              "type": "number"
+            },
+            "ratio": {
+              "type": "number"
+            },
+            "slack": {
+              "type": "boolean"
+            },
+            "spring": {
+              "$ref": "#/$defs/jointSpring"
+            }
+          },
+          "required": [
+            "type",
+            "groundA",
+            "groundB",
+            "length",
+            "ratio"
+          ]
+        }
+      ]
+    },
+    "joint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bodyA": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "bodyB": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "kind": {
+          "$ref": "#/$defs/jointKind"
+        },
+        "localFrameA": {
+          "$ref": "#/$defs/pose"
+        },
+        "localFrameB": {
+          "$ref": "#/$defs/pose"
+        },
+        "linearSpring": {
+          "$ref": "#/$defs/jointSpring"
+        },
+        "angularSpring": {
+          "$ref": "#/$defs/jointSpring"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "contactsEnabled": {
+          "type": "boolean"
+        },
+        "breakForce": {
+          "type": "number"
+        },
+        "breakTorque": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "bodyA",
+        "bodyB",
+        "kind"
+      ]
+    },
+    "collisionTilemapRamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "enum": [
+            "x",
+            "y"
+          ]
+        },
+        "startElevation": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "endElevation": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "axis",
+        "startElevation",
+        "endElevation"
+      ]
+    },
+    "collisionTileVisual": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "선택적 planar tile graphic. cell 크기로 기존 background tile layer에 렌더링한다. texture 이름은 적용 전 로드된 에셋으로 해석하며 frame은 정규화 UV, tint는 sRGB hex다. spatial camera와 함께 사용할 수 없다.",
+      "properties": {
+        "texture": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "integer", "minimum": 0, "maximum": 16777215 }
+          ]
+        },
+        "frame": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "u0": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+            "v0": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+            "u1": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+            "v1": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+          }
+        },
+        "tint": {
+          "type": "string",
+          "pattern": "^#(?:[\\da-fA-F]{3}|[\\da-fA-F]{4}|[\\da-fA-F]{6}|[\\da-fA-F]{8})$"
+        }
+      },
+      "required": ["texture"]
+    },
+    "collisionTileDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "floorId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "elevation": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "kind": {
+          "enum": [
+            "flat",
+            "stair",
+            "ramp",
+            "bridge",
+            "ledge"
+          ]
+        },
+        "blocksMovement": {
+          "type": "boolean"
+        },
+        "blocksProjectile": {
+          "type": "boolean"
+        },
+        "blocksVision": {
+          "type": "boolean"
+        },
+        "occluderHeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "ramp": {
+          "$ref": "#/$defs/collisionTilemapRamp"
+        },
+        "visual": {
+          "$ref": "#/$defs/collisionTileVisual"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "if": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "ramp"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ramp"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "ramp"
+          ]
+        }
+      }
+    },
+    "collisionTilemap": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "구조와 개별 값 범위를 검증한다. tiles.length === columns * rows, definition id 중복 및 참조, f32 반올림 후 양수 tile 크기와 파생 grid/height span/UV 범위는 src/dataSceneCollisionTilemap.ts의 codec 검증이 최종 기준이다. visual은 선택 사항으로 기존 collision-only 문서와 v1 packet은 유지한다. graphics는 v2 capability와 별도 버전 buffer가 필요하다.",
+      "description": "planar-xy world의 collision grid. definition.visual로 cell 크기의 그래픽을 선택할 수 있다. 생략한 definition은 충돌/metadata만 유지하고 그래픽을 생성하지 않는다. grid를 생략하면 재생성된 world에 tilemap을 설치하지 않는다.",
+      "properties": {
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "tileWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "tileHeight": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "originX": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "originY": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "tiles": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 256
+          }
+        },
+        "definitions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/collisionTileDefinition"
+          }
+        }
+      },
+      "required": [
+        "columns",
+        "rows",
+        "tileWidth",
+        "tileHeight",
+        "tiles",
+        "definitions"
+      ]
+    }
+  }
+}

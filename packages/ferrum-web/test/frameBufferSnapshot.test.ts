@@ -13,9 +13,14 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   values[4] = 3.5;
   const range = new Uint32Array(memory.buffer, 1024, 2);
   range.set([0, 3]);
+  const terrainWords = new Uint32Array(memory.buffer, 2048, 24);
+  const terrainFloats = new Float32Array(memory.buffer, 2048, 24);
+  terrainWords[2] = 0x7fc01234; // Copy identity bits, without an f32 NaN conversion.
+  terrainFloats[15] = -0;
+  terrainFloats[16] = 3.5;
   const spatial: SpatialRenderBufferView = {
     version: 2, vertexStride: 11, camera: floats.subarray(0, 16),
-    terrain: floats.subarray(16, 49), terrainVertexCount: 3, terrainRevision: 1,
+    terrain: floats.subarray(16, 49), terrainVertexCount: 3, terrainRevision: 1, terrainRenderRevision: 9,
     terrainDrawRanges: range, billboards: floats.subarray(16, 49), billboardVertexCount: 3,
     presentation: floats.subarray(0, 6),
     models: { version: 1, stride: 20, words, values, assets: new Map() },
@@ -27,11 +32,12 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   };
   const frame = snapshotRenderFrameBuffers({
     renderCommandBuffer: { buffer: floats.subarray(0, 15), commandCount: 1, floatsPerCommand: 15,
+      terrainImpacts: { version: 1, stride: 24, count: 1, dropped: 2, words: terrainWords, floats: terrainFloats },
       groundShadowProjection: floats.subarray(0, 3),groundShadowVolumes:{version:1,stride:3,vertexCount:3,casterCount:1,buffer:floats.subarray(0,9)}, spriteNormalMaterials: { version: 1, stride: 2, buffer: words.subarray(0, 2) }, spatial },
     physicsDebugLineBuffer: { buffer: floats.subarray(0, 8), lineCount: 1, floatsPerLine: 8 },
     cameraX: 1, cameraY: 2,
   });
-  floats.fill(0); words.fill(0); range.fill(0);
+  floats.fill(0); words.fill(0); range.fill(0); terrainWords.fill(0);
   memory.grow(1);
   const captured = frame.renderCommandBuffer.spatial!;
   equal(frame.renderCommandBuffer.buffer[0], 0.5);
@@ -39,8 +45,16 @@ test("callback snapshots retain all spatial sidecars and native model aliases af
   equal(frame.renderCommandBuffer.groundShadowVolumes!.buffer[0],0.5);
   equal(frame.renderCommandBuffer.groundShadowVolumes!.vertexCount,3);
   equal(frame.renderCommandBuffer.spriteNormalMaterials!.buffer[0], 7);
+  const impacts = frame.renderCommandBuffer.terrainImpacts!;
+  equal(terrainWords.length, 0);
+  equal(impacts.count, 1); equal(impacts.dropped, 2);
+  equal(impacts.words[2], 0x7fc01234);
+  equal(Object.is(impacts.floats[15], -0), true);
+  equal(impacts.floats[16], 3.5);
+  equal(impacts.words.buffer, impacts.floats.buffer);
   equal(frame.physicsDebugLineBuffer!.buffer[0], 0.5);
   equal(captured.camera[0], 0.5); equal(captured.terrain[0], 0.5); equal(captured.billboards[0], 0.5);
+  equal(captured.terrainRenderRevision, 9);
   equal(captured.presentation![0], 0.5); equal(captured.debug!.vertices[0], 0.5);
   equal(captured.materials!.terrain[0], 7); equal(captured.materials!.billboards[0], 7);
   equal(captured.models!.words[0], 7); equal(captured.models!.values[4], 3.5);

@@ -1,3 +1,4 @@
+import { copyUnifiedPhysicsDiagnostics, UNIFIED_PHYSICS_COUNTER_LAYOUT, type UnifiedPhysicsCounters, type UnifiedPhysicsDiagnostics } from "./unifiedPhysicsObservations.js";
 import type { AssetLoadProgress } from "./assetLoader.js";
 import { RuntimeFrameTraceRecorder, type RuntimeFrameTraceOptions, type RuntimeFrameTraceSnapshot } from "./runtimeFrameTrace.js";
 import type { DebugOverlayMetrics } from "./debugOverlay.js";
@@ -52,6 +53,7 @@ export interface RuntimeDiagnosticsReport {
 }
 
 export interface RuntimeDiagnosticsFrameSample {
+  unifiedPhysics?: UnifiedPhysicsDiagnostics;
   /** Current renderer frame, distinct from the completed prior query's gpuFrameId. */
   rendererFrameId?: number;
   /** Unclamped interval between render callbacks; omitted on the first frame. */
@@ -142,6 +144,9 @@ export interface RuntimeProfilerOptions {
 }
 
 export interface RuntimeProfilerSnapshot {
+  /** Maxima of measured native frame counters over samples carrying native diagnostics. */
+  maxNativeFrameCounters?: UnifiedPhysicsCounters;
+  nativePhysicsSampleCount?: number;
   frameTrace?: RuntimeFrameTraceSnapshot;
   maxWasmLinearMemoryBytes?: number;
   /** Only completed, valid GPU queries in the retained sample window. */
@@ -264,6 +269,7 @@ export function runtimeDiagnosticsFrameSample(
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
   };
+  if (metrics.unifiedPhysics !== undefined) sample.unifiedPhysics = copyUnifiedPhysicsDiagnostics(metrics.unifiedPhysics);
   for(const field of ["spatialLightShaftDrawCalls","spatialLightShaftTextureBytes","spatialLightShaftTexelFetchBudget","spatialBloomDrawCalls","spatialBloomTextureBytes","spatialBloomTexelFetchBudget","rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls","spatialAuthoredLightCount","spatialSelectedLightCount","spatialContributingLightCount","spatialPendingLightCount","spatialRetainedLightCount","spatialFadingLightCount","spatialCulledLightCount","spatialDroppedLightCount","spatialDisabledLightCount","pointShadowGeometryUploadBytes","pointShadowGeometryVertexCount"] as const) {
     const value=metrics[field];if(value!==undefined)sample[field]=nonNegativeInteger(value,field);
   }
@@ -657,6 +663,21 @@ function summarizeRuntimeProfiler(
   } as RuntimeProfilerSnapshot;
   if (frames.length > 0) {
     snapshot.latestFrame = frames[frames.length - 1];
+  }
+  let maxima: Record<keyof UnifiedPhysicsCounters, number> | undefined;
+  let nativeSamples = 0;
+  for (const sample of frames) {
+    if (sample.unifiedPhysics === undefined) continue;
+    nativeSamples++;
+    const frame = sample.unifiedPhysics.frame;
+    if (maxima === undefined) maxima = {...frame};
+    else for (const key of Object.keys(UNIFIED_PHYSICS_COUNTER_LAYOUT) as (keyof UnifiedPhysicsCounters)[]) {
+      maxima[key] = Math.max(maxima[key], frame[key]);
+    }
+  }
+  if (maxima !== undefined) {
+    snapshot.maxNativeFrameCounters = maxima;
+    snapshot.nativePhysicsSampleCount = nativeSamples;
   }
   if (assets.length > 0) {
     snapshot.latestAsset = assets[assets.length - 1];

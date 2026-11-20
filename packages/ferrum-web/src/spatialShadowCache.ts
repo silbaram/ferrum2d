@@ -110,7 +110,7 @@ export class SpatialShadowCache {
         for (const [id, revision] of this.pendingTextures)
             if (this.textureRevisions.get(id) !== revision) sameTextures = false;
         const sameGeometry = tracked && this.memory === frame.terrain.buffer && this.offset === frame.terrain.byteOffset
-            && this.terrainLength === frame.terrain.length && this.terrainRevision === frame.terrainRevision
+            && this.terrainLength === frame.terrain.length && this.terrainRevision === (frame.terrainRenderRevision ?? frame.terrainRevision)
             && this.casterRevision === env?.shadowSubmission?.revision && sameTextures;
         let dirty = 0;
         for (let owner = 0; owner < 3; owner++) {
@@ -122,7 +122,7 @@ export class SpatialShadowCache {
         }
         // Observe shared inputs once. Dirty maps remain invalid until successful commit.
         this.memory = frame.terrain.buffer; this.offset = frame.terrain.byteOffset; this.terrainLength = frame.terrain.length;
-        this.terrainRevision = frame.terrainRevision; this.casterRevision = env?.shadowSubmission?.revision ?? -1;
+        this.terrainRevision = (frame.terrainRenderRevision ?? frame.terrainRevision); this.casterRevision = env?.shadowSubmission?.revision ?? -1;
         this.textureRevisions.clear();
         for (const [id, revision] of this.pendingTextures) this.textureRevisions.set(id, revision);
         return dirty;

@@ -22,6 +22,7 @@ import {
 import type { ColorManagementMode } from "./colorManagement.js";
 import {
   compileDataSceneProjectilePrefabs,
+  projectileVisualsRequired,
   resolveDataSceneProjectilePrefabs,
   resolveDataSceneProjectileTextures,
   type DataSceneProjectilePrefabSpec,
@@ -151,6 +152,8 @@ interface CombatRuntime extends CombatNavigationRuntime, CombatCrowdRuntime, Com
     frames: Float32Array,
   ): boolean;
   data_scene_spawn_prefabs_version?(): number;
+  data_scene_spawn_prefab_physics_version?(): number;
+  physics_spec_backend_active?(): boolean;
   configure_data_scene_gameplay_v7?(
     hasActor: boolean,
     id: number,
@@ -228,6 +231,11 @@ export function supportsDataSceneSpawnPrefabs(engine: Engine & CombatRuntime): b
   );
 }
 
+/** Native prefab bodies/controllers require their own exact capability, independent of packet v1. */
+export function supportsDataSceneSpawnPrefabPhysics(engine: Engine & CombatRuntime): boolean {
+  return engine.data_scene_spawn_prefab_physics_version?.() === 1 && supportsDataSceneSpawnPrefabs(engine);
+}
+
 export function supportsDataSceneProjectileVisuals(engine: Engine & CombatRuntime): boolean {
   return (
     engine.data_scene_projectile_visuals_version?.() === 1 &&
@@ -271,6 +279,12 @@ export function configureDataSceneGameplay(
       : uint32Number(actor.entityGeneration, "gameplay.primaryActor.entityGeneration"),
     action,
   ] as const;
+  const prefabPhysicsSupported = engine.physics_spec_backend_active?.() !== true || supportsDataSceneSpawnPrefabPhysics(engine);
+  if (options.spawnPrefabs !== undefined && !prefabPhysicsSupported)
+    throw gameplayAuthoringDiagnosticError(
+      "dataScene.gameplay.spawnPrefabs",
+      "native physics requires spawn-prefab physics capability version 1",
+    );
   const allMovement = options.combatNavigation?.movementPatterns === "all";
   if (allMovement && !supportsDataSceneCombatMovement(engine))
     throw gameplayAuthoringDiagnosticError(
@@ -315,13 +329,11 @@ export function configureDataSceneGameplay(
         "dataScene.gameplay.projectilePrefabs",
         "requires combat:true and a compatible projectile-prefab Wasm build",
       );
-    const catalog = resolveDataSceneProjectileTextures(
-      resolveDataSceneProjectilePrefabs(
-        options.projectilePrefabs ?? {},
-        "dataScene.gameplay.projectilePrefabs",
-      ),
-      textureId,
-    );
+    const authoredProjectiles = resolveDataSceneProjectilePrefabs(options.projectilePrefabs ?? {}, "dataScene.gameplay.projectilePrefabs");
+    // Visual packet v8 also replaces the actor catalog when its option is omitted.
+    if (projectileVisualsRequired(authoredProjectiles) && !prefabPhysicsSupported)
+      throw gameplayAuthoringDiagnosticError("dataScene.gameplay.spawnPrefabs", "native physics requires spawn-prefab physics capability version 1");
+    const catalog = resolveDataSceneProjectileTextures(authoredProjectiles, textureId);
     const batch = compileDataSceneProjectilePrefabs(
       catalog,
       options.projectileBindings ?? [],

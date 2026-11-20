@@ -1,7 +1,10 @@
+import { UNIFIED_PHYSICS_STATE_LAYOUT as PHYSICS, UNIFIED_PHYSICS_CHARACTER_LAYOUT as CHARACTER } from "@ferrum2d/ferrum-web/core";
+import type { PlacementShapePhysicsSnapshot, PlacementPhysicsAuthoringSnapshot } from "./placementPhysicsSummary";
 import { setUiText, uiMessage } from "./placementLocale";
 import { comparePlacementValues, describePlacementChange, escapePointer, type PlacementChange } from "./placementChangeLabels";
 import { readPlacementImportDiagnostics, createPlacementImportDiagnosticSummary } from "./placementImportDiagnostics";
 import { createPlacementRuntimeSummary } from "./placementRuntimeSummary";
+import { readPlacementAuthoredComponents } from "./placementComponentEdits";
 import {
   mergeScenePlacementPatch,
   type SceneAuthoringDocumentSpec,
@@ -52,6 +55,8 @@ export function installPlacementDiagnostics(options: {
     lastRead = 0;
   let context = "",
     recentEvents: GameplayEventView[] = [];
+  let authoredDocument: SceneAuthoringDocumentSpec | undefined,
+    authoredController: PlacementPhysicsAuthoringSnapshot["kinematicController"];
   const root = document.createElement("section");
   root.className = "placement-diagnostics";
   const problems = details("Problems"),
@@ -170,6 +175,8 @@ export function installPlacementDiagnostics(options: {
           result.add(source + "#" + path);
         if (!paths.has(instance.sourceId))
           result.add(source + "#draft.instances[" + instance.instanceId + "]");
+        if (instance.componentTemplate !== undefined && base?.componentTemplates && Object.hasOwn(base.componentTemplates, instance.componentTemplate))
+          result.add(source + "#/componentTemplates/" + escapePointer(instance.componentTemplate));
         if (next.spatial?.models?.[instance.instanceId])
           result.add(
             source + "#/spatial/models/" + escapePointer(instance.instanceId),
@@ -228,7 +235,7 @@ export function installPlacementDiagnostics(options: {
     assetDiagnostics: readonly ScenePlacementAssetDiagnostic[],
   ) {
     const changedSelection =
-      state?.selectedInstanceId !== next.selectedInstanceId;
+      state?.selectedInstanceId !== next.selectedInstanceId || state?.fragment !== next.fragment;
     state = next;
     diagnostics = assetDiagnostics;
     const changedBase = base !== scene || source !== sourceDocument;
@@ -247,7 +254,8 @@ export function installPlacementDiagnostics(options: {
       errors = [];
     }
     const signature = JSON.stringify(next.draftPatch ?? null);
-    if (changedBase || signature !== patchSignature) {
+    const changedPatch = signature !== patchSignature;
+    if (changedBase || changedPatch) {
       patchSignature = signature;
       changes = [];
       let after: SceneAuthoringDocumentSpec | undefined;
@@ -259,6 +267,7 @@ export function installPlacementDiagnostics(options: {
       } catch (error) {
         report(error);
       }
+      authoredDocument = after;
       setUiText(diff.summary, uiMessage("My Changes ({0})", changes.length));
       diff.body.replaceChildren(
         ...changes.slice(0, 200).map((change) => changeRow(change, scene, after, next)),
@@ -276,6 +285,23 @@ export function installPlacementDiagnostics(options: {
           changes.length +
           " changes. Full patch is in the handoff.";
         diff.body.append(row);
+      }
+    }
+    if (changedBase || changedPatch || changedSelection) {
+      authoredController = undefined;
+      if (authoredDocument && next.selectedInstanceId && next.selected?.body?.type === "kinematic"
+        && next.selected.body.kinematicController !== undefined) {
+        try {
+          const components = readPlacementAuthoredComponents(authoredDocument, next.fragment, next.selectedInstanceId);
+          const template = components?.template;
+          const owned = typeof template === "string" ? authoredDocument.componentTemplates?.[template] : components;
+          const body = owned?.body;
+          const raw = record(body) && "kinematicController" in body ? body.kinematicController : undefined;
+          if (record(raw)) {
+            // The document resolver validated this record; keep raw omission and precision.
+            authoredController = structuredClone(raw) as NonNullable<PlacementPhysicsAuthoringSnapshot["kinematicController"]>;
+          }
+        } catch (error) { report(error); }
       }
     }
     evidence = {
@@ -347,7 +373,49 @@ export function installPlacementDiagnostics(options: {
           : undefined;
       const colliderCount = entity && handle ? options.runtime.engine.getPhysicsBodyColliderCount(handle) : 0;
       const colliders = entity && handle ? Array.from({length: Math.min(32, colliderCount)}, (_,i) => options.runtime.engine.getPhysicsBodyCollider(handle,i)).filter((c): c is NonNullable<typeof c> => !!c) : [];
+      let shapePhysics: PlacementShapePhysicsSnapshot | undefined;
+      const body = state.selected?.body;
+      const physicsAuthoring: PlacementPhysicsAuthoringSnapshot | undefined = body ? {
+        nativeBody: body.type === undefined,
+        ...(authoredController !== undefined
+          ? { kinematicController: structuredClone(authoredController) } : {}),
+      } : undefined;
+      if (handle && body && body.type === undefined && options.runtime.engine.gameplayEntityExists(handle)) {
+        try {
+          const native = options.runtime.engine.queryUnifiedPhysicsBodyStates(new Uint32Array([handle.entityId, handle.entityGeneration]));
+          if (native.count !== 1 || native.words[PHYSICS.entityId] !== handle.entityId
+            || native.words[PHYSICS.entityGeneration] !== handle.entityGeneration)
+            throw new Error("Native body state did not match selected entity");
+          // Own every value before any subsequent query can grow/reuse Wasm memory.
+          const owned = { kind: body.kind ?? "dynamic",
+            position: Array.from(native.floats.slice(PHYSICS.position, PHYSICS.position + 3)),
+            rotation: Array.from(native.floats.slice(PHYSICS.rotation, PHYSICS.rotation + 4)),
+            velocity: Array.from(native.floats.slice(PHYSICS.linearVelocity, PHYSICS.linearVelocity + 3)),
+            angularVelocity: Array.from(native.floats.slice(PHYSICS.angularVelocity, PHYSICS.angularVelocity + 3)),
+            sleeping: (native.words[PHYSICS.flags] & PHYSICS.sleepingFlag) !== 0 };
+          shapePhysics = { ...owned, colliderCount: options.runtime.engine.queryUnifiedPhysicsColliders(handle).length };
+        } catch (error) {
+          physicsAuthoring!.runtimeError = error instanceof Error ? error.message : String(error);
+        }
+        if (shapePhysics && body.character !== undefined) {
+          try {
+            const character = options.runtime.engine.queryUnifiedPhysicsCharacterStates(new Uint32Array([handle.entityId, handle.entityGeneration]));
+            if (character.count !== 1 || character.words[CHARACTER.entityId] !== handle.entityId
+              || character.words[CHARACTER.entityGeneration] !== handle.entityGeneration)
+              throw new Error("Native character state did not match selected entity");
+            shapePhysics.character = {
+              grounded: (character.words[CHARACTER.flags] & CHARACTER.groundedFlag) !== 0,
+              sliding: (character.words[CHARACTER.flags] & CHARACTER.slidingFlag) !== 0,
+              verticalSpeed: character.floats[CHARACTER.verticalSpeed],
+            };
+          } catch (error) {
+            physicsAuthoring!.characterRuntimeError = error instanceof Error ? error.message : String(error);
+          }
+        }
+      }
       const snapshot = {
+        shapePhysics,
+        physicsAuthoring,
         physics: entity,
         colliderCount,
         colliders,
@@ -392,4 +460,8 @@ export function installPlacementDiagnostics(options: {
 function short(value: unknown) {
   const text = JSON.stringify(value) ?? "(absent)";
   return text.length > 500 ? text.slice(0, 500) + "…" : text;
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

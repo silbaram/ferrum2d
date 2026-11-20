@@ -1,7 +1,8 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import "./nativeRuntimeTestHelper.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
-import { createEngine, captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot } from "../src/core.js";
+import {  captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot } from "../src/core.js";
 import { applyDataSceneAuthoringDocument, createSceneInstanceHandleRegistry, createScenePlacementViewer, mergeScenePlacementPatch } from "../src/authoring.js";
 import type { FrameState } from "../src/engineTypes.js";
 

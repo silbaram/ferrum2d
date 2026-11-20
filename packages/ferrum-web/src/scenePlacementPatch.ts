@@ -36,6 +36,7 @@ import {
 export interface MergeScenePlacementPatchOptions {
   path?: string;
   allowedFragments?: readonly string[];
+  componentTemplates?: import("./dataSceneRuntimeTarget.js").DataSceneRuntimeComponentTemplates;
 }
 
 export const SCENE_PLACEMENT_BINDING_MIGRATION_PREVIEW_FORMAT =
@@ -287,6 +288,11 @@ export function mergeScenePlacementPatch(
           options.allowedFragments,
           `${operationPath}.fragment`,
         );
+        const resolvedInstance = instantiateSceneFragmentPlacements(composition, { fragment: ref.fragmentId })
+          .find(({ placement }) => placement.kind === "fragmentInstance" && placement.fragment === ref.fragmentId && placement.instanceId === ref.instance.id)?.instance;
+        const owned = resolvedInstance?.props.components;
+        if (owned && typeof owned === "object" && !Array.isArray(owned) && "template" in owned)
+          throw gameplayAuthoringDiagnosticError(operationPath, "shared component template is read-only; edit componentTemplates with an agent");
         const components = validatedComponentsPatch(
           operation.components,
           `${operationPath}.components`,
@@ -455,8 +461,9 @@ export function mergeScenePlacementPatch(
     if (patch.lighting === null) delete nextDocument.lighting;
     else nextDocument.lighting = resolveSceneLighting(patch.lighting, `${path}.lighting`);
   }
-  if (nextDocument.spatial || patch.lighting !== undefined)
+  if (nextDocument.spatial || nextDocument.physics || nextDocument.componentTemplates !== undefined || options.componentTemplates !== undefined || patch.lighting !== undefined)
     resolveSceneAuthoringDocument(nextDocument, {
+      componentTemplates: options.componentTemplates,
       validateBindings: true,
       validateComponents: true,
       missingBehavior: "ignore",

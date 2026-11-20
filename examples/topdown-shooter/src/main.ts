@@ -1,15 +1,20 @@
+import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 import { createExampleGuide } from "../../shared/exampleGuide";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
 import "./styles.css";
 import { createShooterShowcase, type ShowcaseWave } from "./showcase";
+import { createShooterPlatformScope, type ShooterPlatformScope } from "./platformScope";
 import { applyOutpostLighting } from "./presentation";
 import {
-  BrowserPlatformHost,
-  InputManager,
+  type BrowserPlatformHost,
   VirtualControls,
   LoadingOverlay,
-  WebGL2Renderer,
   createEngine,
+  createNativeGameFileSession,
+  type NativeGameFileSession,
+  type NativeGameFileReady,
+  type FrameHandler,
+  type WebGL2Renderer,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
@@ -558,48 +563,11 @@ function builtInPlayerRuntimeSummary(
   if (instance === undefined) {
     return {};
   }
+  const actions = engine.builtInShooterPlayerActions();
   return {
     builtInPlayerHandle: handles[instance.id],
-    builtInPlayerAction: builtInShooterPlayerAction(engine),
-    builtInPlayerDashAction: builtInShooterPlayerDashAction(engine),
-  };
-}
-
-function builtInShooterPlayerAction(engine: FerrumEngine): TopdownAuthoredBehaviorPlayerActionSummary | undefined {
-  const snapshot = engine.captureShooterStateSnapshot();
-  if (snapshot === undefined) {
-    return undefined;
-  }
-  const accessor = engine.createBuiltInShooterStateAccessor();
-  accessor.bind(snapshot);
-  if (!accessor.selectFirst("player") || accessor.primaryActionId === 0) {
-    return undefined;
-  }
-  return {
-    actionId: accessor.primaryActionId,
-    cooldownSeconds: accessor.primaryActionCooldownDuration,
-    remainingCooldownSeconds: accessor.primaryActionCooldownRemaining,
-    speed: accessor.primaryActionProjectileSpeed,
-    damage: accessor.primaryActionProjectileDamage,
-    lifetimeSeconds: accessor.primaryActionProjectileLifetime,
-  };
-}
-
-function builtInShooterPlayerDashAction(engine: FerrumEngine): TopdownAuthoredBehaviorPlayerDashActionSummary | undefined {
-  const snapshot = engine.captureShooterStateSnapshot();
-  if (snapshot === undefined) {
-    return undefined;
-  }
-  const accessor = engine.createBuiltInShooterStateAccessor();
-  accessor.bind(snapshot);
-  if (!accessor.selectFirst("player") || accessor.dashActionId === 0) {
-    return undefined;
-  }
-  return {
-    actionId: accessor.dashActionId,
-    cooldownSeconds: accessor.dashCooldownDuration,
-    remainingCooldownSeconds: accessor.dashCooldownRemaining,
-    distance: accessor.dashDistance,
+    builtInPlayerAction: actions?.primaryAction,
+    builtInPlayerDashAction: actions?.dashAction,
   };
 }
 
@@ -773,6 +741,12 @@ function applyTopdownPresentationEffects(
   }
 
   const actions = gameplayActionsForEvents(frame.gameplayEvents, { path: "frame.gameplayEvents" });
+  const particleHandles: GameplayEntityHandle[] = [];
+  for (const action of actions) {
+    if (action.type === "presentationEffect" && action.effectType === GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE) {
+      particleHandles.push(action.actor, action.source);
+    }
+  }
   const audioEventBudget = new Map<number, TopdownPresentationEffectAudioEvent[]>();
   for (const event of frame.audioEvents) {
     const soundId = Math.trunc(event.soundId);
@@ -787,11 +761,15 @@ function applyTopdownPresentationEffects(
     audioEventBudget.set(soundId, bucket);
   }
 
+  // Consume frame event views before any native allocation can grow memory.
+  // One authoritative bulk read covers every particle actor/source in this frame.
+  const particlePositions = particleHandles.length ? runtimeEngine.queryGameplayPositions(particleHandles) : [];
+  let particlePositionIndex = 0;
   for (const action of actions) {
     if (action.type === "presentationEffect" && action.effectType === GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE) {
-      const actorSnapshot = runtimeEngine.getPhysicsEntity(action.actor);
-      const sourceSnapshot = runtimeEngine.getPhysicsEntity(action.source);
-      const spawnTarget = actorSnapshot ?? sourceSnapshot;
+      const actorPosition = particlePositions[particlePositionIndex++];
+      const sourcePosition = particlePositions[particlePositionIndex++];
+      const spawnTarget = actorPosition ?? sourcePosition;
       if (spawnTarget !== undefined) {
         runtimeEngine.spawnParticleBurst(action.effectId, spawnTarget.x, spawnTarget.y);
       }
@@ -1216,9 +1194,11 @@ async function bootstrap(): Promise<void> {
     const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
     const massObjectsSmokeEnabled = searchParams.get("massObjectsSmoke") === "true";
     const profilerSmokeEnabled = searchParams.get("profilerSmoke") === "true";
+    const nativeFilesEnabled = searchParams.get("nativeFiles") === "true";
+    if (nativeFilesEnabled && massObjectsSmokeEnabled) throw new Error("파일 모드에서는 legacy snapshot 기반 massObjectsSmoke를 사용할 수 없습니다.");
     const authoredBehaviorVariantApplyEnabled = searchParams.get("authoredBehaviorVariantApply") === "true";
 
-    const canvas = document.createElement("canvas");
+    let canvas = document.createElement("canvas");
     canvas.tabIndex = 0;
     canvas.setAttribute("aria-label", "Neon Outpost 게임 화면. WASD 이동, 마우스 조준, 클릭 또는 Space 발사, P 일시정지");
     const showcase = createShooterShowcase(canvas);
@@ -1235,25 +1215,19 @@ async function bootstrap(): Promise<void> {
     if (debugEnabled) showcase.root.append(debugPanel);
     app.replaceChildren(showcase.root);
 
-    const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
-    own(() => renderer.destroy());
+    const initialScope = createShooterPlatformScope(canvas, preserveDrawingBuffer);
+    let currentScope = initialScope;
+    let renderer = initialScope.renderer;
+    let platformHost = initialScope.host;
+    let input = initialScope.input;
+    const disposeInitialScope = (): void => {
+      if (initialScope.disposed) return;
+      try { initialScope.engine?.destroy(); } finally { initialScope.dispose(); }
+    };
+    own(disposeInitialScope);
     await renderer.loadTexture(0, new URL("../../shared/solid-white.png", import.meta.url).href, { signal: lifetime.signal });
     lifetime.check();
-    const resizeRenderer = (): void => renderer.resize();
-    const resizeObserver = new ResizeObserver(resizeRenderer);
-    resizeObserver.observe(canvas);
-    own(() => resizeObserver.disconnect());
-    const platformHost = new BrowserPlatformHost(renderer);
-    own(() => platformHost.destroy());
-    const unlockAudio = (): void => {
-      void platformHost.unlockAudio();
-    };
-    window.addEventListener("keydown", unlockAudio, { once: true });
-    canvas.addEventListener("pointerdown", unlockAudio, { once: true });
-    own(() => window.removeEventListener("keydown", unlockAudio));
-    own(() => canvas.removeEventListener("pointerdown", unlockAudio));
-    const input = new InputManager(canvas);
-    own(() => input.destroy());
+    const unlockAudio = (): void => currentScope.unlockAudio();
     const virtualControls = new VirtualControls(showcase.stage, {
       joystick: { label: "이동" },
       buttons: [{ id: "fire", label: "발사", controls: ["space"] }],
@@ -1270,7 +1244,6 @@ async function bootstrap(): Promise<void> {
     });
     own(() => loadingOverlay.destroy());
     const showAssetProgress = (text: string): void => { showcase.hint.textContent = text; };
-    let waveAccessor: BuiltInShooterStateAccessor | undefined;
     let nextHudSampleMs = 0;
     let hudWave: ShowcaseWave | undefined;
     let previousGameState = -1;
@@ -1279,8 +1252,6 @@ async function bootstrap(): Promise<void> {
     let audioEventRateWindowStartMs = performance.now();
     let audioEventRateCount = 0;
     let audioEventsPerSecond = 0;
-    let runtimeEngine: FerrumEngine | undefined;
-    let renderCommandAccessor: RenderCommandAccessor | undefined;
     let smokeTextureIds: TopdownTextureIds | undefined;
     let massObjectsSmokeApply: TopdownMassObjectsSnapshotApplySummary | undefined;
     let authoredBehaviorVariantSummary: TopdownAuthoredBehaviorVariantSummary | undefined;
@@ -1291,8 +1262,8 @@ async function bootstrap(): Promise<void> {
       remainingMs: 0,
       phaseRadians: 0,
     };
-    const inputSnapshot = () => {
-      const snapshot = virtualControls.applyToSnapshot(input.snapshot());
+    const inputSnapshot = (scope: ShooterPlatformScope) => {
+      const snapshot = virtualControls.applyToSnapshot(scope.input.snapshot());
       if (smokeStartQueued) {
         smokeStartQueued = false;
         return { ...snapshot, enter: true };
@@ -1305,117 +1276,123 @@ async function bootstrap(): Promise<void> {
       return snapshot;
     };
 
-    const engine = await createEngine((frame) => {
-      const shake = consumeTopdownCameraShake(frame.frameTimeMs, topdownCameraShakeState);
-      const cameraShakeOffset = presentation.reducedMotion ? { x: 0, y: 0 } : shake;
-      const renderStartMs = performance.now();
-      applyOutpostLighting(renderer, presentation.lighting, frame.cameraX, frame.cameraY, cameraShakeOffset);
-      renderer.render();
-      renderer.setSpriteScreenOffset(cameraShakeOffset.x, cameraShakeOffset.y);
-      try {
-        renderer.renderCommands(frame.renderCommandBuffer);
-      } finally {
-        renderer.setSpriteScreenOffset(0, 0);
-      }
-      if (physicsDebugLines) {
-        renderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
-          x: frame.cameraX + cameraShakeOffset.x,
-          y: frame.cameraY + cameraShakeOffset.y,
-        });
-      }
-      const renderStats = renderer.renderPostProcess();
-      const renderTimeMs = performance.now() - renderStartMs;
-      audioEventRateCount += frame.audioEvents.length;
-      const audioEventRateElapsedMs = performance.now() - audioEventRateWindowStartMs;
-      if (audioEventRateElapsedMs >= 1000) {
-        audioEventsPerSecond = audioEventRateCount / (audioEventRateElapsedMs / 1000);
-        audioEventRateWindowStartMs = performance.now();
-        audioEventRateCount = 0;
-      }
+    const makeCallbacks = (scope: ShooterPlatformScope) => ({
+      "frame.onFrame": ((frame) => {
+        if (scope.disposed) return;
 
-      if (effectSmokeEnabled && runtimeEngine && renderCommandAccessor && smokeTextureIds) {
-        recordTopdownSmokeFrame(runtimeEngine, renderCommandAccessor, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
-      }
-      if (massObjectsSmokeEnabled && runtimeEngine && massObjectsSmokeApply) {
-        recordTopdownMassObjectsSmokeFrame(
-          runtimeEngine,
-          massObjectsSmokeApply,
-          renderStats,
-          renderTimeMs,
-          frame.gameState,
-          frame.physics.collisionPairs,
-        );
-      }
-      if (authoredBehaviorVariantApplyEnabled) {
-        recordTopdownAuthoredBehaviorFrame(frame, authoredBehaviorVariantSummary, runtimeEngine);
-      }
-
-      const debugMetrics = {
-        fps: frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0,
-        frameTimeMs: frame.frameTimeMs,
-        entityCount: frame.entityCount,
-        spriteCount: frame.spriteCount,
-        drawCalls: renderStats.drawCalls,
-        batchCount: renderStats.batchCount,
-        renderCommandCount: renderStats.renderCommandCount,
-        textureBindCount: renderStats.textureBindCount,
-        textureSwitchCount: renderStats.textureSwitchCount,
-        physicsDebugLineCount: renderStats.physicsDebugLineCount,
-        physicsFixedSteps: frame.physics.fixedSteps,
-        physicsSolidCandidateChecks: frame.physics.solidCandidateChecks,
-        physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
-        physicsCcdChecks: frame.physics.ccdChecks,
-        physicsCcdHits: frame.physics.ccdHits,
-        collisionPairCount: frame.physics.collisionPairs,
-        collisionEventCount: frame.physics.collisionEventCount,
-        audioEventsPerSecond,
-        rustUpdateTimeMs: frame.rustUpdateTimeMs,
-        renderTimeMs,
-        mouseX: frame.mouseX,
-        mouseY: frame.mouseY,
-        cameraX: frame.cameraX,
-        cameraY: frame.cameraY,
-        gameState: gameStateText(frame.gameState),
-        score: frame.score,
-      };
-      runtimeProfiler?.recordFrame(debugMetrics);
-      debugOverlay.update(debugMetrics);
-      applyTopdownPresentationEffects(
-        { gameplayEvents: frame.gameplayEvents, audioEvents: frame.audioEvents },
-        runtimeEngine,
-        platformHost,
-        topdownCameraShakeState,
-      );
-      const hudNow = performance.now();
-      // This owned bulk snapshot is sampled at 4 Hz, after borrowed render buffers are consumed.
-      // No per-entity Wasm calls or independently simulated wave timers live in the HUD.
-      if (runtimeEngine && waveAccessor && (hudNow >= nextHudSampleMs || previousGameState !== frame.gameState)) {
-        const snapshot = runtimeEngine.captureShooterStateSnapshot();
-        if (snapshot) {
-          waveAccessor.bind(snapshot);
-          const wave = gameSpec.enemies?.waves?.[waveAccessor.activeWaveIndex];
-          const labels: Record<string, string> = { runner: "추적 드론", bruiser: "중장갑 드론", orbiter: "선회 드론" };
-          hudWave = {
-            index: waveAccessor.activeWaveIndex,
-            name: labels[wave?.enemy ?? ""] ?? "외곽 경계",
-            elapsed: waveAccessor.waveElapsedSeconds,
-            duration: wave?.duration ?? 0,
-            spawned: waveAccessor.waveSpawnedCount,
-          };
+        const shake = consumeTopdownCameraShake(frame.frameTimeMs, topdownCameraShakeState);
+        const cameraShakeOffset = presentation.reducedMotion ? { x: 0, y: 0 } : shake;
+        const renderStartMs = performance.now();
+        applyOutpostLighting(scope.renderer, presentation.lighting, frame.cameraX, frame.cameraY, cameraShakeOffset);
+        scope.renderer.render();
+        scope.renderer.setSpriteScreenOffset(cameraShakeOffset.x, cameraShakeOffset.y);
+        try {
+          scope.renderer.renderCommands(frame.renderCommandBuffer);
+        } finally {
+          scope.renderer.setSpriteScreenOffset(0, 0);
         }
-        nextHudSampleMs = hudNow + 250;
-      }
-      previousGameState = frame.gameState;
-      showcase.update({ ...frame, drawCalls: renderStats.drawCalls }, hudWave);
+        if (physicsDebugLines) {
+          scope.renderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
+            x: frame.cameraX + cameraShakeOffset.x,
+            y: frame.cameraY + cameraShakeOffset.y,
+          });
+        }
+        const renderStats = scope.renderer.renderPostProcess();
+        const renderTimeMs = performance.now() - renderStartMs;
+        audioEventRateCount += frame.audioEvents.length;
+        const audioEventRateElapsedMs = performance.now() - audioEventRateWindowStartMs;
+        if (audioEventRateElapsedMs >= 1000) {
+          audioEventsPerSecond = audioEventRateCount / (audioEventRateElapsedMs / 1000);
+          audioEventRateWindowStartMs = performance.now();
+          audioEventRateCount = 0;
+        }
 
-    }, inputSnapshot, platformHost, () => renderer.viewportSize(), {
+        if (effectSmokeEnabled && scope.engine && scope.renderAccessor && smokeTextureIds) {
+          recordTopdownSmokeFrame(scope.engine, scope.renderAccessor, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
+        }
+        if (massObjectsSmokeEnabled && scope.engine && massObjectsSmokeApply) {
+          recordTopdownMassObjectsSmokeFrame(
+            scope.engine,
+            massObjectsSmokeApply,
+            renderStats,
+            renderTimeMs,
+            frame.gameState,
+            frame.physics.collisionPairs,
+          );
+        }
+        if (authoredBehaviorVariantApplyEnabled) {
+          recordTopdownAuthoredBehaviorFrame(frame, authoredBehaviorVariantSummary, scope.engine);
+        }
+
+        const debugMetrics = {
+          fps: frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0,
+          frameTimeMs: frame.frameTimeMs,
+          entityCount: frame.entityCount,
+          spriteCount: frame.spriteCount,
+          drawCalls: renderStats.drawCalls,
+          batchCount: renderStats.batchCount,
+          renderCommandCount: renderStats.renderCommandCount,
+          textureBindCount: renderStats.textureBindCount,
+          textureSwitchCount: renderStats.textureSwitchCount,
+          physicsDebugLineCount: renderStats.physicsDebugLineCount,
+          physicsFixedSteps: frame.physics.fixedSteps,
+          physicsSolidCandidateChecks: frame.physics.solidCandidateChecks,
+          physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
+          physicsCcdChecks: frame.physics.ccdChecks,
+          physicsCcdHits: frame.physics.ccdHits,
+          collisionPairCount: frame.physics.collisionPairs,
+          collisionEventCount: frame.physics.collisionEventCount,
+          audioEventsPerSecond,
+          rustUpdateTimeMs: frame.rustUpdateTimeMs,
+          renderTimeMs,
+          mouseX: frame.mouseX,
+          mouseY: frame.mouseY,
+          cameraX: frame.cameraX,
+          cameraY: frame.cameraY,
+          gameState: gameStateText(frame.gameState),
+          score: frame.score,
+        };
+        runtimeProfiler?.recordFrame(debugMetrics);
+        debugOverlay.update(debugMetrics);
+        applyTopdownPresentationEffects(
+          { gameplayEvents: frame.gameplayEvents, audioEvents: frame.audioEvents },
+          scope.engine,
+          scope.host,
+          topdownCameraShakeState,
+        );
+        const hudNow = performance.now();
+        // Read three Rust-owned progress values at 4 Hz, after borrowed frame buffers.
+        // No legacy world snapshot or independently simulated HUD timer is needed.
+        if (scope.engine && (hudNow >= nextHudSampleMs || previousGameState !== frame.gameState)) {
+          const progress = scope.engine.builtInShooterProgress();
+          if (progress) {
+            const wave = scope.gameSpec!.enemies?.waves?.[progress.activeWaveIndex];
+            const labels: Record<string, string> = { runner: "추적 드론", bruiser: "중장갑 드론", orbiter: "선회 드론" };
+            hudWave = {
+              index: progress.activeWaveIndex,
+              name: labels[wave?.enemy ?? ""] ?? "외곽 경계",
+              elapsed: progress.waveElapsedSeconds,
+              duration: wave?.duration ?? 0,
+              spawned: progress.waveSpawnedCount,
+            };
+          }
+          nextHudSampleMs = hudNow + 250;
+        }
+        previousGameState = frame.gameState;
+        showcase.update({ ...frame, drawCalls: renderStats.drawCalls }, hudWave);
+
+      }) as FrameHandler,
+      "frame.inputProvider": () => inputSnapshot(scope),
+      "frame.viewportProvider": () => scope.renderer.viewportSize(),
+    });
+    const sourceCallbacks = makeCallbacks(initialScope);
+    let engine = await createEngine(sourceCallbacks["frame.onFrame"], sourceCallbacks["frame.inputProvider"], platformHost, sourceCallbacks["frame.viewportProvider"], {
       enablePhysicsDebugLines: physicsDebugLines,
       includePhysicsDebugLines: physicsDebugLines,
+      ...(massObjectsSmokeEnabled ? { physicsBackend: "legacy" as const } : nativeFilesEnabled ? { physicsBackend: "unified" as const, fixedTimestep: false } : {}),
     });
-    runtimeEngine = engine;
-    renderCommandAccessor = engine.createRenderCommandAccessor();
-    waveAccessor = engine.createBuiltInShooterStateAccessor();
-    own(() => engine.destroy());
+    initialScope.engine = engine;
+    initialScope.renderAccessor = engine.createRenderCommandAccessor();
 
     const manifest = topdownAssetManifest();
     let assets: LoadedAssets;
@@ -1436,6 +1413,7 @@ async function bootstrap(): Promise<void> {
     }
     smokeTextureIds = applyTopdownShooterAssets(engine, assets);
     gameSpec = assets.json.game as ShooterGameSpec;
+    initialScope.gameSpec = gameSpec;
     // Recreate the default actor at the configured world center, outside the cover tiles.
     engine.resetGame();
     if (massObjectsSmokeEnabled) {
@@ -1450,8 +1428,9 @@ async function bootstrap(): Promise<void> {
     }
     // A native checkpoint returns GameOver to Title without synthesizing simulation state in TS.
     // resetGame() alone intentionally preserves the native phase.
-    const restartCheckpoint = engine.captureShooterStateSnapshot();
-    if (!restartCheckpoint) throw new Error("Shooter restart checkpoint could not be captured.");
+    const restartCheckpoint = engine.physicsBackend() === "legacy" ? engine.captureShooterStateSnapshot() : undefined;
+    if (engine.physicsBackend() === "unified-3d") initialScope.restartCheckpoint = engine.captureRuntimeCheckpoint();
+    else if (!restartCheckpoint) throw new Error("Shooter restart checkpoint could not be captured.");
     const authoredBehaviorVariant = assets.json.authoredBehaviorVariant;
     if (authoredBehaviorVariant === undefined) {
       throw assetApplyError("json", "authoredBehaviorVariant", "Required authored behavior variant JSON is missing from loaded assets.");
@@ -1469,10 +1448,9 @@ async function bootstrap(): Promise<void> {
     showcase.hint.textContent = "WASD 이동 · 마우스 조준 · 클릭 / Space 발사 · P / Esc 일시정지";
 
     lifetime.check();
-    engine.start();
     const smokeWindow = window as TopdownSmokeWindow;
     own(() => {
-      if (smokeWindow.ferrumEngine !== engine) return;
+      if (smokeWindow.ferrumEngine !== currentScope.engine) return;
       delete smokeWindow.ferrumEngine;
       delete smokeWindow.ferrumRuntime;
       for (const key of Object.keys(smokeWindow)) if (key.startsWith("ferrumTopdown")) Reflect.deleteProperty(smokeWindow, key);
@@ -1508,7 +1486,7 @@ async function bootstrap(): Promise<void> {
         const runtimeApply = applyTopdownAuthoredBehaviorVariant(
           engine,
           authoredBehaviorVariantPrepared,
-          assets.json.game as ShooterGameSpec,
+          gameSpec,
           (authoredBehaviorVariantApplyId += 1),
         );
         authoredBehaviorVariantSummary.runtimeApply = runtimeApply;
@@ -1536,8 +1514,13 @@ async function bootstrap(): Promise<void> {
       smokeFireQueued = undefined;
       topdownCameraShakeState.remainingMs = 0;
       nextHudSampleMs = 0;
-      engine.resetGame();
-      if (!engine.restoreShooterStateSnapshot(restartCheckpoint)) throw new Error("Shooter restart checkpoint could not be restored.");
+      if (currentScope.restartCheckpoint) {
+        engine.stop();
+        try { engine.restoreRuntimeCheckpoint(currentScope.restartCheckpoint!); } finally { engine.start(); }
+      } else {
+        engine.resetGame();
+        if (!engine.restoreShooterStateSnapshot(restartCheckpoint!)) throw new Error("Shooter restart checkpoint could not be restored.");
+      }
       if (smokeWindow.ferrumTopdownAuthoredBehaviorResetAndReapply) {
         smokeWindow.ferrumTopdownAuthoredBehaviorResetAndReapply();
       }
@@ -1548,10 +1531,173 @@ async function bootstrap(): Promise<void> {
     showcase.connect({
       start() { unlockAudio(); if (engine.gameState() === 2) restart(); else smokeStartQueued = true; },
       restart() { unlockAudio(); restart(); },
-      pause(paused) { releaseInput(); if (paused) engine.pause(); else engine.resume(); },
+      pause(paused) { releaseInput(); currentScope.paused = paused; if (paused) engine.pause(); else engine.resume(); },
       settings: applySettings,
     });
     applySettings();
+    if (nativeFilesEnabled) {
+      let pending: { scope: ShooterPlatformScope; mount: HTMLDivElement; source: ShooterPlatformScope; width: number; height: number } | undefined;
+      let fileBusy = false;
+      let activeFileOperation: Promise<void> | undefined;
+      const controls = document.createElement("section");
+      controls.className = "shooter-card shooter-native-files";
+      controls.setAttribute("aria-label", "네이티브 게임 파일");
+      controls.innerHTML = `<h2>게임 파일</h2><div><button type="button" data-native-file="save">파일 저장</button><button type="button" data-native-file="open">파일 열기</button></div><input type="file" accept=".f2d" hidden><p role="status" aria-live="polite">파일 기능 준비 중…</p><p class="shooter-small">현재 게임과 에셋을 .f2d 파일로 저장합니다. 이 옵션은 통합 물리 경로를 사용합니다.</p>`;
+      showcase.root.querySelector(".shooter-sidebar")!.append(controls);
+      const saveButton = controls.querySelector<HTMLButtonElement>('[data-native-file="save"]')!;
+      const openButton = controls.querySelector<HTMLButtonElement>('[data-native-file="open"]')!;
+      const fileInput = controls.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const status = controls.querySelector<HTMLParagraphElement>('[role="status"]')!;
+      saveButton.disabled = openButton.disabled = true;
+      const observed = () => ({ time: engine.time(), score: engine.score(), gameState: engine.gameState(), entityCount: engine.entityCount(), backend: engine.physicsBackend() });
+      const fileState: { busy: boolean; epoch: number; saves: number; opens: number; lastSaved?: ReturnType<typeof observed>; lastOpened?: ReturnType<typeof observed>; lastError?: string } = { busy: false, epoch: 0, saves: 0, opens: 0 };
+      const session: NativeGameFileSession = await createNativeGameFileSession(engine, {
+        initialCleanup: disposeInitialScope,
+        preparePlatform(context) {
+          lifetime.check();
+          const source = currentScope, rect = source.canvas.getBoundingClientRect();
+          const mount = document.createElement("div");
+          mount.className = "shooter-native-staging";
+          mount.style.width = `${rect.width}px`;
+          mount.setAttribute("aria-hidden", "true");
+          const nextCanvas = document.createElement("canvas");
+          nextCanvas.tabIndex = 0;
+          nextCanvas.setAttribute("aria-label", canvas.getAttribute("aria-label") ?? "Neon Outpost 게임 화면");
+          nextCanvas.style.cssText = "display:block;width:100%;aspect-ratio:5/3;image-rendering:pixelated;touch-action:none";
+          mount.append(nextCanvas);
+          document.body.append(mount);
+          let next: ShooterPlatformScope;
+          try { next = createShooterPlatformScope(nextCanvas, preserveDrawingBuffer, true); }
+          catch (error) { mount.remove(); throw error; }
+          const plan = { scope: next, mount, source, width: rect.width, height: rect.height };
+          pending = plan;
+          const callbacks = makeCallbacks(next);
+          for (const role of context.requiredRoles) if (!Object.prototype.hasOwnProperty.call(callbacks, role)) {
+            next.dispose(); mount.remove(); pending = undefined;
+            throw new Error(`이 예제는 ${role} 파일 콜백을 지원하지 않습니다.`);
+          }
+          return {
+            assetHost: next.host,
+            callbacks,
+            validate(restored, budget) {
+              budget.work(1);
+              const restoredSpec = next.host.getJsonAsset("game");
+              if (!isRecord(restoredSpec)) throw new Error("파일에 필요한 game JSON 에셋이 없습니다.");
+              resolveShooterGameSpec(restoredSpec);
+              next.gameSpec = restoredSpec as ShooterGameSpec;
+              next.textureIds = { player: next.host.textureId("player"), enemy: next.host.textureId("enemy"), bullet: next.host.textureId("bullet") };
+              next.engine = restored;
+              next.renderAccessor = restored.createRenderCommandAccessor();
+              // A fresh same-Engine checkpoint belongs to this restored scope.
+              // Restart returns to this loaded point; file opening never restores it.
+              next.restartCheckpoint = restored.captureRuntimeCheckpoint();
+            },
+            assertCurrent() {
+              lifetime.check();
+              const now = source.canvas.getBoundingClientRect();
+              if (pending !== plan || currentScope !== source || source.disposed || next.disposed || now.width !== plan.width || now.height !== plan.height)
+                throw new Error("파일 준비 중 게임 화면이 변경되었습니다. 다시 열어주세요.");
+            },
+            dispose() {
+              try { next.dispose(); } finally { mount.remove(); if (pending === plan) pending = undefined; }
+            },
+          };
+        },
+      });
+      own(() => {
+        void (activeFileOperation ?? Promise.resolve()).then(() => session.dispose())
+          .catch(error => console.warn("Game file session cleanup failed", error));
+      });
+      const setBusy = (busy: boolean) => {
+        fileBusy = busy; fileState.busy = busy;
+        saveButton.disabled = openButton.disabled = busy;
+        showcase.setBusy(busy);
+      };
+      const stopped = (operation: () => Promise<void>): Promise<void> => {
+        if (fileBusy || lifetime.disposed) return Promise.resolve();
+        const work = (async () => {
+        const old = currentScope, paused = old.paused;
+        setBusy(true);
+        old.engine!.stop();
+        try { await operation(); }
+        catch (error) {
+          fileState.lastError = error instanceof Error ? error.message : String(error);
+          if (!lifetime.disposed) status.textContent = "파일을 처리하지 못했습니다. 현재 게임은 유지됩니다.";
+        }
+        finally {
+          if (!lifetime.disposed) {
+            setBusy(false);
+            currentScope.engine!.start();
+            if (currentScope === old && paused) currentScope.engine!.pause();
+          }
+        }
+        })();
+        activeFileOperation = work;
+        return work.finally(() => { if (activeFileOperation === work) activeFileOperation = undefined; });
+      };
+      const save = () => stopped(async () => {
+        status.textContent = "게임 파일 저장 중…";
+        const at = observed(), bytes = await session.capture();
+        lifetime.check();
+        const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" }));
+        const link = document.createElement("a");
+        link.href = url; link.download = "neon-outpost.f2d";
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        fileState.lastSaved = at; fileState.saves++;
+        status.textContent = "게임 파일을 저장했습니다.";
+      });
+      const open = (file: Blob) => stopped(async () => {
+        status.textContent = "게임 파일 여는 중…";
+        let ready: NativeGameFileReady | undefined;
+        try {
+          ready = await session.prepare(file);
+          lifetime.check();
+          const plan = pending;
+          if (!plan) throw new Error("준비된 게임 화면이 없습니다.");
+          const committing = ready; ready = undefined;
+          const committed = await session.commit(committing);
+          if (lifetime.disposed) return;
+          // All domain validation and GPU/resource work finished before commit.
+          // These assignments publish only the already prepared app scope.
+          const next = plan.scope;
+          currentScope = next; engine = next.engine!;
+          const previousCanvas = canvas;
+          canvas = next.canvas; renderer = next.renderer; platformHost = next.host; input = next.input;
+          gameSpec = next.gameSpec!;
+          smokeTextureIds = next.textureIds;
+          previousCanvas.replaceWith(canvas);
+          plan.mount.remove(); pending = undefined;
+          showcase.setCanvas(canvas);
+          showcase.setPaused(false);
+          next.activate();
+          smokeStartQueued = false; smokeFireQueued = undefined;
+          hudWave = undefined; nextHudSampleMs = 0; previousGameState = -1;
+          topdownCameraShakeState.remainingMs = 0;
+          smokeWindow.ferrumEngine = engine;
+          smokeWindow.ferrumRuntime = { engine, renderer, ...(runtimeProfiler === undefined ? {} : { profiler: runtimeProfiler }) };
+          fileState.epoch = committed.epoch; fileState.lastOpened = observed(); fileState.opens++;
+          const restartButton = showcase.root.querySelector<HTMLButtonElement>('[data-action="restart"]');
+          if (restartButton) restartButton.textContent = "불러온 지점부터 다시 시작";
+          status.textContent = committed.cleanupErrors.length ? "게임 파일을 열었습니다. 이전 화면 정리 기록을 확인하세요."
+            : committed.audio?.waitingForGesture ? "게임 파일을 열었습니다. 화면을 클릭하면 소리를 재개합니다." : "게임 파일을 열었습니다.";
+          for (const error of committed.cleanupErrors) console.warn("Previous game scope cleanup failed", error);
+        } finally {
+          if (ready) await session.discard(ready);
+        }
+      });
+      saveButton.addEventListener("click", () => { void save(); }, { signal: lifetime.signal });
+      openButton.addEventListener("click", () => { if (!fileBusy) fileInput.click(); }, { signal: lifetime.signal });
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0]; fileInput.value = "";
+        if (file) void open(file);
+      }, { signal: lifetime.signal });
+      const debug = smokeWindow as TopdownSmokeWindow & { ferrumTopdownNativeFiles?: object };
+      debug.ferrumTopdownNativeFiles = { state: fileState, host: () => currentScope.host };
+      status.textContent = "게임 파일 저장·열기 준비 완료";
+      saveButton.disabled = openButton.disabled = false;
+    }
+    engine.start();
     lifetime.ready();
   } catch (error) {
     const cancelled = lifetime.disposed;

@@ -78,6 +78,101 @@ export const png = (bytes, width, height) => {
   return canvas.toDataURL();
 };
 
+async function probeNativeDebugGeometry(engine, read, document, applyOptions) {
+  const doc = structuredClone(document);
+  for (const instance of doc.sceneComposition.fragments.lab.instances) {
+    delete instance.props.components.body;
+    instance.props.components.collider = { type: "none" };
+  }
+  applyDataSceneAuthoringDocument(engine, doc, applyOptions);
+  check(engine.pauseDataScene(), "pause native debug scene");
+  engine.configureUnifiedPhysics({ space: "spatial", gravity: [0, 0, 0], lengthUnit: 100 });
+  engine.configureAutoRigidBodyStep(false);
+  const off = await read();
+  const q = Math.SQRT1_2;
+  const box = engine.spawnUnifiedPhysicsBody({
+    kind: "dynamic", pose: { position: [24, 24, 0], rotation: [0, q, 0, q] },
+    collider: { shape: { type: "box", halfExtents: [3, 5, 4] }, pose: { position: [8, 0, 0], rotation: [0, 0, q, q] } },
+    // Render anchors must never replace the native collider pose.
+    renderOffset: [300, 100, 0],
+  });
+  check(engine.setDataSceneSpatialDebug({ colliders: true, depthTest: false }), "enable native collider wires");
+  const positions = packet => {
+    const debug = packet.spatial?.debug;
+    check(debug?.version === 1 && debug.vertexStride === 11 && debug.vertexCount > 0, "missing native debug packet", debug);
+    const points = [];
+    for (let i = 0; i < debug.vertices.length; i += 11) {
+      const point = Array.from(debug.vertices.subarray(i, i + 3));
+      check(point.every(Number.isFinite), "non-finite native debug endpoint", point);
+      points.push(point);
+    }
+    return points;
+  };
+  const bounds = points => [0, 1, 2].map(axis => [Math.min(...points.map(p => p[axis])), Math.max(...points.map(p => p[axis]))]);
+  const near = (a, b) => Math.abs(a - b) < 0.002;
+  const boxCorners = (packet, minX) => {
+    const expected = [[minX, minX + 8], [21, 27], [-13, -3]];
+    const points = positions(packet).filter(p => p.every((v, axis) => v >= expected[axis][0] - 0.01 && v <= expected[axis][1] + 0.01));
+    check(points.length === 24 && points.every(p => p.every((v, axis) => expected[axis].some(end => near(v, end)))),
+      "native box parent/local rotations or offset were lost", { expected, points });
+    return bounds(points);
+  };
+  const first = await read(), firstBounds = boxCorners(first.packet, 20);
+  engine.setUnifiedPhysicsPoses(new Uint32Array([box.entityId, box.entityGeneration]), new Float32Array([40, 24, 0, 0, q, 0, q]));
+  const moved = await read(), movedBounds = boxCorners(moved.packet, 36);
+  const sphere = engine.spawnUnifiedPhysicsBody({ kind: "fixed", pose: { position: [-30, 30, 0] }, collider: { shape: { type: "sphere", radius: 4 } } });
+  engine.spawnUnifiedPhysicsBody({ kind: "kinematic-position", pose: { position: [-20, 48, 15] }, collider: { shape: { type: "capsule", halfHeight: 6, radius: 3 } } });
+  const curved = await read(), points = positions(curved.packet);
+  const spherePoints = points.filter(p => p[0] >= -34.01 && p[0] <= -25.99 && p[1] >= 25.99 && p[1] <= 34.01 && Math.abs(p[2]) <= 4.01);
+  const capsulePoints = points.filter(p => p[0] >= -23.01 && p[0] <= -16.99 && p[1] >= 38.99 && p[1] <= 57.01 && p[2] >= 11.99 && p[2] <= 18.01);
+  const sphereBounds = bounds(spherePoints), capsuleBounds = bounds(capsulePoints);
+  check(spherePoints.length > 24 && sphereBounds.every((range, axis) => range.every((v, side) => near(v, [[-34, -26], [26, 34], [-4, 4]][axis][side]))), "native sphere wire extents", sphereBounds);
+  check(capsulePoints.length > 24 && capsuleBounds.every((range, axis) => range.every((v, side) => near(v, [[-23, -17], [39, 57], [12, 18]][axis][side]))), "native capsule wire extents", capsuleBounds);
+  engine.createUnifiedPhysicsJoint({ bodyA: box, bodyB: sphere, kind: { type: "rope", maxLength: 100 }, localFrameA: { position: [0, 6, 0] }, localFrameB: { position: [-4, 0, 0] } });
+  engine.setPhysicsDebugLinesEnabled({ joints: true });
+  check(engine.setDataSceneSpatialDebug({ depthTest: false }), "joint-only native overlay");
+  const joint = await read(), debug = joint.packet.spatial.debug;
+  let anchorSegment = false;
+  for (let i = 0; i < debug.vertices.length; i += 22) {
+    const a = debug.vertices.subarray(i, i + 3), b = debug.vertices.subarray(i + 11, i + 14);
+    const same = (p, expected) => expected.every((v, axis) => near(p[axis], v));
+    anchorSegment ||= (same(a, [40, 30, 0]) && same(b, [-34, 30, 0])) || (same(b, [40, 30, 0]) && same(a, [-34, 30, 0]));
+  }
+  check(anchorSegment, "native rope anchor segment not rendered", Array.from(debug.vertices));
+  engine.setPhysicsDebugLinesEnabled({ colliders: true, joints: true });
+  check(engine.setDataSceneSpatialDebug({ depthTest: true }), "native debug depth testing");
+  const depth = await read();
+  check(depth.packet.spatial.debug.depthTest && depth.stats.spatial.debugDrawCalls === 1, "native depth debug submission", depth.stats.spatial);
+  check(engine.setDataSceneSpatialDebug({ depthTest: false }), "native debug overlay mode");
+  const overlay = await read();
+  check(!overlay.packet.spatial.debug.depthTest && difference(off.data, overlay.data, 2) > 8, "native debug geometry did not reach framebuffer");
+  const warm = await read();
+  check(warm.stats.spatial.debugLineCount === overlay.packet.spatial.debug.vertexCount / 2
+    && warm.stats.spatial.debugUploadBytes === overlay.packet.spatial.debug.vertices.byteLength
+    && warm.stats.spatial.debugDrawCalls === 1, "native debug draw costs disagree with packet", warm.stats.spatial);
+  const triangles = new Uint32Array(6000 * 3);
+  for (let i = 0; i < triangles.length; i += 3) triangles.set([0, 1, 2], i);
+  engine.spawnUnifiedPhysicsBody({ kind: "fixed", pose: { position: [0, 24, 0] }, collider: { shape: { type: "triangleMesh", vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0], triangles } } });
+  const capped = await read(), capDebug = capped.packet.spatial.debug;
+  check(capDebug.truncated && capDebug.vertexCount > 0 && capDebug.vertexCount <= 32768
+    && capped.stats.spatial.debugTruncated && capped.stats.spatial.debugUploadBytes <= 32768 * 44,
+    "large native mesh bypassed debug cap", { packet: { count: capDebug.vertexCount, truncated: capDebug.truncated }, stats: capped.stats.spatial });
+  check(capped.nativeDebug?.truncated && capped.nativeDebug.workUnits <= 65536 && capped.nativeDebug.unsupportedShapes === 0,
+    "native extraction work cap was not observable", capped.nativeDebug);
+  const emptyPacket = { ...capped.packet, spatial: { ...capped.packet.spatial, debug: { ...capDebug, vertices: new Float32Array(), vertexCount: 0, truncated: true } } };
+  const empty = await read(emptyPacket);
+  check(empty.stats.spatial.debugTruncated && empty.stats.spatial.debugDrawCalls === 0 && empty.stats.spatial.debugUploadBytes === 0,
+    "empty truncated native packet lost renderer diagnostics", empty.stats.spatial);
+  engine.setPhysicsDebugLinesEnabled(false);
+  check(engine.setDataSceneSpatialDebug(null), "disable native diagnostics");
+  const disabled = await read();
+  check(!disabled.packet.spatial.debug && disabled.stats.spatial.debugDrawCalls === 0 && !disabled.stats.spatial.debugTruncated
+    && difference(off.data, disabled.data, 1) === 0, "disabled native debug changed framebuffer or retained diagnostics", disabled.stats.spatial);
+  return { firstBounds, movedBounds, sphereBounds, capsuleBounds, anchorSegment,
+    renderedPixelsChanged: difference(off.data, overlay.data, 2), debugLines: overlay.stats.spatial.debugLineCount,
+    cappedVertices: capDebug.vertexCount, nativeWork: capped.nativeDebug, emptyTruncatedPreserved: true, disabledMatches: true };
+}
+
 async function probe(canvas, backend, projection, recover=false) {
   if (backend === "webgpu") canvas.dataset.spatialGpuTarget = "true";
   const fallbacks = [];
@@ -267,12 +362,13 @@ async function probe(canvas, backend, projection, recover=false) {
                 terrain: s.materials.terrain.slice(),
                 billboards: s.materials.billboards.slice(),
               },
+              debug: s.debug && { ...s.debug, vertices: s.debug.vertices.slice() },
             },
           };
           if (pending) {
             engine.stop();
             pixels(renderer, canvas).then(
-              (data) => pending.resolve({ data, stats, packet: lastPacket }),
+              (data) => pending.resolve({ data, stats, packet: lastPacket, nativeDebug: state.unifiedPhysics?.debug && { ...state.unifiedPhysics.debug } }),
               (error) => pending.reject(Error(`${error}: ${JSON.stringify(errors)}`)),
             );
           }
@@ -285,6 +381,8 @@ async function probe(canvas, backend, projection, recover=false) {
       undefined,
       undefined,
       () => renderer.viewportSize(),
+      // Request frame extraction, with categories enabled explicitly by each phase.
+      { includePhysicsDebugLines: true, physicsDebugOptions: {} },
     );
     renderer.resize();
     const size = renderer.viewportSize();
@@ -382,6 +480,7 @@ async function probe(canvas, backend, projection, recover=false) {
       recovery={status:renderer.deviceState().status,generation:renderer.deviceState().generation,differentPixels:diff,coalesced:true};
     }
 
+    const nativeDebug = await probeNativeDebugGeometry(engine, read, doc, applyOptions);
     check(
       rows.every((row) => row.rustMs < 250) && !errors.length,
       "spatial work/errors exceeded gate",
@@ -391,6 +490,7 @@ async function probe(canvas, backend, projection, recover=false) {
       backend,
       projection,
       recovery,
+      nativeDebug,
       adapter:
         backend === "webgpu"
           ? {

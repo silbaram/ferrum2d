@@ -12,6 +12,37 @@ import type {
 import { isRecord, requiredBehaviorProp } from "./gameplayAuthoringValidation.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 
+const metadataStates = new WeakMap<SceneInstanceHandleRegistry, {
+  handles: Map<string, GameplayEntityHandle>;
+  revision: object;
+  hasLiveCallback: boolean;
+  entityExists?: SceneInstanceEntityExists;
+}>();
+function changedRegistry(registry: SceneInstanceHandleRegistry): void {
+  const state = metadataStates.get(registry);
+  if (state) state.revision = Object.freeze({});
+}
+
+/** @internal Bounded, callback-free capture of actual ordered registry metadata. */
+export function captureSceneInstanceRegistryMetadata(registry: SceneInstanceHandleRegistry, maxEntries: number, allowCallback = false) {
+  const state = metadataStates.get(registry);
+  if (!state || !Number.isSafeInteger(maxEntries) || maxEntries < 0 || state.handles.size > maxEntries)
+    throw new Error("Native-file instance registry exceeds its bound or is not canonical.");
+  if (state.hasLiveCallback && !allowCallback) throw new Error("Native-file instance registry cannot serialize an entityExists callback.");
+  return {
+    revision: state.revision,
+    entityExists: state.entityExists,
+    entries: Array.from(state.handles, ([instanceId, handle]) => Object.freeze({
+      instanceId, handle: Object.freeze(copyGameplayEntityHandle(handle)),
+    })),
+  };
+}
+
+/** @internal Detect mutation, including clear/set ABA, without consulting live callbacks. */
+export function sceneInstanceRegistryMetadataUnchanged(registry: SceneInstanceHandleRegistry, revision: object): boolean {
+  return metadataStates.get(registry)?.revision === revision;
+}
+
 export class SceneInstanceHandleRegistry {
   private readonly handlesByInstanceId = new Map<string, GameplayEntityHandle>();
   private readonly instanceIdByHandleKey = new Map<string, string>();
@@ -19,6 +50,7 @@ export class SceneInstanceHandleRegistry {
 
   constructor(options: SceneInstanceHandleRegistryOptions = {}) {
     this.entityExists = options.entityExists;
+    metadataStates.set(this, { handles: this.handlesByInstanceId, revision: Object.freeze({}), hasLiveCallback: options.entityExists !== undefined, entityExists: options.entityExists });
   }
 
   get size(): number {
@@ -45,6 +77,7 @@ export class SceneInstanceHandleRegistry {
     const storedHandle = copyGameplayEntityHandle(nextHandle);
     this.handlesByInstanceId.set(key, storedHandle);
     this.instanceIdByHandleKey.set(nextHandleKey, key);
+    changedRegistry(this);
     return {
       instanceId: key,
       handle: copyGameplayEntityHandle(storedHandle),
@@ -103,12 +136,14 @@ export class SceneInstanceHandleRegistry {
     }
     this.handlesByInstanceId.delete(instanceId);
     this.instanceIdByHandleKey.delete(handleKey(handle));
+    changedRegistry(this);
     return true;
   }
 
   clear(): void {
     this.handlesByInstanceId.clear();
     this.instanceIdByHandleKey.clear();
+    changedRegistry(this);
   }
 
   entries(options: SceneInstanceHandleLookupOptions = {}): readonly SceneInstanceHandleRegistryEntry[] {

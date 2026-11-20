@@ -1,4 +1,5 @@
 import { createPhysicsSolverStateApi } from "./physicsSolverState.js";
+import { configureDataSceneKinematicController } from "./dataSceneKinematicController.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { finiteNumber, uint32Number } from "./particlePreset";
 import { nonNegativeNumber, positiveNumber } from "./physicsAuthoringNumbers.js";
@@ -111,7 +112,10 @@ export function createPhysicsBodyApi({
   ): PhysicsBodyStateBufferSnapshot => {
     requireAlive();
     const handleBuffer = physicsEntityHandleBuffer(handles);
-    if (!rustEngine.capture_physics_body_snapshot_bulk(handleBuffer)) {
+    const accepted = typeof rustEngine.query_physics_body_states_bulk === "function"
+      ? rustEngine.query_physics_body_states_bulk(handleBuffer)
+      : rustEngine.capture_physics_body_snapshot_bulk(handleBuffer);
+    if (!accepted) {
       throw new Error("capturePhysicsBodyStateBuffer() rejected one or more physics body handles.");
     }
     const view = bridge.readPhysicsBodyStateBuffer();
@@ -539,6 +543,10 @@ export function createPhysicsBodyApi({
     clearPhysicsBodyHeightSpan,
     getPhysicsBodyHeightSpan,
     moveHd2dKinematicBodyWithTilemap,
+    configureDataSceneKinematicController(handle, options) {
+      requireAlive();
+      return configureDataSceneKinematicController(rustEngine, handle, options);
+    },
     setPhysicsBodyEnabled,
     setPhysicsColliderOffset,
     setPhysicsColliderEnabled,

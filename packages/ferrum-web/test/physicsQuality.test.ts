@@ -6,7 +6,7 @@ import { WasmBridge } from "../src/wasmBridge.js";
 import { createPhysicsBodyApi } from "../src/physicsBodyApi.js";
 import { createPhysicsJointApi } from "../src/physicsJointApi.js";
 import { createPhysicsQueryApi } from "../src/physicsQueryApi.js";
-import { stepRigidBodiesWithStats } from "../src/physicsRuntimeControls.js";
+import { applyFixedTimestepOptions, stepRigidBodiesWithStats } from "../src/physicsRuntimeControls.js";
 import { createPhysicsWorldFromSpec } from "../src/physicsAuthoring.js";
 import { capturePhysicsWorldSnapshot, restorePhysicsWorldSnapshot } from "../src/physicsWorldSnapshot.js";
 import { hashPhysicsWorldSnapshot } from "../src/physicsSnapshotHash.js";
@@ -21,18 +21,25 @@ initSync({ module: await readFile(new URL("../pkg/ferrum_core_bg.wasm", import.m
 async function runtime() {
   const bridge = await WasmBridge.init();
   const rustEngine = bridge.engine();
+  // These regressions explicitly exercise the legacy JSON/solver ABI.
+  ok(rustEngine.configure_legacy_physics_defaults());
   rustEngine.use_data_scene();
   const context = { rustEngine, bridge, requireAlive() {} };
   const api = {
+    // Deliberate legacy-ABI adapter: these tests exercise JSON v1/v2 restore,
+    // not createEngine's default native Physics Spec backend.
+    validatePhysicsRuntime() {},
+    physicsBackend: () => "legacy",
     ...createPhysicsBodyApi(context), ...createPhysicsJointApi(context), ...createPhysicsQueryApi(context),
     configurePhysicsRuntime: (spec: unknown) => spec,
+    configureFixedTimestep: (options: Parameters<typeof applyFixedTimestepOptions>[1]) => { applyFixedTimestepOptions(rustEngine, options); },
     stepRigidBodies: (dt: number, options: Parameters<typeof stepRigidBodiesWithStats>[2]) => stepRigidBodiesWithStats(rustEngine, dt, options),
   } as unknown as FerrumEngine;
   return { api, rustEngine };
 }
 
 const spec: PhysicsSpec = {
-  mode: "rigid", gravity: [0, 0],
+  mode: "arcade", continuous: true, solver: { fixedTimestep: false, velocityIterations: 8, positionIterations: 8, sleep: true }, gravity: [0, 0],
   bodies: { ball: { type: "dynamic", mass: 2, position: [0, 0], collider: { shape: "circle", radius: 1 } } },
 };
 
@@ -146,7 +153,7 @@ test("v2 warm-start contacts survive recycled handles and reversed pair orientat
   const { api, rustEngine } = await runtime();
   try {
     const contactSpec: PhysicsSpec = {
-      mode: "rigid", gravity: [0, 10],
+      mode: "arcade", continuous: true, solver: { fixedTimestep: false, velocityIterations: 8, positionIterations: 8, sleep: true }, gravity: [0, 10],
       bodies: {
         ball: { type: "dynamic", mass: 1, position: [0, 0], collider: { shape: "circle", radius: 1 } },
         floor: { type: "static", position: [0, 1.99], collider: { shape: "circle", radius: 1 } },
@@ -174,7 +181,7 @@ test("v2 restores parallel capsule warm-start contacts with opposite spine direc
   const { api, rustEngine } = await runtime();
   try {
     const capsuleSpec: PhysicsSpec = {
-      mode: "rigid", gravity: [0, 10],
+      mode: "arcade", continuous: true, solver: { fixedTimestep: false, velocityIterations: 8, positionIterations: 8, sleep: true }, gravity: [0, 10],
       bodies: {
         moving: { type: "dynamic", mass: 1, position: [0, 0], collider: { shape: "capsule", start: [-5, 0], end: [5, 0], radius: 0.6 } },
         wall: { type: "static", position: [0, 1], collider: { shape: "capsule", start: [5, 0], end: [-5, 0], radius: 0.6 } },

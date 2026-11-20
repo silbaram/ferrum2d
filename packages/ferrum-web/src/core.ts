@@ -1,4 +1,34 @@
 export type { SpatialLightProbeSpec } from "./spatialLightProbes.js";
+export type { BuiltInShooterProgress, BuiltInShooterPlayerActions, GameplayPosition, FerrumGameplayObservationApi } from "./gameplayObservation.js";
+export { TERRAIN_IMPACT_LAYOUT } from "./terrainImpacts.js";
+export type { TerrainImpactBufferView } from "./terrainImpacts.js";
+export { createNativeGameFileSession } from "./public/engineExports.js";
+export { NativeGameFileError } from "./public/engineExports.js";
+export type {
+  NativeGameFileErrorCode,
+  NativeGameFilePhase,
+  NativeGameFileResourceLimits,
+  NativeGameFileUsage,
+  NativeGameFileBudget,
+  NativeGameFileNativeLimits,
+  NativeGameFileRenderFrame,
+  NativeGameFileCallbacks,
+  NativeGameFileRuntimeRole,
+  NativeGameFileData,
+  NativeGameFileReadonly,
+  NativeGameFileHostMetadata,
+  NativeGameFilePlatformContext,
+  NativeGameFilePlatform,
+  NativeGameFileSessionOptions,
+  NativeGameFileReady,
+  NativeGameFileCommit,
+  NativeGameFileDialogueQuestGraph,
+  NativeGameFileFontSelection,
+  NativeGameFileExternalFonts,
+  NativeGameFileFontSetAdapter,
+  NativeGameFileFontFaceAdapter,
+  NativeGameFileSession,
+} from "./nativeGameFileTypes.js";
 export type { SpatialLightShaftSpec } from "./spatialLightShafts.js";
 export type { SpatialHeightFogSpec } from "./spatialHeightFog.js";
 export type { SpatialPointPcssSpec } from "./spatialPointPcss.js";
@@ -212,6 +242,7 @@ export type {
   PhysicsJointHandle,
   PhysicsJointSpawnOptions,
   PhysicsJointType,
+  PhysicsKinematicControllerOptions,
   PhysicsMaterialSnapshot,
   PhysicsRigidBodySpawnOptions,
   PhysicsRigidBodyStepOptions,
@@ -431,6 +462,7 @@ export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
 
 export type { DataSceneMoveOptions, DataSceneMoveStatus } from "./dataSceneMovement.js";
+export type { DataSceneCollisionTilemapOptions, DataSceneCollisionTileDefinition } from "./dataSceneCollisionTilemap.js";
 export type { DataSceneMovementAnimationSpec, DataSceneMovementAnimationPose, DataSceneMovementDirection } from "./dataSceneMovementAnimation.js";
 
 export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
@@ -489,3 +521,34 @@ export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
 
 export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
 export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";
+
+export { UNIFIED_PHYSICS_STATE_LAYOUT } from "./unifiedPhysics.js";
+export type { FerrumUnifiedPhysicsApi, UnifiedPhysicsOptions, UnifiedPhysicsBodyStateBufferView } from "./unifiedPhysics.js";
+
+export type { UnifiedPhysicsVector3, UnifiedPhysicsPose, UnifiedPhysicsConvexShape, UnifiedPhysicsShape,
+  UnifiedPhysicsContactCorrection, UnifiedPhysicsCollider, UnifiedPhysicsBodyOptions, FerrumUnifiedPhysicsAuthoringApi } from "./unifiedPhysicsAuthoring.js";
+export { UNIFIED_PHYSICS_CHARACTER_LAYOUT } from "./unifiedPhysicsCharacters.js";
+export type { FerrumUnifiedPhysicsCommandApi } from "./unifiedPhysicsCommands.js";
+export { createUnifiedPhysicsQueryBatch, UNIFIED_PHYSICS_QUERY_LAYOUT } from "./unifiedPhysicsQueries.js";
+export type { FerrumUnifiedPhysicsQueryApi, UnifiedPhysicsQuery, UnifiedPhysicsQueryFilter,
+  UnifiedPhysicsColliderHandle, UnifiedPhysicsQueryBatch, UnifiedPhysicsQueryBufferView } from "./unifiedPhysicsQueries.js";
+export type { UnifiedPhysicsCharacterOptions, UnifiedPhysicsCharacterStateBufferView, FerrumUnifiedPhysicsCharacterApi } from "./unifiedPhysicsCharacters.js";
+
+export { UNIFIED_PHYSICS_COLLISION_LAYOUT } from "./unifiedPhysicsCollisions.js";
+export type { FerrumUnifiedPhysicsCollisionApi, UnifiedPhysicsCollisionBufferView } from "./unifiedPhysicsCollisions.js";
+
+export { UNIFIED_PHYSICS_CONTACT_LAYOUT, UNIFIED_PHYSICS_OBSERVATION_LAYOUT, UNIFIED_PHYSICS_COUNTER_LAYOUT } from "./unifiedPhysicsObservations.js";
+export type { FerrumUnifiedPhysicsObservationApi, UnifiedPhysicsContactQuery, UnifiedPhysicsNumericRows,
+  UnifiedPhysicsContactBufferView, UnifiedPhysicsObservationBufferView, UnifiedPhysicsDiagnostics, UnifiedPhysicsCounters } from "./unifiedPhysicsObservations.js";
+
+export type { FerrumUnifiedPhysicsControlApi, UnifiedPhysicsBodySettings, UnifiedPhysicsMassProperties } from "./unifiedPhysicsControls.js";
+
+export {UNIFIED_PHYSICS_JOINT_LAYOUT} from "./unifiedPhysicsJoints.js";
+export type {UnifiedPhysicsJointHandle, UnifiedPhysicsJointMotor, UnifiedPhysicsJointSpring, UnifiedPhysicsJointKind,
+  UnifiedPhysicsJointOptions, UnifiedPhysicsJointBufferView, FerrumUnifiedPhysicsJointApi} from "./unifiedPhysicsJoints.js";
+
+export type {FerrumUnifiedPhysicsBindingApi} from "./unifiedPhysicsBindings.js";
+export type { RuntimeCheckpoint, FerrumRuntimeCheckpointApi } from "./runtimeCheckpoint.js";
+
+export type { DataScenePhysicsBodySpec, DataScenePhysicsSpec } from "./dataScenePhysics.js";
+export type { DataScenePhysicsJointSpec } from "./dataScenePhysicsJoints.js";

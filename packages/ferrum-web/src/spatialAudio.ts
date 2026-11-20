@@ -1,3 +1,18 @@
+interface SpatialFileVoiceView {
+  readonly source: AudioBufferSourceNode;
+  readonly gain: GainNode;
+  readonly options: SpatialAudioOptions;
+  readonly nominalVolume: number;
+  readonly startedAt: number;
+  readonly spatialized: boolean;
+  activate(offset: number): void;
+}
+const fileViews = new WeakMap<SpatialAudioVoice, () => SpatialFileVoiceView | undefined>();
+const fileObservers = new WeakMap<SpatialAudioVoice, () => void>();
+/** @internal Native node/intent projection; not a public package export. */
+export function spatialAudioFileView(voice: SpatialAudioVoice): SpatialFileVoiceView | undefined { return fileViews.get(voice)?.(); }
+export function observeSpatialAudioFileVoice(voice: SpatialAudioVoice, changed: () => void): void { fileObservers.set(voice, changed); }
+
 /** Web Audio coordinates: X right, Y up, forward -Z. Distances use the same unit as positions. */
 export interface SpatialAudioOptions {
   x: number;
@@ -96,15 +111,23 @@ export function setAudioListenerPose(context: AudioContext, x: number, y: number
 
 /** Cold node creation. The returned voice reuses these nodes for every pose update. */
 export function startSpatialAudioVoice(context: AudioContext, buffer: AudioBuffer, destination: AudioNode,
-  options: SpatialAudioOptions, volume: number, pitch: number, onEnded: (voice: SpatialAudioVoice) => void): SpatialAudioVoice {
+  options: SpatialAudioOptions, volume: number, pitch: number, onEnded: (voice: SpatialAudioVoice) => void,
+  filePreparation?: { readonly deferred: boolean; readonly forceUnspatialized?: boolean }): SpatialAudioVoice {
   validateSpatialAudioOptions(options); audioNumber(volume, "volume", 0, 16); audioNumber(pitch, "pitch", .01, 16);
   let source: AudioBufferSourceNode | undefined, gain: GainNode | undefined, panner: PannerNode | undefined;
   let active = true, spatialized = false;
+  let startedAt = context.currentTime, nominalVolume = volume;
+  const filePose = [options.x, options.y, options.z ?? 0, options.direction?.x ?? 0, options.direction?.y ?? 0, options.direction?.z ?? -1];
+  const fileOptions = { refDistance: options.refDistance ?? 1, maxDistance: options.maxDistance ?? 10000,
+    rolloffFactor: options.rolloffFactor ?? 1, distanceModel: options.distanceModel ?? "inverse",
+    panningModel: options.panningModel ?? "equalpower", coneInnerAngle: options.coneInnerAngle ?? 360,
+    coneOuterAngle: options.coneOuterAngle ?? 360, coneOuterGain: options.coneOuterGain ?? 0, loop: options.loop ?? false };
   let clock: AudioContext | undefined = context;
   let notify: ((voice: SpatialAudioVoice) => void) | undefined = onEnded;
   const cleanup = () => {
     if (!active) return;
     active = false;
+    fileObservers.get(voice)?.(); fileObservers.delete(voice); fileViews.delete(voice);
     if (source) source.onended = null;
     for (const node of [source, panner, gain]) { try { node?.disconnect(); } catch { /* Already released by the platform. */ } }
     source = undefined; panner = undefined; gain = undefined; clock = undefined;
@@ -121,13 +144,23 @@ export function startSpatialAudioVoice(context: AudioContext, buffer: AudioBuffe
         param3(panner.positionX, panner.positionY, panner.positionZ, x, y, z, clock.currentTime);
         param3(panner.orientationX, panner.orientationY, panner.orientationZ, dx / length, dy / length, dz / length, clock.currentTime);
       } else { panner.setPosition(x, y, z); panner.setOrientation(dx / length, dy / length, dz / length); }
+      filePose[0] = x; filePose[1] = y; filePose[2] = z; filePose[3] = dx; filePose[4] = dy; filePose[5] = dz;
+      fileObservers.get(voice)?.();
     },
-    setVolume(value) { audioNumber(value, "volume", 0, 16); if (active && gain && clock) gain.gain.setValueAtTime(value, clock.currentTime); },
+    setVolume(value) { audioNumber(value, "volume", 0, 16); if (active && gain && clock) {
+      gain.gain.setValueAtTime(value, clock.currentTime); nominalVolume = value; fileObservers.get(voice)?.();
+    } },
     stop() { if (!active) return; try { source?.stop(); } catch { /* The browser may already have ended it. */ } finally { cleanup(); } },
   };
+  fileViews.set(voice, () => !source || !gain || !clock ? undefined : {
+    source, gain, startedAt, nominalVolume, spatialized,
+    options: { ...fileOptions, x: filePose[0], y: filePose[1], z: filePose[2],
+      direction: { x: filePose[3], y: filePose[4], z: filePose[5] } },
+    activate(offset) { if (!source || !clock) throw Error("Audio preparation was disposed"); startedAt = clock.currentTime; source.start(0, offset); },
+  });
   try {
     source = context.createBufferSource(); gain = context.createGain();
-    if (typeof context.createPanner === "function") { panner = context.createPanner(); spatialized = true; }
+    if (!filePreparation?.forceUnspatialized && typeof context.createPanner === "function") { panner = context.createPanner(); spatialized = true; }
     source.buffer = buffer; source.loop = options.loop ?? false; source.playbackRate.value = pitch;
     gain.gain.value = volume;
     if (panner) {
@@ -141,7 +174,7 @@ export function startSpatialAudioVoice(context: AudioContext, buffer: AudioBuffe
       source.connect(panner); panner.connect(gain);
     } else source.connect(gain);
     gain.connect(destination); source.onended = cleanup;
-    source.start();
+    if (!filePreparation?.deferred) { startedAt = context.currentTime; source.start(); }
     return voice;
   } catch (error) { cleanup(); throw error; }
 }

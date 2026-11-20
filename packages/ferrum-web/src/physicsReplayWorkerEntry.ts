@@ -49,6 +49,8 @@ async function handleWorkerMessage(data: unknown): Promise<void> {
   let engine: Awaited<ReturnType<typeof createEngine>> | undefined;
   try {
     engine = await createEngine(undefined, undefined, undefined, () => ({ width: 1, height: 1 }), {
+      // This Worker protocol restores the legacy JSON solver format only.
+      physicsBackend: "legacy",
       physicsMode: data.snapshot.spec.mode,
     });
     const restoredWorld = restorePhysicsWorldSnapshot(engine, data.snapshot);

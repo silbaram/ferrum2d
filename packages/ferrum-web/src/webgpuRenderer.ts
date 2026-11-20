@@ -1,3 +1,6 @@
+import {registerResourceModelCacheOwner,resourceModelCacheOwner} from "./nativeFileResourceModelCaches.js";
+import { registerTextureFileOwner, textureFileOwner } from "./nativeFileResourceOwners.js";
+import { NativeFileResourceError } from "./nativeFileResourceBudget.js";
 import type { FlatLightingAsset } from "./flatLit.js";
 import "./webgpuTypes.js";
 import { WebGpuRendererBackend, type WebGPURendererOptions } from "./webgpuRendererBackend.js";
@@ -40,7 +43,38 @@ export class WebGPURenderer implements Renderer {
     private visibleModels?: ReadonlyMap<number, SpatialModelAsset>;
     private zoom = 1;
     private groundScale = 1;
-    private constructor(private readonly canvas: HTMLCanvasElement, private backend: WebGpuRendererBackend, private options: WebGPURendererOptions) { this.watch(backend); }
+    private constructor(private readonly canvas: HTMLCanvasElement, private backend: WebGpuRendererBackend, private options: WebGPURendererOptions) {
+        this.watch(backend);
+        registerResourceModelCacheOwner(this,{
+            capture:b=>{this.ready();const backend=this.backend,generation=this.generation,cache=resourceModelCacheOwner(backend)!.capture(b);b.work(this.preparedModels.size+(this.visibleModels?.size??0));b.charge("metadataBytes",(this.preparedModels.size+(this.visibleModels?.size??0))*16);const prepared=[...this.preparedModels],visible=this.visibleModels===undefined?undefined:[...this.visibleModels];
+                return {...cache,prepared,visible,assertCurrent:()=>{this.ready();cache.assertCurrent();if(this.backend!==backend||this.generation!==generation||prepared.length!==this.preparedModels.size||prepared.some(a=>!this.preparedModels.has(a))||visible?.length!==this.visibleModels?.size||visible?.some(([id,a])=>this.visibleModels?.get(id)!==a))throw new NativeFileResourceError("STALE","GPU facade model roots");}};},
+            prepare:async(data,b)=>{this.ready();const backend=this.backend,generation=this.generation;await resourceModelCacheOwner(backend)!.prepare(data,b);this.ready();if(this.backend!==backend||this.generation!==generation)throw new NativeFileResourceError("STALE","GPU model prepare generation");this.preparedModels.clear();for(const a of data.prepared)this.preparedModels.add(a);this.visibleModels=data.visible===undefined?undefined:new Map(data.visible);}
+        });
+        registerTextureFileOwner(this, {
+            capture: async budget => {
+                this.ready(); const target = this.backend, generation = this.generation;
+                const data = await textureFileOwner(target).capture(budget);
+                this.ready(); if (target !== this.backend || generation !== this.generation) throw new NativeFileResourceError("STALE", "GPU device generation");
+                return data;
+            },
+            prepare: async (data, budget) => {
+                this.ready(); const target = this.backend, generation = this.generation;
+                const prepared = await textureFileOwner(target).prepare(data, budget);
+                try {
+                    this.ready(); if (target !== this.backend || generation !== this.generation) throw new NativeFileResourceError("STALE", "GPU target generation");
+                    budget.work(data.entries.length);const recovery=new Map<number,{width:number;height:number;rgba:Uint8Array}>();for(const row of data.entries){budget.work(row.ids.length);for(const id of row.ids)recovery.set(id,{width:row.width,height:row.height,rgba:budget.bytes(row.pixels,"decodedBytes",row.width*row.height*4)});}
+                const facade = this;
+                    return Object.freeze({ get owner() { return prepared.owner; }, savedOrigin: prepared.savedOrigin,
+                        runtimeGeneration: () => prepared.runtimeGeneration!(),
+                        adopt() { facade.ready(); if (target !== facade.backend || generation !== facade.generation) throw new NativeFileResourceError("STALE", "GPU adoption generation"); prepared.adopt!(); facade.textures.clear(); for(const [id,row] of recovery)facade.textures.set(id,row); },
+                        dispose: () => prepared.dispose(),
+                    });
+                }
+                catch (error) { await prepared.dispose(); throw error; }
+            },
+            revision: () => { this.ready(); return `${this.generation}:${textureFileOwner(this.backend).revision()}`; },
+        });
+    }
     static isSupported(): boolean { return WebGpuRendererBackend.isSupported(); }
     static async create(canvas?: HTMLCanvasElement, options: WebGPURendererOptions = {}): Promise<WebGPURenderer> {
         const settings = structuredClone(options);

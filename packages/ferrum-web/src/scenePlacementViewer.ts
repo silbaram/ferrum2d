@@ -1,3 +1,4 @@
+import { snapshotDataSceneComponentTemplates } from "./dataSceneComponentTemplates.js";
 import { validateTileMapImportMetadata, sameTileMapImportIdentity } from "./scenePlacementTileMapMetadata.js";
 import {
   mergeScenePlacementPatch,
@@ -90,6 +91,8 @@ export type ScenePlacementViewerComposition =
 export interface CreateScenePlacementViewerOptions
   extends InstantiateSceneFragmentOptions {
   document?: ScenePlacementViewerDocument;
+  /** Explicit catalog overrides matching document-local names; never serialized into patches. */
+  componentTemplates?: import("./dataSceneRuntimeTarget.js").DataSceneRuntimeComponentTemplates;
   sceneComposition?: ScenePlacementViewerComposition;
   viewport: ScenePlacementViewport | ScenePlacementViewportOptions;
   instanceHandleRegistry?: SceneInstanceHandleRegistry;
@@ -111,6 +114,8 @@ export interface ScenePlacementTransform {
 }
 
 export interface ScenePlacementViewerInstance {
+  /** Shared component ownership; component-body edits remain agent-owned. */
+  componentTemplate?: string;
   instanceId: string;
   sourceId: string;
   prefab: string;
@@ -127,6 +132,7 @@ export interface ScenePlacementViewerInstance {
 }
 
 export interface ScenePlacementObjectDefinitionSummary {
+  componentTemplate?: string;
   id: string;
   variants: readonly string[];
   hasDataSceneComponents: boolean;
@@ -513,7 +519,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         }
         const patch = this.exportPatch();
         if (this.sourceDocument?.spatial && patch)
-          mergeScenePlacementPatch(this.sourceDocument, patch);
+          mergeScenePlacementPatch(this.sourceDocument, patch, { componentTemplates: this.componentTemplates });
         this.runDraftValidation(state);
         return this.validateDraft ? this.state() : state;
       });
@@ -588,6 +594,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       );
   }
 
+  private readonly componentTemplates?: import("./dataSceneRuntimeTarget.js").DataSceneRuntimeComponentTemplates;
   private readonly path: string;
   private readonly fragment: string;
   private readonly composition: ResolvedSceneCompositionSpec;
@@ -640,6 +647,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   constructor(options: CreateScenePlacementViewerOptions) {
     const path = options.path ?? "scenePlacementViewer";
+    this.componentTemplates = snapshotDataSceneComponentTemplates(options.document?.componentTemplates, options.componentTemplates, `${path}.componentTemplates`).templates;
     if (options.document)
       this.sourceDocument = structuredClone(
         options.document,
@@ -657,7 +665,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       this.sourceLighting = resolveSceneLighting(options.document.lighting);
       this.lighting = structuredClone(this.sourceLighting);
     }
-    const composition = viewerComposition(options, path);
+    const composition = viewerComposition({ ...options, componentTemplates: this.componentTemplates }, path);
     this.composition = composition;
     this.fragment = options.fragment ?? composition.initialFragment;
     const placements = instantiateSceneFragmentPlacements(composition, {
@@ -798,7 +806,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         const update = updates[index];
         if ((update.sortOrder !== undefined || update.depthSort !== undefined) && this.viewerInstance(ref).visual?.kind !== "sprite")
           throw new Error("Sorting settings require a sprite.");
-        const raw = this.resolvedInstanceForRef(ref).props[DATA_SCENE_COMPONENTS_PROP];
+        const resolved = this.resolvedInstanceForRef(ref);
+        if (templateOwnership(resolved.props).componentTemplate !== undefined && (update.sortOrder !== undefined || update.depthSort !== undefined))
+          throw new Error("Shared template sorting is read-only; edit componentTemplates with an agent.");
+        const raw = resolved.props[DATA_SCENE_COMPONENTS_PROP];
         if (raw && typeof raw === "object" && !Array.isArray(raw)) {
           const components = structuredClone(raw) as Record<string, SceneCompositionJsonValue>, key = components.visual ? "visual" : "sprite";
           const visual = components[key] as Record<string, SceneCompositionJsonValue> | undefined;
@@ -901,6 +912,12 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     ref: ScenePlacementInstanceRef,
     patch: Partial<ScenePlacementTransform>,
   ): void {
+    const instance = this.resolvedInstanceForRef(ref);
+    if (patch.layer !== undefined && templateOwnership(instance.props).componentTemplate !== undefined) {
+      const visual = this.inlineComponentsForInstance(instance, this.path)?.visual;
+      if (visual?.kind === "sprite" && visual.layer !== undefined && patch.layer !== visual.layer)
+        throw new Error("Shared template visual.layer is read-only; edit componentTemplates with an agent.");
+    }
     if (ref.kind === "added") {
       ref.draft.instance = {
         ...ref.draft.instance,
@@ -939,6 +956,9 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     ref: ScenePlacementInstanceRef,
     components: SceneCompositionJsonValue,
   ): void {
+    const instance = this.resolvedInstanceForRef(ref);
+    if (templateOwnership(instance.props).componentTemplate !== undefined)
+      throw new Error("Shared component template is read-only; edit the authored componentTemplates catalog with an agent.");
     const patch = validatedComponentsPatch(
       components,
       "scenePlacementViewer.updateInstanceComponents.components",
@@ -1633,6 +1653,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       ...(instance.variant === undefined ? {} : { variant: instance.variant }),
       role: classification.kind,
       hasDataSceneComponents: classification.hasDataSceneComponents,
+      ...templateOwnership(instance.props),
       ...(components === undefined
         ? {}
         : {
@@ -1680,6 +1701,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       return {
         id: prefab.id,
         variants: Object.keys(prefab.variants),
+        ...templateOwnership(prefab.props),
         hasDataSceneComponents: components !== undefined,
         ...(components === undefined
           ? {}
@@ -1732,7 +1754,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         instanceId: instance.id,
         renderLayer: components.visual.kind === "sprite" ? components.visual.layer ?? transform.layer : transform.layer,
         floorId: depthSorted ? components.body?.heightSpan?.floorId ?? 0 : 0,
-        elevation: depthSorted ? Math.fround(components.body?.heightSpan?.elevation ?? 0) : 0,
+        elevation: depthSorted ? Math.fround((components.body?.type === undefined ? components.body?.elevation : components.body.heightSpan?.elevation) ?? 0) : 0,
         // Match the f32 values sent at spawn and each native arithmetic step.
         footY: depthSorted && components.visual.kind === "sprite" ? Math.fround(Math.fround(transform.y) + Math.fround(Math.fround(components.visual.height * transform.scale) * Math.fround(1 - Math.fround(components.visual.originY ?? 0.5)))) : 0,
         sortOrder: components.visual.kind === "sprite" ? Math.fround(components.visual.sortOrder ?? 0) : 0,
@@ -1752,7 +1774,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       return undefined;
     }
     const components = resolveDataSceneInstanceComponents(instance, {
-      allowTemplate: false,
+      allowTemplate: this.componentTemplates !== undefined,
+      componentTemplates: this.componentTemplates,
       path,
     });
     return components.mode === "inline" ? components : undefined;
@@ -1768,7 +1791,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     const components = resolveDataSceneComponentsSpec(
       props[DATA_SCENE_COMPONENTS_PROP],
       {
-        allowTemplate: false,
+        allowTemplate: this.componentTemplates !== undefined,
+        componentTemplates: this.componentTemplates,
         path: `${path}.props.${DATA_SCENE_COMPONENTS_PROP}`,
       },
     );
@@ -2242,6 +2266,7 @@ function viewerComposition(
   if (options.document !== undefined) {
     return resolveSceneAuthoringDocument(options.document, {
       path: `${path}.document`,
+      componentTemplates: options.componentTemplates,
     }).sceneComposition;
   }
   if (options.sceneComposition !== undefined) {
@@ -2334,19 +2359,7 @@ function copyResolvedDataSceneObjectVisual(
 function copyDataSceneBody(body: DataSceneBodySpec | undefined): {
   body?: DataSceneBodySpec;
 } {
-  return body === undefined
-    ? {}
-    : {
-        body: {
-          ...body,
-          ...(body.heightSpan === undefined
-            ? {}
-            : { heightSpan: { ...body.heightSpan } }),
-          ...(body.type !== "dynamic" || body.material === undefined
-            ? {}
-            : { material: { ...body.material } }),
-        },
-      };
+  return body === undefined ? {} : { body: structuredClone(body) };
 }
 
 function copyResolvedDataSceneCollider(
@@ -2963,4 +2976,10 @@ function replaceDraftMap<T>(
 ): void {
   target.clear();
   for (const [key, value] of entries) target.set(key, value);
+}
+
+function templateOwnership(props: SceneCompositionProps): { componentTemplate?: string } {
+  const raw = props[DATA_SCENE_COMPONENTS_PROP];
+  return raw && typeof raw === "object" && !Array.isArray(raw) && "template" in raw && typeof raw.template === "string"
+    ? { componentTemplate: raw.template } : {};
 }

@@ -24,6 +24,7 @@ import {
   villageTextureMetadata,
 } from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
+import { placementDocumentTextures } from "./placementDocumentTextures";
 import { placementFlatTextureOptions, placementFlatTextureRoles } from "./placementFlatLighting";
 import { createPlacementPixelPresentation } from "./placementPixelPresentation";
 import { ensureGardenAssets, isGardenScene, gardenTextures, gardenAtlasFrames, gardenTextureMetadata, configureGardenActor, createGardenPreview } from "./placementGarden";
@@ -940,7 +941,7 @@ async function bootstrap(): Promise<void> {
     const target = createDataSceneRuntimeTarget(runtime.engine);
     let appliedRuntimeVariables: DataSceneVariableStore | undefined;
     let runtimeApplyRevision = 0;
-    if (document.lighting?.profile === "lit" || document.spatial || document.gameplay || document.variables?.length) {
+    if (document.componentTemplates !== undefined || document.physics || document.lighting?.profile === "lit" || document.spatial || document.gameplay || document.variables?.length) {
       appliedRuntimeVariables = applyDataSceneAuthoringDocument(
         runtimeEngine,
         document.spatial ? placementSpatialRuntimeDocument(document) : document,
@@ -1220,7 +1221,7 @@ async function bootstrap(): Promise<void> {
         state,
         savedDocument,
         sourceDocument,
-        placementAssetDiagnosticsForState(state, currentAssetProvider()),
+        placementAssetDiagnosticsForState(state, currentAssetProvider(), savedDocument),
       );
       publishCurrentAgentHandoff(state, migrationPreview);
       return state;
@@ -2794,7 +2795,7 @@ async function bootstrap(): Promise<void> {
     ) {
       runtimeApplyRevision++;
       appliedRuntimeVariables = undefined;
-      if (next.lighting?.profile === "lit" || next.spatial || next.gameplay || next.variables?.length) {
+      if (next.componentTemplates !== undefined || next.physics || next.lighting?.profile === "lit" || next.spatial || next.gameplay || next.variables?.length) {
         appliedRuntimeVariables = applyDataSceneAuthoringDocument(
           runtimeEngine,
           next.spatial
@@ -3518,6 +3519,7 @@ function createPlacementInspector(
   );
   const migrationReport = createPlacementMigrationReport();
   const handoffControls = createPlacementHandoffControls({
+    document: options.document,
     signal: options.signal,
     saveEnabled: options.saveEnabled,
     assetProvider: options.assetProvider,
@@ -3804,7 +3806,7 @@ function createPlacementInspector(
             ),
       );
       rows.blockers.textContent = `${migrationPreview?.references.length ?? 0}`;
-      rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider()).length}`;
+      rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider(), options.document()).length}`;
       migrationReport.setPreview(migrationPreview);
       controls.setState(state, migrationPreview);
       editControls.setState(state);
@@ -4019,6 +4021,7 @@ function createPlacementMigrationReport(): {
 }
 
 function createPlacementHandoffControls(options: {
+  document(): SceneAuthoringDocumentSpec;
   signal?: AbortSignal;
   saveEnabled: boolean;
   assetProvider: PlacementAssetProviderGetter;
@@ -4071,6 +4074,7 @@ function createPlacementHandoffControls(options: {
     const assetDiagnosticCount = placementAssetDiagnosticsForState(
       lastState,
       options.assetProvider(),
+      options.document(),
     ).length;
     copyPatch.disabled = draftCount === 0;
     copyHandoff.disabled = false;
@@ -5004,7 +5008,8 @@ function createPlacementComponentControls(summaries: {
     hasPendingEdits: () => Object.values(fields).some(field => !field.disabled && synchronized.get(field) !== currentValue(field)),
     setState(state) {
       const selected = state.selected;
-      const disabled = selected === undefined;
+      const disabled = selected === undefined || selected.componentTemplate !== undefined;
+      form.dataset.componentTemplate = selected?.componentTemplate ?? "";
       apply.disabled = disabled;
       for (const field of Object.values(fields)) {
         field.disabled = disabled;
@@ -6723,16 +6728,7 @@ function placementBodyPatch(
   selected: ScenePlacementViewerInstance,
 ): PlacementJsonObject {
   const body = selected.body;
-  return body === undefined
-    ? {}
-    : {
-        body: {
-          type: body.type,
-          ...(body.heightSpan === undefined
-            ? {}
-            : { heightSpan: { ...body.heightSpan } }),
-        },
-      };
+  return body === undefined ? {} : { body: JSON.parse(JSON.stringify(body)) as PlacementJsonValue };
 }
 
 function placementVisualPatchFromResolved(
@@ -7723,7 +7719,7 @@ function publishPlacementAgentHandoff(
     state,
     sourceDocument,
     assetFolder: placementDesktopAssetFolderHandoff(),
-    assetDiagnostics: placementAssetDiagnosticsForState(state, assetProvider),
+    assetDiagnostics: placementAssetDiagnosticsForState(state, assetProvider, document),
     authoringEvidence: placementWorkspaceEvidence,
     path: "placementViewer.agentHandoff",
   };
@@ -7834,9 +7830,11 @@ function schedulePlacementDesktopHandoffSync(
 function placementAssetDiagnosticsForState(
   state: ScenePlacementViewerState,
   assetProvider: ScenePlacementAssetProvider,
+  document?: SceneAuthoringDocumentSpec,
 ): readonly ScenePlacementAssetDiagnostic[] {
   const diagnostics: ScenePlacementAssetDiagnostic[] = [];
   for (const instance of state.instances) {
+    if (instance.componentTemplate !== undefined && document?.componentTemplates?.[instance.componentTemplate] !== undefined) continue;
     const visual = instance.visual;
     if (visual?.kind !== "sprite" || visual.texture.kind !== "asset") {
       continue;
@@ -7847,6 +7845,10 @@ function placementAssetDiagnosticsForState(
         path: `placementViewer.instances.${instance.instanceId}.visual.asset`,
       }),
     );
+  }
+  if (document) {
+    for (const ref of placementDocumentTextures(document))
+      if (typeof ref.texture === "string") diagnostics.push(...assetProvider.diagnoseSpriteAssetReference({ asset: ref.texture, path: ref.path }));
   }
   return diagnostics;
 }
@@ -8831,7 +8833,7 @@ function placementBoundsById(
   const bounds = new Map<string, PlacementInstanceBounds>();
   for (const instance of resolved.bindingPlan?.instances ?? []) {
     const components = resolveDataSceneInstanceComponents(instance, {
-      allowTemplate: false,
+      componentTemplates: resolved.componentTemplates,
       path: `placementViewer.instances.${instance.id}`,
     });
     if (components.mode !== "inline") {

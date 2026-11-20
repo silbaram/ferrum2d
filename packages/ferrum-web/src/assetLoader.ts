@@ -1,3 +1,7 @@
+import { copyResourceAssetData } from "./nativeFileResourceAssets.js";
+import { retainResourceCaptureFence, registerAssetFileOwner, registryFileOwner, captureResourceSource, fileResourceBlob, audioFileOwner, type ResourceAssetData } from "./nativeFileResourceOwners.js";
+import { NativeFileResourceError, type ResourceBudget } from "./nativeFileResourceBudget.js";
+import { cloneResourceJson,resourceJsonUnchanged } from "./nativeFileResourceJson.js";
 import { createAssetLoadScope, runAssetLoadTasks, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import type { AssetLoadOptions } from "./assetLoadTasks.js";
 export type { AssetLoadOptions } from "./assetLoadTasks.js";
@@ -64,15 +68,82 @@ export interface LoadedAssets {
 }
 
 export class AssetLoader {
+  private fileJson = new Map<string, { url: string; value: unknown; source?: Blob }>();
+  private fileRevision = 0;
+  private filePending = 0;
+  private fileDisposed = false;
   constructor(
     private readonly textureManager: TextureAssetManager,
-    private readonly audioManager?: SoundAssetManager,
+    private audioManager?: SoundAssetManager,
     private readonly textureRegistry = new TextureRegistry(),
     private readonly soundRegistry = new SoundRegistry(),
     private readonly cache?: JsonAssetCache,
     private readonly cacheVersion = "v1",
     private readonly cacheTtlMs = 24 * 60 * 60 * 1000,
-  ) {}
+  ) {
+    const target=this;
+    registerAssetFileOwner(this, {
+      capture: budget => this.captureFileAssets(budget),
+      textureNamespaceRevision: () => registryFileOwner(this.textureRegistry).revision(),
+      captureTextureNamespace: budget => {
+        if (this.fileDisposed) budget.fail("STALE", "asset owner disposed");
+        if (this.filePending) budget.fail("BUSY", "asset tasks");
+        return registryFileOwner(this.textureRegistry).capture(budget);
+      }, revision: () => this.fileRevision,
+      prepare: (data,budget) => this.prepareFileAssets(data,budget),
+      dispose: () => { this.fileDisposed = true; this.fileJson.clear(); this.fileRevision++; },
+      replaceAudio: (expected,next) => {
+        if(this.fileDisposed||this.filePending||this.audioManager!==expected)throw new NativeFileResourceError("STALE","asset/audio binding");
+        // The standard host obtains this object from a sealed AudioManager lease.
+        audioFileOwner(next); // Constructor registration proves an actual SDK audio owner.
+        this.audioManager=next as SoundAssetManager; // Payload generation is independent; the owner identity is fenced by the session.
+      },
+      textureOwner: textureManager, get audioOwner() { return target.audioManager; },
+    });
+  }
+
+  private async captureFileAssets(budget: ResourceBudget): Promise<ResourceAssetData> {
+    if (this.fileDisposed) budget.fail("STALE", "asset owner disposed");
+    if (this.filePending) budget.fail("BUSY", "asset tasks");
+    const revision = this.fileRevision, textureRevision=registryFileOwner(this.textureRegistry).revision(),soundRevision=registryFileOwner(this.soundRegistry).revision();
+    const textures = registryFileOwner(this.textureRegistry).capture(budget);
+    const sounds = registryFileOwner(this.soundRegistry).capture(budget);
+    budget.charge("resources", this.fileJson.size); budget.work(this.fileJson.size);
+    // All mutable materialized JSON is cloned synchronously before source reads.
+    const records: {name:string;entry:{url:string;value:unknown;source?:Blob};value:import("./nativeFileResourceJson.js").ResourceJson}[] = [], copies=new WeakMap<object,import("./nativeFileResourceJson.js").ResourceJson>();
+    for (const [name, entry] of this.fileJson) {
+      budget.metadata(name); budget.metadata(entry.url);
+      records.push({ name, entry, value: cloneResourceJson(entry.value, budget,0,new Set(),copies) });
+    }
+    const json = [];
+    for (const { name, entry, value } of records) {
+      const source = entry.source === undefined ? undefined : await captureResourceSource({ blob: entry.source, url: entry.url }, budget);
+      json.push(Object.freeze({ name, url: entry.url, value, ...(source === undefined ? {} : { source }) }));
+    }
+    if (revision !== this.fileRevision || this.fileDisposed || this.filePending || textureRevision!==registryFileOwner(this.textureRegistry).revision() || soundRevision!==registryFileOwner(this.soundRegistry).revision()) budget.fail("STALE", "asset capture");
+    const assertCurrent=(b:ResourceBudget)=>{if(revision!==this.fileRevision||this.fileDisposed||this.filePending||this.fileJson.size!==records.length||textureRevision!==registryFileOwner(this.textureRegistry).revision()||soundRevision!==registryFileOwner(this.soundRegistry).revision())return b.fail("STALE","asset owner cut");
+      const aliases=new Map<object,object>(),reverse=new Map<object,object>();b.work(records.length);for(const row of records)if(this.fileJson.get(row.name)!==row.entry||!resourceJsonUnchanged(row.entry.value,row.value,b,aliases,reverse))return b.fail("STALE","mutable JSON owner cut");};assertCurrent(budget);
+    const data=Object.freeze({ generation:revision,textures, sounds, json: Object.freeze(json) });retainResourceCaptureFence(data,assertCurrent);return data;
+  }
+
+  private async prepareFileAssets(input:ResourceAssetData,budget:ResourceBudget) {
+    if(this.fileDisposed||this.filePending)budget.fail("BUSY","asset target lifecycle");
+    const revision=this.fileRevision,data=copyResourceAssetData(input,budget);
+    const textures=registryFileOwner(this.textureRegistry).prepare(data.textures,budget),sounds=registryFileOwner(this.soundRegistry).prepare(data.sounds,budget);
+    const records=new Map<string,{url:string;value:unknown;source?:Blob}>(),sources=new Map<object,Blob>();
+    try {
+      budget.work(data.json.length);budget.charge("metadataBytes",data.json.length*24);
+      for(const row of data.json){let source;if(row.source){source=sources.get(row.source);if(!source){source=fileResourceBlob(row.source.bytes,row.source.mime,budget);sources.set(row.source,source);}}
+        records.set(row.name,{url:row.url,value:row.value,...(source===undefined?{}:{source})});}
+      let adopted=false,disposed=false;
+      return Object.freeze({owner:this,savedOrigin:Object.freeze({version:1 as const,generation:data.generation,resourceGenerations:Object.freeze([])}),runtimeGeneration:()=>this.fileRevision,
+        adopt:()=>{
+          if(adopted||disposed||this.fileDisposed||this.filePending||revision!==this.fileRevision)throw new NativeFileResourceError("STALE","asset adoption");
+          textures.assertCurrent();sounds.assertCurrent();textures.adopt();sounds.adopt();this.fileJson=records;this.fileRevision++;adopted=true;
+        },dispose:()=>{if(!adopted&&!disposed){disposed=true;textures.dispose();sounds.dispose();records.clear();}}
+      });
+    }catch(error){textures.dispose();sounds.dispose();records.clear();throw error;}
+  }
 
   async loadAssets(
     manifest: AssetManifest,
@@ -80,6 +151,8 @@ export class AssetLoader {
     options: AssetLoadOptions = {},
   ): Promise<LoadedAssets> {
     validateAssetTextureOptions(manifest);
+    this.filePending++; this.fileRevision++;
+    try {
     const startedAtMs = nowMs();
     const textureEntries = Object.entries(manifest.textures ?? {});
     const soundEntries = Object.entries(manifest.sounds ?? {});
@@ -127,6 +200,8 @@ export class AssetLoader {
         const loadedJson = await this.loadJson(name, url, signal);
         throwIfAssetLoadAborted(signal);
         json[name] = loadedJson.value;
+        this.fileJson.set(name, { url, value: loadedJson.value, ...(loadedJson.source === undefined ? {} : { source: loadedJson.source }) });
+        this.fileRevision++;
         cached = loadedJson.cached;
       }
       throwIfAssetLoadAborted(signal);
@@ -140,6 +215,14 @@ export class AssetLoader {
       json,
       progress: { loaded, total, ratio: total <= 0 ? 1 : loaded / total, elapsedMs: nowMs() - startedAtMs },
     };
+    } finally { this.filePending--; this.fileRevision++; }
+  }
+
+  /** Current owned JSON value, shared with LoadedAssets.json. Missing names
+   * return undefined; callers may mutate the retained value in place. */
+  getJsonAsset(name: string): unknown {
+    if (this.fileDisposed) throw new NativeFileResourceError("STALE", "asset owner disposed");
+    return this.fileJson.get(name)?.value;
   }
 
   textureId(name: string): number {
@@ -159,6 +242,11 @@ export class AssetLoader {
   }
 
   releaseAssets(assets: AssetReleasePayload): void {
+    for (const entry of assets.json) {
+      if (entry.kind === "json" && this.fileJson.get(entry.name)?.url === entry.url) {
+        this.fileJson.delete(entry.name); this.fileRevision++;
+      }
+    }
     for (const entry of assets.textures) {
       const texture = entry.kind === "texture" ? this.textureRegistry.tryEntry(entry.name) : undefined;
       if (texture?.url === entry.url) {
@@ -201,7 +289,7 @@ export class AssetLoader {
     }
   }
 
-  private async loadJson(name: string, url: string, signal: AbortSignal): Promise<{ value: unknown; cached: boolean }> {
+  private async loadJson(name: string, url: string, signal: AbortSignal): Promise<{ value: unknown; cached: boolean; source?: Blob }> {
     const cached = await this.cache?.getJson(url, { version: this.cacheVersion });
     throwIfAssetLoadAborted(signal);
     if (cached !== undefined && cached !== null) {
@@ -231,7 +319,10 @@ export class AssetLoader {
     }
 
     try {
-      const parsed = await response.json();
+      // Standard Response owns an immutable original body. Legacy injected cache
+      // values/mocks without a body remain materialized JSON, never fake originals.
+      const source = typeof response.blob === "function" ? await response.blob() : undefined;
+      const parsed = source === undefined ? await response.json() : JSON.parse(await source.text());
       throwIfAssetLoadAborted(signal);
       await this.cache?.setJson(url, parsed, {
         version: this.cacheVersion,
@@ -239,7 +330,7 @@ export class AssetLoader {
         etag: response.headers?.get("etag") ?? undefined,
         lastModified: response.headers?.get("last-modified") ?? undefined,
       });
-      return { value: parsed, cached: false };
+      return { value: parsed, cached: false, ...(source === undefined ? {} : { source }) };
     } catch (error) {
       throwIfAssetLoadAborted(signal);
       throw assetLoadError({

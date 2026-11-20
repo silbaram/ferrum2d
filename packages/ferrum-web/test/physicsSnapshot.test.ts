@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import type {
   FerrumEngine,
@@ -18,7 +18,8 @@ import type {
   PhysicsRigidBodyStepStats,
 } from "../src/createEngine.js";
 import { createPhysicsBodyStateBufferSnapshot } from "../src/physicsBodyStateBuffer.js";
-import { createPhysicsWorldFromSpec } from "../src/physicsAuthoring.js";
+import { createPhysicsWorldFromSpec as stageLegacyPhysicsWorld } from "../src/physicsAuthoring.js";
+import type { PhysicsSpec } from "../src/physicsSpec.js";
 import {
   capturePhysicsWorldSnapshot,
   createPhysicsReplayInputStream,
@@ -34,6 +35,9 @@ import {
 import type { PhysicsWorldSnapshot } from "../src/physicsSnapshot.js";
 
 class FakeSnapshotEngine {
+  physicsBackend(): "legacy" | "unified-3d" { return "legacy"; }
+  validatePhysicsRuntime(_spec: import("../src/physicsSpec.js").ResolvedPhysicsSpec): void {}
+  configurePhysicsRuntime(spec: import("../src/physicsSpec.js").ResolvedPhysicsSpec) { return spec; }
   bulkCaptureCount = 0;
   bulkRestoreCount = 0;
 
@@ -431,11 +435,86 @@ class FakeSnapshotEngine {
   }
 }
 
+// Only this JSON-format test fixture stages on an already explicit legacy backend.
+// General authoring now configures native variable physics instead.
+function createLegacyJsonWorld(engine: FerrumEngine, input: PhysicsSpec) {
+  return stageLegacyPhysicsWorld(engine, input, { configureRuntime: false });
+}
+
+// Preserve the former rigid tuning while explicitly selecting the legacy JSON path.
+function legacyJsonPhysicsSpec(input: PhysicsSpec): PhysicsSpec {
+  return { ...input, mode: "arcade", gravity: input.gravity ?? [0, 700], continuous: input.continuous ?? true,
+    solver: { velocityIterations: 8, positionIterations: 8, sleep: true, ...input.solver, fixedTimestep: false },
+  };
+}
+
+test("JSON snapshot capture rejects fixed native modes before reading body state", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({ bodies: {
+    actor: { collider: { shape: "circle", radius: 1 } },
+  } }));
+  for (const mode of ["arcade", "rigid"] as const) {
+    const nativeWorld = { ...world, spec: { ...world.spec, mode, solver: { ...world.spec.solver, fixedTimestep: true } } };
+    throws(() => capturePhysicsWorldSnapshot(engine, nativeWorld), /require in-memory runtime checkpoints/);
+  }
+  equal(fake.bulkCaptureCount, 0);
+});
+
+test("JSON native-mode restore rejects before transactions, spawning, runtime configuration or clearing", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({ bodies: {
+    actor: { collider: { shape: "circle", radius: 1 } },
+  } }));
+  const saved = capturePhysicsWorldSnapshot(engine, world);
+  let transactions = 0, spawns = 0, configurations = 0, cleared = 0;
+  const spawn = engine.spawnRigidBody.bind(engine);
+  engine.withPhysicsWorldTransaction = operation => { transactions++; return operation(); };
+  engine.spawnRigidBody = options => { spawns++; return spawn(options); };
+  engine.configurePhysicsRuntime = spec => { configurations++; return spec; };
+  const replace = { ...world, clear() { cleared++; world.clear(); } };
+  for (const mode of ["arcade", "rigid"] as const) {
+    const input = jsonClone(saved); input.spec.mode = mode; input.spec.solver.fixedTimestep = true;
+    input.replayHash = hashPhysicsWorldSnapshot(input);
+    throws(() => restorePhysicsWorldSnapshot(engine, input, { replace }), /require in-memory runtime checkpoints/);
+  }
+  equal(transactions, 0); equal(spawns, 0); equal(configurations, 0); equal(cleared, 0);
+  equal(fake.bulkRestoreCount, 0); ok(engine.getPhysicsEntity(world.bodies.actor));
+});
+
+test("JSON helpers reject native or unknown live backends even for a legacy-mode spec", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({ bodies: {
+    actor: { collider: { shape: "circle", radius: 1 } },
+  } }));
+  const saved = capturePhysicsWorldSnapshot(engine, world);
+  let transactions = 0;
+  engine.withPhysicsWorldTransaction = operation => { transactions++; return operation(); };
+  fake.physicsBackend = () => "unified-3d";
+  throws(() => capturePhysicsWorldSnapshot(engine, world), /backends require in-memory runtime checkpoints/);
+  throws(() => restorePhysicsWorldSnapshot(engine, saved), /backends require in-memory runtime checkpoints/);
+  (fake as unknown as { physicsBackend?: unknown }).physicsBackend = undefined;
+  throws(() => capturePhysicsWorldSnapshot(engine, world), /backends require in-memory runtime checkpoints/);
+  throws(() => restorePhysicsWorldSnapshot(engine, saved), /backends require in-memory runtime checkpoints/);
+  equal(transactions, 0); equal(fake.bulkCaptureCount, 1); equal(fake.bulkRestoreCount, 0);
+});
+
+test("JSON capture requires explicit variable arcade clock metadata", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({}));
+  const missingClock = { ...world, spec: { ...world.spec, solver: { ...world.spec.solver, fixedTimestep: undefined as never } } };
+  throws(() => capturePhysicsWorldSnapshot(engine, missingClock), /explicit variable-step arcade/);
+  equal(fake.bulkCaptureCount, 0);
+});
+
 test("physics world snapshot captures versioned state and restores via Physics Spec", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.25 },
     bodies: {
       crate: {
@@ -445,7 +524,7 @@ test("physics world snapshot captures versioned state and restores via Physics S
         mass: 2,
       },
     },
-  });
+  }));
 
   engine.stepRigidBodies(0.5, world.stepOptions);
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 2 });
@@ -468,8 +547,8 @@ test("physics world snapshot captures versioned state and restores via Physics S
 test("physics world snapshot accepts legacy v1 joint snapshots without newer boolean fields", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.25 },
     bodies: {
       anchor: { type: "static", collider: { shape: "box", size: [10, 10] } },
@@ -492,7 +571,7 @@ test("physics world snapshot accepts legacy v1 joint snapshots without newer boo
         limit: { enabled: true, lower: -1, upper: 1 },
       },
     },
-  });
+  }));
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 3 });
   const legacy = jsonClone(snapshot);
   delete (legacy.joints.rope.state as Partial<PhysicsJointSnapshot>).slack;
@@ -514,8 +593,8 @@ test("physics world snapshot accepts legacy v1 joint snapshots without newer boo
 test("physics world snapshot preserves HD-2D height spans outside bulk body ABI", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     hd2d: {
       enabled: true,
       defaultHeight: 24,
@@ -535,7 +614,7 @@ test("physics world snapshot preserves HD-2D height spans outside bulk body ABI"
         collider: { shape: "circle", radius: 6 },
       },
     },
-  });
+  }));
 
   const lowerInitialSpan = engine.getPhysicsBodyHeightSpan(world.bodies.lower);
   const upperInitialSpan = engine.getPhysicsBodyHeightSpan(world.bodies.upper);
@@ -573,8 +652,8 @@ test("physics world snapshot preserves HD-2D height spans outside bulk body ABI"
 test("physics world snapshot rejects malformed public JSON before restore", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.25 },
     bodies: {
       crate: {
@@ -583,7 +662,7 @@ test("physics world snapshot rejects malformed public JSON before restore", () =
         velocity: [4, 0],
       },
     },
-  });
+  }));
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
   const mismatchedCount = jsonClone(snapshot);
   mismatchedCount.bodyCount += 1;
@@ -612,8 +691,8 @@ test("physics world snapshot rejects malformed public JSON before restore", () =
 test("physics replay rollback compares deterministic snapshot hashes", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.1 },
     bodies: {
       mover: {
@@ -622,7 +701,7 @@ test("physics replay rollback compares deterministic snapshot hashes", () => {
         velocity: [3, 2],
       },
     },
-  });
+  }));
 
   const result = verifyPhysicsReplayRollback(engine, world, {
     frames: 5,
@@ -638,8 +717,8 @@ test("physics replay rollback compares deterministic snapshot hashes", () => {
 test("physics replay input stream records interval snapshots and rollback hashes", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.5 },
     bodies: {
       mover: {
@@ -649,7 +728,7 @@ test("physics replay input stream records interval snapshots and rollback hashes
         mass: 2,
       },
     },
-  });
+  }));
   const inputStream = createPhysicsReplayInputStream({
     frameCount: 4,
     fixedStepSeconds: 0.5,
@@ -673,8 +752,8 @@ test("physics replay input stream records interval snapshots and rollback hashes
 
   const rollbackFake = new FakeSnapshotEngine();
   const rollbackEngine = rollbackFake as unknown as FerrumEngine;
-  const rollbackWorld = createPhysicsWorldFromSpec(rollbackEngine, {
-    mode: "rigid",
+  const rollbackWorld = createLegacyJsonWorld(rollbackEngine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.5 },
     bodies: {
       mover: {
@@ -684,7 +763,7 @@ test("physics replay input stream records interval snapshots and rollback hashes
         mass: 2,
       },
     },
-  });
+  }));
   const rollback = verifyPhysicsReplayInputStreamRollback(rollbackEngine, rollbackWorld, inputStream);
   ok(rollback.passed);
   equal(rollback.expectedHash, rollback.actualHash);
@@ -694,8 +773,8 @@ test("physics replay input stream records interval snapshots and rollback hashes
 test("physics replay input stream rejects malformed public JSON", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     solver: { stepSeconds: 0.5 },
     bodies: {
       mover: {
@@ -704,7 +783,7 @@ test("physics replay input stream rejects malformed public JSON", () => {
         velocity: [1, 0],
       },
     },
-  });
+  }));
   const baseStream = {
     format: PHYSICS_REPLAY_INPUT_STREAM_FORMAT,
     version: PHYSICS_REPLAY_INPUT_STREAM_VERSION,
@@ -740,8 +819,8 @@ test("physics replay input stream rejects malformed public JSON", () => {
 test("physics world snapshot hashes and restores secondary collider material state", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     materials: {
       rubber: { friction: 0.9, restitution: 0.7, density: 1.2 },
     },
@@ -754,7 +833,7 @@ test("physics world snapshot hashes and restores secondary collider material sta
         ],
       },
     },
-  });
+  }));
 
   ok(engine.setPhysicsBodyColliderMaterial(world.bodies.compound, 1, {
     friction: 0.9,
@@ -782,8 +861,8 @@ test("physics world snapshot hashes and restores secondary collider material sta
 test("physics world snapshot preserves dedicated chain colliders", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     bodies: {
       chainWall: {
         type: "static",
@@ -794,7 +873,7 @@ test("physics world snapshot preserves dedicated chain colliders", () => {
         },
       },
     },
-  });
+  }));
 
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
 
@@ -809,15 +888,15 @@ test("physics world snapshot preserves dedicated chain colliders", () => {
 test("physics world snapshot rejects runtime colliders outside the resolved spec", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
-  const world = createPhysicsWorldFromSpec(engine, {
-    mode: "rigid",
+  const world = createLegacyJsonWorld(engine, legacyJsonPhysicsSpec({
+    mode: "arcade",
     bodies: {
       crate: {
         type: "dynamic",
         collider: { shape: "box", size: [20, 20] },
       },
     },
-  });
+  }));
 
   ok(engine.addPhysicsBodyCollider(world.bodies.crate, {
     collider: { type: "circle", radius: 4 },

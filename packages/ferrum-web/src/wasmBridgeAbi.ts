@@ -1,38 +1,5 @@
 import type { Engine } from "../pkg/ferrum_core";
-import {
-  ShooterSnapshotEntityFloatField,
-  ShooterSnapshotEntityU32Field,
-  ShooterSnapshotHeaderFloatField,
-  ShooterSnapshotHeaderU32Field,
-  SpriteRenderCommandField,
-  audio_event_bytes,
-  audio_event_floats,
-  collision_event_bytes,
-  collision_event_u32s,
-  effect_event_bytes,
-  frame_telemetry_bytes,
-  frame_telemetry_f64s,
-  gameplay_event_bytes,
-  gameplay_event_u32s,
-  physics_body_contact_hit_bytes,
-  physics_body_manifold_hit_bytes,
-  physics_debug_line_bytes,
-  physics_debug_line_floats,
-  physics_query_hit_bytes,
-  physics_query_hit_u32s,
-  physics_raycast_hit_bytes,
-  physics_rigid_contact_impulse_hit_bytes,
-  physics_tile_contact_hit_bytes,
-  physics_tile_manifold_hit_bytes,
-  physics_tile_shape_cast_hit_bytes,
-  shooter_snapshot_entity_float_offset,
-  shooter_snapshot_entity_u32_offset,
-  shooter_snapshot_header_float_offset,
-  shooter_snapshot_header_u32_offset,
-  sprite_render_command_bytes,
-  sprite_render_command_float_offset,
-  sprite_render_command_floats,
-} from "../pkg/ferrum_core.js";
+import * as defaultWasmAbi from "../pkg/ferrum_core.js";
 import {
   BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
   BUILT_IN_SHOOTER_STATE_HEADER_FLOATS,
@@ -167,7 +134,8 @@ export interface WasmBridgeAbiLayout {
   readonly u32sPerPhysicsBodyState: number;
 }
 
-export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
+export function verifyWasmBridgeAbi(engine: Engine, abi: typeof defaultWasmAbi = defaultWasmAbi): WasmBridgeAbiLayout {
+  const { ShooterSnapshotEntityFloatField, ShooterSnapshotEntityU32Field, ShooterSnapshotHeaderFloatField, ShooterSnapshotHeaderU32Field, SpriteRenderCommandField, audio_event_bytes, audio_event_floats, collision_event_bytes, collision_event_u32s, effect_event_bytes, frame_telemetry_bytes, frame_telemetry_f64s, gameplay_event_bytes, gameplay_event_u32s, physics_body_contact_hit_bytes, physics_body_manifold_hit_bytes, physics_debug_line_bytes, physics_debug_line_floats, physics_query_hit_bytes, physics_query_hit_u32s, physics_raycast_hit_bytes, physics_rigid_contact_impulse_hit_bytes, physics_tile_contact_hit_bytes, physics_tile_manifold_hit_bytes, physics_tile_shape_cast_hit_bytes, shooter_snapshot_entity_float_offset, shooter_snapshot_entity_u32_offset, shooter_snapshot_header_float_offset, shooter_snapshot_header_u32_offset, sprite_render_command_bytes, sprite_render_command_float_offset, sprite_render_command_floats } = abi;
   const rustFloatsPerCommand = sprite_render_command_floats();
   const rustBytesPerCommand = sprite_render_command_bytes();
   if (rustFloatsPerCommand !== FLOATS_PER_COMMAND) {
@@ -182,7 +150,7 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
         "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
     );
   }
-  const renderCommandFieldOffsets = readRenderCommandFieldOffsets();
+  const renderCommandFieldOffsets = readRenderCommandFieldOffsets(abi);
   verifyFieldOffsets(
     "SpriteRenderCommand",
     renderCommandFieldOffsets,
@@ -203,7 +171,7 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
       "[Ferrum2D ABI mismatch] Rust built-in shooter snapshot strides do not match the TypeScript snapshot contract.",
     );
   }
-  const shooterStateFieldOffsets = readBuiltInShooterStateFieldOffsets();
+  const shooterStateFieldOffsets = readBuiltInShooterStateFieldOffsets(abi);
   verifyFieldOffsets(
     "built-in shooter header floats",
     shooterStateFieldOffsets.headerFloats,
@@ -424,7 +392,8 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
   };
 }
 
-function readRenderCommandFieldOffsets(): RenderCommandFieldOffsets {
+function readRenderCommandFieldOffsets(abi: typeof defaultWasmAbi): RenderCommandFieldOffsets {
+  const {sprite_render_command_float_offset,SpriteRenderCommandField} = abi;
   return Object.freeze({
     x: sprite_render_command_float_offset(SpriteRenderCommandField.X),
     y: sprite_render_command_float_offset(SpriteRenderCommandField.Y),
@@ -446,7 +415,8 @@ function readRenderCommandFieldOffsets(): RenderCommandFieldOffsets {
   });
 }
 
-function readBuiltInShooterStateFieldOffsets(): BuiltInShooterStateFieldOffsets {
+function readBuiltInShooterStateFieldOffsets(abi: typeof defaultWasmAbi): BuiltInShooterStateFieldOffsets {
+  const {shooter_snapshot_header_float_offset,shooter_snapshot_header_u32_offset,shooter_snapshot_entity_float_offset,shooter_snapshot_entity_u32_offset,ShooterSnapshotHeaderFloatField,ShooterSnapshotHeaderU32Field,ShooterSnapshotEntityFloatField,ShooterSnapshotEntityU32Field} = abi;
   return Object.freeze({
     headerFloats: Object.freeze({
       fireCooldownSeconds: shooter_snapshot_header_float_offset(

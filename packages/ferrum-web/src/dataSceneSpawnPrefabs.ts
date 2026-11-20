@@ -50,7 +50,7 @@ export function resolveDataSceneSpawnPrefabs(
 
 /** Authoring-only contracts; runs before activation, including document-only resolution. */
 export function validateDataSceneSpawnPrefabs(
-  document: Pick<ResolvedSceneAuthoringDocument, "gameplay" | "spatial" | "ids">,
+  document: Pick<ResolvedSceneAuthoringDocument, "gameplay" | "spatial" | "ids" | "physics">,
   plan: SceneBehaviorBindingPlan,
   ids: GameplayBehaviorRuntimeIds | undefined = document.ids,
   path = "dataScene",
@@ -76,9 +76,11 @@ export function validateDataSceneSpawnPrefabs(
       allowTemplate: false,
       path: prefabPath,
     });
+    const nativeBody = component.mode === "inline" && component.body?.type === undefined ? component.body : undefined;
     if (
       component.mode !== "inline" ||
       component.body?.type === "dynamic" ||
+      (nativeBody !== undefined && (nativeBody.kind ?? "dynamic") === "dynamic") ||
       document.spatial?.attachments?.[instance.id] ||
       document.spatial?.models?.[instance.id]
     )
@@ -88,6 +90,7 @@ export function validateDataSceneSpawnPrefabs(
       );
     if (
       document.spatial &&
+      nativeBody === undefined &&
       (component.body !== undefined) !== (component.body?.heightSpan !== undefined)
     )
       throw gameplayAuthoringDiagnosticError(
@@ -104,14 +107,15 @@ export function validateDataSceneSpawnPrefabs(
     if (
       document.gameplay?.combatNavigation &&
       managed &&
-      (component.body?.type !== "kinematic" ||
-        !component.body.heightSpan ||
-        component.collider.type !== "aabb" ||
-        !component.collider.enabled)
+      (document.physics?.space === "spatial"
+        ? nativeBody?.kind !== "kinematic-position" || !nativeBody.character || nativeBody.collider.shape.type !== "capsule" || nativeBody.collider.sensor ||
+          (nativeBody.character.up ?? [0,1,0]).some((value, index) => value !== (index === 1 ? 1 : 0))
+        : component.body?.type !== "kinematic" || !component.body.heightSpan ||
+          component.collider.type !== "aabb" || !component.collider.enabled)
     )
       throw gameplayAuthoringDiagnosticError(
         prefabPath,
-        "navigation prototypes require an enabled kinematic heightSpan AABB body",
+        document.physics?.space === "spatial" ? "navigation prototypes require a spatial Y-up capsule controller" : "navigation prototypes require an enabled kinematic heightSpan AABB body",
       );
   }
   for (const command of finalCombatActions(plan.commands, ids))

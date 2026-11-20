@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {readFile} from 'node:fs/promises';
-import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
-const root=new URL('../../apps/studio/node_modules/@ferrum2d/ferrum-web/',import.meta.url);
-const pkg=JSON.parse(await readFile(new URL('package.json',root)));
-const authoring=new URL(pkg.exports['./authoring'].import,root).href;
-const {createScenePlacementViewer,mergeScenePlacementPatch}=await import(authoring);
-const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementComponentEdits.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText.replaceAll(JSON.stringify('@ferrum2d/ferrum-web/authoring'),JSON.stringify(authoring));
-const {readPlacementAuthoredComponents:read,preservePlacementComponentMetadata:preserve}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+import {studioSourceModule} from './placement-physics-summary-source.mjs';
+const {createScenePlacementViewer,mergeScenePlacementPatch,readPlacementAuthoredComponents:read,preservePlacementComponentMetadata:preserve}=await studioSourceModule(`
+ export {createScenePlacementViewer,mergeScenePlacementPatch} from '@ferrum2d/ferrum-web/authoring';
+ export {readPlacementAuthoredComponents,preservePlacementComponentMetadata} from './apps/studio/src/placementComponentEdits.ts';
+`);
 const visual={kind:'sprite',asset:'hero',width:16,height:24,tint:'#ff0000',normalTexture:'hero-normal',projection:'upright',shadow:{shape:'ellipse'},animationSet:{clips:[{id:0,fps:8,frames:[{u0:0,v0:0,u1:1,v1:1}]}],initialClip:0}};
 const body={type:'dynamic',mass:3,canSleep:false,gravityScale:0.2,linearDamping:0.3,angularDamping:0.4,material:{friction:0.8,restitution:0.1},heightSpan:{floorId:0,elevation:0,height:24}};
 const source={visual,collider:{type:'aabb',halfWidth:8,halfHeight:12},body,layer:'wall',custom:{version:2}};
@@ -42,4 +38,28 @@ test('current authored components follow patch changes, preserve prefabs and und
  assert.deepEqual(read(merged,'main','a'),next);assert.deepEqual(merged.sceneComposition.prefabs,document.sceneComposition.prefabs);
  viewer.undo();assert(!viewer.exportPatch());viewer.redo();assert.deepEqual(read(mergeScenePlacementPatch(document,viewer.exportPatch()).document,'main','a'),next);
  assert.equal(read(document,'main','missing'),undefined);
+});
+test('native nested collider, pose and render offset survive component patch, save, undo and redo',()=>{
+ const doc=structuredClone(document),raw=doc.sceneComposition.prefabs.object.props.components;
+ doc.physics={space:'spatial',gravity:[0,-9.81,0],lengthUnit:1};raw.collider='none';
+ raw.body={kind:'dynamic',elevation:16,rotation:[0,0,0,1],renderOffset:[0,-2,0],angularVelocity:[1,2,3],collider:{shape:{type:'compound',parts:[{pose:{position:[1,2,3]},shape:{type:'box',halfExtents:[2,3,4]}}]},pose:{position:[4,5,6]},friction:0.7,category:8,mask:255}};
+ const viewer=createScenePlacementViewer({document:doc,viewport:{cssWidth:640,cssHeight:480}});viewer.selectInstance('a');
+ const authored=read(doc,'main','a'),next=preserve(authored,{visual:{...visual,width:32},collider:'none',layer:'wall',body:{type:'static'}});
+ viewer.updateInstanceComponents('a',next);const saved=mergeScenePlacementPatch(doc,viewer.exportPatch()).document;
+ assert.deepEqual(read(saved,'main','a').body,raw.body);assert.deepEqual(read(saved,'main','a').custom,raw.custom);
+ assert.deepEqual(saved.sceneComposition.prefabs,doc.sceneComposition.prefabs);assert.equal(viewer.historyState().undoCount,1);
+ viewer.undo();assert(!viewer.exportPatch());viewer.redo();assert.deepEqual(read(mergeScenePlacementPatch(doc,viewer.exportPatch()).document,'main','a').body,raw.body);
+ next.body.collider.shape.parts[0].pose.position[0]=99;assert.equal(raw.body.collider.shape.parts[0].pose.position[0],1);
+});
+test('legacy kinematic controller omission and explicit settings survive unrelated component edits',()=>{
+ for(const controller of [undefined,{}, {solidMaskBits:0,maxIterations:8,maxStepHeight:0,maxDropHeight:3.25,allowLedgeDrop:false}]){
+  const doc=structuredClone(document),raw=doc.sceneComposition.prefabs.object.props.components;
+  raw.collider.isTrigger=false;
+  raw.body={type:'kinematic',heightSpan:{floorId:0,elevation:0,height:24},...(controller===undefined?{}:{kinematicController:controller})};
+  const viewer=createScenePlacementViewer({document:doc,viewport:{cssWidth:640,cssHeight:480}});viewer.selectInstance('a');
+  const next=preserve(read(doc,'main','a'),{visual:{...visual,width:40},collider:{...raw.collider,offsetX:2},layer:'wall'});
+  viewer.updateInstanceComponents('a',next);const saved=mergeScenePlacementPatch(doc,viewer.exportPatch()).document;
+  assert.deepEqual(read(saved,'main','a').body,raw.body);assert.deepEqual(read(saved,'main','a').custom,raw.custom);
+  viewer.undo();assert(!viewer.exportPatch());viewer.redo();assert.deepEqual(read(mergeScenePlacementPatch(doc,viewer.exportPatch()).document,'main','a').body,raw.body);
+ }
 });

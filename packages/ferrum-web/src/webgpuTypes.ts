@@ -218,6 +218,12 @@ declare global {
   }
 
   interface GPUTexture {
+    readonly format: GPUTextureFormat;
+    readonly usage: number;
+    readonly depthOrArrayLayers: number;
+    readonly mipLevelCount: number;
+    readonly sampleCount: number;
+    readonly dimension: "1d" | "2d" | "3d";
     readonly width: number;
     readonly height: number;
     createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
@@ -310,6 +316,7 @@ declare global {
   }
 
   interface GPUCommandEncoder {
+    copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageDataLayout & { buffer: GPUBuffer }, copySize: GPUExtent3D): void;
     copyTextureToTexture(source: GPUImageCopyTexture, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void;
     resolveQuerySet(querySet: GPUQuerySet, firstQuery: number, queryCount: number, destination: GPUBuffer, destinationOffset: number): void;
     copyBufferToBuffer(source: GPUBuffer, sourceOffset: number, destination: GPUBuffer, destinationOffset: number, size: number): void;

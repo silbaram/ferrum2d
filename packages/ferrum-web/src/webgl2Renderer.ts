@@ -1,3 +1,8 @@
+import {NativeFileResourceError} from "./nativeFileResourceBudget.js";
+import {spatialModelResource} from "./spatialModel.js";
+import {registerResourceModelCacheOwner,chargeFileModelGpu} from "./nativeFileResourceModelCaches.js";
+import {registerRenderTextureFileOwner,renderTextureFileOwner} from "./nativeFileResourceRenderTextures.js";
+import { registerTextureFileOwner, textureFileOwner } from "./nativeFileResourceOwners.js";
 import { validateLightingCookies } from "./lightingCookie.js";
 import { flatHdrOptions, validateFlatHdrTransition, type ResolvedFlatHdrOptions } from "./flatHdr.js";
 import { WebGL2HdrPass } from "./webgl2HdrPass.js";
@@ -161,9 +166,14 @@ export class WebGL2Renderer implements Renderer {
     const cleanup: Array<() => void> = [];
     try {
       this.textureManager = new TextureManager(gl, this.colorManagement, options);
+      registerTextureFileOwner(this, textureFileOwner(this.textureManager));
+      registerResourceModelCacheOwner(this,{capture:b=>{this.assertAlive();const pass=this.spatialPass,revision=this.modelPreparationRevision,roots=pass?.fileModelRoots(b);return {backend:"webgl2",roots:roots?.roots??[],active:roots?.active??[],warmed:[],prepared:[],assertCurrent:()=>{this.assertAlive();if(pass!==this.spatialPass||revision!==this.modelPreparationRevision)throw new NativeFileResourceError("STALE","model pass lifetime");roots?.assertCurrent();}};},
+        prepare:async(data,b)=>{this.assertAlive();chargeFileModelGpu(data.all.map(a=>spatialModelResource(a)!),b);if(data.warmed.length||data.prepared.length||data.visible!==undefined)throw new NativeFileResourceError("DATA","WebGL model cache roles");const all=new Set(data.all.map(a=>spatialModelResource(a))),active=new Set(data.active.map(a=>spatialModelResource(a)));if(all.size!==active.size||[...all].some(r=>!active.has(r)))throw new NativeFileResourceError("DATA","WebGL active cache roots");const lease=this.prepareSpatialModels(data.active);try{lease.commit();}catch(error){lease.dispose();throw error;}}
+      });
       cleanup.push(() => this.textureManager.destroy());
       this.renderTextures = new WebGL2RenderTextureStore(gl, this.colorManagement === "linear-srgb");
       cleanup.push(() => this.renderTextures.destroy());
+      registerRenderTextureFileOwner(this,renderTextureFileOwner(this.renderTextures)!);
       this.textureSource = {
         texture: (id) => this.renderTextures.texture(id) ?? this.textureManager.texture(id),
         textureFlipY: (id) => this.renderTextures.has(id),
@@ -362,6 +372,7 @@ export class WebGL2Renderer implements Renderer {
       gl.disable(gl.SCISSOR_TEST);
       gl.colorMask(true, true, true, true);
       gl.clearColor(clear[0], clear[1], clear[2], 1);
+      this.renderTextures.fileWillWrite();
       gl.clear(gl.COLOR_BUFFER_BIT);
       // Preserve opaque alpha even with translucent sprites and additive material passes.
       gl.colorMask(true, true, true, false);

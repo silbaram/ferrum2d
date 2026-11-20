@@ -549,3 +549,6 @@ export type { FlatHdrOptions, ResolvedFlatHdrOptions } from "./flatHdr.js";
 
 export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
 export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";
+
+export type { DataScenePhysicsBodySpec, DataScenePhysicsSpec } from "./dataScenePhysics.js";
+export type { DataScenePhysicsJointSpec } from "./dataScenePhysicsJoints.js";

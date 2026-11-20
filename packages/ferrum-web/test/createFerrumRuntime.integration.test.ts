@@ -595,6 +595,7 @@ test("runtime startup failure clears its physics scene without destroying inject
   let autoStep = false;
   engine.start = () => { throw startupError; };
   engine.configurePhysicsRuntime = (spec) => spec;
+  engine.validatePhysicsRuntime = () => {};
   engine.configureAutoRigidBodyStep = (options) => { autoStep = options !== false; };
   engine.spawnRigidBody = () => { bodyPresent = true; return body; };
   engine.despawnPhysicsEntity = (handle) => {
@@ -756,4 +757,19 @@ test("dialogue ownership follows the captured resource despite option or public 
   throws(() => owned.snapshot(), /destroyed/);
   equal(external.snapshot().nodeId, "start");
   external.destroy();
+});
+
+
+test("owned createFerrumRuntime without physics options selects the same native variable backend", async () => {
+  const runtime = await createFerrumRuntime({
+    canvas: {} as HTMLCanvasElement, renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager, assetHost: fakeAssetHost([]), ui: false,
+  });
+  try {
+    equal(runtime.engine.physicsBackend(), "unified-3d");
+    runtime.engine.useDataScene();
+    equal(runtime.engine.physicsBackend(), "unified-3d");
+    runtime.engine.usePlatformerGame();
+    equal(runtime.engine.physicsBackend(), "unified-3d");
+  } finally { runtime.destroy(); }
 });

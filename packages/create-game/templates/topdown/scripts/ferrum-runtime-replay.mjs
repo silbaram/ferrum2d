@@ -43,7 +43,7 @@ const TEMPLATE_RUNTIME_REPLAY_RECIPE = Object.freeze({
       "scene.spriteCount",
       "scene.cameraX",
       "scene.cameraY",
-      "builtInShooter",
+      "custom.nativeRuntime.sha256",
       "custom.gameSpec",
       "custom.runtime",
     ],
@@ -62,10 +62,10 @@ const TEMPLATE_RUNTIME_REPLAY_RECIPE = Object.freeze({
     ],
   },
   implementationSteps: [
-    "Load public/game.json and boot the Top-down runtime deterministically.",
+    "Load public/game.json and boot the default Native Top-down runtime deterministically.",
     "Advance fixed timestep frames using the seed/input sequence above.",
     "Capture a non-empty, strictly increasing GameStateSnapshot[] at captureFrames.",
-    "Prefer captureGameStateSnapshot(..., { includeBuiltInShooterState: true, customState }) when a Ferrum runtime instance is available.",
+    "Pause at capture frames and hash the complete public Native game file into custom.nativeRuntime; retain the scene and custom game metadata.",
     "Compute snapshotHash with hashGameStateSnapshot(...) for manually constructed snapshots.",
     "Run npm run ferrum:update-runtime-replay-fixture, then npm run ferrum:runtime-replay-report.",
   ],
@@ -105,7 +105,6 @@ async function captureProjectRuntimeSnapshots({ hashGameStateSnapshot }) {
       engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
       engine.setGameSpec(gameSpec);
     },
-    captureOptions: { includeBuiltInShooterState: true },
     customState: ({ recipe }) => ({
       gameSpec: resolvedGameSpec,
       runtime: {

@@ -1,10 +1,26 @@
+import { markNativeFileCanonicalResolvers } from "./nativeFileAuthoringResolvers.js";
+import { createGameplayObservationApi } from "./gameplayObservation.js";
+import {markNativeFileCanonicalAuthoringAdapter} from "./dataSceneProgress.js";
+import {markNativeFileCanonicalVariableAdapter} from "./dataSceneVariables.js";
+import { registerResourceFacade, forgetResourceFacade } from "./nativeFileResourceOwners.js";
+import { preflightDataScenePhysics } from "./dataScenePhysicsPreflight.js";
+import { configureEncodedDataSceneCollisionTilemap } from "./dataSceneCollisionTilemap.js";
+import { configureNativePhysicsSpec, nativePhysicsSpecPayload, usesNativePhysicsSpec, validatePhysicsSpecModeTransition } from "./physicsSpecNativeRuntime.js";
+import { createRuntimeCheckpointApi } from "./runtimeCheckpoint.js";
+import {createUnifiedPhysicsBindingApi} from "./unifiedPhysicsBindings.js";
+import {createUnifiedPhysicsJointApi} from "./unifiedPhysicsJoints.js";
+import { createUnifiedPhysicsControlApi } from "./unifiedPhysicsControls.js";
+import { createUnifiedPhysicsApi } from "./unifiedPhysics.js";
+import { createUnifiedPhysicsAuthoringApi } from "./unifiedPhysicsAuthoring.js";
+import { createUnifiedPhysicsCharacterApi } from "./unifiedPhysicsCharacters.js";
+import { createUnifiedPhysicsCommandApi } from "./unifiedPhysicsCommands.js";
 import { spatialEnvironmentCapabilities, supportsSpatialEnvironment } from "./spatialEnvironmentFeatures.js";
 import { supportsSpatialLightSelection } from "./spatialLightSelection.js";
 import {supportsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import {supportsSpriteLightMasks} from "./spriteLightMasks.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
-import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
+import { supportsDataSceneNativeCombatMovement, supportsDataSceneNativeCombatCrowd, supportsDataSceneNativeCombatNavigation, supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import { createSpatialApi, spatialCameraValues } from "./dataSceneSpatial.js";
 import { compileSpatialEnvironment } from "./spatialEnvironment.js";
@@ -12,7 +28,7 @@ import { createDataSceneMovementApi } from "./dataSceneMovement.js";
 import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
 import { attachDataSceneProgressAdapter, forgetDataSceneProgressContext } from "./dataSceneProgress.js";
 import type { NativeCombatProgressRuntime } from "./dataSceneCombatProgress.js";
-import { configureDataSceneGameplay, dataSceneCombatStats, dataSceneCombatEnabled, supportsDataSceneInputProjectiles, supportsDataSceneCombatActions, supportsDataSceneSpawnPrefabs, supportsDataSceneProjectileVisuals, supportsDataSceneCombatProgress, supportsDataSceneProjectilePrefabs } from "./dataSceneGameplay.js";
+import { configureDataSceneGameplay, dataSceneCombatStats, dataSceneCombatEnabled, supportsDataSceneInputProjectiles, supportsDataSceneCombatActions, supportsDataSceneSpawnPrefabs, supportsDataSceneSpawnPrefabPhysics, supportsDataSceneProjectileVisuals, supportsDataSceneCombatProgress, supportsDataSceneProjectilePrefabs } from "./dataSceneGameplay.js";
 import { configureDataSceneSun } from "./dataSceneSun.js";
 import { configureDataSceneSpriteAnimation, prepareDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
@@ -41,6 +57,9 @@ import {
 } from "./builtInShooterStateSnapshot.js";
 import type { BuiltInShooterStateSnapshot } from "./builtInShooterStateSnapshot.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
+import { requireNativeDebugGeometry } from "./physicsDebugCompatibility.js";
+import { configureInitialPhysics, configureDefaultGamePhysics, usesDefaultNativePhysics, resolveDefaultGamePhysics, resolveDefaultPhysicsPolicySpec, resolveInitialPhysicsSpec, synchronizeDefaultPhysicsMetadata } from "./physicsDefaults.js";
+import { registerLegacyJsonPhysicsRuntime } from "./physicsLegacyJsonRuntime.js";
 import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uint32Number } from "./particlePreset";
 import type { ParticlePresetConfig } from "./particlePreset";
@@ -48,6 +67,7 @@ import { createPhysicsBodyApi } from "./physicsBodyApi.js";
 import { createPhysicsJointApi } from "./physicsJointApi.js";
 import { createPhysicsQueryApi } from "./physicsQueryApi.js";
 import { attachDataSceneRuntimeEngineAdapter } from "./dataSceneRuntimeTarget.js";
+import { attachNativePhysicsAuthoring } from "./nativePhysicsAuthoring.js";
 import type {
   AssetHost,
   CreateEngineOptions,
@@ -101,6 +121,7 @@ import type {
 } from "./gameplayAuthoring.js";
 import {
   applyFixedTimestepOptions,
+  applyPhysicsDebugLineOptions,
   applyPhysicsRuntimeOptions,
   configureAutoRigidBodyStepOptions,
   physicsDebugFlags,
@@ -115,6 +136,7 @@ import { WasmBridge } from "./wasmBridge";
 import { createBitmapTextApi } from "./worldText.js";
 import { resolveDataSceneGameState, resolveGameStateCode } from "./gameState.js";
 import { attachDataSceneVariableRuntimeEngineAdapter } from "./dataSceneVariables.js";
+import { registerNativeFileEngineOwner, type DetachedEngineMetadata } from "./nativeFileEngineOwner.js";
 
 export {
   PHYSICS_BODY_STATE_BUFFER_FORMAT,
@@ -180,6 +202,7 @@ export type {
   PhysicsFrameStats,
   PhysicsHd2dKinematicMoveOptions,
   PhysicsHd2dKinematicMoveResult,
+  PhysicsKinematicControllerOptions,
   PhysicsJointBaseOptions,
   PhysicsJointHandle,
   PhysicsJointSnapshot,
@@ -259,19 +282,64 @@ export async function createEngineWithFramePipeline(
   viewportProvider?: ViewportProvider,
   options: CreateEngineOptions = {},
 ): Promise<FerrumEngine> {
-  const bridge = await WasmBridge.init();
+  return buildEngineFacade(frameHandlers, inputProvider, assetHost, viewportProvider, options);
+}
+
+/** @internal The file coordinator exclusively owns this bridge and its newly
+ * installed native state. No creation configuration or queued output is reset. */
+export async function createDetachedEngineFacade(
+  bridge: WasmBridge,
+  metadata: DetachedEngineMetadata,
+  frameHandlers: EngineFramePipelineHandlers,
+  inputProvider?: InputProvider,
+  assetHost?: AssetHost,
+  viewportProvider?: ViewportProvider,
+  options: CreateEngineOptions = {},
+): Promise<FerrumEngine> {
+  return buildEngineFacade(frameHandlers, inputProvider, assetHost, viewportProvider, options, { bridge, metadata });
+}
+
+async function buildEngineFacade(
+  frameHandlers: EngineFramePipelineHandlers,
+  inputProvider: InputProvider | undefined,
+  assetHost: AssetHost | undefined,
+  viewportProvider: ViewportProvider | undefined,
+  options: CreateEngineOptions,
+  detached?: { bridge: WasmBridge; metadata: DetachedEngineMetadata },
+): Promise<FerrumEngine> {
+  // Retain creation policy values even if the caller later reuses its options.
+  options = { ...options, fixedTimestep: typeof options.fixedTimestep === "object" && options.fixedTimestep !== null
+    ? { ...options.fixedTimestep } : options.fixedTimestep };
+  const initialPhysicsSpec = detached ? structuredClone(detached.metadata.initialPhysicsSpec) : resolveInitialPhysicsSpec(options);
+  const bridge = detached?.bridge ?? await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
-  rustEngine.set_collision_lifecycle_events_enabled(options.includeCollisionEvents === true);
-  const registeredParticlePresetIds = new Set<number>();
-  const initialPhysicsSpec = resolvePhysicsSpec(undefined, {
-    modeOverride: options.physicsMode,
-  });
-  applyPhysicsRuntimeOptions(rustEngine, initialPhysicsSpec, options, options.physicsMode !== undefined);
+  try {
+    if (!detached) {
+      configureInitialPhysics(rustEngine, initialPhysicsSpec, options);
+      rustEngine.set_collision_lifecycle_events_enabled(options.includeCollisionEvents === true);
+    }
+  } catch (error) {
+    rustEngine.free();
+    throw error;
+  }
+  const resourceFontSet = typeof document === "undefined" ? undefined : document.fonts;
+  const registeredParticlePresetIds = new Set<number>(detached?.metadata.particlePresetIds);
+  // A restored file owns its actual saved policy. Old explicit/implicit legacy
+  // files must not acquire new-Engine defaults while their facade is attached.
+  const nativeDefaultPolicy = usesDefaultNativePhysics(options)
+    && (!detached || rustEngine.default_physics_policy_scene() !== 0);
   const framePipeline: FramePipelineContext = {
     isAlive: () => !destroyed,
     bridge,
     rustEngine,
-    physicsSpec: initialPhysicsSpec,
+    physicsSpec: detached ? structuredClone(detached.metadata.physicsSpec) : nativeDefaultPolicy ? {
+      ...structuredClone(initialPhysicsSpec), solver: { ...initialPhysicsSpec.solver,
+        fixedTimestep: rustEngine.fixed_timestep_enabled(), stepSeconds: Math.fround(initialPhysicsSpec.solver.stepSeconds) },
+    } : structuredClone(initialPhysicsSpec),
+    physicsSpecScene: detached ? detached.metadata.physicsSpecScene : nativeDefaultPolicy ? rustEngine.default_physics_policy_scene() : undefined,
+    lastViewportWidth: detached?.metadata.lastViewportWidth,
+    lastViewportHeight: detached?.metadata.lastViewportHeight,
+    viewportDirty: detached?.metadata.viewportDirty,
     onFrame: frameHandlers.onFrame,
     onRenderFrame: frameHandlers.onRenderFrame,
     needsFrameState: frameHandlers.needsFrameState,
@@ -282,9 +350,26 @@ export async function createEngineWithFramePipeline(
     viewportProvider,
     options,
   };
+  const synchronizePhysicsMetadata = nativeDefaultPolicy
+    ? () => synchronizeDefaultPhysicsMetadata(rustEngine, framePipeline, initialPhysicsSpec) : undefined;
+  framePipeline.synchronizePhysicsMetadata = synchronizePhysicsMetadata;
+  const acceptPhysicsMetadata = (spec: ResolvedPhysicsSpec): void => {
+    framePipeline.physicsSpec = structuredClone(spec);
+    if (nativeDefaultPolicy) framePipeline.physicsSpecScene = rustEngine.default_physics_policy_scene();
+  };
 
+  let frameInProgress = false;
   const loop = new GameLoop(
-    (deltaSeconds) => runFrame(framePipeline, deltaSeconds),
+    (deltaSeconds) => {
+      frameInProgress = true;
+      try { runFrame(framePipeline, deltaSeconds); }
+      catch (error) {
+        running = false;
+        paused = false;
+        throw error;
+      }
+      finally { frameInProgress = false; }
+    },
     0.05,
   );
 
@@ -320,6 +405,7 @@ export async function createEngineWithFramePipeline(
     }
     const snapshot = lifecycleSnapshot();
     destroyed = true;
+    forgetResourceFacade(engine);
     assetLoadLifetime.abort();
     running = false;
     paused = false;
@@ -344,17 +430,32 @@ export async function createEngineWithFramePipeline(
 
   const setGameSpec = (spec: ShooterGameSpec): ResolvedShooterGameSpec => {
     requireAlive();
+    synchronizePhysicsMetadata?.();
+    const targetPhysics = framePipeline.physicsSpecScene === 1 ? framePipeline.physicsSpec
+      : nativeDefaultPolicy ? resolveDefaultPhysicsPolicySpec(rustEngine, initialPhysicsSpec) : initialPhysicsSpec;
+    const policyPhysics = nativeDefaultPolicy
+      ? resolveDefaultGamePhysics(spec.physics, targetPhysics, options)
+      : undefined;
     const resolved = applyShooterGameSpec(rustEngine, spec, {
       textureId: (name) => requireAssetHost().textureId(name),
       physicsModeOverride: options.physicsMode,
     });
-    framePipeline.physicsSpec = resolved.physics;
-    applyPhysicsRuntimeOptions(
-      rustEngine,
-      resolved.physics,
-      options,
-      spec.physics !== undefined || options.physicsMode !== undefined,
-    );
+    if (policyPhysics) {
+      resolved.physics = policyPhysics;
+      if (options.physicsBackend !== "unified" && spec.physics !== undefined) {
+        configureDefaultGamePhysics(rustEngine, policyPhysics);
+        resolved.physics.solver.fixedTimestep = rustEngine.fixed_timestep_enabled();
+        resolved.physics.solver.stepSeconds = rustEngine.unified_physics_clock_step_seconds();
+      }
+    }
+    acceptPhysicsMetadata(resolved.physics);
+    if (nativeDefaultPolicy) {
+      // The retained native world or the actual scene switch already owns its
+      // clock. Reapplying creation overrides would overwrite a local setup.
+      applyPhysicsDebugLineOptions(rustEngine, options, resolved.physics);
+    } else {
+      applyPhysicsRuntimeOptions(rustEngine, resolved.physics, options, spec.physics !== undefined || options.physicsMode !== undefined);
+    }
     assetHost?.configureAudio?.({
       masterVolume: resolved.audioMasterVolume,
       sfxVolume: resolved.audioSfxVolume,
@@ -391,10 +492,22 @@ export async function createEngineWithFramePipeline(
     return true;
   };
 
-  const configurePhysicsRuntime = (spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec => {
+  const validatePhysicsRuntime = (spec: ResolvedPhysicsSpec): void => {
     requireAlive();
-    framePipeline.physicsSpec = spec;
-    applyPhysicsRuntimeOptions(rustEngine, spec, options, true);
+    if (usesNativePhysicsSpec(spec)) nativePhysicsSpecPayload(rustEngine, spec, options);
+    else validatePhysicsSpecModeTransition(rustEngine, spec);
+  };
+
+  const configurePhysicsRuntime = (spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec => {
+    validatePhysicsRuntime(spec);
+    if (usesNativePhysicsSpec(spec)) {
+      configureNativePhysicsSpec(rustEngine, spec, options);
+      applyPhysicsDebugLineOptions(rustEngine, options, spec);
+    } else {
+      validatePhysicsSpecModeTransition(rustEngine, spec);
+      applyPhysicsRuntimeOptions(rustEngine, spec, options, true);
+    }
+    acceptPhysicsMetadata(spec);
     return spec;
   };
 
@@ -519,14 +632,21 @@ export async function createEngineWithFramePipeline(
     );
   };
 
-  const useBreakoutGame = (): void => {
+  const selectScene = (select: () => void): void => {
     requireAlive();
-    rustEngine.use_breakout_scene();
+    // Observe an implicit Shooter switch before an explicit return to the old
+    // scene, even when no frame was requested between the two cold operations.
+    synchronizePhysicsMetadata?.();
+    select();
+    synchronizePhysicsMetadata?.();
+  };
+
+  const useBreakoutGame = (): void => {
+    selectScene(() => rustEngine.use_breakout_scene());
   };
 
   const useDataScene = (): void => {
-    requireAlive();
-    rustEngine.use_data_scene();
+    selectScene(() => rustEngine.use_data_scene());
   };
 
   const dataSceneState: FerrumSceneApi["dataSceneState"] = () => {
@@ -553,13 +673,17 @@ export async function createEngineWithFramePipeline(
   };
 
   const usePlatformerGame = (): void => {
-    requireAlive();
-    rustEngine.use_platformer_scene();
+    selectScene(() => rustEngine.use_platformer_scene());
   };
 
   const configureFixedTimestep = (fixedTimestep: boolean | FixedTimestepOptions): void => {
     requireAlive();
-    applyFixedTimestepOptions(rustEngine, fixedTimestep);
+    const clock = applyFixedTimestepOptions(rustEngine, fixedTimestep);
+    if (clock) {
+      synchronizePhysicsMetadata?.();
+      acceptPhysicsMetadata({ ...framePipeline.physicsSpec, solver: { ...framePipeline.physicsSpec.solver,
+        fixedTimestep: clock.enabled, stepSeconds: clock.stepSeconds } });
+    }
   };
 
   const configureAutoRigidBodyStep = (autoStep: boolean | PhysicsRigidBodyStepOptions): void => {
@@ -570,6 +694,7 @@ export async function createEngineWithFramePipeline(
   const setPhysicsDebugLinesEnabled = (enabled: boolean | PhysicsDebugOptions): void => {
     requireAlive();
     const flags = physicsDebugFlags(enabled);
+    requireNativeDebugGeometry(rustEngine, flags !== 0);
     rustEngine.set_physics_debug_line_flags(flags);
     rustEngine.set_physics_debug_lines_enabled(flags !== 0);
   };
@@ -577,6 +702,7 @@ export async function createEngineWithFramePipeline(
   const setPhysicsDebugOptions = (options: PhysicsDebugOptions): void => {
     requireAlive();
     const flags = physicsDebugFlags(options);
+    requireNativeDebugGeometry(rustEngine, flags !== 0);
     rustEngine.set_physics_debug_line_flags(flags);
     rustEngine.set_physics_debug_lines_enabled(flags !== 0);
   };
@@ -589,7 +715,9 @@ export async function createEngineWithFramePipeline(
     return stepRigidBodiesWithStats(rustEngine, deltaSeconds, options);
   };
 
-  const tilemapSceneApi = createTilemapSceneApi({ rustEngine, bridge, requireAlive });
+  const tilemapSceneApi = createTilemapSceneApi({ rustEngine, bridge, requireAlive,
+    textureId: name => requireAssetHost().textureId(name),
+  });
 
   const lifecycleApi: FerrumLifecycleApi = {
     start: () => {
@@ -667,10 +795,14 @@ export async function createEngineWithFramePipeline(
     supportsDataSceneCombatMovement: () => { requireAlive(); return supportsDataSceneCombatMovement(rustEngine); },
     supportsDataSceneProjectileVisuals: () => { requireAlive(); return supportsDataSceneProjectileVisuals(rustEngine); },
     supportsDataSceneSpawnPrefabs: () => { requireAlive(); return supportsDataSceneSpawnPrefabs(rustEngine); },
+    supportsDataSceneSpawnPrefabPhysics: () => { requireAlive(); return supportsDataSceneSpawnPrefabPhysics(rustEngine); },
     supportsDataSceneCombatActions: () => { requireAlive(); return supportsDataSceneCombatActions(rustEngine); },
     supportsDataSceneCombatNavigationScheduler: () => { requireAlive(); return supportsDataSceneCombatNavigationScheduler(rustEngine); },
     dataSceneCombatNavigationSchedulerStats: () => { requireAlive(); return dataSceneCombatNavigationSchedulerStats(rustEngine); },
     supportsDataSceneCombatNavigation: () => { requireAlive(); return supportsDataSceneCombatNavigation(rustEngine); },
+    supportsDataSceneNativeCombatNavigation: () => { requireAlive(); return supportsDataSceneNativeCombatNavigation(rustEngine); },
+    supportsDataSceneNativeCombatCrowd: () => { requireAlive(); return supportsDataSceneNativeCombatCrowd(rustEngine); },
+    supportsDataSceneNativeCombatMovement: () => { requireAlive(); return supportsDataSceneNativeCombatMovement(rustEngine); },
     dataSceneCombatNavigationStats: () => { requireAlive(); return dataSceneCombatNavigationStats(rustEngine); },
     supportsDataSceneProjectilePrefabs: () => { requireAlive(); return supportsDataSceneProjectilePrefabs(rustEngine); },
     supportsDataSceneCombatProgress: () => { requireAlive(); return supportsDataSceneCombatProgress(rustEngine); },
@@ -777,6 +909,12 @@ export async function createEngineWithFramePipeline(
   });
 
   const physicsRuntimeApi: FerrumPhysicsRuntimeApi = {
+    physicsBackend: () => {
+      requireAlive();
+      if (typeof rustEngine.physics_spec_backend_active !== "function") throw new Error("This Wasm core cannot report the active physics backend.");
+      return rustEngine.physics_spec_backend_active() ? "unified-3d" : "legacy";
+    },
+    validatePhysicsRuntime,
     configurePhysicsRuntime,
     configureFixedTimestep,
     configureAutoRigidBodyStep,
@@ -916,6 +1054,8 @@ export async function createEngineWithFramePipeline(
   };
 
   const engine: FerrumEngine = {
+    ...createGameplayObservationApi(rustEngine, requireAlive),
+    ...createRuntimeCheckpointApi(rustEngine, requireAlive, () => loop.isRunning() || frameInProgress, framePipeline, synchronizePhysicsMetadata),
     queryAudioPoseBuffer(handles) {
       requireAlive();
       if (!(handles instanceof Uint32Array) || handles.length % 2 || handles.length > 130) throw new Error("Audio poses require at most 65 u32 handle pairs.");
@@ -929,6 +1069,28 @@ export async function createEngineWithFramePipeline(
     ...bitmapTextApi,
     ...particleApi,
     ...physicsRuntimeApi,
+    ...createUnifiedPhysicsAuthoringApi(rustEngine, requireAlive),
+    ...createUnifiedPhysicsBindingApi(rustEngine, requireAlive),
+    ...createUnifiedPhysicsControlApi(rustEngine, requireAlive),
+    ...createUnifiedPhysicsJointApi(rustEngine, bridge, requireAlive),
+    ...createUnifiedPhysicsCharacterApi(rustEngine, bridge, requireAlive),
+    ...createUnifiedPhysicsCommandApi(rustEngine, bridge, requireAlive),
+    setUnifiedPhysicsCollisionEventsEnabled(enabled) { requireAlive(); bridge.setUnifiedPhysicsCollisionEventsEnabled(enabled); },
+    drainUnifiedPhysicsCollisionEvents() { requireAlive(); return bridge.readUnifiedPhysicsCollisions(true); },
+    queryUnifiedPhysicsCollisionPairs() { requireAlive(); return bridge.readUnifiedPhysicsCollisions(false); },
+    queryUnifiedPhysicsContactManifolds(options) { requireAlive(); return bridge.queryUnifiedPhysicsContactManifolds(options); },
+    queryUnifiedPhysicsObservations() { requireAlive(); return bridge.queryUnifiedPhysicsObservations(); },
+    queryUnifiedPhysicsDiagnostics() { requireAlive(); return bridge.queryUnifiedPhysicsDiagnostics(); },
+    queryUnifiedPhysics(batch) { requireAlive(); return bridge.queryUnifiedPhysics(batch); },
+    ...createUnifiedPhysicsApi(rustEngine, bridge, requireAlive, config => {
+      // Frame diagnostics describe the accepted native setup; no simulation runs in TS.
+      synchronizePhysicsMetadata?.();
+      acceptPhysicsMetadata({ ...framePipeline.physicsSpec,
+        mode: "rigid", gravityX: config.gravity[0], gravityY: config.gravity[1], continuous: config.continuous,
+        solver: { ...framePipeline.physicsSpec.solver, fixedTimestep: rustEngine.fixed_timestep_enabled(), stepSeconds: config.stepSeconds,
+          velocityIterations: config.velocityIterations, positionIterations: config.positionIterations },
+      });
+    }),
     ...physicsBodyApi,
     ...physicsJointApi,
     ...physicsQueryApi,
@@ -1006,7 +1168,54 @@ export async function createEngineWithFramePipeline(
       return rustEngine.set_gameplay_variable_value(slot, dataSceneVariableNumber(value));
     },
   });
-  return attachDataSceneRuntimeEngineAdapter(engine, {
+  let nativeAuthoringActive = false;
+  attachNativePhysicsAuthoring(engine, {
+    supported: () => typeof rustEngine.unified_physics_scene_authoring_version === "function"
+      && rustEngine.unified_physics_scene_authoring_version() === 1
+      && typeof rustEngine.finalize_unified_physics_authoring === "function"
+      && engine.supportsRuntimeCheckpoints(),
+    finalize: () => { requireAlive(); rustEngine.finalize_unified_physics_authoring(); },
+    run: operation => {
+      requireAlive();
+      if (frameInProgress || nativeAuthoringActive) throw new Error("Native authoring must run outside frame callbacks and other authoring transactions.");
+      if (typeof rustEngine.unified_physics_scene_authoring_version !== "function"
+        || rustEngine.unified_physics_scene_authoring_version() !== 1
+        || typeof rustEngine.finalize_unified_physics_authoring !== "function" || !engine.supportsRuntimeCheckpoints())
+        throw new Error("Native scene authoring requires Wasm scene authoring version 1 and runtime checkpoints.");
+      synchronizePhysicsMetadata?.();
+      const spec = structuredClone(framePipeline.physicsSpec), scene = framePipeline.physicsSpecScene;
+      const checkpoint = rustEngine.capture_runtime_checkpoint();
+      if (!checkpoint) throw new Error("Native authoring checkpoint exceeds runtime admission limits.");
+      nativeAuthoringActive = true;
+      try {
+        return operation();
+      } catch (error) {
+        if (!rustEngine.restore_runtime_checkpoint(checkpoint)) throw new Error(`Native authoring rollback was rejected: ${String(error)}`);
+        framePipeline.physicsSpec = spec;
+        framePipeline.physicsSpecScene = scene;
+        throw error;
+      } finally {
+        nativeAuthoringActive = false;
+        checkpoint.free();
+      }
+    },
+  });
+  registerLegacyJsonPhysicsRuntime(engine, spec => {
+    requireAlive();
+    // Snapshot eligibility was checked before staging. Do not select a backend
+    // here, and do not reapply creation clock overrides over the saved clock.
+    applyPhysicsRuntimeOptions(rustEngine, spec, { ...options, fixedTimestep: undefined }, true);
+    acceptPhysicsMetadata(spec);
+  });
+  registerNativeFileEngineOwner(engine, {
+    bridge, native: rustEngine, options, frame: framePipeline, initialPhysicsSpec,
+    particlePresetIds: registeredParticlePresetIds, requireAlive,
+    busy: () => loop.isRunning() || frameInProgress || nativeAuthoringActive,
+  });
+  markNativeFileCanonicalAuthoringAdapter(engine);
+  markNativeFileCanonicalVariableAdapter(engine);
+  markNativeFileCanonicalResolvers(engine);
+  const adapted = attachDataSceneRuntimeEngineAdapter(engine, {
     ...(typeof rustEngine.begin_data_scene_authoring_continuity==="function"&&typeof rustEngine.finish_data_scene_authoring_continuity==="function"&&typeof rustEngine.cancel_data_scene_authoring_continuity==="function"?{
       beginAuthoringContinuity:(handles:Uint32Array,masks:Uint32Array)=>{requireAlive();return rustEngine.begin_data_scene_authoring_continuity(handles,masks);},
       finishAuthoringContinuity:(token:number,handles:Uint32Array)=>{requireAlive();return rustEngine.finish_data_scene_authoring_continuity(token,handles);},
@@ -1040,6 +1249,8 @@ export async function createEngineWithFramePipeline(
       return typeof rustEngine.spatial_surface_proxy_abi_version === "function" &&
         rustEngine.spatial_surface_proxy_abi_version() === 1;
     },
+    preflightPhysics: (world, bodies, joints, path, tilemap) => { requireAlive(); preflightDataScenePhysics(world, bodies, joints, path, tilemap, rustEngine); },
+    configureCollisionTilemap: packet => { requireAlive(); return configureEncodedDataSceneCollisionTilemap(rustEngine, packet); },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
       if (!supportsSpatialEnvironment(rustEngine, environment)) return false;
@@ -1109,6 +1320,10 @@ export async function createEngineWithFramePipeline(
       }
       if (request.body !== undefined) {
         const body = request.body;
+        if (body.type === undefined) {
+          rustEngine.despawn_physics_entity(entityId, entityGeneration);
+          throw new Error("Shape physics bodies require document binding");
+        }
         const span = body.heightSpan;
         const configured = body.type === "dynamic"
           ? rustEngine.configure_data_scene_dynamic_body(entityId, entityGeneration, body.mass ?? 1, body.canSleep ?? true)
@@ -1153,6 +1368,9 @@ export async function createEngineWithFramePipeline(
       return { entityId, entityGeneration };
     },
   });
+  registerResourceFacade(adapted, () => ({ rustEngine, ...(assetHost === undefined ? {} : { assetHost }),
+    ...(resourceFontSet === undefined ? {} : { fontFaceSet: resourceFontSet }), destroyed, frameInProgress, running: loop.isRunning() }));
+  return adapted;
 }
 
 function dataSceneVariableNumber(value: number | boolean): number {

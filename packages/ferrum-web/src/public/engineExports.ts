@@ -7,6 +7,36 @@ export {
   createPhysicsBodyStateBufferSnapshot,
 } from "../createEngine";
 export { createFerrumRuntime } from "../createFerrumRuntime";
+export type { BuiltInShooterProgress, BuiltInShooterPlayerActions, GameplayPosition, FerrumGameplayObservationApi } from "../gameplayObservation.js";
+export { TERRAIN_IMPACT_LAYOUT } from "../terrainImpacts.js";
+export type { TerrainImpactBufferView } from "../terrainImpacts.js";
+export { createNativeGameFileSession } from "../nativeGameFile.js";
+export { NativeGameFileError } from "../nativeGameFileTypes.js";
+export type {
+  NativeGameFileErrorCode,
+  NativeGameFilePhase,
+  NativeGameFileResourceLimits,
+  NativeGameFileUsage,
+  NativeGameFileBudget,
+  NativeGameFileNativeLimits,
+  NativeGameFileRenderFrame,
+  NativeGameFileCallbacks,
+  NativeGameFileRuntimeRole,
+  NativeGameFileData,
+  NativeGameFileReadonly,
+  NativeGameFileHostMetadata,
+  NativeGameFilePlatformContext,
+  NativeGameFilePlatform,
+  NativeGameFileSessionOptions,
+  NativeGameFileReady,
+  NativeGameFileCommit,
+  NativeGameFileDialogueQuestGraph,
+  NativeGameFileFontSelection,
+  NativeGameFileExternalFonts,
+  NativeGameFileFontSetAdapter,
+  NativeGameFileFontFaceAdapter,
+  NativeGameFileSession,
+} from "../nativeGameFileTypes.js";
 export { initializeFerrumWasm } from "../initializeFerrumWasm.js";
 export { createRenderer } from "../createRenderer";
 export { GAME_STATE_CODE, gameStateName } from "../gameState.js";
@@ -149,6 +179,7 @@ export type {
   PhysicsFrameStats,
   PhysicsHd2dKinematicMoveOptions,
   PhysicsHd2dKinematicMoveResult,
+  PhysicsKinematicControllerOptions,
   PhysicsRigidBodyCollider,
   PhysicsRigidBodyMassProperties,
   PhysicsRigidBodyMaterial,

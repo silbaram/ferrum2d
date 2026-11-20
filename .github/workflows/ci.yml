@@ -26,6 +26,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-wasip1
 
       - name: Install desktop Linux dependencies
         run: |
@@ -104,6 +105,18 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
 
+      - name: Native physics stored-reference contracts
+        run: pnpm test:physics3d-storage
+
+      - name: Native physics near-origin query contracts
+        run: pnpm test:physics3d-queries
+
+      - name: Native WASI runner contracts
+        run: node --test tests/smoke/native-wasi-runner.test.mjs
+
+      - name: Rust-only WASI unit and integration tests
+        run: pnpm test:rust-wasi
+
       - name: Rust test harness guard
         run: pnpm validate:rust-test-harness
 
@@ -119,15 +132,8 @@ jobs:
       - name: Mass object stress smoke
         run: pnpm smoke:mass-objects
 
-      - name: Top-down browser mass object smoke
-        run: pnpm smoke:topdown-mass-objects
-
-      - name: Top-down browser tilemap budget smoke
-        run: pnpm smoke:topdown-tilemap-budget
-
       - name: Build wasm package
-        run: wasm-pack build crates/ferrum-core --target web --out-dir
-          ../../packages/ferrum-web/pkg
+        run: pnpm build:wasm
 
       - name: Build Studio Kit declarations for type checking
         run: pnpm --filter @ferrum2d/studio-kit build
@@ -138,11 +144,37 @@ jobs:
       - name: Example demo harness guard
         run: pnpm report:example-demo-harness
 
-      - name: Test packages
-        run: pnpm test
+      # The complete Core Rust suite already ran above on this same source.
+      - name: Test Web packages
+        run: pnpm test:web
 
       - name: Build TypeScript packages
-        run: pnpm build
+        run: |
+          pnpm pack:textures:if-present
+          pnpm build:web
+
+      # These wrappers also build Wasm and the example when used on their own.
+      # Here every probe consumes the same package and example builds above.
+      - name: Top-down browser mass object smoke
+        run: node tests/smoke/browser-render-smoke.mjs --budget --mode=topdown-mass-objects examples/topdown-shooter/dist
+
+      - name: Top-down browser tilemap budget smoke
+        run: node tests/smoke/browser-render-smoke.mjs --budget --mode=topdown-tilemap-budget examples/topdown-shooter/dist
+
+      - name: Unified physics public package browser bridge
+        run: |
+          pnpm smoke:unified-physics-web
+          pnpm smoke:scene-physics
+
+      - name: Upload unified physics Web bridge report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-physics-web-bridge
+          path: |
+            artifacts/physics-3d/web-bridge-browser/report.json
+            artifacts/physics-3d/scene-authoring-browser/
+          if-no-files-found: ignore
 
       - name: Placement workspace browser smoke
         run: |
@@ -155,6 +187,15 @@ jobs:
         run: |
           pnpm --filter @ferrum2d/studio exec vite build --base=./ --outDir "$RUNNER_TEMP/studio-save"
           node tests/smoke/browser-render-smoke.mjs --mode=studio-save "$RUNNER_TEMP/studio-save"
+          FERRUM_NATIVE_TEMPLATE_STUDIO_ROOT="$RUNNER_TEMP/studio-save" node tests/smoke/native-template-studio-smoke.mjs
+
+      - name: Upload native template Studio report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-template-studio
+          path: artifacts/physics-3d/goal-closure/studio-native-authoring/browser/
+          if-no-files-found: ignore
 
       - name: HD-2D authoring workspace browser smoke
         run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/studio/dist
@@ -167,22 +208,31 @@ jobs:
         run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale && pnpm test:placement-layers && pnpm test:placement-commands && pnpm test:placement-layouts && pnpm test:placement-inspector && pnpm test:placement-asset-usage && pnpm test:placement-asset-cleanup
 
       - name: Packed input context browser smoke
-        run: pnpm smoke:input-context
+        run: node tests/smoke/input-context-browser-smoke.mjs
 
       - name: Data Scene gameplay packed Wasm smoke
-        run: pnpm smoke:data-scene-gameplay
+        run: node tests/smoke/data-scene-gameplay-smoke.mjs
 
       - name: Data Scene packed runtime browser smoke
-        run: pnpm smoke:data-scene
+        run: node tests/smoke/data-scene-browser-smoke.mjs
 
       - name: Spatial Scene browser smoke
-        run: pnpm smoke:spatial-scene
+        run: node tests/smoke/spatial-scene-browser-smoke.mjs
 
       - name: Spatial WebGPU geometry/models offscreen and pre-context fallback
-        run: pnpm smoke:spatial-webgpu-offscreen
+        run: |
+          pnpm test:spatial-light-probes-report
+          pnpm test:spatial-light-shafts-report
+          pnpm test:spatial-height-fog-report
+          pnpm test:spatial-point-pcss-report
+          pnpm test:spatial-sun-pcss-report
+          pnpm test:spatial-point-shadows-report
+          pnpm test:spatial-light-selection-report
+          pnpm test:spatial-bloom-report
+          node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target
 
       - name: WebGPU recovery with GPU timing and resource diagnostics
-        run: pnpm smoke:webgpu-recovery
+        run: node tests/smoke/spatial-webgpu-browser-smoke.mjs --recovery-only --offscreen-target
 
       - name: Imported Tiled and LDtk whole map authoring
         run: pnpm smoke:tile-map
@@ -279,10 +329,12 @@ jobs:
         run: pnpm smoke:sprite-palette
 
       - name: Pixel postprocess parity, virtual pixels and recovery
-        run: pnpm smoke:pixel-postprocess
+        run: |
+          node --test tests/smoke/pixel-postprocess-contract.test.mjs
+          node tests/smoke/pixel-postprocess-smoke.mjs
 
       - name: Pixel art showcase movement, collection and visual controls
-        run: pnpm smoke:pixel-showcase
+        run: node tests/smoke/pixel-showcase-smoke.mjs
 
       - name: Upload pixel showcase evidence
         if: always()
@@ -393,7 +445,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Real village combat, audio, ramp and LOD quality evidence
-        run: pnpm smoke:village-game-quality
+        run: node tests/smoke/village-game-quality-browser-smoke.mjs
 
       - name: Upload village game quality evidence
         if: always()
@@ -416,7 +468,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Verify native HD-2D combat, input, checkpoints, prefabs, multi-floor AI, crowd, scheduler, movement, melee/dash, actor spawn and projectile visuals
-        run: pnpm smoke:hd2d-combat
+        run: node tests/smoke/hd2d-combat-browser-smoke.mjs
 
       - name: Upload HD-2D combat evidence
         if: always()
@@ -434,10 +486,12 @@ jobs:
           if-no-files-found: ignore
 
       - name: Data Scene animation projection and sun browser smoke
-        run: pnpm smoke:data-scene-presentation
+        run: node tests/smoke/data-scene-presentation-browser-smoke.mjs
 
       - name: Native sprite timing directions events and save browser smoke
-        run: pnpm smoke:sprite-animation-runtime
+        run: |
+          node --test tests/smoke/sprite-animation-runtime-report.test.mjs
+          node tests/smoke/sprite-animation-runtime-smoke.mjs --require-webgpu
 
       - name: Upload runtime animation verification
         if: always()
@@ -448,13 +502,15 @@ jobs:
           if-no-files-found: ignore
 
       - name: RenderTexture browser smoke
-        run: pnpm smoke:render-texture
+        run: node tests/smoke/render-texture-browser-smoke.mjs
 
       - name: Color management browser smoke
-        run: pnpm smoke:color-management
+        run: node tests/smoke/color-management-browser-smoke.mjs
 
       - name: Flat 2D pixel-perfect rendering and Game Preview smoke
-        run: pnpm smoke:flat-pixel-perfect
+        run: |
+          node tests/smoke/flat-pixel-perfect-smoke.mjs
+          node tests/smoke/flat-pixel-perfect-viewer-smoke.mjs
 
       - name: Atlas PNG extrusion and renderer boundary smoke
         run: pnpm smoke:atlas-extrusion
@@ -476,31 +532,42 @@ jobs:
           if-no-files-found: ignore
 
       - name: GPU resource lifecycle browser smoke
-        run: pnpm smoke:gpu-resources
+        run: node tests/smoke/gpu-resources-browser-smoke.mjs
 
       - name: Asset loading concurrency and cancellation smoke
-        run: pnpm smoke:asset-loading
+        run: node tests/smoke/asset-loading-browser-smoke.mjs
 
       - name: Spatial audio output and native binding smoke
-        run: pnpm smoke:spatial-audio
+        run: node tests/smoke/spatial-audio-browser-smoke.mjs
 
       - name: KTX2 compressed texture smoke
-        run: pnpm smoke:ktx2
+        run: |
+          node tests/smoke/ktx2-browser-smoke.mjs
+          node tests/smoke/ktx2-browser-smoke.mjs --bundled
 
       - name: Shader preparation smoke
-        run: pnpm smoke:shader-preparation
+        run: node tests/smoke/shader-preparation-browser-smoke.mjs
 
       - name: Data scene authoring sample validation
         run: pnpm validate:data-scene-authoring
 
+      - name: Wasm dependency notice generator contracts
+        run: node --test tests/smoke/wasm-license-notices.test.mjs
+
       - name: Package artifact checks
-        run: pnpm package:check
+        run: |
+          node --test tests/smoke/native-wasm-source-identity.test.mjs
+          node scripts/package/check-package-files.mjs --require-wasm-pkg --verify-pack
+          node --test tests/smoke/ferrum-web-public-types.test.mjs
+          node scripts/package/check-studio-kit-package.mjs --verify-pack
+          node scripts/package/check-create-game-package.mjs --verify-pack --skip-build
+          node scripts/package/check-agents-package.mjs --verify-pack
 
       - name: Gameplay authoring report
         run: pnpm validate:gameplay-authoring:report
 
       - name: Gameplay replay report
-        run: pnpm smoke:gameplay-replay:report
+        run: node tests/smoke/gameplay-replay-smoke.mjs --artifact-dir artifacts/gameplay-replay-smoke
 
       - name: Gameplay report artifact validation
         run: pnpm validate:gameplay-report-artifacts

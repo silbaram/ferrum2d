@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { diagnosticReport } from "../src/diagnostics.js";
 import { resolvePhysicsSpec } from "../src/physicsSpec.js";
@@ -228,3 +228,10 @@ function expectPhysicsSpecDiagnostic(action: () => void, messagePattern: RegExp)
   }
   throw new Error("expected physics spec diagnostic");
 }
+
+
+test("rigid and arcade Physics Specs select either native clock without changing mode defaults", () => {
+  equal(resolvePhysicsSpec({mode:"rigid",solver:{fixedTimestep:false}}).solver.fixedTimestep,false);
+  equal(resolvePhysicsSpec({mode:"rigid"}).solver.fixedTimestep,true);
+  equal(resolvePhysicsSpec({mode:"arcade",solver:{fixedTimestep:false}}).solver.fixedTimestep,false);
+});

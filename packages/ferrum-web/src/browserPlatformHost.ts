@@ -1,3 +1,5 @@
+import {NativeFileResourceError} from "./nativeFileResourceBudget.js";
+import { registerPlatformAssetFileOwner, forgetPlatformAssetFileOwner, assetFileOwner } from "./nativeFileResourceOwners.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { AssetLoader } from "./assetLoader.js";
 import type {
@@ -8,7 +10,7 @@ import type {
   LoadedAssets,
   TextureAssetManager,
 } from "./assetLoader.js";
-import { AudioManager } from "./audioManager.js";
+import { AudioManager, adoptPreparedFileAudio } from "./audioManager.js";
 import type { AudioManagerConfig, PlayBgmOptions, StopBgmOptions } from "./audioManager.js";
 import type { AssetHost } from "./engineTypes.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
@@ -19,7 +21,7 @@ interface PostProcessTarget {
 }
 
 export class BrowserPlatformHost implements AssetHost {
-  private readonly audioManager: AudioManager;
+  private audioManager: AudioManager;
   private readonly assetLoader: AssetLoader;
   private destroyed = false;
   private readonly loadLifetime = new AbortController();
@@ -27,6 +29,13 @@ export class BrowserPlatformHost implements AssetHost {
   constructor(private readonly textureAssetManager: TextureAssetManager & PostProcessTarget, audioManager = new AudioManager()) {
     this.audioManager = audioManager;
     this.assetLoader = new AssetLoader(this.textureAssetManager, audioManager);
+    registerPlatformAssetFileOwner(this, this.assetLoader, () => !this.destroyed, lease => {
+      // Root owns this new unpublished host; both real SDK routes must still
+      // point to the exact manager for which this sealed lease was prepared.
+      this.assertAlive(); const old=this.audioManager,assets=assetFileOwner(this.assetLoader);
+      if(assets.audioOwner!==old)throw new NativeFileResourceError("STALE","standard audio owner pair");
+      adoptPreparedFileAudio(lease,old,next=>{assets.replaceAudio(old,next);this.audioManager=next;});
+    });
   }
 
   async loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback, options: AssetLoadOptions = {}): Promise<LoadedAssets> {
@@ -45,6 +54,12 @@ export class BrowserPlatformHost implements AssetHost {
   releaseAssets(assets: AssetReleasePayload): void {
     this.assertAlive();
     this.assetLoader.releaseAssets(assets);
+  }
+
+  /** Read a current JSON asset without loading or copying it. */
+  getJsonAsset(name: string): unknown {
+    this.assertAlive();
+    return this.assetLoader.getJsonAsset(name);
   }
 
   textureId(name: string): number {
@@ -103,6 +118,8 @@ export class BrowserPlatformHost implements AssetHost {
     }
     this.destroyed = true;
     this.loadLifetime.abort();
+    forgetPlatformAssetFileOwner(this);
+    assetFileOwner(this.assetLoader).dispose();
     this.audioManager.destroy();
   }
 

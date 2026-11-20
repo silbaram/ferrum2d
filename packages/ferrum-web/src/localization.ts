@@ -1,3 +1,4 @@
+import { loadResourceFont } from "./nativeFileResourceFonts.js";
 import { localizationDiagnosticError } from "./diagnostics.js";
 
 export type TextDirection = "ltr" | "rtl";
@@ -574,7 +575,7 @@ export async function loadFontLoadingPolicy(
   let loaded = 0;
   for (const font of preloadFonts) {
     try {
-      await fontFaceSet.load(font.loadExpression);
+      await loadResourceFont(font, fontFaceSet);
       loaded += 1;
     } catch (error) {
       failed.push({

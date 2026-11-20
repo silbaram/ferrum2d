@@ -856,7 +856,9 @@ async function launchBrowser() {
     return await chromium.launch({ ...launchOptions, channel });
   } catch (channelError) {
     try {
-      return await chromium.launch(launchOptions);
+      // Match the bundled full-Chromium fallback used by the package/Studio
+      // gates; an unspecified channel selects a different headless executable.
+      return await chromium.launch({ ...launchOptions, channel: "chromium" });
     } catch (bundledError) {
       throw new Error(
         `Unable to launch a browser for render smoke. Set FERRUM_BROWSER_CHANNEL or FERRUM_BROWSER_EXECUTABLE. ` +
@@ -4689,7 +4691,9 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
 async function smokePhysicsDemoSuite(page, timeoutMs) {
   const reports = [];
   for (const demoId of PHYSICS_DEMO_SUITE) {
-    const report = await smokePhysicsSandbox(page, timeoutMs, demoId);
+    let report;
+    try { report = await smokePhysicsSandbox(page, timeoutMs, demoId); }
+    catch (error) { throw new Error(`Physics scenario ${demoId} failed: ${error.message}`, { cause: error }); }
     reports.push(report.physicsSandbox);
   }
   return { physicsDemoSuite: reports };
