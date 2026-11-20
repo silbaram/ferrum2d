@@ -551,7 +551,7 @@ fn spawn_prefabs_reconfiguration_cannot_capture_a_target_that_the_new_catalog_wi
 
 #[test]
 fn spawn_prefabs_live_limit_and_mass_retirement_do_not_leak_slots_or_reset_serials() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let actor = sprite(&mut e, 71, 0., 0., 0);
     let prototype = sprite(&mut e, 72, -32., 0., 0);
@@ -591,7 +591,7 @@ fn spawn_prefabs_live_limit_and_mass_retirement_do_not_leak_slots_or_reset_seria
 
 #[test]
 fn spawn_prefabs_execute_authored_and_inherited_spawn_timers_without_input() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let actor = sprite(&mut e, 71, 0., 16., 0);
     let prototype = sprite(&mut e, 72, 40., 16., 0);

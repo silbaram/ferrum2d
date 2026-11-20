@@ -16,24 +16,30 @@ const COLLIDERS: u32 = 16;
 const CONTACTS: u32 = 32;
 const FLOOR_IDS: u32 = 64;
 const SUN_SHADOW_COVERAGE: u32 = 128;
+// Output-only marker. It enables the existing XYZ packet without pretending
+// that a configured collider/terrain category or depth preference changed.
+const NATIVE_PHYSICS: u32 = 256;
 const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
 const MAGENTA: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialDebugGeometry {
     flags: u32,
     pub frame_flags: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub vertices: Vec<SpatialVertex>,
     pub truncated: bool,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     shape_lines: Vec<PhysicsDebugLine>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     contacts: Vec<KinematicDebugHit>,
     contact_pose: Option<(Entity, Transform2D, HeightSpan)>,
     contacts_truncated: bool,
 }
 impl SpatialDebugGeometry {
     pub fn configure(&mut self, flags: u32) -> bool {
-        if flags & !255 != 0 || (flags & !DEPTH_TEST == 0 && flags != 0) {
+        if flags & !255 != 0 {
             return false;
         }
         // A cube/plane cut has at most six sides: two outlines need at most 24 vertices.
@@ -75,6 +81,31 @@ impl SpatialDebugGeometry {
     }
     pub fn depth_test(&self) -> bool {
         self.frame_flags & DEPTH_TEST != 0
+    }
+    pub(crate) fn native_physics_flags(&self) -> u32 {
+        let mut flags = 0;
+        if self.frame_flags & COLLIDERS != 0 {
+            flags |= crate::collision::PHYSICS_DEBUG_COLLIDERS;
+        }
+        if self.frame_flags & CONTACTS != 0 {
+            flags |= crate::collision::PHYSICS_DEBUG_CONTACTS;
+        }
+        flags
+    }
+    pub(crate) fn remaining_native_lines(&mut self) -> u32 {
+        if self.vertices.capacity() < MAX_DEBUG_VERTICES {
+            self.vertices
+                .reserve(MAX_DEBUG_VERTICES - self.vertices.len());
+        }
+        ((MAX_DEBUG_VERTICES - self.vertices.len()) / 2) as u32
+    }
+    pub(crate) fn begin_native_physics(&mut self) {
+        self.frame_flags |= NATIVE_PHYSICS;
+    }
+    pub(crate) fn native_line(&mut self, a: Point, b: Point, color: [f32; 4]) -> bool {
+        let before = self.vertices.len();
+        self.line(a, b, color);
+        self.vertices.len() == before + 2
     }
     fn line(&mut self, a: Point, b: Point, color: [f32; 4]) {
         if [a, b].iter().flatten().any(|v| !v.is_finite()) {
@@ -150,5 +181,91 @@ impl SpatialDebugGeometry {
         self.line(bottom, top, MAGENTA);
         self.cross(bottom, camera.right, MAGENTA);
         self.cross(top, camera.right, MAGENTA);
+    }
+}
+
+impl SpatialDebugGeometry {
+    pub(super) fn validate_file(
+        &self,
+        world: &crate::world::World,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{
+            entity_history, finite, require, span, vertex, Field, Problem,
+        };
+        b.work(self.vertices.len())?;
+        b.work(self.shape_lines.len())?;
+        b.work(self.contacts.len())?;
+        b.work(2)?;
+        require(
+            self.flags & !255 == 0
+                && self.frame_flags & !511 == 0
+                && self.vertices.len() <= MAX_DEBUG_VERTICES
+                && self.vertices.len().is_multiple_of(2)
+                && self.contacts.len() <= 128,
+            Field::Debug,
+            0,
+            Problem::Length,
+        )?;
+        for (i, v) in self.vertices.iter().enumerate() {
+            require(
+                vertex(v) && v.texture == 16_777_215. && v.cutoff == 0. && v.uv == [0.; 2],
+                Field::Debug,
+                i,
+                Problem::Number,
+            )?;
+        }
+        for (i, v) in self.shape_lines.iter().enumerate() {
+            require(
+                finite(&[v.x0, v.y0, v.x1, v.y1, v.r, v.g, v.b, v.a]),
+                Field::Debug,
+                i,
+                Problem::Number,
+            )?;
+        }
+        for (i, v) in self.contacts.iter().enumerate() {
+            require(
+                v.target.is_none_or(|e| entity_history(world, e))
+                    && finite(&[v.point.x, v.point.y, v.normal.vx, v.normal.vy])
+                    && v.span.is_none_or(span),
+                Field::Debug,
+                i,
+                Problem::Number,
+            )?;
+        }
+        if let Some((e, at, height)) = self.contact_pose {
+            require(
+                entity_history(world, e) && finite(&[at.x, at.y]) && span(height),
+                Field::Debug,
+                0,
+                Problem::Reference,
+            )?;
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+impl SpatialDebugGeometry {
+    pub(super) fn corrupt_file_fixture(&mut self, case: u32) {
+        match case {
+            0 => self.flags = 512,
+            1 => self.vertices.push(SpatialVertex {
+                position: [0.; 3],
+                uv: [0.; 2],
+                color: [1.; 4],
+                texture: 16_777_215.,
+                cutoff: 0.,
+            }),
+            2 => self.contacts.push(KinematicDebugHit {
+                target: None,
+                point: Transform2D::default(),
+                normal: crate::components::Velocity {
+                    vx: f32::NAN,
+                    vy: 0.,
+                },
+                span: None,
+            }),
+            _ => unreachable!(),
+        }
     }
 }

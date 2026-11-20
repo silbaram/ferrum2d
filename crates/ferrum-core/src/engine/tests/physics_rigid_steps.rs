@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn engine_step_rigid_bodies_exposes_stats_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let body = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -32,7 +32,7 @@ fn engine_step_rigid_bodies_exposes_stats_for_wasm() {
 
 #[test]
 fn engine_step_rigid_bodies_with_config_uses_wasm_options() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let body = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -56,7 +56,7 @@ fn engine_step_rigid_bodies_with_config_uses_wasm_options() {
 
 #[test]
 fn engine_auto_rigid_body_step_runs_inside_update() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let body = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);

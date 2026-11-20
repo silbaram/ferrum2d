@@ -53,6 +53,9 @@ pub(super) fn collider_shape_from_compound(
     {
         return None;
     }
+    if world.is_unified_physics_index(index) {
+        return unified_collider_shape(world, index, collider.shape, segment_index);
+    }
     match collider.shape {
         CompoundColliderShapeRef::Aabb(collider) => Some(ColliderShapeRef::Aabb(*collider)),
         CompoundColliderShapeRef::Circle(collider) => {
@@ -233,4 +236,67 @@ pub(super) fn convex_polygon_total_rotation(
         .filter(|rotation| rotation.is_finite())
         .unwrap_or(0.0);
     collider.rotation_radians + entity_rotation
+}
+
+// Unified bodies use body-local offsets/axes consistently for every fixture type.
+// Keep the legacy query facade in the same frame as the actual 3D collider.
+fn unified_collider_shape(
+    world: &World,
+    index: usize,
+    shape: CompoundColliderShapeRef<'_>,
+    segment_index: usize,
+) -> Option<ColliderShapeRef> {
+    let angle = world
+        .rotations
+        .get(index)
+        .copied()
+        .flatten()
+        .unwrap_or_default()
+        .radians;
+    let (sin, cos) = angle.sin_cos();
+    let rotate = |x: f32, y: f32| (x * cos - y * sin, x * sin + y * cos);
+    let result = match shape {
+        CompoundColliderShapeRef::Aabb(c) => {
+            let (x, y) = rotate(c.offset_x, c.offset_y);
+            ColliderShapeRef::OrientedBox(
+                OrientedBoxCollider::new(c.half_width, c.half_height, 0.0, c.is_trigger, c.layer)
+                    .with_offset(x, y),
+                angle,
+            )
+        }
+        CompoundColliderShapeRef::Circle(c) => {
+            let mut c = *c;
+            (c.offset_x, c.offset_y) = rotate(c.offset_x, c.offset_y);
+            ColliderShapeRef::Circle(c)
+        }
+        CompoundColliderShapeRef::OrientedBox(c) => {
+            let mut c = *c;
+            (c.offset_x, c.offset_y) = rotate(c.offset_x, c.offset_y);
+            ColliderShapeRef::OrientedBox(c, c.rotation_radians + angle)
+        }
+        CompoundColliderShapeRef::Capsule(c) => {
+            let mut c = *c;
+            (c.offset_x, c.offset_y) = rotate(c.offset_x, c.offset_y);
+            (c.start_x, c.start_y) = rotate(c.start_x, c.start_y);
+            (c.end_x, c.end_y) = rotate(c.end_x, c.end_y);
+            ColliderShapeRef::Capsule(c)
+        }
+        CompoundColliderShapeRef::Edge(c) => {
+            let mut c = *c;
+            (c.offset_x, c.offset_y) = rotate(c.offset_x, c.offset_y);
+            (c.start_x, c.start_y) = rotate(c.start_x, c.start_y);
+            (c.end_x, c.end_y) = rotate(c.end_x, c.end_y);
+            ColliderShapeRef::Edge(c)
+        }
+        CompoundColliderShapeRef::Chain(c) => {
+            let edge = c.segment(segment_index)?;
+            return unified_collider_shape(world, index, CompoundColliderShapeRef::Edge(&edge), 0);
+        }
+        CompoundColliderShapeRef::ConvexPolygon(c) => {
+            let mut c = *c;
+            (c.offset_x, c.offset_y) = rotate(c.offset_x, c.offset_y);
+            ColliderShapeRef::ConvexPolygon(c, c.rotation_radians + angle)
+        }
+    };
+    collider_shape_is_valid(result).then_some(result)
 }

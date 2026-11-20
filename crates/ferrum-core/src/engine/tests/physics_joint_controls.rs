@@ -7,7 +7,7 @@ use crate::entity::Entity;
 
 #[test]
 fn engine_spawn_physics_joints_and_controls_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -269,7 +269,7 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
 
 #[test]
 fn engine_despawn_physics_entity_cascades_connected_joint_cleanup() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -388,7 +388,7 @@ fn engine_joint_dispatch_preserves_clear_handles_and_snapshot_policy_for_all_kin
     ];
     assert_eq!(codes, [0, 1, 2, 3, 4, 5, 6, 7]);
     for code in codes {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         engine.world = World::default();
         let a = engine.world.spawn_entity();
         let b = engine.world.spawn_entity();
@@ -432,7 +432,7 @@ fn engine_joint_dispatch_breaks_all_kinds_by_measured_force_and_torque() {
     for (code, error) in errors.into_iter().enumerate() {
         let code = code as u32;
         for reason in [1, 2] {
-            let mut engine = Engine::new();
+            let mut engine = crate::engine::legacy_test_fixture::engine();
             engine.world = World::default();
             engine.configure_physics_diagnostics(true);
             let a = engine.world.spawn_entity();
@@ -511,7 +511,7 @@ fn engine_joint_dispatch_breaks_all_kinds_by_measured_force_and_torque() {
 #[test]
 fn engine_joint_dispatch_unknown_load_codes_do_not_clear_valid_joints() {
     for code in [8, u32::MAX] {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         engine.world = World::default();
         engine.configure_physics_diagnostics(true);
         let a = engine.world.spawn_entity();
@@ -534,7 +534,7 @@ fn engine_joint_dispatch_unknown_load_codes_do_not_clear_valid_joints() {
 #[test]
 fn engine_joint_dispatch_pending_load_cannot_break_reused_endpoint_and_joint() {
     for code in 0..8 {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         engine.world = World::default();
         engine.configure_physics_diagnostics(true);
         let a = engine.world.spawn_entity();
@@ -578,7 +578,7 @@ fn engine_joint_dispatch_pending_load_cannot_break_reused_endpoint_and_joint() {
 #[test]
 fn engine_joint_dispatch_full_restore_discards_pending_loads_and_break_queue() {
     for code in 0..8 {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         engine.world = World::default();
         engine.configure_physics_diagnostics(true);
         let a = engine.world.spawn_entity();

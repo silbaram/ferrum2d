@@ -247,3 +247,5 @@ impl Engine {
         self.store_physics_entity_snapshot(entity)
     }
 }
+
+pub(crate) mod file_output_admission;

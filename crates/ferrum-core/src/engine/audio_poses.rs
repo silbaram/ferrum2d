@@ -8,6 +8,7 @@ pub(super) const MAX_AUDIO_POSES: usize = 65;
 /// Independent audio presentation query ABI: four u32 words followed by four f32 words.
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(super) struct AudioPose {
     valid: u32,
     entity_id: u32,
@@ -20,6 +21,25 @@ pub(super) struct AudioPose {
 }
 const _: () = assert!(std::mem::size_of::<AudioPose>() == 32);
 const _: () = assert!(std::mem::align_of::<AudioPose>() == 4);
+
+impl AudioPose {
+    /// A saved query result is history: the handle need not still be live.
+    pub(super) fn file_payload_valid(&self) -> bool {
+        let Self {
+            valid,
+            entity_id: _,
+            generation: _,
+            floor,
+            x,
+            y,
+            elevation,
+            yaw,
+        } = *self;
+        valid <= 1
+            && [x, y, elevation, yaw].iter().all(|v| v.is_finite())
+            && (valid != 0 || floor == 0 && [x, y, elevation, yaw] == [0.; 4])
+    }
+}
 
 #[wasm_bindgen]
 impl Engine {

@@ -7,7 +7,7 @@ use crate::GameState;
 
 #[test]
 fn engine_captures_and_restores_builtin_shooter_snapshot() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -117,7 +117,7 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
 
 #[test]
 fn builtin_shooter_snapshot_restores_gameplay_variable_slots() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     assert!(engine.configure_gameplay_variable(1, 0, 0, 2.0, 7.0));
     assert!(engine.configure_gameplay_variable(2, 2, 1, 0.0, 1.0));
     assert!(engine.capture_shooter_snapshot());
@@ -141,7 +141,7 @@ fn builtin_shooter_snapshot_restores_gameplay_variable_slots() {
 
 #[test]
 fn builtin_shooter_snapshot_rejects_data_scene_only_lifecycle_states() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     assert!(engine.capture_shooter_snapshot());
 
     let header_floats = engine.shooter_snapshot_header_floats.clone();
@@ -164,7 +164,7 @@ fn builtin_shooter_snapshot_rejects_data_scene_only_lifecycle_states() {
 
 #[test]
 fn shooter_snapshot_restores_full_previous_input_state() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(true, false, true, false, false, true, true, 123.0, 456.0);
     engine.update(0.016);
     assert!(engine.capture_shooter_snapshot());
@@ -219,7 +219,7 @@ fn shooter_snapshot_restores_full_previous_input_state() {
 
 #[test]
 fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
-    let mut original = Engine::new();
+    let mut original = crate::engine::legacy_test_fixture::engine();
     original.set_input(false, false, false, false, false, true, false, 800.0, 240.0);
     original.update(0.016);
     original.set_input(
@@ -246,7 +246,7 @@ fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
         .unwrap()
         .x;
 
-    let mut restored = Engine::new();
+    let mut restored = crate::engine::legacy_test_fixture::engine();
     assert!(restored.restore_shooter_snapshot(
         header_floats,
         header_u32s,
@@ -267,7 +267,7 @@ fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
 
 #[test]
 fn shooter_snapshot_player_score_reward_does_not_pollute_projectile_policy_slot() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     let player = engine.world.primary_actor_entity().unwrap();
@@ -294,7 +294,7 @@ fn shooter_snapshot_player_score_reward_does_not_pollute_projectile_policy_slot(
 
 #[test]
 fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -451,7 +451,7 @@ fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
 
 #[test]
 fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -572,7 +572,7 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
 
 #[test]
 fn shooter_snapshot_restores_maximum_spawn_prefab_action_bindings() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -640,7 +640,7 @@ fn shooter_snapshot_restores_maximum_spawn_prefab_action_bindings() {
 
 #[test]
 fn shooter_snapshot_rejects_duplicate_action_binding_ids() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -664,7 +664,7 @@ fn shooter_snapshot_rejects_duplicate_action_binding_ids() {
 
 #[test]
 fn shooter_snapshot_rejects_action_binding_count_over_capacity() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -698,7 +698,7 @@ fn shooter_snapshot_rejects_action_binding_count_over_capacity() {
 
 #[test]
 fn shooter_snapshot_rejects_gapped_spawn_prefab_action_slots() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     assert!(engine.capture_shooter_snapshot());
@@ -726,7 +726,7 @@ fn shooter_snapshot_rejects_gapped_spawn_prefab_action_slots() {
 
 #[test]
 fn shooter_snapshot_rejects_unsorted_spawn_prefab_action_slots() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     assert!(engine.capture_shooter_snapshot());
@@ -761,7 +761,7 @@ fn shooter_snapshot_rejects_unsorted_spawn_prefab_action_slots() {
 
 #[test]
 fn shooter_snapshot_restores_input_action_registry() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -808,7 +808,7 @@ fn shooter_snapshot_restores_input_action_registry() {
 
 #[test]
 fn shooter_snapshot_capture_does_not_switch_non_shooter_scene() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_platformer_scene();
     let entity_count = engine.entity_count();
 
@@ -825,7 +825,7 @@ fn shooter_snapshot_capture_does_not_switch_non_shooter_scene() {
 
 #[test]
 fn failed_shooter_snapshot_restore_preserves_active_scene() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_platformer_scene();
     let entity_count = engine.entity_count();
     let mut header_u32s = vec![0; SHOOTER_SNAPSHOT_HEADER_U32S];
@@ -845,7 +845,7 @@ fn failed_shooter_snapshot_restore_preserves_active_scene() {
 
 #[test]
 fn shooter_snapshot_restore_rejects_previous_snapshot_version() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     assert!(engine.capture_shooter_snapshot());

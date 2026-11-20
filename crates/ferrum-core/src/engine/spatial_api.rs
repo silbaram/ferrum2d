@@ -46,8 +46,25 @@ impl Engine {
         cancel_on_input: bool,
     ) -> bool {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
-            self.spatial_scene.navigation.reject_unavailable_request();
+            if let Some(native) = self.unified_physics.as_mut() {
+                native.actor_navigation.reject_unavailable_request();
+            } else {
+                self.spatial_scene.navigation.reject_unavailable_request();
+            }
             return false;
+        }
+        if let Some(ok) = self.plan_unified_spatial_actor(
+            crate::components::Transform2D { x, y },
+            floor,
+            speed,
+            cell,
+            radius,
+            cancel_on_input,
+        ) {
+            if ok {
+                self.data_scene.movement.cancel();
+            }
+            return ok;
         }
         let ok = self.spatial_scene.plan_navigation(
             &mut self.world,
@@ -64,7 +81,15 @@ impl Engine {
         ok
     }
     pub fn cancel_data_scene_spatial_move(&mut self) -> bool {
-        if self.scene_mode != SceneMode::Data || !self.spatial_scene.navigation.cancel() {
+        if self.scene_mode != SceneMode::Data {
+            return false;
+        }
+        let cancelled = if let Some(native) = self.unified_physics.as_mut() {
+            native.cancel_spatial_actor_navigation()
+        } else {
+            self.spatial_scene.navigation.cancel()
+        };
+        if !cancelled {
             return false;
         }
         if let Some((actor, _, _, _)) = self.spatial_scene.actor {
@@ -78,14 +103,21 @@ impl Engine {
     }
     pub fn data_scene_spatial_move_status(&self) -> u32 {
         if self.scene_mode == SceneMode::Data {
-            self.spatial_scene.navigation.status as u32
+            self.unified_physics
+                .as_ref()
+                .map_or(self.spatial_scene.navigation.status, |native| {
+                    native.actor_navigation.status
+                }) as u32
         } else {
             u32::MAX
         }
     }
     pub fn data_scene_spatial_move_stats(&self) -> Vec<u32> {
         if self.scene_mode == SceneMode::Data {
-            self.spatial_scene.navigation.stats()
+            self.unified_physics.as_ref().map_or_else(
+                || self.spatial_scene.navigation.stats(),
+                |native| native.actor_navigation.stats(),
+            )
         } else {
             vec![]
         }
@@ -93,7 +125,10 @@ impl Engine {
     /// Optional v1 cold diagnostics; preserves the six-word movement stats ABI.
     pub fn data_scene_spatial_move_diagnostics(&self) -> Vec<u32> {
         if self.scene_mode == SceneMode::Data {
-            self.spatial_scene.navigation.diagnostics()
+            self.unified_physics.as_ref().map_or_else(
+                || self.spatial_scene.navigation.diagnostics(),
+                |native| native.actor_navigation.diagnostics(),
+            )
         } else {
             vec![]
         }
@@ -391,16 +426,22 @@ impl Engine {
             let Some(entity) = self.entity_from_handle(actor_handle[0], actor_handle[1]) else {
                 return false;
             };
+            let native_valid = self.unified_physics.as_ref().map(|native| {
+                actor_values[0] <= 1.0e6
+                    && native.spatial_actor_settings_valid(entity, actor_values[1], actor_values[2])
+            });
             if !next.bindings.contains_key(&(entity.id, entity.generation))
-                || self.world.height_span(entity).is_none()
-                || !self.world.rigid_body(entity).is_some_and(|b| {
-                    b.enabled && b.body_type == crate::components::RigidBodyType::Kinematic
-                })
-                || self.world.compound_collider_count(entity) != 1
-                || !self
-                    .world
-                    .collider(entity)
-                    .is_some_and(|c| c.enabled && !c.is_trigger)
+                || native_valid == Some(false)
+                || native_valid.is_none()
+                    && (self.world.height_span(entity).is_none()
+                        || !self.world.rigid_body(entity).is_some_and(|b| {
+                            b.enabled && b.body_type == crate::components::RigidBodyType::Kinematic
+                        })
+                        || self.world.compound_collider_count(entity) != 1
+                        || !self
+                            .world
+                            .collider(entity)
+                            .is_some_and(|c| c.enabled && !c.is_trigger))
             {
                 return false;
             }
@@ -468,6 +509,15 @@ impl Engine {
             model_metadata,
         ) {
             return false;
+        }
+        if let Some(native) = self.unified_physics.as_mut() {
+            if let Some((actor, _, step, drop)) = next.actor {
+                if !native.configure_spatial_actor_controller(actor, step, drop) {
+                    return false;
+                }
+            } else {
+                native.release_spatial_actor();
+            }
         }
         self.data_scene.movement.cancel();
         next.revision = self.spatial_scene.revision.wrapping_add(1);
@@ -759,6 +809,9 @@ impl Engine {
         true
     }
     pub fn clear_spatial_scene(&mut self) {
+        if let Some(native) = self.unified_physics.as_mut() {
+            native.release_spatial_actor();
+        }
         self.spatial_scene.clear();
     }
     pub fn configure_spatial_actor(
@@ -772,6 +825,20 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(id, generation) else {
             return false;
         };
+        if let Some(native) = self.unified_physics.as_mut() {
+            if self.scene_mode != SceneMode::Data
+                || !speed.is_finite()
+                || !(0. ..=1.0e6).contains(&speed)
+                || !native.configure_spatial_actor_controller(entity, max_step, max_drop)
+            {
+                return false;
+            }
+            self.spatial_scene.actor = Some((entity, speed, max_step, max_drop));
+            self.spatial_scene.navigation.cancel();
+            self.data_scene.movement.cancel();
+            self.spatial_scene.revision = self.spatial_scene.revision.wrapping_add(1);
+            return true;
+        }
         if !speed.is_finite()
             || speed < 0.0
             || !self.spatial_scene.move_body(
@@ -804,6 +871,10 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(id, generation) else {
             return false;
         };
+        if let Some(accepted) = self.move_unified_spatial_actor(entity, dx, dy, max_step, max_drop)
+        {
+            return accepted;
+        }
         let accepted = self.scene_mode == SceneMode::Data
             && self.spatial_scene.move_body(
                 &mut self.world,
@@ -951,11 +1022,14 @@ impl Engine {
     pub fn spatial_terrain_revision(&self) -> u32 {
         self.spatial_scene.revision
     }
+    pub fn spatial_terrain_render_revision(&self) -> u32 {
+        self.spatial_scene.terrain_render_revision()
+    }
     pub fn spatial_terrain_ptr(&self) -> *const f32 {
-        self.spatial_scene.terrain.as_ptr().cast()
+        self.spatial_scene.presented_terrain().as_ptr().cast()
     }
     pub fn spatial_terrain_len(&self) -> u32 {
-        self.spatial_scene.terrain.len() as u32
+        self.spatial_scene.presented_terrain().len() as u32
     }
     pub fn spatial_terrain_draw_range_ptr(&self) -> *const u32 {
         self.spatial_scene.terrain_draw_ranges.as_ptr().cast()

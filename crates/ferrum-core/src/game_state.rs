@@ -1,6 +1,7 @@
 /// Fixed engine lifecycle states exposed through the numeric Wasm scene API.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum GameState {
     Title = 0,
     Playing = 1,

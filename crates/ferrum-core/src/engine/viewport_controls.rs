@@ -53,11 +53,20 @@ impl Engine {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneCamera {
     follow: Option<crate::entity::Entity>,
     bounds: Option<[f32; 4]>,
     smooth_seconds: f32,
+}
+
+impl DataSceneCamera {
+    /// Cold read-only projection: follow may be a pending stale entity reference.
+    pub(in crate::engine) fn file_configuration(
+        &self,
+    ) -> (Option<crate::entity::Entity>, Option<[f32; 4]>, f32) {
+        (self.follow, self.bounds, self.smooth_seconds)
+    }
 }
 
 #[wasm_bindgen]

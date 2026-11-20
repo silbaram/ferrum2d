@@ -30,6 +30,7 @@ mod bitmap_text_controls;
 mod data_scene_animation;
 mod data_scene_animation_config;
 mod data_scene_authoring_continuity;
+mod data_scene_collision_tilemap;
 mod data_scene_combat;
 mod data_scene_gameplay;
 mod data_scene_movement;
@@ -39,12 +40,48 @@ mod data_scene_progress;
 mod data_scene_spatial_progress;
 mod data_scene_spawning;
 mod data_scene_sun;
+pub(crate) mod file_builtin_scenes_admission;
+mod file_root_admission;
+mod file_spatial_admission;
+#[allow(dead_code)]
+pub(crate) mod file_tilemap_admission;
+// Cold persisted output checks; no reconstruction or frame execution.
+#[allow(dead_code)]
+mod file_frame_admission;
+mod file_gameplay_authoring_admission;
+pub(crate) mod file_presentation_admission;
 mod fixed_step;
 mod frame_buffers;
 mod gameplay_authoring;
+mod gameplay_observation;
 mod gameplay_variables;
 mod input_actions;
+mod navigation_distance;
 mod particle_controls;
+mod persistence;
+// File framing is staged internally until complete native/SDK admission and
+// atomic session publication are implemented; no public importer uses it yet.
+#[allow(dead_code)]
+mod file_envelope;
+// Detached file candidates remain sealed until complete Engine/SDK/resource
+// admission and publication exist. No public importer or execution is exposed.
+#[allow(dead_code)]
+mod file_candidate;
+mod file_prepare;
+pub use file_prepare::NativeFilePrepare;
+// Sealed file admission staging; Root connects the coordinator separately.
+#[allow(dead_code)]
+mod file_controller_admission;
+mod file_data_movement_admission;
+mod file_scratch_admission;
+#[allow(dead_code)]
+mod file_shared_arcs;
+#[allow(dead_code)]
+mod file_sharing;
+// File-only memory payload + explicit alias tables. Memory checkpoints keep
+// their existing schema and never enter this additional wrapper.
+#[allow(dead_code)]
+mod file_engine_section;
 mod physics_abi;
 mod physics_authoring;
 mod physics_bridge;
@@ -54,6 +91,16 @@ mod physics_joint_controls;
 mod physics_queries;
 mod rendering;
 mod runtime;
+mod runtime_checkpoint;
+pub use runtime_checkpoint::{EngineRuntimeCheckpoint, RuntimeCheckpointError};
+#[cfg(test)]
+pub(crate) mod legacy_test_fixture;
+mod unified_physics;
+pub use unified_physics::{
+    UnifiedCcdClamp, UnifiedCollisionEventDiagnostics, UnifiedCollisionPair, UnifiedContactImpulse,
+    UnifiedContactManifold, UnifiedPhysicsError, UnifiedPhysicsFrameStatistics, UnifiedRayHit,
+    UnifiedTerrainRayHit, UnifiedTerrainSource,
+};
 mod scene_controls;
 mod scenes;
 mod shooter_authoring;
@@ -105,6 +152,17 @@ const TILEMAP_NAVIGATION_PATH_POINT_FLOATS: usize = 5;
 
 #[wasm_bindgen]
 pub struct Engine {
+    checkpoint_owner: std::sync::Arc<()>,
+    checkpoint_revision: u32,
+    unified_physics: Option<unified_physics::UnifiedPhysicsRuntime>,
+    default_unified_physics: Option<crate::physics3d::WorldConfig>,
+    default_unified_physics_fixed: bool,
+    unified_physics_body_states: Vec<unified_physics::web_bridge::BodyStateRecord>,
+    unified_physics_character_states: Vec<unified_physics::web_bridge::CharacterStateRecord>,
+    unified_physics_queries: unified_physics::web_bridge::QueryBuffers,
+    unified_physics_collisions: unified_physics::CollisionBuffers,
+    unified_physics_observations: unified_physics::ObservationBuffers,
+    unified_physics_joints: unified_physics::JointBuffers,
     elapsed_seconds: f64,
     input: InputState,
     input_actions: InputActionRegistry,
@@ -186,7 +244,34 @@ pub struct Engine {
 impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        let mut engine = Self::new_checkpoint_candidate();
+        // This built-in configuration contains no caller data. A construction
+        // failure must abort creation, never select the legacy solver silently.
+        engine
+            .initialize_native_defaults()
+            .expect("built-in native Engine defaults must initialize");
+        engine.write_frame_telemetry();
+        engine
+    }
+}
+
+impl Engine {
+    /// Private decode placeholder. Saved fields replace every runtime field;
+    /// constructing a new default native world here would allocate then discard
+    /// it and must never apply new-Engine policy to the saved simulation.
+    pub(crate) fn new_checkpoint_candidate() -> Self {
         let mut engine = Self {
+            checkpoint_owner: std::sync::Arc::new(()),
+            checkpoint_revision: 0,
+            unified_physics: None,
+            default_unified_physics: None,
+            default_unified_physics_fixed: false,
+            unified_physics_body_states: Vec::new(),
+            unified_physics_character_states: Vec::new(),
+            unified_physics_queries: Default::default(),
+            unified_physics_collisions: Default::default(),
+            unified_physics_observations: Default::default(),
+            unified_physics_joints: Default::default(),
             elapsed_seconds: 0.0,
             input: InputState::default(),
             input_actions: InputActionRegistry::default(),
@@ -275,7 +360,7 @@ impl Default for Engine {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct RigidBodyFrameStats {
     ccd_checks: u32,
     ccd_hits: u32,
@@ -300,6 +385,10 @@ impl Engine {
     pub(in crate::engine) fn record_rigid_body_step_stats(&mut self, stats: RigidBodyStepStats) {
         self.rigid_body_step_stats = stats;
         self.rigid_body_frame_stats.record_step(stats);
+        self.record_contact_impact_frame();
+    }
+
+    pub(in crate::engine) fn record_contact_impact_frame(&mut self) {
         let remaining = 4096usize.saturating_sub(self.frame_buffers.contact_impacts.len());
         self.frame_buffers
             .contact_impacts
@@ -316,3 +405,17 @@ impl Engine {
 mod tests;
 
 mod physics_impact_feedback;
+
+#[allow(dead_code)]
+pub(crate) mod file_physics_output_admission;
+
+#[allow(dead_code)]
+pub(crate) mod file_data_gameplay_admission;
+
+mod file_runtime_observation_admission;
+mod file_runtime_payload_admission;
+
+// Private cold Native fact projection; SDK linkage/publication is a later stage.
+mod file_native_resources;
+#[allow(dead_code)]
+mod file_native_roster;

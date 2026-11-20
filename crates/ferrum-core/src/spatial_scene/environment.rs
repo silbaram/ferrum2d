@@ -14,6 +14,8 @@ fn environment_version(length: usize) -> Option<u32> {
         .map(|index| index as u32 + 1)
 }
 const LIGHT_CHANNEL_VALUES: usize = 576;
+#[path = "environment/file_admission.rs"]
+mod file_admission;
 #[path = "light_channels.rs"]
 mod light_channels;
 #[path = "light_selection.rs"]
@@ -26,11 +28,14 @@ pub(crate) use light_selection::LightSelectionDiagnostic;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
 /// Validated cold history, installed only after the matching source/pose transaction commits.
 pub(crate) struct PreparedLightSelection(light_selection::LightSelection);
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialEnvironment {
+    #[serde(with = "crate::checkpoint_codec::optional_array")]
     pub values: Option<[f32; ENVIRONMENT_VALUES]>,
     pub value_len: usize,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub frame_values: Vec<f32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub shadow_matrices: Vec<f32>,
     selection: light_selection::LightSelection,
 }
@@ -685,4 +690,18 @@ fn valid_light_probes(v: &[f32; ENVIRONMENT_VALUES]) -> bool {
             && p[4..7].iter().all(|x| (0. ..=1.).contains(x))
             && (0. ..=4.).contains(&p[7])
     }) && v[636 + count * 8..700].iter().all(|x| *x == 0.)
+}
+#[cfg(test)]
+impl SpatialEnvironment {
+    pub(in crate::spatial_scene) fn corrupt_file_fixture(&mut self, case: u32) {
+        match case {
+            0 => self.values.as_mut().unwrap()[4] = f32::NAN,
+            1 => self.value_len = 79,
+            2 => self.frame_values[0] = f32::INFINITY,
+            3 => self.frame_values[64] += 1.,
+            4 => self.shadow_matrices[0] += 1.,
+            5..=7 => self.selection.corrupt_file_fixture(case - 5),
+            _ => unreachable!(),
+        }
+    }
 }

@@ -3,15 +3,23 @@ use crate::world::World;
 
 use super::{RigidBodyIsland, RigidBodyIslandSchedule};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics) struct RigidBodyJointIslandBuckets {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     distance: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     rope: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     spring: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pulley: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     revolute: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     prismatic: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     weld: Vec<Vec<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     gear: Vec<Vec<usize>>,
 }
 
@@ -339,3 +347,5 @@ fn reset_bucket(bucket: &mut Vec<Vec<usize>>, island_count: usize) {
         bucket.truncate(island_count);
     }
 }
+
+mod file_scratch_admission;

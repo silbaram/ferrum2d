@@ -30,7 +30,7 @@ fn start_shooter_playing(engine: &mut Engine) {
 
 #[test]
 fn update_frame_can_skip_unread_output_buffers() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.update_frame(0.016, true, true, true);
     assert!(engine.render_command_len() > 0);
@@ -52,7 +52,7 @@ fn update_frame_can_skip_unread_output_buffers() {
 
 #[test]
 fn frame_telemetry_uses_frame_rigid_body_stats_without_overwriting_last_step_stats() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -89,7 +89,7 @@ fn frame_telemetry_uses_frame_rigid_body_stats_without_overwriting_last_step_sta
 
 #[test]
 fn gameplay_interaction_events_are_bulk_frame_outputs() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -128,7 +128,7 @@ fn gameplay_interaction_events_are_bulk_frame_outputs() {
 
 #[test]
 fn gameplay_interaction_guard_is_evaluated_inside_rust_runtime() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -170,7 +170,7 @@ fn gameplay_interaction_guard_is_evaluated_inside_rust_runtime() {
 
 #[test]
 fn gameplay_variable_runtime_commands_reject_unconfigured_or_incompatible_slots() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let source = engine.world.spawn_entity();
 
     assert!(!engine.set_gameplay_interaction_with_guard(
@@ -219,7 +219,7 @@ fn gameplay_variable_runtime_commands_reject_unconfigured_or_incompatible_slots(
 
 #[test]
 fn shooter_gameplay_timer_guard_pauses_until_its_variable_matches() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
     assert!(engine.configure_gameplay_variable(1, 2, 1, 0.0, 0.0));
@@ -252,7 +252,7 @@ fn shooter_gameplay_timer_guard_pauses_until_its_variable_matches() {
 
 #[test]
 fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -300,7 +300,7 @@ fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
 
 #[test]
 fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -329,7 +329,7 @@ fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
 
 #[test]
 fn gameplay_action_projectile_setter_drives_player_primary_fire() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let player = engine.world.primary_actor_entity().unwrap();
 
@@ -377,7 +377,7 @@ fn gameplay_action_projectile_setter_drives_player_primary_fire() {
 
 #[test]
 fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let player = engine.world.primary_actor_entity().unwrap();
     engine
@@ -407,7 +407,7 @@ fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop()
 
 #[test]
 fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let player = engine.world.primary_actor_entity().unwrap();
     engine
@@ -444,7 +444,7 @@ fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
 
 #[test]
 fn collision_emit_effect_payload_reaches_effect_event_buffer() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let bullet = engine
@@ -481,7 +481,7 @@ fn collision_emit_effect_payload_reaches_effect_event_buffer() {
 
 #[test]
 fn input_action_binding_remaps_player_primary_fire_without_widening_input_state() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let player = engine.world.primary_actor_entity().unwrap();
 
@@ -513,7 +513,7 @@ fn input_action_binding_remaps_player_primary_fire_without_widening_input_state(
 
 #[test]
 fn input_action_binding_drives_player_melee_action() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let player = engine.world.primary_actor_entity().unwrap();
     let player_t = engine.world.transform(player).unwrap();
@@ -539,7 +539,7 @@ fn input_action_binding_drives_player_melee_action() {
 
 #[test]
 fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -595,7 +595,7 @@ fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame(
 
 #[test]
 fn fixed_timestep_processes_behavior_state_machine_events_once_per_render_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
@@ -636,7 +636,7 @@ fn fixed_timestep_processes_behavior_state_machine_events_once_per_render_frame(
 
 #[test]
 fn gameplay_timer_events_drive_rust_behavior_state_machine_same_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let source = engine.world.spawn_entity();
 
     assert!(engine.set_gameplay_timer_trigger(source.id, source.generation, 9, 0.03));
@@ -682,7 +682,7 @@ fn gameplay_timer_events_drive_rust_behavior_state_machine_same_frame() {
 
 #[test]
 fn gameplay_timer_action_trigger_queues_spawn_prefab_without_input_callback() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
     engine
@@ -724,7 +724,7 @@ fn gameplay_timer_action_trigger_queues_spawn_prefab_without_input_callback() {
 
 #[test]
 fn frame_telemetry_reports_action_trigger_failure_diagnostics() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
 
@@ -764,7 +764,7 @@ fn frame_telemetry_reports_action_trigger_failure_diagnostics() {
 
 #[test]
 fn frame_telemetry_counts_action_trigger_preparation_failures_as_attempts() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
     engine
@@ -796,7 +796,7 @@ fn frame_telemetry_counts_action_trigger_preparation_failures_as_attempts() {
 
 #[test]
 fn frame_telemetry_reports_spawn_flush_diagnostics() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_sound_ids(10, 20, 30);
     start_shooter_playing(&mut engine);
 
@@ -833,7 +833,7 @@ fn frame_telemetry_reports_spawn_flush_diagnostics() {
 
 #[test]
 fn fixed_timestep_frame_telemetry_accumulates_action_trigger_diagnostics_across_substeps() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     engine.configure_fixed_timestep(true, 0.01, 1.0, 4);
     let source = engine.world.spawn_entity();
@@ -861,7 +861,7 @@ fn fixed_timestep_frame_telemetry_accumulates_action_trigger_diagnostics_across_
 
 #[test]
 fn shooter_wave_action_trigger_queues_spawn_prefab_without_input_callback() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     engine.set_shooter_wave(
         0,
@@ -919,7 +919,7 @@ fn shooter_wave_action_trigger_queues_spawn_prefab_without_input_callback() {
 
 #[test]
 fn behavior_state_enter_action_trigger_runs_next_frame_pre_physics() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
     engine
@@ -986,7 +986,7 @@ fn behavior_state_enter_action_trigger_reports_queue_full_from_engine_producer()
     const SOURCE_COUNT: usize = 9;
     const ACTIONS_PER_SOURCE: usize = 8;
 
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let mut sources = Vec::with_capacity(SOURCE_COUNT);
     for source_index in 0..SOURCE_COUNT {
@@ -1042,7 +1042,7 @@ fn behavior_state_enter_action_trigger_reports_queue_full_from_engine_producer()
 
 #[test]
 fn behavior_state_enter_dash_action_runs_next_frame_pre_physics() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
     let player = engine.world.primary_actor_entity().unwrap();
@@ -1102,7 +1102,7 @@ fn behavior_state_enter_dash_action_runs_next_frame_pre_physics() {
 
 #[test]
 fn fixed_timestep_timer_events_drive_one_behavior_transition_per_render_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let source = engine.world.spawn_entity();
 
     assert!(engine.set_gameplay_timer_trigger(source.id, source.generation, 9, 1.0 / 60.0));
@@ -1144,7 +1144,7 @@ fn fixed_timestep_timer_events_drive_one_behavior_transition_per_render_frame() 
 
 #[test]
 fn authored_collision_damage_events_drive_rust_behavior_state_machine_once_per_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update_frame(0.016, false, false, false);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -1211,7 +1211,7 @@ fn authored_collision_damage_events_drive_rust_behavior_state_machine_once_per_f
 
 #[test]
 fn false_authored_collision_damage_guard_suppresses_default_shooter_damage() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let bullet = engine
@@ -1243,7 +1243,7 @@ fn false_authored_collision_damage_guard_suppresses_default_shooter_damage() {
 
 #[test]
 fn authored_collision_event_mutates_variable_after_projectile_despawns() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let bullet = engine
@@ -1272,7 +1272,7 @@ fn authored_collision_event_mutates_variable_after_projectile_despawns() {
 
 #[test]
 fn damaged_actor_variable_mutation_drives_its_fsm_in_the_same_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     start_shooter_playing(&mut engine);
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let bullet = engine
@@ -1321,7 +1321,7 @@ fn damaged_actor_variable_mutation_drives_its_fsm_in_the_same_frame() {
 
 #[test]
 fn fixed_timestep_collision_damage_events_drive_one_behavior_transition_per_render_frame() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update_frame(0.016, false, false, false);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);

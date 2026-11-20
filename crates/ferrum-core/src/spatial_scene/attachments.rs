@@ -6,16 +6,17 @@ use crate::components::{
 use crate::entity::Entity;
 use crate::world::World;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Link {
     child: Entity,
     parent: Entity,
     parent_link: Option<usize>,
+    #[serde(with = "crate::checkpoint_codec::array")]
     local: [f32; 4],
     inherit_floor: bool,
     render_only: bool,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AttachmentPose {
     pub at: Transform2D,
     pub span: Option<HeightSpan>,
@@ -32,11 +33,14 @@ impl AttachmentPose {
         })
     }
 }
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialAttachments {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     links: Vec<Link>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     scratch: Vec<Option<AttachmentPose>>,
     // Last committed root poses let autonomous integration fail as one transform transaction.
+    #[serde(with = "crate::checkpoint_codec::vector")]
     roots: Vec<(Entity, AttachmentPose)>,
 }
 impl SpatialAttachments {
@@ -365,4 +369,117 @@ fn valid_pose(models: &SpatialModels, entity: Entity, pose: AttachmentPose) -> b
                 m.pose_at_rotation(pose.at, pose.span.map_or(0., |s| s.elevation), pose.yaw)
                     .is_some()
             })
+}
+
+impl SpatialAttachments {
+    pub(super) fn validate_file(
+        &self,
+        world: &World,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{entity_history, finite, require, span, Field, Problem};
+        b.work(self.links.len())?;
+        b.work(self.scratch.len())?;
+        b.work(self.roots.len())?;
+        require(
+            self.links.len() <= 1024
+                && self.scratch.len() == self.links.len()
+                && self.roots.len() <= self.links.len(),
+            Field::Attachment,
+            0,
+            Problem::Length,
+        )?;
+        b.product(self.links.len(), self.links.len() + 8)?;
+        let mut roots = b.vector::<Entity>(self.links.len())?;
+        for (i, l) in self.links.iter().enumerate() {
+            require(
+                l.child != l.parent
+                    && entity_history(world, l.child)
+                    && entity_history(world, l.parent)
+                    && finite(&l.local),
+                Field::Attachment,
+                i,
+                Problem::Reference,
+            )?;
+            require(
+                !self.links[..i].iter().any(|p| p.child == l.child),
+                Field::Attachment,
+                i,
+                Problem::Duplicate,
+            )?;
+            if let Some(parent) = l.parent_link {
+                require(
+                    parent < i && self.links.get(parent).is_some_and(|p| p.child == l.parent),
+                    Field::Attachment,
+                    i,
+                    Problem::Reference,
+                )?;
+            } else {
+                require(
+                    !self.links.iter().any(|p| p.child == l.parent),
+                    Field::Attachment,
+                    i,
+                    Problem::Reference,
+                )?;
+                if !roots.contains(&l.parent) {
+                    roots.push(l.parent);
+                }
+            }
+            let mut ancestor = l.parent_link;
+            let mut depth = 1;
+            while let Some(parent) = ancestor {
+                depth += 1;
+                require(depth <= 8, Field::Attachment, i, Problem::Range)?;
+                ancestor = self.links[parent].parent_link;
+            }
+        }
+        require(
+            roots.len() == self.roots.len()
+                && roots.iter().zip(&self.roots).all(|(a, (b, _))| a == b),
+            Field::Attachment,
+            0,
+            Problem::Cache,
+        )?;
+        let valid = |p: &AttachmentPose| {
+            finite(&[p.at.x, p.at.y, p.yaw])
+                && p.at.x.abs() <= 1e6
+                && p.at.y.abs() <= 1e6
+                && p.span.is_some_and(|s| span(s) && s.top().is_finite())
+        };
+        for (i, p) in self.scratch.iter().enumerate() {
+            require(
+                p.as_ref().is_none_or(valid),
+                Field::Attachment,
+                i,
+                Problem::Number,
+            )?;
+        }
+        for (i, (e, p)) in self.roots.iter().enumerate() {
+            require(
+                entity_history(world, *e) && valid(p),
+                Field::Attachment,
+                i,
+                Problem::Number,
+            )?;
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+impl SpatialAttachments {
+    pub(super) fn corrupt_file_fixture(&mut self, case: u32) {
+        match case {
+            0 => self.links[0].parent_link = Some(0),
+            1 => {
+                self.scratch.pop();
+            }
+            2 => self.roots[0].1.yaw = f32::NAN,
+            3 => {
+                let s = self.roots[0].1.span.as_mut().unwrap();
+                s.elevation = f32::MAX;
+                s.height = f32::MAX;
+            }
+            _ => unreachable!(),
+        }
+    }
 }

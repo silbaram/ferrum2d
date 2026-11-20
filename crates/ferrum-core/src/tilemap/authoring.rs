@@ -11,6 +11,7 @@ use crate::components::{HeightSpan, PhysicsFloorId, SpriteFrame};
 
 impl Tilemap {
     pub fn clear(&mut self) {
+        self.physics_revision = self.physics_revision.wrapping_add(1);
         self.definitions.clear();
         self.slope_definitions.clear();
         self.one_way_platform_definitions.clear();
@@ -459,6 +460,7 @@ impl Tilemap {
     }
 
     fn rebuild_collision_rects_for_layer(&mut self, index: usize) {
+        self.physics_revision = self.physics_revision.wrapping_add(1);
         if index >= self.collision_rects.len() {
             self.collision_rects.resize_with(index + 1, || None);
         }
@@ -495,6 +497,7 @@ impl Tilemap {
         width: u32,
         height: u32,
     ) {
+        self.physics_revision = self.physics_revision.wrapping_add(1);
         if !self.collision_chunk_cache_matches_layer(index) {
             self.rebuild_collision_rects_for_layer(index);
             return;

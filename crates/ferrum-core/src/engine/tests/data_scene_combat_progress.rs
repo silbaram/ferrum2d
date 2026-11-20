@@ -54,14 +54,14 @@ struct Saved {
 
 #[test]
 fn compound_light_history_and_combat_motion_restore_are_atomic_and_remap_fresh_handles() {
-    let mut source = Engine::new();
+    let mut source = crate::engine::legacy_test_fixture::engine();
     let (actor, _, handles) = setup(&mut source, 700);
     let environment = super::spatial_light_selection::values();
     assert!(source.configure_spatial_environment(&environment));
     source.update(0.);
     let saved = capture(&source, &handles);
     let selection = source.capture_spatial_light_selection_state();
-    let mut dest = Engine::new();
+    let mut dest = crate::engine::legacy_test_fixture::engine();
     dest.use_data_scene();
     sprite(&mut dest, 1, 0., 0., 0);
     let (fresh, _, fresh_handles) = setup(&mut dest, 700);
@@ -141,7 +141,7 @@ fn bullet(engine: &Engine) -> Entity {
 
 #[test]
 fn checkpoint_midflight_roundtrip_uses_fresh_generations_and_texture_then_hits() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     engine.update(0.5);
     let original = bullet(&engine);
@@ -171,7 +171,7 @@ fn checkpoint_midflight_roundtrip_uses_fresh_generations_and_texture_then_hits()
 
 #[test]
 fn checkpoint_keeps_projectile_after_source_dies_and_remaps_texture_before_removal() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, source, handles) = setup(&mut engine, 10);
     engine.update(0.5);
     engine.world.despawn(source);
@@ -196,7 +196,7 @@ fn checkpoint_keeps_projectile_after_source_dies_and_remaps_texture_before_remov
 
 #[test]
 fn checkpoint_preserves_health_timer_action_and_reaction_cooldowns_and_flipped_uvs() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     engine.world.add_collision_reaction(
         actor,
@@ -274,7 +274,7 @@ fn checkpoint_preserves_health_timer_action_and_reaction_cooldowns_and_flipped_u
 
 #[test]
 fn checkpoint_malformed_native_payloads_and_stale_handles_never_mutate() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, _, handles) = setup(&mut engine, 2);
     engine.update(0.5);
     let original = capture(&engine, &handles);
@@ -311,7 +311,7 @@ fn checkpoint_malformed_native_payloads_and_stale_handles_never_mutate() {
 
 #[test]
 fn checkpoint_reset_discards_input_accumulator_events_particles_and_statistics() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, _, handles) = setup(&mut engine, 2);
     engine.configure_fixed_timestep(true, 0.1, 1., 8);
     engine.update(0.55);
@@ -334,7 +334,7 @@ fn checkpoint_reset_discards_input_accumulator_events_particles_and_statistics()
 
 #[test]
 fn checkpoint_capture_rejects_unowned_entities_and_unsupported_static_edits() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, enemy, handles) = setup(&mut engine, 2);
     let extra = sprite(&mut engine, 4, 400., 400., 0);
     assert!(engine
@@ -364,7 +364,7 @@ fn enter_effect(engine: &mut Engine, actor: Entity) {
 
 #[test]
 fn checkpoint_preserves_previous_contacts_so_enter_effect_does_not_replay() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     enter_effect(&mut engine, actor);
     assert!(engine.configure_data_scene_gameplay_v2(true, actor.id, actor.generation, 0, true));
@@ -394,7 +394,7 @@ fn checkpoint_preserves_previous_contacts_so_enter_effect_does_not_replay() {
 
 #[test]
 fn checkpoint_projectile_capacity_is_exact_and_overflow_is_atomic() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, _, handles) = setup(&mut engine, 2);
     engine.update(0.5);
     let mut saved = capture(&engine, &handles);
@@ -416,7 +416,7 @@ fn checkpoint_projectile_capacity_is_exact_and_overflow_is_atomic() {
 
 #[test]
 fn checkpoint_runtime_height_span_changes_restore_using_authored_body() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, _, handles) = setup(&mut engine, 2);
     engine.world.clear_height_span(actor);
     let saved = capture(&engine, &handles);
@@ -436,7 +436,7 @@ fn checkpoint_runtime_height_span_changes_restore_using_authored_body() {
 
 #[test]
 fn checkpoint_world_capacity_reuses_removed_authored_slot_at_2048() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, _, mut handles) = setup(&mut engine, 2);
     engine.update(0.5);
     let seed = capture(&engine, &handles).combat[4 + 144..].to_vec();
@@ -461,7 +461,7 @@ fn checkpoint_world_capacity_reuses_removed_authored_slot_at_2048() {
 #[test]
 fn checkpoint_static_gameplay_guard_allows_consumed_but_rejects_definition_edits() {
     for change in 0..4 {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         let (actor, _, handles) = setup(&mut engine, 2);
         engine
             .world
@@ -499,7 +499,7 @@ fn checkpoint_static_gameplay_guard_allows_consumed_but_rejects_definition_edits
 
 #[test]
 fn checkpoint_projectile_decode_and_capture_share_canonical_f32_constraints() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (_, _, handles) = setup(&mut engine, 2);
     engine.update(0.5);
     let saved = capture(&engine, &handles);
@@ -536,7 +536,7 @@ fn configure_prefab(engine: &mut Engine, actor: Entity, enemy: Entity, texture: 
 
 #[test]
 fn projectile_prefab_spawns_its_texture_uv_tint_size_collider_and_spatial_style() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     assert!(configure_prefab(&mut engine, actor, enemy, 700));
     engine.update(0.5);
@@ -581,7 +581,7 @@ fn projectile_prefab_spawns_its_texture_uv_tint_size_collider_and_spatial_style(
 
 #[test]
 fn projectile_prefab_checkpoint_remaps_its_asset_even_after_its_source_dies() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     assert!(configure_prefab(&mut engine, actor, enemy, 700));
     engine.update(0.5);
@@ -607,7 +607,7 @@ fn projectile_prefab_checkpoint_remaps_its_asset_even_after_its_source_dies() {
 
 #[test]
 fn projectile_prefab_configuration_preflights_every_record_before_retiring_live_bullets() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     assert!(configure_prefab(&mut engine, actor, enemy, 700));
     engine.update(0.5);
@@ -683,7 +683,7 @@ fn projectile_prefab_configuration_preflights_every_record_before_retiring_live_
 
 #[test]
 fn projectile_prefab_checkpoint_rejects_unknown_or_changed_definition_atomically() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     assert!(configure_prefab(&mut engine, actor, enemy, 700));
     engine.update(0.5);
@@ -712,7 +712,7 @@ fn projectile_prefab_checkpoint_rejects_unknown_or_changed_definition_atomically
 
 #[test]
 fn projectile_prefab_flat_scene_checkpoint_and_legacy_reconfigure_keep_canonical_formats() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 2);
     engine.clear_spatial_scene();
     assert!(configure_prefab(&mut engine, actor, enemy, 700));
@@ -732,7 +732,7 @@ fn projectile_prefab_flat_scene_checkpoint_and_legacy_reconfigure_keep_canonical
 
 #[test]
 fn projectile_prefab_catalog_capacity_and_same_action_on_distinct_sources_are_independent() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, mut handles) = setup(&mut engine, 2);
     let other = sprite(&mut engine, 4, 20., 130., 0);
     engine.world.set_aabb_collider(
@@ -813,7 +813,7 @@ fn projectile_prefab_catalog_capacity_and_same_action_on_distinct_sources_are_in
 
 #[test]
 fn projectile_prefab_checkpoint_v2_roundtrips_mixed_default_and_custom_bullets() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let configure = |engine: &mut Engine, actor: Entity, enemy: Entity, texture| {
         engine.clear_spatial_scene();
         assert!(engine.configure_data_scene_camera(
@@ -903,7 +903,7 @@ fn combat_checkpoint_accepts_validated_platform_suffix_and_preserves_carried_act
         assert!(engine.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
         assert!(engine.configure_data_scene_gameplay_v2(true, actor.id, actor.generation, 0, true));
     }
-    let mut source = Engine::new();
+    let mut source = crate::engine::legacy_test_fixture::engine();
     let (a, _, handles) = setup(&mut source, 1);
     lift(&mut source, a);
     source
@@ -914,7 +914,7 @@ fn combat_checkpoint_accepts_validated_platform_suffix_and_preserves_carried_act
     saved
         .spatial
         .extend(source.capture_spatial_moving_platforms());
-    let mut dest = Engine::new();
+    let mut dest = crate::engine::legacy_test_fixture::engine();
     let (b, _, fresh) = setup(&mut dest, 1);
     lift(&mut dest, b);
     assert!(restore(&mut dest, &fresh, &saved));

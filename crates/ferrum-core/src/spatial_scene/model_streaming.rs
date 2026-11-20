@@ -1,33 +1,38 @@
 //! Native distance policy; CPU decoding and bounded GPU ownership remain on the platform.
 use super::{models::SpatialModels, SpatialCamera};
 use std::collections::BTreeMap;
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Chunk {
+    #[serde(with = "crate::checkpoint_codec::array")]
     bounds: [f32; 6],
     enter: f32,
     exit: f32,
     active: bool,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Level {
     asset: u32,
     distance: f32,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Policy {
     chunk: usize,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     levels: Vec<Level>,
     selected: usize,
 }
 /// A cold authoring handoff only; never part of the persisted game-state format.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ModelLodContinuity {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     levels: Vec<Level>,
     selected: usize,
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct ModelStreaming {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     chunks: Vec<Chunk>,
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::map")]
     policies: BTreeMap<(u32, u32), Policy>,
 }
 impl SpatialModels {
@@ -175,6 +180,151 @@ impl ModelStreaming {
             p.levels[p.selected].asset,
             p.chunk == 0 || self.chunks[p.chunk - 1].active,
         )
+    }
+}
+
+impl ModelStreaming {
+    pub(super) fn validate_file(
+        &self,
+        bindings: &BTreeMap<(u32, u32), super::models::ModelBinding>,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{finite, require, Field, Problem};
+        b.work(self.chunks.len())?;
+        b.work(self.policies.len())?;
+        require(
+            self.chunks.len() <= 64
+                && (self.policies.is_empty() || self.policies.len() == bindings.len()),
+            Field::Streaming,
+            0,
+            Problem::Length,
+        )?;
+        for (i, c) in self.chunks.iter().enumerate() {
+            require(
+                finite(&c.bounds)
+                    && finite(&[c.enter, c.exit])
+                    && c.bounds
+                        .iter()
+                        .chain([c.enter, c.exit].iter())
+                        .all(|v| v.abs() <= 1e6)
+                    && (0..3).all(|axis| c.bounds[axis] <= c.bounds[axis + 3])
+                    && c.enter >= 0.
+                    && c.exit > c.enter,
+                Field::Streaming,
+                i,
+                Problem::Range,
+            )?;
+        }
+        b.sort(bindings.len().max(self.policies.len()))?;
+        for (i, ((key, p), (binding_key, binding))) in
+            self.policies.iter().zip(bindings).enumerate()
+        {
+            require(
+                key == binding_key && p.chunk <= self.chunks.len(),
+                Field::Streaming,
+                i,
+                Problem::Reference,
+            )?;
+            validate_levels(&p.levels, p.selected, b)?;
+            require(
+                p.levels[0].asset == binding.asset,
+                Field::Streaming,
+                i,
+                Problem::Reference,
+            )?;
+        }
+        Ok(())
+    }
+}
+fn validate_levels(
+    levels: &[Level],
+    selected: usize,
+    b: &mut super::file_admission::Budget,
+) -> Result<(), super::file_admission::Error> {
+    use super::file_admission::{require, Field, Problem};
+    b.work(levels.len())?;
+    require(
+        !levels.is_empty() && levels.len() <= 4 && selected < levels.len(),
+        Field::Streaming,
+        0,
+        Problem::Length,
+    )?;
+    for (i, l) in levels.iter().enumerate() {
+        require(
+            l.asset != 0
+                && l.distance.is_finite()
+                && (0. ..=1e6).contains(&l.distance)
+                && if i == 0 {
+                    l.distance == 0.
+                } else {
+                    levels[i - 1].distance < l.distance
+                },
+            Field::Streaming,
+            i,
+            Problem::Order,
+        )?;
+    }
+    Ok(())
+}
+impl ModelLodContinuity {
+    pub(crate) fn validate_file(
+        &self,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        validate_levels(&self.levels, self.selected, b)
+    }
+}
+#[cfg(test)]
+impl ModelStreaming {
+    pub(super) fn corrupt_file_fixture(&mut self, case: u32) {
+        let p = self.policies.values_mut().next().unwrap();
+        match case {
+            0 => p.selected = usize::MAX,
+            1 => p.chunk = usize::MAX,
+            2 => p.levels[0].distance = f32::NAN,
+            _ => unreachable!(),
+        }
+    }
+}
+#[cfg(test)]
+impl ModelLodContinuity {
+    pub(crate) fn corrupt_file_fixture(&mut self) {
+        self.selected = usize::MAX;
+    }
+}
+
+#[cfg(test)]
+impl ModelStreaming {
+    pub(super) fn file_collection_packet(&self, packet: &[u8], duplicate: bool) -> Vec<u8> {
+        super::file_admission::collection_tests::map_packet(packet, &self.policies, duplicate)
+    }
+}
+
+// Cold readonly projection. Header callback precedes every variable level visit;
+// the caller charges policy/level work before either pass. No streaming update.
+impl SpatialModels {
+    pub(crate) fn file_roster_policy_count(&self) -> usize {
+        self.streaming.policies.len()
+    }
+    pub(crate) fn visit_file_roster_lods<E>(
+        &self,
+        visit: &mut impl FnMut((u32, u32), usize, Option<(usize, u32)>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (&key, p) in &self.streaming.policies {
+            visit(key, p.levels.len(), None)?;
+            for (i, l) in p.levels.iter().enumerate() {
+                visit(key, p.levels.len(), Some((i, l.asset)))?;
+            }
+        }
+        Ok(())
+    }
+}
+impl ModelLodContinuity {
+    pub(crate) fn file_roster_levels(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
+        self.levels.iter().map(|l| l.asset)
+    }
+    pub(crate) fn file_roster_selected(&self) -> usize {
+        self.selected
     }
 }
 

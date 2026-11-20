@@ -2,7 +2,7 @@ use crate::components::{
     PhysicsMaterial, SpriteAnimation, SpriteFrame, Transform2D, MAX_CONVEX_POLYGON_VERTICES,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EntityTemplate {
     pub sprite_width: f32,
     pub sprite_height: f32,
@@ -30,7 +30,7 @@ pub struct EntityTemplateCollider {
     pub material: Option<PhysicsMaterial>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EntityTemplateColliderShape {
     Aabb {
         half_width: f32,
@@ -58,6 +58,7 @@ pub enum EntityTemplateColliderShape {
         end_y: f32,
     },
     ConvexPolygon {
+        #[serde(with = "crate::checkpoint_codec::array")]
         vertices: [Transform2D; MAX_CONVEX_POLYGON_VERTICES],
         vertex_count: u32,
         rotation_radians: f32,
@@ -257,3 +258,6 @@ pub(super) fn initial_uv(template: EntityTemplate) -> (f32, f32, f32, f32) {
         .map(|animation| animation.uv())
         .unwrap_or_else(|| template.frame.uv())
 }
+
+#[allow(dead_code)]
+mod file_admission;

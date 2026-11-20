@@ -2,19 +2,22 @@
 use super::*;
 use crate::collision::collider_segment_count_at;
 use crate::components::gameplay::MovementPattern;
+use crate::engine::unified_physics::{ActorPhysicsPrototype, UnifiedPhysicsRuntime};
 use crate::world::actor_prototype::ActorPrototype;
 
 pub(super) const MAX_LIVE: usize = 512;
 pub(super) const MAX_RECORDS: usize = MAX_LIVE + MAX_PROJECTILES;
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct ActorPrefab {
     pub id: u32,
     pub prototype: ActorPrototype,
     pub billboard: Option<Billboard>,
+    physics: Option<ActorPhysicsPrototype>,
     segments: u64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(super) struct SpawnedActor {
     pub entity: Entity,
     pub serial: u32,
@@ -22,11 +25,16 @@ pub(super) struct SpawnedActor {
     pub origin: Transform2D,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SpawnPrefabs {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub definitions: Vec<ActorPrefab>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub actors: Vec<SpawnedActor>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub lineage: Vec<Option<(u32, u32)>>,
     pub next_serial: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     projectile_sources: Vec<Entity>,
 }
 
@@ -43,6 +51,14 @@ impl Default for SpawnPrefabs {
 }
 
 impl SpawnPrefabs {
+    pub(super) fn accepts_native_world(&self, space: crate::physics3d::Space) -> bool {
+        self.definitions.iter().all(|prefab| {
+            prefab
+                .physics
+                .as_ref()
+                .is_none_or(|definition| definition.accepts_space(space))
+        })
+    }
     pub(super) fn has_definitions(&self) -> bool {
         !self.definitions.is_empty()
     }
@@ -99,6 +115,7 @@ impl SpawnPrefabs {
         combat: &DataSceneCombat,
         world: &World,
         spatial: &SpatialScene,
+        native: Option<&UnifiedPhysicsRuntime>,
         metadata: &[u32],
     ) -> Option<Self> {
         if !metadata.len().is_multiple_of(3) || metadata.len() / 3 > MAX_ACTOR_PREFABS {
@@ -124,6 +141,14 @@ impl SpawnPrefabs {
                 return None;
             }
             let prototype = world.actor_prototype(source)?;
+            let physics = native
+                .map(|runtime| runtime.actor_physics_prototype(source))
+                .transpose()
+                .ok()?
+                .flatten();
+            let explicit_native = physics
+                .as_ref()
+                .is_some_and(ActorPhysicsPrototype::is_native);
             if let Some(
                 MovementPattern::Chase {
                     target: crate::components::gameplay::MovementTarget::Entity(target),
@@ -157,6 +182,7 @@ impl SpawnPrefabs {
                 return None;
             }
             if spatial.camera.is_some()
+                && !explicit_native
                 && (prototype.height_span.is_some() != world.rigid_body(source).is_some())
             {
                 return None;
@@ -164,7 +190,11 @@ impl SpawnPrefabs {
             let segments = (0..world.compound_collider_count(source))
                 .map(|c| collider_segment_count_at(world, source.id as usize, c) as u64)
                 .sum::<u64>()
-                .max(1);
+                .max(
+                    physics
+                        .as_ref()
+                        .map_or(1, ActorPhysicsPrototype::query_work),
+                );
             previous = values[0];
             config.definitions.push(ActorPrefab {
                 id: values[0],
@@ -173,6 +203,7 @@ impl SpawnPrefabs {
                     .bindings
                     .get(&(source.id, source.generation))
                     .copied(),
+                physics,
                 segments,
             });
         }
@@ -213,6 +244,9 @@ impl DataSceneCombat {
         }
     }
 
+    // Shared input/timer dispatch owns these disjoint hot-path stores. Keep
+    // native admission and rollback explicit alongside the existing action data.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn spawn_actor_action(
         &mut self,
         world: &mut World,
@@ -221,6 +255,7 @@ impl DataSceneCombat {
         prepared: PreparedAction,
         payload: SpawnPrefabActionPayload,
         events: &mut Vec<GameplayEvent>,
+        mut native: Option<&mut UnifiedPhysicsRuntime>,
     ) {
         let plan = match plan_spawn_prefab_action(payload, world.transform(prepared.entity)) {
             Ok(plan) => plan,
@@ -319,6 +354,12 @@ impl DataSceneCombat {
                     .saturating_mul(prefab.segments)
                     .saturating_mul(64),
             )
+            .saturating_add(
+                native
+                    .as_deref()
+                    .map_or(0, |runtime| runtime.combat_query_work())
+                    .saturating_mul(prefab.segments),
+            )
             .saturating_add(MAX_RECORDS as u64 * 4)
             .saturating_add(shadow_work);
         if !self.actions.reserve(work) {
@@ -380,7 +421,41 @@ impl DataSceneCombat {
             self.action_capacity_failure(prepared, events);
             return;
         };
-        let support = if spatial.camera.is_some() {
+        if let Some(runtime) = native.as_deref_mut() {
+            if runtime
+                .admit_actor_prefab_capacity(world, prefab.physics.as_ref())
+                .is_err()
+            {
+                world.discard_actor_prototype(spawned);
+                self.action_capacity_failure(prepared, events);
+                return;
+            }
+        }
+        if let Some(definition) = &prefab.physics {
+            let Some(runtime) = native.as_deref_mut() else {
+                world.discard_actor_prototype(spawned);
+                self.action_capacity_failure(prepared, events);
+                return;
+            };
+            if runtime
+                .install_actor_physics_prototype(world, spawned, definition)
+                .is_err()
+            {
+                runtime.discard_actor_physics_prototype(world, spawned);
+                world.discard_actor_prototype(spawned);
+                self.action_capacity_failure(prepared, events);
+                return;
+            }
+        }
+        // Explicit native actors own their 3D support/airborne state. Legacy
+        // height-span sampling must not snap or reject their fresh controllers.
+        let support = if prefab
+            .physics
+            .as_ref()
+            .is_some_and(ActorPhysicsPrototype::is_native)
+        {
+            true
+        } else if spatial.camera.is_some() {
             if let Some(mut span) = world.height_span(spawned) {
                 let center = (0..world.compound_collider_count(spawned))
                     .find_map(|collider| {
@@ -412,11 +487,20 @@ impl DataSceneCombat {
         } else {
             true
         };
+        let native_blocked = native.as_deref_mut().is_some_and(|runtime| {
+            runtime
+                .actor_prefab_placement_blocked(spawned)
+                .unwrap_or(true)
+        });
         let blocked = !support
+            || native_blocked
             || CollisionSystem::entity_overlaps_solid_mask(world, spawned, CollisionMask::WALL)
             || tilemap.actor_placement_blocked(world, spawned)
             || spatial.physics.actor_placement_blocked(world, spawned);
         if blocked {
+            if let Some(runtime) = native.as_deref_mut() {
+                runtime.discard_actor_physics_prototype(world, spawned);
+            }
             world.discard_actor_prototype(spawned);
             self.failure(
                 events,
@@ -435,6 +519,9 @@ impl DataSceneCombat {
             }
         }
         if billboard.is_some_and(|style| !style.elevation.is_finite()) {
+            if let Some(runtime) = native.as_deref_mut() {
+                runtime.discard_actor_physics_prototype(world, spawned);
+            }
             world.discard_actor_prototype(spawned);
             self.failure(
                 events,
@@ -448,6 +535,9 @@ impl DataSceneCombat {
             spatial.runtime_billboards.push((spawned, style));
             if shadow_work != 0 && !spatial.shadow_budget_valid(world) {
                 spatial.runtime_billboards.pop();
+                if let Some(runtime) = native {
+                    runtime.discard_actor_physics_prototype(world, spawned);
+                }
                 world.discard_actor_prototype(spawned);
                 self.action_capacity_failure(prepared, events);
                 return;
@@ -501,6 +591,12 @@ impl Engine {
         1
     }
 
+    /// Independent negotiation for automatic-controller and explicit native physics inheritance.
+    /// The existing spawn catalog packet and legacy capability retain version 1.
+    pub fn data_scene_spawn_prefab_physics_version(&self) -> u32 {
+        1
+    }
+
     /// Cold registration after authored spatial billboard styles are configured.
     #[allow(clippy::too_many_arguments)]
     pub fn configure_data_scene_gameplay_v7(
@@ -535,6 +631,7 @@ impl Engine {
             &self.data_scene.gameplay.combat,
             &self.world,
             &self.spatial_scene,
+            self.unified_physics.as_ref(),
             actor_prefabs,
         ) else {
             return false;
@@ -614,3 +711,5 @@ impl Engine {
         true
     }
 }
+
+mod file_admission;

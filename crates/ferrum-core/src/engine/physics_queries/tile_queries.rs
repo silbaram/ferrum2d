@@ -9,6 +9,12 @@ use super::area_queries::physics_query_height_span;
 #[wasm_bindgen]
 impl Engine {
     pub fn query_nearest_tile_obstacle(&mut self, x: f32, y: f32, max_distance: f32) -> bool {
+        if let Some(result) =
+            self.query_native_tile_nearest(Transform2D { x, y }, max_distance, None)
+        {
+            return result;
+        }
+
         let Some(hit) = self
             .tilemap
             .nearest_collision_obstacle(Transform2D { x, y }, max_distance)
@@ -42,6 +48,12 @@ impl Engine {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;
         };
+        if let Some(result) =
+            self.query_native_tile_nearest(Transform2D { x, y }, max_distance, Some(height_span))
+        {
+            return result;
+        }
+
         let Some(hit) = self.tilemap.nearest_collision_obstacle_with_height_span(
             Transform2D { x, y },
             max_distance,
@@ -71,6 +83,27 @@ impl Engine {
         direction_y: f32,
         max_distance: f32,
     ) -> u32 {
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::OrientedBox {
+                center: Transform2D {
+                    x: origin_x,
+                    y: origin_y,
+                },
+                half_width: 0.,
+                half_height: 0.,
+                rotation_radians: 0.,
+            },
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            None,
+            true,
+        ) {
+            return result;
+        }
+
         self.tilemap.raycast_obstacles_into(
             Transform2D {
                 x: origin_x,
@@ -102,6 +135,27 @@ impl Engine {
             self.physics_tile_shape_cast_hits.clear();
             return 0;
         };
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::OrientedBox {
+                center: Transform2D {
+                    x: origin_x,
+                    y: origin_y,
+                },
+                half_width: 0.,
+                half_height: 0.,
+                rotation_radians: 0.,
+            },
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            Some(height_span),
+            true,
+        ) {
+            return result;
+        }
+
         self.tilemap.raycast_obstacles_with_height_span_into(
             Transform2D {
                 x: origin_x,
@@ -125,6 +179,27 @@ impl Engine {
         end_x: f32,
         end_y: f32,
     ) -> u32 {
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
+        let distance = dx.hypot(dy);
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::OrientedBox {
+                center: Transform2D {
+                    x: start_x,
+                    y: start_y,
+                },
+                half_width: 0.,
+                half_height: 0.,
+                rotation_radians: 0.,
+            },
+            Velocity { vx: dx, vy: dy },
+            distance,
+            None,
+            true,
+        ) {
+            return result;
+        }
+
         self.tilemap.segment_cast_obstacles_into(
             Transform2D {
                 x: start_x,
@@ -151,6 +226,27 @@ impl Engine {
             self.physics_tile_shape_cast_hits.clear();
             return 0;
         };
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
+        let distance = dx.hypot(dy);
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::OrientedBox {
+                center: Transform2D {
+                    x: start_x,
+                    y: start_y,
+                },
+                half_width: 0.,
+                half_height: 0.,
+                rotation_radians: 0.,
+            },
+            Velocity { vx: dx, vy: dy },
+            distance,
+            Some(height_span),
+            true,
+        ) {
+            return result;
+        }
+
         self.tilemap.segment_cast_obstacles_with_height_span_into(
             Transform2D {
                 x: start_x,
@@ -174,6 +270,24 @@ impl Engine {
         direction_y: f32,
         max_distance: f32,
     ) -> u32 {
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::Aabb(crate::collision::AabbBounds {
+                min_x: x - half_width,
+                min_y: y - half_height,
+                max_x: x + half_width,
+                max_y: y + half_height,
+            }),
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            None,
+            false,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap.shape_cast_aabb_obstacles_into(
             Transform2D { x, y },
@@ -206,6 +320,24 @@ impl Engine {
             self.physics_tile_shape_cast_hits.clear();
             return 0;
         };
+        if let Some(result) = self.query_native_tile_sweep(
+            crate::collision::CollisionQueryShape::Aabb(crate::collision::AabbBounds {
+                min_x: x - half_width,
+                min_y: y - half_height,
+                max_x: x + half_width,
+                max_y: y + half_height,
+            }),
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            Some(height_span),
+            false,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap
             .shape_cast_aabb_obstacles_with_height_span_into(
@@ -229,6 +361,15 @@ impl Engine {
         half_width: f32,
         half_height: f32,
     ) -> u32 {
+        if let Some(result) = self.query_native_tile_contacts(
+            Transform2D { x, y },
+            [half_width, half_height],
+            None,
+            false,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap.aabb_obstacle_contacts_into(
             Transform2D { x, y },
@@ -253,6 +394,15 @@ impl Engine {
             self.physics_tile_contact_hits.clear();
             return 0;
         };
+        if let Some(result) = self.query_native_tile_contacts(
+            Transform2D { x, y },
+            [half_width, half_height],
+            Some(height_span),
+            false,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap.aabb_obstacle_contacts_with_height_span_into(
             Transform2D { x, y },
@@ -270,6 +420,15 @@ impl Engine {
         half_width: f32,
         half_height: f32,
     ) -> u32 {
+        if let Some(result) = self.query_native_tile_contacts(
+            Transform2D { x, y },
+            [half_width, half_height],
+            None,
+            true,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap.aabb_obstacle_manifolds_into(
             Transform2D { x, y },
@@ -294,6 +453,15 @@ impl Engine {
             self.physics_tile_manifold_hits.clear();
             return 0;
         };
+        if let Some(result) = self.query_native_tile_contacts(
+            Transform2D { x, y },
+            [half_width, half_height],
+            Some(height_span),
+            true,
+        ) {
+            return result;
+        }
+
         let collider = AabbCollider::new(half_width, half_height, false, CollisionLayer::Player);
         self.tilemap.aabb_obstacle_manifolds_with_height_span_into(
             Transform2D { x, y },

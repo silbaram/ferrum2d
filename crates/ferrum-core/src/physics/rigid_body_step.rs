@@ -46,18 +46,24 @@ struct RigidBodyConstraintBatch {
     split_impulses: Option<RigidSplitImpulseState>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RigidBodyStepScratch {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     integrated_bodies: Vec<bool>,
     ccd_collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     ccd_candidates: Vec<ColliderKey>,
     position_collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     position_contacts: Vec<ColliderCollisionContact>,
     contact_constraint_scratch: RigidContactConstraintScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     contact_constraints: Vec<RigidContactConstraint>,
     island_graph: RigidBodyIslandGraph,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     island_seen_roots: Vec<bool>,
     island_collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     island_manifolds: Vec<ColliderCollisionManifold>,
     island_schedule: RigidBodyIslandSchedule,
     joint_buckets: RigidBodyJointIslandBuckets,
@@ -466,3 +472,11 @@ impl PhysicsSystem {
         }
     }
 }
+
+impl RigidBodyStepConfig {
+    pub(crate) fn sanitized(self) -> Self {
+        sanitize_rigid_body_step_config(self)
+    }
+}
+
+mod file_scratch_admission;

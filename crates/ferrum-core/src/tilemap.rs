@@ -1,8 +1,18 @@
+impl Tilemap {
+    /// Stored definitions, including currently unused and raw texture IDs.
+    /// Does not build layers, collision caches, navigation or render commands.
+    pub(crate) fn file_resource_definitions(&self) -> &[Option<TileDefinition>] {
+        &self.definitions
+    }
+}
+
 use crate::collision::SweptAabbContactHit;
 use crate::components::{HeightSpan, PhysicsFloorId, SpriteFrame, Transform2D};
 use crate::physics::{SlopeSegment, SlopeSurfaceHit};
 
 mod authoring;
+mod terrain;
+pub(crate) use terrain::TerrainTile;
 mod collision_cache;
 mod collision_candidates;
 mod collision_queries;
@@ -26,7 +36,7 @@ const TILE_SWEEP_EPSILON: f32 = 0.0001;
 const TILE_GROUND_NORMAL_Y_MIN: f32 = 0.5;
 const UNVISITED_CELL: usize = usize::MAX;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TileDefinition {
     pub texture_id: u32,
     pub frame: SpriteFrame,
@@ -36,7 +46,7 @@ pub struct TileDefinition {
     pub a: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Hd2dTileKind {
     Flat,
     Stair,
@@ -68,7 +78,7 @@ impl Hd2dTileKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Hd2dRampAxis {
     X,
     Y,
@@ -91,7 +101,7 @@ impl Hd2dRampAxis {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Hd2dRampDefinition {
     pub axis: Hd2dRampAxis,
     pub start_elevation: f32,
@@ -111,7 +121,7 @@ impl Hd2dRampDefinition {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Hd2dTileDefinition {
     pub kind: Hd2dTileKind,
     pub blocks_movement: bool,
@@ -147,7 +157,7 @@ impl Hd2dTileDefinition {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Hd2dBridgePortalDefinition {
     pub lower_floor: PhysicsFloorId,
     pub upper_floor: PhysicsFloorId,
@@ -200,7 +210,7 @@ impl Hd2dBridgePortalDefinition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct TilemapLayer {
     pub columns: u32,
     pub rows: u32,
@@ -209,22 +219,35 @@ pub struct TilemapLayer {
     pub origin_x: f32,
     pub origin_y: f32,
     pub collision: bool,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub tiles: Vec<u32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     navigation_costs: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tilemap {
+    // Native terrain synchronization token; render/navigation-only edits do not change it.
+    physics_revision: u64,
     // Spatial rectangular surfaces use [min, max) ownership; legacy tile queries stay inclusive.
     half_open_hd2d_surfaces: bool,
+
     definitions: Vec<Option<TileDefinition>>,
+
     slope_definitions: Vec<Option<TileSlopeDefinition>>,
+
     one_way_platform_definitions: Vec<bool>,
+
     height_span_definitions: Vec<Option<HeightSpan>>,
+
     hd2d_definitions: Vec<Option<Hd2dTileDefinition>>,
+
     bridge_portal_definitions: Vec<Option<Hd2dBridgePortalDefinition>>,
+
     layers: Vec<Option<TilemapLayer>>,
+
     collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
+
     collision_rect_chunks: Vec<Option<TileCollisionChunkCache>>,
 }
 
@@ -281,7 +304,7 @@ pub struct TilemapNearestObstacleHit {
     pub point_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TilemapShapeCastHit {
     pub layer_index: usize,
     pub tile_index: usize,
@@ -292,7 +315,7 @@ pub struct TilemapShapeCastHit {
     pub normal_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TilemapContactHit {
     pub layer_index: usize,
     pub tile_index: usize,
@@ -303,14 +326,14 @@ pub struct TilemapContactHit {
     pub point_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TilemapContactPoint {
     pub point_x: f32,
     pub point_y: f32,
     pub penetration: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TilemapContactManifoldHit {
     pub layer_index: usize,
     pub tile_index: usize,
@@ -318,6 +341,7 @@ pub struct TilemapContactManifoldHit {
     pub normal_x: f32,
     pub normal_y: f32,
     pub penetration: f32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub points: [TilemapContactPoint; MAX_TILEMAP_CONTACT_MANIFOLD_POINTS],
 }
 
@@ -336,7 +360,7 @@ pub struct TilemapHd2dSurfaceHit {
     pub occluder_height: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TilemapNavigationPathPoint {
     pub x: f32,
     pub y: f32,
@@ -372,7 +396,7 @@ impl TilemapNavigationPathPoint {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TileSlopeDefinition {
     pub local_x0: f32,
     pub local_y0: f32,
@@ -413,3 +437,86 @@ impl TileSlopeDefinition {
 
 #[cfg(test)]
 mod tests;
+
+/// Private storage schema; live public storage does not implement Deserialize.
+pub(crate) mod checkpoint_state {
+    use super::*;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(remote = "Tilemap")]
+    pub(crate) struct State {
+        // Native terrain synchronization token; render/navigation-only edits do not change it.
+        physics_revision: u64,
+        // Spatial rectangular surfaces use [min, max) ownership; legacy tile queries stay inclusive.
+        half_open_hd2d_surfaces: bool,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        definitions: Vec<Option<TileDefinition>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        slope_definitions: Vec<Option<TileSlopeDefinition>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        one_way_platform_definitions: Vec<bool>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        height_span_definitions: Vec<Option<HeightSpan>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        hd2d_definitions: Vec<Option<Hd2dTileDefinition>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        bridge_portal_definitions: Vec<Option<Hd2dBridgePortalDefinition>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        layers: Vec<Option<TilemapLayer>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        collision_rect_chunks: Vec<Option<TileCollisionChunkCache>>,
+    }
+}
+
+// Public layer fields remain authoring data, but its private navigation storage
+// must match the grid before methods can index it.
+impl<'de> serde::Deserialize<'de> for TilemapLayer {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Saved {
+            columns: u32,
+            rows: u32,
+            tile_width: f32,
+            tile_height: f32,
+            origin_x: f32,
+            origin_y: f32,
+            collision: bool,
+            #[serde(with = "crate::checkpoint_codec::vector")]
+            tiles: Vec<u32>,
+            #[serde(with = "crate::checkpoint_codec::vector")]
+            navigation_costs: Vec<u32>,
+        }
+        let value = Saved::deserialize(deserializer)?;
+        let count = (value.columns as usize).checked_mul(value.rows as usize);
+        if value.columns == 0
+            || value.rows == 0
+            || !value.tile_width.is_finite()
+            || value.tile_width <= 0.
+            || !value.tile_height.is_finite()
+            || value.tile_height <= 0.
+            || !value.origin_x.is_finite()
+            || !value.origin_y.is_finite()
+            || count != Some(value.tiles.len())
+            || value.navigation_costs.len() != value.tiles.len()
+        {
+            return Err(serde::de::Error::custom("invalid tile layer grid/storage"));
+        }
+        Ok(Self {
+            columns: value.columns,
+            rows: value.rows,
+            tile_width: value.tile_width,
+            tile_height: value.tile_height,
+            origin_x: value.origin_x,
+            origin_y: value.origin_y,
+            collision: value.collision,
+            tiles: value.tiles,
+            navigation_costs: value.navigation_costs,
+        })
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) mod file_admission;
+
+mod file_spatial_admission;

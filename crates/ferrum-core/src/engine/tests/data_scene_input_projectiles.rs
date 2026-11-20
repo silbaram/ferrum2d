@@ -3,7 +3,7 @@ use super::*;
 use crate::gameplay_event::*;
 
 fn setup(pressed: bool, cooldown: f32, speed: f32) -> (Engine, Entity, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     assert!(engine.configure_data_scene_camera(
         400.0,

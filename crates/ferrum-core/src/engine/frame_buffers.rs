@@ -19,30 +19,48 @@ const PHYSICS_DEBUG_LINE_CAPACITY: usize = 64;
 const TILEMAP_NAVIGATION_PATH_POINT_CAPACITY: usize = 32;
 const TILEMAP_NAVIGATION_DEBUG_LINE_CAPACITY: usize = 16;
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(in crate::engine) struct EngineFrameBuffers {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) contact_impacts: Vec<crate::components::RigidContactImpulse>,
     pub(in crate::engine) contact_impacts_dropped: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) render_commands: Vec<SpriteRenderCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) sprite_normal_materials: Vec<crate::render_command::SpriteNormalMaterial>,
     pub(in crate::engine) sprite_lighting_materials:
         Vec<crate::render_command::SpriteLightingMaterial>,
     pub(in crate::engine) sprite_surface_materials:
         Vec<crate::render_command::SpriteSurfaceMaterial>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) sprite_light_masks: Vec<crate::render_command::SpriteLightMasks>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
     pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
     pub(in crate::engine) ground_y_scale: f32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) ground_shadow_volumes: Vec<GroundShadowVolumeVertex>,
     pub(in crate::engine) ground_shadow_volume_casters: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) audio_poses: Vec<AudioPose>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) audio_events: Vec<AudioEvent>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) effect_events: Vec<EffectEvent>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) collision_events: Vec<CollisionEvent>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) gameplay_events: Vec<GameplayEvent>,
     pub(in crate::engine) animation_event_overflow: Option<usize>,
     pub(in crate::engine) frame_telemetry: FrameTelemetry,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) physics_debug_lines: Vec<PhysicsDebugLine>,
+    /// Native debug version 1: lines, work units, active/truncated/rejected/route flags, unsupported.
+    #[serde(with = "crate::checkpoint_codec::array")]
+    pub(in crate::engine) native_debug_state: [u32; 4],
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) tilemap_navigation_path_points: Vec<f32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(in crate::engine) tilemap_navigation_debug_lines: Vec<PhysicsDebugLine>,
 }
 
@@ -69,6 +87,7 @@ impl EngineFrameBuffers {
             animation_event_overflow: None,
             frame_telemetry: FrameTelemetry::default(),
             physics_debug_lines: Vec::with_capacity(PHYSICS_DEBUG_LINE_CAPACITY),
+            native_debug_state: [0; 4],
             tilemap_navigation_path_points: Vec::with_capacity(
                 TILEMAP_NAVIGATION_PATH_POINT_CAPACITY,
             ),
@@ -128,6 +147,7 @@ impl EngineFrameBuffers {
 
     pub(in crate::engine) fn clear_physics_debug_lines(&mut self) {
         self.physics_debug_lines.clear();
+        self.native_debug_state = [0; 4];
     }
 
     pub(in crate::engine) fn clear_tilemap_navigation_output(&mut self) {

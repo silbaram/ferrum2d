@@ -116,6 +116,18 @@ pub(crate) fn evaluate_movement_pattern(
     current_velocity: Option<Velocity>,
     pattern: MovementPattern,
 ) -> Option<MovementPatternEvaluation> {
+    evaluate_movement_pattern_with_target(transform, current_velocity, pattern, |target| {
+        movement_target_transform_from(world, player_transform, transform, target)
+    })
+}
+
+/// Movement math is shared; the caller supplies targets in simulation coordinates.
+pub(crate) fn evaluate_movement_pattern_with_target(
+    transform: Transform2D,
+    current_velocity: Option<Velocity>,
+    pattern: MovementPattern,
+    mut resolve: impl FnMut(MovementTarget) -> Option<Transform2D>,
+) -> Option<MovementPatternEvaluation> {
     match pattern {
         MovementPattern::Static => Some(MovementPatternEvaluation::Velocity(Velocity::default())),
         MovementPattern::TopdownInput { .. } => None,
@@ -128,9 +140,7 @@ pub(crate) fn evaluate_movement_pattern(
             velocity_toward(transform, Transform2D { x, y }, speed),
         )),
         MovementPattern::Chase { target, speed } => {
-            let Some(target_transform) =
-                movement_target_transform_from(world, player_transform, transform, target)
-            else {
+            let Some(target_transform) = resolve(target) else {
                 return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
             };
             Some(MovementPatternEvaluation::Chase {
@@ -145,9 +155,7 @@ pub(crate) fn evaluate_movement_pattern(
             radius,
             radial_band,
         } => {
-            let Some(target_transform) =
-                movement_target_transform_from(world, player_transform, transform, target)
-            else {
+            let Some(target_transform) = resolve(target) else {
                 return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
             };
             Some(MovementPatternEvaluation::Velocity(
@@ -159,9 +167,7 @@ pub(crate) fn evaluate_movement_pattern(
             speed,
             turn_rate,
         } => {
-            let Some(target_transform) =
-                movement_target_transform_from(world, player_transform, transform, target)
-            else {
+            let Some(target_transform) = resolve(target) else {
                 return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
             };
             Some(MovementPatternEvaluation::SeekTarget {

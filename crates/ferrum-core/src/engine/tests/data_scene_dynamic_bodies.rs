@@ -13,7 +13,7 @@ fn moving_sprite(engine: &mut Engine, x: f32) -> Entity {
 
 #[test]
 fn authored_dynamic_attaches_shape_inertia_and_renders_the_same_entity() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     engine.set_viewport_size(1600.0, 960.0);
     let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
@@ -48,7 +48,7 @@ fn authored_dynamic_attaches_shape_inertia_and_renders_the_same_entity() {
 #[test]
 fn automatic_scene_step_integrates_raw_dynamic_authored_dynamic_and_kinematic_once() {
     for fixed in [false, true] {
-        let mut engine = Engine::new();
+        let mut engine = crate::engine::legacy_test_fixture::engine();
         engine.use_data_scene();
         let authored = moving_sprite(&mut engine, 100.0);
         assert!(engine.configure_data_scene_dynamic_body(
@@ -90,7 +90,7 @@ fn automatic_scene_step_integrates_raw_dynamic_authored_dynamic_and_kinematic_on
 
 #[test]
 fn manual_dynamics_step_explicitly_while_static_and_disabled_bodies_stay_still() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let dynamic = moving_sprite(&mut engine, 100.0);
     assert!(engine.configure_data_scene_dynamic_body(dynamic.id, dynamic.generation, 1.0, false));
@@ -117,7 +117,7 @@ fn manual_dynamics_step_explicitly_while_static_and_disabled_bodies_stay_still()
 
 #[test]
 fn disabled_compound_body_is_excluded_from_queries_and_casts_then_reenabled() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let body = sprite(&mut engine, 71, 30.0, 300.0, 0);
     assert!(engine.configure_data_scene_dynamic_body(body.id, body.generation, 1.0, true));

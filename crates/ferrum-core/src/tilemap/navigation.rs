@@ -8,15 +8,23 @@ use super::{
 };
 use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TilemapNavigationScratch {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) came_from: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) g_scores: Vec<u32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) visited: Vec<usize>,
+    #[serde(deserialize_with = "file_scratch_admission::deserialize_open")]
     pub(super) open: BinaryHeap<PathNode>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) path_cells: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) path_points: Vec<Transform2D>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) path_hd2d_points: Vec<TilemapNavigationPathPoint>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) navigation_floor_ids: Vec<PhysicsFloorId>,
 }
 
@@ -201,7 +209,11 @@ impl Tilemap {
             ) else {
                 continue;
             };
-            return Some(layer.tile_center(next_cell));
+            let center = layer.tile_center(next_cell);
+            if !center.x.is_finite() || !center.y.is_finite() {
+                return None;
+            }
+            return Some(center);
         }
         None
     }
@@ -320,7 +332,12 @@ impl Tilemap {
             }
             scratch.path_points.clear();
             for cell in scratch.path_cells.iter().copied().skip(1) {
-                scratch.path_points.push(layer.tile_center(cell));
+                let center = layer.tile_center(cell);
+                if !center.x.is_finite() || !center.y.is_finite() {
+                    scratch.path_points.clear();
+                    return None;
+                }
+                scratch.path_points.push(center);
             }
             return Some(&scratch.path_points);
         }
@@ -488,12 +505,14 @@ impl Tilemap {
                     to_height_span,
                 )
             };
+            let center = layer.tile_center(cell);
+            if !center.x.is_finite() || !center.y.is_finite() {
+                scratch.path_hd2d_points.clear();
+                return false;
+            }
             scratch
                 .path_hd2d_points
-                .push(TilemapNavigationPathPoint::new(
-                    layer.tile_center(cell),
-                    height_span,
-                ));
+                .push(TilemapNavigationPathPoint::new(center, height_span));
         }
         true
     }
@@ -681,7 +700,7 @@ impl TilemapLayer {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct PathNode {
     cell: usize,
     g_score: u32,
@@ -855,3 +874,5 @@ impl super::Tilemap {
         values
     }
 }
+
+mod file_scratch_admission;

@@ -10,6 +10,8 @@ pub(crate) mod bitmap_text;
 pub(crate) mod breakout_scene;
 mod buffer_layout;
 pub mod camera;
+mod checkpoint_codec;
+mod checkpoint_decode;
 pub mod collision;
 pub mod collision_event;
 pub mod components;
@@ -64,9 +66,10 @@ pub use components::{
 };
 pub use effect_event::EffectEvent;
 pub use engine::{
-    Engine, PhysicsBodyContactHit, PhysicsBodyManifoldHit, PhysicsQueryEntityHit,
-    PhysicsRaycastBodyHit, PhysicsRigidContactImpulseHit, PhysicsTileContactHit,
-    PhysicsTileManifoldHit, PhysicsTileShapeCastHit,
+    Engine, EngineRuntimeCheckpoint, NativeFilePrepare, PhysicsBodyContactHit,
+    PhysicsBodyManifoldHit, PhysicsQueryEntityHit, PhysicsRaycastBodyHit,
+    PhysicsRigidContactImpulseHit, PhysicsTileContactHit, PhysicsTileManifoldHit,
+    PhysicsTileShapeCastHit, RuntimeCheckpointError,
 };
 use engine::{FrameTelemetry, FRAME_TELEMETRY_F64S};
 pub use entity::Entity;
@@ -96,6 +99,8 @@ pub use gameplay_event::{
 };
 pub use input::InputState;
 pub use particles::{Particle, ParticlePreset, ParticleRange, ParticleSystem};
+pub mod physics3d;
+
 pub use physics::{
     FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, GroundProbeHit,
     Hd2dKinematicControllerConfig, Hd2dKinematicMoveResult, KinematicMoveResult,

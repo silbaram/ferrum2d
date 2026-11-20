@@ -1,5 +1,5 @@
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputState {
     pub w: u8,
     pub a: u8,
@@ -21,7 +21,7 @@ pub(crate) const INPUT_ACTION_ACTIVATION_PRESSED: u32 = 2;
 const MAX_INPUT_ACTION_BINDINGS: usize = 8;
 pub(crate) const INPUT_ACTION_REGISTRY_SNAPSHOT_U32S: usize = MAX_INPUT_ACTION_BINDINGS * 3;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum InputActionControl {
     Space,
     Enter,
@@ -55,7 +55,7 @@ impl InputActionControl {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum InputActionActivation {
     Down,
     Pressed,
@@ -78,7 +78,7 @@ impl InputActionActivation {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct InputActionBinding {
     action_id: u32,
     control: InputActionControl,
@@ -114,8 +114,9 @@ impl InputActionBinding {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct InputActionRegistry {
+    #[serde(with = "crate::checkpoint_codec::array")]
     bindings: [Option<InputActionBinding>; MAX_INPUT_ACTION_BINDINGS],
 }
 
@@ -136,6 +137,15 @@ impl Default for InputActionRegistry {
 }
 
 impl InputActionRegistry {
+    /// Cold admission projection; enum payloads remain private to this owner.
+    pub(crate) fn file_binding_action_ids(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Option<u32>> + '_ {
+        self.bindings
+            .iter()
+            .map(|binding| binding.map(|binding| binding.action_id))
+    }
+
     pub(crate) fn empty() -> Self {
         Self {
             bindings: [None; MAX_INPUT_ACTION_BINDINGS],

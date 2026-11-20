@@ -1,18 +1,34 @@
+impl DataSceneMovementAnimation {
+    pub(in crate::engine) fn file_resource_poses(&self) -> Option<(Entity, [(u32, u32); 8])> {
+        self.binding.as_ref().map(|b| {
+            (
+                b.actor,
+                b.poses
+                    .map(|p| (p.clip, u32::from(p.flip_x) | (u32::from(p.flip_y) << 1))),
+            )
+        })
+    }
+}
+
 use super::{Engine, SceneMode};
 use crate::components::Transform2D;
 use crate::entity::Entity;
 use crate::world::World;
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Copy, Default)]
+mod file_admission;
+
+#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 struct Pose {
     clip: u32,
     flip_x: bool,
     flip_y: bool,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Binding {
     actor: Entity,
+    #[serde(with = "crate::checkpoint_codec::array")]
     poses: [Pose; 8], // idle then walk; up/down/left/right
     facing: usize,
     before: Option<Transform2D>,
@@ -20,7 +36,7 @@ struct Binding {
 }
 
 /// Optional primary-actor presentation policy. Simulation and playback stay in Rust.
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneMovementAnimation {
     binding: Option<Binding>,
 }

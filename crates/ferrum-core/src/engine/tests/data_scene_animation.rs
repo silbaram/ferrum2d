@@ -16,7 +16,7 @@ fn clips(engine: &mut Engine, entity: Entity) {
 
 #[test]
 fn animation_progress_restores_fractional_paused_flipped_and_finished_playback() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
     clips(&mut engine, actor);
@@ -47,7 +47,7 @@ fn animation_progress_restores_fractional_paused_flipped_and_finished_playback()
     let animation = engine.capture_data_scene_animation_progress(epoch, &handles);
     let expected = engine.data_scene_sprite_animation_state(actor.id, actor.generation);
     assert!(expected[2] > 0.07 && expected[2] < 0.08);
-    let mut fresh = Engine::new();
+    let mut fresh = crate::engine::legacy_test_fixture::engine();
     fresh.use_data_scene();
     let replacement = sprite(&mut fresh, 71, 300.0, 300.0, 0);
     clips(&mut fresh, replacement);
@@ -105,7 +105,7 @@ fn animation_progress_restores_fractional_paused_flipped_and_finished_playback()
 
 #[test]
 fn malformed_animation_progress_preserves_entire_physics_and_animation_batch() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
     clips(&mut engine, actor);
@@ -142,7 +142,7 @@ fn malformed_animation_progress_preserves_entire_physics_and_animation_batch() {
 
 #[test]
 fn shared_atlas_playback_is_independent_and_preserves_native_body() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let a = sprite(&mut engine, 71, 300.0, 300.0, 0);
     let b = sprite(&mut engine, 71, 340.0, 300.0, 0);
@@ -176,7 +176,7 @@ fn shared_atlas_playback_is_independent_and_preserves_native_body() {
 
 #[test]
 fn playback_pause_finish_seek_and_preserve_seconds_have_explicit_behavior() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let e = sprite(&mut engine, 71, 300.0, 300.0, 0);
     clips(&mut engine, e);
@@ -217,7 +217,7 @@ fn playback_pause_finish_seek_and_preserve_seconds_have_explicit_behavior() {
 
 #[test]
 fn invalid_batches_and_configs_are_atomic_and_reset_invalidates_handles() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let a = sprite(&mut engine, 71, 300.0, 300.0, 0);
     let b = sprite(&mut engine, 71, 340.0, 300.0, 0);

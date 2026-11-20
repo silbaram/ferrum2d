@@ -7,7 +7,7 @@ pub const AUDIO_EVENT_BYTES: usize = AUDIO_EVENT_FLOATS * std::mem::size_of::<f3
 const _: () = assert!(core::mem::size_of::<AudioEvent>() == AUDIO_EVENT_BYTES);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AudioEvent {
     pub sound_id: f32,
     pub volume: f32,

@@ -1,6 +1,6 @@
 pub const DEFAULT_SPRITE_RENDER_LAYER: i32 = 1_000;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sprite {
     pub texture_id: u32,
     pub width: f32,
@@ -26,7 +26,7 @@ pub struct Sprite {
     pub project_ground: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteFrame {
     pub u0: f32,
     pub v0: f32,
@@ -65,7 +65,7 @@ impl SpriteFrame {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteAnimation {
     pub columns: u32,
     pub rows: u32,
@@ -80,20 +80,21 @@ pub struct SpriteAnimation {
 
 pub const MAX_SPRITE_ANIMATION_FRAMES: usize = 32;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct SpriteAnimationFrameSequence {
+    #[serde(with = "crate::checkpoint_codec::array")]
     frames: [SpriteFrame; MAX_SPRITE_ANIMATION_FRAMES],
     frame_count: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteAnimationState {
     pub row: u32,
     pub frame_count: u32,
     pub frames_per_second: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SpriteAnimationKind {
     Idle,
     Moving,
@@ -193,11 +194,71 @@ impl SpriteAnimation {
         }
 
         let state = self.active_state();
+        let previous_elapsed = self.elapsed_seconds;
         self.elapsed_seconds += delta;
         let frame_duration = 1.0 / state.frames_per_second;
+        if self.elapsed_seconds < frame_duration {
+            return;
+        }
+        const MAX_FRAME_ADVANCES: u32 = 4096;
+        // Keep the original f32 operations for ordinary progress. The generous
+        // preflight margin also preserves <=4096-step cases whose iterative f32
+        // subtraction does not exactly match a mathematical quotient.
+        if self.elapsed_seconds == f32::INFINITY
+            || f64::from(self.elapsed_seconds)
+                > f64::from(frame_duration) * f64::from(MAX_FRAME_ADVANCES * 2)
+        {
+            let elapsed = if self.elapsed_seconds.is_finite() {
+                f64::from(self.elapsed_seconds)
+            } else {
+                f64::from(previous_elapsed) + f64::from(delta)
+            };
+            self.skip_frames(state, frame_duration, elapsed);
+            return;
+        }
+        let mut advances = 0;
         while self.elapsed_seconds >= frame_duration {
-            self.elapsed_seconds -= frame_duration;
+            if advances == MAX_FRAME_ADVANCES {
+                self.skip_frames(state, frame_duration, f64::from(self.elapsed_seconds));
+                return;
+            }
+            let remaining = self.elapsed_seconds - frame_duration;
+            if remaining == self.elapsed_seconds {
+                self.skip_frames(state, frame_duration, f64::from(self.elapsed_seconds));
+                return;
+            }
+            self.elapsed_seconds = remaining;
             self.current_frame = (self.current_frame + 1) % state.frame_count;
+            advances += 1;
+        }
+    }
+
+    /// Bounded phase policy for excessive progress, f32 overflow or subtraction
+    /// stagnation. Valid constructor states have positive finite FPS/count and
+    /// finite nonnegative elapsed; no loop or allocation depends on the quotient.
+    #[cold]
+    fn skip_frames(&mut self, state: SpriteAnimationState, frame_duration: f32, elapsed: f64) {
+        // Preserve the original rounded f32 period whenever it is representable.
+        // Tiny positive FPS may make that reciprocal infinite; only then use the
+        // finite wider reciprocal to decide whether any whole frame has elapsed.
+        let period = if frame_duration.is_finite() {
+            f64::from(frame_duration)
+        } else {
+            1.0 / f64::from(state.frames_per_second)
+        };
+        let count = u64::from(state.frame_count);
+        let phase = elapsed % (period * f64::from(state.frame_count));
+        let advanced = (phase / period).floor() as u64;
+        self.current_frame = ((u64::from(self.current_frame) + advanced) % count) as u32;
+        let remaining = (phase % period) as f32;
+        if frame_duration.is_finite() && remaining >= frame_duration {
+            // A wide remainder just below the period can round up when stored.
+            self.current_frame = ((u64::from(self.current_frame) + 1) % count) as u32;
+            self.elapsed_seconds = 0.0;
+        } else {
+            // When even the period exceeds f32::MAX, a finite overflow remainder
+            // may not fit this unchanged f32 field. Saturate only that fallback.
+            self.elapsed_seconds = remaining.min(f32::MAX);
         }
     }
 
@@ -268,3 +329,38 @@ impl SpriteAnimationState {
         self.frames_per_second.is_finite() && self.frames_per_second > 0.0
     }
 }
+
+// Keep the private nonempty, bounded frame-count invariant for public Serde users.
+impl<'de> serde::Deserialize<'de> for SpriteAnimationFrameSequence {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Saved {
+            #[serde(with = "crate::checkpoint_codec::array")]
+            frames: [SpriteFrame; MAX_SPRITE_ANIMATION_FRAMES],
+            frame_count: u32,
+        }
+        let saved = Saved::deserialize(deserializer)?;
+        if saved.frame_count == 0 || saved.frame_count as usize > MAX_SPRITE_ANIMATION_FRAMES {
+            return Err(serde::de::Error::custom("invalid sprite frame count"));
+        }
+        Ok(Self {
+            frames: saved.frames,
+            frame_count: saved.frame_count,
+        })
+    }
+}
+
+// Cold external-file guard. This does not change public Serde or tick behavior.
+impl SpriteAnimationFrameSequence {
+    pub(crate) fn saved_payload_valid(&self) -> bool {
+        self.frame_count > 0
+            && self.frame_count as usize <= MAX_SPRITE_ANIMATION_FRAMES
+            && self
+                .frames
+                .iter()
+                .all(|f| [f.u0, f.v0, f.u1, f.v1].iter().all(|x| x.is_finite()))
+    }
+}
+
+#[cfg(test)]
+mod advance_tests;

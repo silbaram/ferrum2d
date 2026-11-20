@@ -1,11 +1,13 @@
 pub(crate) const MAX_GAMEPLAY_VARIABLES: usize = 64;
+pub(crate) mod file_admission;
+
 pub(crate) const MAX_GAMEPLAY_VARIABLE_MUTATION_TRIGGERS_PER_ENTITY: usize = 16;
 const GAMEPLAY_VARIABLE_SNAPSHOT_U32S_PER_SLOT: usize = 5;
 pub(crate) const GAMEPLAY_VARIABLE_SNAPSHOT_U32S: usize =
     MAX_GAMEPLAY_VARIABLES * GAMEPLAY_VARIABLE_SNAPSHOT_U32S_PER_SLOT;
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum GameplayVariableType {
     Integer,
     Real,
@@ -31,7 +33,7 @@ impl GameplayVariableType {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum GameplayVariableScope {
     Global,
     Scene,
@@ -54,7 +56,7 @@ impl GameplayVariableScope {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct GameplayVariable {
     variable_type: GameplayVariableType,
     scope: GameplayVariableScope,
@@ -62,8 +64,9 @@ struct GameplayVariable {
     value: f64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayVariableSlab {
+    #[serde(with = "crate::checkpoint_codec::array")]
     slots: [Option<GameplayVariable>; MAX_GAMEPLAY_VARIABLES],
 }
 
@@ -276,7 +279,7 @@ impl GameplayVariableSlab {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum GameplayVariableComparisonOperator {
     Equal,
     NotEqual,
@@ -311,7 +314,7 @@ impl GameplayVariableComparisonOperator {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayVariableComparison {
     enabled: bool,
     pub(crate) left_slot: u32,
@@ -360,7 +363,7 @@ impl Default for GameplayVariableComparison {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum GameplayVariableMutationOperation {
     Set,
     Increment,
@@ -376,7 +379,7 @@ impl GameplayVariableMutationOperation {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayVariableMutationTrigger {
     pub(crate) event_kind: u32,
     pub(crate) token_id: u32,
@@ -407,8 +410,9 @@ impl GameplayVariableMutationTrigger {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayVariableMutationTriggerSet {
+    #[serde(with = "crate::checkpoint_codec::array")]
     triggers: [Option<GameplayVariableMutationTrigger>;
         MAX_GAMEPLAY_VARIABLE_MUTATION_TRIGGERS_PER_ENTITY],
     len: usize,
@@ -482,6 +486,62 @@ fn write_f64_words(value: f64, output: &mut [u32]) {
 
 fn read_f64_words(input: &[u32]) -> f64 {
     f64::from_bits(u64::from(input[0]) | (u64::from(input[1]) << 32))
+}
+
+impl GameplayVariableComparison {
+    /// Syntactic ADT invariant only. Clearing/reconfiguring the slab may leave
+    /// legitimate unresolved/type-mismatched guards; consumers return false.
+    pub(crate) fn saved_payload_valid(self) -> bool {
+        if !self.enabled {
+            return self == Self::always();
+        }
+        Self::new(
+            self.left_slot,
+            self.operator,
+            self.right_slot,
+            self.right_literal,
+        ) == Some(self)
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SavedMutationIssue {
+    Layout,
+    Trigger,
+    Duplicate,
+}
+impl GameplayVariableMutationTriggerSet {
+    pub(crate) fn admit_saved_layout(&self) -> Result<(), SavedMutationIssue> {
+        if self.len > self.triggers.len()
+            || self
+                .triggers
+                .iter()
+                .enumerate()
+                .any(|(i, t)| t.is_some() != (i < self.len))
+        {
+            return Err(SavedMutationIssue::Layout);
+        }
+        for (i, a) in self.triggers.iter().flatten().enumerate() {
+            if GameplayVariableMutationTrigger::new(
+                a.event_kind,
+                a.token_id,
+                a.slot,
+                a.operation,
+                a.value,
+            ) != Some(*a)
+            {
+                return Err(SavedMutationIssue::Trigger);
+            }
+            if self.triggers[..i].iter().flatten().any(|b| {
+                a.event_kind == b.event_kind
+                    && a.token_id == b.token_id
+                    && a.slot == b.slot
+                    && a.operation == b.operation
+            }) {
+                return Err(SavedMutationIssue::Duplicate);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 use super::{Point, SpatialScene, SpatialVertex};
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShadowDrawRange {
     pub face: u32,
     pub source: u32,
@@ -34,7 +34,12 @@ impl SpatialScene {
             let matrix = &self.environment.shadow_matrices[index * 16..index * 16 + 16];
             let start = self.shadow_draw_ranges.len();
             for (source, vertices, stride) in [
-                (0, self.terrain.as_slice(), 36),
+                (
+                    0,
+                    self.terrain_presentation
+                        .vertices(self.revision, &self.terrain),
+                    36,
+                ),
                 (1, self.shadow_casters.as_flattened(), 6),
             ] {
                 for (index, chunk) in vertices.chunks_exact(stride).enumerate() {
@@ -66,7 +71,8 @@ impl SpatialScene {
                 .iter()
                 .map(|r| {
                     let vertices = if r.source == 0 {
-                        self.terrain.as_slice()
+                        self.terrain_presentation
+                            .vertices(self.revision, &self.terrain)
                     } else {
                         self.shadow_casters.as_flattened()
                     };

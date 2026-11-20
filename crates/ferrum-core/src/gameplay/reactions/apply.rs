@@ -345,7 +345,6 @@ pub(in crate::gameplay) fn apply_collision_area_damage_reaction_at_center<F>(
 where
     F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
 {
-    let mut outcome = CollisionReactionSetOutcome::default();
     CollisionSystem::circle_query_with_height_span_into(
         world,
         center,
@@ -355,6 +354,30 @@ where
         area_damage_hits,
     );
 
+    area_damage_hits.retain(|hit| is_alive_layer(world, hit.entity.id as usize, target_layer));
+    apply_collision_area_damage_hits(
+        world,
+        source_index,
+        area_damage_hits,
+        marked_for_despawn,
+        pending_despawn,
+        &mut damage_defaults_for,
+    )
+}
+
+/// Apply already selected targets. The query owner supplies category and spatial filtering.
+pub(crate) fn apply_collision_area_damage_hits<F>(
+    world: &mut World,
+    source_index: usize,
+    area_damage_hits: &[CircleQueryHit],
+    marked_for_despawn: &mut [bool],
+    pending_despawn: &mut Vec<Entity>,
+    mut damage_defaults_for: F,
+) -> CollisionReactionSetOutcome
+where
+    F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
+{
+    let mut outcome = CollisionReactionSetOutcome::default();
     let damage = damage_at_or_default(world, source_index, 0.0);
     let mut damaged_targets = 0;
     for hit in area_damage_hits.iter().copied() {
@@ -366,7 +389,6 @@ where
             continue;
         }
         if entity_at(world, target_index) != Some(hit.entity)
-            || !is_alive_layer(world, target_index, target_layer)
             || marked_for_despawn
                 .get(target_index)
                 .copied()

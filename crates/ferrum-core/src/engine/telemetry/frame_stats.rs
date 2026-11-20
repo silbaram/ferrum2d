@@ -36,8 +36,9 @@ pub(crate) const FRAME_TELEMETRY_F64S: usize =
 const _: () = assert!(core::mem::size_of::<FrameTelemetry>() == FRAME_TELEMETRY_F64S * 8);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FrameTelemetry {
+    #[serde(with = "crate::checkpoint_codec::array")]
     values: [f64; FRAME_TELEMETRY_F64S],
 }
 
@@ -50,6 +51,18 @@ impl Default for FrameTelemetry {
 }
 
 impl FrameTelemetry {
+    /// Missing actor height is represented by three NaNs in actual frame output.
+    /// The buffer is historical and must not be recomputed from the current World.
+    pub(in crate::engine) fn file_payload_valid(&self) -> bool {
+        let Self { values } = self;
+        values[..34]
+            .iter()
+            .chain(&values[37..])
+            .all(|v| v.is_finite())
+            && (values[34..37].iter().all(|v| v.is_finite())
+                || values[34..37].iter().all(|v| v.is_nan()))
+    }
+
     pub(crate) fn from_engine(engine: &Engine) -> Self {
         let player_height_span = engine
             .world

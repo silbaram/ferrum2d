@@ -6,7 +6,7 @@ pub struct WeldJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WeldJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
@@ -122,7 +122,7 @@ pub struct GearJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GearJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,

@@ -3,7 +3,7 @@ use super::limits::{MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES};
 use super::material::PhysicsMaterial;
 use super::motion::Transform2D;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AabbCollider {
     pub half_width: f32,
     pub half_height: f32,
@@ -51,7 +51,7 @@ impl AabbCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CircleCollider {
     pub radius: f32,
     pub offset_x: f32,
@@ -92,7 +92,7 @@ impl CircleCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OrientedBoxCollider {
     pub half_width: f32,
     pub half_height: f32,
@@ -148,7 +148,7 @@ impl OrientedBoxCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CapsuleCollider {
     pub start_x: f32,
     pub start_y: f32,
@@ -219,7 +219,7 @@ impl CapsuleCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeCollider {
     pub start_x: f32,
     pub start_y: f32,
@@ -287,8 +287,9 @@ impl EdgeCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChainCollider {
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub vertices: [Transform2D; MAX_CHAIN_COLLIDER_VERTICES],
     pub vertex_count: u32,
     pub looped: bool,
@@ -389,8 +390,9 @@ impl ChainCollider {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConvexPolygonCollider {
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub vertices: [Transform2D; MAX_CONVEX_POLYGON_VERTICES],
     pub vertex_count: u32,
     pub offset_x: f32,
@@ -447,7 +449,7 @@ impl ConvexPolygonCollider {
 // ChainCollider intentionally keeps a fixed vertex buffer to avoid per-collider
 // heap allocation and preserve Copy semantics for low-frequency authoring paths.
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CompoundColliderShape {
     Aabb(AabbCollider),
     Circle(CircleCollider),
@@ -458,7 +460,7 @@ pub enum CompoundColliderShape {
     ConvexPolygon(ConvexPolygonCollider),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompoundCollider {
     pub shape: CompoundColliderShape,
     pub material: Option<PhysicsMaterial>,

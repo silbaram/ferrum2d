@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn engine_collision_events_report_enter_stay_and_exit() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     engine.set_collision_lifecycle_events_enabled(true);
@@ -47,7 +47,7 @@ fn engine_collision_events_report_enter_stay_and_exit() {
 
 #[test]
 fn engine_collision_events_report_trigger_lifecycle_counts() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     engine.set_collision_lifecycle_events_enabled(true);
@@ -95,7 +95,7 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
 
 #[test]
 fn engine_collision_lifecycle_events_are_opt_in() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -116,7 +116,7 @@ fn engine_collision_lifecycle_events_are_opt_in() {
 
 #[test]
 fn engine_collision_events_include_shooter_hit_before_despawn() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -144,7 +144,7 @@ fn engine_collision_events_include_shooter_hit_before_despawn() {
 
 #[test]
 fn shooter_hit_particle_preset_spawns_on_bullet_enemy_hit() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -171,7 +171,7 @@ fn shooter_hit_particle_preset_spawns_on_bullet_enemy_hit() {
 
 #[test]
 fn shooter_hit_particles_require_scene_preset_binding() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -191,7 +191,7 @@ fn shooter_hit_particles_require_scene_preset_binding() {
 
 #[test]
 fn shooter_non_lethal_enemy_hit_starts_tint_tween() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
@@ -227,7 +227,7 @@ fn shooter_non_lethal_enemy_hit_starts_tint_tween() {
 
 #[test]
 fn shooter_lethal_enemy_hit_does_not_start_tint_tween() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);

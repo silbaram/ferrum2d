@@ -1,6 +1,6 @@
 use super::motion::Velocity;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsMaterial {
     pub restitution: f32,
     pub friction: f32,

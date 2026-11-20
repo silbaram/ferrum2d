@@ -8,6 +8,11 @@ use super::super::Engine;
 #[wasm_bindgen]
 impl Engine {
     pub fn query_point_bodies(&mut self, x: f32, y: f32, query_mask_bits: u32) -> u32 {
+        if let Some(count) =
+            self.query_unified_planar_point(Transform2D { x, y }, query_mask_bits, None)
+        {
+            return count;
+        }
         CollisionSystem::point_query_into(
             &self.world,
             Transform2D { x, y },
@@ -31,6 +36,13 @@ impl Engine {
             self.physics_query_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_point(
+            Transform2D { x, y },
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::point_query_with_height_span_into(
             &self.world,
             Transform2D { x, y },
@@ -54,6 +66,13 @@ impl Engine {
             self.physics_query_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_shape(
+            CollisionQueryShape::Aabb(bounds),
+            query_mask_bits,
+            None,
+        ) {
+            return count;
+        }
         CollisionSystem::aabb_query_into(
             &self.world,
             bounds,
@@ -84,6 +103,13 @@ impl Engine {
             self.physics_query_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_shape(
+            CollisionQueryShape::Aabb(bounds),
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::aabb_query_with_height_span_into(
             &self.world,
             bounds,
@@ -101,6 +127,16 @@ impl Engine {
         radius: f32,
         query_mask_bits: u32,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_shape(
+            CollisionQueryShape::Circle {
+                center: Transform2D { x, y },
+                radius,
+            },
+            query_mask_bits,
+            None,
+        ) {
+            return count;
+        }
         CollisionSystem::circle_query_into(
             &self.world,
             Transform2D { x, y },
@@ -126,6 +162,16 @@ impl Engine {
             self.physics_query_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_shape(
+            CollisionQueryShape::Circle {
+                center: Transform2D { x, y },
+                radius,
+            },
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::circle_query_with_height_span_into(
             &self.world,
             Transform2D { x, y },

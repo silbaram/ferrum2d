@@ -5,7 +5,7 @@ use super::{
 use crate::collision::AabbBounds;
 use crate::components::{AabbCollider, CollisionLayer, HeightSpan, Transform2D};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct TileCollisionRect {
     pub(super) tile_index: usize,
     pub(super) min_column: u32,
@@ -15,10 +15,11 @@ pub(super) struct TileCollisionRect {
     pub(super) height_span: Option<HeightSpan>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct TileCollisionChunkCache {
     pub(super) chunk_columns: u32,
     pub(super) chunk_rows: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) chunks: Vec<Vec<TileCollisionRect>>,
     pub(super) last_rebuilt_chunks: u32,
     pub(super) total_rebuilt_chunks: u32,

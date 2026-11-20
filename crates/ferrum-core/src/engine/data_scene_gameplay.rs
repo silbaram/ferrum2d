@@ -12,13 +12,14 @@ use super::scenes::SceneMode;
 use super::Engine;
 
 /// Scene-owned gameplay execution; no Shooter state or browser callbacks.
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneGameplay {
     pub(super) combat: super::data_scene_combat::DataSceneCombat,
     enabled: bool,
     interaction_input_action: u32,
     previous_input: InputState,
     collision_scratch: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     collision_pairs: Vec<CollisionPair>,
 }
 
@@ -50,6 +51,7 @@ impl DataSceneGameplay {
         input: InputState,
         latched_presses: InputState,
         events: &mut Vec<GameplayEvent>,
+        mut native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         // A new sampled press remains an edge even when the preceding fixed step
         // also consumed a short pulse and therefore ended with a synthetic down state.
@@ -65,12 +67,25 @@ impl DataSceneGameplay {
             return;
         }
         if interact {
-            self.interactions(world, events);
+            self.interactions(world, events, native.as_deref());
         }
         if !world.has_pickups() {
             return;
         }
-        if self.combat.enabled {
+        if let Some(runtime) = native.as_mut() {
+            let pairs = runtime.gameplay_collision_pairs();
+            self.collision_pairs.clear();
+            let limit = if self.combat.enabled {
+                4096
+            } else {
+                pairs.len()
+            };
+            self.collision_pairs
+                .extend_from_slice(&pairs[..pairs.len().min(limit)]);
+            if pairs.len() > limit {
+                self.combat.capped();
+            }
+        } else if self.combat.enabled {
             if !CollisionSystem::build_pairs_bounded_into(
                 &mut self.collision_scratch,
                 world,
@@ -93,7 +108,12 @@ impl DataSceneGameplay {
         }
     }
 
-    fn interactions(&self, world: &mut World, events: &mut Vec<GameplayEvent>) {
+    fn interactions(
+        &self,
+        world: &mut World,
+        events: &mut Vec<GameplayEvent>,
+        native: Option<&super::unified_physics::UnifiedPhysicsRuntime>,
+    ) {
         let Some(actor) = world.primary_actor_entity() else {
             return;
         };
@@ -107,7 +127,6 @@ impl DataSceneGameplay {
             };
             if (interaction.once && interaction.consumed)
                 || !world.gameplay_variable_comparison_matches(interaction.guard)
-                || !world.height_spans_allow_at(actor.id as usize, index)
             {
                 continue;
             }
@@ -120,7 +139,18 @@ impl DataSceneGameplay {
             let Some(target) = world.transform(source) else {
                 continue;
             };
-            let distance = (target.x - position.x).powi(2) + (target.y - position.y).powi(2);
+            let distance = if let Some(runtime) = native {
+                let Some(distance) = runtime.interaction_distance_squared(world, actor, source)
+                else {
+                    continue;
+                };
+                distance
+            } else {
+                if !world.height_spans_allow_at(actor.id as usize, index) {
+                    continue;
+                }
+                (target.x - position.x).powi(2) + (target.y - position.y).powi(2)
+            };
             if distance > interaction.radius * interaction.radius {
                 continue;
             }
@@ -258,6 +288,12 @@ impl Engine {
         {
             return false;
         }
+        if let Some(runtime) = self.unified_physics.as_mut() {
+            self.data_scene
+                .gameplay
+                .combat
+                .release_native_navigation(runtime);
+        }
         self.data_scene.gameplay.combat.reconfigure(
             combat_enabled,
             &mut self.world,
@@ -298,6 +334,7 @@ impl Engine {
                 &mut self.frame_buffers.gameplay_events,
                 &mut self.frame_buffers.effect_events,
                 delta,
+                self.unified_physics.as_mut(),
             );
             let spatial = self
                 .spatial_scene
@@ -306,17 +343,26 @@ impl Engine {
             self.data_scene.movement_animation.update(
                 &mut self.world,
                 if spatial {
-                    self.spatial_scene.navigation.animation_target()
+                    self.unified_physics.as_ref().map_or_else(
+                        || self.spatial_scene.navigation.animation_target(),
+                        |native| native.spatial_actor_animation_target(),
+                    )
                 } else {
                     self.data_scene.movement.animation_target()
                 },
                 if spatial {
-                    self.spatial_scene.navigation.animation_ended()
+                    self.unified_physics.as_ref().map_or_else(
+                        || self.spatial_scene.navigation.animation_ended(),
+                        |native| native.spatial_actor_animation_ended(),
+                    )
                 } else {
                     self.data_scene.movement.animation_ended()
                 },
                 if spatial {
-                    self.spatial_scene.navigation.animation_last_motion()
+                    self.unified_physics.as_ref().map_or_else(
+                        || self.spatial_scene.navigation.animation_last_motion(),
+                        |native| native.actor_navigation.last_motion,
+                    )
                 } else {
                     self.data_scene.movement.animation_last_motion()
                 },
@@ -327,7 +373,10 @@ impl Engine {
                 input,
                 latched_presses,
                 &mut self.frame_buffers.gameplay_events,
+                self.unified_physics.as_mut(),
             );
         }
     }
 }
+
+mod file_admission;

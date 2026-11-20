@@ -9,7 +9,7 @@ pub(super) const DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR: f32 = 0.2;
 pub(super) const MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY: f32 = 120.0;
 pub(super) const DEFAULT_RESTITUTION_VELOCITY_THRESHOLD: f32 = 1.0;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RigidBodyStepConfig {
     pub gravity: Velocity,
     pub velocity_iterations: u32,
@@ -43,7 +43,7 @@ impl Default for RigidBodyStepConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RigidBodyStepStats {
     pub substeps: u32,
     pub dynamic_bodies: u32,
@@ -84,3 +84,5 @@ pub struct RigidBodyIslandStats {
     pub sleeping_islands: u32,
     pub largest_island_bodies: u32,
 }
+
+mod file_output_admission;

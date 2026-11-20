@@ -28,7 +28,7 @@ fn start_shooter_playing(engine: &mut Engine) {
 }
 
 fn configure_mass_horde_engine() -> Engine {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.set_shooter_config(
         MASS_HORDE_WORLD_WIDTH,
         MASS_HORDE_WORLD_HEIGHT,

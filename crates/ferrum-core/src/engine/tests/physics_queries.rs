@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn engine_query_point_bodies_writes_bulk_result_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -34,7 +34,7 @@ fn engine_query_point_bodies_writes_bulk_result_for_wasm() {
 
 #[test]
 fn engine_query_aabb_and_circle_bodies_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let player = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -68,7 +68,7 @@ fn engine_query_aabb_and_circle_bodies_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_query_advanced_shape_bodies_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let first_enemy = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Enemy);
@@ -122,7 +122,7 @@ fn engine_query_advanced_shape_bodies_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_raycast_and_segment_cast_bodies_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let first_enemy = spawn_test_body(&mut engine.world, 20.0, 0.0, CollisionLayer::Enemy);
@@ -185,7 +185,7 @@ fn engine_raycast_and_segment_cast_bodies_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_raycast_and_segment_cast_tile_obstacles_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 1]);
@@ -229,7 +229,7 @@ fn engine_raycast_and_segment_cast_tile_obstacles_write_bulk_results_for_wasm() 
 
 #[test]
 fn engine_physics_queries_reuse_scratch_buffers_across_calls() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     for index in 0..24 {
@@ -300,7 +300,7 @@ fn engine_physics_queries_reuse_scratch_buffers_across_calls() {
 
 #[test]
 fn engine_shape_cast_bodies_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let first_enemy = spawn_test_body(&mut engine.world, 20.0, 0.0, CollisionLayer::Enemy);
@@ -408,7 +408,7 @@ fn engine_shape_cast_bodies_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_query_nearest_tile_obstacle_stores_scalar_result_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1]);
@@ -428,7 +428,7 @@ fn engine_query_nearest_tile_obstacle_stores_scalar_result_for_wasm() {
 
 #[test]
 fn engine_tile_obstacle_height_span_queries_write_filtered_wasm_results() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tile(2, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
@@ -468,7 +468,7 @@ fn engine_tile_obstacle_height_span_queries_write_filtered_wasm_results() {
 
 #[test]
 fn engine_tile_obstacle_height_span_queries_clear_results_on_invalid_filter() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     assert!(engine.set_shooter_tile_height_span(1, 1, 0.0, 8.0));
@@ -512,7 +512,7 @@ fn engine_tile_obstacle_height_span_queries_clear_results_on_invalid_filter() {
 
 #[test]
 fn engine_shape_cast_aabb_tile_obstacles_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 1]);
@@ -546,7 +546,7 @@ fn engine_shape_cast_aabb_tile_obstacles_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_shape_cast_aabb_tile_obstacles_respects_one_way_platforms() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tile_one_way_platform(1);
@@ -576,7 +576,7 @@ fn engine_shape_cast_aabb_tile_obstacles_respects_one_way_platforms() {
 
 #[test]
 fn engine_query_aabb_tile_obstacle_contacts_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 1]);
@@ -610,7 +610,7 @@ fn engine_query_aabb_tile_obstacle_contacts_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_query_aabb_tile_obstacle_manifolds_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 1]);
@@ -649,7 +649,7 @@ fn engine_query_aabb_tile_obstacle_manifolds_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_set_shooter_tilemap_tile_refreshes_wasm_tile_obstacle_query() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(2, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 0]);
 
@@ -670,7 +670,7 @@ fn engine_set_shooter_tilemap_tile_refreshes_wasm_tile_obstacle_query() {
 
 #[test]
 fn engine_tilemap_rect_edit_can_enforce_rebuild_budget_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(0, 40, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1; 40]);
 
@@ -684,7 +684,7 @@ fn engine_tilemap_rect_edit_can_enforce_rebuild_budget_for_wasm() {
 
 #[test]
 fn engine_query_tilemap_navigation_waypoint_stores_scalar_result_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(
         0,
@@ -710,7 +710,7 @@ fn engine_query_tilemap_navigation_waypoint_stores_scalar_result_for_wasm() {
 
 #[test]
 fn engine_query_tilemap_navigation_path_exposes_buffer_and_debug_lines() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(0, 3, 2, 10.0, 10.0, 0.0, 0.0, true, vec![0; 6]);
     assert!(engine.set_shooter_tilemap_navigation_cost(0, 1, 0, 20));
@@ -743,7 +743,7 @@ fn engine_query_tilemap_navigation_path_exposes_buffer_and_debug_lines() {
 
 #[test]
 fn engine_query_tilemap_navigation_with_height_span_filters_obstacles() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
     assert!(engine.set_shooter_tile_height_span(1, 1, 0.0, 8.0));
@@ -780,7 +780,7 @@ fn engine_query_tilemap_navigation_with_height_span_filters_obstacles() {
 
 #[test]
 fn engine_set_shooter_tile_hd2d_metadata_updates_navigation_obstacles() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
 
@@ -798,7 +798,7 @@ fn engine_set_shooter_tile_hd2d_metadata_updates_navigation_obstacles() {
 
 #[test]
 fn engine_query_tilemap_navigation_between_height_spans_uses_bridge_portal() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
     assert!(
@@ -824,7 +824,7 @@ fn engine_query_tilemap_navigation_between_height_spans_uses_bridge_portal() {
 
 #[test]
 fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.clear_shooter_tilemap();
     engine.camera.x = 15.0;
     engine.camera.y = 5.0;

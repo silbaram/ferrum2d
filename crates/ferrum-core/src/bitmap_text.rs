@@ -1,3 +1,32 @@
+impl BitmapTextSystem {
+    /// HashMap iteration visits backing buckets, including an emptied retained table.
+    pub(crate) fn file_resource_lengths(&self) -> [usize; 2] {
+        [self.fonts.capacity(), self.texts.len()]
+    }
+    pub(crate) fn visit_file_resource_fonts<E>(
+        &self,
+        visit: &mut impl FnMut(u32, u32) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (&id, font) in &self.fonts {
+            visit(id, font.texture_id)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn visit_file_resource_texts<E>(
+        &self,
+        visit: &mut impl FnMut(usize, u32, u32, Option<Entity>, &[SpriteRenderCommand]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (index, (id, text)) in self.texts.iter().enumerate() {
+            let anchor = match text.spec.anchor {
+                WorldTextAnchor::World => None,
+                WorldTextAnchor::Entity(e) => Some(e),
+            };
+            visit(index, *id, text.spec.font_id, anchor, &text.cached_commands)?;
+        }
+        Ok(())
+    }
+}
+
 use std::collections::HashMap;
 
 use crate::camera::Camera2D;
@@ -19,7 +48,7 @@ const MAX_WORLD_TEXTS: usize = 4_096;
 const WORLD_TEXT_STABLE_ID_FLAG: u32 = 0x8000_0000;
 const WORLD_TEXT_STABLE_ID_GLYPH_BITS: u32 = 12;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct BitmapGlyph {
     u0: f32,
     v0: f32,
@@ -32,12 +61,14 @@ struct BitmapGlyph {
     advance: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct BitmapFont {
     texture_id: u32,
     line_height: f32,
     fallback: Option<char>,
+    #[serde(with = "crate::checkpoint_codec::map")]
     glyphs: HashMap<char, BitmapGlyph>,
+    #[serde(with = "crate::checkpoint_codec::map")]
     kernings: HashMap<(char, char), f32>,
 }
 
@@ -156,7 +187,7 @@ impl BitmapGlyph {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum WorldTextAlignment {
     #[default]
     Left,
@@ -175,19 +206,20 @@ impl WorldTextAlignment {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum WorldTextAnchor {
     World,
     Entity(Entity),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct WorldTextSpec {
     pub(crate) font_id: u32,
     pub(crate) text: String,
     pub(crate) x: f32,
     pub(crate) y: f32,
     pub(crate) scale: f32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub(crate) color: [f32; 4],
     pub(crate) max_width: f32,
     pub(crate) alignment: WorldTextAlignment,
@@ -270,9 +302,10 @@ struct LayoutLine {
     width: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct WorldText {
     spec: WorldTextSpec,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     cached_commands: Vec<SpriteRenderCommand>,
     block_height: f32,
 }
@@ -424,10 +457,12 @@ fn finite_sum(left: f32, right: f32) -> Option<f32> {
     value.is_finite().then_some(value)
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BitmapTextSystem {
+    #[serde(with = "crate::checkpoint_codec::map")]
     fonts: HashMap<u32, BitmapFont>,
     // 변경은 저빈도이므로 id 정렬을 유지해 frame 순회와 alpha blending을 재현 가능하게 한다.
+    #[serde(with = "crate::checkpoint_codec::vector")]
     texts: Vec<(u32, WorldText)>,
     layout_revision: u64,
 }
@@ -963,3 +998,5 @@ mod tests {
         .expect("test font should be valid")
     }
 }
+
+mod file_admission;

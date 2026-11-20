@@ -11,15 +11,21 @@ use super::{
     DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct RigidBodySleepScratch {
     graph: RigidBodyIslandGraph,
     collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     manifolds: Vec<ColliderCollisionManifold>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     root_flags: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     secondary_root_flags: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     node_flags: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     seen_roots: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     body_indices: Vec<usize>,
 }
 
@@ -378,3 +384,5 @@ mod tests {
         entity
     }
 }
+
+mod file_scratch_admission;

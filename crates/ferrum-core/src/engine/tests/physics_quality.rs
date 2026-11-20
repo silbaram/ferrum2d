@@ -3,7 +3,7 @@ use crate::components::{AngularVelocity, Rotation2D};
 
 #[test]
 fn physics_render_interpolation_resume_and_follow_camera_use_displayed_pose() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let body = super::data_scene_visuals::sprite(&mut e, 1, 100.0, 100.0, 0);
     e.world
@@ -55,7 +55,7 @@ fn physics_render_interpolation_resume_and_follow_camera_use_displayed_pose() {
 
 #[test]
 fn physics_render_interpolation_leaves_simulation_and_teleports_untouched() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let body = super::data_scene_visuals::sprite(&mut e, 1, 100.0, 100.0, 0);
     e.world
@@ -109,7 +109,7 @@ fn physics_render_interpolation_leaves_simulation_and_teleports_untouched() {
 
 #[test]
 fn physics_solver_state_restores_accumulators_and_rejects_whole_invalid_batch() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.world = World::default();
     let a = spawn_test_body(&mut e.world, 0.0, 0.0, CollisionLayer::Player);
     let b = spawn_test_body(&mut e.world, 50.0, 0.0, CollisionLayer::Player);
@@ -148,7 +148,7 @@ fn physics_body_bulk_restore_rejects_collider_type_without_mutating_any_body() {
             PHYSICS_COLLIDER_TYPE_CIRCLE,
             u32::MAX,
         ] {
-            let mut e = Engine::new();
+            let mut e = crate::engine::legacy_test_fixture::engine();
             e.world = World::default();
             let mut handles = Vec::new();
             for index in 0..body_count {
@@ -182,7 +182,7 @@ fn physics_body_bulk_restore_rejects_collider_type_without_mutating_any_body() {
 
 #[test]
 fn physics_body_bulk_restore_validates_all_entries_before_mutating() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.world = World::default();
     let a = spawn_test_body(&mut e.world, 0.0, 0.0, CollisionLayer::Player);
     let b = spawn_test_body(&mut e.world, 50.0, 0.0, CollisionLayer::Player);
@@ -208,7 +208,7 @@ fn physics_body_bulk_restore_validates_all_entries_before_mutating() {
 fn physics_restore_rollback_preserves_pending_breaks_and_impact_queues() {
     use crate::components::{DistanceJoint, RigidContactImpulse};
 
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     e.configure_physics_diagnostics(true);
     let a = spawn_test_body(&mut e.world, 0.0, 0.0, CollisionLayer::Player);
@@ -285,7 +285,7 @@ fn physics_restore_rollback_preserves_pending_breaks_and_impact_queues() {
 
 #[test]
 fn physics_contact_impacts_include_ccd_and_clear_each_frame() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = spawn_test_body(&mut e.world, 0.0, 0.0, CollisionLayer::Player);
     let wall = spawn_test_body(&mut e.world, 50.0, 0.0, CollisionLayer::Wall);

@@ -8,15 +8,16 @@ use crate::components::{HeightSpan, RigidBodyType, Transform2D};
 use crate::entity::Entity;
 use crate::world::World;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MovingPlatform {
     pub origin: Surface,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub offset: [f32; 3],
     pub duration: f64,
     pub phase: f64,
 }
 impl MovingPlatform {
-    fn surface_at(self, phase: f64) -> Surface {
+    pub(crate) fn surface_at(self, phase: f64) -> Surface {
         let fraction = (phase / self.duration).min(2.0);
         let fraction = if fraction > 1.0 {
             2.0 - fraction
@@ -123,7 +124,41 @@ impl SpatialScene {
         self.surfaces = surfaces;
         self.rebuild_platform_geometry();
     }
+    // Called only after the native fixed tick succeeds. Queries and failed ticks
+    // cannot advance authoring progress or rebuild the displayed surface early.
+    pub(crate) fn finish_native_platform_step(
+        &mut self,
+        phases: &[(u32, f64)],
+        carried: u32,
+        blocked: u32,
+    ) {
+        self.platform_carried = carried;
+        self.platform_blocked = blocked;
+        let mut changed = false;
+        for &(id, phase) in phases {
+            let Some(platform) = self.moving_platforms.iter_mut().find(|p| p.origin.id == id)
+            else {
+                continue;
+            };
+            platform.phase = phase;
+            let next = platform.surface_at(phase);
+            if let Some(index) = self.surfaces.iter().position(|s| s.id == id) {
+                let old = self.surfaces[index];
+                if old.bounds != next.bounds || old.base != next.base || old.heights != next.heights
+                {
+                    self.surfaces[index] = next;
+                    self.sync_platform_physics(index);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.refresh_platform_render();
+        }
+    }
+
     pub(crate) fn rebuild_platform_geometry(&mut self) {
+        self.terrain.clear();
         for index in 0..self.surfaces.len() {
             self.sync_platform_physics(index);
         }
@@ -169,9 +204,25 @@ impl SpatialScene {
         );
     }
     fn refresh_platform_render(&mut self) {
-        self.terrain.clear();
-        for surface in &self.surfaces {
-            append_surface(&mut self.terrain, *surface);
+        if self.terrain.len() != self.surfaces.len() * 36 {
+            self.terrain.clear();
+            for surface in &self.surfaces {
+                append_surface(&mut self.terrain, *surface);
+            }
+        } else {
+            // Only bounded moving surface slices change during an ordinary tick.
+            // Static terrain vertices are retained instead of retessellating all surfaces.
+            for (index, surface) in self.surfaces.iter().enumerate() {
+                if !self
+                    .moving_platforms
+                    .iter()
+                    .any(|p| p.origin.id == surface.id)
+                {
+                    continue;
+                }
+                self.terrain[index * 36..index * 36 + 36]
+                    .copy_from_slice(&super::surface_vertices(*surface));
+            }
         }
         self.terrain_draw_ranges.clear();
         self.navigation.cancel();
@@ -409,6 +460,88 @@ fn carry_overlaps(
             })
         })
     })
+}
+
+impl SpatialScene {
+    pub(super) fn validate_file_platforms(
+        &self,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{bits, finite, require, surface, Field, Problem};
+        b.work(self.moving_platforms.len())?;
+        require(
+            self.moving_platforms.len() <= 16,
+            Field::Platform,
+            0,
+            Problem::Length,
+        )?;
+        b.product(
+            self.moving_platforms.len(),
+            self.surfaces.len() + self.moving_platforms.len() + self.connections.len(),
+        )?;
+        for (i, p) in self.moving_platforms.iter().enumerate() {
+            require(
+                surface(p.origin)
+                    && p.origin.walkable
+                    && p.origin.kind != 2
+                    && p.origin.heights[0] == p.origin.heights[1]
+                    && finite(&p.offset)
+                    && p.offset.iter().all(|v| v.abs() <= 1e6)
+                    && p.duration.is_finite()
+                    && (0.05..=3600.).contains(&p.duration)
+                    && p.phase.is_finite()
+                    && p.phase >= 0.
+                    && p.phase < 2. * p.duration,
+                Field::Platform,
+                i,
+                Problem::Range,
+            )?;
+            require(
+                !self.moving_platforms[..i]
+                    .iter()
+                    .any(|v| v.origin.id == p.origin.id),
+                Field::Platform,
+                i,
+                Problem::Duplicate,
+            )?;
+            let Some(index) = self.surfaces.iter().position(|v| v.id == p.origin.id) else {
+                return Err(super::file_admission::Error::Invalid {
+                    field: Field::Platform,
+                    index: i,
+                    problem: Problem::Reference,
+                });
+            };
+            require(
+                !self
+                    .connections
+                    .iter()
+                    .any(|c| c.from == index || c.to == index),
+                Field::Platform,
+                i,
+                Problem::Reference,
+            )?;
+            let current = self.surfaces[index];
+            let expected = p.surface_at(p.phase);
+            require(
+                bits(&current.bounds, &expected.bounds)
+                    && bits(&current.heights, &expected.heights)
+                    && bits(&[current.base], &[expected.base])
+                    && current.id == expected.id
+                    && current.floor == expected.floor
+                    && current.kind == expected.kind
+                    && current.ramp_x == expected.ramp_x
+                    && current.walkable == expected.walkable
+                    && current.is_rendered == expected.is_rendered
+                    && current.texture == expected.texture
+                    && current.receiver_masks == expected.receiver_masks
+                    && bits(&current.color, &expected.color),
+                Field::Platform,
+                i,
+                Problem::Cache,
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

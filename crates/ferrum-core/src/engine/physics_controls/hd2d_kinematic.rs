@@ -38,6 +38,30 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() || self.world.collider(entity).is_none() {
             return false;
         }
+        let config = Hd2dKinematicControllerConfig::new(
+            CollisionMask::from_bits(solid_mask_bits),
+            max_iterations,
+        )
+        .with_step_height(max_step_height)
+        .with_drop_height(max_drop_height)
+        .with_ledge_drop(allow_ledge_drop);
+        if let Some(result) = self.move_unified_hd2d_kinematic(
+            entity,
+            Velocity {
+                vx: displacement_x,
+                vy: displacement_y,
+            },
+            config,
+        ) {
+            let Ok(result) = result else {
+                self.hd2d_kinematic_flags = 0;
+                self.hd2d_kinematic_hit_count = 0;
+                self.hd2d_kinematic_elevation_delta = 0.;
+                return false;
+            };
+            self.store_hd2d_kinematic_result(result);
+            return self.store_physics_entity_snapshot(entity);
+        }
         let result = PhysicsSystem::move_hd2d_kinematic_with_tilemap_and_counters(
             &mut self.world,
             &self.tilemap,
@@ -46,13 +70,7 @@ impl Engine {
                 vx: displacement_x,
                 vy: displacement_y,
             },
-            Hd2dKinematicControllerConfig::new(
-                CollisionMask::from_bits(solid_mask_bits),
-                max_iterations,
-            )
-            .with_step_height(max_step_height)
-            .with_drop_height(max_drop_height)
-            .with_ledge_drop(allow_ledge_drop),
+            config,
             Some(&mut self.physics_counters),
         );
         self.store_hd2d_kinematic_result(result);

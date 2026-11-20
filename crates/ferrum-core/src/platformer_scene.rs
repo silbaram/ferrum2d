@@ -1,3 +1,12 @@
+impl PlatformerScene {
+    /// Fixed dependency of this build's native scene/particle generation code;
+    /// it is not a persisted catalog or proof of a loaded platform texture.
+    pub(crate) const fn file_program_texture_id() -> u32 {
+        DEFAULT_TEXTURE_ID
+    }
+}
+
+mod file_admission;
 use std::f32::consts::TAU;
 
 use crate::camera::Camera2D;
@@ -18,7 +27,8 @@ use crate::input::InputState;
 use crate::particles::{ParticlePreset, ParticleRange, ParticleSystem};
 use crate::physics::{
     MovingPlatformCarryConfig, OneWayPlatformConfig, PhysicsCounters, PhysicsSystem,
-    PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerState,
+    PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
+    PlatformerControllerState,
 };
 use crate::world::{
     EntityTemplate, EntityTemplateCollider, PrefabEntitySpawnRequest, PrefabSpriteTint, World,
@@ -105,7 +115,25 @@ impl MovingPlatformPath {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PlatformerPlatformPlan {
+    pub(crate) entity: Entity,
+    pub(crate) start: Transform2D,
+    pub(crate) end: Transform2D,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PlatformerNativePlan {
+    pub(crate) player: Option<Entity>,
+    pub(crate) platform: Option<PlatformerPlatformPlan>,
+    pub(crate) input: PlatformerControllerInput,
+    pub(crate) config: PlatformerControllerConfig,
+    pub(crate) state: PlatformerControllerState,
+    elapsed_play_seconds: f32,
+    moving_platform_phase: f32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PlatformerScene {
     game_state: GameState,
     score: u32,
@@ -185,6 +213,93 @@ impl PlatformerScene {
         self.rebuild_level(world, camera, GameState::Playing);
     }
 
+    /// Samples one input edge and handles state transitions without advancing physics.
+    pub(crate) fn prepare_native_tick(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        delta: f32,
+    ) -> Option<PlatformerControllerInput> {
+        let controller_input = match self.game_state {
+            GameState::Title | GameState::GameOver => {
+                if action_pressed(input) {
+                    self.reset_playing(world, camera);
+                }
+                None
+            }
+            GameState::Playing if delta.is_finite() && delta > 0.0 => {
+                Some(PlatformerControllerInput::new(
+                    f32::from(input.d) - f32::from(input.a),
+                    input.space == 1 && !self.jump_was_down,
+                ))
+            }
+            GameState::Playing | GameState::Paused | GameState::LevelComplete => None,
+        };
+        // Even a title/restart or invalid-duration frame consumes the held state.
+        self.jump_was_down = input.space == 1;
+        self.update_camera(world, camera);
+        controller_input
+    }
+
+    /// Plans an accepted fixed step without consuming timers or moving entities.
+    pub(crate) fn plan_native_step(
+        &self,
+        world: &World,
+        delta: f32,
+        input: PlatformerControllerInput,
+    ) -> PlatformerNativePlan {
+        let player = self
+            .player
+            .filter(|&entity| world.transform(entity).is_some());
+        let tuning = player.map_or_else(PlatformerControllerTuning::default, |entity| {
+            platformer_controller_tuning(world, entity)
+        });
+        let platform = self.plan_moving_platform(world, delta);
+        PlatformerNativePlan {
+            player,
+            platform: platform.map(|(plan, _)| plan),
+            input,
+            config: platformer_config(tuning),
+            state: self.controller_state,
+            elapsed_play_seconds: self.elapsed_play_seconds + delta,
+            moving_platform_phase: platform.map_or(self.moving_platform_phase, |(_, phase)| phase),
+        }
+    }
+
+    /// Commits timers and reactions only after native movement has succeeded.
+    pub(crate) fn finish_native_tick(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        plan: PlatformerNativePlan,
+        state: PlatformerControllerState,
+        result: Option<PlatformerControllerResult>,
+        landing_particles: Option<&mut PlatformerParticleBurstSink<'_>>,
+    ) {
+        self.elapsed_play_seconds = plan.elapsed_play_seconds;
+        self.score = self.elapsed_play_seconds.floor() as u32;
+        self.moving_platform_phase = plan.moving_platform_phase;
+        self.controller_state = state;
+        self.player_was_grounded = match (plan.player, result) {
+            (Some(player), Some(result)) => {
+                if !self.player_was_grounded && result.grounded {
+                    spawn_landing_reaction_particles(world, player, landing_particles);
+                }
+                result.grounded
+            }
+            _ => false,
+        };
+        if self
+            .player
+            .and_then(|player| world.transform(player))
+            .is_some_and(|transform| transform.y > WORLD_HEIGHT + PLAYER_HEIGHT * 2.0)
+        {
+            self.game_state = GameState::GameOver;
+        }
+        self.update_camera(world, camera);
+    }
+
     pub(crate) fn update(
         &mut self,
         world: &mut World,
@@ -231,6 +346,10 @@ impl PlatformerScene {
 
     pub(crate) fn player_entity(&self) -> Option<Entity> {
         self.player
+    }
+
+    pub(crate) fn moving_platform_entity(&self) -> Option<Entity> {
+        self.moving_platform
     }
 
     pub(crate) fn game_state(&self) -> GameState {
@@ -375,25 +494,19 @@ impl PlatformerScene {
     }
 
     fn update_moving_platform(&mut self, world: &mut World, delta: f32) {
-        let Some(platform) = self.moving_platform else {
+        let Some((plan, phase)) = self.plan_moving_platform(world, delta) else {
             return;
         };
-        let Some(current) = world.transform(platform) else {
-            return;
-        };
-        let path = moving_platform_path(world, platform);
-        self.moving_platform_phase =
-            (self.moving_platform_phase + delta * path.phase_speed).rem_euclid(TAU);
-        let next = path.sample(self.moving_platform_phase);
+        self.moving_platform_phase = phase;
         if let Some(player) = self.player {
             let _ = PhysicsSystem::carry_moving_platform(
                 world,
                 player,
                 MovingPlatformCarryConfig::new(
-                    platform,
+                    plan.entity,
                     Velocity {
-                        vx: next.x - current.x,
-                        vy: next.y - current.y,
+                        vx: plan.end.x - plan.start.x,
+                        vy: plan.end.y - plan.start.y,
                     },
                     GROUND_PROBE_DISTANCE,
                     solid_mask(),
@@ -402,7 +515,26 @@ impl PlatformerScene {
                 .with_one_way_platforms(one_way_config()),
             );
         }
-        world.set_transform(platform, next);
+        world.set_transform(plan.entity, plan.end);
+    }
+
+    fn plan_moving_platform(
+        &self,
+        world: &World,
+        delta: f32,
+    ) -> Option<(PlatformerPlatformPlan, f32)> {
+        let entity = self.moving_platform?;
+        let start = world.transform(entity)?;
+        let path = moving_platform_path(world, entity);
+        let phase = (self.moving_platform_phase + delta * path.phase_speed).rem_euclid(TAU);
+        Some((
+            PlatformerPlatformPlan {
+                entity,
+                start,
+                end: path.sample(phase),
+            },
+            phase,
+        ))
     }
 
     fn update_player(
@@ -715,6 +847,32 @@ fn spawn_body_from_request(world: &mut World, request: PlatformerBodySpawnReques
 fn action_pressed(input: InputState) -> bool {
     input.space == 1 || input.enter == 1 || input.mouse_left == 1
 }
+
+#[cfg(test)]
+impl PlatformerScene {
+    pub(crate) fn corrupt_builtin_file_fixture(&mut self, case: usize) {
+        match case {
+            0 => self.elapsed_play_seconds = f32::NAN,
+            1 => self.moving_platform_phase = f32::INFINITY,
+            2 => self.controller_state.coyote_time_remaining = f32::NAN,
+            3 => self.player = self.moving_platform,
+            4 => self.score = 1,
+            5 => self.moving_platform_phase = -1.,
+            6 => {
+                self.player = Some(crate::entity::Entity {
+                    id: u32::MAX,
+                    generation: 0,
+                })
+            }
+            7 => self.controller_state.jump_buffer_remaining = -1.,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "platformer_scene/native_phase_tests.rs"]
+mod native_phase_tests;
 
 #[cfg(test)]
 mod tests {

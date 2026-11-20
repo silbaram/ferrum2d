@@ -6,7 +6,7 @@ fn surface(x: f32, y: f32, w: f32, d: f32, a: f32, b: f32) -> [f32; 11] {
     [x, y, w, d, 0., a, b, 1., 1., 1., 1.]
 }
 pub(super) fn setup(multifloor: bool) -> (Engine, Entity) {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     assert!(e.configure_spatial_camera(&[
         0., 0., 100., 200., 0., 16., 0., 200., 0.1, 1000., 400., 300.

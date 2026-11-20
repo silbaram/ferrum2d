@@ -43,7 +43,7 @@ struct ShooterActionTriggerDispatchContext<'a, 'events> {
     branch_result: Option<PreparedActionTriggerBranchResult>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct ActionTriggerPhaseProcessResult {
     pub(in crate::shooter_scene) triggers_collected: usize,
     pub(in crate::shooter_scene) triggers_processed: usize,

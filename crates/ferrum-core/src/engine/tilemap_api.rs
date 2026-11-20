@@ -292,6 +292,16 @@ impl Engine {
             return false;
         };
 
+        let Some(distance) = super::navigation_distance::segment(
+            Transform2D {
+                x: from_x,
+                y: from_y,
+            },
+            waypoint,
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            return false;
+        };
         self.physics_query_result = PhysicsQueryResult {
             entity_id: 0,
             entity_generation: 0,
@@ -299,7 +309,7 @@ impl Engine {
             tile_index: 0,
             point_x: waypoint.x,
             point_y: waypoint.y,
-            distance: ((waypoint.x - from_x).powi(2) + (waypoint.y - from_y).powi(2)).sqrt(),
+            distance,
         };
         true
     }
@@ -349,6 +359,10 @@ impl Engine {
             return false;
         };
 
+        let Some(distance) = super::navigation_distance::segment(from, waypoint) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            return false;
+        };
         self.physics_query_result = PhysicsQueryResult {
             entity_id: 0,
             entity_generation: 0,
@@ -356,7 +370,7 @@ impl Engine {
             tile_index: 0,
             point_x: waypoint.x,
             point_y: waypoint.y,
-            distance: ((waypoint.x - from_x).powi(2) + (waypoint.y - from_y).powi(2)).sqrt(),
+            distance,
         };
         true
     }
@@ -388,12 +402,16 @@ impl Engine {
             return false;
         };
 
-        let (first, distance) = Self::store_tilemap_navigation_path(
+        let Some((first, distance)) = Self::store_tilemap_navigation_path(
             &mut self.frame_buffers.tilemap_navigation_path_points,
             &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
-        );
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            self.frame_buffers.clear_tilemap_navigation_output();
+            return false;
+        };
         self.physics_query_result = PhysicsQueryResult {
             entity_id: 0,
             entity_generation: 0,
@@ -467,12 +485,16 @@ impl Engine {
             return false;
         };
 
-        let (first, distance) = Self::store_hd2d_tilemap_navigation_path(
+        let Some((first, distance)) = Self::store_hd2d_tilemap_navigation_path(
             &mut self.frame_buffers.tilemap_navigation_path_points,
             &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
-        );
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            self.frame_buffers.clear_tilemap_navigation_output();
+            return false;
+        };
         self.physics_query_result = PhysicsQueryResult {
             entity_id: 0,
             entity_generation: 0,
@@ -528,13 +550,17 @@ impl Engine {
             return false;
         };
 
-        let (first, distance) = Self::store_tilemap_navigation_path_with_height_span(
+        let Some((first, distance)) = Self::store_tilemap_navigation_path_with_height_span(
             &mut self.frame_buffers.tilemap_navigation_path_points,
             &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
             height_span,
-        );
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            self.frame_buffers.clear_tilemap_navigation_output();
+            return false;
+        };
         self.physics_query_result = PhysicsQueryResult {
             entity_id: 0,
             entity_generation: 0,

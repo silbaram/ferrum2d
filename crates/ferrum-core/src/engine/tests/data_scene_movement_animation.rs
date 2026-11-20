@@ -21,7 +21,7 @@ fn poses() -> Vec<u32> {
 }
 
 fn setup() -> (Engine, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 1, 50.0, 50.0, 0);
     let mut collider = engine.world.collider(actor).unwrap();
@@ -41,6 +41,31 @@ fn state(engine: &Engine, actor: Entity) -> Vec<f64> {
 
 fn go(engine: &mut Engine, x: f32, y: f32, speed: f32) {
     assert!(engine.move_data_scene_actor_to(x, y, speed, 0.0, u32::MAX, true));
+}
+
+#[test]
+fn planar_actor_native_animation_tracks_route_direction_and_arrival_once() {
+    for (direction, x, y) in [(0, 50., 10.), (1, 50., 90.), (2, 10., 50.), (3, 90., 50.)] {
+        let (mut engine, actor) = setup();
+        engine
+            .configure_unified_physics(crate::physics3d::WorldConfig {
+                space: crate::physics3d::Space::PlanarXy,
+                gravity: [0.; 3],
+                step_seconds: 0.01,
+                ..Default::default()
+            })
+            .unwrap();
+        go(&mut engine, x, y, 200.);
+        engine.update(0.01);
+        assert_eq!(state(&engine, actor)[0], f64::from(direction + 4));
+        for _ in 0..30 {
+            engine.update(0.01);
+        }
+        assert_eq!(engine.data_scene_move_status(), 2);
+        assert_eq!(engine.world.transform(actor).unwrap(), Transform2D { x, y });
+        assert_eq!(state(&engine, actor)[0], f64::from(direction));
+        assert_eq!(engine.unified_physics_error(), None);
+    }
 }
 
 #[test]

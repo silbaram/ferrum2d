@@ -1,3 +1,4 @@
+mod file_admission;
 use crate::audio_event::AudioEvent;
 use crate::breakout_scene::{
     breakout_brick_hit_particle_preset, BreakoutParticleBurstSink, BreakoutScene,
@@ -22,14 +23,14 @@ use crate::world::World;
 
 use super::Engine;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum SceneMode {
     #[default]
     BuiltIn,
     Data,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum ActiveScene {
     #[default]
     Shooter,
@@ -37,6 +38,7 @@ pub(super) enum ActiveScene {
     Platformer,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct BuiltInSceneSlots {
     active: ActiveScene,
     shooter: ShooterScene,
@@ -75,8 +77,15 @@ impl BuiltInSceneSlots {
         &self.breakout
     }
 
+    pub(super) fn breakout_mut(&mut self) -> &mut BreakoutScene {
+        &mut self.breakout
+    }
+
     pub(super) const fn platformer(&self) -> &PlatformerScene {
         &self.platformer
+    }
+    pub(super) fn platformer_mut(&mut self) -> &mut PlatformerScene {
+        &mut self.platformer
     }
 
     pub(super) fn use_shooter(&mut self) {
@@ -129,9 +138,11 @@ impl BuiltInSceneSlots {
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneRuntime {
     pub(super) epoch: u32,
     pub(super) gameplay: super::data_scene_gameplay::DataSceneGameplay,
+    #[serde(with = "crate::tilemap::checkpoint_state::State")]
     pub(super) navigation: Tilemap,
     pub(super) navigation_obstacles: super::data_scene_navigation::NavigationObstacles,
     pub(super) movement: super::data_scene_movement::DataSceneMovement,
@@ -214,17 +225,20 @@ impl DataSceneRuntime {
         if self.game_state != GameState::Playing {
             return;
         }
-        context
-            .spatial_scene
-            .step_moving_platforms(context.world, delta);
+        if context.unified_physics.is_none() {
+            context
+                .spatial_scene
+                .step_moving_platforms(context.world, delta);
+        }
         context
             .spatial_scene
             .attachments
             .synchronize_or_restore(context.world, &context.spatial_scene.models);
-        if self
-            .navigation_obstacles
-            .synchronize(context.world, &mut self.navigation)
-        {
+        if self.navigation_obstacles.synchronize(
+            context.world,
+            &mut self.navigation,
+            context.unified_physics.as_deref_mut(),
+        ) {
             self.movement.invalidate_route();
         }
         self.movement_animation.begin_step(
@@ -236,11 +250,17 @@ impl DataSceneRuntime {
                     .spatial_scene
                     .navigation
                     .animation_target()
-                    .is_some()),
+                    .is_some())
+                || context
+                    .unified_physics
+                    .as_ref()
+                    .is_some_and(|native| native.spatial_actor_animation_target().is_some()),
             delta,
         );
         if let Some((entity, speed, step, drop)) = context.spatial_scene.actor {
-            if !context.spatial_scene.update_navigation(
+            if let Some(native) = context.unified_physics.as_deref_mut() {
+                native.prepare_spatial_actor_input(context.spatial_scene, input, delta);
+            } else if !context.spatial_scene.update_navigation(
                 context.world,
                 input,
                 delta,
@@ -266,6 +286,14 @@ impl DataSceneRuntime {
                 input,
                 delta,
                 context.physics_counters,
+                context.unified_physics.as_deref_mut().map(|runtime| {
+                    super::unified_physics::PlanarNavigationContext {
+                        runtime,
+                        config: context.auto_rigid_body_step_config,
+                        tiles: context.tilemap,
+                        spatial: context.spatial_scene,
+                    }
+                }),
             );
         }
         context.world.tick_action_cooldowns(delta);
@@ -282,10 +310,15 @@ impl DataSceneRuntime {
                 camera: context.camera,
                 tilemap: context.tilemap,
             },
+            context.unified_physics.as_deref_mut(),
         );
         context.world.update_with_rigid_body_step(
             delta,
             context.auto_rigid_body_step_enabled,
+            context
+                .unified_physics
+                .as_deref()
+                .is_some_and(|native| native.imports_planar_components()),
             context.gameplay_events,
             context.animation_event_overflow,
         );
@@ -293,9 +326,11 @@ impl DataSceneRuntime {
             .spatial_scene
             .attachments
             .synchronize_or_restore(context.world, &context.spatial_scene.models);
-        context
-            .tilemap
-            .resolve_dynamic_collisions_with_counters(context.world, context.physics_counters);
+        if context.unified_physics.is_none() {
+            context
+                .tilemap
+                .resolve_dynamic_collisions_with_counters(context.world, context.physics_counters);
+        }
     }
 }
 
@@ -352,8 +387,10 @@ pub(super) struct SceneResetContext<'a> {
 }
 
 pub(super) struct SceneUpdateContext<'a> {
+    pub(super) unified_physics: Option<&'a mut super::unified_physics::UnifiedPhysicsRuntime>,
     spatial_scene: &'a mut crate::spatial_scene::SpatialScene,
     auto_rigid_body_step_enabled: bool,
+    auto_rigid_body_step_config: crate::physics::RigidBodyStepConfig,
     pub(super) world: &'a mut World,
     pub(super) camera: &'a mut Camera2D,
     pub(super) input_actions: &'a InputActionRegistry,
@@ -651,6 +688,10 @@ impl BuiltInSceneRuntime for PlatformerScene {
 
 impl Engine {
     pub(super) fn activate_built_in_shooter_scene(&mut self) {
+        let switched = !self.is_built_in_shooter();
+        if !self.has_native_shooter() {
+            self.discard_unified_physics();
+        }
         self.clear_data_scene_entity_handle();
         self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
@@ -658,9 +699,16 @@ impl Engine {
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
         self.ground_shadow_stats = [0; 5];
         self.scenes.use_shooter();
+        if switched {
+            self.reset_unified_physics_to_defaults();
+        }
     }
 
     pub(super) fn activate_built_in_breakout_scene(&mut self) {
+        let switched = !self.is_built_in_breakout();
+        if !self.has_native_breakout() {
+            self.discard_unified_physics();
+        }
         self.clear_data_scene_entity_handle();
         self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
@@ -668,9 +716,16 @@ impl Engine {
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
         self.ground_shadow_stats = [0; 5];
         self.scenes.use_breakout();
+        if switched {
+            self.reset_unified_physics_to_defaults();
+        }
     }
 
     pub(super) fn activate_built_in_platformer_scene(&mut self) {
+        let switched = !self.is_built_in_platformer();
+        if !self.has_native_platformer() {
+            self.discard_unified_physics();
+        }
         self.clear_data_scene_entity_handle();
         self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
@@ -678,9 +733,16 @@ impl Engine {
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
         self.ground_shadow_stats = [0; 5];
         self.scenes.use_platformer();
+        if switched {
+            self.reset_unified_physics_to_defaults();
+        }
     }
 
     pub(super) fn activate_data_scene(&mut self) {
+        let switched = self.scene_mode != SceneMode::Data;
+        if self.has_native_built_in() {
+            self.discard_unified_physics();
+        }
         self.spatial_scene.clear();
         self.clear_data_scene_entity_handle();
         self.scenes.shooter_mut().clear_deferred_runtime_state();
@@ -693,6 +755,9 @@ impl Engine {
         SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
             .reset_playing(&mut context);
         self.clear_data_scene_entity_handle();
+        if switched {
+            self.reset_unified_physics_to_defaults();
+        }
     }
 
     pub(super) fn active_scene_score(&self) -> u32 {
@@ -845,6 +910,7 @@ impl Engine {
         };
         SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
             .reset_playing(&mut context);
+        self.refresh_native_built_in_owners();
         if self.scene_mode == SceneMode::Data {
             self.clear_data_scene_entity_handle();
         }
@@ -861,6 +927,7 @@ impl Engine {
             SceneRuntimeDispatch::new(scene_mode, &mut self.scenes, &mut self.data_scene)
                 .reset_to_title(&mut context);
         }
+        self.refresh_native_built_in_owners();
         self.particles.clear();
         self.reset_physics_impact_feedback();
         self.tweens.clear();
@@ -877,9 +944,24 @@ impl Engine {
         input: InputState,
         latched_presses: InputState,
     ) {
+        if self.has_native_shooter() {
+            self.update_native_shooter(delta, input);
+            return;
+        }
+        if self.has_native_breakout() {
+            self.update_native_breakout(delta, input);
+            return;
+        }
+        if self.has_native_platformer() {
+            self.update_native_platformer(delta, input);
+            return;
+        }
         let mut context = SceneUpdateContext {
             spatial_scene: &mut self.spatial_scene,
-            auto_rigid_body_step_enabled: self.auto_rigid_body_step_enabled,
+            auto_rigid_body_step_enabled: self.auto_rigid_body_step_enabled
+                || self.unified_physics.is_some(),
+            auto_rigid_body_step_config: self.auto_rigid_body_step_config,
+            unified_physics: self.unified_physics.as_mut(),
             world: &mut self.world,
             camera: &mut self.camera,
             input_actions: &self.input_actions,

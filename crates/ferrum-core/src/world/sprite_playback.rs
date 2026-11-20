@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub(crate) use super::sprite_clip::{SpriteClip, MAX_CLIP_FRAMES, MAX_CLIP_TOTAL_FRAMES};
 pub(crate) const ANIMATION_EVENT_LIMIT: usize = 4096;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpritePlayback {
     pub clips: Arc<[SpriteClip]>,
     pub active: usize,

@@ -6,7 +6,7 @@ use crate::components::{
 };
 
 fn setup() -> Engine {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     e.set_viewport_size(400., 300.);
     assert!(e.configure_spatial_camera(&[
@@ -72,8 +72,17 @@ fn spatial_debug_flags_and_frame_lifecycle_never_retain_stale_lines() {
     assert_eq!(e.spatial_debug_len(), 24);
     assert!(!e.spatial_debug_depth_test());
     assert!(!e.configure_spatial_debug(256));
-    assert!(!e.configure_spatial_debug(8));
     assert_eq!(e.spatial_debug_len(), 24, "invalid options are atomic");
+    assert!(e.configure_spatial_debug(8));
+    e.build_render_commands();
+    assert_eq!(
+        e.spatial_debug_len(),
+        0,
+        "depth-only does not invent geometry"
+    );
+    assert!(e.spatial_debug_depth_test());
+    assert!(e.configure_spatial_debug(1));
+    e.build_render_commands();
     e.update_frame(0., false, false, false);
     assert_eq!(e.spatial_debug_len(), 0);
     assert_eq!(e.spatial_debug_flags(), 0);

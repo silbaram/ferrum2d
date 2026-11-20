@@ -7,9 +7,11 @@ use super::super::math::{
 };
 use super::CONTACT_IMPULSE_EPSILON;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics) struct RigidSplitImpulseState {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     linear_velocities: Vec<Velocity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     angular_velocities: Vec<f32>,
 }
 
@@ -125,3 +127,5 @@ impl RigidSplitImpulseState {
         }
     }
 }
+
+mod file_scratch_admission;

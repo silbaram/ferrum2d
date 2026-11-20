@@ -4,7 +4,7 @@ use super::*;
 #[path = "static_cache_tests.rs"]
 mod static_cache_tests;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(super) struct CollisionProxy {
     key: ColliderKey,
     bounds: AabbBounds,
@@ -17,20 +17,28 @@ pub(super) enum PairFilter {
     Masks(CollisionMask, CollisionMask),
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CollisionScratch {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     static_entries: Vec<StaticProxyEntry>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     static_proxies: Vec<CollisionProxy>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     dynamic_proxies: Vec<CollisionProxy>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) current_proxies: Vec<CollisionProxy>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) moving_proxies: Vec<CollisionProxy>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) target_proxies: Vec<CollisionProxy>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) collider_pairs: Vec<ColliderPair>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pair_dedupe: Vec<CollisionPairDedupeEntry>,
     kinematic_target_visits: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct StaticProxyEntry {
     key: ColliderKey,
     generation: u32,
@@ -130,7 +138,9 @@ pub(crate) struct CollisionScratchUsage {
     pub(crate) pair_dedupe: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 struct CollisionPairKey {
     a_id: u32,
     a_generation: u32,
@@ -138,7 +148,7 @@ struct CollisionPairKey {
     b_generation: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct CollisionPairDedupeEntry {
     key: CollisionPairKey,
     pair: CollisionPair,
@@ -947,3 +957,5 @@ impl PairFilter {
         }
     }
 }
+
+mod file_scratch_admission;

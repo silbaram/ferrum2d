@@ -5,9 +5,10 @@ use std::collections::BTreeMap;
 pub(super) const MAX_PREFABS: usize = 256;
 const STRIDE: usize = 15;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct ProjectilePrefab {
     pub(super) texture: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub(super) values: [f32; STRIDE],
     pub(super) animation: Option<std::sync::Arc<[crate::world::sprite_playback::SpriteClip]>>,
     pub(super) align_velocity: bool,
@@ -45,9 +46,11 @@ impl ProjectilePrefab {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct ProjectilePrefabConfig {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(super) definitions: Vec<ProjectilePrefab>,
+    #[serde(deserialize_with = "super::file_ordered::map")]
     bindings: BTreeMap<(u32, u32, u32), u32>,
 }
 
@@ -189,3 +192,5 @@ impl Engine {
         true
     }
 }
+
+mod file_admission;

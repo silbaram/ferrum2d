@@ -54,7 +54,7 @@ pub(crate) struct MovementNavigationSource {
     pub(crate) transform: Transform2D,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MovementNavigationTargetIdentity {
     PrimaryActor,
     NearestPrimaryActor,
@@ -65,7 +65,7 @@ pub(crate) enum MovementNavigationTargetIdentity {
     Entity(Entity),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MovementNavigationTargetCache {
     pub(in crate::gameplay) generation: u32,
     pub(in crate::gameplay) target_identity: MovementNavigationTargetIdentity,
@@ -128,3 +128,6 @@ impl FrameInputSnapshot {
         }
     }
 }
+
+#[allow(dead_code)]
+mod file_admission;

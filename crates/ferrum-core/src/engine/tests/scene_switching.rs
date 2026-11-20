@@ -4,7 +4,7 @@ use crate::GameState;
 
 #[test]
 fn reset_game_clears_score_and_recreates_player() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.scenes.shooter_mut().update(
         &mut engine.world,
         &mut engine.camera,
@@ -28,7 +28,7 @@ fn reset_game_clears_score_and_recreates_player() {
 
 #[test]
 fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_data_scene();
     assert_eq!(engine.game_state(), 1);
@@ -57,7 +57,7 @@ fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
 
 #[test]
 fn data_scene_pause_resume_and_level_complete_freeze_until_explicit_transition() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     assert_eq!(engine.data_scene_game_state(), u32::MAX);
     assert!(!engine.pause_data_scene());
@@ -108,7 +108,7 @@ fn data_scene_pause_resume_and_level_complete_freeze_until_explicit_transition()
 
 #[test]
 fn data_scene_spawn_hook_installs_sprite_collider_and_handle() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_data_scene();
 
@@ -190,7 +190,7 @@ fn data_scene_spawn_hook_installs_sprite_collider_and_handle() {
 
 #[test]
 fn data_scene_spawn_hook_supports_none_and_convex_colliders() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_data_scene();
     assert!(spawn_test_data_scene_entity(
@@ -239,7 +239,7 @@ fn data_scene_spawn_hook_supports_none_and_convex_colliders() {
 
 #[test]
 fn data_scene_spawn_hook_rejects_wrong_mode_and_invalid_descriptor() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let initial_count = engine.entity_count();
 
     assert!(!spawn_test_data_scene_entity(
@@ -328,7 +328,7 @@ fn spawn_test_data_scene_entity(
 
 #[test]
 fn data_scene_reset_keeps_data_mode_without_recreating_builtin_entities() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_breakout_scene();
     assert!(engine.entity_count() > 0);
 
@@ -396,7 +396,7 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
         }
     }
 
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_breakout_scene();
     engine.update(0.016);
     engine
@@ -473,7 +473,7 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
 
 #[test]
 fn data_scene_rejects_builtin_shooter_snapshot_capture() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_data_scene();
 
@@ -486,7 +486,7 @@ fn data_scene_rejects_builtin_shooter_snapshot_capture() {
 
 #[test]
 fn engine_can_switch_to_breakout_scene() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_breakout_scene();
     engine.update(0.016);
@@ -505,7 +505,7 @@ fn engine_can_switch_to_breakout_scene() {
 
 #[test]
 fn built_in_scene_authoring_handles_are_scene_scoped_and_generation_safe() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     assert_eq!(engine.built_in_platformer_player_entity_id(), u32::MAX);
     assert_eq!(engine.built_in_breakout_paddle_entity_id(), u32::MAX);
@@ -559,7 +559,7 @@ fn built_in_scene_authoring_handles_are_scene_scoped_and_generation_safe() {
 
 #[test]
 fn breakout_brick_hit_spawns_default_particle_burst() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_breakout_scene();
     engine.reset_game();
     let ball = find_layer(&engine, CollisionLayer::Bullet);
@@ -597,7 +597,7 @@ fn breakout_brick_hit_spawns_default_particle_burst() {
 
 #[test]
 fn engine_can_switch_to_platformer_scene() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.use_platformer_scene();
     engine.update(0.016);
@@ -623,7 +623,7 @@ fn engine_can_switch_to_platformer_scene() {
 
 #[test]
 fn platformer_landing_spawns_default_dust_burst() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_platformer_scene();
     engine.reset_game();
     let player = find_layer(&engine, CollisionLayer::Player);

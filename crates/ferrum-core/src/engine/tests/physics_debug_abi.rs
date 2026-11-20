@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn physics_debug_lines_are_opt_in_and_report_broadphase_and_contacts() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -29,7 +29,7 @@ fn physics_debug_lines_are_opt_in_and_report_broadphase_and_contacts() {
 
 #[test]
 fn physics_debug_lines_reuse_engine_collision_scratch() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -52,7 +52,7 @@ fn physics_debug_lines_reuse_engine_collision_scratch() {
 
 #[test]
 fn physics_debug_lines_report_ccd_hit_markers() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let mover = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);

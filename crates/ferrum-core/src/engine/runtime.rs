@@ -10,9 +10,7 @@ use crate::gameplay::{
 };
 use crate::gameplay_event::GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED;
 use crate::input::InputState;
-use crate::physics::{
-    FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsSystem, RigidBodyStepStats,
-};
+use crate::physics::{FixedTimestepUpdate, PhysicsSystem, RigidBodyStepStats};
 use crate::tilemap::TilemapNavigationPathPoint;
 
 use super::physics_bridge::{
@@ -20,6 +18,7 @@ use super::physics_bridge::{
 };
 use super::scenes::SceneMode;
 use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
+mod actual_motion;
 
 #[wasm_bindgen]
 impl Engine {
@@ -55,6 +54,62 @@ impl Engine {
         self.update_frame(delta, true, true, true);
     }
 
+    /// SDK frame entry: Rust/Wasm borrows unwind normally before an Err is
+    /// converted to a JavaScript exception by wasm-bindgen's Result wrapper.
+    pub fn update_frame_checked(
+        &mut self,
+        delta: f64,
+        render_commands: bool,
+        frame_telemetry: bool,
+        physics_debug_lines: bool,
+    ) -> Result<(), String> {
+        self.reset_native_motion_attempt();
+        self.update_frame(delta, render_commands, frame_telemetry, physics_debug_lines);
+        self.checked_actual_native_motion()
+    }
+
+    /// Checked manual entry, retaining the original raw void ABI.
+    pub fn step_rigid_bodies_checked(&mut self, delta_seconds: f32) -> Result<(), String> {
+        self.reset_native_motion_attempt();
+        self.step_rigid_bodies(delta_seconds);
+        self.checked_actual_native_motion()
+    }
+
+    /// Checked one-shot manual configuration, with the original argument order.
+    #[allow(clippy::too_many_arguments)]
+    pub fn step_rigid_bodies_with_config_checked(
+        &mut self,
+        delta_seconds: f32,
+        gravity_x: f32,
+        gravity_y: f32,
+        velocity_iterations: u32,
+        position_iterations: u32,
+        position_correction_percent: f32,
+        position_correction_slop: f32,
+        restitution_velocity_threshold: f32,
+        contact_baumgarte_bias_factor: f32,
+        max_contact_baumgarte_bias_velocity: f32,
+        contact_split_impulse: bool,
+        continuous: bool,
+    ) -> Result<(), String> {
+        self.reset_native_motion_attempt();
+        self.step_rigid_bodies_with_config(
+            delta_seconds,
+            gravity_x,
+            gravity_y,
+            velocity_iterations,
+            position_iterations,
+            position_correction_percent,
+            position_correction_slop,
+            restitution_velocity_threshold,
+            contact_baumgarte_bias_factor,
+            max_contact_baumgarte_bias_velocity,
+            contact_split_impulse,
+            continuous,
+        );
+        self.checked_actual_native_motion()
+    }
+
     pub fn update_frame(
         &mut self,
         delta: f64,
@@ -62,16 +117,18 @@ impl Engine {
         frame_telemetry: bool,
         physics_debug_lines: bool,
     ) {
-        self.advance_simulation(delta);
+        let variable = match self.variable_native_frame_plan(delta) {
+            Ok(plan) => plan,
+            Err(_) => return,
+        };
+        let camera_delta = match self.advance_simulation(delta, variable) {
+            Ok(consumed) => consumed,
+            Err(_) => return,
+        };
         self.spatial_scene
             .attachments
             .prepare_render_poses(&mut self.world, &self.spatial_scene.models);
-        self.update_data_scene_camera(delta as f32);
-        if physics_debug_lines {
-            self.build_physics_debug_lines();
-        } else {
-            self.frame_buffers.clear_physics_debug_lines();
-        }
+        self.update_data_scene_camera(camera_delta);
         if render_commands {
             self.build_render_commands();
         } else {
@@ -81,26 +138,40 @@ impl Engine {
             self.spatial_scene.terrain_draw_ranges.clear();
             self.spatial_scene.debug.clear_frame();
         }
+        // Select the existing flat or XYZ destination after the spatial frame is
+        // known. Native geometry is extracted once, never drawn in both passes.
+        if !self.build_unified_physics_debug_lines(physics_debug_lines) {
+            if physics_debug_lines {
+                self.build_physics_debug_lines();
+            } else {
+                self.frame_buffers.clear_physics_debug_lines();
+            }
+        }
         if frame_telemetry {
             self.write_frame_telemetry();
         }
     }
 
-    fn advance_simulation(&mut self, delta: f64) {
+    fn advance_simulation(
+        &mut self,
+        delta: f64,
+        variable: Option<super::unified_physics::variable_clock::VariableFramePlan>,
+    ) -> Result<f32, super::unified_physics::UnifiedPhysicsError> {
+        if let Some(plan) = variable {
+            return self.advance_variable_native_simulation(plan);
+        }
+        if self.unified_physics.is_some() && self.fixed_timestep_enabled {
+            return self.advance_fixed_native_simulation(delta);
+        }
         self.elapsed_seconds += delta;
-        self.impact_feedback.begin_frame();
-        self.clear_physics_frame();
-        self.world.set_render_interpolation_alpha(None);
-        self.world
-            .clear_retired_gameplay_variable_mutation_triggers();
-        self.reset_active_scene_action_trigger_frame_diagnostics();
+        self.begin_simulation_frame();
         if self.active_scene_game_state().freezes_simulation() {
             self.world.reset_render_interpolation();
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.fixed_timestep_input_latch.clear();
             self.previous_input_sample = self.input;
             self.data_scene.gameplay.observe_input(self.input);
-            return;
+            return Ok(delta as f32);
         }
         // Seed before simulation moves any bound light, after the paused-state guard.
         // Render-only or paused rebuilds must leave a reset history uninitialized.
@@ -164,6 +235,20 @@ impl Engine {
                 );
             }
         }
+        self.finish_simulation_frame(delta as f32);
+        Ok(delta as f32)
+    }
+
+    fn begin_simulation_frame(&mut self) {
+        self.impact_feedback.begin_frame();
+        self.clear_physics_frame();
+        self.world.set_render_interpolation_alpha(None);
+        self.world
+            .clear_retired_gameplay_variable_mutation_triggers();
+        self.reset_active_scene_action_trigger_frame_diagnostics();
+    }
+
+    fn finish_simulation_frame(&mut self, delta: f32) {
         let behavior_event_start = self.frame_buffers.gameplay_events.len();
         apply_gameplay_variable_mutation_events(
             &mut self.world,
@@ -174,7 +259,115 @@ impl Engine {
             &mut self.frame_buffers.gameplay_events,
         );
         self.queue_behavior_state_enter_actions(behavior_event_start);
-        self.particles.update(delta as f32);
+        self.particles.update(delta);
+    }
+
+    pub(in crate::engine) fn advance_variable_native_simulation(
+        &mut self,
+        plan: super::unified_physics::variable_clock::VariableFramePlan,
+    ) -> Result<f32, super::unified_physics::UnifiedPhysicsError> {
+        if plan.steps == 0 {
+            // A render-only frame still owns fresh output buffers and counters.
+            self.impact_feedback.begin_frame();
+            self.clear_physics_frame();
+            self.last_fixed_update = FixedTimestepUpdate::default();
+            return Ok(0.0);
+        }
+        if self.active_scene_game_state().freezes_simulation() {
+            self.elapsed_seconds += f64::from(plan.update.consumed_seconds);
+            self.begin_simulation_frame();
+            self.world.reset_render_interpolation();
+            self.last_fixed_update = FixedTimestepUpdate::default();
+            self.fixed_timestep_input_latch.clear();
+            self.previous_input_sample = self.input;
+            self.data_scene.gameplay.observe_input(self.input);
+            return Ok(plan.update.consumed_seconds);
+        }
+        let mut completed = 0;
+        let mut partial = 0.;
+        let mut motion_error = None;
+        for step_index in 0..plan.steps {
+            let result = self
+                .with_unified_frame_interval(plan.interval, |engine| {
+                    // Do not clear frame outputs or advance any clock until the first
+                    // interval admission succeeds. A rejected frame remains atomic.
+                    if step_index == 0 {
+                        engine.begin_simulation_frame();
+                        engine
+                            .spatial_scene
+                            .advance_light_selection(&engine.world, 0.);
+                        engine.data_scene.gameplay.combat.begin_frame();
+                    }
+                    let elapsed_before = engine.elapsed_seconds;
+                    engine.reset_native_motion_attempt();
+                    engine.elapsed_seconds += f64::from(plan.interval);
+                    let input = engine.fixed_step_input(step_index == 0);
+                    let presses = if step_index == 0 {
+                        engine
+                            .fixed_timestep_input_latch
+                            .apply_to(InputState::default())
+                    } else {
+                        InputState::default()
+                    };
+                    engine.tweens.update(&mut engine.world, plan.interval);
+                    engine.update_scene(plan.interval, input, presses);
+                    engine.step_auto_rigid_bodies(plan.interval);
+                    if let Some(error) = engine.actual_native_motion_failure() {
+                        partial = engine
+                            .actual_native_committed_seconds()
+                            .clamp(0., plan.interval);
+                        motion_error = Some(error);
+                        if step_index == 0 && partial > 0. {
+                            engine.fixed_timestep_input_latch.clear();
+                        }
+                        engine.elapsed_seconds = elapsed_before;
+                        return Err(error);
+                    }
+                    if step_index == 0 {
+                        engine.fixed_timestep_input_latch.clear();
+                    }
+                    engine.record_collision_lifecycle_events();
+                    engine.update_data_scene_gameplay(input, presses, plan.interval);
+                    engine
+                        .spatial_scene
+                        .advance_light_selection(&engine.world, plan.interval);
+                    if !engine.active_scene_ticks_gameplay_timers() {
+                        tick_gameplay_timer_triggers(
+                            &mut engine.world,
+                            plan.interval,
+                            &mut engine.frame_buffers.gameplay_events,
+                        );
+                    }
+                    Ok(())
+                })
+                .and_then(|result| result);
+            match result {
+                Ok(()) => completed += 1,
+                Err(error) => {
+                    if completed == 0 && motion_error.is_none() {
+                        return Err(error);
+                    }
+                    break;
+                }
+            }
+        }
+        let consumed = plan.interval * completed as f32 + partial;
+        let update = FixedTimestepUpdate {
+            steps: completed + u32::from(partial > 0.),
+            alpha: 0.0,
+            consumed_seconds: consumed,
+            dropped_seconds: plan.update.dropped_seconds
+                + plan.interval * (plan.steps - completed) as f32
+                - partial,
+        };
+        self.last_fixed_update = update;
+        self.physics_counters.record_fixed_update(update);
+        if let Some(error) = motion_error {
+            self.world.reset_render_interpolation();
+            return Err(error);
+        }
+        self.finish_simulation_frame(consumed);
+        Ok(consumed)
     }
 
     /// Render-only interpolation of native rigid-body poses. Simulation and replay stay unchanged.
@@ -190,20 +383,21 @@ impl Engine {
         max_frame_seconds: f32,
         max_steps_per_update: u32,
     ) {
-        let was_enabled = self.fixed_timestep_enabled;
-        self.fixed_timestep_enabled = enabled;
-        self.world.reset_render_interpolation();
-        self.fixed_timestep = FixedTimestep::new(FixedTimestepConfig {
+        if self.unified_physics.is_some() {
+            self.configure_unified_physics_clock(
+                enabled,
+                step_seconds,
+                max_frame_seconds,
+                max_steps_per_update,
+            );
+            return;
+        }
+        self.apply_fixed_timestep_config(
+            enabled,
             step_seconds,
             max_frame_seconds,
             max_steps_per_update,
-        });
-        self.last_fixed_update = FixedTimestepUpdate::default();
-        if !enabled || !was_enabled {
-            self.fixed_timestep_input_latch.clear();
-            self.previous_input_sample = self.input;
-            self.data_scene.gameplay.observe_input(self.input);
-        }
+        );
     }
 
     pub fn clear_events(&mut self) {
@@ -218,6 +412,10 @@ impl Engine {
 
     pub fn clear_gameplay_events(&mut self) {
         self.frame_buffers.clear_gameplay_events();
+        if let Some(rt) = self.unified_physics.as_mut() {
+            rt.contacts.terrain_events.clear();
+            rt.contacts.terrain_dropped = 0;
+        }
     }
 
     pub fn clear_effect_events(&mut self) {
@@ -227,8 +425,9 @@ impl Engine {
     pub fn set_collision_lifecycle_events_enabled(&mut self, enabled: bool) {
         if self.collision_lifecycle_events_enabled != enabled {
             self.collision_event_tracker.clear();
+            self.collision_lifecycle_events_enabled = enabled;
+            self.reset_unified_collision_history();
         }
-        self.collision_lifecycle_events_enabled = enabled;
     }
 
     pub fn reset_game(&mut self) {
@@ -251,8 +450,14 @@ impl Engine {
     }
 
     fn clear_physics_frame(&mut self) {
+        self.begin_unified_collision_frame();
+        self.begin_unified_statistics_frame();
         self.physics_counters.clear();
         self.frame_buffers.clear_physics_frame_output();
+        if let Some(rt) = self.unified_physics.as_mut() {
+            rt.contacts.terrain_events.clear();
+            rt.contacts.terrain_dropped = 0;
+        }
         self.collision_event_counts.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
         self.clear_rigid_body_frame_stats();
@@ -265,7 +470,14 @@ impl Engine {
             return;
         }
         self.collision_event_tracker.clear();
+        self.begin_unified_collision_frame();
+        self.begin_unified_statistics_frame();
+        self.reset_unified_collision_history();
         self.frame_buffers.clear_physics_frame_output();
+        if let Some(rt) = self.unified_physics.as_mut() {
+            rt.contacts.terrain_events.clear();
+            rt.contacts.terrain_dropped = 0;
+        }
         self.collision_event_counts.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
         self.fixed_timestep.reset();
@@ -281,7 +493,10 @@ impl Engine {
     }
 
     fn step_auto_rigid_bodies(&mut self, delta_seconds: f32) {
-        if !self.auto_rigid_body_step_enabled {
+        if !self.auto_rigid_body_step_enabled || self.has_native_built_in() {
+            return;
+        }
+        if self.step_unified_physics(delta_seconds) {
             return;
         }
         let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
@@ -298,14 +513,18 @@ impl Engine {
     }
 
     fn record_collision_lifecycle_events(&mut self) {
-        if !self.collision_lifecycle_events_enabled {
-            self.collision_event_tracker.clear();
-            return;
-        }
-        let counts = self
-            .collision_event_tracker
-            .update(&self.world, &mut self.frame_buffers.collision_events);
-        let pair_counts = self.collision_event_tracker.current_pair_counts();
+        let (counts, pair_counts) = if let Some(native) = self.flush_unified_collision_events() {
+            native
+        } else {
+            if !self.collision_lifecycle_events_enabled {
+                self.collision_event_tracker.clear();
+                return;
+            }
+            let counts = self
+                .collision_event_tracker
+                .update(&self.world, &mut self.frame_buffers.collision_events);
+            (counts, self.collision_event_tracker.current_pair_counts())
+        };
         self.physics_counters.collision_pairs = self
             .physics_counters
             .collision_pairs
@@ -364,6 +583,10 @@ impl Engine {
     }
 
     pub(super) fn build_physics_debug_lines(&mut self) {
+        if self.build_unified_physics_debug_lines(true) {
+            return;
+        }
+        self.frame_buffers.native_debug_state = [0; 4];
         if !self.physics_debug_lines_enabled || self.physics_debug_line_flags == 0 {
             self.frame_buffers.clear_physics_debug_lines();
             return;
@@ -382,7 +605,7 @@ impl Engine {
         tilemap_navigation_debug_lines: &mut Vec<PhysicsDebugLine>,
         from: Transform2D,
         path: &[Transform2D],
-    ) -> (Transform2D, f32) {
+    ) -> Option<(Transform2D, f32)> {
         Self::store_tilemap_navigation_path_with_height_span(
             tilemap_navigation_path_points,
             tilemap_navigation_debug_lines,
@@ -402,7 +625,7 @@ impl Engine {
         from: Transform2D,
         path: &[Transform2D],
         height_span: HeightSpan,
-    ) -> (Transform2D, f32) {
+    ) -> Option<(Transform2D, f32)> {
         tilemap_navigation_path_points.clear();
         tilemap_navigation_debug_lines.clear();
         tilemap_navigation_path_points.reserve(
@@ -411,7 +634,7 @@ impl Engine {
         );
 
         let mut previous = from;
-        let mut distance = 0.0;
+        let mut distance = 0.0f32;
         for point in path.iter().copied() {
             push_tilemap_navigation_path_point(
                 tilemap_navigation_path_points,
@@ -431,7 +654,14 @@ impl Engine {
             previous = point;
         }
 
-        (path.first().copied().unwrap_or(from), distance)
+        let Some(distance) =
+            super::navigation_distance::finish(distance, from, path.iter().copied())
+        else {
+            tilemap_navigation_path_points.clear();
+            tilemap_navigation_debug_lines.clear();
+            return None;
+        };
+        Some((path.first().copied().unwrap_or(from), distance))
     }
 
     pub(super) fn store_hd2d_tilemap_navigation_path(
@@ -439,7 +669,7 @@ impl Engine {
         tilemap_navigation_debug_lines: &mut Vec<PhysicsDebugLine>,
         from: Transform2D,
         path: &[TilemapNavigationPathPoint],
-    ) -> (TilemapNavigationPathPoint, f32) {
+    ) -> Option<(TilemapNavigationPathPoint, f32)> {
         tilemap_navigation_path_points.clear();
         tilemap_navigation_debug_lines.clear();
         tilemap_navigation_path_points.reserve(
@@ -448,7 +678,7 @@ impl Engine {
         );
 
         let mut previous = from;
-        let mut distance = 0.0;
+        let mut distance = 0.0f32;
         for point in path.iter().copied() {
             push_tilemap_navigation_path_point(tilemap_navigation_path_points, point);
             distance += ((point.x - previous.x).powi(2) + (point.y - previous.y).powi(2)).sqrt();
@@ -472,11 +702,22 @@ impl Engine {
             elevation: 0.0,
             height: 0.0,
         });
-        (first, distance)
+        let Some(distance) = super::navigation_distance::finish(
+            distance,
+            from,
+            path.iter()
+                .copied()
+                .map(TilemapNavigationPathPoint::transform),
+        ) else {
+            tilemap_navigation_path_points.clear();
+            tilemap_navigation_debug_lines.clear();
+            return None;
+        };
+        Some((first, distance))
     }
 
     fn observe_input_sample(&mut self, input: InputState) {
-        if self.fixed_timestep_enabled {
+        if self.fixed_timestep_enabled || self.unified_physics.is_some() {
             self.fixed_timestep_input_latch
                 .observe(self.previous_input_sample, input);
         }

@@ -188,6 +188,16 @@ fn changing_two_coordinate_signs_rejects_old_history_before_compound_mutation() 
 fn setup() -> Engine {
     let mut e = Engine::new();
     e.use_data_scene();
+    // These light-history fixtures seed on a zero-step fixed frame and use
+    // 0.05-second simulation steps; keep the world and checked clock identical.
+    e.configure_unified_physics(crate::physics3d::WorldConfig {
+        space: crate::physics3d::Space::PlanarXy,
+        gravity: [0.; 3],
+        step_seconds: 0.05,
+        ..crate::physics3d::WorldConfig::default()
+    })
+    .unwrap();
+    assert!(e.configure_unified_physics_clock(true, 0.05, 1., 8));
     e.set_viewport_size(400., 300.);
     assert!(e.configure_spatial_camera(&[
         0., -20., 164., 200., -20., 64., 0., 200., 0.1, 1000., 400., 300.

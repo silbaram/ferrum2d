@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CollisionLayer {
     Player,
     Enemy,
@@ -19,7 +19,7 @@ impl CollisionLayer {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionMask {
     pub bits: u32,
 }
@@ -64,7 +64,7 @@ impl From<CollisionLayer> for CollisionMask {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionFilter {
     pub category: CollisionMask,
     pub mask: CollisionMask,

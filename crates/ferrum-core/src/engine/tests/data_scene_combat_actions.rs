@@ -195,7 +195,7 @@ fn combat_actions_timer_dash_cannot_teleport_through_walls_or_onto_unconnected_f
 #[test]
 fn combat_actions_flat_dash_sweeps_world_walls_and_respects_the_body_height() {
     for upper in [false, true] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         e.use_data_scene();
         let actor = sprite(&mut e, 72, 0., 16., 0);
         let source = sprite(&mut e, 73, -24., 16., 0);
@@ -230,7 +230,7 @@ fn combat_actions_flat_dash_sweeps_world_walls_and_respects_the_body_height() {
 #[test]
 fn combat_actions_flat_dash_cannot_skip_an_intermediate_high_tile_or_missing_support() {
     for middle in [0, 2] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         e.use_data_scene();
         let actor = sprite(&mut e, 72, 40., 8., 0);
         let source = sprite(&mut e, 73, 8., 8., 0);
@@ -270,7 +270,7 @@ fn combat_actions_flat_dash_cannot_skip_an_intermediate_high_tile_or_missing_sup
 fn combat_actions_diagonal_dash_visits_brief_tile_corner_crossings_in_both_directions() {
     for middle in [0, 2] {
         for (reverse, offset_x) in [(false, 0.), (true, 0.), (false, 4.), (true, 4.)] {
-            let mut e = Engine::new();
+            let mut e = crate::engine::legacy_test_fixture::engine();
             e.use_data_scene();
             let (start, end) = if reverse {
                 ((24.5, 24.4), (8.5, 8.4))
@@ -432,7 +432,7 @@ fn checkpoint_scene(e: &mut Engine) -> (Entity, Entity, Vec<u32>) {
 #[test]
 fn combat_actions_checkpoint_restores_melee_health_dash_pose_and_both_cooldowns_with_fresh_handles()
 {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (actor, source, handles) = checkpoint_scene(&mut e);
     click(&mut e, true);
     e.update(0.11);
@@ -447,7 +447,7 @@ fn combat_actions_checkpoint_restores_melee_health_dash_pose_and_both_cooldowns_
     let rotations = e.capture_data_scene_spatial_rotations(epoch, &handles);
     assert!(!combat.is_empty());
     assert!(e.preflight_data_scene_combat_progress(&flags, &combat));
-    let mut next = Engine::new();
+    let mut next = crate::engine::legacy_test_fixture::engine();
     next.use_data_scene(); // Retire generations before applying the fresh scene.
     let _ = sprite(&mut next, 74, 0., 0., 0);
     let (next_actor, next_source, next_handles) = checkpoint_scene(&mut next);

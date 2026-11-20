@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::engine) struct PhysicsQueryResult {
     pub(in crate::engine) entity_id: u32,
     pub(in crate::engine) entity_generation: u32,
@@ -9,7 +9,7 @@ pub(in crate::engine) struct PhysicsQueryResult {
     pub(in crate::engine) distance: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::engine) struct PhysicsEntitySnapshot {
     pub(in crate::engine) entity_id: u32,
     pub(in crate::engine) entity_generation: u32,
@@ -56,7 +56,7 @@ pub(in crate::engine) struct PhysicsEntitySnapshot {
     pub(in crate::engine) contact_position_correction_slop_scale: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::engine) struct PhysicsBodyColliderSnapshot {
     pub(in crate::engine) collider_index: u32,
     pub(in crate::engine) collider_type: u32,
@@ -78,7 +78,7 @@ pub(in crate::engine) struct PhysicsBodyColliderSnapshot {
     pub(in crate::engine) collider_mask_bits: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(in crate::engine) struct PhysicsJointSnapshot {
     pub(in crate::engine) frequency_hz: Option<f32>,
     pub(in crate::engine) damping_ratio: f32,

@@ -6,7 +6,7 @@ pub struct RevoluteJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RevoluteJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
@@ -130,7 +130,7 @@ pub struct PrismaticJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrismaticJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,

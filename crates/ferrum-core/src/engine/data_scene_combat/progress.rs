@@ -1,4 +1,12 @@
 //! Cold, versioned combat checkpoints. Texture slots and entity handles never enter persistence.
+impl AuthoredDefinition {
+    pub(super) fn file_resource_view(
+        &self,
+    ) -> (Entity, Option<Sprite>, Option<&CollisionReactionSet>) {
+        (self.entity, self.sprite, self.reactions.as_ref())
+    }
+}
+
 use super::*;
 use crate::components::gameplay::{
     ActionBindingSet, CollisionReactionSet, GameplayFaction, GameplayTimerTrigger, MovementPattern,
@@ -12,7 +20,7 @@ const PROJECTILE: usize = 25;
 const CONTACT: usize = 2;
 
 /// The immutable subset is remembered at opt-in, so unsupported runtime edits cannot be lost.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct AuthoredDefinition {
     entity: Entity,
     damage: Option<f32>,
@@ -37,6 +45,7 @@ pub(super) struct AuthoredDefinition {
     edge: Option<EdgeCollider>,
     chain: Option<ChainCollider>,
     polygon: Option<ConvexPolygonCollider>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     compound: Vec<CompoundCollider>,
     health_present: bool,
     lifetime_present: bool,
@@ -1499,3 +1508,5 @@ pub(super) fn apply_actor_record(world: &mut World, e: Entity, record: &[f64]) {
         }
     }
 }
+
+mod file_admission;

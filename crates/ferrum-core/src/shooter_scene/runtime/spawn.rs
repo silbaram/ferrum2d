@@ -1,3 +1,4 @@
+mod file_admission;
 use crate::audio_event::AudioEvent;
 use crate::components::gameplay::{
     GameplayFaction, ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
@@ -40,13 +41,13 @@ pub(in crate::shooter_scene) const MAX_PENDING_SPAWNS: usize = 64;
 
 // Spawn commands stay Copy because the pending queue is a small fixed-size buffer.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) enum ShooterSpawnCommand {
     Projectile(ProjectileSpawnCommand),
     Prefab(PrefabSpawnCommand),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct ProjectileSpawnCommand {
     pub(in crate::shooter_scene) transform: Transform2D,
     pub(in crate::shooter_scene) velocity: Velocity,
@@ -63,7 +64,7 @@ pub(in crate::shooter_scene) struct ProjectileSpawnCommand {
     pub(in crate::shooter_scene) sound_pitch: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct PrefabSpawnCommand {
     pub(in crate::shooter_scene) kind: ShooterPrefabKind,
     pub(in crate::shooter_scene) layer: CollisionLayer,
@@ -89,7 +90,7 @@ struct SpawnFlushResultConsumption {
     prefab_spawned_event_pushed: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct SpawnFlushResult {
     pub(in crate::shooter_scene) commands_drained: usize,
     pub(in crate::shooter_scene) projectile_spawns: usize,

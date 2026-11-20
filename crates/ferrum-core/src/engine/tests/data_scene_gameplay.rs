@@ -3,7 +3,7 @@ use super::*;
 use crate::gameplay_event::GameplayEvent;
 
 fn scene() -> (Engine, Entity, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 1, 100.0, 100.0, 0);
     let site = sprite(&mut engine, 2, 120.0, 100.0, 0);
@@ -350,7 +350,7 @@ fn data_scene_progress_restore_preflights_the_whole_batch() {
 
 #[test]
 fn data_scene_navigation_snapshot_retains_replaced_costs_and_clear() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     assert_eq!(engine.data_scene_epoch(), 0);
     engine.use_data_scene();
     assert!(engine.configure_data_scene_navigation(2, 1, 12.5, 24.0, -7.0, 9.0, &[0, 65535]));

@@ -4,7 +4,7 @@ pub(super) fn is_valid_delta(delta: f32) -> bool {
     delta.is_finite() && delta > 0.0
 }
 
-pub(super) fn query_shape_is_valid(shape: CollisionQueryShape) -> bool {
+pub(crate) fn query_shape_is_valid(shape: CollisionQueryShape) -> bool {
     match shape {
         CollisionQueryShape::Aabb(bounds) => {
             bounds.min_x.is_finite()

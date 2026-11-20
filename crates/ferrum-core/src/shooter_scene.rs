@@ -1,3 +1,120 @@
+impl ShooterScene {
+    pub(crate) fn progress(&self) -> (u32, f32, u32) {
+        (
+            self.active_wave_index as u32,
+            self.wave_elapsed_seconds,
+            self.wave_spawned_count,
+        )
+    }
+
+    pub(crate) fn file_resource_spawn_lengths(&self) -> [usize; 2] {
+        [self.pending_spawns.len(), self.spawn_commands.len()]
+    }
+    /// queue0=pending, queue1=drained; branch0=projectile, branch1=prefab base,
+    /// branch2=its nested projectile. Commands own IDs captured before later
+    /// catalog changes. No current-catalog resolution or queue consumption.
+    pub(crate) fn visit_file_resource_spawns<E>(
+        &self,
+        visit: &mut impl FnMut(usize, usize, u32, Option<Entity>, u32, Option<u32>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (queue, commands) in [&self.pending_spawns, &self.spawn_commands]
+            .into_iter()
+            .enumerate()
+        {
+            for (ordinal, command) in commands.iter().enumerate() {
+                match command {
+                    runtime::ShooterSpawnCommand::Projectile(p) => {
+                        visit(queue, ordinal, 0, None, p.texture_id, Some(p.sound_id))?
+                    }
+                    runtime::ShooterSpawnCommand::Prefab(p) => {
+                        visit(queue, ordinal, 1, Some(p.source), p.texture_id, None)?;
+                        if let Some(nested) = &p.projectile {
+                            visit(
+                                queue,
+                                ordinal,
+                                2,
+                                Some(p.source),
+                                nested.texture_id,
+                                Some(nested.sound_id),
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl ShooterScene {
+    /// Boundary fixture uses actual constructor/queue/transfer producers. It is
+    /// not claimed to be a public Engine checkpoint interrupted mid-tick.
+    pub(crate) fn seed_file_resource_pending_fixture(&mut self, world: &World, source: Entity) {
+        use crate::components::gameplay::{
+            ActionAimSource, ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor,
+            SpawnPhase, SpawnPrefabProjectilePayload,
+        };
+        use crate::gameplay::SpawnPrefabActionPayload;
+        self.seed_builtin_captured_finite_action_fixture(world, source);
+        let base = SpawnPrefabActionPayload {
+            prefab_id: ShooterPrefabKind::Enemy.code(),
+            projectile: None,
+            anchor: SpawnAnchor::SelfEntity,
+            phase: SpawnPhase::PrePhysics,
+            offset_x: 0.,
+            offset_y: 0.,
+        };
+        let command = self.spawn_prefab_command(world, source, 41, base).unwrap();
+        self.queue_prefab_spawn(command).unwrap();
+        assert!(self.register_spawn_prefab_kind(9, ShooterPrefabKind::Bullet));
+        let bullet = self
+            .spawn_prefab_command(
+                world,
+                source,
+                42,
+                SpawnPrefabActionPayload {
+                    prefab_id: 9,
+                    projectile: Some(SpawnPrefabProjectilePayload {
+                        speed: 10.,
+                        damage: 1.,
+                        lifetime_seconds: 1.,
+                        aim: ActionAimSource::TargetPlayer,
+                        collision_target: ProjectileCollisionTarget::Player,
+                        tile_impact: ProjectileTileImpact::Despawn,
+                    }),
+                    ..base
+                },
+            )
+            .unwrap();
+        self.queue_prefab_spawn(bullet).unwrap();
+        crate::gameplay::drain_deferred_commands_into(
+            &mut self.pending_spawns,
+            &mut self.spawn_commands,
+        );
+        self.seed_builtin_captured_finite_action_fixture(world, source);
+    }
+}
+
+impl ShooterScene {
+    /// Copies only the two stored catalogs. No prefab resolution/spawn/reset.
+    pub(crate) fn file_resource_catalog(&self) -> ([u32; 3], [u32; 3]) {
+        (
+            [
+                self.texture_ids.player,
+                self.texture_ids.enemy,
+                self.texture_ids.bullet,
+            ],
+            [
+                self.sound_ids.shoot,
+                self.sound_ids.hit,
+                self.sound_ids.game_over,
+            ],
+        )
+    }
+}
+
+mod file_admission;
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::collision::{CircleQueryHit, CollisionPair, CollisionScratch};
@@ -73,7 +190,7 @@ pub(crate) use config::{
 pub(crate) use runtime::{ParticleBurstSink, TweenSink};
 pub use snapshot::{ShooterEntitySnapshot, ShooterSceneSnapshot};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterCollisionPairStats {
     pub(crate) bullet_enemy_swept_pairs: usize,
     pub(crate) bullet_enemy_moving_proxies: usize,
@@ -87,7 +204,7 @@ pub(crate) struct ShooterCollisionPairStats {
     pub(crate) player_pickup_current_proxies: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ShooterScene {
     score: u32,
     fire_cooldown_seconds: f32,
@@ -101,30 +218,45 @@ pub struct ShooterScene {
     texture_ids: TextureIds,
     sound_ids: SoundIds,
     config: ShooterConfig,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     waves: Vec<ShooterWaveConfig>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     wave_action_triggers: Vec<Option<runtime::WaveActionTrigger>>,
     active_wave_index: usize,
     wave_elapsed_seconds: f32,
     wave_spawned_count: u32,
     camera_elapsed_seconds: f32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     navigation_targets: Vec<Option<MovementNavigationTargetCache>>,
     navigation_scratch: TilemapNavigationScratch,
     collision_scratch: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     collision_pairs: Vec<CollisionPair>,
     authored_collision_contacts: CollisionContactTracker,
     last_action_trigger_phase_result: runtime::ActionTriggerPhaseProcessResult,
     last_spawn_flush_result: runtime::SpawnFlushResult,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     melee_hits: Vec<CircleQueryHit>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     area_damage_hits: Vec<CircleQueryHit>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     spawn_obstacle_contacts: Vec<TilemapContactHit>,
     action_triggers: ActionTriggerQueue<runtime::ActionTriggerCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     action_trigger_commands: Vec<runtime::ActionTriggerCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending_spawns: Vec<runtime::ShooterSpawnCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     spawn_commands: Vec<runtime::ShooterSpawnCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending_melee_attacks: Vec<runtime::MeleeAttackCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     melee_attack_commands: Vec<runtime::MeleeAttackCommand>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending_despawn: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     marked_for_despawn: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     bounced_projectiles_this_frame: Vec<bool>,
     last_collision_pair_stats: ShooterCollisionPairStats,
 }
@@ -783,3 +915,65 @@ impl ShooterScene {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+impl ShooterScene {
+    pub(crate) fn corrupt_builtin_file_fixture(&mut self, case: usize) {
+        match case {
+            0 => self.fire_cooldown_seconds = f32::NAN,
+            1 => self.active_wave_index = usize::MAX,
+            2 => self.config.world_width = f32::NAN,
+            3 => self.config.audio_policy.shoot_pitch = f32::INFINITY,
+            4 => self.config.projectile_arc.gravity = f32::NAN,
+            5 => self.config.camera.shake_frequency = 0.,
+            6 => self.config.prefab_registry.corrupt_builtin_file_fixture(0),
+            7 => {
+                let mut a = SpriteAnimation::horizontal(2, 6.).unwrap();
+                a.current_frame = u32::MAX;
+                self.config.player_template.animation = Some(a);
+            }
+            8 | 13 => {
+                self.fill_pending_spawns_for_test();
+                if case == 13 {
+                    self.pending_spawns.push(self.pending_spawns[0]);
+                } else if let runtime::ShooterSpawnCommand::Projectile(v) =
+                    &mut self.pending_spawns[0]
+                {
+                    v.velocity.vx = f32::NAN;
+                }
+            }
+            9 => self.navigation_targets.resize(4096, None),
+            10 => self.collision_pairs.push(CollisionPair {
+                a: Entity {
+                    id: 0,
+                    generation: 0,
+                },
+                b: Entity {
+                    id: 0,
+                    generation: 0,
+                },
+            }),
+            11 => self.config.player_template.collider_half_width = f32::INFINITY,
+            12 => self.action_triggers = ActionTriggerQueue::with_capacity(65),
+            14 => self
+                .pending_melee_attacks
+                .push(runtime::MeleeAttackCommand {
+                    attacker: Entity {
+                        id: 0,
+                        generation: 0,
+                    },
+                    center: crate::components::Transform2D { x: 0., y: 0. },
+                    range: 1.,
+                    damage: f32::NAN,
+                    target: crate::components::gameplay::MeleeTarget::Enemies,
+                    height_span: None,
+                }),
+            15 => {
+                self.last_action_trigger_phase_result
+                    .last_prepared_dispatch_failure_reason_code = Some(u32::MAX)
+            }
+            16 => self.config.prefab_registry.corrupt_builtin_file_fixture(1),
+            _ => unreachable!(),
+        }
+    }
+}

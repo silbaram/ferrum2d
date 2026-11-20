@@ -4,7 +4,7 @@ use crate::entity::Entity;
 pub const EFFECT_EVENT_BYTES: usize = std::mem::size_of::<EffectEvent>();
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EffectEvent {
     pub effect_id: u32,
     pub effect_type: u32,

@@ -6,7 +6,7 @@ pub(crate) const SEARCH_SLICE_WORK: u64 = 262_144;
 const SEARCH_TOTAL_WORK: u64 = MAX_WORK;
 const MAX_SLICE_WORK: u64 = 600_000;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CombatRouteKey {
     target: Entity,
     goal: Transform2D,
@@ -52,20 +52,27 @@ impl CombatRouteKey {
         self.goal
     }
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SharedCombatRoute {
     pub key: CombatRouteKey,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     points: Vec<Waypoint>,
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Grid {
     surface: usize,
+    #[serde(with = "crate::checkpoint_codec::array")]
     range: [i32; 4],
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SearchJob {
     original: (Transform2D, HeightSpan),
     start: Waypoint,
     goal: Waypoint,
     offset: Transform2D,
+    #[serde(with = "crate::checkpoint_codec::array")]
     origin: [f64; 2],
+    #[serde(with = "crate::checkpoint_codec::vector")]
     grids: Vec<Grid>,
     grids_ready: bool,
     grid: usize,
@@ -683,3 +690,5 @@ impl SpatialNavigation {
         (accepted, used)
     }
 }
+
+mod file_combat_admission;
