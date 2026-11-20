@@ -2,7 +2,7 @@
 
 기준일: 2026-11-12
 
-`docs/planning/`은 미착수 개발, 환경 검증 대기와 제품 결정만 관리한다.
+`docs/planning/`은 진행 중·미착수 개발, 환경 검증 대기와 제품 결정을 관리한다.
 완료한 계획은 삭제하며, 사용 계약은 [엔진 문서](../README.md), 재현 명령은
 [Smoke Check](../development/quality/smoke-check.md)에 남긴다.
 
@@ -14,6 +14,7 @@
 
 | 문서 | 상태 | 다음 작업 또는 판단 |
 | --- | --- | --- |
+| [통합 3D 물리](unified-3d-physics-plan.md) | 사용자 승인·개발 진행 중 | 오픈소스 비교, Rust/Wasm 3D 백엔드 도입, 2D 평면·HD-2D 통합 및 수용 검증 |
 | [게임 개발 편의성](game-development-convenience-review.md) | 설계 후보·미착수 / 제품 결정 대기 | 외부 맵·실행 진단·reload의 실제 필요와 저장 경계 확정 |
 | [공용 VFX 리소스와 실행 기능](vfx-resource-system-plan.md) | 엔진 연동 미착수 | VX-00 최소 출력·실게임 검증 후 공용 리소스화. 외부 VFX 제작 도구와 Ferrum2D Studio를 구분 |
 | [HD-2D 후속 기능·검증](feature-candidates.md) | 설계 후보 / 환경 검증·제품 결정 대기 | 대상 씬·GPU·브라우저·성능/외형 수용 조건 확보 후 검증 또는 확장 선택 |

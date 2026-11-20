@@ -25,6 +25,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `behaviorRecipes` | 예 | instance에 바인딩할 gameplay behavior profile을 정의한다. |
 | `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
 | `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
+| `physics` | 아니오 | 개발 소스의 단일 native 월드·선택 관절·planar collision-only grid. [작성 계약](#단일-3d-물리-월드-작성)을 따른다. |
 | `spatial` | 아니오 | 개발 소스의 opt-in 입체 지형·camera·billboard·native actor와 선택 shared-edge `connections` 설정. [공간 계약](data-scene-spatial.md)을 따른다. |
 | `display` | 아니오 | flat 2D의 선택 `pixelPerfect` 표시 설정. 가상 해상도·정수 확대·여백을 정의한다. |
 | `lighting` | 아니오 | world 좌표의 flat `LightingScene2D`. 공간 문서와 동시 지정 불가. [조명 작성·patch 계약](public-api/authoring.md#2d-scene-lighting-placement-patch)을 따른다. |
@@ -176,7 +177,44 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 `components.visual.kind: "sprite"`는 `texture` 또는 `asset` texture reference, `width`/`height`, optional `frame`, `animation`, `originX`/`originY`, `layer`, `sortOrder`, `tint`/`color`를 가진다. `components.sprite`는 기존 문서 호환용 shorthand이고 `visual`과 동시에 쓰면 resolver가 diagnostic error를 낸다.
 
 `components.template`은 catalog reference mode이고, `components.visual` 또는 legacy `components.sprite`/`collider`/`layer`는 inline descriptor mode다. 두 mode를 섞으면 resolver가 diagnostic error를 낸다.
-`createDataSceneRuntimeTarget(engine, { componentTemplates })`는 catalog template id를 inline component spec으로 해소해 spawn할 수 있다. catalog entry는 `visual` 또는 legacy `sprite`, `collider`, `layer`를 가진 inline descriptor여야 하며, nested `components.template` reference는 runtime target에서 거절된다. `componentTemplates`를 제공하지 않으면 runtime spawn 검증(`resolveSceneAuthoringDocument(..., { validateComponents: true })` 기본값 포함)에서는 `allowComponentTemplates: true`를 명시하지 않는 한 template mode를 거절한다.
+
+문서 root의 선택형 `componentTemplates`는 이름 → inline `DataSceneComponentsSpec` JSON map이다.
+`visual` 또는 legacy `sprite`, `collider`, `layer`와 선택형 `body`만 선언하며, nested template와 알 수 없는 component 필드는 거절한다.
+각 entry는 사용 여부와 관계없이 검증한다. JSON 검사는 중첩 깊이 32를 넘는 값·순환 참조·비유한 숫자를 typed diagnostic으로 거절한다.
+상세 visual/collider/body 의미와 native f32 한도는 기존 component parser/preflight를 따른다.
+구조 schema는 `schemas/scene-authoring-component-templates.schema.json`이며 전체 Scene Authoring 문서 schema가 아니다.
+기존 문서에는 필드를 추가할 필요가 없고 문서 version은 1을 유지한다.
+
+```json
+{
+  "componentTemplates": {
+    "crateVisual": {
+      "visual": { "kind": "sprite", "asset": "crate", "width": 40, "height": 40 },
+      "collider": "none",
+      "layer": "wall"
+    }
+  }
+}
+```
+
+`props.components: { "template": "crateVisual" }`를 prefab 또는 instance에 명시한다.
+ObjectDefinition/prefab 이름에서 template ID를 추측하지 않는다. `resolveSceneAuthoringDocument`와
+`applyDataSceneAuthoringDocument`는 문서-local catalog가 있으면 template 해석을 기본 활성화한다.
+명시적 `options.componentTemplates`의 같은 이름 entry가 local entry보다 우선하고, resolver가 `undefined`를 반환하면 local entry를 사용한다.
+외부 entry는 참조 이름별로 한 번만 읽어 분리한 cold snapshot으로 검증·preflight·spawn 전체에서 공유한다.
+누락·nested template는 native scene 변경 전에 거절한다. 반환 문서·placement transform patch·save는
+원본 instance reference와 authored root catalog를 보존하며 외부 override를 저장하지 않는다.
+
+`createDataSceneRuntimeTarget(engine, { componentTemplates })`도 명시적 catalog로 단독 spawn할 수 있다.
+native body/controller 등 full document를 요구하는 의미는 그대로다. catalog를 제공하지 않는 기존
+문서 검증은 `allowComponentTemplates: true`를 명시한 참조 검사 외에는 template를 거절한다.
+
+Studio는 self-contained local catalog로 문서 열기·paused 2D/공간 preview·Play/Stop을 적용한다.
+선택·bounds·picking·component/runtime 진단은 해석한 components를 사용한다. 공유 template의 visual/collider/body와
+sorting은 읽기 전용이며 agent가 원본 catalog를 수정한다. instance 위치·회전·scale과 template에 `visual.layer`가
+없는 경우의 render layer는 기존 placement patch로 편집한다. 공유 `visual.layer`를 덮어쓰거나 template를
+instance별 inline data로 자동 분리하는 편집은 거절한다. Behavior Recipe 본문 편집 UI는 추가하지 않는다.
+SDK viewer·patch/save·handoff 소비자는 선택형 `componentTemplates` 옵션으로 외부 catalog를 전달할 수 있다.
 
 `props.components`는 prefab/variant/instance merge와 placement `updateComponents` patch에서 하나의 component set으로 취급한다. 일반 `props` 값은 기존처럼 JSON object merge를 사용할 수 있지만, `components` 내부만 부분 deep merge하지 않고 전체 교체한다. 이 정책은 legacy `components.sprite`와 신규 `components.visual`이 동시에 남거나 collider/layer 일부만 stale 값으로 유지되는 authoring 충돌을 막기 위한 것이다. Ferrum2D Studio의 Visual/Collider/Layer inspector도 이 계약에 맞춰 selected instance의 `props.components` 전체를 낮은 빈도 draft patch로 교체하고, runtime entity를 직접 수정하지 않는다.
 
@@ -251,7 +289,10 @@ Tiled/LDtk와 Aseprite Import 패널의 **Catalog → Clean Unused**(자산 목�
 공식 앱의 **Assets → Manage → Asset Usage**는 씬 탐색기 범위의 닫힌 씬과 열린 작업공간 원본/draft에서
 texture·normal·model/LOD의 authored 문자열 참조를 읽고 씬 경로·정의/객체 ID·JSON pointer를 표시한다.
 정의/variant·비활성 fragment/include도 포함하며 prefab 상속은 원본 정의의 경로로 남긴다.
+문서-local `componentTemplates`의 color/normal/material texture와 `physics.collisionTilemap.definitions[].visual.texture`도 원래 root JSON pointer로 포함한다.
+같은 template를 여러 instance가 참조해도 catalog 소스 경로를 instance별로 중복 생성하지 않는다.
 숫자 texture·외부 template은 해소하지 않으며 파일/분석 한도·읽기 실패를 명시한다.
+이 참조는 기존 등록 built-in/project/import texture를 사용하며 임의 URL을 자동으로 가져오지 않는다.
 참조 영역의 composition/components/spatial은 기존 SDK parser로 구문을 검사하되 include를 전개하거나 전체 게임의 실행 가능성을 판정하지 않는다.
 잘못된 영역의 원본 참조도 근거로 보존한다. 원문 UTF-8 바이트(공백 포함)를 세며 열린 snapshot은 복제 전에 제한한다.
 참조 owner는 선언된 instance/surface ID 또는 prefab/model/billboard key만 사용한다. `props.id`를 객체 ID로 간주하지 않으며 식별자 한도 초과는 잘린 ID 대신 문제로 기록한다.
@@ -1469,10 +1510,21 @@ optional catalog는 최대256개이며 이름별 `{ prototypeInstanceId: "seed" 
 
 같은 문서의 `player` 레시피에 `{ "kind": "spawnPrefabAction", "action": "summon", "prefab": "minion", "cooldownSeconds": 1, "offsetX": 32 }`를 추가한다.
 primaryActor는 같은 ID의 입력 binding으로 생성하고, 다른 개체도 같은 entity/action의 timer로 생성할 수 있다.
-원본은 applied fragment의 독립 inline static/kinematic actor다. attachment/model·dynamic body·joint·FSM·
-projectile override는 지원하지 않는다. 공간 body는 heightSpan을 함께 작성한다.
+원본은 applied fragment의 독립 static/kinematic actor이며 inline 또는 해석된 component template를 사용할 수 있다.
+attachment/model·dynamic body·joint·FSM·projectile override는 지원하지 않는다.
+기존 공간 component body에는 heightSpan을 작성한다. 명시적 native body는 `fixed`, `kinematic-position`,
+`kinematic-velocity`를 사용하며 공간 높이는 기존 native elevation·renderOffset 계약을 따른다.
+Native 공간의 관리 이동 actor는 capsule `character`를 요구한다.
 원본 instance는 적용 후에도 일반 개체로 남는다. 숨겨진 정의 전용 instance를 자동 생성하거나 원본을 자동 제거하지 않는다.
 원하면 전체 문서 적용 후 첫 update 전에 `despawnPhysicsEntity`로 원본을 제거한다. native cold 정의는 이후에도 유지한다.
+
+Native backend의 프리팹 catalog는 `supportsDataSceneSpawnPrefabPhysics()`가 true인 코어를 요구한다.
+독립 physics capability v1을 기존 spawn-prefab 기능과 함께 확인하며 미지원 코어는 씬 활성화·catalog 교체 전에 거절한다.
+기존 legacy backend의 프리팹 packet/version은 유지한다. 자동 planar controller의 mask·반복 수·step/drop·ledge 설정과,
+명시적 native body의 충돌체·재질·필터·local pose·character 설정·renderOffset을 독립 정의로 복사한다.
+Character 입력·외력·대기 impulse·접촉·지지체 핸들은 새 개체로 복사하지 않는다.
+Body/collider/character 용량과 실제 native 형상 배치 작업을 생성 전에 예산에 포함하고 실패한 임시 자원을 정리한다.
+Native 개체의 같은 Engine 메모리 checkpoint는 지원하며, 아래 legacy JSON 전투 저장을 native 파일 저장으로 확장하지 않는다.
 
 sprite·개별 atlas/legacy 재생·체력·수명·충돌·faction/tag·이동·액션·타이머·변수 트리거를 이어받는다.
 primary marker는 새 개체에 복사하지 않는다. 원본 billboard/탄환 prefab과 Chase 정지 거리를 공유하며
@@ -1507,17 +1559,40 @@ native action v1 기능을 검사한다. 문서 적용과 저장·복원 전에 
   `ids.actions`와 같은 ID로 `setInputActionBinding`의 pressed/down을 연결한다. 모든 입력 전투 액션은
   작성 순서를 공유하며 substep당 최대 한 번 시도한다. 타이머는 `target: "player"` melee 또는
   `aim: "targetPlayer"` dash를 실행한다. 같은 entity/action ID의 마지막 종류와 값이 유효하다.
-- melee는 물리 이동 뒤, 사망 제거 전에 범위 내 실제 collider의 원 겹침·상호 mask·floor/height·faction을 검사한다.
+- `physics`가 없는 기존 경로의 melee는 물리 이동 뒤, 사망 제거 전에 범위 내 실제 collider의 원 겹침·상호 mask·floor/height·faction을 검사한다.
   발사 개체는 enabled inline collider를 요구하고 공간 문서는 body.heightSpan도 작성해야 한다.
   collider offset을 포함한 중심까지 WALL과 projectile 차단 지형의 시야를 검사한다.
   지면 아래 표면을 장애물로 오인하지 않도록 겹치는 body 높이의 중간을 사용한다.
   체력이 없는 장식은 건드리지 않으며 기존 피해·사망·gameplay event 경로를 공유한다.
-- dash는 부착되지 않은 enabled kinematic 단일 AABB와 회전0 instance를 요구한다. 공간 문서는
+- `physics`를 선언한 문서는 `collider: "none"`과 `body.collider` 형상으로 melee를 작성한다.
+  별도의 AABB나 `body.heightSpan`이 필요하지 않다. `range`는 0보다 크고 1,000,000 이하의 world unit이다.
+  공격 시작 시 실제 body 중심을 저장하고 물리 이동 뒤 대상 도형까지의 최근접 거리를 검사한다.
+  spatial은 XYZ 구 범위, planar는 XY와 native 논리 높이 범위를 사용하며 `renderOffset`은 제외한다.
+  문서의 collision layer가 native category 기본값을 정하며, 공격자의 첫 enabled fixture와 실제 대상 fixture의 상호 mask를 적용한다.
+  대상 sensor도 hurtbox로 사용할 수 있으며, 복합 fixture 중 노출된 부분이 있으면 entity당 한 번 피해를 준다.
+  실제 3D WALL 도형과 지형으로 시야를 검사하며 sensor·disabled 벽은 차단하지 않는다.
+  체력·faction·사망·입력/타이머·쿨다운 규칙은 기존 액션과 공유한다.
+  native melee는 전체 후보의 시야 검사까지 성공한 뒤 쿨다운과 피해를 적용한다.
+  기본 backend 전환, 전투 AI 길찾기·crowd 이전과 전체 물리 snapshot은 별도 진행 중이다.
+- `physics` 문서의 dash는 enabled `kinematic-position`/`kinematic-velocity` shape body를 사용한다.
+  dynamic/fixed body와 attachment는 작성 검증에서 거절한다. AABB·회전0·heightSpan은 요구하지 않는다.
+  WASD를 우선하고 pointer/targetPlayer도 실제 물리 중심을 기준으로 한다. `renderOffset`은 제외한다.
+  `distance / stepSeconds`는 1,000,000 world units/s 이하여야 한다.
+  캡슐은 한 고정 tick 동안 controller 이동에 대시 속도를 더하므로 기존 경사·계단·접지와 점프를 공유한다.
+  입력과 큐에 있던 점프는 덮어쓰지 않는다. 수락한 native spatial.actor 대시는 기존 자동 경로를 취소한다.
+  일반 키네마틱은 같은 tick의 swept 경로를 사용한다. 이동해 오는 벽도 접촉 시점에 정지하며,
+  센서인 대시 몸체도 solid 장애물을 검사한다. 속도형 몸체의 원래 이동 속도는 tick 뒤 복구한다.
+  기존 position target에는 대시 변위를 더하고 완료한 target은 다음 tick에 재실행하지 않는다.
+  비 controller 경로는 이동 발판과 합쳐 최대16개다. 추가 요청은 이동·쿨다운 전에 거절한다.
+  속도형 몸체의 한 tick 회전은 최대 한 바퀴까지 90도 이하의 경로 조각으로 나누며 이를 넘는 요청은 거절한다.
+  일반 키네마틱 대시는 전체 지형 경로 탐색이나 기존 논리 gateway/step/drop 계산을 대신하지 않는다.
+  자유 낙하·계단·경사를 포함한 HD 캐릭터에는 capsule controller를 사용한다.
+- `physics`가 없는 기존 경로의 dash는 부착되지 않은 enabled kinematic 단일 AABB와 회전0 instance를 요구한다. 공간 문서는
   body.heightSpan도 필수다. WASD 방향을 우선하고, 방향 입력이 없으면 body midpoint + billboard elevation
   평면의 현재 카메라 ray를 사용한다. 실제 native sweep으로 벽·층·경사·지면 단절을 검사한다.
   공간 primary actor는 spatial.actor의 step/drop, 그 외에는 combatNavigation의 step/drop을 사용하며
   둘 다 없으면 각각1이다. 긴 이동도 이 한도에 따라 중간에서 멈출 수 있다.
-- 평면 타일맵에서는 collider 중심 경로가 지나는 타일 경계를 계산하고 각 구간 내부와 경계를 검사한다.
+- 기존 평면 타일맵 경로에서는 collider 중심 경로가 지나는 타일 경계를 계산하고 각 구간 내부와 경계를 검사한다.
   높은 타일·지면 틈의 짧은 대각선 교차도 검사한다. 최대129개 경계 후보를 넘으면 이동 전에 거절한다.
   공간 대시는 기존 terrain/gateway 이동을 재사용한다. 원래 velocity는 유지한다.
 - 별도의 outer update당 액션 예산1M work와 최대128회 melee/dash 시도를 사용한다.
@@ -1525,7 +1600,7 @@ native action v1 기능을 검사한다. 문서 적용과 저장·복원 전에 
   예산/용량 거절은 cooldown을 소비하지 않는다. 부분적으로 이동한 dash는 cooldown을 소비하고,
   완전히 막힌 dash는 blocked placement를 보고한다. 기존 failure reason/진단 ABI를 유지하며
   예산 거절도 기존 spawn queue full과 capped 카운터에 기록한다. navigation의1M 예산과는 별도다.
-- v9 checkpoint의 기존 actor cooldown·위치·높이·velocity·체력 필드를 재사용한다. pause 중 입력은 폐기하고,
+- `physics`가 없는 경로는 v9 checkpoint의 기존 actor cooldown·위치·높이·velocity·체력 필드를 재사용한다. pause 중 입력은 폐기하고,
   restore 뒤 pending melee와 액션 예산은 초기화한다. 생성 actor의 추가 저장 계약은 아래 spawnPrefab 절을 따른다.
 
 ```ts
@@ -1693,6 +1768,120 @@ authoring 전체 적용 및 사용자 custom callback 전체의 rollback 계약�
 실제 피해가 이어지는지, 잘못된 체력 payload가 기존 장면을 보존하며 거절되는지 확인한다.
 
 
+### 통합 물리의 전투 이동 (개발 소스)
+
+`physics`와 명시적 shape body를 사용하는 전투 actor의 Chase·SeekTarget·Accelerate는
+실제 물리 위치와 속도를 사용한다. native 몸체에는 화면용 `renderOffset`을 더한 World 좌표로
+AI를 계산하거나 World의 2D 속도만 변경하지 않는다. Rust의 Static·Linear·MoveToPoint·Orbit도
+같은 직접 이동 경로를 사용한다. 입력 전용 패턴과 Oscillate는 이 전투 실행기에 포함되지 않는다.
+
+- 평면 모드는 XY, 공간 모드는 XZ를 이동 평면으로 사용한다. 가까운 표적의 거리에는 공간 모드의 실제 Y 높이도 포함한다.
+  primary/entity/faction/tag/layer 표적을 지원하며, native layer 검색은 enabled fixture의 category bits를 사용한다.
+  평면 표적은 native floor/height span을 따른다. 같은 거리의 후보는 entity ID/generation 순서로 결정한다.
+- 캡슐은 controller의 지면 이동 입력을 갱신한다. up 방향 성분을 제거하고 기존 점프·중력·벽/계단 판정을 유지한다.
+  이전 이동 속도에서 발판 carry를 제외하므로 Accelerate가 발판 속도를 다시 가속하지 않는다.
+- 동적/속도형 키네마틱은 native velocity를 갱신하고 공간 Y 속도와 각속도를 유지한다.
+  컨트롤러 없는 위치형 키네마틱은 다음 고정 tick의 위치를 지정한다. 일반 키네마틱은 지정 이동이며
+  capsule의 장애물 회피/벽 정지 기능을 제공하지 않는다. 충돌하면서 지형을 걷는 AI에는 character를 사용한다.
+- 이동 레시피는 dynamic 또는 kinematic body를 요구하고 speed/maxSpeed는 1,000,000 world units/s 이하이다.
+  기존 SeekTarget의 turnRate와 Accelerate의 증분은 고정 tick당 적용한다.
+  primaryActor와 별도 spatial.actor의 입력 소유권을 유지하며, 512 actor 한도를 넘은 native actor의 이동 입력은 정지한다.
+
+직접 이동과 별도로 native Chase의 자동 tick 경로 실행을 연결했다. `physics.space: "spatial"` 문서는
+`gameplay.combatNavigation`을 JSON에 작성해 바로 적용할 수 있다. Source는 부착되지 않은 Y-up
+`kinematic-position` capsule과 `character`가 필요하며 sensor capsule은 거절한다. primaryActor와
+명시적 target은 inline shape body를 사용한다. `spatial.actor` 입력 소유자는 AI source 수와 거리 바인딩에서 제외한다.
+기존 heightSpan/AABB 작성 경로는 `physics.space: "spatial"`이 아닌 문서에서 유지한다.
+
+```json
+{
+  "physics": { "space": "spatial", "gravity": [0, -10, 0], "lengthUnit": 1 },
+  "gameplay": {
+    "primaryActor": "player",
+    "combat": true,
+    "combatNavigation": {
+      "cellSize": 0.5,
+      "maxStepHeight": 0.3,
+      "maxDropHeight": 0.2,
+      "repathIntervalSeconds": 0.1,
+      "arrivalRadius": 1,
+      "maxAgents": 8
+    }
+  }
+}
+```
+
+`engine.supportsDataSceneNativeCombatNavigation()`은 이 작성/실행 연결을 지원하는 Wasm을 구분한다.
+구형 일반 navigation 기능만 있는 빌드나 이전 SDK는 native 문서를 씬 활성화/생성 전에 거절한다.
+Native step/drop은 최대10,000 world units이며, 새 JSON 필드나 authoring version 변경은 없다.
+거리 값은 기존 설정 형식을 유지하므로 scene의 world-unit 크기에 맞춰 명시한다.
+
+- 최대64 actor가 outer update당 검색 slice 한 번과 전체1,000,000 work를 공유한다. slice 목표262,144와
+  요청 전체8,000,000 work를 유지하고, 한 pending frontier를 재개하며 검색 순서를 순환한다.
+- 경로는 fixed geometry의 실제 캡슐 probe를 사용한다. 움직이는 peer/body는 검색에서 제외하지만
+  실제 공통 물리 구간은 기존 controller로 이들과 충돌한다. moving peer의 위치 변화가 정적 검색을 취소하지 않는다.
+  선택 crowdAvoidance는 아래의 bounded native peer 회피를 사용한다. 일반 이동 장애물의 미래 경로 예측은 제공하지 않는다.
+- 고정 벽을 우회한 뒤 실제 target 중심의 arrivalRadius에서 멈춘다. 개별 Chase 거리 바인딩도 적용한다.
+  target의 generation/floor 변경은 즉시 경로를 취소하고 이동 위치 변경은 repath 간격으로 갱신한다.
+  target의 native support가 있으면 그 floor를 사용하고, controller 없는 marker는 World floor 메타데이터(기본0)를 사용한다.
+- native terrain/body 변경을 반영한 뒤 자동 tick에서만 검색한다. 수동 `stepRigidBodies`는 AI 검색을 실행하지 않는다.
+  일시정지는 검색·이동 시간을 멈추고, 전투 해제/재설정·패턴 제거는 이전 이동 입력을 정지한다.
+  경로 추종은 대기 점프를 보존하며 공중에서도 이어진다. solver 뒤에 실제 pose를 관측해 다음 tick의 외부 teleport를 구분한다.
+- 최대8개의 검증된 native 경로를 FIFO cache로 보관한다. 목표 generation/실제 위치/floor/정지 거리와
+  cellSize·캡슐 크기/로컬 배치/방향·controller 설정·collision group/height 필터가 호환될 때 재사용한다.
+  속도와 source body ID는 경로 호환성 키가 아니며 각 actor는 자기 속도로 이동한다.
+  재사용 시 첫 waypoint까지 native capsule edge를 검사한다. 이 합류가 막히면 cache hit로 집계하지 않고
+  재시도 간격 뒤 전체 A*로 우회 경로를 찾는다. 합류 검사도 한 pending job/slice와 기존 work 예산을 공유한다.
+- 경로 점은 immutable shared buffer를 사용한다. 고정 geometry snapshot은 cache 전체에 한 개를 두며,
+  pose/shape/enable/sensor/filter/one-way 또는 고정 body 집합·지형 revision 변경 시 cache를 폐기한다.
+  목표 generation이 사라지거나 위치/floor가 바뀐 경우도 이전 목표의 cache를 재사용하지 않는다.
+- Native `movementPatterns: "all"`은 아래의 별도 capability를 요구하며 SeekTarget/Accelerate도 같은 source 용량과 이동/회피 예산에 연결한다. 임의 mesh/body 지지면·moving-platform 경로는 남아 있다.
+
+Native peer 회피는 기존 `crowdAvoidance: { "padding": 0.1 }` 설정으로 켠다.
+`engine.supportsDataSceneNativeCombatCrowd()`가 true여야 하며, 이 getter가 없는 SDK나 이전 native Chase 빌드는
+씬을 바꾸기 전에 거절한다. JSON 필드/버전과 navigation/crowd/scheduler 진단 배열의 크기는 유지한다.
+
+- 관리하는 최대64개 capsule의 실제 3D pose와 직전 tick의 관측 속도를 한 번 수집해 모든 actor가 같은 입력을 본다.
+  renderOffset이나 이전 2D AABB를 회피 도형으로 사용하지 않는다. 로컬 collider pose, 양방향 category/mask,
+  실제 높이와 활성 상태·generation을 검사하고 sensor를 제외한다. padding은 capsule 사이의 추가 간격이다.
+- actor마다 승인 물리 구간당 최대8개 수평 방향을 시험한다. 실제 한 tick의 이동과 짧은 상대 속도 예측을 검사하고,
+  접지 중에는 native capsule probe로 이동 구간의 벽·walkable 지지면·지형 범위/높이를 다시 확인한다.
+  이미 padding 안에 있는 peer로부터 멀어지거나 접선 방향으로 빠져나오는 이동은 허용한다.
+- 회피 방향을 잠시 유지해 같은 peer 앞에서 방향을 계속 뒤집는 현상을 줄인다. 안전한 후보가 없거나
+  예산이 부족하면 수평 이동을 대기한다. 모든 후보의 peer 검사와 구간 probe는 기존 outer update의1M work를
+  먼저 승인하며, 대기는 경로 실패나 새 A*로 처리하지 않는다. 점프·중력과 실제 coupled contact는 기존 tick이 담당한다.
+- 기존 `dataSceneCombatCrowdStats()`에 정지 actor 수, 대기/peer 검사 누계, frame peer 검사/회피 이동 수를 기록한다.
+  peer 검사 수는 filter 검사를 포함한 방문 수이며 실제 물리 solver의 pair cast 수와 구분한다.
+- 관측 속도 기반의 local steering이므로 전체 군중의 최적 경로·교착 해소나 미래 점프/발판 경로를 보장하지 않는다.
+  실제 이동의 충돌 안전성은 동일 native controller/접촉 solver가 계속 담당한다. 밀집 시간·메모리 수용 검증은 남아 있다.
+  work는 CPU 작업 추정 단위이며 전체 물리 solver의 ms/mesh triangle 방문 실측이 아니다.
+
+Native all-pattern은 기존 `movementPatterns: "all"` 필드와 v6 mode flag를 사용한다.
+`engine.supportsDataSceneNativeCombatMovement()`가 true여야 하며, 일반 v6 또는 native Chase만 지원하는
+이전 빌드는 씬을 바꾸기 전에 거절한다. Source는 앞의 Y-up capsule controller 조건을 따르고,
+primaryActor와 별도 spatial.actor는 세 패턴 모두 source 수/입력 소유권에서 제외한다. crowdAvoidance를
+함께 지정하면 native crowd capability도 필요하다. JSON/진단 배열 버전과 필드 크기는 바꾸지 않았다.
+
+- SeekTarget은 actual target pose와 같은 A*·공유 경로 cache를 사용한다. turnRate는 승인 물리 구간마다0~1
+  속도 보간 계수이며 0은 이전 이동 의도를 유지하고 1은 즉시 방향을 맞춘다. 같은 support에서 가까운
+  중간 waypoint를 생략할 때도 다음 점까지 native 구간의 실제 지지면/높이를 검사하고 work를 먼저 승인한다.
+  A* 지지점도 실제 capsule local pose와 경사면 normal을 사용하므로 수평 offset이 있는 capsule을 처리한다.
+- 최종 경유점에서는 속도를 줄이고, 한 tick이 arrivalRadius를 관통하면 최초 진입 부근으로 입력을 자른다.
+  실제 slope response 때문에 반경 밖에서 반복 정지하지 않도록 최대 skin의0.1(반경의 절반 이하)만큼
+  안쪽 여유를 둔다. SeekTarget은 공통 arrivalRadius를 쓰며 이전 Chase의 개별 거리 binding은 적용하지 않는다.
+- Accelerate는 target/A*를 요청하지 않고, 이전 이동 의도에 accelerationX/Y를 승인 물리 구간마다 한 번 더해
+  maxSpeed로 제한한다. X/Y는 ground X/-Z에 대응한다. 접지 중에는 벽과 walkable 지형 범위/실제 높이를
+  검사하며, 막혀도 계산을 승인한 tick의 이동 의도는 다음 tick에 이어진다. 준비/검사 예산이 부족한
+  tick은 가속을 누적하지 않고 수평 이동을 보류한다.
+- 보간/가속 상태는 Rust actor별 이동 의도이며 충돌 후 실제 displacement나 회피 방향으로 덮지 않는다.
+  진입/외부 teleport 시 native locomotion에서 carry를 제외한 속도로 초기화한다. 패턴 변경은 이전 route/job을
+  해제하고, 패턴 제거·전투 해제는 입력을 정지한다. 점프·중력과 실제 위치 적분은 공통 physics tick이 소유한다.
+- 세 패턴의 source64개·outer update work1M 한도와 단일 pending 검색을 공유한다. Shortcut/이동 검사 비용은
+  frameWorkUnits에 포함하며 A* 검색 수를 늘리지 않는다. crowd를 끈 Seek도 실제 지형 검사를 통과해야 한다.
+
+무옵션 기본 physics backend 전환과 native JSON 진행 저장·파일 import는 아직 완료되지 않았다.
+위 이동 의도/경로 상태는 동일 Engine 메모리 checkpoint에 포함하며 기존 AABB authoring의 JSON 진행 저장과 구분한다.
+
 ### 다층 전투 AI 길찾기 (개발 소스)
 
 `gameplay.combatNavigation`을 선언하면 combat의 `chase`가 기존 공간 지형과 `spatial.connections`를 따라 이동한다.
@@ -1732,7 +1921,7 @@ cellSize는 지도 크기와 경사에 맞춰 정한다. cellSize를 과도하�
 - outer update당 A* slice 또는 군중 보강 검색 1회, 전체 agent의 검색/준비/이동에 1,000,000 work를 허용한다.
   정적 경로는 slice 목표262,144·요청 전체8,000,000 work로 프레임을 나눠 탐색한다.
   큰 query 준비 또는 분할할 수 없는 단일 edge에는 기존600,000 slice 상한을 유지한다. 선택적 군중 보강은 기존600,000 상한이다.
-  fixed substep도 이 예산을 공유한다. round robin으로 처리하며 경로 실패·예산 보류 시 멈춘다.
+  추가 물리 구간도 이 예산을 공유한다. round robin으로 처리하며 경로 실패·예산 보류 시 멈춘다.
   계단을 직접 가로지르는 fallback은 없다. 큰 장면은 지형 분할/적 수/cellSize를 함께 조정한다.
 - target이 이동하면 repath 간격 이후 경로를 갱신한다. 이 간격은 최소 재시도 대기 시간이며, agent 수와 공유 예산에 따라 더 늦어질 수 있다. target generation/floor 변경은 즉시 기존 경로를 취소한다.
   pause는 경로 진행/재탐색 시간을 멈추며, checkpoint는 기존 v9 형식의 authoring과 위치/높이를 복원한 뒤 새 경로를 만든다.
@@ -1746,6 +1935,9 @@ work unit은 보수적인 CPU 탐색·충돌 비용 단위로 GPU 시간이나 m
 
 
 ### SeekTarget·Accelerate 공간 이동 (개발 소스)
+
+이 절의 AABB/heightSpan·gateway·checkpoint 설명은 기존 authoring 경로에 적용한다.
+`physics.space: "spatial"` shape body의 계약은 앞의 native 전투 이동 설명을 따른다.
 
 `combatNavigation.movementPatterns: "all"`을 선언하면 primaryActor를 제외한 유효한 최종
 Chase/SeekTarget/Accelerate 전체가 같은 최대 agent 수와 outer frame 작업 예산을 공유한다.
@@ -1937,3 +2129,154 @@ Flat lit sprite의 `lighting`에는 `lightMask`·`shadowMask` 정수0..255를 �
 AI agent가 JSON이나 `setEnvironment` patch로 작성하며 별도 UI 편집기는 추가하지 않는다.
 프로브를 포함한 patch는16, Data Scene state는18을 사용하고 progress-only 설정도 보존한다.
 기본값·구형 core 거절·벽 차폐 한계는 [프로브 계약](data-scene-spatial.md#지역별-간접광-프로브)을 따른다.
+
+## 단일 3D 물리 월드 작성
+
+개발 소스의 선택 root `physics`는 `UnifiedPhysicsOptions`를 확장한 `DataScenePhysicsSpec`이다. `space`는 `planar-xy` 또는
+`spatial`이고 두 값 모두 같은 3D 백엔드를 사용한다. `gravity` XYZ와 `lengthUnit`을 명시한다.
+생략한 기존 문서의 동작은 유지한다. 선택 `joints`와 planar 전용 `collisionTilemap`을 추가할 수 있다.
+기존 Physics Spec의 `mode/materials/bodies` 형식과 혼용하지 않는다.
+[실행 가능한 공간 물리 문서](samples/data-scene-physics.scene-authoring.json)를 참고한다.
+저장소의 JSON Schema 보조 기준은 `schemas/data-scene-physics.schema.json`이다. Schema의 root는 `physics`,
+`#/$defs/body`는 아래 `components.body`의 구조다. 실제 형상/질량/축 제약은 native preflight도 검사한다.
+
+```json
+{
+  "physics": { "space": "spatial", "gravity": [0, -160, 0], "lengthUnit": 16 },
+  "components": {
+    "visual": { "kind": "primitive", "shape": "circle", "radius": 8 },
+    "collider": "none",
+    "layer": "wall",
+    "body": {
+      "kind": "dynamic",
+      "elevation": 64,
+      "renderOffset": [0, -8, 0],
+      "collider": { "shape": { "type": "sphere", "radius": 8 }, "friction": 0.5 }
+    }
+  }
+}
+```
+
+위 예의 `physics`는 문서 root, `components`는 prefab/instance의 `props.components`에 둔다.
+`body.kind` 기본값은 `dynamic`; `fixed`, `kinematic-position`, `kinematic-velocity`도 지원한다.
+`body.collider`는 공개 `UnifiedPhysicsCollider`와 같은 7종 형상·재질·sensor/category/mask 계약이다.
+Planar 월드에서는 기존 `{type:"static"|"kinematic"|"dynamic", ...}` body 또는 collider-only 객체와
+새 shape body를 서로 다른 instance에 함께 작성할 수 있다. 모두 같은 native 월드에 연결한다.
+Spatial 월드는 기존 `type` body와 별도 2D collider를 거절한다. 새 shape body를 가진 객체는 두 공간 모드 모두
+`components.collider: "none"`을 유지하고 body 내부에 충돌체를 작성한다. 한 body에 두 encoding을 섞지 않는다. `layer`는 기존 게임용 분류이며,
+native 물리 필터는 `body.collider.category/mask`를 사용한다. 문서 적용 시 category를 생략하면
+`components.layer`를 player=1, enemy=2, bullet=4, wall=8, pickup=16으로 매핑한다.
+명시적 category(0 포함)는 우선하며 mask 기본값은 전체 허용이다. 직접 native body API의 category 기본값은 1이다.
+재질 밀도는 3D 부피 밀도다.
+
+초기 시각 앵커는 planar에서 배치 `(x,y,0)`, spatial에서 `(x,elevation,-y)`다.
+body 중심은 앵커에서 `renderOffset`을 뺀 위치다. `elevation` 기본값은 0이며 planar에서는 0만 허용한다.
+배치의 양수 `scale`은 모든 충돌체 길이·local pose 위치·renderOffset에 적용한다.
+속도·중력·재질은 월드 단위 그대로다. 배치 회전은 planar Z 또는 spatial Y 회전이고,
+선택 `body.rotation` XYZW quaternion을 그 뒤에 합성한다. 별도의 `body.pose.position`은 받지 않는다.
+planar sprite 회전은 물리 회전과 중복 적용하지 않는다. 공간 billboard는 기존 시각 회전 계약을 유지한다.
+
+`applyDataSceneAuthoringDocument`는 body·캐릭터·관절을 임시 native 월드에 구성해 형상·축·각 용량을
+검증한 후 실제 씬을 교체한다. 그 뒤 기존 시각 entity에 물리 body를 연결하고 Rust가 물리를 실행한다.
+`activateDataScene:false`, 미지원 runtime은 거부한다.
+문서 root `physics`는 world를 고정 시간으로 구성하며 `stepSeconds`는 nominal 값이다. 가변 시간이 필요하면 적용 성공 후
+`engine.configureFixedTimestep(false)` 또는 `{enabled:false}`로 같은 native world의 clock을 전환한다.
+이 객체에 별도 clock-mode 필드를 추가하지 않는다. Root `physics`를 생략하고 unified 생성 정책을 상속하는 문서는 저장된 clock mode를 따른다.
+시간 범위·잘못된 요청·0초 렌더 frame·수동 실행 계약은 [Core 시간 실행](public-api/core.md#고정가변-시간-실행)을 따른다.
+`spatial.actor`는 spatial world의 Y-up position-kinematic capsule controller를 참조할 수 있다.
+직접 `createDataSceneRuntimeTarget`으로 shape body만 생성하는 대신 전체 문서 적용을 사용한다.
+기존 component body·지형·관절을 모두 구성한 뒤 cold admission에서 합산 용량을 확인한다. 이 과정은
+물리 tick·clock remainder·예약 force/impulse를 소비하지 않는다. Canonical `createEngine()` SDK는 전체 Rust
+checkpoint와 SDK physics metadata로 apply를 보호하고, 실패하면 기존 씬·clock·variables·instance registry·
+진행 문맥을 복원한다. Root `physics`가 없어도 적용 전 실제 backend가 `unified-3d`이면 이 보호를 사용하며,
+finalize는 씬 활성화 뒤 실제 backend가 native인 경우에만 실행하므로 native built-in에서 legacy Data Scene으로도 전환할 수 있다.
+Native authoring capability가 없는 Wasm은 거절한다. 임의 custom callback·외부 asset/GPU
+자원까지 되돌리는 계약은 아니며, 모델·에셋 준비와 전체 자원/비용 수용은 각 기존 preflight·후속 검증 범위다.
+
+`applyDataSceneAuthoringDocument`와 `resolveSceneAuthoringDocument`의 선택 `componentTemplates`는
+이름별 component spec 객체 또는 `(name) => spec | undefined` resolver다. 제공하면 `components.template`을
+해석해 inline과 같은 body·controller·관절 참조·모델·재질 검증을 실행한다. 전체 적용에서는 이름별 spec을
+한 번 가져와 복사하고, 이후 검증·생성이 같은 snapshot을 사용한다. 중첩 template·누락된 항목은 씬 교체 전에 거절한다.
+반환/저장할 작성 문서는 원래 template 참조를 유지하며 catalog를 JSON 안에 삽입하지 않는다.
+Native physics 문서는 template catalog 없이 적용할 수 없다. 일반 메타데이터 inspection의 미해석 template 허용은 유지한다.
+`preserveAnimationAndLod`는 inline↔template와 template↔template 사이에서도 호환 animation/LOD를 유지한다.
+이를 위한 이전 정규화 설정·핸들은 별도 epoch 검증 문맥에 복사하며 이전 resolver를 다시 호출하지 않는다.
+이는 JSON 진행 저장이나 외부 native 파일 복원을 지원하는 변경이 아니다.
+
+Planar 전용 `physics.collisionTilemap`은 `DataSceneCollisionTilemapOptions` 객체로 작성한다.
+`columns/rows` 각각 1..256, 정의 최대256개와 정확한 row-major `tiles` JSON 배열을 사용하며 runtime API와 달리 Uint32Array는 받지 않는다. 기존 bulk API의
+floor/elevation/ramp·blocking 기본값과 검증을 공유한다. 정의에 선택 `visual`을 작성하면 셀 크기의 그래픽도 표시한다.
+`visual.texture`는 로드한 텍스처 이름 또는 0..16,777,215의 정수 ID, 선택 `frame`은 정규화 UV,
+선택 `tint`는 sRGB hex다. 생략한 정의는 계속 충돌 전용이다. 그래픽은 기존 2D 배경 레이어를 사용하며
+공간 카메라와 함께 작성하면 씬 교체 전에 거절한다. 그래픽을 지원하지 않는 코어와 누락된 텍스처도
+사전 검증에서 거절한다. Canonical SDK는 검증한 packet을 실제 적용에 재사용한다.
+`false` clear는 runtime API 전용이다. [타일맵 계약](physics-spec.md#native-hd-2d-수동-이동과-충돌-타일맵)을 따른다.
+
+기존 `components.body: { type: "kinematic", ... }`의 선택 `kinematicController` 객체는 명시적 planar
+physics와 enabled solid convex collider를 요구한다. 생략하면 기본값, `{}`는 기본값 정규화이며 `false`는
+작성 값으로 받지 않는다. Mask/반복 수·step/drop·ledge 기본값과 범위는
+[controller JSON 계약](physics-spec.md#자동-controller-json-작성)을 따른다. Shape body의 `character`와 구분한다.
+단독 `createDataSceneRuntimeTarget`은 이 controller 작성을 거절하고 전체 planar 문서 적용을 요구하며,
+template를 해석한 component에도 root physics 요건을 씬 변경 전에 검사한다.
+
+Studio는 이 문서를 열고 배치 수정·게임 미리보기·실행 시 같은 적용 경로를 사용한다.
+선택 객체의 Physics 요약은 native XYZ 위치·속도·XYZW quaternion·XYZ 각속도·sleep·충돌체 수를 4 Hz로 읽는다.
+잘못된 행·stale handle·조회 실패는 unavailable로 표시하며 읽은 buffer를 다음 조회 전에 복사한다.
+Controller JSON은 작성 값 그대로 표시하고 실제 runtime 적용 여부는 unknown으로 구분한다.
+형상·재질·controller 설정은 JSON으로 작성하며 새 편집 폼은 제공하지 않는다. HD-2D의 높이 입력과 높이 조작은 새 body의 `elevation`을 수정하며
+local collider·renderOffset을 보존한다. 원본 값 복원도 새 body의 `elevation`을 기준으로 한다.
+배치 이동·크기·회전과 Undo도 문서를 다시 적용해 native body에 반영한다.
+`physics` 문서는 2D·HD-2D 편집 모드에서 정지하고 Play에서만 진행한다. Stop은 작성 위치로 복원한다.
+기존 2D 충돌 프록시 편집기는 새 shape body에 사용할 수 없다. JSON 문서 저장과 런타임 진행 저장은 구분한다.
+Native를 사용하는 이 문서의 JSON 진행 저장·복원은 오류로 거부한다. 같은 Engine의
+`captureRuntimeCheckpoint`/`restoreRuntimeCheckpoint`는 지원하지만 파일 import·버전 이전은 제공하지 않는다.
+기존 Physics Spec 전체 이전, 기본 백엔드 전환, 기존 AABB 캐릭터 데이터의 자동 변환은 후속 작업이다.
+
+### 캡슐 캐릭터와 관절 작성
+
+`DataScenePhysicsBodySpec.character`에 `UnifiedPhysicsCharacterOptions`를 작성하면 같은 바디에
+native 캐릭터 컨트롤러를 설치한다. `kind: "kinematic-position"`과 capsule collider가 필요하다.
+`character: {}`는 native 기본 설정을 사용하며 필드를 생략하면 컨트롤러를 만들지 않는다.
+`up`, `skinWidth`, `maxSlopeAngle`, `slideAngle`, `stepHeight`, `stepMinWidth`, `snapDistance`,
+`maxVerticalSpeed`, `pushMass`는 직접 구성 API와 같다. 길이·속도는 instance scale과 무관한 월드 단위다.
+이동·점프는 반환된 entity handle을 모아 `setUnifiedPhysicsCharacterInputs`로 전달한다.
+`spatial.actor`로 같은 billboard 인스턴스를 지정하면 WASD와 `moveDataSceneSpatialActorTo`를
+native 컨트롤러가 처리한다. `actor.speed`는 0–1,000,000 월드 단위/초이며 대각선 입력은 정규화한다.
+생략한 `maxStepHeight`/`maxDropHeight`는 body.character의 `stepHeight`/`snapDistance`를 상속하고,
+둘 다 없으면 0.3/0.2다. 명시한 값은 컨트롤러에 적용하며 각각 0–10,000만 허용한다.
+새 경로의 `maxDropHeight`는 접지 유지 거리이며 더 큰 낙하는 중력을 따른다.
+선택된 actor는 매 승인 물리 구간의 수평 속도를 소유하므로 bulk 입력의 수평 속도를 덮어쓴다.
+같은 입력에 대기한 점프는 보존하고 한 번만 소비한다. `character`만 작성하면 자동 WASD 연결은 없다.
+단독 `configureDataSceneSpatial`/`moveDataSceneSpatialBody`는 문서의 기본값 상속을 수행하지 않으므로
+native 월드에서는 이동 한계를 명시한다. [공간 계약](data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)을 참고한다.
+
+문서의 `physics` 타입은 `DataScenePhysicsSpec`이며 선택형 `joints`에 이름별
+`DataScenePhysicsJointSpec`을 작성한다. `bodyA`와 `bodyB`는 적용하는 fragment 안의 서로 다른
+physics body 인스턴스 ID다. native handle·prefab 이름·시각 객체만 있는 ID는 사용할 수 없다.
+삭제나 이름 변경으로 참조가 끊어지면 문서 검증이 실패한다.
+
+```json
+{
+  "joints": {
+    "rail": {
+      "bodyA": "anchor",
+      "bodyB": "slider",
+      "kind": { "type": "prismatic", "limits": [-2, 2] }
+    }
+  }
+}
+```
+
+13종 `kind`, motor, spring, enabled, contactsEnabled, breakForce/breakTorque는
+[native 관절 API](public-api/core.md)의 설정을 사용한다. `localFrameA/B.position`은 각 endpoint의
+instance scale을 적용하며 회전은 그대로다. 관절 길이·limit·motor·pulley ground는 월드 단위를 유지한다.
+hinge 축은 local X다. planar hinge에는 X를 Z로 정렬하는 frame 회전이 필요하다.
+`gear`와 `continuousRevolute`는 planar 전용이며 spatial 문서에서는 거부한다.
+적용 결과의 `physicsJoints`는 작성 이름을 해당 월드의 `UnifiedPhysicsJointHandle`로 매핑한다.
+physics 문서에 관절이 없으면 빈 map, physics 없는 문서에서는 이 필드가 없다.
+관절 파괴·제거·씬 재적용 후에는 새 handle을 사용한다.
+
+잘못된 참조·컨트롤러 형상·관절 설정과 body/character/joint 용량 초과는 씬 교체 전에 거부한다.
+배치 patch와 JSON 저장은 설정을 보존한다. 물리 진행 저장은 아직 지원하지 않는다.
+[캐릭터·모터 관절 샘플](samples/data-scene-constraints.scene-authoring.json)은 지형 위 캡슐과
+수평 모터 관절을 함께 구성하며 Studio에서 Play/Stop으로 확인할 수 있다.

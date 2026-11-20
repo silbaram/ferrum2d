@@ -41,6 +41,20 @@ await initializeFerrumWasm();
 `createFerrumRuntime({dialogue: {graph}})`가 생성한 session은 runtime 종료/초기화 실패 시 해제한다.
 외부 `dialogue.session`을 주입한 경우에는 호출자가 해제한다.
 
+## 현재 JSON 에셋 조회
+
+`AssetLoader.getJsonAsset(name)`와 `BrowserPlatformHost.getJsonAsset(name)`는 현재 로드된 JSON 값을 반환한다.
+`loadAssets()`가 반환한 `json[name]`과 같은 객체이며 추가 다운로드나 복사는 하지 않는다. 파일 복원으로
+adopt한 JSON도 같은 getter로 읽는다. 아직 로드되지 않았거나 release한 이름은 `undefined`다.
+반환 타입은 `unknown`이므로 앱의 데이터 규격으로 검사한 뒤 사용한다. 반환 객체를 수정하면 다음 파일 저장에도
+그 현재 값이 반영된다. Loader/host 해제 뒤 조회는 오류다. 사용자 정의 `AssetHost`의 이 getter는 선택 기능이다.
+
+## Native 게임 파일
+
+`createNativeGameFileSession`은 Native 상태와 SDK 작성 정보·변수·자원을 파일로 저장하고 새 Engine으로 복원한다.
+`capture → prepare → commit`으로 새 대상을 준비·검증한 뒤 전환하고, 실패하면 기존 세션을 유지한다.
+공개 타입·같은 빌드 정책·platform adapter와 한도는 [Native 게임 파일](native-game-files.md)을 따른다.
+
 ## 기본 2D 픽셀 퍼펙트 표시
 
 ```ts
@@ -645,6 +659,9 @@ scene 전체를 다시 적용하는 method와 부분 변경 method를 구분한�
 | `setShooterAtlasFrame(...)` | prefab의 texture/frame만 교체한다. world config와 wave는 다시 적용하지 않는다. |
 | tilemap edit helper | 낮은 빈도 runtime tile metadata 변경용이다. 대량 편집은 spec 단계에서 처리한다. |
 | `builtInShooterPlayerHandle()`, `builtInPlatformerPlayerHandle()`, `builtInBreakoutPaddleHandle()`, `builtInBreakoutBallHandle()` | 현재 활성 built-in scene의 generation-safe authoring handle만 반환한다. 다른 scene에서는 `undefined`다. |
+| `builtInShooterProgress()` | Native/legacy Shooter의 실제 wave index·경과 초·출현 수를 읽는다. 다른 scene에서는 `undefined`다. Legacy 저장 snapshot을 만들거나 physics/input을 진행하지 않는다. |
+| `builtInShooterPlayerActions()` | 현재 built-in player의 입력 projectile·dash binding을 낮은 빈도로 읽는다. ID·cooldown·남은 cooldown과 projectile speed/damage/lifetime 또는 dash distance를 반환하며, 없는 binding은 생략한다. 다른 scene/없는 player는 `undefined`다. |
+| `queryGameplayPositions(handles)` | 최대 65,536개 generation-safe handle을 한 번에 조회한다. 순서·중복을 보존하고 stale/위치 없는 handle은 `undefined`로 반환한다. Native body는 보간·render offset 없는 simulation XYZ, 다른 entity는 authored XY/Z=0이다. 반환 값은 소유 복사본이다. |
 | `setBuiltInSceneEntityPosition(...)` | 현재 활성 built-in scene이 소유한 generation-safe player/paddle/ball entity의 x/y만 낮은 빈도로 바꾼다. Scene Authoring adapter용이며 frame별 이동 API가 아니다. |
 
 `FerrumRuntimeOptions.dataScene`은 built-in starter scene을 거치지 않는 generic
@@ -769,13 +786,671 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 | API | 계약 |
 | --- | --- |
 | `resolvePhysicsSpec(...)` | JSON authoring 입력을 resolved physics spec으로 정규화한다. |
-| `configurePhysicsRuntime(...)` | resolved spec을 runtime physics 설정에 적용한다. |
+| `validatePhysicsRuntime(...)` | 설정 전 capability·clock mode·nominal step·mode 전환을 검사한다. |
+| `configurePhysicsRuntime(...)` | rigid와 arcade Spec의 고정·가변 시간을 Data Scene의 planar native backend에 적용한다. |
+| `physicsBackend()` | Rust가 소유한 현재 backend `"legacy"` 또는 `"unified-3d"`를 반환한다. |
+| `configureAutoRigidBodyStep(...)` | native의 boolean은 기존 solver 설정을 유지한 채 실행만 켜고 끈다. 객체 입력은 설정도 적용한다. |
 | `spawnRigidBody(...)` | 낮은 빈도 rigid body 생성용 imperative API다. |
 | `despawnPhysicsEntity(...)` | body와 그 body를 endpoint로 참조하는 모든 joint를 함께 제거하고 기존 joint handle을 무효화한다. |
 | `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. |
 | body/tile query | nearest, overlap, raycast, segment cast, shape cast query를 제공한다. |
 
 Physics authoring 세부 계약은 [Physics Spec](../physics-spec.md)을 기준으로 한다.
+
+### 통합 3D 물리 연결 — 개발 중인 명시적 선택 경로
+
+`FerrumUnifiedPhysicsApi`의 다음 메서드는 `FerrumEngine`에서 제공한다.
+활성 Data Scene에 Physics Spec의 `rigid`와 `arcade`를 적용하면 고정·가변 시간 모두 별도 opt-in 없이 planar native backend를 사용한다.
+Physics Spec에서 mode를 생략하면 기본 arcade와 고정 시간을 사용한다. Arcade의 mode 표시·중력0·CCD 꺼짐·solver1/1·sleep 꺼짐 기본값은 유지한다.
+`solver.fixedTimestep: false`는 같은 native backend의 가변 시간을 선택한다. `none`은 native backend를 선택하지 않는다. 옵션 없는 Engine 생성이나 생성 정책 없이 Scene Authoring의 physics를 생략하는 것만으로 native를 켜지는 않는다.
+아래 API는 XYZ·단위·capacity를 직접 설정하는 경로다. 무옵션 Engine의 전역 기본값 전환과 외부 native 파일 snapshot/replay 이전은 아직 완료하지 않았다.
+
+Native 물리는 clock mode와 별개로 scene profile의 실행 소유권을 따른다. `manual`은 직접 step 전까지 native 물체를 정지시키고, `runtime`은 `autoStep: false`가 아니면 자동 step한다. Native 활성 중 `none`으로
+바꾸는 요청은 기존 그룹 제거 전에 거절한다. Arcade와 rigid의 동일 world 설정 재적용은 허용하지만 살아 있는 바디가 있는 world의 전역 설정 변경 제한은 유지한다. Native arcade에서도 JSON 진행/물리 저장은 거절하며 같은 Engine 메모리
+checkpoint를 사용한다.
+Arcade와 rigid solver는 clock mode와 무관하게 native 범위를 따른다. Velocity/position 반복 수는 각각 정수1..32다. F32 변환 뒤 nominal stepSeconds는0.0001..0.1이며, 중력 각 성분은 유한하고 절댓값1,000,000 이하여야 한다. 범위 밖은 설정 전에 거절한다.
+Physics world JSON capture/restore는 `physicsBackend()`의 명시적 legacy 결과가 필요하며 getter가 없거나 native/unknown이면 거절한다. Backend가 legacy여도 world/snapshot Spec이 rigid 또는
+고정 시간 arcade이면 staging·clear·transaction 전에 거절한다. Legacy JSON helper는 none 또는 fixedTimestep이 명시적 false인 arcade Spec만 지원하며, Arcade의 누락·비boolean clock을 가변 시간으로
+해석하지 않는다. 옛 fixed-arcade 파일의 자동 migration·solver 변환은 하지 않는다.
+기존 JSON 복원은 legacy clock·metadata만 복구하며 새 Spec의 native 설정을 실행하지 않는다. 일반 가변 Spec authoring을 legacy에 남기는 계약이 아니다.
+
+Data Scene의 native planar world에서 collider-only 객체는 0이 아닌 선형·각속도 또는 Static 이외의 AI pattern이 있으면 implicit kinematic, 없으면 fixed로 가져온다. 한번 implicit mover로 가져온 바디는 속도0·정지
+pattern에서도 역할을 유지하고, 명시적 body component가 생기면 해당 type을 따른다. 새 collider-only mover가 World와 native에서 중복 적분되지 않으며, 지원하는 convex implicit mover에는 기본 자동 이동 한도를 적용한다.
+Per-entity custom controller 설정은 명시적 kinematic body component가 필요하고 이 component를 제거하면 다음 native 준비에서 해당 설정도 지운다. Rigid body·collider가 모두 없는 velocity entity는 기존
+World 이동을 유지한다.
+
+| API | 현재 계약 |
+| --- | --- |
+| `configureUnifiedPhysics(options)` | Data Scene 또는 planar Shooter·Breakout·Platformer를 설정한다. 기존 body/fixture/joint를 검증해 가져오고 고정 틱·자동 step을 켠다. 연결된 바디가 있으면 재설정을 거절한다. |
+| `queryUnifiedPhysicsBodyStates(handles)` | `Uint32Array`의 entity id/generation 쌍을 요청 순서대로 일괄 조회. stale/unbound 핸들은 오류이며 이전 출력은 지운다. |
+| `setUnifiedPhysicsVelocities(handles, velocities)` | 핸들당 `Float32Array` 6개(linear XYZ, angular XYZ). 전체 검증 뒤 적용하며 중복 핸들은 마지막 값이 적용된다. |
+
+`UnifiedPhysicsOptions`의 `space`는 `planar-xy` 또는 `spatial`이다. `gravity` XYZ와 `lengthUnit`을 명시한다.
+Planar는 Z 이동 및 X/Y 회전을 허용하지 않는다. Spatial은 Y-up이며 상태 좌표는 화면 투영과 별개다.
+`stepSeconds` 기본값은 1/60, solver 반복 수는 각각 1, `continuous`는 true다.
+선택 capacity 기본값은 bodies 8192, colliders 16384, events 4096, characters 128, joints 16384다.
+설정 오류·controller의 직접 속도 변경·잠긴 회전·stale 핸들은 예외로 보고하고 기존 상태를 유지한다.
+
+#### 고정·가변 시간 실행
+
+Native world의 clock과 solver는 Rust가 소유한다. 고정 시간은 nominal `stepSeconds`로 실행하고,
+`configureFixedTimestep(false)` 또는 `{ enabled: false }`는 같은 world에서 실제 가변 시간 구간을 선택한다.
+Boolean 옵션과 `stepSeconds` 생략은 활성 native world의 nominal 값을 유지한다. 명시한 다른 nominal 값은 거절하며,
+nominal을 바꾸려면 기존 live-body 제약을 만족하는 새 world 설정이 필요하다.
+
+```ts
+// 이미 설정된 native world의 nominal step을 유지하며 가변 시간으로 전환한다.
+engine.configureFixedTimestep({
+  enabled: false,
+  maxFrameSeconds: 0.25,
+  maxStepsPerUpdate: 8,
+});
+```
+
+Native clock의 `maxFrameSeconds`는 유한 f32 `0.0001..102.4`, `maxStepsPerUpdate`는 정수 `1..1024`다.
+가변 frame은 두 예산 안의 실제 승인 시간을 균등 구간으로 나누며 각 구간은 `0.0001..0.1`초다.
+Scene·tween·입력/AI 이동·지형·캐릭터·물리가 같은 실제 구간을 사용한다. TypeScript에 별도 물리 적분기는 없다.
+각 구간이 끝나거나 오류로 반환하면 world/backend dt는 nominal 값으로 복구한다.
+입력 edge는 첫 승인 구간에서 한 번 소비하고 held input은 뒤 구간에서도 유지한다.
+자동 캐릭터 외력은 첫 실제 구간과 전체 승인 시간의 한도를 진입 전에 확인하며,
+예약 impulse는 실제 실행 구간에서 한 번만 소비한다.
+
+음수·NaN·Infinity·f32 변환 뒤 비유한인 시간은 native frame에서 거절한다. 가변 시간의 양수 `0.0001`초 미만 요청도 거절한다.
+고정 시간의 작은 양수 입력은 기존처럼 accumulator에 남긴다. 잘못된 시간이나 첫 구간 진입 실패는 시간·입력·예약 impulse를 부분 소비하지 않는다.
+뒤 구간 진입에서 실패하면 이미 완료한 구간만 소비로 기록하고 나머지는 제외 시간에 더한다.
+0초 가변 frame은 물체·입력을 진행하지 않으면서 렌더 출력을 다시 만들고 해당 frame의 물리 통계를 0으로 갱신한다.
+
+`stepRigidBodies(dt)`의 수동 가변 실행은 `0.0001..0.1`초의 한 구간이며 frame처럼 여러 구간으로 나누지 않는다.
+수동 고정 실행은 nominal dt와 일치해야 한다. 자동 실행을 꺼도 일반 frame의 게임 시간과 입력 처리는 별개로 진행하므로,
+수동 물리 시간은 호출자가 관리한다.
+
+ABI를 유지하기 위해 `frame.physics.fixedSteps`·`fixedConsumedSeconds`·`fixedDroppedSeconds` 이름을 그대로 사용한다.
+가변 시간에서는 각각 실행한 Engine 구간 수·소비 시간·예산/실패로 제외된 시간이다. `fixedTimestepEnabled`는 `false`,
+`fixedStepSeconds`는 nominal 값이며 native 내부 하위 step 수는 `frame.unifiedPhysics.frame.backendSteps`로 구분한다.
+`interpolate`는 렌더 설정이며 고정 시간의 pose 보간에 사용한다.
+
+Clock version1 capability와 수치 범위를 확인하고 checked setter가 성공한 뒤에만 보간·SDK metadata를 변경한다.
+새 clock API가 전혀 없는 이전 backend version1 코어에는 기존 고정 시간 Physics Spec 설정만 계속 허용한다.
+가변 시간 Spec·명시적 clock 제어와 부분 구현·잘못된 clock version은 설정 전에 거절한다.
+생성 `fixedTimestep` override가 있으면 Spec의 nominal step은 그 제약과 일치해야 한다. Mode는 최초 native 설정에서 생성 값과 비교하고,
+활성 native world에서는 Rust의 현재 값을 기준으로 검사한다. 성공한 명시 clock 변경 뒤에도 과거 생성 mode를 다시 강제하지 않는다.
+같은 world/clock mode의 `configurePhysicsRuntime` 또는 추가 authored group 적용은 accumulator·예약 입력·frame 상한·보간 이력을 보존한다.
+실제 Spec clock mode를 바꿀 때도 현재 frame/step 상한과 보간 옵션을 유지한다. 명시적인 `configureFixedTimestep(...)` 호출은
+기존과 같이 clock 누적 상태를 재설정하고 사용자가 지정한 보간 옵션을 적용한다.
+
+#### 생성 시 backend 기본 정책
+
+`CreateEngineOptions.physicsBackend?: "legacy" | "unified"`는 현재와 후속 씬의 기본 선택 정책이다. 생략하면 planar native·가변 시간·자동 실행을 사용한다.
+Raw `Engine::new`/`Default`도 같은 기본 선택을 사용한다. `"legacy"`는 실제 실행·import·사용자 물리 설정 전 초기 native 정책만 제거하는 명시적 호환 선택이다.
+`"legacy"`로 생성해도 Physics Spec이나 `configureUnifiedPhysics`로 특정 씬을 native에 연결할 수 있다.
+`physicsBackend()`는 이 옵션을 되돌려주는 getter가 아니라 Rust의 현재 실제 backend인 `"legacy" | "unified-3d"`를 반환한다.
+생성 시 options 최상위와 fixedTimestep 객체를 복사하므로 호출 뒤 원본을 수정해도 생성 정책은 바뀌지 않는다.
+
+```ts
+const engine = await createEngine(onFrame, inputProvider, undefined, viewportProvider, {
+  physicsBackend: "unified",
+  fixedTimestep: { stepSeconds: 0.01 },
+});
+
+const runtime = await createFerrumRuntime({
+  canvas,
+  engine: {
+    physicsBackend: "unified",
+    fixedTimestep: { stepSeconds: 0.01 },
+  },
+});
+```
+
+생략과 `"unified"` 모두 Rust가 소유한 지속적인 planar·auto 기본 설정을 적용한다. `"unified"`는 기존 명시 선택의 고정 시간 기본값을 유지한다.
+Mode·중력·solver·continuous와 step은 생성 시 `physicsMode` 및 `fixedTimestep`에서 resolve하며, `arcade`·`rigid`의 native 범위를 적용한다.
+Native 생성의 `none`은 Wasm Engine 생성 전에 거절한다. `fixedTimestep: false`는 native 가변 시간을 선택한다. 기본 정책 version1 또는 native clock version1 capability가 없는 이전 Wasm도 생성에 실패하며 legacy로 내리지 않는다.
+무옵션 생성은 native variable clock에 맞게 Physics Spec metadata의 fixedTimestep도 false로 표시한다. `physicsMode: "none"`은 `physicsBackend: "legacy"`와 함께 선택한다. 명시적 fixed override의 step은 실제 clock과 함께 반영한다.
+
+다른 built-in 또는 Data Scene으로 전환하면 저장한 기본 설정으로 새 native world를 설치한다. Physics를 생략한 Data Scene도 이 정책을 따른다.
+같은 씬의 선택·reset은 현재 world를 유지하며 auto=false 상태와 clock의 frame/step 상한도 보존한다.
+기존 `configureUnifiedPhysics`만 사용하면 씬별 선택으로 유지된다.
+이 API는 현재 scene을 고정 시간·자동 실행으로 구성하지만 저장된 다음 scene의 clock mode는 바꾸지 않는다.
+생성 정책이 켜진 Engine에서도 기존 live-body 제약을 만족하면 현재 Data Scene 설정을 바꿀 수 있지만 다음 다른 씬은 저장한 기본값으로 돌아간다.
+명시 `configureFixedTimestep`은 현재 clock과 다음 씬에 사용할 저장 mode도 함께 갱신한다.
+새 씬의 형상을 native에 연결할 수 없으면 native 오류로 거절하며 legacy 이동·충돌로 전환하지 않는다.
+
+이 정책의 `setGameSpec`은 같은 Shooter에서 physics를 생략하면 현재 native 설정을 유지하고, 다른 씬에서 Shooter로 전환하면 생성 기본값을 상속한다.
+무옵션 native 생성의 명시 game.physics는 mode/clock 우선순위를 검증한 뒤 실제 Shooter reset 이후 native world에 적용하며 자동·수동 소유권은 유지한다.
+기존 명시 `physicsBackend: "unified"`는 mode override 뒤 선택 대상의 물리 설정과 비교한다. 같은 Shooter는 현재 설정, 다른 씬에서 전환할 때는 저장 기본값이 대상이며 `none`·이 명시 정책의 설정 불일치는 scene/entity 변경 전에 거절한다.
+비교 항목은 clock mode·중력·nominal step·solver 반복·continuous다.
+다음 scene의 clock은 Rust의 저장 정책에서 읽으므로 현재 scene만 고정 시간으로 바꾼 경우나 checkpoint 복원 후에도 이를 구분한다.
+Physics를 생략한 policy 경로의 `setGameSpec`은 debug만 적용하고 생성 시 clock override를 다시 적용하지 않는다.
+Aggregate shape authoring의 명시적 physics 요건은 유지한다.
+반환된 Game Spec의 physics와 관측 metadata는 저장한 생성 기본값과 분리한 복사본을 사용하므로 이를 수정해도 이후 씬의 기본 정책을 바꾸지 않는다.
+명시적 씬 선택과 sound·texture·tile 작성 API의 암묵적 Shooter 전환 뒤에도 FrameState의 physics metadata를 실제 씬에 맞춘다. 같은 씬의 명시 설정은 유지한다.
+동일 Engine 메모리 checkpoint는 Rust의 기본 정책과 이후 씬 선택도 함께 복원한다. 전체 파일은 [Native 게임 파일](native-game-files.md)의 bounded same-build public 세션을 사용한다. 저장된 legacy 정책을 새 native 기본값으로 자동 변환하지 않는다.
+Checkpoint는 capture 전에 metadata를 동기화하고 restore 시 Spec과 씬 식별 정보를 함께 복원하며 이 동기화로 물리 tick을 실행하지 않는다.
+
+#### 내장 Shooter의 planar native 선택
+
+기존 `configureUnifiedPhysics`로 내장 Shooter의 물리 이동을 명시적으로 native에 연결할 수 있다.
+Raw Engine의 기본 backend는 planar native다. 명시 world 설정은 현재 씬의 설정을 바꾼다.
+Shooter는 `space: "planar-xy"`만 지원하며 spatial built-in 설정은 거절한다.
+내장 Breakout·Platformer의 별도 planar 경로는 다음 절들을 따른다.
+Physics Spec의 planar 설정은 Data Scene과 Shooter에서 사용할 수 있다.
+
+```ts
+engine.configureUnifiedPhysics({
+  space: "planar-xy",
+  gravity: [0, 0, 0],
+  lengthUnit: 1,
+  stepSeconds: 1 / 60,
+});
+```
+
+Shooter의 한 Playing 틱은 입력·action·AI·spawn 의도 계산, native import·이동, gameplay 후처리 순서다.
+Shooter의 Player·Enemy·Bullet 레이어는 초기 속도0에서도 kinematic으로 가져와 역할을 유지한다.
+이동 뒤 world clamp·bullet lifetime/arc·damage·pickup을 처리하고 `prepare_query`로 결과를 동기화한다.
+마지막 동기화는 추가 물리 틱이나 예약 force/impulse를 소비하지 않는다.
+플레이어·적의 자동 이동은 Wall mask로 막히며 서로 겹치는 접촉 피해·pickup 판정은 유지한다.
+정지 actor 아래 추가한 solid tile과의 초기 겹침도 mask·floor 필터를 유지한 최대8회 native contact 복구로 처리하며, 해결하지 못하면 이동 batch를 되돌리고 legacy 보정으로 전환하지 않는다.
+기본 template의 Player/Enemy가 trigger여도 World flag를 유지하고 native fixture만 solid로 매핑한다.
+따라서 native Player/Enemy 접촉은 ENTER/STAY/EXIT 채널, native Bullet sensor는 TRIGGER_* 채널을 사용한다.
+피해·점수는 별도 World gameplay HIT 정책이며, World collider의 trigger 조회와 native 관측 값은 다를 수 있다.
+Bullet은 native sensor·kinematic으로 이동한다. Shooter의 기존 swept gameplay·tile impact·pierce·bounce·despawn 정책은 유지한다.
+이는 Shooter의 모든 충돌 검색을 native query로 옮겼다는 의미가 아니다.
+
+Title 시작·GameOver 재시작을 누른 `update` 틱은 상태 전환만 수행하고 native 이동·후처리는 다음 Playing 틱부터 실행한다.
+같은 활성 Shooter의 authoring 재적용·reset은 native 설정을 유지한다.
+다른 built-in 또는 Data Scene으로 전환하면 현재 Shooter world를 폐기하며 생성 시 unified 정책이 있으면 기본 world로 교체한다.
+
+자동 실행이 기본 권장 경로다. `configureAutoRigidBodyStep(false)` 뒤에도 Shooter의 `update`는 현재 정지 pose에서
+입력 의도·타이머·gameplay 후처리를 계속 수행하므로 전체 게임 일시정지가 아니다.
+직접 `stepRigidBodies`를 호출하면 고정 시간은 nominal dt, 가변 시간은 승인된 한 구간으로 native 이동만 수행하며 Shooter gameplay callback을 실행하지 않는다.
+따라서 수동 step과 `update`의 역할을 구분한다.
+
+Native Shooter에서는 legacy Shooter snapshot capture/restore를 상태 변경 전에 거절한다.
+같은 Engine의 `captureRuntimeCheckpoint`·`restoreRuntimeCheckpoint`를 사용하며 native JSON 파일 저장은 지원하지 않는다.
+
+#### 내장 Breakout의 planar native 선택
+
+활성 Breakout도 기존 `configureUnifiedPhysics`로 `planar-xy` native를 명시적으로 선택한다.
+Raw Engine·Breakout 기본 backend는 planar native이며 spatial built-in 설정은 거절한다.
+Physics Spec의 `configurePhysicsRuntime`은 Data Scene과 Shooter를 지원하며 Breakout 설정은 `configureUnifiedPhysics`를 사용한다.
+
+```ts
+engine.useBreakoutGame();
+engine.configureUnifiedPhysics({
+  space: "planar-xy",
+  gravity: [0, 0, 0],
+  lengthUnit: 1,
+  stepSeconds: 1 / 60,
+});
+```
+
+Breakout이 소유한 paddle·ball은 속도0이나 collider 제거 뒤에도 native kinematic으로 유지하고 일반 자동 controller에서 제외한다.
+이 두 entity에 명시적 rigid component를 붙이면 enabled kinematic이어야 하며, 다른 type·disabled component는 설정 변경 전 또는 step admission에서 거절한다.
+World의 trigger flag는 유지하되 Player·Bullet·Enemy·Wall 레이어의 native fixture는 solid로 매핑한다.
+
+Playing의 승인 물리 구간은 paddle의 clamp된 목적지를 native에 먼저 반영한 뒤 ball의 실제 native fixture를 지정 target에 sweep한다.
+대상은 scene이 소유한 paddle·wall·brick ID이며 같은 레이어의 외부 entity를 자동으로 포함하지 않는다.
+같은 시각의 충돌은 paddle, walls 저장 순서, bricks 저장 순서를 우선한다.
+Ball은 최초 hit fraction만큼의 속도로 공통 native tick에서 한 번 이동하고 원래 명령 속도를 복구한 뒤 반사·brick effect·피해·점수·despawn을 적용한다.
+Paddle 반사는 기존 ContactOffsetX 정책을 유지하며 접촉 offset에 따라 vx가 -285..285, vy가 -285가 되고 벡터를 정규화하지 않는다.
+남은 dt를 다시 적분하지 않으며 후처리 결과는 추가 tick 없는 query preparation으로 동기화한다.
+표면에서 멀어지는 접촉은 재충돌로 잡지 않지만 실제 초기 침투는 즉시 hit로 처리한다. 회전 CCD나 상대 운동 전체를 보장하는 경로는 아니다.
+
+Title 시작·GameOver 재시작 tick은 level·launch를 재구성하고 이동하지 않는다.
+같은 활성 Breakout 선택·reset은 native를 유지하고 다른 built-in 또는 Data Scene 전환은 현재 world를 폐기한다. 생성 시 unified 정책이 있으면 기본 world로 교체한다.
+동일 Engine 메모리 checkpoint와 [Native 게임 파일](native-game-files.md)을 지원하며 Breakout 전용 JSON snapshot API는 제공하지 않는다.
+
+Breakout의 수동 실행은 Shooter·Data Scene과 구분한다. `configureAutoRigidBodyStep(false)`의 Playing `update`는 입력 명령만 저장하고 물체를 이동시키지 않는다.
+이후 같은 fixed dt의 `stepRigidBodies`가 저장한 명령으로 이동·반사·brick HIT·점수·종료 판정까지 수행한다.
+이 step은 입력을 새로 읽거나 Title/restart 전환·일반 gameplay timer를 실행하지 않는다. Shooter와 Data Scene의 기존 수동 실행 계약은 유지한다.
+
+#### 내장 Platformer의 planar native 선택
+
+`configureUnifiedPhysics`는 내장 Shooter·Breakout·Platformer 모두에서 현재 `planar-xy` native world를 명시적으로 설정한다.
+Spatial built-in 설정은 거절한다. 무옵션 Raw 생성과 physics 생략 씬은 planar native 기본 정책과 선택된 clock mode를 따른다.
+Physics Spec의 `configurePhysicsRuntime`은 Data Scene과 Shooter를 지원하며 Platformer 설정은 `configureUnifiedPhysics`를 사용한다.
+
+```ts
+engine.usePlatformerGame();
+engine.configureUnifiedPhysics({
+  space: "planar-xy",
+  gravity: [0, 0, 0],
+  lengthUnit: 1,
+  stepSeconds: 1 / 60,
+});
+```
+
+기본 level의8개 물체를 같은 native world에 연결하며 player의 기존28×36 AABB를 유지한다.
+기본 속도210·중력900·점프420·낙하 상한760·ground probe2·step12·coyote0.08초·jump buffer0.10초와 기존 authored 튜닝을 사용한다.
+Legacy와 native는 속도·점프 타이머의 순수 helper를 공유하고 native geometry가 충돌 검색을 맡는다. 실패 시 legacy collision으로 전환하지 않는다.
+Enemy 레이어의 one-way는 하강 방향과 시작 feet/top을 먼저 검사하며, ground probe는 지지 가능한 normal을 가진 후보만으로 가장 가까운 바닥을 고른다.
+접선 이동·표면 이탈을 새 충돌로 잡아 점프나 횡이동을 막지 않는다.
+
+이동 발판 carry는 이동 전 선택된 ground가 scene 소유 발판일 때만 적용한다.
+발판 자신을 제외한 장애물로 rider delta를 검사하고 발판을 경로 endpoint로 옮긴 뒤 player controller를 실행한다.
+계획한 위치를 native에 반영하고 소유 물체의 선속도를0으로 두어 공통 fixed tick에서 중복 적분하지 않는다.
+Player·발판은 정지하거나 collider를 제거해도 native kinematic 소유권을 유지하며 일반 자동 controller에서 제외한다.
+명시적 rigid component가 있으면 enabled kinematic이어야 하고 configure 변경 전과 step admission에서 검사한다.
+Capsule 변환·회전 carry·회전 CCD·동적 지지체 전체를 지원하는 경로로 해석하지 않는다.
+
+Title/restart tick은 level만 재구성하고 물리 이동하지 않으며, 시작에 사용한 Space를 계속 눌러도 자동 점프하지 않는다.
+같은 활성 Platformer 선택·reset은 native를 유지한다. 재생성한 소유 entity는 public query 전에 갱신하고 다른 built-in/Data Scene 전환은 현재 world를 폐기한다. 생성 시 unified 정책이 있으면 기본 world로 교체한다.
+동일 Engine의 메모리 checkpoint만 지원하며 native 전체 JSON 파일 저장은 제공하지 않는다.
+
+수동 auto=false의 Playing `update`는 수평 axis와 OR로 누적한 jump edge만 저장하고 Platformer 물리 이동·시간·점수를 진행하지 않는다.
+같은 fixed dt의 `stepRigidBodies`가 이동·carry·coyote/buffer·물리 시간·점수·landing·종료 판정을 함께 처리한다.
+직접 step은 입력을 새로 읽거나 Title/restart 전환을 실행하지 않는다. 예약 명령은 checkpoint에 저장되며 성공한 step에서만 jump edge를 소비한다.
+Shooter·Breakout·Data Scene의 기존 수동 계약은 각 절을 따른다.
+
+설정 성공 뒤 frame의 mode·gravity·fixed step·continuous 표시는 native가 수용한 값으로 갱신한다.
+
+```ts
+engine.useDataScene();
+const body = engine.spawnRigidBody({
+  x: 0, y: 0, mass: 1, collider: { type: "circle", radius: 8 },
+});
+engine.configureUnifiedPhysics({ space: "planar-xy", gravity: [0, 980, 0], lengthUnit: 100 });
+const handles = new Uint32Array([body.entityId, body.entityGeneration]);
+engine.setUnifiedPhysicsVelocities(handles, new Float32Array([120, 0, 0, 0, 0, 0]));
+const state = engine.queryUnifiedPhysicsBodyStates(handles);
+```
+
+`UnifiedPhysicsBodyStateBufferView`는 16-word/64-byte 행의 `words`와 `floats`를 제공한다.
+`UNIFIED_PHYSICS_STATE_LAYOUT`의 offset은 id 0, generation 1, flags 2, position XYZ 3,
+rotation XYZW 6, linear XYZ 10, angular XYZ 13이다. flags의 bit 0은 sleeping이다.
+핸들은 최대 65,536개이며 entity id/generation은 float로 변환하지 않는다.
+반환 뷰는 다음 조회, Wasm 메모리 확장 또는 engine 해제 뒤 보존되지 않는다. 저장하려면 `.slice()`로 복사한다.
+호출마다 native 처리 후 현재 memory에서 뷰를 다시 만들며, 같은 Wasm 메모리를 가리키는 입력은 먼저 복사한다.
+직접 생성한 기존 component body는 다음 native prepare/query 또는 유효 physics step에서 연결된다.
+Physics Spec 전체 적용은 설정 전에 그룹을 생성하므로 반환 직후 조회할 수 있다.
+`capturePhysicsBodyStateBuffer`는 component 소유 2D 행만 읽으며 직접 생성한 native-only 바디는 거절한다.
+기존 snapshot API는 새 backend의 solver 상태를 빠뜨린 성공을 반환하지 않고 거부한다.
+추가 Web API로 공간 body 생성, controller 입력, body 명령과 공간 query batch를 제공한다. 이벤트/전체 지표 연결은 후속 작업이다.
+
+### 공간 바디·형상·캐릭터
+
+`spawnUnifiedPhysicsBody(options: UnifiedPhysicsBodyOptions)`는 native body와 collider 하나, entity를 함께 만든다.
+반환값은 기존 `PhysicsEntityHandle`이다. 생성 실패는 바디나 entity를 남기지 않는다.
+`removeUnifiedPhysicsBody(handle)`은 연결된 body·joint·controller·entity를 즉시 제거한다.
+sprite나 model asset은 생성하지 않는다. 기존 시각 객체는 아래의 binding API로 연결한다.
+이 API로 직접 생성한 바디에는 기존 2D rigid-body component가 없으므로 `getPhysicsEntity`는 `undefined`다.
+물리 XYZ pose·속도는 `queryUnifiedPhysicsBodyStates`로 읽는다. `getPhysicsBodyHeightSpan`의 elevation은
+렌더 오프셋을 적용한 표시 높이이며 물리 pose와 구분한다.
+
+기존 시각 객체에는 `FerrumUnifiedPhysicsBindingApi`의 `bindUnifiedPhysicsBody(entity, options)`를 사용한다.
+`createDataSceneRuntimeTarget` 등으로 만든 live entity의 ID·sprite·animation·behavior를 유지하며,
+`UnifiedPhysicsBodyOptions`로 지정한 XYZ pose를 즉시 적용한다. 픽셀 위치에서 물리 pose를 추정하지 않는다.
+대상은 기존 native binding, rigid-body component, collider가 없어야 한다. Scene 작성 시 body를 생략하고
+`collider: "none"`을 지정한 객체를 연결할 수 있다. 잘못된 설정·stale identity·중복 연결은 거부한다.
+`unbindUnifiedPhysicsBody(entity)`는 native body와 collider·joint·controller를 제거하고,
+entity와 시각 자산은 마지막 표시 위치에 남긴다. 선형·각속도를 0으로 만들어 기존 적분에 의한 이동을 막는다.
+충돌 exit와 joint 제거 이벤트는 제거 전 identity를 유지한다. component에서 가져온 바디와 생성된
+투사체는 원래 소유 경로에서 제거해야 하므로 이 해제를 거부한다. 해제한 entity에는 다시 연결할 수 있다.
+이 연결 API는 설정 시 사용하며 프레임별 pose 동기화는 Rust가 처리한다.
+Scene Authoring은 루트 `physics`와 `props.components.body.collider`로 이 경로를 사용한다.
+공개 `DataScenePhysicsBodySpec`의 위치는 placement/elevation에서 정하며, Studio의 재생·정지와
+배치 변경 및 읽기 전용 XYZ 진단에 연결한다. [작성 계약](../data-scene-authoring.md#단일-3d-물리-월드-작성)을 따른다.
+Scene의 `body.character`와 `physics.joints`로 native 컨트롤러·관절을 작성할 수 있다.
+HD actor의 WASD·목적지 이동은 spatial Y-up native capsule에 연결했다. 설정과 경계는
+[통합 캐릭터 이동](../data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)을 따른다. 기존 AABB actor 데이터의 자동 변환,
+Physics Spec 전체 이전 및 물리 snapshot/restore는 아직 진행 중이다.
+`physics` 문서의 JSON 진행 저장은 완전한 native 파일 snapshot 지원 전까지 명시적으로 거부한다.
+같은 Engine의 메모리 롤백은 아래 `RuntimeCheckpoint` 경로로 지원한다.
+
+`kind`는 `fixed`, `dynamic`(기본), `kinematic-position`, `kinematic-velocity`다.
+`pose.position`은 XYZ, `pose.rotation`은 단위 XYZW quaternion이며 기본값은 원점/identity다.
+선형·각속도, gravity scale(1), 두 damping(0), CCD(false), sleep 허용(true)을 설정할 수 있다.
+`renderOffset`은 물리 XYZ 시각 앵커 오프셋이다. Spatial 위치는 기존 월드의 `(x, y, elevation) = (X, -Z, Y)`로 표시한다.
+Planar에서는 Z 위치·속도와 X/Y 회전을 허용하지 않는다.
+
+`collider`의 기본값은 density 1, friction 0.5, restitution 0, surfaceVelocity `[0,0,0]`, sensor false,
+category 1, mask `0xffffffff`, local pose identity다. density는 두 모드 모두 **3D 부피 밀도**다.
+선택 `contactCorrection`은 velocityRate·maxVelocity·positionRate·positionSlop·velocitySlop을 모두 요구하고
+splitImpulse 기본값은 false다. 미지정하면 native contact softness를 사용한다.
+
+| `shape.type` | 입력과 범위 |
+| --- | --- |
+| `box` | 양의 `halfExtents` XYZ |
+| `sphere` | 양의 `radius` |
+| `capsule` | Y축 원통의 `halfHeight`(0 이상)와 양의 `radius` |
+| `convexHull` | `points`: 4–256개 XYZ 좌표. 평면/퇴화 hull 거부 |
+| `triangleMesh` | flat XYZ `vertices` 3–65,536개, flat index triple `triangles` 1–131,072개. fixed/kinematic 전용 |
+| `heightfield` | Z방향 `rows`, X방향 `columns` 각각 2 이상, row-major `heights` 최대 65,536개, 전체 X/Z `size`. fixed/kinematic 전용 |
+| `compound` | local `pose`와 convex `shape`로 된 `parts` 1–64개. terrain·중첩 compound 금지 |
+
+일반 geometry 좌표/크기 상한은 10,000이며 native geometry 검증을 그대로 따른다.
+shape count·길이·index·중첩·quaternion·유한값·capacity를 생성 전에 검사한다. raw wire의 추가/부족 데이터도 거부한다.
+이 API는 기존 Physics Spec JSON의 body schema를 확장하지 않는다.
+
+`configureUnifiedPhysicsCharacter(handle, options)`는 position-kinematic body의 단일 solid capsule에 controller를 설정한다.
+capsule 장축은 `up`과 나란해야 한다. 재설정은 이전 입력/상태를 초기화하며 `false`는 body를 유지하고 controller만 제거한다.
+`UnifiedPhysicsCharacterOptions` 기본값은 up `[0,1,0]`, skinWidth 0.01, maxSlopeAngle π/4,
+slideAngle은 maxSlopeAngle, stepHeight 0.3, stepMinWidth 0.2, snapDistance 0.2, maxVerticalSpeed 50, pushMass 0이다.
+stepHeight/snapDistance 0은 해당 기능을 끈다. pushMass는 0 또는 0.0001..10,000이다.
+0은 prescribed controller, 양수는 동적 물체와 힘을 주고받는 가상 질량이다.
+질량0의 충돌·carry 이동은 상태에 반영되며, 기하 보정이 다음 tick의 외부 운동량으로 누적되지는 않는다.
+
+```ts
+const actor = engine.spawnUnifiedPhysicsBody({
+  kind: "kinematic-position", pose: { position: [0, 0.76, 0] },
+  collider: { shape: { type: "capsule", halfHeight: 0.5, radius: 0.25 } },
+});
+engine.configureUnifiedPhysicsCharacter(actor, {});
+const actorHandles = new Uint32Array([actor.entityId, actor.entityGeneration]);
+engine.setUnifiedPhysicsCharacterInputs(actorHandles, new Float32Array([1, 0, 1, 0]));
+```
+
+`setUnifiedPhysicsCharacterInputs`는 핸들당 4개 f32(지면 속도 XYZ, 점프 속력)를 일괄 수용한다.
+속도는 up에 수직이어야 하며 계속 유지된다. 점프는 접지된 상태에서 다음 fixed step에 한 번 소비한다.
+새 입력은 대기 중 점프를 대체하며 중복 핸들은 마지막 행이 적용된다. 마지막 행 오류도 전체 입력을 거부한다.
+이 속도 입력은 매 fixed tick에 다시 요청하는 이동 motor다. 충돌 반작용이 다음 tick의 이동 요청까지
+영구히 없애지는 않으므로 입력을 유지하면 추가 운동량을 공급할 수 있다. 외부 impulse로만 생긴 수동 넉백과 구분한다.
+
+양수 `pushMass` 캐릭터에는 `addUnifiedPhysicsCharacterForces(handles, forces)`와
+`applyUnifiedPhysicsCharacterImpulses(handles, impulses)`로 핸들당 XYZ f32 3개를 일괄 전달한다.
+최대 65,536행이며 값과 누적 결과는 각 축 ±1,000,000의 유한값, planar Z는 0이어야 한다.
+중복 행은 더하며 마지막 행·stale handle·누적 한도 오류도 전체 batch를 변경 없이 거절한다.
+Force는 `clearUnifiedPhysicsCharacterForces(handles)`까지 유지한다. Impulse는 다음 승인된 캐릭터 simulation interval에서
+한 번 소비한다. Clear는 누적 외부 속도와 대기 impulse를 없애지 않는다. Preview·cold admission은 예약 입력을 소비하지 않는다.
+별도 character-force capability v1을 사용하며 기존 4-f32 입력과 28-word 상태 layout은 유지한다.
+양수 `pushMass` 구성도 이 capability를 요구해 구형 코어의 다른 밀기 동작으로 조용히 실행하지 않는다.
+
+`queryUnifiedPhysicsCharacterStates`는 마지막 fixed tick의 28-word/112-byte 상태를 반환한다.
+`UNIFIED_PHYSICS_CHARACTER_LAYOUT`에 id/generation, flags, ground collider/body, carriedBy,
+translation, velocity, carryTranslation, verticalSpeed 및 query/풀이 비용 offset을 제공한다.
+ground/carry 핸들은 해당 physics world의 native object identity이며 **render entity 핸들과 다르다**.
+presence flag가 없는 핸들 필드는 무시한다. flags는 접지·슬라이딩·천장·다른 캐릭터/장애물 차단·풀이 한도도 구분한다.
+반환 view는 다음 character query, memory.grow 또는 engine 해제 전까지 유효하다. 풀이 한도는 해의 부재나 성능 수용을 증명하지 않는다.
+
+### 통합 바디 명령 batch
+
+`FerrumUnifiedPhysicsCommandApi`는 `FerrumEngine`에 포함되며 core에서 타입을 제공한다.
+각 호출의 `handles`는 최대 65,536개의 `[entityId, entityGeneration]` 쌍을 담은 `Uint32Array`다.
+아래 값 배열은 `Float32Array`이며, 전체 핸들·행 길이·유한값·body 종류·축 제한을 먼저 검증한다.
+오류는 예외로 전달하고 앞 행의 pose/속도/힘/대기 target/sleep 상태도 바꾸지 않는다.
+같은 Wasm memory의 입력은 native allocation 전에 복사한다. 게임의 바디 제어 루프는 Rust 안에서 실행한다.
+
+| 메서드 | 핸들당 값 | 동작 |
+| --- | --- | --- |
+| `setUnifiedPhysicsPoses(handles, poses)` | position XYZ + 단위 rotation XYZW, 7개 | 즉시 teleport와 표시 위치 갱신. 중복은 마지막 행 적용 |
+| `setUnifiedPhysicsKinematicTargets(handles, poses)` | 동일한 7개 | position-kinematic의 다음 고정 틱 목표. 중복은 마지막 행 적용 |
+| `addUnifiedPhysicsForces(handles, forces)` | force XYZ + torque XYZ, 6개 | dynamic body에 지속 외력 추가. 중복 행은 합산 |
+| `clearUnifiedPhysicsForces(handles)` | 없음 | 누적 force/torque 제거. 현재 속도는 유지 |
+| `applyUnifiedPhysicsImpulses(handles, impulses)` | linear impulse XYZ + angular impulse XYZ, 6개 | dynamic body의 속도를 즉시 변경. 중복 행은 합산 |
+| `setUnifiedPhysicsSleeping(handles, sleeping)` | 공통 boolean | dynamic body를 sleep/wake. sleep은 두 속도도 0으로 만듦 |
+
+pose는 world XYZ/XYZW, force·torque·impulse는 world 축 기준이다. 입력 벡터 각 성분의 절댓값 상한은 1,000,000이다.
+힘은 clear 전까지 유지된다. `addUnifiedPhysicsForces`를 매 프레임 호출하면 기존 힘에 계속 **추가**되므로,
+지속 힘을 교체할 때는 clear 후 새 값을 보낸다. 충격은 한 번 적용하며 이후 가속도를 유지하지 않는다.
+planar pose는 Z 위치와 X/Y quaternion 성분이 0이어야 한다. force/impulse는 잠긴 축 성분을
+native inverse mass/inertia로 제한한다. 잠긴 축의 속도를 직접 지정하는 기존 velocity batch는 거부한다.
+
+controller가 소유한 body에는 kinematic target을 지정할 수 없다. teleport는 capsule up 축을 보존해야 하며
+완료된 controller 상태와 support를 초기화한다. 기존 대기 입력 자체는 지우지 않는다.
+회전 잠긴 position-kinematic body의 target은 현재 회전을 유지해야 한다.
+target은 즉시 teleport하지 않고 다음 고정 틱에 움직인다. 캡슐 압착 제약이 목표 중간에서 이동을 멈추면
+새 target을 보내기 전까지 그 위치를 유지한다. 이 계약은 최종 회전 장애물/각 CCD 수용을 뜻하지 않는다.
+
+```ts
+// 질량 1인 물체의 X 속도에 +3, Z축 각운동량에 +1을 한 번 적용한다.
+engine.applyUnifiedPhysicsImpulses(bodyHandles, new Float32Array([3, 0, 0, 0, 0, 1]));
+// 지속 힘을 설정했다가 제거해도 이미 얻은 속도는 남는다.
+engine.addUnifiedPhysicsForces(bodyHandles, new Float32Array([2, 0, 0, 0, 0, 0]));
+engine.clearUnifiedPhysicsForces(bodyHandles);
+```
+
+### 통합 공간 조회 batch
+
+`createUnifiedPhysicsQueryBatch(queries)`는 아래 요청을 숫자 버퍼로 만든다.
+`engine.queryUnifiedPhysics(batch)`는 최대 256개 요청을 한 번에 Rust로 전달한다.
+입력은 재사용할 수 있으며, 반복 조회에서 `batch.values`의 좌표를 변경할 때는
+`UNIFIED_PHYSICS_QUERY_LAYOUT.inputStride`(13)와 `inputPosition/inputMotion` 등의 offset을 사용한다.
+형상 자체를 바꾸면 builder로 batch를 다시 만든다. TS는 조회 결과를 계산하거나 entity별 Wasm 호출을 하지 않는다.
+
+| `type` | 입력 | 반환 `value`와 geometry |
+| --- | --- | --- |
+| `ray` | origin·direction XYZ, maxDistance, solid(기본 true) | 거리, world hit point·normal. 방향은 native에서 정규화 |
+| `point` | point XYZ | 포함 collider. value/point/normal은 0 |
+| `overlap` | convex shape, 선택 pose | 겹친 collider. value/point/normal은 0 |
+| `sweep` | convex shape, 선택 pose, translation XYZ | 이동 비율 `[0,1]`, target의 world point·normal과 initialOverlap flag |
+| `nearest` | point XYZ, maxDistance | collider까지 거리와 최근접 점. normal은 0, 내부이면 inside flag |
+
+query shape는 box/sphere/capsule/convexHull이다. mesh·heightfield·compound는 충돌 **대상**으로 조회한다.
+sweep는 회전을 고정하고 translation만 이동시킨다. 이동량 0이면 현재 겹침을 검사한다.
+ray 방향의 길이는 1e-8 이상이어야 한다. solid false는 내부 시작점에서 탈출 표면을 찾는다.
+ray/nearest 거리 상한과 위치·방향·이동량의 각 성분
+절댓값 상한은 1,000,000이다. Planar 모드에서 Z 위치·이동·방향과 X/Y quaternion 성분은 0이어야 한다.
+
+각 요청의 `limit`은 기본 32, 범위 1..65,536이며 batch의 limit 합은 65,536 이하다.
+limit이 world의 collider 수용량보다 커도 사용할 수 있다. 한 collider는 한 요청에 첫 hit 하나를 반환한다.
+ray/nearest는 거리, sweep는 비율 순이며 같은 값의 hit는 native collider identity 순이다.
+point/overlap은 collider identity 순이다. compound 내부 부분마다 별도 행을 만들지 않는다.
+
+선택 `filter`는 category/mask(기본 `0xffffffff`), respectTargetMask(true), includeSensors(false),
+excludeBody(entity 핸들), excludeCollider(`{slot,generation}`), planarSpan을 받는다.
+`terrain: "all" | "movement" | "projectile" | "vision"`을 지정하면 실제 authored 지형만 조회하고
+해당 movement/projectile/vision flag를 결과 limit 적용 전에 검사한다. 이 선택은 지형의 query용 sensor도 포함하며
+response mask를 적용하지 않는다. Category/mask 선택과 명시적 제외는 유지한다. 생략하면 기존 일반 query 계약을 따른다.
+respectTargetMask false는 상대 mask의 역방향 검사만 생략하고 target category 선택은 유지한다.
+planarSpan은 `{floorId?: number, elevation, height}`이며 floorId 기본값은 0이다.
+명시적 planarSpan은 범위가 없는 대상도 제외하며 Spatial에서는 사용하지 않는다.
+오래된 제외 핸들은 miss로 무시하지 않고 오류로 전달한다. native body/collider 핸들은 해당 world에서만 유효하며
+entity 핸들과 구분한다. world를 교체하면 이전 native 핸들을 사용하지 않는다.
+
+반환 `UnifiedPhysicsQueryBufferView`에는 요청별 `summaries`(offset/count/truncated, 3 u32)와
+hit의 `words/floats`(19 words/76 bytes)가 있다. summary offset은 바이트가 아닌 **hit 행 번호**다.
+hit는 queryIndex·kind·flags, entity/native body/native collider 핸들, value·point·normal·terrain을 포함한다.
+`entityPresentFlag`가 없으면 entity 필드는 무시한다. 타일/공간 표면은 native 핸들과 함께
+terrainKind 1/2를 반환하며 `terrainId`는 tile layer 또는 surface id, `terrainTileIndex`는 row-major tile index다.
+terrainKind 0은 authored terrain이 아님을 뜻한다. truncated flag는 다른 hit가 생략됐다는 뜻이며 총 개수를 제공하지 않는다.
+
+```ts
+const batch = createUnifiedPhysicsQueryBatch([
+  { type: "ray", origin: [0, 10, 0], direction: [0, -1, 0], maxDistance: 20, limit: 4 },
+  { type: "sweep", shape: { type: "sphere", radius: 0.25 },
+    pose: { position: [0, 2, 0] }, translation: [0, -4, 0] },
+]);
+const result = engine.queryUnifiedPhysics(batch);
+const rayHitCount = result.summaries[UNIFIED_PHYSICS_QUERY_LAYOUT.summaryCount];
+```
+
+조회는 생성·teleport·제거 및 pending authoring geometry를 반영하지만 물리 tick이나 대기 target/input을 소비하지 않는다.
+native 조회 실패 시 batch 전체 출력 행을 비운다. 실패는 앞선 authoring 동기화를 되돌리는 transaction은 아니다.
+출력 view는 다음 query, memory.grow 또는 engine 해제 전까지만 사용하고 보존할 때 `.slice()`로 복사한다.
+native scratch는 world collider capacity까지 커질 수 있으며, 입력 재사용이 geometry 처리 비용을 없애지는 않는다.
+최종 밀집 시간·메모리 예산은 별도로 검증한다.
+
+#### 지형 충돌과 렌더 보간
+
+`RenderCommandBufferView.terrainImpacts`는 `TerrainImpactBufferView`의 빌린 24-word 행이다.
+`TERRAIN_IMPACT_LAYOUT`으로 actor/entity 세대, native body/collider 세대, 실제 authored terrain과 XYZ point/normal을 읽는다.
+Kind 1은 solved impulse·approach speed, kind 2는 swept projectile 도착 fraction을 담는다. Native terrain을 가짜 entity나 tile로 바꾸지 않는다.
+`GameplayEvent.kind === "terrainImpact"`의 `payloadBits`는 같은 frame의 행 번호이고 source entity는 absence sentinel `0xffffffff/0`이다.
+행은 frame당 최대 4096개이며 생략 수는 `dropped`로 확인한다. 기존 Entity pair impulse/tile DTO는 그대로 유지한다.
+다음 native 호출·메모리 성장 전에 읽고, 보존하려면 `snapshotRenderFrameBuffers` 또는 `snapshotFrameBuffers`를 사용한다.
+두 helper는 terrain 행의 u32/f32 alias와 signed zero를 소유 복사본으로 보존한다.
+
+움직이는 발판의 표시 mesh는 성공한 authored path·실제 accepted prefix를 고정 시간 보간에 사용한다.
+렌더 읽기는 물리 surface·picker·authoring revision을 바꾸지 않는다. `SpatialRenderBufferView.terrainRenderRevision`은
+표시 mesh의 GPU cache revision이고 `terrainRevision`은 authoritative source revision이다.
+고정 타일은 8×8 셀과 같은 height span을 공유하는 fixed body에 묶되, 셀별 실제 collider/형상·one-way·filter·source identity는 유지한다.
+따라서 terrain body ID는 chunk 소유이며 셀 식별에는 collider 세대와 authored terrain source를 사용한다.
+
+### 통합 콜라이더 접촉·센서 이벤트
+
+`setUnifiedPhysicsCollisionEventsEnabled(true)`로 수집을 켜고
+`drainUnifiedPhysicsCollisionEvents()`로 native enter/exit를 한 번에 읽는다.
+기본값과 월드 재설정 직후는 off다. enable 상태가 바뀌면 이 스트림의 대기 이벤트와 누락 수를 비우며,
+같은 값을 반복 설정하면 유지한다. 이미 접촉 중인 pair의 enter를 새로 만들지 않으므로 처음 켤 때는
+`queryUnifiedPhysicsCollisionPairs()`로 현재 목록을 함께 읽는다.
+
+게임 객체의 frame lifecycle 이벤트와 독립적인 **콜라이더 단위** 스트림이다.
+한 객체의 여러 fixture를 합치지 않으며, stay는 만들지 않는다. 타일·공간 표면처럼 entity가 없는 접촉도 포함한다.
+물리 step에서 시작/종료를 수집하고, 명시적 body/collider 삭제는 이전 세대와 지형 식별자를 보존한 exit를 넣는다.
+좌표 변경만으로 새로운 접촉 상태를 계산하지 않는다. 일반 공간 query가 저작 지형을 동기화하면서 제거한
+collider의 exit는 기록하지만, 이벤트 읽기 자체는 geometry 동기화·simulation step·예약 입력 소비를 하지 않는다.
+
+`UNIFIED_PHYSICS_COLLISION_LAYOUT`은 22-u32/88-byte row의 offset이다.
+
+| 영역 | 값 |
+| --- | --- |
+| `phase`, `flags` | enter=0 / exit=1 / active snapshot=2. flags의 sensor=1, 명시적 삭제=2 |
+| `first`=2, `second`=12 | native collider identity 순서의 두 참가자. 아래 offset은 각 참가자 시작 기준 |
+| `participantFlags`=0 | entity 존재=1, 해당 collider의 sensor=2 |
+| `entity`=1, `body`=3, `collider`=5 | 각각 id 또는 slot / generation 두 word. native 핸들은 해당 물리 월드에서만 유효 |
+| `terrainKind`=7, `terrainId`=8, `terrainTileIndex`=9 | 0=없음, 1=tile(layer/row-major tile index), 2=spatial surface(surface id/0) |
+
+결과 `UnifiedPhysicsCollisionBufferView`의 `count`, `stride`, `words`를 읽는다.
+`droppedTransitions`는 native 큐에서 누락한 전이 수, `droppedEvents`는 Web 소비를 기다리던 별도 큐에서
+누락한 수이며 포화 u32 카운터다. 두 큐 모두 월드의 `maxEvents`로 제한하고, drain은 두 카운터도 비운다.
+어느 쪽이든 0이 아니면 `queryUnifiedPhysicsCollisionPairs()`의 전체 목록으로 현재 상태를 복구한다.
+이는 잃어버린 과거의 순간 접촉을 재생하는 기능은 아니다.
+
+active snapshot은 마지막 step과 명시적 삭제를 반영하고, streaming off일 때도 제공하며 이벤트 큐를 소비하지 않는다.
+snapshot은 `maxEvents`로 자르지 않는다. 저장 공간은 실제 활성 pair 수에 따라 증가하므로 밀집 접촉 비용에 주의한다.
+두 읽기 API가 출력 버퍼를 공유한다. 다음 collision 읽기·Wasm 메모리 확장·destroy 전에 필요한 값은 복사한다.
+기존 frame collision 이벤트의 enable/flush는 이 스트림을 초기화하거나 소비하지 않는다.
+
+```ts
+import { UNIFIED_PHYSICS_COLLISION_LAYOUT as C } from "@ferrum2d/ferrum-web/core";
+
+engine.setUnifiedPhysicsCollisionEventsEnabled(true);
+// fixed tick 이후, 다음 읽기 전에 필요한 이벤트를 처리한다.
+const events = engine.drainUnifiedPhysicsCollisionEvents();
+for (let i = 0; i < events.count; i++) {
+  const row = i * C.stride;
+  const phase = events.words[row + C.phase];
+  const sensor = (events.words[row + C.flags] & C.sensorFlag) !== 0;
+  // phase/sensor 및 두 참가자 식별자를 게임의 소비자에 전달한다.
+}
+if (events.droppedTransitions || events.droppedEvents) {
+  const active = engine.queryUnifiedPhysicsCollisionPairs();
+  // active.words로 현재 접촉 목록을 교체한다.
+}
+```
+
+### 통합 접촉면·충격량·CCD 관측과 native 진단
+
+| API | 시점과 의미 |
+| --- | --- |
+| `queryUnifiedPhysicsContactManifolds(options?)` | 현재 geometry를 동기화한 접촉 patch와 두 표면의 XYZ witness. 물리 step·대기 force/target/input은 소비하지 않는다. |
+| `queryUnifiedPhysicsObservations()` | 마지막 완료 물리 구간의 충격량, 현재 Engine frame의 CCD 관측, native step/frame 진단을 함께 읽는다. 비파괴 읽기다. |
+| `queryUnifiedPhysicsDiagnostics()` | 진단만 읽는다. legacy/unconfigured 월드는 `undefined`이며 새 ABI가 없는 Wasm은 capability 오류다. |
+
+접촉면 옵션의 `categoryA`/`categoryB` 기본값은 모두 `0xffffffff`, `includeSensors`는 false다.
+두 collider의 category/mask와 planar floor/span 필터를 적용하며, 요청 category A→B 방향으로 참가자와 법선을 정렬한다.
+둘 다 매칭되면 collider identity 순서를 사용한다. fixed-fixed도 검사하며 simulation의 joint 충돌 제외나
+body-kind 조합 제한은 적용하지 않는 **기하 조회**다. 생성된 실제 native subshape patch와 모든 witness를 유지한다.
+한 patch가 항상 1·2·4개 점을 갖는다고 가정하지 않는다. 법선은 first에서 second 방향이고 penetration은 음수가 아니다.
+
+`maxManifolds` 기본 4096, `maxPoints` 기본 16384이며 각각 1..65536이다.
+두 제한 안에 들어가는 **완전한 manifold의 앞부분**만 반환한다. 다음 patch의 모든 점이 들어가지 않으면
+그 patch부터 생략하고 `truncated`를 설정한다. `totalManifolds`/`totalPoints`는 출력 제한 전 개수다.
+이 제한은 결과 버퍼에 적용되며 native geometry 탐색·임시 저장 전체 비용을 제한하지 않는다.
+오류는 이전 contact 출력도 비운다. geometry 조회 결과에 solver impulse를 추정해서 채우지 않는다.
+
+`UnifiedPhysicsContactBufferView`는 `manifolds`와 `points` 두 numeric buffer를 가진다.
+각각 `count`, `stride`, `words: Uint32Array`, `floats: Float32Array`로 같은 native 메모리를 읽는다.
+`UNIFIED_PHYSICS_CONTACT_LAYOUT`의 offset을 사용한다.
+
+| buffer | word layout |
+| --- | --- |
+| manifold, stride 27 | first 참가자 0..9, second 10..19, native subshape id 20/21, normal XYZ 22..24, point offset/count 25/26 |
+| point, stride 7 | first 표면 XYZ 0..2, second 표면 XYZ 3..5, penetration 6 |
+
+참가자의 상대 offset은 flags=0, entity id/generation=1/2, native body=3/4, native collider=5/6,
+terrain kind/id/tile index=7/8/9다. flags의 entity 존재=1, sensor=2와 terrain kind 0/1/2는
+콜라이더 이벤트 계약과 같다. entity 없는 tile/surface도 반환한다. subshape id는 backend geometry 식별자이며
+저작 타일 id로 해석하지 않는다.
+
+`UnifiedPhysicsObservationBufferView`의 `impulses`/`ccd`는 같은 numeric buffer 형식이다.
+`UNIFIED_PHYSICS_OBSERVATION_LAYOUT`은 다음 구조를 정의한다.
+
+| buffer | word layout과 의미 |
+| --- | --- |
+| impulse, stride 32 | 두 참가자 0..19, fixture category union 20, solver point XYZ 21..23, normal XYZ 24..26, normal impulse 27, tangent impulse XYZ 28..30, approach speed 31 |
+| CCD, stride 28 | moving/target 참가자 0..19, 해당 sweep 구간 fraction 20, sweep seconds 21, point XYZ 22..24, normal XYZ 25..27 |
+
+충격량은 실제 solve에 적용한 warm start와 내부 substep을 포함하며 normal은 first→second 방향이다.
+tangent impulse는 **second body에 적용된 world-space 마찰 충격량**이며 별도 twist-friction 각충격량은 제외한다.
+approach speed는 constraint 생성 당시 각속도를 포함한다. 잠든 접촉과 sensor에는 solved observation이 없다.
+`maxEvents`로 제한된 마지막 tick 결과이며 `diagnostics.solvedContacts`는 생략 전 개수,
+`impulsesDropped`는 생략 수다. 이전 tick 결과는 geometry 조회·삭제·0초 update가 덮어쓰지 않는다.
+
+CCD normal은 **target에서 moving 방향**이고 fraction은 전체 fixed tick이 아닌 해당 개별 sweep 구간의 비율이다.
+frame 시작마다 비우고 그 frame의 모든 fixed/manual tick을 합쳐 최대 4096개를 보존한다.
+`ccdObservationsDropped`는 native tick과 Engine frame 제한의 누락 수다. CCD 위치 제한이 속도 충격량을 뜻하지 않는다.
+충격량과 CCD의 entity/native/terrain identity는 solve 당시 저장하므로 이후 객체·지형 삭제에도 유지된다.
+
+contact buffer는 다음 contact query, observation buffer는 다음 observation query까지 빌린 view다.
+어느 쪽이든 Wasm 메모리 확장 또는 destroy 전에 필요한 값을 복사한다. 진단 객체는 JS 소유 값이며
+이 view 수명과 독립적이다. 시각 render offset은 모든 XYZ witness를 바꾸지 않는다.
+
+`UnifiedPhysicsDiagnostics`는 `backend: "rapier3d"`, `legacySolverRowMetricsAvailable: false`,
+`fixedSteps`, `authoredJointBreaks`, `ccdObservationsDropped`, `solvedContacts`, `impulsesDropped`,
+`step`/`frame`의 `UnifiedPhysicsCounters`를 제공한다. 두 counters의 32개 필드는 다음 그룹이다.
+
+- `kinematicCharacterStops`, `kinematicPathCasts/Failures/Stops`: prescribed 이동 제한 작업.
+- `characterPreviewPasses`, `characterPreviewPairCasts/PairContacts`, `characterPreviewCouplingVisits/CouplingLimits`,
+  `characterPreviewObstacleCasts/ObstacleContacts/ObstacleFailures`: controller preview 작업. 실제 수용된 이동 비용과 구분한다.
+- `backendSteps`, `ccdSubsteps`, `solverContacts`, `solverConstraints`: 실제 backend/CCD 호출과 solver에 제출한 점·manifold/관절 수.
+- `trackedContactPairs`, `dynamicBodies`, `angularBodies`, `sleepingBodies`, `bodiesWoken`, `bodiesPutToSleep`:
+  narrow-phase cache와 body 상태. tracked pair는 현재 닿지 않는 cache도 포함한다.
+- `islands`, `islandBodies`, `activeIslands`, `sleepingIslands`, `largestIslandBodies`, `brokenJoints`:
+  native island와 force/torque 관절 파손. authored geometry-limit 파손은 별도 header다.
+- `ccdPredictionChecks`, `ccdClampChecks`, `ccdClamps`, `ccdClampsDropped`: native CCD 검사·위치 제한·관측 누락.
+
+step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 작업 수를 합치고 body/island/cache gauge는
+마지막 tick 값을 쓴다. frame에서 tick을 실행하지 않으면 frame 수치는 0이며 step은 이전 tick 값을 유지한다.
+`UNIFIED_PHYSICS_COUNTER_LAYOUT`은 native 32-word 순서를 제공한다. 기존 solver의 row operation·warm start·
+block solve 횟수는 이 값으로 추정하지 않으며 지원된 native 측정으로 표시하지 않는다.
+
+`FrameState.unifiedPhysics`는 통합 backend가 활성일 때 자동으로 채우는 소유 진단 객체다.
+Runtime의 debug metrics와 profiler sample에도 같은 값이 전달되고, overlay는 native backend·step·contact·constraint를 표시한다.
+선택 `debug`는 마지막 native debug 추출의 `lineCount`, `workUnits`, `truncated`, `unsupportedShapes`, `rejected`,
+`projection: "xy" | "xz" | "xyz"`를 제공한다. `queryUnifiedPhysicsDiagnostics()?.debug`도 같은 소유 값을 제공하며 borrowed Wasm view가 아니다.
+Debug off에서는 이 객체를 생략한다. Profiler는 nested debug와 counters를 복사·freeze해 이후 외부 수정이 기록을 바꾸지 않게 한다.
+DebugOverlay는 객체가 있을 때 `complete`/`partial`/`rejected`와 line/work/projection/unsupported 상태를 표시하며, 객체가 없으면 complete로 표시하지 않는다.
+Runtime의 기존 `physicsDebugLineCount`는 renderer가 제출한 flat+spatial 전체 debug 선의 합이며 공간 metadata 선도 포함한다. 순수 물리 선 개수로 해석하지 않는다.
+`RuntimeProfiler.snapshot()`의 `maxNativeFrameCounters`는 보존한 **native sample만**의 frame 필드별 최댓값이며,
+`nativePhysicsSampleCount`를 함께 확인한다. legacy sample을 0으로 채우지 않는다. trace도 당시 native 값을 보존한다.
+이 측정 연결은 성능 합격 기준의 수용을 뜻하지 않으며, 밀집 시간·메모리·크기 예산은 별도로 검증한다.
+
+#### Native 물리 debug geometry
+
+기존 `setPhysicsDebugOptions`의6개 bit로 실제 native7종 shape와13종 관절을 표시한다.
+Body pose×fixture local pose를 읽으며 sphere/capsule·곡선은16분할 근사다.
+Contacts는 마지막 tick의 cached local manifold를 현재 pose로 재투영한다. Teleport 뒤 다음 tick까지 cache가 남을 수 있으며 새 collision query/solve가 아니다.
+CCD는 Engine frame에 보존한 witness/normal이며 이른 물리 구간과 entity 없는 native tile/surface도 포함한다. Entity-only 편의 조회와 대상 집합이 다를 수 있다.
+Frame4,096개 또는 native CCD 기록 누락도 debug truncated에 반영하며 geometry와 CCD가 한 line/work 예산을 공유한다.
+Broadphase는 shape AABB이며 native BVH node/proxy가 아니다. 관절은 현재 admit된 native frame·body link와 Pulley/Gear 관계를 표시한다.
+일시정지 중 legacy joint component를 편집한 것만으로 새로운 native joint를 admit하지 않는다.
+추출 전 component/terrain을 prepare_query로 한 번 동기화하며 tick·예약 입력을 소비하지 않는다. 이 import 비용은 work 상한 밖이다.
+최대16,384선·65,536 방문 work unit이며 빈 arena slot도 센다. 한도·미지원 형상은 truncated, admission 실패는 rejected로 표시하고 legacy 형상으로 전환하지 않는다.
+
+공간 camera가 활성인 경우 다음처럼 physics 옵션과 깊이 검사만 선택할 수 있다.
+
+```ts
+engine.setPhysicsDebugOptions({ colliders: true, joints: true });
+engine.setDataSceneSpatialDebug({ depthTest: true });
+```
+
+이 경우 native geometry는 기존 XYZ debug packet에만 들어가며 flat line으로 중복하지 않는다.
+
+| 공간 camera | Native backend | 출력 좌표/버퍼 | debug.projection |
+| --- | --- | --- | --- |
+| 활성 | Spatial | `[x,y,z]`, XYZ packet | `xyz` |
+| 활성 | Planar | `[x,z,-y]`, XYZ packet | `xyz` |
+| 없음 | Planar | `(x,y)`, flat buffer | `xy` |
+| 없음 | Spatial | `(x,-z)` footprint, flat buffer | `xz` |
+
+Planar의 XYZ 높이는 실제 backend extrusion이며 authored heightSpan은 아니다. Flat footprint는 전체3D 표시가 아니다.
+Engine physics 옵션만으로 XYZ 선을 만들 수 있다. `{ depthTest: true }`는 joint-only 선에도 유효하며 false는 overlay다.
+기존 `physicsDebugLineComposer`는 flat buffer API를 유지한다. Renderer/shader의 flat8-float·spatial11-float ABI는 바꾸지 않는다.
+직접 debug setter는 active native에서 capability를 검사한다. Passive Spec debug 적용에는 guard가 없으므로 이전 Wasm의 native 설정은 성공할 수 있지만 미지원 출력 소비는 거절한다.
+Debug-off native 실행과 구분하며 모든 이전 버전의 world 설정 전 거절을 보장하지 않는다.
+동일 Engine 메모리 checkpoint는 debug 통계·geometry 상태도 보존한다. 전체 native 파일 저장·밀집 성능·실기기 수용은 별도 범위다.
+
+### 접촉 충격과 연속 충돌 설정
 
 ```ts
 engine.configureFixedTimestep({ enabled: true, stepSeconds: 1 / 60, interpolate: true });
@@ -879,6 +1554,10 @@ vertex 순서를 반환한다. 좌표축, anchor, 회전 및 collider별 offset 
 | `decodeEffectEvents(...)` | presentation-only effect detail buffer를 decode한다. |
 | `createRenderCommandAccessor()` | Rust `SpriteRenderCommand` layout을 읽어 재사용 가능한 named-field accessor를 만든다. |
 | `createBuiltInShooterStateAccessor()` | Built-in Shooter snapshot layout을 읽어 재사용 가능한 named-field accessor를 만든다. |
+
+Legacy Shooter snapshot은 native Shooter의 solver 저장 형식이 아니다.
+Native가 활성화되어 있으면 Shooter capture/restore는 상태 변경 전에 거절하며 같은 Engine의 memory checkpoint를 사용한다.
+읽기 전용 accessor가 존재한다고 native Shooter의 legacy snapshot capture가 허용되는 것은 아니다.
 
 저수준 `createEngine(...)` 경로에서 raw offset을 직접 계산하지 않는다. accessor는
 engine 생성 시 Rust가 내보낸 field enum/offset으로 초기화되며, layout stride가
@@ -1078,6 +1757,41 @@ flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-b
 
 ## Data Scene gameplay / navigation (beta.7부터)
 
+현재 개발 소스의 `physics` world에서는 기존 `meleeAction` 레시피를 native shape body에 사용할 수 있다.
+실제 body 중심·도형·WALL 시야를 사용하고, spatial 높이와 planar 논리 높이를 각각 적용한다.
+공격자의 첫 enabled fixture가 상호 mask를 결정하며, 복합 대상은 한 번만 피해를 받는다.
+입력/타이머와 쿨다운은 기존 API를 공유한다. 상세 작성 계약은
+[Native melee·dash](../data-scene-authoring.md#native-meleedash-개발-소스)를 따른다.
+명시적 native body의 전투 이동은 실제 물리 좌표에서 표적을 선택하고 같은 Rust 고정 tick에서 실행한다.
+기존 movement API를 재사용하며 새 per-entity JS/Wasm 프레임 호출을 요구하지 않는다.
+캡슐/동적/키네마틱의 이동 계약과 길찾기 미완 범위는
+[통합 물리의 전투 이동](../data-scene-authoring.md#통합-물리의-전투-이동-개발-소스)을 따른다.
+개발 소스의 `configureDataSceneGameplay`는 native Y-up capsule의 Chase 경로 실행도 제공한다.
+`supportsDataSceneNativeCombatNavigation()`은 native capsule Chase의 작성/실행 연결을 지원하는 빌드에서 true다.
+`physics.space: "spatial"` JSON은 이 기능을 검사한 뒤 source capsule·target shape body·개별 정지 거리와 입력 actor 소유권을 검증한다.
+native `dataSceneCombatNavigationSchedulerStats()`의 cachedRoutes/cacheHits는 실제8개 경로 cache와
+성공한 capsule 합류를 집계한다. searchSlices/frameSearchWorkUnits에는 재개한 connector 검사도 포함한다.
+합류할 직선이 막히면 같은 bounded A*로 우회하고 실제 꺾임점과 cached waypoint suffix를 함께 실행한다.
+전체 경로는 4096점, outer update의 공유 work는 1,000,000, 검색 slice는 262,144 이내다.
+최대64명 source의 서비스 시작점은 tick마다 순환한다. Chase의 peer 회피는 검증된 다음 waypoint에 대해
+대기·측면 이동을 선택하고 반복 역행을 피한다. Seek의 별도 steering detour 정책은 유지한다.
+Planar 목적지 이동과 grid obstacle은 별도 World collider 없이도 실제 Native shape·pose·local offset을 사용한다.
+시각적 render anchor를 물리 위치로 사용하지 않으며 enable·generation 변경도 조회에 반영한다.
+`supportsDataSceneNativeCombatCrowd()`는 native capsule의 상대 속도 예측·지형 검사·budgeted 회피를 지원할 때 true다.
+기존 crowdAvoidance 설정을 사용하며 이전 SDK/native 빌드는 적용 전에 거절한다. crowd7u32 진단에는 실제
+정지/대기/peer 검사/회피 수를 기록한다. `supportsDataSceneNativeCombatMovement()`는 native all-pattern의
+SeekTarget 경로/회전 보간과 Accelerate의 틱당 가속·지형 검사·공유 budget 소유권을 지원할 때 true다.
+일반 v6 또는 이전 native Chase 빌드는 새 capability가 없으면 all-pattern 적용 전에 거절한다.
+세 패턴은 같은 source 용량과 선택 crowd를 공유한다. 이동 의도는 Rust가 보관하며 메모리 `RuntimeCheckpoint`에도 포함된다.
+native JSON 진행 저장은 아직 지원하지 않는다.
+명령형 native 설정의 거절은 boolean 결과로 확인한다. render ABI/layout과 기존 진단 단어 수는 유지한다.
+
+
+`dashAction`도 native 키네마틱 shape body에서 같은 고정 tick으로 실행한다. capsule은 이동/점프를 합성하고,
+다른 키네마틱은 이동 장애물까지 swept 경로로 검사한다. 일반 경로는 발판과16개 한도를 공유한다.
+기존 JSON 물리 snapshot은 계속 미지원이다. 메모리 rollback은 `RuntimeCheckpoint`를 사용한다.
+자세한 한도와 native/기존 경로 구분은 위 작성 계약을 따른다.
+
 - `engine.configureDataSceneGameplay({ primaryActor?, interactionInputActionId? })`: Data Scene 실행 활성화.
   주인공은 generation handle이며 입력 ID 생략 시 자동 근접 interaction, 지정 시 가까운 대상 한 곳에 적용한다.
 - `engine.configureDataSceneNavigation(spec, entityHandles?)`: 최대 4096칸 단일 XY grid를 교체한다.
@@ -1096,21 +1810,99 @@ flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-b
 - `/core` exports: `DataSceneGameplayOptions`, `DataSceneGameplaySpec`, `DataSceneNavigationSpec`,
   `resolveDataSceneGameplaySpec`, `resolveDataSceneNavigationSpec`.
 
+`engine.configureDataSceneCollisionTilemap(options | false): boolean`은 활성 Data Scene의 collision-only 타일 grid와
+HD-2D 정의를 bulk 교체한다. `/core`와 root는 `DataSceneCollisionTilemapOptions`,
+`DataSceneCollisionTileDefinition`을 export한다. columns/rows 각각 1..256, tile ID·정의 최대256개,
+0=빈 칸, 정확한 row-major tiles 길이와 f32 bounds를 검증한다. false는 clear이며 scene activation은 하지 않는다.
+Native 지형·현재 연결된 capacity를 사전 검사하며 실패는 기존 grid를 보존한다. 그래픽 타일을 생성하지 않는다.
+Planar Scene JSON의 선택 `physics.collisionTilemap`도 같은 객체를 사용하며 spatial에서는 거절한다.
+자세한 defaults·ramp·실패 계약은 [충돌 타일맵](../physics-spec.md#native-hd-2d-수동-이동과-충돌-타일맵)을 따른다.
+
+`moveHd2dKinematicBodyWithTilemap`도 planar native world에서는 같은 형상 검색으로 최대8회 move-and-slide를 수행한다.
+대상은 component 소유 단일 solid AABB kinematic body다. 공통 surface metadata로 계단/경사·낙차·층·다리 아래를 처리하며,
+변경된 높이의 도착 형상이 막혀 있으면 이동을 되돌린다. Native pose/pair span과 World 출력이 함께 갱신된다.
+호출은 tick·예약 impulse·속도·누적 회전각을 소비하지 않으며, 미지원 source/space에서 legacy fallback을 하지 않는다.
+
+통합 planar world의 자동 물리는 component 소유 kinematic의 입력 속도를 승인 물리 구간당 한 번 native 충돌 검색·미끄러짐으로
+처리한다. 지원 source는 AABB·회전 박스·원·캡슐·볼록 다각형 및 이 형상들을 여러 fixture로 구성한 복합 충돌체다.
+source의 비활성·sensor fixture는 이동 검색에서 제외하며, 활성 solid fixture는 모두 지원 형상이어야 한다.
+검색은 각 fixture의 실제 회전·offset·형상을 사용하고 상호 mask·sensor/enable·floor/height를 적용한다.
+높이·층 전환 뒤 도착 검사는 활성 solid fixture 전체에 적용한다. Edge·chain·mesh source나 직접 생성한 native body에는
+이 component controller를 자동 부착하지 않는다. 해당 body는 기존 native 이동 계약을 유지한다.
+지형 surface 참조점은 단일 AABB에서는 collider 중심, 다른 형상과 복합 source에서는 body/entity 원점이다.
+충돌 검색·도착 검사와 달리 전체 source footprint를 타일에 rasterize하지 않는다.
+
+입력 코드가 `setPhysicsBodyVelocity`로 속도를 정하면 별도 수동 이동 호출 없이 벽을 검사한다. 속도는 다음 틱의 이동 명령으로
+유지하며 WASD를 속도로 변환하는 코드는 게임이 담당한다. 목적지 route·대시·projectile 이동과 자동 sweep을 중복 실행하지 않는다.
+상대 운동·회전 CCD·동적 밀기 수용은 별도 미완 범위다. 위 수동 HD-2D API와 XY 목적지 route의 단일 AABB source 계약은 유지한다.
+
+### 자동 planar 캐릭터 이동 설정
+
+`engine.configureDataSceneKinematicController(handle, options | false): boolean`은 캐릭터별 자동 이동 설정을 교체한다.
+`/core`와 root는 `PhysicsKinematicControllerOptions`를 export한다. 선택 필드와 기본값은 다음과 같다.
+
+| 필드 | 기본값 | 범위·의미 |
+| --- | --- | --- |
+| `solidMaskBits` | `0xffffffff` | u32. source/target의 상호 collision mask에 추가 적용 |
+| `maxIterations` | `4` | 정수 `1..8`. 틱당 sweep/slide 반복 상한 |
+| `maxStepHeight` | `0` | 유한 f32 `0..65536`. 허용할 계단·경사 상승 높이 |
+| `maxDropHeight` | `0` | 유한 f32 `0..65536`. 허용할 하강 높이 |
+| `allowLedgeDrop` | `false` | 절벽·표면 밖 하강 허용 여부 |
+
+```ts
+engine.configureDataSceneKinematicController(actor, {
+  maxStepHeight: 8,
+  maxDropHeight: 16,
+  allowLedgeDrop: true,
+});
+engine.setPhysicsBodyVelocity(actor, 40, 0);
+
+// 캐릭터별 재설정을 지우고 위 기본값으로 복원한다.
+engine.configureDataSceneKinematicController(actor, false);
+```
+
+옵션은 생략 필드를 기본값으로 채운 **전체 설정 교체**이며 이전 설정과 병합하지 않는다.
+`false`는 기본값 복원이다. 자동 controller를 끄거나 충돌을 무시하는 명령이 아니다.
+옵션 설정에는 활성 Data Scene의 planar native world와 component 소유 kinematic 및 지원하는 활성 solid source fixture가 필요하다.
+`false` 초기화는 현재 세대의 component 소유 entity라면 source가 잠시 비활성·미지원 형상이거나 dynamic으로 변경된 상태에서도
+허용한다. Planar native world·현재 handle·component 소유권은 초기화에도 필요하다.
+잘못된 JS 필드·타입·범위는 native 호출 전에 throw하며, 해당 Wasm 메서드가 없는 빌드도 throw한다.
+stale handle·다른 scene/backend·잘못된 소유권이나 옵션 설정의 미지원 source는 false를 반환하고 이전 설정을 보존한다.
+설정은 낮은 빈도의 runtime API다. 같은 옵션 객체를 Physics Spec과 planar Scene JSON의 기존 kinematic body에
+선택 `kinematicController`로 작성할 수 있다. 작성 값의 `false`는 거절하며 생략·`{}`는 기본값을 사용한다.
+Spec은 rigid/arcade의 고정·가변 시간을 지원하며, Scene JSON은 명시적 planar physics와 enabled solid convex source를 요구한다.
+[JSON 작성·실패 복원 계약](../physics-spec.md#자동-controller-json-작성)을 따른다. Studio는 작성 JSON과
+실제 native quaternion·각속도를 읽기 전용으로 표시하며 controller runtime 적용 여부는 unknown으로 구분한다.
+새 API를 호출하지 않은 캐릭터에는 위 기본값을 적용한다. 설정은 같은 Engine의 메모리 checkpoint와 함께 복원한다.
+
+기존 2D component AI도 native 바디 변경 반영 후 같은 물리 구간에서 steering과 목표 선택을 실행한다.
+목표 native body의 render offset 대신 실제 물리 위치를 사용하며, 예약 force/impulse는 steering 다음에 한 번 적용한다.
+통합 planar world는 legacy 공간 `combatNavigation` 조합을 설정 시 거절한다. 활성 legacy 공간 navigation을 둔 채
+native world로 전환하는 것도 거절하므로 먼저 navigation을 해제해야 한다. XY 주인공 목적지 grid 이동은 계속 지원한다.
+
 목적지 이동은 별도 명령으로 실행한다. `/core` 및 호환 root는 `DataSceneMoveOptions`,
 `DataSceneMoveStatus` 타입을 export한다.
 
 - `engine.moveDataSceneActorTo({ x, y, speed, arrivalRadius?, solidMaskBits?, cancelOnInput? }): boolean`:
-  primary actor의 경로를 시작/교체한다. 활성 native kinematic body와 solid AABB 하나 및 navigation이 필요하다.
+  primary actor의 경로를 시작/교체한다. component가 소유하는 활성 kinematic body와 solid AABB 하나 및 navigation이 필요하다.
   기본 반경 0.5, 모든 solid layer, W/A/S/D 취소 활성이다. 잘못된 옵션은 throw하며
   조건 불충족/경로 없음/float32 셀 중심이 다른 칸으로 반올림되는 경로는 기존 이동을 보존하고 false를 반환한다.
 - `engine.cancelDataSceneMove(): boolean`: moving 상태만 취소한다.
 - `engine.dataSceneMoveStatus(): DataSceneMoveStatus | undefined`:
   `idle/moving/arrived/blocked/cancelled`, Data Scene 밖에서는 undefined다.
 
-Rust가 waypoint별 거리 예산과 AABB sweep을 처리한다. grid/위치 변경 시 다음 step에 재탐색하고,
+Rust가 waypoint별 거리 예산과 sweep을 처리한다. 통합 planar world에서는 actor의 실제 native box pose·회전·offset으로
+검색하며 native 전용 장애물과 타일 지형도 검사한다. 센서·비활성 body와 상호 mask·native 층/높이 정책을 적용하고,
+병진 이동은 첫 충돌에서 멈춘다. actor가 만든 SharedShape를 재사용하고 step당 한 번 component/지형 변경을 준비한다.
+검색은 물리 tick이나 다른 body의 예약 force/impulse를 소비하지 않는다. Native pose를 World에 반영한 뒤
+기존 AABB 타일 보정은 실행하지 않는다. Native가 없을 때는 기존 AABB 경로다.
+
+직접 생성한 native-only actor·다중 collider·capsule은 이 XY API의 대상이 아니다. 공간 capsule actor에는
+`moveDataSceneSpatialActorTo`를 사용한다. Native 전용 장애물을 grid 통행 비용에 자동 등록하거나 회전 CCD·동적 밀기를
+추가하는 기능은 아니다. grid/위치 변경 시 다음 step에 재탐색하고,
 막히면 blocked로 정지한다. pause는 경로를 유지하고 complete/gameplay 재설정은 취소한다.
 작은 변위도 sweep하며 중간 코너는 거리 tolerance로 생략하지 않는다. 도착 반경 0은 float32 목적지까지 이동한다.
-reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snapshot에 포함하지 않는다.
+reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 JSON 진행 snapshot에 포함하지 않는다. 동일 Engine의 메모리 `RuntimeCheckpoint`는 진행 중인 경로·fixed remainder와 native 상태를 함께 복원한다.
 
 - `engine.configureDataSceneMovementAnimation(spec | false): boolean`: 주인공의 기존 clip을
   idle/walk × up/down/left/right에 연결한다. 각 pose는 `{ clip, flipX?, flipY? }`이고
@@ -1463,6 +2255,9 @@ cooldown 시간이 진행되지 않는다. 같은 게임 reset은 profile을 유
 입력·viewport·audio host·render callback에서 engine을 해제하면 이후 native frame 단계는 실행하지 않는다.
 runtime의 provider·renderer callback에서 runtime을 해제하면 남은 GPU 제출·UI 소비를 중단한다.
 callback 안에서 loop를 stop/pause/restart해도 RAF는 최대 하나만 예약된다.
+frame 단계에서 예외가 발생하면 loop는 멈추고 예약한 RAF를 취소한 뒤 원래 예외를 전달한다.
+Rust update 실패 시 해당 frame의 audio/render/`onFrame`은 실행하지 않는다. 실패한 callback이 끝난 뒤
+checkpoint를 사용하거나 `start()`로 다시 시작할 수 있다.
 효과 target은 객체와 클래스 인스턴스를 모두 받을 수 있고, 등록한 메서드는 원래 receiver를 유지한다.
 
 ## Flat lighting receivers · 개발 소스
@@ -1575,3 +2370,153 @@ source는 environment v14/632·patch15/state17이고 이전 저장 버전은 계
 `SpatialLightProbeSpec`는 `environment.lighting.probes`의 최대8개 정적 간접광 영역 설정이다.
 위치·반경·선형 RGB·밝기를 지정하며 source는 environment v15/700·patch16/state18이다.
 [보간·AO·비용·호환성·차폐 한계](../data-scene-spatial.md#지역별-간접광-프로브)를 따른다.
+
+
+#### 실행 중 물체 설정과 충돌체 변경
+
+`FerrumUnifiedPhysicsControlApi`는 `FerrumEngine`에서 제공하는 저작·설정용 API다.
+각 호출은 Rust에서 입력과 소유권을 검증한 뒤 적용한다. 매 틱의 위치·힘·속도 제어에는
+기존 bulk command API를 사용한다. 이 API가 Physics Spec·Studio의 전체 이전을 완료한 것은 아니다.
+
+| API | 계약 |
+| --- | --- |
+| `setUnifiedPhysicsBodyOptions(entity, settings)` | `UnifiedPhysicsBodySettings` 전체 교체. kind, enabled, gravityScale, linearDamping, angularDamping, canSleep, ccd, lockRotation을 모두 명시한다. |
+| `setUnifiedPhysicsMassProperties(entity, properties)` | `UnifiedPhysicsMassProperties`의 mass, principalInertia XYZ, center XYZ, inertiaRotation XYZW를 설정한다. collider 질량에 **더해지는 값**이다. 정확한 총질량을 지정하려면 모든 collider density를 0으로 설정한다. |
+| `queryUnifiedPhysicsColliders(entity)` | 현재 연결된 collider slot/generation 목록의 소유된 복사본. body당 최대 64개이며 다음 조회·메모리 확장에도 유지된다. |
+| `addUnifiedPhysicsCollider(entity, options)` | `UnifiedPhysicsCollider`의 모든 지원 shape/material/filter로 추가하고 새 식별자를 반환한다. |
+| `updateUnifiedPhysicsCollider(entity, collider, options)` | 식별자를 유지하면서 shape/local pose/material/filter를 전체 교체한다. 생략한 선택 필드는 생성 시 기본값으로 돌아간다. |
+| `removeUnifiedPhysicsCollider(entity, collider)` | 한 fixture를 삭제한다. body는 남으며 fixture가 0개일 수도 있다. 기존 충돌 종료 이벤트를 슬롯 재사용 전에 수집한다. |
+
+설정 변경은 위치와 선속도를 유지한다. `lockRotation: true`는 각속도를 0으로 만들고 모든 회전을 잠근다.
+해제해도 planar의 Z 이동·X/Y 회전 제한은 유지된다. `enabled: false`는 시뮬레이션과 공간 조회에서
+물체를 제외하며 다시 켜면 다음 step을 기다리지 않고 조회에 반영된다. 질량·관성은 fixture 변경 직후
+다시 계산하므로 다음 impulse에도 새 값이 적용된다. mesh/heightfield는 dynamic으로 바꿀 수 없다.
+
+입력 오류, 다른 entity 소유의 collider, 삭제된 generation은 예외이며 해당 호출은 상태를 바꾸지 않는다.
+캐릭터 controller가 활성화된 body의 integration 설정 변경과 주 capsule 삭제·비 capsule 교체는 거부한다.
+추가 sensor는 허용하며 controller를 먼저 끄면 일반 body 설정을 바꿀 수 있다.
+기존 `RigidBody`/Physics Spec에서 가져온 body는 해당 component가 설정의 원본이므로 이 API의 변경은
+`BodyOwnershipConflict`로 거부한다. 조회는 가능하다. 원본 component를 수정해야 다음 동기화에서 유지된다.
+관절의 생성·수정·상태·이벤트는 다음 `FerrumUnifiedPhysicsJointApi`를 사용한다.
+
+
+#### 통합 관절 생성·수정·관측
+
+`FerrumUnifiedPhysicsJointApi`는 동일한 native solver의 13종 관절을 제공한다.
+생성/수정은 저작용 호출이고, 매 프레임 상태 조회는 slot/generation을 묶어서 요청한다.
+
+| API | 계약 |
+| --- | --- |
+| `createUnifiedPhysicsJoint(options)` | `UnifiedPhysicsJointOptions`를 검증해 native 관절을 만들고 `UnifiedPhysicsJointHandle`을 반환한다. |
+| `updateUnifiedPhysicsJoint(joint, options)` | 전체 설정을 교체하고 이전 solver impulse/반력 cache를 지운다. 관절 식별자와 두 endpoint는 유지해야 한다. |
+| `removeUnifiedPhysicsJoint(joint)` | 연결된 body를 깨우고 관절만 삭제한다. 이후 같은 generation은 오류다. |
+| `queryUnifiedPhysicsJointStates(handles?)` | `Uint32Array`의 joint slot/generation 쌍을 요청 순서대로 반환한다. 중복 허용, 최대 65,536개. 생략하면 모든 생존 관절, 빈 배열이면 0개다. |
+| `setUnifiedPhysicsJointEventsEnabled(enabled)` | 초기값 off. 변경하면 Web 큐·누락 카운터를 비우고, 동일 값은 기록을 유지한다. |
+| `drainUnifiedPhysicsJointEvents()` | 파손/삭제 이벤트를 소비한다. 별도 legacy component 파손 진단은 소비하지 않는다. |
+
+options의 `bodyA`/`bodyB`는 서로 다른 살아 있는 entity handle이고, 하나 이상은 dynamic이어야 한다.
+`localFrameA`/`localFrameB`는 body-local pose이며 생략하면 원점/identity rotation이다.
+`enabled` 기본값 true, `contactsEnabled`는 false다. `breakForce`/`breakTorque`는 선택한
+비음수 solver 반력 한계이고, 생략하면 해당 반력으로 파손되지 않는다. 0은 실제 0 한계다.
+
+`UnifiedPhysicsJointKind`는 다음 discriminated union이다.
+
+| type | 주요 설정/의미 |
+| --- | --- |
+| `fixed`, `spherical` | 상대 frame 고정 / anchor 일치와 자유 회전 |
+| `revolute`, `prismatic` | 각 local frame의 X축 회전 / 이동. 선택 `limits`, `motor` |
+| `continuousRevolute` | planar 전용 다회전 hinge. 필수 `limits`와 선택 `motor`; 두 frame의 X축이 +Z를 향해야 한다. |
+| `distance`, `rope` | 고정 `length` / 최대 `maxLength` |
+| `frequencySpring` | `restLength`, `frequencyHz`, `dampingRatio` |
+| `accelerationSpring`, `spring` | `restLength`, `stiffness`, `damping`. 각각 질량 정규화 가속도 / 물리 force 기반 |
+| `elasticRope` | 늘어났을 때만 당기는 `maxLength`, `spring` |
+| `gear` | planar 전용 `ratio`, `referenceAngle`, 선택 `spring` |
+| `pulley` | world-space `groundA`/`groundB`, `length`, `ratio`, 선택 `slack`/`spring` |
+
+`UnifiedPhysicsJointMotor`의 targetPosition/targetVelocity/stiffness/damping/maxForce는
+force 기반 actuator다. 회전 좌표는 radians이고 일반 revolute의 위치/limits는 ±π,
+continuousRevolute는 ±1,000,000 범위다. planar revolute의 local X도 Z축을 향해야 한다.
+`UnifiedPhysicsJointSpring`은 stiffness/damping의 질량 정규화 가속도 응답이다.
+options의 `linearSpring`/`angularSpring`은 해당 frame joint의 잠긴 축을 탄성으로 바꾸며,
+지원하지 않는 kind/axis 조합은 native가 거부한다. 값 두 개가 0이면 해당 좌표를 푼다.
+
+조회/이벤트의 `UnifiedPhysicsJointBufferView`는 stride 14의 `words`/`floats`다.
+`UNIFIED_PHYSICS_JOINT_LAYOUT`은 joint pair=0, code=2, flags=3,
+entityA pair=4, entityB pair=6, native bodyA pair=8, bodyB pair=10, force=12, torque=13이다.
+state code는 위 표의 native kind 번호 0..12이며 exported layout의 이름으로 읽는다.
+flags는 entityA 존재=1, entityB 존재=2, enabled=4, contactsEnabled=8이다.
+반력은 마지막 완료 물리 구간에서 solver substep별로 관측한 최대 크기로, 연속 시간의 정확한 최대 힘은 아니다.
+
+event code는 forceBreak=0, torqueBreak=1, forceAndTorqueBreak=2, removed=3, bodyRemoved=4다.
+event flags에는 entity 존재 bit만 들어간다. 삭제 전에 보존하므로 body/관절 슬롯이 재사용되어도
+이전 entity/native generation과 마지막 반력이 유지된다. authored 거리·각도 오차에 따른 제거는
+native event에서 removed이며 기존 component의 geometry-break 진단을 함께 사용한다.
+큐는 월드 `maxEvents` 크기로 제한한다. `droppedNative`는 native 큐 누락,
+`droppedEvents`는 그 뒤 Web 큐 누락이며 drain할 때 초기화한다. 누락 후에는 전체 생존 관절
+조회로 복구한다. state 조회의 두 누락 수는 0이며 이벤트를 소비하지 않는다.
+
+상태와 이벤트는 각각 다음 동일 스트림 읽기, Wasm growth 또는 engine 해제까지 빌린 뷰다.
+오래 보관하려면 복사한다. 조회는 step·geometry 동기화를 실행하지 않는다.
+입력 오류/stale handle/endpoint 변경은 기존 관절을 수정하지 않는다. 요청 중 하나라도 stale이면
+state 출력 전체를 비운다. 기존 Physics Spec/component 소유 관절은 읽을 수 있지만 수정/삭제는
+원본 component를 사용해야 한다. 관절 handle은 해당 native 월드 안에서만 유효하다.
+
+
+### 같은 Engine의 메모리 롤백
+
+`RuntimeCheckpoint`는 실행 중인 Rust 상태를 되돌리는 opaque 메모리 값이며,
+`FerrumRuntimeCheckpointApi`는 `FerrumEngine`에 포함된다. 외부 asset/JS 서비스와 파일 저장은 별도다.
+
+| API | 계약 |
+| --- | --- |
+| `supportsRuntimeCheckpoints()` | 설치한 Wasm이 memory checkpoint capability v1을 제공하는지 확인한다. |
+| `captureRuntimeCheckpoint()` | RAF pause/stop 후 Rust 실행 상태와 SDK physics metadata를 복사한다. tick이나 입력/출력을 소비하지 않는다. |
+| `restoreRuntimeCheckpoint(checkpoint)` | 같은 Engine의 완전한 candidate를 만든 뒤 교체한다. 반복 복원이 가능하고 실패 시 현재 상태를 유지한다. |
+| `runtimeCheckpointRevision()` | 성공한 복원에서만 증가한다. u32 wrap은 거부한다. |
+| `checkpoint.capturedRevision` / `checkpoint.dispose()` | 생성 당시 revision을 읽고, 보관이 끝난 native 메모리를 해제한다. 중복 dispose는 안전하다. |
+
+```ts
+engine.pause();
+const checkpoint = engine.captureRuntimeCheckpoint();
+engine.resume();
+// 이후 프레임에서 되돌릴 때 다시 pause한 뒤 호출한다.
+engine.pause();
+engine.restoreRuntimeCheckpoint(checkpoint);
+checkpoint.dispose();
+engine.resume();
+```
+
+native 접촉/solver·예약 명령, entity generation/ownership, fixed clock/input latch,
+AI intent·진행 중 검색·route cache, terrain/platform phase, projectile/hit,
+보간·카메라·particles/tweens·미소비 출력 buffer가 포함된다. 내부 값은 전체 Rust 상태의 직렬화된
+byte 데이터이며, 새 필드는 exhaustive schema에서 검토된다. 전체 인코딩은 header를 포함해 최대
+64 MiB다. 이 한도는 전체 process 또는 복원 시 메모리 상한을 뜻하지 않는다.
+복원은 재귀·처리량·할당 작업 admission도 검사하며, 제한 초과 시 원본 상태를 유지하고 거절한다.
+내부 native 형식 5는 지원 중인 rigid-body 상태와 관절 연결 이벤트·변경 대기 목록을 보존한다.
+첫 물리 step 후 관절 생성 직후에도 같은 Engine의 checkpoint로 저장·복원할 수 있다.
+이전 native 형식 2·3·4는 거절하며 Web checkpoint capability는 1을 유지한다.
+생성 API가 없는 multibody/soft-body 저장소는
+정상적인 초기 empty 상태만 허용하며, 다른 데이터는 내부 객체를 역직렬화하기 전에 거절한다.
+복원 시 BVH 연결과 height grid·sparse map 저장 불변식도 검사한다. 정상 partial update와 예약 refit 상태는
+유지한다. mesh/convex/compound의 내부 topology·part bounds와 primitive SharedShape의 수치도 검사하며,
+정상 feature ID와 cache 순서를 보존한다. 이는 기하학적 볼록성·모든 형상/수치 검증이나 임의 파일 import를
+제공한다는 의미가 아니다.
+접촉점·warm-start·solver contact의 수치와 실제 point index도 복원 전에 검사하며 정상 수면·예약 변경 이력은
+유지한다. 미지원 접촉 workspace는 내용 생성 전에 거절한다. 지원 workspace의 내부 cache 전체와
+geometry 의미·전체 메모리 상한 검증은 별도다.
+내부 BVTT 충돌 쌍 검색과 depth 계산은 깊은 유효 트리를 반복 순회하며 기존 pair 반환 순서를 유지한다.
+pair 검색은 재사용 workspace를 필요에 따라 성장시키므로 모든 검색/복원 작업의 메모리·시간 상한을
+보장하지는 않는다.
+내부 BVH refit도 깊이별 재귀 대신 기존 작업 buffer와 parent link로 갱신하며 기존 데이터 배치·flags·leaf
+식별자를 유지한다. optional native parallel refit은 분리된 slice로 처리한 뒤 leaf mapping을 갱신한다.
+
+다른 Engine/SDK instance, 위조되었거나 dispose한 token, RAF 실행 중의 capture/restore는 거부한다.
+frame callback 안에서는 먼저 pause하더라도 해당 frame이 끝나기 전 capture/restore를 거부한다.
+복원은 entity/native 세대와 Data Scene epoch도 저장 시점으로 되돌린다. 폐기된 미래의 handle/view는 버리고
+Wasm view를 다시 조회해야 한다. revision은 기존 handle에 자동 결합되지 않는다.
+
+이 API는 `captureGameStateSnapshot`의 JSON 저장을 대체하지 않는다. token을 `JSON.stringify`하면 실패한다.
+외부 JS 서비스·dialogue/quest 객체·asset/GPU 자원·authoring registry는 복원하지 않는다.
+이 외부 상태를 변경한 뒤 되돌리려면 호스트가 함께 관리해야 한다. 임의 파일 import와 native JSON 저장은
+현재 지원하지 않는다. 전체 상태 인코딩/검증·복원은 cold 작업이며, 전체 process 메모리 상한이나
+밀집 장면의 시간 budget을 보장하지 않는다. 사용이 끝난 token은 `dispose()`한다.

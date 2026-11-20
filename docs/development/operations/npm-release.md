@@ -22,9 +22,12 @@
 - `package.json`
 - `README.md`
 - `LICENSE`
+- `THIRD_PARTY_NOTICES.txt` (Wasm 의존성의 원래 license 식·본문과 vendored 수정 기록)
 - `dist/**`
 - `pkg/ferrum_core.js`
 - `pkg/ferrum_core.d.ts`
+- `pkg/ferrum_core_factory.js`
+- `pkg/ferrum_core_factory.d.ts`
 - `pkg/ferrum_core_bg.wasm`
 - `pkg/ferrum_core_bg.wasm.d.ts`
 - `pkg/package.json`
@@ -39,6 +42,14 @@
 - `pkg/.gitignore`
 
 `wasm-pack`이 생성하는 `pkg/.gitignore`는 `*`를 포함하므로, package allowlist는 `pkg` 디렉터리 전체가 아니라 필요한 generated artifact 파일을 명시한다.
+
+Rust 의존성을 바꾼 뒤 `node scripts/package/wasm-license-notices.mjs`로 notice를 재생성한다.
+`--check`와 package gate는 locked/offline Cargo metadata의 `wasm32-unknown-unknown` normal dependency closure를 대조한다.
+이 목록은 root crate를 제외하고 정상 의존 경로로 도달하는 proc-macro/host package도 보수적으로 포함하며,
+실제 Wasm 링크 목록이나 법적 호환성 판정을 뜻하지 않는다. 원본 crate에 빠진 license 파일은 정확한 upstream commit·SHA를
+기록한 `scripts/package/wasm-license-sources/`의 자료만 사용한다. 원문 줄바꿈은 출력에서 LF로 통일하며 원래 파일의 SHA는 그대로 기록한다.
+실제 tarball에도 현재 notice의 동일한 본문이 있어야 통과한다.
+Basis의 별도 `dist/vendor/basis/` 고지와 font·asset 배포 고지는 이 Cargo 목록과 별도로 유지한다.
 
 ## 베타 버전 규칙
 
@@ -77,6 +88,14 @@ pnpm release:check
 ```
 
 `pnpm smoke:check`는 위 항목 중 다수의 자동 smoke와 `pnpm package:check`를 한 번에 실행하지만, 임시 consumer project에 로컬 tarball을 설치하는 `pnpm package:consumer-smoke`는 별도로 실행한다. release 후보 세트를 한 번에 리허설할 때는 `pnpm release:local-check`를 우선 사용한다. 이 명령은 `private: true` 상태에서 candidate metadata, package allowlist, local tarball consumer smoke, smoke report validation을 순서대로 실행하며 npm publish, Git tag, GitHub Release 같은 외부 상태를 바꾸지 않는다.
+
+동일 checkout에서 Wasm·Web·Studio Kit 공통 빌드를 마친 CI는
+`node scripts/package/check-create-game-package.mjs --verify-pack --skip-build`로 내부 재빌드를 생략한다.
+필수 산출물·generated factory·SDK source/dist identity와 모든 package/replay 검사는 유지한다.
+실제 Wasm이 만든 Native 파일 header의 Core/target fingerprint도 현재 `build.rs` 입력으로 계산한 값과
+비교한다. Runtime package 검사는 packed Wasm/glue/factory/선언·metadata7개의 bytes가 검증한 workspace와
+같은지 확인한다. 이 fingerprint는 compiler/flags·재현 가능한 binary나 인증을 뜻하지 않으므로 선행 공통
+빌드는 유지한다. `node scripts/package/native-wasm-source-identity.mjs`는 재빌드 없이 일치 여부를 검사한다.
 
 브라우저가 설치된 로컬 환경에서는 WebGL2 black-frame 회귀 방지를 위해 다음도 실행한다.
 

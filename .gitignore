@@ -1,4 +1,5 @@
 crates/ferrum-core/target/
+crates/ferrum-core/vendor/*/target/
 node_modules/
 .pnpm-store/
 packages/*/dist/
@@ -20,3 +21,4 @@ docs/planning/*
 !docs/planning/game-development-convenience-review.md
 !docs/planning/feature-candidates.md
 !docs/planning/vfx-resource-system-plan.md
+!docs/planning/unified-3d-physics-plan.md
