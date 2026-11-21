@@ -1882,7 +1882,7 @@ impl BackendMotionScratch {
                 if original.is_some() {
                     return Ok(original);
                 }
-                return normal_witness::propose_rotating_rebased(
+                normal_witness::propose_rotating_rebased(
                     carrier,
                     anchor,
                     offset,
@@ -1897,7 +1897,7 @@ impl BackendMotionScratch {
                     clearance,
                     work,
                     &mut accept,
-                );
+                )
             };
             // Near the end of a pure-axis turn, COM-height inverse
             // candidates can span a much denser axial grid than the

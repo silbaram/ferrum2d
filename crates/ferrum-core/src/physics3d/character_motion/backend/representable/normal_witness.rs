@@ -1471,7 +1471,7 @@ impl BackendMotionScratch {
         if !self.rows.is_empty()
             || hit.cast.safe_time != safe
             || hit.cast.hit_time != safe.next_up()
-            || !(hit.cast.contact.dist > 0.)
+            || hit.cast.contact.dist.partial_cmp(&0.) != Some(std::cmp::Ordering::Greater)
         {
             return Ok(None);
         }

@@ -287,6 +287,7 @@ fn short_image(
 // The two rounded velocity products differ by at most the given drift. Invert only
 // their two additions. The thresholds then translate by the same amount, so
 // disjoint thresholds in one residue class exclude that entire class.
+#[allow(clippy::too_many_arguments)] // Keep both support intervals and the proof inputs explicit.
 fn common_product_clear(
     a: Support,
     b: Support,
@@ -323,7 +324,7 @@ fn common_product_clear(
             let period = xa.period(ya, 2)?.max(xb.period(yb, 2)?);
             let step = f64::from(first.next_up()) - f64::from(first);
             let residues = period / step;
-            (residues >= 1. && residues <= 64.).then_some(residues as u32)
+            (1. ..=64.).contains(&residues).then_some(residues as u32)
         };
         if let Some(residues) = range_period() {
             count = count.min(residues - 1);
@@ -602,6 +603,7 @@ pub(super) fn face_end(
     Ok(None)
 }
 
+#[allow(clippy::too_many_arguments)] // Both shape inputs share the explicit search bounds and work budget.
 pub(super) fn first(
     cube: Source,
     cap: Source,

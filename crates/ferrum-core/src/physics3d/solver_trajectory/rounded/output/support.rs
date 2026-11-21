@@ -15,6 +15,7 @@ pub(super) use common_product::{
     separated as common_product_separated, staggered_prefix,
 };
 mod axial_capsule;
+pub(in crate::physics3d::solver_trajectory) use axial_capsule::fixed_wall_rider_separated;
 pub(super) use axial_capsule::separated as axial_capsule_separated;
 mod planar_capsule;
 mod shared_planar_capsule;
@@ -539,8 +540,8 @@ pub(super) fn cardinal_box_ball(
     let radius = upper_mul(s, f64::from(ball.radius));
     let margin = Bound::exact(f64::from(clearance));
     let mut clear = false;
-    for i in 0..3 {
-        let limit = upper_add(radius, local[i].error);
+    for (i, extent) in local.iter().enumerate() {
+        let limit = upper_add(radius, extent.error);
         let mut rounded_extent = limit as f32;
         if f64::from(rounded_extent) > limit {
             rounded_extent = rounded_extent.next_down();

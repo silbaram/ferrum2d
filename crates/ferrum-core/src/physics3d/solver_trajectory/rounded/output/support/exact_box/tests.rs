@@ -704,3 +704,81 @@ fn ramp_capsule_odd_output_cell_distinguishes_one_ulp_of_inward_motion() {
     assert!(sample.as_dvec3().dot(normal.as_dvec3()) > limit);
     assert!(!check(inward));
 }
+
+#[test]
+fn village_sloped_ramp_edge_meets_the_capsule_after_a_clear_prefix() {
+    let start = 0.0234375;
+    let end = 0.03125;
+    let domain = Domain::new(start, end).unwrap();
+    let hull = rp::ConvexPolyhedron::from_convex_hull(&[
+        rp::Vector::new(-32., 12., 24.),
+        rp::Vector::new(32., -12., 24.),
+        rp::Vector::new(32., -12., -24.),
+        rp::Vector::new(-32., 12., -24.),
+        rp::Vector::new(-32., -12., 24.),
+        rp::Vector::new(-32., -12., -24.),
+    ])
+    .unwrap();
+    let ramp = ShapeMotion {
+        curve: Curve::Constant {
+            pose: rp::Pose::from_translation(rp::Vector::new(-48., 12., 186.)),
+            start_time: start,
+            end_time: end,
+        },
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let cap = ShapeMotion {
+        curve: Curve::Integrated(
+            Kernel::from_velocity_seconds(
+                rp::RigidBodyHandle::invalid(),
+                domain,
+                0.0078125,
+                rp::Pose::from_translation(rp::Vector::new(-27.629335, 6.7694902, 156.40083)),
+                rp::Vector::new(16.19159, 0.5198364, 1.9458008),
+                rp::Vector::ZERO,
+            )
+            .unwrap(),
+        ),
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let capsule = rp::Capsule::new_y(1., 5.);
+    let cast = |end, margin, reverse| {
+        let (a, sa, b, sb): (_, &dyn rp::Shape, _, &dyn rp::Shape) = if reverse {
+            (cap, &capsule, ramp, &hull)
+        } else {
+            (ramp, &hull, cap, &capsule)
+        };
+        cast_full_shapes_policy(
+            a,
+            sa,
+            b,
+            sb,
+            start,
+            end,
+            margin,
+            7.8125e-9,
+            &mut work(),
+            true,
+        )
+        .unwrap()
+    };
+    for reverse in [false, true] {
+        assert!(cast(0.028554439544677734, 0.75, reverse).is_none());
+        assert!(cast(end, 0.74, reverse).is_none());
+        let hit = cast(end, 0.75, reverse).unwrap();
+        assert!((0.02858570..0.02858573).contains(&hit.hit_time));
+        assert!(hit.hit_time - hit.safe_time <= 7.8125e-9);
+        assert!(hit.contact.dist <= 0.75);
+        let contact = if reverse {
+            hit.contact.flipped()
+        } else {
+            hit.contact
+        };
+        let edge_point = contact.point1.as_dvec3();
+        assert_eq!(edge_point.z, 162.);
+        assert_eq!(3. * (edge_point.x + 16.) + 8. * edge_point.y, 0.);
+        assert!((contact.point2.as_dvec3() - edge_point).length() <= 0.75);
+    }
+}

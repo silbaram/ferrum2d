@@ -513,6 +513,115 @@ fn accepted_capsule_pair_can_be_checked_at_the_cropped_start_pose() {
 }
 
 #[test]
+fn village_idle_capsules_preserve_the_inclined_endcap_gap() {
+    let [start, end] = [0.0234375, 0.03125];
+    let make = |body, position, velocity| {
+        motion(kernel(
+            body,
+            [start, end],
+            0.0078125,
+            position,
+            velocity,
+            [start as f32, end as f32],
+        ))
+    };
+    let a = make(
+        31,
+        rp::Vector::new(-24.301884, 9.494505, 159.15445),
+        rp::Vector::new(17.70221, 4.2282104, 19.796387),
+    );
+    let b = make(
+        29,
+        rp::Vector::new(-17.897808, 6.7573066, 150.5442),
+        rp::Vector::new(17.602356, 0., 20.695313),
+    );
+    let shape = rp::SharedShape::capsule_y(1., 5.);
+    let cast = |a, b, clearance, limit| {
+        crate::physics3d::solver_trajectory::cast_full_shapes_policy(
+            a,
+            shape.as_ref(),
+            b,
+            shape.as_ref(),
+            start,
+            end,
+            clearance,
+            7.8125e-9,
+            &mut Work { used: 0, limit },
+            false,
+        )
+        .unwrap()
+    };
+    for (first, second) in [(a, b), (b, a)] {
+        assert!(cast(first, second, 0.75, 128 * 1024).is_none());
+        // A wider skin crosses during the interval and must decline the plane.
+        let proxy = ToiProxy::from_shape(shape.as_ref()).unwrap();
+        assert!(!parallel_capsules::separated(
+            first,
+            &proxy,
+            second,
+            &proxy,
+            start,
+            end,
+            0.754,
+            &mut work(),
+        )
+        .unwrap());
+        // A closed starting contact is still reported by the complete cast.
+        assert_eq!(
+            cast(first, second, 0.76, 128 * 1024).unwrap().hit_time,
+            start
+        );
+    }
+}
+
+#[test]
+fn village_co_moving_capsules_keep_existing_skin_across_separate_native_clocks() {
+    let start = 0.030989685024906066;
+    let end = 0.03125;
+    let velocity = rp::Vector::new(-5.2738504, 0., 14.042314);
+    let a = motion(kernel(
+        28,
+        [start, end],
+        0.00026031496,
+        rp::Vector::new(-35.04251, 11.250001, 115.426125),
+        velocity,
+        [0., 0.00026031496],
+    ));
+    let peer = |velocity| {
+        motion(kernel(
+            29,
+            [0.030949983978644013, end],
+            0.00030001602,
+            rp::Vector::new(-31.614296, 6.7500005, 106.29806),
+            velocity,
+            [0., 0.00030001602],
+        ))
+    };
+    let sa = rp::SharedShape::capsule_y(6.5, 4.);
+    let sb = rp::SharedShape::capsule_y(1., 5.);
+    let cast = |b, allow| {
+        crate::physics3d::solver_trajectory::cast_full_shapes_policy(
+            a,
+            sa.as_ref(),
+            b,
+            sb.as_ref(),
+            start,
+            end,
+            0.75,
+            7.8125e-9,
+            &mut work(),
+            allow,
+        )
+        .unwrap()
+    };
+    let strict = cast(peer(velocity), false).unwrap();
+    assert_eq!(strict.hit_time, start);
+    assert!(strict.contact.dist > 0.);
+    assert!(cast(peer(velocity), true).is_none());
+    assert!(cast(peer(velocity - strict.contact.normal1), true).is_some());
+}
+
+#[test]
 fn following_capsules_with_different_clocks_require_an_existing_noninward_contact() {
     let end = 0.016_666_667_535_901_07;
     let start = 0.016_666_656_732_594_168;

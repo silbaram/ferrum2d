@@ -212,7 +212,7 @@ fn a_virtual_pressure_retry_keeps_an_independent_driver_and_row() {
 }
 
 struct Context {
-    world: rp::PhysicsWorld,
+    rapier: rp::PhysicsWorld,
     values: Vec<SolverMotionBody>,
     writes: usize,
     domain: Domain,
@@ -221,10 +221,10 @@ struct Context {
 }
 impl SolverMotionContext for Context {
     fn bodies(&self) -> &rp::RigidBodySet {
-        &self.world.bodies
+        &self.rapier.bodies
     }
     fn colliders(&self) -> &rp::ColliderSet {
-        &self.world.colliders
+        &self.rapier.colliders
     }
     fn start_time(&self) -> f32 {
         self.observer_start
@@ -322,7 +322,7 @@ fn fixture(target_x: f32, sleeping: bool) -> (Context, SolverBodyIntegration) {
     };
     (
         Context {
-            world,
+            rapier: world,
             values: vec![value],
             writes: 0,
             domain: Domain::new(0., 1.).unwrap(),
@@ -362,7 +362,7 @@ fn run(
 #[test]
 fn complete_actual_no_hit_batch_preserves_native_metadata_and_endpoint_bits() {
     let (mut context, proposal) = fixture(20., false);
-    let source = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let source = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     let original = context.values[0];
     let mut scratch = BackendMotionScratch::default();
     assert_eq!(
@@ -384,7 +384,7 @@ fn complete_actual_no_hit_batch_preserves_native_metadata_and_endpoint_bits() {
     );
     assert_eq!(
         source,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
     assert_eq!(scratch.accepted.len(), 1);
 }
@@ -392,7 +392,7 @@ fn complete_actual_no_hit_batch_preserves_native_metadata_and_endpoint_bits() {
 #[test]
 fn malformed_actual_proposal_never_reaches_atomic_publication() {
     let (mut context, mut proposal) = fixture(20., false);
-    let source = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let source = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     proposal.linear_velocity.x = f32::NAN;
     let mut scratch = BackendMotionScratch::default();
     assert_eq!(
@@ -402,14 +402,14 @@ fn malformed_actual_proposal_never_reaches_atomic_publication() {
     assert_eq!(context.writes, 0);
     assert_eq!(
         source,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
 }
 
 #[test]
 fn real_sleeping_hit_requests_join_without_publishing_or_waking() {
     let (mut context, proposal) = fixture(0., true);
-    let source = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let source = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     let mut scratch = BackendMotionScratch::default();
     // This unit exercises the mixed finite path; pure Native CCD is pending
     // until the final plan and is covered separately below.
@@ -421,11 +421,11 @@ fn real_sleeping_hit_requests_join_without_publishing_or_waking() {
     );
     assert_eq!(context.writes, 0);
     let join = scratch.wake_join.unwrap();
-    assert!(context.world.bodies[join.body].is_sleeping());
+    assert!(context.rapier.bodies[join.body].is_sleeping());
     assert!(join.safe_time <= join.hit_time && join.hit_time > 0.);
     assert_eq!(
         source,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
 }
 
@@ -433,14 +433,14 @@ fn real_sleeping_hit_requests_join_without_publishing_or_waking() {
 fn ratio_projection_rejects_new_penetration_before_any_body_write() {
     let (context, _) = fixture(0., false);
     let moving = context.values[0].handle;
-    let before = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let before = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     let mut scratch = BackendMotionScratch::default();
     let policies = ContactPolicies::default();
     let blocked = rp::Pose::from_translation(rp::Vector::new(-0.1, 0., 0.));
     assert_eq!(
         admit_ratio_positions(
-            &context.world.bodies,
-            &context.world.colliders,
+            &context.rapier.bodies,
+            &context.rapier.colliders,
             &policies,
             &[(moving, blocked)],
             0.001,
@@ -451,8 +451,8 @@ fn ratio_projection_rejects_new_penetration_before_any_body_write() {
     let clear = rp::Pose::from_translation(rp::Vector::new(-3., 0., 0.));
     assert_eq!(
         admit_ratio_positions(
-            &context.world.bodies,
-            &context.world.colliders,
+            &context.rapier.bodies,
+            &context.rapier.colliders,
             &policies,
             &[(moving, clear)],
             0.001,
@@ -462,7 +462,7 @@ fn ratio_projection_rejects_new_penetration_before_any_body_write() {
     );
     assert_eq!(
         before,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
 }
 
@@ -498,15 +498,15 @@ fn rejected_uncommitted_slice_has_no_published_motion_trace() {
     }
     scratch.finish_trace(
         &collector,
-        &context.world.bodies,
-        &context.world.colliders,
+        &context.rapier.bodies,
+        &context.rapier.colliders,
         0.,
     );
     assert!(collector.2.lock().unwrap().motions.is_empty());
     scratch.finish_trace(
         &collector,
-        &context.world.bodies,
-        &context.world.colliders,
+        &context.rapier.bodies,
+        &context.rapier.colliders,
         1.,
     );
     let trace = collector.2.lock().unwrap();
@@ -775,7 +775,7 @@ fn precise_first_hit_keeps_a_real_sub_observer_ulp_bracket_without_publication()
     context.values[0].end = proposal.motion.end;
     context.values[0].linear_velocity = proposal.linear_velocity;
     context.values[0].angular_velocity = proposal.angular_velocity;
-    let before = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let before = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     let mut scratch = BackendMotionScratch::default();
     // This unit exercises the mixed finite path; pure Native CCD is pending
     // until the final plan and is covered separately below.
@@ -790,10 +790,10 @@ fn precise_first_hit_keeps_a_real_sub_observer_ulp_bracket_without_publication()
     assert!(hit.hit_time - hit.safe_time <= duration * 1e-6, "{hit:?}");
     assert_eq!(hit.safe_time as f32, hit.hit_time as f32, "{hit:?}");
     assert_eq!(context.writes, 0);
-    assert!(context.world.bodies[hit.body].is_sleeping());
+    assert!(context.rapier.bodies[hit.body].is_sleeping());
     assert_eq!(
         before,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
 }
 
@@ -964,8 +964,8 @@ fn precise_trace_retains_original_native_observer_context_label_bits() {
     }
     scratch.finish_trace(
         &collector,
-        &context.world.bodies,
-        &context.world.colliders,
+        &context.rapier.bodies,
+        &context.rapier.colliders,
         Time::from(duration),
     );
     let trace = collector.2.lock().unwrap();
@@ -983,7 +983,7 @@ fn precise_trace_retains_original_native_observer_context_label_bits() {
 #[test]
 fn final_native_plan_failure_keeps_private_motion_and_impulses_unpublished() {
     let (mut context, proposal) = fixture(20., false);
-    let raw = crate::checkpoint_codec::encode(&context.world).unwrap();
+    let raw = crate::checkpoint_codec::encode(&context.rapier).unwrap();
     let collector = EventCollector::new(8);
     collector.2.lock().unwrap().reset(true);
     let mut scratch = BackendMotionScratch::default();
@@ -1026,12 +1026,12 @@ fn final_native_plan_failure_keeps_private_motion_and_impulses_unpublished() {
     assert!(!plan.covered && plan.clamps.is_empty() && plan.crossings.is_empty());
     assert_eq!(
         raw,
-        crate::checkpoint_codec::encode(&context.world).unwrap()
+        crate::checkpoint_codec::encode(&context.rapier).unwrap()
     );
     scratch.finish_trace(
         &collector,
-        &context.world.bodies,
-        &context.world.colliders,
+        &context.rapier.bodies,
+        &context.rapier.colliders,
         0.,
     );
     assert!(collector.2.lock().unwrap().actual.is_empty());

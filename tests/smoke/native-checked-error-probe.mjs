@@ -36,11 +36,9 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
               velocityIterations: 1, positionIterations: 1, continuous: true,
             });
             engine.configureAutoRigidBodyStep(mode === "automatic");
-            // All 4096 valid, nondegenerate triangles remain distinct mesh
-            // leaves. The box is above the sloped face throughout the first
-            // native kernel; its bounds still intersect every identical leaf.
-            // Each cast therefore charges two original point-cloud distances:
-            // 4096 * 2 * (8 + 3 + 128) * 32 > the 32 Mi-work proof allowance.
+            // Start above the sloped mesh and cross it within one tick. The
+            // fast box activates CCD and its sweep visits the overlapping
+            // triangle leaves until the current native proof budget is exhausted.
             const triangles = new Uint32Array(4096 * 3);
             for (let i = 0; i < triangles.length; i += 3) triangles.set([0, 2, 1], i);
             const mesh = engine.spawnUnifiedPhysicsBody({
@@ -50,7 +48,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             });
             const box = engine.spawnUnifiedPhysicsBody({
               kind: "dynamic", ccd: true, canSleep: false,
-              pose: { position: [0, 0.5703125, 0] }, linearVelocity: [0, -1, 0],
+              pose: { position: [0, 1.25, 0] }, linearVelocity: [0, -100, 0],
               collider: { shape: { type: "box", halfExtents: [0.5, 0.5, 0.5] } },
             });
             const handles = new Uint32Array([box.entityId, box.entityGeneration]);
@@ -119,8 +117,8 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
     });
     assert.equal(report.results.length, 3);
     for (const result of report.results) {
-      assert.equal(result.error, undefined, JSON.stringify(result));
       assert.match(result.rejection ?? "", /actual native motion rejected after 0 committed seconds:.*physics capacity exceeded/, JSON.stringify(result));
+      assert.equal(result.error, undefined, JSON.stringify(result));
       assert.equal(result.framesAtRejection, 0, JSON.stringify(result));
       assert.equal(result.pendingAtRejection, 0, JSON.stringify(result));
       assert.deepEqual(result.after, result.before, JSON.stringify(result));

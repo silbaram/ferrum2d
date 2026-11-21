@@ -650,9 +650,112 @@ pub(super) fn ramp_capsule_contact(
         return Ok(Some(contact));
     }
     match ramp {
-        RampFaces::Hull(hull) => convex_edge_capsule(pa, hull, pb, capsule, clearance, work),
+        RampFaces::Hull(hull) => {
+            let contact = convex_edge_capsule(pa, hull, pb, capsule, clearance, work)?;
+            if let Some(margin) = clearance
+                .filter(|&v| v > 0. && contact.as_ref().is_none_or(|contact| contact.dist > v))
+            {
+                if let Some(contact) = sloped_edge_capsule(pa, hull, pb, capsule, margin, work)? {
+                    return Ok(Some(contact));
+                }
+            }
+            Ok(contact)
+        }
         RampFaces::Triangle(_) => Ok(None),
     }
+}
+
+fn sloped_edge_capsule(
+    pa: &rp::Pose,
+    hull: &ConvexPolyhedron,
+    pb: &rp::Pose,
+    capsule: &Capsule,
+    margin: f32,
+    work: &mut Work,
+) -> Result<Option<Contact>, TrajectoryError> {
+    let axis = capsule.segment.b - capsule.segment.a;
+    if axis.to_array().into_iter().filter(|&v| v != 0.).count() != 1 {
+        return Ok(None);
+    }
+    let local = [capsule.segment.a, capsule.segment.b];
+    let r = f64::from(capsule.radius);
+    let skin = f64::from(margin);
+    for edge in hull.edges() {
+        work.charge(128)?;
+        let [a, b] = edge
+            .vertices
+            .map(|i| (*pa * hull.points()[i as usize]).as_dvec3());
+        let e = b - a;
+        if e.to_array().into_iter().filter(|&v| v != 0.).count() != 2 {
+            continue;
+        }
+        // Small integral endpoints and the dyadic parameter below yield an
+        // exact F64 interpolation; require the reported F32 point to match.
+        if [a, b]
+            .into_iter()
+            .any(|p| p.abs().max_element() > 1048576. || p != p.trunc())
+        {
+            continue;
+        }
+        for tip in local {
+            work.charge(128)?;
+            let core = (*pb * tip).as_dvec3();
+            let t = (core - a).dot(e) / e.length_squared();
+            if !(0. ..1.).contains(&t) {
+                continue;
+            }
+            let position = a + e * t;
+            let d = core - position;
+            let gap = d.length() - r;
+            if d.to_array().into_iter().any(|v| v == 0.)
+                || gap < 0.
+                || (gap - skin).abs()
+                    > 4. * f64::from(f32::EPSILON) * (1. + core.abs().max_element() + r)
+            {
+                continue;
+            }
+            let n = d.normalize().as_vec3();
+            if n.dot(if tip == local[0] { axis } else { -axis }) < 0. {
+                continue;
+            }
+            let normal = e.cross((core - a).cross(e));
+            work.charge(hull.points().len() as u64 * 24)?;
+            if hull
+                .points()
+                .iter()
+                .any(|&p| ((*pa * p).as_dvec3() - a).dot(normal) > 0.)
+            {
+                continue;
+            }
+            let dyadic = (t * 1048576.).round() / 1048576.;
+            let representative = a + e * dyadic;
+            let p1 = representative.as_vec3();
+            if p1.as_dvec3() != representative {
+                continue;
+            }
+            let inward = -n;
+            let distance = |p| super::world_contact::distance_upper(p, p1);
+            if let Some(p2) = super::rounded::rounded_cap_plane_witness(
+                pb.translation,
+                tip,
+                capsule.radius,
+                inward,
+                representative.dot(inward.as_dvec3()) - skin * inward.as_dvec3().length(),
+                |p| distance(p) <= skin,
+                work,
+            )? {
+                let upper = distance(p2);
+                let mut dist = upper as f32;
+                if f64::from(dist) < upper {
+                    dist = dist.next_up();
+                }
+                if dist <= margin {
+                    return Ok(Some(Contact::new(p1, p2, n, -n, dist)));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn convex_edge_capsule(

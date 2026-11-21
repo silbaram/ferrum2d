@@ -22,6 +22,7 @@ pub(super) use integrated_linear::{
 };
 pub(super) use output::cardinal_box_ball_separated;
 pub(super) use output::fixed_box_capsule_edge_prefix;
+pub(super) use output::fixed_wall_rider_separated;
 pub(in crate::physics3d) use output::straight_primitive_bounds;
 pub(in crate::physics3d) use output::tight_face_fits;
 /// Advance only through consecutive intervals with a complete moving-face
@@ -858,6 +859,7 @@ pub(super) fn nearby_rotating_conflict(
     )
 }
 
+#[allow(clippy::too_many_arguments)] // Keep both shapes and the exact interval proof inputs together.
 pub(super) fn staggered_prefix(
     a: ShapeMotion,
     sa: &dyn rp::Shape,

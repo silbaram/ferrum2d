@@ -1819,7 +1819,7 @@ fn refined_rotation_range_recovers_the_recorded_response_within_the_original_ski
         6.476681235767501e-8,
         [0.5397111, -7.450581e-9, -0.8309909],
     );
-    let (anchor, offset) = check_refined_rotation(&f);
+    let (anchor, offset) = check_refined_rotation(&f, work());
     assert_eq!(anchor, 0.1_f32.next_down());
     assert_eq!(offset, 0.91000015);
 }
@@ -1835,7 +1835,7 @@ fn refined_preimage_correction_requires_the_original_whole_future() {
         0.00833671264570057,
         [0.5287605, -7.450581e-9, -0.83795136],
     );
-    let (anchor, _) = check_refined_rotation(&f);
+    let (anchor, _) = check_refined_rotation(&f, work());
     assert_ne!(anchor, 0.1_f32.next_down());
 }
 
@@ -1850,7 +1850,7 @@ fn signed_offset_neighbor_recovers_the_sixty_second_tick_response() {
         0.008335578450328283,
         [-0.025758348, 0., -0.98518443],
     );
-    let (anchor, offset) = check_refined_rotation(&f);
+    let (anchor, offset) = check_refined_rotation(&f, work());
     assert_eq!(anchor.to_bits(), 0.1_f32.to_bits() - 5);
     assert_eq!(offset.to_bits(), 0.91_f32.next_up().to_bits());
 }
@@ -1866,7 +1866,7 @@ fn signed_offset_search_recovers_the_sixty_second_tick_fourth_integration() {
         0.012502253012257823,
         [-0.032202736, -7.450581e-9, -0.98491055],
     );
-    let (anchor, offset) = check_refined_rotation(&f);
+    let (anchor, offset) = check_refined_rotation(&f, work());
     assert_eq!(anchor.to_bits(), 0.1_f32.to_bits() + 18);
     assert_eq!(offset.to_bits(), 0.91_f32.to_bits() - 2);
 }
@@ -1882,12 +1882,46 @@ fn signed_offset_search_recovers_the_sixty_sixth_tick_response() {
         1.5645794633201149e-6,
         [-0.115676835, 0., -0.9777315],
     );
-    let (anchor, offset) = check_refined_rotation(&f);
+    let (anchor, offset) = check_refined_rotation(&f, work());
     assert_eq!(anchor.to_bits(), 0.1_f32.to_bits() - 46);
     assert_eq!(offset.to_bits(), 0.91_f32.to_bits() + 6);
 }
 
-fn check_refined_rotation(f: &RotatingFixture) -> (f32, f32) {
+#[test]
+fn recorded_wasi_turn_recovers_the_supported_rider() {
+    let mut f = recorded_c81_rotation();
+    let domain = Domain::new(0.012500000651925802, 0.01666666753590107).unwrap();
+    let mut native = f.carrier.native;
+    native.motion.start_time = domain.start as f32;
+    native.motion.end_time = domain.end as f32;
+    native.motion.start.rotation = rp::Rotation::from_xyzw(0., 0.73653996, 0., -0.6763941);
+    native.motion.end.rotation = rp::Rotation::from_xyzw(0., 0.73432255, 0., -0.67880076);
+    native.angular_velocity = rp::Vector::Y * 1.570_792_8;
+    let carrier = Kernel::from_native(native, domain).unwrap();
+    f.carrier = carrier;
+    f.safe = 0.012500052170627995;
+    f.hit = f.safe.next_up();
+    f.witness = rp::Vector::new(-0.09152511, -7.450581e-9, 0.99589825);
+    f.old = Curve::Anchored {
+        carrier,
+        anchor: rp::Vector::new(1.0000736, 1.01, 0.006560574),
+        offset: rp::Vector::new(3.7252903e-8, -5.9604645e-8, -5.9604645e-8),
+        linear_velocity: rp::Vector::ZERO,
+        rotation: rp::Rotation::IDENTITY,
+    };
+    f.actor.motion.curve = f.old;
+    f.platform.motion.curve = Curve::Integrated(carrier);
+    // This interval arrives after three integrations have shared the tick budget.
+    check_refined_rotation(
+        &f,
+        Work {
+            used: 0,
+            limit: 10_000_000,
+        },
+    );
+}
+
+fn check_refined_rotation(f: &RotatingFixture, mut measured: Work) -> (f32, f32) {
     let k = f.carrier;
     let Curve::Anchored {
         anchor,
@@ -1967,9 +2001,8 @@ fn check_refined_rotation(f: &RotatingFixture) -> (f32, f32) {
             },
         )
     };
-    // The first witness can require a complete rejection before a later
-    // safe-cell endpoint succeeds. Use the runtime response allowance.
-    let mut measured = work();
+    // A first witness can require a complete rejection before a later
+    // safe-cell endpoint succeeds.
     let response = run(0.01, &mut measured)
         .unwrap()
         .expect("whole future cleared");
@@ -2001,7 +2034,7 @@ fn adjacent_carrier_translation_cells_certify_the_position_rounding_candidate() 
         domain,
         0.004166667,
         rp::Pose::from_parts(
-            rp::Vector::new(0., -0.0999999866, 0.),
+            rp::Vector::new(0., -0.099_999_99, 0.),
             rp::Rotation::from_xyzw(0., 0.2777339, 0., 0.9606581),
         ),
         rp::Vector::Y * 1.3411044e-6,
@@ -2026,7 +2059,7 @@ fn adjacent_carrier_translation_cells_certify_the_position_rounding_candidate() 
     let phase = Curve::Anchored {
         carrier,
         anchor: rp::Vector::Y * f32::from_bits(0.1_f32.to_bits() - 654),
-        offset: rp::Vector::new(0.844828, 0.910004914, -0.53298366),
+        offset: rp::Vector::new(0.844828, 0.910_004_9, -0.53298366),
         linear_velocity: relative,
         rotation: rp::Rotation::IDENTITY,
     };

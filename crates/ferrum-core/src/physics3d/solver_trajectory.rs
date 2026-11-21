@@ -2,6 +2,7 @@
 //! A successful proof covers the full interval, not sampled endpoint poses.
 use rapier3d::parry::query::sweep_toi::{Sweep, ToiProxy};
 use rapier3d::prelude as rp;
+mod box_capsule_sensor;
 mod clock;
 mod feature_contact;
 mod positive_initial_support;
@@ -1358,6 +1359,9 @@ fn certified_separation_axes_proof(
         right,
     });
     let mut cache = rounded::AxisCache::new(a, shape_a, b, shape_b, start, end, clearance);
+    if rounded::fixed_wall_rider_separated(&cache, normal, work)? {
+        return Ok(IntervalCertificate::Separated);
+    }
     if supported_capsule_face::box_motion(a, shape_a, b, shape_b).is_some()
         && rounded::anchored_capsule_face_separated(&cache, normal, work)?
     {
@@ -1950,7 +1954,7 @@ fn cast_policy_impl(
         let c = leaf_contact(&a.pose(time), shape_a, &b.pose(time), shape_b, work)
             .inspect_err(|_error| {
                 #[cfg(test)]
-                if start >= 0.048 && start <= 0.05 {
+                if (0.048..=0.05).contains(&start) {
                     finite_search_trace(1, "native-leaf-error", format_args!(
                         "error={_error:?} query=[{start:.18e},{end:.18e}] at={time:.18e} requested={clearance:?} work={}/{}", work.used, work.limit));
                 }
@@ -2098,7 +2102,7 @@ fn cast_policy_impl(
             .min(clearance)
         });
     #[cfg(test)]
-    if start >= 0.048 && start <= 0.05 {
+    if (0.048..=0.05).contains(&start) {
         finite_search_trace(0, "selected-margin", format_args!(
             "query=[{start:.18e},{end:.18e}] native_initial={:?} requested={clearance:?} selected={proof_clearance:?} existing={existing} refine={refine_existing} initial={:?} positive_initial={positive_initial:?} allow_existing={allow_existing_penetration} tolerance={time_tolerance:?} work={}/{}", left.dist, initial.map(|v| (v.geometry, v.noninward_stability)), work.used, work.limit));
     }
@@ -2384,6 +2388,18 @@ fn cast_policy_impl(
                     subshape_b: 0,
                 }));
             }
+        }
+    }
+    if !allow_existing_penetration && proof_clearance == 0. && !existing {
+        match box_capsule_sensor::sweep(a, shape_a, b, shape_b, start, end, time_tolerance, work)? {
+            IntervalCertificate::Separated => return Ok(None),
+            IntervalCertificate::Hit(hit) => {
+                if hit.hit_time == start {
+                    *initially_clear = Some(false);
+                }
+                return Ok(Some(hit));
+            }
+            _ => {}
         }
     }
     if start == end {
@@ -3318,7 +3334,7 @@ fn cast_policy_impl(
         }
         if middle <= interval.start || middle >= interval.end {
             #[cfg(test)]
-            if start >= 0.048 && start <= 0.05 {
+            if (0.048..=0.05).contains(&start) {
                 finite_search_trace(2, "no-representable-midpoint", format_args!(
                     "query=[{start:.18e},{end:.18e}] interval=[{:.18e},{:.18e}] middle={middle:.18e} depth={} pending={count} safe={safe:.18e} selected={proof_clearance:?} left={:?} right={:?} left_world={} right_world={} work={}/{}", interval.start, interval.end, interval.depth, interval.left, interval.right, interval.left_world_strict, interval.right_world_strict, work.used, work.limit));
             }

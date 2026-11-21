@@ -827,7 +827,7 @@ fn gap_upper(length: f64, radius: f32) -> f64 {
     }
 }
 
-fn distance_upper(a: rp::Vector, b: rp::Vector) -> f64 {
+pub(super) fn distance_upper(a: rp::Vector, b: rp::Vector) -> f64 {
     let d = [
         difference(a.x, b.x),
         difference(a.y, b.y),

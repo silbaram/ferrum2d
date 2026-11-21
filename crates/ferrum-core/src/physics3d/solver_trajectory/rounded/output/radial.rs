@@ -233,6 +233,11 @@ pub(super) fn fixed_box_capsule_edge(
     let Curve::Constant { pose, .. } = cube.curve else {
         return Ok(None);
     };
+    let pose = if cube.local_center == rp::Vector::ZERO && cube.local_pose == rp::Pose::IDENTITY {
+        pose
+    } else {
+        cube.metered_pose(start, work)?
+    };
     let foot = capsule.segment.a;
     let (kernel, additions) = match cap.curve {
         Curve::Integrated(kernel) => (kernel, [rp::Vector::ZERO; 2]),
@@ -249,9 +254,8 @@ pub(super) fn fixed_box_capsule_edge(
     };
     if !pose.is_finite()
         || pose.rotation != rp::Rotation::IDENTITY
-        || [cube, cap]
-            .into_iter()
-            .any(|m| m.local_center != rp::Vector::ZERO || m.local_pose != rp::Pose::IDENTITY)
+        || cap.local_center != rp::Vector::ZERO
+        || cap.local_pose != rp::Pose::IDENTITY
         || foot.x != 0.
         || foot.z != 0.
         || foot.y > 0.
@@ -280,6 +284,34 @@ pub(super) fn fixed_box_capsule_edge(
         add(carrier_translation, exact_vector(additions[0])),
         exact_vector(additions[1]),
     );
+    let dt = Float::span(kernel.local_delta(start), kernel.local_delta(end));
+    let first_core = (from.translation + additions[0] + additions[1]) + foot;
+    let lo = pose.translation - cuboid.half_extents;
+    let hi = pose.translation + cuboid.half_extents;
+    if lo.is_finite() && hi.is_finite() {
+        // Every point of an upright segment has the same X/Z. The vertical
+        // plane supporting a box corner therefore bounds the entire capsule
+        // even when the closest core point slides along the box's side.
+        let mut corner = first_core.clamp(lo, hi);
+        corner.y = first_core.y;
+        if corner.x != first_core.x && corner.z != first_core.z {
+            work.charge(256)?;
+            if affine_edge_separated(
+                kernel,
+                dt,
+                carrier_translation,
+                translation,
+                additions,
+                foot,
+                corner,
+                first_core,
+                capsule.radius,
+                clearance,
+            ) {
+                return Ok(Some(true));
+            }
+        }
+    }
     let core = add(translation, exact_vector(foot));
     let local = sub(core, exact_vector(pose.translation));
     // The native core/slab precheck adds the endpoint after forming the
@@ -348,8 +380,6 @@ pub(super) fn fixed_box_capsule_edge(
     if outside < 2 {
         return Ok(None);
     }
-    let dt = Float::span(kernel.local_delta(start), kernel.local_delta(end));
-    let first_core = (from.translation + additions[0] + additions[1]) + foot;
     work.charge(256)?;
     if affine_edge_separated(
         kernel,
@@ -558,4 +588,86 @@ pub(super) fn local_face(
         }
     }
     Ok(true)
+}
+
+#[cfg(test)]
+#[test]
+fn village_building_corner_preserves_the_positive_skin_in_both_orders() {
+    use crate::physics3d::solver_trajectory::{cast_policy, Domain};
+    let domain = Domain::new(0.0234375, 0.03125).unwrap();
+    let offset = rp::Vector::new(0., 46., 0.);
+    let building = ShapeMotion {
+        curve: Curve::Constant {
+            pose: rp::Pose::translation(95., 46., -110.),
+            start_time: domain.start,
+            end_time: domain.end,
+        },
+        local_center: offset,
+        local_pose: rp::Pose::from_translation(offset),
+    };
+    let npc = ShapeMotion {
+        curve: Curve::Integrated(
+            Kernel::from_velocity(
+                rp::RigidBodyHandle::invalid(),
+                domain,
+                rp::Pose::translation(142.29886, 6.757383, -67.762215),
+                rp::Vector::new(-0.6088867, 0., 0.7932129),
+                rp::Vector::ZERO,
+            )
+            .unwrap(),
+        ),
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let box_shape = rp::SharedShape::cuboid(42., 46., 40.);
+    let capsule = rp::SharedShape::capsule_y(1., 5.);
+    let end_contact = super::super::super::feature_contact::cuboid_capsule(
+        &building.pose(domain.end),
+        box_shape.as_cuboid().unwrap(),
+        &npc.pose(domain.end),
+        capsule.as_capsule().unwrap(),
+        &mut Work {
+            used: 0,
+            limit: 128 * 1024,
+        },
+    )
+    .unwrap()
+    .unwrap();
+    assert!(end_contact.dist > 0.75 && end_contact.dist < 0.751);
+    for (a, sa, b, sb) in [
+        (building, box_shape.as_ref(), npc, capsule.as_ref()),
+        (npc, capsule.as_ref(), building, box_shape.as_ref()),
+    ] {
+        let mut work = Work {
+            used: 0,
+            limit: 128 * 1024,
+        };
+        assert!(cast_policy(
+            a,
+            sa,
+            b,
+            sb,
+            domain.start,
+            domain.end,
+            0.75,
+            domain.duration() * 1e-6,
+            &mut work,
+            true
+        )
+        .unwrap()
+        .is_none());
+        let context = Context {
+            a,
+            sa,
+            b,
+            sb,
+            start: domain.start,
+            end: domain.end,
+            clearance: 0.751,
+        };
+        assert_ne!(
+            fixed_box_capsule_edge(context, &mut work).unwrap(),
+            Some(true)
+        );
+    }
 }

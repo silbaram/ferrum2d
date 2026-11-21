@@ -224,7 +224,7 @@ fn signed_physical_states_reject_the_seventieth_tick_stationary_candidate() {
     let start = 0.0025705123553052545;
     let original = phase(1.0100002, 0.);
     let rejected = phase(1.0100001, 1.1920929e-7);
-    let clear = phase(0.1, 0.910000086);
+    let clear = phase(0.1, 0.910_000_1);
     assert_eq!(original.pose(start), rejected.pose(start));
     assert_eq!(original.pose(start), clear.pose(start));
     let mut work = Work {
@@ -453,7 +453,7 @@ fn signed_interior_recontact_leaves_work_to_clear_the_sixty_seventh_tick_respons
         .native_strict_at(a, second, second_hit, 0.01, &mut work)
         .unwrap());
 
-    let safe = motion(0.1_f32.next_down(), 0.910000324);
+    let safe = motion(0.1_f32.next_down(), 0.910_000_3);
     assert_eq!(safe.pose(start), first.pose(start));
     let coverage = cast_full_shapes_policy_coverage(
         a,

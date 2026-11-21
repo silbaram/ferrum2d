@@ -647,7 +647,7 @@ fn recorded_c79_driver_phase() -> (
 ) {
     let (world, mut scratch, ids, _) = fixture();
     let safe = 0.09999989997595549;
-    let hit_time = 0.09999991266522556543;
+    let hit_time = 0.099_999_912_665_225_57;
     let end = 0.10000000149011612;
     let mut driver = Kernel::from_velocity_seconds(
         native_id(ids[2]),

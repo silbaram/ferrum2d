@@ -32,6 +32,7 @@ pub(super) use shared_normal::{
 };
 mod support;
 pub(in crate::physics3d::solver_trajectory) use support::anchored_capsule_face_separated;
+pub(in crate::physics3d::solver_trajectory) use support::fixed_wall_rider_separated;
 pub(in crate::physics3d::solver_trajectory) use support::initial_capsule_cell;
 pub(in crate::physics3d) use support::tight_face_fits;
 pub(super) use support::{corotating_separated, moving_face_separated};

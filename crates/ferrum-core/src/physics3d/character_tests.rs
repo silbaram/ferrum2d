@@ -618,6 +618,80 @@ fn elevator_support_is_evaluated_after_the_platform_moves() {
 }
 
 #[test]
+fn rotating_rider_with_locomotion_meets_wall_in_one_tick() {
+    for sign in [1., -1.] {
+        let mut free: Option<(f32, [f32; 4])> = None;
+        for blocked in [false, true] {
+            let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();
+            let platform = block(
+                &mut world,
+                BodyKind::KinematicVelocity,
+                [0., -0.1, 0.],
+                [3., 0.1, 3.],
+            );
+            if blocked {
+                block(
+                    &mut world,
+                    BodyKind::Fixed,
+                    [1., 1., -0.517 * sign],
+                    [2., 0.8, 0.1],
+                );
+            }
+            let rider = actor(
+                &mut world,
+                [1., 0.91, 0.],
+                CharacterConfig {
+                    skin_width: 0.01,
+                    step_height: 0.,
+                    ..Default::default()
+                },
+            );
+            checked_positive_steps(&mut world, 5);
+            assert!(world.character_state(rider).unwrap().grounded);
+            world
+                .set_velocity(
+                    platform,
+                    [0.; 3],
+                    [0., std::f32::consts::FRAC_PI_2 * sign, 0.],
+                )
+                .unwrap();
+            world
+                .set_character_input(
+                    rider,
+                    CharacterInput {
+                        velocity: [1., 0., 0.],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            checked_positive_steps(&mut world, 1);
+            let state = world.character_state(rider).unwrap();
+            let rotation = world.body_state(platform).unwrap().pose.rotation;
+            let [x, y, z] = position(&world, rider);
+            assert!(state.grounded && state.carried_by == Some(platform));
+            assert_eq!(
+                (state.failed_moving_obstacle_casts, state.dropped_contacts),
+                (0, 0)
+            );
+            assert!((y - 0.91).abs() < 1e-5);
+            if let Some((free_x, free_rotation)) = free {
+                // The wall is reached during the tick. The rider keeps the skin and
+                // nearly all free tangential travel, and the platform keeps spinning.
+                assert!((z * sign + 0.007).abs() < 1e-5, "z={z}");
+                assert!(
+                    (x - free_x).abs() < 0.002 && x > 1.014,
+                    "x={x}, free={free_x}"
+                );
+                assert_eq!(rotation, free_rotation);
+            } else {
+                assert!(z * sign < -0.017, "free path must cross the physical wall");
+                free = Some((x, rotation));
+            }
+        }
+    }
+}
+
+#[test]
 fn rotating_platform_preserves_radius_over_a_full_turn() {
     for kind in [BodyKind::KinematicVelocity, BodyKind::KinematicPosition] {
         let mut world = PhysicsWorld3d::new(WorldConfig::default()).unwrap();

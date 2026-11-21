@@ -1,10 +1,11 @@
 //! A transverse plane bounds both radius paths of parallel axial capsules
 //! using each body's represented Native translation clock.
+mod endcaps;
 mod static_grid;
 
 use super::{
-    add_error, finite_shape, grid, half_ulp, same_clock, up_add, Bound, Curve, ShapeMotion, Source,
-    Time, ToiProxy, TrajectoryError, Work,
+    add_error, finite_shape, grid, half_ulp, same_clock, up_add, Bound, Curve, Kernel, ShapeMotion,
+    Source, Time, ToiProxy, TrajectoryError, Work,
 };
 
 fn centered_axis(points: &[super::rp::Vector]) -> Option<usize> {
@@ -401,6 +402,9 @@ fn separated_graph(
     ) {
         return Ok(false);
     }
+    if common && endcaps::separated(a, pa, b, pb, axis, dt, clearance, work)? {
+        return Ok(true);
+    }
     let axes = [(axis + 1) % 3, (axis + 2) % 3];
     let difference = |x: super::rp::Vector, y: super::rp::Vector| {
         axes.map(|i| Bound::exact(f64::from(x[i])).sub(Bound::exact(f64::from(y[i]))))
@@ -771,8 +775,29 @@ pub(in crate::physics3d::solver_trajectory) fn stable_existing(
                     .mul(Bound::exact(f64::from(contact.normal1[i]))),
             )
         });
-        if !rate.finite() || rate.lo < 0. {
+        if !rate.finite() {
             return Ok(false);
+        }
+        if rate.lo < 0. {
+            // Independently rebased physical durations can round the same input
+            // velocity to neighboring world rates. A drift inside the measured
+            // cell still needs the complete rounded separation proof below.
+            let near_unit = |k: Kernel| {
+                let scale = (f64::from(k.native.integration_seconds) / k.domain.duration()) as f32;
+                (scale - 1.).abs() <= f32::EPSILON
+            };
+            if common
+                || start >= end
+                || !matches!((a.curve, b.curve), (Curve::Integrated(first), Curve::Integrated(second))
+                    if first.native.linear_velocity == second.native.linear_velocity
+                        && near_unit(first) && near_unit(second))
+            {
+                return Ok(false);
+            }
+            let duration = Bound::exact(end).sub(Bound::exact(start));
+            if Bound::exact(-rate.lo).mul(duration).hi > cell {
+                return Ok(false);
+            }
         }
     }
     separated(a, &pa, b, &pb, start, end, selected, work)

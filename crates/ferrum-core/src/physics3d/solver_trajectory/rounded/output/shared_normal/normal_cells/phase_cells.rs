@@ -1181,7 +1181,7 @@ pub(super) fn signed_conflict(
     // original quarter probe or the previous pair's hit, and visit actual
     // neighboring raw pairs of the candidate under test.
     work.charge(256)?;
-    let center = prior.unwrap_or_else(|| start + (end - start) * 0.25);
+    let center = prior.unwrap_or(start + (end - start) * 0.25);
     let midpoint = projection.raw_endpoint(kernel.local_delta(center).to_bits());
     let axial = f32::from_bits(midpoint.axial.to_bits().saturating_sub(8));
     let dt = from_axial(axial, rotation.axial, rotation.scalar, rotation.angular);
@@ -1529,10 +1529,10 @@ fn reversed_axial_image(
     let first_scalar = first.scalar.abs();
     let last_scalar = last.scalar.abs();
     let grid = ReversedRawGrid::new(y0 as f32, w0 as f32, last, ratio, scalar_rounding);
-    // A wide positive-scale scan can still have a small bounded image.
-    // Let the compact grid spend the common image budget before returning to
-    // the chronological input search. Every visited raw group is charged.
-    let group_limit = if grid.is_some() && image.face_mask == 1 {
+    // The compact grid bounds raw coordinate pairs for either sign of the
+    // normalized scale. Keep using it while the common image budget lasts.
+    // Signed images still check the full face mask, charging every group.
+    let group_limit = if grid.is_some() {
         MAX_RANGES as u32 * MAX_IMAGES
     } else {
         MAX_RANGES as u32
@@ -2298,14 +2298,11 @@ pub(super) fn scan(
     if end.phase.raw.scalar <= 0. || !current.phase.finite() || !end.phase.finite() {
         return Ok(None);
     }
-    if !current.phase.valid() || !end.phase.valid() {
-        if matches!(clock, Clock::Logical) {
-            if current.phase.scale < 0. {
-                return scan_signed(projection, clock, current, end, rotation, checked, work)
-                    .map(Some);
-            }
-            return Ok(None);
+    if (!current.phase.valid() || !end.phase.valid()) && matches!(clock, Clock::Logical) {
+        if current.phase.scale < 0. {
+            return scan_signed(projection, clock, current, end, rotation, checked, work).map(Some);
         }
+        return Ok(None);
     }
     if matches!(clock, Clock::Physical) {
         work.charge(192)?;

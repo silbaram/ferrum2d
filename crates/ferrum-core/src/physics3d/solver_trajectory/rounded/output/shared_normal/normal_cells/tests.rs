@@ -411,7 +411,7 @@ fn whole_normal_action_clears_the_recorded_last_response_before_time_subdivision
     .unwrap();
     assert!(result.hit.is_none() && result.strictly_clear_start);
     assert!(work.used < 150_000, "work={}", work.used);
-    let hint = rp::Vector::Y * 1.000000238418579;
+    let hint = rp::Vector::Y * 1.000_000_2;
     assert!(complete_separation(context, hint, &mut budget()).unwrap());
     assert!(!complete_separation(
         Context {

@@ -594,7 +594,7 @@ fn extended_signed_conflict_checks_the_sixty_ninth_tick_response() {
     };
     let original = phase(1.0100002, -1.1920929e-7);
     let recontacting = phase(1.0100001, 1.1920929e-7);
-    let clear = phase(0.1_f32.next_down(), 0.910000205);
+    let clear = phase(0.1_f32.next_down(), 0.910_000_2);
     let cuboid = rp::SharedShape::cuboid(3., 0.1, 3.);
     let capsule = rp::SharedShape::capsule_y(0.5, 0.4);
     let future = FullFuture {

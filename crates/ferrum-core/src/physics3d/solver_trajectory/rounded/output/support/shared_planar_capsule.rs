@@ -362,7 +362,7 @@ pub(super) fn separated(context: Context<'_>, work: &mut Work) -> Result<bool, T
         || !sterbenz(center, pair.core)
         || !sterbenz(center, pair.core - pair.radius)
         || world_top.lo <= 0.
-        || !(center.lo + pair.core > world_top.hi)
+        || (center.lo + pair.core).partial_cmp(&world_top.hi) != Some(std::cmp::Ordering::Greater)
         || center.lo + (pair.core - pair.radius) <= world_top.hi
         || c_step < t_step
         || top_step < t_step

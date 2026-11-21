@@ -2,7 +2,9 @@
 //! construction, not a sampled contact normal or a new Native trajectory.
 //! Only a shared pure-axis clock is admitted; every other input falls through.
 use super::*;
+mod fixed_rider;
 mod moving_face;
+pub(super) use fixed_rider::center_lower_bound;
 
 pub(in crate::physics3d::solver_trajectory::rounded) fn moving_face_separated(
     context: Context<'_>,
@@ -224,6 +226,27 @@ fn factor(raw: [Float; 4]) -> Option<Float> {
     let lo = max.length_recip();
     let hi = min.length_recip();
     (lo.is_finite() && hi.is_finite() && lo > 0. && lo <= hi).then_some(Float::span(lo, hi))
+}
+
+fn raw_rotation(
+    input: Value,
+    omega: rp::Vector,
+    axis: usize,
+    q0: [f32; 4],
+) -> ([Value; 4], [Polynomial; 4]) {
+    let half = input.mul(Value::input(Float::exact(0.5)));
+    let hang = omega
+        .to_array()
+        .map(|v| Value::input(Float::exact(v)).mul(half));
+    let raw = quat_product(
+        [hang[0], hang[1], hang[2], Value::input(Float::exact(1.))],
+        q0.map(|v| Value::input(Float::exact(v))),
+    );
+    let mut poly = [Polynomial::zero(); 4];
+    let slope = Bound::exact(f64::from(omega[axis])).mul(Bound::exact(0.5));
+    poly[axis] = Polynomial::affine(q0[axis], slope.mul(Bound::exact(f64::from(q0[3]))));
+    poly[3] = Polynomial::affine(q0[3], slope.mul(Bound::exact(-f64::from(q0[axis]))));
+    (raw, poly)
 }
 
 struct RotationProof {
@@ -837,19 +860,8 @@ pub(in crate::physics3d::solver_trajectory::rounded) fn separated(
                 upper_add(mapping, half_ulp(interior))
             },
         };
-        let half = input.mul(Value::input(Float::exact(0.5)));
-        let hang = omega
-            .to_array()
-            .map(|v| Value::input(Float::exact(v)).mul(half));
-        let raw = quat_product(
-            [hang[0], hang[1], hang[2], Value::input(Float::exact(1.))],
-            q0.map(|v| Value::input(Float::exact(v))),
-        );
-        let mut poly = [Polynomial::zero(); 4];
-        let slope = Bound::exact(f64::from(omega[axis])).mul(Bound::exact(0.5));
-        poly[axis] = Polynomial::affine(q0[axis], slope.mul(Bound::exact(f64::from(q0[3]))));
-        poly[3] = Polynomial::affine(q0[3], slope.mul(Bound::exact(-f64::from(q0[axis]))));
-        let Some(rotation) = rotation_proof(raw, poly) else {
+        let (raw, polynomial) = raw_rotation(input, omega, axis, q0);
+        let Some(rotation) = rotation_proof(raw, polynomial) else {
             return Ok(false);
         };
         let phase = Phase {

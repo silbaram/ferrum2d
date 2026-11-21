@@ -3,6 +3,7 @@
 //! This support-only fact never changes a Native output image or signed-zero key.
 use super::*;
 mod dyadic_tangent;
+mod oblique_pole;
 
 fn dot_value(point: [Bound; 3], normal: rp::Vector) -> Bound {
     point
@@ -266,12 +267,12 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn ramp_capsule_sep
         // A prism edge can carry a small tangent component in the Native
         // witness. Try a planar axis against the entire original shapes.
         let tangent = normal.abs().min_position();
-        if normal[tangent].abs() > normal.abs().max_element() * (64. * f32::EPSILON) {
-            return Ok(false);
+        if normal[tangent].abs() <= normal.abs().max_element() * (64. * f32::EPSILON) {
+            normal[tangent] = 0.;
         }
-        normal[tangent] = 0.;
     }
-    if components(normal) != 2
+    let oblique = components(normal) == 3;
+    if (components(normal) != 2 && !(oblique && hull.is_some()))
         || !axis_a.is_finite()
         || !axis_b.is_finite()
         || delta.to_array().into_iter().filter(|&v| v != 0.).count() != 1
@@ -280,7 +281,33 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn ramp_capsule_sep
     }
     let aligned = hull_frames.len == 1
         && hull_frames.values[0].rotation.exact == Some(rp::Rotation::IDENTITY);
-    let normal = if let Some(hull) = hull.filter(|_| aligned) {
+    let normal = if let Some(hull) = hull.filter(|_| aligned && oblique) {
+        // Keep the two in-plane coefficients perpendicular to a sloping edge.
+        // It only nominates the direction: all original hull points are tested.
+        let mut direction = normal;
+        for edge in hull.edges() {
+            work.charge(32)?;
+            let [a, b] = edge.vertices.map(|i| hull.points()[i as usize]);
+            let delta = b - a;
+            if components(delta) != 2 || edge.dir.dot(normal).abs() > 0.001 {
+                continue;
+            }
+            let remaining = delta.abs().min_position();
+            let i = (remaining + 1) % 3;
+            let j = (remaining + 2) % 3;
+            let scale = normal[i] / delta[j];
+            let mut trial = normal;
+            trial[i] = delta[j];
+            trial[j] = -delta[i];
+            trial[remaining] /= scale;
+            trial *= scale.signum();
+            if trial.is_finite() && trial.dot(normal) > 0. {
+                direction = trial;
+                break;
+            }
+        }
+        direction
+    } else if let Some(hull) = hull.filter(|_| aligned) {
         // The unit witness normal has two independently rounded components.
         // Use a face edge cross product so their ratio can remain exact.
         let mut direction = normal;
@@ -354,17 +381,18 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn ramp_capsule_sep
         work,
     )? {
         if -support > required.hi
-            || dyadic_tangent::separated(
-                motion,
-                point,
-                capsule.radius,
-                -normal,
-                norm,
-                -required.hi,
-                context.start,
-                context.end,
-                work,
-            )?
+            || (!oblique
+                && dyadic_tangent::separated(
+                    motion,
+                    point,
+                    capsule.radius,
+                    -normal,
+                    norm,
+                    -required.hi,
+                    context.start,
+                    context.end,
+                    work,
+                )?)
         {
             return Ok(true);
         }
@@ -625,6 +653,9 @@ fn translating_capsule_cells(
         if !local.finite() || !world.finite() || world.hi >= limit {
             return Ok(false);
         }
+        if local.hi >= limit && normal.to_array().into_iter().all(|v| v != 0.) {
+            return Ok(false);
+        }
         if local.hi >= limit
             && !matches!(
                 rounded_cap_projection(
@@ -837,6 +868,9 @@ pub(in crate::physics3d::solver_trajectory) fn rounded_cap_plane_witness(
     accept: impl Fn(rp::Vector) -> bool,
     work: &mut Work,
 ) -> Result<Option<rp::Vector>, TrajectoryError> {
+    if normal.to_array().into_iter().all(|x| x != 0.) {
+        return oblique_pole::witness(translation, point, radius, normal, limit, accept, work);
+    }
     let error = std::array::from_fn(|i| {
         Value::input(Float::exact(translation[i]))
             .add(Value::local(point[i], radius))
