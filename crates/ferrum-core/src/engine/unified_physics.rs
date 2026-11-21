@@ -148,6 +148,33 @@ impl From<PhysicsError> for UnifiedPhysicsError {
     }
 }
 
+/// Keep a zero-progress rejection available to the caller without publishing
+/// it into the checkpoint of the last committed simulation state.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+struct PendingPhysicsError {
+    saved: Option<UnifiedPhysicsError>,
+    #[serde(skip)]
+    rejected_attempt: Option<UnifiedPhysicsError>,
+}
+
+impl PendingPhysicsError {
+    fn record(&mut self, error: UnifiedPhysicsError) {
+        self.saved = Some(error);
+        self.rejected_attempt = None;
+    }
+
+    fn get(&self) -> Option<UnifiedPhysicsError> {
+        self.rejected_attempt.or(self.saved)
+    }
+
+    fn take(&mut self) -> Option<UnifiedPhysicsError> {
+        let latest = self.get();
+        *self = Self::default();
+        latest
+    }
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Binding {
     body: BodyId,
@@ -186,7 +213,7 @@ pub(super) struct UnifiedPhysicsRuntime {
     native_contact_manifolds: Vec<crate::physics3d::ContactManifold>,
     #[serde(with = "crate::checkpoint_codec::vector")]
     retired: Vec<(u32, u32)>,
-    last_error: Option<UnifiedPhysicsError>,
+    last_error: PendingPhysicsError,
     #[serde(with = "crate::checkpoint_codec::vector")]
     pending_planar: Vec<planar::PendingBody>,
     #[serde(deserialize_with = "file_ordered::map")]
@@ -252,7 +279,7 @@ impl Engine {
             native_nearest_hits: Vec::new(),
             native_contact_manifolds: Vec::new(),
             retired: Vec::new(),
-            last_error: None,
+            last_error: PendingPhysicsError::default(),
             pending_planar: Vec::new(),
             legacy_joints: BTreeMap::new(),
             pending_joints: Vec::new(),
@@ -517,7 +544,9 @@ impl Engine {
 
     /// Last clock, configuration or step rejection, retained until explicitly taken.
     pub fn unified_physics_error(&self) -> Option<UnifiedPhysicsError> {
-        self.unified_physics.as_ref().and_then(|r| r.last_error)
+        self.unified_physics
+            .as_ref()
+            .and_then(|r| r.last_error.get())
     }
 
     /// Consumes the pending native diagnostic without changing simulation state.
@@ -585,14 +614,14 @@ impl Engine {
             None
         };
         if let Some(error) = error {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return false; // Never fall back to another rigid solver in this world.
         }
         let config = config.sanitized();
         let gravity = execution::gravity(&runtime.physics, config);
         let solver = execution::solver_settings(config);
         if let Err(error) = runtime.physics.validate_runtime_settings(gravity, solver) {
-            runtime.last_error = Some(error.into());
+            runtime.last_error.record(error.into());
             return false;
         }
         runtime.retire_deleted_entities(&self.world);
@@ -613,7 +642,7 @@ impl Engine {
             .and_then(|()| runtime.commit_terrain())
             .and_then(|()| runtime.commit_planar_joints())
         {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return false;
         }
         if gameplay && self.scene_mode == SceneMode::Data {
@@ -624,17 +653,13 @@ impl Engine {
             );
         }
         let mut succeeded = true;
-        self.world.physics_diagnostics.begin_step();
         let authored_breaks = runtime.break_planar_joint_errors(&mut self.world);
-        // Explicit authoring removals and geometric breaks have already updated World.
-        // They must not occupy the bounded queue reserved for this tick's solver breaks.
         runtime.joint_stream.capture(
             &mut runtime.physics,
             &runtime.entities_by_body,
             &mut runtime.native_joint_events,
         );
-        runtime.native_joint_events.clear();
-        runtime.joint_stream.take_legacy_dropped();
+        let capture_state = runtime.physics.step_motion_capture_state();
         runtime.begin_projectile_step();
         let motion = runtime
             .begin_automatic_planar_motion(
@@ -647,20 +672,36 @@ impl Engine {
             .and_then(|()| runtime.apply_planar_inputs(&self.world))
             .and_then(|()| runtime.step_native_platforms(&mut self.spatial_scene, &self.tilemap));
         let restored = runtime.finish_automatic_planar_motion(&mut self.world, motion.is_ok());
+        // Keep prior removals observable if no native time was accepted. Once
+        // time advances, free all legacy slots before collecting solver breaks.
+        let advanced = runtime.physics.actual_motion_completed_seconds() > 0.;
+        if motion.is_ok() || advanced {
+            runtime.native_joint_events.clear();
+            runtime.joint_stream.take_legacy_dropped();
+        }
         if let Err(error) = motion.and(restored) {
             // A failed suffix may follow complete CCD slices. Synchronize only
             // those actual native poses; no lifecycle/impact/gameplay success
             // or nominal-step statistics are emitted for the failed interval.
-            if runtime.physics.actual_motion_completed_seconds() > 0. {
+            if advanced {
                 let _ = runtime.finish_planar(&mut self.world);
                 for &(id, generation) in runtime.bindings.keys() {
                     let _ = runtime.write_entity(&mut self.world, Entity { id, generation });
                 }
                 runtime.finish_spatial_actor(&self.spatial_scene, &mut self.world);
             }
-            runtime.last_error = Some(error);
+            if !advanced && runtime.actual_motion_result().is_err() {
+                runtime.restore_projectile_starts();
+                runtime
+                    .physics
+                    .restore_step_motion_capture_state(capture_state);
+                runtime.last_error.rejected_attempt = Some(error);
+            } else {
+                runtime.last_error.record(error);
+            }
             return false;
         }
+        self.world.physics_diagnostics.begin_step();
         runtime.finish_projectile_step(&self.world);
         runtime.finish_contact_reports(&mut self.world);
         runtime.lifecycle.finish_step(
@@ -669,12 +710,12 @@ impl Engine {
             &runtime.terrain.by_collider,
         );
         if let Err(error) = runtime.finish_planar(&mut self.world) {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             succeeded = false;
         }
         for &(id, generation) in runtime.bindings.keys() {
             if let Err(error) = runtime.write_entity(&mut self.world, Entity { id, generation }) {
-                runtime.last_error = Some(error);
+                runtime.last_error.record(error);
                 succeeded = false;
             }
         }
@@ -712,7 +753,9 @@ impl Engine {
 
     pub(super) fn reject_unified_legacy_snapshot(&mut self) -> bool {
         if let Some(runtime) = &mut self.unified_physics {
-            runtime.last_error = Some(UnifiedPhysicsError::LegacySnapshotUnsupported);
+            runtime
+                .last_error
+                .record(UnifiedPhysicsError::LegacySnapshotUnsupported);
             true
         } else {
             false

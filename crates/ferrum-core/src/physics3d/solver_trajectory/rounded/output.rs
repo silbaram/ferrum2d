@@ -8,7 +8,9 @@ use super::{Bound, Curve, ShapeMotion, Time, ToiProxy, TrajectoryError, Work};
 use crate::physics3d::solver_trajectory::Kernel;
 use rapier3d::prelude as rp;
 
-pub(in crate::physics3d::solver_trajectory) use support::native_box_face_cast;
+pub(in crate::physics3d::solver_trajectory) use support::{
+    native_box_face_cast, rotating_box_clock_times,
+};
 mod bounds;
 pub(in crate::physics3d) use bounds::straight_primitive_bounds;
 pub(in crate::physics3d::solver_trajectory) use bounds::whole_bounds;
@@ -1120,12 +1122,15 @@ pub(in crate::physics3d::solver_trajectory) fn ramp_capsule_separated(
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
     let Context { a, sa, b, sb, .. } = cache.context;
-    let fixed_face = |motion: ShapeMotion, shape: &dyn rp::Shape| {
-        matches!(motion.curve, Curve::Constant { .. })
-            && (shape.as_convex_polyhedron().is_some() || shape.as_triangle().is_some())
+    let eligible_face = |motion: ShapeMotion, shape: &dyn rp::Shape, cap: ShapeMotion| {
+        (matches!(motion.curve, Curve::Constant { .. })
+            && (shape.as_convex_polyhedron().is_some() || shape.as_triangle().is_some()))
+            || (motion.is_single_axis_spin()
+                && shape.as_convex_polyhedron().is_some()
+                && cap.is_fixed_axis_aligned())
     };
-    if !((fixed_face(a, sa) && sb.as_capsule().is_some())
-        || (fixed_face(b, sb) && sa.as_capsule().is_some()))
+    if !((sb.as_capsule().is_some() && eligible_face(a, sa, b))
+        || (sa.as_capsule().is_some() && eligible_face(b, sb, a)))
     {
         return Ok(false);
     }
@@ -1227,6 +1232,52 @@ pub(in crate::physics3d::solver_trajectory) fn offset_box_ball_separated(
     support::offset_separated(motion, cube, target, ball, normal, context, work)
 }
 
+pub(in crate::physics3d::solver_trajectory) fn rotating_capsule_polyhedron_separated(
+    cache: &mut AxisCache<'_>,
+    normal: rp::Vector,
+    work: &mut Work,
+) -> Result<bool, TrajectoryError> {
+    let Context {
+        a,
+        sa,
+        b,
+        sb,
+        clearance,
+        ..
+    } = cache.context;
+    let (cap, poly, cap_motion, poly_motion, flipped) = if let Some(cap) = sa.as_capsule() {
+        (cap, sb, a, b, false)
+    } else if let Some(cap) = sb.as_capsule() {
+        (cap, sa, b, a, true)
+    } else {
+        return Ok(false);
+    };
+    // Rotating cuboids against upright capsules already use their face
+    // certificate. Apply this extra axis only to the complementary pairs.
+    let supported = (poly.as_cuboid().is_some()
+        && cap_motion.is_single_axis_spin()
+        && poly_motion.is_fixed_axis_aligned())
+        || (poly.as_convex_polyhedron().is_some()
+            && poly_motion.is_single_axis_spin()
+            && cap_motion.is_fixed_axis_aligned());
+    if clearance < 0. || !supported {
+        return Ok(false);
+    }
+    if !cache.attempted {
+        cache.prepared = prepare(cache.context, work)?;
+        cache.attempted = true;
+    }
+    let Some(prepared) = &cache.prepared else {
+        return Ok(false);
+    };
+    let (cf, pf, points, n) = if flipped {
+        (&prepared.b, &prepared.a, prepared.pa.points(), -normal)
+    } else {
+        (&prepared.a, &prepared.b, prepared.pb.points(), normal)
+    };
+    support::polyhedron_separated(cf, cap, pf, points, n, clearance, work)
+}
+
 pub(in crate::physics3d::solver_trajectory) fn rotating_capsule_ball_separated(
     cache: &mut AxisCache<'_>,
     normal: rp::Vector,
@@ -1276,6 +1327,15 @@ pub(in crate::physics3d::solver_trajectory) fn rotating_box_ball_face_separated(
     normal: rp::Vector,
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
+    rotating_box_ball_face_with_clock(cache, normal, false, work)
+}
+
+pub(super) fn rotating_box_ball_face_with_clock(
+    cache: &mut AxisCache<'_>,
+    normal: rp::Vector,
+    clock: bool,
+    work: &mut Work,
+) -> Result<bool, TrajectoryError> {
     let Context {
         sa, sb, clearance, ..
     } = cache.context;
@@ -1295,7 +1355,7 @@ pub(in crate::physics3d::solver_trajectory) fn rotating_box_ball_face_separated(
     if offset_box_ball_separated(cache.context, normal, work)? {
         return Ok(true);
     }
-    if !box_motion.is_single_axis_spin() || !ball_motion.is_fixed_axis_aligned() || clearance < 0. {
+    if !box_motion.has_integrated_spin() || !ball_motion.is_fixed_axis_aligned() || clearance < 0. {
         return Ok(false);
     }
     if !cache.attempted {
@@ -1310,7 +1370,17 @@ pub(in crate::physics3d::solver_trajectory) fn rotating_box_ball_face_separated(
     } else {
         (&prepared.a, &prepared.b)
     };
-    support::rotating_box_ball_face(a, cube, b, ball, normal, clearance, cache.context, work)
+    support::rotating_box_ball_face(
+        a,
+        cube,
+        b,
+        ball,
+        normal,
+        clearance,
+        cache.context,
+        clock,
+        work,
+    )
 }
 
 pub(super) fn fixed_wall_overlap(

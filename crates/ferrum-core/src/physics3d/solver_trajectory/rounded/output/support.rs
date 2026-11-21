@@ -23,6 +23,7 @@ pub(in crate::physics3d::solver_trajectory) use planar_capsule::initial_capsule_
 pub(in crate::physics3d::solver_trajectory) use planar_capsule::{planar_capsule_cell, PlanarCell};
 pub(super) use shared_planar_capsule::sweep as shared_planar_capsule_sweep;
 mod rotating_box_ball;
+pub(in crate::physics3d::solver_trajectory) use rotating_box_ball::rotating_box_clock_times;
 pub(super) use rotating_box_ball::{
     offset_separated, rotating_box_ball_face, rotating_box_capsule_face,
 };
@@ -37,6 +38,7 @@ pub(in crate::physics3d::solver_trajectory) use exact_box::{
 mod capsule;
 mod capsule_ball;
 pub(super) use capsule::capsule_separation;
+pub(super) use capsule_ball::polyhedron_separated;
 pub(super) use capsule_ball::separated as capsule_ball_separated;
 mod corotating;
 pub(in crate::physics3d::solver_trajectory::rounded) use corotating::projected_prefix as corotating_projected_prefix;

@@ -8,6 +8,9 @@ use crate::physics3d::{
 };
 use rapier3d::prelude as rp;
 
+mod step;
+pub(in crate::physics3d) use step::StepRollback;
+
 struct NativeCredit {
     body: BodyId,
     credit: rp::RigidBodyMotionCredit,

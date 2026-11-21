@@ -595,7 +595,7 @@ fn native_projectile_imported_planar_target_works_with_generated_body() {
     tick(&mut e);
     assert_eq!(health(&e, enemy), 7.0);
     assert!(shots(&e).is_empty());
-    assert!(e.unified_physics.as_ref().unwrap().last_error.is_none());
+    assert!(e.unified_physics_error().is_none());
 }
 
 #[test]

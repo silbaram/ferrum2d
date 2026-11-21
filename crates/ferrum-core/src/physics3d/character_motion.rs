@@ -25,6 +25,7 @@ pub(super) struct MotionScene {
     exact_failed: bool,
     pub(super) backend_motion: backend::BackendMotionScratch,
     pub(super) credit: credit::CharacterIntervalCredit,
+    pub(super) rollback: credit::StepRollback,
 }
 impl MotionScene {
     pub fn failure_stop(&self, world: &rp::PhysicsWorld, time: Time) -> Option<MotionStop> {

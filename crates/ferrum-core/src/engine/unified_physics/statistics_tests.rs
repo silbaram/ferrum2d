@@ -63,6 +63,79 @@ fn tick(e: &mut Engine) {
 }
 
 #[test]
+fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint() {
+    let dt = 0.01;
+    let mut e = Engine::new();
+    e.activate_data_scene();
+    e.configure_unified_physics(WorldConfig {
+        space: Space::Spatial,
+        gravity: [0.; 3],
+        step_seconds: dt,
+        ..WorldConfig::default()
+    })
+    .unwrap();
+    let moving = wall_and_fast(&mut e, 20.);
+    e.step_rigid_bodies_checked(dt).unwrap();
+    let last_step = e.unified_physics_step_statistics().unwrap();
+    assert_eq!(last_step.ccd_clamps, 1);
+    let mesh = body(
+        &mut e,
+        BodyKind::Fixed,
+        [0.; 3],
+        [0.; 3],
+        Shape::TriangleMesh {
+            vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
+            triangles: vec![[0, 2, 1]; 4096],
+        },
+    );
+    body(
+        &mut e,
+        BodyKind::Dynamic,
+        [0., 1.25, 0.],
+        [0., -100., 0.],
+        Shape::Box {
+            half_extents: [0.5; 3],
+        },
+    );
+    let mut frames = [0.; 20];
+    frames[6] = 1.;
+    frames[13] = 1.;
+    let joint = e
+        .create_unified_physics_joint(
+            &[moving.id, moving.generation, mesh.id, mesh.generation],
+            &[0, 3],
+            &frames,
+        )
+        .unwrap();
+    e.remove_unified_physics_joint(joint[0], joint[1]).unwrap();
+    assert_eq!(
+        e.unified_physics
+            .as_ref()
+            .unwrap()
+            .native_joint_events
+            .len(),
+        1
+    );
+    let saved = crate::engine::persistence::encode(&e).unwrap();
+    let error = e.step_rigid_bodies_checked(dt).unwrap_err();
+    assert!(error.contains("after 0 committed seconds"), "{error}");
+    assert_eq!(
+        e.unified_physics_error(),
+        Some(UnifiedPhysicsError::Physics(PhysicsError::CapacityExceeded))
+    );
+    assert_eq!(e.unified_physics_step_statistics().unwrap(), last_step);
+    let after = crate::engine::persistence::encode(&e).unwrap();
+    assert!(
+        saved == after,
+        "checkpoint size before={}, after={}",
+        saved.len(),
+        after.len()
+    );
+    e.remove_unified_body(mesh).unwrap();
+    e.step_rigid_bodies_checked(dt).unwrap();
+}
+
+#[test]
 fn native_statistics_engine_retains_early_ccd_and_publishes_real_frame_counts_and_debug_lines() {
     let mut e = engine(Space::PlanarXy, 64);
     let moving = wall_and_fast(&mut e, 0.0);

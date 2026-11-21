@@ -269,7 +269,8 @@
     "smoke:spatial-light-shafts": "pnpm test:spatial-light-shafts-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --light-shafts-only",
     "smoke:spatial-height-fog": "pnpm test:spatial-height-fog-report && pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/spatial-webgpu-browser-smoke.mjs --offscreen-target --height-fog-only",
     "smoke:scene-physics": "node tests/smoke/scene-physics-browser-smoke.mjs && node tests/smoke/native-authoring-studio-smoke.mjs",
-    "smoke:unified-physics-web": "node tests/smoke/unified-physics-browser-smoke.mjs"
+    "smoke:unified-physics-web": "node tests/smoke/unified-physics-browser-smoke.mjs",
+    "smoke:physics-sdk-integration": "node tests/smoke/physics-sdk-integration.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

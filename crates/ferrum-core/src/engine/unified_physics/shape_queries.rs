@@ -34,7 +34,7 @@ impl Engine {
                 Ok(())
             });
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return Some(0);
         }
         for hit in &runtime.native_point_hits {
@@ -84,7 +84,7 @@ impl Engine {
         let (pose, translation) = match result {
             Ok(value) => value,
             Err(error) => {
-                runtime.last_error = Some(error);
+                runtime.last_error.record(error);
                 return Some(0);
             }
         };
@@ -141,7 +141,7 @@ impl Engine {
                 Ok(())
             });
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return Some(false);
         }
         let nearest = runtime

@@ -58,7 +58,7 @@ impl Engine {
                 &self.tilemap,
                 &self.spatial_scene,
             ) {
-                runtime.last_error = Some(error);
+                runtime.last_error.record(error);
             }
         }
     }

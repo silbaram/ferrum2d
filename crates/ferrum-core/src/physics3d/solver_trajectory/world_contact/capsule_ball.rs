@@ -223,3 +223,83 @@ pub(super) fn ball_coordinate(
     }
     None
 }
+
+/// A rounded capsule endpoint against a fixed box. The box projection only
+/// nominates a local point. Every accepted pair belongs to the two original
+/// shapes, and uses the measured outward world distance at the requested time.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::physics3d::solver_trajectory) fn rotating_capsule_box_contact(
+    a: ShapeMotion,
+    sa: &dyn rp::Shape,
+    b: ShapeMotion,
+    sb: &dyn rp::Shape,
+    at: Time,
+    clearance: f32,
+    work: &mut Work,
+) -> Result<Option<Contact>, TrajectoryError> {
+    let (moving, cap, fixed, cube, flip) =
+        if let (Some(cap), Some(cube)) = (sa.as_capsule(), sb.as_cuboid()) {
+            (a, cap, b, cube, false)
+        } else if let (Some(cube), Some(cap)) = (sa.as_cuboid(), sb.as_capsule()) {
+            (b, cap, a, cube, true)
+        } else {
+            return Ok(None);
+        };
+    if !moving.is_single_axis_spin() || !fixed.is_fixed_axis_aligned() || clearance <= 0. {
+        return Ok(None);
+    }
+    validate_interval(moving, fixed, at, at, work)?;
+    work.charge(1024)?;
+    let (p, q) = (moving.pose(at), fixed.pose(at));
+    let delta = cap.segment.b - cap.segment.a;
+    let axis = delta.abs().max_position();
+    let candidate = |end| {
+        let core = p * end;
+        let local_box = q
+            .inverse_transform_point(core)
+            .clamp(-cube.half_extents, cube.half_extents);
+        (end, core, q * local_box)
+    };
+    let mut ends = [cap.segment.a, cap.segment.b].map(candidate);
+    let [first, second] = ends.map(|(_, core, point)| (point - core).length_squared());
+    if second < first {
+        ends.swap(0, 1);
+    }
+    for (end, core, point) in ends {
+        let Some(n) = (point - core).try_normalize() else {
+            continue;
+        };
+        let Some(dir) = (p.rotation.inverse() * n).try_normalize() else {
+            continue;
+        };
+        let free = largest_other_axis(dir, axis);
+        let nominal = end + cap.radius * dir;
+        let mut low = nominal[axis];
+        let mut high = low;
+        for _ in 0..=32 {
+            for selected in [low, high] {
+                work.charge(512)?;
+                let mut nominee = nominal;
+                nominee[axis] = selected;
+                let Some(local) = ball_coordinate(nominee, end, free, dir[free], cap.radius) else {
+                    continue;
+                };
+                let surface = p * local;
+                let upper = distance_upper(surface, point);
+                if upper.is_finite() && upper <= f64::from(clearance) {
+                    let dist = upper as f32;
+                    let dist = if f64::from(dist) < upper {
+                        dist.next_up()
+                    } else {
+                        dist
+                    };
+                    let c = Contact::new(surface, point, n, -n, dist);
+                    return Ok(Some(if flip { c.flipped() } else { c }));
+                }
+            }
+            low = low.next_down();
+            high = high.next_up();
+        }
+    }
+    Ok(None)
+}

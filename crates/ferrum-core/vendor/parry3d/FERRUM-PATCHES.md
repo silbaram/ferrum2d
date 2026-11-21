@@ -194,3 +194,9 @@ Work에 emitted/compared bytes도 포함하고 scratch는 누적 requested paylo
   relocation bytes 승인 후에만 `try_reserve_exact(target-len)`을 실행한다.
   기본 경로는 const false에서 원 push/allocation 순서로 동작하며 compiler 성능은
   이 source patch만으로 실측했다고 주장하지 않는다. EPA/단순체 struct와 wire는 불변이다.
+
+## 고정 틱 복원용 BVH 복사
+
+`Bvh::step_credit_bytes`와 `try_copy_step_credit`는 노드, 부모, 희소 leaf 슬롯,
+재사용 목록과 최적화 위치를 보존한다. 상한 확인 뒤 호출자가 소유한 배열을 재사용해
+일괄 복사하며 트리 깊이에 따른 재귀와 직렬화가 필요 없다.

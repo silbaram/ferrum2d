@@ -159,7 +159,7 @@ impl UnifiedPhysicsRuntime {
     ) -> bool {
         let result = self.combat_movement(world, entity, pattern);
         if let Err(error) = result {
-            self.last_error = Some(error);
+            self.last_error.record(error);
         }
         result.unwrap_or(false)
     }

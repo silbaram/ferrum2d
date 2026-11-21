@@ -12,6 +12,8 @@ pub mod arena;
 #[cfg(feature = "alloc")]
 mod coarena;
 #[cfg(feature = "alloc")]
+pub(crate) use coarena::AdjacencyCredit;
+#[cfg(feature = "alloc")]
 pub(crate) mod graph;
 #[cfg(feature = "alloc")]
 mod modified_objects;

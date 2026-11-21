@@ -50,7 +50,7 @@ impl Engine {
             .physics
             .set_runtime_settings(gravity(&runtime.physics, c), solver_settings(c))
         {
-            runtime.last_error = Some(error.into());
+            runtime.last_error.record(error.into());
             return false;
         }
         true
@@ -86,7 +86,7 @@ impl Engine {
                 .physics
                 .set_runtime_settings(saved_gravity, saved_solver)
             {
-                runtime.last_error = Some(error.into());
+                runtime.last_error.record(error.into());
             }
             if succeeded {
                 self.world.reset_render_interpolation();

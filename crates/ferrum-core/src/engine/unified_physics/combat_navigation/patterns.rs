@@ -148,7 +148,7 @@ pub(super) fn accelerate(
         .physics
         .set_character_traversal(body, c.step, c.drop)
     {
-        runtime.last_error = Some(error.into());
+        runtime.last_error.record(error.into());
         return;
     }
     let desired =
@@ -175,6 +175,6 @@ pub(super) fn accelerate(
         .physics
         .set_character_ground_velocity(body, result.velocity)
     {
-        runtime.last_error = Some(error.into());
+        runtime.last_error.record(error.into());
     }
 }

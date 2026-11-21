@@ -1401,6 +1401,9 @@ contact buffer는 다음 contact query, observation buffer는 다음 observation
 
 step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 작업 수를 합치고 body/island/cache gauge는
 마지막 tick 값을 쓴다. frame에서 tick을 실행하지 않으면 frame 수치는 0이며 step은 이전 tick 값을 유지한다.
+`stepRigidBodies`가 첫 물리 구간을 승인하기 전에 예외가 발생하면 직전 완료 틱의 `step` 진단과
+충돌 관측을 다시 읽을 수 있다. 오류 메시지의 `committed seconds`는 해당 호출에서 이미 진행한
+물리 시간이다.
 `UNIFIED_PHYSICS_COUNTER_LAYOUT`은 native 32-word 순서를 제공한다. 기존 solver의 row operation·warm start·
 block solve 횟수는 이 값으로 추정하지 않으며 지원된 native 측정으로 표시하지 않는다.
 

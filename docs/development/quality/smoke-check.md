@@ -517,6 +517,27 @@ Rust 업데이트 최댓값이 125ms 이하여야 한다. 405스텝 뒤 64명의
 수동 CI workflow의 validate job 및 `smoke:check`에 연결하며 원격 실행 성공을 주장하지 않는다.
 보고서는 `artifacts/physics-3d/web-bridge-browser/report.json`이다.
 
+저장·복원, 회전 충돌, 지형과 자원 결합은 `pnpm smoke:physics-sdk-integration`으로 검사한다.
+배포용 Wasm과 Web SDK를 빌드한 뒤 실행한다. 현재 Rust 소스 지문을 확인하고 SDK를 패킹한 다음,
+Chromium에서 그 패키지의 공개 API와 Wasm을 불러온다. 개발 중에는 필요한 이름만 지정할 수 있다
+(`pnpm smoke:physics-sdk-integration rotation` 등). 전체 실행은 세 그룹의 결과와 패키지·Wasm SHA-256을
+`artifacts/physics-3d/sdk-integration-acceptance/run-*/report.json`에 기록한다.
+
+- `limits`는 실제 게임에서 캡처한 파일로 복원 한도의 경계와 필수 호스트 콜백을 확인한다.
+  복원이 거부되면 원본 세션에서 게임을 계속 실행할 수 있어야 한다.
+- `rotation`은 자세가 고정된 형상 이동 쿼리와 틱 도중 실제로 회전하는 바디를 각각 검사한다.
+  회전 바디에서는 틱 양끝이 비어 있어도 중간에 장애물에 닿는 배치와 끝까지 비껴가는 배치를 대조하고,
+  체크포인트 복원 뒤 같은 입력을 재생한다. 연속 틱 회귀는 회전 상자와 고정 구를 한 쌍 또는
+  두 쌍으로 배치해 100ms 틱 32개를 실행한다. 첫 틱의 충돌 대상·시각, 매 수동 틱의 완료 횟수,
+  복원 뒤 각 틱의 강체·충돌·진단 일치를 검사한다.
+- `terrain`은 64·1,024·4,096셀 장면에서 물체가 벽에 닿아 미끄러지는 동안 PNG·WAV·수정한 JSON과
+  WebGL2 렌더 타깃을 함께 저장·복원한다. 타일 ID, 바디 상태, 화면과 렌더 타깃의 픽셀,
+  복원 뒤 6스텝의 재생을 확인한다.
+
+`pnpm smoke:unified-physics-web`의 오류 복구 검사는 4,096면 지형과 빠른 상자로 실제 작업량 상한에
+도달한다. 수동 실행 두 방식에서는 정상 CCD 틱을 먼저 완료해 둔다. 다음 틱의 진행 시간이 0초인
+오류를 받은 뒤 직전 `step` 진단과 저장 파일 전체가 같은지 확인하고, 장애물을 제거해 물리를 다시 진행한다.
+
 `web_bridge::spatial_tests`는 7종 shape 생성/제거·malformed payload의 무생성·XZ 보행·1회 점프·support,
 잘못된 마지막 입력에도 기존 이동/대기 점프 유지, 해제·재설정·stale·Planar 입력 제약을 검사한다.
 `unifiedPhysicsSpatial.test.ts`는 과대/중첩 형상·손실되는 index의 native 호출 전 거부와 character memory.grow를 확인한다.

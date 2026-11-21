@@ -111,7 +111,7 @@ impl CollisionReactionPhysics for UnifiedPhysicsRuntime {
     ) -> CollisionReactionSetOutcome {
         hits.clear();
         if let Err(error) = self.area_targets(world, pair, radius, layer, hits) {
-            self.last_error = Some(error);
+            self.last_error.record(error);
             return CollisionReactionSetOutcome::default();
         }
         apply_collision_area_damage_hits(world, pair.source_index, hits, marked, pending, defaults)
@@ -171,7 +171,7 @@ impl CollisionReactionPhysics for UnifiedPhysicsRuntime {
             self.write_entity(world, entity)
         })();
         if let Err(error) = result {
-            self.last_error = Some(error);
+            self.last_error.record(error);
             return None;
         }
         Some(CollisionKnockbackReactionOutcome {

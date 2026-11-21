@@ -488,3 +488,106 @@ fn native_snapshot_preserves_completed_step_motion_for_cold_projectile_queries()
 }
 
 mod island_pending;
+
+#[test]
+fn preapply_capacity_rejection_preserves_last_tick_and_pending_world_bytes() {
+    let mut w = PhysicsWorld3d::new(WorldConfig {
+        step_seconds: 0.01,
+        gravity: [0.; 3],
+        ..WorldConfig::default()
+    })
+    .unwrap();
+    let half_angle = -std::f64::consts::FRAC_PI_8 * 0.5;
+    let mover = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: Pose {
+                    position: [20., 0., 0.],
+                    rotation: [0., 0., half_angle.sin() as f32, half_angle.cos() as f32],
+                },
+                angular_velocity: [
+                    0.,
+                    0.,
+                    (std::f64::consts::FRAC_PI_4 / f64::from(0.01f32)) as f32,
+                ],
+                ccd: true,
+                can_sleep: false,
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [2., 0.025, 0.1],
+            }),
+        )
+        .unwrap();
+    let stop = body(
+        &mut w,
+        BodyKind::Fixed,
+        [21.99, 0., 0.],
+        Shape::Sphere { radius: 0.015 },
+    );
+    w.step_checked().unwrap();
+    assert_eq!(w.step_statistics().ccd_clamps, 1);
+    w.remove_body(mover).unwrap();
+    w.remove_body(stop).unwrap();
+    let mesh = body(
+        &mut w,
+        BodyKind::Fixed,
+        [0.; 3],
+        Shape::TriangleMesh {
+            vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
+            triangles: vec![[0, 2, 1]; 4096],
+        },
+    );
+    let bullet = w
+        .create_body(
+            BodyDesc {
+                kind: BodyKind::Dynamic,
+                pose: Pose {
+                    position: [0., 1.25, 0.],
+                    ..Pose::default()
+                },
+                linear_velocity: [0., -100., 0.],
+                ccd: true,
+                can_sleep: false,
+                ..BodyDesc::default()
+            },
+            ColliderDesc::new(Shape::Box {
+                half_extents: [0.5; 3],
+            }),
+        )
+        .unwrap();
+    let snapshot = w.capture_snapshot().unwrap();
+    let mut control = PhysicsWorld3d::from_snapshot(&snapshot).unwrap();
+    let stats = w.step_statistics();
+    let clamps = w.ccd_clamps().to_vec();
+    let outputs = |w: &PhysicsWorld3d| {
+        postcard::to_allocvec(&(&w.events, &w.step_motion, &w.path_scratch, &w.query_updates))
+            .unwrap()
+    };
+    let reports = outputs(&w);
+    let body = w.body_state(bullet).unwrap();
+    for _ in 0..2 {
+        assert_eq!(w.step_checked(), Err(PhysicsError::CapacityExceeded));
+        assert_eq!(w.actual_motion_completed_time(), 0.);
+        assert_eq!(w.step_statistics(), stats);
+        assert_eq!(w.ccd_clamps(), clamps);
+        assert!(outputs(&w) == reports);
+        assert_eq!(w.body_state(bullet).unwrap(), body);
+        assert!(w.capture_snapshot().unwrap().encoded_bytes() == snapshot.encoded_bytes());
+    }
+    w.remove_body(mesh).unwrap();
+    control.remove_body(mesh).unwrap();
+    for tick in 1..=3 {
+        w.step_checked().unwrap();
+        control.step_checked().unwrap();
+        assert_eq!(w.ccd_clamps(), control.ccd_clamps());
+        assert_eq!(w.step_statistics(), control.step_statistics());
+        assert!(
+            w.capture_snapshot().unwrap().encoded_bytes()
+                == control.capture_snapshot().unwrap().encoded_bytes(),
+            "resumed state diverged on tick {tick}"
+        );
+    }
+    assert!(w.body_state(bullet).unwrap().pose.position[1] < body.pose.position[1]);
+}

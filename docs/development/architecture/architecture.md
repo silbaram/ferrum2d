@@ -979,6 +979,14 @@ prefix를 다음 trace reset 전에 저장하고, 재시도 시작은 fraction �
 계산한다. 기존 F32 관측만 있는 경로의 interpolation은 별도로 유지한다. 이 private 저장 형식은 snapshot version7이며
 기존 build/target fingerprint와 함께 호환성을 검사한다.
 
+Native 물리 틱을 시작할 때 직전 틱의 통계·충돌 관측·경로 자료를 보관한다. 첫 물리 구간이
+승인되기 전에 거부되면 그 자료와 Rapier가 준비 중에 갱신한 물체·콜라이더·충돌 후보·접촉·island 상태를
+복원한다. 일부 구간이 이미 끝났으면 그 구간의 결과를 유지한다. Engine은 물리 스텝 성공 뒤에
+월드 진단을 교체한다. 0초 진행 후 거부된 시도의 오류는 호출자가 읽거나 소비할 수 있고,
+체크포인트에는 직전에 저장 가능했던 오류 상태를 기록한다.
+재사용하는 이동·충돌 작업 공간은 월드 생성·복원 시 힙에 한 번 할당한다. 저장 파일 복원기는
+이 할당도 디코드 메모리 예산에 포함한다. 중첩된 역직렬화 호출에서는 이 작업 공간을 포인터로 전달한다.
+
 Core가 실제 경로를 소유하는 Native CCD는 모든 solver group과 restitution이 끝난 뒤, persistent impulse와
 body writeback 전에 전체 slice의 계획을 승인한다. 기존 fast-body·target tier·group·hook과 관절의 접촉 제외 쌍을
 적용하고 선형·회전 잠금 body도 이 경계에 포함한다. 승인 뒤 기존 CCD 단계에서는 미리 계산한 위치만 적용한다.

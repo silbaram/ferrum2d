@@ -5744,6 +5744,8 @@ impl PhysicsWorld3d {
             actual_scene::BoundsCache::layout(full, self.backend.colliders.len(), retained)?;
         let remaining = full
             .checked_sub(layout.reserved())
+            .and_then(|n| n.checked_sub(self.character_motion.rollback.reserved()))
+            .and_then(|n| n.checked_sub(self.tick_outputs.reserved_bytes()))
             .ok_or(TrajectoryError::WorkLimit)?;
         Ok((remaining, layout))
     }

@@ -482,13 +482,13 @@ impl UnifiedPhysicsRuntime {
                 }
                 if nav.pending.is_none() {
                     if let Err(error) = self.physics.set_character_traversal(body, c.step, c.drop) {
-                        self.last_error = Some(error.into());
+                        self.last_error.record(error.into());
                         continue;
                     }
                     let profile = match self.physics.character_route_profile(body) {
                         Ok(p) => p,
                         Err(error) => {
-                            self.last_error = Some(error.into());
+                            self.last_error.record(error.into());
                             continue;
                         }
                     };
@@ -713,7 +713,7 @@ impl UnifiedPhysicsRuntime {
                     let velocity = result.velocity;
                     nav.agents[i].route.replace_intent(velocity, dt);
                     if let Err(error) = self.physics.set_character_ground_velocity(body, velocity) {
-                        self.last_error = Some(error.into());
+                        self.last_error.record(error.into());
                     }
                 }
             }

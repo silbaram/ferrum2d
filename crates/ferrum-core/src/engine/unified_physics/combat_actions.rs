@@ -168,7 +168,7 @@ impl UnifiedPhysicsRuntime {
     }
 
     pub(in crate::engine) fn record_combat_error(&mut self, error: UnifiedPhysicsError) {
-        self.last_error = Some(error);
+        self.last_error.record(error);
     }
 }
 

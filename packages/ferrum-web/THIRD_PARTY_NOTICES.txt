@@ -8432,7 +8432,7 @@ Vendored upstream: https://crates.io/api/v1/crates/parry3d/0.31.1/download
 Upstream archive SHA-256: 7b626edc0b497dba4bdf6e1e0797895294ed9f61dac2bd28cb5d34d37ad2ca7e
 Ferrum2D modifies this vendored source. The recorded changes below do not replace its upstream license.
 
------ BEGIN FERRUM-PATCHES.md (original-source SHA-256 a2775596d5dd79fce872039521570b2f9322b15bcfa016b187a07cc8eecfd0b2) -----
+----- BEGIN FERRUM-PATCHES.md (original-source SHA-256 90517fa50c1721e35632e547419b4f63ef94acb917b8e275db06af894f0e97db) -----
 # Ferrum2D Parry3D 수정 기록
 
 Parry3D 0.31.1 원본은 `UPSTREAM.json`의 crates.io archive SHA-256와 파일별 해시로 고정한다.
@@ -8629,6 +8629,12 @@ Work에 emitted/compared bytes도 포함하고 scratch는 누적 requested paylo
   relocation bytes 승인 후에만 `try_reserve_exact(target-len)`을 실행한다.
   기본 경로는 const false에서 원 push/allocation 순서로 동작하며 compiler 성능은
   이 source patch만으로 실측했다고 주장하지 않는다. EPA/단순체 struct와 wire는 불변이다.
+
+## 고정 틱 복원용 BVH 복사
+
+`Bvh::step_credit_bytes`와 `try_copy_step_credit`는 노드, 부모, 희소 leaf 슬롯,
+재사용 목록과 최적화 위치를 보존한다. 상한 확인 뒤 호출자가 소유한 배열을 재사용해
+일괄 복사하며 트리 깊이에 따른 재귀와 직렬화가 필요 없다.
 ----- END FERRUM-PATCHES.md -----
 
 ----- BEGIN LICENSE (original-source SHA-256 ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c) -----
@@ -9969,7 +9975,7 @@ Vendored upstream: https://crates.io/api/v1/crates/rapier3d/0.36.1/download
 Upstream archive SHA-256: 033e2edc815d61ab97bd74ed5d1cbea5ebe575218774a7cfedbd3551f0033317
 Ferrum2D modifies this vendored source. The recorded changes below do not replace its upstream license.
 
------ BEGIN FERRUM-PATCHES.md (original-source SHA-256 3c1d97ab06880c94486c372bc71bcab99f6765176084e77c1054f3f7b4606236) -----
+----- BEGIN FERRUM-PATCHES.md (original-source SHA-256 bdc903ceb74e464485240c068967e2252bd39c19c0afbaadb2674aa61f890c2b) -----
 # Ferrum2D의 Rapier3D 수정
 
 원본은 crates.io `rapier3d 0.36.1`이다. `UPSTREAM.json`은 원본 archive SHA-256,
@@ -10472,6 +10478,15 @@ Core는 증명한 Kernel을 원 global tick domain 그대로 저장하며 사후
 실제 전체 CCD slice writeback이 끝난 뒤에만 그 slice의 정확한 끝으로 진행한다. 마지막 통계
 값만 덮어써 미완료 구간을 완료로 처리하는 경로는 두지 않는다. 단계별 회귀와 전체 제품
 수용 검증은 구분하며, 현재 후보의 통합 실행 전에는 완료된 결과로 주장하지 않는다.
+
+## 거부된 고정 틱의 rigid 상태 복원
+
+`RigidStepCredit`은 몸체·콜라이더의 변경 필드, 사용자 변경 큐와 broad phase의 영속
+상태를 작업자가 재사용하는 버퍼에 보관한다. Core는 쓸 수 있는 메모리와 작업량을
+먼저 확인하고, graph 준비 이후에도 승인한 시간이 0인 경우에만 원래 상태를 복구한다.
+BVH 노드는 배열 단위로 복사한다. 인접 목록의 세대·길이와 간선은 각각 하나의 배열에
+담는다. 밀집한 위치가 옮겨가도 각 슬롯의 과거 최대 버퍼는 남지 않는다. 보유 배열의
+실제 capacity를 검사하며 콜라이더 형상과 arena는 원래 소유자에 둔다.
 ----- END FERRUM-PATCHES.md -----
 
 ----- BEGIN LICENSE (original-source SHA-256 ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c) -----

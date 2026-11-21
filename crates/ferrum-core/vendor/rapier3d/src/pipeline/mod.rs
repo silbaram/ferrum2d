@@ -43,6 +43,10 @@ mod physics_pipeline;
 mod physics_world;
 #[cfg(feature = "alloc")]
 mod query_pipeline;
+#[cfg(feature = "alloc")]
+mod rigid_step_credit;
+#[cfg(feature = "alloc")]
+pub use rigid_step_credit::RigidStepCredit;
 mod solver_motion;
 #[cfg(feature = "alloc")]
 mod user_changes;

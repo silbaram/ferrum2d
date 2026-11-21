@@ -13,6 +13,7 @@ impl Projectile {
             shape: _,
             mask: _,
             start: _,
+            previous_start: _, // Tick-local rollback scratch is omitted from the file.
             hit: _,
         } = self;
         b.work(6)?;

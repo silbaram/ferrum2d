@@ -8,6 +8,73 @@ pub struct Coarena<T> {
     data: Vec<(u32, T)>,
 }
 
+/// Flat snapshot of sparse adjacency rows, including the generation of vacant slots.
+#[derive(Default)]
+pub(crate) struct AdjacencyCredit<T> {
+    slots: Vec<(u32, usize)>,
+    edges: Vec<T>,
+}
+
+impl<T: Copy> AdjacencyCredit<T> {
+    pub(crate) fn layout(source: &Coarena<Vec<T>>) -> Option<(usize, usize)> {
+        let edges = source
+            .data
+            .iter()
+            .try_fold(0usize, |sum, (_, row)| sum.checked_add(row.len()))?;
+        Some((source.data.len(), edges))
+    }
+
+    pub(crate) fn bytes(slots: usize, edges: usize) -> Option<usize> {
+        slots
+            .checked_mul(size_of::<(u32, usize)>())?
+            .checked_add(edges.checked_mul(size_of::<T>())?)
+    }
+
+    pub(crate) fn retained(&self) -> Option<usize> {
+        Self::bytes(self.slots.capacity(), self.edges.capacity())
+    }
+
+    pub(crate) fn trim(&mut self, slots: usize, edges: usize) {
+        if self.slots.capacity() > slots {
+            self.slots = Vec::new();
+        }
+        if self.edges.capacity() > edges {
+            self.edges = Vec::new();
+        }
+    }
+
+    pub(crate) fn capture(&mut self, source: &Coarena<Vec<T>>, edges: usize) -> Option<()> {
+        self.slots.clear();
+        self.edges.clear();
+        self.slots.try_reserve_exact(source.data.len()).ok()?;
+        self.edges.try_reserve_exact(edges).ok()?;
+        for (generation, row) in &source.data {
+            self.slots.push((*generation, row.len()));
+            self.edges.extend_from_slice(row);
+        }
+        Some(())
+    }
+
+    pub(crate) fn restore(&self, dest: &mut Coarena<Vec<T>>) {
+        dest.data
+            .resize_with(self.slots.len(), || (u32::MAX, Vec::new()));
+        let mut edges = self.edges.as_slice();
+        for ((generation, row), &(saved_generation, count)) in dest.data.iter_mut().zip(&self.slots)
+        {
+            *generation = saved_generation;
+            row.clear();
+            row.extend_from_slice(&edges[..count]);
+            edges = &edges[count..];
+        }
+    }
+}
+
+impl<T> Coarena<T> {
+    pub(crate) fn step_credit_slots(&self) -> usize {
+        self.data.len()
+    }
+}
+
 impl<T> Coarena<T> {
     #[cfg(feature = "serde-serialize")]
     pub(crate) fn stored_entries(&self) -> &[(u32, T)] {

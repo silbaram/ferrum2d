@@ -110,7 +110,7 @@ impl PlanarNavigationContext<'_> {
             Ok(())
         })();
         if let Err(error) = result {
-            self.runtime.last_error = Some(error);
+            self.runtime.last_error.record(error);
             return false;
         }
         true
@@ -128,7 +128,7 @@ impl PlanarNavigationContext<'_> {
         match result {
             Ok(moved) => Some(moved),
             Err(error) => {
-                self.runtime.last_error = Some(error);
+                self.runtime.last_error.record(error);
                 None
             }
         }

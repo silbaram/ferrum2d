@@ -174,7 +174,10 @@ impl PhysicsWorld3d {
     }
 
     pub(super) fn step_kinematic_tick(&mut self, paths: &[KinematicPath]) {
-        let mut scratch = std::mem::take(&mut self.path_scratch);
+        if !self.begin_fixed_step_with_paths(!paths.is_empty()) {
+            return;
+        }
+        let mut scratch = std::mem::take(&mut self.tick_outputs.paths);
         scratch.cuts.clear();
         scratch.cuts.push(1.0);
         scratch.stopped_bodies.clear();
@@ -204,10 +207,9 @@ impl PhysicsWorld3d {
                 .keys()
                 .map(|&id| (id, CharacterState::default())),
         );
-        self.begin_fixed_step();
         if self.configure_actual_paths(paths).is_err() {
             self.finish_fixed_step();
-            self.path_scratch = scratch;
+            self.tick_outputs.paths = scratch;
             return;
         }
         let native_dt = self.backend.integration_parameters.dt;
@@ -519,7 +521,10 @@ impl PhysicsWorld3d {
             }
         }
         self.finish_fixed_step();
-        self.path_scratch = scratch;
+        if self.actual_motion_completed_time() > 0. || self.actual_motion_result().is_ok() {
+            std::mem::swap(&mut self.path_scratch, &mut scratch);
+        }
+        self.tick_outputs.paths = scratch;
     }
     fn set_path_targets(&mut self, paths: &[KinematicPath], scratch: &PathScratch, time: Time) {
         for &(id, original, target) in &scratch.targets {

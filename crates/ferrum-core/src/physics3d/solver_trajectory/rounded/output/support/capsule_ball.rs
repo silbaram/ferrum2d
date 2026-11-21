@@ -187,3 +187,43 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn separated(
         .lo
         > 0.)
 }
+
+/// Separate the full capsule on one fixed world axis from every original
+/// polyhedron vertex. Both local and world radius paths remain enclosed.
+pub(in crate::physics3d::solver_trajectory::rounded::output) fn polyhedron_separated(
+    cap_frames: &Frames,
+    capsule: &rp::Capsule,
+    poly_frames: &Frames,
+    points: &[rp::Vector],
+    normal: rp::Vector,
+    clearance: f32,
+    work: &mut Work,
+) -> Result<bool, TrajectoryError> {
+    if cap_frames.len == 0 || poly_frames.len == 0 || points.is_empty() {
+        return Ok(false);
+    }
+    work.charge(4096 + cap_frames.len as u64 * 64)?;
+    let Some(cap_upper) = rounded_support(
+        union(cap_frames),
+        [capsule.segment.a, capsule.segment.b],
+        capsule.radius,
+        normal,
+    ) else {
+        return Ok(false);
+    };
+    let required = Bound::exact(cap_upper).add(
+        Bound::exact(f64::from(clearance)).mul(super::super::super::dot(normal, normal).sqrt()),
+    );
+    for frame in &poly_frames.values[..poly_frames.len] {
+        for &point in points {
+            work.charge(128)?;
+            let Some(p) = project(frame.point(point), normal) else {
+                return Ok(false);
+            };
+            if p.lo <= required.hi {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(required.finite())
+}

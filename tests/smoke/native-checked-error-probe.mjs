@@ -11,7 +11,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
   };
   try {
     report.results = await page.evaluate(async () => {
-      const { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT: L } = await import("@ferrum2d/ferrum-web/core");
+      const { createEngine, createNativeGameFileSession, UNIFIED_PHYSICS_STATE_LAYOUT: L } = await import("@ferrum2d/ferrum-web/core");
       const originalRaf = window.requestAnimationFrame, originalCancel = window.cancelAnimationFrame;
       const pending = new Map();
       let serial = 0;
@@ -26,7 +26,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
       try {
         for (const mode of ["automatic", "manual-default", "manual-configured"]) {
           const result = { mode, phase: "create", cleanupErrors: [], frames: 0 };
-          let engine, checkpoint;
+          let engine, checkpoint, fileSession;
           try {
             engine = await createEngine(() => { result.frames++; });
             engine.useDataScene();
@@ -36,6 +36,20 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
               velocityIterations: 1, positionIterations: 1, continuous: true,
             });
             engine.configureAutoRigidBodyStep(mode === "automatic");
+            if (mode !== "automatic") {
+              // Keep a nonempty last completed step so resetting its diagnostics is observable.
+              const spinner = engine.spawnUnifiedPhysicsBody({
+                kind: "dynamic", ccd: true, canSleep: false,
+                pose: { position: [20, 0, 0], rotation: [0, 0, Math.sin(-Math.PI / 16), Math.cos(-Math.PI / 16)] },
+                angularVelocity: [0, 0, Math.PI / (4 * dt)],
+                collider: { shape: { type: "box", halfExtents: [2, .025, .1] } },
+              });
+              const stop = engine.spawnUnifiedPhysicsBody({ kind: "fixed", pose: { position: [21.99, 0, 0] },
+                collider: { shape: { type: "sphere", radius: .015 } } });
+              engine.stepRigidBodies(dt);
+              engine.removeUnifiedPhysicsBody(spinner);
+              engine.removeUnifiedPhysicsBody(stop);
+            }
             // Start above the sloped mesh and cross it within one tick. The
             // fast box activates CCD and its sweep visits the overlapping
             // triangle leaves until the current native proof budget is exhausted.
@@ -55,6 +69,12 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             const body = () => [...engine.queryUnifiedPhysicsBodyStates(handles).floats.slice(L.position, L.stride)];
             result.before = body();
             result.timeBefore = engine.time();
+            let saved;
+            if (mode !== "automatic") {
+              fileSession = await createNativeGameFileSession(engine);
+              result.stepBefore = engine.queryUnifiedPhysicsDiagnostics().step;
+              saved = await fileSession.capture();
+            }
             result.phase = "actual-native-rejection";
             try {
               if (mode === "automatic") {
@@ -75,6 +95,12 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             result.phase = "reborrow-and-checkpoint";
             result.after = body();
             result.timeAfter = engine.time();
+            if (fileSession) {
+              result.stepAfter = engine.queryUnifiedPhysicsDiagnostics().step;
+              const after = await fileSession.capture();
+              result.fileBytes = [saved.length, after.length];
+              result.sameFile = saved.length === after.length && saved.every((byte, i) => byte === after[i]);
+            }
             checkpoint = engine.captureRuntimeCheckpoint();
             engine.restoreRuntimeCheckpoint(checkpoint);
             checkpoint.dispose(); checkpoint = undefined;
@@ -99,6 +125,7 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
             result.phase = "complete";
           } catch (error) { result.error = String(error); }
           finally {
+            try { await fileSession?.dispose(); } catch (error) { result.cleanupErrors.push(String(error)); }
             try { checkpoint?.dispose(); } catch (error) { result.cleanupErrors.push(String(error)); }
             try { engine?.destroy(); engine?.destroy(); } catch (error) { result.cleanupErrors.push(String(error)); }
             result.pendingAfterDestroy = pending.size;
@@ -123,6 +150,12 @@ export async function probeNativeCheckedErrors(page, packageEvidence = {}) {
       assert.equal(result.pendingAtRejection, 0, JSON.stringify(result));
       assert.deepEqual(result.after, result.before, JSON.stringify(result));
       assert.equal(result.timeAfter, result.timeBefore, JSON.stringify(result));
+      if (result.mode !== "automatic") {
+        assert.equal(result.stepBefore.backendSteps, 1);
+        assert(result.stepBefore.ccdClamps > 0, "previous successful step must contain a measured clamp");
+        assert.deepEqual(result.stepAfter, result.stepBefore, result.mode + " changed previous step diagnostics");
+        assert(result.sameFile, result.mode + " changed saved game bytes " + result.fileBytes);
+      }
       assert.equal(result.checkpointRestored, true);
       assert.equal(result.recoveredDynamicBodies, 1, JSON.stringify(result));
       assert(result.manualRecoveredBody[1] < result.after[1], JSON.stringify(result));

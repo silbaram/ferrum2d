@@ -3175,3 +3175,77 @@ fn verified_strict_right_keeps_the_original_exact_tangent_contact_cell_before_re
         before
     );
 }
+
+#[test]
+fn angular_ccd_original_third_sdk_tick_preserves_the_first_contact_bracket() {
+    // Original 25 ms solver integration recorded on the third 100 ms SDK
+    // step. Keeping these packed F32 inputs independent of earlier clamp
+    // choices reproduces the grazing trajectory even if a prior tick changes.
+    original_sdk_box_sphere_bracket(
+        rp::Vector::new(-2.12013e-8, -9.3732757e-7, 0.),
+        rp::Rotation::from_xyzw(0., 0., -0.011307023, 0.9999361),
+        rp::Vector::new(-9.350029e-10, -1.8339338e-10, 1.9797177),
+    );
+}
+
+#[test]
+fn angular_ccd_original_twenty_eighth_sdk_tick_preserves_the_first_contact_bracket() {
+    // The Z=5 pair hit the shared work ceiling on this recorded integration.
+    original_sdk_box_sphere_bracket(
+        rp::Vector::new(-3.8777384e-7, -4.265605e-5, 5.),
+        rp::Rotation::from_xyzw(-4.1329218e-14, -4.4826488e-14, -0.01129654, 0.9999362),
+        rp::Vector::new(-4.8923546e-8, -5.352007e-8, 1.9797312),
+    );
+}
+
+fn original_sdk_box_sphere_bracket(
+    origin: rp::Vector,
+    rotation: rp::Rotation,
+    angular: rp::Vector,
+) {
+    let h = 0.025_f32;
+    let domain = Domain::new(0., f64::from(h)).unwrap();
+    let k = Kernel::from_velocity_seconds(
+        rp::RigidBodyHandle::invalid(),
+        domain,
+        h,
+        rp::Pose::from_parts(origin, rotation),
+        rp::Vector::new(-0.034592994, -3.9369435, 9.094946e-11),
+        angular,
+    )
+    .unwrap();
+    let cube = ShapeMotion {
+        curve: Curve::Integrated(k),
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let target = ShapeMotion {
+        curve: Curve::Constant {
+            pose: rp::Pose::from_translation(rp::Vector::new(1.99, 0., origin.z)),
+            start_time: 0.,
+            end_time: f64::from(0.1_f32),
+        },
+        ..cube
+    };
+    let tol = 2.5000000292152436e-8;
+    let mut work = Work {
+        used: 0,
+        limit: 32 * 1024 * 1024,
+    };
+    let hit = cast_full_shapes_policy(
+        cube,
+        &rp::Cuboid::new(rp::Vector::new(2., 0.025, 0.1)),
+        target,
+        &rp::Ball::new(0.015),
+        0.,
+        domain.end,
+        0.005,
+        tol,
+        &mut work,
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(hit.safe_time > 0. && hit.hit_time > hit.safe_time);
+    assert!(hit.hit_time - hit.safe_time <= tol && hit.contact.dist <= 0.005);
+}

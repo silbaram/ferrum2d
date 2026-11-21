@@ -9,11 +9,13 @@ use super::{
 use rapier3d::prelude as rp;
 use std::collections::BTreeMap;
 use std::fmt;
+pub(super) mod tick_outputs;
 
 /// Rust-owned simulation. Space selection changes constraints, not the solver backend.
 pub struct PhysicsWorld3d {
     pub(super) backend: rp::PhysicsWorld,
     pub(super) statistics: super::statistics::Statistics,
+    pub(super) tick_outputs: tick_outputs::TickOutputs,
     pub(super) config: WorldConfig,
     // Present only while an Engine interval uses an actual variable duration.
     // Both settings are restored before any public checkpoint boundary.
@@ -27,7 +29,8 @@ pub struct PhysicsWorld3d {
     pub(super) path_scratch: super::kinematic_paths::PathScratch,
     pub(super) step_motion: super::queries::StepMotion,
     pub(super) characters: BTreeMap<BodyId, CharacterRuntime>,
-    pub(super) character_motion: super::character_motion::MotionScene,
+    // Keep reusable solver scratch out of by-value Engine and checkpoint decode frames.
+    pub(super) character_motion: Box<super::character_motion::MotionScene>,
     pub(super) character_order: Vec<BodyId>,
     pub(super) character_contacts: super::character_contacts::Scratch,
     pub(super) character_dynamics: super::character_dynamics::Scratch,
@@ -99,6 +102,7 @@ impl PhysicsWorld3d {
         Ok(Self {
             backend,
             statistics: super::statistics::Statistics::default(),
+            tick_outputs: Default::default(),
             events: EventCollector::new(config.max_events),
             contact_policies: super::contact_policy::ContactPolicies {
                 planar: config.space == Space::PlanarXy,
@@ -115,7 +119,7 @@ impl PhysicsWorld3d {
             character_order: Vec::new(),
             character_contacts: Default::default(),
             character_dynamics: Default::default(),
-            character_motion: super::character_motion::MotionScene::default(),
+            character_motion: Box::default(),
             joints: BTreeMap::new(),
             dropped_joint_events: 0,
             broken_joints: Vec::new(),
@@ -329,7 +333,9 @@ impl PhysicsWorld3d {
             self.step_kinematic_tick(&[]);
             return self.actual_motion_result();
         }
-        self.begin_fixed_step();
+        if !self.begin_fixed_step() {
+            return self.actual_motion_result();
+        }
         if let Err(error) = self.capture_actual_interval_credit() {
             self.finish_fixed_step();
             return Err(error);
@@ -353,8 +359,25 @@ impl PhysicsWorld3d {
         result
     }
 
-    pub(super) fn begin_fixed_step(&mut self) {
+    pub(super) fn begin_fixed_step(&mut self) -> bool {
+        self.begin_fixed_step_with_paths(false)
+    }
+
+    pub(super) fn begin_fixed_step_with_paths(&mut self, prescribed_paths: bool) -> bool {
         self.begin_backend_motion_tick();
+        if prescribed_paths || self.backend_motion_enabled() {
+            if let Err(error) = self
+                .begin_backend_step_rollback()
+                .and_then(|()| self.prepare_tick_output_storage())
+            {
+                // Nothing in the world was changed during admission.
+                self.finish_backend_step_rollback();
+                self.character_motion.backend_motion.fail(error);
+                self.end_backend_motion_tick();
+                return false;
+            }
+            self.stage_tick_outputs();
+        }
         self.contact_policies.character_dynamic_pairs.clear();
         for runtime in self.characters.values_mut() {
             runtime.contact_velocity = [0.; 3];
@@ -381,8 +404,20 @@ impl PhysicsWorld3d {
         for runtime in self.joints.values_mut() {
             runtime.state = super::JointState::default();
         }
+        true
     }
     pub(super) fn finish_fixed_step(&mut self) {
+        let rejected =
+            self.actual_motion_completed_time() == 0. && self.actual_motion_result().is_err();
+        if std::mem::take(&mut self.tick_outputs.active) {
+            self.events.finish_tick_events(rejected);
+            if rejected {
+                self.restore_tick_outputs();
+                self.finish_backend_step_rollback();
+                self.end_backend_motion_tick();
+                return;
+            }
+        }
         // Capture consumes the same tick ledger after actual approval; it
         // never creates a fresh proof allowance or changes actual tick credit.
         let mut work = self.saved_motion_proof_work();
@@ -392,6 +427,7 @@ impl PhysicsWorld3d {
         }
         self.query_updates.clear();
         self.finish_statistics();
+        self.finish_backend_step_rollback();
         self.end_backend_motion_tick();
     }
 

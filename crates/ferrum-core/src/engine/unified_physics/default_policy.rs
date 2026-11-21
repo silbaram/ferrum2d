@@ -67,7 +67,7 @@ impl Engine {
                     && runtime.physics.joint_count() == 0
                     && !runtime.physics.has_active_interval()
                     && runtime.physics.config() == &config
-                    && runtime.last_error.is_none()
+                    && runtime.last_error.get().is_none()
             });
         if !initial {
             return false;
@@ -115,7 +115,7 @@ impl Engine {
                 // The stored configuration was admitted before it became a
                 // policy. Retain the old native sentinel on invariant failure.
                 if let Some(runtime) = &mut self.unified_physics {
-                    runtime.last_error = Some(error);
+                    runtime.last_error.record(error);
                 }
                 return;
             }

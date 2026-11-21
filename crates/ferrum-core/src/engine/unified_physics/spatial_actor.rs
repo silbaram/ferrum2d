@@ -49,7 +49,7 @@ impl super::Engine {
             Ok(())
         })();
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
         }
         Some(result.is_ok())
     }
@@ -71,7 +71,7 @@ impl super::Engine {
             &self.tilemap,
             &self.spatial_scene,
         ) {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             runtime.actor_navigation.reject_unavailable_request();
             return Some(false);
         }
@@ -131,7 +131,7 @@ impl UnifiedPhysicsRuntime {
             return false;
         };
         if let Err(error) = self.physics.set_character_traversal(body, step, drop) {
-            self.last_error = Some(error.into());
+            self.last_error.record(error.into());
             return false;
         }
         self.release_spatial_actor();
@@ -144,7 +144,7 @@ impl UnifiedPhysicsRuntime {
         if let Some(entity) = self.controlled_spatial_actor.take() {
             if let Ok(body) = self.spatial_actor_body(entity) {
                 if let Err(error) = self.physics.set_character_ground_velocity(body, [0.; 3]) {
-                    self.last_error = Some(error.into());
+                    self.last_error.record(error.into());
                 }
             }
         }
@@ -182,7 +182,7 @@ impl UnifiedPhysicsRuntime {
         // Preserve a queued jump from bulk native input; actor control owns only
         // ground velocity. The actual controller consumes jump once per fixed tick.
         if let Err(error) = self.physics.set_character_ground_velocity(body, velocity) {
-            self.last_error = Some(error.into());
+            self.last_error.record(error.into());
         }
     }
 
@@ -228,7 +228,7 @@ impl UnifiedPhysicsRuntime {
         let cancelled = self.actor_navigation.cancel();
         if let Some(body) = actor.and_then(|a| self.spatial_actor_body(a).ok()) {
             if let Err(error) = self.physics.set_character_ground_velocity(body, [0.; 3]) {
-                self.last_error = Some(error.into());
+                self.last_error.record(error.into());
             }
         }
         cancelled

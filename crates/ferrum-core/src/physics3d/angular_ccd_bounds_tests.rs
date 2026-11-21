@@ -76,6 +76,7 @@ fn angular_ccd_public_mid_tip_regression() {
         }
     }
 }
+
 #[test]
 fn angular_ccd_public_three_shapes_offsets_and_compound_share_real_com_bounds() {
     for variant in 0..4 {
@@ -158,6 +159,104 @@ fn angular_ccd_public_three_shapes_offsets_and_compound_share_real_com_bounds() 
     }
 }
 #[test]
+fn angular_ccd_rotating_capsule_and_hull_reach_intermediate_obstacles() {
+    let hull = Shape::ConvexHull {
+        points: [-2., 2.]
+            .into_iter()
+            .flat_map(|x| {
+                [-0.025, 0.025]
+                    .into_iter()
+                    .flat_map(move |y| [-0.1, 0.1].map(|z| [x, y, z]))
+            })
+            .collect(),
+    };
+    let mut failures = Vec::new();
+    for (moving, fixed, radial_axis) in [
+        (
+            Shape::Capsule {
+                half_height: 1.85,
+                radius: 0.15,
+            },
+            Shape::Box {
+                half_extents: [0.015; 3],
+            },
+            1,
+        ),
+        (
+            hull,
+            Shape::Capsule {
+                half_height: 0.012,
+                radius: 0.015,
+            },
+            0,
+        ),
+    ] {
+        for sign in [-1., 1.] {
+            for translates in [false, true] {
+                for hit in [true, false] {
+                    let mut w = world(16);
+                    let tangent = 1 - radial_axis;
+                    let mut position = [0.; 3];
+                    let mut velocity = [0.; 3];
+                    if translates {
+                        position[tangent] = -0.05;
+                        velocity[tangent] = 1.;
+                    }
+                    let half_angle = -sign * std::f64::consts::FRAC_PI_8 * 0.5;
+                    let body = w
+                        .create_body(
+                            BodyDesc {
+                                kind: BodyKind::Dynamic,
+                                pose: Pose {
+                                    position,
+                                    rotation: [
+                                        0.,
+                                        0.,
+                                        half_angle.sin() as f32,
+                                        half_angle.cos() as f32,
+                                    ],
+                                },
+                                angular_velocity: [
+                                    0.,
+                                    0.,
+                                    (sign * std::f64::consts::FRAC_PI_4
+                                        / f64::from(w.config.step_seconds))
+                                        as f32,
+                                ],
+                                linear_velocity: velocity,
+                                ccd: true,
+                                can_sleep: false,
+                                ..Default::default()
+                            },
+                            ColliderDesc::new(moving.clone()),
+                        )
+                        .unwrap();
+                    let mut target = [0.; 3];
+                    target[radial_axis] = if hit { 1.99 } else { 2.021 };
+                    w.create_body(
+                        BodyDesc {
+                            kind: BodyKind::Fixed,
+                            pose: pose(target),
+                            ..Default::default()
+                        },
+                        ColliderDesc::new(fixed.clone()),
+                    )
+                    .unwrap();
+                    if let Err(err) = w.step_checked() {
+                        failures.push((radial_axis, sign, translates, hit, err));
+                        continue;
+                    }
+                    assert_eq!(w.step_statistics().ccd_clamps, u32::from(hit));
+                    if hit {
+                        assert_eq!(w.ccd_clamps()[0].moving.body, body);
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+#[test]
 fn angular_ccd_one_below_record_capacity_preserves_physics_counts_and_next_tick() {
     let fixture = |capacity| {
         let mut w = world(capacity);
@@ -169,19 +268,63 @@ fn angular_ccd_one_below_record_capacity_preserves_physics_counts_and_next_tick(
     };
     let (mut exact, ids) = fixture(2);
     let (mut low, other) = fixture(1);
-    exact.step();
-    low.step();
+    exact.step_checked().unwrap();
+    low.step_checked().unwrap();
     assert_eq!(exact.step_statistics().ccd_clamps, 2);
     assert_eq!(low.step_statistics().ccd_clamps, 2);
     assert_eq!(exact.ccd_clamps().len(), 2);
     assert_eq!(low.ccd_clamps().len(), 1);
     assert_eq!(low.step_statistics().ccd_clamps_dropped, 1);
-    for _ in 0..6 {
+    assert_eq!(
+        exact.actual_motion_completed_seconds(),
+        exact.config.step_seconds
+    );
+    assert_eq!(
+        low.actual_motion_completed_seconds(),
+        low.config.step_seconds
+    );
+    for tick in 2..=7 {
+        exact
+            .step_checked()
+            .unwrap_or_else(|error| panic!("full observation capacity, tick {tick}: {error:?}"));
+        low.step_checked()
+            .unwrap_or_else(|error| panic!("one observation slot, tick {tick}: {error:?}"));
+        assert_eq!(
+            exact.actual_motion_completed_seconds(),
+            exact.config.step_seconds
+        );
+        assert_eq!(
+            low.actual_motion_completed_seconds(),
+            low.config.step_seconds
+        );
         for (i, j) in ids.into_iter().zip(other) {
             assert_eq!(exact.body_state(i).unwrap(), low.body_state(j).unwrap());
         }
-        exact.step();
-        low.step();
+    }
+}
+#[test]
+fn angular_ccd_sdk_rotating_bars_complete_thirty_two_consecutive_ticks() {
+    for levels in [&[0.][..], &[5.], &[0., 5.]] {
+        let pairs = levels.len() as u32;
+        let mut w = world(4096);
+        for &z in levels {
+            let body = bar(&mut w, BodyKind::Dynamic, z, true);
+            // JS computes PI/(4*step) in F64, then writes the packed F32.
+            let spin = (std::f64::consts::FRAC_PI_4 / f64::from(w.config.step_seconds)) as f32;
+            w.set_velocity(body, [0.; 3], [0., 0., spin]).unwrap();
+        }
+        for &z in levels {
+            target(&mut w, [1.99, 0., z]);
+        }
+        for tick in 1..=32 {
+            w.step_checked()
+                .unwrap_or_else(|error| panic!("SDK pairs at {levels:?}, tick {tick}: {error:?}"));
+            assert_eq!(w.actual_motion_completed_seconds(), w.config.step_seconds);
+            assert!(w.step_statistics().backend_steps > 0);
+            if tick == 1 {
+                assert_eq!(w.step_statistics().ccd_clamps, pairs);
+            }
+        }
     }
 }
 #[test]

@@ -51,6 +51,13 @@ pub struct IslandManager {
 }
 
 impl IslandManager {
+    pub(crate) fn persistent_joint_link_counts(&self) -> (usize, usize) {
+        (
+            self.persistent.joint_link_locs.len(),
+            self.persistent.joint_link_locs.capacity(),
+        )
+    }
+
     /// Creates a new empty island manager.
     pub fn new() -> Self {
         Self::default()

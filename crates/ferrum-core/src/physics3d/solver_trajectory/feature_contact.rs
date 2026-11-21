@@ -46,6 +46,32 @@ pub(super) fn vertices(cuboid: &Cuboid) -> [rp::Vector; 8] {
     })
 }
 
+/// A box-shaped convex hull has exactly the same local finite faces as a
+/// cuboid only when all eight distinct signed corners are present.
+fn centered_cuboid(
+    hull: &ConvexPolyhedron,
+    work: &mut Work,
+) -> Result<Option<Cuboid>, TrajectoryError> {
+    let points = hull.points();
+    if points.len() != 8 {
+        return Ok(None);
+    }
+    work.charge(128)?;
+    let half = points[0].abs();
+    if !half.is_finite() || half.min_element() <= 0. {
+        return Ok(None);
+    }
+    let mut corners = 0u8;
+    for &p in points {
+        if p.abs() != half {
+            return Ok(None);
+        }
+        let index = u8::from(p.x > 0.) | (u8::from(p.y > 0.) << 1) | (u8::from(p.z > 0.) << 2);
+        corners |= 1 << index;
+    }
+    Ok((corners == u8::MAX).then(|| Cuboid::new(half)))
+}
+
 fn interpolate(segment: &Segment, t: f64) -> rp::Vector {
     let t = t as f32;
     if t <= 0. {
@@ -492,11 +518,16 @@ pub(super) fn ramp_capsule_contact(
     clearance: Option<f32>,
     work: &mut Work,
 ) -> Result<Option<Contact>, TrajectoryError> {
-    if pa.rotation != rp::Rotation::IDENTITY
-        || pb.rotation != rp::Rotation::IDENTITY
-        || !capsule.radius.is_finite()
-        || capsule.radius <= 0.
+    if pb.rotation != rp::Rotation::IDENTITY || !capsule.radius.is_finite() || capsule.radius <= 0.
     {
+        return Ok(None);
+    }
+    if pa.rotation != rp::Rotation::IDENTITY {
+        if let RampFaces::Hull(hull) = ramp {
+            if let Some(cube) = centered_cuboid(hull, work)? {
+                return cuboid_capsule(pa, &cube, pb, capsule, work);
+            }
+        }
         return Ok(None);
     }
     let axis = [capsule.segment.a, capsule.segment.b];
@@ -848,6 +879,27 @@ fn convex_edge_capsule(
         return Ok(Some(Contact::new(point1, point2, n, -n, dist)));
     }
     Ok(None)
+}
+
+#[test]
+fn only_complete_centered_box_hulls_reuse_cuboid_features() {
+    let half = rp::Vector::new(2., 1., 0.5);
+    let mut points = vertices(&Cuboid::new(half));
+    let mut work = Work {
+        used: 0,
+        limit: 1024,
+    };
+    let mut classify = |points: &[rp::Vector]| {
+        let hull = ConvexPolyhedron::from_convex_hull(points).unwrap();
+        centered_cuboid(&hull, &mut work)
+            .unwrap()
+            .map(|cube| cube.half_extents)
+    };
+    points.reverse();
+    assert_eq!(classify(&points), Some(half));
+    assert_eq!(classify(&points[..7]), None);
+    points[0].x *= 0.75;
+    assert_eq!(classify(&points), None);
 }
 
 #[test]

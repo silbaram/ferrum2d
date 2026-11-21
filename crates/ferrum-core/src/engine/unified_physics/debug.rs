@@ -72,7 +72,7 @@ impl Engine {
             &self.tilemap,
             &self.spatial_scene,
         ) {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             self.frame_buffers.native_debug_state =
                 [0, 0, ACTIVE | TRUNCATED | REJECTED | route, 0];
             if spatial {

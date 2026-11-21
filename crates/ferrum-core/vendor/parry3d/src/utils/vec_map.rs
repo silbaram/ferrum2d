@@ -128,6 +128,20 @@ pub struct OccupiedEntry<'a, V> {
     index: usize,
 }
 
+impl<V: Copy> VecMap<V> {
+    pub(crate) fn backing_slots(&self) -> usize {
+        self.v.len()
+    }
+
+    pub(crate) fn try_copy_slots_from(&mut self, source: &Self) -> Option<()> {
+        self.v.clear();
+        self.v.try_reserve_exact(source.v.len()).ok()?;
+        self.v.extend_from_slice(&source.v);
+        self.n = source.n;
+        Some(())
+    }
+}
+
 impl<V> Default for VecMap<V> {
     #[inline]
     fn default() -> Self {

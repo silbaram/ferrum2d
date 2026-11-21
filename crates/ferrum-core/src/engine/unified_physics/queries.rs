@@ -90,7 +90,7 @@ impl Engine {
             )
         });
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return Some(0);
         }
         for hit in &runtime.native_ray_hits {
@@ -146,7 +146,7 @@ impl Engine {
                     .map_err(Into::into)
             });
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return Some(0);
         }
         for hit in &runtime.native_point_hits {

@@ -1,12 +1,13 @@
 //! Positive contact witnesses inside an already admitted first-contact bracket.
 use super::*;
 
-type PoseContact = ([u32; 7], Option<Contact>);
-type BracketContact = ([u64; 3], Option<(Time, Contact)>);
+type PoseContact = ([u32; 7], bool, Option<Contact>);
+type GridContact = ([u64; 2], Option<(Time, Contact)>);
 
 #[derive(Default)]
 pub(in crate::physics3d::solver_trajectory) struct RoundedBoxBallProbes {
-    bracket: Option<BracketContact>,
+    grid: Option<GridContact>,
+    searched_through: Option<Time>,
     cells: [Option<PoseContact>; 16],
     next: usize,
 }
@@ -24,34 +25,87 @@ impl RoundedBoxBallProbes {
         time_tolerance: Time,
         margin: f32,
         work: &mut Work,
+        sliding: bool,
+        mut native: impl FnMut(Time, &mut Work) -> Result<Option<Contact>, TrajectoryError>,
     ) -> Result<Option<(Time, Contact)>, TrajectoryError> {
-        let key = [safe, right, probe].map(Time::to_bits);
-        let result = match self.bracket {
-            Some((previous, result)) if previous == key => result,
-            _ => {
-                let mut result = None;
-                // All probes stay in the original
-                // tolerance bracket. A rounded contact can
-                // enter and leave between its two endpoints.
-                for step in 0..=32 {
-                    work.charge(8)?;
-                    let at = if step == 0 {
-                        right
-                    } else {
-                        safe + (probe - safe) * (step as f64 / 32.)
-                    };
-                    if at <= safe || at > probe || at - safe > time_tolerance {
-                        continue;
-                    }
-                    if let Some(point) = pair.rounded_box_ball_at(a, b, at, margin, work, self)? {
-                        result = Some((at, point));
-                        break;
-                    }
-                }
-                self.bracket = Some((key, result));
-                result
+        // Test the changing interval endpoint first. The remaining grid belongs
+        // to the safe/probe bracket and is often identical across subdivisions.
+        work.charge(8)?;
+        if right > safe && right <= probe && right - safe <= time_tolerance {
+            if let Some(point) =
+                pair.rounded_box_ball_at([a, b], right, margin, sliding, work, self)?
+            {
+                return Ok(Some((right, point)));
             }
+        }
+        let key = [safe, probe].map(Time::to_bits);
+        if let Some((previous, result)) = self.grid {
+            if previous == key {
+                return Ok(result);
+            }
+        }
+        let mut result = None;
+        // Successive tiny subdivisions have overlapping tolerance windows.
+        // Positive nominees in the previous window already had their turn.
+        // Search the new part at the original density and keep its endpoint.
+        // A missing point has no bearing on any separation certificate.
+        let from = self
+            .searched_through
+            .filter(|t| sliding && *t >= safe && *t <= probe)
+            .unwrap_or(safe);
+        let slices = if sliding {
+            (((probe - from) / time_tolerance) * 32.)
+                .ceil()
+                .clamp(1., 32.) as u32
+        } else {
+            32
         };
+        for step in 1..=slices {
+            work.charge(8)?;
+            let at = from + (probe - from) * (f64::from(step) / f64::from(slices));
+            if at <= safe || at > probe || at - safe > time_tolerance {
+                continue;
+            }
+            if sliding {
+                if let Some(point) = native(at, work)? {
+                    result = Some((at, point));
+                    break;
+                }
+            }
+            if let Some(point) = pair.rounded_box_ball_at([a, b], at, margin, false, work, self)? {
+                result = Some((at, point));
+                break;
+            }
+        }
+        if result.is_none() && sliding && from < probe {
+            if let PairKind::BoxBall(shapes) = &pair.kind {
+                let (cube, target) = if shapes.flipped { (b, a) } else { (a, b) };
+                super::super::rounded::rotating_box_clock_times(
+                    cube,
+                    shapes.cuboid,
+                    target,
+                    shapes.ball,
+                    from,
+                    probe,
+                    margin,
+                    work,
+                    |at, work| {
+                        if at <= safe || at > probe || at - safe > time_tolerance {
+                            return Ok(true);
+                        }
+                        if let Some(point) =
+                            pair.rounded_box_ball_at([a, b], at, margin, true, work, self)?
+                        {
+                            result = Some((at, point));
+                            return Ok(false);
+                        }
+                        Ok(true)
+                    },
+                )?;
+            }
+        }
+        self.searched_through = Some(probe);
+        self.grid = Some((key, result));
         Ok(result)
     }
 }
@@ -62,10 +116,10 @@ impl Pair<'_> {
     // test a sphere point in each nearby rounded world coordinate cell.
     fn rounded_box_ball_at(
         &self,
-        a: ShapeMotion,
-        b: ShapeMotion,
+        [a, b]: [ShapeMotion; 2],
         at: Time,
         margin: f32,
+        wide_columns: bool,
         work: &mut Work,
         cache: &mut RoundedBoxBallProbes,
     ) -> Result<Option<Contact>, TrajectoryError> {
@@ -97,7 +151,11 @@ impl Pair<'_> {
         // Each cast owns a fixed pair and clearance. The sphere pose is
         // constant, so all probe times reaching these box bits share geometry.
         work.charge((cache.cells.len() * 8) as u64)?;
-        if let Some((_, result)) = cache.cells.iter().flatten().find(|(old, _)| *old == key) {
+        if let Some((_, _, result)) =
+            cache.cells.iter().flatten().find(|(old, wide, result)| {
+                *old == key && (*wide || !wide_columns || result.is_some())
+            })
+        {
             return Ok(*result);
         }
         let index = cache.next;
@@ -137,9 +195,16 @@ impl Pair<'_> {
         let other = (0..3)
             .filter(|&i| i != largest_normal)
             .max_by(|&i, &j| {
-                ball.translation[i]
-                    .abs()
-                    .total_cmp(&ball.translation[j].abs())
+                // A large common offset perpendicular to the face normal
+                // cannot improve its support. Nominate a cell whose rounding
+                // can actually influence the gap on this face.
+                let contribution = |axis: usize| {
+                    let coordinate = ball.translation[axis].abs();
+                    (f64::from(coordinate.next_up()) - f64::from(coordinate))
+                        * f64::from(normal[axis].abs())
+                };
+                contribution(i)
+                    .total_cmp(&contribution(j))
                     .then_with(|| normal[i].abs().total_cmp(&normal[j].abs()))
             })
             .ok_or(TrajectoryError::InvalidReference)?;
@@ -168,10 +233,14 @@ impl Pair<'_> {
                 if tangent_value < -half[tangent] || tangent_value > half[tangent] {
                     continue;
                 }
-                work.charge(1024)?;
+                work.charge(64)?;
                 let mut local = nearest;
                 local[tangent] = tangent_value;
                 let point = cube * local;
+                if rounded_ball_point_clear(point, ball.translation, r, margin) {
+                    continue;
+                }
+                work.charge(1024)?;
                 if margin == 0. {
                     // The box point can itself belong to the sphere's
                     // rounded image. Prove both membership and exact output.
@@ -185,7 +254,7 @@ impl Pair<'_> {
                         } else {
                             contact
                         });
-                        *slot = Some((key, result));
+                        *slot = Some((key, wide_columns, result));
                         return Ok(result);
                     }
                     continue;
@@ -195,11 +264,47 @@ impl Pair<'_> {
                 let Some(direction) = delta.try_normalize() else {
                     continue;
                 };
+                let extended =
+                    box_motion.has_integrated_spin() && !box_motion.is_single_axis_spin();
+                if extended {
+                    let world_upper = gap_upper(distance_upper(point, ball.translation), r);
+                    if world_upper < f64::from(margin) {
+                        if let Some(sphere) = ball_point(ball.translation, direction, r) {
+                            let mut d = world_upper as f32;
+                            if f64::from(d) < world_upper {
+                                d = d.next_up();
+                            }
+                            let contact = Contact::new(point, sphere, normal, -normal, d);
+                            let result = Some(if pair.flipped {
+                                contact.flipped()
+                            } else {
+                                contact
+                            });
+                            *slot = Some((key, wide_columns, result));
+                            return Ok(result);
+                        }
+                    }
+                }
                 let guess = direction * r;
                 let shifted = ball.translation[rounded_axis] + guess[rounded_axis];
                 let origin = ball.translation[rounded_axis];
                 let local_third = guess[third];
-                for shifted in [shifted, shifted.next_down(), shifted.next_up()] {
+                let mut lo = shifted;
+                let mut hi = shifted;
+                for index in 0..if wide_columns { 17 } else { 3 } {
+                    let shifted = if index == 0 {
+                        shifted
+                    } else if index % 2 == 1 {
+                        lo = lo.next_down();
+                        lo
+                    } else {
+                        hi = hi.next_up();
+                        hi
+                    };
+                    if index >= 3 {
+                        work.charge(48)?;
+                    }
+
                     // Take the local value nearest zero in the world
                     // coordinate's binade cell. The cell only nominates a
                     // point; complete sphere membership is checked below.
@@ -240,16 +345,49 @@ impl Pair<'_> {
                     } else {
                         contact
                     });
-                    *slot = Some((key, result));
+                    *slot = Some((key, wide_columns, result));
                     return Ok(result);
                 }
             }
             lower = lower.next_down();
             higher = higher.next_up();
         }
-        *slot = Some((key, None));
+        *slot = Some((key, wide_columns, None));
         Ok(None)
     }
+}
+
+// A true point within the world margin has a real local sphere preimage.
+// Reflection toward the nominated box point cannot increase distance, so
+// only the corresponding half of each rounded coordinate is needed here.
+fn rounded_ball_point_clear(
+    point: rp::Vector,
+    center: rp::Vector,
+    radius: f32,
+    margin: f32,
+) -> bool {
+    let half = |x: f32| 0.5 * (f64::from(x.next_up()) - f64::from(x));
+    let local = half(radius);
+    let mut squared = 0.;
+    for i in 0..3 {
+        let delta = f64::from(point[i]) - f64::from(center[i]);
+        let toward = if delta >= 0. {
+            center[i] + radius
+        } else {
+            center[i] - radius
+        };
+        let world = if center[i] == 0. {
+            0.
+        } else {
+            half(center[i].abs().max(toward.abs()))
+        };
+        let lower = ((delta.abs().next_down() - local).next_down() - world)
+            .next_down()
+            .max(0.);
+        squared = (squared + (lower * lower).next_down()).next_down();
+    }
+    let reach = (f64::from(radius) + f64::from(margin)).next_up();
+    squared.is_finite() && squared > (reach * reach).next_up()
 }
 
 // The represented offset nearest zero that reaches this world rounding cell.

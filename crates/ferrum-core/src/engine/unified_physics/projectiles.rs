@@ -11,6 +11,8 @@ pub(super) struct Projectile {
     shape: Shape,
     mask: u32,
     start: Pose,
+    #[serde(skip)]
+    previous_start: Pose,
     hit: Option<ProjectileHit>,
 }
 
@@ -166,6 +168,7 @@ impl UnifiedPhysicsRuntime {
                 shape,
                 mask: filter.mask.bits,
                 start: pose,
+                previous_start: pose,
                 hit: None,
             },
         );
@@ -184,9 +187,16 @@ impl UnifiedPhysicsRuntime {
                 .any(|projectile| projectile.hit.is_none()),
         );
         for projectile in self.projectiles.values_mut() {
+            projectile.previous_start = projectile.start;
             if let Ok(state) = self.physics.body_state(projectile.body) {
                 projectile.start = state.pose;
             }
+        }
+    }
+
+    pub(super) fn restore_projectile_starts(&mut self) {
+        for projectile in self.projectiles.values_mut() {
+            projectile.start = projectile.previous_start;
         }
     }
 
@@ -287,7 +297,7 @@ impl UnifiedPhysicsRuntime {
                 Ok(())
             })();
             if let Err(error) = result {
-                self.last_error = Some(error);
+                self.last_error.record(error);
             }
         }
     }
@@ -303,7 +313,7 @@ impl UnifiedPhysicsRuntime {
     }
 
     pub(in crate::engine) fn record_projectile_error(&mut self, error: UnifiedPhysicsError) {
-        self.last_error = Some(error);
+        self.last_error.record(error);
     }
 }
 

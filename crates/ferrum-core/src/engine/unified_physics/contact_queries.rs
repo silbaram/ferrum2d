@@ -94,7 +94,7 @@ impl Engine {
                     .map_err(Into::into)
             });
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
             return Some(0);
         }
         for native in &runtime.native_contact_manifolds {
@@ -107,7 +107,7 @@ impl Engine {
             let Some(manifold) = planar_manifold(native, CollisionPair { a, b }) else {
                 // Raw explicit 3D shapes can have a Z contact even with XY motion locks.
                 // Do not silently turn an unrepresentable contact into a planar miss.
-                runtime.last_error = Some(PhysicsError::OutOfPlane.into());
+                runtime.last_error.record(PhysicsError::OutOfPlane.into());
                 self.physics_body_manifold_scratch.clear();
                 self.physics_body_contact_scratch.clear();
                 return Some(0);

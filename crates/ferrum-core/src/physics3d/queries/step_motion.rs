@@ -46,7 +46,37 @@ struct TargetMotion {
     exact: Option<exact::Segment>,
 }
 
+impl StepMotion {
+    pub(in crate::physics3d) fn stage_tick(&mut self, prior: &mut Self) {
+        prior.ready = self.ready;
+        prior.elapsed = self.elapsed;
+        prior.exact_failed = self.exact_failed;
+        std::mem::swap(&mut self.starts, &mut prior.starts);
+        std::mem::swap(&mut self.segments, &mut prior.segments);
+    }
+
+    pub(in crate::physics3d) fn restore_tick(&mut self, prior: &mut Self) {
+        self.ready = prior.ready;
+        self.elapsed = prior.elapsed;
+        self.exact_failed = prior.exact_failed;
+        std::mem::swap(&mut self.starts, &mut prior.starts);
+        std::mem::swap(&mut self.segments, &mut prior.segments);
+    }
+}
+
 impl PhysicsWorld3d {
+    pub(crate) fn step_motion_capture_state(&self) -> StepMotionCaptureState {
+        StepMotionCaptureState {
+            enabled: self.step_motion.enabled,
+            ready: self.step_motion.ready,
+        }
+    }
+
+    pub(crate) fn restore_step_motion_capture_state(&mut self, state: StepMotionCaptureState) {
+        self.step_motion.enabled = state.enabled;
+        self.step_motion.ready = state.ready;
+    }
+
     // Internal opt-in: callers request capture before step(), never by advancing a
     // second solver. Worlds without active projectiles pay no per-collider capture.
     pub(crate) fn set_step_motion_enabled(&mut self, enabled: bool) {
@@ -344,6 +374,12 @@ impl PhysicsWorld3d {
         out.truncate(limit);
         Ok(truncated)
     }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct StepMotionCaptureState {
+    enabled: bool,
+    ready: bool,
 }
 
 fn target_motion(

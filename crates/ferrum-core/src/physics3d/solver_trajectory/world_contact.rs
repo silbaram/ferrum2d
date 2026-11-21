@@ -18,7 +18,7 @@ mod native_strict;
 mod normal_axis;
 mod rounded_box_ball;
 mod rounded_capsules;
-pub(super) use capsule_ball::RoundedCapsuleBall;
+pub(super) use capsule_ball::{rotating_capsule_box_contact, RoundedCapsuleBall};
 pub(super) use rounded_box_ball::RoundedBoxBallProbes;
 
 pub(super) struct Pair<'a> {
@@ -106,7 +106,7 @@ impl<'a> Pair<'a> {
     ) -> Option<Self> {
         let supported = |cube: ShapeMotion, ball: ShapeMotion| {
             cube.is_fixed_axis_aligned()
-                || (ball.is_fixed_axis_aligned() && cube.is_single_axis_spin())
+                || (ball.is_fixed_axis_aligned() && cube.has_integrated_spin())
         };
         let pair = if let (Some(cuboid), Some(ball)) = (sa.as_cuboid(), sb.as_ball()) {
             supported(a, b).then_some(BoxBall {

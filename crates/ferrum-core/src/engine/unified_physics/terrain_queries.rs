@@ -36,7 +36,7 @@ impl Engine {
                 Ok(())
             });
         if let Err(e) = result {
-            rt.last_error = Some(e);
+            rt.last_error.record(e);
             return Some(false);
         }
         let hit = rt
@@ -148,7 +148,7 @@ impl Engine {
         let (pose, translation) = match result {
             Ok(v) => v,
             Err(e) => {
-                rt.last_error = Some(e);
+                rt.last_error.record(e);
                 return Some(0);
             }
         };
@@ -285,7 +285,7 @@ impl Engine {
                 Ok(())
             });
         if let Err(e) = result {
-            rt.last_error = Some(e);
+            rt.last_error.record(e);
             self.physics_tile_manifold_scratch.clear();
             return Some(0);
         }

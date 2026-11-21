@@ -24,6 +24,8 @@ struct WorldState {
     #[serde(with = "backend_state::State")]
     backend: rp::PhysicsWorld,
     statistics: super::statistics::Statistics,
+    #[serde(skip)]
+    tick_outputs: super::world::tick_outputs::TickOutputs,
     config: WorldConfig,
     #[serde(skip)]
     interval_nominal_seconds: Option<f32>,
@@ -36,7 +38,7 @@ struct WorldState {
     #[serde(with = "stored_characters")]
     characters: BTreeMap<BodyId, CharacterRuntime>,
     #[serde(skip)]
-    character_motion: super::character_motion::MotionScene,
+    character_motion: Box<super::character_motion::MotionScene>,
     #[serde(skip)]
     character_order: Vec<BodyId>,
     #[serde(skip)]
@@ -59,8 +61,16 @@ struct Capture<'a> {
 }
 #[derive(serde::Deserialize)]
 struct Restore {
-    #[serde(with = "WorldState")]
+    #[serde(deserialize_with = "read_world")]
     world: PhysicsWorld3d,
+}
+
+fn read_world<'de, D: serde::Deserializer<'de>>(source: D) -> Result<PhysicsWorld3d, D::Error> {
+    // Serde skips the transient scratch, so its fixed heap allocation needs
+    // an explicit charge before the remote world's default constructs it.
+    crate::checkpoint_decode::reserve::<super::character_motion::MotionScene>(1)
+        .map_err(|_| serde::de::Error::custom("physics motion scratch allocation budget"))?;
+    WorldState::deserialize(source)
 }
 
 /// Native checkpoint format. Changing persistent fields requires a new version.

@@ -44,9 +44,28 @@ struct EventBuffer {
     queued: Vec<CollisionEvent>,
     limit: usize,
     dropped: usize,
+    #[serde(skip)]
+    mark: Option<(usize, usize)>,
+    #[serde(skip)]
+    previous_pairs: BTreeMap<(ColliderId, ColliderId), Option<CollisionEvent>>,
 }
 
 impl EventBuffer {
+    fn record_pair_change(
+        &mut self,
+        key: (ColliderId, ColliderId),
+        old: Option<CollisionEvent>,
+        new: Option<CollisionEvent>,
+    ) {
+        if self.mark.is_none() || old == new {
+            return;
+        }
+        // Only the difference from the original active set is retained.
+        // A pair that enters and leaves repeatedly cannot grow this journal.
+        if *self.previous_pairs.entry(key).or_insert(old) == new {
+            self.previous_pairs.remove(&key);
+        }
+    }
     fn push(&mut self, event: CollisionEvent) {
         if self.queued.len() < self.limit {
             self.queued.push(event);
@@ -57,6 +76,7 @@ impl EventBuffer {
 
     fn stop(&mut self, key: (ColliderId, ColliderId), removed: bool) {
         if let Some(mut event) = self.active.remove(&key) {
+            self.record_pair_change(key, Some(event), None);
             event.phase = CollisionPhase::Exit;
             event.removed = removed;
             self.push(event);
@@ -75,6 +95,29 @@ pub(super) struct EventCollector(
 );
 
 impl EventCollector {
+    pub(super) fn begin_tick_events(&mut self) {
+        let b = self.0.get_mut().unwrap_or_else(|p| p.into_inner());
+        b.mark = Some((b.queued.len(), b.dropped));
+    }
+
+    pub(super) fn finish_tick_events(&mut self, rejected: bool) {
+        let b = self.0.get_mut().unwrap_or_else(|p| p.into_inner());
+        if let Some((queued, dropped)) = b.mark.take() {
+            if rejected {
+                b.queued.truncate(queued);
+                b.dropped = dropped;
+                for (key, old) in std::mem::take(&mut b.previous_pairs) {
+                    if let Some(event) = old {
+                        b.active.insert(key, event);
+                    } else {
+                        b.active.remove(&key);
+                    }
+                }
+            } else {
+                b.previous_pairs.clear();
+            }
+        }
+    }
     /// Complete a restored output Vec's fallible backing reservation before
     /// native execution/publication. Limits are the existing persistent owner
     /// max_events bytes, not transient body-count-based trajectory scratch.
@@ -110,6 +153,8 @@ impl EventCollector {
                 queued: Vec::with_capacity(limit),
                 limit,
                 dropped: 0,
+                mark: None,
+                previous_pairs: BTreeMap::new(),
             }),
             Mutex::new(super::contact_impulses::ImpulseBuffer::new(limit)),
             Mutex::new(super::motion_trace::MotionTrace::default()),
@@ -132,6 +177,7 @@ impl EventCollector {
             queued,
             limit,
             dropped,
+            ..
         } = buffer;
         // Retain visits in key order and needs no temporary allocation on removal.
         active.retain(|&(a, b), event| {
@@ -263,7 +309,9 @@ impl rp::EventHandler for EventCollector {
                 sensor: event.sensor(),
                 removed: false,
             };
-            if buffer.active.insert(key, event).is_none() {
+            let old = buffer.active.insert(key, event);
+            buffer.record_pair_change(key, old, Some(event));
+            if old.is_none() {
                 buffer.push(event);
             }
         }

@@ -46,6 +46,10 @@ impl<Handle, Object: HasModifiedFlag> ModifiedObjects<Handle, Object> {
         self.0.clear()
     }
 
+    pub(crate) fn swap_entries(&mut self, saved: &mut Vec<Handle>) {
+        core::mem::swap(&mut self.0, saved);
+    }
+
     pub(crate) fn try_reserve_returns(
         &mut self,
         additional: usize,

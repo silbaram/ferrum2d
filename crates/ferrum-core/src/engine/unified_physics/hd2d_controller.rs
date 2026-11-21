@@ -38,7 +38,7 @@ impl Engine {
             )
         })();
         if let Err(error) = result {
-            runtime.last_error = Some(error);
+            runtime.last_error.record(error);
         }
         Some(result)
     }

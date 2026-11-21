@@ -135,7 +135,7 @@ impl Engine {
         })();
         if let Err(error) = admitted {
             if let Some(r) = &mut self.unified_physics {
-                r.last_error = Some(error);
+                r.last_error.record(error);
             }
             return false;
         }
@@ -183,7 +183,7 @@ impl Engine {
             Ok(m) => m,
             Err(error) => {
                 if let Some(r) = &mut self.unified_physics {
-                    r.last_error = Some(error);
+                    r.last_error.record(error);
                 }
                 return false;
             }
@@ -191,7 +191,7 @@ impl Engine {
         let succeeded = self.step_unified_with_config(dt, config, false) == Some(true);
         if let Some(r) = &mut self.unified_physics {
             if let Err(error) = r.restore_platformer_motion(&mut self.world, &m, !succeeded) {
-                r.last_error = Some(error);
+                r.last_error.record(error);
                 return false;
             }
         }

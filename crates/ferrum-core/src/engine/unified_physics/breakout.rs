@@ -110,7 +110,7 @@ impl Engine {
         })();
         if let Err(error) = admitted {
             if let Some(runtime) = &mut self.unified_physics {
-                runtime.last_error = Some(error);
+                runtime.last_error.record(error);
             }
             return false;
         }
@@ -202,7 +202,7 @@ impl Engine {
             Ok(motion) => motion,
             Err(error) => {
                 if let Some(runtime) = &mut self.unified_physics {
-                    runtime.last_error = Some(error);
+                    runtime.last_error.record(error);
                 }
                 return false;
             }
@@ -212,7 +212,7 @@ impl Engine {
             if let Err(error) =
                 runtime.restore_breakout_motion(&mut self.world, &motion, !succeeded)
             {
-                runtime.last_error = Some(error);
+                runtime.last_error.record(error);
                 return false;
             }
         }

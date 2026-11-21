@@ -29,6 +29,30 @@ fn tick(e: &mut Engine) {
 }
 
 #[test]
+fn zero_progress_error_is_readable_until_taken_and_preserves_saved_error_bytes() {
+    let earlier = UnifiedPhysicsError::ClockMismatch;
+    let rejected = UnifiedPhysicsError::Physics(PhysicsError::CapacityExceeded);
+    for saved in [None, Some(earlier)] {
+        let bytes = postcard::to_allocvec(&saved).unwrap();
+        let mut errors: PendingPhysicsError = postcard::from_bytes(&bytes).unwrap();
+        errors.rejected_attempt = Some(rejected);
+        assert_eq!(errors.get(), Some(rejected));
+        assert_eq!(postcard::to_allocvec(&errors).unwrap(), bytes);
+        let restored: PendingPhysicsError = postcard::from_bytes(&bytes).unwrap();
+        assert_eq!(restored.get(), saved);
+        assert_eq!(errors.take(), Some(rejected));
+        assert_eq!(errors.take(), None);
+        errors.rejected_attempt = Some(rejected);
+        errors.record(earlier);
+        assert_eq!(errors.get(), Some(earlier));
+        assert_eq!(
+            postcard::to_allocvec(&errors).unwrap(),
+            postcard::to_allocvec(&Some(earlier)).unwrap()
+        );
+    }
+}
+
+#[test]
 fn solver_settings_manual_step_uses_native_world_while_auto_disabled_and_preserves_invalid_inputs()
 {
     let (mut e, b) = setup(-6.0);

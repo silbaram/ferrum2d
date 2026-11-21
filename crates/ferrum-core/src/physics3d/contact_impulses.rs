@@ -38,7 +38,7 @@ pub struct ContactImpulseDiagnostics {
     pub dropped: usize,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ImpulseBuffer {
     pub(super) contacts: Vec<ContactImpulse>,
     pub(super) diagnostics: ContactImpulseDiagnostics,
@@ -46,6 +46,17 @@ pub(super) struct ImpulseBuffer {
 }
 
 impl ImpulseBuffer {
+    pub(super) fn stage_reports(&mut self, prior: &mut Self) {
+        prior.contacts.clear();
+        if self.contacts.is_empty() && self.contacts.capacity() > prior.contacts.capacity() {
+            std::mem::swap(&mut self.contacts, &mut prior.contacts);
+        }
+        self.swap_reports(prior);
+    }
+    pub(super) fn swap_reports(&mut self, other: &mut Self) {
+        std::mem::swap(&mut self.contacts, &mut other.contacts);
+        std::mem::swap(&mut self.diagnostics, &mut other.diagnostics);
+    }
     pub(super) fn new(limit: usize) -> Self {
         Self {
             contacts: Vec::with_capacity(limit),

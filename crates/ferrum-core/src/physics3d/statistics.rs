@@ -107,6 +107,17 @@ fn count(n: usize) -> u32 {
     n.min(u32::MAX as usize) as u32
 }
 
+impl Statistics {
+    pub(super) fn stage_step(&mut self, prior: &mut Self) {
+        // Keep an empty, already reserved CCD buffer on the live side.
+        prior.clamps.clear();
+        if self.clamps.is_empty() && self.clamps.capacity() > prior.clamps.capacity() {
+            std::mem::swap(&mut self.clamps, &mut prior.clamps);
+        }
+        std::mem::swap(self, prior);
+    }
+}
+
 impl PhysicsWorld3d {
     pub(super) fn record_character_stop(&mut self) {
         self.statistics.step.kinematic_character_stops = self

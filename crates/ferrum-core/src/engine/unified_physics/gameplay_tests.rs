@@ -279,7 +279,7 @@ fn native_gameplay_knockback_changes_simulation_velocity_not_visual_projection()
             .replace_collision_reactions_at_index(a.id as usize, None);
         tick(&mut e);
         assert!((e.unified_body_state(b).unwrap().pose.position[1] - 0.85).abs() < 1e-4);
-        assert!(e.unified_physics.as_ref().unwrap().last_error.is_none());
+        assert!(e.unified_physics_error().is_none());
     }
 }
 
@@ -509,7 +509,7 @@ fn native_gameplay_rejected_knockback_does_not_write_fake_world_velocity() {
         Velocity::default()
     );
     assert_eq!(
-        e.unified_physics.as_ref().unwrap().last_error,
+        e.unified_physics_error(),
         Some(UnifiedPhysicsError::Physics(PhysicsError::WrongBodyKind))
     );
 }

@@ -375,6 +375,11 @@ impl ShapeMotion {
         linear + angular.cross(point - center)
     }
 
+    fn has_integrated_spin(self) -> bool {
+        matches!(self.curve, Curve::Integrated(kernel)
+            if kernel.native.angular_velocity != rp::Vector::ZERO)
+    }
+
     fn is_single_axis_spin(self) -> bool {
         let Curve::Integrated(kernel) = self.curve else {
             return false;
@@ -1395,6 +1400,7 @@ fn certified_separation_axes_proof(
         if index == 0
             && (rounded::rotating_box_ball_face_separated(&mut cache, normal, work)?
                 || rounded::rotating_capsule_ball_separated(&mut cache, normal, work)?
+                || rounded::rotating_capsule_polyhedron_separated(&mut cache, normal, work)?
                 || rounded::rotating_cardinal_box_face_separated(&mut cache, normal, work)?
                 || rounded::rotating_box_capsule_separated(&mut cache, normal, work)?)
         {
@@ -2619,11 +2625,11 @@ fn cast_policy_impl(
     let rotating_box_ball = proof_clearance >= 0.
         && ((shape_a.as_cuboid().is_some()
             && shape_b.as_ball().is_some()
-            && a.is_single_axis_spin()
+            && a.has_integrated_spin()
             && b.is_fixed_axis_aligned())
             || (shape_b.as_cuboid().is_some()
                 && shape_a.as_ball().is_some()
-                && b.is_single_axis_spin()
+                && b.has_integrated_spin()
                 && a.is_fixed_axis_aligned()));
     if rotating_box_ball && early.is_none() && !existing && left.dist > proof_clearance {
         let point = left.point1.abs().max(left.point2.abs()).max_element();
@@ -3257,6 +3263,8 @@ fn cast_policy_impl(
                     && rotating_box_ball
                 {
                     if let Some(pair) = &world_pair {
+                        let sliding = (a.has_integrated_spin() && !a.is_single_axis_spin())
+                            || (b.has_integrated_spin() && !b.is_single_axis_spin());
                         let rounded = rounded_probes.contact(
                             pair,
                             a,
@@ -3267,6 +3275,15 @@ fn cast_policy_impl(
                             time_tolerance,
                             proof_clearance,
                             work,
+                            sliding,
+                            |at, work| {
+                                let native = contact_at(at, work)?;
+                                if native.dist > proof_clearance {
+                                    return Ok(None);
+                                }
+                                let (candidate, strict) = observe(at, native, work, None, true)?;
+                                Ok(strict.then_some(candidate))
+                            },
                         )?;
                         if let Some((at, rounded)) = rounded {
                             if at > safe && at - safe <= time_tolerance {
@@ -3283,6 +3300,16 @@ fn cast_policy_impl(
                         if let Some(rounded) = pair.contact(probe, work)? {
                             contact = rounded;
                         }
+                    } else if let Some(rounded) = world_contact::rotating_capsule_box_contact(
+                        a,
+                        shape_a,
+                        b,
+                        shape_b,
+                        probe,
+                        proof_clearance,
+                        work,
+                    )? {
+                        contact = rounded;
                     }
                 }
                 if contact.dist <= proof_clearance {

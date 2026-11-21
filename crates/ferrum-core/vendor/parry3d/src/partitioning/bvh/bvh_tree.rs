@@ -1782,6 +1782,70 @@ pub struct Bvh {
 }
 
 impl Bvh {
+    /// Bytes of persistent node/parent/leaf/free-list arrays needed for a rigid-step undo.
+    pub fn step_credit_bytes(&self) -> Option<usize> {
+        Self::credit_bytes(
+            self.nodes.len(),
+            self.parents.len(),
+            self.leaf_node_indices.backing_slots(),
+            self.free_wide_nodes.len(),
+        )
+    }
+
+    /// Bytes of node/parent/leaf/free-list backing currently retained by this copy.
+    pub fn retained_step_credit_bytes(&self) -> Option<usize> {
+        Self::credit_bytes(
+            self.nodes.0.capacity(),
+            self.parents.capacity(),
+            self.leaf_node_indices.capacity(),
+            self.free_wide_nodes.capacity(),
+        )
+    }
+
+    fn credit_bytes(nodes: usize, parents: usize, slots: usize, free: usize) -> Option<usize> {
+        [
+            nodes.checked_mul(size_of::<BvhNodeWide>())?,
+            parents.checked_mul(size_of::<BvhNodeIndex>())?,
+            slots.checked_mul(size_of::<Option<BvhNodeIndex>>())?,
+            free.checked_mul(size_of::<u32>())?,
+        ]
+        .into_iter()
+        .try_fold(0usize, usize::checked_add)
+    }
+
+    /// Release oversized previous arrays before reserving any memory for the next copy.
+    pub fn trim_step_credit(&mut self, source: &Self) {
+        if self.nodes.0.capacity() > source.nodes.len() {
+            self.nodes.0 = Vec::new();
+        }
+        if self.parents.capacity() > source.parents.len() {
+            self.parents = Vec::new();
+        }
+        if self.leaf_node_indices.capacity() > source.leaf_node_indices.backing_slots() {
+            self.leaf_node_indices = VecMap::new();
+        }
+        if self.free_wide_nodes.capacity() > source.free_wide_nodes.len() {
+            self.free_wide_nodes = Vec::new();
+        }
+    }
+
+    /// Copy exact node bits into caller-owned, reusable storage, without visiting tree topology.
+    pub fn try_copy_step_credit(&mut self, source: &Self) -> Option<()> {
+        fn copy<T: Copy>(target: &mut Vec<T>, source: &[T]) -> Option<()> {
+            target.clear();
+            target.try_reserve_exact(source.len()).ok()?;
+            target.extend_from_slice(source);
+            Some(())
+        }
+        copy(&mut self.nodes.0, &source.nodes.0)?;
+        copy(&mut self.parents, &source.parents)?;
+        self.leaf_node_indices
+            .try_copy_slots_from(&source.leaf_node_indices)?;
+        copy(&mut self.free_wide_nodes, &source.free_wide_nodes)?;
+        self.optimization = source.optimization.clone();
+        Some(())
+    }
+
     /// Creates an empty BVH with no leaves.
     ///
     /// This is equivalent to `Bvh::default()` but more explicit. Use this when you plan

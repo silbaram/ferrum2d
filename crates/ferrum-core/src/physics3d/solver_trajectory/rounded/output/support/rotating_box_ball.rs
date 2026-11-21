@@ -2,6 +2,11 @@
 //! The moving face proof encloses both radius paths and preserves the common
 //! Native time in the projection when its rounded coefficients permit it.
 use super::*;
+mod face_cells;
+mod face_clock;
+mod product_bias;
+mod projected_face;
+mod sphere_cells;
 mod translating_capsule;
 pub(in crate::physics3d::solver_trajectory::rounded::output) use translating_capsule::{
     fixed_wall_overlap, fixed_wall_separated, fixed_wall_time_hint,
@@ -20,6 +25,7 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn rotating_box_bal
     direction: rp::Vector,
     clearance: f32,
     context: Context<'_>,
+    clock: bool,
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
     work.charge(512 + (frames.len + ball_frames.len) as u64 * 64)?;
@@ -42,8 +48,38 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn rotating_box_bal
         clearance,
         context,
         None,
+        clock,
         work,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(in crate::physics3d::solver_trajectory) fn rotating_box_clock_times(
+    cube: ShapeMotion,
+    cuboid: &rp::Cuboid,
+    target: ShapeMotion,
+    ball: &rp::Ball,
+    start: Time,
+    end: Time,
+    clearance: f32,
+    work: &mut Work,
+    mut visit: impl FnMut(Time, &mut Work) -> Result<bool, TrajectoryError>,
+) -> Result<(), TrajectoryError> {
+    let q = cube.metered_pose(start, work)?.rotation.to_array();
+    let pivot = (0..3)
+        .max_by(|&a, &b| q[a].abs().total_cmp(&q[b].abs()))
+        .unwrap_or(0);
+    let c = Context {
+        a: cube,
+        sa: cuboid,
+        b: target,
+        sb: ball,
+        start,
+        end,
+        clearance,
+    };
+    let _ = face_clock::rows(c, pivot, work, |at, _, work| visit(at, work))?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -96,12 +132,53 @@ fn rotating_round_face(
     clearance: f32,
     context: Context<'_>,
     slab: Option<CapsuleSlab>,
+    clock: bool,
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
-    let test = |box_frame, work: &mut Work| {
+    let evaluate = |frame, work: &mut Work| {
         rotating_box_ball_face_frame(
-            box_frame, cuboid, ball_frame, ball, direction, clearance, context, slab, work,
+            frame, cuboid, ball_frame, ball, direction, clearance, context, slab, clock, work,
         )
+    };
+    let test = |frame: Frame, work: &mut Work| {
+        if evaluate(frame, work)? {
+            return Ok(true);
+        }
+        let cube = if context.sa.as_cuboid().is_some() {
+            context.a
+        } else {
+            context.b
+        };
+        if slab.is_some() || cube.is_single_axis_spin() {
+            return Ok(false);
+        }
+        let q = frame.rotation.components;
+        let axis = (0..3)
+            .max_by(|&a, &b| {
+                q[a].lo
+                    .abs()
+                    .max(q[a].hi.abs())
+                    .total_cmp(&q[b].lo.abs().max(q[b].hi.abs()))
+            })
+            .unwrap_or(0);
+        let (Some(spins), Some(scalars)) = (q[axis].image(), q[3].image()) else {
+            return Ok(false);
+        };
+        if spins.len * scalars.len <= 1 {
+            return Ok(false);
+        }
+        for &spin in &spins.values[..spins.len] {
+            for &scalar in &scalars.values[..scalars.len] {
+                let mut f = frame;
+                f.rotation.exact = None;
+                f.rotation.components[axis] = Float::exact(spin);
+                f.rotation.components[3] = Float::exact(scalar);
+                if !evaluate(f, work)? {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     };
     if test(union(frames), work)? {
         return Ok(true);
@@ -127,6 +204,7 @@ fn rotating_box_ball_face_frame(
     clearance: f32,
     context: Context<'_>,
     slab: Option<CapsuleSlab>,
+    clock: bool,
     work: &mut Work,
 ) -> Result<bool, TrajectoryError> {
     let q = ball_frame.rotation.components;
@@ -138,10 +216,6 @@ fn rotating_box_ball_face_frame(
         return Ok(false);
     }
     work.charge(1536)?; // one full box/ball hull and three axis nominations
-    let ideal = IdealTransform::new(Frame {
-        translation: [Float::ZERO; 3],
-        ..box_frame
-    });
     let reference = box_frame.rotation;
     let (axis, sign) = [rp::Vector::X, rp::Vector::Y, rp::Vector::Z]
         .into_iter()
@@ -156,6 +230,27 @@ fn rotating_box_ball_face_frame(
     if !sign.is_finite() || sign == 0. {
         return Ok(false);
     }
+    let projected_frame = if slab.is_none() {
+        projected_face::reduce(
+            box_frame,
+            ball_frame,
+            cuboid.half_extents,
+            ball.radius,
+            clearance,
+            axis,
+            sign.signum(),
+            context,
+            work,
+        )?
+    } else {
+        None
+    };
+    let box_frame = projected_frame.map_or(box_frame, |(frame, _)| frame);
+    let q = box_frame.rotation.components;
+    let ideal = IdealTransform::new(Frame {
+        translation: [Float::ZERO; 3],
+        ..box_frame
+    });
     let mut local_normal = rp::Vector::ZERO;
     local_normal[axis] = sign.signum();
     let pivot = (0..3).find(|&i| {
@@ -244,6 +339,7 @@ fn rotating_box_ball_face_frame(
     let mut box_error = box_values.map(|v| v.error);
     let mut box_origin = box_frame.translation.map(|t| Value::input(t).ideal);
     let mut direct_box_error = box_error;
+    let mut face_cells = None;
     if let Some((tangent, orientation, scale, spin, twice_w, _, _)) = planar {
         work.charge(1024)?;
         let h = cuboid.half_extents;
@@ -273,8 +369,10 @@ fn rotating_box_ball_face_frame(
             ball_centers[i].sub(Value::input(box_frame.translation[i]).ideal)
         });
         let mut errors = [0.; 3];
-        errors[axis] = full[0].error;
-        errors[tangent] = full[1].error;
+        for (j, i) in [axis, tangent].into_iter().enumerate() {
+            let sphere = target_value(ball_frame, slab, i, Float::span(-ball.radius, ball.radius));
+            errors[i] = upper_add(full[j].error, sphere.error);
+        }
         let mut along = [Bound::exact(0.); 3];
         along[tangent] = scale.ideal;
         along[axis] = negate(
@@ -295,16 +393,12 @@ fn rotating_box_ball_face_frame(
         let side_gap = projection(n)
             .sub(squared.mul(Bound::exact(f64::from(h[axis]))))
             .sub(Bound::exact(error(n)));
-        let sphere_values: [Value; 3] = std::array::from_fn(|i| {
-            target_value(ball_frame, slab, i, Float::span(-ball.radius, ball.radius))
-        });
-        let sphere_error = sphere_values
-            .into_iter()
-            .fold(0., |e, x| upper_add(e, upper_mul(x.error, x.error)));
-        let sphere_error = sphere_error.sqrt().next_up();
-        let usable_radius = Bound::exact(f64::from(ball.radius))
-            .add(Bound::exact(f64::from(clearance)))
-            .add(Bound::exact(sphere_error));
+        // The normal and tangent are orthogonal and have the same squared
+        // length. Subtract rounding errors in each of these directions before
+        // comparing with the original radial disk plus clearance. The pivot
+        // coordinate is perpendicular to both projections.
+        let usable_radius =
+            Bound::exact(f64::from(ball.radius)).add(Bound::exact(f64::from(clearance)));
         let max_distance = usable_radius.mul(usable_radius).mul(squared);
         let other_gap = projection(along);
         let tangent_error = Bound::exact(error(along));
@@ -329,27 +423,39 @@ fn rotating_box_ball_face_frame(
             clearance,
             context,
             slab,
+            projected_frame.map(|(_, pivot)| pivot),
             work,
             cull,
         )?;
-        let values = rotate_slab(Float::exact(h[axis] * sign.signum()), along);
-        if values.iter().any(|v| !v.finite()) {
-            return Ok(false);
+        if projected_frame.is_some() {
+            face_cells = Some((
+                tangent,
+                orientation,
+                along,
+                scale.actual,
+                spin.actual,
+                twice_w.actual,
+                [errors[axis], errors[tangent]],
+            ));
         }
-        for (i, value) in [axis, tangent].into_iter().zip(values) {
-            let translation = box_frame.translation[i];
-            let placed = value.add(Value::input(translation));
-            if !placed.finite() {
-                return Ok(false);
-            }
-            direct_box_error[i] = placed.error;
-            if let Some(shift) = rounded_translation_band(value.actual, translation, placed.actual)
-            {
-                box_origin[i] = shift;
-                box_error[i] = value.error;
-            } else {
-                box_error[i] = placed.error;
-            }
+        let Some(ledger) = FaceLedger::new(
+            box_frame,
+            axis,
+            tangent,
+            h[axis] * sign.signum(),
+            along,
+            orientation,
+            scale,
+            spin,
+            twice_w,
+            projected_frame.is_some(),
+        ) else {
+            return Ok(false);
+        };
+        for (j, i) in [axis, tangent].into_iter().enumerate() {
+            direct_box_error[i] = ledger.direct[j];
+            box_origin[i] = ledger.origin[j];
+            box_error[i] = ledger.error[j];
         }
     }
     let mut gap = Bound::exact(0.);
@@ -406,7 +512,313 @@ fn rotating_box_ball_face_frame(
             }
         }
     }
+    if !done {
+        if let Some((tangent, orientation, along, diagonal, spin, twice_w, tangent_errors)) =
+            face_cells
+        {
+            if clock {
+                let pivot = 3 - axis - tangent;
+                // Each row keeps the original quaternion input and translation on
+                // the same physical interval. Reuse the already culled face
+                // region and sphere error across all of these rows.
+                return face_clock::rows(context, pivot, work, |_, row, work| {
+                    work.charge(512)?;
+                    let q = row.rotation.components;
+                    let spin = Value::input(q[pivot]);
+                    let w2 = Value::input(q[3].mul(Float::exact(2.)));
+                    let diagonal = Value::input(q[3].mul(q[3]).sub(q[pivot].mul(q[pivot])));
+                    let Some(ledger) = FaceLedger::new(
+                        row,
+                        axis,
+                        tangent,
+                        cuboid.half_extents[axis] * sign.signum(),
+                        along,
+                        orientation,
+                        diagonal,
+                        spin,
+                        w2,
+                        true,
+                    ) else {
+                        return Ok(false);
+                    };
+                    let sign = Bound::exact(f64::from(sign.signum()));
+                    let n = [
+                        diagonal.ideal.mul(sign),
+                        spin.ideal
+                            .mul(w2.ideal)
+                            .mul(Bound::exact(f64::from(orientation)))
+                            .mul(sign),
+                    ];
+                    let squared = n[0].mul(n[0]).add(n[1].mul(n[1]));
+                    let mut projected = Bound::exact(0.);
+                    for (j, i) in [axis, tangent].into_iter().enumerate() {
+                        let delta = ball_centers[i].sub(ledger.origin[j]);
+                        projected = projected.add(n[j].mul(delta)).sub(Bound::exact(upper_mul(
+                            magnitude(n[j]),
+                            upper_add(ledger.error[j], ball_values[i].error),
+                        )));
+                    }
+                    let margin = Bound::exact(f64::from(ball.radius))
+                        .add(Bound::exact(f64::from(clearance)))
+                        .mul(squared.sqrt());
+                    if projected
+                        .sub(squared.mul(Bound::exact(f64::from(cuboid.half_extents[axis]))))
+                        .sub(margin)
+                        .lo
+                        > 0.
+                    {
+                        return Ok(true);
+                    }
+                    // The entire time slab was culled above. The represented
+                    // quaternion and translations in this row give a tighter
+                    // normal gap and a matching orthogonal tangent interval.
+                    work.charge(256)?;
+                    let tangent_axis = [negate(n[1].mul(sign)), n[0].mul(sign)];
+                    let mut normal_gap = Bound::exact(0.);
+                    let mut tangent_projection = Bound::exact(0.);
+                    for (j, i) in [axis, tangent].into_iter().enumerate() {
+                        let sphere = target_value(
+                            ball_frame,
+                            None,
+                            i,
+                            Float::span(-ball.radius, ball.radius),
+                        );
+                        let error =
+                            upper_mul(magnitude(n[j]), upper_add(ledger.error[j], sphere.error));
+                        let delta = ball_centers[i].sub(ledger.origin[j]);
+                        normal_gap = normal_gap.add(n[j].mul(delta)).sub(Bound::exact(error));
+
+                        // Every local normal coordinate has zero ideal tangent
+                        // projection. Keep the complete box and disk errors.
+                        let delta = ball_centers[i].sub(Value::input(row.translation[i]).ideal);
+                        let error = upper_mul(magnitude(tangent_axis[j]), tangent_errors[j]);
+                        tangent_projection = tangent_projection
+                            .add(tangent_axis[j].mul(delta))
+                            .add(Bound {
+                                lo: -error,
+                                hi: error,
+                            });
+                    }
+                    normal_gap = normal_gap
+                        .sub(squared.mul(Bound::exact(f64::from(cuboid.half_extents[axis]))));
+                    let Some(along) =
+                        reachable_tangents(along, normal_gap, tangent_projection, squared, margin)
+                    else {
+                        return Ok(true);
+                    };
+                    face_cells::separated(
+                        row,
+                        ball_frame,
+                        ball.radius,
+                        clearance,
+                        cuboid.half_extents,
+                        axis,
+                        tangent,
+                        if sign.lo < 0. { -1. } else { 1. },
+                        orientation,
+                        along,
+                        diagonal.actual,
+                        spin.actual,
+                        w2.actual,
+                        work,
+                    )
+                });
+            }
+            let available = work.limit - work.used;
+            let mut local = Work {
+                used: 0,
+                limit: available.min(512 * 1024),
+            };
+            let clear = face_cells::separated(
+                box_frame,
+                ball_frame,
+                ball.radius,
+                clearance,
+                cuboid.half_extents,
+                axis,
+                tangent,
+                sign.signum(),
+                orientation,
+                along,
+                diagonal,
+                spin,
+                twice_w,
+                &mut local,
+            );
+            work.charge(local.used)?;
+            done = match clear {
+                Err(TrajectoryError::WorkLimit) if available > local.limit => false,
+                result => result?,
+            };
+        }
+    }
     Ok(done)
+}
+
+// The row's normal and tangent are orthogonal and both have length |n|.
+// For a local tangent u to reach the sphere, the squared normal gap plus
+// (tangent_projection - u * |n|²)² must fit in the scaled radial margin.
+fn reachable_tangents(
+    along: Float,
+    normal_gap: Bound,
+    tangent_projection: Bound,
+    squared: Bound,
+    margin: Bound,
+) -> Option<Float> {
+    if !squared.finite() || squared.lo <= 0. || !normal_gap.finite() || !margin.finite() {
+        return Some(along);
+    }
+    let gap = Bound::exact(normal_gap.lo.max(0.));
+    let remaining = margin.mul(margin).sub(gap.mul(gap));
+    if remaining.hi < 0. {
+        return None;
+    }
+    let width = Bound {
+        lo: 0.,
+        hi: remaining.hi,
+    }
+    .sqrt()
+    .hi;
+    let reciprocal = Bound {
+        lo: (1. / squared.hi).next_down(),
+        hi: (1. / squared.lo).next_up(),
+    };
+    let reachable = tangent_projection
+        .add(Bound {
+            lo: -width,
+            hi: width,
+        })
+        .mul(reciprocal);
+    if !reachable.finite() {
+        return Some(along);
+    }
+    let lo = along.lo.max((reachable.lo as f32).next_down());
+    let hi = along.hi.min((reachable.hi as f32).next_up());
+    (lo <= hi).then_some(Float { lo, hi })
+}
+
+#[derive(Clone, Copy)]
+struct FaceLedger {
+    origin: [Bound; 2],
+    error: [f64; 2],
+    direct: [f64; 2],
+}
+
+impl FaceLedger {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        frame: Frame,
+        axis: usize,
+        tangent: usize,
+        side: f32,
+        along: Float,
+        orientation: f32,
+        scale: Value,
+        spin: Value,
+        twice_w: Value,
+        refine: bool,
+    ) -> Option<Self> {
+        let mut ledger = Self {
+            origin: [Bound::exact(0.); 2],
+            error: [0.; 2],
+            direct: [0.; 2],
+        };
+        let flip = Value::input(Float::exact(orientation));
+        let side = Value::input(Float::exact(side));
+        let local = Value::input(along);
+        let normal_term = side.mul(scale);
+        let lateral_term = local.mul(spin).mul(flip).mul(twice_w);
+        let tangent_term = local.mul(scale);
+        let offset = side.mul(spin).mul(flip).mul(twice_w);
+        let values = [
+            face_difference(normal_term, lateral_term),
+            tangent_term.add(offset),
+        ];
+        if values.iter().any(|v| !v.finite()) {
+            return None;
+        }
+        let biases = if refine {
+            let bounds = |bias: Bound, error: f64| {
+                bias.add(Bound {
+                    lo: -error,
+                    hi: error,
+                })
+            };
+            let side_error = scale
+                .actual
+                .image()
+                .map(|image| {
+                    let errors = image.values.map(|d| {
+                        f64::from(side.actual.lo * d) - f64::from(side.actual.lo) * f64::from(d)
+                    });
+                    Bound {
+                        lo: errors[0].min(errors[image.len - 1]).next_down(),
+                        hi: errors[0].max(errors[image.len - 1]).next_up(),
+                    }
+                })
+                .unwrap_or(Bound {
+                    lo: -normal_term.error,
+                    hi: normal_term.error,
+                });
+            let product_error = product_bias::twice_product(local.mul(spin).mul(flip), twice_w)
+                .map(|(bias, error)| bounds(bias, error))
+                .unwrap_or(Bound {
+                    lo: -lateral_term.error,
+                    hi: lateral_term.error,
+                });
+            let sub_error = face_difference(
+                Value::input(normal_term.actual),
+                Value::input(lateral_term.actual),
+            )
+            .error;
+            let side_bias = Some(bounds(side_error.sub(product_error), sub_error));
+            let tangent_bias =
+                rounded_translation_band(tangent_term.actual, offset.actual, values[1].actual)
+                    .map(|shift| bounds(shift.sub(offset.ideal), tangent_term.error));
+            [side_bias, tangent_bias]
+        } else {
+            [None, None]
+        };
+        for (j, ((i, value), bias)) in [axis, tangent]
+            .into_iter()
+            .zip(values)
+            .zip(biases)
+            .enumerate()
+        {
+            let translation = frame.translation[i];
+            let placed = value.add(Value::input(translation));
+            if !placed.finite() {
+                return None;
+            }
+            ledger.direct[j] = placed.error;
+            let (bias, error) = match bias {
+                Some(range)
+                    if range.finite() && range.hi >= -value.error && range.lo <= value.error =>
+                {
+                    (
+                        Bound {
+                            lo: range.lo.max(-value.error),
+                            hi: range.hi.min(value.error),
+                        },
+                        0.,
+                    )
+                }
+                _ => (Bound::exact(0.), value.error),
+            };
+            if let Some(shift) = rounded_translation_band(value.actual, translation, placed.actual)
+            {
+                ledger.origin[j] = shift.add(bias);
+                ledger.error[j] = error;
+            } else {
+                ledger.origin[j] = Value::input(translation).ideal.add(bias);
+                ledger.error[j] = upper_add(
+                    error,
+                    rounding(value.actual, translation, placed.actual, Op::Add),
+                );
+            }
+        }
+        Some(ledger)
+    }
 }
 
 // The exact rotation and translation use one physical F32 delta. Keep
@@ -444,26 +856,40 @@ fn shared_face_time(
     let start = native.motion.start;
     let omega = native.angular_velocity;
     let raw_start = start.rotation.to_array();
-    if (0..3).any(|i| i != pivot && (raw_start[i] != 0. || omega[i] != 0.)) {
-        return None;
-    }
     let dt = Float::span(k.local_delta(context.start), k.local_delta(context.end));
-    if dt.lo <= 0. || dt.hi >= native.integration_seconds {
+    if dt.lo < 0. || dt.hi >= native.integration_seconds {
         return None;
     }
     let f = |x| Value::input(Float::exact(x));
-    let half_turn = f(omega[pivot]).mul(Value::input(dt).mul(f(0.5)));
-    let raw_z = f(raw_start[pivot]).add(half_turn.mul(f(raw_start[3])));
-    let raw_w = f(raw_start[3]).sub(half_turn.mul(f(raw_start[pivot])));
-    let raw = std::array::from_fn(|i| {
-        if i == pivot {
-            raw_z.actual
-        } else if i == 3 {
-            raw_w.actual
-        } else {
-            Float::ZERO
-        }
-    });
+    let half_dt = Value::input(dt).mul(f(0.5));
+    let turns = omega.to_array().map(|w| f(w).mul(half_dt));
+    // Preserve the original Hamilton product and its rounding order. Even
+    // when two components vanish from the face projection, all four inputs
+    // still contribute to the original quaternion normalization.
+    let q = raw_start.map(f);
+    let raw_z = match pivot {
+        0 => q[0]
+            .add(turns[0].mul(q[3]))
+            .add(turns[1].mul(q[2]))
+            .sub(turns[2].mul(q[1])),
+        1 => q[1]
+            .sub(turns[0].mul(q[2]))
+            .add(turns[1].mul(q[3]))
+            .add(turns[2].mul(q[0])),
+        _ => q[2]
+            .add(turns[0].mul(q[1]))
+            .sub(turns[1].mul(q[0]))
+            .add(turns[2].mul(q[3])),
+    };
+    let raw = product(
+        [
+            turns[0].actual,
+            turns[1].actual,
+            turns[2].actual,
+            Float::exact(1.),
+        ],
+        raw_start.map(Float::exact),
+    );
     if raw.iter().any(|v| !v.finite()) {
         return None;
     }
@@ -479,13 +905,22 @@ fn shared_face_time(
     if !factor.is_finite() || factor <= 0. || factor.to_bits() != max.length_recip().to_bits() {
         return None;
     }
+    // The native zero-delta branch returns the stored rotation directly.
+    if dt.lo == 0. && factor != 1. {
+        return None;
+    }
     let rotated = raw_z.mul(f(factor));
     let directed = Bound::exact(f64::from(sign) * f64::from(orientation) * f64::from(twice_w.lo));
     let k0 = Bound::exact(f64::from(raw_start[pivot]))
         .mul(Bound::exact(f64::from(factor)))
         .mul(directed);
-    let k1 = Bound::exact(f64::from(omega[pivot]) * 0.5)
-        .mul(Bound::exact(f64::from(raw_start[3])))
+    let next = (pivot + 1) % 3;
+    let last = (pivot + 2) % 3;
+    let rate = |i: usize, j: usize| Bound::exact(f64::from(omega[i]) * f64::from(raw_start[j]));
+    let k1 = rate(pivot, 3)
+        .add(rate(next, last))
+        .sub(rate(last, next))
+        .mul(Bound::exact(0.5))
         .mul(Bound::exact(f64::from(factor)))
         .mul(directed);
     let center = (f64::from(dt.lo) + f64::from(dt.hi)) * 0.5;
@@ -539,6 +974,7 @@ fn cull_ball_tangent_slabs(
     clearance: f32,
     context: Context<'_>,
     slab: Option<CapsuleSlab>,
+    projected_axis: Option<usize>,
     work: &mut Work,
     radial: impl Fn(f32, bool) -> bool,
 ) -> Result<Float, TrajectoryError> {
@@ -579,7 +1015,10 @@ fn cull_ball_tangent_slabs(
         if slab.iter().chain(&sphere).any(|range| !range.finite()) {
             return false;
         }
-        slab.into_iter().zip(sphere).any(|(l, r)| {
+        slab.into_iter().zip(sphere).enumerate().any(|(i, (l, r))| {
+            if projected_axis == Some(i) {
+                return false;
+            }
             let left = Bound::exact(f64::from(l.lo)).sub(Bound::exact(f64::from(r.hi)));
             let right = Bound::exact(f64::from(r.lo)).sub(Bound::exact(f64::from(l.hi)));
             left.sub(margin).lo > 0. || right.sub(margin).lo > 0.
@@ -595,7 +1034,7 @@ fn cull_ball_tangent_slabs(
         near.hi = hi;
     }
     let mut narrow_width = (radius + clearance) * 0.25;
-    for _ in 0..4 {
+    for _ in 0..if projected_axis.is_some() { 7 } else { 4 } {
         work.charge(128)?;
         let lo = (center - narrow_width).clamp(near.lo, near.hi);
         let hi = (center + narrow_width).clamp(near.lo, near.hi);
@@ -866,6 +1305,7 @@ pub(in crate::physics3d::solver_trajectory::rounded::output) fn rotating_box_cap
             context.clearance,
             context,
             Some(slab),
+            false,
             work,
         )? {
             return Ok(false);

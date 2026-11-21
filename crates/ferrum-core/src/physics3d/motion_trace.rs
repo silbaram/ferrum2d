@@ -73,6 +73,12 @@ pub(super) struct AcceptedCurve {
 }
 
 impl MotionTrace {
+    pub(super) fn stage_tick(&mut self, prior: &mut Self) {
+        std::mem::swap(self, prior);
+        // reset() retains the last observed pass labels until another starts.
+        self.pass_start = prior.pass_start;
+        self.pass_duration = prior.pass_duration;
+    }
     pub fn reset(&mut self, enabled: bool) {
         self.enabled = enabled;
         self.motions.clear();

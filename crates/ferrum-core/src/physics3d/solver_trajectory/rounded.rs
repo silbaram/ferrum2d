@@ -7,7 +7,7 @@ use super::{Curve, Kernel, ShapeMotion, Time, TrajectoryError, Work};
 use rapier3d::parry::query::sweep_toi::ToiProxy;
 use rapier3d::prelude as rp;
 
-pub(super) use output::native_box_face_cast;
+pub(super) use output::{native_box_face_cast, rotating_box_clock_times};
 mod common_phase;
 mod common_timeline;
 mod correlated_linear;
@@ -48,7 +48,7 @@ pub(super) fn rotating_box_ball_prefix(
     } else {
         return Ok(None);
     };
-    if !moving.is_single_axis_spin()
+    if !moving.has_integrated_spin()
         || moving.local_center != rp::Vector::ZERO
         || moving.local_pose != rp::Pose::IDENTITY
         || !matches!(moving.curve, Curve::Integrated(k) if k.native.linear_velocity != rp::Vector::ZERO)
@@ -74,6 +74,41 @@ pub(super) fn rotating_box_ball_prefix(
             frontier = next;
         } else {
             unknown = next;
+        }
+    }
+    if !moving.is_single_axis_spin() {
+        // As the rounded diagonal or normalizer changes cell, a proof from
+        // the old origin can fail while each adjacent interval is clear.
+        // Cover a consecutive prefix cheaply before requesting point probes.
+        let mut span = (frontier - start).max(tolerance);
+        for _ in 0..256 {
+            work.charge(8)?;
+            let next = (frontier + span).min(end);
+            if next <= frontier || span < tolerance / 64. {
+                break;
+            }
+            if prove(frontier, next, work)? {
+                frontier = next;
+                span *= 2.;
+            } else {
+                span *= 0.5;
+            }
+        }
+    }
+    if !moving.is_single_axis_spin() && frontier < end {
+        let mut span = tolerance * 16.;
+        for _ in 0..128 {
+            let next = (frontier + span).min(end);
+            if next <= frontier || span < tolerance / 32. {
+                break;
+            }
+            let mut cache = AxisCache::new(a, sa, b, sb, frontier, next, clearance);
+            if output::rotating_box_ball_face_with_clock(&mut cache, normal, true, work)? {
+                frontier = next;
+                span = (span * 2.).min(tolerance * 16.);
+            } else {
+                span *= 0.5;
+            }
         }
     }
     Ok((frontier > start).then_some(frontier))
@@ -282,7 +317,8 @@ pub(super) fn planar_capsule_sweep(
 
 pub(super) use output::{
     rotating_box_ball_face_separated, rotating_box_capsule_separated,
-    rotating_capsule_ball_separated, rotating_cardinal_box_face_separated,
+    rotating_capsule_ball_separated, rotating_capsule_polyhedron_separated,
+    rotating_cardinal_box_face_separated,
 };
 mod output;
 pub(super) use output::anchored_capsule_face_separated;
