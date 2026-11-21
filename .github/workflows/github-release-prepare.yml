@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      attach_to_draft:
+        description: 'Build all Studio installers and attach the verified SDK and installers to a draft prerelease'
+        required: false
+        default: false
+        type: boolean
       signed_updates:
         description: 'Include signed Studio updater artifacts (requires signing keys)'
         required: false
@@ -28,11 +33,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate updater request
-        if: ${{ inputs.signed_updates && !inputs.include_studio }}
+        if: ${{ inputs.signed_updates && !inputs.include_studio && !inputs.attach_to_draft }}
         run: exit 1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Check draft version and selected ref
+        if: ${{ inputs.attach_to_draft }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import { githubRelease } from './packages/create-game/bin/github-release.mjs';
+          const release = githubRelease(process.env.RELEASE_VERSION, process.env.GITHUB_REPOSITORY);
+          if (release.version !== process.env.RELEASE_VERSION ||
+              (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== release.tag)) {
+            throw new Error('Enter an exact beta version and select its source branch or matching tag');
+          }
+          JS
       - name: Check Studio release identity before release builds
         if: ${{ inputs.signed_updates }}
         env:
@@ -58,11 +76,15 @@ jobs:
       - name: HTTP package install and game setup
         run: pnpm smoke:github-release-install -- --bundle-dir artifacts/github-release-candidate
       - name: Full generated game and Studio matrix
-        run: pnpm package:consumer-smoke -- --skip-build --skip-package-check --artifact-dir artifacts/consumer-smoke-github-release
+        env:
+          FERRUM_BROWSER_CHANNEL: chromium
+        run: |
+          pnpm exec playwright-core install --with-deps chromium
+          pnpm package:consumer-smoke -- --skip-build --skip-package-check --artifact-dir artifacts/consumer-smoke-github-release
       - name: Validate consumer report
         run: pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-github-release/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-github-release --expect-status passed
       - uses: actions/upload-artifact@v4
-        if: ${{ inputs.include_studio }}
+        if: ${{ inputs.include_studio || inputs.attach_to_draft }}
         with:
           name: engine-release-bundle
           path: artifacts/github-release-candidate/
@@ -77,7 +99,8 @@ jobs:
           if-no-files-found: ignore
 
   studio:
-    if: ${{ inputs.include_studio }}
+    if: ${{ inputs.include_studio || inputs.attach_to_draft }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -91,6 +114,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      - name: Preserve source bytes on Windows checkout
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -108,15 +134,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
       - uses: pnpm/action-setup@v4
         with:
           version: 10.8.0
           run_install: false
-      - run: cargo install wasm-pack --locked
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:github-release
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-release-bundle
+          path: ${{ runner.temp }}/ferrum-sdk
       - name: Build native Studio candidate
         shell: bash
         env:
@@ -131,7 +158,7 @@ jobs:
           if [ "$SIGNED_UPDATES" = "true" ]; then
             updater_args=(--with-updater)
           fi
-          pnpm release:distribution:prepare -- --component studio --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/studio-release
+          pnpm release:distribution:prepare -- --component studio --engine-bundle "$RUNNER_TEMP/ferrum-sdk" --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/studio-release
       - uses: actions/upload-artifact@v4
         with:
           name: studio-release-${{ matrix.platform }}
@@ -139,7 +166,7 @@ jobs:
           if-no-files-found: error
 
   assemble:
-    if: ${{ inputs.include_studio }}
+    if: ${{ inputs.include_studio || inputs.attach_to_draft }}
     needs: [prepare, studio]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -171,5 +198,38 @@ jobs:
           path: artifacts/distribution-candidate/
           if-no-files-found: error
 
-# This workflow only prepares reviewable artifacts. It does not create a tag,
-# publish a GitHub Release, or publish to npm.
+  attach-draft:
+    if: ${{ inputs.attach_to_draft }}
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: release-draft-${{ inputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: distribution-candidate
+          path: artifacts/distribution-candidate
+      - name: Attach verified files to the draft prerelease
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const moduleUrl = pathToFileURL(path.resolve('scripts/package/attach-draft-release.mjs'));
+            const { attachDraftRelease, draftReleaseApi } = await import(moduleUrl.href);
+            const version = process.env.RELEASE_VERSION;
+            const repository = process.env.GITHUB_REPOSITORY;
+            const commit = context.sha;
+            const api = draftReleaseApi(github, context.repo, `ferrum-web-v${version}`, commit);
+            const result = await attachDraftRelease({ bundle: 'artifacts/distribution-candidate', version, repository, commit, github: api });
+            await core.summary.addLink(`Ferrum2D ${version} draft`, result.url)
+              .addRaw(` · ${result.total} verified assets, ${result.uploaded} uploaded this run`).write();

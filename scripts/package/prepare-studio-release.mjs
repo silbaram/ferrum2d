@@ -1,11 +1,11 @@
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { githubRelease, DEFAULT_GITHUB_REPOSITORY } from "../../packages/create-game/bin/github-release.mjs";
 import { runReleaseCommand } from "./release-command.mjs";
 import { stageStudioUpdater, updaterSettings } from "./studio-updater.mjs";
-import { fileRecord, nativeChecks, readJson, releaseIdentity, requireNewOutput, requireSource, studioManifestName, studioPlatforms, writeNewBundle } from "./release-distribution.mjs";
+import { fileRecord, nativeChecks, readJson, releaseIdentity, requireNewOutput, requireSource, studioManifestName, studioPlatforms, validateEngineBundle, verifyAsset, writeNewBundle } from "./release-distribution.mjs";
 
 export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const targets = {
@@ -39,6 +39,7 @@ export async function studioReleasePlan(options, { root = repositoryRoot, platfo
     throw new Error("Studio releases require the Ferrum2D Studio product name and com.ferrum2d.studio identifier.");
   return { release: releaseIdentity(release), platform: native.name, arch, bundle: native.bundle,
     output: path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag, `studio-${native.name}-${arch}`)),
+    ...(options.engineBundle ? { engineBundle: path.resolve(options.engineBundle) } : {}),
     prerequisites: platform === "linux" ? ["Rust native toolchain", "pkg-config", "GTK 3", "WebKitGTK 4.1", "Tauri Linux build libraries"] : ["Rust native toolchain", "Tauri platform build prerequisites"],
     signing: options.noSign ? "disabled" : "platform configuration; not verified by this script",
     updater: Boolean(options.withUpdater),
@@ -72,8 +73,35 @@ export async function prepareStudioRelease(options, { root = repositoryRoot, pla
   const previous = new Map();
   for (const file of await installerFiles(bundleRoot, native.extension, plan.release.version)) previous.set(file, (await lstat(file)).mtimeMs);
   const temp = await mkdtemp(path.join(os.tmpdir(), "ferrum-studio-release-"));
+  const stagedDirectories = [];
   try {
-    if (!options.reuseRuntimeBuild) {
+    let sdkAsset;
+    if (plan.engineBundle) {
+      const manifest = await validateEngineBundle(plan.engineBundle);
+      if (manifest.release.repository !== plan.release.repository || manifest.release.version !== plan.release.version ||
+          manifest.source.commit !== source.commit || source.dirty || manifest.source.dirty ||
+          !manifest.checks.build || !manifest.checks.packageCheck) {
+        throw new Error("Studio requires a checked SDK bundle from the same release and clean commit");
+      }
+      sdkAsset = manifest.assets.find(asset => asset.package === "@ferrum2d/ferrum-web");
+      // Extract from the private, checksum-verified copy. Leave the workspace package.json intact.
+      await copyFile(path.join(plan.engineBundle, sdkAsset.file), path.join(temp, sdkAsset.file));
+      await verifyAsset(temp, sdkAsset);
+      await invoke("tar", ["-xzf", sdkAsset.file, "package/pkg", "package/dist"], { cwd: temp });
+      for (const directory of ["pkg", "dist"]) {
+        const destination = path.join(root, "packages/ferrum-web", directory);
+        await mkdir(destination); // Exclusive: cleanup only directories created by this run.
+        stagedDirectories.push(destination);
+        await cp(path.join(temp, "package", directory), destination, { recursive: true, force: false,
+          filter: async entry => {
+            const stat = await lstat(entry);
+            if (!stat.isFile() && !stat.isDirectory()) throw new Error(`Unexpected SDK runtime entry: ${entry}`);
+            return true;
+          } });
+      }
+      // wasm-pack normally creates this ignore file; it is intentionally excluded from SDK tarballs.
+      await writeFile(path.join(root, "packages/ferrum-web/pkg/.gitignore"), "*\n", { flag: "wx" });
+    } else if (!options.reuseRuntimeBuild) {
       await invoke("pnpm", ["build:wasm"]);
       await invoke("pnpm", ["--filter", "@ferrum2d/ferrum-web", "build"]);
     }
@@ -120,7 +148,8 @@ export async function prepareStudioRelease(options, { root = repositoryRoot, pla
       stage, release: plan.release, platform: identity, started, fileRecord }) : undefined;
     const manifest = { format: "ferrum2d.studio-release.bundle", version: 1, release: plan.release, source, published: false,
       platform: { ...identity, target, bundle: native.bundle },
-      runtime: { package: "@ferrum2d/ferrum-web", releaseVersion: plan.release.version, wasmSha256: runtime.sha256 },
+      runtime: { package: "@ferrum2d/ferrum-web", releaseVersion: plan.release.version, wasmSha256: runtime.sha256,
+        ...(sdkAsset ? { tarballSha256: sdkAsset.sha256 } : {}) },
       checks: { nativeBuild: true, frontendWasm: true, iconGeneration: true, nativeGui: "not-run", signing: "not-verified" },
       signingRequested: options.noSign ? false : "platform-default", manualReleaseGate: plan.manualReleaseGate,
       assets: [{ ...asset, url: `${githubRelease(plan.release.version, plan.release.repository).baseUrl}/${file}` }],
@@ -135,7 +164,9 @@ export async function prepareStudioRelease(options, { root = repositoryRoot, pla
       `실제 설치·파일 선택·저장/재열기·렌더링 및 서명 상태는 공개 전에 확인해야 한다. 이 묶음은 아직 공개되지 않았다.\n`);
     await writeNewBundle(stage, plan.output, manifestName);
     return { output: plan.output, manifest };
-  } finally { await rm(temp, { recursive: true, force: true }); }
+  } finally {
+    await Promise.all([...stagedDirectories, temp].map(directory => rm(directory, { recursive: true, force: true })));
+  }
 }
 
 async function filesWithExtension(root, extension) {

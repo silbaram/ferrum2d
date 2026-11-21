@@ -90,7 +90,7 @@ pnpm validate:pages-artifact
 | `language-boundaries.yml` | PR·main push·수동 실행. 소유권 규칙/negative fixture, 현재 Wasm build, SDK tests, 실제 ABI·frame 수명 검사 |
 | `ci.yml` | `workflow_dispatch` 수동 실행. Rust·native·package·SDK·browser 기본 검사와 선택형 확장 |
 | `pages.yml` | 수동 Pages build·artifact 검증·배포 |
-| `github-release-prepare.yml` | 수동 release 준비. 선택형 Studio OS 빌드와 서명 자료 준비; 공개 완료와 구분 |
+| `github-release-prepare.yml` | 수동 SDK·Studio 빌드 및 설치 검증. `attach_to_draft` 선택 시 세 OS 설치 파일과 SDK를 릴리스 초안에 첨부하고 원격 파일 목록·크기·해시를 대조 |
 
 아래의 **CI 기본 gate**는 `ci.yml`을 실행할 때 기본으로 포함되는 검사라는 뜻이다.
 PR/main push마다 전체 CI·browser matrix·package consumer가 실행된다는 뜻이 아니다.

@@ -91,6 +91,11 @@ pnpm release:distribution:prepare -- --version "$ferrum_candidate_version" --com
 
 기본 component는 `all`이다. 기본 출력은 `artifacts/distribution/ferrum-web-v<버전>/engine`, `studio-<OS>-<arch>`, `all`이다. `--output <새 디렉터리>`, `--repository owner/repo`를 지원하며 기존 파일·디렉터리·심볼릭 링크는 덮어쓰지 않는다. tag/Release/npm publish와 업로드는 실행하지 않는다. 각 component를 별도로 준비한 뒤 합쳐도 된다.
 
+Actions의 Studio 빌드는 `--component studio --engine-bundle <검증한 SDK 묶음 디렉터리>`를
+사용한다. 같은 커밋의 새 체크아웃에서 이 옵션을 쓰면 SDK tarball의 JavaScript와 Wasm을
+그대로 내장하며, 설치 파일에 사용한 tarball과 Wasm의 SHA-256을 Studio manifest에 기록한다.
+SDK를 직접 빌드하는 경우에만 Wasm target과 wasm-pack이 필요하다.
+
 ```bash
 ferrum_bundle_dir="artifacts/distribution/ferrum-web-v${ferrum_candidate_version}"
 pnpm release:distribution:assemble -- \
@@ -114,7 +119,7 @@ pnpm release:distribution:verify -- --bundle "$ferrum_bundle_dir/combined"
 
 ### Native 빌드 조건
 
-현재 OS의 x64/arm64 Rust host를 사용한다. cross compilation은 제공하지 않으며 CI도 각 OS에서 직접 빌드한다. Node.js 22, pnpm 10.8, Rust stable, `wasm32-unknown-unknown`, wasm-pack과 [Tauri OS별 필수 도구](https://v2.tauri.app/start/prerequisites/)가 필요하다. Windows는 MSVC C++ build tools와 WebView2 환경, macOS는 Xcode command line tools가 필요하다. Linux Debian/Ubuntu 예시는 다음과 같다.
+현재 OS의 x64/arm64 Rust host를 사용하며 CI도 각 OS에서 직접 빌드한다. Node.js 22, pnpm 10.8, Rust stable과 [Tauri OS별 필수 도구](https://v2.tauri.app/start/prerequisites/)가 필요하다. Windows는 MSVC C++ build tools와 WebView2 환경, macOS는 Xcode command line tools가 필요하다. Linux Debian/Ubuntu 예시는 다음과 같다.
 
 ```bash
 sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
@@ -167,7 +172,7 @@ metadata는 정확한 version·Tauri platform key·고정 GitHub release artifac
 
 수동 workflow에서 `include_studio`와 `signed_updates`를 함께 켜면 위 환경변수와 같은 이름의
 repository secrets를 읽어 OS별 자료를 준비한다. 서명된 업데이트 자료가 필요한 후보만 `signed_updates=true`를 사용한다.
-워크플로는 준비 artifact만 만들며 Release에 자동 첨부/공개하지 않는다.
+서명 자료도 통합 묶음에 포함된다. 같은 실행에서 `attach_to_draft`를 선택하면 이 묶음을 초안에 첨부한다.
 
 최초에는 이 기능과 올바른 공개키가 들어간 앱을 직접 설치해야 한다. 그 이후 더 높은 버전의 signed artifact로
 갱신할 수 있다. Linux `.deb`는 AppImage 자동 교체 경로를 사용하지 않으므로 수동 재설치한다.
@@ -187,10 +192,32 @@ HTTP 설치 smoke는 SHA-256을 확인하고 localhost에서 네 패키지의 �
 
 전체 consumer smoke는 기존 source 패키지를 사용해 네 템플릿의 게임 실행과 경량 Studio까지 검사한다. 릴리스 metadata에 의한 네 템플릿 URL 생성은 `test:github-release`에서 별도로 검증한다.
 
-`.github/workflows/github-release-prepare.yml`은 수동 실행으로 이 준비·HTTP 설치·전체 consumer matrix를 실행하고 Actions artifact를 업로드한다. `include_studio`를 켜면 Windows/Linux/macOS native matrix와 통합 검증을 추가해 `distribution-candidate` artifact를 만든다. 기본값은 기존 SDK 준비만 수행한다. macOS의 arch는 runner의 native Rust host를 따른다. CI Studio는 unsigned 검토용 빌드이며 GUI/서명 증거는 별도다. `contents: read` 권한만 사용하며 Git tag/GitHub Release/npm 공개는 하지 않는다. 기존 수동 CI validate에도 `test:github-release`를 연결한다. 이 테스트는 CLI·Windows 명령 실행 방식·세 OS의 모의 빌드 산출물 계약·변조/구버전 파일 거부·통합 검증을 검사하며 실제 native 설치 테스트를 대체하지 않는다. tag ref에서 실행해도 npm 공개를 요구하지 않도록 `private: true` candidate/tag 검사와 일반 package 검사를 사용한다. npm publish 전용 검사는 별도 npm 절차에서 실행한다.
+**Actions → Prepare GitHub Release assets → Run workflow**에서 배포할 소스와 정확한 베타 버전을 지정한다.
+
+| 실행 옵션 | 결과 |
+| --- | --- |
+| 기본값 | SDK를 빌드하고 HTTP 설치와 게임 템플릿 4종을 검사한다. Actions 실행 화면에서 검토용 파일을 받을 수 있다. |
+| `include_studio` | 검증된 SDK를 각 OS의 Studio에 내장하고 Windows·Linux·macOS 설치 파일을 만든다. 통합 묶음은 Actions의 `distribution-candidate`에 있다. |
+| `attach_to_draft` | Studio 빌드를 포함한다. 모든 검사 성공 후 같은 버전의 GitHub Release 초안을 만들거나 이어서 첨부한다. 실행 요약에서 초안 링크를 연다. |
+| `signed_updates` | Studio를 포함하는 실행에서 서명된 업데이트 데이터도 준비한다. |
+
+초안 첨부 작업만 `contents: write` 권한을 사용한다. 첨부 전 배포 묶음의 저장소·버전·커밋과
+깨끗한 소스 상태, SDK 및 세 OS 설치 파일의 체크섬을 검사한다. 각 Studio는 같은 SDK tarball과
+Wasm을 사용한다. macOS 설치 파일의 아키텍처는 해당 runner의 native Rust host를 따른다.
+Actions가 만든 검토용 설치 파일의 실제 GUI와 OS 서명 상태는 공개 전 OS별로 확인한다.
+
+업로드가 중단되면 같은 Actions 실행에서 **Re-run failed jobs**를 선택해 검증된 묶음을 다시 사용한다.
+크기와 SHA-256이 일치하는 기존 첨부 파일은 재사용하고 누락분만 보낸다. GitHub가 기록한 전체
+파일 목록·크기·해시가 일치해야 작업이 성공한다. 이름이나 내용이 충돌하면 해당 초안에서 파일을
+확인한다. 예를 들어 GitHub가 미완료 업로드를 빈 파일로 남겼다면 초안에서 해당 파일을 제거한 뒤
+같은 작업을 재시도한다. 이미 공개한 버전을 갱신할 때는 새 베타 버전을 사용한다.
 
 ## 실제 공개와 업데이트
 
-준비 결과, 검사 보고서, source commit/dirty 상태를 검토하고 공개할 소스를 커밋한 뒤 같은 소스로 최종 묶음을 다시 만든다. 명시적 사용자 승인 후 `ferrum-web-v<버전>` tag의 GitHub prerelease에 네 tarball과 manifest/checksum/설치 안내를 올린다. Studio도 제공하는 릴리스는 통합 묶음의 OS별 설치 파일과 개별/통합 manifest·체크섬·안내를 함께 첨부한다. tag는 manifest의 source commit과 일치해야 한다. GitHub 전용 배포에는 npm publish용 `private: false` 전환이나 `release:publish-check`가 필요 없다.
+초안에서 SDK 네 tarball, Windows `.exe`·macOS `.dmg`·Linux `.deb`, 설치 안내와 체크섬을 확인한다.
+기존 `ferrum-web-v<버전>` 태그가 있으면 배포 소스와 같은 커밋이어야 한다. 새 초안은 빌드한 커밋 SHA를
+대상으로 한다. [릴리스 노트](release-notes-template.md)를 작성하고 승인 후 **Publish release**를 누르면
+사용자가 **Releases → 해당 버전 → Assets**에서 내려받을 수 있다. SDK만 제공하는 경우에는 기존
+준비 묶음의 네 tarball과 manifest·체크섬·설치 안내를 같은 커밋의 prerelease에 첨부한다.
 
 공개 후에는 `INSTALL.md`의 실제 URL을 빈 디렉터리에서 실행해 프로젝트 생성·설치·게임 검증을 다시 확인한다. 공개한 버전의 파일을 교체하는 대신 새 beta 버전을 만든다. 업데이트 시 게임 `package.json`의 engine/viewer URL, `ferrum:agents` URL, 출처 metadata를 같은 릴리스로 함께 변경한 뒤 `npm install`과 `ferrum:check`를 실행한다.
