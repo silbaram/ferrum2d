@@ -16,7 +16,8 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 supports installing Chromium dependencies on Ubuntu 24.04.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
