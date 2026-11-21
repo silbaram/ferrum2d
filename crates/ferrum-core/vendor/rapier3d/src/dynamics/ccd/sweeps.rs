@@ -16,8 +16,8 @@ use crate::pipeline::{ActiveHooks, PairFilterContext, PhysicsHooks};
 #[cfg(feature = "dim2")]
 use parry::query::sweep_toi::CORE_FRACTION;
 use parry::query::sweep_toi::{
-    sweep_time_of_impact, sweep_time_of_impact_composite, Sweep, SweepCompositeFastShape,
-    SweepToiStatus, ToiProxy,
+    Sweep, SweepCompositeFastShape, SweepToiStatus, ToiProxy, sweep_time_of_impact,
+    sweep_time_of_impact_composite,
 };
 use parry::query::{NonlinearRigidMotion, QueryDispatcher};
 use parry::shape::{Shape, TypedShape};

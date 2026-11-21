@@ -5,8 +5,8 @@
 pub(crate) use self::ccd::post_solve_ccd_active;
 #[cfg(feature = "alloc")]
 pub use self::ccd::{
-    solver_ccd_active, solver_ccd_body_tier_allows, solver_ccd_pair_kind,
-    solver_ccd_shape_supported, CCDSolver, CcdClamp, CcdDiagnostics,
+    CCDSolver, CcdClamp, CcdDiagnostics, solver_ccd_active, solver_ccd_body_tier_allows,
+    solver_ccd_pair_kind, solver_ccd_shape_supported,
 };
 pub use self::coefficient_combine_rule::CoefficientCombineRule;
 #[cfg(feature = "dim3")]
@@ -15,7 +15,7 @@ pub use self::integration_parameters::{IntegrationParameters, SpringCoefficients
 #[cfg(feature = "alloc")]
 pub use self::island_manager::IslandManager;
 #[cfg(feature = "alloc")]
-pub(crate) use self::island_manager::{ImpulseJointIslandEvent, PersistentIslands, INVALID_ISLAND};
+pub(crate) use self::island_manager::{INVALID_ISLAND, ImpulseJointIslandEvent, PersistentIslands};
 
 #[cfg(feature = "alloc")]
 pub(crate) use self::joint::JointGraphEdge;
@@ -66,9 +66,9 @@ mod stored_body_numerics;
 #[cfg(all(feature = "serde-serialize", feature = "dim3", feature = "f32"))]
 #[doc(hidden)]
 pub use stored_body_numerics::{
-    validate_stored_body_numerics, StoredBodyNumericError, StoredBodyNumericLimits,
+    StoredBodyNumericError, StoredBodyNumericLimits, validate_stored_body_numerics,
 };
 
 #[cfg(feature = "serde-serialize")]
 #[doc(hidden)]
-pub use island_manager::{validate_stored_islands, StoredIslandError, StoredIslandLimits};
+pub use island_manager::{StoredIslandError, StoredIslandLimits, validate_stored_islands};

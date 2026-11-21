@@ -2,6 +2,7 @@ use super::*;
 use crate::pipeline::{EventHandler, SolverBodyIntegration, SolverBodyMotion};
 use crate::prelude::*;
 use std::sync::Mutex;
+use std::vec::Vec;
 
 #[derive(Default)]
 struct Observe {

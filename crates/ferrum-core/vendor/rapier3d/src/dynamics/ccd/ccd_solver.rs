@@ -11,9 +11,8 @@ use crate::prelude::{ActiveEvents, CollisionEventFlags};
 use parry::query::sweep_toi::Sweep;
 
 use super::sweeps::{
-    collect_fixed_targets, collect_soft_targets, is_bullet, map_bodies_parallel,
-    post_solve_ccd_active, sweep_fast_body, BodyContinuousResult, CcdTargets, MotionSource,
-    PseudoHitMode,
+    BodyContinuousResult, CcdTargets, MotionSource, PseudoHitMode, collect_fixed_targets,
+    collect_soft_targets, is_bullet, map_bodies_parallel, post_solve_ccd_active, sweep_fast_body,
 };
 
 /// Continuous Collision Detection solver preventing fast objects from tunneling:

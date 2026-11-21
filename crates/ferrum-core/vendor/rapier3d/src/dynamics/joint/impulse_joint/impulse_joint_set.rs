@@ -77,7 +77,11 @@ pub struct ImpulseJointSet {
 impl ImpulseJointSet {
     #[cfg(feature = "serde-serialize")]
     pub(crate) fn stored_island_edits(&self) -> (&[ImpulseJointHandle], bool, usize) {
-        (&self.modified_joints, self.all_joints_modified, self.joint_ids.capacity())
+        (
+            &self.modified_joints,
+            self.all_joints_modified,
+            self.joint_ids.capacity(),
+        )
     }
     /// Creates a new empty set of impulse_joints.
     pub fn new() -> Self {

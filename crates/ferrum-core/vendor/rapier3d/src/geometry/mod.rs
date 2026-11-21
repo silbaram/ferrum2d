@@ -17,7 +17,7 @@ pub mod file_shape_aliases;
 ))]
 #[doc(hidden)]
 pub use narrow_phase::stored_numerics::{
-    validate_stored_contact_numerics, StoredContactNumericError, StoredContactNumericLimits,
+    StoredContactNumericError, StoredContactNumericLimits, validate_stored_contact_numerics,
 };
 
 #[cfg(all(feature = "alloc", feature = "serde-serialize"))]
@@ -25,7 +25,7 @@ pub(crate) mod stored_references;
 #[cfg(all(feature = "alloc", feature = "serde-serialize"))]
 #[doc(hidden)]
 pub use stored_references::{
-    validate_stored_references, StoredReferenceError, StoredReferenceLimits,
+    StoredReferenceError, StoredReferenceLimits, validate_stored_references,
 };
 
 // Ferrum2D per-contact correction extension.
@@ -47,18 +47,18 @@ pub use self::collider_handle::ColliderHandle;
 #[cfg(feature = "alloc")]
 pub use self::collider_set::{ColliderSet, ModifiedColliders};
 #[cfg(feature = "alloc")]
-pub(crate) use self::contact_pair::relative_pose_drift;
-#[cfg(feature = "alloc")]
 pub(crate) use self::contact_pair::ContactRecycleState;
 #[cfg(feature = "alloc")]
 pub(crate) use self::contact_pair::PairEventStatus;
 #[cfg(feature = "alloc")]
 pub(crate) use self::contact_pair::SOLVER_DYNAMIC_COLOR_COUNT;
 #[cfg(feature = "alloc")]
+pub(crate) use self::contact_pair::relative_pose_drift;
+#[cfg(feature = "alloc")]
 pub use self::contact_pair::{
-    is_bouncy, is_bouncy_simd, ContactData, ContactId, ContactManifoldData, ContactPair,
-    IntersectionPair, PairContacts, RigidPairContacts, SimdSolverContact, SolverContact,
-    SolverContactGeneric, SolverContacts, SolverFlags, NEW_CONTACT_BIT,
+    ContactData, ContactId, ContactManifoldData, ContactPair, IntersectionPair, NEW_CONTACT_BIT,
+    PairContacts, RigidPairContacts, SimdSolverContact, SolverContact, SolverContactGeneric,
+    SolverContacts, SolverFlags, is_bouncy, is_bouncy_simd,
 };
 #[cfg(feature = "alloc")]
 pub use self::interaction_graph::{
@@ -68,14 +68,14 @@ pub use self::interaction_groups::{Group, InteractionGroups, InteractionTestMode
 #[cfg(feature = "alloc")]
 pub use self::mesh_converter::{MeshConverter, MeshConverterError};
 #[cfg(feature = "alloc")]
+pub use self::narrow_phase::NarrowPhase;
+#[cfg(feature = "alloc")]
 pub(crate) use self::narrow_phase::soft_contacts;
 #[cfg(feature = "alloc")]
 pub use self::narrow_phase::soft_contacts::{
     SoftContactImpulse, SoftEdgeCandidate, SoftEdgePass, SoftPairContacts, SoftVertexCandidate,
     SoftVertexHits, SoftVertexPass, SoftVolumePatch, VolumeBin,
 };
-#[cfg(feature = "alloc")]
-pub use self::narrow_phase::NarrowPhase;
 #[cfg(feature = "alloc")]
 pub use parry::utils::Array2;
 
@@ -315,9 +315,8 @@ pub(crate) use self::narrow_phase::ContactManifoldIndex;
 pub use parry::shape::*;
 
 #[cfg(all(feature = "serde-serialize", feature = "alloc"))]
-pub(crate) fn default_persistent_query_dispatcher(
-) -> alloc::sync::Arc<dyn parry::query::PersistentQueryDispatcher<ContactManifoldData, ContactData>>
-{
+pub(crate) fn default_persistent_query_dispatcher()
+-> alloc::sync::Arc<dyn parry::query::PersistentQueryDispatcher<ContactManifoldData, ContactData>> {
     alloc::sync::Arc::new(parry::query::DefaultQueryDispatcher)
 }
 

@@ -9969,12 +9969,17 @@ Vendored upstream: https://crates.io/api/v1/crates/rapier3d/0.36.1/download
 Upstream archive SHA-256: 033e2edc815d61ab97bd74ed5d1cbea5ebe575218774a7cfedbd3551f0033317
 Ferrum2D modifies this vendored source. The recorded changes below do not replace its upstream license.
 
------ BEGIN FERRUM-PATCHES.md (original-source SHA-256 8d43ec7eafa239708f0dbd242266e648152d265df6e9ba57fae12f9dd0abd8bb) -----
+----- BEGIN FERRUM-PATCHES.md (original-source SHA-256 3c1d97ab06880c94486c372bc71bcab99f6765176084e77c1054f3f7b4606236) -----
 # Ferrum2D의 Rapier3D 수정
 
 원본은 crates.io `rapier3d 0.36.1`이다. `UPSTREAM.json`은 원본 archive SHA-256,
 소스별 hash, 라이선스 출처를 기록한다. `LICENSE`는 Apache-2.0 원문이다.
 이 디렉터리의 Rust 소스는 상류 코드이며 아래 수정만 Ferrum2D에서 적용한다.
+
+- 두 3D 마찰 모델은 고정면을 정면으로 향하는 네 접촉점의 법선 충격량을 함께 풀 수 있다.
+  네 점의 유효질량, 속도 편향, 연성 계수와 기존 충격량이 같고 회전 효과가 두 쌍에서 정확히
+  상쇄될 때 적용한다. 이 경우 같은 크기의 법선 충격량이 네 점에 분배되며 기존 마찰 풀이와
+  충격량 누적 및 기록에 그대로 전달된다. 구현은 아래 세 접촉 제약 파일에 있다.
 
 - `src/dynamics/solver/contact_constraint/contact_constraint_element.rs`:
   두 3D 접선 마찰 solver가 공유하는 2×2 풀이를 추가한다. 평면 축 잠금으로 rank가 1이 된 경우
@@ -10020,6 +10025,12 @@ Ferrum2D modifies this vendored source. The recorded changes below do not replac
   `tangent_impulse`도 누계로 채운다. twist friction의 별도 각충격량은 이 선형 충격 보고에 포함하지 않는다.
   보고 geometry 필드로 인해 ContactData와 normal constraint의 메모리가 증가하며 최종 밀집 장면
   성능·메모리 수용 검증이 필요하다. 검증은 `artifacts/physics-3d/contact-impulse-qa`에 기록한다.
+
+- `src/dynamics/ccd/ccd_solver.rs`, `src/dynamics/ccd/sweeps.rs`,
+  `src/dynamics/solver/staged_island_solver/worker.rs`, `src/pipeline/physics_pipeline/substep.rs`,
+  `src/dynamics/ccd/mod.rs`, `src/dynamics/mod.rs`:
+  평면 축 잠금과 실제 Z축 회전이 확인되는 단일 박스 동적 바디는 post-solve CCD 활성화 시
+  COM 기준 XY 회전 반경으로 재판정한다. 준비된 CCD 계획과 native writeback에 같은 판정을 적용한다.
 
 - `src/dynamics/ccd/ccd_solver.rs`, `src/dynamics/ccd/sweeps.rs`,
   `src/dynamics/ccd/mod.rs`, `src/dynamics/mod.rs`:

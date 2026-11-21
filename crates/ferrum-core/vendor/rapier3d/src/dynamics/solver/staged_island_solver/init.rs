@@ -22,7 +22,7 @@ use crate::dynamics::FrictionModel;
 use super::sync::StageSync;
 use super::worker::run_worker;
 use super::{
-    ChunkSegment, GroupLayout, SharedCtx, StagedIslandSolver, CHUNK_BATCH, LAYOUT_REF_WORKERS,
+    CHUNK_BATCH, ChunkSegment, GroupLayout, LAYOUT_REF_WORKERS, SharedCtx, StagedIslandSolver,
 };
 
 impl StagedIslandSolver {

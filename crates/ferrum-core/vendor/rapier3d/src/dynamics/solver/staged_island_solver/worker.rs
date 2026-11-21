@@ -7,6 +7,7 @@ use core::sync::atomic::Ordering;
 
 #[cfg(feature = "dim3")]
 use crate::dynamics::rigid_body::gyroscopic_corrected_angvel;
+use crate::dynamics::solver::JointConstraintsSet;
 use crate::dynamics::solver::contact_constraint::ContactWithCoulombFrictionBuilder;
 #[cfg(feature = "dim3")]
 use crate::dynamics::solver::contact_constraint::ContactWithTwistFrictionBuilder;
@@ -15,14 +16,13 @@ use crate::dynamics::solver::solver_body::{
     SOLVER_BODY_ALLOW_FAST_ROTATION, SOLVER_BODY_KINEMATIC, SOLVER_BODY_MOTION_RESOLVED,
 };
 use crate::dynamics::solver::solver_contact_graph::ContactRef;
-use crate::dynamics::solver::JointConstraintsSet;
 use crate::dynamics::{JointGraphEdge, RigidBodyType, RigidBodyVelocity};
 use crate::geometry::ContactManifold;
 use crate::math::Real;
 use parry::math::SIMD_WIDTH;
 
 use super::solve::solve_pass;
-use super::{chunk_at, stage_batch, SharedCtx, BODY_BATCH};
+use super::{BODY_BATCH, SharedCtx, chunk_at, stage_batch};
 
 /// The stage machine executed by every worker. See [`SharedCtx`] for the safety contract.
 pub(super) unsafe fn run_worker(ctx: &SharedCtx, worker_id: usize) {

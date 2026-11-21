@@ -1,6 +1,6 @@
 use crate::alloc_prelude::*;
 use crate::dynamics::solver::solver_body::SolverBodies;
-use crate::dynamics::{solver::SolverVel, MultibodyLinkId};
+use crate::dynamics::{MultibodyLinkId, solver::SolverVel};
 #[cfg(feature = "dim3")]
 use crate::math::{AngVector, Rotation};
 use crate::math::{DVector, Real};
