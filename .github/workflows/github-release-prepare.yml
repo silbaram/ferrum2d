@@ -38,6 +38,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          package-manager-cache: false
       - name: Check draft version and selected ref
         if: ${{ inputs.attach_to_draft }}
         env:
@@ -121,6 +122,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          package-manager-cache: false
       - name: Check Studio release identity before native setup
         if: ${{ inputs.signed_updates }}
         shell: bash
@@ -175,6 +177,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          package-manager-cache: false
       - uses: actions/download-artifact@v7
         with:
           name: engine-release-bundle
