@@ -1,5 +1,40 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { RUNTIME_BUDGET_PROFILES, DEPLOYMENT_RUNTIME_SAMPLE_FRAMES } from "./runtime-budget-profiles.mjs";
+
+export async function probeFixed50msNativeGameplayNavigation(browser, url) {
+  // Start this probe in a clean context, before any other probe loads the SDK.
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  try {
+    await page.addInitScript(() => {
+      const schedule = window.requestAnimationFrame.bind(window);
+      let lastTimestamp;
+      let inputTimeMs = 0;
+      window.requestAnimationFrame = callback => schedule(timestamp => {
+        if (timestamp !== lastTimestamp) {
+          lastTimestamp = timestamp;
+          inputTimeMs += 50;
+        }
+        callback(inputTimeMs);
+      });
+    });
+    await page.goto(url);
+    const result = await probeNativeGameplayNavigation(page);
+    assert.deepEqual(errors, []);
+    assert.equal(result.firstFrame.backendSteps, 5);
+    assert.equal(result.frames, 81);
+    assert.equal(result.steps, 405);
+    const stateSha256 = createHash("sha256")
+      .update(JSON.stringify([result.initial, result.final, result.stats])).digest("hex");
+    // Positions and navigation counters from the original 405-step reproduction.
+    assert.equal(stateSha256, "b8b5b9a178db225d391a05ee88e4c4fcbbd0eab0a69def7ff01c7f0abca9e163");
+    return { ...result, inputFrameMs: 50, stateSha256 };
+  } finally {
+    await page.close();
+  }
+}
 
 export async function probeNativeGameplayNavigation(page) {
   const result=await page.evaluate(async ({budget,sampleFrames})=>{
@@ -12,6 +47,7 @@ export async function probeNativeGameplayNavigation(page) {
     await Promise.all([renderer.loadTexture(0,white),renderer.loadTexture(11,white)]);
     let ids,finish,reject,timer,elapsed=0,frames=0,steps=0,maxVertices=0,maxWork=0,maxSearches=0;
     let maxFrameTimeMs=0,maxRustUpdateTimeMs=0,maxJsHeapUsedBytes=0,maxWasmLinearMemoryBytes=0,minSeparation=Infinity;
+    let firstFrame, maxSubsequentRustUpdateTimeMs = 0;
     let maxRenderTimeMs=0,maxDrawCalls=0,maxRenderCommandCount=0,maxTextureSwitchCount=0,maxBillboards=0,maxFixedSteps=0,maxSolidChecks=0,maxTileChecks=0,maxCcdChecks=0,maxCollisionPairs=0;
     const poses=()=>{
       const view=e.queryUnifiedPhysicsBodyStates(ids);
@@ -25,7 +61,10 @@ export async function probeNativeGameplayNavigation(page) {
         maxTextureSwitchCount=Math.max(maxTextureSwitchCount,rendered.textureSwitchCount);maxBillboards=Math.max(maxBillboards,rendered.spatial?.billboardCount??0);
         maxFixedSteps=Math.max(maxFixedSteps,frame.physics.fixedSteps);maxSolidChecks=Math.max(maxSolidChecks,frame.physics.solidCandidateChecks);
         maxTileChecks=Math.max(maxTileChecks,frame.physics.tileCandidateChecks);maxCcdChecks=Math.max(maxCcdChecks,frame.physics.ccdChecks);maxCollisionPairs=Math.max(maxCollisionPairs,frame.physics.collisionPairs);
-        frames++;steps+=frame.unifiedPhysics?.frame.backendSteps??0;elapsed+=frame.physics.fixedConsumedSeconds;
+        const backendSteps = frame.unifiedPhysics?.frame.backendSteps ?? 0;
+        if (frames === 0) firstFrame = { backendSteps, rustUpdateTimeMs: frame.rustUpdateTimeMs };
+        else maxSubsequentRustUpdateTimeMs = Math.max(maxSubsequentRustUpdateTimeMs, frame.rustUpdateTimeMs);
+        frames++;steps+=backendSteps;elapsed+=frame.physics.fixedConsumedSeconds;
         maxFrameTimeMs=Math.max(maxFrameTimeMs,frame.frameTimeMs);maxRustUpdateTimeMs=Math.max(maxRustUpdateTimeMs,frame.rustUpdateTimeMs);
         maxJsHeapUsedBytes=Math.max(maxJsHeapUsedBytes,performance.memory?.usedJSHeapSize??0);
         maxWasmLinearMemoryBytes=Math.max(maxWasmLinearMemoryBytes,frame.wasmLinearMemoryBytes??0);
@@ -71,7 +110,7 @@ export async function probeNativeGameplayNavigation(page) {
         e.restoreRuntimeCheckpoint(checkpoint);
         for(const expected of trace){e.stepRigidBodies(Math.fround(0.01));if(JSON.stringify(poses())!==JSON.stringify(expected))throw new Error("dense Native checkpoint continuation differs");}
       }finally{checkpoint.dispose();}
-      return {initial,final,goal,stats,frames,steps,maxVertices,maxWork,maxSearches,minSeparation,maxFrameTimeMs,maxRustUpdateTimeMs,maxJsHeapUsedBytes,maxWasmLinearMemoryBytes,maxRenderTimeMs,maxDrawCalls,maxRenderCommandCount,maxTextureSwitchCount,maxBillboards,maxFixedSteps,maxSolidChecks,maxTileChecks,maxCcdChecks,maxCollisionPairs,elapsed,backend:e.physicsBackend(),state:e.dataSceneState(),checkpointSixStepExact:true,budgetProfile:"physics-sandbox",budget};
+      return {initial,final,goal,stats,frames,steps,firstFrame,maxSubsequentRustUpdateTimeMs,maxVertices,maxWork,maxSearches,minSeparation,maxFrameTimeMs,maxRustUpdateTimeMs,maxJsHeapUsedBytes,maxWasmLinearMemoryBytes,maxRenderTimeMs,maxDrawCalls,maxRenderCommandCount,maxTextureSwitchCount,maxBillboards,maxFixedSteps,maxSolidChecks,maxTileChecks,maxCcdChecks,maxCollisionPairs,elapsed,backend:e.physicsBackend(),state:e.dataSceneState(),checkpointSixStepExact:true,budgetProfile:"physics-sandbox",budget};
     } finally{clearTimeout(timer);e.destroy();renderer.destroy();canvas.remove();}
   },{budget:RUNTIME_BUDGET_PROFILES["physics-sandbox"],sampleFrames:DEPLOYMENT_RUNTIME_SAMPLE_FRAMES});
   assert.equal(result.backend,"unified-3d");assert.equal(result.state,"playing");assert.equal(result.stats.agents,64);

@@ -32,7 +32,7 @@ import { probeUnifiedDash } from "./unified-physics-dash-probe.mjs";
 import { probeUnifiedCombatMovement } from "./unified-physics-combat-movement-probe.mjs";
 import { probeUnifiedCombatNavigation } from "./unified-physics-combat-navigation-probe.mjs";
 import { probeUnifiedCombatCrowd } from "./unified-physics-combat-crowd-probe.mjs";
-import { probeNativeGameplayNavigation } from "./native-gameplay-navigation-probe.mjs";
+import { probeFixed50msNativeGameplayNavigation, probeNativeGameplayNavigation } from "./native-gameplay-navigation-probe.mjs";
 import { probeUnifiedCombatPatterns } from "./unified-physics-combat-patterns-probe.mjs";
 import { probeRuntimeCheckpoint, probePendingRuntimeCheckpoint, probePendingJointRuntimeCheckpoint } from "./runtime-checkpoint-probe.mjs";
 
@@ -43,8 +43,9 @@ await runReleaseCommand("pnpm", ["pack", "--pack-destination", output], { cwd: r
 const tarball = (await readdir(output)).find(name => name.endsWith(".tgz"));
 assert(tarball);
 await runReleaseCommand("tar", ["-xzf", resolve(output, tarball), "-C", output]);
-const html = `<!doctype html><meta charset="utf-8">
-<script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script>
+const importMapPage = `<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/package/dist/core.js","@ferrum2d/ferrum-web/authoring":"/package/dist/authoring.js","@ferrum2d/ferrum-web/quality":"/package/dist/quality.js"}}</script>`;
+const html = `${importMapPage}
 <script type="module">
 import { createEngine, UNIFIED_PHYSICS_STATE_LAYOUT as layout } from '@ferrum2d/ferrum-web/core';
 const sample = { frames: 0, consumed: 0, steps: 0, maxRustMs: 0, fixed: true, nativeFrames: 0, nativeSteps: 0, maxNativeDynamic: 0 };
@@ -79,7 +80,11 @@ engine.start();
 </script>`;
 const server = createServer((request, response) => { void (async () => {
   const url = new URL(request.url, "http://localhost");
-  if (url.pathname === "/") { response.setHeader("Content-Type", "text/html"); response.end(html); return; }
+  if (url.pathname === "/" || url.pathname === "/crowd.html") {
+    response.setHeader("Content-Type", "text/html");
+    response.end(url.pathname === "/" ? html : importMapPage);
+    return;
+  }
   const file = resolve(output, `.${decodeURIComponent(url.pathname)}`);
   if (!file.startsWith(resolve(output, "package") + sep) || !/\.(js|wasm)$/.test(file)) {
     response.writeHead(403).end(); return;
@@ -107,10 +112,12 @@ try {
       browser = await chromium.launch({ ...options, channel: "chromium" });
     }
   }
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  report.nativeGameplayNavigationFixed50ms = await probeFixed50msNativeGameplayNavigation(browser, `${origin}/crowd.html`);
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(origin);
   await page.waitForFunction(() => window.unifiedPhysicsSmoke?.sample.consumed >= 0.1, undefined, { timeout: 45000 });
   const result = await page.evaluate(() => {
     const {engine, handles, sample, layout: L, count} = window.unifiedPhysicsSmoke;
@@ -576,7 +583,7 @@ try {
   report.pendingJointRuntimeCheckpoint = await probePendingJointRuntimeCheckpoint(page);
   assert.deepEqual(errors, []);
   Object.assign(report, {status: "passed", browser: browser.version(), result, spatial, commands, queries, collisions, observations, controls, joints, bindings,
-    scope: "Packed public Web API, bodies/characters/commands, mutable body/mass/collider and joint controls/lifecycle, mixed XYZ queries, collider events, contact/impulse observations and automatic native frame diagnostics in actual Wasm/RAF. Existing authored sprite bind/unbind identity and render-command motion in planar/XYZ RAF. Same-Engine memory checkpoint exact replay/owner/frame/disposal guards in both spaces with controlled browser RAF. Functional check; not a density/performance acceptance gate."});
+    scope: "Packed public Web API, bodies/characters/commands, mutable body/mass/collider and joint controls/lifecycle, mixed XYZ queries, collider events, contact/impulse observations and automatic native frame diagnostics in actual Wasm/RAF. Existing authored sprite bind/unbind identity and render-command motion in planar/XYZ RAF. Same-Engine memory checkpoint exact replay/owner/frame/disposal guards in both spaces with controlled browser RAF. The 64-agent navigation scene checks frame budgets under regular RAF and a cold 50 ms frame interval."});
 } catch (error) {
   Object.assign(report, {status: "failed", error: String(error)});
   throw error;
