@@ -69,9 +69,13 @@ export async function smokePlacementAssetUsage(parent,mode='2d',timeoutMs=30000)
   await page.locator('[data-placement-language]').selectOption('ko');assert.equal(await panel(page).locator(':scope > summary').textContent(),'에셋 사용처');
   assert.match(await panel(page).locator('[data-placement-usage-status]').textContent(),/일부만 조회됨/);
   await page.screenshot({path:`${output}/${mode}-ko.png`,fullPage:true});
-  await page.setViewportSize({width:780,height:760});await reveal(page);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.setViewportSize({width:780,height:760});
+  await page.locator('.demo-shell[data-compact="true"]').waitFor();
+  await reveal(page);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:`${output}/${mode}-compact.png`,fullPage:true});
-  await page.setViewportSize({width:1440,height:960});await page.locator('[data-placement-language]').selectOption('en');
+  await page.setViewportSize({width:1440,height:960});
+  await page.locator('.demo-shell[data-compact="false"]').waitFor();
+  await page.locator('[data-placement-language]').selectOption('en');
   // Both a stalled scene body and a stalled catalog must release their scan on document change.
   for(const suffix of ['/levels/closed.json','/placement-scenes.json']){
    const pattern='**'+suffix,previous=await page.evaluate(()=>window.ferrumPlacementWorkspaceActiveDocument);

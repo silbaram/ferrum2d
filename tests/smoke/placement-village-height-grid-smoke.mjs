@@ -1,6 +1,8 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { showPlacementViewOptions } from "./placement-panel-navigation.mjs";
+import { readVillageActorPose } from "./placement-village-physics-smoke.mjs";
 
 /** The checkbox must change visible terrain pixels and match playable native heights. */
 export async function smokeVillageHeightGrid(parent, dpr = 1) {
@@ -12,11 +14,7 @@ export async function smokeVillageHeightGrid(parent, dpr = 1) {
   const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 30000 });
   const paint = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const snapshot = () => page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), patch: window.ferrumPlacementViewerExportPatch(), history: window.ferrumPlacementViewerHistory, camera: window.ferrumPlacementSpatialCamera }));
-  const pose = () => page.evaluate(() => {
-    const handle = window.ferrumPlacementViewerState.instances.find(item => item.instanceId === "village_hero").entity;
-    const { x, y, heightSpan } = window.ferrumEngine.getPhysicsEntity(handle);
-    return { x, y, heightSpan };
-  });
+  const pose = () => page.evaluate(readVillageActorPose);
   async function terrainGrid(enabled) {
     await showPlacementViewOptions(page);
     await page.locator("[data-placement-terrain-grid]").setChecked(enabled);
@@ -67,7 +65,7 @@ export async function smokeVillageHeightGrid(parent, dpr = 1) {
     assert.equal(on.grid.spacing, off.spacing);
     assert.equal(on.grid.drawCalls, 1); assert(on.grid.depthTest);
     assert.equal(on.frame.entityCount, 46);
-    assert(on.stats.drawCalls > 0 && on.stats.drawCalls <= 160 && on.stats.spatial.modelTriangleCount <= 60000);
+    assertVillageRenderBudget(on.stats);
     assert.equal(await snapshot(), original, "Grid display must preserve authoring state and camera");
     await page.screenshot({ path: `${artifact}/on-dpr${dpr}.png`, fullPage: true });
     await terrainGrid(false);
@@ -83,26 +81,28 @@ export async function smokeVillageHeightGrid(parent, dpr = 1) {
     await page.keyboard.down("a");
     await wait(() => {
       const handle = window.ferrumPlacementViewerState.instances.find(item => item.instanceId === "village_hero").entity;
-      const p = window.ferrumEngine.getPhysicsEntity(handle);
-      return p.x < -45 && p.x > -75;
+      const { floats } = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([handle.entityId, handle.entityGeneration]));
+      return floats[4] < -45 && floats[4] > -75;
     });
     const ramp = await pose();
-    assert(Math.abs(ramp.heightSpan.elevation - (-16 - ramp.x) * 24 / 64) < .01);
+    // Allow the authored 0.75 skin and the capsule's geometry against the slope.
+    assert(Math.abs(ramp.elevation - (-16 - ramp.x) * 24 / 64) <= 1.3, JSON.stringify(ramp));
     await wait(() => {
       const handle = window.ferrumPlacementViewerState.instances.find(item => item.instanceId === "village_hero").entity;
-      return window.ferrumEngine.getPhysicsEntity(handle).x < -100;
+      return window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([handle.entityId, handle.entityGeneration])).floats[4] < -100;
     });
     await page.keyboard.up("a");
     const terrace = await pose();
-    assert(Math.abs(terrace.heightSpan.elevation - 24) < .01);
+    assert(Math.abs(terrace.elevation - 24) <= 1.1, JSON.stringify(terrace));
     await page.keyboard.down("d");
     await wait(() => {
       const handle = window.ferrumPlacementViewerState.instances.find(item => item.instanceId === "village_hero").entity;
-      return window.ferrumEngine.getPhysicsEntity(handle).x > 8;
+      const { floats } = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([handle.entityId, handle.entityGeneration]));
+      return floats[4] > 8 && Math.abs(floats[6]) <= 1.1;
     });
     await page.keyboard.up("d");
     const ground = await pose();
-    assert(Math.abs(ground.heightSpan.elevation) < .01);
+    assert(Math.abs(ground.elevation) <= 1.1, JSON.stringify(ground));
     await page.locator("[data-placement-playback=stop]").click();
     await wait(() => window.ferrumPlacementWorkspaceMode === "spatial");
     assert.equal(await snapshot(), authored, "Play/Stop must preserve the authored garden and camera");

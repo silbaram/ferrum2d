@@ -1,3 +1,4 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import assert from "node:assert/strict";
 import { preparePlacementTestBuild } from "./placement-test-build.mjs";
 import { createServer } from "node:http";
@@ -10,7 +11,7 @@ import { smokeWorkingGrid } from "./placement-working-grid-smoke.mjs";
 import { smokeSpatialCameraAngles } from "./placement-spatial-camera-smoke.mjs";
 import { smokeGridViewport } from "./placement-grid-viewport-smoke.mjs";
 import { smokeVillageHeightGrid } from "./placement-village-height-grid-smoke.mjs";
-import { smokeVillagePhysics } from "./placement-village-physics-smoke.mjs";
+import { readVillageActorPose, smokeVillagePhysics } from "./placement-village-physics-smoke.mjs";
 import { smokeThreejsViewerUpgrades } from "./placement-threejs-upgrades-smoke.mjs";
 import { smokePlacementGameCameraLive } from "./placement-game-camera-live-smoke.mjs";
 import { smokePlacementModelPicking } from "./placement-model-picking-smoke.mjs";
@@ -45,11 +46,7 @@ page.on("pageerror", e => errors.push(e.message));
 page.on("console", m => { if (m.type() === "error")
   errors.push(m.text()); });
 const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 30000 });
-const pose = () => page.evaluate(() => {
-  const h = window.ferrumPlacementViewerState.instances.find(i => i.instanceId === "village_hero").entity;
-  const { x, y, heightSpan } = window.ferrumEngine.getPhysicsEntity(h);
-  return { x, y, heightSpan, animation: window.ferrumEngine.dataSceneSpriteAnimationState(h) };
-});
+const pose = () => page.evaluate(readVillageActorPose);
 const draft = () => page.evaluate(() => JSON.stringify({ document: window.ferrumPlacementSpatialExportDocument(), history: window.ferrumPlacementViewerHistory }));
 const play = async () => { await page.getByRole("button", { name: "Play", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "game"); await page.locator("canvas.demo-canvas").focus(); };
 const stop = async () => { await page.getByRole("button", { name: "Stop", exact: true }).click(); await wait(() => window.ferrumPlacementWorkspaceMode === "spatial"); };
@@ -100,12 +97,7 @@ try {
     assert.deepEqual(errors, []);
     console.log("Camera pitch smoke passed at DPR 1/2");
   } else {
-  await smokeVillageHeightGrid(page);
-  await smokeVillageHeightGrid(page, 2);
   await smokeVillageViewport(page);
-  await smokeWorkingGrid(page);
-  await smokeSpatialCameraAngles(page);
-  await smokeGridViewport(page);
   const initial = await draft();
   const frame = await page.evaluate(() => window.ferrumPlacementViewerRuntimeFrame);
   assert.equal(frame.entityCount, 46);
@@ -121,13 +113,14 @@ try {
   await wait(() => {
     const h = window.ferrumPlacementViewerState.instances.find(i => i.instanceId === "village_hero").entity;
     const animation = window.ferrumEngine.dataSceneSpriteAnimationState(h);
-    return window.ferrumEngine.getPhysicsEntity(h).x > 0 && animation.clip === 7 && animation.frame > 0;
+    const position = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration]));
+    return position.floats[4] > 0 && animation.clip === 7 && animation.frame > 0;
   });
   const moving = await pose();
   assert(moving.animation.frame >= 0 && moving.animation.frame < 4);
   await wait(() => {
     const h = window.ferrumPlacementViewerState.instances.find(i => i.instanceId === "village_hero").entity;
-    return window.ferrumEngine.getPhysicsEntity(h).x > 63;
+    return window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration])).floats[4] > 63;
   });
   await page.waitForTimeout(350);
   await page.keyboard.up("d");
@@ -146,8 +139,16 @@ try {
   await page.screenshot({ path: `${artifact}/village-game-ko.png`, fullPage: true });
   await page.locator("canvas.demo-canvas").screenshot({ path: `${artifact}/village-game.png` });
   const pixels = await page.evaluate(() => {
-    const c = document.querySelector("canvas.demo-canvas"), gl = c.getContext("webgl2"), p = new Uint8Array(c.width * c.height * 4);
-    gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, p);
+    const c = document.querySelector("canvas.demo-canvas"), gl = c.getContext("webgl2");
+    const target = window.ferrumPlacementSpatialExportDocument().spatial.environment.pixelArt;
+    // The game centers its integer-scaled pixel target inside the editor canvas.
+    const fit = Math.min(c.clientWidth / target.width, c.clientHeight / target.height);
+    const scale = fit >= 1 ? Math.floor(fit) : fit;
+    const width = Math.round(target.width * scale * c.width / c.clientWidth);
+    const height = Math.round(target.height * scale * c.height / c.clientHeight);
+    const p = new Uint8Array(width * height * 4);
+    gl.readPixels(Math.round((c.width - width) / 2), Math.round((c.height - height) / 2),
+      width, height, gl.RGBA, gl.UNSIGNED_BYTE, p);
     let colored = 0;
     const palette = new Set();
     for (let i = 0; i < p.length; i += 64) {
@@ -156,9 +157,10 @@ try {
         palette.add(`${p[i] >> 4},${p[i + 1] >> 4},${p[i + 2] >> 4}`);
       }
     }
-    return { colored, palette: palette.size, samples: p.length / 64 };
+    return { width, height, colored, palette: palette.size, samples: Math.ceil(p.length / 64) };
   });
-  assert(pixels.colored > pixels.samples * .15 && pixels.palette > 30, "Village framebuffer is blank or missing materials");
+  assert(pixels.colored > pixels.samples * .15 && pixels.palette > 30,
+    `Village framebuffer is blank or missing materials: ${JSON.stringify(pixels)}`);
   await page.locator("[data-placement-language]").selectOption("en");
   await stop();
   assert.equal(await draft(), initial);
@@ -169,31 +171,52 @@ try {
   const bridgeDraft = await draft();
   await play();
   await page.keyboard.down("d");
-  await wait(() => { const h = window.ferrumPlacementViewerState.selected.entity, p = window.ferrumEngine.getPhysicsEntity(h); return p.x > 180 && p.x < 208 && p.heightSpan.elevation === 2; });
+  await wait(() => {
+    const h = window.ferrumPlacementViewerState.selected.entity;
+    const { floats } = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration]));
+    return floats[4] > 178 && floats[4] < 208 && Math.abs(floats[6] - 2) <= 1.1;
+  });
   const onBridge = await pose();
-  await wait(() => window.ferrumEngine.getPhysicsEntity(window.ferrumPlacementViewerState.selected.entity).x > 230);
+  assert(onBridge.elevation > 2 && onBridge.elevation < 3.2);
+  await wait(() => {
+    const h = window.ferrumPlacementViewerState.selected.entity;
+    const { floats } = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration]));
+    return floats[4] > 230 && Math.abs(floats[6]) <= 1.1;
+  });
   await page.keyboard.up("d");
   const crossed = await pose();
-  assert.equal(crossed.heightSpan.elevation, 0);
+  assert(Math.abs(crossed.elevation) <= 1.1);
   await stop();
   assert.equal(await draft(), bridgeDraft);
   await page.evaluate(() => window.ferrumPlacementViewerUndo());
   await page.evaluate(() => window.ferrumPlacementViewerUpdateTransform("village_hero", { x: 150, y: -80 }));
   await play();
   await page.keyboard.down("d");
-  await page.waitForTimeout(700);
+  await wait(() => {
+    const h = window.ferrumPlacementViewerState.selected.entity;
+    const { floats } = window.ferrumEngine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration]));
+    return floats[4] >= 165;
+  });
+  await page.waitForTimeout(350);
   await page.keyboard.up("d");
   const bank = await pose();
   assert(bank.x >= 160 && bank.x <= 170.1, "Actor crossed river away from bridge");
+  assert(Math.abs(bank.elevation) <= 1.1, "Actor fell outside the bridge");
   await stop();
   await page.evaluate(() => window.ferrumPlacementViewerUndo());
   assert.equal(await page.evaluate(() => JSON.stringify(window.ferrumPlacementSpatialExportDocument())), JSON.stringify(JSON.parse(initial).document));
   const stats = await page.evaluate(() => window.ferrumRuntime.renderer.stats());
-  assert(stats.drawCalls > 0 && stats.drawCalls <= 160);
-  assert(stats.spatial.modelTriangleCount > 5000 && stats.spatial.modelTriangleCount <= 60000);
+  assertVillageRenderBudget(stats);
+  assert(stats.spatial.modelTriangleCount > 5000);
   assert.equal(stats.spatial.modelUploadBytes, 0, "Warmed models re-uploaded");
   assert.equal(stats.spatial.modelCount, 42);
   await smokeVillagePhysics(page);
+  // Each remaining scenario renders its own page. Release the idle page's frame loop.
+  await page.evaluate(() => window.ferrumRuntime.stop());
+  await smokeVillageHeightGrid(page);
+  await smokeWorkingGrid(page);
+  await smokeSpatialCameraAngles(page);
+  await smokeGridViewport(page);
   // A fresh 2D workspace must load the same bundled assets when opening exported JSON.
   const cold = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const villageRequests = [];
@@ -221,6 +244,8 @@ try {
   await retina.waitForFunction(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
   await retina.locator("[data-placement-language]").selectOption("en");
   await smokeVillageViewport(retina, 2);
+  await retina.evaluate(() => window.ferrumRuntime.stop());
+  await smokeVillageHeightGrid(retina, 2);
   await smokeWorkingGrid(retina, 2);
   await smokeSpatialCameraAngles(retina, 2);
   await smokeGridViewport(retina, 2);

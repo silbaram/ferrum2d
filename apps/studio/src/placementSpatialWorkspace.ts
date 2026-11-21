@@ -590,6 +590,7 @@ export function installPlacementSpatialWorkspace(options: {
     models,
     modelNames,
     assets: options.assets,
+    usesSpatialPhysics: () => options.document().physics?.space === "spatial",
     canPlace: () =>
       active.mode === "spatial" &&
       !suspended &&

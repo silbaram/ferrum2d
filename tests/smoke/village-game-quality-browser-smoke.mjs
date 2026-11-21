@@ -47,6 +47,7 @@ try{
  report.browser=browser.version();
  for(const effects of [false,true])for(const lod of [false,true])for(let repeat=0;repeat<2;repeat++){
   const page=await browser.newPage({viewport:{width:1040,height:720},deviceScaleFactor:1}),errors=[];
+  const pageFailure=new Promise(resolve=>page.once('pageerror',resolve));
   page.on('pageerror',e=>errors.push(String(e)));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.waitForFunction(()=>window.startVillageQuality);
   await page.evaluate(async ({effects,lod})=>{window.demo=await window.startVillageQuality(document.querySelector('canvas'),{effects,lod,audio:true});document.querySelector('button').onclick=()=>window.demo.audio.unlock();},{effects,lod});
@@ -54,21 +55,46 @@ try{
   assert.equal(await page.evaluate(()=>window.demo.audio.unlock()),true);
   const adapter=await page.evaluate(()=>{const gl=document.querySelector('canvas').getContext('webgl2'),ext=gl.getExtension('WEBGL_debug_renderer_info');return {vendor:gl.getParameter(ext?.UNMASKED_VENDOR_WEBGL??gl.VENDOR),renderer:gl.getParameter(ext?.UNMASKED_RENDERER_WEBGL??gl.RENDERER)};});
   const modelEvidence=await page.evaluate(()=>window.demo.modelEvidence);
-  const result=await page.evaluate(()=>window.demo.sample({warmupMs:1000,durationMs:2500}));
-  assert.deepEqual(result.errors,[]);assert(result.frames>=10);assert.equal(result.modelCount,42);assert(result.after.spawned>result.before.spawned,'native combat must fire');assert(result.elevationRange.max>=20&&result.elevationRange.min===0,'live input must traverse the village ramp');assert(result.frameTrace.captures.length>0,'slow-frame windows missing');
+  const runtimeError=pageFailure.then(error=>{throw error;});
+  let result;
+  try {
+    result=await Promise.race([
+      page.evaluate(()=>window.demo.sample({warmupMs:1000,durationMs:2500})),
+      runtimeError,
+    ]);
+  }
+  catch(error){
+    report.sampleFailure={effects,lod,repeat,pageErrors:errors,latest:await page.evaluate(()=>window.demo.latest)};
+    throw error;
+  }
+  assert.deepEqual(result.errors,[]);assert(result.frames>=10);assert.equal(result.modelCount,42);
+  assert.equal(result.enemyCount,32);assert.equal(result.before.actors,32);
+  assert(result.after.aiSteps>result.before.aiSteps,'native AI must continue during sampling');
+  assert(result.after.spawned>result.before.spawned,'native combat must fire');
+  assert(result.elevationRange.max>=20&&Math.abs(result.elevationRange.min)<=1.1,`live input must traverse the village ramp: ${JSON.stringify(result.elevationRange)}`);
+  assert(result.frameTrace.captures.length>0,'slow-frame windows missing');
   assert(result.maxParticles>0,'native combat VFX missing');
   const audioState=await page.evaluate(()=>window.demo.audio.state());assert.equal(audioState.spatialVoiceCount,2,'live spatial ambience missing');
-  assert(result.rows.every(r=>r.drawCalls<=256&&r.modelUploadBytes===0&&r.rustMs<250&&r.renderMs<1000),'village work budget exceeded');
+  const overBudget=result.rows.find(r=>!(r.drawCalls<=256&&r.modelUploadBytes===0&&r.rustMs<250&&r.renderMs<1000));
+  assert(!overBudget,`village work budget exceeded: ${JSON.stringify(overBudget)}`);
   for(const field of ['bufferCount','textureCount','programCount'])assert.equal(result.resources[field],result.resourceBaseline[field],'warm resource growth: '+field);
   assert(result.wasmMemoryBytes>0&&result.wasmMemoryBytes<=128*1024*1024,'village Wasm memory budget exceeded');
   assert(result.resources.bufferBytes<=16*1024*1024&&result.resources.estimatedBytes<=64*1024*1024,'village storage budget exceeded');
   await page.screenshot({path:resolve(out,`village-effects-${effects}-lod-${lod}-${repeat}.png`)});
-  const saved=await page.evaluate(()=>window.demo.saveCheck());
+  let saved;
+  try {
+    saved=await Promise.race([page.evaluate(()=>window.demo.saveCheck()),runtimeError]);
+  } catch(error) {
+    report.checkpointFailure={effects,lod,repeat,checkpointTime:result.checkpointTime,pageErrors:errors,latest:await page.evaluate(()=>window.demo.latest)};
+    throw error;
+  }
+  assert.equal(saved.restoredTime,result.checkpointTime,'screenshot and checkpoint must use the stopped village frame');
+  assert(saved.resumedTime>saved.restoredTime,'restored village must advance');
   const cleanup=await page.evaluate(()=>window.demo.destroy());
   assert.equal(cleanup.voices,0);for(const field of ['bufferCount','textureCount','programCount','renderTargetCount'])assert.equal(cleanup.gpu[field],0,'owned GPU resource leaked: '+field);assert.deepEqual(errors,[]);
   report.cases.push({effects,lod,repeat,adapter,cleanup,modelEvidence,audioState,conditions:{environmentEffects:effects,combatVfx:true,spatialAudio:true},viewport:{width:960,height:640,dpr:1},saved,...result,summary:{rust:summary(result.rows.map(r=>r.rustMs)),render:summary(result.rows.map(r=>r.renderMs)),interval:summary(result.rows.map(r=>r.intervalMs)),audio:summary(result.rows.map(r=>r.audioMs)),gpu:summary(result.gpuSamples.map(r=>r.elapsedMs))}});
   await page.close();
  }
  report.status='passed';
-}catch(error){report.status='failed';report.error=String(error.stack??error);throw error;}
+}catch(error){report.status='failed';report.error=String(error?.stack || error);throw error;}
 finally{await browser?.close();await new Promise(done=>server.close(done));await writeFile(resolve(out,'report.json'),JSON.stringify(report,null,2)+'\n');console.log(resolve(out,'report.json'));}

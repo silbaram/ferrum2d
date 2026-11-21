@@ -41,7 +41,13 @@ export async function smokePlacementProductionDefault(browser, origin, timeoutMs
     await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === "2d", undefined, { timeout: timeoutMs });
     for (const route of ["/?scene=hd2d", "/?scene=village"]) {
       await page.goto(origin + route, { waitUntil: "networkidle" });
-      await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === "spatial" && window.ferrumPlacementViewerState?.instances.some(i => i.instanceId === "village_hero") && !!window.ferrumPlacementViewerRuntimeFrame, undefined, { timeout: timeoutMs });
+      await page.waitForFunction(() => window.ferrumPlacementWorkspaceMode === "spatial"
+        && window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42, undefined, { timeout: timeoutMs });
+      assert.deepEqual(await page.evaluate(() => {
+        const engine = window.ferrumEngine;
+        const hero = window.ferrumPlacementViewerState.instances.find(i => i.instanceId === "village_hero");
+        return { backend: engine.physicsBackend(), heroColliders: engine.queryUnifiedPhysicsColliders(hero.entity).length };
+      }), { backend: "unified-3d", heroColliders: 1 });
       assert.equal(await page.evaluate(() => window.ferrumPlacementViewerState.instances.some(i => i.instanceId === "crate_ground")), false);
     }
     assert.deepEqual(errors, []);

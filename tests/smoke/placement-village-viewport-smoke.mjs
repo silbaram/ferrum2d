@@ -1,3 +1,4 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import { clickPlacementControl } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -82,7 +83,8 @@ export async function smokeVillageViewport(page, dpr = 1) {
       assert(actual.bounds.left > 4 && actual.bounds.top > 4 &&
         actual.bounds.right < actual.canvas[0]-4 && actual.bounds.bottom < actual.canvas[1]-4,
         `Default village camera clips geometry: ${JSON.stringify(actual.bounds)}`);
-      assert(actual.stats.drawCalls <= 160 && actual.stats.spatial.modelUploadBytes === 0);
+      assertVillageRenderBudget(actual.stats);
+      assert.equal(actual.stats.spatial.modelUploadBytes, 0);
       results.push({layout,...actual});
     }
     // Move a building into the old letterbox margin. It must still render there.

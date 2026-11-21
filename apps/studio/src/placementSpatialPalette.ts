@@ -44,6 +44,7 @@ export function createPlacementSpatialPalette(options: {
   models: Map<string, SpatialModelAsset>;
   modelNames: Map<string, string>;
   canPlace(): boolean;
+  usesSpatialPhysics(): boolean;
   hit(point: { x: number; y: number }): SpatialSurfaceHit | undefined;
   plane(): { elevation: number; floorId: number };
   planeHit(point: { x: number; y: number }): SpatialPoint | undefined;
@@ -554,26 +555,29 @@ export function createPlacementSpatialPalette(options: {
               ),
               color: "#aeb9c6",
             };
-      const components = {
+      const nativeSprite = asset.kind === "sprite" && options.usesSpatialPhysics();
+      const halfWidth = width / 4;
+      const components: Record<string, PlacementValue> = {
         visual,
         collider:
-          asset.kind === "sprite"
-            ? { type: "aabb", halfWidth: width / 4, halfHeight: width / 4 }
+          asset.kind === "sprite" && !nativeSprite
+            ? { type: "aabb", halfWidth, halfHeight: halfWidth }
             : "none",
         layer: "wall",
-        ...(asset.kind === "sprite"
-          ? {
-              body: {
-                type: "static",
-                heightSpan: {
-                  elevation: hit.elevation,
-                  height: height * factor,
-                  floorId: hit.floorId,
-                },
-              },
-            }
-          : {}),
       };
+      if (asset.kind === "sprite") {
+        components.body = nativeSprite ? {
+          kind: "fixed",
+          elevation: hit.elevation,
+          collider: {
+            shape: { type: "box", halfExtents: [halfWidth, height / 2, halfWidth] },
+            pose: { position: [0, height / 2, 0] },
+          },
+        } : {
+          type: "static",
+          heightSpan: { elevation: hit.elevation, height: height * factor, floorId: hit.floorId },
+        };
+      }
       const spatial: NonNullable<
         Parameters<ScenePlacementViewer["addInstance"]>[2]
       > =
