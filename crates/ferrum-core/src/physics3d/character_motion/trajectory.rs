@@ -25,6 +25,10 @@ pub(in crate::physics3d) struct TargetHit {
 }
 
 impl MotionScene {
+    pub(in crate::physics3d) fn uses_only_legacy_paths(&self) -> bool {
+        self.paths.is_empty() && !self.exact_failed
+    }
+
     pub(in crate::physics3d) fn prepare_exact_body(
         &mut self,
         id: rp::RigidBodyHandle,

@@ -9,7 +9,7 @@ use super::BodyId;
 use rapier3d::parry::bounding_volume::BoundingVolume;
 use rapier3d::parry::query::{contact, NonlinearRigidMotion};
 use rapier3d::prelude as rp;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 pub(super) mod actual_rows;
 mod angular_suffix;
 mod solver;
@@ -20,7 +20,49 @@ pub(super) struct Scratch {
     contacts: Vec<Constraint>,
     blocked: Vec<bool>,
     solver: solver::Scratch,
+    misses: HashMap<(rp::ColliderHandle, rp::ColliderHandle), LinearMiss>,
 }
+
+// A result is reusable only inside this solve, where both colliders and the
+// configured skin are immutable. Preserve the sign of zero at the query edge.
+#[derive(PartialEq, Eq)]
+struct LinearInputs {
+    source: [u32; 7],
+    target: [u32; 7],
+    source_velocity: [u32; 3],
+    target_velocity: [u32; 3],
+    remaining: u32,
+}
+
+impl LinearInputs {
+    fn new(
+        source: rp::Pose,
+        target: rp::Pose,
+        source_velocity: rp::Vector,
+        target_velocity: rp::Vector,
+        remaining: f32,
+    ) -> Self {
+        let bits = |pose: rp::Pose| {
+            let [x, y, z] = pose.translation.to_array();
+            let [i, j, k, w] = pose.rotation.to_array();
+            [x, y, z, i, j, k, w].map(f32::to_bits)
+        };
+        Self {
+            source: bits(source),
+            target: bits(target),
+            source_velocity: source_velocity.to_array().map(f32::to_bits),
+            target_velocity: target_velocity.to_array().map(f32::to_bits),
+            remaining: remaining.to_bits(),
+        }
+    }
+}
+
+struct LinearMiss {
+    inputs: LinearInputs,
+    cast: bool,
+}
+
+const MAX_CACHED_MISSES: usize = 512;
 impl Scratch {
     pub(super) fn contact_count(&self) -> usize {
         self.contacts.len()
@@ -101,6 +143,7 @@ pub(super) fn resolve(
     }
     scratch.actors.clear();
     scratch.contacts.clear();
+    scratch.misses.clear();
     for (&id, r) in characters.iter() {
         if !world
             .bodies
@@ -145,6 +188,7 @@ pub(super) fn resolve(
             time,
             tolerance,
             &mut proof_work,
+            &mut scratch.misses,
         ) {
             Ok(Some(hit)) => hit,
             Ok(None) => {
@@ -378,9 +422,11 @@ fn first_hit(
     time: Time,
     tolerance: f32,
     work: &mut Work,
+    misses: &mut HashMap<(rp::ColliderHandle, rp::ColliderHandle), LinearMiss>,
 ) -> Result<Option<Hit>, ()> {
     let mut first: Option<Hit> = None;
     let remaining = 1.0 - time;
+    let legacy_paths = scene.uses_only_legacy_paths();
     for i in 0..actors.len() {
         let id = actors[i].id;
         let a = &world.colliders[actors[i].collider];
@@ -437,6 +483,23 @@ fn first_hit(
             } else {
                 actors[i].out.contact_checks += 1;
             }
+            let key = (actors[i].collider, handle);
+            let linear = (legacy_paths && motion.angvel == rp::Vector::ZERO)
+                .then(|| LinearInputs::new(pose, at, v, motion.linvel, remaining as f32));
+            if let Some(miss) = linear
+                .as_ref()
+                .and_then(|inputs| misses.get(&key).filter(|cached| inputs == &cached.inputs))
+            {
+                if miss.cast {
+                    if let Some(j) = other {
+                        actors[i].pair_casts += 1;
+                        actors[j].pair_casts += 1;
+                    } else {
+                        actors[i].out.casts += 1;
+                    }
+                }
+                continue;
+            }
             let contact_result = if other.is_some() {
                 Ok(super::character_geometry::contact(
                     b,
@@ -465,6 +528,17 @@ fn first_hit(
             });
             if found.is_none() {
                 if touching.is_some() && motion.angvel == rp::Vector::ZERO {
+                    if let Some(inputs) = linear {
+                        if misses.len() < MAX_CACHED_MISSES {
+                            misses.insert(
+                                key,
+                                LinearMiss {
+                                    inputs,
+                                    cast: false,
+                                },
+                            );
+                        }
+                    }
                     continue;
                 }
                 if let Some(j) = other {
@@ -523,7 +597,13 @@ fn first_hit(
                             found = Some((t, safe, n, hit.velocity));
                         }
                     }
-                    Ok(None) => (),
+                    Ok(None) => {
+                        if let Some(inputs) = linear {
+                            if misses.len() < MAX_CACHED_MISSES {
+                                misses.insert(key, LinearMiss { inputs, cast: true });
+                            }
+                        }
+                    }
                     Err(_) => {
                         if let Some(j) = other {
                             actors[i].pair_failures += 1;
