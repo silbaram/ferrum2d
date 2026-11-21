@@ -124,7 +124,7 @@ export class NativeFileUnpublishedTarget {
     const words = limits(options.limits, b), length = count(input, b);
     if (length > limit(words, 1)) return b.fail("LIMIT", "native file bytes");
     const file = b.bytes(input, "sourceBytes"), pages = resourceInteger(options.maximumMemoryPages ?? 8192, "native target memory pages", 0, 65536);
-    const namespace = new WasmNamespace(wasmBytes, pages);
+    const namespace = await WasmNamespace.compile(wasmBytes, pages);
     let bridge: WasmBridge | undefined, prepared: NativePrepare | undefined;
     try {
       bridge = await initializeBridgeInWasmNamespace(namespace, WasmBridge.init);

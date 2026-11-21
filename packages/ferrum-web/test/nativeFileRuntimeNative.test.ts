@@ -80,7 +80,7 @@ test("native prepare compatibility/capacity failures leave source memory, held v
 
 test("actual constructor memory trap disposes only the new target and keeps source native bytes unchanged", async () => {
   const data = await wasm(), src = await source(), file = captureNativeFileCut(src.native, sections(), new ResourceBudget());
-  const sizing = new WasmNamespace(data, 65536); await sizing.initialize();
+  const sizing = await WasmNamespace.compile(data, 65536); await sizing.initialize();
   const minimumPages = sizing.memory().buffer.byteLength / 65536; sizing.dispose();
   const memory = wasm_memory(), buffer = memory.buffer, before = new Uint8Array(buffer).slice(), held = new Uint8Array(buffer, 0, 16);
   try {

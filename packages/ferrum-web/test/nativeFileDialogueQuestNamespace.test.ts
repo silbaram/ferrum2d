@@ -30,7 +30,7 @@ function output(ns: WasmNamespace): original.InitOutput {
   const owner = ns as unknown as { factory: WasmBindingsFactory; module: WebAssembly.Module };
   return ns.call(b => b.initSync({ module: owner.module }));
 }
-async function namespace(): Promise<WasmNamespace> { const ns = new WasmNamespace(await wasm(), 64); await ns.initialize(); return ns; }
+async function namespace(): Promise<WasmNamespace> { const ns = await WasmNamespace.compile(await wasm(), 64); await ns.initialize(); return ns; }
 function prepared(ns: WasmNamespace, bytes: Uint8Array): NativeFileDialogueQuestGraph { const owner = {}; return consume(owner, prepare(owner, bytes, budget(), undefined, { targetNamespace: ns }), budget()); }
 
 test("file dialogue graph creates actual target bindings with aliases, distinct equal owners and saved provenance", async () => {
@@ -86,7 +86,7 @@ test("cold linked construction rejects default or peer raw quest before target n
     deepEqual(new Uint8Array(memory.buffer), afterCapture);
     throws(() => nativeFileCreateQuest(doc, config, progress, undefined, null as unknown as WasmNamespace));
     equal(memory.buffer, afterBuffer); deepEqual(new Uint8Array(memory.buffer), afterCapture);
-    const unopened = new WasmNamespace(await wasm(), 64); throws(() => nativeFileCreateQuest(doc, config, progress, undefined, unopened), /namespace is new/); unopened.dispose();
+    const unopened = await WasmNamespace.compile(await wasm(), 64); throws(() => nativeFileCreateQuest(doc, config, progress, undefined, unopened), /namespace is new/); unopened.dispose();
   } finally { bindings.NativeDialogueSession.file_with_quests = saved; peer?.destroy(); q.destroy(); a.dispose(); b.dispose(); }
 });
 

@@ -9,7 +9,7 @@ import type { WasmBindingsFactory } from "../pkg/ferrum_core_factory.js";
 const bytes = () => readFile(new URL("../pkg/ferrum_core_bg.wasm", import.meta.url));
 
 test("isolated Bridge objects and returned checkpoints keep actual native receivers and reject cross-owner arguments", async () => {
-  const input = await bytes(), a = new WasmNamespace(input, 128), b = new WasmNamespace(input, 128);
+  const input = await bytes(), a = await WasmNamespace.compile(input, 128), b = await WasmNamespace.compile(input, 128);
   const left = await initializeBridgeInWasmNamespace(a, WasmBridge.init);
   const right = await initializeBridgeInWasmNamespace(b, WasmBridge.init);
   const engine = left.engine(); engine.use_data_scene(); ok(engine.configure_gameplay_variable(1, 0, 0, 3, 7));
@@ -25,7 +25,7 @@ test("isolated Bridge objects and returned checkpoints keep actual native receiv
 });
 
 test("generated-object RuntimeError poisons its own target and later explicit disposal never enters native again", async () => {
-  const input = await bytes(), ns = new WasmNamespace(input, 64), other = new WasmNamespace(input, 128);
+  const input = await bytes(), ns = await WasmNamespace.compile(input, 64), other = await WasmNamespace.compile(input, 128);
   const bridge = await initializeBridgeInWasmNamespace(ns, WasmBridge.init);
   const peer = await initializeBridgeInWasmNamespace(other, WasmBridge.init);
   const checkpoint = bridge.engine().capture_runtime_checkpoint(); ok(checkpoint);
@@ -51,7 +51,7 @@ test("generated-object RuntimeError poisons its own target and later explicit di
 });
 
 test("a trap raised by a guarded object method is caught at that object's native boundary", async () => {
-  const ns = new WasmNamespace(await bytes(), 64); await ns.initialize();
+  const ns = await WasmNamespace.compile(await bytes(), 64); await ns.initialize();
   let calls = 0;
   // Deterministic boundary injection complements the actual native allocation
   // trap above and proves callers need not remember an outer namespace.call().

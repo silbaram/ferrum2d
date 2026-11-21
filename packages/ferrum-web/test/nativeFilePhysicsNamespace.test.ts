@@ -18,7 +18,7 @@ const bodies = (): CompiledDataScenePhysicsBody[] => [
 ];
 // Two healthy Native Engine owners need more than the old legacy 64-page
 // fixture. The independent 8 MiB malloc below still exceeds remaining capacity.
-async function namespace(): Promise<WasmNamespace> { const ns = new WasmNamespace(await bytes(), 128); await ns.initialize(); return ns; }
+async function namespace(): Promise<WasmNamespace> { const ns = await WasmNamespace.compile(await bytes(), 128); await ns.initialize(); return ns; }
 function engine(ns: WasmNamespace): original.Engine { return ns.call(b => guardWasmNamespaceObject(ns, new b.Engine())); }
 function maskNative(value: PixelMaskTerrain): original.NativePixelMaskTerrain { return Object.getOwnPropertyDescriptor(value, "native")!.value; }
 function exports(ns: WasmNamespace): original.InitOutput {
@@ -144,7 +144,7 @@ test("target mask actual malloc trap blocks every later state method and late na
 });
 
 test("target mask allocation rejection stays healthy and new disposed namespaces cannot create or reenter masks", async () => {
-  const unopened = new WasmNamespace(await bytes(), 64);
+  const unopened = await WasmNamespace.compile(await bytes(), 64);
   throws(() => createPixelMaskTerrainInWasmNamespace(unopened, { width: 1, height: 1 }), /namespace is new/); unopened.dispose();
   const ns = await namespace();
   try {

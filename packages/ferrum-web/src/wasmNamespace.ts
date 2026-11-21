@@ -11,8 +11,14 @@ export class WasmNamespace {
   private nativeMemory: WebAssembly.Memory | undefined;
   private initialization: Promise<void> | undefined;
 
-  constructor(bytes: Uint8Array, maximumPages: number, options?: FactoryOptions) {
-    const module = new WebAssembly.Module(limitWasmMemory(bytes,maximumPages));
+  static async compile(bytes: Uint8Array, maximumPages: number, options?: FactoryOptions): Promise<WasmNamespace> {
+    // Chromium limits synchronous main-thread compilation by module size.
+    // Apply the memory limit before compiling the isolated target's module.
+    const module = await WebAssembly.compile(limitWasmMemory(bytes, maximumPages));
+    return new WasmNamespace(module, options);
+  }
+
+  private constructor(module: WebAssembly.Module, options?: FactoryOptions) {
     if (WebAssembly.Module.imports(module).some(value => value.kind === "memory")) throw new Error("Imported Wasm memory is unsupported");
     this.module = module;
     this.factory = createFerrumWasmBindings(options);

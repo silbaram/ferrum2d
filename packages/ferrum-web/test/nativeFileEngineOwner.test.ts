@@ -16,7 +16,7 @@ test("detached facade attaches actual adapters without resetting installed nativ
   const source = await createEngine(undefined, undefined, undefined, undefined, { fixedTimestep: false });
   const sourceOwner = nativeFileEngineOwner(source);
   let metadata = captureDetachedEngineMetadata(sourceOwner);
-  const namespace = new WasmNamespace(input, 128);
+  const namespace = await WasmNamespace.compile(input, 128);
   const bridge = await initializeBridgeInWasmNamespace(namespace, WasmBridge.init), native = bridge.engine();
   native.use_data_scene();
   const world = encodeUnifiedPhysicsWorld({ space: "planar-xy", gravity: [0, 0, 0], lengthUnit: 1, stepSeconds: .01 });

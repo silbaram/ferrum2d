@@ -25,6 +25,28 @@ test("public game-file session roundtrips Blob, complete native/SDK state and si
  }finally{await session.dispose();initial.destroy();}
 });
 
+test("public game-file capture and restore work when synchronous Wasm compilation is disallowed", async () => {
+  const binary = await wasm(), initial = await source();
+  const session = await createNativeGameFileSession(initial, { wasm: binary });
+  const originalModule = WebAssembly.Module;
+  // Model the browser restriction while allowing real asynchronous compilation.
+  WebAssembly.Module = new Proxy(originalModule, {
+    construct() { throw new RangeError("Synchronous Wasm compilation is disallowed"); },
+  });
+  try {
+    const file = await session.capture();
+    const ready = await session.prepare(file);
+    equal(session.current(), initial);
+    await session.commit(ready);
+    equal(session.epoch(), 1);
+    equal(session.current().time(), initial.time());
+  } finally {
+    WebAssembly.Module = originalModule;
+    await session.dispose();
+    initial.destroy();
+  }
+});
+
 test("public opaque Ready tokens reject forgery/cross-session/reuse and failure preserves current source",async()=>{
  const binary=await wasm(),initial=await source(),session=await createNativeGameFileSession(initial,{wasm:binary}),other=await createNativeGameFileSession(initial,{wasm:binary});
  try{await rejected(session.commit({}as NativeGameFileReady),"STALE","commit");const file=await session.capture(),ready=await session.prepare(file);await rejected(other.commit(ready),"STALE","commit");await session.discard(ready);await rejected(session.discard(ready),"STALE","discard");
@@ -46,12 +68,32 @@ test("post-adopt synchronous app validation rejects before publication and prese
  }finally{await session.dispose();initial.destroy();}
 });
 
-test("Blob size and shared materialization quota reject before arrayBuffer and creation sums BOTH Wasm copies",async()=>{
- const binary=await wasm(),initial=await source(),limited=await createNativeGameFileSession(initial,{wasm:binary,nativeLimits:{maxFileBytes:32}}),bounded=await createNativeGameFileSession(initial,{wasm:binary,resourceLimits:{maxSourceBytes:17*1024*1024}});
- const real=Blob.prototype.arrayBuffer;let reads=0;Blob.prototype.arrayBuffer=function(){reads++;return real.call(this);};
- try{await rejected(limited.prepare(new Blob([new Uint8Array(33)])),"LIMIT","prepare");equal(reads,0);await rejected(bounded.prepare(new Blob([new Uint8Array(18*1024*1024)])),"LIMIT","prepare");equal(reads,0);
- ok(binary.length<10*1024*1024&&binary.length*2>10*1024*1024);await rejected(createNativeGameFileSession(initial,{wasm:binary,resourceLimits:{maxSourceBytes:10*1024*1024}}),"LIMIT","create");equal(initial.time(),0);
- }finally{Blob.prototype.arrayBuffer=real;await limited.dispose();await bounded.dispose();initial.destroy();}
+test("Blob limits reject before reading and the creation budget counts both Wasm copies", async () => {
+  const binary = await wasm(), initial = await source();
+  const twoWasmCopies = binary.byteLength * 2;
+  const limited = await createNativeGameFileSession(initial, { wasm: binary, nativeLimits: { maxFileBytes: 32 } });
+  const bounded = await createNativeGameFileSession(initial, { wasm: binary, resourceLimits: { maxSourceBytes: twoWasmCopies } });
+  const arrayBuffer = Blob.prototype.arrayBuffer;
+  let reads = 0;
+  Blob.prototype.arrayBuffer = function () {
+    reads++;
+    return arrayBuffer.call(this);
+  };
+  try {
+    await rejected(limited.prepare(new Blob([new Uint8Array(33)])), "LIMIT", "prepare");
+    equal(reads, 0);
+    await rejected(bounded.prepare(new Blob([new Uint8Array(twoWasmCopies + 1)])), "LIMIT", "prepare");
+    equal(reads, 0);
+    await rejected(createNativeGameFileSession(initial, {
+      wasm: binary, resourceLimits: { maxSourceBytes: twoWasmCopies - 1 },
+    }), "LIMIT", "create");
+    equal(initial.time(), 0);
+  } finally {
+    Blob.prototype.arrayBuffer = arrayBuffer;
+    await limited.dispose();
+    await bounded.dispose();
+    initial.destroy();
+  }
 });
 
 test("named native/resource limits are lower-only and map the entire fixed27word schema without exposing it publicly",async()=>{

@@ -20,7 +20,7 @@ const dialoguePacket=Uint8Array.from([1,0,0,0,0,0,0,0,1,0,0,0,5,0,0,0,101,110,11
 
 test("isolated Bridge ABI initializes without the default singleton and keeps the public init signature",async()=>{
   throws(()=>original.wasm_memory());
-  const data=await bytes(),a=new WasmNamespace(data,64),b=new WasmNamespace(data,64);
+  const data=await bytes(),a=await WasmNamespace.compile(data,64),b=await WasmNamespace.compile(data,64);
   const pa=a.initialize();equal(a.initialize(),pa);
   const [left,right]=await Promise.all([initializeBridgeInWasmNamespace(a,WasmBridge.init),initializeBridgeInWasmNamespace(b,WasmBridge.init)]);
   ok(a.memory()!==b.memory());equal(left.version(),right.version());equal(left.engine().time(),0);
@@ -33,8 +33,13 @@ test("target constructor trap poisons only its namespace and preserves source by
   const data=await bytes();await initializeFerrumWasm(data);const source=new original.Engine();source.use_data_scene();
   ok(source.configure_gameplay_variable(1,0,0,3,7));const checkpoint=source.capture_runtime_checkpoint();ok(checkpoint);
   const memory=original.wasm_memory(),buffer=memory.buffer,copy=new Uint8Array(buffer).slice(),view=new Uint8Array(buffer,0,16);
-  const target=new WasmNamespace(data,19);await target.initialize();
-  equal(target.memory().buffer.byteLength,19*65536);
+  const sizing = await WasmNamespace.compile(data, 65536);
+  await sizing.initialize();
+  const initialBytes = sizing.memory().buffer.byteLength;
+  sizing.dispose();
+  const target = await WasmNamespace.compile(data, initialBytes / 65536);
+  await target.initialize();
+  equal(target.memory().buffer.byteLength, initialBytes);
   throws(()=>target.call(bindings=>new bindings.Engine()),/unreachable/);
   equal(target.state().state,"poisoned");equal(target.state().retainsWasm,false);target.dispose();
   equal(memory.buffer,buffer);equal(view.length,16);deepEqual(new Uint8Array(memory.buffer),copy);
@@ -98,7 +103,7 @@ test("dispatcher healthy control runs one actual native destructor before dispos
 // This owner-local projection stages the settlement listener without adding a
 // production callback or exposing the backend through a package public API.
 test("dispose between backend ready and namespace settlement cannot retain memory or resolve success",async()=>{
-  const namespace=new WasmNamespace(await bytes(),64);
+  const namespace=await WasmNamespace.compile(await bytes(),64);
   const owner=namespace as unknown as {factory:WasmBindingsFactory;module:WebAssembly.Module;nativeMemory:WebAssembly.Memory|undefined};
   const nativeInitialization=owner.factory.bindings.default({module_or_path:owner.module});
   nativeInitialization.then(()=>{
