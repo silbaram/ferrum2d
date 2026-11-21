@@ -236,11 +236,23 @@ impl PhysicsWorld3d {
                     break 'cuts;
                 }
                 let credit_start = self.actual_motion_completed_time();
-                self.preview_characters(&mut scratch.preview);
-                self.restore_character_preview(&scratch.preview);
-                self.solve_character_dynamic_contacts();
-                self.preview_characters(&mut scratch.preview);
-                self.refresh_path_motion_queries();
+                let controllers_with_static_obstacles = !self.characters.is_empty()
+                    && paths.is_empty()
+                    && !self.has_moving_character_obstacles()
+                    && self.characters.values().all(|r| r.config.push_mass == 0.);
+                if controllers_with_static_obstacles {
+                    // Static scenery and massless peer controllers cannot
+                    // select an earlier path stop or finite-mass contact.
+                    // Keep the pre-step state paired with the saved totals.
+                    // The committed controller pass still resolves contacts.
+                    self.save_character_preview(&mut scratch.preview);
+                } else {
+                    self.preview_characters(&mut scratch.preview);
+                    self.restore_character_preview(&scratch.preview);
+                    self.solve_character_dynamic_contacts();
+                    self.preview_characters(&mut scratch.preview);
+                    self.refresh_path_motion_queries();
+                }
                 #[cfg(test)]
                 if std::thread::current().name().is_some_and(|name| {
                     name.ends_with(
@@ -287,7 +299,11 @@ impl PhysicsWorld3d {
                         scratch.pending_stops.push(*other);
                     }
                 }
-                self.record_path_queries(limit.casts, limit.failures, !scratch.preview.is_empty());
+                self.record_path_queries(
+                    limit.casts,
+                    limit.failures,
+                    !controllers_with_static_obstacles && !scratch.preview.is_empty(),
+                );
                 let mut dynamic_fraction = self.limit_character_dynamic_motion();
                 if dynamic_fraction < 1. && dynamic_events >= dynamic_event_budget {
                     // Fall back to the bounded conservative movement sweep for

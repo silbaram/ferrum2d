@@ -590,7 +590,7 @@ impl PhysicsWorld3d {
         self.step_characters_mode(true);
     }
 
-    pub(super) fn preview_characters(&mut self, saved: &mut Vec<CharacterPreview>) {
+    pub(super) fn save_character_preview(&self, saved: &mut Vec<CharacterPreview>) {
         saved.clear();
         saved.extend(
             self.characters
@@ -604,6 +604,10 @@ impl PhysicsWorld3d {
                     contact_velocity: runtime.contact_velocity,
                 }),
         );
+    }
+
+    pub(super) fn preview_characters(&mut self, saved: &mut Vec<CharacterPreview>) {
+        self.save_character_preview(saved);
         self.step_characters_mode(false);
     }
 

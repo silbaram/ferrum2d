@@ -120,9 +120,10 @@ impl PhysicsWorld3d {
         let s = &mut self.statistics.step;
         s.kinematic_path_casts = s.kinematic_path_casts.saturating_add(casts);
         s.kinematic_path_failures = s.kinematic_path_failures.saturating_add(failures);
-        s.character_preview_passes = s
-            .character_preview_passes
-            .saturating_add(u32::from(preview));
+        if !preview {
+            return;
+        }
+        s.character_preview_passes = s.character_preview_passes.saturating_add(1);
         // The controller records each pair query on both participants.
         let participants = self.characters.values().fold(0usize, |sum, runtime| {
             sum.saturating_add(runtime.state.character_pair_casts)
