@@ -111,9 +111,19 @@ export function queryUnifiedPhysicsObservations(native: Native, memory: WebAssem
 }
 export function queryUnifiedPhysicsDiagnostics(native: Native, memory: WebAssembly.Memory): UnifiedPhysicsDiagnostics | undefined {
   capability(native);
+  return refreshDiagnostics(native) ? readDiagnostics(native, memory) : undefined;
+}
+
+export function queryUnifiedPhysicsFrameDiagnostics(native: Native, memory: WebAssembly.Memory): UnifiedPhysicsDiagnostics | undefined {
+  if (typeof native.query_unified_physics_diagnostics !== "function" || !refreshDiagnostics(native)) return undefined;
+  capability(native);
+  return readDiagnostics(native, memory);
+}
+
+function refreshDiagnostics(native: Native): boolean {
   const configured = native.query_unified_physics_diagnostics();
   if (typeof configured !== "boolean") throw new Error("Invalid unified physics diagnostics status.");
-  return configured ? readDiagnostics(native, memory) : undefined;
+  return configured;
 }
 function readDiagnostics(native: Native, memory: WebAssembly.Memory): UnifiedPhysicsDiagnostics {
   const debug = readDebugStatistics(native, memory);

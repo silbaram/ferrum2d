@@ -176,14 +176,23 @@ function checkConstantFrameCalls() {
     { key: "masks", reads: ["sprite_light_mask_abi_version", "sprite_light_mask_size",
       "sprite_light_mask_len", "sprite_light_mask_ptr"], writes: ["configure_sprite_lighting_materials_v2"] },
   ];
-  const bulkReads = new Set(groups.flatMap(group => group.reads));
+  // A flat frame without terrain still publishes its empty impact buffer and the
+  // default native physics counters. The observation ABI has five row strides.
+  const physicsBulkCalls = {
+    terrain_impact_version: 1, terrain_impact_stride_words: 1, terrain_impact_count: 1,
+    terrain_impact_dropped: 1, terrain_impact_ptr: 1,
+    query_unified_physics_diagnostics: 1, unified_physics_observations_version: 1,
+    unified_physics_observation_stride_words: 5, unified_physics_observation_count: 1,
+    unified_physics_observation_ptr: 1, unified_physics_debug_version: 1, unified_physics_debug_state_ptr: 1,
+  };
+  const bulkReads = new Set([...Object.keys(physicsBulkCalls), ...groups.flatMap(group => group.reads)]);
   const lightingSidecars = { lighting: true, surface: true, masks: true };
   const cases = [];
   const result = { name: "constant-native-frame-dispatch", status: "running", cases };
   // Retain method counts even when a new dispatch violates the budget.
   report.cases.push(result);
   for (const scenario of [
-    { name: "legacy-exports", volumes: false, cast: false },
+    { name: "legacy-exports", legacyFrame: true, volumes: false, cast: false },
     { name: "empty-volume-sidecar", volumes: true, cast: false },
     { name: "active-volume-sidecar", volumes: true, cast: true },
     { name: "active-lighting-only", lighting: true, active: true },
@@ -197,6 +206,7 @@ function checkConstantFrameCalls() {
     const scenarioCases = [];
     const hiddenExports = new Set(groups.filter(group => !scenario[group.key])
       .flatMap(group => [...group.reads, ...group.writes]));
+    if (scenario.legacyFrame) hiddenExports.add("update_frame_checked");
     for (const entities of [1, 128, 1024]) {
       const native = new Engine();
       const calls = new Map();
@@ -239,6 +249,15 @@ function checkConstantFrameCalls() {
             assert.equal(frame.renderCommandBuffer.commandCount, entities);
             assert.equal(frame.renderCommandBuffer.buffer.length, entities * 15);
             assert.ok(frame.renderCommandBuffer.buffer.every(Number.isFinite));
+            const impacts = frame.renderCommandBuffer.terrainImpacts;
+            assert.deepEqual([impacts.version, impacts.stride, impacts.count, impacts.dropped], [1, 24, 0, 0]);
+            assert.equal(impacts.words.length, 0);
+            assert.equal(impacts.floats.length, 0);
+            const diagnostics = frame.frameState.unifiedPhysics;
+            assert.equal(diagnostics.backend, "rapier3d");
+            assert.equal(diagnostics.legacySolverRowMetricsAvailable, false);
+            assert.equal(diagnostics.frame.backendSteps, 1);
+            assert.equal(diagnostics.frame.solverContacts, 0);
             const { spriteLightingMaterials: lighting, spriteSurfaceMaterials: surface,
               spriteLightMasks: masks } = frame.renderCommandBuffer;
             if (scenario.active) {
@@ -269,13 +288,11 @@ function checkConstantFrameCalls() {
           },
         }, 1 / 60);
         assert.equal(renders, 1);
-        assert.equal(calls.get("set_input"), 1);
-        assert.equal(calls.get("update_frame"), 1);
         const counts = Object.fromEntries([...calls].sort(([a], [b]) => a.localeCompare(b)));
         const total = [...calls.values()].reduce((a, b) => a + b, 0);
-        const expectedBulkCalls = Object.fromEntries(groups.flatMap(group => group.reads.map(name => [name,
-          scenario[group.key] && (group.key === "volumes" || !name.endsWith("_ptr") || scenario.active) ? 1 : 0])));
-        // Only named bulk getters receive an allowance. Empty lighting sidecars
+        const expectedBulkCalls = { ...physicsBulkCalls, ...Object.fromEntries(groups.flatMap(group => group.reads.map(name => [name,
+          scenario[group.key] && (group.key === "volumes" || !name.endsWith("_ptr") || scenario.active) ? 1 : 0]))) };
+        // Only the listed native bulk operations receive an allowance. Empty lighting sidecars
         // read version/size/length; active ones also read one pointer, never one per entity.
         const extensionBudget = Object.values(expectedBulkCalls).reduce((sum, n) => sum + n, 0);
         const baseCalls = [...calls].filter(([name]) => !bulkReads.has(name)).reduce((sum, [, n]) => sum + n, 0);
@@ -283,6 +300,9 @@ function checkConstantFrameCalls() {
         const row = { scenario: scenario.name, entities, totalNativeMethodCalls: total, baseNativeMethodCalls: baseCalls,
           budget, extensionBudget, expectedBulkCalls, volumeCasterCount, volumeVertexCount, counts };
         cases.push(row); scenarioCases.push(row);
+        assert.equal(calls.get("set_input"), 1);
+        assert.equal(calls.get("update_frame") ?? 0, scenario.legacyFrame ? 1 : 0);
+        assert.equal(calls.get("update_frame_checked") ?? 0, scenario.legacyFrame ? 0 : 1);
         for (const [name, expected] of Object.entries(expectedBulkCalls)) assert.equal(calls.get(name) ?? 0, expected,
           `${name} must use fixed bulk reads, independently of entity/caster count (${scenario.name})`);
         assert.ok(baseCalls <= baseBudget, `base frame dispatch budget exceeded: ${baseCalls} > ${baseBudget} (${entities} entities)`);

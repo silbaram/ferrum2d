@@ -40,7 +40,8 @@ native bulk telemetry 또는 낮은 빈도의 query를 사용한다. Rust는 Web
 `restoreDialogueQuestState` 결과를 저장 데이터에 포함한다. TS wrapper가 mutable 진행 상태를 복제하지 않는다.
 
 별도 내부 `nativeFileDialogueQuest`는 실제 SDK 생성자 기록과 명시 등록 root에서 도달 가능한 공유 Quest graph를
-파일용으로 포착한다. 불변 콘텐츠·facade 삭제 상태와 Rust의 실제 진행을 구분한다. Quest wrapper가 삭제돼도 live
+파일용으로 포착한다. 새로 만든 객체와 파일에서 복원한 객체는 같은 SDK 생성자에서 Wasm 핸들을 등록한다.
+파일용 어댑터는 불변 콘텐츠·래퍼 식별자·삭제 상태·저장 출처를 기록한다. Quest wrapper가 삭제돼도 live
 Dialogue의 Rc가 유지하는 진행은 해당 Dialogue의 bulk packet에서 읽는다. 선언 graph에 native owner가 없으면
 진행 없는 NativeAbsent metadata만 보존하고 기본 진행을 만들지 않는다. 같은 값의 별도 owner는 합치지 않는다.
 등록하지 않은 외부 Dialogue를 root로 추정하지 않으며 공유 Quest의 외부 변경은 native revision fence로 감지한다.

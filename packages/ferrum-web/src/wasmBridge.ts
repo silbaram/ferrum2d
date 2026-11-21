@@ -1,7 +1,7 @@
 import { readTerrainImpacts } from "./terrainImpacts.js";
 import {readUnifiedPhysicsJoints} from "./unifiedPhysicsJoints.js";
 import { requireNativeDebugGeometry } from "./physicsDebugCompatibility.js";
-import { queryUnifiedPhysicsContactManifolds, queryUnifiedPhysicsObservations, queryUnifiedPhysicsDiagnostics, type UnifiedPhysicsContactQuery } from "./unifiedPhysicsObservations.js";
+import { queryUnifiedPhysicsContactManifolds, queryUnifiedPhysicsObservations, queryUnifiedPhysicsDiagnostics, queryUnifiedPhysicsFrameDiagnostics, type UnifiedPhysicsContactQuery } from "./unifiedPhysicsObservations.js";
 import { readUnifiedPhysicsCollisions, setUnifiedPhysicsCollisionEventsEnabled, type UnifiedPhysicsCollisionBufferView } from "./unifiedPhysicsCollisions.js";
 import { matchesSpatialEnvironmentLayout, type SpatialEnvironmentVersion } from "./spatialEnvironmentAbi.js";
 import type { SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
@@ -194,9 +194,7 @@ export class WasmBridge {
     return queryUnifiedPhysicsDiagnostics(this.engineInstance, this.memory);
   }
   readUnifiedPhysicsFrameDiagnostics() {
-    if (typeof this.engineInstance.query_unified_physics_diagnostics !== "function"
-      || !this.engineInstance.query_unified_physics_diagnostics()) return undefined;
-    return this.queryUnifiedPhysicsDiagnostics();
+    return queryUnifiedPhysicsFrameDiagnostics(this.engineInstance, this.memory);
   }
 
   queryUnifiedPhysics(batch: UnifiedPhysicsQueryBatch): UnifiedPhysicsQueryBufferView {

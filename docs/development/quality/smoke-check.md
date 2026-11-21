@@ -145,6 +145,10 @@ pnpm smoke:language-boundaries
 ```
 
 실제 Wasm의 ABI·dispatch 수와 frame/sidecar 수명, native 메모리 증가, 외부 callback의 씬 교체·해제를 검사한다.
+엔티티 1·128·1,024개에서 한 프레임에 `update_frame_checked`를 한 번 호출하고, 해당 export를
+숨긴 호환성 검사에서는 `update_frame`을 한 번 호출한다. 엔티티 수가 늘어도 메서드별 호출 횟수는
+같아야 한다. 기본 호출 상한 21회와 별도로 지형 충격 버퍼·통합 물리 진단·조명 버퍼의 지정된
+호출을 개별 검사한다. 지형 충격이 없는 씬에서는 빈 버퍼와 실제 물리 1스텝·접촉 0건을 확인한다.
 대화·퀘스트·파괴 지형의 진행을 TS가 다시 소유하거나 entity별 hot-path 호출을 추가하는 변경을 차단한다.
 진단·오디오 native 작업은 borrow 전에 끝내고 effect는 GPU 소비 후 실행해야 한다.
 custom renderer는 class private 상태 단언 없이 사용할 수 있어야 하며, 미지원 요청은 target 변경 전에 거절한다.
