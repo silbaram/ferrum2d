@@ -509,7 +509,11 @@ Web bridge 회귀는 `engine::unified_physics::web_bridge::tests`, `unifiedPhysi
 `pnpm smoke:unified-physics-web`은 build 뒤 실행하며, 로컬 tarball의 공개 `/core`를 Chromium에서 불러온다.
 64개 planar body의 Playing 상태·RAF/fixed tick·실제 이동량·Z 고정·잘못된 batch 거부와
 native 설정에 맞는 frame mode/중력/고정 틱 표시를 확인한다.
-관측한 Rust 시간/메모리는 보고하지만 밀집 성능 예산 수용을 대신하지 않는다.
+64명 군중 장면은 일반 브라우저 프레임과 50ms 고정 입력으로 각각 검사한다. 고정 입력 검사는
+새 브라우저 컨텍스트에서 가장 먼저 실행한다. 첫 프레임의 물리 5스텝을 포함해 81프레임 전체의
+Rust 업데이트 최댓값이 125ms 이하여야 한다. 405스텝 뒤 64명의 위치와 경로 탐색 통계를
+기준 해시와 대조하고 체크포인트 복원 뒤 6스텝을 재생한다. 보고서의
+`nativeGameplayNavigationFixed50ms`에 첫 프레임 시간과 이후 프레임의 최댓값을 따로 기록한다.
 수동 CI workflow의 validate job 및 `smoke:check`에 연결하며 원격 실행 성공을 주장하지 않는다.
 보고서는 `artifacts/physics-3d/web-bridge-browser/report.json`이다.
 
