@@ -911,6 +911,9 @@ query·pause·자동 물리 OFF·거절된 틱은 phase를 진행시키지 않�
 나머지 world는 승인 구간의 남은 시간도 계속 진행하며 projectile trace는 실제 충돌 시점을 보존한다.
 캐릭터 preview는 입력/상태를 복구하고 dynamic push를 적용하지 않는다. path cast/실패/정지와 preview 비용은
 backend CCD와 별도의 native 지표이며 frame 작업량에 합산한다. 동적 물체 자체는 solver로 밀 수 있다.
+별도 경로 명령과 이동 장애물이 없고 모든 캐릭터의 `push_mass`가 0이면 미리보기 충돌 계산 두 번을 생략한다.
+체크포인트에 필요한 틱 시작 상태를 저장하고, 실제 이동에는 정적 지형과 캐릭터 사이의 접촉을 검사한다.
+미리보기 진단은 실제로 실행한 검사만 집계한다.
 일반 capsule도 다른 prescribed kinematic 장애물을 이전 pose의 고정 벽으로 취급하지 않고 swept bounds와
 상대 운동으로 검사한다. 접촉 시점부터 장애물의 법선 속도를 반영해 밀림과 접선 이동을 계산하고, 다가오는
 승강기도 받침으로 수용한다. 자신의 지지체 위 보행과 기존 static 경사/계단 처리는 유지한다.
