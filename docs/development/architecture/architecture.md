@@ -447,8 +447,9 @@ float bits는 유지하고, semantic finite 검사는 각 resource owner가 수�
 decode 출력 backing 생성 전 참조·범위·도달성·cycle·공유 경로의 최대 깊이를 검사한다. 기본 manifest4 MiB,
 data64 MiB·node65,536·member262,144·depth64는 낮출 수 있다. 이 codec은 자원 내용 검증이나 세션 Ready가 아니다.
 
-별도 cold `WasmNamespace`는 trusted production Wasm의 memory maximum을 낮춘 사본을 독립 bindings factory로
-초기화한다. 빌드 시 생성한 정적 factory가 instance/module·typed view cache·finalizer를 namespace별로 소유한다.
+별도 cold `WasmNamespace`는 trusted production Wasm의 memory maximum을 낮춘 사본을 비동기로 컴파일하고
+독립 bindings factory로 초기화한다. 빌드 시 생성한 정적 factory가 instance/module·typed view cache·finalizer를
+namespace별로 소유한다.
 Runtime JS 평가나 query 문자열 import로 모듈을 복제하지 않는다. 동일 입력 초기화는 진행 중 promise를 공유하고
 다른 입력·dispose/poison 뒤 초기화·완료 전 호출은 거절한다. 초기화 완료 직전 dispose도 참조를 다시 보관하지
 않는다. 동기 native boundary의 RuntimeError는 target을 poison하고 module/instance/cache 참조를 놓으며 이후

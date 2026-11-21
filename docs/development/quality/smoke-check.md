@@ -58,11 +58,13 @@ byteLength를 `custom.nativeRuntime`에 보존한다. capture는 pause/resume �
 `gameLoop.test.ts`와 `engineFrameLifecycle.test.ts`는 update 경계의 예외가 audio/render/public frame으로
 진행하지 않고 RAF·busy 상태를 정리하는지, 원래 오류 전달과 checkpoint·재시작·해제가 가능한지 검사한다.
 frame pipeline/manual step 회귀는 checked entry를 한 번만 호출하고 거부 시 output/stat 읽기를 하지 않는지
-검사한다. Packed `native-checked-error-probe.mjs`는 공개 SDK만 사용해 유효한 mesh의 논리 작업량 한도를
-초과시키고 automatic/default manual/configured manual 세 경로의 실제 Wasm 거부를 검사한다. 거부된
-첫 구간의 pose·속도·시간 보존, public frame 미발행, 새 Rust query·checkpoint 복원·장애물 제거 후
+검사한다. Packed `native-checked-error-probe.mjs`는 공개 SDK로 빠른 CCD 상자를 유효한 경사 mesh 쪽으로
+보내 실제 충돌 검사에서 논리 작업량 한도를 초과시킨다. automatic/default manual/configured manual
+세 경로의 실제 Wasm 거부와 첫 구간의 pose·속도·시간 보존, public frame 미발행,
+새 Rust query·checkpoint 복원·장애물 제거 후
 RAF 재시작·중복 destroy를 확인한다. `smoke:unified-physics-web`에 연결하며 실제 실행 결과는
 새 공통 build의 package/Wasm 해시와 함께 판정한다. JS 오류 주입 결과나 RSS 한도 검증으로 대체하지 않는다.
+`nativeGameFile.test.ts`는 동기 Wasm 컴파일이 거절되는 환경에서도 공개 파일 저장과 복원이 성공하는지 검사한다.
 Native 기본 생성 회귀는 raw/Web의 backend 생략·가변 시간·씬 전환과 저장된 legacy 정책 보존을 검사한다.
 `planar_navigation::default_tests`와 `combat_navigation::dense_tests`는 Native-only shape·local offset·render anchor 분리,
 실제 cached connector의 꺾임점, 64 actor의 순환 서비스·목표 거리 진전과 Native 파일 continuation을 검사한다.
@@ -464,6 +466,10 @@ pause/자동 OFF/수동 틱/거절 시 phase 보존, 한 틱의 전체 왕복·�
 controller preview 유무에 따라 120틱의 점프·dynamic push·body/controller 상태도 정확히 일치해야 한다.
 preview 쌍 검사는 실제 호출당 한 번 집계하고 backend CCD와 분리하며, 한 frame의 여러 틱에서 path 작업량을 합산한다.
 검증 기록은 `artifacts/physics-3d/platform-blocking-qa/report.json`에 남긴다. path/preview 비용은 backend CCD에 합치지 않는다.
+`physics3d::character_tests::rotating_rider_with_locomotion_meets_wall_in_one_tick`은 직접 각속도를 준 발판을
+양방향으로 돌린다. 벽이 없을 때 캡슐이 지나가는 경로에 벽을 놓고 같은 틱을 실행한다. 캐릭터는 벽 앞의
+접촉 여유를 유지하면서 남은 시간 동안 벽을 따라 걸어야 한다. 발판의 최종 회전은 벽이 없을 때와 같고,
+캐릭터의 지지가 유지되며 실패한 충돌 검사와 누락된 접촉은 모두 0이어야 한다.
 `physics3d::character_motion_tests`의 9개 회귀는 같이 움직이는 지지체/벽과 멀어지는 벽의 이전 위치 무시,
 고속 접근 벽의 idle capsule 밀기·접선 보행 유지, 새 승강기 포착, sensor/mask/disabled/floor와 Planar 충돌 뒤 Z=0,
 velocity-kinematic query 비용, COM/fixture offset 및 angular winding 경로, 움직이는 one-way를 검사한다.
@@ -646,6 +652,15 @@ extrusion으로 내부 텍셀 선택의 mediump 오차까지 해결됐다고 판
 `pnpm smoke:village-game-quality`와 `pnpm smoke:placement-village`는 실제 마을에서
 이동·전투·지형·조명·오디오·카메라와 작성/실행 전환을 확인한다.
 고립된 API fixture 성공과 실제 콘텐츠의 통합 성공을 구분한다.
+
+Studio 마을의 렌더 예산은 일반 드로 호출 160, 방향광 그림자 호출 128, 모델 삼각형 60,000으로
+각각 검사한다. 같은 편집 화면에서 관측한 201개 호출 중 99개는 방향광 그림자 호출이었다.
+보행 검사는 통합 3D 캐릭터의 접촉 여유를 고려해 지면·다리·경사로의 높이와 장애물 정지를 검사한다.
+마을 전투 검사는 적 32명을 배치하고 환경 효과와 모델 LOD의 네 조합을 각각 두 번 실행한다.
+경사로 입력과 같은 게임 시계로 최소 2.5초를 측정하며 각 프레임의 실제 Rust 업데이트·렌더 시간도 기록한다.
+이동 입력을 놓은 뒤에도 전투를 1초간 진행한다. 같은 정지 프레임에서 스크린샷 촬영과 체크포인트
+복원을 검사하고, 복원한 시뮬레이션이 고정 틱 두 번에 해당하는 시간만큼 다시 진행되는지 확인한다.
+프레임별 허용 범위는 Rust 업데이트 250ms 미만, 렌더 1,000ms 미만, 드로 호출 256회 이하, 모델 업로드 0바이트다.
 
 ### 실제 마을 성능과 LOD 외형
 

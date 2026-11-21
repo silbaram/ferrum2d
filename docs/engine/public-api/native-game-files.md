@@ -38,6 +38,7 @@ initial.destroy(); // 초기 Engine은 기본적으로 호출자 소유다.
 
 기본 `wasm`은 설치한 package의 배포 URL이다. Headless/custom loader는 같은 배포본의 `Uint8Array`나
 `URL`을 `options.wasm`으로 전달한다. 세션은 Wasm bytes를 자체 보관하며 기본 모듈 초기화를 다시 하지 않는다.
+저장·복원에 쓰는 별도 Wasm 모듈은 대상의 선형 메모리 한도를 적용한 뒤 비동기로 컴파일한다.
 무옵션 생성은 planar native·가변 시간·자동 실행이다. 예제의 명시 `physicsBackend: "unified"`는 기존 고정 시간 기본 선택을 유지한다.
 파일 복원은 저장된 실제 backend와 기본 정책을 유지하며 저장된 legacy world를 새 native 기본값으로 변환하지 않는다.
 
