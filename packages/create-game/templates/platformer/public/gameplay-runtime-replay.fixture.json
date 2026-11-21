@@ -87,12 +87,12 @@
             "nativeRuntime": {
               "format": "ferrum2d.native-game-file.sha256",
               "byteLength": 14053,
-              "sha256": "f81d060a9ed56da47906e90d59de62af775b9d470ecf958e76106f8e8779754f"
+              "sha256": "8b36b5a884ca8a2d81190da310c9e2fce2462c3aa4ca55ed74291b8861f9aa67"
             }
           },
-          "snapshotHash": "d9da42a9"
+          "snapshotHash": "91fc38df"
         },
-        "replayHash": "d9da42a9"
+        "replayHash": "91fc38df"
       },
       {
         "frame": 1,
@@ -170,12 +170,12 @@
             "nativeRuntime": {
               "format": "ferrum2d.native-game-file.sha256",
               "byteLength": 20386,
-              "sha256": "1665ed47561f94d03cc0fef6d1fd761fc4beed9f44abc8b61dbbdb905040d878"
+              "sha256": "b3b70f4b1c464136f9f38cb45ccf3d4d873f7e2c8ff4e416131b23133d741365"
             }
           },
-          "snapshotHash": "9342ce63"
+          "snapshotHash": "555e3bd0"
         },
-        "replayHash": "9342ce63"
+        "replayHash": "555e3bd0"
       },
       {
         "frame": 12,
@@ -253,12 +253,12 @@
             "nativeRuntime": {
               "format": "ferrum2d.native-game-file.sha256",
               "byteLength": 20820,
-              "sha256": "80f1d312c55cf372f24b5b01a0e8698bd22157b508a36dcd2103a634ed15f28b"
+              "sha256": "40b5e213854cc5fd22b466398b46f1b60cc495b38ff443a56a38af53438232ea"
             }
           },
-          "snapshotHash": "a673d882"
+          "snapshotHash": "c2c09fbc"
         },
-        "replayHash": "a673d882"
+        "replayHash": "c2c09fbc"
       },
       {
         "frame": 24,
@@ -336,12 +336,12 @@
             "nativeRuntime": {
               "format": "ferrum2d.native-game-file.sha256",
               "byteLength": 20822,
-              "sha256": "5744c3bc3fc4bde7da15dbac04b6d00cb0601abccc349eb0166f8ae4af83de09"
+              "sha256": "b8397deac9c284dbf7807742cc5d9a7697e17ca149023f35c5fa898efe4538f7"
             }
           },
-          "snapshotHash": "7acd86e1"
+          "snapshotHash": "eb2ceec3"
         },
-        "replayHash": "7acd86e1"
+        "replayHash": "eb2ceec3"
       },
       {
         "frame": 40,
@@ -419,14 +419,14 @@
             "nativeRuntime": {
               "format": "ferrum2d.native-game-file.sha256",
               "byteLength": 22242,
-              "sha256": "26f798a49f69b16fe84ac41d59cd6ee1f578f16d97fa5faceaeae2081f849681"
+              "sha256": "c4ab0023d6b9c9136a021953cd8de5f016e4386286d83452783b2e0eb4277bbd"
             }
           },
-          "snapshotHash": "78638b0e"
+          "snapshotHash": "3979ca40"
         },
-        "replayHash": "78638b0e"
+        "replayHash": "3979ca40"
       }
     ],
-    "replayHash": "0fe824ec"
+    "replayHash": "6906f109"
   }
 }

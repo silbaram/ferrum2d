@@ -1,6 +1,6 @@
 # @ferrum2d/agents
 
-Ferrum2D consumer game development용 AI agent, skill, Gemini command, shared harness를 프로젝트에 설치하는 CLI다.
+Ferrum2D consumer game development용 AI agent, skill, Gemini command, shared harness를 프로젝트에 설치하는 CLI다. Node.js 24 이상이 필요하다.
 
 GitHub Release 생성기로 만든 게임에서는 같은 버전에 고정된 명령을 사용한다.
 

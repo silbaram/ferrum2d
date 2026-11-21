@@ -18,14 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -50,7 +50,7 @@ jobs:
         run: pnpm smoke:language-boundaries
       - name: Upload boundary evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: language-boundaries
           path: artifacts/language-boundaries

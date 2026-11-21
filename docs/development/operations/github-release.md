@@ -34,7 +34,7 @@ node packages/create-game/bin/create-game.mjs ../my-game \
 
 ## 배포자 로컬 준비
 
-엔진을 빌드할 수 있는 Rust stable, Wasm target, wasm-pack, Node.js, pnpm 환경에서 실행한다.
+엔진을 빌드할 수 있는 Rust stable, Wasm target, wasm-pack, Node.js 24 이상과 pnpm 환경에서 실행한다.
 
 ```bash
 ferrum_candidate_version="<준비할 새 x.y.z-beta.N 버전>"
@@ -119,7 +119,7 @@ pnpm release:distribution:verify -- --bundle "$ferrum_bundle_dir/combined"
 
 ### Native 빌드 조건
 
-현재 OS의 x64/arm64 Rust host를 사용하며 CI도 각 OS에서 직접 빌드한다. Node.js 22, pnpm 10.8, Rust stable과 [Tauri OS별 필수 도구](https://v2.tauri.app/start/prerequisites/)가 필요하다. Windows는 MSVC C++ build tools와 WebView2 환경, macOS는 Xcode command line tools가 필요하다. Linux Debian/Ubuntu 예시는 다음과 같다.
+현재 OS의 x64/arm64 Rust host를 사용하며 CI도 각 OS에서 직접 빌드한다. Node.js 24 이상, pnpm 10.8, Rust stable과 [Tauri OS별 필수 도구](https://v2.tauri.app/start/prerequisites/)가 필요하다. Windows는 MSVC C++ build tools와 WebView2 환경, macOS는 Xcode command line tools가 필요하다. Linux Debian/Ubuntu 예시는 다음과 같다.
 
 ```bash
 sudo apt-get install pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev

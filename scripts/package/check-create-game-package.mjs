@@ -121,7 +121,7 @@ assert(packageJson.license === "MIT OR Apache-2.0", "create-game package license
 assert(packageJson.bin?.["create-ferrum2d-game"] === "./bin/create-game.mjs", "create-game bin must point to ./bin/create-game.mjs");
 assert(packageJson.bin?.["create-game"] === "./bin/create-game.mjs", "multi-bin package must retain npm exec package-name inference");
 assert(packageJson.bin?.["ferrum-update-game"] === "./bin/update-game.mjs", "update CLI must be packaged");
-assert(packageJson.engines?.node === ">=18.17", "create-game Node engine must stay >=18.17");
+assert(packageJson.engines?.node === ">=24", "create-game requires Node.js 24 or newer");
 assert(packageJson.publishConfig?.access === "public", "create-game publishConfig.access must be public");
 assert(packageJson.publishConfig?.tag === "beta", "create-game publishConfig.tag must be beta");
 assertFilesAllowlist(packageJson, expectedFiles, packageLabel);
@@ -648,6 +648,7 @@ async function checkGeneratedProject(template) {
       "generated package name must be derived from target directory",
     );
     assert(generatedPackage.private === true, "generated game project must be private by default");
+    assert(generatedPackage.engines?.node === packageJson.engines.node, "generated game must match the CLI's Node.js requirement");
     assert(generatedPackage.dependencies?.["@ferrum2d/studio-kit"] === "0.0.0-studio-kit-test", "generated game must depend on @ferrum2d/studio-kit");
     assert(generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "0.0.0-test", "generated game must depend on @ferrum2d/ferrum-web");
     assert(generatedPackage.scripts?.dev === "vite", "generated game must include dev script");

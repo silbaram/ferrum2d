@@ -31,13 +31,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate updater request
         if: ${{ inputs.signed_updates && !inputs.include_studio && !inputs.attach_to_draft }}
         run: exit 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
       - name: Check draft version and selected ref
         if: ${{ inputs.attach_to_draft }}
         env:
@@ -60,7 +60,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
@@ -83,13 +83,13 @@ jobs:
           pnpm package:consumer-smoke -- --skip-build --skip-package-check --artifact-dir artifacts/consumer-smoke-github-release
       - name: Validate consumer report
         run: pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-github-release/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-github-release --expect-status passed
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ inputs.include_studio || inputs.attach_to_draft }}
         with:
           name: engine-release-bundle
           path: artifacts/github-release-candidate/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: github-release-candidate
@@ -117,10 +117,10 @@ jobs:
       - name: Preserve source bytes on Windows checkout
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
       - name: Check Studio release identity before native setup
         if: ${{ inputs.signed_updates }}
         shell: bash
@@ -134,13 +134,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:github-release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: engine-release-bundle
           path: ${{ runner.temp }}/ferrum-sdk
@@ -159,7 +159,7 @@ jobs:
             updater_args=(--with-updater)
           fi
           pnpm release:distribution:prepare -- --component studio --engine-bundle "$RUNNER_TEMP/ferrum-sdk" --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" "${updater_args[@]}" --output artifacts/studio-release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: studio-release-${{ matrix.platform }}
           path: artifacts/studio-release/
@@ -171,15 +171,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
-      - uses: actions/download-artifact@v4
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v7
         with:
           name: engine-release-bundle
           path: artifacts/inputs/engine
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: studio-release-*
           path: artifacts/inputs/studios
@@ -192,7 +192,7 @@ jobs:
           --studio artifacts/inputs/studios/studio-release-macos
           --output artifacts/distribution-candidate
       - run: node scripts/package/prepare-distribution.mjs verify --bundle artifacts/distribution-candidate
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: distribution-candidate
           path: artifacts/distribution-candidate/
@@ -209,10 +209,10 @@ jobs:
       group: release-draft-${{ inputs.version }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: distribution-candidate
           path: artifacts/distribution-candidate

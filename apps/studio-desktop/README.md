@@ -49,7 +49,8 @@ Windows WebView2의 HTML5 파일 드롭을 위해 `app.windows[].dragDropEnabled
 공통 UI의 **도움말 → 버전 및 업데이트**에서 앱/내장 엔진과 열린 게임 프로젝트의 엔진을 따로 갱신한다.
 `updates.rs`는 Open Project 권한만 프로젝트 CLI에 전달하고, 앱 설치에는 공식 Tauri updater의 서명 검증을 사용한다.
 프로젝트 CLI는 앱에 내장된 source를 임시 디렉터리에서 Node로 실행하며 게임 프로젝트의 스크립트/코드를 불러오지 않는다.
-Node/npm/pnpm이 없는 환경은 프로젝트 갱신 오류를 표시하며 앱 업데이트에는 필요 없다.
+게임 프로젝트 갱신에는 Node.js 24 이상과 프로젝트가 사용하는 npm 또는 pnpm이 필요하다.
+Studio 앱 자체의 업데이트는 내장 updater를 사용한다.
 기본 개발 config는 빈 공개키/endpoint와 `createUpdaterArtifacts: false`여서 앱 설치를 제공하지 않는다.
 Linux는 AppImage 실행에 한해 자동 교체를 허용한다. `.deb` 설치는 릴리스 파일로 수동 갱신한다.
 host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데이트에만 재시작을 허용한다.
@@ -64,7 +65,7 @@ host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데�
 
 저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component studio --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS Studio를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
 
-Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node/pnpm/Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. Studio에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
+Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node.js 24 이상과 pnpm, Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. Studio에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
 
 준비 성공과 실제 설치/GUI/서명 확인은 별개다. OS별 조건, checksum·통합 manifest와 수동 CI의 `include_studio` 사용법은 [엔진·Studio 분리 배포 절차](../../docs/development/operations/github-release.md#엔진과-studio-앱-분리-준비)를 따른다.
 

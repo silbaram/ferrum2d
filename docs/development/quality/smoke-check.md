@@ -7,7 +7,7 @@
 
 ## 로컬 기본 검증
 
-Node.js 22, pnpm 10.8, Rust stable과 wasm-pack을 준비한다. 브라우저 smoke에는 Playwright Chromium과
+Node.js 24 이상, pnpm 10.8, Rust stable과 wasm-pack을 준비한다. CI는 Node.js 24를 사용한다. 브라우저 smoke에는 Playwright Chromium과
 해당 OS 라이브러리가 필요하다. native 앱 조건은 [desktop 안내](https://github.com/silbaram/ferrum2d/blob/main/apps/studio-desktop/README.md)를 따른다.
 
 아래 전체 검증 모음은 요청된 전체 개발과 통합이 완료된 뒤 실행한다. 개발 중에는 수정한 코드와

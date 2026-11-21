@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -60,13 +60,13 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
 
       - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload unified physics Web bridge report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: unified-physics-web-bridge
           path: |
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload native template Studio report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: native-template-studio
           path: artifacts/physics-3d/goal-closure/studio-native-authoring/browser/
@@ -248,7 +248,7 @@ jobs:
 
       - name: Upload slice origin evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: aseprite-slices
           path: artifacts/aseprite-slices
@@ -256,7 +256,7 @@ jobs:
 
       - name: Upload trim restoration evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: aseprite-trim
           path: artifacts/aseprite-trim
@@ -273,7 +273,7 @@ jobs:
 
       - name: Upload flat lighting verification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: flat-lighting
           path: |
@@ -292,7 +292,7 @@ jobs:
 
       - name: Upload example suite evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: example-suite
           path: artifacts/example-suite
@@ -300,7 +300,7 @@ jobs:
 
       - name: Upload feature example evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: feature-examples
           path: artifacts/feature-examples
@@ -308,7 +308,7 @@ jobs:
 
       - name: Upload Engine Playground evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: engine-playground
           path: artifacts/engine-playground
@@ -319,7 +319,7 @@ jobs:
 
       - name: Upload nine-slice evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sprite-nine-slice
           path: artifacts/pixel-tools-and-demo/nine-slice/runtime
@@ -338,7 +338,7 @@ jobs:
 
       - name: Upload pixel showcase evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pixel-showcase
           path: artifacts/pixel-showcase
@@ -346,7 +346,7 @@ jobs:
 
       - name: Upload pixel postprocess evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pixel-postprocess
           path: artifacts/pixel-postprocess
@@ -354,7 +354,7 @@ jobs:
 
       - name: Upload sprite palette evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sprite-palette
           path: artifacts/sprite-palette
@@ -371,7 +371,7 @@ jobs:
 
       - name: Upload pixel capacity evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pixel-editor-capacity
           path: artifacts/pixel-editor-capacity
@@ -382,7 +382,7 @@ jobs:
 
       - name: Upload project catalog cleanup evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: project-asset-cleanup
           path: |
@@ -394,7 +394,7 @@ jobs:
 
       - name: Upload pixel and 2D material evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: native-pixel-project
           path: |
@@ -414,7 +414,7 @@ jobs:
 
       - name: Upload native tile map evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: native-tile-map
           path: |
@@ -427,7 +427,7 @@ jobs:
 
       - name: Upload autotile evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tile-autotile
           path: artifacts/tile-autotile
@@ -438,7 +438,7 @@ jobs:
 
       - name: Upload tile animation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tile-animation
           path: artifacts/tile-animation
@@ -449,7 +449,7 @@ jobs:
 
       - name: Upload village game quality evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: village-game-quality
           path: |
@@ -459,7 +459,7 @@ jobs:
 
       - name: Upload spatial WebGPU evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spatial-webgpu
           path: |
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload HD-2D combat evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: hd2d-combat
           path: |
@@ -495,7 +495,7 @@ jobs:
 
       - name: Upload runtime animation verification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-animation
           path: artifacts/runtime-animation
@@ -517,7 +517,7 @@ jobs:
 
       - name: Upload atlas extrusion verification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: atlas-extrusion
           path: artifacts/atlas-extrusion
@@ -525,7 +525,7 @@ jobs:
 
       - name: Upload pixel-perfect verification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: flat-pixel-perfect
           path: artifacts/flat-pixel-perfect
@@ -597,7 +597,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -608,13 +608,13 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
 
       - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
@@ -634,7 +634,7 @@ jobs:
 
       - name: Upload consumer smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: consumer-smoke-artifacts
           path: artifacts/consumer-smoke
@@ -691,7 +691,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -702,13 +702,13 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
 
       - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
@@ -724,7 +724,7 @@ jobs:
 
       - name: Upload browser smoke budget artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: extended-browser-smoke-${{ matrix.artifact }}
           path: artifacts/browser-smoke-budgets

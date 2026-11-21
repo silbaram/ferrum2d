@@ -114,7 +114,7 @@ assertSemverPackage(packageJson, { expectPublishable, packageLabel });
 assert(packageJson.type === "module", "agents package type must be module");
 assert(packageJson.license === "MIT OR Apache-2.0", "agents package license must stay MIT OR Apache-2.0");
 assert(packageJson.bin?.["ferrum2d-agents"] === "./bin/ferrum2d-agents.mjs", "agents bin must point to ./bin/ferrum2d-agents.mjs");
-assert(packageJson.engines?.node === ">=18.17", "agents Node engine must stay >=18.17");
+assert(packageJson.engines?.node === ">=24", "agents requires Node.js 24 or newer");
 assert(packageJson.publishConfig?.access === "public", "agents publishConfig.access must be public");
 assert(packageJson.publishConfig?.tag === "beta", "agents publishConfig.tag must be beta");
 assertFilesAllowlist(packageJson, expectedFiles, packageLabel);

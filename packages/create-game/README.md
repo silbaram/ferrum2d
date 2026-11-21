@@ -1,6 +1,6 @@
 # @ferrum2d/create-game
 
-Ferrum2D 게임 프로젝트 생성 CLI다. 기본 배포 경로는 GitHub Releases의 설치용 tarball이다. 공개된 릴리스가 있어야 원격 설치할 수 있다. Node.js 22를 권장하며 게임 개발자에게 Rust 빌드는 필요 없다.
+Ferrum2D 게임 프로젝트 생성 CLI다. 기본 배포 경로는 GitHub Releases의 설치용 tarball이다. 공개된 릴리스가 있어야 원격 설치할 수 있다. 현재 생성기와 게임 템플릿은 Node.js 24 이상이 필요하며, Rust 빌드는 필요 없다.
 
 ```bash
 ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"

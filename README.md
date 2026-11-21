@@ -215,7 +215,8 @@ Behavior Recipe 본문·FSM/action graph를 UI에서 작성하는 범용 visual 
 
 ### 게임 프로젝트에서 사용하기
 
-Node.js 22를 권장합니다. 배포된 엔진을 사용하는 게임 프로젝트에는 Rust 빌드가 필요하지 않습니다.
+현재 게임 개발 환경에서는 Node.js 24 이상과 npm을 사용합니다. 배포된 엔진을 사용하는 게임 프로젝트에는 Rust 빌드가 필요하지 않습니다.
+게임은 브라우저에서 실행됩니다.
 
 **AI에게 설치를 맡길 때:** [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)을 전달합니다.
 이 경로는 문서에 고정된 릴리스의 엔진·도구·AI 지침을 설치하고 환경을 검증합니다. 게임 코드는 개발을 요청한 뒤 작성합니다.
@@ -250,7 +251,8 @@ OS별 설치 파일의 제공 여부는 선택한 릴리스의 첨부 파일을 
 개발 중인 통합 물리는 `crates/ferrum-core/vendor/`에 고정한 Rapier 0.36.1과 Parry 0.31.1 소스를
 사용합니다. 각 디렉터리의 `UPSTREAM.json`·`FERRUM-PATCHES.md`에서 원본·수정·라이선스를 확인합니다.
 
-필수 도구는 Rust stable, `wasm32-unknown-unknown`, `wasm-pack`, Node.js와 pnpm입니다. Node.js 22와 pnpm 10.8.0을 권장합니다.
+필수 도구는 Rust stable, `wasm32-unknown-unknown`, `wasm-pack`, Node.js 24 이상과 pnpm 10.8.0입니다. 개발과 CI의 기본 버전은 Node.js 24 LTS입니다.
+nvm을 사용한다면 저장소 루트에서 `nvm use`로 버전을 선택할 수 있습니다.
 
 ```bash
 git clone https://github.com/silbaram/ferrum2d.git

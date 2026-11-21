@@ -4,6 +4,8 @@ Ferrum2D `create-game`으로 생성한 정적 웹 게임 프로젝트다.
 
 ## 개발
 
+프로젝트 개발과 빌드에는 Node.js 24 이상과 npm이 필요하다. 게임은 브라우저에서 실행된다.
+
 ```bash
 npm install
 npm run dev

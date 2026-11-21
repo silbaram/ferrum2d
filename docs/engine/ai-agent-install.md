@@ -31,7 +31,7 @@ npm --version
 node -e "console.log(process.cwd()); console.log(require('node:fs').readdirSync('.'))"
 ```
 
-Node.js 22를 권장한다. npm/npx와 GitHub·npm 레지스트리 네트워크 접근이 필요하다. 빌드된 Wasm을 설치하므로 Rust, wasm-pack, 엔진 저장소 clone은 필요하지 않다.
+이 안내는 Node.js 24 이상을 기준으로 한다. npm/npx와 GitHub·npm 레지스트리 네트워크 접근이 필요하다. 빌드된 Wasm을 설치하므로 Rust, wasm-pack, 엔진 저장소 clone은 필요하지 않다.
 
 `.git`이나 기존 AI 지침이 있어도 초기 설치는 가능하다. 기존 `package.json`, `.npmrc`, `.gitignore`, 지침 파일은 읽고 필요한 설정만 병합한다. 사용자가 작성한 코드와 지침을 덮어쓰거나 예제 정리 명목으로 삭제하지 않는다. Node.js/npm이 없으면 누락된 도구를 알리고, 기존 전역 환경을 임의로 교체하지 않는다.
 

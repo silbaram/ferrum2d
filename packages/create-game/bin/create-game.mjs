@@ -185,7 +185,7 @@ async function createGameProject({ studioKitVersion, ferrumVersion, force, proje
     await writeFile(path.join(targetRoot, "FERRUM_INSTALL.md"), `# Ferrum2D 설치 정보\n\n` +
       `GitHub Release: https://github.com/${release.repository}/releases/tag/${release.tag}\n\n` +
       `엔진과 Studio Kit는 ${release.version} 릴리스 URL에 고정되어 있다.\n` +
-      `Node.js 22 권장. npm install 후 npm run dev로 개발한다. Rust 빌드는 필요 없다.\n\n` +
+      `Node.js 24 LTS를 사용한다. npm install 후 npm run dev로 개발한다. Rust 빌드는 필요 없다.\n\n` +
       `AI 개발 도구 지침 설치(선택): npm run ferrum:agents\n` +
       `이 명령은 명시적으로 실행했을 때만 agent/skill 파일을 생성한다.\n\n` +
       `package-lock.json을 버전 관리에 포함하고 재설치에는 npm ci를 사용한다.\n` +
