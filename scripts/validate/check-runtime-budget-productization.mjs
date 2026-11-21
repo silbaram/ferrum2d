@@ -58,8 +58,8 @@ const defaultCiGateSnippets = [
   "pnpm smoke:runtime-budgets",
   "pnpm smoke:mass-objects",
   "pnpm smoke:physics",
-  "pnpm smoke:topdown-mass-objects",
-  "pnpm smoke:topdown-tilemap-budget",
+  "run: node tests/smoke/browser-render-smoke.mjs --budget --mode=topdown-mass-objects examples/topdown-shooter/dist",
+  "run: node tests/smoke/browser-render-smoke.mjs --budget --mode=topdown-tilemap-budget examples/topdown-shooter/dist",
 ];
 const optInCiSnippets = [
   "consumer_smoke",
