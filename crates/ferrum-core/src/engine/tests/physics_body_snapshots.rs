@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn engine_spawn_physics_aabb_body_authoring_steps_and_queries_snapshot() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -57,7 +57,7 @@ fn engine_spawn_physics_aabb_body_authoring_steps_and_queries_snapshot() {
 
 #[test]
 fn engine_queries_compound_collider_snapshot_for_replay_state() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -156,7 +156,7 @@ fn engine_queries_compound_collider_snapshot_for_replay_state() {
 
 #[test]
 fn engine_spawn_physics_body_shapes_and_controls_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 
@@ -477,7 +477,7 @@ fn engine_spawn_physics_body_shapes_and_controls_for_wasm() {
 
 #[test]
 fn engine_captures_and_restores_physics_body_snapshot_bulk() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
 

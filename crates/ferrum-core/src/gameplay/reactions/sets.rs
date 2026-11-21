@@ -3,6 +3,7 @@ use super::*;
 pub(super) const MAX_COLLISION_GAMEPLAY_EVENTS_PER_REACTION_SET: usize =
     MAX_COLLISION_REACTIONS_PER_ENTITY * 3;
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_collision_reaction_set_for_pair<F>(
     world: &mut World,
@@ -12,7 +13,35 @@ pub(crate) fn apply_collision_reaction_set_for_pair<F>(
     area_damage_hits: &mut Vec<CircleQueryHit>,
     marked_for_despawn: &mut [bool],
     pending_despawn: &mut Vec<Entity>,
+    damage_defaults_for: F,
+) -> CollisionReactionSetOutcome
+where
+    F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
+{
+    apply_collision_reaction_set_for_pair_with_physics(
+        world,
+        pair,
+        reactions,
+        contact_entered,
+        area_damage_hits,
+        marked_for_despawn,
+        pending_despawn,
+        damage_defaults_for,
+        &mut LegacyReactionPhysics,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_collision_reaction_set_for_pair_with_physics<F, P: CollisionReactionPhysics>(
+    world: &mut World,
+    pair: CollisionReactionPair,
+    reactions: &mut CollisionReactionSet,
+    contact_entered: bool,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
+    marked_for_despawn: &mut [bool],
+    pending_despawn: &mut Vec<Entity>,
     mut damage_defaults_for: F,
+    physics: &mut P,
 ) -> CollisionReactionSetOutcome
 where
     F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
@@ -55,7 +84,7 @@ where
                 radius,
                 target_layer,
             } => {
-                let area_outcome = apply_collision_area_damage_reaction_for_pair(
+                let area_outcome = physics.area_damage(
                     world,
                     pair,
                     *radius,
@@ -85,13 +114,8 @@ where
                 }
             }
             CollisionReaction::Knockback { target, impulse } => {
-                let knockback_outcome = apply_collision_knockback_reaction_for_pair(
-                    world,
-                    pair,
-                    *target,
-                    *impulse,
-                    marked_for_despawn,
-                );
+                let knockback_outcome =
+                    physics.knockback(world, pair, *target, *impulse, marked_for_despawn);
                 if let Some(knockback_outcome) = knockback_outcome {
                     push_reaction_outcome(&mut outcome.knockback_outcomes, knockback_outcome);
                 }
@@ -132,6 +156,7 @@ where
     outcome
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_collision_reaction_sets_for_pair<F>(
     world: &mut World,
     pair: CollisionReactionPair,
@@ -144,6 +169,32 @@ pub(crate) fn apply_collision_reaction_sets_for_pair<F>(
 where
     F: Fn(&World, usize) -> CollisionDamageReactionDefaults + Copy,
 {
+    apply_collision_reaction_sets_for_pair_with_physics(
+        world,
+        pair,
+        contact_entered,
+        area_damage_hits,
+        marked_for_despawn,
+        pending_despawn,
+        damage_defaults,
+        &mut LegacyReactionPhysics,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_collision_reaction_sets_for_pair_with_physics<F, P: CollisionReactionPhysics>(
+    world: &mut World,
+    pair: CollisionReactionPair,
+    contact_entered: bool,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
+    marked_for_despawn: &mut [bool],
+    pending_despawn: &mut Vec<Entity>,
+    damage_defaults: F,
+    physics: &mut P,
+) -> Option<CollisionReactionSetsForPairOutcome>
+where
+    F: Fn(&World, usize) -> CollisionDamageReactionDefaults + Copy,
+{
     let first_reactions = world.collision_reactions_at_index(pair.source_index);
     let second_reactions = world.collision_reactions_at_index(pair.other_index);
     if first_reactions.is_none() && second_reactions.is_none() {
@@ -152,7 +203,7 @@ where
 
     let mut outcome = CollisionReactionSetsForPairOutcome::default();
     if let Some(mut reactions) = first_reactions {
-        let reaction_outcome = apply_collision_reaction_set_for_pair(
+        let reaction_outcome = apply_collision_reaction_set_for_pair_with_physics(
             world,
             pair,
             &mut reactions,
@@ -161,13 +212,14 @@ where
             marked_for_despawn,
             pending_despawn,
             damage_defaults,
+            physics,
         );
         outcome.push(pair, reaction_outcome);
         world.replace_collision_reactions_at_index(pair.source_index, Some(reactions));
     }
     if let Some(mut reactions) = second_reactions {
         let reversed = pair.reversed();
-        let reaction_outcome = apply_collision_reaction_set_for_pair(
+        let reaction_outcome = apply_collision_reaction_set_for_pair_with_physics(
             world,
             reversed,
             &mut reactions,
@@ -176,6 +228,7 @@ where
             marked_for_despawn,
             pending_despawn,
             damage_defaults,
+            physics,
         );
         outcome.push(reversed, reaction_outcome);
         world.replace_collision_reactions_at_index(pair.other_index, Some(reactions));

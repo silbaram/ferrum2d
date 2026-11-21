@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "packages": [
+        "profiling@1.0.18",
+        "profiling-procmacros@1.0.18"
+      ],
+      "repository": "https://github.com/aclysma/profiling",
+      "revision": "8271551172eb6fa4cba47369aedd93790c623df9",
+      "reason": "Published crate archive omits the workspace root license files; Cargo .cargo_vcs_info.json pins this upstream revision.",
+      "files": [
+        {
+          "file": "profiling/LICENSE-APACHE",
+          "upstreamFile": "LICENSE-APACHE",
+          "source": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+          "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551"
+        },
+        {
+          "file": "profiling/LICENSE-MIT",
+          "upstreamFile": "LICENSE-MIT",
+          "source": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT",
+          "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333"
+        }
+      ]
+    },
+    {
+      "packages": [
+        "rstar@0.13.1"
+      ],
+      "repository": "https://github.com/georust/rstar",
+      "revision": "72ca121d1c0f835e1a3bb975d45fd1b115da1b95",
+      "reason": "Published crate archive omits the workspace root license files; Cargo .cargo_vcs_info.json pins this upstream revision.",
+      "files": [
+        {
+          "file": "rstar/LICENSE-APACHE",
+          "upstreamFile": "LICENSE-APACHE",
+          "source": "https://raw.githubusercontent.com/georust/rstar/72ca121d1c0f835e1a3bb975d45fd1b115da1b95/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "rstar/LICENSE-MIT",
+          "upstreamFile": "LICENSE-MIT",
+          "source": "https://raw.githubusercontent.com/georust/rstar/72ca121d1c0f835e1a3bb975d45fd1b115da1b95/LICENSE-MIT",
+          "sha256": "9b3a76c27bac8f3e0ff2d1f64f65941c50310ae3ff69318cea230bd4a36822c5"
+        }
+      ]
+    }
+  ]
+}

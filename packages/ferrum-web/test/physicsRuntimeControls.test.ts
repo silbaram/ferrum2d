@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import type { Engine } from "../pkg/ferrum_core";
 import {
@@ -46,6 +46,13 @@ test("applyPhysicsRuntimeOptions applies spec fixed step and debug flags without
   deepEqual(engine.debugEnabledCalls, [true]);
 });
 
+test("default metadata without explicit physics configuration does not enable a clock", () => {
+  const engine = fakeRuntimeEngine();
+  applyPhysicsRuntimeOptions(engine, resolvedPhysicsSpec(), {}, false);
+  deepEqual(engine.fixedCalls, []);
+  deepEqual(engine.autoStepCalls, []);
+});
+
 test("configureAutoRigidBodyStepOptions and stepRigidBodiesWithStats keep default solver values", () => {
   const engine = fakeRuntimeEngine();
 
@@ -68,6 +75,46 @@ test("physicsDebugFlags preserves option priority and category bits", () => {
   equal(physicsDebugFlags(false, { sleeping: true }), 20);
   equal(physicsDebugFlags({ ccd: true, joints: true }), 40);
   equal(physicsDebugFlags(undefined, undefined, true), 3);
+});
+
+test("manual stepping prefers checked entries and propagates rejection before reading success stats", () => {
+  for (const configured of [false, true]) {
+    const engine = fakeRuntimeEngine() as FakeRuntimeEngine & {
+      step_rigid_bodies_checked?: Engine["step_rigid_bodies"];
+      step_rigid_bodies_with_config_checked?: Engine["step_rigid_bodies_with_config"];
+    };
+    let calls = 0, statsReads = 0;
+    const failure = new Error("actual motion rejected");
+    const checked = function (this: Engine, ...args: unknown[]) {
+      equal(this, engine);
+      calls++;
+      equal(args[0], 0.01);
+      equal(args.length, configured ? 12 : 1);
+      if (calls > 1) throw failure;
+    };
+    if (configured) engine.step_rigid_bodies_with_config_checked = checked;
+    else engine.step_rigid_bodies_checked = checked;
+    engine.rigid_body_step_substeps = () => { statsReads++; return 1; };
+    const options = configured ? { gravityY: 0 } : undefined;
+    equal(stepRigidBodiesWithStats(engine, 0.01, options).substeps, 1);
+    equal(statsReads, 1);
+    throws(() => stepRigidBodiesWithStats(engine, 0.01, options), error => error === failure);
+    equal(calls, 2);
+    equal(statsReads, 1);
+    deepEqual(engine.stepCalls, []);
+    deepEqual(engine.stepConfigCalls, []);
+  }
+});
+
+test("native boolean auto-step toggles retain configured settings instead of supplying legacy defaults", () => {
+  const engine = fakeRuntimeEngine();
+  const toggles: boolean[] = [];
+  engine.physics_spec_backend_active = () => true;
+  engine.set_auto_rigid_body_step_enabled = enabled => { toggles.push(enabled); };
+  configureAutoRigidBodyStepOptions(engine, false);
+  configureAutoRigidBodyStepOptions(engine, true);
+  deepEqual(toggles, [false, true]);
+  deepEqual(engine.autoStepCalls, []);
 });
 
 function resolvedPhysicsSpec(): ResolvedPhysicsSpec {

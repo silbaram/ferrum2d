@@ -1,0 +1,149 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "componentTemplates": {
+    "crateBody": {
+      "visual": {
+        "kind": "sprite",
+        "asset": "crate",
+        "width": 40,
+        "height": 40
+      },
+      "collider": "none",
+      "layer": "wall",
+      "body": {
+        "kind": "dynamic",
+        "gravityScale": 0,
+        "linearVelocity": [
+          8,
+          0,
+          0
+        ],
+        "collider": {
+          "shape": {
+            "type": "box",
+            "halfExtents": [
+              20,
+              20,
+              0.5
+            ]
+          }
+        }
+      }
+    },
+    "runner": {
+      "visual": {
+        "kind": "sprite",
+        "asset": "agent",
+        "width": 28,
+        "height": 28
+      },
+      "collider": "none",
+      "layer": "player",
+      "body": {
+        "kind": "kinematic-position",
+        "collider": {
+          "shape": {
+            "type": "capsule",
+            "halfHeight": 6,
+            "radius": 8
+          }
+        },
+        "character": {
+          "stepHeight": 4,
+          "snapDistance": 2
+        }
+      }
+    }
+  },
+  "physics": {
+    "space": "planar-xy",
+    "gravity": [
+      0,
+      0,
+      0
+    ],
+    "lengthUnit": 1,
+    "stepSeconds": 0.01,
+    "joints": {
+      "link": {
+        "bodyA": "crate_a",
+        "bodyB": "crate_b",
+        "kind": {
+          "type": "distance",
+          "length": 90
+        }
+      }
+    },
+    "collisionTilemap": {
+      "columns": 4,
+      "rows": 1,
+      "tileWidth": 48,
+      "tileHeight": 48,
+      "originX": -96,
+      "originY": 70,
+      "tiles": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "definitions": [
+        {
+          "id": 1,
+          "height": 1,
+          "blocksMovement": false,
+          "visual": {
+            "texture": "floor"
+          }
+        }
+      ]
+    }
+  },
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "crate": {
+        "props": {
+          "components": {
+            "template": "crateBody"
+          }
+        }
+      },
+      "runner": {
+        "props": {
+          "components": {
+            "template": "runner"
+          }
+        }
+      }
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          {
+            "id": "crate_a",
+            "prefab": "crate",
+            "x": -45,
+            "y": 0
+          },
+          {
+            "id": "crate_b",
+            "prefab": "crate",
+            "x": 45,
+            "y": 0
+          },
+          {
+            "id": "runner",
+            "prefab": "runner",
+            "x": -120,
+            "y": 0
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {}
+  }
+}

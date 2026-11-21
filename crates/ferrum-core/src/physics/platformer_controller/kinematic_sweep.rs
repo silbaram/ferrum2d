@@ -32,20 +32,24 @@ pub(super) struct KinematicSweep<'a> {
     pub(super) height_span: Option<HeightSpan>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct KinematicSweepScratch {
     collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     candidates: Vec<ColliderKey>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     spatial_tile_contacts: Vec<crate::tilemap::TilemapContactHit>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub(crate) debug_hits: Vec<KinematicDebugHit>,
     pub(crate) debug_truncated: bool,
     capture_debug_hits: bool,
     spatial_query_actor: Option<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     spatial_segment_targets: Vec<ColliderKey>,
     spatial_segment_active: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct KinematicDebugHit {
     pub target: Option<Entity>,
     pub point: Transform2D,
@@ -483,3 +487,5 @@ fn height_span_allows_kinematic_target(
         None => true,
     }
 }
+
+mod file_scratch_admission;

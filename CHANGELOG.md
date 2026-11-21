@@ -8,6 +8,8 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Changed
 
+- Ferrum2D 개발·CI와 게임 생성·에이전트 CLI의 최소 버전을 Node.js 24로 올렸다.
+  개발 저장소와 GitHub Actions는 Node.js 24 LTS를 사용한다.
 - 출시 전 Studio 명칭을 패키지·명령·소스 경로·배포 파일에 적용했다. 보조 라이브러리는
   `@ferrum2d/studio-kit`, 앱은 `@ferrum2d/studio` / `@ferrum2d/studio-desktop`,
   생성 프로젝트는 `studio.html` / `ferrum:studio`를 사용한다. 이전 이름의 별칭은 제공하지 않는다.

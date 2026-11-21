@@ -109,6 +109,10 @@ export function createPlacementSpatialProxy(options: {
         state.spatial?.attachments?.[instance.instanceId]
       )
         throw new Error("Choose an unlocked, unattached model");
+      if (instance.componentTemplate !== undefined)
+        throw new Error("Shared component template collider is read-only; edit componentTemplates with an agent.");
+      if (instance.body && instance.body.type === undefined)
+        throw new Error("Edit this body's collider in the scene document");
       const source = options.components(instance.instanceId);
       if (!source || typeof source !== "object" || Array.isArray(source))
         throw new Error("Proxy requires inline components");
@@ -198,7 +202,11 @@ export function createPlacementSpatialProxy(options: {
       const instance = state.selected,
         model = instance && state.spatial?.models?.[instance.instanceId];
       element.hidden = !model;
+      const shapeBody = instance?.body && instance.body.type === undefined;
+      setUiText(hint, shapeBody ? "Edit this body's collider in the scene document" : "Explicit dimensions. Visual position stays fixed.");
       const disabled =
+        instance?.componentTemplate !== undefined ||
+        !!shapeBody ||
         !model ||
         !instance ||
         state.lockedInstanceIds.includes(instance.instanceId) ||

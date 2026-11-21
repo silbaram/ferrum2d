@@ -26,7 +26,20 @@ impl Engine {
             &mut self.spatial_scene,
             &self.camera,
         );
-        self.spatial_scene.build(&self.world);
+        if let Some(runtime) = &self.unified_physics {
+            let (offsets, count) = runtime.terrain_render_offsets(
+                &self.spatial_scene,
+                self.world.render_interpolation_alpha(),
+            );
+            self.spatial_scene.present_native_terrain(&offsets[..count]);
+            self.spatial_scene
+                .build_with_native_model_poses(&self.world, true, |entity| {
+                    runtime.spatial_model_pose(entity)
+                });
+        } else {
+            self.spatial_scene.present_native_terrain(&[]);
+            self.spatial_scene.build(&self.world);
+        }
         self.particles.append_spatial(&mut self.spatial_scene);
         self.bitmap_text
             .append_spatial_text(&self.world, &mut self.spatial_scene);

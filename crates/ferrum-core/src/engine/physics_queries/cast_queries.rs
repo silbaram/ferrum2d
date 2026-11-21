@@ -18,6 +18,21 @@ impl Engine {
         max_distance: f32,
         query_mask_bits: u32,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_ray(
+            Transform2D {
+                x: origin_x,
+                y: origin_y,
+            },
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            query_mask_bits,
+            None,
+        ) {
+            return count;
+        }
         CollisionSystem::raycast_all_into(
             &self.world,
             Transform2D {
@@ -52,6 +67,21 @@ impl Engine {
             self.physics_raycast_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_ray(
+            Transform2D {
+                x: origin_x,
+                y: origin_y,
+            },
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::raycast_all_with_height_span_into(
             &self.world,
             Transform2D {
@@ -78,6 +108,21 @@ impl Engine {
         end_y: f32,
         query_mask_bits: u32,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_ray(
+            Transform2D {
+                x: start_x,
+                y: start_y,
+            },
+            Velocity {
+                vx: end_x - start_x,
+                vy: end_y - start_y,
+            },
+            (end_x - start_x).hypot(end_y - start_y),
+            query_mask_bits,
+            None,
+        ) {
+            return count;
+        }
         CollisionSystem::segment_cast_all_into(
             &self.world,
             Transform2D {
@@ -107,6 +152,21 @@ impl Engine {
             self.physics_raycast_hits.clear();
             return 0;
         };
+        if let Some(count) = self.query_unified_planar_ray(
+            Transform2D {
+                x: start_x,
+                y: start_y,
+            },
+            Velocity {
+                vx: end_x - start_x,
+                vy: end_y - start_y,
+            },
+            (end_x - start_x).hypot(end_y - start_y),
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::segment_cast_all_with_height_span_into(
             &self.world,
             Transform2D {

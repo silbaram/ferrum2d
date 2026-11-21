@@ -6,7 +6,7 @@ pub struct PulleyJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PulleyJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,

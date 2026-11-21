@@ -11,20 +11,29 @@ use crate::world::World;
 mod joint_buckets;
 pub(super) use joint_buckets::RigidBodyJointIslandBuckets;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct RigidBodyIslandGraph {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     node_for_entity: Vec<Option<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     entity_indices: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     parents: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     sizes: Vec<u32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     active: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     sleeping: Vec<bool>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct RigidBodyIslandSchedule {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     root_for_entity: Vec<Option<usize>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     roots: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     slot_for_root: Vec<Option<usize>>,
 }
 
@@ -454,3 +463,5 @@ fn union_enabled_joint_island(
         graph.union_entities(world, entity_a, entity_b);
     }
 }
+
+mod file_scratch_admission;

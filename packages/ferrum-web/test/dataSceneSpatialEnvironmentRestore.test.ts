@@ -1,7 +1,7 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
-  createEngine,
   captureGameStateSnapshot,
   restoreGameStateSnapshot,
   hashGameStateSnapshot,

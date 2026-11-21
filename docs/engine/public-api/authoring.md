@@ -149,10 +149,25 @@ starter-scene 표면은 별도 호환 계약으로 유지한다.
 
 `applyDataSceneAuthoringDocument(engine, document, options?)`는 full `ferrum2d.consumer.scene-authoring`
 문서를 Data Scene runtime에 적용하는 package-facing 조립 경로다. 기본값은
-`validateBindings: true`, `validateComponents: true`이며, `componentTemplates`를 넘기면
+`validateBindings: true`, `validateComponents: true`이며, 문서 root 또는 options에 `componentTemplates`를 제공하면
 `allowComponentTemplates`도 기본 활성화된다. resolver/component validation은 runtime activation 전에
 끝나므로 검증 실패만으로 기존 scene을 비우지 않는다. 적용 시에는 문서의 `ids`를 behavior command id
 해석에 사용하고, `options.ids`가 있으면 caller override를 우선한다.
+문서 root의 선택형 `componentTemplates`는 strict inline `DataSceneComponentsSpec` JSON map이다.
+외부 `options.componentTemplates`의 같은 이름 entry가 우선하며, 외부 resolver가 `undefined`를 반환하면 local entry를 사용한다.
+참조한 외부 entry는 이름별 한 번 읽어 detached cold snapshot을 검증/preflight/spawn에서 재사용한다.
+local entry는 미사용 항목도 검증하며 nested template를 허용하지 않는다. 누락과 잘못된 template는 활성화 전에 거절한다.
+반환 `ResolvedSceneAuthoringDocument.componentTemplates`는 authored local JSON이며 instance reference를 inline으로 바꾸지 않는다.
+`resolveDataSceneComponentsSpec`/`resolveDataSceneInstanceComponents`의 선택형 `componentTemplates` 옵션은
+bounds·진단 도구가 해석된 component를 읽을 때 사용한다. `allowTemplate: false`는 여전히 template를 거절한다.
+
+`CreateScenePlacementViewerOptions`, `MergeScenePlacementPatchOptions`(save 포함),
+`CreateScenePlacementAgentHandoffOptions`도 선택형 외부 `componentTemplates`를 받는다.
+viewer instance/ObjectDefinition summary의 `componentTemplate`는 공유 소유권을 표시한다.
+공유 component 변경은 read-only diagnostic으로 거절하며 transform과 독립 render layer patch는 raw reference를 보존한다.
+handoff의 선택형 `componentTemplates`는 authored local catalog의 복사본이며 외부 callback/override를 직렬화하지 않는다.
+세부 호환성과 Studio 경계는 [component template 계약](../data-scene-authoring.md)을 따른다.
+
 validation이 성공한 full apply는 initial fragment의 instance가 0개여도 `useDataScene()`을 호출한다.
 따라서 빈 문서는 이전 scene의 runtime state를 정리하는 유효한 전환이며 `activateDataScene: false`에서만
 자동 activation을 생략한다.
@@ -646,6 +661,9 @@ raw Wasm `set_gameplay_*` setter는 public API가 아니다. 테스트 harness�
 ## Physics Authoring Facade
 
 Authoring subpath는 Physics Spec helper도 노출한다.
+`createPhysicsWorldFromSpec`은 기본적으로 전역 runtime도 설정하며 `rigid`는 native planar world를 사용한다.
+`PhysicsWorldApplyOptions.configureRuntime: false`는 기존 runtime 아래 geometry만 추가한다.
+`applyPhysicsSceneProfile`은 이 옵션을 받지 않고 전역 설정과 자동·수동 step을 소유한다.
 
 | API | 계약 |
 | --- | --- |
@@ -722,14 +740,16 @@ contentId/용량/지원 형식 오류는 기존 오류 경로로 즉시 전달�
 `resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`, `createDataSceneSpatialView`와
 `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`, `SpatialBillboardSpec`,
 `SpatialMoveOptions`, `SpatialMoveStats`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi` 타입도 제공한다.
-선택 fragment의 billboard 참조와 native actor의 enabled kinematic/AABB/heightSpan 요구를 검증한다.
+선택 fragment의 billboard 참조를 검증한다. 기존 경로의 actor는 enabled kinematic/AABB/heightSpan,
+통합 spatial physics의 actor는 Y-up position-kinematic capsule controller가 필요하다.
 `applyBuiltInSceneAuthoringDocument`는 spatial을 명시 거절한다.
 [공간 계약](../data-scene-spatial.md)의 WebGL2 지원 범위·저장 제한을 확인한다.
 선택 `spatial.connections`는 서로 다른 floor의 walkable surface를 shared edge로 양방향 연결한다.
 unknown ID/겹침/간격/모서리만 접촉/중복/모호한 연결은 activation 전에 경로 diagnostic으로 거절한다.
 생략/빈 배열은 기존 연결 없음이며 연결은 authoring JSON과 함께 저장된다.
 `moveDataSceneSpatialActorTo`는 runtime 목적지 요청이며 새 authoring 필드를 추가하지 않는다.
-x/y/floorId/speed와 선택 cellSize/arrivalRadius/cancelOnInput을 받고 명시적 연결로 다층 경로를 탐색한다.
+x/y/floorId/speed와 선택 cellSize/arrivalRadius/cancelOnInput을 받는다. 기존 경로는 명시적 연결,
+통합 physics 경로는 [실제 3D 캡슐 이동](../data-scene-spatial.md#통합-3d-물리의-캐릭터-이동)으로 다층 경로를 탐색한다.
 상태/취소/통계·예산·장애물 정지 계약은 [core 공간 API](core.md)의 대응 메서드를 따른다.
 route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 시작한다.
 `DataSceneSpatialPoseSnapshot`, `DataSceneSpatialProgressSnapshot`은 `/authoring`과 `/core`에서 제공한다.
@@ -760,6 +780,9 @@ null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기�
 native LOD 선택을 유지한다. 초기 clip/asset/LOD policy 변경은 새 설정을 우선하며, physics/FSM/경로·scene pause는
 보존하지 않는다. runtime 값은 Rust에만 머물며 기존 game-state 저장 형식을 바꾸지 않는다.
 `activateDataScene: false`와 함께 사용할 수 없다. [상세 조건](../data-scene-authoring.md)을 따른다.
+`componentTemplates`로 해석한 component도 inline과 같은 animation/LOD 비교를 사용한다. 이전 설정은
+별도의 cold metadata snapshot에 보관하므로 이전 catalog resolver를 재호출하지 않는다. 이 문맥도
+실패한 canonical apply에서 복원하고 native epoch가 바뀌면 사용하지 않는다. Catalog의 JSON 진행 저장 제한은 유지한다.
 
 `addSpatialModelAssembly(document, assembly)`와 `SpatialModelAssemblySpec`, `SpatialModelColliderProxy`는
 정적 모델의 로컬 AABB·보행면·층 연결을 한 번의 위치/높이/90도 yaw/균일 scale로 생성한다.
@@ -800,6 +823,9 @@ dash는 부착되지 않은 회전0 enabled kinematic AABB, 공간 문서는 bod
 `DataSceneSpawnPrefabSpec`/`DataSceneSpawnPrefabBinding`은 `/authoring` 및 `/core`의 공개 타입이다.
 `gameplay.spawnPrefabs`는 기존 독립 instance를 원본으로 지정하고 `ids.prefabs`에 고유 positive uint32 ID를 선언한다.
 입력/타이머 `spawnPrefabAction`은 원본 제거 후에도 생성하며 부착물·모델 트리 복제는 지원하지 않는다.
+Native backend는 독립 capability v1의 `supportsDataSceneSpawnPrefabPhysics()`를 요구한다.
+Static/kinematic body의 충돌체·설정과 자동 controller/native capsule 설정을 독립 복제하며,
+대기 입력·외력·impulse·접촉 핸들은 상속하지 않는다. 구형 코어는 씬·catalog 변경 전에 거절한다.
 `DataSceneCombatProgressSnapshot`은 version으로 구분하는 기존 v1/v2와 새 `DataSceneCombatSpawnProgressSnapshot` v3 및 `DataSceneCombatVisualProgressSnapshot` v4의 union이다.
 `DataSceneCombatLegacyProgressSnapshot`은 `/core`에서 기존 저장 타입을 명시할 때 사용한다.
 v3 공개 타입 `DataSceneCombatActorReference`, `DataSceneCombatSpawnedActorSnapshot`, `DataSceneCombatSpawnedActorState`,
@@ -922,3 +948,24 @@ OFF 문서도 검사하며 source JSON·진행 저장은 원본 이름을 유지
 `SpatialLightProbeSpec`는 `environment.lighting.probes`의 최대8개 정적 간접광 영역 설정이다.
 위치·반경·선형 RGB·밝기를 지정하며 source는 environment v15/700·patch16/state18이다.
 [보간·AO·비용·호환성·차폐 한계](../data-scene-spatial.md#지역별-간접광-프로브)를 따른다.
+
+Scene Authoring의 선택 `physics: DataScenePhysicsSpec`와 `DataScenePhysicsBodySpec`은
+[단일 3D 물리 월드 작성](../data-scene-authoring.md#단일-3d-물리-월드-작성) 계약을 따른다.
+`applyDataSceneAuthoringDocument`가 native preflight·world 설정·기존 entity 연결을 담당한다.
+shape body는 전체 문서 적용을 요구하며 진행 snapshot은 아직 지원하지 않는다.
+선택 `body.character`는 native 캡슐 컨트롤러 설정이고, `physics.joints`의
+`DataScenePhysicsJointSpec`은 instance ID로 두 body를 참조한다. 적용 결과 `physicsJoints`는
+작성 이름별 native 관절 handle이다. 설정·참조·용량은 씬 교체 전에 native preflight로 검사한다.
+
+
+Native capsule Chase는 `physics.space: "spatial"`과 `gameplay.combatNavigation`으로 작성한다.
+Source는 unattached Y-up position-kinematic solid capsule controller이고 primary/명시적 target은 inline shape body다.
+`supportsDataSceneNativeCombatNavigation()`이 없거나 false인 빌드는 apply 전에 거절한다.
+입력용 `spatial.actor`는 AI source/거리 binding/capacity에서 제외하며 공간 설정은 gameplay 설정보다 먼저 적용한다.
+기존 문서 형식/필드를 유지한다. 호환 가능한 native 경로는8개 FIFO cache에서 자동 공유하며, connector를 검증한 뒤 설치한다.
+Native crowdAvoidance는 `supportsDataSceneNativeCombatCrowd()`를 별도로 검사한다. 실제 capsule pose/filter/높이와
+관측 속도로 회피 후보를 만들고 지형 검사와 기존 work 예산을 통과한 이동만 controller에 전달한다.
+Native all-pattern은 `supportsDataSceneNativeCombatMovement()`를 요구한다. SeekTarget은 공통 arrivalRadius와
+실제 지형에서 검증한 경로/shortcut을 사용하며, Accelerate는 목표 검색 없이 틱당 가속과 지형 검사를 수행한다.
+일반 v6 지원 여부만으로 native all-pattern을 허용하지 않는다. 세 패턴에서 입력 actor를 제외하고 source 용량·work를 공유한다.
+세부 예제와 제한은 [native 전투 이동](../data-scene-authoring.md#통합-물리의-전투-이동-개발-소스)을 따른다.

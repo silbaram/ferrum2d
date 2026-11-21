@@ -126,7 +126,7 @@ fn spatial_billboard_uses_same_body_height_without_changing_legacy_sprite_abi() 
 }
 #[test]
 fn native_terrain_step_and_ramp_change_the_original_entity_height() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = actor(&mut e);
     assert!(terrain(&mut e));
@@ -206,7 +206,7 @@ fn invalid_spatial_configuration_is_atomic_and_stale_billboards_cannot_bind() {
 
 #[test]
 fn nonwalkable_volume_blocks_native_movement_and_overflow_style_rejection_preserves_scene() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = actor(&mut e);
     assert!(e.configure_spatial_terrain(
@@ -276,7 +276,7 @@ fn wide_perspective_camera_round_trip_hits_low_surface() {
 
 #[test]
 fn native_spatial_input_drives_existing_animation_and_obeys_pause() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = actor(&mut e);
     assert!(e.configure_data_scene_gameplay(true, a.id, a.generation, 0));
@@ -704,7 +704,7 @@ fn spatial_model_attachments_follow_native_root_pose_and_motion_restore_atomical
 }
 
 fn attachment_pair(root_x: f32, model_elevation: f32) -> (Engine, Entity, Entity) {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let root = sprite(&mut e, 71, root_x, 0., 0);
     let child = sprite(&mut e, 72, 0., 0., 0);
@@ -1031,7 +1031,7 @@ fn static_model_off_camera_does_not_disappear_from_asset_lifetime_and_stale_hand
 
 #[test]
 fn invisible_surface_proxies_retain_movement_picking_and_debug_without_render_submission() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = actor(&mut e);
     let values = [0., 0., 96., 64., 0., 0., 32., 1., 1., 1., 1.];
@@ -1132,7 +1132,7 @@ fn invisible_surface_invalid_metadata_and_shadow_overrides_are_atomic() {
 fn x_axis_ramps_share_height_mesh_picking_debug_and_bidirectional_body_motion() {
     for hidden in [false, true] {
         for descending in [false, true] {
-            let mut e = Engine::new();
+            let mut e = crate::engine::legacy_test_fixture::engine();
             e.use_data_scene();
             let a = actor(&mut e);
             let (lo, hi) = if descending { (32., 0.) } else { (0., 32.) };
@@ -1182,7 +1182,7 @@ fn x_axis_ramps_share_height_mesh_picking_debug_and_bidirectional_body_motion() 
 
 #[test]
 fn rotated_ramp_negative_edge_keeps_support_before_crossing_to_upper_floor() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = actor(&mut e);
     assert!(e.configure_spatial_terrain(

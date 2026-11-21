@@ -42,6 +42,7 @@ const TEMPLATE_RUNTIME_REPLAY_RECIPE = Object.freeze({
       "custom.template",
       "custom.breakout",
       "custom.runtime",
+      "custom.nativeRuntime.sha256",
     ],
     optional: [
       "physics",

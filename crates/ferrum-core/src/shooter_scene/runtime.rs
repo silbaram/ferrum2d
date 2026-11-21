@@ -21,6 +21,8 @@ mod despawn;
 mod effects;
 mod enemies;
 mod interaction;
+#[cfg(test)]
+mod phase_tests;
 mod player;
 mod spawn;
 mod waves;
@@ -41,7 +43,7 @@ pub(crate) use effects::{ParticleBurstSink, TweenSink};
 pub(in crate::shooter_scene) use spawn::{ShooterSpawnCommand, SpawnFlushResult};
 pub(in crate::shooter_scene) use waves::WaveActionTrigger;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct MeleeAttackCommand {
     pub(in crate::shooter_scene) attacker: Entity,
     pub(in crate::shooter_scene) center: Transform2D,
@@ -148,6 +150,72 @@ impl ShooterScene {
         );
     }
 
+    /// Prepares one Shooter tick without integrating velocity or resolving collisions.
+    /// Returns true only when this tick began in Playing, so Title/restart input
+    /// cannot accidentally run the post-physics phase in the same tick.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn pre_physics_with_counters(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        input_actions: &InputActionRegistry,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        gameplay_events: &mut Vec<GameplayEvent>,
+        effect_events: &mut Vec<EffectEvent>,
+    ) -> bool {
+        let mut events = GameplayEventSink::with_effect_events(gameplay_events, effect_events);
+        self.pre_physics_internal(
+            world,
+            camera,
+            input,
+            input_actions,
+            audio_events,
+            tilemap,
+            delta,
+            Some(&mut events),
+        )
+    }
+
+    /// Resolves gameplay reactions after the caller has integrated this tick once.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn post_physics_with_counters(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        resolve_legacy_tiles: bool,
+        physics_counters: &mut PhysicsCounters,
+        collision_events: &mut Vec<CollisionEvent>,
+        collision_event_counts: &mut CollisionEventCounts,
+        gameplay_events: &mut Vec<GameplayEvent>,
+        effect_events: &mut Vec<EffectEvent>,
+        hit_particles: Option<ParticleBurstSink<'_>>,
+        hit_tweens: Option<TweenSink<'_>>,
+    ) {
+        self.post_physics_internal(
+            world,
+            camera,
+            audio_events,
+            tilemap,
+            delta,
+            resolve_legacy_tiles,
+            ShooterRuntimeSinks::with_effects(
+                physics_counters,
+                collision_events,
+                collision_event_counts,
+                gameplay_events,
+                effect_events,
+                hit_particles,
+                hit_tweens,
+            ),
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn update_internal(
         &mut self,
@@ -160,9 +228,37 @@ impl ShooterScene {
         delta: f32,
         mut sinks: ShooterRuntimeSinks<'_>,
     ) {
+        if self.pre_physics_internal(
+            world,
+            camera,
+            input,
+            input_actions,
+            audio_events,
+            tilemap,
+            delta,
+            sinks.gameplay_events.as_mut(),
+        ) {
+            world.update(delta);
+            self.post_physics_internal(world, camera, audio_events, tilemap, delta, true, sinks);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pre_physics_internal(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        input_actions: &InputActionRegistry,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) -> bool {
         let space_pressed = input.space == 1 && self.previous_space == 0;
         let enter_pressed = input.enter == 1 && self.previous_enter == 0;
 
+        let should_finish = self.game_state == GameState::Playing;
         match self.game_state {
             GameState::Title => {
                 if space_pressed || enter_pressed {
@@ -182,9 +278,9 @@ impl ShooterScene {
                 self.tick_gameplay_timer_action_triggers(
                     world,
                     delta,
-                    sinks.gameplay_events.as_mut(),
+                    gameplay_events.as_deref_mut(),
                 );
-                self.advance_wave_if_needed(world, sinks.gameplay_events.as_mut());
+                self.advance_wave_if_needed(world, gameplay_events.as_deref_mut());
                 self.camera_elapsed_seconds += delta.max(0.0);
                 let input = FrameInputSnapshot::new(input, self.previous_input_state());
                 self.apply_player_movement_input_snapshot(world, input);
@@ -194,49 +290,60 @@ impl ShooterScene {
                     input,
                     input_actions,
                     tilemap,
-                    sinks.gameplay_events.as_mut(),
+                    gameplay_events.as_deref_mut(),
                 );
                 let action_trigger_phase_result =
-                    self.process_action_triggers(world, tilemap, sinks.gameplay_events.as_mut());
+                    self.process_action_triggers(world, tilemap, gameplay_events.as_deref_mut());
                 self.last_action_trigger_phase_result
                     .accumulate(action_trigger_phase_result);
-                let spawn_flush_result = self.flush_pending_spawns_with_events(
-                    world,
-                    audio_events,
-                    sinks.gameplay_events.as_mut(),
-                );
+                let spawn_flush_result =
+                    self.flush_pending_spawns_with_events(world, audio_events, gameplay_events);
                 self.last_spawn_flush_result.accumulate(spawn_flush_result);
                 self.apply_enemy_movement_phase(world, tilemap, delta);
                 self.apply_projectile_movement_phase(world);
-                world.update(delta);
-                if let Some(counters) = sinks.physics_counters.as_deref_mut() {
-                    tilemap.resolve_dynamic_collisions_with_counters(world, counters);
-                } else {
-                    tilemap.resolve_dynamic_collisions(world);
-                }
-                self.clamp_player_to_world(world);
-                self.update_camera_follow(world, camera);
-                self.update_bullets(world, delta);
-                self.spawn_enemy_if_needed(world);
-                self.handle_collisions(
-                    world,
-                    tilemap,
-                    audio_events,
-                    delta,
-                    sinks.collision_events.as_mut(),
-                    sinks.gameplay_events.as_mut(),
-                    sinks.hit_particles.as_mut(),
-                    sinks.hit_tweens.as_mut(),
-                );
-                self.emit_player_interactions(world, sinks.gameplay_events.as_mut());
             }
             GameState::Paused | GameState::LevelComplete => {}
         }
-
         self.previous_space = input.space;
         self.previous_enter = input.enter;
         self.previous_mouse_left = input.mouse_left;
         self.previous_input = input;
+        should_finish
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn post_physics_internal(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        resolve_legacy_tiles: bool,
+        mut sinks: ShooterRuntimeSinks<'_>,
+    ) {
+        if resolve_legacy_tiles {
+            if let Some(counters) = sinks.physics_counters.as_deref_mut() {
+                tilemap.resolve_dynamic_collisions_with_counters(world, counters);
+            } else {
+                tilemap.resolve_dynamic_collisions(world);
+            }
+        }
+        self.clamp_player_to_world(world);
+        self.update_camera_follow(world, camera);
+        self.update_bullets(world, delta);
+        self.spawn_enemy_if_needed(world);
+        self.handle_collisions(
+            world,
+            tilemap,
+            audio_events,
+            delta,
+            sinks.collision_events.as_mut(),
+            sinks.gameplay_events.as_mut(),
+            sinks.hit_particles.as_mut(),
+            sinks.hit_tweens.as_mut(),
+        );
+        self.emit_player_interactions(world, sinks.gameplay_events.as_mut());
     }
 
     fn previous_input_state(&self) -> InputState {

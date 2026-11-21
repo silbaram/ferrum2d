@@ -9,7 +9,7 @@ use super::super::math::sanitize_non_negative;
 use super::contact_cache::{cached_contact_impulse_for_point, RigidContactImpulseCacheIndex};
 use super::should_solve_rigid_contact;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics) struct RigidContactConstraint {
     pub(super) pair: CollisionPair,
     pub(super) collider_pair: CollisionColliderPair,
@@ -22,9 +22,10 @@ pub(in crate::physics) struct RigidContactConstraint {
     pub(super) approach_speed: f32,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics) struct RigidContactConstraintScratch {
     collision: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     collider_manifolds: Vec<ColliderCollisionManifold>,
     contact_cache: RigidContactImpulseCacheIndex,
 }
@@ -126,3 +127,5 @@ pub(in crate::physics) fn build_rigid_contact_constraints_into(
         }
     }
 }
+
+mod file_scratch_admission;

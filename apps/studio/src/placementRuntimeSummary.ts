@@ -8,10 +8,12 @@ import type {
   FerrumRuntime,
   GameplayEventView,
 } from "@ferrum2d/ferrum-web/core";
-import { createPlacementPhysicsSummary } from "./placementPhysicsSummary";
+import { createPlacementPhysicsSummary, type PlacementShapePhysicsSnapshot, type PlacementPhysicsAuthoringSnapshot } from "./placementPhysicsSummary";
 import type { PhysicsEntitySnapshot, PhysicsBodyColliderSnapshot } from "@ferrum2d/ferrum-web/core";
 
 interface RuntimeSummarySnapshot {
+  shapePhysics?: PlacementShapePhysicsSnapshot;
+  physicsAuthoring?: PlacementPhysicsAuthoringSnapshot;
   physics?: PhysicsEntitySnapshot;
   colliders?: readonly PhysicsBodyColliderSnapshot[];
   colliderCount?: number;
@@ -61,7 +63,7 @@ export function createPlacementRuntimeSummary() {
     clear,
     update(snapshot: RuntimeSummarySnapshot) {
       physics.element.hidden = false;
-      physics.update(snapshot.physics, snapshot.colliders, snapshot.colliderCount);
+      physics.update(snapshot.physics, snapshot.colliders, snapshot.colliderCount, snapshot.shapePhysics, snapshot.physicsAuthoring);
       setUiText(
         context,
         uiMessage(

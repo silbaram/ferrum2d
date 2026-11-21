@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn engine_query_nearest_body_stores_scalar_result_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -23,7 +23,7 @@ fn engine_query_nearest_body_stores_scalar_result_for_wasm() {
 
 #[test]
 fn engine_query_body_contacts_and_manifolds_write_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let player = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -76,7 +76,7 @@ fn engine_query_body_contacts_and_manifolds_write_bulk_results_for_wasm() {
 
 #[test]
 fn engine_query_rigid_contact_impulses_writes_bulk_results_for_wasm() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     let body = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
@@ -116,7 +116,7 @@ fn engine_query_rigid_contact_impulses_writes_bulk_results_for_wasm() {
 
 #[test]
 fn engine_moves_hd2d_kinematic_body_with_shooter_tilemap() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.world = World::default();
     engine.clear_physics_history();
     engine.tilemap.clear();

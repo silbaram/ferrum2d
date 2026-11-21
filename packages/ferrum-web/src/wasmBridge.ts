@@ -1,10 +1,23 @@
+import { readTerrainImpacts } from "./terrainImpacts.js";
+import {readUnifiedPhysicsJoints} from "./unifiedPhysicsJoints.js";
+import { requireNativeDebugGeometry } from "./physicsDebugCompatibility.js";
+import { queryUnifiedPhysicsContactManifolds, queryUnifiedPhysicsObservations, queryUnifiedPhysicsDiagnostics, queryUnifiedPhysicsFrameDiagnostics, type UnifiedPhysicsContactQuery } from "./unifiedPhysicsObservations.js";
+import { readUnifiedPhysicsCollisions, setUnifiedPhysicsCollisionEventsEnabled, type UnifiedPhysicsCollisionBufferView } from "./unifiedPhysicsCollisions.js";
 import { matchesSpatialEnvironmentLayout, type SpatialEnvironmentVersion } from "./spatialEnvironmentAbi.js";
 import type { SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 import { readSpatialLightSelection } from "./spatialLightSelection.js";
+import { queryUnifiedPhysicsBodyStates } from "./unifiedPhysics.js";
+import { queryUnifiedPhysics, type UnifiedPhysicsQueryBatch, type UnifiedPhysicsQueryBufferView } from "./unifiedPhysicsQueries.js";
+import type { UnifiedPhysicsBodyStateBufferView } from "./unifiedPhysics.js";
+import { queryUnifiedPhysicsCharacterStates } from "./unifiedPhysicsCharacters.js";
+import type { UnifiedPhysicsCharacterStateBufferView } from "./unifiedPhysicsCharacters.js";
 import {readSpatialReceiverMasks} from "./spatialReceiverMasks.js";
 import type { AudioPoseBufferView } from "./audioPoseBuffer.js";
 import { readGroundShadowVolumes } from "./groundShadowVolumes.js";
 import { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import * as defaultWasmBindings from "../pkg/ferrum_core.js";
+import { wasmNamespaceForBridge } from "./wasmNamespaceContext.js";
+import { guardWasmNamespaceObject } from "./wasmNamespaceObject.js";
 import { initializeFerrumWasm } from "./initializeFerrumWasm.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import {
@@ -102,8 +115,9 @@ export class WasmBridge {
   private constructor(
     private readonly engineInstance: Engine,
     private readonly memory: WebAssembly.Memory,
+    private readonly abi: typeof defaultWasmBindings = defaultWasmBindings,
   ) {
-    const layout = verifyWasmBridgeAbi(this.engineInstance);
+    const layout = verifyWasmBridgeAbi(this.engineInstance, this.abi);
     if (this.engineInstance.data_scene_ground_shadow_projection_len() !== 3) {
       throw new Error("Ground shadow projection ABI must contain three f32 values.");
     }
@@ -115,6 +129,15 @@ export class WasmBridge {
   }
 
   static async init(): Promise<WasmBridge> {
+    const namespace = wasmNamespaceForBridge(this);
+    if (namespace) {
+      await namespace.initialize();
+      return namespace.call(bindings => {
+        const engine = guardWasmNamespaceObject(namespace, new bindings.Engine());
+        try { return new WasmBridge(engine, namespace.memory(), bindings); }
+        catch (error) { if (!(error instanceof WebAssembly.RuntimeError)) engine.free(); throw error; }
+      });
+    }
     await initializeFerrumWasm();
     const memory = wasm_memory();
     return new WasmBridge(new Engine(), memory);
@@ -125,7 +148,7 @@ export class WasmBridge {
   }
 
   version(): string {
-    return version();
+    return this.abi.version();
   }
 
   queryAudioPoseBuffer(handles: Uint32Array): AudioPoseBufferView {
@@ -145,6 +168,49 @@ export class WasmBridge {
     return this.memory.buffer.byteLength;
   }
 
+  readUnifiedPhysicsJoints(events: boolean, handles?: Uint32Array) {
+    return readUnifiedPhysicsJoints(this.engineInstance, this.memory, events, handles);
+  }
+
+  queryUnifiedPhysicsBodyStates(handles: Uint32Array): UnifiedPhysicsBodyStateBufferView {
+    return queryUnifiedPhysicsBodyStates(this.engineInstance, this.memory, handles);
+  }
+
+  setUnifiedPhysicsCollisionEventsEnabled(enabled: boolean): void {
+    setUnifiedPhysicsCollisionEventsEnabled(this.engineInstance, enabled);
+  }
+
+  readUnifiedPhysicsCollisions(drain: boolean): UnifiedPhysicsCollisionBufferView {
+    return readUnifiedPhysicsCollisions(this.engineInstance, this.memory, drain);
+  }
+
+  queryUnifiedPhysicsContactManifolds(options?: UnifiedPhysicsContactQuery) {
+    return queryUnifiedPhysicsContactManifolds(this.engineInstance, this.memory, options);
+  }
+  queryUnifiedPhysicsObservations() {
+    return queryUnifiedPhysicsObservations(this.engineInstance, this.memory);
+  }
+  queryUnifiedPhysicsDiagnostics() {
+    return queryUnifiedPhysicsDiagnostics(this.engineInstance, this.memory);
+  }
+  readUnifiedPhysicsFrameDiagnostics() {
+    return queryUnifiedPhysicsFrameDiagnostics(this.engineInstance, this.memory);
+  }
+
+  queryUnifiedPhysics(batch: UnifiedPhysicsQueryBatch): UnifiedPhysicsQueryBufferView {
+    return queryUnifiedPhysics(this.engineInstance, this.memory, batch);
+  }
+
+  queryUnifiedPhysicsCharacterStates(handles: Uint32Array): UnifiedPhysicsCharacterStateBufferView {
+    return queryUnifiedPhysicsCharacterStates(this.engineInstance, this.memory, handles);
+  }
+
+  copyUnifiedPhysicsInputAliases(handles: Uint32Array, values: Float32Array): { handles: Uint32Array; values: Float32Array } {
+    const buffer = this.memory.buffer;
+    return { handles: handles.buffer === buffer ? handles.slice() : handles,
+      values: values.buffer === buffer ? values.slice() : values };
+  }
+
   createRenderCommandAccessor(): RenderCommandAccessor {
     return createRenderCommandAccessor(
       this.bufferContext.layout.renderCommandFieldOffsets,
@@ -158,6 +224,7 @@ export class WasmBridge {
 
   readRenderCommandBuffer(): RenderCommandBufferView {
     const view = renderCommandBufferView(this.bufferContext);
+    view.terrainImpacts = readTerrainImpacts(this.engineInstance,this.memory);
     view.groundShadowVolumes=readGroundShadowVolumes(this.engineInstance,this.memory);
     view.groundYScale = this.engineInstance.render_command_ground_y_scale();
     view.groundShadowProjection = new Float32Array(
@@ -188,10 +255,12 @@ export class WasmBridge {
         terrain: new Float32Array(this.memory.buffer, e.spatial_terrain_ptr(), terrainVertexCount * 11),
         terrainVertexCount,
         terrainRevision: e.spatial_terrain_revision(),
+        terrainRenderRevision: e.spatial_terrain_render_revision(),
         billboards: new Float32Array(this.memory.buffer, e.spatial_billboard_ptr(), billboardVertexCount * 11),
         billboardVertexCount,
       };
       const debugFlags = typeof e.spatial_debug_flags === "function" ? e.spatial_debug_flags() : 0;
+      requireNativeDebugGeometry(e, (debugFlags & (16 | 32 | 256)) !== 0);
       const debugVertexCount = debugFlags ? e.spatial_debug_len() : 0;
       if (debugFlags && (e.spatial_debug_abi_version() !== 1 || e.spatial_debug_vertex_stride() !== 11
           || debugVertexCount % 2 !== 0 || debugVertexCount > 32768)) {
@@ -294,7 +363,9 @@ export class WasmBridge {
   }
 
   readPhysicsDebugLineBuffer(): PhysicsDebugLineBufferView {
-    return physicsDebugLineBufferView(this.bufferContext);
+    const view = physicsDebugLineBufferView(this.bufferContext);
+    requireNativeDebugGeometry(this.engineInstance, view.lineCount > 0);
+    return view;
   }
 
   readPhysicsDebugLines(): readonly PhysicsDebugLineView[] {

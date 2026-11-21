@@ -41,6 +41,7 @@ export interface FrameStateBuildInput {
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsSpec: ResolvedPhysicsSpec;
   physicsDiagnostics?: PhysicsDiagnostics;
+  unifiedPhysics?: import("./unifiedPhysicsObservations.js").UnifiedPhysicsDiagnostics;
   options: CreateEngineOptions;
 }
 
@@ -150,6 +151,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     audioEventCount: audioEvents.audioEventCount,
     audioEvents: audioEvents.audioEvents,
     physics,
+    ...(input.unifiedPhysics === undefined ? {} : { unifiedPhysics: input.unifiedPhysics }),
     ...(input.physicsDiagnostics === undefined ? {} : { physicsDiagnostics: input.physicsDiagnostics }),
     collisionEventBuffer,
     collisionEvents: includeCollisionLifecycleEvents

@@ -15,7 +15,7 @@ pub(crate) struct MeleeActionPlan {
     pub(crate) target: MeleeTarget,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MeleeAttackCoreData {
     pub(crate) attacker: Entity,
     pub(crate) center: Transform2D,

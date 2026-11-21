@@ -1,7 +1,7 @@
 use super::*;
 use crate::components::RigidBodyType;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Pose {
     entity: Entity,
     at: Transform2D,
@@ -9,12 +9,15 @@ struct Pose {
     height: Option<HeightSpan>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct RenderHistory {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     before: Vec<Option<Pose>>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     after: Vec<Option<Pose>>,
     alpha: Option<f32>,
     // Native/derived pose pairs validate generations and teleports without touching simulation.
+    #[serde(with = "crate::checkpoint_codec::vector")]
     attachments: Vec<Option<(Pose, Pose)>>,
 }
 
@@ -50,6 +53,10 @@ impl World {
                 self.render_history.after[i] = Some(pose);
             }
         }
+    }
+
+    pub(crate) fn render_interpolation_alpha(&self) -> Option<f32> {
+        self.render_history.alpha
     }
 
     pub(crate) fn set_render_interpolation_alpha(&mut self, alpha: Option<f32>) {
@@ -90,6 +97,9 @@ impl World {
     }
 
     fn physics_render_pose(&self, index: usize) -> Option<Pose> {
+        if self.is_unified_physics_index(index) {
+            return self.current_render_pose(index);
+        }
         let body = self.rigid_bodies.get(index).copied().flatten()?;
         if !body.enabled || body.body_type == RigidBodyType::Static {
             return None;

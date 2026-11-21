@@ -126,6 +126,15 @@ impl World {
         self.sprites.get(index).copied().flatten()
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_sprite_for_test(&mut self, entity: Entity, sprite: Sprite) -> bool {
+        let Some(index) = self.valid_index(entity) else {
+            return false;
+        };
+        self.sprites[index] = Some(sprite);
+        true
+    }
+
     pub(crate) fn sprite_mut_at_index(&mut self, index: usize) -> Option<&mut Sprite> {
         if !self.is_alive_index(index) {
             return None;

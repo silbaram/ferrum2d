@@ -148,6 +148,7 @@ pub(crate) use types::{
     ColliderCollisionContact, ColliderCollisionManifold, ColliderKey, ColliderPair,
     SweptShapeContactHit,
 };
+pub(crate) use validation::query_shape_is_valid;
 use validation::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -172,7 +173,7 @@ struct ContactFace {
     tangent_extent: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ColliderShapeRef {
     Aabb(AabbCollider),
     Circle(CircleCollider),
@@ -436,7 +437,7 @@ fn swept_shape_contact_normal(
     (unit_x, unit_y)
 }
 
-fn query_shape_reference_point(shape: CollisionQueryShape) -> Transform2D {
+pub(crate) fn query_shape_reference_point(shape: CollisionQueryShape) -> Transform2D {
     match shape {
         CollisionQueryShape::Aabb(bounds) => Transform2D {
             x: (bounds.min_x + bounds.max_x) * 0.5,
@@ -560,7 +561,7 @@ fn convex_polygon_vertices(
     Some(&vertices[..vertex_count])
 }
 
-fn convex_polygon_is_valid(vertices: &[Transform2D]) -> bool {
+pub(crate) fn convex_polygon_is_valid(vertices: &[Transform2D]) -> bool {
     if vertices.len() < 3 || vertices.len() > MAX_CONVEX_POLYGON_VERTICES {
         return false;
     }
@@ -587,6 +588,23 @@ fn convex_polygon_is_valid(vertices: &[Transform2D]) -> bool {
         }
     }
 
+    // Consistent consecutive turns alone also accept self-crossing stars.
+    // Every remaining vertex of a strictly convex ring must lie on the same
+    // interior side of each edge. Widen intermediate math for large coordinates.
+    for (index, a) in vertices.iter().enumerate() {
+        let next = (index + 1) % vertices.len();
+        let b = vertices[next];
+        for (other, p) in vertices.iter().enumerate() {
+            if other == index || other == next {
+                continue;
+            }
+            let side = (f64::from(b.x) - f64::from(a.x)) * (f64::from(p.y) - f64::from(a.y))
+                - (f64::from(b.y) - f64::from(a.y)) * (f64::from(p.x) - f64::from(a.x));
+            if side * f64::from(winding) <= f64::from(RAY_EPSILON) {
+                return false;
+            }
+        }
+    }
     true
 }
 
@@ -736,3 +754,6 @@ fn precise_swept_overlap(
 
 #[cfg(test)]
 mod tests;
+
+#[allow(dead_code)]
+pub(crate) mod file_scratch_admission;

@@ -22,11 +22,42 @@ pub(crate) fn drain_deferred_commands_into<T>(queue: &mut Vec<T>, commands: &mut
     commands.len()
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: serde::Serialize",
+    deserialize = "T: serde::Deserialize<'de>"
+))]
 pub(crate) struct ActionTriggerQueue<T> {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending: Vec<T>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     processing: Vec<T>,
     max_pending: usize,
+}
+
+impl<T: Clone> Clone for ActionTriggerQueue<T> {
+    fn clone(&self) -> Self {
+        // Empty bounded queues retain their frame-time allocation guarantees.
+        let mut pending = Vec::with_capacity(self.max_pending);
+        pending.extend_from_slice(&self.pending);
+        let mut processing = Vec::with_capacity(self.max_pending);
+        processing.extend_from_slice(&self.processing);
+        Self {
+            pending,
+            processing,
+            max_pending: self.max_pending,
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn runtime_checkpoint_action_queue_keeps_empty_preallocation() {
+    let queue = ActionTriggerQueue::<u32>::with_capacity(512);
+    let bytes = crate::checkpoint_codec::encode(&queue).unwrap();
+    let copy: ActionTriggerQueue<u32> = crate::checkpoint_codec::decode(&bytes).unwrap();
+    assert_eq!(copy.pending_capacity(), queue.pending_capacity());
+    assert_eq!(copy.processing_capacity(), queue.processing_capacity());
 }
 
 impl<T: Copy> ActionTriggerQueue<T> {
@@ -127,3 +158,6 @@ pub(crate) fn collect_action_triggers_for_phase(
     queue.finish_processing();
     commands.len()
 }
+
+#[allow(dead_code)]
+mod file_admission;

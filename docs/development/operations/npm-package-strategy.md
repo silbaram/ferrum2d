@@ -15,6 +15,10 @@ Ferrum2D 패키지 구성은 엔진 런타임, 프로젝트 생성기, AI 개발
 
 `@ferrum2d/ferrum-web`은 실행에 필요한 엔진 본체다. `@ferrum2d/studio-kit`는 placement viewer의 공통 계약과 반복 app chrome, disclosure section, DOM control/shell/panel primitive 생성을 담는 작은 helper package다. `@ferrum2d/create-game`과 `@ferrum2d/agents`는 개발 도구이며, 엔진 런타임 artifact에 포함하지 않는다.
 
+런타임 tarball은 `LICENSE`와 함께 `THIRD_PARTY_NOTICES.txt`를 포함한다. 후자는 locked Cargo 의존성의 원래 license 식과
+upstream license/copyright/notice 본문, vendored 수정 기록을 재현 가능한 순서로 보존한다. 생성·stale 검사와 실제 tarball의
+동일 본문 검사는 [패키징 절차](npm-release.md#패키지-구성-기준)를 따른다. Ferrum2D 자체의 license를 제3자 의존성에 적용하지 않는다.
+
 ## 사용 흐름
 
 공개된 GitHub Release의 생성기 패키지로 새 게임 프로젝트 생성:

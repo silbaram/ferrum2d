@@ -1,7 +1,7 @@
 use crate::camera::Camera2D;
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, COLLISION_EVENT_HIT};
 use crate::components::gameplay::{CollisionTarget, MovementPattern};
-use crate::components::Velocity;
+use crate::components::{Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::gameplay::{
@@ -20,22 +20,142 @@ use super::effects::BreakoutParticleBurstSink;
 use super::BreakoutScene;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BreakoutHitKind {
+pub(crate) enum BreakoutHitKind {
     Paddle,
-    Brick,
     Wall,
+    Brick,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct BreakoutHit {
-    entity: Entity,
-    kind: BreakoutHitKind,
-    time: f32,
-    normal_x: f32,
-    normal_y: f32,
+pub(crate) struct BreakoutHit {
+    pub(crate) entity: Entity,
+    pub(crate) kind: BreakoutHitKind,
+    pub(crate) time: f32,
+    pub(crate) normal_x: f32,
+    pub(crate) normal_y: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BreakoutPaddlePlan {
+    pub(crate) entity: Entity,
+    pub(crate) start: Transform2D,
+    pub(crate) end: Transform2D,
+    pub(crate) velocity: Velocity,
 }
 
 impl BreakoutScene {
+    /// Handles state transitions without moving the newly launched or restarted ball.
+    pub(crate) fn prepare_native_tick(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        delta: f32,
+    ) -> bool {
+        let playing = match self.game_state {
+            GameState::Title | GameState::GameOver => {
+                if action_pressed(input) {
+                    self.reset_playing(world, camera);
+                }
+                false
+            }
+            GameState::Playing => delta.is_finite() && delta > 0.0,
+            GameState::Paused | GameState::LevelComplete => false,
+        };
+        self.update_camera(camera);
+        playing
+    }
+
+    /// Plans the paddle's clamped destination while retaining its input velocity.
+    pub(crate) fn plan_paddle(
+        &self,
+        world: &World,
+        input: InputState,
+        delta: f32,
+    ) -> Option<BreakoutPaddlePlan> {
+        let paddle = self.paddle.filter(|&entity| is_alive(world, entity))?;
+        let velocity = paddle_input_velocity(world, paddle, input);
+        self.plan_paddle_with_velocity(world, paddle, velocity, delta)
+    }
+
+    /// Plans a manual physics step from the last stored paddle command.
+    pub(crate) fn plan_paddle_from_velocity(
+        &self,
+        world: &World,
+        delta: f32,
+    ) -> Option<BreakoutPaddlePlan> {
+        let paddle = self.paddle.filter(|&entity| is_alive(world, entity))?;
+        let velocity = Velocity {
+            vy: 0.0,
+            ..world.velocity(paddle).unwrap_or_default()
+        };
+        self.plan_paddle_with_velocity(world, paddle, velocity, delta)
+    }
+
+    fn plan_paddle_with_velocity(
+        &self,
+        world: &World,
+        paddle: Entity,
+        velocity: Velocity,
+        delta: f32,
+    ) -> Option<BreakoutPaddlePlan> {
+        let start = world.transform(paddle)?;
+        let mut end = start;
+        if let Some(collider) = world.collider(paddle).filter(|collider| collider.enabled) {
+            end.x = (start.x + velocity.vx * delta).clamp(
+                WALL_THICKNESS + collider.half_width,
+                WORLD_WIDTH - WALL_THICKNESS - collider.half_width,
+            );
+        }
+        Some(BreakoutPaddlePlan {
+            entity: paddle,
+            start,
+            end,
+            velocity,
+        })
+    }
+
+    /// Retains the legacy category and per-category order for equal-time hits.
+    pub(crate) fn native_targets(&self) -> impl Iterator<Item = (Entity, BreakoutHitKind)> + '_ {
+        self.paddle
+            .into_iter()
+            .map(|entity| (entity, BreakoutHitKind::Paddle))
+            .chain(
+                self.walls
+                    .iter()
+                    .copied()
+                    .map(|entity| (entity, BreakoutHitKind::Wall)),
+            )
+            .chain(
+                self.bricks
+                    .iter()
+                    .copied()
+                    .map(|entity| (entity, BreakoutHitKind::Brick)),
+            )
+    }
+
+    /// Applies one already-resolved native hit without integrating remaining time.
+    pub(crate) fn finish_native_tick(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        hit: Option<BreakoutHit>,
+        collision_events: &mut Vec<CollisionEvent>,
+        collision_event_counts: &mut CollisionEventCounts,
+        hit_particles: Option<&mut BreakoutParticleBurstSink<'_>>,
+    ) {
+        if self.game_state == GameState::Playing {
+            if let Some(ball) = self.ball.filter(|&entity| is_alive(world, entity)) {
+                if let Some(hit) = hit {
+                    push_hit_event(collision_events, collision_event_counts, ball, hit.entity);
+                    self.apply_ball_response(world, ball, hit, hit_particles);
+                }
+                self.finish_playing_frame(world);
+            }
+        }
+        self.update_camera(camera);
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn update(
         &mut self,
@@ -115,28 +235,13 @@ impl BreakoutScene {
             return;
         }
 
-        let speed = match world.movement_pattern(paddle) {
-            Some(MovementPattern::TopdownInput { speed }) => speed,
-            _ => PADDLE_SPEED,
-        };
-        let velocity = Velocity {
-            vy: 0.0,
-            ..topdown_input_velocity(input, speed)
-        };
-        world.velocities[index] = Some(velocity);
-        let Some(transform) = world.transforms[index].as_mut() else {
-            return;
-        };
-        let Some(collider) = world.colliders[index] else {
-            return;
-        };
-        if !collider.enabled {
-            return;
+        if let Some(plan) = self.plan_paddle(world, input, delta) {
+            world.velocities[index] = Some(plan.velocity);
+            world.transforms[index] = Some(plan.end);
+        } else {
+            // Legacy input still updates velocity if the transform was removed.
+            world.velocities[index] = Some(paddle_input_velocity(world, paddle, input));
         }
-        transform.x = (transform.x + velocity.vx * delta).clamp(
-            WALL_THICKNESS + collider.half_width,
-            WORLD_WIDTH - WALL_THICKNESS - collider.half_width,
-        );
     }
 
     fn first_ball_hit(&self, world: &World, ball: Entity, delta: f32) -> Option<BreakoutHit> {
@@ -381,6 +486,20 @@ fn action_pressed(input: InputState) -> bool {
     input.enter == 1 || input.space == 1
 }
 
+fn paddle_input_velocity(world: &World, paddle: Entity, input: InputState) -> Velocity {
+    let speed = match world.movement_pattern(paddle) {
+        Some(MovementPattern::TopdownInput { speed }) => speed,
+        _ => PADDLE_SPEED,
+    };
+    Velocity {
+        vy: 0.0,
+        ..topdown_input_velocity(input, speed)
+    }
+}
+
 pub(super) fn is_alive(world: &World, entity: Entity) -> bool {
     world.is_current_entity(entity)
 }
+
+#[cfg(test)]
+mod phase_tests;

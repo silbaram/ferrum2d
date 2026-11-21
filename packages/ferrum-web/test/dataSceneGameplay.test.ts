@@ -35,6 +35,30 @@ function document(gameplay?: unknown, recipe: unknown = { kind: "interaction", a
   });
 }
 
+test("native combat movement accepts physical bodies and rejects fixed bodies or excessive speeds", () => {
+  const engine = { configureDataSceneGameplay: () => true, configureDataSceneNavigation: () => true, dataSceneCombatStats: () => ({}) } as unknown as FerrumEngine;
+  for (const space of ["planar-xy", "spatial"]) {
+    const check = (kind: string, recipe: unknown) => {
+      const doc = document({ primaryActor: "player", combat: true }, recipe, {
+        physics: { space, gravity: [0,0,0], lengthUnit: 1 },
+        sceneComposition: { initialFragment: "island", prefabs: { actor: { props: {
+          behaviorRecipes: ["site"], components: { visual: { kind: "primitive", shape: "circle", radius: 0.25 }, collider: "none", layer: "enemy", body: { kind, collider: { shape: { type: "sphere", radius: 0.25 } } } },
+        } } }, fragments: { island: { instances: [{ id: "player", prefab: "actor", x: 0, y: 0 }] } } },
+      });
+      preflightDataSceneGameplay(engine, doc, bindSceneBehaviorRecipes(doc.sceneComposition, doc.behaviorRecipes), doc.ids, "scene");
+    };
+    for (const recipe of [
+      { kind: "chase", speed: 3, stopDistance: 0 },
+      { kind: "seekTarget", speed: 3, turnRate: 0.5 },
+      { kind: "accelerate", accelerationX: 1, accelerationY: 0, maxSpeed: 3 },
+    ]) {
+      for (const kind of ["dynamic", "kinematic-position", "kinematic-velocity"]) check(kind, recipe);
+      throws(() => check("fixed", recipe), /native combat movement requires/);
+      throws(() => check("kinematic-position", { ...recipe, ...(recipe.kind === "accelerate" ? {maxSpeed: 1_000_001} : {speed: 1_000_001}) }), /native combat movement speed/);
+    }
+  }
+});
+
 test("Data Scene gameplay preflight rejects missing actors and unsupported executors", () => {
   const engine = { configureDataSceneGameplay() { return true; }, configureDataSceneNavigation() { return true; } } as unknown as FerrumEngine;
   const check = (resolved: ReturnType<typeof document>) => preflightDataSceneGameplay(engine, resolved, bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes), resolved.ids, "scene");

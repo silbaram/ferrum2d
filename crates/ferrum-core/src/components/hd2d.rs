@@ -1,11 +1,13 @@
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct PhysicsFloorId(pub u32);
 
 impl PhysicsFloorId {
     pub const DEFAULT: Self = Self(0);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HeightSpan {
     pub floor: PhysicsFloorId,
     pub elevation: f32,
@@ -39,7 +41,7 @@ impl HeightSpan {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectileArc {
     pub floor: PhysicsFloorId,
     pub base_elevation: f32,

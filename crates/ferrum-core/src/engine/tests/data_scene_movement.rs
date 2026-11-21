@@ -1,7 +1,7 @@
 use super::*;
 
 fn scene() -> (Engine, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = spawn_test_body(&mut engine.world, 10.0, 50.0, CollisionLayer::Player);
     engine.world.set_rigid_body(actor, RigidBody::kinematic());
@@ -516,7 +516,7 @@ fn navigation_sweep_keeps_close_contacts_but_allows_separating_and_tangent_motio
 
 #[test]
 fn data_scene_move_rejects_unsupported_actor_and_scene_without_activation() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     assert!(!move_to(&mut engine, 90.0, 50.0, 20.0));
     assert_eq!(engine.data_scene_move_status(), u32::MAX);
     for mode in 0..4 {

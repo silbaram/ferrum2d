@@ -109,7 +109,7 @@ export interface SpatialMoveStats {
       | "workBudgetExceeded"
       | "frameBudgetExceeded";
     count: number;
-    /** Enabled target AABB/OBB proxies; excludes the moving actor and terrain. */
+    /** Legacy: target AABB/OBB proxies. Native physics: registered colliders including terrain and actor. */
     collisionProxyCount: number;
     preparationWorkUnits: number;
   };
@@ -132,7 +132,9 @@ export interface DataSceneSpatialSpec {
   actor?: {
     instanceId: string;
     speed: number;
+    /** Native authoring inherits body.character.stepHeight (default 0.3); legacy default 32. */
     maxStepHeight?: number;
+    /** Native authoring inherits body.character.snapDistance (default 0.2). Larger drops use gravity. Legacy default 32. */
     maxDropHeight?: number;
   };
 }
@@ -190,6 +192,8 @@ interface SpatialRenderBufferBase {
   terrain: Float32Array;
   terrainVertexCount: number;
   terrainRevision: number;
+  /** GPU mesh revision; authoring/picking uses terrainRevision. */
+  terrainRenderRevision?: number;
   /** Normalized top-left viewport x/y/w/h, followed by internal width/height (zero disables). */
   presentation?: Float32Array;
   /** Independent material extension v1: normal texture ID (16777215=none), cast/receive flags. */
@@ -1179,7 +1183,8 @@ export function createSpatialApi(
           o.depthTest === undefined
             ? true
             : bool(o.depthTest, "spatial.debug.depthTest");
-        if (flags && depth) flags |= 8;
+        // Engine-level native collider/joint diagnostics may be the only lines.
+        if (depth && (flags !== 0 || o.depthTest !== undefined)) flags |= 8;
       }
       return (
         typeof rust.configure_spatial_debug === "function" &&

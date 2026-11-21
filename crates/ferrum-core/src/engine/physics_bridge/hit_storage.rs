@@ -56,6 +56,18 @@ impl Engine {
         max_distance: f32,
         query_mask_bits: u32,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_sweep(
+            shape,
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            query_mask_bits,
+            None,
+        ) {
+            return count;
+        }
         CollisionSystem::shape_cast_all_into(
             &self.world,
             shape,
@@ -79,6 +91,18 @@ impl Engine {
         query_mask_bits: u32,
         query_height_span: HeightSpan,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_sweep(
+            shape,
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            query_mask_bits,
+            Some(query_height_span),
+        ) {
+            return count;
+        }
         CollisionSystem::shape_cast_all_with_height_span_into(
             &self.world,
             shape,
@@ -145,6 +169,9 @@ impl Engine {
         shape: CollisionQueryShape,
         query_mask_bits: u32,
     ) -> u32 {
+        if let Some(count) = self.query_unified_planar_shape(shape, query_mask_bits, None) {
+            return count;
+        }
         CollisionSystem::shape_query_into(
             &self.world,
             shape,
@@ -160,6 +187,11 @@ impl Engine {
         query_mask_bits: u32,
         query_height_span: HeightSpan,
     ) -> u32 {
+        if let Some(count) =
+            self.query_unified_planar_shape(shape, query_mask_bits, Some(query_height_span))
+        {
+            return count;
+        }
         CollisionSystem::shape_query_with_height_span_into(
             &self.world,
             shape,

@@ -3,6 +3,9 @@ import {
   createEngine,
   AudioManager,
   createSpatialAudioScene,
+  createUnifiedPhysicsQueryBatch,
+  UNIFIED_PHYSICS_QUERY_LAYOUT,
+  UNIFIED_PHYSICS_STATE_LAYOUT,
   WebGL2Renderer,
   loadSpatialGlb,
   captureGameStateSnapshot,
@@ -28,6 +31,32 @@ const emptyInput = () => ({
 });
 const frame = () => new Promise(requestAnimationFrame);
 
+function checkVillageEnemySpawns(engine, document, handles) {
+  const { prefabs, fragments, initialFragment } = document.sceneComposition;
+  const enemies = fragments[initialFragment].instances.filter(i => i.prefab === "melee" || i.prefab === "ranged");
+  if (!enemies.length) return;
+  const ids = new Uint32Array(enemies.flatMap(({ id }) => [handles[id].entityId, handles[id].entityGeneration]));
+  const states = engine.queryUnifiedPhysicsBodyStates(ids);
+  const layout = UNIFIED_PHYSICS_STATE_LAYOUT;
+  const queries = enemies.flatMap(({ id, prefab }, index) => {
+    const { collider, character } = prefabs[prefab].props.components.body;
+    const start = index * layout.stride + layout.position;
+    const position = Array.from(states.floats.subarray(start, start + 3));
+    const { halfHeight, radius } = collider.shape;
+    return [
+      { type: "overlap", shape: collider.shape, pose: { position }, filter: { excludeBody: handles[id] }, limit: 1 },
+      { type: "ray", origin: position, direction: [0, -1, 0], maxDistance: halfHeight + radius + 2 * character.skinWidth,
+        filter: { terrain: "movement" }, limit: 1 },
+    ];
+  });
+  const { summaries } = engine.queryUnifiedPhysics(createUnifiedPhysicsQueryBatch(queries));
+  const { summaryStride, summaryCount } = UNIFIED_PHYSICS_QUERY_LAYOUT;
+  for (const [i, { id }] of enemies.entries()) {
+    check(summaries[(2 * i) * summaryStride + summaryCount] === 0, `${id} starts inside a collider`);
+    check(summaries[(2 * i + 1) * summaryStride + summaryCount] === 1, `${id} starts off the walkable ground`);
+  }
+}
+
 // All simulation (including AI, repeat fire, damage, expiry and particles) runs in Rust.
 // JS only authors the scene, submits rendering, and copies bounded numeric telemetry.
 export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {}) {
@@ -36,6 +65,7 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
     "invalid enemy count",
   );
   const renderer = new WebGL2Renderer(canvas, { gpuTiming: true, preserveDrawingBuffer: true });
+  const nativeVillage = sceneOptions.document?.physics?.space === "spatial";
   let engine,
     document,
     stopped = false,
@@ -316,6 +346,29 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
       document.sceneComposition.prefabs.actor.props.components = structuredClone(hero.props.components);
       document.sceneComposition.prefabs.actor.props.components.visual.texture = sceneOptions.textureIds.village_hero;
       delete document.sceneComposition.prefabs.actor.props.components.visual.asset;
+      if (nativeVillage) {
+        // Keep the ground-level capsules' entire footprints on open village ground.
+        // The open-field ring also passes through the well, raised garden and ramp.
+        const clearStarts = {
+          1: [-12, -2], 5: [145, -70], 7: [-109, -142], 8: [152, 55],
+          11: [45, 160], 13: [132, -47], 15: [28, -204], 16: [145, 71],
+          18: [130, -81], 20: [-130, -140], 21: [250, 35], 22: [-165, 55],
+          26: [125, -67], 28: [-72, -140], 29: [245, 89],
+        };
+        for (const [index, [x, y]] of Object.entries(clearStarts)) {
+          const enemy = actors[Number(index) + 1];
+          if (enemy) Object.assign(enemy, { x, y });
+        }
+        for (const name of ["melee", "ranged"]) {
+          const enemy = document.sceneComposition.prefabs[name].props.components;
+          enemy.collider = "none";
+          enemy.body = {
+            kind: "kinematic-position", elevation: .75, renderOffset: [0, -6, 0],
+            collider: { shape: { type: "capsule", halfHeight: 1, radius: 5 } },
+            character: { skinWidth: .75 },
+          };
+        }
+      }
       for (const [name, model] of Object.entries(sceneOptions.models)) check(engine.registerDataSceneSpatialModel(name, model), "village model registration");
       for (const [name, url] of Object.entries(sceneOptions.textureUrls)) await renderer.loadTexture(sceneOptions.textureIds[name], url);
       for (const i of fragment.instances) {
@@ -340,6 +393,7 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
       textureId: name => sceneOptions.textureIds?.[name] ?? 1,
     });
     liveHandles = applied.entityHandles;
+    if (nativeVillage) checkVillageEnemySpawns(engine, document, liveHandles);
     if (sceneOptions.audio) {
       audio = new AudioManager();
       const play=audio.playSpatial.bind(audio);audio.playSpatial=(...args)=>{const voice=play(...args);if(voice)ownedVoices.push(voice);return voice;};
@@ -352,13 +406,34 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
       ]},{handles:liveHandles,soundId:name=>name==="water"?1:2});
     }
     actorHandle = applied.entityHandles.actor;
+    const actorIds = new Uint32Array([actorHandle.entityId, actorHandle.entityGeneration]);
+    const actorPose = () => Array.from(engine.queryAudioPoseBuffer(actorIds).floats.slice(4, 7));
+    const setVillageActorPose = (x, y, elevation) => {
+      const { renderOffset } = document.sceneComposition.prefabs.actor.props.components.body;
+      engine.setUnifiedPhysicsPoses(actorIds, new Float32Array([x, elevation - renderOffset[1], -y, 0, 0, 0, 1]));
+    };
+    const resumeVillageCheckpoint = async (saved) => {
+      engine.start();
+      try {
+        const deadline = performance.now() + 5000;
+        while (engine.time() - saved.restoredTime < 2 * document.physics.stepSeconds) {
+          check(performance.now() < deadline, "restored village did not advance");
+          await frame();
+        }
+        return { ...saved, resumedTime: engine.time() };
+      } finally {
+        engine.stop();
+      }
+    };
     check(engine.dataSceneCombatEnabled(), "combat configuration not enabled");
     renderer.resize();
     const size = renderer.viewportSize();
     engine.setViewportSize(size.width, size.height);
-    engine.start();
-    await frame();
-    await frame();
+    if (!nativeVillage) {
+      engine.start();
+      await frame();
+      await frame();
+    }
     return {
       engine,
       renderer,
@@ -375,21 +450,24 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
           warmupMs >= 0 && durationMs > 0 && durationMs <= 120000,
           "invalid measurement duration",
         );
-        const wait = async (ms) => {
-          const until = performance.now() + ms;
-          while (performance.now() < until && !stopped) await frame();
-          check(!stopped, errors.join("\n"));
-        };
-        const simulationStart = latest?.simulationSeconds ?? 0;
-        await wait(warmupMs);
-        const warmupDeadline = performance.now() + 30000;
-        while (enemyCount > 0 && latest.simulationSeconds - simulationStart < 2.5) {
-          check(
-            performance.now() < warmupDeadline,
-            "combat warmup did not advance native simulation",
-          );
+        // Start all village variants from the authored state, after the browser
+        // has unlocked audio and recorded adapter metadata.
+        if (nativeVillage) {
+          engine.start();
+          await frame();
           await frame();
         }
+        const wait = async (ms, simulationSeconds = 0) => {
+          const until = performance.now() + ms;
+          const startTime = latest?.simulationSeconds ?? 0;
+          const deadline = until + 30000;
+          while (performance.now() < until || (latest?.simulationSeconds ?? 0) - startTime < simulationSeconds) {
+            check(!stopped, errors.join("\n"));
+            check(performance.now() < deadline, "combat sample did not advance native simulation");
+            await frame();
+          }
+        };
+        await wait(warmupMs, enemyCount > 0 ? 2.5 : 0);
         rows.length = gpuSamples.length = 0;
         gpuIds.clear();
         maxParticles = maxBillboards = actorHitEvents = 0;
@@ -397,22 +475,38 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
         const watched = applied.entityHandles["enemy-4"];
         const aiBefore = watched === undefined ? undefined : engine.getPhysicsEntity(watched);
         if(sceneOptions.document){
-          check(engine.setPhysicsBodyPosition(actorHandle,8,-192),'ramp setup position');
-          check(engine.setPhysicsBodyHeightSpan(actorHandle,{floorId:0,elevation:0,height:21}),'ramp setup height');
+          if (nativeVillage) {
+            const body = document.sceneComposition.prefabs.actor.props.components.body;
+            const entry = engine.queryUnifiedPhysics(createUnifiedPhysicsQueryBatch([{
+              type: "overlap", shape: body.collider.shape, filter: { excludeBody: actorHandle },
+              pose: { position: [8, body.elevation - body.renderOffset[1], 192] }, limit: 1,
+            }]));
+            check(entry.hitCount === 0, "village ramp entry is occupied before the movement sample");
+            setVillageActorPose(8, -192, body.elevation);
+          } else {
+            check(engine.setPhysicsBodyPosition(actorHandle,8,-192),'ramp setup position');
+            check(engine.setPhysicsBodyHeightSpan(actorHandle,{floorId:0,elevation:0,height:21}),'ramp setup height');
+          }
           measureSimulationStart=latest.simulationSeconds;profiler.reset();
         }
         const before = engine.dataSceneCombatStats(),
           start = performance.now();
         collecting = true;
-        await wait(durationMs);
-        collecting = false;inputState.a=inputState.d=false;
+        try {
+          // Ramp input follows the simulation clock. A slow render frame advances
+          // the game by at most 50 ms, even if more wall time has elapsed.
+          await wait(durationMs, sceneOptions.document ? durationMs / 1000 : 0);
+        } finally {
+          collecting = false;
+          inputState.a = inputState.d = false;
+        }
         const elapsedMs = performance.now() - start,
           after = engine.dataSceneCombatStats();
         const aiAfter = watched === undefined ? undefined : engine.getPhysicsEntity(watched);
         // Delayed results are joined to issuing IDs and only measured frame IDs survive.
         const measuredIds = new Set(rows.map((row) => row.rendererFrameId));
         const samples = gpuSamples.filter((sample) => measuredIds.has(sample.rendererFrameId));
-        return {
+        const result = {
           enemyCount,
           modelCount: Object.keys(document.spatial.models).length,
           frameTrace:sceneOptions.document?profiler.snapshot().frameTrace:undefined,
@@ -435,6 +529,12 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
           resources: renderer.resourceStats(),
           errors: errors.slice(),
         };
+        if (!nativeVillage) return result;
+        // Exercise releasing movement before freezing the frame used by both
+        // the screenshot and the checkpoint. Browser I/O must not drive AI.
+        await wait(0, 1);
+        engine.stop();
+        return { ...result, checkpointTime: engine.time() };
       },
       async pauseCheck() {
         check(engine.pauseDataScene(), "pause rejected");
@@ -450,6 +550,23 @@ export async function startCombatProbe(canvas, enemyCount = 32, sceneOptions = {
         return true;
       },
       saveCheck() {
+        if (nativeVillage) {
+          engine.stop();
+          const checkpoint = engine.captureRuntimeCheckpoint();
+          try {
+            const time = engine.time();
+            const pose = actorPose();
+            const combat = engine.dataSceneCombatStats();
+            setVillageActorPose(pose[0] + 1, pose[1], pose[2]);
+            check(actorPose()[0] !== pose[0], "village actor did not move before checkpoint restore");
+            engine.restoreRuntimeCheckpoint(checkpoint);
+            check(engine.time() === time && JSON.stringify(actorPose()) === JSON.stringify(pose)
+              && JSON.stringify(engine.dataSceneCombatStats()) === JSON.stringify(combat), "village checkpoint changed live state");
+            return resumeVillageCheckpoint({ capturedRevision: checkpoint.capturedRevision, restoredPose: pose, restoredTime: time });
+          } finally {
+            checkpoint.dispose();
+          }
+        }
         const options = {
           includeDataSceneState: true,
           includeDataSceneProgress: true,

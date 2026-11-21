@@ -1,3 +1,4 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -141,16 +142,29 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     await page.mouse.click(at.x,at.y);
     await wait(() => window.ferrumPlacementViewerState.instances.some(i=>i.instanceId==="working_grid_sprite"));
     console.log(`Working grid DPR ${dpr}: sprite commit`);
-    const sprite=await page.evaluate(() => {
+    const nativeSpace = baseline.document.physics?.space === "spatial";
+    const sprite=await page.evaluate(nativeSpace => {
       const s=window.ferrumPlacementViewerState;
-      return {instance:s.selected,native:window.ferrumEngine.getPhysicsEntity(s.selected.entity),patch:window.ferrumPlacementViewerExportPatch()};
-    });
+      const h = s.selected.entity, engine = window.ferrumEngine;
+      const native = nativeSpace ? {
+        colliders: engine.queryUnifiedPhysicsColliders(h).length,
+        elevation: engine.queryAudioPoseBuffer(new Uint32Array([h.entityId, h.entityGeneration])).floats[6],
+      } : engine.getPhysicsEntity(h);
+      return {instance:s.selected,native,patch:window.ferrumPlacementViewerExportPatch()};
+    }, nativeSpace);
     assert.equal(sprite.instance.transform.x,spriteGhost.x);
     assert.equal(sprite.instance.transform.y,spriteGhost.y);
-    assert.equal(sprite.instance.body.heightSpan.elevation,24);
-    assert.equal(sprite.instance.body.heightSpan.floorId,2);
-    assert.equal(sprite.native.heightSpan.elevation,24);
-    assert.equal(sprite.native.heightSpan.floorId,2);
+    if (nativeSpace) {
+      assert.equal(sprite.instance.body.kind,"fixed");
+      assert.equal(sprite.instance.body.elevation,24);
+      assert.equal(sprite.instance.body.collider.shape.type,"box");
+      assert.deepEqual(sprite.native,{colliders:1,elevation:24});
+    } else {
+      assert.equal(sprite.instance.body.heightSpan.elevation,24);
+      assert.equal(sprite.instance.body.heightSpan.floorId,2);
+      assert.equal(sprite.native.heightSpan.elevation,24);
+      assert.equal(sprite.native.heightSpan.floorId,2);
+    }
     assert.equal((await snapshot()).history.undoCount,baseline.history.undoCount+1);
     assert.deepEqual((await snapshot()).document.spatial.terrain,baseline.document.spatial.terrain,"Plane placement created terrain");
     await page.locator("[data-placement-language]").selectOption("en");
@@ -198,7 +212,7 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     await wait(count => window.ferrumPlacementViewerRuntimeFrame.spatial.modelDraws === count,
       Object.keys(baseline.document.spatial.models).length + 1);
     const modelStats=await page.evaluate(()=>window.ferrumRuntime.renderer.stats());
-    assert(modelStats.drawCalls<=160 && modelStats.spatial.modelTriangleCount<=60000);
+    assertVillageRenderBudget(modelStats);
     await page.getByRole("button",{name:"Undo",exact:true}).click();
     assert.deepEqual((await snapshot()).document,baseline.document);
     await page.getByRole("button",{name:"Play",exact:true}).click();
@@ -209,7 +223,7 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
     // Empty terrain and a perspective camera with its horizon near the viewport center.
     const empty=structuredClone(baseline.document);
     empty.spatial.terrain=[];
-    empty.spatial.models={}; empty.spatial.billboards={};
+    empty.spatial.models={}; empty.spatial.billboards={}; delete empty.spatial.lightBindings;
     delete empty.spatial.actor; delete empty.gameplay;
     for (const fragment of Object.values(empty.sceneComposition.fragments)) fragment.instances=[];
     empty.spatial.camera={projection:"perspective",position:{x:0,y:-300,elevation:8},target:{x:0,y:0,elevation:0},near:.1,far:2000,fovDegrees:55};

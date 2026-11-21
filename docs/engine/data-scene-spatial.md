@@ -50,6 +50,45 @@ Ferrum2D Studio의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`�
 `setCamera`로 저장한다. 게임 구도 확인은 실제 viewport/pixelArt를 사용하는 일시정지 미리보기이며,
 camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약을 따른다.
 
+## 통합 3D 물리의 캐릭터 이동
+
+문서에 `physics.space: "spatial"`을 설정하면 `spatial.actor`는
+`body.kind: "kinematic-position"`, capsule collider, `body.character`가 있는 billboard를 참조한다.
+`up`은 `[0,1,0]`이어야 한다. 앞의 AABB/heightSpan 예제는 `physics`를 생략한 기존 경로다.
+[캐릭터·관절 샘플](samples/data-scene-constraints.scene-authoring.json)은 native 캡슐을 사용한다.
+
+WASD와 목적지 이동 의도는 Rust에서 native fixed tick 앞에 전달한다. 실제 이동·높이·접지는
+같은 3D 충돌 world가 결정하며, 완료된 pose가 billboard와 이동 애니메이션에 반영된다.
+actor 교체·해제는 이전 actor의 수평 입력을 정지한다. 이동 중 키 입력, 명시적 취소 또는
+외부 teleport는 route를 취소한다. 잘못된 목적지 요청은 기존 route와 pose를 유지한다.
+
+`moveDataSceneSpatialActorTo`는 현재 접지한 authored surface에서 시작한다. `floorId`는 목적지
+지지면 선택에 쓰며 충돌을 나누는 가상 층이 아니다. walkable surface와 실제 캡슐 probe로
+경사·단차·장애물 우회를 탐색한다. native 경로는 기존 `connections`가 아니라 실제 3D 연결성을 따른다.
+mesh/body만으로 구성한 지지면에서의 경로 탐색과 이동 발판의 미래 궤적 계획은 아직 남아 있다.
+장애물이 경로 생성 뒤 바뀌면 실제 fixed tick이 충돌을 처리하고 진행할 수 없을 때 `blocked`가 된다.
+자동 재탐색은 하지 않는다. 신규 요청은 노드 4,096개·probe 32,768회·work 8,000,000으로 제한한다. 대기 heap도 32,768개로 제한한다.
+검색 커널은 frontier와 진행 중인 edge/probe를 보관해 작업 예산별로 재개할 수 있다. 현재 공개 단일 actor 요청은
+기존처럼 한 호출에서 요청 예산 안에 완료한다. 전투 Chase에는 별도 fixed-geometry policy와
+순환 frame 검색과 검증된 connector를 사용하는 공유 route cache를 연결했다. 선택 native crowdAvoidance는
+실제 capsule·관측 속도 기반 회피와 지형/예산 검사를 사용한다. Native all-pattern은 별도 capability로
+SeekTarget의 경로/회전 보간과 Accelerate의 틱당 가속·지형 검사도 같은 source/예산에 연결한다.
+무옵션 기본 backend 전환·native JSON 진행 저장과 임의 body/mesh 지지면 길찾기는 계속 진행 중이다.
+중단한 검색을 재개할 때는 native 도형 identity·pose·enabled·sensor·group·one-way·height span 및
+캐릭터 설정/위치를 비교한다. 변경이 있으면 이전 edge를 사용하기 전에 취소하며, mesh 정점을 복사하지 않는다.
+이 내부 조회 상태 보관은 게임의 snapshot/replay 지원을 의미하지 않는다.
+work는 collider 수와 지형 후보 검사에 기반한 보수적 작업 단위이며 시간·mesh triangle 방문 실측이 아니다.
+`collisionProxyCount`는 native 모드에서 actor·지형을 포함한 등록 collider 수다.
+
+`moveDataSceneSpatialBody`는 현재 geometry에 캡슐을 sweep하여 허용된 위치를 즉시 반영한다.
+시간을 진행하거나 대기한 점프를 소비하거나 dynamic body에 충격을 가하지 않는다.
+연속 게임 이동은 WASD·목적지 이동 또는 native character input을 사용한다. `maxStepHeight`와
+`maxDropHeight`의 문서 기본값·우선순위는 [캐릭터 작성](data-scene-authoring.md#캡슐-캐릭터와-관절-작성)을 따른다.
+
+이 연결은 기존 AABB 캐릭터 데이터의 자동 변환, 기본 backend 전환, native 진행 저장 완료를 뜻하지 않는다.
+통합 물리 문서의 JSON 진행 저장·복원은 거부한다. 동일 Engine 메모리 checkpoint는 지원하며
+외부 파일 import·버전 이전과 구분한다.
+
 ## 정적 GLB 배경 모델
 
 `/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse" | "specular", signal? })`로 URL 또는 ArrayBuffer를
@@ -135,15 +174,23 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   WebGL2/WebGPU 모두 지원하며 UV만 다른 재질을 한 batch로 합치지 않는다. Rust ABI·씬 저장 버전은 유지한다.
   Blender Mapping 노드의 UV/Point 매핑을 exporter가 이 확장으로 저장한 모델을 사용할 수 있다.
   임의의 procedural shader/Generated 좌표를 지원한다는 뜻은 아니다.
-- root 배치는 native entity XY와 heightSpan.elevation을 사용한다. 선택 `elevation`은 시각 offset(기본 0),
+- 기존 root 배치는 native entity XY와 heightSpan.elevation을 사용한다. 선택 `elevation`은 시각 offset(기본 0),
   `yawDegrees`는 Y-up 회전(-360..360, 기본 0), `scale`은 world units/meter인 양수 균일 배율(0.0001..10000, 기본 1)이다.
   Blender의 정상 Y-up glTF 출력에 Z-up 보정을 다시 적용하지 않는다. imported hierarchy는 정적 bake이며
-  선택 native attachment는 아래 움직이는 묶음 계약을 따른다. native body yaw는 authored yaw에 더하며
-  runtime scale 변경은 제공하지 않는다. inline components와 static/kinematic/생략 body를 허용한다.
-- 충돌은 같은 instance의 기존 `components.collider`와 `body.heightSpan`으로 명시한다. AABB·원·캡슐·
+  선택 native attachment는 아래 움직이는 묶음 계약을 따른다. 기존 component body yaw는 authored yaw에 더한다.
+  Inline static/kinematic/생략 body와 명시적 spatial native body의 모든 kind를 허용하며 runtime scale 변경은 제공하지 않는다.
+- 명시적 spatial native body에 연결한 모델은 현재 body XYZ에 world-space `renderOffset`과 모델 `elevation`을 더한다.
+  회전은 native XYZW quaternion × 모델 local yaw, 배율은 모델의 균일 scale이다. 동적 pitch/roll도 bounds·culling·
+  main/shadow draw·picking에 반영한다. 이 경로는 위치와 quaternion 모두 현재 pose를 쓰며 보간하지 않는다.
+  기존 legacy 모델·billboard·planar 표현의 보간 계약은 유지한다. 모델 draw ABI는 기존 80바이트다.
+  Studio의 선택·프레이밍·ghost 경계는 별도 작성 geometry이며 placement Y회전 × body quaternion × model local yaw와
+  균일 scale로 AABB 8개 꼭짓점을 변환하고 `geometrySource: "authoring"`으로 표시하며, 실제 Rust 렌더 pose와 구분한다.
+- 기존 충돌은 같은 instance의 `components.collider`와 `body.heightSpan`으로 명시한다. AABB·원·캡슐·
   회전 박스·convex polygon 등 Data Scene이 지원하는 모양을 사용한다. 이 proxy의
   크기·offset·높이는 **최종 world 단위**다. 모델 yaw/scale/시각 offset이 proxy를 자동 변형하지 않으므로
-  일치하는 값을 작성한다. 삼각형 충돌·자동 보행층은 제공하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
+  일치하는 값을 작성한다. 명시적 spatial native body는 대신 `collider: "none"`과 `body.collider`에
+  [7종 물리 형상](data-scene-authoring.md#단일-3d-물리-월드-작성)을 작성한다. GLB 삼각형에서 충돌체·보행층을
+  자동 생성하지 않는다. 모델 triangle picking은 아래 `raycastSpatialModel` 계약을 따른다.
 - 모델은 같은 camera/depth/HDR target에서 terrain/billboard와 가리고 point/sun cast/receive·DOF/fog에 참여한다.
   `castShadow`/`receiveShadow`는 기본 true다. native가 world bounds와 camera/light culling을 계산한다.
   `shadowOnly: true`(기본 false)는 main camera와 placement viewer의 모델 triangle picking에서 제외하고 point/sun caster로만 사용한다.
@@ -167,7 +214,8 @@ applyDataSceneAuthoringDocument(engine, { ...document, spatial: { ...spatial, mo
   각 이미지의 동기 readback 직후 texture/FBO·bitmap을 해제하고, 지원 시 임시 context도 lose한다.
   다음 async decode 전에 정리하므로 병렬 asset 준비에서도 GPU context를 여러 이미지에 걸쳐 유지하지 않는다.
   자원에는 CPU RGBA만 남고 caller renderer의 context/state는 사용하지 않는다.
-- 기존 공간 진행 v6/v7의 stable authored ID·XY/heightSpan·physics enabled 상태를 재사용한다. asset/contentId·
+- 기존 component 모델의 공간 진행 v6/v7은 stable authored ID·XY/heightSpan·physics enabled 상태를 재사용한다.
+  명시적 native body 모델의 JSON 진행 저장은 거절하며 같은 Engine 메모리 checkpoint를 사용한다. asset/contentId·
   yaw/scale/시각 offset은 저장된 authoring document가 보존하며 GPU ID/bytes를 진행 상태로 저장하지 않는다.
   fresh engine에도 자원을 먼저 load/register해야 한다. 누락/다른 contentId와 잘못된 문서는 cold preflight에서 거절한다.
   GLB decode 실패도 활성 씬을 변경하지 않는다. capture도 native 모델 pose를 검사하여 GPU 변환 범위를
@@ -440,8 +488,8 @@ CPU 자원은 새 엔진에 미리 등록해야 한다. 모델 GPU 준비 실패
 preparer 객체·GPU lease는 JSON/progress hash에 포함하지 않는다. 저장 버전과 native/frame ABI는 유지한다.
 
 보호 범위는 **모델 GPU 준비 실패**다. environment HDR/shadow FBO·postprocess target·동적 frame buffer의
-첫 렌더링 할당과 runtime context loss, custom texture/component callback 또는 native 적용 전체의 rollback을
-보장하지 않는다. 준비 lease를 유지한 채 renderer를 파괴하거나 apply 중 재진입하는 callback도 지원하지 않는다.
+첫 렌더링 할당과 runtime context loss, custom texture/component callback의 부수 효과를
+복원하지 않는다. Native physics apply의 별도 rollback은 [씬 작성 계약](data-scene-authoring.md#단일-3d-물리-월드-작성)을 따른다. 준비 lease를 유지한 채 renderer를 파괴하거나 apply 중 재진입하는 callback도 지원하지 않는다.
 이 범위를 넓히는 전체 scene GPU transaction은 별도 후속이다. GPU 실행 완료를 기다리는 fence API는 아니다.
 
 독립 `spatial.models` buffer v1은 80-byte `repr(C)` record다. u32 asset ID/flags/visibility mask/reserved와
@@ -1493,6 +1541,7 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 재질/조명/그림자의 최종 렌더링을 재현하는 preview는 아니다.
 
 `SpatialDebugOptions`의 category는 각각 기본 false이며 `depthTest`만 기본 true다.
+`{ depthTest: true }`만 지정해 Engine native joint-only 선의 깊이 검사를 선택할 수도 있다. False는 overlay다.
 옵션 객체의 알 수 없는 필드/잘못된 boolean은 diagnostic으로 거절한다. 공간 설정이 없거나
 이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
 
@@ -1501,8 +1550,8 @@ entity는 generational handle, surface는 authored ID를 사용한다. 한 번�
 | `terrain` | 청록 | 제출한 authored surface의 top/base 외곽과 네 옆모서리. ramp의 양 끝 높이도 반영 |
 | `billboards` | 노랑 | live binding의 실제 제출 quad 외곽과 visual foot 십자. origin·회전·unitsPerPixel·visual elevation 포함 |
 | `heightSpans` | 자홍 | live renderable billboard entity 원점에서 native elevation→elevation+height의 세로선과 양 끝 십자. visual elevation offset을 더하지 않음 |
-| `colliders` | 초록, trigger는 주황 | native collider의 XY 선을 heightSpan bottom/top에 배치하고 세로 연결. visual 없는 body도 포함 |
-| `contacts` | 빨강 | 마지막 유효한 spatial 이동의 sweep hit marker/normal 및 사용 가능한 rigid solver impulse contact |
+| `colliders` | backend별 body/sensor/sleep 색 | legacy는 World collider XY/heightSpan prism, native는 실제 backend wire geometry. Visual 없는 body도 포함 |
+| `contacts` | 빨강 | legacy는 spatial 이동 hit/rigid impulse snapshot, native는 cached contact witness/normal |
 | `floorIds` | 흰색 | 제출 지형과 visible collider entity의 camera-facing `F숫자` stroke label. heightSpan 없는 body는 `F-` |
 | `sunShadowCoverage` | 청록·주황 | 실제 finite sun matrix의 높이 0 평면 교선. 청록은 유한 맵 외곽, 주황은 내부 fade의 full-weight 경계 |
 
@@ -1521,7 +1570,8 @@ Z의 2배 계수는 셰이더의 `[-1, 1] → [0, 1]` 변환을 반영한다. `d
 진단은 runtime-only이고 authored JSON·progress에 저장하지 않는다. 기존 debug v1/11-float vertex ABI를 유지하며,
 새 bit128을 모르는 Wasm은 선택을 거절한다.
 
-`heightSpans`는 entity 원점 높이 표시다. footprint는 별도 `colliders`로 확인한다.
+`heightSpans`는 entity 원점의 metadata 높이 표시다. Native backend wire의 extrusion과 구분한다.
+다음 heightSpan prism과 이동 hit 설명은 legacy backend의 `colliders`/`contacts` 경로다.
 AABB·원·회전 박스·캡슐·edge·chain·convex polygon 및 compound child를 기존 native collider geometry에서 읽는다.
 회전 박스/convex polygon은 entity 회전과 collider 회전을 반영하고 offset·enabled/body enabled를 공유한다.
 캡슐은 기존 물리 debug와 같은 두 끝 원+축의 진단 glyph이며 원은 16선분 근사, edge/chain은 중심선이다.
@@ -1536,6 +1586,25 @@ AABB 접촉면의 대표점과 native normal을 표시하며 solver manifold의 
 rigid contact는 기존 solver의 nonzero impulse snapshot을 최대 256개 읽고 heightSpan 교집합의 가운데 높이에 표시한다.
 zero-impulse resting contact·trigger overlap·gateway에서만 막힌 접촉·전체 tile/terrain 접촉은 이 snapshot 범위에 포함하지 않는다.
 기록은 simulation state/progress에 저장하지 않는다. 이 진단을 전체 3D contact solver 또는 접촉 이력 수집기로 해석하지 않는다.
+
+Native backend에서는 `colliders`/`contacts`를 실제 native debug category에 연결하고 legacy prism·이동 hit를 중복 출력하지 않는다.
+Terrain·billboard·heightSpan·floor label은 기존 authored/World metadata를 표시하므로 native shape의 증거와 구분한다.
+Engine PhysicsDebugOptions만으로 native 선을 XYZ packet에 넣을 수 있다. 내부 output marker256은 설정 category나 depth preference가 아니다.
+Native spatial world의 XYZ는 그대로 표시하고 native planar `[x,y,z]`는 `[x,z,-y]`로 옮긴다.
+Planar 선의 높이는 backend의 실제 수치적 extrusion이며 heightSpan bottom/top을 임의로 적용하지 않는다.
+공간 camera가 없으면 Planar XY, Spatial `(x,-z)` footprint를 flat buffer로 표시하므로 전체3D 표시가 아니다.
+
+Wire geometry는 실제7종 shape의 body×fixture pose와 현재 admit된13종 joint의 frame/link를 사용한다. 곡선은16분할 근사다.
+Contacts는 마지막 tick의 local manifold cache를 현재 pose로 재투영한다. Teleport 후 다음 tick까지 남을 수 있으며 새 query/solve가 아니다.
+CCD는 frame의 이른 fixed tick과 entity 없는 tile/surface도 포함한 저장 witness marker/normal이다. Frame4,096개 또는 native 기록 누락은 truncated로 알린다.
+Broadphase는 shape AABB이며 BVH node/proxy는 아니다.
+일시정지 중 legacy joint component를 수정하는 것만으로 새 native joint를 import하지 않는다.
+Engine은 추출 전 component/terrain을 한 번 cold prepare_query로 동기화하되 tick·예약 force/impulse를 소비하지 않는다.
+이 import와 spatial metadata 생성 비용은 native 추출 work 상한 밖이다. Native geometry+CCD 추출은 최대16,384선·65,536 방문 work를 공유하며 빈 arena slot도 센다.
+미지원·한도 초과는 truncated, native admission 실패는 rejected로 알리며 legacy 형상으로 전환하지 않는다.
+`queryUnifiedPhysicsDiagnostics()?.debug`와 `FrameState.unifiedPhysics.debug`에서 lineCount/workUnits/truncated/unsupportedShapes/rejected와
+xy/xz/xyz projection을 소유 값으로 읽는다. Debug off는 이 값을 생략하며 상태 buffer를0으로 지운다.
+
 실제 scene depth를 따르거나 가려진 선까지 볼 수 있으며, 어느 모드에서도 depth buffer에 쓰지 않는다.
 선은 공간 scene 뒤, 기존 flat sprite/text/HUD 앞에 그리며 fullscreen 후처리는 그대로 적용된다.
 선 굵기는 WebGL `LINES` 기본 1 device pixel이며 coverage/MSAA는 브라우저에 따라 다를 수 있다.
@@ -1549,18 +1618,20 @@ Rust가 같은 frame camera·native entity에서 endpoint를 생성해 optional 
 최대 32,768 vertices/16,384 lines/1,441,792 bytes의 native 버퍼를 enable 시 예약한다.
 같은 크기까지 GPU buffer도 재사용하며 camera/toggle마다 새 GPU object를 만들지 않는다.
 한도를 넘거나 비유한 진단 geometry를 생략하면 `truncated=true`다. 이때 일부 진단선은 표시되지 않는다.
-physics 진단 순회는 frame당 alive entity 최대 4,096개·collider/chain segment 최대 2,048개다.
+legacy physics 진단 순회는 frame당 alive entity 최대 4,096개·collider/chain segment 최대 2,048개다.
 추가 접촉 상한(이동 hit 128, rigid snapshot 256)도 초과하면 truncated를 표시한다.
-새 category도 같은 전체 vertex/1 draw 예산을 공유한다. 진단용 collision query는 실행하지 않는다.
+Native와 metadata category도 같은 전체 vertex/1 draw 예산을 공유하므로 metadata가 먼저 사용한 출력만큼 native 선 여유가 줄어든다.
+Legacy 표시와 native core 추출은 새 collision 판정을 실행하지 않으며 Engine의 cold admission과 구분한다.
 disable 후 확보한 capacity는 재사용을 위해 유지한다. native 버퍼는 전체 scene 교체 때 정리하며
 GPU 버퍼는 renderer destroy까지 재사용한다.
 최초 enable은 Wasm memory grow를 일으킬 수 있으므로 모든 borrowed view를 다음 frame에서 다시 받는다.
 지연 사용은 `debug.vertices`도 `.slice()`해야 한다.
 
-디버그 설정·선분은 authoring document와 진행 저장에 포함하지 않는다. 전체 spatial configure,
+SpatialDebugOptions 설정·선분은 authoring document와 진행 저장에 포함하지 않는다. 전체 spatial configure,
 scene reset와 public authoring/native progress restore 뒤에는 꺼지며 capture한 이동 접촉도 제거한다.
 skip-render는 이전 frame 선분을 제거하고 다음 render에서 설정에 맞춰 재생성한다.
 debug toggle은 simulation pose, camera, terrain revision, picking과 저장 progress를 변경하지 않는다.
+동일 Engine 메모리 checkpoint는 native debug 통계·geometry 상태도 보존한다. 이는 authoring/progress JSON 파일 저장과 별개다.
 
 `RendererStats.spatial`의 `debugLineCount`, `debugDrawCalls`, `debugUploadBytes`, `debugTruncated`가
 진단 비용을 별도로 기록한다. 선분은 triangle/billboard 통계에 포함하지 않으며 aggregate drawCalls/uploadBytes에는
@@ -1569,6 +1640,10 @@ WebGL2는 선의 RGBA alpha를 반영하여 혼합한다. alpha 0은 framebuffer
 선 pass 전후의 blend enable·RGB/alpha factor·equation과 depth 상태를 복원한다.
 GPU buffer는 첫 nonempty frame에 생성하고 native `vertexCount×44` bytes를 매 frame 업로드한다.
 debug off에서는 line draw/upload가 0이다. 이 상한은 실제 GPU 시간/FPS 보장이 아니다.
+Runtime의 physicsDebugLineCount는 기존 flat 선과 이 spatial debugLineCount를 합친 제출 비용이며 terrain/floor label 등 metadata 선도 포함한다.
+기존 profiler/budget도 이 합계를 사용한다. Native-only lineCount와 전체 제출 debug 비용을 같은 값으로 해석하지 않는다.
+WebGPU는 선이0개여도 truncated packet의 상태를 유지한다. 직접 Engine debug setter는 active native에서 capability를 검사한다.
+Passive Spec debug 적용은 이전 core의 native 설정을 거절하지 않으며 미지원 debug 출력 소비에서 거절한다. Debug-off 실행과 구분한다.
 
 ## Buffer·저장·비용
 

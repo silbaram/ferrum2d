@@ -1,4 +1,6 @@
 import { NativePixelMaskTerrain, wasm_memory } from "../pkg/ferrum_core.js";
+import type { WasmNamespace } from "./wasmNamespace.js";
+import { guardWasmNamespaceObject } from "./wasmNamespaceObject.js";
 import type { ResolvedShooterTileLayer, ResolvedShooterTilemap } from "./gameSpec.js";
 import {
   extractTilemapBoundaryChains,
@@ -56,16 +58,10 @@ export class PixelMaskTerrain {
   private native: NativePixelMaskTerrain | undefined;
 
   constructor(options: PixelMaskTerrainOptions) {
-    this.width = positiveInteger(options.width, "pixelMaskTerrain.width");
-    this.height = positiveInteger(options.height, "pixelMaskTerrain.height");
-    this.solidThreshold = alphaByte(options.solidThreshold ?? DEFAULT_SOLID_THRESHOLD, "pixelMaskTerrain.solidThreshold");
-    const input = options.data;
-    if (input !== undefined && input.length !== this.width * this.height) {
-      throw new Error("pixelMaskTerrain.data length must equal width * height");
-    }
-    // These are immutable construction inputs, never a mutable runtime fallback.
-    const data = input === undefined ? new Uint8Array(0)
-      : Uint8Array.from(input, (value) => alphaByte(value, "pixelMaskTerrain.data"));
+    const { width, height, solidThreshold, data } = constructionInputs(options);
+    this.width = width;
+    this.height = height;
+    this.solidThreshold = solidThreshold;
     try {
       wasm_memory();
     } catch {
@@ -176,6 +172,34 @@ function nativeResult<T>(operation: () => T): T {
 
 export function createPixelMaskTerrain(options: PixelMaskTerrainOptions): PixelMaskTerrain {
   return new PixelMaskTerrain(options);
+}
+
+/** @internal Cold file-target construction. Ownership comes from the actual
+ * namespace, never from options or a pointer supplied by file metadata. */
+export function createPixelMaskTerrainInWasmNamespace(namespace: WasmNamespace, options: PixelMaskTerrainOptions): PixelMaskTerrain {
+  const { width, height, solidThreshold, data } = constructionInputs(options);
+  const native = nativeResult(() => namespace.call(bindings => guardWasmNamespaceObject(namespace,
+    new bindings.NativePixelMaskTerrain(width, height, solidThreshold, options.fill === "solid", data))));
+  // Bypass only the default singleton allocation. The generated native object
+  // still backs every operation through its namespace guard.
+  return Object.assign(Object.create(PixelMaskTerrain.prototype) as PixelMaskTerrain,
+    { width, height, solidThreshold, native });
+}
+
+function constructionInputs(options: PixelMaskTerrainOptions): {
+  width: number; height: number; solidThreshold: number; data: Uint8Array;
+} {
+  const width = positiveInteger(options.width, "pixelMaskTerrain.width");
+  const height = positiveInteger(options.height, "pixelMaskTerrain.height");
+  const solidThreshold = alphaByte(options.solidThreshold ?? DEFAULT_SOLID_THRESHOLD, "pixelMaskTerrain.solidThreshold");
+  const input = options.data;
+  if (input !== undefined && input.length !== width * height) {
+    throw new Error("pixelMaskTerrain.data length must equal width * height");
+  }
+  // Immutable construction inputs; never a mutable runtime fallback.
+  const data = input === undefined ? new Uint8Array(0)
+    : Uint8Array.from(input, value => alphaByte(value, "pixelMaskTerrain.data"));
+  return { width, height, solidThreshold, data };
 }
 
 export function pixelMaskTerrainToTilemapLayer(

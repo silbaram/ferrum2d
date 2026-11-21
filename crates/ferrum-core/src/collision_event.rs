@@ -11,7 +11,7 @@ pub const COLLISION_EVENT_TRIGGER_STAY: u32 = 6;
 pub const COLLISION_EVENT_TRIGGER_EXIT: u32 = 7;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionEvent {
     pub kind: u32,
     pub a_id: u32,
@@ -23,7 +23,7 @@ pub struct CollisionEvent {
 
 const _: () = assert!(core::mem::size_of::<CollisionEvent>() == 24);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionEventCounts {
     pub enter: u32,
     pub stay: u32,
@@ -88,11 +88,14 @@ impl CollisionEvent {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CollisionEventTracker {
     scratch: CollisionScratch,
+
     pairs: Vec<CollisionPair>,
+
     previous: Vec<CollisionPairKey>,
+
     current: Vec<CollisionPairKey>,
 }
 
@@ -139,7 +142,9 @@ impl CollisionEventTracker {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 struct CollisionPairKey {
     a_id: u32,
     a_generation: u32,
@@ -608,3 +613,21 @@ mod tests {
         entity
     }
 }
+
+/// Private storage schema; live public storage does not implement Deserialize.
+pub(crate) mod checkpoint_state {
+    use super::*;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(remote = "CollisionEventTracker")]
+    pub(crate) struct State {
+        scratch: CollisionScratch,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        pairs: Vec<CollisionPair>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        previous: Vec<CollisionPairKey>,
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        current: Vec<CollisionPairKey>,
+    }
+}
+
+mod file_output_admission;

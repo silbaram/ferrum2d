@@ -1,3 +1,4 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions, showPlacementCameraOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -49,7 +50,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     }
     assert.equal(actual.entities,entities);
     assert(actual.grid.lineCount>0 && actual.grid.lineCount<=512 && actual.grid.drawCalls===1 && actual.grid.depthTest);
-    assert(actual.stats.drawCalls>0 && actual.stats.drawCalls<=160 && actual.stats.spatial.modelTriangleCount<=60000);
+    assertVillageRenderBudget(actual.stats, { empty: entities === 0 });
     if(pixels) {
       await page.evaluate(()=>{
         const c=document.querySelector("canvas.demo-canvas"),g=c.getContext("webgl2"),b=new Uint8Array(c.width*c.height*4);
@@ -121,7 +122,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     assert.deepEqual(await camera(),initialFit,"Reset must restore the initial fitted editor view");
     assert.deepEqual((await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument())).spatial.camera,base.spatial.camera,"Reset must preserve the authored game camera");
     // Truly empty documents have no terrain, props or actor to hide a missing grid.
-    const empty=structuredClone(base);empty.spatial.terrain=[];empty.spatial.models={};empty.spatial.billboards={};
+    const empty=structuredClone(base);empty.spatial.terrain=[];empty.spatial.models={};empty.spatial.billboards={};delete empty.spatial.lightBindings;
     delete empty.spatial.actor;delete empty.gameplay;
     for(const f of Object.values(empty.sceneComposition.fragments))f.instances=[];
     empty.spatial.camera={projection:"orthographic",position:{x:0,y:-300,elevation:6},

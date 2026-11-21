@@ -15,7 +15,7 @@ fn path(engine: &mut Engine) -> bool {
 
 #[test]
 fn automatic_collider_cells_follow_bounds_offsets_resizing_and_removal() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = door(&mut engine);
     engine.world.set_aabb_collider(
@@ -68,7 +68,7 @@ fn automatic_collider_cells_follow_bounds_offsets_resizing_and_removal() {
 
 #[test]
 fn automatic_and_fixed_overlaps_preserve_base_costs_and_bound_resource_limits() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = door(&mut engine);
     let fixed = door(&mut engine);
@@ -116,7 +116,7 @@ fn automatic_and_fixed_overlaps_preserve_base_costs_and_bound_resource_limits() 
 
 #[test]
 fn automatic_bounds_follow_oriented_box_rotation_and_circle_shape_replacement() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = door(&mut engine);
     engine
@@ -161,7 +161,7 @@ fn automatic_bounds_follow_oriented_box_rotation_and_circle_shape_replacement() 
 
 #[test]
 fn collider_only_door_toggle_returns_success_and_progress_restores_navigation() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = spawn_test_body(&mut engine.world, 30.0, 10.0, CollisionLayer::Wall);
     assert!(engine.world.rigid_body(gate).is_none());
@@ -196,7 +196,7 @@ fn collider_only_door_toggle_returns_success_and_progress_restores_navigation() 
 
 #[test]
 fn door_body_collider_removal_and_generation_changes_update_navigation_without_cost_edits() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = door(&mut engine);
     assert!(engine.configure_data_scene_navigation_with_obstacles(
@@ -232,7 +232,7 @@ fn door_body_collider_removal_and_generation_changes_update_navigation_without_c
 
 #[test]
 fn overlapping_obstacles_preserve_terrain_edits_and_invalid_batches_are_atomic() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let a = door(&mut engine);
     let b = door(&mut engine);
@@ -279,7 +279,7 @@ fn overlapping_obstacles_preserve_terrain_edits_and_invalid_batches_are_atomic()
 
 #[test]
 fn progress_restores_disabled_physics_and_consumed_interaction_after_full_preflight() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let gate = door(&mut engine);
     assert!(engine.set_gameplay_interaction(gate.id, gate.generation, 1, 30.0, true));
@@ -318,7 +318,7 @@ fn progress_restores_disabled_physics_and_consumed_interaction_after_full_prefli
 
 #[test]
 fn active_native_route_replans_when_a_bound_door_closes_and_opens() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = spawn_test_body(&mut engine.world, 10.0, 10.0, CollisionLayer::Player);
     engine.world.set_rigid_body(actor, RigidBody::kinematic());

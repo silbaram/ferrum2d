@@ -103,6 +103,7 @@ Spatial `lighting.probes`의 공개 설정 타입 `SpatialLightProbeSpec`도 roo
 | [Quality](public-api/quality.md) | profiler, diagnostics, replay, screenshot capture, debug gizmo, report helper |
 | [Migration Guide](public-api/migration-guide.md) | root aggregate/internal path import를 목적별 public subpath로 이전하는 절차 |
 | [Runtime Extensibility](runtime-extensibility.md) | projectile/weapon/prefab/reaction/effect event의 제품 기준 설명 |
+| [Native 게임 파일](public-api/native-game-files.md) | Native·SDK 자원 저장, 새 Engine 준비·교체, platform adapter와 한도 |
 | [Data Scene Authoring](data-scene-authoring.md) | generic data scene 최소 authoring envelope |
 | [Data Scene 표현 확장](data-scene-presentation.md) | 캐릭터별 atlas 클립, 지면 투영, 태양 방향광과 native 그림자 |
 | [Physics Spec](physics-spec.md) | physics authoring, solver, query, snapshot/replay 계약 |
@@ -141,6 +142,27 @@ layout으로 생성되는 `RenderCommandAccessor`와 `BuiltInShooterStateAccesso
 raw Wasm setter와 generated wasm-bindgen files는 public API가 아니다. consumer는
 `FerrumEngine`, authoring resolver, package subpath export를 통해서만 엔진 상태를
 변경한다.
+
+개발 소스의 `FerrumUnifiedPhysicsApi`, `UnifiedPhysicsOptions`, `UnifiedPhysicsBodyStateBufferView`,
+`UNIFIED_PHYSICS_STATE_LAYOUT`는 core/root에서 제공한다. 월드 설정과 native 상태/속도 batch를 연결하며,
+`FerrumUnifiedPhysicsControlApi`, `UnifiedPhysicsBodySettings`, `UnifiedPhysicsMassProperties`는 실행 중
+물체 설정·질량과 collider 추가/교체/삭제를 제공한다. imported component 소유권과 native controller 제한을 유지한다.
+`FerrumUnifiedPhysicsJointApi`와 `UNIFIED_PHYSICS_JOINT_LAYOUT`은 13종 관절 생성/수정/삭제와
+일괄 상태·파손/삭제 이벤트를 제공한다. typed joint handle/options/kind/motor/spring/buffer도 core에서 export한다.
+기본 backend·공간 저작·snapshot/replay 전체 이전은 진행 중이다. [현재 연결 범위](public-api/core.md#통합-3d-물리-연결-개발-중인-명시적-선택-경로)를 따른다.
+`FerrumUnifiedPhysicsCollisionApi`/`UnifiedPhysicsCollisionBufferView`/`UNIFIED_PHYSICS_COLLISION_LAYOUT`은
+콜라이더 단위 접촉·센서 enter/exit와 전체 active snapshot을 연결한다. entity 없는 지형과 삭제 세대를
+보존하며, 이벤트 큐 넘침은 native/consumer 누락 수를 각각 제공한다.
+`UnifiedPhysicsBodyOptions`/`UnifiedPhysicsShape`의 명시적 공간 생성과
+`UnifiedPhysicsCharacterOptions`/`UNIFIED_PHYSICS_CHARACTER_LAYOUT`의 controller 입력·상태도 core/root에서 제공한다.
+`FerrumUnifiedPhysicsCommandApi`는 pose/kinematic target·force/torque·impulse·clear·sleep/wake의 일괄 제어를 제공한다.
+`createUnifiedPhysicsQueryBatch`/`FerrumUnifiedPhysicsQueryApi`는 공간 ray·point/convex overlap·sweep·nearest 조회와
+19-word 결과/3-word summary를 제공한다. 핸들·필터·재사용 버퍼는 `UNIFIED_PHYSICS_QUERY_LAYOUT` 계약을 따른다.
+`FerrumUnifiedPhysicsObservationApi`는 지형을 포함한 현재 접촉면, 마지막 tick 충격량, 현재 frame CCD 및
+`UnifiedPhysicsDiagnostics`/`UnifiedPhysicsCounters`를 제공한다. `UNIFIED_PHYSICS_CONTACT_LAYOUT`,
+`UNIFIED_PHYSICS_OBSERVATION_LAYOUT`, `UNIFIED_PHYSICS_COUNTER_LAYOUT`은 각 numeric ABI를 정의한다.
+FrameState·Runtime debug/profiler에도 직접 측정한 native counters가 연결되며 legacy solver row 수를 추정하지 않는다.
+Physics Spec JSON 및 Studio authoring 계약은 이 typed API 추가만으로 확장되지 않는다.
 
 Built-in starter의 Scene Authoring 적용은 preview authoring facade인
 `applyBuiltInSceneAuthoringDocument(...)`를 사용한다. 이 helper는 활성 Shooter/Platformer/Breakout

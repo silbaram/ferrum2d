@@ -1924,12 +1924,25 @@ if (captureDialogueQuestState(dialogue, questLog).dialogue?.nodeId !== "done") {
 }
 dialogue.destroy();
 questLog.destroy();
+const physicsSceneProtocol = [];
 const physicsSceneEngine = {
-  configurePhysicsRuntime: (spec) => spec,
+  validatePhysicsRuntime: (spec) => {
+    if (spec.mode !== "rigid" || !Number.isFinite(spec.solver.stepSeconds)) {
+      throw new Error("Physics scene preflight must receive the resolved native spec.");
+    }
+    physicsSceneProtocol.push("validate");
+  },
+  configurePhysicsRuntime: (spec) => {
+    physicsSceneProtocol.push("configure");
+    return spec;
+  },
   configureAutoRigidBodyStep: (options) => {
     globalThis.__ferrumPhysicsSceneAutoStep = options;
   },
-  spawnRigidBody: () => ({ entityId: 1, entityGeneration: 1 }),
+  spawnRigidBody: () => {
+    physicsSceneProtocol.push("spawn");
+    return { entityId: 1, entityGeneration: 1 };
+  },
   despawnPhysicsEntity: () => true,
   clearPhysicsJoint: () => true,
 };
@@ -1943,6 +1956,11 @@ const physicsScene = applyPhysicsSceneProfile(physicsSceneEngine, {
 });
 if (!physicsScene.autoStep || physicsScene.bodyCount !== 1 || typeof globalThis.__ferrumPhysicsSceneAutoStep !== "object") {
   throw new Error("applyPhysicsSceneProfile must expose public generic physics scene integration.");
+}
+if (physicsSceneProtocol[0] !== "validate"
+  || physicsSceneProtocol.indexOf("spawn") < 1
+  || physicsSceneProtocol.indexOf("configure") < 1) {
+  throw new Error("Native physics scene preflight must run before allocation or configuration.");
 }
 physicsScene.clear();
 if (typeof assetManifestFingerprint !== "function") {
@@ -2830,6 +2848,7 @@ function assertConsumerRuntimeReplayRecipe(recipe, templateName) {
   assertRuntimeReplayInputSequence(recipe.deterministicRun?.inputSequence, `${templateName} runtime replay recipe inputSequence`);
   assert(Array.isArray(recipe.deterministicRun?.captureFrames) && recipe.deterministicRun.captureFrames.length > 0, `${templateName} runtime replay recipe captureFrames must be non-empty`);
   assertStringArray(recipe.canonicalState?.required, `${templateName} runtime replay recipe canonicalState.required`);
+  assert(recipe.canonicalState.required.includes("custom.nativeRuntime.sha256"), `${templateName} runtime replay recipe must include the complete Native file hash`);
   assertStringArray(recipe.canonicalState?.excluded, `${templateName} runtime replay recipe canonicalState.excluded`);
   assertStringArray(recipe.implementationSteps, `${templateName} runtime replay recipe implementationSteps`);
   assert(recipe.canonicalState.excluded.includes("render commands"), `${templateName} runtime replay recipe must exclude render commands`);

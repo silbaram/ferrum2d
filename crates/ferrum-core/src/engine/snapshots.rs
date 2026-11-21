@@ -17,6 +17,9 @@ use super::{
 #[wasm_bindgen]
 impl Engine {
     pub fn begin_physics_restore_transaction(&mut self) -> bool {
+        if self.reject_unified_legacy_snapshot() {
+            return false;
+        }
         if self.physics_restore_transaction.is_some() {
             return false;
         }
@@ -40,6 +43,9 @@ impl Engine {
     /// Eight f32 values per requested body: force XY, impulse XY, torque,
     /// angular impulse, sleep timer, can-sleep flag. Empty means invalid input.
     pub fn capture_physics_solver_state_bulk(&self, handles: &[u32]) -> Vec<f32> {
+        if self.unified_physics.is_some() {
+            return Vec::new();
+        }
         if !handles.len().is_multiple_of(2) {
             return Vec::new();
         }
@@ -73,6 +79,9 @@ impl Engine {
         contacts: &[f32],
     ) -> bool {
         use crate::components::{RigidContactImpulse, Velocity};
+        if self.reject_unified_legacy_snapshot() {
+            return false;
+        }
         if !handles.len().is_multiple_of(2)
             || values.len() != handles.len() * 4
             || !contact_handles.len().is_multiple_of(4)
@@ -226,6 +235,10 @@ impl Engine {
     }
 
     pub fn capture_shooter_snapshot(&mut self) -> bool {
+        if self.reject_unified_legacy_snapshot() {
+            self.clear_shooter_snapshot_buffers();
+            return false;
+        }
         if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Shooter) {
             self.clear_shooter_snapshot_buffers();
             return false;
@@ -257,6 +270,9 @@ impl Engine {
         entity_floats: Vec<f32>,
         entity_u32s: Vec<u32>,
     ) -> bool {
+        if self.reject_unified_legacy_snapshot() {
+            return false;
+        }
         if header_floats.len() != SHOOTER_SNAPSHOT_HEADER_FLOATS
             || header_u32s.len() != SHOOTER_SNAPSHOT_HEADER_U32S
             || !entity_floats
@@ -324,6 +340,27 @@ impl Engine {
     }
 
     pub fn capture_physics_body_snapshot_bulk(&mut self, handles: Vec<u32>) -> bool {
+        if self.reject_unified_legacy_snapshot() {
+            self.clear_physics_body_snapshot_buffers();
+            return false;
+        }
+        self.capture_physics_body_rows(handles)
+    }
+
+    /// Read-only2D component projection. It is not a native solver checkpoint.
+    /// Native bodies without legacy component ownership require the XYZ API.
+    pub fn query_physics_body_states_bulk(&mut self, handles: Vec<u32>) -> bool {
+        if handles.len() > 131_072
+            || !handles.len().is_multiple_of(2)
+            || self.prepare_physics_spec_body_view(&handles).is_err()
+        {
+            self.clear_physics_body_snapshot_buffers();
+            return false;
+        }
+        self.capture_physics_body_rows(handles)
+    }
+
+    fn capture_physics_body_rows(&mut self, handles: Vec<u32>) -> bool {
         if !handles
             .len()
             .is_multiple_of(PHYSICS_BODY_SNAPSHOT_HANDLE_U32S)
@@ -365,6 +402,9 @@ impl Engine {
         floats: Vec<f32>,
         u32s: Vec<u32>,
     ) -> bool {
+        if self.reject_unified_legacy_snapshot() {
+            return false;
+        }
         if !handles
             .len()
             .is_multiple_of(PHYSICS_BODY_SNAPSHOT_HANDLE_U32S)

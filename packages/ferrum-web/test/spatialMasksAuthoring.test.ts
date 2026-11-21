@@ -1,7 +1,8 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import './nativeRuntimeTestHelper.js';
 import { test } from 'node:test';
 import { equal, deepEqual, ok, throws } from 'node:assert/strict';
-import { createEngine, captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot } from '../src/core.js';
+import {  captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot } from '../src/core.js';
 import { applyDataSceneAuthoringDocument, createSceneInstanceHandleRegistry, createScenePlacementViewer, mergeScenePlacementPatch } from '../src/authoring.js';
 import { createSpatialModelAsset } from '../src/spatialModel.js';
 import { attachDataSceneRuntimeEngineAdapter } from '../src/dataSceneRuntimeTarget.js';

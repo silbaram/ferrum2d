@@ -1,7 +1,8 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { createEngine, captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot, parseGameStateSnapshot,
+import {  captureGameStateSnapshot, restoreGameStateSnapshot, hashGameStateSnapshot, parseGameStateSnapshot,
   stringifyGameStateSnapshot, type FerrumEngine, type GameStateSnapshot } from "../src/core.js";
 import { applyDataSceneAuthoringDocument } from "../src/authoring.js";
 import { snapshotRenderFrameBuffers } from "../src/frameBufferSnapshot.js";

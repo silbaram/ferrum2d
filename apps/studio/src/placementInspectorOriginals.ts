@@ -69,7 +69,7 @@ export function createPlacementInspectorOriginals(source: ResolvedSceneAuthoring
     }
     function inline(instance: ResolvedSceneCompositionInstance | undefined) { if (!instance || !instance.props.components)
         return undefined; let c = componentCache.get(instance); if (!c) {
-        c = resolveDataSceneInstanceComponents(instance, { allowTemplate: true });
+        c = resolveDataSceneInstanceComponents(instance, { allowTemplate: true, componentTemplates: source.componentTemplates });
         componentCache.set(instance, c);
     } return c.mode === 'inline' ? c : undefined; }
     function transformValue(instance: ResolvedSceneCompositionInstance, field: string) {
@@ -148,10 +148,17 @@ export function createPlacementInspectorOriginals(source: ResolvedSceneAuthoring
             return undefined;
         if (field === 'x' || field === 'y')
             return { value: String(instance[field]), canRestore: true };
-        const raw = instance.props.components, span = get(raw, ['body', 'heightSpan']);
+        const authored = instance.props.components;
+        const template = record(authored) && typeof authored.template === 'string' ? authored.template : undefined;
+        const raw = template === undefined ? authored : source.componentTemplates?.[template];
+        const span = get(raw, ['body', 'heightSpan']);
         if (field === 'elevation' || field === 'floorId') {
-            const value = record(span) ? span[field] : undefined;
-            return { value: scalar(value ?? (field === 'floorId' ? 0 : undefined)), canRestore: value !== undefined };
+            const body = get(raw, ['body']);
+            // Native shape bodies use the authored anchor, separate from renderOffset.
+            // Legacy bodies retain their height-span path and floor semantics.
+            const value = field === 'elevation' && record(body) && body.type === undefined
+                ? body.elevation : record(span) ? span[field] : undefined;
+            return { value: scalar(value ?? (field === 'floorId' ? 0 : undefined)), canRestore: template === undefined && value !== undefined };
         }
         if (target.kind === 'model') {
             const model = authoredSpatial?.models?.[instance.id], key = field === 'offset' ? 'elevation' : field === 'yaw' ? 'yawDegrees' : field;
@@ -190,7 +197,7 @@ export function createPlacementInspectorOriginals(source: ResolvedSceneAuthoring
             const rawValue = componentValue(instance, field), value = typeof rawValue === 'number' ? formatStudioKitNumber(rawValue) : scalar(rawValue);
             if (value === undefined)
                 return undefined;
-            return { value, canRestore: (Object.hasOwn(componentPaths, field) || field === 'visualColor') && compatible(state, instance, field) };
+            return { value, canRestore: !(record(instance.props.components) && instance.props.components.template !== undefined) && (Object.hasOwn(componentPaths, field) || field === 'visualColor') && compatible(state, instance, field) };
         }
         return undefined;
     }

@@ -4,7 +4,7 @@ use crate::world::World;
 mod body_impulses;
 mod ccd;
 mod counters;
-mod fixed_timestep;
+pub(crate) mod fixed_timestep;
 mod hd2d_kinematic;
 mod islands;
 mod joints;
@@ -37,7 +37,10 @@ pub use platformer::{
     PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
     PlatformerControllerState, SlopeConfig, SlopeSegment, SlopeSurfaceHit,
 };
-pub(crate) use platformer_controller::{KinematicDebugHit, KinematicSweepScratch};
+pub(crate) use platformer_controller::{
+    finish_platformer_velocity, prepare_platformer_velocity, sanitized_platformer_step,
+    KinematicDebugHit, KinematicSweepScratch, PlatformerVelocityStep,
+};
 pub use rigid_body::{RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats};
 #[cfg(test)]
 use rigid_body::{
@@ -70,6 +73,9 @@ impl PhysicsSystem {
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = world.alive_indices()[alive_position];
+            if world.is_unified_physics_index(i) {
+                continue;
+            }
             let Some(velocity) = world.velocity_at_index(i) else {
                 continue;
             };
@@ -85,10 +91,21 @@ impl PhysicsSystem {
         world: &mut World,
         delta: f32,
         rigid_body_step_enabled: bool,
+        native_import_enabled: bool,
     ) {
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = world.alive_indices()[alive_position];
+            if world.is_unified_physics_index(i) {
+                continue;
+            }
+            // Newly spawned collider-only bodies will be imported later in this
+            // same tick. Do not advance them once here and again in native physics.
+            if native_import_enabled
+                && (world.rigid_bodies[i].is_some() || world.compound_collider_count_at(i) != 0)
+            {
+                continue;
+            }
             // Rigid dynamics belong to the solver. Preserve manual kinematic velocity
             // movement, but never integrate a body both here and in an automatic step.
             if world.rigid_bodies[i].is_some_and(|body| {

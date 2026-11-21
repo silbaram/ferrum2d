@@ -5,13 +5,14 @@ export async function smokeTopdownShowcase(page, timeout) {
   const action = name => page.locator(`[data-action=${name}]`);
   const state = phase => page.waitForFunction(expected => document.querySelector('.shooter-stage')?.dataset.state === expected, phase, { timeout });
   const native = () => page.evaluate(() => {
-    const engine = window.ferrumEngine, snapshot = engine.captureShooterStateSnapshot();
-    const read = engine.createBuiltInShooterStateAccessor(); read.bind(snapshot); read.selectFirst('player');
-    return { state: engine.gameState(), score: engine.score(), time: engine.time(), wave: read.activeWaveIndex, elapsed: read.waveElapsedSeconds, x: read.x, y: read.y };
+    const engine = window.ferrumEngine, progress = engine.builtInShooterProgress();
+    const [position] = engine.queryGameplayPositions([engine.builtInShooterPlayerHandle()]);
+    return { state: engine.gameState(), score: engine.score(), time: engine.time(), wave: progress.activeWaveIndex, elapsed: progress.waveElapsedSeconds, spawned: progress.waveSpawnedCount, x: position.x, y: position.y };
   });
   await state('title');
   await page.waitForFunction(() => window.ferrumRuntime.renderer.stats().renderCommandCount >= 20, null, { timeout });
   const initial = await native();
+  assert.equal(await page.evaluate(() => window.ferrumEngine.physicsBackend()), 'unified-3d');
   assert.equal(initial.x, 800); assert.equal(initial.y, 480);
   const pixels = await page.evaluate(() => {
     const canvas = document.querySelector('canvas'), gl = canvas.getContext('webgl2');
@@ -42,17 +43,30 @@ export async function smokeTopdownShowcase(page, timeout) {
   await page.locator('canvas').focus(); await page.keyboard.press('KeyP'); await state('paused');
   await page.keyboard.press('Escape'); await state('playing');
 
-  // Change only owned snapshot fixtures at a paused boundary; HUD must read native values.
+  // Drive a real short wave and collect a real pickup; HUD must read native values.
   await action('pause').click(); await state('paused');
-  assert.equal(await page.evaluate(() => {
-    const engine = window.ferrumEngine, snapshot = engine.captureShooterStateSnapshot();
-    const edit = engine.createBuiltInShooterStateAccessor(); edit.bindMutable(snapshot);
-    edit.score = 17; edit.activeWaveIndex = 1; edit.waveElapsedSeconds = 1.25; edit.waveSpawnedCount = 3; edit.enemySpawnTimer = 30;
-    return engine.restoreShooterStateSnapshot(snapshot);
+  assert.equal(await page.evaluate(async () => {
+    const engine = window.ferrumEngine;
+    const spec = await (await fetch(new URL('game.json', location.href))).json();
+    spec.enemies.waves = [
+      { ...spec.enemies.waves[0], duration: 0.1, enemyCount: 1, spawnInterval: 0.1 },
+      { ...spec.enemies.waves[1], duration: 300, enemyCount: 10000, spawnInterval: 1000 },
+    ];
+    engine.setGameSpec(spec);
+    const [position] = engine.queryGameplayPositions([engine.builtInShooterPlayerHandle()]);
+    const pickup = engine.spawnRigidBody({ x: position.x, y: position.y, bodyType: 'static', layer: 'pickup', isTrigger: true, collider: { type: 'circle', radius: 10 } });
+    engine.applyGameplayBehaviorCommands([
+      { type: 'configurePickup', entity: 'pickup', recipe: 'hud-score', tags: [], item: 'coin', itemId: 1, count: 17, despawn: true },
+    ], { pickup });
+    return engine.physicsBackend() === 'unified-3d';
   }), true);
   await action('start').click();
   await page.waitForFunction(() => document.querySelector('[data-readout=score]')?.textContent === '17' && document.querySelector('[data-readout=enemy]')?.textContent === '중장갑 드론', null, { timeout });
-  assert.match(await page.locator('[data-readout=wave-detail]').textContent(), /출현 3/);
+  await action('pause').click(); await state('paused');
+  const observedWave = await native();
+  assert.equal(observedWave.wave, 1);
+  assert.match(await page.locator('[data-readout=wave-detail]').textContent(), new RegExp(`출현 ${observedWave.spawned} · 경과 ${Math.floor(observedWave.elapsed)}`));
+  await action('start').click(); await state('playing');
   await page.waitForFunction(() => {
     const stats = window.ferrumRuntime.renderer.stats();
     return stats.pointLightCount === 3 && stats.postProcessPassCount >= 2;
@@ -74,12 +88,13 @@ export async function smokeTopdownShowcase(page, timeout) {
   await page.waitForFunction(() => document.querySelector('[data-readout=score]')?.textContent === '0' && document.querySelector('[data-readout=wave]')?.textContent === 'WAVE 01', null, { timeout });
   const reset = await native(); assert.equal(reset.score, 0); assert.equal(reset.wave, 0);
 
-  // End a real native run, then replay through the same visible button used by players.
+  // End a real native run through an actual enemy contact, then replay via the UI.
   await action('pause').click(); await state('paused');
   assert.equal(await page.evaluate(() => {
-    const e = window.ferrumEngine, snapshot = e.captureShooterStateSnapshot();
-    const edit = e.createBuiltInShooterStateAccessor(); edit.bindMutable(snapshot); edit.gameState = "gameOver";
-    return e.restoreShooterStateSnapshot(snapshot);
+    const e = window.ferrumEngine;
+    const [position] = e.queryGameplayPositions([e.builtInShooterPlayerHandle()]);
+    const enemy = e.spawnRigidBody({ x: position.x, y: position.y, bodyType: 'kinematic', layer: 'enemy', collider: { type: 'circle', radius: 10 } });
+    return e.queryGameplayPositions([enemy])[0] !== undefined;
   }), true);
   await action('start').click(); await state('gameover');
   assert.equal(await action('pause').isDisabled(), true);
@@ -97,8 +112,8 @@ export async function smokeTopdownShowcase(page, timeout) {
   const pointer = { pointerId: 10, pointerType: 'touch', clientX: rect.x + rect.width / 2 + 45, clientY: rect.y + rect.height / 2, buttons: 1, bubbles: true };
   await joystick.dispatchEvent('pointerdown', pointer);
   await page.waitForFunction(x => {
-    const e = window.ferrumEngine, read = e.createBuiltInShooterStateAccessor();
-    read.bind(e.captureShooterStateSnapshot()); read.selectFirst('player'); return read.x > x + 15;
+    const e = window.ferrumEngine;
+    return e.queryGameplayPositions([e.builtInShooterPlayerHandle()])[0].x > x + 15;
   }, before.x, { timeout });
   await joystick.dispatchEvent('pointercancel', pointer);
   await action('pause').click(); await state('paused');

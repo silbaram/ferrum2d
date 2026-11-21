@@ -465,24 +465,42 @@ def save_sprites():
 
 def make_document():
     instances=[]; models={}; billboards={}
+    def fixed_body(shape, height, elevation=0):
+        return {'kind':'fixed','elevation':elevation,
+                'collider':{'shape':shape,'pose':{'position':[0,height/2,0]}}}
+    def box_body(x, z, height, elevation=0):
+        return fixed_body({'type':'box','halfExtents':[x,height/2,z]},height,elevation)
     def model(id, asset, x,y, scale=1,yaw=0,solid=True):
         data=MODELS['village_'+asset]
         c={'visual':{'kind':'primitive','shape':'rect','width':data['width']*scale,'height':data['depth']*scale,'color':'#9b8b6b'},
-          'collider':{'type':'aabb','halfWidth':max(2,data['width']*scale/2-4),
-          'halfHeight':max(2,data['depth']*scale/2-4),'isTrigger':False} if solid else {'type':'none'},
-          'layer':'wall','body':{'type':'static','heightSpan':{'floorId':0,'elevation':0,'height':data['height']*scale}}}
-        if not solid: del c['body']
+          'collider':'none','layer':'wall'}
+        if solid:
+            c['body']=box_body(max(2,data['width']*scale/2-4),
+                              max(2,data['depth']*scale/2-4),data['height']*scale)
         instances.append({'id':id,'prefab':'object','x':x,'y':y,'props':{'components':c}})
         models[id]={'asset':'village_'+asset,'contentId':data['sha256'],'scale':scale,'yawDegrees':yaw}
     model('village_landscape','landscape',0,0,solid=False)
+    # Native gravity permits falling. Keep the banks closed except at the bridge deck.
+    bank_parts=[]
+    for x in (170.25,209.75):
+        for z,half_depth in ((125.5,94.5),(-113.5,106.5)):
+            bank_parts.append({'pose':{'position':[x,8,z]},
+                               'shape':{'type':'box','halfExtents':[.25,8,half_depth]}})
+    instances[-1]['props']['components']['body']={
+        'kind':'fixed','collider':{'shape':{'type':'compound','parts':bank_parts}}}
     model('sunflower_inn','inn',-150,115)
     model('provision_shop','shop',95,110)
     model('west_cottage','cottage',-225,-105)
     model('east_cottage','cottage',105,-120)
     model('clock_tower','tower',-35,165)
     model('village_well','well',-20,25,solid=True)
-    # The stone well base is circular; its canopy remains visual geometry.
-    instances[-1]['props']['components']['collider']={'type':'circle','radius':20.0,'isTrigger':False}
+    # Circumscribe the circular stone base with 32 sides and preserve its cardinal radius.
+    well_height=MODELS['village_well']['height']
+    radius=20/math.cos(math.pi/32)
+    ring=[(round(radius*math.cos((2*i+1)*math.pi/32),6),
+           round(radius*math.sin((2*i+1)*math.pi/32),6)) for i in range(32)]
+    points=[[x,y,z] for y in (-well_height/2,well_height/2) for x,z in ring]
+    instances[-1]['props']['components']['body']=fixed_body({'type':'convexHull','points':points},well_height)
     model('river_bridge','bridge',190,-12,solid=False)
     model('raised_garden','garden',GARDEN['x']+GARDEN['width']/2,GARDEN['y']+GARDEN['depth']/2,solid=False)
     for i,(x,y,s) in enumerate([(-286,172,1),(-267,70,.9),(-300,-25,1),(-290,-180,1.15),(-130,-176,.85),
@@ -497,10 +515,8 @@ def make_document():
     # Explicit trunk proxies allow walking under the visual canopy.
     for item in list(instances):
         if item['id'].startswith(('oak_','pine_')):
-            item['props']['components']['collider']={'type':'aabb','halfWidth':4,'halfHeight':4,'isTrigger':False}
-            item['props']['components']['body']={'type':'static','heightSpan':{'floorId':0,'elevation':0,'height':24}}
-            if item['id'] == 'oak_4':
-                item['props']['components']['body']['heightSpan']['elevation'] = GARDEN['elevation']
+            elevation=GARDEN['elevation'] if item['id'] == 'oak_4' else 0
+            item['props']['components']['body']=box_body(4,4,24,elevation)
     def person(id,texture,x,y,player=False):
         visual={'kind':'sprite','asset':'village_'+texture,'width':21,'height':31.5,'originX':.5,'originY':1}
         if player:
@@ -511,9 +527,12 @@ def make_document():
                 clips.append({'id':direction,'frames':[frames[0]],'fps':1,'loop':True})
                 clips.append({'id':direction+4,'frames':frames,'fps':8,'loop':True})
             visual['animationSet']={'clips':clips,'initialClip':1}
-        c={'visual':visual,'collider':{'type':'aabb','halfWidth':4,'halfHeight':3,'isTrigger':False},
-           'layer':'player' if player else 'wall','body':{'type':'kinematic' if player else 'static',
-           'heightSpan':{'floorId':0,'elevation':0,'height':21}}}
+        body=box_body(4,3,21)
+        if player:
+            body={'kind':'kinematic-position','elevation':.75,'renderOffset':[0,-10.5,0],
+                  'collider':{'shape':{'type':'capsule','halfHeight':6.5,'radius':4}},
+                  'character':{'skinWidth':.75}}
+        c={'visual':visual,'collider':'none','layer':'player' if player else 'wall','body':body}
         instances.append({'id':id,'prefab':'object','x':x,'y':y,'props':{'components':c}})
         billboards[id]={'alphaCutoff':.5,'castShadow':True}
     person('village_hero','hero',-30,-102,True)
@@ -521,6 +540,7 @@ def make_document():
     person('village_elder','elder',-61,5)
     person('traveler','merchant',-124,59)
     doc={'format':'ferrum2d.consumer.scene-authoring','version':1,
+      'physics':{'space':'spatial','gravity':[0,-128,0],'lengthUnit':1,'stepSeconds':1/32},
       'behaviorRecipes':{'entities':{}},'gameplay':{'primaryActor':'village_hero'},
       'sceneComposition':{'initialFragment':'village','prefabs':{'object':{'props':{}}},
         'fragments':{'village':{'instances':instances}}},
@@ -546,6 +566,10 @@ def make_document():
             'directional':{'direction':{'x':-1,'y':-1,'elevation':2.4},'color':[1,.91,.77],'intensity':.72,
               'shadows':{'resolution':512,'extent':430,'distance':1400,'bias':.07,'normalBias':.35}},'shadowFilter':'pcf3'},
           'colorGrading':{'exposure':.1,'contrast':1.04,'saturation':.94,'tint':[1,.98,.93],'toneMapping':'none'}}}}
+    # Give flat ground a box collider while preserving its visual height and layout.
+    for surface in doc['spatial']['terrain']:
+        if surface['elevation'] == 0 and 'endElevation' not in surface:
+            surface['baseElevation']=-2
     (OUT.parents[1]/'placement.village.scene-authoring.json').write_text(json.dumps(doc,indent=2)+'\n',encoding='utf8',newline='\n')
     return doc
 
@@ -561,7 +585,7 @@ def save_source(document):
             if original.type!='MESH': continue
             copy=original.copy();copy.data=original.data
             CURRENT.collection.objects.link(copy)
-            elevation=item['props']['components'].get('body',{}).get('heightSpan',{}).get('elevation',0)
+            elevation=item['props']['components'].get('body',{}).get('elevation',0)
             copy.location=Vector((item['x'],item['y'],elevation+model.get('elevation',0)))
             copy.scale=(model['scale'],)*3
             copy.rotation_euler.z=math.radians(model['yawDegrees'])

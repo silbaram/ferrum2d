@@ -1,9 +1,17 @@
+impl ImpactFeedback {
+    pub(in crate::engine) fn file_resource_profiles(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (u32, u32)> + '_ {
+        self.profiles.iter().map(|p| (p.sound, p.particle))
+    }
+}
+
 use super::Engine;
 use crate::audio_event::{AudioEvent, AUDIO_CHANNEL_SFX};
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct Profile {
     mask: u32,
     min_impulse: f32,
@@ -12,10 +20,13 @@ struct Profile {
     particle: u32,
     volume: f32,
 }
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct ImpactFeedback {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     profiles: Vec<Profile>,
     cooldowns: BTreeMap<(u32, u32, u32, u32), f64>,
+    #[serde(deserialize_with = "terrain_ordered")]
+    terrain_cooldowns: BTreeMap<[u32; 7], f64>,
     time: f64,
     emitted: u32,
     dropped: u32,
@@ -23,6 +34,7 @@ pub(super) struct ImpactFeedback {
 impl ImpactFeedback {
     pub(super) fn clear_runtime(&mut self) {
         self.cooldowns.clear();
+        self.terrain_cooldowns.clear();
         self.time = 0.0;
         self.begin_frame();
     }
@@ -76,7 +88,8 @@ impl Engine {
         vec![
             self.impact_feedback.emitted,
             self.impact_feedback.dropped,
-            self.impact_feedback.cooldowns.len() as u32,
+            (self.impact_feedback.cooldowns.len() + self.impact_feedback.terrain_cooldowns.len())
+                as u32,
         ]
     }
 }
@@ -99,17 +112,28 @@ impl Engine {
             .dropped
             .saturating_add(self.world.impact_feedback_dropped);
         feedback.cooldowns.retain(|_, end| *end > feedback.time);
-        for impact in &self.world.impact_feedback_impacts {
+        feedback
+            .terrain_cooldowns
+            .retain(|_, end| *end > feedback.time);
+        for (index, impact) in self.world.impact_feedback_impacts.iter().enumerate() {
             let a = impact.entity_a;
             let b = impact.entity_b;
-            let category = self
-                .world
-                .collision_filter(a)
-                .map_or(0, |f| f.category.bits)
-                | self
-                    .world
-                    .collision_filter(b)
-                    .map_or(0, |f| f.category.bits);
+            let category = if let Some(runtime) = &self.unified_physics {
+                runtime
+                    .contacts
+                    .feedback_categories
+                    .get(index)
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                self.world
+                    .collision_filter(a)
+                    .map_or(0, |f| f.category.bits)
+                    | self
+                        .world
+                        .collision_filter(b)
+                        .map_or(0, |f| f.category.bits)
+            };
             let Some(profile) = feedback
                 .profiles
                 .iter()
@@ -126,7 +150,9 @@ impl Engine {
             if feedback.cooldowns.contains_key(&key) {
                 continue;
             }
-            if feedback.emitted >= 32 || feedback.cooldowns.len() >= 1024 {
+            if feedback.emitted >= 32
+                || feedback.cooldowns.len() + feedback.terrain_cooldowns.len() >= 1024
+            {
                 feedback.dropped = feedback.dropped.saturating_add(1);
                 continue;
             }
@@ -148,5 +174,88 @@ impl Engine {
             }
             feedback.emitted += 1;
         }
+        if let Some(runtime) = &self.unified_physics {
+            for (impact, category) in runtime.terrain_feedback_contacts() {
+                let Some(profile) = feedback
+                    .profiles
+                    .iter()
+                    .find(|p| p.mask & category != 0 && impact.impulse >= p.min_impulse)
+                    .copied()
+                else {
+                    continue;
+                };
+                let key = [
+                    impact.actor[0],
+                    impact.actor[1],
+                    impact.terrain_collider[0],
+                    impact.terrain_collider[1],
+                    impact.terrain[0],
+                    impact.terrain[1],
+                    impact.terrain[2],
+                ];
+                if feedback.terrain_cooldowns.contains_key(&key) {
+                    continue;
+                }
+                if feedback.emitted >= 32
+                    || feedback.cooldowns.len() + feedback.terrain_cooldowns.len() >= 1024
+                {
+                    feedback.dropped = feedback.dropped.saturating_add(1);
+                    continue;
+                }
+                feedback
+                    .terrain_cooldowns
+                    .insert(key, feedback.time + profile.cooldown.max(f64::from(dt)));
+                if profile.sound != u32::MAX {
+                    self.frame_buffers.audio_events.push(AudioEvent {
+                        sound_id: profile.sound as f32,
+                        volume: profile.volume,
+                        pitch: 1.,
+                        channel_id: AUDIO_CHANNEL_SFX,
+                    });
+                }
+                if let Some(Some(preset)) = self.particle_presets.get(profile.particle as usize) {
+                    if runtime.is_planar_combat() {
+                        self.particles
+                            .spawn_burst(*preset, impact.point[0], impact.point[1]);
+                    } else {
+                        self.particles.spawn_spatial_burst(
+                            *preset,
+                            impact.point[0],
+                            -impact.point[2],
+                            impact.point[1],
+                            1.,
+                        );
+                    }
+                }
+                feedback.emitted += 1;
+            }
+        }
     }
+}
+
+mod file_admission;
+
+// Same map wire; reject raw duplicate/out-of-order keys before BTree insertion.
+fn terrain_ordered<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<BTreeMap<[u32; 7], f64>, D::Error> {
+    use serde::de::{Error, MapAccess, Visitor};
+    struct Ordered;
+    impl<'de> Visitor<'de> for Ordered {
+        type Value = BTreeMap<[u32; 7], f64>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("ordered terrain cooldowns")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some(key) = a.next_key::<[u32; 7]>()? {
+                if out.last_key_value().is_some_and(|(prev, _)| prev >= &key) {
+                    return Err(A::Error::custom("non-increasing terrain cooldown keys"));
+                }
+                out.insert(key, a.next_value()?);
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_map(Ordered)
 }

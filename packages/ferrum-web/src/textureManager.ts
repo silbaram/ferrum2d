@@ -1,3 +1,7 @@
+import { retainResourceCaptureFence, registerTextureFileOwner, captureResourceSource, fileResourceBlob, type ResourceTextureData, type ResourceTextureEntry } from "./nativeFileResourceOwners.js";
+import { ResourceBudget, resourceInteger, resourceKeys, NativeFileResourceError } from "./nativeFileResourceBudget.js";
+import { readFileWebGlTexture } from "./nativeFileResourceWebGl.js";
+import { copyFileTextureData } from "./nativeFileResourceTextures.js";
 import { createKtx2Transcoder } from "./ktx2Transcoder.js";
 import { createAssetLoadScope } from "./assetLoadTasks.js";
 import { rgbaFromAlpha } from "./pixelMaskTextureData.js";
@@ -21,16 +25,27 @@ import type {
   PixelMaskTerrainTextureUploadOptions,
 } from "./pixelMaskTerrain.js";
 
+function fileSourceDimensions(source:TexImageSource):TextureSize {
+ if("videoWidth" in source)return {width:source.videoWidth,height:source.videoHeight};
+ if("naturalWidth" in source)return {width:source.naturalWidth,height:source.naturalHeight};
+ if("displayWidth" in source)return {width:source.displayWidth,height:source.displayHeight};
+ return {width:source.width,height:source.height};
+}
+
 interface TextureSize {
   width: number;
   height: number;
 }
 
+interface FileTextureRecord { generation:number;program?:{width:number;height:number;colorSpace:"srgb"|"linear"|"none";alphaMode?:"straight"|"premultiplied"};source?:{blob:Blob;url:string};blocks?:Blob;format?:WebGL2CompressedTextureFormat;}
+
 export class TextureManager {
-  private readonly textures = new Set<WebGLTexture>();
-  private readonly texturesById = new Map<number, WebGLTexture>();
-  private readonly textureSizesById = new Map<number, TextureSize>();
-  private readonly textureBytesByObject = new Map<WebGLTexture, number | undefined>();
+  private fileGeneration = 0;
+  private fileObjects = new Map<WebGLTexture,FileTextureRecord>();
+  private textures = new Set<WebGLTexture>();
+  private texturesById = new Map<number, WebGLTexture>();
+  private textureSizesById = new Map<number, TextureSize>();
+  private textureBytesByObject = new Map<WebGLTexture, number | undefined>();
   private knownTextureBytes = 0;
   private unmeasuredTextureCount = 0;
   private readonly pendingLoads = new Set<AbortController>();
@@ -38,7 +53,7 @@ export class TextureManager {
   private ownedTranscoder?: Ktx2Transcoder;
   private destroyed = false;
   private revision = 0;
-  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean; alphaMode?: "straight" | "premultiplied" }>();
+  private textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none"; compressed?: boolean; alphaMode?: "straight" | "premultiplied" }>();
   textureInfo(textureId: number) { return this.textureInfos.get(this.texture(textureId)); }
   contentRevision(): number { return this.revision; }
 
@@ -48,6 +63,8 @@ export class TextureManager {
     private readonly options: TextureManagerOptions = {},
   ) {
     resolveColorManagementMode(colorManagement);
+    registerTextureFileOwner(this, { capture: budget => this.captureFileTextures(budget),
+      prepare: (data, budget) => this.prepareFileTextures(data, budget), revision: () => this.fileGeneration });
   }
 
   async load(url: string, options?: TextureLoadOptions): Promise<WebGLTexture> {
@@ -103,6 +120,8 @@ export class TextureManager {
           });
           this.assertLoadActive(signal);
           texture = this.createCompressedTexture(image, format);
+          this.fileObjects.set(texture, { generation: ++this.fileGeneration, program:{width:image.width,height:image.height,colorSpace,alphaMode:"straight"}, source: { blob: new Blob([bytes.slice()]), url: ktx2Url },
+            blocks: new Blob([image.data.slice()]), format });
           this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace, compressed: true, alphaMode: "straight" });
         } catch (reason) {
           this.assertLoadActive(signal);
@@ -111,10 +130,12 @@ export class TextureManager {
       }
       if (texture === undefined) {
         this.assertLoadActive(signal);
-        const image = await this.loadImageBitmap(url, colorSpace, signal, options.alphaMode);
+        const decoded = await this.loadImageBitmap(url, colorSpace, signal, options.alphaMode);
+        const image = decoded.image;
         try {
           this.assertLoadActive(signal);
           texture = this.createTextureFromSource(image, { colorSpace, ...(options.alphaMode === undefined ? {} : { alphaMode: options.alphaMode }) });
+          this.fileObjects.set(texture, { ...this.fileObjects.get(texture)!, generation: ++this.fileGeneration, source: { blob: decoded.blob, url } });
         } finally { image.close(); }
       }
       this.assertLoadActive(signal);
@@ -190,6 +211,8 @@ export class TextureManager {
       );
 
       this.adoptTexture(texture, sourceByteLength(source));
+      const size=fileSourceDimensions(source),record=this.fileObjects.get(texture)!;
+      record.program={...size,colorSpace,alphaMode:this.colorManagement === "legacy" && colorSpace === "srgb" && options?.alphaMode !== "straight" ? "premultiplied" : "straight"};
       if (!("videoWidth" in source || "naturalWidth" in source || "displayWidth" in source)) this.textureInfos.set(texture, { width: source.width, height: source.height, colorSpace, alphaMode: this.colorManagement === "legacy" && colorSpace === "srgb" && options?.alphaMode !== "straight" ? "premultiplied" : "straight" });
     } catch (error) {
       this.gl.deleteTexture(texture);
@@ -263,6 +286,7 @@ export class TextureManager {
       rgba,
     );
     this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+    const record = this.fileObjects.get(texture); if (record) record.generation = ++this.fileGeneration;
   }
 
   createPlaceholderTextureForId(textureId: number, size = 64): WebGLTexture {
@@ -323,6 +347,7 @@ export class TextureManager {
     this.adoptTexture(texture, size === undefined ? undefined : size.width * size.height * 4);
     this.texturesById.set(textureId, texture);
     this.revision++;
+    this.fileGeneration++;
     if (previousTexture && previousTexture !== texture) this.releaseUnreferencedTexture(previousTexture);
     if (size === undefined) {
       this.textureSizesById.delete(textureId);
@@ -345,6 +370,7 @@ export class TextureManager {
       if (!texture) return false;
       this.texturesById.delete(textureId);
       this.revision++;
+      this.fileGeneration++;
       this.textureSizesById.delete(textureId);
       this.releaseUnreferencedTexture(texture);
       return true;
@@ -371,6 +397,7 @@ export class TextureManager {
       this.unmeasuredTextureCount -= 1;
     } else {
       this.textures.add(texture);
+      this.fileObjects.set(texture, { generation: ++this.fileGeneration });
     }
     this.textureBytesByObject.set(texture, bytes);
     if (bytes === undefined) this.unmeasuredTextureCount += 1;
@@ -387,6 +414,8 @@ export class TextureManager {
     else this.knownTextureBytes -= bytes;
     this.textureBytesByObject.delete(texture);
     this.textureInfos.delete(texture);
+    this.fileObjects.delete(texture);
+    this.fileGeneration++;
   }
 
   texture(textureId: number): WebGLTexture {
@@ -418,6 +447,8 @@ export class TextureManager {
     this.ownedTranscoder?.destroy();
     for (const texture of this.textures) this.gl.deleteTexture(texture);
     this.textureInfos.clear();
+    this.fileObjects.clear();
+    this.fileGeneration++;
     this.textures.clear();
     this.texturesById.clear();
     this.textureSizesById.clear();
@@ -453,6 +484,8 @@ export class TextureManager {
         data,
       );
       this.adoptTexture(texture, width * height * 4);
+      const record = this.fileObjects.get(texture);
+      if (record) record.program = { width, height, colorSpace: this.colorManagement === "linear-srgb" ? "srgb" : "none" };
     } catch (error) {
       this.gl.deleteTexture(texture);
       throw error;
@@ -462,13 +495,167 @@ export class TextureManager {
     return texture;
   }
 
+  private async captureFileTextures(b: ResourceBudget): Promise<ResourceTextureData> {
+    this.assertAlive();
+    if (this.pendingLoads.size || this.pendingIds.size) b.fail("BUSY", "texture loads");
+    const generation = this.fileGeneration, revision = this.revision;
+    b.charge("resources", this.textures.size); b.work(this.textures.size + this.texturesById.size);
+    b.charge("metadataBytes", (this.textures.size + this.texturesById.size) * 32);
+    const aliases = new Map<WebGLTexture, number[]>();
+    for (const texture of this.textures) aliases.set(texture, []);
+    for (const [id, texture] of this.texturesById) {
+      const ids = aliases.get(texture); if (!ids) return b.fail("DATA", "texture alias owner"); ids.push(id);
+    }
+    const records:{texture:WebGLTexture;ids:readonly number[];info:NonNullable<FileTextureRecord["program"]>;runtimeMetadata?:import("./nativeFileResourceOwners.js").ResourceTextureRuntimeInfo;runtimeInfo:boolean;record:FileTextureRecord;sampler:readonly[number,number,number,number];storage:"rgba8"|"srgb8-alpha8";pixels:Uint8Array}[] = [];
+    for (const [texture, ids] of aliases) {
+      const runtimeInfo = this.textureInfos.get(texture), record = this.fileObjects.get(texture);
+      if(runtimeInfo){resourceKeys(runtimeInfo,["width","height","colorSpace","compressed","alphaMode"],b);resourceInteger(runtimeInfo.width,"renderer info width",1,0x7fffffff);resourceInteger(runtimeInfo.height,"renderer info height",1,0x7fffffff);
+        if(!["srgb","linear","none"].includes(runtimeInfo.colorSpace)||runtimeInfo.compressed!==undefined&&typeof runtimeInfo.compressed!=="boolean"||runtimeInfo.alphaMode!==undefined&&!["straight","premultiplied"].includes(runtimeInfo.alphaMode))return b.fail("DATA","renderer info metadata");}
+      const info = record?.program;
+      if (!info || !record) return b.fail("CAPABILITY", "external texture metadata requires host binding");
+      const previous = this.gl.getParameter(this.gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+      let sampler: readonly [number, number, number, number];
+      try {
+        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+        const values = [this.gl.TEXTURE_MIN_FILTER, this.gl.TEXTURE_MAG_FILTER, this.gl.TEXTURE_WRAP_S, this.gl.TEXTURE_WRAP_T].map(p => this.gl.getTexParameter(this.gl.TEXTURE_2D, p) as number);
+        if ((values[0] !== this.gl.NEAREST && values[0] !== this.gl.LINEAR) || this.gl.getTexParameter(this.gl.TEXTURE_2D, this.gl.TEXTURE_BASE_LEVEL) !== 0)
+          return b.fail("CAPABILITY", "external mip storage requires host binding");
+        sampler = [values[0], values[1], values[2], values[3]];
+      } finally { this.gl.bindTexture(this.gl.TEXTURE_2D, previous); }
+      const storage = this.colorManagement === "linear-srgb" && info.colorSpace === "srgb" ? "srgb8-alpha8" as const : "rgba8" as const;
+      b.charge("gpuBytes", record.blocks?.size ?? info.width * info.height * 4);
+      const pixels = readFileWebGlTexture(this.gl, texture, info.width, info.height, !!record.blocks, storage === "srgb8-alpha8", b);
+      records.push({ texture, ids: Object.freeze(ids), info: { ...info }, runtimeMetadata:runtimeInfo===undefined?undefined:{...runtimeInfo}, runtimeInfo: runtimeInfo !== undefined, record: { ...record }, sampler, storage, pixels });
+    }
+    const entries: ResourceTextureEntry[] = [];
+    for (const row of records) {
+      const source = row.record.source === undefined ? undefined : await captureResourceSource(row.record.source, b);
+      let compressed;
+      if (row.record.blocks && row.record.format) {
+        b.charge("decodedBytes", row.record.blocks.size); b.work(row.record.blocks.size);
+        compressed = Object.freeze({ ...row.record.format, blocks: new Uint8Array(await row.record.blocks.arrayBuffer()) });
+      }
+      entries.push(Object.freeze({ ids: row.ids, width: row.info.width, height: row.info.height, generation: row.record.generation,
+        colorSpace: row.info.colorSpace, alphaMode: row.info.alphaMode ?? "unknown", runtimeInfo: row.runtimeInfo, ...(row.runtimeMetadata===undefined?{}:{runtimeMetadata:Object.freeze(row.runtimeMetadata)}), storage: row.storage, sampler: row.sampler, pixels: row.pixels,
+        ...(source === undefined ? {} : { source }), ...(compressed === undefined ? {} : { compressed }) }));
+    }
+    const assertCurrent=(budget:ResourceBudget)=>{this.assertAlive();if(generation!==this.fileGeneration||revision!==this.revision||this.pendingLoads.size||this.pendingIds.size)return budget.fail("STALE","texture capture");
+      budget.work(records.length);for(const row of records){const actual=this.textureInfos.get(row.texture),saved=row.runtimeMetadata;
+        if(actual)resourceKeys(actual,["width","height","colorSpace","compressed","alphaMode"],budget);
+        if((actual===undefined)!==(saved===undefined)||actual&&saved&&(Reflect.ownKeys(actual).length!==Reflect.ownKeys(saved).length||Reflect.ownKeys(saved).some(key=>!Object.is(Reflect.get(actual,key),Reflect.get(saved,key)))))return budget.fail("STALE","mutable renderer texture metadata");
+      }
+    };assertCurrent(b);
+    const data=Object.freeze({ backend: "webgl2" as const, generation, contentRevision: revision, colorManagement: this.colorManagement, entries: Object.freeze(entries) });retainResourceCaptureFence(data,assertCurrent);return data;
+  }
+
+  private async prepareFileTextures(input: ResourceTextureData, b: ResourceBudget) {
+    this.assertAlive();
+    if (this.pendingLoads.size || this.pendingIds.size || this.gl.isContextLost()) b.fail("BUSY", "texture target lifecycle");
+    const targetGeneration = this.fileGeneration, targetRevision = this.revision;
+    const data = copyFileTextureData(input, b);
+    if (data.backend !== "webgl2" || data.colorManagement !== this.colorManagement) b.fail("CAPABILITY", "texture backend/color management");
+    b.work(32); b.charge("metadataBytes", 32 * 8); // Fixed preparation/adoption transaction records.
+    const next = new TextureManager(this.gl, data.colorManagement, { ktx2: false });
+    try {
+      const sources = new Map<object, { blob: Blob; url: string }>();
+      for (const entry of data.entries) {
+        let source;
+        if (entry.source) {
+          source = sources.get(entry.source);
+          if (!source) { source = { url: entry.source.url, blob: fileResourceBlob(entry.source.bytes, entry.source.mime, b) }; sources.set(entry.source, source); }
+        }
+        const texture = next.restoreFileTexture(entry, b);
+        for (const id of entry.ids) next.registerTexture(id, texture);
+        next.fileObjects.set(texture, { generation: next.fileObjects.get(texture)?.generation ?? next.fileGeneration,
+          program: { width: entry.width, height: entry.height, colorSpace: entry.colorSpace,...(entry.alphaMode==="unknown"?{}:{alphaMode:entry.alphaMode}) },
+          ...(source === undefined ? {} : { source }),
+          ...(entry.compressed === undefined ? {} : { blocks: fileResourceBlob(entry.compressed.blocks, "", b, "decodedBytes"), format: entry.compressed }) });
+      }
+      b.work(data.entries.length); b.charge("metadataBytes", data.entries.length * 8);
+      const savedOrigin = Object.freeze({ version: 1 as const, generation: data.generation, contentRevision: data.contentRevision, resourceGenerations: Object.freeze(data.entries.map(entry => entry.generation)) });
+      const target = this, preparedGeneration = next.fileGeneration, preparedRevision = next.revision;
+      let adopted = false, disposed = false;
+      return Object.freeze({ get owner() { return adopted ? target : next; }, savedOrigin,
+        runtimeGeneration: () => adopted ? this.fileGeneration : next.fileGeneration,
+        adopt: () => {
+          if (adopted || disposed || this.destroyed || next.destroyed || this.gl.isContextLost()
+            || this.gl !== next.gl || this.colorManagement !== next.colorManagement
+            || this.fileGeneration !== targetGeneration || this.revision !== targetRevision
+            || next.fileGeneration !== preparedGeneration || next.revision !== preparedRevision
+            || this.pendingLoads.size || this.pendingIds.size || next.pendingLoads.size || next.pendingIds.size)
+            throw new NativeFileResourceError("STALE", "texture adoption lifetime");
+          const generation = resourceInteger(Math.max(this.fileGeneration, next.fileGeneration), "fresh texture generation", 0, Number.MAX_SAFE_INTEGER - 1) + 1;
+          const revision = resourceInteger(Math.max(this.revision, next.revision), "fresh texture revision", 0, Number.MAX_SAFE_INTEGER - 1) + 1;
+          // All allocations/validation precede these ordinary private-field swaps.
+          // Passes keep this manager (not its private maps), and revision changes.
+          [this.fileObjects, next.fileObjects] = [next.fileObjects, this.fileObjects];
+          [this.textures, next.textures] = [next.textures, this.textures];
+          [this.texturesById, next.texturesById] = [next.texturesById, this.texturesById];
+          [this.textureInfos, next.textureInfos] = [next.textureInfos, this.textureInfos];
+          [this.textureSizesById, next.textureSizesById] = [next.textureSizesById, this.textureSizesById];
+          [this.textureBytesByObject, next.textureBytesByObject] = [next.textureBytesByObject, this.textureBytesByObject];
+          [this.knownTextureBytes, next.knownTextureBytes] = [next.knownTextureBytes, this.knownTextureBytes];
+          [this.unmeasuredTextureCount, next.unmeasuredTextureCount] = [next.unmeasuredTextureCount, this.unmeasuredTextureCount];
+          this.fileGeneration = generation; this.revision = revision;
+          adopted = true; next.disposeFileTextures(); disposed = true; // Only superseded unpublished target allocations.
+        },
+        dispose: () => { if (!disposed) { next.disposeFileTextures(); disposed = true; } },
+      });
+    } catch (error) { next.destroy(); throw error; }
+  }
+
+  /** Cold lease cleanup retains failed native deletes for a later dispose retry.
+   * After an adoption failure the caller also destroys the unpublished target. */
+  private disposeFileTextures(): void {
+    if (!this.destroyed) { this.destroyed = true; this.fileGeneration++; }
+    let failure = false;
+    for (const texture of this.textures) {
+      try { this.gl.deleteTexture(texture); this.textures.delete(texture); }
+      catch { failure = true; }
+    }
+    this.fileObjects.clear(); this.texturesById.clear(); this.textureSizesById.clear();
+    this.textureInfos.clear(); this.textureBytesByObject.clear(); this.knownTextureBytes = 0; this.unmeasuredTextureCount = 0;
+    if (failure) throw new NativeFileResourceError("GPU", "detached texture cleanup; retry dispose and destroy unpublished target");
+  }
+
+  private restoreFileTexture(entry: ResourceTextureEntry, b: ResourceBudget): WebGLTexture {
+    const gl = this.gl;
+    if (entry.width > gl.getParameter(gl.MAX_TEXTURE_SIZE) || entry.height > gl.getParameter(gl.MAX_TEXTURE_SIZE)) b.fail("CAPABILITY", "device texture dimensions");
+    if (entry.compressed) {
+      gl.getExtension("WEBGL_compressed_texture_astc"); gl.getExtension("EXT_texture_compression_bptc"); gl.getExtension("WEBGL_compressed_texture_etc");
+      const formats: Uint32Array = gl.getParameter(gl.COMPRESSED_TEXTURE_FORMATS);
+      if (!formats.includes(entry.compressed.internalFormat)) b.fail("CAPABILITY", "device compressed format");
+    }
+    const previous = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+    const unpack = gl.getParameter(gl.PIXEL_UNPACK_BUFFER_BINDING) as WebGLBuffer | null;
+    const params = [gl.UNPACK_ALIGNMENT, gl.UNPACK_ROW_LENGTH, gl.UNPACK_IMAGE_HEIGHT, gl.UNPACK_SKIP_PIXELS, gl.UNPACK_SKIP_ROWS, gl.UNPACK_SKIP_IMAGES, gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, gl.UNPACK_FLIP_Y_WEBGL, gl.UNPACK_COLORSPACE_CONVERSION_WEBGL];
+    const values = params.map(p => gl.getParameter(p) as number);
+    const texture = gl.createTexture(); if (!texture) return b.fail("ALLOCATION", "file texture");
+    try {
+      gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null); params.forEach(p => gl.pixelStorei(p, p === gl.UNPACK_ALIGNMENT ? 1 : p === gl.UNPACK_COLORSPACE_CONVERSION_WEBGL ? gl.NONE : 0));
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER, gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach((p, i) => gl.texParameteri(gl.TEXTURE_2D, p, entry.sampler[i]));
+      if (entry.compressed) gl.compressedTexImage2D(gl.TEXTURE_2D, 0, entry.compressed.internalFormat, entry.width, entry.height, 0, entry.compressed.blocks);
+      else gl.texImage2D(gl.TEXTURE_2D, 0, entry.storage === "srgb8-alpha8" ? gl.SRGB8_ALPHA8 : gl.RGBA8, entry.width, entry.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, entry.pixels);
+      if (gl.getError() !== gl.NO_ERROR || gl.isContextLost()) return b.fail("GPU", "file texture upload");
+      const actual = readFileWebGlTexture(gl, texture, entry.width, entry.height, !!entry.compressed, entry.storage === "srgb8-alpha8", b);
+      b.work(actual.length);
+      if (actual.some((value, i) => value !== entry.pixels[i])) return b.fail("CAPABILITY", "compressed current bytes require external host binding");
+      this.adoptTexture(texture, entry.compressed?.blocks.byteLength ?? entry.pixels.byteLength);
+      if (entry.runtimeInfo) this.textureInfos.set(texture, entry.runtimeMetadata ? {...entry.runtimeMetadata} : { width: entry.width, height: entry.height, colorSpace: entry.colorSpace,
+        ...(entry.alphaMode === "unknown" ? {} : { alphaMode: entry.alphaMode }), ...(entry.compressed === undefined ? {} : { compressed: true }) });
+      return texture;
+    } catch (error) { gl.deleteTexture(texture); throw error; }
+    finally { gl.bindTexture(gl.TEXTURE_2D, previous); gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, unpack); params.forEach((p, i) => gl.pixelStorei(p, values[i])); }
+  }
+
   private assertAlive(): void {
     if (this.destroyed) {
       throw new Error("TextureManager has been destroyed.");
     }
   }
 
-  private async loadImageBitmap(url: string, colorSpace: "srgb" | "linear" | "none", signal: AbortSignal, alphaMode?: "straight"): Promise<ImageBitmap> {
+  private async loadImageBitmap(url: string, colorSpace: "srgb" | "linear" | "none", signal: AbortSignal, alphaMode?: "straight"): Promise<{ image: ImageBitmap; blob: Blob }> {
     let response: Response;
     try {
       response = await fetch(url, { signal });
@@ -505,11 +692,9 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_LOAD");
     }
     try {
-      if (this.colorManagement === "legacy" && colorSpace === "srgb" && alphaMode !== "straight") return await createImageBitmap(blob);
-      return await createImageBitmap(blob, {
-        premultiplyAlpha: "none",
-        colorSpaceConversion: colorSpace === "srgb" ? "default" : "none",
-      });
+      const image = this.colorManagement === "legacy" && colorSpace === "srgb" && alphaMode !== "straight" ? await createImageBitmap(blob)
+        : await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: colorSpace === "srgb" ? "default" : "none" });
+      return { image, blob };
     } catch (error) {
       this.assertLoadActive(signal);
       throw diagnosticError("Texture decode error", {

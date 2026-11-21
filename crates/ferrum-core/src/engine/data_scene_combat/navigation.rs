@@ -10,7 +10,7 @@ use crate::spatial_scene::{
 const FRAME_WORK: u64 = 1_000_000;
 const SEARCH_WORK: u64 = 600_000;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(super) struct Config {
     cell: f32,
     step: f32,
@@ -21,6 +21,7 @@ pub(super) struct Config {
     avoidance: Option<f32>,
     precise_stop: bool,
     all_patterns: bool,
+    native: bool,
 }
 impl Config {
     fn decode(values: &[f32]) -> Option<Self> {
@@ -47,14 +48,17 @@ impl Config {
             avoidance: None,
             precise_stop: false,
             all_patterns: false,
+            native: false,
         })
     }
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct PendingSearch {
     entity: Entity,
     key: CombatRouteKey,
     source: (Transform2D, HeightSpan),
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Agent {
     entity: Entity,
     target: Option<Entity>,
@@ -85,9 +89,10 @@ impl Agent {
         }
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct CombatNavigation {
     config: Option<Config>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     agents: Vec<Agent>,
     scratch: SpatialNavigation,
     cursor: usize,
@@ -95,15 +100,22 @@ pub(super) struct CombatNavigation {
     searched: bool,
     started: bool,
     // searches, failures, deferred, frame searches, last status, nodes, probes.
+    #[serde(with = "crate::checkpoint_codec::array")]
     stats: [u32; 7],
+    #[serde(deserialize_with = "super::file_ordered::map")]
     bindings: std::collections::BTreeMap<(u32, u32), f32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     peers: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::array")]
     crowd_stats: [u32; 5],
     pending_search: Option<PendingSearch>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     shared_routes: Vec<SharedCombatRoute>,
     // cache hits, slices, yields, cancellations, frame search work, peak job work.
+    #[serde(with = "crate::checkpoint_codec::array")]
     scheduler_stats: [u32; 6],
     job_work: u64,
+    native: super::super::unified_physics::NativeCombatNavigation,
 }
 fn chase(world: &World, entity: Entity) -> Option<(MovementTarget, f32)> {
     match world.movement_pattern(entity)? {
@@ -183,6 +195,53 @@ fn target(world: &World, source: Entity, query: MovementTarget) -> Option<Entity
     }
 }
 impl CombatNavigation {
+    pub(super) fn accepts_native_world(&self, space: crate::physics3d::Space) -> bool {
+        self.config
+            .is_none_or(|c| c.native && space == crate::physics3d::Space::Spatial)
+    }
+    pub(super) fn native_owns(&self, pattern: MovementPattern) -> bool {
+        self.config.is_some_and(|c| c.native) && self.owns(pattern)
+    }
+    pub(super) fn finish_native(
+        &mut self,
+        runtime: &mut super::super::unified_physics::UnifiedPhysicsRuntime,
+        scene: &SpatialScene,
+    ) {
+        if self.config.is_some_and(|c| c.native) {
+            runtime.observe_combat_navigation(&mut self.native, scene);
+        }
+    }
+    pub(super) fn release_native(
+        &mut self,
+        runtime: &mut super::super::unified_physics::UnifiedPhysicsRuntime,
+    ) {
+        runtime.release_combat_navigation(&mut self.native);
+    }
+    pub(super) fn prepare_native(
+        &mut self,
+        runtime: &mut super::super::unified_physics::UnifiedPhysicsRuntime,
+        world: &World,
+        scene: &SpatialScene,
+    ) {
+        if let Some(c) = self.config.filter(|c| c.native) {
+            runtime.step_combat_navigation(
+                &mut self.native,
+                world,
+                scene,
+                super::super::unified_physics::NativeNavigationConfig {
+                    cell: c.cell,
+                    step: c.step,
+                    drop: c.drop,
+                    interval: c.interval,
+                    radius: c.radius,
+                    agents: c.agents,
+                    avoidance: c.avoidance,
+                    all_patterns: c.all_patterns,
+                },
+                &self.bindings,
+            );
+        }
+    }
     pub(super) fn movement_limits(&self) -> (f32, f32) {
         self.config.map_or((1., 1.), |c| (c.step, c.drop))
     }
@@ -196,6 +255,7 @@ impl CombatNavigation {
         };
     }
     pub(super) fn begin_frame(&mut self) {
+        self.native.begin_frame();
         self.used = 0;
         self.searched = false;
         self.started = false;
@@ -231,6 +291,9 @@ impl CombatNavigation {
         let Some(config) = self.config else {
             return;
         };
+        if config.native {
+            return;
+        }
         if delta <= 0. || !delta.is_finite() {
             return;
         }
@@ -752,6 +815,9 @@ impl CombatNavigation {
         }
     }
     fn diagnostics(&self) -> Vec<u32> {
+        if self.config.is_some_and(|c| c.native) {
+            return self.native.diagnostics();
+        }
         let moving = self
             .agents
             .iter()
@@ -792,11 +858,27 @@ impl Engine {
     pub fn data_scene_combat_navigation_version(&self) -> u32 {
         1
     }
+    /// Native Y-up capsule Chase routing, including authored stop-distance bindings.
+    pub fn data_scene_native_combat_navigation_version(&self) -> u32 {
+        1
+    }
+    /// Native capsule peer forecasts and budgeted terrain-safe local steering.
+    pub fn data_scene_native_combat_crowd_version(&self) -> u32 {
+        1
+    }
+    /// Native capsule SeekTarget/Accelerate with shared terrain/crowd admission.
+    pub fn data_scene_native_combat_movement_version(&self) -> u32 {
+        1
+    }
+
     pub fn data_scene_combat_navigation_scheduler_version(&self) -> u32 {
         1
     }
     pub fn data_scene_combat_navigation_scheduler_stats(&self) -> Vec<u32> {
         let nav = &self.data_scene.gameplay.combat.navigation;
+        if nav.config.is_some_and(|c| c.native) {
+            return nav.native.scheduler_stats();
+        }
         let mut words = vec![
             1,
             u32::from(nav.config.is_some()),
@@ -823,10 +905,20 @@ impl Engine {
         bindings: &[u32],
         navigation: &[f32],
     ) -> bool {
-        let Some(config) = Config::decode(navigation) else {
+        let Some(mut config) = Config::decode(navigation) else {
             return false;
         };
         if !combat || !has_actor || self.world.height_span(Entity { id, generation }).is_none() {
+            return false;
+        }
+        config.native = self
+            .unified_physics
+            .as_ref()
+            .is_some_and(|r| r.native_navigation_available());
+        if self.unified_physics.is_some() && !config.native {
+            return false;
+        }
+        if config.native && (config.step > 10000. || config.drop > 10000.) {
             return false;
         }
         let mut count = 0;
@@ -835,6 +927,7 @@ impl Engine {
                 continue;
             };
             if entity == (Entity { id, generation })
+                || self.spatial_scene.actor.map(|actor| actor.0) == Some(entity)
                 || self.data_scene.gameplay.combat.owns_spawned_actor(entity)
                 || self.data_scene.gameplay.combat.owns_projectile(entity)
             {
@@ -844,9 +937,14 @@ impl Engine {
                 self.world.movement_pattern(entity),
                 Some(MovementPattern::Chase { .. })
             ) {
-                if !SpatialNavigation::combat_supported(&self.world, entity)
-                    || self.spatial_scene.attachments.contains(entity)
-                {
+                let supported = if config.native {
+                    self.unified_physics.as_ref().is_some_and(|r| {
+                        r.native_navigation_source(entity, config.step, config.drop)
+                    })
+                } else {
+                    SpatialNavigation::combat_supported(&self.world, entity)
+                };
+                if !supported || self.spatial_scene.attachments.contains(entity) {
                     return false;
                 }
                 if let Some(MovementPattern::Chase {
@@ -887,6 +985,9 @@ impl Engine {
     }
     pub fn data_scene_combat_crowd_stats(&self) -> Vec<u32> {
         let nav = &self.data_scene.gameplay.combat.navigation;
+        if let Some(c) = nav.config.filter(|c| c.native) {
+            return nav.native.crowd_stats(c.avoidance.is_some());
+        }
         let mut result = vec![
             1,
             u32::from(nav.config.is_some_and(|c| c.avoidance.is_some())),
@@ -988,9 +1089,16 @@ impl Engine {
             return false;
         }
         if flags == 1 {
-            let Some(config) = Config::decode(&navigation[..6]) else {
+            let Some(mut config) = Config::decode(&navigation[..6]) else {
                 return false;
             };
+            config.native = self
+                .unified_physics
+                .as_ref()
+                .is_some_and(|r| r.native_navigation_available());
+            if self.unified_physics.is_some() && !config.native {
+                return false;
+            }
             let primary = Entity { id, generation };
             let mut count = 0;
             for &index in self.world.alive_indices() {
@@ -998,6 +1106,7 @@ impl Engine {
                     continue;
                 };
                 if entity == primary
+                    || config.native && self.spatial_scene.actor.map(|a| a.0) == Some(entity)
                     || self.data_scene.gameplay.combat.owns_spawned_actor(entity)
                     || self.data_scene.gameplay.combat.owns_projectile(entity)
                 {
@@ -1011,7 +1120,14 @@ impl Engine {
                             | MovementPattern::Accelerate { .. }
                     ) {
                         count += 1;
-                        if !SpatialNavigation::combat_supported(&self.world, entity)
+                        let supported = if config.native {
+                            self.unified_physics.as_ref().is_some_and(|r| {
+                                r.native_navigation_source(entity, config.step, config.drop)
+                            })
+                        } else {
+                            SpatialNavigation::combat_supported(&self.world, entity)
+                        };
+                        if !supported
                             || self.spatial_scene.attachments.contains(entity)
                             || self.data_scene.gameplay.combat.owns_projectile(entity)
                         {
@@ -1058,3 +1174,18 @@ impl Engine {
         true
     }
 }
+
+impl CombatNavigation {
+    pub(in crate::engine) fn file_native_routes(
+        &self,
+    ) -> &super::super::unified_physics::NativeCombatNavigation {
+        &self.native
+    }
+    pub(in crate::engine) fn file_native_routes_mut(
+        &mut self,
+    ) -> &mut super::super::unified_physics::NativeCombatNavigation {
+        &mut self.native
+    }
+}
+
+mod file_admission;

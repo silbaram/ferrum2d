@@ -1,7 +1,7 @@
 //! Native bounded temporal selection. Rendering reads slots; simulation advances weights.
 use super::lighting_upgrade::Candidates;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(super) struct Config {
     pub hysteresis: f32,
     pub fade_seconds: f32,
@@ -13,7 +13,7 @@ pub(super) fn valid(v: &[f32]) -> bool {
         && (0. ..=5.).contains(&v[578])
         && (0. ..=1e6).contains(&v[579])
 }
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 enum Phase {
     #[default]
     Empty,
@@ -21,7 +21,7 @@ enum Phase {
     In,
     Out,
 }
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Slot {
     source: Option<u8>,
     pending: Option<u8>,
@@ -31,7 +31,7 @@ struct Slot {
 
 /// ABI v1: source, packed display slot(-1 absent), reason, flags, base score, weight.
 #[repr(C)]
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct LightSelectionDiagnostic {
     pub source: u32,
     pub slot: i32,
@@ -45,14 +45,17 @@ const _: () = assert!(std::mem::align_of::<LightSelectionDiagnostic>() == 4);
 const _: () = assert!(std::mem::offset_of!(LightSelectionDiagnostic, score) == 16);
 const _: () = assert!(std::mem::offset_of!(LightSelectionDiagnostic, weight) == 20);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct LightSelection {
     config: Option<Config>,
     hash: u32,
     initialized: bool,
     tick: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     anchor: [f32; 3],
+    #[serde(with = "crate::checkpoint_codec::array")]
     slots: [Slot; 4],
+    #[serde(with = "crate::checkpoint_codec::array")]
     diagnostics: [LightSelectionDiagnostic; 16],
     diagnostic_count: usize,
 }
@@ -487,3 +490,175 @@ fn advance_slot(slot: &mut Slot, mut dt: f32, fade: f32) {
 #[cfg(test)]
 #[path = "light_selection_tests.rs"]
 mod tests;
+
+impl LightSelection {
+    pub(super) fn validate_file(
+        &self,
+        source: &[f32],
+        b: &mut crate::spatial_scene::file_admission::Budget,
+    ) -> Result<(), crate::spatial_scene::file_admission::Error> {
+        use crate::spatial_scene::file_admission::{bits, finite, require, Field, Problem};
+        b.work(512)?;
+        let expected = Self::new(source);
+        require(
+            self.hash == expected.hash,
+            Field::Selection,
+            0,
+            Problem::Cache,
+        )?;
+        match (self.config, expected.config) {
+            (Some(a), Some(e)) => require(
+                bits(
+                    &[a.hysteresis, a.fade_seconds, a.reset_distance],
+                    &[e.hysteresis, e.fade_seconds, e.reset_distance],
+                ),
+                Field::Selection,
+                0,
+                Problem::Cache,
+            )?,
+            (None, None) => (),
+            _ => {
+                return Err(crate::spatial_scene::file_admission::Error::Invalid {
+                    field: Field::Selection,
+                    index: 0,
+                    problem: Problem::Cache,
+                })
+            }
+        }
+        require(
+            finite(&self.anchor) && self.diagnostic_count <= 16,
+            Field::Selection,
+            0,
+            Problem::Number,
+        )?;
+        let mut seen = [false; 16];
+        let mut pending = [false; 16];
+        let count = if self.config.is_some() {
+            source[137] as usize
+        } else {
+            0
+        };
+        require(
+            self.diagnostic_count == 0 || self.diagnostic_count == count,
+            Field::Selection,
+            0,
+            Problem::Cache,
+        )?;
+        for (i, s) in self.slots.iter().enumerate() {
+            require(
+                s.weight.is_finite()
+                    && (0. ..=1.).contains(&s.weight)
+                    && s.source.is_none_or(|v| (v as usize) < count)
+                    && s.pending.is_none_or(|v| (v as usize) < count),
+                Field::Selection,
+                i,
+                Problem::Range,
+            )?;
+            let valid = match s.phase {
+                Phase::Empty => s.source.is_none() && s.pending.is_none() && s.weight == 0.,
+                Phase::Steady => s.source.is_some() && s.pending.is_none() && s.weight == 1.,
+                Phase::In => {
+                    s.source.is_some()
+                        && s.pending.is_none()
+                        && (0. ..1.).contains(&s.weight)
+                        && self.config.is_some_and(|c| c.fade_seconds > 0.)
+                }
+                Phase::Out => {
+                    s.source.is_some()
+                        && s.pending != s.source
+                        && s.weight > 0.
+                        && self.config.is_some_and(|c| c.fade_seconds > 0.)
+                }
+            };
+            require(valid, Field::Selection, i, Problem::Range)?;
+            if let Some(v) = s.source {
+                require(!seen[v as usize], Field::Selection, i, Problem::Duplicate)?;
+                seen[v as usize] = true;
+            }
+            if let Some(v) = s.pending {
+                require(
+                    !pending[v as usize],
+                    Field::Selection,
+                    i,
+                    Problem::Duplicate,
+                )?;
+                pending[v as usize] = true;
+            }
+            if self.config.is_some() && i >= source[136] as usize {
+                require(*s == Slot::default(), Field::Selection, i, Problem::Range)?;
+            }
+        }
+        require(
+            !seen.iter().zip(pending).any(|(a, b)| *a && b),
+            Field::Selection,
+            0,
+            Problem::Duplicate,
+        )?;
+        if !self.initialized {
+            require(
+                self.tick == 0
+                    && self.anchor.iter().all(|v| *v == 0.)
+                    && self.slots.iter().all(|s| *s == Slot::default()),
+                Field::Selection,
+                0,
+                Problem::Cache,
+            )?;
+        }
+        if self.config.is_none() {
+            require(
+                !self.initialized && self.diagnostic_count == 0,
+                Field::Selection,
+                0,
+                Problem::Cache,
+            )?;
+        }
+        if self.initialized {
+            require(
+                source[0] as u32 & 1 != 0,
+                Field::Selection,
+                0,
+                Problem::Cache,
+            )?;
+        }
+        if self.config.is_none() {
+            require(
+                self.diagnostics
+                    .iter()
+                    .all(|d| *d == LightSelectionDiagnostic::default()),
+                Field::Selection,
+                0,
+                Problem::Cache,
+            )?;
+        }
+        for (i, d) in self.diagnostics.iter().enumerate() {
+            require(
+                d.source < 16
+                    && (-1..=3).contains(&d.slot)
+                    && d.reason <= 10
+                    && d.flags <= 15
+                    && d.score.is_finite()
+                    && (-1. ..=64.).contains(&d.score)
+                    && d.weight.is_finite()
+                    && (0. ..=1.).contains(&d.weight),
+                Field::Selection,
+                i,
+                Problem::Range,
+            )?;
+            if i < self.diagnostic_count {
+                require(d.source as usize == i, Field::Selection, i, Problem::Cache)?;
+            }
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+impl LightSelection {
+    pub(super) fn corrupt_file_fixture(&mut self, case: u32) {
+        match case {
+            0 => self.slots[0].source = Some(255),
+            1 => self.diagnostic_count = 17,
+            2 => self.hash ^= 1,
+            _ => unreachable!(),
+        }
+    }
+}

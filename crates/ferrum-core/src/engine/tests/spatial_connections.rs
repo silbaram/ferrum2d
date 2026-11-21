@@ -13,7 +13,7 @@ fn actor(e: &mut Engine, x: f32, y: f32) -> Entity {
     a
 }
 fn setup() -> (Engine, Entity) {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     e.set_viewport_size(400., 300.);
     assert!(e.configure_spatial_camera(&[

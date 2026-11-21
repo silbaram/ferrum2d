@@ -14,9 +14,11 @@ use super::{RigidBodyStepStats, RigidContactConstraint, CONTACT_IMPULSE_EPSILON}
 pub(in crate::physics::solver) const CONTACT_CACHE_NORMAL_DOT_MIN: f32 = 0.95;
 const CONTACT_CACHE_POINT_MATCH_DISTANCE_SQUARED: f32 = 4.0;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(in crate::physics::solver) struct RigidContactImpulseCacheIndex {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     entries: Vec<ContactCacheEntry>,
+    #[serde(with = "crate::checkpoint_codec::map")]
     buckets: HashMap<ContactCachePairKey, ContactCacheBucket>,
 }
 
@@ -96,19 +98,21 @@ impl RigidContactImpulseCacheIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct ContactCacheEntry {
     impulse: RigidContactImpulse,
     next_index: Option<usize>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ContactCacheBucket {
     head_index: usize,
     tail_index: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 struct ContactCachePairKey {
     entity_a_id: u32,
     entity_a_generation: u32,
@@ -349,3 +353,5 @@ mod tests {
         }
     }
 }
+
+mod file_scratch_admission;

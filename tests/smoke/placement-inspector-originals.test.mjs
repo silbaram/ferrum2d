@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
-import {createRequire} from 'node:module';
-const ts=createRequire(new URL('../../apps/studio/package.json',import.meta.url))('typescript');
-async function entry(name,path){const root=new URL('../../apps/studio/node_modules/'+name+'/',import.meta.url),pkg=JSON.parse(await readFile(new URL('package.json',root)));return new URL(path?pkg.exports[path].import:pkg.exports['.'].import,root).href;}
-const authoring=await entry('@ferrum2d/ferrum-web','./authoring'),viewerUi=await entry('@ferrum2d/studio-kit');
-const {createScenePlacementViewer,resolveSceneAuthoringDocument,mergeScenePlacementPatch}=await import(authoring);
-const code=ts.transpileModule(await readFile(new URL('../../apps/studio/src/placementInspectorOriginals.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText.replaceAll(JSON.stringify('@ferrum2d/ferrum-web/authoring'),JSON.stringify(authoring)).replaceAll(JSON.stringify('@ferrum2d/studio-kit'),JSON.stringify(viewerUi));
-const {createPlacementInspectorOriginals:create}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+import {studioSourceModule} from './placement-physics-summary-source.mjs';
+const {createScenePlacementViewer,resolveSceneAuthoringDocument,mergeScenePlacementPatch,createPlacementInspectorOriginals:create}=await studioSourceModule(`
+ export {createScenePlacementViewer,resolveSceneAuthoringDocument,mergeScenePlacementPatch} from '@ferrum2d/ferrum-web/authoring';
+ export {createPlacementInspectorOriginals} from './apps/studio/src/placementInspectorOriginals.ts';
+`);
 const colors={normalize:value=>value,primitive:'#ffffff',point:'#ffffff'};
 const components={visual:{kind:'sprite',asset:'hero',width:16,height:24,normalTexture:'hero-normal',shadow:{shape:'ellipse'}},collider:{type:'aabb',halfWidth:8,halfHeight:12},layer:'wall',body:{type:'static',heightSpan:{floorId:0,elevation:0,height:24}}};
 function fixture(legacy=false){const c=structuredClone(components);if(legacy){c.sprite={...c.visual,texture:'hero'};delete c.sprite.kind;delete c.sprite.asset;delete c.visual;}return {format:'ferrum2d.consumer.scene-authoring',version:1,behaviorRecipes:{entities:{}},sceneComposition:{prefabs:{object:{props:{components:c}}},fragments:{main:{instances:[{id:'a',prefab:'object',x:1.234567,y:2},{id:'b',prefab:'object',x:20,y:4}]}}}};}
@@ -47,4 +45,30 @@ test('spatial baselines retain authored model values across rename and do not in
  assert.deepEqual(original.read('spatial:floorId',viewer.state(),{kind:'surface',id:'ground'}),{value:'0',canRestore:false});
  assert.deepEqual(original.read('spatial:elevation',viewer.state(),{kind:'surface',id:'bridge'}),{value:'40',canRestore:true});
  assert.deepEqual(original.read('spatial:offset',viewer.state(),{kind:'billboard',id:'agent_ground'}),{value:'0',canRestore:false});
+});
+test('native elevation originals use the body anchor and keep omitted anchors unrestorable',()=>{
+ const document=fixture(),raw=document.sceneComposition.prefabs.object.props.components;
+ document.physics={space:'spatial',gravity:[0,-9.81,0],lengthUnit:1};
+ raw.collider='none';raw.body={kind:'dynamic',elevation:12.75,renderOffset:[1,-8,2],rotation:[0,0,0,1],collider:{shape:{type:'sphere',radius:2},friction:0.7}};
+ const {viewer,original,plan}=setup(document),target={kind:'model',id:'a'};
+ assert.deepEqual(original.read('spatial:elevation',viewer.state(),target),{value:'12.75',canRestore:true});
+ const edited=structuredClone(raw);edited.body.elevation=40;edited.visual.width=32;viewer.updateInstanceComponents('a',edited);
+ assert.deepEqual(plan('component:visualWidth').components.body,edited.body,'a visual reset retains the current native collider, pose and render offset');
+ assert.equal(plan('spatial:elevation',target).kind,'spatial-input');
+ viewer.renameInstance('a','renamed');assert.deepEqual(original.read('spatial:elevation',viewer.state(),{kind:'billboard',id:'renamed'}),{value:'12.75',canRestore:true});
+ assert.deepEqual(viewer.state().selected.body.renderOffset,[1,-8,2]);
+ const absent=structuredClone(document);delete absent.sceneComposition.prefabs.object.props.components.body.elevation;
+ const next=setup(absent);assert.equal(next.original.read('spatial:elevation',next.viewer.state(),target),undefined);
+ assert.throws(()=>next.plan('spatial:elevation',target),/No restorable/);
+});
+test('legacy elevation originals still use heightSpan and explicit zero is restorable',()=>{
+ const {viewer,original}=setup();assert.deepEqual(original.read('spatial:elevation',viewer.state(),{kind:'billboard',id:'a'}),{value:'0',canRestore:true});
+});
+test('component reset keeps authored controller options and unknown component metadata exact',()=>{
+ const document=fixture(),raw=document.sceneComposition.prefabs.object.props.components;
+ document.physics={space:'planar-xy',gravity:[0,0,0],lengthUnit:1};
+ raw.collider.isTrigger=false;raw.body={type:'kinematic',kinematicController:{maxStepHeight:0.1000000001,maxDropHeight:0,allowLedgeDrop:false}};raw.custom={tool:{version:7}};
+ const {viewer,plan,apply}=setup(document),edited=structuredClone(raw);edited.visual.width=32;edited.body.kinematicController.maxDropHeight=3;viewer.updateInstanceComponents('a',edited);
+ const reset=plan('component:visualWidth');assert.deepEqual(reset.components.body,edited.body);assert.deepEqual(reset.components.custom,raw.custom);
+ apply(reset);assert.deepEqual(plan('component:visualWidth').components.body,edited.body);
 });

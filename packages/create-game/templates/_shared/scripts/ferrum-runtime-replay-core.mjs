@@ -1,4 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 export const RUNTIME_REPLAY_REPORT_FORMAT = "ferrum2d.consumer.runtime-gameplay-replay.report";
@@ -153,10 +154,13 @@ export async function captureDeterministicRuntimeSnapshots({
   const restoreFileUrlFetch = patchFileUrlFetchForNodeWasm();
   let runtimeClock;
   let engine;
+  let files;
+  let started = false;
   try {
     const {
       captureGameStateSnapshot,
       createEngine,
+      createNativeGameFileSession,
     } = await import("@ferrum2d/ferrum-web/core");
     runtimeClock = createDeterministicFrameClock();
     const inputProvider = createRecipeInputProvider(recipe.deterministicRun.inputSequence);
@@ -168,27 +172,57 @@ export async function captureDeterministicRuntimeSnapshots({
       () => resolvedViewport,
     );
     await setupEngine?.({ engine, inputProvider, recipe, viewport: resolvedViewport });
+    if (engine.physicsBackend() !== "unified-3d") {
+      throw new Error("Template runtime replay requires the default Native backend.");
+    }
+    files = await createNativeGameFileSession(engine);
     const snapshots = [];
     const captureFrameSet = new Set(recipe.deterministicRun.captureFrames);
-    const capture = (frame) => {
+    const capture = async (frame) => {
+      const time = engine.time();
+      engine.pause();
       const context = { engine, frame, inputProvider, recipe, viewport: resolvedViewport };
-      snapshots.push(captureGameStateSnapshot(engine, {
+      const options = (typeof captureOptions === "function" ? captureOptions(context) : captureOptions) ?? {};
+      const custom = typeof customState === "function" ? customState(context) : customState;
+      if (custom !== undefined && (custom === null || typeof custom !== "object" || Array.isArray(custom) || Object.hasOwn(custom, "nativeRuntime"))) {
+        throw new Error("Runtime replay custom state must be an object without the reserved nativeRuntime field.");
+      }
+      const native = await files.capture();
+      if (engine.time() !== time) throw new Error("Native replay capture advanced the simulation clock.");
+      const snapshot = captureGameStateSnapshot(engine, {
         frame,
-        ...(typeof captureOptions === "function" ? captureOptions(context) : captureOptions ?? {}),
-        customState: typeof customState === "function" ? customState(context) : customState,
-      }));
+        ...options,
+        customState: {
+          ...custom,
+          nativeRuntime: {
+            format: "ferrum2d.native-game-file.sha256",
+            byteLength: native.length,
+            sha256: createHash("sha256").update(native).digest("hex"),
+          },
+        },
+      });
+      if (options.includeBuiltInShooterState === true && snapshot.builtInShooter === undefined) {
+        throw new Error("Runtime replay requires the configured built-in shooter snapshot; Native replay uses custom.nativeRuntime instead of legacy Shooter JSON.");
+      }
+      snapshots.push(snapshot);
+      if (started) {
+        engine.resume();
+        runtimeClock.pumpInitialFrame();
+        if (engine.time() !== time) throw new Error("Native replay resume priming advanced the simulation clock.");
+      }
     };
     if (captureFrameSet.has(0)) {
-      capture(0);
+      await capture(0);
     }
     engine.start();
+    started = true;
     runtimeClock.pumpInitialFrame();
     const maxCaptureFrame = Math.max(...recipe.deterministicRun.captureFrames);
     for (let frame = 1; frame <= maxCaptureFrame; frame += 1) {
       inputProvider.setFrame(frame);
       runtimeClock.pumpFrame(recipe.deterministicRun.fixedDelta);
       if (captureFrameSet.has(frame)) {
-        capture(frame);
+        await capture(frame);
       }
     }
     return snapshots.map((snapshot) => ({
@@ -196,12 +230,16 @@ export async function captureDeterministicRuntimeSnapshots({
       snapshotHash: hashGameStateSnapshot(snapshot),
     }));
   } finally {
-    if (engine !== undefined) {
-      engine.stop();
-      engine.destroy();
+    try {
+      engine?.stop();
+      await files?.dispose();
+    } finally {
+      try { engine?.destroy(); }
+      finally {
+        runtimeClock?.restore();
+        restoreFileUrlFetch();
+      }
     }
-    runtimeClock?.restore();
-    restoreFileUrlFetch();
   }
 }
 

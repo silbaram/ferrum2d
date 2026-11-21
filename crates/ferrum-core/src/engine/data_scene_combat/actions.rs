@@ -3,6 +3,7 @@ use super::*;
 use crate::collision::collider_segment_count_at;
 use crate::components::gameplay::MeleeTarget;
 use crate::components::{AabbCollider, RigidBodyType};
+use crate::engine::unified_physics::{NativeMeleeHit, UnifiedPhysicsRuntime};
 use crate::physics::{Hd2dKinematicControllerConfig, KinematicSweepScratch, PhysicsSystem};
 use crate::spatial_scene::{CombatVelocityRequest, SpatialNavigation};
 use crate::tilemap::{Tilemap, MAX_ACTION_DASH_BREAKPOINTS};
@@ -18,16 +19,29 @@ impl Engine {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct PendingMelee {
     prepared: PreparedAction,
     attack: MeleeAttackCoreData,
+    native_center: Option<[f32; 3]>,
 }
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+struct PendingDash {
+    prepared: PreparedAction,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct CombatActions {
+    #[serde(with = "crate::checkpoint_codec::vector")]
+    pending_dashes: Vec<PendingDash>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending_melee: Vec<PendingMelee>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     melee_hits: Vec<(CircleQueryHit, Transform2D)>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
+    native_melee_hits: Vec<NativeMeleeHit>,
     dash_route: SpatialNavigation,
     flat_scratch: KinematicSweepScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     flat_breaks: Vec<f64>,
     pub(super) work: u64,
     attempts: usize,
@@ -36,7 +50,9 @@ impl Default for CombatActions {
     fn default() -> Self {
         Self {
             pending_melee: Vec::with_capacity(MAX_ACTIONS),
+            pending_dashes: Vec::with_capacity(MAX_ACTIONS),
             melee_hits: Vec::with_capacity(MAX_COMBAT_ENTITIES),
+            native_melee_hits: Vec::with_capacity(MAX_COMBAT_ENTITIES),
             dash_route: SpatialNavigation::default(),
             flat_scratch: KinematicSweepScratch::default(),
             flat_breaks: Vec::with_capacity(MAX_ACTION_DASH_BREAKPOINTS),
@@ -131,6 +147,7 @@ impl DataSceneCombat {
             GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL,
         );
     }
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn queue_melee(
         &mut self,
         world: &World,
@@ -138,6 +155,7 @@ impl DataSceneCombat {
         payload: MeleeActionPayload,
         input: bool,
         events: &mut Vec<GameplayEvent>,
+        native: Option<&UnifiedPhysicsRuntime>,
     ) {
         let Some(at) = world.transform(prepared.entity) else {
             return;
@@ -168,12 +186,59 @@ impl DataSceneCombat {
         }
         self.actions.pending_melee.push(PendingMelee {
             prepared,
+            native_center: native.and_then(|runtime| {
+                // Imported planar edits are synchronized by the upcoming tick.
+                let at = runtime.projectile_transform(world, prepared.entity)?;
+                let mut center = runtime.gameplay_position(world, prepared.entity)?;
+                center[0] = at.x;
+                if runtime.is_planar_combat() {
+                    center[1] = at.y;
+                } else {
+                    center[2] = -at.y;
+                }
+                Some(center)
+            }),
             attack: melee_attack_core_data_from_plan(
                 prepared.entity,
                 plan,
-                world.height_span(prepared.entity),
+                native.map_or_else(
+                    || world.height_span(prepared.entity),
+                    |runtime| runtime.melee_span(world, prepared.entity),
+                ),
             ),
         });
+    }
+
+    pub(super) fn resolve_native_dashes(
+        &mut self,
+        world: &mut World,
+        runtime: &mut UnifiedPhysicsRuntime,
+        events: &mut Vec<GameplayEvent>,
+    ) {
+        for i in 0..self.actions.pending_dashes.len() {
+            let prepared = self.actions.pending_dashes[i].prepared;
+            match runtime.take_native_dash_result(prepared.entity) {
+                Ok(true) => {
+                    commit_prepared_action(world, prepared);
+                }
+                Ok(false) => self.failure(
+                    events,
+                    prepared.entity,
+                    prepared.action_id,
+                    GAMEPLAY_ACTION_FAILURE_BLOCKED_PLACEMENT,
+                ),
+                Err(error) => {
+                    runtime.record_combat_error(error);
+                    self.failure(
+                        events,
+                        prepared.entity,
+                        prepared.action_id,
+                        GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+                    );
+                }
+            }
+        }
+        self.actions.pending_dashes.clear();
     }
 
     pub(super) fn resolve_melee(
@@ -182,15 +247,24 @@ impl DataSceneCombat {
         spatial: &SpatialScene,
         tilemap: &Tilemap,
         events: &mut Vec<GameplayEvent>,
+        mut native: Option<&mut UnifiedPhysicsRuntime>,
     ) {
         for index in 0..self.actions.pending_melee.len() {
-            let PendingMelee { prepared, attack } = self.actions.pending_melee[index];
+            let PendingMelee {
+                prepared,
+                attack,
+                native_center,
+            } = self.actions.pending_melee[index];
             if !melee_attack_attacker_can_resolve(
                 world,
                 attack.attacker,
                 attack.target,
                 &self.marked,
             ) {
+                continue;
+            }
+            if let Some(runtime) = native.as_deref_mut() {
+                self.resolve_native_melee(world, runtime, prepared, attack, native_center, events);
                 continue;
             }
             let Some((geometry, preparation)) = self.actions.geometry_bound(world) else {
@@ -274,34 +348,155 @@ impl DataSceneCombat {
                 if !melee_line_clear(world, spatial, tilemap, attack, target, point) {
                     continue;
                 }
-                let Some(damage) = apply_default_collision_damage_hit(
-                    world,
-                    attack.attacker.id as usize,
-                    target.id as usize,
-                    attack.damage,
-                    f32::MAX,
-                    0,
-                    false,
-                    true,
-                    &mut self.marked,
-                    &mut self.pending,
-                ) else {
-                    continue;
-                };
-                self.stats[4] = self.stats[4].saturating_add(1);
-                self.stats[5] = self.stats[5].saturating_add(u32::from(damage.killed));
-                self.event(
-                    events,
-                    GameplayEvent::collision_damage(
-                        target,
-                        attack.attacker,
-                        attack.damage,
-                        damage.target_removed,
-                    ),
-                );
+                self.apply_melee_damage(world, attack, target, events);
             }
         }
         self.actions.pending_melee.clear();
+    }
+
+    fn apply_melee_damage(
+        &mut self,
+        world: &mut World,
+        attack: MeleeAttackCoreData,
+        target: Entity,
+        events: &mut Vec<GameplayEvent>,
+    ) {
+        let Some(damage) = apply_default_collision_damage_hit(
+            world,
+            attack.attacker.id as usize,
+            target.id as usize,
+            attack.damage,
+            f32::MAX,
+            0,
+            false,
+            true,
+            &mut self.marked,
+            &mut self.pending,
+        ) else {
+            return;
+        };
+        self.stats[4] = self.stats[4].saturating_add(1);
+        self.stats[5] = self.stats[5].saturating_add(u32::from(damage.killed));
+        self.event(
+            events,
+            GameplayEvent::collision_damage(
+                target,
+                attack.attacker,
+                attack.damage,
+                damage.target_removed,
+            ),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_native_melee(
+        &mut self,
+        world: &mut World,
+        runtime: &mut UnifiedPhysicsRuntime,
+        prepared: PreparedAction,
+        attack: MeleeAttackCoreData,
+        center: Option<[f32; 3]>,
+        events: &mut Vec<GameplayEvent>,
+    ) {
+        let Some(center) = center else {
+            self.failure(
+                events,
+                prepared.entity,
+                prepared.action_id,
+                GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+            );
+            return;
+        };
+        let work = runtime.combat_query_work();
+        if !self.actions.reserve(work) {
+            self.action_capacity_failure(prepared, events);
+            return;
+        }
+        let filter = match runtime.melee_candidates(
+            world,
+            attack,
+            center,
+            &mut self.actions.native_melee_hits,
+        ) {
+            Ok(filter) => filter,
+            Err(error) => {
+                runtime.record_combat_error(error);
+                self.failure(
+                    events,
+                    prepared.entity,
+                    prepared.action_id,
+                    GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+                );
+                return;
+            }
+        };
+        if !self
+            .actions
+            .reserve(work.saturating_mul(self.actions.native_melee_hits.len() as u64))
+        {
+            self.action_capacity_failure(prepared, events);
+            return;
+        }
+        // Finish every query before committing cooldown or damage, so a query
+        // rejection cannot leave a partially applied multi-target attack.
+        let mut count = 0;
+        let mut accepted = None;
+        for i in 0..self.actions.native_melee_hits.len() {
+            let hit = self.actions.native_melee_hits[i];
+            if accepted == Some(hit.entity)
+                || hit.entity == attack.attacker
+                || self
+                    .marked
+                    .get(hit.entity.id as usize)
+                    .copied()
+                    .unwrap_or(true)
+                || world.health(hit.entity).is_none()
+                || (attack.target == MeleeTarget::Player
+                    && Some(hit.entity) != world.primary_actor_entity())
+            {
+                continue;
+            }
+            match runtime.melee_line_clear(center, hit, &filter) {
+                Ok(true) => {
+                    self.actions.native_melee_hits[count] = hit;
+                    count += 1;
+                    accepted = Some(hit.entity);
+                }
+                Ok(false) => (),
+                Err(error) => {
+                    runtime.record_combat_error(error);
+                    self.failure(
+                        events,
+                        prepared.entity,
+                        prepared.action_id,
+                        GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+                    );
+                    return;
+                }
+            }
+        }
+        self.actions.native_melee_hits.truncate(count);
+        if !commit_prepared_action(world, prepared) {
+            return;
+        }
+        for i in 0..count {
+            let target = self.actions.native_melee_hits[i].entity;
+            if let Some(denial) =
+                faction_damage_denial(world, attack.attacker.id as usize, target.id as usize)
+            {
+                self.event(
+                    events,
+                    GameplayEvent::faction_damage_denied(
+                        denial.target,
+                        denial.source,
+                        denial.source_faction_id,
+                        denial.target_faction_id,
+                    ),
+                );
+                continue;
+            }
+            self.apply_melee_damage(world, attack, target, events);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -314,8 +509,12 @@ impl DataSceneCombat {
         payload: DashActionPayload,
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
+        native: Option<&mut UnifiedPhysicsRuntime>,
     ) {
-        let Some(at) = world.transform(prepared.entity) else {
+        let Some(at) = native.as_deref().map_or_else(
+            || world.transform(prepared.entity),
+            |r| r.projectile_transform(world, prepared.entity),
+        ) else {
             return;
         };
         let direction = topdown_input_direction(input.snapshot.current);
@@ -325,7 +524,7 @@ impl DataSceneCombat {
                 y: at.y + direction.vy,
             })
         } else {
-            input_dash_aim(world, spatial, prepared.entity, input)
+            input_dash_aim(world, spatial, prepared.entity, input, native.as_deref())
         };
         let Some(aim) = aim else {
             self.failure(
@@ -345,6 +544,7 @@ impl DataSceneCombat {
                 target,
                 events,
                 counters,
+                native,
             ),
             Err(error) => self.failure(
                 events,
@@ -364,17 +564,24 @@ impl DataSceneCombat {
         payload: DashActionPayload,
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
+        native: Option<&mut UnifiedPhysicsRuntime>,
     ) {
-        let Some(at) = world.transform(prepared.entity) else {
+        let Some(at) = native.as_deref().map_or_else(
+            || world.transform(prepared.entity),
+            |r| r.projectile_transform(world, prepared.entity),
+        ) else {
             return;
         };
-        let target = world
-            .primary_actor_entity()
-            .and_then(|e| world.transform(e).map(|p| (e, p)));
+        let target = world.primary_actor_entity().and_then(|e| {
+            native
+                .as_deref()
+                .map_or_else(|| world.transform(e), |r| r.projectile_transform(world, e))
+                .map(|p| (e, p))
+        });
         match plan_dash_action_transform(payload, prepared.entity, at, target) {
-            Ok(target) => {
-                self.apply_dash(world, spatial, tilemap, prepared, target, events, counters)
-            }
+            Ok(target) => self.apply_dash(
+                world, spatial, tilemap, prepared, target, events, counters, native,
+            ),
             Err(error) => self.failure(
                 events,
                 prepared.entity,
@@ -393,8 +600,64 @@ impl DataSceneCombat {
         target: Transform2D,
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
+        native: Option<&mut UnifiedPhysicsRuntime>,
     ) {
         let actor = prepared.entity;
+        if let Some(runtime) = native {
+            if spatial.attachments.contains(actor)
+                || self.owns_projectile(actor)
+                || ![target.x, target.y].iter().all(|v| v.is_finite())
+            {
+                self.failure(
+                    events,
+                    actor,
+                    prepared.action_id,
+                    GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+                );
+                return;
+            }
+            if !self.actions.attempt()
+                || !self
+                    .actions
+                    .reserve(runtime.combat_query_work().saturating_mul(8))
+            {
+                self.action_capacity_failure(prepared, events);
+                return;
+            }
+            let Some(at) = runtime.projectile_transform(world, actor) else {
+                return;
+            };
+            match runtime.queue_native_dash(
+                world,
+                actor,
+                Velocity {
+                    vx: target.x - at.x,
+                    vy: target.y - at.y,
+                },
+                spatial.moving_platforms.len(),
+            ) {
+                Ok(()) => self.actions.pending_dashes.push(PendingDash { prepared }),
+                Err(error) => {
+                    runtime.record_combat_error(error);
+                    if error
+                        == crate::engine::unified_physics::UnifiedPhysicsError::Physics(
+                            crate::physics3d::PhysicsError::CapacityExceeded,
+                        )
+                    {
+                        self.action_capacity_failure(prepared, events);
+                    } else {
+                        self.failure(
+                            events,
+                            actor,
+                            prepared.action_id,
+                            GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+                        );
+                    }
+                }
+            }
+            return;
+        }
+
         if ![target.x, target.y].iter().all(|x| x.is_finite())
             || !world
                 .rigid_body(actor)
@@ -561,6 +824,7 @@ fn input_dash_aim(
     spatial: &SpatialScene,
     source: Entity,
     input: &CombatInput<'_>,
+    native: Option<&UnifiedPhysicsRuntime>,
 ) -> Option<Transform2D> {
     let pointer = [
         input.snapshot.current.mouse_x,
@@ -569,7 +833,13 @@ fn input_dash_aim(
     let viewport = [input.camera.viewport_width, input.camera.viewport_height];
     if spatial.camera.is_some() {
         let (span, style) = DataSceneCombat::projectile_pose(world, spatial, source)?;
-        spatial.aim_on_plane(viewport, pointer, span.elevation + style.elevation)
+        spatial.aim_on_plane(
+            viewport,
+            pointer,
+            native.map_or(span.elevation + style.elevation, |r| {
+                r.projectile_elevation(source, span.elevation)
+            }),
+        )
     } else if pointer.iter().any(|v| !v.is_finite())
         || pointer[0] < 0.
         || pointer[1] < 0.
@@ -672,3 +942,5 @@ mod tests {
         assert!(actions.attempt());
     }
 }
+
+mod file_admission;

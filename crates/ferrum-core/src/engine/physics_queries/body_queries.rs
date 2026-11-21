@@ -193,6 +193,14 @@ impl Engine {
         max_distance: f32,
         query_mask_bits: u32,
     ) -> bool {
+        if let Some(found) = self.query_unified_planar_nearest(
+            Transform2D { x, y },
+            max_distance,
+            query_mask_bits,
+            None,
+        ) {
+            return found;
+        }
         let Some(hit) = CollisionSystem::nearest_body_query(
             &self.world,
             Transform2D { x, y },
@@ -230,6 +238,14 @@ impl Engine {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;
         };
+        if let Some(found) = self.query_unified_planar_nearest(
+            Transform2D { x, y },
+            max_distance,
+            query_mask_bits,
+            Some(height_span),
+        ) {
+            return found;
+        }
         let Some(hit) = CollisionSystem::nearest_body_query_with_height_span(
             &self.world,
             Transform2D { x, y },
@@ -254,6 +270,11 @@ impl Engine {
     }
 
     pub fn query_body_contacts(&mut self, category_a_bits: u32, category_b_bits: u32) -> u32 {
+        if let Some(count) =
+            self.query_unified_planar_contacts(category_a_bits, category_b_bits, false)
+        {
+            return count;
+        }
         CollisionSystem::build_mask_contacts_into(
             &mut self.physics_collision_query_scratch,
             &self.world,
@@ -265,6 +286,11 @@ impl Engine {
     }
 
     pub fn query_body_manifolds(&mut self, category_a_bits: u32, category_b_bits: u32) -> u32 {
+        if let Some(count) =
+            self.query_unified_planar_contacts(category_a_bits, category_b_bits, true)
+        {
+            return count;
+        }
         CollisionSystem::build_mask_manifolds_into(
             &mut self.physics_collision_query_scratch,
             &self.world,

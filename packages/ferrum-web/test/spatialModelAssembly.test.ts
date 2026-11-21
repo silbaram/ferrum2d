@@ -280,7 +280,7 @@ test("invalid child proxies preserve the active real native scene and saved prog
   globalThis.fetch=(async(input,options)=>String(input).startsWith("file:")
     ? new Response(Uint8Array.from(await readFile(new URL(String(input)))).buffer,{headers:{"Content-Type":"application/wasm"}})
     : previousFetch(input,options)) as typeof fetch;
-  const engine=await createEngine(()=>{});
+  const engine=await createEngine(()=>{},undefined,undefined,undefined,{physicsBackend:"legacy"});
   try {
     const file=await readFile(new URL("../../../../examples/data-scene-native/assets/building.glb",import.meta.url));
     const asset=await loadSpatialGlb(Uint8Array.from(file).buffer,{materialProfile:"diffuse"});

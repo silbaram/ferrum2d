@@ -1,3 +1,4 @@
+mod file_admission;
 use crate::camera::CameraPresetConfig;
 use crate::components::CollisionLayer;
 use crate::gameplay::DefaultMovementPatternKind;
@@ -23,7 +24,7 @@ use animation::{apply_animation_or_default, sprite_animation_or_none};
 pub(super) use numbers::{finite_or_default, non_negative_or_default, positive_or_default};
 use templates::{template_or_default, template_with_collider_or_default};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum EnemyBehavior {
     #[default]
     Chase,
@@ -52,7 +53,7 @@ impl EnemyBehavior {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum EnemySpawnPattern {
     #[default]
     Edge,
@@ -70,7 +71,7 @@ impl EnemySpawnPattern {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterAudioPolicy {
     pub shoot_volume: f32,
     pub shoot_pitch: f32,
@@ -114,7 +115,7 @@ impl ShooterAudioPolicy {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterWaveConfig {
     pub duration: f32,
     pub spawn_interval: f32,
@@ -155,7 +156,7 @@ impl ShooterWaveConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterProjectileArcConfig {
     pub enabled: bool,
     pub launch_height: f32,
@@ -194,7 +195,7 @@ impl ShooterProjectileArcConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ShooterPrefabKind {
     Player,
     Enemy,
@@ -239,7 +240,7 @@ const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEMPLATE_FIELD: usize = 3;
 const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEXTURE_FIELD: usize = 4;
 const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_GAMEPLAY_FIELD: usize = 5;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ShooterPrefabLayerSlot {
     Player,
     Enemy,
@@ -256,7 +257,7 @@ impl ShooterPrefabLayerSlot {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ShooterPrefabTemplateSlot {
     Player,
     Enemy,
@@ -273,7 +274,7 @@ impl ShooterPrefabTemplateSlot {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ShooterPrefabTextureSlot {
     Player,
     Enemy,
@@ -290,7 +291,7 @@ impl ShooterPrefabTextureSlot {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ShooterPrefabGameplaySlot {
     None,
     EnemyCombatConfig,
@@ -305,7 +306,7 @@ impl ShooterPrefabGameplaySlot {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterPrefabComponentBucket {
     pub(crate) layer: ShooterPrefabLayerSlot,
     pub(crate) template: ShooterPrefabTemplateSlot,
@@ -342,7 +343,7 @@ impl ShooterPrefabComponentBucket {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayPrefabRegistration {
     pub(crate) prefab_id: u32,
     pub(crate) kind: ShooterPrefabKind,
@@ -359,8 +360,9 @@ pub(crate) struct GameplayPrefabResolvedComponents {
     pub(crate) score_reward: Option<u32>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayPrefabRegistry {
+    #[serde(with = "crate::checkpoint_codec::array")]
     registrations: [Option<GameplayPrefabRegistration>; MAX_GAMEPLAY_PREFAB_REGISTRATIONS],
 }
 
@@ -468,7 +470,7 @@ impl GameplayPrefabRegistry {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ShooterConfig {
     pub world_width: f32,
     pub world_height: f32,
@@ -791,7 +793,7 @@ impl ShooterConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TextureIds {
     pub(super) player: u32,
     pub(super) enemy: u32,
@@ -808,7 +810,7 @@ impl Default for TextureIds {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SoundIds {
     pub(super) shoot: u32,
     pub(super) hit: u32,
@@ -857,3 +859,5 @@ mod prefab_registry_tests {
         );
     }
 }
+
+mod file_output_admission;

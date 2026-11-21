@@ -45,9 +45,13 @@ export function snapshotRenderFrameBuffers(frame: RenderFrameState): RenderFrame
 function snapshotRenderCommandBuffer(view: RenderCommandBufferView): RenderCommandBufferView {
   const lightingWords = view.spriteLightingMaterials?.words.slice();
   const surfaceWords = view.spriteSurfaceMaterials?.words.slice();
+  const terrainWords = view.terrainImpacts?.words.slice();
   return {
     ...view,
     buffer: view.buffer.slice(),
+    ...(view.terrainImpacts === undefined || terrainWords === undefined ? {} : {
+      terrainImpacts: { ...view.terrainImpacts, words: terrainWords, floats: new Float32Array(terrainWords.buffer) },
+    }),
     ...(view.spriteLightMasks === undefined ? {} : {spriteLightMasks:{...view.spriteLightMasks,buffer:view.spriteLightMasks.buffer.slice()}}),
     ...(view.spriteSurfaceMaterials === undefined || surfaceWords === undefined ? {} : {
       spriteSurfaceMaterials: { ...view.spriteSurfaceMaterials, words: surfaceWords, values: new Float32Array(surfaceWords.buffer) },

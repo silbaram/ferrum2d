@@ -5,26 +5,26 @@ use super::MAX_COLLISION_MANIFOLD_POINTS;
 
 const _: () = assert!(core::mem::size_of::<PhysicsDebugLine>() == 32);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionPair {
     pub a: Entity,
     pub b: Entity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ColliderKey {
     pub entity_index: usize,
     pub collider_index: usize,
     pub segment_index: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ColliderPair {
     pub a: ColliderKey,
     pub b: ColliderKey,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AabbBounds {
     pub min_x: f32,
     pub min_y: f32,
@@ -143,7 +143,7 @@ pub struct AabbContact {
     pub penetration: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionContact {
     pub pair: CollisionPair,
     pub normal_x: f32,
@@ -153,20 +153,21 @@ pub struct CollisionContact {
     pub point_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionContactPoint {
     pub point_x: f32,
     pub point_y: f32,
     pub penetration: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CollisionManifold {
     pub pair: CollisionPair,
     pub normal_x: f32,
     pub normal_y: f32,
     pub penetration: f32,
     pub point_count: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub points: [CollisionContactPoint; MAX_COLLISION_MANIFOLD_POINTS],
 }
 
@@ -177,13 +178,13 @@ impl CollisionManifold {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ColliderCollisionContact {
     pub collider_pair: ColliderPair,
     pub contact: CollisionContact,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ColliderCollisionManifold {
     pub collider_pair: ColliderPair,
     pub manifold: CollisionManifold,
@@ -195,17 +196,17 @@ impl ColliderCollisionManifold {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointQueryHit {
     pub entity: Entity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AabbQueryHit {
     pub entity: Entity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CircleQueryHit {
     pub entity: Entity,
 }
@@ -234,7 +235,7 @@ pub enum CollisionQueryShape {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShapeQueryHit {
     pub entity: Entity,
 }
@@ -247,7 +248,7 @@ pub struct NearestBodyQueryHit {
     pub point_y: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShapeCastHit {
     pub entity: Entity,
     pub distance: f32,
@@ -258,7 +259,7 @@ pub struct ShapeCastHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsDebugLine {
     pub x0: f32,
     pub y0: f32,
@@ -270,7 +271,7 @@ pub struct PhysicsDebugLine {
     pub a: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RaycastHit {
     pub entity: Entity,
     pub distance: f32,

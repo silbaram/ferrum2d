@@ -3,7 +3,7 @@ const DEFAULT_MAX_FRAME_SECONDS: f32 = 0.25;
 const DEFAULT_MAX_FIXED_STEPS: u32 = 8;
 const FIXED_TIMESTEP_EPSILON: f32 = 0.0001;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FixedTimestepConfig {
     pub step_seconds: f32,
     pub max_frame_seconds: f32,
@@ -20,7 +20,7 @@ impl Default for FixedTimestepConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FixedTimestepUpdate {
     pub steps: u32,
     pub alpha: f32,
@@ -99,9 +99,13 @@ impl FixedTimestep {
             0.0
         };
 
+        // The tolerance must remain smaller than a tick. A fixed 0.1 ms
+        // tolerance previously manufactured a step on advance(0) when using
+        // the unified world's supported 0.1 ms timestep.
+        let epsilon = FIXED_TIMESTEP_EPSILON.min(self.config.step_seconds * 0.01);
         self.accumulated_seconds += clamped_delta;
         let mut steps = 0;
-        while self.accumulated_seconds + FIXED_TIMESTEP_EPSILON >= self.config.step_seconds
+        while self.accumulated_seconds + epsilon >= self.config.step_seconds
             && steps < self.config.max_steps_per_update
         {
             self.accumulated_seconds -= self.config.step_seconds;
@@ -111,13 +115,11 @@ impl FixedTimestep {
         let step_seconds = self.config.step_seconds;
         let mut accumulator_dropped = 0.0;
         if steps == self.config.max_steps_per_update
-            && self.accumulated_seconds + FIXED_TIMESTEP_EPSILON >= step_seconds
+            && self.accumulated_seconds + epsilon >= step_seconds
         {
             let accumulated_before_drop = self.accumulated_seconds;
             let kept = accumulated_before_drop % step_seconds;
-            self.accumulated_seconds = if kept <= FIXED_TIMESTEP_EPSILON
-                || kept + FIXED_TIMESTEP_EPSILON >= step_seconds
-            {
+            self.accumulated_seconds = if kept <= epsilon || kept + epsilon >= step_seconds {
                 0.0
             } else {
                 kept
@@ -149,5 +151,17 @@ fn sanitize_fixed_timestep_config(config: FixedTimestepConfig) -> FixedTimestepC
             default.max_frame_seconds
         },
         max_steps_per_update: config.max_steps_per_update.max(1),
+    }
+}
+
+/// Private storage schema; live public storage does not implement Deserialize.
+pub(crate) mod checkpoint_state {
+    use super::*;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(remote = "FixedTimestep")]
+    pub(crate) struct State {
+        config: FixedTimestepConfig,
+        accumulated_seconds: f32,
+        paused: bool,
     }
 }

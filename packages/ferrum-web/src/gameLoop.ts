@@ -81,7 +81,12 @@ export class GameLoop {
     const deltaSeconds = Math.min(rawDeltaSeconds, this.maxDeltaSeconds);
 
     this.lastTimestampMs = timestampMs;
-    this.onFrame(deltaSeconds);
+    try {
+      this.onFrame(deltaSeconds);
+    } catch (error) {
+      this.stop();
+      throw error;
+    }
     this.scheduleNextFrame();
   }
 }

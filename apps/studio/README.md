@@ -311,7 +311,8 @@ Blender로 직접 만든 목조 여관·상점·주택·종탑·우물·수레·
 남서쪽 나무 아래에는 높이 24의 정원 단과 높이 0→24 경사길이 있다. `보기 → 지형 높이 격자`를
 켜면 이 구역의 높은 바닥·경사면에 기준선이 추가된다. 기본 작업 격자는 높이 0에 유지된다.
 실행 시 남쪽 돌길에서 왼쪽으로 경사길을 따라 정원 단을 오르내릴 수 있다.
-Blender 외형과 native 보행면은 같은 치수를 사용하며 평지는 겹치지 않게 나눈다.
+Blender 외형과 통합 3D 물리의 보행면은 같은 치수를 사용한다. 평지는 겹치지 않는 상자형
+지면으로 구성하고 다리가 있는 구간에서 강을 건널 수 있다.
 14종 GLB를 42개 모델로 재사용하며 픽셀 인물 4명까지 총 46개 native entity를 구성한다.
 게임 미리보기는 384×256 고정 해상도와 nearest 텍스처, 태양광/그림자·색 보정을 사용한다.
 HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 canvas 해상도를 사용한다.
@@ -324,10 +325,11 @@ HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 
 편집 각도·확대율·표시 거리 보정은 원본 게임 카메라에 저장하지 않는다.
 
 - **실행 → WASD**: 파란 옷 주인공 이동·방향별 걷기, 건물·나무 줄기 충돌, 다리에서 강 건너기.
-- 광장의 우물은 원형 돌기둥에 맞춘 radius 20의 collider를 사용한다. 원형·캡슐·convex·compound 장애물도
-  실제 HD-2D 보행에서 층/높이와 mask를 따라 차단하며, 모델 삼각형이 자동 collider가 되지는 않는다.
+- 주인공은 캡슐, 광장의 우물은 반지름 20의 돌기둥을 감싸는 32각 볼록 충돌체를 사용한다.
+  실제 HD-2D 보행에서는 높이와 충돌 마스크를 적용한다.
 - **일시정지 / 재개 / 정지**: 정지하면 작성 위치·초안·편집 카메라로 돌아온다. 플레이 위치는 JSON에 저장하지 않는다.
 - **HD-2D**: 기존 배치/카메라 도구로 모델·인물의 위치를 수정한다. 편집 격자는 기본 표시하며 `보기 → 격자`에서 전환한다.
+  마을에서 새 스프라이트를 배치하면 선택한 높이에 통합 3D 상자 충돌체가 함께 생성된다.
 - **내보내기**: 마을은 export 전용 예제다. 퀘스트·NPC 대화·전투·건물 내부 전환은 구현하지 않았다.
 
 원본은 [rpg-village.blend](assets/rpg-village/rpg-village.blend),
@@ -350,11 +352,11 @@ WSL에서 Windows Blender를 사용하는 경우:
 '/mnt/c/Program Files/Blender Foundation/Blender 5.2/blender.exe' --background --factory-startup --python '\\wsl.localhost\Ubuntu\home\psj\projects\ferrum2d\scripts\assets\build-rpg-village.py'
 ```
 
-표준 Y-up GLB export, 정적 diffuse 재질과 명시적 AABB/보행면을 사용한다.
+표준 Y-up GLB export, 정적 diffuse 재질과 명시적 공간 몸체 및 보행면을 사용한다.
 시뮬레이션·충돌·sprite clip 선택은 기존 Rust runtime에서 처리한다.
 마을 asset catalog는 공식 app 내부에서만 로드하며 engine public API나 consumer template은 변경하지 않는다.
 `pnpm smoke:placement-village`는 production build의 실제 픽셀·hash·보행/충돌·복원·렌더 예산을 검사한다.
-빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`는 원형 우물의 WASD 차단과
+빌드 후 `node tests/smoke/placement-village-smoke.mjs --physics-only`는 우물의 WASD 차단과
 12개 native 장애물/필터 사례, Stop 뒤 작성 문서 보존을 빠르게 검사한다.
 
 직접 package만 실행하려면 다음 명령을 사용한다.

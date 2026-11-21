@@ -33,6 +33,9 @@ export interface FramePipelineContext {
   bridge: WasmBridge;
   rustEngine: Engine;
   physicsSpec: ResolvedPhysicsSpec;
+  /** Owned diagnostic metadata; restored alongside the same-Engine checkpoint. */
+  physicsSpecScene?: number;
+  synchronizePhysicsMetadata?: () => void;
   onFrame?: FrameHandler;
   onRenderFrame?: RenderFrameHandler;
   needsFrameState?: boolean;
@@ -102,6 +105,7 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
     needsFrameState,
     shouldReadPhysicsDebugLineBuffer,
   );
+  if (needsFrameState) context.synchronizePhysicsMetadata?.();
   const shouldIncludeAudioEvents = needsFrameState && (context.options.includeAudioEvents ?? true);
   const audioEvents = drainAudioEvents(
     context.bridge,
@@ -119,6 +123,7 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
   const diagnosticsEngine = needsFrameState ? context.bridge.engine?.() : undefined;
   const physicsDiagnostics = diagnosticsEngine?.physics_diagnostics_enabled?.()
     ? readPhysicsDiagnostics(diagnosticsEngine) : undefined;
+  const unifiedPhysics = needsFrameState ? context.bridge.readUnifiedPhysicsFrameDiagnostics?.() : undefined;
   const renderCommandBuffer = context.bridge.readRenderCommandBuffer();
   let frameState: FrameState | undefined;
   let physicsDebugLineBuffer: PhysicsDebugLineBufferView | undefined;
@@ -151,6 +156,7 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
       physicsDebugLineBuffer,
       physicsSpec: context.physicsSpec,
       physicsDiagnostics,
+      unifiedPhysics,
       options: shouldDispatchEffectEvents && context.options.includeEffectEvents === false
         ? { ...context.options, includeEffectEvents: true }
         : context.options,
@@ -259,11 +265,13 @@ function updateRust(
   frameTelemetry: boolean,
   physicsDebugLines: boolean,
 ): number {
+  const checked = (rustEngine as Engine & { update_frame_checked?: Engine["update_frame"] }).update_frame_checked;
+  const updateFrame = checked ?? rustEngine.update_frame;
   if (!measure) {
-    rustEngine.update_frame(deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
+    updateFrame.call(rustEngine, deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
     return 0;
   }
   const updateStartMs = performance.now();
-  rustEngine.update_frame(deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
+  updateFrame.call(rustEngine, deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
   return performance.now() - updateStartMs;
 }

@@ -40,3 +40,6 @@ pub(crate) use variables::*;
 
 #[cfg(test)]
 mod tests;
+
+#[allow(dead_code)]
+pub(crate) mod file_admission;

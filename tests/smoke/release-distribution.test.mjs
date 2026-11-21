@@ -4,9 +4,10 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile
 import os from "node:os";
 import path from "node:path";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
+import { attachDraftRelease, draftReleaseApi } from "../../scripts/package/attach-draft-release.mjs";
 import { parseDistributionArgs, prepareDistribution } from "../../scripts/package/prepare-distribution.mjs";
 import { prepareStudioRelease } from "../../scripts/package/prepare-studio-release.mjs";
-import { assembleDistribution, fileRecord, nativeChecks, readJson, releaseIdentity, validateEngineBundle, verifyDistribution } from "../../scripts/package/release-distribution.mjs";
+import { assembleDistribution, fileRecord, nativeChecks, readJson, releaseIdentity, studioManifestName, validateEngineBundle, verifyDistribution } from "../../scripts/package/release-distribution.mjs";
 import { resolvePackageCommand } from "../../scripts/package/release-command.mjs";
 import { updaterSettings } from "../../scripts/package/studio-updater.mjs";
 
@@ -188,13 +189,28 @@ test("a Rust target for a different OS is rejected before building", async t => 
   await assert.rejects(stat(fixture.output), { code: "ENOENT" });
 });
 
-test("assembly preserves engine v1 contract, verifies all files, and rejects tampering", async t => {
+async function assembledFixture(t, { platforms = ["linux", "win32", "darwin"], dirty = false,
+  studioRuntimeOverrides = () => ({}) } = {}) {
   const root = await temporary(t), engine = path.join(root, "engine"), output = path.join(root, "distribution");
   const original = await engineFixture(engine), studios = [];
-  for (const platform of ["linux", "win32", "darwin"]) {
-    const fixture = await nativeFixture(t, { platform }); await prepareStudioRelease(fixture.options, fixture.context); studios.push(fixture.output);
+  if (dirty) {
+    original.source.dirty = true;
+    await put(engine, "release-manifest.json", original);
+  }
+  const sdk = original.assets.find(asset => asset.package === "@ferrum2d/ferrum-web");
+  for (const platform of platforms) {
+    const fixture = await nativeFixture(t, { platform });
+    const { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
+    manifest.runtime = { ...manifest.runtime, tarballSha256: sdk.sha256, ...studioRuntimeOverrides(platform) };
+    await put(fixture.output, studioManifestName(manifest.platform.os, manifest.platform.arch), manifest);
+    studios.push(fixture.output);
   }
   const { manifest } = await assembleDistribution({ engine, studios, output });
+  return { original, manifest, output };
+}
+
+test("assembly preserves engine v1 contract, verifies all files, and rejects tampering", async t => {
+  const { original, manifest, output } = await assembledFixture(t);
   assert.equal(manifest.studioManifests.length, 3); assert.equal(manifest.published, false);
   assert.deepEqual(await validateEngineBundle(output), original);
   assert.deepEqual(await verifyDistribution(output), manifest);
@@ -202,6 +218,202 @@ test("assembly preserves engine v1 contract, verifies all files, and rejects tam
   assert(checksum.includes("  distribution-manifest.json\n")); assert(checksum.includes("  DISTRIBUTION_INSTALL.md\n"));
   await put(output, "DISTRIBUTION_INSTALL.md", "altered installation guide");
   await assert.rejects(verifyDistribution(output), /Corrupt release asset/);
+});
+
+function draftRemote() {
+  const draft = { id: 515, draft: true, prerelease: true, tag_name: release.tag, target_commitish: commit,
+    html_url: `https://github.com/${release.repository}/releases/tag/${release.tag}` };
+  const state = { release: null, assets: [], created: [], uploads: [] };
+  const github = {
+    async checkTag(tag, sha) {
+      assert.equal(tag, release.tag);
+      assert.equal(sha, commit);
+    },
+    async findRelease(tag) {
+      assert.equal(tag, release.tag);
+      return state.release;
+    },
+    async createDraft({ tag, version: requestedVersion, commit: sha }) {
+      state.created.push(tag);
+      assert.deepEqual([tag, requestedVersion, sha], [release.tag, version, commit]);
+      assert.equal(state.release, null);
+      state.release = draft;
+      return draft;
+    },
+    async listAssets(id) {
+      assert.equal(id, draft.id);
+      return structuredClone(state.assets);
+    },
+    async uploadAsset(id, record, filePath) {
+      assert.equal(id, draft.id);
+      const file = await fileRecord(filePath);
+      assert.deepEqual([record.file, record.bytes, record.sha256], [file.file, file.bytes, file.sha256]);
+      assert(!state.assets.some(asset => asset.name === file.file));
+      state.uploads.push(file.file);
+      const asset = { name: file.file, state: "uploaded", size: file.bytes, digest: `sha256:${file.sha256}` };
+      state.assets.push(asset);
+      return asset;
+    },
+  };
+  return { draft, state, github };
+}
+
+function attachFixture(bundle, github, overrides = {}) {
+  return attachDraftRelease({ bundle, version, repository: release.repository, commit, github, ...overrides });
+}
+
+test("draft release resumes a partial upload, then reuses every verified file", async t => {
+  const { output } = await assembledFixture(t);
+  const expected = (await readdir(output)).sort();
+  const { github, state } = draftRemote();
+  const upload = github.uploadAsset;
+  github.uploadAsset = (...args) => {
+    if (state.uploads.length === 2) throw new Error("interrupted upload");
+    return upload(...args);
+  };
+  await assert.rejects(attachFixture(output, github), /interrupted upload/);
+  assert.equal(state.uploads.length, 2);
+  github.uploadAsset = upload;
+  await attachFixture(output, github);
+  assert.deepEqual([...state.uploads].sort(), expected);
+  await attachFixture(output, github);
+  assert.equal(state.uploads.length, expected.length);
+  assert.deepEqual(state.created, [release.tag]);
+});
+
+test("draft attachment refuses published releases, wrong targets, and conflicting remote files before uploading", async t => {
+  const { output } = await assembledFixture(t);
+  const file = await fileRecord(path.join(output, "INSTALL.md"));
+  const asset = { name: file.file, state: "uploaded", size: file.bytes, digest: `sha256:${file.sha256}` };
+  for (const [releaseChanges, assets] of [
+    [{ draft: false }, []],
+    [{ target_commitish: "b".repeat(40) }, []],
+    [{}, [{ ...asset, digest: `sha256:${"0".repeat(64)}` }]],
+    [{}, [{ ...asset, size: file.bytes + 1 }]],
+    [{}, [{ ...asset, name: "unrelated.zip" }]],
+  ]) {
+    const { github, draft, state } = draftRemote();
+    state.release = { ...draft, ...releaseChanges };
+    state.assets = assets;
+    await assert.rejects(attachFixture(output, github));
+    assert.deepEqual(state.created, []);
+    assert.deepEqual(state.uploads, []);
+  }
+  const { github, state } = draftRemote();
+  github.checkTag = () => { throw new Error("tag points to a different commit"); };
+  await assert.rejects(attachFixture(output, github), /different commit/);
+  assert.deepEqual(state.created, []);
+  assert.deepEqual(state.uploads, []);
+});
+
+test("draft release requires the requested clean source and verified installers for all three operating systems", async t => {
+  const complete = await assembledFixture(t);
+  const incomplete = await assembledFixture(t, { platforms: ["linux", "win32"] });
+  const dirty = await assembledFixture(t, { dirty: true });
+  for (const [fixture, overrides] of [
+    [complete, { version: "0.1.0-beta.2" }],
+    [complete, { repository: "other/ferrum2d" }],
+    [complete, { commit: "b".repeat(40) }],
+    [incomplete, {}],
+    [dirty, {}],
+  ]) {
+    const { github, state } = draftRemote();
+    github.checkTag = async () => {};
+    github.findRelease = async () => null;
+    await assert.rejects(attachFixture(fixture.output, github, overrides));
+    assert.deepEqual(state.created, []);
+    assert.deepEqual(state.uploads, []);
+  }
+  const { github, state } = draftRemote();
+  const installer = complete.manifest.files.find(record => record.file.endsWith(".dmg"));
+  await put(complete.output, installer.file, "damaged after assembly");
+  await assert.rejects(attachFixture(complete.output, github), /Corrupt release asset/);
+  assert.deepEqual(state.created, []);
+  assert.deepEqual(state.uploads, []);
+});
+
+test("draft release detects an asset missing from the final remote inventory", async t => {
+  const { output } = await assembledFixture(t);
+  const { github, state } = draftRemote();
+  const list = github.listAssets;
+  github.listAssets = async id => (await list(id)).filter(asset => asset.name !== "INSTALL.md");
+  await assert.rejects(attachFixture(output, github));
+  assert(state.uploads.includes("INSTALL.md"));
+});
+
+test("draft release requires all installers to reference the released SDK tarball and the same embedded Wasm", async t => {
+  for (const overrides of [
+    () => ({ tarballSha256: "1".repeat(64) }),
+    platform => platform === "win32" ? { tarballSha256: undefined } : {},
+    platform => platform === "darwin" ? { wasmSha256: "2".repeat(64) } : {},
+  ]) {
+    const { output } = await assembledFixture(t, { studioRuntimeOverrides: overrides });
+    const { github, state } = draftRemote();
+    await assert.rejects(attachFixture(output, github));
+    assert.deepEqual(state.created, []);
+    assert.deepEqual(state.uploads, []);
+  }
+});
+
+test("draft API resolves annotated tags to the exact commit and propagates GitHub permission errors", async () => {
+  const repo = { owner: "example", repo: "ferrum2d" };
+  const git = {}, api = draftReleaseApi({ rest: { git } }, repo, release.tag, commit);
+  for (const status of [404, 403]) {
+    const error = Object.assign(new Error("git ref request failed"), { status });
+    git.getRef = async request => {
+      assert.deepEqual(request, { ...repo, ref: `tags/${release.tag}` });
+      throw error;
+    };
+    if (status === 404) await api.checkTag();
+    else await assert.rejects(api.checkTag(), failure => failure === error);
+  }
+  const outer = "c".repeat(40), inner = "d".repeat(40);
+  git.getRef = async () => ({ data: { object: { type: "tag", sha: outer } } });
+  const visited = [];
+  let taggedCommit = commit;
+  git.getTag = async ({ tag_sha }) => {
+    visited.push(tag_sha);
+    const object = tag_sha === outer ? { type: "tag", sha: inner } : { type: "commit", sha: taggedCommit };
+    return { data: { object } };
+  };
+  await api.checkTag();
+  assert.deepEqual(visited, [outer, inner]);
+  taggedCommit = "e".repeat(40);
+  await assert.rejects(api.checkTag(), /different object/);
+});
+
+test("draft API creates a prerelease at the build commit and checks its visibility before uploading bytes", async t => {
+  const repo = { owner: "example", repo: "ferrum2d" };
+  const { draft } = draftRemote();
+  const requests = [], uploads = [];
+  const repos = {
+    async createRelease(request) { requests.push(request); return { data: draft }; },
+    async getRelease(request) {
+      assert.deepEqual(request, { ...repo, release_id: draft.id });
+      return { data: draft };
+    },
+    async uploadReleaseAsset(request) { uploads.push(request); return { data: {} }; },
+  };
+  const api = draftReleaseApi({ rest: { repos } }, repo, release.tag, commit);
+  assert.equal(await api.createDraft({ version }), draft);
+  const [request] = requests;
+  assert.equal(request.tag_name, release.tag);
+  assert.equal(request.target_commitish, commit);
+  assert.equal(request.draft, true);
+  assert.equal(request.prerelease, true);
+
+  const payload = Buffer.from([0, 128, 255]);
+  const file = await put(await temporary(t), "installer.exe", payload);
+  const record = await fileRecord(file);
+  await api.uploadAsset(draft.id, record, file);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].name, record.file);
+  assert.equal(uploads[0].release_id, draft.id);
+  assert.deepEqual(uploads[0].data, payload);
+
+  draft.draft = false;
+  await assert.rejects(api.uploadAsset(draft.id, record, file), /draft prerelease/);
+  assert.equal(uploads.length, 1);
 });
 
 test("mismatched commit/version, duplicate platform and corrupted input fail before reserving output", async t => {

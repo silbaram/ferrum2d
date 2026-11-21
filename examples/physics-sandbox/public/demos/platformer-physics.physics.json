@@ -41,9 +41,11 @@
       "collider": { "shape": "orientedBox", "size": [170, 20], "rotationRadians": -0.08 }
     },
     "movingPlatform": {
-      "type": "kinematic",
+      "type": "dynamic",
+      "mass": 10,
+      "gravityScale": 0,
       "position": [470, 230],
-      "velocity": [60, 0],
+      "velocity": [45, 0],
       "material": "platform",
       "layer": "world",
       "collider": { "shape": "box", "size": [110, 18] }

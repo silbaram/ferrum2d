@@ -1,3 +1,11 @@
+import { fileMaterializedComponentTemplates } from "./dataSceneComponentTemplates.js";
+import { rememberNativeFileApplySource } from "./nativeFileAuthoringResolvers.js";
+import { compileDataScenePhysicsBody } from "./dataScenePhysics.js";
+import { compileDataScenePhysicsJoints, type CompiledDataScenePhysicsJoint } from "./dataScenePhysicsJoints.js";
+import type { CompiledDataScenePhysicsBody } from "./dataScenePhysicsPreflight.js";
+import { encodeDataSceneCollisionTilemap, type EncodedDataSceneCollisionTilemap } from "./dataSceneCollisionTilemap.js";
+import type { UnifiedPhysicsJointHandle } from "./unifiedPhysicsJoints.js";
+import type { UnifiedPhysicsOptions } from "./unifiedPhysics.js";
 import { spatialEnvironmentFeature, unsupportedSpatialEnvironmentFeature, type SpatialEnvironmentCapabilities } from "./spatialEnvironmentFeatures.js";
 import { resolveLightingCookieReferences } from "./lightingCookie.js";
 import {requestsSpatialReceiverMasks} from "./spatialReceiverMasks.js";
@@ -10,7 +18,8 @@ import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd
 import { MAX_SPRITE_NORMAL_UPDATES } from "./spriteNormals.js";
 import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
 import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
-import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
+import { forgetDataSceneProgressContext, rememberDataSceneProgressContext, preserveDataSceneProgressContext } from "./dataSceneProgress.js";
+import { finalizeNativePhysicsAuthoring, supportsNativePhysicsAuthoring, withNativePhysicsAuthoring } from "./nativePhysicsAuthoring.js";
 import {prepareDataSceneAuthoringContinuity} from "./dataSceneAuthoringContinuity.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
@@ -29,6 +38,7 @@ import {
 } from "./dataSceneComponents.js";
 import { applySceneBehaviorRecipes, bindSceneBehaviorRecipes } from "./gameplayAuthoring.js";
 import { preflightDataSceneGameplay } from "./dataSceneGameplayAuthoring.js";
+import { resolvedSceneAuthoringComponentTemplates } from "./dataSceneComponentTemplates.js";
 import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import {
   captureDataSceneVariableRuntimeSnapshot,
@@ -44,7 +54,7 @@ import type {
   SceneBehaviorRuntimeTarget,
 } from "./gameplayAuthoring.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
-import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
+import type { ResolvedSceneCompositionInstance, SceneCompositionJsonValue } from "./sceneComposition.js";
 import type { DataSceneSpatialSpec, SpatialCameraSpec } from "./dataSceneSpatial.js";
 import { resolveSpatialNormalTextures } from "./dataSceneSpatial.js";
 import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
@@ -93,6 +103,8 @@ export interface ApplyDataSceneAuthoringDocumentOptions
 export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
   document: ResolvedSceneAuthoringDocument;
   variables: DataSceneVariableStore;
+  /** Present for physics documents. Names map to this world's live generational handles. */
+  physicsJoints?: Readonly<Record<string, UnifiedPhysicsJointHandle>>;
 }
 
 export interface DataSceneRuntimeSpawnRequest {
@@ -146,6 +158,9 @@ export interface DataSceneRuntimeEngineAdapter extends SpatialEnvironmentCapabil
   supportsSpriteSurfaceMaterials?():boolean;
   supportsSpriteNineSlices?(): boolean;
   useDataScene(): void;
+  preflightPhysics?(world: UnifiedPhysicsOptions, bodies: readonly CompiledDataScenePhysicsBody[], joints: readonly CompiledDataScenePhysicsJoint[], path: string, tilemap?: EncodedDataSceneCollisionTilemap): void;
+  /** Publish the exact packet admitted by cold physics preflight. Required for graphical grids. */
+  configureCollisionTilemap?(tilemap: EncodedDataSceneCollisionTilemap): boolean;
   /** Optional cold capability; absence rejects render:false before scene activation. */
   supportsSpatialSurfaceProxies?(): boolean;
   /** Optional cold capability; absence rejects X ramps before activation. */
@@ -185,7 +200,8 @@ export function createDataSceneRuntimeTarget(
 ): SceneBehaviorRuntimeTarget {
   return createRuntimeTarget(engine, options, false);
 }
-function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntimeTargetOptions, deferSpriteBindings:boolean):SceneBehaviorRuntimeTarget {
+function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntimeTargetOptions, deferSpriteBindings:boolean, physics?: UnifiedPhysicsOptions,
+  resolvedComponents?: ReadonlyMap<string, Extract<ResolvedDataSceneComponents, {mode:"inline"}>>):SceneBehaviorRuntimeTarget {
   const path = options.path ?? "dataSceneRuntimeTarget";
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
@@ -202,13 +218,22 @@ function createRuntimeTarget(engine:FerrumEngine, options:CreateDataSceneRuntime
 
   return {
     spawnSceneInstance: (instance) => {
-      const request = dataSceneRuntimeSpawnRequest(
+      const components = resolvedComponents?.get(instance.id);
+      const request = components ? inlineDataSceneRuntimeSpawnRequest(instance, components, textureId, colorManagement) : dataSceneRuntimeSpawnRequest(
         instance,
         textureId,
         options.componentTemplates,
         `${path}.instances.${instance.id}`,
         colorManagement,
       );
+      if (request.body?.type === "kinematic" && request.body.kinematicController !== undefined && physics?.space !== "planar-xy")
+        throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.body.kinematicController`, "requires full planar-xy document application");
+      if (request.body && request.body.type === undefined) {
+        if (!physics) throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.body`, "shape bodies require applyDataSceneAuthoringDocument with physics configuration");
+        // The document binder attaches all validated bodies after visual entities exist.
+        delete request.body;
+        if (physics.space === "planar-xy") request.rotationRadians = 0;
+      }
       if(request.normalTextureId!==undefined&&!adapter.supportsSpriteNormalMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite normal materials require native v1 support");
       if(request.surface!==undefined&&!adapter.supportsSpriteSurfaceMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite surfaces require native v1 support");
       if(request.lighting!==undefined&&!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`,"sprite lighting requires native v1 support");
@@ -241,7 +266,7 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
   if((document as {lighting?:{profile?:string}}).lighting?.profile!=="lit"){
     // Validate a restored surface declaration before any saved native state is changed.
     const path=options.path??"dataSceneAuthoring";
-    const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+    const resolved=resolveSceneAuthoringDocument(document,{path,componentTemplates:options.componentTemplates,allowComponentTemplates:options.allowComponentTemplates});
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
     const plan=bindSceneBehaviorRecipes(resolved.sceneComposition,resolved.behaviorRecipes,options);
     for(const instance of plan.instances){
@@ -252,8 +277,8 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
       const masks=[components.visual,components.sprite].some(v=>v&&typeof v==="object"&&requestsSpriteLightMasks((v as {lighting?:import("./spriteLighting.js").SpriteLightingMaterialSpec}).lighting));
       if(masks)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
       if(declared)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
-      if(components.template!==undefined&&options.componentTemplates){
-        const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path);
+      if(components.template!==undefined&&resolvedSceneAuthoringComponentTemplates(resolved)){
+        const component=dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),resolvedSceneAuthoringComponentTemplates(resolved),path);
         if(requestsSpriteLightMasks(component.sprite.lighting))throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
         if(component.sprite.surface)throw sceneCompositionDiagnosticError(`${path}.components.surface`,"requires a flat lit lighting profile");
       }
@@ -264,7 +289,7 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
   if(!adapter.supportsSpriteLightingMaterials?.())throw sceneCompositionDiagnosticError(`${path}.lighting.profile`,"lit requires native sprite lighting v1 support");
   const preparer=options.flatLightingPreparer;
   if(!preparer||typeof preparer.prepareFlatLighting!=="function")throw sceneCompositionDiagnosticError(`${path}.flatLightingPreparer`,"lit requires a renderer asset preflight before activation");
-  const resolved=resolveSceneAuthoringDocument(document,{path,allowComponentTemplates:options.allowComponentTemplates??options.componentTemplates!==undefined});
+  const resolved=resolveSceneAuthoringDocument(document,{path,componentTemplates:options.componentTemplates,allowComponentTemplates:options.allowComponentTemplates});
     preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   if (resolved.lighting?.pointLights?.some(light => light.cookie !== undefined) && preparer.flatLightingCookieVersion?.() !== 1)
     throw sceneCompositionDiagnosticError(`${path}.lighting`, "cookies require renderer cookie v1 support");
@@ -274,7 +299,7 @@ export function preflightDataSceneLighting(engine: FerrumEngine, document: unkno
   const textureId=options.textureId??(name=>adapter.textureId(name));
   const lighting = resolved.lighting!;
   const hdr = lighting.enabled !== false && lighting.hdr !== undefined && lighting.hdr !== false && lighting.hdr.enabled !== false;
-  const components=plan.instances.map(instance=>dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),options.componentTemplates,path));
+  const components=plan.instances.map(instance=>dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance,{allowTemplate:true,path}),resolvedSceneAuthoringComponentTemplates(resolved),path));
   const maskCount=components.filter(component=>requestsSpriteLightMasks(component.sprite.lighting)).length;
   if(maskCount>MAX_SPRITE_LIGHTING_UPDATES)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"supports at most65536 light mask bindings");
   if(maskCount&&resolved.spatial)throw sceneCompositionDiagnosticError(`${path}.components.lighting`,"light masks require a flat lit lighting profile");
@@ -299,14 +324,14 @@ export function applyDataSceneAuthoringDocument(
     path: optionPath,
     activateDataScene,
     colorManagement,
-    componentTemplates,
+    componentTemplates: suppliedComponentTemplates,
     textureId,
     spatialModelPreparer,
     flatLightingPreparer,
     preserveAnimationAndLod=false,
     validateBindings = true,
     validateComponents = true,
-    allowComponentTemplates = componentTemplates !== undefined,
+    allowComponentTemplates: suppliedAllowComponentTemplates,
     ...applyOptions
   } = options;
   const {
@@ -323,8 +348,12 @@ export function applyDataSceneAuthoringDocument(
     path,
     validateBindings,
     validateComponents,
-    allowComponentTemplates,
+    allowComponentTemplates: suppliedAllowComponentTemplates,
+    componentTemplates: suppliedComponentTemplates,
   });
+  const componentTemplates = resolvedSceneAuthoringComponentTemplates(resolved);
+  const allowComponentTemplates = suppliedAllowComponentTemplates ?? componentTemplates !== undefined;
+  const runtimeOptions = { ...options, componentTemplates };
   const resolvedVariables = resolved.variables ?? [];
   const baseRuntimeIds = ids ?? resolved.ids;
   const runtimeVariableIds = compileDataSceneVariableRuntimeIds(
@@ -339,6 +368,29 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  const nativePhysics = resolved.physics !== undefined
+    || (typeof engine.physicsBackend === "function" && engine.physicsBackend() === "unified-3d");
+  let collisionTilemap: EncodedDataSceneCollisionTilemap | undefined;
+  if (resolved.physics?.collisionTilemap !== undefined) {
+    const tileTextureIds = new Map<string, number>();
+    try {
+      collisionTilemap = encodeDataSceneCollisionTilemap(resolved.physics.collisionTilemap, {
+        colorManagement,
+        textureId: name => {
+          if (!tileTextureIds.has(name)) tileTextureIds.set(name, (textureId ?? (n => runtimeAdapter.textureId(n)))(name));
+          return tileTextureIds.get(name)!;
+        },
+      });
+    } catch (error) {
+      throw sceneCompositionDiagnosticError(`${path}.physics.collisionTilemap`, error instanceof Error ? error.message : String(error));
+    }
+    if (collisionTilemap.version === 2) {
+      if (resolved.spatial !== undefined)
+        throw sceneCompositionDiagnosticError(`${path}.physics.collisionTilemap`, "graphical tilemaps require the planar camera");
+      if (!runtimeAdapter.configureCollisionTilemap)
+        throw sceneCompositionDiagnosticError(`${path}.physics.collisionTilemap`, "runtime does not support graphical tilemap authoring");
+    }
+  }
   preflightSpatialLightingSupport(engine, resolved.spatial, `${path}.spatial`);
   // Resolve every normal reference before activation/spawn can replace the previous scene.
   const runtimeSpatial = resolved.spatial === undefined ? undefined : resolveSpatialNormalTextures(resolved.spatial, textureId ?? (name => runtimeAdapter.textureId(name)));
@@ -353,6 +405,15 @@ export function applyDataSceneAuthoringDocument(
   if (resolved.spatial?.terrain.some(s => s.rampAxis === "x") && !runtimeAdapter.supportsSpatialRampAxis?.())
     throw sceneCompositionDiagnosticError(`${path}.spatial.terrain`, "X ramps require native spatial ramp axis v1 support");
   const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
+  const resolvedComponents = new Map<string, Extract<ResolvedDataSceneComponents, {mode:"inline"}>>();
+  const componentsFor = (instance: ResolvedSceneCompositionInstance) => {
+    const previous = resolvedComponents.get(instance.id);
+    if (previous) return previous;
+    const location = `${path}.instances.${instance.id}`;
+    const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, {allowTemplate:allowComponentTemplates,path:location}), componentTemplates, location);
+    resolvedComponents.set(instance.id, components);
+    return components;
+  };
   // Resolve optional sprite bindings and capabilities before replacing the active scene.
   const spriteBindings = bindingPlan.instances.flatMap(instance => {
     const raw = instance.props.components;
@@ -360,7 +421,7 @@ export function applyDataSceneAuthoringDocument(
     const component = raw as Record<string, unknown>;
     const hasBinding = [component.visual, component.sprite].some(v => v && typeof v === "object" && ("normalTexture" in v || "nineSlice" in v || "lighting" in v || "surface" in v));
     if (!hasBinding && !(component.template !== undefined && componentTemplates !== undefined)) return [];
-    const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, {allowTemplate:true,path}), componentTemplates, path);
+    const components = componentsFor(instance);
     const sprite = components.sprite;
     return [{id:instance.id, lighting:sprite.lighting,surface:sprite.surface===undefined?undefined:surfaceMaterial(sprite.surface,textureId??(name=>runtimeAdapter.textureId(name))), normalTextureId:sprite.normalTexture === undefined ? undefined : normalTextureId(sprite.normalTexture, textureId ?? (name => runtimeAdapter.textureId(name))),
       nineSlice:scaledNineSlice(sprite.nineSlice, instance.scale, `${path}.instances.${instance.id}.nineSlice`)}];
@@ -377,7 +438,7 @@ export function applyDataSceneAuthoringDocument(
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, `supports at most ${MAX_SPRITE_LIGHTING_UPDATES} sprite lighting materials`);
   if (lightingMaterials.length && (!runtimeAdapter.supportsSpriteLightingMaterials?.() || typeof engine.configureSpriteLightingMaterials !== "function"))
     throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "sprite lighting requires native v1 support");
-  preflightDataSceneLighting(engine, document, options);
+  preflightDataSceneLighting(engine, document, runtimeOptions);
   const normalMaterials = spriteBindings.filter((b): b is typeof b & {normalTextureId:number} => b.normalTextureId !== undefined);
   const nineSlices = spriteBindings.filter((b): b is typeof b & {nineSlice:SpriteNineSliceSpec} => b.nineSlice !== undefined);
   if(normalMaterials.length>MAX_SPRITE_NORMAL_UPDATES)
@@ -388,7 +449,19 @@ export function applyDataSceneAuthoringDocument(
     throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`, `supports at most ${MAX_SPRITE_NINE_SLICE_UPDATES} 9-slice bindings`);
   if(nineSlices.length&&(!runtimeAdapter.supportsSpriteNineSlices?.()||typeof engine.configureSpriteNineSlices!=="function"))
     throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`,"9-slice requires native v1 support");
-  preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
+  // Existing gameplay validators consume inline JSON props. Expand only this
+  // ephemeral plan; the result document and progress source retain catalog refs.
+  const semanticBindingPlan = { ...bindingPlan, instances: bindingPlan.instances.map(instance => {
+    const declared = instance.props.components;
+    if (!declared || typeof declared !== "object" || Array.isArray(declared) || !("template" in declared) || declared.template === undefined) return instance;
+    const raw = resolveDataSceneInstanceComponents(instance, {allowTemplate:allowComponentTemplates,path});
+    if (raw.mode === "inline") return instance;
+    componentsFor(instance);
+    // Referenced catalog specs have already passed component validation above.
+    const components = dataSceneRuntimeComponentTemplateSpec(componentTemplates!, raw.template)! as unknown as SceneCompositionJsonValue;
+    return { ...instance, props: { ...instance.props, components } };
+  }) };
+  preflightDataSceneGameplay(engine, resolved, semanticBindingPlan, runtimeIds, path);
   const crowd = combatCrowdRequired(resolved.gameplay?.combatNavigation, bindingPlan.commands);
   const chaseCommands = combatChaseCommands(bindingPlan);
   const projectileActions = finalCombatActions(bindingPlan.commands, runtimeIds).filter(command => command.type === "configureProjectileAction");
@@ -396,11 +469,18 @@ export function applyDataSceneAuthoringDocument(
   const projectilePrefabs = resolved.gameplay?.projectilePrefabs === undefined ? undefined : resolveDataSceneProjectileTextures(resolved.gameplay.projectilePrefabs, textureId ?? (name => runtimeAdapter.textureId(name)));
   if (projectilePrefabs !== undefined) compileDataSceneProjectilePrefabs(projectilePrefabs, [], colorManagement);
 
-  if (resolved.spatial) preflightDataSceneSpatialEnvironment(engine, resolved.spatial, bindingPlan.instances, options, resolved.spatial.environment);
+  if (resolved.spatial) preflightDataSceneSpatialEnvironment(engine, resolved.spatial, bindingPlan.instances, runtimeOptions, resolved.spatial.environment);
   if(resolved.spatial?.models) {
+    const hasNativeModel = bindingPlan.instances.some(instance => {
+      if (!resolved.spatial?.models?.[instance.id]) return false;
+      const c = componentsFor(instance);
+      return c.mode === "inline" && c.body !== undefined && c.body.type === undefined;
+    });
+    if (resolved.physics?.space === "spatial" && hasNativeModel && !supportsNativePhysicsAuthoring(engine))
+      throw sceneCompositionDiagnosticError(`${path}.spatial.models`, "native model orientation requires scene authoring version 1");
     const origins=Object.fromEntries(bindingPlan.instances.map(i=>{
-      const c=resolveDataSceneInstanceComponents(i,{allowTemplate:false,path:`${path}.spatial.models.${i.id}`});
-      return [i.id,{x:i.x,y:i.y,elevation:c.mode==="inline" ? c.body?.heightSpan?.elevation ?? 0 : 0}];
+      const c=componentsFor(i);
+      return [i.id,{x:i.x,y:i.y,elevation:c.mode==="inline" ? (c.body?.type === undefined ? c.body?.elevation : c.body.heightSpan?.elevation) ?? 0 : 0}];
     }));
     const derived=new Map<string,{x:number;y:number;elevation:number;yaw:number}>();
     const derive=(id:string):{x:number;y:number;elevation:number;yaw:number}=>{const existing=derived.get(id);if(existing)return existing;const a=resolved.spatial!.attachments?.[id],origin=origins[id];let pose={...origin,yaw:0};if(a){const p=derive(a.parent),s=Math.fround(Math.sin(p.yaw)),c=Math.fround(Math.cos(p.yaw));pose={x:Math.fround(p.x+Math.fround(c*Math.fround(a.x??0))-Math.fround(s*Math.fround(a.y??0))),y:Math.fround(p.y+Math.fround(s*Math.fround(a.x??0))+Math.fround(c*Math.fround(a.y??0))),elevation:Math.fround(p.elevation+Math.fround(a.elevation??0)),yaw:Math.fround(p.yaw+Math.fround((a.yawDegrees??0)*Math.PI/180))};}derived.set(id,pose);return pose;};
@@ -408,6 +488,37 @@ export function applyDataSceneAuthoringDocument(
     if(!engine.preflightDataSceneSpatialModels(resolved.spatial,origins))
       throw sceneCompositionDiagnosticError(`${path}.spatial.models`,"model resource/content/transform or submission budget preflight failed");
   }
+  const physicsBodies: CompiledDataScenePhysicsBody[] = [];
+  const physicsJoints = compileDataScenePhysicsJoints(resolved.physics?.joints, bindingPlan.instances);
+  for (const instance of bindingPlan.instances) {
+    const location = `${path}.instances.${instance.id}`;
+    const c = componentsFor(instance);
+    if (c.body && c.body.type === undefined && !resolved.physics)
+      throw sceneCompositionDiagnosticError(`${path}.physics`, "is required for bodies with a shape collider");
+    if (c.body?.type === "kinematic" && c.body.kinematicController !== undefined && resolved.physics?.space !== "planar-xy")
+      throw sceneCompositionDiagnosticError(`${location}.body.kinematicController`, "requires explicit planar-xy scene physics");
+  }
+  if (resolved.physics) {
+    if (activateDataScene === false) throw sceneCompositionDiagnosticError(`${path}.physics`, "requires full scene activation");
+    for (const instance of bindingPlan.instances) {
+      const c = componentsFor(instance);
+      if (c.mode === "inline" && c.body && c.body.type === undefined) physicsBodies.push({
+        id: instance.id, options: compileDataScenePhysicsBody(c.body, instance, resolved.physics, `${path}.instances.${instance.id}.body`, c.layer.code),
+        character: c.body.character && resolved.spatial?.actor?.instanceId === instance.id
+          ? { ...c.body.character, stepHeight: resolved.spatial.actor.maxStepHeight, snapDistance: resolved.spatial.actor.maxDropHeight }
+          : c.body.character,
+      });
+    }
+    if (!runtimeAdapter.preflightPhysics) throw sceneCompositionDiagnosticError(`${path}.physics`, "runtime does not support physics authoring preflight");
+    runtimeAdapter.preflightPhysics(resolved.physics, physicsBodies, physicsJoints, path, collisionTilemap);
+  }
+  const continuityMetadata = {
+    animations: Object.fromEntries(bindingPlan.instances.flatMap(instance => {
+      const animation = componentsFor(instance).sprite.animationSet;
+      return animation === undefined ? [] : [[instance.id, animation]];
+    })),
+    ...(resolved.spatial?.models === undefined ? {} : {models:resolved.spatial.models}),
+  };
   preflightDataSceneVariableRuntime(engine, resolvedVariables, `${path}.variables`);
   const previousVariables = captureDataSceneVariableRuntimeSnapshot(engine);
   let preparation: SpatialModelPreparation | undefined;
@@ -426,12 +537,15 @@ export function applyDataSceneAuthoringDocument(
     }
   }
   let continuity:ReturnType<typeof prepareDataSceneAuthoringContinuity>|undefined;
-  try {
-    if(preserveAnimationAndLod)continuity=prepareDataSceneAuthoringContinuity(engine,resolved,bindingPlan.instances,runtimeAdapter,`${path}.preserveAnimationAndLod`);
+  const restoreProgress = preserveDataSceneProgressContext(engine);
+  const previousRegistry = instanceHandleRegistry?.entries();
+  const apply = (): ApplyDataSceneAuthoringDocumentResult => { try {
+    if(preserveAnimationAndLod)continuity=prepareDataSceneAuthoringContinuity(engine,continuityMetadata,bindingPlan.instances,runtimeAdapter,`${path}.preserveAnimationAndLod`);
     forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
       runtimeAdapter.useDataScene();
     }
+    if (resolved.physics) engine.configureUnifiedPhysics(resolved.physics);
     const variables = synchronizeDataSceneVariableStore(
       engine,
       resolvedVariables,
@@ -444,7 +558,7 @@ export function applyDataSceneAuthoringDocument(
       colorManagement,
       textureId,
       componentTemplates,
-    }, true);
+    }, true, resolved.physics, resolvedComponents);
     // Full authoring consumes prefab references in one configuration batch after action storage.
     // Standalone gameplay command application rejects these references instead of silently ignoring them.
     const recipeEngine: Pick<FerrumEngine, "applyGameplayBehaviorCommands"> = {
@@ -467,6 +581,30 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    for (const body of physicsBodies) {
+      const handle = result.entityHandles[body.id];
+      engine.bindUnifiedPhysicsBody(handle, body.options);
+      if (body.character !== undefined) engine.configureUnifiedPhysicsCharacter(handle, body.character);
+    }
+    const jointHandles = Object.fromEntries(physicsJoints.map(({name, options}) => [name, engine.createUnifiedPhysicsJoint({
+      ...options, bodyA: result.entityHandles[options.bodyA], bodyB: result.entityHandles[options.bodyB],
+    })]));
+    // Catalog capture must see the authored per-body controller overrides.
+    // Final terrain/grid admission below still owns the complete transaction.
+    for (const instance of bindingPlan.instances) {
+      const c = componentsFor(instance);
+      if (c.body?.type === "kinematic" && c.body.kinematicController !== undefined
+        && !engine.configureDataSceneKinematicController(result.entityHandles[instance.id], c.body.kinematicController)) {
+        // The boolean controller API can also reject pending aggregate geometry.
+        // Preserve that native reason rather than masking capacity/shape failures.
+        try { finalizeNativePhysicsAuthoring(engine); }
+        catch (error) {
+          throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.body.kinematicController`,
+            error instanceof Error ? error.message : String(error));
+        }
+        throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}.body.kinematicController`, "native controller admission rejected");
+      }
+    }
     if(lightingMaterials.length&&!engine.configureSpriteLightingMaterials(lightingMaterials.map(({id,lighting})=>({entity:result.entityHandles[id],lighting}))))
       throw sceneCompositionDiagnosticError(`${path}.components.lighting`, "runtime rejected sprite lighting material batch");
     if(surfaceMaterials.length&&!engine.configureSpriteSurfaceMaterials(surfaceMaterials.map(({id,surface})=>({entity:result.entityHandles[id],surface}))))
@@ -477,10 +615,11 @@ export function applyDataSceneAuthoringDocument(
       throw sceneCompositionDiagnosticError(`${path}.components.nineSlice`,"runtime rejected 9-slice batch");
     // Spawn definitions capture authored billboard styles; configure space before native v7.
     const spawnCatalog = resolved.gameplay?.spawnPrefabs;
-    if (spawnCatalog !== undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    const spatialBeforeGameplay = spawnCatalog !== undefined || (resolved.physics?.space === "spatial" && resolved.gameplay?.combatNavigation !== undefined);
+    if (spatialBeforeGameplay && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     if (resolved.gameplay !== undefined && !engine.configureDataSceneGameplay({
       ...(spawnCatalog === undefined ? {} : { spawnPrefabs: Object.entries(spawnCatalog).map(([name, prefab]) => ({ prefabId: runtimeIds!.prefabs![name], prototype: result.entityHandles[prefab.prototypeInstanceId] })) }),
-      ...(crowd ? { chaseBindings: chaseCommands.filter(command => command.entity !== resolved.gameplay?.primaryActor && (resolved.gameplay?.combatNavigation?.crowdAvoidance !== undefined || command.stopDistance > 0)).map(command => ({ source: result.entityHandles[command.entity], stopDistance: command.stopDistance })) } : {}),
+      ...(crowd ? { chaseBindings: chaseCommands.filter(command => command.entity !== resolved.gameplay?.primaryActor && (resolved.physics?.space !== "spatial" || command.entity !== resolved.spatial?.actor?.instanceId) && (resolved.gameplay?.combatNavigation?.crowdAvoidance !== undefined || command.stopDistance > 0)).map(command => ({ source: result.entityHandles[command.entity], stopDistance: command.stopDistance })) } : {}),
       ...(resolved.gameplay.combatNavigation === undefined ? {} : { combatNavigation: resolved.gameplay.combatNavigation }),
       ...(projectilePrefabs === undefined ? {} : { projectilePrefabs, colorManagement, projectileBindings: projectileActions.filter(command => command.projectilePrefab !== undefined).map(command => ({ source: result.entityHandles[command.entity], actionId: command.actionId ?? runtimeIds!.actions![command.action], prefab: command.projectilePrefab! })) }),
       ...(resolved.gameplay.combat === undefined ? {} : { combat: resolved.gameplay.combat }),
@@ -490,25 +629,40 @@ export function applyDataSceneAuthoringDocument(
     if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation, result.entityHandles)) {
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
-    if (spawnCatalog === undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    if (!spatialBeforeGameplay && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    if (collisionTilemap !== undefined && !(runtimeAdapter.configureCollisionTilemap
+      ? runtimeAdapter.configureCollisionTilemap(collisionTilemap)
+      : engine.configureDataSceneCollisionTilemap(resolved.physics!.collisionTilemap!)))
+      throw sceneCompositionDiagnosticError(`${path}.physics.collisionTilemap`, "native collision grid admission rejected");
+    if (resolved.physics || (typeof engine.physicsBackend === "function" && engine.physicsBackend() === "unified-3d"))
+      finalizeNativePhysicsAuthoring(engine);
     continuity?.restore(result.entityHandles);
     preparation?.commit();
-    rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
+    rememberDataSceneProgressContext(engine, document, result.entityHandles, options, continuityMetadata);
+    if (options.activateDataScene !== false) rememberNativeFileApplySource(engine, document, fileMaterializedComponentTemplates(resolved), options.textureId);
     return {
       document: resolved,
       variables,
+      ...(resolved.physics ? { physicsJoints: jointHandles } : {}),
       ...result,
     };
-  } catch (error) {
-    restoreDataSceneVariableRuntimeSnapshot(
-      engine,
-      previousVariables,
-      `${path}.variables`,
-    );
-    throw error;
   } finally {
     try { continuity?.dispose(); }
     finally { preparation?.dispose(); }
+  } };
+  try {
+    return nativePhysics ? withNativePhysicsAuthoring(engine, apply) : apply();
+  } catch (error) {
+    try {
+      restoreDataSceneVariableRuntimeSnapshot(engine, previousVariables, `${path}.variables`);
+    } finally {
+      restoreProgress();
+      if (instanceHandleRegistry && previousRegistry) {
+        instanceHandleRegistry.clear();
+        for (const entry of previousRegistry) instanceHandleRegistry.set(entry.instanceId, entry.handle);
+      }
+    }
+    throw error;
   }
 }
 
@@ -692,7 +846,7 @@ export function preflightDataSceneSpatialEnvironment(
     if (++casters > 1024) throw sceneCompositionDiagnosticError(path, "shadow caster budget exceeds 1024 authored and spawned billboards");
     const instance = byId.get(id);
     if (!instance) throw sceneCompositionDiagnosticError(path, `unknown billboard '${id}'`);
-    const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: false, path });
+    const components = dataSceneRuntimeInlineComponents(resolveDataSceneInstanceComponents(instance, { allowTemplate: options.componentTemplates !== undefined, path }), options.componentTemplates, path);
     if (components.mode !== "inline") throw sceneCompositionDiagnosticError(path, "requires inline billboard components");
     textures.add(dataSceneTextureId(components.sprite, textureId));
   }

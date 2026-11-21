@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -29,19 +29,19 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
 
       - name: Setup pnpm 10.8.0
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10.8.0
           run_install: false
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Install dependencies
         run: pnpm install
@@ -56,9 +56,10 @@ jobs:
         run: pnpm validate:pages-artifact
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist-pages
+          include-hidden-files: true
 
   deploy:
     environment:
@@ -70,7 +71,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Verify deployed Pages routes
         env:

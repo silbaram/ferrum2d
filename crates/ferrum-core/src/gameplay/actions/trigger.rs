@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActionPatternKind {
     Projectile,
     Dash,
@@ -44,19 +44,19 @@ impl ActionPatternKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActionTriggerKind {
     Timer,
     Wave,
     BehaviorStateEnter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActionTriggerPhase {
     PrePhysics,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ActionTriggerCommand {
     pub(crate) source: Entity,
     pub(crate) action_id: u32,
@@ -116,7 +116,7 @@ pub(crate) enum ActionReadiness {
     Ready(PreparedAction),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedAction {
     pub(crate) entity: Entity,
     pub(crate) action_id: u32,

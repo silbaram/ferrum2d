@@ -36,6 +36,7 @@ export function preservePlacementComponentMetadata(
   authored: Components | undefined,
   edit: Json,
 ): Json {
+  if (authored?.template !== undefined) throw new Error("Shared component template is read-only; edit componentTemplates with an agent.");
   if (!authored || !record(edit)) return structuredClone(edit);
   const result = { ...structuredClone(authored), ...structuredClone(edit) };
   if (record(edit.visual)) {

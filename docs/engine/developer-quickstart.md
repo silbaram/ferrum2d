@@ -7,7 +7,7 @@ AI에게 작업 전체를 맡기려면 [AI 게임 개발 안내](ai-game-develop
 
 ## 1. 설치 파일 준비
 
-Node.js 22와 npm이 필요합니다. 게임 프로젝트에는 Rust나 wasm-pack을 따로 설치하지 않아도 됩니다.
+현재 게임 개발 환경에는 Node.js 24 이상과 npm이 필요합니다. 게임 프로젝트에는 Rust나 wasm-pack을 따로 설치하지 않아도 됩니다.
 [GitHub Releases](https://github.com/silbaram/ferrum2d/releases)에서 사용할 버전을 선택하고,
 Assets의 **`ferrum2d-create-game-<버전>.tgz`** 다운로드 링크를 복사하세요.
 설치 방법은 선택한 릴리스의 안내를 기준으로 합니다.

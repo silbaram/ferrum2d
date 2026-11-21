@@ -13,7 +13,7 @@ const _: () = assert!(core::mem::size_of::<PhysicsBodyManifoldHit>() == 56);
 const _: () = assert!(core::mem::size_of::<PhysicsRigidContactImpulseHit>() == 40);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsQueryEntityHit {
     pub entity_id: u32,
     pub entity_generation: u32,
@@ -29,7 +29,7 @@ impl PhysicsQueryEntityHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsRaycastBodyHit {
     pub entity_id: u32,
     pub entity_generation: u32,
@@ -67,7 +67,7 @@ impl PhysicsRaycastBodyHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsTileShapeCastHit {
     pub tile_layer_index: u32,
     pub tile_index: u32,
@@ -93,7 +93,7 @@ impl PhysicsTileShapeCastHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsTileContactHit {
     pub tile_layer_index: u32,
     pub tile_index: u32,
@@ -119,7 +119,7 @@ impl PhysicsTileContactHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsTileManifoldHit {
     pub tile_layer_index: u32,
     pub tile_index: u32,
@@ -157,7 +157,7 @@ impl PhysicsTileManifoldHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsBodyContactHit {
     pub a_entity_id: u32,
     pub a_entity_generation: u32,
@@ -187,7 +187,7 @@ impl PhysicsBodyContactHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsBodyManifoldHit {
     pub a_entity_id: u32,
     pub a_entity_generation: u32,
@@ -227,7 +227,7 @@ impl PhysicsBodyManifoldHit {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsRigidContactImpulseHit {
     pub a_entity_id: u32,
     pub a_entity_generation: u32,

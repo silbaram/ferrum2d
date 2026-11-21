@@ -37,6 +37,7 @@ export const BODY_KEYS = new Set([
   "enabled",
   "canSleep",
   "fixedRotation",
+  "kinematicController",
 ]);
 
 export const COLLIDER_BASE_KEYS = new Set(["shape", "offset", "material", "layer", "trigger", "enabled"]);

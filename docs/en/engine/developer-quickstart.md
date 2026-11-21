@@ -7,7 +7,7 @@ To delegate the work, give your agent [AI Game Development](ai-game-development.
 
 ## 1. Get the installer
 
-Use Node.js 22 and npm. Game projects do not need a separate Rust or wasm-pack installation.
+Use Node.js 24 or later and npm for the current development setup. Game projects do not need a separate Rust or wasm-pack installation.
 Choose a version from [GitHub Releases](https://github.com/silbaram/ferrum2d/releases) and copy the download URL of
 **`ferrum2d-create-game-<version>.tgz`** from its Assets. Follow that release's installation instructions.
 

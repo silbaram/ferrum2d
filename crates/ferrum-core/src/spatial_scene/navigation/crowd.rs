@@ -6,7 +6,7 @@ pub(crate) struct CombatCrowd<'a> {
     pub peers: &'a [Entity],
     pub padding: f32,
 }
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CombatNavigationStep {
     pub work: u64,
     pub motion_admitted: bool,

@@ -1,4 +1,5 @@
 export type { SpatialLightProbeSpec } from "./spatialLightProbes.js";
+export type { RuntimeCheckpoint, FerrumRuntimeCheckpointApi } from "./runtimeCheckpoint.js";
 export type { SpatialLightShaftSpec } from "./spatialLightShafts.js";
 export type { SpatialHeightFogSpec } from "./spatialHeightFog.js";
 export type { SpatialPointPcssSpec } from "./spatialPointPcss.js";
@@ -33,6 +34,7 @@ export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
 
 export type { DataSceneMoveOptions, DataSceneMoveStatus } from "./dataSceneMovement.js";
+export type { DataSceneCollisionTilemapOptions, DataSceneCollisionTileDefinition } from "./dataSceneCollisionTilemap.js";
 export type { DataSceneMovementAnimationSpec, DataSceneMovementAnimationPose, DataSceneMovementDirection } from "./dataSceneMovementAnimation.js";
 
 export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
@@ -74,3 +76,6 @@ export type { FlatLightingAsset, FlatLightingPreparer } from "./flatLit.js";
 
 export type { SpatialLightSelectionSpec, SpatialLightSelectionBufferView } from "./spatialLightSelection.js";
 export type { SpatialLightSelectionProgressSnapshot } from "./spatialLightSelectionProgress.js";
+
+export type { DataScenePhysicsBodySpec, DataScenePhysicsSpec } from "./dataScenePhysics.js";
+export type { DataScenePhysicsJointSpec } from "./dataScenePhysicsJoints.js";

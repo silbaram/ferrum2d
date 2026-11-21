@@ -1,5 +1,14 @@
+impl BreakoutScene {
+    /// Fixed dependency of this build's native scene/particle generation code;
+    /// it is not a persisted catalog or proof of a loaded platform texture.
+    pub(crate) const fn file_program_texture_id() -> u32 {
+        config::DEFAULT_TEXTURE_ID
+    }
+}
+
 mod config;
 mod effects;
+mod file_admission;
 mod level;
 mod runtime;
 
@@ -13,17 +22,23 @@ use crate::game_state::GameState;
 use config::{BRICK_COLUMNS, BRICK_ROWS};
 
 pub(crate) use effects::{breakout_brick_hit_particle_preset, BreakoutParticleBurstSink};
+pub(crate) use runtime::{BreakoutHit, BreakoutHitKind, BreakoutPaddlePlan};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BreakoutScene {
     game_state: GameState,
     score: u32,
     paddle: Option<Entity>,
     ball: Option<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     bricks: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     walls: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     marked_for_despawn: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending_despawn: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     area_damage_hits: Vec<CircleQueryHit>,
 }
 
@@ -62,5 +77,24 @@ impl BreakoutScene {
 
     pub(crate) fn game_state(&self) -> GameState {
         self.game_state
+    }
+}
+
+#[cfg(test)]
+impl BreakoutScene {
+    pub(crate) fn corrupt_builtin_file_fixture(&mut self, case: usize) {
+        match case {
+            0 => self.bricks.push(self.bricks[0]),
+            1 => self.ball = self.paddle,
+            2 => self.bricks[0].id = u32::MAX,
+            3 => self.paddle = None,
+            4 => self.area_damage_hits.push(CircleQueryHit {
+                entity: Entity {
+                    id: u32::MAX,
+                    generation: 0,
+                },
+            }),
+            _ => unreachable!(),
+        }
     }
 }

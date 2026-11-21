@@ -8,6 +8,7 @@ export type GameplayEventKind =
   | "timer"
   | "pickupCollected"
   | "tileImpact"
+  | "terrainImpact"
   | "factionDamageDenied"
   | "presentationEffect"
   | "spriteAnimationFrame"
@@ -51,6 +52,7 @@ export const GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT = 11;
 export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME = 12;
 export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_COMPLETED = 13;
 export const GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_OVERFLOW = 14;
+export const GAMEPLAY_EVENT_KIND_TERRAIN_IMPACT = 15;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND = 1;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE = 2;
 export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE = 3;
@@ -126,6 +128,7 @@ export function gameplayEventKind(kindCode: number): GameplayEventKind {
   if (kindCode === GAMEPLAY_EVENT_KIND_TIMER) return "timer";
   if (kindCode === GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED) return "pickupCollected";
   if (kindCode === GAMEPLAY_EVENT_KIND_TILE_IMPACT) return "tileImpact";
+  if (kindCode === GAMEPLAY_EVENT_KIND_TERRAIN_IMPACT) return "terrainImpact";
   if (kindCode === GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED) return "factionDamageDenied";
   if (kindCode === GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT) return "presentationEffect";
   if (kindCode === GAMEPLAY_EVENT_KIND_SPRITE_ANIMATION_FRAME) return "spriteAnimationFrame";

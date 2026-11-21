@@ -10,7 +10,7 @@ const DEFAULT_SHAKE_AMPLITUDE: f32 = 6.0;
 const DEFAULT_SHAKE_FREQUENCY: f32 = 8.0;
 const VELOCITY_EPSILON: f32 = 0.0001;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CameraPreset {
     #[default]
     Follow,
@@ -30,7 +30,7 @@ impl CameraPreset {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CameraPresetConfig {
     pub preset: CameraPreset,
     pub dead_zone_width: f32,
@@ -77,7 +77,7 @@ impl CameraPresetConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Camera2D {
     pub x: f32,
     pub y: f32,

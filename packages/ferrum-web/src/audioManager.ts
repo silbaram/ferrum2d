@@ -1,4 +1,9 @@
-import { startSpatialAudioVoice, setAudioListenerPose, setAudioListenerPosition, validateSpatialAudioOptions, audioNumber, validateAudioListenerPose } from "./spatialAudio.js";
+import { copyFileAudioData } from "./nativeFileResourceAudio.js";
+import type { ResourceAudioActivation, DetachedAudioResourceOwner } from "./nativeFileResourceOwners.js";
+import { AudioPlaybackTracker } from "./nativeFileResourceAudioPlayback.js";
+import { retainResourceCaptureFence, registerAudioFileOwner, captureResourceSource, fileResourceBlob, registerAudioSourceRetainer, type ResourceAudioData } from "./nativeFileResourceOwners.js";
+import { ResourceBudget, resourceInteger, resourceFinite, NativeFileResourceError } from "./nativeFileResourceBudget.js";
+import { startSpatialAudioVoice, spatialAudioFileView, observeSpatialAudioFileVoice, setAudioListenerPose, setAudioListenerPosition, validateSpatialAudioOptions, audioNumber, validateAudioListenerPose } from "./spatialAudio.js";
 import type { SpatialAudioOptions, SpatialAudioVoice } from "./spatialAudio.js";
 export type { SpatialAudioOptions, SpatialAudioVoice } from "./spatialAudio.js";
 import { createAssetLoadScope, throwIfAssetLoadAborted } from "./assetLoadTasks.js";
@@ -76,8 +81,30 @@ function normalizeAudioChannelId(channelId: number): number {
   return AUDIO_CHANNEL_SFX;
 }
 
+interface PreparedAudioHandoff {
+  readonly source: AudioManager;
+  readonly next: AudioManager;
+  assertCurrent():void;
+  transfer():void;
+}
+const preparedAudioHandoffs=new WeakMap<DetachedAudioResourceOwner,PreparedAudioHandoff>();
+/** @internal Root supplies a new unpublished standard host. A file/caller
+ * object cannot forge the lease or replace the tracker's lexical manager. */
+export function adoptPreparedFileAudio(lease:DetachedAudioResourceOwner,expectedSource:AudioManager,install:(next:AudioManager)=>void):void {
+  const handoff=preparedAudioHandoffs.get(lease);
+  if(!handoff||handoff.source!==expectedSource)throw new NativeFileResourceError("STALE","sealed audio target");
+  handoff.assertCurrent();install(handoff.next);handoff.transfer();expectedSource.destroy();
+}
+
 export class AudioManager {
   private readonly buffersById = new Map<number, AudioBuffer>();
+  private retainedSources = new WeakMap<AudioBuffer, { blob: Blob; url: string }>();
+  private fileRevision = 0;
+  private readonly fileBufferRefs = new Map<AudioBuffer, number>();
+  private readonly filePlayback = new AudioPlaybackTracker(source => this.currentBgm?.source === source,
+    () => { this.fileRevision++; }, buffer => this.retainFileBuffer(buffer), buffer => this.releaseFileBuffer(buffer));
+  private readonly fileListener = [0, 0, 0, 0, 0, -1, 0, 1, 0];
+  private closing?: Promise<void>;
   private readonly assetLoader = new AudioAssetLoader(() => this.audioContext());
   private context?: AudioContext;
   private masterGain?: GainNode;
@@ -101,6 +128,159 @@ export class AudioManager {
   private destroyed = false;
   private readonly pendingLoads = new Map<number, AbortController>();
 
+  constructor() {
+    registerAudioSourceRetainer(this.assetLoader, (buffer, blob, url) => { this.retainedSources.set(buffer, { blob, url }); });
+    registerAudioFileOwner(this, {
+      capture: budget => this.captureFileAudio(budget),
+      prepare: (data, budget) => this.prepareFileAudio(data, budget),
+      revision: () => this.fileRevision,
+    });
+  }
+
+  private async captureFileAudio(budget: ResourceBudget): Promise<ResourceAudioData> {
+    this.assertAlive(); if (this.pendingLoads.size) budget.fail("BUSY", "audio loads");
+    const generation = this.fileRevision, context = this.context, clock = context?.currentTime ?? 0, contextState = context?.state ?? "none";
+    budget.work(this.buffersById.size + this.fileBufferRefs.size + 13); budget.charge("metadataBytes",72);
+    const volumes = [this.volumes.master, this.volumes.bgm, this.volumes.sfx, this.volumes.ui] as const;
+    for (const value of volumes) resourceFinite(value, "audio volume", 0);
+    for (const value of this.fileListener) resourceFinite(value, "audio listener");
+    const groups = new Map<AudioBuffer, number>(), owned: { buffer: AudioBuffer; ids: number[] }[] = [];
+    const group = (buffer: AudioBuffer): number => {
+      let index = groups.get(buffer);
+      if (index === undefined) { index = owned.length; groups.set(buffer, index); owned.push({ buffer, ids: [] }); }
+      return index;
+    };
+    for (const [id, buffer] of this.buffersById) { resourceFinite(id, "sound id"); owned[group(buffer)].ids.push(id); }
+    const voices = this.filePlayback.snapshot(clock, group, budget);
+    budget.charge("resources", owned.length); budget.work(owned.length);
+    // Copy every public mutable PCM buffer at the observed clock before awaits.
+    const records = owned.map(({ buffer, ids }) => {
+      const frames = resourceInteger(buffer.length, "audio frames", 1), count = resourceInteger(buffer.numberOfChannels, "audio channels", 1, 32);
+      const sampleRate = resourceFinite(buffer.sampleRate, "sample rate", 3000, 384000);
+      budget.work(count + ids.length); budget.charge("metadataBytes", ids.length * 8);
+      const channels = [];
+      for (let i = 0; i < count; i++) channels.push(budget.floats(buffer.getChannelData(i), frames));
+      return { buffer, ids: Object.freeze(ids), frames, sampleRate, channels: Object.freeze(channels) };
+    });
+    const entries = [];
+    for (const record of records) {
+      const retained = this.retainedSources.get(record.buffer);
+      const source = retained === undefined ? undefined : await captureResourceSource(retained, budget);
+      entries.push(Object.freeze({ ids: record.ids, generation, sampleRate: record.sampleRate, frames: record.frames,
+        channels: record.channels, ...(source === undefined ? {} : { source }) }));
+    }
+    this.assertAlive(); if (generation !== this.fileRevision || this.pendingLoads.size || context !== this.context) budget.fail("STALE", "audio capture");
+    const assertCurrent=(b:ResourceBudget)=>{this.assertAlive();if(this.fileRevision!==generation||this.pendingLoads.size||this.context!==context)return b.fail("STALE","audio owner cut");
+      for(const record of records){b.work(record.channels.length*record.frames);for(let i=0;i<record.channels.length;i++){const actual=record.buffer.getChannelData(i),saved=record.channels[i];for(let j=0;j<saved.length;j++)if(!Object.is(actual[j],saved[j]))return b.fail("STALE","mutable audio PCM cut");}}
+    };assertCurrent(budget);
+    const data=Object.freeze({ generation, entries: Object.freeze(entries), volumes: Object.freeze(volumes),
+      playback: Object.freeze({ contextCreated: context !== undefined, contextState, voices,
+        listener: Object.freeze([...this.fileListener]) }) });
+    retainResourceCaptureFence(data,assertCurrent);return data;
+  }
+
+  private async prepareFileAudio(input: ResourceAudioData, budget: ResourceBudget): Promise<DetachedAudioResourceOwner> {
+    this.assertAlive();
+    if(this.pendingLoads.size)budget.fail("BUSY","audio target loads");
+    const sourceRevision=this.fileRevision;
+    const data = copyFileAudioData(input, budget);
+    budget.work(data.entries.length); budget.charge("metadataBytes", data.entries.length * 8);
+    const savedOrigin = Object.freeze({ version: 1 as const, generation: data.generation,
+      resourceGenerations: Object.freeze(data.entries.map(entry => entry.generation)) });
+    const next = new AudioManager(), buffers: AudioBuffer[] = [], staged: {
+      readonly data: typeof data.playback.voices[number]; readonly source: AudioBufferSourceNode; readonly gain: GainNode;
+      readonly spatial?: SpatialAudioVoice;
+    }[] = [];
+    let disposed = false, activated = false, transferred = false;
+    try {
+      // Browser allocations are separate from admitted staging PCM/source copies.
+      if (data.playback.contextCreated) budget.charge("resources", 1);
+      for (const entry of data.entries) {
+        budget.charge("decodedBytes", entry.frames * entry.channels.length * 4); budget.work(entry.frames * entry.channels.length);
+        const buffer = next.audioContext().createBuffer(entry.channels.length, entry.frames, entry.sampleRate); buffers.push(buffer);
+        for (let i = 0; i < entry.channels.length; i++) buffer.copyToChannel(entry.channels[i], i);
+        for (const id of entry.ids) { next.buffersById.set(id, buffer); next.retainFileBuffer(buffer); }
+        if (entry.source) next.retainedSources.set(buffer, { url: entry.source.url, blob: fileResourceBlob(entry.source.bytes, entry.source.mime, budget) });
+      }
+      [next.volumes.master, next.volumes.bgm, next.volumes.sfx, next.volumes.ui] = data.volumes;
+      for (let i = 0; i < 9; i++) next.fileListener[i] = data.playback.listener[i];
+      if (data.playback.contextCreated) {
+        const context = next.audioContext();
+        if (context.state === "running") await context.suspend();
+        if (context.state !== "suspended") budget.fail("CAPABILITY", "new suspended audio context");
+        // Default listener is already correct; other commands use the same SDK writer.
+        const defaults = [0,0,0,0,0,-1,0,1,0];
+        if (next.fileListener.some((value, i) => value !== defaults[i])) {
+          const p = next.fileListener; setAudioListenerPose(context,p[0],p[1],p[2],p[3],p[4],p[5],p[6],p[7],p[8]);
+        }
+        if (data.playback.voices.length) {
+          budget.charge("resources", 4); const mixer = next.ensureMixer(context);
+          for (const voiceData of data.playback.voices) {
+            const buffer = buffers[voiceData.buffer]; budget.charge("resources", voiceData.kind === "spatial" && voiceData.spatialized ? 3 : 2);
+            let source: AudioBufferSourceNode, gain: GainNode, spatial: SpatialAudioVoice | undefined;
+            if (voiceData.kind === "spatial") {
+              let createdSource: AudioBufferSourceNode | undefined;
+              spatial = startSpatialAudioVoice(context,buffer,mixer.sfx,voiceData.spatial!,voiceData.nominalVolume,voiceData.nominalPitch,
+                ended => { next.spatialVoices.delete(ended); if(createdSource) next.filePlayback.end(createdSource); },
+                { deferred: true, forceUnspatialized: !voiceData.spatialized });
+              const view = spatialAudioFileView(spatial);
+              if (!view || view.spatialized !== voiceData.spatialized) budget.fail("CAPABILITY", "spatial audio target");
+              source = view!.source; gain = view!.gain; createdSource = source; source.playbackRate.value = voiceData.pitch;
+              next.spatialVoices.set(spatial,voiceData.soundId); observeSpatialAudioFileVoice(spatial,()=>{next.fileRevision++;});
+            } else {
+              source = context.createBufferSource(); gain = context.createGain(); source.buffer = buffer;
+              source.playbackRate.value = voiceData.pitch; source.loop = voiceData.loop;
+              source.connect(gain); gain.connect(voiceData.kind === "bgm" ? mixer.bgm : voiceData.kind === "ui" ? mixer.ui : mixer.sfx);
+            }
+            gain.gain.value = voiceData.gain;
+            const currentSpatial = spatial;
+            next.filePlayback.track({ source,gain,buffer,kind:voiceData.kind,soundId:voiceData.soundId,nominalVolume:voiceData.nominalVolume,nominalPitch:voiceData.nominalPitch,
+              startedAt:context.currentTime,offset:voiceData.cursorSeconds,
+              ...(voiceData.kind !== "spatial" ? {} : { spatial:()=>{
+                const v = currentSpatial && spatialAudioFileView(currentSpatial);
+                return v ?? {options:voiceData.spatial!,spatialized:voiceData.spatialized!,nominalVolume:voiceData.nominalVolume};
+              } }) },voiceData.ended);
+            if (voiceData.currentBgm) next.currentBgm = {soundId:voiceData.soundId,source,gain,loop:voiceData.loop,volume:voiceData.nominalVolume};
+            staged.push({data:voiceData,source,gain,...(spatial === undefined ? {} : {spatial})});
+          }
+        }
+      }
+      next.fileRevision++;
+      const preparedRevision = next.fileRevision;
+      const lease=Object.freeze({owner:next,savedOrigin,runtimeGeneration:()=>next.fileRevision,
+        activate:():ResourceAudioActivation=>{
+          if(disposed||activated||next.destroyed||next.fileRevision!==preparedRevision||next.pendingLoads.size) throw new NativeFileResourceError("STALE","audio activation");
+          let started=0;const context=next.context;
+          try{
+            for(const row of staged){
+              const record=next.filePlayback.get(row.source)!;
+              if(row.data.finishedAtCut){
+                if(row.spatial) row.spatial.stop(); else { next.filePlayback.end(row.source); if(!row.data.currentBgm){row.source.disconnect();row.gain.disconnect();} }
+                continue;
+              }
+              const now=context!.currentTime;record.startedAt=now;record.offset=row.data.cursorSeconds;
+              row.gain.gain.cancelScheduledValues(now);row.gain.gain.setValueAtTime(row.data.gain,now);
+              if(row.data.fadeRemainingSeconds>0) row.gain.gain.linearRampToValueAtTime(row.data.targetGain,now+row.data.fadeRemainingSeconds);
+              if(row.data.kind==="bgm") record.ramp={start:now,end:now+row.data.fadeRemainingSeconds,from:row.data.gain,to:row.data.targetGain};
+              row.source.start(0,row.data.cursorSeconds);started++;
+              if(row.data.stopRemainingSeconds!==null){row.source.stop(now+row.data.stopRemainingSeconds);next.filePlayback.stop(row.source,now+row.data.stopRemainingSeconds);}
+            }
+            activated=true;staged.length=0;if(context&&started) next.resumeIfSuspended(context);
+            return Object.freeze({started,contextState:context?.state??"none",waitingForGesture:started>0&&context?.state!=="running"});
+          }catch(error){disposed=true;staged.length=0;next.destroy();throw new NativeFileResourceError("CAPABILITY","audio activation");}
+        },
+        dispose:async()=>{if(!disposed&&!transferred){disposed=true;staged.length=0;next.destroy();}if(disposed||next.destroyed)await next.closing;}
+      });
+      preparedAudioHandoffs.set(lease,{source:this,next,
+        assertCurrent:()=>{
+          if(disposed||activated||transferred||this.destroyed||this.pendingLoads.size||this.fileRevision!==sourceRevision
+            ||next.destroyed||next.pendingLoads.size||next.fileRevision!==preparedRevision)
+            throw new NativeFileResourceError("STALE","audio handoff lifecycle");
+        },transfer:()=>{transferred=true;}});
+      return lease;
+    } catch(error){disposed=true;staged.length=0;next.destroy();await next.closing;if(error instanceof NativeFileResourceError) throw error;throw new NativeFileResourceError("CAPABILITY","audio resource/graph preparation");}
+  }
+
   async loadSound(soundId: number, url: string, options: { signal?: AbortSignal } = {}): Promise<AudioBuffer> {
     this.assertAlive();
     const scope = createAssetLoadScope(options.signal);
@@ -117,7 +297,13 @@ export class AudioManager {
       const buffer = await this.assetLoader.load(soundId, url, { signal });
       throwIfAssetLoadAborted(signal);
       this.assertAlive();
+      const previousBuffer = this.buffersById.get(soundId);
       this.buffersById.set(soundId, buffer);
+      this.fileRevision++;
+      if (previousBuffer !== buffer) {
+        this.retainFileBuffer(buffer);
+        if (previousBuffer) this.releaseFileBuffer(previousBuffer);
+      }
       return buffer;
     } finally {
       if (this.pendingLoads.get(soundId) === scope.controller) this.pendingLoads.delete(soundId);
@@ -141,13 +327,18 @@ export class AudioManager {
     if (this.currentBgm?.soundId === normalizedSoundId) {
       this.stopBgm();
     }
-    return this.buffersById.delete(normalizedSoundId);
+    const previousBuffer = this.buffersById.get(normalizedSoundId);
+    const deleted = this.buffersById.delete(normalizedSoundId);
+    this.fileRevision++;
+    if (previousBuffer) this.releaseFileBuffer(previousBuffer);
+    return deleted;
   }
 
   setBusVolume(bus: AudioBus, volume: number): void {
     this.assertAlive();
     const gain = Math.max(0, volume);
     this.volumes[bus] = gain;
+    this.fileRevision++;
     const context = this.audioContext();
     const mixer = this.ensureMixer(context);
     const now = context.currentTime;
@@ -210,7 +401,14 @@ export class AudioManager {
     gain.connect(bus === "ui" ? mixer.ui : mixer.sfx);
 
     this.resumeIfSuspended(context);
-    source.start();
+    this.filePlayback.track({ source, gain, buffer, kind: bus, soundId, nominalVolume: Math.max(0, volume), nominalPitch: Math.max(.01,pitch),
+      startedAt: context.currentTime, offset: 0 });
+    try { source.start(); }
+    catch (error) {
+      this.filePlayback.remove(source);
+      for (const node of [source, gain]) { try { node.disconnect(); } catch { /* Creation did not publish a voice. */ } }
+      throw error;
+    }
   }
 
   /** A bounded, explicitly stoppable spatial SFX voice; unavailable PannerNode falls back to SFX. */
@@ -220,8 +418,23 @@ export class AudioManager {
     if (this.spatialVoices.size >= 64) throw new Error("Spatial audio voice limit 64 exceeded.");
     validateSpatialAudioOptions(spatial); audioNumber(volume, "volume", 0, 16); audioNumber(pitch, "pitch", .01, 16);
     const buffer = this.requireBuffer(soundId), context = this.audioContext(), mixer = this.ensureMixer(context);
-    const voice = startSpatialAudioVoice(context, buffer, mixer.sfx, spatial, volume, pitch, v => this.spatialVoices.delete(v));
-    if (voice.active) this.spatialVoices.set(voice, soundId);
+    let source: AudioBufferSourceNode | undefined;
+    const voice = startSpatialAudioVoice(context, buffer, mixer.sfx, spatial, volume, pitch, v => {
+      this.spatialVoices.delete(v); if (source) this.filePlayback.end(source);
+    });
+    if (voice.active) {
+      this.spatialVoices.set(voice, soundId);
+      const view = spatialAudioFileView(voice);
+      if (view) {
+        source = view.source;
+        this.filePlayback.track({ source: view.source, gain: view.gain, buffer, kind: "spatial", soundId, nominalVolume: volume, nominalPitch: pitch,
+          startedAt: view.startedAt, offset: 0, spatial: () => {
+            const current = spatialAudioFileView(voice);
+            return current === undefined ? { options: spatial, spatialized: voice.spatialized, nominalVolume: volume } : current;
+          } });
+        observeSpatialAudioFileVoice(voice, () => { this.fileRevision++; });
+      }
+    }
     this.resumeIfSuspended(context);
     return voice;
   }
@@ -262,7 +475,15 @@ export class AudioManager {
       volume,
     };
     this.resumeIfSuspended(context);
-    source.start();
+    this.filePlayback.track({ source, gain, buffer, kind: "bgm", soundId, nominalVolume: volume, nominalPitch: 1,
+      startedAt: context.currentTime, offset: 0, ramp: { start: now, end: now + fadeInSeconds,
+        from: fadeInSeconds > 0 ? 0 : gain.gain.value, to: Math.fround(volume) } });
+    try { source.start(); }
+    catch (error) {
+      this.filePlayback.end(source);
+      for (const node of [source, gain]) { try { node.disconnect(); } catch { /* Creation did not publish a voice. */ } }
+      throw error;
+    }
   }
 
   stopBgm(options: StopBgmOptions = {}): void {
@@ -275,6 +496,9 @@ export class AudioManager {
     const context = this.audioContext();
     const now = context.currentTime;
     const fadeOutSeconds = resolveFadeSeconds(options.fadeOutSeconds, options.fadeMs);
+    const record = this.filePlayback.get(bgm.source);
+    if (record) record.ramp = { start: now, end: now + fadeOutSeconds, from: Math.fround(bgm.volume), to: 0 };
+    this.filePlayback.stop(bgm.source, now + fadeOutSeconds);
     try {
       bgm.gain.gain.cancelScheduledValues(now);
       if (fadeOutSeconds > 0) {
@@ -294,6 +518,7 @@ export class AudioManager {
     this.assertAlive();
     audioNumber(x, "listener.x"); audioNumber(y, "listener.y"); audioNumber(z, "listener.z");
     setAudioListenerPosition(this.audioContext(), x, y, z);
+    this.fileListener[0] = x; this.fileListener[1] = y; this.fileListener[2] = z; this.fileRevision++;
   }
 
   /** Forward defaults -Z, up defaults +Y, matching Web Audio's default listener. */
@@ -301,6 +526,9 @@ export class AudioManager {
     this.assertAlive();
     validateAudioListenerPose(x, y, z, fx, fy, fz, ux, uy, uz);
     setAudioListenerPose(this.audioContext(), x, y, z, fx, fy, fz, ux, uy, uz);
+    this.fileListener[0] = x; this.fileListener[1] = y; this.fileListener[2] = z;
+    this.fileListener[3] = fx; this.fileListener[4] = fy; this.fileListener[5] = fz;
+    this.fileListener[6] = ux; this.fileListener[7] = uy; this.fileListener[8] = uz; this.fileRevision++;
   }
 
   playEvents(events: readonly AudioEventView[]): void {
@@ -368,10 +596,24 @@ export class AudioManager {
     this.sfxGain = undefined;
     this.uiGain = undefined;
     this.currentBgm = undefined;
+    this.filePlayback.clear();
+    for (const buffer of this.buffersById.values()) this.releaseFileBuffer(buffer);
     this.buffersById.clear();
+    this.fileBufferRefs.clear();
+    this.retainedSources = new WeakMap();
+    this.fileRevision++;
     if (context && context.state !== "closed") {
-      void context.close().catch(() => undefined);
+      this.closing = context.close().catch(() => undefined);
     }
+  }
+
+  private retainFileBuffer(buffer: AudioBuffer): void {
+    this.fileBufferRefs.set(buffer, (this.fileBufferRefs.get(buffer) ?? 0) + 1);
+  }
+  private releaseFileBuffer(buffer: AudioBuffer): void {
+    const next = (this.fileBufferRefs.get(buffer) ?? 1) - 1;
+    if (next > 0) this.fileBufferRefs.set(buffer, next);
+    else { this.fileBufferRefs.delete(buffer); this.retainedSources.delete(buffer); }
   }
 
   private requireBuffer(soundId: number): AudioBuffer {

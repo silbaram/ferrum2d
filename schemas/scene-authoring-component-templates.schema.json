@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferrum2d.dev/schemas/scene-authoring-component-templates.schema.json",
+  "title": "Ferrum2D scene-authoring componentTemplates map",
+  "$comment": "Validates the optional scene-authoring root componentTemplates field, not the full document. Nested visual/collider/body semantics and finite f32 limits use resolveSceneAuthoringDocument/resolveDataSceneComponentsSpec. Explicit SDK catalogs override local names; template references are forbidden in local entries.",
+  "type": "object",
+  "propertyNames": {
+    "type": "string",
+    "minLength": 1,
+    "pattern": "\\S"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/inline"
+  },
+  "$defs": {
+    "inline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collider",
+        "layer"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "visual"
+          ]
+        },
+        {
+          "required": [
+            "sprite"
+          ]
+        }
+      ],
+      "properties": {
+        "visual": {
+          "type": "object"
+        },
+        "sprite": {
+          "type": "object"
+        },
+        "collider": {
+          "oneOf": [
+            {
+              "const": "none"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "layer": {
+          "oneOf": [
+            {
+              "enum": [
+                "player",
+                "enemy",
+                "bullet",
+                "wall",
+                "pickup"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4
+            }
+          ]
+        },
+        "body": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

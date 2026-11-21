@@ -12,7 +12,7 @@ const DEFAULT_PARTICLE_CAPACITY: usize = 512;
 const DEFAULT_PARTICLE_SEED: u32 = 0xA341_316C;
 const PARTICLE_EPSILON: f32 = 0.0001;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParticleRange {
     pub min: f32,
     pub max: f32,
@@ -49,7 +49,7 @@ impl ParticleRange {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParticlePreset {
     pub texture_id: u32,
     pub frame: SpriteFrame,
@@ -58,7 +58,9 @@ pub struct ParticlePreset {
     pub speed: ParticleRange,
     pub start_size: ParticleRange,
     pub end_size: ParticleRange,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub start_color: [f32; 4],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub end_color: [f32; 4],
     pub acceleration_x: f32,
     pub acceleration_y: f32,
@@ -84,7 +86,7 @@ impl ParticlePreset {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Particle {
     pub x: f32,
     pub y: f32,
@@ -94,7 +96,9 @@ pub struct Particle {
     pub lifetime_seconds: f32,
     pub start_size: f32,
     pub end_size: f32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub start_color: [f32; 4],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub end_color: [f32; 4],
     pub texture_id: u32,
     pub frame: SpriteFrame,
@@ -439,7 +443,7 @@ fn particle_intersects_viewport(
         .is_some_and(|bounds| bounds.overlaps(visible_bounds))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ParticleRng {
     state: u32,
 }
@@ -623,3 +627,18 @@ mod tests {
         assert_eq!(particles.particle_count(), 0);
     }
 }
+
+/// Private storage schema; live public storage does not implement Deserialize.
+pub(crate) mod checkpoint_state {
+    use super::*;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(remote = "ParticleSystem")]
+    pub(crate) struct State {
+        #[serde(with = "crate::checkpoint_codec::vector")]
+        particles: Vec<Particle>,
+        capacity: usize,
+        rng: ParticleRng,
+    }
+}
+
+mod file_admission;

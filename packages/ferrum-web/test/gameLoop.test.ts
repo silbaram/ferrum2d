@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { GameLoop } from "../src/gameLoop.js";
 
@@ -86,6 +86,35 @@ test("GameLoop clamps large frame deltas", () => {
     loop.stop();
     raf.restore();
   }
+});
+
+test("GameLoop propagates frame failure, cancels a restarted RAF and permits a fresh start", () => {
+  const raf = installAnimationFrameMock();
+  const failure = new Error("native actual motion rejected");
+  let failed = false;
+  let frames = 0;
+  const loop = new GameLoop(() => {
+    frames++;
+    if (!failed) {
+      failed = true;
+      loop.stop();
+      loop.start();
+      throw failure;
+    }
+  });
+  try {
+    loop.start(); raf.fire(0);
+    throws(() => raf.fire(16), error => error === failure);
+    equal(loop.isRunning(), false);
+    equal(raf.pendingCount(), 0);
+    loop.start(); raf.fire(1000);
+    equal(frames, 1);
+    raf.fire(1016);
+    equal(frames, 2);
+    equal(raf.pendingCount(), 1);
+    loop.stop();
+    equal(raf.pendingCount(), 0);
+  } finally { loop.stop(); raf.restore(); }
 });
 
 

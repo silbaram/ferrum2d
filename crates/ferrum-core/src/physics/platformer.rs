@@ -386,7 +386,7 @@ impl PlatformerControllerConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlatformerControllerState {
     pub coyote_time_remaining: f32,
     pub jump_buffer_remaining: f32,

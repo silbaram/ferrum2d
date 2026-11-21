@@ -24,7 +24,7 @@ fn spawned_actor_checkpoint_preserves_timed_pingpong_phase_and_completion() {
         (actor, prototype, handles)
     }
     for finished in [false, true] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         let (_, prototype, handles) = extended_scene(&mut e, 10);
         e.world.despawn(prototype);
         click(&mut e, true, 0.017);
@@ -172,7 +172,7 @@ fn scene(
 
 #[test]
 fn spawned_checkpoint_keeps_dead_projectile_source_when_its_slot_is_reused_then_recaptures() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (_, prototype, handles) = scene(&mut e, 10, false, false);
     e.world.despawn(prototype);
     click(&mut e, true, 0.001);
@@ -223,7 +223,7 @@ fn spawned_checkpoint_keeps_dead_projectile_source_when_its_slot_is_reused_then_
 
 #[test]
 fn spawned_checkpoint_restores_independent_atlas_legacy_health_and_compound_flags() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (_, prototype, handles) = scene(&mut e, 10, true, true);
     e.world.despawn(prototype);
     click(&mut e, true, 0.017);
@@ -277,7 +277,7 @@ fn spawned_checkpoint_restores_independent_atlas_legacy_health_and_compound_flag
 
 #[test]
 fn spawned_checkpoint_invalid_states_and_definition_edits_are_atomic() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (_, prototype, handles) = scene(&mut e, 10, true, true);
     e.world.despawn(prototype);
     click(&mut e, true, 0.017);

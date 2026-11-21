@@ -40,7 +40,7 @@ fn handles(a: Entity, b: Entity) -> [u32; 4] {
 
 #[test]
 fn spatial_source_revision_covers_native_binding_and_actor_configuration_but_not_camera() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut e);
     let revision = e.spatial_terrain_revision();
     assert!(e.configure_spatial_camera(&[
@@ -57,7 +57,7 @@ fn spatial_source_revision_covers_native_binding_and_actor_configuration_but_not
 
 #[test]
 fn spatial_progress_restores_native_pose_camera_and_animation_without_copying_source_viewport() {
-    let mut source = Engine::new();
+    let mut source = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut source);
     assert!(source.move_spatial_body(a.id, a.generation, 64., 0., 16., 32.));
     assert!(source.set_physics_body_height_span(a.id, a.generation, 0, 32., 10.));
@@ -74,7 +74,7 @@ fn spatial_progress_restores_native_pose_camera_and_animation_without_copying_so
     let animation = source.capture_data_scene_animation_progress(epoch, &h);
     let saved = source.capture_data_scene_spatial_progress(epoch, &h);
     assert_eq!(&saved[13..21], &[1., 80., 16., 1., 0., 32., 10., 3.]);
-    let mut dest = Engine::new();
+    let mut dest = crate::engine::legacy_test_fixture::engine();
     dest.use_data_scene();
     sprite(&mut dest, 90, 0., 0., 0);
     let (fresh_a, fresh_b) = scene(&mut dest);
@@ -113,7 +113,7 @@ fn spatial_progress_restores_native_pose_camera_and_animation_without_copying_so
 
 #[test]
 fn malformed_spatial_progress_never_partially_changes_pose_camera_flags_or_playback() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut e);
     let h = handles(a, b);
     let epoch = e.data_scene_epoch();
@@ -161,7 +161,7 @@ fn malformed_spatial_progress_never_partially_changes_pose_camera_flags_or_playb
 
 #[test]
 fn spatial_preflight_checks_surface_links_and_camera_without_mutating_a_live_engine() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut e);
     let h = handles(a, b);
     let original = e.capture_data_scene_spatial_progress(e.data_scene_epoch(), &h);
@@ -185,7 +185,7 @@ fn spatial_preflight_checks_surface_links_and_camera_without_mutating_a_live_eng
 
 #[test]
 fn removed_billboards_and_explicitly_disabled_spatial_mode_restore_cleanly() {
-    let mut source = Engine::new();
+    let mut source = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut source);
     let h = handles(a, b);
     let epoch = source.data_scene_epoch();
@@ -193,7 +193,7 @@ fn removed_billboards_and_explicitly_disabled_spatial_mode_restore_cleanly() {
     let states = source.capture_data_scene_progress(epoch, &h);
     let saved = source.capture_data_scene_spatial_progress(epoch, &h);
     assert_eq!(&saved[21..29], &[0.; 8]);
-    let mut dest = Engine::new();
+    let mut dest = crate::engine::legacy_test_fixture::engine();
     let (fresh_a, fresh_b) = scene(&mut dest);
     assert!(dest.restore_data_scene_progress_with_spatial(
         dest.data_scene_epoch(),
@@ -221,7 +221,7 @@ fn removed_billboards_and_explicitly_disabled_spatial_mode_restore_cleanly() {
 
 #[test]
 fn moving_platform_checkpoint_restores_surface_phase_and_nonvisual_rider_atomically() {
-    let mut source = Engine::new();
+    let mut source = crate::engine::legacy_test_fixture::engine();
     let (a, b) = scene(&mut source);
     assert!(source.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
     source.spatial_scene.bindings.remove(&(b.id, b.generation));
@@ -234,7 +234,7 @@ fn moving_platform_checkpoint_restores_surface_phase_and_nonvisual_rider_atomica
     let mut saved = source.capture_data_scene_spatial_progress(epoch, &hs);
     assert_eq!(saved[21], 1., "nonvisual kinematic rider must have a pose");
     saved.extend(source.capture_spatial_moving_platforms());
-    let mut dest = Engine::new();
+    let mut dest = crate::engine::legacy_test_fixture::engine();
     let (c, d) = scene(&mut dest);
     assert!(dest.configure_spatial_moving_platforms(&[2., 1., 0., 0., 8., 1., 0., 0.]));
     dest.spatial_scene.bindings.remove(&(d.id, d.generation));
@@ -273,7 +273,7 @@ fn moving_platform_checkpoint_preserves_half_open_support_edges() {
         terrain[axis] = 32.;
         let metadata = [1, 0, 16777215, 1, 2, 0, 16777215, 1, 3, 0, 16777215, 1];
         let platform = [2., 3., 0., 0., 8., 1., 0., 0.];
-        let mut source = Engine::new();
+        let mut source = crate::engine::legacy_test_fixture::engine();
         let (a, b) = scene(&mut source);
         assert!(source.configure_spatial_terrain(&terrain, &metadata));
         assert!(source.configure_spatial_moving_platforms(&platform));
@@ -296,7 +296,7 @@ fn moving_platform_checkpoint_preserves_half_open_support_edges() {
         assert_eq!(saved[20], 1., "the lower edge belongs to the first surface");
         saved.extend(source.capture_spatial_moving_platforms());
 
-        let mut dest = Engine::new();
+        let mut dest = crate::engine::legacy_test_fixture::engine();
         let (c, d) = scene(&mut dest);
         assert!(dest.configure_spatial_terrain(&terrain, &metadata));
         assert!(dest.configure_spatial_moving_platforms(&platform));

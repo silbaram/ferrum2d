@@ -5,7 +5,7 @@ use crate::world::World;
 use super::super::{EnemyBehavior, EnemySpawnPattern, ShooterScene, ShooterWaveConfig};
 use super::{ActionTriggerCommand, GameplayEventSink};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(in crate::shooter_scene) struct WaveActionTrigger {
     pub(in crate::shooter_scene) source: Entity,
     pub(in crate::shooter_scene) action_id: u32,

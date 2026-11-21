@@ -5,7 +5,7 @@ use crate::entity::Entity;
 use crate::physics::{PhysicsCounters, PhysicsSystem};
 use crate::world::World;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(super) struct SurfaceConnection {
     pub(super) from: usize,
     pub(super) to: usize,
@@ -270,6 +270,87 @@ impl SpatialScene {
             }
         }
         ConnectionMove::Moved
+    }
+}
+
+impl SpatialScene {
+    pub(super) fn validate_file_connections(
+        &self,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{require, Field, Problem};
+        b.work(self.connections.len())?;
+        require(
+            self.connections.len() <= 512 && self.connections.len().is_multiple_of(2),
+            Field::Connection,
+            0,
+            Problem::Length,
+        )?;
+        for (i, c) in self.connections.iter().enumerate() {
+            require(
+                c.from < self.surfaces.len()
+                    && c.to < self.surfaces.len()
+                    && c.from != c.to
+                    && c.axis < 2,
+                Field::Connection,
+                i,
+                Problem::Reference,
+            )?;
+            let a = self.surfaces[c.from];
+            let other = self.surfaces[c.to];
+            require(
+                a.walkable && other.walkable && a.floor != other.floor,
+                Field::Connection,
+                i,
+                Problem::Reference,
+            )?;
+            require(
+                shared_edge(a, other).is_some_and(|(axis, boundary, lower, upper)| {
+                    axis == c.axis
+                        && super::file_admission::bits(
+                            &[boundary, lower, upper],
+                            &[c.boundary, c.lower, c.upper],
+                        )
+                }),
+                Field::Connection,
+                i,
+                Problem::Cache,
+            )?;
+            let reverse = &self.connections[i ^ 1];
+            require(
+                c.from == reverse.to
+                    && c.to == reverse.from
+                    && c.axis == reverse.axis
+                    && super::file_admission::bits(
+                        &[c.boundary, c.lower, c.upper],
+                        &[reverse.boundary, reverse.lower, reverse.upper],
+                    ),
+                Field::Connection,
+                i,
+                Problem::Reference,
+            )?;
+        }
+        b.product(self.connections.len(), self.connections.len())?;
+        for (i, c) in self.connections.iter().enumerate() {
+            for previous in &self.connections[..i] {
+                require(
+                    c.from != previous.from || c.to != previous.to,
+                    Field::Connection,
+                    i,
+                    Problem::Duplicate,
+                )?;
+                require(
+                    c.from != previous.from
+                        || c.axis != previous.axis
+                        || c.boundary != previous.boundary
+                        || c.lower.max(previous.lower) >= c.upper.min(previous.upper),
+                    Field::Connection,
+                    i,
+                    Problem::Range,
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 

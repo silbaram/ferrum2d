@@ -489,7 +489,7 @@ fn bitmap_world_text_uses_cached_sprite_commands_camera_transform_and_entity_anc
 
 #[test]
 fn bitmap_world_text_interpolates_display_without_changing_native_queries() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     engine.camera.x = 100.;
     engine.camera.y = 100.;

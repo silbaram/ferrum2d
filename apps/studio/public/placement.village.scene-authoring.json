@@ -1,6 +1,16 @@
 {
   "format": "ferrum2d.consumer.scene-authoring",
   "version": 1,
+  "physics": {
+    "space": "spatial",
+    "gravity": [
+      0,
+      -128,
+      0
+    ],
+    "lengthUnit": 1,
+    "stepSeconds": 0.03125
+  },
   "behaviorRecipes": {
     "entities": {}
   },
@@ -31,10 +41,86 @@
                   "height": 440,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
-                "layer": "wall"
+                "collider": "none",
+                "layer": "wall",
+                "body": {
+                  "kind": "fixed",
+                  "collider": {
+                    "shape": {
+                      "type": "compound",
+                      "parts": [
+                        {
+                          "pose": {
+                            "position": [
+                              170.25,
+                              8,
+                              125.5
+                            ]
+                          },
+                          "shape": {
+                            "type": "box",
+                            "halfExtents": [
+                              0.25,
+                              8,
+                              94.5
+                            ]
+                          }
+                        },
+                        {
+                          "pose": {
+                            "position": [
+                              170.25,
+                              8,
+                              -113.5
+                            ]
+                          },
+                          "shape": {
+                            "type": "box",
+                            "halfExtents": [
+                              0.25,
+                              8,
+                              106.5
+                            ]
+                          }
+                        },
+                        {
+                          "pose": {
+                            "position": [
+                              209.75,
+                              8,
+                              125.5
+                            ]
+                          },
+                          "shape": {
+                            "type": "box",
+                            "halfExtents": [
+                              0.25,
+                              8,
+                              94.5
+                            ]
+                          }
+                        },
+                        {
+                          "pose": {
+                            "position": [
+                              209.75,
+                              8,
+                              -113.5
+                            ]
+                          },
+                          "shape": {
+                            "type": "box",
+                            "halfExtents": [
+                              0.25,
+                              8,
+                              106.5
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
               }
             }
           },
@@ -52,19 +138,27 @@
                   "height": 78,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 46.0,
-                  "halfHeight": 35.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 112
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        46.0,
+                        56.0,
+                        35.0
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        56.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -84,19 +178,27 @@
                   "height": 88,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 42.0,
-                  "halfHeight": 40.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 92
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        42.0,
+                        46.0,
+                        40.0
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        46.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -116,19 +218,27 @@
                   "height": 64,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 36.0,
-                  "halfHeight": 28.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 84
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        36.0,
+                        42.0,
+                        28.0
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        42.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -148,19 +258,27 @@
                   "height": 64,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 36.0,
-                  "halfHeight": 28.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 84
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        36.0,
+                        42.0,
+                        28.0
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        42.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -180,19 +298,27 @@
                   "height": 46,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 19.0,
-                  "halfHeight": 19.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 130
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        19.0,
+                        65.0,
+                        19.0
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        65.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -212,18 +338,344 @@
                   "height": 48,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "circle",
-                  "radius": 20.0,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 61
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "convexHull",
+                      "points": [
+                        [
+                          20.0,
+                          -30.5,
+                          1.969828
+                        ],
+                        [
+                          19.231411,
+                          -30.5,
+                          5.833785
+                        ],
+                        [
+                          17.72377,
+                          -30.5,
+                          9.473552
+                        ],
+                        [
+                          15.535014,
+                          -30.5,
+                          12.749257
+                        ],
+                        [
+                          12.749257,
+                          -30.5,
+                          15.535014
+                        ],
+                        [
+                          9.473552,
+                          -30.5,
+                          17.72377
+                        ],
+                        [
+                          5.833785,
+                          -30.5,
+                          19.231411
+                        ],
+                        [
+                          1.969828,
+                          -30.5,
+                          20.0
+                        ],
+                        [
+                          -1.969828,
+                          -30.5,
+                          20.0
+                        ],
+                        [
+                          -5.833785,
+                          -30.5,
+                          19.231411
+                        ],
+                        [
+                          -9.473552,
+                          -30.5,
+                          17.72377
+                        ],
+                        [
+                          -12.749257,
+                          -30.5,
+                          15.535014
+                        ],
+                        [
+                          -15.535014,
+                          -30.5,
+                          12.749257
+                        ],
+                        [
+                          -17.72377,
+                          -30.5,
+                          9.473552
+                        ],
+                        [
+                          -19.231411,
+                          -30.5,
+                          5.833785
+                        ],
+                        [
+                          -20.0,
+                          -30.5,
+                          1.969828
+                        ],
+                        [
+                          -20.0,
+                          -30.5,
+                          -1.969828
+                        ],
+                        [
+                          -19.231411,
+                          -30.5,
+                          -5.833785
+                        ],
+                        [
+                          -17.72377,
+                          -30.5,
+                          -9.473552
+                        ],
+                        [
+                          -15.535014,
+                          -30.5,
+                          -12.749257
+                        ],
+                        [
+                          -12.749257,
+                          -30.5,
+                          -15.535014
+                        ],
+                        [
+                          -9.473552,
+                          -30.5,
+                          -17.72377
+                        ],
+                        [
+                          -5.833785,
+                          -30.5,
+                          -19.231411
+                        ],
+                        [
+                          -1.969828,
+                          -30.5,
+                          -20.0
+                        ],
+                        [
+                          1.969828,
+                          -30.5,
+                          -20.0
+                        ],
+                        [
+                          5.833785,
+                          -30.5,
+                          -19.231411
+                        ],
+                        [
+                          9.473552,
+                          -30.5,
+                          -17.72377
+                        ],
+                        [
+                          12.749257,
+                          -30.5,
+                          -15.535014
+                        ],
+                        [
+                          15.535014,
+                          -30.5,
+                          -12.749257
+                        ],
+                        [
+                          17.72377,
+                          -30.5,
+                          -9.473552
+                        ],
+                        [
+                          19.231411,
+                          -30.5,
+                          -5.833785
+                        ],
+                        [
+                          20.0,
+                          -30.5,
+                          -1.969828
+                        ],
+                        [
+                          20.0,
+                          30.5,
+                          1.969828
+                        ],
+                        [
+                          19.231411,
+                          30.5,
+                          5.833785
+                        ],
+                        [
+                          17.72377,
+                          30.5,
+                          9.473552
+                        ],
+                        [
+                          15.535014,
+                          30.5,
+                          12.749257
+                        ],
+                        [
+                          12.749257,
+                          30.5,
+                          15.535014
+                        ],
+                        [
+                          9.473552,
+                          30.5,
+                          17.72377
+                        ],
+                        [
+                          5.833785,
+                          30.5,
+                          19.231411
+                        ],
+                        [
+                          1.969828,
+                          30.5,
+                          20.0
+                        ],
+                        [
+                          -1.969828,
+                          30.5,
+                          20.0
+                        ],
+                        [
+                          -5.833785,
+                          30.5,
+                          19.231411
+                        ],
+                        [
+                          -9.473552,
+                          30.5,
+                          17.72377
+                        ],
+                        [
+                          -12.749257,
+                          30.5,
+                          15.535014
+                        ],
+                        [
+                          -15.535014,
+                          30.5,
+                          12.749257
+                        ],
+                        [
+                          -17.72377,
+                          30.5,
+                          9.473552
+                        ],
+                        [
+                          -19.231411,
+                          30.5,
+                          5.833785
+                        ],
+                        [
+                          -20.0,
+                          30.5,
+                          1.969828
+                        ],
+                        [
+                          -20.0,
+                          30.5,
+                          -1.969828
+                        ],
+                        [
+                          -19.231411,
+                          30.5,
+                          -5.833785
+                        ],
+                        [
+                          -17.72377,
+                          30.5,
+                          -9.473552
+                        ],
+                        [
+                          -15.535014,
+                          30.5,
+                          -12.749257
+                        ],
+                        [
+                          -12.749257,
+                          30.5,
+                          -15.535014
+                        ],
+                        [
+                          -9.473552,
+                          30.5,
+                          -17.72377
+                        ],
+                        [
+                          -5.833785,
+                          30.5,
+                          -19.231411
+                        ],
+                        [
+                          -1.969828,
+                          30.5,
+                          -20.0
+                        ],
+                        [
+                          1.969828,
+                          30.5,
+                          -20.0
+                        ],
+                        [
+                          5.833785,
+                          30.5,
+                          -19.231411
+                        ],
+                        [
+                          9.473552,
+                          30.5,
+                          -17.72377
+                        ],
+                        [
+                          12.749257,
+                          30.5,
+                          -15.535014
+                        ],
+                        [
+                          15.535014,
+                          30.5,
+                          -12.749257
+                        ],
+                        [
+                          17.72377,
+                          30.5,
+                          -9.473552
+                        ],
+                        [
+                          19.231411,
+                          30.5,
+                          -5.833785
+                        ],
+                        [
+                          20.0,
+                          30.5,
+                          -1.969828
+                        ]
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        30.5,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -243,9 +695,7 @@
                   "height": 42,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -264,9 +714,7 @@
                   "height": 64,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -285,19 +733,27 @@
                   "height": 45,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -317,19 +773,27 @@
                   "height": 40.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -349,19 +813,27 @@
                   "height": 45,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -381,19 +853,27 @@
                   "height": 51.74999999999999,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -413,19 +893,27 @@
                   "height": 38.25,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 24,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 24,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -445,19 +933,27 @@
                   "height": 42.75,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -477,19 +973,27 @@
                   "height": 45,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -509,19 +1013,27 @@
                   "height": 49.50000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -541,19 +1053,27 @@
                   "height": 40.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -573,19 +1093,27 @@
                   "height": 45,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -605,19 +1133,27 @@
                   "height": 49.50000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -637,19 +1173,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -669,19 +1213,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -701,19 +1253,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -733,19 +1293,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -765,19 +1333,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -797,19 +1373,27 @@
                   "height": 42.5,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 4,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 24
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        12.0,
+                        4
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        12.0,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -829,9 +1413,7 @@
                   "height": 9.600000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -850,9 +1432,7 @@
                   "height": 9.600000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -871,9 +1451,7 @@
                   "height": 9.600000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -892,9 +1470,7 @@
                   "height": 9.600000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -913,9 +1489,7 @@
                   "height": 9.600000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -934,9 +1508,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -955,9 +1527,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -976,9 +1546,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -997,9 +1565,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1018,9 +1584,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1039,9 +1603,7 @@
                   "height": 4.800000000000001,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1060,9 +1622,7 @@
                   "height": 24,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1081,9 +1641,7 @@
                   "height": 24,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1102,9 +1660,7 @@
                   "height": 24,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1123,9 +1679,7 @@
                   "height": 24,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "none"
-                },
+                "collider": "none",
                 "layer": "wall"
               }
             }
@@ -1144,19 +1698,27 @@
                   "height": 44.199999999999996,
                   "color": "#9b8b6b"
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 12.149999999999999,
-                  "halfHeight": 18.099999999999998,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 27.2
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        12.149999999999999,
+                        13.6,
+                        18.099999999999998
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        13.6,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -1358,19 +1920,25 @@
                     "initialClip": 1
                   }
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 3,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "player",
                 "body": {
-                  "type": "kinematic",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 21
+                  "kind": "kinematic-position",
+                  "elevation": 0.75,
+                  "renderOffset": [
+                    0,
+                    -10.5,
+                    0
+                  ],
+                  "collider": {
+                    "shape": {
+                      "type": "capsule",
+                      "halfHeight": 6.5,
+                      "radius": 4
+                    }
+                  },
+                  "character": {
+                    "skinWidth": 0.75
                   }
                 }
               }
@@ -1391,19 +1959,27 @@
                   "originX": 0.5,
                   "originY": 1
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 3,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 21
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        10.5,
+                        3
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        10.5,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -1424,19 +2000,27 @@
                   "originX": 0.5,
                   "originY": 1
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 3,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 21
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        10.5,
+                        3
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        10.5,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -1457,19 +2041,27 @@
                   "originX": 0.5,
                   "originY": 1
                 },
-                "collider": {
-                  "type": "aabb",
-                  "halfWidth": 4,
-                  "halfHeight": 3,
-                  "isTrigger": false
-                },
+                "collider": "none",
                 "layer": "wall",
                 "body": {
-                  "type": "static",
-                  "heightSpan": {
-                    "floorId": 0,
-                    "elevation": 0,
-                    "height": 21
+                  "kind": "fixed",
+                  "elevation": 0,
+                  "collider": {
+                    "shape": {
+                      "type": "box",
+                      "halfExtents": [
+                        4,
+                        10.5,
+                        3
+                      ]
+                    },
+                    "pose": {
+                      "position": [
+                        0,
+                        10.5,
+                        0
+                      ]
+                    }
                   }
                 }
               }
@@ -1504,7 +2096,8 @@
         "width": 490,
         "depth": 374,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "south_west_bank",
@@ -1513,7 +2106,8 @@
         "width": 140,
         "depth": 66,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "south_east_bank",
@@ -1522,7 +2116,8 @@
         "width": 186,
         "depth": 66,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "south_edge_bank",
@@ -1531,7 +2126,8 @@
         "width": 164,
         "depth": 2,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "garden_north_edge",
@@ -1540,7 +2136,8 @@
         "width": 64,
         "depth": 8,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "garden_south_edge",
@@ -1549,7 +2146,8 @@
         "width": 64,
         "depth": 8,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "east_bank",
@@ -1558,7 +2156,8 @@
         "width": 110,
         "depth": 440,
         "elevation": 0,
-        "render": false
+        "render": false,
+        "baseElevation": -2
       },
       {
         "id": "bridge_deck",
@@ -1873,7 +2472,34 @@
       "maxStepHeight": 4,
       "maxDropHeight": 4
     },
+    "lightBindings": {
+      "lantern_0": [
+        0
+      ],
+      "lantern_1": [
+        1
+      ],
+      "lantern_2": [
+        2
+      ],
+      "lantern_3": [
+        3
+      ],
+      "lantern_4": [
+        4
+      ]
+    },
     "environment": {
+      "bloom": {
+        "strength": 0.35,
+        "radius": 8,
+        "threshold": 1
+      },
+      "ambientOcclusion": {
+        "strength": 0.5,
+        "radius": 16,
+        "bias": 0.3
+      },
       "pixelArt": {
         "width": 384,
         "height": 256,
@@ -1885,6 +2511,7 @@
           0.32,
           0.34
         ],
+        "maxActiveLights": 4,
         "lights": [
           {
             "position": {
@@ -1957,6 +2584,19 @@
             "intensity": 2.8
           }
         ],
+        "hemisphere": {
+          "skyColor": [
+            0.68,
+            0.8,
+            1
+          ],
+          "groundColor": [
+            0.4,
+            0.28,
+            0.16
+          ],
+          "intensity": 0.38
+        },
         "directional": {
           "direction": {
             "x": -1,
@@ -1977,21 +2617,7 @@
             "normalBias": 0.35
           }
         },
-        "shadowFilter": "pcf3",
-        "hemisphere": {
-          "skyColor": [
-            0.68,
-            0.8,
-            1
-          ],
-          "groundColor": [
-            0.4,
-            0.28,
-            0.16
-          ],
-          "intensity": 0.38
-        },
-        "maxActiveLights": 4
+        "shadowFilter": "pcf3"
       },
       "colorGrading": {
         "exposure": 0.1,
@@ -2003,34 +2629,7 @@
           0.93
         ],
         "toneMapping": "none"
-      },
-      "bloom": {
-        "strength": 0.35,
-        "radius": 8,
-        "threshold": 1
-      },
-      "ambientOcclusion": {
-        "strength": 0.5,
-        "radius": 16,
-        "bias": 0.3
       }
-    },
-    "lightBindings": {
-      "lantern_0": [
-        0
-      ],
-      "lantern_1": [
-        1
-      ],
-      "lantern_2": [
-        2
-      ],
-      "lantern_3": [
-        3
-      ],
-      "lantern_4": [
-        4
-      ]
     }
   }
 }

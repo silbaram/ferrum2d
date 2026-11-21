@@ -1,4 +1,5 @@
 use super::scenes::SceneMode;
+use super::unified_physics::UnifiedPhysicsRuntime;
 use super::Engine;
 use crate::collision::{collider_bounds, collider_segment_count_at, collider_shape_at_segment};
 use crate::entity::Entity;
@@ -7,17 +8,22 @@ use crate::world::World;
 use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
-#[derive(Default)]
+mod file_admission;
+
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct NavigationObstacles {
     columns: u32,
     rows: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     base_costs: Vec<u32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     blockers: Vec<u32>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     bindings: Vec<NavigationObstacle>,
     geometry: GridGeometry,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 struct GridGeometry {
     columns: u32,
     rows: u32,
@@ -27,7 +33,7 @@ struct GridGeometry {
     origin_y: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CellRectangle {
     first_column: u32,
     last_column: u32,
@@ -35,8 +41,10 @@ struct CellRectangle {
     last_row: u32,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct NavigationObstacle {
     entity: Entity,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     cells: Vec<usize>,
     active: bool,
     automatic: bool,
@@ -45,19 +53,22 @@ struct NavigationObstacle {
 
 impl NavigationObstacles {
     // Check only explicitly bound handles. No per-frame allocation or world scan.
-    pub(super) fn synchronize(&mut self, world: &World, grid: &mut Tilemap) -> bool {
+    pub(super) fn synchronize(
+        &mut self,
+        world: &World,
+        grid: &mut Tilemap,
+        mut native: Option<&mut UnifiedPhysicsRuntime>,
+    ) -> bool {
         let mut changed = false;
         for binding in &mut self.bindings {
-            let active = world.is_current_entity(binding.entity)
-                && world.compound_collider_count(binding.entity) == 1
-                && world
-                    .rigid_body(binding.entity)
-                    .is_none_or(|body| body.enabled)
-                && world
-                    .compound_collider_ref_at(binding.entity.id as usize, 0)
-                    .is_some_and(|collider| collider.enabled() && !collider.is_trigger());
-            let rectangle = if active && binding.automatic {
-                collider_rectangle(world, binding.entity, self.geometry)
+            let (active, bounds) = obstacle_geometry(
+                world,
+                binding.entity,
+                native.as_deref_mut(),
+                binding.automatic,
+            );
+            let rectangle = if binding.automatic {
+                bounds.and_then(|bounds| bounds_rectangle(bounds, self.geometry))
             } else {
                 None
             };
@@ -115,10 +126,11 @@ impl NavigationObstacles {
 impl Engine {
     pub(super) fn synchronize_data_scene_navigation(&mut self) {
         if self.scene_mode == SceneMode::Data
-            && self
-                .data_scene
-                .navigation_obstacles
-                .synchronize(&self.world, &mut self.data_scene.navigation)
+            && self.data_scene.navigation_obstacles.synchronize(
+                &self.world,
+                &mut self.data_scene.navigation,
+                self.unified_physics.as_mut(),
+            )
         {
             self.data_scene.movement.invalidate_route();
             self.frame_buffers.clear_tilemap_navigation_output();
@@ -230,8 +242,13 @@ impl Engine {
         {
             return false;
         }
-        let Some(bindings) = resolve_obstacles(&self.world, state.columns, state.rows, values)
-        else {
+        let Some(bindings) = resolve_obstacles(
+            &self.world,
+            self.unified_physics.as_ref(),
+            state.columns,
+            state.rows,
+            values,
+        ) else {
             return false;
         };
         let state = &mut self.data_scene.navigation_obstacles;
@@ -255,7 +272,11 @@ impl Engine {
             }
         }
         state.bindings = bindings;
-        state.synchronize(&self.world, &mut self.data_scene.navigation);
+        state.synchronize(
+            &self.world,
+            &mut self.data_scene.navigation,
+            self.unified_physics.as_mut(),
+        );
         self.data_scene.movement.invalidate_route();
         self.frame_buffers.clear_tilemap_navigation_output();
         true
@@ -274,7 +295,13 @@ impl Engine {
         costs: &[u32],
         values: &[u32],
     ) -> bool {
-        let Some(bindings) = resolve_obstacles(&self.world, columns, rows, values) else {
+        let Some(bindings) = resolve_obstacles(
+            &self.world,
+            self.unified_physics.as_ref(),
+            columns,
+            rows,
+            values,
+        ) else {
             return false;
         };
         if !self.configure_data_scene_navigation(
@@ -316,6 +343,7 @@ impl Engine {
 
 fn resolve_obstacles(
     world: &World,
+    native: Option<&UnifiedPhysicsRuntime>,
     columns: u32,
     rows: u32,
     values: &[u32],
@@ -345,7 +373,7 @@ fn resolve_obstacles(
             || count > (remaining.len() - 3) / 2
             || !seen.insert(entity.id)
             || !world.is_current_entity(entity)
-            || world.compound_collider_count(entity) != 1
+            || !obstacle_source_supported(world, native, entity)
         {
             return None;
         }
@@ -422,7 +450,53 @@ fn update_coverage(
 
 // Conservative XY bounds, including collider offsets/rotation and all chain segments.
 // Cell boundary contact alone does not block a neighboring cell. No heap allocation.
-fn collider_rectangle(world: &World, entity: Entity, grid: GridGeometry) -> Option<CellRectangle> {
+fn obstacle_source_supported(
+    world: &World,
+    native: Option<&UnifiedPhysicsRuntime>,
+    entity: Entity,
+) -> bool {
+    if let Some(runtime) = native {
+        if let Some(supported) = runtime.planar_navigation_obstacle_supported(entity) {
+            return supported;
+        }
+    }
+    world.compound_collider_count(entity) == 1
+}
+
+fn obstacle_geometry(
+    world: &World,
+    entity: Entity,
+    native: Option<&mut UnifiedPhysicsRuntime>,
+    need_bounds: bool,
+) -> (bool, Option<crate::collision::AabbBounds>) {
+    if !world.is_current_entity(entity) {
+        return (false, None);
+    }
+    if let Some(runtime) = native {
+        if let Some(bounds) = runtime.planar_navigation_obstacle_bounds(entity) {
+            // Conservative route-cell coverage never replaces the real native
+            // movement sweep. Disabled/sensor-only bodies contribute no cells.
+            let bounds = bounds.ok();
+            return (bounds.is_some(), bounds.filter(|_| need_bounds));
+        }
+    }
+    if world.compound_collider_count(entity) != 1
+        || world.rigid_body(entity).is_some_and(|body| !body.enabled)
+        || world
+            .compound_collider_ref_at(entity.id as usize, 0)
+            .is_none_or(|collider| !collider.enabled() || collider.is_trigger())
+    {
+        return (false, None);
+    }
+    if !need_bounds {
+        // Explicit authored cells do not need a World transform. Keep the
+        // existing manual-binding producer contract, including dormant poses.
+        return (true, None);
+    }
+    (true, world_obstacle_bounds(world, entity))
+}
+
+fn world_obstacle_bounds(world: &World, entity: Entity) -> Option<crate::collision::AabbBounds> {
     let transform = world.transform(entity)?;
     let index = entity.id as usize;
     let mut bounds: Option<crate::collision::AabbBounds> = None;
@@ -439,7 +513,13 @@ fn collider_rectangle(world: &World, entity: Entity, grid: GridGeometry) -> Opti
             },
         });
     }
-    let bounds = bounds?;
+    bounds
+}
+
+fn bounds_rectangle(
+    bounds: crate::collision::AabbBounds,
+    grid: GridGeometry,
+) -> Option<CellRectangle> {
     let axis =
         |minimum: f32, maximum: f32, origin: f32, size: f32, count: u32| -> Option<(u32, u32)> {
             if !minimum.is_finite() || !maximum.is_finite() || maximum <= minimum {

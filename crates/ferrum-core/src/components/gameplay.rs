@@ -3,6 +3,8 @@ use crate::entity::Entity;
 use crate::gameplay_event::GAMEPLAY_EVENT_INTERACTION;
 use crate::gameplay_variables::GameplayVariableComparison;
 
+pub(crate) mod file_payload;
+
 pub(crate) const MAX_COLLISION_REACTIONS_PER_ENTITY: usize = 16;
 pub(crate) const MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY: usize = 32;
 pub(crate) const MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY: usize = 32;
@@ -24,7 +26,7 @@ pub(crate) const GAMEPLAY_TAG_PRIMARY_ACTOR: u32 = 0;
 pub(crate) const GAMEPLAY_TAG_PRIMARY_ACTOR_MASK: u32 = 1_u32 << GAMEPLAY_TAG_PRIMARY_ACTOR;
 pub(crate) const GAMEPLAY_TAG_MAX_ID: u32 = 31;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MovementTarget {
     PrimaryActor,
     NearestPrimaryActor,
@@ -35,13 +37,13 @@ pub(crate) enum MovementTarget {
     Entity(Entity),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum CollisionTarget {
     SelfEntity,
     OtherEntity,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayFaction {
     pub(crate) faction_id: u32,
     pub(crate) damage_mask: u32,
@@ -70,7 +72,7 @@ pub(crate) const fn gameplay_faction_mask(faction_id: u32) -> u32 {
     1_u32 << faction_id
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum FactionRelation {
     Neutral,
     Friendly,
@@ -100,11 +102,13 @@ impl FactionRelation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FactionRelationTable {
     enabled: bool,
     default_relation: FactionRelation,
+    #[serde(with = "crate::checkpoint_codec::array")]
     friendly_masks: [u32; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+    #[serde(with = "crate::checkpoint_codec::array")]
     hostile_masks: [u32; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
 }
 
@@ -256,7 +260,7 @@ const fn relation_fill_masks(relation: FactionRelation) -> (u32, u32) {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayTags {
     pub(crate) mask: u32,
 }
@@ -300,7 +304,7 @@ pub(crate) const fn gameplay_tag_mask(tag_id: u32) -> u32 {
     1_u32 << tag_id
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum CollisionReactionTrigger {
     Contact,
     Enter,
@@ -315,7 +319,7 @@ impl CollisionReactionTrigger {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MovementPattern {
     Static,
     TopdownInput {
@@ -369,7 +373,7 @@ pub(crate) enum MovementPattern {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum CollisionReaction {
     Damage {
         target: CollisionTarget,
@@ -427,7 +431,7 @@ pub(crate) enum CollisionReaction {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Cooldown {
     pub(crate) duration_seconds: f32,
     pub(crate) remaining_seconds: f32,
@@ -462,7 +466,7 @@ impl Cooldown {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayTimerTrigger {
     pub(crate) timer_id: u32,
     pub(crate) duration_seconds: f32,
@@ -513,7 +517,7 @@ impl GameplayTimerTrigger {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActionPattern {
     Projectile {
         speed: f32,
@@ -542,7 +546,7 @@ pub(crate) enum ActionPattern {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ActionAimSource {
     Input,
     TargetPlayer,
@@ -565,7 +569,7 @@ impl ActionAimSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ProjectileCollisionTarget {
     Enemies,
     Player,
@@ -588,7 +592,7 @@ impl ProjectileCollisionTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ProjectileTileImpact {
     Despawn,
     PassThrough,
@@ -614,7 +618,7 @@ impl ProjectileTileImpact {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GameplayLifetime {
     pub(crate) remaining_seconds: f32,
 }
@@ -625,7 +629,7 @@ impl GameplayLifetime {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ProjectilePolicy {
     pub(crate) collision_target: ProjectileCollisionTarget,
     pub(crate) tile_impact: ProjectileTileImpact,
@@ -643,7 +647,7 @@ impl ProjectilePolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpawnPrefabProjectilePayload {
     pub(crate) speed: f32,
     pub(crate) damage: f32,
@@ -663,7 +667,7 @@ pub(crate) struct ProjectileActionConfig {
     pub(crate) tile_impact: ProjectileTileImpact,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MeleeTarget {
     Enemies,
     Player,
@@ -679,7 +683,7 @@ impl MeleeTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum SpawnAnchor {
     SelfEntity,
 }
@@ -693,7 +697,7 @@ impl SpawnAnchor {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum SpawnPhase {
     PrePhysics,
 }
@@ -707,7 +711,7 @@ impl SpawnPhase {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ActionBinding {
     pub(crate) action_id: u32,
     pub(crate) pattern: ActionPattern,
@@ -836,7 +840,7 @@ impl ActionBinding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Pickup {
     pub(crate) item_id: u32,
     pub(crate) count: u32,
@@ -853,7 +857,7 @@ impl Pickup {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Interaction {
     pub(crate) action_id: u32,
     pub(crate) radius: f32,
@@ -879,20 +883,23 @@ impl Interaction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CollisionReactionSet {
+    #[serde(with = "crate::checkpoint_codec::array")]
     reactions: [Option<CollisionReaction>; MAX_COLLISION_REACTIONS_PER_ENTITY],
+    #[serde(with = "crate::checkpoint_codec::array")]
     guards: [GameplayVariableComparison; MAX_COLLISION_REACTIONS_PER_ENTITY],
     len: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ActionBindingSet {
+    #[serde(with = "crate::checkpoint_codec::array")]
     bindings: [Option<ActionBinding>; MAX_ACTION_BINDINGS_PER_ENTITY],
     len: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BehaviorStateTransition {
     pub(crate) from_state: u32,
     pub(crate) to_state: u32,
@@ -937,14 +944,15 @@ impl BehaviorStateTransition {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BehaviorStateMachine {
     current_state: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     transitions: [Option<BehaviorStateTransition>; MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY],
     len: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BehaviorStateEnterAction {
     pub(crate) state: u32,
     pub(crate) action_id: u32,
@@ -965,7 +973,7 @@ impl BehaviorStateEnterAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum BehaviorStateEnterActionPhase {
     NextFramePrePhysics,
 }
@@ -979,8 +987,9 @@ impl BehaviorStateEnterActionPhase {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BehaviorStateEnterActionSet {
+    #[serde(with = "crate::checkpoint_codec::array")]
     actions: [Option<BehaviorStateEnterAction>; MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY],
     len: usize,
 }
@@ -1353,6 +1362,93 @@ fn collision_reaction_authoring_key_eq(a: CollisionReaction, b: CollisionReactio
         ) => a_preset == b_preset && a_target == b_target,
         (CollisionReaction::CameraShake { .. }, CollisionReaction::CameraShake { .. }) => true,
         _ => false,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SavedGameplayIssue {
+    Layout,
+    Duplicate,
+    Guard,
+}
+fn saved_packed<T, const N: usize>(slots: &[Option<T>; N], len: usize) -> bool {
+    len <= N
+        && slots
+            .iter()
+            .enumerate()
+            .all(|(i, v)| v.is_some() == (i < len))
+}
+impl ActionBindingSet {
+    pub(crate) fn admit_saved_layout(&self) -> Result<(), SavedGameplayIssue> {
+        if !saved_packed(&self.bindings, self.len) {
+            return Err(SavedGameplayIssue::Layout);
+        }
+        for (i, a) in self.bindings.iter().flatten().enumerate() {
+            if self.bindings[..i]
+                .iter()
+                .flatten()
+                .any(|b| a.action_id == b.action_id)
+            {
+                return Err(SavedGameplayIssue::Duplicate);
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn saved_bindings(&self) -> impl Iterator<Item = &ActionBinding> {
+        self.bindings.iter().flatten()
+    }
+}
+impl BehaviorStateMachine {
+    pub(crate) fn admit_saved_layout(&self) -> Result<(), SavedGameplayIssue> {
+        if !saved_packed(&self.transitions, self.len) {
+            return Err(SavedGameplayIssue::Layout);
+        }
+        for (i, a) in self.transitions.iter().flatten().enumerate() {
+            if !a.guard.saved_payload_valid() {
+                return Err(SavedGameplayIssue::Guard);
+            }
+            if self.transitions[..i].iter().flatten().any(|b| a == b) {
+                return Err(SavedGameplayIssue::Duplicate);
+            }
+        }
+        Ok(())
+    }
+}
+impl BehaviorStateEnterActionSet {
+    pub(crate) fn admit_saved_layout(&self) -> Result<(), SavedGameplayIssue> {
+        if !saved_packed(&self.actions, self.len) {
+            return Err(SavedGameplayIssue::Layout);
+        }
+        for (i, a) in self.actions.iter().flatten().enumerate() {
+            if self.actions[..i].iter().flatten().any(|b| a == b) {
+                return Err(SavedGameplayIssue::Duplicate);
+            }
+        }
+        Ok(())
+    }
+}
+impl CollisionReactionSet {
+    pub(crate) fn admit_saved_layout(&self) -> Result<(), SavedGameplayIssue> {
+        if !saved_packed(&self.reactions, self.len) {
+            return Err(SavedGameplayIssue::Layout);
+        }
+        for (i, a) in self.reactions.iter().enumerate() {
+            if !self.guards[i].saved_payload_valid()
+                || (a.is_none() && self.guards[i] != GameplayVariableComparison::always())
+            {
+                return Err(SavedGameplayIssue::Guard);
+            }
+            if let Some(a) = a {
+                if self.reactions[..i]
+                    .iter()
+                    .flatten()
+                    .any(|b| collision_reaction_authoring_key_eq(*a, *b))
+                {
+                    return Err(SavedGameplayIssue::Duplicate);
+                }
+            }
+        }
+        Ok(())
     }
 }
 

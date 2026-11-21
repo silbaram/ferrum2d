@@ -6,6 +6,8 @@ import {
   formatDebugOverlayMetrics,
 } from "../src/debugOverlay.js";
 import type { DebugOverlayMetrics } from "../src/debugOverlay.js";
+import { UNIFIED_PHYSICS_COUNTER_LAYOUT } from "../src/unifiedPhysicsObservations.js";
+import type { UnifiedPhysicsCounters, UnifiedPhysicsDiagnostics } from "../src/unifiedPhysicsObservations.js";
 
 class FakeElement {
   readonly style: Record<string, string> = {};
@@ -94,6 +96,17 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "postProcessDrawCalls", label: "post-process draws", unit: "count", optional: true },
     { id: "postProcessPassCount", label: "post-process passes", unit: "count", optional: true },
     { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
+    { id: "nativePhysicsBackend", label: "native physics backend", unit: "mode", optional: true },
+    { id: "nativePhysicsBackendSteps", label: "native backend steps", unit: "count", optional: true },
+    { id: "nativePhysicsSolverContacts", label: "native solver contacts", unit: "count", optional: true },
+    { id: "nativePhysicsSolverConstraints", label: "native solver constraints", unit: "count", optional: true },
+    { id: "nativePhysicsDebugStatus", label: "native debug", unit: "state", optional: true },
+    { id: "nativePhysicsDebugLineCount", label: "native debug lines", unit: "count", optional: true },
+    { id: "nativePhysicsDebugWorkUnits", label: "native debug work", unit: "count", optional: true },
+    { id: "nativePhysicsDebugTruncated", label: "native debug truncated", unit: "state", optional: true },
+    { id: "nativePhysicsDebugUnsupportedShapes", label: "native debug unsupported", unit: "count", optional: true },
+    { id: "nativePhysicsDebugRejected", label: "native debug rejected", unit: "state", optional: true },
+    { id: "nativePhysicsDebugProjection", label: "native debug projection", unit: "mode", optional: true },
     { id: "physicsMode", label: "physics mode", unit: "mode", optional: true },
     { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
     { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
@@ -106,7 +119,7 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "playerHd2dHeight", label: "player height", unit: "world", optional: true },
     { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
     { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
-    { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
+    { id: "physicsDebugLineCount", label: "rendered debug lines", unit: "count", optional: true },
     { id: "physicsCcdLimits", label: "ccd limits", unit: "count", optional: true },
     { id: "physicsJointMaxForce", label: "joint force max", unit: "world", optional: true },
     { id: "physicsJointMaxError", label: "joint error max", unit: "world", optional: true },
@@ -184,7 +197,7 @@ test("formatDebugOverlayMetrics applies fixed labels, units, and precision", () 
     "player height: 32.00 world",
     "collision pairs: 2",
     "collision events: 3",
-    "physics debug lines: 2",
+    "rendered debug lines: 2",
     "ccd checks: 5",
     "ccd hits: 1",
     "sleeping bodies: 4",
@@ -229,4 +242,41 @@ test("GPU resource rows distinguish storage estimates from absent measurements",
     "GPU textures: 4", "GPU buffers: 5", "GPU programs: 5", "GPU targets: 3", "GPU storage estimate: 1024 bytes",
   ]);
   equal(formatDebugOverlayMetrics(metrics()).some((line) => line.startsWith("GPU")), false);
+});
+
+function nativeDiagnostics(debug?: UnifiedPhysicsDiagnostics["debug"]): UnifiedPhysicsDiagnostics {
+  const counters = Object.fromEntries(Object.keys(UNIFIED_PHYSICS_COUNTER_LAYOUT).map(key => [key, 0])) as UnifiedPhysicsCounters;
+  return { backend: "rapier3d", legacySolverRowMetricsAvailable: false, fixedSteps: 0,
+    authoredJointBreaks: 0, ccdObservationsDropped: 0, solvedContacts: 0, impulsesDropped: 0,
+    step: counters, frame: counters, ...(debug === undefined ? {} : { debug }) };
+}
+
+test("native debug overlay distinguishes partial, rejected and complete extraction with the actual projection", () => {
+  for (const [debug, expected] of [
+    [{ lineCount: 16384, workUnits: 65536, truncated: true, unsupportedShapes: 2, rejected: false, projection: "xz" }, [
+      "native debug: partial", "native debug lines: 16384", "native debug work: 65536", "native debug truncated: yes",
+      "native debug unsupported: 2", "native debug rejected: no", "native debug projection: xz",
+    ]],
+    [{ lineCount: 0, workUnits: 1, truncated: false, unsupportedShapes: 1, rejected: false, projection: "xyz" }, [
+      "native debug: partial", "native debug lines: 0", "native debug work: 1", "native debug truncated: no",
+      "native debug unsupported: 1", "native debug rejected: no", "native debug projection: xyz",
+    ]],
+    [{ lineCount: 0, workUnits: 0, truncated: true, unsupportedShapes: 0, rejected: true, projection: "xyz" }, [
+      "native debug: rejected", "native debug lines: 0", "native debug work: 0", "native debug truncated: yes",
+      "native debug unsupported: 0", "native debug rejected: yes", "native debug projection: xyz",
+    ]],
+    [{ lineCount: 12, workUnits: 20, truncated: false, unsupportedShapes: 0, rejected: false, projection: "xy" }, [
+      "native debug: complete", "native debug lines: 12", "native debug work: 20", "native debug truncated: no",
+      "native debug unsupported: 0", "native debug rejected: no", "native debug projection: xy",
+    ]],
+  ] satisfies [NonNullable<UnifiedPhysicsDiagnostics["debug"]>, string[]][]) {
+    const rows = formatDebugOverlayMetrics(metrics({ unifiedPhysics: nativeDiagnostics(debug) }));
+    deepEqual(rows.filter(line => line.startsWith("native debug")), expected);
+  }
+});
+
+test("native debug overlay omits unavailable extraction instead of presenting it as complete", () => {
+  for (const value of [metrics(), metrics({ unifiedPhysics: nativeDiagnostics() })]) {
+    equal(formatDebugOverlayMetrics(value).some(line => line.startsWith("native debug")), false);
+  }
 });

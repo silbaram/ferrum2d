@@ -3,9 +3,10 @@ use crate::components::SpriteFrame;
 pub(crate) const MAX_CLIP_FRAMES: usize = 256;
 pub(crate) const MAX_CLIP_TOTAL_FRAMES: usize = 4096;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpriteClip {
     pub id: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub frames: Vec<SpriteFrame>,
     pub fps: f32,
     pub looping: bool,
@@ -13,9 +14,11 @@ pub(crate) struct SpriteClip {
     timeline: Option<ClipTimeline>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct ClipTimeline {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     order: Vec<usize>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     ends: Vec<f64>,
 }
 
@@ -179,4 +182,141 @@ fn cycle_phase(time: f64, duration: f64) -> (f64, f64) {
         cycles = ((time - phase) / duration).round();
     }
     (cycles, phase)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SavedClipIssue {
+    Header,
+    Frame,
+    Timeline,
+}
+impl SpriteClip {
+    /// O(1) lengths, inspected before the caller precharges any variable walk.
+    pub(crate) fn saved_payload_lengths(&self) -> [usize; 3] {
+        [
+            self.frames.len(),
+            self.timeline.as_ref().map_or(0, |t| t.order.len()),
+            self.timeline.as_ref().map_or(0, |t| t.ends.len()),
+        ]
+    }
+    pub(crate) fn admit_saved_payload(&self) -> Result<(), SavedClipIssue> {
+        if self.id > 65535
+            || self.frames.is_empty()
+            || self.frames.len() > MAX_CLIP_FRAMES
+            || !self.fps.is_finite()
+            || (self.fps != 0.0 && !(0.001..=1000.).contains(&self.fps))
+            || (self.fps == 0.0 && self.timeline.is_none())
+        {
+            return Err(SavedClipIssue::Header);
+        }
+        if self.frames.iter().any(|f| {
+            [f.u0, f.v0, f.u1, f.v1]
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+                || f.u0 == f.u1
+                || f.v0 == f.v1
+        }) {
+            return Err(SavedClipIssue::Frame);
+        }
+        if let Some(t) = &self.timeline {
+            let n = self.frames.len();
+            if t.order.is_empty()
+                || t.order.len() != t.ends.len()
+                || t.order.len() > 2 * n
+                || t.order.iter().any(|&i| i >= n)
+            {
+                return Err(SavedClipIssue::Timeline);
+            }
+            // The producer emits forward, reverse, or ping-pong. Check the full
+            // order without allocating/rebuilding it, including repeated end0.
+            let forward = t.order.len() == n && t.order.iter().copied().eq(0..n);
+            let reverse = t.order.len() == n && t.order.iter().copied().eq((0..n).rev());
+            let ping_len = if n == 1 {
+                1
+            } else {
+                2 * n - 2 + usize::from(!self.looping)
+            };
+            let ping = t.order.len() == ping_len
+                && t.order
+                    .iter()
+                    .enumerate()
+                    .all(|(step, &i)| i == if step < n { step } else { 2 * n - 2 - step });
+            if !forward && !reverse && !ping {
+                return Err(SavedClipIssue::Timeline);
+            }
+            let mut previous: f64 = 0.;
+            for &end in &t.ends {
+                // Construction rounds each cumulative f64 end. Bound subtraction
+                // by two endpoint ulps rather than a fixture-specific epsilon.
+                let roundoff = 2.0 * f64::EPSILON * (end.abs() + previous.abs());
+                let duration = end - previous;
+                if !end.is_finite()
+                    || end <= previous
+                    || duration + roundoff < 0.001
+                    || duration - roundoff > 1000.0
+                {
+                    return Err(SavedClipIssue::Timeline);
+                }
+                previous = end;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SpriteClip {
+    /// Logical field bytes/visits for exact same-value file alias comparison.
+    /// Vec capacities are wire fields in the private memory codec. No allocation
+    /// or timeline reconstruction occurs here; the caller precharges this cost.
+    pub(crate) fn file_alias_compare_cost(&self) -> Option<(u64, usize)> {
+        let mut work = 16u64.checked_add((self.frames.len() as u64).checked_mul(4)?)?;
+        let mut bytes = 27usize.checked_add(self.frames.len().checked_mul(16)?)?;
+        if let Some(t) = &self.timeline {
+            let count = t.order.len().checked_add(t.ends.len())?;
+            work = work.checked_add(count as u64)?;
+            bytes = bytes.checked_add(32)?.checked_add(count.checked_mul(8)?)?;
+        }
+        Some((work, bytes))
+    }
+    pub(crate) fn file_alias_value_eq(&self, other: &Self) -> bool {
+        if self.id != other.id
+            || self.fps.to_bits() != other.fps.to_bits()
+            || self.looping != other.looping
+            || self.emit_events != other.emit_events
+            || self.frames.len() != other.frames.len()
+            || self.frames.capacity() != other.frames.capacity()
+        {
+            return false;
+        }
+        if !self.frames.iter().zip(&other.frames).all(|(a, b)| {
+            [
+                a.u0.to_bits(),
+                a.v0.to_bits(),
+                a.u1.to_bits(),
+                a.v1.to_bits(),
+            ] == [
+                b.u0.to_bits(),
+                b.v0.to_bits(),
+                b.u1.to_bits(),
+                b.v1.to_bits(),
+            ]
+        }) {
+            return false;
+        }
+        match (&self.timeline, &other.timeline) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.order.len() == b.order.len()
+                    && a.order.capacity() == b.order.capacity()
+                    && a.ends.len() == b.ends.len()
+                    && a.ends.capacity() == b.ends.capacity()
+                    && a.order == b.order
+                    && a.ends
+                        .iter()
+                        .zip(&b.ends)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+            }
+            _ => false,
+        }
+    }
 }

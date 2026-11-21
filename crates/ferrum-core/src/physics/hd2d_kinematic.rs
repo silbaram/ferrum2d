@@ -114,12 +114,7 @@ impl PhysicsSystem {
     ) -> Hd2dKinematicMoveResult {
         let config = sanitize_hd2d_kinematic_config(config);
         let displacement = finite_velocity(displacement);
-        let start_transform = world.transform(entity).unwrap_or_default();
         let start_height_span = world.height_span(entity);
-        let start_surface = tilemap.hd2d_surface_at(
-            hd2d_surface_point(world, entity, start_transform),
-            start_height_span,
-        );
         let mut movement_settings = KinematicMoveSettings::new(
             config.solid_mask,
             OneWayPlatformConfig::default(),
@@ -137,6 +132,25 @@ impl PhysicsSystem {
             movement_settings,
             movement_scratch,
             counters,
+        );
+        Self::finish_hd2d_kinematic_movement(world, tilemap, entity, movement, config)
+    }
+
+    // Surface metadata is independent of the backend that supplies collision movement.
+    pub(crate) fn finish_hd2d_kinematic_movement(
+        world: &mut World,
+        tilemap: &Tilemap,
+        entity: Entity,
+        movement: KinematicMoveResult,
+        config: Hd2dKinematicControllerConfig,
+    ) -> Hd2dKinematicMoveResult {
+        let config = sanitize_hd2d_kinematic_config(config);
+        let start_transform = movement.start;
+        let displacement = movement.requested;
+        let start_height_span = world.height_span(entity);
+        let start_surface = tilemap.hd2d_surface_at(
+            hd2d_surface_point(world, entity, start_transform),
+            start_height_span,
         );
         let moved_transform = world.transform(entity).unwrap_or(movement.end);
         let start_point = hd2d_surface_point(world, entity, start_transform);
@@ -210,6 +224,29 @@ impl PhysicsSystem {
             }
         }
     }
+
+    pub(crate) fn block_hd2d_kinematic_transition(
+        world: &mut World,
+        entity: Entity,
+        result: Hd2dKinematicMoveResult,
+    ) -> Hd2dKinematicMoveResult {
+        world.set_transform(entity, result.movement.start);
+        restore_height_span(world, entity, result.start_height_span);
+        hd2d_kinematic_result(
+            blocked_hd2d_movement(
+                result.movement,
+                result.movement.start,
+                result.movement.requested,
+            ),
+            result.start_surface,
+            None,
+            result.start_height_span,
+            result.start_height_span,
+            result.elevation_delta >= 0.,
+            result.elevation_delta < 0.,
+            false,
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -241,6 +278,11 @@ fn sanitize_non_negative(value: f32) -> f32 {
 }
 
 fn hd2d_surface_point(world: &World, entity: Entity, transform: Transform2D) -> Transform2D {
+    // Preserve the existing single AABB reference point. Other and compound
+    // controllers sample surface metadata at the authored body origin.
+    if world.compound_collider_count(entity) != 1 {
+        return transform;
+    }
     world
         .collider(entity)
         .map(|collider| collider.center(transform))

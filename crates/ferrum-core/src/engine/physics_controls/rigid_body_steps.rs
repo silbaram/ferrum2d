@@ -7,7 +7,19 @@ use super::super::Engine;
 
 #[wasm_bindgen]
 impl Engine {
+    /// Toggles stepping without replacing the configured native solver settings.
+    pub fn set_auto_rigid_body_step_enabled(&mut self, enabled: bool) {
+        self.auto_rigid_body_step_enabled = enabled;
+        if !enabled {
+            self.rigid_body_step_stats = RigidBodyStepStats::default();
+            self.clear_rigid_body_frame_stats();
+        }
+    }
+
     pub fn step_rigid_bodies(&mut self, delta_seconds: f32) {
+        if self.step_unified_manually(delta_seconds, None) {
+            return;
+        }
         let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
             delta_seconds,
@@ -34,8 +46,7 @@ impl Engine {
         contact_split_impulse: bool,
         continuous: bool,
     ) {
-        self.auto_rigid_body_step_enabled = enabled;
-        self.auto_rigid_body_step_config = RigidBodyStepConfig {
+        let config = RigidBodyStepConfig {
             gravity: Velocity {
                 vx: gravity_x,
                 vy: gravity_y,
@@ -50,6 +61,11 @@ impl Engine {
             contact_split_impulse,
             continuous,
         };
+        if !self.accept_unified_auto_config(config) {
+            return;
+        }
+        self.auto_rigid_body_step_enabled = enabled;
+        self.auto_rigid_body_step_config = config;
         if !enabled {
             self.rigid_body_step_stats = RigidBodyStepStats::default();
             self.clear_rigid_body_frame_stats();
@@ -72,24 +88,28 @@ impl Engine {
         contact_split_impulse: bool,
         continuous: bool,
     ) {
+        let config = RigidBodyStepConfig {
+            gravity: Velocity {
+                vx: gravity_x,
+                vy: gravity_y,
+            },
+            velocity_iterations,
+            position_iterations,
+            position_correction_percent,
+            position_correction_slop,
+            restitution_velocity_threshold,
+            contact_baumgarte_bias_factor,
+            max_contact_baumgarte_bias_velocity,
+            contact_split_impulse,
+            continuous,
+        };
+        if self.step_unified_manually(delta_seconds, Some(config)) {
+            return;
+        }
         let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
             delta_seconds,
-            RigidBodyStepConfig {
-                gravity: Velocity {
-                    vx: gravity_x,
-                    vy: gravity_y,
-                },
-                velocity_iterations,
-                position_iterations,
-                position_correction_percent,
-                position_correction_slop,
-                restitution_velocity_threshold,
-                contact_baumgarte_bias_factor,
-                max_contact_baumgarte_bias_velocity,
-                contact_split_impulse,
-                continuous,
-            },
+            config,
             &mut self.rigid_body_step_scratch,
         );
         self.process_physics_impact_feedback(delta_seconds);

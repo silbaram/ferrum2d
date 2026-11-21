@@ -26,6 +26,8 @@ struct QuestState {
     definitions: Vec<QuestDefinition>,
     indexes: BTreeMap<String, usize>,
     progress: Vec<Progress>,
+    file_revision: u64,
+    file_packet_bytes: usize,
 }
 #[derive(Clone, Debug)]
 struct Update {
@@ -85,24 +87,29 @@ impl NativeQuestLog {
             .enumerate()
             .map(|(i, q)| (q.id.clone(), i))
             .collect();
-        let state = QuestState {
+        let mut state = QuestState {
             definitions,
             indexes,
             progress,
+            file_revision: 0,
+            file_packet_bytes: 0,
         };
         state.validate_size()?;
+        state.refresh_file_size()?;
         Ok(Self {
             state: Rc::new(RefCell::new(state)),
         })
     }
 
     pub fn apply(&mut self, packet: &[u8]) -> Result<Vec<u8>, String> {
+        let revision = file_state::next_revision(self.state.borrow().file_revision)?;
         let mut r = Reader::new(packet)?;
         let updates = r.updates()?;
         r.finish()?;
         let mut next = self.state.borrow().clone();
         let results = next.apply(&updates)?;
         let packet = progress_packet(&results);
+        next.file_revision = revision;
         *self.state.borrow_mut() = next;
         Ok(packet)
     }
@@ -112,11 +119,14 @@ impl NativeQuestLog {
     }
 
     pub fn validate_restore(&self, packet: &[u8]) -> Result<(), String> {
+        file_state::next_revision(self.state.borrow().file_revision)?;
         self.state.borrow().restored(packet).map(|_| ())
     }
 
     pub fn restore(&mut self, packet: &[u8]) -> Result<(), String> {
-        let next = self.state.borrow().restored(packet)?;
+        let revision = file_state::next_revision(self.state.borrow().file_revision)?;
+        let mut next = self.state.borrow().restored(packet)?;
+        next.file_revision = revision;
         *self.state.borrow_mut() = next;
         Ok(())
     }
@@ -127,6 +137,8 @@ pub struct NativeDialogueSession {
     nodes: Vec<Node>,
     progress: DialogueProgress,
     quests: Option<Rc<RefCell<QuestState>>>,
+    file_revision: u64,
+    file_packet_bytes: usize,
 }
 
 #[wasm_bindgen]
@@ -166,6 +178,12 @@ impl NativeDialogueSession {
             .get(index as usize)
             .filter(|c| c.require.iter().all(|f| self.progress.flags.contains(f)))
             .ok_or_else(|| "dialogue.choice|unknown or unavailable choice".to_string())?;
+        let revision = file_state::next_revision(self.file_revision)?;
+        let quest_revision = self
+            .quests
+            .as_ref()
+            .map(|q| file_state::next_revision(q.borrow().file_revision))
+            .transpose()?;
         let mut next = self.progress.clone();
         next.flags.extend(choice.set.iter().cloned());
         for flag in &choice.clear {
@@ -185,10 +203,14 @@ impl NativeDialogueSession {
         }
         next.ended |= self.nodes[next.node].end;
         validate_dialogue_size(&self.nodes[next.node].id, &next.flags)?;
-        if let (Some(target), Some(q)) = (&self.quests, quests) {
+        let file_packet_bytes = file_state::dialogue_bytes(&self.nodes[next.node].id, &next.flags)?;
+        if let (Some(target), Some(mut q)) = (&self.quests, quests) {
+            q.file_revision = quest_revision.ok_or_else(packet_error)?;
             *target.borrow_mut() = q;
         }
+        self.file_packet_bytes = file_packet_bytes;
         self.progress = next;
+        self.file_revision = revision;
         Ok(())
     }
 
@@ -204,11 +226,17 @@ impl NativeDialogueSession {
     }
 
     pub fn validate_restore(&self, packet: &[u8]) -> Result<(), String> {
+        file_state::next_revision(self.file_revision)?;
         self.restored(packet).map(|_| ())
     }
 
     pub fn restore(&mut self, packet: &[u8]) -> Result<(), String> {
-        self.progress = self.restored(packet)?;
+        let revision = file_state::next_revision(self.file_revision)?;
+        let progress = self.restored(packet)?;
+        self.file_packet_bytes =
+            file_state::dialogue_bytes(&self.nodes[progress.node].id, &progress.flags)?;
+        self.progress = progress;
+        self.file_revision = revision;
         Ok(())
     }
 }
@@ -259,13 +287,18 @@ impl NativeDialogueSession {
             return Err(packet_error());
         }
         if let Some(q) = &quests {
+            let revision = file_state::next_revision(q.borrow().file_revision)?;
             let mut next = q.borrow().clone();
             next.apply(&nodes[initial].updates)?;
+            next.file_revision = revision;
             *q.borrow_mut() = next;
         }
+        let file_packet_bytes = file_state::dialogue_bytes(&nodes[initial].id, &BTreeSet::new())?;
         Ok(Self {
             nodes,
             quests,
+            file_revision: 0,
+            file_packet_bytes,
             progress: DialogueProgress {
                 node: initial,
                 flags: BTreeSet::new(),
@@ -345,6 +378,7 @@ impl QuestState {
             results.push(p.clone());
         }
         self.validate_size()?;
+        self.refresh_file_size()?;
         Ok(results)
     }
 
@@ -361,6 +395,8 @@ impl QuestState {
             definitions: self.definitions.clone(),
             indexes: self.indexes.clone(),
             progress: self.definitions.iter().map(inactive).collect(),
+            file_revision: self.file_revision,
+            file_packet_bytes: 0,
         };
         for _ in 0..r.count()? {
             let id = r.key()?;
@@ -381,6 +417,7 @@ impl QuestState {
         }
         r.finish()?;
         next.validate_size()?;
+        next.refresh_file_size()?;
         Ok(next)
     }
 }
@@ -754,3 +791,5 @@ mod tests {
         assert!(NativeQuestLog::new(&vec![0; MAX_PACKET_BYTES + 1]).is_err());
     }
 }
+
+mod file_state;

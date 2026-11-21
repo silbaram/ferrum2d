@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn fixed_timestep_is_opt_in_and_reports_steps() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
 
     engine.update(0.25);
 
@@ -20,7 +20,7 @@ fn fixed_timestep_is_opt_in_and_reports_steps() {
 
 #[test]
 fn fixed_timestep_waits_until_accumulator_reaches_step() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
 
     engine.update(0.05);
@@ -32,7 +32,7 @@ fn fixed_timestep_waits_until_accumulator_reaches_step() {
 
 #[test]
 fn fixed_timestep_latches_action_input_until_next_step() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
 
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
@@ -49,7 +49,7 @@ fn fixed_timestep_latches_action_input_until_next_step() {
 
 #[test]
 fn gameplay_authoring_setters_do_not_reset_fixed_timestep_history() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
     let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
 

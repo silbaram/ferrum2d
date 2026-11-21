@@ -1,12 +1,20 @@
 //! Immutable asset bounds + native entity poses. Geometry/GPU resources belong to the platform.
+impl SpatialModels {
+    pub(crate) fn file_resource_draws(&self) -> impl ExactSizeIterator<Item = (u32, u32)> + '_ {
+        self.draws.iter().map(|d| (d.asset, d.flags))
+    }
+}
+
 use super::{Point, SpatialCamera, SpatialReceiverMasks};
 use crate::{entity::Entity, world::World};
 use std::collections::BTreeMap;
 
+mod native_pose;
+
 /// Cold authoring bit only. Render ModelDraw flags remain the existing cast/receive pair.
 const SHADOW_ONLY: u32 = 4;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ModelBinding {
     pub receiver_masks: SpatialReceiverMasks,
     draw_index: Option<usize>,
@@ -21,22 +29,26 @@ pub(crate) struct ModelBinding {
 
 /// Extension v1: four u32 words followed by a column-major model matrix (80 bytes).
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ModelDraw {
     asset: u32,
     flags: u32,
     /// Camera0, first point faces1..6, sun7; model ABI v2 adds second point faces8..13.
     mask: u32,
     reserved: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     matrix: [f32; 16],
 }
 const _: () = assert!(std::mem::size_of::<ModelDraw>() == 80);
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialModels {
     pub(super) streaming: super::model_streaming::ModelStreaming,
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::map")]
     pub bindings: BTreeMap<(u32, u32), ModelBinding>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub draws: Vec<ModelDraw>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub receiver_masks: Vec<SpatialReceiverMasks>,
 }
 impl SpatialModels {
@@ -108,6 +120,20 @@ impl SpatialModels {
         point_shadow: bool,
         hidden: &std::collections::BTreeSet<(u32, u32)>,
     ) {
+        self.build_with_native_poses(world, camera, shadow_matrices, point_shadow, hidden, |_| {
+            None
+        });
+    }
+
+    pub(super) fn build_with_native_poses(
+        &mut self,
+        world: &World,
+        camera: &SpatialCamera,
+        shadow_matrices: &[f32],
+        point_shadow: bool,
+        hidden: &std::collections::BTreeSet<(u32, u32)>,
+        native_pose: impl Fn(Entity) -> Option<crate::physics3d::Pose>,
+    ) {
         self.draws.clear();
         self.receiver_masks.clear();
         self.streaming.update_chunks(camera);
@@ -120,7 +146,11 @@ impl SpatialModels {
             if !world.is_current_entity(entity) {
                 continue;
             }
-            let Some((matrix, min, max)) = binding.pose(world, entity) else {
+            let pose = match native_pose(entity) {
+                Some(pose) => binding.pose_at_native(pose),
+                None => binding.pose(world, entity),
+            };
+            let Some((matrix, min, max)) = pose else {
                 continue;
             };
             let mut mask =
@@ -229,18 +259,7 @@ impl ModelBinding {
         }
         // Preserve exact authored cardinal placement so mesh and axis-aligned proxies agree.
         // Only match the exact f32 radians sent by authoring; nearby free angles stay unsnapped.
-        use std::f32::consts::{FRAC_PI_2, PI, TAU};
-        let (sin, cos) = if yaw == 0. || yaw == TAU || yaw == -TAU {
-            (0., 1.)
-        } else if yaw == FRAC_PI_2 || yaw == -3. * FRAC_PI_2 {
-            (1., 0.)
-        } else if yaw == PI || yaw == -PI {
-            (0., -1.)
-        } else if yaw == -FRAC_PI_2 || yaw == 3. * FRAC_PI_2 {
-            (-1., 0.)
-        } else {
-            yaw.sin_cos()
-        };
+        let (sin, cos) = yaw_sin_cos(yaw);
         let (s, c) = (sin * self.scale, cos * self.scale);
         let matrix = [
             c, 0., -s, 0., 0., self.scale, 0., 0., s, 0., c, 0., at.x, elevation, -at.y, 1.,
@@ -271,6 +290,21 @@ impl ModelBinding {
             .chain(max.iter())
             .all(|v| v.is_finite())
             .then_some((matrix, min, max))
+    }
+}
+
+fn yaw_sin_cos(yaw: f32) -> (f32, f32) {
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    if yaw == 0. || yaw == TAU || yaw == -TAU {
+        (0., 1.)
+    } else if yaw == FRAC_PI_2 || yaw == -3. * FRAC_PI_2 {
+        (1., 0.)
+    } else if yaw == PI || yaw == -PI {
+        (0., -1.)
+    } else if yaw == -FRAC_PI_2 || yaw == 3. * FRAC_PI_2 {
+        (-1., 0.)
+    } else {
+        yaw.sin_cos()
     }
 }
 
@@ -305,6 +339,121 @@ pub(crate) fn preflight_model_poses(styles: &[f32], origins: &[f32]) -> bool {
             .pose_at(crate::components::Transform2D { x: o[0], y: o[1] }, o[2])
             .is_some()
         })
+}
+
+impl SpatialModels {
+    pub(super) fn validate_file(
+        &self,
+        world: &World,
+        b: &mut super::file_admission::Budget,
+    ) -> Result<(), super::file_admission::Error> {
+        use super::file_admission::{entity_history, finite, masks, require, Field, Problem};
+        b.work(self.bindings.len())?;
+        b.work(self.draws.len())?;
+        b.work(self.receiver_masks.len())?;
+        require(
+            self.bindings.len() <= 1024
+                && self.draws.len() <= self.bindings.len()
+                && (self.receiver_masks.is_empty()
+                    || self.receiver_masks.len() == self.draws.len()),
+            Field::Model,
+            0,
+            Problem::Length,
+        )?;
+        let mut owned = b.vector::<bool>(self.draws.len())?;
+        owned.resize(self.draws.len(), false);
+        for (i, (&(id, generation), v)) in self.bindings.iter().enumerate() {
+            require(
+                entity_history(world, Entity { id, generation }),
+                Field::Model,
+                i,
+                Problem::Reference,
+            )?;
+            require(
+                v.asset != 0
+                    && v.flags <= 7
+                    && finite(&[v.elevation, v.yaw, v.scale])
+                    && (0.0001..=10000.).contains(&v.scale)
+                    && finite(&v.min)
+                    && finite(&v.max)
+                    && (0..3).all(|axis| v.min[axis] <= v.max[axis])
+                    && masks(v.receiver_masks),
+                Field::Model,
+                i,
+                Problem::Range,
+            )?;
+            if let Some(index) = v.draw_index {
+                require(
+                    index < self.draws.len(),
+                    Field::Model,
+                    i,
+                    Problem::Reference,
+                )?;
+                require(!owned[index], Field::Model, i, Problem::Duplicate)?;
+                owned[index] = true;
+                require(
+                    self.draws[index].flags == v.flags & 3,
+                    Field::Model,
+                    i,
+                    Problem::Cache,
+                )?;
+                let receiver = self.receiver_masks.get(index).copied().unwrap_or_default();
+                require(
+                    receiver == v.receiver_masks,
+                    Field::Model,
+                    i,
+                    Problem::Cache,
+                )?;
+            }
+        }
+        require(
+            owned.iter().all(|v| *v),
+            Field::Model,
+            0,
+            Problem::Reference,
+        )?;
+        for (i, v) in self.draws.iter().enumerate() {
+            require(
+                v.asset != 0
+                    && v.flags <= 3
+                    && v.mask & !0x3fff == 0
+                    && v.reserved == 0
+                    && finite(&v.matrix)
+                    && v.matrix[3] == 0.
+                    && v.matrix[7] == 0.
+                    && v.matrix[11] == 0.
+                    && v.matrix[15] == 1.,
+                Field::Model,
+                i,
+                Problem::Range,
+            )?;
+        }
+        for (i, v) in self.receiver_masks.iter().enumerate() {
+            require(masks(*v), Field::Model, i, Problem::Range)?;
+        }
+        // Streaming can be reconfigured while last-frame draws retain old assets
+        // and selected poses. Asset existence/bytes are a host obligation.
+        self.streaming.validate_file(&self.bindings, b)
+    }
+}
+#[cfg(test)]
+impl SpatialModels {
+    pub(super) fn corrupt_file_fixture(&mut self, case: u32) {
+        match case {
+            0 => self.bindings.values_mut().next().unwrap().scale = 0.,
+            1 => self.bindings.values_mut().next().unwrap().draw_index = Some(usize::MAX),
+            2 => self.draws[0].reserved = 1,
+            3 => self.draws[0].mask |= 1 << 31,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl SpatialModels {
+    pub(super) fn file_collection_packet(&self, packet: &[u8], duplicate: bool) -> Vec<u8> {
+        super::file_admission::collection_tests::map_packet(packet, &self.bindings, duplicate)
+    }
 }
 
 #[cfg(test)]

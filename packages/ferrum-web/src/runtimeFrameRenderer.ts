@@ -240,6 +240,8 @@ function buildDebugMetrics(
   resources?: RendererResourceStats,
   gpuTiming?: RendererGpuTimingStats,
 ): DebugOverlayMetrics {
+  const flatDebugLineCount = rendererStats.physicsDebugLineCount;
+  const spatialDebugLineCount = rendererStats.spatial?.debugLineCount;
   return {
     fps,
     ...(rendererStats.spatial===undefined?{}:{
@@ -298,8 +300,10 @@ function buildDebugMetrics(
     shadowCasterCount: rendererStats.shadowCasterCount,
     postProcessDrawCalls: rendererStats.postProcessDrawCalls,
     postProcessPassCount: rendererStats.postProcessPassCount,
-    physicsDebugLineCount: rendererStats.physicsDebugLineCount,
+    physicsDebugLineCount: flatDebugLineCount === undefined && spatialDebugLineCount === undefined
+      ? undefined : (flatDebugLineCount ?? 0) + (spatialDebugLineCount ?? 0),
     audioEventsPerSecond,
+    ...(frame.unifiedPhysics === undefined ? {} : { unifiedPhysics: frame.unifiedPhysics }),
     physicsMode: frame.physics.mode,
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,

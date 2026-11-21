@@ -7,7 +7,7 @@ use crate::components::{
 use crate::physics::{KinematicSweepScratch, PhysicsCounters, PhysicsSystem};
 
 fn setup() -> (Engine, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 71, 16.0, 16.0, 0);
     engine.world.set_aabb_collider(

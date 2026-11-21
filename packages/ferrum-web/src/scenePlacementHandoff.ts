@@ -21,6 +21,7 @@ export const SCENE_PLACEMENT_AGENT_HANDOFF_VERSION = 1 as const;
 
 export interface CreateScenePlacementAgentHandoffOptions {
   readonly document: SceneAuthoringDocumentSpec;
+  readonly componentTemplates?: import("./dataSceneRuntimeTarget.js").DataSceneRuntimeComponentTemplates;
   readonly state: ScenePlacementViewerState;
   readonly patch?: ScenePlacementPatch;
   readonly sourceDocument?: string;
@@ -68,6 +69,8 @@ export interface ScenePlacementAgentHandoff {
   readonly workflow: "human-placement-agent-behavior";
   readonly placementOwner: "sceneComposition.fragments[].instances[]";
   readonly behaviorOwner: "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities";
+  /** Authored document-local catalog, never an expanded or external runtime catalog. */
+  readonly componentTemplates?: SceneAuthoringDocumentSpec["componentTemplates"];
   readonly sourceDocument?: string;
   readonly selectedInstanceId?: string;
   readonly hoveredInstanceId?: string;
@@ -103,7 +106,7 @@ export function createScenePlacementAgentHandoff(
         });
   const normalDocument =
     options.normalBindings?.length && patch
-      ? mergeScenePlacementPatch(options.document, patch).document
+      ? mergeScenePlacementPatch(options.document, patch, { componentTemplates: options.componentTemplates }).document
       : options.document;
   const normalBindings = options.normalBindings?.map((binding) =>
     resolveSceneSpriteNormalBindingEvidence(normalDocument, binding),
@@ -112,6 +115,7 @@ export function createScenePlacementAgentHandoff(
     format: SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT,
     version: SCENE_PLACEMENT_AGENT_HANDOFF_VERSION,
     workflow: "human-placement-agent-behavior",
+    ...(options.document.componentTemplates === undefined ? {} : { componentTemplates: structuredClone(options.document.componentTemplates) }),
     placementOwner: "sceneComposition.fragments[].instances[]",
     behaviorOwner:
       "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",

@@ -1,3 +1,4 @@
+import { placementDocumentTextures } from "./placementDocumentTextures";
 import {
   resolveDataSceneInstanceComponents,
   resolveSceneAuthoringDocument,
@@ -24,10 +25,12 @@ export function placementFlatTextureRoles(documents: readonly SceneAuthoringDocu
     const normalsActive = !!document.spatial || document.lighting?.profile === "lit"
       || document.lighting !== undefined && document.lighting.enabled !== false;
     const resolved = resolveSceneAuthoringDocument(document, { validateBindings: true, validateComponents: true, missingBehavior: "ignore" });
+    for (const ref of placementDocumentTextures(document))
+      if (!ref.normal || normalsActive) add({ value: ref.texture }, ref.role);
     for (const light of resolved.lighting?.pointLights ?? [])
       if (light.cookie) add({ value: light.cookie.texture ?? light.cookie.textureId! }, "data");
     for (const instance of resolved.bindingPlan?.instances ?? []) {
-      const component = resolveDataSceneInstanceComponents(instance);
+      const component = resolveDataSceneInstanceComponents(instance, { componentTemplates: resolved.componentTemplates });
       if (component.mode !== "inline") continue;
       const sprite = component.sprite;
       add(sprite.texture, "color");

@@ -1,4 +1,5 @@
 export interface DebugOverlayMetrics {
+  unifiedPhysics?: import("./unifiedPhysicsObservations.js").UnifiedPhysicsDiagnostics;
   /** Current renderer frame, distinct from the completed prior query's gpuFrameId. */
   rendererFrameId?: number;
   /** Unclamped interval between render callbacks; omitted on the first frame. */
@@ -74,6 +75,7 @@ export interface DebugOverlayMetrics {
   playerHeight?: number;
   collisionPairCount?: number;
   collisionEventCount?: number;
+  /** Rendered 2D physics and spatial diagnostic lines combined. */
   physicsDebugLineCount?: number;
   physicsCcdLimits?: number;
   physicsJointMaxForce?: number;
@@ -138,6 +140,17 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "postProcessDrawCalls", label: "post-process draws", unit: "count", optional: true },
   { id: "postProcessPassCount", label: "post-process passes", unit: "count", optional: true },
   { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
+  { id: "nativePhysicsBackend", label: "native physics backend", unit: "mode", optional: true },
+  { id: "nativePhysicsBackendSteps", label: "native backend steps", unit: "count", optional: true },
+  { id: "nativePhysicsSolverContacts", label: "native solver contacts", unit: "count", optional: true },
+  { id: "nativePhysicsSolverConstraints", label: "native solver constraints", unit: "count", optional: true },
+  { id: "nativePhysicsDebugStatus", label: "native debug", unit: "state", optional: true },
+  { id: "nativePhysicsDebugLineCount", label: "native debug lines", unit: "count", optional: true },
+  { id: "nativePhysicsDebugWorkUnits", label: "native debug work", unit: "count", optional: true },
+  { id: "nativePhysicsDebugTruncated", label: "native debug truncated", unit: "state", optional: true },
+  { id: "nativePhysicsDebugUnsupportedShapes", label: "native debug unsupported", unit: "count", optional: true },
+  { id: "nativePhysicsDebugRejected", label: "native debug rejected", unit: "state", optional: true },
+  { id: "nativePhysicsDebugProjection", label: "native debug projection", unit: "mode", optional: true },
   { id: "physicsMode", label: "physics mode", unit: "mode", optional: true },
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
   { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
@@ -150,7 +163,7 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "playerHd2dHeight", label: "player height", unit: "world", optional: true },
   { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
   { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
-  { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
+  { id: "physicsDebugLineCount", label: "rendered debug lines", unit: "count", optional: true },
   { id: "physicsCcdLimits", label: "ccd limits", unit: "count", optional: true },
   { id: "physicsJointMaxForce", label: "joint force max", unit: "world", optional: true },
   { id: "physicsJointMaxError", label: "joint error max", unit: "world", optional: true },
@@ -293,6 +306,24 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.audioEventsPerSecond !== undefined) {
     lines.push(row("audioEventsPerSecond", `${metrics.audioEventsPerSecond.toFixed(1)} events/s`));
+  }
+  if (metrics.unifiedPhysics !== undefined) {
+    const native = metrics.unifiedPhysics;
+    lines.push(row("nativePhysicsBackend", native.backend),
+      row("nativePhysicsBackendSteps", native.frame.backendSteps),
+      row("nativePhysicsSolverContacts", native.frame.solverContacts),
+      row("nativePhysicsSolverConstraints", native.frame.solverConstraints));
+    const debug = native.debug;
+    if (debug !== undefined) {
+      const status = debug.rejected ? "rejected" : debug.truncated || debug.unsupportedShapes > 0 ? "partial" : "complete";
+      lines.push(row("nativePhysicsDebugStatus", status),
+        row("nativePhysicsDebugLineCount", debug.lineCount),
+        row("nativePhysicsDebugWorkUnits", debug.workUnits),
+        row("nativePhysicsDebugTruncated", debug.truncated ? "yes" : "no"),
+        row("nativePhysicsDebugUnsupportedShapes", debug.unsupportedShapes),
+        row("nativePhysicsDebugRejected", debug.rejected ? "yes" : "no"),
+        row("nativePhysicsDebugProjection", debug.projection));
+    }
   }
   if (metrics.physicsMode !== undefined) {
     lines.push(row("physicsMode", metrics.physicsMode));

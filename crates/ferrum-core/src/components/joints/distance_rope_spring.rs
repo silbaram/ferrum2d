@@ -6,7 +6,7 @@ pub struct DistanceJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DistanceJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
@@ -93,7 +93,7 @@ pub struct RopeJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RopeJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
@@ -180,9 +180,10 @@ pub struct SpringJointId {
     pub generation: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpringJoint {
-    /// None preserves the legacy stiffness/damping solver.
+    /// None selects normalized stiffness/damping. The unified backend converts
+    /// these at a 60 Hz reference; the original backend uses its legacy solver.
     pub frequency_hz: Option<f32>,
     pub damping_ratio: f32,
     pub entity_a: Entity,

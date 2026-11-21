@@ -68,6 +68,20 @@ export interface PhysicsHd2dKinematicMoveOptions {
   allowLedgeDrop?: boolean;
 }
 
+/** Per-body automatic planar movement settings. An update replaces all options. */
+export interface PhysicsKinematicControllerOptions {
+  /** Defaults to all layers (0xffffffff), intersected with each collider's mask. */
+  solidMaskBits?: number;
+  /** Integer in 1..8; defaults to 4 sweeps per fixed tick. */
+  maxIterations?: number;
+  /** Finite float32 in 0..65536; defaults to 0. */
+  maxStepHeight?: number;
+  /** Finite float32 in 0..65536; defaults to 0. */
+  maxDropHeight?: number;
+  /** Defaults to false. */
+  allowLedgeDrop?: boolean;
+}
+
 export interface PhysicsHd2dKinematicMoveResult {
   body: PhysicsEntitySnapshot;
   elevationDelta: number;

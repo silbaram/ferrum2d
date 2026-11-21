@@ -35,6 +35,8 @@ impl World {
     pub fn despawn(&mut self, entity: Entity) {
         let i = entity.id as usize;
         if i < self.alive.len() && self.alive[i] && self.generations[i] == entity.generation {
+            self.unified_physics_entities
+                .remove(&(entity.id, entity.generation));
             if self.has_incident_joints(entity) {
                 self.clear_joints_for_entity(entity);
             }
@@ -142,3 +144,6 @@ impl World {
         self.alive_positions[index] = DEAD_ALIVE_POSITION;
     }
 }
+
+#[cfg(test)]
+mod file_roster_test;

@@ -23,7 +23,7 @@ fn body(e: &mut Engine, x: f32, y: f32, dynamic: bool) -> Entity {
 }
 #[test]
 fn fixed_rotation_keeps_translation_and_recovers_authored_inertia() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let id = body(&mut e, 0.0, 0.0, true);
     e.world.set_velocity(id, Velocity { vx: 2.0, vy: 0.0 });
@@ -58,7 +58,7 @@ fn fixed_rotation_keeps_translation_and_recovers_authored_inertia() {
 #[test]
 fn joint_load_break_is_bounded_consuming_and_uses_substep_seconds() {
     for iterations in [1, 4, 12] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         e.use_data_scene();
         e.configure_physics_diagnostics(true);
         let a = body(&mut e, 0.0, 0.0, false);
@@ -89,7 +89,7 @@ fn joint_load_break_is_bounded_consuming_and_uses_substep_seconds() {
 }
 #[test]
 fn batch_cast_matches_single_and_rejects_entire_invalid_batch() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     body(&mut e, 5.0, 0.0, false);
     body(&mut e, 10.0, 0.0, false);
@@ -115,7 +115,7 @@ fn batch_cast_matches_single_and_rejects_entire_invalid_batch() {
 }
 #[test]
 fn impact_feedback_deduplicates_pairs_and_independent_report_filter() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     let a = body(&mut e, 0.0, 0.0, true);
     let b = body(&mut e, 10.0, 0.0, false);
@@ -191,7 +191,7 @@ fn feedback_step(e: &mut Engine, continuous: bool) {
 #[test]
 fn discrete_and_ccd_feedback_work_without_contact_reports_and_after_reset() {
     for continuous in [false, true] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         e.use_data_scene();
         configure_feedback(&mut e);
         for reset in [false, true] {
@@ -210,7 +210,7 @@ fn discrete_and_ccd_feedback_work_without_contact_reports_and_after_reset() {
 
 #[test]
 fn manual_physics_steps_share_the_frame_feedback_budget() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     configure_feedback(&mut e);
     for batch in 0..2 {
@@ -232,7 +232,7 @@ fn manual_physics_steps_share_the_frame_feedback_budget() {
 
 #[test]
 fn feedback_cooldowns_clear_on_restore_commit_but_not_rollback_or_despawn() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     e.use_data_scene();
     configure_feedback(&mut e);
     let mover = approaching_pair(&mut e, 0.0, false);
@@ -269,7 +269,7 @@ fn platform(e: &mut Engine) -> Entity {
 }
 #[test]
 fn spatial_platform_carries_riders_and_releases_when_they_leave() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let rider = platform(&mut e);
     let revision = e.spatial_configuration_revision();
     e.spatial_scene.step_moving_platforms(&mut e.world, 0.5);
@@ -285,7 +285,7 @@ fn spatial_platform_carries_riders_and_releases_when_they_leave() {
 }
 #[test]
 fn spatial_platform_blocked_carry_rolls_back_surface_phase_and_rider() {
-    let mut e = Engine::new();
+    let mut e = crate::engine::legacy_test_fixture::engine();
     let rider = platform(&mut e);
     let wall = body(&mut e, 12.0, 10.0, false);
     e.world
@@ -301,7 +301,7 @@ fn spatial_platform_blocked_carry_rolls_back_surface_phase_and_rider() {
 #[test]
 fn spatial_platform_co_riders_move_as_one_batch_in_both_spawn_orders() {
     for reverse in [false, true] {
-        let mut e = Engine::new();
+        let mut e = crate::engine::legacy_test_fixture::engine();
         let first = platform(&mut e);
         let second = body(&mut e, 13.0, 10.0, false);
         e.world.set_rigid_body(second, RigidBody::kinematic());

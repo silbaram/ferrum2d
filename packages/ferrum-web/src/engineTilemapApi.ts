@@ -1,4 +1,5 @@
 import { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
+import { configureDataSceneCollisionTilemap } from "./dataSceneCollisionTilemap.js";
 import type { Engine } from "../pkg/ferrum_core";
 import type {
   FerrumSceneApi,
@@ -23,6 +24,7 @@ import type {
 type FerrumTilemapSceneApi = Pick<
   FerrumSceneApi,
   | "configureDataSceneNavigation"
+  | "configureDataSceneCollisionTilemap"
   | "setDataSceneNavigationCost"
   | "clearDataSceneNavigation"
   | "setShooterTilemapTile"
@@ -42,14 +44,20 @@ export interface TilemapSceneApiContext {
   rustEngine: Engine;
   bridge: WasmBridge;
   requireAlive(): void;
+  textureId?(name: string): number;
 }
 
 export function createTilemapSceneApi({
   rustEngine,
   bridge,
   requireAlive,
+  textureId,
 }: TilemapSceneApiContext): FerrumTilemapSceneApi {
   return {
+    configureDataSceneCollisionTilemap(options) {
+      requireAlive();
+      return configureDataSceneCollisionTilemap(rustEngine, options, { textureId });
+    },
     configureDataSceneNavigation(spec, entityHandles) {
       requireAlive();
       const grid = resolveDataSceneNavigationSpec(spec);

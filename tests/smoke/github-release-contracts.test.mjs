@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, test } from "node:test";
-import { cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -123,7 +123,7 @@ test("the printed directory command handles spaces, quotes, shell substitutions,
     assert(command, "CLI must print a usable directory command");
     const navigation = await run("sh", ["-c", `${command}\npwd -P`], temp);
     assert.equal(navigation.code, 0, navigation.stderr);
-    assert.equal(navigation.stdout.trimEnd(), target);
+    assert.equal(navigation.stdout.trimEnd(), await realpath(target));
   }
 });
 

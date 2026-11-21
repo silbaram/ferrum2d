@@ -14,7 +14,7 @@ export function parseDistributionArgs(argv) {
   if (["--help", "-h"].includes(command)) return { help: true };
   if (!["prepare", "assemble", "verify"].includes(command)) throw new Error(`Unknown command: ${command}`);
   const options = { command }, allowed = {
-    prepare: ["version", "repository", "output", "component", "plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"],
+    prepare: ["version", "repository", "output", "component", "engine-bundle", "plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"],
     assemble: ["engine", "studio", "output"], verify: ["bundle"],
   }[command];
   const flags = new Set(["plan", "no-sign", "with-updater", "skip-engine-build", "skip-engine-package-check"]), seen = new Set();
@@ -34,6 +34,7 @@ export function parseDistributionArgs(argv) {
     githubRelease(options.version, options.repository);
     options.component ??= "all";
     if (!["engine", "studio", "all"].includes(options.component)) throw new Error("--component must be engine, studio or all");
+    if (options.engineBundle && options.component !== "studio") throw new Error("--engine-bundle requires --component studio");
     if (options.component === "studio" && (options.skipEngineBuild || options.skipEnginePackageCheck)) throw new Error("Engine skip options require component engine or all");
     if (options.component === "engine" && options.noSign) throw new Error("--no-sign requires component studio or all");
     if (options.component === "engine" && options.withUpdater) throw new Error("--with-updater requires component studio or all");
@@ -48,6 +49,7 @@ export async function prepareDistribution(options, context = {}) {
   const root = context.root ?? repositoryRoot, release = githubRelease(options.version, options.repository);
   const component = options.component ?? "all";
   if (!["engine", "studio", "all"].includes(component)) throw new Error("Invalid distribution component");
+  if (options.engineBundle && component !== "studio") throw new Error("--engine-bundle requires --component studio");
   const studio = component !== "engine" ? await studioReleasePlan(options, context) : undefined;
   const output = path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag,
     component === "studio" ? `studio-${studio.platform}-${studio.arch}` : component));
@@ -73,12 +75,14 @@ export async function prepareDistribution(options, context = {}) {
 export const distributionHelp = `Ferrum2D engine SDK / Studio release preparation (no publishing)
 
 prepare --version x.y.z-beta.N [--component engine|studio|all] [--repository owner/repo]
-        [--output NEW_DIR] [--plan] [--no-sign] [--with-updater]
+        [--output NEW_DIR] [--plan] [--no-sign] [--with-updater] [--engine-bundle ENGINE_DIR]
         [--skip-engine-build] [--skip-engine-package-check]
 assemble --engine ENGINE_DIR --studio STUDIO_DIR [--studio OTHER_OS_DIR] --output NEW_DIR
 verify --bundle DISTRIBUTION_DIR
 
 Studio installers are built on the native OS: Windows .exe, Linux .deb, macOS .dmg.
+--engine-bundle embeds the verified SDK runtime from the same clean commit into a Studio build.
+It requires a fresh workspace without packages/ferrum-web/dist or pkg.
 --with-updater builds signed Studio updater artifacts and studio-updater metadata.
 Requires FERRUM_UPDATER_PUBLIC_KEY and TAURI_SIGNING_PRIVATE_KEY; OS code-signing is separate.
 --plan only prints the plan. Existing outputs are never overwritten.

@@ -1,3 +1,4 @@
+import { audioSourceRetainer } from "./nativeFileResourceOwners.js";
 import { throwIfAssetLoadAborted } from "./assetLoadTasks.js";
 import { audioDecodeError, audioLoadError, describeError } from "./diagnostics.js";
 
@@ -10,10 +11,14 @@ export class AudioAssetLoader {
     const signal = options.signal;
     throwIfAssetLoadAborted(signal);
     const bytes = await this.loadBytes(soundId, url, signal);
+    // decodeAudioData may detach its input. Retain one immutable encoding first.
+    const retain = audioSourceRetainer(this);
+    const source = retain === undefined ? undefined : new Blob([bytes]);
     try {
       throwIfAssetLoadAborted(signal);
       const buffer = await this.audioContextProvider().decodeAudioData(bytes);
       throwIfAssetLoadAborted(signal);
+      if (source) retain?.(buffer, source, url);
       return buffer;
     } catch (error) {
       throwIfAssetLoadAborted(signal);

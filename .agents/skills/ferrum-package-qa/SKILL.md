@@ -26,9 +26,12 @@ The package artifact may include:
 - `package.json`
 - `README.md`
 - `LICENSE`
+- `THIRD_PARTY_NOTICES.txt` (locked Wasm dependency source notices)
 - `dist/**`
 - `pkg/ferrum_core.js`
 - `pkg/ferrum_core.d.ts`
+- `pkg/ferrum_core_factory.js`
+- `pkg/ferrum_core_factory.d.ts`
 - `pkg/ferrum_core_bg.wasm`
 - `pkg/ferrum_core_bg.wasm.d.ts`
 - `pkg/package.json`
@@ -59,6 +62,17 @@ Normal package QA:
 ```bash
 pnpm package:check
 ```
+
+The runtime package check regenerates the expected Wasm dependency notices from locked offline Cargo metadata
+and compares the actual packed notice bytes. After dependency or vendored patch-record changes, regenerate
+with `node scripts/package/wasm-license-notices.mjs`; verify with the same command plus `--check`.
+This source-document inventory does not replace separate font/asset notices or establish legal compatibility.
+
+The runtime package check also compares the actual Wasm's existing Native header Core/target fingerprint
+with current `build.rs` inputs, and compares all seven packed Wasm/glue/factory/declaration/metadata files
+with the verified workspace bytes. `node scripts/package/native-wasm-source-identity.mjs` performs the
+read-only fingerprint check without rebuilding. The source identity contracts run in the CI package stage.
+This fingerprint does not attest compiler flags, reproducible binaries, authentication or complete package acceptance.
 
 Release rehearsal package QA:
 

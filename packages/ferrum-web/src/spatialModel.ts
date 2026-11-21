@@ -1,3 +1,5 @@
+import type {ResourceBudget} from "./nativeFileResourceBudget.js";
+import { retainModelFileSource } from "./nativeFileResourceModels.js";
 import { resolveSpatialTextureTransform, validateSpatialRequiredExtensions, validateSpatialTransformedUvs } from "./spatialTextureTransform.js";
 import { SpatialModelImageReader } from "./spatialModelImage.js";
 /** Bounded static GLB input. Explicit diffuse conversion or limited non-metallic direct specular. */
@@ -75,21 +77,14 @@ export interface SpatialModelPreparer {
 const resources = new WeakMap<SpatialModelAsset, SpatialModelResource>();
 export function spatialModelResource(asset: SpatialModelAsset): SpatialModelResource | undefined { return resources.get(asset); }
 /** Internal ownership handoff from the validated loader; not a public package export. */
-export function createSpatialModelAsset(resource: SpatialModelResource): SpatialModelAsset {
-    const handle = Object.freeze({
-        contentId: resource.contentId,
-        ...(resource.materialProfile === "specular" ? { materialProfile: "specular" as const } : {}),
-        bounds: Object.freeze([...resource.bounds]),
-        primitiveCount: resource.primitives.length,
-        triangleCount: resource.primitives.reduce((n, p) => n + p.indices.length / 3, 0),
-        byteLength: resource.primitives.reduce((n, p) => n + p.vertices.byteLength + p.indices.byteLength
-            + (p.uvTransform?.byteLength ?? 0) + (p.normal?.uvTransform?.byteLength ?? 0) + (p.emissive?.uvTransform?.byteLength ?? 0) + (p.specular?.texture?.uvTransform?.byteLength ?? 0)
-            + (p.specular?.colorTexture?.uvTransform?.byteLength ?? 0) + (p.specular?.roughnessTexture?.uvTransform?.byteLength ?? 0), 0)
-            + resource.images.reduce((n, i) => n + i.pixels.byteLength, 0),
-        diagnostics: Object.freeze([...resource.diagnostics]),
-    });
-    resources.set(handle, resource);
-    return handle;
+/** @internal Same derived metadata used for normal opaque handle creation. */
+export function spatialModelOwnedFacts(resource:SpatialModelResource){
+ return {primitiveCount:resource.primitives.length,triangleCount:resource.primitives.reduce((n,p)=>n+p.indices.length/3,0),
+  byteLength:resource.primitives.reduce((n,p)=>n+p.vertices.byteLength+p.indices.byteLength+(p.uvTransform?.byteLength??0)+(p.normal?.uvTransform?.byteLength??0)+(p.emissive?.uvTransform?.byteLength??0)+(p.specular?.texture?.uvTransform?.byteLength??0)+(p.specular?.colorTexture?.uvTransform?.byteLength??0)+(p.specular?.roughnessTexture?.uvTransform?.byteLength??0),0)+resource.images.reduce((n,i)=>n+i.pixels.byteLength,0)};
+}
+export function createSpatialModelAsset(resource:SpatialModelResource):SpatialModelAsset {
+ const facts=spatialModelOwnedFacts(resource),handle=Object.freeze({contentId:resource.contentId,...(resource.materialProfile==="specular"?{materialProfile:"specular" as const}:{}),bounds:Object.freeze([...resource.bounds]),...facts,diagnostics:Object.freeze([...resource.diagnostics])});
+ resources.set(handle,resource);return handle;
 }
 export interface SpatialGlbOptions {
     /** Explicit diffuse conversion, or bounded non-metallic direct GGX (metallicFactor must be 0). */
@@ -498,7 +493,9 @@ export async function loadSpatialGlb(source: string | ArrayBuffer, options: Spat
     const contentId = Array.from(new Uint8Array(hash), x => x.toString(16).padStart(2, "0")).join("");
     const diagnostics = Object.freeze([specularProfile ? "bounded non-metallic direct GGX: effective roughness >=0.12, lobe <=16; no IBL/transmission/BLEND" : "diffuse profile: metallic/roughness scalars are not rendered as PBR",...(sourcePrimitiveCount>32?[`merged ${sourcePrimitiveCount} static source primitives into ${primitives.length} material batches`]:[])]);
     const frozenBounds = Object.freeze(bounds);
-    return createSpatialModelAsset({ materialProfile: options.materialProfile, contentId, bounds: frozenBounds, primitives, images, diagnostics });
+    const handle = createSpatialModelAsset({ materialProfile: options.materialProfile, contentId, bounds: frozenBounds, primitives, images, diagnostics });
+    retainModelFileSource(handle, new Blob([bytes], { type: "model/gltf-binary" }), typeof source === "string" ? source : "");
+    return handle;
 }
 function imageDimensions(data: Uint8Array, mime: string): [
     number,
@@ -543,4 +540,24 @@ export function spatialModelRegistry(engine: object) {
         registries.set(engine, registry);
     }
     return registry;
+}
+
+/** @internal Cold readonly lookup; unlike the registration helper this never creates a registry. */
+export function inspectSpatialModelRegistry(engine: object) { return registries.get(engine); }
+
+/** @internal Only Root's alive unpublished native target. This installs JS
+ * resource bindings; it never creates/updates native model state or submits a frame. */
+export function prepareFileSpatialModelRegistry(engine:object,rows:readonly {key:string;id:number;handle:SpatialModelAsset}[],b:ResourceBudget){
+ const previous=registries.get(engine);b.work(rows.length*2+(previous?.size??0)*2);b.charge("metadataBytes",(rows.length+(previous?.size??0))*32);
+ const staged=new Map<string,{id:number;asset:SpatialModelResource;handle:SpatialModelAsset}>(),ids=new Set<number>();
+ for(const row of rows){b.metadata(row.key);const asset=resources.get(row.handle);
+  if(!row.key||!Number.isSafeInteger(row.id)||row.id<1||row.id>0xffffffff||!asset||staged.has(row.key)||ids.has(row.id))return b.fail("DATA","model registry target row");
+  ids.add(row.id);staged.set(row.key,{id:row.id,asset,handle:row.handle});
+ }
+ const old=previous?[...previous].map(([key,entry])=>({key,entry,id:entry.id,asset:entry.asset,handle:entry.handle})):[];let adopted=false,disposed=false;
+ const assertCurrent=()=>{
+  if(adopted||disposed||registries.get(engine)!==previous||previous?.size!==old.length&&!(previous===undefined&&old.length===0))return b.fail("STALE","model registry target");
+  for(const row of old){const entry=previous!.get(row.key);if(entry!==row.entry||entry.id!==row.id||entry.asset!==row.asset||entry.handle!==row.handle)return b.fail("STALE","model registry target rows");}
+ };
+ return Object.freeze({assertCurrent,adopt:()=>{assertCurrent();registries.set(engine,staged);adopted=true;old.length=0;},dispose:()=>{if(!adopted&&!disposed){disposed=true;staged.clear();old.length=0;}}});
 }

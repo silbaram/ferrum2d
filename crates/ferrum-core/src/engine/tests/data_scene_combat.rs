@@ -3,7 +3,7 @@ use super::*;
 use crate::gameplay_event::*;
 
 fn combat() -> (Engine, Entity, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 1, 100.0, 100.0, 0);
     let enemy = sprite(&mut engine, 2, 20.0, 100.0, 0);
@@ -276,7 +276,7 @@ fn combat_spatial_trigger_ai_moves_with_native_terrain_height_and_single_integra
 
 #[test]
 fn combat_projectile_queue_and_dense_pairs_are_bounded_and_expired_slots_are_reusable() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 1, 500.0, 0.0, 0);
     engine

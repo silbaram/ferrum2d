@@ -1,6 +1,8 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub(crate) struct CollisionContactKey {
     a_id: u32,
     a_generation: u32,
@@ -26,11 +28,36 @@ impl CollisionContactKey {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CollisionContactTracker {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     previous_contacts: Vec<CollisionContactKey>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     current_contacts: Vec<CollisionContactKey>,
     max_contacts: usize,
+}
+
+impl Clone for CollisionContactTracker {
+    fn clone(&self) -> Self {
+        let mut previous_contacts = Vec::with_capacity(self.max_contacts);
+        previous_contacts.extend_from_slice(&self.previous_contacts);
+        let mut current_contacts = Vec::with_capacity(self.max_contacts);
+        current_contacts.extend_from_slice(&self.current_contacts);
+        Self {
+            previous_contacts,
+            current_contacts,
+            max_contacts: self.max_contacts,
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn runtime_checkpoint_contact_tracker_keeps_empty_preallocation() {
+    let contacts = CollisionContactTracker::with_capacity(512);
+    let bytes = crate::checkpoint_codec::encode(&contacts).unwrap();
+    let copy: CollisionContactTracker = crate::checkpoint_codec::decode(&bytes).unwrap();
+    assert_eq!(copy.current_capacity(), contacts.current_capacity());
 }
 
 impl CollisionContactTracker {
@@ -130,3 +157,6 @@ pub(crate) fn finish_collision_contacts(
     std::mem::swap(previous_contacts, current_contacts);
     current_contacts.clear();
 }
+
+#[allow(dead_code)]
+mod file_admission;

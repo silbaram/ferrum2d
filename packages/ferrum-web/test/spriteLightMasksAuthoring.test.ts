@@ -1,7 +1,8 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import './nativeRuntimeTestHelper.js';
 import {test} from 'node:test';
 import {deepEqual,equal,ok,throws} from 'node:assert/strict';
-import {createEngine,captureGameStateSnapshot,restoreGameStateSnapshot,hashGameStateSnapshot} from '../src/core.js';
+import {captureGameStateSnapshot,restoreGameStateSnapshot,hashGameStateSnapshot} from '../src/core.js';
 import {applyDataSceneAuthoringDocument,createSceneInstanceHandleRegistry,createScenePlacementViewer,mergeScenePlacementPatch,resolveSceneAuthoringDocument} from '../src/authoring.js';
 import {attachDataSceneRuntimeEngineAdapter} from '../src/dataSceneRuntimeTarget.js';
 import {validateFlatLitAsset,type FlatLightingAsset} from '../src/flatLit.js';

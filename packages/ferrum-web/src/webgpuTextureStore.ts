@@ -1,3 +1,7 @@
+import { registerTextureFileOwner, captureResourceSource, fileResourceBlob, type ResourceTextureData, type ResourceTextureEntry } from "./nativeFileResourceOwners.js";
+import { ResourceBudget, NativeFileResourceError, resourceInteger } from "./nativeFileResourceBudget.js";
+import { copyFileTextureData } from "./nativeFileResourceTextures.js";
+import { readFileWebGpuTexture } from "./nativeFileResourceWebGpu.js";
 import { webGpuResources } from "./webgpuResources.js";
 import { createAssetLoadScope } from "./assetLoadTasks.js";
 import { rgbaFromAlpha } from "./pixelMaskTextureData.js";
@@ -34,8 +38,10 @@ export interface WebGpuTextureWriteBytes {
 const TEXTURE_ROW_ALIGNMENT = 256;
 
 export class WebGpuTextureStore {
-  private readonly textures = new Set<GPUTexture>();
-  private readonly texturesById = new Map<number, WebGpuTextureResource>();
+  private fileGeneration = 0;
+  private fileObjects = new Map<GPUTexture, { generation: number; width: number; height: number; colorSpace: TextureColorSpace; source?: { blob: Blob; url: string } }>();
+  private textures = new Set<GPUTexture>();
+  private texturesById = new Map<number, WebGpuTextureResource>();
   private readonly pendingLoads = new Set<AbortController>();
   private readonly pendingIds = new Map<number, AbortController>();
   private destroyed = false;
@@ -46,7 +52,10 @@ export class WebGpuTextureStore {
     private readonly sampler: GPUSampler,
     private readonly textureBindGroupLayout: GPUBindGroupLayout,
     private readonly linearWorking = false,
-  ) {}
+  ) {
+    registerTextureFileOwner(this, { capture: budget => this.captureFileTextures(budget),
+      prepare: (data, budget) => this.prepareFileTextures(data, budget), revision: () => this.fileGeneration });
+  }
 
   async load(url: string, options?: TextureLoadOptions): Promise<GPUTexture> {
     return this.loadManaged(url, options);
@@ -75,7 +84,9 @@ export class WebGpuTextureStore {
       const {bitmap,blob} = await this.loadImageBitmap(url, colorSpace, controller.signal, options.alphaMode);
       try {
         this.assertLoadActive(controller.signal);
-        return this.createTextureFromSource(textureId, bitmap, colorSpace, blob, controller.signal);
+        const texture = this.createTextureFromSource(textureId, bitmap, colorSpace, blob, controller.signal);
+        const record = this.fileObjects.get(texture); if (record) record.source = { blob, url };
+        return texture;
       } finally { bitmap.close(); }
     } catch (error) {
       if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
@@ -131,6 +142,7 @@ export class WebGpuTextureStore {
       { width: patch.rect.width, height: patch.rect.height, depthOrArrayLayers: 1 },
     );
     resource.revision = ++this.revision;
+    const record = this.fileObjects.get(resource.texture); if (record) record.generation = ++this.fileGeneration;
   }
 
   restoreRgbaTexture(id: number, width: number, height: number, data: Uint8Array): GPUTexture { this.assertAlive(); return this.createTextureFromRgbaData(id,width,height,data); }
@@ -156,6 +168,7 @@ export class WebGpuTextureStore {
       webGpuResources(this.device).destroy(resource.texture);
       this.textures.delete(resource.texture);
       this.texturesById.delete(textureId);
+      this.fileObjects.delete(resource.texture); this.fileGeneration++;
       return true;
     } finally {
       if (this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
@@ -182,6 +195,7 @@ export class WebGpuTextureStore {
     this.destroyed = true;
     for (const controller of this.pendingLoads) controller.abort();
     this.pendingLoads.clear();
+    this.fileObjects.clear(); this.fileGeneration++;
     this.pendingIds.clear();
     for (const texture of this.textures) {
       webGpuResources(this.device).destroy(texture);
@@ -211,7 +225,7 @@ export class WebGpuTextureStore {
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       ...(this.linearWorking ? { viewFormats: ["rgba8unorm-srgb"] } : {}),
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     }, false);
     try {
       this.device.queue.copyExternalImageToTexture(
@@ -219,6 +233,8 @@ export class WebGpuTextureStore {
         { texture },
         { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       );
+      this.fileObjects.set(texture, { generation: ++this.fileGeneration, width: source.width, height: source.height, colorSpace,
+        source: { blob, url: "" } });
       if (textureId === undefined) {
         this.textures.add(texture);
         return texture;
@@ -246,7 +262,7 @@ export class WebGpuTextureStore {
       size: { width, height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
       ...(this.linearWorking ? { viewFormats: ["rgba8unorm-srgb"] } : {}),
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     }, false);
     try {
       this.device.queue.writeTexture(
@@ -255,6 +271,7 @@ export class WebGpuTextureStore {
         { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
         { width, height, depthOrArrayLayers: 1 },
       );
+      this.fileObjects.set(texture, { generation: ++this.fileGeneration, width, height, colorSpace: this.linearWorking ? "srgb" : "none" });
       this.setTexture(textureId, this.createTextureResource(texture, width, height, this.linearWorking ? "srgb" : "none"));
       return texture;
     } catch (error) {
@@ -298,10 +315,121 @@ export class WebGpuTextureStore {
     if (previous && previous.texture !== resource.texture) {
       webGpuResources(this.device).destroy(previous.texture);
       this.textures.delete(previous.texture);
+      this.fileObjects.delete(previous.texture);
     }
     this.textures.add(resource.texture);
     resource.revision = ++this.revision;
     this.texturesById.set(textureId, resource);
+    this.fileGeneration++;
+  }
+
+  private async captureFileTextures(b: ResourceBudget): Promise<ResourceTextureData> {
+    this.assertAlive();
+    if (this.pendingLoads.size || this.pendingIds.size) b.fail("BUSY", "GPU texture loads");
+    const generation = this.fileGeneration, revision = this.revision;
+    b.charge("resources", this.textures.size); b.work(this.textures.size + this.texturesById.size);
+    const aliases = new Map<GPUTexture, number[]>();
+    for (const texture of this.textures) aliases.set(texture, []);
+    for (const [id, resource] of this.texturesById) {
+      const ids = aliases.get(resource.texture);
+      if (!ids) return b.fail("DATA", "GPU alias owner"); ids.push(id);
+    }
+    const entries: ResourceTextureEntry[] = [];
+    for (const [texture, ids] of aliases) {
+      const record = this.fileObjects.get(texture);
+      if (!record || record.width !== texture.width || record.height !== texture.height) return b.fail("DATA", "GPU tracked descriptor");
+      b.charge("gpuBytes", record.width * record.height * 4);
+      const pixels = await readFileWebGpuTexture(this.device, texture, b);
+      const source = record.source === undefined ? undefined : await captureResourceSource(record.source, b);
+      entries.push(Object.freeze({ ids: Object.freeze(ids), width: record.width, height: record.height, generation: record.generation,
+        colorSpace: record.colorSpace, alphaMode: "straight", runtimeInfo: true, storage: "rgba8", sampler: Object.freeze([9728, 9728, 33071, 33071] as const), pixels,
+        ...(source === undefined ? {} : { source }) }));
+    }
+    this.assertAlive();
+    if (generation !== this.fileGeneration || revision !== this.revision || this.pendingLoads.size || this.pendingIds.size) b.fail("STALE", "GPU texture capture");
+    return Object.freeze({ backend: "webgpu", generation, contentRevision: revision, colorManagement: this.linearWorking ? "linear-srgb" : "legacy", entries: Object.freeze(entries) });
+  }
+
+  private async prepareFileTextures(input: ResourceTextureData, b: ResourceBudget) {
+    this.assertAlive();
+    if (this.pendingLoads.size || this.pendingIds.size) b.fail("BUSY", "GPU target lifecycle");
+    const targetGeneration = this.fileGeneration, targetRevision = this.revision;
+    const data = copyFileTextureData(input, b);
+    if (data.backend !== "webgpu" || (data.colorManagement === "linear-srgb") !== this.linearWorking) b.fail("CAPABILITY", "GPU texture backend");
+    for (const entry of data.entries) {
+      if (entry.ids.length > 1 || entry.compressed || entry.storage !== "rgba8" || entry.alphaMode !== "straight"
+        || entry.sampler.some((v, i) => v !== [9728, 9728, 33071, 33071][i])) b.fail("DATA", "GPU asset storage/sampler");
+      if (entry.width > this.device.limits.maxTextureDimension2D || entry.height > this.device.limits.maxTextureDimension2D) b.fail("CAPABILITY", "GPU texture dimensions");
+    }
+    b.work(24 + data.entries.length); b.charge("metadataBytes", 24 * 8);
+    const next = new WebGpuTextureStore(this.device, this.sampler, this.textureBindGroupLayout, data.colorManagement === "linear-srgb");
+    this.device.pushErrorScope("validation"); this.device.pushErrorScope("out-of-memory");
+    let error: unknown;
+    try {
+      const sources = new Map<object, {blob:Blob;url:string}>();
+      for (const entry of data.entries) {
+        let source;
+        if (entry.source) {
+          source = sources.get(entry.source);
+          if (!source) { source = {url:entry.source.url,blob:fileResourceBlob(entry.source.bytes,entry.source.mime,b)};sources.set(entry.source,source); }
+        }
+        // Charge the row-padding allocation before textureWriteBytes creates it.
+        if (entry.width * 4 % 256) { const padded = Math.ceil(entry.width * 4 / 256) * 256 * entry.height; b.charge("decodedBytes", padded); b.work(padded); }
+        const upload = textureWriteBytes(entry.width, entry.height, entry.pixels);
+        const texture = webGpuResources(this.device).createTexture({ size: [entry.width, entry.height, 1], format: "rgba8unorm",
+          ...(next.linearWorking ? { viewFormats: ["rgba8unorm-srgb"] } : {}),
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT }, false);
+        next.textures.add(texture);
+        this.device.queue.writeTexture({ texture }, upload.data, { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage }, [entry.width, entry.height, 1]);
+        const record = { generation: ++next.fileGeneration, width: entry.width, height: entry.height, colorSpace: entry.colorSpace,
+          ...(source === undefined ? {} : {source}) };
+        next.fileObjects.set(texture, record);
+        if (entry.ids.length) next.registerTexture(entry.ids[0], next.createTextureResource(texture, entry.width, entry.height, entry.colorSpace));
+      }
+      await this.device.queue.onSubmittedWorkDone();
+    } catch (failure) { error = failure; }
+    try { const allocation = await this.device.popErrorScope(), validation = await this.device.popErrorScope(); if (allocation || validation) error ??= allocation ?? validation; }
+    catch (failure) { error ??= failure; }
+    if (error) { next.destroy(); if (error instanceof NativeFileResourceError) throw error; return b.fail("GPU", "detached GPU texture upload"); }
+    b.work(data.entries.length); b.charge("metadataBytes", data.entries.length * 8);
+    const savedOrigin = Object.freeze({ version: 1 as const, generation: data.generation, contentRevision: data.contentRevision, resourceGenerations: Object.freeze(data.entries.map(entry => entry.generation)) });
+    const target = this, preparedGeneration = next.fileGeneration, preparedRevision = next.revision;
+    let adopted = false, disposed = false;
+    return Object.freeze({ get owner() { return adopted ? target : next; }, savedOrigin,
+      runtimeGeneration: () => adopted ? this.fileGeneration : next.fileGeneration,
+      adopt: () => {
+        if (adopted || disposed || this.destroyed || next.destroyed || this.device !== next.device
+          || this.sampler !== next.sampler || this.textureBindGroupLayout !== next.textureBindGroupLayout || this.linearWorking !== next.linearWorking
+          || this.fileGeneration !== targetGeneration || this.revision !== targetRevision
+          || next.fileGeneration !== preparedGeneration || next.revision !== preparedRevision
+          || this.pendingLoads.size || this.pendingIds.size || next.pendingLoads.size || next.pendingIds.size)
+          throw new NativeFileResourceError("STALE", "GPU texture adoption lifetime");
+        const generation = resourceInteger(Math.max(this.fileGeneration, next.fileGeneration), "fresh GPU texture generation", 0, Number.MAX_SAFE_INTEGER - 1) + 1;
+        const revision = resourceInteger(Math.max(this.revision, next.revision), "fresh GPU texture revision", 0, Number.MAX_SAFE_INTEGER - 1) + 1;
+        // Revisions of every replacement row change, including same ID/old revision.
+        // Lookup consumers retain this store and fetch current views/groups per use.
+        for (const resource of next.texturesById.values()) resource.revision = revision;
+        [this.fileObjects, next.fileObjects] = [next.fileObjects, this.fileObjects];
+        [this.textures, next.textures] = [next.textures, this.textures];
+        [this.texturesById, next.texturesById] = [next.texturesById, this.texturesById];
+        this.fileGeneration = generation; this.revision = revision;
+        adopted = true; next.disposeFileTextures(); disposed = true;
+      },
+      dispose: () => { if (!disposed) { next.disposeFileTextures(); disposed = true; } },
+    });
+  }
+
+  /** Cold lease cleanup retries failed native destroys without destroying any
+   * successfully transferred target textures a second time. */
+  private disposeFileTextures(): void {
+    if (!this.destroyed) { this.destroyed = true; this.fileGeneration++; }
+    let failure = false;
+    for (const texture of this.textures) {
+      try { webGpuResources(this.device).destroy(texture); this.textures.delete(texture); }
+      catch { failure = true; }
+    }
+    this.fileObjects.clear(); this.texturesById.clear();
+    if (failure) throw new NativeFileResourceError("GPU", "detached GPU cleanup; retry dispose and destroy unpublished target");
   }
 
   private assertLoadActive(signal: AbortSignal): void {

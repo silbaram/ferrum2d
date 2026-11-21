@@ -26,6 +26,6 @@
     "test": "node --check bin/create-game.mjs && node --check bin/update-game.mjs && node --check bin/update-integrity.mjs"
   },
   "engines": {
-    "node": ">=18.17"
+    "node": ">=24"
   }
 }

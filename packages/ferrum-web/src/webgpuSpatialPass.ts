@@ -1,3 +1,4 @@
+import {ResourceBudget} from "./nativeFileResourceBudget.js";
 import { secondSpatialShadowSlot } from "./spatialPointShadows.js";
 import { writeSpatialLightSelectionStats } from "./spatialLightSelection.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
@@ -213,6 +214,8 @@ export class WebGpuSpatialPass {
     });
     this.models = new WebGpuSpatialModels(device, format, cameraLayout, this.environment.layout, linearWorking);
   }
+  fileModelRoots(b:ResourceBudget){return this.models.fileRoots(b);}
+  fileRestoreModels(all:readonly SpatialModelAsset[],active:readonly SpatialModelAsset[],warmed:readonly SpatialModelAsset[]):Promise<void>{return this.models.fileRestoreCache(all,active,warmed);}
   prepareModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
     return this.models.stage(assets);
   }
@@ -352,7 +355,7 @@ export class WebGpuSpatialPass {
     if (frame.terrain.byteLength) {
       const stale =
         !this.terrain ||
-        this.revision !== frame.terrainRevision ||
+        this.revision !== (frame.terrainRenderRevision ?? frame.terrainRevision) ||
         this.terrainMemory !== frame.terrain.buffer ||
         this.terrainOffset !== frame.terrain.byteOffset ||
         this.terrainLength !== frame.terrain.length;
@@ -371,7 +374,7 @@ export class WebGpuSpatialPass {
         this.device.queue.writeBuffer(this.terrain, 0, frame.terrain);
         stats.uploadBytes += frame.terrain.byteLength;
         stats.terrainUploadBytes += frame.terrain.byteLength;
-        this.revision = frame.terrainRevision;
+        this.revision = (frame.terrainRenderRevision ?? frame.terrainRevision);
         this.terrainMemory = frame.terrain.buffer;
         this.terrainOffset = frame.terrain.byteOffset;
         this.terrainLength = frame.terrain.length;
@@ -509,6 +512,7 @@ export class WebGpuSpatialPass {
       this.environment.receiverGroup(false),
       code => this.environment.receivers.offset(code),
     );
+    stats.debugTruncated = frame.debug?.truncated ?? false;
     if (frame.debug?.vertexCount) {
       const debug = frame.debug;
       if (!this.debug || debug.vertices.byteLength > this.debugCapacity) {
@@ -533,7 +537,6 @@ export class WebGpuSpatialPass {
       stats.debugLineCount = debug.vertexCount / 2;
       stats.debugDrawCalls = 1;
       stats.debugUploadBytes = debug.vertices.byteLength;
-      stats.debugTruncated = debug.truncated;
       stats.uploadBytes += debug.vertices.byteLength;
       stats.drawCalls++;
     }

@@ -3,7 +3,7 @@ use crate::world::World;
 
 const DEFAULT_TWEEN_CAPACITY: usize = 128;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpriteTint {
     pub r: f32,
     pub g: f32,
@@ -27,7 +27,7 @@ impl SpriteTint {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum TweenEasing {
     Linear,
     EaseOut,
@@ -51,12 +51,12 @@ impl TweenEasing {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum TweenTarget {
     SpriteTint { entity: Entity },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Tween {
     target: TweenTarget,
     start_tint: SpriteTint,
@@ -66,8 +66,9 @@ pub(crate) struct Tween {
     easing: TweenEasing,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TweenSystem {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     tweens: Vec<Tween>,
     capacity: usize,
 }
@@ -397,3 +398,5 @@ mod tests {
         assert_eq!(tweens.tween_count(), 1);
     }
 }
+
+mod file_admission;

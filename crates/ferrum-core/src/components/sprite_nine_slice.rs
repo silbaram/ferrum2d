@@ -1,6 +1,6 @@
 /// Source-pixel borders for a flat sprite. The center and edge lengths stretch;
 /// borders compress proportionally when the target is smaller than their sum.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpriteNineSlice {
     pub source_width: f32,
     pub source_height: f32,

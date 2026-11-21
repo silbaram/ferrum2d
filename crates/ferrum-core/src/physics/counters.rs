@@ -1,6 +1,6 @@
 use super::FixedTimestepUpdate;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PhysicsCounters {
     pub fixed_steps: u32,
     pub kinematic_moves: u32,
@@ -25,3 +25,5 @@ impl PhysicsCounters {
         self.fixed_steps = self.fixed_steps.saturating_add(update.steps);
     }
 }
+
+mod file_output_admission;

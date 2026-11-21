@@ -48,6 +48,9 @@ pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_FRAME: u32 = 12;
 pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_COMPLETED: u32 = 13;
 /// Global dropped-animation-event count; actor/source ID are u32::MAX.
 pub const GAMEPLAY_EVENT_SPRITE_ANIMATION_OVERFLOW: u32 = 14;
+/// Actor is real gameplay entity; absent source is MAX/0; payload indexes the
+/// frame's typed terrain impact sidecar. token_id is 1 tile or 2 spatial surface.
+pub const GAMEPLAY_EVENT_TERRAIN_IMPACT: u32 = 15;
 pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND: u32 = 1;
 pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE: u32 = 2;
 /// Category kept in `payload_bits` so Rust gameplay remains data-driven while TS decides playback.
@@ -55,7 +58,7 @@ pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE: u32 = 3;
 pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM: u32 = 4;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GameplayEvent {
     pub kind: u32,
     pub actor_id: u32,

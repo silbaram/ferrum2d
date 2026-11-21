@@ -1,6 +1,6 @@
 use crate::input::InputState;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct FixedTimestepInputLatch {
     space: bool,
     enter: bool,

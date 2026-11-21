@@ -1,3 +1,5 @@
+import type { PhysicsKinematicControllerOptions } from "./engineTypes/physicsBodies.js";
+
 export type PhysicsMode = "none" | "arcade" | "rigid";
 export type PhysicsSpecBodyType = "static" | "kinematic" | "dynamic";
 export type PhysicsSpecColliderShape =
@@ -81,6 +83,8 @@ export interface PhysicsBodySpec {
   enabled?: boolean;
   canSleep?: boolean;
   fixedRotation?: boolean;
+  /** Automatic planar controller overrides; requires an enabled solid kinematic body and fixed native step. */
+  kinematicController?: PhysicsKinematicControllerOptions;
 }
 
 export type PhysicsColliderSpec =
@@ -262,6 +266,7 @@ export interface ResolvedPhysicsBodySpec {
   enabled: boolean;
   canSleep: boolean;
   fixedRotation?: boolean;
+  kinematicController?: PhysicsKinematicControllerOptions;
 }
 
 export type ResolvedPhysicsColliderSpec =

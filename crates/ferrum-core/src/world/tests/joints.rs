@@ -925,12 +925,31 @@ fn checked_joint_mutation_rejects_non_current_endpoints_without_storage_changes(
         world.try_add_distance_joint(DistanceJoint::new(spawned_future, b, 4.0)),
         None
     );
-    let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        world.add_distance_joint(DistanceJoint::new(spawned_future, b, 4.0));
-    }));
-    assert!(panic_result.is_err());
+    #[cfg(panic = "unwind")]
+    {
+        let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            world.add_distance_joint(DistanceJoint::new(spawned_future, b, 4.0));
+        }));
+        assert!(panic_result.is_err());
+    }
     assert_eq!(world.distance_joint_count(), 0);
     assert!(!world.has_incident_joints(b));
+}
+
+#[cfg(panic = "abort")]
+#[test]
+#[ignore = "Process-isolated abort contract; verified by test:rust-wasi"]
+fn unchecked_distance_joint_stale_endpoint_abort_probe() {
+    let mut world = World::default();
+    let stale = world.spawn_entity();
+    let current = world.spawn_entity();
+    world.despawn(stale);
+    assert_eq!(
+        world.try_add_distance_joint(DistanceJoint::new(stale, current, 4.0)),
+        None
+    );
+    world.add_distance_joint(DistanceJoint::new(stale, current, 4.0));
+    panic!("unchecked distance joint unexpectedly accepted a stale endpoint");
 }
 
 fn assert_joint_free_list_clear_capacity(world: &World) {

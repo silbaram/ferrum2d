@@ -47,7 +47,7 @@ AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·
 | 영역 | 제공 기능 | 자세히 보기 |
 | --- | --- | --- |
 | 데이터 작성·행동 | Game/Scene/Physics Spec, prefab·ObjectDefinition, Behavior Recipe·FSM 실행, agent용 patch·handoff | [Authoring API](docs/engine/public-api/authoring.md) |
-| 런타임·씬 | Rust/Wasm 게임 상태·엔티티, 선언형 씬·prefab, 씬 전환·페이드, snapshot·진행 저장/복원 | [Core API](docs/engine/public-api/core.md) |
+| 런타임·씬 | Rust/Wasm 게임 상태·엔티티, 선언형 씬·prefab, 씬 전환·페이드, snapshot·진행 저장/복원, 같은 Engine의 메모리 롤백, Native·SDK 자원을 포함한 파일 저장·새 Engine 복원 | [Core API](docs/engine/public-api/core.md) · [게임 파일](docs/engine/public-api/native-game-files.md) |
 | 2D 렌더링·애니메이션 | sprite batch·atlas·tilemap, Flat emission·specular·roughness 재질과 light/shadow 수신 mask, 레이어·깊이 정렬, 9-slice, bitmap text, render texture, 프레임별 시간·역방향/핑퐁·재생 이벤트 | [표현·애니메이션](docs/engine/data-scene-presentation.md) |
 | 픽셀 표현 | 고정 해상도·정수 확대·레터박스·화면 픽셀 스냅, 아틀라스 가장자리 보호, 팔레트 스왑·양자화·디더·스캔라인 | [2D 표시](docs/engine/data-scene-authoring.md) · [도트 후처리](docs/engine/public-api/core.md#도트-후처리) |
 | HD-2D 공간 | 정적 GLB/glTF·선택 비금속 specular 재질, 지형·경사·높이·층·다리, billboard, 직교/원근 카메라·picking, 모델 청크·LOD·제출 최적화 | [공간 씬](docs/engine/data-scene-spatial.md) |
@@ -70,6 +70,7 @@ AI agent가 데이터와 코드를 수정하고, **Ferrum2D Studio**에서 씬·
 - **파괴 지형:** alpha mask를 수정하면 텍스처와 영향받은 청크의 충돌체를 갱신합니다.
 
 범용 강체 simulation은 자동 stepping 설정 또는 명시적 수동 step으로 실행합니다.
+개발 중인 통합 3D backend의 월드 설정·공간 바디 생성·캐릭터 입력·일괄 상태·위치/힘 제어·공간 조회·접촉 이벤트·충격량/진단·물체 설정/충돌체 변경·관절 제어·기존 시각 객체 연결 API는 [Core 물리 API](docs/engine/public-api/core.md#통합-3d-물리-연결-개발-중인-명시적-선택-경로)를 참고하세요. Scene JSON의 `physics`·`components.body.collider`·`body.character`·`physics.joints`로 월드·충돌체·캐릭터·관절을 작성할 수 있으며, Studio에서 재생·배치 수정과 XYZ·접지 상태를 확인합니다. [작성 계약](docs/engine/data-scene-authoring.md#단일-3d-물리-월드-작성)을 참고하세요. Physics Spec `rigid`와 `arcade`는 고정·가변 시간 모두 Data Scene에서 평면 native backend를 사용하며(mode 생략 Spec도 기본 고정 시간 arcade), 단일 AABB 주인공의 목적지 이동도 같은 native 충돌체로 검색합니다. HD-2D 수동 controller와 collision-only 타일맵 bulk 설정도 지원합니다. 기존 2D component AI와 convex component kinematic의 입력 속도도 승인된 native 구간에서 처리합니다. 원·회전 박스·캡슐·볼록 다각형·복합 충돌체의 자동 이동과 [캐릭터별 계단·낙차 설정](docs/engine/public-api/core.md#자동-planar-캐릭터-이동-설정)을 지원합니다. 선택 `kinematicController` 객체를 Physics Spec과 planar Scene JSON의 기존 kinematic body에 작성할 수 있으며, Scene JSON의 `physics.collisionTilemap`은 충돌 전용 grid를 구성합니다. Planar 문서는 기존 2D body·collider-only 객체와 native shape body를 같은 월드에 연결합니다. 공간 모델은 명시적 native body의 현재 XYZ·quaternion을 추종하고 Studio는 회전·각속도를 읽기 전용으로 표시합니다. 내장 Shooter·Breakout·Platformer는 기존 `configureUnifiedPhysics`의 planar opt-in을 지원합니다. Shooter는 입력·AI 뒤 native 이동과 기존 gameplay 후처리를 연결하고, Breakout은 native paddle clamp·ball sweep 뒤 기존 반사·brick 반응을 적용합니다. Platformer는 기존 AABB·점프 튜닝을 유지하며 native one-way·ground/step·이동 발판 carry를 연결합니다. 생성 옵션 `physicsBackend: "unified"`로 씬 전환과 physics 생략 씬에도 유지되는 native 기본 정책을 선택할 수 있습니다. `fixedTimestep: false`는 같은 native backend의 가변 시간을 선택합니다. 무옵션 Rust/Web 생성과 physics 생략 씬은 planar native·가변 시간·자동 실행을 사용합니다. 기존 JSON 저장/이전 컨트롤러가 필요하면 생성 시 `physicsBackend: "legacy"`를 명시합니다. 전체 파일은 [Native 게임 파일](docs/engine/public-api/native-game-files.md)의 크기·작업량 제한 및 동일 build 계약으로 저장·복원합니다. Native world와 기본 정책은 동일 Engine의 메모리 checkpoint로 복원합니다. Native world는 clock mode와 무관하게 JSON 물리 저장·복원 대상에서 제외하며, 기존 fixed-arcade JSON 파일을 자동 변환하지 않습니다. 실제 native shape·관절·cached contact의 debug wire와 line/work/truncation 진단도 제공하며, 공간 camera에 따라 XYZ 또는 flat XY/XZ footprint로 표시합니다. 이 debug의 출력 상한은 밀집 시간·실기기 수용을 대신하지 않습니다.
 표시·물리 높이·저장되는 진행 데이터의 범위는 [Native Runtime](docs/engine/data-scene-native-runtime.md)과 [공간 계약](docs/engine/data-scene-spatial.md)을 따릅니다.
 
 ### 조명과 카메라
@@ -127,6 +128,7 @@ Minimal·이전 통합 데모는 참고·검증용이며 기본 목록에서 제
 | 타일·픽셀 캐릭터·등불·그림자. 바닥을 클릭해 이동하고 토큰을 수집합니다. | 정적 GLB 건물·입체 지형·2D 캐릭터. 높이·층·카메라·조명을 확인합니다. |
 
 **Neon Outpost · Top-down Shooter** — 도트 아레나에서 세 종류의 적 웨이브를 상대합니다. 점수·웨이브 HUD, 일시정지·재시작, 조명·후처리 설정과 모바일 이동을 함께 체험합니다.
+웨이브 HUD는 Native·legacy 모두 Rust의 실제 진행 값을 읽으며, Native 파일 모드에서도 저장·열기 이후 같은 값을 표시합니다.
 
 ![Top-down Shooter 실제 플레이 화면](docs/development/quality/screenshots/topdown-shooter-gameplay.png)
 
@@ -213,7 +215,8 @@ Behavior Recipe 본문·FSM/action graph를 UI에서 작성하는 범용 visual 
 
 ### 게임 프로젝트에서 사용하기
 
-Node.js 22를 권장합니다. 배포된 엔진을 사용하는 게임 프로젝트에는 Rust 빌드가 필요하지 않습니다.
+현재 게임 개발 환경에서는 Node.js 24 이상과 npm을 사용합니다. 배포된 엔진을 사용하는 게임 프로젝트에는 Rust 빌드가 필요하지 않습니다.
+게임은 브라우저에서 실행됩니다.
 
 **AI에게 설치를 맡길 때:** [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)을 전달합니다.
 이 경로는 문서에 고정된 릴리스의 엔진·도구·AI 지침을 설치하고 환경을 검증합니다. 게임 코드는 개발을 요청한 뒤 작성합니다.
@@ -245,7 +248,11 @@ OS별 설치 파일의 제공 여부는 선택한 릴리스의 첨부 파일을 
 
 ### 소스 개발환경
 
-필수 도구는 Rust stable, `wasm32-unknown-unknown`, `wasm-pack`, Node.js와 pnpm입니다. Node.js 22와 pnpm 10.8.0을 권장합니다.
+개발 중인 통합 물리는 `crates/ferrum-core/vendor/`에 고정한 Rapier 0.36.1과 Parry 0.31.1 소스를
+사용합니다. 각 디렉터리의 `UPSTREAM.json`·`FERRUM-PATCHES.md`에서 원본·수정·라이선스를 확인합니다.
+
+필수 도구는 Rust stable, `wasm32-unknown-unknown`, `wasm-pack`, Node.js 24 이상과 pnpm 10.8.0입니다. 개발과 CI의 기본 버전은 Node.js 24 LTS입니다.
+nvm을 사용한다면 저장소 루트에서 `nvm use`로 버전을 선택할 수 있습니다.
 
 ```bash
 git clone https://github.com/silbaram/ferrum2d.git

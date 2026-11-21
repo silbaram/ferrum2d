@@ -19,6 +19,7 @@ mod kinematic_sweep;
 mod moving_platform;
 mod slope_ground;
 mod solid_filter;
+mod state_step;
 mod step_offset;
 
 use controller::{move_platformer_controller_internal, PlatformerControllerRuntime};
@@ -26,6 +27,10 @@ use ground_probe::ground_probe_internal;
 use kinematic_sweep::{earliest_solid_hit, spatial_pose_overlaps_solid, KinematicSweep};
 pub(crate) use kinematic_sweep::{KinematicDebugHit, KinematicSweepScratch};
 use moving_platform::carry_moving_platform_internal;
+pub(crate) use state_step::{
+    finish_platformer_velocity, prepare_platformer_velocity, sanitized_platformer_step,
+    PlatformerVelocityStep,
+};
 
 impl PhysicsSystem {
     pub(crate) fn spatial_body_pose_is_clear(

@@ -22,6 +22,7 @@ import type {
 import { physicsCollider, physicsColliderArray } from "./colliders.js";
 import { BODY_KEYS } from "./keys.js";
 import { setRecordEntry } from "./records.js";
+import { resolveDataSceneKinematicControllerOptions } from "../dataSceneKinematicController.js";
 
 export function physicsBodies(
   value: unknown,
@@ -75,6 +76,18 @@ export function physicsBodies(
       canSleep: booleanValue(object.canSleep, `${bodyPath}.canSleep`, true),
       ...(object.fixedRotation === undefined ? {} : { fixedRotation: booleanValue(object.fixedRotation, `${bodyPath}.fixedRotation`, false) }),
     };
+    if (object.kinematicController !== undefined) {
+      const controllerPath = `${bodyPath}.kinematicController`;
+      const controller = resolveDataSceneKinematicControllerOptions(object.kinematicController, controllerPath, physicsSpecError);
+      if (object.type !== "kinematic" || !resolvedBody.enabled) {
+        throw physicsSpecError(controllerPath, "requires an explicit enabled kinematic body");
+      }
+      const sources = colliders.filter(collider => collider.enabled && !collider.trigger);
+      if (sources.length === 0 || sources.some(collider => collider.shape === "edge" || collider.shape === "chain")) {
+        throw physicsSpecError(controllerPath, "requires enabled solid convex collider sources");
+      }
+      resolvedBody.kinematicController = controller;
+    }
     if (object.mass !== undefined) {
       resolvedBody.mass = positiveNumber(object.mass, `${bodyPath}.mass`, 1);
     }

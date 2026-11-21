@@ -16,7 +16,7 @@ export interface PhysicsSceneProfileSpec {
 }
 
 export interface ApplyPhysicsSceneProfileOptions
-  extends Omit<PhysicsWorldApplyOptions, "replace"> {
+  extends Omit<PhysicsWorldApplyOptions, "replace" | "configureRuntime"> {
   replace?: PhysicsSceneProfileApplyResult | PhysicsWorldApplyResult;
 }
 
@@ -48,14 +48,15 @@ export function applyPhysicsSceneProfile(
   const autoStep = profile === "runtime" && profileSpec.autoStep !== false;
   const { replace, ...worldOptions } = options;
   const previousScene = sceneApplyResult(replace);
-  previousScene?.clear();
-  const replaceWorld = previousScene === undefined ? replace as PhysicsWorldApplyResult | undefined : undefined;
+  const replaceWorld = previousScene?.world ?? replace as PhysicsWorldApplyResult | undefined;
   const world = createPhysicsWorldFromSpec(engine, profileSpec.physics, {
     ...worldOptions,
     path: `${path}.physics`,
     replace: replaceWorld,
+    configureRuntime: true,
   });
 
+  previousScene?.clear();
   engine.configureAutoRigidBodyStep(autoStep ? world.stepOptions : false);
 
   let cleared = false;

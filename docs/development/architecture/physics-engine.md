@@ -170,14 +170,100 @@ Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증�
 
 ## 현재 제외 또는 제한
 
-- external physics dependency
+- Rust native checkpoint: `PhysicsWorld3d::capture_snapshot`/`from_snapshot`/`restore_snapshot`이
+  같은 빌드의 backend arena·접촉 cache·controller/관절·예약 명령·관측 큐와 projectile motion을 보존한다.
+  private Serde remote schema와 Postcard 1.1.3을 사용하며 opaque checkpoint만 복원한다.
+  envelope 형식·source fingerprint·CRC·길이와 candidate를 검증한 뒤 원자적으로 교체한다.
+  encoded 64 MiB 상한은 전체 world 메모리 제한이 아니다. 임의 byte import, Web API와
+  Engine/Data Scene 저장·replay 이전은 미완료이며 기존 native 저장 거부를 해제하지 않는다.
+- 메모리 runtime rollback: `Engine::runtime_checkpoint`/`restore_runtime_checkpoint_native`와 Web의
+  `captureRuntimeCheckpoint`/`restoreRuntimeCheckpoint`가 같은 Engine의 전체 Rust 실행 상태를 보존한다.
+  native solver, World ownership/generation·보간, fixed clock/input, 진행 중 AI 검색/cache/intent,
+  terrain phase, projectile/hit·effects와 관측 buffer를 포함한다. immutable shape 신원을 유지하고
+  bounded action/contact queue와 World joint free-list의 예약 공간을 보존한다. RAF 중 사용·외부 Engine·
+  dispose 후 사용은 거부한다. native JSON/file 저장, 외부 JS/asset/GPU/authoring context 복원과
+  미래 handle의 자동 epoch 검사는 별도 계약이며 전체 저장/기본 backend 이전 작업은 계속 진행한다.
+- 공개 Web runtime의 외부 물리 backend 전환: 진행 중. `physics3d` Rust 모듈에 Rapier3D 0.36.1을 도입하고
+  기존 geometry 의존성 Parry3D 0.31.1도 같은 버전의 vendored source로 고정했다. BVH·height grid·
+  sparse map의 Deserialize 불변식을 검사하며, 전체 BVH rebuild가 retired leaf를 되살리는 오류를 수정했다.
+  native Data Scene body와 기존 2D body/fixture의 planar adapter는 Engine fixed tick·entity·렌더 보간에 연결했다.
+  기존 질량·관성·force/impulse와 실행 중 component 변경을 반영하며, 네 가지 접촉 보정 material scale과
+  전역 contact 보정 설정도 이전했다. 중력·반복 횟수·반발 임계값·전체 CCD 및 기존 자동/수동 step을
+  같은 native 경로에 연결했다. native 모드의 수동 dt는 설정된 고정 tick을 사용하며 zero는 no-op이다.
+  기존 ray/segment/point·영역 5종·nearest·shape cast 5종 조회는 통합 planar world에 연결했다.
+  공간 ray는 XYZ native Rust API를 사용하고, XY-only 조회는 공간 world에서 진단으로 거부한다.
+  collision lifecycle은 native fixture 전이를 entity 쌍으로 합쳐 기존 이벤트 버퍼에 연결했다.
+  복합 fixture의 참조 수와 solid/sensor 채널을 구분하고, overflow 후 전체 active snapshot으로 복구한다.
+  Data Scene pickup과 전투의 충돌 반응은 telemetry를 꺼도 같은 native pair 상태를 사용한다.
+  범위 피해는 native sphere overlap과 fixture category, 넉백은 native 속도, 상호작용은 물리 중심 거리에 연결했다.
+  Spatial 거리에는 높이를 포함하며 render offset은 제외한다. PlanarXy의 논리 floor/height와 기존 입력/once 규칙은 유지한다.
+  생성 projectile의 native ownership·지속 이동·entity sweep·첫 hit 정지/소비를 연결했다.
+  지정 kinematic 선형 속도는 보존하고 dynamic 속도 상한은 유지한다.
+  투사체는 실제 solver 적분별 COM pose와 CCD가 승인한 제한 경로를 별도 BVH에 기록해 상대 운동을 검사한다.
+  position-kinematic은 지정 target 보간을 사용한다. 다회전·반전 경로의 query 회귀를 추가했지만 native CCD 자체의
+  극단 회전 수용, combat AI의 임의 지지면 길찾기와 character 외력은 남아 있다. 직접 이동은 실제 native 좌표에서 표적을 선택해 controller/velocity/position target에 전달한다. native A* 커널은 frontier/진행 중인 probe를 보관하는 slice 실행으로 분리했고 실제 query 입력 변경 시 취소한다. 단일 actor는 같은 커널을 사용한다. native Chase에는 fixed-geometry policy와 자동 tick의 순환 검색/추종을 연결했고, native JSON에는 Y-up capsule/target/source 용량과 별도 capability 사전 검사를 연결했다. shared route cache와 profile/geometry 무효화·검증된 connector도 연결했다. Native crowd는 capsule 상대 예측과 지형/예산 검사를 통과한 local steering을 사용한다. All-pattern은 SeekTarget 경로/보간과 Accelerate의 틱당 가속·지형 검사를 같은 source/work/crowd에 연결했다. 별도 native movement capability가 필요하며 밀집 성능 수용은 남아 있다. 대시는 native fixed tick의 capsule/controller 또는 swept kinematic path를 사용한다. melee는 native 도형/시야와 fixture mask를 사용한다.
+  접촉/manifold 조회도 native geometry에 연결했다. XYZ 표면점과 기존 planar 두 점 buffer를 구분한다.
+  깊은 2D box/polygon 겹침의 Z축 접촉 결함은 authored extrusion 깊이로 보정하며 질량/관성은 유지한다.
+  solver 충격량은 기존 rigid contact/impact buffer와 feedback에 연결했다. 접근 속도는 회전 운동을 포함하고,
+  fixture별 category를 사용한다. XYZ 관측과 화면용 투영을 구분하며 수집 한도 초과는 별도 진단한다.
+  native solver 제출량·body/island gauge·CCD 검사/위치 제한과 frame 통계를 추가했다. 기존 CCD 디버그 선도 연결했다.
+  legacy substeps는 native pipeline 호출 수, CCD hits는 실제 위치 제한 수다. warm-start/block-solve 등 이전
+  solver 전용 row-operation 지표는 native에서 미측정이며 0으로 초기화한다. 세부 native 수치는 typed Rust API를 사용한다.
+  main tile·SpatialScene의 정적 geometry도 같은 native world에 등록하며, 편집 시 shape/capacity 검증과
+  cell/surface identity를 유지한다. XY slope·one-way, Spatial ramp·bridge underside·walkable support와
+  projectile tile impact는 native geometry를 사용한다. 별도 Rust `cast_unified_terrain_ray_all`은 terrain identity를 반환한다.
+  authored 이동 발판의 position-kinematic 경로·capsule 운반·틱 내부 왕복 반전·native clock 동기화도 연결했다.
+  발판 자체의 벽 충돌, 탑승자의 벽/천장 차단, 접근하는 authored 발판과 움직이는 천장에 대해
+  상대 sweep 시점에서 관련 경로와 phase를 멈추고 나머지 틱을 계속 진행한다. native blocked 집계와
+  별도의 path/preview 비용 지표를 연결했다. dynamic body는 일반 solver 응답을 유지한다.
+  일반 capsule의 보행/운반도 움직이는 kinematic의 상대 sweep을 사용한다. 같이 움직이는 벽의 이전 pose에
+  막히지 않고, 접근하는 벽의 밀림·접선 보행과 새 승강기 지지를 처리한다. local one-way plane도 query 시점의
+  target pose로 검사한다. velocity-kinematic의 COM/fixture offset과 각회전량을 경로 계산에 보존한다.
+  외부 position/velocity 명령도 capsule squeeze 시점에서 관련 이동체를 정지시킨다. 남은 틱은 계속 진행하고,
+  소비된 명령은 새 target/속도를 받아야 재개한다. 막힌 탑승자 아래의 수평 발판 접선 이동은 유지한다.
+  정지 수·근접 접촉 검사/실패 수는 native tick/frame 진단에 합산한다. 선형 벽/승강기와 PlanarXy 회귀를 추가했다.
+  여러 capsule의 공통 접촉 시점·속도 제약을 연결해 밀림을 전달하고 고정 벽에 막힌 연쇄 접촉의 이동체를 정지시킨다.
+  자유 공간의 32명 연쇄 밀림, 비스듬한 벽, 평면 축 잠금, 필터/비활성 body, 실제 허용된 carry를 검증했다.
+  반복 한도에 의한 보수적 정지는 진단으로 구분하며 밀집 성능 수용이나 해의 부재를 뜻하지 않는다.
+  상대 밀림의 dynamic impulse 결합 응답·dynamic carry·회전 장애물 수용·지형 표시 보간,
+  전체 tile query/시야/impact·chunk 비용은 남아 있다.
+  Web collider event stream은 entity 없는 tile/surface와 삭제 당시 세대까지 반환하며,
+  native/public queue 누락 수와 전체 active snapshot으로 overflow 복구를 지원한다.
+  기존 entity lifecycle frame 출력과 독립적이다. Web 접촉면/XYZ impulse/CCD 관측은 지형 identity와 함께 연결됐고,
+  32개 native step/frame 측정은 FrameState와 Runtime overlay/profiler/trace에 전달한다.
+  기존 solver row 지표를 추정하지 않는다. 전체 디버그 geometry 시각화와 최종 성능 수용은 남아 있다.
+  Web 물체 설정(활성화·중력·감쇠·잠금)과 additive mass/inertia, collider 목록·추가·교체·삭제도
+  native admission에 연결했다. 기존 component 소유권과 캐릭터 capsule 제한을 적용하며
+  삭제 이벤트의 이전 generation을 유지한다. 관절 Web 제어도 13종 생성/수정/삭제·bulk 상태·파손/삭제 이벤트에 연결했다.
+  frame/motor/spring/break 설정과 native 검증을 공유하며 legacy 진단과 Web 큐는 독립 소비한다.
+  전체 debug geometry 시각화는 아직 남아 있다.
+  기존 시각 entity에 native body를 연결/해제하는 공개 API는 동일 entity와 asset을 유지한다.
+  해제 시 native 충돌/관절 identity를 보존하고 선형·각속도를 정지한다.
+  Scene JSON의 shape body·capsule controller·named joint와 Studio 재생/배치/진단을 연결했다.
+  HD actor의 WASD·목적지 이동·cold displacement는 같은 native capsule 경로에 연결했다.
+  Physics Spec 전체 이전·기본 경로 전환·AABB actor 데이터 자동 변환은 남아 있다. [통합 물리 계획](../../planning/unified-3d-physics-plan.md)이 완료 범위를 관리한다.
+  기존 8종 관절의 기본 rigid 설정/frequency spring, pulley/gear, identity·수정·파손·진단을 native Engine에 연결했다.
+  continuous hinge limit, Distance/Rope/Gear/Pulley의 normalized stiffness/damping과 frequency 없는 Spring도
+  native Engine에 연결했다. 정규화 값은 60 Hz 기준 탄성 계수로 변환하므로 이전 solver와 궤적이 같지는 않다.
+  hinge/prismatic/weld의 독립적인 선형/회전 부분 강성도 native 관절 row에 연결했다. 공개 runtime 전환은 미완료다.
+  planar height/floor와 surface velocity, 마찰 기하평균·반발력 최댓값도 연결했다. 층 필터는 native contact/sensor/CCD와
+  조회·캐릭터에 적용하며, 공간 모드는 논리 height span 대신 실제 3D geometry를 사용한다.
+  Web의 명시적 설정과 native XYZ state/velocity batch를 연결했다. 기존 planar authoring은 설정 시 또는
+  다음 유효 step에서 import한다. 명령 전체를 사전 검증하며 실패 시 일부 body만 바꾸지 않는다.
+  16-word state ABI의 핸들은 u32, pose/velocity는 f32이고 메모리 확장 뒤 view를 다시 생성한다.
+  명시적 Web body 생성은 box/sphere/capsule/hull/mesh/heightfield/compound와 재질·local pose를 지원한다.
+  controller 설정/해제, 4-f32 입력 batch와 28-word last-tick 상태도 같은 native world에 연결했다.
+  body 명령 batch는 pose/kinematic target·force/torque·impulse·clear·sleep/wake를 연결했다.
+  XYZ ray/point/convex overlap/sweep/nearest는 재사용 가능한 mixed query batch와 tile/surface identity까지 연결했다.
+  mutable body options/collider/joint와 contact/sensor event·debug/전체 지표의 Web 이전은 남아 있다.
+  capsule controller의 경사·계단·낙하·키네마틱 발판·상대 이동 충돌도 새 Rust world 안에서 검증 중이다.
 - per-entity Web callback 기반 collision handling
 - built-in scene loop에 generic Physics Spec body/joint를 자동 적용하는 것
 - built-in scene loop에 generic rigid body solver를 자동 적용하는 것
 - 전체 built-in scene loop의 Web Worker 이전 또는 Wasm threads 기반 physics execution
 - 별도 multi-hitbox/hurtbox authoring DSL
 - 고급 roof/wall visibility rule, entity shadow scale/offset, material 기반 lighting response
-- 3D rigid body solver
+- 기본 3D backend 전환 및 Physics Spec/Studio의 공간 world 작성: 이전 진행 중. 명시적 Web 경로와 구분한다.
 
 ## 문서 동기화 규칙
 

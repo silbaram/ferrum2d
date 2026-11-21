@@ -1039,7 +1039,11 @@ impl World {
         } else if let Some(current) = self.joint_incident_counts.get_mut(index) {
             *current = slot;
         } else {
-            debug_assert!(false, "joint incident storage must track every entity slot");
+            // Reset keeps retired MAX holes, so the first reusable entity may
+            // follow the lazy incident prefix. Preserve zero-count gap slots.
+            self.joint_incident_counts
+                .resize(index + 1, JointIncidentCount::default());
+            self.joint_incident_counts[index] = slot;
         }
     }
 
@@ -1323,3 +1327,6 @@ fn clear_joint_storage_for_entity<T>(
         free_list.push(index as u32);
     }
 }
+
+#[cfg(test)]
+mod incident_prefix_tests;

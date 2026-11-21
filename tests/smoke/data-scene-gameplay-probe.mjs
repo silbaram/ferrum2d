@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { captureGameStateSnapshot, createEngine, restoreGameStateSnapshot, hashGameStateSnapshot, parseGameStateSnapshot, stringifyGameStateSnapshot } from "@ferrum2d/ferrum-web/core";
 import { applyDataSceneAuthoringDocument, createSceneInstanceHandleRegistry } from "@ferrum2d/ferrum-web/authoring";
 
+// This probe covers legacy JSON progress/snapshot compatibility explicitly.
 const original = { fetch: globalThis.fetch, raf: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame };
 const events = [];
 let tick, time = 0, engine;
@@ -36,7 +37,7 @@ try {
     ? new Response(await readFile(new URL(url)), { headers: { "Content-Type": "application/wasm" } }) : original.fetch(url, options);
   globalThis.requestAnimationFrame = fn => (tick = fn, 1);
   globalThis.cancelAnimationFrame = () => {};
-  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
   const live = applyDataSceneAuthoringDocument(engine, document);
   assert(live.behaviorApplyResult.results.every(Boolean));
   assert.equal(engine.dataSceneState(), "playing");
@@ -289,7 +290,7 @@ try {
   cases.push("progress malformed IDs/flags/grid/version/options are rejected before mutation even with a recomputed hash");
 
   engine.destroy();
-  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
   engine.setInputActionBinding(91, 0, { control: "space", activation: "pressed" });
   const progressRestored = restoreGameStateSnapshot(engine, savedProgress, {
     applyDataSceneCustomState: () => assert.equal(engine.dataSceneState(), "paused"),
@@ -632,7 +633,7 @@ try {
       assert.deepEqual(captureGameStateSnapshot(engine, doorOptions).dataScene.progress, opened.dataScene.progress);
     }
     engine.destroy();
-    engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+    engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
     const registry = createSceneInstanceHandleRegistry();
     restoreGameStateSnapshot(engine, opened, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
     assert.equal(engine.dataSceneState(), "paused");
@@ -664,7 +665,7 @@ try {
   assert.equal(colliderOnlyState.bodyEnabled, undefined);
   assert.equal(colliderOnlyState.colliderEnabled, false);
   engine.destroy();
-  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
   const colliderOnlyRegistry = createSceneInstanceHandleRegistry();
   restoreGameStateSnapshot(engine, colliderOnlySnapshot, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: colliderOnlyRegistry } });
   assert.equal(engine.dataSceneState(), "paused");
@@ -708,7 +709,7 @@ try {
   assert(engine.pauseDataScene());
   const autoSaved = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, automaticOptions)));
   assert.deepEqual(autoSaved.dataScene.progress.navigation.obstacles, [{ instanceId: "site", collider: true }]);
-  engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
   const autoRegistry = createSceneInstanceHandleRegistry();
   restoreGameStateSnapshot(engine, autoSaved, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: autoRegistry } });
   assert.equal(engine.dataSceneState(), "paused"); assert(doorPath()?.pointCount > 0);
@@ -740,7 +741,7 @@ try {
       assert.deepEqual(engine.dataSceneSpriteAnimationState(actor), expected);
       assert.equal(engine.dataSceneState(), "paused");
     }
-    engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+    engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input, undefined, undefined, { physicsBackend: "legacy" });
     const registry = createSceneInstanceHandleRegistry();
     restoreGameStateSnapshot(engine, saved, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
     assert.deepEqual(engine.dataSceneSpriteAnimationState(registry.require("player")), expected);
@@ -750,7 +751,7 @@ try {
   }
 
   // Beacon lab: authored dynamics retain the obstacle/save identity without a raw-body proxy.
-  engine.destroy(); engine = await createEngine();
+  engine.destroy(); engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
   const dynamicDocument = {
     format: "ferrum2d.consumer.scene-authoring", version: 1,
     sceneComposition: { initialFragment: "lab", prefabs: { box: { props: { components: {
@@ -805,7 +806,7 @@ try {
     includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: dynamicDocument,
   })));
   assert.deepEqual(savedDynamic.dataScene.progress.navigation.obstacles, [{ instanceId: "box", collider: true }]);
-  engine.destroy(); engine = await createEngine();
+  engine.destroy(); engine = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "legacy" });
   const dynamicRegistry = createSceneInstanceHandleRegistry();
   restoreGameStateSnapshot(engine, savedDynamic, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: dynamicRegistry } });
   const restoredBox = dynamicRegistry.require("box");

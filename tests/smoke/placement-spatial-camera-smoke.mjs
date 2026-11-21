@@ -1,3 +1,4 @@
+import { assertVillageRenderBudget } from "./placement-village-render-budget.mjs";
 import { clickPlacementControl, showPlacementInspector, showPlacementCameraOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -70,7 +71,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       assert(await page.locator("[data-placement-spatial-camera=down]").isDisabled());
       const low=await landmarks();
       const lowStats=await page.evaluate(()=>window.ferrumRuntime.renderer.stats());
-      assert(lowStats.drawCalls>0 && lowStats.drawCalls<=160 && lowStats.spatial.modelTriangleCount>0 && lowStats.spatial.modelTriangleCount<=60000);
+      assertVillageRenderBudget(lowStats);
       await page.screenshot({path:`${artifact}/${projection}-low-dpr${dpr}.png`,fullPage:true});
       await slider.press("End"); await paint();
       near(pitch(await camera()),89);
@@ -126,11 +127,12 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       const stats=await page.evaluate(()=>window.ferrumRuntime.renderer.stats());
       const grid=await page.evaluate(()=>window.ferrumPlacementGrid);
       assert.equal(grid.planeElevation,plane); assert(grid.lineCount>0 && grid.lineCount<=512 && grid.drawCalls===1 && grid.depthTest);
-      assert(stats.drawCalls>0 && stats.drawCalls<=160 && stats.spatial.modelTriangleCount>0 && stats.spatial.modelTriangleCount<=60000);
+      assertVillageRenderBudget(stats);
       assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount),46);
       results.push({projection,original,above,middle,low,lowStats,grid,stats});
+      // Save two explicitly edited angles. Reset leaves the perspective camera in auto-fit mode.
       if(projection==="orthographic") orthoResume=await angle(60);
-      else perspectiveResume=await camera();
+      else perspectiveResume=await angle(30);
       console.log(`Camera pitch ${projection} DPR ${dpr}: passed`);
     }
     await page.getByRole("tab",{name:originalTab,exact:true}).click();

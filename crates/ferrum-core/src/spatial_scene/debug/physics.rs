@@ -51,8 +51,8 @@ impl SpatialDebugGeometry {
         self.line(add(p, [0., 0., -2.]), add(p, [0., 0., 2.]), RED);
         self.line(p, add(p, [normal.vx * 10., 0., -normal.vy * 10.]), RED);
     }
-    pub fn physics(&mut self, world: &World, camera: &SpatialCamera) {
-        if self.frame_flags & CONTACTS != 0 {
+    pub fn physics(&mut self, world: &World, camera: &SpatialCamera, native: bool) {
+        if !native && self.frame_flags & CONTACTS != 0 {
             if self.contact_pose.is_some_and(|(a, at, span)| {
                 active(world, a)
                     && world.transform(a) == Some(at)
@@ -106,7 +106,9 @@ impl SpatialDebugGeometry {
                 );
             }
         }
-        if self.frame_flags & (COLLIDERS | FLOOR_IDS) == 0 {
+        if self.frame_flags & (COLLIDERS | FLOOR_IDS) == 0
+            || (native && self.frame_flags & FLOOR_IDS == 0)
+        {
             return;
         }
         self.truncated |= world.alive_indices().len() > MAX_ENTITIES;
@@ -143,7 +145,7 @@ impl SpatialDebugGeometry {
                     ) {
                         continue;
                     }
-                    if self.frame_flags & COLLIDERS != 0 {
+                    if !native && self.frame_flags & COLLIDERS != 0 {
                         let trigger = world
                             .compound_collider_ref_at(index, collider_index)
                             .is_some_and(|c| c.is_trigger());

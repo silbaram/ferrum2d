@@ -36,6 +36,11 @@ export function resolvePhysicsSpec(input: unknown, options: ResolvePhysicsSpecOp
   const materials = physicsMaterials(spec.materials, `${path}.materials`);
   const layers = physicsLayers(spec.layers, `${path}.layers`);
   const bodies = physicsBodies(spec.bodies, `${path}.bodies`, materials, layers, hd2d);
+  for (const body of Object.values(bodies)) {
+    if (body.kinematicController !== undefined && mode === "none") {
+      throw physicsSpecError(`${path}.bodies.${body.id}.kinematicController`, "requires native arcade or rigid physics");
+    }
+  }
   const joints = physicsJoints(spec.joints, `${path}.joints`, bodies);
   const gravity = vector2(spec.gravity, `${path}.gravity`, {
     x: modeDefaults.gravityX,

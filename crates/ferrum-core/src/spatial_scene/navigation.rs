@@ -11,6 +11,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
 
 mod crowd;
+mod file_admission;
 mod incremental;
 mod steering;
 mod velocity;
@@ -26,6 +27,7 @@ const FRAME_WORK: u64 = 1_000_000;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) enum SpatialMoveStatus {
     #[default]
     Idle,
@@ -37,6 +39,7 @@ pub(crate) enum SpatialMoveStatus {
 /// Cold diagnostic extension; existing six-word stats and movement status retain their layout.
 #[derive(Clone, Copy, Default)]
 #[repr(u32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 enum RequestStatus {
     #[default]
     NotRequested,
@@ -49,12 +52,13 @@ enum RequestStatus {
     WorkBudgetExceeded,
     FrameBudgetExceeded,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct Waypoint {
     at: Transform2D,
     span: HeightSpan,
     surface: usize,
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Node {
     pose: Waypoint,
     cell: Option<(i32, i32)>,
@@ -63,7 +67,7 @@ struct Node {
     closed: bool,
     auxiliary: bool,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct Open {
     index: usize,
     score: f64,
@@ -87,20 +91,24 @@ impl Ord for Open {
             .then_with(|| other.index.cmp(&self.index))
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 struct Search {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     nodes: Vec<Node>,
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::map")]
     cells: BTreeMap<(i32, i32), Vec<usize>>,
+    #[serde(deserialize_with = "file_admission::deserialize_open")]
     open: BinaryHeap<Open>,
     probes: u32,
     work: u64,
     expanded: u32,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialNavigation {
     pub status: SpatialMoveStatus,
     actor: Option<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     points: Vec<Waypoint>,
     next: usize,
     planned: usize,
@@ -127,6 +135,7 @@ pub(crate) struct SpatialNavigation {
     crowd_step: CombatNavigationStep,
     crowd_candidates: u32,
     crowd_detour: Option<((f64, f64), f64)>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     search_peers: Vec<Entity>,
     search_padding: f32,
     search_neighbors: u32,
@@ -1611,3 +1620,5 @@ mod projection_tests {
         }
     }
 }
+
+mod file_combat_admission;

@@ -1,7 +1,7 @@
 //! Bounded convex projection of a footprint, walls and an optional gable roof.
 use super::GroundShadowProjection;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GroundShadowVolume {
     pub depth: f32,
     pub roof_height: f32,
@@ -11,7 +11,7 @@ pub(crate) struct GroundShadowVolume {
 
 /// Screen-space triangles. This optional sidecar does not change the sprite command ABI.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GroundShadowVolumeVertex {
     pub x: f32,
     pub y: f32,
@@ -20,9 +20,11 @@ pub(crate) struct GroundShadowVolumeVertex {
 const _: () = assert!(core::mem::size_of::<GroundShadowVolumeVertex>() == 12);
 const _: () = assert!(core::mem::align_of::<GroundShadowVolumeVertex>() == 4);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct GroundShadowHull {
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub foot: [f32; 2],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub points: [[f32; 2]; 10],
     pub len: usize,
 }

@@ -2,7 +2,7 @@ use super::data_scene_visuals::sprite;
 use super::*;
 
 fn setup() -> (Engine, Entity) {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     engine.use_data_scene();
     let actor = sprite(&mut engine, 1, 30.0, 30.0, 0);
     (engine, actor)

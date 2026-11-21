@@ -6,14 +6,14 @@ use super::motion::{Transform2D, Velocity};
 
 const POLYGON_MASS_EPSILON: f32 = 0.0001;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RigidBodyType {
     Static,
     Kinematic,
     Dynamic,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RigidBody {
     pub enabled: bool,
     pub body_type: RigidBodyType,
@@ -36,7 +36,7 @@ pub struct RigidBody {
     pub is_sleeping: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RigidContactImpulse {
     pub entity_a: Entity,
     pub entity_b: Entity,
@@ -48,7 +48,7 @@ pub struct RigidContactImpulse {
     pub tangent_impulse: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RigidBodyCcdDebugHit {
     pub moving_entity: Entity,
     pub target_entity: Entity,

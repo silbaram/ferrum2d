@@ -1,5 +1,6 @@
 import { captureWorldSolverState, restoreWorldSolverState } from "./physicsWorldSolverState.js";
-import { stagePhysicsWorldFromSpec, configureAppliedPhysicsRuntime } from "./physicsAuthoringWorld.js";
+import { stagePhysicsWorldFromSpec } from "./physicsAuthoringWorld.js";
+import { configureLegacyJsonPhysicsRuntime } from "./physicsLegacyJsonRuntime.js";
 import type {
   FerrumEngine,
   PhysicsBodyColliderSnapshot,
@@ -18,7 +19,7 @@ import {
   resolvedPhysicsColliderRuntimeCount,
   type PhysicsWorldApplyResult,
 } from "./physicsAuthoring.js";
-import type { ResolvedPhysicsColliderSpec } from "./physicsSpec.js";
+import type { ResolvedPhysicsColliderSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 import {
   PHYSICS_WORLD_SNAPSHOT_FORMAT,
   PHYSICS_WORLD_SNAPSHOT_VERSION,
@@ -45,6 +46,7 @@ export function capturePhysicsWorldSnapshot(
   world: PhysicsWorldApplyResult,
   options: CapturePhysicsWorldSnapshotOptions = {},
 ): PhysicsWorldSnapshot {
+  requireLegacyJsonPhysics(engine, world.spec, "physics.snapshot");
   const frame = nonNegativeInteger(options.frame ?? 0, "physics snapshot frame");
   const bodyEntries = Object.entries(world.bodies);
   const bulkBodyState = captureBulkBodyState(engine, bodyEntries.map(([, handle]) => handle));
@@ -135,14 +137,26 @@ export function restorePhysicsWorldSnapshot(
   options: RestorePhysicsWorldSnapshotOptions = {},
 ): PhysicsWorldRestoreResult {
   validatePhysicsWorldSnapshot(snapshot, options.path ?? "physics.snapshot");
+  requireLegacyJsonPhysics(engine, snapshot.spec, options.path ?? "physics.snapshot");
   if (snapshot.version === 2 && (typeof engine.restorePhysicsSolverState !== "function" || typeof engine.withPhysicsWorldTransaction !== "function")) {
     throw physicsSpecDiagnosticError("physics.snapshot.version", "version 2 requires solver state and transaction support");
   }
   const operation = () => restorePreparedPhysicsWorldSnapshot(engine, snapshot, options);
   const restored = typeof engine.withPhysicsWorldTransaction === "function" ? engine.withPhysicsWorldTransaction(operation) : operation();
-  configureAppliedPhysicsRuntime(engine, snapshot.spec);
+  configureLegacyJsonPhysicsRuntime(engine, snapshot.spec);
   options.replace?.clear();
   return restored;
+}
+
+function requireLegacyJsonPhysics(engine: FerrumEngine, spec: ResolvedPhysicsSpec, path: string): void {
+  if (engine.physicsBackend?.() !== "legacy") {
+    throw physicsSpecDiagnosticError(path, "native or unknown physics backends require in-memory runtime checkpoints; JSON solver saves are not supported");
+  }
+  // A legacy JSON format is independent of new native authoring's clock choice.
+  // Require its old explicit clock, then use only the legacy restore setup.
+  if (!(spec.mode === "none" || (spec.mode === "arcade" && spec.solver.fixedTimestep === false))) {
+    throw physicsSpecDiagnosticError(`${path}.spec`, "fixed-step arcade and rigid physics require in-memory runtime checkpoints; legacy JSON requires none or explicit variable-step arcade");
+  }
 }
 
 function restorePreparedPhysicsWorldSnapshot(engine: FerrumEngine, snapshot: PhysicsWorldSnapshot, options: RestorePhysicsWorldSnapshotOptions): PhysicsWorldRestoreResult {

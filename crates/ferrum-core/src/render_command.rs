@@ -9,7 +9,7 @@ pub const SPRITE_PROJECT_GROUND: f32 = 4.0;
 pub const SPRITE_SHADOW_ALPHA: f32 = 32.0;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteRenderCommand {
     pub x: f32,
     pub y: f32,
@@ -82,7 +82,7 @@ const _: () = assert!(core::mem::size_of::<SpriteRenderCommand>() == 60);
 pub const SPRITE_NORMAL_NONE: u32 = 16_777_215;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteNormalMaterial {
     pub normal_texture: u32,
     /// Reserved for future versions; version 1 requires zero.
@@ -101,7 +101,7 @@ const _: () = assert!(core::mem::size_of::<SpriteNormalMaterial>() == 8);
 
 /// Optional flat receiver metadata. Mode 0 is unlit, 1 opaque, 2 alpha cutout.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteLightingMaterial {
     pub mode: u32,
     pub alpha_cutoff: f32,
@@ -110,7 +110,7 @@ const _: () = assert!(core::mem::size_of::<SpriteLightingMaterial>() == 8);
 
 /// Independent eight-channel light/shadow reception. All bits set preserves legacy reception.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteLightMasks {
     pub light_mask: u32,
     pub shadow_mask: u32,
@@ -129,12 +129,13 @@ const _: () = assert!(core::mem::size_of::<SpriteLightMasks>() == 8);
 /// Textures use the exact integer sentinel shared by the platform asset table.
 pub const SPRITE_SURFACE_TEXTURE_NONE: u32 = 16_777_215;
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpriteSurfaceMaterial {
     pub emission_texture: u32,
     pub specular_texture: u32,
     pub roughness_texture: u32,
     pub flags: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub emission: [f32; 3],
     pub specular: f32,
     pub roughness: f32,
@@ -156,7 +157,7 @@ impl Default for SpriteSurfaceMaterial {
 }
 const _: () = assert!(core::mem::size_of::<SpriteSurfaceMaterial>() == 40);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpriteRenderSortKey {
     pub floor_id: u32,
     pub elevation: f32,
@@ -178,7 +179,7 @@ impl SpriteRenderSortKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpriteRenderItem {
     pub command: SpriteRenderCommand,
     pub normal_material: SpriteNormalMaterial,

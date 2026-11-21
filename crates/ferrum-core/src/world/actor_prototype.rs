@@ -1,11 +1,34 @@
 //! Cold actor definitions. Immutable atlas data is shared; each spawn owns its mutable state.
+/// Borrowed cold resource references. Stale `source` remains stored metadata;
+/// this view does not claim the source is a current or historical live entity.
+pub(crate) struct FileResourceView<'a> {
+    pub sprite: Option<Sprite>,
+    pub normal: Option<crate::render_command::SpriteNormalMaterial>,
+    pub surface: Option<crate::render_command::SpriteSurfaceMaterial>,
+    pub playback: Option<&'a sprite_playback::SpritePlayback>,
+    pub reactions: Option<&'a CollisionReactionSet>,
+    pub shadow: Option<&'a ground_shadow::GroundShadowCaster>,
+}
+impl ActorPrototype {
+    pub(crate) fn file_resource_view(&self) -> FileResourceView<'_> {
+        FileResourceView {
+            sprite: self.sprite,
+            normal: self.normal_material,
+            surface: self.surface_material,
+            playback: self.playback.as_ref(),
+            reactions: self.reactions.as_ref(),
+            shadow: self.shadow.as_ref(),
+        }
+    }
+}
+
 use super::*;
 use crate::components::gameplay::GAMEPLAY_TAG_PRIMARY_ACTOR;
 use crate::components::CompoundColliderShape;
 
 pub(crate) const MAX_ACTOR_PROTOTYPE_COLLIDERS: usize = 16;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ActorPrototype {
     pub source: Entity,
     origin: Transform2D,
@@ -30,6 +53,7 @@ pub(crate) struct ActorPrototype {
     edge: Option<EdgeCollider>,
     chain: Option<ChainCollider>,
     polygon: Option<ConvexPolygonCollider>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     compound: Vec<CompoundCollider>,
     material: Option<PhysicsMaterial>,
     filter: Option<CollisionFilter>,
@@ -408,3 +432,21 @@ impl World {
         }
     }
 }
+
+impl ActorPrototype {
+    pub(crate) fn file_clip_arc(&self) -> Option<&std::sync::Arc<[sprite_playback::SpriteClip]>> {
+        self.playback.as_ref().map(|p| &p.clips)
+    }
+    /// Same-value backing only; prototype/source/mutable playback state stay put.
+    pub(crate) fn rebind_file_clip_arc(
+        &mut self,
+        replace: &mut impl FnMut(&mut std::sync::Arc<[sprite_playback::SpriteClip]>),
+    ) {
+        if let Some(playback) = &mut self.playback {
+            replace(&mut playback.clips);
+        }
+    }
+}
+
+#[allow(dead_code)]
+mod file_admission;

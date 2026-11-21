@@ -26,4 +26,6 @@ const result = spawnSync("wasm-pack", wasmPackArgs, {
   stdio: "inherit",
 });
 
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+const { generateWasmBindingsFactory } = await import("./generate-wasm-bindings-factory.mjs");
+await generateWasmBindingsFactory(new URL("../../packages/ferrum-web/pkg/", import.meta.url));

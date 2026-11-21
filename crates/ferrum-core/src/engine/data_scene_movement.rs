@@ -9,8 +9,11 @@ use crate::tilemap::{Tilemap, TilemapNavigationScratch};
 use crate::world::World;
 use wasm_bindgen::prelude::*;
 
+mod file_admission;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
+#[derive(serde::Serialize, serde::Deserialize)]
 enum MoveStatus {
     #[default]
     Idle = 0,
@@ -21,6 +24,7 @@ enum MoveStatus {
 }
 
 /// One scene-owned primary-actor route. No JS callbacks or per-frame path search.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneMovement {
     status: MoveStatus,
     actor: Option<Entity>,
@@ -29,6 +33,7 @@ pub(super) struct DataSceneMovement {
     arrival_radius: f32,
     solid_mask: CollisionMask,
     cancel_on_input: bool,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     points: Vec<Transform2D>,
     next: usize,
     dirty: bool,
@@ -133,12 +138,21 @@ impl DataSceneMovement {
         input: InputState,
         delta: f32,
         counters: &mut PhysicsCounters,
+        mut native: Option<super::unified_physics::PlanarNavigationContext<'_>>,
     ) {
         self.last_motion = None;
         let Some(actor) = self.actor else {
             return;
         };
-        if world.primary_actor_entity() != Some(actor) || !supported_actor(world, actor) {
+        let supported = native.as_ref().map_or_else(
+            || supported_actor(world, actor),
+            |context| {
+                context
+                    .runtime
+                    .supports_planar_navigation_actor(world, actor)
+            },
+        );
+        if world.primary_actor_entity() != Some(actor) || !supported {
             self.finish(MoveStatus::Cancelled);
             return;
         }
@@ -151,7 +165,17 @@ impl DataSceneMovement {
         if !delta.is_finite() || delta <= 0.0 {
             return;
         }
-        let Some(mut position) = world.transform(actor) else {
+        if native
+            .as_mut()
+            .is_some_and(|native| !native.prepare(world, actor))
+        {
+            self.finish(MoveStatus::Blocked);
+            return;
+        }
+        let Some(mut position) = native.as_ref().map_or_else(
+            || world.transform(actor),
+            |context| context.runtime.planar_navigation_position(world, actor),
+        ) else {
             return;
         };
         if (self.dirty || position != self.last_position)
@@ -190,14 +214,24 @@ impl DataSceneMovement {
                 return;
             }
             let before = position;
-            let movement = PhysicsSystem::move_navigation_actor_with_scratch(
-                world,
-                actor,
-                displacement,
-                self.solid_mask,
-                &mut self.sweep,
-                counters,
-            );
+            let movement = if let Some(native) = native.as_mut() {
+                let Some(movement) =
+                    native.move_body(world, actor, displacement, self.solid_mask, counters)
+                else {
+                    self.finish(MoveStatus::Blocked);
+                    return;
+                };
+                movement
+            } else {
+                PhysicsSystem::move_navigation_actor_with_scratch(
+                    world,
+                    actor,
+                    displacement,
+                    self.solid_mask,
+                    &mut self.sweep,
+                    counters,
+                )
+            };
             position = movement.end;
             self.last_position = position;
             if position != before {
@@ -247,7 +281,7 @@ fn bounded_displacement(from: f32, to: f32, requested: f64) -> f32 {
     }
 }
 
-fn supported_actor(world: &World, actor: Entity) -> bool {
+pub(super) fn supported_actor(world: &World, actor: Entity) -> bool {
     world
         .rigid_body(actor)
         .is_some_and(|body| body.enabled && body.body_type == RigidBodyType::Kinematic)
@@ -263,6 +297,7 @@ fn supported_actor(world: &World, actor: Entity) -> bool {
 #[wasm_bindgen]
 impl Engine {
     /// Starts/replaces the primary actor's XY route. Invalid/unreachable requests preserve the old route.
+    /// Explicit native actors use physical simulation XY; render offsets are visual only.
     #[allow(clippy::too_many_arguments)]
     pub fn move_data_scene_actor_to(
         &mut self,
@@ -291,10 +326,17 @@ impl Engine {
         let Some(actor) = self.world.primary_actor_entity() else {
             return false;
         };
-        if !supported_actor(&self.world, actor) {
+        let supported = self.unified_physics.as_ref().map_or_else(
+            || supported_actor(&self.world, actor),
+            |native| native.supports_planar_navigation_actor(&self.world, actor),
+        );
+        if !supported {
             return false;
         }
-        let Some(from) = self.world.transform(actor) else {
+        let Some(from) = self.unified_physics.as_ref().map_or_else(
+            || self.world.transform(actor),
+            |native| native.planar_navigation_position(&self.world, actor),
+        ) else {
             return false;
         };
         let destination = Transform2D { x, y };

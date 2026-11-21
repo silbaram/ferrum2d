@@ -67,7 +67,7 @@ fn altered(saved: &Saved, index: usize, value: f64) -> Saved {
 
 #[test]
 fn shared_projectile_atlas_has_independent_clocks_flips_and_fresh_texture_restore() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     assert!(visual_config(
         &mut engine,
@@ -144,7 +144,7 @@ fn shared_projectile_atlas_has_independent_clocks_flips_and_fresh_texture_restor
 
 #[test]
 fn malformed_atlas_checkpoint_and_catalog_refuse_without_retiring_the_scene() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     assert!(visual_config(
         &mut engine,
@@ -202,7 +202,7 @@ fn malformed_atlas_checkpoint_and_catalog_refuse_without_retiring_the_scene() {
 
 #[test]
 fn nonlooping_projectiles_keep_the_last_frame_and_static_rotation_has_no_playback() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     assert!(visual_config(
         &mut engine,
@@ -258,7 +258,7 @@ fn projected(matrix: [f32; 16], point: [f32; 3]) -> [f64; 2] {
 fn projectile_roll_matches_actual_projected_velocity_for_both_cameras_and_pixel_presentations() {
     for perspective in [0., 1.] {
         for pixel in [false, true] {
-            let mut engine = Engine::new();
+            let mut engine = crate::engine::legacy_test_fixture::engine();
             let (actor, enemy, _) = setup(&mut engine, 10);
             assert!(visual_config(
                 &mut engine,
@@ -379,7 +379,7 @@ fn projectile_roll_matches_actual_projected_velocity_for_both_cameras_and_pixel_
 
 #[test]
 fn flat_projectile_orientation_uses_render_projection_and_clears_retired_generations() {
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     engine.clear_spatial_scene();
     engine.camera.ground_y_scale = 0.5;
@@ -492,7 +492,7 @@ fn animated_shots_from_spawned_sources_restore_with_the_actor_catalog() {
             &[0., 0., 0.5, 1., 1., 0., 0.5, 1.]
         ));
     }
-    let mut engine = Engine::new();
+    let mut engine = crate::engine::legacy_test_fixture::engine();
     let (actor, enemy, handles) = setup(&mut engine, 10);
     configure(&mut engine, actor, enemy, 71);
     assert!(engine.despawn_physics_entity(enemy.id, enemy.generation));

@@ -12,6 +12,8 @@ export interface RenderCommandView {
 }
 
 export interface RenderCommandBufferView {
+  /** Gameplay terrainImpact.payloadBits indexes this frame's full native witness. */
+  terrainImpacts?: import("./terrainImpacts.js").TerrainImpactBufferView;
   /** Optional sorted v1 independent light/shadow receiver channels. */
   spriteLightMasks?: import("./spriteLightMasks.js").SpriteLightMaskBufferView;
   /** Optional v1 sorted flat surface metadata. */

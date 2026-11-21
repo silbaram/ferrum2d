@@ -1,3 +1,4 @@
+import {ResourceBudget,NativeFileResourceError} from "./nativeFileResourceBudget.js";
 import { spatialReceiverMaskCode } from "./spatialReceiverMasks.js";
 import { beginWebGpuRenderPass } from "./webgpuGpuTimer.js";
 import { webGpuResources } from "./webgpuResources.js";
@@ -235,6 +236,17 @@ export class WebGpuSpatialModels {
     for (const source of sources)
       if (!this.assets.has(source))
         throw Error("WebGPU spatial models must be preloaded before scene activation");
+  }
+  fileRoots(b:ResourceBudget){
+    this.assertAlive();if(this.loading||this.pending)throw new NativeFileResourceError("BUSY","model cache preparation");
+    b.work(this.assets.size+this.active.size+this.warmed.size);b.charge("metadataBytes",(this.assets.size+this.active.size+this.warmed.size)*8);
+    const roots=[...this.assets.keys()],values=[...this.assets.values()],active=[...this.active],warmed=[...this.warmed];
+    const assertCurrent=()=>{this.assertAlive();if(this.loading||this.pending||this.assets.size!==roots.length||this.active.size!==active.length||this.warmed.size!==warmed.length||roots.some((r,i)=>this.assets.get(r)!==values[i])||active.some(r=>!this.active.has(r))||warmed.some(r=>!this.warmed.has(r)))throw new NativeFileResourceError("STALE","model cache roots");};
+    return {roots,active,warmed,assertCurrent};
+  }
+  /** New unpublished target only; CPU input has already passed file admission. */
+  async fileRestoreCache(all:readonly SpatialModelAsset[],active:readonly SpatialModelAsset[],warmed:readonly SpatialModelAsset[]):Promise<void>{
+    await this.preload(all);const lease=this.stage(active);lease.commit();this.warmed=this.resolveSources(warmed);this.prune();
   }
   /** Verify asynchronous WebGPU errors before exposing a synchronous authoring lease. */
   async preload(handles: readonly SpatialModelAsset[]): Promise<number> {

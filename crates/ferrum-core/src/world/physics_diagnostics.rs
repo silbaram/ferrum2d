@@ -5,12 +5,15 @@ use std::collections::BTreeMap;
 
 pub(crate) type JointLoadKey = (u32, u32, u32);
 const EVENT_CAP: usize = 256;
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PhysicsDiagnostics {
     pub enabled: bool,
     pub loads: BTreeMap<JointLoadKey, JointLoad>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub joints: Vec<[f64; 6]>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub ccd: Vec<[f64; 3]>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub breaks: Vec<[f64; 6]>,
     pub dropped: u32,
     pub breaks_dropped: u32,
@@ -22,8 +25,9 @@ impl PhysicsDiagnostics {
         self.dropped = 0;
     }
 }
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct JointLoad {
+    #[serde(with = "crate::checkpoint_codec::array")]
     impulses: [[f32; 3]; 2],
     force_limit: f32,
     torque_limit: f32,
@@ -104,6 +108,31 @@ impl World {
             }
         }
     }
+    pub(crate) fn record_unified_joint_load(
+        &mut self,
+        key: JointLoadKey,
+        force: f32,
+        torque: f32,
+        error: f32,
+    ) {
+        let d = &mut self.physics_diagnostics;
+        if !d.enabled {
+            return;
+        }
+        if d.joints.len() < EVENT_CAP {
+            d.joints.push([
+                key.0 as f64,
+                key.1 as f64,
+                key.2 as f64,
+                force as f64,
+                torque as f64,
+                error as f64,
+            ]);
+        } else {
+            d.dropped = d.dropped.saturating_add(1);
+        }
+    }
+
     pub(crate) fn record_joint_break(
         &mut self,
         key: JointLoadKey,

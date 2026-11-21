@@ -1,5 +1,59 @@
 //! Bounded, opt-in Data Scene orchestration of scene-neutral gameplay systems.
+impl DataSceneCombat {
+    pub(in crate::engine) fn file_resource_catalog_lengths(&self) -> [usize; 3] {
+        [
+            self.prefabs.definitions.len(),
+            self.spawn_prefabs.definitions.len(),
+            self.checkpoint_authored.len(),
+        ]
+    }
+    pub(in crate::engine) fn visit_file_resource_projectiles<E>(
+        &self,
+        visit: &mut impl FnMut(
+            usize,
+            u32,
+            Option<&[crate::world::sprite_playback::SpriteClip]>,
+        ) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (index, prefab) in self.prefabs.definitions.iter().enumerate() {
+            visit(index, prefab.texture, prefab.animation.as_deref())?;
+        }
+        Ok(())
+    }
+    pub(in crate::engine) fn visit_file_resource_actors<E>(
+        &self,
+        visit: &mut impl FnMut(
+            usize,
+            u32,
+            &crate::world::actor_prototype::ActorPrototype,
+            Option<Billboard>,
+        ) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (index, prefab) in self.spawn_prefabs.definitions.iter().enumerate() {
+            visit(index, prefab.id, &prefab.prototype, prefab.billboard)?;
+        }
+        Ok(())
+    }
+    pub(in crate::engine) fn visit_file_resource_authored<E>(
+        &self,
+        visit: &mut impl FnMut(
+            usize,
+            Entity,
+            Option<crate::components::Sprite>,
+            Option<&crate::components::gameplay::CollisionReactionSet>,
+        ) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for (index, definition) in self.checkpoint_authored.iter().enumerate() {
+            let (entity, sprite, reactions) = definition.file_resource_view();
+            visit(index, entity, sprite, reactions)?;
+        }
+        Ok(())
+    }
+}
+
 mod actions;
+mod file_arcs;
+pub(super) use file_arcs::CatalogClipArcLocation;
 mod navigation;
 mod prefabs;
 mod progress;
@@ -47,23 +101,32 @@ pub(super) struct CombatInput<'a> {
     pub(super) tilemap: &'a crate::tilemap::Tilemap,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct DataSceneCombat {
     pub(super) enabled: bool,
     queue: ActionTriggerQueue<ActionTriggerCommand>,
     scratch: CollisionScratch,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pairs: Vec<CollisionPair>,
     contacts: CollisionContactTracker,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     marked: Vec<bool>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pending: Vec<Entity>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     area_hits: Vec<CircleQueryHit>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     projectiles: Vec<(Entity, Entity, u32)>,
     prefabs: ProjectilePrefabConfig,
     navigation: navigation::CombatNavigation,
     actions: actions::CombatActions,
     spawn_prefabs: spawn_prefabs::SpawnPrefabs,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     moved_velocities: Vec<(Entity, Velocity)>,
     // actors/projectiles are gauges; the remaining values are saturating totals.
+    #[serde(with = "crate::checkpoint_codec::array")]
     stats: [u32; 9],
+    #[serde(with = "crate::checkpoint_codec::vector")]
     checkpoint_authored: Vec<progress::AuthoredDefinition>,
 }
 
@@ -91,6 +154,10 @@ impl Default for DataSceneCombat {
 }
 
 impl DataSceneCombat {
+    pub(super) fn accepts_native_world(&self, space: crate::physics3d::Space) -> bool {
+        self.navigation.accepts_native_world(space)
+            && self.spawn_prefabs.accepts_native_world(space)
+    }
     /// Reconfiguration retires these exact generations, so they cannot become the next actor.
     pub(super) fn owns_projectile(&self, entity: Entity) -> bool {
         self.projectiles
@@ -134,6 +201,77 @@ impl DataSceneCombat {
         };
     }
 
+    pub(super) fn prepare_native_navigation(
+        &mut self,
+        runtime: &mut super::unified_physics::UnifiedPhysicsRuntime,
+        world: &World,
+        scene: &SpatialScene,
+    ) {
+        if self.enabled {
+            self.prepare_native_movement(runtime, world, scene);
+            self.navigation.prepare_native(runtime, world, scene);
+        }
+    }
+
+    fn prepare_native_movement(
+        &mut self,
+        runtime: &mut super::unified_physics::UnifiedPhysicsRuntime,
+        world: &World,
+        scene: &SpatialScene,
+    ) {
+        if world
+            .alive_indices()
+            .iter()
+            .any(|&i| i >= MAX_COMBAT_ENTITIES)
+        {
+            return;
+        }
+        let mut actors = 0;
+        for &index in world.alive_indices() {
+            let Some(entity) = world.entity_at_index(index) else {
+                continue;
+            };
+            let Some(pattern) = world.movement_pattern(entity) else {
+                continue;
+            };
+            if Some(entity) == world.primary_actor_entity()
+                || scene.actor.map(|a| a.0) == Some(entity)
+                || scene.attachments.contains(entity)
+            {
+                continue;
+            }
+            actors += 1;
+            if !runtime.owns_combat_movement(world, entity) {
+                continue;
+            }
+            if actors > MAX_ACTORS {
+                runtime.apply_combat_movement(
+                    world,
+                    entity,
+                    crate::components::gameplay::MovementPattern::Static,
+                );
+            } else if self.navigation.native_owns(pattern)
+                || runtime.apply_combat_movement(world, entity, pattern)
+            {
+                self.stats[2] = self.stats[2].saturating_add(1);
+            }
+        }
+    }
+    pub(super) fn finish_native_navigation(
+        &mut self,
+        runtime: &mut super::unified_physics::UnifiedPhysicsRuntime,
+        scene: &SpatialScene,
+    ) {
+        if self.enabled {
+            self.navigation.finish_native(runtime, scene);
+        }
+    }
+    pub(super) fn release_native_navigation(
+        &mut self,
+        runtime: &mut super::unified_physics::UnifiedPhysicsRuntime,
+    ) {
+        self.navigation.release_native(runtime);
+    }
     pub(super) fn begin_frame(&mut self) {
         self.navigation.begin_frame();
         self.actions.begin_frame();
@@ -164,6 +302,7 @@ impl DataSceneCombat {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn pre_physics(
         &mut self,
         world: &mut World,
@@ -172,6 +311,7 @@ impl DataSceneCombat {
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
         input: CombatInput<'_>,
+        mut native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         if !self.enabled {
             return;
@@ -192,9 +332,18 @@ impl DataSceneCombat {
             .retain(|(e, _)| world.is_current_entity(*e));
         self.stats[1] = self.projectiles.len() as u32;
         let tilemap = input.tilemap;
-        self.input_action(world, spatial, input, events, counters);
-        self.navigation
-            .step(world, spatial, delta, counters, &self.spawn_prefabs);
+        self.input_action(
+            world,
+            spatial,
+            input,
+            events,
+            counters,
+            native.as_deref_mut(),
+        );
+        if native.is_none() {
+            self.navigation
+                .step(world, spatial, delta, counters, &self.spawn_prefabs);
+        }
         let player = world.primary_actor_entity();
         let player_t = player.and_then(|e| world.transform(e));
         let count = world.alive_indices().len();
@@ -206,19 +355,26 @@ impl DataSceneCombat {
                 continue;
             };
             if let Some(pattern) = world.movement_pattern(entity) {
-                if Some(entity) != player && !spatial.attachments.contains(entity) {
+                if Some(entity) != player
+                    && spatial.actor.map(|actor| actor.0) != Some(entity)
+                    && !spatial.attachments.contains(entity)
+                {
                     actors += 1;
                     if actors > MAX_ACTORS {
                         world.velocities[index] = Some(Velocity::default());
                         self.capped();
                         continue;
                     }
-                    if self.navigation.owns(pattern) {
+                    let native_movement = native
+                        .as_deref()
+                        .is_some_and(|r| r.owns_combat_movement(world, entity));
+                    // Skip only movement, keeping this actor's timer/action dispatch below.
+                    if !native_movement && self.navigation.owns(pattern) {
                         let velocity = world.velocity_at_index_or_default(index);
                         self.moved_velocities.push((entity, velocity));
                         world.velocities[index] = Some(Velocity::default());
                         self.stats[2] = self.stats[2].saturating_add(1);
-                    } else {
+                    } else if !native_movement {
                         let application =
                             apply_scene_neutral_movement_pattern(world, index, player_t, pattern);
                         if let MovementPatternApplication::DeferredChase {
@@ -283,7 +439,15 @@ impl DataSceneCombat {
         if self.queue.begin_processing() {
             for index in 0..self.queue.processing_len() {
                 if let Some(trigger) = self.queue.processing_at(index) {
-                    self.action(world, spatial, tilemap, trigger, events, counters);
+                    self.action(
+                        world,
+                        spatial,
+                        tilemap,
+                        trigger,
+                        events,
+                        counters,
+                        native.as_deref_mut(),
+                    );
                 }
             }
             self.queue.finish_processing();
@@ -365,6 +529,7 @@ impl DataSceneCombat {
         input: CombatInput<'_>,
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
+        native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         let Some(actor) = world.primary_actor_entity() else {
             return;
@@ -388,11 +553,13 @@ impl DataSceneCombat {
             };
             let payload = match prepared_action_payload_from_binding(prepared.binding) {
                 PreparedActionPayload::Melee(payload) => {
-                    self.queue_melee(world, prepared, payload, true, events);
+                    self.queue_melee(world, prepared, payload, true, events, native.as_deref());
                     return;
                 }
                 PreparedActionPayload::Dash(payload) => {
-                    self.input_dash(world, spatial, &input, prepared, payload, events, counters);
+                    self.input_dash(
+                        world, spatial, &input, prepared, payload, events, counters, native,
+                    );
                     return;
                 }
                 PreparedActionPayload::Projectile(payload) => payload,
@@ -404,11 +571,15 @@ impl DataSceneCombat {
                         prepared,
                         payload,
                         events,
+                        native,
                     );
                     return;
                 }
             };
-            let Some(at) = world.transform(actor) else {
+            let Some(at) = native.as_deref().map_or_else(
+                || world.transform(actor),
+                |runtime| runtime.projectile_transform(world, actor),
+            ) else {
                 return;
             };
             let pointer = [
@@ -420,7 +591,15 @@ impl DataSceneCombat {
                 .projectile_presentation(world, spatial, actor, binding.action_id)
                 .and_then(|(span, style)| {
                     if spatial.camera.is_some() {
-                        spatial.aim_on_plane(viewport, pointer, span.elevation + style.elevation)
+                        spatial.aim_on_plane(
+                            viewport,
+                            pointer,
+                            native
+                                .as_deref()
+                                .map_or(span.elevation + style.elevation, |runtime| {
+                                    runtime.projectile_elevation(actor, span.elevation)
+                                }),
+                        )
                     } else if pointer.iter().any(|v| !v.is_finite())
                         || pointer[0] < 0.0
                         || pointer[1] < 0.0
@@ -445,9 +624,9 @@ impl DataSceneCombat {
                 return;
             };
             match plan_input_projectile_action(payload, at, aim, 0.0) {
-                Ok(plan) => {
-                    self.spawn_prepared_projectile(world, spatial, prepared, payload, plan, events)
-                }
+                Ok(plan) => self.spawn_prepared_projectile(
+                    world, spatial, prepared, payload, plan, events, native,
+                ),
                 Err(error) => self.failure(
                     events,
                     actor,
@@ -469,6 +648,7 @@ impl DataSceneCombat {
         trigger: ActionTriggerCommand,
         events: &mut Vec<GameplayEvent>,
         counters: &mut PhysicsCounters,
+        native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         let prepared = match prepare_action_trigger_for_dispatch(
             world,
@@ -484,7 +664,14 @@ impl DataSceneCombat {
         };
         let payload = match prepared.payload {
             PreparedActionPayload::Melee(payload) => {
-                self.queue_melee(world, prepared.prepared, payload, false, events);
+                self.queue_melee(
+                    world,
+                    prepared.prepared,
+                    payload,
+                    false,
+                    events,
+                    native.as_deref(),
+                );
                 return;
             }
             PreparedActionPayload::Dash(payload) => {
@@ -496,6 +683,7 @@ impl DataSceneCombat {
                     payload,
                     events,
                     counters,
+                    native,
                 );
                 return;
             }
@@ -507,6 +695,7 @@ impl DataSceneCombat {
                     prepared.prepared,
                     payload,
                     events,
+                    native,
                 );
                 return;
             }
@@ -522,7 +711,10 @@ impl DataSceneCombat {
             );
             return;
         }
-        let Some(at) = world.transform(trigger.source) else {
+        let Some(at) = native.as_deref().map_or_else(
+            || world.transform(trigger.source),
+            |runtime| runtime.projectile_transform(world, trigger.source),
+        ) else {
             self.failure(
                 events,
                 trigger.source,
@@ -531,9 +723,15 @@ impl DataSceneCombat {
             );
             return;
         };
-        let target = world
-            .primary_actor_entity()
-            .and_then(|e| world.transform(e).map(|t| (e, t)));
+        let target = world.primary_actor_entity().and_then(|e| {
+            native
+                .as_deref()
+                .map_or_else(
+                    || world.transform(e),
+                    |runtime| runtime.projectile_transform(world, e),
+                )
+                .map(|t| (e, t))
+        });
         let plan =
             match plan_projectile_action_toward_target(payload, trigger.source, at, target, 0.0) {
                 Ok(plan) => plan,
@@ -547,7 +745,15 @@ impl DataSceneCombat {
                     return;
                 }
             };
-        self.spawn_prepared_projectile(world, spatial, prepared.prepared, payload, plan, events);
+        self.spawn_prepared_projectile(
+            world,
+            spatial,
+            prepared.prepared,
+            payload,
+            plan,
+            events,
+            native,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -559,6 +765,7 @@ impl DataSceneCombat {
         payload: ProjectileActionPayload,
         plan: ProjectileSpawnPlan,
         events: &mut Vec<GameplayEvent>,
+        native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         if payload.tile_impact != ProjectileTileImpact::Despawn {
             self.failure(
@@ -657,6 +864,22 @@ impl DataSceneCombat {
                 mask: Self::projectile_mask(payload.collision_target),
             },
         );
+        if let Some(runtime) = native {
+            if let Err(error) = runtime.admit_projectile(world, spawned, prepared.entity) {
+                world.despawn(spawned);
+                let reason = if error
+                    == super::unified_physics::UnifiedPhysicsError::Physics(
+                        crate::physics3d::PhysicsError::CapacityExceeded,
+                    ) {
+                    GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL
+                } else {
+                    GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE
+                };
+                runtime.record_projectile_error(error);
+                self.failure(events, prepared.entity, prepared.action_id, reason);
+                return;
+            }
+        }
         if spatial.camera.is_some() {
             spatial.runtime_billboards.push((
                 spawned,
@@ -692,6 +915,7 @@ impl DataSceneCombat {
         events: &mut Vec<GameplayEvent>,
         effects: &mut Vec<EffectEvent>,
         delta: f32,
+        mut native: Option<&mut super::unified_physics::UnifiedPhysicsRuntime>,
     ) {
         if !self.enabled {
             return;
@@ -712,8 +936,19 @@ impl DataSceneCombat {
         for e in &self.pending {
             self.marked[e.id as usize] = true;
         }
-        self.resolve_melee(world, spatial, tilemap, events);
-        if !CollisionSystem::build_pairs_bounded_into(
+        if let Some(runtime) = native.as_deref_mut() {
+            self.resolve_native_dashes(world, runtime, events);
+        }
+        self.resolve_melee(world, spatial, tilemap, events, native.as_deref_mut());
+        if let Some(runtime) = native.as_deref_mut() {
+            let pairs = runtime.gameplay_collision_pairs();
+            self.pairs.clear();
+            self.pairs
+                .extend_from_slice(&pairs[..pairs.len().min(MAX_PAIRS)]);
+            if pairs.len() > MAX_PAIRS {
+                self.capped();
+            }
+        } else if !CollisionSystem::build_pairs_bounded_into(
             &mut self.scratch,
             world,
             &mut self.pairs,
@@ -731,6 +966,67 @@ impl DataSceneCombat {
         for index in 0..self.projectiles.len() {
             let (entity, source, _) = self.projectiles[index];
             if !world.is_current_entity(entity) || self.marked[entity.id as usize] {
+                continue;
+            }
+            if let Some(runtime) = native.as_deref_mut() {
+                if let Some(hit) = runtime.take_projectile_hit(entity) {
+                    use super::unified_physics::ProjectileHit;
+                    match hit {
+                        ProjectileHit::Entity {
+                            entity: target,
+                            wall,
+                        } => {
+                            if wall || !world.is_current_entity(target) {
+                                self.marked[entity.id as usize] = true;
+                                self.pending.push(entity);
+                                self.event(
+                                    events,
+                                    GameplayEvent::collision_despawn(entity, target),
+                                );
+                            } else if self.pairs.len() < MAX_PAIRS {
+                                self.pairs.push(CollisionPair {
+                                    a: entity,
+                                    b: target,
+                                });
+                            } else {
+                                self.capped();
+                                self.marked[entity.id as usize] = true;
+                                self.pending.push(entity);
+                            }
+                        }
+                        ProjectileHit::Terrain { record } => {
+                            self.marked[entity.id as usize] = true;
+                            self.pending.push(entity);
+                            // Preserve the old tile event only for a real Tile identity.
+                            if let super::unified_physics::UnifiedTerrainSource::Tile {
+                                layer,
+                                tile,
+                            } = record.source()
+                            {
+                                self.event(
+                                    events,
+                                    GameplayEvent::tile_impact(GameplayTileImpactEventPayload {
+                                        projectile: entity,
+                                        tile_impact_code: 0,
+                                        layer_index: layer,
+                                        tile_index: tile,
+                                        normal_x: -record.normal[0],
+                                        normal_y: if runtime.is_planar_combat() {
+                                            -record.normal[1]
+                                        } else {
+                                            record.normal[2]
+                                        },
+                                        bounced: false,
+                                        target_removed: true,
+                                    }),
+                                );
+                            }
+                            if let Some(event) = runtime.store_terrain_event(record) {
+                                self.event(events, event);
+                            }
+                        }
+                    }
+                }
                 continue;
             }
             let (Some(at), Some(collider)) = (world.transform(entity), world.collider(entity))
@@ -803,25 +1099,44 @@ impl DataSceneCombat {
         self.contacts.clear_current();
         for index in 0..self.pairs.len() {
             let pair = self.pairs[index];
-            if self.marked[pair.a.id as usize] || self.marked[pair.b.id as usize] {
+            if !world.is_current_entity(pair.a)
+                || !world.is_current_entity(pair.b)
+                || self.marked[pair.a.id as usize]
+                || self.marked[pair.b.id as usize]
+            {
                 continue;
             }
             let entered = self.contacts.register(pair.a, pair.b);
             let context =
                 CollisionReactionPair::new(pair.a.id as usize, pair.b.id as usize, pair.a, pair.b);
-            let Some(outcomes) = apply_collision_reaction_sets_for_pair(
-                world,
-                context,
-                entered,
-                &mut self.area_hits,
-                &mut self.marked,
-                &mut self.pending,
-                |world, index| CollisionDamageReactionDefaults {
-                    health: world.health_at_index(index).unwrap_or(f32::MAX),
-                    score_reward: 0,
-                    despawn_on_kill: true,
-                },
-            ) else {
+            let defaults = |world: &World, index| CollisionDamageReactionDefaults {
+                health: world.health_at_index(index).unwrap_or(f32::MAX),
+                score_reward: 0,
+                despawn_on_kill: true,
+            };
+            let outcomes = if let Some(runtime) = native.as_deref_mut() {
+                apply_collision_reaction_sets_for_pair_with_physics(
+                    world,
+                    context,
+                    entered,
+                    &mut self.area_hits,
+                    &mut self.marked,
+                    &mut self.pending,
+                    defaults,
+                    runtime,
+                )
+            } else {
+                apply_collision_reaction_sets_for_pair(
+                    world,
+                    context,
+                    entered,
+                    &mut self.area_hits,
+                    &mut self.marked,
+                    &mut self.pending,
+                    defaults,
+                )
+            };
+            let Some(outcomes) = outcomes else {
                 continue;
             };
             for applied in outcomes.outcomes() {
@@ -1024,3 +1339,7 @@ impl Engine {
         values
     }
 }
+
+mod file_admission;
+
+mod file_ordered;

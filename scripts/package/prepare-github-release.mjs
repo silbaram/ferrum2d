@@ -93,7 +93,7 @@ function installGuide(release) {
   return `# Ferrum2D ${release.version}\n\n` +
     `아래 명령은 ${release.tag} GitHub Release에 이 묶음의 모든 .tgz 파일을 공개한 뒤 사용할 수 있다.\n` +
     `이 파일과 로컬 묶음 생성만으로 GitHub에 배포되지는 않는다.\n\n` +
-    `## 초기 개발 환경만 설치\n\nNode.js 22 권장. Rust나 wasm-pack 설치는 필요 없다.\n\n` +
+    `## 초기 개발 환경만 설치\n\nNode.js 24 LTS를 사용한다. Rust나 wasm-pack 설치는 필요 없다.\n\n` +
     `[AI 에이전트용 초기 설치 지침](https://github.com/${release.repository}/blob/${release.tag}/docs/engine/ai-agent-install.md)을 따른다.\n` +
     `엔진·개발 도구·AI 지침만 설치하며 게임 제작 요청 전에는 예제, src/, public/, 화면, viewer, replay fixture를 생성하거나 개발 서버를 실행하지 않는다.\n\n` +
     `## 예제 게임 생성(선택)\n\n실행 가능한 예제를 요청한 경우에만 아래 명령을 사용한다. minimal도 빈 프로젝트가 아니다.\n\n` +

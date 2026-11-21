@@ -7,16 +7,14 @@ use crate::physics::{
 use crate::tilemap::Tilemap;
 use crate::world::World;
 
-use super::super::math::{finite_velocity, sanitize_delta_seconds};
-use super::config::{
-    clear_controller_jump_timers, sanitize_horizontal_axis, sanitize_platformer_controller_config,
-    subtract_timer,
-};
 use super::ground_probe::ground_probe_internal;
 use super::kinematic_sweep::KinematicSweepScratch;
 use super::slope_ground::{
     merge_slope_ground_hit, move_with_optional_slope_snap, slope_ground_hit, SlopeSnapDirection,
     SlopeSnapMoveSettings, SlopeSnapSettings,
+};
+use super::state_step::{
+    finish_platformer_velocity, prepare_platformer_velocity, sanitized_platformer_step,
 };
 use super::step_offset::{
     move_with_optional_step_offset, StepOffsetMoveSettings, StepOffsetSettings,
@@ -64,8 +62,7 @@ pub(super) fn move_platformer_controller_internal(
         mut counters,
         slopes,
     } = runtime;
-    let config = sanitize_platformer_controller_config(config);
-    let delta_seconds = sanitize_delta_seconds(delta_seconds);
+    let (config, delta_seconds) = sanitized_platformer_step(config, delta_seconds);
     let ground_before_probe = ground_probe_internal(
         world,
         tilemap,
@@ -83,40 +80,16 @@ pub(super) fn move_platformer_controller_internal(
         config.slope.allow_downhill_snap,
     );
     let ground_before = merge_slope_ground_hit(ground_before_probe, slope_before);
-    let mut velocity = finite_velocity(world.velocity(entity).unwrap_or_default());
-    velocity.vx = sanitize_horizontal_axis(input.horizontal_axis) * config.horizontal_speed;
-
-    let mut wants_jump = input.jump_pressed;
-    let mut can_jump = ground_before.is_some();
-    if let Some(controller_state) = &mut state {
-        if ground_before.is_some() {
-            controller_state.coyote_time_remaining = config.coyote_time_seconds;
-        } else {
-            controller_state.coyote_time_remaining =
-                subtract_timer(controller_state.coyote_time_remaining, delta_seconds);
-        }
-
-        if input.jump_pressed {
-            controller_state.jump_buffer_remaining = config.jump_buffer_seconds;
-        } else {
-            controller_state.jump_buffer_remaining =
-                subtract_timer(controller_state.jump_buffer_remaining, delta_seconds);
-        }
-
-        wants_jump |= controller_state.jump_buffer_remaining > 0.0;
-        can_jump |= controller_state.coyote_time_remaining > 0.0;
-    }
-
-    let mut jumped = wants_jump && can_jump;
-    if jumped {
-        velocity.vy = -config.jump_speed;
-        clear_controller_jump_timers(&mut state);
-    } else {
-        if ground_before.is_some() && velocity.vy > 0.0 {
-            velocity.vy = 0.0;
-        }
-        velocity.vy = (velocity.vy + config.gravity * delta_seconds).min(config.max_fall_speed);
-    }
+    let step = prepare_platformer_velocity(
+        world.velocity(entity).unwrap_or_default(),
+        input,
+        config,
+        delta_seconds,
+        ground_before.is_some(),
+        &mut state,
+    );
+    let velocity = step.velocity;
+    let jumped = step.jumped;
 
     let movement_settings = KinematicMoveSettings::new(
         config.solid_mask,
@@ -172,10 +145,6 @@ pub(super) fn move_platformer_controller_internal(
             counters,
         );
     }
-    if movement.blocked_y {
-        velocity.vy = 0.0;
-    }
-
     let ground_after_probe = ground_probe_internal(
         world,
         tilemap,
@@ -193,25 +162,15 @@ pub(super) fn move_platformer_controller_internal(
         config.slope.allow_downhill_snap,
     );
     let ground_after = merge_slope_ground_hit(ground_after_probe, slope_after);
-    if !jumped
-        && state
-            .as_ref()
-            .is_some_and(|controller_state| controller_state.jump_buffer_remaining > 0.0)
-        && ground_after.is_some()
-    {
-        jumped = true;
-        velocity.vy = -config.jump_speed;
-        clear_controller_jump_timers(&mut state);
-    } else if ground_after.is_some() && velocity.vy > 0.0 {
-        velocity.vy = 0.0;
-    }
-    if !jumped {
-        if let Some(controller_state) = &mut state {
-            if ground_after.is_some() {
-                controller_state.coyote_time_remaining = config.coyote_time_seconds;
-            }
-        }
-    }
+    let step = finish_platformer_velocity(
+        step,
+        movement.blocked_y,
+        ground_after.is_some(),
+        config,
+        &mut state,
+    );
+    let velocity = step.velocity;
+    let jumped = step.jumped;
     world.set_velocity(entity, velocity);
 
     PlatformerControllerResult {

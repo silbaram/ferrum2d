@@ -20,7 +20,7 @@ const DEAD_ALIVE_POSITION: usize = usize::MAX;
 const GAMEPLAY_FACTION_INDEX_BUCKETS: usize = GAMEPLAY_FACTION_MAX_ID as usize + 1;
 const GAMEPLAY_TAG_INDEX_BUCKETS: usize = GAMEPLAY_TAG_MAX_ID as usize + 1;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct JointIncidentCount {
     generation: u32,
     count: u32,
@@ -58,10 +58,21 @@ pub use templates::{
     DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
 };
 
+#[cfg(test)]
+mod checkpoint;
+pub(crate) mod persistence;
+// Pending external-file admission building block; deliberately not wired into
+// opaque checkpoints or public deserialization before full payload validation.
+#[allow(dead_code)]
+pub(crate) mod persistence_admission;
+// Pending native-file candidate assembly; cold and crate-private only.
+#[allow(dead_code)]
+pub(crate) mod payload_admission;
 mod physics_diagnostics;
 
 #[derive(Default)]
 pub struct World {
+    pub(crate) unified_physics_entities: std::collections::BTreeSet<(u32, u32)>,
     pub(crate) impact_feedback_enabled: bool,
     pub(crate) impact_feedback_dropped: u32,
     pub(crate) impact_feedback_impacts: Vec<RigidContactImpulse>,
@@ -157,6 +168,38 @@ pub struct World {
 }
 
 impl World {
+    /// Validates this candidate's storage first, then all component/joint payloads.
+    #[allow(dead_code)]
+    pub(crate) fn validate_payload_admission(
+        &self,
+        limits: payload_admission::WorldPayloadAdmissionLimits,
+    ) -> Result<
+        payload_admission::WorldPayloadAdmissionStats,
+        payload_admission::WorldPayloadAdmissionError,
+    > {
+        payload_admission::validate(self, limits)
+    }
+
+    /// Cold structural admission only. Component values, deferred observations,
+    /// gameplay/render caches and cross-Engine ownership require other guards.
+    #[allow(dead_code)]
+    pub(crate) fn validate_storage_admission(
+        &self,
+        limits: persistence_admission::WorldStorageAdmissionLimits,
+    ) -> Result<
+        persistence_admission::WorldStorageAdmissionStats,
+        persistence_admission::WorldStorageAdmissionError,
+    > {
+        persistence_admission::validate(self, limits)
+    }
+
+    pub(crate) fn is_unified_physics_index(&self, index: usize) -> bool {
+        self.generation_at_index(index).is_some_and(|generation| {
+            self.unified_physics_entities
+                .contains(&(index as u32, generation))
+        })
+    }
+
     pub fn update(&mut self, delta: f32) {
         PhysicsSystem::integrate(self, delta);
         self.update_sprite_animations(delta, None);
@@ -166,10 +209,16 @@ impl World {
         &mut self,
         delta: f32,
         rigid_body_step_enabled: bool,
+        native_import_enabled: bool,
         events: &mut Vec<crate::gameplay_event::GameplayEvent>,
         overflow: &mut Option<usize>,
     ) {
-        PhysicsSystem::integrate_legacy_velocities(self, delta, rigid_body_step_enabled);
+        PhysicsSystem::integrate_legacy_velocities(
+            self,
+            delta,
+            rigid_body_step_enabled,
+            native_import_enabled,
+        );
         self.update_sprite_animations(delta, Some((events, overflow)));
     }
 }

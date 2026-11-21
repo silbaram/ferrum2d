@@ -1,4 +1,14 @@
 //! Opt-in orthographic/perspective terrain and cylindrical sprite presentation.
+impl SpatialScene {
+    /// Retained private vertex buffers; public buffers have the same read-only
+    /// packet type. This does not rebuild or update a render frame.
+    pub(crate) fn file_resource_hidden_vertex_views(
+        &self,
+    ) -> (&[[SpatialVertex; 6]], &[SpatialVertex]) {
+        (&self.previous_shadow_casters, &self.shadow_quad_scratch)
+    }
+}
+
 use crate::{
     components::{RigidBodyType, Sprite, Transform2D},
     entity::Entity,
@@ -8,6 +18,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 mod attachments;
+pub(crate) mod file_admission;
 pub(crate) use attachments::{AttachmentPose, SpatialAttachments};
 mod connections;
 mod environment;
@@ -18,6 +29,7 @@ mod receiver_masks;
 pub(crate) use models::preflight_model_poses;
 pub(crate) use receiver_masks::SpatialReceiverMasks;
 mod shadows;
+mod terrain_presentation;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
 pub(crate) use navigation::{
@@ -53,14 +65,18 @@ fn unit(a: Point) -> Option<Point> {
     (n.is_finite() && n > 1e-5).then(|| scale(a, 1.0 / n))
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialCamera {
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub parameters: [f32; 12],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub matrix: [f32; 16],
     pub right: Point,
     up: Point,
     forward: Point,
+    #[serde(with = "crate::checkpoint_codec::array")]
     frustum: [[f64; 4]; 6],
+    #[serde(with = "crate::checkpoint_codec::array")]
     clip_magnitudes: [[f64; 4]; 3],
 }
 impl SpatialCamera {
@@ -242,10 +258,12 @@ impl SpatialCamera {
 
 /// World XYZ, atlas UV, straight RGBA, texture ID, alpha cutoff; 11 f32 values.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialVertex {
     pub position: Point,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub uv: [f32; 2],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub color: [f32; 4],
     pub texture: f32,
     pub cutoff: f32,
@@ -253,7 +271,7 @@ pub(crate) struct SpatialVertex {
 const _: () = assert!(std::mem::size_of::<SpatialVertex>() == 44);
 /// Vertex ranges into the unchanged static terrain buffer; ABI v2, two u32 values.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialTerrainDrawRange {
     pub first_vertex: u32,
     pub vertex_count: u32,
@@ -262,15 +280,18 @@ const _: () = assert!(std::mem::size_of::<SpatialTerrainDrawRange>() == 8);
 pub(crate) const SURFACE_PROXY_FLAG: u32 = 16;
 pub(crate) const SURFACE_RAMP_X_FLAG: u32 = 32;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Surface {
     pub receiver_masks: SpatialReceiverMasks,
     pub id: u32,
     pub floor: u32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub bounds: [f32; 4],
     pub base: f32,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub heights: [f32; 2],
     pub ramp_x: bool,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub color: [f32; 4],
     pub texture: u32,
     pub kind: u32,
@@ -278,7 +299,7 @@ pub(crate) struct Surface {
     pub is_rendered: bool,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialMaterial {
     pub normal_texture: u32,
     pub flags: u32,
@@ -292,7 +313,7 @@ impl Default for SpatialMaterial {
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Billboard {
     pub receiver_masks: SpatialReceiverMasks,
     pub material: SpatialMaterial,
@@ -301,46 +322,70 @@ pub(crate) struct Billboard {
     pub elevation: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpatialScene {
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub moving_platforms: Vec<MovingPlatform>,
     pub platform_revision: u32,
     pub platform_carried: u32,
     pub platform_blocked: u32,
     /// Disposable authoring presentation; never participates in simulation or checkpoints.
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::set")]
     pub preview_hidden_entities: BTreeSet<(u32, u32)>,
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::set")]
     pub preview_hidden_surfaces: BTreeSet<u32>,
     pub attachments: attachments::SpatialAttachments,
     pub models: models::SpatialModels,
     pub environment: SpatialEnvironment,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub light_bindings: [Option<(Entity, f32)>; 16],
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub shadow_casters: Vec<[SpatialVertex; 6]>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     previous_shadow_casters: Vec<[SpatialVertex; 6]>,
     pub shadow_revision: u32,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub shadow_draw_ranges: Vec<shadows::ShadowDrawRange>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     shadow_quad_scratch: Vec<SpatialVertex>,
     pub camera: Option<SpatialCamera>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub surfaces: Vec<Surface>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub terrain: Vec<SpatialVertex>,
+    terrain_presentation: terrain_presentation::TerrainPresentation,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub terrain_receiver_masks: Vec<SpatialReceiverMasks>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub billboard_receiver_masks: Vec<SpatialReceiverMasks>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub terrain_materials: Vec<SpatialMaterial>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub billboard_materials: Vec<SpatialMaterial>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub terrain_draw_ranges: Vec<SpatialTerrainDrawRange>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub billboards: Vec<SpatialVertex>,
     pub debug: SpatialDebugGeometry,
+    #[serde(deserialize_with = "crate::spatial_scene::file_admission::ordered::map")]
     pub bindings: BTreeMap<(u32, u32), Billboard>,
     // Ephemeral native gameplay visuals never mutate authored revisions/save identity.
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub runtime_billboards: Vec<(Entity, Billboard)>,
     /// Disposable render orientation; sorted full-generation keys, at most512 owned projectiles.
+    #[serde(with = "crate::checkpoint_codec::vector")]
     pub runtime_sprite_rotations: Vec<(Entity, f32)>,
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub frame_camera: [f32; 28],
+    #[serde(with = "crate::checkpoint_codec::array")]
     pub presentation: [f32; 6],
     pub frame_active: bool,
     pub revision: u32,
+    #[serde(with = "crate::tilemap::checkpoint_state::State")]
     pub physics: Tilemap,
     movement_scratch: crate::physics::KinematicSweepScratch,
     pub actor: Option<(Entity, f32, f32, f32)>,
+    #[serde(with = "crate::checkpoint_codec::vector")]
     connections: Vec<SurfaceConnection>,
     pub navigation: SpatialNavigation,
     pub navigation_revision: u32,
@@ -617,6 +662,19 @@ impl SpatialScene {
     }
 
     pub fn build(&mut self, world: &World) {
+        self.build_with_native_physics(world, false);
+    }
+
+    pub(crate) fn build_with_native_physics(&mut self, world: &World, native: bool) {
+        self.build_with_native_model_poses(world, native, |_| None);
+    }
+
+    pub(crate) fn build_with_native_model_poses(
+        &mut self,
+        world: &World,
+        native: bool,
+        native_model_pose: impl Fn(Entity) -> Option<crate::physics3d::Pose>,
+    ) {
         self.runtime_billboards
             .sort_unstable_by_key(|(entity, _)| (entity.id, entity.generation));
         self.shadow_casters.clear();
@@ -650,13 +708,25 @@ impl SpatialScene {
         );
         self.frame_camera[..16].copy_from_slice(&camera.matrix);
         self.frame_camera[16..].copy_from_slice(&camera.parameters);
-        self.models.build(
-            world,
-            &camera,
-            &self.environment.shadow_matrices,
-            self.environment.values.is_some_and(|v| v[2] >= 0.),
-            &self.preview_hidden_entities,
-        );
+        let point_shadow = self.environment.values.is_some_and(|v| v[2] >= 0.);
+        if native {
+            self.models.build_with_native_poses(
+                world,
+                &camera,
+                &self.environment.shadow_matrices,
+                point_shadow,
+                &self.preview_hidden_entities,
+                native_model_pose,
+            );
+        } else {
+            self.models.build(
+                world,
+                &camera,
+                &self.environment.shadow_matrices,
+                point_shadow,
+                &self.preview_hidden_entities,
+            );
+        }
         self.debug.begin_frame();
         let values = &self.environment.frame_values;
         if values.len() >= 96 && values[92] > 0. {
@@ -666,6 +736,7 @@ impl SpatialScene {
             }
         }
         for (index, surface) in self.surfaces.iter().enumerate() {
+            let surface = self.terrain_presentation.surface(*surface, self.revision);
             if self.preview_hidden_surfaces.contains(&surface.id) {
                 continue;
             }
@@ -676,8 +747,8 @@ impl SpatialScene {
             ) {
                 continue;
             }
-            self.debug.surface(*surface);
-            self.debug.surface_floor(*surface, &camera);
+            self.debug.surface(surface);
+            self.debug.surface_floor(surface, &camera);
             if !surface.is_rendered {
                 continue;
             }
@@ -757,7 +828,7 @@ impl SpatialScene {
                 self.debug.height_span(at, span, &camera);
             }
         }
-        self.debug.physics(world, &camera);
+        self.debug.physics(world, &camera, native);
         self.shadow_casters
             .sort_unstable_by_key(|q| q[0].texture as u32);
         if self.shadow_casters != self.previous_shadow_casters {
@@ -1075,6 +1146,27 @@ impl SpatialScene {
 fn rectangles_overlap(a: [f32; 4], b: [f32; 4]) -> bool {
     a[0] < b[0] + b[2] && a[0] + a[2] > b[0] && a[1] < b[1] + b[3] && a[1] + a[3] > b[1]
 }
+fn quad_vertices(
+    points: [Point; 4],
+    uv: [f32; 4],
+    color: [f32; 4],
+    texture: u32,
+    cutoff: f32,
+) -> [SpatialVertex; 6] {
+    let uvs = [
+        [uv[0], uv[1]],
+        [uv[2], uv[1]],
+        [uv[2], uv[3]],
+        [uv[0], uv[3]],
+    ];
+    [0, 1, 2, 0, 2, 3].map(|i| SpatialVertex {
+        position: points[i],
+        uv: uvs[i],
+        color,
+        texture: texture as f32,
+        cutoff,
+    })
+}
 fn quad(
     out: &mut Vec<SpatialVertex>,
     points: [Point; 4],
@@ -1083,21 +1175,7 @@ fn quad(
     texture: u32,
     cutoff: f32,
 ) {
-    let uvs = [
-        [uv[0], uv[1]],
-        [uv[2], uv[1]],
-        [uv[2], uv[3]],
-        [uv[0], uv[3]],
-    ];
-    for i in [0, 1, 2, 0, 2, 3] {
-        out.push(SpatialVertex {
-            position: points[i],
-            uv: uvs[i],
-            color,
-            texture: texture as f32,
-            cutoff,
-        });
-    }
+    out.extend_from_slice(&quad_vertices(points, uv, color, texture, cutoff));
 }
 impl Surface {
     fn top_corners(self) -> [Point; 4] {
@@ -1116,10 +1194,12 @@ impl Surface {
         ]
     }
 }
-fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
+fn surface_vertices(s: Surface) -> [SpatialVertex; 36] {
     let [x, y, w, d] = s.bounds;
     let p = s.top_corners();
-    quad(out, p, [0.0, 0.0, 1.0, 1.0], s.color, s.texture, 0.01);
+    let top = quad_vertices(p, [0., 0., 1., 1.], s.color, s.texture, 0.01);
+    let mut out = [top[0]; 36];
+    out[..6].copy_from_slice(&top);
     let sides = std::array::from_fn(|i| {
         [
             s.color[0] * 0.65,
@@ -1130,8 +1210,7 @@ fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
     });
     for i in 0..4 {
         let j = (i + 1) % 4;
-        quad(
-            out,
+        out[(i + 1) * 6..(i + 2) * 6].copy_from_slice(&quad_vertices(
             [
                 p[j],
                 p[i],
@@ -1142,7 +1221,7 @@ fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
             sides,
             s.texture,
             0.01,
-        );
+        ));
     }
     let bottom = if s.base < s.heights[0].max(s.heights[1]) {
         [
@@ -1154,8 +1233,19 @@ fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
     } else {
         [[x, s.base, -y]; 4]
     };
-    quad(out, bottom, [0.0, 0.0, 1.0, 1.0], sides, s.texture, 0.01);
+    out[30..].copy_from_slice(&quad_vertices(
+        bottom,
+        [0., 0., 1., 1.],
+        sides,
+        s.texture,
+        0.01,
+    ));
+    out
 }
+fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
+    out.extend_from_slice(&surface_vertices(s));
+}
+
 pub(crate) fn append_billboard(
     out: &mut Vec<SpatialVertex>,
     camera: &SpatialCamera,

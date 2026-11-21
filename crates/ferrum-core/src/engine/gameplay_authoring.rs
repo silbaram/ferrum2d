@@ -1,4 +1,14 @@
+impl GameplayAuthoringSnapshot {
+    pub(in crate::engine) fn file_resource_reactions(
+        &self,
+    ) -> (Entity, Option<&CollisionReactionSet>) {
+        (self.entity, self.collision_reactions.as_ref())
+    }
+}
+
 use wasm_bindgen::prelude::*;
+
+pub(in crate::engine) mod file_admission;
 
 use super::{
     Engine, SceneMode, MAX_PARTICLE_PRESETS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY,
@@ -24,7 +34,7 @@ use crate::gameplay_event::{
 use crate::gameplay_variables::GameplayVariableMutationTriggerSet;
 use crate::shooter_scene::ShooterPrefabKind;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct GameplayAuthoringSnapshot {
     entity: Entity,
     health: Option<f32>,

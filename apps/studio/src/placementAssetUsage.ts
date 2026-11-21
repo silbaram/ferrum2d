@@ -40,7 +40,8 @@ const component = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|
 const template = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components\/template$/u;
 const components = /^\/sceneComposition\/(?:prefabs\/[^/]*(?:\/variants\/[^/]*)?|fragments\/[^/]*\/(?:instances|include)\/\d+)\/props\/components$/u;
 function kindAt(pointer: string): UsageAsset["kind"] | undefined {
-  if (/^\/lighting\/pointLights\/\d+\/cookie\/(?:texture|textureId)$/u.test(pointer) || component.test(pointer) || /^\/spatial\/billboards\/[^/]*\/(?:normalTexture|normalTextureId)$/u.test(pointer) ||
+  if (/^\/componentTemplates\/[^/]*\/(?:visual|sprite)\/(?:asset|texture|normalTexture|surface\/(?:emissionTexture|specularTexture|roughnessTexture))$/u.test(pointer) ||
+      /^\/physics\/collisionTilemap\/definitions\/\d+\/visual\/texture$/u.test(pointer) || /^\/lighting\/pointLights\/\d+\/cookie\/(?:texture|textureId)$/u.test(pointer) || component.test(pointer) || /^\/spatial\/billboards\/[^/]*\/(?:normalTexture|normalTextureId)$/u.test(pointer) ||
       /^\/spatial\/terrain\/\d+\/textureId$/u.test(pointer)) return "sprite";
   if (/^\/spatial\/models\/[^/]*\/(?:asset|lods\/\d+\/asset)$/u.test(pointer)) return "model";
   return undefined;
@@ -103,7 +104,7 @@ export async function collectPlacementAssetUsage(options: {
       }
       const { value, pointer, owner } = stack.pop()!;
       if (pointer.length > 4096) { report.limited = structuralLimit = true; issue({ scene, code: "limit" }); continue; }
-      if (components.test(pointer)) componentInputs.push({ value, pointer });
+      if (components.test(pointer) || /^\/componentTemplates\/[^/]*$/u.test(pointer)) componentInputs.push({ value, pointer });
       const kind = kindAt(pointer);
       if (kind) {
         if (typeof value === "string" && value.length > 0 && value.length <= 1024) {
@@ -117,7 +118,7 @@ export async function collectPlacementAssetUsage(options: {
         } else if (typeof value === "string" && value.length > 1024) {
           report.limited = true; issue({ scene, pointer, code: "limit" });
         } else issue({ scene, pointer, code: "unresolved" });
-      } else if (template.test(pointer)) issue({ scene, pointer, code: "unresolved" });
+      } else if (template.test(pointer) && !(typeof value === "string" && record(document.componentTemplates) && Object.hasOwn(document.componentTemplates, value))) issue({ scene, pointer, code: "unresolved" });
       if (value && typeof value === "object") {
         if (seen.has(value)) { report.limited = structuralLimit = true; issue({ scene, pointer, code: "limit" }); continue; }
         seen.add(value);
@@ -127,7 +128,7 @@ export async function collectPlacementAssetUsage(options: {
         const target = instanceOrSurface && record(value) && typeof value.id === "string" ? identify(value.id, pointer) : owner;
         for (let index = count - 1; index >= 0; index--) {
           const key = keys[index];
-          const named = pointer === "/sceneComposition/prefabs" || pointer === "/spatial/models" || pointer === "/spatial/billboards";
+          const named = pointer === "/sceneComposition/prefabs" || pointer === "/spatial/models" || pointer === "/spatial/billboards" || pointer === "/componentTemplates";
           stack.push({ value: Reflect.get(value, key), pointer: pointer + "/" + escape(key), owner: named ? identify(key, pointer) : target });
         }
       }
@@ -140,7 +141,13 @@ export async function collectPlacementAssetUsage(options: {
     // The typed composition entry point performs its runtime validation at this boundary.
     validate("/sceneComposition", () => resolveSceneCompositionSpec(document.sceneComposition as SceneCompositionSpec));
     if (document.spatial !== undefined) validate("/spatial", () => resolveDataSceneSpatialSpec(document.spatial));
-    for (const input of componentInputs) validate(input.pointer, () => resolveDataSceneComponentsSpec(input.value, { allowTemplate: true }));
+    if (document.componentTemplates !== undefined && !record(document.componentTemplates)) issue({ scene, pointer: "/componentTemplates", code: "document" });
+    for (const input of componentInputs) validate(input.pointer, () => {
+      const local = input.pointer.startsWith("/componentTemplates/");
+      if (local && record(input.value) && Object.keys(input.value).some(key => !["visual", "sprite", "body", "collider", "layer"].includes(key)))
+        throw new Error("Local component templates require strict inline components");
+      return resolveDataSceneComponentsSpec(input.value, { allowTemplate: !local });
+    });
   }
   for (const entry of catalog.scenes.slice(0, 256)) {
     if (!options.current()) throw new Error("Asset usage context changed");

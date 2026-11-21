@@ -292,6 +292,7 @@ export class PixelMaskTerrainRuntime {
       bodies: extraction.bodies,
       joints: {},
     }, {
+      configureRuntime: false,
       path: `${physics.path}.chunks.${coord.x}.${coord.y}`,
       unsafeUnitScaleThreshold: physics.unsafeUnitScaleThreshold,
       onWarning: (warning) => {

@@ -1,7 +1,7 @@
+import { createLegacyEngine as createEngine } from "./legacyRuntimeTestHelper.js";
 import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
-  createEngine,
   loadSpatialGlb,
   createDataSceneSpatialView,
   captureGameStateSnapshot,
@@ -98,6 +98,10 @@ test("spatial physics debug options validate flags and preserve old Wasm rejecti
       new RegExp(`spatial.debug.${key}`),
     );
   equal(flags.length, 2);
+  ok(api.setDataSceneSpatialDebug({ depthTest: true }));
+  equal(flags[2], 8, "depth-only supports engine-native joint diagnostics");
+  ok(api.setDataSceneSpatialDebug({}));
+  equal(flags[3], 0);
   const old = createSpatialApi(
     { configure_spatial_debug: (value: number) => value <= 15 } as Engine,
     () => {},
