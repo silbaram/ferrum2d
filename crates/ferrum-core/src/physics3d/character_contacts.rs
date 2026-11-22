@@ -7,11 +7,13 @@ use super::solver_trajectory::{Time, Work};
 use super::world::native_id;
 use super::BodyId;
 use rapier3d::parry::bounding_volume::BoundingVolume;
-use rapier3d::parry::query::{contact, NonlinearRigidMotion};
+use rapier3d::parry::query::{contact, Contact, NonlinearRigidMotion, Unsupported};
 use rapier3d::prelude as rp;
 use std::collections::{BTreeMap, HashMap};
 pub(super) mod actual_rows;
 mod angular_suffix;
+#[cfg(test)]
+mod box_face_tests;
 #[cfg(test)]
 mod pair_bound_tests;
 #[cfg(test)]
@@ -594,7 +596,7 @@ fn first_hit(
                     target_skin * 1.01,
                 ))
             } else {
-                contact(&at, b.shape(), &pose, a.shape(), target_skin * 1.01)
+                obstacle_contact(&at, b.shape(), &pose, a.shape(), target_skin * 1.01)
             };
             let touching = match contact_result {
                 Ok(c) => c,
@@ -767,7 +769,7 @@ fn refresh(
                 skin * 1.01,
             ))
         } else {
-            contact(&at, b.shape(), &pose, a.shape(), skin * 1.01)
+            obstacle_contact(&at, b.shape(), &pose, a.shape(), skin * 1.01)
         };
         match result {
             Ok(Some(hit)) => {
@@ -857,6 +859,20 @@ fn stop_sources(
         any = true;
     }
     any
+}
+
+/// Character-to-obstacle contact. A capsule over the inside of a box face gets
+/// the exact face contact: Parry's GJK converges loosely against large boxes
+/// and can report millimetre errors, or a contact beyond `prediction`.
+fn obstacle_contact(
+    at: &rp::Pose,
+    target: &dyn rp::Shape,
+    pose: &rp::Pose,
+    character: &dyn rp::Shape,
+    prediction: f32,
+) -> Result<Option<Contact>, Unsupported> {
+    super::character_geometry::capsule_box_face_contact(target, at, character, pose, prediction)
+        .map_or_else(|| contact(at, target, pose, character, prediction), Ok)
 }
 
 fn stable_normal(normal: rp::Vector) -> rp::Vector {
