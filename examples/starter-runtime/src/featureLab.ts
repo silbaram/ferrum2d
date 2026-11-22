@@ -390,6 +390,8 @@ export async function startFeatureLab(): Promise<void> {
     on("reset", "click", () => {
       extra?.beforeReset?.();
       panel.querySelector<HTMLFormElement>("form")!.reset();
+      // Form defaults would select 60 Hz; the native world keeps the rate it was created with.
+      if (id === "physics") control<HTMLSelectElement>("physics-rate").value = physicsRate;
       if (id === "postprocess") output("effect-strength", "100%");
       if (scene) runtime!.dataScene!.reapply(scene);
       if (shooterPaused) { shooterPaused = false; runtime!.resume(); }
