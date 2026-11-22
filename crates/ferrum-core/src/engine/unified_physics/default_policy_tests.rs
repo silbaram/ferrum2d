@@ -570,3 +570,143 @@ fn default_auto_step_reports_that_a_manual_step_would_double_the_frame() {
     assert!(e.resume_data_scene());
     assert!(!e.auto_rigid_body_step_active());
 }
+
+fn lab_sprite(e: &mut Engine, x: f32, y: f32, collider: u32, half: [f32; 2], r: f32) -> Entity {
+    assert!(e.spawn_data_scene_entity(
+        x,
+        y,
+        0.,
+        0,
+        1,
+        32.,
+        32.,
+        0.,
+        0.,
+        1.,
+        1.,
+        0,
+        0.,
+        crate::engine::PHYSICS_LAYER_WALL,
+        collider,
+        0.,
+        0.,
+        true,
+        false,
+        half[0],
+        half[1],
+        r,
+        0.,
+        0.,
+        0.,
+        0.,
+        0.,
+        vec![],
+    ));
+    Entity {
+        id: e.data_scene_entity_id(),
+        generation: e.data_scene_entity_generation(),
+    }
+}
+
+fn rubber(e: &mut Engine, body: Entity) {
+    assert!(e.set_physics_body_material(
+        body.id,
+        body.generation,
+        0.92,
+        0.02,
+        0.,
+        0.,
+        1.,
+        1.,
+        1.,
+        1.,
+        1.
+    ));
+}
+
+/// The starter feature-lab physics scene and its launch button, as issued by
+/// the TypeScript runtime: default native policy at the selected rate, four
+/// static walls and one CCD ball thrown with an angular and a linear impulse.
+fn spinning_ball_lab(step: f32) -> (Engine, Entity) {
+    use crate::engine::{PHYSICS_COLLIDER_TYPE_AABB, PHYSICS_COLLIDER_TYPE_CIRCLE};
+    let mut e = Engine::new();
+    e.configure_unified_physics_defaults(WorldConfig {
+        space: Space::PlanarXy,
+        gravity: [0.; 3],
+        step_seconds: step,
+        length_unit: 1.,
+        solver: crate::physics3d::SolverSettings {
+            velocity_iterations: 1,
+            position_iterations: 1,
+            continuous: false,
+            restitution_velocity_threshold: 1.,
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    e.use_data_scene();
+    let mut bodies = Vec::new();
+    for (x, y, half) in [
+        (320., 64., [224., 4.]),
+        (320., 320., [224., 4.]),
+        (100., 192., [4., 128.]),
+        (540., 192., [4., 128.]),
+    ] {
+        let wall = lab_sprite(&mut e, x, y, PHYSICS_COLLIDER_TYPE_AABB, half, 0.);
+        assert!(e.configure_data_scene_body(wall.id, wall.generation, 0, false, 0, 0., 1.));
+        bodies.push(wall);
+    }
+    let ball = lab_sprite(
+        &mut e,
+        200.,
+        192.,
+        PHYSICS_COLLIDER_TYPE_CIRCLE,
+        [0.; 2],
+        16.,
+    );
+    assert!(e.configure_data_scene_dynamic_body(ball.id, ball.generation, 1., true));
+    assert!(e.set_physics_body_tuning(ball.id, ball.generation, 0., 0.08, 0.));
+    rubber(&mut e, ball);
+    bodies.push(ball);
+    e.configure_auto_rigid_body_step(true, 0., 0., 8, 6, 0.8, 0.01, 1., 0.2, 120., true, true);
+    e.configure_fixed_timestep(true, step, 0.25, 8);
+    e.configure_physics_contact_impacts(true, 10.);
+    for &body in &bodies {
+        rubber(&mut e, body);
+    }
+    assert!(e.set_physics_body_fixed_rotation(ball.id, ball.generation, false));
+    assert!(e.set_physics_body_tuning(ball.id, ball.generation, 0., 0.08, 0.2));
+    assert!(e.apply_physics_body_angular_impulse(ball.id, ball.generation, 180.));
+    assert!(e.set_physics_body_position(ball.id, ball.generation, 200., 192.));
+    assert!(e.set_physics_body_velocity(ball.id, ball.generation, 0., 0.));
+    assert!(e.apply_physics_body_impulse(ball.id, ball.generation, 360., -170.));
+    assert_eq!(e.unified_physics_error(), None);
+    (e, ball)
+}
+
+/// A spinning ball's last clear state against the north wall lies 4.88e-6
+/// above the 0.005 CCD margin, inside its rotated-sphere f32 slack. At 1/30 s
+/// its orientation there left actual motion certification Unresolved (and the
+/// next sliding step at the depth limit). Every lab rate must resolve it.
+#[test]
+fn default_data_scene_spinning_ball_bounces_at_every_lab_physics_rate() {
+    for step in [1. / 30., 1. / 60., 1. / 120.] {
+        let (mut e, ball) = spinning_ball_lab(step);
+        let mut impacts = 0;
+        for frame in 0..600 {
+            e.update(1. / 60.);
+            assert_eq!(e.unified_physics_error(), None, "step={step} frame={frame}");
+            impacts += e.query_physics_contact_impacts();
+            // Contact solving at restitution 0.92 overlaps a few units, also
+            // without spin; at most half a radius past a wall face is no tunnel.
+            let t = e.world.transform(ball).unwrap();
+            assert!(
+                (112.0..=528.0).contains(&t.x) && (76.0..=308.0).contains(&t.y),
+                "step={step} frame={frame} ball=({}, {})",
+                t.x,
+                t.y
+            );
+        }
+        assert!(impacts >= 4, "step={step} impacts={impacts}");
+    }
+}

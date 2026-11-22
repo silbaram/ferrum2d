@@ -3249,3 +3249,92 @@ fn original_sdk_box_sphere_bracket(
     assert!(hit.safe_time > 0. && hit.hit_time > hit.safe_time);
     assert!(hit.hit_time - hit.safe_time <= tol && hit.contact.dist <= 0.005);
 }
+
+/// Captured from the starter feature-lab ball at a 1/30 s step: a spinning
+/// ball approaches a fixed wall whose face coordinate puts its last clear f32
+/// state 4.88e-6 above the 0.005 margin, below the rotated-sphere slack.
+#[test]
+fn spinning_centered_ball_resolves_a_sub_ulp_wall_margin_with_its_translation_twin() {
+    let native = SolverBodyIntegration {
+        motion: SolverBodyMotion {
+            body: rp::RigidBodyHandle::invalid(),
+            start_time: 0.016666668,
+            end_time: 0.025000002,
+            start: rp::Pose::from_parts(
+                rp::Vector::new(428.3279, 84.17843, 0.),
+                rp::Rotation::from_xyzw(0., 0., 0.41693202, 0.90893775),
+            ),
+            end: rp::Pose::from_parts(
+                rp::Vector::new(431.1799, 82.831665, 0.),
+                rp::Rotation::from_xyzw(0., 0., 0.42162058, 0.90677243),
+            ),
+        },
+        integration_seconds: 0.008333334,
+        linear_velocity: rp::Vector::new(342.23715, -161.612, 0.),
+        angular_velocity: rp::Vector::new(0., 0., 1.2394774),
+    };
+    let domain = Domain {
+        start: 0.01666666753590107,
+        end: 0.025000001303851604,
+    };
+    let ball = ShapeMotion {
+        curve: Curve::Integrated(Kernel::from_native(native, domain).unwrap()),
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let wall = ShapeMotion {
+        curve: Curve::Constant {
+            pose: rp::Pose::from_translation(rp::Vector::new(320., 64., 0.)),
+            start_time: 0.,
+            end_time: 0.03333333507180214,
+        },
+        local_center: rp::Vector::ZERO,
+        local_pose: rp::Pose::IDENTITY,
+    };
+    let sphere = rp::Ball::new(16.);
+    let cuboid = rp::Cuboid::new(rp::Vector::new(224., 4., 225.0357));
+
+    // Only a spinning ball centered on its body has a twin, and the twin keeps
+    // every original center bit, including the stored endpoints.
+    let twin = ball.centered_ball_translation_twin(&sphere).unwrap();
+    for fraction in [0., 0.125, 0.25, 0.5, 0.75, 1.] {
+        let time = domain.start + (domain.end - domain.start) * fraction;
+        assert_eq!(
+            twin.pose(time).translation.to_array().map(f32::to_bits),
+            ball.pose(time).translation.to_array().map(f32::to_bits)
+        );
+    }
+    assert!(wall.centered_ball_translation_twin(&cuboid).is_none());
+    assert!(ball.centered_ball_translation_twin(&cuboid).is_none());
+    assert!(twin.centered_ball_translation_twin(&sphere).is_none());
+    let offset = ShapeMotion {
+        local_pose: rp::Pose::from_translation(rp::Vector::X),
+        ..ball
+    };
+    assert!(offset.centered_ball_translation_twin(&sphere).is_none());
+
+    let tolerance = 8.333334911014845e-9;
+    let mut work = Work {
+        used: 0,
+        limit: 32 * 1024 * 1024,
+    };
+    // This query previously bisected to two adjacent logical times, both
+    // 0.005004883 from the wall, and returned Unresolved.
+    let hit = cast_full_shapes_policy(
+        ball,
+        &sphere,
+        wall,
+        &cuboid,
+        domain.start,
+        domain.end,
+        0.005,
+        tolerance,
+        &mut work,
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(hit.safe_time > domain.start && hit.hit_time > hit.safe_time);
+    assert!(hit.hit_time - hit.safe_time <= tolerance);
+    assert!(hit.contact.dist <= 0.005 && hit.contact.normal1.y < -0.99);
+}

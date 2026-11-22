@@ -402,6 +402,34 @@ impl ShapeMotion {
             && constant_pose(self.curve).is_some_and(|pose| pose.rotation == rp::Rotation::IDENTITY)
     }
 
+    /// A ball whose collider frame is its body's center of mass has a
+    /// rotation-invariant ToiProxy image: one center point plus its world
+    /// radius. The Integrated kernel advances translation as
+    /// `T0 + v * dt` without reading orientation, so the same kernel without
+    /// spin keeps every logical-time center. Any other shape, offset or
+    /// already translation-only kernel has no twin.
+    fn centered_ball_translation_twin(self, shape: &dyn rp::Shape) -> Option<Self> {
+        let Curve::Integrated(kernel) = self.curve else {
+            return None;
+        };
+        if shape.as_ball().is_none()
+            || self.local_center != rp::Vector::ZERO
+            || self.local_pose.translation != rp::Vector::ZERO
+            || self.local_pose.rotation != rp::Rotation::IDENTITY
+            || kernel.has_identity_orientation()
+        {
+            return None;
+        }
+        let mut native = kernel.native;
+        native.angular_velocity = rp::Vector::ZERO;
+        native.motion.start.rotation = rp::Rotation::IDENTITY;
+        native.motion.end.rotation = rp::Rotation::IDENTITY;
+        Some(Self {
+            curve: Curve::Integrated(Kernel::from_native(native, kernel.domain).ok()?),
+            ..self
+        })
+    }
+
     /// An enclosure of every original F32 full-shape output in this interval.
     /// It includes stored Native endpoints, the normalized interior law and
     /// both original local/world-radius paths. This is only broad phase;
@@ -1265,6 +1293,41 @@ fn certified_separation_axes_only(
         a, shape_a, b, shape_b, normal, right, start, end, clearance, work, None,
     )
     .map(|proof| matches!(proof, IntervalCertificate::Separated))
+}
+/// The established interval proofs applied to translation-only twins of every
+/// spinning centered ball in the pair. Each twin has the original ball's
+/// ToiProxy image at every logical time, so its proof covers the actual pair.
+/// Pairs without such a ball have no additional certificate.
+#[allow(clippy::too_many_arguments)]
+fn centered_ball_twins_separated(
+    a: ShapeMotion,
+    shape_a: &dyn rp::Shape,
+    b: ShapeMotion,
+    shape_b: &dyn rp::Shape,
+    normal: rp::Vector,
+    right: Option<rp::Vector>,
+    start: Time,
+    end: Time,
+    clearance: f32,
+    work: &mut Work,
+) -> Result<bool, TrajectoryError> {
+    let twin_a = a.centered_ball_translation_twin(shape_a);
+    let twin_b = b.centered_ball_translation_twin(shape_b);
+    if twin_a.is_none() && twin_b.is_none() {
+        return Ok(false);
+    }
+    certified_separation_axes_only(
+        twin_a.unwrap_or(a),
+        shape_a,
+        twin_b.unwrap_or(b),
+        shape_b,
+        normal,
+        right,
+        start,
+        end,
+        clearance,
+        work,
+    )
 }
 // A fixed-direction proof is independent of the supplied contact normal.
 // Keep the old first-axis analytic success/price; only its failed non-cardinal
@@ -2960,6 +3023,9 @@ fn cast_policy_impl(
             // The saved world observation keeps its OLD exact time tag. A
             // new midpoint can only reuse it if those original bits match.
         }
+        let witnessed = interval.left_world_strict
+            || interval.right_world_strict
+            || middle_observation.is_some();
         // A single same world axis separating every pair of proxy vertices
         // over this interval certifies all of its interior times too. A strict
         // actual point inside the selected margin contradicts such a proof;
@@ -3055,7 +3121,29 @@ fn cast_policy_impl(
         })?;
         let separated = match proof {
             IntervalCertificate::Separated => true,
-            IntervalCertificate::Unproven => false,
+            // A spinning centered ball within its f32 rotation error of the
+            // margin defeats both the rotated-sphere enclosures and the
+            // translation-only proofs that reject spin, so bisection would
+            // stall at its depth/midpoint limit. Only an interval observed
+            // clear at both ends, with no strict witness, tries the twin.
+            IntervalCertificate::Unproven => {
+                !witnessed
+                    && interval.left.dist > proof_clearance
+                    && interval.right.dist > proof_clearance
+                    && centered_ball_twins_separated(
+                        a,
+                        shape_a,
+                        b,
+                        shape_b,
+                        interval.left.normal1,
+                        (interval.right.normal1 != interval.left.normal1)
+                            .then_some(interval.right.normal1),
+                        interval.start,
+                        interval.end,
+                        proof_clearance,
+                        work,
+                    )?
+            }
             IntervalCertificate::Point { time, contact } => {
                 // This proves an upper bound for first contact, not its
                 // prefix. Narrow that bound then bisect normally, so even a
