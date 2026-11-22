@@ -15,7 +15,7 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 ```
 
 `http://localhost:4173/`는 모든 예제를 썸네일과 함께 보여주는 갤러리다. 예제 안에서는 상단의 **Ferrum2D 예제**로 갤러리에 돌아가고,
-**예제 이동**으로 다른 앱을 고른다. 이미 빌드했다면 마지막 명령만 실행하면 된다.
+**예제 이동**으로 다른 앱을 고르며, **소스**는 그 예제 폴더를 GitHub에서 연다. 이미 빌드했다면 마지막 명령만 실행하면 된다.
 예제 화면이 바뀌면 `pnpm thumbnails:examples`로 갤러리 썸네일(`examples/shared/thumbnails/`)을 다시 찍는다.
 기능 실험실은 `/starter-runtime/`, 개별 실험은 `?feature=lighting`처럼 직접 연다.
 
