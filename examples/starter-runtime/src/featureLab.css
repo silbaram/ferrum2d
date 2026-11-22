@@ -38,6 +38,8 @@
   border-radius: var(--example-radius); background: var(--example-bg); }
 .feature-link-title { line-height: 1.35; }
 .feature-link-note { grid-column: 2; font-size: 10px; color: var(--example-subtle); }
+.feature-topic-links a.feature-topic-external { margin-top: 4px; border-top: 1px solid var(--example-border); }
+.feature-topic-external .feature-icon { grid-row: span 2; justify-self: center; color: var(--example-subtle); }
 .feature-pager { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .feature-pager a { display: grid; gap: 2px; min-width: 0; padding: 12px; border: 1px solid var(--example-border); border-radius: 4px;
   background: var(--example-raised); color: var(--example-text); text-decoration: none; }

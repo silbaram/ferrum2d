@@ -83,10 +83,14 @@ try {
     if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
     assert.equal(await button.getAttribute('aria-expanded'), 'true');
     const visible = page.locator(`.feature-topics a[data-topic="${topic.id}"]:visible`);
-    assert.equal(await visible.count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?physicsTopics.length:0));
+    // The physics topic adds one row to the separate physics lab, marked as a new page.
+    assert.equal(await visible.count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?1:0));
     assert.equal(await page.locator('.feature-topics a:visible').count(), await visible.count(), 'only one topic is open');
   }
   await page.waitForFunction(() => [...document.querySelectorAll('.feature-topics a img')].filter(image => image.offsetParent).every(image => image.complete && image.naturalWidth > 0));
+  const physicsLab = page.locator('.feature-topics a.feature-topic-external');
+  assert.equal(await physicsLab.getAttribute('href'), new URL('physics-sandbox/', base).href);
+  assert.match(await physicsLab.innerText(), new RegExp(`시나리오 ${physicsTopics.length}개 · 새 화면`));
   // Keyboard focus walks the open topic and keeps the focused experiment inside the scrolled list.
   const topicLinks=page.locator('.feature-topics a:visible');
   await topicLinks.first().focus();
@@ -101,7 +105,7 @@ try {
   for (const width of [1024, 390]) {
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.locator('.feature-topic-list').isVisible(), false);
-    assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+physicsTopics.length);
+    assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+1);
     assert.equal(await overflow(page),false,`picker overflow ${width}`);
   }
   await page.setViewportSize({width:1440,height:1100});

@@ -5,7 +5,7 @@ import lucide from "../../shared/gallery/lucideIcons.json";
 import { exampleSiteRoot } from "../../shared/exampleHeader";
 
 // Gallery thumbnails are bundled so the standalone lab shows the same pictures.
-const thumbnails = import.meta.glob<string>("../../shared/thumbnails/{feature,physics}-*.jpg", { eager: true, query: "?url", import: "default" });
+const thumbnails = import.meta.glob<string>("../../shared/thumbnails/feature-*.jpg", { eager: true, query: "?url", import: "default" });
 const thumbnail = (name: string): string | undefined => thumbnails[`../../shared/thumbnails/${name}`];
 const icons: Record<string, string> = lucide.icons;
 
@@ -62,24 +62,22 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
       group.links.hidden = !open;
     }
   };
-  const link = (title: string, url: URL, topic: string, image: string | undefined, active: boolean, note?: string) => {
+  const link = (title: string, url: URL, topic: string, image: string | undefined, active: boolean) => {
     const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic;
     if (active) a.setAttribute("aria-current", "page");
     const picture = document.createElement("img"); picture.alt = ""; picture.loading = "lazy"; picture.decoding = "async";
     if (image) picture.src = image;
     const text = document.createElement("span"); text.className = "feature-link-title"; text.textContent = title;
     a.append(picture, text);
-    if (note) { const mark = document.createElement("span"); mark.className = "feature-link-note"; mark.textContent = note; a.append(mark); }
     return a;
   };
   for (const topic of topics) {
     const items = catalog.filter(item => item.topic === topic.id);
-    const extra = site && topic.id === "physics" ? physics : [];
     const group = document.createElement("div"); group.className = "feature-topic"; group.dataset.topic = topic.id;
     const button = document.createElement("button"); button.type = "button"; button.dataset.topic = topic.id;
     button.setAttribute("aria-controls", `feature-topic-${topic.id}`);
     const name = document.createElement("span"); name.className = "feature-topic-title"; name.textContent = topic.title;
-    const count = document.createElement("span"); count.className = "feature-topic-count"; count.textContent = String(items.length + extra.length);
+    const count = document.createElement("span"); count.className = "feature-topic-count"; count.textContent = String(items.length);
     button.append(dot(topic.domain), icon(topic.icon), name, count);
     const links = document.createElement("div"); links.className = "feature-topic-links"; links.id = `feature-topic-${topic.id}`;
     links.setAttribute("role", "group"); links.setAttribute("aria-label", `${topic.title} 실험`);
@@ -89,11 +87,16 @@ export function createFeatureNavigation(selected: string): FeatureNavigation {
       links.append(link(item.title, url, topic.id, thumbnail(`feature-${item.id}.jpg`), active));
       optgroup.append(new Option(item.title, url.href, false, active));
     }
-    // The physics lab extends this topic; its scenarios open the dedicated lab.
-    for (const item of extra) {
-      const url = new URL(`physics-sandbox/?demo=${item.id}`, site);
-      links.append(link(item.title, url, topic.id, thumbnail(`physics-${item.id}.jpg`), false, "knownIssue" in item ? "물리 실험실 · 알려진 문제" : "물리 실험실"));
-      optgroup.append(new Option(`${item.title} · 물리 실험실`, url.href));
+    // The physics lab is a separate app. One row marked as a new page leads there instead of
+    // mixing its scenarios in with this lab's experiments; the gallery lists each scenario.
+    if (site && topic.id === "physics") {
+      const url = new URL("physics-sandbox/", site);
+      const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic.id; a.className = "feature-topic-external";
+      const title = document.createElement("span"); title.className = "feature-link-title"; title.textContent = "물리 심화 실험실";
+      const note = document.createElement("span"); note.className = "feature-link-note"; note.textContent = `시나리오 ${physics.length}개 · 새 화면`;
+      a.append(icon("external-link"), title, note);
+      links.append(a);
+      optgroup.append(new Option(`물리 심화 실험실 · 시나리오 ${physics.length}개 (새 화면)`, url.href));
     }
     button.addEventListener("click", () => openTopic(button.getAttribute("aria-expanded") === "true" ? undefined : topic.id), { signal });
     groups.push({ topic: topic.id, button, links });
