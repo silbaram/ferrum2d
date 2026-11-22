@@ -69,6 +69,7 @@ async function pixelHash() {
   return {hash,colors:colors.size,...(emissiveRgb?{emissiveRgb}:{})};
 }
 const catalog = JSON.parse(await readFile('examples/shared/featureCatalog.json', 'utf8'));
+const topics = JSON.parse(await readFile('examples/shared/featureTopics.json', 'utf8'));
 const results = [];
 let browser, activePage;
 try {
@@ -116,12 +117,16 @@ try {
         assert.equal((await page.evaluate(pixelHash)).hash, pixels.hash, `${id} baseline changes without a feature edit`);
       }
       if (id === 'animation') {
-        const category = page.locator('.feature-categories button[data-topic=runtime]');
+        const category = page.locator('.feature-topics button[data-topic=runtime]');
         await category.focus(); await page.keyboard.press('Enter');
-        assert.equal(await category.getAttribute('aria-pressed'), 'true');
-        assert.equal(await page.locator('.feature-topic-links a:not([hidden])').count(), catalog.filter(f => f.topic === 'runtime').length);
-        await page.locator('.feature-categories button[data-topic=sprites]').click();
+        assert.equal(await category.getAttribute('aria-expanded'), 'true');
+        assert.equal(await page.locator('.feature-topics a:visible').count(), catalog.filter(f => f.topic === 'runtime').length);
+        await page.locator('.feature-topics button[data-topic=sprites]').click();
         assert(await page.locator('.feature-topics a[aria-current]').isVisible());
+        // Previous and next cross topic boundaries in topic order.
+        const order = topics.flatMap(topic => catalog.filter(f => f.topic === topic.id)), position = order.findIndex(f => f.id === id);
+        assert.match(await page.locator('.feature-pager a[rel=next]').getAttribute('href'), new RegExp(`feature=${order[position + 1].id}(?:&|$)`));
+        assert.match(await page.locator('.feature-pager a[rel=prev]').getAttribute('href'), new RegExp(`feature=${order[position - 1].id}(?:&|$)`));
         await control('pause').click();
         const paused = (await snapshot()).animation;
         await page.waitForTimeout(200); assert.deepEqual((await snapshot()).animation, paused);

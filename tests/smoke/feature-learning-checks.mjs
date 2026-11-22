@@ -80,10 +80,13 @@ export async function checkLearningInitial(page,feature) {
 export async function checkLearningControls({page,id,control,snapshot}) {
   const visual=page.locator(`.feature-lesson-visual[data-kind="${id}"]`);
   if(id==='camera') {
+    // The window maps the 640-unit view onto the canvas, so its width carries canvas-size rounding.
+    const initialWidth=await page.evaluate(()=>Number(document.querySelector('.lesson-camera-window').getAttribute('width')));
+    assert(Math.abs(initialWidth-640)<4,`camera window starts at the 640-unit view: ${initialWidth}`);
     await control('zoom').fill('200');await control('zoom').dispatchEvent('input');
     await page.waitForFunction(()=>Number(document.querySelector('.lesson-camera-window').getAttribute('width'))<400);
     await control('reset').click();
-    await page.waitForFunction(()=>Math.abs(Number(document.querySelector('.lesson-camera-window').getAttribute('width'))-640)<1);
+    await page.waitForFunction(width=>Math.abs(Number(document.querySelector('.lesson-camera-window').getAttribute('width'))-width)<0.5,initialWidth);
   }
   if(id==='lighting') {
     // The directional rendering check intentionally leaves the light disabled.

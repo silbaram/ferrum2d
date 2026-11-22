@@ -77,26 +77,40 @@ try {
   await page.waitForURL(base+`starter-runtime/?feature=${features[0].id}`); await ready(page);
   assert.equal(await page.locator('.example-header [data-example-home]').getAttribute('href'), base);
   await page.goto(base+'starter-runtime/'); await ready(page);
+  // Wide screens list topics beside the stage; opening a topic shows its experiments with thumbnails.
   for (const topic of topics) {
-    await page.locator(`.feature-categories button[data-topic="${topic.id}"]`).click();
-    assert.equal(await page.locator('.feature-topic-links a:visible').count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?physicsTopics.length:0));
+    const button = page.locator(`.feature-topics button[data-topic="${topic.id}"]`);
+    if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
+    assert.equal(await button.getAttribute('aria-expanded'), 'true');
+    const visible = page.locator(`.feature-topics a[data-topic="${topic.id}"]:visible`);
+    assert.equal(await visible.count(),features.filter(item=>item.topic===topic.id).length+(topic.id==='physics'?physicsTopics.length:0));
+    assert.equal(await page.locator('.feature-topics a:visible').count(), await visible.count(), 'only one topic is open');
   }
-  // Long topic menus remain one row, and keyboard focus reveals the final item.
-  await page.setViewportSize({width:1024,height:920});
-  await page.locator('.feature-categories button[data-topic=physics]').click();
-  const topicLinks=page.locator('.feature-topic-links a:not([hidden])');
+  await page.waitForFunction(() => [...document.querySelectorAll('.feature-topics a img')].filter(image => image.offsetParent).every(image => image.complete && image.naturalWidth > 0));
+  // Keyboard focus walks the open topic and keeps the focused experiment inside the scrolled list.
+  const topicLinks=page.locator('.feature-topics a:visible');
   await topicLinks.first().focus();
   for(let i=1;i<await topicLinks.count();i++)await page.keyboard.press('Tab');
   assert(await topicLinks.last().evaluate(link=>document.activeElement===link),'Tab must reach the final example');
-  assert(await page.locator('.feature-topic-links a:not([hidden])').last().evaluate(link=>{
-    const r=link.getBoundingClientRect(),parent=link.parentElement.getBoundingClientRect();
-    return r.left>=parent.left-1&&r.right<=parent.right+1;
-  }),'keyboard focus must reveal horizontally scrolled examples');
-  assert.equal(await overflow(page),false,'topic menus must scroll without overflowing the page');
-  await page.setViewportSize({width:390,height:1000});
-  assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+physicsTopics.length);
+  assert(await topicLinks.last().evaluate(link=>{
+    const r=link.getBoundingClientRect(),list=link.closest('.feature-topics').getBoundingClientRect();
+    return r.top>=list.top-1&&r.bottom<=list.bottom+1;
+  }),'keyboard focus must reveal the focused example in the topic list');
+  assert.equal(await overflow(page),false,'the topic list must not overflow the page');
+  // Narrower screens keep the stage wide and switch to the compact picker.
+  for (const width of [1024, 390]) {
+    await page.setViewportSize({width,height:1000});
+    assert.equal(await page.locator('.feature-topic-list').isVisible(), false);
+    assert.equal(await page.locator('.feature-topic-picker option').count(),features.length+physicsTopics.length);
+    assert.equal(await overflow(page),false,`picker overflow ${width}`);
+  }
   await page.setViewportSize({width:1440,height:1100});
-  await page.locator(`.feature-categories button[data-topic="${features[0].topic}"]`).click();
+  // Previous and next follow the topic order across topic boundaries.
+  const order = topics.flatMap(topic => features.filter(item => item.topic === topic.id));
+  const position = order.findIndex(item => item.id === features[0].id);
+  assert.equal(await page.locator('.feature-pager a[rel=prev]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position - 1].id}`, base).href);
+  assert.equal(await page.locator('.feature-pager a[rel=next]').getAttribute('href'), new URL(`starter-runtime/?feature=${order[position + 1].id}`, base).href);
+  await page.locator(`.feature-topics button[data-topic="${features[0].topic}"]`).click();
   await page.screenshot({path:resolve(run,'entry.png')});
   // Without JavaScript every gallery card and link is present; only search stays hidden.
   const noJs = await browser.newPage({javaScriptEnabled:false}); observe(noJs); await noJs.goto(base);

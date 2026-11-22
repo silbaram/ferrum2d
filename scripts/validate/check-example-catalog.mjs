@@ -15,6 +15,12 @@ export function loadExampleCatalog(root = process.cwd()) {
   // Scenario display names live only in physicsExamples.json; both apps read them from there.
   for (const item of scenarios) assert(!('titleKo' in item), `Physics scenario ${item.id} must take its name from physicsExamples.json`);
   assert.equal(new Set(topics.map(item => item.id)).size, topics.length, 'Duplicate topic');
+  // Topic icon and engine-domain color are shared by the gallery and the feature lab navigation.
+  const topicIcons = read('examples/shared/gallery/lucideIcons.json').icons;
+  for (const topic of topics) {
+    assert(typeof topic.icon === 'string' && topic.icon in topicIcons, `Topic ${topic.id} needs a bundled icon`);
+    assert(['runtime', 'physics', 'render', 'behavior', 'collision', 'audio'].includes(topic.domain), `Topic ${topic.id} needs an engine domain`);
+  }
   assert.equal(new Set(physics.map(item => item.id)).size, physics.length, 'Duplicate physics link');
   assert.equal(physics.length, scenarioIds.size, 'Every physics scenario needs a topic entry');
   for (const item of physics) assert(scenarioIds.has(item.id) && item.title?.trim() && item.summary?.trim(), `Invalid physics entry ${item.id}`);

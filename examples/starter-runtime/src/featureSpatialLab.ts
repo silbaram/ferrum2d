@@ -5,7 +5,7 @@ import {
 import { applyDataSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from "@ferrum2d/ferrum-web/authoring";
 import catalog from "../../shared/featureCatalog.json";
 import { cleanupRuntimeDemoResources, createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
-import { createFeatureNavigation } from "./featureNavigation";
+import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
 import { spatialControls, spatialFeatureScene } from "./featureSpatialScenes";
 import "./featureLab.css";
 import { environmentEffects, spatialEnvironmentCamera, spatialEnvironmentSettings } from "./featureSpatialEnvironment";
@@ -33,7 +33,6 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
     <span data-value="backend" role="status">준비 중…</span><button data-control="pause">일시정지</button><button data-control="reset">실험 초기화</button>`;
   toolbar.append(top);
   const navigation = createFeatureNavigation(id);
-  toolbar.after(navigation.element);
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
@@ -48,6 +47,7 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
   const statistics = document.createElement("p"); statistics.className = "feature-statistics";
   statistics.textContent = "오브젝트 — · 공간 그리기 —";
   stage.append(help, statistics);
+  mountFeatureNavigation(root, stage, navigation);
   for (const button of root.querySelectorAll("button")) button.type = "button";
   const control = <T extends HTMLElement>(name: string) => root.querySelector<T>(`[data-control="${name}"]`)!;
   const output = (name: string, value: string) => { root.querySelector(`[data-value="${name}"]`)!.textContent = value; };

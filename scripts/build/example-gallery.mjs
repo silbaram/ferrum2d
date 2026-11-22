@@ -2,13 +2,7 @@
 // gallery.mjs only adds group filtering and search. The data comes from the shared catalogs,
 // so the gallery never keeps a second example list.
 
-// Engine domain colors carry category meaning only (Pixelforge); icons are the bundled Lucide subset.
-const TOPIC_STYLE = {
-  lighting: ["sun", "render"], physics: ["atom", "physics"], camera: ["camera", "render"],
-  sprites: ["film", "render"], world: ["map", "collision"], vfx: ["sparkles", "render"],
-  gameplay: ["gamepad-2", "behavior"], ui: ["mouse-pointer-click", "runtime"], audio: ["volume-2", "audio"],
-  runtime: ["cpu", "runtime"],
-};
+// Topic icons and engine-domain colors come from featureTopics.json (shared with the lab navigation).
 const RECIPE_URL = "https://github.com/silbaram/ferrum2d/tree/main/examples/data-scene-native";
 const REPOSITORY_URL = "https://github.com/silbaram/ferrum2d";
 
@@ -21,8 +15,8 @@ export function renderExampleGallery({ catalog, features, topics, physics, icons
     if (!body) throw Error(`Missing gallery icon ${name}`);
     return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
   };
-  const topicStyle = id => TOPIC_STYLE[id] ?? ["layout-grid", "runtime"];
-  const dot = id => `<span class="dot" data-domain="${topicStyle(id)[1]}"></span>`;
+  const topicOf = id => topics.find(topic => topic.id === id);
+  const dot = id => `<span class="dot" data-domain="${topicOf(id).domain}"></span>`;
   const games = catalog.filter(item => item.kind === "game");
   const tools = catalog.filter(item => item.kind === "tool");
   const featureLab = catalog.find(item => item.id === "starter-runtime");
@@ -47,7 +41,6 @@ export function renderExampleGallery({ catalog, features, topics, physics, icons
   }).join("");
 
   const topicSections = topics.map(topic => {
-    const [topicIcon] = topicStyle(topic.id);
     const cards = featuresOf(topic.id).map(item => card({
       href: `./${featureLab.path}?feature=${item.id}`, thumb: image(`feature-${item.id}.jpg`), title: item.title, group: `topic:${topic.id}`,
       body: `<span class="card-use">${escapeHtml(item.lesson.useCase)}</span>`,
@@ -55,7 +48,7 @@ export function renderExampleGallery({ catalog, features, topics, physics, icons
       searchText: search(item.title, item.summary, item.lesson.useCase, item.api, topic.title, item.tags),
     })).join("");
     return `<div class="topic" id="topic-${topic.id}" data-gallery-section="topic:${topic.id}">
-      <h3 class="topic-head">${dot(topic.id)}${icon(topicIcon)}<span>${escapeHtml(topic.title)}</span><small>${escapeHtml(topic.summary)}</small></h3>
+      <h3 class="topic-head">${dot(topic.id)}${icon(topic.icon)}<span>${escapeHtml(topic.title)}</span><small>${escapeHtml(topic.summary)}</small></h3>
       <div class="grid">${cards}</div></div>`;
   }).join("");
 

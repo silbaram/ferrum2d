@@ -10,7 +10,7 @@ import { createFeatureExtra, extraControls, extraHelp, shooterFeatures, type Fea
 
 import { createGameplayFeature, gameplayControls, gameplayHelp } from "./featureGameplay";
 import { createContentFeature, contentControls, contentHelp } from "./featureContent";
-import { createFeatureNavigation } from "./featureNavigation";
+import { createFeatureNavigation, mountFeatureNavigation } from "./featureNavigation";
 import { createProjectileFeature, projectileControls } from "./featureProjectiles";
 import { createSystemFeature, systemControls } from "./featureSystems";
 import { createTerrainFeature, terrainControls } from "./featureTerrain";
@@ -75,7 +75,6 @@ export async function startFeatureLab(): Promise<void> {
     <span data-value="backend" role="status">준비 중…</span><button data-control="pause">일시정지</button><button data-control="reset">실험 초기화</button>`;
   toolbar.append(top);
   const navigation = createFeatureNavigation(id);
-  toolbar.after(navigation.element);
   const panel = document.createElement("aside");
   panel.className = "feature-panel";
   panel.setAttribute("aria-label", "실험 설명과 설정");
@@ -98,6 +97,7 @@ export async function startFeatureLab(): Promise<void> {
   // Reserve the diagnostics row before controls mount; delayed text must not shift touch targets.
   stats.textContent = "오브젝트 — · 그리기 명령 — · 드로우 콜 —";
   stage.append(stats);
+  mountFeatureNavigation(root, stage, navigation);
   const control = <T extends HTMLElement>(key: string) => root.querySelector<T>(`[data-control="${key}"]`)!;
   const choice = (key: string) => control<HTMLSelectElement>(key).value;
   const input = (key: string) => control<HTMLInputElement>(key);

@@ -1,61 +1,126 @@
 import catalog from "../../shared/featureCatalog.json";
 import topics from "../../shared/featureTopics.json";
 import physics from "../../shared/physicsExamples.json";
+import lucide from "../../shared/gallery/lucideIcons.json";
 import { exampleSiteRoot } from "../../shared/exampleHeader";
 
-const topicLabels: Record<string, string> = {
-  lighting: "조명", physics: "물리", camera: "카메라", sprites: "스프라이트", world: "맵·이동",
-  vfx: "VFX", gameplay: "게임 로직", ui: "UI·입력", audio: "오디오", runtime: "에셋",
-};
+// Gallery thumbnails are bundled so the standalone lab shows the same pictures.
+const thumbnails = import.meta.glob<string>("../../shared/thumbnails/{feature,physics}-*.jpg", { eager: true, query: "?url", import: "default" });
+const thumbnail = (name: string): string | undefined => thumbnails[`../../shared/thumbnails/${name}`];
+const icons: Record<string, string> = lucide.icons;
+
+function icon(name: string): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of Object.entries({ class: "feature-icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
+  svg.innerHTML = icons[name] ?? "";
+  return svg;
+}
+function dot(domain: string): HTMLElement {
+  const span = document.createElement("span"); span.className = "feature-dot"; span.dataset.domain = domain;
+  return span;
+}
+
+/** Experiments in navigation order: topics as listed, then each topic's catalog order. */
+const ordered = topics.flatMap(topic => catalog.filter(item => item.topic === topic.id));
+
+export interface FeatureNavigation {
+  /** Topic list with thumbnails on wide screens; a compact picker on narrow ones. */
+  element: HTMLElement;
+  /** Previous and next experiment links, placed under the stage. */
+  pager: HTMLElement;
+  destroy(): void;
+}
 
 /** Page-owned navigation; native simulation and existing feature URLs stay unchanged. */
-export function createFeatureNavigation(selected: string): { element: HTMLElement; destroy(): void } {
+export function createFeatureNavigation(selected: string): FeatureNavigation {
   const lifetime = new AbortController(), { signal } = lifetime;
   const element = document.createElement("nav");
   element.className = "feature-topics"; element.setAttribute("aria-label", "엔진 기능 선택");
-  const categories = document.createElement("div"), links = document.createElement("div");
-  categories.className = "feature-categories"; links.className = "feature-topic-links";
-  categories.setAttribute("role", "group"); categories.setAttribute("aria-label", "기능 주제");
-  links.setAttribute("role", "group"); links.setAttribute("aria-label", "주제별 실험");
-  const row = (label: string, content: HTMLElement) => {
-    const element = document.createElement("div"), caption = document.createElement("span");
-    element.className = "feature-nav-row"; caption.className = "feature-nav-label";
-    caption.textContent = label; element.append(caption, content); return element;
-  };
-  const mobile = document.createElement("label"), select = document.createElement("select");
-  mobile.className = "feature-topic-picker"; mobile.textContent = "기능 선택 ";
-  select.setAttribute("aria-label", "실험 선택"); mobile.append(select);
   const current = catalog.find(item => item.id === selected)!;
   const site = document.querySelector('meta[name="ferrum-example-suite"][content="1"]')
     ? exampleSiteRoot(new URL(location.href), "starter-runtime/") : undefined;
-  const chooseGroup = (topic: string) => {
-    for (const button of categories.querySelectorAll<HTMLButtonElement>("button")) button.setAttribute("aria-pressed", String(button.dataset.topic === topic));
-    for (const a of links.querySelectorAll<HTMLAnchorElement>("a")) a.hidden = a.dataset.topic !== topic;
-    links.scrollLeft = 0;
+  const featureUrl = (id: string): URL => {
+    const url = new URL(location.href); url.search = ""; url.hash = ""; url.searchParams.set("feature", id);
+    if (new URLSearchParams(location.search).get("renderer") === "webgpu") url.searchParams.set("renderer", "webgpu");
+    return url;
   };
-  const append = (title: string, url: URL, topic: string, optgroup: HTMLOptGroupElement, active = false) => {
-    const a = document.createElement("a"); a.href = url.href; a.textContent = title; a.dataset.topic = topic;
-    if (active) a.setAttribute("aria-current", "page"); links.append(a);
-    optgroup.append(new Option(title, url.href, false, active));
+
+  const label = document.createElement("p"); label.className = "feature-sidebar-label";
+  const total = document.createElement("span"); total.textContent = String(catalog.length);
+  label.append("기능 실험 ", total);
+  const list = document.createElement("div"); list.className = "feature-topic-list";
+  const mobile = document.createElement("label"), select = document.createElement("select");
+  mobile.className = "feature-topic-picker"; mobile.textContent = "기능 선택 ";
+  select.setAttribute("aria-label", "실험 선택"); mobile.append(select);
+
+  const groups: { topic: string; button: HTMLButtonElement; links: HTMLElement }[] = [];
+  const openTopic = (topic: string | undefined) => {
+    for (const group of groups) {
+      const open = group.topic === topic;
+      group.button.setAttribute("aria-expanded", String(open));
+      group.links.hidden = !open;
+    }
+  };
+  const link = (title: string, url: URL, topic: string, image: string | undefined, active: boolean, note?: string) => {
+    const a = document.createElement("a"); a.href = url.href; a.dataset.topic = topic;
+    if (active) a.setAttribute("aria-current", "page");
+    const picture = document.createElement("img"); picture.alt = ""; picture.loading = "lazy"; picture.decoding = "async";
+    if (image) picture.src = image;
+    const text = document.createElement("span"); text.className = "feature-link-title"; text.textContent = title;
+    a.append(picture, text);
+    if (note) { const mark = document.createElement("span"); mark.className = "feature-link-note"; mark.textContent = note; a.append(mark); }
+    return a;
   };
   for (const topic of topics) {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = topicLabels[topic.id] ?? topic.title; button.dataset.topic = topic.id;
-    button.setAttribute("aria-label", topic.title);
-    button.addEventListener("click", () => chooseGroup(topic.id), { signal }); categories.append(button);
+    const items = catalog.filter(item => item.topic === topic.id);
+    const extra = site && topic.id === "physics" ? physics : [];
+    const group = document.createElement("div"); group.className = "feature-topic"; group.dataset.topic = topic.id;
+    const button = document.createElement("button"); button.type = "button"; button.dataset.topic = topic.id;
+    button.setAttribute("aria-controls", `feature-topic-${topic.id}`);
+    const name = document.createElement("span"); name.className = "feature-topic-title"; name.textContent = topic.title;
+    const count = document.createElement("span"); count.className = "feature-topic-count"; count.textContent = String(items.length + extra.length);
+    button.append(dot(topic.domain), icon(topic.icon), name, count);
+    const links = document.createElement("div"); links.className = "feature-topic-links"; links.id = `feature-topic-${topic.id}`;
+    links.setAttribute("role", "group"); links.setAttribute("aria-label", `${topic.title} 실험`);
     const optgroup = document.createElement("optgroup"); optgroup.label = topic.title; select.append(optgroup);
-    for (const item of catalog.filter(item => item.topic === topic.id)) {
-      const url = new URL(location.href); url.search = ""; url.searchParams.set("feature", item.id);
-      if (new URLSearchParams(location.search).get("renderer") === "webgpu") url.searchParams.set("renderer", "webgpu");
-      append(item.title, url, topic.id, optgroup, item.id === selected);
+    for (const item of items) {
+      const url = featureUrl(item.id), active = item.id === selected;
+      links.append(link(item.title, url, topic.id, thumbnail(`feature-${item.id}.jpg`), active));
+      optgroup.append(new Option(item.title, url.href, false, active));
     }
-    if (site && topic.id === "physics") for (const item of physics) append(item.title, new URL(`physics-sandbox/?demo=${item.id}`, site), topic.id, optgroup);
+    // The physics lab extends this topic; its scenarios open the dedicated lab.
+    for (const item of extra) {
+      const url = new URL(`physics-sandbox/?demo=${item.id}`, site);
+      links.append(link(item.title, url, topic.id, thumbnail(`physics-${item.id}.jpg`), false, "knownIssue" in item ? "물리 실험실 · 알려진 문제" : "물리 실험실"));
+      optgroup.append(new Option(`${item.title} · 물리 실험실`, url.href));
+    }
+    button.addEventListener("click", () => openTopic(button.getAttribute("aria-expanded") === "true" ? undefined : topic.id), { signal });
+    groups.push({ topic: topic.id, button, links });
+    group.append(button, links); list.append(group);
   }
   select.addEventListener("change", () => location.assign(select.value), { signal });
   element.addEventListener("focusin", event => {
     const item = event.target instanceof Element ? event.target.closest<HTMLElement>("a,button") : null;
-    if (item && (categories.contains(item) || links.contains(item)))
-      item.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (item && list.contains(item)) item.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, { signal });
-  chooseGroup(current.topic); element.append(row("주제", categories), row("실험", links), mobile);
-  return { element, destroy: () => lifetime.abort() };
+  openTopic(current.topic);
+  element.append(label, list, mobile);
+
+  const pager = document.createElement("nav"); pager.className = "feature-pager"; pager.setAttribute("aria-label", "이전·다음 실험");
+  const index = ordered.findIndex(item => item.id === selected);
+  for (const [rel, item, caption] of [["prev", ordered[index - 1], "이전"], ["next", ordered[index + 1], "다음"]] as const) {
+    if (!item) { pager.append(document.createElement("span")); continue; }
+    const a = document.createElement("a"); a.href = featureUrl(item.id).href; a.rel = rel; a.className = `feature-pager-${rel}`;
+    const small = document.createElement("small"); small.textContent = `${caption} · ${topics.find(topic => topic.id === item.topic)!.title}`;
+    const title = document.createElement("span"); title.textContent = item.title;
+    a.append(small, title); pager.append(a);
+  }
+  return { element, pager, destroy: () => lifetime.abort() };
+}
+
+/** Place the topic list beside the stage and the pager under it. */
+export function mountFeatureNavigation(root: HTMLElement, stage: HTMLElement, navigation: FeatureNavigation): void {
+  root.querySelector(".demo-stage-layout")!.prepend(navigation.element);
+  stage.append(navigation.pager);
 }

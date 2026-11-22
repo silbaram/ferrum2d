@@ -16,6 +16,9 @@
   --example-render: #7aa2ff;
   --example-runtime: #6ee7b7;
   --example-physics: #38d5e8;
+  --example-behavior: #c084fc;
+  --example-collision: #ff8a65;
+  --example-audio: #f97316;
   --example-font: "Ferrum Example UI", system-ui, sans-serif;
   --example-radius: 2px;
   font-family: var(--example-font);

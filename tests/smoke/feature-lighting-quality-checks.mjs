@@ -25,7 +25,8 @@ export async function checkLightingQuality({ page, control, snapshot, pixelHash,
   // Shadow maps are cached per light: adding the point light draws its cold cube (6 faces)
   // and reuses the sun map, while moving the sun redraws only the sun map.
   assert.equal(mixed.shadowPasses, 6, "cold mixed scene draws one cube shadow and reuses the sun map");
-  await range("sun-elevation", 50);
+  // One input event renders exactly one frame; `range` fires two and the second reuses every map.
+  await render(() => control("sun-elevation").evaluate(input => { input.value = "50"; input.dispatchEvent(new Event("input", { bubbles: true })); }));
   assert.equal((await snapshot()).shadowPasses, 1, "moving the sun redraws only the sun map");
   await range("sun-elevation", 35);
   const clean = await render(() => control("environment-fog").check());
