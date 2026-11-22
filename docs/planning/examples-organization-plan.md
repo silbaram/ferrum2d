@@ -1,6 +1,7 @@
 # 예제·데모 정리 (A: 보이는 구조 정리)
 
-상태: 사용자 승인(방향 A), 작업 전 계획. 기준일 2026-11-22, 기준 커밋 `7b23edb`.
+상태: 사용자 승인(방향 A), 1~5단계 완료·엔진 결함 수정 대기. 기준일 2026-11-22, 기준 커밋 `7b23edb`,
+작업 브랜치 `chore/examples-organization`.
 
 AGENTS.md의 "구조 변경은 문서 합의 먼저" 규칙에 따라 범위와 순서를 먼저 정한다.
 이번 정리는 **공개 URL·예제 폴더 이름·패키지 이름을 유지**하고, 사용자에게 보이는 구성과 이름을 정돈한다.
@@ -40,6 +41,28 @@ AGENTS.md의 "구조 변경은 문서 합의 먼저" 규칙에 따라 범위와 
 | 4. 메뉴·표시 정리 | 게임 표시 이름을 `<게임 이름> · <배우는 기능>` 형식으로 맞춘다. 물리 실험실 상단에 "엔진 기능 실험실 › 물리" 경로를 표시해 실험실의 일부로 보이게 한다. | 화면 문구 변경 |
 | 5. 문서 동기화 | `examples/README.md`, `docs/engine/showcase-hub.md`, 카탈로그 검증(`validate:example-catalog`)을 갱신한다. | 문서 |
 | 6. 최신 기능 실험(선택) | 후보: 캐릭터 이동과 이동 발판, 군중 회피, 물리 상태 저장·복원. 2~5단계 완료 후 항목을 골라 별도로 진행한다. | 기능 추가 |
+
+## 진행 결과
+
+| 단계 | 결과 |
+| --- | --- |
+| 1. 현재 상태 확인 | 통합 물리(#107) 이후 깨진 데모를 찾아 고쳤다. 물리 재질·지형 파괴 실험과 Engine Playground는 바디가 연결된 world를 다시 설정하다 `BodiesStillBound`로 시작하지 못했다. 이제 기본 native world를 쓰고 `configureAutoRigidBodyStep`·`configureFixedTimestep`으로 설정한다. 물리 갱신 30/60/120Hz는 world 고정 스텝이므로 `?physicsRate=`로 페이지를 다시 연다. `?mode=starter`는 호환 물리로 실행한다. SDK 게임 루프가 0.1ms 미만 프레임 간격에서 멈추던 회귀(0.1.0-beta.10 포함)도 고쳤다. |
+| 2. 코드 레시피 정리 | `data-scene-native` README와 `examples/README.md`의 '코드 레시피' 항목을 추가했다. |
+| 3. 물리 이름 통일 | 물리 실험실이 `physicsExamples.json`의 이름을 쓰고, 자체 `titleKo`는 카탈로그 검사로 막는다. 분류 탭 "조인트"는 "관절"이다. 이웃한 캔버스 라벨은 높이를 번갈아 둔다. |
+| 4. 메뉴·표시 정리 | 게임 이름을 `<게임 이름> · <배우는 기능>`으로 맞추고, 카탈로그 `parent`로 물리 실험실 헤더에 "엔진 기능 실험실 › 물리"를 표시한다. |
+| 5. 문서 동기화 | 예제·실험실·물리 실험실 README, 기능·예제 지도, 이 계획을 갱신했다. |
+
+### 엔진 결함 (별도 수정 중)
+
+두 결함은 통합 물리(#107)부터 있었다. #110 이전 Wasm으로도 같은 결과가 나온다.
+
+- 물리 재질 실험의 30Hz(스텝 1/30초)에서 공이 첫 벽 충돌 무렵 `UnresolvedMotion`("actual motion could not be
+  certified or resolved")으로 멈춘다. 60·120Hz는 정상이다.
+- 물리 실험실의 강체·충돌체·접촉·관절 시나리오가 약 2초 뒤 `CapacityExceeded`("physics capacity exceeded")로
+  멈춘다. 상태 표시는 "실행 중"으로 남는다.
+
+두 오류 모두 `physics3d/character_motion/backend.rs`의 실제 운동 승인 경로에서 나는 것으로 보고, 별도 worktree에서
+원인을 수정한다. 수정을 반영한 뒤 `smoke:feature-examples`, `smoke:example-suite`를 끝까지 통과시킨다.
 
 ## 유지하는 것과 이유
 

@@ -58,7 +58,7 @@
 | 탑다운 슈터 | [게임 열기](https://silbaram.github.io/ferrum2d/topdown-shooter/) | 이동·조준·발사와 적 웨이브 플레이 |
 | 플랫포머 | [게임 열기](https://silbaram.github.io/ferrum2d/platformer/) | 점프하고 단방향·이동 발판 타기 |
 | 벽돌깨기 | [게임 열기](https://silbaram.github.io/ferrum2d/breakout/) | 패들로 공을 반사하고 벽돌 없애기 |
-| 물리 실험실 | [실험 열기](https://silbaram.github.io/ferrum2d/physics-sandbox/) | 시나리오를 선택해 충돌·재질·조인트 비교 |
+| 물리 실험실 | [실험 열기](https://silbaram.github.io/ferrum2d/physics-sandbox/) | 시나리오를 선택해 충돌·재질·관절 비교 |
 | 작은 빛의 정원 | [게임 열기](https://silbaram.github.io/ferrum2d/pixel-art/) | 클릭 이동·씨앗 수집, 도트 원본·노멀 조명·팔레트 비교 |
 | 2D 등불 정원 | [Studio 열기](https://silbaram.github.io/ferrum2d/studio/?scene=garden) | 씬 배치, 게임 미리보기, 실행 비교 |
 | HD-2D 마을 | [Studio 열기](https://silbaram.github.io/ferrum2d/studio/?scene=village) | 입체 장면·카메라·빛을 조정하며 확인 |

@@ -16,8 +16,8 @@ Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collid
 
 | 기술 | 설명 |
 | --- | --- |
-| Physics Spec catalog | `public/catalog.json`이 scenario, 설명, focus body, action, smoke threshold를 관리한다. |
-| Body/collider debug | Rust core physics debug line과 entity-anchored bitmap label로 body, collider, sleep 상태를 표시한다. |
+| Physics Spec catalog | `public/catalog.json`이 scenario 사양 경로, 설명, focus body, action, smoke threshold를 관리한다. 시나리오 표시 이름은 기능 실험실과 같은 `examples/shared/physicsExamples.json`에서 읽는다. |
+| Body/collider debug | Rust core physics debug line과 entity-anchored bitmap label로 body, collider, sleep 상태를 표시한다. 캔버스 라벨은 영문 대문자 디버그 글꼴을 쓰며, 이웃한 관찰 대상은 라벨 높이를 번갈아 둔다. |
 | Contact visualization | `queryBodyContacts(...)`, `queryBodyManifolds(...)`, `queryRigidContactImpulses(...)` 결과를 engine debug line primitive로 표시한다. |
 | Joint visualization | Rust core가 resolved joint의 anchor와 constraint를 같은 debug line buffer에 생성한다. |
 | Scene query demo | pointer 위치를 raycast target으로 사용하고 arrow, hit circle, hit normal을 표시한다. |

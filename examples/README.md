@@ -22,7 +22,7 @@ pnpm preview:examples --host 0.0.0.0 --port 4173 --strictPort
 | 단계 | 디렉터리 | 이 예제로 배우는 것 | 단독 개발 실행 |
 | --- | --- | --- | --- |
 | 기능 학습 | [starter-runtime](starter-runtime/README.md) | 한 번에 한 기능을 바꾸는 독립 실험 31종 | `pnpm dev:starter-runtime` |
-| 물리 심화 | [physics-sandbox](physics-sandbox/README.md) | 충돌체·접촉/센서·joint·CCD·공간 질의 등 7개 시나리오 | `pnpm dev:physics-sandbox` |
+| 물리 심화 | [physics-sandbox](physics-sandbox/README.md) | 충돌체·접촉/센서·관절·CCD·공간 질의 등 7개 시나리오. 실험실 물리 주제의 확장이며 헤더에 "엔진 기능 실험실 › 물리"를 표시한다. | `pnpm dev:physics-sandbox` |
 | 게임 응용 | [breakout](breakout/README.md) | 충돌 → 반사·벽돌 제거·점수·파티클 | `pnpm dev:breakout` |
 | 게임 응용 | [platformer](platformer/README.md) | 이동 컨트롤러 → 점프·착지·단방향/이동 발판 | `pnpm dev:platformer` |
 | 게임 응용 | [topdown-shooter](topdown-shooter/README.md) | Game Spec → 이동·사격·적 웨이브·HUD·조명·오디오 | `pnpm dev:topdown` |
@@ -65,14 +65,14 @@ Breakout·Platformer는 `P/Esc`, 터치 이동·점프와 색상 안내를 제�
 | 경로 | 유지 이유 | 공개 학습 경로 |
 | --- | --- | --- |
 | [minimal-game](minimal-game/README.md) | 최소 bootstrap 및 preload/input/content/UI fixture | 기능 실험실, 새 프로젝트는 create-game 템플릿 |
-| `starter-runtime/?mode=starter` | 사격 프로필·리플레이·reset 회귀 | 사격 실험 → Neon Outpost |
+| `starter-runtime/?mode=starter` | 사격 프로필·리플레이·reset 회귀(호환 물리로 실행) | 사격 실험 → Neon Outpost |
 | `starter-runtime/?mode=playground` | 이전 이동·수집·물리 통합 회귀 | 해당 기능 실험 → 도트 정원 |
 
 ## 목록과 검증 관리
 
-- `shared/exampleCatalog.json`: 공개/참고 역할, 경로, 목적, 조작·관찰, 실행 명령, 관련 기능.
+- `shared/exampleCatalog.json`: 공개/참고 역할, 경로, 목적, 조작·관찰, 실행 명령, 관련 기능, 상위 실험실 주제(`parent`). 게임 이름은 `<게임 이름> · <배우는 기능>` 형식이다.
 - `shared/featureCatalog.json`: 독립 실험의 이름, 주제·2D/HD-2D 태그, 조작·관찰·API.
-- `shared/featureTopics.json`, `physicsExamples.json`: 공통 주제 순서·설명과 물리 시나리오의 직접 진입점.
+- `shared/featureTopics.json`, `physicsExamples.json`: 공통 주제 순서·설명과 물리 시나리오의 직접 진입점. `physicsExamples.json`은 물리 시나리오 이름의 단일 원본이며 물리 실험실도 이 이름을 쓴다.
 - `shared/exampleHeader.ts`, `exampleTheme.css`: 공개 예제 공통 탐색과 화면 토큰.
 - `pnpm validate:example-catalog`: 중복 ID/경로·없는 명령·관련 기능·씬 파일 검사. Pages 빌드에도 포함된다.
 - `pnpm test:example-catalog-build`: 누락된 예제 입력·잘못된 HTML이 기존 Pages를 지우기 전에 거절되는지, 통합 탐색 표식이 발행 복사본에만 들어가는지 검사한다.

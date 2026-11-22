@@ -181,7 +181,7 @@ JSON 다운로드는 현재 모드의 작성 설정이다. 부모·자식 연결
 | 체험 | 조작 / 엔진 동작 |
 | --- | --- |
 | 이동·장애물·수집 | 바닥 클릭, WASD/방향키, 전지 목적지 버튼. Rust 경로 탐색과 이동 애니메이션, trigger 기반 수집 변수 |
-| 물리 | 공 던지기, 고무/점토, 30/60/120 Hz와 표시 보간 비교. rigid body·CCD·반사·감속 및 실제 충격 횟수/충격량 |
+| 물리 | 공 던지기, 고무/점토. 고정 60Hz에서 rigid body·CCD·반사·감속 및 실제 충격 횟수/충격량. 갱신 속도·표시 보간 비교는 기능 실험실의 물리 재질 실험에서 한다. |
 | 조명 | 포인터로 작업등 이동, 원본 색상/조명 전환, 스프라이트 노멀맵 비교. 공의 상하좌우 중 광원이 있는 면이 밝아진다. |
 | 카메라 | 전체 보기, 로봇 추적, 공 실험장 보기, 확대/축소 |
 | 화면 효과 | 기본, bloom/vignette, CRT 비교 |
@@ -192,6 +192,7 @@ JSON 다운로드는 현재 모드의 작성 설정이다. 부모·자식 연결
 씬은 [public/playground/scene.json](public/playground/scene.json), 결정론적 원본 에셋 생성기는 [build-engine-playground.mjs](../../scripts/assets/build-engine-playground.mjs)다. `node scripts/assets/build-engine-playground.mjs`로 에셋을 재생성한다. 바닥은 타일 모양의 sprite instance이며 별도 TileMap API 예제는 아니다. TS는 입력/UI와 화면 설정을, Rust는 이동·수집·물리를 소유한다.
 
 기존 사격 프로필·snapshot/replay fixture는 **`?mode=starter`**로 직접 연다. 기본 메뉴에서는 제외한다. 기존 `profile`, `reportSmoke`, `profilerSmoke` query도 그대로 지원한다. 아래 기술/콘솔 API 설명은 이 참고 모드에 해당한다.
+이 모드는 통합 물리 이전의 Shooter 상태 snapshot을 회귀 대상으로 삼으므로 호환 물리(`engine: { physicsBackend: "legacy" }`)로 실행한다.
 
 `?mode=starter`의 기본 재생 버튼은 상태에 맞게 표시한다. 일시정지 후 Reset을 눌러도 진행하며,
 Reset·게임 종료 후 다시 시작·Space 재시작 모두 선택한 weapon profile을 새 native player에 다시 적용한다.
@@ -276,7 +277,9 @@ HD-2D 경사로 층 전환·발판 탑승·AI 우회/근접/원거리 피해·�
 - 새 Physics Spec fixture를 확인하려면 `examples/physics-sandbox`를 사용한다.
 
 물리 기능 예제(`?feature=physics`)에서는 회전 고정, 충돌 소리·입자, 파손 관절을
-비교할 수 있다. ‘왼쪽 벽에 파손 관절 연결’ 뒤 ‘같은 힘으로 던지기’를 누르면
+비교할 수 있다. 물리 갱신 30/60/120Hz는 native world의 고정 스텝이라 바디가 연결된 뒤에는 바꿀 수 없다.
+선택을 바꾸면 `?physicsRate=`를 붙여 페이지를 다시 열고, 엔진을 그 스텝으로 만든다(렌더러 선택과 같은 방식).
+중력·반복 횟수·CCD는 `configureAutoRigidBodyStep`이 매 스텝 적용하므로 world를 다시 설정하지 않는다. ‘왼쪽 벽에 파손 관절 연결’ 뒤 ‘같은 힘으로 던지기’를 누르면
 force 제한에 따라 연결이 끊어진다. 소리는 던지기 클릭으로 활성화한다.
 진단 표시에는 CCD 상한과 파손 수, 4방향 batch 탐색 결과가 나온다.
 
