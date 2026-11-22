@@ -88,6 +88,30 @@ test("GameLoop clamps large frame deltas", () => {
   }
 });
 
+test("GameLoop accumulates sub-0.1ms frame gaps instead of passing them on", () => {
+  const raf = installAnimationFrameMock();
+  const deltas: number[] = [];
+  const loop = new GameLoop((deltaSeconds) => deltas.push(deltaSeconds), 0.05);
+
+  try {
+    loop.start();
+    raf.fire(1000);
+    // A 4 microsecond gap is below the native clock's minimum interval.
+    raf.fire(1000.004);
+    equal(deltas.length, 0);
+    equal(raf.pendingCount(), 1);
+    raf.fire(1016);
+    equal(deltas.length, 1);
+    ok(Math.abs(deltas[0] - 0.016) < 1e-9);
+    // Identical timestamps remain a zero-length frame.
+    raf.fire(1016);
+    equal(deltas[1], 0);
+  } finally {
+    loop.stop();
+    raf.restore();
+  }
+});
+
 test("GameLoop propagates frame failure, cancels a restarted RAF and permits a fresh start", () => {
   const raf = installAnimationFrameMock();
   const failure = new Error("native actual motion rejected");
