@@ -689,3 +689,52 @@ fn stored_references_actual_bucket_visits_obey_the_exact_work_limit() {
     );
     assert_eq!(bincode::serialize(&world).unwrap(), bytes);
 }
+
+// Ferrum2D modified: stored solver hints must agree with the stored graph.
+#[test]
+fn stored_references_reject_solver_hints_that_disagree_with_ready_graph() {
+    use super::super::{PAIR_HINT_COUNT_MASK, PAIR_HINT_DYN_BIT, pair_qualified_manifold_count};
+    let world = scene();
+    assert!(world.narrow_phase.solver_graph_valid);
+    let edge = world
+        .narrow_phase
+        .contact_graph
+        .graph
+        .edges
+        .iter()
+        .position(|edge| {
+            edge.weight
+                .solver_manifolds()
+                .iter()
+                .any(|m| m.data.graph_pos.is_some())
+        })
+        .expect("scene has a solver-active pair");
+    let hint = world.narrow_phase.pair_solver_hints[edge];
+    let count = pair_qualified_manifold_count(&world.narrow_phase.contact_graph.graph.edges[edge].weight);
+    assert_eq!(hint, PAIR_HINT_DYN_BIT | count);
+    for bad_hint in [
+        hint & !PAIR_HINT_DYN_BIT,
+        hint & PAIR_HINT_DYN_BIT,
+        PAIR_HINT_DYN_BIT | (count + 1).min(PAIR_HINT_COUNT_MASK),
+    ] {
+        let mut bad = world.narrow_phase.clone();
+        bad.pair_solver_hints[edge] = bad_hint;
+        assert_eq!(
+            validate(&world, &world.broad_phase, &bad, limits()),
+            Err(StoredReferenceError::SolverGraph),
+            "{bad_hint:#x}"
+        );
+    }
+    let mut bad = world.narrow_phase.clone();
+    bad.pair_solver_hints.push(0);
+    assert_eq!(
+        validate(&world, &world.broad_phase, &bad, limits()),
+        Err(StoredReferenceError::SolverGraph)
+    );
+    // A pending full rebuild re-selects from the hints, so a sleep-cleared
+    // count with stale graph positions stays admissible.
+    let mut stale = world.narrow_phase.clone();
+    stale.solver_graph_valid = false;
+    stale.pair_solver_hints[edge] &= PAIR_HINT_DYN_BIT;
+    validate(&world, &world.broad_phase, &stale, limits()).unwrap();
+}

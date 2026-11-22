@@ -9,6 +9,7 @@ mod continuation;
 mod integration_admission;
 mod joint_numerics;
 mod pending_removals;
+mod shape_domain;
 mod shape_edits;
 mod stored_references;
 

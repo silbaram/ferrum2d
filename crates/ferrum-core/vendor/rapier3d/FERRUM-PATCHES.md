@@ -509,3 +509,14 @@ Core는 증명한 Kernel을 원 global tick domain 그대로 저장하며 사후
 BVH 노드는 배열 단위로 복사한다. 인접 목록의 세대·길이와 간선은 각각 하나의 배열에
 담는다. 밀집한 위치가 옮겨가도 각 슬롯의 과거 최대 버퍼는 남지 않는다. 보유 배열의
 실제 capacity를 검사하며 콜라이더 형상과 arena는 원래 소유자에 둔다.
+
+## Ferrum2D: 저장된 solver hint 교차 검증
+
+- `src/geometry/narrow_phase/validation.rs`(추가 파일): 저장된 `pair_solver_hints`는 비어 있거나
+  contact edge 수와 같아야 한다. 각 hint의 manifold 수는 0(sleep/역직렬화로 비운 상태)이거나
+  실제 qualified manifold 수와 같아야 한다. solver graph를 재사용할 수 있는 상태(`solver_graph_valid`와
+  epoch 일치)에서 graph에 들어 있는 manifold는 선택 가능한 hint(dynamic bit와 0이 아닌 수)를 가져야 한다.
+- 손상된 hint가 debug에서는 `debug_validate_*` panic을, release에서는 접촉 누락을 일으키던 문제를
+  복원 단계의 `StoredReferenceError::SolverGraph`로 거부한다. 정상 상태의 stale 허용 범위(전체 rebuild
+  대기 중인 graph 위치, sleep으로 비운 수)는 그대로 둔다. 저장 형식·공개 API는 바뀌지 않는다.
+- 회귀: `stored_references_reject_solver_hints_that_disagree_with_ready_graph`.
