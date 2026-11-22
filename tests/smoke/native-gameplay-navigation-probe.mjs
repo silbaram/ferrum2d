@@ -48,6 +48,8 @@ export async function probeNativeGameplayNavigation(page) {
     let ids,finish,reject,timer,elapsed=0,frames=0,steps=0,maxVertices=0,maxWork=0,maxSearches=0;
     let maxFrameTimeMs=0,maxRustUpdateTimeMs=0,maxJsHeapUsedBytes=0,maxWasmLinearMemoryBytes=0,minSeparation=Infinity;
     let firstFrame, maxSubsequentRustUpdateTimeMs = 0;
+    // Warm frames only: the first frame includes cold navigation/solver setup.
+    const warmRustUpdateTimeMs=[],warmRustUpdateMsPerStep=[];
     let maxRenderTimeMs=0,maxDrawCalls=0,maxRenderCommandCount=0,maxTextureSwitchCount=0,maxBillboards=0,maxFixedSteps=0,maxSolidChecks=0,maxTileChecks=0,maxCcdChecks=0,maxCollisionPairs=0;
     const poses=()=>{
       const view=e.queryUnifiedPhysicsBodyStates(ids);
@@ -63,7 +65,11 @@ export async function probeNativeGameplayNavigation(page) {
         maxTileChecks=Math.max(maxTileChecks,frame.physics.tileCandidateChecks);maxCcdChecks=Math.max(maxCcdChecks,frame.physics.ccdChecks);maxCollisionPairs=Math.max(maxCollisionPairs,frame.physics.collisionPairs);
         const backendSteps = frame.unifiedPhysics?.frame.backendSteps ?? 0;
         if (frames === 0) firstFrame = { backendSteps, rustUpdateTimeMs: frame.rustUpdateTimeMs };
-        else maxSubsequentRustUpdateTimeMs = Math.max(maxSubsequentRustUpdateTimeMs, frame.rustUpdateTimeMs);
+        else {
+          maxSubsequentRustUpdateTimeMs = Math.max(maxSubsequentRustUpdateTimeMs, frame.rustUpdateTimeMs);
+          warmRustUpdateTimeMs.push(frame.rustUpdateTimeMs);
+          if (backendSteps > 0) warmRustUpdateMsPerStep.push(frame.rustUpdateTimeMs / backendSteps);
+        }
         frames++;steps+=backendSteps;elapsed+=frame.physics.fixedConsumedSeconds;
         maxFrameTimeMs=Math.max(maxFrameTimeMs,frame.frameTimeMs);maxRustUpdateTimeMs=Math.max(maxRustUpdateTimeMs,frame.rustUpdateTimeMs);
         maxJsHeapUsedBytes=Math.max(maxJsHeapUsedBytes,performance.memory?.usedJSHeapSize??0);
@@ -110,9 +116,11 @@ export async function probeNativeGameplayNavigation(page) {
         e.restoreRuntimeCheckpoint(checkpoint);
         for(const expected of trace){e.stepRigidBodies(Math.fround(0.01));if(JSON.stringify(poses())!==JSON.stringify(expected))throw new Error("dense Native checkpoint continuation differs");}
       }finally{checkpoint.dispose();}
-      return {initial,final,goal,stats,frames,steps,firstFrame,maxSubsequentRustUpdateTimeMs,maxVertices,maxWork,maxSearches,minSeparation,maxFrameTimeMs,maxRustUpdateTimeMs,maxJsHeapUsedBytes,maxWasmLinearMemoryBytes,maxRenderTimeMs,maxDrawCalls,maxRenderCommandCount,maxTextureSwitchCount,maxBillboards,maxFixedSteps,maxSolidChecks,maxTileChecks,maxCcdChecks,maxCollisionPairs,elapsed,backend:e.physicsBackend(),state:e.dataSceneState(),checkpointSixStepExact:true,budgetProfile:"physics-sandbox",budget};
+      const p95=values=>{const sorted=[...values].sort((a,b)=>a-b);return sorted.length?sorted[Math.min(sorted.length-1,Math.ceil(sorted.length*0.95)-1)]:0;};
+      const p95RustUpdateTimeMs=p95(warmRustUpdateTimeMs),p95RustUpdateMsPerStep=p95(warmRustUpdateMsPerStep);
+      return {initial,final,goal,stats,frames,steps,firstFrame,maxSubsequentRustUpdateTimeMs,p95RustUpdateTimeMs,p95RustUpdateMsPerStep,warmStepFrames:warmRustUpdateMsPerStep.length,maxVertices,maxWork,maxSearches,minSeparation,maxFrameTimeMs,maxRustUpdateTimeMs,maxJsHeapUsedBytes,maxWasmLinearMemoryBytes,maxRenderTimeMs,maxDrawCalls,maxRenderCommandCount,maxTextureSwitchCount,maxBillboards,maxFixedSteps,maxSolidChecks,maxTileChecks,maxCcdChecks,maxCollisionPairs,elapsed,backend:e.physicsBackend(),state:e.dataSceneState(),checkpointSixStepExact:true,budgetProfile:"native-crowd",budget};
     } finally{clearTimeout(timer);e.destroy();renderer.destroy();canvas.remove();}
-  },{budget:RUNTIME_BUDGET_PROFILES["physics-sandbox"],sampleFrames:DEPLOYMENT_RUNTIME_SAMPLE_FRAMES});
+  },{budget:RUNTIME_BUDGET_PROFILES["native-crowd"],sampleFrames:DEPLOYMENT_RUNTIME_SAMPLE_FRAMES});
   assert.equal(result.backend,"unified-3d");assert.equal(result.state,"playing");assert.equal(result.stats.agents,64);
   assert(result.frames>=DEPLOYMENT_RUNTIME_SAMPLE_FRAMES&&result.steps>0&&result.maxVertices>=64*6,JSON.stringify(result));
   assert(result.minSeparation>=0.49,JSON.stringify(result));
@@ -124,11 +132,15 @@ export async function probeNativeGameplayNavigation(page) {
   }
   assert(totalGoalProgress>64*0.1,JSON.stringify(result));
   assert(result.maxWork<=1_000_000&&result.maxSearches<=1,JSON.stringify(result));
-  const budget=RUNTIME_BUDGET_PROFILES["physics-sandbox"];
+  const budget=RUNTIME_BUDGET_PROFILES["native-crowd"];
   assert(result.maxBillboards>=64,JSON.stringify(result));
   for(const [actual,key] of [[result.maxRenderTimeMs,"maxRenderTimeMs"],[result.maxDrawCalls,"maxDrawCalls"],[result.maxRenderCommandCount,"maxRenderCommandCount"],[result.maxTextureSwitchCount,"maxTextureSwitchCount"],[result.maxFixedSteps,"maxPhysicsFixedSteps"],[result.maxSolidChecks,"maxPhysicsSolidCandidateChecks"],[result.maxTileChecks,"maxPhysicsTileCandidateChecks"],[result.maxCcdChecks,"maxPhysicsCcdChecks"],[result.maxCollisionPairs,"maxCollisionPairCount"]])assert(actual<=budget[key],`${key}: ${JSON.stringify(result)}`);
   assert(result.maxFrameTimeMs<=budget.maxFrameTimeMs,JSON.stringify(result));
   assert(result.maxRustUpdateTimeMs<=budget.maxRustUpdateTimeMs,JSON.stringify(result));
+  // Max-only bounds hide a steady real-time miss; gate the warm p95 as well.
+  assert(result.warmStepFrames>=10,JSON.stringify(result));
+  assert(result.p95RustUpdateTimeMs<=budget.maxRustUpdateTimeMsP95,`p95 Rust update: ${JSON.stringify(result)}`);
+  assert(result.p95RustUpdateMsPerStep<=budget.maxRustUpdateMsPerNativeStepP95,`p95 Rust update per native step: ${JSON.stringify(result)}`);
   if(result.maxJsHeapUsedBytes>0)assert(result.maxJsHeapUsedBytes<=budget.maxJsHeapUsedBytes,JSON.stringify(result));
   assert(result.checkpointSixStepExact);
   return result;

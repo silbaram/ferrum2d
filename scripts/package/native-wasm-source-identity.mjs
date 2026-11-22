@@ -13,6 +13,19 @@ const fixedInputs = [
 const sourceDirectories = ["src", "vendor/rapier3d/src", "vendor/parry3d/src"];
 const targetMetadata = ["wasm32-unknown-unknown", "32", "little"];
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+// Mirrors build.rs: upstream production modules whose names look like tests.
+export const PRODUCTION_SOURCES_NAMED_LIKE_TESTS = Object.freeze([
+  "vendor/rapier3d/src/dynamics/soft_body/soft_body_crossing_tests.rs",
+]);
+/** Host-independent key with `/` separators, as build.rs hashes it. */
+export const portableSourcePath = name => name.split(path.sep).join("/");
+/** `tests.rs`, `*_tests.rs` and their submodules are cfg(test) only. */
+export function isTestOnlySource(relative) {
+  return !PRODUCTION_SOURCES_NAMED_LIKE_TESTS.includes(relative) && relative.split("/").some(part => {
+    const stem = part.endsWith(".rs") ? part.slice(0, -3) : part;
+    return stem === "tests" || stem.endsWith("_tests");
+  });
+}
 
 // Rust PathBuf::Ord compares components. Sorting whole path strings instead
 // would put engine.rs before engine/audio.rs and disagree with build.rs.
@@ -33,7 +46,9 @@ export async function computeNativeWasmSourceIdentity(root) {
     for (const entry of await readdir(path.join(core, relative), { withFileTypes: true })) {
       const name = path.join(relative, entry.name);
       if (entry.isDirectory()) await collect(name);
-      else if (entry.isFile() && path.extname(name) === ".rs") files.push(name);
+      else if (entry.isFile() && path.extname(name) === ".rs" && !isTestOnlySource(portableSourcePath(name))) {
+        files.push(name);
+      }
     }
   }
   for (const directory of sourceDirectories) await collect(path.normalize(directory));
@@ -45,7 +60,7 @@ export async function computeNativeWasmSourceIdentity(root) {
     for (const byte of bytes) value = BigInt.asUintN(64, (value ^ BigInt(byte)) * 0x100000001b3n);
   };
   for (const [name, bytes] of inputs) {
-    const key = Buffer.from(name), lengths = Buffer.alloc(8);
+    const key = Buffer.from(portableSourcePath(name)), lengths = Buffer.alloc(8);
     lengths.writeUInt32LE(key.length, 0); lengths.writeUInt32LE(bytes.length, 4);
     digest.update(lengths); digest.update(key); digest.update(bytes);
     update(key); update([0]); update(bytes); update([0]);

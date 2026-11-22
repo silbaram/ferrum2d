@@ -1,11 +1,15 @@
 import { equal, notEqual, rejects, throws } from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
-  computeNativeWasmSourceIdentity, readNativeFileBuildIdentity,
+  computeNativeWasmSourceIdentity, isTestOnlySource, PRODUCTION_SOURCES_NAMED_LIKE_TESTS,
+  readNativeFileBuildIdentity,
 } from "../../scripts/package/native-wasm-source-identity.mjs";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const fixed = [
   "build.rs", "Cargo.toml", "Cargo.lock",
@@ -34,8 +38,73 @@ test("source fingerprint follows the genuine Rust collector's path order and ign
   equal(first.fingerprint, second.fingerprint);
   equal(first.sourceInputsSha256, second.sourceInputsSha256);
   // This constant was emitted by compiling/running the actual build.rs on this
-  // synthetic tree. Rust's existing fingerprint uses the host path separator.
-  if (path.sep === "/") equal(first.fingerprint, "d7fe071a4dfca5d8");
+  // synthetic tree. Keys use `/` on every host, so Windows builds match.
+  equal(first.fingerprint, "d7fe071a4dfca5d8");
+});
+
+test("cfg(test)-only sources are outside the fingerprint, production look-alikes are inside", async t => {
+  const root = await fixture(t), core = path.join(root, "crates/ferrum-core");
+  const original = await computeNativeWasmSourceIdentity(root);
+  for (const name of ["src/engine_tests.rs", "src/engine/tests.rs", "src/engine/tests/deep.rs",
+    "vendor/rapier3d/src/geometry/narrow_phase/validation/tests.rs"]) {
+    const file = path.join(core, name);
+    await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, "#[test] fn t() {}\n");
+    equal((await computeNativeWasmSourceIdentity(root)).fingerprint, original.fingerprint, name);
+    await rm(file);
+  }
+  const lookAlike = path.join(core, PRODUCTION_SOURCES_NAMED_LIKE_TESTS[0]);
+  await mkdir(path.dirname(lookAlike), { recursive: true }); await writeFile(lookAlike, "pub fn crossing() {}\n");
+  notEqual((await computeNativeWasmSourceIdentity(root)).fingerprint, original.fingerprint);
+});
+
+// Each excluded top test module must be declared behind #[cfg(test)] (directly,
+// via #[path], or as cfg(all(test, ...))). A new production module with a
+// test-like name fails here until it is added to the build.rs/mirror exception.
+test("every excluded Core and vendor source is a cfg(test) module", async () => {
+  const core = path.join(repoRoot, "crates/ferrum-core");
+  const files = [];
+  async function walk(relative) {
+    for (const entry of await readdir(path.join(core, relative), { withFileTypes: true })) {
+      const name = path.posix.join(relative, entry.name);
+      if (entry.isDirectory()) await walk(name);
+      else if (entry.name.endsWith(".rs")) files.push(name);
+    }
+  }
+  for (const root of ["src", "vendor/rapier3d/src", "vendor/parry3d/src"]) await walk(root);
+  const sources = new Map(await Promise.all(files.map(async name => [name, await readFile(path.join(core, name), "utf8")])));
+  const testName = part => { const stem = part.replace(/\.rs$/, ""); return stem === "tests" || stem.endsWith("_tests"); };
+  const cfgTest = attributes => /#\[cfg\(\s*(test\b|all\(\s*test\b)/.test(attributes);
+  const declared = top => {
+    for (const [name, text] of sources) {
+      const lines = text.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const module = lines[i].match(/^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;/);
+        if (!module) continue;
+        let k = i - 1, attributes = "";
+        while (k >= 0 && /^\s*(#\[|\)\)\]|feature|test,|\/\/)/.test(lines[k])) attributes = lines[k--] + attributes;
+        const pathAttribute = attributes.match(/#\[path\s*=\s*"([^"]+)"\]/);
+        const parent = name.endsWith("/mod.rs") || name.endsWith("/lib.rs") ? path.posix.dirname(name) : name.replace(/\.rs$/, "");
+        const targets = pathAttribute
+          ? [path.posix.join(path.posix.dirname(name), pathAttribute[1])]
+          : [path.posix.join(parent, module[1]), `${path.posix.join(parent, module[1])}.rs`, path.posix.join(parent, module[1], "mod.rs")];
+        if (targets.includes(top)) return cfgTest(attributes);
+      }
+    }
+    return false;
+  };
+  let excluded = 0;
+  const checked = new Set();
+  for (const name of files) {
+    if (!isTestOnlySource(name)) continue;
+    excluded++;
+    const parts = name.split("/"), index = parts.findIndex(testName);
+    const top = parts.slice(0, index + 1).join("/");
+    if (checked.has(top)) continue;
+    checked.add(top);
+    equal(declared(top), true, `${top} is excluded but not declared under #[cfg(test)]`);
+  }
+  equal(excluded > 100, true);
+  for (const name of PRODUCTION_SOURCES_NAMED_LIKE_TESTS) equal(sources.has(name), true, name);
 });
 
 test("Core, both vendors, lock and patch inputs plus added/removed Rust files invalidate reuse", async t => {

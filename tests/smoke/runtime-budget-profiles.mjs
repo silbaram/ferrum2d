@@ -146,6 +146,28 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxAssetLoadElapsedMs: 150,
     maxJsHeapUsedBytes: 768 * 1024 * 1024,
   }),
+  // 64-agent dense Native crowd. Max bounds tolerate a cold first frame; the
+  // warm p95 bounds are a regression guard at ~1.4-1.5x the 2026-11-22 local
+  // Chromium measurement (66-72 ms per 5-step frame, 13.2-14.4 ms per step).
+  // That measurement misses real time; these bounds do not certify 60 fps.
+  "native-crowd": freezeBudget({
+    maxFrameTimeMs: 250,
+    maxRustUpdateTimeMs: 125,
+    maxRustUpdateTimeMsP95: 100,
+    maxRustUpdateMsPerNativeStepP95: 20,
+    maxRenderTimeMs: 125,
+    maxDrawCalls: 32,
+    maxRenderCommandCount: 256,
+    maxTextureSwitchCount: 48,
+    maxPhysicsFixedSteps: 16,
+    maxPhysicsSolidCandidateChecks: 25_000,
+    maxPhysicsTileCandidateChecks: 25_000,
+    maxPhysicsCcdChecks: 1_000,
+    maxPhysicsDebugLineCount: 512,
+    maxCollisionPairCount: 5_000,
+    maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 768 * 1024 * 1024,
+  }),
 });
 
 export const BROWSER_SMOKE_BUDGET_PROFILE_BY_MODE = Object.freeze({
@@ -181,7 +203,7 @@ const BUDGET_FIELDS = Object.freeze([
   "maxJsHeapUsedBytes",
 ]);
 
-const OPTIONAL_BUDGET_FIELDS = Object.freeze(["maxSpatialBloomDrawCalls","maxSpatialBloomTextureBytes","maxSpatialBloomTexelFetchBudget","maxPointShadowGeometryUploadBytes", "maxPointShadowGeometryVertexCount"]);
+const OPTIONAL_BUDGET_FIELDS = Object.freeze(["maxRustUpdateTimeMsP95","maxRustUpdateMsPerNativeStepP95","maxSpatialBloomDrawCalls","maxSpatialBloomTextureBytes","maxSpatialBloomTexelFetchBudget","maxPointShadowGeometryUploadBytes", "maxPointShadowGeometryVertexCount"]);
 
 export function runtimeBudgetProfile(profileId) {
   const profile = RUNTIME_BUDGET_PROFILES[profileId];
