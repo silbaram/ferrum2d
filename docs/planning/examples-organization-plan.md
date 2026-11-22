@@ -68,9 +68,12 @@ AGENTS.md의 "구조 변경은 문서 합의 먼저" 규칙에 따라 범위와 
   운동 승인을 고쳐 반영했다.
 - 물리 실험실의 강체·충돌체·접촉·관절 시나리오가 약 2초 뒤 `CapacityExceeded`로 멈춘다(#107부터). 별도
   worktree에서 수정 중이다.
-- `physics`를 생략한 HD-2D 장면의 heightSpan 주인공을 엔진 기본 native world가 거부한다. 문서는 이 경로를
-  기존 방식으로 유지한다고 약속한다. HD-2D 이동·AI 전투 실험과 `data-scene-native/spatial.mjs` 레시피가
-  시작하지 못한다. 문서 계약대로 엔진을 고치는 중이다.
+- `physics`를 생략한 HD-2D 장면의 heightSpan 주인공을 엔진 기본 native world가 거부했다. HD-2D 이동·AI 전투
+  실험과 `data-scene-native/spatial.mjs` 레시피가 시작하지 못했다. 내장 장면에서 처음 전환하고 기본 물리 설정이
+  그대로면 호환 물리로 실행하도록 고쳐 반영했다. 이미 native world로 실행 중인 Data Scene에 이런 문서를 다시
+  적용하는 경우(예: Studio 같은 Engine의 편집→게임 재적용)는 여전히 거부하며, 실행한 world를 버릴지는 제품 결정이 필요하다.
+- 통합 물리에서 `configureAutoRigidBodyStep({ ... })`가 중력을 바꿔도 `frame.physics` 중력 표시가 그대로였다
+  (지형 파괴 실험 검사). native가 수용한 중력·연속 충돌을 표시하도록 SDK를 고쳤다.
 
 네이티브 게임 파일로 바꾼 저장 실험은 복원한 Engine에 Data Scene 도구를 다시 연결하는 SDK 공개 API가 먼저
 필요하다. 6단계 후보로 따로 진행한다.

@@ -16,6 +16,9 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
   고쳤다.
 - 통합 물리에서 `configureAutoRigidBodyStep({ ... })`가 중력·연속 충돌을 바꿔도 `frame.physics`의 중력·`continuous`
   표시가 이전 값으로 남던 문제를 고쳤다. native가 수용한 값으로 갱신한다.
+- `physics`를 생략한 HD-2D Data Scene의 heightSpan/AABB 주인공과 전투 이동이 옵션 없이 만든 엔진에서 거부되던 문제를
+  고쳤다. 내장 장면에서 처음 전환하고 엔진 기본 물리 설정을 바꾸지 않았다면 문서대로 호환 물리로 실행한다.
+  이미 실행 중인 Data Scene의 native world나 명시한 통합 물리는 바꾸지 않는다.
 
 ## 0.1.0-beta.10 - 2026-11-22
 
