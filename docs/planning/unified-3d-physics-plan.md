@@ -2609,3 +2609,59 @@ Web build·SDK lint/전체1855·actual packed Chromium/runtime package/public ty
 actual 메모리 상한·owner/fence/epoch·Ready·원자적 세션 교체·공개 파일 API는 계속 미완이다. 이번에 전체 Studio/4개
 consumer 기능 matrix를 반복하지 않았으며 마지막 전체 제품 단계1575와 구분한다. 원래9개 범주와 개발 완료 뒤
 실게임·실기기 검증 순서는 유지한다.
+
+### 코드 리뷰 후속 수정 — 2026-11-22
+
+리뷰에서 확인한 결함을 수정했다.
+
+- 저장 파일 복원: `validate_snapshot_state`가 살아 있는 collider 형상과 local pose에 공개 생성 범위를 다시 적용한다.
+  half-extent 하나를 1e30으로 바꾼 파일이 `prepare`를 통과한 뒤 첫 update에서 Parry EPA를 중단시키던 문제다.
+  vendored Rapier 저장 검증은 solver hint의 manifold 수와 재사용 graph의 선택 가능 여부를 교차 검증한다.
+- 프레임 오류: checked frame/manual step은 clock·준비·commit 실패로 native step을 건너뛴 경우도 `Err`로 반환한다.
+- 거부된 tick: legacy force/impulse/sleep 입력을 physics3d의 tick 시작에서 rollback journal 뒤에 적용한다.
+  변하지 않은 planar span이 body를 modified set에 넣던 setter도 고쳐 PlanarXy 거부 전후 checkpoint bytes가 같다.
+  Data Scene의 pre-physics gameplay(tween·scene update)는 재시도 때 반복하지 않고 물리 단계부터 재개한다.
+- 가변 시간 접촉 보정은 fixture 생성 frame 대신 world의 nominal step으로 계산한다.
+- 일괄 query는 contact query와 같은 scene 계약을 따르고, 모든 행을 검증한 뒤 상태를 바꾼다.
+- 옵션 없는 기본 auto-step과 수동 `stepRigidBodies`의 같은 frame 이중 실행은 Rust 회귀로 재현했다.
+  `auto_rigid_body_step_active`와 SDK의 1회 콘솔 경고, 문서로 알린다. 동작 자체는 바꾸지 않았다.
+- vendored 패치 문서의 파일 수와 BVH `pending_set_aabb` 순서, 마찰 풀이의 비트 동일성 설명을 고쳤다.
+  수정 고지가 없던 Rapier 23개·Parry 17개 파일에 고지를 넣었다.
+- 빌드 지문은 `/` 경로와 `cfg(test)` 전용 파일 제외로 계산한다. Wasm 12MiB 크기 예산, 64명 군중의 warm p95 예산,
+  수동 CI의 `smoke:physics-sdk-integration`을 추가했다.
+
+성능 1단계(같은 날): 64명 군중을 Chromium CPU profile로 측정한 결과 캐릭터 접촉 해결이 약 60%, 군중 회피
+준비가 약 29%, glam 경유 소프트웨어 `libm::sqrtf`가 전체의 약 21%였다. stable wasm32의 libm은 nightly 기능 없이는
+하드웨어 제곱근을 쓰지 않는다. libm 0.2.16을 vendor해 0 이상 입력만 `std` 제곱근으로 보내고 inline했다. 전체 f32 2^32개와
+f64 표본 2억 개에서 원본과 결과 비트가 같고, 405스텝 군중 해시도 그대로다. warm p95는 프레임 66~72ms→53.2~54.0ms,
+스텝당 13.2~14.4ms→10.6~10.8ms로 줄었다(Wasm 10.31MB→10.53MB). 성능 2단계: 캐릭터 쌍 검사는 이미 선분 공식이고, 실제 비용은 매 사건 반복의 캐릭터–바닥 GJK(약 30%)와
+군중 회피 cast(약 18%)였다. `first_hit`에서 직선 운동하는 캐릭터 쌍의 축 선분 거리로 접촉 시각 하한을 구해,
+이번 tick 밖이거나 현재 첫 충돌보다 늦으면 GJK 없이 건너뛴다. 원래 평가가 셀 contact/cast 카운터는 그대로 센다.
+6만 건 무작위 검사에서 건너뛴 쌍은 접촉이 없고 하한보다 이른 cast hit도 없었다. 같은 프레임 시간열 6개에서
+적용 전후 64명 최종 상태가 비트 단위로 같고, 405스텝 해시도 같다. 교대 측정 중앙값은 프레임 p95 54.0~54.9ms→
+51.5~52.8ms(약 4~6%)다. 실제 RAF probe의 목표 진행 단정은 프레임 시간 분포에 따라 드물게 실패할 수 있다.
+
+성능 3단계(C1): 군중 회피(`character_crowd_clear_masked`)의 캡슐 shape cast를 정확한 swept 선분 거리로 바꿨다.
+단위 정육면체 위 볼록 이차식의 최솟값을 내부 해 또는 6개 면의 선분–선분 거리로 구한다. 2만 건 무작위 검사에서
+조밀 표본과 모두 일치했고, Parry cast가 실제 교차를 놓친 2건만 판정이 달라졌다. 결과값이 바뀌어 64명 405스텝
+기준 해시를 `da6e9fd4…`로 갱신했다(목표 진행 합 97.48→96.24, 최소 간격 동일, 위치 차이 중앙값 5.5cm).
+warm p95는 프레임 41.8~43.9ms, 스텝당 8.4~9.0ms다.
+
+접촉 해결 cast 확인: 접촉 해결(`first_hit`)의 캐릭터 쌍 cast는 시작 간격이 skin×1.01보다 클 때만
+`target_distance = skin`으로 호출된다. 이 설정을 정확한 swept 거리와 대조한 약 21만 건에서 실제 교차를 놓친 경우는
+없었다(겹침 없는 허용 오차 수준 1건). 늦게 보고된 접촉 시각의 실제 겹침은 최대 약 4.5mm다. 터널링이 없으므로 코드는
+바꾸지 않고 회귀 테스트(`character_contacts/pair_cast_tests.rs`)만 추가했다. C1의 누락은 회피 쪽 설정(0 margin,
+관통 시 중단)에서만 나타났다.
+
+성능 4단계(C2): 접촉 해결의 캐릭터–장애물 접촉(`first_hit`, `refresh`)에서 캡슐이 상자 한 면 평면 밖에 있고
+발자국이 그 면 안쪽에 엄격히 들어오면 면 방향 support 거리로 정확한 접촉을 만든다. 모서리·관통·그 밖의 형상은
+Parry 일반 query를 그대로 쓴다. 4만 건 대조(직접 접촉 6,737건, 확실한 미접촉 8,410건)에서 표본 정답과 일치했고
+Parry가 놓친 접촉은 없었다. 면 법선 보정 뒤 바닥 법선은 모두 같았고, 회전한 얇은 판 2건만 1e-5 미만으로 달랐다. 차이는 큰 바닥(60×40)에서 Parry GJK가 prediction보다 최대 약 7.6mm 먼 접촉을 반환하는 경우뿐이다.
+멀리 있는 상자 모서리가 support 방향을 지배해 하한이 느슨하게 남고, 정체 종료가 prediction을 확인하지 않는다.
+64명 405스텝 기준 해시는 그대로다. 고정 50ms 입력의 warm p95는 프레임 28.3~28.9ms, 스텝당 5.66~5.78ms(일반
+브라우저 프레임은 스텝당 6.75~7.3ms)이고, `native-crowd` p95 예산을 43ms·11ms로 낮췄다. 실제 RAF profile의
+Rust 업데이트는 3,401ms→2,407ms, 바닥 접촉 계산은 1,228ms→93ms다. 남은 큰 항목은 접촉 해결 사건 반복(927ms),
+군중 회피 준비(766ms, 회피 판정 433ms 포함), Rapier 강체 단계(467ms)다.
+
+남은 후속: 저장된 body `ccd_thickness`의 교차 검증(손상 시 CCD 미작동, crash 아님), 파일 clock 설정 하한과
+decode 예산/namespace 크기 차이, 형상 쌍별 CCD 커널 구조의 일반화.

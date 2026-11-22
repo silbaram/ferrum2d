@@ -792,7 +792,7 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 | `configureAutoRigidBodyStep(...)` | native의 boolean은 기존 solver 설정을 유지한 채 실행만 켜고 끈다. 객체 입력은 설정도 적용한다. |
 | `spawnRigidBody(...)` | 낮은 빈도 rigid body 생성용 imperative API다. |
 | `despawnPhysicsEntity(...)` | body와 그 body를 endpoint로 참조하는 모든 joint를 함께 제거하고 기존 joint handle을 무효화한다. |
-| `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. |
+| `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. 옵션 없이 만든 엔진은 native 기본 정책으로 자동 실행이 켜져 있다. loop 실행 중 자동 실행이 활성이면 같은 frame에 solver가 두 번 돌므로 `configureAutoRigidBodyStep(false)`나 scene 일시 정지 뒤 사용한다. 이 조합을 처음 감지하면 콘솔 경고를 한 번 출력한다. |
 | body/tile query | nearest, overlap, raycast, segment cast, shape cast query를 제공한다. |
 
 Physics authoring 세부 계약은 [Physics Spec](../physics-spec.md)을 기준으로 한다.
@@ -1205,6 +1205,9 @@ engine.clearUnifiedPhysicsForces(bodyHandles);
 입력은 재사용할 수 있으며, 반복 조회에서 `batch.values`의 좌표를 변경할 때는
 `UNIFIED_PHYSICS_QUERY_LAYOUT.inputStride`(13)와 `inputPosition/inputMotion` 등의 offset을 사용한다.
 형상 자체를 바꾸면 builder로 batch를 다시 만든다. TS는 조회 결과를 계산하거나 entity별 Wasm 호출을 하지 않는다.
+contact/collision 조회와 같은 scene 계약을 따른다. Data Scene과 native PlanarXy 기본 world를 쓰는 built-in Scene에서
+사용할 수 있다. 모든 행의 형상과 제외 entity를 먼저 검증한 뒤 대기 중인 component를 반영하므로, 뒤쪽 행이
+잘못된 batch는 상태를 바꾸지 않고 거부된다.
 
 | `type` | 입력 | 반환 `value`와 geometry |
 | --- | --- | --- |
@@ -1404,6 +1407,12 @@ step은 마지막 완료 물리 구간이다. frame은 현재 Engine frame의 �
 `stepRigidBodies`가 첫 물리 구간을 승인하기 전에 예외가 발생하면 직전 완료 틱의 `step` 진단과
 충돌 관측을 다시 읽을 수 있다. 오류 메시지의 `committed seconds`는 해당 호출에서 이미 진행한
 물리 시간이다.
+clock 입력(음수·NaN·0.1ms 미만 양수 등), native 준비·commit 실패(Transform 없는 collider, 범위를 넘는
+legacy force, capacity 초과 등)로 그 frame의 native step을 건너뛴 경우에도 frame update와 `stepRigidBodies`는
+`native physics step skipped` 오류를 던진다. 조회·gameplay 보조 진단은 계속 진행 가능한 기록으로 남는다.
+진행 0초로 거부된 tick은 legacy force/impulse/sleep 입력을 native rollback 안에서 되돌린다. Data Scene에서
+같은 tick의 tween과 scene update는 이미 실행됐으므로 다음 시도는 물리 단계부터 재개하며, 1회성 입력은
+재개된 tick의 물리 이후 gameplay에 한 번만 전달된다.
 `UNIFIED_PHYSICS_COUNTER_LAYOUT`은 native 32-word 순서를 제공한다. 기존 solver의 row operation·warm start·
 block solve 횟수는 이 값으로 추정하지 않으며 지원된 native 측정으로 표시하지 않는다.
 

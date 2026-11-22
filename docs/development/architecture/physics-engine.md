@@ -184,7 +184,9 @@ Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증�
   dispose 후 사용은 거부한다. native JSON/file 저장, 외부 JS/asset/GPU/authoring context 복원과
   미래 handle의 자동 epoch 검사는 별도 계약이며 전체 저장/기본 backend 이전 작업은 계속 진행한다.
 - 공개 Web runtime의 외부 물리 backend 전환: 진행 중. `physics3d` Rust 모듈에 Rapier3D 0.36.1을 도입하고
-  기존 geometry 의존성 Parry3D 0.31.1도 같은 버전의 vendored source로 고정했다. BVH·height grid·
+  기존 geometry 의존성 Parry3D 0.31.1도 같은 버전의 vendored source로 고정했다. glam이 쓰는 libm 0.2.16도
+  vendored source로 고정해 stable wasm32의 제곱근을 하드웨어 명령으로 계산한다(결과 비트 동일). 캐릭터 접촉 해결은
+  캡슐이 상자 한 면 안쪽 위에 있으면 정확한 면 거리로, 모서리·관통은 Parry GJK로 계산한다. BVH·height grid·
   sparse map의 Deserialize 불변식을 검사하며, 전체 BVH rebuild가 retired leaf를 되살리는 오류를 수정했다.
   native Data Scene body와 기존 2D body/fixture의 planar adapter는 Engine fixed tick·entity·렌더 보간에 연결했다.
   기존 질량·관성·force/impulse와 실행 중 component 변경을 반영하며, 네 가지 접촉 보정 material scale과

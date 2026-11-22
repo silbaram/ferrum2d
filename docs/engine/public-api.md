@@ -144,7 +144,7 @@ raw Wasm setter와 generated wasm-bindgen files는 public API가 아니다. cons
 변경한다.
 
 개발 소스의 `FerrumUnifiedPhysicsApi`, `UnifiedPhysicsOptions`, `UnifiedPhysicsBodyStateBufferView`,
-`UNIFIED_PHYSICS_STATE_LAYOUT`는 core/root에서 제공한다. 월드 설정과 native 상태/속도 batch를 연결하며,
+`UNIFIED_PHYSICS_STATE_LAYOUT`는 `@ferrum2d/ferrum-web/core`에서 제공한다(root entrypoint는 통합 물리 타입을 export하지 않는다). 월드 설정과 native 상태/속도 batch를 연결하며,
 `FerrumUnifiedPhysicsControlApi`, `UnifiedPhysicsBodySettings`, `UnifiedPhysicsMassProperties`는 실행 중
 물체 설정·질량과 collider 추가/교체/삭제를 제공한다. imported component 소유권과 native controller 제한을 유지한다.
 `FerrumUnifiedPhysicsJointApi`와 `UNIFIED_PHYSICS_JOINT_LAYOUT`은 13종 관절 생성/수정/삭제와
@@ -154,7 +154,7 @@ raw Wasm setter와 generated wasm-bindgen files는 public API가 아니다. cons
 콜라이더 단위 접촉·센서 enter/exit와 전체 active snapshot을 연결한다. entity 없는 지형과 삭제 세대를
 보존하며, 이벤트 큐 넘침은 native/consumer 누락 수를 각각 제공한다.
 `UnifiedPhysicsBodyOptions`/`UnifiedPhysicsShape`의 명시적 공간 생성과
-`UnifiedPhysicsCharacterOptions`/`UNIFIED_PHYSICS_CHARACTER_LAYOUT`의 controller 입력·상태도 core/root에서 제공한다.
+`UnifiedPhysicsCharacterOptions`/`UNIFIED_PHYSICS_CHARACTER_LAYOUT`의 controller 입력·상태도 `@ferrum2d/ferrum-web/core`에서 제공한다.
 `FerrumUnifiedPhysicsCommandApi`는 pose/kinematic target·force/torque·impulse·clear·sleep/wake의 일괄 제어를 제공한다.
 `createUnifiedPhysicsQueryBatch`/`FerrumUnifiedPhysicsQueryApi`는 공간 ray·point/convex overlap·sweep·nearest 조회와
 19-word 결과/3-word summary를 제공한다. 핸들·필터·재사용 버퍼는 `UNIFIED_PHYSICS_QUERY_LAYOUT` 계약을 따른다.
