@@ -139,6 +139,8 @@ interface PhysicsSandboxSmokeFrame {
   manifoldCount: number;
   impulseCount: number;
   queryHitCount: number;
+  /** Message of the native step error that stopped the current world, if any. */
+  physicsStepError?: string;
 }
 
 type SandboxStatus = "loading" | "running" | "paused" | "step" | "error";
@@ -922,6 +924,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
   let paused = false;
   let stepQueued = false;
   let frameCount = 0;
+  let physicsStepError: string | undefined;
   let selectedBodyId: string | undefined;
   let queryTarget: Point2 | undefined = queryTargetFromScenario(initialScenario);
   const debugGizmoWriter = new DebugGizmoLineBufferWriter();
@@ -1047,6 +1050,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       shell.setWarnings(currentWorld.warnings);
       shell.setEvents([]);
       shell.setSelectedBody(undefined);
+      physicsStepError = undefined;
       paused = false;
       shell.setPaused(false);
       shell.setStatus("running");
@@ -1137,10 +1141,20 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       frameCount += 1;
       const consumedStep = stepQueued;
       if (currentWorld && (!paused || stepQueued)) {
-        runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
-        stepQueued = false;
-        if (consumedStep && paused) {
-          shell.setStatus("paused");
+        try {
+          runtime?.engine.stepRigidBodies(currentWorld.stepSeconds, currentWorld.stepOptions);
+          stepQueued = false;
+          if (consumedStep && paused) {
+            shell.setStatus("paused");
+          }
+        } catch (error) {
+          // A rejected native step stops this world. Show the error instead of a stale
+          // "running" state; reset or another scenario rebuilds the world.
+          paused = true;
+          stepQueued = false;
+          shell.setPaused(true);
+          shell.setError(error);
+          physicsStepError = error instanceof Error ? error.message : String(error);
         }
       }
 
@@ -1205,6 +1219,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
         manifoldCount: metrics.manifoldCount,
         impulseCount: metrics.impulseCount,
         queryHitCount: metrics.queryHitCount,
+        ...(physicsStepError === undefined ? {} : { physicsStepError }),
       };
     },
   });

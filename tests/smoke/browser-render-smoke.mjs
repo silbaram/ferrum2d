@@ -118,6 +118,11 @@ const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-studio-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
+// The unified backend cannot yet certify rotating box contacts in these scenarios; the lab
+// shows the error. Tracked in docs/planning/unified-3d-physics-plan.md. Remove on fix.
+const PHYSICS_SANDBOX_KNOWN_STEP_ERRORS = new Set(["rigid-materials", "collider-gallery", "contacts-sensors", "joints-lab"]);
+const PHYSICS_SANDBOX_SUSTAINED_FRAMES = 300;
+
 const PHYSICS_DEMO_SUITE = [
   "rigid-materials",
   "collider-gallery",
@@ -4683,6 +4688,27 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
   );
 
   const viewportCheck = demoId === "rigid-materials" ? await smokePhysicsLabViewport(page, timeoutMs) : undefined;
+  // Native step errors stop a world after the first frames, so run long enough to catch them.
+  const startFrame = await page.evaluate(() => globalThis.ferrumPhysicsSandboxSmokeFrame.frameCount);
+  await waitForPageFunction(
+    page,
+    `Physics sandbox did not keep rendering ${demoId}`,
+    (target) => globalThis.ferrumPhysicsSandboxSmokeFrame.frameCount >= target,
+    timeoutMs,
+    startFrame + PHYSICS_SANDBOX_SUSTAINED_FRAMES,
+  );
+  const sustained = await page.evaluate(() => ({
+    stepError: globalThis.ferrumPhysicsSandboxSmokeFrame.physicsStepError,
+    badge: document.querySelector("[data-status]")?.dataset.status,
+  }));
+  if (PHYSICS_SANDBOX_KNOWN_STEP_ERRORS.has(demoId)) {
+    if (sustained.stepError !== undefined && sustained.badge !== "error") {
+      throw new Error(`Physics scenario ${demoId} stopped without showing the error: ${sustained.stepError}`);
+    }
+  } else if (sustained.stepError !== undefined) {
+    throw new Error(`Physics scenario ${demoId} stopped its world: ${sustained.stepError}`);
+  }
+
   return { ...(viewportCheck ? { physicsViewport: viewportCheck } : {}), ...await page.evaluate(() => ({
     physicsSandbox: globalThis.ferrumPhysicsSandboxSmokeFrame,
   })) };

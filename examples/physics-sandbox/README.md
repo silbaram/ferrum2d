@@ -10,6 +10,7 @@ Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collid
 - 레터박스·배율·작은 창에서 `createDataSceneView(...)`로 포인터를 같은 월드 좌표로 변환한다. 본 물체를 클릭하면 해당 native body를 선택한다.
 - 물체 형상은 native 충돌체 선으로 표시한다. 충돌체 표시를 끄면 형상선이 숨겨지며, label과 UI는 유지된다.
 - 이 실험실은 빈 Data Scene을 paused로 두고 `stepRigidBodies(...)`로 물리만 직접 진행한다. 일시정지는 물체를 멈추고, 한 프레임은 solver를 한 번 호출한다. UI/frame loop는 계속 실행한다.
+- native step이 거절되면 world를 일시정지하고 상태를 "오류"로 바꿔 원인을 표시한다. 리셋이나 다른 시나리오가 world를 다시 만든다. 현재 강체·충돌체·접촉·관절 시나리오는 회전 상자 접촉의 운동 증명 한계로 1~2초 안에 멈춘다([통합 3D 물리 계획](../../docs/planning/unified-3d-physics-plan.md#미해결-회전-상자-접촉의-운동-증명-2026-11-22)).
 - `조회 물체`와 기존 smoke 필드 `visibleBodyCount`는 조회한 body 상태 수다. 화면 안에 실제 포함된 물체 수를 뜻하지 않는다. 카메라·선택·정지·단일 스텝은 별도 브라우저 검증으로 확인한다.
 
 ## 확인 기술
