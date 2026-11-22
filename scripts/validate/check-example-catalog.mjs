@@ -9,7 +9,10 @@ export function loadExampleCatalog(root = process.cwd()) {
   const features = read('examples/shared/featureCatalog.json');
   const topics = read('examples/shared/featureTopics.json');
   const physics = read('examples/shared/physicsExamples.json');
-  const scenarioIds = new Set(read('examples/physics-sandbox/public/catalog.json').scenarios.map(item => item.id));
+  const scenarios = read('examples/physics-sandbox/public/catalog.json').scenarios;
+  const scenarioIds = new Set(scenarios.map(item => item.id));
+  // Scenario display names live only in physicsExamples.json; both apps read them from there.
+  for (const item of scenarios) assert(!('titleKo' in item), `Physics scenario ${item.id} must take its name from physicsExamples.json`);
   assert.equal(new Set(topics.map(item => item.id)).size, topics.length, 'Duplicate topic');
   assert.equal(new Set(physics.map(item => item.id)).size, physics.length, 'Duplicate physics link');
   assert.equal(physics.length, scenarioIds.size, 'Every physics scenario needs a topic entry');

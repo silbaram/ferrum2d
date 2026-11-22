@@ -36,6 +36,7 @@ import {
 import "./styles.css";
 import { createExampleHeader } from "../../shared/exampleHeader";
 import { createExampleLifetime } from "../../shared/exampleLifetime";
+import sharedScenarios from "../../shared/physicsExamples.json";
 
 interface PhysicsShowcaseCatalog {
   version: 1;
@@ -45,7 +46,6 @@ interface PhysicsShowcaseCatalog {
 interface PhysicsScenarioEntry {
   id: string;
   title: string;
-  titleKo?: string;
   category: string;
   categoryKo?: string;
   summary: string;
@@ -1153,6 +1153,7 @@ async function initializeSandbox(lifetime: ReturnType<typeof createExampleLifeti
       if (runtime && currentWorld && currentSpec) {
         updateSleepingWorldTexts(
           runtime.engine,
+          currentScenario,
           currentSpec,
           currentWorld,
           currentFramePhysicsState,
@@ -1364,7 +1365,7 @@ function syncScenarioWorldTexts(
         fontId: DEBUG_FONT_ID,
         text: debugBodyLabel(scenario, body, isSelected),
         x: 0,
-        y: -36,
+        y: debugBodyLabelOffsetY(scenario, body),
         scale: 0.75,
         color: debugBodyLabelColor(body, isSelected),
         alignment: "center",
@@ -1374,13 +1375,15 @@ function syncScenarioWorldTexts(
     }
     const state = frameState.bodyStatesById.get(body.id);
     if (debugOptions.sleeping && body.type !== "static" && body.canSleep && state) {
-      setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
+      setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels,
+        debugStatusLabelOffsetY(scenario, body));
     }
   }
 }
 
 function updateSleepingWorldTexts(
   engine: FerrumEngine,
+  scenario: PhysicsScenarioEntry | undefined,
   spec: ResolvedPhysicsSpec,
   world: PhysicsWorldApplyResult,
   frameState: FramePhysicsState,
@@ -1393,7 +1396,8 @@ function updateSleepingWorldTexts(
     const handle = world.bodies[body.id];
     const state = frameState.bodyStatesById.get(body.id);
     if (!handle || !state) continue;
-    setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
+    setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels,
+      debugStatusLabelOffsetY(scenario, body));
   }
 }
 
@@ -1404,6 +1408,7 @@ function setSleepingWorldText(
   handle: PhysicsEntityHandle,
   state: PhysicsEntitySnapshot,
   sleepingLabels: Map<string, string>,
+  offsetY: number,
 ): void {
   const status = sleepingWorldTextStatus(state);
   if (sleepingLabels.get(bodyId) === status.text) return;
@@ -1411,7 +1416,7 @@ function setSleepingWorldText(
     fontId: DEBUG_FONT_ID,
     text: status.text,
     x: 0,
-    y: 12,
+    y: offsetY,
     scale: 0.65,
     color: status.color,
     alignment: "center",
@@ -1524,6 +1529,20 @@ function bodySortWeight(body: ResolvedPhysicsBodySpec): number {
   return 2;
 }
 
+/** Alternate label heights by focus order; neighbouring focus bodies otherwise overlap. */
+function staggeredFocus(scenario: PhysicsScenarioEntry | undefined, body: ResolvedPhysicsBodySpec): boolean {
+  const order = scenario?.focusBodies?.indexOf(body.id) ?? -1;
+  return order % 2 === 1;
+}
+
+function debugBodyLabelOffsetY(scenario: PhysicsScenarioEntry, body: ResolvedPhysicsBodySpec): number {
+  return staggeredFocus(scenario, body) ? -52 : -36;
+}
+
+function debugStatusLabelOffsetY(scenario: PhysicsScenarioEntry | undefined, body: ResolvedPhysicsBodySpec): number {
+  return staggeredFocus(scenario, body) ? 26 : 12;
+}
+
 function shouldLabelBody(scenario: PhysicsScenarioEntry, body: ResolvedPhysicsBodySpec, selected: boolean): boolean {
   return selected || scenario.focusBodies?.includes(body.id) === true;
 }
@@ -1572,8 +1591,12 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
+// Display names come from the catalog shared with the feature lab's physics topic,
+// so a scenario has one name everywhere. The local catalog keeps specs and details.
+const SHARED_SCENARIO_TITLES: ReadonlyMap<string, string> = new Map(sharedScenarios.map((entry) => [entry.id, entry.title]));
+
 function scenarioTitle(scenario: PhysicsScenarioEntry): string {
-  return scenario.titleKo ? `${scenario.titleKo} (${scenario.title})` : scenario.title;
+  return SHARED_SCENARIO_TITLES.get(scenario.id) ?? scenario.title;
 }
 
 function scenarioSummary(scenario: PhysicsScenarioEntry): string {
@@ -1585,9 +1608,7 @@ function scenarioFocus(scenario: PhysicsScenarioEntry): readonly string[] {
 }
 
 function scenarioOptionLabel(scenario: PhysicsScenarioEntry): string {
-  const category = scenario.categoryKo ?? scenario.category;
-  const title = scenario.titleKo ?? scenario.title;
-  return scenario.titleKo ? `${category} / ${title} (${scenario.title})` : `${category} / ${title}`;
+  return `${scenario.categoryKo ?? scenario.category} / ${scenarioTitle(scenario)}`;
 }
 
 function categoryLabel(category: string, scenarios: readonly PhysicsScenarioEntry[]): string {
