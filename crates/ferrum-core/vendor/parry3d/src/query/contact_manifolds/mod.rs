@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Contact manifolds for persistent collision detection.
 //!
 //! # What are Contact Manifolds?

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Narrow-phase collision detection: contact and intersection pair management
 //! between colliders whose broad-phase AABBs overlap, plus the persistent
 //! solver-facing bookkeeping maintained across steps.

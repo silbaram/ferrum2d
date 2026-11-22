@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::math::{Pose, Real, Vector};
 use crate::query::details;
 use crate::query::details::ShapeCastOptions;

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! The broad-phase update pass: BVH leaf maintenance (refit-free re-inserts,
 //! partial/full refits, deferred optimization scheduling) plus the pair
 //! creation and stale-pair removal bookkeeping.

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Implementation details of the `contact` and `contacts` functions.
 
 pub use self::contact::Contact;

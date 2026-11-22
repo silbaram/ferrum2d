@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Tier-2 global island split: the deferred O(island) union-find fallback that
 //! re-derives a [`PersistentIslands`] island's connected components when the
 //! bounded local search ([`super::local_split`]) could not settle a removal.

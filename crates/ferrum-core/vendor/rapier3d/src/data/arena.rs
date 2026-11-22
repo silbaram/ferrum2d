@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Arena adapted from the generational-arena crate.
 //!
 //! See <https://github.com/fitzgen/generational-arena/blob/master/src/lib.rs>.

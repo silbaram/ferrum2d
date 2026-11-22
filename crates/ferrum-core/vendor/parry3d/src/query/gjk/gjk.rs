@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! The Gilbert-Johnson-Keerthi distance algorithm.
 //!
 //! # What is GJK?

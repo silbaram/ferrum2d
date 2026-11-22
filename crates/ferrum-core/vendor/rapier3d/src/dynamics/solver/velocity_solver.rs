@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use crate::dynamics::solver::solver_body::SolverBodies;
 use crate::dynamics::{MultibodyLinkId, solver::SolverVel};

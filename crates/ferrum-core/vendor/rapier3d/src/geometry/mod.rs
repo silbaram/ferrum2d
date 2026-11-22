@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Structures related to geometry: colliders, shapes, etc.
 
 #[cfg(all(

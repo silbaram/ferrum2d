@@ -3,6 +3,8 @@
 Parry3D 0.31.1 원본은 `UPSTREAM.json`의 crates.io archive SHA-256와 파일별 해시로 고정한다.
 기존 Rapier 의존성의 동일 버전을 local path로 연결하며 새 물리 backend나 production library를 추가하지 않는다.
 Apache-2.0 라이선스와 원본의 개별 저작권·라이선스 고지를 보존한다.
+현재(2026-11-22 확인) 상류 `src`의 Rust 파일 344개 중 30개를 수정했고 Rust 파일 11개를 추가했다.
+수정한 파일은 모두 첫 줄에 Ferrum2D 수정 고지를 둔다. 추가한 파일은 Ferrum2D 원본이다.
 
 - `src/query/ray/ray_ball.rs`: 구 중심에서 시작하는 solid ray의 TOI0에서 0 벡터를 정규화해 NaN 법선을
   반환하던 실제 공개 조회 오류를 수정한다. Capsule ray와 같은 `normalize_or_zero`를 사용하며, 기존 정규화가

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::math::{ComplexField, Real, Vector};
 use crate::query::{Ray, RayCast, RayIntersection};
 use crate::shape::{Ball, FeatureId};

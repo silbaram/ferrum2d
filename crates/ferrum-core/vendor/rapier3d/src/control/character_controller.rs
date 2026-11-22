@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use crate::geometry::{ColliderHandle, ContactManifold, Shape, ShapeCastHit};
 use crate::math::{Pose, Real, Vector};

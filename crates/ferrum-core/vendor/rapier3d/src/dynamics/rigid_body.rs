@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 #[cfg(all(not(feature = "std"), feature = "dim3"))]
 use simba::scalar::ComplexField;

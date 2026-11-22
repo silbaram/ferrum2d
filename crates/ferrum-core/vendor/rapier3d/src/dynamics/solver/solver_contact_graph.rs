@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Persistent solver contact graph: per-color flat arrays of solver contacts,
 //! maintained incrementally by the narrow phase over the contact lifecycle
 //! (qualify/disqualify/color change), so solvers read ready color-grouped lists with

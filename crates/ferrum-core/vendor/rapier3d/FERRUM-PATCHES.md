@@ -13,7 +13,8 @@
   두 3D 접선 마찰 solver가 공유하는 2×2 풀이를 추가한다. 평면 축 잠금으로 rank가 1이 된 경우
   Moore–Penrose pseudoinverse로 허용된 접선 방향만 풀고, rank 0은 impulse 0을 반환한다.
   행렬을 최대 대각 원소로 정규화하고 determinant를 상대 오차로 검사해 단위·질량 배율의 영향을 줄인다.
-  full-rank 행렬은 기존의 coupled inverse 풀이를 유지한다.
+  full-rank 행렬은 기존과 같은 coupled inverse 풀이를 수학적으로 유지하지만, 정규화 후 역행렬을
+  계산하므로 상류 결과와 비트 단위로 같지는 않다. 같은 빌드 안의 결정성은 유지된다.
 
 - `src/geometry/contact_correction.rs`(추가), `src/geometry/mod.rs`,
   `src/geometry/contact_pair.rs`, `src/pipeline/physics_hooks.rs`,
@@ -36,7 +37,9 @@
   접촉점 접근 속도(각속도 포함)가 threshold보다 클 때만 bounce seed를 만든다. 기본 threshold 0은
   기존 동작을 보존하며 hook이나 추가 충돌 query를 필요로 하지 않는다.
 
-상류 원본 324개 중 23개 파일을 수정하고 Rust 파일 1개를 추가했다. 이전 마찰 수정만 있을 때의
+최초 마찰 수정 시점에는 상류 원본 324개 중 23개 파일을 수정하고 Rust 파일 1개를 추가했다.
+현재(2026-11-22 확인) 상류 `src`의 Rust 파일 239개 중 44개를 수정했고 Rust 파일 27개를 추가했다.
+수정한 파일은 모두 첫 줄에 Ferrum2D 수정 고지를 둔다. 추가한 파일은 Ferrum2D 원본이다. 이전 마찰 수정만 있을 때의
 검증은 `artifacts/physics-3d/contact-policy-qa`에 보존하며, 접촉 보정 이후 검증은
 `artifacts/physics-3d/contact-correction-qa`에서 구분한다. 전역 설정 이후 최신 검증은
 `artifacts/physics-3d/solver-settings-qa`에 기록한다.
@@ -417,7 +420,8 @@ total work에 포함된다. Scratch는 누적 requested payload이며 CPU/RSS/�
 
 - `src/geometry/broad_phase_bvh/update.rs`: before a new collider generation can replace a removed generation's Coarena adjacency row, recover that old row into the existing canonical stale-pair pass. Pair/reverse-link deletion still runs in that pass, with no extra removal events for explicitly removed colliders. The extra recovery only runs when the raw collider slot has a different live generation.
 - Fixes normal public remove/add-before-next-step leaving an old-generation pair and one reverse link behind (3 stored pairs versus 5 directed adjacency entries in the minimal source fixture). Stored-reference/cardinality validation remains strict.
-- No persistent field, wire, public API, dependency, shape or BVH geometry change; non-reuse paths retain existing pair/event ordering and stored bytes. Reuse boundary behavior is corrected by removing obsolete generations; the previous inconsistent pair history is not a replay-compatibility target.
+- The `pending_set_aabb` drain now runs after the removal and filter-change loops instead of before them, and it records an updated leaf only while `tree.leaf_node(index)` still exists. A removal or filter change in the same update detaches that leaf; the later insertion then owns the slot's change history. Collider handles still enter `updated_colliders` for stale-pair detection.
+- No persistent field, wire, public API, dependency, shape or BVH geometry change. Apart from the `pending_set_aabb` ordering above, non-reuse paths retain existing pair/event ordering and stored bytes. Reuse boundary behavior is corrected by removing obsolete generations; the previous inconsistent pair history is not a replay-compatibility target.
 
 ## Ferrum2D: 실제 solver 구간 운동 승인
 

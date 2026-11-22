@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Physics pipeline structures.
 
 use crate::alloc_prelude::*;

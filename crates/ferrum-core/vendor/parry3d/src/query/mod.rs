@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Non-persistent geometric queries.
 //!
 //! # General cases

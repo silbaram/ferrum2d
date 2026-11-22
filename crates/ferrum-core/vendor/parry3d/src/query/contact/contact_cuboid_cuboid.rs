@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::math::{Pose, Real};
 use crate::query::{sat, Contact, PointQuery};
 use crate::shape::{Cuboid, SupportMap};

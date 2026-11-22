@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 #[cfg(doc)]
 use super::IntegrationParameters;
 use crate::alloc_prelude::*;
