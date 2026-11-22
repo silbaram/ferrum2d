@@ -4,9 +4,15 @@ import { test } from "node:test";
 import type { Engine } from "../pkg/ferrum_core.js";
 import { createEngine } from "../src/createEngine.js";
 import { applyDataSceneAuthoringDocument } from "../src/authoring.js";
+import { captureGameStateSnapshot, hashGameStateSnapshot, restoreGameStateSnapshot, type GameStateSnapshot } from "../src/gameStateSnapshot.js";
+import { inspectDataSceneAuthoringMetadata } from "../src/dataSceneProgress.js";
+import { usesLegacySpatialActorPath } from "../src/dataSceneRuntimeTarget.js";
+import { createSceneInstanceHandleRegistry } from "../src/sceneInstanceHandles.js";
 import { nativeFileEngineOwner } from "../src/nativeFileEngineOwner.js";
-import { activateLegacySpatialDataScene } from "../src/physicsDefaults.js";
-import type { CreateEngineOptions } from "../src/engineTypes.js";
+import { activateLegacySpatialDataScene, legacySpatialDataSceneAvailable } from "../src/physicsDefaults.js";
+import { resolveSceneAuthoringDocument } from "../src/sceneAuthoringDocument.js";
+import type { CreateEngineOptions, FerrumEngine } from "../src/engineTypes.js";
+import type { SceneCompositionJsonValue } from "../src/sceneComposition.js";
 
 /** Physics-omitted HD-2D documents (hd2d-movement, ai-combat and the
  * data-scene-native spatial recipe) use the heightSpan/AABB actor path. */
@@ -137,20 +143,172 @@ test("explicit unified policy and used native worlds reject the legacy actor and
 });
 
 test("legacy HD-2D activation is limited to the implicit native creation policy", () => {
-  let active = true, legacyCalls = 0, plainCalls = 0, accepted = true;
+  let active = true, legacyCalls = 0, plainCalls = 0, queries = 0, accepted = true;
   const native = {
     physics_spec_backend_active: () => active,
     use_legacy_data_scene: () => { legacyCalls++; if (accepted) active = false; return accepted; },
+    can_use_legacy_data_scene: () => { queries++; return accepted; },
     use_data_scene: () => { plainCalls++; },
   } as unknown as Engine;
   const activate = (options: CreateEngineOptions) => activateLegacySpatialDataScene(native, options);
+  const available = (options: CreateEngineOptions) => legacySpatialDataSceneAvailable(native, options);
+  // The read-only twin applies the same explicit-unified exclusion before Rust.
+  equal(available({ physicsBackend: "unified" }), false); equal(queries, 0);
   equal(activate({ physicsBackend: "unified" }), false); deepEqual([legacyCalls, plainCalls, active], [0, 1, true]);
   accepted = false;
+  equal(available({}), false); equal(queries, 1);
   equal(activate({}), false); deepEqual([legacyCalls, plainCalls, active], [1, 2, true]);
   accepted = true;
+  equal(available({}), true); equal(available({ physicsBackend: "legacy" }), true);
+  // The query never activates anything.
+  deepEqual([queries, legacyCalls, plainCalls, active], [3, 1, 2, true]);
   equal(activate({}), true); deepEqual([legacyCalls, plainCalls, active], [2, 2, false]);
   equal(activate({ physicsBackend: "legacy" }), true); deepEqual([legacyCalls, plainCalls], [3, 2]);
-  // A core without the export keeps the existing activation.
+  // A core without the exports keeps the existing activation and native rejection.
   const old = { use_data_scene: () => { plainCalls++; } } as unknown as Engine;
+  equal(legacySpatialDataSceneAvailable(old, {}), false);
   equal(activateLegacySpatialDataScene(old, {}), false); equal(plainCalls, 3);
+});
+
+test("apply and JSON progress restore share the physics-omitted HD-2D actor predicate", () => {
+  const legacy = (document: unknown) => usesLegacySpatialActorPath(resolveSceneAuthoringDocument(document));
+  equal(legacy(hd2dMovement()), true);
+  equal(legacy(aiCombat()), true);
+  equal(legacy(planar2d()), false);
+  // combatNavigation alone selects the path once a spatial scene exists.
+  const navigation: { spatial: { actor?: unknown } } = aiCombat();
+  delete navigation.spatial.actor;
+  equal(legacy(navigation), true);
+  // A spatial scene without an actor or navigation keeps the native default.
+  const camera: { spatial: { actor?: unknown }; gameplay?: unknown } = hd2dMovement();
+  delete camera.spatial.actor;
+  delete camera.gameplay;
+  equal(legacy(camera), false);
+});
+
+function save(engine: FerrumEngine, document: unknown): GameStateSnapshot {
+  const saved = captureGameStateSnapshot(engine, {
+    includeDataSceneState: true, includeDataSceneProgress: true,
+    dataSceneAuthoringDocument: document as SceneCompositionJsonValue,
+  });
+  return JSON.parse(JSON.stringify(saved)) as GameStateSnapshot;
+}
+function pose(engine: FerrumEngine, handle: Parameters<FerrumEngine["getPhysicsEntity"]>[0]) {
+  const entity = engine.getPhysicsEntity(handle)!;
+  return { x: entity.x, y: entity.y, heightSpan: entity.heightSpan };
+}
+/** Native file bytes and SDK metadata that a rejected restore must not change. */
+function engineState(engine: FerrumEngine) {
+  const owner = nativeFileEngineOwner(engine), native = owner.native;
+  const metadata = inspectDataSceneAuthoringMetadata(engine);
+  return {
+    file: native.capture_native_file(new TextEncoder().encode("{}{}{}{}{}{}"), new Uint32Array([2, 2, 2, 2, 2, 2]), 0, 0, new Uint32Array()),
+    backend: engine.physicsBackend(), policy: native.default_physics_policy_scene(),
+    scene: owner.frame.physicsSpecScene, spec: structuredClone(owner.frame.physicsSpec),
+    progress: structuredClone(metadata.progress), revision: metadata.revision, epoch: metadata.epoch,
+  };
+}
+
+test("JSON progress of a physics-omitted HD-2D actor scene restores into a fresh no-options Engine", async () => {
+  for (const document of [hd2dMovement(), aiCombat()]) {
+    const source = await createEngine();
+    let saved: GameStateSnapshot, expected: ReturnType<typeof pose>;
+    try {
+      const applied = applyDataSceneAuthoringDocument(source, document);
+      equal(source.physicsBackend(), "legacy");
+      walkRight(nativeFileEngineOwner(source).native, () => source.getPhysicsEntity(applied.entityHandles.actor)!.x);
+      expected = pose(source, applied.entityHandles.actor);
+      saved = save(source, document);
+    } finally { source.destroy(); }
+    const fresh = await createEngine();
+    try {
+      const owner = nativeFileEngineOwner(fresh), native = owner.native;
+      equal(fresh.physicsBackend(), "unified-3d");
+      equal(native.default_physics_policy_scene(), 1);
+      const registry = createSceneInstanceHandleRegistry();
+      const restored = restoreGameStateSnapshot(fresh, saved, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
+      ok(restored.dataSceneStateApplied && restored.dataSceneAuthoringDocumentApplied);
+      // The restore's own apply took the same legacy path as the saved Engine.
+      equal(fresh.physicsBackend(), "legacy");
+      equal(native.default_physics_policy_scene(), 0);
+      equal(owner.frame.physicsSpecScene, undefined);
+      const actor = registry.get("actor")!;
+      deepEqual(pose(fresh, actor), expected);
+      // Saving again yields the same authored progress, and the actor still runs.
+      deepEqual(save(fresh, document).dataScene!.progress, saved.dataScene!.progress);
+      walkRight(native, () => fresh.getPhysicsEntity(actor)!.x);
+    } finally { fresh.destroy(); }
+  }
+});
+
+test("JSON progress restore of an HD-2D actor scene rejects Engines that cannot take the legacy path", async () => {
+  const source = await createEngine();
+  let saved: GameStateSnapshot;
+  try {
+    applyDataSceneAuthoringDocument(source, hd2dMovement());
+    saved = save(source, hd2dMovement());
+  } finally { source.destroy(); }
+  const rejected = (engine: FerrumEngine, label: string): void => {
+    try {
+      const before = engineState(engine);
+      throws(() => restoreGameStateSnapshot(engine, structuredClone(saved)),
+        /physics-omitted HD-2D actor document requires an Engine that applies it on the legacy path/);
+      deepEqual(engineState(engine), before, label);
+      equal(engine.physicsBackend(), "unified-3d", label);
+    } finally { engine.destroy(); }
+  };
+  // Explicit unified creation never leaves native, although Rust would admit the switch.
+  const unified = await createEngine(undefined, undefined, undefined, undefined, { physicsBackend: "unified", fixedTimestep: false });
+  equal(nativeFileEngineOwner(unified).native.can_use_legacy_data_scene(), true);
+  rejected(unified, "explicit unified");
+  // A user-owned native setting replaced the engine-owned defaults.
+  const changed = await createEngine();
+  changed.configureAutoRigidBodyStep(false);
+  rejected(changed, "changed native settings");
+  // An active native Data Scene owns its world.
+  const planar = await createEngine();
+  applyDataSceneAuthoringDocument(planar, planar2d());
+  equal(planar.physicsBackend(), "unified-3d");
+  rejected(planar, "native Data Scene");
+  // Documents with physics keep the existing native snapshot rejection. With
+  // physics this AABB actor is invalid, so the case has no spatial.actor.
+  const native = await createEngine();
+  try {
+    const before = engineState(native);
+    const withPhysics = structuredClone(saved) as GameStateSnapshot & { dataScene: { authoringDocument: { physics?: unknown; spatial: { actor?: unknown } } } };
+    withPhysics.dataScene.authoringDocument.physics = { space: "planar-xy", gravity: [0, 0, 0], lengthUnit: 1 };
+    delete withPhysics.dataScene.authoringDocument.spatial.actor;
+    const signed = { ...withPhysics, snapshotHash: hashGameStateSnapshot(withPhysics) };
+    throws(() => restoreGameStateSnapshot(native, signed), /native physics snapshots, which are not yet supported/);
+    deepEqual(engineState(native), before);
+  } finally { native.destroy(); }
+});
+
+test("a failed restore apply after the legacy activation rolls the fresh Engine back to native", async () => {
+  const source = await createEngine();
+  let saved: GameStateSnapshot;
+  try {
+    applyDataSceneAuthoringDocument(source, hd2dMovement());
+    saved = save(source, hd2dMovement());
+  } finally { source.destroy(); }
+  const fresh = await createEngine(), reference = await createEngine();
+  try {
+    const native = nativeFileEngineOwner(fresh).native, revision = native.runtime_checkpoint_revision();
+    // The registry sync runs after the legacy activation inside the apply.
+    const failing = createSceneInstanceHandleRegistry();
+    let backendAtFailure: string | undefined;
+    failing.sync = () => { backendAtFailure = fresh.physicsBackend(); throw new Error("registry sync failed"); };
+    throws(() => restoreGameStateSnapshot(fresh, structuredClone(saved), { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: failing } }), /registry sync failed/);
+    equal(backendAtFailure, "legacy");
+    // The apply's native authoring rollback is one runtime checkpoint restore,
+    // which counts the rollback by design. Everything else equals an untouched
+    // fresh Engine after the same count, including the native default policy.
+    equal(native.runtime_checkpoint_revision(), revision + 1);
+    reference.restoreRuntimeCheckpoint(reference.captureRuntimeCheckpoint());
+    deepEqual(engineState(fresh), engineState(reference));
+    equal(fresh.physicsBackend(), "unified-3d");
+    // The same Engine then restores normally.
+    restoreGameStateSnapshot(fresh, structuredClone(saved));
+    equal(fresh.physicsBackend(), "legacy");
+  } finally { fresh.destroy(); reference.destroy(); }
 });

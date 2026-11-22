@@ -134,9 +134,12 @@ fn walk_right(e: &mut Engine, actor: Entity) {
     assert!(e.physics_counters.kinematic_moves > 0);
 }
 
-/// A rejected activation leaves the complete Engine state byte-identical.
+/// A rejected activation leaves the complete Engine state byte-identical, and
+/// the read-only admission query reports the same rejection beforehand.
 fn rejected(e: &mut Engine) {
     let before = crate::engine::persistence::encode(e).unwrap();
+    assert!(!e.can_use_legacy_data_scene());
+    assert_eq!(crate::engine::persistence::encode(e).unwrap(), before);
     assert!(!e.use_legacy_data_scene());
     assert_eq!(crate::engine::persistence::encode(e).unwrap(), before);
     assert!(e.physics_spec_backend_active());
@@ -322,4 +325,52 @@ fn legacy_activation_keeps_valid_checkpoints_and_applies_to_later_scenes() {
     assert_legacy(&e);
     e.use_data_scene();
     assert_legacy(&e);
+}
+
+#[test]
+fn legacy_admission_query_matches_the_activation_and_changes_nothing() {
+    // Accepted cases: a fresh SDK default Engine (the JSON restore target), a
+    // fresh raw Engine, and legacy Engines in a built-in or Data Scene. Build
+    // one Engine at a time: an array of Engines overflows the WASI test stack.
+    let legacy_data = || {
+        let mut e = crate::engine::legacy_test_fixture::engine();
+        e.use_data_scene();
+        e
+    };
+    let engines: [fn() -> Engine; 4] = [
+        sdk_default_engine,
+        Engine::new,
+        crate::engine::legacy_test_fixture::engine,
+        legacy_data,
+    ];
+    for make in engines {
+        let mut e = make();
+        let before = crate::engine::persistence::encode(&e).unwrap();
+        assert!(e.can_use_legacy_data_scene());
+        assert_eq!(crate::engine::persistence::encode(&e).unwrap(), before);
+        assert!(e.use_legacy_data_scene());
+        assert_legacy(&e);
+        // The resulting legacy Data Scene admits a reapply, as in a lab reset.
+        assert!(e.can_use_legacy_data_scene());
+    }
+
+    // An open physics restore transaction rejects; closing it admits again.
+    let mut e = sdk_default_engine();
+    e.physics_restore_transaction = Some(e.world.transaction_snapshot());
+    rejected(&mut e);
+    e.physics_restore_transaction = None;
+    assert!(e.can_use_legacy_data_scene());
+    assert!(e.use_legacy_data_scene());
+    assert_legacy(&e);
+
+    // A native Data Scene and a changed native default stay rejected.
+    e = sdk_default_engine();
+    e.use_data_scene();
+    rejected(&mut e);
+    e = sdk_default_engine();
+    e.set_auto_rigid_body_step_enabled(false);
+    rejected(&mut e);
+    e.set_auto_rigid_body_step_enabled(true);
+    // Restoring the engine-owned value admits the switch again.
+    assert!(e.can_use_legacy_data_scene());
 }

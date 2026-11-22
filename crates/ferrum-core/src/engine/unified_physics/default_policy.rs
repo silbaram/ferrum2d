@@ -78,18 +78,25 @@ impl Engine {
     /// never dropped. The result equals the explicit legacy selection, including
     /// later scenes. Rejection changes nothing.
     pub(in crate::engine) fn activate_legacy_data_scene(&mut self) -> bool {
+        if !self.legacy_data_scene_available() {
+            return false;
+        }
         if self.default_unified_physics.is_some() || self.unified_physics.is_some() {
-            if self.scene_mode == SceneMode::Data
-                || self.physics_restore_transaction.is_some()
-                || !self.engine_owned_native_settings()
-            {
-                return false;
-            }
             self.default_unified_physics = None;
             self.default_unified_physics_fixed = false;
         }
         self.use_data_scene();
         true
+    }
+
+    /// Read-only admission of `activate_legacy_data_scene`: true exactly when
+    /// that activation would be accepted now. A restore preflight uses it
+    /// before any mutation, so it admits the same Engines as the apply.
+    pub(in crate::engine) fn legacy_data_scene_available(&self) -> bool {
+        (self.default_unified_physics.is_none() && self.unified_physics.is_none())
+            || (self.scene_mode != SceneMode::Data
+                && self.physics_restore_transaction.is_none()
+                && self.engine_owned_native_settings())
     }
 
     /// No user world, clock or automatic-step setting replaced the engine-owned

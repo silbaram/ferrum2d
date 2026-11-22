@@ -64,6 +64,12 @@ native world를 설치하지 않으며, 이전 built-in world는 일반 씬 전�
 명시적 `physicsBackend: "unified"`, 장면 전용 native world, 이미 활성인 Data Scene의 world는 바꾸지 않는다.
 이 경우 SDK는 기존처럼 활성화하며 문서는 거절된다. 예를 들어 같은 Engine에서 native 2D Data Scene 다음에
 이 문서를 적용하면 거절된다.
+이 문서의 JSON 진행 저장(`includeDataSceneProgress`)은 무옵션 새 Engine에도 `restoreGameStateSnapshot`으로 복원한다.
+복원 사전 검사는 Engine을 바꾸지 않고 같은 Rust 조건(`can_use_legacy_data_scene`)과 명시적 `"unified"` 제외를 확인한다.
+이어지는 문서 적용이 legacy 경로를 선택한다. 조건을 만족하지 않는 명시적 `"unified"`, 바뀐 native 기본 설정,
+이미 활성인 native Data Scene은 변경 전에 거절한다. `physics`가 있는 문서의 JSON 진행 저장은 계속 거절한다.
+`spatial.actor`·`gameplay.combatNavigation`이 없는 문서는 무옵션 새 Engine에서 native 기본 world로 적용되므로
+그 Engine으로의 진행 복원도 거절한다.
 [캐릭터·관절 샘플](samples/data-scene-constraints.scene-authoring.json)은 native 캡슐을 사용한다.
 
 WASD와 목적지 이동 의도는 Rust에서 native fixed tick 앞에 전달한다. 실제 이동·높이·접지는

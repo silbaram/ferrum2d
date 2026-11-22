@@ -58,7 +58,7 @@ import {
 import type { BuiltInShooterStateSnapshot } from "./builtInShooterStateSnapshot.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
 import { requireNativeDebugGeometry } from "./physicsDebugCompatibility.js";
-import { configureInitialPhysics, configureDefaultGamePhysics, usesDefaultNativePhysics, resolveDefaultGamePhysics, resolveDefaultPhysicsPolicySpec, resolveInitialPhysicsSpec, activateLegacySpatialDataScene, synchronizeDefaultPhysicsMetadata } from "./physicsDefaults.js";
+import { configureInitialPhysics, configureDefaultGamePhysics, usesDefaultNativePhysics, resolveDefaultGamePhysics, resolveDefaultPhysicsPolicySpec, resolveInitialPhysicsSpec, activateLegacySpatialDataScene, legacySpatialDataSceneAvailable, synchronizeDefaultPhysicsMetadata } from "./physicsDefaults.js";
 import { registerLegacyJsonPhysicsRuntime } from "./physicsLegacyJsonRuntime.js";
 import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uint32Number } from "./particlePreset";
@@ -1263,6 +1263,7 @@ async function buildEngineFacade(
       selectScene(() => { legacy = activateLegacySpatialDataScene(rustEngine, options); });
       return legacy;
     },
+    canUseLegacySpatialDataScene: () => { requireAlive(); return legacySpatialDataSceneAvailable(rustEngine, options); },
     spatialModelAssets: spec => {
       requireAlive();
       const registry = spatialModelRegistry(rustEngine);

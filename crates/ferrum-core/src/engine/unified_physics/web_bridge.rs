@@ -136,6 +136,13 @@ impl Engine {
         self.activate_legacy_data_scene()
     }
 
+    /// Read-only `use_legacy_data_scene` admission: true exactly when that
+    /// call would activate the Data Scene on the legacy path now. Changes
+    /// nothing, so a JSON progress restore can preflight the same decision.
+    pub fn can_use_legacy_data_scene(&self) -> bool {
+        self.legacy_data_scene_available()
+    }
+
     /// Version 1 selects planar native defaults across subsequent scene changes.
     pub fn default_physics_policy_version(&self) -> u32 {
         1
