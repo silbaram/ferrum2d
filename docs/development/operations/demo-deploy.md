@@ -8,7 +8,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 | 경로 | 원본 |
 | --- | --- |
-| `/` | 기능 실험실(`/starter-runtime/`)로 연결하는 진입 주소 |
+| `/` | 예제 갤러리 · 카탈로그와 `examples/shared/thumbnails/`로 빌드할 때 생성 |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
 | `/starter-runtime/` | `examples/starter-runtime/dist` · 기능별 독립 실험 31종 |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
@@ -32,14 +32,18 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 문서 사이트의 기준 소스는 계속 `docs/**/*.md`다. `dist-pages/docs/`는 배포 artifact일 뿐 git에 포함하지 않는다.
 
-기본 주소는 별도의 목록 화면 없이 기능 실험실로 바로 연결한다. `index.html`에는 상대 경로의
-meta refresh와 링크를 둬 JavaScript 비활성 상태와 GitHub Pages 하위 경로에서도 동작하게 한다.
-예제 상단의 **예제 이동**은 게임·물리 심화·제작 도구를, 기능 실험실의 주제 메뉴는 개별 실험을 선택한다.
+기본 주소는 예제 갤러리다. `scripts/build/example-gallery.mjs`가 `exampleCatalog.json`·`featureCatalog.json`·
+`featureTopics.json`·`physicsExamples.json`에서 정적 HTML을 만들고, 카드마다 실제 화면 썸네일·이름·용도를 보인다.
+링크는 상대 경로라 JavaScript 비활성 상태와 GitHub Pages 하위 경로에서도 동작하며, `gallery/gallery.mjs`는 분류·검색만 더한다.
+스타일은 Studio와 같은 Pixelforge 토큰을 쓰고 외부 글꼴·CDN 없이 한국어 subset 글꼴과 Lucide 아이콘 일부(ISC)를 함께 발행한다.
+썸네일은 `examples/shared/thumbnails/`에 두며, 예제와 `dist-pages`를 빌드한 뒤 `pnpm thumbnails:examples`로 다시 찍는다.
+카탈로그 검사가 썸네일 누락과 쓰지 않는 썸네일을 거부한다. 물리 시나리오의 `knownIssue`는 갤러리의 "알려진 문제" 배지로 보인다.
+예제 상단의 **Ferrum2D 예제**는 갤러리로 돌아가고, **예제 이동**은 게임·물리 심화·제작 도구를, 기능 실험실의 주제 메뉴는 개별 실험을 선택한다.
 상단의 **문서**는 사용자 설명서·프로젝트 생성·씬 작성·공개 API 안내로 이어진다.
 문서 메뉴는 간단 사용법·AI 게임 개발을 먼저 구분하고, 공통 API 참조·공통 데이터/기능 참조·예제 계약·엔진 개발/검증·배포/운영·개발 계획/후보로 묶는다.
 사이트는 배포한 개발 소스의 문서·예제이며 GitHub Release 설치 파일의 버전과 별개다.
 예제 목록은 `examples/shared/exampleCatalog.json`에서 읽고 `pnpm validate:example-catalog`로 역할·경로·실행 명령·관련 실험을 검사한다.
-Minimal·이전 통합 데모는 참고·검증용으로 기본 메뉴에서 제외한다. 목록 전용 CSS/JS는 발행하지 않는다.
+Minimal·이전 통합 데모는 참고·검증용으로 갤러리와 기본 메뉴에서 제외한다.
 공통 탐색은 중첩 배포 경로를 유지하고 단독 Vite에서는 교차 앱 링크를 만들지 않는다. `pnpm smoke:example-suite`로 검증한다.
 Pages 빌드는 발행 복사본 HTML에만 `ferrum-example-suite` 표식을 넣는다. 경로 이름만으로 통합 사이트를 추정하지 않으므로 개별 앱을 같은 이름의 폴더에 올려도 단독 모드를 유지한다.
 모든 예제의 `index.html`과 `head`를 출력 교체 전에 확인한다. 이 예제 입력 검증 실패는 마지막 정상 `dist-pages`를 보존한다.

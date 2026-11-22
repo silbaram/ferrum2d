@@ -717,6 +717,10 @@ Blender tree/pine 후보는 FPS 개선이 확인되지 않아 기본 예제에 �
 Start/Pause/Resume/Restart·P/Esc·터치 취소는 실제 native 시간/위치/HUD와 비교한다.
 정지 중 게임 상태 불변, resize·letterbox pointer 좌표와 예제별 draw 예산을 유지한다.
 Physics Lab의 `visibleBodyCount`는 조회한 body 수이며 화면 culling 측정값이 아니다.
+`pnpm smoke:example-suite`는 첫 화면 갤러리의 카드 수·썸네일 로딩·분류·검색·JavaScript 비활성·390/320px 폭과
+카드 링크의 배포 경로 유지, 예제 머리글의 갤러리 복귀 링크도 확인한다. 썸네일은 `pnpm thumbnails:examples`로 다시 찍는다.
+물리 실험실 smoke(`--mode=physics-sandbox`, `--mode=physics-demo-suite`)는 `physicsExamples.json`의 `knownIssue` 시나리오만
+멈춤을 허용하고, 그 경우에도 화면에 오류가 표시돼야 한다.
 
 package 변경은 `pnpm package:check` 또는 해당 package check로 tarball·declaration·Wasm·exports를 확인한다.
 create-game/agents 변경에는 아래 생성/설치 검증을 추가한다.
