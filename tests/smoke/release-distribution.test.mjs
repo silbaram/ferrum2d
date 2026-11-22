@@ -6,10 +6,11 @@ import path from "node:path";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
 import { attachDraftRelease, draftReleaseApi } from "../../scripts/package/attach-draft-release.mjs";
 import { parseDistributionArgs, prepareDistribution } from "../../scripts/package/prepare-distribution.mjs";
-import { prepareStudioRelease } from "../../scripts/package/prepare-studio-release.mjs";
+import { PREVIOUS_STUDIO_DEB_PACKAGES, prepareStudioRelease, STUDIO_DEB_PACKAGE, studioDebControl } from "../../scripts/package/prepare-studio-release.mjs";
 import { assembleDistribution, fileRecord, nativeChecks, readJson, releaseIdentity, studioManifestName, validateEngineBundle, verifyDistribution } from "../../scripts/package/release-distribution.mjs";
 import { resolvePackageCommand } from "../../scripts/package/release-command.mjs";
 import { updaterSettings } from "../../scripts/package/studio-updater.mjs";
+import { fakeDebControl, fakeDebPayload, fakeDpkgDeb, TAURI_DEB_CONTROL } from "./fake-dpkg-deb.mjs";
 
 const version = "0.1.0-beta.1", release = githubRelease(version), commit = "a".repeat(40);
 test("Studio uses its own desktop installation identity", async () => {
@@ -52,6 +53,7 @@ async function nativeFixture(t, { platform = "linux", arch = "x64", stale = fals
     if (command === "rustc") stdout = `rustc 1.90.0\nhost: ${target}\n`;
     if (command === "git") stdout = args[0] === "rev-parse" ? `${commit}\n` : "";
     if (command === "cargo") stdout = JSON.stringify({ target_directory: path.join(root, "target") });
+    if (command === "dpkg-deb") stdout = await fakeDpkgDeb(args);
     if (command === "pnpm" && args.includes("icon")) {
       const dir = args[args.indexOf("--output") + 1];
       for (const file of ["32x32.png", "128x128.png", "128x128@2x.png", "icon.ico", "icon.icns"]) await put(dir, file, "fixture icon");
@@ -113,8 +115,27 @@ for (const [platform, arch] of [["linux", "x64"], ["win32", "x64"], ["darwin", "
     assert.equal(config.version, version); assert(config.bundle.icon.every(file => path.isAbsolute(file)));
     assert.equal(manifest.assets[0].sha256, (await fileRecord(path.join(fixture.output, manifest.assets[0].file))).sha256);
     assert.equal((await readdir(fixture.output)).length, 4);
+    const repacked = fixture.calls.filter(call => call.command === "dpkg-deb" && call.args[0] !== "--version");
+    if (platform === "linux") {
+      const control = fakeDebControl(await readFile(path.join(fixture.output, manifest.assets[0].file), "utf8"));
+      assert.match(control, new RegExp(`^Package: ${STUDIO_DEB_PACKAGE}$`, "m"));
+      assert.match(control, /^Replaces: ferrum2-d-studio$/m);
+      assert.match(control, /^Conflicts: ferrum2-d-studio$/m);
+      assert.equal(repacked.length, 2);
+    } else {
+      assert.equal(repacked.length, 0);
+    }
   });
 }
+
+test("Studio Debian control keeps fields and only renames the Tauri package", () => {
+  const control = studioDebControl(TAURI_DEB_CONTROL);
+  assert.equal(control, TAURI_DEB_CONTROL.replace("Package: ferrum2-d-studio", `Package: ${STUDIO_DEB_PACKAGE}`) +
+    `Replaces: ${PREVIOUS_STUDIO_DEB_PACKAGES.join(", ")}\nConflicts: ${PREVIOUS_STUDIO_DEB_PACKAGES.join(", ")}\n`);
+  assert.match(control, /^Description: Ferrum2D Studio\n multi-line description$/m);
+  assert.throws(() => studioDebControl("Version: 0.1.0\n"), /no Package field/);
+  assert.throws(() => studioDebControl(`${TAURI_DEB_CONTROL}Replaces: other\n`), /already declares/);
+});
 
 test("plan mode writes nothing and runs no tools", async t => {
   const fixture = await nativeFixture(t);
@@ -141,7 +162,9 @@ for (const platform of ["linux", "win32", "darwin"]) test(`cached legacy install
   const { manifest } = await prepareStudioRelease(fixture.options, fixture.context);
   assert.equal(await readFile(fixture.legacyInstaller, "utf8"), "cached legacy installer");
   assert.equal((await stat(fixture.legacyInstaller)).mtimeMs, before);
-  assert.equal(await readFile(path.join(fixture.output, manifest.assets[0].file), "utf8"), `fixture installer ${manifest.platform.os}`);
+  const staged = await readFile(path.join(fixture.output, manifest.assets[0].file), "utf8");
+  // Linux stages the fresh .deb after renaming its Debian package.
+  assert.equal(platform === "linux" ? fakeDebPayload(staged) : staged, `fixture installer ${manifest.platform.os}`);
 });
 
 test("ambiguous fresh installers are rejected without staging", async t => {

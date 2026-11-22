@@ -110,7 +110,7 @@ pnpm release:distribution:verify -- --bundle "$ferrum_bundle_dir/combined"
 | 추가 산출물 | 내용 |
 | --- | --- |
 | `ferrum2d-studio-<버전>-windows-<arch>.exe` | Windows NSIS 설치 파일 |
-| `ferrum2d-studio-<버전>-linux-<arch>.deb` | Linux Debian 계열 설치 패키지 |
+| `ferrum2d-studio-<버전>-linux-<arch>.deb` | Linux Debian 계열 설치 패키지(패키지 이름 `ferrum2d-studio`) |
 | `ferrum2d-studio-<버전>-macos-<arch>.dmg` | macOS 설치 이미지 |
 | `studio-manifest-<OS>-<arch>.json` | native target, installer SHA-256, 내장 frontend의 SDK Wasm 일치 검사, 수동 검증 대기 상태 |
 | `STUDIO_SHA256SUMS-<OS>-<arch>`, `STUDIO_INSTALL-<OS>-<arch>.md` | 개별 뷰어 체크섬·설치 안내 |
@@ -176,6 +176,8 @@ repository secrets를 읽어 OS별 자료를 준비한다. 서명된 업데이�
 
 최초에는 이 기능과 올바른 공개키가 들어간 앱을 직접 설치해야 한다. 그 이후 더 높은 버전의 signed artifact로
 갱신할 수 있다. Linux `.deb`는 AppImage 자동 교체 경로를 사용하지 않으므로 수동 재설치한다.
+Tauri는 Debian 패키지 이름을 제품명에서 만들어 `ferrum2-d-studio`가 되므로, 준비 스크립트가 `dpkg-deb`로
+`Package: ferrum2d-studio`로 바꾸고 beta.10의 이전 이름을 `Replaces`/`Conflicts`로 대체한다. 파일 내용은 바꾸지 않는다.
 키 없는 개발 앱/브라우저/미지원 OS에는 설치 버튼을 활성화하지 않는다.
 공개할 릴리스에 대상 OS의 signed updater 자료가 실제로 포함됐는지 확인한다. SDK tarball만으로 앱 업데이트 자료를 대신하지 않는다.
 [Tauri updater](https://v2.tauri.app/plugin/updater/)와 [GitHub release API](https://docs.github.com/en/rest/releases/releases)의 계약을 따른다.

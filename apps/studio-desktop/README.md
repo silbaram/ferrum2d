@@ -53,6 +53,8 @@ Windows WebView2의 HTML5 파일 드롭을 위해 `app.windows[].dragDropEnabled
 Studio 앱 자체의 업데이트는 내장 updater를 사용한다.
 기본 개발 config는 빈 공개키/endpoint와 `createUpdaterArtifacts: false`여서 앱 설치를 제공하지 않는다.
 Linux는 AppImage 실행에 한해 자동 교체를 허용한다. `.deb` 설치는 릴리스 파일로 수동 갱신한다.
+Debian 패키지 이름은 `ferrum2d-studio`다(`sudo apt install ./ferrum2d-studio-<버전>-linux-x64.deb`, 제거는 `sudo apt remove ferrum2d-studio`).
+beta.10의 `ferrum2-d-studio` 설치본은 새 패키지를 설치할 때 자동으로 대체된다.
 host는 동시 설치와 설치 중 창 닫기를 막고, 완료된 앱 업데이트에만 재시작을 허용한다.
 릴리스 안내는 URL을 검증한 host command와 공식 opener plugin으로 시스템 브라우저에서 연다.
 

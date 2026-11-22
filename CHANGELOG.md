@@ -6,6 +6,11 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ## Unreleased
 
+### Fixed
+
+- Linux Studio `.deb`의 Debian 패키지 이름을 `ferrum2d-studio`로 고정했다. beta.10은 Tauri가 제품명에서 만든
+  `ferrum2-d-studio`였으며, 새 패키지가 이 이름을 `Replaces`/`Conflicts`로 대체해 업그레이드 설치 시 함께 정리한다.
+
 ## 0.1.0-beta.10 - 2026-11-22
 
 GitHub Release 설치용 열한 번째 beta 후보다. 2D·HD-2D 씬의 물리를 Rapier3D 기반 통합 물리로 확장하고,

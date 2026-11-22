@@ -14,6 +14,36 @@ const targets = {
   "x86_64-apple-darwin": { os: "macos", arch: "x64" }, "aarch64-apple-darwin": { os: "macos", arch: "arm64" },
 };
 
+// Tauri names the Debian package after the product name in kebab case
+// ("Ferrum2D Studio" -> "ferrum2-d-studio") and has no setting for it.
+export const STUDIO_DEB_PACKAGE = "ferrum2d-studio";
+// Names published by earlier releases (0.1.0-beta.10); apt replaces them on upgrade.
+export const PREVIOUS_STUDIO_DEB_PACKAGES = Object.freeze(["ferrum2-d-studio"]);
+
+/** Debian control text with the release package name and replacement of older names. */
+export function studioDebControl(control) {
+  const lines = control.replace(/\n+$/, "").split("\n");
+  const index = lines.findIndex(line => line.startsWith("Package:"));
+  if (index < 0) throw new Error("Studio .deb control file has no Package field");
+  if (lines.some(line => /^(Replaces|Conflicts):/.test(line))) {
+    throw new Error("Studio .deb control file already declares Replaces/Conflicts");
+  }
+  lines[index] = `Package: ${STUDIO_DEB_PACKAGE}`;
+  const previous = PREVIOUS_STUDIO_DEB_PACKAGES.join(", ");
+  lines.push(`Replaces: ${previous}`, `Conflicts: ${previous}`);
+  return `${lines.join("\n")}\n`;
+}
+
+async function renameStudioDebPackage(installer, temp, invoke) {
+  const unpacked = path.join(temp, "deb-root");
+  await invoke("dpkg-deb", ["-R", installer, unpacked], { onOutput: undefined });
+  const control = path.join(unpacked, "DEBIAN/control");
+  await writeFile(control, studioDebControl(await readFile(control, "utf8")));
+  const output = path.join(temp, path.basename(installer));
+  await invoke("dpkg-deb", ["--root-owner-group", "-b", unpacked, output], { onOutput: undefined });
+  return output;
+}
+
 export async function sourceIdentity(root = repositoryRoot, run = runReleaseCommand) {
   const commit = (await run("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
   const dirty = (await run("git", ["status", "--porcelain", "--untracked-files=normal"], { cwd: root })).stdout.length > 0;
@@ -40,7 +70,7 @@ export async function studioReleasePlan(options, { root = repositoryRoot, platfo
   return { release: releaseIdentity(release), platform: native.name, arch, bundle: native.bundle,
     output: path.resolve(options.output ?? path.join(root, "artifacts/distribution", release.tag, `studio-${native.name}-${arch}`)),
     ...(options.engineBundle ? { engineBundle: path.resolve(options.engineBundle) } : {}),
-    prerequisites: platform === "linux" ? ["Rust native toolchain", "pkg-config", "GTK 3", "WebKitGTK 4.1", "Tauri Linux build libraries"] : ["Rust native toolchain", "Tauri platform build prerequisites"],
+    prerequisites: platform === "linux" ? ["Rust native toolchain", "pkg-config", "GTK 3", "WebKitGTK 4.1", "Tauri Linux build libraries", "dpkg-deb"] : ["Rust native toolchain", "Tauri platform build prerequisites"],
     signing: options.noSign ? "disabled" : "platform configuration; not verified by this script",
     updater: Boolean(options.withUpdater),
     published: false, manualReleaseGate: { required: true, checks: nativeChecks } };
@@ -50,6 +80,8 @@ export async function checkStudioPrerequisites({ root = repositoryRoot, platform
   if (platform === "linux") {
     try { await run("pkg-config", ["--exists", "gtk+-3.0", "webkit2gtk-4.1"], { cwd: root }); }
     catch (error) { throw new Error(`Studio Linux build prerequisites are missing. Install pkg-config, libwebkit2gtk-4.1-dev, libxdo-dev, libssl-dev, libayatana-appindicator3-dev and librsvg2-dev.\n${error.message}`); }
+    try { await run("dpkg-deb", ["--version"], { cwd: root }); }
+    catch (error) { throw new Error(`Studio Linux release packaging requires dpkg-deb to set the Debian package name.\n${error.message}`); }
   }
   const rust = await run("rustc", ["-vV"], { cwd: root });
   const target = rust.stdout.match(/^host:\s*(\S+)$/m)?.[1], identity = targets[target];
@@ -140,8 +172,9 @@ export async function prepareStudioRelease(options, { root = repositoryRoot, pla
     if (after.commit !== source.commit || after.dirty !== source.dirty) throw new Error("Source identity changed during the studio build; prepare again from one source tree");
     const stage = path.join(temp, "bundle"); await mkdir(stage);
     const file = `ferrum2d-studio-${plan.release.version}-${identity.os}-${identity.arch}.${native.extension}`;
-    const original = await fileRecord(installers[0]);
-    await copyFile(installers[0], path.join(stage, file));
+    const installer = native.extension === "deb" ? await renameStudioDebPackage(installers[0], temp, invoke) : installers[0];
+    const original = await fileRecord(installer);
+    await copyFile(installer, path.join(stage, file));
     const asset = await fileRecord(path.join(stage, file));
     if (asset.sha256 !== original.sha256) throw new Error("Installer changed during staging");
     const updateAssets = updater ? await stageStudioUpdater({ bundleRoot: path.join(cargo.target_directory, target, "release/bundle"),

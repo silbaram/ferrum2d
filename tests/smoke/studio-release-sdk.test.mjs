@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { githubRelease } from "../../packages/create-game/bin/github-release.mjs";
 import { parseDistributionArgs, prepareDistribution } from "../../scripts/package/prepare-distribution.mjs";
 import { fileRecord, releaseIdentity } from "../../scripts/package/release-distribution.mjs";
+import { fakeDpkgDeb } from "./fake-dpkg-deb.mjs";
 
 const execute = promisify(execFile);
 const release = githubRelease("0.1.0-beta.1");
@@ -54,6 +55,7 @@ async function fixture(t) {
     switch (cmd) {
       case "git": return { stdout: args[0] === "rev-parse" ? commit : "" };
       case "pkg-config": return { stdout: "" };
+      case "dpkg-deb": return { stdout: await fakeDpkgDeb(args) };
       case "rustc": return { stdout: "host: " + target };
       case "cargo": return { stdout: JSON.stringify({ target_directory: path.join(root, "target") }) };
       case "tar": return execute(cmd, args, { cwd: options.cwd });
