@@ -130,3 +130,41 @@ pub(super) fn stabilize_translation<'a>(
             projected + *n * n.dot(translation)
         })
 }
+
+/// Closest distance between segments `p1q1` and `p2q2` (Ericson 5.1.9).
+pub(super) fn segment_distance(p1: [f64; 3], q1: [f64; 3], p2: [f64; 3], q2: [f64; 3]) -> f64 {
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let at = |p: [f64; 3], d: [f64; 3], t: f64| [p[0] + d[0] * t, p[1] + d[1] * t, p[2] + d[2] * t];
+    let (d1, d2, r) = (sub(q1, p1), sub(q2, p2), sub(p1, p2));
+    let (a, e, f) = (dot(d1, d1), dot(d2, d2), dot(d2, r));
+    const TINY: f64 = 1.0e-18;
+    let (s, t) = if a <= TINY && e <= TINY {
+        (0.0, 0.0)
+    } else if a <= TINY {
+        (0.0, (f / e).clamp(0.0, 1.0))
+    } else {
+        let c = dot(d1, r);
+        if e <= TINY {
+            ((-c / a).clamp(0.0, 1.0), 0.0)
+        } else {
+            let b = dot(d1, d2);
+            let denom = a * e - b * b;
+            let s = if denom > 0.0 {
+                ((b * f - c * e) / denom).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let t = (b * s + f) / e;
+            if t < 0.0 {
+                ((-c / a).clamp(0.0, 1.0), 0.0)
+            } else if t > 1.0 {
+                (((b - c) / a).clamp(0.0, 1.0), 1.0)
+            } else {
+                (s, t)
+            }
+        }
+    };
+    let delta = sub(at(p1, d1, s), at(p2, d2, t));
+    dot(delta, delta).sqrt()
+}

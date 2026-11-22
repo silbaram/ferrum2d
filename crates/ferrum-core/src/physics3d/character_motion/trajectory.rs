@@ -86,6 +86,10 @@ impl MotionScene {
             local_pose: collider.position_wrt_parent().copied().unwrap_or_default(),
         });
     }
+    /// Whether `id` follows an exact sampled path instead of its legacy motion.
+    pub(in crate::physics3d) fn has_path(&self, id: rp::ColliderHandle) -> bool {
+        self.path(id).is_some()
+    }
     fn path(&self, id: rp::ColliderHandle) -> Option<&ColliderPath> {
         self.paths
             .binary_search_by_key(&id.into_raw_parts(), |p| p.collider.into_raw_parts())
