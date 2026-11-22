@@ -57,7 +57,8 @@ export async function probeSpatialModelInstancing(scene, canvas) {
   applyDataSceneAuthoringDocument(engine,document,{spatialModelPreparer:renderer});engine.pauseDataScene();await wait();
   const before=image(),saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document})));
   let freshFrame;
-  const fresh=await createEngine(frame=>{freshFrame=frame;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(frame=>{freshFrame=frame;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   let restoredStats;
   try {
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);

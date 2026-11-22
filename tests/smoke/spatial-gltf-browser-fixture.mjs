@@ -89,7 +89,8 @@ export async function probeSpatialGltf(scene,canvas){
   await wait();const pickPoint=view.project({x:0,y:96,elevation:32},scene.frame.spatial),rect=canvas.getBoundingClientRect();
   const hit=view.pick({x:rect.left+pickPoint.x,y:rect.top+pickPoint.y},scene.frame.spatial);check(hit?.surfaceId==="house/terrain/upper"&&Math.abs(hit.elevation-32)<.001,"glTF surface picking diverged",hit);
   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document}))),pixels=image(),registry=createSceneInstanceHandleRegistry();let frame;
-  const fresh=await createEngine(next=>{frame=next;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(next=>{frame=next;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   try{
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);
     for(let i=0;i<names.length;i++)check(fresh.registerDataSceneSpatialModel(`gltf-${names[i]}`,external[i]),"fresh glTF resource registration failed");

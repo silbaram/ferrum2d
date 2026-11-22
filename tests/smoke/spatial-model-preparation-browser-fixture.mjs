@@ -92,7 +92,8 @@ export async function probeSpatialModelPreparation(scene, canvas) {
   check(differences(preparedImage,image())===0,"rejected restore changed framebuffer");
   await window.spatialDebugScreenshot("model-preparation-activated",canvas.toDataURL());
   const registry=createSceneInstanceHandleRegistry();let frame,freshUpload=-1;
-  const fresh=await createEngine(next=>{frame=next;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(next=>{frame=next;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   try{
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);
     fresh.registerDataSceneSpatialModel("prepare-tree-material",assets[1]);fresh.registerDataSceneSpatialModel("prepare-building",assets[2]);

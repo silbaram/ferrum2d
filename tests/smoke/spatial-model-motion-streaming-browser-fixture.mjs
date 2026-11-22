@@ -30,7 +30,8 @@ export async function probeSpatialModelMotionStreaming(scene,canvas){
   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:doc})));
   check(saved.dataScene.version===8,'moving hierarchy save did not use version8',saved.dataScene);
   const before=scene.frame.spatial.models.values.slice(),registry=createSceneInstanceHandleRegistry();let freshFrame;
-  const fresh=await createEngine(frame=>{freshFrame=frame;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(frame=>{freshFrame=frame;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   try{
     for(const[id,asset]of [['motion-near',near],['motion-far',far]])check(fresh.registerDataSceneSpatialModel(id,asset),'fresh model registration failed');
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);

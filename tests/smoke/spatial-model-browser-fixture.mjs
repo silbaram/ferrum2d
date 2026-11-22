@@ -111,7 +111,8 @@ export async function probeSpatialModel(scene, canvas) {
     const beforeRestore = image();
     const registry = createSceneInstanceHandleRegistry();
     let freshFrame;
-    const fresh = await createEngine(state => { freshFrame = state; }, undefined, undefined, () => renderer.viewportSize());
+    // JSON progress restore is compatibility-only for this physics-omitted scene.
+    const fresh = await createEngine(state => { freshFrame = state; }, undefined, undefined, () => renderer.viewportSize(), { physicsBackend: "legacy" });
     try {
         fresh.setViewportSize(renderer.viewportSize().width, renderer.viewportSize().height);
         let rejected = false;

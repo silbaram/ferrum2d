@@ -145,7 +145,8 @@ export async function probeSpatialModelAssembly(scene, canvas) {
     check(saved.dataScene.version===7&&saved.dataScene.authoringDocument.spatial.models[modelId].yawDegrees===yawDegrees,"assembly save lost placement");
     if(yawDegrees===270)await window.spatialDebugScreenshot(nested?"model-hierarchy":"model-assembly",canvas.toDataURL());
     const registry=createSceneInstanceHandleRegistry();let frame;
-    const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize());
+    // JSON progress restore is compatibility-only for this physics-omitted scene.
+    const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
     let restoreDifferences;
     try{
       fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);

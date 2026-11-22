@@ -109,7 +109,8 @@ export async function probeSpatialBuilding(scene, canvas) {
   const saved=JSON.parse(JSON.stringify(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:document}))),before=image();
   check(saved.dataScene.version===7&&saved.dataScene.authoringDocument.spatial.terrain.every(s=>s.render===false),"building save omitted proxy contract",saved.dataScene.version);
   const registry=createSceneInstanceHandleRegistry();let frame;
-  const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize());
+  // JSON progress restore is compatibility-only for this physics-omitted scene.
+  const fresh=await createEngine(state=>{frame=state;},undefined,undefined,()=>renderer.viewportSize(), { physicsBackend: "legacy" });
   let restoreDifferences,restoredBlocked;
   try{
     fresh.setViewportSize(renderer.viewportSize().width,renderer.viewportSize().height);
