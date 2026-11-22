@@ -1,4 +1,4 @@
-import { AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer, resolvePhysicsSpec, type DataSceneView, type FerrumRuntime, } from "@ferrum2d/ferrum-web/core";
+import { AssetLoader, createDataSceneView, createFerrumRuntime, createRenderer, type DataSceneView, type FerrumRuntime, } from "@ferrum2d/ferrum-web/core";
 import { resolveSceneAuthoringDocument, type PostProcessStackInput } from "@ferrum2d/ferrum-web/authoring";
 import type { LightingScene2D } from "@ferrum2d/ferrum-web/labs";
 import { createRuntimeDemoShell } from "../../shared/runtimeDemoShell";
@@ -164,7 +164,9 @@ export async function startEnginePlayground(): Promise<void> {
                 throw Error("공의 감속 설정 실패");
         };
         const configure = () => {
-            runtime!.engine.configurePhysicsRuntime(resolvePhysicsSpec({ mode: "rigid", gravity: [0, 0], continuous: true, solver: { fixedTimestep: true, stepSeconds: 1 / 60, velocityIterations: 8, positionIterations: 6 } }));
+            // The scene's native world already holds the authored bodies and rejects new global
+            // settings; the automatic step settings below supply gravity, solver and CCD.
+            runtime!.engine.configureFixedTimestep({ enabled: true, stepSeconds: 1 / 60 });
             runtime!.engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0, continuous: true, velocityIterations: 8, positionIterations: 6 });
             view = createDataSceneView(runtime!.engine, renderer, canvas, { x: 320, y: 192 });
             const idle = { up: { clip: 0 }, down: { clip: 0 }, left: { clip: 0, flipX: true }, right: { clip: 0 } };

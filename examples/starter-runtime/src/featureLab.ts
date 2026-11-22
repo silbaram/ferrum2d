@@ -1,5 +1,5 @@
 import {
-  AssetLoader, BrowserPlatformHost, createDataSceneView, createFerrumRuntime, createRenderer, decodeRenderCommands, resolvePhysicsSpec, VirtualControls,
+  AssetLoader, BrowserPlatformHost, createDataSceneView, createFerrumRuntime, createRenderer, decodeRenderCommands, VirtualControls,
   type DataSceneView, type FerrumRuntime, type PhysicsJointHandle,
 } from "@ferrum2d/ferrum-web/core";
 import { resolveSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
@@ -106,6 +106,11 @@ export async function startFeatureLab(): Promise<void> {
   const lesson = createFeatureLesson(root, canvas, id, feature.lesson, feature.observe);
   const requested = params.get("renderer") === "webgpu" ? "webgpu" : "webgl2";
   control<HTMLSelectElement>("renderer").value = requested;
+  // The fixed step belongs to the native world. Another rate reopens the page with a
+  // new world, as the renderer choice does; the engine is created with that step.
+  const requestedRate = params.get("physicsRate");
+  const physicsRate = id === "physics" && (requestedRate === "30" || requestedRate === "120") ? requestedRate : "60";
+  if (id === "physics") control<HTMLSelectElement>("physics-rate").value = physicsRate;
   let extra: FeatureExtra | undefined, shooterPaused = false;
   let runtime: FerrumRuntime | undefined, view: DataSceneView | undefined, resize: ResizeObserver | undefined;
   const playing = () => shooter ? !shooterPaused : runtime?.dataScene?.state() === "playing";
@@ -181,7 +186,8 @@ export async function startFeatureLab(): Promise<void> {
         keyBindings: shooter ? { w: ["KeyW", "ArrowUp"], a: ["KeyA", "ArrowLeft"], s: ["KeyS", "ArrowDown"], d: ["KeyD", "ArrowRight"] } : undefined },
       // Only the projectile experiment supplies fire input; the other Shooter fixtures use movement alone.
       inputTransform: snapshot => shooter ? shell.inputTransform(id === "projectiles" ? extra?.input?.(snapshot) ?? snapshot : { ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
-      engine: { includeCollisionEvents: true, includeGameplayEvents: true },
+      engine: { includeCollisionEvents: true, includeGameplayEvents: true,
+        ...(id === "physics" ? { fixedTimestep: { enabled: true, stepSeconds: 1 / Number(physicsRate) } } : {}) },
       lighting: frame => id !== "lighting" || choice("lighting") === "off" || !view ? false : view.lighting({
         enabled: true, ...(choice("composition")==="lit" ? {profile:"lit" as const,ambientIrradiance:[.18,.18,.18] as const}:{ambient:[.3,.35,.4,.55] as const}),
         pointLights: [{ ...light, radius: 420, height: 60, intensity: .8, falloff: 1.2, color: [1, .86, .65, 1] }],
@@ -279,7 +285,9 @@ export async function startFeatureLab(): Promise<void> {
       camera();
       if (id === "lighting") normals();
       if (id === "physics") {
-        engine.configurePhysicsRuntime(resolvePhysicsSpec({ mode: "rigid", gravity: [0, 0], continuous: true, solver: { fixedTimestep: true, stepSeconds: 1 / 60, velocityIterations: 8, positionIterations: 6 } }));
+        // The scene's native world already holds the authored bodies, and a world
+        // with bound bodies rejects new global settings. Gravity, solver iterations
+        // and CCD come from the automatic step settings on every native step.
         engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0, continuous: true, velocityIterations: 8, positionIterations: 6 });
         engine.configureFixedTimestep({ enabled: true, stepSeconds: 1 / Number(choice("physics-rate")), interpolate: input("interpolate").checked });
         engine.configurePhysicsContactImpacts({ minApproachSpeed: 10 });
@@ -365,7 +373,12 @@ export async function startFeatureLab(): Promise<void> {
         const a=engine.getPhysicsEntity(handles().west)!, b=engine.getPhysicsEntity(handles().ball)!;
         demoJoint=engine.spawnPhysicsJoint({type:"distance",entityA:handles().west,entityB:handles().ball,restLength:Math.hypot(a.x-b.x,a.y-b.y),stiffness:1,damping:1,breakForce:500});
       });
-      on("physics-rate", "change", refreshPhysicsDisplay);
+      on("physics-rate", "change", () => {
+        const url = new URL(location.href);
+        if (choice("physics-rate") === "60") url.searchParams.delete("physicsRate");
+        else url.searchParams.set("physicsRate", choice("physics-rate"));
+        location.assign(url);
+      });
       on("interpolate", "change", refreshPhysicsDisplay);
     }
     on("pause", "click", () => {

@@ -1,4 +1,3 @@
-import { resolvePhysicsSpec } from "@ferrum2d/ferrum-web/core";
 import { createPixelMaskTerrain, createPixelMaskTerrainRuntime, type PixelMaskTerrainRuntime, type PixelMaskTerrainRuntimeSyncResult } from "@ferrum2d/ferrum-web/labs";
 import type { FeatureContext, FeatureExtra } from "./featureExtras";
 
@@ -59,7 +58,9 @@ export function createTerrainFeature(ctx: FeatureContext): FeatureExtra {
         physics: { engine, baseSpec: physicsSettings, chunkWidth: 32, chunkHeight: 24, maxDirtyChunksPerSync: 8,
           boundary: { tileWidth: 4, tileHeight: 4, originX: 64, originY: 160 } } });
       sync = terrain.sync();
-      engine.configurePhysicsRuntime(resolvePhysicsSpec(physicsSettings));
+      // Bodies are already bound to the scene's native world, which rejects new global
+      // settings; the automatic step settings supply gravity, solver and CCD.
+      engine.configureFixedTimestep({ enabled: true, stepSeconds: 1 / 60 });
       engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 300, continuous: true, velocityIterations: 8, positionIterations: 6 });
       check(engine.setPhysicsBodyMaterial(handle(), { restitution: 0, friction: .5 }));
       output("terrain-radius", "12 픽셀"); output("terrain-edit", "공이 지면에 멈추는지 먼저 확인하세요.");

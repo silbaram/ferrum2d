@@ -229,6 +229,9 @@ async function bootstrap(): Promise<void> {
       debugParent: shell.debugRoot,
       debug: { enabled: debugParam === "true" },
       environment,
+      // Regression fixture for the original Shooter profiles and replay. Their
+      // built-in state snapshots belong to the compatibility physics path.
+      engine: { physicsBackend: "legacy" },
       gameStateLabel: starterRuntimeStateLabel,
       profiler: profilerSmoke,
       webgl2: {

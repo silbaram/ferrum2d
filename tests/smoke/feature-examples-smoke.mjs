@@ -153,7 +153,10 @@ try {
         assert.match(await page.locator('[data-value=destination]').textContent(), /이동할 수 없는/);
       }
       if (id === 'physics') {
-        await control('physics-rate').selectOption('30');
+        // Another fixed step needs a new native world, so the page reopens at that rate.
+        await Promise.all([page.waitForURL(/physicsRate=30/), control('physics-rate').selectOption('30')]);
+        await page.waitForFunction(() => window.ferrumFeatureLab?.snapshot().nativeState === 1, undefined, { timeout: 30000 });
+        assert.equal(await control('physics-rate').inputValue(), '30');
         await control('interpolate').check();
         await control('launch').click();
         await page.waitForFunction(() => {
