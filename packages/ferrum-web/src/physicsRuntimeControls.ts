@@ -29,23 +29,37 @@ const PHYSICS_DEBUG_SLEEPING = 1 << 4;
 const PHYSICS_DEBUG_CCD = 1 << 5;
 const PHYSICS_DEBUG_DEFAULT = PHYSICS_DEBUG_BROADPHASE | PHYSICS_DEBUG_CONTACTS;
 
+/** Step settings a native world accepted; frame physics metadata reports them. */
+export interface AcceptedAutoRigidBodyStep {
+  gravityX: number;
+  gravityY: number;
+  continuous: boolean;
+}
+
+/**
+ * Applies automatic rigid-body stepping. Returns the accepted gravity and CCD setting when the
+ * call replaced the step settings, or undefined for a native on/off toggle or a native rejection.
+ */
 export function configureAutoRigidBodyStepOptions(
   rustEngine: Engine,
   autoStep: boolean | PhysicsRigidBodyStepOptions,
-): void {
+): AcceptedAutoRigidBodyStep | undefined {
   if (typeof autoStep === "boolean" && typeof rustEngine.physics_spec_backend_active === "function"
     && rustEngine.physics_spec_backend_active()) {
     if (typeof rustEngine.set_auto_rigid_body_step_enabled !== "function") {
       throw new Error("This Wasm core cannot toggle native physics without changing solver settings.");
     }
     rustEngine.set_auto_rigid_body_step_enabled(autoStep);
-    return;
+    return undefined;
   }
   const options = typeof autoStep === "object" ? autoStep : undefined;
-  rustEngine.configure_auto_rigid_body_step(
+  const gravityX = finiteNumber(options?.gravityX ?? DEFAULT_RIGID_BODY_GRAVITY_X, "auto rigid body gravityX");
+  const gravityY = finiteNumber(options?.gravityY ?? DEFAULT_RIGID_BODY_GRAVITY_Y, "auto rigid body gravityY");
+  const continuous = options?.continuous ?? DEFAULT_RIGID_BODY_CONTINUOUS;
+  const accepted: boolean | undefined = rustEngine.configure_auto_rigid_body_step(
     autoStep !== false,
-    finiteNumber(options?.gravityX ?? DEFAULT_RIGID_BODY_GRAVITY_X, "auto rigid body gravityX"),
-    finiteNumber(options?.gravityY ?? DEFAULT_RIGID_BODY_GRAVITY_Y, "auto rigid body gravityY"),
+    gravityX,
+    gravityY,
     uint32Number(
       options?.velocityIterations ?? DEFAULT_RIGID_BODY_VELOCITY_ITERATIONS,
       "auto rigid body velocityIterations",
@@ -75,8 +89,10 @@ export function configureAutoRigidBodyStepOptions(
       "auto rigid body maxContactBaumgarteBiasVelocity",
     ),
     options?.contactSplitImpulse === true,
-    options?.continuous ?? DEFAULT_RIGID_BODY_CONTINUOUS,
+    continuous,
   );
+  // Wasm builds before the acceptance result return undefined and never reject.
+  return accepted === false ? undefined : { gravityX, gravityY, continuous };
 }
 
 export function stepRigidBodiesWithStats(

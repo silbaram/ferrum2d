@@ -478,9 +478,11 @@ fn default_policy_explicit_legacy_selection_preserves_constructor_entities_and_r
             5 => {
                 used.set_auto_rigid_body_step_enabled(false);
             }
-            _ => used.configure_auto_rigid_body_step(
-                true, 0., 0., 1, 1, 0.5, 0.01, 1., 0.2, 120., false, false,
-            ),
+            _ => {
+                assert!(used.configure_auto_rigid_body_step(
+                    true, 0., 0., 1, 1, 0.5, 0.01, 1., 0.2, 120., false, false,
+                ));
+            }
         }
         let before = crate::engine::persistence::encode(&used).unwrap();
         assert!(!used.configure_legacy_physics_defaults());

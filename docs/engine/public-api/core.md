@@ -789,7 +789,7 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 | `validatePhysicsRuntime(...)` | 설정 전 capability·clock mode·nominal step·mode 전환을 검사한다. |
 | `configurePhysicsRuntime(...)` | rigid와 arcade Spec의 고정·가변 시간을 Data Scene의 planar native backend에 적용한다. |
 | `physicsBackend()` | Rust가 소유한 현재 backend `"legacy"` 또는 `"unified-3d"`를 반환한다. |
-| `configureAutoRigidBodyStep(...)` | native의 boolean은 기존 solver 설정을 유지한 채 실행만 켜고 끈다. 객체 입력은 설정도 적용한다. |
+| `configureAutoRigidBodyStep(...)` | native의 boolean은 기존 solver 설정을 유지한 채 실행만 켜고 끈다. 객체 입력은 설정도 적용하고, native가 수용한 중력·연속 충돌을 `frame.physics` 표시에 반영한다. 호환 물리는 Physics Spec 중력 표시를 유지한다. |
 | `spawnRigidBody(...)` | 낮은 빈도 rigid body 생성용 imperative API다. |
 | `despawnPhysicsEntity(...)` | body와 그 body를 endpoint로 참조하는 모든 joint를 함께 제거하고 기존 joint handle을 무효화한다. |
 | `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. 옵션 없이 만든 엔진은 native 기본 정책으로 자동 실행이 켜져 있다. loop 실행 중 자동 실행이 활성이면 같은 frame에 solver가 두 번 돌므로 `configureAutoRigidBodyStep(false)`나 scene 일시 정지 뒤 사용한다. 이 조합을 처음 감지하면 콘솔 경고를 한 번 출력한다. |

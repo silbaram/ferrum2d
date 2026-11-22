@@ -117,6 +117,17 @@ test("native boolean auto-step toggles retain configured settings instead of sup
   deepEqual(engine.autoStepCalls, []);
 });
 
+test("auto-step configuration reports accepted gravity and CCD unless the native world rejects it", () => {
+  const engine = fakeRuntimeEngine();
+  deepEqual(configureAutoRigidBodyStepOptions(engine, { gravityY: 300, continuous: false }), { gravityX: 0, gravityY: 300, continuous: false });
+  deepEqual(configureAutoRigidBodyStepOptions(engine, true), { gravityX: 0, gravityY: 980, continuous: true });
+  (engine as { configure_auto_rigid_body_step: (...args: unknown[]) => boolean }).configure_auto_rigid_body_step = () => false;
+  equal(configureAutoRigidBodyStepOptions(engine, { gravityY: 300 }), undefined);
+  engine.physics_spec_backend_active = () => true;
+  engine.set_auto_rigid_body_step_enabled = () => {};
+  equal(configureAutoRigidBodyStepOptions(engine, true), undefined);
+});
+
 function resolvedPhysicsSpec(): ResolvedPhysicsSpec {
   return {
     mode: "rigidBody",

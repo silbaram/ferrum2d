@@ -37,6 +37,7 @@ impl Engine {
         self.record_rigid_body_step_stats(stats);
     }
 
+    /// Returns false when the native world rejects the settings; the previous settings stay active.
     #[allow(clippy::too_many_arguments)]
     pub fn configure_auto_rigid_body_step(
         &mut self,
@@ -52,7 +53,7 @@ impl Engine {
         max_contact_baumgarte_bias_velocity: f32,
         contact_split_impulse: bool,
         continuous: bool,
-    ) {
+    ) -> bool {
         let config = RigidBodyStepConfig {
             gravity: Velocity {
                 vx: gravity_x,
@@ -69,7 +70,7 @@ impl Engine {
             continuous,
         };
         if !self.accept_unified_auto_config(config) {
-            return;
+            return false;
         }
         self.auto_rigid_body_step_enabled = enabled;
         self.auto_rigid_body_step_config = config;
@@ -77,6 +78,7 @@ impl Engine {
             self.rigid_body_step_stats = RigidBodyStepStats::default();
             self.clear_rigid_body_frame_stats();
         }
+        true
     }
 
     #[allow(clippy::too_many_arguments)]

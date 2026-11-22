@@ -688,7 +688,14 @@ async function buildEngineFacade(
 
   const configureAutoRigidBodyStep = (autoStep: boolean | PhysicsRigidBodyStepOptions): void => {
     requireAlive();
-    configureAutoRigidBodyStepOptions(rustEngine, autoStep);
+    const accepted = configureAutoRigidBodyStepOptions(rustEngine, autoStep);
+    // Native steps with the accepted gravity and CCD, so frame physics reports them. The
+    // compatibility backend keeps its separate Physics Spec gravity for arcade movement.
+    if (accepted && typeof rustEngine.physics_spec_backend_active === "function"
+      && rustEngine.physics_spec_backend_active()) {
+      synchronizePhysicsMetadata?.();
+      acceptPhysicsMetadata({ ...framePipeline.physicsSpec, ...accepted });
+    }
   };
 
   const setPhysicsDebugLinesEnabled = (enabled: boolean | PhysicsDebugOptions): void => {
