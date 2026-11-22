@@ -33,6 +33,20 @@ export function createExampleHeader(id: string): HTMLElement {
     const group = document.createElement("span"); group.className = "example-breadcrumb"; group.textContent = groups[entry.kind];
     nav.append(group);
   }
+  // An app that extends a feature-lab topic shows that topic as its place in the lab.
+  const parent = "parent" in entry ? entry.parent : undefined;
+  if (parent) {
+    const trail = document.createElement("span"); trail.className = "example-breadcrumb"; trail.dataset.exampleParent = parent.id;
+    const title = catalog.find(item => item.id === parent.id)!.title;
+    if (site) {
+      const link = document.createElement("a"); link.textContent = title;
+      link.href = new URL(`${parent.id}/?feature=${parent.feature}`, site).href;
+      trail.append(link, ` › ${parent.label}`);
+    } else {
+      trail.textContent = `${title} › ${parent.label}`;
+    }
+    nav.append(trail);
+  }
   if (site) {
     const docs = document.createElement("a"); docs.href = new URL("docs/", site).href; docs.textContent = "문서"; docs.dataset.exampleDocs = "true";
     const label = document.createElement("label"), select = document.createElement("select");

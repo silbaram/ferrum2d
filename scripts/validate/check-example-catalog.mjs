@@ -56,6 +56,11 @@ export function loadExampleCatalog(root = process.cwd()) {
     assert(existsSync(resolve(root, dirname(item.source), 'package.json')), `Missing source package ${item.id}`);
     assert.match(item.command, /^pnpm dev:[a-z-]+$/);
     assert(commands[item.command.slice(5)], `Unknown command ${item.command}`);
+    if (item.parent !== undefined) {
+      const parent = catalog.find(other => other.id === item.parent.id);
+      assert(parent?.kind === 'lab' && parent.id !== item.id, `Invalid parent app ${item.id}`);
+      assert(featureIds.has(item.parent.feature) && item.parent.label?.trim(), `Invalid parent topic ${item.id}`);
+    }
     assert(Array.isArray(item.features) && new Set(item.features).size === item.features.length);
     for (const id of item.features) assert(featureIds.has(id), `Unknown related feature ${item.id}/${id}`);
     if (item.kind !== 'reference') {

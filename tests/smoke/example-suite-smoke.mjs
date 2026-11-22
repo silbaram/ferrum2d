@@ -90,7 +90,13 @@ try {
     assert.equal(await select.locator('option').count(), publicExamples.length);
     assert.equal(await select.locator('option:checked').textContent(), entry.title);
     assert.equal(await select.locator('option[value*="mode="]').count(), 0);
-    assert.equal(await header.locator('[data-example-home], .example-breadcrumb').count(),0);
+    assert.equal(await header.locator('[data-example-home]').count(),0);
+    if (entry.parent) {
+      // An app that extends a lab topic links back to that topic in the lab.
+      const parentTitle = catalog.find(item => item.id === entry.parent.id).title;
+      assert.equal((await header.locator('.example-breadcrumb').textContent()).trim(), `${parentTitle} › ${entry.parent.label}`);
+      assert.equal(await header.locator('.example-breadcrumb a').getAttribute('href'), new URL(`${entry.parent.id}/?feature=${entry.parent.feature}`, base).href);
+    } else assert.equal(await header.locator('.example-breadcrumb').count(),0);
     assert.equal(await header.locator('[data-example-docs]').getAttribute('href'),base+'docs/');
     assert.deepEqual(await select.locator('option').evaluateAll(options=>options.map(o=>o.value)),publicExamples.map(e=>new URL(e.path,base).href));
     await header.locator('summary').focus(); await page.keyboard.press('Enter');

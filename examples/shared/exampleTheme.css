@@ -25,6 +25,8 @@
 .example-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--example-border); }
 .example-brand { color: var(--example-text); font-weight: 700; font-size: 14px; }
 .example-breadcrumb { color: var(--example-accent); border-left: 1px solid var(--example-border); padding-left: 16px; }
+.example-breadcrumb a { color: var(--example-muted); text-decoration: none; }
+.example-breadcrumb a:is(:hover, :focus-visible) { color: var(--example-text); text-decoration: underline; }
 .example-navigation > a { color: var(--example-muted); text-decoration: none; }
 .example-switcher { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; color: var(--example-muted); }
 .example-header :is(select, button) { color: var(--example-text); background: var(--example-raised); border: 1px solid var(--example-border); border-radius: var(--example-radius); font: inherit; height: 32px; min-width: 0; max-width: 100%; padding: 0 8px; }
