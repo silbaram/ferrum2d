@@ -43,7 +43,7 @@ impl Engine {
     fn reject_unified_clock(&mut self) -> UnifiedPhysicsError {
         let error = UnifiedPhysicsError::ClockMismatch;
         if let Some(runtime) = &mut self.unified_physics {
-            runtime.last_error.record(error);
+            runtime.last_error.record_step(error);
         }
         error
     }
@@ -95,7 +95,7 @@ impl Engine {
                 for seconds in [interval, consumed_seconds] {
                     if let Err(error) = runtime.physics.validate_character_force_duration(seconds) {
                         let error = UnifiedPhysicsError::from(error);
-                        runtime.last_error.record(error);
+                        runtime.last_error.record_step(error);
                         return Err(error);
                     }
                 }
@@ -155,7 +155,7 @@ impl Engine {
                 Ok(owns) => owns,
                 Err(error) => {
                     let error = UnifiedPhysicsError::from(error);
-                    runtime.last_error.record(error);
+                    runtime.last_error.record_step(error);
                     return Err(error);
                 }
             }

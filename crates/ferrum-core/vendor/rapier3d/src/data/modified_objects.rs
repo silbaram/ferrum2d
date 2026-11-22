@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::alloc_prelude::*;
 use core::marker::PhantomData;
 use core::ops::Deref;

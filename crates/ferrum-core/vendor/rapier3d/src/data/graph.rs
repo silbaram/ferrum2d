@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 // This is basically a stripped down version of petgraph's UnGraph.
 // - It is not generic with respect to the index type (we always use u32).
 // - It preserves associated edge iteration order after Serialization/Deserialization.

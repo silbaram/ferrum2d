@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 

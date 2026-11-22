@@ -5,6 +5,7 @@ use crate::components::{
     CompoundCollider, CompoundColliderRef, PhysicsMaterial, RigidBody, RigidBodyType,
 };
 use crate::entity::Entity;
+use crate::physics3d::tick_inputs::TickInput;
 use crate::physics3d::{
     AdditionalMassProperties, BodyDesc, BodyKind, BodyOptions, ColliderDesc, ColliderId,
     PhysicsError, PlanarCollisionSpan, Pose, Space,
@@ -238,11 +239,13 @@ impl UnifiedPhysicsRuntime {
                 for j in 0..count {
                     let source = source_at(world, i, j).ok_or(PhysicsError::InvalidCollider)?;
                     if source.enabled() {
+                        // Cached fixtures outlive one variable interval: derive the
+                        // per-step correction gains from the world's nominal clock.
                         let mut collider = fixture(
                             source,
                             rigid.material,
                             contact_config,
-                            self.physics.config().step_seconds,
+                            self.physics.nominal_step_seconds(),
                         )?;
                         if self.shooter_gameplay
                             && world.collider_layer_at(i)
@@ -424,7 +427,11 @@ impl UnifiedPhysicsRuntime {
         Ok(())
     }
 
+    /// Stages legacy force/impulse/sleep components for the next native tick.
+    /// The tick applies them inside its rollback journal, so a zero-progress
+    /// rejection leaves no partial input and the retry stages them once again.
     pub(super) fn apply_planar_inputs(&mut self, world: &World) -> Result<(), UnifiedPhysicsError> {
+        self.physics.discard_staged_tick_inputs();
         for (&(id, generation), binding) in &self.bindings {
             let Some(cache) = &binding.legacy else {
                 continue;
@@ -435,23 +442,28 @@ impl UnifiedPhysicsRuntime {
             if r.body_type != RigidBodyType::Dynamic || !r.enabled {
                 continue;
             }
-            if r.is_sleeping != cache.sleeping {
-                self.physics.set_sleeping(binding.body, r.is_sleeping)?;
-            }
-            if r.force.vx != 0.0 || r.force.vy != 0.0 || r.torque != 0.0 {
-                self.physics.add_force(
-                    binding.body,
+            let input = TickInput {
+                sleeping: (r.is_sleeping != cache.sleeping).then_some(r.is_sleeping),
+                force: (r.force.vx != 0.0 || r.force.vy != 0.0 || r.torque != 0.0).then_some((
                     [r.force.vx, r.force.vy, 0.0],
                     [0.0, 0.0, if r.fixed_rotation { 0.0 } else { r.torque }],
-                )?;
-            }
-            if r.impulse.vx != 0.0 || r.impulse.vy != 0.0 {
-                self.physics
-                    .apply_impulse(binding.body, [r.impulse.vx, r.impulse.vy, 0.0])?;
-            }
-            if r.angular_impulse != 0.0 && !r.fixed_rotation {
-                self.physics
-                    .apply_torque_impulse(binding.body, [0.0, 0.0, r.angular_impulse])?;
+                )),
+                impulse: (r.impulse.vx != 0.0 || r.impulse.vy != 0.0).then_some([
+                    r.impulse.vx,
+                    r.impulse.vy,
+                    0.0,
+                ]),
+                torque_impulse: (r.angular_impulse != 0.0 && !r.fixed_rotation).then_some([
+                    0.0,
+                    0.0,
+                    r.angular_impulse,
+                ]),
+            };
+            if input != TickInput::default() {
+                if let Err(error) = self.physics.stage_tick_input(binding.body, input) {
+                    self.physics.discard_staged_tick_inputs();
+                    return Err(error.into());
+                }
             }
         }
         Ok(())

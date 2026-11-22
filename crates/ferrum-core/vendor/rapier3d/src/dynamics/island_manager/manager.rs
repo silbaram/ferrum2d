@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use super::Island;
 use crate::alloc_prelude::*;
 use crate::dynamics::{

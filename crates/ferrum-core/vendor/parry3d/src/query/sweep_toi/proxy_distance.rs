@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! GJK distance between two point-cloud proxies with an index-based simplex cache.
 //!
 //! The cache warm-starts successive distance queries on the same pair, which is the

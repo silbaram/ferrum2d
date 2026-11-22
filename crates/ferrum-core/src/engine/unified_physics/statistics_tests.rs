@@ -135,6 +135,158 @@ fn checked_manual_mesh_rejection_preserves_previous_tick_and_engine_checkpoint()
     e.step_rigid_bodies_checked(dt).unwrap();
 }
 
+/// A legacy planar force/impulse is staged inside the native rollback journal:
+/// a zero-progress rejection restores pre-input bytes, and N rejected retries
+/// do not integrate (N + 1) copies of the same component input.
+#[test]
+fn planar_legacy_inputs_are_rolled_back_with_a_zero_progress_rejection() {
+    use crate::components::{CircleCollider, CollisionLayer, RigidBody, Velocity};
+    let dt = 0.01;
+    let run = |rejections: usize| {
+        let mut e = Engine::new();
+        e.activate_data_scene();
+        e.configure_unified_physics(WorldConfig {
+            space: Space::PlanarXy,
+            gravity: [0.; 3],
+            step_seconds: dt,
+            ..WorldConfig::default()
+        })
+        .unwrap();
+        let a = e.world.spawn_entity();
+        e.world.set_transform(a, Transform2D { x: 40., y: 40. });
+        e.world
+            .set_circle_collider(a, CircleCollider::new(1., false, CollisionLayer::Enemy));
+        e.world.set_rigid_body(a, RigidBody::dynamic_circle(1., 1.));
+        e.step_rigid_bodies_checked(dt).unwrap();
+        let mesh = body(
+            &mut e,
+            BodyKind::Fixed,
+            [0.; 3],
+            [0.; 3],
+            Shape::TriangleMesh {
+                vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
+                triangles: vec![[0, 2, 1]; 4096],
+            },
+        );
+        body(
+            &mut e,
+            BodyKind::Dynamic,
+            [0., 1.25, 0.],
+            [0., -100., 0.],
+            Shape::Box {
+                half_extents: [0.5; 3],
+            },
+        );
+        let legacy = e.world.rigid_bodies[a.id as usize].as_mut().unwrap();
+        legacy.force = Velocity { vx: 50., vy: 0. };
+        legacy.impulse = Velocity { vx: 0., vy: 2. };
+        for _ in 0..rejections {
+            let saved = crate::engine::persistence::encode(&e).unwrap();
+            let error = e.step_rigid_bodies_checked(dt).unwrap_err();
+            assert!(error.contains("after 0 committed seconds"), "{error}");
+            assert!(
+                crate::engine::persistence::encode(&e).unwrap() == saved,
+                "rejected planar tick changed the checkpoint"
+            );
+        }
+        e.remove_unified_body(mesh).unwrap();
+        e.step_rigid_bodies_checked(dt).unwrap();
+        e.unified_body_state(a).unwrap()
+    };
+    let once = run(0);
+    assert!(once.linear_velocity[0] > 0. && once.linear_velocity[1] > 0.);
+    assert_eq!(run(2), once);
+}
+
+/// Pre-physics gameplay of a zero-progress rejected Data tick is not repeated:
+/// the retry resumes at physics, so tweens and timers advance once per tick.
+#[test]
+fn rejected_frame_retry_does_not_repeat_pre_physics_gameplay() {
+    use crate::tweens::{SpriteTint, TweenEasing};
+    let dt = 0.01;
+    let run = |rejections: usize| {
+        let mut e = Engine::new();
+        e.activate_data_scene();
+        e.configure_unified_physics(WorldConfig {
+            space: Space::Spatial,
+            gravity: [0.; 3],
+            step_seconds: dt,
+            ..WorldConfig::default()
+        })
+        .unwrap();
+        let sprite = e.world.spawn_enemy(10., 10., 1);
+        assert!(e.tweens.start_sprite_tint(
+            &mut e.world,
+            sprite,
+            SpriteTint::new(1., 1., 1., 1.),
+            SpriteTint::new(0., 0., 0., 0.),
+            1.,
+            TweenEasing::Linear,
+        ));
+        let mesh = body(
+            &mut e,
+            BodyKind::Fixed,
+            [0.; 3],
+            [0.; 3],
+            Shape::TriangleMesh {
+                vertices: vec![[-8., -1., -8.], [8., 1., -8.], [0., 0., 8.]],
+                triangles: vec![[0, 2, 1]; 4096],
+            },
+        );
+        body(
+            &mut e,
+            BodyKind::Dynamic,
+            [0., 1.25, 0.],
+            [0., -100., 0.],
+            Shape::Box {
+                half_extents: [0.5; 3],
+            },
+        );
+        for _ in 0..rejections {
+            let error = e
+                .update_frame_checked(f64::from(dt), false, false, false)
+                .unwrap_err();
+            assert!(error.contains("after 0 committed seconds"), "{error}");
+        }
+        e.remove_unified_body(mesh).unwrap();
+        e.update_frame_checked(f64::from(dt), false, false, false)
+            .unwrap();
+        e.world.sprite_at_index(sprite.id as usize).unwrap().r
+    };
+    let once = run(0);
+    assert!(once < 1.);
+    assert_eq!(run(3), once);
+}
+
+/// Checked frames report a native step skipped by clock or prepare failure;
+/// gameplay-only diagnostics and the raw `update_frame` ABI stay unchanged.
+#[test]
+fn checked_frame_reports_skipped_native_step() {
+    use crate::components::{CircleCollider, CollisionLayer, RigidBody, Velocity};
+    let mut e = engine(Space::PlanarXy, 64);
+    let error = e
+        .update_frame_checked(f64::NAN, false, false, false)
+        .unwrap_err();
+    assert!(error.contains("native physics step skipped"), "{error}");
+    e.update_frame_checked(0.0, false, false, false).unwrap();
+    let a = e.world.spawn_entity();
+    e.world.set_transform(a, Transform2D { x: 4., y: 4. });
+    e.world
+        .set_circle_collider(a, CircleCollider::new(1., false, CollisionLayer::Enemy));
+    let mut legacy = RigidBody::dynamic_circle(1., 1.);
+    legacy.force = Velocity { vx: 2.0e6, vy: 0. };
+    e.world.set_rigid_body(a, legacy);
+    let step = f64::from(e.fixed_timestep.config().step_seconds);
+    let error = e
+        .update_frame_checked(step, false, false, false)
+        .unwrap_err();
+    assert!(error.contains("native physics step skipped"), "{error}");
+    assert!(e.unified_body_state(a).is_err());
+    e.world.rigid_bodies[a.id as usize].as_mut().unwrap().force = Velocity::default();
+    e.update_frame_checked(step, false, false, false).unwrap();
+    assert!(e.unified_body_state(a).is_ok());
+}
+
 #[test]
 fn native_statistics_engine_retains_early_ccd_and_publishes_real_frame_counts_and_debug_lines() {
     let mut e = engine(Space::PlanarXy, 64);

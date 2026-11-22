@@ -965,6 +965,7 @@ Source는 unattached Y-up position-kinematic solid capsule controller이고 prim
 기존 문서 형식/필드를 유지한다. 호환 가능한 native 경로는8개 FIFO cache에서 자동 공유하며, connector를 검증한 뒤 설치한다.
 Native crowdAvoidance는 `supportsDataSceneNativeCombatCrowd()`를 별도로 검사한다. 실제 capsule pose/filter/높이와
 관측 속도로 회피 후보를 만들고 지형 검사와 기존 work 예산을 통과한 이동만 controller에 전달한다.
+캐릭터끼리의 회피 판정은 캡슐 축 선분의 정확한 swept 거리로 계산한다(GJK shape cast가 놓치던 교차도 막힘으로 본다).
 Native all-pattern은 `supportsDataSceneNativeCombatMovement()`를 요구한다. SeekTarget은 공통 arrivalRadius와
 실제 지형에서 검증한 경로/shortcut을 사용하며, Accelerate는 목표 검색 없이 틱당 가속과 지형 검사를 수행한다.
 일반 v6 지원 여부만으로 native all-pattern을 허용하지 않는다. 세 패턴에서 입력 actor를 제외하고 source 용량·work를 공유한다.

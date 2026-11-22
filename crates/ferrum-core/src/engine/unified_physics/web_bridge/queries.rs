@@ -165,8 +165,45 @@ impl Engine {
         if requested > MAX_HITS {
             return Err("Unified physics query hit capacity exceeded".into());
         }
-        if self.scene_mode != crate::engine::SceneMode::Data {
-            return Err("Unified physics queries require a Data Scene".into());
+        // Same scene contract as the contact/collision queries on this world.
+        let space = self
+            .unified_physics
+            .as_ref()
+            .ok_or("Unified physics is not configured")?
+            .physics
+            .config()
+            .space;
+        if !self.supports_unified_scene(space) {
+            return Err("Unified physics queries are unavailable in this scene".into());
+        }
+        // Decode every row before preparation mutates bindings or queues
+        // lifecycle output, so a malformed later row rejects the batch cleanly.
+        let mut shapes = Vec::with_capacity(metadata.len() / METADATA);
+        for m in metadata.chunks_exact(METADATA) {
+            let (sm, tail) = shape_metadata
+                .split_at_checked(m[10] as usize)
+                .ok_or("Truncated query shape metadata")?;
+            shape_metadata = tail;
+            let (sv, tail) = shape_values
+                .split_at_checked(m[11] as usize)
+                .ok_or("Truncated query shape values")?;
+            shape_values = tail;
+            shapes.push(if matches!(m[0], 2 | 3) {
+                if sm.first().is_none_or(|code| *code > 3) {
+                    return Err("Queries require convex primitives or hulls".into());
+                }
+                Some(shapes::decode(sm, sv)?)
+            } else {
+                None
+            });
+            if m[1] & 4 != 0
+                && !self.world.is_current_entity(Entity {
+                    id: m[4],
+                    generation: m[5],
+                })
+            {
+                return Err("Stale query excluded entity".into());
+            }
         }
         let runtime = self
             .unified_physics
@@ -181,35 +218,17 @@ impl Engine {
             )
             .map_err(|e| e.to_string())?;
         let out = &mut self.unified_physics_queries;
-        for (index, (m, v)) in metadata
+        for (index, ((m, v), shape)) in metadata
             .chunks_exact(METADATA)
             .zip(values.chunks_exact(VALUES))
+            .zip(shapes)
             .enumerate()
         {
-            let (sm, tail) = shape_metadata
-                .split_at_checked(m[10] as usize)
-                .ok_or("Truncated query shape metadata")?;
-            shape_metadata = tail;
-            let (sv, tail) = shape_values
-                .split_at_checked(m[11] as usize)
-                .ok_or("Truncated query shape values")?;
-            shape_values = tail;
-            let shape = if matches!(m[0], 2 | 3) {
-                if sm.first().is_none_or(|code| *code > 3) {
-                    return Err("Queries require convex primitives or hulls".into());
-                }
-                Some(shapes::decode(sm, sv)?)
-            } else {
-                None
-            };
             let exclude_body = if m[1] & 4 != 0 {
                 let e = Entity {
                     id: m[4],
                     generation: m[5],
                 };
-                if !self.world.is_current_entity(e) {
-                    return Err("Stale query excluded entity".into());
-                }
                 Some(
                     runtime
                         .bindings

@@ -156,12 +156,22 @@ struct PendingPhysicsError {
     saved: Option<UnifiedPhysicsError>,
     #[serde(skip)]
     rejected_attempt: Option<UnifiedPhysicsError>,
+    /// First clock/prepare/commit failure of the current checked frame. Query
+    /// and gameplay diagnostics stay soft; a skipped physics step does not.
+    #[serde(skip)]
+    frame_step_failure: Option<UnifiedPhysicsError>,
 }
 
 impl PendingPhysicsError {
     fn record(&mut self, error: UnifiedPhysicsError) {
         self.saved = Some(error);
         self.rejected_attempt = None;
+    }
+
+    /// Records a failure that skipped or rejected the native physics step.
+    fn record_step(&mut self, error: UnifiedPhysicsError) {
+        self.record(error);
+        self.frame_step_failure.get_or_insert(error);
     }
 
     fn get(&self) -> Option<UnifiedPhysicsError> {
@@ -214,6 +224,11 @@ pub(super) struct UnifiedPhysicsRuntime {
     #[serde(with = "crate::checkpoint_codec::vector")]
     retired: Vec<(u32, u32)>,
     last_error: PendingPhysicsError,
+    /// A Data-scene tick whose pre-physics gameplay ran before a zero-progress
+    /// rejection; `Some(true)` when it consumed the frame's latched presses.
+    /// The retry resumes at physics instead of repeating that gameplay.
+    #[serde(skip)]
+    suspended_tick: Option<bool>,
     #[serde(with = "crate::checkpoint_codec::vector")]
     pending_planar: Vec<planar::PendingBody>,
     #[serde(deserialize_with = "file_ordered::map")]
@@ -280,6 +295,7 @@ impl Engine {
             native_contact_manifolds: Vec::new(),
             retired: Vec::new(),
             last_error: PendingPhysicsError::default(),
+            suspended_tick: None,
             pending_planar: Vec::new(),
             legacy_joints: BTreeMap::new(),
             pending_joints: Vec::new(),
@@ -614,14 +630,14 @@ impl Engine {
             None
         };
         if let Some(error) = error {
-            runtime.last_error.record(error);
+            runtime.last_error.record_step(error);
             return false; // Never fall back to another rigid solver in this world.
         }
         let config = config.sanitized();
         let gravity = execution::gravity(&runtime.physics, config);
         let solver = execution::solver_settings(config);
         if let Err(error) = runtime.physics.validate_runtime_settings(gravity, solver) {
-            runtime.last_error.record(error.into());
+            runtime.last_error.record_step(error.into());
             return false;
         }
         runtime.retire_deleted_entities(&self.world);
@@ -642,7 +658,7 @@ impl Engine {
             .and_then(|()| runtime.commit_terrain())
             .and_then(|()| runtime.commit_planar_joints())
         {
-            runtime.last_error.record(error);
+            runtime.last_error.record_step(error);
             return false;
         }
         if gameplay && self.scene_mode == SceneMode::Data {
@@ -671,6 +687,8 @@ impl Engine {
             )
             .and_then(|()| runtime.apply_planar_inputs(&self.world))
             .and_then(|()| runtime.step_native_platforms(&mut self.spatial_scene, &self.tilemap));
+        // Inputs no tick consumed (failed admission) are restaged on retry.
+        runtime.physics.discard_staged_tick_inputs();
         let restored = runtime.finish_automatic_planar_motion(&mut self.world, motion.is_ok());
         // Keep prior removals observable if no native time was accepted. Once
         // time advances, free all legacy slots before collecting solver breaks.
@@ -697,7 +715,7 @@ impl Engine {
                     .restore_step_motion_capture_state(capture_state);
                 runtime.last_error.rejected_attempt = Some(error);
             } else {
-                runtime.last_error.record(error);
+                runtime.last_error.record_step(error);
             }
             return false;
         }
@@ -710,12 +728,12 @@ impl Engine {
             &runtime.terrain.by_collider,
         );
         if let Err(error) = runtime.finish_planar(&mut self.world) {
-            runtime.last_error.record(error);
+            runtime.last_error.record_step(error);
             succeeded = false;
         }
         for &(id, generation) in runtime.bindings.keys() {
             if let Err(error) = runtime.write_entity(&mut self.world, Entity { id, generation }) {
-                runtime.last_error.record(error);
+                runtime.last_error.record_step(error);
                 succeeded = false;
             }
         }
@@ -766,6 +784,22 @@ impl Engine {
 impl UnifiedPhysicsRuntime {
     pub(in crate::engine) fn begin_actual_motion_attempt(&mut self) {
         self.physics.clear_actual_motion_outcome();
+    }
+
+    pub(in crate::engine) fn begin_checked_frame(&mut self) {
+        self.last_error.frame_step_failure = None;
+    }
+
+    pub(in crate::engine) fn frame_step_failure(&self) -> Option<UnifiedPhysicsError> {
+        self.last_error.frame_step_failure
+    }
+
+    pub(in crate::engine) fn take_suspended_tick(&mut self) -> Option<bool> {
+        self.suspended_tick.take()
+    }
+
+    pub(in crate::engine) fn suspend_tick(&mut self, presses_delivered: bool) {
+        self.suspended_tick = Some(presses_delivered);
     }
 
     pub(in crate::engine) fn actual_motion_result(&self) -> Result<(), PhysicsError> {

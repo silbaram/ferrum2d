@@ -42,6 +42,7 @@ mod joints;
 mod kinematic_limit_tests;
 mod kinematic_limits;
 mod kinematic_motion;
+pub(crate) mod tick_inputs;
 mod tick_motion;
 pub(crate) use tick_motion::{TickMotion, TickMotionBackup};
 mod kinematic_paths;

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Time-of-impact computation on endpoint-interpolated sweeps.
 //!
 //! Unlike [`cast_shapes_nonlinear`](crate::query::cast_shapes_nonlinear), which models motion

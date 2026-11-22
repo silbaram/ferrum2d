@@ -1,7 +1,10 @@
 use super::types::{valid_pose, valid_vector, validate_plane};
 use super::world::native_pose;
-use super::{BodyKind, ColliderDesc, PhysicsError, Shape, Space};
-use rapier3d::{parry::utils::Array2, prelude as rp};
+use super::{BodyKind, ColliderDesc, PhysicsError, Pose, Shape, Space};
+use rapier3d::{
+    parry::{shape::TypedShape, utils::Array2},
+    prelude as rp,
+};
 
 pub(super) fn positive(v: f32) -> bool {
     v.is_finite() && (0.0001..=10000.0).contains(&v)
@@ -208,4 +211,83 @@ fn valid_hull_point(v: &[f32; 3], space: Space) -> bool {
                     10000.0
                 }
     })
+}
+
+/// Restored native geometry must stay inside the domain `shared_shape` admits.
+/// Backend storage checks only prove finite, well-linked records; an
+/// out-of-domain cuboid or hull still reaches narrow-phase EPA on the next step.
+pub(super) fn valid_native_shape(shape: &dyn rp::Shape, space: Space) -> bool {
+    match shape.as_typed_shape() {
+        TypedShape::Compound(compound) => {
+            let parts = compound.shapes();
+            (1..=64).contains(&parts.len())
+                && parts.iter().all(|(pose, part)| {
+                    valid_native_pose(pose, space) && valid_native_convex(part.as_ref(), space)
+                })
+        }
+        TypedShape::TriMesh(mesh) => {
+            let vertices = mesh.vertices();
+            (3..=65536).contains(&vertices.len())
+                && (1..=131072).contains(&mesh.indices().len())
+                && vertices.iter().all(|v| valid_point(&v.to_array()))
+                && mesh.indices().iter().all(|&[a, b, c]| {
+                    let [Some(a), Some(b), Some(c)] = [a, b, c].map(|i| vertices.get(i as usize))
+                    else {
+                        return false;
+                    };
+                    (*b - *a).cross(*c - *a).length_squared() > 1.0e-16
+                })
+        }
+        TypedShape::HeightField(field) => {
+            let (heights, scale) = (field.heights(), field.scale());
+            heights.nrows() >= 2
+                && heights.ncols() >= 2
+                && heights.data().len() <= 65536
+                && heights
+                    .data()
+                    .iter()
+                    .all(|v| v.is_finite() && v.abs() <= 10000.0)
+                && positive(scale.x)
+                && scale.y == 1.0
+                && positive(scale.z)
+        }
+        _ => valid_native_convex(shape, space),
+    }
+}
+
+fn valid_native_convex(shape: &dyn rp::Shape, space: Space) -> bool {
+    match shape.as_typed_shape() {
+        TypedShape::Cuboid(cuboid) => {
+            valid_box_extents(cuboid.half_extents.to_array(), space, 0.0001)
+        }
+        TypedShape::Ball(ball) => positive(ball.radius),
+        TypedShape::Capsule(capsule) => {
+            // Public authoring builds only local-Y capsules (`capsule_y`).
+            let (a, b) = (capsule.segment.a, capsule.segment.b);
+            a.x == 0.0
+                && a.z == 0.0
+                && b.x == 0.0
+                && b.z == 0.0
+                && a.y == -b.y
+                && b.y.is_finite()
+                && (0.0..=10000.0).contains(&b.y)
+                && positive(capsule.radius)
+        }
+        TypedShape::ConvexPolyhedron(hull) => {
+            (4..=256).contains(&hull.points().len())
+                && hull
+                    .points()
+                    .iter()
+                    .all(|p| valid_hull_point(&p.to_array(), space))
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn valid_native_pose(pose: &rp::Pose, space: Space) -> bool {
+    let pose = Pose {
+        position: pose.translation.to_array(),
+        rotation: pose.rotation.to_array(),
+    };
+    valid_pose(pose) && validate_plane(space, pose, [0.0; 3], [0.0; 3]).is_ok()
 }

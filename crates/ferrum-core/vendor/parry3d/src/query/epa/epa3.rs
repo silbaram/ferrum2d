@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Three-dimensional penetration depth queries using the Expanding Polytope Algorithm.
 //!
 //! This module provides the 3D-specific implementation of EPA, which works with

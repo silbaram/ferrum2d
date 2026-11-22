@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 //! Data structures modified with guaranteed deterministic behavior after deserialization.
 
 #[cfg(feature = "alloc")]

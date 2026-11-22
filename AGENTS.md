@@ -181,7 +181,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - package 변경 시 `pnpm package:check:<package>` 또는 `pnpm package:check`
 - create-game/agents template 변경 시 필요한 범위의 `pnpm package:consumer-smoke`와 `pnpm validate:consumer-smoke-report`
 
-CI 정합 검증(GitHub Actions `main` push/PR):
+CI 정합 검증(GitHub Actions `ci.yml`, 현재 `workflow_dispatch` 수동 실행이며 push/PR 자동 실행이 아니다):
 
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`

@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 pub use manager::IslandManager;
 
 pub(crate) use island::Island;

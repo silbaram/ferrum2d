@@ -318,3 +318,39 @@ fn planar_span_and_authored_terrain_identity_are_returned_without_simulation() {
     assert_eq!(e.unified_physics_query_hit_count(), 0);
     assert_eq!(e.elapsed_seconds, 0.0);
 }
+
+#[test]
+fn malformed_later_row_rejects_before_query_preparation_imports_components() {
+    use crate::components::{CircleCollider, CollisionLayer, RigidBody, Transform2D};
+    let mut e = engine(Space::PlanarXy);
+    let a = e.world.spawn_entity();
+    e.world.set_transform(a, Transform2D { x: 3., y: 0. });
+    e.world
+        .set_circle_collider(a, CircleCollider::new(0.5, false, CollisionLayer::Enemy));
+    e.world
+        .set_rigid_body(a, RigidBody::dynamic_circle(1., 0.5));
+    let (m, v) = row(1, [3., 0., 0.]);
+    let (mut bad, bad_v) = row(2, [0.; 3]);
+    bad[10] = 1;
+    bad[11] = 1;
+    assert!(e
+        .query_unified_physics(&[m, bad].concat(), &[v, bad_v].concat(), &[], &[])
+        .is_err());
+    // The rejected batch did not run preparation, so nothing was imported.
+    assert!(e.unified_body_state(a).is_err());
+    run(&mut e, &m, &v);
+    assert!(e.unified_body_state(a).is_ok());
+    assert_eq!(e.unified_physics_query_count(), 1);
+}
+
+#[test]
+fn batch_queries_follow_the_native_scene_contract_outside_data_scenes() {
+    let mut e = Engine::new();
+    assert!(
+        e.unified_physics.is_some(),
+        "built-in default uses native physics"
+    );
+    let (m, v) = row(1, [0.; 3]);
+    run(&mut e, &m, &v);
+    assert_eq!(e.unified_physics_query_count(), 1);
+}

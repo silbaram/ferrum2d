@@ -40,6 +40,8 @@ pub struct PhysicsWorld3d {
     pub(super) broken_joints: Vec<(super::JointId, super::JointEventReason)>,
     pub(super) planar_angles: BTreeMap<BodyId, super::planar_angle::PlanarAngle>,
     pub(super) joint_kinematics: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
+    /// Inputs for the next tick begin; never present at a checkpoint boundary.
+    pub(super) staged_tick_inputs: Vec<(BodyId, super::tick_inputs::TickInput)>,
 }
 
 impl fmt::Debug for PhysicsWorld3d {
@@ -125,6 +127,7 @@ impl PhysicsWorld3d {
             broken_joints: Vec::new(),
             joint_kinematics: Vec::new(),
             planar_angles: BTreeMap::new(),
+            staged_tick_inputs: Vec::new(),
         })
     }
 
@@ -378,6 +381,8 @@ impl PhysicsWorld3d {
             }
             self.stage_tick_outputs();
         }
+        // After the journal: a zero-progress rejection also undoes these.
+        self.apply_staged_tick_inputs();
         self.contact_policies.character_dynamic_pairs.clear();
         for runtime in self.characters.values_mut() {
             runtime.contact_velocity = [0.; 3];

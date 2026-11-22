@@ -1,5 +1,6 @@
 //! Build-local native checkpoints. The opaque value is produced by a live world;
 //! importing arbitrary bytes and whole Engine persistence are separate contracts.
+use super::geometry;
 use super::world::{native_id, validate_config};
 use super::{character::CharacterRuntime, events::EventCollector, joints::JointRuntime};
 use super::{BodyId, PhysicsWorld3d, WorldConfig};
@@ -52,6 +53,8 @@ struct WorldState {
     planar_angles: BTreeMap<BodyId, super::planar_angle::PlanarAngle>,
     #[serde(skip)]
     joint_kinematics: Vec<(rp::RigidBodyHandle, rp::Pose, rp::Pose)>,
+    #[serde(skip)]
+    staged_tick_inputs: Vec<(BodyId, super::tick_inputs::TickInput)>,
 }
 
 #[derive(serde::Serialize)]
@@ -352,11 +355,23 @@ impl PhysicsWorld3d {
                 }
             }
         }
+        // File aliases may point many colliders at one large mesh, so each
+        // shared geometry allocation is checked once.
+        let mut checked_shapes = std::collections::BTreeSet::new();
         for (id, collider) in self.backend.colliders.iter() {
             if !collider
                 .parent()
                 .and_then(|p| self.backend.bodies.get(p))
                 .is_some_and(|b| b.colliders().contains(&id))
+                || !collider
+                    .position_wrt_parent()
+                    .is_some_and(|local| geometry::valid_native_pose(local, self.config.space))
+            {
+                return Err(invalid());
+            }
+            let shape = collider.shared_shape();
+            if checked_shapes.insert(std::sync::Arc::as_ptr(&shape.0).cast::<()>() as usize)
+                && !geometry::valid_native_shape(shape.as_ref(), self.config.space)
             {
                 return Err(invalid());
             }

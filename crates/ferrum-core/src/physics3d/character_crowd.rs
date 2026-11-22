@@ -15,6 +15,8 @@ pub(crate) struct CharacterCrowdPeer {
 }
 
 #[cfg(test)]
+mod swept_distance_tests;
+#[cfg(test)]
 mod tests;
 pub(crate) struct CharacterCrowdCheck {
     pub clear: bool,
@@ -164,22 +166,40 @@ impl PhysicsWorld3d {
                 result.clear = false;
                 return Ok(result);
             }
-            let hit = cast_shapes(
-                &at,
-                relative,
-                a.shape(),
-                &bt,
-                rp::Vector::ZERO,
-                b.shape(),
-                ShapeCastOptions {
-                    max_time_of_impact: 1.,
-                    target_distance: margin,
-                    stop_at_penetration: true,
-                    compute_impact_geometry_on_penetration: true,
-                },
-            )
-            .map_err(|_| PhysicsError::InvalidQuery)?;
-            if hit.is_some_and(|hit| hit.time_of_impact < 1.) {
+            let blocked = if let (Some(ca), Some(cb)) =
+                (a.shape().as_capsule(), b.shape().as_capsule())
+            {
+                // Registered characters are capsules: the forecast only needs
+                // whether the swept capsule comes within `margin`, so use the
+                // exact swept segment distance instead of a GJK shape cast.
+                let point = |pose: &rp::Pose, p: rp::Vector| (*pose * p).to_array().map(f64::from);
+                let distance = super::character_geometry::swept_segment_distance(
+                    point(&at, ca.segment.a),
+                    point(&at, ca.segment.b),
+                    relative.to_array().map(f64::from),
+                    point(&bt, cb.segment.a),
+                    point(&bt, cb.segment.b),
+                );
+                distance - f64::from(ca.radius) - f64::from(cb.radius) <= f64::from(margin)
+            } else {
+                cast_shapes(
+                    &at,
+                    relative,
+                    a.shape(),
+                    &bt,
+                    rp::Vector::ZERO,
+                    b.shape(),
+                    ShapeCastOptions {
+                        max_time_of_impact: 1.,
+                        target_distance: margin,
+                        stop_at_penetration: true,
+                        compute_impact_geometry_on_penetration: true,
+                    },
+                )
+                .map_err(|_| PhysicsError::InvalidQuery)?
+                .is_some_and(|hit| hit.time_of_impact < 1.)
+            };
+            if blocked {
                 result.clear = false;
                 return Ok(result);
             }

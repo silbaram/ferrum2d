@@ -49,7 +49,13 @@ create-game package 검사의 내부 재빌드도 같은 checkout에서 공통 �
 Native 검사는 실제 Wasm의 파일 header에 들어 있는 기존 Core/target fingerprint를 현재 `build.rs` 입력의
 계산값과 비교해 오래된 Wasm을 거절한다. 이는 compiler/flags·재현 가능한 binary나 전체 제품 수용의 증명이
 아니므로 선행 공통 빌드는 유지한다. `native-wasm-source-identity.test.mjs`의 경로 순서·소스 변경·header/target
-회귀도 CI package 단계에서 실행한다. Runtime tarball의7개 Wasm/glue/factory/선언·metadata 파일은 검증한
+회귀도 CI package 단계에서 실행한다. 지문 입력에는 Core·vendored Rapier/Parry·vendored libm 소스가 들어간다.
+지문은 경로를 `/` 구분자로 계산해 Windows 로컬 빌드도 Linux와 같은 값을 낸다.
+`tests.rs`·`*_tests.rs`와 그 하위 module은 `cfg(test)` 전용이라 지문에서 제외하므로 테스트만 고쳐도 기존 `.f2d`가
+유지된다. 같은 테스트가 제외 대상 전부의 `#[cfg(test)]` 선언을 실제 소스에서 확인하며, 이름만 비슷한 상류 production
+module(`soft_body_crossing_tests.rs`)은 `build.rs`와 mirror의 예외 목록에 둔다.
+`package:check:ferrum-web`은 `pkg/ferrum_core_bg.wasm`이 12MiB 예산 이하인지도 확인한다. 예산을 올릴 때는 크기 증가 사유를 함께 기록한다.
+Runtime tarball의7개 Wasm/glue/factory/선언·metadata 파일은 검증한
 workspace 산출물과 bytes가 같아야 한다. 실제 검사만 필요하면 `node scripts/package/native-wasm-source-identity.mjs`를 쓴다.
 네 생성 템플릿의 headless replay도 기본 Native backend를 검사하고 공개 Native 파일 저장의 전체 SHA256과
 byteLength를 `custom.nativeRuntime`에 보존한다. capture는 pause/resume 사이에서 실행하며 resume의 첫 RAF는
@@ -69,7 +75,7 @@ Native 기본 생성 회귀는 raw/Web의 backend 생략·가변 시간·씬 전
 `planar_navigation::default_tests`와 `combat_navigation::dense_tests`는 Native-only shape·local offset·render anchor 분리,
 실제 cached connector의 꺾임점, 64 actor의 순환 서비스·목표 거리 진전과 Native 파일 continuation을 검사한다.
 Packed `native-default-backend-probe.mjs`와 `native-gameplay-navigation-probe.mjs`는 실제 공개 SDK·RAF·WebGL renderer를
-사용한다. Dense browser gate는 기존 physics-sandbox budget을 적용하며 실제 solver 위치와 작업량도 함께 확인한다.
+사용한다. Dense browser gate는 `native-crowd` budget(최댓값과 warm p95)을 적용하며 실제 solver 위치와 작업량도 함께 확인한다.
 문서만 바뀌면 변경한 링크·명령·계약에 해당하는 검사부터 선택한다. 아래 명령 전체를 매 문서 수정마다
 실행하지 않으며, Pages 전체 빌드·산출물 검사는 렌더링·배포 계약을 확인할 완료 단계에 수행한다.
 
@@ -515,13 +521,19 @@ Web bridge 회귀는 `engine::unified_physics::web_bridge::tests`, `unifiedPhysi
 native 설정에 맞는 frame mode/중력/고정 틱 표시를 확인한다.
 64명 군중 장면은 일반 브라우저 프레임과 50ms 고정 입력으로 각각 검사한다. 고정 입력 검사는
 새 브라우저 컨텍스트에서 가장 먼저 실행한다. 첫 프레임의 물리 5스텝을 포함해 81프레임 전체의
-Rust 업데이트 최댓값이 125ms 이하여야 한다. 405스텝 뒤 64명의 위치와 경로 탐색 통계를
-기준 해시와 대조하고 체크포인트 복원 뒤 6스텝을 재생한다. 보고서의
+Rust 업데이트 최댓값이 125ms 이하여야 한다. 두 검사는 `native-crowd` 예산을 쓰며 첫 프레임을 뺀 warm 프레임의
+Rust 업데이트 p95가 43ms 이하, native step당 p95가 11ms 이하여야 한다. 2026-11-22 로컬 Chromium 측정은
+성능 개선 전 5스텝 프레임 p95 66~72ms·스텝당 13.2~14.4ms, wasm32 하드웨어 제곱근·캐릭터 쌍 정확 가지치기·
+해석적 군중 회피·캡슐–상자 면 접촉 정확 계산 적용 후 28.3~28.9ms·5.66~5.78ms(일반 브라우저 프레임은 스텝당
+6.75~7.3ms)다. 이 값은 회귀 방지선이고
+60fps 수용 근거가 아니다. 405스텝 뒤 64명의 위치와 경로 탐색 통계를
+기준 해시와 대조하고(해석적 군중 회피 적용으로 2026-11-22 갱신) 체크포인트 복원 뒤 6스텝을 재생한다. 보고서의
 `nativeGameplayNavigationFixed50ms`에 첫 프레임 시간과 이후 프레임의 최댓값을 따로 기록한다.
 수동 CI workflow의 validate job 및 `smoke:check`에 연결하며 원격 실행 성공을 주장하지 않는다.
 보고서는 `artifacts/physics-3d/web-bridge-browser/report.json`이다.
 
 저장·복원, 회전 충돌, 지형과 자원 결합은 `pnpm smoke:physics-sdk-integration`으로 검사한다.
+수동 CI workflow의 validate job은 공통 빌드 뒤 이 검사를 실행하고 보고서를 artifact로 올린다.
 배포용 Wasm과 Web SDK를 빌드한 뒤 실행한다. 현재 Rust 소스 지문을 확인하고 SDK를 패킹한 다음,
 Chromium에서 그 패키지의 공개 API와 Wasm을 불러온다. 개발 중에는 필요한 이름만 지정할 수 있다
 (`pnpm smoke:physics-sdk-integration rotation` 등). 전체 실행은 세 그룹의 결과와 패키지·Wasm SHA-256을

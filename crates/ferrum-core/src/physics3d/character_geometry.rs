@@ -37,6 +37,52 @@ pub(super) fn contact(
     ))
 }
 
+/// Exact character-capsule/cuboid contact when the capsule lies beyond one face
+/// plane and its whole footprint is strictly inside that face. The face is then
+/// the closest box feature for every ball of the capsule, so the distance is the
+/// capsule's support along the face normal. `None` leaves edges, corners and
+/// penetration to the general query; `Some(None)` is a certain miss.
+pub(super) fn capsule_box_face_contact(
+    target: &dyn rp::Shape,
+    target_pose: &rp::Pose,
+    character: &dyn rp::Shape,
+    character_pose: &rp::Pose,
+    prediction: f32,
+) -> Option<Option<Contact>> {
+    let relative = target_pose.inv_mul(character_pose);
+    let Some((gap, normal, true)) =
+        super::character_query::capsule_box_plane(target, character, &relative, rp::Vector::ZERO)
+    else {
+        return None;
+    };
+    // `capsule_box_plane` only returns finite gaps.
+    if gap <= 0.0 {
+        return None;
+    }
+    if gap > prediction {
+        return Some(None);
+    }
+    let (half, capsule) = (target.as_cuboid()?.half_extents, character.as_capsule()?);
+    let axis = (0..3).find(|&axis| normal[axis] != 0.0)?;
+    let (a, b) = (relative * capsule.segment.a, relative * capsule.segment.b);
+    // The ball nearest the face; a segment parallel to it touches along its length.
+    let centre = match (a[axis] * normal[axis]).total_cmp(&(b[axis] * normal[axis])) {
+        std::cmp::Ordering::Less => a,
+        std::cmp::Ordering::Greater => b,
+        std::cmp::Ordering::Equal => (a + b) * 0.5,
+    };
+    let mut on_face = centre;
+    on_face[axis] = normal[axis] * half[axis];
+    let normal1 = target_pose.rotation * normal;
+    Some(Some(Contact::new(
+        target_pose * on_face,
+        target_pose * (centre - normal * capsule.radius),
+        normal1,
+        -normal1,
+        gap,
+    )))
+}
+
 /// Recover an exact box face normal when a noisy witness lies inside that face.
 /// Edge/corner contacts keep their geometric normal and remain free to slide.
 pub(super) fn target_normal(
@@ -129,4 +175,90 @@ pub(super) fn stabilize_translation<'a>(
         .fold(rp::Vector::ZERO, |projected, n| {
             projected + *n * n.dot(translation)
         })
+}
+
+/// Closest distance between segments `p1q1` and `p2q2` (Ericson 5.1.9).
+pub(super) fn segment_distance(p1: [f64; 3], q1: [f64; 3], p2: [f64; 3], q2: [f64; 3]) -> f64 {
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let at = |p: [f64; 3], d: [f64; 3], t: f64| [p[0] + d[0] * t, p[1] + d[1] * t, p[2] + d[2] * t];
+    let (d1, d2, r) = (sub(q1, p1), sub(q2, p2), sub(p1, p2));
+    let (a, e, f) = (dot(d1, d1), dot(d2, d2), dot(d2, r));
+    const TINY: f64 = 1.0e-18;
+    let (s, t) = if a <= TINY && e <= TINY {
+        (0.0, 0.0)
+    } else if a <= TINY {
+        (0.0, (f / e).clamp(0.0, 1.0))
+    } else {
+        let c = dot(d1, r);
+        if e <= TINY {
+            ((-c / a).clamp(0.0, 1.0), 0.0)
+        } else {
+            let b = dot(d1, d2);
+            let denom = a * e - b * b;
+            let s = if denom > 0.0 {
+                ((b * f - c * e) / denom).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let t = (b * s + f) / e;
+            if t < 0.0 {
+                ((-c / a).clamp(0.0, 1.0), 0.0)
+            } else if t > 1.0 {
+                (((b - c) / a).clamp(0.0, 1.0), 1.0)
+            } else {
+                (s, t)
+            }
+        }
+    };
+    let delta = sub(at(p1, d1, s), at(p2, d2, t));
+    dot(delta, delta).sqrt()
+}
+
+/// Smallest distance between segment `b0b1` and segment `a0a1` swept along
+/// `sweep` (a parallelogram). `|a0 + s(a1-a0) + τ sweep - b0 - t(b1-b0)|²`
+/// is convex over the unit cube: its minimum is an interior root (distance 0)
+/// or lies on one of six faces, each a segment-segment distance.
+pub(super) fn swept_segment_distance(
+    a0: [f64; 3],
+    a1: [f64; 3],
+    sweep: [f64; 3],
+    b0: [f64; 3],
+    b1: [f64; 3],
+) -> f64 {
+    let add = |a: [f64; 3], b: [f64; 3]| [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let (da, db) = (sub(a1, a0), sub(b1, b0));
+    let neg_db = sub([0.0; 3], db);
+    // Interior: s da + τ sweep - t db = b0 - a0 by Cramer's rule.
+    let det = dot(da, cross(sweep, neg_db));
+    let scale = dot(da, da).sqrt() * dot(sweep, sweep).sqrt() * dot(db, db).sqrt();
+    if det.abs() > scale * 1.0e-9 {
+        let c = sub(b0, a0);
+        let s = dot(c, cross(sweep, neg_db)) / det;
+        let tau = dot(da, cross(c, neg_db)) / det;
+        let t = dot(da, cross(sweep, c)) / det;
+        if [s, tau, t].iter().all(|v| (0.0..=1.0).contains(v)) {
+            return 0.0;
+        }
+    }
+    let swept_end = add(a0, sweep);
+    [
+        segment_distance(a0, swept_end, b0, b1),
+        segment_distance(a1, add(a1, sweep), b0, b1),
+        segment_distance(a0, a1, b0, b1),
+        segment_distance(swept_end, add(a1, sweep), b0, b1),
+        segment_distance(a0, a1, b0, sub(b0, sweep)),
+        segment_distance(a0, a1, b1, sub(b1, sweep)),
+    ]
+    .into_iter()
+    .fold(f64::INFINITY, f64::min)
 }

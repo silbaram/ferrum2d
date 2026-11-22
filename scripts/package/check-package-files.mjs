@@ -18,6 +18,9 @@ const requireWasmPkg = process.argv.includes("--require-wasm-pkg");
 const verifyPack = process.argv.includes("--verify-pack");
 const expectPublishable = process.argv.includes("--expect-publishable");
 const gunzipAsync = promisify(gunzip);
+// The Native physics integration grew the Core from 4.5 MB to 10.3 MB. Raise
+// this deliberately with a size note; an unnoticed jump fails the check.
+const WASM_SIZE_BUDGET_BYTES = 12 * 1024 * 1024;
 
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 const warnings = [];
@@ -174,6 +177,7 @@ async function checkWasmPkgArtifacts() {
     await assertNativeWasmSourceIdentity(repoRoot);
     await generateNativeFileSdkBuild(repoRoot, { check: true, checkDist: true });
     await checkWasmExportDeclarations();
+    await checkWasmSizeBudget();
     return;
   }
 
@@ -186,6 +190,12 @@ async function checkWasmPkgArtifacts() {
     detail: "Generated wasm artifacts are not present. Run pnpm build:wasm before release packaging.",
     missing,
   });
+}
+
+async function checkWasmSizeBudget() {
+  const { size } = await stat(path.join(packageRoot, "pkg/ferrum_core_bg.wasm"));
+  assert(size <= WASM_SIZE_BUDGET_BYTES,
+    `[package check] pkg/ferrum_core_bg.wasm is ${size} bytes, over the ${WASM_SIZE_BUDGET_BYTES}-byte budget`);
 }
 
 async function checkWasmExportDeclarations() {

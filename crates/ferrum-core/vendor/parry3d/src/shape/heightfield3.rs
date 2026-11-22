@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use core::ops::Range;
 // TODO: Replace nalgebra Array2 with a custom Vec-based storage for heightfield data
 #[cfg(feature = "alloc")]

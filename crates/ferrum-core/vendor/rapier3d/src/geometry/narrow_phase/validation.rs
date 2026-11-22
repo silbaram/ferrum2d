@@ -97,7 +97,19 @@ impl NarrowPhase {
         let mut masks = budget.vector::<u128>(self.body_solver_color_masks.len())?;
         masks.resize(self.body_solver_color_masks.len(), 0);
         budget.charge(self.body_solver_color_masks.len())?;
-        for edge in &self.contact_graph.graph.edges {
+        // Ferrum2D modified: solver hints are a stored derived cache. Removals
+        // mirror them and the next update resizes them, so a stored list is
+        // either cleared or aligned with the contact edges.
+        let edges = self.contact_graph.graph.edges.len();
+        let hints_aligned = self.pair_solver_hints.len() == edges;
+        if !hints_aligned && !self.pair_solver_hints.is_empty() {
+            return Err(StoredReferenceError::SolverGraph);
+        }
+        let graph_ready = hints_aligned
+            && self.solver_graph_valid
+            && self.solver_graph_epoch == context.world.islands.active_set_epoch
+            && self.solver_graph_mb_epoch == context.world.multibody_joints.topology_epoch;
+        for (edge_index, edge) in self.contact_graph.graph.edges.iter().enumerate() {
             let a = self.contact_graph.graph.nodes[edge.source().index()].weight;
             let b = self.contact_graph.graph.nodes[edge.target().index()].weight;
             let pair = &edge.weight;
@@ -109,7 +121,18 @@ impl NarrowPhase {
             }
             pairs.push(pair_key(a, b)?);
             budget.charge(pair.solver_manifolds().len())?;
+            // A stored count is cleared (sleep/deserialization) or the live
+            // qualified count; a ready graph holds only selectable pairs.
+            let hint = self.pair_solver_hints.get(edge_index).copied().unwrap_or(0);
+            let count = hint & super::PAIR_HINT_COUNT_MASK;
+            if count != 0 && count != super::pair_qualified_manifold_count(pair) {
+                return Err(StoredReferenceError::SolverGraph);
+            }
+            let selectable = hint & super::PAIR_HINT_DYN_BIT != 0 && count != 0;
             for manifold in pair.solver_manifolds() {
+                if graph_ready && manifold.data.graph_pos.is_some() && !selectable {
+                    return Err(StoredReferenceError::SolverGraph);
+                }
                 for (collider, body) in [
                     (a, manifold.data.rigid_body1),
                     (b, manifold.data.rigid_body2),

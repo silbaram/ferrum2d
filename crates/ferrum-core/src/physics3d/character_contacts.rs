@@ -7,11 +7,17 @@ use super::solver_trajectory::{Time, Work};
 use super::world::native_id;
 use super::BodyId;
 use rapier3d::parry::bounding_volume::BoundingVolume;
-use rapier3d::parry::query::{contact, NonlinearRigidMotion};
+use rapier3d::parry::query::{contact, Contact, NonlinearRigidMotion, Unsupported};
 use rapier3d::prelude as rp;
 use std::collections::{BTreeMap, HashMap};
 pub(super) mod actual_rows;
 mod angular_suffix;
+#[cfg(test)]
+mod box_face_tests;
+#[cfg(test)]
+mod pair_bound_tests;
+#[cfg(test)]
+mod pair_cast_tests;
 mod solver;
 
 #[derive(Default)]
@@ -390,6 +396,58 @@ fn advance(actors: &mut [Actor], dt: Time) {
         a.applied_carry += a.carry * dt as f32;
     }
 }
+/// Conservative earliest hit time of two linearly moving capsules, or `None`
+/// when they may already be within `margin` (contact prediction, which also
+/// covers the cast's skin target distance). The f64 segment distance loses a
+/// margin far above the f32 pose/GJK error, so the pair's real contact check
+/// reports no contact and any cast hit time is at or after the bound.
+#[allow(clippy::too_many_arguments)]
+fn capsule_pair_hit_lower_bound(
+    a: &rp::Capsule,
+    a_pose: &rp::Pose,
+    a_velocity: rp::Vector,
+    b: &rp::Capsule,
+    b_pose: &rp::Pose,
+    b_velocity: rp::Vector,
+    margin: f32,
+    time: Time,
+) -> Option<Time> {
+    let point = |pose: &rp::Pose, p: rp::Vector| (*pose * p).to_array().map(f64::from);
+    let (p1, q1) = (point(a_pose, a.segment.a), point(a_pose, a.segment.b));
+    let (p2, q2) = (point(b_pose, b.segment.a), point(b_pose, b.segment.b));
+    let scale = [p1, q1, p2, q2]
+        .iter()
+        .flatten()
+        .fold(1.0_f64, |m, v| m.max(v.abs()));
+    if !scale.is_finite() {
+        return None;
+    }
+    let gap = super::character_geometry::segment_distance(p1, q1, p2, q2)
+        - f64::from(a.radius)
+        - f64::from(b.radius)
+        - (1.0e-3 + scale * 1.0e-6);
+    let margin = f64::from(margin);
+    // NaN never proves separation.
+    if gap.is_nan() || gap <= margin {
+        return None;
+    }
+    let speed = (a_velocity - b_velocity)
+        .to_array()
+        .map(f64::from)
+        .iter()
+        .map(|v| v * v)
+        .sum::<f64>()
+        .sqrt();
+    if !speed.is_finite() {
+        return None;
+    }
+    Some(if speed == 0.0 {
+        Time::INFINITY
+    } else {
+        time + (gap - margin) / (speed * (1.0 + 1.0e-9))
+    })
+}
+
 fn actor_pose(world: &rp::PhysicsWorld, actor: &Actor) -> rp::Pose {
     rp::Pose::from_translation(actor.applied) * *world.colliders[actor.collider].position()
 }
@@ -457,6 +515,35 @@ fn first_hit(
             }
             let target_skin =
                 other.map_or(skin, |j| skin.max(chars[&actors[j].id].config.skin_width));
+            if let Some(j) = other {
+                // Exact pruning: a separated linear character pair whose earliest
+                // possible hit is after this tick or after the current first hit
+                // cannot become `first`. Its contact check and cast are counted
+                // as the full evaluation would count them (no contact, one cast).
+                let lower = (!policies.has_one_way(handle) && !scene.has_path(handle))
+                    .then(|| {
+                        capsule_pair_hit_lower_bound(
+                            a.shape().as_capsule()?,
+                            &pose,
+                            v,
+                            b.shape().as_capsule()?,
+                            &actor_pose(world, &actors[j]),
+                            actors[j].velocity,
+                            target_skin * 1.01,
+                            time,
+                        )
+                    })
+                    .flatten();
+                if lower.is_some_and(|lower| {
+                    lower > 1.0 || first.as_ref().is_some_and(|hit| lower > hit.time)
+                }) {
+                    actors[i].pair_contacts += 1;
+                    actors[j].pair_contacts += 1;
+                    actors[i].pair_casts += 1;
+                    actors[j].pair_casts += 1;
+                    continue;
+                }
+            }
             let stationary;
             let motion = if let Some(j) = other {
                 stationary = NonlinearRigidMotion::new(
@@ -509,7 +596,7 @@ fn first_hit(
                     target_skin * 1.01,
                 ))
             } else {
-                contact(&at, b.shape(), &pose, a.shape(), target_skin * 1.01)
+                obstacle_contact(&at, b.shape(), &pose, a.shape(), target_skin * 1.01)
             };
             let touching = match contact_result {
                 Ok(c) => c,
@@ -682,7 +769,7 @@ fn refresh(
                 skin * 1.01,
             ))
         } else {
-            contact(&at, b.shape(), &pose, a.shape(), skin * 1.01)
+            obstacle_contact(&at, b.shape(), &pose, a.shape(), skin * 1.01)
         };
         match result {
             Ok(Some(hit)) => {
@@ -772,6 +859,20 @@ fn stop_sources(
         any = true;
     }
     any
+}
+
+/// Character-to-obstacle contact. A capsule over the inside of a box face gets
+/// the exact face contact: Parry's GJK converges loosely against large boxes
+/// and can report millimetre errors, or a contact beyond `prediction`.
+fn obstacle_contact(
+    at: &rp::Pose,
+    target: &dyn rp::Shape,
+    pose: &rp::Pose,
+    character: &dyn rp::Shape,
+    prediction: f32,
+) -> Result<Option<Contact>, Unsupported> {
+    super::character_geometry::capsule_box_face_contact(target, at, character, pose, prediction)
+        .map_or_else(|| contact(at, target, pose, character, prediction), Ok)
 }
 
 fn stable_normal(normal: rp::Vector) -> rp::Vector {

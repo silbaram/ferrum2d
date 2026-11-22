@@ -64,3 +64,13 @@ impl ContactCorrection {
         }
     }
 }
+
+#[cfg(test)]
+impl super::PhysicsWorld3d {
+    pub(crate) fn collider_contact_correction(
+        &self,
+        id: super::ColliderId,
+    ) -> Option<ContactCorrection> {
+        self.contact_policies.corrections.get(&id).copied()
+    }
+}

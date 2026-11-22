@@ -28,6 +28,11 @@ impl ContactPolicies {
         self.one_way_allows_at(platform, p.position(), shape, pose)
     }
 
+    /// Whether `platform` carries a one-way rule (pose-dependent admission).
+    pub(super) fn has_one_way(&self, platform: rp::ColliderHandle) -> bool {
+        self.one_way.contains_key(&collider_id(platform))
+    }
+
     pub(super) fn one_way_allows_at(
         &self,
         platform: rp::ColliderHandle,

@@ -98,6 +98,10 @@ Rust update 실패 뒤에는 audio/render/`onFrame`을 실행하지 않으며, f
 새 Core의 frame/manual step 오류는 checked entry의 `Result` 반환으로 전달한다. `&mut self` export 내부에서
 직접 JS 예외를 던져 Wasm borrow guard의 해제를 건너뛰지 않는다. SDK는 해당 entry가 있으면 기존 호출을
 대체해 한 번만 실행하며, 이전 Core에는 기존 void entry를 사용한다.
+checked entry는 실제 운동 거부뿐 아니라 clock·준비·commit 실패로 native step을 건너뛴 frame도 `Err`로 반환한다.
+조회·gameplay 보조 진단은 `Err`로 올리지 않는다. 진행 0초로 거부된 Data Scene tick은 legacy 입력을 native
+rollback journal 안에서 적용해 되돌리고, 이미 실행한 tween·scene update를 다시 실행하지 않도록 다음 시도를
+물리 단계부터 재개한다.
 유효한 운동 구간을 수치적으로 인증하지 못한 경우는 `UnresolvedMotion`으로 구분한다.
 작업 한도 초과는 기존 `CapacityExceeded`, 지원하지 않는 형상은 `UnsupportedShape`로 유지하며
 이 오류들을 잘못된 body로 소거하지 않는다. 기존 Rust 오류 ordinal은 유지하고 새 variant만 끝에 추가한다.

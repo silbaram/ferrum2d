@@ -223,14 +223,19 @@ impl PhysicsWorld3d {
         span: Option<PlanarCollisionSpan>,
     ) -> Result<(), PhysicsError> {
         self.validate_planar_collision_span(span)?;
+        // An unchanged span must not enter the backend's modified-body set:
+        // Engine commits it every tick, including ticks that are rejected.
+        if !self.backend.bodies.contains(native_id(body)) {
+            return Err(PhysicsError::StaleBody);
+        }
+        if self.contact_policies.spans.get(&body).copied() == span {
+            return Ok(());
+        }
         let native = self
             .backend
             .bodies
             .get_mut(native_id(body))
             .ok_or(PhysicsError::StaleBody)?;
-        if self.contact_policies.spans.get(&body).copied() == span {
-            return Ok(());
-        }
         if let Some(span) = span {
             self.contact_policies.spans.insert(body, span);
         } else {

@@ -23,15 +23,68 @@ impl Engine {
             .map_or(0., |r| r.actual_motion_completed_seconds())
     }
 
-    pub(super) fn checked_actual_native_motion(&self) -> Result<(), String> {
+    pub(super) fn begin_checked_native_frame(&mut self) {
+        self.reset_native_motion_attempt();
+        if let Some(runtime) = &mut self.unified_physics {
+            runtime.begin_checked_frame();
+        }
+    }
+
+    /// Checked entries report actual-motion rejection first, then any clock,
+    /// prepare or commit failure that skipped native physics in this call.
+    /// Raw `update_frame` keeps the retained diagnostic only.
+    pub(super) fn checked_native_frame(&self) -> Result<(), String> {
         if let Some(error) = self.actual_native_motion_failure() {
-            Err(format!(
+            return Err(format!(
                 "Ferrum2D actual native motion rejected after {} committed seconds: {}",
                 self.actual_native_committed_seconds(),
                 error
-            ))
+            ));
+        }
+        match self
+            .unified_physics
+            .as_ref()
+            .and_then(|runtime| runtime.frame_step_failure())
+        {
+            Some(error) => Err(format!("Ferrum2D native physics step skipped: {error}")),
+            None => Ok(()),
+        }
+    }
+
+    /// Starts one Data-scene native tick. A tick suspended by a zero-progress
+    /// rejection already ran its tweens and scene update, so the retry resumes
+    /// at physics. Returns the resume state and the presses for this tick.
+    pub(super) fn begin_native_gameplay_tick(
+        &mut self,
+        seconds: f32,
+        step_index: u32,
+        input: InputState,
+    ) -> (Option<bool>, InputState) {
+        let resumed = self
+            .unified_physics
+            .as_mut()
+            .and_then(|runtime| runtime.take_suspended_tick());
+        let presses = if step_index == 0 && resumed != Some(false) {
+            self.fixed_timestep_input_latch
+                .apply_to(InputState::default())
         } else {
-            Ok(())
+            InputState::default()
+        };
+        if resumed.is_none() {
+            self.tweens.update(&mut self.world, seconds);
+            self.update_scene(seconds, input, presses);
+        }
+        (resumed, presses)
+    }
+
+    /// Records that a zero-progress rejection followed pre-physics gameplay.
+    /// Built-in scenes step inside `update_scene`, so they always rerun it.
+    pub(super) fn suspend_native_gameplay_tick(&mut self, resumed: Option<bool>, step_index: u32) {
+        if self.has_native_built_in() {
+            return;
+        }
+        if let Some(runtime) = &mut self.unified_physics {
+            runtime.suspend_tick(resumed.unwrap_or(step_index == 0));
         }
     }
 
@@ -64,19 +117,15 @@ impl Engine {
                 self.world.begin_render_interpolation_step();
             }
             let input = self.fixed_step_input(step_index == 0);
-            let presses = if step_index == 0 {
-                self.fixed_timestep_input_latch
-                    .apply_to(InputState::default())
-            } else {
-                InputState::default()
-            };
-            self.tweens.update(&mut self.world, seconds);
-            self.update_scene(seconds, input, presses);
+            let (resumed, presses) = self.begin_native_gameplay_tick(seconds, step_index, input);
             self.step_auto_rigid_bodies(seconds);
             if let Some(error) = self.actual_native_motion_failure() {
                 let partial = self.actual_native_committed_seconds().clamp(0., seconds);
-                if step_index == 0 && partial > 0. {
+                if step_index == 0 && partial > 0. && resumed != Some(false) {
                     self.fixed_timestep_input_latch.clear();
+                }
+                if partial == 0. {
+                    self.suspend_native_gameplay_tick(resumed, step_index);
                 }
                 // `steps` counts positive-duration native intervals here. An
                 // incomplete interval is accompanied by Err and exact seconds,
@@ -98,7 +147,7 @@ impl Engine {
                 self.elapsed_seconds = frame_elapsed;
                 return Err(error);
             }
-            if step_index == 0 {
+            if step_index == 0 && resumed != Some(false) {
                 self.fixed_timestep_input_latch.clear();
             }
             self.record_collision_lifecycle_events();

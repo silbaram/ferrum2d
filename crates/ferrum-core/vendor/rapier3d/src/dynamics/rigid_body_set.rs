@@ -1,3 +1,4 @@
+// Ferrum2D modified vendored source; see FERRUM-PATCHES.md.
 use crate::data::{Arena, HasModifiedFlag, ModifiedObjects};
 use crate::dynamics::{
     ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder,
