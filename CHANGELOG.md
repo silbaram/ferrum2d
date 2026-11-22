@@ -6,6 +6,21 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ## Unreleased
 
+## 0.1.0-beta.10 - 2026-11-22
+
+GitHub Release 설치용 열한 번째 beta 후보다. 2D·HD-2D 씬의 물리를 Rapier3D 기반 통합 물리로 확장하고,
+코드 리뷰에서 확인한 저장 파일·프레임 오류 처리를 고쳤으며, 64명 군중 기준 물리 계산 시간을 절반 이하로 줄였다.
+Ferrum2D Studio 데스크톱 설치 파일을 SDK와 함께 제공한다. 소스 package는 `0.1.0`/`private: true`를 유지하며,
+GitHub staging의 네 설치 package는 `0.1.0-beta.10`으로 맞춘다.
+
+### Added
+
+- 기본 2D 씬과 공간 물리 씬에서 통합 물리(`physicsBackend()`가 `"unified-3d"`)를 사용한다. 강체, 캐릭터와
+  움직이는 발판의 접촉, 관절, 지형, 충돌 쿼리와 진단을 연결했다. vendored Rapier3D 0.36.1/Parry3D 0.31.1을 쓴다.
+- 게임 파일에 물리 상태와 자원을 함께 저장하고 복원한다. 바이너리 저장은 SDK와 Wasm의 빌드 정보를 확인한다.
+- Ferrum2D Studio에서 Native 물리 씬을 작성하고 마을 씬을 플레이한다. Windows x64·macOS arm64·Linux x64 Studio
+  설치 파일에 같은 릴리스의 Wasm을 내장한다.
+
 ### Changed
 
 - Ferrum2D 개발·CI와 게임 생성·에이전트 CLI의 최소 버전을 Node.js 24로 올렸다.
@@ -18,6 +33,52 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
   서명 키와 OS별 설치 검증은 계속 필요하다. 이미 공개한 beta.9 이하의 Assets/URL은 당시 이름 그대로다.
 - dependency 필드명 변경에 맞춰 consumer project/consumer smoke report와 통합 distribution manifest를
   version 2로 올렸다. Studio Kit public helper 이름은 `StudioKit` / `FERRUM_STUDIO_KIT` 접두사를 사용한다.
+- 군중 회피 판정을 바꿔 같은 입력에서도 64명 군중의 이동 궤적이 이전 빌드와 다르다. 405스텝 검사에서 목표 진행 합은
+  1.3% 줄었고 최소 간격은 같다.
+- Wasm은 약 10.5MB(gzip 3.7MB)다. 패키지 검사에 12MiB 상한을 두어 의도하지 않은 증가를 막는다.
+
+### Fixed
+
+- 회전 상자와 구의 연속 충돌 계산을 고쳤다. 물리 시간이 진행되기 전에 스텝이 거부되면 직전 틱의 진단과 저장 상태를 보존한다.
+- 저장 파일 복원이 collider 형상·local pose에 공개 생성 API와 같은 범위를 다시 적용하고 solver hint를 contact graph와
+  대조한다. half-extent를 1e30으로 바꾼 파일이 첫 update에서 Parry EPA를 중단시키던 문제를 `prepare` 단계 거부로 바꿨다.
+- clock·native 준비·commit 실패로 native step을 건너뛴 frame update와 `stepRigidBodies`가 성공처럼 보이던 문제를 고쳤다.
+  이제 `native physics step skipped` 오류를 던진다.
+- 진행 0초로 거부된 tick의 legacy force/impulse/sleep 입력을 native rollback 안에서 되돌린다. Data Scene의 재시도는
+  tween·scene update를 반복하지 않고 물리 단계부터 재개한다.
+- 가변 시간 접촉 보정은 캐시된 fixture의 생성 frame 대신 world의 nominal step으로 계산한다.
+- 일괄 충돌 query가 contact query와 같은 scene 계약을 따르고, 모든 행을 검증한 뒤에만 상태를 바꾼다.
+- 군중 회피에서 Parry shape cast가 실제로 겹치는 경로를 놓치던 경우를 정확한 swept 캡슐 거리 계산으로 막는다.
+
+### Performance
+
+- 64명 군중(로컬 Chromium, 고정 50ms 입력)의 warm p95를 5스텝 프레임 66~72ms→28.3~28.9ms,
+  스텝당 13.2~14.4ms→5.66~5.78ms로 줄였다.
+  - wasm32 제곱근을 하드웨어 명령으로 계산한다(vendored libm 0.2.16, 결과 비트 동일).
+  - 접촉 해결에서 이번 tick 안에 닿을 수 없는 캐릭터 쌍을 정확히 건너뛴다(결과 비트 동일).
+  - 군중 회피와 캐릭터–상자 면 접촉을 GJK 대신 정확한 기하 계산으로 판정한다.
+
+### Upgrade Notes
+
+- 게임 생성·에이전트 도구와 생성 프로젝트는 Node.js 24 이상을 사용한다. 엔진, Studio Kit, 생성기·에이전트 도구의
+  GitHub Release URL을 같은 beta.10으로 맞추고 JS/Wasm을 같은 tarball에서 갱신한다.
+- 빌드 정보가 다른 바이너리 저장 파일은 복원하지 않는다. 버전을 바꾸기 전에 저장 파일을 백업한다.
+- 옵션 없이 만든 엔진은 자동 강체 step이 켜져 있다. loop 실행 중 `stepRigidBodies`를 같이 호출하면 같은 frame에
+  solver가 두 번 돈다. `configureAutoRigidBodyStep(false)`나 scene 일시 정지 뒤 사용한다. SDK는 처음 감지할 때 한 번 경고한다.
+
+### Known Limitations
+
+- Studio 설치 파일은 beta다. OS별 실제 설치와 GUI, 코드 서명·공증 상태는 별도로 확인한다. 이 버전의 Studio는 다음
+  설치 파일을 직접 받아 업데이트한다.
+- 군중 성능 수치는 로컬 Chromium 측정이다. 실제 게임 프로젝트와 목표 기기의 물리 성능은 별도로 확인해야 한다.
+
+## 0.1.0-beta.9 - 2026-11-12
+
+GitHub Release 설치용 열 번째 beta다. HD-2D 공간 렌더링, 조명·그림자, 픽셀 아트·애니메이션 제작과 프로젝트 업데이트
+도구를 포함한다. 전체 변경과 설치·검증 정보는 GitHub Release 노트에 있고, 아래는 이 파일에 기록한 항목이다.
+
+### Changed
+
 - Ferrum2D Studio의 하단 패널을 기본 서랍으로 바꿨다. 탭 줄만 표시해 viewport를 넓히고,
   탭을 누르면 canvas 크기를 바꾸지 않고 펼친다. 핀 버튼으로 기존처럼 고정할 수 있다.
   Assets 탭은 에셋 격자만 표시하고 도구는 `Import`/`Manage` 메뉴에서 한 번에 하나씩 연다.
