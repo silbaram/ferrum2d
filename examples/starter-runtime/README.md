@@ -81,7 +81,7 @@ WebGL2 기본 / WebGPU 선택과 fallback을 표시한다. 화면의 수치는 �
 부피의 월드 회전은 attachment의 `yawDegrees`이며 2D 그림 자체의 회전과 구분한다.
 설정에는 runtime 반전·경과 시간을 포함하지 않는다. `재생 상태 JSON · 반전 포함`은 클릭 순간의
 공개 게임 상태 snapshot을 저장한다. 별도 예제 전용 포맷이 아니며, 복원할 때 asset을 먼저 등록하고
-`restoreGameStateSnapshot`을 사용한다. `scripts/assets/build-hd2d-feature-scenes.mjs`로 atlas/GLB/씬을 재생성하며
+`restoreGameStateSnapshot`을 사용한다. JSON 진행 저장은 호환 물리에서만 지원하므로 이 실험은 `physicsBackend: "legacy"`로 실행한다. `scripts/assets/build-hd2d-feature-scenes.mjs`로 atlas/GLB/씬을 재생성하며
 원본 atlas hash와 proxy content ID는 `public/features/spatial/shadow-assets.json`에 기록한다.
 
 집중 검증은 `pnpm smoke:shadow-comparison`이다. 두 렌더러의 실제 월드 수신점과 부피 pose,
@@ -149,7 +149,7 @@ SDK의 `particleVfxPreset` 기본값·Wasm ABI는 변경하지 않는다.
 
 - **씬 전환·페이드**: `?feature=scenes`. 카운터를 올리고 A/B 공간을 왕복한다. `transition`은 씬 카운터를 초기화하고 전역 카운터를 유지한다. 암전 중 재입력은 무시하고, 일시정지·초기화는 전환에도 적용한다.
 - **상호작용·트리거**: `?feature=interaction`. 이동 후 64 단위 안에서 Space 또는 상호작용 버튼을 누른다. 스위치는 한 번 작동하고 문 사용 조건을 해제한다. 아래 패널 구역의 진입/이탈은 실제 native collision event다. 문은 조건부 상호작용 표식이며 물리 벽 개폐는 타일맵 예제에 있다.
-- **저장·불러오기**: `?feature=save-load`. 에너지를 수집하고 저장한 뒤 초기화/새로고침 후 불러온다. 위치·변수·수집으로 사라진 아이템을 함께 복원한다. 일반 2D 좌표는 snapshot의 custom state에 기록하고, 수집 진행은 Data Scene progress로 저장한다. 슬롯은 `ferrum2d.feature-lab.save-load.v1`이며 다른 저장 키는 건드리지 않는다. 브라우저·사이트 주소별 로컬 저장으로 서버/클라우드 저장이 아니다. 손상 데이터·다른 씬뿐 아니라 진행/변수 누락, 캐릭터 제거·비활성화, 수집 수와 아이템 상태 불일치도 씬 변경 전에 거절한다. 저장소 접근 실패는 화면에 안내하며 기존 저장을 유지한다. 일시정지 중 저장 작업은 차단하고 실험 초기화는 슬롯을 유지한다.
+- **저장·불러오기**: `?feature=save-load`. 에너지를 수집하고 저장한 뒤 초기화/새로고침 후 불러온다. 위치·변수·수집으로 사라진 아이템을 함께 복원한다. 일반 2D 좌표는 snapshot의 custom state에 기록하고, 수집 진행은 Data Scene progress로 저장한다. 슬롯은 `ferrum2d.feature-lab.save-load.v1`이며 다른 저장 키는 건드리지 않는다. 브라우저·사이트 주소별 로컬 저장으로 서버/클라우드 저장이 아니다. 손상 데이터·다른 씬뿐 아니라 진행/변수 누락, 캐릭터 제거·비활성화, 수집 수와 아이템 상태 불일치도 씬 변경 전에 거절한다. 저장소 접근 실패는 화면에 안내하며 기존 저장을 유지한다. 일시정지 중 저장 작업은 차단하고 실험 초기화는 슬롯을 유지한다. 통합 물리는 Data Scene 물리의 JSON 저장을 아직 지원하지 않으므로 이 실험은 호환 물리(`physicsBackend: "legacy"`)로 실행한다. 통합 물리 게임의 저장은 [네이티브 게임 파일](../../docs/engine/public-api/native-game-files.md)을 쓴다.
 - **대화·퀘스트**: `?feature=dialogue`. 캔버스 아래 실제 `UiOverlay`에서 부탁을 거절/수락하고 소포를 챙겨 전달한다. 조건 플래그가 전달 선택지를 열고 `QuestLog`에 목표/완료를 기록한다. Tab/Enter 선택, 화면 갱신 후 포커스 유지와 초기화를 지원한다. 이 예제의 대화 진행은 새로고침하면 초기화된다.
 - **HUD·다국어·접근성**: `?feature=hud`. native 체력 변수에 피해/회복을 적용하고 HUD만 한영·14/18/22px·고대비로 바꾼다. 체력은 0~100이며 progressbar의 접근성 값과 이름도 함께 갱신한다. 실험실 전체의 언어 전환 기능은 아니다.
 

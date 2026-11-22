@@ -86,8 +86,11 @@ export async function checkNextFeature({page, id, snapshot, control, pixelHash})
     await page.waitForFunction(() => { const b = window.ferrumFeatureLab.snapshot().ball; return b.y > 146 && b.y < 153 && Math.abs(b.velocityY) < 3; });
     const solid = await snapshot(), pixels = await page.evaluate(pixelHash);
     assert(solid.terrain.centerSolid && solid.terrain.surfaceSolid);
-    await control('pause').click(); await control('terrain-hole').click();
-    await page.waitForTimeout(150); assert.deepEqual((await snapshot()).ball, solid.ball);
+    // Native contact keeps settling by tiny amounts, so compare against the paused pose.
+    await control('pause').click(); await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().state === 'paused');
+    const paused = (await snapshot()).ball;
+    await control('terrain-hole').click();
+    await page.waitForTimeout(150); assert.deepEqual((await snapshot()).ball, paused, 'a paused terrain edit moved the ball');
     assert.equal((await snapshot()).terrain.edits, 0);
     await control('pause').click(); await control('terrain-hole').click();
     await page.waitForFunction(() => window.ferrumFeatureLab.snapshot().ball.y > 345);

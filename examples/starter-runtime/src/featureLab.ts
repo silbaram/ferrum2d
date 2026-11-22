@@ -187,7 +187,10 @@ export async function startFeatureLab(): Promise<void> {
       // Only the projectile experiment supplies fire input; the other Shooter fixtures use movement alone.
       inputTransform: snapshot => shooter ? shell.inputTransform(id === "projectiles" ? extra?.input?.(snapshot) ?? snapshot : { ...snapshot, space: false, enter: false, mouseLeft: false }) : extra?.input?.(snapshot) ?? snapshot,
       engine: { includeCollisionEvents: true, includeGameplayEvents: true,
-        ...(id === "physics" ? { fixedTimestep: { enabled: true, stepSeconds: 1 / Number(physicsRate) } } : {}) },
+        ...(id === "physics" ? { fixedTimestep: { enabled: true, stepSeconds: 1 / Number(physicsRate) } } : {}),
+        // The JSON progress save captures Data Scene physics, which the SDK supports only on
+        // the compatibility path; native physics saves use native game files instead.
+        ...(id === "save-load" ? { physicsBackend: "legacy" as const } : {}) },
       lighting: frame => id !== "lighting" || choice("lighting") === "off" || !view ? false : view.lighting({
         enabled: true, ...(choice("composition")==="lit" ? {profile:"lit" as const,ambientIrradiance:[.18,.18,.18] as const}:{ambient:[.3,.35,.4,.55] as const}),
         pointLights: [{ ...light, radius: 420, height: 60, intensity: .8, falloff: 1.2, color: [1, .86, .65, 1] }],

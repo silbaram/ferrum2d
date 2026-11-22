@@ -22,7 +22,12 @@ export async function checkLightingQuality({ page, control, snapshot, pixelHash,
   await render(() => control("light-mode").selectOption("mixed"));
   const mixed = await snapshot();
   assert.equal(mixed.environment.environment.lighting.lights.length, 1);
-  assert.equal(mixed.shadowPasses, 7, "cold mixed scene draws one cube shadow and one sun map");
+  // Shadow maps are cached per light: adding the point light draws its cold cube (6 faces)
+  // and reuses the sun map, while moving the sun redraws only the sun map.
+  assert.equal(mixed.shadowPasses, 6, "cold mixed scene draws one cube shadow and reuses the sun map");
+  await range("sun-elevation", 50);
+  assert.equal((await snapshot()).shadowPasses, 1, "moving the sun redraws only the sun map");
+  await range("sun-elevation", 35);
   const clean = await render(() => control("environment-fog").check());
   const individual = {};
   for (const effect of effects) {

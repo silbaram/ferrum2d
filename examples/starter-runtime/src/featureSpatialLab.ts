@@ -139,7 +139,9 @@ export async function startSpatialFeatureLab(id: string): Promise<void> {
         output("observation", `렌더링 오류: ${failed}`);
       }
     }, () => e?.dataSceneState() === "playing" && id !== "attachments" && !shadowComparison ? { ...input.snapshot(), space: false, enter: false, mouseLeft: false } : neutral,
-    undefined, () => r.viewportSize());
+    // The playback JSON download captures Data Scene progress, which the SDK supports only on
+    // the compatibility path; native physics saves use native game files instead.
+    undefined, () => r.viewportSize(), shadowComparison ? { physicsBackend: "legacy" } : {});
     engine = e; own(() => e.destroy()); if (destroyed) return;
     const models: Awaited<ReturnType<typeof loadSpatialGlb>>[] = [];
     const modelNames=shadowComparison?Object.keys(shadowAssets.models):Object.values(source.spatial?.models??{}).flatMap(model=>[model.asset,...(model.lods??[]).map(lod=>lod.asset)]);
