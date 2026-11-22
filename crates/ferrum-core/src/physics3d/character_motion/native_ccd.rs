@@ -337,6 +337,43 @@ fn pair_hit(
     checks: &mut usize,
     work: &mut Work,
 ) -> Result<Option<(CastHit, ShapeMotion)>, TrajectoryError> {
+    pair_sweep(
+        moving, ah, b, bh, policies, until, clearance, checks, work, true,
+    )
+}
+/// Native counts a pseudo (sensor or solver-group excluded) pair sweep, but
+/// never clamps at it; its crossings come from the final sensor coverage.
+/// Only the candidate census that counts the check is needed, not a cast.
+#[allow(clippy::too_many_arguments)]
+fn pair_check(
+    moving: &mut Moving<'_>,
+    ah: rp::ColliderHandle,
+    b: &rp::Collider,
+    bh: rp::ColliderHandle,
+    policies: &ContactPolicies,
+    until: Time,
+    clearance: f32,
+    checks: &mut usize,
+    work: &mut Work,
+) -> Result<(), TrajectoryError> {
+    pair_sweep(
+        moving, ah, b, bh, policies, until, clearance, checks, work, false,
+    )
+    .map(|_| ())
+}
+#[allow(clippy::too_many_arguments)]
+fn pair_sweep(
+    moving: &mut Moving<'_>,
+    ah: rp::ColliderHandle,
+    b: &rp::Collider,
+    bh: rp::ColliderHandle,
+    policies: &ContactPolicies,
+    until: Time,
+    clearance: f32,
+    checks: &mut usize,
+    work: &mut Work,
+    cast: bool,
+) -> Result<Option<(CastHit, ShapeMotion)>, TrajectoryError> {
     use rapier3d::parry::bounding_volume::BoundingVolume;
     let Source {
         collider: a,
@@ -378,6 +415,9 @@ fn pair_hit(
         let piece = ordinal;
         ordinal = ordinal.checked_add(1).ok_or(TrajectoryError::WorkLimit)?;
         pieces(b, bodies, tracks, clamps, domain, &mut |mb, sb, eb| {
+            if !cast && counted {
+                return Ok(());
+            }
             work.charge(1)?;
             let start = sa.max(sb);
             let end = ea
@@ -436,6 +476,9 @@ fn pair_hit(
             if !counted {
                 *checks = checks.checked_add(1).ok_or(TrajectoryError::WorkLimit)?;
                 counted = true;
+            }
+            if !cast {
+                return Ok(());
             }
             #[cfg(test)]
             let diagnostic_query_work_start = work.used;
@@ -614,25 +657,38 @@ pub(in crate::physics3d) fn plan(
                             work,
                         )?);
                     }
-                    let hit = pair_hit(
-                        moving_cache
-                            .as_mut()
-                            .ok_or(TrajectoryError::InvalidReference)?,
-                        moving,
-                        b,
-                        target,
-                        policies,
-                        chosen.map_or(duration, |row| row.cutoff_time),
-                        params.allowed_linear_error(),
-                        &mut output.checks,
-                        work,
-                    )?;
+                    let moving_cache = moving_cache
+                        .as_mut()
+                        .ok_or(TrajectoryError::InvalidReference)?;
+                    let until = chosen.map_or(duration, |row| row.cutoff_time);
                     // Native clamp_checks includes pseudo/sensor pair sweeps.
                     // Their actual crossings are finalized once by C on the
                     // complete clipped path; they never become solid clamps.
                     if pseudo {
+                        pair_check(
+                            moving_cache,
+                            moving,
+                            b,
+                            target,
+                            policies,
+                            until,
+                            params.allowed_linear_error(),
+                            &mut output.checks,
+                            work,
+                        )?;
                         continue;
                     }
+                    let hit = pair_hit(
+                        moving_cache,
+                        moving,
+                        b,
+                        target,
+                        policies,
+                        until,
+                        params.allowed_linear_error(),
+                        &mut output.checks,
+                        work,
+                    )?;
                     let Some((hit, ma)) = hit else {
                         continue;
                     };
